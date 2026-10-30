@@ -1,0 +1,42 @@
+Package files:
+ 100 /var/lib/dpkg/status
+     release a=now
+ 500 file:/srv/g03repo ./ Packages
+     release c=
+ 500 http://archive.debian.org/debian-security stretch/updates/non-free i386 Packages
+     release v=9,o=Debian,a=oldoldstable,n=stretch,l=Debian-Security,c=non-free,b=i386
+     origin archive.debian.org
+ 500 http://archive.debian.org/debian-security stretch/updates/non-free amd64 Packages
+     release v=9,o=Debian,a=oldoldstable,n=stretch,l=Debian-Security,c=non-free,b=amd64
+     origin archive.debian.org
+ 500 http://archive.debian.org/debian-security stretch/updates/contrib i386 Packages
+     release v=9,o=Debian,a=oldoldstable,n=stretch,l=Debian-Security,c=contrib,b=i386
+     origin archive.debian.org
+ 500 http://archive.debian.org/debian-security stretch/updates/contrib amd64 Packages
+     release v=9,o=Debian,a=oldoldstable,n=stretch,l=Debian-Security,c=contrib,b=amd64
+     origin archive.debian.org
+ 500 http://archive.debian.org/debian-security stretch/updates/main i386 Packages
+     release v=9,o=Debian,a=oldoldstable,n=stretch,l=Debian-Security,c=main,b=i386
+     origin archive.debian.org
+ 500 http://archive.debian.org/debian-security stretch/updates/main amd64 Packages
+     release v=9,o=Debian,a=oldoldstable,n=stretch,l=Debian-Security,c=main,b=amd64
+     origin archive.debian.org
+ 500 http://archive.debian.org/debian stretch/non-free i386 Packages
+     release v=9.13,o=Debian,a=oldoldstable,n=stretch,l=Debian,c=non-free,b=i386
+     origin archive.debian.org
+ 500 http://archive.debian.org/debian stretch/non-free amd64 Packages
+     release v=9.13,o=Debian,a=oldoldstable,n=stretch,l=Debian,c=non-free,b=amd64
+     origin archive.debian.org
+ 500 http://archive.debian.org/debian stretch/contrib i386 Packages
+     release v=9.13,o=Debian,a=oldoldstable,n=stretch,l=Debian,c=contrib,b=i386
+     origin archive.debian.org
+ 500 http://archive.debian.org/debian stretch/contrib amd64 Packages
+     release v=9.13,o=Debian,a=oldoldstable,n=stretch,l=Debian,c=contrib,b=amd64
+     origin archive.debian.org
+ 500 http://archive.debian.org/debian stretch/main i386 Packages
+     release v=9.13,o=Debian,a=oldoldstable,n=stretch,l=Debian,c=main,b=i386
+     origin archive.debian.org
+ 500 http://archive.debian.org/debian stretch/main amd64 Packages
+     release v=9.13,o=Debian,a=oldoldstable,n=stretch,l=Debian,c=main,b=amd64
+     origin archive.debian.org
+Pinned packages:

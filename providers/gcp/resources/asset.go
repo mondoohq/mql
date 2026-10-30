@@ -7,21 +7,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 
 	asset "cloud.google.com/go/asset/apiv1"
 	"cloud.google.com/go/asset/apiv1/assetpb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
 type mqlGcpProjectAssetServiceInternal struct {
-	serviceEnabled bool
+	serviceGate
 }
 
 func (g *mqlGcpProject) assetInventory() (*mqlGcpProjectAssetService, error) {
@@ -43,7 +44,7 @@ func (g *mqlGcpProject) assetInventory() (*mqlGcpProjectAssetService, error) {
 	}
 
 	svc := res.(*mqlGcpProjectAssetService)
-	svc.serviceEnabled = serviceEnabled
+	svc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_cloudasset).Msg("gcp service is not enabled, skipping")
 	}
@@ -84,7 +85,11 @@ func (g *mqlGcpProjectAssetServiceIamPolicy) id() (string, error) {
 }
 
 func (g *mqlGcpProjectAssetService) resources() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -117,9 +122,9 @@ func (g *mqlGcpProjectAssetService) resources() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not search Cloud Asset Inventory resources")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -156,7 +161,11 @@ func (g *mqlGcpProjectAssetService) resources() ([]any, error) {
 }
 
 func (g *mqlGcpProjectAssetService) iamPolicies() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -189,17 +198,19 @@ func (g *mqlGcpProjectAssetService) iamPolicies() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not search Cloud Asset Inventory IAM policies")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
 
 		bindings := make([]any, 0, len(r.GetPolicy().GetBindings()))
-		for _, b := range r.GetPolicy().GetBindings() {
+		// Index-suffixed: a policy can hold several bindings for the same role
+		// that differ only by condition, so a role-keyed id collapses them.
+		for i, b := range r.GetPolicy().GetBindings() {
 			mqlBinding, err := CreateResource(g.MqlRuntime, "gcp.resourcemanager.binding", map[string]*llx.RawData{
-				"id":                   llx.StringData(r.Resource + "/" + b.GetRole()),
+				"id":                   llx.StringData(r.Resource + "-" + strconv.Itoa(i)),
 				"role":                 llx.StringData(b.GetRole()),
 				"members":              llx.ArrayData(convert.SliceAnyToInterface(b.GetMembers()), types.String),
 				"conditionTitle":       llx.StringData(b.GetCondition().GetTitle()),
@@ -227,4 +238,9 @@ func (g *mqlGcpProjectAssetService) iamPolicies() ([]any, error) {
 	}
 
 	return res, nil
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectAssetService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_cloudasset)
 }

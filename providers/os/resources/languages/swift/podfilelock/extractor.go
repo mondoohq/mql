@@ -8,8 +8,8 @@ import (
 	"io"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/swift"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/swift"
 )
 
 var (
@@ -94,6 +94,14 @@ func parsePodEntry(s string) podEntry {
 
 	// Remove trailing colon (pods with sub-dependencies)
 	s = strings.TrimSuffix(s, ":")
+	s = strings.TrimSpace(s)
+
+	// CocoaPods wraps a pod spec in double quotes when the name contains special
+	// characters, e.g. `"Artsy+UIColors (3.1.0)"`. Strip the surrounding quotes so
+	// the name doesn't keep a stray leading `"`.
+	if len(s) >= 2 && strings.HasPrefix(s, `"`) && strings.HasSuffix(s, `"`) {
+		s = s[1 : len(s)-1]
+	}
 
 	// Find "(version)"
 	openParen := strings.LastIndex(s, "(")

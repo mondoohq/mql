@@ -1,17 +1,20 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/cnquery/v9/providers/okta"
-option go_package = "go.mondoo.com/mql/v13/providers/okta/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/okta"
+option go_package = "go.mondoo.com/mql/providers/okta/resources"
+option root = "okta"
 
 // Okta
 //
-// Use the Okta namespace to access users, groups, applications, policies,
-// trusted origins, network zones, authenticators, API tokens, and custom
-// roles configured in your Okta organization. Query `okta.organization`
-// for tenant-level settings such as billing contacts, threat insight
-// configuration, and security notification preferences.
-okta {
+// Namespace for the users, groups, applications, policies, trusted origins,
+// network zones, authenticators, API tokens, and custom roles configured in
+// your Okta organization. Query `okta.organization` for tenant-level settings
+// such as billing contacts, threat insight configuration, and security
+// notification preferences.
+okta @root {
   // Okta users
   users() []okta.user
   // Okta groups
@@ -36,16 +39,54 @@ okta {
   identityProviders() []okta.identityProvider
   // Custom OAuth 2.0 authorization servers defined in the Okta org
   authorizationServers() []okta.authorizationServer
+  // Resource sets that scope custom administrator roles
+  resourceSets() []okta.resourceSet
+  // Event hooks that deliver org events to external endpoints
+  eventHooks() []okta.eventHook
+  // Inline hooks that call out to external logic during Okta flows
+  inlineHooks() []okta.inlineHook
+  // Cryptographic keys used to sign outbound hook requests
+  hookKeys() []okta.hookKey
+  // Log streams that export System Log events to external destinations
+  logStreams() []okta.logStream
+  // API service integrations granted OAuth 2.0 access to the org
+  apiServiceIntegrations() []okta.apiServiceIntegration
+  // Behavior detection rules evaluated during sign-on
+  behaviorRules() []okta.behaviorRule
+  // Third-party risk signal providers integrated with the org
+  riskProviders() []okta.riskProvider
+  // Devices enrolled in the org
+  devices() []okta.device
+  // Device assurance policies enforcing device-trust requirements
+  deviceAssurancePolicies() []okta.deviceAssurancePolicy
+  // Security events providers feeding shared security signals to the org
+  securityEventsProviders() []okta.securityEventsProvider
+  // User types defining the profile schema variants accounts can carry
+  userTypes() []okta.userType
+  // Attribute mappings that move profile data between applications and Okta
+  profileMappings() []okta.profileMapping
+  // Pools of on-premises Okta agents connecting the org to internal directories
+  agentPools() []okta.agentPool
+  // Custom mail domains the org sends end-user email from
+  emailDomains() []okta.emailDomain
+  // Custom SMTP servers configured to deliver org email
+  emailServers() []okta.emailServer
+  // Realms that partition users into separately administered populations
+  realms() []okta.realm
+  // CAPTCHA provider configurations registered with the org
+  captchas() []okta.captcha
 }
 
 // Okta Organization
 //
-// Examine tenant-level settings for your Okta organization. Covers identity
+// Tenant-level settings for your Okta organization. Covers identity
 // information such as `companyName`, `subdomain`, address, and contact
-// details, as well as operational fields like `status`, `created`, and
-// `expiresAt`. Computed methods expose the `billingContact`,
-// `technicalContact`, `securityNotificationEmails`, and
-// `threatInsightSettings` for the organization.
+// details, along with operational fields like `status`, `created`, and
+// `expiresAt`. The `billingContact` and `technicalContact` resolve to the
+// `okta.user` records responsible for the org, `securityNotificationEmails`
+// reports which end-user security emails the tenant sends, and
+// `threatInsightSettings` exposes the Okta ThreatInsight configuration that
+// blocks requests from suspicious IPs.
 okta.organization @defaults("companyName") {
   // ID of organization
   id string
@@ -87,7 +128,14 @@ okta.organization @defaults("companyName") {
   billingContact() okta.user
   // Technical contact of organization
   technicalContact() okta.user
-  // Security notification email
+  // Security notification email settings
+  //
+  // Which end-user security notification emails the org sends, as a dict of
+  // booleans keyed by `sendEmailForNewDeviceEnabled`,
+  // `sendEmailForPasswordChangedEnabled`,
+  // `sendEmailForFactorEnrollmentEnabled`, `sendEmailForFactorResetEnabled`,
+  // and `reportSuspiciousActivityEnabled`. The same flags are also exposed
+  // as boolean fields of the same name on this resource.
   securityNotificationEmails() dict
   // Whether users can report suspicious activity via email
   reportSuspiciousActivityEnabled() bool
@@ -101,14 +149,61 @@ okta.organization @defaults("companyName") {
   sendEmailForPasswordChangedEnabled() bool
   // Okta ThreatInsight settings
   threatInsightSettings() okta.threatsConfiguration
+  // Whether Okta Support currently holds administrative access to the org
+  //
+  // True while a support access grant is in effect, which lets Okta Support
+  // staff act inside the org with administrator privileges. Null when the
+  // org does not report the setting, which is not the same as the grant
+  // being absent.
+  oktaSupportEnabled() bool
+  // When the current Okta Support access grant lapses
+  //
+  // Null when no grant is in effect, and null when the org reports a grant
+  // without an expiration.
+  oktaSupportExpiration() time
+  // Support case the Okta Support access grant was opened under
+  //
+  // Null when no grant is in effect, or when the grant carries no case
+  // number.
+  oktaSupportCaseNumber() string
+  // Whether new public client applications receive the super administrator role
+  //
+  // True when the org assigns the super administrator role by default to
+  // newly created public OAuth 2.0 client applications, so registering a
+  // client is by itself enough to hold org-wide administrative privileges.
+  // Null when the org does not report the setting.
+  superAdminGrantedToNewPublicClients() bool
+  // Whether third-party administrators are enabled for the org
+  //
+  // Third-party administrators hold administrator roles in the Admin
+  // Console but receive none of the default Okta administrator emails and
+  // cannot open support cases for the org, so an administrator population
+  // marked this way sits outside the org's notification path. Null when the
+  // org does not report the setting.
+  thirdPartyAdminEnabled() bool
+  // CAPTCHA configuration enforced across the org
+  //
+  // The single CAPTCHA instance the org applies to its end-user pages. Null
+  // when the org enforces no CAPTCHA.
+  captcha() okta.captcha
+  // Pages the org protects with CAPTCHA
+  //
+  // Values are SSR for self-service registration, SSPR for self-service
+  // password reset, and SIGN_IN for the sign-in page. An empty list means
+  // no page is protected.
+  captchaEnabledPages() []string
 }
 
 // Okta Policies
 //
-// Iterate the policy collections available in your Okta organization. Provides
-// access to `password`, `mfaEnroll`, `signOn`, `oauthAuthorizationPolicy`,
-// `idpDiscovery`, `accessPolicy`, and `profileEnrollment` policy lists, each
-// returning `okta.policy` records with their associated rules.
+// Policy collections that govern authentication and account security across
+// an Okta organization, grouped by the behavior they control: password
+// complexity and lockout, multifactor enrollment, sign-on and session
+// conditions, OAuth authorization, identity-provider routing, application
+// access, and self-service profile enrollment. Each collection returns
+// `okta.policy` records whose rules define the conditions and actions, making
+// this the entry point for auditing how sign-in, MFA, and password controls
+// are enforced.
 okta.policies {
   // Password policies
   password() []okta.policy
@@ -122,25 +217,44 @@ okta.policies {
   idpDiscovery() []okta.policy
   // Access policies
   accessPolicy() []okta.policy
-  // Profile enforcement policies
+  // Profile enrollment policies
   profileEnrollment() []okta.policy
+  // Entity risk policies
+  //
+  // Policies that act on risk detected about a user or a session after
+  // authentication has already succeeded, so an established session can be
+  // terminated or re-challenged when a risk signal arrives rather than
+  // surviving until it expires. An org holds at most one entity risk
+  // policy. Null when the org is not licensed for it.
+  entityRisk() []okta.policy
+  // Session protection policies
+  //
+  // Policies evaluated against an established session rather than at
+  // sign-in, governing how long the session survives and what
+  // re-verification it must pass. An org holds at most one session
+  // protection policy. Null when the org is not licensed for it.
+  postAuthSession() []okta.policy
 }
 
 // Okta User
 //
-// Examine an individual Okta user account. Covers identity and lifecycle
-// fields such as `id`, `status`, `activated`, `created`, `lastLogin`, and
-// `passwordChanged`, plus the `profile` dict containing attributes like
-// email and login name. Computed methods expose the `roles` assigned to
-// the user and the MFA `factors` enrolled for the account.
+// Individual account in the Okta identity store. The lifecycle fields
+// (`status`, `activated`, `lastLogin`, `passwordChanged`) reveal dormant,
+// suspended, or never-activated accounts, `roles` exposes privileged
+// administrative grants, and `factors` shows which multi-factor methods the
+// user has enrolled. Auditing users surfaces stale credentials,
+// over-privileged accounts, and gaps in MFA coverage.
 private okta.user @defaults("profile['email']" ){
   // Unique key for user
   id string
-  // User's type identifier
-  typeId string
-  // User's type object
-  type dict
-  // User credentials
+  // User credential summary
+  //
+  // Keys: provider ({ type, name } where type is one of OKTA,
+  // ACTIVE_DIRECTORY, LDAP, FEDERATION, SOCIAL, or IMPORT, indicating where
+  // the account is mastered), recovery_question ({ question }), and password
+  // (metadata such as hash or hook only, never the plaintext). Read
+  // provider.type to distinguish Okta-mastered accounts from externally
+  // sourced ones.
   credentials dict
   // Timestamp when the user was activated
   activated time
@@ -152,9 +266,17 @@ private okta.user @defaults("profile['email']" ){
   lastUpdated time
   // Timestamp when password last changed
   passwordChanged time
-  // User profile properties
+  // User profile attributes
+  //
+  // Standard Okta profile keys include login, email, firstName, lastName, and
+  // optionally secondEmail, mobilePhone, displayName, department, manager, and
+  // title, plus any custom attributes defined in the org's user schema. Select
+  // individual values with profile['email'] or profile['login'].
   profile dict
-  // Current status of user
+  // Current lifecycle status of the user
+  //
+  // One of STAGED, PROVISIONED, ACTIVE, RECOVERY, PASSWORD_EXPIRED,
+  // LOCKED_OUT, SUSPENDED, or DEPROVISIONED.
   status string
   // Timestamp when status last changed
   statusChanged time
@@ -164,9 +286,168 @@ private okta.user @defaults("profile['email']" ){
   roles() []okta.role
   // MFA factors enrolled by the user
   factors() []okta.userFactor
+  // User type assigned to the account
+  //
+  // Determines which profile schema the account is validated against. Custom
+  // user types often carry attributes beyond the ones the default type
+  // defines, so the same profile key can mean different things across types.
+  userType() okta.userType
+  // Realm the account resides in
+  //
+  // Realms partition an org's users into isolated populations, most often to
+  // hold business partners or contractors apart from employees. Null when the
+  // org does not use realms, or when the account sits in the default
+  // population.
+  realm() okta.realm
+  // Manager of the account
+  //
+  // Read from the managerId profile attribute, which HR driven provisioning
+  // populates. Null when the profile carries no managerId, or when the id
+  // names an account the org no longer exposes.
+  manager() okta.user
+  // Groups the account belongs to
+  //
+  // Every group membership regardless of how it was granted: direct
+  // assignment, a group rule, or a directory import. Application assignments
+  // and administrator grants are usually built on group membership, so this
+  // is the path from an account to the access it actually carries.
+  groups() []okta.group
+  // Applications the account can open
+  //
+  // One entry per application on the user's dashboard, including access
+  // granted indirectly through a group. This is effective application access
+  // for the account, where the assignment lists on an application cover only
+  // what was granted there directly.
+  appLinks() []okta.user.appLink
+  // OAuth 2.0 scope consent grants issued by the account
+  //
+  // The scopes this user consented to give client applications, which is the
+  // standing access third party integrations hold against the account.
+  grants() []okta.user.grant
+  // OAuth 2.0 clients holding tokens for the account
+  //
+  // Client applications with at least one active grant or refresh token
+  // issued on behalf of this user.
+  clients() []okta.user.client
+  // Identity providers the account is federated with
+  //
+  // External providers linked to this account, each an alternative sign-in
+  // path into it. An account reachable through a linked provider can be
+  // authenticated without the org's own password and factor policies
+  // applying.
+  identityProviders() []okta.identityProvider
+  // Access blocks applied to the account
+  //
+  // Each entry carries type, naming the kind of block in force, and appliesTo,
+  // describing the devices it covers. Empty for accounts with no blocks.
+  blocks() []dict
+}
+
+// Application available to an Okta user
+//
+// One application on a user's dashboard, together with the assignment that put
+// it there. Access can be granted directly or inherited from a group, and both
+// arrive here the same way, which makes this the effective view of what an
+// account can reach. The `application` field resolves the application itself
+// and is null when the link names one the org does not serve from its
+// application collection, such as an Okta internal application.
+private okta.user.appLink @defaults("label appName") {
+  // Unique identifier of the application the link points at
+  id string
+  // Display label of the application on the dashboard
+  label string
+  // URL that starts sign-in to the application
+  linkUrl string
+  // URL of the application logo
+  logoUrl string
+  // Okta catalog name of the application type
+  //
+  // The type of application rather than the instance, for example "google" or
+  // "office365". Instances of the same catalog application share this value.
+  appName string
+  // Identifier of the assignment record that granted this access
+  appAssignmentId string
+  // Whether the user has supplied credentials for the application
+  //
+  // Meaningful only for applications whose sign-on mode stores per-user
+  // credentials in Okta, such as secure web authentication.
+  credentialsSetup bool
+  // Whether the link is hidden from the user's dashboard
+  //
+  // A hidden link still grants access; it is only suppressed from the
+  // dashboard, so it does not narrow what the account can reach.
+  hidden bool
+  // Position of the link on the user's dashboard
+  sortOrder int
+  // Application the link points at
+  application() okta.application
+}
+
+// OAuth 2.0 scope consent grant issued by an Okta user
+//
+// A single scope the user consented to give a client application, which is how
+// an integration comes to hold standing access against the account. `scopeId`
+// names the scope, `issuer` the authorization server that granted it, and
+// `source` whether the consent came from the end user or was recorded
+// administratively on their behalf. `clientId` is the OAuth client credential
+// the grant was issued to, which is also what the system log records against
+// the calls the integration then makes.
+private okta.user.grant @defaults("scopeId status") {
+  // Unique identifier of the grant
+  id string
+  // Scope the user consented to
+  //
+  // For example "okta.users.read" for an Okta API scope, or a scope defined
+  // by a custom authorization server.
+  scopeId string
+  // OAuth 2.0 client the grant was issued to
+  clientId string
+  // Authorization server that issued the grant
+  issuer string
+  // Current status of the grant
+  //
+  // One of ACTIVE or REVOKED.
+  status string
+  // Origin of the consent
+  //
+  // One of END_USER, when the user approved the consent dialog, or ADMIN,
+  // when an administrator recorded the consent on their behalf.
+  source string
+  // Timestamp when the grant was created
+  created time
+  // Timestamp when the grant was last updated
+  lastUpdated time
+}
+
+// OAuth 2.0 client holding tokens for an Okta user
+//
+// A client application with at least one active grant or refresh token issued
+// on behalf of the user. Where a grant records which scope was consented to,
+// this records which integrations currently hold access, named well enough to
+// review without joining on the client credential.
+private okta.user.client @defaults("clientName") {
+  // OAuth 2.0 client identifier
+  clientId string
+  // Human readable name of the client application
+  clientName string
+  // URL of the client application's home page
+  clientUri string
+  // URL of the client application's logo
+  logoUri string
 }
 
 // Okta MFA factor enrolled by a user
+//
+// Multi-factor authentication method registered against an Okta user
+// account. The `factorType` identifies the method (TOTP, push, SMS,
+// call, WebAuthn, FIDO, email, or security question), `provider`
+// identifies who issues it (OKTA, GOOGLE, RSA, SYMANTEC, DUO, FIDO,
+// CUSTOM), and `status` reflects its enrollment lifecycle. Query these
+// to audit which users have strong MFA enrolled, flag weak or
+// unverified factors (SMS, call, security question, or factors still in
+// PENDING_ACTIVATION), and confirm that privileged accounts carry
+// phishing-resistant WebAuthn or FIDO factors. The `profile` field
+// carries the enrollment data specific to each factor type.
 private okta.userFactor @defaults("factorType status") {
   // Unique identifier of the factor
   id string
@@ -195,12 +476,13 @@ private okta.userFactor @defaults("factorType status") {
 
 // Okta Authenticator
 //
-// Examine an admin-defined MFA factor catalog entry in Okta. Covers identity
-// fields such as `id`, `key`, `name`, `type`, and `status`, along with
-// `settings` for the authenticator. Computed methods expose `providerType`,
-// `providerConfiguration`, `allowedFor` (the policy scope), and
-// `tokenLifetimeInMinutes` or `userVerification` for applicable authenticator
-// types.
+// Admin-defined MFA factor catalog entry in Okta that governs which
+// authenticators (password, phone, email, security key, and others) users
+// may enroll to satisfy multifactor requirements. Auditing these entries
+// confirms that only approved authenticators are ACTIVE, that provider
+// integrations match policy, and that user-verification and token-lifetime
+// settings are enforced. The stable key identifies each authenticator, for
+// example okta_password, okta_email, phone_number, or webauthn.
 private okta.authenticator @defaults("name key status") {
   // Unique identifier of the authenticator
   id string
@@ -215,10 +497,16 @@ private okta.authenticator @defaults("name key status") {
   // Provider type for this authenticator (e.g., OKTA, DUO)
   providerType() string
   // Provider-specific configuration
+  //
+  // Configuration for the authenticator's provider. The available keys
+  // depend on providerType, since an OKTA provider and a third-party
+  // provider such as DUO expose different settings.
   providerConfiguration() dict
   // Authenticator settings (allowedFor, tokenLifetimeInMinutes, userVerification, etc.)
   settings dict
-  // Whether the authenticator is allowed for any policy ("any", "recovery", "sso", "none")
+  // Policy scope the authenticator is allowed for
+  //
+  // One of "any", "recovery", "sso", or "none".
   allowedFor() string
   // Token lifetime in minutes (for email, OTP-style authenticators)
   tokenLifetimeInMinutes() int
@@ -232,10 +520,13 @@ private okta.authenticator @defaults("name key status") {
 
 // Okta API Token
 //
-// Examine an API token used to authenticate to the Okta REST API. Covers
-// `id`, `name`, `clientName`, lifecycle timestamps (`created`, `expiresAt`,
-// `lastUpdated`), and `tokenWindow` (lifetime in ISO 8601 duration format).
-// The `user` method resolves the Okta user the token belongs to.
+// API token that authenticates a user or service to the Okta REST API.
+// These are long-lived credentials whose compromise grants programmatic
+// access to the org, so auditing them surfaces stale or over-scoped
+// tokens, tokens nearing expiry, and tokens that have gone unused. The
+// `lastUpdated` timestamp doubles as the last-used time, `expiresAt` and
+// `tokenWindow` describe the token's lifetime, and `user` resolves the
+// Okta account the token acts on behalf of.
 private okta.api.token @defaults("name") {
   // Unique identifier of the API token
   id string
@@ -255,15 +546,22 @@ private okta.api.token @defaults("name") {
   user() okta.user
 }
 
-// Okta Role
+// Okta administrative role assigned to a user or group
 //
-// Examine a role assigned to an Okta user or group. Covers `id`, `label`,
-// `type`, `assignmentType`, `status`, and lifecycle timestamps `created`
-// and `lastUpdated`.
+// Administrative role granting elevated privileges within an Okta org,
+// as assigned to an individual user or to a group. Review this to audit
+// who holds admin access and how broad it is: the `type` field names the
+// permission scope (for example SUPER_ADMIN or a CUSTOM role), while
+// `assignmentType` distinguishes a direct user assignment from one
+// inherited through group membership.
 private okta.role @defaults("label status") {
   // The identifier of the role
   id string
-  // The assignment type of the role
+  // How the role is assigned
+  //
+  // One of USER for a role assigned directly to a user, GROUP for a
+  // role granted through group membership, or CLIENT for a role assigned
+  // to an OAuth 2.0 service client.
   assignmentType string
   // Timestamp when the role was created
   created time
@@ -271,18 +569,104 @@ private okta.role @defaults("label status") {
   label string
   // Timestamp when the role was last updated
   lastUpdated time
-  // The status of the role
+  // Activation status of the role assignment
+  //
+  // Either ACTIVE or INACTIVE.
   status string
-  // The type of the role
+  // Permission scope of the role
+  //
+  // Identifies the standard administrator role granting the privileges,
+  // such as SUPER_ADMIN, ORG_ADMIN, API_ADMIN, APP_ADMIN, USER_ADMIN,
+  // GROUP_MEMBERSHIP_ADMIN, MOBILE_ADMIN, HELP_DESK_ADMIN, REPORT_ADMIN,
+  // or READ_ONLY_ADMIN. Okta also grants several roles through its
+  // identity governance features, reported as ACCESS_CERTIFICATIONS_ADMIN,
+  // ACCESS_REQUESTS_ADMIN, API_ACCESS_MANAGEMENT_ADMIN, and
+  // WORKFLOWS_ADMIN. A value of CUSTOM_ROLE indicates a custom role
+  // whose permissions are defined by the org.
   type string
+  // Custom role definition
+  //
+  // The custom role granting this assignment's permissions, resolved when
+  // `type` is CUSTOM_ROLE. Null for standard administrator roles.
+  customRole() okta.customRole
+  // Resource set scoping this assignment
+  //
+  // The set of resources a custom-role assignment is limited to. Null for
+  // standard administrator roles and for org-wide custom-role assignments.
+  resourceSet() okta.resourceSet
+  // User the role was assigned to
+  //
+  // The account this assignment was read from, set when the role is listed
+  // for a user. Null when the assignment was read from a group.
+  user() okta.user
+  // Group the role was assigned to
+  //
+  // The group this assignment was read from, set when the role is listed
+  // for a group. Null when the assignment was read from a user.
+  group() okta.group
+  // Groups the assignment is limited to
+  //
+  // The groups a scoped administrator may act on. An empty list means the
+  // assignment is not narrowed at all, so a GROUP_ADMIN, USER_ADMIN, or
+  // HELP_DESK_ADMIN with no group targets administers every group in the
+  // org. Standard administrator roles express their scope this way; custom
+  // roles use resourceSet instead and carry no targets.
+  groupTargets() []okta.group
+  // Applications the assignment is limited to
+  //
+  // The applications an APP_ADMIN may act on. An empty list means the
+  // assignment is not narrowed and covers every application in the org.
+  // Each entry names either one application instance or an entire catalog
+  // app type.
+  appTargets() []okta.role.appTarget
+  // Administrator notifications the role is subscribed to
+  //
+  // Map of notification type to subscription status, where a status is
+  // either subscribed or unsubscribed. Notification types include
+  // REPORT_SUSPICIOUS_ACTIVITY, USER_LOCKED_OUT, USER_DEPROVISION,
+  // RATELIMIT_NOTIFICATION, AD_AGENT, CONNECTOR_AGENT, and OKTA_UPDATE, and
+  // Okta adds to the set. A role unsubscribed from a security notification
+  // never learns of the events it reports, so a privileged role with
+  // REPORT_SUSPICIOUS_ACTIVITY unsubscribed is a detection gap.
+  // Subscriptions are held per role rather than per assignment, so every
+  // assignment of the same role reports the same map. Null when the org
+  // does not report them.
+  subscriptions() map[string]string
+}
+
+// Application target of an administrator role
+//
+// A single application an APP_ADMIN assignment is narrowed to. A target
+// names either one application instance, where `application` resolves to
+// it, or an entire Okta Integration Network catalog app type, where
+// `application` is null and every instance of the type named by `name`
+// falls in scope. The app-type form is the broader grant, so a target with
+// a null `application` covers more than one naming a single instance.
+private okta.role.appTarget @defaults("displayName name") {
+  // Catalog name of the application
+  //
+  // The Okta Integration Network key for the application, such as
+  // `salesforce` or `office365`.
+  name string
+  // Human-readable name of the application
+  displayName string
+  // Application instance the target names
+  //
+  // The single application the assignment is narrowed to. Null when the
+  // target names a catalog app type rather than one instance, in which case
+  // every instance of that type is in scope.
+  application() okta.application
 }
 
 // Okta Group
 //
-// Examine an Okta group. Covers `id`, `name`, `description`, `type`,
-// `profile`, and lifecycle timestamps `created`, `lastUpdated`, and
-// `lastMembershipUpdated`. Computed methods expose `members` (the list of
-// `okta.user` accounts in the group) and `roles` assigned to the group.
+// Okta group, the unit of access control that bundles users together to
+// grant applications, administrator roles, and policies. Query groups to
+// audit who has access to what: `members` lists the `okta.user` accounts in
+// the group and `roles` lists the administrator roles assigned to it. The
+// `type` field distinguishes Okta-native groups from app-sourced and
+// built-in groups, and `lastMembershipUpdated` records when membership last
+// changed.
 private okta.group @defaults("name") {
   // Unique key for the group
   id string
@@ -290,7 +674,12 @@ private okta.group @defaults("name") {
   name string
 	// Group description
 	description string
-  // Determines how a group's profile and memberships are managed
+  // Group type
+  //
+  // How the group's profile and memberships are managed. One of OKTA_GROUP
+  // (native Okta group with editable membership), APP_GROUP (sourced from and
+  // managed by an external application), or BUILT_IN (a group created and
+  // maintained by Okta, such as Everyone).
   type dict
   // Timestamp when group was created
   created time
@@ -298,24 +687,92 @@ private okta.group @defaults("name") {
   lastMembershipUpdated time
   // Timestamp when group's profile was last updated
   lastUpdated time
-  // The group's profile properties
+  // Group profile properties
+  //
+  // Profile object for the group with the keys `name` (the group's display
+  // name) and `description` (its free-form description). These same values are
+  // also surfaced directly as the `name` and `description` fields.
   profile dict
   // Group members
   members() []okta.user
   // Group roles
   roles() []okta.role
+  // Group owners
+  //
+  // The users and groups that can manage this group's membership.
+  owners() []okta.group.owner
+  // Applications assigned to the group
+  //
+  // Every application the group grants, which every member of the group
+  // receives. A broadly scoped group with an application here hands that
+  // application to everyone in it, which is the direction an assignment
+  // review has to read to find an over-broad grant.
+  applications() []okta.application
+}
+
+// Owner of an Okta group
+//
+// A user or group allowed to manage another group's membership. Ownership
+// is an indirect grant: an owner adds members, and those members inherit
+// every application assignment and administrator role the group carries, so
+// owners of a group that grants admin access hold that access in effect.
+// The `type` field says whether the owner is an individual account or
+// another group, and `originType` records whether the ownership is
+// maintained in Okta or sourced from an external application.
+private okta.group.owner @defaults("displayName type") {
+  // Entity type of the owner
+  //
+  // Either USER for an individual account, or GROUP for another group whose
+  // members all own this group.
+  type string
+  // Display name of the owner
+  displayName string
+  // Source that maintains the ownership
+  //
+  // Either OKTA_DIRECTORY for ownership assigned within Okta, or
+  // APPLICATION for ownership sourced from an external application.
+  originType string
+  // Whether an application-sourced owner has been matched to an Okta account
+  //
+  // False while an APPLICATION-sourced owner has not yet been reconciled
+  // with an Okta id, in which case user and group stay null.
+  resolved bool
+  // Timestamp when the ownership was last updated
+  lastUpdated time
+  // User that owns the group
+  //
+  // The owning account, set when `type` is USER. Null when the owner is a
+  // group.
+  user() okta.user
+  // Group that owns the group
+  //
+  // The owning group, whose members can all manage this group's membership.
+  // Set when `type` is GROUP. Null when the owner is an individual account.
+  group() okta.group
+  // Application the ownership is sourced from
+  //
+  // The application instance that maintains this ownership, set when
+  // `originType` is APPLICATION. Null for ownership assigned within Okta.
+  application() okta.application
 }
 
 // Okta Group Rule
 //
-// Examine an Okta group rule that automatically assigns users to groups based
-// on conditions. Covers `id`, `name`, `status`, and `type`.
+// Group rule that automatically assigns users to groups based on expression
+// conditions evaluated against user profile attributes. Rules run whenever a
+// matching user is created or updated, so auditing them surfaces dynamic group
+// memberships that grant access without an explicit assignment. Select a rule
+// by its `name`, and check `status` to confirm whether the rule is actively
+// applying memberships.
 private okta.groupRule @defaults("name") {
   // Unique key for the group rule
   id string
 	// Group rule name
   name string
 	// Group rule status
+	//
+	// One of ACTIVE (the rule is running and applying memberships), INACTIVE
+	// (the rule is disabled), or INVALID.
 	status string
 	// Group rule type
 	type string
@@ -323,11 +780,14 @@ private okta.groupRule @defaults("name") {
 
 // Okta Application
 //
-// Examine an Okta application integration. Covers `id`, `name`, `label`,
-// `signOnMode`, `status`, `features`, `credentials`, `settings`, `profile`,
-// `licensing`, `visibility`, and lifecycle timestamps. The `signingKeys`
-// method returns the `okta.application.key` records (SAML/OIDC signing
-// certificates) published for the application.
+// Application integration configured in an Okta org, such as a SAML,
+// OIDC, SWA, or bookmark app assigned to users and groups. Useful for
+// auditing how each app authenticates (`signOnMode`), whether it is
+// active (`status`), the sign-on and assertion settings that govern
+// single sign-on, and the credential scheme in use. The `signingKeys`
+// field returns the `okta.application.key` certificates that sign SAML
+// assertions and OIDC tokens, so their status and expiry can be checked
+// for expired or soon-to-expire signing material.
 private okta.application @defaults("name") {
   // Unique key for the application
   id string
@@ -340,26 +800,146 @@ private okta.application @defaults("name") {
   // Timestamp when the application was last updated
   lastUpdated time
   // Credentials for the specified sign-on mode
+  //
+  // Shape varies by `signOnMode`. Common keys include `userNameTemplate`
+  // (`template`, `type`, `userSuffix`), which controls the username sent
+  // to the app, `signing` (`kid`, `rotationMode`, `lastRotated`,
+  // `nextRotation`), which identifies the active signing key, `scheme`,
+  // and, for password-based apps, `password` and `revealPassword`.
   credentials dict
   // Enabled app features
   features []string
   // Okta licensing information
+  //
+  // Holds `seatCount`, the number of licensed seats provisioned for the
+  // application.
   licensing dict
-  // Valid JSON schema for specifying properties
+  // Custom application profile attributes
+  //
+  // Free-form custom attributes defined on the application profile. Keys
+  // and values depend on the app and any custom schema properties
+  // configured for it.
   profile dict
   // Settings for the application
+  //
+  // Shape varies by app type. For SAML apps the `signOn` key carries the
+  // single sign-on configuration (`ssoAcsUrl`, `audience`, `recipient`,
+  // `destination`, `idpIssuer`, `subjectNameIdFormat`, `responseSigned`,
+  // `assertionSigned`, `signatureAlgorithm`, `digestAlgorithm`,
+  // `honorForceAuthn`), while `app`, `notifications`, and `notes` hold
+  // app-specific and administrative configuration.
   settings dict
   // Authentication mode of the application
   signOnMode string
   // Status of the application
   status string
   // Visibility settings for the application
+  //
+  // Controls where the app appears. Keys are `autoLaunch`,
+  // `autoSubmitToolbar`, `appLinks` (per-link enablement), and `hide`
+  // (`iOS` and `web` booleans that suppress the app chiclet).
   visibility dict
+  // Whether Universal Logout is in effect for the application
+  //
+  // Universal Logout lets Okta end the application's own sessions when it
+  // ends the user's Okta session. Where it is not in effect, revoking
+  // access in Okta leaves the application's session running until that
+  // session expires on its own, so offboarding and session revocation stop
+  // at the Okta boundary.
+  universalLogoutStatus string
+  // Extent of the application's Universal Logout support
+  //
+  // Distinguishes an application that terminates every session from one
+  // that terminates only some, which is the difference between a logout
+  // that finishes and one that appears to.
+  universalLogoutSupportType string
+  // Protocol Okta uses to signal Universal Logout to the application
+  universalLogoutProtocol string
+  // Shared identity stack behind the application
+  //
+  // Set when the application shares a sign-in stack with other applications
+  // from the same vendor, in which case ending this session can end the
+  // user's sessions in those too.
+  universalLogoutIdentityStack string
   // Signing keys/certificates published for this application (for SAML/OIDC signing)
   signingKeys() []okta.application.key
+  // Users assigned to the application
+  assignedUsers() []okta.application.user
+  // Groups assigned to the application
+  assignedGroups() []okta.application.groupAssignment
+  // OAuth 2.0 scope consent grants made to the application
+  scopeConsentGrants() []okta.application.scopeConsentGrant
+  // Administrator roles assigned to the application's OAuth client
+  //
+  // Admin roles granted to the app as a service (OAuth 2.0) client, for
+  // apps that authenticate to the Okta API on their own behalf. Empty for
+  // apps that are not API service clients.
+  adminRoles() []okta.role
+  // OAuth 2.0 refresh tokens outstanding for the application
+  //
+  // The refresh tokens Okta has issued for this application and not yet
+  // revoked. Empty for applications that do not use OAuth 2.0.
+  tokens() []okta.application.token
 }
 
-// Okta application signing key/certificate (JsonWebKey)
+// OAuth 2.0 refresh token issued for an application
+//
+// A refresh token an Okta authorization server minted for an application on
+// behalf of a user. It is standing access: for as long as the token lives,
+// the application can obtain new access tokens carrying `scopes` with the
+// user no longer present, which is why a token can outlast the session,
+// the password, or the assignment that produced it. `expiresAt` bounds how
+// long the grant runs and `scopes` says what it reaches.
+private okta.application.token @defaults("id status expiresAt") {
+  // Unique identifier of the token
+  //
+  // The id the token is revoked by.
+  id string
+  // Status of the token
+  //
+  // Whether the grant is still live. A token that has been revoked stops
+  // producing access tokens.
+  status string
+  // Timestamp when the token was issued
+  created time
+  // Timestamp when the token expires
+  //
+  // When the standing grant lapses. A distant value on a broadly scoped
+  // token is access that persists long after it was granted.
+  expiresAt time
+  // Timestamp when the token was last updated
+  lastUpdated time
+  // Authorization server that issued the token
+  //
+  // The issuer URL of the Okta authorization server that minted the token.
+  // The org authorization server is the org URL itself, while a custom
+  // authorization server appends its own identifier.
+  issuer string
+  // OAuth 2.0 client identifier the token is bound to
+  //
+  // The `client_id` credential the token was issued against, which is the
+  // form the application takes in Okta system log events.
+  clientId string
+  // Scopes the token carries
+  //
+  // The OAuth 2.0 scopes the application can exercise with this token, such
+  // as `openid`, `offline_access`, or a scope defined by the org. These are
+  // what the grant actually reaches.
+  scopes []string
+  // User the token was issued for
+  //
+  // The account whose access the token carries. Null for a token issued to
+  // the application itself rather than on a user's behalf.
+  user() okta.user
+}
+
+// Okta application signing key
+//
+// X.509 signing certificate (JSON Web Key) published for an Okta
+// application and used to sign SAML assertions and OIDC tokens. Auditing
+// `status` and `expiresAt` catches expired or soon-to-expire signing
+// material that would break single sign-on. Each key is selected by its
+// `kid` within the owning application.
 private okta.application.key @defaults("kid status expiresAt") {
   // ID of the application this key belongs to (composite with kid for uniqueness)
   applicationId string
@@ -393,12 +973,111 @@ private okta.application.key @defaults("kid status expiresAt") {
   e string
 }
 
+// User assigned to an Okta application
+//
+// Assignment of a single Okta user to an application, carrying the
+// app-specific view of that account. The `scope` field records whether the
+// assignment is direct (USER) or inherited through a group (GROUP), `status`
+// reflects the app-level provisioning state, and `credentials` and `profile`
+// hold the application username and any app-specific profile attributes. The
+// `user` field resolves the underlying Okta account. Auditing these answers
+// "who can sign in to this app, and how were they granted access".
+private okta.application.user @defaults("scope status") {
+  // Unique identifier of the assigned user (the Okta user id)
+  id string
+  // How the assignment was granted
+  //
+  // Either USER for a direct assignment or GROUP for access inherited
+  // through group membership.
+  scope string
+  // Application-level provisioning status of the user
+  status string
+  // Provisioning sync state of the assignment
+  syncState string
+  // Timestamp when the assignment was created
+  created time
+  // Timestamp when the assignment was last updated
+  lastUpdated time
+  // Timestamp of the last provisioning sync
+  lastSync time
+  // Application credentials for the user
+  //
+  // Holds the app-specific `userName` (and, for schemes that store it,
+  // password metadata) used when signing the user in to the application.
+  credentials dict
+  // Application-specific profile attributes for the user
+  profile dict
+  // The Okta user account this assignment refers to
+  user() okta.user
+}
+
+// Group assigned to an Okta application
+//
+// Assignment of an Okta group to an application, granting the app to every
+// member of the group. The `priority` field orders overlapping group
+// assignments when they supply conflicting profile values, `profile` holds
+// the app-specific attributes applied to members, and `group` resolves the
+// underlying Okta group. Auditing these surfaces access granted in bulk
+// rather than per user.
+private okta.application.groupAssignment @defaults("id priority") {
+  // Unique identifier of the assigned group (the Okta group id)
+  id string
+  // Assignment priority
+  //
+  // Orders overlapping group assignments; lower numbers win when assignments
+  // supply conflicting profile values.
+  priority int
+  // Application-specific profile attributes applied to group members
+  profile dict
+  // Timestamp when the assignment was last updated
+  lastUpdated time
+  // The Okta group this assignment refers to
+  group() okta.group
+}
+
+// OAuth 2.0 scope consent grant for an Okta application
+//
+// Consent that authorizes an application to act with a specific OAuth 2.0
+// scope against an Okta authorization server. Auditing grants surfaces the
+// API access an app (or a user through an app) has been permitted: `scopeId`
+// names the granted scope, `issuer` identifies the authorization server,
+// `status` reflects whether the grant is active, and `source` records whether
+// consent was granted by an admin or an end user. The `user` field resolves
+// the account for user-level grants and is null for org-level grants.
+private okta.application.scopeConsentGrant @defaults("scopeId status") {
+  // Unique identifier of the grant
+  id string
+  // Granted OAuth 2.0 scope
+  scopeId string
+  // Authorization server that issued the grant
+  issuer string
+  // Status of the grant: ACTIVE or INACTIVE
+  status string
+  // Consent source
+  //
+  // Records how consent was obtained, for example ADMIN for an
+  // administrator grant or END_USER for user consent.
+  source string
+  // Timestamp when the grant was created
+  created time
+  // Timestamp when the grant was last updated
+  lastUpdated time
+  // The user for a user-level grant
+  //
+  // Resolves the Okta account when the grant was made on behalf of a
+  // specific user. Null for org-level grants.
+  user() okta.user
+}
+
 // Okta Domain
 //
-// Examine a custom domain configured for an Okta organization. Covers `id`,
-// `domain` name, `validationStatus` (NOT_STARTED, IN_PROGRESS, VERIFIED, or
-// COMPLETED), `dnsRecords` required for domain verification, and
-// `publicCertificate` metadata for the domain's TLS certificate.
+// Custom domain configured for an Okta organization so the sign-in and
+// end-user experience is served under a branded hostname instead of the
+// default Okta domain. The validationStatus field reports where the domain
+// sits in the ownership-verification workflow (NOT_STARTED, IN_PROGRESS,
+// VERIFIED, or COMPLETED), dnsRecords holds the DNS entries that must be
+// published to prove control of the hostname, and publicCertificate carries
+// the metadata for the TLS certificate that secures it.
 private okta.domain @defaults("domain") {
   // Domain ID
   id string
@@ -406,19 +1085,29 @@ private okta.domain @defaults("domain") {
   domain string
   // Status of the domain: NOT_STARTED, IN_PROGRESS, VERIFIED, or COMPLETED
   validationStatus string
-  // TXT and CNAME records to be registered for the domain
+  // DNS records to publish for domain verification
+  //
+  // One entry per required DNS record, each a dict with keys `fqdn` (the
+  // record name), `recordType` (TXT or CNAME), `values` (the values to set on
+  // the record), and `expiration` (when a TXT verification record expires).
   dnsRecords []dict
-  // Certificate metadata for the domain
+  // TLS certificate metadata for the domain
+  //
+  // Dict with keys `subject` (the certificate subject), `fingerprint` (the
+  // certificate fingerprint), and `expiration` (when the certificate expires).
   publicCertificate dict
 }
 
 // Okta Policy
 //
-// Examine an Okta policy controlling authentication and access behavior.
-// Covers `id`, `name`, `description`, `type`, `status`, `priority`,
-// `system` (whether admin-editable), `conditions`, `settings`, and lifecycle
-// timestamps. The `rules` method returns the ordered list of `okta.policyRule`
-// records attached to the policy.
+// Policy governing authentication and access behavior in an Okta
+// organization, such as password strength, MFA enrollment, sign-on
+// enforcement, identity-provider routing, and app-level access. The type
+// field selects the policy category (OKTA_SIGN_ON, PASSWORD, MFA_ENROLL,
+// OAUTH_AUTHORIZATION_POLICY, IDP_DISCOVERY, ACCESS_POLICY, or
+// PROFILE_ENROLLMENT), and the type-specific enforcement lives in conditions
+// and settings. The rules field returns the ordered okta.policyRule records
+// that refine when and how the policy applies.
 private okta.policy @defaults("name") {
   // Identifier of the policy
   id string
@@ -432,11 +1121,25 @@ private okta.policy @defaults("name") {
   status string
   // Whether the policy is system-managed (built-in and not user-editable)
   system bool
-  // Specifies the type of policy
+  // Policy type
+  //
+  // One of OKTA_SIGN_ON, PASSWORD, MFA_ENROLL, OAUTH_AUTHORIZATION_POLICY,
+  // IDP_DISCOVERY, ACCESS_POLICY, PROFILE_ENROLLMENT, ENTITY_RISK, or
+  // POST_AUTH_SESSION.
   type string
-  // Conditions for policy
+  // Policy conditions
+  //
+  // Raw JSON describing when the policy applies, with keys that vary by policy
+  // type. Common keys include people (the groups and users the policy includes
+  // or excludes), network (the network zones the policy is scoped to), and
+  // authProvider.
   conditions dict
-  // Settings for the policy
+  // Policy settings
+  //
+  // Raw JSON holding the type-specific enforcement configuration, with keys
+  // that vary by policy type. For a PASSWORD policy the keys include password,
+  // recovery, and delegation; other types (MFA_ENROLL, ACCESS_POLICY, and so
+  // on) expose their own settings structure.
   settings dict
   // Timestamp when the policy was created
   created time
@@ -444,9 +1147,50 @@ private okta.policy @defaults("name") {
   lastUpdated time
   // Rules attached to the policy
   rules() []okta.policyRule
+  // Resources the policy is bound to
+  //
+  // The bindings that place a resource under this policy, which for an
+  // access policy are the applications it governs. An access policy whose
+  // rules require no multifactor authentication leaves every application
+  // listed here unprotected. Empty when the policy binds no resource.
+  mappings() []okta.policy.mapping
+}
+
+// Policy resource mapping
+//
+// Binding between a policy and one resource it governs. Access policies
+// reach applications through these bindings, so a mapping names an
+// application that inherits the policy's rules. The `resourceType` field
+// says what kind of resource the binding names, `resourceId` carries its
+// identifier, and `application` resolves the binding when it names an
+// application.
+private okta.policy.mapping @defaults("resourceType resourceId status") {
+  // Unique key for the mapping
+  id string
+  // Kind of resource the policy is bound to
+  //
+  // APP for an application binding. Okta reports other kinds as further
+  // policy types gain bindings, so the set is not closed.
+  resourceType string
+  // Identifier of the bound resource, in the namespace named by resourceType
+  resourceId string
+  // Lifecycle status of the mapping
+  status string
+  // Application the policy governs
+  //
+  // Resolves the binding when `resourceType` is APP. Null for any other kind
+  // of resource, and null for an application the org no longer exposes.
+  application() okta.application
 }
 
 // Okta policy rule
+//
+// Rule within an Okta policy, evaluated in `priority` order so that the first
+// rule whose `conditions` match applies its `actions`. Rules carry the enforced
+// decisions behind a policy: required sign-on assurance, MFA enrollment,
+// password constraints, and app-access outcomes. The `system` flag marks
+// built-in rules that cannot be edited, and `status` reports whether the rule
+// is ACTIVE or INACTIVE.
 private okta.policyRule @defaults("name") {
   // Identifier of the rule
   id string
@@ -459,10 +1203,28 @@ private okta.policyRule @defaults("name") {
   // Whether the rule is system-managed (built-in and not user-editable)
   system bool
   // Rule type
+  //
+  // Mirrors the type of the policy the rule belongs to. One of OKTA_SIGN_ON,
+  // PASSWORD, MFA_ENROLL, OAUTH_AUTHORIZATION_POLICY, IDP_DISCOVERY,
+  // ACCESS_POLICY, PROFILE_ENROLLMENT, ENTITY_RISK, POST_AUTH_SESSION, or
+  // SIGN_ON (reported by the rules of an OKTA_SIGN_ON policy).
   type string
-  // Actions for rule
+  // Rule actions
+  //
+  // Enforcement applied when the rule matches, as returned by Okta. The shape
+  // varies with `type`: sign-on rules carry a `signon` object (access
+  // ALLOW/DENY, factor requirements, and session limits), password rules carry
+  // `passwordChange`, `selfServicePasswordReset`, and `selfServiceUnlock`,
+  // MFA-enrollment rules carry `enroll`, and access policies carry an
+  // `appSignOn` object with the verification method.
   actions dict
-  // Conditions for a rule
+  // Rule conditions
+  //
+  // Match criteria Okta evaluates for the rule, as returned by the API. The
+  // shape varies with `type`: common members include `people` (users and
+  // groups included or excluded), `network` (connection or zone constraints),
+  // `authContext` (authentication type), `platform` (device operating system
+  // and type), and `elCondition` (an Okta Expression Language expression).
   conditions dict
   // Timestamp when the rule was created
   created time
@@ -472,9 +1234,12 @@ private okta.policyRule @defaults("name") {
 
 // Okta Trusted Origin
 //
-// Examine a trusted origin configured in an Okta organization. Covers `id`,
-// `name`, `origin` URL, `status`, `scopes` (the list of scope types for which
-// the origin is trusted), and audit fields `createdBy` and `lastUpdatedBy`.
+// Cross-origin URL that Okta trusts for browser-based interactions such as
+// CORS requests, post-authentication redirects, and iframe embedding of
+// Okta pages. Trusted origins define which external sites may call Okta
+// APIs or receive redirects, so an overly broad or unexpected entry widens
+// the surface for cross-site request forgery and data exfiltration. The
+// `scopes` field records which interaction types each origin is trusted for.
 private okta.trustedOrigin @defaults("name") {
   // Unique identifier for the trusted origin
   id string
@@ -490,25 +1255,38 @@ private okta.trustedOrigin @defaults("name") {
   lastUpdated time
   // ID of entity that last updated the trusted origin
   lastUpdatedBy string
-  // Array of scope types for which this trusted origin is used
+  // Interaction types this origin is trusted for
+  //
+  // Each entry has `type` (the scope type: CORS, REDIRECT, or IFRAME_EMBED)
+  // and `allowedOktaApps` (for IFRAME_EMBED, the Okta apps permitted to
+  // embed Okta pages, for example OKTA_ENDUSER).
   scopes []dict
   // Status of the trusted origin
+  //
+  // Either ACTIVE or INACTIVE.
   status string
 }
 
 // Okta Network Zone
 //
-// Examine an Okta network zone used to allow or block access based on
-// IP address, ASN, or geolocation. Covers `id`, `name`, `type`, `status`,
-// `usage` (POLICY or BLOCKLIST), `system`, `proxyType`, `asns`, `gateways`,
-// `proxies`, and `locations`. Use network zones in policy conditions to
-// restrict sign-on to known corporate networks.
+// Network zone that allows or blocks access based on IP address, ASN, or
+// geolocation. Zones are referenced by policy and sign-on rule conditions
+// to restrict access to known corporate networks, or used as a blocklist to
+// deny traffic from named regions and anonymizing proxies. The `type` field
+// distinguishes an IP zone (explicit gateway and proxy addresses) from a
+// DYNAMIC zone (matched by ASN, geolocation, or proxy classification), and
+// `usage` records whether the zone drives POLICY decisions or acts as a
+// BLOCKLIST.
 private okta.network @defaults("name type") {
   // Unique identifier for the network zone
   id string
   // Name for the network zone
   name string
   // Type of the network zone
+  //
+  // One of IP (explicit gateway and proxy addresses), DYNAMIC
+  // (matched by ASN, geolocation, or proxy classification), or DYNAMIC_V2
+  // (enhanced dynamic zone).
   type string
   // Timestamp when the network zone was created
   created time
@@ -522,39 +1300,59 @@ private okta.network @defaults("name type") {
   asns []string
   // Usage of zone: POLICY or BLOCKLIST
   usage string
-  // IP type
+  // Proxy classification for a DYNAMIC zone
+  //
+  // Category of anonymizing proxy the zone matches. One of Any, Tor, or
+  // NotTorAnonymizer. Empty for IP zones.
   proxyType string
-  // IP addresses that are allowed to forward a request from the gateway
+  // Trusted proxy addresses that may forward requests into this zone
+  //
+  // Each entry has a `type` (CIDR or RANGE) and a `value` holding the IP
+  // address block or range.
   proxies []dict
-  // Locations for the network zone
+  // Geolocations that define a DYNAMIC zone
+  //
+  // Each entry has a `country` (ISO-3166-1 alpha-2 code) and an optional
+  // `region` (ISO-3166-2 code) narrowing to a state or province.
   locations []dict
-  // IP addresses of this zone
+  // IP address ranges that define this zone
+  //
+  // Each entry has a `type` (CIDR or RANGE) and a `value` holding the IP
+  // address block or range.
   gateways []dict
 }
 
 // Okta ThreatInsight Configuration
 //
-// Examine the ThreatInsight settings for an Okta organization. Covers the
-// `action` taken on suspicious IPs (audit or block), the `excludeZones`
-// list of `okta.network` zones exempt from ThreatInsight evaluation, and
-// lifecycle timestamps `created` and `lastUpdated`.
+// Organization-wide ThreatInsight settings that determine how Okta
+// responds to requests from IP addresses with a known history of
+// malicious activity. The `action` field selects whether such traffic is
+// only logged or actively blocked, and `excludeZones` names the network
+// zones exempt from ThreatInsight evaluation. Query this to confirm that
+// threat detection is enforced and that no sensitive zones are wrongly
+// exempted.
 private okta.threatsConfiguration @defaults("action") {
-  // Action
+  // Action taken on requests from malicious IPs
+  //
+  // One of none (ThreatInsight disabled), audit (log the request), or
+  // block (log and block the request).
   action string
   // Exempt zones
   excludeZones []okta.network
-  // Timestamp when the network zone was created
+  // Timestamp when the ThreatInsight configuration was created
   created time
-  // Timestamp when the network zone was last updated
+  // Timestamp when the ThreatInsight configuration was last updated
   lastUpdated time
 
 }
 
 // Okta Custom Role
 //
-// Examine a custom administrator role defined in an Okta organization. Covers
-// `id`, `label`, `description`, and `permissions` (the list of permission
-// strings granted by the role).
+// Custom administrator role defined in an Okta organization, granting a
+// tailored set of administrative privileges beyond the built-in standard
+// roles. Auditing custom roles surfaces which fine-grained permissions each
+// role confers, so you can catch over-privileged roles and enforce least
+// privilege across delegated administration.
 private okta.customRole @defaults("label") {
   // Identifier for the custom role
   id string
@@ -562,21 +1360,104 @@ private okta.customRole @defaults("label") {
   label string
   // Description of the custom role
   description string
-  // Role permissions
-  permissions []string
+  // Permissions granted by the role
+  //
+  // List of Okta permission identifiers this role confers, for example
+  // `okta.users.read`, `okta.users.manage`, `okta.apps.manage`, or
+  // `okta.groups.manage`. Permissions are a sub-resource of the role, fetched
+  // per role rather than returned with the role listing.
+  permissions() []string
+}
+
+// Okta Resource Set
+//
+// Named collection of resources that a custom administrator role can be
+// scoped to. Resource sets are the "over what" half of a custom admin grant:
+// a binding ties a custom role to a set of members (users and groups) and the
+// resource set limits the resources those members may administer. Select a set
+// by its `label`. The `resources` field lists the groups, applications, and
+// users the set covers, and `bindings` lists the custom-role grants made
+// through it.
+private okta.resourceSet @defaults("label") {
+  // Unique identifier of the resource set
+  id string
+  // Human-readable label of the resource set
+  label string
+  // Description of the resource set
+  description string
+  // Timestamp when the resource set was created
+  created time
+  // Timestamp when the resource set was last updated
+  lastUpdated time
+  // Resources this set grants administrative access over
+  resources() []okta.resourceSet.resource
+  // Custom-role grants (bindings) made through this set
+  bindings() []okta.resourceSet.binding
+}
+
+// Resource covered by an Okta resource set
+//
+// A single resource that a resource set grants administrative access over.
+// The `href` field is the raw self-link identifying the target, `orn` is the
+// parsed Okta Resource Name when available, and `group`, `application`, and
+// `user` resolve the target to a modeled resource when its type is one of
+// those. At most one typed reference is populated per resource; the others
+// are null.
+private okta.resourceSet.resource @defaults("orn href") {
+  // Unique identifier of the resource-set resource entry
+  id string
+  // Description of the resource
+  description string
+  // Raw self-link URL identifying the target resource
+  href string
+  // Parsed Okta Resource Name (ORN) of the target, when available
+  orn string
+  // Resources carved out of this entry
+  //
+  // Okta Resource Names excluded from the grant, which narrow what the
+  // entry actually covers. An entry naming a whole group of resources
+  // grants less than it appears to when this list is not empty.
+  excludedOrns []string
+  // Target group, when the resource is a group
+  group() okta.group
+  // Target application, when the resource is an application
+  application() okta.application
+  // Target user, when the resource is a user
+  user() okta.user
+}
+
+// Okta resource set binding
+//
+// Grant of a single custom administrator role to a set of members (users and
+// groups), scoped to the parent resource set. Auditing bindings answers "who
+// was granted which custom admin role, and over which resources": the
+// `customRole` field resolves the granted role and its permissions, while
+// `users` and `groups` list the members who hold it.
+private okta.resourceSet.binding @defaults("id") {
+  // Unique identifier of the binding (the granted role id within the set)
+  id string
+  // The custom role granted by this binding
+  customRole() okta.customRole
+  // Member users granted the role over the resource set
+  users() []okta.user
+  // Member groups granted the role over the resource set
+  groups() []okta.group
 }
 
 // Okta Identity Provider
 //
-// Examine an external identity provider federated with your Okta organization.
-// Covers `id`, `name`, `type` (e.g., SAML2, OIDC, GOOGLE, FACEBOOK, LINKEDIN,
-// MICROSOFT, APPLE, X509), `status` (ACTIVE or INACTIVE), `issuerMode` (whether
-// the issuer URL is the Okta org URL, a custom URL domain, or dynamic), the
-// full `protocol` configuration (endpoints, credentials, algorithms, requested
-// scopes, relay state), the `policy` configuration (account link, provisioning,
-// subject matching, max clock skew), and lifecycle timestamps. `signingKeys`
-// returns the X.509/JWK signing credentials trusted for assertions or tokens
-// issued by this IdP — checking `expiresAt` catches expiring trust anchors.
+// External identity provider federated with your Okta organization for
+// inbound single sign-on. The `type` discriminator (SAML2, OIDC, OAUTH2,
+// GOOGLE, FACEBOOK, LINKEDIN, MICROSOFT, APPLE, X509) selects which protocol,
+// credential, and policy shape applies, while `status` (ACTIVE or INACTIVE)
+// indicates whether the federation is live and `issuerMode` records whether
+// the issuer URL is the Okta org URL, a custom URL domain, or dynamic.
+// Auditing these catches untrusted or misconfigured trust relationships that
+// could let an attacker authenticate into the org. The `protocol` and
+// `policy` configurations expose the endpoints, credentials, algorithms, and
+// account-link/provisioning/subject-matching rules, and `signingKeys` returns
+// the X.509/JWK credentials trusted for assertions or tokens issued by this
+// IdP, where `expiresAt` flags expiring trust anchors.
 private okta.identityProvider @defaults("name type status") {
   // Unique identifier of the identity provider
   id string
@@ -591,7 +1472,7 @@ private okta.identityProvider @defaults("name type status") {
   status string
   // Issuer mode for OIDC/SAML responses
   //
-  // One of ORG_URL, CUSTOM_URL_DOMAIN, or DYNAMIC.
+  // One of ORG_URL, CUSTOM_URL_DOMAIN, CUSTOM_URL, or DYNAMIC.
   issuerMode string
   // Protocol configuration
   //
@@ -620,13 +1501,13 @@ private okta.identityProvider @defaults("name type status") {
 
 // Okta Identity Provider signing key (JsonWebKey)
 //
-// Examine a JsonWebKey trusted by Okta for verifying assertions or tokens
-// from a federated identity provider. Covers `kid`, `status`, signing
-// algorithm metadata (`alg`, `kty`, `use`, `keyOps`), the embedded X.509
-// certificate chain (`x5c`) and SHA-1/SHA-256 thumbprints (`x5t`, `x5tS256`),
-// the RSA modulus/exponent (`n`, `e`), and lifecycle timestamps. The
-// `expiresAt` timestamp marks when the certificate must be rotated to keep
-// federation working.
+// JsonWebKey trusted by Okta for verifying assertions or tokens from a
+// federated identity provider. The `kid` selects the key, signing algorithm
+// metadata (`alg`, `kty`, `use`, `keyOps`) describes how it is applied, and
+// the embedded X.509 certificate chain (`x5c`) with SHA-1/SHA-256 thumbprints
+// (`x5t`, `x5tS256`) plus the RSA modulus and exponent (`n`, `e`) carry the
+// public credential. The `expiresAt` timestamp marks when the certificate
+// must be rotated to keep federation working.
 private okta.identityProvider.key @defaults("kid status expiresAt") {
   // ID of the identity provider this key belongs to
   identityProviderId string
@@ -662,15 +1543,13 @@ private okta.identityProvider.key @defaults("kid status expiresAt") {
 
 // Okta Custom Authorization Server
 //
-// Examine a custom OAuth 2.0 authorization server that mints access tokens
-// for APIs in your Okta organization. Covers identity and lifecycle fields
-// (`id`, `name`, `description`, `issuer`, `issuerMode`, `status`, `default`,
-// `audiences`, `created`, `lastUpdated`) and the active signing-key
-// configuration (`signingKid`, `signingRotationMode`, `signingLastRotated`,
-// `signingNextRotation`, `signingUse`). Computed methods expose `policies`
-// (which clients can request which scopes), `scopes` and `claims` (what
-// appears in issued tokens), and `keys` (the published JWKs used to verify
-// access tokens).
+// Custom OAuth 2.0 authorization server that mints access tokens for APIs in
+// your Okta organization. Exposes the issuer configuration and the active
+// signing-key setup, alongside the policies that decide which clients can
+// request which scopes, the scopes and claims that shape issued tokens, and
+// the published keys used to verify access tokens. Auditing these servers
+// reveals token lifetimes, grant types, and consent behavior for every API
+// protected by Okta.
 private okta.authorizationServer @defaults("name status issuer") {
   // Unique identifier of the authorization server
   id string
@@ -712,15 +1591,33 @@ private okta.authorizationServer @defaults("name status issuer") {
   claims() []okta.authorizationServer.claim
   // Published signing keys for access tokens issued by this server
   keys() []okta.authorizationServer.key
+  // Algorithm used to encrypt access tokens
+  //
+  // When set, an access token is signed and then encrypted, so it reaches
+  // the client as a nested JWT. Empty when the server issues signed tokens
+  // that are not encrypted, which is the default.
+  accessTokenEncryptedResponseAlgorithm string
+  // URL of the key set used to encrypt tokens
+  //
+  // References the JSON Web Key Set this server encrypts issued tokens
+  // against. Distinct from keys, which are the signing keys the server
+  // publishes.
+  jwksUri string
+  // Key set used to encrypt tokens
+  //
+  // The encryption keys as served, each carrying kid, kty, use, status and
+  // the RSA values n and e. Empty when the server does not encrypt tokens,
+  // which is the default and the common case.
+  jwks dict
 }
 
 // Okta Authorization Server Policy
 //
-// Examine a policy on a custom authorization server. Policies grant specific
-// OAuth 2.0 clients access to specific scopes under specific conditions.
-// Covers `id`, `name`, `description`, `priority`, `status`, `system` (whether
-// admin-editable), `type`, and `conditions` (typically the client allowlist).
-// `rules` returns the ordered list of rules attached to the policy.
+// Policy on a custom authorization server that grants specific OAuth 2.0
+// clients access to specific scopes under specific conditions. The conditions
+// dict carries the client allowlist the policy applies to, rules returns the
+// ordered rules that hold the actual grant logic, and system marks policies
+// that Okta manages and administrators cannot edit.
 private okta.authorizationServer.policy @defaults("name status priority") {
   // ID of the authorization server this policy belongs to
   authorizationServerId string
@@ -738,7 +1635,10 @@ private okta.authorizationServer.policy @defaults("name status priority") {
   system bool
   // Policy type (typically OAUTH_AUTHORIZATION_POLICY)
   type string
-  // Conditions: typically which clients the policy applies to
+  // Client allowlist the policy applies to
+  //
+  // Dict with a `clients` key whose `include` list holds either the literal
+  // `ALL_CLIENTS` or the specific OAuth 2.0 client IDs the policy governs.
   conditions dict
   // Timestamp when the policy was created
   created time
@@ -750,12 +1650,11 @@ private okta.authorizationServer.policy @defaults("name status priority") {
 
 // Okta Authorization Server Policy Rule
 //
-// Examine a rule on an authorization-server policy. Rules govern which OAuth
-// 2.0 grant types and scopes are permitted, the access-token and
-// refresh-token lifetimes, and the inline hook (if any) invoked when access
-// tokens are minted. Covers `id`, `name`, `priority`, `status`, `system`,
-// `type`, `actions` (token lifetimes, inline hook, granted scopes),
-// `conditions` (grant types, scopes, people), and lifecycle timestamps.
+// Rule on an authorization-server policy that governs which OAuth 2.0 grant
+// types and scopes are permitted, the access-token and refresh-token
+// lifetimes, and the inline hook (if any) invoked when access tokens are
+// minted. The actions dict holds the enforced token settings and the
+// conditions dict holds the grant types, scopes, and people the rule matches.
 private okta.authorizationServer.policyRule @defaults("name status priority") {
   // ID of the authorization server this rule's policy belongs to
   authorizationServerId string
@@ -773,9 +1672,16 @@ private okta.authorizationServer.policyRule @defaults("name status priority") {
   system bool
   // Rule type (typically RESOURCE_ACCESS)
   type string
-  // Actions: token lifetimes, inline hook, granted scopes
+  // Token lifetimes and inline hook applied when tokens are minted
+  //
+  // Dict with a `token` key holding `accessTokenLifetimeMinutes`,
+  // `refreshTokenLifetimeMinutes`, and `refreshTokenWindowMinutes`, plus an
+  // optional `inlineHook` reference invoked during token minting.
   actions dict
-  // Conditions: grant types, scopes, people the rule applies to
+  // Grant types, scopes, and people the rule applies to
+  //
+  // Dict with `grantTypes` and `scopes` keys (each carrying an `include`
+  // list) and a `people` key selecting the users or groups the rule matches.
   conditions dict
   // Timestamp when the rule was created
   created time
@@ -785,11 +1691,11 @@ private okta.authorizationServer.policyRule @defaults("name status priority") {
 
 // Okta Authorization Server Scope
 //
-// Examine an OAuth 2.0 scope defined on a custom authorization server. Covers
-// `id`, `name` (the programmatic value sent in `scope=`), `displayName` and
-// `description` (shown on the consent prompt), `consent`, `default` (granted
-// without being requested), `metadataPublish` (whether the scope is published
-// in the `.well-known` discovery document), and `system` (built-in scope).
+// OAuth 2.0 scope defined on a custom authorization server. The name is the
+// programmatic value sent in `scope=` requests, consent controls whether the
+// user is prompted to approve it, default marks scopes granted without being
+// requested, and metadataPublish controls whether the scope appears in the
+// `.well-known` discovery document.
 private okta.authorizationServer.scope @defaults("name consent") {
   // ID of the authorization server this scope belongs to
   authorizationServerId string
@@ -817,14 +1723,12 @@ private okta.authorizationServer.scope @defaults("name consent") {
 
 // Okta Authorization Server Claim
 //
-// Examine a claim included in access or ID tokens issued by a custom
-// authorization server. Covers `id`, `name`, `status`, `claimType` (RESOURCE
-// claims appear in access tokens, IDENTITY claims in ID tokens), `valueType`
-// (EXPRESSION, GROUPS, or SYSTEM), `value` (Okta Expression Language source
-// or group filter pattern), `alwaysIncludeInToken` (vs. only when the
-// matching scope is granted), `groupFilterType` (for groups claims), the
-// `scopes` that must be granted for this claim to appear, and `system`
-// (built-in claim).
+// Claim included in access or ID tokens issued by a custom authorization
+// server. claimType distinguishes RESOURCE claims (access tokens) from
+// IDENTITY claims (ID tokens), valueType selects how value is interpreted,
+// and alwaysIncludeInToken controls whether the claim appears regardless of
+// which scopes were granted. The value holds either an Okta Expression
+// Language source or a group filter pattern.
 private okta.authorizationServer.claim @defaults("name status claimType") {
   // ID of the authorization server this claim belongs to
   authorizationServerId string
@@ -856,11 +1760,11 @@ private okta.authorizationServer.claim @defaults("name status claimType") {
 
 // Okta Authorization Server signing key (JsonWebKey)
 //
-// Examine a JsonWebKey published by a custom authorization server for
-// verifying access tokens. Covers `kid`, `status` (ACTIVE, NEXT, or EXPIRED),
-// signing algorithm metadata (`alg`, `kty`, `use`, `keyOps`), the embedded
-// X.509 certificate chain (`x5c`) and SHA-1/SHA-256 thumbprints (`x5t`,
-// `x5tS256`), the RSA modulus/exponent (`n`, `e`), and lifecycle timestamps.
+// JsonWebKey published by a custom authorization server for verifying access
+// tokens. status distinguishes the ACTIVE key from the NEXT key (staged for
+// rotation) and EXPIRED keys, while the X.509 certificate chain, SHA-1 and
+// SHA-256 thumbprints, and RSA modulus and exponent let you validate token
+// signatures independently.
 private okta.authorizationServer.key @defaults("kid status") {
   // ID of the authorization server this key belongs to
   authorizationServerId string
@@ -892,4 +1796,652 @@ private okta.authorizationServer.key @defaults("kid status") {
   n string
   // RSA exponent
   e string
+}
+
+// Okta Event Hook
+//
+// Outbound webhook that delivers Okta org events to an external service as
+// they occur. Auditing event hooks surfaces where org activity is being sent
+// and how the destination is trusted: `channelUri` is the endpoint Okta posts
+// to, `channelAuthScheme` describes how Okta authenticates to it, `events`
+// lists the subscribed event types, and `status` and `verificationStatus`
+// indicate whether the hook is active and its endpoint ownership verified. A
+// hook pointing at an untrusted URL is a data-exfiltration and persistence
+// risk. Select a hook by its `name`.
+private okta.eventHook @defaults("name status") {
+  // Unique identifier of the event hook
+  id string
+  // Display name of the event hook
+  name string
+  // Description of the event hook
+  description string
+  // Status of the event hook: ACTIVE or INACTIVE
+  status string
+  // Endpoint ownership verification status
+  //
+  // Whether Okta has verified control of the destination endpoint, for
+  // example VERIFIED or UNVERIFIED.
+  verificationStatus string
+  // Subscribed event types
+  //
+  // The Okta event types this hook fires on, for example
+  // `user.lifecycle.create` or `user.session.start`.
+  events []string
+  // Delivery channel type (for example HTTP)
+  channelType string
+  // Destination URL Okta posts events to
+  channelUri string
+  // Authentication scheme for the destination
+  //
+  // How Okta authenticates to the endpoint, as a dict with keys `type` (for
+  // example HEADER) and `key`. Secret values are not exposed.
+  channelAuthScheme dict
+  // Custom headers sent with each delivery
+  //
+  // One entry per header, each a dict with keys `key` and `value`.
+  headers []dict
+  // Timestamp when the event hook was created
+  created time
+  // Timestamp when the event hook was last updated
+  lastUpdated time
+}
+
+// Okta Inline Hook
+//
+// Synchronous callout that lets an external service influence an Okta flow
+// (such as token minting, registration, or password import) while it runs.
+// Auditing inline hooks surfaces external code injected into authentication
+// and provisioning: `channelUri` is the endpoint Okta calls, `channelAuthScheme`
+// describes how Okta authenticates to it, and `type` identifies which flow the
+// hook participates in. Select a hook by its `name`, and check `status` to
+// confirm whether it is active.
+private okta.inlineHook @defaults("name type status") {
+  // Unique identifier of the inline hook
+  id string
+  // Display name of the inline hook
+  name string
+  // Inline hook type
+  //
+  // The flow the hook participates in, for example
+  // `com.okta.oauth2.tokens.transform`, `com.okta.import.transform`, or
+  // `com.okta.user.pre-registration`.
+  type string
+  // Status of the inline hook: ACTIVE or INACTIVE
+  status string
+  // Version of the inline hook contract
+  version string
+  // Delivery channel type (for example HTTP)
+  channelType string
+  // Endpoint URL Okta calls during the flow
+  channelUri string
+  // Authentication scheme for the endpoint
+  //
+  // How Okta authenticates to the endpoint, as a dict with keys `type` (for
+  // example HEADER) and `key`. Secret values are not exposed.
+  channelAuthScheme dict
+  // Free-form metadata attached to the hook
+  metadata map[string]string
+  // Timestamp when the inline hook was created
+  created time
+  // Timestamp when the inline hook was last updated
+  lastUpdated time
+}
+
+// Okta Hook Key
+//
+// Cryptographic key pair Okta uses to sign outbound hook requests so the
+// receiving service can verify they originate from Okta. Auditing hook keys
+// surfaces stale or unused signing material: `isUsed` reports whether any hook
+// currently references the key, and `publicKey` carries the public JSON Web Key
+// metadata. Select a key by its `name`.
+private okta.hookKey @defaults("name isUsed") {
+  // Unique identifier of the hook key
+  id string
+  // Display name of the hook key
+  name string
+  // Public key identifier
+  keyId string
+  // Whether the key is currently referenced by a hook
+  isUsed bool
+  // Public key material
+  //
+  // The public JSON Web Key as a dict, with keys such as `kty`, `kid`,
+  // `use`, `alg`, and the key parameters. The private key is never exposed.
+  publicKey dict
+  // Timestamp when the hook key was created
+  created time
+  // Timestamp when the hook key was last updated
+  lastUpdated time
+}
+
+// Okta Log Stream
+//
+// Connection that exports Okta System Log events to an external destination
+// such as AWS EventBridge or Splunk Cloud. Auditing log streams answers whether
+// the org's audit trail is shipped off-box and to where: `type` selects the
+// destination kind, `settings` carries the destination coordinates (AWS
+// `accountId`, `region`, and `eventSourceName`, or Splunk `host` and `edition`),
+// and `status` indicates whether the stream is active. Select a stream by its
+// `name`.
+private okta.logStream @defaults("name type status") {
+  // Unique identifier of the log stream
+  id string
+  // Display name of the log stream
+  name string
+  // Log stream destination type
+  //
+  // One of `aws_eventbridge` or `splunk_cloud_logstreaming`.
+  type string
+  // Status of the log stream: ACTIVE or INACTIVE
+  status string
+  // Destination settings
+  //
+  // Shape varies by `type`. For AWS EventBridge the keys are `accountId`,
+  // `region`, and `eventSourceName`. For Splunk the keys are `host` and
+  // `edition`. Secret values such as the Splunk token are not exposed.
+  settings dict
+  // Timestamp when the log stream was created
+  created time
+  // Timestamp when the log stream was last updated
+  lastUpdated time
+}
+
+// Okta API Service Integration
+//
+// Third-party service granted OAuth 2.0 access to the Okta org through the
+// API service integration catalog. Auditing these surfaces machine-to-machine
+// access held by external vendors: `grantedScopes` lists the API scopes the
+// integration can exercise, `type` identifies the catalog integration, and
+// `createdBy` records the actor that installed it. Select an instance by its
+// `id`.
+private okta.apiServiceIntegration @defaults("name type") {
+  // Unique identifier of the integration instance
+  id string
+  // Display name of the integration
+  name string
+  // Catalog integration type
+  type string
+  // OAuth 2.0 scopes granted to the integration
+  //
+  // The API scopes the integration is authorized to exercise, for example
+  // `okta.users.read` or `okta.logs.read`.
+  grantedScopes []string
+  // URL of the integration's configuration guide
+  configGuideUrl string
+  // Actor that created the integration instance
+  createdBy string
+  // Timestamp when the integration instance was created
+  createdAt time
+  // Configuration properties set on the integration instance
+  //
+  // Keyed by property name, holding the value configured for it. Empty when
+  // the integration takes no configuration or none has been set.
+  properties map[string]string
+}
+
+// Okta Attack Protection Settings
+//
+// Organization-wide protection against brute-force and password-spray
+// attacks. Auditing these confirms account-lockout defenses are enforced:
+// `preventBruteForceLockoutFromUnknownDevices` reports whether lockout
+// protection extends to sign-ins from unrecognized devices, and
+// `verifyKnowledgeSecondWhen2faRequired` reports whether a knowledge factor
+// is verified second when multifactor is required.
+okta.attackProtection @defaults("preventBruteForceLockoutFromUnknownDevices") {
+  // Whether brute-force lockout protection applies to unknown devices
+  preventBruteForceLockoutFromUnknownDevices bool
+  // Whether a knowledge factor is verified second when 2FA is required
+  verifyKnowledgeSecondWhen2faRequired bool
+}
+
+// Okta Bot Protection
+//
+// Org-wide bot detection in front of the authentication endpoints, the
+// control that stands between an automated credential-stuffing run and the
+// sign-in flow. The `mode` field reports whether a detection is acted on or
+// only recorded, `level` the detection sensitivity, `enforcementType` what
+// a detected request is met with, and `supportedFlows` which end-user flows
+// are covered at all. Every field is null when the org is not licensed for
+// bot protection, which is a different reading from protection being
+// configured and switched off.
+okta.botProtection @defaults("mode level") {
+  // Enforcement mode for bot protection
+  //
+  // Whether a detected bot is acted on or only recorded. A recording-only
+  // mode detects the same traffic and blocks none of it.
+  mode string
+  // Sensitivity of bot detection
+  level string
+  // What a request identified as a bot is met with
+  enforcementType string
+  // Authentication flows bot protection covers
+  //
+  // Values are SIGN_IN for the sign-in page, SSR for self-service
+  // registration, and SSPR for self-service password reset. A flow absent
+  // from this list is not protected.
+  supportedFlows []string
+}
+
+// CAPTCHA instance
+//
+// CAPTCHA provider configuration registered with the org and available to
+// be applied to its end-user pages. Which instance is actually enforced,
+// and on which pages, is reported by `okta.organization.captcha` and
+// `okta.organization.captchaEnabledPages`. The provider's site key and
+// secret key are not reported.
+private okta.captcha @defaults("name type") {
+  // Unique key for the CAPTCHA instance
+  id string
+  // Name of the CAPTCHA instance
+  name string
+  // CAPTCHA provider backing the instance
+  type string
+}
+
+// Okta Personal settings
+//
+// Workforce-org controls over Okta Personal, the consumer product a
+// workforce user can move application credentials into. The
+// `blockedEmailDomains` field lists the email domains barred from that
+// export, so an empty list bars none of them and every workforce user can
+// carry corporate credentials out into a personal account. Null when the
+// org is not licensed for Okta Personal.
+okta.personalSettings @defaults("blockedEmailDomains") {
+  // Email domains blocked from exporting applications to Okta Personal
+  //
+  // Accounts on these domains cannot move application credentials out of
+  // the workforce org into a personal Okta account. An empty list blocks no
+  // domain. Null when the org does not report the list at all, which is not
+  // the same reading.
+  blockedEmailDomains []string
+}
+
+// Okta Behavior Detection Rule
+//
+// Rule that flags anomalous sign-in behavior so sign-on policies can require
+// step-up authentication. Auditing behavior rules surfaces which risk signals
+// the org detects: the `type` field selects the behavior evaluated (new
+// device, new IP, new geolocation, or velocity), `settings` holds the
+// type-specific thresholds, and `status` indicates whether the rule is active.
+// Select a rule by its `name`.
+private okta.behaviorRule @defaults("name type status") {
+  // Unique identifier of the behavior rule
+  id string
+  // Display name of the behavior rule
+  name string
+  // Behavior rule type
+  //
+  // The behavior evaluated, such as ANOMALOUS_DEVICE, ANOMALOUS_IP,
+  // ANOMALOUS_LOCATION, VELOCITY, or a new-factor rule like NEW_ASN,
+  // NEW_DEVICE, NEW_IP, NEW_CITY, NEW_STATE, NEW_COUNTRY, or
+  // NEW_GEO_LOCATION.
+  type string
+  // Status of the rule: ACTIVE or INACTIVE
+  status string
+  // Type-specific detection settings
+  //
+  // Shape varies by `type`. Holds the thresholds and evaluation parameters
+  // for the behavior, such as the number of recent authentications retained
+  // for a location or device rule, or the velocity distance and time.
+  settings dict
+  // Timestamp when the rule was created
+  created time
+  // Timestamp when the rule was last updated
+  lastUpdated time
+}
+
+// Okta Risk Provider
+//
+// Third-party service that feeds risk signals into Okta sign-on decisions.
+// Auditing risk providers surfaces external inputs to authentication risk:
+// `action` reports how Okta consumes the signal, and `clientId` identifies the
+// OAuth 2.0 client the provider authenticates as. Select a provider by its
+// `name`.
+private okta.riskProvider @defaults("name action") {
+  // Unique identifier of the risk provider
+  id string
+  // Display name of the risk provider
+  name string
+  // How Okta consumes the provider's risk signal
+  action string
+  // OAuth 2.0 client identifier the provider authenticates as
+  clientId string
+  // Timestamp when the risk provider was created
+  created time
+  // Timestamp when the risk provider was last updated
+  lastUpdated time
+}
+
+// Okta Device
+//
+// Device enrolled in the Okta org, tracked for device-trust and conditional
+// access decisions. Auditing devices surfaces the endpoint population and its
+// security posture: `profile` carries the hardware and OS attributes
+// (platform, OS version, disk encryption, jailbreak state, secure hardware),
+// `status` reflects the device lifecycle, and `users` lists the Okta accounts
+// that use the device. Select a device by its `id`.
+private okta.device @defaults("status") {
+  // Unique identifier of the device
+  id string
+  // Current lifecycle status of the device
+  //
+  // One of CREATED, ACTIVE, SUSPENDED, DEACTIVATED, or UNENROLLED.
+  status string
+  // Resource type of the device record
+  resourceType string
+  // Device hardware and OS attributes
+  //
+  // Profile object with keys including `displayName`, `platform`,
+  // `manufacturer`, `model`, `osVersion`, `serialNumber`, `registered`,
+  // `secureHardwarePresent`, `diskEncryptionType`, and `integrityJailbreak`.
+  profile dict
+  // Timestamp when the device was created
+  created time
+  // Timestamp when the device was last updated
+  lastUpdated time
+  // Okta users that use this device
+  users() []okta.user
+}
+
+// Okta Device Assurance Policy
+//
+// Policy that defines the device-trust requirements an endpoint must meet to
+// gain access, evaluated by sign-on policies. Auditing these confirms the
+// minimum device posture the org enforces: the `platform` field selects the
+// operating system the policy applies to, and `settings` holds the required
+// constraints such as minimum OS version, disk encryption, screen lock, and
+// secure-hardware or jailbreak checks. Select a policy by its `name`.
+private okta.deviceAssurancePolicy @defaults("name platform") {
+  // Unique identifier of the device assurance policy
+  id string
+  // Display name of the policy
+  name string
+  // Platform the policy applies to
+  //
+  // One of ANDROID, IOS, MACOS, WINDOWS, or CHROMEOS.
+  platform string
+  // Required device-trust constraints
+  //
+  // Shape varies by `platform`. Holds the enforced requirements such as
+  // `osVersion` (minimum version), `diskEncryptionType`, `screenLockType`,
+  // `jailbreak`, and `secureHardwarePresent`.
+  settings dict
+  // Timestamp when the policy was created
+  created time
+  // Timestamp when the policy was last updated
+  lastUpdated time
+}
+
+// Okta Security Events Provider
+//
+// External provider that shares security signals with the Okta org through
+// the Shared Signals Framework (SSF/CAEP), enabling continuous access
+// evaluation. Auditing these surfaces the cross-vendor trust relationships
+// feeding real-time security events: `type` identifies the provider,
+// `settings` carries the signal endpoints (issuer, JWKS URL, and well-known
+// configuration URL), and `status` indicates whether the integration is
+// active. Select a provider by its `name`.
+private okta.securityEventsProvider @defaults("name type status") {
+  // Unique identifier of the security events provider
+  id string
+  // Display name of the provider
+  name string
+  // Provider type
+  type string
+  // Status of the provider: ACTIVE or INACTIVE
+  status string
+  // Signal endpoint settings
+  //
+  // Dict with keys `issuer`, `jwks_url`, and `well_known_url` identifying the
+  // provider's security event stream and its signing keys.
+  settings dict
+}
+
+// Okta User Type
+//
+// Profile schema variant that determines which attributes an account
+// carries. Every org has a built-in default type, and additional types give
+// contractors, partners, or service accounts a different profile shape.
+// `default` identifies the built-in type, `createdBy` and `lastUpdatedBy`
+// resolve to the administrators who introduced and last changed it, and
+// `name` is the value that profile mappings and the `typeId` field on
+// `okta.user` reference.
+private okta.userType @defaults("name displayName") {
+  // Unique identifier of the user type
+  id string
+  // Internal name of the user type
+  name string
+  // Name of the user type as shown in the admin console
+  displayName string
+  // Description of the user type
+  description string
+  // Whether this is the org's built-in default user type
+  default bool
+  // Timestamp when the user type was created
+  created time
+  // Timestamp when the user type was last updated
+  lastUpdated time
+  // Administrator who created the user type
+  createdBy() okta.user
+  // Administrator who last updated the user type
+  lastUpdatedBy() okta.user
+}
+
+// Okta Profile Mapping
+//
+// Attribute mapping that moves profile data between an application and the
+// Okta user profile. Mappings are how values arriving from an external
+// identity source populate Okta attributes, so auditing them shows which
+// attributes an upstream source is allowed to set and whether those writes
+// happen on every update or only when the account is created. `sourceType`
+// and `targetType` give the direction, `application` and `userType` resolve
+// the two sides of the mapping, and `properties` carries the per-attribute
+// expressions with their push behavior.
+private okta.profileMapping @defaults("sourceName targetName") {
+  // Unique identifier of the profile mapping
+  id string
+  // Identifier of the mapping source
+  sourceId string
+  // Name of the mapping source
+  sourceName string
+  // Type of the mapping source
+  //
+  // Either `user` when the source is an Okta user type, or `appuser` when it
+  // is an application user profile.
+  sourceType string
+  // Identifier of the mapping target
+  targetId string
+  // Name of the mapping target
+  targetName string
+  // Type of the mapping target
+  //
+  // Either `user` when the target is an Okta user type, or `appuser` when it
+  // is an application user profile.
+  targetType string
+  // Application on the application side of the mapping
+  application() okta.application
+  // User type on the Okta side of the mapping
+  userType() okta.userType
+  // Per-attribute mapping expressions
+  //
+  // Dict keyed by target attribute name. Each value carries `expression`, the
+  // source expression evaluated to produce the attribute, and `pushStatus`,
+  // which is PUSH when the attribute is written on both create and update, or
+  // DONT_PUSH when it is written only on create.
+  properties() dict
+}
+
+// Okta Agent Pool
+//
+// Group of on-premises Okta agents connecting the org to an internal
+// directory or network. Agent pools carry the patch posture of that
+// on-premises footprint: every agent reports the software `version` it runs,
+// whether that version is the latest generally available release, its
+// operational state, and when it last reached Okta. Auditing pools surfaces
+// agents running outdated software and agents that have stopped connecting.
+// Select a pool by its `name`.
+private okta.agentPool @defaults("name type operationalStatus") {
+  // Unique identifier of the agent pool
+  id string
+  // Display name of the agent pool
+  name string
+  // Type of agent monitored by the pool
+  //
+  // One of AD, IWA, LDAP, MFA, OPP, RADIUS, or RUM.
+  type string
+  // Operational status of the pool
+  //
+  // One of ACTIVE, INACTIVE, DEGRADED, UNKNOWN, OPERATIONAL, or DISRUPTED.
+  operationalStatus string
+  // Number of agents in the pool that are disrupted
+  //
+  // Agents that reached Okta but are not working correctly. A pool serving
+  // authentication or directory sync with disrupted agents is degraded even
+  // while its operationalStatus still reads ACTIVE.
+  disruptedAgents int
+  // Number of agents in the pool that are inactive
+  //
+  // Agents that are not currently connected to Okta. Read alongside
+  // disruptedAgents to tell a pool that lost capacity from one that never
+  // had it.
+  inactiveAgents int
+  // Agents enrolled in the pool
+  agents []okta.agentPool.agent
+}
+
+// Okta On-Premises Agent
+//
+// Individual agent enrolled in an agent pool. The `version` and
+// `isLatestGAedVersion` fields together report whether the agent runs
+// current software, `lastConnection` shows when it last reached Okta, and
+// `updateStatus` reports where it stands in the auto-update process.
+private okta.agentPool.agent @defaults("name version operationalStatus") {
+  // Unique identifier of the agent
+  id string
+  // Display name of the agent
+  name string
+  // Type of the agent
+  //
+  // One of AD, IWA, LDAP, MFA, OPP, RADIUS, or RUM.
+  type string
+  // Version of the agent software
+  version string
+  // Whether the agent runs the latest generally available version
+  isLatestGAedVersion bool
+  // Timestamp when the agent last connected to Okta
+  lastConnection time
+  // Operational status of the agent
+  //
+  // One of ACTIVE, INACTIVE, DEGRADED, UNKNOWN, OPERATIONAL, or DISRUPTED.
+  operationalStatus string
+  // Status of the agent within the auto-update process
+  updateStatus string
+  // Message describing the agent's current update state
+  updateMessage string
+  // Whether the agent is hidden in the admin console
+  isHidden bool
+}
+
+// Okta Email Domain
+//
+// Custom mail domain the org sends end-user email from, in place of Okta's
+// default sender domain. Recipients see this domain on password resets and
+// MFA enrollment mail, so its validation state matters: `validationStatus`
+// reports whether Okta has verified ownership of the domain, and
+// `dnsValidationRecords` lists the DNS records that prove it. The `userName`
+// and `displayName` fields form the From address on outbound mail.
+private okta.emailDomain @defaults("domain validationStatus") {
+  // Unique identifier of the email domain
+  id string
+  // Mail domain configured for the org
+  domain string
+  // Subdomain used to validate ownership of the mail domain
+  validationSubdomain string
+  // Validation state of the mail domain
+  //
+  // One of NOT_STARTED, IN_PROGRESS, VERIFIED, COMPLETED, ERROR, POLLING, or
+  // DELETED.
+  validationStatus string
+  // Display name used in the From address of outbound mail
+  displayName string
+  // Local part of the From address of outbound mail
+  userName string
+  // DNS records proving ownership of the mail domain
+  //
+  // List of dicts with keys `fqdn`, `recordType`, and `verificationValue`.
+  dnsValidationRecords []dict
+}
+
+// Okta Email Server
+//
+// Custom SMTP server the org routes outbound mail through instead of Okta's
+// own mail infrastructure. The `enabled` field reports whether mail is
+// actually flowing through it, and `host`, `port`, and `username` describe
+// where it delivers. The SMTP password is not returned by the API and is not
+// exposed here.
+private okta.emailServer @defaults("alias host enabled") {
+  // Unique identifier of the SMTP server configuration
+  id string
+  // Name of the SMTP server as shown in the admin console
+  alias string
+  // Whether the org routes outbound mail through this server
+  enabled bool
+  // Hostname or IP address of the SMTP server
+  host string
+  // Port the SMTP server listens on
+  port int
+  // Username used to authenticate to the SMTP server
+  username string
+}
+
+// Okta Realm
+//
+// Population of users administered separately from the rest of the org.
+// Realms partition accounts so delegated administrators manage only their
+// own population, which makes the realm boundary an access-control boundary.
+// `isDefault` identifies the realm accounts land in when no assignment
+// applies, and `realmType` distinguishes a realm holding external partner
+// users from an ordinary one.
+private okta.realm @defaults("name realmType") {
+  // Unique identifier of the realm
+  id string
+  // Name of the realm
+  name string
+  // Type of the realm
+  //
+  // Either DEFAULT for an ordinary realm, or PARTNER for a realm holding
+  // external partner users.
+  realmType string
+  // Whether this is the org's default realm
+  isDefault bool
+  // Timestamp when the realm was created
+  created time
+  // Timestamp when the realm was last updated
+  lastUpdated time
+}
+
+// Okta Rate Limit Settings
+//
+// Organization-wide handling of API rate limits. The
+// `perClientDefaultMode` field reports whether Okta enforces per-client
+// limits, logs violations without enforcing them, or does neither, which
+// determines whether one misbehaving OAuth client can exhaust the org's
+// capacity for everyone. `adminNotificationsEnabled` and `warningThreshold`
+// report whether administrators are told before a limit is reached and at
+// what percentage of the limit that warning fires.
+okta.rateLimitSettings @defaults("perClientDefaultMode warningThreshold") {
+  // Default enforcement mode for per-client rate limits
+  //
+  // One of ENFORCE (enforce the limit and log the violation), PREVIEW (log
+  // the violation without enforcing), or DISABLE (neither).
+  perClientDefaultMode string
+  // Per-use-case overrides of the default enforcement mode
+  //
+  // Dict keyed by use case, with keys `LOGIN_PAGE`, `OAUTH2_AUTHORIZE`, and
+  // `OIE_APP_INTENT`. Each value is one of ENFORCE, PREVIEW, or DISABLE.
+  useCaseModeOverrides dict
+  // Whether administrators are notified as rate limits are approached
+  adminNotificationsEnabled bool
+  // Percentage of a rate limit at which a warning notification fires
+  warningThreshold int
 }

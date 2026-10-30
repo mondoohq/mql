@@ -11,12 +11,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/neptune"
 	neptune_types "github.com/aws/aws-sdk-go-v2/service/neptune/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsNeptune) id() (string, error) {
@@ -93,6 +93,7 @@ func (a *mqlAwsNeptune) getDbClusters(conn *connection.AwsConnection) []*jobpool
 }
 
 type mqlAwsNeptuneClusterInternal struct {
+	cacheKmsKeyId string
 	securityGroupIdHandler
 	cacheRoleArns []string
 }
@@ -102,12 +103,11 @@ func newMqlAwsNeptuneCluster(runtime *plugin.Runtime, region string, accountID s
 		map[string]*llx.RawData{
 			"__id":                             llx.StringDataPtr(cluster.DBClusterArn),
 			"arn":                              llx.StringDataPtr(cluster.DBClusterArn),
-			"name":                             llx.StringDataPtr(cluster.DatabaseName),
+			"name":                             llx.StringDataPtr(cluster.DBClusterIdentifier),
 			"clusterIdentifier":                llx.StringDataPtr(cluster.DBClusterIdentifier),
 			"globalClusterIdentifier":          llx.StringDataPtr(cluster.GlobalClusterIdentifier),
 			"engine":                           llx.StringDataPtr(cluster.Engine),
 			"engineVersion":                    llx.StringDataPtr(cluster.EngineVersion),
-			"kmsKeyId":                         llx.StringDataPtr(cluster.KmsKeyId),
 			"region":                           llx.StringData(region),
 			"automaticRestartTime":             llx.TimeDataPtr(cluster.AutomaticRestartTime),
 			"availabilityZones":                llx.ArrayData(convert.SliceAnyToInterface(cluster.AvailabilityZones), types.String),
@@ -137,6 +137,7 @@ func newMqlAwsNeptuneCluster(runtime *plugin.Runtime, region string, accountID s
 	if err != nil {
 		return nil, err
 	}
+	resource.(*mqlAwsNeptuneCluster).cacheKmsKeyId = convert.ToValue(cluster.KmsKeyId)
 	sgsArn := []string{}
 	for _, sg := range cluster.VpcSecurityGroups {
 		if sg.VpcSecurityGroupId != nil {
@@ -163,7 +164,7 @@ func (a *mqlAwsNeptuneCluster) tags() (map[string]any, error) {
 	resp, err := svc.ListTagsForResource(ctx, &neptune.ListTagsForResourceInput{ResourceName: &arnVal})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return map[string]any{}, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
@@ -199,8 +200,8 @@ func initAwsNeptuneCluster(runtime *plugin.Runtime, args map[string]*llx.RawData
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformNeptuneCluster); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -303,16 +304,28 @@ func (a *mqlAwsNeptune) getDbInstances(conn *connection.AwsConnection) []*jobpoo
 
 func newMqlAwsNeptuneInstance(runtime *plugin.Runtime, region string, instance neptune_types.DBInstance) (*mqlAwsNeptuneInstance, error) {
 	endpoint, _ := convert.JsonToDict(instance.Endpoint)
+	mqlEndpoint := llx.NilData
+	if instance.Endpoint != nil {
+		endpointRes, err := CreateResource(runtime, "aws.neptune.endpoint", map[string]*llx.RawData{
+			"__id":         llx.StringData(convert.ToValue(instance.DBInstanceArn) + "/endpoint"),
+			"address":      llx.StringData(convert.ToValue(instance.Endpoint.Address)),
+			"port":         llx.IntData(int64(convert.ToValue(instance.Endpoint.Port))),
+			"hostedZoneId": llx.StringData(convert.ToValue(instance.Endpoint.HostedZoneId)),
+		})
+		if err != nil {
+			return nil, err
+		}
+		mqlEndpoint = llx.ResourceData(endpointRes, "aws.neptune.endpoint")
+	}
 
 	resource, err := CreateResource(runtime, "aws.neptune.instance",
 		map[string]*llx.RawData{
 			"__id":                             llx.StringDataPtr(instance.DBInstanceArn),
 			"arn":                              llx.StringDataPtr(instance.DBInstanceArn),
-			"name":                             llx.StringDataPtr(instance.DBName),
+			"name":                             llx.StringDataPtr(instance.DBInstanceIdentifier),
 			"clusterIdentifier":                llx.StringDataPtr(instance.DBClusterIdentifier),
 			"engine":                           llx.StringDataPtr(instance.Engine),
 			"engineVersion":                    llx.StringDataPtr(instance.EngineVersion),
-			"kmsKeyId":                         llx.StringDataPtr(instance.KmsKeyId),
 			"region":                           llx.StringData(region),
 			"autoMinorVersionUpgrade":          llx.BoolDataPtr(instance.AutoMinorVersionUpgrade),
 			"availabilityZone":                 llx.StringDataPtr(instance.AvailabilityZone),
@@ -321,11 +334,11 @@ func newMqlAwsNeptuneInstance(runtime *plugin.Runtime, region string, instance n
 			"instanceClass":                    llx.StringDataPtr(instance.DBInstanceClass),
 			"deletionProtection":               llx.BoolDataPtr(instance.DeletionProtection),
 			"monitoringInterval":               llx.IntDataPtr(instance.MonitoringInterval),
-			"monitoringRoleArn":                llx.StringDataPtr(instance.MonitoringRoleArn),
 			"latestRestorableTime":             llx.TimeDataPtr(instance.LatestRestorableTime),
 			"enabledCloudwatchLogsExports":     llx.ArrayData(convert.SliceAnyToInterface(instance.EnabledCloudwatchLogsExports), types.String),
 			"enhancedMonitoringResourceArn":    llx.StringDataPtr(instance.EnhancedMonitoringResourceArn),
 			"endpoint":                         llx.DictData(endpoint),
+			"connectionEndpoint":               mqlEndpoint,
 			"iamDatabaseAuthenticationEnabled": llx.BoolDataPtr(instance.IAMDatabaseAuthenticationEnabled),
 			"masterUsername":                   llx.StringDataPtr(instance.MasterUsername),
 			"multiAZ":                          llx.BoolDataPtr(instance.MultiAZ),
@@ -344,17 +357,19 @@ func newMqlAwsNeptuneInstance(runtime *plugin.Runtime, region string, instance n
 	if err != nil {
 		return nil, err
 	}
+	resource.(*mqlAwsNeptuneInstance).cacheKmsKeyId = convert.ToValue(instance.KmsKeyId)
+	resource.(*mqlAwsNeptuneInstance).cacheMonitoringRoleArn = convert.ToValue(instance.MonitoringRoleArn)
 	return resource.(*mqlAwsNeptuneInstance), nil
 }
 
 func (a *mqlAwsNeptuneCluster) kmsKey() (*mqlAwsKmsKey, error) {
-	if a.KmsKeyId.Data == "" {
+	if a.cacheKmsKeyId == "" {
 		a.KmsKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
 	mqlKey, err := NewResource(a.MqlRuntime, ResourceAwsKmsKey,
 		map[string]*llx.RawData{
-			"arn": llx.StringData(a.KmsKeyId.Data),
+			"arn": llx.StringData(a.cacheKmsKeyId),
 		})
 	if err != nil {
 		return nil, err
@@ -363,13 +378,13 @@ func (a *mqlAwsNeptuneCluster) kmsKey() (*mqlAwsKmsKey, error) {
 }
 
 func (a *mqlAwsNeptuneInstance) kmsKey() (*mqlAwsKmsKey, error) {
-	if a.KmsKeyId.Data == "" {
+	if a.cacheKmsKeyId == "" {
 		a.KmsKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
 	mqlKey, err := NewResource(a.MqlRuntime, ResourceAwsKmsKey,
 		map[string]*llx.RawData{
-			"arn": llx.StringData(a.KmsKeyId.Data),
+			"arn": llx.StringData(a.cacheKmsKeyId),
 		})
 	if err != nil {
 		return nil, err
@@ -378,7 +393,7 @@ func (a *mqlAwsNeptuneInstance) kmsKey() (*mqlAwsKmsKey, error) {
 }
 
 func (a *mqlAwsNeptuneInstance) monitoringRole() (*mqlAwsIamRole, error) {
-	arnVal := a.MonitoringRoleArn.Data
+	arnVal := a.cacheMonitoringRoleArn
 	if arnVal == "" {
 		a.MonitoringRole.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -452,6 +467,7 @@ func newMqlAwsNeptuneSnapshot(runtime *plugin.Runtime, region string, snapshot n
 }
 
 type mqlAwsNeptuneSnapshotInternal struct {
+	lazyTags
 	cacheKmsKeyId *string
 }
 
@@ -468,4 +484,42 @@ func (a *mqlAwsNeptuneSnapshot) kmsKey() (*mqlAwsKmsKey, error) {
 		return nil, err
 	}
 	return mqlKey.(*mqlAwsKmsKey), nil
+}
+
+func (a *mqlAwsNeptuneInstance) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Neptune(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &neptune.ListTagsForResourceInput{ResourceName: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("rds:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.TagList, func(t neptune_types.Tag) *string { return t.Key }, func(t neptune_types.Tag) *string { return t.Value }), nil
+	})
+}
+
+func (a *mqlAwsNeptuneSnapshot) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Neptune(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &neptune.ListTagsForResourceInput{ResourceName: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("rds:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.TagList, func(t neptune_types.Tag) *string { return t.Key }, func(t neptune_types.Tag) *string { return t.Value }), nil
+	})
 }

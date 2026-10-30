@@ -1,20 +1,54 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/together"
-option go_package = "go.mondoo.com/mql/v13/providers/together/resources"
+option go_package = "go.mondoo.com/mql/providers/together/resources"
+option root = "together"
 
 // Together AI account
 //
-// Examine a Together AI account including available models, fine-tuning
-// jobs, dedicated endpoint deployments, container deployments, uploaded
-// files, GPU clusters, secrets, batch jobs, evaluation jobs, and
-// persistent volumes.
-together @defaults("organization") @maturity("preview") {
-  // Project identifier passed via --project flag
+// Together AI account scoped to a single project, the entry point for
+// auditing an account's inference and training footprint. Reachable
+// through it are the available models catalog, fine-tuning jobs,
+// dedicated endpoint deployments, container deployments, uploaded
+// files, GPU compute clusters, cluster storage volumes, managed
+// secrets, batch inference jobs, evaluation jobs, persistent volumes,
+// and the projects the key can access. The organization and project the API key is scoped to are
+// reported by dedicated identity fields, all read back from the API
+// rather than taken from the connection settings.
+together @defaults("organization") @maturity("preview") @root {
+  // Organization the API key belongs to
+  //
+  // Human-readable name of the organization the API key authenticates
+  // as, reported by the account itself. Falls back to the organization
+  // identifier when the account carries no name. Use organizationId to
+  // key an audit on a stable identifier.
   organization() string
+  // Identifier of the organization that owns the project
+  organizationId() string
+  // Human-readable name of the organization that owns the project
+  organizationName() string
+  // Identifier of the project the API key is scoped to
+  projectId() string
+  // Human-readable name of the project the API key is scoped to
+  projectName() string
+  // Identifier of the API key that authenticated the connection
+  //
+  // Identifies which key a scan ran under, so a finding can be traced
+  // back to the credential that produced it and a key can be rotated
+  // or revoked by identifier without exposing the key material itself.
+  apiKeyId() string
+  // Identifier of the user the API key authenticates as
+  //
+  // Empty for an API key: the account reports a user only for a user
+  // session, not for a project or organization API key.
+  userId() string
   // Available models in the Together AI catalog
   models() []together.model
+  // Projects the API key can access
+  projects() []together.project
   // Fine-tuning jobs
   fineTunes() []together.fineTune
   // Dedicated endpoint deployments
@@ -25,6 +59,8 @@ together @defaults("organization") @maturity("preview") {
   files() []together.file
   // GPU compute clusters
   clusters() []together.cluster
+  // Shared storage volumes for GPU compute clusters
+  clusterStorageVolumes() []together.clusterStorageVolume
   // Managed secrets for deployments
   secrets() []together.secret
   // Batch inference jobs
@@ -37,12 +73,13 @@ together @defaults("organization") @maturity("preview") {
 
 // Together AI model
 //
-// Examine an available model in the Together AI catalog including its
-// type, creator organization, license, context window length, and
-// pricing. Models span chat, language, code, image, embedding,
-// moderation, and rerank types. Use `together.models.where(type == "chat")`
-// to filter by capability. AIBOM-relevant fields (`family`,
-// `parameterSize`, `quantization`) are parsed from the model identifier.
+// Together-hosted model from the supported-model catalog, including its
+// type, publisher, context window length, and serverless pricing.
+// Models span chat, language, code, image, embedding, moderation,
+// rerank, audio, video, and transcription types. Use
+// `together.models.where(type == "chat")` to filter by capability.
+// AIBOM-relevant fields (`family`, `parameterSize`, `quantization`) are
+// parsed from the model identifier.
 together.model @defaults("id type organization contextLength") @maturity("preview") {
   // Model identifier (e.g., "meta-llama/Llama-3.3-70B-Instruct-Turbo")
   id string
@@ -50,21 +87,36 @@ together.model @defaults("id type organization contextLength") @maturity("previe
   displayName string
   // Model type
   //
-  // One of chat, language, code, image, embedding, moderation, or rerank.
+  // One of chat, language, code, image, embedding, rerank, moderation,
+  // audio, video, or transcribe.
   type string
-  // Creator organization (e.g., "Meta", "Qwen", "Mistral")
+  // Publisher of the model (e.g., "Meta", "Qwen", "Mistral")
   organization string
   // Model license
-  license string
+  //
+  // Deprecated, please use the model card that `id` names on Hugging
+  // Face. The Together AI model catalog no longer reports a license, so
+  // this field is always null.
+  license @maturity("deprecated") string
   // Maximum context window length in tokens
+  //
+  // Null when the catalog reports no context length for the model.
   contextLength int
   // Reference URL for model documentation
-  link string
-  // Model creation time
+  //
+  // Deprecated, please use the model card that `id` names on Hugging
+  // Face. The Together AI model catalog no longer reports a
+  // documentation link, so this field is always null.
+  link @maturity("deprecated") string
+  // Time the model was added to the catalog
   created time
-  // Per-input-token price in USD
+  // Serverless price in USD per one million input tokens
+  //
+  // Null when the model is not offered on serverless inference.
   pricingInput float
-  // Per-output-token price in USD
+  // Serverless price in USD per one million output tokens
+  //
+  // Null when the model is not offered on serverless inference.
   pricingOutput float
   // Architecture family parsed from the model name (e.g., "Llama", "Qwen", "Mistral")
   family() string
@@ -72,14 +124,20 @@ together.model @defaults("id type organization contextLength") @maturity("previe
   parameterSize() string
   // Quantization level parsed from the model name if present (e.g., "fp8", "int4")
   quantization() string
-  // Model description derived from the display name
+  // Model description
+  //
+  // Description from the model catalog, or the display name when the
+  // catalog carries none.
   description() string
 }
 
 // Together AI fine-tuning job
 //
-// Examine a fine-tuning job including its status, base model, output model
-// name, training configuration, and cost. Use
+// Fine-tuning job that adapts a base model on your own training data,
+// including its lifecycle status, the base model, the resulting output
+// model name, training hyperparameters, token count, and billed cost.
+// Auditing these surfaces which custom models exist, how they were
+// trained, and their spend. Use
 // `together.fineTunes.where(status == "running")` to find active jobs.
 together.fineTune @defaults("id status model") @maturity("preview") {
   // Job identifier
@@ -114,36 +172,132 @@ together.fineTune @defaults("id status model") @maturity("preview") {
 
 // Together AI dedicated endpoint
 //
-// Examine a dedicated endpoint deployment including its state, hardware
-// allocation, autoscaling configuration, owner, and model served. Use
-// `together.endpoints.where(state == "STARTED")` to find active
-// endpoints.
-together.endpoint @defaults("name state model") @maturity("preview") {
+// Inference endpoint owned by the connection's project, covering its
+// serving class, who can discover it, the project that owns it, and the
+// deployments that serve its traffic. Use
+// `together.endpoints.where(visibility == "VISIBILITY_INTERNAL")` to find
+// endpoints shared with the whole organization, and `deployments` to
+// audit the model, state, and HIPAA placement of each deployment.
+together.endpoint @defaults("name type visibility") @maturity("preview") {
   // Endpoint identifier
   id string
   // Endpoint name
+  //
+  // Project-qualified name in the form `<project_slug>/<endpoint_name>`,
+  // which inference requests pass as the model.
   name string
   // Model served by this endpoint
-  model string
+  //
+  // Deprecated in favor of deployments, which report the model each
+  // deployment serves. An endpoint no longer carries a single model, so
+  // this field is always null.
+  model @maturity("deprecated") string
   // Endpoint state
   //
-  // One of PENDING, STARTING, STARTED, STOPPING, STOPPED, or ERROR.
-  state string
+  // Deprecated in favor of deployments, which report the state of each
+  // deployment. An endpoint no longer carries a single state, so this
+  // field is always null.
+  state @maturity("deprecated") string
   // Owner identifier
-  owner string
+  //
+  // Deprecated in favor of project. Endpoints are owned by a project
+  // rather than a user, so this field is always null.
+  owner @maturity("deprecated") string
   // Endpoint type
   //
-  // One of serverless or dedicated.
+  // One of serverless, dedicated, or reserved.
   type string
+  // Who can discover the endpoint
+  //
+  // One of VISIBILITY_PRIVATE, which restricts it to the project, or
+  // VISIBILITY_INTERNAL, which shares it with the organization.
+  visibility string
+  // Project that owns the endpoint
+  //
+  // Null when the project is not among the projects the API key can list.
+  project() together.project
+  // Deployments under the endpoint
+  deployments() []together.endpoint.deployment
   // Endpoint creation time
   createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Deployment of a Together AI dedicated endpoint
+//
+// Serving workload under an endpoint that binds a model and its
+// configuration to the endpoint's replicas. `hipaaRequired` reports
+// whether placement is restricted to HIPAA-attested clusters and
+// `inactiveTimeout` whether the deployment stops on its own when idle.
+// Use `together.endpoints.all(deployments.all(hipaaRequired == true))` to
+// hold a project to HIPAA-attested placement.
+private together.endpoint.deployment @defaults("name state model") @maturity("preview") {
+  // Deployment identifier
+  id string
+  // Deployment name
+  //
+  // Qualified name in the form
+  // `<project_slug>/<endpoint_name>/<deployment_name>`.
+  name string
+  // Model resource the deployment serves
+  //
+  // Resource name in the form
+  // `projects/{projectId}/models/{modelId}/revisions/{revisionId}`.
+  model string
+  // Deployment state
+  //
+  // One of DEPLOYMENT_STATE_PROVISIONING, DEPLOYMENT_STATE_READY,
+  // DEPLOYMENT_STATE_SCALING, DEPLOYMENT_STATE_DEGRADED,
+  // DEPLOYMENT_STATE_FAILED, DEPLOYMENT_STATE_STOPPED, or
+  // DEPLOYMENT_STATE_STOPPING.
+  state string
+  // Human-readable explanation of the current state
+  statusMessage string
+  // Whether the deployment serves live or only mirrored shadow traffic
+  //
+  // One of TRAFFIC_MODE_LIVE or TRAFFIC_MODE_SHADOW.
+  trafficMode string
+  // Hardware selected by the deployment configuration, including GPU type and count
+  hardware string
+  // Number of replicas the autoscaler currently wants
+  desiredReplicas int
+  // Number of replicas serving traffic
+  readyReplicas int
+  // Minutes without an inference request before the deployment stops
+  //
+  // Zero means the deployment never stops on its own.
+  inactiveTimeout int
+  // Whether placement is restricted to HIPAA-attested clusters
+  //
+  // False when the deployment carries no placement restriction. Null
+  // when the deployment is placed through a saved placement profile,
+  // whose compliance policy the deployment does not report.
+  hipaaRequired bool
+  // Saved placement profile the deployment is scheduled with
+  //
+  // Null when the deployment carries its placement inline or has none.
+  placementProfile string
+  // Regions the deployment is allowed to run in
+  //
+  // Empty when the deployment carries no region restriction. Null when
+  // the deployment is placed through a saved placement profile.
+  placementRegions []string
+  // Deployment creation time
+  createdAt time
+  // Last update time
+  updatedAt time
 }
 
 // Together AI uploaded file
 //
-// Examine an uploaded file used for fine-tuning, evaluation, or batch
-// processing. Inspect `purpose` and `filename` to audit what training
-// data has been uploaded to the account.
+// File uploaded to a Together AI account for fine-tuning, evaluation,
+// or batch processing. The `purpose` field records what the file is
+// used for and `filename` preserves the original name, so together
+// they let you audit exactly what training and evaluation data has
+// been sent to the account. `fileType` and `bytes` describe the
+// stored payload, and `processed` reports whether ingestion has
+// completed.
 together.file @defaults("id filename purpose") @maturity("preview") {
   // File identifier
   id string
@@ -151,7 +305,7 @@ together.file @defaults("id filename purpose") @maturity("preview") {
   filename string
   // File purpose
   //
-  // One of fine-tune, eval, or batch-api.
+  // One of fine-tune, eval, batch-api, or calibration.
   purpose string
   // File type
   //
@@ -160,17 +314,28 @@ together.file @defaults("id filename purpose") @maturity("preview") {
   // File size in bytes
   bytes int
   // Whether the file has been processed
+  //
+  // True once validation has completed. Null when the file reports no
+  // processing status, as a file whose purpose skips validation does.
   processed bool
+  // Lifecycle state of the file validation pipeline
+  //
+  // One of PENDING, QUEUED, RUNNING, COMPLETED, FAILED, or
+  // INVALID_FORMAT. Null when the file reports no processing status.
+  processingStatus string
   // Upload time
   createdAt time
 }
 
 // Together AI GPU compute cluster
 //
-// Examine a GPU compute cluster including its GPU type, node count,
-// region, billing type, and OIDC configuration. Use
-// `together.clusters.where(status == "RUNNING")` to find active
-// clusters or inspect `oidcIssuer` for identity federation auditing.
+// GPU compute cluster provisioned through Together AI, covering its
+// GPU type, node count, region, billing type, OIDC configuration, the
+// management surfaces deployed alongside it, and the nodes it runs on.
+// Use `together.clusters.where(status == "Ready")` to find active
+// clusters, `kubernetesDashboardEnabled` and `jumphostEnabled` to find
+// administrative entry points into a cluster, and `nodes` to find
+// machines that answer on a public address.
 together.cluster @defaults("name gpuType numGpus region status") @maturity("preview") {
   // Cluster identifier
   id string
@@ -182,13 +347,18 @@ together.cluster @defaults("name gpuType numGpus region status") @maturity("prev
   clusterType string
   // GPU hardware type
   //
-  // One of H100_SXM, H200_SXM, RTX_6000_PCI, L40_PCIE, B200_SXM, or H100_SXM_INF.
+  // One of H100_SXM, H200_SXM, RTX_6000_PCI, L40_PCIE, B200_SXM, H100_SXM_INF, or B300_SXM.
   gpuType string
   // Total number of GPUs in the cluster
   numGpus int
   // Cluster region
   region string
   // Cluster status
+  //
+  // One of WaitingForControlPlaneNodes, WaitingForDataPlaneNodes,
+  // WaitingForSubnet, WaitingForSharedVolume, InstallingDrivers,
+  // RunningAcceptanceTests, Paused, OnDemandComputePaused, Ready,
+  // Degraded, or Deleting.
   status string
   // Billing type
   //
@@ -206,21 +376,138 @@ together.cluster @defaults("name gpuType numGpus region status") @maturity("prev
   oidcIssuer string
   // OIDC client ID
   oidcClientId string
+  // Token claim the cluster reads group membership from
+  //
+  // Name of the claim carrying a user's groups, such as groups. Group
+  // role bindings on the cluster match nothing when the claim is unset
+  // or names a claim the identity provider does not assert, which
+  // leaves the bindings in place and silently unmatched. Null when the
+  // cluster reports no OIDC configuration.
+  oidcGroupClaim string
+  // Prefix added to every group name taken from the group claim
+  //
+  // Prefix such as oidc: that the cluster prepends to a group name
+  // before matching it against a role binding. A binding written
+  // against the unprefixed name does not match. Null when the cluster
+  // reports no OIDC configuration.
+  oidcGroupPrefix string
+  // Token claim the cluster reads the username from
+  //
+  // Name of the claim used as the username, such as sub or email. Null
+  // when the cluster reports no OIDC configuration.
+  oidcUsernameClaim string
+  // Prefix added to the username taken from the username claim
+  //
+  // Prefix such as oidc: that the cluster prepends to a username before
+  // matching it against a role binding. Null when the cluster reports
+  // no OIDC configuration.
+  oidcUsernamePrefix string
+  // Whether the Kubernetes dashboard runs on the cluster
+  //
+  // The dashboard is a web console with the permissions of the service
+  // account it runs as, so on a cluster holding model weights and
+  // training data it is an administrative entry point worth accounting
+  // for. Null when the cluster reports no configuration block.
+  kubernetesDashboardEnabled bool
+  // Whether a jumphost is deployed for the cluster
+  //
+  // A jumphost is a reachable host from which the cluster network can
+  // be entered. Null when the cluster reports no configuration block.
+  jumphostEnabled bool
+  // Whether SSH access is brokered by the cluster certificate authority
+  //
+  // True when the cluster runs its own SSH certificate authority and
+  // signs access with OIDC identities, so access follows the identity
+  // provider. False means SSH access rests on keys the cluster does not
+  // broker. Null when the cluster reports no configuration block.
+  sshCaEnabled bool
+  // Load balancer deployed on the cluster
+  //
+  // One of NONE, TRAEFIK, NGINX, or ISTIO. Null when the cluster
+  // reports no configuration block.
+  loadBalancer string
+  // Whether ingress is enabled on the cluster
+  //
+  // True when the cluster accepts inbound traffic through its ingress
+  // configuration. Null when the cluster reports no ingress settings.
+  ingressEnabled bool
+  // Nodes that make up the cluster
+  //
+  // Both the GPU workers and the control plane nodes currently in the
+  // cluster, in one list. Nodes that have left the cluster are not
+  // included.
+  nodes []together.cluster.node
   // Cluster creation time
   createdAt time
   // Reservation start time
   reservationStartTime time
   // Reservation end time
   reservationEndTime time
-  // Persistent storage volumes attached to this cluster
-  storageVolumes() []together.clusterStorageVolume
+}
+
+// Node of a Together AI GPU compute cluster
+//
+// Single machine belonging to a GPU compute cluster, covering both the
+// GPU workers that run the workload and the control plane nodes that
+// run the cluster itself. The `role` field tells the two apart, and
+// `isPublic` reports whether the node answers on a public address: a
+// GPU worker holding model weights and a control plane node fronting
+// the cluster API are both worth finding that way. Use
+// `together.clusters.all(nodes.none(isPublic))` to hold an account to
+// clusters with no publicly addressed machines. Fields that only a GPU
+// worker reports, such as `numGpus` and `instanceId`, are null on a
+// control plane node.
+private together.cluster.node @defaults("hostname role status isPublic") @maturity("preview") {
+  // Node identifier
+  id string
+  // Node hostname
+  hostname string
+  // Part the node plays in the cluster
+  //
+  // One of GPU_WORKER or CONTROL_PLANE.
+  role string
+  // Node status
+  status string
+  // Public IPv4 address of the node
+  //
+  // Empty when the node carries no public address.
+  publicIpv4 string
+  // Whether the node is reachable from the internet
+  //
+  // True when the node carries a public IPv4 address.
+  isPublic() bool
+  // Networks the node is attached to
+  networks []string
+  // Memory in GiB
+  memoryGib float
+  // Number of CPU cores
+  numCpuCores int
+  // Number of GPUs on the node
+  //
+  // Null on a control plane node, which reports no GPU count.
+  numGpus int
+  // Identifier of the instance backing the node
+  //
+  // Null on a control plane node, which reports no instance.
+  instanceId string
+  // Whether the node is replaced automatically when it fails
+  //
+  // Null when the node reports no auto remediation setting, as a
+  // control plane node does.
+  autoRemediationEnabled bool
+  // Whether the node is marked for deletion
+  //
+  // Null when the node reports no deletion marking, as a control plane
+  // node does.
+  markedForDeletion bool
 }
 
 // Together AI managed secret
 //
-// Examine a managed secret used in deployments. Secrets can be
-// referenced by environment variables in deployment configurations.
-// Inspect `name` and `createdBy` to audit secret ownership.
+// Managed secret used in deployments, referenced by environment
+// variables in deployment configurations. The `name` and `createdBy`
+// fields let you audit secret ownership, and `lastUpdatedBy` together
+// with `updatedAt` reveals who last changed the secret and when.
 together.secret @defaults("id name") @maturity("preview") {
   // Secret identifier
   id string
@@ -240,8 +527,13 @@ together.secret @defaults("id name") @maturity("preview") {
 
 // Together AI cluster storage volume
 //
-// Examine a persistent storage volume attached to a GPU cluster. Inspect
-// `sizeTib` for capacity auditing and `status` for availability.
+// Shared storage volume available to a Together AI account's GPU compute
+// clusters, scoped to the connection's project rather than owned by a
+// single cluster. Volumes back model checkpoints, datasets, and scratch
+// space for cluster workloads, so tracking their capacity and lifecycle
+// state matters for both cost and availability. The `sizeTib` field
+// reports provisioned capacity in TiB, and `status` reports where the
+// volume sits in its provisioning and binding lifecycle.
 private together.clusterStorageVolume @defaults("volumeName sizeTib status") @maturity("preview") {
   // Volume identifier
   volumeId string
@@ -257,11 +549,11 @@ private together.clusterStorageVolume @defaults("volumeName sizeTib status") @ma
 
 // Together AI container deployment
 //
-// Examine a container deployment (Jig) including its image, GPU allocation,
-// autoscaling configuration, environment variable names, and health check
-// settings. Deployments are full container workloads that can run custom
-// images with GPU acceleration. Use
-// `together.deployments.where(status == "Ready")` to find active deployments
+// Container deployment (Jig) that runs a custom image as a full container
+// workload with GPU acceleration, covering the container image, GPU
+// allocation, autoscaling bounds, configured environment variable names, and
+// health check settings. Query
+// `together.deployments.where(status == "Ready")` to find active deployments,
 // or inspect `image` for container supply chain auditing.
 together.deployment @defaults("name status image gpuType") @maturity("preview") {
   // Deployment identifier
@@ -310,10 +602,10 @@ together.deployment @defaults("name status image gpuType") @maturity("preview") 
 
 // Together AI batch inference job
 //
-// Examine a batch inference job including its status, model, progress, and
-// associated input/output files. Use
-// `together.batches.where(status == "IN_PROGRESS")` to find running jobs or
-// inspect `modelId` to audit which models are being used for batch inference.
+// Batch inference job including its status, model, progress, and associated
+// input/output files. Use `together.batches.where(status == "IN_PROGRESS")`
+// to find running jobs or inspect `modelId` to audit which models are being
+// used for batch inference.
 together.batch @defaults("id status modelId") @maturity("preview") {
   // Job identifier
   id string
@@ -347,9 +639,11 @@ together.batch @defaults("id status modelId") @maturity("preview") {
 
 // Together AI evaluation job
 //
-// Examine an evaluation job including its type, status, and owner. Use
-// `together.evals.where(status == "running")` to find active evaluations or
-// inspect `type` to see what kind of evaluation was performed.
+// Evaluation job run against a model, covering the evaluation `type`
+// (classify, score, or compare), its lifecycle `status`, the owning
+// account, and creation/update timestamps. Query these to audit which
+// evaluations ran, who launched them, and whether any are still active,
+// for example `together.evals.where(status == "running")`.
 together.eval @defaults("workflowId type status") @maturity("preview") {
   // Evaluation workflow identifier
   workflowId string
@@ -371,9 +665,10 @@ together.eval @defaults("workflowId type status") @maturity("preview") {
 
 // Together AI persistent volume
 //
-// Examine a persistent volume used by container deployments. Volumes provide
-// file storage that persists across deployment restarts. Inspect `mountedBy`
-// to see which deployments use a volume or `type` for access mode auditing.
+// Persistent volume that container deployments mount for file storage that
+// survives deployment restarts. The `mountedBy` field lists the deployments
+// currently attached to the volume, and `type` reports its access mode for
+// auditing.
 together.volume @defaults("id name type") @maturity("preview") {
   // Volume identifier
   id string
@@ -391,4 +686,24 @@ together.volume @defaults("id name type") @maturity("preview") {
   createdAt time
   // Last update time
   updatedAt time
+}
+
+// Together AI project
+//
+// Project the API key can access, with its display name, slug, and the
+// organization that owns it. Projects scope endpoints, models, clusters,
+// and storage, so the list shows how far a key's reach extends beyond
+// the project it is scoped to. Use `together.projects.length` to find
+// keys that reach more than one project.
+together.project @defaults("name slug organizationName") @maturity("preview") {
+  // Project identifier
+  id string
+  // Project display name
+  name string
+  // Customer-facing project slug
+  slug string
+  // Identifier of the organization that owns the project
+  organizationId string
+  // Display name of the organization that owns the project
+  organizationName string
 }

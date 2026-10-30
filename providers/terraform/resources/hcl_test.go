@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/terraform/connection"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/terraform/connection"
 )
 
 func blockWithLabels(labels ...string) *mqlTerraformBlock {
@@ -167,6 +167,79 @@ subnet_id_by_az_suffix = {
 		"result should reference data.aws_subnet.ec2, got: %#v", v)
 }
 
+// TestGetCtyValue_JsonencodeList is a regression test for #9079: a top-level
+// `jsonencode([...])` list argument decoded into a map[string]any, which fails
+// for a JSON array, leaving the argument empty so a check iterating the encoded
+// list passed vacuously. The encoded list must surface as an iterable list.
+func TestGetCtyValue_JsonencodeList(t *testing.T) {
+	attrs := parseAttrs(t, `container_definitions = jsonencode([{ name = "app", image = "x", privileged = true }])`)
+	got, err := hclResolvedAttributesToDict(attrs, nil)
+	require.NoError(t, err)
+
+	list, ok := got["container_definitions"].([]any)
+	require.True(t, ok, "expected a list, got: %#v", got["container_definitions"])
+	require.Len(t, list, 1)
+	elem, ok := list[0].(map[string]any)
+	require.True(t, ok, "expected a map element, got: %#v", list[0])
+	assert.Equal(t, "app", elem["name"])
+	assert.Equal(t, true, elem["privileged"])
+}
+
+// TestGetCtyValue_JsonencodeMap verifies the object form still resolves
+// (list-wrapped, indexable via `.first`) after the list fix.
+func TestGetCtyValue_JsonencodeMap(t *testing.T) {
+	attrs := parseAttrs(t, `policy = jsonencode({ Version = "2012-10-17", Effect = "Allow" })`)
+	got, err := hclResolvedAttributesToDict(attrs, nil)
+	require.NoError(t, err)
+
+	list, ok := got["policy"].([]any)
+	require.True(t, ok, "expected a list-wrapped map, got: %#v", got["policy"])
+	require.Len(t, list, 1)
+	elem, ok := list[0].(map[string]any)
+	require.True(t, ok, "expected a map element, got: %#v", list[0])
+	assert.Equal(t, "Allow", elem["Effect"])
+}
+
+// TestGetCtyValue_JsonencodeWithReference verifies that a jsonencode()
+// argument that references another resource still surfaces its document: the
+// call cannot be evaluated statically, and the argument used to come back empty.
+func TestGetCtyValue_JsonencodeWithReference(t *testing.T) {
+	attrs := parseAttrs(t, `configuration = jsonencode({
+  EncryptionConfiguration = {
+    EnableAtRestEncryption = true
+    AwsKmsKey              = aws_kms_key.k.arn
+  }
+})`)
+	got, err := hclResolvedAttributesToDict(attrs, nil)
+	require.NoError(t, err)
+
+	list, ok := got["configuration"].([]any)
+	require.True(t, ok, "expected a list-wrapped map, got: %#v", got["configuration"])
+	require.Len(t, list, 1)
+	elem, ok := list[0].(map[string]any)
+	require.True(t, ok, "expected a map element, got: %#v", list[0])
+	enc, ok := elem["EncryptionConfiguration"].(map[string]any)
+	require.True(t, ok, "expected the nested object, got: %#v", elem["EncryptionConfiguration"])
+	assert.Equal(t, true, enc["EnableAtRestEncryption"])
+	assert.Equal(t, "aws_kms_key.k.arn", enc["AwsKmsKey"])
+}
+
+// TestGetCtyValue_JsonencodeListWithReference verifies the list form with a
+// reference stays an iterable list of its elements.
+func TestGetCtyValue_JsonencodeListWithReference(t *testing.T) {
+	attrs := parseAttrs(t, `container_definitions = jsonencode([{ name = "app", image = aws_ecr_repository.r.repository_url, privileged = true }])`)
+	got, err := hclResolvedAttributesToDict(attrs, nil)
+	require.NoError(t, err)
+
+	list, ok := got["container_definitions"].([]any)
+	require.True(t, ok, "expected a list, got: %#v", got["container_definitions"])
+	require.Len(t, list, 1)
+	elem, ok := list[0].(map[string]any)
+	require.True(t, ok, "expected a map element, got: %#v", list[0])
+	assert.Equal(t, true, elem["privileged"])
+	assert.Equal(t, "aws_ecr_repository.r.repository_url", elem["image"])
+}
+
 // TestGetCtyValue_ConditionalExpr_UnboundVars verifies that ternaries
 // involving unbound variables return the references in the branches instead
 // of an empty list.
@@ -185,9 +258,40 @@ func TestGetCtyValue_ConditionalExpr_UnboundVars(t *testing.T) {
 		"result should reference data.aws_ami.shared_image.id, got: %#v", v)
 }
 
+// TestGetCtyValue_NegativeNumber is a regression test for #9080: a negative
+// numeric literal parses as a unary-negate op wrapping a number literal, and
+// must retain its sign instead of collapsing to the positive magnitude (which
+// broke checks comparing against a negative sentinel, e.g. Lambda's `-1`
+// "unreserved" value or a security-group protocol of `-1`).
+func TestGetCtyValue_NegativeNumber(t *testing.T) {
+	attrs := parseAttrs(t, `reserved_concurrent_executions = -1`)
+	got, err := hclResolvedAttributesToDict(attrs, nil)
+	require.NoError(t, err)
+	assert.Equal(t, float64(-1), got["reserved_concurrent_executions"])
+}
+
+// TestGetCtyValue_LogicalNot verifies the other unary operator (`!`) is applied
+// rather than dropped.
+func TestGetCtyValue_LogicalNot(t *testing.T) {
+	attrs := parseAttrs(t, `disabled = !true`)
+	got, err := hclResolvedAttributesToDict(attrs, nil)
+	require.NoError(t, err)
+	assert.Equal(t, false, got["disabled"])
+}
+
+// TestGetCtyValue_UnaryOp_UnboundOperand verifies a unary op over an unbound
+// operand (e.g. `-var.x`) still surfaces the operand's references instead of
+// failing, preserving the reference-surfacing fallback.
+func TestGetCtyValue_UnaryOp_UnboundOperand(t *testing.T) {
+	attrs := parseAttrs(t, `capacity = -var.desired_capacity`)
+	got, err := hclResolvedAttributesToDict(attrs, nil)
+	require.NoError(t, err)
+	assert.True(t, containsString(got["capacity"], "var.desired_capacity"),
+		"result should reference var.desired_capacity, got: %#v", got["capacity"])
+}
+
 // resolvingCtx builds an eval context with resolved var.*/local.* values,
-// mimicking what Connection.VariableEvalContext produces when the
-// TerraformResolveVars feature flag is active.
+// mimicking what Connection.VariableEvalContext produces for an HCL asset.
 func resolvingCtx(vars, locals map[string]cty.Value) *hcl.EvalContext {
 	ctx := &hcl.EvalContext{Functions: hclFunctions(), Variables: map[string]cty.Value{}}
 	if len(vars) > 0 {
@@ -332,6 +436,28 @@ func TestGetCtyValue_StaticTernaryStillEvaluates(t *testing.T) {
 		"static ternary should evaluate to 'yes', got: %#v", got["pick"])
 }
 
+// TestGetCtyValue_BoolTernary_Resolved is a regression test for #9078: a
+// ternary that resolves to a non-string (the natural `... ? true : false`
+// output) used to fall through to reference-surfacing and return the branch
+// list instead of the scalar, so a `!= true` scalar-equality check never
+// matched. With var defaults in the context it must resolve to the scalar.
+func TestGetCtyValue_BoolTernary_Resolved(t *testing.T) {
+	attrs := parseAttrs(t, `privileged_mode = var.privileged ? true : false`)
+	ctx := resolvingCtx(map[string]cty.Value{"privileged": cty.True}, nil)
+	got, err := hclResolvedAttributesToDict(attrs, ctx)
+	require.NoError(t, err)
+	assert.Equal(t, true, got["privileged_mode"])
+}
+
+// TestGetCtyValue_StaticBoolTernary verifies a statically-knowable bool ternary
+// resolves to the scalar even without any variable context.
+func TestGetCtyValue_StaticBoolTernary(t *testing.T) {
+	attrs := parseAttrs(t, `enabled = true ? false : true`)
+	got, err := hclResolvedAttributesToDict(attrs, nil)
+	require.NoError(t, err)
+	assert.Equal(t, false, got["enabled"])
+}
+
 // TestHclAttributesToDict_NoUnknownTypeWarning regression-tests the customer
 // case: parsing a file with for-expressions, conditionals and index
 // expressions must not panic, must not return nil for any attribute, and
@@ -463,4 +589,124 @@ resource "google_sql_database_instance" "example" {
 	require.Len(t, flags, 2)
 	assert.Equal(t, "skip_show_database", flags[0].(map[string]any)["name"])
 	assert.Equal(t, "local_infile", flags[1].(map[string]any)["name"])
+}
+
+// TestKeyScalarToString covers every scalar kind an evaluated object key can
+// take. A number/bool/null key used to reach a bare `key.(string)` assertion in
+// GetKeyString and panic; each kind must now stringify (or empty) instead.
+func TestKeyScalarToString(t *testing.T) {
+	assert.Equal(t, "http", keyScalarToString("http"))
+	assert.Equal(t, "8080", keyScalarToString(float64(8080)))
+	assert.Equal(t, "8080.5", keyScalarToString(float64(8080.5)))
+	assert.Equal(t, "42", keyScalarToString(int64(42)))
+	assert.Equal(t, "true", keyScalarToString(true))
+	assert.Equal(t, "false", keyScalarToString(false))
+	assert.Equal(t, "", keyScalarToString(nil))
+}
+
+// TestGetKeyString covers the container branches of GetKeyString, including a
+// []any that holds non-string scalars (which previously panicked on the
+// v[i].(string) assertion).
+func TestGetKeyString(t *testing.T) {
+	assert.Equal(t, "keytest", GetKeyString("keytest"))
+	assert.Equal(t, "key,thing", GetKeyString([]string{"key", "thing"}))
+	assert.Equal(t, "keything", GetKeyString([]any{"key", "thing"}))
+	assert.Equal(t, "a8080true", GetKeyString([]any{"a", float64(8080), true}))
+	assert.Equal(t, "8080", GetKeyString(float64(8080)))
+	assert.Equal(t, "", GetKeyString(nil))
+}
+
+// TestGetCtyValue_ObjectNumericKey is a regression test: a map literal with a
+// numeric key (e.g. `{ 8080 = "http" }`, common in port/priority maps) is valid
+// HCL whose key evaluates to a number. GetKeyString used to assert it as a
+// string and panic, and because query blocks run in goroutines that panic
+// crashes the whole scan. The key must stringify and the object must resolve.
+func TestGetCtyValue_ObjectNumericKey(t *testing.T) {
+	attrs := parseAttrs(t, `ports = { 8080 = "http", 443 = "https" }`)
+	got, err := hclResolvedAttributesToDict(attrs, nil)
+	require.NoError(t, err)
+
+	m, ok := got["ports"].(map[string]any)
+	require.True(t, ok, "ports should be a map, got %#v", got["ports"])
+	assert.Equal(t, "http", m["8080"])
+	assert.Equal(t, "https", m["443"])
+}
+
+// TestGetCtyValue_ObjectResolvedScalarKey verifies the same panic path is safe
+// when variable resolution turns a `{ (var.x) = ... }` key into a real scalar.
+func TestGetCtyValue_ObjectResolvedScalarKey(t *testing.T) {
+	attrs := parseAttrs(t, `m = { (var.port) = "http" }`)
+	ctx := resolvingCtx(map[string]cty.Value{
+		"port": cty.NumberIntVal(8080),
+	}, nil)
+	got, err := hclResolvedAttributesToDict(attrs, ctx)
+	require.NoError(t, err)
+
+	m, ok := got["m"].(map[string]any)
+	require.True(t, ok, "m should be a map, got %#v", got["m"])
+	assert.Equal(t, "http", m["8080"])
+}
+
+// TestHclBodyToValuesDict_DynamicBlockExpanded verifies that values() expands a
+// `dynamic "X"` block into the `X` blocks it generates, matching how Terraform
+// plan/state expose the already-expanded blocks. Without this a policy written
+// as values["ingress"] silently sees nothing on an HCL asset while matching on
+// the plan/state asset.
+func TestHclBodyToValuesDict_DynamicBlockExpanded(t *testing.T) {
+	body := resourceBody(t, `
+resource "aws_security_group" "example" {
+  name = "example"
+
+  dynamic "ingress" {
+    for_each = var.rules
+    content {
+      from_port = ingress.value.port
+      protocol  = "tcp"
+    }
+  }
+}
+`)
+
+	values, err := hclBodyToValuesDict(body, nil)
+	require.NoError(t, err)
+
+	// The dynamic wrapper must not leak through as a "dynamic" key.
+	_, hasDynamic := values["dynamic"]
+	assert.False(t, hasDynamic, "dynamic wrapper should be expanded, got keys %#v", values)
+
+	ingress, ok := values["ingress"].([]any)
+	require.True(t, ok, "ingress should be []any, got %#v", values["ingress"])
+	require.Len(t, ingress, 1)
+	assert.Equal(t, "tcp", ingress[0].(map[string]any)["protocol"])
+}
+
+// TestHclBodyToValuesDict_DynamicBlockNested verifies a dynamic block nested
+// inside a static block also expands to its real type.
+func TestHclBodyToValuesDict_DynamicBlockNested(t *testing.T) {
+	body := resourceBody(t, `
+resource "aws_appautoscaling_policy" "example" {
+  step_scaling_policy_configuration {
+    dynamic "step_adjustment" {
+      for_each = var.steps
+      content {
+        scaling_adjustment = step_adjustment.value.adjustment
+      }
+    }
+  }
+}
+`)
+
+	values, err := hclBodyToValuesDict(body, nil)
+	require.NoError(t, err)
+
+	cfg, ok := values["step_scaling_policy_configuration"].([]any)
+	require.True(t, ok)
+	require.Len(t, cfg, 1)
+
+	inner := cfg[0].(map[string]any)
+	_, hasDynamic := inner["dynamic"]
+	assert.False(t, hasDynamic, "nested dynamic wrapper should be expanded, got %#v", inner)
+	steps, ok := inner["step_adjustment"].([]any)
+	require.True(t, ok, "step_adjustment should be []any, got %#v", inner["step_adjustment"])
+	require.Len(t, steps, 1)
 }

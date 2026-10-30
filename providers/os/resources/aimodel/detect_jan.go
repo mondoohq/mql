@@ -14,8 +14,9 @@ import (
 // JanDetector discovers models managed by Jan (~/jan/models). Each model lives
 // in its own subdirectory and optionally contains a model.json with rich
 // metadata: name, version, description, license, tags, publisher, and format.
-// Quantization is extracted from GGUF filenames in the directory; parameter
-// size is extracted from the model name via regex.
+// Quantization is extracted from GGUF filenames in the directory. The
+// parameter size is the general.size_label of the model's GGUF file, falling
+// back to a count the model name states.
 type JanDetector struct{}
 
 type janModelMeta struct {
@@ -41,7 +42,7 @@ type janModelPublisher struct {
 }
 
 func (d *JanDetector) Detect(ctx DetectContext) []ModelInfo {
-	modelsDir := filepath.Join(ctx.Home, "jan", "models")
+	modelsDir := joinPath(ctx.Home, "jan", "models")
 	entries, err := ctx.Fs.ReadDir(modelsDir)
 	if err != nil {
 		return nil
@@ -52,7 +53,7 @@ func (d *JanDetector) Detect(ctx DetectContext) []ModelInfo {
 		if !e.IsDir() {
 			continue
 		}
-		modelDir := filepath.Join(modelsDir, e.Name())
+		modelDir := joinPath(modelsDir, e.Name())
 
 		name := e.Name()
 		format := "unknown"
@@ -62,7 +63,7 @@ func (d *JanDetector) Detect(ctx DetectContext) []ModelInfo {
 		license := ""
 		var tags []string
 
-		metaPath := filepath.Join(modelDir, "model.json")
+		metaPath := joinPath(modelDir, "model.json")
 		if data, err := ctx.Fs.ReadFile(metaPath); err == nil {
 			var meta janModelMeta
 			if json.Unmarshal(data, &meta) == nil {
@@ -102,10 +103,12 @@ func (d *JanDetector) Detect(ctx DetectContext) []ModelInfo {
 			}
 		}
 
-		paramSize := ""
-		if pm := reParamSize.FindStringSubmatch(name); len(pm) > 1 {
-			paramSize = pm[1] + "B"
+		// The first GGUF file in the directory carries the size label.
+		var gguf []string
+		if files := findGGUFFiles(ctx.Fs, modelDir); len(files) > 0 {
+			gguf = []string{files[0].path}
 		}
+		paramSize := parameterSizeFromGGUF(ctx.Fs, gguf, name)
 
 		totalSize, modTime := dirSizeRecursive(ctx.Fs, modelDir)
 
@@ -123,6 +126,8 @@ func (d *JanDetector) Detect(ctx DetectContext) []ModelInfo {
 			License:       license,
 			Tags:          tags,
 			Description:   description,
+
+			UnsafeSerialization: unsafeSerialization(ctx.Fs, weightFiles(ctx.Fs, modelDir, 1)),
 		})
 	}
 	return results

@@ -6,8 +6,8 @@ package resources
 import (
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/proxmox/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/proxmox/connection"
 )
 
 func proxmoxConn(r *mqlProxmox) *connection.PveConnection {
@@ -108,7 +108,7 @@ func (r *mqlProxmox) storages() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return storageInfoToResources(r.MqlRuntime, storages)
+	return storageInfoToResources(r.MqlRuntime, storages, "")
 }
 
 func (r *mqlProxmox) pools() ([]any, error) {
@@ -139,12 +139,7 @@ func (r *mqlProxmox) users() ([]any, error) {
 	}
 	list := make([]any, len(users))
 	for i, u := range users {
-		var groups []any
-		if u.Groups != "" {
-			for _, g := range strings.Split(u.Groups, ",") {
-				groups = append(groups, g)
-			}
-		}
+		groups := splitProxmoxGroups(u.Groups)
 		realm := ""
 		if parts := strings.SplitN(u.UserID, "@", 2); len(parts) == 2 {
 			realm = parts[1]
@@ -156,7 +151,6 @@ func (r *mqlProxmox) users() ([]any, error) {
 			"expire":         llx.IntData(u.Expire),
 			"firstname":      llx.StringData(u.Firstname),
 			"lastname":       llx.StringData(u.Lastname),
-			"groups":         llx.ArrayData(groups, "\x02"),
 			"realm":          llx.StringData(realm),
 			"realmType":      llx.StringData(u.RealmType),
 			"tfaLockedUntil": llx.IntData(u.TFALockedUntil),
@@ -184,6 +178,7 @@ func (r *mqlProxmox) users() ([]any, error) {
 		}
 		mqlUser.cachedTokens = tokens
 		mqlUser.cachedTokensSet = true
+		mqlUser.cachedGroups = groups
 		list[i] = res
 	}
 	return list, nil

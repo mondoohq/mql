@@ -46,75 +46,6 @@ func TestBatchJobTimeoutNullState(t *testing.T) {
 	})
 }
 
-func TestBatchContainerPropertiesDict(t *testing.T) {
-	t.Run("nil cache returns nil dict", func(t *testing.T) {
-		jd := &mqlAwsBatchJobDefinition{}
-		result, err := jd.containerProperties()
-		require.NoError(t, err)
-		assert.Nil(t, result)
-	})
-
-	t.Run("non-nil cache returns dict", func(t *testing.T) {
-		jd := &mqlAwsBatchJobDefinition{}
-		jd.cacheContainerProperties = &batch_types.ContainerProperties{
-			Image:   aws.String("alpine:latest"),
-			Command: []string{"echo", "hello"},
-		}
-		result, err := jd.containerProperties()
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		dict, ok := result.(map[string]any)
-		require.True(t, ok)
-		assert.Equal(t, "alpine:latest", dict["Image"])
-	})
-}
-
-func TestBatchRetryStrategyDict(t *testing.T) {
-	t.Run("nil cache returns nil dict", func(t *testing.T) {
-		jd := &mqlAwsBatchJobDefinition{}
-		result, err := jd.retryStrategy()
-		require.NoError(t, err)
-		assert.Nil(t, result)
-	})
-
-	t.Run("non-nil cache returns dict", func(t *testing.T) {
-		jd := &mqlAwsBatchJobDefinition{}
-		attempts := int32(3)
-		jd.cacheRetryStrategy = &batch_types.RetryStrategy{
-			Attempts: &attempts,
-		}
-		result, err := jd.retryStrategy()
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		dict, ok := result.(map[string]any)
-		require.True(t, ok)
-		assert.Equal(t, float64(3), dict["Attempts"])
-	})
-}
-
-func TestBatchTimeoutDict(t *testing.T) {
-	t.Run("nil cache returns nil dict", func(t *testing.T) {
-		jd := &mqlAwsBatchJobDefinition{}
-		result, err := jd.timeout()
-		require.NoError(t, err)
-		assert.Nil(t, result)
-	})
-
-	t.Run("non-nil cache returns dict", func(t *testing.T) {
-		jd := &mqlAwsBatchJobDefinition{}
-		dur := int32(600)
-		jd.cacheTimeout = &batch_types.JobTimeout{
-			AttemptDurationSeconds: &dur,
-		}
-		result, err := jd.timeout()
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		dict, ok := result.(map[string]any)
-		require.True(t, ok)
-		assert.Equal(t, float64(600), dict["AttemptDurationSeconds"])
-	})
-}
-
 func TestTimeFromBatchMillis(t *testing.T) {
 	// Batch API returns *int64 milliseconds. nil and 0 must produce nil so
 	// runtime applies StateIsNull (avoids surfacing fabricated 1970 timestamps).
@@ -162,7 +93,7 @@ func TestBatchChildID(t *testing.T) {
 		// Assert every index through 64 produces a distinct ASCII-safe id.
 		const base = "parent/kind"
 		seen := make(map[string]struct{}, 64)
-		for i := 0; i < 64; i++ {
+		for i := range 64 {
 			id := batchChildID(base, "", i)
 			_, dup := seen[id]
 			require.False(t, dup, "duplicate __id for index %d: %q", i, id)
@@ -176,14 +107,15 @@ func TestBatchChildID(t *testing.T) {
 		const n = 50
 		const base = "pod/container"
 		ids := make(map[string]struct{}, n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			ids[batchChildID(base, "", i)] = struct{}{}
 		}
 		assert.Len(t, ids, n)
 	})
 }
 
-func ptrInt64(v int64) *int64 { return &v }
+//go:fix inline
+func ptrInt64(v int64) *int64 { return new(v) }
 
 func TestParseImageReference(t *testing.T) {
 	tests := []struct {

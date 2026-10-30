@@ -1,0 +1,4 @@
+[Unit]
+Description=Real
+[Install]
+Alias=nickname.service

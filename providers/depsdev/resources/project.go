@@ -6,18 +6,20 @@ package resources
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/depsdev/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/depsdev/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlDepsdevProjectInternal struct {
-	fetched         bool
+	fetched         atomic.Bool
 	lock            sync.Mutex
-	archivedFetched bool
+	archivedFetched atomic.Bool
 	archivedLock    sync.Mutex
 }
 
@@ -43,12 +45,12 @@ func (r *mqlDepsdevProject) id() (string, error) {
 
 // fetchProjectInfo fetches project data from deps.dev and populates all fields.
 func (r *mqlDepsdevProject) fetchProjectInfo() error {
-	if r.fetched {
+	if r.fetched.Load() {
 		return nil
 	}
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	if r.fetched {
+	if r.fetched.Load() {
 		return nil
 	}
 
@@ -76,7 +78,7 @@ func (r *mqlDepsdevProject) fetchProjectInfo() error {
 		r.Scorecard = plugin.TValue[*mqlDepsdevScorecard]{Data: nil, State: plugin.StateIsSet | plugin.StateIsNull}
 	}
 
-	r.fetched = true
+	r.fetched.Store(true)
 	return nil
 }
 
@@ -88,7 +90,12 @@ func (r *mqlDepsdevProject) buildScorecard(sc *depsDevScorecardResponse) (*mqlDe
 			docURL = c.Documentation.ShortDescription
 		}
 
+		// Pass __id explicitly: CreateResource calls id() before projectID is set
+		// below, so id() would otherwise build a key with an empty project id and
+		// collide across projects that share a check name (the OpenSSF check names
+		// are a fixed set, identical across every project).
 		check, err := CreateResource(r.MqlRuntime, "depsdev.scorecardCheck", map[string]*llx.RawData{
+			"__id":          llx.StringData("depsdev.scorecardCheck/" + r.Id.Data + "/" + c.Name),
 			"name":          llx.StringData(c.Name),
 			"score":         llx.IntData(int64(c.Score)),
 			"reason":        llx.StringData(c.Reason),
@@ -103,10 +110,13 @@ func (r *mqlDepsdevProject) buildScorecard(sc *depsDevScorecardResponse) (*mqlDe
 	}
 
 	scorecardDate := sc.Date
+	// Pass __id explicitly for the same reason as the checks above: projectID is
+	// assigned after CreateResource returns, so id() cannot build the key from it.
 	res, err := CreateResource(r.MqlRuntime, "depsdev.scorecard", map[string]*llx.RawData{
+		"__id":         llx.StringData("depsdev.scorecard/" + r.Id.Data + "/" + scorecardDate.Format(time.RFC3339)),
 		"overallScore": llx.FloatData(sc.OverallScore),
 		"date":         llx.TimeData(scorecardDate),
-		"checks":       llx.ArrayData(checks, "\x12depsdev.scorecardCheck"),
+		"checks":       llx.ArrayData(checks, types.Resource("depsdev.scorecardCheck")),
 	})
 	if err != nil {
 		return nil, err
@@ -147,12 +157,12 @@ func (r *mqlDepsdevProject) scorecard() (*mqlDepsdevScorecard, error) {
 }
 
 func (r *mqlDepsdevProject) archived() (bool, error) {
-	if r.archivedFetched {
+	if r.archivedFetched.Load() {
 		return r.Archived.Data, nil
 	}
 	r.archivedLock.Lock()
 	defer r.archivedLock.Unlock()
-	if r.archivedFetched {
+	if r.archivedFetched.Load() {
 		return r.Archived.Data, nil
 	}
 
@@ -160,13 +170,25 @@ func (r *mqlDepsdevProject) archived() (bool, error) {
 
 	repo, err := fetchGitHubRepo(conn.HttpClient, r.Id.Data)
 	if err != nil {
-		log.Warn().Str("project", r.Id.Data).Msg("cannot determine archived status for non-GitHub project")
+		if !errors.Is(err, errNotGitHubProject) {
+			// A real GitHub API failure (rate limit, 5xx, network). Surface it
+			// rather than silently reporting the dependency as "not archived":
+			// unauthenticated GitHub is limited to 60 requests/hour, so a large
+			// go.mod without GITHUB_TOKEN would otherwise mask every lookup.
+			return false, err
+		}
+		// Not a github.com project (e.g. GitLab, Bitbucket): the archived state is
+		// genuinely unavailable here, so degrade to null.
+		log.Debug().Str("project", r.Id.Data).Msg("archived status unavailable for non-GitHub project")
 		r.Archived = plugin.TValue[bool]{Data: false, State: plugin.StateIsSet | plugin.StateIsNull}
-		r.archivedFetched = true
+		r.archivedFetched.Store(true)
 		return false, nil
 	}
 
-	r.archivedFetched = true
+	// Set the field before the flag so the unlocked fast-path above observes a
+	// populated value once it sees archivedFetched == true.
+	r.Archived = plugin.TValue[bool]{Data: repo.Archived, State: plugin.StateIsSet}
+	r.archivedFetched.Store(true)
 	return repo.Archived, nil
 }
 

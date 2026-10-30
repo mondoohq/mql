@@ -1,0 +1,320 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/jumpcloud"
+option go_package = "go.mondoo.com/mql/providers/jumpcloud/resources"
+option root = "jumpcloud"
+
+// JumpCloud organization
+//
+// The JumpCloud cloud directory for an organization, covering the users,
+// systems (enrolled devices), user groups, system groups, SSO applications,
+// policies, commands, RADIUS servers, and external directory integrations it
+// contains. Membership and access relationships are queryable through typed
+// accessors on each resource, so an audit can traverse from a user to the
+// groups it belongs to and the systems it can authenticate to, or from a
+// group to its members, without correlating raw identifiers by hand.
+jumpcloud @root {
+  // User accounts in the organization
+  users() []jumpcloud.user
+  // Systems (enrolled devices) in the organization
+  systems() []jumpcloud.system
+  // User groups in the organization
+  userGroups() []jumpcloud.userGroup
+  // System groups in the organization
+  systemGroups() []jumpcloud.systemGroup
+  // SSO applications configured in the organization
+  applications() []jumpcloud.application
+  // Policies configured in the organization
+  policies() []jumpcloud.policy
+  // Commands defined in the organization
+  commands() []jumpcloud.command
+  // RADIUS servers configured in the organization
+  radiusServers() []jumpcloud.radiusServer
+  // External directory integrations configured in the organization
+  directories() []jumpcloud.directory
+}
+
+// JumpCloud user account
+//
+// A user in the JumpCloud directory, selected by its `id`. The
+// multi-factor, lockout, suspension, sudo, and LDAP-binding flags support
+// access-hygiene audits (for example asserting that every active account has
+// MFA configured and is not excluded from the MFA requirement). The password
+// expiration fields cover the password half of the same question. The
+// `userGroups` and `systems` accessors resolve the groups the account belongs
+// to and the systems it can authenticate to, so access can be traced without
+// joining identifiers manually.
+private jumpcloud.user @defaults("email mfaConfigured mfaExclusion suspended") {
+  // Unique identifier of the user
+  id string
+  // Username used to sign in
+  username string
+  // Primary email address
+  email string
+  // First name
+  firstname string
+  // Last name
+  lastname string
+  // Display name
+  displayname string
+  // Whether the account has completed activation
+  activated bool
+  // Whether the account is suspended
+  suspended bool
+  // Whether the account is locked out
+  accountLocked bool
+  // Whether the account password has expired
+  passwordExpired bool
+  // Whether the account password is exempt from expiration
+  //
+  // Null when the directory reported no password expiration policy for the
+  // account.
+  passwordNeverExpires bool
+  // Time the account password expires
+  //
+  // Null when the account has no expiration date, which is the case for an
+  // account whose password never expires.
+  passwordExpirationDate time
+  // Whether multi-factor authentication is configured for the account
+  //
+  // Reports only that a factor is set up for the account. It does not account
+  // for exclusions, so an account with `mfaExclusion` set reports true here
+  // and is still exempt from the MFA requirement.
+  mfaConfigured bool
+  // Whether the account is excluded from the multi-factor requirement
+  //
+  // An exclusion is an explicit, deliberate bypass that exempts the account
+  // from the organization's MFA requirement, usually until
+  // `mfaExclusionUntil`. Null when the directory reported no multi-factor
+  // configuration for the account.
+  mfaExclusion bool
+  // Time the account's multi-factor exclusion expires
+  //
+  // Null when the account has no exclusion, or when the exclusion carries no
+  // expiry and the bypass is therefore open-ended.
+  mfaExclusionUntil time
+  // Overall multi-factor enrollment state of the account
+  //
+  // One of NOT_ENROLLED, DISABLED, PENDING_ACTIVATION, ENROLLMENT_EXPIRED,
+  // IN_ENROLLMENT, PRE_ENROLLMENT, or ENROLLED. This separates an account that
+  // has completed enrollment from one that merely has a factor configured.
+  // Null when the directory reported no enrollment state.
+  mfaEnrollmentOverallStatus string
+  // Whether TOTP-based multi-factor authentication is enabled
+  totpEnabled bool
+  // Multi-factor enrollment state of the TOTP factor
+  //
+  // One of NOT_ENROLLED, DISABLED, PENDING_ACTIVATION, ENROLLMENT_EXPIRED,
+  // IN_ENROLLMENT, PRE_ENROLLMENT, or ENROLLED. Null when the directory
+  // reported no enrollment state for this factor.
+  totpStatus string
+  // Multi-factor enrollment state of the WebAuthn factor
+  //
+  // One of NOT_ENROLLED, DISABLED, PENDING_ACTIVATION, ENROLLMENT_EXPIRED,
+  // IN_ENROLLMENT, PRE_ENROLLMENT, or ENROLLED. Null when the directory
+  // reported no enrollment state for this factor.
+  webAuthnStatus string
+  // Multi-factor enrollment state of the JumpCloud Protect push factor
+  //
+  // One of NOT_ENROLLED, DISABLED, PENDING_ACTIVATION, ENROLLMENT_EXPIRED,
+  // IN_ENROLLMENT, PRE_ENROLLMENT, or ENROLLED. Null when the directory
+  // reported no enrollment state for this factor.
+  pushStatus string
+  // Whether the user is granted passwordless sudo on associated systems
+  passwordlessSudo bool
+  // Whether the user is granted administrator (sudo) rights on associated systems
+  sudo bool
+  // Whether the user is an LDAP binding user
+  ldapBindingUser bool
+  // Whether the account uses a managed UID
+  enableManagedUid bool
+  // Account lifecycle state
+  //
+  // One of ACTIVATED, SUSPENDED, or STAGED.
+  state string
+  // Time the account was created
+  created time
+  // User groups the account is a member of
+  userGroups() []jumpcloud.userGroup
+  // Systems the account is associated with
+  systems() []jumpcloud.system
+}
+
+// JumpCloud system
+//
+// An enrolled device (system) managed by JumpCloud, selected by its `id`.
+// The SSH, multi-factor, and full-disk-encryption flags plus the agent
+// version and last-contact time support device-hardening audits. The `users`
+// and `systemGroups` accessors resolve the accounts that can authenticate to
+// the device and the system groups it belongs to.
+private jumpcloud.system @defaults("hostname os active") {
+  // Unique identifier of the system
+  id string
+  // Hostname reported by the agent
+  hostname string
+  // Display name in the JumpCloud console
+  displayName string
+  // Operating system name
+  os string
+  // Operating system version
+  version string
+  // Version of the installed JumpCloud agent
+  agentVersion string
+  // CPU architecture
+  arch string
+  // Whether the system is active and reporting to JumpCloud
+  active bool
+  // Whether SSH login as root is permitted
+  allowSshRootLogin bool
+  // Whether SSH password authentication is permitted
+  allowSshPasswordAuthentication bool
+  // Whether multi-factor authentication is required at the login screen
+  allowMultiFactorAuthentication bool
+  // Whether SSH public-key authentication is permitted
+  allowPublicKeyAuthentication bool
+  // Whether full-disk encryption is active on the system
+  fdeActive bool
+  // Whether JumpCloud System Insights is enabled on the system
+  systemInsightsEnabled bool
+  // Whether the system has a service account configured
+  hasServiceAccount bool
+  // Most recent public IP address seen for the system
+  remoteIP string
+  // Time the agent last contacted JumpCloud
+  lastContact time
+  // Time the system was enrolled
+  created time
+  // Users associated with the system
+  users() []jumpcloud.user
+  // System groups the system is a member of
+  systemGroups() []jumpcloud.systemGroup
+}
+
+// JumpCloud user group
+//
+// A group of user accounts, selected by its `id`. Groups drive access to
+// SSO applications and directory bindings, so the `members` accessor lets an
+// audit expand a group to the accounts it grants access to.
+private jumpcloud.userGroup @defaults("name") {
+  // Unique identifier of the user group
+  id string
+  // Name of the user group
+  name string
+  // Description of the user group
+  description string
+  // Email address associated with the group
+  email string
+  // Group classification returned by the API
+  type string
+  // Users that are members of the group
+  members() []jumpcloud.user
+}
+
+// JumpCloud system group
+//
+// A group of systems, selected by its `id`. System groups are the unit that
+// policies and commands are bound to, so the `members` accessor lets an audit
+// expand a group to the devices it targets.
+private jumpcloud.systemGroup @defaults("name") {
+  // Unique identifier of the system group
+  id string
+  // Name of the system group
+  name string
+  // Description of the system group
+  description string
+  // Group classification returned by the API
+  type string
+  // Systems that are members of the group
+  members() []jumpcloud.system
+}
+
+// JumpCloud SSO application
+//
+// A single sign-on application configured in the organization, selected by
+// its `id`. The `userGroups` accessor resolves the user groups that grant
+// access to the application, so an audit can determine who can reach it.
+private jumpcloud.application @defaults("name ssoUrl active") {
+  // Unique identifier of the application
+  id string
+  // Internal name of the application
+  name string
+  // Display name shown to users
+  displayName string
+  // Single sign-on URL for the application
+  ssoUrl string
+  // Whether the application is active
+  active bool
+  // User groups that grant access to the application
+  userGroups() []jumpcloud.userGroup
+}
+
+// JumpCloud policy
+//
+// A configuration or security policy, selected by its `id`. The policy's
+// template identifies the setting it enforces.
+private jumpcloud.policy @defaults("name templateName active") {
+  // Unique identifier of the policy
+  id string
+  // Name of the policy
+  name string
+  // Whether the policy is active
+  active bool
+  // Name of the template the policy is based on
+  templateName string
+}
+
+// JumpCloud command
+//
+// A command that can be run on managed systems, selected by its `id`. The
+// command type, launch type, and sudo flag describe how and with what
+// privileges it executes.
+private jumpcloud.command @defaults("name commandType launchType") {
+  // Unique identifier of the command
+  id string
+  // Name of the command
+  name string
+  // Command type, for example linux, mac, or windows
+  commandType string
+  // How the command is triggered, for example manual, repeated, or one-time
+  launchType string
+  // Whether the command runs with elevated (sudo) privileges
+  sudo bool
+  // Maximum run time before the command is terminated, in seconds
+  timeout string
+}
+
+// JumpCloud RADIUS server
+//
+// A RADIUS server configuration, selected by its `id`. The multi-factor
+// setting and network source address describe how clients authenticate
+// against it.
+private jumpcloud.radiusServer @defaults("name networkSourceIp mfa") {
+  // Unique identifier of the RADIUS server
+  id string
+  // Name of the RADIUS server
+  name string
+  // Network source IP address clients connect from
+  networkSourceIp string
+  // Multi-factor requirement for the server
+  //
+  // One of DISABLED, REQUIRED, or ENABLED, depending on how MFA is enforced
+  // for RADIUS authentication.
+  mfa string
+}
+
+// JumpCloud directory integration
+//
+// An external directory integration (for example Microsoft 365, Google
+// Workspace, LDAP, or Active Directory) synchronized with JumpCloud,
+// selected by its `id`.
+private jumpcloud.directory @defaults("name type") {
+  // Unique identifier of the directory integration
+  id string
+  // Name of the directory integration
+  name string
+  // Type of directory integration
+  type string
+}

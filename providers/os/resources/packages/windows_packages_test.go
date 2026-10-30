@@ -4,20 +4,32 @@
 package packages
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"github.com/spf13/afero"
+	fsconn "go.mondoo.com/mql/providers/os/connection/fs"
+	"go.mondoo.com/mql/providers/os/fsutil"
+	"maps"
 	"net/url"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/package-url/packageurl-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
-	"go.mondoo.com/mql/v13/providers/os/registry"
-	"go.mondoo.com/mql/v13/providers/os/resources/cpe"
-	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/registry"
+	"go.mondoo.com/mql/providers/os/resources/cpe"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
+	winres "go.mondoo.com/mql/providers/os/resources/windows"
 )
 
 func TestWindowsAppPackagesParser(t *testing.T) {
@@ -119,6 +131,10 @@ func TestWindowsAppxPackagesParser(t *testing.T) {
 		Family:  []string{"windows"},
 	}
 
+	// The purls below carry arch=neutral, not the host's x86: an
+	// architecture-neutral appx has no architecture of its own, and reporting
+	// the host's made Package.Arch and the purl disagree about one package
+	// (https://github.com/mondoohq/mql/issues/10636).
 	pkgs, err := ParseWindowsAppxPackages(pf, c.Stdout)
 	require.NoError(t, err)
 	require.Equal(t, 29, len(pkgs), "detected the right amount of packages")
@@ -129,12 +145,14 @@ func TestWindowsAppxPackagesParser(t *testing.T) {
 		Version: "1.11.5.17763",
 		Arch:    "neutral",
 		Format:  "windows/appx",
-		PUrl:    "pkg:appx/windows/Microsoft.Windows.Cortana@1.11.5.17763?arch=x86",
+		PUrl:    "pkg:appx/windows/Microsoft.Windows.Cortana@1.11.5.17763?arch=neutral",
 		// TODO: this is a bug in the CPE generation, we need to extract the publisher from the package
 		CPEs: []string{
 			"cpe:2.3:a:cn\\=microsoft_corporation\\,_o\\=microsoft_corporation\\,_l\\=redmond\\,_s\\=washington\\,_c\\=us:microsoft.windows.cortana:1.11.5.17763:*:*:*:*:*:*:*",
 		},
 		Vendor: "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+		// Get-AppxPackage -AllUsers carries no per-user owner, see toPackage.
+		InstallScope: "machine",
 	}, p)
 
 	p = findPkg(pkgs, "Microsoft.MicrosoftEdge.Stable")
@@ -143,7 +161,7 @@ func TestWindowsAppxPackagesParser(t *testing.T) {
 		Version: "112.0.1722.39",
 		Arch:    "neutral",
 		Format:  "windows/appx",
-		PUrl:    "pkg:appx/windows/Microsoft.MicrosoftEdge.Stable@112.0.1722.39?arch=x86",
+		PUrl:    "pkg:appx/windows/Microsoft.MicrosoftEdge.Stable@112.0.1722.39?arch=neutral",
 		// TODO: this is a bug in the CPE generation, we need to extract the publisher from the package
 		CPEs: []string{
 			"cpe:2.3:a:cn\\=microsoft_corporation\\,_o\\=microsoft_corporation\\,_l\\=redmond\\,_s\\=washington\\,_c\\=us:microsoft.microsoftedge.stable:112.0.1722.39:*:*:*:*:*:*:*",
@@ -155,6 +173,8 @@ func TestWindowsAppxPackagesParser(t *testing.T) {
 			},
 		},
 		FilesAvailable: PkgFilesIncluded,
+		// Get-AppxPackage -AllUsers carries no per-user owner, see toPackage.
+		InstallScope: "machine",
 	}, p)
 
 	// check empty return
@@ -183,14 +203,22 @@ func TestWindowsHotFixParser(t *testing.T) {
 	assert.Equal(t, 6, len(hotfixes), "detected the right amount of packages")
 
 	timestamp := hotfixes[0].InstalledOnTime()
-	assert.NotNil(t, timestamp)
+	require.NotNil(t, timestamp) // dereferenced below: a nil here must fail, not panic
+
+	// Real Get-HotFix JSON shape (see testdata/windows_2019.toml): InstalledOn
+	// carries the raw PowerShell "\/Date(1599609600000)\/" value alongside the
+	// human-readable DateTime, both for the same instant.
+	expectedInstalledOn := time.Date(2020, time.September, 9, 0, 0, 0, 0, time.UTC)
+	assert.True(t, timestamp.Equal(expectedInstalledOn), "expected InstalledOnTime to match the fixture's InstalledOn value")
 
 	pkgs := HotFixesToPackages(hotfixes)
 	p := findPkg(pkgs, "KB4486553")
 	assert.Equal(t, Package{
-		Name:        "KB4486553",
-		Description: "Update",
-		Format:      "windows/hotfix",
+		Name:         "KB4486553",
+		Description:  "Update",
+		Format:       "windows/hotfix",
+		InstallDate:  expectedInstalledOn,
+		InstallScope: "machine",
 	}, p)
 
 	// check empty return
@@ -199,13 +227,119 @@ func TestWindowsHotFixParser(t *testing.T) {
 	assert.Equal(t, 0, len(hotfixes), "detected the right amount of packages")
 }
 
+// TestHotFixInstalledOnCalendarDay is the regression test for the off-by-one day
+// that shipped with the first version of this code.
+//
+// Get-HotFix reports a DATE at the host's local midnight, which ConvertTo-Json
+// serializes as an epoch-UTC instant. Publishing that instant reported the
+// previous day for every host east of UTC. Every fixture in this package was
+// captured on a UTC box, where local midnight IS UTC midnight — so no fixture
+// could show the bug, and the original tests passed while the field was wrong
+// for most of the world.
+func TestHotFixInstalledOnCalendarDay(t *testing.T) {
+	// All of these describe the SAME calendar day: 2020-09-09, as rendered by a
+	// host at the given UTC offset.
+	installedSept9 := time.Date(2020, time.September, 9, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name     string
+		value    string
+		dateTime string
+	}{
+		{"UTC host", "/Date(1599609600000)/", "Wednesday, September 9, 2020 12:00:00 AM"},
+		{"Berlin, UTC+2", "/Date(1599602400000)/", "Wednesday, September 9, 2020 12:00:00 AM"},
+		{"Tokyo, UTC+9", "/Date(1599577200000)/", "Wednesday, September 9, 2020 12:00:00 AM"},
+		{"New York, UTC-4", "/Date(1599624000000)/", "Wednesday, September 9, 2020 12:00:00 AM"},
+		// A localized host: DateTime is unparseable, so the calendar day has to
+		// come from the offset the instant itself implies.
+		{"Berlin, localized DateTime", "/Date(1599602400000)/", "Mittwoch, 9. September 2020 00:00:00"},
+		{"Kolkata, UTC+5:30, localized", "/Date(1599589800000)/", "बुधवार, 9 सितंबर 2020 12:00:00 पूर्वाह्न"},
+		// PowerShell 7 renders ISO-8601 instead of the long form.
+		{"pwsh 7 ISO, UTC+2", "/Date(1599602400000)/", "2020-09-09T00:00:00+02:00"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hf := PowershellWinHotFix{HotFixId: "KB5000001", Description: "Update"}
+			hf.InstalledOn.Value = tt.value
+			hf.InstalledOn.DateTime = tt.dateTime
+
+			pkgs := HotFixesToPackages([]PowershellWinHotFix{hf})
+			require.Len(t, pkgs, 1)
+			assert.True(t, pkgs[0].InstallDate.Equal(installedSept9),
+				"want the calendar day Windows reports (%s), got %s", installedSept9, pkgs[0].InstallDate)
+		})
+	}
+}
+
+// TestHotFixInstalledOnKeepsTimeOfDay pins the limit of the offset inference: a
+// value carrying a real time of day must be left alone, not rounded to a
+// neighbouring midnight. 14:37 is not a UTC offset away from midnight, so no
+// timezone can explain it and the instant stands as reported.
+func TestHotFixInstalledOnKeepsTimeOfDay(t *testing.T) {
+	afternoon := time.Date(2020, time.September, 9, 14, 37, 0, 0, time.UTC)
+	hf := PowershellWinHotFix{HotFixId: "KB5000002", Description: "Update"}
+	hf.InstalledOn.Value = "/Date(" + strconv.FormatInt(afternoon.UnixMilli(), 10) + ")/"
+
+	pkgs := HotFixesToPackages([]PowershellWinHotFix{hf})
+	require.Len(t, pkgs, 1)
+	assert.True(t, pkgs[0].InstallDate.Equal(afternoon),
+		"a genuine time of day must not be snapped to a midnight")
+}
+
+// TestHotFixInstalledOnSentinelEpoch covers the values that parse but mean
+// nothing: /Date(0)/ would publish 1970-01-01, which is not IsZero() and so
+// reaches consumers as a real install date — and llx renders any time with
+// Unix() <= 0 as a duration string rather than a timestamp.
+func TestHotFixInstalledOnSentinelEpoch(t *testing.T) {
+	for _, value := range []string{"/Date(0)/", "/Date(-1)/"} {
+		hf := PowershellWinHotFix{HotFixId: "KB5000003", Description: "Update"}
+		hf.InstalledOn.Value = value
+
+		pkgs := HotFixesToPackages([]PowershellWinHotFix{hf})
+		require.Len(t, pkgs, 1)
+		assert.True(t, pkgs[0].InstallDate.IsZero(), "%s is a sentinel, not an install date", value)
+	}
+}
+
+// TestHotFixesToPackagesMissingInstalledOn covers the entries the fixture
+// above doesn't: Get-HotFix commonly omits InstalledOn (older hotfixes,
+// hotfixes installed by an update agent rather than a user), and a stray
+// value in that field must not panic HotFixesToPackages or fabricate a date.
+func TestHotFixesToPackagesMissingInstalledOn(t *testing.T) {
+	hotfixes := []PowershellWinHotFix{
+		{
+			// InstalledOn entirely absent from the JSON.
+			HotFixId:    "KB0000001",
+			Description: "Update",
+		},
+		{
+			// InstalledOn present but its value does not match the
+			// PowerShell "/Date(...)/ " shape PSJsonTimestamp expects.
+			HotFixId:    "KB0000002",
+			Description: "Update",
+			InstalledOn: struct {
+				Value    string `json:"value"`
+				DateTime string `json:"DateTime"`
+			}{Value: "not-a-date", DateTime: "garbage"},
+		},
+	}
+
+	pkgs := HotFixesToPackages(hotfixes)
+	require.Len(t, pkgs, 2)
+
+	for _, p := range pkgs {
+		assert.True(t, p.InstallDate.IsZero(), "InstallDate should be the zero value when InstalledOn is absent or unparseable")
+	}
+}
+
 func TestGetPackageFromRegistryKeyItems(t *testing.T) {
 	t.Run("get package from registry key items that are empty", func(t *testing.T) {
 		items := []registry.RegistryKeyItem{}
-		p := getPackageFromRegistryKeyItems(items, &inventory.Platform{
+		p, uninstallString := getPackageFromRegistryKeyItems(items, &inventory.Platform{
 			Family: []string{"windows"},
 		}, "amd64")
 		assert.Nil(t, p)
+		assert.Empty(t, uninstallString)
 	})
 	t.Run("get package from registry key items with missing required values", func(t *testing.T) {
 		items := []registry.RegistryKeyItem{
@@ -217,10 +351,11 @@ func TestGetPackageFromRegistryKeyItems(t *testing.T) {
 				},
 			},
 		}
-		p := getPackageFromRegistryKeyItems(items, &inventory.Platform{
+		p, uninstallString := getPackageFromRegistryKeyItems(items, &inventory.Platform{
 			Family: []string{"windows"},
 		}, "amd64")
 		assert.Nil(t, p)
+		assert.Empty(t, uninstallString)
 	})
 
 	t.Run("get package from registry key items", func(t *testing.T) {
@@ -254,11 +389,12 @@ func TestGetPackageFromRegistryKeyItems(t *testing.T) {
 				},
 			},
 		}
-		p := getPackageFromRegistryKeyItems(items, &inventory.Platform{
+		p, uninstallString := getPackageFromRegistryKeyItems(items, &inventory.Platform{
 			Name:   "windows",
 			Arch:   "x86",
 			Family: []string{"windows"},
 		}, "x86")
+		assert.Equal(t, "UninstallString", uninstallString)
 		CPEs, err := cpe.NewPackage2Cpe(
 			"Microsoft Corporation",
 			"Microsoft Visual C++ 2015-2019 Redistributable (x86) - 14.28.29913",
@@ -309,6 +445,9 @@ func TestToPackage(t *testing.T) {
 		CPEs: []string{
 			"cpe:2.3:a:cn\\=microsoft_corporation\\,_o\\=microsoft_corporation\\,_l\\=redmond\\,_s\\=washington\\,_c\\=us:microsoft.windows.cortana:1.11.5.17763:*:*:*:*:*:*:*",
 		},
+		// Get-AppxPackage -AllUsers carries no per-user owner, so appx
+		// packages are always reported "machine" scope. See toPackage.
+		InstallScope: "machine",
 	}
 
 	assert.Equal(t, expected, pkg)
@@ -675,12 +814,12 @@ func TestGetPackageFromRegistryKeyItemsWow6432Node(t *testing.T) {
 	}
 
 	// Simulate package from Wow6432Node path (32-bit app on 64-bit Windows)
-	p := getPackageFromRegistryKeyItems(items, pf, "x86")
+	p, _ := getPackageFromRegistryKeyItems(items, pf, "x86")
 	require.NotNil(t, p)
 	assert.Equal(t, "x86", p.Arch, "package from Wow6432Node should have x86 arch")
 
 	// Simulate same package from regular path (64-bit app)
-	p = getPackageFromRegistryKeyItems(items, pf, "amd64")
+	p, _ = getPackageFromRegistryKeyItems(items, pf, "amd64")
 	require.NotNil(t, p)
 	assert.Equal(t, "amd64", p.Arch, "package from regular path should have platform arch")
 }
@@ -820,13 +959,15 @@ func TestRegistryKeyItemsArchFallbackToInstallPath(t *testing.T) {
 	}
 
 	// Caller passes "amd64" because the HKCU path had no Wow6432Node
-	p := getPackageFromRegistryKeyItems(items, pf, "amd64")
+	p, _ := getPackageFromRegistryKeyItems(items, pf, "amd64")
 	require.NotNil(t, p)
 	assert.Equal(t, "x86", p.Arch, "should detect x86 from Program Files (x86) install location")
 }
 
-func TestRegistryKeyItemsArchNoFallbackWhenAlreadyX86(t *testing.T) {
-	// When arch is already determined from Wow6432Node, the install path check should not run.
+func TestRegistryKeyItemsWow6432NodeNativeProgramFiles(t *testing.T) {
+	// A Wow6432Node entry whose install location is the native Program Files
+	// was written by a 32-bit installer for a 64-bit product: the view's x86
+	// default is corrected to the platform architecture.
 	items := []registry.RegistryKeyItem{
 		{
 			Key:   "DisplayName",
@@ -852,10 +993,254 @@ func TestRegistryKeyItemsArchNoFallbackWhenAlreadyX86(t *testing.T) {
 		Family: []string{"windows"},
 	}
 
-	// Caller already determined x86 from Wow6432Node — should not be overridden
-	p := getPackageFromRegistryKeyItems(items, pf, "x86")
+	p, _ := getPackageFromRegistryKeyItems(items, pf, "x86")
 	require.NotNil(t, p)
-	assert.Equal(t, "x86", p.Arch, "Wow6432Node-determined arch must not be overridden by install path")
+	assert.Equal(t, "amd64", p.Arch, "Wow6432Node entry installed under native Program Files is 64-bit")
+	assert.Contains(t, p.PUrl, "arch=amd64")
+}
+
+// Real Add/Remove-Programs entries observed on Windows 11 x64, values verbatim.
+const (
+	chromeSystemLevelUninstall  = `"C:\Program Files\Google\Chrome\Application\153.0.8010.53\Installer\setup.exe" --uninstall --system-level`
+	vcRedistX64Name             = `Microsoft Visual C++ v14 Redistributable (x64) - 14.51.36247`
+	vcRedistX64Uninstall        = `"C:\ProgramData\Package Cache\{0e3bb569-69d6-4c34-bff9-c2f81db5e5f0}\VC_redist.x64.exe" /uninstall`
+	mozillaMaintenanceUninstall = `"C:\Program Files (x86)\Mozilla Maintenance Service\uninstall.exe"`
+)
+
+func TestResolveWindowsAppArch(t *testing.T) {
+	tests := []struct {
+		name            string
+		viewArch        string
+		platformArch    string
+		displayName     string
+		installLocation string
+		uninstallString string
+		displayIcon     string
+		expected        string
+	}{
+		// Wow6432Node entries on an x64 host.
+		{
+			name:            "Chrome system-level EXE installer under Wow6432Node is x64",
+			viewArch:        "x86",
+			platformArch:    "AMD64",
+			displayName:     "Google Chrome",
+			uninstallString: chromeSystemLevelUninstall,
+			expected:        "AMD64",
+		},
+		{
+			name:            "VC++ v14 x64 Burn bundle under Wow6432Node is x64 by DisplayName marker",
+			viewArch:        "x86",
+			platformArch:    "AMD64",
+			displayName:     vcRedistX64Name,
+			uninstallString: vcRedistX64Uninstall,
+			expected:        "AMD64",
+		},
+		{
+			name:            "Mozilla Maintenance Service under Program Files (x86) stays x86",
+			viewArch:        "x86",
+			platformArch:    "AMD64",
+			displayName:     "Mozilla Maintenance Service",
+			uninstallString: mozillaMaintenanceUninstall,
+			expected:        "x86",
+		},
+		{
+			name:            "Wow6432Node with no evidence stays x86",
+			viewArch:        "x86",
+			platformArch:    "AMD64",
+			displayName:     "Some App",
+			uninstallString: `"C:\ProgramData\Package Cache\{abc}\setup.exe" /uninstall`,
+			expected:        "x86",
+		},
+		{
+			name:         "native Program Files in DisplayIcon only",
+			viewArch:     "x86",
+			platformArch: "AMD64",
+			displayName:  "Some App",
+			displayIcon:  `C:\Program Files\SomeApp\app.exe,0`,
+			expected:     "AMD64",
+		},
+		{
+			name:            "DisplayName (x86) marker beats native Program Files",
+			viewArch:        "x86",
+			platformArch:    "AMD64",
+			displayName:     "Microsoft Visual C++ 2015-2022 Redistributable (x86) - 14.38.33135",
+			installLocation: `C:\Program Files\Odd`,
+			expected:        "x86",
+		},
+		{
+			name:            "DisplayName (x64) marker beats Program Files (x86)",
+			viewArch:        "x86",
+			platformArch:    "AMD64",
+			displayName:     "Some Tool (x64)",
+			installLocation: `C:\Program Files (x86)\Some Tool`,
+			expected:        "AMD64",
+		},
+		{
+			name:            "Program Files (x86) beats native Program Files",
+			viewArch:        "x86",
+			platformArch:    "AMD64",
+			displayName:     "Some App",
+			installLocation: `C:\Program Files (x86)\SomeApp`,
+			displayIcon:     `C:\Program Files\SomeApp\app.exe`,
+			expected:        "x86",
+		},
+		{
+			name:         "(arm64) marker on an x64 host is not evidence",
+			viewArch:     "x86",
+			platformArch: "AMD64",
+			displayName:  "Some Runtime (arm64)",
+			expected:     "x86",
+		},
+		{
+			name:         "(x86) inside the name is not a marker",
+			viewArch:     "x86",
+			platformArch: "x86_64",
+			displayName:  "Helper for Program Files (x86) apps 2.0",
+			expected:     "x86",
+		},
+		{
+			name:            "platform arch spelling is preserved",
+			viewArch:        "x86",
+			platformArch:    "x86_64",
+			displayName:     "Google Chrome",
+			uninstallString: chromeSystemLevelUninstall,
+			expected:        "x86_64",
+		},
+
+		// Native and HKCU views are unaffected.
+		{
+			name:            "native view stays platform arch",
+			viewArch:        "AMD64",
+			platformArch:    "AMD64",
+			displayName:     "Google Chrome",
+			installLocation: `C:\Program Files\Google\Chrome\Application`,
+			expected:        "AMD64",
+		},
+		{
+			name:            "HKCU entry under Program Files (x86) is x86 as before",
+			viewArch:        "AMD64",
+			platformArch:    "AMD64",
+			displayName:     "Per-User App",
+			installLocation: `C:\Program Files (x86)\PerUserApp`,
+			expected:        "x86",
+		},
+		{
+			name:         "DisplayName (x86) under the native view is unaffected",
+			viewArch:     "AMD64",
+			platformArch: "AMD64",
+			displayName:  "Microsoft .NET Runtime - 8.0.7 (x86)",
+			expected:     "AMD64",
+		},
+		{
+			name:         "native view ignores DisplayIcon for the Program Files (x86) rule, as before",
+			viewArch:     "AMD64",
+			platformArch: "AMD64",
+			displayName:  "Some App",
+			displayIcon:  `C:\Program Files (x86)\SomeApp\app.exe`,
+			expected:     "AMD64",
+		},
+
+		// ARM64 hosts.
+		{
+			name:            "ARM64: native Program Files alone does not promote",
+			viewArch:        "x86",
+			platformArch:    "ARM64",
+			displayName:     "Google Chrome",
+			uninstallString: chromeSystemLevelUninstall,
+			expected:        "x86",
+		},
+		{
+			name:         "ARM64: (arm64) marker gives the platform arch",
+			viewArch:     "x86",
+			platformArch: "ARM64",
+			displayName:  "Microsoft .NET Runtime - 8.0.30 (arm64)",
+			expected:     "ARM64",
+		},
+		{
+			name:            "ARM64: (x64) marker names the emulated arch and is not mapped",
+			viewArch:        "x86",
+			platformArch:    "ARM64",
+			displayName:     vcRedistX64Name,
+			uninstallString: vcRedistX64Uninstall,
+			expected:        "x86",
+		},
+		{
+			name:         "ARM64: native view unaffected",
+			viewArch:     "arm64",
+			platformArch: "arm64",
+			displayName:  "Some App (x64)",
+			expected:     "arm64",
+		},
+
+		// 32-bit host: nothing to correct.
+		{
+			name:            "x86 host keeps x86",
+			viewArch:        "x86",
+			platformArch:    "x86",
+			displayName:     "Google Chrome",
+			uninstallString: chromeSystemLevelUninstall,
+			expected:        "x86",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveWindowsAppArch(tt.viewArch, tt.platformArch, tt.displayName, tt.installLocation, tt.uninstallString, tt.displayIcon)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+// TestWow6432NodeArchAgreesAcrossPaths feeds the same real entries through the
+// registry-item path (local and offline scans) and the PowerShell JSON path
+// (remote scans) and requires both to report the same architecture.
+func TestWow6432NodeArchAgreesAcrossPaths(t *testing.T) {
+	type entry struct {
+		key, displayName, displayVersion, uninstallString string
+		want                                              string
+	}
+	entries := []entry{
+		{"Google Chrome", "Google Chrome", "153.0.8010.53", chromeSystemLevelUninstall, "AMD64"},
+		{"{0e3bb569-69d6-4c34-bff9-c2f81db5e5f0}", vcRedistX64Name, "14.51.36247.0", vcRedistX64Uninstall, "AMD64"},
+		{"MozillaMaintenanceService", "Mozilla Maintenance Service", "140.0", mozillaMaintenanceUninstall, "x86"},
+	}
+	pf := &inventory.Platform{Name: "windows", Version: "10.0.26100", Arch: "AMD64", Family: []string{"windows"}}
+
+	type psEntry struct {
+		DisplayName     string `json:"DisplayName"`
+		DisplayVersion  string `json:"DisplayVersion"`
+		UninstallString string `json:"UninstallString"`
+		PSPath          string `json:"PSPath"`
+	}
+	ps := []psEntry{}
+	for _, e := range entries {
+		items := []registry.RegistryKeyItem{
+			{Key: "DisplayName", Value: registry.RegistryKeyValue{Kind: registry.SZ, String: e.displayName}},
+			{Key: "DisplayVersion", Value: registry.RegistryKeyValue{Kind: registry.SZ, String: e.displayVersion}},
+			{Key: "UninstallString", Value: registry.RegistryKeyValue{Kind: registry.SZ, String: e.uninstallString}},
+		}
+		arch := archForRegistryPath(`HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`, pf.Arch)
+		p, _ := getPackageFromRegistryKeyItems(items, pf, arch)
+		require.NotNil(t, p)
+		assert.Equal(t, e.want, p.Arch, "registry path: %s", e.displayName)
+
+		ps = append(ps, psEntry{
+			DisplayName:     e.displayName,
+			DisplayVersion:  e.displayVersion,
+			UninstallString: e.uninstallString,
+			PSPath:          `Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\` + e.key,
+		})
+	}
+
+	data, err := json.Marshal(ps)
+	require.NoError(t, err)
+	pkgs, err := ParseWindowsAppPackages(pf, strings.NewReader(string(data)))
+	require.NoError(t, err)
+	require.Len(t, pkgs, len(entries))
+	for i, e := range entries {
+		assert.Equal(t, e.displayName, pkgs[i].Name)
+		assert.Equal(t, e.want, pkgs[i].Arch, "PowerShell path: %s", e.displayName)
+	}
 }
 
 func TestWindowsAppPackagesParserInstallPathFallback(t *testing.T) {
@@ -881,6 +1266,124 @@ func TestWindowsAppPackagesParserInstallPathFallback(t *testing.T) {
 
 	pkg64 := findPkg(pkgs, "Per-User 64-bit App")
 	assert.Equal(t, "amd64", pkg64.Arch, "HKCU app in Program Files should keep platform arch")
+}
+
+// TestWindowsAppPackagesParserInstallScope covers the shape
+// installedAppsScript actually emits: InstallScope/InstallUser are computed
+// by the script itself (see its doc comment), not derived here from PSPath.
+// One HKLM entry, one HKCU entry (the calling identity's own profile), one
+// HKEY_USERS\<sid> entry for a DIFFERENT user, and a duplicate HKEY_USERS
+// entry for the CALLING identity's own SID -- which the script should not
+// normally emit (its own $skipSids excludes $callingSid), but the Go-side
+// dedup in ParseWindowsAppPackages is a safety net for the case it does not
+// exclude it (e.g. a WindowsIdentity lookup that returns a different string
+// shape than the enumerated ProfileList SID).
+func TestWindowsAppPackagesParserInstallScope(t *testing.T) {
+	const callingSid = "S-1-5-21-1111111111-2222222222-3333333333-1001"
+	const otherSid = "S-1-5-21-1111111111-2222222222-3333333333-1002"
+
+	jsonData := `[
+		{"DisplayName":"Machine App","DisplayVersion":"1.0","Publisher":"Test","UninstallString":"uninstall","InstallLocation":"C:\\Program Files\\MachineApp","PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{a}","InstallScope":"machine","InstallUser":""},
+		{"DisplayName":"Caller App","DisplayVersion":"2.0","Publisher":"Test","UninstallString":"uninstall","InstallLocation":"C:\\Users\\caller\\AppData\\Local\\Programs\\CallerApp","PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{b}","InstallScope":"user","InstallUser":"` + callingSid + `"},
+		{"DisplayName":"Other User App","DisplayVersion":"3.0","Publisher":"Test","UninstallString":"uninstall","InstallLocation":"C:\\Users\\other\\AppData\\Local\\Programs\\OtherApp","PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_USERS\\` + otherSid + `\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{c}","InstallScope":"user","InstallUser":"` + otherSid + `"},
+		{"DisplayName":"Caller App","DisplayVersion":"2.0","Publisher":"Test","UninstallString":"uninstall","InstallLocation":"C:\\Users\\caller\\AppData\\Local\\Programs\\CallerApp","PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_USERS\\` + callingSid + `\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{b}","InstallScope":"user","InstallUser":"` + callingSid + `"}
+	]`
+
+	pf := &inventory.Platform{
+		Name:    "windows",
+		Version: "10.0.17763",
+		Arch:    "amd64",
+		Family:  []string{"windows"},
+	}
+
+	pkgs, err := ParseWindowsAppPackages(pf, strings.NewReader(jsonData))
+	require.NoError(t, err)
+	require.Len(t, pkgs, 3, "the duplicate HKEY_USERS entry for the calling SID must be deduped against the HKCU entry")
+
+	// findPkg panics if the name isn't found, so reaching each assertion below
+	// already proves the entry is present.
+	machine := findPkg(pkgs, "Machine App")
+	assert.Equal(t, "machine", machine.InstallScope)
+	assert.Equal(t, "", machine.InstallUser)
+	require.Len(t, machine.Files, 1)
+	assert.Equal(t, `C:\Program Files\MachineApp`, machine.Files[0].Path)
+
+	caller := findPkg(pkgs, "Caller App")
+	assert.Equal(t, "user", caller.InstallScope)
+	assert.Equal(t, callingSid, caller.InstallUser)
+	require.Len(t, caller.Files, 1)
+	assert.Equal(t, `C:\Users\caller\AppData\Local\Programs\CallerApp`, caller.Files[0].Path)
+
+	other := findPkg(pkgs, "Other User App")
+	assert.Equal(t, "user", other.InstallScope)
+	assert.Equal(t, otherSid, other.InstallUser)
+	require.Len(t, other.Files, 1)
+	assert.Equal(t, `C:\Users\other\AppData\Local\Programs\OtherApp`, other.Files[0].Path)
+}
+
+// TestWindowsAppPackagesParserDedupWow6432NodePairSurvives pins the fix for
+// the over-merge in the old dedup key: HKLM\...\Uninstall\{X} and its
+// Wow6432Node sibling share InstallScope/InstallUser (both machine-scope, no
+// user) and, in this scenario, the very same subkey leaf -- an x86 and an x64
+// build of the same product registered under the same product code. Folding
+// the two into one dedup key drops the x86 entry the old code used to report.
+func TestWindowsAppPackagesParserDedupWow6432NodePairSurvives(t *testing.T) {
+	jsonData := `[
+		{"DisplayName":"MyApp (64-bit)","DisplayVersion":"2.0","Publisher":"Test","UninstallString":"uninstall.exe","PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{SAME-GUID}","InstallScope":"machine","InstallUser":""},
+		{"DisplayName":"MyApp (32-bit)","DisplayVersion":"1.0","Publisher":"Test","UninstallString":"uninstall.exe","PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_LOCAL_MACHINE\\SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{SAME-GUID}","InstallScope":"machine","InstallUser":""}
+	]`
+
+	pf := &inventory.Platform{Name: "windows", Version: "10.0.17763", Arch: "amd64", Family: []string{"windows"}}
+	pkgs, err := ParseWindowsAppPackages(pf, strings.NewReader(jsonData))
+	require.NoError(t, err)
+	require.Len(t, pkgs, 2, "the native and Wow6432Node entries are different physical registry keys and must not collapse")
+}
+
+// TestWindowsAppPackagesParserDedupKeepsConcreteSIDOverEmpty pins the fix for
+// the under-merge in the old dedup key: an HKCU entry with an empty
+// InstallUser (WindowsIdentity lookup failed, swallowed by
+// installedAppsScript's try/catch) and its HKEY_USERS\<sid> twin used to be
+// two DIFFERENT dedup keys (user differs), so they never merged and every
+// caller-installed app was reported twice. The new key is root-agnostic and
+// omits user, so the two collapse into one -- and the merge must keep the
+// concrete SID, checked with the SID-bearing row on either side.
+func TestWindowsAppPackagesParserDedupKeepsConcreteSIDOverEmpty(t *testing.T) {
+	const sid = "S-1-5-21-1-2-3-9001"
+	pf := &inventory.Platform{Name: "windows", Version: "10.0.17763", Arch: "amd64", Family: []string{"windows"}}
+
+	emptyFirst := `[
+		{"DisplayName":"MyApp","DisplayVersion":"1.0","Publisher":"Test","UninstallString":"uninstall.exe","PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{X}","InstallScope":"user","InstallUser":""},
+		{"DisplayName":"MyApp","DisplayVersion":"1.0","Publisher":"Test","UninstallString":"uninstall.exe","PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_USERS\\` + sid + `\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{X}","InstallScope":"user","InstallUser":"` + sid + `"}
+	]`
+	pkgs, err := ParseWindowsAppPackages(pf, strings.NewReader(emptyFirst))
+	require.NoError(t, err)
+	require.Len(t, pkgs, 1, "the HKCU/HKEY_USERS twin must collapse to one package")
+	assert.Equal(t, sid, pkgs[0].InstallUser, "the concrete SID must survive even though the empty-user row was read first")
+
+	sidFirst := `[
+		{"DisplayName":"MyApp","DisplayVersion":"1.0","Publisher":"Test","UninstallString":"uninstall.exe","PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_USERS\\` + sid + `\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{X}","InstallScope":"user","InstallUser":"` + sid + `"},
+		{"DisplayName":"MyApp","DisplayVersion":"1.0","Publisher":"Test","UninstallString":"uninstall.exe","PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{X}","InstallScope":"user","InstallUser":""}
+	]`
+	pkgs2, err := ParseWindowsAppPackages(pf, strings.NewReader(sidFirst))
+	require.NoError(t, err)
+	require.Len(t, pkgs2, 1, "order must not matter")
+	assert.Equal(t, sid, pkgs2[0].InstallUser)
+}
+
+// TestInstalledAppsScriptTreatsWellKnownSystemSIDsAsMachineScope pins the
+// two SYSTEM-caller fixes in installedAppsScript itself: a LocalSystem caller
+// (S-1-5-18/19/20) must not have its own HKCU tagged as a user install, and
+// the Get-ItemProperty read must tolerate a hive that vanishes between
+// Test-Path and the read (a user logging off, or a restrictive ACL) without
+// failing the whole script. There is no PowerShell runtime here to execute
+// the script against, so this pins the literal source instead of the
+// behavior; a regression here is a real regression, since these are the
+// exact lines the fixes touched.
+func TestInstalledAppsScriptTreatsWellKnownSystemSIDsAsMachineScope(t *testing.T) {
+	assert.Contains(t, installedAppsScript, "$wellKnownSystemSids", "must classify the calling SID against the well-known service SIDs")
+	assert.Contains(t, installedAppsScript, "$callingIsSystem", "must branch HKCU scope/sid on whether the caller is a well-known system SID")
+	assert.Contains(t, installedAppsScript, "Get-ItemProperty $_.Path -ErrorAction SilentlyContinue",
+		"the per-root read must tolerate a hive that vanishes between Test-Path and the read, or the whole script exits non-zero over one profile")
 }
 
 // TestFsInstalledAppsArchAssignment validates that the exact registry path strings
@@ -1014,6 +1517,73 @@ func TestCreatePackage(t *testing.T) {
 	})
 }
 
+// TestCreatePackagePurlCarriesThePackageArch pins that a Windows package's purl
+// reports the architecture of the PACKAGE, not of the host it was found on.
+//
+// Regression test for https://github.com/mondoohq/mql/issues/10636 (2). The
+// purl was built without the per-package arch, so NewPackageURL fell back to
+// platform.Arch: a 32-bit application on a 64-bit host was recorded as
+// Arch: x86 while its purl claimed ?arch=x86_64. The purl is the field that
+// reaches vulnerability matching, so the wrong one was the one that counted.
+func TestCreatePackagePurlCarriesThePackageArch(t *testing.T) {
+	// 64-bit host, as every modern Windows machine is.
+	platform := &inventory.Platform{
+		Name:    "windows",
+		Version: "10.0.19045",
+		Arch:    "x86_64",
+		Labels:  map[string]string{"distro-id": "windows"},
+	}
+
+	t.Run("32-bit app on a 64-bit host", func(t *testing.T) {
+		pkg := createPackage("Legacy Tool", "1.2.3", "windows/app", "x86", "Acme", "", platform)
+		require.NotNil(t, pkg)
+
+		assert.Equal(t, "x86", pkg.Arch)
+		assert.Contains(t, pkg.PUrl, "arch=x86",
+			"the purl must carry the package's own arch")
+		assert.NotContains(t, pkg.PUrl, "arch=x86_64",
+			"the purl must not fall back to the host arch when the package has its own")
+	})
+
+	t.Run("appx package with its own arch", func(t *testing.T) {
+		pkg := createPackage("Some.Appx", "2.0.0.0", "windows/appx", "arm64", "Acme", "", platform)
+		require.NotNil(t, pkg)
+
+		assert.True(t, strings.HasPrefix(pkg.PUrl, "pkg:appx/"), "got %q", pkg.PUrl)
+		assert.Equal(t, pkg.Arch, purlQualifier(t, pkg.PUrl, "arch"),
+			"Package.Arch and the purl arch qualifier must agree")
+	})
+
+	t.Run("64-bit app on a 64-bit host", func(t *testing.T) {
+		pkg := createPackage("Modern Tool", "1.2.3", "windows/app", "x86_64", "Acme", "", platform)
+		require.NotNil(t, pkg)
+
+		assert.Equal(t, "x86_64", purlQualifier(t, pkg.PUrl, "arch"))
+	})
+
+	t.Run("unknown package arch falls back to the host arch", func(t *testing.T) {
+		// An empty arch means the registry path told us nothing. The host arch
+		// is then the best available guess, and dropping the qualifier entirely
+		// would lose information a match can use.
+		pkg := createPackage("Mystery Tool", "1.2.3", "windows/app", "", "Acme", "", platform)
+		require.NotNil(t, pkg)
+
+		assert.Equal(t, "x86_64", purlQualifier(t, pkg.PUrl, "arch"),
+			"an unknown package arch must still fall back to the platform arch")
+	})
+}
+
+// purlQualifier returns the value of one qualifier of a purl, failing the test
+// if the purl does not parse.
+func purlQualifier(t *testing.T, rawPurl, key string) string {
+	t.Helper()
+	parsed, err := packageurl.FromString(rawPurl)
+	require.NoError(t, err, "purl %q must parse", rawPurl)
+	value, ok := parsed.Qualifiers.Map()[key]
+	require.True(t, ok, "purl %q must carry a %q qualifier", rawPurl, key)
+	return value
+}
+
 // TestHotFixesToPackages_SanitizesFields pins the analogous fix for the
 // Get-HotFix path: Description goes through the same PowerShell→JSON
 // pipeline, so any control character there has to be stripped before it
@@ -1034,6 +1604,17 @@ func TestHotFixesToPackages_SanitizesFields(t *testing.T) {
 	// Clean inputs must pass through unchanged.
 	assert.Equal(t, "KB5023789", pkgs[1].Name)
 	assert.Equal(t, "Update", pkgs[1].Description)
+}
+
+// TestHotFixesToPackagesInstallScope pins hotfixes as machine-scope: Get-HotFix
+// has no per-user concept, and leaving InstallScope empty would (wrongly) read
+// as "no such concept" per the .lr contract, when every other Windows package
+// source now reports "machine" or "user".
+func TestHotFixesToPackagesInstallScope(t *testing.T) {
+	pkgs := HotFixesToPackages([]PowershellWinHotFix{{HotFixId: "KB5005112"}})
+	require.Len(t, pkgs, 1)
+	assert.Equal(t, "machine", pkgs[0].InstallScope)
+	assert.Empty(t, pkgs[0].InstallUser)
 }
 
 func TestFindAndUpdateMsExchangeSU_en(t *testing.T) {
@@ -1139,4 +1720,399 @@ func TestWindowsAppPackagesParserInstallDate(t *testing.T) {
 	withoutDate := findPkg(pkgs, "App Without Date")
 	require.NotNil(t, withoutDate)
 	assert.True(t, withoutDate.InstallDate.IsZero(), "missing InstallDate registry value yields zero time")
+}
+
+// regWireValue / regWireItem mirror the JSON shape emitted by the PowerShell
+// registry probe (registry.GetRegistryKeyItemScript), so tests can feed
+// getDotNetFramework's readRegistryItems realistic payloads.
+type regWireValue struct {
+	Kind int `json:"kind"`
+	Data any `json:"data"`
+}
+
+type regWireItem struct {
+	Key   string       `json:"key"`
+	Value regWireValue `json:"value"`
+}
+
+func regItemsJSON(t *testing.T, items ...regWireItem) string {
+	t.Helper()
+	b, err := json.Marshal(items)
+	require.NoError(t, err)
+	return string(b)
+}
+
+func szItem(key, value string) regWireItem {
+	return regWireItem{Key: key, Value: regWireValue{Kind: registry.SZ, Data: value}}
+}
+
+func dwordItem(key string, value int) regWireItem {
+	return regWireItem{Key: key, Value: regWireValue{Kind: registry.DWORD, Data: value}}
+}
+
+func TestGetDotNetFramework(t *testing.T) {
+	const (
+		v4Key   = "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v4\\Full"
+		v35Key  = "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\NET Framework Setup\\NDP\\v3.5"
+		v4Path  = "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\"
+		v35Path = "C:\\Windows\\Microsoft.NET\\Framework64\\v3.5\\"
+	)
+
+	// Command keys exactly as getDotNetFramework issues them over the connection.
+	v4RegCmd := powershell.Encode(registry.GetRegistryKeyItemScript(v4Key))
+	v35RegCmd := powershell.Encode(registry.GetRegistryKeyItemScript(v35Key))
+	v4VerCmd := powershell.Encode(fmt.Sprintf(dotNetClrVersionScript, v4Path))
+	v35VerCmd := powershell.Encode(dotNetClr2VersionScript)
+
+	v4RegItems := regItemsJSON(t, szItem("InstallPath", v4Path), dwordItem("Release", 528449))
+	v4RegNoPath := regItemsJSON(t, dwordItem("Release", 528449))
+	v35Installed := regItemsJSON(t, dwordItem("Install", 1), szItem("InstallPath", v35Path))
+	v35NotInstalled := regItemsJSON(t, dwordItem("Install", 0), szItem("InstallPath", v35Path))
+
+	// Trailing CRLF verifies runPwshVersion trims the raw stdout.
+	v4Ver := snapCommandResult{stdout: "4.8.4795.0\r\n"}
+	v35Ver := snapCommandResult{stdout: "2.0.50727.9182\r\n"}
+
+	type wantPkg struct {
+		name    string
+		version string
+	}
+	tests := []struct {
+		name     string
+		commands map[string]snapCommandResult
+		want     []wantPkg
+	}{
+		{
+			name: "both 3.5 and 4.x present, reported side by side",
+			commands: map[string]snapCommandResult{
+				v4RegCmd:  {stdout: v4RegItems},
+				v4VerCmd:  v4Ver,
+				v35RegCmd: {stdout: v35Installed},
+				v35VerCmd: v35Ver,
+			},
+			want: []wantPkg{
+				{"Microsoft .NET Framework", "4.8.4795.0"},
+				{"Microsoft .NET Framework", "2.0.50727.9182"},
+			},
+		},
+		{
+			name: "only 4.x present (v3.5 key missing)",
+			commands: map[string]snapCommandResult{
+				v4RegCmd: {stdout: v4RegItems},
+				v4VerCmd: v4Ver,
+			},
+			want: []wantPkg{{"Microsoft .NET Framework", "4.8.4795.0"}},
+		},
+		{
+			name: "only 3.5 present (v4 key missing), sourced from CLR 2.0 build",
+			commands: map[string]snapCommandResult{
+				v35RegCmd: {stdout: v35Installed},
+				v35VerCmd: v35Ver,
+			},
+			want: []wantPkg{{"Microsoft .NET Framework", "2.0.50727.9182"}},
+		},
+		{
+			name: "3.5 key present but Install=0 is not reported",
+			commands: map[string]snapCommandResult{
+				v4RegCmd:  {stdout: v4RegItems},
+				v4VerCmd:  v4Ver,
+				v35RegCmd: {stdout: v35NotInstalled},
+				v35VerCmd: v35Ver,
+			},
+			want: []wantPkg{{"Microsoft .NET Framework", "4.8.4795.0"}},
+		},
+		{
+			name: "4.x key present without InstallPath is skipped",
+			commands: map[string]snapCommandResult{
+				v4RegCmd: {stdout: v4RegNoPath},
+				v4VerCmd: v4Ver,
+			},
+			want: nil,
+		},
+		{
+			name: "4.x present but clr.dll version blank is skipped",
+			commands: map[string]snapCommandResult{
+				v4RegCmd: {stdout: v4RegItems},
+				v4VerCmd: {stdout: "\r\n"},
+			},
+			want: nil,
+		},
+		{
+			name:     "neither runtime present",
+			commands: map[string]snapCommandResult{},
+			want:     nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := &WinPkgManager{
+				conn:     &snapTestConnection{commands: tt.commands},
+				platform: &inventory.Platform{Name: "windows", Arch: "amd64", Family: []string{"windows"}},
+			}
+
+			pkgs, err := w.getDotNetFramework()
+			require.NoError(t, err)
+			require.Len(t, pkgs, len(tt.want))
+			for i, exp := range tt.want {
+				assert.Equal(t, exp.name, pkgs[i].Name, "package %d name", i)
+				assert.Equal(t, exp.version, pkgs[i].Version, "package %d version", i)
+				assert.Equal(t, "windows/app", pkgs[i].Format, "package %d format", i)
+				assert.Equal(t, "amd64", pkgs[i].Arch, "package %d arch", i)
+				// The .NET Framework runtime is read from a single machine-wide
+				// HKLM key with no per-user concept; leaving this empty would
+				// break the .lr contract that empty installScope means "no such
+				// concept" now that every other Windows package source sets it.
+				assert.Equal(t, "machine", pkgs[i].InstallScope, "package %d installScope", i)
+			}
+		})
+	}
+}
+
+// The native registry reader and the PowerShell path read the same Uninstall
+// key values into the same package fields, InstallDate included (#11254).
+func TestWindowsAppInstallDateNativeAndPowerShellAgree(t *testing.T) {
+	pf := &inventory.Platform{Name: "windows", Version: "10.0.20348", Arch: "amd64", Family: []string{"windows"}}
+	for _, tc := range []struct{ name, raw string }{
+		{"MSI date", "20260909"},
+		{"no date", ""},
+		{"unparseable", "9/9/2026"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sz := func(k, v string) registry.RegistryKeyItem {
+				return registry.RegistryKeyItem{Key: k, Value: registry.RegistryKeyValue{Kind: registry.SZ, String: v}}
+			}
+			items := []registry.RegistryKeyItem{
+				sz("DisplayName", "Amazon SSM Agent"),
+				sz("DisplayVersion", "3.3.1"),
+				sz("Publisher", "Amazon Web Services"),
+				sz("UninstallString", "MsiExec.exe /X{abc}"),
+			}
+			if tc.raw != "" {
+				items = append(items, sz("InstallDate", tc.raw))
+			}
+			native, _ := getPackageFromRegistryKeyItems(items, pf, "amd64")
+			require.NotNil(t, native)
+
+			js := `[{"DisplayName":"Amazon SSM Agent","DisplayVersion":"3.3.1","Publisher":"Amazon Web Services",` +
+				`"UninstallString":"MsiExec.exe /X{abc}","InstallDate":"` + tc.raw + `",` +
+				`"PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{abc}"}]`
+			remote, err := ParseWindowsAppPackages(pf, strings.NewReader(js))
+			require.NoError(t, err)
+			require.Len(t, remote, 1)
+
+			assert.Equal(t, remote[0].InstallDate, native.InstallDate)
+			if tc.raw == "20260909" {
+				assert.Equal(t, time.Date(2026, 9, 9, 0, 0, 0, 0, time.UTC), native.InstallDate)
+			} else {
+				assert.True(t, native.InstallDate.IsZero())
+			}
+		})
+	}
+}
+
+type interruptedAppxFS struct {
+	afero.Fs
+	err error
+}
+
+func (f interruptedAppxFS) Find(string, *regexp.Regexp, string, *uint32, *int) ([]string, error) {
+	return nil, f.err
+}
+func TestGetFsAppxPackagesPropagatesInterruptedSearch(t *testing.T) {
+	for _, failure := range []error{fsutil.ErrFindLimit, context.Canceled, context.DeadlineExceeded} {
+		target := interruptedAppxFS{Fs: afero.NewMemMapFs(), err: failure}
+		conn, err := fsconn.NewFileSystemConnectionWithFs(1, &inventory.Config{}, &inventory.Asset{}, "", nil, target)
+		require.NoError(t, err)
+		w := &WinPkgManager{conn: conn}
+		pkgs, err := w.getFsAppxPackages()
+		require.ErrorIs(t, err, failure)
+		require.Nil(t, pkgs)
+	}
+}
+
+func TestCBSUpdatesToHotfixPackages(t *testing.T) {
+	installed := time.Date(2026, 8, 10, 15, 49, 51, 376640800, time.UTC)
+	pkgs := HotFixesToPackages(CBSUpdatesToHotfixes([]winres.CBSUpdate{
+		{KB: "KB5120228", ReleaseType: "Security Update", InstalledOn: &installed, PackageName: "Package_for_HotpatchFix_33222~x"},
+		{KB: "KB5120708", ReleaseType: "Update"},
+	}))
+	require.Len(t, pkgs, 2)
+
+	assert.Equal(t, "KB5120228", pkgs[0].Name)
+	assert.Equal(t, "Security Update", pkgs[0].Description)
+	assert.Equal(t, "windows/hotfix", pkgs[0].Format)
+	assert.Equal(t, installScopeMachine, pkgs[0].InstallScope)
+	// like Get-HotFix, the calendar day at UTC midnight
+	assert.Equal(t, time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC), pkgs[0].InstallDate)
+
+	assert.Equal(t, "KB5120708", pkgs[1].Name)
+	assert.True(t, pkgs[1].InstallDate.IsZero(), "no install time is null, not a made-up date")
+}
+
+// dotNetHive serves registry keys of the SOFTWARE hive by path.
+type dotNetHive map[string][]registry.RegistryKeyItem
+
+func (h dotNetHive) GetNativeRegistryKeyItems(id, path string) ([]registry.RegistryKeyItem, error) {
+	if items, ok := h[path]; ok {
+		return items, nil
+	}
+	return nil, errors.New("key not found")
+}
+
+type memFsConn struct {
+	shared.Connection
+	fs afero.Fs
+}
+
+func (c *memFsConn) FileSystem() afero.Fs { return c.fs }
+
+func TestGetFsDotNetFramework(t *testing.T) {
+	const (
+		key4x  = `Microsoft\NET Framework Setup\NDP\v4\Full`
+		key35  = `Microsoft\NET Framework Setup\NDP\v3.5`
+		clr4   = "Windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll"
+		dir2   = "Windows/Microsoft.NET/Framework64/v2.0.50727/"
+		dir2x  = "Windows/Microsoft.NET/Framework/v2.0.50727/"
+		path4x = `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\`
+		path35 = `C:\Windows\Microsoft.NET\Framework64\v3.5\`
+	)
+	str := func(k, v string) registry.RegistryKeyItem {
+		return registry.RegistryKeyItem{Key: k, Value: registry.RegistryKeyValue{Kind: registry.SZ, String: v}}
+	}
+	dword := func(k string, n int64) registry.RegistryKeyItem {
+		return registry.RegistryKeyItem{Key: k, Value: registry.RegistryKeyValue{Kind: registry.DWORD, Number: n}}
+	}
+	hive4x := []registry.RegistryKeyItem{str("InstallPath", path4x), dword("Release", 533320)}
+	hive35 := []registry.RegistryKeyItem{dword("Install", 1), str("InstallPath", `C:\Windows\Microsoft.NET\Framework64\v3.5\`)}
+	// The fixed product version is deliberately not the one reported; the
+	// ProductVersion string is.
+	pe := func(v [4]uint16) []byte {
+		return buildPEStrings(t, v, [4]uint16{4, 0, 30319, 0}, []string{"ProductVersion", fmt.Sprintf("%d.%d.%d.%d", v[0], v[1], v[2], v[3])}, true)
+	}
+
+	type files map[string][]byte
+
+	// Measured fixtures. The PE images are synthesized from the version
+	// resources measured on the VMs (no Microsoft binaries are shipped): the
+	// fixed file version, the fixed product version and the FileVersion and
+	// ProductVersion strings.
+	realPE := func(file, product [4]uint16, fileStr, productStr string) []byte {
+		return buildPEStrings(t, file, product, []string{"FileVersion", fileStr, "ProductVersion", productStr}, true)
+	}
+	// clr.dll sits in Framework and Framework64, identical per VM.
+	clrFiles := func(img []byte) files {
+		return files{
+			"Windows/Microsoft.NET/Framework/v4.0.30319/clr.dll":   img,
+			"Windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll": img,
+		}
+	}
+	merge := func(fs ...files) files {
+		out := files{}
+		for _, f := range fs {
+			maps.Copy(out, f)
+		}
+		return out
+	}
+	clr2 := func(name string, v uint16, fileStr string) files {
+		img := realPE([4]uint16{2, 0, 50727, v}, [4]uint16{2, 0, 50727, v}, fileStr, fmt.Sprintf("2.0.50727.%d", v))
+		return files{dir2 + name: img, dir2x + name: img}
+	}
+	// The CLR 2.0 files measured on Server 2022 and Win11 x64 (the directory
+	// holds 84 DLLs, these three are representative). System.dll is pinned to
+	// an older build next to mscorlib.dll.
+	realClr2 := merge(
+		clr2("mscorlib.dll", 9188, "2.0.50727.9188 (WinRelRS6.050727-9100)"),
+		clr2("mscorwks.dll", 9188, "2.0.50727.9188 (WinRelRS6.050727-9100)"),
+		clr2("System.dll", 9182, "2.0.50727.9182 (WinRelRS6.050727-9100)"),
+	)
+	clr4Server2022 := clrFiles(realPE([4]uint16{4, 8, 4811, 0}, [4]uint16{4, 0, 30319, 0}, "4.8.4811.0 built by: NET48REL1LAST_B", "4.8.4811.0"))
+	clr4Server2016 := clrFiles(realPE([4]uint16{4, 7, 4150, 0}, [4]uint16{4, 0, 30319, 0}, "4.7.4150.0 built by: NET472REL1LAST_B", "4.7.4150.0"))
+	clr4Win11 := clrFiles(realPE([4]uint16{4, 8, 9363, 0}, [4]uint16{4, 0, 30319, 0}, "4.8.9363.0 built by: NET481REL1LAST_25H2_B", "4.8.9363.0"))
+
+	// Real registry keys, every value present on the VM.
+	full4x := func(release int64, version string) []registry.RegistryKeyItem {
+		return []registry.RegistryKeyItem{
+			dword("CBS", 1), dword("Install", 1), str("InstallPath", path4x), dword("Release", release),
+			dword("Servicing", 0), str("TargetVersion", "4.0.0"), str("Version", version),
+		}
+	}
+	real35 := []registry.RegistryKeyItem{
+		dword("CBS", 1), dword("Install", 1), str("InstallPath", path35), dword("SP", 1), str("Version", "3.5.30729.4926"),
+	}
+
+	// Synthetic fixture: invented versions (not from any VM) covering edge
+	// cases no VM showed: a 32-bit directory newer than the 64-bit one, a
+	// string suffix, a non-CLR 2.0 file.
+	both := files{
+		clr4:                  pe([4]uint16{4, 8, 9310, 0}),
+		dir2 + "mscorlib.dll": pe([4]uint16{2, 0, 50727, 9149}),
+		// pinned to an older build for side-by-side compatibility
+		dir2 + "System.dll": pe([4]uint16{2, 0, 50727, 4927}),
+		// the 32-bit directory can hold a newer build than the 64-bit one
+		dir2x + "mscorlib.dll": pe([4]uint16{2, 0, 50727, 9200}),
+		// text after the version is cut off
+		dir2 + "suffix.dll": buildPEStrings(t, [4]uint16{2, 0, 50727, 1}, [4]uint16{2, 0, 50727, 9300}, []string{"ProductVersion", "2.0.50727.9300 (built)"}, true),
+		// not a CLR 2.0 build: ignored
+		dir2 + "other.dll": pe([4]uint16{3, 5, 30729, 9999}),
+	}
+
+	cases := []struct {
+		name  string
+		arch  string // platform architecture; AMD64 when empty
+		hive  dotNetHive
+		files files
+		want  []string // version@installLocation
+	}{
+		// Measured: values read from each VM on 2026-10-23. The expected
+		// versions match the live local scan of
+		// packages.where(name == "Microsoft .NET Framework") on that VM.
+		{name: "Server 2022 with 3.5", hive: dotNetHive{key4x: full4x(528449, "4.8.04161"), key35: real35}, files: merge(clr4Server2022, realClr2),
+			want: []string{`4.8.4811.0@` + path4x, `2.0.50727.9188@` + path35}},
+		{name: "Server 2016 without 3.5", hive: dotNetHive{key4x: full4x(461814, "4.7.03062")}, files: clr4Server2016,
+			want: []string{`4.7.4150.0@` + path4x}},
+		{name: "Win11 24H2 x64 with 3.5", hive: dotNetHive{key4x: full4x(533509, "4.8.09221"), key35: real35}, files: merge(clr4Win11, realClr2),
+			want: []string{`4.8.9363.0@` + path4x, `2.0.50727.9188@` + path35}},
+		{name: "Win11 24H2 ARM64 without 3.5", arch: "ARM64", hive: dotNetHive{key4x: full4x(533509, "4.8.09221")}, files: clr4Win11,
+			want: []string{`4.8.9363.0@` + path4x}},
+
+		// Synthetic: edge cases no VM showed, on invented versions.
+		{name: "4.x only", hive: dotNetHive{key4x: hive4x}, files: both, want: []string{`4.8.9310.0@` + path4x}},
+		{name: "3.5 only", hive: dotNetHive{key35: hive35}, files: both, want: []string{`2.0.50727.9300@C:\Windows\Microsoft.NET\Framework64\v3.5\`}},
+		{name: "both", hive: dotNetHive{key4x: hive4x, key35: hive35}, files: both, want: []string{`4.8.9310.0@` + path4x, `2.0.50727.9300@C:\Windows\Microsoft.NET\Framework64\v3.5\`}},
+		{name: "absent keys", hive: dotNetHive{}, files: both, want: nil},
+		{name: "3.5 with Install=0", hive: dotNetHive{key35: {dword("Install", 0), str("InstallPath", "x")}}, files: both, want: nil},
+		{name: "4.x without InstallPath", hive: dotNetHive{key4x: {dword("Release", 533320)}}, files: both, want: nil},
+		{name: "missing clr.dll", hive: dotNetHive{key4x: hive4x}, files: files{}, want: nil},
+		{name: "3.5 without CLR 2.0 files", hive: dotNetHive{key35: hive35}, files: files{clr4: both[clr4]}, want: nil},
+		{name: "%WINDIR% in InstallPath", hive: dotNetHive{key4x: {str("InstallPath", `%WINDIR%\Microsoft.NET\Framework64\v4.0.30319`)}}, files: both, want: []string{`4.8.9310.0@%WINDIR%\Microsoft.NET\Framework64\v4.0.30319`}},
+		{name: "InstallPath on another drive", hive: dotNetHive{key4x: {str("InstallPath", `D:\Windows\Microsoft.NET\Framework64\v4.0.30319\`)}}, files: both, want: nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fs := afero.NewMemMapFs()
+			for p, data := range tc.files {
+				require.NoError(t, afero.WriteFile(fs, p, data, 0o644))
+			}
+			arch := tc.arch
+			if arch == "" {
+				arch = "AMD64"
+			}
+			w := &WinPkgManager{conn: &memFsConn{fs: fs}, platform: &inventory.Platform{Name: "windows", Arch: arch}}
+			got := []string{}
+			for _, p := range w.getFsDotNetFramework(tc.hive) {
+				assert.Equal(t, "Microsoft .NET Framework", p.Name)
+				assert.Equal(t, "Microsoft", p.Vendor)
+				assert.Equal(t, arch, p.Arch)
+				assert.Equal(t, installScopeMachine, p.InstallScope)
+				require.Len(t, p.Files, 1)
+				got = append(got, p.Version+"@"+p.Files[0].Path)
+			}
+			if tc.want == nil {
+				assert.Empty(t, got)
+			} else {
+				assert.Equal(t, tc.want, got)
+			}
+		})
+	}
 }

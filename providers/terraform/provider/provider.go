@@ -9,12 +9,12 @@ import (
 	"strconv"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers/terraform/connection"
-	"go.mondoo.com/mql/v13/providers/terraform/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers/terraform/connection"
+	"go.mondoo.com/mql/providers/terraform/resources"
 )
 
 const (
@@ -83,11 +83,27 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 		conf.Options["path"] = req.Args[0]
 	}
 
-	if x, ok := flags["ignore-dot-terraform"]; ok {
-		if x != nil {
-			conf.Options["ignore-dot-terraform"] = strconv.FormatBool(x.RawData().Value.(bool))
+	// The flag is present on every run, defaulting to false, so only a true
+	// value is worth recording or reporting. Logging on mere presence announced
+	// "user requested to ignore .terraform" on every scan, including the ones
+	// that read it.
+	if x, ok := flags["ignore-dot-terraform"]; ok && x != nil {
+		if ignore, ok := x.RawData().Value.(bool); ok && ignore {
+			conf.Options["ignore-dot-terraform"] = strconv.FormatBool(true)
 			log.Info().Msg("user requested to ignore .terraform")
 		}
+	}
+
+	// The connector the user invoked is the choice of tool: `terraform` reads
+	// the directory the way Terraform does, `opentofu` the way OpenTofu does,
+	// and both label the asset accordingly. The CLI reports the canonical
+	// connector name, so the `tofu` alias arrives here as `opentofu`.
+	//
+	// A caller that names no connector this provider serves records nothing, and
+	// an HCL configuration then detects its dialect from the files on disk. That
+	// is the git-integration path, which knows a repository but not a tool.
+	if dialect, ok := connection.DialectForConnector(req.Connector); ok {
+		conf.Options[connection.OptionDialect] = string(dialect)
 	}
 
 	asset := &inventory.Asset{
@@ -121,6 +137,8 @@ func (s *Service) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 			return nil, err
 		}
 	}
+
+	attachContextConfig(req.Asset, conn)
 
 	return &plugin.ConnectRes{
 		Id:        uint32(conn.ID()),

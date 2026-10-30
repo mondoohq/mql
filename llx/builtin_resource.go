@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/timex"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/timex"
 )
 
 type Resource interface {
@@ -49,7 +49,13 @@ func _resourceWhereV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64,
 		return bind, 0, nil
 	}
 
-	resource := bind.Value.(Resource)
+	// Comma-ok, not a bare assertion: a panic in a builtin runs on an executor
+	// goroutine and takes down the whole scan, not just this query. A null bind
+	// reaches here whenever the list resolved but the resource behind it did not.
+	resource, ok := bind.Value.(Resource)
+	if !ok {
+		return nil, 0, errors.New("cannot call 'where' on a non-resource value")
+	}
 
 	arg1 := chunk.Function.Args[1]
 	blockRef, ok := arg1.RefV2()
@@ -76,7 +82,7 @@ func _resourceWhereV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64,
 		}
 	}
 
-	err = e.runFunctionBlocks(argsList, blockRef, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argsList, blockRef, ref, func(results []arrayBlockCallResult, errs []error) {
 		resList := []*Primitive{}
 		for i, res := range results {
 			isTruthy := res.isTruthy()
@@ -199,7 +205,7 @@ func resourceMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*
 		}
 	}
 
-	err = e.runFunctionBlocks(argsList, fref, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argsList, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		mappedType := types.Unset
 		resList := []any{}
 		f := e.ctx.code.Block(fref)
@@ -307,4 +313,121 @@ func resourceDuration(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64)
 	}
 
 	return TimeData(t), 0, nil
+}
+
+// permissionBits are the bits file.permissions.mode carries: the nine
+// rwx bits plus setuid, setgid and sticky.
+const permissionBits = 0o7777
+
+// permissionsAtMost reports whether mode sets no bit outside mask.
+func permissionsAtMost(mode int64, mask int64) bool {
+	return mode&permissionBits&^mask == 0
+}
+
+// permissionsAtLeast reports whether mode sets every bit of mask.
+func permissionsAtLeast(mode int64, mask int64) bool {
+	return mode&permissionBits&mask == mask
+}
+
+func filePermissionsAtMost(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
+	return filePermissionsMask(e, chunk, ref, permissionsAtMost)
+}
+
+func filePermissionsAtLeast(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
+	return filePermissionsMask(e, chunk, ref, permissionsAtLeast)
+}
+
+// filePermissionsMask evaluates a mask test against the mode the compiler
+// passes as the first argument. A null mode (no file, or no permissions read)
+// stays null, so the check fails instead of passing.
+func filePermissionsMask(e *blockExecutor, chunk *Chunk, ref uint64, test func(mode int64, mask int64) bool) (*RawData, uint64, error) {
+	if len(chunk.Function.Args) != 2 {
+		return nil, 0, errors.New("file.permissions mask test needs the mode and a mask")
+	}
+	args, rref, err := primitive2array(e, ref, chunk.Function.Args)
+	if err != nil || rref != 0 {
+		return nil, rref, err
+	}
+
+	mask, ok := args[1].(int64)
+	if !ok {
+		return nil, 0, errors.New("file.permissions mask must be an int")
+	}
+	if mask < 0 || mask > permissionBits {
+		return nil, 0, errors.New("file.permissions mask 0" + strconv.FormatInt(mask, 8) + " is outside the permission bits 0-07777")
+	}
+
+	mode, ok := args[0].(int64)
+	if !ok {
+		return &RawData{Type: types.Bool}, 0, nil
+	}
+	return BoolData(test(mode, mask)), 0, nil
+}
+
+// RuntimeBoundResource is a resource that names the runtime which answers its
+// fields, instead of leaving that to the executor's own runtime.
+//
+// Everything in one asset's tree is answered by the runtime executing the
+// query, so almost no resource needs this. A resource reached by resolving into
+// *another* asset does (ADR 031): its fields live on that asset's runtime, and
+// nothing else about it is special - blocks, `where`, labels and recording see
+// an ordinary resource.
+type RuntimeBoundResource interface {
+	Resource
+	// MqlRuntime returns the runtime that answers this resource's fields. A nil
+	// return means the executor's own runtime, so a wrapper is never obliged to
+	// have one.
+	MqlRuntime() Runtime
+}
+
+// BoundResource pins a resource to the runtime that can answer it.
+type BoundResource struct {
+	Resource
+	runtime Runtime
+}
+
+func (b *BoundResource) MqlRuntime() Runtime {
+	return b.runtime
+}
+
+// BindResource pins a resource to a runtime, unwrapping any binding it already
+// carries so the pin does not stack. Returns the resource untouched when there
+// is no runtime to bind to.
+func BindResource(resource Resource, runtime Runtime) Resource {
+	if resource == nil || runtime == nil {
+		return resource
+	}
+	if bound, ok := resource.(*BoundResource); ok {
+		resource = bound.Resource
+	}
+	return &BoundResource{Resource: resource, runtime: runtime}
+}
+
+// bindResourceValues pins every resource in a field's value to runtime. A field
+// read on a foreign asset can answer with a resource (or a list of them) that
+// lives in that same foreign tree, and the next chunk in the chain binds to that
+// value - so without this, a chain crosses into another asset and silently falls
+// back to the local runtime one hop later.
+func bindResourceValues(value any, runtime Runtime) any {
+	if value == nil || runtime == nil {
+		return value
+	}
+	switch v := value.(type) {
+	case Resource:
+		return BindResource(v, runtime)
+	case []any:
+		res := make([]any, len(v))
+		for i := range v {
+			res[i] = bindResourceValues(v[i], runtime)
+		}
+		return res
+	case map[string]any:
+		res := make(map[string]any, len(v))
+		for k := range v {
+			res[k] = bindResourceValues(v[k], runtime)
+		}
+		return res
+	default:
+		return value
+	}
 }

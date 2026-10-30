@@ -10,9 +10,9 @@ import (
 
 	together "github.com/togethercomputer/together-go"
 	"github.com/togethercomputer/together-go/option"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 )
 
 const (
@@ -42,7 +42,7 @@ func NewTogetherConnection(id uint32, asset *inventory.Asset, conf *inventory.Co
 
 	if conf.Options != nil {
 		if raw := strings.TrimSpace(conf.Options[OptionBaseURL]); raw != "" {
-			opts = append(opts, option.WithBaseURL(raw))
+			opts = append(opts, option.WithBaseURL(normalizeBaseURL(raw)))
 		}
 	}
 
@@ -96,4 +96,17 @@ func tokenFromConfig(conf *inventory.Config) string {
 		}
 	}
 	return strings.TrimSpace(token)
+}
+
+// normalizeBaseURL turns a --base-url value into the API root together-go
+// expects. Up to together-go v0.12 the client's base URL included the /v1
+// version segment and request paths were relative to it; from v0.13 the base
+// URL is the API root and every path carries its own version (v1/files,
+// v2/projects/..., v3/whoami). A base URL ending in /v1, as documented for this
+// flag until now, is cut back to the root so existing configurations keep
+// working.
+func normalizeBaseURL(raw string) string {
+	u := strings.TrimRight(strings.TrimSpace(raw), "/")
+	u = strings.TrimSuffix(u, "/v1")
+	return u + "/"
 }

@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/types"
 )
 
 var testTime = time.Unix(1715874169, 1)
@@ -20,6 +20,8 @@ func TestRawData_String(t *testing.T) {
 	strVal := "yo"
 	intVal := int64(1)
 	boolVal := true
+	floatVal := 1.5
+	float32Val := float32(2.5)
 	tests := []struct {
 		data *RawData
 		res  string
@@ -33,6 +35,9 @@ func TestRawData_String(t *testing.T) {
 		{IntDataPtr(&intVal), "1"},
 		{IntDataPtr[int](nil), "<null>"},
 		{FloatData(123), "123"},
+		{FloatDataPtr(&floatVal), "1.5"},
+		{FloatDataPtr[float64](nil), "<null>"},
+		{FloatDataPtr(&float32Val), "2.5"},
 		{StringData("yo"), "\"yo\""},
 		{StringDataPtr(nil), "<null>"},
 		{StringDataPtr(&strVal), "\"yo\""},
@@ -51,7 +56,7 @@ func TestRawData_String(t *testing.T) {
 		{IPData(ParseIP("1.2.3.4")), "1.2.3.4/8"},
 		{IPData(ParseIP("")), "<null>"},
 		// implicit nil:
-		{&RawData{types.String, nil, nil}, "<null>"},
+		{&RawData{Type: types.String}, "<null>"},
 	}
 
 	for i := range tests {
@@ -93,7 +98,7 @@ func TestTruthy(t *testing.T) {
 		{MapData(map[string]any{"a": true}, types.Bool), true},
 		{ResourceData(nil, "something"), true},
 		// implicit nil:
-		{&RawData{types.String, nil, nil}, false},
+		{&RawData{Type: types.String}, false},
 	}
 
 	for i := range tests {
@@ -205,7 +210,7 @@ func TestSuccess(t *testing.T) {
 			valid:   false,
 		},
 		// implicit nil:
-		{&RawData{types.String, nil, nil}, false, false},
+		{&RawData{Type: types.String}, false, false},
 	}
 
 	for i := range tests {

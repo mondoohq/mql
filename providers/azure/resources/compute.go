@@ -10,18 +10,20 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	compute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8"
-	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v10"
+	compute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v9"
+	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/sshutil"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -53,17 +55,35 @@ func vmOsType(props *compute.VirtualMachineProperties) *string {
 	return stringEnumPtr(props.StorageProfile.OSDisk.OSType)
 }
 
-func getState(vm compute.VirtualMachineInstanceView) string {
-	if vm.Statuses == nil {
-		return "unknown"
+// vmFlexPreferredSize returns the preferred VM size from the VM's flex
+// profile, or nil when the VM has no flex profile.
+func vmFlexPreferredSize(props *compute.VirtualMachineProperties) *string {
+	if props == nil || props.FlexProfile == nil {
+		return nil
 	}
+	return props.FlexProfile.PreferredVMSize
+}
+
+// powerStatePrefix marks the instance-view status codes that carry the VM's
+// power state. The same status list also carries ProvisioningState/* codes,
+// which must not be mistaken for it.
+const powerStatePrefix = "PowerState/"
+
+// getState returns the VM's power state as reported by its instance view, or
+// "unknown" when no PowerState status is present.
+//
+// Azure emits six power states: starting, running, stopping, stopped,
+// deallocating, and deallocated. "stopped" and "deallocated" are distinct — a
+// stopped VM still holds its compute reservation and public IP and is still
+// billed — so they are reported verbatim rather than collapsed together.
+func getState(vm compute.VirtualMachineInstanceView) string {
 	state := "unknown"
 	for _, s := range vm.Statuses {
-		if s.Code != nil && *s.Code == "PowerState/running" {
-			state = "running"
+		if s == nil || s.Code == nil {
+			continue
 		}
-		if s.Code != nil && *s.Code == "PowerState/deallocated" {
-			state = "stopped"
+		if rest, ok := strings.CutPrefix(*s.Code, powerStatePrefix); ok && rest != "" {
+			state = rest
 		}
 	}
 	return state
@@ -116,7 +136,7 @@ func (a *mqlAzureSubscriptionComputeService) vms() ([]any, error) {
 		}
 	}
 
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func vmToMql(runtime *plugin.Runtime, vm compute.VirtualMachine) (*mqlAzureSubscriptionComputeServiceVm, error) {
@@ -190,6 +210,9 @@ func vmToMql(runtime *plugin.Runtime, vm compute.VirtualMachine) (*mqlAzureSubsc
 						}
 						if k.KeyData != nil {
 							entry["keyData"] = *k.KeyData
+							algorithm, bits := sshutil.ParsePublicKey(*k.KeyData)
+							entry["algorithm"] = algorithm
+							entry["bits"] = bits
 						}
 						sshPublicKeys = append(sshPublicKeys, entry)
 					}
@@ -215,7 +238,7 @@ func vmToMql(runtime *plugin.Runtime, vm compute.VirtualMachine) (*mqlAzureSubsc
 	}
 
 	var bootDiagnosticsEnabled bool
-	var bootDiagnosticsStorageUri, userData string
+	var bootDiagnosticsStorageUri string
 	osType := vmOsType(vm.Properties)
 	if vm.Properties != nil {
 		if dp := vm.Properties.DiagnosticsProfile; dp != nil && dp.BootDiagnostics != nil {
@@ -226,21 +249,15 @@ func vmToMql(runtime *plugin.Runtime, vm compute.VirtualMachine) (*mqlAzureSubsc
 				bootDiagnosticsStorageUri = *dp.BootDiagnostics.StorageURI
 			}
 		}
-		if vm.Properties.UserData != nil {
-			userData = *vm.Properties.UserData
-		}
 	}
+
+	guestAccess := vmGuestAccessSettings(vm.Properties)
 
 	identityDict, err := convert.JsonToDict(vm.Identity)
 	if err != nil {
 		return nil, err
 	}
-	var principalId *string
-	var userAssignedIdentityIds []string
-	if vm.Identity != nil {
-		principalId = vm.Identity.PrincipalID
-		userAssignedIdentityIds = sortedUserAssignedIdentityIDs(vm.Identity.UserAssignedIdentities)
-	}
+	vmIdentity := orZero(vm.Identity)
 
 	vmIDStr := ""
 	if vm.ID != nil {
@@ -254,51 +271,63 @@ func vmToMql(runtime *plugin.Runtime, vm compute.VirtualMachine) (*mqlAzureSubsc
 		return nil, err
 	}
 
-	res, err := CreateResource(runtime, "azure.subscription.computeService.vm",
-		map[string]*llx.RawData{
-			"id":                            llx.StringDataPtr(id),
-			"name":                          llx.StringDataPtr(vm.Name),
-			"location":                      llx.StringDataPtr(vm.Location),
-			"zones":                         llx.ArrayData(convert.SliceStrPtrToInterface(vm.Zones), types.String),
-			"tags":                          llx.MapData(convert.PtrMapStrToInterface(vm.Tags), types.String),
-			"type":                          llx.StringDataPtr(vm.Type),
-			"properties":                    llx.DictData(properties),
-			"encryptionAtHost":              llx.BoolDataPtr(encryptionAtHost),
-			"securityType":                  llx.StringDataPtr(securityType),
-			"secureBootEnabled":             llx.BoolDataPtr(secureBootEnabled),
-			"vtpmEnabled":                   llx.BoolDataPtr(vtpmEnabled),
-			"proxyAgentEnabled":             llx.BoolDataPtr(proxyAgentEnabled),
-			"proxyAgentMode":                llx.StringDataPtr(proxyAgentMode),
-			"proxyAgentAddExtension":        llx.BoolDataPtr(proxyAgentAddExtension),
-			"fipsEncryptionEnabled":         llx.BoolDataPtr(fipsEncryptionEnabled),
-			"resiliencyProfile":             llx.DictData(resiliencyProfileDict),
-			"scheduledEventsPolicy":         llx.DictData(scheduledEventsPolicyDict),
-			"systemData":                    llx.DictData(systemDataDict),
-			"computerName":                  llx.StringDataPtr(computerName),
-			"adminUsername":                 llx.StringDataPtr(adminUsername),
-			"licenseType":                   llx.StringDataPtr(licenseType),
-			"managedBy":                     llx.StringDataPtr(vm.ManagedBy),
-			"vmId":                          llx.StringDataPtr(vmId),
-			"provisioningState":             llx.StringDataPtr(provisioningState),
-			"timeCreated":                   llx.TimeDataPtr(timeCreated),
-			"sshPublicKeys":                 llx.ArrayData(sshPublicKeys, types.Dict),
-			"disablePasswordAuthentication": llx.BoolDataPtr(disablePasswordAuth),
-			"osType":                        llx.StringDataPtr(osType),
-			"provisionVMAgent":              llx.BoolDataPtr(provisionVMAgent),
-			"enableAutomaticUpdates":        llx.BoolDataPtr(enableAutomaticUpdates),
-			"patchMode":                     llx.StringData(patchMode),
-			"imageReference":                llx.ResourceData(mqlImageRef, mqlImageRef.MqlName()),
-			"bootDiagnosticsEnabled":        llx.BoolData(bootDiagnosticsEnabled),
-			"bootDiagnosticsStorageUri":     llx.StringData(bootDiagnosticsStorageUri),
-			"userData":                      llx.StringData(userData),
-			"identity":                      llx.DictData(identityDict),
-			"principalId":                   llx.StringDataPtr(principalId),
-		})
+	vmArgs := map[string]*llx.RawData{
+		"id":                            llx.StringDataPtr(id),
+		"name":                          llx.StringDataPtr(vm.Name),
+		"location":                      llx.StringDataPtr(vm.Location),
+		"zones":                         llx.ArrayData(strPtrsToAny(vm.Zones), types.String),
+		"tags":                          llx.MapData(convert.PtrMapStrToInterface(vm.Tags), types.String),
+		"type":                          llx.StringDataPtr(vm.Type),
+		"properties":                    llx.DictData(properties),
+		"encryptionAtHost":              llx.BoolDataPtr(encryptionAtHost),
+		"securityType":                  llx.StringDataPtr(securityType),
+		"secureBootEnabled":             llx.BoolDataPtr(secureBootEnabled),
+		"vtpmEnabled":                   llx.BoolDataPtr(vtpmEnabled),
+		"proxyAgentEnabled":             llx.BoolDataPtr(proxyAgentEnabled),
+		"proxyAgentMode":                llx.StringDataPtr(proxyAgentMode),
+		"proxyAgentAddExtension":        llx.BoolDataPtr(proxyAgentAddExtension),
+		"fipsEncryptionEnabled":         llx.BoolDataPtr(fipsEncryptionEnabled),
+		"resiliencyProfile":             llx.DictData(resiliencyProfileDict),
+		"scheduledEventsPolicy":         llx.DictData(scheduledEventsPolicyDict),
+		"computerName":                  llx.StringDataPtr(computerName),
+		"adminUsername":                 llx.StringDataPtr(adminUsername),
+		"licenseType":                   llx.StringDataPtr(licenseType),
+		"flexProfilePreferredVmSize":    llx.StringDataPtr(vmFlexPreferredSize(vm.Properties)),
+		"managedBy":                     llx.StringDataPtr(vm.ManagedBy),
+		"vmId":                          llx.StringDataPtr(vmId),
+		"provisioningState":             llx.StringDataPtr(provisioningState),
+		"timeCreated":                   llx.TimeDataPtr(timeCreated),
+		"sshPublicKeys":                 llx.ArrayData(sshPublicKeys, types.Dict),
+		"disablePasswordAuthentication": llx.BoolDataPtr(disablePasswordAuth),
+		"osType":                        llx.StringDataPtr(osType),
+		"provisionVMAgent":              llx.BoolDataPtr(provisionVMAgent),
+		"enableAutomaticUpdates":        llx.BoolDataPtr(enableAutomaticUpdates),
+		"patchMode":                     llx.StringData(patchMode),
+		"patchAssessmentMode":           llx.StringDataPtr(vmPatchAssessmentMode(vm.Properties)),
+		"imageReference":                llx.ResourceData(mqlImageRef, mqlImageRef.MqlName()),
+		"bootDiagnosticsEnabled":        llx.BoolData(bootDiagnosticsEnabled),
+		"bootDiagnosticsStorageUri":     llx.StringData(bootDiagnosticsStorageUri),
+		"identity":                      llx.DictData(identityDict),
+		"allowExtensionOperations":      llx.BoolDataPtr(guestAccess.allowExtensionOperations),
+		"requireGuestProvisionSignal":   llx.BoolDataPtr(guestAccess.requireGuestProvisionSignal),
+		"winRmHttpListenerEnabled":      llx.BoolDataPtr(guestAccess.winRmHTTPListenerEnabled),
+		"winRmHttpsListenerEnabled":     llx.BoolDataPtr(guestAccess.winRmHTTPSListenerEnabled),
+	}
+	userAssignedIdentityIds := sortedUserAssignedIdentityIDs(vmIdentity.UserAssignedIdentities)
+	if err := setResourceIdentity(runtime, vmArgs, userAssignedIdentityIds,
+		identityType(vmIdentity.Type), identityPrincipalId(vmIdentity.PrincipalID), identityTenantId(vmIdentity.TenantID)); err != nil {
+		return nil, err
+	}
+
+	res, err := CreateResource(runtime, "azure.subscription.computeService.vm", vmArgs)
 	if err != nil {
 		return nil, err
 	}
 	mqlVm := res.(*mqlAzureSubscriptionComputeServiceVm)
+	mqlVm.cacheSystemData = systemDataDict
 	mqlVm.cacheUserAssignedIdentityIds = userAssignedIdentityIds
+	mqlVm.cacheCertificateSourceVaultIds = guestAccess.certificateSourceVaultIDs
+	mqlVm.cacheEncryptionIdentityId = guestAccess.encryptionIdentityID
 	return mqlVm, nil
 }
 
@@ -306,38 +335,64 @@ func (a *mqlAzureSubscriptionComputeServiceVm) userAssignedIdentities() ([]any, 
 	return resolveUserAssignedIdentities(a.MqlRuntime, a.cacheUserAssignedIdentityIds)
 }
 
+func (a *mqlAzureSubscriptionComputeServiceVm) systemAssignedIdentity() (*mqlAzureSubscriptionManagedIdentity, error) {
+	return newSystemAssignedManagedIdentity(a.MqlRuntime, a.Id.Data, a.PrincipalId.Data, tenantIDFromIdentityDict(a.Identity), &a.SystemAssignedIdentity)
+}
+
 func (a *mqlAzureSubscriptionComputeServiceVm) state() (string, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
-	// id is a Azure resource ID
-	id := a.Id.Data
-	resourceID, err := ParseResourceID(id)
+	view, err := a.fetchInstanceView()
 	if err != nil {
 		return "", err
 	}
+	return getState(*view), nil
+}
 
+// fetchInstanceView reads the VM's instance view once and shares it between
+// the power state and the patch assessment fields, so asking for several of
+// them costs a single API call.
+func (a *mqlAzureSubscriptionComputeServiceVm) fetchInstanceView() (*compute.VirtualMachineInstanceView, error) {
+	if a.instanceViewLoaded.Load() {
+		return a.instanceView, a.instanceViewErr
+	}
+	a.instanceViewMu.Lock()
+	defer a.instanceViewMu.Unlock()
+	if a.instanceViewLoaded.Load() {
+		return a.instanceView, a.instanceViewErr
+	}
+
+	view, err := a.loadInstanceView()
+	a.instanceView = view
+	a.instanceViewErr = err
+	a.instanceViewLoaded.Store(true)
+	return view, err
+}
+
+func (a *mqlAzureSubscriptionComputeServiceVm) loadInstanceView() (*compute.VirtualMachineInstanceView, error) {
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	// id is a Azure resource ID
+	resourceID, err := ParseResourceID(a.Id.Data)
+	if err != nil {
+		return nil, err
+	}
 	vm, err := resourceID.Component("virtualMachines")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	ctx := context.Background()
-	token := conn.Token()
-	if err != nil {
-		return "", err
-	}
-
-	client, err := compute.NewVirtualMachinesClient(resourceID.SubscriptionID, token, &arm.ClientOptions{
+	client, err := compute.NewVirtualMachinesClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
 		ClientOptions: conn.ClientOptions(),
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-
-	view, err := client.InstanceView(ctx, resourceID.ResourceGroup, vm, &compute.VirtualMachinesClientInstanceViewOptions{})
+	view, err := client.InstanceView(context.Background(), resourceID.ResourceGroup, vm, &compute.VirtualMachinesClientInstanceViewOptions{})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return getState(view.VirtualMachineInstanceView), nil
+	return &view.VirtualMachineInstanceView, nil
 }
 
 func (a *mqlAzureSubscriptionComputeServiceVm) isRunning() (bool, error) {
@@ -349,10 +404,19 @@ func (a *mqlAzureSubscriptionComputeServiceVm) isRunning() (bool, error) {
 }
 
 type mqlAzureSubscriptionComputeServiceVmInternal struct {
+	instanceViewMu     sync.Mutex
+	instanceViewLoaded atomic.Bool
+	instanceView       *compute.VirtualMachineInstanceView
+	instanceViewErr    error
+
 	extensionsOnce               sync.Once
 	extensionsList               []*compute.VirtualMachineExtension
 	extensionsError              error
 	cacheUserAssignedIdentityIds []string
+	cacheSystemData              any
+
+	cacheCertificateSourceVaultIds []string
+	cacheEncryptionIdentityId      string
 }
 
 func (a *mqlAzureSubscriptionComputeServiceVm) fetchExtensions() ([]*compute.VirtualMachineExtension, error) {
@@ -382,11 +446,11 @@ func (a *mqlAzureSubscriptionComputeServiceVm) fetchExtensions() ([]*compute.Vir
 		resp, err := client.List(context.Background(), resourceID.ResourceGroup, vm, &compute.VirtualMachineExtensionsClientListOptions{})
 		if err != nil {
 			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
+			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden && !plugin.StructuredErrors() {
 				log.Warn().Str("vm", a.Id.Data).Err(err).Msg("could not list VM extensions due to access denied")
 				return
 			}
-			a.extensionsError = err
+			a.extensionsError = classifyAzureRefusal(err, "Microsoft.Compute/virtualMachines/extensions/read")
 			return
 		}
 		a.extensionsList = resp.Value
@@ -506,6 +570,9 @@ func (a *mqlAzureSubscriptionComputeService) disks() ([]any, error) {
 			return nil, err
 		}
 		for _, disk := range disks.Value {
+			if disk == nil {
+				continue
+			}
 			mqlAzureDisk, err := diskToMql(a.MqlRuntime, *disk)
 			if err != nil {
 				return nil, err
@@ -557,8 +624,48 @@ func diskToMql(runtime *plugin.Runtime, disk compute.Disk) (*mqlAzureSubscriptio
 		"zones":             llx.ArrayData(zones, types.String),
 		"sku":               llx.DictData(sku),
 		"properties":        llx.DictData(properties),
-		"systemData":        llx.DictData(systemData),
 	}
+	diskSku := orZero(disk.SKU)
+	if err := setSkuData(runtime, args, skuName(diskSku.Name), skuTier(diskSku.Tier)); err != nil {
+		return nil, err
+	}
+
+	// Cached for secureVmDiskEncryptionSet(); the confidential-VM guest state
+	// key is a separate encryption set from the disk's own, so it cannot be
+	// derived from diskEncryptionSetId.
+	var secureVMDesID *string
+
+	// Read outside the Properties guard below and set unconditionally, so a
+	// disk that arrives without Properties reports these as null rather than
+	// leaving them unset. An unset field crosses the plugin boundary with no
+	// type information and surfaces client-side as an unattributed null; a
+	// deliberate null says "not reported" and is what a security check should
+	// see for securityType on a disk whose shape could not be read.
+	var encryptionSettingsVersion *string
+	var securityType *compute.DiskSecurityTypes
+	var confidentialVMVersion *compute.ConfidentialVMVersion
+	var osType *compute.OperatingSystemTypes
+	var diskSizeGB *int32
+	var optimizedForFrequentAttach *bool
+	if p := disk.Properties; p != nil {
+		if esc := p.EncryptionSettingsCollection; esc != nil {
+			encryptionSettingsVersion = esc.EncryptionSettingsVersion
+		}
+		if sp := p.SecurityProfile; sp != nil {
+			securityType = sp.SecurityType
+			confidentialVMVersion = sp.ConfidentialVMVersion
+			secureVMDesID = sp.SecureVMDiskEncryptionSetID
+		}
+		osType = p.OSType
+		diskSizeGB = p.DiskSizeGB
+		optimizedForFrequentAttach = p.OptimizedForFrequentAttach
+	}
+	args["encryptionSettingsVersion"] = llx.StringDataPtr(encryptionSettingsVersion)
+	args["securityType"] = llx.StringDataPtr(stringEnumPtr(securityType))
+	args["confidentialVmVersion"] = llx.StringDataPtr(stringEnumPtr(confidentialVMVersion))
+	args["osType"] = llx.StringDataPtr(stringEnumPtr(osType))
+	args["diskSizeGB"] = llx.IntDataPtr(diskSizeGB)
+	args["optimizedForFrequentAttach"] = llx.BoolDataPtr(optimizedForFrequentAttach)
 
 	if disk.Properties != nil {
 		args["networkAccessPolicy"] = llx.StringDataPtr(stringEnumPtr(disk.Properties.NetworkAccessPolicy))
@@ -603,11 +710,41 @@ func diskToMql(runtime *plugin.Runtime, disk compute.Disk) (*mqlAzureSubscriptio
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlAzureSubscriptionComputeServiceDisk), nil
+	mqlDisk := res.(*mqlAzureSubscriptionComputeServiceDisk)
+	mqlDisk.cacheSecureVMDiskEncryptionSetID = secureVMDesID
+	mqlDisk.cacheSystemData = systemData
+	return mqlDisk, nil
+}
+
+type mqlAzureSubscriptionComputeServiceDiskInternal struct {
+	cacheSecureVMDiskEncryptionSetID *string
+	cacheSystemData                  any
+}
+
+// secureVmDiskEncryptionSet resolves the encryption set protecting a
+// confidential VM's guest state. Only ConfidentialVM_DiskEncryptedWithCustomerKey
+// disks carry one; every other disk reports null.
+func (a *mqlAzureSubscriptionComputeServiceDisk) secureVmDiskEncryptionSet() (*mqlAzureSubscriptionComputeServiceDiskEncryptionSet, error) {
+	return resolveSecureVMDiskEncryptionSet(a.MqlRuntime, a.cacheSecureVMDiskEncryptionSetID, &a.SecureVmDiskEncryptionSet)
+}
+
+// resolveSecureVMDiskEncryptionSet is shared by disks and snapshots, which model
+// the same securityProfile block.
+func resolveSecureVMDiskEncryptionSet(runtime *plugin.Runtime, id *string, field *plugin.TValue[*mqlAzureSubscriptionComputeServiceDiskEncryptionSet]) (*mqlAzureSubscriptionComputeServiceDiskEncryptionSet, error) {
+	if id == nil || *id == "" {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(runtime, "azure.subscription.computeService.diskEncryptionSet", map[string]*llx.RawData{
+		"id": llx.StringData(strings.ToLower(*id)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAzureSubscriptionComputeServiceDiskEncryptionSet), nil
 }
 
 func (a *mqlAzureSubscriptionComputeServiceVm) osDisk() (*mqlAzureSubscriptionComputeServiceDisk, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
 	propertiesDict := a.Properties.Data
 	data, err := json.Marshal(propertiesDict)
 	if err != nil {
@@ -620,35 +757,23 @@ func (a *mqlAzureSubscriptionComputeServiceVm) osDisk() (*mqlAzureSubscriptionCo
 		return nil, err
 	}
 
+	// A VM on unmanaged (page-blob VHD) storage has an OS disk but no managed
+	// disk resource to point at, so there is nothing to resolve. Report null
+	// rather than failing the field.
 	if properties.StorageProfile == nil || properties.StorageProfile.OSDisk == nil || properties.StorageProfile.OSDisk.ManagedDisk == nil || properties.StorageProfile.OSDisk.ManagedDisk.ID == nil {
-		return nil, errors.New("could not determine os disk from vm storage profile")
+		a.OsDisk.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 
-	resourceID, err := ParseResourceID(*properties.StorageProfile.OSDisk.ManagedDisk.ID)
+	// Resolved through the target's own init rather than fetched here, so a
+	// resource several things point at is fetched once for the scan instead
+	// of once per reference to it.
+	res, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionComputeServiceDisk,
+		map[string]*llx.RawData{"id": llx.StringData(*properties.StorageProfile.OSDisk.ManagedDisk.ID)})
 	if err != nil {
 		return nil, err
 	}
-
-	diskName, err := resourceID.Component("disks")
-	if err != nil {
-		return nil, err
-	}
-
-	ctx := context.Background()
-	token := conn.Token()
-
-	client, err := compute.NewDisksClient(resourceID.SubscriptionID, token, &arm.ClientOptions{
-		ClientOptions: conn.ClientOptions(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	disk, err := client.Get(ctx, resourceID.ResourceGroup, diskName, &compute.DisksClientGetOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	return diskToMql(a.MqlRuntime, disk.Disk)
+	return res.(*mqlAzureSubscriptionComputeServiceDisk), nil
 }
 
 func (a *mqlAzureSubscriptionComputeServiceVm) dataDisks() ([]any, error) {
@@ -667,8 +792,10 @@ func (a *mqlAzureSubscriptionComputeServiceVm) dataDisks() ([]any, error) {
 		return nil, err
 	}
 
+	// A VM with no data disks omits the array entirely; that is an empty list,
+	// not a failure.
 	if properties.StorageProfile == nil || properties.StorageProfile.DataDisks == nil {
-		return nil, errors.New("could not determine data disks from vm storage profile")
+		return []any{}, nil
 	}
 
 	dataDisks := properties.StorageProfile.DataDisks
@@ -857,7 +984,10 @@ func (a *mqlAzureSubscriptionComputeServiceVm) publicIpAddresses() ([]any, error
 		return nil, props.Error
 	}
 
-	propsDict := (props.Data).(map[string]any)
+	propsDict, ok := props.Data.(map[string]any)
+	if !ok {
+		return []any{}, nil
+	}
 	networkInterface, ok := propsDict["networkProfile"]
 	if !ok {
 		return nil, errors.New("cannot find network profile on vm, not retrieving ip addresses")
@@ -891,12 +1021,11 @@ func (a *mqlAzureSubscriptionComputeServiceVm) publicIpAddresses() ([]any, error
 	// Get is the only API option here (no batch endpoint), so a bounded
 	// errgroup is the cheapest fix that preserves semantics.
 	type nicFetch struct {
-		rg    string
-		name  string
-		index int
+		rg   string
+		name string
 	}
 	nicFetches := make([]nicFetch, 0, len(networkInterfaces.NetworkInterfaces))
-	for i, iface := range networkInterfaces.NetworkInterfaces {
+	for _, iface := range networkInterfaces.NetworkInterfaces {
 		if iface.ID == nil {
 			continue
 		}
@@ -908,19 +1037,19 @@ func (a *mqlAzureSubscriptionComputeServiceVm) publicIpAddresses() ([]any, error
 		if err != nil {
 			return nil, err
 		}
-		nicFetches = append(nicFetches, nicFetch{rg: resource.ResourceGroup, name: name, index: i})
+		nicFetches = append(nicFetches, nicFetch{rg: resource.ResourceGroup, name: name})
 	}
 
-	nics := make([]network.Interface, len(networkInterfaces.NetworkInterfaces))
+	nics := make([]network.Interface, len(nicFetches))
 	g1, gctx1 := errgroup.WithContext(ctx)
 	g1.SetLimit(10)
-	for _, f := range nicFetches {
+	for i, f := range nicFetches {
 		g1.Go(func() error {
 			resp, err := nicClient.Get(gctx1, f.rg, f.name, &network.InterfacesClientGetOptions{})
 			if err != nil {
 				return err
 			}
-			nics[f.index] = resp.Interface
+			nics[i] = resp.Interface
 			return nil
 		})
 	}
@@ -984,50 +1113,54 @@ func (a *mqlAzureSubscriptionComputeServiceVm) publicIpAddresses() ([]any, error
 }
 
 func initAzureSubscriptionComputeServiceVm(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	if len(args) > 1 {
-		return args, nil, nil
-	}
+	return initFromServiceList(runtime, args,
+		ResourceAzureSubscriptionComputeService,
+		func(s *mqlAzureSubscriptionComputeService) *plugin.TValue[[]any] { return s.GetVms() },
+		ResourceAzureSubscriptionComputeServiceVm)
+}
 
-	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["id"] = llx.StringData(ids.id)
-		}
-	}
-
-	if args["id"] == nil {
-		return nil, nil, errors.New("id required to fetch azure compute vm instance")
-	}
-	conn, ok := runtime.Connection.(*connection.AzureConnection)
-	if !ok {
-		return nil, nil, errors.New("invalid connection provided, it is not an Azure connection")
-	}
-
-	id := args["id"].Value.(string)
-	resourceID, err := ParseResourceID(id)
+// userData returns the VM's base64-encoded user data.
+//
+// ARM only returns userData when the read asks for it with $expand=userData,
+// and the list API cannot return it at all -- ExpandTypesForListVMs offers only
+// instanceView. Reading vm.Properties.UserData off a plain Get or List therefore
+// always produced "", so a hunt for credentials embedded in bootstrap data
+// (vms.where(userData != "")) came back empty on every subscription. Asking for
+// the expansion costs one read per VM, which is why this is a computed field
+// rather than part of the listing.
+func (a *mqlAzureSubscriptionComputeServiceVm) userData() (string, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	resourceID, err := ParseResourceID(a.Id.Data)
 	if err != nil {
-		return nil, nil, err
+		return "", err
 	}
 	vmName, err := resourceID.Component("virtualMachines")
 	if err != nil {
-		return nil, nil, err
+		return "", err
 	}
 
 	client, err := compute.NewVirtualMachinesClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
 		ClientOptions: conn.ClientOptions(),
 	})
 	if err != nil {
-		return nil, nil, err
-	}
-	resp, err := client.Get(context.Background(), resourceID.ResourceGroup, vmName, &compute.VirtualMachinesClientGetOptions{})
-	if err != nil {
-		return nil, nil, err
+		return "", err
 	}
 
-	mqlVm, err := vmToMql(runtime, resp.VirtualMachine)
+	expand := compute.InstanceViewTypesUserData
+	resp, err := client.Get(context.Background(), resourceID.ResourceGroup, vmName, &compute.VirtualMachinesClientGetOptions{
+		Expand: &expand,
+	})
 	if err != nil {
-		return nil, nil, err
+		if isAzureNotConfigured(err) {
+			log.Warn().Err(err).Str("vm", a.Id.Data).Msg("could not read vm user data")
+			return "", nil
+		}
+		return "", err
 	}
-	return args, mqlVm, nil
+	if resp.Properties == nil {
+		return "", nil
+	}
+	return convert.ToValue(resp.Properties.UserData), nil
 }
 
 func (a *mqlAzureSubscriptionComputeServiceDiskEncryptionSet) id() (string, error) {
@@ -1109,21 +1242,27 @@ func diskEncryptionSetToMql(runtime *plugin.Runtime, des compute.DiskEncryptionS
 		}
 	}
 
-	res, err := CreateResource(runtime, ResourceAzureSubscriptionComputeServiceDiskEncryptionSet,
-		map[string]*llx.RawData{
-			"id":                                llx.StringDataPtr(des.ID),
-			"name":                              llx.StringDataPtr(des.Name),
-			"location":                          llx.StringDataPtr(des.Location),
-			"tags":                              llx.MapData(convert.PtrMapStrToInterface(des.Tags), types.String),
-			"type":                              llx.StringDataPtr(des.Type),
-			"identity":                          llx.DictData(identity),
-			"encryptionType":                    llx.StringData(encryptionType),
-			"activeKeyUrl":                      llx.StringData(activeKeyUrl),
-			"activeKeySourceVaultId":            llx.StringData(activeKeySourceVaultId),
-			"rotationToLatestKeyVersionEnabled": llx.BoolDataPtr(rotationToLatestKeyVersionEnabled),
-			"lastKeyRotationTimestamp":          llx.TimeDataPtr(lastKeyRotationTimestamp),
-			"provisioningState":                 llx.StringData(provisioningState),
-		})
+	desArgs := map[string]*llx.RawData{
+		"id":                                llx.StringDataPtr(des.ID),
+		"name":                              llx.StringDataPtr(des.Name),
+		"location":                          llx.StringDataPtr(des.Location),
+		"tags":                              llx.MapData(convert.PtrMapStrToInterface(des.Tags), types.String),
+		"type":                              llx.StringDataPtr(des.Type),
+		"identity":                          llx.DictData(identity),
+		"encryptionType":                    llx.StringData(encryptionType),
+		"activeKeyUrl":                      llx.StringData(activeKeyUrl),
+		"activeKeySourceVaultId":            llx.StringData(activeKeySourceVaultId),
+		"rotationToLatestKeyVersionEnabled": llx.BoolDataPtr(rotationToLatestKeyVersionEnabled),
+		"lastKeyRotationTimestamp":          llx.TimeDataPtr(lastKeyRotationTimestamp),
+		"provisioningState":                 llx.StringData(provisioningState),
+	}
+	desIdentity := orZero(des.Identity)
+	if err := setResourceIdentity(runtime, desArgs, sortedUserAssignedIdentityIDs(desIdentity.UserAssignedIdentities),
+		identityType(desIdentity.Type), identityPrincipalId(desIdentity.PrincipalID), identityTenantId(desIdentity.TenantID)); err != nil {
+		return nil, err
+	}
+
+	res, err := CreateResource(runtime, ResourceAzureSubscriptionComputeServiceDiskEncryptionSet, desArgs)
 	if err != nil {
 		return nil, err
 	}
@@ -1131,8 +1270,9 @@ func diskEncryptionSetToMql(runtime *plugin.Runtime, des compute.DiskEncryptionS
 	if err != nil {
 		return nil, err
 	}
-	res.(*mqlAzureSubscriptionComputeServiceDiskEncryptionSet).cacheSystemData = sysData
-	return res.(*mqlAzureSubscriptionComputeServiceDiskEncryptionSet), nil
+	mqlDes := res.(*mqlAzureSubscriptionComputeServiceDiskEncryptionSet)
+	mqlDes.cacheSystemData = sysData
+	return mqlDes, nil
 }
 
 type mqlAzureSubscriptionComputeServiceDiskEncryptionSetInternal struct {
@@ -1259,6 +1399,7 @@ func (a *mqlAzureSubscriptionComputeServiceDiskAccess) privateEndpointConnection
 			resType = "Microsoft.Compute/diskAccesses/privateEndpointConnections"
 		}
 
+		var pecPrivateEndpointID string
 		privateEndpoint := map[string]*llx.RawData{
 			"__id": llx.StringDataPtr(entry.ID),
 			"id":   llx.StringDataPtr(entry.ID),
@@ -1278,20 +1419,13 @@ func (a *mqlAzureSubscriptionComputeServiceDiskAccess) privateEndpointConnection
 			privateEndpoint["properties"] = llx.DictData(propsMap)
 
 			if props.PrivateEndpoint != nil {
-				privateEndpoint["privateEndpointId"] = llx.StringDataPtr(props.PrivateEndpoint.ID)
+				pecPrivateEndpointID = convert.ToValue(props.PrivateEndpoint.ID)
 			}
 			if props.PrivateLinkServiceConnectionState != nil {
-				stateArgs := map[string]*llx.RawData{}
-				if props.PrivateLinkServiceConnectionState.ActionsRequired != nil {
-					stateArgs["actionsRequired"] = llx.StringDataPtr(props.PrivateLinkServiceConnectionState.ActionsRequired)
-				}
-				if props.PrivateLinkServiceConnectionState.Description != nil {
-					stateArgs["description"] = llx.StringDataPtr(props.PrivateLinkServiceConnectionState.Description)
-				}
-				if props.PrivateLinkServiceConnectionState.Status != nil {
-					stateArgs["status"] = llx.StringData(string(*props.PrivateLinkServiceConnectionState.Status))
-				}
-				stateRes, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionPrivateEndpointConnectionConnectionState, stateArgs)
+				stateRes, err := newPrivateLinkServiceConnectionState(a.MqlRuntime, convert.ToValue(entry.ID),
+					stringEnumPtr(props.PrivateLinkServiceConnectionState.ActionsRequired),
+					props.PrivateLinkServiceConnectionState.Description,
+					stringEnumPtr(props.PrivateLinkServiceConnectionState.Status))
 				if err != nil {
 					return nil, err
 				}
@@ -1302,7 +1436,7 @@ func (a *mqlAzureSubscriptionComputeServiceDiskAccess) privateEndpointConnection
 			}
 		}
 
-		mqlRes, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionPrivateEndpointConnection, privateEndpoint)
+		mqlRes, err := newAzurePrivateEndpointConnection(a.MqlRuntime, privateEndpoint, pecPrivateEndpointID)
 		if err != nil {
 			return nil, err
 		}
@@ -1325,7 +1459,10 @@ func initAzureSubscriptionComputeServiceDisk(runtime *plugin.Runtime, args map[s
 		return nil, nil, errors.New("invalid connection provided, it is not an Azure connection")
 	}
 
-	id := args["id"].Value.(string)
+	id, ok := args["id"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("id must be a non-nil string value")
+	}
 	resourceID, err := ParseResourceID(id)
 	if err != nil {
 		return nil, nil, err
@@ -1333,6 +1470,13 @@ func initAzureSubscriptionComputeServiceDisk(runtime *plugin.Runtime, args map[s
 	diskName, err := resourceID.Component("disks")
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// Already fetched by an earlier reference: NewResource consults the
+	// cache only after this init returns, so without this the same target is
+	// re-fetched once per reference and the result thrown away.
+	if cached := cachedResource(runtime, ResourceAzureSubscriptionComputeServiceDisk, id); cached != nil {
+		return args, cached, nil
 	}
 
 	client, err := compute.NewDisksClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
@@ -1365,7 +1509,10 @@ func initAzureSubscriptionComputeServiceDiskEncryptionSet(runtime *plugin.Runtim
 		return nil, nil, errors.New("invalid connection provided, it is not an Azure connection")
 	}
 
-	id := args["id"].Value.(string)
+	id, ok := args["id"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("id must be a non-nil string value")
+	}
 	resourceID, err := ParseResourceID(id)
 	if err != nil {
 		return nil, nil, err
@@ -1373,6 +1520,13 @@ func initAzureSubscriptionComputeServiceDiskEncryptionSet(runtime *plugin.Runtim
 	desName, err := resourceID.Component("diskEncryptionSets")
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// Already fetched by an earlier reference: NewResource consults the
+	// cache only after this init returns, so without this the same target is
+	// re-fetched once per reference and the result thrown away.
+	if cached := cachedResource(runtime, ResourceAzureSubscriptionComputeServiceDiskEncryptionSet, id); cached != nil {
+		return args, cached, nil
 	}
 
 	client, err := compute.NewDiskEncryptionSetsClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
@@ -1394,8 +1548,10 @@ func initAzureSubscriptionComputeServiceDiskEncryptionSet(runtime *plugin.Runtim
 }
 
 type mqlAzureSubscriptionComputeServiceSnapshotInternal struct {
-	cacheSourceDiskId *string
-	cacheDESId        *string
+	cacheSourceDiskId  *string
+	cacheDESId         *string
+	cacheSecureVMDESId *string
+	cacheSystemData    any
 }
 
 func (a *mqlAzureSubscriptionComputeServiceSnapshot) id() (string, error) {
@@ -1465,10 +1621,13 @@ func snapshotToMql(runtime *plugin.Runtime, snap compute.Snapshot) (*mqlAzureSub
 		"type":       llx.StringDataPtr(snap.Type),
 		"sku":        llx.DictData(sku),
 		"properties": llx.DictData(properties),
-		"systemData": llx.DictData(systemData),
+	}
+	snapSku := orZero(snap.SKU)
+	if err := setSkuData(runtime, args, skuName(snapSku.Name), skuTier(snapSku.Tier)); err != nil {
+		return nil, err
 	}
 
-	var cacheSourceDiskId, cacheDESId *string
+	var cacheSourceDiskId, cacheDESId, cacheSecureVMDESId *string
 	if snap.Properties != nil {
 		props := snap.Properties
 		creationData, err := convert.JsonToDict(props.CreationData)
@@ -1494,6 +1653,25 @@ func snapshotToMql(runtime *plugin.Runtime, snap compute.Snapshot) (*mqlAzureSub
 			cacheDESId = props.Encryption.DiskEncryptionSetID
 		}
 		args["encryptionType"] = llx.StringDataPtr(stringEnumPtr(encryptionType))
+		var encryptionSettingsEnabled *bool
+		var encryptionSettingsVersion *string
+		if esc := props.EncryptionSettingsCollection; esc != nil {
+			encryptionSettingsEnabled = esc.Enabled
+			encryptionSettingsVersion = esc.EncryptionSettingsVersion
+		}
+		args["encryptionSettingsEnabled"] = llx.BoolDataPtr(encryptionSettingsEnabled)
+		args["encryptionSettingsVersion"] = llx.StringDataPtr(encryptionSettingsVersion)
+		var securityType *compute.DiskSecurityTypes
+		var confidentialVMVersion *compute.ConfidentialVMVersion
+		if sp := props.SecurityProfile; sp != nil {
+			securityType = sp.SecurityType
+			confidentialVMVersion = sp.ConfidentialVMVersion
+			cacheSecureVMDESId = sp.SecureVMDiskEncryptionSetID
+		}
+		args["securityType"] = llx.StringDataPtr(stringEnumPtr(securityType))
+		args["confidentialVmVersion"] = llx.StringDataPtr(stringEnumPtr(confidentialVMVersion))
+		args["diskSizeGB"] = llx.IntDataPtr(props.DiskSizeGB)
+		args["completionPercent"] = llx.FloatDataPtr(props.CompletionPercent)
 		args["dataAccessAuthMode"] = llx.StringDataPtr(stringEnumPtr(props.DataAccessAuthMode))
 		args["diskAccessId"] = llx.StringDataPtr(props.DiskAccessID)
 		args["snapshotAccessState"] = llx.StringDataPtr(stringEnumPtr(props.SnapshotAccessState))
@@ -1502,6 +1680,28 @@ func snapshotToMql(runtime *plugin.Runtime, snap compute.Snapshot) (*mqlAzureSub
 			cacheSourceDiskId = props.CreationData.SourceResourceID
 			args["instantAccessDurationMinutes"] = llx.IntDataPtr(props.CreationData.InstantAccessDurationMinutes)
 		}
+
+		// Always set the immutability policy fields so they resolve to null
+		// (not their Go zero value) when no policy is applied. Leaving them
+		// absent from args would make immutabilityPolicyExpired default to
+		// false, wrongly passing audits like `!immutabilityPolicyExpired`
+		// for snapshots that have no immutability protection at all.
+		var ipType *compute.ImmutabilityPolicyType
+		var ipDurationDays *int32
+		var ipExpired *bool
+		var ipStartTime, ipExpirationTime *time.Time
+		if ip := props.ImmutabilityPolicy; ip != nil {
+			ipType = ip.Type
+			ipDurationDays = ip.ImmutabilityDurationDays
+			ipExpired = ip.IsPolicyExpired
+			ipStartTime = ip.PolicyStartTime
+			ipExpirationTime = ip.PolicyExpirationTime
+		}
+		args["immutabilityPolicyType"] = llx.StringDataPtr(stringEnumPtr(ipType))
+		args["immutabilityPolicyDurationDays"] = llx.IntDataPtr(ipDurationDays)
+		args["immutabilityPolicyExpired"] = llx.BoolDataPtr(ipExpired)
+		args["immutabilityPolicyStartTime"] = llx.TimeDataPtr(ipStartTime)
+		args["immutabilityPolicyExpirationTime"] = llx.TimeDataPtr(ipExpirationTime)
 	}
 
 	res, err := CreateResource(runtime, "azure.subscription.computeService.snapshot", args)
@@ -1511,7 +1711,17 @@ func snapshotToMql(runtime *plugin.Runtime, snap compute.Snapshot) (*mqlAzureSub
 	mqlSnap := res.(*mqlAzureSubscriptionComputeServiceSnapshot)
 	mqlSnap.cacheSourceDiskId = cacheSourceDiskId
 	mqlSnap.cacheDESId = cacheDESId
+	mqlSnap.cacheSecureVMDESId = cacheSecureVMDESId
+	mqlSnap.cacheSystemData = systemData
 	return mqlSnap, nil
+}
+
+// secureVmDiskEncryptionSet resolves the encryption set protecting a
+// confidential VM's guest state, carried over from the source disk. Null on
+// every snapshot other than one of a ConfidentialVM_DiskEncryptedWithCustomerKey
+// disk.
+func (a *mqlAzureSubscriptionComputeServiceSnapshot) secureVmDiskEncryptionSet() (*mqlAzureSubscriptionComputeServiceDiskEncryptionSet, error) {
+	return resolveSecureVMDiskEncryptionSet(a.MqlRuntime, a.cacheSecureVMDESId, &a.SecureVmDiskEncryptionSet)
 }
 
 func (a *mqlAzureSubscriptionComputeServiceSnapshot) sourceDisk() (*mqlAzureSubscriptionComputeServiceDisk, error) {

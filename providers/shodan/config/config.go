@@ -4,16 +4,22 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/shodan/connection"
-	"go.mondoo.com/mql/v13/providers/shodan/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/shodan/connection"
+	"go.mondoo.com/mql/providers/shodan/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "shodan",
-	ID:              "go.mondoo.com/mql/v13/providers/shodan",
-	Version:         "13.2.4",
+	Name: "shodan",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "shodan",
+	ID:      "go.mondoo.com/mql/providers/shodan",
+	Version: "14.0.8",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       connection.Platforms,
 	Connectors: []plugin.Connector{
@@ -23,10 +29,18 @@ var Config = plugin.Provider{
 			Short: "a Shodan account",
 			Long: `Use the shodan provider to query domain and IP security information in the Shodan search engine.
 
+Available sub-commands:
+  host <TARGET>             Query a single host by IP address or hostname
+  domain <TARGET>           Query a domain and the hosts Shodan associates with it
+
 Examples:
   cnspec shell shodan --token <api-token>
+  cnspec shell shodan host example.com
+  cnspec shell shodan domain example.com
   cnspec shell shodan --networks <ip-range> --discover hosts
   cnspec scan shodan --token <api-token>
+  cnspec scan shodan host 192.168.1.1
+  cnspec scan shodan domain example.com
 
 Notes:
   If you set the SHODAN_TOKEN environment variable, you can omit the token flag.

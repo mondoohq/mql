@@ -9,8 +9,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
 func TestRebootOnUbuntu(t *testing.T) {
@@ -50,6 +51,26 @@ func TestRebootOnRhel(t *testing.T) {
 	assert.Equal(t, true, required)
 }
 
+// openEuler, EulerOS and Huawei Cloud EulerOS are rpm distributions in their
+// own euler family, outside redhat, and were reported as unsupported.
+func TestRebootOnEulerFamily(t *testing.T) {
+	for _, name := range []string{"openeuler", "euleros", "hce"} {
+		t.Run(name, func(t *testing.T) {
+			conn, err := mock.New(0, &inventory.Asset{
+				Platform: &inventory.Platform{
+					Name:   name,
+					Family: []string{"euler", "linux", "unix", "os"},
+				},
+			}, mock.WithData(&mock.TomlData{}))
+			require.NoError(t, err)
+
+			lb, err := New(conn)
+			require.NoError(t, err)
+			assert.IsType(t, &RpmNewestKernel{}, lb)
+		})
+	}
+}
+
 func TestRebootOnWindows(t *testing.T) {
 	filepath, _ := filepath.Abs("./testdata/windows_reboot.toml")
 	mock, err := mock.New(0, &inventory.Asset{
@@ -66,4 +87,35 @@ func TestRebootOnWindows(t *testing.T) {
 	required, err := lb.RebootPending()
 	require.NoError(t, err)
 	assert.Equal(t, true, required)
+}
+
+func TestRebootOnMacos(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:   "macos",
+			Family: []string{"darwin", "bsd", "unix", "os"},
+		},
+	}, mock.WithData(&mock.TomlData{}))
+	require.NoError(t, err)
+
+	lb, err := New(conn)
+	require.Error(t, err)
+	assert.Nil(t, lb)
+	assert.ErrorIs(t, err, llx.ErrNotApplicable)
+}
+
+// A platform mql has no reboot check for is a gap in mql, not an answer from
+// the target, so its error stays unclassified.
+func TestRebootOnUnsupportedPlatform(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:   "aix",
+			Family: []string{"unix", "os"},
+		},
+	}, mock.WithData(&mock.TomlData{}))
+	require.NoError(t, err)
+
+	_, err = New(conn)
+	require.Error(t, err)
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(err))
 }

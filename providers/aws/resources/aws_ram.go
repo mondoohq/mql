@@ -9,11 +9,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ram"
 	ramtypes "github.com/aws/aws-sdk-go-v2/service/ram/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsRam) id() (string, error) {
@@ -125,7 +125,11 @@ func (a *mqlAwsRamResourceShare) principals() ([]any, error) {
 			res = append(res, map[string]any{
 				"id":               convert.ToValue(principal.Id),
 				"resourceShareArn": convert.ToValue(principal.ResourceShareArn),
-				"external":         principal.External,
+				// Must be a plain bool: llx's dict encoder accepts only
+				// JSON-native values, so a *bool here failed the whole field with
+				// "unsupported child type: *bool" for every share that has a
+				// principal -- which is every share worth auditing.
+				"external": convert.ToValue(principal.External),
 			})
 		}
 	}

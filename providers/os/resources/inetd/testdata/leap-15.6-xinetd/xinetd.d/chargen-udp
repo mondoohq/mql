@@ -1,0 +1,14 @@
+# default: off
+# description: A chargen server. This is the udp version.
+
+service chargen
+{
+	type		= INTERNAL UNLISTED
+	id		= chargen-dgram
+	socket_type	= dgram
+	protocol	= udp
+	user		= root
+	wait		= yes
+	disable		= yes
+	port		= 19
+}                                                                               

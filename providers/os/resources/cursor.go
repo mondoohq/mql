@@ -4,15 +4,14 @@
 package resources
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 const defaultCursorConfigDir = ".cursor"
@@ -25,12 +24,13 @@ func (r *mqlCursor) id() (string, error) {
 	return "cursor/" + r.ConfigPath.Data, nil
 }
 
-func (r *mqlCursor) mcpServers() ([]interface{}, error) {
+func (r *mqlCursor) mcpServers() ([]any, error) {
 	afs := connectionAfs(r.MqlRuntime)
 	configDir := r.ConfigPath.Data
 
 	// Cursor stores MCP config in mcp.json
-	data, err := afs.ReadFile(filepath.Join(configDir, "mcp.json"))
+	configFile := filepath.Join(configDir, "mcp.json")
+	data, err := afs.ReadFile(configFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -39,25 +39,27 @@ func (r *mqlCursor) mcpServers() ([]interface{}, error) {
 	}
 
 	var mcpConfig cursorMCPConfig
-	if err := json.Unmarshal(data, &mcpConfig); err != nil {
+	if err := unmarshalJSONConfig(data, &mcpConfig); err != nil {
 		return nil, fmt.Errorf("failed to parse cursor mcp.json: %w", err)
 	}
 
-	var result []interface{}
+	var result []any
 	for name, server := range mcpConfig.McpServers {
-		argsAny := make([]interface{}, len(server.Args))
-		for i, a := range server.Args {
-			argsAny[i] = a
-		}
-
-		res, err := NewResource(r.MqlRuntime, "cursor.mcpServer", map[string]*llx.RawData{
+		fields := map[string]*llx.RawData{
 			"__id":    llx.StringData("cursor.mcpServer/" + name),
 			"name":    llx.StringData(name),
+			"type":    llx.StringData(deriveMcpTransport(server.Type, server.Command, server.URL)),
 			"command": llx.StringData(server.Command),
-			"url":     llx.StringData(server.URL),
-			"args":    llx.ArrayData(argsAny, types.String),
+			"args":    mcpArgsData(server.Args),
+			"url":     llx.StringData(redactURL(server.URL)),
 			"hasEnv":  llx.BoolData(len(server.Env) > 0),
-		})
+
+			"hasHeaders":  llx.BoolData(len(server.Headers) > 0),
+			"headerNames": mcpHeaderNamesData(mapKeys(server.Headers)),
+			"source":      llx.StringData(configFile),
+		}
+		setMcpServerShape(fields, server.Command, server.Args, server.URL, mapKeys(server.Env))
+		res, err := NewResource(r.MqlRuntime, "cursor.mcpServer", fields)
 		if err != nil {
 			return nil, err
 		}
@@ -66,7 +68,7 @@ func (r *mqlCursor) mcpServers() ([]interface{}, error) {
 	return result, nil
 }
 
-func (r *mqlCursor) rules() ([]interface{}, error) {
+func (r *mqlCursor) rules() ([]any, error) {
 	afs := connectionAfs(r.MqlRuntime)
 	rulesDir := filepath.Join(r.ConfigPath.Data, "rules")
 
@@ -78,7 +80,7 @@ func (r *mqlCursor) rules() ([]interface{}, error) {
 		return nil, err
 	}
 
-	var result []interface{}
+	var result []any
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -111,51 +113,34 @@ func (r *mqlCursor) rules() ([]interface{}, error) {
 	return result, nil
 }
 
-func (r *mqlCursor) skills() ([]interface{}, error) {
-	afs := connectionAfs(r.MqlRuntime)
-	skillsDir := filepath.Join(r.ConfigPath.Data, "skills")
-
-	subdirs, err := listSubdirsAfero(afs, skillsDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	var result []interface{}
-	for _, dir := range subdirs {
-		skillPath := filepath.Join(dir.path, "SKILL.md")
-		data, err := afs.ReadFile(skillPath)
-		if err != nil {
-			continue
-		}
-
-		skill := parseSkillMd(dir.name, skillPath, string(data))
-
-		allowedToolsAny := make([]interface{}, len(skill.allowedTools))
-		for i, t := range skill.allowedTools {
-			allowedToolsAny[i] = t
-		}
-
-		res, err := NewResource(r.MqlRuntime, "cursor.skill", map[string]*llx.RawData{
-			"__id":         llx.StringData("cursor.skill/" + dir.name),
-			"name":         llx.StringData(skill.name),
-			"description":  llx.StringData(skill.description),
-			"allowedTools": llx.ArrayData(allowedToolsAny, types.String),
-			"argumentHint": llx.StringData(skill.argumentHint),
-			"source":       llx.StringData(skill.source),
-			"content":      llx.StringData(skill.content),
-		})
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, res)
-	}
-	return result, nil
+func (r *mqlCursor) skills() ([]any, error) {
+	return agentSkills(r.MqlRuntime, "cursor.skill", r.ConfigPath.Data, defaultCursorConfigDir,
+		filepath.Join(defaultCursorConfigDir, "skills"), filepath.Join(r.ConfigPath.Data, "skills"))
 }
 
 // Child resource ID methods
+
+func (r *mqlCursor) repos() ([]any, error) {
+	folders, err := vscodeWorkspaceFolders(r.MqlRuntime, "Cursor")
+	if err != nil {
+		return nil, err
+	}
+	return gitReposFromPaths(r.MqlRuntime, "cursor.repo", folders)
+}
+
+func (r *mqlCursorRepo) id() (string, error) {
+	return "cursor.repo/" + r.Path.Data, nil
+}
+
+func (r *mqlCursorMcpServer) running() (*llx.AssetValue, error) {
+	return mcpServerAsset(r), nil
+}
+
+// MqlAsset implements plugin.AssetSource: the asset the `running` anchor stands
+// for, with the connection needed to reach it. See mcpServerAssetFor.
+func (r *mqlCursorMcpServer) MqlAsset() (*inventory.Asset, error) {
+	return mcpServerAssetFor(r.MqlRuntime, r)
+}
 
 func (r *mqlCursorMcpServer) id() (string, error) {
 	return "cursor.mcpServer/" + r.Name.Data, nil
@@ -166,11 +151,15 @@ func (r *mqlCursorRule) id() (string, error) {
 }
 
 func (r *mqlCursorSkill) id() (string, error) {
-	return "cursor.skill/" + r.Name.Data, nil
+	return "cursor.skill/" + r.Source.Data, nil
 }
 
 func (r *mqlCursorSkill) sha256() (string, error) {
 	return contentSHA256(r.Content.Data), nil
+}
+
+func (r *mqlCursorSkill) purl() (string, error) {
+	return skillPURL(connectionAfs(r.MqlRuntime), r.Source.Data), nil
 }
 
 // Helper types
@@ -180,8 +169,10 @@ type cursorMCPConfig struct {
 }
 
 type cursorMCPServer struct {
+	Type    string            `json:"type"`
 	Command string            `json:"command"`
 	Args    []string          `json:"args"`
 	URL     string            `json:"url"`
 	Env     map[string]string `json:"env"`
+	Headers map[string]string `json:"headers"`
 }

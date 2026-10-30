@@ -6,16 +6,18 @@ package manifest
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/pkg/errors"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/k8s/connection/shared"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/distro"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/resources"
+	"go.mondoo.com/mql/utils/urlx"
 	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/version"
@@ -49,6 +51,14 @@ func WithCloser(closer func()) Option {
 	}
 }
 
+// WithCache shares the read and parsed manifest with every other connection
+// to the same manifest made through cache.
+func WithCache(cache *Cache) Option {
+	return func(p *Connection) {
+		p.cache = cache
+	}
+}
+
 type Connection struct {
 	shared.ManifestParser
 	plugin.Connection
@@ -59,12 +69,12 @@ type Connection struct {
 	manifestContent []byte
 	closer          func()
 
-	// Raw manifest bytes retained for source context. Kept separate from
-	// manifestContent, which drives the stdin-vs-file platform-id hashing.
-	sourceRaw  []byte
-	posOnce    sync.Once
-	contentStr string
-	positions  map[string]shared.SourcePosition
+	// The manifest as read and parsed, which may be shared with other
+	// connections to it (see Cache). Kept separate from manifestContent, which
+	// drives the stdin-vs-file platform-id hashing.
+	cache    *Cache
+	manifest *loaded
+	release  func()
 }
 
 func NewGitConnection(id uint32, asset *inventory.Asset, opts ...Option) (shared.Connection, error) {
@@ -94,22 +104,64 @@ func NewConnection(id uint32, asset *inventory.Asset, opts ...Option) (shared.Co
 		option(c)
 	}
 
-	manifest := []byte{}
-	var err error
-
 	clusterName := ""
+	var key cacheKey
+	var load func() (*loaded, error)
 	if len(c.manifestContent) > 0 {
-		manifest = c.manifestContent
 		clusterName = "K8s Manifest"
-	} else if c.manifestFile != "" {
-		manifest, err = shared.LoadManifestFile(c.manifestFile)
-		if err != nil {
-			return nil, err
+		digest := sha256.Sum256(c.manifestContent)
+		key = cacheKey{digest: hex.EncodeToString(digest[:])}
+		content := c.manifestContent
+		load = func() (*loaded, error) {
+			return parseManifest(content, []shared.ManifestFile{{Content: content}})
 		}
-		// manifest parent directory name
-		clusterName = shared.ProjectNameFromPath(c.manifestFile)
-		clusterName = "K8s Manifest " + clusterName
+	} else if c.manifestFile != "" {
+		// Prefer the git repo (org/repo) for a stable, human-friendly name,
+		// matching the Terraform static-analysis naming. The manifest path is a
+		// temporary clone directory (e.g. mql-git-clone3841…) when discovered
+		// from a git repository, so fall back to it only for local manifests.
+		if url := asset.Connections[0].Options["ssh-url"]; url != "" {
+			if _, org, repo, err := urlx.ParseGitSshUrl(url); err == nil {
+				clusterName = "K8s Manifest " + org + "/" + repo
+			}
+		}
+		if clusterName == "" {
+			clusterName = "K8s Manifest " + shared.ProjectNameFromPath(c.manifestFile)
+		}
+
+		gitUrl := asset.Connections[0].Options[plugin.GitUrlOptionKey]
+		absPath, err := filepath.Abs(c.manifestFile)
+		if err != nil {
+			absPath = c.manifestFile
+		}
+		key = cacheKey{path: absPath, gitUrl: gitUrl}
+		manifestFile := c.manifestFile
+		load = func() (*loaded, error) {
+			sources, err := shared.LoadManifestFiles(manifestFile)
+			if err != nil {
+				return nil, err
+			}
+			if gitUrl != "" {
+				// The clone is a temporary directory that is new on every scan,
+				// so a file is reported by its path within the repository: the
+				// path a user can open, and the same one on the next scan.
+				for i, src := range sources {
+					sources[i].Path = shared.RepositoryPath(manifestFile, src.Path)
+				}
+			}
+			return parseManifest(shared.MergeManifests(sources), sources)
+		}
+	} else {
+		load = func() (*loaded, error) { return parseManifest([]byte{}, nil) }
 	}
+
+	var err error
+	c.manifest, c.release, err = c.cache.acquire(key, load)
+	if err != nil {
+		return nil, err
+	}
+	c.ManifestParser = c.manifest.parser.WithNamespace(c.namespace)
+
 	// discovered assets pass by here
 	// They already have a name, so do not override it here.
 	if asset.Name == "" {
@@ -123,28 +175,45 @@ func NewConnection(id uint32, asset *inventory.Asset, opts ...Option) (shared.Co
 		}
 		asset.Labels[plugin.GitUrlOptionKey] = trimGitPath(gitPath)
 	}
-	// Retain the raw manifest so we can extract the source text a resource
-	// spans for file-context. In the file case the bytes were only local.
-	c.sourceRaw = manifest
 
-	c.ManifestParser, err = shared.NewManifestParser(manifest, c.namespace, "")
-	if err != nil {
-		return nil, err
+	// Zero objects means nothing Kubernetes was here, and connecting anyway
+	// would pass every policy on a folder nothing was ever read from. For a
+	// directory this is a count and not an error check, deliberately:
+	// LoadManifestFile's walk already drops every file that does not decode as
+	// a Kubernetes object, so plain config YAML, Helm templates full of Go
+	// templating and policy bundles all arrive here as an empty set -- while a
+	// single file the user named keeps reporting its own parse error.
+	if len(c.ManifestParser.Objects) == 0 {
+		c.release()
+		return nil, fmt.Errorf("no Kubernetes objects found in %s: %w", c.manifestFile, plugin.ErrNoMatch)
 	}
 
 	return c, nil
 }
 
-// ManifestSource returns the manifest text, the file path it was read from, and
+// parseManifest parses manifest, the files in sources as one stream, and
+// gives every namespaced object without a namespace the one it is created in.
+func parseManifest(manifest []byte, sources []shared.ManifestFile) (*loaded, error) {
+	parser, err := shared.NewManifestParser(manifest, "", "")
+	if err != nil {
+		return nil, err
+	}
+	// A namespaced object that names no namespace is created in "default".
+	if err := parser.SetDefaultNamespaces(); err != nil {
+		return nil, err
+	}
+	return &loaded{sources: sources, parser: parser}, nil
+}
+
+// ManifestSource returns the text of each manifest file keyed by its path, and
 // a per-resource source-position index keyed by object id (kind:namespace:name).
-// The index is built lazily on first use. Resources not present in the manifest
-// (e.g. synthesized CRDs) simply have no entry.
-func (c *Connection) ManifestSource() (string, string, map[string]shared.SourcePosition) {
-	c.posOnce.Do(func() {
-		c.contentStr = string(c.sourceRaw)
-		c.positions = shared.BuildManifestPositionIndex(c.sourceRaw, c.manifestFile)
-	})
-	return c.contentStr, c.manifestFile, c.positions
+// Each position names the file the object was declared in, with lines counted
+// from the start of that file. The index is built lazily on first use.
+// Resources not present in the manifest (e.g. synthesized CRDs) simply have no
+// entry. An object declared in more than one file takes the position of the
+// last one read, as it did when the files were indexed as one stream.
+func (c *Connection) ManifestSource() (map[string]string, map[string]shared.SourcePosition) {
+	return c.manifest.source()
 }
 
 func trimGitPath(gitPath string) string {
@@ -152,6 +221,9 @@ func trimGitPath(gitPath string) string {
 }
 
 func (c *Connection) Close() {
+	if c.release != nil {
+		c.release()
+	}
 	if c.closer != nil {
 		c.closer()
 	}
@@ -159,6 +231,11 @@ func (c *Connection) Close() {
 
 func (c *Connection) ServerVersion() *version.Info {
 	return nil
+}
+
+// Distro is unknown: there is no API server.
+func (c *Connection) Distro() *distro.Result {
+	return &distro.Result{Name: distro.Unknown, Evidence: map[string]distro.Evidence{}}
 }
 
 func (c *Connection) SupportedResourceTypes() (*resources.ApiResourceIndex, error) {
@@ -225,6 +302,14 @@ func (c *Connection) manifestHash() (string, error) {
 	// special handling for embedded content (e.g. piped in via stdin)
 	if len(c.manifestContent) > 0 {
 		h.Write([]byte("stdin"))
+		return hex.EncodeToString(h.Sum(nil)), nil
+	}
+
+	// A git repository is cloned into a fresh temporary directory on every
+	// scan, so its path would mint a new asset each time. Hash the repository
+	// URL instead.
+	if gitUrl := c.asset.Connections[0].Options[plugin.GitUrlOptionKey]; gitUrl != "" {
+		h.Write([]byte(trimGitPath(gitUrl)))
 		return hex.EncodeToString(h.Sum(nil)), nil
 	}
 

@@ -1,0 +1,1568 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package services
+
+import (
+	"bufio"
+	"fmt"
+	"io"
+	"os"
+	"path"
+	"slices"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"unicode"
+
+	"github.com/coreos/go-systemd/unit"
+	"github.com/rs/zerolog/log"
+	"github.com/spf13/afero"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/systemd"
+)
+
+// SystemdUnit carries the execution and confinement settings of a systemd unit.
+type SystemdUnit struct {
+	Name          string
+	Description   string
+	Installed     bool
+	FragmentPath  string
+	LoadState     string
+	ActiveState   string
+	SubState      string
+	UnitFileState string
+	Type          string
+	ExecStart     string
+
+	User        string
+	Group       string
+	DynamicUser bool
+	UMask       string
+
+	NoNewPrivileges         bool
+	ProtectSystem           string
+	ProtectHome             string
+	PrivateTmp              bool
+	PrivateDevices          bool
+	PrivateNetwork          bool
+	PrivateUsers            bool
+	ProtectKernelTunables   bool
+	ProtectKernelModules    bool
+	ProtectKernelLogs       bool
+	ProtectControlGroups    string
+	ProtectClock            bool
+	ProtectHostname         bool
+	ProtectProc             string
+	ProcSubset              string
+	RestrictSUIDSGID        bool
+	RestrictRealtime        bool
+	RestrictNamespaces      string
+	RestrictAddressFamilies string
+	LockPersonality         bool
+	MemoryDenyWriteExecute  bool
+	RemoveIPC               bool
+	KeyringMode             string
+
+	// RestrictAddressFamiliesUnknown is set when systemd could not print the
+	// setting and the unit files that hold it could not be read either, so the
+	// value is not known rather than empty.
+	RestrictAddressFamiliesUnknown bool
+
+	CapabilityBoundingSet []string
+	AmbientCapabilities   []string
+	SystemCallFilter      []string
+	// SystemCallFilterIsDenylist is true when SystemCallFilter lists the calls
+	// that are denied rather than the only ones allowed.
+	SystemCallFilterIsDenylist bool
+	SystemCallArchitectures    string
+	ReadWritePaths             []string
+	ReadOnlyPaths              []string
+	InaccessiblePaths          []string
+
+	// Unsupported names the properties the running systemd does not have
+	// (ProtectClock on systemd 232, for example). Their values above are
+	// zero and say nothing about the unit.
+	Unsupported map[string]bool
+}
+
+// Supports reports whether the running systemd has the property, so its value
+// on the unit means something.
+func (u *SystemdUnit) Supports(property string) bool {
+	return !u.Unsupported[property]
+}
+
+// systemdUnsupportedKey is a record key no systemctl output or unit file can
+// produce. It carries the space-separated names of the properties the running
+// systemd does not have, from the record into the unit.
+const systemdUnsupportedKey = "\x00unsupported"
+
+// systemdPropertySince is the systemd release that introduced each property
+// read from a unit file that some release still in use does not know. A unit
+// file can set them on any release; an older systemd ignores the line, so the
+// setting does not apply.
+var systemdPropertySince = map[string]int{
+	"AmbientCapabilities":    229,
+	"MemoryDenyWriteExecute": 231,
+	"RestrictRealtime":       231,
+	"ReadWritePaths":         231,
+	"ReadOnlyPaths":          231,
+	"InaccessiblePaths":      231,
+	"DynamicUser":            232,
+	"PrivateUsers":           232,
+	"ProtectKernelTunables":  232,
+	"ProtectKernelModules":   232,
+	"ProtectControlGroups":   232,
+	"RemoveIPC":              232,
+	"RestrictNamespaces":     233,
+	"LockPersonality":        235,
+	"KeyringMode":            235,
+	"ProtectHostname":        242,
+	"RestrictSUIDSGID":       242,
+	"ProtectKernelLogs":      244,
+	"ProtectClock":           245,
+	"ProtectProc":            247,
+	"ProcSubset":             247,
+}
+
+// markUnsupportedShowProperties records which requested properties the
+// running systemd does not have, from what systemctl show left out.
+//
+// systemctl prints every property of a unit's execution settings it knows.
+// An older release leaves out the ones it does not know: systemd 241 (Debian
+// 10) exits 0 without ProtectClock, and the --all retry on systemd 232 (Debian
+// 9) and 219 (RHEL 7) prints neither. Reading those as "no" claims a setting
+// was checked when the release cannot apply it. NoNewPrivileges, which every
+// release in use has, tells a unit with execution settings from one without
+// (a target), whose missing properties are not a gap in the release.
+//
+// systemd before 242 also prints RestrictAddressFamilies as "[unprintable]",
+// which is no value at all.
+func markUnsupportedShowProperties(record map[string]string) {
+	var unsupported []string
+	if _, hasExec := record["NoNewPrivileges"]; hasExec {
+		for _, property := range strings.Split(systemdUnitShowProperties, ",") {
+			if _, ok := record[property]; !ok {
+				unsupported = append(unsupported, property)
+			}
+		}
+	}
+	for property, value := range record {
+		if value == "[unprintable]" {
+			unsupported = append(unsupported, property)
+		}
+	}
+	if len(unsupported) > 0 {
+		record[systemdUnsupportedKey] = strings.Join(unsupported, " ")
+	}
+}
+
+// markUnsupportedFileProperties records which properties a unit file can set
+// that systemd release version does not know. A version of 0 means the
+// release is unknown (an image scan), and the file's settings are taken as
+// written.
+func markUnsupportedFileProperties(props map[string]string, version int) {
+	if version <= 0 {
+		return
+	}
+	var unsupported []string
+	for property, since := range systemdPropertySince {
+		if since > version {
+			unsupported = append(unsupported, property)
+		}
+	}
+	if len(unsupported) > 0 {
+		sort.Strings(unsupported)
+		props[systemdUnsupportedKey] = strings.Join(unsupported, " ")
+	}
+}
+
+// systemdSeccompProperties are the settings systemd enforces through seccomp.
+// A systemd built without it (-SECCOMP in `systemctl --version`, as on RHEL 7)
+// accepts them in a unit file, warns, and ignores them, so a unit that sets
+// RestrictAddressFamilies=AF_UNIX still opens AF_INET sockets.
+var systemdSeccompProperties = []string{
+	"SystemCallFilter",
+	"SystemCallArchitectures",
+	"RestrictAddressFamilies",
+	"MemoryDenyWriteExecute",
+	"RestrictRealtime",
+	"RestrictSUIDSGID",
+	"RestrictNamespaces",
+	"LockPersonality",
+}
+
+// markSeccompUnsupported records the seccomp-backed settings as ones the
+// running systemd does not have.
+func markSeccompUnsupported(props map[string]string) {
+	names := strings.Fields(props[systemdUnsupportedKey])
+	have := make(map[string]bool, len(names))
+	for _, name := range names {
+		have[name] = true
+	}
+	for _, property := range systemdSeccompProperties {
+		if !have[property] {
+			names = append(names, property)
+		}
+	}
+	props[systemdUnsupportedKey] = strings.Join(names, " ")
+}
+
+// parseSystemctlSeccomp reads whether systemd was built with seccomp from the
+// feature line of `systemctl --version` ("+PAM +AUDIT ... -SECCOMP ..."). Only
+// an explicit -SECCOMP says it was not.
+func parseSystemctlSeccomp(output string) bool {
+	_, features, _ := strings.Cut(output, "\n")
+	features, _, _ = strings.Cut(features, "\n")
+	for _, feature := range strings.Fields(features) {
+		if feature == "-SECCOMP" {
+			return false
+		}
+	}
+	return true
+}
+
+// parseSystemctlVersion reads the release number from `systemctl --version`,
+// whose first line is "systemd 232" or "systemd 252 (252.39-1~deb12u2)". It
+// returns 0 when the output is not that.
+func parseSystemctlVersion(output string) int {
+	line, _, _ := strings.Cut(output, "\n")
+	fields := strings.Fields(line)
+	if len(fields) < 2 || fields[0] != "systemd" {
+		return 0
+	}
+	version, err := strconv.Atoi(fields[1])
+	if err != nil {
+		return 0
+	}
+	return version
+}
+
+// systemdUnitShowProperties are the properties fetched for a unit. Naming them
+// explicitly keeps the output small enough to request every unit in one call.
+const systemdUnitShowProperties = "Id,Description,FragmentPath,LoadState,ActiveState,SubState,UnitFileState,Type," +
+	"ExecStart,User,Group,DynamicUser,UMask,NoNewPrivileges,ProtectSystem,ProtectHome,PrivateTmp,PrivateDevices," +
+	"PrivateNetwork,PrivateUsers,ProtectKernelTunables,ProtectKernelModules,ProtectKernelLogs,ProtectControlGroups," +
+	"ProtectClock,ProtectHostname,ProtectProc,ProcSubset,RestrictSUIDSGID,RestrictRealtime,RestrictNamespaces," +
+	"RestrictAddressFamilies,LockPersonality,MemoryDenyWriteExecute,RemoveIPC,KeyringMode,CapabilityBoundingSet," +
+	"AmbientCapabilities,SystemCallFilter,SystemCallArchitectures,ReadWritePaths,ReadOnlyPaths,InaccessiblePaths," +
+	"DropInPaths"
+
+// systemdUnitShowChunk bounds how many units go into one systemctl invocation,
+// so a host with a very large unit set cannot build a command line past what the
+// shell accepts.
+const systemdUnitShowChunk = 60
+
+// SystemdUnitLister can list and look up systemd units with their confinement
+// settings.
+type SystemdUnitLister interface {
+	List() ([]*SystemdUnit, error)
+	Get(name string) (*SystemdUnit, error)
+}
+
+// ResolveSystemdUnitManager returns a command-based manager when the connection
+// can run commands, otherwise one reading unit files from the filesystem.
+func ResolveSystemdUnitManager(conn shared.Connection) SystemdUnitLister {
+	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		// The release on disk decides which settings exist, as it does for
+		// systemctl: an image of CentOS 7 (systemd 219) reported settings
+		// added in later releases as if they applied.
+		fs := conn.FileSystem()
+		return &SystemdFSUnitManager{Fs: fs, Version: systemd.InstalledVersion(&afero.Afero{Fs: fs})}
+	}
+	return &SystemdUnitManager{conn: conn}
+}
+
+// SystemdUnitManager reads unit settings through systemctl, which reports the
+// values in effect after drop-ins have been merged.
+type SystemdUnitManager struct {
+	conn shared.Connection
+
+	versionOnce sync.Once
+	version     int
+	noSeccomp   bool
+
+	lastCapOnce sync.Once
+	lastCap     int
+
+	answeringOnce sync.Once
+	answering     bool
+}
+
+// systemdAnswering reports whether systemctl reaches a running systemd. It
+// is asked once, and only after a batch failed.
+func (m *SystemdUnitManager) systemdAnswering() bool {
+	m.answeringOnce.Do(func() {
+		m.answering = systemdAnswering(m.conn)
+	})
+	return m.answering
+}
+
+// systemdVersion is the release of the systemd on the host, or 0 when
+// systemctl --version does not say.
+func (m *SystemdUnitManager) systemdVersion() int {
+	m.versionOnce.Do(func() {
+		cmd, err := m.conn.RunCommand("systemctl --version")
+		if err != nil || cmd.ExitStatus != 0 {
+			return
+		}
+		out, err := io.ReadAll(cmd.Stdout)
+		if err != nil {
+			return
+		}
+		m.version = parseSystemctlVersion(string(out))
+		m.noSeccomp = !parseSystemctlSeccomp(string(out))
+	})
+	return m.version
+}
+
+// seccompDisabled reports whether the host's systemd was built without
+// seccomp, so it ignores the settings that rely on it.
+func (m *SystemdUnitManager) seccompDisabled() bool {
+	m.systemdVersion()
+	return m.noSeccomp
+}
+
+// fsFallback reads the unit files off disk. systemctl needs a running systemd
+// to answer, so it is not available in a container, a chroot, a rescue boot, or
+// on a host that keeps unit files around while another init runs. It reports
+// that by exiting non-zero with nothing on stdout, which parses into an empty
+// unit list -- indistinguishable from a host that genuinely runs no services,
+// and enough to make an assertion over systemd.units pass without ever having
+// read a unit.
+//
+// The host's systemd may be older than the settings in a unit file, and
+// ignores the ones it does not know, so the fallback is told the release.
+func (m *SystemdUnitManager) fsFallback() *SystemdFSUnitManager {
+	return &SystemdFSUnitManager{Fs: m.conn.FileSystem(), Version: m.systemdVersion(), NoSeccomp: m.seccompDisabled()}
+}
+
+func (m *SystemdUnitManager) List() ([]*SystemdUnit, error) {
+	units, err := m.listViaSystemctl()
+	if err == nil {
+		return units, nil
+	}
+
+	log.Debug().Err(err).
+		Msg("mql[systemd]> could not list units through systemctl, reading unit files instead")
+	return m.fsFallback().List()
+}
+
+func (m *SystemdUnitManager) listViaSystemctl() ([]*SystemdUnit, error) {
+	cmd, err := m.conn.RunCommand("systemctl list-unit-files --type service --all --no-legend")
+	if err != nil {
+		return nil, err
+	}
+	if cmd.ExitStatus != 0 {
+		return nil, systemctlError("systemctl list-unit-files", cmd)
+	}
+
+	names, err := parseSystemdUnitFileNames(cmd.Stdout)
+	if err != nil {
+		return nil, err
+	}
+	if len(names) == 0 {
+		return []*SystemdUnit{}, nil
+	}
+
+	// systemctl refuses to show an uninstantiated template ("Unit name
+	// autovt@.service is neither a valid invocation ID nor unit name") and
+	// exits non-zero for the whole batch when one is in it. Almost every host
+	// has at least one template, so leaving them in meant every batch failed
+	// and the whole resource fell back to reading unit files -- which loses the
+	// units a generator produced into /run, since the filesystem search path
+	// deliberately does not look there. On openSUSE Leap 16 that was 10 real
+	// units missing. Ask systemctl only about the concrete names and read the
+	// templates off disk, where they always have a unit file.
+	concrete, templates := splitSystemdTemplateUnits(names)
+	extra := m.unitsNotInUnitFiles(names)
+	concrete = append(concrete, extra...)
+	isExtra := make(map[string]bool, len(extra))
+	for _, name := range extra {
+		isExtra[name] = true
+	}
+
+	res := make([]*SystemdUnit, 0, len(names))
+	// list-unit-files names an alias as well as the unit it points at, and
+	// `systemctl show` answers for both with the same Id. Keying on the Id
+	// collapses them back into the one unit they are: without this, a NixOS
+	// 25.11 host reported 117 units for 108 distinct names, double-counting
+	// every aliased unit in a length or a where().
+	//
+	// It also keeps the resource cache honest. The cache key is the unit name,
+	// so the second CreateResource for a name returns the first instance --
+	// putting the same resource in the list twice rather than two resources.
+	seen := make(map[string]struct{}, len(concrete))
+	for start := 0; start < len(concrete); start += systemdUnitShowChunk {
+		end := min(start+systemdUnitShowChunk, len(concrete))
+
+		chunk := concrete[start:end]
+		records, err := m.showUnitsSplitting(chunk)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, record := range records {
+			u := m.unitFromProperties(record)
+			if u == nil {
+				continue
+			}
+			// a name that did not come from list-unit-files and does not load
+			// is not a unit on this host
+			if !u.Installed && (isExtra[u.Name] || isExtra[record["Id"]]) {
+				continue
+			}
+			if _, dup := seen[u.Name]; dup {
+				continue
+			}
+			seen[u.Name] = struct{}{}
+			res = append(res, u)
+		}
+	}
+
+	// systemctl named the units, so it knowing nothing about any of them is a
+	// failure to report rather than a host with nothing on it
+	if len(concrete) > 0 && len(res) == 0 {
+		return nil, fmt.Errorf("systemctl show returned no properties for any of the %d service units", len(concrete))
+	}
+
+	fs := m.fsFallback()
+	for _, name := range templates {
+		u, err := fs.Get(name)
+		if err != nil {
+			// the template was named by list-unit-files, so it has a unit file
+			// somewhere; if we cannot read it, say so rather than dropping it
+			log.Debug().Err(err).Str("unit", name).
+				Msg("mql[systemd]> could not read template unit file")
+			continue
+		}
+		if _, dup := seen[u.Name]; dup {
+			continue
+		}
+		seen[u.Name] = struct{}{}
+		res = append(res, u)
+	}
+
+	return res, nil
+}
+
+// unitsNotInUnitFiles names the service units systemd has that
+// list-unit-files does not report: instances of a template (getty@tty1,
+// user@1000), which only list-units names, and on systemd before 220 the
+// units it generates for SysV init scripts. Without them an assertion over
+// every unit passed without looking at the running gettys or the SysV
+// services.
+func (m *SystemdUnitManager) unitsNotInUnitFiles(listed []string) []string {
+	known := make(map[string]bool, len(listed))
+	for _, name := range listed {
+		known[name] = true
+	}
+	res := []string{}
+	add := func(names []string) {
+		for _, name := range names {
+			if known[name] {
+				continue
+			}
+			known[name] = true
+			res = append(res, name)
+		}
+	}
+
+	cmd, err := m.conn.RunCommand("systemctl list-units --type service --all --plain --no-legend")
+	if err != nil || cmd.ExitStatus != 0 {
+		log.Debug().Err(err).Msg("mql[systemd]> could not list loaded units")
+	} else if loaded, err := parseSystemdLoadedUnitNames(cmd.Stdout); err == nil {
+		add(loaded)
+	}
+
+	if version := m.systemdVersion(); version > 0 && version < systemdListsSysVUnitFilesSince {
+		add(sysvInitScriptUnits(m.conn.FileSystem()))
+	}
+	return res
+}
+
+// showUnitsSplitting shows a batch of units, splitting it when one unit in it
+// makes systemctl fail the whole batch.
+func (m *SystemdUnitManager) showUnitsSplitting(units []string) ([]map[string]string, error) {
+	var res []map[string]string
+	err := bisectSystemdShow(units,
+		func(batch []string) ([]map[string]string, error) {
+			records, exitErr, err := m.showUnits(batch)
+			if err != nil {
+				return nil, err
+			}
+			return records, exitErr
+		},
+		func(records []map[string]string) { res = append(res, records...) },
+		func(unit string, err error) {
+			log.Debug().Err(err).Str("unit", unit).Msg("mql[systemd]> systemctl show failed for this unit")
+		},
+		m.systemdAnswering,
+	)
+	return res, err
+}
+
+// splitSystemdTemplateUnits separates uninstantiated template units
+// (`name@.service`) from concrete ones.
+func splitSystemdTemplateUnits(names []string) (concrete, templates []string) {
+	for _, name := range names {
+		if isSystemdTemplateUnit(name) {
+			templates = append(templates, name)
+			continue
+		}
+		concrete = append(concrete, name)
+	}
+	return concrete, templates
+}
+
+// isSystemdTemplateUnit reports whether name is a template rather than an
+// instance: the instance part, between the "@" and the type suffix, is empty.
+func isSystemdTemplateUnit(name string) bool {
+	dot := strings.LastIndexByte(name, '.')
+	if dot < 1 {
+		return false
+	}
+	return name[dot-1] == '@'
+}
+
+// systemctlError turns a non-zero systemctl exit into an error carrying the
+// reason systemctl printed, which is the part that says what went wrong
+// ("System has not been booted with systemd as init system (PID 1)").
+func systemctlError(what string, cmd *shared.Command) error {
+	reason := ""
+	if cmd.Stderr != nil {
+		if out, err := io.ReadAll(cmd.Stderr); err == nil {
+			reason = strings.TrimSpace(string(out))
+		}
+	}
+	if reason == "" {
+		return fmt.Errorf("%s exited %d", what, cmd.ExitStatus)
+	}
+	return fmt.Errorf("%s exited %d: %s", what, cmd.ExitStatus, reason)
+}
+
+// showUnits runs `systemctl show` for units and parses its records. A
+// non-zero exit is returned as exitErr, separately from a failure to run the
+// command at all, so the caller can decide whether to read unit files instead.
+//
+// systemctl exits non-zero when it is asked for a property its release does
+// not know. systemd 219 (RHEL 7) knows none of ProtectKernelLogs, ProtectClock,
+// DynamicUser and the other settings added since, prints the first unit's
+// known properties, and stops there without a word on stderr. Taking that as
+// "systemctl cannot answer" dropped every unit to the unit-file fallback, which
+// has no runtime state, so a running, enabled chronyd read as inactive. When
+// the output proves systemctl is answering, ask again for every property the
+// release has (--all, no property list) and take the ones we know from that.
+func (m *SystemdUnitManager) showUnits(units []string) (records []map[string]string, exitErr error, err error) {
+	cmd, err := m.conn.RunCommand(buildSystemdUnitShowCommand(units))
+	if err != nil {
+		return nil, nil, err
+	}
+	if cmd.ExitStatus == 0 {
+		records, err = parseSystemdShowRecords(cmd.Stdout)
+		for _, record := range records {
+			foldSystemdLegacyPathProperties(record)
+			markUnsupportedShowProperties(record)
+		}
+		return records, nil, err
+	}
+	exitErr = systemctlError("systemctl show", cmd)
+
+	partial, err := parseSystemdShowRecords(cmd.Stdout)
+	if err != nil || !hasSystemdUnitRecord(partial) {
+		return nil, exitErr, nil
+	}
+
+	log.Debug().Err(exitErr).Strs("units", units).
+		Msg("mql[systemd]> systemctl does not know every requested property, reading all properties instead")
+	cmd, err = m.conn.RunCommand(buildSystemdUnitShowAllCommand(units))
+	if err != nil {
+		return nil, nil, err
+	}
+	if cmd.ExitStatus != 0 {
+		return nil, systemctlError("systemctl show --all", cmd), nil
+	}
+	records, err = parseSystemdShowRecords(cmd.Stdout)
+	for _, record := range records {
+		foldSystemdLegacyPathProperties(record)
+		markUnsupportedShowProperties(record)
+	}
+	return records, nil, err
+}
+
+// hasSystemdUnitRecord reports whether systemctl printed at least one unit,
+// which a systemctl that cannot reach systemd never does.
+func hasSystemdUnitRecord(records []map[string]string) bool {
+	for _, record := range records {
+		if record["Id"] != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *SystemdUnitManager) Get(name string) (*SystemdUnit, error) {
+	records, exitErr, err := m.showUnits([]string{name})
+	if err != nil {
+		return nil, err
+	}
+	if exitErr != nil {
+		// same reason as List: a systemctl that cannot answer must not read as
+		// "there is no such unit"
+		log.Debug().Err(exitErr).Str("unit", name).
+			Msg("mql[systemd]> could not read unit through systemctl, reading the unit file instead")
+		return m.fsFallback().Get(name)
+	}
+	if len(records) == 0 {
+		return nil, fmt.Errorf("%w: %s", ErrServiceNotFound, name)
+	}
+
+	u := m.unitFromProperties(records[0])
+	if u == nil {
+		return nil, fmt.Errorf("%w: %s", ErrServiceNotFound, name)
+	}
+
+	// systemctl answers for a name it does not know with a synthetic record, so
+	// the load state is what says whether the unit exists
+	if u.LoadState == "not-found" || u.LoadState == "" {
+		return nil, fmt.Errorf("%w: %s", ErrServiceNotFound, name)
+	}
+
+	return u, nil
+}
+
+func buildSystemdUnitShowCommand(units []string) string {
+	return buildSystemdUnitShowArgs([]string{"--property=" + systemdUnitShowProperties}, units)
+}
+
+// buildSystemdUnitShowAllCommand asks for every property the systemd release
+// has, empty ones included, for a release that does not know some of the
+// properties named in systemdUnitShowProperties.
+func buildSystemdUnitShowAllCommand(units []string) string {
+	return buildSystemdUnitShowArgs([]string{"--all"}, units)
+}
+
+func buildSystemdUnitShowArgs(flags []string, units []string) string {
+	// "--" keeps a unit name that begins with a dash from being read as a flag;
+	// the name reaches Get straight from a query, so it is not ours to trust
+	args := append([]string{"systemctl", "show"}, flags...)
+	args = append(args, "--")
+	args = append(args, units...)
+
+	escaped := make([]string, len(args))
+	for i := range args {
+		escaped[i] = shared.ShellEscape(args[i])
+	}
+	return strings.Join(escaped, " ")
+}
+
+// parseSystemdUnitFileNames reads the unit names out of
+// "systemctl list-unit-files" output.
+func parseSystemdUnitFileNames(input io.Reader) ([]string, error) {
+	content, err := io.ReadAll(input)
+	if err != nil {
+		return nil, err
+	}
+
+	// the command asks for --no-legend, but selecting on the .service suffix
+	// rather than skipping a fixed number of lines means a header or footer still
+	// falls out on its own, in any locale and on a systemd too old for the flag
+	names := []string{}
+	for _, line := range strings.Split(string(content), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		if !strings.HasSuffix(fields[0], ".service") {
+			continue
+		}
+		names = append(names, fields[0])
+	}
+
+	return names, nil
+}
+
+// parseSystemdShowRecords splits "systemctl show" output into one property map
+// per unit. Records are separated by an empty line when more than one unit is
+// requested. A repeated key is joined with a newline, matching how a unit can
+// carry several ExecStart lines.
+func parseSystemdShowRecords(input io.Reader) ([]map[string]string, error) {
+	records := []map[string]string{}
+	current := map[string]string{}
+
+	flush := func() {
+		if len(current) > 0 {
+			records = append(records, current)
+			current = map[string]string{}
+		}
+	}
+
+	scanner := bufio.NewScanner(input)
+	// a unit can carry long values, so allow more than the default line budget
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.TrimSpace(line) == "" {
+			flush()
+			continue
+		}
+
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		if existing, seen := current[key]; seen {
+			current[key] = existing + "\n" + value
+		} else {
+			current[key] = value
+		}
+	}
+	flush()
+
+	return records, scanner.Err()
+}
+
+// systemdUnitUnprintable is what systemctl prints for a property it has no
+// text form for. systemd 229 and 237 (Ubuntu 16.04 and 18.04) print it for
+// every RestrictAddressFamilies value.
+const systemdUnitUnprintable = "[unprintable]"
+
+// unitFromProperties maps a systemctl record onto a unit, filling in what the
+// systemd release could not print from the files the unit was loaded from.
+func (m *SystemdUnitManager) unitFromProperties(props map[string]string) *SystemdUnit {
+	lastCap := -1
+	if isSystemdCapabilityMask(props["CapabilityBoundingSet"]) || isSystemdCapabilityMask(props["AmbientCapabilities"]) {
+		lastCap = m.kernelLastCap()
+	}
+
+	if m.seccompDisabled() {
+		markSeccompUnsupported(props)
+	}
+
+	u := systemdUnitFromProperties(props, lastCap)
+	if u == nil {
+		return nil
+	}
+
+	// a release that cannot print the setting may still apply it, unless it
+	// has no seccomp to apply it with
+	if strings.TrimSpace(props["RestrictAddressFamilies"]) == systemdUnitUnprintable && !m.seccompDisabled() {
+		value, err := m.restrictAddressFamiliesFromFiles(props)
+		if err != nil {
+			log.Debug().Err(err).Str("unit", u.Name).
+				Msg("mql[systemd]> could not read RestrictAddressFamilies from the unit files")
+			u.RestrictAddressFamilies = ""
+			u.RestrictAddressFamiliesUnknown = true
+		} else {
+			u.RestrictAddressFamilies = normalizeSystemdAddressFamilies(value)
+			// the release has the setting, it only cannot print it
+			delete(u.Unsupported, "RestrictAddressFamilies")
+		}
+	}
+
+	return u
+}
+
+// kernelLastCap returns the highest capability the running kernel knows, or -1
+// when it cannot be read. systemd prints a bounding set only up to this
+// capability, so decoding a numeric mask stops there too.
+func (m *SystemdUnitManager) kernelLastCap() int {
+	m.lastCapOnce.Do(func() {
+		m.lastCap = -1
+		data, err := afero.ReadFile(m.conn.FileSystem(), "/proc/sys/kernel/cap_last_cap")
+		if err != nil {
+			return
+		}
+		if n, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && n >= 0 {
+			m.lastCap = n
+		}
+	})
+	return m.lastCap
+}
+
+// restrictAddressFamiliesFromFiles reads RestrictAddressFamilies from the unit
+// file and its drop-ins, in the order systemd applied them.
+func (m *SystemdUnitManager) restrictAddressFamiliesFromFiles(props map[string]string) (string, error) {
+	files := []string{}
+	if fragment := props["FragmentPath"]; fragment != "" {
+		files = append(files, fragment)
+	}
+	files = append(files, strings.Fields(props["DropInPaths"])...)
+
+	fs := m.fsFallback()
+	merged := map[string]string{}
+	for _, file := range files {
+		if err := fs.foldUnitFile(merged, file); err != nil {
+			return "", err
+		}
+	}
+	return merged["RestrictAddressFamilies"], nil
+}
+
+// systemdUnitFromProperties maps a property record onto a unit, returning nil
+// when the record names no unit. lastCap bounds the capabilities decoded from a
+// numeric mask; -1 decodes every capability with a name.
+func systemdUnitFromProperties(props map[string]string, lastCap int) *SystemdUnit {
+	name := props["Id"]
+	if name == "" {
+		return nil
+	}
+
+	systemCallFilter, systemCallFilterIsDenylist := parseSystemdSystemCallFilter(props["SystemCallFilter"])
+
+	u := &SystemdUnit{
+		Name:          name,
+		Description:   props["Description"],
+		Installed:     props["LoadState"] != "not-found" && props["LoadState"] != "",
+		FragmentPath:  props["FragmentPath"],
+		LoadState:     props["LoadState"],
+		ActiveState:   props["ActiveState"],
+		SubState:      props["SubState"],
+		UnitFileState: props["UnitFileState"],
+		Type:          props["Type"],
+		ExecStart:     parseSystemdExecStart(props["ExecStart"]),
+
+		User:        props["User"],
+		Group:       props["Group"],
+		DynamicUser: parseSystemdBool(props["DynamicUser"]),
+		UMask:       props["UMask"],
+
+		NoNewPrivileges:         parseSystemdBool(props["NoNewPrivileges"]),
+		ProtectSystem:           props["ProtectSystem"],
+		ProtectHome:             props["ProtectHome"],
+		PrivateTmp:              parseSystemdBool(props["PrivateTmp"]),
+		PrivateDevices:          parseSystemdBool(props["PrivateDevices"]),
+		PrivateNetwork:          parseSystemdBool(props["PrivateNetwork"]),
+		PrivateUsers:            parseSystemdBool(props["PrivateUsers"]),
+		ProtectKernelTunables:   parseSystemdBool(props["ProtectKernelTunables"]),
+		ProtectKernelModules:    parseSystemdBool(props["ProtectKernelModules"]),
+		ProtectKernelLogs:       parseSystemdBool(props["ProtectKernelLogs"]),
+		ProtectControlGroups:    props["ProtectControlGroups"],
+		ProtectClock:            parseSystemdBool(props["ProtectClock"]),
+		ProtectHostname:         parseSystemdBool(props["ProtectHostname"]),
+		ProtectProc:             props["ProtectProc"],
+		ProcSubset:              props["ProcSubset"],
+		RestrictSUIDSGID:        parseSystemdBool(props["RestrictSUIDSGID"]),
+		RestrictRealtime:        parseSystemdBool(props["RestrictRealtime"]),
+		RestrictNamespaces:      props["RestrictNamespaces"],
+		RestrictAddressFamilies: normalizeSystemdAddressFamilies(props["RestrictAddressFamilies"]),
+		LockPersonality:         parseSystemdBool(props["LockPersonality"]),
+		MemoryDenyWriteExecute:  parseSystemdBool(props["MemoryDenyWriteExecute"]),
+		RemoveIPC:               parseSystemdBool(props["RemoveIPC"]),
+		KeyringMode:             props["KeyringMode"],
+
+		CapabilityBoundingSet:      parseSystemdCapabilities(props["CapabilityBoundingSet"], lastCap),
+		AmbientCapabilities:        parseSystemdCapabilities(props["AmbientCapabilities"], lastCap),
+		SystemCallFilter:           systemCallFilter,
+		SystemCallFilterIsDenylist: systemCallFilterIsDenylist,
+		SystemCallArchitectures:    props["SystemCallArchitectures"],
+		ReadWritePaths:             splitSystemdList(props["ReadWritePaths"]),
+		ReadOnlyPaths:              splitSystemdList(props["ReadOnlyPaths"]),
+		InaccessiblePaths:          splitSystemdList(props["InaccessiblePaths"]),
+	}
+
+	if names := strings.Fields(props[systemdUnsupportedKey]); len(names) > 0 {
+		u.Unsupported = make(map[string]bool, len(names))
+		for _, name := range names {
+			u.Unsupported[name] = true
+		}
+	}
+	return u
+}
+
+// parseSystemdBool reads a systemd boolean. systemctl normalizes to yes/no,
+// while a unit file accepts several spellings.
+func parseSystemdBool(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "yes", "true", "on", "1":
+		return true
+	}
+	return false
+}
+
+// splitSystemdList splits a whitespace-separated property value. systemctl wraps
+// some list values in braces, which are not part of the entries.
+func splitSystemdList(value string) []string {
+	value = strings.TrimSpace(value)
+	value = strings.TrimPrefix(value, "{")
+	value = strings.TrimSuffix(value, "}")
+
+	fields := strings.Fields(value)
+	res := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if field == "" {
+			continue
+		}
+		res = append(res, field)
+	}
+	return res
+}
+
+// parseSystemdExecStart reduces an ExecStart property to the command line it
+// runs. systemctl reports it as a structured value like
+// "{ path=/usr/sbin/sshd ; argv[]=/usr/sbin/sshd -D ; ... }", where argv[] holds
+// the command as invoked.
+func parseSystemdExecStart(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+
+	// only the first ExecStart line is the command; later ones are extra
+	if idx := strings.IndexByte(value, '\n'); idx >= 0 {
+		value = strings.TrimSpace(value[:idx])
+	}
+
+	if !strings.Contains(value, "argv[]=") {
+		return value
+	}
+
+	// drop the braces delimiting the structure before splitting on the field
+	// separator, so a closing brace cannot end up attached to the last field and
+	// an argument that itself ends in a brace survives
+	if strings.HasPrefix(value, "{") && strings.HasSuffix(value, "}") {
+		value = strings.TrimSpace(value[1 : len(value)-1])
+	}
+
+	// the fields are separated by " ; ", while the command line itself can hold
+	// a bare ";" (sh -c "a; b"), so cut argv[] at the field that follows it
+	// rather than at the first semicolon
+	_, argv, ok := strings.Cut(value, "argv[]=")
+	if !ok {
+		return value
+	}
+	if end := strings.Index(argv, " ; ignore_errors="); end >= 0 {
+		return strings.TrimSpace(argv[:end])
+	}
+	if end := strings.Index(argv, " ; "); end >= 0 {
+		return strings.TrimSpace(argv[:end])
+	}
+	return strings.TrimSpace(argv)
+}
+
+// systemdCapabilityNames are the Linux capabilities by number, as systemd and
+// libcap name them.
+var systemdCapabilityNames = []string{
+	"cap_chown", "cap_dac_override", "cap_dac_read_search", "cap_fowner",
+	"cap_fsetid", "cap_kill", "cap_setgid", "cap_setuid",
+	"cap_setpcap", "cap_linux_immutable", "cap_net_bind_service", "cap_net_broadcast",
+	"cap_net_admin", "cap_net_raw", "cap_ipc_lock", "cap_ipc_owner",
+	"cap_sys_module", "cap_sys_rawio", "cap_sys_chroot", "cap_sys_ptrace",
+	"cap_sys_pacct", "cap_sys_admin", "cap_sys_boot", "cap_sys_nice",
+	"cap_sys_resource", "cap_sys_time", "cap_sys_tty_config", "cap_mknod",
+	"cap_lease", "cap_audit_write", "cap_audit_control", "cap_setfcap",
+	"cap_mac_override", "cap_mac_admin", "cap_syslog", "cap_wake_alarm",
+	"cap_block_suspend", "cap_audit_read", "cap_perfmon", "cap_bpf",
+	"cap_checkpoint_restore",
+}
+
+// isSystemdCapabilityMask reports whether a capability property is printed as
+// a decimal bit mask, which is how systemd 229 (Ubuntu 16.04) prints it.
+func isSystemdCapabilityMask(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	_, err := strconv.ParseUint(value, 10, 64)
+	return err == nil
+}
+
+// parseSystemdCapabilities reads a capability property into capability names.
+//
+// Current systemd prints names, but systemd 229 prints the set as a decimal bit
+// mask, where 18446744073709551615 is every capability. Reading that as one
+// opaque entry made a check like none(_ == "cap_sys_admin") pass for a unit
+// holding every capability, so the mask is decoded into the names systemd
+// prints today. A systemd whose capability table is older than the kernel
+// prints a capability it has no name for as hex (0x26); that is mapped to its
+// name as well, for the same reason.
+func parseSystemdCapabilities(value string, lastCap int) []string {
+	if isSystemdCapabilityMask(value) {
+		mask, _ := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
+		return decodeSystemdCapabilityMask(mask, lastCap)
+	}
+
+	entries := splitSystemdList(value)
+	for i, entry := range entries {
+		hex, ok := strings.CutPrefix(entry, "0x")
+		if !ok {
+			continue
+		}
+		n, err := strconv.ParseUint(hex, 16, 8)
+		if err == nil && int(n) < len(systemdCapabilityNames) {
+			entries[i] = systemdCapabilityNames[n]
+		}
+	}
+	return entries
+}
+
+// decodeSystemdCapabilityMask lists the capabilities set in mask, in number
+// order, up to lastCap (-1 for every named capability).
+func decodeSystemdCapabilityMask(mask uint64, lastCap int) []string {
+	last := len(systemdCapabilityNames) - 1
+	if lastCap >= 0 && lastCap < last {
+		last = lastCap
+	}
+
+	res := []string{}
+	for bit := 0; bit <= last; bit++ {
+		if mask&(1<<uint(bit)) != 0 {
+			res = append(res, systemdCapabilityNames[bit])
+		}
+	}
+	return res
+}
+
+// parseSystemdSystemCallFilter reads SystemCallFilter into the calls it names
+// and whether they are denied rather than allowed.
+//
+// systemctl marks a deny list with a "~" in front of the first call
+// ("~chroot mount reboot"), and prints a lone "~" (an empty deny list) for a
+// unit with no filter at all. Kept as written, the lone "~" made every unit
+// look filtered, and the first denied call never matched its own name.
+func parseSystemdSystemCallFilter(value string) ([]string, bool) {
+	value = strings.TrimSpace(value)
+	value = strings.TrimPrefix(value, "{")
+	value = strings.TrimSuffix(value, "}")
+	value = strings.TrimSpace(value)
+
+	rest, deny := strings.CutPrefix(value, "~")
+	calls := splitSystemdList(rest)
+	if len(calls) == 0 {
+		return calls, false
+	}
+	return calls, deny
+}
+
+// normalizeSystemdAddressFamilies reads RestrictAddressFamilies. A lone "~"
+// is systemctl's way of saying no restriction applies, which is reported as
+// empty like a unit that never set it. A deny list keeps its "~" prefix, so the
+// value still says which kind of list it is.
+func normalizeSystemdAddressFamilies(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "~" {
+		return ""
+	}
+	return value
+}
+
+// SystemdFSUnitManager reads unit settings from unit files. It is used when
+// command execution is not available, such as an image scan. Runtime state is not
+// knowable from the filesystem and is left empty.
+type SystemdFSUnitManager struct {
+	Fs afero.Fs
+	// Version is the release of the host's systemd, 0 when unknown. Settings
+	// a unit file makes that this release does not know are not reported.
+	Version int
+	// NoSeccomp is set when the host's systemd was built without seccomp,
+	// so it ignores the settings that rely on it.
+	NoSeccomp bool
+}
+
+func (m *SystemdFSUnitManager) List() ([]*SystemdUnit, error) {
+	seen := map[string]bool{}
+	res := []*SystemdUnit{}
+
+	for _, searchPath := range systemdUnitSearchPath {
+		entries, err := afero.ReadDir(m.Fs, searchPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".service") {
+				continue
+			}
+			// the search path is ordered by precedence, so the first copy wins
+			if seen[entry.Name()] {
+				continue
+			}
+			seen[entry.Name()] = true
+
+			u, err := m.readUnit(entry.Name(), path.Join(searchPath, entry.Name()))
+			if err != nil {
+				continue
+			}
+			res = append(res, u)
+		}
+	}
+
+	return res, nil
+}
+
+func (m *SystemdFSUnitManager) Get(name string) (*SystemdUnit, error) {
+	// systemctl reads a name without a unit type as a service, and so does a
+	// query: systemd.unit("chronyd") is chronyd.service
+	name = withSystemdUnitType(name)
+	for _, searchPath := range systemdUnitSearchPath {
+		unitPath := path.Join(searchPath, name)
+		if _, err := m.Fs.Stat(unitPath); err != nil {
+			continue
+		}
+		return m.readUnit(name, unitPath)
+	}
+	return nil, fmt.Errorf("%w: %s", ErrServiceNotFound, name)
+}
+
+func (m *SystemdFSUnitManager) readUnit(name string, unitPath string) (*SystemdUnit, error) {
+	props := map[string]string{"Id": name}
+
+	if m.isMasked(unitPath) {
+		props["LoadState"] = "masked"
+		props["UnitFileState"] = "masked"
+		props["Description"] = name
+		props["FragmentPath"] = unitPath
+		applySystemdExecDefaults(props, name, m.Version)
+		return systemdUnitFromProperties(props, -1), nil
+	}
+
+	props["LoadState"] = "loaded"
+	props["FragmentPath"] = unitPath
+
+	// the unit file first, then its drop-ins in name order, so a later value
+	// overrides an earlier one the way systemd merges them
+	if err := m.foldUnitFile(props, unitPath); err != nil {
+		return nil, err
+	}
+	for _, dropIn := range m.dropInFiles(name) {
+		if err := m.foldUnitFile(props, dropIn); err != nil {
+			continue
+		}
+	}
+	applySystemdUnitDefaults(props, name, m.Version)
+	markUnsupportedFileProperties(props, m.Version)
+	if m.NoSeccomp {
+		markSeccompUnsupported(props)
+	}
+
+	return systemdUnitFromProperties(props, -1), nil
+}
+
+// isMasked reports whether a unit file is masked, meaning systemd refuses to
+// start it at all.
+//
+// Masking symlinks the unit to /dev/null, so reading the link is the direct
+// answer. Not every filesystem can read a link, though: an archive-backed or
+// remote filesystem may not implement afero.LinkReader, and a masked unit that
+// went undetected would be reported as loaded with no settings, which reads
+// exactly like a service running with no confinement. So an empty unit file is
+// treated as masked too. The cost of being wrong is small in the other
+// direction, since a zero-byte unit file carries no settings either way.
+func (m *SystemdFSUnitManager) isMasked(unitPath string) bool {
+	if lr, ok := m.Fs.(afero.LinkReader); ok {
+		if linkPath, err := lr.ReadlinkIfPossible(unitPath); err == nil {
+			return linkPath == "/dev/null"
+		}
+	}
+
+	info, err := m.Fs.Stat(unitPath)
+	if err != nil {
+		return false
+	}
+	return info.Size() == 0
+}
+
+// foldUnitFile reads the [Unit] and [Service] settings of one file into props.
+func (m *SystemdFSUnitManager) foldUnitFile(props map[string]string, unitPath string) error {
+	f, err := m.Fs.Open(unitPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	opts, err := unit.Deserialize(f)
+	if err != nil {
+		return err
+	}
+
+	for _, opt := range opts {
+		// a line ending in a backslash continues on the next one, joined
+		// with a space
+		opt.Value = strings.ReplaceAll(opt.Value, "\\\n", " ")
+		switch opt.Section {
+		case "Unit":
+			if opt.Name == "Description" {
+				props["Description"] = opt.Value
+			}
+		case "Service":
+			// ReadOnlyDirectories and the other pre-231 names are aliases of
+			// the *Paths settings
+			if current, ok := systemdLegacyPathProperties[opt.Name]; ok {
+				opt.Name = current
+			}
+			// an empty assignment resets a list setting, so it clears what came
+			// before rather than appending to it
+			if opt.Value == "" {
+				// an empty capability set is a set, not an unset setting
+				if opt.Name == "CapabilityBoundingSet" || opt.Name == "AmbientCapabilities" {
+					props[opt.Name] = "0"
+					continue
+				}
+				delete(props, opt.Name)
+				continue
+			}
+			if opt.Name == "CapabilityBoundingSet" || opt.Name == "AmbientCapabilities" {
+				current, set := props[opt.Name]
+				props[opt.Name] = foldSystemdCapabilities(current, set, opt.Value)
+				continue
+			}
+			// a oneshot service runs several commands, in order; systemctl
+			// show reports the first
+			if existing, seen := props[opt.Name]; seen && opt.Name == "ExecStart" {
+				props[opt.Name] = existing + "\n" + opt.Value
+				continue
+			}
+			if existing, seen := props[opt.Name]; seen && systemdListProperty(opt.Name) {
+				props[opt.Name] = existing + " " + opt.Value
+				continue
+			}
+			props[opt.Name] = opt.Value
+		}
+	}
+
+	return nil
+}
+
+// systemdExecUnitTypes are the unit types with an execution context, the ones
+// the sandboxing and credential settings apply to.
+var systemdExecUnitTypes = []string{".service", ".socket", ".mount", ".swap"}
+
+// applySystemdUnitDefaults fills in what systemctl show reports for the
+// settings a unit file leaves unset, so a unit read from disk answers like
+// the same unit on a running system: an image's unit with no ProtectSystem=
+// read as "" where systemd reports "no", and no CapabilityBoundingSet= read as
+// an empty set where systemd reports every capability.
+func applySystemdUnitDefaults(props map[string]string, name string, version int) {
+	if props["Description"] == "" {
+		props["Description"] = name
+	}
+
+	execUnit := false
+	for _, t := range systemdExecUnitTypes {
+		if strings.HasSuffix(name, t) {
+			execUnit = true
+		}
+	}
+	if !execUnit {
+		return
+	}
+
+	applySystemdExecDefaults(props, name, version)
+
+	if _, ok := props["ExecStart"]; ok {
+		props["ExecStart"] = systemdCommandLine(props["ExecStart"])
+	}
+	for _, key := range []string{"ReadWritePaths", "ReadOnlyPaths", "InaccessiblePaths"} {
+		if v, ok := props[key]; ok {
+			props[key] = cleanSystemdPaths(v)
+		}
+	}
+
+	if strings.HasSuffix(name, ".service") && !isSystemdTemplateUnit(name) {
+		if _, ok := props["Type"]; !ok {
+			switch {
+			case props["BusName"] != "":
+				props["Type"] = "dbus"
+			case props["ExecStart"] == "":
+				props["Type"] = "oneshot"
+			default:
+				props["Type"] = "simple"
+			}
+		}
+	}
+}
+
+// applySystemdExecDefaults fills in the execution settings of a unit type
+// that has them, as systemctl show reports them for a unit file that leaves
+// them unset, and applies the capabilities systemd drops implicitly. version
+// is the target's systemd release, 0 when unknown.
+func applySystemdExecDefaults(props map[string]string, name string, version int) {
+	execUnit := false
+	for _, t := range systemdExecUnitTypes {
+		if strings.HasSuffix(name, t) {
+			execUnit = true
+		}
+	}
+	if !execUnit {
+		return
+	}
+
+	for key, value := range map[string]string{
+		"UMask":                "0022",
+		"ProtectSystem":        "no",
+		"ProtectHome":          "no",
+		"ProtectControlGroups": "no",
+		"RestrictNamespaces":   "no",
+		"ProtectProc":          "default",
+		"ProcSubset":           "all",
+		"KeyringMode":          "private",
+	} {
+		if _, ok := props[key]; !ok {
+			props[key] = value
+		}
+	}
+	// "true" and "1" are written yes, as systemd prints them; these settings
+	// also take other words (strict, read-only, ...), kept as they are
+	for _, key := range []string{"ProtectSystem", "ProtectHome", "ProtectControlGroups", "RestrictNamespaces"} {
+		switch strings.ToLower(props[key]) {
+		case "yes", "true", "on", "1":
+			props[key] = "yes"
+		case "no", "false", "off", "0":
+			props[key] = "no"
+		}
+	}
+
+	bounding := systemdAllCapabilities()
+	if v, ok := props["CapabilityBoundingSet"]; ok {
+		if mask, err := strconv.ParseUint(v, 10, 64); err == nil {
+			bounding = mask
+		}
+	}
+	// settings that take capabilities away along with what they protect
+	// (systemd.exec(5))
+	for setting, caps := range systemdImplicitCapabilityDrops {
+		// a release that does not know the setting ignores it, and keeps
+		// the capabilities
+		if since := systemdPropertySince[setting]; version > 0 && since > version {
+			continue
+		}
+		if parseSystemdBool(props[setting]) {
+			for _, c := range caps {
+				bounding &^= 1 << uint(slices.Index(systemdCapabilityNames, c))
+			}
+		}
+	}
+	props["CapabilityBoundingSet"] = strconv.FormatUint(bounding, 10)
+
+	if v, ok := props["RestrictAddressFamilies"]; ok {
+		props["RestrictAddressFamilies"] = sortSystemdAddressFamilies(v)
+	}
+}
+
+// systemdImplicitCapabilityDrops are the capabilities a sandboxing setting
+// removes from the bounding set.
+var systemdImplicitCapabilityDrops = map[string][]string{
+	"PrivateDevices":       {"cap_mknod", "cap_sys_rawio"},
+	"ProtectKernelModules": {"cap_sys_module"},
+	"ProtectKernelLogs":    {"cap_syslog"},
+	"ProtectClock":         {"cap_sys_time", "cap_wake_alarm"},
+}
+
+// systemdCommandLine is the command line of an Exec*= setting as systemctl
+// show prints its argv: the first line, without the prefixes that change how
+// it runs ("-", "@", "+", "!", ":"), its words unquoted and unescaped and
+// joined by spaces. With "@" the second word is argv[0].
+func systemdCommandLine(value string) string {
+	value = strings.TrimSpace(value)
+	if i := strings.IndexByte(value, '\n'); i >= 0 {
+		value = strings.TrimSpace(value[:i])
+	}
+	trimmed := strings.TrimLeft(value, "-@:+!")
+	argv0 := strings.Contains(value[:len(value)-len(trimmed)], "@")
+	words := splitSystemdWords(trimmed)
+	if argv0 && len(words) > 1 {
+		words = words[1:]
+	}
+	return strings.Join(words, " ")
+}
+
+// splitSystemdWords splits a command line the way systemd does: words are
+// separated by whitespace, single and double quotes group, and C escapes are
+// resolved inside quotes and out.
+func splitSystemdWords(s string) []string {
+	var words []string
+	var word strings.Builder
+	inWord := false
+	var quote rune
+	runes := []rune(s)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		switch {
+		case r == '\\' && i+1 < len(runes):
+			i++
+			word.WriteString(unescapeSystemdChar(runes[i]))
+			inWord = true
+		case quote != 0 && r == quote:
+			quote = 0
+		case quote == 0 && (r == '\'' || r == '"'):
+			quote = r
+			inWord = true
+		case quote == 0 && unicode.IsSpace(r):
+			if inWord {
+				words = append(words, word.String())
+				word.Reset()
+				inWord = false
+			}
+		default:
+			word.WriteRune(r)
+			inWord = true
+		}
+	}
+	if inWord {
+		words = append(words, word.String())
+	}
+	return words
+}
+
+func unescapeSystemdChar(r rune) string {
+	switch r {
+	case 'n':
+		return "\n"
+	case 't':
+		return "\t"
+	case 'r':
+		return "\r"
+	case 's':
+		return " "
+	case 'a':
+		return "\a"
+	case 'b':
+		return "\b"
+	case 'f':
+		return "\f"
+	case 'v':
+		return "\v"
+	}
+	return string(r)
+}
+
+// cleanSystemdPaths drops a trailing slash from each path of a *Paths=
+// setting, as systemd normalizes them.
+func cleanSystemdPaths(value string) string {
+	fields := strings.Fields(value)
+	for i, f := range fields {
+		if len(f) > 1 {
+			fields[i] = strings.TrimRight(f, "/")
+			if fields[i] == "" || fields[i] == "-" || fields[i] == "+" {
+				fields[i] = f
+			}
+		}
+	}
+	return strings.Join(fields, " ")
+}
+
+// systemdAllCapabilities is the mask of every capability systemd names.
+func systemdAllCapabilities() uint64 {
+	return 1<<uint(len(systemdCapabilityNames)) - 1
+}
+
+// foldSystemdCapabilities applies one CapabilityBoundingSet= or
+// AmbientCapabilities= assignment to the set the earlier ones built, as a
+// decimal mask. A list starting with "~" is every capability but the ones it
+// names; a later assignment adds to the set.
+func foldSystemdCapabilities(current string, set bool, value string) string {
+	value = strings.TrimSpace(value)
+	invert := strings.HasPrefix(value, "~")
+	value = strings.TrimPrefix(value, "~")
+
+	var mask uint64
+	for _, name := range strings.Fields(value) {
+		// systemd takes a capability's number as well as its name
+		if n, err := strconv.Atoi(name); err == nil {
+			if n >= 0 && n < len(systemdCapabilityNames) {
+				mask |= 1 << uint(n)
+			}
+			continue
+		}
+		name = strings.ToLower(name)
+		for bit, known := range systemdCapabilityNames {
+			if known == name {
+				mask |= 1 << uint(bit)
+			}
+		}
+	}
+	if invert {
+		mask = systemdAllCapabilities() &^ mask
+	}
+	if set {
+		if prev, err := strconv.ParseUint(current, 10, 64); err == nil {
+			mask |= prev
+		}
+	}
+	return strconv.FormatUint(mask, 10)
+}
+
+// sortSystemdAddressFamilies orders a RestrictAddressFamilies= list by name,
+// the way systemctl show prints it, keeping a leading "~".
+func sortSystemdAddressFamilies(value string) string {
+	value = strings.TrimSpace(value)
+	invert := strings.HasPrefix(value, "~")
+	families := strings.Fields(strings.TrimPrefix(value, "~"))
+	sort.Strings(families)
+	res := strings.Join(families, " ")
+	if invert {
+		res = "~" + res
+	}
+	return res
+}
+
+// dropInFiles returns the drop-in files for a unit, in the order systemd reads
+// them: every drop-in directory is merged and the result is ordered by file
+// name, not by the directory it came from, so 05-early.conf under /usr/lib
+// still applies before 10-late.conf under /etc. When the same file name appears
+// in more than one directory, the earlier search path wins and shadows the rest.
+func (m *SystemdFSUnitManager) dropInFiles(name string) []string {
+	winners := map[string]string{}
+	names := []string{}
+
+	for _, searchPath := range systemdUnitSearchPath {
+		dir := path.Join(searchPath, name+".d")
+		entries, err := afero.ReadDir(m.Fs, dir)
+		if err != nil {
+			continue
+		}
+
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".conf") {
+				continue
+			}
+			if _, taken := winners[entry.Name()]; taken {
+				continue
+			}
+			winners[entry.Name()] = path.Join(dir, entry.Name())
+			names = append(names, entry.Name())
+		}
+	}
+
+	sort.Strings(names)
+
+	res := make([]string, 0, len(names))
+	for _, dropIn := range names {
+		res = append(res, winners[dropIn])
+	}
+
+	return res
+}
+
+// systemdListProperty reports whether a setting accumulates across assignments
+// rather than being replaced by the last one.
+func systemdListProperty(name string) bool {
+	switch name {
+	case "CapabilityBoundingSet", "AmbientCapabilities", "SystemCallFilter",
+		"ReadWritePaths", "ReadOnlyPaths", "InaccessiblePaths", "RestrictAddressFamilies":
+		return true
+	}
+	return false
+}
+
+// systemdUnitTypes are the unit type suffixes systemd knows.
+var systemdUnitTypes = []string{
+	".service", ".socket", ".device", ".mount", ".automount", ".swap",
+	".target", ".path", ".timer", ".slice", ".scope",
+}
+
+// withSystemdUnitType appends ".service" to a unit name that carries no unit
+// type, the way systemctl completes it.
+func withSystemdUnitType(name string) string {
+	for _, suffix := range systemdUnitTypes {
+		if strings.HasSuffix(name, suffix) {
+			return name
+		}
+	}
+	return name + ".service"
+}

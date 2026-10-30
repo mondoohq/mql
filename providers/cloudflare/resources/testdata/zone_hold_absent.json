@@ -1,0 +1,10 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": {
+    "hold": false,
+    "hold_after": "",
+    "include_subdomains": "false"
+  }
+}

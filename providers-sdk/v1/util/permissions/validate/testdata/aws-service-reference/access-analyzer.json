@@ -1,0 +1,9 @@
+{
+  "Name": "access-analyzer",
+  "Version": "v1.4",
+  "Actions": [{"Name": "GetFinding"}, {"Name": "ListFindings"}],
+  "Operations": [
+    {"Name": "GetFinding", "AuthorizedActions": [{"Service": "access-analyzer", "Name": "GetFinding"}]},
+    {"Name": "GetFindingV2", "AuthorizedActions": [{"Service": "access-analyzer", "Name": "GetFinding"}]}
+  ]
+}

@@ -1,16 +1,19 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/cnquery/v9/providers/opcua"
-option go_package = "go.mondoo.com/mql/v13/providers/opcua/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/opcua"
+option go_package = "go.mondoo.com/mql/providers/opcua/resources"
+option root = "opcua"
 
 // OPC UA (Open Platform Communications Unified Architecture) server
 //
-// Examine the connected OPC UA server: every namespace it advertises,
-// the root node of its address space, and a flat list of every node
-// reachable in that address space. The starting point for industrial
-// control systems / OT audits expressed in MQL.
-opcua {
+// Connected OPC UA server: every namespace it advertises, the root
+// node of its address space, and a flat list of every node reachable
+// in that address space. The starting point for industrial control
+// systems and OT (operational technology) audits expressed in MQL.
+opcua @root {
   // Namespaces
   namespaces() []opcua.namespace
   // Root node
@@ -21,21 +24,32 @@ opcua {
 
 // OPC UA server information
 //
-// Examine the OPC UA server's identity and lifecycle: its server-status
-// node, build information (manufacturer, product, software version,
-// build date), the current time as reported by the server, the time
-// when the server started, and the server state (Running, Failed,
-// NoConfiguration, Suspended, Shutdown).
+// Identity and lifecycle status of the connected OPC UA server, drawn
+// from its ServerStatus node: build information such as manufacturer,
+// product, and software version, the current time the server reports,
+// when it started, and its runtime state. Auditing this confirms which
+// server implementation and software version an OT endpoint runs and
+// whether it is healthy or degraded.
 opcua.server {
   // Reference to node
   node opcua.node
-  // Server build info
+  // Server build information
+  //
+  // Build metadata reported by the server, with keys ProductURI,
+  // ManufacturerName, ProductName, SoftwareVersion, BuildNumber, and
+  // BuildDate. Useful for fingerprinting the server product and version
+  // when assessing exposure to known vulnerabilities.
   buildInfo dict
   // Current time on server
   currentTime time
   // Time when the server started
   startTime time
-  // Server state (e.g., Running, Failed, NoConfiguration, Suspended, Shutdown)
+  // Server runtime state
+  //
+  // One of ServerStateRunning, ServerStateFailed,
+  // ServerStateNoConfiguration, ServerStateSuspended,
+  // ServerStateShutdown, ServerStateTest,
+  // ServerStateCommunicationFault, or ServerStateUnknown.
   state string
 }
 
@@ -48,6 +62,14 @@ private opcua.namespace {
 }
 
 // OPC UA node
+//
+// Node in the OPC UA address space, the unified model through which a
+// server exposes its objects, variables, methods, and type definitions.
+// Each node carries its identifier, browse name, and node class, and for
+// variable nodes the current data type, value bounds, unit, and access
+// level. The properties, components, and organizes references walk the
+// hierarchy of related nodes, letting you audit how a server structures
+// its industrial control data and which values clients may read or write.
 private opcua.node @defaults("id name") {
   // Node ID
   id string
@@ -56,12 +78,23 @@ private opcua.node @defaults("id name") {
   // Namespace
   namespace() opcua.namespace
   // Node class
+  //
+  // Kind of node in the address space. One of Object, Variable, Method,
+  // ObjectType, VariableType, ReferenceType, DataType, or View.
   class string
   // Node description
   description string
   // Whether the value is writable
+  //
+  // True when the node's access level grants CurrentWrite, meaning clients
+  // may change the node's current value.
   writeable bool
   // Data type
+  //
+  // Value's data type, mapped to a language-neutral name such as bool,
+  // int8, int16, int32, byte, uint16, uint32, float32, float64, string, or
+  // time.Time. A node whose type falls outside this set reports the raw
+  // data-type node identifier instead.
   dataType string
   // Minimum value
   min string
@@ -70,11 +103,15 @@ private opcua.node @defaults("id name") {
   // Node unit
   unit string
   // Access level
+  //
+  // Permissions granted on the node's current and historical value,
+  // rendered as the set of enabled bits (for example CurrentRead,
+  // CurrentWrite, HistoryRead, HistoryWrite).
   accessLevel string
-  // Properties
+  // Property nodes attached to this node through HasProperty references
   properties() []opcua.node
-  // Components
+  // Component nodes attached to this node through HasComponent references
   components() []opcua.node
-  // Organizes
+  // Nodes this node organizes through Organizes references
   organizes() []opcua.node
 }

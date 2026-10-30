@@ -1,0 +1,66 @@
+Beginning of IPv4 filter rules.
+Rule 1:
+Rule action         : permit
+Source Address      : 0.0.0.0
+Source Mask         : 0.0.0.0
+Destination Address : 0.0.0.0
+Destination Mask    : 0.0.0.0
+Source Routing      : no
+Protocol            : udp
+Source Port         : eq  4001
+Destination Port    : eq  4001
+Scope               : both
+Direction           : both
+Logging control     : no
+Fragment control    : all packets
+Tunnel ID number    : 0
+Interface           : all
+Auto-Generated      : yes
+Expiration Time     : 0
+Description         : Default Rule
+
+Rule 2:
+*** Dynamic filter placement rule for IKE tunnels ***
+Logging control     : no
+
+Rule 3:
+Rule action         : deny
+Source Address      : 0.0.0.0
+Source Mask         : 0.0.0.0
+Destination Address : 0.0.0.0
+Destination Mask    : 0.0.0.0
+Source Routing      : no
+Protocol            : tcp
+Source Port         : any 0
+Destination Port    : eq  47999
+Scope               : both
+Direction           : inbound
+Logging control     : no
+Fragment control    : all packets
+Tunnel ID number    : 0
+Interface           : all
+Auto-Generated      : no
+Expiration Time     : 0
+Description         : mql test deny
+
+Rule 0:
+Rule action         : permit
+Source Address      : 0.0.0.0
+Source Mask         : 0.0.0.0
+Destination Address : 0.0.0.0
+Destination Mask    : 0.0.0.0
+Source Routing      : yes
+Protocol            : all
+Source Port         : any 0
+Destination Port    : any 0
+Scope               : both
+Direction           : both
+Logging control     : no
+Fragment control    : all packets
+Tunnel ID number    : 0
+Interface           : all
+Auto-Generated      : no
+Expiration Time     : 0
+Description         : Default Rule
+
+End of IPv4 filter rules.

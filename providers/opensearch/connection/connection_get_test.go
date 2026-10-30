@@ -1,0 +1,149 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package connection
+
+import (
+	"errors"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+)
+
+// newServerConn points a connection at a local test server over plain HTTP,
+// with basic-auth credentials the server can check.
+func newServerConn(t *testing.T, handler http.HandlerFunc) *OpensearchConnection {
+	t.Helper()
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+
+	host, port, err := net.SplitHostPort(srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	conn := newTestConn(t, map[string]string{
+		OptionHost:   host,
+		OptionPort:   port,
+		OptionScheme: "http",
+	})
+	conn.user = "auditor"
+	conn.password = "secret"
+	return conn
+}
+
+func TestGetDecodesBody(t *testing.T) {
+	// opensearch-go v5 sends its own health checks (GET /) around the
+	// request, so record only the request Get sent.
+	var mu sync.Mutex
+	var gotPath, gotUser, gotPass string
+	conn := newServerConn(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			mu.Lock()
+			gotPath = r.URL.Path
+			gotUser, gotPass, _ = r.BasicAuth()
+			mu.Unlock()
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"cluster_name":"prod","status":"green"}`))
+	})
+
+	var out struct {
+		ClusterName string `json:"cluster_name"`
+		Status      string `json:"status"`
+	}
+	if err := conn.Get("/_cluster/health", &out); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if gotPath != "/_cluster/health" {
+		t.Errorf("path = %q", gotPath)
+	}
+	if gotUser != "auditor" || gotPass != "secret" {
+		t.Errorf("basic auth = %q/%q", gotUser, gotPass)
+	}
+	if out.ClusterName != "prod" || out.Status != "green" {
+		t.Errorf("decoded = %+v", out)
+	}
+}
+
+func TestGetClassifiesDeniedAsPermissionError(t *testing.T) {
+	for _, code := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		conn := newServerConn(t, func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(code)
+		})
+		err := conn.Get("/_plugins/_security/api/roles", nil)
+		if !IsPermissionError(err) {
+			t.Errorf("status %d: err = %v, want a permission error", code, err)
+		}
+	}
+}
+
+func TestGetReportsOtherStatusAsError(t *testing.T) {
+	conn := newServerConn(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"no such index"}`))
+	})
+	err := conn.Get("/missing/_settings", nil)
+	if err == nil {
+		t.Fatal("Get succeeded on a 404")
+	}
+	if IsPermissionError(err) {
+		t.Error("a 404 is not a permission error")
+	}
+	if !strings.Contains(err.Error(), "status 404") || !strings.Contains(err.Error(), "no such index") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// Bodies OpenSearch 3.9 returned live: the security REST API to a user mapped
+// to monitor_only, and the core API to the anonymous user.
+const (
+	securityAPI403 = `{"status":"FORBIDDEN","message":"No permission to access REST API: User monuser with Security roles [monitor_only] does not have any role privileged for admin access. No client TLS certificate found in request"}`
+	health403      = `{"error":{"root_cause":[{"type":"security_exception","reason":"no permissions for [cluster:monitor/health] and User [name=opendistro_security_anonymous, backend_roles=[opendistro_security_anonymous_backendrole], requestedTenant=null]"}],"type":"security_exception","reason":"no permissions for [cluster:monitor/health] and User [name=opendistro_security_anonymous, backend_roles=[opendistro_security_anonymous_backendrole], requestedTenant=null]"},"status":403}`
+)
+
+func TestGetRefusalKeepsStatusAndReason(t *testing.T) {
+	conn := newServerConn(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/_plugins/_security/api/internalusers":
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(securityAPI403))
+		case "/_cluster/health":
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(health403))
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	})
+
+	cases := map[string]string{
+		"/_plugins/_security/api/internalusers": "does not have any role privileged for admin access",
+		"/_cluster/health":                      "no permissions for [cluster:monitor/health]",
+	}
+	for path, want := range cases {
+		err := conn.Get(path, nil)
+		var pe *PermissionError
+		if !errors.As(err, &pe) {
+			t.Fatalf("Get(%s) = %v, want a PermissionError", path, err)
+		}
+		if pe.StatusCode != http.StatusForbidden {
+			t.Errorf("Get(%s) status = %d", path, pe.StatusCode)
+		}
+		if !strings.Contains(pe.Reason, want) || !strings.Contains(err.Error(), want) {
+			t.Errorf("Get(%s) reason = %q, error = %q; want %q", path, pe.Reason, err.Error(), want)
+		}
+	}
+}
+
+func TestErrorReasonIgnoresOtherBodies(t *testing.T) {
+	for _, body := range []string{"", "not json", `{"status":403}`, `<html>Forbidden</html>`, `{"error":"plain string"}`} {
+		if got := errorReason([]byte(body)); got != "" {
+			t.Errorf("errorReason(%q) = %q, want empty", body, got)
+		}
+	}
+}

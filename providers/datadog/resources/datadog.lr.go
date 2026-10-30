@@ -9,35 +9,61 @@ import (
 	"errors"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceDatadog                          string = "datadog"
-	ResourceDatadogUser                      string = "datadog.user"
-	ResourceDatadogRole                      string = "datadog.role"
-	ResourceDatadogMonitor                   string = "datadog.monitor"
-	ResourceDatadogDashboard                 string = "datadog.dashboard"
-	ResourceDatadogSyntheticsTest            string = "datadog.syntheticsTest"
-	ResourceDatadogSlo                       string = "datadog.slo"
-	ResourceDatadogLogIndex                  string = "datadog.logIndex"
-	ResourceDatadogSecurityRule              string = "datadog.securityRule"
-	ResourceDatadogDowntime                  string = "datadog.downtime"
-	ResourceDatadogApiKey                    string = "datadog.apiKey"
-	ResourceDatadogApplicationKey            string = "datadog.applicationKey"
-	ResourceDatadogIntegrationAws            string = "datadog.integration.aws"
-	ResourceDatadogTeam                      string = "datadog.team"
-	ResourceDatadogSensitiveDataScannerGroup string = "datadog.sensitiveDataScannerGroup"
-	ResourceDatadogSecurityFilter            string = "datadog.securityFilter"
-	ResourceDatadogSecuritySuppression       string = "datadog.securitySuppression"
-	ResourceDatadogServiceAccount            string = "datadog.serviceAccount"
-	ResourceDatadogLogsArchive               string = "datadog.logsArchive"
-	ResourceDatadogRumApplication            string = "datadog.rumApplication"
-	ResourceDatadogSyntheticsGlobalVariable  string = "datadog.syntheticsGlobalVariable"
-	ResourceDatadogSyntheticsPrivateLocation string = "datadog.syntheticsPrivateLocation"
+	ResourceDatadog                                string = "datadog"
+	ResourceDatadogWorkflow                        string = "datadog.workflow"
+	ResourceDatadogSecurityInboxRule               string = "datadog.securityInboxRule"
+	ResourceDatadogExecutionPolicy                 string = "datadog.executionPolicy"
+	ResourceDatadogExecutionPolicyScopeRestriction string = "datadog.executionPolicy.scopeRestriction"
+	ResourceDatadogExecutionPolicyRemoteShellRule  string = "datadog.executionPolicy.remoteShellRule"
+	ResourceDatadogExecutionPolicyTarget           string = "datadog.executionPolicy.target"
+	ResourceDatadogRestrictionPolicy               string = "datadog.restrictionPolicy"
+	ResourceDatadogSharedDashboard                 string = "datadog.sharedDashboard"
+	ResourceDatadogAuthnMapping                    string = "datadog.authnMapping"
+	ResourceDatadogLogsPipeline                    string = "datadog.logsPipeline"
+	ResourceDatadogLogsCustomDestination           string = "datadog.logsCustomDestination"
+	ResourceDatadogLogsRestrictionQuery            string = "datadog.logsRestrictionQuery"
+	ResourceDatadogOrganization                    string = "datadog.organization"
+	ResourceDatadogPermission                      string = "datadog.permission"
+	ResourceDatadogUser                            string = "datadog.user"
+	ResourceDatadogRole                            string = "datadog.role"
+	ResourceDatadogMonitor                         string = "datadog.monitor"
+	ResourceDatadogDashboard                       string = "datadog.dashboard"
+	ResourceDatadogSyntheticsTest                  string = "datadog.syntheticsTest"
+	ResourceDatadogSlo                             string = "datadog.slo"
+	ResourceDatadogLogIndex                        string = "datadog.logIndex"
+	ResourceDatadogSecurityRule                    string = "datadog.securityRule"
+	ResourceDatadogDowntime                        string = "datadog.downtime"
+	ResourceDatadogApiKey                          string = "datadog.apiKey"
+	ResourceDatadogApplicationKey                  string = "datadog.applicationKey"
+	ResourceDatadogIntegrationAws                  string = "datadog.integration.aws"
+	ResourceDatadogTeam                            string = "datadog.team"
+	ResourceDatadogSensitiveDataScannerGroup       string = "datadog.sensitiveDataScannerGroup"
+	ResourceDatadogSecurityFilter                  string = "datadog.securityFilter"
+	ResourceDatadogSecuritySuppression             string = "datadog.securitySuppression"
+	ResourceDatadogServiceAccount                  string = "datadog.serviceAccount"
+	ResourceDatadogLogsArchive                     string = "datadog.logsArchive"
+	ResourceDatadogRumApplication                  string = "datadog.rumApplication"
+	ResourceDatadogSyntheticsGlobalVariable        string = "datadog.syntheticsGlobalVariable"
+	ResourceDatadogSyntheticsPrivateLocation       string = "datadog.syntheticsPrivateLocation"
+	ResourceDatadogOauthClient                     string = "datadog.oauthClient"
+	ResourceDatadogOauthClientAuthorization        string = "datadog.oauthClient.authorization"
+	ResourceDatadogIdentityProvider                string = "datadog.identityProvider"
+	ResourceDatadogOrgConnection                   string = "datadog.orgConnection"
+	ResourceDatadogIntegrationGcp                  string = "datadog.integration.gcp"
+	ResourceDatadogIntegrationAzure                string = "datadog.integration.azure"
+	ResourceDatadogIntegrationOkta                 string = "datadog.integration.okta"
+	ResourceDatadogIntegrationCloudflare           string = "datadog.integration.cloudflare"
+	ResourceDatadogIntegrationFastly               string = "datadog.integration.fastly"
+	ResourceDatadogIntegrationConfluent            string = "datadog.integration.confluent"
+	ResourceDatadogIntegrationSnowflake            string = "datadog.integration.snowflake"
+	ResourceDatadogIntegrationDatabricks           string = "datadog.integration.databricks"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -48,12 +74,68 @@ func init() {
 			// to override args, implement: initDatadog(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createDatadog,
 		},
+		"datadog.workflow": {
+			// to override args, implement: initDatadogWorkflow(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogWorkflow,
+		},
+		"datadog.securityInboxRule": {
+			// to override args, implement: initDatadogSecurityInboxRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogSecurityInboxRule,
+		},
+		"datadog.executionPolicy": {
+			Init:   initDatadogExecutionPolicy,
+			Create: createDatadogExecutionPolicy,
+		},
+		"datadog.executionPolicy.scopeRestriction": {
+			// to override args, implement: initDatadogExecutionPolicyScopeRestriction(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogExecutionPolicyScopeRestriction,
+		},
+		"datadog.executionPolicy.remoteShellRule": {
+			// to override args, implement: initDatadogExecutionPolicyRemoteShellRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogExecutionPolicyRemoteShellRule,
+		},
+		"datadog.executionPolicy.target": {
+			// to override args, implement: initDatadogExecutionPolicyTarget(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogExecutionPolicyTarget,
+		},
+		"datadog.restrictionPolicy": {
+			// to override args, implement: initDatadogRestrictionPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogRestrictionPolicy,
+		},
+		"datadog.sharedDashboard": {
+			// to override args, implement: initDatadogSharedDashboard(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogSharedDashboard,
+		},
+		"datadog.authnMapping": {
+			// to override args, implement: initDatadogAuthnMapping(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogAuthnMapping,
+		},
+		"datadog.logsPipeline": {
+			// to override args, implement: initDatadogLogsPipeline(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogLogsPipeline,
+		},
+		"datadog.logsCustomDestination": {
+			// to override args, implement: initDatadogLogsCustomDestination(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogLogsCustomDestination,
+		},
+		"datadog.logsRestrictionQuery": {
+			// to override args, implement: initDatadogLogsRestrictionQuery(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogLogsRestrictionQuery,
+		},
+		"datadog.organization": {
+			// to override args, implement: initDatadogOrganization(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogOrganization,
+		},
+		"datadog.permission": {
+			// to override args, implement: initDatadogPermission(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogPermission,
+		},
 		"datadog.user": {
-			// to override args, implement: initDatadogUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initDatadogUser,
 			Create: createDatadogUser,
 		},
 		"datadog.role": {
-			// to override args, implement: initDatadogRole(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initDatadogRole,
 			Create: createDatadogRole,
 		},
 		"datadog.monitor": {
@@ -61,7 +143,7 @@ func init() {
 			Create: createDatadogMonitor,
 		},
 		"datadog.dashboard": {
-			// to override args, implement: initDatadogDashboard(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initDatadogDashboard,
 			Create: createDatadogDashboard,
 		},
 		"datadog.syntheticsTest": {
@@ -97,7 +179,7 @@ func init() {
 			Create: createDatadogIntegrationAws,
 		},
 		"datadog.team": {
-			// to override args, implement: initDatadogTeam(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initDatadogTeam,
 			Create: createDatadogTeam,
 		},
 		"datadog.sensitiveDataScannerGroup": {
@@ -131,6 +213,54 @@ func init() {
 		"datadog.syntheticsPrivateLocation": {
 			// to override args, implement: initDatadogSyntheticsPrivateLocation(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createDatadogSyntheticsPrivateLocation,
+		},
+		"datadog.oauthClient": {
+			// to override args, implement: initDatadogOauthClient(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogOauthClient,
+		},
+		"datadog.oauthClient.authorization": {
+			// to override args, implement: initDatadogOauthClientAuthorization(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogOauthClientAuthorization,
+		},
+		"datadog.identityProvider": {
+			// to override args, implement: initDatadogIdentityProvider(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogIdentityProvider,
+		},
+		"datadog.orgConnection": {
+			// to override args, implement: initDatadogOrgConnection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogOrgConnection,
+		},
+		"datadog.integration.gcp": {
+			// to override args, implement: initDatadogIntegrationGcp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogIntegrationGcp,
+		},
+		"datadog.integration.azure": {
+			// to override args, implement: initDatadogIntegrationAzure(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogIntegrationAzure,
+		},
+		"datadog.integration.okta": {
+			// to override args, implement: initDatadogIntegrationOkta(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogIntegrationOkta,
+		},
+		"datadog.integration.cloudflare": {
+			// to override args, implement: initDatadogIntegrationCloudflare(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogIntegrationCloudflare,
+		},
+		"datadog.integration.fastly": {
+			// to override args, implement: initDatadogIntegrationFastly(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogIntegrationFastly,
+		},
+		"datadog.integration.confluent": {
+			// to override args, implement: initDatadogIntegrationConfluent(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogIntegrationConfluent,
+		},
+		"datadog.integration.snowflake": {
+			// to override args, implement: initDatadogIntegrationSnowflake(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogIntegrationSnowflake,
+		},
+		"datadog.integration.databricks": {
+			// to override args, implement: initDatadogIntegrationDatabricks(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatadogIntegrationDatabricks,
 		},
 	}
 }
@@ -203,11 +333,17 @@ func CreateResource(runtime *plugin.Runtime, name string, args map[string]*llx.R
 }
 
 var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
+	"datadog.org": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetOrg()).ToDataRes(types.Resource("datadog.organization"))
+	},
 	"datadog.users": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadog).GetUsers()).ToDataRes(types.Array(types.Resource("datadog.user")))
 	},
 	"datadog.roles": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadog).GetRoles()).ToDataRes(types.Array(types.Resource("datadog.role")))
+	},
+	"datadog.permissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetPermissions()).ToDataRes(types.Array(types.Resource("datadog.permission")))
 	},
 	"datadog.monitors": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadog).GetMonitors()).ToDataRes(types.Array(types.Resource("datadog.monitor")))
@@ -245,6 +381,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"datadog.integrationAwsAccounts": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadog).GetIntegrationAwsAccounts()).ToDataRes(types.Array(types.Resource("datadog.integration.aws")))
 	},
+	"datadog.integrationGcpAccounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetIntegrationGcpAccounts()).ToDataRes(types.Array(types.Resource("datadog.integration.gcp")))
+	},
+	"datadog.integrationAzureAccounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetIntegrationAzureAccounts()).ToDataRes(types.Array(types.Resource("datadog.integration.azure")))
+	},
+	"datadog.integrationOktaAccounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetIntegrationOktaAccounts()).ToDataRes(types.Array(types.Resource("datadog.integration.okta")))
+	},
+	"datadog.integrationCloudflareAccounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetIntegrationCloudflareAccounts()).ToDataRes(types.Array(types.Resource("datadog.integration.cloudflare")))
+	},
+	"datadog.integrationFastlyAccounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetIntegrationFastlyAccounts()).ToDataRes(types.Array(types.Resource("datadog.integration.fastly")))
+	},
+	"datadog.integrationConfluentAccounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetIntegrationConfluentAccounts()).ToDataRes(types.Array(types.Resource("datadog.integration.confluent")))
+	},
+	"datadog.integrationSnowflakeAccounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetIntegrationSnowflakeAccounts()).ToDataRes(types.Array(types.Resource("datadog.integration.snowflake")))
+	},
+	"datadog.integrationDatabricksAccounts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetIntegrationDatabricksAccounts()).ToDataRes(types.Array(types.Resource("datadog.integration.databricks")))
+	},
 	"datadog.teams": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadog).GetTeams()).ToDataRes(types.Array(types.Resource("datadog.team")))
 	},
@@ -271,6 +431,390 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"datadog.syntheticsPrivateLocations": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadog).GetSyntheticsPrivateLocations()).ToDataRes(types.Array(types.Resource("datadog.syntheticsPrivateLocation")))
+	},
+	"datadog.authnMappings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetAuthnMappings()).ToDataRes(types.Array(types.Resource("datadog.authnMapping")))
+	},
+	"datadog.logsPipelines": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetLogsPipelines()).ToDataRes(types.Array(types.Resource("datadog.logsPipeline")))
+	},
+	"datadog.logsCustomDestinations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetLogsCustomDestinations()).ToDataRes(types.Array(types.Resource("datadog.logsCustomDestination")))
+	},
+	"datadog.logsRestrictionQueries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetLogsRestrictionQueries()).ToDataRes(types.Array(types.Resource("datadog.logsRestrictionQuery")))
+	},
+	"datadog.oauthClients": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetOauthClients()).ToDataRes(types.Array(types.Resource("datadog.oauthClient")))
+	},
+	"datadog.identityProviders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetIdentityProviders()).ToDataRes(types.Array(types.Resource("datadog.identityProvider")))
+	},
+	"datadog.orgConnections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetOrgConnections()).ToDataRes(types.Array(types.Resource("datadog.orgConnection")))
+	},
+	"datadog.executionPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetExecutionPolicies()).ToDataRes(types.Array(types.Resource("datadog.executionPolicy")))
+	},
+	"datadog.workflows": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetWorkflows()).ToDataRes(types.Array(types.Resource("datadog.workflow")))
+	},
+	"datadog.securityInboxRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadog).GetSecurityInboxRules()).ToDataRes(types.Array(types.Resource("datadog.securityInboxRule")))
+	},
+	"datadog.workflow.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogWorkflow).GetId()).ToDataRes(types.String)
+	},
+	"datadog.workflow.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogWorkflow).GetName()).ToDataRes(types.String)
+	},
+	"datadog.workflow.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogWorkflow).GetDescription()).ToDataRes(types.String)
+	},
+	"datadog.workflow.published": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogWorkflow).GetPublished()).ToDataRes(types.Bool)
+	},
+	"datadog.workflow.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogWorkflow).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.workflow.sensitivePrivileges": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogWorkflow).GetSensitivePrivileges()).ToDataRes(types.Bool)
+	},
+	"datadog.workflow.runAsUserMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogWorkflow).GetRunAsUserMode()).ToDataRes(types.String)
+	},
+	"datadog.workflow.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogWorkflow).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"datadog.workflow.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogWorkflow).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"datadog.workflow.owner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogWorkflow).GetOwner()).ToDataRes(types.Resource("datadog.user"))
+	},
+	"datadog.workflow.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogWorkflow).GetCreatedBy()).ToDataRes(types.Resource("datadog.user"))
+	},
+	"datadog.workflow.runAsUser": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogWorkflow).GetRunAsUser()).ToDataRes(types.Resource("datadog.user"))
+	},
+	"datadog.securityInboxRule.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSecurityInboxRule).GetId()).ToDataRes(types.String)
+	},
+	"datadog.securityInboxRule.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSecurityInboxRule).GetName()).ToDataRes(types.String)
+	},
+	"datadog.securityInboxRule.isDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSecurityInboxRule).GetIsDefault()).ToDataRes(types.Bool)
+	},
+	"datadog.securityInboxRule.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSecurityInboxRule).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.securityInboxRule.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSecurityInboxRule).GetDescription()).ToDataRes(types.String)
+	},
+	"datadog.securityInboxRule.findingTypes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSecurityInboxRule).GetFindingTypes()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.securityInboxRule.query": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSecurityInboxRule).GetQuery()).ToDataRes(types.String)
+	},
+	"datadog.securityInboxRule.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSecurityInboxRule).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"datadog.securityInboxRule.modifiedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSecurityInboxRule).GetModifiedAt()).ToDataRes(types.Time)
+	},
+	"datadog.securityInboxRule.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSecurityInboxRule).GetCreatedBy()).ToDataRes(types.Resource("datadog.user"))
+	},
+	"datadog.securityInboxRule.modifiedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSecurityInboxRule).GetModifiedBy()).ToDataRes(types.Resource("datadog.user"))
+	},
+	"datadog.executionPolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicy).GetId()).ToDataRes(types.String)
+	},
+	"datadog.executionPolicy.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicy).GetName()).ToDataRes(types.String)
+	},
+	"datadog.executionPolicy.effect": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicy).GetEffect()).ToDataRes(types.String)
+	},
+	"datadog.executionPolicy.integration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicy).GetIntegration()).ToDataRes(types.String)
+	},
+	"datadog.executionPolicy.actionFqns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicy).GetActionFqns()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.executionPolicy.scope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicy).GetScope()).ToDataRes(types.Resource("datadog.executionPolicy.scopeRestriction"))
+	},
+	"datadog.executionPolicy.targets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicy).GetTargets()).ToDataRes(types.Array(types.Resource("datadog.executionPolicy.target")))
+	},
+	"datadog.executionPolicy.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicy).GetVersion()).ToDataRes(types.Int)
+	},
+	"datadog.executionPolicy.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicy).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"datadog.executionPolicy.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicy).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"datadog.executionPolicy.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicy).GetCreatedBy()).ToDataRes(types.Resource("datadog.user"))
+	},
+	"datadog.executionPolicy.updatedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicy).GetUpdatedBy()).ToDataRes(types.Resource("datadog.user"))
+	},
+	"datadog.executionPolicy.scopeRestriction.scopeType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicyScopeRestriction).GetScopeType()).ToDataRes(types.String)
+	},
+	"datadog.executionPolicy.scopeRestriction.kubernetesNamespaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicyScopeRestriction).GetKubernetesNamespaces()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.executionPolicy.scopeRestriction.scriptNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicyScopeRestriction).GetScriptNames()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.executionPolicy.scopeRestriction.remoteShellRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicyScopeRestriction).GetRemoteShellRules()).ToDataRes(types.Array(types.Resource("datadog.executionPolicy.remoteShellRule")))
+	},
+	"datadog.executionPolicy.remoteShellRule.access": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicyRemoteShellRule).GetAccess()).ToDataRes(types.String)
+	},
+	"datadog.executionPolicy.remoteShellRule.targetPaths": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicyRemoteShellRule).GetTargetPaths()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.executionPolicy.target.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicyTarget).GetName()).ToDataRes(types.String)
+	},
+	"datadog.executionPolicy.target.agentTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogExecutionPolicyTarget).GetAgentTags()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.restrictionPolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogRestrictionPolicy).GetId()).ToDataRes(types.String)
+	},
+	"datadog.restrictionPolicy.bindings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogRestrictionPolicy).GetBindings()).ToDataRes(types.Array(types.Dict))
+	},
+	"datadog.sharedDashboard.token": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSharedDashboard).GetToken()).ToDataRes(types.String)
+	},
+	"datadog.sharedDashboard.dashboard": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSharedDashboard).GetDashboard()).ToDataRes(types.Resource("datadog.dashboard"))
+	},
+	"datadog.sharedDashboard.title": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSharedDashboard).GetTitle()).ToDataRes(types.String)
+	},
+	"datadog.sharedDashboard.publicUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSharedDashboard).GetPublicUrl()).ToDataRes(types.String)
+	},
+	"datadog.sharedDashboard.shareType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSharedDashboard).GetShareType()).ToDataRes(types.String)
+	},
+	"datadog.sharedDashboard.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSharedDashboard).GetStatus()).ToDataRes(types.String)
+	},
+	"datadog.sharedDashboard.embeddableDomains": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSharedDashboard).GetEmbeddableDomains()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.sharedDashboard.invitees": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSharedDashboard).GetInvitees()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.sharedDashboard.expiration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSharedDashboard).GetExpiration()).ToDataRes(types.Time)
+	},
+	"datadog.sharedDashboard.lastAccessed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSharedDashboard).GetLastAccessed()).ToDataRes(types.Time)
+	},
+	"datadog.sharedDashboard.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSharedDashboard).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"datadog.sharedDashboard.sharerDisabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSharedDashboard).GetSharerDisabled()).ToDataRes(types.Bool)
+	},
+	"datadog.sharedDashboard.sharer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSharedDashboard).GetSharer()).ToDataRes(types.Resource("datadog.user"))
+	},
+	"datadog.authnMapping.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogAuthnMapping).GetId()).ToDataRes(types.String)
+	},
+	"datadog.authnMapping.attributeKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogAuthnMapping).GetAttributeKey()).ToDataRes(types.String)
+	},
+	"datadog.authnMapping.attributeValue": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogAuthnMapping).GetAttributeValue()).ToDataRes(types.String)
+	},
+	"datadog.authnMapping.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogAuthnMapping).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"datadog.authnMapping.modifiedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogAuthnMapping).GetModifiedAt()).ToDataRes(types.Time)
+	},
+	"datadog.authnMapping.role": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogAuthnMapping).GetRole()).ToDataRes(types.Resource("datadog.role"))
+	},
+	"datadog.authnMapping.team": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogAuthnMapping).GetTeam()).ToDataRes(types.Resource("datadog.team"))
+	},
+	"datadog.logsPipeline.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsPipeline).GetId()).ToDataRes(types.String)
+	},
+	"datadog.logsPipeline.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsPipeline).GetName()).ToDataRes(types.String)
+	},
+	"datadog.logsPipeline.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsPipeline).GetType()).ToDataRes(types.String)
+	},
+	"datadog.logsPipeline.isEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsPipeline).GetIsEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.logsPipeline.isReadOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsPipeline).GetIsReadOnly()).ToDataRes(types.Bool)
+	},
+	"datadog.logsPipeline.filterQuery": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsPipeline).GetFilterQuery()).ToDataRes(types.String)
+	},
+	"datadog.logsPipeline.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsPipeline).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.logsCustomDestination.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsCustomDestination).GetId()).ToDataRes(types.String)
+	},
+	"datadog.logsCustomDestination.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsCustomDestination).GetName()).ToDataRes(types.String)
+	},
+	"datadog.logsCustomDestination.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsCustomDestination).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.logsCustomDestination.query": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsCustomDestination).GetQuery()).ToDataRes(types.String)
+	},
+	"datadog.logsCustomDestination.destinationType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsCustomDestination).GetDestinationType()).ToDataRes(types.String)
+	},
+	"datadog.logsCustomDestination.endpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsCustomDestination).GetEndpoint()).ToDataRes(types.String)
+	},
+	"datadog.logsCustomDestination.authType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsCustomDestination).GetAuthType()).ToDataRes(types.String)
+	},
+	"datadog.logsCustomDestination.indexName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsCustomDestination).GetIndexName()).ToDataRes(types.String)
+	},
+	"datadog.logsCustomDestination.forwardTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsCustomDestination).GetForwardTags()).ToDataRes(types.Bool)
+	},
+	"datadog.logsCustomDestination.forwardTagsRestrictionList": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsCustomDestination).GetForwardTagsRestrictionList()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.logsCustomDestination.forwardTagsRestrictionListType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsCustomDestination).GetForwardTagsRestrictionListType()).ToDataRes(types.String)
+	},
+	"datadog.logsRestrictionQuery.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsRestrictionQuery).GetId()).ToDataRes(types.String)
+	},
+	"datadog.logsRestrictionQuery.restrictionQuery": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsRestrictionQuery).GetRestrictionQuery()).ToDataRes(types.String)
+	},
+	"datadog.logsRestrictionQuery.roleCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsRestrictionQuery).GetRoleCount()).ToDataRes(types.Int)
+	},
+	"datadog.logsRestrictionQuery.userCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsRestrictionQuery).GetUserCount()).ToDataRes(types.Int)
+	},
+	"datadog.logsRestrictionQuery.lastModifierEmail": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsRestrictionQuery).GetLastModifierEmail()).ToDataRes(types.String)
+	},
+	"datadog.logsRestrictionQuery.lastModifierName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsRestrictionQuery).GetLastModifierName()).ToDataRes(types.String)
+	},
+	"datadog.logsRestrictionQuery.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsRestrictionQuery).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"datadog.logsRestrictionQuery.modifiedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsRestrictionQuery).GetModifiedAt()).ToDataRes(types.Time)
+	},
+	"datadog.logsRestrictionQuery.roles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogLogsRestrictionQuery).GetRoles()).ToDataRes(types.Array(types.Resource("datadog.role")))
+	},
+	"datadog.organization.publicId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetPublicId()).ToDataRes(types.String)
+	},
+	"datadog.organization.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetName()).ToDataRes(types.String)
+	},
+	"datadog.organization.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetDescription()).ToDataRes(types.String)
+	},
+	"datadog.organization.trial": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetTrial()).ToDataRes(types.Bool)
+	},
+	"datadog.organization.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"datadog.organization.samlEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetSamlEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.organization.samlCanBeEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetSamlCanBeEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.organization.samlStrictModeEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetSamlStrictModeEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.organization.samlIdpInitiatedLoginEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetSamlIdpInitiatedLoginEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.organization.samlIdpMetadataUploaded": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetSamlIdpMetadataUploaded()).ToDataRes(types.Bool)
+	},
+	"datadog.organization.samlIdpEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetSamlIdpEndpoint()).ToDataRes(types.String)
+	},
+	"datadog.organization.samlLoginUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetSamlLoginUrl()).ToDataRes(types.String)
+	},
+	"datadog.organization.samlAutocreateUsersEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetSamlAutocreateUsersEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.organization.samlAutocreateUsersDomains": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetSamlAutocreateUsersDomains()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.organization.samlAutocreateAccessRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetSamlAutocreateAccessRole()).ToDataRes(types.String)
+	},
+	"datadog.organization.privateWidgetShare": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetPrivateWidgetShare()).ToDataRes(types.Bool)
+	},
+	"datadog.organization.domainAllowlistEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetDomainAllowlistEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.organization.domainAllowlistDomains": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrganization).GetDomainAllowlistDomains()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.permission.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogPermission).GetId()).ToDataRes(types.String)
+	},
+	"datadog.permission.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogPermission).GetName()).ToDataRes(types.String)
+	},
+	"datadog.permission.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogPermission).GetDisplayName()).ToDataRes(types.String)
+	},
+	"datadog.permission.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogPermission).GetDescription()).ToDataRes(types.String)
+	},
+	"datadog.permission.groupName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogPermission).GetGroupName()).ToDataRes(types.String)
+	},
+	"datadog.permission.displayType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogPermission).GetDisplayType()).ToDataRes(types.String)
+	},
+	"datadog.permission.restricted": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogPermission).GetRestricted()).ToDataRes(types.Bool)
+	},
+	"datadog.permission.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogPermission).GetCreatedAt()).ToDataRes(types.Time)
 	},
 	"datadog.user.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogUser).GetId()).ToDataRes(types.String)
@@ -305,6 +849,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"datadog.user.icon": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogUser).GetIcon()).ToDataRes(types.String)
 	},
+	"datadog.user.roles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogUser).GetRoles()).ToDataRes(types.Array(types.Resource("datadog.role")))
+	},
+	"datadog.user.teams": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogUser).GetTeams()).ToDataRes(types.Array(types.Resource("datadog.team")))
+	},
 	"datadog.role.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogRole).GetId()).ToDataRes(types.String)
 	},
@@ -319,6 +869,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"datadog.role.modifiedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogRole).GetModifiedAt()).ToDataRes(types.Time)
+	},
+	"datadog.role.permissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogRole).GetPermissions()).ToDataRes(types.Array(types.Resource("datadog.permission")))
+	},
+	"datadog.role.users": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogRole).GetUsers()).ToDataRes(types.Array(types.Resource("datadog.user")))
 	},
 	"datadog.monitor.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogMonitor).GetId()).ToDataRes(types.Int)
@@ -350,8 +906,11 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"datadog.monitor.modified": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogMonitor).GetModified()).ToDataRes(types.Time)
 	},
-	"datadog.monitor.creator": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlDatadogMonitor).GetCreator()).ToDataRes(types.String)
+	"datadog.monitor.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogMonitor).GetCreatedBy()).ToDataRes(types.Resource("datadog.user"))
+	},
+	"datadog.monitor.restrictionPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogMonitor).GetRestrictionPolicy()).ToDataRes(types.Resource("datadog.restrictionPolicy"))
 	},
 	"datadog.monitor.notifyNoData": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogMonitor).GetNotifyNoData()).ToDataRes(types.Bool)
@@ -380,11 +939,17 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"datadog.dashboard.modifiedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogDashboard).GetModifiedAt()).ToDataRes(types.Time)
 	},
-	"datadog.dashboard.authorHandle": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlDatadogDashboard).GetAuthorHandle()).ToDataRes(types.String)
+	"datadog.dashboard.author": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogDashboard).GetAuthor()).ToDataRes(types.Resource("datadog.user"))
 	},
 	"datadog.dashboard.isReadOnly": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogDashboard).GetIsReadOnly()).ToDataRes(types.Bool)
+	},
+	"datadog.dashboard.restrictionPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogDashboard).GetRestrictionPolicy()).ToDataRes(types.Resource("datadog.restrictionPolicy"))
+	},
+	"datadog.dashboard.sharedDashboards": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogDashboard).GetSharedDashboards()).ToDataRes(types.Array(types.Resource("datadog.sharedDashboard")))
 	},
 	"datadog.syntheticsTest.publicId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogSyntheticsTest).GetPublicId()).ToDataRes(types.String)
@@ -413,8 +978,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"datadog.syntheticsTest.monitorId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogSyntheticsTest).GetMonitorId()).ToDataRes(types.Int)
 	},
-	"datadog.syntheticsTest.creator": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlDatadogSyntheticsTest).GetCreator()).ToDataRes(types.String)
+	"datadog.syntheticsTest.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSyntheticsTest).GetCreatedBy()).ToDataRes(types.Resource("datadog.user"))
 	},
 	"datadog.syntheticsTest.config": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogSyntheticsTest).GetConfig()).ToDataRes(types.Dict)
@@ -446,8 +1011,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"datadog.slo.timeframe": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogSlo).GetTimeframe()).ToDataRes(types.String)
 	},
-	"datadog.slo.creator": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlDatadogSlo).GetCreator()).ToDataRes(types.String)
+	"datadog.slo.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSlo).GetCreatedBy()).ToDataRes(types.Resource("datadog.user"))
 	},
 	"datadog.slo.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogSlo).GetCreatedAt()).ToDataRes(types.Time)
@@ -457,6 +1022,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"datadog.slo.monitorIds": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogSlo).GetMonitorIds()).ToDataRes(types.Array(types.Int))
+	},
+	"datadog.slo.restrictionPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSlo).GetRestrictionPolicy()).ToDataRes(types.Resource("datadog.restrictionPolicy"))
 	},
 	"datadog.logIndex.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogLogIndex).GetName()).ToDataRes(types.String)
@@ -524,6 +1092,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"datadog.securityRule.options": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogSecurityRule).GetOptions()).ToDataRes(types.Dict)
 	},
+	"datadog.securityRule.restrictionPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogSecurityRule).GetRestrictionPolicy()).ToDataRes(types.Resource("datadog.restrictionPolicy"))
+	},
 	"datadog.downtime.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogDowntime).GetId()).ToDataRes(types.String)
 	},
@@ -578,6 +1149,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"datadog.apiKey.last4": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogApiKey).GetLast4()).ToDataRes(types.String)
 	},
+	"datadog.apiKey.lastUsedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogApiKey).GetLastUsedAt()).ToDataRes(types.Time)
+	},
+	"datadog.apiKey.category": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogApiKey).GetCategory()).ToDataRes(types.String)
+	},
+	"datadog.apiKey.remoteConfigReadEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogApiKey).GetRemoteConfigReadEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.apiKey.privateActionRunnerEnrollEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogApiKey).GetPrivateActionRunnerEnrollEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.apiKey.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogApiKey).GetCreatedBy()).ToDataRes(types.Resource("datadog.user"))
+	},
+	"datadog.apiKey.modifiedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogApiKey).GetModifiedBy()).ToDataRes(types.Resource("datadog.user"))
+	},
 	"datadog.applicationKey.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogApplicationKey).GetId()).ToDataRes(types.String)
 	},
@@ -592,6 +1181,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"datadog.applicationKey.scopes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogApplicationKey).GetScopes()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.applicationKey.lastUsedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogApplicationKey).GetLastUsedAt()).ToDataRes(types.Time)
+	},
+	"datadog.applicationKey.owner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogApplicationKey).GetOwner()).ToDataRes(types.Resource("datadog.user"))
 	},
 	"datadog.integration.aws.accountId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogIntegrationAws).GetAccountId()).ToDataRes(types.String)
@@ -620,6 +1215,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"datadog.integration.aws.excludedRegions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogIntegrationAws).GetExcludedRegions()).ToDataRes(types.Array(types.String))
 	},
+	"datadog.integration.aws.includedRegions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationAws).GetIncludedRegions()).ToDataRes(types.Array(types.String))
+	},
 	"datadog.team.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogTeam).GetId()).ToDataRes(types.String)
 	},
@@ -640,6 +1238,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"datadog.team.modifiedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogTeam).GetModifiedAt()).ToDataRes(types.Time)
+	},
+	"datadog.team.members": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogTeam).GetMembers()).ToDataRes(types.Array(types.Resource("datadog.user")))
 	},
 	"datadog.sensitiveDataScannerGroup.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogSensitiveDataScannerGroup).GetId()).ToDataRes(types.String)
@@ -809,6 +1410,249 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"datadog.syntheticsPrivateLocation.metadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatadogSyntheticsPrivateLocation).GetMetadata()).ToDataRes(types.Dict)
 	},
+	"datadog.oauthClient.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOauthClient).GetId()).ToDataRes(types.String)
+	},
+	"datadog.oauthClient.clientId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOauthClient).GetClientId()).ToDataRes(types.String)
+	},
+	"datadog.oauthClient.disabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOauthClient).GetDisabled()).ToDataRes(types.Bool)
+	},
+	"datadog.oauthClient.userCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOauthClient).GetUserCount()).ToDataRes(types.Int)
+	},
+	"datadog.oauthClient.lastExercised": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOauthClient).GetLastExercised()).ToDataRes(types.Time)
+	},
+	"datadog.oauthClient.authorizations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOauthClient).GetAuthorizations()).ToDataRes(types.Array(types.Resource("datadog.oauthClient.authorization")))
+	},
+	"datadog.oauthClient.authorization.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOauthClientAuthorization).GetId()).ToDataRes(types.String)
+	},
+	"datadog.oauthClient.authorization.scopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOauthClientAuthorization).GetScopes()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.oauthClient.authorization.disabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOauthClientAuthorization).GetDisabled()).ToDataRes(types.Bool)
+	},
+	"datadog.oauthClient.authorization.orgDisabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOauthClientAuthorization).GetOrgDisabled()).ToDataRes(types.Bool)
+	},
+	"datadog.oauthClient.authorization.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOauthClientAuthorization).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"datadog.oauthClient.authorization.modifiedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOauthClientAuthorization).GetModifiedAt()).ToDataRes(types.Time)
+	},
+	"datadog.oauthClient.authorization.lastExercised": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOauthClientAuthorization).GetLastExercised()).ToDataRes(types.Time)
+	},
+	"datadog.oauthClient.authorization.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOauthClientAuthorization).GetUser()).ToDataRes(types.Resource("datadog.user"))
+	},
+	"datadog.identityProvider.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIdentityProvider).GetId()).ToDataRes(types.String)
+	},
+	"datadog.identityProvider.authenticationMethod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIdentityProvider).GetAuthenticationMethod()).ToDataRes(types.String)
+	},
+	"datadog.identityProvider.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIdentityProvider).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.orgConnection.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrgConnection).GetId()).ToDataRes(types.String)
+	},
+	"datadog.orgConnection.connectionTypes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrgConnection).GetConnectionTypes()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.orgConnection.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrgConnection).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"datadog.orgConnection.sourceOrgId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrgConnection).GetSourceOrgId()).ToDataRes(types.String)
+	},
+	"datadog.orgConnection.sourceOrgName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrgConnection).GetSourceOrgName()).ToDataRes(types.String)
+	},
+	"datadog.orgConnection.sinkOrgId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrgConnection).GetSinkOrgId()).ToDataRes(types.String)
+	},
+	"datadog.orgConnection.sinkOrgName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrgConnection).GetSinkOrgName()).ToDataRes(types.String)
+	},
+	"datadog.orgConnection.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogOrgConnection).GetCreatedBy()).ToDataRes(types.Resource("datadog.user"))
+	},
+	"datadog.integration.gcp.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationGcp).GetId()).ToDataRes(types.String)
+	},
+	"datadog.integration.gcp.clientEmail": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationGcp).GetClientEmail()).ToDataRes(types.String)
+	},
+	"datadog.integration.gcp.accessibleProjects": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationGcp).GetAccessibleProjects()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.integration.gcp.isCspmEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationGcp).GetIsCspmEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.integration.gcp.isSecurityCommandCenterEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationGcp).GetIsSecurityCommandCenterEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.integration.gcp.resourceCollectionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationGcp).GetResourceCollectionEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.integration.gcp.isResourceChangeCollectionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationGcp).GetIsResourceChangeCollectionEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.integration.gcp.isPerProjectQuotaEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationGcp).GetIsPerProjectQuotaEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.integration.gcp.isGlobalLocationEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationGcp).GetIsGlobalLocationEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.integration.gcp.isOrgFolderResourceCollectionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationGcp).GetIsOrgFolderResourceCollectionEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.integration.gcp.automute": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationGcp).GetAutomute()).ToDataRes(types.Bool)
+	},
+	"datadog.integration.gcp.hostFilters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationGcp).GetHostFilters()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.integration.gcp.cloudRunRevisionFilters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationGcp).GetCloudRunRevisionFilters()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.integration.gcp.regionFilterConfigs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationGcp).GetRegionFilterConfigs()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.integration.gcp.accountTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationGcp).GetAccountTags()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.integration.azure.tenantName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationAzure).GetTenantName()).ToDataRes(types.String)
+	},
+	"datadog.integration.azure.clientId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationAzure).GetClientId()).ToDataRes(types.String)
+	},
+	"datadog.integration.azure.secretlessAuthEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationAzure).GetSecretlessAuthEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.integration.azure.cspmEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationAzure).GetCspmEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.integration.azure.resourceCollectionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationAzure).GetResourceCollectionEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.integration.azure.metricsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationAzure).GetMetricsEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.integration.azure.customMetricsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationAzure).GetCustomMetricsEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.integration.azure.usageMetricsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationAzure).GetUsageMetricsEnabled()).ToDataRes(types.Bool)
+	},
+	"datadog.integration.azure.automute": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationAzure).GetAutomute()).ToDataRes(types.Bool)
+	},
+	"datadog.integration.azure.hostFilters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationAzure).GetHostFilters()).ToDataRes(types.String)
+	},
+	"datadog.integration.azure.appServicePlanFilters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationAzure).GetAppServicePlanFilters()).ToDataRes(types.String)
+	},
+	"datadog.integration.azure.containerAppFilters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationAzure).GetContainerAppFilters()).ToDataRes(types.String)
+	},
+	"datadog.integration.azure.errors": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationAzure).GetErrors()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.integration.okta.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationOkta).GetId()).ToDataRes(types.String)
+	},
+	"datadog.integration.okta.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationOkta).GetName()).ToDataRes(types.String)
+	},
+	"datadog.integration.okta.domain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationOkta).GetDomain()).ToDataRes(types.String)
+	},
+	"datadog.integration.okta.authMethod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationOkta).GetAuthMethod()).ToDataRes(types.String)
+	},
+	"datadog.integration.okta.clientId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationOkta).GetClientId()).ToDataRes(types.String)
+	},
+	"datadog.integration.cloudflare.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationCloudflare).GetId()).ToDataRes(types.String)
+	},
+	"datadog.integration.cloudflare.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationCloudflare).GetName()).ToDataRes(types.String)
+	},
+	"datadog.integration.cloudflare.email": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationCloudflare).GetEmail()).ToDataRes(types.String)
+	},
+	"datadog.integration.cloudflare.resources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationCloudflare).GetResources()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.integration.cloudflare.zones": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationCloudflare).GetZones()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.integration.fastly.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationFastly).GetId()).ToDataRes(types.String)
+	},
+	"datadog.integration.fastly.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationFastly).GetName()).ToDataRes(types.String)
+	},
+	"datadog.integration.fastly.services": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationFastly).GetServices()).ToDataRes(types.Array(types.Dict))
+	},
+	"datadog.integration.confluent.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationConfluent).GetId()).ToDataRes(types.String)
+	},
+	"datadog.integration.confluent.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationConfluent).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"datadog.integration.confluent.resources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationConfluent).GetResources()).ToDataRes(types.Array(types.Dict))
+	},
+	"datadog.integration.snowflake.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationSnowflake).GetId()).ToDataRes(types.String)
+	},
+	"datadog.integration.snowflake.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationSnowflake).GetName()).ToDataRes(types.String)
+	},
+	"datadog.integration.snowflake.accountIdentifier": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationSnowflake).GetAccountIdentifier()).ToDataRes(types.String)
+	},
+	"datadog.integration.snowflake.username": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationSnowflake).GetUsername()).ToDataRes(types.String)
+	},
+	"datadog.integration.snowflake.authType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationSnowflake).GetAuthType()).ToDataRes(types.String)
+	},
+	"datadog.integration.snowflake.dataflows": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationSnowflake).GetDataflows()).ToDataRes(types.Map(types.String, types.Bool))
+	},
+	"datadog.integration.databricks.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationDatabricks).GetId()).ToDataRes(types.String)
+	},
+	"datadog.integration.databricks.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationDatabricks).GetName()).ToDataRes(types.String)
+	},
+	"datadog.integration.databricks.workspaceUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationDatabricks).GetWorkspaceUrl()).ToDataRes(types.String)
+	},
+	"datadog.integration.databricks.authType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationDatabricks).GetAuthType()).ToDataRes(types.String)
+	},
+	"datadog.integration.databricks.clientId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationDatabricks).GetClientId()).ToDataRes(types.String)
+	},
+	"datadog.integration.databricks.dataflows": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatadogIntegrationDatabricks).GetDataflows()).ToDataRes(types.Map(types.String, types.Bool))
+	},
 }
 
 func GetData(resource plugin.Resource, field string, args map[string]*llx.RawData) *plugin.DataRes {
@@ -825,12 +1669,20 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatadog).__id, ok = v.Value.(string)
 		return
 	},
+	"datadog.org": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).Org, ok = plugin.RawToTValue[*mqlDatadogOrganization](v.Value, v.Error)
+		return
+	},
 	"datadog.users": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatadog).Users, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"datadog.roles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatadog).Roles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.permissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).Permissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"datadog.monitors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -881,6 +1733,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatadog).IntegrationAwsAccounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"datadog.integrationGcpAccounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).IntegrationGcpAccounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integrationAzureAccounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).IntegrationAzureAccounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integrationOktaAccounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).IntegrationOktaAccounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integrationCloudflareAccounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).IntegrationCloudflareAccounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integrationFastlyAccounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).IntegrationFastlyAccounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integrationConfluentAccounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).IntegrationConfluentAccounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integrationSnowflakeAccounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).IntegrationSnowflakeAccounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integrationDatabricksAccounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).IntegrationDatabricksAccounts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"datadog.teams": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatadog).Teams, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -915,6 +1799,574 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"datadog.syntheticsPrivateLocations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatadog).SyntheticsPrivateLocations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.authnMappings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).AuthnMappings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.logsPipelines": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).LogsPipelines, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.logsCustomDestinations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).LogsCustomDestinations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.logsRestrictionQueries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).LogsRestrictionQueries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.oauthClients": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).OauthClients, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.identityProviders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).IdentityProviders, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.orgConnections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).OrgConnections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).ExecutionPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.workflows": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).Workflows, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.securityInboxRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadog).SecurityInboxRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.workflow.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogWorkflow).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.workflow.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogWorkflow).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.workflow.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogWorkflow).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.workflow.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogWorkflow).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.workflow.published": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogWorkflow).Published, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.workflow.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogWorkflow).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.workflow.sensitivePrivileges": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogWorkflow).SensitivePrivileges, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.workflow.runAsUserMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogWorkflow).RunAsUserMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.workflow.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogWorkflow).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.workflow.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogWorkflow).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.workflow.owner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogWorkflow).Owner, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
+		return
+	},
+	"datadog.workflow.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogWorkflow).CreatedBy, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
+		return
+	},
+	"datadog.workflow.runAsUser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogWorkflow).RunAsUser, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
+		return
+	},
+	"datadog.securityInboxRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSecurityInboxRule).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.securityInboxRule.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSecurityInboxRule).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.securityInboxRule.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSecurityInboxRule).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.securityInboxRule.isDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSecurityInboxRule).IsDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.securityInboxRule.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSecurityInboxRule).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.securityInboxRule.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSecurityInboxRule).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.securityInboxRule.findingTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSecurityInboxRule).FindingTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.securityInboxRule.query": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSecurityInboxRule).Query, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.securityInboxRule.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSecurityInboxRule).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.securityInboxRule.modifiedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSecurityInboxRule).ModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.securityInboxRule.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSecurityInboxRule).CreatedBy, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
+		return
+	},
+	"datadog.securityInboxRule.modifiedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSecurityInboxRule).ModifiedBy, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.executionPolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicy).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.effect": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicy).Effect, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.integration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicy).Integration, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.actionFqns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicy).ActionFqns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicy).Scope, ok = plugin.RawToTValue[*mqlDatadogExecutionPolicyScopeRestriction](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.targets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicy).Targets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicy).Version, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicy).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicy).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicy).CreatedBy, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.updatedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicy).UpdatedBy, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.scopeRestriction.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicyScopeRestriction).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.executionPolicy.scopeRestriction.scopeType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicyScopeRestriction).ScopeType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.scopeRestriction.kubernetesNamespaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicyScopeRestriction).KubernetesNamespaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.scopeRestriction.scriptNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicyScopeRestriction).ScriptNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.scopeRestriction.remoteShellRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicyScopeRestriction).RemoteShellRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.remoteShellRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicyRemoteShellRule).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.executionPolicy.remoteShellRule.access": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicyRemoteShellRule).Access, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.remoteShellRule.targetPaths": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicyRemoteShellRule).TargetPaths, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.target.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicyTarget).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.executionPolicy.target.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicyTarget).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.executionPolicy.target.agentTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogExecutionPolicyTarget).AgentTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.restrictionPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogRestrictionPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.restrictionPolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogRestrictionPolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.restrictionPolicy.bindings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogRestrictionPolicy).Bindings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.sharedDashboard.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSharedDashboard).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.sharedDashboard.token": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSharedDashboard).Token, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.sharedDashboard.dashboard": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSharedDashboard).Dashboard, ok = plugin.RawToTValue[*mqlDatadogDashboard](v.Value, v.Error)
+		return
+	},
+	"datadog.sharedDashboard.title": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSharedDashboard).Title, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.sharedDashboard.publicUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSharedDashboard).PublicUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.sharedDashboard.shareType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSharedDashboard).ShareType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.sharedDashboard.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSharedDashboard).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.sharedDashboard.embeddableDomains": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSharedDashboard).EmbeddableDomains, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.sharedDashboard.invitees": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSharedDashboard).Invitees, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.sharedDashboard.expiration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSharedDashboard).Expiration, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.sharedDashboard.lastAccessed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSharedDashboard).LastAccessed, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.sharedDashboard.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSharedDashboard).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.sharedDashboard.sharerDisabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSharedDashboard).SharerDisabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.sharedDashboard.sharer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSharedDashboard).Sharer, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
+		return
+	},
+	"datadog.authnMapping.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogAuthnMapping).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.authnMapping.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogAuthnMapping).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.authnMapping.attributeKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogAuthnMapping).AttributeKey, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.authnMapping.attributeValue": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogAuthnMapping).AttributeValue, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.authnMapping.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogAuthnMapping).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.authnMapping.modifiedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogAuthnMapping).ModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.authnMapping.role": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogAuthnMapping).Role, ok = plugin.RawToTValue[*mqlDatadogRole](v.Value, v.Error)
+		return
+	},
+	"datadog.authnMapping.team": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogAuthnMapping).Team, ok = plugin.RawToTValue[*mqlDatadogTeam](v.Value, v.Error)
+		return
+	},
+	"datadog.logsPipeline.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsPipeline).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.logsPipeline.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsPipeline).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.logsPipeline.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsPipeline).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.logsPipeline.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsPipeline).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.logsPipeline.isEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsPipeline).IsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.logsPipeline.isReadOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsPipeline).IsReadOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.logsPipeline.filterQuery": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsPipeline).FilterQuery, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.logsPipeline.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsPipeline).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.logsCustomDestination.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsCustomDestination).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.logsCustomDestination.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsCustomDestination).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.logsCustomDestination.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsCustomDestination).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.logsCustomDestination.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsCustomDestination).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.logsCustomDestination.query": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsCustomDestination).Query, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.logsCustomDestination.destinationType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsCustomDestination).DestinationType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.logsCustomDestination.endpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsCustomDestination).Endpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.logsCustomDestination.authType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsCustomDestination).AuthType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.logsCustomDestination.indexName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsCustomDestination).IndexName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.logsCustomDestination.forwardTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsCustomDestination).ForwardTags, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.logsCustomDestination.forwardTagsRestrictionList": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsCustomDestination).ForwardTagsRestrictionList, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.logsCustomDestination.forwardTagsRestrictionListType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsCustomDestination).ForwardTagsRestrictionListType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.logsRestrictionQuery.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsRestrictionQuery).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.logsRestrictionQuery.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsRestrictionQuery).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.logsRestrictionQuery.restrictionQuery": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsRestrictionQuery).RestrictionQuery, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.logsRestrictionQuery.roleCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsRestrictionQuery).RoleCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"datadog.logsRestrictionQuery.userCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsRestrictionQuery).UserCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"datadog.logsRestrictionQuery.lastModifierEmail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsRestrictionQuery).LastModifierEmail, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.logsRestrictionQuery.lastModifierName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsRestrictionQuery).LastModifierName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.logsRestrictionQuery.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsRestrictionQuery).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.logsRestrictionQuery.modifiedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsRestrictionQuery).ModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.logsRestrictionQuery.roles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogLogsRestrictionQuery).Roles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.organization.publicId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).PublicId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.trial": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).Trial, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.samlEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).SamlEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.samlCanBeEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).SamlCanBeEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.samlStrictModeEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).SamlStrictModeEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.samlIdpInitiatedLoginEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).SamlIdpInitiatedLoginEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.samlIdpMetadataUploaded": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).SamlIdpMetadataUploaded, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.samlIdpEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).SamlIdpEndpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.samlLoginUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).SamlLoginUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.samlAutocreateUsersEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).SamlAutocreateUsersEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.samlAutocreateUsersDomains": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).SamlAutocreateUsersDomains, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.samlAutocreateAccessRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).SamlAutocreateAccessRole, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.privateWidgetShare": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).PrivateWidgetShare, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.domainAllowlistEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).DomainAllowlistEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.organization.domainAllowlistDomains": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrganization).DomainAllowlistDomains, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.permission.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogPermission).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.permission.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogPermission).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.permission.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogPermission).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.permission.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogPermission).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.permission.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogPermission).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.permission.groupName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogPermission).GroupName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.permission.displayType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogPermission).DisplayType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.permission.restricted": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogPermission).Restricted, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.permission.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogPermission).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"datadog.user.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -965,6 +2417,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatadogUser).Icon, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"datadog.user.roles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogUser).Roles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.user.teams": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogUser).Teams, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"datadog.role.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatadogRole).__id, ok = v.Value.(string)
 		return
@@ -987,6 +2447,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"datadog.role.modifiedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatadogRole).ModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.role.permissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogRole).Permissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.role.users": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogRole).Users, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"datadog.monitor.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1033,8 +2501,12 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatadogMonitor).Modified, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
-	"datadog.monitor.creator": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlDatadogMonitor).Creator, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"datadog.monitor.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogMonitor).CreatedBy, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
+		return
+	},
+	"datadog.monitor.restrictionPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogMonitor).RestrictionPolicy, ok = plugin.RawToTValue[*mqlDatadogRestrictionPolicy](v.Value, v.Error)
 		return
 	},
 	"datadog.monitor.notifyNoData": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1077,12 +2549,20 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatadogDashboard).ModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
-	"datadog.dashboard.authorHandle": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlDatadogDashboard).AuthorHandle, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"datadog.dashboard.author": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogDashboard).Author, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
 		return
 	},
 	"datadog.dashboard.isReadOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatadogDashboard).IsReadOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.dashboard.restrictionPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogDashboard).RestrictionPolicy, ok = plugin.RawToTValue[*mqlDatadogRestrictionPolicy](v.Value, v.Error)
+		return
+	},
+	"datadog.dashboard.sharedDashboards": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogDashboard).SharedDashboards, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"datadog.syntheticsTest.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1125,8 +2605,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatadogSyntheticsTest).MonitorId, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
-	"datadog.syntheticsTest.creator": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlDatadogSyntheticsTest).Creator, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"datadog.syntheticsTest.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSyntheticsTest).CreatedBy, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
 		return
 	},
 	"datadog.syntheticsTest.config": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1173,8 +2653,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatadogSlo).Timeframe, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"datadog.slo.creator": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlDatadogSlo).Creator, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"datadog.slo.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSlo).CreatedBy, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
 		return
 	},
 	"datadog.slo.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1187,6 +2667,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"datadog.slo.monitorIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatadogSlo).MonitorIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.slo.restrictionPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSlo).RestrictionPolicy, ok = plugin.RawToTValue[*mqlDatadogRestrictionPolicy](v.Value, v.Error)
 		return
 	},
 	"datadog.logIndex.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1285,6 +2769,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatadogSecurityRule).Options, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"datadog.securityRule.restrictionPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogSecurityRule).RestrictionPolicy, ok = plugin.RawToTValue[*mqlDatadogRestrictionPolicy](v.Value, v.Error)
+		return
+	},
 	"datadog.downtime.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatadogDowntime).__id, ok = v.Value.(string)
 		return
@@ -1365,6 +2853,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatadogApiKey).Last4, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"datadog.apiKey.lastUsedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogApiKey).LastUsedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.apiKey.category": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogApiKey).Category, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.apiKey.remoteConfigReadEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogApiKey).RemoteConfigReadEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.apiKey.privateActionRunnerEnrollEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogApiKey).PrivateActionRunnerEnrollEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.apiKey.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogApiKey).CreatedBy, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
+		return
+	},
+	"datadog.apiKey.modifiedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogApiKey).ModifiedBy, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
+		return
+	},
 	"datadog.applicationKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatadogApplicationKey).__id, ok = v.Value.(string)
 		return
@@ -1387,6 +2899,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"datadog.applicationKey.scopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatadogApplicationKey).Scopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.applicationKey.lastUsedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogApplicationKey).LastUsedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.applicationKey.owner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogApplicationKey).Owner, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
 		return
 	},
 	"datadog.integration.aws.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1429,6 +2949,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatadogIntegrationAws).ExcludedRegions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"datadog.integration.aws.includedRegions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationAws).IncludedRegions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"datadog.team.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatadogTeam).__id, ok = v.Value.(string)
 		return
@@ -1459,6 +2983,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"datadog.team.modifiedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatadogTeam).ModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.team.members": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogTeam).Members, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"datadog.sensitiveDataScannerGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1717,6 +3245,378 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatadogSyntheticsPrivateLocation).Metadata, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"datadog.oauthClient.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOauthClient).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.oauthClient.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOauthClient).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.oauthClient.clientId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOauthClient).ClientId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.oauthClient.disabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOauthClient).Disabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.oauthClient.userCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOauthClient).UserCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"datadog.oauthClient.lastExercised": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOauthClient).LastExercised, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.oauthClient.authorizations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOauthClient).Authorizations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.oauthClient.authorization.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOauthClientAuthorization).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.oauthClient.authorization.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOauthClientAuthorization).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.oauthClient.authorization.scopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOauthClientAuthorization).Scopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.oauthClient.authorization.disabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOauthClientAuthorization).Disabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.oauthClient.authorization.orgDisabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOauthClientAuthorization).OrgDisabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.oauthClient.authorization.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOauthClientAuthorization).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.oauthClient.authorization.modifiedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOauthClientAuthorization).ModifiedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.oauthClient.authorization.lastExercised": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOauthClientAuthorization).LastExercised, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.oauthClient.authorization.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOauthClientAuthorization).User, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
+		return
+	},
+	"datadog.identityProvider.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIdentityProvider).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.identityProvider.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIdentityProvider).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.identityProvider.authenticationMethod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIdentityProvider).AuthenticationMethod, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.identityProvider.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIdentityProvider).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.orgConnection.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrgConnection).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.orgConnection.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrgConnection).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.orgConnection.connectionTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrgConnection).ConnectionTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.orgConnection.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrgConnection).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"datadog.orgConnection.sourceOrgId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrgConnection).SourceOrgId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.orgConnection.sourceOrgName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrgConnection).SourceOrgName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.orgConnection.sinkOrgId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrgConnection).SinkOrgId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.orgConnection.sinkOrgName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrgConnection).SinkOrgName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.orgConnection.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogOrgConnection).CreatedBy, ok = plugin.RawToTValue[*mqlDatadogUser](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.gcp.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationGcp).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.integration.gcp.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationGcp).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.gcp.clientEmail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationGcp).ClientEmail, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.gcp.accessibleProjects": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationGcp).AccessibleProjects, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.gcp.isCspmEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationGcp).IsCspmEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.gcp.isSecurityCommandCenterEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationGcp).IsSecurityCommandCenterEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.gcp.resourceCollectionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationGcp).ResourceCollectionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.gcp.isResourceChangeCollectionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationGcp).IsResourceChangeCollectionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.gcp.isPerProjectQuotaEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationGcp).IsPerProjectQuotaEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.gcp.isGlobalLocationEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationGcp).IsGlobalLocationEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.gcp.isOrgFolderResourceCollectionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationGcp).IsOrgFolderResourceCollectionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.gcp.automute": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationGcp).Automute, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.gcp.hostFilters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationGcp).HostFilters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.gcp.cloudRunRevisionFilters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationGcp).CloudRunRevisionFilters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.gcp.regionFilterConfigs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationGcp).RegionFilterConfigs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.gcp.accountTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationGcp).AccountTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.azure.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationAzure).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.integration.azure.tenantName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationAzure).TenantName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.azure.clientId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationAzure).ClientId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.azure.secretlessAuthEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationAzure).SecretlessAuthEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.azure.cspmEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationAzure).CspmEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.azure.resourceCollectionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationAzure).ResourceCollectionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.azure.metricsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationAzure).MetricsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.azure.customMetricsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationAzure).CustomMetricsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.azure.usageMetricsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationAzure).UsageMetricsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.azure.automute": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationAzure).Automute, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.azure.hostFilters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationAzure).HostFilters, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.azure.appServicePlanFilters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationAzure).AppServicePlanFilters, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.azure.containerAppFilters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationAzure).ContainerAppFilters, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.azure.errors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationAzure).Errors, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.okta.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationOkta).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.integration.okta.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationOkta).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.okta.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationOkta).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.okta.domain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationOkta).Domain, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.okta.authMethod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationOkta).AuthMethod, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.okta.clientId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationOkta).ClientId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.cloudflare.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationCloudflare).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.integration.cloudflare.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationCloudflare).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.cloudflare.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationCloudflare).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.cloudflare.email": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationCloudflare).Email, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.cloudflare.resources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationCloudflare).Resources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.cloudflare.zones": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationCloudflare).Zones, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.fastly.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationFastly).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.integration.fastly.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationFastly).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.fastly.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationFastly).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.fastly.services": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationFastly).Services, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.confluent.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationConfluent).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.integration.confluent.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationConfluent).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.confluent.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationConfluent).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.confluent.resources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationConfluent).Resources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.snowflake.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationSnowflake).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.integration.snowflake.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationSnowflake).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.snowflake.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationSnowflake).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.snowflake.accountIdentifier": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationSnowflake).AccountIdentifier, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.snowflake.username": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationSnowflake).Username, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.snowflake.authType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationSnowflake).AuthType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.snowflake.dataflows": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationSnowflake).Dataflows, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.databricks.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationDatabricks).__id, ok = v.Value.(string)
+		return
+	},
+	"datadog.integration.databricks.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationDatabricks).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.databricks.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationDatabricks).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.databricks.workspaceUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationDatabricks).WorkspaceUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.databricks.authType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationDatabricks).AuthType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.databricks.clientId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationDatabricks).ClientId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"datadog.integration.databricks.dataflows": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatadogIntegrationDatabricks).Dataflows, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 }
 
 func SetData(resource plugin.Resource, field string, val *llx.RawData) error {
@@ -1746,29 +3646,49 @@ type mqlDatadog struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlDatadogInternal
-	Users                      plugin.TValue[[]any]
-	Roles                      plugin.TValue[[]any]
-	Monitors                   plugin.TValue[[]any]
-	Dashboards                 plugin.TValue[[]any]
-	SyntheticsTests            plugin.TValue[[]any]
-	Slos                       plugin.TValue[[]any]
-	LogIndexes                 plugin.TValue[[]any]
-	SecurityRules              plugin.TValue[[]any]
-	Downtimes                  plugin.TValue[[]any]
-	ApiKeys                    plugin.TValue[[]any]
-	ApplicationKeys            plugin.TValue[[]any]
-	IpAllowlistEntries         plugin.TValue[[]any]
-	IpAllowlistEnabled         plugin.TValue[bool]
-	IntegrationAwsAccounts     plugin.TValue[[]any]
-	Teams                      plugin.TValue[[]any]
-	SensitiveDataScannerGroups plugin.TValue[[]any]
-	SecurityFilters            plugin.TValue[[]any]
-	SecuritySuppressions       plugin.TValue[[]any]
-	ServiceAccounts            plugin.TValue[[]any]
-	LogsArchives               plugin.TValue[[]any]
-	RumApplications            plugin.TValue[[]any]
-	SyntheticsGlobalVariables  plugin.TValue[[]any]
-	SyntheticsPrivateLocations plugin.TValue[[]any]
+	Org                           plugin.TValue[*mqlDatadogOrganization]
+	Users                         plugin.TValue[[]any]
+	Roles                         plugin.TValue[[]any]
+	Permissions                   plugin.TValue[[]any]
+	Monitors                      plugin.TValue[[]any]
+	Dashboards                    plugin.TValue[[]any]
+	SyntheticsTests               plugin.TValue[[]any]
+	Slos                          plugin.TValue[[]any]
+	LogIndexes                    plugin.TValue[[]any]
+	SecurityRules                 plugin.TValue[[]any]
+	Downtimes                     plugin.TValue[[]any]
+	ApiKeys                       plugin.TValue[[]any]
+	ApplicationKeys               plugin.TValue[[]any]
+	IpAllowlistEntries            plugin.TValue[[]any]
+	IpAllowlistEnabled            plugin.TValue[bool]
+	IntegrationAwsAccounts        plugin.TValue[[]any]
+	IntegrationGcpAccounts        plugin.TValue[[]any]
+	IntegrationAzureAccounts      plugin.TValue[[]any]
+	IntegrationOktaAccounts       plugin.TValue[[]any]
+	IntegrationCloudflareAccounts plugin.TValue[[]any]
+	IntegrationFastlyAccounts     plugin.TValue[[]any]
+	IntegrationConfluentAccounts  plugin.TValue[[]any]
+	IntegrationSnowflakeAccounts  plugin.TValue[[]any]
+	IntegrationDatabricksAccounts plugin.TValue[[]any]
+	Teams                         plugin.TValue[[]any]
+	SensitiveDataScannerGroups    plugin.TValue[[]any]
+	SecurityFilters               plugin.TValue[[]any]
+	SecuritySuppressions          plugin.TValue[[]any]
+	ServiceAccounts               plugin.TValue[[]any]
+	LogsArchives                  plugin.TValue[[]any]
+	RumApplications               plugin.TValue[[]any]
+	SyntheticsGlobalVariables     plugin.TValue[[]any]
+	SyntheticsPrivateLocations    plugin.TValue[[]any]
+	AuthnMappings                 plugin.TValue[[]any]
+	LogsPipelines                 plugin.TValue[[]any]
+	LogsCustomDestinations        plugin.TValue[[]any]
+	LogsRestrictionQueries        plugin.TValue[[]any]
+	OauthClients                  plugin.TValue[[]any]
+	IdentityProviders             plugin.TValue[[]any]
+	OrgConnections                plugin.TValue[[]any]
+	ExecutionPolicies             plugin.TValue[[]any]
+	Workflows                     plugin.TValue[[]any]
+	SecurityInboxRules            plugin.TValue[[]any]
 }
 
 // createDatadog creates a new instance of this resource
@@ -1808,6 +3728,22 @@ func (c *mqlDatadog) MqlID() string {
 	return c.__id
 }
 
+func (c *mqlDatadog) GetOrg() *plugin.TValue[*mqlDatadogOrganization] {
+	return plugin.GetOrCompute[*mqlDatadogOrganization](&c.Org, func() (*mqlDatadogOrganization, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "org")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogOrganization), nil
+			}
+		}
+
+		return c.org()
+	})
+}
+
 func (c *mqlDatadog) GetUsers() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Users, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -1837,6 +3773,22 @@ func (c *mqlDatadog) GetRoles() *plugin.TValue[[]any] {
 		}
 
 		return c.roles()
+	})
+}
+
+func (c *mqlDatadog) GetPermissions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Permissions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "permissions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.permissions()
 	})
 }
 
@@ -2012,6 +3964,134 @@ func (c *mqlDatadog) GetIntegrationAwsAccounts() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlDatadog) GetIntegrationGcpAccounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IntegrationGcpAccounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "integrationGcpAccounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.integrationGcpAccounts()
+	})
+}
+
+func (c *mqlDatadog) GetIntegrationAzureAccounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IntegrationAzureAccounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "integrationAzureAccounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.integrationAzureAccounts()
+	})
+}
+
+func (c *mqlDatadog) GetIntegrationOktaAccounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IntegrationOktaAccounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "integrationOktaAccounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.integrationOktaAccounts()
+	})
+}
+
+func (c *mqlDatadog) GetIntegrationCloudflareAccounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IntegrationCloudflareAccounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "integrationCloudflareAccounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.integrationCloudflareAccounts()
+	})
+}
+
+func (c *mqlDatadog) GetIntegrationFastlyAccounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IntegrationFastlyAccounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "integrationFastlyAccounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.integrationFastlyAccounts()
+	})
+}
+
+func (c *mqlDatadog) GetIntegrationConfluentAccounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IntegrationConfluentAccounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "integrationConfluentAccounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.integrationConfluentAccounts()
+	})
+}
+
+func (c *mqlDatadog) GetIntegrationSnowflakeAccounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IntegrationSnowflakeAccounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "integrationSnowflakeAccounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.integrationSnowflakeAccounts()
+	})
+}
+
+func (c *mqlDatadog) GetIntegrationDatabricksAccounts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IntegrationDatabricksAccounts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "integrationDatabricksAccounts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.integrationDatabricksAccounts()
+	})
+}
+
 func (c *mqlDatadog) GetTeams() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Teams, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -2156,6 +4236,1505 @@ func (c *mqlDatadog) GetSyntheticsPrivateLocations() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlDatadog) GetAuthnMappings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AuthnMappings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "authnMappings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.authnMappings()
+	})
+}
+
+func (c *mqlDatadog) GetLogsPipelines() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.LogsPipelines, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "logsPipelines")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.logsPipelines()
+	})
+}
+
+func (c *mqlDatadog) GetLogsCustomDestinations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.LogsCustomDestinations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "logsCustomDestinations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.logsCustomDestinations()
+	})
+}
+
+func (c *mqlDatadog) GetLogsRestrictionQueries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.LogsRestrictionQueries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "logsRestrictionQueries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.logsRestrictionQueries()
+	})
+}
+
+func (c *mqlDatadog) GetOauthClients() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.OauthClients, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "oauthClients")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.oauthClients()
+	})
+}
+
+func (c *mqlDatadog) GetIdentityProviders() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IdentityProviders, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "identityProviders")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.identityProviders()
+	})
+}
+
+func (c *mqlDatadog) GetOrgConnections() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.OrgConnections, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "orgConnections")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.orgConnections()
+	})
+}
+
+func (c *mqlDatadog) GetExecutionPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExecutionPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "executionPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.executionPolicies()
+	})
+}
+
+func (c *mqlDatadog) GetWorkflows() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Workflows, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "workflows")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.workflows()
+	})
+}
+
+func (c *mqlDatadog) GetSecurityInboxRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SecurityInboxRules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog", c.__id, "securityInboxRules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.securityInboxRules()
+	})
+}
+
+// mqlDatadogWorkflow for the datadog.workflow resource
+type mqlDatadogWorkflow struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlDatadogWorkflowInternal
+	Id                  plugin.TValue[string]
+	Name                plugin.TValue[string]
+	Description         plugin.TValue[string]
+	Published           plugin.TValue[bool]
+	Tags                plugin.TValue[[]any]
+	SensitivePrivileges plugin.TValue[bool]
+	RunAsUserMode       plugin.TValue[string]
+	CreatedAt           plugin.TValue[*time.Time]
+	UpdatedAt           plugin.TValue[*time.Time]
+	Owner               plugin.TValue[*mqlDatadogUser]
+	CreatedBy           plugin.TValue[*mqlDatadogUser]
+	RunAsUser           plugin.TValue[*mqlDatadogUser]
+}
+
+// createDatadogWorkflow creates a new instance of this resource
+func createDatadogWorkflow(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogWorkflow{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.workflow", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogWorkflow) MqlName() string {
+	return "datadog.workflow"
+}
+
+func (c *mqlDatadogWorkflow) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogWorkflow) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogWorkflow) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatadogWorkflow) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlDatadogWorkflow) GetPublished() *plugin.TValue[bool] {
+	return &c.Published
+}
+
+func (c *mqlDatadogWorkflow) GetTags() *plugin.TValue[[]any] {
+	return &c.Tags
+}
+
+func (c *mqlDatadogWorkflow) GetSensitivePrivileges() *plugin.TValue[bool] {
+	return &c.SensitivePrivileges
+}
+
+func (c *mqlDatadogWorkflow) GetRunAsUserMode() *plugin.TValue[string] {
+	return &c.RunAsUserMode
+}
+
+func (c *mqlDatadogWorkflow) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlDatadogWorkflow) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlDatadogWorkflow) GetOwner() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.Owner, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.workflow", c.__id, "owner")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.owner()
+	})
+}
+
+func (c *mqlDatadogWorkflow) GetCreatedBy() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.CreatedBy, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.workflow", c.__id, "createdBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.createdBy()
+	})
+}
+
+func (c *mqlDatadogWorkflow) GetRunAsUser() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.RunAsUser, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.workflow", c.__id, "runAsUser")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.runAsUser()
+	})
+}
+
+// mqlDatadogSecurityInboxRule for the datadog.securityInboxRule resource
+type mqlDatadogSecurityInboxRule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlDatadogSecurityInboxRuleInternal
+	Id           plugin.TValue[string]
+	Name         plugin.TValue[string]
+	IsDefault    plugin.TValue[bool]
+	Enabled      plugin.TValue[bool]
+	Description  plugin.TValue[string]
+	FindingTypes plugin.TValue[[]any]
+	Query        plugin.TValue[string]
+	CreatedAt    plugin.TValue[*time.Time]
+	ModifiedAt   plugin.TValue[*time.Time]
+	CreatedBy    plugin.TValue[*mqlDatadogUser]
+	ModifiedBy   plugin.TValue[*mqlDatadogUser]
+}
+
+// createDatadogSecurityInboxRule creates a new instance of this resource
+func createDatadogSecurityInboxRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogSecurityInboxRule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.securityInboxRule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogSecurityInboxRule) MqlName() string {
+	return "datadog.securityInboxRule"
+}
+
+func (c *mqlDatadogSecurityInboxRule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogSecurityInboxRule) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogSecurityInboxRule) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatadogSecurityInboxRule) GetIsDefault() *plugin.TValue[bool] {
+	return &c.IsDefault
+}
+
+func (c *mqlDatadogSecurityInboxRule) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlDatadogSecurityInboxRule) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlDatadogSecurityInboxRule) GetFindingTypes() *plugin.TValue[[]any] {
+	return &c.FindingTypes
+}
+
+func (c *mqlDatadogSecurityInboxRule) GetQuery() *plugin.TValue[string] {
+	return &c.Query
+}
+
+func (c *mqlDatadogSecurityInboxRule) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlDatadogSecurityInboxRule) GetModifiedAt() *plugin.TValue[*time.Time] {
+	return &c.ModifiedAt
+}
+
+func (c *mqlDatadogSecurityInboxRule) GetCreatedBy() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.CreatedBy, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.securityInboxRule", c.__id, "createdBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.createdBy()
+	})
+}
+
+func (c *mqlDatadogSecurityInboxRule) GetModifiedBy() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.ModifiedBy, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.securityInboxRule", c.__id, "modifiedBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.modifiedBy()
+	})
+}
+
+// mqlDatadogExecutionPolicy for the datadog.executionPolicy resource
+type mqlDatadogExecutionPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlDatadogExecutionPolicyInternal
+	Id          plugin.TValue[string]
+	Name        plugin.TValue[string]
+	Effect      plugin.TValue[string]
+	Integration plugin.TValue[string]
+	ActionFqns  plugin.TValue[[]any]
+	Scope       plugin.TValue[*mqlDatadogExecutionPolicyScopeRestriction]
+	Targets     plugin.TValue[[]any]
+	Version     plugin.TValue[int64]
+	CreatedAt   plugin.TValue[*time.Time]
+	UpdatedAt   plugin.TValue[*time.Time]
+	CreatedBy   plugin.TValue[*mqlDatadogUser]
+	UpdatedBy   plugin.TValue[*mqlDatadogUser]
+}
+
+// createDatadogExecutionPolicy creates a new instance of this resource
+func createDatadogExecutionPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogExecutionPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.executionPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogExecutionPolicy) MqlName() string {
+	return "datadog.executionPolicy"
+}
+
+func (c *mqlDatadogExecutionPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogExecutionPolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogExecutionPolicy) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatadogExecutionPolicy) GetEffect() *plugin.TValue[string] {
+	return &c.Effect
+}
+
+func (c *mqlDatadogExecutionPolicy) GetIntegration() *plugin.TValue[string] {
+	return &c.Integration
+}
+
+func (c *mqlDatadogExecutionPolicy) GetActionFqns() *plugin.TValue[[]any] {
+	return &c.ActionFqns
+}
+
+func (c *mqlDatadogExecutionPolicy) GetScope() *plugin.TValue[*mqlDatadogExecutionPolicyScopeRestriction] {
+	return &c.Scope
+}
+
+func (c *mqlDatadogExecutionPolicy) GetTargets() *plugin.TValue[[]any] {
+	return &c.Targets
+}
+
+func (c *mqlDatadogExecutionPolicy) GetVersion() *plugin.TValue[int64] {
+	return &c.Version
+}
+
+func (c *mqlDatadogExecutionPolicy) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlDatadogExecutionPolicy) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlDatadogExecutionPolicy) GetCreatedBy() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.CreatedBy, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.executionPolicy", c.__id, "createdBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.createdBy()
+	})
+}
+
+func (c *mqlDatadogExecutionPolicy) GetUpdatedBy() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.UpdatedBy, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.executionPolicy", c.__id, "updatedBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.updatedBy()
+	})
+}
+
+// mqlDatadogExecutionPolicyScopeRestriction for the datadog.executionPolicy.scopeRestriction resource
+type mqlDatadogExecutionPolicyScopeRestriction struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogExecutionPolicyScopeRestrictionInternal it will be used here
+	ScopeType            plugin.TValue[string]
+	KubernetesNamespaces plugin.TValue[[]any]
+	ScriptNames          plugin.TValue[[]any]
+	RemoteShellRules     plugin.TValue[[]any]
+}
+
+// createDatadogExecutionPolicyScopeRestriction creates a new instance of this resource
+func createDatadogExecutionPolicyScopeRestriction(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogExecutionPolicyScopeRestriction{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.executionPolicy.scopeRestriction", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogExecutionPolicyScopeRestriction) MqlName() string {
+	return "datadog.executionPolicy.scopeRestriction"
+}
+
+func (c *mqlDatadogExecutionPolicyScopeRestriction) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogExecutionPolicyScopeRestriction) GetScopeType() *plugin.TValue[string] {
+	return &c.ScopeType
+}
+
+func (c *mqlDatadogExecutionPolicyScopeRestriction) GetKubernetesNamespaces() *plugin.TValue[[]any] {
+	return &c.KubernetesNamespaces
+}
+
+func (c *mqlDatadogExecutionPolicyScopeRestriction) GetScriptNames() *plugin.TValue[[]any] {
+	return &c.ScriptNames
+}
+
+func (c *mqlDatadogExecutionPolicyScopeRestriction) GetRemoteShellRules() *plugin.TValue[[]any] {
+	return &c.RemoteShellRules
+}
+
+// mqlDatadogExecutionPolicyRemoteShellRule for the datadog.executionPolicy.remoteShellRule resource
+type mqlDatadogExecutionPolicyRemoteShellRule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogExecutionPolicyRemoteShellRuleInternal it will be used here
+	Access      plugin.TValue[string]
+	TargetPaths plugin.TValue[[]any]
+}
+
+// createDatadogExecutionPolicyRemoteShellRule creates a new instance of this resource
+func createDatadogExecutionPolicyRemoteShellRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogExecutionPolicyRemoteShellRule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.executionPolicy.remoteShellRule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogExecutionPolicyRemoteShellRule) MqlName() string {
+	return "datadog.executionPolicy.remoteShellRule"
+}
+
+func (c *mqlDatadogExecutionPolicyRemoteShellRule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogExecutionPolicyRemoteShellRule) GetAccess() *plugin.TValue[string] {
+	return &c.Access
+}
+
+func (c *mqlDatadogExecutionPolicyRemoteShellRule) GetTargetPaths() *plugin.TValue[[]any] {
+	return &c.TargetPaths
+}
+
+// mqlDatadogExecutionPolicyTarget for the datadog.executionPolicy.target resource
+type mqlDatadogExecutionPolicyTarget struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogExecutionPolicyTargetInternal it will be used here
+	Name      plugin.TValue[string]
+	AgentTags plugin.TValue[[]any]
+}
+
+// createDatadogExecutionPolicyTarget creates a new instance of this resource
+func createDatadogExecutionPolicyTarget(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogExecutionPolicyTarget{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.executionPolicy.target", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogExecutionPolicyTarget) MqlName() string {
+	return "datadog.executionPolicy.target"
+}
+
+func (c *mqlDatadogExecutionPolicyTarget) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogExecutionPolicyTarget) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatadogExecutionPolicyTarget) GetAgentTags() *plugin.TValue[[]any] {
+	return &c.AgentTags
+}
+
+// mqlDatadogRestrictionPolicy for the datadog.restrictionPolicy resource
+type mqlDatadogRestrictionPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogRestrictionPolicyInternal it will be used here
+	Id       plugin.TValue[string]
+	Bindings plugin.TValue[[]any]
+}
+
+// createDatadogRestrictionPolicy creates a new instance of this resource
+func createDatadogRestrictionPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogRestrictionPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.restrictionPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogRestrictionPolicy) MqlName() string {
+	return "datadog.restrictionPolicy"
+}
+
+func (c *mqlDatadogRestrictionPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogRestrictionPolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogRestrictionPolicy) GetBindings() *plugin.TValue[[]any] {
+	return &c.Bindings
+}
+
+// mqlDatadogSharedDashboard for the datadog.sharedDashboard resource
+type mqlDatadogSharedDashboard struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlDatadogSharedDashboardInternal
+	Token             plugin.TValue[string]
+	Dashboard         plugin.TValue[*mqlDatadogDashboard]
+	Title             plugin.TValue[string]
+	PublicUrl         plugin.TValue[string]
+	ShareType         plugin.TValue[string]
+	Status            plugin.TValue[string]
+	EmbeddableDomains plugin.TValue[[]any]
+	Invitees          plugin.TValue[[]any]
+	Expiration        plugin.TValue[*time.Time]
+	LastAccessed      plugin.TValue[*time.Time]
+	CreatedAt         plugin.TValue[*time.Time]
+	SharerDisabled    plugin.TValue[bool]
+	Sharer            plugin.TValue[*mqlDatadogUser]
+}
+
+// createDatadogSharedDashboard creates a new instance of this resource
+func createDatadogSharedDashboard(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogSharedDashboard{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.sharedDashboard", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogSharedDashboard) MqlName() string {
+	return "datadog.sharedDashboard"
+}
+
+func (c *mqlDatadogSharedDashboard) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogSharedDashboard) GetToken() *plugin.TValue[string] {
+	return &c.Token
+}
+
+func (c *mqlDatadogSharedDashboard) GetDashboard() *plugin.TValue[*mqlDatadogDashboard] {
+	return plugin.GetOrCompute[*mqlDatadogDashboard](&c.Dashboard, func() (*mqlDatadogDashboard, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.sharedDashboard", c.__id, "dashboard")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogDashboard), nil
+			}
+		}
+
+		return c.dashboard()
+	})
+}
+
+func (c *mqlDatadogSharedDashboard) GetTitle() *plugin.TValue[string] {
+	return &c.Title
+}
+
+func (c *mqlDatadogSharedDashboard) GetPublicUrl() *plugin.TValue[string] {
+	return &c.PublicUrl
+}
+
+func (c *mqlDatadogSharedDashboard) GetShareType() *plugin.TValue[string] {
+	return &c.ShareType
+}
+
+func (c *mqlDatadogSharedDashboard) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlDatadogSharedDashboard) GetEmbeddableDomains() *plugin.TValue[[]any] {
+	return &c.EmbeddableDomains
+}
+
+func (c *mqlDatadogSharedDashboard) GetInvitees() *plugin.TValue[[]any] {
+	return &c.Invitees
+}
+
+func (c *mqlDatadogSharedDashboard) GetExpiration() *plugin.TValue[*time.Time] {
+	return &c.Expiration
+}
+
+func (c *mqlDatadogSharedDashboard) GetLastAccessed() *plugin.TValue[*time.Time] {
+	return &c.LastAccessed
+}
+
+func (c *mqlDatadogSharedDashboard) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlDatadogSharedDashboard) GetSharerDisabled() *plugin.TValue[bool] {
+	return &c.SharerDisabled
+}
+
+func (c *mqlDatadogSharedDashboard) GetSharer() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.Sharer, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.sharedDashboard", c.__id, "sharer")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.sharer()
+	})
+}
+
+// mqlDatadogAuthnMapping for the datadog.authnMapping resource
+type mqlDatadogAuthnMapping struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlDatadogAuthnMappingInternal
+	Id             plugin.TValue[string]
+	AttributeKey   plugin.TValue[string]
+	AttributeValue plugin.TValue[string]
+	CreatedAt      plugin.TValue[*time.Time]
+	ModifiedAt     plugin.TValue[*time.Time]
+	Role           plugin.TValue[*mqlDatadogRole]
+	Team           plugin.TValue[*mqlDatadogTeam]
+}
+
+// createDatadogAuthnMapping creates a new instance of this resource
+func createDatadogAuthnMapping(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogAuthnMapping{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.authnMapping", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogAuthnMapping) MqlName() string {
+	return "datadog.authnMapping"
+}
+
+func (c *mqlDatadogAuthnMapping) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogAuthnMapping) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogAuthnMapping) GetAttributeKey() *plugin.TValue[string] {
+	return &c.AttributeKey
+}
+
+func (c *mqlDatadogAuthnMapping) GetAttributeValue() *plugin.TValue[string] {
+	return &c.AttributeValue
+}
+
+func (c *mqlDatadogAuthnMapping) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlDatadogAuthnMapping) GetModifiedAt() *plugin.TValue[*time.Time] {
+	return &c.ModifiedAt
+}
+
+func (c *mqlDatadogAuthnMapping) GetRole() *plugin.TValue[*mqlDatadogRole] {
+	return plugin.GetOrCompute[*mqlDatadogRole](&c.Role, func() (*mqlDatadogRole, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.authnMapping", c.__id, "role")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogRole), nil
+			}
+		}
+
+		return c.role()
+	})
+}
+
+func (c *mqlDatadogAuthnMapping) GetTeam() *plugin.TValue[*mqlDatadogTeam] {
+	return plugin.GetOrCompute[*mqlDatadogTeam](&c.Team, func() (*mqlDatadogTeam, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.authnMapping", c.__id, "team")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogTeam), nil
+			}
+		}
+
+		return c.team()
+	})
+}
+
+// mqlDatadogLogsPipeline for the datadog.logsPipeline resource
+type mqlDatadogLogsPipeline struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogLogsPipelineInternal it will be used here
+	Id          plugin.TValue[string]
+	Name        plugin.TValue[string]
+	Type        plugin.TValue[string]
+	IsEnabled   plugin.TValue[bool]
+	IsReadOnly  plugin.TValue[bool]
+	FilterQuery plugin.TValue[string]
+	Tags        plugin.TValue[[]any]
+}
+
+// createDatadogLogsPipeline creates a new instance of this resource
+func createDatadogLogsPipeline(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogLogsPipeline{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.logsPipeline", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogLogsPipeline) MqlName() string {
+	return "datadog.logsPipeline"
+}
+
+func (c *mqlDatadogLogsPipeline) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogLogsPipeline) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogLogsPipeline) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatadogLogsPipeline) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlDatadogLogsPipeline) GetIsEnabled() *plugin.TValue[bool] {
+	return &c.IsEnabled
+}
+
+func (c *mqlDatadogLogsPipeline) GetIsReadOnly() *plugin.TValue[bool] {
+	return &c.IsReadOnly
+}
+
+func (c *mqlDatadogLogsPipeline) GetFilterQuery() *plugin.TValue[string] {
+	return &c.FilterQuery
+}
+
+func (c *mqlDatadogLogsPipeline) GetTags() *plugin.TValue[[]any] {
+	return &c.Tags
+}
+
+// mqlDatadogLogsCustomDestination for the datadog.logsCustomDestination resource
+type mqlDatadogLogsCustomDestination struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogLogsCustomDestinationInternal it will be used here
+	Id                             plugin.TValue[string]
+	Name                           plugin.TValue[string]
+	Enabled                        plugin.TValue[bool]
+	Query                          plugin.TValue[string]
+	DestinationType                plugin.TValue[string]
+	Endpoint                       plugin.TValue[string]
+	AuthType                       plugin.TValue[string]
+	IndexName                      plugin.TValue[string]
+	ForwardTags                    plugin.TValue[bool]
+	ForwardTagsRestrictionList     plugin.TValue[[]any]
+	ForwardTagsRestrictionListType plugin.TValue[string]
+}
+
+// createDatadogLogsCustomDestination creates a new instance of this resource
+func createDatadogLogsCustomDestination(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogLogsCustomDestination{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.logsCustomDestination", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogLogsCustomDestination) MqlName() string {
+	return "datadog.logsCustomDestination"
+}
+
+func (c *mqlDatadogLogsCustomDestination) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogLogsCustomDestination) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogLogsCustomDestination) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatadogLogsCustomDestination) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlDatadogLogsCustomDestination) GetQuery() *plugin.TValue[string] {
+	return &c.Query
+}
+
+func (c *mqlDatadogLogsCustomDestination) GetDestinationType() *plugin.TValue[string] {
+	return &c.DestinationType
+}
+
+func (c *mqlDatadogLogsCustomDestination) GetEndpoint() *plugin.TValue[string] {
+	return &c.Endpoint
+}
+
+func (c *mqlDatadogLogsCustomDestination) GetAuthType() *plugin.TValue[string] {
+	return &c.AuthType
+}
+
+func (c *mqlDatadogLogsCustomDestination) GetIndexName() *plugin.TValue[string] {
+	return &c.IndexName
+}
+
+func (c *mqlDatadogLogsCustomDestination) GetForwardTags() *plugin.TValue[bool] {
+	return &c.ForwardTags
+}
+
+func (c *mqlDatadogLogsCustomDestination) GetForwardTagsRestrictionList() *plugin.TValue[[]any] {
+	return &c.ForwardTagsRestrictionList
+}
+
+func (c *mqlDatadogLogsCustomDestination) GetForwardTagsRestrictionListType() *plugin.TValue[string] {
+	return &c.ForwardTagsRestrictionListType
+}
+
+// mqlDatadogLogsRestrictionQuery for the datadog.logsRestrictionQuery resource
+type mqlDatadogLogsRestrictionQuery struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogLogsRestrictionQueryInternal it will be used here
+	Id                plugin.TValue[string]
+	RestrictionQuery  plugin.TValue[string]
+	RoleCount         plugin.TValue[int64]
+	UserCount         plugin.TValue[int64]
+	LastModifierEmail plugin.TValue[string]
+	LastModifierName  plugin.TValue[string]
+	CreatedAt         plugin.TValue[*time.Time]
+	ModifiedAt        plugin.TValue[*time.Time]
+	Roles             plugin.TValue[[]any]
+}
+
+// createDatadogLogsRestrictionQuery creates a new instance of this resource
+func createDatadogLogsRestrictionQuery(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogLogsRestrictionQuery{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.logsRestrictionQuery", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogLogsRestrictionQuery) MqlName() string {
+	return "datadog.logsRestrictionQuery"
+}
+
+func (c *mqlDatadogLogsRestrictionQuery) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogLogsRestrictionQuery) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogLogsRestrictionQuery) GetRestrictionQuery() *plugin.TValue[string] {
+	return &c.RestrictionQuery
+}
+
+func (c *mqlDatadogLogsRestrictionQuery) GetRoleCount() *plugin.TValue[int64] {
+	return &c.RoleCount
+}
+
+func (c *mqlDatadogLogsRestrictionQuery) GetUserCount() *plugin.TValue[int64] {
+	return &c.UserCount
+}
+
+func (c *mqlDatadogLogsRestrictionQuery) GetLastModifierEmail() *plugin.TValue[string] {
+	return &c.LastModifierEmail
+}
+
+func (c *mqlDatadogLogsRestrictionQuery) GetLastModifierName() *plugin.TValue[string] {
+	return &c.LastModifierName
+}
+
+func (c *mqlDatadogLogsRestrictionQuery) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlDatadogLogsRestrictionQuery) GetModifiedAt() *plugin.TValue[*time.Time] {
+	return &c.ModifiedAt
+}
+
+func (c *mqlDatadogLogsRestrictionQuery) GetRoles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Roles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.logsRestrictionQuery", c.__id, "roles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roles()
+	})
+}
+
+// mqlDatadogOrganization for the datadog.organization resource
+type mqlDatadogOrganization struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlDatadogOrganizationInternal
+	PublicId                     plugin.TValue[string]
+	Name                         plugin.TValue[string]
+	Description                  plugin.TValue[string]
+	Trial                        plugin.TValue[bool]
+	CreatedAt                    plugin.TValue[*time.Time]
+	SamlEnabled                  plugin.TValue[bool]
+	SamlCanBeEnabled             plugin.TValue[bool]
+	SamlStrictModeEnabled        plugin.TValue[bool]
+	SamlIdpInitiatedLoginEnabled plugin.TValue[bool]
+	SamlIdpMetadataUploaded      plugin.TValue[bool]
+	SamlIdpEndpoint              plugin.TValue[string]
+	SamlLoginUrl                 plugin.TValue[string]
+	SamlAutocreateUsersEnabled   plugin.TValue[bool]
+	SamlAutocreateUsersDomains   plugin.TValue[[]any]
+	SamlAutocreateAccessRole     plugin.TValue[string]
+	PrivateWidgetShare           plugin.TValue[bool]
+	DomainAllowlistEnabled       plugin.TValue[bool]
+	DomainAllowlistDomains       plugin.TValue[[]any]
+}
+
+// createDatadogOrganization creates a new instance of this resource
+func createDatadogOrganization(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogOrganization{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.organization", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogOrganization) MqlName() string {
+	return "datadog.organization"
+}
+
+func (c *mqlDatadogOrganization) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogOrganization) GetPublicId() *plugin.TValue[string] {
+	return &c.PublicId
+}
+
+func (c *mqlDatadogOrganization) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatadogOrganization) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlDatadogOrganization) GetTrial() *plugin.TValue[bool] {
+	return &c.Trial
+}
+
+func (c *mqlDatadogOrganization) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlDatadogOrganization) GetSamlEnabled() *plugin.TValue[bool] {
+	return &c.SamlEnabled
+}
+
+func (c *mqlDatadogOrganization) GetSamlCanBeEnabled() *plugin.TValue[bool] {
+	return &c.SamlCanBeEnabled
+}
+
+func (c *mqlDatadogOrganization) GetSamlStrictModeEnabled() *plugin.TValue[bool] {
+	return &c.SamlStrictModeEnabled
+}
+
+func (c *mqlDatadogOrganization) GetSamlIdpInitiatedLoginEnabled() *plugin.TValue[bool] {
+	return &c.SamlIdpInitiatedLoginEnabled
+}
+
+func (c *mqlDatadogOrganization) GetSamlIdpMetadataUploaded() *plugin.TValue[bool] {
+	return &c.SamlIdpMetadataUploaded
+}
+
+func (c *mqlDatadogOrganization) GetSamlIdpEndpoint() *plugin.TValue[string] {
+	return &c.SamlIdpEndpoint
+}
+
+func (c *mqlDatadogOrganization) GetSamlLoginUrl() *plugin.TValue[string] {
+	return &c.SamlLoginUrl
+}
+
+func (c *mqlDatadogOrganization) GetSamlAutocreateUsersEnabled() *plugin.TValue[bool] {
+	return &c.SamlAutocreateUsersEnabled
+}
+
+func (c *mqlDatadogOrganization) GetSamlAutocreateUsersDomains() *plugin.TValue[[]any] {
+	return &c.SamlAutocreateUsersDomains
+}
+
+func (c *mqlDatadogOrganization) GetSamlAutocreateAccessRole() *plugin.TValue[string] {
+	return &c.SamlAutocreateAccessRole
+}
+
+func (c *mqlDatadogOrganization) GetPrivateWidgetShare() *plugin.TValue[bool] {
+	return &c.PrivateWidgetShare
+}
+
+func (c *mqlDatadogOrganization) GetDomainAllowlistEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.DomainAllowlistEnabled, func() (bool, error) {
+		return c.domainAllowlistEnabled()
+	})
+}
+
+func (c *mqlDatadogOrganization) GetDomainAllowlistDomains() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DomainAllowlistDomains, func() ([]any, error) {
+		return c.domainAllowlistDomains()
+	})
+}
+
+// mqlDatadogPermission for the datadog.permission resource
+type mqlDatadogPermission struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogPermissionInternal it will be used here
+	Id          plugin.TValue[string]
+	Name        plugin.TValue[string]
+	DisplayName plugin.TValue[string]
+	Description plugin.TValue[string]
+	GroupName   plugin.TValue[string]
+	DisplayType plugin.TValue[string]
+	Restricted  plugin.TValue[bool]
+	CreatedAt   plugin.TValue[*time.Time]
+}
+
+// createDatadogPermission creates a new instance of this resource
+func createDatadogPermission(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogPermission{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.permission", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogPermission) MqlName() string {
+	return "datadog.permission"
+}
+
+func (c *mqlDatadogPermission) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogPermission) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogPermission) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatadogPermission) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlDatadogPermission) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlDatadogPermission) GetGroupName() *plugin.TValue[string] {
+	return &c.GroupName
+}
+
+func (c *mqlDatadogPermission) GetDisplayType() *plugin.TValue[string] {
+	return &c.DisplayType
+}
+
+func (c *mqlDatadogPermission) GetRestricted() *plugin.TValue[bool] {
+	return &c.Restricted
+}
+
+func (c *mqlDatadogPermission) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
 // mqlDatadogUser for the datadog.user resource
 type mqlDatadogUser struct {
 	MqlRuntime *plugin.Runtime
@@ -2172,6 +5751,8 @@ type mqlDatadogUser struct {
 	Disabled       plugin.TValue[bool]
 	CreatedAt      plugin.TValue[*time.Time]
 	Icon           plugin.TValue[string]
+	Roles          plugin.TValue[[]any]
+	Teams          plugin.TValue[[]any]
 }
 
 // createDatadogUser creates a new instance of this resource
@@ -2255,16 +5836,50 @@ func (c *mqlDatadogUser) GetIcon() *plugin.TValue[string] {
 	return &c.Icon
 }
 
+func (c *mqlDatadogUser) GetRoles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Roles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.user", c.__id, "roles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roles()
+	})
+}
+
+func (c *mqlDatadogUser) GetTeams() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Teams, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.user", c.__id, "teams")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.teams()
+	})
+}
+
 // mqlDatadogRole for the datadog.role resource
 type mqlDatadogRole struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlDatadogRoleInternal it will be used here
-	Id         plugin.TValue[string]
-	Name       plugin.TValue[string]
-	UserCount  plugin.TValue[int64]
-	CreatedAt  plugin.TValue[*time.Time]
-	ModifiedAt plugin.TValue[*time.Time]
+	Id          plugin.TValue[string]
+	Name        plugin.TValue[string]
+	UserCount   plugin.TValue[int64]
+	CreatedAt   plugin.TValue[*time.Time]
+	ModifiedAt  plugin.TValue[*time.Time]
+	Permissions plugin.TValue[[]any]
+	Users       plugin.TValue[[]any]
 }
 
 // createDatadogRole creates a new instance of this resource
@@ -2324,24 +5939,57 @@ func (c *mqlDatadogRole) GetModifiedAt() *plugin.TValue[*time.Time] {
 	return &c.ModifiedAt
 }
 
+func (c *mqlDatadogRole) GetPermissions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Permissions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.role", c.__id, "permissions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.permissions()
+	})
+}
+
+func (c *mqlDatadogRole) GetUsers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Users, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.role", c.__id, "users")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.users()
+	})
+}
+
 // mqlDatadogMonitor for the datadog.monitor resource
 type mqlDatadogMonitor struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDatadogMonitorInternal it will be used here
-	Id           plugin.TValue[int64]
-	Name         plugin.TValue[string]
-	Type         plugin.TValue[string]
-	Query        plugin.TValue[string]
-	Message      plugin.TValue[string]
-	OverallState plugin.TValue[string]
-	Tags         plugin.TValue[[]any]
-	Priority     plugin.TValue[int64]
-	Created      plugin.TValue[*time.Time]
-	Modified     plugin.TValue[*time.Time]
-	Creator      plugin.TValue[string]
-	NotifyNoData plugin.TValue[bool]
-	Options      plugin.TValue[any]
+	mqlDatadogMonitorInternal
+	Id                plugin.TValue[int64]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Query             plugin.TValue[string]
+	Message           plugin.TValue[string]
+	OverallState      plugin.TValue[string]
+	Tags              plugin.TValue[[]any]
+	Priority          plugin.TValue[int64]
+	Created           plugin.TValue[*time.Time]
+	Modified          plugin.TValue[*time.Time]
+	CreatedBy         plugin.TValue[*mqlDatadogUser]
+	RestrictionPolicy plugin.TValue[*mqlDatadogRestrictionPolicy]
+	NotifyNoData      plugin.TValue[bool]
+	Options           plugin.TValue[any]
 }
 
 // createDatadogMonitor creates a new instance of this resource
@@ -2421,8 +6069,36 @@ func (c *mqlDatadogMonitor) GetModified() *plugin.TValue[*time.Time] {
 	return &c.Modified
 }
 
-func (c *mqlDatadogMonitor) GetCreator() *plugin.TValue[string] {
-	return &c.Creator
+func (c *mqlDatadogMonitor) GetCreatedBy() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.CreatedBy, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.monitor", c.__id, "createdBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.createdBy()
+	})
+}
+
+func (c *mqlDatadogMonitor) GetRestrictionPolicy() *plugin.TValue[*mqlDatadogRestrictionPolicy] {
+	return plugin.GetOrCompute[*mqlDatadogRestrictionPolicy](&c.RestrictionPolicy, func() (*mqlDatadogRestrictionPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.monitor", c.__id, "restrictionPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogRestrictionPolicy), nil
+			}
+		}
+
+		return c.restrictionPolicy()
+	})
 }
 
 func (c *mqlDatadogMonitor) GetNotifyNoData() *plugin.TValue[bool] {
@@ -2437,16 +6113,18 @@ func (c *mqlDatadogMonitor) GetOptions() *plugin.TValue[any] {
 type mqlDatadogDashboard struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDatadogDashboardInternal it will be used here
-	Id           plugin.TValue[string]
-	Title        plugin.TValue[string]
-	Description  plugin.TValue[string]
-	LayoutType   plugin.TValue[string]
-	Url          plugin.TValue[string]
-	CreatedAt    plugin.TValue[*time.Time]
-	ModifiedAt   plugin.TValue[*time.Time]
-	AuthorHandle plugin.TValue[string]
-	IsReadOnly   plugin.TValue[bool]
+	mqlDatadogDashboardInternal
+	Id                plugin.TValue[string]
+	Title             plugin.TValue[string]
+	Description       plugin.TValue[string]
+	LayoutType        plugin.TValue[string]
+	Url               plugin.TValue[string]
+	CreatedAt         plugin.TValue[*time.Time]
+	ModifiedAt        plugin.TValue[*time.Time]
+	Author            plugin.TValue[*mqlDatadogUser]
+	IsReadOnly        plugin.TValue[bool]
+	RestrictionPolicy plugin.TValue[*mqlDatadogRestrictionPolicy]
+	SharedDashboards  plugin.TValue[[]any]
 }
 
 // createDatadogDashboard creates a new instance of this resource
@@ -2514,19 +6192,63 @@ func (c *mqlDatadogDashboard) GetModifiedAt() *plugin.TValue[*time.Time] {
 	return &c.ModifiedAt
 }
 
-func (c *mqlDatadogDashboard) GetAuthorHandle() *plugin.TValue[string] {
-	return &c.AuthorHandle
+func (c *mqlDatadogDashboard) GetAuthor() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.Author, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.dashboard", c.__id, "author")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.author()
+	})
 }
 
 func (c *mqlDatadogDashboard) GetIsReadOnly() *plugin.TValue[bool] {
 	return &c.IsReadOnly
 }
 
+func (c *mqlDatadogDashboard) GetRestrictionPolicy() *plugin.TValue[*mqlDatadogRestrictionPolicy] {
+	return plugin.GetOrCompute[*mqlDatadogRestrictionPolicy](&c.RestrictionPolicy, func() (*mqlDatadogRestrictionPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.dashboard", c.__id, "restrictionPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogRestrictionPolicy), nil
+			}
+		}
+
+		return c.restrictionPolicy()
+	})
+}
+
+func (c *mqlDatadogDashboard) GetSharedDashboards() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SharedDashboards, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.dashboard", c.__id, "sharedDashboards")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.sharedDashboards()
+	})
+}
+
 // mqlDatadogSyntheticsTest for the datadog.syntheticsTest resource
 type mqlDatadogSyntheticsTest struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDatadogSyntheticsTestInternal it will be used here
+	mqlDatadogSyntheticsTestInternal
 	PublicId  plugin.TValue[string]
 	Name      plugin.TValue[string]
 	Type      plugin.TValue[string]
@@ -2536,7 +6258,7 @@ type mqlDatadogSyntheticsTest struct {
 	Tags      plugin.TValue[[]any]
 	Locations plugin.TValue[[]any]
 	MonitorId plugin.TValue[int64]
-	Creator   plugin.TValue[string]
+	CreatedBy plugin.TValue[*mqlDatadogUser]
 	Config    plugin.TValue[any]
 	Options   plugin.TValue[any]
 }
@@ -2614,8 +6336,20 @@ func (c *mqlDatadogSyntheticsTest) GetMonitorId() *plugin.TValue[int64] {
 	return &c.MonitorId
 }
 
-func (c *mqlDatadogSyntheticsTest) GetCreator() *plugin.TValue[string] {
-	return &c.Creator
+func (c *mqlDatadogSyntheticsTest) GetCreatedBy() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.CreatedBy, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.syntheticsTest", c.__id, "createdBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.createdBy()
+	})
 }
 
 func (c *mqlDatadogSyntheticsTest) GetConfig() *plugin.TValue[any] {
@@ -2630,19 +6364,20 @@ func (c *mqlDatadogSyntheticsTest) GetOptions() *plugin.TValue[any] {
 type mqlDatadogSlo struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDatadogSloInternal it will be used here
-	Id               plugin.TValue[string]
-	Name             plugin.TValue[string]
-	Type             plugin.TValue[string]
-	Description      plugin.TValue[string]
-	Tags             plugin.TValue[[]any]
-	TargetThreshold  plugin.TValue[float64]
-	WarningThreshold plugin.TValue[float64]
-	Timeframe        plugin.TValue[string]
-	Creator          plugin.TValue[string]
-	CreatedAt        plugin.TValue[*time.Time]
-	ModifiedAt       plugin.TValue[*time.Time]
-	MonitorIds       plugin.TValue[[]any]
+	mqlDatadogSloInternal
+	Id                plugin.TValue[string]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Description       plugin.TValue[string]
+	Tags              plugin.TValue[[]any]
+	TargetThreshold   plugin.TValue[float64]
+	WarningThreshold  plugin.TValue[float64]
+	Timeframe         plugin.TValue[string]
+	CreatedBy         plugin.TValue[*mqlDatadogUser]
+	CreatedAt         plugin.TValue[*time.Time]
+	ModifiedAt        plugin.TValue[*time.Time]
+	MonitorIds        plugin.TValue[[]any]
+	RestrictionPolicy plugin.TValue[*mqlDatadogRestrictionPolicy]
 }
 
 // createDatadogSlo creates a new instance of this resource
@@ -2714,8 +6449,20 @@ func (c *mqlDatadogSlo) GetTimeframe() *plugin.TValue[string] {
 	return &c.Timeframe
 }
 
-func (c *mqlDatadogSlo) GetCreator() *plugin.TValue[string] {
-	return &c.Creator
+func (c *mqlDatadogSlo) GetCreatedBy() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.CreatedBy, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.slo", c.__id, "createdBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.createdBy()
+	})
 }
 
 func (c *mqlDatadogSlo) GetCreatedAt() *plugin.TValue[*time.Time] {
@@ -2728,6 +6475,22 @@ func (c *mqlDatadogSlo) GetModifiedAt() *plugin.TValue[*time.Time] {
 
 func (c *mqlDatadogSlo) GetMonitorIds() *plugin.TValue[[]any] {
 	return &c.MonitorIds
+}
+
+func (c *mqlDatadogSlo) GetRestrictionPolicy() *plugin.TValue[*mqlDatadogRestrictionPolicy] {
+	return plugin.GetOrCompute[*mqlDatadogRestrictionPolicy](&c.RestrictionPolicy, func() (*mqlDatadogRestrictionPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.slo", c.__id, "restrictionPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogRestrictionPolicy), nil
+			}
+		}
+
+		return c.restrictionPolicy()
+	})
 }
 
 // mqlDatadogLogIndex for the datadog.logIndex resource
@@ -2819,20 +6582,21 @@ type mqlDatadogSecurityRule struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlDatadogSecurityRuleInternal it will be used here
-	Id               plugin.TValue[string]
-	Name             plugin.TValue[string]
-	Type             plugin.TValue[string]
-	Message          plugin.TValue[string]
-	IsEnabled        plugin.TValue[bool]
-	HasExtendedTitle plugin.TValue[bool]
-	Tags             plugin.TValue[[]any]
-	IsDefault        plugin.TValue[bool]
-	IsDeleted        plugin.TValue[bool]
-	CreatedAt        plugin.TValue[*time.Time]
-	UpdatedAt        plugin.TValue[*time.Time]
-	Cases            plugin.TValue[[]any]
-	Filters          plugin.TValue[[]any]
-	Options          plugin.TValue[any]
+	Id                plugin.TValue[string]
+	Name              plugin.TValue[string]
+	Type              plugin.TValue[string]
+	Message           plugin.TValue[string]
+	IsEnabled         plugin.TValue[bool]
+	HasExtendedTitle  plugin.TValue[bool]
+	Tags              plugin.TValue[[]any]
+	IsDefault         plugin.TValue[bool]
+	IsDeleted         plugin.TValue[bool]
+	CreatedAt         plugin.TValue[*time.Time]
+	UpdatedAt         plugin.TValue[*time.Time]
+	Cases             plugin.TValue[[]any]
+	Filters           plugin.TValue[[]any]
+	Options           plugin.TValue[any]
+	RestrictionPolicy plugin.TValue[*mqlDatadogRestrictionPolicy]
 }
 
 // createDatadogSecurityRule creates a new instance of this resource
@@ -2926,6 +6690,22 @@ func (c *mqlDatadogSecurityRule) GetFilters() *plugin.TValue[[]any] {
 
 func (c *mqlDatadogSecurityRule) GetOptions() *plugin.TValue[any] {
 	return &c.Options
+}
+
+func (c *mqlDatadogSecurityRule) GetRestrictionPolicy() *plugin.TValue[*mqlDatadogRestrictionPolicy] {
+	return plugin.GetOrCompute[*mqlDatadogRestrictionPolicy](&c.RestrictionPolicy, func() (*mqlDatadogRestrictionPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.securityRule", c.__id, "restrictionPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogRestrictionPolicy), nil
+			}
+		}
+
+		return c.restrictionPolicy()
+	})
 }
 
 // mqlDatadogDowntime for the datadog.downtime resource
@@ -3042,11 +6822,17 @@ type mqlDatadogApiKey struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlDatadogApiKeyInternal it will be used here
-	Id         plugin.TValue[string]
-	Name       plugin.TValue[string]
-	CreatedAt  plugin.TValue[*time.Time]
-	ModifiedAt plugin.TValue[*time.Time]
-	Last4      plugin.TValue[string]
+	Id                               plugin.TValue[string]
+	Name                             plugin.TValue[string]
+	CreatedAt                        plugin.TValue[*time.Time]
+	ModifiedAt                       plugin.TValue[*time.Time]
+	Last4                            plugin.TValue[string]
+	LastUsedAt                       plugin.TValue[*time.Time]
+	Category                         plugin.TValue[string]
+	RemoteConfigReadEnabled          plugin.TValue[bool]
+	PrivateActionRunnerEnrollEnabled plugin.TValue[bool]
+	CreatedBy                        plugin.TValue[*mqlDatadogUser]
+	ModifiedBy                       plugin.TValue[*mqlDatadogUser]
 }
 
 // createDatadogApiKey creates a new instance of this resource
@@ -3106,16 +6892,66 @@ func (c *mqlDatadogApiKey) GetLast4() *plugin.TValue[string] {
 	return &c.Last4
 }
 
+func (c *mqlDatadogApiKey) GetLastUsedAt() *plugin.TValue[*time.Time] {
+	return &c.LastUsedAt
+}
+
+func (c *mqlDatadogApiKey) GetCategory() *plugin.TValue[string] {
+	return &c.Category
+}
+
+func (c *mqlDatadogApiKey) GetRemoteConfigReadEnabled() *plugin.TValue[bool] {
+	return &c.RemoteConfigReadEnabled
+}
+
+func (c *mqlDatadogApiKey) GetPrivateActionRunnerEnrollEnabled() *plugin.TValue[bool] {
+	return &c.PrivateActionRunnerEnrollEnabled
+}
+
+func (c *mqlDatadogApiKey) GetCreatedBy() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.CreatedBy, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.apiKey", c.__id, "createdBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.createdBy()
+	})
+}
+
+func (c *mqlDatadogApiKey) GetModifiedBy() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.ModifiedBy, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.apiKey", c.__id, "modifiedBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.modifiedBy()
+	})
+}
+
 // mqlDatadogApplicationKey for the datadog.applicationKey resource
 type mqlDatadogApplicationKey struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlDatadogApplicationKeyInternal it will be used here
-	Id        plugin.TValue[string]
-	Name      plugin.TValue[string]
-	CreatedAt plugin.TValue[*time.Time]
-	Last4     plugin.TValue[string]
-	Scopes    plugin.TValue[[]any]
+	Id         plugin.TValue[string]
+	Name       plugin.TValue[string]
+	CreatedAt  plugin.TValue[*time.Time]
+	Last4      plugin.TValue[string]
+	Scopes     plugin.TValue[[]any]
+	LastUsedAt plugin.TValue[*time.Time]
+	Owner      plugin.TValue[*mqlDatadogUser]
 }
 
 // createDatadogApplicationKey creates a new instance of this resource
@@ -3175,6 +7011,26 @@ func (c *mqlDatadogApplicationKey) GetScopes() *plugin.TValue[[]any] {
 	return &c.Scopes
 }
 
+func (c *mqlDatadogApplicationKey) GetLastUsedAt() *plugin.TValue[*time.Time] {
+	return &c.LastUsedAt
+}
+
+func (c *mqlDatadogApplicationKey) GetOwner() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.Owner, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.applicationKey", c.__id, "owner")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.owner()
+	})
+}
+
 // mqlDatadogIntegrationAws for the datadog.integration.aws resource
 type mqlDatadogIntegrationAws struct {
 	MqlRuntime *plugin.Runtime
@@ -3189,6 +7045,7 @@ type mqlDatadogIntegrationAws struct {
 	HostTags                  plugin.TValue[[]any]
 	AccountTags               plugin.TValue[[]any]
 	ExcludedRegions           plugin.TValue[[]any]
+	IncludedRegions           plugin.TValue[[]any]
 }
 
 // createDatadogIntegrationAws creates a new instance of this resource
@@ -3264,6 +7121,10 @@ func (c *mqlDatadogIntegrationAws) GetExcludedRegions() *plugin.TValue[[]any] {
 	return &c.ExcludedRegions
 }
 
+func (c *mqlDatadogIntegrationAws) GetIncludedRegions() *plugin.TValue[[]any] {
+	return &c.IncludedRegions
+}
+
 // mqlDatadogTeam for the datadog.team resource
 type mqlDatadogTeam struct {
 	MqlRuntime *plugin.Runtime
@@ -3276,6 +7137,7 @@ type mqlDatadogTeam struct {
 	UserCount   plugin.TValue[int64]
 	CreatedAt   plugin.TValue[*time.Time]
 	ModifiedAt  plugin.TValue[*time.Time]
+	Members     plugin.TValue[[]any]
 }
 
 // createDatadogTeam creates a new instance of this resource
@@ -3341,6 +7203,22 @@ func (c *mqlDatadogTeam) GetCreatedAt() *plugin.TValue[*time.Time] {
 
 func (c *mqlDatadogTeam) GetModifiedAt() *plugin.TValue[*time.Time] {
 	return &c.ModifiedAt
+}
+
+func (c *mqlDatadogTeam) GetMembers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Members, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.team", c.__id, "members")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.members()
+	})
 }
 
 // mqlDatadogSensitiveDataScannerGroup for the datadog.sensitiveDataScannerGroup resource
@@ -3979,4 +7857,968 @@ func (c *mqlDatadogSyntheticsPrivateLocation) GetMetadata() *plugin.TValue[any] 
 	return plugin.GetOrCompute[any](&c.Metadata, func() (any, error) {
 		return c.metadata()
 	})
+}
+
+// mqlDatadogOauthClient for the datadog.oauthClient resource
+type mqlDatadogOauthClient struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogOauthClientInternal it will be used here
+	Id             plugin.TValue[string]
+	ClientId       plugin.TValue[string]
+	Disabled       plugin.TValue[bool]
+	UserCount      plugin.TValue[int64]
+	LastExercised  plugin.TValue[*time.Time]
+	Authorizations plugin.TValue[[]any]
+}
+
+// createDatadogOauthClient creates a new instance of this resource
+func createDatadogOauthClient(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogOauthClient{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.oauthClient", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogOauthClient) MqlName() string {
+	return "datadog.oauthClient"
+}
+
+func (c *mqlDatadogOauthClient) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogOauthClient) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogOauthClient) GetClientId() *plugin.TValue[string] {
+	return &c.ClientId
+}
+
+func (c *mqlDatadogOauthClient) GetDisabled() *plugin.TValue[bool] {
+	return &c.Disabled
+}
+
+func (c *mqlDatadogOauthClient) GetUserCount() *plugin.TValue[int64] {
+	return &c.UserCount
+}
+
+func (c *mqlDatadogOauthClient) GetLastExercised() *plugin.TValue[*time.Time] {
+	return &c.LastExercised
+}
+
+func (c *mqlDatadogOauthClient) GetAuthorizations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Authorizations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.oauthClient", c.__id, "authorizations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.authorizations()
+	})
+}
+
+// mqlDatadogOauthClientAuthorization for the datadog.oauthClient.authorization resource
+type mqlDatadogOauthClientAuthorization struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlDatadogOauthClientAuthorizationInternal
+	Id            plugin.TValue[string]
+	Scopes        plugin.TValue[[]any]
+	Disabled      plugin.TValue[bool]
+	OrgDisabled   plugin.TValue[bool]
+	CreatedAt     plugin.TValue[*time.Time]
+	ModifiedAt    plugin.TValue[*time.Time]
+	LastExercised plugin.TValue[*time.Time]
+	User          plugin.TValue[*mqlDatadogUser]
+}
+
+// createDatadogOauthClientAuthorization creates a new instance of this resource
+func createDatadogOauthClientAuthorization(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogOauthClientAuthorization{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.oauthClient.authorization", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogOauthClientAuthorization) MqlName() string {
+	return "datadog.oauthClient.authorization"
+}
+
+func (c *mqlDatadogOauthClientAuthorization) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogOauthClientAuthorization) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogOauthClientAuthorization) GetScopes() *plugin.TValue[[]any] {
+	return &c.Scopes
+}
+
+func (c *mqlDatadogOauthClientAuthorization) GetDisabled() *plugin.TValue[bool] {
+	return &c.Disabled
+}
+
+func (c *mqlDatadogOauthClientAuthorization) GetOrgDisabled() *plugin.TValue[bool] {
+	return &c.OrgDisabled
+}
+
+func (c *mqlDatadogOauthClientAuthorization) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlDatadogOauthClientAuthorization) GetModifiedAt() *plugin.TValue[*time.Time] {
+	return &c.ModifiedAt
+}
+
+func (c *mqlDatadogOauthClientAuthorization) GetLastExercised() *plugin.TValue[*time.Time] {
+	return &c.LastExercised
+}
+
+func (c *mqlDatadogOauthClientAuthorization) GetUser() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.User, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.oauthClient.authorization", c.__id, "user")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.user()
+	})
+}
+
+// mqlDatadogIdentityProvider for the datadog.identityProvider resource
+type mqlDatadogIdentityProvider struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogIdentityProviderInternal it will be used here
+	Id                   plugin.TValue[string]
+	AuthenticationMethod plugin.TValue[string]
+	Enabled              plugin.TValue[bool]
+}
+
+// createDatadogIdentityProvider creates a new instance of this resource
+func createDatadogIdentityProvider(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogIdentityProvider{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.identityProvider", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogIdentityProvider) MqlName() string {
+	return "datadog.identityProvider"
+}
+
+func (c *mqlDatadogIdentityProvider) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogIdentityProvider) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogIdentityProvider) GetAuthenticationMethod() *plugin.TValue[string] {
+	return &c.AuthenticationMethod
+}
+
+func (c *mqlDatadogIdentityProvider) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+// mqlDatadogOrgConnection for the datadog.orgConnection resource
+type mqlDatadogOrgConnection struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlDatadogOrgConnectionInternal
+	Id              plugin.TValue[string]
+	ConnectionTypes plugin.TValue[[]any]
+	CreatedAt       plugin.TValue[*time.Time]
+	SourceOrgId     plugin.TValue[string]
+	SourceOrgName   plugin.TValue[string]
+	SinkOrgId       plugin.TValue[string]
+	SinkOrgName     plugin.TValue[string]
+	CreatedBy       plugin.TValue[*mqlDatadogUser]
+}
+
+// createDatadogOrgConnection creates a new instance of this resource
+func createDatadogOrgConnection(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogOrgConnection{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.orgConnection", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogOrgConnection) MqlName() string {
+	return "datadog.orgConnection"
+}
+
+func (c *mqlDatadogOrgConnection) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogOrgConnection) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogOrgConnection) GetConnectionTypes() *plugin.TValue[[]any] {
+	return &c.ConnectionTypes
+}
+
+func (c *mqlDatadogOrgConnection) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlDatadogOrgConnection) GetSourceOrgId() *plugin.TValue[string] {
+	return &c.SourceOrgId
+}
+
+func (c *mqlDatadogOrgConnection) GetSourceOrgName() *plugin.TValue[string] {
+	return &c.SourceOrgName
+}
+
+func (c *mqlDatadogOrgConnection) GetSinkOrgId() *plugin.TValue[string] {
+	return &c.SinkOrgId
+}
+
+func (c *mqlDatadogOrgConnection) GetSinkOrgName() *plugin.TValue[string] {
+	return &c.SinkOrgName
+}
+
+func (c *mqlDatadogOrgConnection) GetCreatedBy() *plugin.TValue[*mqlDatadogUser] {
+	return plugin.GetOrCompute[*mqlDatadogUser](&c.CreatedBy, func() (*mqlDatadogUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("datadog.orgConnection", c.__id, "createdBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatadogUser), nil
+			}
+		}
+
+		return c.createdBy()
+	})
+}
+
+// mqlDatadogIntegrationGcp for the datadog.integration.gcp resource
+type mqlDatadogIntegrationGcp struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogIntegrationGcpInternal it will be used here
+	Id                                   plugin.TValue[string]
+	ClientEmail                          plugin.TValue[string]
+	AccessibleProjects                   plugin.TValue[[]any]
+	IsCspmEnabled                        plugin.TValue[bool]
+	IsSecurityCommandCenterEnabled       plugin.TValue[bool]
+	ResourceCollectionEnabled            plugin.TValue[bool]
+	IsResourceChangeCollectionEnabled    plugin.TValue[bool]
+	IsPerProjectQuotaEnabled             plugin.TValue[bool]
+	IsGlobalLocationEnabled              plugin.TValue[bool]
+	IsOrgFolderResourceCollectionEnabled plugin.TValue[bool]
+	Automute                             plugin.TValue[bool]
+	HostFilters                          plugin.TValue[[]any]
+	CloudRunRevisionFilters              plugin.TValue[[]any]
+	RegionFilterConfigs                  plugin.TValue[[]any]
+	AccountTags                          plugin.TValue[[]any]
+}
+
+// createDatadogIntegrationGcp creates a new instance of this resource
+func createDatadogIntegrationGcp(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogIntegrationGcp{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.integration.gcp", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogIntegrationGcp) MqlName() string {
+	return "datadog.integration.gcp"
+}
+
+func (c *mqlDatadogIntegrationGcp) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogIntegrationGcp) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogIntegrationGcp) GetClientEmail() *plugin.TValue[string] {
+	return &c.ClientEmail
+}
+
+func (c *mqlDatadogIntegrationGcp) GetAccessibleProjects() *plugin.TValue[[]any] {
+	return &c.AccessibleProjects
+}
+
+func (c *mqlDatadogIntegrationGcp) GetIsCspmEnabled() *plugin.TValue[bool] {
+	return &c.IsCspmEnabled
+}
+
+func (c *mqlDatadogIntegrationGcp) GetIsSecurityCommandCenterEnabled() *plugin.TValue[bool] {
+	return &c.IsSecurityCommandCenterEnabled
+}
+
+func (c *mqlDatadogIntegrationGcp) GetResourceCollectionEnabled() *plugin.TValue[bool] {
+	return &c.ResourceCollectionEnabled
+}
+
+func (c *mqlDatadogIntegrationGcp) GetIsResourceChangeCollectionEnabled() *plugin.TValue[bool] {
+	return &c.IsResourceChangeCollectionEnabled
+}
+
+func (c *mqlDatadogIntegrationGcp) GetIsPerProjectQuotaEnabled() *plugin.TValue[bool] {
+	return &c.IsPerProjectQuotaEnabled
+}
+
+func (c *mqlDatadogIntegrationGcp) GetIsGlobalLocationEnabled() *plugin.TValue[bool] {
+	return &c.IsGlobalLocationEnabled
+}
+
+func (c *mqlDatadogIntegrationGcp) GetIsOrgFolderResourceCollectionEnabled() *plugin.TValue[bool] {
+	return &c.IsOrgFolderResourceCollectionEnabled
+}
+
+func (c *mqlDatadogIntegrationGcp) GetAutomute() *plugin.TValue[bool] {
+	return &c.Automute
+}
+
+func (c *mqlDatadogIntegrationGcp) GetHostFilters() *plugin.TValue[[]any] {
+	return &c.HostFilters
+}
+
+func (c *mqlDatadogIntegrationGcp) GetCloudRunRevisionFilters() *plugin.TValue[[]any] {
+	return &c.CloudRunRevisionFilters
+}
+
+func (c *mqlDatadogIntegrationGcp) GetRegionFilterConfigs() *plugin.TValue[[]any] {
+	return &c.RegionFilterConfigs
+}
+
+func (c *mqlDatadogIntegrationGcp) GetAccountTags() *plugin.TValue[[]any] {
+	return &c.AccountTags
+}
+
+// mqlDatadogIntegrationAzure for the datadog.integration.azure resource
+type mqlDatadogIntegrationAzure struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogIntegrationAzureInternal it will be used here
+	TenantName                plugin.TValue[string]
+	ClientId                  plugin.TValue[string]
+	SecretlessAuthEnabled     plugin.TValue[bool]
+	CspmEnabled               plugin.TValue[bool]
+	ResourceCollectionEnabled plugin.TValue[bool]
+	MetricsEnabled            plugin.TValue[bool]
+	CustomMetricsEnabled      plugin.TValue[bool]
+	UsageMetricsEnabled       plugin.TValue[bool]
+	Automute                  plugin.TValue[bool]
+	HostFilters               plugin.TValue[string]
+	AppServicePlanFilters     plugin.TValue[string]
+	ContainerAppFilters       plugin.TValue[string]
+	Errors                    plugin.TValue[[]any]
+}
+
+// createDatadogIntegrationAzure creates a new instance of this resource
+func createDatadogIntegrationAzure(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogIntegrationAzure{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.integration.azure", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogIntegrationAzure) MqlName() string {
+	return "datadog.integration.azure"
+}
+
+func (c *mqlDatadogIntegrationAzure) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogIntegrationAzure) GetTenantName() *plugin.TValue[string] {
+	return &c.TenantName
+}
+
+func (c *mqlDatadogIntegrationAzure) GetClientId() *plugin.TValue[string] {
+	return &c.ClientId
+}
+
+func (c *mqlDatadogIntegrationAzure) GetSecretlessAuthEnabled() *plugin.TValue[bool] {
+	return &c.SecretlessAuthEnabled
+}
+
+func (c *mqlDatadogIntegrationAzure) GetCspmEnabled() *plugin.TValue[bool] {
+	return &c.CspmEnabled
+}
+
+func (c *mqlDatadogIntegrationAzure) GetResourceCollectionEnabled() *plugin.TValue[bool] {
+	return &c.ResourceCollectionEnabled
+}
+
+func (c *mqlDatadogIntegrationAzure) GetMetricsEnabled() *plugin.TValue[bool] {
+	return &c.MetricsEnabled
+}
+
+func (c *mqlDatadogIntegrationAzure) GetCustomMetricsEnabled() *plugin.TValue[bool] {
+	return &c.CustomMetricsEnabled
+}
+
+func (c *mqlDatadogIntegrationAzure) GetUsageMetricsEnabled() *plugin.TValue[bool] {
+	return &c.UsageMetricsEnabled
+}
+
+func (c *mqlDatadogIntegrationAzure) GetAutomute() *plugin.TValue[bool] {
+	return &c.Automute
+}
+
+func (c *mqlDatadogIntegrationAzure) GetHostFilters() *plugin.TValue[string] {
+	return &c.HostFilters
+}
+
+func (c *mqlDatadogIntegrationAzure) GetAppServicePlanFilters() *plugin.TValue[string] {
+	return &c.AppServicePlanFilters
+}
+
+func (c *mqlDatadogIntegrationAzure) GetContainerAppFilters() *plugin.TValue[string] {
+	return &c.ContainerAppFilters
+}
+
+func (c *mqlDatadogIntegrationAzure) GetErrors() *plugin.TValue[[]any] {
+	return &c.Errors
+}
+
+// mqlDatadogIntegrationOkta for the datadog.integration.okta resource
+type mqlDatadogIntegrationOkta struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogIntegrationOktaInternal it will be used here
+	Id         plugin.TValue[string]
+	Name       plugin.TValue[string]
+	Domain     plugin.TValue[string]
+	AuthMethod plugin.TValue[string]
+	ClientId   plugin.TValue[string]
+}
+
+// createDatadogIntegrationOkta creates a new instance of this resource
+func createDatadogIntegrationOkta(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogIntegrationOkta{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.integration.okta", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogIntegrationOkta) MqlName() string {
+	return "datadog.integration.okta"
+}
+
+func (c *mqlDatadogIntegrationOkta) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogIntegrationOkta) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogIntegrationOkta) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatadogIntegrationOkta) GetDomain() *plugin.TValue[string] {
+	return &c.Domain
+}
+
+func (c *mqlDatadogIntegrationOkta) GetAuthMethod() *plugin.TValue[string] {
+	return &c.AuthMethod
+}
+
+func (c *mqlDatadogIntegrationOkta) GetClientId() *plugin.TValue[string] {
+	return &c.ClientId
+}
+
+// mqlDatadogIntegrationCloudflare for the datadog.integration.cloudflare resource
+type mqlDatadogIntegrationCloudflare struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogIntegrationCloudflareInternal it will be used here
+	Id        plugin.TValue[string]
+	Name      plugin.TValue[string]
+	Email     plugin.TValue[string]
+	Resources plugin.TValue[[]any]
+	Zones     plugin.TValue[[]any]
+}
+
+// createDatadogIntegrationCloudflare creates a new instance of this resource
+func createDatadogIntegrationCloudflare(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogIntegrationCloudflare{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.integration.cloudflare", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogIntegrationCloudflare) MqlName() string {
+	return "datadog.integration.cloudflare"
+}
+
+func (c *mqlDatadogIntegrationCloudflare) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogIntegrationCloudflare) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogIntegrationCloudflare) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatadogIntegrationCloudflare) GetEmail() *plugin.TValue[string] {
+	return &c.Email
+}
+
+func (c *mqlDatadogIntegrationCloudflare) GetResources() *plugin.TValue[[]any] {
+	return &c.Resources
+}
+
+func (c *mqlDatadogIntegrationCloudflare) GetZones() *plugin.TValue[[]any] {
+	return &c.Zones
+}
+
+// mqlDatadogIntegrationFastly for the datadog.integration.fastly resource
+type mqlDatadogIntegrationFastly struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogIntegrationFastlyInternal it will be used here
+	Id       plugin.TValue[string]
+	Name     plugin.TValue[string]
+	Services plugin.TValue[[]any]
+}
+
+// createDatadogIntegrationFastly creates a new instance of this resource
+func createDatadogIntegrationFastly(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogIntegrationFastly{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.integration.fastly", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogIntegrationFastly) MqlName() string {
+	return "datadog.integration.fastly"
+}
+
+func (c *mqlDatadogIntegrationFastly) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogIntegrationFastly) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogIntegrationFastly) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatadogIntegrationFastly) GetServices() *plugin.TValue[[]any] {
+	return &c.Services
+}
+
+// mqlDatadogIntegrationConfluent for the datadog.integration.confluent resource
+type mqlDatadogIntegrationConfluent struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogIntegrationConfluentInternal it will be used here
+	Id        plugin.TValue[string]
+	Tags      plugin.TValue[[]any]
+	Resources plugin.TValue[[]any]
+}
+
+// createDatadogIntegrationConfluent creates a new instance of this resource
+func createDatadogIntegrationConfluent(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogIntegrationConfluent{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.integration.confluent", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogIntegrationConfluent) MqlName() string {
+	return "datadog.integration.confluent"
+}
+
+func (c *mqlDatadogIntegrationConfluent) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogIntegrationConfluent) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogIntegrationConfluent) GetTags() *plugin.TValue[[]any] {
+	return &c.Tags
+}
+
+func (c *mqlDatadogIntegrationConfluent) GetResources() *plugin.TValue[[]any] {
+	return &c.Resources
+}
+
+// mqlDatadogIntegrationSnowflake for the datadog.integration.snowflake resource
+type mqlDatadogIntegrationSnowflake struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogIntegrationSnowflakeInternal it will be used here
+	Id                plugin.TValue[string]
+	Name              plugin.TValue[string]
+	AccountIdentifier plugin.TValue[string]
+	Username          plugin.TValue[string]
+	AuthType          plugin.TValue[string]
+	Dataflows         plugin.TValue[map[string]any]
+}
+
+// createDatadogIntegrationSnowflake creates a new instance of this resource
+func createDatadogIntegrationSnowflake(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogIntegrationSnowflake{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.integration.snowflake", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogIntegrationSnowflake) MqlName() string {
+	return "datadog.integration.snowflake"
+}
+
+func (c *mqlDatadogIntegrationSnowflake) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogIntegrationSnowflake) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogIntegrationSnowflake) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatadogIntegrationSnowflake) GetAccountIdentifier() *plugin.TValue[string] {
+	return &c.AccountIdentifier
+}
+
+func (c *mqlDatadogIntegrationSnowflake) GetUsername() *plugin.TValue[string] {
+	return &c.Username
+}
+
+func (c *mqlDatadogIntegrationSnowflake) GetAuthType() *plugin.TValue[string] {
+	return &c.AuthType
+}
+
+func (c *mqlDatadogIntegrationSnowflake) GetDataflows() *plugin.TValue[map[string]any] {
+	return &c.Dataflows
+}
+
+// mqlDatadogIntegrationDatabricks for the datadog.integration.databricks resource
+type mqlDatadogIntegrationDatabricks struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatadogIntegrationDatabricksInternal it will be used here
+	Id           plugin.TValue[string]
+	Name         plugin.TValue[string]
+	WorkspaceUrl plugin.TValue[string]
+	AuthType     plugin.TValue[string]
+	ClientId     plugin.TValue[string]
+	Dataflows    plugin.TValue[map[string]any]
+}
+
+// createDatadogIntegrationDatabricks creates a new instance of this resource
+func createDatadogIntegrationDatabricks(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatadogIntegrationDatabricks{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("datadog.integration.databricks", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatadogIntegrationDatabricks) MqlName() string {
+	return "datadog.integration.databricks"
+}
+
+func (c *mqlDatadogIntegrationDatabricks) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatadogIntegrationDatabricks) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatadogIntegrationDatabricks) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatadogIntegrationDatabricks) GetWorkspaceUrl() *plugin.TValue[string] {
+	return &c.WorkspaceUrl
+}
+
+func (c *mqlDatadogIntegrationDatabricks) GetAuthType() *plugin.TValue[string] {
+	return &c.AuthType
+}
+
+func (c *mqlDatadogIntegrationDatabricks) GetClientId() *plugin.TValue[string] {
+	return &c.ClientId
+}
+
+func (c *mqlDatadogIntegrationDatabricks) GetDataflows() *plugin.TValue[map[string]any] {
+	return &c.Dataflows
 }

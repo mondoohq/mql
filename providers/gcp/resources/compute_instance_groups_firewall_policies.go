@@ -10,11 +10,11 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
@@ -23,7 +23,11 @@ import (
 // Instance groups
 
 func (g *mqlGcpProjectComputeService) instanceGroups() ([]any, error) {
-	if !g.GetEnabled().Data {
+	enabled, err := g.serviceEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -55,8 +59,6 @@ func (g *mqlGcpProjectComputeService) instanceGroups() ([]any, error) {
 					"projectId":   llx.StringData(projectId),
 					"name":        llx.StringData(ig.Name),
 					"description": llx.StringData(ig.Description),
-					"zoneUrl":     llx.StringData(ig.Zone),
-					"networkUrl":  llx.StringData(ig.Network),
 					"size":        llx.IntData(ig.Size),
 					"namedPorts":  llx.ArrayData(namedPorts, types.Dict),
 					"created":     llx.TimeDataPtr(parseTime(ig.CreationTimestamp)),
@@ -65,6 +67,9 @@ func (g *mqlGcpProjectComputeService) instanceGroups() ([]any, error) {
 				if err != nil {
 					return err
 				}
+				mqlRef := mqlIG.(*mqlGcpProjectComputeServiceInstanceGroup)
+				mqlRef.cacheZoneUrl = ig.Zone
+				mqlRef.cacheNetworkUrl = ig.Network
 				mqlIG.(*mqlGcpProjectComputeServiceInstanceGroup).cacheSubnetworkUrl = ig.Subnetwork
 				res = append(res, mqlIG)
 			}
@@ -82,6 +87,8 @@ func (g *mqlGcpProjectComputeService) instanceGroups() ([]any, error) {
 
 type mqlGcpProjectComputeServiceInstanceGroupInternal struct {
 	cacheSubnetworkUrl string
+	cacheNetworkUrl    string
+	cacheZoneUrl       string
 }
 
 func (g *mqlGcpProjectComputeServiceInstanceGroup) id() (string, error) {
@@ -89,10 +96,7 @@ func (g *mqlGcpProjectComputeServiceInstanceGroup) id() (string, error) {
 }
 
 func (g *mqlGcpProjectComputeServiceInstanceGroup) network() (*mqlGcpProjectComputeServiceNetwork, error) {
-	if g.NetworkUrl.Error != nil {
-		return nil, g.NetworkUrl.Error
-	}
-	net, err := getNetworkByUrl(g.NetworkUrl.Data, g.MqlRuntime)
+	net, err := getNetworkByUrl(g.cacheNetworkUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +120,11 @@ func (g *mqlGcpProjectComputeServiceInstanceGroup) subnetwork() (*mqlGcpProjectC
 // Instance group managers
 
 func (g *mqlGcpProjectComputeService) instanceGroupManagers() ([]any, error) {
-	if !g.GetEnabled().Data {
+	enabled, err := g.serviceEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -151,8 +159,6 @@ func (g *mqlGcpProjectComputeService) instanceGroupManagers() ([]any, error) {
 					"projectId":           llx.StringData(projectId),
 					"name":                llx.StringData(igm.Name),
 					"description":         llx.StringData(igm.Description),
-					"zoneUrl":             llx.StringData(igm.Zone),
-					"regionUrl":           llx.StringData(igm.Region),
 					"instanceTemplateUrl": llx.StringData(igm.InstanceTemplate),
 					"targetSize":          llx.IntData(igm.TargetSize),
 					"currentActions":      llx.DictData(currentActions),
@@ -167,6 +173,9 @@ func (g *mqlGcpProjectComputeService) instanceGroupManagers() ([]any, error) {
 				if err != nil {
 					return err
 				}
+				mqlRef := mqlIGM.(*mqlGcpProjectComputeServiceInstanceGroupManager)
+				mqlRef.cacheZoneUrl = igm.Zone
+				mqlRef.cacheRegionUrl = igm.Region
 				templateUrl := igm.InstanceTemplate
 				if templateUrl == "" {
 					for _, v := range igm.Versions {
@@ -193,6 +202,8 @@ func (g *mqlGcpProjectComputeService) instanceGroupManagers() ([]any, error) {
 
 type mqlGcpProjectComputeServiceInstanceGroupManagerInternal struct {
 	cacheInstanceTemplateUrl string
+	cacheRegionUrl           string
+	cacheZoneUrl             string
 }
 
 func (g *mqlGcpProjectComputeServiceInstanceGroupManager) id() (string, error) {
@@ -238,7 +249,11 @@ func (g *mqlGcpProjectComputeServiceInstanceGroupManager) instanceTemplate() (*m
 // Network firewall policies
 
 func (g *mqlGcpProjectComputeService) firewallPolicies() ([]any, error) {
-	if !g.GetEnabled().Data {
+	enabled, err := g.serviceEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -262,25 +277,10 @@ func (g *mqlGcpProjectComputeService) firewallPolicies() ([]any, error) {
 	req := computeSvc.NetworkFirewallPolicies.List(projectId)
 	if err := req.Pages(ctx, func(page *compute.FirewallPolicyList) error {
 		for _, fp := range page.Items {
-			associations, _ := convert.JsonToDictSlice(fp.Associations)
-
-			mqlFP, err := CreateResource(g.MqlRuntime, "gcp.project.computeService.firewallPolicy", map[string]*llx.RawData{
-				"id":             llx.StringData(strconv.FormatUint(fp.Id, 10)),
-				"projectId":      llx.StringData(projectId),
-				"name":           llx.StringData(fp.ShortName),
-				"displayName":    llx.StringData(fp.DisplayName),
-				"description":    llx.StringData(fp.Description),
-				"selfLink":       llx.StringData(fp.SelfLink),
-				"ruleTupleCount": llx.IntData(fp.RuleTupleCount),
-				"created":        llx.TimeDataPtr(parseTime(fp.CreationTimestamp)),
-				"regionUrl":      llx.StringData(fp.Region),
-				"associations":   llx.ArrayData(associations, types.Dict),
-			})
+			mqlFP, err := newMqlNetworkFirewallPolicy(g.MqlRuntime, projectId, fp)
 			if err != nil {
 				return err
 			}
-			mqlPolicy := mqlFP.(*mqlGcpProjectComputeServiceFirewallPolicy)
-			mqlPolicy.cacheRules = fp.Rules
 			res = append(res, mqlFP)
 		}
 		return nil
@@ -291,15 +291,136 @@ func (g *mqlGcpProjectComputeService) firewallPolicies() ([]any, error) {
 		}
 		return nil, err
 	}
+
+	regional, err := listRegionalNetworkFirewallPolicies(g.MqlRuntime, projectId)
+	if err != nil {
+		return nil, err
+	}
+	return append(res, regional...), nil
+}
+
+// listRegionalNetworkFirewallPolicies lists the regional network firewall
+// policies of a project. The aggregated list also carries the global
+// policies under the "global" scope; those are already listed by
+// NetworkFirewallPolicies.List, so only the regional scopes are read here.
+//
+// A refused aggregated list, or a region reported unreachable, drops only the
+// regional policies: the global ones stay (ADR 046 section 8).
+func listRegionalNetworkFirewallPolicies(runtime *plugin.Runtime, projectId string) ([]any, error) {
+	conn := runtime.Connection.(*connection.GcpConnection)
+	client, err := conn.Client(compute.CloudPlatformScope)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	computeSvc, err := compute.NewService(ctx, option.WithHTTPClient(client))
+	if err != nil {
+		return nil, err
+	}
+
+	res := []any{}
+	req := computeSvc.NetworkFirewallPolicies.AggregatedList(projectId)
+	if err := req.Pages(ctx, func(page *compute.NetworkFirewallPolicyAggregatedList) error {
+		for _, u := range page.Unreachables {
+			log.Warn().Str("project", projectId).Str("scope", u).Msg("could not list regional network firewall policies in an unreachable scope")
+		}
+		for scope, scoped := range page.Items {
+			if !isRegionalScope(scope) {
+				continue
+			}
+			for _, fp := range scoped.FirewallPolicies {
+				if fp == nil || fp.Region == "" {
+					continue
+				}
+				mqlFP, err := newMqlNetworkFirewallPolicy(runtime, projectId, fp)
+				if err != nil {
+					return err
+				}
+				res = append(res, mqlFP)
+			}
+		}
+		return nil
+	}); err != nil {
+		if isSkippable(err) {
+			log.Warn().Str("project", projectId).Err(err).Msg("could not list regional network firewall policies")
+			return []any{}, nil
+		}
+		return nil, err
+	}
 	return res, nil
 }
 
+// isRegionalScope reports whether a key of a Compute aggregated list names a
+// region ("regions/us-central1") rather than the global scope or a zone.
+func isRegionalScope(scope string) bool {
+	return strings.HasPrefix(scope, "regions/") && len(scope) > len("regions/")
+}
+
+func newMqlNetworkFirewallPolicy(runtime *plugin.Runtime, projectId string, fp *compute.FirewallPolicy) (*mqlGcpProjectComputeServiceFirewallPolicy, error) {
+	associations, _ := convert.JsonToDictSlice(fp.Associations)
+
+	mqlFP, err := CreateResource(runtime, "gcp.project.computeService.firewallPolicy", map[string]*llx.RawData{
+		"id":        llx.StringData(strconv.FormatUint(fp.Id, 10)),
+		"projectId": llx.StringData(projectId),
+		// ShortName and DisplayName are documented "not applicable to
+		// network firewall policies" and always come back empty from
+		// NetworkFirewallPolicies.List; Name carries the user-provided
+		// name for this policy kind.
+		"name":           llx.StringData(fp.Name),
+		"displayName":    llx.StringData(fp.DisplayName),
+		"description":    llx.StringData(fp.Description),
+		"selfLink":       llx.StringData(fp.SelfLink),
+		"ruleTupleCount": llx.IntData(fp.RuleTupleCount),
+		"created":        llx.TimeDataPtr(parseTime(fp.CreationTimestamp)),
+		"associations":   llx.ArrayData(associations, types.Dict),
+	})
+	if err != nil {
+		return nil, err
+	}
+	mqlPolicy := mqlFP.(*mqlGcpProjectComputeServiceFirewallPolicy)
+	mqlPolicy.cacheRegionUrl = fp.Region
+	mqlPolicy.cacheRules = fp.Rules
+	return mqlPolicy, nil
+}
+
 type mqlGcpProjectComputeServiceFirewallPolicyInternal struct {
-	cacheRules []*compute.FirewallPolicyRule
+	cacheRules     []*compute.FirewallPolicyRule
+	cacheRegionUrl string
+}
+
+// firewallPolicyCacheId returns the cache id of a network firewall policy.
+//
+// A global policy keeps the id it has always had. A regional policy is keyed
+// by its self-link, which carries the region, so it can never share an id
+// with a global policy.
+func firewallPolicyCacheId(id, selfLink string) string {
+	if isRegionalSelfLink(selfLink) {
+		return "gcloud.compute.firewallPolicy/" + selfLink
+	}
+	return "gcloud.compute.firewallPolicy/" + id
+}
+
+// isRegionalSelfLink reports whether a Compute self-link addresses a regional
+// resource.
+func isRegionalSelfLink(selfLink string) bool {
+	return strings.Contains(selfLink, "/regions/")
 }
 
 func (g *mqlGcpProjectComputeServiceFirewallPolicy) id() (string, error) {
-	return "gcloud.compute.firewallPolicy/" + g.Id.Data, g.Id.Error
+	if g.Id.Error != nil {
+		return "", g.Id.Error
+	}
+	return firewallPolicyCacheId(g.Id.Data, g.SelfLink.Data), nil
+}
+
+// ruleIdPrefix qualifies the ids of the policy's rules. Global policies keep
+// their numeric id so their rule ids are unchanged; regional ones use the
+// self-link, matching the policy's own cache id.
+func (g *mqlGcpProjectComputeServiceFirewallPolicy) ruleIdPrefix() string {
+	if isRegionalSelfLink(g.SelfLink.Data) {
+		return g.SelfLink.Data
+	}
+	return g.Id.Data
 }
 
 func (g *mqlGcpProjectComputeServiceFirewallPolicy) fetchRules() ([]*compute.FirewallPolicyRule, error) {
@@ -316,6 +437,15 @@ func (g *mqlGcpProjectComputeServiceFirewallPolicy) fetchRules() ([]*compute.Fir
 	computeSvc, err := compute.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
 		return nil, err
+	}
+
+	if g.cacheRegionUrl != "" {
+		region := RegionNameFromRegionUrl(g.cacheRegionUrl)
+		policy, err := computeSvc.RegionNetworkFirewallPolicies.Get(projectId, region, name).Context(ctx).Do()
+		if err != nil {
+			return nil, err
+		}
+		return policy.Rules, nil
 	}
 
 	policy, err := computeSvc.NetworkFirewallPolicies.Get(projectId, name).Context(ctx).Do()
@@ -338,15 +468,29 @@ func (g *mqlGcpProjectComputeServiceFirewallPolicy) rules() ([]any, error) {
 			return nil, nil
 		}
 	}
-	policyId := g.Id.Data
-	res := make([]any, 0, len(g.cacheRules))
-	for _, r := range g.cacheRules {
+	return mqlFirewallPolicyRules(g.MqlRuntime, g.ruleIdPrefix(), g.cacheRules)
+}
+
+// mqlFirewallPolicyRules maps firewall policy rules onto MQL resources.
+//
+// Network firewall policies (attached to a project's network) and hierarchical
+// firewall policies (attached to an organization or folder) carry the same rule
+// type, so both share this mapping. policyId qualifies the generated rule ids so
+// rules from two policies cannot collide in the resource cache.
+func mqlFirewallPolicyRules(runtime *plugin.Runtime, policyId string, rules []*compute.FirewallPolicyRule) ([]any, error) {
+	res := make([]any, 0, len(rules))
+	for _, r := range rules {
+		if r == nil {
+			continue
+		}
 		match, _ := convert.JsonToDict(r.Match)
 
 		var srcIpRanges, destIpRanges, srcAddressGroups, destAddressGroups []any
 		var layer4Configs []any
+		layer4Protocols := map[string]any{}
 		srcSecureTags := map[string]any{}
 		if r.Match != nil {
+			layer4Protocols = layer4ProtocolPorts(r.Match.Layer4Configs)
 			srcIpRanges = convert.SliceAnyToInterface(r.Match.SrcIpRanges)
 			destIpRanges = convert.SliceAnyToInterface(r.Match.DestIpRanges)
 			srcAddressGroups = convert.SliceAnyToInterface(r.Match.SrcAddressGroups)
@@ -375,7 +519,7 @@ func (g *mqlGcpProjectComputeServiceFirewallPolicy) rules() ([]any, error) {
 			targetSecureTags[t.Name] = t.State
 		}
 
-		mqlRule, err := CreateResource(g.MqlRuntime, "gcp.project.computeService.firewallPolicy.rule", map[string]*llx.RawData{
+		mqlRule, err := CreateResource(runtime, "gcp.project.computeService.firewallPolicy.rule", map[string]*llx.RawData{
 			"id":                    llx.StringData(fmt.Sprintf("%s/rule/%d", policyId, r.Priority)),
 			"priority":              llx.IntData(int64(r.Priority)),
 			"action":                llx.StringData(r.Action),
@@ -390,7 +534,8 @@ func (g *mqlGcpProjectComputeServiceFirewallPolicy) rules() ([]any, error) {
 			"securityProfileGroup":  llx.StringData(r.SecurityProfileGroup),
 			"srcIpRanges":           llx.ArrayData(srcIpRanges, types.String),
 			"destIpRanges":          llx.ArrayData(destIpRanges, types.String),
-			"layer4Configs":         llx.ArrayData(layer4Configs, types.Any),
+			"layer4Configs":         llx.ArrayData(layer4Configs, types.Dict),
+			"layer4Protocols":       llx.MapData(layer4Protocols, types.Array(types.String)),
 			"srcSecureTags":         llx.MapData(srcSecureTags, types.String),
 			"srcAddressGroups":      llx.ArrayData(srcAddressGroups, types.String),
 			"destAddressGroups":     llx.ArrayData(destAddressGroups, types.String),

@@ -71,22 +71,27 @@ func (m *Errors) Error() string {
 	return res.String()
 }
 
+// Deduplicate returns the errors with duplicates (by message) removed,
+// preserving first-occurrence order. Order preservation is load-bearing:
+// callers render the result into user-visible strings (score messages,
+// upload failures), and rebuilding the slice from a map made the rendered
+// order a per-run dice roll — the same errors produced differently-ordered
+// messages on every scan.
 func (m Errors) Deduplicate() error {
 	if len(m.Errors) == 0 {
 		return nil
 	}
 
-	track := map[string]error{}
+	seen := make(map[string]struct{}, len(m.Errors))
+	res := make([]error, 0, len(m.Errors))
 	for i := range m.Errors {
 		e := m.Errors[i]
-		track[e.Error()] = e
-	}
-
-	res := make([]error, len(track))
-	i := 0
-	for _, v := range track {
-		res[i] = v
-		i++
+		msg := e.Error()
+		if _, ok := seen[msg]; ok {
+			continue
+		}
+		seen[msg] = struct{}{}
+		res = append(res, e)
 	}
 	return &Errors{Errors: res}
 }

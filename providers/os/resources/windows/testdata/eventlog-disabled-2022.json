@@ -1,0 +1,10 @@
+{
+  "LogName": "Microsoft-Windows-TaskScheduler/Operational",
+  "IsEnabled": false,
+  "MaximumSizeInBytes": 10485760,
+  "IsClassicLog": false,
+  "LogFilePath": "%SystemRoot%\\System32\\Winevt\\Logs\\Microsoft-Windows-TaskScheduler%4Operational.evtx",
+  "SystemRoot": "C:\\Windows",
+  "RecordCount": 0,
+  "LogMode": "Circular"
+}

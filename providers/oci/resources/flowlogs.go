@@ -4,7 +4,7 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // VCN flow logs are modeled in OCI as `logging.Log` resources whose

@@ -6,31 +6,219 @@ package mqlc
 import (
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/mqlc/parser"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/sortx"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/mqlc/parser"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/sortx"
 )
 
 type ErrIdentifierNotFound struct {
 	Identifier string
 	Binding    string
+
+	// Provider is the id of the provider whose namespace the identifier falls
+	// under, when we can establish one, and ProviderVersion is the version of
+	// it that is installed. Together they turn "cannot find field 'x'" into a
+	// message that says which component would have to be newer -- the most
+	// common cause of the failure by far, and the one the bare message gives
+	// no hint of (ADR 040 part 1).
+	//
+	// We deliberately do not claim which version would be new *enough*: that
+	// needs a registry of schemas we do not have, and a guess here would send
+	// people chasing an upgrade that does not contain what they want.
+	Provider        string
+	ProviderVersion string
 }
 
 func (e *ErrIdentifierNotFound) Error() string {
+	var msg string
 	if e.Binding == "" {
-		return "cannot find resource for identifier '" + e.Identifier + "'"
+		msg = "cannot find resource for identifier '" + e.Identifier + "'"
+	} else {
+		msg = "cannot find field or resource '" + e.Identifier + "' in block for type '" + e.Binding + "'"
 	}
-	return "cannot find field or resource '" + e.Identifier + "' in block for type '" + e.Binding + "'"
+	if hint := e.versionHint(); hint != "" {
+		msg += " (" + hint + ")"
+	}
+	return msg
+}
+
+func (e *ErrIdentifierNotFound) versionHint() string {
+	if e.Provider == "" || e.ProviderVersion == "" {
+		return ""
+	}
+	what := "resource"
+	if e.Binding != "" {
+		what = "field"
+	}
+	return providerLabel(e.Provider) + " provider " + e.ProviderVersion +
+		" is installed; this " + what + " may require a newer one"
+}
+
+// providerLabel trims a provider id down to the name people use on the command
+// line. Ids are module paths ("go.mondoo.com/mql/providers/aws"), which are the
+// right key but the wrong thing to print.
+func providerLabel(id string) string {
+	return resources.ProviderKey(id)
+}
+
+// identifierProvider finds the provider that owns the namespace an unresolvable
+// identifier sits in, by walking the dotted name back to the longest prefix
+// that does resolve. `aws.s3.nope` gets attributed to whoever owns `aws.s3`.
+func identifierProvider(schema resources.ResourcesSchema, id string) string {
+	if schema == nil {
+		return ""
+	}
+	name := id
+	for {
+		before, _, ok := strings.CutLast(name, ".")
+		if !ok || before == "" {
+			return ""
+		}
+		name = before
+		if info := schema.Lookup(name); info != nil && info.Provider != "" {
+			return info.Provider
+		}
+	}
+}
+
+// bindingProvider attributes a failed field access to the provider that owns
+// the resource it was attempted on.
+func bindingProvider(schema resources.ResourcesSchema, typ types.Type) string {
+	if schema == nil {
+		return ""
+	}
+	name := resourceOf(typ)
+	if name == "" {
+		return ""
+	}
+	if info := schema.Lookup(name); info != nil {
+		return info.Provider
+	}
+	return ""
+}
+
+// skewHint renders the parenthetical that turns a name-resolution failure into
+// a version-skew lead, or "" when we cannot attribute the failure to a provider.
+// It is appended to the existing messages rather than replacing them, so a
+// caller that has no provenance to work with sees exactly what it saw before.
+func (c *compiler) skewHint(provider string, what string) string {
+	if provider == "" || c.Schema == nil {
+		return ""
+	}
+	version, ok := (&resources.Schema{
+		ProviderVersions: c.Schema.AllProviderVersions(),
+	}).ProviderVersion(provider)
+	if !ok {
+		return ""
+	}
+	return " (" + providerLabel(provider) + " provider " + version +
+		" is installed; this " + what + " may require a newer one)"
+}
+
+// rootScopeHint names the roots that do carry a field the current root lacks.
+//
+// A field missing from an asset root is usually a platform mismatch, not version
+// skew: `_.registrykey` on a Linux host fails because the asset is rooted at
+// `os.linux` and the registry lives on `os.windows` (ADR 031). Saying "the
+// provider may need to be newer" there sends the reader after an upgrade that
+// cannot help, so this hint takes precedence over the version-skew lead.
+//
+// Only roots are offered as alternatives, read from the schema's `@root`
+// marking rather than guessed from the shape of a name: `os.date` sits in the
+// same namespace and has a `timezone` field, but "timezone is available on
+// os.date" answers nothing - no asset is ever rooted there. Membership is
+// checked the way resolution checks it, through embeds, so a member inherited
+// from a universal root is reported on every root that inherits it.
+func (c *compiler) rootScopeHint(typ types.Type, id string) string {
+	if c.AssetRoot == "" || c.Schema == nil || !typ.IsResource() {
+		return ""
+	}
+	current := typ.ResourceName()
+	if info := c.Schema.Lookup(current); info == nil || !info.GetRoot() {
+		// Failing on something other than a root says nothing about platforms.
+		return ""
+	}
+
+	top := c
+	for top.parent != nil {
+		top = top.parent
+	}
+
+	var found []string
+	for _, root := range top.rootIdx().roots {
+		if root.Id == current {
+			continue
+		}
+		if _, _, ok := c.Schema.FindField(root, id); ok {
+			found = append(found, root.Id)
+		}
+	}
+	if len(found) == 0 {
+		return ""
+	}
+	sort.Strings(found)
+	return " (this asset is rooted at " + current + "; " + id + " is available on " +
+		strings.Join(found, ", ") + ")"
+}
+
+// fieldSkewHint attributes a failed field access to the provider owning the
+// resource it was attempted on.
+func (c *compiler) fieldSkewHint(typ types.Type) string {
+	return c.skewHint(bindingProvider(c.Schema, typ), "field")
+}
+
+// resourceFieldSkewHint is fieldSkewHint for the paths that already hold the
+// resource info and do not need to look it up again.
+func (c *compiler) resourceFieldSkewHint(info *resources.ResourceInfo) string {
+	if info == nil {
+		return ""
+	}
+	return c.skewHint(info.Provider, "field")
+}
+
+// notFound builds an identifier error already carrying its version context, so
+// no construction site can forget to attach it.
+func (c *compiler) notFound(id string, binding *variable) *ErrIdentifierNotFound {
+	err := &ErrIdentifierNotFound{Identifier: id}
+
+	var provider string
+	if binding == nil {
+		provider = identifierProvider(c.Schema, id)
+	} else {
+		// Both of these read the binding the caller passed, not c.Binding.
+		// They are the same object today - compileIdentifier's only caller
+		// hands it c.Binding - but reading the field here would make the
+		// reported type and the resolved provider disagree the moment a caller
+		// passes anything else, which is exactly what a nested-block binding
+		// would do.
+		err.Binding = binding.typ.Label()
+		provider = bindingProvider(c.Schema, binding.typ)
+	}
+	if provider == "" {
+		return err
+	}
+
+	err.Provider = provider
+	if c.Schema != nil {
+		if v, ok := (&resources.Schema{
+			ProviderVersions: c.Schema.AllProviderVersions(),
+		}).ProviderVersion(provider); ok {
+			err.ProviderVersion = v
+		}
+	}
+	return err
 }
 
 type ErrPropertyNotFound struct {
@@ -57,6 +245,10 @@ type varmap struct {
 	blockref uint64
 	parent   *varmap
 	vars     map[string]variable
+	// assigned holds the refs of every `name = value` in this scope, including
+	// the ones a later assignment to the same name shadowed. A definition is
+	// never a result of its own.
+	assigned map[uint64]struct{}
 }
 
 func newvarmap(blockref uint64, parent *varmap) *varmap {
@@ -64,6 +256,7 @@ func newvarmap(blockref uint64, parent *varmap) *varmap {
 		blockref: blockref,
 		parent:   parent,
 		vars:     map[string]variable{},
+		assigned: map[uint64]struct{}{},
 	}
 }
 
@@ -81,8 +274,10 @@ func (vm *varmap) add(name string, v variable) {
 	vm.vars[name] = v
 }
 
-func (vm *varmap) len() int {
-	return len(vm.vars)
+// assign adds a variable the user defined with `name = value`
+func (vm *varmap) assign(name string, v variable) {
+	vm.vars[name] = v
+	vm.assigned[v.ref] = struct{}{}
 }
 
 type CompilerConfig struct {
@@ -90,6 +285,54 @@ type CompilerConfig struct {
 	UseAssetContext bool
 	Stats           CompilerStats
 	Features        mql.Features
+	// Strict compiles under ADR 043 strict mode: every link in an access chain
+	// must resolve, and `?` is how the author marks one optional. It is
+	// deliberately not a feature flag - strictness is a property of the content
+	// being compiled (a policy declares it), not of the client running it, so it
+	// is set per compile. Off by default, which reproduces today's behavior
+	// exactly: nothing is marked and the runtime keeps propagating null.
+	Strict bool
+
+	// Translations is the downgrade catalog of the loaded providers, and
+	// DowngradeFloor the oldest version of each provider this compile should
+	// still serve (ADR 040 part 6). Both are supplied by the caller: mqlc has no
+	// dependency on the provider machinery today and must not gain one, so
+	// whoever holds the coordinator passes these in exactly as it already
+	// passes Schema.
+	//
+	// With either empty, nothing is emitted and the bundle is what it always
+	// was - which is also what happens when the provider binaries are not
+	// available to read a catalog from.
+	//
+	// NewConfigFrom fills both in: the catalog from the runtime, and the floor
+	// from DefaultDowngradeFloor. Override DowngradeFloor to reach further back
+	// than the default window, or clear it to emit nothing.
+	Translations   llx.TranslationSource
+	DowngradeFloor map[string]string
+
+	// AssetRoot is the resource that roots the connected asset's tree, which is
+	// what `_` resolves to at the top level of a query (ADR 031). Supplied by
+	// the caller for the same reason as Schema; NewConfigFrom fills it in from
+	// the runtime.
+	//
+	// Empty leaves `_` failing at the top level, as it always did: there is no
+	// root to name, and guessing one would answer with a resource that only
+	// partly covers the asset.
+	AssetRoot string
+
+	// DeclaredAssetRoot is the root the provider declares statically, which for
+	// a multi-platform provider is the union of its roots. Only diagnostics use
+	// it: the union is a compile-time receiver, not a platform, so it must not
+	// be offered as the place a missing field is available.
+	DeclaredAssetRoot string
+
+	// RootedNamespace resolves bare identifiers against the asset root instead
+	// of the global namespace, which is the v15 model (ADR 031 point 7). Set
+	// from the feature of the same name. With it on, the global namespace is
+	// reachable only through resources marked `@global`, and a compile without a
+	// root is an error rather than a silent fall back to global resolution.
+	RootedNamespace bool
+
 	// EditorMode suppresses non-fatal interactive advisories, like standalone
 	// where warnings, that would otherwise spam terminals during live shell recompiles.
 	EditorMode bool
@@ -103,10 +346,39 @@ func (c *CompilerConfig) EnableMultiStats() {
 	c.Stats = newCompilerMultiStats()
 }
 
+// NewConfigFrom builds a compiler config from a runtime, which is NewConfig plus
+// whatever else the runtime can supply - today the downgrade translation catalog
+// (ADR 040 part 6).
+//
+// Prefer this wherever a runtime is in hand. mql is the only compiler there is,
+// so any capability that has to reach every compile has to reach it through one
+// of these constructors; a caller that assembles CompilerConfig by hand silently
+// opts out.
+//
+// A runtime with no schema yields no DowngradeFloor, so nothing is emitted. That
+// is the right outcome - a floor is meaningless without provider versions to
+// measure against - but it is silent, so a caller wondering why its floor is
+// empty should check the schema first.
+func NewConfigFrom(runtime llx.Runtime, features mql.Features) CompilerConfig {
+	conf := NewConfig(runtime.Schema(), features)
+	if src, ok := runtime.(llx.TranslationSource); ok {
+		conf.Translations = src
+	}
+	if schema := runtime.Schema(); schema != nil {
+		conf.DowngradeFloor = DefaultDowngradeFloor(schema.AllProviderVersions())
+	}
+	if src, ok := runtime.(llx.AssetRootSource); ok {
+		conf.AssetRoot = src.AssetRoot()
+		conf.DeclaredAssetRoot = src.DeclaredAssetRoot()
+	}
+	return conf
+}
+
 func NewConfig(schema resources.ResourcesSchema, features mql.Features) CompilerConfig {
 	return CompilerConfig{
 		Schema:          schema,
 		UseAssetContext: features.IsActive(mql.MQLAssetContext),
+		RootedNamespace: features.IsActive(mql.RootedNamespace),
 		Stats:           compilerStatsNull{},
 		Features:        features,
 	}
@@ -151,6 +423,20 @@ type compiler struct {
 	blockDeps []uint64
 	props     PropsHandler
 	comment   string
+
+	// translationBlocks memoizes relocated downgrade blocks so a field read in
+	// several places shares one block instead of getting a copy each time. See
+	// compiler.translationBlock.
+	translationBlocks map[string]uint64
+
+	// compatibleRoots is the running intersection of the asset roots that can
+	// execute this code, narrowed by every member read off a root. Nil until the
+	// first such read, which is what "no requirement" looks like.
+	compatibleRoots map[string]struct{}
+
+	// roots indexes the schema's asset roots for narrowing. Held only on the
+	// top-level compiler, where the intersection lives.
+	roots *rootIndex
 
 	// a standalone code is one that doesn't call any of its bindings
 	// examples:
@@ -237,6 +523,87 @@ func (c *compiler) tailRef() uint64 {
 	return c.block.TailRef(c.blockRef)
 }
 
+// linkNullability is the marker a single link in an access chain should carry.
+// Only dereferences go through here; operators are compiled elsewhere and stay
+// unmarked, which is what keeps `a.f == "no"` returning false on a null `f`
+// instead of erroring (ADR 043 §3).
+func (c *compiler) linkNullability(optional bool) llx.Function_Nullability {
+	if !c.Strict {
+		return llx.Function_NULLABILITY_UNSPECIFIED
+	}
+	if optional {
+		return llx.Function_NULLABILITY_OPTIONAL
+	}
+	return llx.Function_NULLABILITY_REQUIRED
+}
+
+// markNullability stamps every chunk emitted after afterRef with a strict-mode
+// marker, and refreshes their checksums.
+//
+// Chunks are checksummed by Block.AddChunk at insertion time, so marking one
+// afterwards means recomputing. That is only sound while nothing downstream has
+// been added yet - dependents fold this checksum into their own - so callers
+// must stamp a link immediately after emitting it and before compiling the next.
+// A link can emit more than one chunk (a nested field path), hence the range.
+//
+// Labels registered inline during compilation are keyed by checksum, so they
+// move with it; the bulk of labeling runs as a post-pass over the final
+// checksums and needs nothing here.
+func (c *compiler) markNullability(afterRef uint64, n llx.Function_Nullability) {
+	if n == llx.Function_NULLABILITY_UNSPECIFIED {
+		return
+	}
+
+	code := c.Result.CodeV2
+	tail := c.tailRef()
+
+	// Label moves are collected here and applied after the walk. Two chunks in
+	// this range can share a pre-mark checksum, and deleting the old key inline
+	// would then drop the label the previous iteration had just written under
+	// the new one.
+	type rename struct{ from, to string }
+	var renames []rename
+
+	for ref := afterRef + 1; ref <= tail; ref++ {
+		if !c.isInMyBlock(ref) {
+			continue
+		}
+		chunk := code.Chunk(ref)
+		// Primitives have no binding and cannot fail to resolve.
+		if chunk == nil || chunk.Function == nil || chunk.Function.Nullability == n {
+			continue
+		}
+
+		old := code.Checksums[ref]
+		chunk.Function.Nullability = n
+		nu := chunk.ChecksumV2(c.blockRef, code)
+		code.Checksums[ref] = nu
+
+		if old != nu {
+			if _, ok := c.Result.Labels.Labels[old]; ok {
+				renames = append(renames, rename{from: old, to: nu})
+			}
+		}
+	}
+
+	if len(renames) == 0 {
+		return
+	}
+
+	// Read every label before writing any: one rename's source may be another
+	// rename's target, and interleaving the two would lose it.
+	labels := make([]string, len(renames))
+	for i, r := range renames {
+		labels[i] = c.Result.Labels.Labels[r.from]
+	}
+	for _, r := range renames {
+		delete(c.Result.Labels.Labels, r.from)
+	}
+	for i, r := range renames {
+		c.Result.Labels.Labels[r.to] = labels[i]
+	}
+}
+
 // tailDataRef returns overrideTailDataRef if set (consuming it),
 // otherwise falls back to tailRef. Used after builtin calls like
 // `having` where the data continuation point differs from the tail.
@@ -304,11 +671,19 @@ func findFuzzy(name string, names []string) fuzzy.Ranks {
 
 func addResourceSuggestions(schema resources.ResourcesSchema, name string, res *llx.CodeBundle) {
 	resourceInfos := schema.AllResources()
-	names := make([]string, len(resourceInfos))
-	i := 0
-	for key := range resourceInfos {
-		names[i] = key
-		i++
+	names := make([]string, 0, len(resourceInfos))
+	for key, info := range resourceInfos {
+		// Aliases are a second name for a resource that is already in this
+		// pool under its own name (the schema marks one by a map key that
+		// differs from the entry's id), so suggesting both is redundant by
+		// construction. It also drowns the pool: a provider that attaches its
+		// whole surface to its asset roots (ADR 031) contributes one rooted
+		// alias per resource, and the longer names widen every fuzzy match -
+		// `ssh` starts suggesting `os.base.apache2`.
+		if info != nil && info.Id != "" && info.Id != key {
+			continue
+		}
+		names = append(names, key)
 	}
 
 	suggested := findFuzzy(name, names)
@@ -485,7 +860,7 @@ func (c *compiler) compileIfBlock(expressions []*parser.Expression, chunk *llx.C
 	if err != nil {
 		return types.Nil, err
 	}
-	blockCompiler.updateEntrypoints(false)
+	blockCompiler.updateEntrypoints()
 
 	block := blockCompiler.block
 
@@ -641,7 +1016,7 @@ func (c *compiler) compileSwitchBlock(expressions []*parser.Expression, chunk *l
 		if err != nil {
 			return types.Nil, err
 		}
-		blockCompiler.updateEntrypoints(false)
+		blockCompiler.updateEntrypoints()
 
 		// TODO(jaym): Discuss with dom: v1 seems to hardcore this as
 		// single valued
@@ -738,7 +1113,7 @@ func (c *compiler) blockcompileOnResource(expressions []*parser.Expression, typ 
 		return &blockCompiler, err
 	}
 
-	blockCompiler.updateEntrypoints(false)
+	blockCompiler.updateEntrypoints()
 	blockCompiler.updateLabels()
 
 	return &blockCompiler, nil
@@ -765,6 +1140,25 @@ func (c *compiler) blockExpressions(expressions []*parser.Expression, typ types.
 
 	if typ.IsArray() {
 		return c.blockOnResource(expressions, typ.Child(), binding, bindingName)
+	}
+
+	// A block on an asset reference runs against the root resource of the
+	// referenced asset, so the deref happens once here rather than once per
+	// field inside the block.
+	if typ.IsAsset() {
+		rootBinding, err := c.compileAssetRoot(&variable{typ: typ, ref: binding})
+		if err != nil {
+			return blockRefs{}, err
+		}
+		if c.Schema.Lookup(rootBinding.typ.ResourceName()) == nil {
+			// Without the root's schema there is no type to compile a block
+			// against. A single field still works (it defers its type to the
+			// executing runtime), a block does not. See ADR 031 decision 2.
+			return blockRefs{}, errors.New("cannot open a block on asset root '" +
+				rootBinding.typ.ResourceName() + "': its schema is not loaded here")
+		}
+		typ = rootBinding.typ
+		binding = rootBinding.ref
 	}
 
 	// when calling a block {} on an array resource, we expand it to all its list
@@ -838,7 +1232,12 @@ func (c *compiler) unnamedArgs(callerLabel string, init *resources.Init, args []
 	}
 
 	// add all calls to the chunk stack
-	// collect all their types and call references
+	// collect all their types and call references.
+	// len(args) is bounded by the parsed query, but guard the size computation
+	// explicitly so len(args)*2 can never overflow on pathological input.
+	if len(args) > math.MaxInt/2 {
+		return nil, errors.New("Called " + callerLabel + " with too many arguments")
+	}
 	res := make([]*llx.Primitive, len(args)*2)
 
 	for idx := range args {
@@ -897,6 +1296,11 @@ func (c *compiler) resourceArgs(resource *resources.ResourceInfo, args []*parser
 		return c.unnamedResourceArgs(resource, args)
 	}
 
+	// len(args) is bounded by the parsed query, but guard the size computation
+	// explicitly so len(args)*2 can never overflow on pathological input.
+	if len(args) > math.MaxInt/2 {
+		return nil, errors.New("resource " + resource.Name + " called with too many arguments")
+	}
 	res := make([]*llx.Primitive, len(args)*2)
 	for idx := range args {
 		arg := args[idx]
@@ -1021,6 +1425,7 @@ func (c *compiler) compileBoundIdentifierWithMqlCtx(id string, binding *variable
 
 		fieldPath, fieldinfos, ok := c.Schema.FindField(resource, id)
 		if ok {
+			c.narrowRoots(resource, id)
 			fieldinfo := fieldinfos[len(fieldinfos)-1]
 			c.Stats.CallField(resource.Name, fieldinfo)
 
@@ -1050,7 +1455,13 @@ func (c *compiler) compileBoundIdentifierWithMqlCtx(id string, binding *variable
 					if call != nil && len(call.Function) > 0 {
 						realResource := c.Schema.Lookup(typ.ResourceName())
 						if realResource == nil {
-							return true, types.Nil, errors.New("could not find resource " + typ.ResourceName())
+							// Classified rather than bare (ADR 046): downstream
+							// this means the asset went away mid-scan, and
+							// cnspec reads it today by matching the message
+							// prefix. The message is unchanged so that match
+							// keeps working until it reads the kind instead.
+							return true, types.Nil, llx.AssetVanished(
+								errors.New("could not find resource " + typ.ResourceName()))
 						}
 						args, err := c.resourceArgs(realResource, call.Function)
 						if err != nil {
@@ -1084,6 +1495,11 @@ func (c *compiler) compileBoundIdentifierWithMqlCtx(id string, binding *variable
 					},
 				})
 				lastRef = c.tailRef()
+				// Downgrade fallbacks for this field (ADR 040 part 6). Field
+				// chunks are emitted from two places; both have to offer them,
+				// or whether a fallback exists would depend on how the field
+				// was reached rather than on what the field is.
+				c.emitTranslations(resource.Id, p, lastRef, types.Type(fieldinfos[i].Type))
 			}
 
 			return true, typ, nil
@@ -1097,23 +1513,223 @@ func (c *compiler) compileBoundIdentifierWithMqlCtx(id string, binding *variable
 		return true, typ, err
 	}
 
+	// `asset<root>.field` chains into the referenced asset's tree. Tried after
+	// the builtins, so the nil comparisons registered on the asset type keep
+	// winning over a same-named field of the root.
+	if typ.IsAsset() {
+		return c.compileAssetRootField(id, binding, call)
+	}
+
 	return false, types.Nil, nil
+}
+
+// compileAssetRootField compiles a field read on the resource that roots the
+// asset a typed `asset<root>` value points at (ADR 031).
+//
+// The asset is dereferenced into its root resource by its own chunk, so
+// everything above it is an ordinary resource chain: blocks, `where`, labels and
+// recording all see a resource and need to know nothing about assets.
+func (c *compiler) compileAssetRootField(id string, binding *variable, call *parser.Call) (bool, types.Type, error) {
+	rootBinding, err := c.compileAssetRoot(binding)
+	if err != nil {
+		return true, types.Nil, err
+	}
+
+	if c.Schema.Lookup(rootBinding.typ.ResourceName()) == nil {
+		// The root's schema is not loaded here, so the member cannot be checked.
+		// This is the compile-here / run-there case (a bundle compiled where the
+		// referenced provider is not installed), so the field is emitted untyped
+		// and its type resolves from the executing runtime's schema. See ADR 031
+		// decision 2.
+		// Arguments would have to be checked against an init signature this
+		// compile cannot see, so they are refused rather than passed on
+		// unchecked.
+		if call != nil && len(call.Function) > 0 {
+			return true, types.Nil, errors.New("cannot call '" + id + "' with arguments: the schema for asset root '" +
+				rootBinding.typ.ResourceName() + "' is not loaded")
+		}
+
+		log.Debug().
+			Str("root", rootBinding.typ.ResourceName()).
+			Str("field", id).
+			Msg("mqlc> cannot type-check a field of an asset root that no loaded schema defines; deferring it to runtime")
+
+		c.addChunk(&llx.Chunk{
+			Call: llx.Chunk_FUNCTION,
+			Id:   id,
+			Function: &llx.Function{
+				Type:    string(types.Any),
+				Binding: rootBinding.ref,
+			},
+		})
+		return true, types.Any, nil
+	}
+
+	return c.compileBoundIdentifierWithMqlCtx(id, rootBinding, call)
+}
+
+// compileAssetRoot emits the chunk that turns an `asset<root>` value into the
+// root resource of the asset it points at, and returns the binding for it.
+func (c *compiler) compileAssetRoot(binding *variable) (*variable, error) {
+	root := binding.typ.AssetRootName()
+	if root == "" {
+		return nil, errors.New("cannot resolve into an asset reference that declares no root type")
+	}
+
+	typ := types.Resource(root)
+	c.addChunk(&llx.Chunk{
+		Call: llx.Chunk_FUNCTION,
+		Id:   llx.AssetRootChunkID,
+		Function: &llx.Function{
+			Type:    string(typ),
+			Binding: binding.ref,
+		},
+	})
+	return &variable{typ: typ, ref: c.tailRef()}, nil
+}
+
+// prefersFieldOverResource reports whether the dotted path `owner`.`field`
+// should be compiled as a field read on owner instead of being extended into the
+// resource of the same name.
+//
+// The path extension is greedy, so a resource name always used to win over a
+// field of the same name. That is wrong for private resources: private means the
+// resource cannot stand on its own, and a bare instance skips the owner's
+// accessor. For resources whose fields are only filled by that accessor every
+// field then reads null, which combined with MQL's asymmetric null comparisons
+// turns a check into a confidently wrong verdict rather than an error. See
+// windows.deviceGuard, windows.lsa.ntlm, aws.emr.cluster.encryptionConfiguration
+// and friends.
+//
+// Only redirect when the owner really does expose the value under that name and
+// with exactly that type, so nothing that used to compile becomes unreachable.
+// Implicit fields are excluded: those are the singular accessors lr generates for
+// every `x.y` resource, they are not backed by an accessor on the owner, so
+// routing through them would break paths that work today.
+func (c *compiler) prefersFieldOverResource(owner *resources.ResourceInfo, target *resources.ResourceInfo, field string) bool {
+	if !target.GetPrivate() {
+		return false
+	}
+	_, f := c.Schema.LookupField(owner.Name, field)
+	if f == nil || f.GetIsImplicitResource() {
+		return false
+	}
+	return types.Type(f.Type) == types.Resource(target.Name)
 }
 
 // compile a resource from an identifier, trying to find the longest matching resource
 // and execute all call functions if there are any
+// compileRootMember resolves an identifier as a member of the connected asset's
+// root, which is what makes a query behave like `assetRoot { ... }` (ADR 031
+// point 7). It emits the root resource and then the member on top of it, so
+// `hostname` compiles exactly as `os.linux.hostname` would.
+//
+// Reports false when there is no root, or the root does not carry the member, so
+// the caller falls through to its own not-found handling and the message stays
+// about the identifier the user typed.
+func (c *compiler) compileRootMember(id string, calls []*parser.Call) (bool, []*parser.Call, types.Type, error) {
+	if c.AssetRoot == "" {
+		return false, nil, types.Nil, nil
+	}
+	root := c.Schema.Lookup(c.AssetRoot)
+	if root == nil {
+		return false, nil, types.Nil, nil
+	}
+	// FindField walks embedded resources, which is how a member of `os.base`
+	// is reachable on the `os.linux` root.
+	_, fields, ok := c.Schema.FindField(root, id)
+	if !ok {
+		return false, nil, types.Nil, nil
+	}
+
+	// A call with arguments that this member cannot serve is not a member read
+	// at all: it names the resource of the same name. `tls` is a member of
+	// `network.host` *and* a resource you construct with a target, so
+	// `tls("example.com")` has to reach the resource while a bare `tls` reads
+	// the member. Declining here is the same move a type conversion makes when
+	// it is called with no arguments - the identifier goes back for the other
+	// interpretation rather than failing on this one.
+	if len(calls) > 0 && calls[0].Function != nil && len(calls[0].Function) > 0 &&
+		!c.rootMemberTakesArgs(fields) {
+		return false, nil, types.Nil, nil
+	}
+
+	rootType, err := c.addResource(c.AssetRoot, root, nil)
+	if err != nil {
+		return true, nil, types.Nil, err
+	}
+	binding := &variable{typ: rootType, ref: c.tailRef()}
+
+	var call *parser.Call
+	if len(calls) > 0 && calls[0].Function != nil {
+		call = calls[0]
+		calls = calls[1:]
+	}
+
+	found, typ, err := c.compileBoundIdentifier(id, binding, call)
+	if !found && err == nil {
+		err = errors.New("cannot find field '" + id + "' in " + c.AssetRoot)
+	}
+	return true, calls, typ, err
+}
+
+// rootMemberTakesArgs reports whether a root member can be called with
+// arguments. Only one shape can: an *implicit* member, the kind an alias
+// creates, which constructs its resource and so passes the arguments to that
+// resource's init. `_.file("/etc/hosts")` is that shape.
+//
+// A field that merely *returns* a resource cannot, even though its type has an
+// init: reading it runs the provider's accessor, which takes no arguments.
+// `network.host.tls` is that shape - it hands back the TLS endpoint of the
+// connected host - so `tls("example.com")` has to mean the resource instead.
+// And a plain field cannot either, whatever dependencies it declares:
+// `path(env)` names what the compiler resolves first, not something a user
+// passes.
+func (c *compiler) rootMemberTakesArgs(fields []*resources.Field) bool {
+	if len(fields) == 0 {
+		return false
+	}
+	field := fields[len(fields)-1]
+	if field == nil || !field.IsImplicitResource {
+		return false
+	}
+	name := types.ResourceOf(types.Type(field.Type))
+	if name == "" {
+		return false
+	}
+	info := c.Schema.Lookup(name)
+	if info == nil || info.Init == nil {
+		return false
+	}
+	return len(info.Init.Args) > 0
+}
+
 func (c *compiler) compileResource(id string, calls []*parser.Call) (bool, []*parser.Call, types.Type, error) {
 	resource := c.Schema.Lookup(id)
 	if resource == nil {
 		return false, nil, types.Nil, nil
 	}
+	// Checked on the name that entered the namespace, before the dotted walk
+	// below: `sshd.config.params` reaches the namespace as `sshd`, and whether
+	// *that* hangs off the root is the question. The leaf never does - a root
+	// carries `sshd`, not `sshd.config`.
+	c.noteIfUnrooted(resource)
 
 	for len(calls) > 0 && calls[0].Ident != nil {
-		nuID := id + "." + (*calls[0].Ident)
+		field := *calls[0].Ident
+		nuID := id + "." + field
 		nuResource := c.Schema.Lookup(nuID)
 		if nuResource == nil {
 			break
 		}
+		if c.prefersFieldOverResource(resource, nuResource, field) {
+			break
+		}
+		// Extending a root by one segment is a member read off that root, the
+		// same as a field access: `_.iptables` reaches the resource by its
+		// rooted name because the alias made one, and it narrows what can run
+		// this bundle just as `_ { iptables }` does.
+		c.narrowRoots(resource, field)
 		resource, id = nuResource, nuID
 		calls = calls[1:]
 	}
@@ -1128,6 +1744,178 @@ func (c *compiler) compileResource(id string, calls []*parser.Call) (bool, []*pa
 
 	typ, err := c.addResource(id, resource, call)
 	return true, calls, typ, err
+}
+
+// narrowRoots keeps track of which asset roots can execute this bundle, by
+// intersecting - for every member read off a root - the roots that carry it
+// (ADR 031 point 4).
+//
+// A query reading only universal members stays satisfied by every root; one
+// reading `iptables` narrows to the Linux root and the union above it. That is
+// applicability derived from what the code reads, rather than declared next to
+// it by hand.
+//
+// Only members read off a *root* count. A member of an ordinary resource says
+// nothing about which asset can run the query, and the global namespace says
+// nothing either - which is why a v14 bundle that never touches a root records
+// no requirement and runs everywhere, exactly as before.
+func (c *compiler) narrowRoots(resource *resources.ResourceInfo, field string) {
+	if resource == nil || !resource.GetRoot() || c.Schema == nil {
+		return
+	}
+
+	// Blocks compile in their own compiler, so the intersection - and the index
+	// the carriers come from - live on the one at the top: a member read inside
+	// `_ { ... }` narrows the same bundle as one read outside it.
+	top := c
+	for top.parent != nil {
+		top = top.parent
+	}
+
+	carriers := top.rootIdx().carriersOf(c.Schema, field)
+	if len(carriers) == 0 {
+		return
+	}
+
+	if top.compatibleRoots == nil {
+		// Copied, not aliased: the intersection below mutates this map, and
+		// carriers comes from the index, where it is answering for every other
+		// read of the same member.
+		top.compatibleRoots = make(map[string]struct{}, len(carriers))
+		for name := range carriers {
+			top.compatibleRoots[name] = struct{}{}
+		}
+		return
+	}
+	// Intersecting can empty the set, and an empty *non-nil* set is meaningful:
+	// members were read off a root, and no single root carries all of them. It
+	// stays distinct from nil (nothing was read off a root at all) only until
+	// recordCompatibleRoots, which deliberately treats both as "no requirement".
+	// Do not add a `!= nil` test to that decision without reading the reasoning
+	// there first - the two states differ in provenance, not in verdict.
+	for name := range top.compatibleRoots {
+		if _, ok := carriers[name]; !ok {
+			delete(top.compatibleRoots, name)
+		}
+	}
+}
+
+// recordCompatibleRoots writes the narrowed set onto the bundle.
+//
+// An empty intersection is recorded as no requirement rather than as
+// "unsatisfiable". A query that reads a Linux-only and a Windows-only member is
+// usually a deliberately cross-platform one - `if ... else ...` over both - and
+// it should still run, with each member degrading on the platform that lacks
+// it. Refusing it, or marking it runnable nowhere, would break that pattern.
+func (c *compiler) recordCompatibleRoots() {
+	if len(c.compatibleRoots) == 0 {
+		return
+	}
+	roots := make([]string, 0, len(c.compatibleRoots))
+	for name := range c.compatibleRoots {
+		roots = append(roots, name)
+	}
+	sort.Strings(roots)
+	c.Result.CompatibleRoots = roots
+}
+
+// rootIndex answers "which asset roots carry this member" without walking the
+// schema for every read.
+//
+// Finding the roots means scanning every resource the schema knows - hundreds
+// in a two-provider schema, many thousands with a full set installed - so doing
+// it per field access made narrowing cost O(fields x resources). Both halves are
+// stable for the length of a compile: the roots do not change, and neither does
+// which of them carries a given member.
+type rootIndex struct {
+	roots    []*resources.ResourceInfo
+	carriers map[string]map[string]struct{}
+}
+
+func (c *compiler) rootIdx() *rootIndex {
+	if c.roots != nil {
+		return c.roots
+	}
+
+	// The provider's declared root is the union of its roots, a compile-time
+	// receiver no connection ever reports. It carries every member by
+	// construction, so counting it would make every intersection non-empty and
+	// leave deliberately cross-platform content narrowed to a root no asset has.
+	unions := c.Schema.AllProviderRoots()
+
+	idx := &rootIndex{carriers: map[string]map[string]struct{}{}}
+	for name, info := range c.Schema.AllResources() {
+		if info == nil || !info.GetRoot() || name != info.Id {
+			continue
+		}
+		if unions[info.GetProvider()] == name {
+			continue
+		}
+		idx.roots = append(idx.roots, info)
+	}
+	c.roots = idx
+	return idx
+}
+
+func (idx *rootIndex) carriersOf(schema resources.ResourcesSchema, field string) map[string]struct{} {
+	if known, ok := idx.carriers[field]; ok {
+		return known
+	}
+
+	carriers := map[string]struct{}{}
+	for _, root := range idx.roots {
+		if _, _, ok := schema.FindField(root, field); ok {
+			carriers[root.Id] = struct{}{}
+		}
+	}
+	idx.carriers[field] = carriers
+	return carriers
+}
+
+// noteIfUnrooted records a resource that this bundle reaches through the global
+// namespace and that has no home in an asset's tree (ADR 031 point 7).
+//
+// Recorded on the bundle and never logged. Compilation runs on every keystroke
+// behind shell autocomplete, so anything the compiler prints lands in the middle
+// of the terminal UI - typing `os` was enough to garble it. What to show a user,
+// and when, is the caller's decision to make from `unrooted_resources`.
+//
+// Three ways to be fine: the resource says `@global`, its provider declares no
+// root yet (nothing to be outside of, so the question is not answerable), or it
+// is reachable from that provider's root and the global name is just the other
+// spelling. What is left is what stops resolving when the root becomes the
+// namespace, which is exactly what is worth counting before that happens.
+func (c *compiler) noteIfUnrooted(resource *resources.ResourceInfo) {
+	if resource == nil || resource.GetGlobal() || c.Schema == nil || c.Result == nil {
+		return
+	}
+
+	root := c.Schema.AllProviderRoots()[resource.GetProvider()]
+	if root == "" {
+		return
+	}
+	// A root is what everything else hangs off; it does not hang off itself.
+	if resource.Id == root || resource.Id == c.AssetRoot {
+		return
+	}
+	// Bridging nodes (`os` for `os.linux`) are namespace segments the schema
+	// builder creates, not resources anything resolves to, so they are not a
+	// thing that can be inside or outside a tree.
+	if resource.GetIsExtension() {
+		return
+	}
+	rootInfo := c.Schema.Lookup(root)
+	if rootInfo == nil {
+		return
+	}
+	if _, _, ok := c.Schema.FindField(rootInfo, resource.Id); ok {
+		return
+	}
+
+	if slices.Contains(c.Result.UnrootedResources, resource.Id) {
+		return
+	}
+	c.Result.UnrootedResources = append(c.Result.UnrootedResources, resource.Id)
 }
 
 func (c *compiler) addResource(id string, resource *resources.ResourceInfo, call *parser.Call) (types.Type, error) {
@@ -1238,6 +2026,30 @@ func (c *compiler) compileIdentifier(id string, callBinding *variable, calls []*
 		}
 	} // end bound functions
 
+	// `_` at the top level of a query is the connected asset's root resource
+	// (ADR 031 decision 6). Inside a block it is the block's binding, handled
+	// above; at the top level there is no binding, so before roots existed this
+	// fell through to the resource lookup and failed with "cannot find resource
+	// for identifier '_'".
+	//
+	// Compiled by name, as if the user had typed the root resource: everything
+	// that works on that resource - fields, blocks, `where` - then works on `_`
+	// with no further wiring.
+	if id == "_" && callBinding == nil {
+		if c.AssetRoot == "" || c.AssetRoot == "_" {
+			return nil, types.Nil, errors.New("cannot resolve `_`: this connection declares no root resource")
+		}
+		// Compiled as the root resource itself, not by feeding its name back
+		// through identifier resolution: under a rooted namespace that would ask
+		// whether the root is a member of itself, and answer no.
+		found, restCalls, typ, err := c.compileResource(c.AssetRoot, calls)
+		if !found {
+			return nil, types.Nil, errors.New("cannot resolve `_`: this connection declares the root '" +
+				c.AssetRoot + "', which is not in the schema")
+		}
+		return restCalls, typ, err
+	}
+
 	if id == "props" {
 		return c.compileProps(call, restCalls, c.Result)
 	}
@@ -1280,39 +2092,85 @@ func (c *compiler) compileIdentifier(id string, callBinding *variable, calls []*
 		}
 	}
 
-	found, restCalls, typ, err = c.compileResource(id, calls)
+	// Rooted namespace (ADR 031 point 7): the root is the namespace, so a bare
+	// identifier resolves as a member of it and the global namespace is left to
+	// what marks itself `@global`. This is the v15 model; the fallback below is
+	// what v14 keeps.
+	if c.RootedNamespace && callBinding == nil {
+		if c.AssetRoot == "" {
+			return nil, types.Nil, errors.New("cannot resolve '" + id +
+				"': rooted compilation needs an asset root, and none was supplied")
+		}
+		if found, restCalls, typ, err := c.compileRootMember(id, calls); found {
+			return restCalls, typ, err
+		}
+		if info := c.Schema.Lookup(id); info != nil && !info.GetGlobal() {
+			addFieldSuggestions(availableFields(c, types.Resource(c.AssetRoot)), id, c.Result)
+			return nil, types.Nil, errors.New("cannot find '" + id + "' in " + c.AssetRoot +
+				"; it is not part of this asset's tree and is not a global resource")
+		}
+	}
+
+	// Kept out of restCalls: compileResource reports a miss as `false, nil, ...`,
+	// and assigning that into restCalls threw away the rest of the chain for
+	// every branch below - `params { a.b.c }` compiled to `params["a"]` and
+	// answered with the whole subtree under "a".
+	var resourceCalls []*parser.Call
+	found, resourceCalls, typ, err = c.compileResource(id, calls)
 	if found {
-		return restCalls, typ, err
+		return resourceCalls, typ, err
 	}
 
 	// Support easy accessors for dicts and maps, e.g:
 	// json.params { A.B.C } => json.params { _["A"]["B"]["C"] }
 	if callBinding != nil && callBinding.typ == types.Dict {
-		funcID := "[]"
-		if call != nil && call.IsConditional {
-			funcID = "[]?"
-		}
-
+		// Optionality is carried by Function.nullability, which compileOperand
+		// stamps onto this chunk once it returns. The old `[]?` spelling was
+		// unreachable from here anyway: it keyed off a Function call's
+		// IsConditional, which the parser never sets.
 		c.addChunk(&llx.Chunk{
 			Call: llx.Chunk_FUNCTION,
-			Id:   funcID,
+			Id:   "[]",
 			Function: &llx.Function{
 				Type:    string(callBinding.typ),
 				Binding: callBinding.ref,
 				Args:    []*llx.Primitive{llx.StringPrimitive(id)},
+				// This is a key lookup even though it reads like a field, so it
+				// is a dereference and carries the marker. Set in the literal
+				// rather than stamped afterwards because compileOperand only
+				// stamps roots that the author marked optional.
+				Nullability: c.linkNullability(false),
 			},
 		})
 		c.standalone = false
 		return restCalls, callBinding.typ, err
 	}
 
+	// A bare identifier that is not a global resource may still be a member of
+	// the asset root: a query is a block on that root, so `hostname` means
+	// `assetRoot.hostname` (ADR 031 point 7). Tried after the global namespace,
+	// so nothing that compiles today compiles differently - only names that used
+	// to fail start resolving. Under RootedNamespace the root was already tried,
+	// first.
+	if callBinding == nil && !c.RootedNamespace {
+		if found, restCalls, typ, err := c.compileRootMember(id, calls); found {
+			return restCalls, typ, err
+		}
+	}
+
 	// suggestions
 	if callBinding == nil {
 		addResourceSuggestions(c.Schema, id, c.Result)
-		return nil, types.Nil, &ErrIdentifierNotFound{Identifier: id}
+		// A bare name can also be a member of the asset root (`hostname`), so
+		// the root's members are offered alongside the global resources. Without
+		// this the shell suggests a different set of names than it accepts.
+		if c.AssetRoot != "" {
+			addFieldSuggestions(availableFields(c, types.Resource(c.AssetRoot)), id, c.Result)
+		}
+		return nil, types.Nil, c.notFound(id, nil)
 	}
 	addFieldSuggestions(availableFields(c, callBinding.typ), id, c.Result)
-	return nil, types.Nil, &ErrIdentifierNotFound{Identifier: id, Binding: c.Binding.typ.Label()}
+	return nil, types.Nil, c.notFound(id, callBinding)
 }
 
 // compileProps handles built-in properties for this code
@@ -1451,6 +2309,10 @@ func (c *compiler) compileOperand(operand *parser.Operand) (*llx.Primitive, erro
 	calls := operand.Calls
 	c.comment = operand.Comments
 
+	// Anything the root value emits sits after this point. Captured up front so
+	// the root can be marked with the same range walk the links use.
+	rootStart := c.tailRef()
+
 	// value:        bool | string | regex | number | array | map | ident
 	// so all simple values are compiled into primitives and identifiers
 	// into function calls
@@ -1483,11 +2345,30 @@ func (c *compiler) compileOperand(operand *parser.Operand) (*llx.Primitive, erro
 		}
 
 		ref = c.tailRef()
-		if id == "_" && len(orgcalls) == 0 {
+		// A bare `_` in a block adds no chunk of its own - it *is* the binding -
+		// so the operand's value is the binding's ref. At the top level there is
+		// no binding: `_` compiled to the asset's root resource, which did emit
+		// a chunk, so the tail ref is already the right answer (ADR 031).
+		if id == "_" && len(orgcalls) == 0 && c.Binding != nil {
 			ref = c.Binding.ref
 		}
 
 		res = llx.RefPrimitiveV2(ref)
+	}
+
+	// `a?` / `a?.b`: the mark guards the root value, so it lands on whatever
+	// chunk the value produced.
+	//
+	// Only optional is ever stamped here. Required is applied per link inside the
+	// loop below, and must not be applied to a root, because ProcessOperators
+	// rewrites `a == b` into an operand whose root value *is* the operator
+	// (parser/operators.go:165-175). Marking roots required would mark every
+	// comparison, and a null operand would start erroring instead of returning
+	// false - the opposite of ADR 043 §3. The one root that genuinely is a
+	// dereference, the bare-word dict accessor inside a block, is marked at its
+	// own emission site in compileIdentifier.
+	if operand.ValueIsConditional {
+		c.markNullability(rootStart, llx.Function_NULLABILITY_OPTIONAL)
 	}
 
 	// operand:      value [ call | accessor | '.' ident ]+ [ block ]
@@ -1501,6 +2382,13 @@ func (c *compiler) compileOperand(operand *parser.Operand) (*llx.Primitive, erro
 		if call.Comments != "" {
 			c.comment = call.Comments
 		}
+
+		// Everything emitted from here until the next iteration belongs to this
+		// link, and carries this link's nullability. A link can emit several
+		// chunks (a nested field path), which is why this is a starting point
+		// rather than a single ref.
+		linkStart := c.tailRef()
+		linkNullability := c.linkNullability(call.IsConditional)
 
 		if call.Accessor != nil {
 			// turn accessor into a regular function and call that
@@ -1529,6 +2417,7 @@ func (c *compiler) compileOperand(operand *parser.Operand) (*llx.Primitive, erro
 			if call != nil && len(calls) > 0 {
 				calls = calls[1:]
 			}
+			c.markNullability(linkStart, linkNullability)
 			ref = c.tailRef()
 			res = llx.RefPrimitiveV2(ref)
 			continue
@@ -1538,7 +2427,6 @@ func (c *compiler) compileOperand(operand *parser.Operand) (*llx.Primitive, erro
 			var found bool
 			var resType types.Type
 			id := *call.Ident
-			isConditionalCall := call.IsConditional
 
 			if id == "." {
 				// We get this from the parser if the user called the dot-accessor
@@ -1564,18 +2452,27 @@ func (c *compiler) compileOperand(operand *parser.Operand) (*llx.Primitive, erro
 				// native internal operators)
 				if (typ != types.Dict && !typ.IsMap()) || !reAccessor.MatchString(id) {
 					addFieldSuggestions(availableFields(c, typ), id, c.Result)
-					return nil, errors.New("cannot find field '" + id + "' in " + typ.Label())
+					msg := "cannot find field '" + id + "' in " + typ.Label()
+					if scope := c.rootScopeHint(typ, id); scope != "" {
+						// The field exists - on other roots. That makes this a
+						// statement about which assets the query targets, not a
+						// failure, and a caller running over many assets should
+						// skip this one rather than abort (ADR 031).
+						return nil, &rootScopeError{msg: msg + scope}
+					}
+					return nil, errors.New(msg + c.fieldSkewHint(typ))
 				}
 
 				// Support easy accessors for dicts and maps, e.g:
 				// json.params.A.B.C => json.params["A"]["B"]["C"]
-				funcID := "[]"
-				if isConditionalCall {
-					funcID = "[]?"
-				}
+				//
+				// Optionality used to be spelled here as a separate `[]?` chunk
+				// id. It now rides on Function.nullability like every other link,
+				// so this emits a plain `[]`. The `[]?` handler stays registered
+				// in llx for bundles that were compiled before the switch.
 				c.addChunk(&llx.Chunk{
 					Call: llx.Chunk_FUNCTION,
-					Id:   funcID,
+					Id:   "[]",
 					Function: &llx.Function{
 						Type:    string(typ.Child()),
 						Binding: ref,
@@ -1590,6 +2487,7 @@ func (c *compiler) compileOperand(operand *parser.Operand) (*llx.Primitive, erro
 			if call != nil && len(calls) > 0 {
 				calls = calls[1:]
 			}
+			c.markNullability(linkStart, linkNullability)
 			ref = c.tailDataRef()
 			res = llx.RefPrimitiveV2(ref)
 
@@ -1600,17 +2498,24 @@ func (c *compiler) compileOperand(operand *parser.Operand) (*llx.Primitive, erro
 	}
 
 	if operand.Block != nil {
-		// for starters, we need the primitive to exist on the stack,
-		// so add it if it's missing
-		if x := c.tailRef(); (x & 0xFFFFFFFF) == 0 {
-			val, err := c.compileValue(operand.Value)
-			if err != nil {
-				return nil, err
-			}
+		// The block binds to this operand's value, so that value has to exist as a
+		// chunk on the stack. ref is still 0 when the value compiled to a bare
+		// primitive that nothing pushed (i.e. no calls followed it).
+		//
+		// This has to test the operand's own ref, not whether the stack is empty.
+		// An array literal whose elements are resources compiles those elements
+		// into chunks, so the stack is non-empty while the array itself was never
+		// pushed. Binding the block to a chunk that is not on the stack made
+		// checksumming panic ("doesn't seem to reference a function on the stack"),
+		// which Compile only recovers in order to re-panic -- taking the caller
+		// down. A scalar array pushes nothing, so it kept working.
+		if ref == 0 && res != nil {
+			// res is the already-compiled primitive for this value. Recompiling it
+			// here would emit a second copy of every chunk its elements produced.
 			c.addChunk(&llx.Chunk{
 				Call: llx.Chunk_PRIMITIVE,
 				// no ID for standalone
-				Primitive: val,
+				Primitive: res,
 			})
 			ref = c.tailRef()
 		}
@@ -1756,6 +2661,7 @@ func (c *compiler) compileExpressions(expressions []*parser.Expression) error {
 
 func (c *compiler) postCompile() {
 	code := c.Result.CodeV2
+
 	// Use index-based loop instead of range so that blocks appended by
 	// expandResourceFields (nested @defaults) are visited in the same pass.
 	for i := 0; i < len(code.Blocks); i++ {
@@ -1778,9 +2684,20 @@ func (c *compiler) postCompile() {
 				continue
 			}
 
+			// A variable definition is not a result: updateEntrypoints removes
+			// it after this pass, and expanding it first would replace its ref,
+			// so `x = file(...)` was evaluated with the file's default fields and
+			// scored. An assessment in a variable (`x = users.all(...)`) still
+			// expands: that only adds the failing items' default fields as a
+			// datapoint.
+			if block == c.block {
+				if _, ok := c.vars.assigned[ref]; ok && !isAssessment(chunk.Id) {
+					continue
+				}
+			}
+
 			chunk, typ, ref := c.expandListResource(chunk, ref)
-			switch chunk.Id {
-			case "$one", "$all", "$none", "$any":
+			if isAssessment(chunk.Id) {
 				// default fields
 				ref = chunk.Function.Binding
 				chunk := code.Chunk(ref)
@@ -1796,11 +2713,20 @@ func (c *compiler) postCompile() {
 					block.Datapoints = append(block.Datapoints, autoExpandRef)
 					c.addValueFieldChunks(ref, autoExpandRef)
 				}
-			default:
+			} else {
 				c.expandResourceFields(chunk, typ, ref)
 			}
 		}
 	}
+}
+
+// isAssessment is true for the chunk IDs of .one/.all/.none/.any
+func isAssessment(id string) bool {
+	switch id {
+	case "$one", "$all", "$none", "$any":
+		return true
+	}
+	return false
 }
 
 // addValueFieldChunks takes the value fields of the assessment and adds them to the
@@ -1941,8 +2867,8 @@ func (c *compiler) addValueFieldChunks(ref uint64, autoExpandRef uint64) {
 	// for the predicate(s) of the .all()/.none()/... function
 	var assessmentBlock *llx.Block
 	// find the referenced block for the where function
-	for i := len(whereChunk.Function.Args) - 1; i >= 0; i-- {
-		arg := whereChunk.Function.Args[i]
+	for _, arg := range slices.Backward(whereChunk.Function.Args) {
+
 		if types.Type(arg.Type).Underlying() == types.FunctionLike {
 			raw := arg.RawData()
 			blockRef := raw.Value.(uint64)
@@ -2114,32 +3040,14 @@ func (c *compiler) updateLabels() {
 	}
 }
 
-func (c *compiler) updateEntrypoints(collectRefDatapoints bool) {
-	// BUG (jaym): collectRefDatapoints prevents us from collecting datapoints.
-	// Collecting datapoints for blocks didn't work correctly until 6.7.0.
-	// See https://gitlab.com/mondoolabs/mondoo/-/merge_requests/2639
-	// We can fix this after some time has passed. If we fix it too soon
-	// people will start having their queries fail if a falsy datapoint
-	// is collected.
-
+func (c *compiler) updateEntrypoints() {
 	code := c.Result.CodeV2
 
 	// 1. efficiently remove variable definitions from entrypoints
-	varsByRef := make(map[uint64]variable, c.vars.len())
-	for name, v := range c.vars.vars {
-		if name == "_" {
-			// We need to filter this out. It wasn't an assignment declared by the
-			// user. We will re-introduce it conceptually once we tackle context
-			// information for blocks.
-			continue
-		}
-		varsByRef[v.ref] = v
-	}
-
 	max := len(c.block.Entrypoints)
 	for i := 0; i < max; {
 		ref := c.block.Entrypoints[i]
-		if _, ok := varsByRef[ref]; ok {
+		if _, ok := c.vars.assigned[ref]; ok {
 			c.block.Entrypoints[i], c.block.Entrypoints[max-1] = c.block.Entrypoints[max-1], c.block.Entrypoints[i]
 			max--
 		} else {
@@ -2161,10 +3069,6 @@ func (c *compiler) updateEntrypoints(collectRefDatapoints bool) {
 		}
 	}
 
-	if !collectRefDatapoints {
-		return
-	}
-
 	datapoints := map[uint64]struct{}{}
 	// 3. resolve operators
 	for ref := range entrypoints {
@@ -2181,9 +3085,7 @@ func (c *compiler) updateEntrypoints(collectRefDatapoints bool) {
 		res[idx] = ref
 		idx++
 	}
-	sort.Slice(res, func(i, j int) bool {
-		return res[i] < res[j]
-	})
+	slices.Sort(res)
 	c.block.Datapoints = append(c.block.Datapoints, res...)
 	// E.g. in the case of .all(...)/.none(...)/... queries, we have two datapoints bound to the list of resources:
 	// - one with the resource ids
@@ -2193,13 +3095,7 @@ func (c *compiler) updateEntrypoints(collectRefDatapoints bool) {
 	for _, ref := range c.block.Datapoints {
 		chunk := code.Chunk(ref)
 		if chunk.Function != nil {
-			found := false
-			for i := range c.block.Datapoints {
-				if c.block.Datapoints[i] == chunk.Function.Binding {
-					found = true
-					break
-				}
-			}
+			found := slices.Contains(c.block.Datapoints, chunk.Function.Binding)
 			if found {
 				updatedDatapoints = append(updatedDatapoints, ref)
 			}
@@ -2219,7 +3115,7 @@ func (c *compiler) CompileParsed(ast *parser.AST) error {
 
 	c.postCompile()
 	c.Result.CodeV2.UpdateID()
-	c.updateEntrypoints(true)
+	c.updateEntrypoints()
 	c.updateLabels()
 
 	return c.failIfNoEntrypoints()
@@ -2273,7 +3169,9 @@ func CompileAST(ast *parser.AST, props PropsHandler, conf CompilerConfig) (*llx.
 		valueBodyBlocks: map[uint64]struct{}{},
 	}
 
-	return c.Result, c.CompileParsed(ast)
+	err := c.CompileParsed(ast)
+	c.recordCompatibleRoots()
+	return c.Result, err
 }
 
 // Compile a code piece against a schema into chunky code
@@ -2302,6 +3200,8 @@ func compile(input string, props PropsHandler, compilerConf CompilerConfig) (*ll
 		return res, err
 	}
 
+	res.AssetRoot = conf.AssetRoot
+
 	err = UpdateLabels(res, conf.Schema)
 	if err != nil {
 		return res, err
@@ -2316,6 +3216,11 @@ func compile(input string, props PropsHandler, compilerConf CompilerConfig) (*ll
 	}
 
 	res.Source = input
+
+	// ADR 040 part 1: the bundle records which schema it was compiled against
+	// and what it needs to run. Stamped after labels and assertions so it sees
+	// the finished chunk list.
+	stampProvenance(res, conf.Schema)
 
 	return res, nil
 }

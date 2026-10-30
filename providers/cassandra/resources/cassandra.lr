@@ -1,0 +1,171 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/cassandra"
+option go_package = "go.mondoo.com/mql/providers/cassandra/resources"
+option root = "cassandra"
+
+// Apache Cassandra cluster
+//
+// Root of the Cassandra provider. The connected cluster and everything
+// queryable through it (security posture, roles, nodes, and keyspaces) is
+// reached from cassandra.cluster.
+cassandra @root {
+}
+
+// Apache Cassandra cluster
+//
+// The connected cluster: its name, version, and CQL details, plus the security
+// posture, roles, nodes, and keyspaces reached from here. Populated from the
+// system and system_auth keyspaces and the system_views.settings virtual
+// table; data the connecting role is not permitted to read is left empty
+// rather than failing.
+cassandra.cluster @defaults("name version") {
+  // Cluster name
+  name string
+  // Cassandra release version, for example "5.0.8"
+  version string
+  // CQL language version, for example "3.4.7"
+  cqlVersion string
+  // Native protocol version
+  nativeProtocolVersion int
+  // Partitioner class the cluster uses
+  partitioner string
+  // Security posture of the cluster
+  security() cassandra.security
+  // Roles defined on the cluster
+  roles() []cassandra.role
+  // Nodes in the cluster
+  nodes() []cassandra.node
+  // Keyspaces defined on the cluster
+  keyspaces() []cassandra.keyspace
+}
+
+// Apache Cassandra security posture
+//
+// Cluster-wide authentication, authorization, and encryption settings read
+// from the system_views.settings virtual table: which authenticator and
+// authorizer are configured, whether they are enabled (rather than the
+// permissive AllowAll defaults), whether client and internode traffic are
+// encrypted, and whether audit logging is on.
+cassandra.security @defaults("authenticationEnabled authorizationEnabled") {
+  // Configured authenticator class, for example "PasswordAuthenticator"
+  authenticator string
+  // Configured authorizer class, for example "CassandraAuthorizer"
+  authorizer string
+  // Configured role manager class
+  roleManager string
+  // Configured network authorizer class
+  networkAuthorizer string
+  // Whether authentication is enabled
+  //
+  // False when the authenticator is AllowAllAuthenticator, meaning any client
+  // that can reach the cluster connects without credentials.
+  authenticationEnabled bool
+  // Whether authorization is enabled
+  //
+  // False when the authorizer is AllowAllAuthorizer, meaning permissions are
+  // not enforced.
+  authorizationEnabled bool
+  // Whether client-to-node traffic is encrypted with TLS
+  clientEncryptionEnabled bool
+  // Internode encryption mode: "none", "all", "dc", or "rack"
+  internodeEncryption string
+  // Whether audit logging is enabled
+  auditLoggingEnabled bool
+}
+
+// Apache Cassandra role
+//
+// A role and its login and privilege attributes: whether it can log in, whether
+// it is a superuser, whether it has a password set, the roles it is a member of,
+// and the permissions granted to it. The name field selects the role, for
+// example cassandra.cluster.roles.where(name == "cassandra").
+cassandra.role @defaults("name isSuperuser canLogin") {
+  // Role name
+  name string
+  // Whether the role can log in (is a login account)
+  canLogin bool
+  // Whether the role has the superuser flag itself
+  //
+  // The role's own is_superuser setting. A role can also be a superuser
+  // through a granted role, which isEffectiveSuperuser reports.
+  isSuperuser bool
+  // Whether the role has superuser status, directly or through a granted role
+  //
+  // Cassandra resolves superuser status over every role granted to a role,
+  // transitively: a member of a superuser role is a superuser too.
+  isEffectiveSuperuser bool
+  // Whether the role has a password set
+  //
+  // A login role with no password cannot authenticate with a password; a
+  // superuser role such as the default "cassandra" with a password should have
+  // that default password changed.
+  hasPassword bool
+  // Whether the role's password is still Cassandra's default
+  //
+  // True when the role's stored bcrypt hash matches "cassandra", the password a
+  // new cluster gives its default "cassandra" role. The hash read from
+  // system_auth.roles is compared locally, so no login is attempted and no
+  // failed authentication is logged; the hash itself is never exposed. False
+  // for a role without a password.
+  hasDefaultPassword() bool
+  // Roles this role is a member of
+  memberOf []string
+  // Permissions granted to the role
+  permissions() []cassandra.role.permission
+}
+
+// Apache Cassandra role permission
+//
+// A single permission grant of a role: the resource it applies to and the
+// permissions held on it. For example the permission "SELECT" on the resource
+// "data/app".
+cassandra.role.permission @defaults("resource permissions") {
+  // Resource the permissions apply to, for example "data", "data/app", or "roles/x"
+  resource string
+  // Permissions held on the resource, for example "SELECT", "MODIFY", or "AUTHORIZE"
+  permissions []string
+}
+
+// Apache Cassandra node
+//
+// A node in the cluster and its identity: its address, host id, version, and
+// topology (data center and rack). The address field selects the node.
+cassandra.node @defaults("address releaseVersion datacenter") {
+  // Node address
+  address string
+  // Node host id
+  hostId string
+  // Cassandra release version running on the node
+  releaseVersion string
+  // Data center the node belongs to
+  datacenter string
+  // Rack the node belongs to
+  rack string
+  // Whether this is the node the provider is connected to
+  isLocal bool
+}
+
+// Apache Cassandra keyspace
+//
+// A keyspace and its replication and durability settings: the replication
+// strategy and factor, whether durable writes are enabled, and whether it is a
+// built-in system keyspace. The name field selects the keyspace.
+cassandra.keyspace @defaults("name replicationStrategy durableWrites") {
+  // Keyspace name
+  name string
+  // Replication strategy class, for example "SimpleStrategy" or "NetworkTopologyStrategy"
+  replicationStrategy string
+  // Replication factors by data center, or the overall factor under the "replication_factor" key
+  replicationFactors map[string]string
+  // Whether durable writes (the commit log) are enabled
+  //
+  // When false, writes are not persisted to the commit log, risking data loss
+  // on a crash.
+  durableWrites bool
+  // Whether this is a built-in system keyspace
+  isSystem bool
+}

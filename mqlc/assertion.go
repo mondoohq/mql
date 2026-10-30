@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/mqlc/parser"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/mqlc/parser"
+	"go.mondoo.com/mql/types"
 )
 
 func extractComments(c *parser.Expression) string {

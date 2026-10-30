@@ -123,22 +123,16 @@ func renderNyanya(state *nyanyaState, width, height int) string {
 		Render("Press any key to exit")
 
 	// Calculate vertical positioning
-	topPadding := (height - frameHeight - 2) / 2
-	if topPadding < 0 {
-		topPadding = 0
-	}
+	topPadding := max((height-frameHeight-2)/2, 0)
 
 	// Center each frame line horizontally
-	leftPadding := (width - frameWidth) / 2
-	if leftPadding < 0 {
-		leftPadding = 0
-	}
+	leftPadding := max((width-frameWidth)/2, 0)
 	padding := strings.Repeat(" ", leftPadding)
 
 	var result strings.Builder
 
 	// Add top padding (empty lines)
-	for i := 0; i < topPadding; i++ {
+	for range topPadding {
 		result.WriteString("\n")
 	}
 
@@ -154,10 +148,7 @@ func renderNyanya(state *nyanyaState, width, height int) string {
 	result.WriteString("\n\n")
 
 	// Add centered instruction
-	instructionPadding := (width - lipgloss.Width(instruction)) / 2
-	if instructionPadding < 0 {
-		instructionPadding = 0
-	}
+	instructionPadding := max((width-lipgloss.Width(instruction))/2, 0)
 	result.WriteString(strings.Repeat(" ", instructionPadding) + instruction)
 
 	return result.String()

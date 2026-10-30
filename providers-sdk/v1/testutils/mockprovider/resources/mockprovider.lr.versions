@@ -1,0 +1,24 @@
+# Copyright Mondoo, Inc. 2024, 2026
+# SPDX-License-Identifier: BUSL-1.1
+
+customGroups 9.0.0
+customGroups.length 9.0.0
+customGroups.list 9.0.0
+emptyGroups 9.0.0
+emptyGroups.list 9.0.0
+mgroup 9.0.0
+mgroup.name 9.0.0
+mos 9.0.0
+mos.groups 9.0.0
+mthing 9.0.0
+mthing.value 9.0.0
+muser 9.0.0
+muser.dict 9.0.0
+muser.error 9.0.0
+muser.group 9.0.0
+muser.groups 9.0.0
+muser.name 9.0.0
+muser.nullgroup 9.0.0
+muser.nullstring 9.0.0
+muser.running 9.0.0
+muser.runningUnknown 9.0.0

@@ -9,13 +9,15 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"net/http"
 	"os"
 	"testing"
+	"time"
 
-	"github.com/google/go-github/v88/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 )
 
 func TestGithubNoConnection(t *testing.T) {
@@ -68,6 +70,23 @@ func TestGithubValidConnection_Password(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+}
+
+func TestGithubRetryableClientSetsRequestTimeout(t *testing.T) {
+	hc := &http.Client{}
+	newGithubRetryableClient(hc)
+	require.Equal(t, githubRequestTimeout, hc.Timeout)
+}
+
+func TestGithubRetryableClientKeepsExistingTimeout(t *testing.T) {
+	hc := &http.Client{Timeout: time.Second}
+	newGithubRetryableClient(hc)
+	require.Equal(t, time.Second, hc.Timeout)
+}
+
+func TestGithubRetryableClientDoesNotMutateDefaultClient(t *testing.T) {
+	newGithubRetryableClient(nil)
+	require.Zero(t, http.DefaultClient.Timeout)
 }
 
 func TestGithubNeedsFix(t *testing.T) {

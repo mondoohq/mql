@@ -1,0 +1,243 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/clickhousedb"
+option go_package = "go.mondoo.com/mql/providers/clickhousedb/resources"
+option root = "clickhousedb"
+
+// ClickHouse
+//
+// Root of the ClickHouse provider. The connected server and everything
+// queryable through it (users, roles, grants, settings profiles, quotas,
+// clusters, and server settings) is reached from clickhousedb.instance.
+clickhousedb @root {
+}
+
+// ClickHouse server
+//
+// The connected ClickHouse server: its version, plus the users, roles, grants,
+// settings profiles, quotas, clusters, and server settings reached from here.
+// Populated from the system.* tables, which the connecting user needs SELECT
+// on.
+clickhousedb.instance @defaults("version") {
+  // ClickHouse server version, for example "24.8.4.13"
+  version string
+  // Users defined on the server
+  users() []clickhousedb.user
+  // Roles defined on the server
+  roles() []clickhousedb.role
+  // Settings profiles defined on the server
+  settingsProfiles() []clickhousedb.settingsProfile
+  // Quotas defined on the server
+  quotas() []clickhousedb.quota
+  // Clusters the server is a member of
+  clusters() []clickhousedb.cluster
+  // Server-level configuration settings
+  //
+  // Read from system.server_settings, which covers the settings declared in the
+  // server's own settings struct. Listeners are not among them: ports and
+  // listen addresses are read straight from the config XML and never appear
+  // there, which is why they are exposed as the fields below rather than
+  // through this list.
+  serverSettings() []clickhousedb.serverSetting
+  // Native protocol port, or 0 when the plaintext listener is disabled
+  tcpPort() int
+  // Native protocol port with TLS, or 0 when the secure listener is disabled
+  tcpPortSecure() int
+  // HTTP interface port, or 0 when the plaintext listener is disabled
+  httpPort() int
+  // HTTPS interface port, or 0 when the secure listener is disabled
+  httpsPort() int
+  // Whether a TLS listener is bound, on either the native or the HTTP interface
+  //
+  // False means every interface the server exposes is cleartext, so credentials
+  // and query results cross the network in the clear.
+  tlsEnabled() bool
+}
+
+// ClickHouse user
+//
+// A user account and its security attributes: how it authenticates, whether it
+// still allows password-less login, where it is defined (SQL-managed vs an XML
+// config file), which hosts it may connect from, its default roles, and the
+// privileges granted to it. The name field selects the user, for example
+// clickhousedb.instance.users.where(name == "default"). Read from system.users;
+// password material (auth_params) is never exposed.
+clickhousedb.user @defaults("name") {
+  // User name
+  name string
+  // Authentication methods, for example "sha256_password", "no_password", "ldap", or "kerberos"
+  //
+  // A user may have more than one, and ClickHouse admits a login if any method
+  // matches. So a user with a "no_password" method among others can still be
+  // reached with no credential at all, which is a finding (see hasPassword).
+  authTypes []string
+  // Whether the user requires a credential to authenticate
+  //
+  // False when any authentication method is "no_password". Because ClickHouse
+  // admits a login if any method matches, the presence of a "no_password" method
+  // means the account is reachable without a credential even if it also has a
+  // real one. Null for a user defined in an XML users file with a plaintext
+  // password: the server reports an empty <password></password> exactly like a
+  // real one, so whether it requires a credential cannot be read from SQL.
+  // Check those users in the users file, or write the check as
+  // hasPassword == true so an unknown answer fails it.
+  hasPassword bool
+  // Whether the user may connect from any host
+  //
+  // ClickHouse restricts where an account may connect from through three
+  // independent lists, and admits a connection when any one of them matches.
+  // This is true when any of them admits every origin: an IP range covering all
+  // addresses (for example "::/0" or "0.0.0.0/0"), a host name regular
+  // expression that matches any name (for example ".*" or "^.*$"), or a LIKE
+  // pattern built only from "%". An account pinned to a single IP range but
+  // also carrying an open regular expression is reachable from anywhere, and is
+  // reported here as such.
+  anyHost bool
+  // Where the user is defined: "local_directory" (SQL-managed) or "users_xml" (config file)
+  storage string
+  // IP ranges the user may connect from, for example "::/0" for any host
+  hostIps []string
+  // Host names the user may connect from
+  hostNames []string
+  // Regular expressions matching host names the user may connect from
+  //
+  // Set by "HOST REGEXP". These are matched against the resolved name of the
+  // connecting host independently of hostIps, so a pattern that matches any
+  // name opens the account to every host no matter how narrow hostIps is.
+  hostNamesRegexp []string
+  // LIKE patterns matching host names the user may connect from
+  //
+  // Set by "HOST LIKE". These are matched against the resolved name of the
+  // connecting host independently of hostIps, so a pattern built only from "%"
+  // opens the account to every host no matter how narrow hostIps is.
+  hostNamesLike []string
+  // Roles applied to the user by default on login
+  defaultRoles []string
+  // Whether every role granted to the user is applied by default on login
+  //
+  // True when the user carries "DEFAULT ROLE ALL", which keeps the default set
+  // in step with future grants. The roles named in defaultRolesExcept are held
+  // back from that set.
+  defaultRolesAll bool
+  // Roles held back from the default set when defaultRolesAll is true
+  defaultRolesExcept []string
+  // Database selected when the connection names none, empty for the server default
+  defaultDatabase string
+  // Whether the user may pass its own grants on to anyone
+  //
+  // True when the user carries "GRANTEES ANY", which is the default. Together
+  // with a privilege held WITH GRANT OPTION it lets the account hand that
+  // privilege to any other user or role, so the account can widen access beyond
+  // what it was given. The names in granteesExcept are excluded.
+  granteesAny bool
+  // Users and roles the user may pass its own grants on to
+  granteesList []string
+  // Users and roles the user may not pass its own grants on to
+  granteesExcept []string
+  // Privileges granted directly to the user, each rendered as "<privilege> ON <scope>"
+  //
+  // Privileges the user holds through a role are listed on the role, see roles.
+  // A partial revoke reads "REVOKE <privilege> ON <scope>", and a revoked grant
+  // option reads "REVOKE GRANT OPTION FOR <privilege> ON <scope>", which leaves
+  // the privilege itself in place.
+  grants() []string
+  // Roles granted to the user, whether or not they are applied by default
+  roles() []clickhousedb.role
+}
+
+// ClickHouse role
+//
+// A role and the privileges granted to it. Roles are assigned to users to grant
+// sets of privileges. The name field selects the role, for example
+// clickhousedb.instance.roles.where(name == "readonly"). Read from system.roles,
+// with privileges from system.grants.
+clickhousedb.role @defaults("name") {
+  // Role name
+  name string
+  // Where the role is defined: "local_directory" (SQL-managed) or "users_xml" (config file)
+  storage string
+  // Privileges granted directly to the role, each rendered as "<privilege> ON <scope>"
+  //
+  // Privileges the role holds through another role are listed on that role,
+  // see roles. Partial revokes are rendered as on clickhousedb.user.grants.
+  grants() []string
+  // Roles granted to the role
+  roles() []clickhousedb.role
+}
+
+// ClickHouse settings profile
+//
+// A named set of settings and constraints (for example a read-only profile)
+// that can be applied to users and roles. The name field selects the profile,
+// for example clickhousedb.instance.settingsProfiles.where(name == "readonly").
+// Read from system.settings_profiles.
+clickhousedb.settingsProfile @defaults("name") {
+  // Settings profile name
+  name string
+  // Where the profile is defined: "local_directory" (SQL-managed) or "users_xml" (config file)
+  storage string
+  // Number of settings the profile constrains
+  numElements int
+  // Whether the profile is applied to all users and roles
+  appliesToAll bool
+  // Names of the users and roles the profile is applied to
+  appliesTo []string
+}
+
+// ClickHouse quota
+//
+// A resource-usage quota that can be applied to users and roles. The name field
+// selects the quota, for example
+// clickhousedb.instance.quotas.where(name == "default"). Read from system.quotas.
+clickhousedb.quota @defaults("name") {
+  // Quota name
+  name string
+  // Where the quota is defined: "local_directory" (SQL-managed) or "users_xml" (config file)
+  storage string
+  // Keys the quota is tracked by, for example "user_name" or "ip_address"
+  keys []string
+  // Whether the quota is applied to all users and roles
+  appliesToAll bool
+  // Names of the users and roles the quota is applied to
+  appliesTo []string
+}
+
+// ClickHouse cluster
+//
+// A cluster the server participates in, aggregated across its shards and
+// replicas. The name field selects the cluster, for example
+// clickhousedb.instance.clusters.where(name == "my_cluster"). Read from
+// system.clusters.
+clickhousedb.cluster @defaults("name") {
+  // Cluster name
+  name string
+  // Number of shards in the cluster
+  shardCount int
+  // Highest replica count across the cluster's shards
+  //
+  // The maximum number of replicas any one shard has. When shards have unequal
+  // replica counts, this reports the largest.
+  maxReplicaCount int
+}
+
+// ClickHouse server setting
+//
+// A single server-level configuration setting and its running value, from
+// system.server_settings. Security-relevant settings (for example
+// tcp_port_secure, https_port) are audited by selecting the setting by name,
+// for example clickhousedb.instance.serverSettings.where(name == "tcp_port_secure").
+clickhousedb.serverSetting @defaults("name value") {
+  // Setting name
+  name string
+  // Current running value
+  value string
+  // Default value
+  default string
+  // Whether the value differs from its default
+  changed bool
+  // Human-readable description of the setting
+  description string
+}

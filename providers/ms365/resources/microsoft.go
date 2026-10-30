@@ -5,11 +5,14 @@ package resources
 
 import (
 	"context"
+	"maps"
 	"sync"
 
 	betamodels "github.com/microsoftgraph/msgraph-beta-sdk-go/models"
-	"github.com/microsoftgraph/msgraph-beta-sdk-go/reports"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
+	betareports "github.com/microsoftgraph/msgraph-beta-sdk-go/reports"
+	"github.com/microsoftgraph/msgraph-sdk-go/models"
+	"github.com/microsoftgraph/msgraph-sdk-go/reports"
+	"go.mondoo.com/mql/providers/ms365/connection"
 )
 
 var idxUsersById = &sync.RWMutex{}
@@ -31,12 +34,24 @@ type mqlMicrosoftInternal struct {
 	mfaOnce sync.Once
 	// the response when asking for the user registration details
 	mfaResp mfaResp
+	// guards regDetails; the whole tenant's registration details, fetched once
+	regOnce    sync.Once
+	regDetails map[string]userRegistrationDetail
+	regErr     error
 	// per-user fields resolved in one batched Graph call on first access
 	userBatches userBatchCaches
 	// per-service-principal fields resolved in one batched Graph call
 	spBatches spBatchCaches
 	// per-user audit-log fields resolved in one batched Graph call
 	auditlogBatches auditlogBatchCaches
+	// directory role id to role template id, read once for administrative units
+	dirRoleTemplates directoryRoleTemplateCache
+	// tenant-wide LAPS and BitLocker escrow listings, fetched once
+	keyEscrow keyEscrowCache
+	// the tenant's subscribed SKUs, fetched once
+	subscribedSkus subscribedSkuCache
+	// per-user licenseDetails, fetched for users whose servicePlans are queried
+	userLicenseDetails userLicenseDetailsCache
 }
 
 // userBatchCaches holds one cache per per-user field that is resolved through
@@ -47,13 +62,13 @@ type userBatchCaches struct {
 	signInActivity batchFieldCache
 	authMethods    batchFieldCache
 	authRequires   batchFieldCache
-	licenseDetails batchFieldCache
 }
 
 // spBatchCaches holds one cache per per-service-principal field resolved
 // through the Graph $batch endpoint, working the same way as userBatchCaches.
 type spBatchCaches struct {
 	permissions batchFieldCache
+	assignments batchFieldCache
 }
 
 // auditlogBatchCaches holds one cache per per-user audit-log field resolved
@@ -119,12 +134,8 @@ func (c *batchFieldCache) resolve(
 		for _, id := range todo {
 			c.loaded[id] = true
 		}
-		for id, v := range data {
-			c.data[id] = v
-		}
-		for id, e := range errs {
-			c.errs[id] = e
-		}
+		maps.Copy(c.data, data)
+		maps.Copy(c.errs, errs)
 	}
 	if e := c.errs[key]; e != nil {
 		return nil, e
@@ -147,9 +158,9 @@ func (a *mqlMicrosoft) indexedUserIDs() []string {
 }
 
 // loadMfaResp lazily fetches user MFA registration details from the beta
-// Graph API and caches the result on a.mfaResp. Both microsoft.users.list
-// (eager batch) and microsoft.user.mfaEnabled (per-user lookup) call this
-// so the data is available regardless of which path was queried first.
+// Graph API and caches the result on a.mfaResp. It's called on demand by
+// microsoft.user.mfaEnabled; the sync.Once ensures the whole-tenant fetch
+// runs only once no matter how many users' mfaEnabled is accessed.
 func (a *mqlMicrosoft) loadMfaResp() *mfaResp {
 	a.mfaOnce.Do(func() {
 		conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
@@ -165,8 +176,8 @@ func (a *mqlMicrosoft) loadMfaResp() *mfaResp {
 			Reports().
 			AuthenticationMethods().
 			UserRegistrationDetails().
-			Get(ctx, &reports.AuthenticationMethodsUserRegistrationDetailsRequestBuilderGetRequestConfiguration{
-				QueryParameters: &reports.AuthenticationMethodsUserRegistrationDetailsRequestBuilderGetQueryParameters{
+			Get(ctx, &betareports.AuthenticationMethodsUserRegistrationDetailsRequestBuilderGetRequestConfiguration{
+				QueryParameters: &betareports.AuthenticationMethodsUserRegistrationDetailsRequestBuilderGetQueryParameters{
 					Top: &top,
 				},
 			})
@@ -177,18 +188,18 @@ func (a *mqlMicrosoft) loadMfaResp() *mfaResp {
 			return
 		}
 
-		details, err := iterate[*betamodels.UserRegistrationDetails](ctx, resp, betaClient.GetAdapter(), betamodels.CreateUserRegistrationDetailsCollectionResponseFromDiscriminatorValue)
+		// a row per user: keep only the flag as each page arrives
+		mfaMap := map[string]bool{}
+		err = iterateEach(ctx, resp, betaClient.GetAdapter(), betamodels.CreateUserRegistrationDetailsCollectionResponseFromDiscriminatorValue,
+			func(u *betamodels.UserRegistrationDetails) error {
+				if u != nil && u.GetId() != nil && u.GetIsMfaRegistered() != nil {
+					mfaMap[*u.GetId()] = *u.GetIsMfaRegistered()
+				}
+				return nil
+			})
 		if err != nil {
 			a.mfaResp = mfaResp{err: err}
 			return
-		}
-
-		mfaMap := map[string]bool{}
-		for _, u := range details {
-			if u.GetId() == nil || u.GetIsMfaRegistered() == nil {
-				continue
-			}
-			mfaMap[*u.GetId()] = *u.GetIsMfaRegistered()
 		}
 		a.mfaResp = mfaResp{mfaMap: mfaMap}
 	})
@@ -217,6 +228,32 @@ func (a *mqlMicrosoft) userById(id string) (*mqlMicrosoftUser, bool) {
 	return res, ok
 }
 
+// listedUser returns the user with the given id from the tenant's user list,
+// or nil when the list has no such user. The list is fetched once per
+// runtime, and microsoft.users.list indexes every user it returns, so the
+// lookup is a map read. The scan only runs for a list value that did not come
+// from microsoft.users.list (a recording), and indexes the match.
+func (a *mqlMicrosoft) listedUser(id string) (*mqlMicrosoftUser, error) {
+	users := a.GetUsers()
+	if users.Error != nil {
+		return nil, users.Error
+	}
+	list := users.Data.GetList()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+	if u, ok := a.userById(id); ok {
+		return u, nil
+	}
+	for _, entry := range list.Data {
+		if u, ok := entry.(*mqlMicrosoftUser); ok && u.Id.Data == id {
+			a.indexUser(u)
+			return u, nil
+		}
+	}
+	return nil, nil
+}
+
 // indexDevice adds a device to the internal indexes. The map is created lazily
 // under the write lock so concurrent indexing can't race on the nil check.
 func (a *mqlMicrosoft) indexDevice(device *mqlMicrosoftDevice) {
@@ -237,4 +274,61 @@ func (a *mqlMicrosoft) deviceById(id string) (*mqlMicrosoftDevice, bool) {
 	}
 	res, ok := a.idxDevicesById[id]
 	return res, ok
+}
+
+// loadRegistrationDetails reads every user's authentication-method registration
+// record in one paginated pass and indexes it by user id.
+//
+// microsoft.user.authMethods.registrationDetails previously fetched its own
+// record per user. Measured on this tenant: 50 per-user Gets against 4 $batch
+// calls for the whole of authMethods, so the child cost roughly twelve times its
+// parent and 86% of that query's traffic. The v1 request builder exposes a
+// collection Get alongside the per-item one, and Graph returns the same record
+// either way.
+//
+// The report has a row per user, so on a large tenant the kiota models are
+// too heavy to keep: each row is reduced to a userRegistrationDetail as its
+// page arrives.
+//
+// Deliberately separate from loadMfaResp, which reads the same report through
+// the beta client for mfaEnabled only. Unifying them means moving mfaEnabled to
+// v1, which changes a field's data source and belongs in its own change.
+func (a *mqlMicrosoft) loadRegistrationDetails() (map[string]userRegistrationDetail, error) {
+	a.regOnce.Do(func() {
+		conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+		graphClient, err := conn.GraphClient()
+		if err != nil {
+			a.regErr = err
+			return
+		}
+
+		ctx := context.Background()
+		top := int32(999)
+		resp, err := graphClient.Reports().AuthenticationMethods().UserRegistrationDetails().
+			Get(ctx, &reports.AuthenticationMethodsUserRegistrationDetailsRequestBuilderGetRequestConfiguration{
+				QueryParameters: &reports.AuthenticationMethodsUserRegistrationDetailsRequestBuilderGetQueryParameters{
+					Top: &top,
+				},
+			})
+		if err != nil {
+			a.regErr = transformError(err)
+			return
+		}
+
+		idx := map[string]userRegistrationDetail{}
+		err = iterateEach(ctx, resp, graphClient.GetAdapter(),
+			models.CreateUserRegistrationDetailsCollectionResponseFromDiscriminatorValue,
+			func(d models.UserRegistrationDetailsable) error {
+				if d != nil && d.GetId() != nil {
+					idx[*d.GetId()] = newUserRegistrationDetail(d)
+				}
+				return nil
+			})
+		if err != nil {
+			a.regErr = transformError(err)
+			return
+		}
+		a.regDetails = idx
+	})
+	return a.regDetails, a.regErr
 }

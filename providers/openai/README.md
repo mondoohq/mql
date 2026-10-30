@@ -29,8 +29,14 @@ mql shell openai
 export OPENAI_API_KEY="sk-admin-..."
 mql shell openai
 
-# Via CLI flag
-mql shell openai --token "sk-proj-..."
+# Both keys — needed where one credential reads the object and the other reads
+# its governance, such as which projects a fine-tuning checkpoint is shared into
+export OPENAI_API_KEY="sk-proj-..."
+export OPENAI_ADMIN_KEY="sk-admin-..."
+mql shell openai
+
+# Via CLI flags
+mql shell openai --token "sk-proj-..." --admin-token "sk-admin-..."
 ```
 
 ### Configuration options
@@ -38,6 +44,7 @@ mql shell openai --token "sk-proj-..."
 | Flag             | Environment Variable   | Description                                                        |
 |------------------|------------------------|--------------------------------------------------------------------|
 | `--token`        | `OPENAI_API_KEY`       | API key — project key (`sk-proj-...`) or admin key (`sk-admin-...`), auto-detected |
+| `--admin-token`  | `OPENAI_ADMIN_KEY`     | Admin key (`sk-admin-...`) used alongside `--token` so one connection reaches both planes |
 | `--organization` | `OPENAI_ORG_ID`        | Restrict queries to an organization                                |
 | `--project`      | `OPENAI_PROJECT_ID`    | Restrict queries to a project                                      |
 | `--base-url`     | `OPENAI_BASE_URL`      | Custom API endpoint (e.g., proxy)                                  |
@@ -122,6 +129,86 @@ mql> openai.projects { name apiKeys { name ownerType ownerName createdAt lastUse
 mql> openai.projects { name serviceAccounts { name role createdAt } }
 ```
 
+### Audit admin API keys (requires admin key)
+
+Admin keys are the most privileged credential in the account. Find the ones that never expire, or that nobody has used:
+
+```shell
+mql> openai.adminApiKeys { name ownerName ownerType createdAt expiresAt lastUsedAt }
+mql> openai.adminApiKeys.where(expiresAt == null) { name ownerName createdAt }
+mql> openai.adminApiKeys.where(lastUsedAt == null) { name ownerName createdAt }
+```
+
+### Review who holds which permissions (requires admin key)
+
+```shell
+mql> openai.roles { name resourceType isPredefined permissions }
+mql> openai.users { email roles { name permissions } }
+mql> openai.groups { name isScimManaged members { email } roles { name } }
+```
+
+Groups that are not SCIM managed can be edited in the dashboard without a matching change in the identity provider:
+
+```shell
+mql> openai.groups.where(isScimManaged == false) { name members { email } roles { name } }
+```
+
+### List project members (requires admin key)
+
+Project roles are separate from organization roles, so project owners have to be audited per project:
+
+```shell
+mql> openai.projects { name users { email role addedAt } }
+mql> openai.projects { name users.where(role == "owner") { email } }
+mql> openai.projects { name groups { name } roles { name permissions } }
+```
+
+### Check data retention and hosted tool policy (requires admin key)
+
+```shell
+mql> openai.dataRetentionType
+mql> openai.projects { name dataRetentionType modelPermissionMode modelPermissionModelIds }
+mql> openai.projects { name codeInterpreterEnabled fileSearchEnabled imageGenerationEnabled mcpEnabled webSearchEnabled }
+```
+
+Projects that can reach remote MCP servers, or that opted out of the organization retention policy:
+
+```shell
+mql> openai.projects.where(mcpEnabled) { name }
+mql> openai.projects.where(dataRetentionType != "organization_default") { name dataRetentionType }
+```
+
+### Check spend controls and rate limits (requires admin key)
+
+`spendLimitAmount` is null when no hard limit is configured, so an unlimited organization is distinguishable from one limited to zero:
+
+```shell
+mql> openai { spendLimitAmount spendLimitCurrency spendLimitInterval spendLimitEnforcement }
+mql> openai.spendAlerts { thresholdAmount interval notificationRecipients }
+mql> openai.projects { name spendLimitAmount spendAlerts { thresholdAmount } }
+mql> openai.projects { name rateLimits { model maxRequestsPerMinute maxTokensPerMinute } }
+```
+
+### Audit mutual TLS certificates (requires admin key)
+
+`active` reflects the scope the certificate was read from, so an organization-wide activation and a per-project one are separate answers:
+
+```shell
+mql> openai.certificates { name active validAt expiresAt }
+mql> openai.certificates.where(active) { name expiresAt }
+mql> openai.projects { name certificates { name active expiresAt } }
+```
+
+### Check code interpreter container egress
+
+Containers run code the model wrote. `networkPolicyType` reports whether they can reach the network at all:
+
+```shell
+mql> openai.containers { name status networkPolicyType networkPolicyAllowedDomains }
+mql> openai.containers.where(networkPolicyType == "allowlist") { name networkPolicyAllowedDomains }
+mql> openai.containers { name lastActiveAt expiresAfterMinutes }
+```
+
 ### AIBOM inventory query
 
 Combine model inventory with fine-tuning lineage for a complete AI supply chain view:
@@ -144,7 +231,15 @@ mql> openai.files.where(purpose == "fine-tune") { id filename bytes createdAt }
 | `openai.project`               | Organization project (requires admin key)         |
 | `openai.project.apiKey`        | Project API key with ownership info               |
 | `openai.project.serviceAccount`| Project service account                           |
+| `openai.project.user`          | Project member with project role                  |
 | `openai.organizationUser`      | Organization member with role and usage info      |
+| `openai.adminApiKey`           | Organization admin API key with owner and expiry  |
+| `openai.role`                  | Named permission set grantable to users and groups|
+| `openai.group`                 | Group of members, optionally SCIM managed         |
+| `openai.spendAlert`            | Spend notification threshold and recipients       |
+| `openai.project.rateLimit`     | Per-model throughput ceiling for a project        |
+| `openai.certificate`           | Mutual TLS certificate with validity window       |
+| `openai.container`             | Code interpreter sandbox with egress policy       |
 | `openai.invite`                | Pending organization invite                       |
 | `openai.auditLog`              | Organization audit log entry                      |
 

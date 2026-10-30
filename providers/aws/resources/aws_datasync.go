@@ -5,17 +5,21 @@ package resources
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"maps"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/datasync"
+	datasynctypes "github.com/aws/aws-sdk-go-v2/service/datasync/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 func (a *mqlAwsDatasync) id() (string, error) {
@@ -98,6 +102,7 @@ func (a *mqlAwsDatasyncTask) id() (string, error) {
 }
 
 type mqlAwsDatasyncTaskInternal struct {
+	lazyTags
 	fetched  bool
 	lock     sync.Mutex
 	descResp *datasync.DescribeTaskOutput
@@ -226,11 +231,37 @@ func (a *mqlAwsDatasyncTask) createdAt() (*time.Time, error) {
 
 // Locations
 
+// initAwsDatasyncLocation resolves a location referenced by ARN, as a task's
+// source and destination are, from the account's location list. Returning
+// the bare args instead built a location with only its ARN set, and because
+// init runs before the cache lookup, that blank copy also replaced the full
+// one aws.datasync.locations had cached under the same ARN.
 func initAwsDatasyncLocation(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	// A location referenced by ARN from a task is a valid bare resource: the
-	// full detail is populated when aws.datasync.locations is queried (the
-	// cache keys align on ARN), otherwise only the ARN is known.
-	return args, nil, nil
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	arnRaw, ok := args["arn"]
+	if !ok || arnRaw == nil {
+		return nil, nil, errors.New("aws.datasync.location requires an arn")
+	}
+	wantArn, ok := arnRaw.Value.(string)
+	if !ok || wantArn == "" {
+		return nil, nil, errors.New("aws.datasync.location requires an arn")
+	}
+	svc, err := NewResource(runtime, "aws.datasync", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, nil, err
+	}
+	locations := svc.(*mqlAwsDatasync).GetLocations()
+	if locations.Error != nil {
+		return nil, nil, locations.Error
+	}
+	for _, raw := range locations.Data {
+		if loc, ok := raw.(*mqlAwsDatasyncLocation); ok && loc.Arn.Data == wantArn {
+			return args, loc, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("aws.datasync.location with arn %q not found", wantArn)
 }
 
 func (a *mqlAwsDatasync) locations() ([]any, error) {
@@ -396,6 +427,7 @@ func (a *mqlAwsDatasyncAgent) id() (string, error) {
 }
 
 type mqlAwsDatasyncAgentInternal struct {
+	lazyTags
 	fetched  bool
 	lock     sync.Mutex
 	descResp *datasync.DescribeAgentOutput
@@ -448,4 +480,52 @@ func (a *mqlAwsDatasyncAgent) createdAt() (*time.Time, error) {
 		return nil, err
 	}
 	return resp.CreationTime, nil
+}
+
+type mqlAwsDatasyncLocationInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsDatasyncTask) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return datasyncTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsDatasyncLocation) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return datasyncTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsDatasyncAgent) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return datasyncTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+// datasyncTagsForArn reads the tags of a DataSync task, location, or agent,
+// following the paginated ListTagsForResource response to the end.
+func datasyncTagsForArn(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.DataSync(region)
+	ctx := context.Background()
+	tags := map[string]any{}
+	paginator := datasync.NewListTagsForResourcePaginator(svc, &datasync.ListTagsForResourceInput{ResourceArn: &resourceArn})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("datasync:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		maps.Copy(tags, tagsToMap(page.Tags,
+			func(t datasynctypes.TagListEntry) *string { return t.Key },
+			func(t datasynctypes.TagListEntry) *string { return t.Value }))
+	}
+	return tags, nil
 }

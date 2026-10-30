@@ -8,7 +8,7 @@ import "llx/llx.proto";
 import "providers-sdk/v1/inventory/inventory.proto";
 import "providers-sdk/v1/upstream/upstream.proto";
 
-option go_package = "go.mondoo.com/mql/v13/providers-sdk/v1/plugin";
+option go_package = "go.mondoo.com/mql/providers-sdk/v1/plugin";
 
 message ParseCLIReq {
   string connector = 1;
@@ -37,7 +37,28 @@ message ConnectRes {
   Asset asset = 3;
   // inventory of other discovered assets
   Inventory inventory = 4;
+  // The resource that roots this asset's tree, as decided by the connection
+  // (ADR 031). The provider's static `Root` says what it can expose in general;
+  // this says what this connection actually exposed, which is what `_` resolves
+  // to. Empty means the connection has nothing more specific to say and the
+  // static declaration stands.
+  //
+  // It has to be reported here rather than declared statically because it can
+  // depend on what connecting found: the `os` provider serves Linux, Windows
+  // and macOS through one set of connectors, so only the platform detected
+  // during Connect decides between `os.linux`, `os.windows` and `os.macos`.
+  string root = 5;
+  // Keep exploring below this folder for this provider. Default false: a
+  // provider that says nothing has taken everything it wants here, and the walk
+  // stops descending this branch for it. Other providers are unaffected.
+  bool continue_exploration = 6;
 }
+
+// ErrorKind and ErrorDetail moved to llx.proto in ADR 046, so that llx.Result
+// can carry them: plugin.proto imports llx.proto, so the shared vocabulary has
+// to live in the lower layer. The Go names stay available from this package as
+// aliases (errors.go), and the status-detail mechanism ADR 045 built is
+// unchanged apart from the detail's type URL.
 
 message ShutdownReq {
 }
@@ -58,6 +79,13 @@ message DataRes {
   string error = 2;
   // The ID uniquely identifies this request and all associated callbacks
   string id = 3;
+  // Why this field failed, when the provider could say (ADR 046). A field
+  // failure is not a gRPC status, so a status detail alone would never reach
+  // the executor; this is the carrier on the normal path.
+  mql.llx.ErrorDetail error_detail = 4;
+  // The data is incomplete: these parts could not be read (ADR 046 §8). The
+  // field is set, not failed; error stays empty.
+  repeated mql.llx.CoverageGap coverage_gaps = 5;
 }
 
 message CollectRes {
@@ -95,8 +123,70 @@ message DisconnectRes {
 
 }
 
+// TranslationsReq asks a provider for its downgrade catalog. It carries no
+// connection: translations are a static property of the provider build, not of
+// any asset, so this can be answered without connecting to anything.
+message TranslationsReq {
+
+}
+
+// TranslationsRes is everything this provider knows about expressing its newer
+// shapes in the vocabulary of its older ones (ADR 040 part 6).
+message TranslationsRes {
+  repeated Translation translations = 1;
+}
+
+// Translation says how to rebuild one field for a reader that predates it.
+//
+// Steps are authored between *adjacent* releases, so each one is written once
+// and frozen when it ships; the compiler folds a run of them into a single
+// block per era so the reader never has to compose anything at runtime.
+message Translation {
+  // Resource owning the field, e.g. "sshd.config".
+  string resource = 1;
+  // Field this rebuilds, e.g. "cipherCount".
+  string field = 2;
+  // Version that introduced the change. Readers older than this need the
+  // translation; readers at or above it run the field directly.
+  string changed_in = 3;
+  // Block computing the field out of vocabulary that predates changed_in.
+  //
+  // Its refs are block-relative: chunk 1 is the binding (the parent resource),
+  // and the compiler relocates the whole block into the destination bundle,
+  // remapping bindings and recomputing checksums as it goes. A provider does
+  // not know, and must not care, where its block will land.
+  mql.llx.Block block = 4;
+}
+
+// ResolveAssetReq asks a provider for the asset behind one of its resources.
+//
+// The `asset` value a query carries is only an anchor - the resource that
+// anchors the target in this asset's tree - because that is identity, and
+// identity is all that belongs in a value which persists into recordings and
+// upstream (ADR 030). Connecting needs more than identity: it needs to know how
+// to reach the thing. That is asked for here, at the moment it is needed, and
+// is never stored.
+//
+// Only the provider that owns the resource can answer, which is the point: the
+// connection config is built from the resource by the same code discovery uses,
+// so the forward and reverse views cannot drift.
+message ResolveAssetReq {
+  uint32 connection = 1;
+  // The anchor: the resource this asset hangs off, in the caller's tree.
+  string resource_type = 2;
+  string resource_id = 3;
+}
+
+message ResolveAssetRes {
+  // The asset behind the anchor, carrying the connection needed to reach it.
+  // Null when this provider has no asset for that resource, which is not an
+  // error - most resources are not assets.
+  Asset asset = 1;
+}
+
 service ProviderPlugin {
   rpc Heartbeat(HeartbeatReq) returns (HeartbeatRes);
+  rpc Translations(TranslationsReq) returns (TranslationsRes);
   rpc ParseCLI(ParseCLIReq) returns (ParseCLIRes);
   rpc Connect(ConnectReq) returns (ConnectRes);
   rpc Disconnect(DisconnectReq) returns (DisconnectRes);
@@ -104,6 +194,7 @@ service ProviderPlugin {
   rpc Shutdown(ShutdownReq) returns (ShutdownRes);
   rpc GetData(DataReq) returns (DataRes);
   rpc StoreData(StoreReq) returns (StoreRes);
+  rpc ResolveAsset(ResolveAssetReq) returns (ResolveAssetRes);
 }
 
 service ProviderCallback {

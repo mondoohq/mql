@@ -5,8 +5,53 @@ package pnpmlock
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/javascript"
 )
+
+// scopeOf maps a pnpm lock entry to a languages package scope. pnpm marks a
+// dev-only package with `dev: true` in the packages map (v5/v6); v9 does not
+// carry the flag per entry. So a flag-less entry means "production" only when the
+// lockfile version actually distinguishes dev (v5/v6); on v9 it means "unknown",
+// and we return "" rather than mislabel a dev-only package as production.
+func scopeOf(entry pnpmPackageEntry, lockfileVersion float64) string {
+	if entry.Dev {
+		return languages.PackageScopeDev
+	}
+	if lockfileVersion >= 7 {
+		return ""
+	}
+	return languages.PackageScopeProd
+}
+
+// dependsOnRefs resolves a pnpm entry's `dependencies` (name→resolved-version)
+// to the refs (purls) of the depended-on packages. pnpm's store is flat and
+// keyed by name+version, so each dependency value is already a concrete version;
+// the ref is built the same way Transitive() builds each package's own Purl, so
+// an edge ref matches its target node's Purl. Returns sorted, deduped purls.
+func dependsOnRefs(deps map[string]string) []string {
+	if len(deps) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	var refs []string
+	for name, ver := range deps {
+		ver = cleanVersionSuffix(ver)
+		if name == "" || ver == "" {
+			continue
+		}
+		ref := javascript.NewPackageUrl(name, ver)
+		if !seen[ref] {
+			seen[ref] = true
+			refs = append(refs, ref)
+		}
+	}
+	sort.Strings(refs)
+	return refs
+}
 
 // pnpmLock represents a parsed pnpm-lock.yaml file.
 type pnpmLock struct {
@@ -76,13 +121,13 @@ func parseAtSeparatedKey(key string) (name, ver string, ok bool) {
 
 	// For scoped packages like @scope/name@1.0.0, we need to find the
 	// last @ that separates name from version (not the leading @).
-	atIdx := strings.LastIndex(key, "@")
-	if atIdx <= 0 {
+	before, after, found := strings.CutLast(key, "@")
+	if !found || before == "" {
 		return "", "", false
 	}
 
-	name = key[:atIdx]
-	ver = cleanVersionSuffix(key[atIdx+1:])
+	name = before
+	ver = cleanVersionSuffix(after)
 	if name == "" || ver == "" {
 		return "", "", false
 	}

@@ -14,12 +14,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/securityhub"
 	"github.com/aws/aws-sdk-go-v2/service/securityhub/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	mqlTypes "go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	mqlTypes "go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsSecurityhub) id() (string, error) {
@@ -64,17 +64,18 @@ func (a *mqlAwsSecurityhub) getHubs(conn *connection.AwsConnection) []*jobpool.J
 					log.Warn().Str("region", region).Msg("error accessing region for AWS API")
 					return res, nil
 				}
-				var notFoundErr *types.InvalidAccessException
-				if errors.As(err, &notFoundErr) {
+				if _, ok := errors.AsType[*types.InvalidAccessException](err); ok {
 					return nil, nil
 				}
 				return nil, err
 			}
 			mqlHub, err := CreateResource(a.MqlRuntime, "aws.securityhub.hub",
 				map[string]*llx.RawData{
-					"arn":          llx.StringDataPtr(secHub.HubArn),
-					"subscribedAt": llx.StringDataPtr(secHub.SubscribedAt),
-					"region":       llx.StringData(region),
+					"arn":                     llx.StringDataPtr(secHub.HubArn),
+					"subscribedAt":            llx.StringDataPtr(secHub.SubscribedAt),
+					"region":                  llx.StringData(region),
+					"autoEnableControls":      llx.BoolData(convert.ToValue(secHub.AutoEnableControls)),
+					"controlFindingGenerator": llx.StringData(string(secHub.ControlFindingGenerator)),
 				})
 			if err != nil {
 				return nil, err
@@ -92,9 +93,33 @@ func (a *mqlAwsSecurityhubHub) id() (string, error) {
 }
 
 type mqlAwsSecurityhubHubInternal struct {
+	lazyTags
 	standardsFetched bool
 	standardsLock    sync.Mutex
 	standards        []types.StandardsSubscription
+}
+
+func (a *mqlAwsSecurityhubHub) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		hubArn := a.Arn.Data
+
+		svc := conn.Securityhub(a.Region.Data)
+		resp, err := svc.ListTagsForResource(context.Background(), &securityhub.ListTagsForResourceInput{
+			ResourceArn: &hubArn,
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		tags := make(map[string]any, len(resp.Tags))
+		for k, v := range resp.Tags {
+			tags[k] = v
+		}
+		return tags, nil
+	})
 }
 
 func (a *mqlAwsSecurityhubHub) getEnabledStandards() ([]types.StandardsSubscription, error) {
@@ -128,22 +153,6 @@ func (a *mqlAwsSecurityhubHub) getEnabledStandards() ([]types.StandardsSubscript
 	a.standards = all
 	a.standardsFetched = true
 	return all, nil
-}
-
-func (a *mqlAwsSecurityhubHub) enabledStandards() ([]any, error) {
-	standards, err := a.getEnabledStandards()
-	if err != nil {
-		return nil, err
-	}
-	res := make([]any, 0, len(standards))
-	for _, std := range standards {
-		d, err := convert.JsonToDict(std)
-		if err != nil {
-			return nil, err
-		}
-		res = append(res, d)
-	}
-	return res, nil
 }
 
 func (a *mqlAwsSecurityhubHub) standardSubscriptions() ([]any, error) {
@@ -208,10 +217,7 @@ func (a *mqlAwsSecurityhubStandardSubscription) controls() ([]any, error) {
 	assocMap := make(map[string]types.StandardsControlAssociationDetail, len(controlDefs))
 	const batchSize = 100
 	for i := 0; i < len(controlDefs); i += batchSize {
-		end := i + batchSize
-		if end > len(controlDefs) {
-			end = len(controlDefs)
-		}
+		end := min(i+batchSize, len(controlDefs))
 		ids := make([]types.StandardsControlAssociationId, 0, end-i)
 		for _, def := range controlDefs[i:end] {
 			ids = append(ids, types.StandardsControlAssociationId{
@@ -325,12 +331,8 @@ func (a *mqlAwsSecurityhubHub) findings() ([]any, error) {
 
 func newMqlSecurityHubFinding(runtime *plugin.Runtime, finding *types.AwsSecurityFinding, region string) (*mqlAwsSecurityhubFinding, error) {
 	var severity string
-	var severityNormalized int64
 	if finding.Severity != nil {
 		severity = string(finding.Severity.Label)
-		if finding.Severity.Normalized != nil {
-			severityNormalized = int64(*finding.Severity.Normalized)
-		}
 	}
 
 	var complianceStatus string
@@ -365,30 +367,29 @@ func newMqlSecurityHubFinding(runtime *plugin.Runtime, finding *types.AwsSecurit
 
 	res, err := CreateResource(runtime, "aws.securityhub.finding",
 		map[string]*llx.RawData{
-			"__id":               llx.StringData(fmt.Sprintf("securityhub/finding/%s/%s", region, convert.ToValue(finding.Id))),
-			"id":                 llx.StringDataPtr(finding.Id),
-			"title":              llx.StringDataPtr(finding.Title),
-			"description":        llx.StringDataPtr(finding.Description),
-			"severity":           llx.StringData(severity),
-			"severityNormalized": llx.IntData(severityNormalized),
-			"recordState":        llx.StringData(string(finding.RecordState)),
-			"complianceStatus":   llx.StringData(complianceStatus),
-			"workflowStatus":     llx.StringData(workflowStatus),
-			"types":              llx.ArrayData(findingTypes, mqlTypes.String),
-			"productArn":         llx.StringDataPtr(finding.ProductArn),
-			"productName":        llx.StringDataPtr(finding.ProductName),
-			"generatorId":        llx.StringDataPtr(finding.GeneratorId),
-			"resourceType":       llx.StringData(resourceType),
-			"resourceId":         llx.StringData(resourceId),
-			"resourceRegion":     llx.StringData(resourceRegion),
-			"createdAt":          llx.TimeDataPtr(parseAwsTimestampPtr(finding.CreatedAt)),
-			"updatedAt":          llx.TimeDataPtr(parseAwsTimestampPtr(finding.UpdatedAt)),
-			"firstObservedAt":    llx.TimeDataPtr(parseAwsTimestampPtr(finding.FirstObservedAt)),
-			"lastObservedAt":     llx.TimeDataPtr(parseAwsTimestampPtr(finding.LastObservedAt)),
-			"remediationUrl":     llx.StringData(remediationUrl),
-			"remediationText":    llx.StringData(remediationText),
-			"accountId":          llx.StringDataPtr(finding.AwsAccountId),
-			"region":             llx.StringData(region),
+			"__id":             llx.StringData(fmt.Sprintf("securityhub/finding/%s/%s", region, convert.ToValue(finding.Id))),
+			"id":               llx.StringDataPtr(finding.Id),
+			"title":            llx.StringDataPtr(finding.Title),
+			"description":      llx.StringDataPtr(finding.Description),
+			"severity":         llx.StringData(severity),
+			"recordState":      llx.StringData(string(finding.RecordState)),
+			"complianceStatus": llx.StringData(complianceStatus),
+			"workflowStatus":   llx.StringData(workflowStatus),
+			"types":            llx.ArrayData(findingTypes, mqlTypes.String),
+			"productArn":       llx.StringDataPtr(finding.ProductArn),
+			"productName":      llx.StringDataPtr(finding.ProductName),
+			"generatorId":      llx.StringDataPtr(finding.GeneratorId),
+			"resourceType":     llx.StringData(resourceType),
+			"resourceId":       llx.StringData(resourceId),
+			"resourceRegion":   llx.StringData(resourceRegion),
+			"createdAt":        llx.TimeDataPtr(parseAwsTimestampPtr(finding.CreatedAt)),
+			"updatedAt":        llx.TimeDataPtr(parseAwsTimestampPtr(finding.UpdatedAt)),
+			"firstObservedAt":  llx.TimeDataPtr(parseAwsTimestampPtr(finding.FirstObservedAt)),
+			"lastObservedAt":   llx.TimeDataPtr(parseAwsTimestampPtr(finding.LastObservedAt)),
+			"remediationUrl":   llx.StringData(remediationUrl),
+			"remediationText":  llx.StringData(remediationText),
+			"accountId":        llx.StringDataPtr(finding.AwsAccountId),
+			"region":           llx.StringData(region),
 		})
 	if err != nil {
 		return nil, err
@@ -435,6 +436,7 @@ func (a *mqlAwsSecurityhubHub) automationRules() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
+			mqlRule.(*mqlAwsSecurityhubAutomationRule).cacheRegion = region
 			res = append(res, mqlRule)
 		}
 
@@ -448,6 +450,30 @@ func (a *mqlAwsSecurityhubHub) automationRules() ([]any, error) {
 
 func (a *mqlAwsSecurityhubAutomationRule) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+type mqlAwsSecurityhubAutomationRuleInternal struct {
+	lazyTags
+	cacheRegion string
+}
+
+func (a *mqlAwsSecurityhubAutomationRule) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Securityhub(a.cacheRegion)
+		ruleArn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &securityhub.ListTagsForResourceInput{ResourceArn: &ruleArn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("securityhub:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return toInterfaceMap(resp.Tags), nil
+	})
 }
 
 func (a *mqlAwsSecurityhubHub) insights() ([]any, error) {
@@ -540,6 +566,120 @@ func (a *mqlAwsSecurityhubInsightResult) id() (string, error) {
 	return a.__id, nil
 }
 
+// organizationConfiguration returns the organization-wide Security Hub
+// settings the delegated administrator applies to member accounts. The call
+// only succeeds for a Security Hub administrator account, so a standalone or
+// member account resolves the field to null rather than failing the scan.
+func (a *mqlAwsSecurityhubHub) organizationConfiguration() (*mqlAwsSecurityhubOrganizationConfiguration, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	region := a.Region.Data
+	svc := conn.Securityhub(region)
+	ctx := context.Background()
+
+	resp, err := svc.DescribeOrganizationConfiguration(ctx, &securityhub.DescribeOrganizationConfigurationInput{})
+	if err != nil {
+		var invalidAccess *types.InvalidAccessException
+		if Is400AccessDeniedError(err) || errors.As(err, &invalidAccess) {
+			a.OrganizationConfiguration.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var configurationType, status, statusMessage string
+	if oc := resp.OrganizationConfiguration; oc != nil {
+		configurationType = string(oc.ConfigurationType)
+		status = string(oc.Status)
+		statusMessage = convert.ToValue(oc.StatusMessage)
+	}
+
+	res, err := CreateResource(a.MqlRuntime, "aws.securityhub.organizationConfiguration",
+		map[string]*llx.RawData{
+			"__id":                      llx.StringData(a.Arn.Data + "/organizationConfiguration"),
+			"region":                    llx.StringData(region),
+			"autoEnable":                llx.BoolData(convert.ToValue(resp.AutoEnable)),
+			"autoEnableStandards":       llx.StringData(string(resp.AutoEnableStandards)),
+			"configurationType":         llx.StringData(configurationType),
+			"status":                    llx.StringData(status),
+			"statusMessage":             llx.StringData(statusMessage),
+			"memberAccountLimitReached": llx.BoolData(convert.ToValue(resp.MemberAccountLimitReached)),
+		})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsSecurityhubOrganizationConfiguration), nil
+}
+
+// findingAggregator returns the cross-region finding aggregator configured for
+// this hub. ListFindingAggregators returns at most one aggregator, and only in
+// the aggregation home region, so every other region resolves to null.
+func (a *mqlAwsSecurityhubHub) findingAggregator() (*mqlAwsSecurityhubFindingAggregator, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	region := a.Region.Data
+	svc := conn.Securityhub(region)
+	ctx := context.Background()
+
+	var aggregatorArn *string
+	paginator := securityhub.NewListFindingAggregatorsPaginator(svc, &securityhub.ListFindingAggregatorsInput{})
+	for paginator.HasMorePages() && aggregatorArn == nil {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			var invalidAccess *types.InvalidAccessException
+			if Is400AccessDeniedError(err) || errors.As(err, &invalidAccess) {
+				a.FindingAggregator.State = plugin.StateIsSet | plugin.StateIsNull
+				return nil, nil
+			}
+			return nil, err
+		}
+		for i := range page.FindingAggregators {
+			if arn := page.FindingAggregators[i].FindingAggregatorArn; arn != nil && *arn != "" {
+				aggregatorArn = arn
+				break
+			}
+		}
+	}
+	if aggregatorArn == nil {
+		a.FindingAggregator.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	detail, err := svc.GetFindingAggregator(ctx, &securityhub.GetFindingAggregatorInput{
+		FindingAggregatorArn: aggregatorArn,
+	})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			a.FindingAggregator.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	regions := make([]any, 0, len(detail.Regions))
+	for _, r := range detail.Regions {
+		regions = append(regions, r)
+	}
+
+	res, err := CreateResource(a.MqlRuntime, "aws.securityhub.findingAggregator",
+		map[string]*llx.RawData{
+			"arn":                      llx.StringDataPtr(aggregatorArn),
+			"findingAggregationRegion": llx.StringDataPtr(detail.FindingAggregationRegion),
+			"regionLinkingMode":        llx.StringDataPtr(detail.RegionLinkingMode),
+			"regions":                  llx.ArrayData(regions, mqlTypes.String),
+		})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsSecurityhubFindingAggregator), nil
+}
+
+func (a *mqlAwsSecurityhubOrganizationConfiguration) id() (string, error) {
+	return a.__id, nil
+}
+
+func (a *mqlAwsSecurityhubFindingAggregator) id() (string, error) {
+	return a.Arn.Data, nil
+}
+
 // standardNameFromArn extracts a human-readable name from a Security Hub standard ARN.
 // Handles both "standards/" and "ruleset/" prefixes:
 //
@@ -549,11 +689,11 @@ func (a *mqlAwsSecurityhubInsightResult) id() (string, error) {
 //	 → "cis-aws-foundations-benchmark"
 func standardNameFromArn(arn string) string {
 	for _, prefix := range []string{"standards/", "ruleset/"} {
-		idx := strings.Index(arn, prefix)
-		if idx == -1 {
+		_, after, ok := strings.Cut(arn, prefix)
+		if !ok {
 			continue
 		}
-		name := arn[idx+len(prefix):]
+		name := after
 		if slash := strings.Index(name, "/"); slash != -1 {
 			name = name[:slash]
 		}
@@ -625,9 +765,9 @@ func (a *mqlAwsSecurityhubHub) enabledProducts() ([]any, error) {
 			// Extract product ARN from the subscription ARN
 			// Subscription ARN: arn:aws:securityhub:region:account:product-subscription/product-arn
 			productArn := productSubArn
-			if idx := strings.Index(productSubArn, ":product-subscription/"); idx != -1 {
+			if before, after, ok := strings.Cut(productSubArn, ":product-subscription/"); ok {
 				// Reconstruct the product ARN
-				productArn = productSubArn[:idx] + ":product/" + productSubArn[idx+len(":product-subscription/"):]
+				productArn = before + ":product/" + after
 			}
 
 			mqlProduct, err := CreateResource(a.MqlRuntime, "aws.securityhub.enabledProduct",

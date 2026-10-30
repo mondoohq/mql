@@ -10,7 +10,7 @@ import (
 	"slices"
 	"testing"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 )
 
 func TestDefaultEndpointSpecsCoverSourceBackedRoutes(t *testing.T) {
@@ -31,6 +31,45 @@ func TestDefaultEndpointSpecsCoverSourceBackedRoutes(t *testing.T) {
 		}) {
 			t.Fatalf("missing default probe %s %s", want.Method, want.Path)
 		}
+	}
+}
+
+var specSink []EndpointSpec
+
+// The spec table is looked up once per endpoint resource, so rebuilding it per
+// call is 39 structs of garbage each time. Guard the sharing rather than the
+// wording of the implementation.
+func TestDefaultEndpointSpecsDoesNotAllocate(t *testing.T) {
+	allocs := testing.AllocsPerRun(100, func() {
+		specSink = DefaultEndpointSpecs()
+	})
+	if allocs != 0 {
+		t.Fatalf("DefaultEndpointSpecs allocates %.0f times per call, want 0 (the table must be shared, not rebuilt)", allocs)
+	}
+}
+
+// ProbeEndpoint uppercases the method on its own copy. If it ever took a
+// pointer, or a caller sorted the returned slice, every later lookup would see
+// the mutation because the table is now shared.
+func TestProbeEndpointDoesNotMutateSharedTable(t *testing.T) {
+	specs := DefaultEndpointSpecs()
+	idx := slices.IndexFunc(specs, func(s EndpointSpec) bool { return s.Path == "/v1/models" })
+	if idx < 0 {
+		t.Fatal("expected /v1/models in the default specs")
+	}
+	before := specs[idx]
+
+	lower := before
+	lower.Method = "get"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	conn := &VllmConnection{client: srv.Client(), baseURL: srv.URL}
+	conn.ProbeEndpoint(context.Background(), lower)
+
+	if got := DefaultEndpointSpecs()[idx]; got != before {
+		t.Fatalf("shared spec table was mutated: %+v, want %+v", got, before)
 	}
 }
 
@@ -340,6 +379,7 @@ func TestReachableRequiresSuccessOrRedirect(t *testing.T) {
 	}
 }
 
+//go:fix inline
 func intPtr(v int) *int {
-	return &v
+	return new(v)
 }

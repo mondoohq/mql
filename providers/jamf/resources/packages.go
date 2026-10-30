@@ -5,9 +5,9 @@ package resources
 
 import (
 	"github.com/deploymenttheory/go-api-sdk-jamfpro/sdk/jamfpro"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/jamf/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/jamf/connection"
 )
 
 // packageToArgs maps a Jamf Pro package into the MQL resource fields. It is
@@ -50,7 +50,7 @@ func packageToArgs(c jamfpro.ResourcePackage) map[string]*llx.RawData {
 	}
 }
 
-func (r *mqlJamf) packages() ([]interface{}, error) {
+func (r *mqlJamf) packages() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.JamfConnection)
 	client := conn.Client
 
@@ -61,7 +61,7 @@ func (r *mqlJamf) packages() ([]interface{}, error) {
 		return nil, err
 	}
 
-	var res []interface{}
+	var res []any
 	for _, c := range inventory.Results {
 		item, err := CreateResource(r.MqlRuntime, "jamf.package", packageToArgs(c))
 		if err != nil {

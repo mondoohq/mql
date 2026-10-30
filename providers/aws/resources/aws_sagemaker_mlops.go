@@ -7,17 +7,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/service/sagemaker"
+	sagemakertypes "github.com/aws/aws-sdk-go-v2/service/sagemaker/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // parseSagemakerArn extracts (partition, region, accountID, resourceName) from a SageMaker ARN.
@@ -60,20 +62,20 @@ func initAwsSagemakerExperiment(runtime *plugin.Runtime, args map[string]*llx.Ra
 		}
 	}
 
-	// Fallback: derive name/region from ARN so minimal fields resolve.
-	_, region, _, name := parseSagemakerArn(arnVal)
-	if args["name"] == nil && name != "" {
-		args["name"] = llx.StringData(name)
-	}
-	if args["region"] == nil && region != "" {
-		args["region"] = llx.StringData(region)
-	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.sagemaker.experiment with arn %q not found", arnVal)
 }
 
 func initAwsSagemakerModel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 2 {
 		return args, nil, nil
+	}
+	if len(args) == 0 {
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformSagemakerModel); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
+		}
 	}
 	if args["arn"] == nil {
 		return nil, nil, errors.New("arn required to resolve sagemaker model")
@@ -96,14 +98,10 @@ func initAwsSagemakerModel(runtime *plugin.Runtime, args map[string]*llx.RawData
 		}
 	}
 
-	_, region, _, name := parseSagemakerArn(arnVal)
-	if args["name"] == nil && name != "" {
-		args["name"] = llx.StringData(name)
-	}
-	if args["region"] == nil && region != "" {
-		args["region"] = llx.StringData(region)
-	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.sagemaker.model with arn %q not found", arnVal)
 }
 
 // ---- Experiments ----
@@ -178,7 +176,7 @@ func (a *mqlAwsSagemaker) getExperiments(conn *connection.AwsConnection) []*jobp
 					e := mqlExp.(*mqlAwsSagemakerExperiment)
 					if eagerTags != nil {
 						e.cacheTags = eagerTags
-						e.tagsFetched = true
+						e.tagsFetched.Store(true)
 					}
 					res = append(res, mqlExp)
 				}
@@ -253,6 +251,7 @@ func (a *mqlAwsSagemakerExperiment) source() (*mqlAwsSagemakerExperimentSource, 
 	}
 	mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerExperimentSource,
 		map[string]*llx.RawData{
+			"__id":       llx.StringData(a.Arn.Data + "/source"),
 			"sourceArn":  llx.StringDataPtr(a.cacheSourceArn),
 			"sourceType": llx.StringData(a.cacheSourceType),
 		})
@@ -344,7 +343,7 @@ func (a *mqlAwsSagemaker) getTrials(conn *connection.AwsConnection) []*jobpool.J
 					t := mqlTrial.(*mqlAwsSagemakerTrial)
 					if eagerTags != nil {
 						t.cacheTags = eagerTags
-						t.tagsFetched = true
+						t.tagsFetched.Store(true)
 					}
 					res = append(res, mqlTrial)
 				}
@@ -438,6 +437,7 @@ func (a *mqlAwsSagemakerTrial) source() (*mqlAwsSagemakerTrialSource, error) {
 	}
 	mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerTrialSource,
 		map[string]*llx.RawData{
+			"__id":       llx.StringData(a.Arn.Data + "/source"),
 			"sourceArn":  llx.StringDataPtr(a.cacheSourceArn),
 			"sourceType": llx.StringData(a.cacheSourceType),
 		})
@@ -574,7 +574,7 @@ func (a *mqlAwsSagemaker) getTrialComponents(conn *connection.AwsConnection) []*
 					tcRes := mqlTC.(*mqlAwsSagemakerTrialComponent)
 					if eagerTags != nil {
 						tcRes.cacheTags = eagerTags
-						tcRes.tagsFetched = true
+						tcRes.tagsFetched.Store(true)
 					}
 					res = append(res, mqlTC)
 				}
@@ -666,6 +666,7 @@ func (a *mqlAwsSagemakerTrialComponent) fetchDetails() error {
 		}
 		mqlMetric, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerTrialComponentMetricSummary,
 			map[string]*llx.RawData{
+				"__id":       llx.StringData(a.Arn.Data + "/metric/" + convert.ToValue(m.MetricName)),
 				"metricName": llx.StringDataPtr(m.MetricName),
 				"sourceArn":  llx.StringDataPtr(m.SourceArn),
 				"min":        llx.FloatData(minVal),
@@ -697,6 +698,7 @@ func (a *mqlAwsSagemakerTrialComponent) source() (*mqlAwsSagemakerTrialComponent
 	}
 	mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerTrialComponentSource,
 		map[string]*llx.RawData{
+			"__id":       llx.StringData(a.Arn.Data + "/source"),
 			"sourceArn":  llx.StringDataPtr(a.cacheSourceArn),
 			"sourceType": llx.StringData(a.cacheSourceType),
 		})
@@ -868,6 +870,7 @@ func (a *mqlAwsSagemakerProject) fetchDetails() error {
 		for _, p := range resp.ServiceCatalogProvisioningDetails.ProvisioningParameters {
 			mqlParam, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerProjectProvisioningParameter,
 				map[string]*llx.RawData{
+					"__id":  llx.StringData(a.Arn.Data + "/provisioningParam/" + convert.ToValue(p.Key)),
 					"key":   llx.StringDataPtr(p.Key),
 					"value": llx.StringDataPtr(p.Value),
 				})
@@ -898,6 +901,7 @@ func (a *mqlAwsSagemakerProject) serviceCatalogProvisioningDetails() (*mqlAwsSag
 	}
 	mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerProjectProvisioningDetails,
 		map[string]*llx.RawData{
+			"__id":                   llx.StringData(a.Arn.Data + "/provisioningDetails"),
 			"productId":              llx.StringData(a.cacheProvisioningProductId),
 			"provisioningArtifactId": llx.StringData(a.cacheProvisioningArtifactId),
 			"pathId":                 llx.StringData(a.cacheProvisioningPathId),
@@ -921,6 +925,7 @@ func (a *mqlAwsSagemakerProject) serviceCatalogProvisionedProductDetails() (*mql
 	}
 	mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerProjectProvisionedProductDetails,
 		map[string]*llx.RawData{
+			"__id":                            llx.StringData(a.Arn.Data + "/provisionedProductDetails"),
 			"provisionedProductId":            llx.StringData(a.cacheProvisionedProductId),
 			"provisionedProductStatusMessage": llx.StringData(a.cacheProvisionedProductStatusMessage),
 		})
@@ -1033,7 +1038,7 @@ func (a *mqlAwsSagemaker) getHyperParameterTuningJobs(conn *connection.AwsConnec
 					j := mqlJob.(*mqlAwsSagemakerHyperParameterTuningJob)
 					if eagerTags != nil {
 						j.cacheTags = eagerTags
-						j.tagsFetched = true
+						j.tagsFetched.Store(true)
 					}
 					res = append(res, mqlJob)
 				}
@@ -1121,6 +1126,7 @@ func (a *mqlAwsSagemakerHyperParameterTuningJob) fetchDetails() error {
 			for _, r := range pr.ContinuousParameterRanges {
 				mqlRange, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerHyperParameterTuningJobParameterRange,
 					map[string]*llx.RawData{
+						"__id":        llx.StringData(a.Arn.Data + "/parameterRange/" + convert.ToValue(r.Name)),
 						"name":        llx.StringDataPtr(r.Name),
 						"type":        llx.StringData("Continuous"),
 						"minValue":    llx.StringDataPtr(r.MinValue),
@@ -1138,6 +1144,7 @@ func (a *mqlAwsSagemakerHyperParameterTuningJob) fetchDetails() error {
 			for _, r := range pr.IntegerParameterRanges {
 				mqlRange, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerHyperParameterTuningJobParameterRange,
 					map[string]*llx.RawData{
+						"__id":        llx.StringData(a.Arn.Data + "/parameterRange/" + convert.ToValue(r.Name)),
 						"name":        llx.StringDataPtr(r.Name),
 						"type":        llx.StringData("Integer"),
 						"minValue":    llx.StringDataPtr(r.MinValue),
@@ -1159,6 +1166,7 @@ func (a *mqlAwsSagemakerHyperParameterTuningJob) fetchDetails() error {
 				}
 				mqlRange, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerHyperParameterTuningJobParameterRange,
 					map[string]*llx.RawData{
+						"__id":        llx.StringData(a.Arn.Data + "/parameterRange/" + convert.ToValue(r.Name)),
 						"name":        llx.StringDataPtr(r.Name),
 						"type":        llx.StringData("Categorical"),
 						"minValue":    llx.StringData(""),
@@ -1219,6 +1227,7 @@ func (a *mqlAwsSagemakerHyperParameterTuningJob) objectiveMetric() (*mqlAwsSagem
 	}
 	mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerHyperParameterTuningJobObjective,
 		map[string]*llx.RawData{
+			"__id":       llx.StringData(a.Arn.Data + "/objective"),
 			"type":       llx.StringData(a.cacheObjectiveType),
 			"metricName": llx.StringData(a.cacheObjectiveMetricName),
 		})
@@ -1236,6 +1245,7 @@ func (a *mqlAwsSagemakerHyperParameterTuningJob) resourceLimits() (*mqlAwsSagema
 	}
 	mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerHyperParameterTuningJobResourceLimits,
 		map[string]*llx.RawData{
+			"__id":                    llx.StringData(a.Arn.Data + "/resourceLimits"),
 			"maxNumberOfTrainingJobs": llx.IntData(a.cacheMaxTrainingJobs),
 			"maxParallelTrainingJobs": llx.IntData(a.cacheMaxParallelJobs),
 			"maxRuntimeInSeconds":     llx.IntData(a.cacheMaxRuntimeInSeconds),
@@ -1261,6 +1271,7 @@ func (a *mqlAwsSagemakerHyperParameterTuningJob) trainingJobStatusCounters() (*m
 	}
 	mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerHyperParameterTuningJobStatusCounters,
 		map[string]*llx.RawData{
+			"__id":              llx.StringData(a.Arn.Data + "/statusCounters"),
 			"completed":         llx.IntData(a.cacheCompleted),
 			"inProgress":        llx.IntData(a.cacheInProgress),
 			"retryableError":    llx.IntData(a.cacheRetryableError),
@@ -1392,7 +1403,7 @@ func (a *mqlAwsSagemaker) getTransformJobs(conn *connection.AwsConnection) []*jo
 					j := mqlJob.(*mqlAwsSagemakerTransformJob)
 					if eagerTags != nil {
 						j.cacheTags = eagerTags
-						j.tagsFetched = true
+						j.tagsFetched.Store(true)
 					}
 					res = append(res, mqlJob)
 				}
@@ -1577,6 +1588,7 @@ func (a *mqlAwsSagemakerTransformJob) transformInput() (*mqlAwsSagemakerTransfor
 	}
 	mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerTransformJobInput,
 		map[string]*llx.RawData{
+			"__id":            llx.StringData(a.Arn.Data + "/transformInput"),
 			"s3Uri":           llx.StringData(a.cacheInputS3Uri),
 			"dataSource":      llx.StringData(a.cacheInputDataSource),
 			"contentType":     llx.StringData(a.cacheInputContentType),
@@ -1601,6 +1613,7 @@ func (a *mqlAwsSagemakerTransformJob) transformOutput() (*mqlAwsSagemakerTransfo
 	}
 	mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerTransformJobOutput,
 		map[string]*llx.RawData{
+			"__id":         llx.StringData(a.Arn.Data + "/transformOutput"),
 			"s3Uri":        llx.StringData(a.cacheOutputS3Uri),
 			"accept":       llx.StringData(a.cacheOutputAccept),
 			"assembleWith": llx.StringData(a.cacheOutputAssembleWith),
@@ -1624,6 +1637,7 @@ func (a *mqlAwsSagemakerTransformJob) transformResources() (*mqlAwsSagemakerTran
 	}
 	mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerTransformJobResources,
 		map[string]*llx.RawData{
+			"__id":          llx.StringData(a.Arn.Data + "/transformResources"),
 			"instanceType":  llx.StringData(a.cacheResourceInstanceType),
 			"instanceCount": llx.IntData(a.cacheResourceInstanceCount),
 		})
@@ -1760,7 +1774,7 @@ func (a *mqlAwsSagemaker) getAutoMLJobs(conn *connection.AwsConnection) []*jobpo
 					j := mqlJob.(*mqlAwsSagemakerAutoMLJob)
 					if eagerTags != nil {
 						j.cacheTags = eagerTags
-						j.tagsFetched = true
+						j.tagsFetched.Store(true)
 					}
 					res = append(res, mqlJob)
 				}
@@ -1810,7 +1824,13 @@ func (a *mqlAwsSagemakerAutoMLJob) fetchDetails() error {
 	svc := conn.Sagemaker(a.Region.Data)
 	ctx := context.Background()
 	name := a.Name.Data
-	resp, err := svc.DescribeAutoMLJob(ctx, &sagemaker.DescribeAutoMLJobInput{AutoMLJobName: &name})
+	// DescribeAutoMLJobV2, not DescribeAutoMLJob. A job created through
+	// CreateAutoMLJobV2 cannot be described by the V1 operation at all - it
+	// answers ValidationException - and V2 is the API AWS points callers at, so
+	// every job created by the current API failed every field on this resource.
+	// V2 describes jobs created by either operation, so the V1 path has nothing
+	// left to cover.
+	resp, err := svc.DescribeAutoMLJobV2(ctx, &sagemaker.DescribeAutoMLJobV2Input{AutoMLJobName: &name})
 	if err != nil {
 		return err
 	}
@@ -1818,9 +1838,11 @@ func (a *mqlAwsSagemakerAutoMLJob) fetchDetails() error {
 	a.cacheRoleArn = resp.RoleArn
 	a.cacheFailureReason = convert.ToValue(resp.FailureReason)
 
+	targetAttributeName := autoMLTargetAttributeName(resp.AutoMLProblemTypeConfig)
+
 	// Input channels
-	channels := make([]any, 0, len(resp.InputDataConfig))
-	for i, ch := range resp.InputDataConfig {
+	channels := make([]any, 0, len(resp.AutoMLJobInputDataConfig))
+	for i, ch := range resp.AutoMLJobInputDataConfig {
 		var s3Uri, s3DataType string
 		if ch.DataSource != nil && ch.DataSource.S3DataSource != nil {
 			s3Uri = convert.ToValue(ch.DataSource.S3DataSource.S3Uri)
@@ -1828,7 +1850,12 @@ func (a *mqlAwsSagemakerAutoMLJob) fetchDetails() error {
 		}
 		mqlCh, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerAutoMLJobInputChannel,
 			map[string]*llx.RawData{
-				"targetAttributeName": llx.StringDataPtr(ch.TargetAttributeName),
+				// Keyed by position, not by target attribute: the target attribute
+				// is the column the job predicts and is the same on every channel
+				// of a job, so keying on it merged the training and validation
+				// channels into one and hid the validation dataset's S3 URI.
+				"__id":                llx.StringData(autoMLInputChannelCacheKey(a.Arn.Data, i)),
+				"targetAttributeName": llx.StringDataPtr(targetAttributeName),
 				"contentType":         llx.StringDataPtr(ch.ContentType),
 				"compressionType":     llx.StringData(string(ch.CompressionType)),
 				"s3Uri":               llx.StringData(s3Uri),
@@ -1883,6 +1910,7 @@ func (a *mqlAwsSagemakerAutoMLJob) outputDataConfig() (*mqlAwsSagemakerAutoMLJob
 	}
 	mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerAutoMLJobOutputConfig,
 		map[string]*llx.RawData{
+			"__id":  llx.StringData(a.Arn.Data + "/outputConfig"),
 			"s3Uri": llx.StringData(a.cacheOutputS3Uri),
 		})
 	if err != nil {
@@ -1920,6 +1948,7 @@ func (a *mqlAwsSagemakerAutoMLJob) bestCandidate() (*mqlAwsSagemakerAutoMLJobCan
 	}
 	mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerAutoMLJobCandidate,
 		map[string]*llx.RawData{
+			"__id":                 llx.StringData(a.Arn.Data + "/bestCandidate"),
 			"candidateName":        llx.StringData(a.cacheCandidateName),
 			"candidateStatus":      llx.StringData(a.cacheCandidateStatus),
 			"objectiveMetricName":  llx.StringData(a.cacheObjMetricName),
@@ -1945,8 +1974,35 @@ type mqlAwsSagemakerAutoMLJobInputChannelInternal struct {
 	cacheIndex     int
 }
 
+// autoMLTargetAttributeName reads the column an AutoML job predicts.
+//
+// V1 reported it on every input channel. V2 moved it onto the problem-type
+// config, which is the truer place for it: it is a property of the job, not of
+// a dataset. Only a tabular job has one - image, text and time-series jobs have
+// no target column - so anything else reads null rather than empty, which would
+// claim the job named no target.
+func autoMLTargetAttributeName(cfg sagemakertypes.AutoMLProblemTypeConfig) *string {
+	tabular, ok := cfg.(*sagemakertypes.AutoMLProblemTypeConfigMemberTabularJobConfig)
+	if !ok {
+		return nil
+	}
+	return tabular.Value.TargetAttributeName
+}
+
+// autoMLInputChannelCacheKey identifies one input channel of an AutoML job by
+// its position in the job's channel list. A channel has nothing else that
+// distinguishes it: the target attribute names the column being predicted and
+// is identical across a job's channels, and the S3 URI is what a caller is
+// trying to read rather than something to key on.
+func autoMLInputChannelCacheKey(jobArn string, index int) string {
+	return jobArn + "/inputChannel/" + strconv.Itoa(index)
+}
+
+// id is a fallback only. cacheIndex is assigned after CreateResource has
+// computed the key, so this cannot see the position; the creator passes the
+// real key as __id.
 func (a *mqlAwsSagemakerAutoMLJobInputChannel) id() (string, error) {
-	return a.cacheParentArn + "/inputChannel/" + a.TargetAttributeName.Data, nil
+	return autoMLInputChannelCacheKey(a.cacheParentArn, a.cacheIndex), nil
 }
 
 type mqlAwsSagemakerAutoMLJobOutputConfigInternal struct {

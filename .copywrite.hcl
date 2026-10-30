@@ -12,9 +12,11 @@ project {
     "**/*.tf",
     "**/testdata/**",
     "**/*.pb.go",
+    "**/*.gen.go",
     "**/*_string.go",
     ".git/**",
     "providers-sdk/v1/mqlr/lrcore/lr_test.go",
+    "AGENTS.md",
     "CLAUDE.md",
   ]
 }

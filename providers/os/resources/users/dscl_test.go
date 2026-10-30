@@ -7,9 +7,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
-	"go.mondoo.com/mql/v13/providers/os/resources/users"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/resources/users"
 )
 
 func TestParseDsclListResult(t *testing.T) {
@@ -51,4 +52,20 @@ func TestParseDsclListResult(t *testing.T) {
 	assert.Equal(t, 7, len(m), "detected the right amount of users")
 	assert.Equal(t, "/Library/WebServer", m["_www"], "detected uid name")
 	assert.Equal(t, "/var/root /private/var/root", m["root"], "detected root name")
+}
+
+func TestOSXUserManagerEnabledIsUnknown(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Family: []string{"os", "unix", "darwin"}},
+	}, mock.WithPath("./testdata/osx.toml"))
+	require.NoError(t, err)
+	m, err := users.ResolveManager(conn)
+	require.NoError(t, err)
+
+	list, err := m.List()
+	require.NoError(t, err)
+	require.NotEmpty(t, list)
+	for _, u := range list {
+		assert.True(t, u.EnabledUnknown, u.Name)
+	}
 }

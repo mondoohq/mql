@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 // --- IAM role trust exposure ---

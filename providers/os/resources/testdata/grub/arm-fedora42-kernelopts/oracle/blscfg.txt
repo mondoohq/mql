@@ -1,0 +1,1 @@
+set kernelopts fallback in grub.cfg; grubenv defines no kernelopts

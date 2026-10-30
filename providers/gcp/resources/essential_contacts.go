@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 
 	"google.golang.org/api/essentialcontacts/v1"
 	"google.golang.org/api/option"
@@ -61,6 +61,15 @@ func essentialContactsForParent(runtime *plugin.Runtime, conn *connection.GcpCon
 		err = contactSvc.Projects.Contacts.List(parent).Pages(ctx, process)
 	}
 	if err != nil {
+		// Only the project path is gated on isServiceEnabled; the organization
+		// and folder paths reach the API directly, and org-level
+		// essentialcontacts.contacts.list is a separate grant a project-scoped
+		// principal rarely holds. Degrade so one missing grant at the org node
+		// does not fail the whole query.
+		if isSkippable(err) {
+			log.Warn().Err(err).Str("parent", parent).Msg("could not list essential contacts")
+			return nil, nil
+		}
 		return nil, err
 	}
 	return mqlContacts, nil

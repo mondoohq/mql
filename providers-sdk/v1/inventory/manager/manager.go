@@ -7,13 +7,13 @@ import (
 	"context"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault/credentials_resolver"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault/inmemory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault/multivault"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers-sdk/v1/vault/credentials_resolver"
+	"go.mondoo.com/mql/providers-sdk/v1/vault/inmemory"
+	"go.mondoo.com/mql/providers-sdk/v1/vault/multivault"
 	protobuf "google.golang.org/protobuf/proto"
 )
 

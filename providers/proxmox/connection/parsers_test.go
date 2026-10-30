@@ -7,37 +7,18 @@ import (
 	"testing"
 )
 
-func TestParseAptOutput_InstalledOnly(t *testing.T) {
-	input := `Listing...
-adduser/now 3.118ubuntu5 all [installed,automatic]
-apt/jammy-updates,jammy-security,now 2.4.11 amd64 [installed]
-base-files/jammy-updates,now 12ubuntu4.4 amd64 [installed]
-`
-	updates := ParseAptOutput(input)
-	if len(updates) != 3 {
-		t.Fatalf("expected 3 packages, got %d", len(updates))
-	}
-	for _, u := range updates {
-		if u.Upgradable {
-			t.Errorf("package %s should not be upgradable", u.Name)
-		}
-	}
-	if updates[0].Name != "adduser" {
-		t.Errorf("expected package name 'adduser', got %q", updates[0].Name)
-	}
-	if updates[0].InstalledVersion != "3.118ubuntu5" {
-		t.Errorf("expected version '3.118ubuntu5', got %q", updates[0].InstalledVersion)
-	}
-}
+// Inputs mirror real `apt list --upgradable` output: every line is a pending
+// upgrade, the version column is the candidate (new) version, and the bracket
+// carries the installed version as `[upgradable from: X]`.
 
-func TestParseAptOutput_WithUpgradable(t *testing.T) {
+func TestParseAptOutput_Upgradable(t *testing.T) {
 	input := `Listing...
-curl/jammy-updates,jammy-security,now 7.81.0-1ubuntu1.14 amd64 [installed,upgradable to: 7.81.0-1ubuntu1.16]
-vim/jammy,now 2:8.2.3995-1ubuntu2 amd64 [installed]
+curl/jammy-updates,jammy-security 7.81.0-1ubuntu1.16 amd64 [upgradable from: 7.81.0-1ubuntu1.14]
+libc6/jammy-updates 2.35-0ubuntu3.6 amd64 [upgradable from: 2.35-0ubuntu3.5]
 `
 	updates := ParseAptOutput(input)
 	if len(updates) != 2 {
-		t.Fatalf("expected 2 packages, got %d", len(updates))
+		t.Fatalf("expected 2 upgradable packages, got %d", len(updates))
 	}
 
 	curl := updates[0]
@@ -50,16 +31,14 @@ vim/jammy,now 2:8.2.3995-1ubuntu2 amd64 [installed]
 	if curl.NewVersion != "7.81.0-1ubuntu1.16" {
 		t.Errorf("expected new version '7.81.0-1ubuntu1.16', got %q", curl.NewVersion)
 	}
-
-	vim := updates[1]
-	if vim.Upgradable {
-		t.Error("vim should not be upgradable")
+	if curl.InstalledVersion != "7.81.0-1ubuntu1.14" {
+		t.Errorf("expected installed version '7.81.0-1ubuntu1.14', got %q", curl.InstalledVersion)
 	}
 }
 
 func TestParseAptOutput_SecuritySource(t *testing.T) {
 	input := `Listing...
-openssl/jammy-updates,jammy-security,now 3.0.2-0ubuntu1.12 amd64 [installed]
+openssl/jammy-security 3.0.2-0ubuntu1.12 amd64 [upgradable from: 3.0.2-0ubuntu1.10]
 `
 	updates := ParseAptOutput(input)
 	if len(updates) != 1 {
@@ -67,6 +46,15 @@ openssl/jammy-updates,jammy-security,now 3.0.2-0ubuntu1.12 amd64 [installed]
 	}
 	if updates[0].Severity != "security" {
 		t.Errorf("expected severity 'security', got %q", updates[0].Severity)
+	}
+}
+
+// A system with no pending upgrades prints only the "Listing..." header —
+// which must yield zero updates, not a phantom row.
+func TestParseAptOutput_NoUpgrades(t *testing.T) {
+	updates := ParseAptOutput("Listing...\n")
+	if len(updates) != 0 {
+		t.Errorf("expected 0 packages when nothing is upgradable, got %d", len(updates))
 	}
 }
 

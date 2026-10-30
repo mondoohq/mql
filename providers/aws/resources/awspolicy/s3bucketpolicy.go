@@ -18,9 +18,37 @@ import (
 // see https://aws.amazon.com/blogs/security/back-to-school-understanding-the-iam-policy-grammar/
 
 type S3BucketPolicy struct {
-	Version    string                    `json:"Version"`
-	Id         string                    `json:"Id,omitempty"`
-	Statements []S3BucketPolicyStatement `json:"Statement"`
+	Version    string       `json:"Version"`
+	Id         string       `json:"Id,omitempty"`
+	Statements s3Statements `json:"Statement"`
+}
+
+// s3Statements accepts both shapes the IAM policy grammar allows for
+// `Statement`: an array, and a single bare object. Without the single-object
+// case a legal `{"Statement":{...}}` document failed to unmarshal, so
+// policyStatements/isPublic/hasWildcardAllow errored out on it while the
+// sibling IamPolicyDocument (which already has this unmarshaller) parsed it.
+type s3Statements []S3BucketPolicyStatement
+
+func (v *s3Statements) UnmarshalJSON(b []byte) error {
+	var raw any
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	if _, isArray := raw.([]any); isArray {
+		var out []S3BucketPolicyStatement
+		if err := json.Unmarshal(b, &out); err != nil {
+			return err
+		}
+		*v = out
+		return nil
+	}
+	var one S3BucketPolicyStatement
+	if err := json.Unmarshal(b, &one); err != nil {
+		return err
+	}
+	*v = []S3BucketPolicyStatement{one}
+	return nil
 }
 
 // the policy statement includes many different aspects including the Not* elements, they are used to exclude

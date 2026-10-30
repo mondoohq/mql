@@ -12,11 +12,11 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerregistry/armcontainerregistry/v3"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlAzureSubscriptionContainerRegistryServiceRegistryInternal struct {
@@ -28,12 +28,34 @@ type mqlAzureSubscriptionContainerRegistryServiceRegistryInternal struct {
 	cacheUserAssignedIdentityIds    []string
 }
 
+type mqlAzureSubscriptionContainerRegistryServiceRegistryWebhookInternal struct {
+	cacheSystemData any
+}
+
+type mqlAzureSubscriptionContainerRegistryServiceRegistryReplicationInternal struct {
+	cacheSystemData any
+}
+
+type mqlAzureSubscriptionContainerRegistryServiceRegistryScopeMapInternal struct {
+	cacheSystemData any
+}
+
 type mqlAzureSubscriptionContainerRegistryServiceRegistryTokenInternal struct {
 	cacheScopeMapID string
+	cacheSystemData any
 }
 
 type mqlAzureSubscriptionContainerRegistryServiceRegistryCacheRuleInternal struct {
 	cacheCredentialSetResourceID string
+	cacheSystemData              any
+}
+
+type mqlAzureSubscriptionContainerRegistryServiceRegistryCredentialSetInternal struct {
+	cacheSystemData any
+}
+
+type mqlAzureSubscriptionContainerRegistryServiceRegistryConnectedRegistryInternal struct {
+	cacheSystemData any
 }
 
 func (a *mqlAzureSubscriptionContainerRegistryService) id() (string, error) {
@@ -64,7 +86,7 @@ func initAzureSubscriptionContainerRegistryServiceRegistry(runtime *plugin.Runti
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
+		if ids := getAssetIdentifier(runtime); ids != nil && ids.id != "" {
 			args["id"] = llx.StringData(ids.id)
 		}
 	}
@@ -96,6 +118,10 @@ func initAzureSubscriptionContainerRegistryServiceRegistry(runtime *plugin.Runti
 		if reg.Id.Data == id {
 			return args, reg, nil
 		}
+	}
+
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionContainerRegistryServiceRegistry, id); filtered != nil {
+		return args, filtered, nil
 	}
 
 	return nil, nil, errors.New("azure container registry does not exist")
@@ -134,7 +160,7 @@ func (a *mqlAzureSubscriptionContainerRegistryService) registries() ([]any, erro
 			res = append(res, mqlReg)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func createRegistryResource(runtime *plugin.Runtime, reg *armcontainerregistry.Registry) (*mqlAzureSubscriptionContainerRegistryServiceRegistry, error) {
@@ -143,10 +169,6 @@ func createRegistryResource(runtime *plugin.Runtime, reg *armcontainerregistry.R
 		props = &armcontainerregistry.RegistryProperties{}
 	}
 
-	identity, err := convert.JsonToDict(reg.Identity)
-	if err != nil {
-		return nil, err
-	}
 	var regPrincipalId, regTenantId *string
 	var userAssignedIdentityIds []string
 	if reg.Identity != nil {
@@ -200,7 +222,6 @@ func createRegistryResource(runtime *plugin.Runtime, reg *armcontainerregistry.R
 			"type":                             llx.StringDataPtr(reg.Type),
 			"tags":                             llx.MapData(convert.PtrMapStrToInterface(reg.Tags), types.String),
 			"skuName":                          llx.StringData(skuName),
-			"identity":                         llx.DictData(identity),
 			"principalId":                      llx.StringDataPtr(regPrincipalId),
 			"tenantId":                         llx.StringDataPtr(regTenantId),
 			"adminUserEnabled":                 llx.BoolDataPtr(props.AdminUserEnabled),
@@ -357,13 +378,14 @@ func (a *mqlAzureSubscriptionContainerRegistryServiceRegistry) policies() (*mqlA
 
 	res, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionContainerRegistryServiceRegistryPolicies,
 		map[string]*llx.RawData{
-			"id":                                      llx.StringData(a.Id.Data + "/policies"),
-			"trustPolicyEnabled":                      llx.BoolData(trustEnabled),
-			"trustPolicyType":                         llx.StringData(trustType),
-			"retentionPolicyEnabled":                  llx.BoolData(retentionEnabled),
-			"retentionPolicyDays":                     llx.IntData(retentionDays),
-			"quarantinePolicyEnabled":                 llx.BoolData(quarantineEnabled),
-			"exportPolicyEnabled":                     llx.BoolData(exportEnabled),
+			"id":                      llx.StringData(a.Id.Data + "/policies"),
+			"trustPolicyEnabled":      llx.BoolData(trustEnabled),
+			"trustPolicyType":         llx.StringData(trustType),
+			"retentionPolicyEnabled":  llx.BoolData(retentionEnabled),
+			"retentionPolicyDays":     llx.IntData(retentionDays),
+			"quarantinePolicyEnabled": llx.BoolData(quarantineEnabled),
+			"exportPolicyEnabled":     llx.BoolData(exportEnabled),
+
 			"azureADAuthenticationAsArmPolicyEnabled": llx.BoolData(aadAsArmEnabled),
 		})
 	if err != nil {
@@ -465,6 +487,7 @@ func (a *mqlAzureSubscriptionContainerRegistryServiceRegistry) privateEndpointCo
 			resType = "Microsoft.ContainerRegistry/registries/privateEndpointConnections"
 		}
 
+		var pecPrivateEndpointID string
 		pecArgs := map[string]*llx.RawData{
 			"__id": llx.StringDataPtr(pec.ID),
 			"id":   llx.StringDataPtr(pec.ID),
@@ -481,20 +504,13 @@ func (a *mqlAzureSubscriptionContainerRegistryServiceRegistry) privateEndpointCo
 			pecArgs["properties"] = llx.DictData(propsMap)
 
 			if props.PrivateEndpoint != nil {
-				pecArgs["privateEndpointId"] = llx.StringDataPtr(props.PrivateEndpoint.ID)
+				pecPrivateEndpointID = convert.ToValue(props.PrivateEndpoint.ID)
 			}
 			if props.PrivateLinkServiceConnectionState != nil {
-				stateArgs := map[string]*llx.RawData{}
-				if props.PrivateLinkServiceConnectionState.ActionsRequired != nil {
-					stateArgs["actionsRequired"] = llx.StringData(string(*props.PrivateLinkServiceConnectionState.ActionsRequired))
-				}
-				if props.PrivateLinkServiceConnectionState.Description != nil {
-					stateArgs["description"] = llx.StringDataPtr(props.PrivateLinkServiceConnectionState.Description)
-				}
-				if props.PrivateLinkServiceConnectionState.Status != nil {
-					stateArgs["status"] = llx.StringData(string(*props.PrivateLinkServiceConnectionState.Status))
-				}
-				stateRes, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionPrivateEndpointConnectionConnectionState, stateArgs)
+				stateRes, err := newPrivateLinkServiceConnectionState(a.MqlRuntime, convert.ToValue(pec.ID),
+					stringEnumPtr(props.PrivateLinkServiceConnectionState.ActionsRequired),
+					props.PrivateLinkServiceConnectionState.Description,
+					stringEnumPtr(props.PrivateLinkServiceConnectionState.Status))
 				if err != nil {
 					return nil, err
 				}
@@ -505,7 +521,7 @@ func (a *mqlAzureSubscriptionContainerRegistryServiceRegistry) privateEndpointCo
 			}
 		}
 
-		mqlRes, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionPrivateEndpointConnection, pecArgs)
+		mqlRes, err := newAzurePrivateEndpointConnection(a.MqlRuntime, pecArgs, pecPrivateEndpointID)
 		if err != nil {
 			return nil, err
 		}
@@ -583,6 +599,11 @@ func (a *mqlAzureSubscriptionContainerRegistryServiceRegistry) webhooks() ([]any
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(wh.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlWh.(*mqlAzureSubscriptionContainerRegistryServiceRegistryWebhook).cacheSystemData = sysData
 			res = append(res, mqlWh)
 		}
 	}
@@ -591,6 +612,10 @@ func (a *mqlAzureSubscriptionContainerRegistryServiceRegistry) webhooks() ([]any
 
 func (a *mqlAzureSubscriptionContainerRegistryServiceRegistryWebhook) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+func (a *mqlAzureSubscriptionContainerRegistryServiceRegistryWebhook) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 // replications fetches all geo-replications for the registry.
@@ -656,6 +681,11 @@ func (a *mqlAzureSubscriptionContainerRegistryServiceRegistry) replications() ([
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(repl.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlRepl.(*mqlAzureSubscriptionContainerRegistryServiceRegistryReplication).cacheSystemData = sysData
 			res = append(res, mqlRepl)
 		}
 	}
@@ -664,6 +694,10 @@ func (a *mqlAzureSubscriptionContainerRegistryServiceRegistry) replications() ([
 
 func (a *mqlAzureSubscriptionContainerRegistryServiceRegistryReplication) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+func (a *mqlAzureSubscriptionContainerRegistryServiceRegistryReplication) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 // scopeMaps fetches all scope maps for the registry.
@@ -751,11 +785,21 @@ func createScopeMapResource(runtime *plugin.Runtime, sm *armcontainerregistry.Sc
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlAzureSubscriptionContainerRegistryServiceRegistryScopeMap), nil
+	mqlSm := res.(*mqlAzureSubscriptionContainerRegistryServiceRegistryScopeMap)
+	sysData, err := convert.JsonToDict(sm.SystemData)
+	if err != nil {
+		return nil, err
+	}
+	mqlSm.cacheSystemData = sysData
+	return mqlSm, nil
 }
 
 func (a *mqlAzureSubscriptionContainerRegistryServiceRegistryScopeMap) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+func (a *mqlAzureSubscriptionContainerRegistryServiceRegistryScopeMap) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 // initAzureSubscriptionContainerRegistryServiceRegistryScopeMap fetches a scope map by ID
@@ -929,12 +973,21 @@ func createTokenResource(runtime *plugin.Runtime, tk *armcontainerregistry.Token
 
 	mqlToken := res.(*mqlAzureSubscriptionContainerRegistryServiceRegistryToken)
 	mqlToken.cacheScopeMapID = scopeMapID
+	sysData, err := convert.JsonToDict(tk.SystemData)
+	if err != nil {
+		return nil, err
+	}
+	mqlToken.cacheSystemData = sysData
 
 	return mqlToken, nil
 }
 
 func (a *mqlAzureSubscriptionContainerRegistryServiceRegistryToken) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+func (a *mqlAzureSubscriptionContainerRegistryServiceRegistryToken) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 // scopeMap returns a typed reference to the token's scope map.
@@ -1028,6 +1081,11 @@ func (a *mqlAzureSubscriptionContainerRegistryServiceRegistry) cacheRules() ([]a
 			}
 			mqlCr := mqlRes.(*mqlAzureSubscriptionContainerRegistryServiceRegistryCacheRule)
 			mqlCr.cacheCredentialSetResourceID = credSetID
+			sysData, err := convert.JsonToDict(cr.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlCr.cacheSystemData = sysData
 			res = append(res, mqlCr)
 		}
 	}
@@ -1036,6 +1094,10 @@ func (a *mqlAzureSubscriptionContainerRegistryServiceRegistry) cacheRules() ([]a
 
 func (a *mqlAzureSubscriptionContainerRegistryServiceRegistryCacheRule) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+func (a *mqlAzureSubscriptionContainerRegistryServiceRegistryCacheRule) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 // credentialSet returns a typed reference to the credential set used by this cache rule.
@@ -1133,25 +1195,41 @@ func createCredentialSetResource(runtime *plugin.Runtime, cs *armcontainerregist
 		creationDate = llx.NilData
 	}
 
-	res, err := CreateResource(runtime, ResourceAzureSubscriptionContainerRegistryServiceRegistryCredentialSet,
-		map[string]*llx.RawData{
-			"id":                llx.StringDataPtr(cs.ID),
-			"name":              llx.StringDataPtr(cs.Name),
-			"type":              llx.StringDataPtr(cs.Type),
-			"loginServer":       llx.StringData(loginServer),
-			"identity":          llx.DictData(identity),
-			"authCredentials":   llx.ArrayData(authCredentials, types.Dict),
-			"creationDate":      creationDate,
-			"provisioningState": llx.StringData(provisioningState),
-		})
+	csArgs := map[string]*llx.RawData{
+		"id":                llx.StringDataPtr(cs.ID),
+		"name":              llx.StringDataPtr(cs.Name),
+		"type":              llx.StringDataPtr(cs.Type),
+		"loginServer":       llx.StringData(loginServer),
+		"identity":          llx.DictData(identity),
+		"authCredentials":   llx.ArrayData(authCredentials, types.Dict),
+		"creationDate":      creationDate,
+		"provisioningState": llx.StringData(provisioningState),
+	}
+	csIdentity := orZero(cs.Identity)
+	if err := setResourceIdentity(runtime, csArgs, sortedUserAssignedIdentityIDs(csIdentity.UserAssignedIdentities),
+		identityType(csIdentity.Type), identityPrincipalId(csIdentity.PrincipalID), identityTenantId(csIdentity.TenantID)); err != nil {
+		return nil, err
+	}
+
+	res, err := CreateResource(runtime, ResourceAzureSubscriptionContainerRegistryServiceRegistryCredentialSet, csArgs)
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlAzureSubscriptionContainerRegistryServiceRegistryCredentialSet), nil
+	mqlCs := res.(*mqlAzureSubscriptionContainerRegistryServiceRegistryCredentialSet)
+	sysData, err := convert.JsonToDict(cs.SystemData)
+	if err != nil {
+		return nil, err
+	}
+	mqlCs.cacheSystemData = sysData
+	return mqlCs, nil
 }
 
 func (a *mqlAzureSubscriptionContainerRegistryServiceRegistryCredentialSet) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+func (a *mqlAzureSubscriptionContainerRegistryServiceRegistryCredentialSet) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 // initAzureSubscriptionContainerRegistryServiceRegistryCredentialSet fetches a credential set
@@ -1353,6 +1431,11 @@ func (a *mqlAzureSubscriptionContainerRegistryServiceRegistry) connectedRegistri
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(cr.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlRes.(*mqlAzureSubscriptionContainerRegistryServiceRegistryConnectedRegistry).cacheSystemData = sysData
 			res = append(res, mqlRes)
 		}
 	}
@@ -1361,4 +1444,8 @@ func (a *mqlAzureSubscriptionContainerRegistryServiceRegistry) connectedRegistri
 
 func (a *mqlAzureSubscriptionContainerRegistryServiceRegistryConnectedRegistry) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+func (a *mqlAzureSubscriptionContainerRegistryServiceRegistryConnectedRegistry) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }

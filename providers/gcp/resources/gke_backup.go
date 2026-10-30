@@ -11,17 +11,17 @@ import (
 	gkebackup "cloud.google.com/go/gkebackup/apiv1"
 	"cloud.google.com/go/gkebackup/apiv1/gkebackuppb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
 type mqlGcpProjectGkeBackupServiceInternal struct {
-	serviceEnabled bool
+	serviceGate
 }
 
 func (g *mqlGcpProject) gkeBackup() (*mqlGcpProjectGkeBackupService, error) {
@@ -43,7 +43,7 @@ func (g *mqlGcpProject) gkeBackup() (*mqlGcpProjectGkeBackupService, error) {
 	}
 
 	svc := res.(*mqlGcpProjectGkeBackupService)
-	svc.serviceEnabled = serviceEnabled
+	svc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_gkebackup).Msg("gcp service is not enabled, skipping")
 	}
@@ -83,7 +83,11 @@ func (g *mqlGcpProjectGkeBackupServiceBackupPlan) id() (string, error) {
 }
 
 func (g *mqlGcpProjectGkeBackupService) backupPlans() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -116,9 +120,9 @@ func (g *mqlGcpProjectGkeBackupService) backupPlans() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list GKE Backup backup plans")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -173,7 +177,11 @@ func (g *mqlGcpProjectGkeBackupServiceRestorePlan) id() (string, error) {
 }
 
 func (g *mqlGcpProjectGkeBackupService) restorePlans() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -206,9 +214,9 @@ func (g *mqlGcpProjectGkeBackupService) restorePlans() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list GKE Backup restore plans")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -257,4 +265,9 @@ func (g *mqlGcpProjectGkeBackupServiceRestorePlan) backupPlan() (*mqlGcpProjectG
 		return nil, err
 	}
 	return res.(*mqlGcpProjectGkeBackupServiceBackupPlan), nil
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectGkeBackupService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_gkebackup)
 }

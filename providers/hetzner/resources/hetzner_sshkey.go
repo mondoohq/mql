@@ -7,8 +7,9 @@ import (
 	"fmt"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/sshutil"
 )
 
 func (r *mqlHetznerSshKey) id() (string, error) {
@@ -35,12 +36,15 @@ func (h *mqlHetzner) sshKeys() ([]any, error) {
 }
 
 func newMqlHetznerSshKey(runtime *plugin.Runtime, k *hcloud.SSHKey) (*mqlHetznerSshKey, error) {
+	algorithm, bits := sshutil.ParsePublicKey(k.PublicKey)
 	res, err := CreateResource(runtime, "hetzner.sshKey", map[string]*llx.RawData{
 		"__id":        llx.StringData(fmt.Sprintf("hetzner.sshKey/%d", k.ID)),
 		"id":          llx.IntData(k.ID),
 		"name":        llx.StringData(k.Name),
 		"fingerprint": llx.StringData(k.Fingerprint),
 		"publicKey":   llx.StringData(k.PublicKey),
+		"algorithm":   llx.StringData(algorithm),
+		"bits":        llx.IntData(bits),
 		"created":     llx.TimeDataPtr(timePtr(k.Created)),
 		"labels":      labelData(k.Labels),
 	})
@@ -51,9 +55,9 @@ func newMqlHetznerSshKey(runtime *plugin.Runtime, k *hcloud.SSHKey) (*mqlHetzner
 }
 
 func initHetznerSshKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "sshKey")
+	if err != nil {
+		return nil, nil, err
 	}
 	k, _, err := conn(runtime).Client().SSHKey.GetByID(ctx(), id)
 	if err != nil {

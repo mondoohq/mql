@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/parsers"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/parsers"
 )
 
 // hasOracleELSEnabled checks whether any Oracle Linux Extended Lifecycle Support (ELS)
@@ -46,7 +46,7 @@ func hasOracleELSEnabled(conn shared.Connection) bool {
 			if !strings.HasSuffix(section, "_ELS") {
 				continue
 			}
-			if subFieldsMap, ok := fields.(map[string]interface{}); ok {
+			if subFieldsMap, ok := fields.(map[string]any); ok {
 				if enabled, ok := subFieldsMap["enabled"]; ok {
 					if v, ok := enabled.(string); ok && v == "1" {
 						return true

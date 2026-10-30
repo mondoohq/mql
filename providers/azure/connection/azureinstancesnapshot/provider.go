@@ -9,13 +9,13 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/azauth"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/azure/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/connection/device"
-	"go.mondoo.com/mql/v13/providers/os/connection/local"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/azauth"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/azure/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/device"
+	"go.mondoo.com/mql/providers/os/connection/local"
 )
 
 const (
@@ -85,7 +85,19 @@ func NewAzureSnapshotConnection(id uint32, conf *inventory.Config, asset *invent
 	if len(conf.Credentials) > 0 {
 		cred = conf.Credentials[0]
 	}
-	token, err := azauth.GetTokenFromCredential(cred, conf.Options["tenant-id"], conf.Options["client-id"])
+	methods, err := azauth.ParseCredentialMethods(conf.Options["auth-method"])
+	if err != nil {
+		return nil, err
+	}
+	// an empty token file leaves azidentity to fall back to
+	// AZURE_FEDERATED_TOKEN_FILE, so only the option needs forwarding here
+	token, err := azauth.GetTokenFromCredential(cred, &azauth.ChainedTokenOptions{
+		TenantID:           conf.Options["tenant-id"],
+		ClientID:           conf.Options["client-id"],
+		FederatedTokenFile: conf.Options["azure-federated-token-file"],
+		Methods:            methods,
+		Source:             "azure-snapshot-connection",
+	})
 	if err != nil {
 		return nil, err
 	}

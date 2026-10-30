@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared"
+	"go.mondoo.com/mql/providers/k8s/connection/shared"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 )

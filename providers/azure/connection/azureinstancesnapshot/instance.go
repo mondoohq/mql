@@ -5,9 +5,10 @@ package azureinstancesnapshot
 
 import (
 	"context"
+	"slices"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	compute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8"
+	compute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v9"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
 )
@@ -38,15 +39,9 @@ func (s *instanceInfo) getFirstAvailableLun() (int, error) {
 	}
 
 	availableLuns := []int{}
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		// exclude the taken LUNs
-		available := true
-		for _, d := range takenLuns {
-			if i == d {
-				available = false
-				break
-			}
-		}
+		available := !slices.Contains(takenLuns, i)
 		if available {
 			availableLuns = append(availableLuns, i)
 		} else {

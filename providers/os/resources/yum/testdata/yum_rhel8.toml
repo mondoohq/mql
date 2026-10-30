@@ -21,7 +21,7 @@ ip_resolve=4
 [commands."/usr/libexec/platform-python -c 'import dnf, json; db = dnf.dnf.Base(); print(json.dumps(db.conf.substitutions))'"]
 stdout = """{"arch": "x86_64", "basearch": "x86_64", "releasever": "8"}"""
 
-[commands."yum -v repolist all"]
+[commands."LC_ALL=C yum -v repolist all"]
 stdout="""
 Loaded plugins: builddep, changelog, config-manager, copr, debug, debuginfo-install, download, generate_completion_cache, needs-restarting, playground, repoclosure, repodiff, repograph, repomanage, reposync
 YUM version: 4.2.17

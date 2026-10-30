@@ -67,15 +67,13 @@ func ExtractTokenClaims(token string) (*VerifyClaim, error) {
 	}
 
 	out := VerifyClaim{
-		Claims: jwt.Claims{
-			ID:        unverifiedClaims.ID,
-			Issuer:    unverifiedClaims.Issuer,
-			Subject:   unverifiedClaims.Subject,
-			Audience:  jwt.Audience(unverifiedClaims.Audience),
-			Expiry:    expiry,
-			NotBefore: notBefore,
-			IssuedAt:  issuedAt,
-		},
+		ID:                unverifiedClaims.ID,
+		Issuer:            unverifiedClaims.Issuer,
+		Subject:           unverifiedClaims.Subject,
+		Audience:          jwt.Audience(unverifiedClaims.Audience),
+		Expiry:            expiry,
+		NotBefore:         notBefore,
+		IssuedAt:          issuedAt,
 		CustomTokenClaims: unverifiedClaims.CustomTokenClaims,
 	}
 

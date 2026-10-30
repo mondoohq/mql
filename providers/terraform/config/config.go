@@ -4,15 +4,22 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/terraform/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/terraform/connection"
+	"go.mondoo.com/mql/providers/terraform/provider"
 )
 
 var Config = plugin.Provider{
-	Name:      "terraform",
-	ID:        "go.mondoo.com/cnquery/v9/providers/terraform",
-	Version:   "13.3.1",
+	Name: "terraform",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "terraform",
+	ID:      "go.mondoo.com/mql/providers/terraform",
+	Version: "14.0.8",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	Platforms: provider.Platforms,
 	ConnectionTypes: []string{
 		provider.StateConnectionType,
@@ -20,13 +27,34 @@ var Config = plugin.Provider{
 		provider.HclConnectionType,
 		provider.HclGitConnectionType,
 	},
+	// Neither dialect is Auto: the user says which one they mean, because a
+	// folder holding both would otherwise be read twice under one name. The
+	// dialect rides in Options rather than being detected, since detection
+	// would pick one dialect for the folder and both probes would hand back the
+	// same asset (ADR 045).
+	Targets: []plugin.TargetOptIn{
+		{
+			Target: "iac", Discovery: "terraform", ConnType: provider.HclConnectionType,
+			Match:   []plugin.Matcher{{Glob: "*.tf"}, {Glob: "*.tf.json"}},
+			Options: map[string]string{connection.OptionDialect: string(connection.DialectTerraform)},
+		},
+		{
+			Target: "iac", Discovery: "opentofu", ConnType: provider.HclConnectionType,
+			Match:   []plugin.Matcher{{Glob: "*.tofu"}, {Glob: "*.tofu.json"}},
+			Options: map[string]string{connection.OptionDialect: string(connection.DialectOpenTofu)},
+		},
+	},
 	Connectors: []plugin.Connector{
 		{
-			Name:    "terraform",
-			Aliases: []string{},
-			Use:     "terraform PATH",
-			Short:   "Terraform HCL configurations, plan files, and state files",
-			Long: `Use the terraform provider to query Terraform HCL, plan, or state files as well as directories of files.
+			Name:  "terraform",
+			Use:   "terraform PATH",
+			Short: "Terraform HCL configurations, plan files, and state files",
+			Long: `Use the terraform connector to query Terraform HCL, plan, or state files as well as directories of files.
+
+A directory is read the way Terraform itself reads it: the .tf, .tf.json,
+.tfvars and .tfvars.json files. Any .tofu-flavored file sitting next to them is
+skipped, because Terraform never applies it. Use the opentofu connector for
+those.
 
 Available commands:
   plan                       Terraform plan file
@@ -41,15 +69,41 @@ Examples:
 			MinArgs:   1,
 			MaxArgs:   2,
 			Discovery: []string{},
-			Flags: []plugin.Flag{
-				{
-					Long:        "ignore-dot-terraform",
-					Type:        plugin.FlagType_Bool,
-					Default:     "false",
-					Desc:        "Exclude the .terraform directory (contains cached provider plugins and modules)",
-					ConfigEntry: "ignore_dot_terraform",
-				},
-			},
+			Flags:     iacFlags(),
+		},
+		{
+			Name:    "opentofu",
+			Aliases: []string{"tofu"},
+			Use:     "opentofu PATH",
+			Short:   "OpenTofu HCL configurations, plan files, and state files",
+			Long: `Use the opentofu connector to query OpenTofu HCL, plan, or state files as well as directories of files.
+
+A directory is read the way OpenTofu itself reads it. Where a .tofu-flavored
+file shares a name with its Terraform equivalent, the .tofu file wins and the
+.tf file is not read: main.tofu replaces main.tf, and .tofu.json, .tofuvars and
+.tofuvars.json replace their .tf equivalents in the same way. Files with no
+.tofu counterpart are read as they are, so a configuration that has not been
+renamed is queried unchanged.
+
+Plan and state files carry no marker of their own -- their JSON is identical
+between the two tools -- so the connector is what says which tool produced them.
+It selects the platform the asset is reported under; the file is read the same
+way either way.
+
+Available commands:
+  plan                       OpenTofu plan file
+  state                      OpenTofu state file
+
+Examples:
+  cnspec shell opentofu <PATH-TO-HCL-DIRECTORY>
+  cnspec scan opentofu <PATH-TO-HCL-FILE>
+  cnspec scan opentofu plan <PATH-TO-PLAN-JSON>
+  cnspec scan opentofu state <PATH-TO-STATE-JSON>
+`,
+			MinArgs:   1,
+			MaxArgs:   2,
+			Discovery: []string{},
+			Flags:     iacFlags(),
 		},
 	},
 	AssetUrlTrees: []*inventory.AssetUrlBranch{
@@ -64,4 +118,26 @@ Examples:
 			},
 		},
 	},
+}
+
+// iacFlags are the flags both connectors carry. They read the same kinds of
+// file from the same kinds of directory, so a flag that applies to one applies
+// to the other; the connector chooses the tool, not the feature set. A fresh
+// slice per connector, so the CLI appending its built-in flags to one cannot
+// reach the other.
+func iacFlags() []plugin.Flag {
+	return []plugin.Flag{
+		{
+			Long:    "ignore-dot-terraform",
+			Type:    plugin.FlagType_Bool,
+			Default: "false",
+			Desc:    "Exclude the .terraform directory (contains cached provider plugins and modules)",
+			// "-" reads the flag straight from the command line, which is what
+			// every other provider does. A named config entry is bound into
+			// viper under that name but read back under the flag's own name, so
+			// the value the user typed never arrived: this flag was accepted and
+			// then silently ignored, and .terraform was always scanned.
+			ConfigEntry: "-",
+		},
+	}
 }

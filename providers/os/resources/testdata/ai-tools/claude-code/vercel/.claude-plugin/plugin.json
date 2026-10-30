@@ -1,0 +1,32 @@
+{
+  "name": "vercel",
+  "version": "0.50.0",
+  "description": "Build and deploy web apps and agents",
+  "author": {
+    "name": "Vercel",
+    "url": "https://github.com/vercel"
+  },
+  "repository": "https://github.com/vercel/vercel-plugin",
+  "license": "Apache-2.0",
+  "keywords": [
+    "vercel",
+    "nextjs",
+    "ai-sdk",
+    "turborepo",
+    "turbopack",
+    "workflow",
+    "deployment",
+    "serverless"
+  ],
+  "commands": [
+    "./commands/bootstrap.md",
+    "./commands/deploy.md",
+    "./commands/env.md",
+    "./commands/status.md"
+  ],
+  "agents": [
+    "./agents/ai-architect.md",
+    "./agents/deployment-expert.md",
+    "./agents/performance-optimizer.md"
+  ]
+}

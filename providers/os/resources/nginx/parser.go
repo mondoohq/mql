@@ -110,9 +110,12 @@ func ParseFiles(rootPath string, open OpenFunc, glob GlobFunc) (*Config, error) 
 		return nil, errors.New("nginx.ParseFiles: open function is required")
 	}
 	cfg := &Config{}
-	visited := map[string]bool{}
+	st := &includeState{
+		active: map[string]bool{},
+		seen:   map[string]bool{},
+	}
 	prefix := filepath.Dir(rootPath)
-	dirs, err := parseFileRecursive(rootPath, prefix, open, glob, cfg, visited)
+	dirs, err := parseFileRecursive(rootPath, prefix, open, glob, cfg, st)
 	if err != nil {
 		return cfg, err
 	}
@@ -120,15 +123,51 @@ func ParseFiles(rootPath string, open OpenFunc, glob GlobFunc) (*Config, error) 
 	return cfg, nil
 }
 
+// includeState tracks include expansion across one ParseFiles run.
+//
+// `active` is the chain of files currently being expanded, not every file
+// ever seen. Cycle protection needs the chain: a file that (transitively)
+// includes itself is on it. Using an ever-growing set instead would also
+// drop legitimate repeats — the canonical nginx layout has several server
+// blocks `include` the same TLS snippet, and only the first would have
+// received it.
+//
+// `seen` deduplicates Config.Files so a snippet included by five servers is
+// still listed once.
+type includeState struct {
+	active map[string]bool
+	seen   map[string]bool
+	depth  int
+}
+
+// maxIncludeDepth bounds include nesting so a pathological config cannot
+// exhaust the stack. nginx itself has no documented limit; real configs
+// nest a handful deep.
+const maxIncludeDepth = 64
+
 // parseFileRecursive reads a file, parses it, then recursively expands
 // include directives found inside it (using `prefix` for relative paths).
-func parseFileRecursive(path, prefix string, open OpenFunc, glob GlobFunc, cfg *Config, visited map[string]bool) ([]Directive, error) {
-	if visited[path] {
-		// Avoid cycles from pathological configs that include themselves.
+func parseFileRecursive(path, prefix string, open OpenFunc, glob GlobFunc, cfg *Config, st *includeState) ([]Directive, error) {
+	if st.active[path] {
+		// This file is already being expanded further up the chain, so
+		// including it again is a cycle.
 		return nil, nil
 	}
-	visited[path] = true
-	cfg.Files = append(cfg.Files, path)
+	if st.depth >= maxIncludeDepth {
+		return nil, fmt.Errorf("include nesting deeper than %d at %s", maxIncludeDepth, path)
+	}
+
+	st.active[path] = true
+	st.depth++
+	defer func() {
+		delete(st.active, path)
+		st.depth--
+	}()
+
+	if !st.seen[path] {
+		st.seen[path] = true
+		cfg.Files = append(cfg.Files, path)
+	}
 
 	r, err := open(path)
 	if err != nil {
@@ -152,13 +191,13 @@ func parseFileRecursive(path, prefix string, open OpenFunc, glob GlobFunc, cfg *
 		cfg.Errors = append(cfg.Errors, e)
 	}
 
-	directives = expandIncludes(directives, prefix, open, glob, cfg, visited, path)
+	directives = expandIncludes(directives, prefix, open, glob, cfg, st, path)
 	return directives, nil
 }
 
 // expandIncludes walks the tree and replaces every simple 'include'
 // directive with the parsed directives from the included file(s).
-func expandIncludes(directives []Directive, prefix string, open OpenFunc, glob GlobFunc, cfg *Config, visited map[string]bool, sourceFile string) []Directive {
+func expandIncludes(directives []Directive, prefix string, open OpenFunc, glob GlobFunc, cfg *Config, st *includeState, sourceFile string) []Directive {
 	result := make([]Directive, 0, len(directives))
 	for _, d := range directives {
 		if d.Name == "include" && !d.IsBlock() {
@@ -184,7 +223,7 @@ func expandIncludes(directives []Directive, prefix string, open OpenFunc, glob G
 				continue
 			}
 			for _, p := range paths {
-				sub, err := parseFileRecursive(p, prefix, open, glob, cfg, visited)
+				sub, err := parseFileRecursive(p, prefix, open, glob, cfg, st)
 				if err != nil {
 					cfg.Errors = append(cfg.Errors, ParseError{
 						File: sourceFile,
@@ -198,7 +237,7 @@ func expandIncludes(directives []Directive, prefix string, open OpenFunc, glob G
 			continue
 		}
 		if d.IsBlock() {
-			d.Block = expandIncludes(d.Block, prefix, open, glob, cfg, visited, sourceFile)
+			d.Block = expandIncludes(d.Block, prefix, open, glob, cfg, st, sourceFile)
 		}
 		result = append(result, d)
 	}

@@ -1,0 +1,32 @@
+<?xml version='1.0'?>
+<stream>
+<message type="info">Refreshing service &apos;openSUSE&apos;.</message>
+<message type="info">Loading repository data...</message>
+<message type="info">Reading installed packages...</message>
+<update-status version="0.6">
+<update-list>
+<update kind="package" name="g03-archchg" edition="2.0-1" arch="noarch" edition-old="1.0-1" arch-old="x86_64"><summary>G03 arch change</summary><description>g03 test package</description><license/><source url="file:/srv/g03repo/" alias="g03repo"/></update><update kind="package" name="g03-epoch" edition="3:2.0-1" arch="x86_64" edition-old="3:1.0-1"><summary>G03 epoch test</summary><description>g03 test package</description><license/><source url="file:/srv/g03repo/" alias="g03repo"/></update><update kind="package" name="g03-kmv" edition="2.0-1" arch="x86_64" edition-old="1.0-1"><summary>G03 multiversion like a kernel</summary><description>g03 test package</description><license/><source url="file:/srv/g03repo/" alias="g03repo"/></update><update kind="package" name="g03-multi" edition="2.0-1" arch="i686" edition-old="1.0-1"><summary>G03 multilib i686</summary><description>g03 test package</description><license/><source url="file:/srv/g03repo/" alias="g03repo"/></update><update kind="package" name="g03-novendor" edition="1.0-1" arch="x86_64" edition-old="1.0~rc1-1"><summary>G03 no vendor tilde</summary><description>g03 test package</description><license/><source url="file:/srv/g03repo/" alias="g03repo"/></update><update kind="package" name="g03-weird" edition="2.0-1" arch="x86_64" edition-old="1.0-1"><summary>weird __ summary __ with separators</summary><description>g03 test package</description><license/><source url="file:/srv/g03repo/" alias="g03repo"/></update><update kind="package" name="ca-certificates-mozilla" edition="2.90-160000.1.1" arch="noarch" edition-old="2.84-160000.1.1"><summary>CA certificates for OpenSSL</summary><description>This package contains some CA root certificates for OpenSSL extracted
+from MozillaFirefox</description><license/><source url="http://cdn.opensuse.org/distribution/leap/16.0/repo/oss/x86_64" alias="openSUSE:repo-oss"/></update><update kind="package" name="glib2-tools" edition="2.84.4-160000.5.1" arch="x86_64" edition-old="2.84.4-160000.4.1"><summary>Tools from glib2, a general-purpose utility library</summary><description>GLib is a general-purpose utility library, which provides many useful
+data types, macros, type conversions, string utilities, file utilities,
+a main loop abstraction, and so on.</description><license/><source url="http://cdn.opensuse.org/distribution/leap/16.0/repo/oss/x86_64" alias="openSUSE:repo-oss"/></update><update kind="package" name="libgio-2_0-0" edition="2.84.4-160000.5.1" arch="x86_64" edition-old="2.84.4-160000.4.1"><summary>A virtual file system library API</summary><description>GLib is a general-purpose utility library, which provides many useful
+data types, macros, type conversions, string utilities, file utilities,
+a main loop abstraction, and so on.
+
+GIO provides a modern, easy-to-use VFS API.</description><license/><source url="http://cdn.opensuse.org/distribution/leap/16.0/repo/oss/x86_64" alias="openSUSE:repo-oss"/></update><update kind="package" name="libglib-2_0-0" edition="2.84.4-160000.5.1" arch="x86_64" edition-old="2.84.4-160000.4.1"><summary>General-Purpose Utility Library</summary><description>GLib is a general-purpose utility library, which provides many useful
+data types, macros, type conversions, string utilities, file utilities,
+a main loop abstraction, and so on.</description><license/><source url="http://cdn.opensuse.org/distribution/leap/16.0/repo/oss/x86_64" alias="openSUSE:repo-oss"/></update><update kind="package" name="libgmodule-2_0-0" edition="2.84.4-160000.5.1" arch="x86_64" edition-old="2.84.4-160000.4.1"><summary>General-Purpose Utility Library -- Library for Modules</summary><description>GLib is a general-purpose utility library, which provides many useful
+data types, macros, type conversions, string utilities, file utilities,
+a main loop abstraction, and so on.
+
+The libgmodule library provides a portable way to dynamically load
+object files (commonly known as &apos;plug-ins&apos;).</description><license/><source url="http://cdn.opensuse.org/distribution/leap/16.0/repo/oss/x86_64" alias="openSUSE:repo-oss"/></update><update kind="package" name="libgobject-2_0-0" edition="2.84.4-160000.5.1" arch="x86_64" edition-old="2.84.4-160000.4.1"><summary>Object-Oriented Framework for C</summary><description>GLib is a general-purpose utility library, which provides many useful
+data types, macros, type conversions, string utilities, file utilities,
+a main loop abstraction, and so on.
+
+The GObject library provides an object-oriented framework for C.</description><license/><source url="http://cdn.opensuse.org/distribution/leap/16.0/repo/oss/x86_64" alias="openSUSE:repo-oss"/></update><update kind="package" name="libjitterentropy3" edition="3.6.3-160000.3.1" arch="x86_64" edition-old="3.6.3-160000.2.2"><summary>Jitter entropy generator shared library</summary><description>The Jitter RNG provides a noise source using the CPU execution
+timing jitter. It depends on a high-resolution time stamp.
+
+This package contains the shared library.</description><license/><source url="http://cdn.opensuse.org/distribution/leap/16.0/repo/oss/x86_64" alias="openSUSE:repo-oss"/></update><update kind="package" name="patterns-base-minimal_base" edition="20241218+leap-lp160.1.1" arch="x86_64" edition-old="20241218-lp160.5.1"><summary>Minimal Appliance Base</summary><description>This is the minimal runtime system. It is really a minimal system. It is intended as base for Appliances.</description><license/><source url="http://cdn.opensuse.org/distribution/leap/16.0/repo/oss/x86_64" alias="openSUSE:repo-oss"/></update><update kind="package" name="patterns-base-selinux" edition="20241218+leap-lp160.1.1" arch="x86_64" edition-old="20241218-lp160.5.1"><summary>SELinux Support</summary><description>Security-Enhanced Linux (SELinux) provides a mechanism for supporting access control security policies, including mandatory access controls (MAC).
+Its architecture strives to separate enforcement of security decisions from the security policy, and streamlines the amount of software involved with security policy enforcement.</description><license/><source url="http://cdn.opensuse.org/distribution/leap/16.0/repo/oss/x86_64" alias="openSUSE:repo-oss"/></update></update-list>
+</update-status>
+</stream>

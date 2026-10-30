@@ -35,7 +35,7 @@ Features:
   idx: 5
   start: v7.0
   status: new
-- desc: Errors are treated as failures, see https://www.notion.so/mondoo/Errors-and-Scoring-5dc554348aad4118a1dbf35123368329
+- desc: Errors are treated as failures, see https://app.notion.com/p/mondoo/Errors-and-Scoring-5dc554348aad4118a1dbf35123368329
   end: v9.0
   id: ErrorsAsFailures
   idx: 6
@@ -82,7 +82,7 @@ Features:
   desc: Auto-update the execution engine
   idx: 14
   start: v13.x
-  status: new
+  status: default
 - id: BiosUUIDAsID
   desc: "Use BIOS UUID as the asset ID. Preferred over SerialNumber for VMs since some hypervisors (e.g., OpenStack) pass through the host's serial number to VMs, making it non-unique. On detected VMs, the BIOS UUID detector is added automatically; this flag enables it on non-VM (bare metal) machines."
   idx: 15
@@ -95,6 +95,47 @@ Features:
   status: new
 - id: TerraformResolveVars
   desc: "Resolve var.* and local.* references in Terraform HCL block arguments to their effective values (variable defaults overridden by .tfvars, locals evaluated from those). Unresolvable references fall back to their reference string; the unresolved view stays available via terraform.block.argumentReferences."
+  end: v13.x => this is the default now, no need to set it anymore
   idx: 17
   start: v13.x
+  status: builtin
+- id: ScanContentModeShadow
+  desc: "Compute a checksum for every row while writing the scan database, so an unchanged scan is detectable. Nothing else changes - every scan still uploads and is processed in full."
+  idx: 18
+  start: v13.x
+  status: new
+- id: ScanContentModeServerCompare
+  desc: "Row checksums as in shadow; the server also skips reprocessing uploads whose rows are identical to the previous scan. Client behavior is identical to shadow."
+  idx: 19
+  start: v13.x
+  status: new
+- id: ScanContentModeClientCompare
+  desc: "Row checksums as in shadow; the client may also fetch the previous upload's checksum summary, compare locally, and skip the upload entirely when nothing changed (completing with unchanged=true)."
+  idx: 20
+  start: v13.x
+  status: new
+- id: ScanContentModeNoCompare
+  desc: "The kill switch: compute no checksums, always upload in full. Overrides every other ScanContentMode* feature and any client default, so the server can disable comparison per scope even after it ships as the default."
+  idx: 21
+  start: v13.x
+  status: new
+- id: UploadResourcesData
+  desc: "Record resource data (the recording-style rows behind the resource explorer and GetResourcesData/ListResources) while scanning, and deliver it inside the uploaded scan database. Only acts together with UploadResultsV2 - resources ride the uploaded file, never the legacy StoreResults RPC. Successor to StoreResourcesData, which is retired: it required a server-side resolved-policy stamp as a second key and sent resources through the legacy RPC."
+  idx: 22
+  start: v14.x
+  status: new
+- id: RootedNamespace
+  desc: "Compile queries against the asset root instead of the global namespace (ADR 031). A bare identifier resolves as a member of the connected asset's root, the global namespace is reachable only through resources marked @global, and a compile without a root is an error. This is the v15 model, available early so content and providers can be moved onto it before it becomes the default."
+  idx: 23
+  start: v14.x
+  status: new
+- id: StructuredErrors
+  desc: "Providers return a refusal (access denied, service not enabled, ...) as a classified error instead of the null or empty value they returned in v13 (ADR 046). Checks that could not read what they assert about stop passing silently and error instead. Partial results and their coverage gaps are not behind this flag. This is the v15 behavior, available early so it can be tried against real accounts before it becomes the default."
+  idx: 24
+  start: v14.x
+  status: new
+- id: WindowsNative
+  desc: "On a local scan of Windows (the agent, cnspec scan local), read Windows data through Windows APIs instead of starting PowerShell: users and groups, services, security and audit policy, optional features, computerInfo and the hypervisor. Remote scans (SSH, WinRM) keep PowerShell. Off by default until each native path has shown the same results as PowerShell; MONDOO_WINDOWS_NATIVE turns it on locally too."
+  idx: 25
+  start: v14.x
   status: new

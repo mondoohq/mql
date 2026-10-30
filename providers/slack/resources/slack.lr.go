@@ -9,9 +9,9 @@ import (
 	"errors"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // The MQL type names exposed as public consts for ease of reference.
@@ -299,6 +299,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"slack.userGroup.isExternal": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSlackUserGroup).GetIsExternal()).ToDataRes(types.Bool)
+	},
+	"slack.userGroup.isIdpGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackUserGroup).GetIsIdpGroup()).ToDataRes(types.Bool)
+	},
+	"slack.userGroup.autoProvision": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackUserGroup).GetAutoProvision()).ToDataRes(types.Bool)
+	},
+	"slack.userGroup.isMembershipLocked": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackUserGroup).GetIsMembershipLocked()).ToDataRes(types.Bool)
+	},
+	"slack.userGroup.isEditingRestricted": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackUserGroup).GetIsEditingRestricted()).ToDataRes(types.Bool)
+	},
+	"slack.userGroup.isOrgLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSlackUserGroup).GetIsOrgLevel()).ToDataRes(types.Bool)
 	},
 	"slack.userGroup.created": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSlackUserGroup).GetCreated()).ToDataRes(types.Time)
@@ -668,6 +683,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"slack.userGroup.isExternal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSlackUserGroup).IsExternal, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"slack.userGroup.isIdpGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackUserGroup).IsIdpGroup, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"slack.userGroup.autoProvision": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackUserGroup).AutoProvision, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"slack.userGroup.isMembershipLocked": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackUserGroup).IsMembershipLocked, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"slack.userGroup.isEditingRestricted": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackUserGroup).IsEditingRestricted, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"slack.userGroup.isOrgLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSlackUserGroup).IsOrgLevel, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"slack.userGroup.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1494,21 +1529,26 @@ func (c *mqlSlackEnterpriseUser) GetIsOwner() *plugin.TValue[bool] {
 type mqlSlackUserGroup struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlSlackUserGroupInternal it will be used here
-	Id          plugin.TValue[string]
-	TeamId      plugin.TValue[string]
-	Name        plugin.TValue[string]
-	Description plugin.TValue[string]
-	Handle      plugin.TValue[string]
-	IsExternal  plugin.TValue[bool]
-	Created     plugin.TValue[*time.Time]
-	Updated     plugin.TValue[*time.Time]
-	Deleted     plugin.TValue[*time.Time]
-	CreatedBy   plugin.TValue[*mqlSlackUser]
-	UpdatedBy   plugin.TValue[*mqlSlackUser]
-	DeletedBy   plugin.TValue[*mqlSlackUser]
-	UserCount   plugin.TValue[int64]
-	Members     plugin.TValue[[]any]
+	mqlSlackUserGroupInternal
+	Id                  plugin.TValue[string]
+	TeamId              plugin.TValue[string]
+	Name                plugin.TValue[string]
+	Description         plugin.TValue[string]
+	Handle              plugin.TValue[string]
+	IsExternal          plugin.TValue[bool]
+	IsIdpGroup          plugin.TValue[bool]
+	AutoProvision       plugin.TValue[bool]
+	IsMembershipLocked  plugin.TValue[bool]
+	IsEditingRestricted plugin.TValue[bool]
+	IsOrgLevel          plugin.TValue[bool]
+	Created             plugin.TValue[*time.Time]
+	Updated             plugin.TValue[*time.Time]
+	Deleted             plugin.TValue[*time.Time]
+	CreatedBy           plugin.TValue[*mqlSlackUser]
+	UpdatedBy           plugin.TValue[*mqlSlackUser]
+	DeletedBy           plugin.TValue[*mqlSlackUser]
+	UserCount           plugin.TValue[int64]
+	Members             plugin.TValue[[]any]
 }
 
 // createSlackUserGroup creates a new instance of this resource
@@ -1572,6 +1612,26 @@ func (c *mqlSlackUserGroup) GetIsExternal() *plugin.TValue[bool] {
 	return &c.IsExternal
 }
 
+func (c *mqlSlackUserGroup) GetIsIdpGroup() *plugin.TValue[bool] {
+	return &c.IsIdpGroup
+}
+
+func (c *mqlSlackUserGroup) GetAutoProvision() *plugin.TValue[bool] {
+	return &c.AutoProvision
+}
+
+func (c *mqlSlackUserGroup) GetIsMembershipLocked() *plugin.TValue[bool] {
+	return &c.IsMembershipLocked
+}
+
+func (c *mqlSlackUserGroup) GetIsEditingRestricted() *plugin.TValue[bool] {
+	return &c.IsEditingRestricted
+}
+
+func (c *mqlSlackUserGroup) GetIsOrgLevel() *plugin.TValue[bool] {
+	return &c.IsOrgLevel
+}
+
 func (c *mqlSlackUserGroup) GetCreated() *plugin.TValue[*time.Time] {
 	return &c.Created
 }
@@ -1585,15 +1645,51 @@ func (c *mqlSlackUserGroup) GetDeleted() *plugin.TValue[*time.Time] {
 }
 
 func (c *mqlSlackUserGroup) GetCreatedBy() *plugin.TValue[*mqlSlackUser] {
-	return &c.CreatedBy
+	return plugin.GetOrCompute[*mqlSlackUser](&c.CreatedBy, func() (*mqlSlackUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("slack.userGroup", c.__id, "createdBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlSlackUser), nil
+			}
+		}
+
+		return c.createdBy()
+	})
 }
 
 func (c *mqlSlackUserGroup) GetUpdatedBy() *plugin.TValue[*mqlSlackUser] {
-	return &c.UpdatedBy
+	return plugin.GetOrCompute[*mqlSlackUser](&c.UpdatedBy, func() (*mqlSlackUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("slack.userGroup", c.__id, "updatedBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlSlackUser), nil
+			}
+		}
+
+		return c.updatedBy()
+	})
 }
 
 func (c *mqlSlackUserGroup) GetDeletedBy() *plugin.TValue[*mqlSlackUser] {
-	return &c.DeletedBy
+	return plugin.GetOrCompute[*mqlSlackUser](&c.DeletedBy, func() (*mqlSlackUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("slack.userGroup", c.__id, "deletedBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlSlackUser), nil
+			}
+		}
+
+		return c.deletedBy()
+	})
 }
 
 func (c *mqlSlackUserGroup) GetUserCount() *plugin.TValue[int64] {

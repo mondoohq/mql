@@ -11,6 +11,8 @@ type ModelListOptions struct {
 	SortDirection string
 	Limit         int
 	Full          bool
+	// Expand names the fields the response should carry. See ModelListExpand.
+	Expand []string
 }
 
 func NewModelListOptions() *ModelListOptions {
@@ -18,5 +20,6 @@ func NewModelListOptions() *ModelListOptions {
 		SortDirection: "1",
 		Limit:         20,
 		Full:          false,
+		Expand:        ModelListExpand,
 	}
 }

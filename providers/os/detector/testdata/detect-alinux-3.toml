@@ -1,0 +1,41 @@
+# alibaba-cloud-linux-3-registry.cn-hangzhou.cr.aliyuncs.com/alinux3/alinux3,
+# Alibaba Cloud Linux 3.2104 U13.4. /etc/redhat-release, /etc/centos-release,
+# /etc/anolis-release and /etc/system-release are all symlinks to
+# /etc/alinux-release.
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[files."/etc/os-release"]
+content = """
+NAME="Alibaba Cloud Linux"
+VERSION="3 (OpenAnolis Edition)"
+ID="alinux"
+ID_LIKE="rhel fedora centos anolis"
+VERSION_ID="3"
+VARIANT="OpenAnolis Edition"
+VARIANT_ID="openanolis"
+ALINUX_MINOR_ID="2104"
+ALINUX_UPDATE_ID="13.4"
+PLATFORM_ID="platform:al8"
+PRETTY_NAME="Alibaba Cloud Linux 3.2104 U13.4 (OpenAnolis Edition)"
+ANSI_COLOR="0;31"
+HOME_URL="https://www.aliyun.com/"
+"""
+
+[files."/etc/redhat-release"]
+content = """
+Alibaba Cloud Linux release 3 (OpenAnolis Edition)
+"""
+
+[files."/etc/centos-release"]
+content = """
+Alibaba Cloud Linux release 3 (OpenAnolis Edition)
+"""
+
+[files."/etc/alinux-release"]
+content = """
+Alibaba Cloud Linux release 3 (OpenAnolis Edition)
+"""

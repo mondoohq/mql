@@ -8,7 +8,8 @@ import (
 	"io"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 // SystemdSocket represents a systemd socket unit.
@@ -31,11 +32,31 @@ func NewSystemdSocketManager(conn shared.Connection) *SystemdSocketManager {
 	return &SystemdSocketManager{conn: conn}
 }
 
+// fsFallback reads the socket unit files off disk, for the same reason
+// SystemdTimerManager.fsFallback does.
+func (m *SystemdSocketManager) fsFallback() *SystemdFSSocketManager {
+	return &SystemdFSSocketManager{Fs: m.conn.FileSystem()}
+}
+
 func (m *SystemdSocketManager) List() ([]*SystemdSocket, error) {
+	sockets, err := m.listViaSystemctl()
+	if err == nil {
+		return sockets, nil
+	}
+
+	log.Debug().Err(err).
+		Msg("mql[systemd]> could not list sockets through systemctl, reading unit files instead")
+	return m.fsFallback().List()
+}
+
+func (m *SystemdSocketManager) listViaSystemctl() ([]*SystemdSocket, error) {
 	// Step 1: Get all socket unit files (provides Enabled/Masked/Static/Installed)
 	cmdList, err := m.conn.RunCommand("systemctl list-unit-files --type socket --all")
 	if err != nil {
 		return nil, err
+	}
+	if cmdList.ExitStatus != 0 {
+		return nil, systemctlError("systemctl list-unit-files --type socket", cmdList)
 	}
 
 	sockets, err := ParseSystemdSocketUnitFiles(cmdList.Stdout)
@@ -48,6 +69,9 @@ func (m *SystemdSocketManager) List() ([]*SystemdSocket, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cmdUnits.ExitStatus != 0 {
+		return nil, systemctlError("systemctl list-units --type socket", cmdUnits)
+	}
 
 	unitStates, err := ParseSystemdSocketListUnits(cmdUnits.Stdout)
 	if err != nil {
@@ -55,9 +79,11 @@ func (m *SystemdSocketManager) List() ([]*SystemdSocket, error) {
 	}
 
 	// Step 3: Merge
+	unloaded := map[string]*string{}
 	for _, socket := range sockets {
 		unitState, ok := unitStates[socket.Name]
 		if !ok {
+			unloaded[ensureSystemdSocketUnit(socket.Name)] = &socket.Description
 			continue
 		}
 		socket.Description = unitState.Description
@@ -65,6 +91,30 @@ func (m *SystemdSocketManager) List() ([]*SystemdSocket, error) {
 		if !unitState.Installed {
 			socket.Installed = false
 		}
+	}
+
+	// Step 4: Add the units only list-units names, such as the instances of a
+	// template. A failed show keeps what list-units told about them.
+	describeUnloadedUnits(m.conn, unloaded)
+
+	listed := make(map[string]bool, len(sockets))
+	for _, socket := range sockets {
+		listed[ensureSystemdSocketUnit(socket.Name)] = true
+	}
+	loaded := make(map[string]bool, len(unitStates))
+	for name, unitState := range unitStates {
+		loaded[ensureSystemdSocketUnit(name)] = unitState.Installed
+	}
+	unlisted := systemdUnitsNotListed(loaded, listed)
+	shown := showSystemdUnitStates(m.conn, unlisted)
+	for _, unit := range unlisted {
+		socket := unitStates[normalizeSystemdSocketName(unit)]
+		if record, ok := shown[unit]; ok {
+			socket.Description = record["Description"]
+			socket.Running = record["ActiveState"] == "active"
+			applyUnitFileState(&socket.Enabled, &socket.Masked, &socket.Static, record["UnitFileState"])
+		}
+		sockets = append(sockets, socket)
 	}
 
 	return sockets, nil
@@ -75,6 +125,13 @@ func (m *SystemdSocketManager) Get(name string) (*SystemdSocket, error) {
 	cmd, err := m.conn.RunCommand(buildSystemdShowCommand([]string{unit}))
 	if err != nil {
 		return nil, err
+	}
+	if cmd.ExitStatus != 0 {
+		// same reason as List: a systemctl that cannot answer must not read as
+		// "there is no such socket"
+		log.Debug().Err(systemctlError("systemctl show", cmd)).Str("unit", unit).
+			Msg("mql[systemd]> could not read socket through systemctl, reading the unit file instead")
+		return m.fsFallback().Get(name)
 	}
 
 	props, err := parseShowProperties(cmd.Stdout)
@@ -106,8 +163,53 @@ func (m *SystemdSocketManager) ShowSocketProperties(name string) (map[string]str
 	if err != nil {
 		return nil, err
 	}
+	if cmd.ExitStatus != 0 {
+		log.Debug().Err(systemctlError("systemctl show", cmd)).Str("unit", unit).
+			Msg("mql[systemd]> could not read socket properties through systemctl, reading the unit file instead")
+		return m.fsFallback().ShowSocketProperties(name)
+	}
 
-	return parseShowProperties(cmd.Stdout)
+	props, err := parseShowProperties(cmd.Stdout)
+	if err != nil {
+		return nil, err
+	}
+	foldListenTypeProperties(props)
+	return props, nil
+}
+
+// systemdListenTypes are the per-type listen settings, in the order they are
+// reported, with the type name systemd prints in a Listen= value.
+var systemdListenTypes = []struct{ key, kind string }{
+	{"ListenStream", "Stream"},
+	{"ListenDatagram", "Datagram"},
+	{"ListenSequentialPacket", "SequentialPacket"},
+	{"ListenFIFO", "FIFO"},
+	{"ListenSpecial", "Special"},
+	{"ListenNetlink", "Netlink"},
+	{"ListenMessageQueue", "MessageQueue"},
+	{"ListenUSBFunction", "USBFunction"},
+}
+
+// foldListenTypeProperties builds Listen from the per-type settings when
+// systemctl printed those instead. Asked for --property=Listen, systemd 219
+// (RHEL 7), 232 (Debian 9) and 237 (Ubuntu 18.04) answer with
+// ListenStream=127.0.0.1:7777 and the like, so every socket read as listening
+// nowhere.
+func foldListenTypeProperties(props map[string]string) {
+	if props["Listen"] != "" {
+		return
+	}
+	lines := []string{}
+	for _, t := range systemdListenTypes {
+		for _, addr := range strings.Split(props[t.key], "\n") {
+			if addr = strings.TrimSpace(addr); addr != "" {
+				lines = append(lines, addr+" ("+t.kind+")")
+			}
+		}
+	}
+	if len(lines) > 0 {
+		props["Listen"] = strings.Join(lines, "\n")
+	}
 }
 
 func ParseSystemdSocketUnitFiles(input io.Reader) ([]*SystemdSocket, error) {
@@ -149,6 +251,7 @@ func ParseSystemdSocketListUnits(input io.Reader) (map[string]*SystemdSocket, er
 	}
 
 	sockets := map[string]*SystemdSocket{}
+	jobCol := systemdListUnitsJobColumn(string(content))
 	matches := SYSTEMD_LIST_UNITS_REGEX.FindAllStringSubmatch(string(content), -1)
 	for _, match := range matches {
 		unitName := match[1]
@@ -159,7 +262,7 @@ func ParseSystemdSocketListUnits(input io.Reader) (map[string]*SystemdSocket, er
 		name := normalizeSystemdSocketName(unitName)
 		sockets[name] = &SystemdSocket{
 			Name:        name,
-			Description: strings.TrimSpace(match[5]),
+			Description: systemdListUnitsDescription(match, jobCol),
 			Running:     match[3] == "active",
 			Installed:   match[2] != "not-found",
 		}
@@ -209,8 +312,8 @@ func ParseListenProperty(listen string) []string {
 		}
 
 		// Simple format: "<address> (<type>)"
-		if idx := strings.LastIndex(line, " ("); idx > 0 {
-			addresses = append(addresses, strings.TrimSpace(line[:idx]))
+		if before, _, ok := strings.CutLast(line, " ("); ok && before != "" {
+			addresses = append(addresses, strings.TrimSpace(before))
 		} else {
 			addresses = append(addresses, line)
 		}

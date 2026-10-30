@@ -1,0 +1,53 @@
+AIDE 0.18.8
+
+Compile-time options:
+use pcre2: mandatory
+use pthread: yes
+use zlib compression: yes
+use POSIX ACLs: yes
+use SELinux: yes
+use POSIX 1003.1e capabilities: no
+use e2fsattrs: no
+use cURL: yes
+use Mhash: no
+use GNU crypto library: yes
+use Linux Auditing Framework: no
+use locale: no
+syslog ident: aide
+syslog logopt: LOG_CONS
+syslog priority: LOG_NOTICE
+default syslog facility: LOG_LOCAL0
+
+Default config values:
+config file: /etc/aide.conf
+database_in: file:/etc/aide.db
+database_out: file:/etc/aide.db.new
+
+Available compiled-in attributes:
+acl: yes
+xattrs: no
+selinux: yes
+e2fsattrs: no
+caps: no
+
+Available hashsum attributes:
+md5: yes
+sha1: yes
+sha256: yes
+sha512: yes
+rmd160: yes
+tiger: yes
+crc32: yes
+crc32b: no
+haval: no
+whirlpool: yes
+gost: yes
+stribog256: yes
+stribog512: yes
+
+Default compound groups:
+R: l+p+u+g+s+c+m+i+n+md5+acl+selinux+ftype
+L: l+p+u+g+i+n+acl+selinux+ftype
+>: l+p+u+g+s+i+n+acl+selinux+ftype+growing
+H: md5+sha1+rmd160+tiger+crc32+gost+sha256+sha512+whirlpool+stribog256+stribog512
+X: acl+selinux

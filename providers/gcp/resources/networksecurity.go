@@ -7,19 +7,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	networksecurity "google.golang.org/api/networksecurity/v1"
 	"google.golang.org/api/option"
 )
 
 type mqlGcpProjectNetworkSecurityServiceInternal struct {
-	serviceEnabled bool
+	serviceGate
 }
 
 func (g *mqlGcpProject) networkSecurity() (*mqlGcpProjectNetworkSecurityService, error) {
@@ -44,7 +45,7 @@ func (g *mqlGcpProject) networkSecurity() (*mqlGcpProjectNetworkSecurityService,
 	}
 
 	svc := res.(*mqlGcpProjectNetworkSecurityService)
-	svc.serviceEnabled = serviceEnabled
+	svc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_networksecurity).Msg("gcp service is not enabled, skipping")
 	}
@@ -101,8 +102,83 @@ func (g *mqlGcpOrganizationNetworkSecurityProfile) id() (string, error) {
 	return g.Name.Data, g.Name.Error
 }
 
+type mqlGcpOrganizationNetworkSecurityProfileGroupInternal struct {
+	// cacheOrg is the organization the group was listed under, whose profile
+	// list resolves the group's profile references.
+	cacheOrg                     *mqlGcpOrganization
+	cacheWildfireAnalysisProfile string
+	cacheUrlFilteringProfile     string
+}
+
 func (g *mqlGcpOrganizationNetworkSecurityProfileGroup) id() (string, error) {
 	return g.Name.Data, g.Name.Error
+}
+
+// wildfireAnalysisProfileDict maps a WildFire analysis profile to a dict,
+// leaving out the deprecated list form of the inline ML settings. Absent
+// profiles yield nil.
+func wildfireAnalysisProfileDict(p *networksecurity.WildfireAnalysisProfile) (map[string]any, error) {
+	if p == nil {
+		return nil, nil
+	}
+	cp := *p
+	cp.WildfireInlineMlSettings = nil
+	return convert.JsonToDict(cp)
+}
+
+// findNetworkSecurityProfile returns the profile with the given resource name
+// from an already-listed set of profiles, or nil when none matches.
+func findNetworkSecurityProfile(profiles []any, name string) *mqlGcpOrganizationNetworkSecurityProfile {
+	if name == "" {
+		return nil
+	}
+	for _, raw := range profiles {
+		p, ok := raw.(*mqlGcpOrganizationNetworkSecurityProfile)
+		if !ok || p == nil {
+			continue
+		}
+		if p.Name.Error == nil && p.Name.Data == name {
+			return p
+		}
+	}
+	return nil
+}
+
+// resolveProfile resolves a profile reference against the organization's
+// profile list, so each group costs no extra API call.
+func (g *mqlGcpOrganizationNetworkSecurityProfileGroup) resolveProfile(name string) (*mqlGcpOrganizationNetworkSecurityProfile, error) {
+	if name == "" || g.cacheOrg == nil {
+		return nil, nil
+	}
+	profiles := g.cacheOrg.GetNetworkSecurityProfiles()
+	if profiles.Error != nil {
+		return nil, profiles.Error
+	}
+	return findNetworkSecurityProfile(profiles.Data, name), nil
+}
+
+func (g *mqlGcpOrganizationNetworkSecurityProfileGroup) wildfireAnalysisProfile() (*mqlGcpOrganizationNetworkSecurityProfile, error) {
+	p, err := g.resolveProfile(g.cacheWildfireAnalysisProfile)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil {
+		g.WildfireAnalysisProfile.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return p, nil
+}
+
+func (g *mqlGcpOrganizationNetworkSecurityProfileGroup) urlFilteringProfile() (*mqlGcpOrganizationNetworkSecurityProfile, error) {
+	p, err := g.resolveProfile(g.cacheUrlFilteringProfile)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil {
+		g.UrlFilteringProfile.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return p, nil
 }
 
 // networkSecurityHTTPClient resolves an authenticated HTTP client for the
@@ -121,7 +197,11 @@ func (g *mqlGcpProjectNetworkSecurityService) networkSecurityHTTPClient() (*conn
 }
 
 func (g *mqlGcpProjectNetworkSecurityService) authorizationPolicies() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	conn, parent, err := g.networkSecurityHTTPClient()
@@ -162,7 +242,7 @@ func (g *mqlGcpProjectNetworkSecurityService) authorizationPolicies() ([]any, er
 		return nil
 	})
 	if err != nil {
-		if isHTTPSkippable(err) {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not list authorization policies")
 			return nil, nil
 		}
@@ -172,7 +252,11 @@ func (g *mqlGcpProjectNetworkSecurityService) authorizationPolicies() ([]any, er
 }
 
 func (g *mqlGcpProjectNetworkSecurityService) serverTlsPolicies() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	conn, parent, err := g.networkSecurityHTTPClient()
@@ -223,7 +307,7 @@ func (g *mqlGcpProjectNetworkSecurityService) serverTlsPolicies() ([]any, error)
 		return nil
 	})
 	if err != nil {
-		if isHTTPSkippable(err) {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not list server TLS policies")
 			return nil, nil
 		}
@@ -232,11 +316,46 @@ func (g *mqlGcpProjectNetworkSecurityService) serverTlsPolicies() ([]any, error)
 	return res, nil
 }
 
+// zonalLocationSuffix matches a zone id, which is a region followed by a single
+// letter (us-central1-a). The locations endpoint lists zones alongside regions,
+// but a zonal parent is rejected as a malformed name, so they are dropped.
+//
+// The digit is required so the pattern cannot claim a region whose last segment
+// happens to be one letter. Every GCP region ends in a number, so a zone always
+// reads <region><digit>-<letter>; matching a bare trailing "-x" would drop a
+// whole region silently, which is the failure this filter exists to avoid.
+var zonalLocationSuffix = regexp.MustCompile(`\d-[a-z]$`)
+
+// listNetworkSecurityLocations returns the non-zonal locations the Network
+// Security API reports for the project, which are the parents its regional
+// collections can be listed under.
+func listNetworkSecurityLocations(ctx context.Context, nsSvc *networksecurity.Service, projectId string) ([]string, error) {
+	var locations []string
+	err := nsSvc.Projects.Locations.List(fmt.Sprintf("projects/%s", projectId)).
+		Pages(ctx, func(page *networksecurity.ListLocationsResponse) error {
+			for _, l := range page.Locations {
+				if l == nil || l.LocationId == "" || zonalLocationSuffix.MatchString(l.LocationId) {
+					continue
+				}
+				locations = append(locations, l.LocationId)
+			}
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	return locations, nil
+}
+
 func (g *mqlGcpProjectNetworkSecurityService) clientTlsPolicies() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
-	conn, parent, err := g.networkSecurityHTTPClient()
+	conn, _, err := g.networkSecurityHTTPClient()
 	if err != nil {
 		return nil, err
 	}
@@ -250,8 +369,22 @@ func (g *mqlGcpProjectNetworkSecurityService) clientTlsPolicies() ([]any, error)
 		return nil, err
 	}
 
+	// ListClientTlsPolicies is the one method in this API that rejects the
+	// locations=- wildcard every other collection here uses, answering
+	// "aggregated list (locations=-) is not supported ... for
+	// method=ListClientTlsPolicies". So the policies are listed per location,
+	// the way Cloud Tasks queues already are for the same reason.
+	locations, err := listNetworkSecurityLocations(ctx, nsSvc, g.ProjectId.Data)
+	if err != nil {
+		if isSkippable(err) {
+			log.Warn().Err(err).Msg("could not list network security locations")
+			return nil, nil
+		}
+		return nil, err
+	}
+
 	res := []any{}
-	err = nsSvc.Projects.Locations.ClientTlsPolicies.List(parent).Pages(ctx, func(page *networksecurity.ListClientTlsPoliciesResponse) error {
+	listPage := func(page *networksecurity.ListClientTlsPoliciesResponse) error {
 		for _, p := range page.ClientTlsPolicies {
 			clientCertificate, err := convert.JsonToDict(p.ClientCertificate)
 			if err != nil {
@@ -277,19 +410,32 @@ func (g *mqlGcpProjectNetworkSecurityService) clientTlsPolicies() ([]any, error)
 			res = append(res, mqlPolicy)
 		}
 		return nil
-	})
-	if err != nil {
-		if isHTTPSkippable(err) {
-			log.Warn().Err(err).Msg("could not list client TLS policies")
-			return nil, nil
+	}
+
+	for _, location := range locations {
+		locParent := fmt.Sprintf("projects/%s/locations/%s", g.ProjectId.Data, location)
+		if err := nsSvc.Projects.Locations.ClientTlsPolicies.List(locParent).Pages(ctx, listPage); err != nil {
+			// One unreadable location establishes nothing about the others, and
+			// the policies already collected are real. Keep them and carry on:
+			// abandoning the walk here would report a field that is populated
+			// in most regions as empty because one region refused.
+			if isSkippable(err) {
+				log.Warn().Err(err).Str("location", location).
+					Msg("could not list client TLS policies")
+				continue
+			}
+			return nil, err
 		}
-		return nil, err
 	}
 	return res, nil
 }
 
 func (g *mqlGcpProjectNetworkSecurityService) tlsInspectionPolicies() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	conn, parent, err := g.networkSecurityHTTPClient()
@@ -314,16 +460,17 @@ func (g *mqlGcpProjectNetworkSecurityService) tlsInspectionPolicies() ([]any, er
 				customTlsFeatures = append(customTlsFeatures, f)
 			}
 			mqlPolicy, err := CreateResource(g.MqlRuntime, "gcp.project.networkSecurityService.tlsInspectionPolicy", map[string]*llx.RawData{
-				"name":               llx.StringData(p.Name),
-				"description":        llx.StringData(p.Description),
-				"caPool":             llx.StringData(p.CaPool),
-				"minTlsVersion":      llx.StringData(p.MinTlsVersion),
-				"tlsFeatureProfile":  llx.StringData(p.TlsFeatureProfile),
-				"customTlsFeatures":  llx.ArrayData(customTlsFeatures, types.String),
-				"excludePublicCaSet": llx.BoolData(p.ExcludePublicCaSet),
-				"trustConfig":        llx.StringData(p.TrustConfig),
-				"created":            llx.TimeDataPtr(parseTime(p.CreateTime)),
-				"updated":            llx.TimeDataPtr(parseTime(p.UpdateTime)),
+				"name":                    llx.StringData(p.Name),
+				"description":             llx.StringData(p.Description),
+				"caPool":                  llx.StringData(p.CaPool),
+				"certificateIssuanceMode": llx.StringData(p.CertificateIssuanceMode),
+				"minTlsVersion":           llx.StringData(p.MinTlsVersion),
+				"tlsFeatureProfile":       llx.StringData(p.TlsFeatureProfile),
+				"customTlsFeatures":       llx.ArrayData(customTlsFeatures, types.String),
+				"excludePublicCaSet":      llx.BoolData(p.ExcludePublicCaSet),
+				"trustConfig":             llx.StringData(p.TrustConfig),
+				"created":                 llx.TimeDataPtr(parseTime(p.CreateTime)),
+				"updated":                 llx.TimeDataPtr(parseTime(p.UpdateTime)),
 			})
 			if err != nil {
 				return err
@@ -333,7 +480,7 @@ func (g *mqlGcpProjectNetworkSecurityService) tlsInspectionPolicies() ([]any, er
 		return nil
 	})
 	if err != nil {
-		if isHTTPSkippable(err) {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not list TLS inspection policies")
 			return nil, nil
 		}
@@ -343,7 +490,11 @@ func (g *mqlGcpProjectNetworkSecurityService) tlsInspectionPolicies() ([]any, er
 }
 
 func (g *mqlGcpProjectNetworkSecurityService) addressGroups() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	conn, parent, err := g.networkSecurityHTTPClient()
@@ -390,7 +541,7 @@ func (g *mqlGcpProjectNetworkSecurityService) addressGroups() ([]any, error) {
 		return nil
 	})
 	if err != nil {
-		if isHTTPSkippable(err) {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not list address groups")
 			return nil, nil
 		}
@@ -400,7 +551,11 @@ func (g *mqlGcpProjectNetworkSecurityService) addressGroups() ([]any, error) {
 }
 
 func (g *mqlGcpProjectNetworkSecurityService) urlLists() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	conn, parent, err := g.networkSecurityHTTPClient()
@@ -439,7 +594,7 @@ func (g *mqlGcpProjectNetworkSecurityService) urlLists() ([]any, error) {
 		return nil
 	})
 	if err != nil {
-		if isHTTPSkippable(err) {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not list URL lists")
 			return nil, nil
 		}
@@ -451,7 +606,7 @@ func (g *mqlGcpProjectNetworkSecurityService) urlLists() ([]any, error) {
 // networkSecurityProfiles lists organization-scoped network security profiles.
 // Organization-scoped accessors have no serviceusage service-enabled pre-check
 // (enablement is per-project); a disabled API surfaces as a 403/404 that
-// isHTTPSkippable handles below.
+// isSkippable handles below.
 func (g *mqlGcpOrganization) networkSecurityProfiles() ([]any, error) {
 	if g.Id.Error != nil {
 		return nil, g.Id.Error
@@ -490,6 +645,14 @@ func (g *mqlGcpOrganization) networkSecurityProfiles() ([]any, error) {
 			if err != nil {
 				return err
 			}
+			wildfireAnalysisProfile, err := wildfireAnalysisProfileDict(sp.WildfireAnalysisProfile)
+			if err != nil {
+				return err
+			}
+			wildfireAnalysisProfileData := llx.NilData
+			if wildfireAnalysisProfile != nil {
+				wildfireAnalysisProfileData = llx.DictData(wildfireAnalysisProfile)
+			}
 			mqlProfile, err := CreateResource(g.MqlRuntime, "gcp.organization.networkSecurityProfile", map[string]*llx.RawData{
 				"name":                    llx.StringData(sp.Name),
 				"description":             llx.StringData(sp.Description),
@@ -498,6 +661,7 @@ func (g *mqlGcpOrganization) networkSecurityProfiles() ([]any, error) {
 				"urlFilteringProfile":     llx.DictData(urlFilteringProfile),
 				"customMirroringProfile":  llx.DictData(customMirroringProfile),
 				"customInterceptProfile":  llx.DictData(customInterceptProfile),
+				"wildfireAnalysisProfile": wildfireAnalysisProfileData,
 				"labels":                  llx.MapData(convert.MapToInterfaceMap(sp.Labels), types.String),
 				"etag":                    llx.StringData(sp.Etag),
 				"created":                 llx.TimeDataPtr(parseTime(sp.CreateTime)),
@@ -511,7 +675,7 @@ func (g *mqlGcpOrganization) networkSecurityProfiles() ([]any, error) {
 		return nil
 	})
 	if err != nil {
-		if isHTTPSkippable(err) {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not list network security profiles")
 			return nil, nil
 		}
@@ -559,16 +723,25 @@ func (g *mqlGcpOrganization) networkSecurityProfileGroups() ([]any, error) {
 			if err != nil {
 				return err
 			}
+			internal := mqlGroup.(*mqlGcpOrganizationNetworkSecurityProfileGroup)
+			internal.cacheOrg = g
+			internal.cacheWildfireAnalysisProfile = spg.WildfireAnalysisProfile
+			internal.cacheUrlFilteringProfile = spg.UrlFilteringProfile
 			res = append(res, mqlGroup)
 		}
 		return nil
 	})
 	if err != nil {
-		if isHTTPSkippable(err) {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not list network security profile groups")
 			return nil, nil
 		}
 		return nil, err
 	}
 	return res, nil
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectNetworkSecurityService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_networksecurity)
 }

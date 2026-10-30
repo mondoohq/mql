@@ -6,14 +6,15 @@ package resources
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream/mvd"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream/mvd"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 // FIXME: DEPRECATED, update in v10.0 vv
@@ -75,6 +76,16 @@ func (s *mqlMondooEol) id() (string, error) {
 func (s *mqlMondooEol) date() (*time.Time, error) {
 	name := s.Product.Data
 	version := s.Version.Data
+
+	// The platform answers a lookup it cannot place with no EOL date, which
+	// reads as "Never". Without a product and release there is nothing to
+	// look up, so say so instead of reporting a supported product.
+	if name == "" {
+		return nil, errors.New("mondoo.eol needs a product, for example mondoo.eol(product: \"debian\", version: \"12\")")
+	}
+	if version == "" {
+		return nil, errors.New("mondoo.eol needs a version for product " + strconv.Quote(name))
+	}
 
 	mcc := s.MqlRuntime.Upstream
 	if mcc == nil || mcc.ApiEndpoint == "" {

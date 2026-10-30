@@ -4,7 +4,9 @@
 package container
 
 import (
+	"encoding/base64"
 	"errors"
+	"maps"
 	"os"
 	"slices"
 
@@ -14,14 +16,14 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/cli/tmp"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/container/auth"
-	"go.mondoo.com/mql/v13/providers/os/connection/container/image"
-	"go.mondoo.com/mql/v13/providers/os/connection/tar"
-	"go.mondoo.com/mql/v13/providers/os/id/containerid"
-	"go.mondoo.com/mql/v13/providers/os/resources/discovery/container_registry"
+	"go.mondoo.com/mql/cli/tmp"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/container/auth"
+	"go.mondoo.com/mql/providers/os/connection/container/image"
+	"go.mondoo.com/mql/providers/os/connection/tar"
+	"go.mondoo.com/mql/providers/os/id/containerid"
+	"go.mondoo.com/mql/providers/os/resources/discovery/container_registry"
 )
 
 const (
@@ -180,10 +182,18 @@ func NewRegistryImage(id uint32, conf *inventory.Config, asset *inventory.Asset)
 	}
 
 	// set the platform architecture using the image configuration
+	var arch string
 	imgConfig, err := img.ConfigFile()
 	if err == nil {
 		conn.PlatformArchitecture = imgConfig.Architecture
+		conn.ImageConfig = tar.ImageConfigFrom(imgConfig)
+		arch = imgConfig.Architecture
 	}
+
+	// Seed-lane claim: the resolved platform image's digest plus its
+	// manifest as proof of possession. It sits next to any discovery claim that
+	// carries the index digest, which is how the server learns the alias.
+	AttachResolvedImageClaim(asset, img, conf.Host, arch)
 
 	labels := map[string]string{}
 	labels["docker.io/digests"] = ref.String()
@@ -198,11 +208,47 @@ func NewRegistryImage(id uint32, conf *inventory.Config, asset *inventory.Asset)
 		asset.Labels = map[string]string{}
 	}
 
-	for k, v := range labels {
-		asset.Labels[k] = v
-	}
+	maps.Copy(asset.Labels, labels)
 
 	return conn, err
+}
+
+// maxClaimManifestBytes caps the manifest attached to a seed-lane claim. The
+// server rejects requests over 8 MiB and SynchronizeAssets batches many assets
+// into one request, so a single oversized manifest (base64 adds a third on top)
+// could fail the whole batch. Real image manifests are a few KiB; a manifest
+// over the cap is dropped and the claim is sent with digest, ref and arch only.
+const maxClaimManifestBytes = 256 * 1024
+
+// AttachResolvedImageClaim appends a container-image claim for the image the
+// registry connection resolved to: its digest, the reference it was addressed
+// by, its architecture (left out when empty) and its base64-encoded raw
+// manifest. The claim is only attached when both the digest and the manifest
+// can be read. A manifest larger than maxClaimManifestBytes is left out of the
+// claim, which is still attached. Claims are best-effort: failures are logged
+// at debug level and never affect the connection.
+func AttachResolvedImageClaim(asset *inventory.Asset, img v1.Image, ref, arch string) {
+	digest, err := img.Digest()
+	if err != nil {
+		log.Debug().Err(err).Msg("skipping image claim, cannot read image digest")
+		return
+	}
+	manifest, err := img.RawManifest()
+	if err != nil {
+		log.Debug().Err(err).Msg("skipping image claim, cannot read image manifest")
+		return
+	}
+	claim := inventory.NewContainerImageClaim(digest.String(), ref, arch)
+	if len(manifest) > maxClaimManifestBytes {
+		log.Debug().
+			Str("digest", digest.String()).
+			Int("manifest_bytes", len(manifest)).
+			Int("max_bytes", maxClaimManifestBytes).
+			Msg("image claim manifest exceeds the size cap, attaching the claim without it")
+	} else {
+		claim.Claims[inventory.AssetClaimManifest] = base64.StdEncoding.EncodeToString(manifest)
+	}
+	asset.AddClaim(claim)
 }
 
 // NewFromTar opens a container-image tar file (OCI format) and exposes its
@@ -217,6 +263,12 @@ func NewFromTar(id uint32, conf *inventory.Config, asset *inventory.Asset) (*tar
 	if err != nil {
 		return nil, err
 	}
+	return NewFromTarImage(id, conf, asset, img)
+}
+
+// NewFromTarImage is NewFromTar for an image tarball the caller already
+// opened, so the archive is not parsed twice.
+func NewFromTarImage(id uint32, conf *inventory.Config, asset *inventory.Asset, img v1.Image) (*tar.Connection, error) {
 
 	// Resolve the digest before creating the tar connection so a Digest()
 	// failure doesn't leak the temp file that newImageTarConnection allocates,
@@ -235,5 +287,23 @@ func NewFromTar(id uint32, conf *inventory.Config, asset *inventory.Asset) (*tar
 	}
 
 	conn.PlatformIdentifier = containerid.MondooContainerImageID(hash.String())
+	if imgConfig, err := img.ConfigFile(); err == nil && imgConfig != nil {
+		conn.ImageConfig = tar.ImageConfigFrom(imgConfig)
+		conn.PlatformArchitecture = imgConfig.Architecture
+	}
 	return conn, nil
+}
+
+// OpenImageTarball opens path as a saved image (`docker save`, which carries
+// a manifest.json). It reports false for anything else, such as an exported
+// filesystem.
+func OpenImageTarball(path string) (v1.Image, bool) {
+	if path == "" {
+		return nil, false
+	}
+	img, err := tarball.ImageFromPath(path, nil)
+	if err != nil {
+		return nil, false
+	}
+	return img, true
 }

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Two Services, four Connectors, three Hosts, nested Realms. This is the shape
+  a single-element parser gets wrong: a document with one of each collapses to
+  a scalar, and everything written against it silently stops matching here.
+-->
+<Server port="8005" shutdown="SHUTDOWN">
+  <Listener className="org.apache.catalina.startup.VersionLoggerListener" />
+  <Listener className="org.apache.catalina.core.AprLifecycleListener" SSLEngine="on" />
+
+  <GlobalNamingResources>
+    <Resource name="UserDatabase" auth="Container" pathname="conf/tomcat-users.xml" />
+  </GlobalNamingResources>
+
+  <Service name="Catalina">
+    <Connector port="8080" protocol="HTTP/1.1" connectionTimeout="20000" />
+    <Connector port="8443" protocol="org.apache.coyote.http11.Http11NioProtocol"
+               SSLEnabled="true" scheme="https" secure="true"
+               sslEnabledProtocols="TLSv1.2,TLSv1.3">
+      <SSLHostConfig protocols="TLSv1.2+TLSv1.3" ciphers="TLS_AES_256_GCM_SHA384"
+                     certificateVerification="required">
+        <Certificate certificateKeystoreFile="conf/keystore.jks" type="RSA" />
+      </SSLHostConfig>
+      <SSLHostConfig hostName="other.example.com" protocols="TLSv1.3" />
+    </Connector>
+    <!-- A commented-out Connector must not be counted.
+    <Connector port="9999" protocol="AJP/1.3" />
+    -->
+    <Connector protocol="AJP/1.3" address="::1" port="8009" />
+
+    <Engine name="Catalina" defaultHost="localhost">
+      <Realm className="org.apache.catalina.realm.LockOutRealm"
+             failureCount="5" lockOutTime="600">
+        <Realm className="org.apache.catalina.realm.UserDatabaseRealm"
+               resourceName="UserDatabase">
+          <CredentialHandler className="org.apache.catalina.realm.MessageDigestCredentialHandler"
+                             algorithm="SHA-512" />
+        </Realm>
+      </Realm>
+
+      <Valve className="org.apache.catalina.valves.RemoteAddrValve" allow="10\.\d+\.\d+\.\d+" />
+
+      <Host name="localhost" appBase="webapps" unpackWARs="true"
+            autoDeploy="true" deployOnStartup="true">
+        <Valve className="org.apache.catalina.valves.AccessLogValve"
+               directory="${catalina.base}/logs"
+               prefix="localhost_access_log" suffix=".txt"
+               pattern="%h %l %u %t &quot;%r&quot; %s %b" />
+        <Context path="/app" privileged="false" crossContext="true">
+          <Resources allowLinking="true" />
+        </Context>
+      </Host>
+      <Host name="www.example.com" appBase="webapps-example" autoDeploy="false" />
+    </Engine>
+  </Service>
+
+  <Service name="Admin">
+    <Connector port="18080" protocol="HTTP/1.1" address="127.0.0.1" />
+    <Engine name="Admin" defaultHost="admin.local">
+      <Realm className="org.apache.catalina.realm.MemoryRealm" />
+      <Host name="admin.local" appBase="/srv/admin-apps" />
+    </Engine>
+  </Service>
+</Server>

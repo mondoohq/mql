@@ -1,0 +1,55 @@
+[
+  {
+    "Name": "ScheduledDefrag",
+    "Path": "\\Microsoft\\Windows\\Defrag\\",
+    "URI": "\\Microsoft\\Windows\\Defrag\\ScheduledDefrag",
+    "State": "Ready",
+    "Description": "This task optimizes local storage drives.",
+    "Author": "Microsoft Corporation",
+    "Documentation": null,
+    "SecurityDescriptor": "D:AI(A;;FA;;;BA)(A;;FA;;;SY)(A;;FRFX;;;LS)(A;;FR;;;AU)",
+    "Source": "Microsoft Corporation",
+    "Date": null,
+    "Principal": {
+      "UserId": "SYSTEM",
+      "GroupId": null,
+      "DisplayName": null,
+      "LogonType": "ServiceAccount",
+      "RunLevel": "Highest"
+    },
+    "Actions": [
+      {
+        "Execute": "%windir%\\system32\\defrag.exe",
+        "Arguments": "-c -h -k -g -$",
+        "WorkingDirectory": null
+      }
+    ],
+    "Triggers": [],
+    "Settings": {
+      "Enabled": true,
+      "Hidden": false,
+      "AllowDemandStart": true,
+      "AllowHardTerminate": true,
+      "StartWhenAvailable": true,
+      "RunOnlyIfNetworkAvailable": false,
+      "RunOnlyIfIdle": false,
+      "WakeToRun": false,
+      "DisallowStartIfOnBatteries": true,
+      "StopIfGoingOnBatteries": true,
+      "DisallowStartOnRemoteAppSession": false,
+      "RestartCount": 0,
+      "RestartInterval": null,
+      "ExecutionTimeLimit": "PT72H",
+      "MultipleInstances": "IgnoreNew",
+      "Priority": 7,
+      "DeleteExpiredTaskAfter": null,
+      "Compatibility": "",
+      "IdleDuration": null,
+      "IdleWaitTimeout": null,
+      "IdleStopOnIdleEnd": true,
+      "IdleRestartOnIdle": false,
+      "NetworkId": null,
+      "NetworkName": null
+    }
+  }
+]

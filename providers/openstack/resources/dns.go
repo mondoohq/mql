@@ -6,8 +6,8 @@ package resources
 import (
 	"github.com/gophercloud/gophercloud/v2/openstack/dns/v2/recordsets"
 	"github.com/gophercloud/gophercloud/v2/openstack/dns/v2/zones"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // ---- openstack.dns.zone ----
@@ -74,7 +74,6 @@ func (o *mqlOpenstack) dnsZones() ([]any, error) {
 			"action":        llx.StringData(z.Action),
 			"type":          llx.StringData(z.Type),
 			"masters":       stringSliceData(z.Masters),
-			"projectId":     llx.StringData(z.ProjectID),
 			"createdAt":     llx.TimeDataPtr(timePtr(z.CreatedAt)),
 			"updatedAt":     llx.TimeDataPtr(timePtr(z.UpdatedAt)),
 			"transferredAt": llx.TimeDataPtr(timePtr(z.TransferredAt)),
@@ -82,18 +81,25 @@ func (o *mqlOpenstack) dnsZones() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		res.(*mqlOpenstackDnsZone).cacheProjectID = z.ProjectID
 		out = append(out, res)
 	}
 	return out, nil
 }
 
+// mqlOpenstackDnsZoneInternal holds the owning project id that project()
+// resolves.
+type mqlOpenstackDnsZoneInternal struct {
+	cacheProjectID string
+}
+
 func (r *mqlOpenstackDnsZone) project() (*mqlOpenstackProject, error) {
-	if r.ProjectId.Data == "" {
+	if r.cacheProjectID == "" {
 		r.Project.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	res, err := NewResource(r.MqlRuntime, "openstack.project", map[string]*llx.RawData{
-		"id": llx.StringData(r.ProjectId.Data),
+		"id": llx.StringData(r.cacheProjectID),
 	})
 	if err != nil {
 		return nil, err
@@ -128,7 +134,6 @@ func (r *mqlOpenstackDnsZone) recordsets() ([]any, error) {
 			"__id":        llx.StringData("openstack.dns.recordset/" + rs.ID),
 			"id":          llx.StringData(rs.ID),
 			"name":        llx.StringData(rs.Name),
-			"zoneId":      llx.StringData(rs.ZoneID),
 			"type":        llx.StringData(rs.Type),
 			"ttl":         llx.IntData(int64(rs.TTL)),
 			"records":     stringSliceData(rs.Records),
@@ -141,9 +146,16 @@ func (r *mqlOpenstackDnsZone) recordsets() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		res.(*mqlOpenstackDnsRecordset).cacheZoneID = rs.ZoneID
 		out = append(out, res)
 	}
 	return out, nil
+}
+
+// mqlOpenstackDnsRecordsetInternal holds the owning zone id that zone()
+// resolves.
+type mqlOpenstackDnsRecordsetInternal struct {
+	cacheZoneID string
 }
 
 // ---- openstack.dns.recordset ----
@@ -162,12 +174,12 @@ func initOpenstackDnsRecordset(runtime *plugin.Runtime, args map[string]*llx.Raw
 }
 
 func (r *mqlOpenstackDnsRecordset) zone() (*mqlOpenstackDnsZone, error) {
-	if r.ZoneId.Data == "" {
+	if r.cacheZoneID == "" {
 		r.Zone.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	res, err := NewResource(r.MqlRuntime, "openstack.dns.zone", map[string]*llx.RawData{
-		"id": llx.StringData(r.ZoneId.Data),
+		"id": llx.StringData(r.cacheZoneID),
 	})
 	if err != nil {
 		return nil, err

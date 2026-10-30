@@ -7,9 +7,9 @@ import (
 	"context"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream/mvd"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream/mvd"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 )
 

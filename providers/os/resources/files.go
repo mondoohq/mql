@@ -6,15 +6,19 @@ package resources
 
 import (
 	"errors"
+	"fmt"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/filesfind"
+	"github.com/spf13/afero"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/fsutil"
+	"go.mondoo.com/mql/providers/os/resources/filesfind"
 )
 
 func initFilesFind(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -44,7 +48,8 @@ func (l *mqlFilesFind) id() (string, error) {
 		id.WriteString(" name=" + l.Name.Data)
 	}
 
-	if l.Depth.Data > 0 {
+	// depth 0 is a search of from alone, not the unbounded search of no depth
+	if l.Depth.IsSet() {
 		id.WriteString(" depth=" + strconv.Itoa(int(l.Depth.Data)))
 	}
 
@@ -70,7 +75,7 @@ func (l *mqlFilesFind) list() ([]any, error) {
 			return nil, err
 		}
 	} else if conn.Capabilities().Has(shared.Capability_RunCommand) && pf.IsFamily("unix") {
-		foundFiles, err = l.unixFilesFindCmd()
+		foundFiles, err = l.unixFilesFindCmd(conn)
 		if err != nil {
 			return nil, err
 		}
@@ -102,9 +107,11 @@ func (l *mqlFilesFind) list() ([]any, error) {
 func (l *mqlFilesFind) fsFilesFind(conn shared.Connection) ([]string, error) {
 	log.Debug().Msgf("use native files find approach")
 	fs := conn.FileSystem()
-	fsSearch, ok := fs.(shared.FileSearch)
+	fsSearch, ok := fs.(interface {
+		FindWithOptions(string, *regexp.Regexp, string, *uint32, *int, fsutil.FindOptions) ([]string, error)
+	})
 	if !ok {
-		return nil, errors.New("find is not supported for your platform")
+		fsSearch = walkFileSearch{fs: fs}
 	}
 
 	var perm *uint32
@@ -126,27 +133,63 @@ func (l *mqlFilesFind) fsFilesFind(conn shared.Connection) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-	} else if len(l.Name.Data) > 0 {
-		compiledRegexp, err = regexp.Compile(l.Name.Data)
-		if err != nil {
-			return nil, err
-		}
 	}
 
-	return fsSearch.Find(l.From.Data, compiledRegexp, l.Type.Data, perm, depth)
+	matchesName, err := findNameMatcher(l.Name.Data)
+	if err != nil {
+		return nil, err
+	}
+
+	found, err := fsSearch.FindWithOptions(l.From.Data, compiledRegexp, l.Type.Data, perm, depth, fsutil.FindOptions{CrossFileSystems: l.Xdev.Data})
+	if err != nil || matchesName == nil {
+		return found, err
+	}
+	res := found[:0]
+	for _, p := range found {
+		if matchesName(p) {
+			res = append(res, p)
+		}
+	}
+	return res, nil
 }
 
-func (l *mqlFilesFind) unixFilesFindCmd() ([]string, error) {
+// findNameMatcher returns a test for files.find's name filter, which is a
+// `find -name` glob on the last path component. It returns nil when no name
+// is set. The native search used to compile the name as a regular expression
+// against the full path: "*.conf" was a regexp error and "in.conf" matched
+// anywhere in a path (or, on the mounted filesystem, nowhere).
+func findNameMatcher(name string) (func(string) bool, error) {
+	if name == "" {
+		return nil, nil
+	}
+	// fnmatch negates a bracket expression with "!", Go's path.Match with "^"
+	pattern := strings.ReplaceAll(name, "[!", "[^")
+	if _, err := path.Match(pattern, ""); err != nil {
+		return nil, fmt.Errorf("invalid files.find name pattern %q: %w", name, err)
+	}
+	return func(p string) bool {
+		ok, _ := path.Match(pattern, path.Base(p))
+		return ok
+	}, nil
+}
+
+// walkFileSearch searches a file system that has no search of its own by
+// walking it.
+type walkFileSearch struct {
+	fs afero.Fs
+}
+
+func (w walkFileSearch) FindWithOptions(from string, r *regexp.Regexp, typ string, perm *uint32, depth *int, options fsutil.FindOptions) ([]string, error) {
+	return fsutil.FindFilesWithOptions(afero.NewIOFS(w.fs), from, r, typ, perm, depth, options)
+}
+
+func (l *mqlFilesFind) unixFilesFindCmd(conn shared.Connection) ([]string, error) {
 	var depth *int64
 	if l.Depth.IsSet() {
 		depth = &l.Depth.Data
 	}
 
-	conn := l.MqlRuntime.Connection.(shared.Connection)
-	pf := conn.Asset().Platform
-	hasGNUFind := pf != nil && pf.IsFamily("linux")
-
-	callCmd := filesfind.BuildFilesFindCmd(l.From.Data, l.Xdev.Data, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth, hasGNUFind)
+	callCmd := filesfind.BuildFilesFindCmd(l.From.Data, l.Xdev.Data, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth, filesfind.FindFlavor{GNU: l.hasGNUFind(), NoMaxDepth: l.findLacksMaxDepth()})
 	rawCmd, err := CreateResource(l.MqlRuntime, "command", map[string]*llx.RawData{
 		"command": llx.StringData(callCmd),
 	})
@@ -159,6 +202,13 @@ func (l *mqlFilesFind) unixFilesFindCmd() ([]string, error) {
 	if out.Error != nil {
 		return nil, out.Error
 	}
+	// Minimal images such as Amazon Linux 2023 and UBI micro have no find.
+	// Its output read as no files at all; the connection can still walk
+	// the file system itself.
+	if exit := cmd.GetExitcode(); exit.Error == nil && isCommandNotFound(exit.Data, cmd.GetStderr().Data) {
+		log.Debug().Str("from", l.From.Data).Msg("files.find> find is not installed, walking the file system instead")
+		return l.fsFilesFind(conn)
+	}
 
 	var foundFiles []string
 	lines := strings.TrimSpace(out.Data)
@@ -168,6 +218,36 @@ func (l *mqlFilesFind) unixFilesFindCmd() ([]string, error) {
 		foundFiles = strings.Split(lines, "\n")
 	}
 	return foundFiles, nil
+}
+
+// hasGNUFind reports whether the target's find is GNU findutils, which has
+// -xtype. Linux alone doesn't imply it: BusyBox find (Alpine and many
+// containers) rejects -xtype, and because the find output is read from stdout
+// only, the search would silently come back empty. The command resource is
+// cached per connection, so the probe runs once per scan.
+func (l *mqlFilesFind) hasGNUFind() bool {
+	raw, err := CreateResource(l.MqlRuntime, "command", map[string]*llx.RawData{
+		"command": llx.StringData("find --version"),
+	})
+	if err != nil {
+		return false
+	}
+	out := raw.(*mqlCommand).GetStdout()
+	return out.Error == nil && strings.Contains(out.Data, "GNU findutils")
+}
+
+// findLacksMaxDepth reports whether the target's find rejects -maxdepth, as
+// AIX and Oracle Solaris find do ("find: bad option -maxdepth").
+func (l *mqlFilesFind) findLacksMaxDepth() bool {
+	conn, ok := l.MqlRuntime.Connection.(shared.Connection)
+	if !ok || conn.Asset() == nil || conn.Asset().Platform == nil {
+		return false
+	}
+	switch conn.Asset().Platform.Name {
+	case "aix", "solaris":
+		return true
+	}
+	return false
 }
 
 func (l *mqlFilesFind) windowsPowershellCmd() ([]string, error) {

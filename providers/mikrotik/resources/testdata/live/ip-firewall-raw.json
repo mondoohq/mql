@@ -1,0 +1,13 @@
+[
+ {
+  ".id": "*1",
+  "action": "notrack",
+  "bytes": "0",
+  "chain": "prerouting",
+  "dst-port": "53",
+  "dynamic": "false",
+  "invalid": "false",
+  "packets": "0",
+  "protocol": "udp"
+ }
+]

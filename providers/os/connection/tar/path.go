@@ -14,7 +14,34 @@ import (
 
 // docker images only use relative paths, we need to make them absolute here
 func Abs(path string) string {
+	// Most tar entries are already clean relative paths such as "usr/bin/ls". Such a path
+	// only needs a leading separator, which is one allocation. The join and Clean pair below
+	// needs three, because it builds the joined string, then a Clean buffer, then the result.
+	if isCleanRelative(path) {
+		return "/" + path
+	}
 	return join("/", path)
+}
+
+// isCleanRelative reports whether path is a relative path that Clean leaves unchanged.
+// Such a path is not empty, starts and ends with a name character, and holds no empty,
+// "." or ".." element.
+func isCleanRelative(path string) bool {
+	if path == "" || path[0] == Separator || path[len(path)-1] == Separator {
+		return false
+	}
+	start := 0
+	for i := 0; i <= len(path); i++ {
+		if i < len(path) && path[i] != Separator {
+			continue
+		}
+		switch path[start:i] {
+		case "", ".", "..":
+			return false
+		}
+		start = i + 1
+	}
+	return true
 }
 
 const (

@@ -4,8 +4,8 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -108,6 +108,94 @@ func (k *mqlK8sPod) exposures() ([]any, error) {
 		}
 	}
 	return out, nil
+}
+
+// exposuresForPods returns the network exposures that route to any of the
+// given pods, in the cluster's stable exposure order, deduplicated by
+// exposure. It is the shared fold behind the workload-level exposures
+// accessors: a workload is exposed exactly when one of its pods is.
+func exposuresForPods(runtime *plugin.Runtime, pods []any) ([]any, error) {
+	if len(pods) == 0 {
+		return []any{}, nil
+	}
+	want := make(map[string]struct{}, len(pods))
+	for _, p := range pods {
+		if mp, ok := p.(*mqlK8sPod); ok {
+			want[mp.MqlID()] = struct{}{}
+		}
+	}
+
+	cluster, err := k8sCluster(runtime)
+	if err != nil {
+		return nil, err
+	}
+	exps := cluster.GetNetworkExposures()
+	if exps.Error != nil {
+		return nil, exps.Error
+	}
+
+	out := []any{}
+	for i := range exps.Data {
+		exp, ok := exps.Data[i].(*mqlK8sNetworkExposure)
+		if !ok {
+			continue
+		}
+		expPods, err := exp.pods()
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range expPods {
+			if mp, ok := p.(*mqlK8sPod); ok {
+				if _, hit := want[mp.MqlID()]; hit {
+					out = append(out, exp)
+					break
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+// exposures returns the network exposures that route to any pod backing this
+// deployment. This is what lets a controller-managed workload be attributed
+// the internet exposure its pods serve: the pods themselves are represented
+// by their controller, so the exposure has to surface here.
+func (k *mqlK8sDeployment) exposures() ([]any, error) {
+	pods := k.GetPods()
+	if pods.Error != nil {
+		return nil, pods.Error
+	}
+	return exposuresForPods(k.MqlRuntime, pods.Data)
+}
+
+// exposures returns the network exposures that route to any pod backing this
+// DaemonSet.
+func (k *mqlK8sDaemonset) exposures() ([]any, error) {
+	pods := k.GetPods()
+	if pods.Error != nil {
+		return nil, pods.Error
+	}
+	return exposuresForPods(k.MqlRuntime, pods.Data)
+}
+
+// exposures returns the network exposures that route to any pod backing this
+// StatefulSet.
+func (k *mqlK8sStatefulset) exposures() ([]any, error) {
+	pods := k.GetPods()
+	if pods.Error != nil {
+		return nil, pods.Error
+	}
+	return exposuresForPods(k.MqlRuntime, pods.Data)
+}
+
+// exposures returns the network exposures that route to any pod backing this
+// ReplicaSet.
+func (k *mqlK8sReplicaset) exposures() ([]any, error) {
+	pods := k.GetPods()
+	if pods.Error != nil {
+		return nil, pods.Error
+	}
+	return exposuresForPods(k.MqlRuntime, pods.Data)
 }
 
 // pods returns the pods behind the ingress, resolved through the services its

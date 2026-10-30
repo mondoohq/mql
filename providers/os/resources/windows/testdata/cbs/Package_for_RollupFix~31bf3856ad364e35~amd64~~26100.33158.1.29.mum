@@ -1,0 +1,6 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v3" manifestVersion="1.0" description="Fix for KB5099536" displayName="default" company="Microsoft Corporation" copyright="Microsoft Corporation" supportInformation="https://support.microsoft.com/help/5099536" creationTimeStamp="2026-07-11T15:41:13Z" lastUpdateTimeStamp="2026-07-11T15:41:13Z">
+  <assemblyIdentity name="Package_for_RollupFix" version="26100.33158.1.29" processorArchitecture="amd64" language="neutral" publicKeyToken="31bf3856ad364e35" />
+  <package identifier="KB5099536" releaseType="Security Update" restart="possible">
+  </package>
+</assembly>

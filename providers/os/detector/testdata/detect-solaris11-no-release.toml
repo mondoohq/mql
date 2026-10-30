@@ -1,0 +1,8 @@
+[commands."uname -s"]
+stdout = "SunOS"
+
+[commands."uname -m"]
+stdout = "i86pc"
+
+[commands."uname -r"]
+stdout = "5.11"

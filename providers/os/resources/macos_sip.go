@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
 )
 
 type mqlMacosSipInternal struct {

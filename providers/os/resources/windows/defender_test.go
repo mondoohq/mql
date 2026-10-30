@@ -6,6 +6,7 @@ package windows
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -100,14 +101,41 @@ func TestParseMpPreference(t *testing.T) {
 	assert.Equal(t, int64(1), pref.RemoteEncryptionProtectionConfiguredState)
 
 	// local setting overrides
-	assert.False(t, pref.LocalSettingOverrideSpynetReporting)
-	assert.False(t, pref.LocalSettingOverrideRealtimeMonitoring)
+	require.NotNil(t, pref.LocalSettingOverrideSpynetReporting)
+	assert.False(t, *pref.LocalSettingOverrideSpynetReporting)
+	require.NotNil(t, pref.LocalSettingOverrideRealtimeMonitoring)
+	assert.False(t, *pref.LocalSettingOverrideRealtimeMonitoring)
 
 	// misc
 	assert.Equal(t, int64(1), pref.PUAProtection)
 	assert.True(t, pref.RandomizeScheduleTaskTimes)
 	// the "RePorts" casing is matched via the explicit json tag
-	assert.True(t, pref.DisableGenericReports)
+	require.NotNil(t, pref.DisableGenericReports)
+	assert.True(t, *pref.DisableGenericReports)
+
+	// preferences configured away from their defaults
+	require.NotNil(t, pref.QuickScanIncludeExclusions)
+	assert.Equal(t, int64(1), *pref.QuickScanIncludeExclusions)
+	require.NotNil(t, pref.OobeEnableRtpAndSigUpdate)
+	assert.True(t, *pref.OobeEnableRtpAndSigUpdate)
+	require.NotNil(t, pref.ReportDynamicSignatureDroppedEvent)
+	assert.True(t, *pref.ReportDynamicSignatureDroppedEvent)
+	require.NotNil(t, pref.EnableConvertWarnToBlock)
+	assert.True(t, *pref.EnableConvertWarnToBlock)
+	require.NotNil(t, pref.HideExclusionsFromLocalUsers)
+	assert.False(t, *pref.HideExclusionsFromLocalUsers)
+}
+
+// A Defender platform that predates a preference does not report it. It must
+// decode to nil, so the field reads null rather than claiming the default.
+func TestParseMpPreference_AbsentPreferencesAreNil(t *testing.T) {
+	pref, err := ParseMpPreference([]byte(`{"ScanParameters":1}`))
+	require.NoError(t, err)
+	assert.Nil(t, pref.QuickScanIncludeExclusions)
+	assert.Nil(t, pref.OobeEnableRtpAndSigUpdate)
+	assert.Nil(t, pref.ReportDynamicSignatureDroppedEvent)
+	assert.Nil(t, pref.EnableConvertWarnToBlock)
+	assert.Nil(t, pref.HideExclusionsFromLocalUsers)
 }
 
 func TestParseMpThreats(t *testing.T) {
@@ -200,5 +228,56 @@ func TestDefenderScriptsHaveAvailabilityGuard(t *testing.T) {
 			// The pipeline itself is still present after the guard.
 			assert.Contains(t, tc.script, tc.cmdlet+" | ConvertTo-Json")
 		})
+	}
+}
+
+func TestDefenderTime(t *testing.T) {
+	t.Run("PowerShell 5.1 /Date(ms)/ form", func(t *testing.T) {
+		ts := DefenderTime(`/Date(1705334400000)/`)
+		require.NotNil(t, ts)
+		assert.Equal(t, int64(1705334400), ts.Unix())
+	})
+
+	t.Run("ISO 8601 form", func(t *testing.T) {
+		ts := DefenderTime("2026-03-01T08:30:00Z")
+		require.NotNil(t, ts)
+		assert.Equal(t, "2026-03-01T08:30:00Z", ts.UTC().Format(time.RFC3339))
+	})
+
+	// Get-MpComputerStatus on Windows 11 25H2 reports SmartAppControlExpiration
+	// as a preformatted string. With no expiration set it reads
+	// "(null) (1601-01-01T00:00:00Z)".
+	t.Run("preformatted string with no expiration", func(t *testing.T) {
+		assert.Nil(t, DefenderTime("(null) (1601-01-01T00:00:00Z)"))
+	})
+
+	t.Run("preformatted string with an expiration", func(t *testing.T) {
+		ts := DefenderTime("134087040000000000 (2025-11-28T00:00:00Z)")
+		require.NotNil(t, ts)
+		assert.Equal(t, "2025-11-28T00:00:00Z", ts.UTC().Format(time.RFC3339))
+	})
+
+	t.Run("FILETIME epoch is unset", func(t *testing.T) {
+		assert.Nil(t, DefenderTime("1601-01-01T00:00:00Z"))
+		assert.Nil(t, DefenderTime(`/Date(-11644473600000)/`))
+	})
+
+	t.Run("empty and unparseable", func(t *testing.T) {
+		assert.Nil(t, DefenderTime(""))
+		assert.Nil(t, DefenderTime("(null)"))
+		assert.Nil(t, DefenderTime("not a date"))
+	})
+}
+
+func TestDefenderAge(t *testing.T) {
+	// Get-MpComputerStatus reports FullScanAge and QuickScanAge as the UINT32
+	// maximum on a host that has never completed a scan.
+	assert.Nil(t, DefenderAge(4294967295))
+	assert.Nil(t, DefenderAge(-1))
+
+	for _, v := range []int64{0, 1, 392, 65535} {
+		got := DefenderAge(v)
+		require.NotNil(t, got, "age %d", v)
+		assert.Equal(t, v, *got)
 	}
 }

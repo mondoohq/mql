@@ -12,12 +12,12 @@ import (
 	cwltypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsCloudwatch) logDestinations() ([]any, error) {
@@ -65,13 +65,13 @@ func (a *mqlAwsCloudwatch) getLogDestinations(conn *connection.AwsConnection) []
 							"arn":          llx.StringDataPtr(dest.Arn),
 							"region":       llx.StringData(region),
 							"targetArn":    llx.StringDataPtr(dest.TargetArn),
-							"roleArn":      llx.StringDataPtr(dest.RoleArn),
 							"accessPolicy": llx.StringDataPtr(dest.AccessPolicy),
 							"createdAt":    llx.TimeDataPtr(int64MillisToTime(dest.CreationTime)),
 						})
 					if err != nil {
 						return nil, err
 					}
+					mqlDest.(*mqlAwsCloudwatchLogDestination).cacheRoleArn = convert.ToValue(dest.RoleArn)
 					res = append(res, mqlDest)
 				}
 			}
@@ -87,7 +87,7 @@ func (a *mqlAwsCloudwatchLogDestination) id() (string, error) {
 }
 
 func (a *mqlAwsCloudwatchLogDestination) iamRole() (*mqlAwsIamRole, error) {
-	arn := a.RoleArn.Data
+	arn := a.cacheRoleArn
 	if arn == "" {
 		a.IamRole.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -444,4 +444,28 @@ func (a *mqlAwsCloudwatchLogAnomalyDetector) id() (string, error) {
 func (a *mqlAwsCloudwatchLogAnomalyDetector) kmsKey() (*mqlAwsKmsKey, error) {
 	a.KmsKey.State = plugin.StateIsNull | plugin.StateIsSet
 	return nil, nil
+}
+
+type mqlAwsCloudwatchLogDestinationInternal struct {
+	lazyTags
+	cacheRoleArn string
+}
+
+func (a *mqlAwsCloudwatchLogDestination) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.CloudwatchLogs(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &cloudwatchlogs.ListTagsForResourceInput{ResourceArn: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("logs:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return toInterfaceMap(resp.Tags), nil
+	})
 }

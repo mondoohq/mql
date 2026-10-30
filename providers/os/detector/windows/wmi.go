@@ -10,8 +10,8 @@ import (
 	"strconv"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/linefeed"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers-sdk/v1/util/linefeed"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 type WmicOSInformation struct {

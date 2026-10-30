@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 type mqlHetznerDatacenterInternal struct {
@@ -28,6 +28,14 @@ func (h *mqlHetzner) datacenters() ([]any, error) {
 		return c.Client().Datacenter.List(ctx(), hcloud.DatacenterListOpts{ListOpts: opts})
 	})
 	if err != nil {
+		// Hetzner withdrew GET /v1/datacenters after 2026-10-01. Report the
+		// field as null rather than as an error that would take the whole
+		// value with it, and rather than as an empty list, which would claim
+		// the project has no datacenters when in truth none can be read.
+		if isRemovedAPIEndpoint(err) {
+			h.Datacenters.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
 		return nil, err
 	}
 	out := make([]any, 0, len(items))
@@ -60,12 +68,20 @@ func newMqlHetznerDatacenter(runtime *plugin.Runtime, dc *hcloud.Datacenter) (*m
 }
 
 func initHetznerDatacenter(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "datacenter")
+	if err != nil {
+		return nil, nil, err
 	}
 	dc, _, err := conn(runtime).Client().Datacenter.GetByID(ctx(), id)
 	if err != nil {
+		// An init has to produce a resource or an error, so unlike the list
+		// accessor it cannot report the withdrawal as null. Say what happened
+		// and what replaced it instead of surfacing a bare 410.
+		if isRemovedAPIEndpoint(err) {
+			return nil, nil, fmt.Errorf(
+				"hetzner withdrew the datacenters API after 2026-10-01; use hetzner.locations, "+
+					"and hetzner.serverType.locations for where a server type can be provisioned (id %d)", id)
+		}
 		return nil, nil, err
 	}
 	if dc == nil {

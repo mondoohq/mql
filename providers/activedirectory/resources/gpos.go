@@ -10,8 +10,8 @@ import (
 
 	"github.com/go-ldap/ldap/v3"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/activedirectory/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/activedirectory/connection"
 )
 
 // gpLinkEntry represents a single parsed entry from an AD gPLink attribute.
@@ -54,12 +54,10 @@ func parseGPLinks(gplink string) []gpLinkEntry {
 	entries := make([]gpLinkEntry, 0, len(raw))
 	for _, r := range raw {
 		// Each entry: "LDAP://DN;status"
-		semicolon := strings.LastIndex(r, ";")
-		if semicolon < 0 {
+		path, statusStr, hasStatus := strings.CutLast(r, ";")
+		if !hasStatus {
 			continue
 		}
-		path := r[:semicolon]
-		statusStr := r[semicolon+1:]
 
 		// Strip the LDAP:// (or ldap://) prefix.
 		const prefix = "LDAP://"
@@ -102,7 +100,7 @@ type scopeLink struct {
 // sites, parses them, and indexes by GPO DN. The result is cached on the
 // connection under "gpoLinkMap".
 func buildGPOLinkMap(conn *connection.ActiveDirectoryConnection) (*gpoLinkMap, error) {
-	raw, err := conn.CachedFetch("gpoLinkMap", func() (interface{}, error) {
+	raw, err := conn.CachedFetch("gpoLinkMap", func() (any, error) {
 		m := &gpoLinkMap{byGPO: make(map[string][]scopeLink)}
 
 		collect := func(scopeDN, gplink string) {
@@ -209,7 +207,7 @@ func gpoStatusLabel(flags int64) string {
 	}
 }
 
-func (a *mqlActivedirectory) gpos() ([]interface{}, error) {
+func (a *mqlActivedirectory) gpos() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.ActiveDirectoryConnection)
 	baseDN := conn.BaseDN()
 
@@ -243,7 +241,7 @@ func (a *mqlActivedirectory) gpos() ([]interface{}, error) {
 		linkMap = &gpoLinkMap{byGPO: make(map[string][]scopeLink)}
 	}
 
-	res := make([]interface{}, 0, len(entries))
+	res := make([]any, 0, len(entries))
 	for _, entry := range entries {
 		cn := connection.GetStringAttr(entry, "cn")
 		displayName := connection.GetStringAttr(entry, "displayName")
@@ -280,7 +278,7 @@ func (a *mqlActivedirectory) gpos() ([]interface{}, error) {
 
 // links returns all scope objects (domain root, OUs, sites) that link this GPO,
 // as activedirectory.gpoLink resources.
-func (a *mqlActivedirectoryGpo) links() ([]interface{}, error) {
+func (a *mqlActivedirectoryGpo) links() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.ActiveDirectoryConnection)
 
 	linkMap, err := buildGPOLinkMap(conn)
@@ -291,10 +289,10 @@ func (a *mqlActivedirectoryGpo) links() ([]interface{}, error) {
 	gpoDN := strings.ToLower(a.DistinguishedName.Data)
 	scopeLinks := linkMap.byGPO[gpoDN]
 	if len(scopeLinks) == 0 {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 
-	res := make([]interface{}, 0, len(scopeLinks))
+	res := make([]any, 0, len(scopeLinks))
 	for _, sl := range scopeLinks {
 		id := fmt.Sprintf("%s|%s/%d", a.DistinguishedName.Data, sl.scopeDN, sl.link.order)
 		resource, err := CreateResource(a.MqlRuntime, "activedirectory.gpoLink",

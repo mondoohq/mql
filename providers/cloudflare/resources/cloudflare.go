@@ -6,11 +6,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/cloudflare/cloudflare-go/v6/zones"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/cloudflare/connection"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/cloudflare/cloudflare-go/v7/zones"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/cloudflare/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // accountRecord mirrors an account list entry. We decode it via the client's
@@ -40,32 +40,15 @@ func (c *mqlCloudflare) zones() ([]any, error) {
 		acc, err := NewResource(c.MqlRuntime, "cloudflare.zone.account", map[string]*llx.RawData{
 			"id":   llx.StringData(zone.Account.ID),
 			"name": llx.StringData(zone.Account.Name),
-			// v6 ZoneAccount has no Type field; surface empty for schema compatibility.
-			"type": llx.StringData(""),
 		})
 		if err != nil {
 			return nil, err
 		}
 
 		owner, err := NewResource(c.MqlRuntime, "cloudflare.zone.owner", map[string]*llx.RawData{
-			"id": llx.StringData(zone.Owner.ID),
-			// v6 ZoneOwner has no Email field — the OpenAPI spec doesn't expose
-			// it at the zone level. Surface empty for schema compatibility.
-			"email":     llx.StringData(""),
+			"id":        llx.StringData(zone.Owner.ID),
 			"name":      llx.StringData(zone.Owner.Name),
 			"ownerType": llx.StringData(zone.Owner.Type),
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		plan, err := NewResource(c.MqlRuntime, "cloudflare.zone.plan", map[string]*llx.RawData{
-			"id":           llx.StringData(zone.Plan.ID),
-			"name":         llx.StringData(zone.Plan.Name),
-			"price":        llx.IntData(int64(zone.Plan.Price)),
-			"currency":     llx.StringData(zone.Plan.Currency),
-			"frequency":    llx.StringData(zone.Plan.Frequency),
-			"isSubscribed": llx.BoolData(zone.Plan.IsSubscribed),
 		})
 		if err != nil {
 			return nil, err
@@ -84,7 +67,6 @@ func (c *mqlCloudflare) zones() ([]any, error) {
 
 			"account": llx.ResourceData(acc, acc.MqlName()),
 			"owner":   llx.ResourceData(owner, owner.MqlName()),
-			"plan":    llx.ResourceData(plan, plan.MqlName()),
 
 			"createdOn":  llx.TimeData(zone.CreatedOn),
 			"modifiedOn": llx.TimeData(zone.ModifiedOn),

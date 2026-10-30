@@ -1,0 +1,4 @@
+[Unit]
+Description=Vendor static
+[Service]
+ExecStart=/bin/true

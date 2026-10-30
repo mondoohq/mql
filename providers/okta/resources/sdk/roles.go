@@ -42,7 +42,7 @@ func (m *ApiExtension) ListCustomRoles(ctx context.Context) ([]*CustomRole, *htt
 		if resp == nil {
 			break
 		}
-		nextURL = nextLinkURL(resp.Header.Values("Link"))
+		nextURL = nextPageURL(nextURL, resp.Header.Values("Link"))
 	}
 
 	return roles, firstResp, nil

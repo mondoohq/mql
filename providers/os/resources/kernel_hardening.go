@@ -7,9 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/types"
 )
 
 // =============================================================================
@@ -50,7 +51,7 @@ func (c *mqlKernelCmdline) id() (string, error) {
 func parseKernelCmdline(raw string) (map[string]any, []any) {
 	params := map[string]any{}
 	var flags []any
-	for _, tok := range strings.Fields(raw) {
+	for tok := range strings.FieldsSeq(raw) {
 		if idx := strings.IndexByte(tok, '='); idx > 0 {
 			params[tok[:idx]] = tok[idx+1:]
 			continue
@@ -70,24 +71,37 @@ func (k *mqlKernel) taint() (*mqlKernelTaint, error) {
 		return nil, err
 	}
 
-	var bitmask int64
-	if ok {
-		if v, perr := strconv.ParseInt(strings.TrimSpace(raw), 10, 64); perr == nil {
-			bitmask = v
-		}
-	}
-
-	reasons := taintReasons(bitmask)
-
-	resource, err := CreateResource(k.MqlRuntime, "kernel.taint", map[string]*llx.RawData{
-		"bitmask": llx.IntData(bitmask),
-		"tainted": llx.BoolData(bitmask != 0),
-		"reasons": llx.ArrayData(stringsAsAnySlice(reasons), types.String),
-	})
+	resource, err := CreateResource(k.MqlRuntime, "kernel.taint", kernelTaintArgs(raw, ok))
 	if err != nil {
 		return nil, err
 	}
 	return resource.(*mqlKernelTaint), nil
+}
+
+// kernelTaintArgs turns the contents of /proc/sys/kernel/tainted into the
+// resource fields. ok reports whether the file was read at all.
+//
+// Every field is null when the taint word could not be read. A bitmask of 0
+// with no reasons is exactly what a genuinely clean kernel reports, so filling
+// those values in for an unread kernel would make the two indistinguishable,
+// and `tainted: false` is the answer a compliance check passes on. Zero is a
+// real measurement here and must not be forged.
+func kernelTaintArgs(raw string, ok bool) map[string]*llx.RawData {
+	if ok {
+		if bitmask, perr := strconv.ParseInt(strings.TrimSpace(raw), 10, 64); perr == nil {
+			return map[string]*llx.RawData{
+				"bitmask": llx.IntData(bitmask),
+				"tainted": llx.BoolData(bitmask != 0),
+				"reasons": llx.ArrayData(stringsAsAnySlice(taintReasons(bitmask)), types.String),
+			}
+		}
+	}
+
+	return map[string]*llx.RawData{
+		"bitmask": llx.NilData,
+		"tainted": llx.NilData,
+		"reasons": llx.NilData,
+	}
 }
 
 func (t *mqlKernelTaint) id() (string, error) {
@@ -142,19 +156,33 @@ func (k *mqlKernel) lockdown() (*mqlKernelLockdown, error) {
 		return nil, err
 	}
 
+	resource, err := CreateResource(k.MqlRuntime, "kernel.lockdown", kernelLockdownArgs(raw, ok))
+	if err != nil {
+		return nil, err
+	}
+	return resource.(*mqlKernelLockdown), nil
+}
+
+// kernelLockdownArgs turns the contents of /sys/kernel/security/lockdown into
+// the resource fields. ok reports whether the file was read at all.
+//
+// `mode` keeps its sentinel so the reason is visible, but `enabled` is null
+// whenever no mode was actually observed: the lockdown LSM being unreadable is
+// not evidence that lockdown is off.
+func kernelLockdownArgs(raw string, ok bool) map[string]*llx.RawData {
 	mode := "unavailable"
 	if ok {
 		mode = parseLockdownMode(raw)
 	}
 
-	resource, err := CreateResource(k.MqlRuntime, "kernel.lockdown", map[string]*llx.RawData{
+	args := map[string]*llx.RawData{
 		"mode":    llx.StringData(mode),
-		"enabled": llx.BoolData(mode == "integrity" || mode == "confidentiality"),
-	})
-	if err != nil {
-		return nil, err
+		"enabled": llx.NilData,
 	}
-	return resource.(*mqlKernelLockdown), nil
+	if mode != "unavailable" && mode != "unknown" {
+		args["enabled"] = llx.BoolData(mode == "integrity" || mode == "confidentiality")
+	}
+	return args
 }
 
 func (l *mqlKernelLockdown) id() (string, error) {
@@ -171,7 +199,7 @@ func parseLockdownMode(raw string) string {
 	if raw == "" {
 		return "unknown"
 	}
-	for _, tok := range strings.Fields(raw) {
+	for tok := range strings.FieldsSeq(raw) {
 		if len(tok) >= 2 && tok[0] == '[' && tok[len(tok)-1] == ']' {
 			return tok[1 : len(tok)-1]
 		}
@@ -184,29 +212,112 @@ func parseLockdownMode(raw string) string {
 // =============================================================================
 
 func (k *mqlKernel) aslr() (*mqlKernelAslr, error) {
+	conn := k.MqlRuntime.Connection.(shared.Connection)
+	if conn.Asset().GetPlatform().GetName() == "freebsd" {
+		return k.freebsdAslr(conn)
+	}
+
 	raw, ok, err := readKernelHardeningFile(k.MqlRuntime, "/proc/sys/kernel/randomize_va_space")
 	if err != nil {
 		return nil, err
 	}
 
-	mode := int64(-1)
-	level := "unknown"
-	if ok {
-		if v, perr := strconv.ParseInt(strings.TrimSpace(raw), 10, 64); perr == nil {
-			mode = v
-			level = aslrLevel(v)
-		}
-	}
-
-	resource, err := CreateResource(k.MqlRuntime, "kernel.aslr", map[string]*llx.RawData{
-		"mode":    llx.IntData(mode),
-		"level":   llx.StringData(level),
-		"enabled": llx.BoolData(mode > 0),
-	})
+	resource, err := CreateResource(k.MqlRuntime, "kernel.aslr", kernelAslrArgs(raw, ok))
 	if err != nil {
 		return nil, err
 	}
 	return resource.(*mqlKernelAslr), nil
+}
+
+// kernelAslrArgs turns the contents of /proc/sys/kernel/randomize_va_space into
+// the resource fields. ok reports whether the file was read at all.
+//
+// `mode` and `level` keep their sentinels so the reason is visible, but
+// `enabled` is null whenever no value was actually observed. A container image
+// or an extracted filesystem carries no /proc, and reporting ASLR as disabled
+// there asserts a measurement that was never taken.
+func kernelAslrArgs(raw string, ok bool) map[string]*llx.RawData {
+	if ok {
+		if mode, perr := strconv.ParseInt(strings.TrimSpace(raw), 10, 64); perr == nil {
+			return map[string]*llx.RawData{
+				"mode":    llx.IntData(mode),
+				"level":   llx.StringData(aslrLevel(mode)),
+				"enabled": llx.BoolData(mode > 0),
+			}
+		}
+	}
+
+	return map[string]*llx.RawData{
+		"mode":    llx.IntData(-1),
+		"level":   llx.StringData("unknown"),
+		"enabled": llx.NilData,
+	}
+}
+
+// freebsdAslrCommand prints the ASLR switch for the native ELF ABI. FreeBSD 13
+// added one switch per ABI: kern.elf64.aslr.enable on 64-bit platforms, where
+// kern.elf32 covers 32-bit compat binaries, and kern.elf32.aslr.enable on
+// 32-bit platforms, which have no elf64 node. Older releases have neither.
+const freebsdAslrCommand = "sysctl -n kern.elf64.aslr.enable 2>/dev/null || sysctl -n kern.elf32.aslr.enable"
+
+func (k *mqlKernel) freebsdAslr(conn shared.Connection) (*mqlKernelAslr, error) {
+	raw, ok := "", false
+	if conn.Capabilities().Has(shared.Capability_RunCommand) {
+		o, err := CreateResource(k.MqlRuntime, "command", map[string]*llx.RawData{
+			"command": llx.StringData(freebsdAslrCommand),
+		})
+		if err != nil {
+			return nil, err
+		}
+		cmd := o.(*mqlCommand)
+		exit := cmd.GetExitcode()
+		if exit.Error != nil {
+			return nil, exit.Error
+		}
+		stdout := cmd.GetStdout()
+		if stdout.Error != nil {
+			return nil, stdout.Error
+		}
+		raw, ok = stdout.Data, exit.Data == 0
+	}
+
+	resource, err := CreateResource(k.MqlRuntime, "kernel.aslr", freebsdAslrArgs(raw, ok))
+	if err != nil {
+		return nil, err
+	}
+	return resource.(*mqlKernelAslr), nil
+}
+
+// freebsdAslrArgs turns the value of kern.elf64.aslr.enable into the resource
+// fields. ok reports whether the sysctl was read at all.
+//
+// FreeBSD has a single on/off switch, so `level` is `enabled` or `disabled`
+// rather than Linux's conservative/full scale. As on Linux, `enabled` stays
+// null when nothing was read: a release without the switch, or a scan that
+// cannot run commands.
+func freebsdAslrArgs(raw string, ok bool) map[string]*llx.RawData {
+	if ok {
+		if mode, perr := strconv.ParseInt(strings.TrimSpace(raw), 10, 64); perr == nil {
+			level := "unknown"
+			switch {
+			case mode == 0:
+				level = "disabled"
+			case mode > 0:
+				level = "enabled"
+			}
+			return map[string]*llx.RawData{
+				"mode":    llx.IntData(mode),
+				"level":   llx.StringData(level),
+				"enabled": llx.BoolData(mode > 0),
+			}
+		}
+	}
+
+	return map[string]*llx.RawData{
+		"mode":    llx.IntData(-1),
+		"level":   llx.StringData("unknown"),
+		"enabled": llx.NilData,
+	}
 }
 
 func (a *mqlKernelAslr) id() (string, error) {
@@ -231,9 +342,17 @@ func aslrLevel(mode int64) string {
 // =============================================================================
 
 // readKernelHardeningFile reads a file in /proc or /sys via the file
-// resource, returning (content, true, nil) on success and ("", false,
-// nil) when the file is unavailable (missing kernel feature, non-Linux
-// host, or unreadable). Honest errors from the runtime still surface.
+// resource, returning (content, true, nil) on success and ("", false, nil)
+// when the file is simply not there: a missing kernel feature, a non-Linux
+// host, or a container image / extracted filesystem that carries no /proc at
+// all. That absence is a legitimate answer, not a failure, and callers must
+// report the values it would have produced as null.
+//
+// A file that IS present but cannot be read is a different condition. The
+// measurement failed for a reason the user should see, so that error is
+// returned rather than folded into the absent case, where it would surface as
+// an unexplained null. The file resource reports absence by leaving its
+// content null with no error, so the two are distinguishable here.
 func readKernelHardeningFile(runtime *plugin.Runtime, path string) (string, bool, error) {
 	o, err := CreateResource(runtime, "file", map[string]*llx.RawData{
 		"path": llx.StringData(path),
@@ -244,6 +363,9 @@ func readKernelHardeningFile(runtime *plugin.Runtime, path string) (string, bool
 	f := o.(*mqlFile)
 	content := f.GetContent()
 	if content.Error != nil {
+		return "", false, content.Error
+	}
+	if content.IsNull() {
 		return "", false, nil
 	}
 	return content.Data, true, nil

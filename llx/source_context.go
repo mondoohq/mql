@@ -3,7 +3,7 @@
 
 package llx
 
-import "go.mondoo.com/mql/v13/types"
+import "go.mondoo.com/mql/types"
 
 // SourceContext describes where a resource is defined in source: a file path,
 // the line/column range it spans, and the raw text within that range. It is

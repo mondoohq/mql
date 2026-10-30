@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/mqlx"
+	"go.mondoo.com/mql/mqlx"
 )
 
 // TestConnectLocalE2E connects to the real local OS through installed

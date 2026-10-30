@@ -1,0 +1,29 @@
+[
+ {
+  ".id": "*A",
+  "default": "true",
+  "dh-group": "modp2048,modp1024",
+  "dpd-interval": "8s",
+  "dpd-maximum-failures": "4",
+  "enc-algorithm": "aes-128,3des",
+  "hash-algorithm": "sha1",
+  "lifetime": "1d",
+  "name": "default",
+  "nat-traversal": "true",
+  "ppk": "no",
+  "proposal-check": "obey"
+ },
+ {
+  ".id": "*B",
+  "dh-group": "modp2048",
+  "dpd-interval": "8s",
+  "dpd-maximum-failures": "4",
+  "enc-algorithm": "aes-256",
+  "hash-algorithm": "sha256",
+  "lifetime": "1d",
+  "name": "lab-profile",
+  "nat-traversal": "true",
+  "ppk": "no",
+  "proposal-check": "obey"
+ }
+]

@@ -14,12 +14,12 @@ import (
 	"github.com/aws/smithy-go/transport/http"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlAwsDrsSourceServerInternal struct {
@@ -62,7 +62,7 @@ func (a *mqlAwsDrsReplicationConfigurationTemplate) id() (string, error) {
 }
 
 func (a *mqlAwsDrsReplicationConfiguration) ebsEncryptionKey() (*mqlAwsKmsKey, error) {
-	arnVal := a.EbsEncryptionKeyArn.Data
+	arnVal := a.cacheEbsEncryptionKeyArn
 	if arnVal == "" {
 		a.EbsEncryptionKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -76,7 +76,7 @@ func (a *mqlAwsDrsReplicationConfiguration) ebsEncryptionKey() (*mqlAwsKmsKey, e
 }
 
 func (a *mqlAwsDrsReplicationConfiguration) stagingAreaSubnet() (*mqlAwsVpcSubnet, error) {
-	subnetID := a.StagingAreaSubnetId.Data
+	subnetID := a.cacheStagingAreaSubnetId
 	if subnetID == "" {
 		a.StagingAreaSubnet.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -301,7 +301,6 @@ func (a *mqlAwsDrs) createSourceServerResource(server drstypes.SourceServer, reg
 			"sourceNetworkID":                        llx.StringDataPtr(server.SourceNetworkID),
 			"stagingArea":                            llx.DictData(stagingArea),
 			"replicationDirection":                   llx.StringData(string(server.ReplicationDirection)),
-			"recoveryInstanceId":                     llx.StringDataPtr(server.RecoveryInstanceId),
 			"tags":                                   llx.MapData(tags, types.String),
 		})
 	if err != nil {
@@ -373,12 +372,10 @@ func (a *mqlAwsDrsSourceServer) replicationConfiguration() (*mqlAwsDrsReplicatio
 	mqlConfig, err := CreateResource(a.MqlRuntime, ResourceAwsDrsReplicationConfiguration,
 		map[string]*llx.RawData{
 			"sourceServerID":                llx.StringDataPtr(resp.SourceServerID),
-			"stagingAreaSubnetId":           llx.StringDataPtr(resp.StagingAreaSubnetId),
 			"stagingAreaTags":               llx.MapData(stagingAreaTags, types.String),
 			"useDedicatedReplicationServer": llx.BoolDataPtr(resp.UseDedicatedReplicationServer),
 			"replicationServerInstanceType": llx.StringDataPtr(resp.ReplicationServerInstanceType),
 			"ebsEncryption":                 llx.StringData(string(resp.EbsEncryption)),
-			"ebsEncryptionKeyArn":           llx.StringDataPtr(resp.EbsEncryptionKeyArn),
 			"replicatedDisks":               llx.ArrayData(replicatedDisks, types.Dict),
 			"bandwidthThrottling":           llx.IntData(int64(resp.BandwidthThrottling)),
 			"dataPlaneRouting":              llx.StringData(string(resp.DataPlaneRouting)),
@@ -390,6 +387,8 @@ func (a *mqlAwsDrsSourceServer) replicationConfiguration() (*mqlAwsDrsReplicatio
 	if err != nil {
 		return nil, err
 	}
+	mqlConfig.(*mqlAwsDrsReplicationConfiguration).cacheStagingAreaSubnetId = convert.ToValue(resp.StagingAreaSubnetId)
+	mqlConfig.(*mqlAwsDrsReplicationConfiguration).cacheEbsEncryptionKeyArn = convert.ToValue(resp.EbsEncryptionKeyArn)
 
 	return mqlConfig.(*mqlAwsDrsReplicationConfiguration), nil
 }
@@ -1027,4 +1026,9 @@ func IsDrsNotInitializedError(err error) bool {
 		}
 	}
 	return false
+}
+
+type mqlAwsDrsReplicationConfigurationInternal struct {
+	cacheStagingAreaSubnetId string
+	cacheEbsEncryptionKeyArn string
 }

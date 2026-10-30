@@ -1,0 +1,16 @@
+# Copyright Mondoo, Inc. 2024, 2026
+# SPDX-License-Identifier: BUSL-1.1
+
+# oapi-codegen config: generate ONLY the models (types) from Bitwarden's
+# Public API OpenAPI v3 spec into the bwapi package. We deliberately do NOT
+# generate an HTTP client: the provider keeps its own OAuth2
+# client-credentials transport (see connection/connection.go and client.go).
+package: bwapi
+generate:
+  models: true
+# Relative to the generator's working directory, not to this file. The
+# go:generate directive in ../bwapi/gen.go runs with that directory as CWD,
+# which is what puts models.gen.go in the bwapi package. Regenerate with
+# `go generate ./connection/bwapi/...` rather than invoking oapi-codegen
+# directly, or the file lands wherever you happened to be standing.
+output: models.gen.go

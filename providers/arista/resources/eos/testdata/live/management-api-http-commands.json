@@ -1,0 +1,59 @@
+{
+ "bufferSize": 0,
+ "bytesIn": 101486,
+ "bytesOut": 4331013,
+ "commandCount": 363,
+ "corsOrigins": [],
+ "dscpValue": 0,
+ "enabled": true,
+ "executionTime": 4.889181310000424,
+ "fipsEnabled": false,
+ "hitCount": 121,
+ "httpServer": {
+  "configured": false,
+  "port": 80,
+  "running": false
+ },
+ "httpsServer": {
+  "configured": true,
+  "port": 443,
+  "running": true
+ },
+ "iframeAncestors": [],
+ "lastHitTime": 1787804242.049536,
+ "localHttpServer": {
+  "configured": false,
+  "port": 8080,
+  "running": false
+ },
+ "logLevel": "none",
+ "requestCount": 105,
+ "sessionTimeout": 1440,
+ "tlsProtocol": [
+  "1.0",
+  "1.1",
+  "1.2",
+  "1.3"
+ ],
+ "unixSocketServer": {
+  "configured": false,
+  "running": false
+ },
+ "urls": [
+  "Ethernet1   : https://10.99.0.144:443",
+  "Loopback0   : https://10.0.0.1:443",
+  "Loopback1   : https://10.0.0.2:443"
+ ],
+ "users": {
+  "netadmin": {
+   "bytesIn": 101486,
+   "bytesOut": 4331013,
+   "lastHitTime": 1787804242.0495982,
+   "requestCount": 105
+  }
+ },
+ "vrf": "default",
+ "vrfs": [
+  "default"
+ ]
+}

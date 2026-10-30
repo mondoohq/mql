@@ -1,0 +1,10 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "packages": {
+    "": { "name": "app", "version": "1.0.0", "dependencies": { "foo": "^1.0.0" } },
+    "node_modules/foo": { "version": "1.2.3", "dependencies": { "bar": "^2.0.0" } },
+    "node_modules/bar": { "version": "2.3.4" }
+  }
+}

@@ -1,0 +1,1088 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/keycloak"
+option go_package = "go.mondoo.com/mql/providers/keycloak/resources"
+option root = "keycloak"
+
+// Keycloak
+//
+// Keycloak server posture across every realm the credentials can read. The
+// `realms` field enumerates those realms with their password policy, brute
+// force settings, token lifespans and authentication flow bindings, and
+// `clients` flattens every client across them so a wildcard redirect URI or a
+// public client can be found in one query. Scope a scan to one realm with the
+// --realm flag, or leave it unset to walk every realm the credentials reach.
+keycloak @root {
+  // Realms the credentials can read
+  realms() []keycloak.realm
+  // Clients across every realm in scope
+  clients() []keycloak.client
+  // Client scopes across every realm in scope
+  clientScopes() []keycloak.clientScope
+  // Base URL of the Keycloak server
+  serverUrl() string
+}
+
+// Keycloak Realm
+//
+// A Keycloak realm and the authentication posture that applies to every client
+// and user under it. Query `passwordPolicy` and `passwordPolicyRules` for the
+// credential rules, `bruteForceProtected` with `failureFactor` and
+// `permanentLockout` for lockout, `sslRequired` for transport enforcement,
+// `registrationAllowed` and `rememberMe` for self-service exposure, and the
+// `accessTokenLifespan` and `ssoSession*` fields for how long a session
+// outlives a revocation. The `browserFlow` and `directGrantFlow` bindings name
+// the authentication flows in force, which is what makes a missing
+// multi-factor step detectable. Select a realm with
+// `keycloak.realms.where(name == "production")`.
+keycloak.realm @defaults("name enabled sslRequired") {
+  // Selects the realm by its name, for example `keycloak.realm(name: "master")`
+  init(name string)
+  // Internal realm identifier
+  id string
+  // Realm name as it appears in the issuer URL
+  name string
+  // Display name shown on the login page
+  displayName string
+  // Whether the realm accepts authentication
+  enabled bool
+  // Where TLS is required
+  //
+  // One of all, external or none. The value external exempts requests from
+  // private networks, and none accepts plaintext from anywhere, which exposes
+  // every credential and token the realm issues.
+  sslRequired string
+  // Password policy in the raw form Keycloak stores it
+  //
+  // A policy string such as `length(12) and digits(1) and notUsername(undefined)`.
+  // An empty value means the realm imposes no password rules at all. The
+  // parsed form is in passwordPolicyRules.
+  passwordPolicy string
+  // Password policy parsed into its named rules
+  //
+  // Keyed by rule name, such as length, digits, upperCase, specialChars,
+  // notUsername, passwordHistory or forceExpiredPasswordChange, with the
+  // rule's argument as the value. A rule that takes no argument holds an
+  // empty value. Use it to assert on one rule without parsing the policy
+  // string, for example `passwordPolicyRules["length"]`.
+  passwordPolicyRules map[string]string
+  // Whether repeated failed logins lock the account
+  //
+  // When false, an account is open to unlimited password guessing regardless
+  // of the password policy.
+  bruteForceProtected bool
+  // Whether a locked account stays locked until an administrator releases it
+  permanentLockout bool
+  // Number of failed logins that trigger a lockout
+  failureFactor int
+  // Seconds a lockout lasts before the wait doubles
+  waitIncrementSeconds int
+  // Maximum seconds a temporary lockout can reach
+  maxFailureWaitSeconds int
+  // Seconds after which the failure count resets
+  maxDeltaTimeSeconds int
+  // Milliseconds within which repeated logins count as one quick login
+  quickLoginCheckMilliSeconds int
+  // Minimum seconds a quick login is delayed
+  minimumQuickLoginWaitSeconds int
+  // Number of temporary lockouts before a permanent one, when permanent lockout is off
+  maxTemporaryLockouts int
+  // Whether users may register themselves
+  //
+  // Self-registration lets anyone who reaches the login page create an account
+  // in the realm, which matters most where realm roles or groups are granted
+  // by default.
+  registrationAllowed bool
+  // Whether a registering user supplies an email address as the user name
+  registrationEmailAsUsername bool
+  // Whether the login page offers to keep the session beyond the browser
+  //
+  // A remembered session uses the ssoSessionIdleTimeoutRememberMe and
+  // ssoSessionMaxLifespanRememberMe windows instead of the ordinary ones, so
+  // it commonly outlives them by days.
+  rememberMe bool
+  // Whether a new user must confirm the email address
+  verifyEmail bool
+  // Whether users may reset their own password from the login page
+  resetPasswordAllowed bool
+  // Whether users may change their own user name
+  editUsernameAllowed bool
+  // Whether an email address is accepted in place of a user name at login
+  loginWithEmailAllowed bool
+  // Whether two accounts may hold the same email address
+  duplicateEmailsAllowed bool
+  // Seconds an access token stays valid
+  accessTokenLifespan int
+  // Seconds an access token issued through the implicit flow stays valid
+  accessTokenLifespanForImplicitFlow int
+  // Seconds an idle single sign-on session survives
+  ssoSessionIdleTimeout int
+  // Seconds a single sign-on session survives regardless of activity
+  //
+  // A revoked user keeps a working session until this window closes, so a long
+  // lifespan widens the gap between disabling an account and losing access.
+  ssoSessionMaxLifespan int
+  // Seconds an idle remembered session survives
+  ssoSessionIdleTimeoutRememberMe int
+  // Seconds a remembered session survives regardless of activity
+  ssoSessionMaxLifespanRememberMe int
+  // Seconds an idle offline session survives
+  offlineSessionIdleTimeout int
+  // Whether offline sessions have a maximum lifespan at all
+  offlineSessionMaxLifespanEnabled bool
+  // Seconds an offline session survives regardless of activity
+  offlineSessionMaxLifespan int
+  // Seconds an authorization code stays redeemable
+  accessCodeLifespan int
+  // Seconds a login form stays valid before it must be reloaded
+  accessCodeLifespanLogin int
+  // Seconds a required action token stays valid
+  accessCodeLifespanUserAction int
+  // Seconds a token generated by a user action, such as a password reset, stays valid
+  actionTokenGeneratedByUserLifespan int
+  // Whether a refresh token is invalidated once it is used
+  revokeRefreshToken bool
+  // Number of times a refresh token may be reused when revocation is on
+  refreshTokenMaxReuse int
+  // One-time password algorithm family, either totp or hotp
+  otpPolicyType string
+  // Hash algorithm of the one-time password, such as HmacSHA1 or HmacSHA256
+  otpPolicyAlgorithm string
+  // Number of digits in a one-time password
+  otpPolicyDigits int
+  // Seconds a time-based one-time password stays valid
+  otpPolicyPeriod int
+  // Signature algorithm tokens are signed with by default, such as RS256
+  defaultSignatureAlgorithm string
+  // Whether login events are recorded
+  eventsEnabled bool
+  // Seconds a login event is kept, or 0 when events never expire
+  eventsExpiration int
+  // Whether administrative changes are recorded
+  //
+  // Without admin events, a change to a client's redirect URIs or to a role
+  // mapping leaves no trace that an audit can read back.
+  adminEventsEnabled bool
+  // Whether administrative events record the full request body
+  adminEventsDetailsEnabled bool
+  // Security headers the realm adds to browser responses
+  //
+  // Keyed by header name, such as contentSecurityPolicy, xFrameOptions or
+  // strictTransportSecurity, with the configured value. An empty value means
+  // the header is not sent.
+  browserSecurityHeaders map[string]string
+  // Groups every new user joins
+  defaultGroups []string
+  // Composite role every new user receives, or null when the realm has none
+  //
+  // Its composites are what a self-registered account holds from the start,
+  // which matters most when registrationAllowed is true.
+  defaultRole() keycloak.role
+  // Alias of the flow used for browser login
+  //
+  // The flow named here decides whether a browser login can require a second
+  // factor. Its steps are in browserFlowRef.
+  browserFlow string
+  // Alias of the flow used for the direct access grant
+  //
+  // The direct grant exchanges a user name and password for a token without a
+  // browser, so a second factor configured only in the browser flow does not
+  // apply to it.
+  directGrantFlow string
+  // Alias of the flow used for self-registration
+  registrationFlow string
+  // Alias of the flow used to reset credentials
+  resetCredentialsFlow string
+  // Alias of the flow used to authenticate a client
+  clientAuthenticationFlow string
+  // Alias of the flow used for Docker registry authentication
+  dockerAuthenticationFlow string
+  // Alias of the flow a federated user runs on first login
+  firstBrokerLoginFlow string
+  // Flow bound to browser login
+  browserFlowRef() keycloak.authenticationFlow
+  // Flow bound to the direct access grant
+  directGrantFlowRef() keycloak.authenticationFlow
+  // Flow bound to self-registration
+  registrationFlowRef() keycloak.authenticationFlow
+  // Flow bound to credential reset
+  resetCredentialsFlowRef() keycloak.authenticationFlow
+  // Flow bound to client authentication
+  clientAuthenticationFlowRef() keycloak.authenticationFlow
+  // Flow bound to Docker registry authentication
+  dockerAuthenticationFlowRef() keycloak.authenticationFlow
+  // Clients registered in the realm
+  clients() []keycloak.client
+  // Realm roles defined in the realm
+  roles() []keycloak.role
+  // Groups defined in the realm
+  groups() []keycloak.group
+  // Users in the realm
+  users() []keycloak.user
+  // Federated identity providers configured for the realm
+  identityProviders() []keycloak.identityProvider
+  // Authentication flows defined in the realm
+  authenticationFlows() []keycloak.authenticationFlow
+  // Components configured for the realm, including user federation providers
+  components() []keycloak.component
+  // Signing keys the realm holds
+  //
+  // An active key is one the realm signs tokens with. Its algorithm and size
+  // decide how hard a token is to forge.
+  keys() []keycloak.realm.key
+  // Event recording configuration of the realm
+  //
+  // The realm fields eventsEnabled and adminEventsEnabled report whether
+  // recording is on. This reports which event types are kept and where they
+  // are sent, which is what decides whether an audit can read a change back.
+  eventsConfig() keycloak.realm.eventsConfig
+  // Client profiles the realm defines
+  //
+  // A profile is a set of requirements, such as demanding PKCE or a
+  // confidential client. It only takes effect where a client policy applies
+  // it.
+  clientProfiles() []keycloak.clientProfile
+  // Client policies the realm defines
+  clientPolicies() []keycloak.clientPolicy
+  // Client scopes defined in the realm
+  //
+  // The scopes named in defaultDefaultClientScopes are attached to every new
+  // client, so a mapper on one of those reaches the whole realm.
+  clientScopes() []keycloak.clientScope
+  // Names of the scopes attached to every new client by default
+  defaultDefaultClientScopes() []string
+  // Names of the scopes offered to every new client as optional
+  defaultOptionalClientScopes() []string
+  // Actions a user can be asked to complete after login
+  requiredActions() []keycloak.realm.requiredAction
+}
+
+// Keycloak Required Action
+//
+// An action the realm can ask a user to complete after authenticating, such as
+// configuring a one-time password or updating a password. The `enabled` field
+// reports whether the action is available at all, and `defaultAction` reports
+// whether every new user is asked for it. A realm where CONFIGURE_TOTP is
+// enabled but not a default action offers a second factor without requiring
+// one.
+private keycloak.realm.requiredAction @defaults("alias enabled defaultAction") {
+  // Identifier of the action, such as CONFIGURE_TOTP, UPDATE_PASSWORD or VERIFY_EMAIL
+  alias string
+  // Human-readable name of the action
+  name string
+  // Provider that implements the action
+  providerId string
+  // Whether the action is available in the realm
+  enabled bool
+  // Whether every new user is asked to complete the action
+  defaultAction bool
+  // Order the action runs in relative to the others
+  priority int
+  // Provider-specific settings of the action
+  config map[string]string
+  // Realm the action belongs to
+  realm() keycloak.realm
+}
+
+// Keycloak Client
+//
+// An application or service registered with a realm, and the OAuth flows and
+// redirect targets it is trusted with. Query `publicClient` for whether the
+// client authenticates itself at all, `redirectUris` together with
+// `hasWildcardRedirectUri` for where an authorization code may be sent,
+// `webOrigins` with `hasWildcardWebOrigin` for cross-origin access,
+// `standardFlowEnabled`, `implicitFlowEnabled`, `directAccessGrantsEnabled`
+// and `serviceAccountsEnabled` for which grants it may use, `consentRequired`
+// for whether a user is asked before scopes are released, and
+// `pkceCodeChallengeMethod` for whether the code exchange is bound to the
+// requesting client. A public client with a wildcard redirect URI lets an
+// attacker collect authorization codes for any user of the realm. Select a
+// client with `keycloak.clients.where(clientId == "kubernetes")`.
+keycloak.client @defaults("clientId enabled publicClient") {
+  // Selects the client by its client id, for example `keycloak.client(clientId: "kubernetes")`
+  //
+  // The lookup covers every realm in scope. Scope the connection with --realm
+  // when the same client id exists in more than one realm, since a client id
+  // is only unique within a realm.
+  init(clientId string)
+  // Internal client identifier
+  id string
+  // Client identifier used in OAuth requests
+  clientId string
+  // Display name
+  name string
+  // Description
+  description string
+  // Whether the client may be used
+  enabled bool
+  // Whether the client authenticates without a secret
+  //
+  // A public client proves nothing about its identity, so every control that
+  // guards an authorization code rests on the redirect URI and on PKCE.
+  publicClient bool
+  // Whether the client only validates tokens and never obtains them
+  bearerOnly bool
+  // Whether the authorization code flow is enabled
+  standardFlowEnabled bool
+  // Whether the implicit flow is enabled
+  //
+  // The implicit flow returns a token in the browser URL, where it reaches the
+  // history, the referrer header and any proxy log on the way. It is
+  // deprecated by the OAuth 2.0 security best practice.
+  implicitFlowEnabled bool
+  // Whether the direct access grant is enabled
+  //
+  // The direct access grant exchanges a user name and password for a token
+  // without a browser, which bypasses any step the browser flow adds, such as
+  // a second factor.
+  directAccessGrantsEnabled bool
+  // Whether the client holds a service account
+  //
+  // A service account is a user in the realm that the client authenticates as.
+  // Its role mappings are in serviceAccountUser.
+  serviceAccountsEnabled bool
+  // Whether fine-grained authorization services are enabled
+  authorizationServicesEnabled bool
+  // Redirect targets an authorization code or token may be sent to
+  //
+  // Each entry is an absolute URL or a pattern. Keycloak accepts a trailing *
+  // as a wildcard, so an entry such as `https://app.example.com/*` matches
+  // every path under the host, and an entry of `*` matches any URL at all.
+  redirectUris []string
+  // Whether any redirect URI contains a wildcard
+  //
+  // A wildcard widens where an authorization code may be delivered. Combined
+  // with a public client it lets an attacker who controls a matching URL
+  // collect codes for any user who signs in, which is a full authentication
+  // bypass. The matching entries are in wildcardRedirectUris.
+  hasWildcardRedirectUri bool
+  // Redirect URIs that contain a wildcard
+  wildcardRedirectUris []string
+  // Origins allowed to call the realm from a browser
+  //
+  // An entry of `*` allows any origin. Keycloak also accepts `+`, which stands
+  // for the origins derived from the redirect URIs.
+  webOrigins []string
+  // Whether any web origin is the wildcard `*`
+  hasWildcardWebOrigin bool
+  // Root URL that relative redirect URIs resolve against
+  rootUrl string
+  // Home URL of the application
+  baseUrl string
+  // URL Keycloak calls to push revocation and logout
+  adminUrl string
+  // Whether the user is asked to approve the scopes before they are released
+  consentRequired bool
+  // Whether Keycloak notifies the client of a logout through the browser
+  frontchannelLogout bool
+  // Protocol the client speaks, either openid-connect or saml
+  protocol string
+  // Method the client authenticates itself with
+  //
+  // One of client-secret, client-secret-jwt, client-jwt or client-x509. A
+  // shared secret is replayable if it leaks, which the private key methods
+  // are not.
+  clientAuthenticatorType string
+  // Whether the client's tokens carry every role of the user
+  //
+  // With a full scope, a token issued to one application carries the roles
+  // that belong to every other, so a compromised client's token reaches
+  // further than the client itself does.
+  fullScopeAllowed bool
+  // Authentication flows this client runs instead of the realm's
+  //
+  // Keyed by binding name, either browser or direct_grant, with the
+  // identifier of the flow the client uses. An override replaces the realm's
+  // flow for this client alone, so a second factor the realm requires does
+  // not apply to it.
+  authenticationFlowBindingOverrides map[string]string
+  // Proof key method the client must use for the code exchange
+  //
+  // Either S256, plain or an empty value when no method is required. Without
+  // a method, an intercepted authorization code can be redeemed by whoever
+  // holds it.
+  pkceCodeChallengeMethod string
+  // Client-specific settings that are not modeled as fields
+  //
+  // Keyed by the attribute name Keycloak stores, such as
+  // `post.logout.redirect.uris`, `access.token.lifespan` or
+  // `oauth2.device.authorization.grant.enabled`.
+  attributes map[string]string
+  // Names of the scopes every token for this client carries
+  defaultClientScopes []string
+  // Names of the scopes a request for this client may ask for
+  optionalClientScopes []string
+  // Scopes every token for this client carries
+  //
+  // Their protocol mappers decide what a token issued to this client contains
+  // without the request asking for anything.
+  defaultScopes() []keycloak.clientScope
+  // Scopes a request for this client may ask for
+  optionalScopes() []keycloak.clientScope
+  // Protocol mappers defined on the client itself
+  //
+  // These run in addition to the mappers of the client's scopes, so a claim
+  // can be added here even when every scope is a stock one.
+  protocolMappers() []keycloak.protocolMapper
+  // Roles a token for this client may carry when the full scope is off
+  //
+  // Empty when fullScopeAllowed is true, since the token then carries every
+  // role the user holds. Otherwise these are the only roles that reach the
+  // token, which is what bounds a compromised client.
+  scopeMappings() []keycloak.role
+  // Fine-grained authorization settings of the client
+  //
+  // Null unless authorizationServicesEnabled is true. It reports how the
+  // client decides a request that no policy covers.
+  authorizationSettings() keycloak.client.authorizationSettings
+  // Roles defined by the client
+  roles() []keycloak.role
+  // User the client authenticates as when it uses its service account
+  serviceAccountUser() keycloak.user
+  // Realm the client is registered in
+  realm() keycloak.realm
+}
+
+// Keycloak Client Scope
+//
+// A named set of protocol mappers and role scope mappings that a client can
+// attach to its tokens. A scope in a client's default list is applied to every
+// token without the request asking for it, so a mapper added here reaches every
+// client that carries the scope. Query `protocolMappers` for what the scope
+// puts into a token, `includeInTokenScope` for whether the scope name appears
+// in the token's scope claim, and `scopeMappings` for the roles it lets
+// through. Select a scope with
+// `keycloak.realms.first.clientScopes.where(name == "profile")`.
+private keycloak.clientScope @defaults("name protocol") {
+  // Internal scope identifier
+  id string
+  // Scope name, which is what a client asks for
+  name string
+  // Description
+  description string
+  // Protocol the scope applies to, either openid-connect or saml
+  protocol string
+  // Whether the scope name is listed in the token's scope claim
+  includeInTokenScope bool
+  // Whether the scope is shown on the consent screen
+  displayOnConsentScreen bool
+  // Text shown for the scope on the consent screen
+  consentScreenText string
+  // Order the scope is shown in on the user interface
+  guiOrder string
+  // Full scope configuration as Keycloak stores it
+  //
+  // Keyed by the attribute name, such as `include.in.token.scope` or
+  // `display.on.consent.screen`. The settings that carry security meaning are
+  // modeled as fields.
+  attributes map[string]string
+  // Whether the realm attaches the scope to every new client by default
+  //
+  // A default scope reaches clients that never asked for it, so a mapper added
+  // to one is applied realm-wide.
+  isRealmDefault bool
+  // Whether the realm offers the scope to every new client as optional
+  isRealmOptional bool
+  // Protocol mappers the scope applies to a token
+  protocolMappers() []keycloak.protocolMapper
+  // Roles the scope lets through into a token
+  scopeMappings() []keycloak.role
+  // Realm the scope is defined in
+  realm() keycloak.realm
+}
+
+// Keycloak Protocol Mapper
+//
+// A rule that puts a value into a token, an ID token or the userinfo response.
+// A mapper is where a claim comes from, so it is what can leak an attribute or
+// widen a token's audience. Query `mapperType` for what the mapper does, for
+// example oidc-audience-mapper for one that adds an audience or
+// oidc-usermodel-attribute-mapper for one that copies a user attribute, and
+// `addToAccessToken` with `addToIdToken` and `addToUserInfo` for where the
+// value lands. The `claimName` field names the claim it writes.
+private keycloak.protocolMapper @defaults("name mapperType claimName") {
+  // Internal mapper identifier
+  id string
+  // Mapper name
+  name string
+  // Protocol the mapper applies to, either openid-connect or saml
+  protocol string
+  // Kind of mapper
+  //
+  // For example oidc-usermodel-attribute-mapper, oidc-audience-mapper,
+  // oidc-group-membership-mapper or oidc-hardcoded-claim-mapper. The kind
+  // decides what the mapper reads and therefore what it can expose.
+  mapperType string
+  // Name of the claim the mapper writes
+  //
+  // Empty for a mapper that writes no named claim, such as one that only adds
+  // an audience.
+  claimName string
+  // Whether the value is added to the access token
+  addToAccessToken bool
+  // Whether the value is added to the ID token
+  addToIdToken bool
+  // Whether the value is returned from the userinfo endpoint
+  addToUserInfo bool
+  // Whether the value is added to the token introspection response
+  addToIntrospection bool
+  // Audience the mapper adds to the token
+  //
+  // Set by an audience mapper, and empty otherwise. An audience naming another
+  // client lets a token issued for this client be accepted by that one.
+  includedClientAudience string
+  // Custom audience the mapper adds to the token
+  includedCustomAudience string
+  // User attribute the mapper reads
+  //
+  // Set by a mapper that copies a user attribute or property into a claim, and
+  // empty otherwise.
+  userAttribute string
+  // Whether the claim carries the user's full group path
+  fullPath bool
+  // Full mapper configuration as Keycloak stores it
+  //
+  // Keyed by the setting name, with the value as a string. Every value
+  // Keycloak stores here is a string, so a boolean setting reads as "true" or
+  // "false". The settings that carry security meaning are modeled as fields.
+  config map[string]string
+}
+
+// Keycloak Role
+//
+// A role in a realm or on a client, and the roles it carries with it. The
+// `composite` field reports whether the role grants other roles, and
+// `composites` resolves them, which is how a role that looks harmless turns
+// out to carry realm-admin. The `clientRole` field distinguishes a role
+// defined by a client from a realm role, and `client` names that client.
+private keycloak.role @defaults("name clientRole composite") {
+  // Internal role identifier
+  id string
+  // Role name
+  name string
+  // Description
+  description string
+  // Whether the role grants other roles
+  composite bool
+  // Whether the role is defined by a client rather than by the realm
+  clientRole bool
+  // Identifier of the realm or client the role belongs to
+  containerId string
+  // Custom attributes attached to the role
+  //
+  // Keyed by the attribute name, with a list of values, since Keycloak stores
+  // every role attribute as a list even when it holds one value.
+  attributes dict
+  // Roles this role grants
+  //
+  // Empty when the role is not composite. A composite role can nest further
+  // composites, so a grant here can reach roles that are several levels away.
+  composites() []keycloak.role
+  // Client that defines the role, or null for a realm role
+  client() keycloak.client
+  // Realm the role belongs to
+  realm() keycloak.realm
+}
+
+// Keycloak Group
+//
+// A group in a realm, the roles its members inherit, and the groups nested
+// under it. The `realmRoles` and `clientRoles` fields report the mappings as
+// Keycloak stores them, and `roles` resolves the realm role mappings to the
+// roles themselves so a composite can be followed. Membership of a group is
+// what usually carries administrative access into a cluster, since a group
+// name is what an OIDC groups claim contains.
+private keycloak.group @defaults("path name") {
+  // Internal group identifier
+  id string
+  // Group name
+  name string
+  // Full path of the group, including its parents
+  path string
+  // Number of groups nested directly under this one
+  subGroupCount int
+  // Custom attributes attached to the group
+  //
+  // Keyed by the attribute name, with a list of values, since Keycloak stores
+  // every group attribute as a list even when it holds one value.
+  attributes dict
+  // Names of the realm roles the group grants
+  realmRoles []string
+  // Names of the client roles the group grants
+  //
+  // Keyed by the client identifier, with the list of role names that client
+  // grants. Use clientRoleMappings for the same roles as resolved resources.
+  clientRoles dict
+  // Realm roles the group grants
+  roles() []keycloak.role
+  // Client roles the group grants
+  //
+  // A client role is as capable as a realm role, and the realm-management
+  // ones administer the realm, so a group that grants them makes every member
+  // an administrator.
+  clientRoleMappings() []keycloak.role
+  // Every role the group grants, realm and client alike
+  allRoles() []keycloak.role
+  // Groups nested under this one
+  subGroups() []keycloak.group
+  // Realm the group belongs to
+  realm() keycloak.realm
+}
+
+// Keycloak User
+//
+// A user of a realm, including the service account users that clients
+// authenticate as. Query `enabled` and `emailVerified` for the account state,
+// `requiredActions` for what the user is still asked to complete,
+// `federationLink` for whether the account comes from an external directory,
+// and `serviceAccountClientId` for whether it belongs to a client rather than
+// a person. The `hasAdminRole` field reports whether the account holds a realm
+// administration role, directly or through a composite, which is what turns a
+// leaked client secret into full control of the realm.
+private keycloak.user @defaults("username enabled emailVerified") {
+  // Internal user identifier
+  id string
+  // User name
+  username string
+  // Email address
+  email string
+  // Given name
+  firstName string
+  // Family name
+  lastName string
+  // Whether the account may authenticate
+  enabled bool
+  // Whether the email address has been confirmed
+  emailVerified bool
+  // Actions the user must complete at the next login
+  //
+  // Contains entries such as UPDATE_PASSWORD, CONFIGURE_TOTP or VERIFY_EMAIL.
+  // An account carrying UPDATE_PASSWORD has a credential that an
+  // administrator set rather than the user.
+  requiredActions []string
+  // Time the account was created
+  createdTimestamp time
+  // Identifier of the user federation provider the account comes from
+  //
+  // Empty for an account stored in Keycloak itself. A federated account's
+  // lifecycle is controlled by the directory it comes from.
+  federationLink string
+  // Identifier of the client this account is the service account of
+  //
+  // Empty for an ordinary user. A service account authenticates with the
+  // client's secret rather than with a password, and no second factor applies
+  // to it.
+  serviceAccountClientId string
+  // Whether the account is a client's service account
+  isServiceAccount bool
+  // Whether the account holds a realm administration role
+  //
+  // True when a realm role or a realm-management client role the account
+  // holds grants administration of the realm, directly or through a
+  // composite. A service account holding one gives every holder of the
+  // client's secret full control of the realm.
+  hasAdminRole() bool
+  // Custom attributes attached to the account
+  //
+  // Keyed by the attribute name, with a list of values, since Keycloak stores
+  // every user attribute as a list even when it holds one value.
+  attributes dict
+  // Realm roles mapped to the account
+  roles() []keycloak.role
+  // Client roles mapped to the account
+  //
+  // The realm-management roles administer the realm, so this is where a
+  // service account's administrative reach becomes visible.
+  clientRoleMappings() []keycloak.role
+  // Every role mapped to the account, realm and client alike
+  allRoles() []keycloak.role
+  // Groups the account belongs to
+  groups() []keycloak.group
+  // Client this account is the service account of, or null for an ordinary user
+  serviceAccountClient() keycloak.client
+  // Realm the account belongs to
+  realm() keycloak.realm
+}
+
+// Keycloak Identity Provider
+//
+// A federated identity provider a realm accepts logins from, and how far it
+// trusts the assertions that arrive from it. Query `enabled` for whether the
+// provider is live, `trustEmail` for whether an email address from the
+// provider is accepted without verification, `validateSignature` with
+// `useJwksUrl` for whether an incoming token is checked at all, `linkOnly` for
+// whether the provider may create accounts, and `firstBrokerLoginFlow` for
+// what a first-time federated user runs through. A provider that skips
+// signature validation lets anyone who can reach the callback mint an
+// identity in the realm.
+private keycloak.identityProvider @defaults("alias providerId enabled") {
+  // Internal identifier of the provider instance
+  internalId string
+  // Alias the provider is addressed by, which appears in its callback URL
+  alias string
+  // Display name shown on the login page
+  displayName string
+  // Kind of provider, such as oidc, saml, github or google
+  providerId string
+  // Whether the provider accepts logins
+  enabled bool
+  // Whether an email address from the provider is accepted as verified
+  //
+  // With trust, a provider that lets a user set an unverified email address
+  // can take over a Keycloak account that carries the same address.
+  trustEmail bool
+  // Whether tokens issued by the provider are stored with the account
+  storeToken bool
+  // Whether users may read the stored token
+  addReadTokenRoleOnCreate bool
+  // Whether the provider may only link to existing accounts
+  //
+  // When false, a first login through the provider creates a new account in
+  // the realm.
+  linkOnly bool
+  // Whether the provider is skipped on the login page unless it is requested
+  hideOnLoginPage bool
+  // Alias of the flow a first-time federated user runs
+  firstBrokerLoginFlow string
+  // Alias of the flow run after every login through the provider
+  postBrokerLoginFlow string
+  // How account data is refreshed from the provider
+  //
+  // One of LEGACY, IMPORT or FORCE. With IMPORT, the account keeps the values
+  // it was created with, so a change at the provider does not reach the realm.
+  syncMode string
+  // Whether the signature of an incoming assertion is verified
+  //
+  // Without verification, an assertion is accepted on the strength of its
+  // contents alone, so anyone who can post to the callback can claim any
+  // identity.
+  validateSignature bool
+  // Whether signing keys are fetched from the provider's JWKS endpoint
+  //
+  // Without it, verification rests on a key pasted into the configuration,
+  // which does not follow a key rotation at the provider.
+  useJwksUrl bool
+  // Expected issuer of an incoming token
+  issuer string
+  // Authorization endpoint of the provider
+  authorizationUrl string
+  // Token endpoint of the provider
+  tokenUrl string
+  // JWKS endpoint the signing keys are read from
+  jwksUrl string
+  // Client identifier the realm uses at the provider
+  clientId string
+  // How the realm authenticates at the provider's token endpoint
+  clientAuthMethod string
+  // Whether the realm uses PKCE when it redirects to the provider
+  pkceEnabled bool
+  // Scopes the realm requests from the provider
+  defaultScope string
+  // Full provider configuration as Keycloak stores it
+  //
+  // Keyed by the setting name, with the value as a string. Every value
+  // Keycloak stores here is a string, so a boolean setting reads as "true" or
+  // "false". The settings that carry security meaning are modeled as fields.
+  config map[string]string
+  // Flow a first-time federated user runs
+  firstBrokerLoginFlowRef() keycloak.authenticationFlow
+  // Flow run after every login through the provider
+  //
+  // Null when the provider binds no flow, which is the default. A bound flow
+  // is what can add a step, such as a second factor, to every federated login.
+  postBrokerLoginFlowRef() keycloak.authenticationFlow
+  // Realm the provider is configured for
+  realm() keycloak.realm
+}
+
+// Keycloak Authentication Flow
+//
+// An ordered set of authentication steps a realm can bind to browser login,
+// the direct grant, registration or credential reset. The `executions` field
+// lists the steps with the requirement each one carries, which is what makes a
+// missing second factor visible: a browser flow whose only credential step is
+// a password, with no REQUIRED or CONDITIONAL one-time password step, accepts
+// a single factor. The realm's `browserFlow` and `directGrantFlow` fields name
+// which flows are actually in force.
+private keycloak.authenticationFlow @defaults("alias topLevel builtIn") {
+  // Internal flow identifier
+  id string
+  // Alias the flow is bound by
+  alias string
+  // Description
+  description string
+  // Kind of flow, either basic-flow or form-flow
+  providerId string
+  // Whether the flow can be bound to a realm binding
+  //
+  // A flow that is not top level is a sub-flow, reached only from another
+  // flow's execution list.
+  topLevel bool
+  // Whether Keycloak ships the flow rather than an administrator creating it
+  builtIn bool
+  // Steps of the flow in the order they run
+  executions() []keycloak.authenticationFlow.execution
+  // Realm the flow belongs to
+  realm() keycloak.realm
+}
+
+// Keycloak Authentication Execution
+//
+// A single step of an authentication flow. The `requirement` field decides
+// whether the step runs, and `providerId` names what the step does, for
+// example auth-otp-form for a one-time password prompt or auth-username-
+// password-form for the password prompt. A step whose requirement is
+// ALTERNATIVE can be skipped when a sibling succeeds, so a one-time password
+// step marked ALTERNATIVE next to a password step is optional in practice.
+private keycloak.authenticationFlow.execution @defaults("displayName requirement level") {
+  // Display name of the step
+  displayName string
+  // Authenticator that implements the step
+  //
+  // Empty when the step is a nested sub-flow, whose alias is in flowAlias.
+  providerId string
+  // Whether and when the step runs
+  //
+  // One of REQUIRED, ALTERNATIVE, CONDITIONAL or DISABLED. A REQUIRED step
+  // always runs, an ALTERNATIVE one is skipped once a sibling succeeds, a
+  // CONDITIONAL one runs only when its condition matches, and a DISABLED one
+  // never runs.
+  requirement string
+  // Requirements the step could be set to
+  requirementChoices []string
+  // Nesting depth of the step within the flow
+  level int
+  // Position of the step among its siblings
+  index int
+  // Alias of the sub-flow this step runs, or an empty value for a leaf step
+  flowAlias string
+  // Whether the step carries settings of its own
+  configurable bool
+  // Identifier of the step's configuration, or an empty value when it has none
+  authenticationConfig string
+  // Settings of the step
+  //
+  // Empty for a step that carries none. For a conditional one-time password
+  // sub-flow, this is what decides when the second factor is demanded, so a
+  // step set to skip the prompt is visible here rather than in the
+  // requirement.
+  config() map[string]string
+  // Flow the step belongs to
+  flow() keycloak.authenticationFlow
+}
+
+// Keycloak Component
+//
+// A pluggable component of a realm, most often a user federation provider or a
+// key provider. For an LDAP federation provider, `connectionUrl` reports where
+// the directory is reached, `startTls` whether the connection is upgraded to
+// TLS, and `connectionEncrypted` whether either ldaps or StartTLS protects it.
+// An unencrypted LDAP federation sends the bind credentials and every password
+// it validates in the clear. Select a provider with
+// `keycloak.realms.first.components.where(providerId == "ldap")`.
+private keycloak.component @defaults("name providerId providerType") {
+  // Internal component identifier
+  id string
+  // Component name
+  name string
+  // Kind of component, such as ldap, kerberos, rsa-generated or hmac-generated
+  providerId string
+  // Interface the component implements
+  //
+  // A user federation provider reports
+  // org.keycloak.storage.UserStorageProvider, and a key provider reports
+  // org.keycloak.keys.KeyProvider.
+  providerType string
+  // Identifier of the realm or component this one is nested under
+  parentId string
+  // Narrower kind within the provider type
+  subType string
+  // Full component configuration as Keycloak stores it
+  //
+  // Keyed by the setting name, with a list of values, since Keycloak stores
+  // every component setting as a list even when it holds one value.
+  config dict
+  // Whether the component is a user federation provider
+  isUserFederation bool
+  // URL of the federated directory
+  //
+  // Empty for a component that is not a directory federation. An ldap:// URL
+  // is plaintext unless startTls upgrades it.
+  connectionUrl string
+  // Whether the directory connection is upgraded to TLS after it opens
+  startTls bool
+  // Whether the directory connection is protected, by ldaps or by StartTLS
+  //
+  // When false, the bind credentials and every password the realm validates
+  // against the directory cross the network in the clear.
+  connectionEncrypted bool
+  // How the realm's truststore is used for the connection
+  //
+  // One of always, never or ldapsOnly. With never, the directory's certificate
+  // is not checked, so the encrypted connection can be intercepted.
+  useTruststoreSpi string
+  // Distinguished name the realm binds to the directory as
+  bindDn string
+  // Distinguished name users are searched under
+  usersDn string
+  // How the realm authenticates to the directory, either simple or none
+  authType string
+  // Whether the realm may write back to the directory
+  //
+  // One of READ_ONLY, WRITABLE or UNSYNCED. With UNSYNCED, a password changed
+  // in Keycloak is kept locally and the directory's copy stays as it was.
+  editMode string
+  // Directory product the provider expects, such as ad, rhds or other
+  vendor string
+  // Whether a password from the directory is checked against the realm's policy
+  validatePasswordPolicy bool
+  // Whether an email address from the directory is accepted as verified
+  trustEmail bool
+  // Realm the component belongs to
+  realm() keycloak.realm
+}
+
+// Keycloak Realm Signing Key
+//
+// A cryptographic key the realm holds for signing or encrypting tokens. The
+// `status` field reports whether the realm still signs with it, and
+// `algorithm` with `certificate` reports how strong that signature is. A realm
+// that signs with HS256 shares the signing secret with every client that
+// validates it, so any one of them can forge a token for the rest.
+private keycloak.realm.key @defaults("algorithm status use") {
+  // Key identifier, which appears in a token header as kid
+  kid string
+  // Signature or encryption algorithm, for example RS256, ES256 or HS256
+  algorithm string
+  // Key type, for example RSA, EC or OCT
+  type string
+  // What the key is used for, either SIG for signing or ENC for encryption
+  use string
+  // Lifecycle state of the key
+  //
+  // One of ACTIVE, PASSIVE or DISABLED. An ACTIVE key signs new tokens, a
+  // PASSIVE key only validates tokens already issued, and a DISABLED key does
+  // neither.
+  status string
+  // Component that provides the key, for example rsa-generated or hmac-generated
+  providerId string
+  // Identifier of the providing component
+  providerPriority int
+  // Public certificate of the key, when it has one
+  certificate string
+  // Public modulus of an RSA key
+  publicKey string
+  // Whether the realm signs new tokens with this key
+  isActive bool
+  // Realm the key belongs to
+  realm() keycloak.realm
+}
+
+// Keycloak Realm Event Configuration
+//
+// What the realm records and where it sends it. The `eventsEnabled` and
+// `adminEventsEnabled` fields report whether recording is on at all, and
+// `enabledEventTypes` reports which login events are kept, since a realm can
+// record logins while dropping the failure events an audit needs. The
+// `eventsListeners` field names the sinks, and a realm with only the built-in
+// logging listener keeps nothing outside the server.
+private keycloak.realm.eventsConfig @defaults("eventsEnabled adminEventsEnabled") {
+  // Whether login events are recorded
+  eventsEnabled bool
+  // Seconds a login event is kept, or 0 when events never expire
+  eventsExpiration int
+  // Event types the realm records
+  //
+  // A realm that records LOGIN but not LOGIN_ERROR keeps no trace of a
+  // password guessing run.
+  enabledEventTypes []string
+  // Sinks the events are sent to
+  //
+  // Contains jboss-logging on a stock install, which writes to the server log
+  // and nowhere else.
+  eventsListeners []string
+  // Whether administrative changes are recorded
+  adminEventsEnabled bool
+  // Whether administrative events record the full request body
+  adminEventsDetailsEnabled bool
+  // Realm the configuration belongs to
+  realm() keycloak.realm
+}
+
+// Keycloak Client Profile
+//
+// A named set of requirements a client must meet, called executors, such as
+// demanding a proof key or refusing a public client. A profile is inert until
+// a client policy applies it, so `keycloak.realm.clientPolicies` is what says
+// whether it is in force. Query `executorTypes` for what the profile demands.
+private keycloak.clientProfile @defaults("name isBuiltIn") {
+  // Profile name
+  name string
+  // Description
+  description string
+  // Whether Keycloak ships the profile rather than an administrator creating it
+  isBuiltIn bool
+  // Requirements the profile applies
+  //
+  // Each entry names an executor, for example secure-client-authenticator,
+  // pkce-enforcer or confidential-client-acceptable.
+  executorTypes []string
+  // Full executor configuration as Keycloak stores it
+  executors dict
+  // Realm the profile is defined in
+  realm() keycloak.realm
+}
+
+// Keycloak Client Policy
+//
+// A rule that applies client profiles to the clients its conditions match. The
+// `enabled` field decides whether it is in force at all, `profiles` names the
+// profiles it applies, and `conditionTypes` reports what it matches on. A
+// policy that is disabled, or that names no profile, enforces nothing.
+private keycloak.clientPolicy @defaults("name enabled") {
+  // Policy name
+  name string
+  // Description
+  description string
+  // Whether the policy is in force
+  enabled bool
+  // Names of the client profiles the policy applies
+  profiles []string
+  // Conditions that decide which clients the policy applies to
+  //
+  // Each entry names a condition, for example client-access-type,
+  // client-updater-context or any-client.
+  conditionTypes []string
+  // Full condition configuration as Keycloak stores it
+  conditions dict
+  // Realm the policy is defined in
+  realm() keycloak.realm
+}
+
+// Keycloak Client Authorization Settings
+//
+// The fine-grained authorization server a client can turn on, and how it
+// decides a request. The `policyEnforcementMode` field is the one that carries
+// risk: with PERMISSIVE, a request for a resource that no policy covers is
+// allowed, so adding a resource without a policy grants it to everyone. The
+// `decisionStrategy` field decides how several matching policies combine.
+private keycloak.client.authorizationSettings @defaults("policyEnforcementMode decisionStrategy") {
+  // How a request that no policy covers is decided
+  //
+  // One of ENFORCING, PERMISSIVE or DISABLED. With ENFORCING, such a request
+  // is denied. With PERMISSIVE, it is allowed. With DISABLED, authorization is
+  // not evaluated at all.
+  policyEnforcementMode string
+  // How several matching policies combine
+  //
+  // Either UNANIMOUS, which requires every policy to allow, or AFFIRMATIVE,
+  // which allows when any one of them does.
+  decisionStrategy string
+  // Whether a client may manage its own resources through the protection API
+  allowRemoteResourceManagement bool
+  // Client the settings belong to
+  client() keycloak.client
+}

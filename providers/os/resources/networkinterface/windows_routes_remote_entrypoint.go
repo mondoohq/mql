@@ -5,17 +5,9 @@
 
 package networkinterface
 
-import "github.com/rs/zerolog/log"
-
-// List detects network routes on Windows (remote execution)
-// Falls back to PowerShell and netstat since native APIs are not available
+// List detects network routes on Windows from a scanner that is not itself
+// Windows: the native API is not available, so the target is asked through
+// PowerShell and netstat.
 func (w *windowsRouteDetector) List() ([]Route, error) {
-	routes, err := w.detectWindowsRoutesViaPowerShell()
-	if err == nil && len(routes) > 0 {
-		return routes, nil
-	}
-	log.Debug().Err(err).Int("routeCount", len(routes)).Msg("PowerShell Get-NetRoute failed or returned no routes, trying netstat")
-
-	// fallback to netstat
-	return w.detectWindowsRoutesViaNetstat()
+	return w.listViaCommands()
 }

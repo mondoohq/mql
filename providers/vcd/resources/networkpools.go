@@ -4,13 +4,13 @@
 package resources
 
 import (
-	"github.com/vmware/go-vcloud-director/v2/types/v56"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/vcd/connection"
+	"github.com/vmware/go-vcloud-director/v3/types/v56"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/vcd/connection"
 )
 
-// https://developer.vmware.com/apis/1260/vmware-cloud-director/doc/doc/types/QueryResultNetworkPoolRecordType.html
+// https://developer.broadcom.com/xapis/vmware-cloud-director-api/latest/doc/types/QueryResultNetworkPoolRecordType.html
 func (v *mqlVcd) networkPools() ([]any, error) {
 	conn := v.MqlRuntime.Connection.(*connection.VcdConnection)
 	client := conn.Client()

@@ -13,8 +13,8 @@ import (
 	"strconv"
 	"time"
 
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/sortx"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/sortx"
 )
 
 func intKeys(m map[int]any) []int {
@@ -80,7 +80,7 @@ func label(ref string, bundle *CodeBundle, isResource bool) string {
 
 func removeUnderscoreKeys(keys []string) []string {
 	results := make([]string, 0, len(keys))
-	for i := 0; i < len(keys); i++ {
+	for i := range keys {
 		if keys[i] != "" && keys[i][0] != '_' {
 			results = append(results, keys[i])
 		}
@@ -120,7 +120,18 @@ func refMapJSON(typ types.Type, data map[string]any, codeID string, bundle *Code
 
 		val := v.(*RawData)
 		if val.Error != nil {
-			buf.WriteString(PrettyPrintString("Error: " + val.Error.Error()))
+			// PrettyPrintString un-escapes \n and \t back into real control
+			// characters, which is what the terminal printer wants and what JSON
+			// forbids inside a string (RFC 8259 section 7). Multi-line errors are
+			// routine here - a multierror renders as "N errors occurred:\n\t* ..."
+			// whenever more than one element of a collection fails - so using it
+			// made the whole document unparseable. Encode the error the same way
+			// every other string in this writer is encoded.
+			str, err := string2json("Error: " + val.Error.Error())
+			if err != nil {
+				return err
+			}
+			buf.WriteString(str)
 		} else {
 			err = rawDataJSON(val.Type, val.Value, k, bundle, buf)
 			if err != nil {
@@ -441,6 +452,27 @@ func rawDataJSON(typ types.Type, data any, codeID string, bundle *CodeBundle, bu
 			return err
 		}
 		buf.WriteString(str)
+		return nil
+
+	case types.AssetLike:
+		v, ok := data.(*AssetValue)
+		if !ok || v == nil {
+			buf.WriteString("null")
+			return nil
+		}
+		rt, err := string2json(v.ResourceType)
+		if err != nil {
+			return err
+		}
+		rid, err := string2json(v.ResourceId)
+		if err != nil {
+			return err
+		}
+		buf.WriteString(`{"resourceType":`)
+		buf.WriteString(rt)
+		buf.WriteString(`,"resourceId":`)
+		buf.WriteString(rid)
+		buf.WriteString("}")
 		return nil
 
 	default:

@@ -1,0 +1,130 @@
+[
+  {
+    "FeatureName": "Server-Core",
+    "State": 2
+  },
+  {
+    "FeatureName": "NetFx4Extended-ASPNET45",
+    "State": 0
+  },
+  {
+    "FeatureName": "NetFx3",
+    "State": 6
+  },
+  {
+    "FeatureName": "DNS-Server-Full-Role",
+    "State": 3
+  },
+  {
+    "FeatureName": "NetFx4ServerFeatures",
+    "State": 2
+  },
+  {
+    "FeatureName": "NetFx4",
+    "State": 2
+  },
+  {
+    "FeatureName": "DeviceHealthAttestationService",
+    "State": 0
+  },
+  {
+    "FeatureName": "ActiveDirectory-PowerShell",
+    "State": 0
+  },
+  {
+    "FeatureName": "DirectoryServices-AdministrativeCenter",
+    "State": 0
+  },
+  {
+    "FeatureName": "DirectoryServices-DomainController",
+    "State": 0
+  },
+  {
+    "FeatureName": "DirectoryServices-ISM-Smtp",
+    "State": 0
+  },
+  {
+    "FeatureName": "HostGuardianService-Package",
+    "State": 0
+  },
+  {
+    "FeatureName": "AuthManager",
+    "State": 0
+  },
+  {
+    "FeatureName": "IPAMClientFeature",
+    "State": 0
+  },
+  {
+    "FeatureName": "WCF-Services45",
+    "State": 2
+  },
+  {
+    "FeatureName": "WCF-HTTP-Activation45",
+    "State": 0
+  },
+  {
+    "FeatureName": "WCF-TCP-PortSharing45",
+    "State": 2
+  },
+  {
+    "FeatureName": "WCF-TCP-Activation45",
+    "State": 0
+  },
+  {
+    "FeatureName": "WCF-Pipe-Activation45",
+    "State": 0
+  },
+  {
+    "FeatureName": "WCF-MSMQ-Activation45",
+    "State": 0
+  },
+  {
+    "FeatureName": "ManagementOdata",
+    "State": 0
+  },
+  {
+    "FeatureName": "DSC-Service",
+    "State": 0
+  },
+  {
+    "FeatureName": "RightsManagementServices-Role",
+    "State": 0
+  },
+  {
+    "FeatureName": "RightsManagementServices",
+    "State": 0
+  },
+  {
+    "FeatureName": "RMS-Federation",
+    "State": 0
+  },
+  {
+    "FeatureName": "RightsManagementServices-AdminTools",
+    "State": 0
+  },
+  {
+    "FeatureName": "IPAMServerFeature",
+    "State": 0
+  },
+  {
+    "FeatureName": "Web-Application-Proxy",
+    "State": 0
+  },
+  {
+    "FeatureName": "IdentityServer-SecurityTokenService",
+    "State": 0
+  },
+  {
+    "FeatureName": "ADCertificateServicesRole",
+    "State": 0
+  },
+  {
+    "FeatureName": "CertificateServices",
+    "State": 0
+  },
+  {
+    "FeatureName": "OnlineRevocationServices",
+    "State": 0
+  }
+]

@@ -4,7 +4,6 @@
 package resources
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -15,12 +14,14 @@ import (
 	"sync"
 
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/squid"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/haproxy"
+	"go.mondoo.com/mql/providers/os/resources/squid"
+	"go.mondoo.com/mql/providers/os/resources/systemd"
+	"go.mondoo.com/mql/types"
 )
 
 func (s *mqlSquid) id() (string, error) {
@@ -91,60 +92,23 @@ func scanBinaryForSquidVersion(fs *afero.Afero, path string) string {
 	}
 	defer f.Close()
 
-	const chunkSize = 64 * 1024
 	tag := squidVersionTag
-	overlap := len(tag) + 32
-	buf := make([]byte, chunkSize+overlap)
-	carry := 0
+	return scanReaderForTag(f, tag, len(tag)+32, isSquidVersionByte, nil)
+}
 
-	versionByte := func(b byte) bool {
-		if b >= '0' && b <= '9' {
-			return true
-		}
-		if b >= 'a' && b <= 'z' {
-			return true
-		}
-		if b >= 'A' && b <= 'Z' {
-			return true
-		}
-		return b == '.' || b == '-' || b == '_' || b == '+'
+// isSquidVersionByte reports whether b belongs to a Squid version literal,
+// whose alphabet is wider than the numeric Apache form (e.g. "5.7-rc1").
+func isSquidVersionByte(b byte) bool {
+	if b >= '0' && b <= '9' {
+		return true
 	}
-
-	for {
-		n, err := f.Read(buf[carry:])
-		if n == 0 && err != nil {
-			break
-		}
-		active := buf[:carry+n]
-
-		idx := bytes.Index(active, tag)
-		if idx >= 0 {
-			start := idx + len(tag)
-			end := start
-			for end < len(active) && versionByte(active[end]) {
-				end++
-			}
-			if end > start {
-				return string(active[start:end])
-			}
-		}
-
-		if len(active) > overlap {
-			copy(buf, active[len(active)-overlap:])
-			carry = overlap
-		} else {
-			// Carry the whole active buffer forward — if the version
-			// tag straddles the boundary of a short final read, this
-			// keeps the prefix bytes available for the next iteration.
-			// `active` aliases `buf[:carry+n]`, so no copy is needed.
-			carry = len(active)
-		}
-
-		if err != nil {
-			break
-		}
+	if b >= 'a' && b <= 'z' {
+		return true
 	}
-	return ""
+	if b >= 'A' && b <= 'Z' {
+		return true
+	}
+	return b == '.' || b == '-' || b == '_' || b == '+'
 }
 
 type mqlSquidConfInternal struct {
@@ -217,6 +181,25 @@ func (s *mqlSquidConf) id() (string, error) {
 func (s *mqlSquidConf) file() (*mqlFile, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
 
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+
+	// The -f squid is started with replaces its compiled-in default. A file
+	// it names that does not exist would keep squid from starting, so it
+	// says nothing about the server and the defaults are probed instead;
+	// one this user cannot stat is still the right file, and reading it
+	// reports the refusal.
+	if p := squidLaunchConfig(s.MqlRuntime, afs); p != "" {
+		if _, err := afs.Stat(p); err == nil || !errors.Is(err, os.ErrNotExist) {
+			f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
+				"path": llx.StringData(p),
+			})
+			if err != nil {
+				return nil, err
+			}
+			return f.(*mqlFile), nil
+		}
+	}
+
 	preferred := squidConfPath(conn)
 	seen := map[string]bool{preferred: true}
 	candidates := []string{preferred}
@@ -227,7 +210,6 @@ func (s *mqlSquidConf) file() (*mqlFile, error) {
 		}
 	}
 
-	afs := &afero.Afero{Fs: conn.FileSystem()}
 	for _, path := range candidates {
 		if ok, _ := afs.Exists(path); ok {
 			f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
@@ -244,6 +226,38 @@ func (s *mqlSquidConf) file() (*mqlFile, error) {
 	// return empty data instead of cascading file-not-found errors.
 	s.File.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
+}
+
+// squidLaunch recognizes squid's master process. Its kids rename their
+// command line to "(squid-1)", "(squid-coord-3)" and so on.
+var squidLaunch = serverLaunchSpec{Names: []string{"squid"}}
+
+// squidUnit starts squid on systemd hosts. RHEL's runs
+// `squid --foreground $SQUID_OPTS -f ${SQUID_CONF}` with both from
+// /etc/sysconfig/squid; Debian's and SUSE's pass no -f.
+const squidUnit = "squid.service"
+
+// squidLaunchConfig returns the configuration file squid is started with: the
+// -f of the running master, or of the squid a scanned image starts, or else
+// of the systemd unit's ExecStart= with its environment expanded. A relative
+// path resolves against the server's working directory. It returns "" when
+// squid reads its compiled-in default.
+func squidLaunchConfig(runtime *plugin.Runtime, afs *afero.Afero) string {
+	if launches := findServerLaunches(runtime, squidLaunch); len(launches) > 0 {
+		// a running squid without -f reads its default, whatever the unit
+		// says about the next start
+		l := launches[0]
+		return l.resolve(squid.ConfigFromArgs(l.Argv[1:]))
+	}
+	env, ok := systemd.ResolveUnitEnv(afs, squidUnit)
+	if !ok || env.ExecStart == "" {
+		return ""
+	}
+	argv := haproxy.ExpandSystemdCommand(env.ExecStart, env.Vars)
+	if len(argv) == 0 || filepath.Base(argv[0]) != "squid" {
+		return ""
+	}
+	return serverLaunch{}.resolve(squid.ConfigFromArgs(argv[1:]))
 }
 
 var reSquidGlob = regexp.MustCompile(`[*?\[]`)
@@ -347,9 +361,14 @@ func (s *mqlSquidConf) parse(file *mqlFile) error {
 		s.setEmpty()
 		return nil
 	}
-	if exists := file.GetExists(); exists.Error != nil || !exists.Data {
+	// file() only picks a default location that exists, so a file that does
+	// not is one named with squid.conf(path), which must exist as with
+	// snmpd.config and nginx.conf
+	if exists := file.GetExists(); exists.Error != nil {
 		s.setEmpty()
 		return nil
+	} else if !exists.Data {
+		return fmt.Errorf("could not read %q: no such file", file.Path.Data)
 	}
 
 	filesIdx := map[string]*mqlFile{
@@ -578,8 +597,8 @@ func squidParamScalar(params map[string]any, name string) string {
 	if !ok {
 		return ""
 	}
-	if comma := strings.IndexByte(str, ','); comma >= 0 {
-		return strings.TrimSpace(str[:comma])
+	if before, _, ok := strings.Cut(str, ","); ok {
+		return strings.TrimSpace(before)
 	}
 	return str
 }

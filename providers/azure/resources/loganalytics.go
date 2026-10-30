@@ -15,11 +15,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/operationalinsights/armoperationalinsights/v3"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlAzureSubscriptionMonitorServiceWorkspaceInternal struct {
@@ -135,26 +135,32 @@ func createWorkspaceResource(runtime *plugin.Runtime, ws *armoperationalinsights
 		return nil, err
 	}
 
-	resource, err := CreateResource(runtime, ResourceAzureSubscriptionMonitorServiceWorkspace,
-		map[string]*llx.RawData{
-			"id":                                  llx.StringDataPtr(ws.ID),
-			"name":                                llx.StringDataPtr(ws.Name),
-			"location":                            llx.StringDataPtr(ws.Location),
-			"type":                                llx.StringDataPtr(ws.Type),
-			"tags":                                llx.MapData(convert.PtrMapStrToInterface(ws.Tags), types.String),
-			"skuName":                             llx.StringData(skuName),
-			"skuCapacityReservationLevel":         llx.IntData(skuCapacityReservationLevel),
-			"retentionInDays":                     llx.IntData(retentionInDays),
-			"publicNetworkAccessForIngestion":     llx.StringData(publicNetworkAccessForIngestion),
-			"publicNetworkAccessForQuery":         llx.StringData(publicNetworkAccessForQuery),
-			"forceCmkForQuery":                    llx.BoolDataPtr(props.ForceCmkForQuery),
-			"createdDate":                         llx.TimeDataPtr(props.CreatedDate),
-			"modifiedDate":                        llx.TimeDataPtr(props.ModifiedDate),
-			"provisioningState":                   llx.StringData(provisioningState),
-			"customerId":                          llx.StringDataPtr(props.CustomerID),
-			"identity":                            llx.DictData(identity),
-			"defaultDataCollectionRuleResourceId": llx.StringDataPtr(props.DefaultDataCollectionRuleResourceID),
-		})
+	wsArgs := map[string]*llx.RawData{
+		"id":                                  llx.StringDataPtr(ws.ID),
+		"name":                                llx.StringDataPtr(ws.Name),
+		"location":                            llx.StringDataPtr(ws.Location),
+		"type":                                llx.StringDataPtr(ws.Type),
+		"tags":                                llx.MapData(convert.PtrMapStrToInterface(ws.Tags), types.String),
+		"skuName":                             llx.StringData(skuName),
+		"skuCapacityReservationLevel":         llx.IntData(skuCapacityReservationLevel),
+		"retentionInDays":                     llx.IntData(retentionInDays),
+		"publicNetworkAccessForIngestion":     llx.StringData(publicNetworkAccessForIngestion),
+		"publicNetworkAccessForQuery":         llx.StringData(publicNetworkAccessForQuery),
+		"forceCmkForQuery":                    llx.BoolDataPtr(props.ForceCmkForQuery),
+		"createdDate":                         llx.TimeDataPtr(props.CreatedDate),
+		"modifiedDate":                        llx.TimeDataPtr(props.ModifiedDate),
+		"provisioningState":                   llx.StringData(provisioningState),
+		"customerId":                          llx.StringDataPtr(props.CustomerID),
+		"identity":                            llx.DictData(identity),
+		"defaultDataCollectionRuleResourceId": llx.StringDataPtr(props.DefaultDataCollectionRuleResourceID),
+	}
+	wsIdentity := orZero(ws.Identity)
+	if err := setResourceIdentity(runtime, wsArgs, sortedUserAssignedIdentityIDs(wsIdentity.UserAssignedIdentities),
+		identityType(wsIdentity.Type), identityPrincipalId(wsIdentity.PrincipalID), identityTenantId(wsIdentity.TenantID)); err != nil {
+		return nil, err
+	}
+
+	resource, err := CreateResource(runtime, ResourceAzureSubscriptionMonitorServiceWorkspace, wsArgs)
 	if err != nil {
 		return nil, err
 	}
@@ -204,6 +210,15 @@ func initAzureSubscriptionMonitorServiceWorkspace(runtime *plugin.Runtime, args 
 	}
 
 	ctx := context.Background()
+	// The subscription's list already holds this workspace, and holds it for every
+	// other reference to it too. Only pay for a Get when the list cannot
+	// answer -- a reference into another subscription, or one since deleted.
+	if ws := lookupInServiceList(runtime, ResourceAzureSubscriptionMonitorService,
+		func(s *mqlAzureSubscriptionMonitorService) *plugin.TValue[[]any] { return s.GetWorkspaces() },
+		id); ws != nil {
+		return args, ws, nil
+	}
+
 	client, err := armoperationalinsights.NewWorkspacesClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
 		ClientOptions: conn.ClientOptions(),
 	})
@@ -843,14 +858,27 @@ func (a *mqlAzureSubscriptionMonitorServiceWorkspace) networkSecurityPerimeterCo
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(nsp.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlNsp.(*mqlAzureSubscriptionMonitorServiceWorkspaceNspConfiguration).cacheSystemData = sysData
 			res = append(res, mqlNsp)
 		}
 	}
 	return res, nil
 }
 
+type mqlAzureSubscriptionMonitorServiceWorkspaceNspConfigurationInternal struct {
+	cacheSystemData any
+}
+
 func (a *mqlAzureSubscriptionMonitorServiceWorkspaceNspConfiguration) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+func (a *mqlAzureSubscriptionMonitorServiceWorkspaceNspConfiguration) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 // workspace returns a typed reference to the Log Analytics workspace from an Application Insight.

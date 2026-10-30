@@ -1,0 +1,7 @@
+# FreeBSD 14.5 with no readable kernel under /boot, as in a jail. The stderr
+# is what freebsd-version prints in that case.
+
+[commands."freebsd-version -k && uname -r"]
+stdout = ""
+stderr = "freebsd-version: unable to locate kernel\n"
+exit_status = 1

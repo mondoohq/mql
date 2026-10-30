@@ -12,12 +12,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	cf_types "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsCloudformation) id() (string, error) {
@@ -42,18 +42,7 @@ func (a *mqlAwsCloudformation) stacks() ([]any, error) {
 }
 
 func cfnTagsToMap(in []cf_types.Tag) map[string]any {
-	tags := make(map[string]any, len(in))
-	for _, t := range in {
-		if t.Key == nil {
-			continue
-		}
-		val := ""
-		if t.Value != nil {
-			val = *t.Value
-		}
-		tags[*t.Key] = val
-	}
-	return tags
+	return tagsToMap(in, func(t cf_types.Tag) *string { return t.Key }, func(t cf_types.Tag) *string { return t.Value })
 }
 
 // stackParameterToDict converts an SDK Parameter to a dict with lowercase
@@ -586,7 +575,6 @@ func buildCloudformationStackResource(runtime *plugin.Runtime, region string, st
 			"enableTerminationProtection": llx.BoolDataPtr(stack.EnableTerminationProtection),
 			"capabilities":                llx.ArrayData(capabilities, types.String),
 			"driftStatus":                 llx.StringData(normalizeDriftStatus(driftStatus)),
-			"roleArn":                     llx.StringData(aws.ToString(stack.RoleARN)),
 			"tags":                        llx.MapData(cfnTagsToMap(stack.Tags), types.String),
 			"createdAt":                   llx.TimeDataPtr(stack.CreationTime),
 			"updatedAt":                   llx.TimeDataPtr(stack.LastUpdatedTime),

@@ -4,7 +4,7 @@
 syntax = "proto3";
 
 package mondoo.mql.upstream.v1;
-option go_package = "go.mondoo.com/mql/v13/providers-sdk/v1/upstream";
+option go_package = "go.mondoo.com/mql/providers-sdk/v1/upstream";
 
 message UpstreamConfig {
   string asset_mrn = 1;

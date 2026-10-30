@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/utils/syncx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 // fakeResource is a minimal plugin.Resource for exercising the cache helper.

@@ -10,10 +10,10 @@ import (
 	"sync"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/processes"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/processes"
 )
 
 type mqlProcessInternal struct {
@@ -76,7 +76,18 @@ func (p *mqlProcess) flags() (map[string]any, error) {
 	}
 
 	fs := processes.FlagSet{}
-	err := fs.ParseCommand(cmd.Data)
+	var err error
+	if isWindowsAsset(p.MqlRuntime.Connection.(shared.Connection)) {
+		// executable is only a hint for finding the end of an unquoted
+		// program path, so a failure to read it is not a failure of flags
+		exe := p.GetExecutable()
+		if exe.Error != nil {
+			log.Debug().Err(exe.Error).Msg("process executable unavailable, splitting argv[0] without it")
+		}
+		err = fs.ParseWindowsCommand(cmd.Data, exe.Data)
+	} else {
+		err = fs.ParseCommand(cmd.Data)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -87,6 +98,11 @@ func (p *mqlProcess) flags() (map[string]any, error) {
 		res[k] = flags[k]
 	}
 	return res, nil
+}
+
+func isWindowsAsset(conn shared.Connection) bool {
+	asset := conn.Asset()
+	return asset != nil && asset.Platform != nil && asset.Platform.IsFamily("windows")
 }
 
 type ProcessCallbackTrigger func()
@@ -102,14 +118,21 @@ func (p *mqlProcess) gatherProcessInfo() error {
 	conn := p.MqlRuntime.Connection.(shared.Connection)
 	opm, err := processes.ResolveManager(conn)
 	if err != nil {
-		p.processInfoError = err
-		return errors.New("cannot find process manager")
+		p.processInfoError = fmt.Errorf("cannot find process manager: %w", err)
+		return p.processInfoError
 	}
 
 	process, err := opm.Process(p.Pid.Data)
 	if err != nil {
-		p.processInfoError = err
-		return errors.New("cannot gather process details")
+		p.processInfoError = fmt.Errorf("cannot gather process details: %w", err)
+		return p.processInfoError
+	}
+	// A manager may report a pid it cannot find without an error. Guard the
+	// dereference so an unresolvable process surfaces as an error rather than
+	// taking down the provider.
+	if process == nil {
+		p.processInfoError = fmt.Errorf("cannot gather process details: process %d does not exist", p.Pid.Data)
+		return p.processInfoError
 	}
 
 	p.State = plugin.TValue[string]{Data: process.State, State: plugin.StateIsSet}

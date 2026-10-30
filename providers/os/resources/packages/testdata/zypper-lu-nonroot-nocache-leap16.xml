@@ -1,0 +1,32 @@
+<?xml version='1.0'?>
+<stream>
+<message type="info">    Note: Repository &apos;g03repo&apos; is out-of-date. You can run &apos;zypper refresh&apos; as root to update it.</message>
+<message type="info">    Note: Repository &apos;repo-openh264 (16.0)&apos; is out-of-date. You can run &apos;zypper refresh&apos; as root to
+    update it.</message>
+<message type="info">    Note: Repository &apos;repo-oss (16.0)&apos; is out-of-date. You can run &apos;zypper refresh&apos; as root to
+    update it.</message>
+<message type="info">Loading repository data...</message>
+<message type="info">Repository &apos;g03repo&apos; not cached. Caching...</message>
+<message type="error">Error building the cache:
+[g03repo|file:/srv/g03repo/] No permission to write repository cache.
+</message>
+<message type="error">Problem loading data from &apos;g03repo&apos;</message>
+<message type="error">Resolvables from &apos;g03repo&apos; not loaded because of error.</message>
+<message type="info">Repository &apos;repo-openh264 (16.0)&apos; not cached. Caching...</message>
+<message type="error">Error building the cache:
+[openSUSE:repo-openh264|https://codecs.opensuse.org/openh264/openSUSE_Leap_16] No permission to write repository cache.
+</message>
+<message type="error">Problem loading data from &apos;repo-openh264 (16.0)&apos;</message>
+<message type="error">Resolvables from &apos;repo-openh264 (16.0)&apos; not loaded because of error.</message>
+<message type="info">Repository &apos;repo-oss (16.0)&apos; not cached. Caching...</message>
+<message type="error">Error building the cache:
+[openSUSE:repo-oss|http://cdn.opensuse.org/distribution/leap/16.0/repo/oss/x86_64] No permission to write repository cache.
+</message>
+<message type="error">Problem loading data from &apos;repo-oss (16.0)&apos;</message>
+<message type="error">Resolvables from &apos;repo-oss (16.0)&apos; not loaded because of error.</message>
+<message type="info">Reading installed packages...</message>
+<update-status version="0.6">
+<update-list>
+</update-list>
+</update-status>
+</stream>

@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strings"
 
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 const (
@@ -20,8 +21,10 @@ var (
 	SOLARIS_PKG_REGEX = regexp.MustCompile(`^(.*)\s+([\w\-]+)$`)
 	// FMRI format: pkg://publisher/name@version[,-]branch:timestamp
 	// Branch is optional - some packages go directly from version to timestamp
+	// A publisher prefix may contain periods and hyphens (my-repo.example.com),
+	// not only word characters.
 	// Note: hyphen must be at end of character class to be literal, not a range operator
-	SOLARIS_FMRI_REGEX = regexp.MustCompile(`^pkg:\/\/([\w]+)/(.*)@([^,:-]+)(?:[,-]([^:]+))?:(.*)$`)
+	SOLARIS_FMRI_REGEX = regexp.MustCompile(`^pkg:\/\/([\w.-]+)/(.*)@([^,:-]+)(?:[,-]([^:]+))?:(.*)$`)
 )
 
 type SolarisPackage struct {
@@ -95,6 +98,13 @@ func (s *SolarisPkgManager) List() ([]Package, error) {
 	cmd, err := s.conn.RunCommand("pkg list -Hv")
 	if err != nil {
 		return nil, fmt.Errorf("could not read solaris package list")
+	}
+	// without this an unavailable or failing pkg reports an empty package list
+	// as if the system genuinely had no packages installed
+	if cmd.ExitStatus != 0 {
+		stderr, _ := io.ReadAll(cmd.Stderr)
+		return nil, fmt.Errorf("pkg list failed with exit code %d: %s",
+			cmd.ExitStatus, strings.TrimSpace(string(stderr)))
 	}
 
 	return ParseSolarisPackages(cmd.Stdout), nil

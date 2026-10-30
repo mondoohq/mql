@@ -1,0 +1,3 @@
+server = "https://registry.example.com"
+ca = ["/etc/certs/test-1-ca.pem", "/etc/certs/special.pem"]
+client = [["/etc/certs/client.cert", "/etc/certs/client.key"],["/etc/certs/client.pem", ""]]

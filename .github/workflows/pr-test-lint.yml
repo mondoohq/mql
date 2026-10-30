@@ -2,7 +2,21 @@ name: Code Test
 
 ## Only trigger tests if source is changing
 on:
+  # Run on PRs so the expensive arc-runner test jobs can be skipped while the PR
+  # is a draft (see the per-job `if` guards). `ready_for_review` re-triggers them.
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "**.go"
+      - "**.mod"
+      - "go.sum"
+      - "Makefile"
+      - ".github/workflows/pr-test-lint.yml"
+      - ".github/workflows/reusable-lint-providers.yml"
+      - "**.toml" # run tests when any recording changed
+  # Still validate merges to main.
   push:
+    branches: [main]
     paths:
       - "**.go"
       - "**.mod"
@@ -27,14 +41,14 @@ jobs:
       all: ${{ steps.changed.outputs.all }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Determine changed providers
         id: changed
         env:
-          # Empty on push events (this workflow only triggers on push);
+          # Set on pull_request events; empty on push to main, where
           # scripts/changed-providers.sh falls back to merge-base with origin/main.
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: bash scripts/changed-providers.sh
@@ -44,15 +58,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Import environment variables from file
         run: cat ".github/env" >> $GITHUB_ENV
 
       - name: Install Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ">=${{ env.golang-version }}"
+          go-version: "${{ env.golang-version }}"
           check-latest: true
           cache: false
 
@@ -65,15 +79,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Import environment variables from file
         run: cat ".github/env" >> $GITHUB_ENV
 
       - name: Install Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ">=${{ env.golang-version }}"
+          go-version: "${{ env.golang-version }}"
           check-latest: true
           cache: false
 
@@ -85,9 +99,9 @@ jobs:
         run: make test/lint/proto
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee # v9.2.1
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.10.1
+          version: v2.14.0
 
   golangci-lint-providers:
     needs: detect-changed-providers
@@ -96,21 +110,57 @@ jobs:
       only-new-issues: false
       providers: ${{ needs.detect-changed-providers.outputs.all == 'true' && '' || needs.detect-changed-providers.outputs.providers }}
 
+  # Core (non-provider) tests only. Provider packages are tested in the
+  # separate go-test-providers job. This always runs: the core scope can be
+  # affected by any change, and go-auto-approve depends on it.
   go-test:
+    if: ${{ !github.event.pull_request.draft }} # skip on draft PRs (runs on ready_for_review / push to main)
     runs-on:
-      group: Default
+      group: arc-runners
     timeout-minutes: 120
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Import environment variables from file
         run: cat ".github/env" >> $GITHUB_ENV
 
       - name: Install Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ">=${{ env.golang-version }}"
+          go-version: "${{ env.golang-version }}"
+          check-latest: true
+          cache: false
+
+      - name: Test mql
+        run: make test/go/plain-ci
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: success() || failure() # run this step even if previous step failed
+        with:
+          name: test-results
+          path: "report.xml"
+
+  # Provider tests. Only the changed providers are built and tested. When a
+  # shared dependency changes (detect-changed-providers -> all=true) or the
+  # changed list is empty (e.g. pushes to main), every provider is tested.
+  go-test-providers:
+    needs: detect-changed-providers
+    if: ${{ !github.event.pull_request.draft }} # skip on draft PRs (runs on ready_for_review / push to main)
+    runs-on:
+      group: arc-runners
+    timeout-minutes: 120
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Import environment variables from file
+        run: cat ".github/env" >> $GITHUB_ENV
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "${{ env.golang-version }}"
           check-latest: true
           cache: false
 
@@ -119,36 +169,56 @@ jobs:
 
       - name: Set provider env
         run: echo "PROVIDERS_PATH=${PWD}/.providers" >> $GITHUB_ENV
-      - name: Display Provider Path
-        run: echo $PROVIDERS_PATH
 
-      - name: Test mql
-        run: make test/go/plain-ci
+      - name: Prepare tools and generated code
+        run: make prep/tools test/generate
 
-      - name: Test Providers
-        run: make providers/test
+      - name: Test providers
+        env:
+          ALL: ${{ needs.detect-changed-providers.outputs.all }}
+          PROVIDERS: ${{ needs.detect-changed-providers.outputs.providers }}
+        run: |
+          set -euo pipefail
+          if [ "$ALL" = "true" ] || [ -z "$PROVIDERS" ]; then
+            echo "=== Testing all providers ==="
+            make providers/build
+            make providers/test
+          else
+            echo "=== Testing changed providers: $PROVIDERS ==="
+            # Test every changed provider even if one fails, then report all
+            # failures at the end (mirrors reusable-lint-providers.yml).
+            failed=""
+            for p in $PROVIDERS; do
+              make "providers/test/$p" || failed="$failed $p"
+            done
+            if [ -n "$failed" ]; then
+              echo "=== Failed providers:$failed ==="
+              exit 1
+            fi
+          fi
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: success() || failure() # run this step even if previous step failed
         with:
-          name: test-results
-          path: "*.xml"
+          name: test-results-providers
+          path: "report_*.xml"
 
   go-test-integration:
+    if: ${{ !github.event.pull_request.draft }} # skip on draft PRs (runs on ready_for_review / push to main)
     runs-on:
-      group: Default
+      group: arc-runners
     timeout-minutes: 120
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Import environment variables from file
         run: cat ".github/env" >> $GITHUB_ENV
 
       - name: Install Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ">=${{ env.golang-version }}"
+          go-version: "${{ env.golang-version }}"
           check-latest: true
           cache: false
 
@@ -163,7 +233,7 @@ jobs:
       - name: Test mql CLI and Providers
         run: make test/integration
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: success() || failure() # run this step even if previous step failed
         with:
           name: test-results-cli
@@ -173,15 +243,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Import environment variables from file
         run: cat ".github/env" >> $GITHUB_ENV
 
       - name: Install Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ">=${{ env.golang-version }}"
+          go-version: "${{ env.golang-version }}"
           check-latest: true
           cache: false
 
@@ -190,21 +260,27 @@ jobs:
 
   go-auto-approve:
     runs-on: ubuntu-latest
-    needs: [golangci-lint, golangci-lint-providers, go-test, go-test-integration, go-mod]
-    # For now, we only auto approve and merge provider release PRs created by mondoo-tools.
+    needs: [golangci-lint, golangci-lint-providers, go-test, go-test-providers, go-test-integration, go-mod]
+    # For now, we only auto approve and merge dependency update PRs created by mondoo-tools.
+    # Provider release PRs (version/providers_update_*) are not handled here: the
+    # merge-release-pr job in release-providers.yml merges them once the review
+    # bot approved and CI is green. Matching them here would race that job and
+    # bypass the review bot.
     # We use github.actor (the authenticated GitHub user who pushed) instead of
     # github.event.commits[0].author.username (the git commit author) because git commit
     # metadata is user-controlled and can be spoofed by anyone via git config.
     # github.actor is set by GitHub's authentication layer and is tamper-proof.
-    if: ${{ (startsWith(github.ref, 'refs/heads/version/providers_update_') || startsWith(github.ref, 'refs/heads/version/deps_update_')) && github.actor == 'mondoo-tools' }}
+    # Triggers on both pull_request (github.head_ref = the PR's source branch) and
+    # push to main (github.head_ref is empty there, so fall back to github.ref_name).
+    if: ${{ startsWith(github.head_ref || github.ref_name, 'version/deps_update_') && github.actor == 'mondoo-tools' }}
     permissions:
       contents: write
       pull-requests: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # figure out the PR for this commit
-      - uses: cloudposse-github-actions/get-pr@ba7d9e7db690abb3c5b84f4337cd51e75f7cfb71 # v2.0.0
+      - uses: cloudposse-github-actions/get-pr@6db391bee79f3640fca3026877ced2f2b1f2a992 # v3.1.0
         id: pr
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
@@ -213,7 +289,7 @@ jobs:
       # fetch a token for the mondoo-mergebot app
       - name: Generate token
         id: generate-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: ${{ secrets.MONDOO_MERGEBOT_APP_ID }}
           private-key: ${{ secrets.MONDOO_MERGEBOT_APP_PRIVATE_KEY }}
@@ -230,7 +306,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Upload
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Event File
           path: ${{ github.event_path }}

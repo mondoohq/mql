@@ -8,10 +8,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/manifest"
-	"go.mondoo.com/mql/v13/utils/syncx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/k8s/connection/manifest"
+	"go.mondoo.com/mql/utils/syncx"
+	rbacv1 "k8s.io/api/rbac/v1"
 )
 
 func rbacRuntime(t *testing.T) *plugin.Runtime {
@@ -124,4 +125,41 @@ func TestRbacRolePredicates(t *testing.T) {
 	assert.False(t, binder.GetHasWildcardRule().Data)
 	assert.True(t, binder.GetAllowsPrivilegeEscalation().Data)
 	assert.False(t, binder.GetCanReadSecrets().Data)
+}
+
+func TestRbacResourceMatches(t *testing.T) {
+	tests := []struct {
+		name          string
+		ruleResources []string
+		resource      string
+		want          bool
+	}{
+		{"exact resource", []string{"pods"}, "pods", true},
+		{"exact subresource", []string{"pods/exec"}, "pods/exec", true},
+		{"wildcard covers subresource", []string{"*"}, "pods/exec", true},
+		{"any-resource subresource form", []string{"*/approval"}, "certificatesigningrequests/approval", true},
+		{"any-resource form, other subresource", []string{"*/approval"}, "certificatesigningrequests/status", false},
+		{"any-resource form does not cover the bare resource", []string{"*/approval"}, "approval", false},
+		{"any-resource form does not cover a parent resource", []string{"*/approval"}, "certificatesigningrequests", false},
+		{"resource does not cover its subresources", []string{"pods"}, "pods/exec", false},
+		{"resource/* is not a wildcard", []string{"certificatesigningrequests/*"}, "certificatesigningrequests/approval", false},
+		{"empty subresource", []string{"*/"}, "pods/", false},
+		{"no rule resources", nil, "pods", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, rbacResourceMatches(tt.ruleResources, tt.resource))
+		})
+	}
+}
+
+func TestRbacRuleGrants_SubresourceWildcard(t *testing.T) {
+	rule := rbacv1.PolicyRule{
+		APIGroups: []string{"certificates.k8s.io"},
+		Resources: []string{"*/approval"},
+		Verbs:     []string{"update"},
+	}
+	assert.True(t, rbacRuleGrants(rule, "certificates.k8s.io", "certificatesigningrequests/approval", "update", ""))
+	assert.False(t, rbacRuleGrants(rule, "certificates.k8s.io", "certificatesigningrequests/approval", "delete", ""))
+	assert.False(t, rbacRuleGrants(rule, "", "pods/approval", "update", ""))
 }

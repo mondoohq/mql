@@ -6,21 +6,26 @@ package main
 import (
 	"os"
 
-	"go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/apps/mql/cmd"
-	"go.mondoo.com/mql/v13/cli/config"
-	"go.mondoo.com/mql/v13/cli/selfupdate"
-	"go.mondoo.com/mql/v13/metrics"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream/health"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/apps/mql/cmd"
+	"go.mondoo.com/mql/cli/config"
+	"go.mondoo.com/mql/cli/selfupdate"
+	"go.mondoo.com/mql/metrics"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream/health"
 
 	// Link in all vault backends (AWS, GCP, HashiCorp, keyring) so they
 	// self-register with the vault registry. The in-memory backend is always
 	// available via the SDK.
-	_ "go.mondoo.com/mql/v13/vault/register"
+	_ "go.mondoo.com/mql/vault/register"
 )
 
 func main() {
 	defer health.ReportPanic("mql", mql.Version, mql.Build)
+
+	// Before anything resolves a channel. With update_channel unset, a
+	// pre-release build follows the pre-release track rather than pulling
+	// stable providers built against a different schema.
+	config.SetRunningVersion(mql.GetVersion())
 
 	// Clean up leftover .old binary from a previous in-place update (Windows).
 	selfupdate.CleanupOldBinary()
@@ -31,16 +36,16 @@ func main() {
 
 	// Check for self-update before anything else
 	if run, localOnly := selfUpdateMode(); run {
-		releaseURL := selfupdate.DefaultReleaseURL
-		if updatesURL := config.GetUpdatesURL(); updatesURL != "" {
-			releaseURL = updatesURL + "/mql/latest.json"
-		}
+		// Both layouts, so updates_url can name the install service or a mirror of
+		// the release bucket without the operator having to know which.
+		releaseURLs := selfupdate.ReleaseURLs(config.GetUpdatesURL(), "mql", config.GetUpdateChannel())
 		cfg := selfupdate.Config{
-			Enabled:         true,
-			RefreshInterval: selfupdate.DefaultRefreshInterval,
-			ReleaseURL:      releaseURL,
-			BinaryName:      "mql",
-			CurrentVersion:  mql.GetVersion(),
+			Enabled:             true,
+			RefreshInterval:     selfupdate.DefaultRefreshInterval,
+			ReleaseURL:          releaseURLs[0],
+			FallbackReleaseURLs: releaseURLs[1:],
+			BinaryName:          "mql",
+			CurrentVersion:      mql.GetVersion(),
 		}
 		// "version" does only the local switch (no network) so it stays fast while
 		// still reporting the version that other commands transparently exec into.

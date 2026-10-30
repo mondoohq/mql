@@ -9,16 +9,18 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	compute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8"
+	compute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v9"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAzureSubscriptionComputeServiceVmScaleSet) id() (string, error) {
@@ -51,7 +53,10 @@ func initAzureSubscriptionComputeServiceVmScaleSet(runtime *plugin.Runtime, args
 	if scaleSets.Error != nil {
 		return nil, nil, scaleSets.Error
 	}
-	id := args["id"].Value.(string)
+	id, ok := args["id"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("id must be a non-nil string value")
+	}
 	if vmss := findVmScaleSetByID(scaleSets.Data, id); vmss != nil {
 		return args, vmss, nil
 	}
@@ -134,12 +139,8 @@ func vmScaleSetToMql(runtime *plugin.Runtime, vmss compute.VirtualMachineScaleSe
 	if err != nil {
 		return nil, err
 	}
-	var principalId *string
-	var userAssignedIdentityIds []string
-	if vmss.Identity != nil {
-		principalId = vmss.Identity.PrincipalID
-		userAssignedIdentityIds = sortedUserAssignedIdentityIDs(vmss.Identity.UserAssignedIdentities)
-	}
+	vmssIdentity := orZero(vmss.Identity)
+	userAssignedIdentityIds := sortedUserAssignedIdentityIDs(vmssIdentity.UserAssignedIdentities)
 
 	args := map[string]*llx.RawData{
 		"id":          llx.StringDataPtr(vmss.ID),
@@ -147,12 +148,19 @@ func vmScaleSetToMql(runtime *plugin.Runtime, vmss compute.VirtualMachineScaleSe
 		"location":    llx.StringDataPtr(vmss.Location),
 		"tags":        llx.MapData(convert.PtrMapStrToInterface(vmss.Tags), types.String),
 		"type":        llx.StringDataPtr(vmss.Type),
-		"zones":       llx.ArrayData(convert.SliceStrPtrToInterface(vmss.Zones), types.String),
+		"zones":       llx.ArrayData(strPtrsToAny(vmss.Zones), types.String),
 		"sku":         llx.DictData(sku),
 		"properties":  llx.DictData(properties),
-		"systemData":  llx.DictData(systemData),
 		"identity":    llx.DictData(identityDict),
-		"principalId": llx.StringDataPtr(principalId),
+		"principalId": llx.StringDataPtr(vmssIdentity.PrincipalID),
+	}
+	vmssSku := orZero(vmss.SKU)
+	if err := setSkuData(runtime, args, skuName(vmssSku.Name), skuTier(vmssSku.Tier), skuCapacity(vmssSku.Capacity)); err != nil {
+		return nil, err
+	}
+	if err := setResourceIdentity(runtime, args, userAssignedIdentityIds,
+		identityType(vmssIdentity.Type), identityPrincipalId(vmssIdentity.PrincipalID), identityTenantId(vmssIdentity.TenantID)); err != nil {
+		return nil, err
 	}
 
 	if vmss.Properties != nil {
@@ -230,15 +238,26 @@ func vmScaleSetToMql(runtime *plugin.Runtime, vmss compute.VirtualMachineScaleSe
 	}
 	mqlVmss := res.(*mqlAzureSubscriptionComputeServiceVmScaleSet)
 	mqlVmss.cacheUserAssignedIdentityIds = userAssignedIdentityIds
+	mqlVmss.cacheSystemData = systemData
 	return mqlVmss, nil
 }
 
 type mqlAzureSubscriptionComputeServiceVmScaleSetInternal struct {
 	cacheUserAssignedIdentityIds []string
+	cacheSystemData              any
+
+	extensionsMu     sync.Mutex
+	extensionsLoaded atomic.Bool
+	extensionsList   []*compute.VirtualMachineScaleSetExtension
+	extensionsErr    error
 }
 
 func (a *mqlAzureSubscriptionComputeServiceVmScaleSet) userAssignedIdentities() ([]any, error) {
 	return resolveUserAssignedIdentities(a.MqlRuntime, a.cacheUserAssignedIdentityIds)
+}
+
+func (a *mqlAzureSubscriptionComputeServiceVmScaleSet) systemAssignedIdentity() (*mqlAzureSubscriptionManagedIdentity, error) {
+	return newSystemAssignedManagedIdentity(a.MqlRuntime, a.Id.Data, a.PrincipalId.Data, tenantIDFromIdentityDict(a.Identity), &a.SystemAssignedIdentity)
 }
 
 func (a *mqlAzureSubscriptionComputeServiceVmScaleSet) instances() ([]any, error) {
@@ -306,9 +325,13 @@ func vmScaleSetInstanceToMql(runtime *plugin.Runtime, inst compute.VirtualMachin
 		"name":       llx.StringDataPtr(inst.Name),
 		"location":   llx.StringDataPtr(inst.Location),
 		"tags":       llx.MapData(convert.PtrMapStrToInterface(inst.Tags), types.String),
-		"zones":      llx.ArrayData(convert.SliceStrPtrToInterface(inst.Zones), types.String),
+		"zones":      llx.ArrayData(strPtrsToAny(inst.Zones), types.String),
 		"properties": llx.DictData(properties),
 		"sku":        llx.DictData(sku),
+	}
+	instSku := orZero(inst.SKU)
+	if err := setSkuData(runtime, args, skuName(instSku.Name), skuTier(instSku.Tier), skuCapacity(instSku.Capacity)); err != nil {
+		return nil, err
 	}
 
 	if inst.Properties != nil {
@@ -341,6 +364,40 @@ func (a *mqlAzureSubscriptionComputeServiceVmScaleSetInstance) systemMetadata() 
 }
 
 func (a *mqlAzureSubscriptionComputeServiceVmScaleSet) extensions() ([]any, error) {
+	list, err := a.fetchExtensions()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for _, ext := range list {
+		d, err := convert.JsonToDict(ext.Properties)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, d)
+	}
+	return res, nil
+}
+
+// fetchExtensions lists the scale set's extensions once and shares the result
+// between extensions and installedExtensions.
+func (a *mqlAzureSubscriptionComputeServiceVmScaleSet) fetchExtensions() ([]*compute.VirtualMachineScaleSetExtension, error) {
+	if a.extensionsLoaded.Load() {
+		return a.extensionsList, a.extensionsErr
+	}
+	a.extensionsMu.Lock()
+	defer a.extensionsMu.Unlock()
+	if a.extensionsLoaded.Load() {
+		return a.extensionsList, a.extensionsErr
+	}
+	list, err := a.loadExtensions()
+	a.extensionsList = list
+	a.extensionsErr = err
+	a.extensionsLoaded.Store(true)
+	return list, err
+}
+
+func (a *mqlAzureSubscriptionComputeServiceVmScaleSet) loadExtensions() ([]*compute.VirtualMachineScaleSetExtension, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
 	ctx := context.Background()
 	token := conn.Token()
@@ -363,29 +420,24 @@ func (a *mqlAzureSubscriptionComputeServiceVmScaleSet) extensions() ([]any, erro
 	}
 
 	pager := client.NewListPager(resourceID.ResourceGroup, vmssName, nil)
-	res := []any{}
+	res := []*compute.VirtualMachineScaleSetExtension{}
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
 			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
+			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden && !plugin.StructuredErrors() {
 				log.Warn().Err(err).Msgf("could not list virtual machine scale set extensions for %s due to access denied", vmssName)
 				return res, nil
 			}
-			return nil, err
+			return nil, classifyAzureRefusal(err, "Microsoft.Compute/virtualMachineScaleSets/extensions/read")
 		}
 		for _, ext := range page.Value {
 			if ext == nil {
 				continue
 			}
-			d, err := convert.JsonToDict(ext.Properties)
-			if err != nil {
-				return nil, err
-			}
-			res = append(res, d)
+			res = append(res, ext)
 		}
 	}
-
 	return res, nil
 }
 

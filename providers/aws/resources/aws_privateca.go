@@ -6,16 +6,17 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/service/acmpca"
 	acmpcatypes "github.com/aws/aws-sdk-go-v2/service/acmpca/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 func (a *mqlAwsPrivateca) id() (string, error) {
@@ -80,6 +81,37 @@ func (a *mqlAwsPrivateca) getCertificateAuthorities(conn *connection.AwsConnecti
 		tasks = append(tasks, jobpool.NewJob(f))
 	}
 	return tasks
+}
+
+func initAwsPrivatecaCertificateAuthority(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	if args["arn"] == nil {
+		return nil, nil, errors.New("arn required to fetch aws privateca certificate authority")
+	}
+	arnVal, ok := args["arn"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("arn must be a string")
+	}
+
+	obj, err := CreateResource(runtime, "aws.privateca", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, nil, err
+	}
+	privateca := obj.(*mqlAwsPrivateca)
+
+	cas := privateca.GetCertificateAuthorities()
+	if cas.Error != nil {
+		return nil, nil, cas.Error
+	}
+	for _, raw := range cas.Data {
+		ca := raw.(*mqlAwsPrivatecaCertificateAuthority)
+		if ca.Arn.Data == arnVal {
+			return args, ca, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("aws.privateca.certificateAuthority with arn %q not found", arnVal)
 }
 
 func newMqlPrivatecaCertificateAuthority(runtime *plugin.Runtime, ca acmpcatypes.CertificateAuthority, region string) (*mqlAwsPrivatecaCertificateAuthority, error) {
@@ -159,8 +191,7 @@ func (a *mqlAwsPrivatecaCertificateAuthority) fetchCertificate() error {
 	})
 	if err != nil {
 		// CA may not have a certificate yet (PENDING_CERTIFICATE state)
-		var rnfe *acmpcatypes.ResourceNotFoundException
-		if errors.As(err, &rnfe) {
+		if _, ok := errors.AsType[*acmpcatypes.ResourceNotFoundException](err); ok {
 			a.fetchedCert = true
 			return nil
 		}
@@ -234,8 +265,7 @@ func (a *mqlAwsPrivatecaCertificateAuthority) policy() (string, error) {
 		ResourceArn: &arn,
 	})
 	if err != nil {
-		var rnfe *acmpcatypes.ResourceNotFoundException
-		if errors.As(err, &rnfe) {
+		if _, ok := errors.AsType[*acmpcatypes.ResourceNotFoundException](err); ok {
 			return "", nil
 		}
 		if Is400AccessDeniedError(err) {

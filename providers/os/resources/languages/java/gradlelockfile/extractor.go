@@ -8,8 +8,8 @@ import (
 	"io"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/java"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/java"
 )
 
 var (
@@ -115,9 +115,28 @@ func (l *gradleLockfile) Transitive() languages.Packages {
 	var packages languages.Packages
 	for _, entry := range l.Entries {
 		name := entry.GroupId + ":" + entry.ArtifactId
+		// A lockfile entry names the configurations that resolved it, and an
+		// entry resolved only by test configurations is a test-only dependency
+		// — the same fact an npm devDependency states. Reporting it as prod
+		// ranks a CVE in a test harness alongside one in the shipped runtime.
+		//
+		// This is narrower than buildgradle's isDevConfiguration, which also
+		// treats annotationProcessor and kapt as dev, and the difference is
+		// intended. A lockfile states the configurations that actually resolved
+		// an artifact, so an entry naming only annotationProcessor is genuinely
+		// on no runtime classpath — but it names them exactly, and widening the
+		// match to configuration names seen in a build script would classify on
+		// a heuristic where an exact fact is available. Extend this list when a
+		// lockfile is observed carrying such a name, not on the strength of the
+		// other parser's list.
+		scope := languages.PackageScopeProd
+		if entry.IsTest {
+			scope = languages.PackageScopeDev
+		}
 		packages = append(packages, &languages.Package{
 			Name:         name,
 			Version:      entry.Version,
+			Scope:        scope,
 			Purl:         java.NewPackageUrl(entry.GroupId, entry.ArtifactId, entry.Version),
 			Cpes:         java.NewCpes(entry.GroupId, entry.ArtifactId, entry.Version),
 			EvidenceList: java.NewEvidenceList(l.evidence),

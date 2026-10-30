@@ -5,12 +5,13 @@ package providers
 
 import (
 	"context"
+	"slices"
 
 	"github.com/cockroachdb/errors"
-	"go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/recording"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/recording"
 )
 
 var mockProvider = Provider{
@@ -43,11 +44,15 @@ var mockProvider = Provider{
 
 type mockProviderService struct {
 	initialized bool
-	runtime     *Runtime
 }
 
 func (s *mockProviderService) Heartbeat(req *plugin.HeartbeatReq) (*plugin.HeartbeatRes, error) {
 	return nil, nil
+}
+
+// Translations: the mock provider bridges no shapes.
+func (s *mockProviderService) Translations(req *plugin.TranslationsReq) (*plugin.TranslationsRes, error) {
+	return &plugin.TranslationsRes{}, nil
 }
 
 func (s *mockProviderService) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error) {
@@ -111,6 +116,14 @@ func assetinfo2providerName(asset *inventory.Asset) (string, error) {
 }
 
 func (s *mockProviderService) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallback) (*plugin.ConnectRes, error) {
+	// This service instance is shared by every runtime in the process, so the
+	// runtime to work against comes from the callback of this connect and never
+	// from the service. See runtimeFromCallback.
+	runtime, err := runtimeFromCallback(callback)
+	if err != nil {
+		return nil, err
+	}
+
 	// If an upstream asset was requested
 	if req.Asset.Mrn != "" {
 		if req.Upstream == nil {
@@ -144,7 +157,7 @@ func (s *mockProviderService) Connect(req *plugin.ConnectReq, callback plugin.Pr
 			return nil, errors.New("failed to look up provider for upstream recording with name=" + providerName)
 		}
 
-		addedProvider, err := s.runtime.addProvider(provider.ID)
+		addedProvider, err := runtime.addProvider(provider.ID)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to init provider for connection in recording")
 		}
@@ -159,12 +172,12 @@ func (s *mockProviderService) Connect(req *plugin.ConnectReq, callback plugin.Pr
 		}
 
 		addedProvider.Connection = conn
-		err = s.runtime.SetRecording(urecording)
+		err = runtime.SetRecording(urecording)
 		return conn, err
 	}
 
 	// initialize all other providers from all asset connections in the recording
-	multiRecording, ok := s.runtime.Recording().(recording.MultiAsset)
+	multiRecording, ok := runtime.Recording().(recording.MultiAsset)
 	if !ok {
 		return nil, errors.New("cannot find assets in recording for mock provider")
 	}
@@ -174,7 +187,10 @@ func (s *mockProviderService) Connect(req *plugin.ConnectReq, callback plugin.Pr
 		return nil, errors.New("no assets found in recording for mock provider")
 	}
 
-	asset := assetRecordings[0]
+	asset := pickAssetRecording(assetRecordings, req.Asset)
+	if asset == nil {
+		return nil, errors.New("no recording found for asset " + assetLabel(req.Asset))
+	}
 	if len(asset.Connections) == 0 {
 		return nil, errors.New("no connections found in asset")
 	}
@@ -183,7 +199,7 @@ func (s *mockProviderService) Connect(req *plugin.ConnectReq, callback plugin.Pr
 	for i := range asset.Connections {
 		conf := asset.Connections[i]
 
-		provider, err := s.runtime.addProvider(conf.ProviderID)
+		provider, err := runtime.addRecordedProvider(conf.ProviderID)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to init provider for connection in recording")
 		}
@@ -218,6 +234,12 @@ func (s *mockProviderService) Disconnect(req *plugin.DisconnectReq) (*plugin.Dis
 	return nil, nil
 }
 
+// ResolveAsset: this service owns no resources of its own - it replays or
+// wraps another provider's - so there is no anchor here to stand for an asset.
+func (s *mockProviderService) ResolveAsset(req *plugin.ResolveAssetReq) (*plugin.ResolveAssetRes, error) {
+	return &plugin.ResolveAssetRes{}, nil
+}
+
 func (s *mockProviderService) Shutdown(req *plugin.ShutdownReq) (*plugin.ShutdownRes, error) {
 	// Nothing to do yet...
 	return nil, nil
@@ -241,4 +263,69 @@ func (s *mockProviderService) Init(running *RunningProvider) {
 	// Once it doesn't do that anymore, remember to load all schemas here
 	// rt.schema.unsafeLoadAll()
 	// rt.schema.unsafeRefresh()
+}
+
+// pickAssetRecording finds the recorded asset a connect request is asking for.
+//
+// A recording holds many assets, and taking the first one was fine while the
+// only caller replayed the asset the recording was made for. Cross-asset
+// resolution (ADR 031) connects a *specific* recorded asset, and answering with
+// the first one hands back the host's data under the target's name - a wrong
+// answer rather than a miss, which is the worst shape a bug can take here.
+//
+// Matching follows the same precedence the coordinator uses to dedupe runtimes
+// (coordinator.go:191): MRN, then platform ids, then - only because a stub
+// assembled from a relationship may carry neither - the name. A request that
+// identifies nothing keeps the historical behavior and gets the first asset.
+func pickAssetRecording(assets []*recording.Asset, want *inventory.Asset) *recording.Asset {
+	if len(assets) == 0 {
+		return nil
+	}
+	if want == nil || (want.Mrn == "" && len(want.PlatformIds) == 0 && want.Name == "") {
+		return assets[0]
+	}
+
+	if want.Mrn != "" {
+		for _, a := range assets {
+			if a.Asset != nil && a.Asset.Mrn == want.Mrn {
+				return a
+			}
+		}
+	}
+	for _, id := range want.PlatformIds {
+		for _, a := range assets {
+			if a.Asset == nil {
+				continue
+			}
+			if slices.Contains(a.Asset.PlatformIds, id) {
+				return a
+			}
+		}
+	}
+	if want.Name != "" {
+		for _, a := range assets {
+			if a.Asset != nil && a.Asset.Name == want.Name {
+				return a
+			}
+		}
+	}
+	return nil
+}
+
+// assetLabel names an asset for an error message, preferring the most specific
+// identifier it carries.
+func assetLabel(a *inventory.Asset) string {
+	if a == nil {
+		return "<none>"
+	}
+	if a.Mrn != "" {
+		return a.Mrn
+	}
+	if len(a.PlatformIds) > 0 {
+		return a.PlatformIds[0]
+	}
+	if a.Name != "" {
+		return a.Name
+	}
+	return "<unidentified>"
 }

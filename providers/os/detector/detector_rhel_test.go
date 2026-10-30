@@ -184,6 +184,38 @@ enabled=0`,
 			expected: []string{},
 		},
 		{
+			name: "rhel 8 els repos",
+			files: map[string]string{
+				"/etc/yum.repos.d/redhat.repo": `[rhel-8-for-x86_64-baseos-els-rpms]
+name=Red Hat Enterprise Linux 8 for x86_64 - BaseOS - Extended Life Cycle Support (RPMs)
+enabled=1
+[rhel-8-for-x86_64-appstream-els-rpms]
+name=Red Hat Enterprise Linux 8 for x86_64 - AppStream - Extended Life Cycle Support (RPMs)
+enabled=1
+`,
+			},
+			expected: []string{"els"},
+		},
+		{
+			name: "disabled rhel 8 els repo",
+			files: map[string]string{
+				"/etc/yum.repos.d/redhat.repo": `[rhel-8-for-x86_64-baseos-els-rpms]
+name=Red Hat Enterprise Linux 8 for x86_64 - BaseOS - Extended Life Cycle Support (RPMs)
+enabled=0`,
+			},
+			expected: []string{},
+		},
+		{
+			// "els" must be a whole dash-delimited segment, not a substring
+			name: "repo with els inside a longer word",
+			files: map[string]string{
+				"/etc/yum.repos.d/custom.repo": `[rhel-8-for-x86_64-elsewhere-rpms]
+name=Some unrelated repository
+enabled=1`,
+			},
+			expected: []string{},
+		},
+		{
 			name: "invalid content",
 			files: map[string]string{
 				"/etc/yum.repos.d/rhel.repo": `invalid content`,

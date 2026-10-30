@@ -5,28 +5,29 @@ package cmd
 
 import (
 	"context"
+	stderrors "errors"
 	"os"
 
 	"github.com/cockroachdb/errors"
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"go.mondoo.com/mql/v13/cli/config"
-	"go.mondoo.com/mql/v13/cli/printer"
-	"go.mondoo.com/mql/v13/cli/reporter"
-	"go.mondoo.com/mql/v13/cli/shell"
-	"go.mondoo.com/mql/v13/discovery"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/mqlc"
-	"go.mondoo.com/mql/v13/mqlc/parser"
-	"go.mondoo.com/mql/v13/providers"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/recording"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/shared"
-	run "go.mondoo.com/mql/v13/shared/proto"
-	"go.mondoo.com/mql/v13/utils/iox"
+	"go.mondoo.com/mql/cli/config"
+	"go.mondoo.com/mql/cli/printer"
+	"go.mondoo.com/mql/cli/reporter"
+	"go.mondoo.com/mql/cli/shell"
+	"go.mondoo.com/mql/discovery"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/mqlc"
+	"go.mondoo.com/mql/mqlc/parser"
+	"go.mondoo.com/mql/providers"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/recording"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/shared"
+	run "go.mondoo.com/mql/shared/proto"
+	"go.mondoo.com/mql/utils/iox"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -77,7 +78,9 @@ func (c *mqlPlugin) RunQuery(conf *run.RunQueryConfig, runtime *providers.Runtim
 	}
 
 	if conf.DoAst {
-		b, err := mqlc.Compile(conf.Command, nil, mqlc.NewConfig(runtime.Schema(), conf.Features))
+		compilerConf := mqlc.NewConfigFrom(runtime, conf.Features)
+		compilerConf.Strict = conf.Strict
+		b, err := mqlc.Compile(conf.Command, nil, compilerConf)
 		if err != nil {
 			return errors.Wrap(err, "failed to compile command")
 		}
@@ -92,8 +95,10 @@ func (c *mqlPlugin) RunQuery(conf *run.RunQueryConfig, runtime *providers.Runtim
 			return errors.Wrap(err, "failed to parse command")
 		}
 
-		conf := mqlc.NewConfig(runtime.Schema(), conf.Features)
-		conf.EnableStats()
+		compilerConf := mqlc.NewConfigFrom(runtime, conf.Features)
+		compilerConf.Strict = conf.Strict
+		compilerConf.EnableStats()
+		conf := compilerConf
 		_, err = mqlc.CompileAST(ast, nil, conf)
 		if err != nil {
 			return errors.Wrap(err, "failed to compile command")
@@ -140,6 +145,9 @@ func (c *mqlPlugin) RunQuery(conf *run.RunQueryConfig, runtime *providers.Runtim
 	// Recursively connect all discovered assets depth-first
 	connectAll(explorer, explorer.Discovered())
 	allAssets := explorer.Connected()
+	if err := noUsableAssetsError(len(allAssets), explorer.Errors()); err != nil {
+		return err
+	}
 
 	if conf.Format == "json" {
 		_ = out.WriteString("[")
@@ -149,6 +157,10 @@ func (c *mqlPlugin) RunQuery(conf *run.RunQueryConfig, runtime *providers.Runtim
 	// if the flag `exit-1-on-failure` is provided and anyResultFailed is true, we
 	// will exit the program with the exit code `1`
 	anyResultFailed := false
+	// Assets the query does not apply to. Counted rather than ignored: a run
+	// where every asset was skipped produced no answers, and saying nothing
+	// would let that read as a clean pass.
+	skipped := 0
 	// we defer this check since we want it to be the last thing to be evaluated
 	defer func() {
 		if conf.GetExit_1OnFailure() && anyResultFailed {
@@ -175,7 +187,12 @@ func (c *mqlPlugin) RunQuery(conf *run.RunQueryConfig, runtime *providers.Runtim
 		shellOptions := []shell.Option{}
 		shellOptions = append(shellOptions, shell.WithOnClose(onCloseHandler))
 		shellOptions = append(shellOptions, shell.WithFeatures(conf.Features))
+		shellOptions = append(shellOptions, shell.WithStrict(conf.Strict))
 		shellOptions = append(shellOptions, shell.WithOutput(out))
+		// `run` is meant for non-interactive/scripted use, so we don't cap the
+		// output like the interactive shell does. Users piping or processing the
+		// full result set should get everything.
+		shellOptions = append(shellOptions, shell.WithMaxLines(0))
 
 		if upstreamConfig != nil {
 			shellOptions = append(shellOptions, shell.WithUpstreamConfig(upstreamConfig))
@@ -209,6 +226,19 @@ func (c *mqlPlugin) RunQuery(conf *run.RunQueryConfig, runtime *providers.Runtim
 			code, results, err = sh.RunOnce(conf.Command)
 		}
 		if err != nil {
+			// A query that does not fit this asset's root is a statement about
+			// which assets it targets, not a failure (ADR 031). Over a mixed
+			// set - a k8s manifest yields a cluster, a namespace and a
+			// deployment, each rooted differently - aborting on the first
+			// mismatch would throw away every asset the query does apply to.
+			// Skip it, and say so, so a skipped asset is never mistaken for one
+			// that passed.
+			if stderrors.Is(err, mqlc.ErrRootMismatch) {
+				skipped++
+				log.Info().Str("asset", tracked.Asset.GetName()).Err(err).
+					Msg("skipping asset: this query does not apply to it")
+				continue
+			}
 			return errors.Wrap(err, "failed to run")
 		}
 
@@ -249,7 +279,38 @@ func (c *mqlPlugin) RunQuery(conf *run.RunQueryConfig, runtime *providers.Runtim
 		_ = out.WriteString("]")
 	}
 
+	if skipped == len(allAssets) && skipped > 0 {
+		return errors.Errorf("this query does not apply to any of the %d assets found", skipped)
+	}
+	if skipped > 0 {
+		log.Info().Int("skipped", skipped).Int("total", len(allAssets)).
+			Msg("some assets were skipped because the query does not apply to them")
+	}
+
 	return nil
+}
+
+// noUsableAssetsError reports the error to surface when not a single asset
+// could be queried. Both asset runtime creation and asset connection log their
+// failure and carry on, so that one unreachable asset does not abort a scan of
+// many. The cost is that a run where *every* asset failed still reaches the
+// query loop, finds nothing to iterate, and returns success. Anything
+// scripting mql then cannot distinguish "all assets passed" from "no asset was
+// ever scanned", so collapse that case into an error.
+func noUsableAssetsError(connected int, assetErrors []*discovery.AssetWithError) error {
+	if connected > 0 || len(assetErrors) == 0 {
+		return nil
+	}
+
+	first := assetErrors[0]
+	name := first.Asset.GetName()
+	if name == "" {
+		name = "<unnamed asset>"
+	}
+	if len(assetErrors) == 1 {
+		return errors.Wrapf(first.Err, "could not connect to asset %s", name)
+	}
+	return errors.Wrapf(first.Err, "could not connect to any of the %d assets, first failure on %s", len(assetErrors), name)
 }
 
 // connectAll recursively connects all discovered assets depth-first,
@@ -259,7 +320,7 @@ func connectAll(explorer *discovery.AssetExplorer, assets []*discovery.TrackedAs
 	for _, asset := range assets {
 		connected, err := explorer.Connect(asset)
 		if err != nil {
-			if !errors.Is(err, discovery.ErrDuplicateAsset) {
+			if !errors.Is(err, discovery.ErrDuplicateAsset) && !errors.Is(err, discovery.ErrNoMatch) {
 				log.Error().Err(err).Str("asset", asset.Asset.Name).Msg("failed to connect to asset")
 			}
 			continue

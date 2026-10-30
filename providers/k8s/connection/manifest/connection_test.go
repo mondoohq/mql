@@ -11,17 +11,17 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/providers"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/testutils"
-	k8s_conf "go.mondoo.com/mql/v13/providers/k8s/config"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/manifest"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared"
-	k8s_provider "go.mondoo.com/mql/v13/providers/k8s/provider"
-	"go.mondoo.com/mql/v13/providers/k8s/resources"
-	"go.mondoo.com/mql/v13/utils/syncx"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/providers"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/testutils"
+	k8s_conf "go.mondoo.com/mql/providers/k8s/config"
+	"go.mondoo.com/mql/providers/k8s/connection/manifest"
+	"go.mondoo.com/mql/providers/k8s/connection/shared"
+	k8s_provider "go.mondoo.com/mql/providers/k8s/provider"
+	"go.mondoo.com/mql/providers/k8s/resources"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 func K8s() *providers.Runtime {

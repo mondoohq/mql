@@ -9,11 +9,12 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	aci "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/containerinstance/armcontainerinstance/v2"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAzureSubscriptionContainerInstanceService) id() (string, error) {
@@ -57,9 +58,16 @@ func (a *mqlAzureSubscriptionContainerInstanceService) containerGroups() ([]any,
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			if isAzureNotConfigured(err) {
+				log.Warn().Err(err).Msg("could not list azure containerGroups, returning partial results")
+				return res, nil
+			}
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			mqlGroup, err := aciContainerGroupToMQL(a.MqlRuntime, entry)
 			if err != nil {
 				return nil, err
@@ -68,6 +76,103 @@ func (a *mqlAzureSubscriptionContainerInstanceService) containerGroups() ([]any,
 		}
 	}
 	return res, nil
+}
+
+// redactedImageRegistryCredentials copies the registry credentials with the
+// registry passwords removed.
+//
+// The password authenticates to the private registry the group pulls from, and
+// the audit signal it would serve is already carried by registryAuthUsesIdentity,
+// which is computed from the same records. The server, username and identity
+// are kept, so a check on which registry a group pulls from and whether it
+// authenticates with a managed identity reads as before.
+//
+// The copy is by field rather than by JSON key so that a field renamed in a
+// future SDK breaks the build instead of silently leaking again.
+func redactedImageRegistryCredentials(creds []*aci.ImageRegistryCredential) []*aci.ImageRegistryCredential {
+	if creds == nil {
+		return nil
+	}
+	out := make([]*aci.ImageRegistryCredential, 0, len(creds))
+	for _, cred := range creds {
+		if cred == nil {
+			out = append(out, nil)
+			continue
+		}
+		safe := *cred
+		safe.Password = nil
+		out = append(out, &safe)
+	}
+	return out
+}
+
+// redactedVolumes copies the group's volumes with the secret-volume contents
+// and the Azure File storage account key removed.
+//
+// A secret volume's map holds the base64 file contents mounted into the
+// containers, and the Azure File key grants access to the whole file share.
+// The file names are kept as the map's keys, with each value nulled, so a check
+// on which files a secret volume mounts still reads while their contents do
+// not. Everything else about a volume is kept, including the share name,
+// storage account name and read-only flag, and hasSecretVolume is computed from
+// the unredacted records.
+//
+// The copy is by field rather than by JSON key so that a field renamed in a
+// future SDK breaks the build instead of silently leaking again.
+func redactedVolumes(volumes []*aci.Volume) []*aci.Volume {
+	if volumes == nil {
+		return nil
+	}
+	out := make([]*aci.Volume, 0, len(volumes))
+	for _, v := range volumes {
+		if v == nil {
+			out = append(out, nil)
+			continue
+		}
+		safe := *v
+		if v.Secret != nil {
+			names := make(map[string]*string, len(v.Secret))
+			for name := range v.Secret {
+				names[name] = nil
+			}
+			safe.Secret = names
+		}
+		if v.AzureFile != nil {
+			file := *v.AzureFile
+			file.StorageAccountKey = nil
+			safe.AzureFile = &file
+		}
+		out = append(out, &safe)
+	}
+	return out
+}
+
+// redactedEnvironmentVariables copies a container's environment with the secure
+// values removed.
+//
+// SecureValue is the write-only half of an ACI environment variable, the one
+// callers use precisely because the value is a credential. The variable's name
+// is kept, so a check on which secure variables a container declares still
+// reads; only the value is dropped. Plain Value entries are not secure by
+// declaration and are kept as before.
+//
+// The copy is by field rather than by JSON key so that a field renamed in a
+// future SDK breaks the build instead of silently leaking again.
+func redactedEnvironmentVariables(env []*aci.EnvironmentVariable) []*aci.EnvironmentVariable {
+	if env == nil {
+		return nil
+	}
+	out := make([]*aci.EnvironmentVariable, 0, len(env))
+	for _, e := range env {
+		if e == nil {
+			out = append(out, nil)
+			continue
+		}
+		safe := *e
+		safe.SecureValue = nil
+		out = append(out, &safe)
+	}
+	return out
 }
 
 func aciContainerGroupToMQL(runtime *plugin.Runtime, entry *aci.ContainerGroup) (plugin.Resource, error) {
@@ -158,7 +263,7 @@ func aciContainerGroupToMQL(runtime *plugin.Runtime, entry *aci.ContainerGroup) 
 			dnsConfig = d
 		}
 		if len(props.ImageRegistryCredentials) > 0 {
-			d, err := convert.JsonToDictSlice(props.ImageRegistryCredentials)
+			d, err := convert.JsonToDictSlice(redactedImageRegistryCredentials(props.ImageRegistryCredentials))
 			if err != nil {
 				return nil, err
 			}
@@ -170,7 +275,7 @@ func aciContainerGroupToMQL(runtime *plugin.Runtime, entry *aci.ContainerGroup) 
 			}
 		}
 		if len(props.Volumes) > 0 {
-			d, err := convert.JsonToDictSlice(props.Volumes)
+			d, err := convert.JsonToDictSlice(redactedVolumes(props.Volumes))
 			if err != nil {
 				return nil, err
 			}
@@ -210,35 +315,41 @@ func aciContainerGroupToMQL(runtime *plugin.Runtime, entry *aci.ContainerGroup) 
 		}
 	}
 
-	mqlGroup, err := CreateResource(runtime, "azure.subscription.containerInstanceService.containerGroup",
-		map[string]*llx.RawData{
-			"id":                       llx.StringDataPtr(entry.ID),
-			"name":                     llx.StringDataPtr(entry.Name),
-			"location":                 llx.StringDataPtr(entry.Location),
-			"tags":                     llx.MapData(convert.PtrMapStrToInterface(entry.Tags), types.String),
-			"provisioningState":        llx.StringData(provisioningState),
-			"osType":                   llx.StringData(osType),
-			"restartPolicy":            llx.StringData(restartPolicy),
-			"sku":                      llx.StringData(sku),
-			"confidential":             llx.BoolData(confidential),
-			"ccePolicyHash":            llx.StringData(ccePolicyHash),
-			"identity":                 llx.DictData(identity),
-			"ipAddressType":            llx.StringData(ipAddressType),
-			"publicIp":                 llx.StringData(publicIp),
-			"fqdn":                     llx.StringData(fqdn),
-			"dnsNameLabelReusePolicy":  llx.StringData(dnsLabelScope),
-			"exposedPorts":             llx.ArrayData(exposedPorts, types.Dict),
-			"subnetIds":                llx.ArrayData(subnetIds, types.String),
-			"dnsConfig":                llx.DictData(dnsConfig),
-			"imageRegistryCredentials": llx.ArrayData(imageRegistry, types.Dict),
-			"registryAuthUsesIdentity": llx.BoolData(registryUsesIdentity),
-			"volumes":                  llx.ArrayData(volumes, types.Dict),
-			"hasSecretVolume":          llx.BoolData(hasSecretVolume),
-			"logAnalyticsWorkspaceId":  llx.StringData(logAnalyticsWorkspaceId),
-			"encryption":               llx.DictData(encryption),
-			"priority":                 llx.StringData(priority),
-			"zones":                    llx.ArrayData(zones, types.String),
-		})
+	groupArgs := map[string]*llx.RawData{
+		"id":                       llx.StringDataPtr(entry.ID),
+		"name":                     llx.StringDataPtr(entry.Name),
+		"location":                 llx.StringDataPtr(entry.Location),
+		"tags":                     llx.MapData(convert.PtrMapStrToInterface(entry.Tags), types.String),
+		"provisioningState":        llx.StringData(provisioningState),
+		"osType":                   llx.StringData(osType),
+		"restartPolicy":            llx.StringData(restartPolicy),
+		"sku":                      llx.StringData(sku),
+		"confidential":             llx.BoolData(confidential),
+		"ccePolicyHash":            llx.StringData(ccePolicyHash),
+		"identity":                 llx.DictData(identity),
+		"ipAddressType":            llx.StringData(ipAddressType),
+		"publicIp":                 llx.StringData(publicIp),
+		"fqdn":                     llx.StringData(fqdn),
+		"dnsNameLabelReusePolicy":  llx.StringData(dnsLabelScope),
+		"exposedPorts":             llx.ArrayData(exposedPorts, types.Dict),
+		"subnetIds":                llx.ArrayData(subnetIds, types.String),
+		"dnsConfig":                llx.DictData(dnsConfig),
+		"imageRegistryCredentials": llx.ArrayData(imageRegistry, types.Dict),
+		"registryAuthUsesIdentity": llx.BoolData(registryUsesIdentity),
+		"volumes":                  llx.ArrayData(volumes, types.Dict),
+		"hasSecretVolume":          llx.BoolData(hasSecretVolume),
+		"logAnalyticsWorkspaceId":  llx.StringData(logAnalyticsWorkspaceId),
+		"encryption":               llx.DictData(encryption),
+		"priority":                 llx.StringData(priority),
+		"zones":                    llx.ArrayData(zones, types.String),
+	}
+	groupIdentity := orZero(entry.Identity)
+	if err := setResourceIdentity(runtime, groupArgs, sortedUserAssignedIdentityIDs(groupIdentity.UserAssignedIdentities),
+		identityType(groupIdentity.Type), identityPrincipalId(groupIdentity.PrincipalID), identityTenantId(groupIdentity.TenantID)); err != nil {
+		return nil, err
+	}
+
+	mqlGroup, err := CreateResource(runtime, "azure.subscription.containerInstanceService.containerGroup", groupArgs)
 	if err != nil {
 		return nil, err
 	}
@@ -257,6 +368,9 @@ func aciContainerGroupToMQL(runtime *plugin.Runtime, entry *aci.ContainerGroup) 
 	groupRes.InitContainers = plugin.TValue[[]any]{Data: initContainers, State: plugin.StateIsSet}
 
 	return groupRes, nil
+}
+
+type mqlAzureSubscriptionContainerInstanceServiceContainerGroupInternal struct {
 }
 
 func aciContainersToMQL(runtime *plugin.Runtime, parentId string, specs []*aci.Container, segment string) ([]any, error) {
@@ -296,7 +410,7 @@ func aciContainersToMQL(runtime *plugin.Runtime, parentId string, specs []*aci.C
 
 		env := []any{}
 		if len(c.Properties.EnvironmentVariables) > 0 {
-			d, err := convert.JsonToDictSlice(c.Properties.EnvironmentVariables)
+			d, err := convert.JsonToDictSlice(redactedEnvironmentVariables(c.Properties.EnvironmentVariables))
 			if err != nil {
 				return nil, err
 			}
@@ -337,18 +451,12 @@ func aciContainersToMQL(runtime *plugin.Runtime, parentId string, specs []*aci.C
 			}
 			readiness = d
 		}
-		secCtx := map[string]any{}
 		var privileged, allowPrivilegeEscalation *bool
 		var runAsUser, runAsGroup *int64
 		var seccompProfile *string
 		addedCapabilities := []any{}
 		droppedCapabilities := []any{}
 		if sc := c.Properties.SecurityContext; sc != nil {
-			d, err := convert.JsonToDict(sc)
-			if err != nil {
-				return nil, err
-			}
-			secCtx = d
 			privileged = sc.Privileged
 			allowPrivilegeEscalation = sc.AllowPrivilegeEscalation
 			seccompProfile = sc.SeccompProfile
@@ -402,7 +510,6 @@ func aciContainersToMQL(runtime *plugin.Runtime, parentId string, specs []*aci.C
 				"volumeMounts":             llx.ArrayData(mounts, types.Dict),
 				"livenessProbe":            llx.DictData(liveness),
 				"readinessProbe":           llx.DictData(readiness),
-				"securityContext":          llx.DictData(secCtx),
 				"privileged":               llx.BoolDataPtr(privileged),
 				"allowPrivilegeEscalation": llx.BoolDataPtr(allowPrivilegeEscalation),
 				"runAsUser":                llx.IntDataPtr(runAsUser),

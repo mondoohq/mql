@@ -8,7 +8,7 @@ package mql.fex.v1;
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
-option go_package = "go.mondoo.com/mql/v13/providers-sdk/v1/upstream/fex";
+option go_package = "go.mondoo.com/mql/providers-sdk/v1/upstream/fex";
 
 // The enum value names and field names below intentionally mirror the
 // server-internal etl schema byte-for-byte so the proto-JSON upload contract
@@ -44,6 +44,23 @@ message FindingsUploadRequest {
   string space_mrn = 4;
   bool create_assets = 5;
   google.protobuf.Timestamp import_started_at = 6;
+  // The finding kinds this upload is complete for. With import_started_at set
+  // (a full pull), the platform closes findings by absence only for the kinds
+  // listed: FINDING closes stale FEX findings, VULNERABILITY closes stale VEX.
+  // Empty means every kind. A producer that sends each kind as its own upload
+  // under one source lists only that kind, so one upload does not close the
+  // other's findings. Fields 7 and 8 are used by the platform's copy of this
+  // message.
+  repeated FindingKind complete_kinds = 9;
+}
+
+// FindingKind is a kind of document a FindingsUploadRequest carries.
+enum FindingKind {
+  FINDING_KIND_UNSPECIFIED = 0;
+  // FindingExchange (FEX) documents.
+  FINDING_KIND_FINDING = 1;
+  // VulnerabilityExchange (VEX) documents.
+  FINDING_KIND_VULNERABILITY = 2;
 }
 
 // VulnerabilityExchange are used for sharing information about vulnerabilities
@@ -177,7 +194,29 @@ message Component {
   // Experimental. Component details based on type
   oneof details {
     FileComponent file = 21;
+    CloudResource cloud_resource = 22;
   }
+}
+
+// CloudResource describes a cloud resource a finding is about — the native
+// object of a cloud provider (an AWS/Azure/GCP resource), captured as
+// structured detail beyond the component's bare id. All fields are optional.
+message CloudResource {
+  // Cloud provider, e.g. "aws", "azure", "gcp".
+  string provider = 1;
+  // Native resource id — an ARN or a provider full resource name.
+  string id = 2;
+  // Resource type, e.g. "AwsS3Bucket".
+  string type = 3;
+  // Region the resource resides in.
+  string region = 4;
+  // Owning account, subscription, or project.
+  string account = 5;
+  // Provider partition/cloud, e.g. an AWS partition
+  // "aws" / "aws-us-gov" / "aws-cn".
+  string partition = 6;
+  // Resource tags / labels.
+  map<string, string> tags = 7;
 }
 
 // Experimental. File-specific component details
@@ -193,6 +232,19 @@ message FileComponent {
 
   // File size in bytes
   int64 size = 4;
+
+  // Optional. 1-based line where the finding starts (0 = unset). SAST/SARIF
+  // tools report the code location here.
+  int32 start_line = 5;
+
+  // Optional. 1-based line where the finding ends (0 = unset).
+  int32 end_line = 6;
+
+  // Optional. 1-based column where the finding starts (0 = unset).
+  int32 start_column = 7;
+
+  // Optional. 1-based column where the finding ends (0 = unset).
+  int32 end_column = 8;
 }
 
 // Rating is used to provide a score for the vulnerability.
@@ -311,6 +363,13 @@ message FindingExchange {
 
   // Optional. Available remediation options
   repeated Remediation remediations = 21;
+
+  // Optional. Findings this finding is made of, in the way a GitHub issue has
+  // sub-issues: each is a complete FindingExchange with its own id, evidence,
+  // status and severity. A code scanner reports one finding per rule whose
+  // sub-findings are its matches. Only a depth of 1 is supported for now: a
+  // sub-finding does not carry sub-findings of its own.
+  repeated FindingExchange sub_findings = 22;
 }
 
 // Core information about the finding
@@ -323,6 +382,7 @@ message FindingDetail {
     CATEGORY_THREAT = 4;
     CATEGORY_MALWARE = 5;
     CATEGORY_INFORMATIONAL = 6;
+    CATEGORY_SECRET = 7;
   }
 
   // Category of the finding
@@ -363,9 +423,41 @@ message Evidence {
     Kubernetes kubernetes = 24;
     RegistryKey registry_key = 25;
     Connection connection = 26;
+    HttpRequest http_request = 27;
+    DnsRecord dns_record = 28;
+    Certificate certificate = 29;
+    DomainRegistration domain_registration = 30;
+    NetworkRange network_range = 31;
+    ThreatIntelIndicator threat_intel_indicator = 32;
+    Malware malware = 33;
+    AiModel ai_model = 34;
+    AiAgent ai_agent = 35;
   }
   // Additional properties specific to this evidence
   map<string, string> properties = 4;
+
+  // Optional. Version-control provenance for this evidence: the commit (and
+  // its author) that introduced the evidenced content. Set by a history-aware
+  // or blame-based scan; absent when no VCS attribution is available.
+  SourceVersion source_version = 5;
+}
+
+// Experimental. Version-control provenance for a piece of evidence — the commit
+// that introduced the evidenced content and who authored it. For a secret
+// finding, this is the commit that first added the matched line, so the finding
+// can name the introducing commit and author, not just the file and line.
+message SourceVersion {
+  // Commit identifier that introduced the evidenced content (e.g. a full git
+  // commit SHA).
+  string commit = 1;
+  // Name of the commit author.
+  string author = 2;
+  // Email of the commit author. Consumers decide any display/redaction policy.
+  string email = 3;
+  // Author date of the commit.
+  google.protobuf.Timestamp date = 4;
+  // Optional. Deep link to the commit (e.g. a GitHub commit URL).
+  string url = 5;
 }
 
 // Experimental. File information
@@ -378,6 +470,13 @@ message File {
   string md5 = 3;
   // SHA256 hash of file
   string sha256 = 4;
+  // Optional. Human-readable label or identifier for this file evidence,
+  // used when a finding carries several file evidences, or when a UI needs
+  // a title for the document rather than a raw path.
+  string label = 5;
+  // Optional. MIME / content type of the file (e.g. "application/json"), so
+  // consumers can interpret or render `contents` correctly.
+  string mime_type = 6;
   // Optional. File content.
   string contents = 20;
 }
@@ -460,7 +559,7 @@ message RegistryKey {
 message Connection {
   // Protocol defines the protocol used in the connection. Decimals are
   // equivalent to the protocol numbers assigned by IANA. See
-  // https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
+  // https://www.iana.org/assignments/protocol-numbers
   enum ConnectionProtocol {
     // Unspecified protocol, does not correspond to any real protocol.
     UNSPECIFIED = 0;
@@ -482,6 +581,178 @@ message Connection {
   int32 source_port = 4;
   // Protocol used in the connection
   ConnectionProtocol protocol = 5;
+  // Optional. The matched banner or service string that confirms the finding,
+  // e.g. a TCP service banner or an nmap NSE script hit. The Connection
+  // analogue of HttpRequest.evidence, for non-web probes.
+  string evidence = 6;
+}
+
+// HttpRequest captures the web request that triggered a finding. It is the
+// first-class evidence for DAST scanners (e.g. OWASP ZAP, Burp Suite), which
+// otherwise have to stash this context in the generic properties map.
+message HttpRequest {
+  // The HTTP method, e.g. GET or POST.
+  string method = 1;
+  // The full request URL.
+  string url = 2;
+  // The request parameter that was tested, if any.
+  string param = 3;
+  // The attack payload sent, if any.
+  string attack = 4;
+  // The evidence matched in the response that confirms the finding.
+  string evidence = 5;
+  // Optional. The full raw HTTP request.
+  string request = 6;
+  // Optional. The full raw HTTP response.
+  string response = 7;
+}
+
+// DnsRecord captures a DNS resolution that triggered a finding — subdomain
+// enumeration, a dangling or misconfigured CNAME, or a reverse (PTR) lookup.
+// It is the first-class evidence for DNS and network scanners, which
+// otherwise stash the resolution in the generic properties map.
+message DnsRecord {
+  // The queried name, e.g. "app.example.com".
+  string name = 1;
+  // The record type, e.g. A, AAAA, CNAME, MX, TXT, NS, PTR. Free-form string,
+  // not an enum: the IANA record-type registry is large and evolving (HTTPS,
+  // SVCB, TLSA, CAA, ...) and scanners surface arbitrary types, so an enum
+  // would lock the set and need coordination to extend.
+  string type = 2;
+  // The resolved values (IP addresses, CNAME target, name servers, ...).
+  repeated string values = 3;
+  // Optional. Record time-to-live in seconds. Unsigned: TTL is a 31-bit
+  // unsigned quantity (RFC 2181 §8), so negative values are not meaningful.
+  uint32 ttl = 4;
+}
+
+// Certificate captures the TLS certificate or handshake that triggered a
+// finding — a weak protocol/cipher, or an expired, self-signed, or misissued
+// certificate.
+message Certificate {
+  // Certificate subject distinguished name.
+  string subject = 1;
+  // Certificate issuer distinguished name.
+  string issuer = 2;
+  // Certificate serial number.
+  string serial = 3;
+  // SHA-256 fingerprint of the certificate.
+  string fingerprint = 4;
+  // Subject alternative names.
+  repeated string sans = 5;
+  // Start of the certificate validity window.
+  google.protobuf.Timestamp not_before = 6;
+  // End of the certificate validity window.
+  google.protobuf.Timestamp not_after = 7;
+  // Optional. Negotiated TLS protocol version, e.g. "TLS 1.0".
+  string protocol_version = 8;
+  // Optional. Negotiated cipher suite.
+  string cipher_suite = 9;
+}
+
+// DomainRegistration captures WHOIS/RDAP registration data that triggered a
+// finding — an imminent expiry, a missing transfer lock, or a suspect
+// registrar.
+message DomainRegistration {
+  // The registered domain.
+  string domain = 1;
+  // The sponsoring registrar.
+  string registrar = 2;
+  // When the registration was created.
+  google.protobuf.Timestamp created_at = 3;
+  // When the registration was last updated.
+  google.protobuf.Timestamp updated_at = 4;
+  // When the registration expires.
+  google.protobuf.Timestamp expires_at = 5;
+  // Authoritative name servers.
+  repeated string name_servers = 6;
+  // EPP status codes, e.g. "clientTransferProhibited".
+  repeated string statuses = 7;
+}
+
+// NetworkRange captures an IP address block that triggered a finding — an
+// announced BGP prefix or an owned/discovered CIDR from ASN mapping.
+message NetworkRange {
+  // The address block in CIDR notation, e.g. "203.0.113.0/24".
+  string cidr = 1;
+  // Optional. Origin autonomous system number. Unsigned 32-bit: 4-byte ASNs
+  // (RFC 6793) range up to 4,294,967,295, which overflows a signed int32.
+  uint32 asn = 2;
+  // Optional. Autonomous system or organization name.
+  string as_name = 3;
+  // Optional. Two-letter ISO country code.
+  string country = 4;
+  // Optional. City name of the geolocation, e.g. "Council Bluffs".
+  string city = 5;
+  // Optional. Latitude of the geolocation, in decimal degrees.
+  double latitude = 6;
+  // Optional. Longitude of the geolocation, in decimal degrees.
+  double longitude = 7;
+}
+
+// ThreatIntelIndicator captures an artifact — an IP, domain, URL, or file hash
+// — that was observed and matched against threat intelligence, indicating
+// malicious or suspicious activity. It is the first-class evidence for threat
+// findings (e.g. a host talking to a known command-and-control address).
+message ThreatIntelIndicator {
+  // The indicator kind, e.g. "ipv4", "ipv6", "domain", "url", "sha256", "md5".
+  // Free-form: the set of indicator kinds is open and evolving.
+  string type = 1;
+  // The indicator value itself — the address, domain, url, or hash.
+  string value = 2;
+  // Optional. The threat category, e.g. "malware", "command-and-control",
+  // "phishing", "tor-exit-node".
+  string category = 3;
+  // Optional. The threat-intelligence source that matched the indicator.
+  string source = 4;
+  // Optional. A URL for more detail on the indicator from its source.
+  string source_url = 5;
+  // Optional. When the indicator was last observed.
+  google.protobuf.Timestamp last_observed_at = 6;
+}
+
+// Malware captures a malicious-software artifact identified for a finding — a
+// detected trojan, ransomware, rootkit, or cryptominer.
+message Malware {
+  // Name of the malware, e.g. "Pony", "WannaCry".
+  string name = 1;
+  // Optional. Type of the malware, e.g. "trojan", "ransomware", "rootkit",
+  // "cryptominer". Free-form: malware taxonomies vary across sources.
+  string type = 2;
+  // Optional. Filesystem path of the malicious artifact.
+  string path = 3;
+  // Optional. Observed state of the malware, e.g. "observed", "removed".
+  string state = 4;
+}
+
+// AiModel captures the AI/ML model involved in a finding — for findings about a
+// model's deployment, configuration, or use.
+message AiModel {
+  // Name of the model, e.g. "gpt-4o", "llama-3".
+  string name = 1;
+  // Optional. Model family or type, e.g. "llm", "vision", "embedding".
+  string type = 2;
+  // Optional. Model version.
+  string version = 3;
+  // Optional. Provider or publisher, e.g. "openai", "meta", "google".
+  string publisher = 4;
+  // Optional. Where the model is deployed, e.g. a serving endpoint or resource
+  // identifier.
+  string deployment = 5;
+}
+
+// AiAgent captures the AI agent implicated in or that flagged a finding —
+// evidence for the emerging class of agent-driven and agent-security findings.
+message AiAgent {
+  // Stable identifier for the agent.
+  string id = 1;
+  // Human-readable name of the agent.
+  string name = 2;
+  // Optional. The underlying model the agent runs on.
+  string model = 3;
+  // Optional. The conversational/session identifier in which the finding
+  // occurred.
+  string session_id = 4;
 }
 
 // AttackTactic is used to identify the tactic used in an attack.

@@ -6,7 +6,6 @@ package resources
 import (
 	"testing"
 
-	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,6 +18,26 @@ func TestConvertLogConfiguration(t *testing.T) {
 		assert.Nil(t, result)
 	})
 
+	t.Run("archiving is carried through", func(t *testing.T) {
+		// Archiving is the third field on the SDK's Configuration and was
+		// dropped entirely, so log-archiving state read as "not configured"
+		// on every log in the tenancy.
+		enabled := true
+		result, err := convertLogConfiguration(&logging.Configuration{
+			Archiving: &logging.Archiving{IsEnabled: &enabled},
+		})
+		require.NoError(t, err)
+		archiving, ok := result["archiving"].(map[string]any)
+		require.True(t, ok, "archiving key must be present")
+		assert.Equal(t, true, archiving["isEnabled"])
+	})
+
+	t.Run("absent archiving omits the key", func(t *testing.T) {
+		result, err := convertLogConfiguration(&logging.Configuration{})
+		require.NoError(t, err)
+		assert.NotContains(t, result, "archiving")
+	})
+
 	t.Run("empty config returns empty map", func(t *testing.T) {
 		cfg := &logging.Configuration{}
 		result, err := convertLogConfiguration(cfg)
@@ -29,7 +48,7 @@ func TestConvertLogConfiguration(t *testing.T) {
 
 	t.Run("config with compartment ID", func(t *testing.T) {
 		cfg := &logging.Configuration{
-			CompartmentId: common.String("ocid1.compartment.oc1..example"),
+			CompartmentId: new("ocid1.compartment.oc1..example"),
 		}
 		result, err := convertLogConfiguration(cfg)
 		require.NoError(t, err)
@@ -39,14 +58,14 @@ func TestConvertLogConfiguration(t *testing.T) {
 	t.Run("config with source", func(t *testing.T) {
 		cfg := &logging.Configuration{
 			Source: &logging.OciService{
-				Service:  common.String("flowlogs"),
-				Resource: common.String("ocid1.subnet.oc1..example"),
-				Category: common.String("all"),
+				Service:  new("flowlogs"),
+				Resource: new("ocid1.subnet.oc1..example"),
+				Category: new("all"),
 			},
 		}
 		result, err := convertLogConfiguration(cfg)
 		require.NoError(t, err)
-		source, ok := result["source"].(map[string]interface{})
+		source, ok := result["source"].(map[string]any)
 		require.True(t, ok, "source should be a map")
 		assert.Equal(t, "flowlogs", source["service"])
 		assert.Equal(t, "ocid1.subnet.oc1..example", source["resource"])
@@ -55,11 +74,11 @@ func TestConvertLogConfiguration(t *testing.T) {
 
 	t.Run("config with all fields", func(t *testing.T) {
 		cfg := &logging.Configuration{
-			CompartmentId: common.String("ocid1.compartment.oc1..example"),
+			CompartmentId: new("ocid1.compartment.oc1..example"),
 			Source: &logging.OciService{
-				Service:  common.String("objectstorage"),
-				Resource: common.String("ocid1.bucket.oc1..example"),
-				Category: common.String("write"),
+				Service:  new("objectstorage"),
+				Resource: new("ocid1.bucket.oc1..example"),
+				Category: new("write"),
 			},
 		}
 		result, err := convertLogConfiguration(cfg)
@@ -94,9 +113,9 @@ func TestExtractLogSource(t *testing.T) {
 			name: "OciService flow log",
 			cfg: &logging.Configuration{
 				Source: logging.OciService{
-					Service:  common.String("flowlogs"),
-					Resource: common.String("ocid1.subnet.oc1..example"),
-					Category: common.String("all"),
+					Service:  new("flowlogs"),
+					Resource: new("ocid1.subnet.oc1..example"),
+					Category: new("all"),
 				},
 			},
 			wantCategory: "all",
@@ -107,7 +126,7 @@ func TestExtractLogSource(t *testing.T) {
 			name: "OciService with only service set",
 			cfg: &logging.Configuration{
 				Source: logging.OciService{
-					Service: common.String("objectstorage"),
+					Service: new("objectstorage"),
 				},
 			},
 			wantService: "objectstorage",

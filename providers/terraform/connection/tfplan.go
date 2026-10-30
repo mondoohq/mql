@@ -8,8 +8,8 @@ import (
 	"os"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 type Plan struct {
@@ -18,7 +18,7 @@ type Plan struct {
 
 	PriorState         json.RawMessage    `json:"prior_state,omitempty"`
 	Configuration      json.RawMessage    `json:"configuration,omitempty"`
-	PlannedValues      plannedStateValues `json:"planned_values,omitempty"`
+	PlannedValues      plannedStateValues `json:"planned_values"`
 	Variables          Variables          `json:"variables,omitempty"`
 	ResourceChanges    []ResourceChange   `json:"resource_changes,omitempty"`
 	ResourceDrift      []ResourceChange   `json:"resource_drift,omitempty"`
@@ -30,7 +30,7 @@ type Plan struct {
 
 type plannedStateValues struct {
 	Outputs    map[string]output `json:"outputs,omitempty"`
-	RootModule module            `json:"root_module,omitempty"`
+	RootModule module            `json:"root_module"`
 }
 
 type output struct {
@@ -127,7 +127,7 @@ type ResourceChange struct {
 	Deposed string `json:"deposed,omitempty"`
 
 	// Change describes the change that will be made to this object
-	Change change `json:"change,omitempty"`
+	Change change `json:"change"`
 
 	// ActionReason is a keyword representing some optional extra context
 	// for why the actions in Change.Actions were chosen.
@@ -211,6 +211,11 @@ func NewPlanConnection(id uint32, asset *inventory.Asset) (*Connection, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Reject encrypted and binary plan files up front, so they cannot scan as a
+	// plan holding zero resource changes.
+	if err := validatePlanDocument(data); err != nil {
+		return nil, err
+	}
 	err = json.Unmarshal(data, &tfPlan)
 	if err != nil {
 		return nil, err
@@ -222,5 +227,8 @@ func NewPlanConnection(id uint32, asset *inventory.Asset) (*Connection, error) {
 		assetType:  assetType,
 
 		plan: &tfPlan,
+		// As with state files, the plan JSON carries no marker distinguishing
+		// the two tools, so the dialect comes from the connector invoked.
+		dialect: ParseDialect(cc.Options[OptionDialect]),
 	}, nil
 }

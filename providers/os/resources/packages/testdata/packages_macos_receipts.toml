@@ -1,0 +1,138 @@
+[commands."for b in /var/db/receipts/*.bom /Library/Apple/System/Library/Receipts/*.bom; do printf '#%s\\n' \"$b\"; lsbom -s -d \"$b\" 2>/dev/null | grep -i '\\.app$'; done"]
+stdout = """#/var/db/receipts/com.apple.pkg.Keynote14.bom
+./Applications/Keynote.app
+#/var/db/receipts/com.apple.pkg.Keynote15.bom
+./Applications/Keynote.app
+#/var/db/receipts/com.bitwarden.desktop.bom
+./Bitwarden.app
+./Bitwarden.app/Contents/Frameworks/Bitwarden Helper (GPU).app
+#/var/db/receipts/com.fiplab.owly.bom
+./Owly.app
+#/var/db/receipts/com.tinyspeck.slackmacgap.bom
+./Applications/Slack.app
+#/var/db/receipts/io.kandji.Kandji.bom
+./Applications/Iru Self Service.app
+#/var/db/receipts/missing.plist.bom
+./Applications/Orphan.app
+#/Library/Apple/System/Library/Receipts/com.apple.pkg.XProtectPayloads_10_15.16U4449.bom
+./Library/Apple/System/Library/CoreServices/XProtect.app
+"""
+
+[files."/var/db/receipts/com.apple.pkg.Keynote14.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>InstallDate</key>
+	<date>2025-10-30T21:46:03Z</date>
+	<key>InstallPrefixPath</key>
+	<string>/</string>
+	<key>PackageIdentifier</key>
+	<string>com.apple.pkg.Keynote14</string>
+	<key>PackageVersion</key>
+	<string>14.4</string>
+</dict>
+</plist>
+"""
+
+[files."/var/db/receipts/com.apple.pkg.Keynote15.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>InstallDate</key>
+	<date>2026-08-17T15:59:39Z</date>
+	<key>InstallPrefixPath</key>
+	<string>/</string>
+	<key>PackageIdentifier</key>
+	<string>com.apple.pkg.Keynote15</string>
+	<key>PackageVersion</key>
+	<string>15.3.1.1.1785016684</string>
+</dict>
+</plist>
+"""
+
+[files."/var/db/receipts/com.bitwarden.desktop.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>InstallDate</key>
+	<date>2026-09-19T04:30:45Z</date>
+	<key>InstallPrefixPath</key>
+	<string>Applications</string>
+	<key>PackageIdentifier</key>
+	<string>com.bitwarden.desktop</string>
+	<key>PackageVersion</key>
+	<string>2026.9.0</string>
+</dict>
+</plist>
+"""
+
+[files."/var/db/receipts/com.fiplab.owly.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>InstallDate</key>
+	<date>2025-10-30T21:49:22Z</date>
+	<key>InstallPrefixPath</key>
+	<string>Applications</string>
+	<key>PackageIdentifier</key>
+	<string>com.fiplab.owly</string>
+	<key>PackageVersion</key>
+	<string>2.4.0</string>
+</dict>
+</plist>
+"""
+
+[files."/var/db/receipts/com.tinyspeck.slackmacgap.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>InstallDate</key>
+	<date>2026-09-23T13:52:17Z</date>
+	<key>InstallPrefixPath</key>
+	<string>/</string>
+	<key>PackageIdentifier</key>
+	<string>com.tinyspeck.slackmacgap</string>
+	<key>PackageVersion</key>
+	<string>4.52.162</string>
+</dict>
+</plist>
+"""
+
+[files."/var/db/receipts/io.kandji.Kandji.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>InstallDate</key>
+	<date>2026-09-23T16:22:33Z</date>
+	<key>InstallPrefixPath</key>
+	<string>/</string>
+	<key>PackageIdentifier</key>
+	<string>io.kandji.Kandji</string>
+	<key>PackageVersion</key>
+	<string>0</string>
+</dict>
+</plist>
+"""
+
+[files."/Library/Apple/System/Library/Receipts/com.apple.pkg.XProtectPayloads_10_15.16U4449.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>InstallDate</key>
+	<date>2026-09-22T13:54:53Z</date>
+	<key>InstallPrefixPath</key>
+	<string>/</string>
+	<key>PackageIdentifier</key>
+	<string>com.apple.pkg.XProtectPayloads_10_15.16U4449</string>
+	<key>PackageVersion</key>
+	<string>163.1789010093</string>
+</dict>
+</plist>
+"""

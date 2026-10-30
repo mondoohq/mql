@@ -1,0 +1,58 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/iac"
+option go_package = "go.mondoo.com/mql/providers/iac/resources"
+option root = "iac"
+
+// Infrastructure as code project
+//
+// Tree of infrastructure-as-code files reached by this connection, and the
+// entry points found in it. Each detection names the tool that claimed the
+// entry point, the directory or file it was found at, the files that matched,
+// and the asset the tool made of it. Use it to see what a scan of a repository
+// produces before drilling into any one tool.
+iac @maturity("experimental") @root {
+  // Where the tree was read from
+  source() iac.source
+  // Entry points found in the tree
+  detections() []iac.detection
+}
+
+// Source of an infrastructure-as-code tree
+//
+// Coordinate the tree was read from, and the revision it was read at. A tree on
+// this machine reports a kind of `file` and an absolute path as its origin.
+private iac.source @maturity("experimental") {
+  // Kind of source, one of file, git, archive, container-image, ssh, or oci
+  kind string
+  // Coordinate of the source, such as an absolute path or a repository URL
+  origin string
+  // Revision of the source, such as a git ref or an image tag
+  ref string
+}
+
+// Infrastructure-as-code entry point
+//
+// One place in the tree that a tool accepted as its own, and the asset that was
+// made of it. The `tool` field is the name `--discover` takes, so
+// `iac.detections.where(tool == "terraform")` lists what one tool claimed, and
+// `iac.detections { tool path asset }` lists what a scan of this tree produces
+// with the same identity the scan reports. A tool that simply did not want a
+// candidate leaves nothing behind. See ADR 030 and ADR 031.
+iac.detection @maturity("experimental") {
+  // Tool the entry point belongs to, such as terraform or helm
+  tool string
+  // Path of the entry point, relative to the root of the tree
+  path string
+  // Files that matched
+  files []string
+  // Asset the tool made of this entry point
+  //
+  // Null when the tool reported an error instead of connecting.
+  asset() asset
+  // Error the tool reported for this entry point, empty when it connected
+  error string
+}

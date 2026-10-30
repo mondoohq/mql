@@ -5,7 +5,7 @@ package execruntime
 
 const CIRCLE = "circle"
 
-// see https://circleci.com/docs/env-vars/#built-in-environment-variables
+// see https://circleci.com/docs/guides/security/env-vars/
 var circleciEnv = &RuntimeEnv{
 	Id:        CIRCLE,
 	Name:      "CircleCI",

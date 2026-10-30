@@ -4,22 +4,38 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/huggingface/connection"
-	"go.mondoo.com/mql/v13/providers/huggingface/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/huggingface/connection"
+	"go.mondoo.com/mql/providers/huggingface/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "huggingface",
-	ID:              "go.mondoo.com/mql/providers/huggingface",
-	Version:         "13.1.6",
+	Name: "huggingface",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "huggingface",
+	ID:      "go.mondoo.com/mql/providers/huggingface",
+	Version: "14.0.7",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       connection.Platforms,
 	Connectors: []plugin.Connector{
 		{
-			Name:      "huggingface",
-			Use:       "huggingface",
-			Short:     "Hugging Face",
+			Name:  "huggingface",
+			Use:   "huggingface",
+			Short: "Hugging Face",
+			Long: `Use the huggingface provider to query models, datasets, and spaces on Hugging Face.
+
+Examples:
+  cnspec shell huggingface --token <API-TOKEN>
+  cnspec shell huggingface --namespace openai --namespace-type org
+  cnspec scan huggingface --namespace <USERNAME> --namespace-type user
+
+Notes:
+  If you set the HF_TOKEN environment variable, you can omit the token flag.
+`,
 			Discovery: []string{},
 			Flags: []plugin.Flag{
 				{

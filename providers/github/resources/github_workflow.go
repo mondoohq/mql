@@ -8,10 +8,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/google/go-github/v88/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/github/connection"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/github/connection"
 	"sigs.k8s.io/yaml"
 )
 
@@ -31,7 +32,9 @@ func (g *mqlGithubWorkflow) configuration() (any, error) {
 	}
 	file := fileTValue.Data
 	if file == nil {
-		return nil, errors.New("workflow file not found")
+		// The workflow file is not on the default branch; there is no
+		// configuration to parse.
+		return nil, nil
 	}
 
 	contentTValue := file.GetContent()
@@ -98,8 +101,12 @@ func (g *mqlGithubWorkflow) file() (*mqlGithubFile, error) {
 			Str("branch", defaultBranch).
 			Msg("failed to get workflow file contents")
 
+		// A workflow can be registered from a branch other than the default
+		// one, in which case the file is not there to read. Report that as a
+		// null file rather than failing the query.
 		if strings.Contains(err.Error(), "404") {
-			return nil, errors.New("file not found, got 404")
+			g.File.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
 		}
 		return nil, err
 	}

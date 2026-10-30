@@ -3,13 +3,14 @@
 package services_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
-	"go.mondoo.com/mql/v13/providers/os/resources/services"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/resources/services"
 )
 
 func TestManagerMacos(t *testing.T) {
@@ -27,23 +28,6 @@ func TestManagerMacos(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 15, len(serviceList))
-}
-
-func TestManagerFreebsd(t *testing.T) {
-	mock, err := mock.New(0, &inventory.Asset{
-		Platform: &inventory.Platform{
-			Name:   "freebsd",
-			Family: []string{"unix"},
-		},
-	}, mock.WithPath("./testdata/freebsd12.toml"))
-	require.NoError(t, err)
-
-	mm, err := services.ResolveManager(mock)
-	require.NoError(t, err)
-	serviceList, err := mm.List()
-	require.NoError(t, err)
-
-	assert.Equal(t, 25, len(serviceList))
 }
 
 func TestManagerDragonflybsd5(t *testing.T) {
@@ -364,6 +348,30 @@ func TestManagerCloudLinux(t *testing.T) {
 	assert.True(t, ok, "SystemDServiceManager used for CloudLinux")
 }
 
+// Alibaba Cloud Linux reports VERSION_ID 3, which the redhat branch read as a
+// RHEL major below 7 and handed to upstart: services came back empty on a
+// systemd host.
+func TestManagerAlibabaCloudLinux(t *testing.T) {
+	mock, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:    "alinux",
+			Version: "3",
+			Family:  []string{"redhat", "linux", "unix", "os"},
+		},
+	}, mock.WithData(&mock.TomlData{
+		Files: map[string]*mock.MockFileData{
+			"/sbin/init": {},
+		},
+	}))
+	require.NoError(t, err)
+
+	mm, err := services.ResolveManager(mock)
+	require.NoError(t, err)
+
+	_, ok := mm.(*services.SystemDServiceManager)
+	assert.True(t, ok, "SystemDServiceManager used for Alibaba Cloud Linux")
+}
+
 func TestManagerElementary(t *testing.T) {
 	mock, err := mock.New(0, &inventory.Asset{
 		Platform: &inventory.Platform{
@@ -385,25 +393,62 @@ func TestManagerElementary(t *testing.T) {
 	assert.True(t, ok, "SystemDServiceManager used for Elementary Linux")
 }
 
+// MX Linux installs both sysvinit and systemd and boots sysvinit unless
+// systemd is picked at the boot menu. Handing it to systemd regardless meant
+// a sysvinit host listed its services from unit files on disk, none of them
+// running. /run/systemd/system exists only while systemd is PID 1.
 func TestManagerMXLinux(t *testing.T) {
-	mock, err := mock.New(0, &inventory.Asset{
-		Platform: &inventory.Platform{
-			Name:    "mx",
-			Version: "23.2",
-			Family:  []string{"debian", "linux", "unix", "os"},
+	tests := []struct {
+		name     string
+		files    map[string]*mock.MockFileData
+		expected string
+	}{
+		{
+			name: "booted with sysvinit",
+			files: map[string]*mock.MockFileData{
+				"/sbin/init":                      {},
+				"/lib/systemd/systemd":            {},
+				"/lib/systemd/system/ssh.service": {},
+			},
+			expected: "SysV Service Manager",
 		},
-	}, mock.WithData(&mock.TomlData{
-		Files: map[string]*mock.MockFileData{
-			"/sbin/init": {},
+		{
+			// sd_booted(3) wants the directory, not just something at the path
+			name: "regular file at the systemd marker",
+			files: map[string]*mock.MockFileData{
+				"/sbin/init":           {},
+				"/lib/systemd/systemd": {},
+				"/run/systemd/system":  {},
+			},
+			expected: "SysV Service Manager",
 		},
-	}))
-	require.NoError(t, err)
+		{
+			name: "booted with systemd",
+			files: map[string]*mock.MockFileData{
+				"/sbin/init":           {},
+				"/lib/systemd/systemd": {},
+				"/run/systemd/system":  {StatData: mock.FileInfo{Mode: os.ModeDir | 0o755}},
+			},
+			expected: "systemd Service Manager",
+		},
+	}
 
-	mm, err := services.ResolveManager(mock)
-	require.NoError(t, err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			conn, err := mock.New(0, &inventory.Asset{
+				Platform: &inventory.Platform{
+					Name:    "mx",
+					Version: "23.2",
+					Family:  []string{"debian", "linux", "unix", "os"},
+				},
+			}, mock.WithData(&mock.TomlData{Files: test.files}))
+			require.NoError(t, err)
 
-	_, ok := mm.(*services.SystemDServiceManager)
-	assert.True(t, ok, "SystemDServiceManager used for MX Linux")
+			mm, err := services.ResolveManager(conn)
+			require.NoError(t, err)
+			assert.Equal(t, test.expected, mm.Name())
+		})
+	}
 }
 
 func TestManagerZorin(t *testing.T) {
@@ -467,4 +512,44 @@ func TestManagerNobara(t *testing.T) {
 
 	_, ok := mm.(*services.SystemDServiceManager)
 	assert.True(t, ok, "SystemDServiceManager used for Nobara Linux")
+}
+
+// Probing only /sbin/init put every systemd distro that ships no init binary on
+// the noop manager, which answers with an empty service list instead of saying
+// it could not look. Debian, Ubuntu, Fedora, openSUSE and Amazon Linux images
+// all carry systemd unit files without /sbin/init, and AlmaLinux ships
+// /sbin/init as a symlink to a systemd binary that is not in the image.
+func TestResolveManagerFindsSystemdWithoutSbinInit(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:    "debian",
+			Version: "12",
+			Family:  []string{"debian", "linux", "unix", "os"},
+		},
+	}, mock.WithPath("./testdata/systemd-units-no-sbin-init.toml"))
+	require.NoError(t, err)
+
+	osm, err := services.ResolveManager(mockConn)
+	require.NoError(t, err)
+	assert.NotEqual(t, "none", osm.Name(),
+		"a target carrying systemd unit files has a service manager to read")
+}
+
+// Debian testing and sid carry "<codename>/sid" as their version, which is
+// not a number: services and service() errored "unknown debian version".
+func TestManagerDebianSid(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:    "debian",
+			Version: "forky/sid",
+			Family:  []string{"debian", "linux", "unix", "os"},
+		},
+	}, mock.WithData(&mock.TomlData{Files: map[string]*mock.MockFileData{
+		"/lib/systemd/systemd": {Content: ""},
+	}}))
+	require.NoError(t, err)
+
+	mm, err := services.ResolveManager(conn)
+	require.NoError(t, err)
+	assert.Equal(t, "systemd Service Manager", mm.Name())
 }

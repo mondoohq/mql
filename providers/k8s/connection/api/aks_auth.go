@@ -8,13 +8,12 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
-	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/aksauth"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/azauth"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/util/aksauth"
+	"go.mondoo.com/mql/providers-sdk/v1/util/azauth"
+	"go.mondoo.com/mql/providers/k8s/connection/shared"
 	"k8s.io/client-go/rest"
 )
 
@@ -44,8 +43,9 @@ func attemptKubeloginAuthFlow(asset *inventory.Asset, config *rest.Config) error
 	log.Debug().Msg("attempting to get a bearer token using the kubelogin flow")
 
 	// the managed identity token credential is used for AKS authentication
-	chainedToken, err := azauth.GetDefaultChainedToken(&azidentity.DefaultAzureCredentialOptions{
+	chainedToken, err := azauth.GetDefaultChainedToken(&azauth.ChainedTokenOptions{
 		ClientOptions: azcore.ClientOptions{Cloud: cloud.AzurePublic},
+		Source:        "k8s-aks-kubelogin",
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to get chained token credential for Azure AKS authentication")

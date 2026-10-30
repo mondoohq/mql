@@ -17,9 +17,9 @@ import (
 	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/servergroups"
 	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/servers"
 	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/services"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/openstack/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/openstack/connection"
 )
 
 // ---- openstack.compute.server ----
@@ -912,8 +912,11 @@ func (o *mqlOpenstack) aggregates() ([]any, error) {
 
 // ---- openstack.compute.limits ----
 
-func (r *mqlOpenstackComputeLimits) id() (string, error) {
-	return "openstack.compute.limits/" + r.ProjectId.Data, nil
+// mqlOpenstackComputeLimitsInternal holds the project id the limits report
+// applies to, which project() resolves. The __id is supplied explicitly by the
+// creator, so this resource needs no id() function.
+type mqlOpenstackComputeLimitsInternal struct {
+	cacheProjectID string
 }
 
 func (o *mqlOpenstack) computeLimits() (*mqlOpenstackComputeLimits, error) {
@@ -938,7 +941,6 @@ func (o *mqlOpenstack) computeLimits() (*mqlOpenstackComputeLimits, error) {
 	projectId := c.ProjectID()
 	res, err := CreateResource(o.MqlRuntime, "openstack.compute.limits", map[string]*llx.RawData{
 		"__id":                    llx.StringData("openstack.compute.limits/" + projectId),
-		"projectId":               llx.StringData(projectId),
 		"maxTotalCores":           llx.IntData(int64(abs.MaxTotalCores)),
 		"totalCoresUsed":          llx.IntData(int64(abs.TotalCoresUsed)),
 		"maxTotalInstances":       llx.IntData(int64(abs.MaxTotalInstances)),
@@ -962,9 +964,11 @@ func (o *mqlOpenstack) computeLimits() (*mqlOpenstackComputeLimits, error) {
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlOpenstackComputeLimits), nil
+	mqlLimits := res.(*mqlOpenstackComputeLimits)
+	mqlLimits.cacheProjectID = projectId
+	return mqlLimits, nil
 }
 
 func (r *mqlOpenstackComputeLimits) project() (*mqlOpenstackProject, error) {
-	return resolveProject(r.MqlRuntime, r.ProjectId.Data, &r.Project)
+	return resolveProject(r.MqlRuntime, r.cacheProjectID, &r.Project)
 }

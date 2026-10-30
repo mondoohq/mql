@@ -10,8 +10,8 @@ import (
 
 	"github.com/Ullaakut/nmap/v3"
 	"github.com/cockroachdb/errors"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 )
 
 type mqlNmapNetworkInternal struct {

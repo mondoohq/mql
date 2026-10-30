@@ -1,0 +1,56 @@
+# A Linux host whose main rsyslog.conf pulls in fragments via an include glob
+# that carries a wildcard in a NON-terminal path segment:
+#
+#   $IncludeConfig /etc/rsyslog.apps/*/out.conf
+#
+# rsyslog expands this by matching every immediate subdirectory of
+# /etc/rsyslog.apps and then the `out.conf` basename inside each. The include
+# lives outside the conventional /etc/rsyslog.d, so the legacy `.d` fallback
+# cannot mask a broken mid-path expansion.
+#
+# Recorded `find` output mirrors what a real host returns for each command:
+# the directory listing includes the search root itself (which the expander
+# must skip), and one app directory holds an `other.conf` that does not match
+# the `out.conf` basename.
+
+[files."/etc/rsyslog.conf"]
+path = "/etc/rsyslog.conf"
+content = """$ModLoad imuxsock
+
+# Per-application fragments, one directory each, wildcard in the middle.
+$IncludeConfig /etc/rsyslog.apps/*/out.conf
+"""
+
+[files."/etc/rsyslog.apps/web/out.conf"]
+path = "/etc/rsyslog.apps/web/out.conf"
+content = """local0.* /var/log/web.log
+"""
+
+# Shares the web directory but does not match the `out.conf` basename glob.
+[files."/etc/rsyslog.apps/web/other.conf"]
+path = "/etc/rsyslog.apps/web/other.conf"
+content = """local0.* /var/log/web.other.log
+"""
+
+[files."/etc/rsyslog.apps/db/out.conf"]
+path = "/etc/rsyslog.apps/db/out.conf"
+content = """local1.* /var/log/db.log
+"""
+
+# Mid-path glob: list the immediate subdirectories of the wildcard's parent.
+# The search root itself (/etc/rsyslog.apps) is present and must be skipped.
+[commands."find -L \"/etc/rsyslog.apps\" -xdev -type d -perm -0 -maxdepth 1"]
+stdout = """/etc/rsyslog.apps
+/etc/rsyslog.apps/web
+/etc/rsyslog.apps/db
+"""
+
+# Terminal basename glob: list the files inside each matched subdirectory.
+[commands."find -L \"/etc/rsyslog.apps/web\" -xdev -type f -perm -0 -maxdepth 1"]
+stdout = """/etc/rsyslog.apps/web/out.conf
+/etc/rsyslog.apps/web/other.conf
+"""
+
+[commands."find -L \"/etc/rsyslog.apps/db\" -xdev -type f -perm -0 -maxdepth 1"]
+stdout = """/etc/rsyslog.apps/db/out.conf
+"""

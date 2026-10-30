@@ -8,15 +8,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
-	"go.mondoo.com/mql/v13/providers/os/resources/procfs"
+	"github.com/spf13/afero"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
+	"go.mondoo.com/mql/providers/os/resources/procfs"
 )
 
 type cpuInfo struct {
@@ -24,6 +26,8 @@ type cpuInfo struct {
 	Manufacturer   string
 	Model          string
 	ProcessorCount int64
+	// MaxClockSpeed is in MHz; 0 means unknown.
+	MaxClockSpeed int64
 }
 
 func initMachineCpu(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -57,11 +61,17 @@ func initMachineCpu(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 		return nil, nil, err
 	}
 
+	maxClockSpeed := llx.NilData
+	if info.MaxClockSpeed > 0 {
+		maxClockSpeed = llx.IntData(info.MaxClockSpeed)
+	}
+
 	return map[string]*llx.RawData{
 		"coreCount":      llx.IntData(info.Cores),
 		"manufacturer":   llx.StringData(info.Manufacturer),
 		"model":          llx.StringData(info.Model),
 		"processorCount": llx.IntData(info.ProcessorCount),
+		"maxClockSpeed":  maxClockSpeed,
 	}, nil, nil
 }
 
@@ -114,6 +124,8 @@ func getCpuInfoLinux(conn shared.Connection) (*cpuInfo, error) {
 		info.ProcessorCount = 1
 	}
 
+	info.MaxClockSpeed = linuxCpuMaxClockSpeed(conn)
+
 	// On some ARM systems (e.g. Raspberry Pi), /proc/cpuinfo doesn't include
 	// vendor or model name. Fall back to lscpu which typically has this info.
 	if (info.Manufacturer == "" || info.Model == "") && conn.Capabilities().Has(shared.Capability_RunCommand) {
@@ -128,6 +140,20 @@ func getCpuInfoLinux(conn shared.Connection) (*cpuInfo, error) {
 	}
 
 	return info, nil
+}
+
+// linuxCpuMaxClockSpeed reads the cpufreq maximum, which most VMs and
+// containers do not expose. /proc/cpuinfo only has the current frequency.
+func linuxCpuMaxClockSpeed(conn shared.Connection) int64 {
+	data, err := afero.ReadFile(conn.FileSystem(), "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq")
+	if err != nil {
+		return 0
+	}
+	khz, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return khz / 1000
 }
 
 func getCpuInfoMacos(conn shared.Connection) (*cpuInfo, error) {
@@ -179,6 +205,7 @@ $cpu = @(Get-CimInstance -ClassName Win32_Processor)
 $result = @{
     Name = $cpu[0].Name
     Manufacturer = $cpu[0].Manufacturer
+    MaxClockSpeed = $cpu[0].MaxClockSpeed
     NumberOfCores = ($cpu | Measure-Object -Property NumberOfCores -Sum).Sum
     ProcessorCount = $cpu.Count
 }
@@ -200,6 +227,7 @@ func getCpuInfoWindows(conn shared.Connection) (*cpuInfo, error) {
 		Manufacturer   string `json:"Manufacturer"`
 		NumberOfCores  int64  `json:"NumberOfCores"`
 		ProcessorCount int64  `json:"ProcessorCount"`
+		MaxClockSpeed  int64  `json:"MaxClockSpeed"`
 	}
 
 	data, err := io.ReadAll(cmd.Stdout)
@@ -216,6 +244,7 @@ func getCpuInfoWindows(conn shared.Connection) (*cpuInfo, error) {
 		Manufacturer:   normalizeManufacturer(strings.TrimSpace(result.Manufacturer)),
 		Cores:          result.NumberOfCores,
 		ProcessorCount: result.ProcessorCount,
+		MaxClockSpeed:  result.MaxClockSpeed,
 	}, nil
 }
 
@@ -283,7 +312,7 @@ func getCpuInfoAIX(conn shared.Connection) (*cpuInfo, error) {
 		ProcessorCount: 1,
 	}
 
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if k, v, ok := strings.Cut(line, ":"); ok {
 			k = strings.TrimSpace(k)
@@ -291,6 +320,13 @@ func getCpuInfoAIX(conn shared.Connection) (*cpuInfo, error) {
 			switch k {
 			case "Processor Type":
 				info.Model = v
+			case "Processor Clock Speed":
+				// 2450 MHz
+				if mhz, unit, ok := strings.Cut(v, " "); ok && unit == "MHz" {
+					if n, err := strconv.ParseInt(mhz, 10, 64); err == nil {
+						info.MaxClockSpeed = n
+					}
+				}
 			}
 		}
 	}
@@ -313,7 +349,7 @@ func getCpuInfoAIX(conn shared.Connection) (*cpuInfo, error) {
 	}
 
 	var cores int64
-	for _, line := range strings.Split(strings.TrimSpace(string(lsdevData)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(lsdevData)), "\n") {
 		if strings.HasPrefix(line, "proc") {
 			cores++
 		}
@@ -323,6 +359,36 @@ func getCpuInfoAIX(conn shared.Connection) (*cpuInfo, error) {
 	}
 
 	return info, nil
+}
+
+// psrinfo reports the core count only when the socket has more than one, and
+// uses the singular "core" for exactly one. A socket line without a core count
+// therefore describes a single-core package.
+//
+//	The physical processor has 4 cores and 8 virtual processors (0-7)
+//	The physical processor has 1 core and 2 virtual processors (0 1)
+//	The physical processor has 1 virtual processor (0)
+var solarisCoreCountRegex = regexp.MustCompile(`\bhas (\d+) cores?\b`)
+
+// The clock psrinfo -pv prints on the implementation line of a socket:
+//
+//	x86 (AuthenticAMD A10F11 family 25 model 17 step 1 clock 2600 MHz)
+//	SPARC-T5 (chipid 0, clock 3600 MHz)
+var solarisClockRegex = regexp.MustCompile(`\bclock (\d+) MHz\b`)
+
+// solarisSocketCores returns the number of physical cores described by a single
+// "The physical processor has ..." line from psrinfo -pv.
+func solarisSocketCores(line string) int64 {
+	m := solarisCoreCountRegex.FindStringSubmatch(line)
+	if m == nil {
+		// no core count printed => the socket has a single core
+		return 1
+	}
+	n, err := strconv.ParseInt(m[1], 10, 64)
+	if err != nil {
+		return 1
+	}
+	return n
 }
 
 func getCpuInfoSolaris(conn shared.Connection) (*cpuInfo, error) {
@@ -349,22 +415,18 @@ func getCpuInfoSolaris(conn shared.Connection) (*cpuInfo, error) {
 	var totalCores int64
 	var sockets int64
 
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
 
 		// "The physical processor has N cores and M virtual processors (...)"
 		if strings.HasPrefix(trimmed, "The physical processor has") {
 			sockets++
-			// Extract core count
-			if idx := strings.Index(trimmed, " cores"); idx > 0 {
-				// Find the number before " cores"
-				prefix := trimmed[:idx]
-				parts := strings.Fields(prefix)
-				if len(parts) > 0 {
-					if n, err := strconv.ParseInt(parts[len(parts)-1], 10, 64); err == nil {
-						totalCores += n
-					}
-				}
+			totalCores += solarisSocketCores(trimmed)
+		}
+
+		if m := solarisClockRegex.FindStringSubmatch(trimmed); m != nil {
+			if mhz, err := strconv.ParseInt(m[1], 10, 64); err == nil && mhz > info.MaxClockSpeed {
+				info.MaxClockSpeed = mhz
 			}
 		}
 
@@ -414,7 +476,7 @@ func parseLscpuOutput(conn shared.Connection) (*cpuInfo, error) {
 	}
 
 	info := &cpuInfo{}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if k, v, ok := strings.Cut(line, ":"); ok {
 			k = strings.TrimSpace(k)
 			v = strings.TrimSpace(v)

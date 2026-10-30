@@ -1,0 +1,5 @@
+[org/gnome/desktop/screensaver]
+lock-delay=uint32 30
+picture-uri="file:///usr/share/backgrounds/it's.png"
+[org/gnome/desktop/session]
+idle-delay=uint32 300

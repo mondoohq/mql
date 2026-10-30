@@ -1,0 +1,21 @@
+[
+ {
+  ".id": "*0",
+  "auth-algorithms": "sha1",
+  "default": "true",
+  "disabled": "false",
+  "enc-algorithms": "aes-256-cbc,aes-192-cbc,aes-128-cbc",
+  "lifetime": "30m",
+  "name": "default",
+  "pfs-group": "modp1024"
+ },
+ {
+  ".id": "*1",
+  "auth-algorithms": "sha256",
+  "disabled": "false",
+  "enc-algorithms": "aes-256-cbc",
+  "lifetime": "30m",
+  "name": "lab-proposal",
+  "pfs-group": "modp2048"
+ }
+]

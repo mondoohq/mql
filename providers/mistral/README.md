@@ -37,7 +37,7 @@ export MISTRAL_API_KEY=<api-key>
 mql shell mistral
 ```
 
-## Example Queries
+## Examples
 
 ### List all models with capabilities
 

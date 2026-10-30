@@ -1,0 +1,28 @@
+# opencloudos/opencloudos:9.0. Deliberately carries no /etc/redhat-release:
+# OpenCloudOS ships only /etc/system-release, which is why the redhat family
+# declines it and it has to resolve as a platform of its own.
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[files."/etc/os-release"]
+content = """
+NAME="OpenCloudOS"
+VERSION="9.0"
+ID="opencloudos"
+ID_LIKE="opencloudos"
+VERSION_ID="9.0"
+PLATFORM_ID="platform:oc9"
+PRETTY_NAME="OpenCloudOS 9.0"
+ANSI_COLOR="0;31"
+CPE_NAME="cpe:/o:opencloudos:opencloudos:9"
+HOME_URL="https://www.opencloudos.org/"
+BUG_REPORT_URL="https://bugs.opencloudos.tech/"
+"""
+
+[files."/etc/system-release"]
+content = """
+OpenCloudOS release 9.0
+"""

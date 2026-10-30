@@ -13,12 +13,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/glue"
 	glue_types "github.com/aws/aws-sdk-go-v2/service/glue/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsGlue) id() (string, error) {
@@ -132,6 +132,7 @@ func newMqlAwsGlueCrawler(runtime *plugin.Runtime, region string, accountID stri
 			"name":                       llx.StringDataPtr(crawler.Name),
 			"role":                       llx.StringDataPtr(crawler.Role),
 			"databaseName":               llx.StringDataPtr(crawler.DatabaseName),
+			"catalogId":                  llx.StringDataPtr(nonEmptyEnum(convert.ToValue(crawler.CatalogId))),
 			"description":                llx.StringDataPtr(crawler.Description),
 			"targets":                    llx.DictData(targets),
 			"schedule":                   llx.StringData(schedule),
@@ -216,8 +217,7 @@ func findGlueSecurityConfiguration(runtime *plugin.Runtime, region, name string)
 		if Is400AccessDeniedError(err) {
 			return nil, nil
 		}
-		var notFoundErr *glue_types.EntityNotFoundException
-		if errors.As(err, &notFoundErr) {
+		if _, ok := errors.AsType[*glue_types.EntityNotFoundException](err); ok {
 			return nil, nil
 		}
 		return nil, err
@@ -239,7 +239,7 @@ func (a *mqlAwsGlueCrawler) tags() (map[string]any, error) {
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return nil, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
@@ -409,7 +409,7 @@ func (a *mqlAwsGlueJob) tags() (map[string]any, error) {
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return nil, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
@@ -473,14 +473,60 @@ func (a *mqlAwsGlue) getSecurityConfigurations(conn *connection.AwsConnection) [
 	return tasks
 }
 
+type mqlAwsGlueSecurityConfigurationEncryptionInternal struct {
+	cacheKmsKeyArn *string
+	region         string
+}
+
+func (a *mqlAwsGlueSecurityConfigurationEncryption) kmsKey() (*mqlAwsKmsKey, error) {
+	return resolveKmsKeyRef(a.MqlRuntime, a.cacheKmsKeyArn, a.region, &a.KmsKey.State)
+}
+
+// newMqlGlueEncryption builds one destination's encryption setting. Glue
+// reports each destination through its own SDK struct carrying the same mode
+// plus key pair, so an absent struct means the security configuration says
+// nothing about that destination and the reference reads null.
+func newMqlGlueEncryption(runtime *plugin.Runtime, secConfArn, destination, region, mode string, kmsKeyArn *string, present bool) (*llx.RawData, error) {
+	if !present {
+		return llx.NilData, nil
+	}
+	res, err := CreateResource(runtime, "aws.glue.securityConfiguration.encryption", map[string]*llx.RawData{
+		"__id": llx.StringData(secConfArn + "/" + destination),
+		"mode": llx.StringData(mode),
+	})
+	if err != nil {
+		return nil, err
+	}
+	mqlEnc := res.(*mqlAwsGlueSecurityConfigurationEncryption)
+	mqlEnc.cacheKmsKeyArn = kmsKeyArn
+	mqlEnc.region = region
+	return llx.ResourceData(mqlEnc, "aws.glue.securityConfiguration.encryption"), nil
+}
+
+// glueS3Encryption picks the S3 encryption entry a security configuration
+// applies. The SDK types this as a list, but Glue rejects a configuration with
+// more than one entry, so an entry beyond the first cannot exist; returning
+// only the first is the whole list.
+func glueS3Encryption(enc *glue_types.EncryptionConfiguration) *glue_types.S3Encryption {
+	if enc == nil || len(enc.S3Encryption) == 0 {
+		return nil
+	}
+	return &enc.S3Encryption[0]
+}
+
 func newMqlAwsGlueSecurityConfiguration(runtime *plugin.Runtime, region string, accountID string, secConf glue_types.SecurityConfiguration) (*mqlAwsGlueSecurityConfiguration, error) {
 	id := fmt.Sprintf("arn:aws:glue:%s:%s:security-configuration/%s", region, accountID, convert.ToValue(secConf.Name))
 
 	var s3Enc, cwEnc, jbEnc any
+	mqlS3Enc, mqlCwEnc, mqlJbEnc, mqlDqEnc := llx.NilData, llx.NilData, llx.NilData, llx.NilData
 	if secConf.EncryptionConfiguration != nil {
 		var err error
-		if len(secConf.EncryptionConfiguration.S3Encryption) > 0 {
-			s3Enc, err = convert.JsonToDict(secConf.EncryptionConfiguration.S3Encryption[0])
+		if s3 := glueS3Encryption(secConf.EncryptionConfiguration); s3 != nil {
+			s3Enc, err = convert.JsonToDict(*s3)
+			if err != nil {
+				return nil, err
+			}
+			mqlS3Enc, err = newMqlGlueEncryption(runtime, id, "s3Encryption", region, string(s3.S3EncryptionMode), s3.KmsKeyArn, true)
 			if err != nil {
 				return nil, err
 			}
@@ -489,21 +535,43 @@ func newMqlAwsGlueSecurityConfiguration(runtime *plugin.Runtime, region string, 
 		if err != nil {
 			return nil, err
 		}
+		if cw := secConf.EncryptionConfiguration.CloudWatchEncryption; cw != nil {
+			mqlCwEnc, err = newMqlGlueEncryption(runtime, id, "cloudWatchEncryption", region, string(cw.CloudWatchEncryptionMode), cw.KmsKeyArn, true)
+			if err != nil {
+				return nil, err
+			}
+		}
 		jbEnc, err = convert.JsonToDict(secConf.EncryptionConfiguration.JobBookmarksEncryption)
 		if err != nil {
 			return nil, err
+		}
+		if jb := secConf.EncryptionConfiguration.JobBookmarksEncryption; jb != nil {
+			mqlJbEnc, err = newMqlGlueEncryption(runtime, id, "jobBookmarksEncryption", region, string(jb.JobBookmarksEncryptionMode), jb.KmsKeyArn, true)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if dq := secConf.EncryptionConfiguration.DataQualityEncryption; dq != nil {
+			mqlDqEnc, err = newMqlGlueEncryption(runtime, id, "dataQualityEncryption", region, string(dq.DataQualityEncryptionMode), dq.KmsKeyArn, true)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
 	resource, err := CreateResource(runtime, "aws.glue.securityConfiguration",
 		map[string]*llx.RawData{
-			"__id":                   llx.StringData(id),
-			"name":                   llx.StringDataPtr(secConf.Name),
-			"createdAt":              llx.TimeDataPtr(secConf.CreatedTimeStamp),
-			"s3Encryption":           llx.DictData(s3Enc),
-			"cloudWatchEncryption":   llx.DictData(cwEnc),
-			"jobBookmarksEncryption": llx.DictData(jbEnc),
-			"region":                 llx.StringData(region),
+			"__id":                     llx.StringData(id),
+			"name":                     llx.StringDataPtr(secConf.Name),
+			"createdAt":                llx.TimeDataPtr(secConf.CreatedTimeStamp),
+			"s3Encryption":             llx.DictData(s3Enc),
+			"cloudWatchEncryption":     llx.DictData(cwEnc),
+			"jobBookmarksEncryption":   llx.DictData(jbEnc),
+			"s3DataEncryption":         mqlS3Enc,
+			"cloudWatchLogsEncryption": mqlCwEnc,
+			"bookmarkStateEncryption":  mqlJbEnc,
+			"dataQualityEncryption":    mqlDqEnc,
+			"region":                   llx.StringData(region),
 		})
 	if err != nil {
 		return nil, err
@@ -611,6 +679,26 @@ func newMqlAwsGlueDatabase(runtime *plugin.Runtime, region string, db glue_types
 	return resource.(*mqlAwsGlueDatabase), nil
 }
 
+const (
+	glueDatabaseArnPattern   = "arn:aws:glue:%s:%s:database/%s"
+	glueConnectionArnPattern = "arn:aws:glue:%s:%s:connection/%s"
+	glueWorkflowArnPattern   = "arn:aws:glue:%s:%s:workflow/%s"
+)
+
+func (a *mqlAwsGlueDatabase) arn() (string, error) {
+	account := a.CatalogId.Data
+	if account == "" {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		account = conn.AccountId()
+	}
+	return fmt.Sprintf(glueDatabaseArnPattern, a.Region.Data, account, a.Name.Data), nil
+}
+
+func (a *mqlAwsGlueConnection) arn() (string, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return fmt.Sprintf(glueConnectionArnPattern, a.Region.Data, conn.AccountId(), a.Name.Data), nil
+}
+
 func (a *mqlAwsGlueDatabase) tables() ([]any, error) {
 	dbName := a.Name.Data
 	region := a.Region.Data
@@ -619,26 +707,63 @@ func (a *mqlAwsGlueDatabase) tables() ([]any, error) {
 
 	svc := conn.Glue(region)
 	ctx := context.Background()
-	res := []any{}
 
+	// GetTables leaves federated tables out unless asked for them, so request
+	// ALL. A database whose federation source cannot be reached, or an endpoint
+	// that rejects the parameter, would otherwise hide every table in the
+	// database; list the non-federated ones instead.
+	tables, err := listGlueTables(ctx, svc, dbName, catalogId, glue_types.TableResourceShareTypeAll)
+	if err != nil && shouldRetryGlueTablesWithoutShareType(err) {
+		log.Debug().Err(err).Str("database", dbName).Str("region", region).
+			Msg("glue>tables>listing all tables failed, listing non-federated tables only")
+		tables, err = listGlueTables(ctx, svc, dbName, catalogId, "")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]any, 0, len(tables))
+	for _, table := range tables {
+		mqlTable, err := newMqlAwsGlueDatabaseTable(a.MqlRuntime, region, table)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlTable)
+	}
+	return res, nil
+}
+
+func listGlueTables(ctx context.Context, svc glue.GetTablesAPIClient, dbName, catalogId string, shareType glue_types.TableResourceShareType) ([]glue_types.Table, error) {
+	tables := []glue_types.Table{}
 	paginator := glue.NewGetTablesPaginator(svc, &glue.GetTablesInput{
-		DatabaseName: &dbName,
-		CatalogId:    &catalogId,
+		DatabaseName:      &dbName,
+		CatalogId:         &catalogId,
+		ResourceShareType: shareType,
 	})
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
 			return nil, err
 		}
-		for _, table := range page.TableList {
-			mqlTable, err := newMqlAwsGlueDatabaseTable(a.MqlRuntime, region, table)
-			if err != nil {
-				return nil, err
-			}
-			res = append(res, mqlTable)
-		}
+		tables = append(tables, page.TableList...)
 	}
-	return res, nil
+	return tables, nil
+}
+
+// shouldRetryGlueTablesWithoutShareType reports whether a GetTables call that
+// asked for ALL tables failed in a way the default (non-federated) listing can
+// still answer: the federation source failed, or the endpoint rejected the
+// input. Access denied and everything else is returned as is, since the
+// default listing would fail the same way.
+func shouldRetryGlueTablesWithoutShareType(err error) bool {
+	if _, ok := errors.AsType[*glue_types.FederationSourceException](err); ok {
+		return true
+	}
+	if _, ok := errors.AsType[*glue_types.FederationSourceRetryableException](err); ok {
+		return true
+	}
+	var inputErr *glue_types.InvalidInputException
+	return errors.As(err, &inputErr)
 }
 
 func newMqlAwsGlueDatabaseTable(runtime *plugin.Runtime, region string, table glue_types.Table) (*mqlAwsGlueDatabaseTable, error) {
@@ -708,6 +833,86 @@ func (a *mqlAwsGlue) catalogEncryptionSettings() ([]any, error) {
 		}
 	}
 	return res, nil
+}
+
+func (a *mqlAwsGlue) catalogExportEncryptionSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	res := []any{}
+	poolOfJobs := jobpool.CreatePool(a.getCatalogExportEncryptionSettings(conn), 5)
+	poolOfJobs.Run()
+
+	if poolOfJobs.HasErrors() {
+		return nil, poolOfJobs.GetErrors()
+	}
+	for i := range poolOfJobs.Jobs {
+		if poolOfJobs.Jobs[i].Result != nil {
+			res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
+		}
+	}
+	return res, nil
+}
+
+func (a *mqlAwsGlue) getCatalogExportEncryptionSettings(conn *connection.AwsConnection) []*jobpool.Job {
+	tasks := make([]*jobpool.Job, 0)
+	regions, err := conn.Regions()
+	if err != nil {
+		return []*jobpool.Job{{Err: err}}
+	}
+
+	for _, region := range regions {
+		f := func() (jobpool.JobResult, error) {
+			log.Debug().Msgf("glue>getCatalogExportEncryptionSettings>calling aws with region %s", region)
+
+			svc := conn.Glue(region)
+			ctx := context.Background()
+
+			resp, err := svc.GetDataCatalogExportConfiguration(ctx, &glue.GetDataCatalogExportConfigurationInput{})
+			if err != nil {
+				if Is400AccessDeniedError(err) {
+					log.Warn().Str("region", region).Msg("error accessing region for AWS API")
+					return jobpool.JobResult([]any{}), nil
+				}
+				return nil, err
+			}
+			// A region with no export configuration returns no entry rather than
+			// one reporting empty encryption, so absence is not read as "no key".
+			if resp.EncryptionConfiguration == nil {
+				return jobpool.JobResult([]any{}), nil
+			}
+
+			mqlSettings, err := CreateResource(a.MqlRuntime, "aws.glue.catalogExportEncryption",
+				map[string]*llx.RawData{
+					"__id":         llx.StringData("aws.glue.catalogExportEncryption/" + region),
+					"region":       llx.StringData(region),
+					"sseAlgorithm": llx.StringDataPtr(resp.EncryptionConfiguration.SseAlgorithm),
+				})
+			if err != nil {
+				return nil, err
+			}
+			mqlSettings.(*mqlAwsGlueCatalogExportEncryption).cacheKmsKeyArn = resp.EncryptionConfiguration.KmsKeyArn
+
+			return jobpool.JobResult([]any{mqlSettings}), nil
+		}
+		tasks = append(tasks, jobpool.NewJob(f))
+	}
+	return tasks
+}
+
+type mqlAwsGlueCatalogExportEncryptionInternal struct {
+	cacheKmsKeyArn *string
+}
+
+func (a *mqlAwsGlueCatalogExportEncryption) kmsKey() (*mqlAwsKmsKey, error) {
+	if a.cacheKmsKeyArn == nil || *a.cacheKmsKeyArn == "" {
+		a.KmsKey.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	mqlKey, err := NewResource(a.MqlRuntime, "aws.kms.key",
+		map[string]*llx.RawData{"arn": llx.StringDataPtr(a.cacheKmsKeyArn)})
+	if err != nil {
+		return nil, err
+	}
+	return mqlKey.(*mqlAwsKmsKey), nil
 }
 
 func (a *mqlAwsGlue) getCatalogEncryptionSettings(conn *connection.AwsConnection) []*jobpool.Job {
@@ -852,6 +1057,11 @@ func newMqlAwsGlueWorkflow(runtime *plugin.Runtime, region string, accountID str
 	return resource.(*mqlAwsGlueWorkflow), nil
 }
 
+func (a *mqlAwsGlueWorkflow) arn() (string, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return fmt.Sprintf(glueWorkflowArnPattern, a.Region.Data, conn.AccountId(), a.Name.Data), nil
+}
+
 func (a *mqlAwsGlueWorkflow) tags() (map[string]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	svc := conn.Glue(a.Region.Data)
@@ -863,7 +1073,7 @@ func (a *mqlAwsGlueWorkflow) tags() (map[string]any, error) {
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return nil, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
@@ -957,16 +1167,39 @@ var sensitiveGlueConnectionPropertyKeys = map[string]struct{}{
 	"KAFKA_CLIENT_KEY_PASSWORD":      {},
 	"KAFKA_TRUSTSTORE_PASSWORD":      {},
 	"KAFKA_SASL_SCRAM_PASSWORD":      {},
+	"KAFKA_SASL_PLAIN_PASSWORD":      {},
 	"KAFKA_CLIENT_KEYSTORE":          {},
 	"KAFKA_SASL_GSSAPI_KEYTAB":       {},
 	"KAFKA_SASL_GSSAPI_KRB5_CONF":    {},
+
+	"ENCRYPTED_KAFKA_CLIENT_KEYSTORE_PASSWORD": {},
+	"ENCRYPTED_KAFKA_CLIENT_KEY_PASSWORD":      {},
+	"ENCRYPTED_KAFKA_SASL_PLAIN_PASSWORD":      {},
+	"ENCRYPTED_KAFKA_SASL_SCRAM_PASSWORD":      {},
+}
+
+// sensitiveGlueConnectionPropertyMarkers catches credential keys the list
+// above does not name yet, so a key Glue adds later is redacted by default.
+// SECRET_ID and *_SECRETS_ARN stay visible: they name a secret, not hold one.
+var sensitiveGlueConnectionPropertyMarkers = []string{"PASSWORD", "KEYSTORE", "KEYTAB", "KRB5"}
+
+func isSensitiveGlueConnectionProperty(key string) bool {
+	if _, ok := sensitiveGlueConnectionPropertyKeys[key]; ok {
+		return true
+	}
+	for _, marker := range sensitiveGlueConnectionPropertyMarkers {
+		if strings.Contains(key, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func redactedGlueConnectionProperties[K ~string](m map[K]string) map[string]any {
 	out := make(map[string]any, len(m))
 	for k, v := range m {
 		key := string(k)
-		if _, sensitive := sensitiveGlueConnectionPropertyKeys[key]; sensitive && v != "" {
+		if isSensitiveGlueConnectionProperty(key) && v != "" {
 			out[key] = "<redacted>"
 			continue
 		}
@@ -1082,7 +1315,7 @@ func (a *mqlAwsGlueTrigger) tags() (map[string]any, error) {
 	resp, err := svc.GetTags(ctx, &glue.GetTagsInput{ResourceArn: &arn})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return nil, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
@@ -1184,7 +1417,7 @@ func (a *mqlAwsGlueSchemaRegistry) tags() (map[string]any, error) {
 	resp, err := svc.GetTags(ctx, &glue.GetTagsInput{ResourceArn: &arn})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return nil, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
@@ -1353,7 +1586,7 @@ func (a *mqlAwsGlueSchema) tags() (map[string]any, error) {
 	resp, err := svc.GetTags(ctx, &glue.GetTagsInput{ResourceArn: &arn})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return nil, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
@@ -1457,4 +1690,58 @@ func parseGlueAPITime(s *string) *time.Time {
 		}
 	}
 	return nil
+}
+
+type mqlAwsGlueDatabaseInternal struct {
+	lazyTags
+}
+
+type mqlAwsGlueConnectionInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsGlueDatabase) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		arnField := a.GetArn()
+		if arnField.Error != nil {
+			return nil, arnField.Error
+		}
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Glue(a.Region.Data)
+		arn := arnField.Data
+		resp, err := svc.GetTags(context.Background(), &glue.GetTagsInput{ResourceArn: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("glue:GetTags"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return toInterfaceMap(resp.Tags), nil
+	})
+}
+
+func (a *mqlAwsGlueConnection) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		arnField := a.GetArn()
+		if arnField.Error != nil {
+			return nil, arnField.Error
+		}
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Glue(a.Region.Data)
+		arn := arnField.Data
+		resp, err := svc.GetTags(context.Background(), &glue.GetTagsInput{ResourceArn: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("glue:GetTags"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return toInterfaceMap(resp.Tags), nil
+	})
 }

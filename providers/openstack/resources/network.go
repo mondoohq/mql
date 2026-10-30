@@ -11,7 +11,9 @@ import (
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/layer3/portforwarding"
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/layer3/routers"
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/mtu"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/portsbinding"
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/portsecurity"
+	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/portstrustedvif"
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/provider"
 	qospolicies "github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/qos/policies"
 	neutronquotas "github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/quotas"
@@ -19,9 +21,9 @@ import (
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/networks"
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/ports"
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/subnets"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // ---- openstack.network ----
@@ -45,12 +47,15 @@ type networkExt struct {
 	qospolicies.QoSPolicyExt
 }
 
-// portExt is the base port plus the port-security extension; it lets one list
-// call surface portSecurityEnabled. Clouds without the extension simply leave
-// the field at false.
+// portExt is the base port plus the port-security, port-binding, and trusted-VIF
+// extensions; it lets one list call surface portSecurityEnabled, the binding
+// attributes, and trustedVif. Clouds without a given extension simply leave its
+// fields at their zero value.
 type portExt struct {
 	ports.Port
 	portsecurity.PortSecurityExt
+	portsbinding.PortsBindingExt
+	portstrustedvif.PortTrustedVIFExt
 }
 
 func (r *mqlOpenstackNetwork) id() (string, error) {
@@ -528,6 +533,9 @@ func (o *mqlOpenstack) ports() ([]any, error) {
 			"fixedIps":              dictSliceData(fixedIPsToDict(p.FixedIPs)),
 			"allowedAddressPairs":   dictSliceData(allowedAddressPairsToDict(p.AllowedAddressPairs)),
 			"portSecurityEnabled":   llx.BoolData(p.PortSecurityEnabled),
+			"trustedVif":            llx.BoolDataPtr(p.PortTrustedVIF),
+			"bindingVnicType":       llx.StringData(p.VNICType),
+			"bindingVifType":        llx.StringData(p.VIFType),
 			"propagateUplinkStatus": llx.BoolData(p.PropagateUplinkStatus),
 			"description":           llx.StringData(p.Description),
 			"tags":                  stringSliceData(p.Tags),
@@ -659,10 +667,29 @@ func (r *mqlOpenstackPort) server() (*mqlOpenstackComputeServer, error) {
 	return res.(*mqlOpenstackComputeServer), nil
 }
 
+// deviceOwnerIsRouter reports whether a port's deviceOwner marks the port as
+// owned by a Neutron router, which means its deviceId holds a router UUID.
+//
+// The "network:router" prefix covers the legacy and distributed interface
+// owners (network:router_interface, network:router_interface_distributed),
+// the external gateway port (network:router_gateway), the HA keepalived
+// interface (network:router_ha_interface) and the centralized SNAT port
+// (network:router_centralized_snat). DVR and HA deployments additionally use
+// network:ha_router_replicated_interface for every router interface
+// replicated onto a compute or network node, which does not carry that
+// prefix.
+//
+// network:dhcp is deliberately excluded: its device_id is a synthetic
+// "dhcp<host>-<network>" string rather than a resource UUID.
+func deviceOwnerIsRouter(deviceOwner string) bool {
+	return strings.HasPrefix(deviceOwner, "network:router") ||
+		deviceOwner == "network:ha_router_replicated_interface"
+}
+
 // router resolves the port's device to a router when the port is a router
-// interface or gateway (deviceOwner starts with "network:router").
+// interface, gateway, or replicated HA/DVR interface.
 func (r *mqlOpenstackPort) router() (*mqlOpenstackRouter, error) {
-	if r.cacheDeviceID == "" || !strings.HasPrefix(r.DeviceOwner.Data, "network:router") {
+	if r.cacheDeviceID == "" || !deviceOwnerIsRouter(r.DeviceOwner.Data) {
 		r.Router.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
@@ -1062,18 +1089,17 @@ func buildSecurityGroupRules(runtime *plugin.Runtime, sg *groups.SecGroup) ([]an
 	for i := range sg.Rules {
 		rule := &sg.Rules[i]
 		res, err := CreateResource(runtime, "openstack.securityGroup.rule", map[string]*llx.RawData{
-			"__id":                 llx.StringData("openstack.securityGroup.rule/" + rule.ID),
-			"id":                   llx.StringData(rule.ID),
-			"direction":            llx.StringData(rule.Direction),
-			"ethertype":            llx.StringData(rule.EtherType),
-			"protocol":             llx.StringData(rule.Protocol),
-			"portRangeMin":         llx.IntData(int64(rule.PortRangeMin)),
-			"portRangeMax":         llx.IntData(int64(rule.PortRangeMax)),
-			"remoteIpPrefix":       llx.StringData(rule.RemoteIPPrefix),
-			"remoteAddressGroupId": llx.StringData(rule.RemoteAddressGroupID),
-			"description":          llx.StringData(rule.Description),
-			"createdAt":            llx.TimeDataPtr(timePtr(rule.CreatedAt)),
-			"updatedAt":            llx.TimeDataPtr(timePtr(rule.UpdatedAt)),
+			"__id":           llx.StringData("openstack.securityGroup.rule/" + rule.ID),
+			"id":             llx.StringData(rule.ID),
+			"direction":      llx.StringData(rule.Direction),
+			"ethertype":      llx.StringData(rule.EtherType),
+			"protocol":       llx.StringData(rule.Protocol),
+			"portRangeMin":   llx.IntData(int64(rule.PortRangeMin)),
+			"portRangeMax":   llx.IntData(int64(rule.PortRangeMax)),
+			"remoteIpPrefix": llx.StringData(rule.RemoteIPPrefix),
+			"description":    llx.StringData(rule.Description),
+			"createdAt":      llx.TimeDataPtr(timePtr(rule.CreatedAt)),
+			"updatedAt":      llx.TimeDataPtr(timePtr(rule.UpdatedAt)),
 		})
 		if err != nil {
 			return nil, err
@@ -1114,6 +1140,20 @@ func (r *mqlOpenstackSecurityGroupRule) remoteGroup() (*mqlOpenstackSecurityGrou
 		return nil, err
 	}
 	return res.(*mqlOpenstackSecurityGroup), nil
+}
+
+func (r *mqlOpenstackSecurityGroupRule) remoteAddressGroup() (*mqlOpenstackNetworkAddressGroup, error) {
+	if r.cacheRemoteAddressGroupID == "" {
+		r.RemoteAddressGroup.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(r.MqlRuntime, "openstack.network.addressGroup", map[string]*llx.RawData{
+		"id": llx.StringData(r.cacheRemoteAddressGroupID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlOpenstackNetworkAddressGroup), nil
 }
 
 func (r *mqlOpenstackSecurityGroupRule) project() (*mqlOpenstackProject, error) {
@@ -1168,8 +1208,11 @@ func lookupSecurityGroupIDByName(runtime *plugin.Runtime, name string) (string, 
 
 // ---- openstack.network.quotaSet ----
 
-func (r *mqlOpenstackNetworkQuotaSet) id() (string, error) {
-	return "openstack.network.quotaSet/" + r.ProjectId.Data, nil
+// mqlOpenstackNetworkQuotaSetInternal holds the project id the quota applies
+// to, which project() resolves. The __id is supplied explicitly by the creator,
+// so this resource needs no id() function.
+type mqlOpenstackNetworkQuotaSetInternal struct {
+	cacheProjectID string
 }
 
 func (o *mqlOpenstack) networkQuotaSet() (*mqlOpenstackNetworkQuotaSet, error) {
@@ -1193,7 +1236,6 @@ func (o *mqlOpenstack) networkQuotaSet() (*mqlOpenstackNetworkQuotaSet, error) {
 	}
 	res, err := CreateResource(o.MqlRuntime, "openstack.network.quotaSet", map[string]*llx.RawData{
 		"__id":              llx.StringData("openstack.network.quotaSet/" + projectId),
-		"projectId":         llx.StringData(projectId),
 		"network":           llx.IntData(int64(q.Network)),
 		"subnet":            llx.IntData(int64(q.Subnet)),
 		"port":              llx.IntData(int64(q.Port)),
@@ -1208,9 +1250,11 @@ func (o *mqlOpenstack) networkQuotaSet() (*mqlOpenstackNetworkQuotaSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlOpenstackNetworkQuotaSet), nil
+	mqlQuota := res.(*mqlOpenstackNetworkQuotaSet)
+	mqlQuota.cacheProjectID = projectId
+	return mqlQuota, nil
 }
 
 func (r *mqlOpenstackNetworkQuotaSet) project() (*mqlOpenstackProject, error) {
-	return resolveProject(r.MqlRuntime, r.ProjectId.Data, &r.Project)
+	return resolveProject(r.MqlRuntime, r.cacheProjectID, &r.Project)
 }

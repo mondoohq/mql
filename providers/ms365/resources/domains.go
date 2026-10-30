@@ -8,9 +8,9 @@ import (
 
 	"github.com/microsoftgraph/msgraph-sdk-go/domains"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (m *mqlMicrosoftDomain) id() (string, error) {
@@ -86,7 +86,6 @@ func (a *mqlMicrosoftDomain) serviceConfigurationRecords() ([]any, error) {
 
 	res := []any{}
 	for _, record := range records {
-		properties := getDomainsDnsRecordProperties(record)
 		args := map[string]*llx.RawData{
 			"id":               llx.StringDataPtr(record.GetId()),
 			"isOptional":       llx.BoolDataPtr(record.GetIsOptional()),
@@ -104,7 +103,6 @@ func (a *mqlMicrosoftDomain) serviceConfigurationRecords() ([]any, error) {
 			"port":             llx.IntData(0),
 			"priority":         llx.IntData(0),
 			"weight":           llx.IntData(0),
-			"properties":       llx.DictData(properties),
 		}
 		setDomainsDnsRecordTypedFields(record, args)
 		mqlResource, err := CreateResource(a.MqlRuntime, "microsoft.domaindnsrecord", args)
@@ -156,54 +154,4 @@ func setDomainsDnsRecordTypedFields(record models.DomainDnsRecordable, args map[
 			args["weight"] = llx.IntDataDefault(r.GetWeight(), 0)
 		}
 	}
-}
-
-func getDomainsDnsRecordProperties(record models.DomainDnsRecordable) map[string]interface{} {
-	props := map[string]interface{}{}
-	if record.GetOdataType() != nil {
-		props["@odata.type"] = *record.GetOdataType()
-	}
-	txtRecord, ok := record.(*models.DomainDnsTxtRecord)
-	if ok {
-		if txtRecord.GetText() != nil {
-			props["text"] = *txtRecord.GetText()
-		}
-	}
-	mxRecord, ok := record.(*models.DomainDnsMxRecord)
-	if ok {
-		if mxRecord.GetMailExchange() != nil {
-			props["mailExchange"] = *mxRecord.GetMailExchange()
-		}
-		if mxRecord.GetPreference() != nil {
-			props["preference"] = *mxRecord.GetPreference()
-		}
-	}
-	cNameRecord, ok := record.(*models.DomainDnsCnameRecord)
-	if ok {
-		if cNameRecord.GetCanonicalName() != nil {
-			props["canonicalName"] = *cNameRecord.GetCanonicalName()
-		}
-	}
-	srvRecord, ok := record.(*models.DomainDnsSrvRecord)
-	if ok {
-		if srvRecord.GetNameTarget() != nil {
-			props["nameTarget"] = *srvRecord.GetNameTarget()
-		}
-		if srvRecord.GetPort() != nil {
-			props["port"] = *srvRecord.GetPort()
-		}
-		if srvRecord.GetPriority() != nil {
-			props["priority"] = *srvRecord.GetPriority()
-		}
-		if srvRecord.GetProtocol() != nil {
-			props["protocol"] = *srvRecord.GetProtocol()
-		}
-		if srvRecord.GetService() != nil {
-			props["service"] = *srvRecord.GetService()
-		}
-		if srvRecord.GetWeight() != nil {
-			props["weight"] = *srvRecord.GetWeight()
-		}
-	}
-	return props
 }

@@ -8,11 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 // Microsoft Defender Antivirus is queried through the Defender PowerShell
@@ -118,19 +119,55 @@ func runDefenderCommand(p shared.Connection, script string) ([]byte, error) {
 
 // DefenderTime parses a Defender JSON date, handling both the PowerShell 5.1
 // "/Date(ms)/" form and the ISO-8601 form emitted by PowerShell 7+.
+//
+// Some properties (SmartAppControlExpiration) arrive as a preformatted string
+// "<raw> (<ISO-8601>)", for example "(null) (1601-01-01T00:00:00Z)"; the
+// parenthesized tail is the timestamp.
+//
+// Defender reports an unset timestamp as the FILETIME epoch, 1601-01-01, and
+// that resolves to nil rather than to a date four centuries ago.
 func DefenderTime(s string) *time.Time {
+	s = strings.TrimSpace(s)
 	if s == "" {
 		return nil
 	}
+	if strings.HasSuffix(s, ")") {
+		if i := strings.LastIndex(s, " ("); i >= 0 {
+			s = strings.TrimSpace(s[i+2 : len(s)-1])
+		}
+	}
 	if t := powershell.PSJsonTimestamp(s); t != nil {
-		return t
+		return notFiletimeEpoch(t)
 	}
 	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05"} {
 		if t, err := time.Parse(layout, s); err == nil {
-			return &t
+			return notFiletimeEpoch(&t)
 		}
 	}
 	return nil
+}
+
+// notFiletimeEpoch returns nil for a timestamp at or before the FILETIME epoch
+// (1601-01-01), which Windows uses for "never".
+func notFiletimeEpoch(t *time.Time) *time.Time {
+	if t.Year() <= 1601 {
+		return nil
+	}
+	return t
+}
+
+// defenderUnsetAge is the value Get-MpComputerStatus reports for an age in days
+// when the event it counts from never happened, for example FullScanAge on a
+// host that has never completed a full scan. It is the UINT32 maximum.
+const defenderUnsetAge = 4294967295
+
+// DefenderAge returns an age in days reported by Get-MpComputerStatus, or nil
+// when Defender reports it as unset.
+func DefenderAge(v int64) *int64 {
+	if v < 0 || v >= defenderUnsetAge {
+		return nil
+	}
+	return &v
 }
 
 // flexStrings unmarshals a JSON value that PowerShell may emit either as a
@@ -212,28 +249,128 @@ func (f *flexNumStrings) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// rawString renders a json.RawMessage as a trimmed string, stripping the
-// surrounding quotes when the value is a JSON string. It is used for schedule
-// time fields whose serialization differs across PowerShell versions (a
-// TimeSpan object in 5.1, an ISO duration string in 7+).
-func rawString(raw json.RawMessage) string {
+// ScheduleTime normalizes a Defender schedule preference to a "HH:MM:SS"
+// time of day.
+//
+// These preferences are CIM datetime values, and how PowerShell serializes
+// them depends on the host. Windows PowerShell 5.1 emits a whole TimeSpan
+// object, so the field arrives as
+// {"Ticks":72000000000,"Days":0,"Hours":2,...}; PowerShell 7+ emits an ISO
+// 8601 duration such as "PT2H"; and some builds emit the "/Date(ms)/" form or
+// an already-formatted "02:00:00". All four describe 02:00 and must read the
+// same way.
+//
+// An unrecognized value is returned trimmed rather than dropped, so an
+// unfamiliar serialization surfaces as itself instead of as an empty string
+// that would read as "no schedule".
+func ScheduleTime(raw json.RawMessage) string {
 	s := strings.TrimSpace(string(raw))
 	if s == "" || s == "null" {
 		return ""
 	}
+
+	// PowerShell 5.1: a serialized TimeSpan object.
+	if s[0] == '{' {
+		var ts struct {
+			Ticks *int64 `json:"Ticks"`
+		}
+		if err := json.Unmarshal(raw, &ts); err == nil && ts.Ticks != nil {
+			// A .NET tick is 100 nanoseconds, and time.Duration counts
+			// nanoseconds, so the tick count scales by 100.
+			return formatTimeOfDay(time.Duration(*ts.Ticks) * 100)
+		}
+		return s
+	}
+
 	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
 		var v string
 		if err := json.Unmarshal(raw, &v); err == nil {
-			return v
+			return normalizeScheduleString(v)
 		}
 	}
 	return s
+}
+
+// normalizeScheduleString converts the string serializations of a schedule
+// preference to "HH:MM:SS".
+func normalizeScheduleString(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return ""
+	}
+	// The "/Date(ms)/" form carries a full timestamp whose time of day is the
+	// scheduled time.
+	if t := powershell.PSJsonTimestamp(v); t != nil {
+		return t.UTC().Format("15:04:05")
+	}
+	if d, ok := parseISODuration(v); ok {
+		return formatTimeOfDay(d)
+	}
+	return v
+}
+
+// parseISODuration parses the time-only ISO 8601 durations PowerShell 7+ emits
+// for a TimeSpan, for example "PT2H" or "PT1H45M". Durations carrying a date
+// component are rejected, since a schedule preference never has one.
+func parseISODuration(v string) (time.Duration, bool) {
+	rest, ok := strings.CutPrefix(strings.ToUpper(v), "PT")
+	if !ok || rest == "" {
+		return 0, false
+	}
+	var total time.Duration
+	// start indexes the first byte of the number currently being read. Slicing
+	// rest keeps the digits where they already are instead of rebuilding them a
+	// character at a time, which would allocate once per digit on every
+	// schedule field of every scan.
+	start := -1
+	for i := 0; i < len(rest); i++ {
+		c := rest[i]
+		if (c >= '0' && c <= '9') || c == '.' {
+			if start < 0 {
+				start = i
+			}
+			continue
+		}
+		if start < 0 {
+			return 0, false
+		}
+		f, err := strconv.ParseFloat(rest[start:i], 64)
+		if err != nil {
+			return 0, false
+		}
+		switch c {
+		case 'H':
+			total += time.Duration(f * float64(time.Hour))
+		case 'M':
+			total += time.Duration(f * float64(time.Minute))
+		case 'S':
+			total += time.Duration(f * float64(time.Second))
+		default:
+			return 0, false
+		}
+		start = -1
+	}
+	// A trailing number with no unit, for example "PT2".
+	if start >= 0 {
+		return 0, false
+	}
+	return total, true
+}
+
+// formatTimeOfDay renders a duration since midnight as "HH:MM:SS".
+func formatTimeOfDay(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	secs := int64(d / time.Second)
+	return fmt.Sprintf("%02d:%02d:%02d", (secs/3600)%24, (secs/60)%60, secs%60)
 }
 
 // MpComputerStatus mirrors the relevant fields of Get-MpComputerStatus.
 type MpComputerStatus struct {
 	AMEngineVersion                  string
 	AMProductVersion                 string
+	AMRunningMode                    string
 	AMServiceEnabled                 bool
 	AMServiceVersion                 string
 	AntispywareEnabled               bool
@@ -248,9 +385,9 @@ type MpComputerStatus struct {
 	ComputerID                       string
 	ComputerState                    int64
 	DefenderSignaturesOutOfDate      bool
-	DeviceControlDefaultEnforcement  int64
+	DeviceControlDefaultEnforcement  *string
 	DeviceControlPoliciesLastUpdated string
-	DeviceControlState               int64
+	DeviceControlState               string
 	FullScanAge                      int64
 	FullScanStartTime                string
 	FullScanEndTime                  string
@@ -292,7 +429,7 @@ type MpPreference struct {
 	ScanScheduleOffset                            int64
 	ScanAvgCPULoadFactor                          int64
 	ScanOnlyIfIdleEnabled                         bool
-	CheckForSignaturesBeforeRunningScan           int64
+	CheckForSignaturesBeforeRunningScan           bool
 	DisableArchiveScanning                        bool
 	DisableEmailScanning                          bool
 	DisableRemovableDriveScanning                 bool
@@ -303,15 +440,17 @@ type MpPreference struct {
 	DisableCpuThrottleOnIdleScans                 bool
 	EnableFullScanOnBatteryPower                  bool
 	EnableLowCpuPriority                          bool
+	QuickScanIncludeExclusions                    *int64
 
 	// real-time
 	DisableRealtimeMonitoring        bool
 	DisableBehaviorMonitoring        bool
 	DisableIOAVProtection            bool
 	DisableScriptScanning            bool
-	DisableIntrusionPreventionSystem bool
+	DisableIntrusionPreventionSystem *bool
 	RealTimeScanDirection            int64
 	EnableFileHashComputation        bool
+	OobeEnableRtpAndSigUpdate        *bool
 
 	// cloud / MAPS
 	MAPSReporting           int64
@@ -334,6 +473,7 @@ type MpPreference struct {
 	EngineUpdatesChannel                         int64
 	PlatformUpdatesChannel                       int64
 	MeteredConnectionUpdates                     bool
+	ReportDynamicSignatureDroppedEvent           *bool
 
 	// threat actions
 	SevereThreatDefaultAction     int64
@@ -355,6 +495,7 @@ type MpPreference struct {
 	AllowNetworkProtectionDownLevel    bool
 	AllowDatagramProcessingOnWinServer bool
 	EnableDnsSinkhole                  bool
+	EnableConvertWarnToBlock           *bool
 
 	// behavioral network blocks (brute-force and remote-encryption protection)
 	BruteForceProtectionConfiguredState       int64
@@ -365,15 +506,15 @@ type MpPreference struct {
 	RemoteEncryptionProtectionMaxBlockTime    int64
 
 	// local setting overrides (whether a local preference may override policy)
-	LocalSettingOverrideSpynetReporting                  bool
-	LocalSettingOverrideRealtimeMonitoring               bool
-	LocalSettingOverrideDisableBehaviorMonitoring        bool
-	LocalSettingOverrideDisableIOAVProtection            bool
-	LocalSettingOverrideDisableIntrusionPreventionSystem bool
-	LocalSettingOverrideDisableOnAccessProtection        bool
-	LocalSettingOverrideScanParameters                   bool
-	LocalSettingOverrideScanScheduleDay                  bool
-	LocalSettingOverrideAvgCPULoadFactor                 bool
+	LocalSettingOverrideSpynetReporting                  *bool
+	LocalSettingOverrideRealtimeMonitoring               *bool
+	LocalSettingOverrideDisableBehaviorMonitoring        *bool
+	LocalSettingOverrideDisableIOAVProtection            *bool
+	LocalSettingOverrideDisableIntrusionPreventionSystem *bool
+	LocalSettingOverrideDisableOnAccessProtection        *bool
+	LocalSettingOverrideScanParameters                   *bool
+	LocalSettingOverrideScanScheduleDay                  *bool
+	LocalSettingOverrideAvgCPULoadFactor                 *bool
 
 	// remediation
 	RemediationScheduleDay         int64
@@ -386,6 +527,9 @@ type MpPreference struct {
 	ExclusionExtension flexStrings
 	ExclusionProcess   flexStrings
 	ExclusionIpAddress flexStrings
+	// HideExclusionsFromLocalUsers hides the exclusion lists from users who
+	// are not administrators.
+	HideExclusionsFromLocalUsers *bool
 
 	// attack surface reduction
 	AttackSurfaceReductionRules_Ids     flexStrings
@@ -399,25 +543,25 @@ type MpPreference struct {
 	// Defender uses the historical "RePorts" casing for this preference; the
 	// json tag matches it explicitly so the field is populated regardless of how
 	// the cmdlet serializes it.
-	DisableGenericReports bool `json:"DisableGenericRePorts"`
+	DisableGenericReports *bool `json:"DisableGenericRePorts"`
 }
 
-// ScanScheduleTimeString returns the raw scheduled-scan time value.
-func (p *MpPreference) ScanScheduleTimeString() string { return rawString(p.ScanScheduleTime) }
+// ScanScheduleTimeString returns the scheduled-scan time of day.
+func (p *MpPreference) ScanScheduleTimeString() string { return ScheduleTime(p.ScanScheduleTime) }
 
-// ScanScheduleQuickScanTimeString returns the raw scheduled quick-scan time value.
+// ScanScheduleQuickScanTimeString returns the scheduled quick-scan time of day.
 func (p *MpPreference) ScanScheduleQuickScanTimeString() string {
-	return rawString(p.ScanScheduleQuickScanTime)
+	return ScheduleTime(p.ScanScheduleQuickScanTime)
 }
 
-// SignatureScheduleTimeString returns the raw scheduled signature-update time value.
+// SignatureScheduleTimeString returns the scheduled signature-update time of day.
 func (p *MpPreference) SignatureScheduleTimeString() string {
-	return rawString(p.SignatureScheduleTime)
+	return ScheduleTime(p.SignatureScheduleTime)
 }
 
-// RemediationScheduleTimeString returns the raw scheduled-remediation time value.
+// RemediationScheduleTimeString returns the scheduled-remediation time of day.
 func (p *MpPreference) RemediationScheduleTimeString() string {
-	return rawString(p.RemediationScheduleTime)
+	return ScheduleTime(p.RemediationScheduleTime)
 }
 
 // MpThreat mirrors the relevant fields of Get-MpThreat.

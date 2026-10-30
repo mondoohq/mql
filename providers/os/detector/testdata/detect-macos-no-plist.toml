@@ -1,0 +1,15 @@
+[commands."uname -s"]
+stdout = "Darwin"
+
+[commands."uname -m"]
+stdout = "arm64"
+
+[commands."uname -r"]
+stdout = "24.5.0"
+
+[commands."/usr/bin/sw_vers"]
+stdout = """
+ProductName:	macOS
+ProductVersion:	15.5
+BuildVersion:	24F74
+"""

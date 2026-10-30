@@ -7,17 +7,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	authorization "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // sortedUserAssignedIdentityIDs returns the keys of a UserAssignedIdentities
@@ -69,6 +72,46 @@ func resolveUserAssignedIdentities(runtime *plugin.Runtime, ids []string) ([]any
 		res = append(res, mqlIdentity)
 	}
 	return res, nil
+}
+
+// newSystemAssignedManagedIdentity represents a resource's system-assigned
+// managed identity as a managed-identity resource keyed on its principal ID.
+// Unlike a user-assigned identity it has no standalone ARM resource, so it is
+// synthesized from the owning resource's ID and the identity's principal (and
+// tenant) so the same roleAssignments -> role -> permissions chain can be
+// traversed.
+//
+// When principalID is empty (no system-assigned identity) it marks the caller's
+// field null and returns nil, so callers pass their field pointer and do not
+// guard separately. This mirrors resolveRoleDefinition.
+func newSystemAssignedManagedIdentity(runtime *plugin.Runtime, ownerID, principalID, tenantID string, field *plugin.TValue[*mqlAzureSubscriptionManagedIdentity]) (*mqlAzureSubscriptionManagedIdentity, error) {
+	if principalID == "" {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	r, err := CreateResource(runtime, "azure.subscription.managedIdentity",
+		map[string]*llx.RawData{
+			"__id":        llx.StringData(ownerID + "/systemAssignedIdentity"),
+			"name":        llx.StringData(""),
+			"clientId":    llx.StringData(""),
+			"principalId": llx.StringData(principalID),
+			"tenantId":    llx.StringData(tenantID),
+		})
+	if err != nil {
+		return nil, err
+	}
+	return r.(*mqlAzureSubscriptionManagedIdentity), nil
+}
+
+// tenantIDFromIdentityDict extracts the tenantId from a resource's identity dict
+// (the managed-identity block Azure returns on a resource), or "" when absent.
+func tenantIDFromIdentityDict(identity plugin.TValue[any]) string {
+	if id, ok := identity.Data.(map[string]any); ok {
+		if t, ok := id["tenantId"].(string); ok {
+			return t
+		}
+	}
+	return ""
 }
 
 func (a *mqlAzureSubscription) iam() (*mqlAzureSubscriptionAuthorizationService, error) {
@@ -123,9 +166,19 @@ func (a *mqlAzureSubscriptionAuthorizationService) roles() ([]any, error) {
 			return nil, err
 		}
 		for _, roleDef := range page.Value {
-			roleType := convert.ToValue(roleDef.Properties.RoleType)
+			if roleDef == nil {
+				continue
+			}
+			// Properties is a nullable pointer that is dereferenced throughout
+			// the loop body; normalize to an empty struct to avoid a panic
+			// (mirrors newMqlRoleAssignment below).
+			props := roleDef.Properties
+			if props == nil {
+				props = &authorization.RoleDefinitionProperties{}
+			}
+			roleType := convert.ToValue(props.RoleType)
 			scopes := []any{}
-			for _, s := range roleDef.Properties.AssignableScopes {
+			for _, s := range props.AssignableScopes {
 				if s != nil {
 					scopes = append(scopes, *s)
 				}
@@ -134,8 +187,8 @@ func (a *mqlAzureSubscriptionAuthorizationService) roles() ([]any, error) {
 				map[string]*llx.RawData{
 					"__id":        llx.StringDataPtr(roleDef.ID),
 					"id":          llx.StringDataPtr(roleDef.ID),
-					"name":        llx.StringDataPtr(roleDef.Properties.RoleName),
-					"description": llx.StringDataPtr(roleDef.Properties.Description),
+					"name":        llx.StringDataPtr(props.RoleName),
+					"description": llx.StringDataPtr(props.Description),
 					"type":        llx.StringData(roleType),
 					"scopes":      llx.ArrayData(scopes, types.String),
 				})
@@ -143,7 +196,7 @@ func (a *mqlAzureSubscriptionAuthorizationService) roles() ([]any, error) {
 				return nil, err
 			}
 			mqlRole := mqlRoleDefinition.(*mqlAzureSubscriptionAuthorizationServiceRoleDefinition)
-			mqlRole.cachePermissions = roleDef.Properties.Permissions
+			mqlRole.cachePermissions = props.Permissions
 			res = append(res, mqlRole)
 		}
 	}
@@ -235,6 +288,9 @@ func (a *mqlAzureSubscriptionAuthorizationService) roleAssignments() ([]any, err
 			return nil, err
 		}
 		for _, roleAssignment := range page.Value {
+			if roleAssignment == nil {
+				continue
+			}
 			mqlRoleAssignment, err := newMqlRoleAssignment(a.MqlRuntime, roleAssignment)
 			if err != nil {
 				return nil, err
@@ -246,7 +302,7 @@ func (a *mqlAzureSubscriptionAuthorizationService) roleAssignments() ([]any, err
 }
 
 type mqlAzureSubscriptionAuthorizationServiceRoleAssignmentInternal struct {
-	roleDefinitionId string
+	cacheRoleDefinitionId string
 }
 
 func newMqlRoleAssignment(runtime *plugin.Runtime, roleAssignment *authorization.RoleAssignment) (*mqlAzureSubscriptionAuthorizationServiceRoleAssignment, error) {
@@ -263,7 +319,6 @@ func newMqlRoleAssignment(runtime *plugin.Runtime, roleAssignment *authorization
 			"id":            llx.StringDataPtr(roleAssignment.Name), // name is the id :-)
 			"description":   llx.StringDataPtr(roleAssignment.Properties.Description),
 			"scope":         llx.StringDataPtr(roleAssignment.Properties.Scope),
-			"type":          llx.StringData(principalType),
 			"principalId":   llx.StringDataPtr(roleAssignment.Properties.PrincipalID),
 			"principalType": llx.StringData(principalType),
 			"condition":     llx.StringDataPtr(roleAssignment.Properties.Condition),
@@ -276,9 +331,72 @@ func newMqlRoleAssignment(runtime *plugin.Runtime, roleAssignment *authorization
 
 	mqlRoleDefinition := r.(*mqlAzureSubscriptionAuthorizationServiceRoleAssignment)
 	if roleAssignment.Properties.RoleDefinitionID != nil {
-		mqlRoleDefinition.roleDefinitionId = *roleAssignment.Properties.RoleDefinitionID
+		mqlRoleDefinition.cacheRoleDefinitionId = *roleAssignment.Properties.RoleDefinitionID
 	}
 	return mqlRoleDefinition, nil
+}
+
+// roleAssignmentsForScope lists the effective role assignments at an ARM scope.
+// NewListForScopePager with no filter returns assignments made at the scope
+// itself plus everything inherited from the resource group, subscription, and
+// management-group ancestors, so the result is effective RBAC access to the
+// resource rather than just what was assigned directly on it.
+//
+// Reading role assignments needs Microsoft.Authorization/roleAssignments/read,
+// which a credential scoped only to the resource's own data plane may not hold.
+// A 403 degrades to the assignments resolved so far rather than failing the
+// whole query.
+func roleAssignmentsForScope(runtime *plugin.Runtime, scope string, what string) ([]any, error) {
+	conn, ok := runtime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+
+	resourceID, err := ParseResourceID(scope)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := authorization.NewRoleAssignmentsClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	pager := client.NewListForScopePager(scope, &authorization.RoleAssignmentsClientListForScopeOptions{})
+	res := []any{}
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			var respErr *azcore.ResponseError
+			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
+				log.Warn().Err(err).Msgf("could not list %s role assignments due to access denied", what)
+				return res, nil
+			}
+			return nil, err
+		}
+		for _, roleAssignment := range page.Value {
+			if roleAssignment == nil {
+				continue
+			}
+			mqlRoleAssignment, err := newMqlRoleAssignment(runtime, roleAssignment)
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlRoleAssignment)
+		}
+	}
+	return res, nil
+}
+
+// roleDefinitionId reports the ARM resource ID of the granted role. It is kept
+// separate from role(), which resolves the definition itself and reports null
+// for a role defined outside the subscription's listing: the raw ID is always
+// known from the assignment, so an audit can still see which role was granted.
+func (a *mqlAzureSubscriptionAuthorizationServiceRoleAssignment) roleDefinitionId() (string, error) {
+	return a.cacheRoleDefinitionId, nil
 }
 
 func extractSubscriptionID(roleDefinitionID string) (string, error) {
@@ -294,34 +412,56 @@ func extractSubscriptionID(roleDefinitionID string) (string, error) {
 }
 
 func (a *mqlAzureSubscriptionAuthorizationServiceRoleAssignment) role() (*mqlAzureSubscriptionAuthorizationServiceRoleDefinition, error) {
-	if a.roleDefinitionId == "" {
+	if a.cacheRoleDefinitionId == "" {
 		a.Role.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 
-	// extract subscription id from role definition id
-	subId, err := extractSubscriptionID(a.roleDefinitionId)
-	if err != nil {
-		return nil, err
+	// Resolve against the connected subscription's role definitions. The
+	// listing at subscription scope already includes definitions inherited
+	// from parent management groups, so it covers assignments whose
+	// roleDefinitionId is management-group scoped -- those carry no
+	// "subscriptions" segment and cannot be parsed for one.
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
 	}
-
-	r, err := CreateResource(a.MqlRuntime, "azure.subscription", map[string]*llx.RawData{
-		"subscriptionId": llx.StringData(subId),
+	r, err := CreateResource(a.MqlRuntime, ResourceAzureSubscription, map[string]*llx.RawData{
+		"__id":           llx.StringData("/subscriptions/" + conn.SubId()),
+		"subscriptionId": llx.StringData(conn.SubId()),
 	})
 	if err != nil {
 		return nil, err
 	}
-	mqlResource := r.(*mqlAzureSubscription)
-	iamResource := mqlResource.GetIam().Data
-	roles := iamResource.GetRoles().Data
+	iam := r.(*mqlAzureSubscription).GetIam()
+	if iam.Error != nil {
+		return nil, iam.Error
+	}
+	if iam.Data == nil {
+		return nil, errors.New("cannot resolve the authorization service for the subscription")
+	}
+	rolesVal := iam.Data.GetRoles()
+	if rolesVal.Error != nil {
+		return nil, rolesVal.Error
+	}
+	roles := rolesVal.Data
 	for i := range roles {
-		role := roles[i].(*mqlAzureSubscriptionAuthorizationServiceRoleDefinition)
-		if role.__id == a.roleDefinitionId {
+		role, ok := roles[i].(*mqlAzureSubscriptionAuthorizationServiceRoleDefinition)
+		if !ok {
+			continue
+		}
+		// ARM resource IDs are case-insensitive.
+		if strings.EqualFold(role.__id, a.cacheRoleDefinitionId) {
 			return role, nil
 		}
 	}
 
-	return nil, errors.New("role definition not found")
+	// A role defined at a child scope this listing does not cover. Report the
+	// grant as unresolved rather than failing the whole assignment listing --
+	// role.name is in the resource's @defaults, so an error here would break
+	// the default rendering of every role assignment in the subscription.
+	a.Role.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
 }
 
 func (a *mqlAzureSubscriptionAuthorizationService) managedIdentities() ([]any, error) {
@@ -338,10 +478,9 @@ func (a *mqlAzureSubscriptionAuthorizationService) managedIdentities() ([]any, e
 
 	ctx := context.Background()
 
-	// list all role assignments since we need to attach them to the managed identities
-	roleAssignments := a.GetRoleAssignments().Data
-
-	// list user assigned identities
+	// list user assigned identities; each identity's roleAssignments accessor
+	// resolves its granted roles on demand by filtering the subscription's
+	// (cached) role-assignment list by principal ID.
 	pager := client.NewListBySubscriptionPager(nil)
 	res := []any{}
 	for pager.More() {
@@ -350,29 +489,13 @@ func (a *mqlAzureSubscriptionAuthorizationService) managedIdentities() ([]any, e
 			return nil, err
 		}
 		for _, v := range page.Value {
+			if v == nil {
+				continue
+			}
 			mqlManagedIdentity, err := newMqlManagedIdentity(a.MqlRuntime, v)
 			if err != nil {
 				return nil, err
 			}
-
-			// set assigned roles to nil
-			mqlManagedIdentity.RoleAssignments = plugin.TValue[[]any]{Error: nil, State: plugin.StateIsSet | plugin.StateIsNull}
-
-			assignedRoles := []any{}
-			for i := range roleAssignments {
-				roleAssignment := roleAssignments[i].(*mqlAzureSubscriptionAuthorizationServiceRoleAssignment)
-				// Compare the principal ID values, not the whole TValue structs
-				// (which also carry State/Error and would only match when those
-				// happen to be identical too).
-				if roleAssignment.PrincipalId.Data == mqlManagedIdentity.PrincipalId.Data {
-					assignedRoles = append(assignedRoles, roleAssignment)
-				}
-			}
-
-			if len(assignedRoles) > 0 {
-				mqlManagedIdentity.RoleAssignments = plugin.TValue[[]any]{Error: nil, Data: assignedRoles, State: plugin.StateIsSet}
-			}
-
 			res = append(res, mqlManagedIdentity)
 		}
 	}
@@ -407,6 +530,17 @@ func initAzureSubscriptionManagedIdentity(runtime *plugin.Runtime, args map[stri
 	}
 
 	conn := runtime.Connection.(*connection.AzureConnection)
+	// The subscription's list already holds this managed identity, and holds it for every
+	// other reference to it too. Only pay for a Get when the list cannot
+	// answer -- a reference into another subscription, or one since deleted.
+	if mi := lookupInServiceList(runtime, ResourceAzureSubscriptionAuthorizationService,
+		func(s *mqlAzureSubscriptionAuthorizationService) *plugin.TValue[[]any] {
+			return s.GetManagedIdentities()
+		},
+		id); mi != nil {
+		return args, mi, nil
+	}
+
 	client, err := armmsi.NewUserAssignedIdentitiesClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
 		ClientOptions: conn.ClientOptions(),
 	})
@@ -472,13 +606,74 @@ func (a *mqlAzureSubscriptionManagedIdentity) systemMetadata() (*mqlAzureSubscri
 }
 
 func (a *mqlAzureSubscriptionManagedIdentity) roleAssignments() ([]any, error) {
-	// NOTE: this should never be called since we assign roles during the managed identities query
-	return nil, errors.New("could not fetch role assignments for managed identities")
+	return roleAssignmentsForPrincipal(a.MqlRuntime, a.PrincipalId.Data)
 }
 
-func (a *mqlAzureSubscriptionManagedIdentity) federatedIdentityCredentials() ([]any, error) {
-	if a.cacheResourceID == "" {
+// roleAssignmentsForPrincipal returns the subscription role assignments granted
+// directly to a principal, identified by its object/principal ID. It filters
+// the subscription's role-assignment list (which the runtime caches), so every
+// caller shares a single API fetch rather than issuing a per-principal query.
+// An empty principalId yields no assignments.
+//
+// This is the identity-to-privilege edge of a resource's attack path: a managed
+// identity (system- or user-assigned) resolves to the roles it holds, and each
+// role assignment resolves further to its role definition and permissions.
+func roleAssignmentsForPrincipal(runtime *plugin.Runtime, principalId string) ([]any, error) {
+	if principalId == "" {
 		return []any{}, nil
+	}
+	conn := runtime.Connection.(*connection.AzureConnection)
+	// azure.subscription has no id() fallback here (only subscriptionId is
+	// known), so pass __id explicitly; otherwise every synthesized subscription
+	// shares the empty cache key.
+	r, err := CreateResource(runtime, ResourceAzureSubscription, map[string]*llx.RawData{
+		"__id":           llx.StringData("/subscriptions/" + conn.SubId()),
+		"subscriptionId": llx.StringData(conn.SubId()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	sub := r.(*mqlAzureSubscription)
+	// Surface a failure to resolve IAM. Returning an empty list would report
+	// "this identity holds no roles", which is the most dangerous possible
+	// wrong answer for a privilege audit.
+	iamVal := sub.GetIam()
+	if iamVal.Error != nil {
+		return nil, iamVal.Error
+	}
+	iam := iamVal.Data
+	if iam == nil {
+		return nil, errors.New("cannot resolve the authorization service for the subscription")
+	}
+	all := iam.GetRoleAssignments()
+	if all.Error != nil {
+		return nil, all.Error
+	}
+	return filterRoleAssignmentsByPrincipal(all.Data, principalId), nil
+}
+
+// filterRoleAssignmentsByPrincipal returns the role assignments whose principal
+// ID matches the given principal.
+func filterRoleAssignmentsByPrincipal(assignments []any, principalId string) []any {
+	res := []any{}
+	for _, ra := range assignments {
+		assignment, ok := ra.(*mqlAzureSubscriptionAuthorizationServiceRoleAssignment)
+		if !ok {
+			continue
+		}
+		if assignment.PrincipalId.Data == principalId {
+			res = append(res, assignment)
+		}
+	}
+	return res
+}
+
+// listFederatedIdentityCredentials reads the federated identity credentials of
+// a user-assigned identity. A system-assigned identity has no resource of its
+// own to hang credentials on, so it reports none without a request.
+func (a *mqlAzureSubscriptionManagedIdentity) listFederatedIdentityCredentials() ([]*armmsi.FederatedIdentityCredential, error) {
+	if a.cacheResourceID == "" {
+		return nil, nil
 	}
 	resourceID, err := ParseResourceID(a.cacheResourceID)
 	if err != nil {
@@ -499,34 +694,90 @@ func (a *mqlAzureSubscriptionManagedIdentity) federatedIdentityCredentials() ([]
 
 	ctx := context.Background()
 	pager := client.NewListPager(resourceID.ResourceGroup, name, nil)
-	res := []any{}
+	res := []*armmsi.FederatedIdentityCredential{}
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
 			return nil, err
 		}
 		for _, fic := range page.Value {
-			if fic == nil {
-				continue
+			if fic != nil {
+				res = append(res, fic)
 			}
-			entry := map[string]any{
-				"name": convert.ToValue(fic.Name),
-			}
-			if p := fic.Properties; p != nil {
-				entry["issuer"] = convert.ToValue(p.Issuer)
-				entry["subject"] = convert.ToValue(p.Subject)
-				audiences := []any{}
-				for _, aud := range p.Audiences {
-					if aud != nil {
-						audiences = append(audiences, *aud)
-					}
-				}
-				entry["audiences"] = audiences
-			}
-			res = append(res, entry)
 		}
 	}
 	return res, nil
+}
+
+func (a *mqlAzureSubscriptionManagedIdentity) federatedIdentityCredentials() ([]any, error) {
+	fics, err := a.listFederatedIdentityCredentials()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for _, fic := range fics {
+		entry := map[string]any{
+			"name": convert.ToValue(fic.Name),
+		}
+		if p := fic.Properties; p != nil {
+			entry["issuer"] = convert.ToValue(p.Issuer)
+			entry["subject"] = convert.ToValue(p.Subject)
+			entry["audiences"] = federatedCredentialAudiences(p.Audiences)
+		}
+		res = append(res, entry)
+	}
+	return res, nil
+}
+
+// federatedCredentialAudiences copies the audience list, skipping nil entries.
+func federatedCredentialAudiences(audiences []*string) []any {
+	res := []any{}
+	for _, aud := range audiences {
+		if aud != nil {
+			res = append(res, *aud)
+		}
+	}
+	return res
+}
+
+// federatedCredentialArgs maps a federated identity credential onto the fields
+// of azure.subscription.managedIdentity.federatedCredential. An absent issuer
+// or subject reads as null.
+func federatedCredentialArgs(fic *armmsi.FederatedIdentityCredential) map[string]*llx.RawData {
+	var issuer, subject *string
+	audiences := []any{}
+	if p := fic.Properties; p != nil {
+		issuer = p.Issuer
+		subject = p.Subject
+		audiences = federatedCredentialAudiences(p.Audiences)
+	}
+	return map[string]*llx.RawData{
+		"id":        llx.StringDataPtr(fic.ID),
+		"name":      llx.StringDataPtr(fic.Name),
+		"issuer":    llx.StringDataPtr(issuer),
+		"subject":   llx.StringDataPtr(subject),
+		"audiences": llx.ArrayData(audiences, types.String),
+	}
+}
+
+func (a *mqlAzureSubscriptionManagedIdentity) federatedCredentials() ([]any, error) {
+	fics, err := a.listFederatedIdentityCredentials()
+	if err != nil {
+		return nil, classifyAzureRefusal(err, "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials/read")
+	}
+	res := []any{}
+	for _, fic := range fics {
+		mqlFic, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionManagedIdentityFederatedCredential, federatedCredentialArgs(fic))
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlFic)
+	}
+	return res, nil
+}
+
+func (a *mqlAzureSubscriptionManagedIdentityFederatedCredential) id() (string, error) {
+	return a.Id.Data, nil
 }
 
 func (a *mqlAzureSubscriptionAuthorizationServiceDenyAssignment) id() (string, error) {
@@ -626,8 +877,47 @@ func (a *mqlAzureSubscriptionAuthorizationServiceClassicAdministrator) id() (str
 	return a.Id.Data, nil
 }
 
-// classicAdministrators lists legacy ASM co-admins / service admins on the subscription.
-// CIS 1.21 requires this to be empty. Distinct from RBAC role assignments.
+// azureProviderNotInRegion reports whether the error is ARM saying the resource
+// provider is not deployed in that region.
+//
+// A subscription's location list includes staging and edge regions that most
+// services never ship to, so any per-region fan-out hits this routinely. It
+// means there is nothing there to find, which is a different thing from being
+// unable to look.
+func azureProviderNotInRegion(err error) bool {
+	var respErr *azcore.ResponseError
+	if !errors.As(err, &respErr) {
+		return false
+	}
+	return respErr.ErrorCode == "NoRegisteredProviderFound"
+}
+
+// azureClassicAdministratorsRetired reports whether the error is ARM saying the
+// classic administrators resource type no longer exists.
+//
+// The retirement removed the type from the Microsoft.Authorization namespace
+// rather than emptying it, so ARM answers 404 InvalidResourceType. The code is
+// checked alongside the status so that a genuinely missing subscription, which
+// is also a 404 but carries SubscriptionNotFound, still reports as the error it
+// is.
+func azureClassicAdministratorsRetired(err error) bool {
+	var respErr *azcore.ResponseError
+	if !errors.As(err, &respErr) {
+		return false
+	}
+	return respErr.StatusCode == http.StatusNotFound && respErr.ErrorCode == "InvalidResourceType"
+}
+
+// classicAdministrators lists legacy ASM co-admins and service admins on the
+// subscription. Distinct from RBAC role assignments, which roleAssignments
+// covers.
+//
+// Azure retired classic subscription administrators on 31 August 2024 and
+// removed the resource type with them, so every subscription now answers this
+// with 404 InvalidResourceType. That is not a fault to report: it means the
+// subscription has no classic administrators, which is also the answer an audit
+// of this field is looking for. Returning the 404 instead failed the field on
+// every subscription in existence.
 func (a *mqlAzureSubscriptionAuthorizationService) classicAdministrators() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
 	ctx := context.Background()
@@ -641,10 +931,13 @@ func (a *mqlAzureSubscriptionAuthorizationService) classicAdministrators() ([]an
 	}
 
 	pager := client.NewListPager(nil)
-	var res []any
+	res := []any{}
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			if azureClassicAdministratorsRetired(err) {
+				return []any{}, nil
+			}
 			return nil, err
 		}
 		for _, ca := range page.Value {

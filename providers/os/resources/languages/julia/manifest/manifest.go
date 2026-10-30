@@ -8,9 +8,9 @@ import (
 	"io"
 
 	"github.com/BurntSushi/toml"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	julialang "go.mondoo.com/mql/v13/providers/os/resources/languages/julia"
-	"go.mondoo.com/mql/v13/sbom"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	julialang "go.mondoo.com/mql/providers/os/resources/languages/julia"
+	"go.mondoo.com/mql/sbom"
 )
 
 // Extractor parses Julia Manifest.toml files.

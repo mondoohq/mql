@@ -7,13 +7,19 @@ import (
 	"errors"
 	"time"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 type Result struct {
-	Time     *time.Time
+	Time *time.Time
+	// Timezone is the IANA name of the system's zone.
 	Timezone string
+	// WindowsTimezone is the zone ID Windows reports, nil on other platforms.
+	WindowsTimezone *string
+	// UTCOffset is the offset from UTC in seconds east, in effect when the
+	// time was read. Nil when it could not be determined.
+	UTCOffset *int64
 }
 
 type Date interface {

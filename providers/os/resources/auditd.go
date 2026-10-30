@@ -5,22 +5,26 @@
 package resources
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
+	stdpath "path"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
-	"unicode"
 
-	"go.mondoo.com/mql/v13/checksums"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/resources/parsers"
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/multierr"
+	"github.com/spf13/afero"
+	"go.mondoo.com/mql/checksums"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/parsers"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/multierr"
 )
 
 type mqlAuditdConfigInternal struct {
@@ -136,6 +140,63 @@ func (s *mqlAuditdConfig) params(file *mqlFile) (map[string]any, error) {
 	return nil, s.parse(file)
 }
 
+// The defaults below are auditd's own, from clear_config() in
+// src/auditd-config.c (unchanged from audit 2.8 through 4.x). They apply when
+// a key is absent and differ from the values in the auditd.conf that
+// distributions ship.
+
+func (s *mqlAuditdConfig) maxLogFile(params map[string]any) (int64, error) {
+	return auditdConfigInt(params, "max_log_file", 0)
+}
+
+func (s *mqlAuditdConfig) numLogs(params map[string]any) (int64, error) {
+	return auditdConfigInt(params, "num_logs", 0)
+}
+
+func (s *mqlAuditdConfig) maxLogFileAction(params map[string]any) (string, error) {
+	return auditdConfigString(params, "max_log_file_action", "ignore"), nil
+}
+
+func (s *mqlAuditdConfig) spaceLeftAction(params map[string]any) (string, error) {
+	return auditdConfigString(params, "space_left_action", "ignore"), nil
+}
+
+func (s *mqlAuditdConfig) adminSpaceLeftAction(params map[string]any) (string, error) {
+	return auditdConfigString(params, "admin_space_left_action", "ignore"), nil
+}
+
+func (s *mqlAuditdConfig) diskFullAction(params map[string]any) (string, error) {
+	return auditdConfigString(params, "disk_full_action", "ignore"), nil
+}
+
+func (s *mqlAuditdConfig) diskErrorAction(params map[string]any) (string, error) {
+	return auditdConfigString(params, "disk_error_action", "syslog"), nil
+}
+
+func (s *mqlAuditdConfig) actionMailAcct(params map[string]any) (string, error) {
+	return auditdConfigString(params, "action_mail_acct", "root"), nil
+}
+
+func auditdConfigString(params map[string]any, key string, def string) string {
+	v, _ := params[key].(string)
+	if v == "" {
+		return def
+	}
+	return v
+}
+
+func auditdConfigInt(params map[string]any, key string, def int64) (int64, error) {
+	v, _ := params[key].(string)
+	if v == "" {
+		return def, nil
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("auditd config %s is not a number: %q", key, v)
+	}
+	return n, nil
+}
+
 var auditdDowncaseKeywords = []string{
 	"local_events",
 	"write_logs",
@@ -158,20 +219,183 @@ type mqlAuditdRulesInternal struct {
 	loadError error
 }
 
-const defaultAuditdRules = "/etc/audit/rules.d"
+// auditdRuleSet is the result of reading a list of audit rules, from the rules
+// files on disk or from the rules the kernel has loaded.
+type auditdRuleSet struct {
+	runtime  *plugin.Runtime
+	controls []any
+	files    []any
+	syscalls []any
+	watches  []any
+	// rules added so far in load order, so a later -d or -W can remove them
+	loadedRules      []auditdLoadedRule
+	lastRuleIdentity string
+}
+
+func newAuditdRuleSet(runtime *plugin.Runtime) *auditdRuleSet {
+	return &auditdRuleSet{
+		runtime:  runtime,
+		controls: []any{},
+		files:    []any{},
+		syscalls: []any{},
+		watches:  []any{},
+	}
+}
+
+// auditdLoadedRule is one added rule line and the resources it produced.
+type auditdLoadedRule struct {
+	identity  string
+	resources []plugin.Resource
+}
+
+const (
+	defaultAuditdRulesDir  = "/etc/audit/rules.d"
+	defaultAuditdRulesFile = "/etc/audit/audit.rules"
+)
 
 func (s *mqlAuditdRules) id() (string, error) {
 	return s.Path.Data, nil
 }
 
+// path resolves the ruleset the way the audit service loads it: augenrules
+// builds audit.rules from rules.d, and leaves an existing audit.rules alone
+// when rules.d has no *.rules files.
 func (s *mqlAuditdRules) path() (string, error) {
-	return defaultAuditdRules, nil
+	files, err := auditdRuleFiles(s.MqlRuntime, defaultAuditdRulesDir)
+	if err != nil {
+		return "", err
+	}
+	if len(files) > 0 {
+		return defaultAuditdRulesDir, nil
+	}
+
+	files, err = auditdRuleFiles(s.MqlRuntime, defaultAuditdRulesFile)
+	if err != nil {
+		return "", err
+	}
+	if len(files) > 0 {
+		return defaultAuditdRulesFile, nil
+	}
+
+	return defaultAuditdRulesDir, nil
+}
+
+// auditdRuleFiles returns the rule files at path. For a directory these are
+// the top-level *.rules files in natural sort order, which is what augenrules
+// reads. A missing path has no rule files.
+func auditdRuleFiles(runtime *plugin.Runtime, path string) ([]*mqlFile, error) {
+	raw, err := CreateResource(runtime, "file", map[string]*llx.RawData{
+		"path": llx.StringData(path),
+	})
+	if err != nil {
+		return nil, err
+	}
+	f := raw.(*mqlFile)
+	exists := f.GetExists()
+	if exists.Error != nil {
+		return nil, exists.Error
+	}
+	if !exists.Data {
+		return nil, nil
+	}
+
+	perm := f.GetPermissions()
+	if perm.Error != nil {
+		return nil, perm.Error
+	}
+	if !perm.Data.IsDirectory.Data {
+		return []*mqlFile{f}, nil
+	}
+
+	conn := runtime.Connection.(shared.Connection)
+	entries, err := afero.ReadDir(conn.FileSystem(), path)
+	if err != nil {
+		return nil, err
+	}
+
+	names := []string{}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || strings.HasPrefix(name, ".") || !strings.HasSuffix(name, ".rules") {
+			continue
+		}
+		names = append(names, name)
+	}
+	slices.SortFunc(names, naturalCompare)
+
+	res := make([]*mqlFile, 0, len(names))
+	for _, name := range names {
+		raw, err := CreateResource(runtime, "file", map[string]*llx.RawData{
+			"path": llx.StringData(stdpath.Join(path, name)),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, raw.(*mqlFile))
+	}
+	return res, nil
+}
+
+// naturalCompare orders file names the way `sort -V` does for them: runs of
+// digits compare by value, so 9-a.rules sorts before 10-b.rules.
+func naturalCompare(a, b string) int {
+	x, y := a, b
+	for x != "" && y != "" {
+		xDigit, yDigit := isASCIIDigit(x[0]), isASCIIDigit(y[0])
+		if xDigit != yDigit {
+			return strings.Compare(x, y)
+		}
+
+		xRun, xRest := splitDigitRun(x, xDigit)
+		yRun, yRest := splitDigitRun(y, yDigit)
+		var c int
+		if xDigit {
+			xNum, yNum := strings.TrimLeft(xRun, "0"), strings.TrimLeft(yRun, "0")
+			c = cmp.Compare(len(xNum), len(yNum))
+			if c == 0 {
+				c = strings.Compare(xNum, yNum)
+			}
+		} else {
+			c = strings.Compare(xRun, yRun)
+		}
+		if c != 0 {
+			return c
+		}
+		x, y = xRest, yRest
+	}
+	if c := cmp.Compare(len(x), len(y)); c != 0 {
+		return c
+	}
+	return strings.Compare(a, b)
+}
+
+func isASCIIDigit(b byte) bool {
+	return b >= '0' && b <= '9'
+}
+
+func splitDigitRun(s string, digits bool) (string, string) {
+	i := 0
+	for i < len(s) && isASCIIDigit(s[i]) == digits {
+		i++
+	}
+	return s[:i], s[i:]
 }
 
 func (s *mqlAuditdRules) setEmptyRules() {
 	s.Controls = plugin.TValue[[]any]{Data: []any{}, State: plugin.StateIsSet}
 	s.Files = plugin.TValue[[]any]{Data: []any{}, State: plugin.StateIsSet}
 	s.Syscalls = plugin.TValue[[]any]{Data: []any{}, State: plugin.StateIsSet}
+	s.Watches = plugin.TValue[[]any]{Data: []any{}, State: plugin.StateIsSet}
+	s.Immutable = plugin.TValue[bool]{Data: false, State: plugin.StateIsSet}
+}
+
+func (s *mqlAuditdRules) setLoadError(err error) {
+	s.Controls = plugin.TValue[[]any]{State: plugin.StateIsSet, Error: err}
+	s.Files = plugin.TValue[[]any]{State: plugin.StateIsSet, Error: err}
+	s.Syscalls = plugin.TValue[[]any]{State: plugin.StateIsSet, Error: err}
+	s.Watches = plugin.TValue[[]any]{State: plugin.StateIsSet, Error: err}
+	s.Exists = plugin.TValue[bool]{State: plugin.StateIsSet, Error: err}
+	s.Immutable = plugin.TValue[bool]{State: plugin.StateIsSet, Error: err}
 }
 
 func (s *mqlAuditdRules) load(path string) error {
@@ -185,47 +409,35 @@ func (s *mqlAuditdRules) load(path string) error {
 		return errors.New("the path must be non-empty to parse auditd rules")
 	}
 
-	raw, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(path),
-	})
+	files, err := auditdRuleFiles(s.MqlRuntime, path)
 	if err != nil {
+		s.setLoadError(err)
 		return err
 	}
-	f := raw.(*mqlFile)
-	exists := f.GetExists()
-	if exists.Error != nil {
-		return exists.Error
-	}
-	if !exists.Data {
+
+	s.Exists = plugin.TValue[bool]{Data: len(files) > 0, State: plugin.StateIsSet}
+	if len(files) == 0 {
 		s.setEmptyRules()
 		s.loaded = true
 		return nil
 	}
 
-	files, err := getSortedPathFiles(s.MqlRuntime, path)
-	if err != nil {
-		s.Controls = plugin.TValue[[]any]{State: plugin.StateIsSet, Error: err}
-		s.Files = plugin.TValue[[]any]{State: plugin.StateIsSet, Error: err}
-		s.Syscalls = plugin.TValue[[]any]{State: plugin.StateIsSet, Error: err}
-		return err
+	// augenrules cats the rules files with nothing in between, so a file
+	// whose last line has no newline runs into the next file's first line
+	var content strings.Builder
+	for _, file := range files {
+		c := file.GetContent()
+		if c.Error != nil {
+			s.setLoadError(c.Error)
+			return c.Error
+		}
+		content.WriteString(c.Data)
 	}
-
 	var errors multierr.Errors
-	for i := range files {
-		file := files[i].(*mqlFile)
+	s.parse(content.String(), &errors)
 
-		bn := file.GetBasename()
-		if !strings.HasSuffix(bn.Data, ".rules") {
-			continue
-		}
-
-		content := file.GetContent()
-		if content.Error != nil {
-			return content.Error
-		}
-
-		s.parse(content.Data, &errors)
-	}
+	singleFile := len(files) == 1 && files[0].Path.Data == path
+	s.Immutable = plugin.TValue[bool]{Data: auditdImmutable(s.Controls.Data, singleFile), State: plugin.StateIsSet}
 
 	// Set state after all parsing is complete. Setting state inside parse()
 	// creates a race: concurrent GetOrCompute callers see IsSet()==true while
@@ -233,28 +445,55 @@ func (s *mqlAuditdRules) load(path string) error {
 	s.Syscalls.State = plugin.StateIsSet
 	s.Files.State = plugin.StateIsSet
 	s.Controls.State = plugin.StateIsSet
+	s.Watches.State = plugin.StateIsSet
 
 	s.loadError = errors.Deduplicate()
 	s.loaded = true
 	return s.loadError
 }
 
+// auditdImmutable reports whether the -e controls lock the configuration.
+// augenrules keeps only the last -e of a rules directory. A single rules file
+// is applied in order, and the kernel rejects every change after -e 2.
+func auditdImmutable(controls []any, singleFile bool) bool {
+	immutable := false
+	for _, raw := range controls {
+		c := raw.(*mqlAuditdRuleControl)
+		if c.Flag.Data != "-e" {
+			continue
+		}
+		if singleFile {
+			if c.Value.Data == "2" {
+				return true
+			}
+			continue
+		}
+		immutable = c.Value.Data == "2"
+	}
+	return immutable
+}
+
+func isAuditdSpace(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\r' || b == '\n' || b == '\v' || b == '\f'
+}
+
 func parseKeyVal(line string) (string, string, int) {
-	runes := []rune(line)
 	i := 0
+	skipToken := func() {
+		for i < len(line) && !isAuditdSpace(line[i]) {
+			i++
+		}
+	}
+	skipSpace := func() {
+		for i < len(line) && isAuditdSpace(line[i]) {
+			i++
+		}
+	}
 
 	// invalid prefix
-	if line[i] != '-' {
-		for ; i < len(runes); i++ {
-			if unicode.IsSpace(runes[i]) {
-				break
-			}
-		}
-		for ; i < len(runes); i++ {
-			if !unicode.IsSpace(runes[i]) {
-				break
-			}
-		}
+	if line[0] != '-' {
+		skipToken()
+		skipSpace()
 		return "", "", i
 	}
 
@@ -267,83 +506,88 @@ func parseKeyVal(line string) (string, string, int) {
 		i = 1
 	}
 
-	for ; i < len(runes); i++ {
-		if unicode.IsSpace(runes[i]) {
-			break
-		}
-	}
-	if i == len(runes) {
+	skipToken()
+	if i == len(line) {
 		return line, "", i
 	}
 	keyend := i
 
-	for ; i < len(runes); i++ {
-		if !unicode.IsSpace(runes[i]) {
-			break
-		}
-	}
+	skipSpace()
 	valstart := i
-	for ; i < len(runes); i++ {
-		if unicode.IsSpace(runes[i]) {
-			break
-		}
-	}
+	skipToken()
 	valend := i
-
-	for ; i < len(runes); i++ {
-		if !unicode.IsSpace(runes[i]) {
-			break
-		}
-	}
+	skipSpace()
 
 	return line[:keyend], line[valstart:valend], i
+}
+
+// parse reads the rules in content into the rule lists, without marking them
+// set.
+func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
+	rules := newAuditdRuleSet(s.MqlRuntime)
+	rules.parse(content, errors)
+	s.Controls.Data = rules.controls
+	s.Files.Data = rules.files
+	s.Syscalls.Data = rules.syscalls
+	s.Watches.Data = rules.watches
 }
 
 // Make sure this regex matches the most complete form first (ie >=) before
 // matching the shorter forms (ie =)
 var reOperator = regexp.MustCompile(`(!=|<=|>=|=|>|<)`)
 
-func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
-	lines := strings.Split(content, "\n")
-	for _, rawline := range lines {
+func (s *auditdRuleSet) parse(content string, errors *multierr.Errors) {
+	lines := strings.SplitSeq(content, "\n")
+	for rawline := range lines {
 		line := strings.TrimSpace(rawline)
 		if line == "" || line[0] == '#' {
 			continue
 		}
 
 		resourceName := "auditd.rule.control"
+		deleteRule := false
 		args := map[string]*llx.RawData{}
 		rawFields := []string{}
 		rawComparisons := []string{}
 		syscalls := []any{}
 		other := [][2]string{}
 
+		positional := false
+	tokens:
 		for line != "" {
 			k, v, idx := parseKeyVal(line)
 			line = line[idx:]
 
 			switch k {
-			case "-a":
+			case "":
+				// auditctl rejects a line with an argument that follows no
+				// option ("parameter passed without an option given"), as when
+				// augenrules runs two rules files' lines together
+				positional = true
+				break tokens
+			case "-a", "-A", "-d":
+				// -A prepends the rule instead of appending it, and -d deletes
+				// the matching rule added earlier
 				resourceName = "auditd.rule.syscall"
-				arr := strings.SplitN(v, ",", 2)
-				args["action"] = llx.StringData(arr[0])
-				// A well-formed rule is `-a action,list`, but malformed rules
-				// (e.g. `-a always` with no list) carry no comma; guard the
-				// optional second segment so we don't panic on bad input.
-				if len(arr) > 1 {
-					args["list"] = llx.StringData(arr[1])
-				} else {
-					args["list"] = llx.StringData("")
-				}
+				deleteRule = k == "-d"
+				action, list := splitAuditdRuleAction(v)
+				args["action"] = llx.StringData(action)
+				args["list"] = llx.StringData(list)
 
 			case "-F":
 				rawFields = append(rawFields, v)
+				// auditctl treats -F key= exactly like -k
+				if key, ok := strings.CutPrefix(v, "key="); ok {
+					args["keyname"] = llx.StringData(key)
+				}
 
 			case "-C":
 				rawComparisons = append(rawComparisons, v)
 
-			case "-w":
+			case "-w", "-W":
+				// -W removes the matching watch added earlier
 				resourceName = "auditd.rule.file"
+				deleteRule = k == "-W"
 				args["path"] = llx.StringData(v)
 
 			case "-k":
@@ -359,7 +603,7 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 				// -S accepts a comma-separated list of syscalls (and may be
 				// repeated); store each syscall individually so policies can
 				// match them as a flat list.
-				for _, sc := range strings.Split(v, ",") {
+				for sc := range strings.SplitSeq(v, ",") {
 					if sc != "" {
 						syscalls = append(syscalls, sc)
 					}
@@ -369,6 +613,21 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 				other = append(other, [2]string{k, v})
 			}
 		}
+		if positional {
+			continue
+		}
+
+		if resourceName != "auditd.rule.control" {
+			identity := auditdRuleIdentity(resourceName == "auditd.rule.file",
+				auditdArgString(args, "action"), auditdArgString(args, "list"),
+				syscalls, rawFields, rawComparisons,
+				auditdArgString(args, "path"), auditdArgString(args, "permissions"))
+			if deleteRule {
+				s.deleteRule(identity)
+				continue
+			}
+			s.lastRuleIdentity = identity
+		}
 
 		switch resourceName {
 		case "auditd.rule.file":
@@ -376,12 +635,22 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 				args["keyname"] = llx.StringData("")
 			}
 
-			r, err := CreateResource(s.MqlRuntime, resourceName, args)
+			r, err := CreateResource(s.runtime, resourceName, args)
 			if err != nil {
 				errors.Add(err)
 				continue
 			}
-			s.Files.Data = append(s.Files.Data, r)
+			s.files = append(s.files, r)
+
+			// a watch without -p fires on every access type, as in auditctl
+			perm := "rwxa"
+			if p, ok := args["permissions"]; ok {
+				perm, _ = p.Value.(string)
+			}
+			path, _ := args["path"].Value.(string)
+			keyname, _ := args["keyname"].Value.(string)
+			w := s.addWatch("watch", path, perm, keyname, errors)
+			s.recordRule(r, w)
 
 		case "auditd.rule.syscall":
 			args["syscalls"] = llx.ArrayData(syscalls, types.String)
@@ -425,6 +694,7 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 			var arch string
 			var auidMin *int64
 			excludesUnsetAuid := false
+			var watchType, watchPath, watchPerm string
 			for _, raw := range fields {
 				f, ok := raw.(map[string]any)
 				if !ok {
@@ -436,7 +706,15 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 				switch key {
 				case "arch":
 					if op == "=" {
-						arch = val
+						arch = auditdArchName(val)
+					}
+				case "path", "dir":
+					if op == "=" {
+						watchType, watchPath = key, val
+					}
+				case "perm":
+					if op == "=" {
+						watchPerm = val
 					}
 				case "auid":
 					switch op {
@@ -467,16 +745,26 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 				args["keyname"] = llx.StringData("")
 			}
 
-			r, err := CreateResource(s.MqlRuntime, resourceName, args)
+			r, err := CreateResource(s.runtime, resourceName, args)
 			if err != nil {
 				errors.Add(err)
 				continue
 			}
-			s.Syscalls.Data = append(s.Syscalls.Data, r)
+			s.syscalls = append(s.syscalls, r)
+
+			// `-a always,exit -F path=X -F perm=P` is the syscall form of `-w X -p P`
+			action, _ := args["action"].Value.(string)
+			list, _ := args["list"].Value.(string)
+			var w plugin.Resource
+			if action == "always" && list == "exit" && watchPath != "" && watchPerm != "" {
+				keyname, _ := args["keyname"].Value.(string)
+				w = s.addWatch(watchType, watchPath, watchPerm, keyname, errors)
+			}
+			s.recordRule(r, w)
 
 		default:
 			for io := range other {
-				r, err := CreateResource(s.MqlRuntime, resourceName, map[string]*llx.RawData{
+				r, err := CreateResource(s.runtime, resourceName, map[string]*llx.RawData{
 					"flag":  llx.StringData(other[io][0]),
 					"value": llx.StringData(other[io][1]),
 				})
@@ -484,10 +772,207 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 					errors.Add(err)
 					continue
 				}
-				s.Controls.Data = append(s.Controls.Data, r)
+				s.controls = append(s.controls, r)
 			}
 		}
 	}
+}
+
+// auditdArchName names an AUDIT_ARCH_* value the way auditctl's b32 and b64
+// aliases do. An auditctl without the syscall table of an architecture lists
+// a rule for it by number, such as `arch=0x40000028` for 32-bit ARM, where the
+// 64-bit flag tells b64 from b32. Other values are returned unchanged.
+func auditdArchName(v string) string {
+	hex, ok := strings.CutPrefix(strings.ToLower(v), "0x")
+	if !ok {
+		return v
+	}
+	n, err := strconv.ParseUint(hex, 16, 32)
+	if err != nil {
+		return v
+	}
+	const auditArch64Bit = 0x80000000
+	if n&auditArch64Bit != 0 {
+		return "b64"
+	}
+	return "b32"
+}
+
+var auditdRuleActions = []string{"always", "never"}
+
+// splitAuditdRuleAction splits the argument of -a into its action and list.
+// auditctl accepts both `always,exit` and `exit,always`. A malformed argument
+// without a comma yields an empty list.
+func splitAuditdRuleAction(v string) (string, string) {
+	first, second, _ := strings.Cut(v, ",")
+	if !slices.Contains(auditdRuleActions, first) && slices.Contains(auditdRuleActions, second) {
+		return second, first
+	}
+	return first, second
+}
+
+func (s *auditdRuleSet) addWatch(watchType string, path string, perm string, keyname string, errors *multierr.Errors) plugin.Resource {
+	if trimmed := strings.TrimRight(path, "/"); trimmed != "" {
+		path = trimmed
+	}
+
+	permissions := []any{}
+	for _, p := range []string{"r", "w", "x", "a"} {
+		if strings.Contains(perm, p) {
+			permissions = append(permissions, p)
+		}
+	}
+
+	r, err := CreateResource(s.runtime, "auditd.rule.watch", map[string]*llx.RawData{
+		"path":        llx.StringData(path),
+		"permissions": llx.ArrayData(permissions, types.String),
+		"keyname":     llx.StringData(keyname),
+		"type":        llx.StringData(watchType),
+	})
+	if err != nil {
+		errors.Add(err)
+		return nil
+	}
+	s.watches = append(s.watches, r)
+	return r
+}
+
+// auditdArgString returns the string argument named key, or "" when unset.
+func auditdArgString(args map[string]*llx.RawData, key string) string {
+	if raw, ok := args[key]; ok && raw != nil {
+		v, _ := raw.Value.(string)
+		return v
+	}
+	return ""
+}
+
+// recordRule remembers the resources the last added rule line produced, so a
+// later -d or -W that matches it can remove them.
+func (s *auditdRuleSet) recordRule(resources ...plugin.Resource) {
+	rule := auditdLoadedRule{identity: s.lastRuleIdentity}
+	for _, r := range resources {
+		if r != nil {
+			rule.resources = append(rule.resources, r)
+		}
+	}
+	s.loadedRules = append(s.loadedRules, rule)
+}
+
+// deleteRule applies a -d or -W line: the kernel removes the rule that matches
+// it exactly, so every earlier rule with the same identity is dropped from the
+// reported lists. A deletion that matches nothing is rejected by the kernel and
+// changes nothing.
+func (s *auditdRuleSet) deleteRule(identity string) {
+	removed := map[plugin.Resource]bool{}
+	s.loadedRules = slices.DeleteFunc(s.loadedRules, func(r auditdLoadedRule) bool {
+		if r.identity != identity {
+			return false
+		}
+		for _, res := range r.resources {
+			removed[res] = true
+		}
+		return true
+	})
+	if len(removed) == 0 {
+		return
+	}
+	drop := func(x any) bool {
+		r, ok := x.(plugin.Resource)
+		return ok && removed[r]
+	}
+	s.files = slices.DeleteFunc(s.files, drop)
+	s.syscalls = slices.DeleteFunc(s.syscalls, drop)
+	s.watches = slices.DeleteFunc(s.watches, drop)
+}
+
+// auditdRuleIdentity describes a rule the way the kernel compares rules when
+// deleting one: list, action, syscalls, and fields in order. auditctl turns
+// `-w X` into an exit-list rule on all syscalls with a path field and a perm
+// field that defaults to all permissions, so `-w X -p wa` and
+// `-a always,exit -F path=X -F perm=aw` are the same rule. Keys are compared as
+// the list they were given in, after the other fields.
+func auditdRuleIdentity(watch bool, action, list string, syscalls []any, rawFields, rawComparisons []string, path, perm string) string {
+	fields := []string{}
+	keys := []string{}
+	if watch {
+		action, list = "always", "exit"
+		// auditctl trims trailing slashes from a -w path longer than two bytes
+		if len(path) > 2 {
+			if trimmed := strings.TrimRight(path, "/"); trimmed != "" {
+				path = trimmed
+			}
+		}
+		if perm == "" {
+			perm = "rwxa"
+		}
+		fields = append(fields, "watch="+path, "perm="+auditdPermSet(perm))
+		syscalls = nil
+	}
+
+	for _, raw := range rawFields {
+		if key, ok := strings.CutPrefix(raw, "key="); ok {
+			keys = append(keys, key)
+			continue
+		}
+		op := reOperator.FindString(raw)
+		if op == "=" {
+			name, value, _ := strings.Cut(raw, op)
+			switch name {
+			case "path", "dir":
+				fields = append(fields, "watch="+value)
+				continue
+			case "perm":
+				fields = append(fields, "perm="+auditdPermSet(value))
+				continue
+			}
+		}
+		fields = append(fields, raw)
+	}
+
+	// No -S on a non-task list means every syscall, the same as -S all.
+	calls := []string{}
+	for _, sc := range syscalls {
+		if name, ok := sc.(string); ok && name != "all" {
+			calls = append(calls, name)
+		}
+	}
+	slices.Sort(calls)
+	calls = slices.Compact(calls)
+
+	// Rule tokens never contain whitespace (the parser splits on it), so a
+	// space and " | " separate them unambiguously.
+	return strings.Join([]string{
+		action, list,
+		strings.Join(calls, ","),
+		strings.Join(fields, " "),
+		strings.Join(rawComparisons, " "),
+		strings.Join(keys, " "),
+	}, " | ")
+}
+
+// auditdPermSet orders watch permissions as the set r, w, x, a, so `aw` and
+// `wa` compare equal, as they do in the kernel's permission bitmask.
+func auditdPermSet(perm string) string {
+	perm = strings.ToLower(perm)
+	var b strings.Builder
+	for _, p := range "rwxa" {
+		if strings.ContainsRune(perm, p) {
+			b.WriteRune(p)
+		}
+	}
+	return b.String()
+}
+
+func (s *mqlAuditdRules) exists(path string) (bool, error) {
+	return false, s.load(path)
+}
+
+func (s *mqlAuditdRules) watches(path string) ([]any, error) {
+	return nil, s.load(path)
+}
+
+func (s *mqlAuditdRules) immutable(path string) (bool, error) {
+	return false, s.load(path)
 }
 
 func (s *mqlAuditdRules) controls(path string) ([]any, error) {
@@ -509,6 +994,18 @@ func (s *mqlAuditdRuleFile) id() (string, error) {
 		Add(s.Permissions.Data).
 		Add(s.Keyname.Data).
 		String(), nil
+}
+
+func (s *mqlAuditdRuleWatch) id() (string, error) {
+	var f checksums.Fast
+	f = f.
+		Add(s.Type.Data).
+		Add(s.Path.Data).
+		Add(s.Keyname.Data)
+	for i := range s.Permissions.Data {
+		f = f.Add(s.Permissions.Data[i].(string))
+	}
+	return f.String(), nil
 }
 
 func (s *mqlAuditdRuleControl) id() (string, error) {
@@ -542,4 +1039,183 @@ func (s *mqlAuditdRuleSyscall) id() (string, error) {
 	}
 
 	return f.String(), nil
+}
+
+type mqlAuditdLoadedRulesInternal struct {
+	lock    sync.Mutex
+	loaded  bool
+	rules   *auditdRuleSet
+	loadErr error
+}
+
+func (s *mqlAuditdLoadedRules) id() (string, error) {
+	return "auditd.loadedRules", nil
+}
+
+// load lists the rules the kernel has loaded with `auditctl -l`.
+func (s *mqlAuditdLoadedRules) load() (*auditdRuleSet, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if s.loaded {
+		return s.rules, s.loadErr
+	}
+	s.rules, s.loadErr = s.list()
+	s.loaded = true
+	return s.rules, s.loadErr
+}
+
+func (s *mqlAuditdLoadedRules) list() (*auditdRuleSet, error) {
+	conn := s.MqlRuntime.Connection.(shared.Connection)
+	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return nil, llx.NotApplicable(errors.New("the loaded audit rules need a running system, and this connection cannot run commands"))
+	}
+
+	cmd, err := conn.RunCommand("auditctl -l")
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := io.ReadAll(cmd.Stdout)
+	if err != nil {
+		return nil, err
+	}
+	if cmd.ExitStatus != 0 {
+		stderr, _ := io.ReadAll(cmd.Stderr)
+		return nil, auditctlListError(cmd.ExitStatus, string(stdout)+string(stderr))
+	}
+
+	// auditctl -l lists filter rules only, never control rules such as -b or
+	// -e, so the controls of the parsed set stay empty and are not exposed.
+	var errs multierr.Errors
+	rules := newAuditdRuleSet(s.MqlRuntime)
+	rules.parse(auditctlListedRules(string(stdout)), &errs)
+	if err := errs.Deduplicate(); err != nil {
+		return nil, err
+	}
+	return rules, nil
+}
+
+// auditctlListedRules returns the rule lines of `auditctl -l`, which prints
+// "No rules" when the kernel has none.
+func auditctlListedRules(out string) string {
+	if strings.TrimSpace(out) == "No rules" {
+		return ""
+	}
+	return out
+}
+
+// auditctlListError classifies a failed `auditctl -l`. auditctl refuses a user
+// other than root ("You must be root to run this program.") or fails to send
+// the request when the kernel refuses it ("Operation not permitted").
+func auditctlListError(exitStatus int, out string) error {
+	msg := strings.TrimSpace(out)
+	err := fmt.Errorf("auditctl -l failed: %s", msg)
+	switch {
+	case exitStatus == 127 || strings.Contains(msg, "command not found") || strings.Contains(msg, "No such file or directory"):
+		return llx.NotFound(errors.New("auditctl is not installed, so the loaded audit rules cannot be listed"))
+	case strings.Contains(msg, "must be root") || strings.Contains(msg, "Operation not permitted"):
+		return llx.Forbidden(err)
+	}
+	return err
+}
+
+func (s *mqlAuditdLoadedRules) files() ([]any, error) {
+	rules, err := s.load()
+	if err != nil {
+		return nil, err
+	}
+	return rules.files, nil
+}
+
+func (s *mqlAuditdLoadedRules) syscalls() ([]any, error) {
+	rules, err := s.load()
+	if err != nil {
+		return nil, err
+	}
+	return rules.syscalls, nil
+}
+
+func (s *mqlAuditdLoadedRules) watches() ([]any, error) {
+	rules, err := s.load()
+	if err != nil {
+		return nil, err
+	}
+	return rules.watches, nil
+}
+
+func (s *mqlAuditdStatus) id() (string, error) {
+	return "auditd.status", nil
+}
+
+func initAuditdStatus(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 0 {
+		return args, nil, nil
+	}
+
+	conn := runtime.Connection.(shared.Connection)
+	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return nil, nil, errors.New("auditd.status runs auditctl, which this connection cannot do")
+	}
+
+	cmd, err := conn.RunCommand("auditctl -s")
+	if err != nil {
+		return nil, nil, err
+	}
+	if cmd.ExitStatus != 0 {
+		stderr, _ := io.ReadAll(cmd.Stderr)
+		return nil, nil, fmt.Errorf("auditctl -s failed: %s", strings.TrimSpace(string(stderr)))
+	}
+	stdout, err := io.ReadAll(cmd.Stdout)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	status, err := parseAuditctlStatus(string(stdout))
+	if err != nil {
+		return nil, nil, err
+	}
+	return map[string]*llx.RawData{
+		"enabled":      llx.IntData(status["enabled"]),
+		"failure":      llx.IntData(status["failure"]),
+		"pid":          llx.IntData(status["pid"]),
+		"rateLimit":    llx.IntData(status["rate_limit"]),
+		"backlogLimit": llx.IntData(status["backlog_limit"]),
+		"lost":         llx.IntData(status["lost"]),
+		"backlog":      llx.IntData(status["backlog"]),
+	}, nil, nil
+}
+
+// auditctl prints enabled and failure as words when run with -i
+var auditctlStatusWords = map[string]map[string]int64{
+	"enabled": {"disable": 0, "enabled": 1, "enabled+immutable": 2},
+	"failure": {"silent": 0, "printk": 1, "panic": 2},
+}
+
+var auditctlStatusKeys = []string{"enabled", "failure", "pid", "rate_limit", "backlog_limit", "lost", "backlog"}
+
+// parseAuditctlStatus reads the `key value` lines of `auditctl -s`.
+func parseAuditctlStatus(out string) (map[string]int64, error) {
+	res := map[string]int64{}
+	for line := range strings.SplitSeq(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || !slices.Contains(auditctlStatusKeys, fields[0]) {
+			continue
+		}
+		key, val := fields[0], fields[1]
+		if n, ok := auditctlStatusWords[key][val]; ok {
+			res[key] = n
+			continue
+		}
+		n, err := strconv.ParseInt(val, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("unexpected auditctl -s value for %s: %q", key, val)
+		}
+		res[key] = n
+	}
+
+	for _, key := range auditctlStatusKeys {
+		if _, ok := res[key]; !ok {
+			return nil, fmt.Errorf("auditctl -s did not report %s", key)
+		}
+	}
+	return res, nil
 }

@@ -1,28 +1,33 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/mql/v13/providers/kustomize"
-option go_package = "go.mondoo.com/mql/v13/providers/kustomize/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/kustomize"
+option go_package = "go.mondoo.com/mql/providers/kustomize/resources"
+option root = "kustomize"
 
 // Kustomize overlay
 //
-// Top-level entry point for analyzing one or more `kustomization.yaml`
-// trees. Exposes every parsed kustomization with its transformer
-// configuration, generators, patches, image overrides, replacements, and
-// the rendered Kubernetes resources — used to enforce policy on
-// Kustomize-driven manifests before they reach a cluster.
-kustomize {
+// Parsed `kustomization.yaml` trees discovered under the connection, each
+// carrying its transformer configuration, generators, patches, image
+// overrides, replacements, and the Kubernetes resources rendered by
+// `kustomize build`. Use this to enforce policy on Kustomize-driven
+// manifests before they reach a cluster.
+kustomize @root {
   // List of all parsed kustomizations
   kustomizations() []kustomize.kustomization
 }
 
 // kustomization.yaml configuration
 //
-// Examine a single kustomization: directory path, apiVersion / kind, the
-// namespace / namePrefix / nameSuffix / commonLabels / commonAnnotations
-// transformers, the raw resource and component references, declared patches,
-// ConfigMap and Secret generators, image overrides, replacements, and the
-// final rendered Kubernetes resources after running `kustomize build`.
+// Single parsed kustomization, identified by its directory `path`. Exposes
+// the transformers it applies (namespace, name prefix/suffix, common labels
+// and annotations), the resources and components it pulls in, its patches,
+// ConfigMap and Secret generators, image overrides, and replacements,
+// alongside the Kubernetes resources rendered by `kustomize build`. Query
+// this to enforce policy on Kustomize-driven manifests before they reach a
+// cluster.
 kustomize.kustomization @defaults("path") {
   // Path to the kustomization directory
   path string
@@ -37,6 +42,16 @@ kustomize.kustomization @defaults("path") {
   // Name suffix applied to all resources
   nameSuffix string
   // Common labels added to all resources
+  //
+  // Every label pair the kustomization adds to the objects it renders,
+  // gathered from both declaration syntaxes: the legacy `commonLabels`
+  // mapping and the current `labels` list, whose `pairs` entries are folded
+  // in on top of it. A pair declared in `labels` wins when the same key
+  // appears in both, and a later `labels` entry wins over an earlier one.
+  // The map reports which pairs are added, not how far they reach: a
+  // `labels` entry may set includeSelectors or includeTemplates to control
+  // whether it also rewrites selectors and pod templates, and those flags
+  // are not represented here.
   commonLabels map[string]string
   // Common annotations added to all resources
   commonAnnotations map[string]string
@@ -60,11 +75,15 @@ kustomize.kustomization @defaults("path") {
 
 // Kustomize patch (strategic merge or JSON patch)
 //
-// Examine a patch's content (inline YAML or file path), its target
-// selector (group, version, kind, name, namespace, label selector,
-// annotation selector) — the unit Kustomize uses to mutate base
-// resources during rendering.
-kustomize.patch @defaults("path") {
+// Single patch that Kustomize applies to base resources during
+// rendering, mutating them in place. A patch carries its content
+// (inline YAML or a file path) and a target selector (group, version,
+// kind, name, namespace, and label or annotation selector) that picks
+// which resources it modifies. The `format` field distinguishes a
+// strategic-merge overlay from an RFC6902 JSON patch, and `operations`
+// decomposes a JSON patch into its individual steps so an audit can
+// spot changes that weaken a security control.
+private kustomize.patch @defaults("path") {
   // Patch content (inline YAML or file content)
   content string
   // Patch file path (empty if inline)
@@ -103,12 +122,12 @@ kustomize.patch @defaults("path") {
 
 // JSON patch operation from a JSON6902 Kustomize patch
 //
-// Examine a single RFC6902 operation decomposed from a "json6902" patch.
-// The `op` is one of add, remove, replace, move, copy, or test; `path` is
-// the RFC6901 JSON pointer the operation targets (for example
-// `/spec/template/spec/containers/0`); and `value` carries the operand for
-// add, replace, and test operations and is null otherwise. Use this to
-// detect operations that strip a security control from a base resource.
+// Single RFC6902 operation decomposed from a "json6902" patch. The `op`
+// is one of add, remove, replace, move, copy, or test; `path` is the
+// RFC6901 JSON pointer the operation targets (for example
+// `/spec/template/spec/containers/0`); and `value` carries the operand
+// for add, replace, and test operations and is null otherwise. This
+// surfaces operations that strip a security control from a base resource.
 private kustomize.patch.operation @defaults("op path") {
   // Operation: add, remove, replace, move, copy, or test
   op string
@@ -123,11 +142,14 @@ private kustomize.patch.operation @defaults("op path") {
 
 // Kustomize ConfigMap or Secret generator
 //
-// Examine a generator declared in a kustomization: its type (configmap or
-// secret), the literal key=value pairs, included files, env-file sources,
-// merge behavior (create / replace / merge), and namespace — useful for
-// surfacing inline secrets or ConfigMap drift.
-kustomize.generator @defaults("name type") {
+// ConfigMap or Secret generator declared in a kustomization, which
+// produces a Kubernetes ConfigMap or Secret from inline literal
+// key=value pairs, included files, and env-file sources. The `type`
+// field is "configmap" or "secret", and `behavior` ("create",
+// "replace", or "merge") controls how the generated object interacts
+// with an existing one. Query this to surface inline secrets, audit
+// generated ConfigMap contents, or detect drift in overlay rendering.
+private kustomize.generator @defaults("name type") {
   // Generator name
   name string
   // Type: "configmap" or "secret"
@@ -146,9 +168,12 @@ kustomize.generator @defaults("name type") {
 
 // Kustomize image override
 //
-// Examine an `images:` entry: the original image name, the optional
-// replacement name, and either a new tag or new digest — used to detect
-// non-pinned tags or unintended image swaps during overlay rendering.
+// Image name and tag or digest substitution applied by an `images:` entry
+// during overlay rendering. Each entry maps an original image name to an
+// optional replacement name and either a new tag or a new digest, letting
+// you detect non-pinned tags or unintended image swaps. The `name` field
+// selects the entry by its original image name, for example
+// `kustomize.image(name: "nginx")`.
 kustomize.image @defaults("name newTag") {
   // Original image name
   name string
@@ -156,17 +181,26 @@ kustomize.image @defaults("name newTag") {
   newName string
   // New tag
   newTag string
+  // Tag suffix appended to the original tag
+  //
+  // Set by a `tagSuffix:` entry, which keeps the original tag and appends
+  // this string to it, for example `-debian`. It is an alternative to
+  // newTag and digest, so an entry that leaves all three of those empty
+  // still rewrites the image reference.
+  tagSuffix string
   // New digest (mutually exclusive with newTag)
   digest string
 }
 
 // Rendered Kubernetes resource from `kustomize build`
 //
-// Examine a Kubernetes manifest produced by running Kustomize over the
-// overlay tree: apiVersion, kind, name, namespace, labels, annotations
-// (all post-transformation), and the full manifest dict. Use this to
-// enforce policy on the final manifest a cluster will see.
-kustomize.resource @defaults("kind name") {
+// Kubernetes manifest produced by running Kustomize over the overlay
+// tree, exactly as a cluster would receive it. Its apiVersion, kind,
+// name, namespace, labels, and annotations reflect the final state
+// after every patch, transformer, and name/namespace prefix has been
+// applied, so policy checks run against what actually gets deployed
+// rather than the pre-transformation sources.
+private kustomize.resource @defaults("kind name") {
   // Kubernetes API version
   apiVersion string
   // Resource kind
@@ -179,18 +213,36 @@ kustomize.resource @defaults("kind name") {
   labels map[string]string
   // Annotations (after transformations)
   annotations map[string]string
-  // Full resource manifest as dict
+  // Full resource manifest
+  //
+  // Complete rendered Kubernetes object with its native structure
+  // preserved: top-level `apiVersion`, `kind`, and `metadata` keys plus
+  // the kind-specific body (`spec`, `data`, `stringData`, `rules`, and so
+  // on). Drill into it to audit fields not surfaced as named accessors,
+  // for example `manifest["spec"]["replicas"]`.
   manifest dict
 }
 
 // Kustomize replacement
 //
-// Examine a `replacements:` entry that copies one field's value to multiple
-// target fields without using Kustomize vars. Queryable fields include the
-// source resource selector (`sourceKind`, `sourceName`), the `sourcePath`
-// field-path expression that identifies the value to read, and the list of
-// `targets` that receive the substituted value.
-kustomize.replacement @defaults("sourcePath") {
+// A `replacements:` entry that copies one field's value from a source
+// resource into multiple target fields, the modern successor to Kustomize
+// vars. The `sourceKind` and `sourceName` selectors identify the resource
+// to read from, `sourcePath` is the field-path expression that locates the
+// value, and `targets` lists every destination that receives it. Auditing
+// replacements surfaces where values are injected across a rendered
+// manifest set, which matters when a single source drives security-relevant
+// fields such as image tags, names, or annotations.
+private kustomize.replacement @defaults("sourcePath") {
+  // Replacement file path
+  //
+  // Set when the entry is declared as `- path: file.yaml` instead of
+  // inline, naming the file (relative to the kustomization directory) that
+  // holds the source and targets. Empty for an inline declaration. The
+  // field stays populated even when the file cannot be read, so a
+  // dangling reference is visible rather than reading as a replacement
+  // that substitutes nothing.
+  path string
   // Source field path (e.g., ".metadata.name")
   sourcePath string
   // Source resource kind
@@ -203,11 +255,13 @@ kustomize.replacement @defaults("sourcePath") {
 
 // Kustomize replacement target
 //
-// Examine one target within a `replacements:` entry. Each target specifies
-// the `fieldPath` expression where the substituted value is written and the
-// optional `kind` and `name` selectors that narrow which rendered resources
-// are affected.
-kustomize.replacementTarget @defaults("fieldPath") {
+// One destination within a `replacements:` entry. The `fieldPath`
+// expression pins where the substituted value is written, while the
+// optional `kind` and `name` selectors narrow which rendered resources are
+// affected. Reviewing targets shows exactly which fields a replacement
+// rewrites, so an over-broad selector that touches more resources than
+// intended becomes visible.
+private kustomize.replacementTarget @defaults("fieldPath") {
   // Target field path to replace
   fieldPath string
   // Target resource kind selector

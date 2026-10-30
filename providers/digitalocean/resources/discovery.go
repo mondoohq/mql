@@ -8,10 +8,10 @@ import (
 	"maps"
 
 	"github.com/digitalocean/godo"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/digitalocean/connection"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/digitalocean/connection"
+	"go.mondoo.com/mql/utils/stringx"
 )
 
 // Discover expands a DigitalOcean account connection into the specific
@@ -57,6 +57,9 @@ func Discover(runtime *plugin.Runtime) (*inventory.Inventory, error) {
 				return nil, err
 			}
 			for _, db := range dbs {
+				if skipDatabase(conn.Filters.General, &db) {
+					continue
+				}
 				assets = append(assets, childAsset(
 					connection.DatabasePlatform(),
 					connection.NewDatabaseIdentifier(accountUUID, db.ID),
@@ -83,6 +86,9 @@ func Discover(runtime *plugin.Runtime) (*inventory.Inventory, error) {
 				return nil, err
 			}
 			for _, c := range clusters {
+				if skipKubernetesCluster(conn.Filters.General, c) {
+					continue
+				}
 				assets = append(assets, childAsset(
 					connection.KubernetesPlatform(),
 					connection.NewKubernetesIdentifier(accountUUID, c.ID),
@@ -109,6 +115,9 @@ func Discover(runtime *plugin.Runtime) (*inventory.Inventory, error) {
 				return nil, err
 			}
 			for _, lb := range lbs {
+				if skipLoadBalancer(conn.Filters.General, &lb) {
+					continue
+				}
 				assets = append(assets, childAsset(
 					connection.LoadBalancerPlatform(),
 					connection.NewLoadBalancerIdentifier(accountUUID, lb.ID),
@@ -135,6 +144,9 @@ func Discover(runtime *plugin.Runtime) (*inventory.Inventory, error) {
 				return nil, err
 			}
 			for _, fw := range firewalls {
+				if skipFirewall(conn.Filters.General, &fw) {
+					continue
+				}
 				assets = append(assets, childAsset(
 					connection.FirewallPlatform(),
 					connection.NewFirewallIdentifier(accountUUID, fw.ID),
@@ -184,6 +196,35 @@ func Discover(runtime *plugin.Runtime) (*inventory.Inventory, error) {
 		}
 	}
 
+	if stringx.Contains(targets, connection.DiscoveryGradientaiAgents) {
+		opt := &godo.ListOptions{PerPage: 200}
+		for {
+			agents, resp, err := client.AgentPlatform.ListAgents(ctx, opt)
+			if err != nil {
+				return nil, err
+			}
+			for _, a := range agents {
+				if a == nil || skipGradientaiAgent(conn.Filters.General, a) {
+					continue
+				}
+				assets = append(assets, childAsset(
+					connection.GradientaiAgentPlatform(),
+					connection.NewGradientaiAgentIdentifier(accountUUID, a.Uuid),
+					"DigitalOcean GradientAI Agent "+a.Name,
+					map[string]string{connection.OptionGradientaiAgent: a.Uuid},
+				))
+			}
+			if resp == nil || resp.Links == nil || resp.Links.IsLastPage() {
+				break
+			}
+			page, err := resp.Links.CurrentPage()
+			if err != nil {
+				return nil, err
+			}
+			opt.Page = page + 1
+		}
+	}
+
 	return &inventory.Inventory{Spec: &inventory.InventorySpec{Assets: assets}}, nil
 }
 
@@ -197,6 +238,7 @@ func resolveDiscoveryTargets(targets []string) []string {
 			connection.DiscoveryLoadBalancers,
 			connection.DiscoveryFirewalls,
 			connection.DiscoverySpacesBuckets,
+			connection.DiscoveryGradientaiAgents,
 		}
 	}
 	return targets

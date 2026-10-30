@@ -12,13 +12,15 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/cloudresourcemanager/v3"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iam/v1"
@@ -48,14 +50,24 @@ func initGcpProjectStorageService(runtime *plugin.Runtime, args map[string]*llx.
 	if !ok {
 		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
 	}
-	projectId := conn.ResourceID()
-	args["projectId"] = llx.StringData(projectId)
+	// Only default the project from the connection when the caller did not
+	// supply one; NewResource runs this init before the resource-cache lookup,
+	// so an unconditional overwrite would redirect a caller-scoped reference at
+	// the connection's own project.
+	if pid, ok := args["projectId"]; !ok || pid == nil {
+		args["projectId"] = llx.StringData(conn.ResourceID())
+	}
 
 	return args, nil, nil
 }
 
 type mqlGcpProjectStorageServiceInternal struct {
-	serviceEnabled bool
+	serviceGate
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectStorageService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_storage)
 }
 
 func (g *mqlGcpProject) storage() (*mqlGcpProjectStorageService, error) {
@@ -77,7 +89,7 @@ func (g *mqlGcpProject) storage() (*mqlGcpProjectStorageService, error) {
 	}
 
 	svc := res.(*mqlGcpProjectStorageService)
-	svc.serviceEnabled = serviceEnabled
+	svc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_storage).Msg("gcp service is not enabled, skipping")
 	}
@@ -86,7 +98,11 @@ func (g *mqlGcpProject) storage() (*mqlGcpProjectStorageService, error) {
 }
 
 func (g *mqlGcpProjectStorageService) buckets() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -108,10 +124,16 @@ func (g *mqlGcpProjectStorageService) buckets() ([]any, error) {
 		return nil, err
 	}
 
-	projectID := conn.ResourceID()
+	// List the buckets of the project this service resource belongs to, not the
+	// project the connection happens to be scoped to: `gcp.projects` materializes
+	// every accessible project in one runtime, and on an organization or folder
+	// connection ResourceID() is not a project id at all.
 	var res []any
-	if err := storageSvc.Buckets.List(projectID).Pages(ctx, func(page *storage.Buckets) error {
+	if err := storageSvc.Buckets.List(projectId).Pages(ctx, func(page *storage.Buckets) error {
 		for _, bucket := range page.Items {
+			if conn.Filters.Storage.IsFilteredOut(bucket.Name) {
+				continue
+			}
 			mqlBucket, err := mqlBucketFromAPI(g.MqlRuntime, projectId, bucket)
 			if err != nil {
 				return err
@@ -143,6 +165,17 @@ func bucketSoftDeleteRetentionSeconds(sdp *storage.BucketSoftDeletePolicy) int64
 	return sdp.RetentionDurationSeconds
 }
 
+// bucketHardDeletePause returns whether hard deletion of soft-deleted objects
+// is paused and the time the pause became effective. An absent soft-delete
+// policy or pause block means hard deletes are not paused; the time is nil
+// when absent or unparseable.
+func bucketHardDeletePause(sdp *storage.BucketSoftDeletePolicy) (bool, *time.Time) {
+	if sdp == nil || sdp.HardDeletePause == nil {
+		return false, nil
+	}
+	return sdp.HardDeletePause.Enabled, parseTime(sdp.HardDeletePause.EffectiveTime)
+}
+
 // mqlBucketFromAPI converts a *storage.Bucket into a fully-populated mql
 // resource. Used by buckets() during a list and by init when resolving a
 // single bucket by name.
@@ -150,14 +183,8 @@ func mqlBucketFromAPI(runtime *plugin.Runtime, projectId string, bucket *storage
 	created := parseTime(bucket.TimeCreated)
 	updated := parseTime(bucket.Updated)
 
-	iamConfigurationDict, err := convert.JsonToDict(bucket.IamConfiguration)
-	if err != nil {
-		return nil, err
-	}
-	retentionPolicy, err := convert.JsonToDict(bucket.RetentionPolicy)
-	if err != nil {
-		return nil, err
-	}
+	iamConfigurationDict := bucketIamConfigurationDict(bucket.IamConfiguration)
+	retentionPolicy := bucketRetentionPolicyDict(bucket.RetentionPolicy)
 	enc, err := convert.JsonToDict(bucket.Encryption)
 	if err != nil {
 		return nil, err
@@ -167,10 +194,7 @@ func mqlBucketFromAPI(runtime *plugin.Runtime, projectId string, bucket *storage
 	var uniformBucketLevelAccess map[string]any
 	if bucket.IamConfiguration != nil {
 		publicAccessPrevention = bucket.IamConfiguration.PublicAccessPrevention
-		uniformBucketLevelAccess, err = convert.JsonToDict(bucket.IamConfiguration.UniformBucketLevelAccess)
-		if err != nil {
-			return nil, err
-		}
+		uniformBucketLevelAccess = bucketUniformBucketLevelAccessDict(bucket.IamConfiguration.UniformBucketLevelAccess)
 	}
 
 	softDeletePolicy, err := convert.JsonToDict(bucket.SoftDeletePolicy)
@@ -183,20 +207,9 @@ func mqlBucketFromAPI(runtime *plugin.Runtime, projectId string, bucket *storage
 		objectRetentionMode = bucket.ObjectRetention.Mode
 	}
 
-	autoclass, err := convert.JsonToDict(bucket.Autoclass)
-	if err != nil {
-		return nil, err
-	}
-
-	ipFilter, err := convert.JsonToDict(bucket.IpFilter)
-	if err != nil {
-		return nil, err
-	}
-
-	hierarchicalNamespace, err := convert.JsonToDict(bucket.HierarchicalNamespace)
-	if err != nil {
-		return nil, err
-	}
+	autoclass := bucketAutoclassDict(bucket.Autoclass)
+	ipFilter := bucketIpFilterDict(bucket.IpFilter)
+	hierarchicalNamespace := bucketHierarchicalNamespaceDict(bucket.HierarchicalNamespace)
 
 	customPlacementConfig, err := convert.JsonToDict(bucket.CustomPlacementConfig)
 	if err != nil {
@@ -218,10 +231,7 @@ func mqlBucketFromAPI(runtime *plugin.Runtime, projectId string, bucket *storage
 		return nil, err
 	}
 
-	billing, err := convert.JsonToDict(bucket.Billing)
-	if err != nil {
-		return nil, err
-	}
+	billing := bucketBillingDict(bucket.Billing)
 
 	owner, err := convert.JsonToDict(bucket.Owner)
 	if err != nil {
@@ -229,6 +239,12 @@ func mqlBucketFromAPI(runtime *plugin.Runtime, projectId string, bucket *storage
 	}
 
 	softDeleteTime := parseTime(bucket.SoftDeleteTime)
+	hardDeletePauseEnabled, hardDeletePauseEffectiveTime := bucketHardDeletePause(bucket.SoftDeletePolicy)
+
+	ipFilterConfig, err := newMqlBucketIpFilterConfig(runtime, "gcp.project.storageService.bucket/"+bucket.Id, bucket.IpFilter)
+	if err != nil {
+		return nil, err
+	}
 
 	mqlInstance, err := CreateResource(runtime, "gcp.project.storageService.bucket", map[string]*llx.RawData{
 		"id":                    llx.StringData(bucket.Id),
@@ -251,27 +267,30 @@ func mqlBucketFromAPI(runtime *plugin.Runtime, projectId string, bucket *storage
 			storageLifecycleRulesToArrayInterface(runtime, bucket.Id, bucket.Lifecycle),
 			types.Resource("gcp.project.storageService.bucket.lifecycleRule"),
 		),
-		"defaultEventBasedHold":       llx.BoolData(bucket.DefaultEventBasedHold),
-		"rpo":                         llx.StringData(bucket.Rpo),
-		"satisfiesPZS":                llx.BoolData(bucket.SatisfiesPZS),
-		"satisfiesPZI":                llx.BoolData(bucket.SatisfiesPZI),
-		"versioningEnabled":           llx.BoolData(bucket.Versioning != nil && bucket.Versioning.Enabled),
-		"publicAccessPrevention":      llx.StringData(publicAccessPrevention),
-		"metageneration":              llx.IntData(bucket.Metageneration),
-		"uniformBucketLevelAccess":    llx.DictData(uniformBucketLevelAccess),
-		"softDeletePolicy":            llx.DictData(softDeletePolicy),
-		"softDeleteRetentionDuration": llx.IntData(bucketSoftDeleteRetentionSeconds(bucket.SoftDeletePolicy)),
-		"softDeleteTime":              llx.TimeDataPtr(softDeleteTime),
-		"objectRetentionMode":         llx.StringData(objectRetentionMode),
-		"autoclass":                   llx.DictData(autoclass),
-		"ipFilter":                    llx.DictData(ipFilter),
-		"hierarchicalNamespace":       llx.DictData(hierarchicalNamespace),
-		"customPlacementConfig":       llx.DictData(customPlacementConfig),
-		"logging":                     llx.DictData(logging),
-		"cors":                        llx.ArrayData(cors, types.Dict),
-		"website":                     llx.DictData(website),
-		"billing":                     llx.DictData(billing),
-		"owner":                       llx.DictData(owner),
+		"defaultEventBasedHold":        llx.BoolData(bucket.DefaultEventBasedHold),
+		"rpo":                          llx.StringData(bucket.Rpo),
+		"satisfiesPZS":                 llx.BoolData(bucket.SatisfiesPZS),
+		"satisfiesPZI":                 llx.BoolData(bucket.SatisfiesPZI),
+		"versioningEnabled":            llx.BoolData(bucket.Versioning != nil && bucket.Versioning.Enabled),
+		"publicAccessPrevention":       llx.StringData(publicAccessPrevention),
+		"metageneration":               llx.IntData(bucket.Metageneration),
+		"uniformBucketLevelAccess":     llx.DictData(uniformBucketLevelAccess),
+		"softDeletePolicy":             llx.DictData(softDeletePolicy),
+		"softDeleteRetentionDuration":  llx.IntData(bucketSoftDeleteRetentionSeconds(bucket.SoftDeletePolicy)),
+		"softDeleteTime":               llx.TimeDataPtr(softDeleteTime),
+		"hardDeletePauseEnabled":       llx.BoolData(hardDeletePauseEnabled),
+		"hardDeletePauseEffectiveTime": llx.TimeDataPtr(hardDeletePauseEffectiveTime),
+		"objectRetentionMode":          llx.StringData(objectRetentionMode),
+		"autoclass":                    llx.DictData(autoclass),
+		"ipFilter":                     llx.DictData(ipFilter),
+		"ipFilterConfig":               ipFilterConfig,
+		"hierarchicalNamespace":        llx.DictData(hierarchicalNamespace),
+		"customPlacementConfig":        llx.DictData(customPlacementConfig),
+		"logging":                      llx.DictData(logging),
+		"cors":                         llx.ArrayData(cors, types.Dict),
+		"website":                      llx.DictData(website),
+		"billing":                      llx.DictData(billing),
+		"owner":                        llx.DictData(owner),
 	})
 	if err != nil {
 		return nil, err
@@ -290,8 +309,11 @@ type mqlGcpProjectStorageServiceBucketInternal struct {
 	cacheDefaultKmsKeyName string
 	cacheLogBucket         string
 
-	aclLock            sync.Mutex
-	aclFetched         bool
+	aclLock sync.Mutex
+	// atomic: acl(), defaultObjectAcl() and public() all call fetchAcls() and
+	// the executor runs block members concurrently, so the fast-path read
+	// races the write with a plain bool.
+	aclFetched         atomic.Bool
 	cacheAcl           []*storage.BucketAccessControl
 	cacheDefaultObjAcl []*storage.ObjectAccessControl
 }
@@ -330,7 +352,7 @@ func (g *mqlGcpProjectStorageServiceBucket) managedBy() (string, error) {
 	return managedByFromLabels(&g.Labels)
 }
 
-func (g *mqlGcpProjectStorageServiceBucket) tags() (map[string]interface{}, error) {
+func (g *mqlGcpProjectStorageServiceBucket) tags() (map[string]any, error) {
 	if g.Name.Error != nil {
 		return nil, g.Name.Error
 	}
@@ -375,7 +397,7 @@ func (g *mqlGcpProjectStorageServiceBucket) tags() (map[string]interface{}, erro
 	resp, err := svc.Locations.EffectiveTagBindingCollections.Get(name).Context(ctx).Do()
 	if err != nil {
 		if gerr, ok := err.(*googleapi.Error); ok && (gerr.Code == 403 || gerr.Code == 404) {
-			return map[string]interface{}{}, nil
+			return map[string]any{}, nil
 		}
 		return nil, err
 	}
@@ -386,8 +408,8 @@ func (g *mqlGcpProjectStorageServiceBucket) tags() (map[string]interface{}, erro
 // effectiveTagsToInterface converts the EffectiveTags map from the
 // cloudresourcemanager API (map[string]string) to map[string]interface{}
 // as required by MQL. Unexported; tested directly in storage_test.go.
-func effectiveTagsToInterface(in map[string]string) map[string]interface{} {
-	out := make(map[string]interface{}, len(in))
+func effectiveTagsToInterface(in map[string]string) map[string]any {
+	out := make(map[string]any, len(in))
 	for k, v := range in {
 		out[k] = v
 	}
@@ -510,11 +532,11 @@ func initGcpProjectStorageServiceBucket(runtime *plugin.Runtime, args map[string
 	// connection profile pointing at a GCS bucket).
 	nameRaw, ok := args["name"]
 	if !ok || nameRaw == nil {
-		return args, nil, nil
+		return nil, nil, errors.New(`gcp.project.storageService.bucket requires a "name" argument`)
 	}
 	name, ok := nameRaw.Value.(string)
 	if !ok || name == "" {
-		return args, nil, nil
+		return nil, nil, errors.New(`gcp.project.storageService.bucket requires a non-empty "name" argument`)
 	}
 
 	conn, ok := runtime.Connection.(*connection.GcpConnection)
@@ -575,6 +597,12 @@ func (g *mqlGcpProjectStorageServiceBucket) iamPolicy() ([]any, error) {
 	// conditional grants (including conditional public-access bindings).
 	policy, err := storeSvc.Buckets.GetIamPolicy(bucketName).OptionsRequestedPolicyVersion(3).Do()
 	if err != nil {
+		// Degrade a permission gap to an empty policy rather than a hard error,
+		// matching sibling IAM-policy accessors, and so public() can still fall
+		// back to its ACL check instead of failing outright.
+		if isSkippable(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -610,12 +638,12 @@ func (g *mqlGcpProjectStorageServiceBucket) iamPolicy() ([]any, error) {
 // follow-up Buckets.Get with projection=full. They're also nil when uniform
 // bucket-level access is enabled.
 func (g *mqlGcpProjectStorageServiceBucket) fetchAcls() error {
-	if g.aclFetched {
+	if g.aclFetched.Load() {
 		return nil
 	}
 	g.aclLock.Lock()
 	defer g.aclLock.Unlock()
-	if g.aclFetched {
+	if g.aclFetched.Load() {
 		return nil
 	}
 
@@ -642,7 +670,7 @@ func (g *mqlGcpProjectStorageServiceBucket) fetchAcls() error {
 
 	g.cacheAcl = bucket.Acl
 	g.cacheDefaultObjAcl = bucket.DefaultObjectAcl
-	g.aclFetched = true
+	g.aclFetched.Store(true)
 	return nil
 }
 

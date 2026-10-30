@@ -8,12 +8,13 @@ import (
 	"errors"
 
 	"github.com/mozillazg/go-slugify"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers/opcua/connection"
-	"go.mondoo.com/mql/v13/providers/opcua/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/opcua/connection"
+	"go.mondoo.com/mql/providers/opcua/resources"
 )
 
 const ConnectionType = "opcua"
@@ -39,14 +40,31 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 		Options: make(map[string]string),
 	}
 
-	// Do custom flag parsing
-	endpoint := ""
-	if x, ok := flags["endpoint"]; ok && len(x.Value) != 0 {
-		endpoint = string(x.Value)
+	// Do custom flag parsing. Every option key the connection reads has to be
+	// copied here: a key that is never written is silently absent from
+	// conf.Options and the flag behind it becomes a no-op.
+	for flag, option := range map[string]string{
+		"endpoint":        connection.OptionEndpoint,
+		"security-policy": connection.OptionSecurityPolicy,
+		"security-mode":   connection.OptionSecurityMode,
+		"cert-file":       connection.OptionCertFile,
+		"key-file":        connection.OptionKeyFile,
+	} {
+		if x, ok := flags[flag]; ok && len(x.Value) != 0 {
+			conf.Options[option] = string(x.Value)
+		}
 	}
 
-	if endpoint != "" {
-		conf.Options["endpoint"] = endpoint
+	username := ""
+	if x, ok := flags["username"]; ok && len(x.Value) != 0 {
+		username = string(x.Value)
+	}
+	password := ""
+	if x, ok := flags["password"]; ok && len(x.Value) != 0 {
+		password = string(x.Value)
+	}
+	if username != "" || password != "" {
+		conf.Credentials = append(conf.Credentials, vault.NewPasswordCredential(username, password))
 	}
 
 	asset := inventory.Asset{

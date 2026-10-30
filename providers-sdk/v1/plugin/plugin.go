@@ -3,7 +3,7 @@
 
 package plugin
 
-import llx "go.mondoo.com/mql/v13/llx"
+import llx "go.mondoo.com/mql/llx"
 
 //go:generate protoc --plugin=protoc-gen-go=../../../scripts/protoc/protoc-gen-go --plugin=protoc-gen-go-grpc=../../../scripts/protoc/protoc-gen-go-grpc --plugin=protoc-gen-go-vtproto=../../../scripts/protoc/protoc-gen-go-vtproto --proto_path=../../../:. --go_out=. --go_opt=paths=source_relative  --go-grpc_out=. --go-grpc_opt=paths=source_relative --go-vtproto_opt=paths=source_relative --go-vtproto_out=. --go-vtproto_opt=features=marshal+unmarshal+size+clone plugin.proto
 

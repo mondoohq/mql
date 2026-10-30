@@ -1,0 +1,52 @@
+# OpenRA ships every game with CFBundleShortVersionString and CFBundleVersion
+# both set to the release tag. Red Alert is reported by system_profiler with
+# its tag; Tiberian Dawn stands in for a bundle system_profiler reports no
+# version for, so the tag comes from its Info.plist instead.
+[commands."system_profiler SPApplicationsDataType -xml"]
+stdout = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>_items</key>
+		<array>
+			<dict>
+				<key>_name</key>
+				<string>OpenRA - Red Alert</string>
+				<key>obtained_from</key>
+				<string>identified_developer</string>
+				<key>path</key>
+				<string>/Applications/OpenRA - Red Alert.app</string>
+				<key>version</key>
+				<string>release-20250330</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>OpenRA - Tiberian Dawn</string>
+				<key>obtained_from</key>
+				<string>identified_developer</string>
+				<key>path</key>
+				<string>/Applications/OpenRA - Tiberian Dawn.app</string>
+			</dict>
+		</array>
+		<key>_dataType</key>
+		<string>SPApplicationsDataType</string>
+	</dict>
+</array>
+</plist>
+"""
+
+[files."/Applications/OpenRA - Tiberian Dawn.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>OpenRA - Tiberian Dawn</string>
+	<key>CFBundleShortVersionString</key>
+	<string>release-20250330</string>
+	<key>CFBundleVersion</key>
+	<string>release-20250330</string>
+</dict>
+</plist>
+"""

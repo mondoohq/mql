@@ -11,10 +11,18 @@ import (
 	"strings"
 )
 
+// Compiled once: each of these is matched against every line of its command's
+// output.
+var (
+	lsmodEntry       = regexp.MustCompile(`^(\S+)\s+(\S+)\s+(\S+)\s*(\S*)$`)
+	procModulesEntry = regexp.MustCompile(`^(\S+)\s(\S+)\s(\S+)\s(.*)$`)
+	kldstatEntry     = regexp.MustCompile(`^\s+(\S+)\s+(\S+)\s+(\S+)\s*(\S*)\s*(\S*)$`)
+	kextstatEntry    = regexp.MustCompile(`^\s+(\S+)\s+(\S+)\s+(\S+)\s*(\S*)\s*(\S*)\s*(\S*)`)
+	genkexEntry      = regexp.MustCompile(`^\s*(\S+)\s+(\S+)\s+(\S+)\s*$`)
+)
+
 func ParseLsmod(r io.Reader) []*KernelModule {
 	res := []*KernelModule{}
-
-	lsmodEntry := regexp.MustCompile(`^(\S+)\s+(\S+)\s+(\S+)\s*(\S*)$`)
 
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
@@ -39,8 +47,6 @@ func ParseLsmod(r io.Reader) []*KernelModule {
 func ParseLinuxProcModules(r io.Reader) []*KernelModule {
 	res := []*KernelModule{}
 
-	procModulesEntry := regexp.MustCompile(`^(\S+)\s(\S+)\s(\S+)\s(.*)$`)
-
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -60,12 +66,10 @@ func ParseLinuxProcModules(r io.Reader) []*KernelModule {
 func ParseKldstat(r io.Reader) []*KernelModule {
 	res := []*KernelModule{}
 
-	lsmodEntry := regexp.MustCompile(`^\s+(\S+)\s+(\S+)\s+(\S+)\s*(\S*)\s*(\S*)$`)
-
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
-		m := lsmodEntry.FindStringSubmatch(line)
+		m := kldstatEntry.FindStringSubmatch(line)
 		if len(m) == 6 {
 			res = append(res, &KernelModule{
 				Name:   strings.TrimSpace(m[5]),
@@ -81,12 +85,10 @@ func ParseKldstat(r io.Reader) []*KernelModule {
 func ParseKextstat(r io.Reader) []*KernelModule {
 	res := []*KernelModule{}
 
-	lsmodEntry := regexp.MustCompile(`^\s+(\S+)\s+(\S+)\s+(\S+)\s*(\S*)\s*(\S*)\s*(\S*)`)
-
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
-		m := lsmodEntry.FindStringSubmatch(line)
+		m := kextstatEntry.FindStringSubmatch(line)
 		if len(m) == 7 {
 			res = append(res, &KernelModule{
 				Name:   strings.TrimSpace(m[6]),
@@ -108,8 +110,6 @@ func ParseGenkex(stdout io.Reader) ([]*KernelModule, error) {
 	// f10009d5b06d8000     d000 /usr/lib/drivers/bpf
 	// f10009d5b06a2000    36000 /usr/lib/drivers/autofs.ext
 	// f10009d5b0685000    1d000 /usr/lib/drivers/ahafs.ext
-
-	genkexEntry := regexp.MustCompile(`^\s*(\S+)\s+(\S+)\s+(\S+)\s*$`)
 
 	scanner := bufio.NewScanner(stdout)
 	scanner.Scan()

@@ -9,7 +9,6 @@ package registry
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -20,26 +19,20 @@ import (
 
 // parseRegistryKeyPath parses a registry key path into the hive and the path
 // https://learn.microsoft.com/en-us/windows/win32/sysinfo/registry-hives
+//
+// The hive name is matched case-insensitively, as Windows and the PowerShell
+// registry provider do: registrykey resources share one cache entry per key
+// whatever the spelling, so every spelling has to resolve here too.
 func parseRegistryKeyPath(path string) (registry.Key, string, error) {
-	if strings.HasPrefix(path, "HKEY_LOCAL_MACHINE") {
-		return registry.LOCAL_MACHINE, strings.TrimPrefix(path, "HKEY_LOCAL_MACHINE\\"), nil
+	hive, rest, _ := strings.Cut(path, "\\")
+	switch strings.ToUpper(hive) {
+	case "HKEY_LOCAL_MACHINE", "HKLM":
+		return registry.LOCAL_MACHINE, rest, nil
+	case "HKEY_CURRENT_USER", "HKCU":
+		return registry.CURRENT_USER, rest, nil
+	case "HKEY_USERS":
+		return registry.USERS, rest, nil
 	}
-	if strings.HasPrefix(path, "HKLM") {
-		return registry.LOCAL_MACHINE, strings.TrimPrefix(path, "HKLM\\"), nil
-	}
-
-	if strings.HasPrefix(path, "HKEY_CURRENT_USER") {
-		return registry.CURRENT_USER, strings.TrimPrefix(path, "HKEY_CURRENT_USER\\"), nil
-	}
-
-	if strings.HasPrefix(path, "HKCU") {
-		return registry.CURRENT_USER, strings.TrimPrefix(path, "HKCU\\"), nil
-	}
-
-	if strings.HasPrefix(path, "HKEY_USERS") {
-		return registry.USERS, strings.TrimPrefix(path, "HKEY_USERS\\"), nil
-	}
-
 	return registry.LOCAL_MACHINE, "", errors.New("invalid registry key hive: " + path)
 }
 
@@ -59,9 +52,32 @@ func IsUserHiveLoaded(sid string) bool {
 	return true
 }
 
-func GetNativeRegistryKeyItems(path string) ([]RegistryKeyItem, error) {
-	log.Debug().Str("path", path).Msg("search registry key values using native registry api")
-	key, path, err := parseRegistryKeyPath(path)
+// NativeRegistryKeyExists reports whether the key at fullPath exists. It only
+// opens the key: a key exists whether or not it holds values or subkeys, so
+// its values are not read (a value the native reader cannot decode must not
+// make an existing key look absent). A key that is not there is false with no
+// error; any other failure is returned classified as when reading the key
+// (access denied is forbidden), so that the caller can report it or fall back
+// to another reader.
+func NativeRegistryKeyExists(fullPath string) (bool, error) {
+	key, path, err := parseRegistryKeyPath(fullPath)
+	if err != nil {
+		return false, err
+	}
+	regKey, err := registry.OpenKey(key, path, registry.QUERY_VALUE)
+	if errors.Is(err, registry.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, classifyOpenKeyError(fullPath, err)
+	}
+	regKey.Close()
+	return true, nil
+}
+
+func GetNativeRegistryKeyItems(fullPath string) ([]RegistryKeyItem, error) {
+	log.Debug().Str("path", fullPath).Msg("search registry key values using native registry api")
+	key, path, err := parseRegistryKeyPath(fullPath)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +85,7 @@ func GetNativeRegistryKeyItems(path string) ([]RegistryKeyItem, error) {
 	if err != nil && registry.ErrNotExist == err {
 		return nil, status.Error(codes.NotFound, "registry key not found: "+path)
 	} else if err != nil {
-		return nil, err
+		return nil, classifyOpenKeyError(fullPath, err)
 	}
 	defer regKey.Close()
 
@@ -79,54 +95,39 @@ func GetNativeRegistryKeyItems(path string) ([]RegistryKeyItem, error) {
 		return nil, err
 	}
 	for _, value := range values {
-		stringValue, valtype, err := regKey.GetStringValue(value)
-		if err != registry.ErrUnexpectedType && err != nil {
+		data, valtype, err := readRawRegistryValue(regKey, value)
+		if err != nil {
 			return nil, err
-		}
-
-		regValue := RegistryKeyValue{
-			Kind:   int(valtype),
-			String: stringValue,
-		}
-
-		switch valtype {
-		case registry.SZ, registry.EXPAND_SZ:
-			// covered by GetStringValue, nothing to do
-		case registry.BINARY:
-			binaryValue, _, err := regKey.GetBinaryValue(value)
-			if err != nil {
-				return nil, err
-			}
-			regValue.Binary = binaryValue
-		case registry.DWORD:
-			fallthrough
-		case registry.QWORD:
-			intVal, _, err := regKey.GetIntegerValue(value)
-			if err != nil {
-				return nil, err
-			}
-			regValue.Number = int64(intVal)
-			regValue.String = strconv.FormatInt(int64(intVal), 10)
-		case registry.MULTI_SZ:
-			entries, _, err := regKey.GetStringsValue(value)
-			if err != nil {
-				return nil, err
-			}
-			entries = normalizeMultiSz(entries)
-			regValue.MultiString = entries
-			if len(entries) > 0 {
-				// NOTE: this is to be consistent with the output before we moved to multi-datatype support for registry keys
-				regValue.String = strings.Join(entries, " ")
-			}
-		case registry.DWORD_BIG_ENDIAN, registry.LINK, registry.RESOURCE_LIST, registry.FULL_RESOURCE_DESCRIPTOR, registry.RESOURCE_REQUIREMENTS_LIST:
-			// not supported by golang.org/x/sys/windows/registry
 		}
 		res = append(res, RegistryKeyItem{
 			Key:   value,
-			Value: regValue,
+			Value: decodeRawRegistryValue(valtype, data),
 		})
 	}
 	return res, nil
+}
+
+// readRawRegistryValue returns a value's kind and data as stored. Every kind
+// is read this way, including the ones golang.org/x/sys/windows/registry has
+// no typed getter for (REG_DWORD_BIG_ENDIAN, REG_LINK, the resource lists), so
+// decodeRawRegistryValue gives them the same data the PowerShell path does.
+func readRawRegistryValue(k registry.Key, name string) ([]byte, uint32, error) {
+	n, valtype, err := k.GetValue(name, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	for {
+		buf := make([]byte, n)
+		n, valtype, err = k.GetValue(name, buf)
+		if err == registry.ErrShortBuffer {
+			// the value grew between the two reads
+			continue
+		}
+		if err != nil {
+			return nil, 0, err
+		}
+		return buf[:n], valtype, nil
+	}
 }
 
 func GetNativeRegistryKeyChildren(fullPath string) ([]RegistryKeyChild, error) {
@@ -140,7 +141,7 @@ func GetNativeRegistryKeyChildren(fullPath string) ([]RegistryKeyChild, error) {
 	if err != nil && registry.ErrNotExist == err {
 		return nil, status.Error(codes.NotFound, "registry key not found: "+path)
 	} else if err != nil {
-		return nil, err
+		return nil, classifyOpenKeyError(fullPath, err)
 	}
 	defer regKey.Close()
 

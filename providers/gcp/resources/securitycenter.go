@@ -9,10 +9,11 @@ import (
 	securitycenter "cloud.google.com/go/securitycenter/apiv1"
 	sccpb "cloud.google.com/go/securitycenter/apiv1/securitycenterpb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
@@ -168,6 +169,11 @@ func listSCCFindings(runtime *plugin.Runtime, conn *connection.GcpConnection, pa
 			iamBindings = append(iamBindings, d)
 		}
 
+		internetExposure, err := newMqlSccInternetExposure(runtime, f.Name, f.ExternalExposure)
+		if err != nil {
+			return nil, err
+		}
+
 		mqlFinding, err := CreateResource(runtime, "gcp.scc.finding", map[string]*llx.RawData{
 			"name":             llx.StringData(f.Name),
 			"parent":           llx.StringData(f.Parent),
@@ -192,6 +198,7 @@ func listSCCFindings(runtime *plugin.Runtime, conn *connection.GcpConnection, pa
 			"resourceName":     llx.StringData(f.ResourceName),
 			"chokepoint":       llx.DictData(chokepointToDict(f.Chokepoint)),
 			"externalExposure": llx.DictData(externalExposureToDict(f.ExternalExposure)),
+			"internetExposure": internetExposure,
 			"toxicCombination": llx.DictData(toxicCombinationToDict(f.ToxicCombination)),
 		})
 		if err != nil {
@@ -221,7 +228,7 @@ func chokepointToDict(cp *sccpb.Chokepoint) map[string]any {
 		return nil
 	}
 	return map[string]any{
-		"relatedFindings": cp.RelatedFindings,
+		"relatedFindings": convert.SliceAnyToInterface(cp.RelatedFindings),
 	}
 }
 
@@ -246,6 +253,40 @@ func externalExposureToDict(ee *sccpb.ExternalExposure) map[string]any {
 	}
 }
 
+// newMqlSccInternetExposure promotes a finding's external exposure. Returns
+// llx.NilData for a finding with no exposure attached, which is every finding
+// class other than the internet-reachability ones.
+//
+// The Compute Engine resources are reported as full resource names, not
+// resolved resources: findings are read organization-wide while
+// gcp.project.computeService.* is read per project, so a forwarding rule named
+// on a finding often lives outside the connected project and a resolved
+// reference would read null on a resource that plainly exists.
+func newMqlSccInternetExposure(runtime *plugin.Runtime, findingName string, ee *sccpb.ExternalExposure) (*llx.RawData, error) {
+	if ee == nil {
+		return llx.NilData, nil
+	}
+	res, err := CreateResource(runtime, "gcp.scc.finding.internetExposure", map[string]*llx.RawData{
+		"__id":                       llx.StringData(findingName + "/internetExposure"),
+		"publicIpAddress":            llx.StringData(ee.PublicIpAddress),
+		"publicPort":                 llx.StringData(ee.PublicPort),
+		"privateIpAddress":           llx.StringData(ee.PrivateIpAddress),
+		"privatePort":                llx.StringData(ee.PrivatePort),
+		"exposedService":             llx.StringData(ee.ExposedService),
+		"exposedEndpoint":            llx.StringData(ee.ExposedEndpoint),
+		"loadBalancerFirewallPolicy": llx.StringData(ee.LoadBalancerFirewallPolicy),
+		"serviceFirewallPolicy":      llx.StringData(ee.ServiceFirewallPolicy),
+		"forwardingRule":             llx.StringData(ee.ForwardingRule),
+		"backendService":             llx.StringData(ee.BackendService),
+		"instanceGroup":              llx.StringData(ee.InstanceGroup),
+		"networkEndpointGroup":       llx.StringData(ee.NetworkEndpointGroup),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return llx.ResourceData(res, "gcp.scc.finding.internetExposure"), nil
+}
+
 // toxicCombinationToDict converts a ToxicCombination protobuf to a dict.
 func toxicCombinationToDict(tc *sccpb.ToxicCombination) map[string]any {
 	if tc == nil {
@@ -253,7 +294,7 @@ func toxicCombinationToDict(tc *sccpb.ToxicCombination) map[string]any {
 	}
 	return map[string]any{
 		"attackExposureScore": tc.AttackExposureScore,
-		"relatedFindings":     tc.RelatedFindings,
+		"relatedFindings":     convert.SliceAnyToInterface(tc.RelatedFindings),
 	}
 }
 
@@ -391,7 +432,9 @@ func (g *mqlGcpOrganization) sccParent() (string, *connection.GcpConnection, err
 		return "", nil, g.Id.Error
 	}
 	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
-	return "organizations/" + g.Id.Data, conn, nil
+	// gcp.organization carries its id as "organizations/{id}" already;
+	// prefixing it again addressed "organizations/organizations/{id}".
+	return organizationResourceName(g.Id.Data), conn, nil
 }
 
 func (g *mqlGcpOrganization) sccSources() ([]any, error) {

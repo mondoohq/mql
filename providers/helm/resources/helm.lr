@@ -1,28 +1,32 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/mql/v13/providers/helm"
-option go_package = "go.mondoo.com/mql/v13/providers/helm/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/helm"
+option go_package = "go.mondoo.com/mql/providers/helm/resources"
+option root = "helm"
 
 // Helm chart catalog
 //
 // Top-level entry point for analyzing Helm charts. Exposes every parsed
 // chart along with its metadata, templates, rendered Kubernetes resources,
-// dependencies, and bundled files — used to enforce policy on
-// Kubernetes manifests before they ever reach a cluster.
-helm {
+// dependencies, and bundled files, used to enforce policy on Kubernetes
+// manifests before they ever reach a cluster.
+helm @root {
   // List of all parsed Helm charts
   charts() []helm.chart
 }
 
 // Helm chart
 //
-// Examine a chart's Chart.yaml metadata (name, version, apiVersion, type,
-// appVersion, description, keywords, home, sources, icon, deprecated flag),
-// its declared dependencies and maintainers, the Go template files, the
-// default values.yaml, every rendered Kubernetes resource, and the chart's
-// files on disk.
-helm.chart @defaults("name version") {
+// Parsed Helm chart covering its Chart.yaml metadata, declared
+// dependencies and maintainers, Go template files, default and effective
+// values, the Kubernetes resources it renders, lifecycle hooks, bundled
+// files, lint results, and supply-chain provenance. Auditing a chart here
+// catches insecure workloads, unpinned dependencies, and policy violations
+// before the chart is ever installed to a cluster.
+private helm.chart @defaults("name version") {
   // Chart name from Chart.yaml
   name string
   // Chart version
@@ -51,7 +55,7 @@ helm.chart @defaults("name version") {
   deprecated bool
   // SemVer constraint on the supported Kubernetes versions
   //
-  // From `kubeVersion:` in Chart.yaml. Empty when unconstrained — audits
+  // From `kubeVersion:` in Chart.yaml. Empty when unconstrained. Audits
   // commonly require every chart to pin a kubeVersion so it can be
   // gated against a cluster's actual version (e.g. `>=1.27.0-0`).
   kubeVersion string
@@ -69,10 +73,10 @@ helm.chart @defaults("name version") {
   // Effective values used to render this chart
   //
   // The chart's bundled values.yaml coalesced with any --values files and
-  // --set overrides supplied on the connection — exactly the values Helm
-  // used to produce resources() and the templates' rendered output. With
+  // --set overrides supplied on the connection (exactly the values Helm
+  // used to produce resources and the templates' rendered output). With
   // no overrides this is the chart's default values. Contrast with
-  // values(), which is always the bundled values.yaml verbatim.
+  // values, which is always the bundled values.yaml verbatim.
   renderedValues() dict
   // All Kubernetes resources across all templates (rendered with values)
   resources() []helm.resource
@@ -103,8 +107,8 @@ helm.chart @defaults("name version") {
   //
   // Rendered resources carrying a helm.sh/hook annotation (pre-install,
   // post-upgrade, test, and so on). These run outside the normal resource
-  // lifecycle; surfacing them separately lets policy audit hook workloads —
-  // often privileged jobs — without scanning every rendered resource.
+  // lifecycle; surfacing them separately lets policy audit hook workloads
+  // (often privileged jobs) without scanning every rendered resource.
   hooks() []helm.resource
   // Resolved dependency lock
   //
@@ -126,8 +130,8 @@ helm.chart @defaults("name version") {
   // chart field (templates, values, dependencies, maintainers, files,
   // and subcharts again) works per-subchart. Helm's render engine already
   // merges subchart templates into the parent chart's rendered output, so
-  // this is for introspecting the source tree — per-subchart values,
-  // metadata, and declared dependencies — not for obtaining additional
+  // this is for introspecting the source tree (per-subchart values,
+  // metadata, and declared dependencies), not for obtaining additional
   // rendered manifests beyond what the parent already renders.
   subcharts() []helm.chart
   // Whether this chart was reached as a vendored subchart of another chart
@@ -154,10 +158,14 @@ helm.chart @defaults("name version") {
 
 // Helm chart dependency
 //
-// Examine an entry from a chart's `dependencies:` list — name, version
-// constraint, repository, conditional-enable expression, tag groupings,
-// the resolved enabled flag, and any alias.
-helm.dependency @defaults("name version") {
+// Entry from a chart's `dependencies:` list in Chart.yaml, describing a
+// subchart the parent chart depends on. Records the version constraint,
+// source repository, conditional-enable expression, and tag groupings that
+// decide whether Helm renders the subchart, along with the resolved version
+// from Chart.lock and the vendored chart on disk. The `sourceType` field
+// classifies where the dependency comes from (OCI registry, chart
+// repository, or local path) for supply-chain auditing.
+private helm.dependency @defaults("name version") {
   // Dependency name
   name string
   // Version constraint
@@ -198,8 +206,8 @@ helm.dependency @defaults("name version") {
   //
   // The concrete version Helm locked for this dependency, read from the
   // parent chart's Chart.lock. Empty when the chart has no lock file or the
-  // dependency isn't locked. Unlike version — the declared constraint such
-  // as `^1.2.0` — this is the exact version that would be pulled.
+  // dependency isn't locked. Unlike version (the declared constraint such
+  // as `^1.2.0`), this is the exact version that would be pulled.
   resolvedVersion() string
   // Vendored subchart satisfying this dependency
   //
@@ -212,12 +220,13 @@ helm.dependency @defaults("name version") {
 
 // OCI registry reference for a Helm chart dependency
 //
-// Examine the parsed parts of an `oci://` dependency reference (Helm 3.8+):
-// the full reference, the registry host, the repository path, and the
-// pinned tag or digest. Parsing is offline — it classifies and decomposes
-// the reference string and the dependency's version constraint without ever
-// pulling from the registry.
-helm.ociRef @defaults("reference") {
+// Parsed parts of an `oci://` dependency reference (Helm 3.8+): the full
+// reference, the registry host, the repository path, and the pinned tag or
+// digest. Useful for auditing where chart dependencies are sourced from and
+// whether they are pinned by tag or by digest. Parsing is offline: the
+// reference string and the dependency's version constraint are classified
+// and decomposed without ever pulling from the registry.
+private helm.ociRef @defaults("reference") {
   // Full OCI reference (e.g., oci://ghcr.io/acme/charts/redis)
   reference string
   // Registry host (e.g., ghcr.io)
@@ -239,9 +248,12 @@ helm.ociRef @defaults("reference") {
 
 // Helm chart maintainer
 //
-// Examine a `maintainers:` entry from Chart.yaml — name, email, and
-// optional URL — useful for supply-chain ownership and contact audits.
-helm.maintainer @defaults("name email") {
+// A single `maintainers:` entry from a chart's Chart.yaml, recording the
+// name, email, and optional URL of a person responsible for the chart.
+// Use it for supply-chain ownership and contact audits, verifying that
+// charts declare an accountable maintainer and reaching the right party
+// for security disclosures.
+private helm.maintainer @defaults("name email") {
   // Maintainer name
   name string
   // Maintainer email
@@ -252,11 +264,13 @@ helm.maintainer @defaults("name email") {
 
 // Helm template file
 //
-// Examine a single file under templates/: its path, the raw Go-template
-// source, the rendered YAML produced by applying the chart's values, the
-// Kubernetes resources that render produces, and the directives (if /
-// range / include / tpl / define / with / block) detected in the raw
-// source.
+// Single file under the chart's templates/ directory, identified by its
+// `name` (for example templates/deployment.yaml). Exposes both the raw
+// Go-template source and the rendered YAML produced by applying the
+// chart's values, letting policy compare what a template declares against
+// what it actually deploys. The Kubernetes resources rendering produces
+// and the Go-template directives found in the source are queryable for
+// flagging dynamic constructs that static analysis can't fully evaluate.
 helm.template @defaults("name") {
   // Template file name (e.g., templates/deployment.yaml)
   name string
@@ -279,11 +293,12 @@ helm.template @defaults("name") {
 
 // Go-template directive in a Helm template
 //
-// Examine a single directive (if, range, include, tpl, define, with,
-// block) — type, full expression, and source line — useful for
-// flagging dynamic constructs that policy can't reason about (e.g., `tpl`
-// of unbounded user input).
-helm.directive @defaults("type expression") {
+// Single Go-template control directive (if, range, include, tpl, define,
+// with, or block) found inside a chart template, with its type, full
+// expression, and source line. Useful for flagging dynamic constructs
+// that policy can't reason about statically, such as a `tpl` call over
+// unbounded user input.
+private helm.directive @defaults("type expression") {
   // Directive type (if, range, include, tpl, define, with, block)
   type string
   // Full expression (e.g., ".Values.replicaCount", "include \"mychart.labels\" .")
@@ -294,11 +309,14 @@ helm.directive @defaults("type expression") {
 
 // Kubernetes resource rendered from a Helm template
 //
-// Examine a Kubernetes manifest produced by rendering a chart with its
-// values: apiVersion, kind, name, namespace, labels, annotations, the full
-// manifest dict, and the typed reference back to the template that
-// produced it.
-helm.resource @defaults("kind name") {
+// Kubernetes object a chart produces once its templates are rendered with a
+// set of values, the same manifest that would be applied to a cluster on
+// install or upgrade. Auditing rendered resources lets policy evaluate the
+// concrete objects a release creates (workloads, RBAC, network policy)
+// rather than the unrendered template text. The `isHook` and `isCRD`
+// predicates separate lifecycle hooks and pre-installed CRDs from normally
+// applied resources.
+private helm.resource @defaults("kind name") {
   // Kubernetes API version
   apiVersion string
   // Resource kind (Deployment, Service, etc.)
@@ -311,7 +329,12 @@ helm.resource @defaults("kind name") {
   labels map[string]string
   // Annotations
   annotations map[string]string
-  // Full resource manifest as dict
+  // Complete rendered manifest
+  //
+  // Whole Kubernetes object as a nested dict, keyed by the manifest's own
+  // top-level fields (apiVersion, kind, metadata, spec, and whatever else
+  // the kind defines such as data, rules, or subjects). Use it to inspect
+  // fields not surfaced as dedicated attributes on this resource.
   manifest dict
   // The template that produced this resource
   template() helm.template
@@ -329,8 +352,8 @@ helm.resource @defaults("kind name") {
   hookTypes []string
   // Hook execution weight
   //
-  // The `helm.sh/hook-weight` value controlling hook ordering — lower runs
-  // first. 0 when unset or the resource isn't a hook.
+  // The `helm.sh/hook-weight` value controlling hook ordering (lower runs
+  // first). 0 when unset or the resource isn't a hook.
   hookWeight int
   // Hook deletion policies
   //
@@ -340,16 +363,18 @@ helm.resource @defaults("kind name") {
   hookDeletePolicies []string
   // Whether this resource is a CustomResourceDefinition from crds/
   //
-  // True for resources produced by helm.chart.crds — CRDs Helm installs
+  // True for resources produced by helm.chart.crds, the CRDs Helm installs
   // ahead of templating. False for normally rendered resources.
   isCRD bool
 }
 
 // File within a Helm chart
 //
-// Examine a single file shipped with the chart by relative path and lazy
-// content — useful for inspecting NOTES.txt, README, LICENSE, or auxiliary
-// scripts.
+// Single file shipped with the chart, selected by its `path` relative to the
+// chart root, for example `helm.file(path: "NOTES.txt")`. Useful for
+// inspecting NOTES.txt, README, LICENSE, or auxiliary scripts bundled
+// alongside the templates. The `content` field returns the raw file bytes as
+// a string.
 helm.file @defaults("path") {
   // File path relative to chart root
   path string
@@ -366,9 +391,9 @@ helm.file @defaults("path") {
 
 // Helm chart dependency lock
 //
-// Examine the resolved dependency lock recorded in Chart.lock: the
-// generation timestamp, the digest over the resolved dependency set, and
-// the concrete dependency versions Helm pinned. Selected from a chart via
+// Resolved dependency lock recorded in Chart.lock: the generation
+// timestamp, the digest over the resolved dependency set, and the concrete
+// dependency versions Helm pinned. Selected from a chart via
 // `helm.chart.lock`.
 private helm.chart.dependencyLock @defaults("digest generated") {
   // Time the lock file was generated
@@ -381,9 +406,9 @@ private helm.chart.dependencyLock @defaults("digest generated") {
 
 // Helm chart lint result
 //
-// Examine the outcome of linting a chart with Helm's built-in rules:
-// whether it passed (no error-severity messages) and the full list of
-// messages. Selected from a chart via `helm.chart.lint`.
+// Outcome of linting a chart with Helm's built-in rules: whether it passed
+// (no error-severity messages) and the full list of messages. Selected
+// from a chart via `helm.chart.lint`.
 private helm.chart.lintResult @defaults("passed") {
   // Whether the chart passed linting (no error-severity messages)
   passed bool
@@ -393,12 +418,12 @@ private helm.chart.lintResult @defaults("passed") {
 
 // Helm chart lint message
 //
-// Examine a single message from a chart lint run: its severity, the
-// chart-relative path it concerns, and the human-readable text.
+// Single message from a chart lint run: its severity, the chart-relative
+// path it concerns, and the human-readable text.
 private helm.chart.lintMessage @defaults("severity message") {
   // Severity
   //
-  // One of "info", "warning", or "error".
+  // One of "info", "warning", "error", or "unknown".
   severity string
   // Chart-relative path the message concerns
   path string
@@ -408,13 +433,13 @@ private helm.chart.lintMessage @defaults("severity message") {
 
 // Helm chart provenance
 //
-// Examine the PGP provenance attached to a fetched chart — the .prov file
-// Helm writes with `helm package --sign`. Reports whether the chart is
-// signed, the sha256 digest the signature attests for the chart archive,
-// whether the archive actually fetched matches that digest, and the key ID
-// that produced the signature. Verification is offline: the digest is
-// recomputed locally and the issuer is read from the signature packet, so no
-// keyring and no registry round-trip are involved. Selected from a chart via
+// PGP provenance attached to a fetched chart (the .prov file Helm writes
+// with `helm package --sign`). Reports whether the chart is signed, the
+// sha256 digest the signature attests for the chart archive, whether the
+// archive actually fetched matches that digest, and the key ID that
+// produced the signature. Verification is offline: the digest is recomputed
+// locally and the issuer is read from the signature packet, so no keyring
+// and no registry round-trip are involved. Selected from a chart via
 // `helm.chart.provenance`.
 private helm.chart.provenanceRecord @defaults("signed digestMatches keyId") {
   // Whether the provenance carries a PGP signature block
@@ -427,7 +452,7 @@ private helm.chart.provenanceRecord @defaults("signed digestMatches keyId") {
   // Whether the fetched archive matches the attested digest
   //
   // True when the sha256 of the archive actually fetched equals digest. The
-  // hash is recomputed locally — no registry round-trip and no keyring — so a
+  // hash is recomputed locally (no registry round-trip and no keyring), so a
   // false value flags a tampered or stale provenance file. False when digest
   // is empty or the archive couldn't be hashed.
   digestMatches bool

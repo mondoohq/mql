@@ -11,14 +11,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 type crawlSchema struct {
 	Resources map[string]struct {
 		Fields map[string]struct {
-			Type string `json:"type"`
+			Type               string `json:"type"`
+			IsImplicitResource bool   `json:"is_implicit_resource"`
 		} `json:"fields"`
 	} `json:"resources"`
 }
@@ -64,11 +65,14 @@ func TestFullProviderCrawl(t *testing.T) {
 			continue
 		}
 		for fname, f := range res.Fields {
-			// Skip implicit sub-resource accessors: the .lr compiler adds a
-			// field named after each child resource (e.g. "snapshot" on
-			// vsphere.vm for vsphere.vm.snapshot) to support chained-resource
-			// syntax. These are not directly resolvable as data fields.
-			if _, isChild := schema.Resources[n.rtype+"."+fname]; isChild {
+			// Skip implicit fields: the schema synthesizes these rather than
+			// the provider implementing them, so they are not resolvable
+			// through GetData. Two kinds exist - the accessor named after each
+			// child resource (e.g. "snapshot" on vsphere.vm for
+			// vsphere.vm.snapshot), which supports chained-resource syntax,
+			// and "asset" on the root, which core owns and the runtime
+			// resolves (ADR 031).
+			if f.IsImplicitResource {
 				continue
 			}
 			path := n.rtype + "." + fname

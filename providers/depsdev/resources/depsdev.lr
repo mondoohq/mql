@@ -1,26 +1,33 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/mql/v13/providers/depsdev"
-option go_package = "go.mondoo.com/mql/v13/providers/depsdev/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/depsdev"
+option go_package = "go.mondoo.com/mql/providers/depsdev/resources"
+option root = "depsdev"
 
 // deps.dev dependency catalog
 //
-// Top-level entry point for static analysis of a project's direct
-// dependencies via the deps.dev API. Currently exposes Go module
-// dependencies parsed from go.mod, each enriched with version history,
-// upstream project metadata, and OpenSSF Scorecard data.
-depsdev {
+// Direct dependencies of a project resolved through the deps.dev API,
+// each enriched with version history, upstream project metadata, and
+// OpenSSF Scorecard data. Currently covers Go module dependencies
+// parsed from go.mod. The packages field lists one entry per direct
+// dependency, the starting point for stale-dependency, lagging-patch,
+// license, and supply-chain risk audits.
+depsdev @root {
   // List of packages from go.mod direct dependencies
   packages() []depsdev.package
 }
 
 // deps.dev Go package metadata
 //
-// Examine a Go module's pinned version, the full version history with
+// Go module's pinned version, the full version history with
 // publication dates and licenses, the latest published version and its
-// timestamp, and the typed link to the upstream source project — useful
-// for stale-dependency, lagging-patch, and license audits.
+// timestamp, and the link to the upstream source project. Useful for
+// stale-dependency, lagging-patch, and license audits. Select a package
+// by its module path, for example
+// depsdev.package(name: "github.com/rs/zerolog").
 depsdev.package @defaults("name currentVersion latestVersion latestPublished") {
   init(name string)
   // Go module path
@@ -38,6 +45,13 @@ depsdev.package @defaults("name currentVersion latestVersion latestPublished") {
 }
 
 // deps.dev package version
+//
+// Single published release of a package, carrying its version string,
+// publication timestamp, declared SPDX licenses, the registries it was
+// published to, and any SLSA build provenance attestations. Compare
+// publishedAt across a package's version history for lagging-patch and
+// stale-dependency audits, and check whether a release ships verified
+// build provenance.
 private depsdev.packageVersion @defaults("version publishedAt") {
   // Version string
   version string
@@ -47,7 +61,10 @@ private depsdev.packageVersion @defaults("version publishedAt") {
   isDefault bool
   // SPDX license identifiers
   licenses() []string
-  // Source and metadata links keyed by label (e.g. SOURCE_REPO, ISSUE_TRACKER, ORIGIN)
+  // Source and metadata links
+  //
+  // Map from a link label to its URL. Labels include SOURCE_REPO,
+  // ISSUE_TRACKER, and ORIGIN.
   links() map[string]string
   // Package registries where this version is published
   registries() []string
@@ -61,6 +78,14 @@ private depsdev.packageVersion @defaults("version publishedAt") {
 }
 
 // deps.dev package version related project
+//
+// Link from a package version to a project that deps.dev associates with
+// it, such as its source repository, issue tracker, or origin. The
+// relationType records what kind of link it is and relationProvenance
+// records how deps.dev determined it, so supply-chain policies can
+// confirm a package points at the source repository it claims. The
+// project resolves to the upstream project record with its OpenSSF
+// Scorecard and repository signals.
 private depsdev.relatedProject @defaults("relationType") {
   // Relationship type (e.g. SOURCE_REPO, ISSUE_TRACKER, ORIGIN)
   relationType string
@@ -72,11 +97,13 @@ private depsdev.relatedProject @defaults("relationType") {
 
 // deps.dev upstream source project (GitHub / GitLab repository)
 //
-// Examine the upstream repository associated with a package: identity,
-// description, homepage, license, archived state, social-proof signals
-// (stars, forks, open-issue count), and the OpenSSF Scorecard scores
-// — input for supply-chain risk policies (unmaintained / archived
-// dependencies, low-scorecard libraries).
+// Upstream source repository that deps.dev associates with a package:
+// its description, homepage, SPDX license, archived state, and
+// social-proof signals (stars, forks, open-issue count), along with the
+// OpenSSF Scorecard results. Feeds supply-chain risk policies that flag
+// unmaintained or archived dependencies and low-scorecard libraries.
+// Select a project by its repository identifier, for example
+// depsdev.project(id: "github.com/rs/zerolog").
 depsdev.project @defaults("id starsCount forksCount") {
   init(id string)
   // Project identifier (e.g. github.com/rs/zerolog)
@@ -100,6 +127,15 @@ depsdev.project @defaults("id starsCount forksCount") {
 }
 
 // OpenSSF Scorecard data from deps.dev
+//
+// Automated supply-chain security assessment that OpenSSF Scorecard
+// runs against a project's source repository, surfaced through
+// deps.dev. The overallScore aggregates the individual checks (each
+// listed in checks) that probe practices such as branch protection,
+// code review, dependency pinning, signed releases, and continuous
+// integration testing, producing a single 0-10 rating you can gate
+// dependency adoption on. Inspect date to confirm how recent the
+// evaluation is before relying on the score.
 private depsdev.scorecard @defaults("overallScore date") {
   // Overall scorecard score (0-10)
   overallScore float
@@ -110,10 +146,19 @@ private depsdev.scorecard @defaults("overallScore date") {
 }
 
 // OpenSSF Scorecard individual check
+//
+// A single automated OpenSSF Scorecard check evaluating one supply-chain
+// security practice of the project, such as branch protection, code review,
+// or dependency pinning. Selected within a scorecard by the check name, for
+// example name == "Code-Review" or name == "Maintained". The score and reason
+// record how the project fared against that specific check.
 private depsdev.scorecardCheck @defaults("name score reason") {
   // Check name (e.g. Maintained, Code-Review)
   name string
-  // Check score (0-10)
+  // Check score
+  //
+  // Score for this individual check, from 0 to 10, or -1 when the check was
+  // inconclusive and could not be evaluated.
   score int
   // Reason for the score
   reason string

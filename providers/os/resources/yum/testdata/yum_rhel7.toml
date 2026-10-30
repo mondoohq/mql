@@ -38,7 +38,7 @@ ip_resolve=4
 [commands."python -c 'import yum, json; yb = yum.YumBase(); print json.dumps(yb.conf.yumvar)'"]
 stdout = """{"releasever": "7Server", "basearch": "x86_64", "arch": "ia32e", "uuid": "d409e585-1356-4d85-b510-21ec65a2f468"}"""
 
-[commands."yum -v repolist all"]
+[commands."LC_ALL=C yum -v repolist all"]
 stdout="""
 Failed to set locale, defaulting to C
 Config time: 0.005

@@ -1,0 +1,10 @@
+{
+  "LogName": "Microsoft-Windows-WinRM/Operational",
+  "IsEnabled": true,
+  "MaximumSizeInBytes": 1052672,
+  "IsClassicLog": false,
+  "LogFilePath": "%SystemRoot%\\System32\\Winevt\\Logs\\Microsoft-Windows-WinRM%4Operational.evtx",
+  "SystemRoot": "C:\\Windows",
+  "RecordCount": 372,
+  "LogMode": "Circular"
+}

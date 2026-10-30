@@ -9,13 +9,13 @@ import (
 	"os"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/okta/connection"
-	"go.mondoo.com/mql/v13/providers/okta/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/okta/connection"
+	"go.mondoo.com/mql/providers/okta/resources"
 )
 
 const ConnectionType = "okta"
@@ -53,10 +53,37 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 	if token == "" {
 		token = os.Getenv("OKTA_TOKEN")
 	}
-	if token == "" {
-		return nil, errors.New("no okta token provided, use --token or OKTA_TOKEN")
+
+	// Service app credentials are the alternative to an API token. An SSWS
+	// token carries the full privileges of the admin who minted it, so orgs
+	// that require least privilege authenticate a scoped service app with a
+	// private key JWT instead. The environment variable names match the ones
+	// the Okta Terraform provider reads, so an org that already configures one
+	// does not need a second set.
+	clientID := flagOrEnv(flags, "client-id", "OKTA_API_CLIENT_ID")
+	privateKeyID := flagOrEnv(flags, "private-key-id", "OKTA_API_PRIVATE_KEY_ID")
+	scopes := flagOrEnv(flags, "scopes", "OKTA_API_SCOPES")
+	privateKey := flagOrEnv(flags, "private-key", "OKTA_API_PRIVATE_KEY")
+
+	switch {
+	case privateKey != "":
+		// The value is either the PEM itself or a path to it, matching how the
+		// Okta Terraform provider accepts the same argument.
+		cred, err := privateKeyCredential(privateKey)
+		if err != nil {
+			return nil, err
+		}
+		conf.Credentials = append(conf.Credentials, cred)
+		conf.Options["client-id"] = clientID
+		conf.Options["private-key-id"] = privateKeyID
+		conf.Options["scopes"] = scopes
+
+	case token != "":
+		conf.Credentials = append(conf.Credentials, vault.NewPasswordCredential("", token))
+
+	default:
+		return nil, errors.New("no okta credentials provided, use --token (or OKTA_API_TOKEN) for an API token, or --client-id, --private-key, --private-key-id and --scopes (or OKTA_API_CLIENT_ID, OKTA_API_PRIVATE_KEY, OKTA_API_PRIVATE_KEY_ID and OKTA_API_SCOPES) for a service app")
 	}
-	conf.Credentials = append(conf.Credentials, vault.NewPasswordCredential("", token))
 
 	organization := ""
 	if x, ok := flags["organization"]; ok && len(x.Value) != 0 {
@@ -80,6 +107,31 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 	}
 
 	return &plugin.ParseCLIRes{Asset: &asset}, nil
+}
+
+// flagOrEnv reads a CLI flag, falling back to an environment variable when the
+// flag was not given.
+func flagOrEnv(flags map[string]*llx.Primitive, flag, env string) string {
+	if x, ok := flags[flag]; ok && len(x.Value) != 0 {
+		return string(x.Value)
+	}
+	return os.Getenv(env)
+}
+
+// privateKeyCredential accepts the service app's key either as the PEM itself
+// or as a path to a file holding it, matching how the Okta Terraform provider
+// reads the same argument. A value that starts a PEM block is taken literally;
+// anything else is read from disk.
+func privateKeyCredential(value string) (*vault.Credential, error) {
+	if strings.HasPrefix(strings.TrimSpace(value), "-----BEGIN") {
+		return vault.NewPrivateKeyCredential("", []byte(value), ""), nil
+	}
+
+	cred, err := vault.NewPrivateKeyCredentialFromPath("", value, "")
+	if err != nil {
+		return nil, errors.Join(errors.New("failed to read okta private key from "+value), err)
+	}
+	return cred, nil
 }
 
 func (s *Service) MockConnect(req *plugin.ConnectReq, callback plugin.ProviderCallback) (*plugin.ConnectRes, error) {

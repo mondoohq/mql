@@ -6,11 +6,11 @@ package resources
 import (
 	"strconv"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/jamf/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/jamf/connection"
 )
 
-func (r *mqlJamf) computerGroups() ([]interface{}, error) {
+func (r *mqlJamf) computerGroups() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.JamfConnection)
 	client := conn.Client
 
@@ -19,7 +19,7 @@ func (r *mqlJamf) computerGroups() ([]interface{}, error) {
 		return nil, err
 	}
 
-	var res []interface{}
+	var res []any
 	for _, g := range groups.Results {
 		item, err := CreateResource(r.MqlRuntime, "jamf.computerGroup", map[string]*llx.RawData{
 			"id":         llx.IntData(g.ID),

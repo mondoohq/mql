@@ -1,0 +1,265 @@
+{
+  "Settings": {
+    "ComputerName": "dnslab",
+    "MajorVersion": 10,
+    "MinorVersion": 0,
+    "BuildNumber": 14393,
+    "EnableDnsSec": true,
+    "EnableVersionQuery": 0,
+    "EnableIPv6": true,
+    "SocketPoolSize": 2500,
+    "RoundRobin": true,
+    "BindSecondaries": false,
+    "StrictFileParsing": false,
+    "NameCheckFlag": 2,
+    "EnableOnlineSigning": true,
+    "AddressAnswerLimit": 0,
+    "XfrConnectTimeout": 30,
+    "DsAvailable": false,
+    "IsReadOnlyDC": false,
+    "ServerLevelPluginDll": null,
+    "RootTrustAnchorsURL": "https://data.iana.org/root-anchors/root-anchors.xml",
+    "ListeningIPAddress": {
+      "value": [
+        "fe80::73f5:a0d4:e6d3:d2a9",
+        "10.0.0.4"
+      ],
+      "Count": 2
+    },
+    "AllIPAddress": {
+      "value": [
+        "fe80::73f5:a0d4:e6d3:d2a9",
+        "10.0.0.4"
+      ],
+      "Count": 2
+    },
+    "SocketPoolExcludedPortRanges": {
+      "value": [],
+      "Count": 0
+    }
+  },
+  "Recursion": {
+    "Enable": true,
+    "SecureResponse": true,
+    "Timeout": 8,
+    "RetryInterval": 3,
+    "AdditionalTimeout": 4
+  },
+  "Cache": {
+    "EnablePollutionProtection": true,
+    "LockingPercent": 100,
+    "MaxKBSize": 0,
+    "MaxTtl": {
+      "Ticks": 864000000000,
+      "Days": 1,
+      "Hours": 0,
+      "Milliseconds": 0,
+      "Minutes": 0,
+      "Seconds": 0,
+      "TotalDays": 1,
+      "TotalHours": 24,
+      "TotalMilliseconds": 86400000,
+      "TotalMinutes": 1440,
+      "TotalSeconds": 86400
+    },
+    "MaxNegativeTtl": {
+      "Ticks": 9000000000,
+      "Days": 0,
+      "Hours": 0,
+      "Milliseconds": 0,
+      "Minutes": 15,
+      "Seconds": 0,
+      "TotalDays": 0.010416666666666666,
+      "TotalHours": 0.25,
+      "TotalMilliseconds": 900000,
+      "TotalMinutes": 15,
+      "TotalSeconds": 900
+    },
+    "StoreEmptyAuthenticationResponse": true,
+    "IgnorePolicies": false
+  },
+  "Diagnostics": {
+    "EventLogLevel": 4,
+    "UseSystemEventLog": false,
+    "EnableLoggingToFile": true,
+    "LogFilePath": null,
+    "MaxMBFileSize": 500000000,
+    "EnableLogFileRollover": false,
+    "SaveLogsToPersistentStorage": false,
+    "Queries": false,
+    "Answers": false,
+    "Notifications": false,
+    "Update": false,
+    "QuestionTransactions": false,
+    "UnmatchedResponse": false,
+    "SendPackets": false,
+    "ReceivePackets": false,
+    "TcpPackets": false,
+    "UdpPackets": false,
+    "FullPackets": false,
+    "WriteThrough": false,
+    "FilterIPAddressList": {
+      "value": [
+        "192.0.2.10"
+      ],
+      "Count": 1
+    }
+  },
+  "Scavenging": {
+    "ScavengingState": false,
+    "ScavengingInterval": {
+      "Ticks": 0,
+      "Days": 0,
+      "Hours": 0,
+      "Milliseconds": 0,
+      "Minutes": 0,
+      "Seconds": 0,
+      "TotalDays": 0,
+      "TotalHours": 0,
+      "TotalMilliseconds": 0,
+      "TotalMinutes": 0,
+      "TotalSeconds": 0
+    },
+    "RefreshInterval": {
+      "Ticks": 6048000000000,
+      "Days": 7,
+      "Hours": 0,
+      "Milliseconds": 0,
+      "Minutes": 0,
+      "Seconds": 0,
+      "TotalDays": 7,
+      "TotalHours": 168,
+      "TotalMilliseconds": 604800000,
+      "TotalMinutes": 10080,
+      "TotalSeconds": 604800
+    },
+    "NoRefreshInterval": {
+      "Ticks": 6048000000000,
+      "Days": 7,
+      "Hours": 0,
+      "Milliseconds": 0,
+      "Minutes": 0,
+      "Seconds": 0,
+      "TotalDays": 7,
+      "TotalHours": 168,
+      "TotalMilliseconds": 604800000,
+      "TotalMinutes": 10080,
+      "TotalSeconds": 604800
+    },
+    "LastScavengeTime": ""
+  },
+  "ResponseRateLimiting": {
+    "Mode": "Disable",
+    "ResponsesPerSec": 5,
+    "ErrorsPerSec": 5,
+    "WindowInSec": 5,
+    "IPv4PrefixLength": 24,
+    "IPv6PrefixLength": 56,
+    "LeakRate": 3,
+    "TruncateRate": 2,
+    "MaximumResponsesPerWindow": 1024
+  },
+  "Forwarders": {
+    "UseRootHint": true,
+    "Timeout": 3,
+    "EnableReordering": true,
+    "IPAddress": {
+      "value": [
+        "1.1.1.1",
+        "9.9.9.9"
+      ],
+      "Count": 2
+    }
+  },
+  "RootHints": [
+    {
+      "NameServer": "A.ROOT-SERVERS.NET.",
+      "IPAddress": [
+        "198.41.0.4",
+        "2001:503:ba3e::2:30"
+      ]
+    },
+    {
+      "NameServer": "B.ROOT-SERVERS.NET.",
+      "IPAddress": [
+        "192.228.79.201",
+        "2001:500:84::b"
+      ]
+    },
+    {
+      "NameServer": "C.ROOT-SERVERS.NET.",
+      "IPAddress": [
+        "192.33.4.12",
+        "2001:500:2::c"
+      ]
+    },
+    {
+      "NameServer": "D.ROOT-SERVERS.NET.",
+      "IPAddress": [
+        "199.7.91.13",
+        "2001:500:2d::d"
+      ]
+    },
+    {
+      "NameServer": "E.ROOT-SERVERS.NET.",
+      "IPAddress": [
+        "192.203.230.10"
+      ]
+    },
+    {
+      "NameServer": "F.ROOT-SERVERS.NET.",
+      "IPAddress": [
+        "192.5.5.241",
+        "2001:500:2f::f"
+      ]
+    },
+    {
+      "NameServer": "G.ROOT-SERVERS.NET.",
+      "IPAddress": [
+        "192.112.36.4"
+      ]
+    },
+    {
+      "NameServer": "H.ROOT-SERVERS.NET.",
+      "IPAddress": [
+        "198.97.190.53",
+        "2001:500:1::53"
+      ]
+    },
+    {
+      "NameServer": "I.ROOT-SERVERS.NET.",
+      "IPAddress": [
+        "192.36.148.17",
+        "2001:7fe::53"
+      ]
+    },
+    {
+      "NameServer": "J.ROOT-SERVERS.NET.",
+      "IPAddress": [
+        "192.58.128.30",
+        "2001:503:c27::2:30"
+      ]
+    },
+    {
+      "NameServer": "K.ROOT-SERVERS.NET.",
+      "IPAddress": [
+        "193.0.14.129",
+        "2001:7fd::1"
+      ]
+    },
+    {
+      "NameServer": "L.ROOT-SERVERS.NET.",
+      "IPAddress": [
+        "199.7.83.42",
+        "2001:500:9f::42"
+      ]
+    },
+    {
+      "NameServer": "M.ROOT-SERVERS.NET.",
+      "IPAddress": [
+        "202.12.27.33",
+        "2001:dc3::35"
+      ]
+    }
+  ]
+}

@@ -18,11 +18,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/rs/zerolog/log"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 
 	web "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v6"
 )
@@ -62,7 +62,7 @@ type AzureWebAppStackRuntime struct {
 	IsDeprecated  bool      `json:"isDeprecated,omitempty"`
 	IsHidden      bool      `json:"isHidden,omitempty"`
 	AutoUpdate    bool      `json:"autoUpdate,omitempty"`
-	EndOfLifeDate time.Time `json:"endOfLifeDate,omitempty"`
+	EndOfLifeDate time.Time `json:"endOfLifeDate"`
 }
 
 func createWebAppResourceFromSite(runtime *plugin.Runtime, resourceType string, site *web.Site) (any, error) {
@@ -98,7 +98,19 @@ func createWebAppResourceFromSite(runtime *plugin.Runtime, resourceType string, 
 		"type":       llx.StringDataPtr(site.Type),
 		"kind":       llx.StringDataPtr(site.Kind),
 		"properties": llx.DictData(properties),
-		"identity":   llx.DictData(identity),
+	}
+
+	siteIdentity := orZero(site.Identity)
+
+	// Both resources keep the raw identity dict, deprecated in favour of the
+	// flattened members. appsite has no tenantId field of its own: it resolves
+	// the tenant through systemAssignedIdentity, off cacheIdentityTenantId.
+	if resourceType == ResourceAzureSubscriptionWebServiceAppslot {
+		args["identity"] = llx.DictData(identity)
+		if err := setResourceIdentity(runtime, args, sortedUserAssignedIdentityIDs(siteIdentity.UserAssignedIdentities),
+			identityType(siteIdentity.Type), identityPrincipalId(siteIdentity.PrincipalID), identityTenantId(siteIdentity.TenantID)); err != nil {
+			return nil, err
+		}
 	}
 
 	// Only set these fields for appsite, not appslot (which doesn't have them)
@@ -111,7 +123,7 @@ func createWebAppResourceFromSite(runtime *plugin.Runtime, resourceType string, 
 		args["enabled"] = llx.BoolDataPtr(site.Properties.Enabled)
 		args["state"] = llx.StringDataPtr(site.Properties.State)
 		args["defaultHostName"] = llx.StringDataPtr(site.Properties.DefaultHostName)
-		args["enabledHostNames"] = llx.ArrayData(convert.SliceStrPtrToInterface(site.Properties.EnabledHostNames), types.String)
+		args["enabledHostNames"] = llx.ArrayData(strPtrsToAny(site.Properties.EnabledHostNames), types.String)
 		args["endToEndEncryptionEnabled"] = llx.BoolDataPtr(site.Properties.EndToEndEncryptionEnabled)
 		args["sshEnabled"] = llx.BoolDataPtr(site.Properties.SSHEnabled)
 		args["keyVaultReferenceIdentity"] = llx.StringDataPtr(site.Properties.KeyVaultReferenceIdentity)
@@ -141,17 +153,9 @@ func createWebAppResourceFromSite(runtime *plugin.Runtime, resourceType string, 
 			outboundVnetRoutingData = llx.ResourceData(ovrRes, "azure.subscription.webService.appsite.outboundVnetRouting")
 		}
 		args["outboundVnetRouting"] = outboundVnetRoutingData
-		var identityType string
-		if site.Identity != nil && site.Identity.Type != nil {
-			identityType = string(*site.Identity.Type)
-		}
-		args["identityType"] = llx.StringData(identityType)
-		var principalId *string
-		if site.Identity != nil {
-			principalId = site.Identity.PrincipalID
-			userAssignedIdentityIds = sortedUserAssignedIdentityIDs(site.Identity.UserAssignedIdentities)
-		}
-		args["principalId"] = llx.StringDataPtr(principalId)
+		args["identityType"] = llx.StringDataPtr(stringEnumPtr(siteIdentity.Type))
+		args["principalId"] = llx.StringDataPtr(siteIdentity.PrincipalID)
+		userAssignedIdentityIds = sortedUserAssignedIdentityIDs(siteIdentity.UserAssignedIdentities)
 	}
 
 	res, err := CreateResource(runtime, resourceType, args)
@@ -167,8 +171,12 @@ func createWebAppResourceFromSite(runtime *plugin.Runtime, resourceType string, 
 		mqlAppsite := res.(*mqlAzureSubscriptionWebServiceAppsite)
 		mqlAppsite.cacheSystemData = sysData
 		mqlAppsite.cacheUserAssignedIdentityIds = userAssignedIdentityIds
+		if site.Identity != nil && site.Identity.TenantID != nil {
+			mqlAppsite.cacheIdentityTenantId = *site.Identity.TenantID
+		}
 	case ResourceAzureSubscriptionWebServiceAppslot:
-		res.(*mqlAzureSubscriptionWebServiceAppslot).cacheSystemData = sysData
+		mqlAppslot := res.(*mqlAzureSubscriptionWebServiceAppslot)
+		mqlAppslot.cacheSystemData = sysData
 	}
 	return res, nil
 }
@@ -176,6 +184,7 @@ func createWebAppResourceFromSite(runtime *plugin.Runtime, resourceType string, 
 type mqlAzureSubscriptionWebServiceAppsiteInternal struct {
 	cacheSystemData              any
 	cacheUserAssignedIdentityIds []string
+	cacheIdentityTenantId        string
 }
 
 type mqlAzureSubscriptionWebServiceAppslotInternal struct {
@@ -183,6 +192,62 @@ type mqlAzureSubscriptionWebServiceAppslotInternal struct {
 }
 
 func (a *mqlAzureSubscriptionWebServiceAppslot) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
+type mqlAzureSubscriptionWebServiceFunctionInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionWebServiceFunction) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
+type mqlAzureSubscriptionWebServiceAppsiteconfigInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionWebServiceAppsiteconfig) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
+type mqlAzureSubscriptionWebServiceHostingEnvironmentInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionWebServiceHostingEnvironment) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
+type mqlAzureSubscriptionWebServiceAppServicePlanInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionWebServiceAppServicePlan) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
+type mqlAzureSubscriptionWebServiceCertificateInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionWebServiceCertificate) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
+type mqlAzureSubscriptionWebServiceAppsiteHostNameBindingInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionWebServiceAppsiteHostNameBinding) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
+type mqlAzureSubscriptionWebServiceAppsiteVirtualNetworkConnectionInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionWebServiceAppsiteVirtualNetworkConnection) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
 	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
@@ -233,23 +298,18 @@ func runtimeStackDescriptorFromResource(runtime *mqlAzureSubscriptionWebServiceA
 	if runtime == nil {
 		return descriptor
 	}
-	var runtimeName string
 	if name, ok := stringFromTValue(&runtime.Name); ok {
-		runtimeName = name
 		descriptor.Name = strings.ToLower(name)
 	}
 	if minor, ok := stringFromTValue(&runtime.MinorVersion); ok {
 		descriptor.MinorVersion = strings.ToLower(minor)
 	}
-	subscriptionID := ""
-	if runtime.MqlRuntime != nil {
-		if conn, ok := runtime.MqlRuntime.Connection.(*connection.AzureConnection); ok {
-			subscriptionID = conn.SubId()
-		}
-	}
-	if subscriptionID != "" && runtimeName != "" {
-		descriptor.ID = fmt.Sprintf("%s/%s", subscriptionID, runtimeName)
-	} else if id, ok := stringFromTValue(&runtime.RuntimeVersion); ok {
+	// The ID is compared against the app's own runtime identifier, which is
+	// either its LinuxFxVersion or "<STACK>|<version>" -- so it has to be the
+	// stack's runtimeVersion ("NODE|18-lts"), not the resource's cache key. A
+	// subscription-qualified key can never equal either shape, which left the
+	// comparison dead and the whole match resting on name plus minor version.
+	if id, ok := stringFromTValue(&runtime.RuntimeVersion); ok {
 		descriptor.ID = id
 	}
 	if autoUpdate, ok := boolFromTValue(&runtime.AutoUpdate); ok {
@@ -410,7 +470,7 @@ func initAzureSubscriptionWebServiceAppsite(runtime *plugin.Runtime, args map[st
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
+		if ids := getAssetIdentifier(runtime); ids != nil && ids.id != "" {
 			args["id"] = llx.StringData(ids.id)
 		}
 	}
@@ -444,6 +504,10 @@ func initAzureSubscriptionWebServiceAppsite(runtime *plugin.Runtime, args map[st
 		}
 	}
 
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionWebServiceAppsite, id); filtered != nil {
+		return args, filtered, nil
+	}
+
 	return nil, nil, errors.New("azure app service app does not exist")
 }
 
@@ -452,6 +516,10 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) id() (string, error) {
 }
 
 func (a *mqlAzureSubscriptionWebServiceAppsiteauthsettings) id() (string, error) {
+	return a.Id.Data, nil
+}
+
+func (a *mqlAzureSubscriptionWebServiceAppsiteauthsettingsv2) id() (string, error) {
 	return a.Id.Data, nil
 }
 
@@ -466,6 +534,11 @@ func (a *mqlAzureSubscriptionWebServiceAppsiteOutboundVnetRouting) id() (string,
 func (a *mqlAzureSubscriptionWebServiceAppsite) diagnosticSettings() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
 	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
+
+func (a *mqlAzureSubscriptionWebServiceAppsite) diagnosticSettingsCategories() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettingsCategories(a.Id.Data, a.MqlRuntime, conn)
 }
 
 func (a *mqlAzureSubscriptionWebServiceAppsite) slots() ([]any, error) {
@@ -539,7 +612,27 @@ func (a *mqlAzureSubscriptionWebService) apps() ([]any, error) {
 		}
 	}
 
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
+}
+
+// runtimeSettingsForPreferredOs picks the runtime settings matching a stack's
+// preferred OS, and names that OS.
+//
+// The wire values are capitalized -- StackPreferredOsLinux is "Linux", not
+// "linux" -- so comparing against lowercase literals matched neither arm, left
+// the settings nil, and skipped every minor version of every stack. Comparing
+// against the SDK constants is what keeps that from silently recurring.
+func runtimeSettingsForPreferredOs(preferred *web.StackPreferredOs, settings *web.WebAppRuntimes) (*web.WebAppRuntimeSettings, string) {
+	if preferred == nil || settings == nil {
+		return nil, ""
+	}
+	switch *preferred {
+	case web.StackPreferredOsLinux:
+		return settings.LinuxRuntimeSettings, "linux"
+	case web.StackPreferredOsWindows:
+		return settings.WindowsRuntimeSettings, "windows"
+	}
+	return nil, ""
 }
 
 func (a *mqlAzureSubscriptionWebService) availableRuntimes() ([]any, error) {
@@ -565,6 +658,9 @@ func (a *mqlAzureSubscriptionWebService) availableRuntimes() ([]any, error) {
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			majorVersions := entry.Properties.MajorVersions
 			stackName := convert.ToValue(entry.Name)
 			for _, major := range majorVersions {
@@ -580,16 +676,7 @@ func (a *mqlAzureSubscriptionWebService) availableRuntimes() ([]any, error) {
 						continue
 					}
 
-					var os string
-					var settings *web.WebAppRuntimeSettings
-					switch convert.ToValue(entry.Properties.PreferredOs) {
-					case "linux":
-						settings = minor.StackSettings.LinuxRuntimeSettings
-						os = "linux"
-					case "windows":
-						settings = minor.StackSettings.WindowsRuntimeSettings
-						os = "windows"
-					}
+					settings, os := runtimeSettingsForPreferredOs(entry.Properties.PreferredOs, minor.StackSettings)
 
 					if settings == nil {
 						log.Debug().
@@ -658,6 +745,10 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) userAssignedIdentities() ([]any,
 	return resolveUserAssignedIdentities(a.MqlRuntime, a.cacheUserAssignedIdentityIds)
 }
 
+func (a *mqlAzureSubscriptionWebServiceAppsite) systemAssignedIdentity() (*mqlAzureSubscriptionManagedIdentity, error) {
+	return newSystemAssignedManagedIdentity(a.MqlRuntime, a.Id.Data, a.PrincipalId.Data, a.cacheIdentityTenantId, &a.SystemAssignedIdentity)
+}
+
 // keyVaultReferenceIdentityRef resolves the user-assigned managed identity used
 // to fetch Key Vault references in app settings. When the app uses its
 // system-assigned identity the raw value is "SystemAssigned" (not a resource
@@ -704,9 +795,32 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) configuration() (*mqlAzureSubscr
 func siteConfigCorsAllowedOrigins(props *web.SiteConfig) []any {
 	origins := []any{}
 	if props != nil && props.Cors != nil {
-		origins = convert.SliceStrPtrToInterface(props.Cors.AllowedOrigins)
+		origins = strPtrsToAny(props.Cors.AllowedOrigins)
 	}
 	return origins
+}
+
+// addSiteConfigArgs sets the typed appsiteconfig fields read from the site
+// configuration. Every field is set on every path, to null when Azure omits it
+// (an app that never configured a cipher suite has no minTlsCipherSuite) or
+// when the response has no properties at all. A field left out of the args is
+// never set on the resource, and reading it then returns neither data nor
+// error.
+func addSiteConfigArgs(args map[string]*llx.RawData, props *web.SiteConfig) {
+	if props == nil {
+		props = &web.SiteConfig{}
+	}
+	args["minTlsVersion"] = llx.StringDataPtr(stringEnumPtr(props.MinTLSVersion))
+	args["ftpsState"] = llx.StringDataPtr(stringEnumPtr(props.FtpsState))
+	args["remoteDebuggingEnabled"] = llx.BoolDataPtr(props.RemoteDebuggingEnabled)
+	args["http20Enabled"] = llx.BoolDataPtr(props.Http20Enabled)
+	args["alwaysOn"] = llx.BoolDataPtr(props.AlwaysOn)
+	args["webSocketsEnabled"] = llx.BoolDataPtr(props.WebSocketsEnabled)
+	args["httpLoggingEnabled"] = llx.BoolDataPtr(props.HTTPLoggingEnabled)
+	args["detailedErrorLoggingEnabled"] = llx.BoolDataPtr(props.DetailedErrorLoggingEnabled)
+	args["autoHealEnabled"] = llx.BoolDataPtr(props.AutoHealEnabled)
+	args["minTlsCipherSuite"] = llx.StringDataPtr(stringEnumPtr(props.MinTLSCipherSuite))
+	args["scmMinTlsVersion"] = llx.StringDataPtr(stringEnumPtr(props.ScmMinTLSVersion))
 }
 
 func webAppSiteConfigToMql(runtime *plugin.Runtime, conn *connection.AzureConnection, id string) (*mqlAzureSubscriptionWebServiceAppsiteconfig, error) {
@@ -750,32 +864,17 @@ func webAppSiteConfigToMql(runtime *plugin.Runtime, conn *connection.AzureConnec
 		"corsAllowedOrigins": llx.ArrayData(siteConfigCorsAllowedOrigins(entry.Properties), types.String),
 	}
 
-	if entry.Properties != nil {
-		if entry.Properties.MinTLSVersion != nil {
-			args["minTlsVersion"] = llx.StringData(string(*entry.Properties.MinTLSVersion))
-		}
-		if entry.Properties.FtpsState != nil {
-			args["ftpsState"] = llx.StringData(string(*entry.Properties.FtpsState))
-		}
-		args["remoteDebuggingEnabled"] = llx.BoolDataPtr(entry.Properties.RemoteDebuggingEnabled)
-		args["http20Enabled"] = llx.BoolDataPtr(entry.Properties.Http20Enabled)
-		args["alwaysOn"] = llx.BoolDataPtr(entry.Properties.AlwaysOn)
-		args["webSocketsEnabled"] = llx.BoolDataPtr(entry.Properties.WebSocketsEnabled)
-		args["httpLoggingEnabled"] = llx.BoolDataPtr(entry.Properties.HTTPLoggingEnabled)
-		args["detailedErrorLoggingEnabled"] = llx.BoolDataPtr(entry.Properties.DetailedErrorLoggingEnabled)
-		args["autoHealEnabled"] = llx.BoolDataPtr(entry.Properties.AutoHealEnabled)
-		if entry.Properties.MinTLSCipherSuite != nil {
-			args["minTlsCipherSuite"] = llx.StringData(string(*entry.Properties.MinTLSCipherSuite))
-		}
-		if entry.Properties.ScmMinTLSVersion != nil {
-			args["scmMinTlsVersion"] = llx.StringData(string(*entry.Properties.ScmMinTLSVersion))
-		}
-	}
+	addSiteConfigArgs(args, entry.Properties)
 
 	res, err := CreateResource(runtime, ResourceAzureSubscriptionWebServiceAppsiteconfig, args)
 	if err != nil {
 		return nil, err
 	}
+	sysData, err := convert.JsonToDict(entry.SystemData)
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlAzureSubscriptionWebServiceAppsiteconfig).cacheSystemData = sysData
 
 	return res.(*mqlAzureSubscriptionWebServiceAppsiteconfig), nil
 }
@@ -883,6 +982,35 @@ func (a *mqlAzureSubscriptionWebServiceAppsiteconfig) ipSecurityRestrictionsDefa
 	return s, nil
 }
 
+// redactedAuthSettings copies legacy (V1) Easy Auth settings with the six
+// identity-provider client secrets removed.
+//
+// GetAuthSettings is the `/config/authsettings/list` action, which is Azure's
+// convention for the form that returns secret values -- the V2 sibling has a
+// separate GetAuthSettingsV2WithoutSecrets precisely because the /list form
+// does not redact. Everything else about the configuration is kept, so
+// enabled, unauthenticatedClientAction, the allowed audiences and the provider
+// client IDs still read as before.
+//
+// The V2 path is already clean: SiteAuthSettingsV2Properties carries only
+// clientSecretSettingName and a certificate thumbprint, never a value.
+//
+// The copy is by field rather than by JSON key so a secret field renamed in a
+// future SDK breaks the build instead of silently leaking again.
+func redactedAuthSettings(props *web.SiteAuthSettingsProperties) *web.SiteAuthSettingsProperties {
+	if props == nil {
+		return nil
+	}
+	safe := *props
+	safe.ClientSecret = nil
+	safe.FacebookAppSecret = nil
+	safe.GitHubClientSecret = nil
+	safe.GoogleClientSecret = nil
+	safe.MicrosoftAccountClientSecret = nil
+	safe.TwitterConsumerSecret = nil
+	return &safe
+}
+
 func (a *mqlAzureSubscriptionWebServiceAppsite) authenticationSettings() (*mqlAzureSubscriptionWebServiceAppsiteauthsettings, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
 	ctx := context.Background()
@@ -910,7 +1038,7 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) authenticationSettings() (*mqlAz
 	if err != nil {
 		return nil, err
 	}
-	properties, err := convert.JsonToDict(configuration.Properties)
+	properties, err := convert.JsonToDict(redactedAuthSettings(configuration.Properties))
 	if err != nil {
 		return nil, err
 	}
@@ -937,6 +1065,140 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) authenticationSettings() (*mqlAz
 	}
 
 	return res.(*mqlAzureSubscriptionWebServiceAppsiteauthsettings), nil
+}
+
+// authSettingsV2Args maps a V2 auth settings response onto the MQL resource
+// arguments, flattening the nested configuration groups that carry the
+// security-relevant answers.
+//
+// Every level of the V2 shape is a nullable pointer, and an absent group is
+// indistinguishable at the wire from one whose values are off, so each read is
+// guarded and an absent group leaves its fields at the safe reading: not
+// required, not enabled, nothing allowed.
+//
+// The booleans are deliberately reported as false rather than null when the
+// group carrying them is absent. Null is not a neutral answer in MQL: `null &&
+// null` evaluates to true, so a policy asserting `requireAuthentication &&
+// requireHttps` would PASS on an app whose auth configuration was never
+// written. False is also the safe direction on its own terms -- it can
+// overstate a weakness, never a protection.
+func authSettingsV2Args(settings web.SiteAuthSettingsV2, properties any) map[string]*llx.RawData {
+	var (
+		enabled                     *bool
+		runtimeVersion              *string
+		requireAuthentication       *bool
+		unauthenticatedClientAction *string
+		redirectToProvider          *string
+		requireHTTPS                *bool
+		tokenStoreEnabled           *bool
+		aadEnabled                  *bool
+		excludedPaths               []any
+		allowedApplications         []any
+		allowedAudiences            []any
+	)
+
+	if props := settings.Properties; props != nil {
+		if platform := props.Platform; platform != nil {
+			enabled = platform.Enabled
+			runtimeVersion = platform.RuntimeVersion
+		}
+		if gv := props.GlobalValidation; gv != nil {
+			requireAuthentication = gv.RequireAuthentication
+			unauthenticatedClientAction = (*string)(gv.UnauthenticatedClientAction)
+			redirectToProvider = gv.RedirectToProvider
+			excludedPaths = strPtrSliceToAny(gv.ExcludedPaths)
+		}
+		if http := props.HTTPSettings; http != nil {
+			requireHTTPS = http.RequireHTTPS
+		}
+		if login := props.Login; login != nil && login.TokenStore != nil {
+			tokenStoreEnabled = login.TokenStore.Enabled
+		}
+		if idp := props.IdentityProviders; idp != nil && idp.AzureActiveDirectory != nil {
+			aad := idp.AzureActiveDirectory
+			aadEnabled = aad.Enabled
+			if v := aad.Validation; v != nil {
+				allowedAudiences = strPtrSliceToAny(v.AllowedAudiences)
+				if p := v.DefaultAuthorizationPolicy; p != nil {
+					allowedApplications = strPtrSliceToAny(p.AllowedApplications)
+				}
+			}
+		}
+	}
+
+	return map[string]*llx.RawData{
+		"__id":                        llx.StringDataPtr(settings.ID),
+		"id":                          llx.StringDataPtr(settings.ID),
+		"name":                        llx.StringDataPtr(settings.Name),
+		"kind":                        llx.StringDataPtr(settings.Kind),
+		"type":                        llx.StringDataPtr(settings.Type),
+		"properties":                  llx.DictData(properties),
+		"enabled":                     llx.BoolData(convert.ToValue(enabled)),
+		"runtimeVersion":              llx.StringData(convert.ToValue(runtimeVersion)),
+		"requireAuthentication":       llx.BoolData(convert.ToValue(requireAuthentication)),
+		"unauthenticatedClientAction": llx.StringData(convert.ToValue(unauthenticatedClientAction)),
+		"excludedPaths":               llx.ArrayData(excludedPaths, types.String),
+		"redirectToProvider":          llx.StringData(convert.ToValue(redirectToProvider)),
+		"requireHttps":                llx.BoolData(convert.ToValue(requireHTTPS)),
+		"tokenStoreEnabled":           llx.BoolData(convert.ToValue(tokenStoreEnabled)),
+		"azureActiveDirectoryEnabled": llx.BoolData(convert.ToValue(aadEnabled)),
+		"allowedApplications":         llx.ArrayData(allowedApplications, types.String),
+		"allowedAudiences":            llx.ArrayData(allowedAudiences, types.String),
+	}
+}
+
+// authSettingsV2 reads App Service Authentication in its V2 form.
+//
+// authenticationSettings reads the V1 endpoint, and the two configurations are
+// stored separately: an app set up with Easy Auth V2 -- which is what the Azure
+// portal writes today -- reports V1 enabled false. So an authenticated app was
+// reported as unauthenticated, and was indistinguishable from an app with no
+// authentication configured at all.
+//
+// A credential that cannot read the configuration (403) or an app with no V2
+// configuration (404) yields null rather than failing the query.
+func (a *mqlAzureSubscriptionWebServiceAppsite) authSettingsV2() (*mqlAzureSubscriptionWebServiceAppsiteauthsettingsv2, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	ctx := context.Background()
+
+	resourceID, err := ParseResourceID(a.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	site, err := resourceID.Component("sites")
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := web.NewWebAppsClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	settings, err := client.GetAuthSettingsV2(ctx, resourceID.ResourceGroup, site, &web.WebAppsClientGetAuthSettingsV2Options{})
+	if err != nil {
+		var respErr *azcore.ResponseError
+		if errors.As(err, &respErr) && (respErr.StatusCode == http.StatusForbidden || respErr.StatusCode == http.StatusNotFound) {
+			log.Warn().Err(err).Str("site", a.Id.Data).Msg("could not read app service auth settings v2")
+			a.AuthSettingsV2.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	properties, err := convert.JsonToDict(settings.Properties)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := CreateResource(a.MqlRuntime, "azure.subscription.webService.appsiteauthsettingsv2",
+		authSettingsV2Args(settings.SiteAuthSettingsV2, properties))
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAzureSubscriptionWebServiceAppsiteauthsettingsv2), nil
 }
 
 func (a *mqlAzureSubscriptionWebServiceAppsite) metadata() (any, error) {
@@ -1096,6 +1358,9 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) functions() ([]any, error) {
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			props, err := convert.JsonToDict(entry.Properties)
 			if err != nil {
 				return nil, err
@@ -1111,6 +1376,11 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) functions() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(entry.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlAzure.(*mqlAzureSubscriptionWebServiceFunction).cacheSystemData = sysData
 			res = append(res, mqlAzure)
 		}
 	}
@@ -1153,6 +1423,11 @@ func (a *mqlAzureSubscriptionWebServiceAppslot) id() (string, error) {
 func (a *mqlAzureSubscriptionWebServiceAppslot) diagnosticSettings() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
 	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
+
+func (a *mqlAzureSubscriptionWebServiceAppslot) diagnosticSettingsCategories() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettingsCategories(a.Id.Data, a.MqlRuntime, conn)
 }
 
 func (a *mqlAzureSubscriptionWebServiceAppslot) parent() (*mqlAzureSubscriptionWebServiceAppsite, error) {
@@ -1203,24 +1478,7 @@ func (a *mqlAzureSubscriptionWebServiceAppslot) configuration() (*mqlAzureSubscr
 		"corsAllowedOrigins": llx.ArrayData(siteConfigCorsAllowedOrigins(configuration.Properties), types.String),
 	}
 
-	if configuration.Properties != nil {
-		if configuration.Properties.MinTLSVersion != nil {
-			args["minTlsVersion"] = llx.StringData(string(*configuration.Properties.MinTLSVersion))
-		}
-		if configuration.Properties.FtpsState != nil {
-			args["ftpsState"] = llx.StringData(string(*configuration.Properties.FtpsState))
-		}
-		args["remoteDebuggingEnabled"] = llx.BoolDataPtr(configuration.Properties.RemoteDebuggingEnabled)
-		args["http20Enabled"] = llx.BoolDataPtr(configuration.Properties.Http20Enabled)
-		args["alwaysOn"] = llx.BoolDataPtr(configuration.Properties.AlwaysOn)
-		args["webSocketsEnabled"] = llx.BoolDataPtr(configuration.Properties.WebSocketsEnabled)
-		args["httpLoggingEnabled"] = llx.BoolDataPtr(configuration.Properties.HTTPLoggingEnabled)
-		args["detailedErrorLoggingEnabled"] = llx.BoolDataPtr(configuration.Properties.DetailedErrorLoggingEnabled)
-		args["autoHealEnabled"] = llx.BoolDataPtr(configuration.Properties.AutoHealEnabled)
-		if configuration.Properties.ScmMinTLSVersion != nil {
-			args["scmMinTlsVersion"] = llx.StringData(string(*configuration.Properties.ScmMinTLSVersion))
-		}
-	}
+	addSiteConfigArgs(args, configuration.Properties)
 
 	res, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionWebServiceAppsiteconfig, args)
 	if err != nil {
@@ -1371,6 +1629,9 @@ func (a *mqlAzureSubscriptionWebServiceAppslot) functions() ([]any, error) {
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			props, err := convert.JsonToDict(entry.Properties)
 			if err != nil {
 				return nil, err
@@ -1386,6 +1647,11 @@ func (a *mqlAzureSubscriptionWebServiceAppslot) functions() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(entry.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlAzure.(*mqlAzureSubscriptionWebServiceFunction).cacheSystemData = sysData
 			res = append(res, mqlAzure)
 		}
 	}
@@ -1585,10 +1851,18 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) privateEndpointConnections() ([]
 				continue
 			}
 
+			// A connection with no ARM ID has no stable cache key; skip it
+			// rather than letting ID-less entries collide on an empty __id.
+			if entry.ID == nil || *entry.ID == "" {
+				continue
+			}
+			var pecPrivateEndpointID string
 			privateEndpoint := map[string]*llx.RawData{
-				"id":   llx.StringDataPtr(entry.ID),
-				"name": llx.StringDataPtr(entry.Name),
-				"type": llx.StringDataPtr(entry.Type),
+				"__id":        llx.StringDataPtr(entry.ID),
+				"id":          llx.StringDataPtr(entry.ID),
+				"name":        llx.StringDataPtr(entry.Name),
+				"type":        llx.StringDataPtr(entry.Type),
+				"ipAddresses": llx.ArrayData([]any{}, types.String),
 			}
 
 			if entry.Properties != nil {
@@ -1600,19 +1874,15 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) privateEndpointConnections() ([]
 
 				privateEndpoint["properties"] = llx.DictData(propsMap)
 
-				if len(props.IPAddresses) > 0 {
-					privateEndpoint["ipAddresses"] = llx.ArrayData(convert.SliceStrPtrToInterface(props.IPAddresses), types.String)
-				}
+				privateEndpoint["ipAddresses"] = llx.ArrayData(strPtrsToAny(props.IPAddresses), types.String)
 				if props.PrivateEndpoint != nil {
-					privateEndpoint["privateEndpointId"] = llx.StringDataPtr(props.PrivateEndpoint.ID)
+					pecPrivateEndpointID = convert.ToValue(props.PrivateEndpoint.ID)
 				}
 				if props.PrivateLinkServiceConnectionState != nil {
-					stateArgs := map[string]*llx.RawData{
-						"actionsRequired": llx.StringDataPtr(props.PrivateLinkServiceConnectionState.ActionsRequired),
-						"description":     llx.StringDataPtr(props.PrivateLinkServiceConnectionState.Description),
-						"status":          llx.StringDataPtr(props.PrivateLinkServiceConnectionState.Status),
-					}
-					stateRes, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionPrivateEndpointConnectionConnectionState, stateArgs)
+					stateRes, err := newPrivateLinkServiceConnectionState(a.MqlRuntime, convert.ToValue(entry.ID),
+						props.PrivateLinkServiceConnectionState.ActionsRequired,
+						props.PrivateLinkServiceConnectionState.Description,
+						props.PrivateLinkServiceConnectionState.Status)
 					if err != nil {
 						return nil, err
 					}
@@ -1623,7 +1893,7 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) privateEndpointConnections() ([]
 				}
 			}
 
-			mqlRes, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionPrivateEndpointConnection, privateEndpoint)
+			mqlRes, err := newAzurePrivateEndpointConnection(a.MqlRuntime, privateEndpoint, pecPrivateEndpointID)
 			if err != nil {
 				return nil, err
 			}
@@ -1636,6 +1906,86 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) privateEndpointConnections() ([]
 }
 
 func (a *mqlAzureSubscriptionWebServiceAppServicePlan) id() (string, error) {
+	return a.Id.Data, nil
+}
+
+// appServicePlanSkuToMql maps an ARM SKUDescription onto the plan's SKU
+// resource, including the capability flags and the scale range Azure reports
+// alongside the billable members.
+//
+// ARM omits SKUCapacity for SKUs that are not scale-eligible, so capacityLimits
+// reads null there rather than reporting a plan that cannot scale as one whose
+// limits are zero.
+func appServicePlanSkuToMql(runtime *plugin.Runtime, planID string, sku *web.SKUDescription) (*llx.RawData, error) {
+	if sku == nil {
+		return llx.NilData, nil
+	}
+	const resourceName = "azure.subscription.webService.appServicePlan.skuDescription"
+
+	capabilities := []any{}
+	for _, capability := range sku.Capabilities {
+		if capability == nil {
+			continue
+		}
+		mqlCapability, err := CreateResource(runtime, "azure.subscription.webService.appServicePlan.skuCapability",
+			map[string]*llx.RawData{
+				"__id":   llx.StringData(subResourceCacheID(nil, planID, "skuCapabilities", convert.ToValue(capability.Name))),
+				"name":   llx.StringDataPtr(capability.Name),
+				"value":  llx.StringDataPtr(capability.Value),
+				"reason": llx.StringDataPtr(capability.Reason),
+			})
+		if err != nil {
+			return nil, err
+		}
+		capabilities = append(capabilities, mqlCapability)
+	}
+
+	capacityLimits := llx.NilData
+	if sku.SKUCapacity != nil {
+		mqlLimits, err := CreateResource(runtime, "azure.subscription.webService.appServicePlan.skuCapacityLimits",
+			map[string]*llx.RawData{
+				"__id":                   llx.StringData(planID + "/skuCapacityLimits"),
+				"defaultCapacity":        llx.IntDataPtr(sku.SKUCapacity.Default),
+				"minimumCapacity":        llx.IntDataPtr(sku.SKUCapacity.Minimum),
+				"maximumCapacity":        llx.IntDataPtr(sku.SKUCapacity.Maximum),
+				"elasticMaximumCapacity": llx.IntDataPtr(sku.SKUCapacity.ElasticMaximum),
+				"scaleType":              llx.StringDataPtr(sku.SKUCapacity.ScaleType),
+			})
+		if err != nil {
+			return nil, err
+		}
+		capacityLimits = llx.ResourceData(mqlLimits, "azure.subscription.webService.appServicePlan.skuCapacityLimits")
+	}
+
+	res, err := CreateResource(runtime, resourceName, map[string]*llx.RawData{
+		"__id":           llx.StringData(planID + "/sku"),
+		"name":           llx.StringDataPtr(sku.Name),
+		"tier":           llx.StringDataPtr(sku.Tier),
+		"size":           llx.StringDataPtr(sku.Size),
+		"family":         llx.StringDataPtr(sku.Family),
+		"capacity":       llx.IntDataPtr(sku.Capacity),
+		"locations":      llx.ArrayData(strPtrsToAny(sku.Locations), types.String),
+		"capabilities":   llx.ArrayData(capabilities, types.Resource("azure.subscription.webService.appServicePlan.skuCapability")),
+		"capacityLimits": capacityLimits,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return llx.ResourceData(res, resourceName), nil
+}
+
+func (a *mqlAzureSubscriptionWebServiceHostingEnvironment) id() (string, error) {
+	return a.Id.Data, nil
+}
+
+// id keys the restriction on the synthesized <configId>/ipSecurityRestrictions/<index>
+// value built in ipSecurityRestrictionsToMql. Without it every restriction in
+// the scan shares an empty cache key and reports the first rule's action.
+func (a *mqlAzureSubscriptionWebServiceAppsiteconfigIpSecurityRestriction) id() (string, error) {
+	return a.Id.Data, nil
+}
+
+func (a *mqlAzureSubscriptionWebServiceHostingEnvironmentVirtualNetwork) id() (string, error) {
 	return a.Id.Data, nil
 }
 
@@ -1697,6 +2047,12 @@ func (a *mqlAzureSubscriptionWebService) appServicePlans() ([]any, error) {
 				"sku":        llx.DictData(skuDict),
 			}
 
+			skuData, err := appServicePlanSkuToMql(a.MqlRuntime, convert.ToValue(plan.ID), plan.SKU)
+			if err != nil {
+				return nil, err
+			}
+			args["skuData"] = skuData
+
 			if plan.Properties != nil {
 				args["zoneRedundant"] = llx.BoolDataPtr(plan.Properties.ZoneRedundant)
 				args["numberOfSites"] = llx.IntDataPtr(plan.Properties.NumberOfSites)
@@ -1726,6 +2082,12 @@ func (a *mqlAzureSubscriptionWebService) appServicePlans() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(plan.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlPlan := mqlResource.(*mqlAzureSubscriptionWebServiceAppServicePlan)
+			mqlPlan.cacheSystemData = sysData
 			res = append(res, mqlResource)
 		}
 	}
@@ -1778,7 +2140,7 @@ func (a *mqlAzureSubscriptionWebService) certificates() ([]any, error) {
 				args["issuer"] = llx.StringDataPtr(cert.Properties.Issuer)
 				args["issueDate"] = llx.TimeDataPtr(cert.Properties.IssueDate)
 				args["expirationDate"] = llx.TimeDataPtr(cert.Properties.ExpirationDate)
-				args["hostNames"] = llx.ArrayData(convert.SliceStrPtrToInterface(cert.Properties.HostNames), types.String)
+				args["hostNames"] = llx.ArrayData(strPtrsToAny(cert.Properties.HostNames), types.String)
 				args["valid"] = llx.BoolDataPtr(cert.Properties.Valid)
 			} else {
 				args["thumbprint"] = llx.NilData
@@ -1794,6 +2156,11 @@ func (a *mqlAzureSubscriptionWebService) certificates() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(cert.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlResource.(*mqlAzureSubscriptionWebServiceCertificate).cacheSystemData = sysData
 			res = append(res, mqlResource)
 		}
 	}
@@ -1864,6 +2231,11 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) hostNameBindings() ([]any, error
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(binding.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlResource.(*mqlAzureSubscriptionWebServiceAppsiteHostNameBinding).cacheSystemData = sysData
 			res = append(res, mqlResource)
 		}
 	}
@@ -1923,6 +2295,11 @@ func (a *mqlAzureSubscriptionWebServiceAppsite) virtualNetworkConnections() ([]a
 		if err != nil {
 			return nil, err
 		}
+		sysData, err := convert.JsonToDict(vnet.SystemData)
+		if err != nil {
+			return nil, err
+		}
+		mqlResource.(*mqlAzureSubscriptionWebServiceAppsiteVirtualNetworkConnection).cacheSystemData = sysData
 		res = append(res, mqlResource)
 	}
 
@@ -1979,7 +2356,7 @@ func (a *mqlAzureSubscriptionWebService) hostingEnvironments() ([]any, error) {
 				args["suspended"] = llx.BoolDataPtr(props.Suspended)
 				args["hasLinuxWorkers"] = llx.BoolDataPtr(props.HasLinuxWorkers)
 				args["zoneRedundant"] = llx.BoolDataPtr(props.ZoneRedundant)
-				args["userWhitelistedIpRanges"] = llx.ArrayData(convert.SliceStrPtrToInterface(props.UserWhitelistedIPRanges), types.String)
+				args["userWhitelistedIpRanges"] = llx.ArrayData(strPtrsToAny(props.UserWhitelistedIPRanges), types.String)
 
 				// Handle enum fields (need to convert to string)
 				if props.Status != nil {
@@ -2030,10 +2407,15 @@ func (a *mqlAzureSubscriptionWebService) hostingEnvironments() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(entry.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlRes.(*mqlAzureSubscriptionWebServiceHostingEnvironment).cacheSystemData = sysData
 
 			res = append(res, mqlRes)
 		}
 	}
 
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }

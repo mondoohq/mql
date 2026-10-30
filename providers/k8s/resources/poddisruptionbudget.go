@@ -7,10 +7,10 @@ import (
 	"errors"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/types"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -49,10 +49,10 @@ func (k *mqlK8s) podDisruptionBudgets() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		unhealthyPolicy := ""
-		if pdb.Spec.UnhealthyPodEvictionPolicy != nil {
-			unhealthyPolicy = string(*pdb.Spec.UnhealthyPodEvictionPolicy)
-		}
+		// The API server does not default this field. nil means "IfHealthyBudget
+		// applies by default", which is a different statement from the object
+		// setting the empty string, and "" is not one of the enum's values.
+		unhealthyPolicy := stringPtrFromTypedPtr(pdb.Spec.UnhealthyPodEvictionPolicy)
 		conditions, err := convert.JsonToDictSlice(pdb.Status.Conditions)
 		if err != nil {
 			return nil, err
@@ -69,7 +69,7 @@ func (k *mqlK8s) podDisruptionBudgets() ([]any, error) {
 			"minAvailable":               llx.DictData(minAvailable),
 			"maxUnavailable":             llx.DictData(maxUnavailable),
 			"selector":                   llx.DictData(selector),
-			"unhealthyPodEvictionPolicy": llx.StringData(unhealthyPolicy),
+			"unhealthyPodEvictionPolicy": llx.StringDataPtr(unhealthyPolicy),
 			"currentHealthy":             llx.IntData(int64(pdb.Status.CurrentHealthy)),
 			"desiredHealthy":             llx.IntData(int64(pdb.Status.DesiredHealthy)),
 			"expectedPods":               llx.IntData(int64(pdb.Status.ExpectedPods)),

@@ -4,9 +4,11 @@
 package resources
 
 import (
+	"strings"
+
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/rbacpolicies"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 type mqlOpenstackNetworkRbacPolicyInternal struct {
@@ -96,8 +98,23 @@ func initOpenstackNetworkRbacPolicy(runtime *plugin.Runtime, args map[string]*ll
 	return args, res, nil
 }
 
+// normalizeRBACObjectType folds a Neutron RBAC object_type into a single
+// spelling. Neutron reports the multi-word types with either a hyphen or an
+// underscore depending on release ("qos-policy" and "qos_policy" are the same
+// type), so matching on one literal silently drops the other spelling and the
+// policy resolves to nothing.
+func normalizeRBACObjectType(s string) string {
+	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), "-", "_"))
+}
+
+// rbacObjectTypeIs reports whether the policy targets the given object type,
+// tolerating either spelling.
+func rbacObjectTypeIs(actual, want string) bool {
+	return normalizeRBACObjectType(actual) == normalizeRBACObjectType(want)
+}
+
 func (r *mqlOpenstackNetworkRbacPolicy) network() (*mqlOpenstackNetwork, error) {
-	if r.ObjectType.Data != "network" || r.ObjectId.Data == "" {
+	if !rbacObjectTypeIs(r.ObjectType.Data, "network") || r.ObjectId.Data == "" {
 		r.Network.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
@@ -111,7 +128,7 @@ func (r *mqlOpenstackNetworkRbacPolicy) network() (*mqlOpenstackNetwork, error) 
 }
 
 func (r *mqlOpenstackNetworkRbacPolicy) qosPolicy() (*mqlOpenstackQosPolicy, error) {
-	if r.ObjectType.Data != "qos-policy" || r.ObjectId.Data == "" {
+	if !rbacObjectTypeIs(r.ObjectType.Data, "qos-policy") || r.ObjectId.Data == "" {
 		r.QosPolicy.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
@@ -122,6 +139,62 @@ func (r *mqlOpenstackNetworkRbacPolicy) qosPolicy() (*mqlOpenstackQosPolicy, err
 		return nil, err
 	}
 	return res.(*mqlOpenstackQosPolicy), nil
+}
+
+func (r *mqlOpenstackNetworkRbacPolicy) securityGroup() (*mqlOpenstackSecurityGroup, error) {
+	if !rbacObjectTypeIs(r.ObjectType.Data, "security_group") || r.ObjectId.Data == "" {
+		r.SecurityGroup.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(r.MqlRuntime, "openstack.securityGroup", map[string]*llx.RawData{
+		"id": llx.StringData(r.ObjectId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlOpenstackSecurityGroup), nil
+}
+
+func (r *mqlOpenstackNetworkRbacPolicy) subnetPool() (*mqlOpenstackSubnetPool, error) {
+	if !rbacObjectTypeIs(r.ObjectType.Data, "subnetpool") || r.ObjectId.Data == "" {
+		r.SubnetPool.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(r.MqlRuntime, "openstack.subnetPool", map[string]*llx.RawData{
+		"id": llx.StringData(r.ObjectId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlOpenstackSubnetPool), nil
+}
+
+func (r *mqlOpenstackNetworkRbacPolicy) addressScope() (*mqlOpenstackNetworkAddressScope, error) {
+	if !rbacObjectTypeIs(r.ObjectType.Data, "address_scope") || r.ObjectId.Data == "" {
+		r.AddressScope.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(r.MqlRuntime, "openstack.network.addressScope", map[string]*llx.RawData{
+		"id": llx.StringData(r.ObjectId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlOpenstackNetworkAddressScope), nil
+}
+
+func (r *mqlOpenstackNetworkRbacPolicy) addressGroup() (*mqlOpenstackNetworkAddressGroup, error) {
+	if !rbacObjectTypeIs(r.ObjectType.Data, "address_group") || r.ObjectId.Data == "" {
+		r.AddressGroup.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(r.MqlRuntime, "openstack.network.addressGroup", map[string]*llx.RawData{
+		"id": llx.StringData(r.ObjectId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlOpenstackNetworkAddressGroup), nil
 }
 
 func (r *mqlOpenstackNetworkRbacPolicy) project() (*mqlOpenstackProject, error) {

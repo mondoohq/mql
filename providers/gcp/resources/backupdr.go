@@ -11,28 +11,14 @@ import (
 	backupdr "cloud.google.com/go/backupdr/apiv1"
 	"cloud.google.com/go/backupdr/apiv1/backupdrpb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
-
-// isBackupDRSkippable returns true for gRPC errors that indicate the Backup DR API
-// is not enabled or the caller lacks permission.
-func isBackupDRSkippable(err error) bool {
-	if s, ok := status.FromError(err); ok {
-		switch s.Code() {
-		case codes.PermissionDenied, codes.Unimplemented, codes.NotFound:
-			return true
-		}
-	}
-	return false
-}
 
 func (g *mqlGcpProject) backupdr() (*mqlGcpProjectBackupdrService, error) {
 	if g.Id.Error != nil {
@@ -96,9 +82,9 @@ func (g *mqlGcpProjectBackupdrService) managementServers() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isBackupDRSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list Backup DR management servers")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -173,9 +159,9 @@ func (g *mqlGcpProjectBackupdrService) backupVaults() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isBackupDRSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list Backup DR backup vaults")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -240,9 +226,9 @@ func (g *mqlGcpProjectBackupdrServiceBackupVault) dataSources() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isBackupDRSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list Backup DR data sources")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -311,9 +297,9 @@ func (g *mqlGcpProjectBackupdrService) backupPlans() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isBackupDRSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list Backup DR backup plans")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -362,11 +348,32 @@ func (g *mqlGcpProjectBackupdrServiceBackupPlan) backupVault() (*mqlGcpProjectBa
 		g.BackupVault.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-	res, err := NewResource(g.MqlRuntime, "gcp.project.backupdrService.backupVault", map[string]*llx.RawData{
-		"name": llx.StringData(g.cacheBackupVaultName),
+	// The backupVault resource has no init, so a NewResource by-name would leave
+	// a husk (only name populated). Scan the parent service's backupVaults()
+	// list and return the real, fully-populated resource. The vault name is a
+	// full resource path, so derive the project from it.
+	projectId := projectFromResourceName(g.cacheBackupVaultName)
+	if projectId == "" {
+		g.BackupVault.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	obj, err := CreateResource(g.MqlRuntime, "gcp.project.backupdrService", map[string]*llx.RawData{
+		"projectId": llx.StringData(projectId),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlGcpProjectBackupdrServiceBackupVault), nil
+	svc := obj.(*mqlGcpProjectBackupdrService)
+	vaults := svc.GetBackupVaults()
+	if vaults.Error != nil {
+		return nil, vaults.Error
+	}
+	for _, v := range vaults.Data {
+		vault, ok := v.(*mqlGcpProjectBackupdrServiceBackupVault)
+		if ok && vault.Name.Data == g.cacheBackupVaultName {
+			return vault, nil
+		}
+	}
+	g.BackupVault.State = plugin.StateIsNull | plugin.StateIsSet
+	return nil, nil
 }

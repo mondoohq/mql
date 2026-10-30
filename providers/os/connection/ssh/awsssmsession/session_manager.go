@@ -17,7 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 )
 
 func NewAwsSsmSessionManager(cfg aws.Config, profile string) (*AwsSsmSessionManager, error) {
@@ -41,7 +41,11 @@ type AwsSsmSessionManager struct {
 }
 
 func (a *AwsSsmSessionManager) Dial(tc *inventory.Config, localPort string, remotePort string) (*AwsSsmSessionConnection, error) {
-	return NewAwsSsmSessionConnection(a.cfg, a.profile, tc.Host, localPort, remotePort)
+	return a.DialContext(context.Background(), tc, localPort, remotePort)
+}
+
+func (a *AwsSsmSessionManager) DialContext(ctx context.Context, tc *inventory.Config, localPort string, remotePort string) (*AwsSsmSessionConnection, error) {
+	return newAwsSsmSessionConnectionContext(ctx, a.cfg, a.profile, tc.Host, localPort, remotePort)
 }
 
 // NewAwsSsmSessionConnection establishes a new proxy connection via AWS Session Manager plugin. Instead of doing a
@@ -54,7 +58,10 @@ func (a *AwsSsmSessionManager) Dial(tc *inventory.Config, localPort string, remo
 //
 // When the connection is closed, we kill the local process and stop the session via the AWS API
 func NewAwsSsmSessionConnection(cfg aws.Config, profile string, instance string, localPort string, remotePort string) (*AwsSsmSessionConnection, error) {
-	ctx := context.Background()
+	return newAwsSsmSessionConnectionContext(context.Background(), cfg, profile, instance, localPort, remotePort)
+}
+
+func newAwsSsmSessionConnectionContext(ctx context.Context, cfg aws.Config, profile string, instance string, localPort string, remotePort string) (*AwsSsmSessionConnection, error) {
 	conn := &AwsSsmSessionConnection{
 		input: &ssm.StartSessionInput{
 			DocumentName: aws.String("AWS-StartPortForwardingSession"),
@@ -73,6 +80,12 @@ func NewAwsSsmSessionConnection(cfg aws.Config, profile string, instance string,
 		return nil, err
 	}
 	conn.session = ssmSession
+	success := false
+	defer func() {
+		if !success {
+			_ = conn.Close()
+		}
+	}()
 
 	sessJson, err := json.Marshal(ssmSession)
 	if err != nil {
@@ -116,9 +129,16 @@ func NewAwsSsmSessionConnection(cfg aws.Config, profile string, instance string,
 	conn.process = cmd.Process
 
 	// TODO: we may need to implement ssh re-try, the process start takes a bit
-	time.Sleep(time.Second * 2)
-
-	return conn, nil
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		success = true
+		return conn, nil
+	case <-ctx.Done():
+		// The proxy lifetime extends beyond startup on success only.
+		return nil, ctx.Err()
+	}
 }
 
 type AwsSsmSessionConnection struct {
@@ -137,7 +157,9 @@ func (a *AwsSsmSessionConnection) Close() error {
 
 	// close ssm websocket session
 	if a.client != nil {
-		_, err := a.client.TerminateSession(context.Background(), &ssm.TerminateSessionInput{
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, err := a.client.TerminateSession(ctx, &ssm.TerminateSessionInput{
 			SessionId: a.session.SessionId,
 		})
 		if err != nil {
@@ -161,7 +183,13 @@ func GetSsmPluginBinaryName() string {
 
 // CheckPlugin runs the session-manager-plugin binary and asks for the version
 func CheckPlugin() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return CheckPluginContext(ctx)
+}
+
+func CheckPluginContext(ctx context.Context) error {
 	name := GetSsmPluginBinaryName()
-	cmd := exec.Command(name, "--version")
+	cmd := exec.CommandContext(ctx, name, "--version")
 	return cmd.Run()
 }

@@ -10,60 +10,24 @@ import (
 
 	bqconnection "cloud.google.com/go/bigquery/connection/apiv1"
 	"cloud.google.com/go/bigquery/connection/apiv1/connectionpb"
-	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/gcp/connection"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
-// bigqueryLocations returns the unique set of locations discovered from the
-// project's datasets. BigQuery connections and reservations are location-scoped
-// and there is no project-wide list endpoint, so we use the dataset locations
-// as the set of locations to query. A project with no datasets in a region will
-// also have no connections/reservations there in practice.
-func (g *mqlGcpProjectBigqueryService) bigqueryLocations() ([]string, error) {
-	datasets := g.GetDatasets()
-	if datasets.Error != nil {
-		return nil, datasets.Error
-	}
-
-	seen := make(map[string]struct{}, len(datasets.Data))
-	locations := make([]string, 0, len(datasets.Data))
-	for _, d := range datasets.Data {
-		ds := d.(*mqlGcpProjectBigqueryServiceDataset)
-		if ds.Location.Error != nil || ds.Location.Data == "" {
-			continue
-		}
-		// BigQuery connections/reservations APIs expect uppercase for
-		// multi-regions ("US", "EU") but the REST dataset metadata returns
-		// them uppercase already. Regional locations are lowercase in both.
-		loc := ds.Location.Data
-		if _, ok := seen[loc]; ok {
-			continue
-		}
-		seen[loc] = struct{}{}
-		locations = append(locations, loc)
-	}
-	return locations, nil
-}
-
 func (g *mqlGcpProjectBigqueryService) connections() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
 	projectId := g.ProjectId.Data
-
-	locations, err := g.bigqueryLocations()
-	if err != nil {
-		return nil, err
-	}
-	if len(locations) == 0 {
-		return nil, nil
-	}
 
 	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
 	creds, err := conn.Credentials(bqconnection.DefaultAuthScopes()...)
@@ -78,8 +42,8 @@ func (g *mqlGcpProjectBigqueryService) connections() ([]any, error) {
 	}
 	defer client.Close()
 
-	var res []any
-	for _, location := range locations {
+	return listBigqueryLocations(func(location string) ([]any, error) {
+		var res []any
 		it := client.ListConnections(ctx, &connectionpb.ListConnectionsRequest{
 			Parent: fmt.Sprintf("projects/%s/locations/%s", projectId, location),
 		})
@@ -89,10 +53,6 @@ func (g *mqlGcpProjectBigqueryService) connections() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isGRPCSkippable(err) {
-					log.Warn().Err(err).Str("location", location).Msg("could not list BigQuery connections")
-					break
-				}
 				return nil, err
 			}
 
@@ -130,8 +90,8 @@ func (g *mqlGcpProjectBigqueryService) connections() ([]any, error) {
 			}
 			res = append(res, mqlConn)
 		}
-	}
-	return res, nil
+		return res, nil
+	})
 }
 
 // connectionProperties returns the connection type and a dict of the

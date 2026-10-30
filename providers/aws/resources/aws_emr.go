@@ -15,13 +15,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/emr"
 	emrtypes "github.com/aws/aws-sdk-go-v2/service/emr/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsEmr) id() (string, error) {
@@ -87,6 +87,7 @@ func (a *mqlAwsEmr) getClusters(conn *connection.AwsConnection) []*jobpool.Job {
 					mqlCluster, err := CreateResource(a.MqlRuntime, "aws.emr.cluster",
 						map[string]*llx.RawData{
 							"arn":                     llx.StringDataPtr(cluster.ClusterArn),
+							"region":                  llx.StringData(region),
 							"name":                    llx.StringDataPtr(cluster.Name),
 							"normalizedInstanceHours": llx.IntDataDefault(cluster.NormalizedInstanceHours, 0),
 							"outpostArn":              llx.StringDataPtr(cluster.OutpostArn),
@@ -113,8 +114,8 @@ func initAwsEmrCluster(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformEmrCluster); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -677,6 +678,47 @@ func (a *mqlAwsEmrCluster) logEncryptionKmsKey() (*mqlAwsKmsKey, error) {
 	return mqlKey.(*mqlAwsKmsKey), nil
 }
 
+// initAwsEmrClusterEncryptionConfiguration resolves the encryption
+// configuration through the scanned EMR cluster asset. Without this init, the
+// static path `aws.emr.cluster.encryptionConfiguration` used by policy checks
+// instantiates the sub-resource standalone (empty id, no fields set), so
+// per-asset encryption checks scored fail even on correctly configured
+// clusters.
+func initAwsEmrClusterEncryptionConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	// Fully-built resources (from the accessor) always carry an __id.
+	if args["__id"] != nil {
+		return args, nil, nil
+	}
+	if len(args) > 0 {
+		return nil, nil, errors.New("aws.emr.cluster.encryptionConfiguration cannot be initialized from partial arguments; query it without arguments or through aws.emr.cluster")
+	}
+	clusterRes, err := NewResource(runtime, "aws.emr.cluster", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, nil, err
+	}
+	cluster := clusterRes.(*mqlAwsEmrCluster)
+	cfg := cluster.GetEncryptionConfiguration()
+	if cfg.Error != nil {
+		return nil, nil, cfg.Error
+	}
+	if cfg.Data != nil {
+		return args, cfg.Data, nil
+	}
+	// The cluster has no security configuration: encryption is off.
+	res, err := CreateResource(runtime, "aws.emr.cluster.encryptionConfiguration",
+		map[string]*llx.RawData{
+			"__id":                   llx.StringData(cluster.Arn.Data + "/encryptionConfiguration"),
+			"atRestEnabled":          llx.BoolData(false),
+			"inTransitEnabled":       llx.BoolData(false),
+			"atRestConfiguration":    llx.NilData,
+			"inTransitConfiguration": llx.NilData,
+		})
+	if err != nil {
+		return nil, nil, err
+	}
+	return args, res, nil
+}
+
 func (a *mqlAwsEmrCluster) encryptionConfiguration() (*mqlAwsEmrClusterEncryptionConfiguration, error) {
 	if err := a.fetchClusterDetails(); err != nil {
 		return nil, err
@@ -1137,7 +1179,6 @@ func (a *mqlAwsEmr) getSecurityConfigurations(conn *connection.AwsConnection) []
 	}
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			svc := conn.Emr(region)
 			ctx := context.Background()
@@ -1308,7 +1349,6 @@ func (a *mqlAwsEmr) getStudios(conn *connection.AwsConnection) []*jobpool.Job {
 	}
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			svc := conn.Emr(region)
 			ctx := context.Background()
@@ -1384,13 +1424,7 @@ func newMqlAwsEmrStudio(runtime *plugin.Runtime, region string, studio *emrtypes
 }
 
 func emrTagsToMap(tags []emrtypes.Tag) map[string]string {
-	out := make(map[string]string, len(tags))
-	for _, t := range tags {
-		if t.Key != nil && t.Value != nil {
-			out[*t.Key] = *t.Value
-		}
-	}
-	return out
+	return tagsToStringMap(tags, func(t emrtypes.Tag) *string { return t.Key }, func(t emrtypes.Tag) *string { return t.Value })
 }
 
 func (a *mqlAwsEmrStudio) vpc() (*mqlAwsVpc, error) {

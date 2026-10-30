@@ -14,8 +14,8 @@ import (
 	"github.com/gophercloud/gophercloud/v2/openstack/blockstorage/v3/snapshots"
 	"github.com/gophercloud/gophercloud/v2/openstack/blockstorage/v3/volumes"
 	"github.com/gophercloud/gophercloud/v2/openstack/blockstorage/v3/volumetypes"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // ---- openstack.blockstorage.volume ----
@@ -501,8 +501,7 @@ func (r *mqlOpenstackBlockstorageVolumeType) fetchEncryption() (*volumetypes.Get
 		}
 		enc, err := volumetypes.GetEncryption(ctx(), client, r.Id.Data).Extract()
 		if err != nil {
-			var resp gophercloud.ErrUnexpectedResponseCode
-			if errors.As(err, &resp) {
+			if resp, ok := errors.AsType[gophercloud.ErrUnexpectedResponseCode](err); ok {
 				switch resp.Actual {
 				case 401, 403, 404:
 					return
@@ -658,7 +657,6 @@ func (o *mqlOpenstack) backups() ([]any, error) {
 			"failReason":          llx.StringData(b.FailReason),
 			"availabilityZone":    llx.StringData(az),
 			"metadata":            stringMapData(meta),
-			"projectId":           llx.StringData(b.ProjectID),
 			"dataTimestamp":       llx.TimeDataPtr(timePtr(b.DataTimestamp)),
 			"createdAt":           llx.TimeDataPtr(timePtr(b.CreatedAt)),
 			"updatedAt":           llx.TimeDataPtr(timePtr(b.UpdatedAt)),
@@ -719,8 +717,11 @@ func (r *mqlOpenstackBlockstorageBackup) project() (*mqlOpenstackProject, error)
 
 // ---- openstack.blockstorage.quotaSet ----
 
-func (r *mqlOpenstackBlockstorageQuotaSet) id() (string, error) {
-	return "openstack.blockstorage.quotaSet/" + r.ProjectId.Data, nil
+// mqlOpenstackBlockstorageQuotaSetInternal holds the project id the quota
+// applies to, which project() resolves. The __id is supplied explicitly by the
+// creator, so this resource needs no id() function.
+type mqlOpenstackBlockstorageQuotaSetInternal struct {
+	cacheProjectID string
 }
 
 func (o *mqlOpenstack) blockStorageQuotaSet() (*mqlOpenstackBlockstorageQuotaSet, error) {
@@ -744,7 +745,6 @@ func (o *mqlOpenstack) blockStorageQuotaSet() (*mqlOpenstackBlockstorageQuotaSet
 	}
 	res, err := CreateResource(o.MqlRuntime, "openstack.blockstorage.quotaSet", map[string]*llx.RawData{
 		"__id":               llx.StringData("openstack.blockstorage.quotaSet/" + projectId),
-		"projectId":          llx.StringData(projectId),
 		"volumes":            llx.IntData(int64(q.Volumes)),
 		"snapshots":          llx.IntData(int64(q.Snapshots)),
 		"gigabytes":          llx.IntData(int64(q.Gigabytes)),
@@ -756,9 +756,11 @@ func (o *mqlOpenstack) blockStorageQuotaSet() (*mqlOpenstackBlockstorageQuotaSet
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlOpenstackBlockstorageQuotaSet), nil
+	mqlQuota := res.(*mqlOpenstackBlockstorageQuotaSet)
+	mqlQuota.cacheProjectID = projectId
+	return mqlQuota, nil
 }
 
 func (r *mqlOpenstackBlockstorageQuotaSet) project() (*mqlOpenstackProject, error) {
-	return resolveProject(r.MqlRuntime, r.ProjectId.Data, &r.Project)
+	return resolveProject(r.MqlRuntime, r.cacheProjectID, &r.Project)
 }

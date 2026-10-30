@@ -7,16 +7,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/service/mq"
 	mq_types "github.com/aws/aws-sdk-go-v2/service/mq/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 func (a *mqlAwsMq) id() (string, error) {
@@ -178,12 +179,16 @@ func newMqlAwsMqBroker(runtime *plugin.Runtime, region string, accountID string,
 
 	resource, err := CreateResource(runtime, "aws.mq.broker",
 		map[string]*llx.RawData{
-			"__id":             llx.StringDataPtr(broker.BrokerArn),
-			"arn":              llx.StringDataPtr(broker.BrokerArn),
-			"brokerId":         llx.StringDataPtr(broker.BrokerId),
-			"name":             llx.StringDataPtr(broker.BrokerName),
-			"state":            llx.StringData(string(broker.BrokerState)),
-			"engineType":       llx.StringData(string(broker.EngineType)),
+			"__id":     llx.StringDataPtr(broker.BrokerArn),
+			"arn":      llx.StringDataPtr(broker.BrokerArn),
+			"brokerId": llx.StringDataPtr(broker.BrokerId),
+			"name":     llx.StringDataPtr(broker.BrokerName),
+			"state":    llx.StringData(string(broker.BrokerState)),
+			// The SDK's EngineType constants are "ACTIVEMQ"/"RABBITMQ", but the
+			// live API returns mixed case ("ActiveMQ", verified via
+			// `aws mq list-brokers`). Normalize to the schema-documented
+			// uppercase form so consumers can rely on it.
+			"engineType":       llx.StringData(strings.ToUpper(string(broker.EngineType))),
 			"deploymentMode":   llx.StringData(string(broker.DeploymentMode)),
 			"hostInstanceType": llx.StringDataPtr(broker.HostInstanceType),
 			"region":           llx.StringData(region),
@@ -238,12 +243,13 @@ func newMqlAwsMqConfiguration(runtime *plugin.Runtime, region string, cfg mq_typ
 
 	resource, err := CreateResource(runtime, "aws.mq.configuration",
 		map[string]*llx.RawData{
-			"__id":                      llx.StringDataPtr(cfg.Arn),
-			"arn":                       llx.StringDataPtr(cfg.Arn),
-			"id":                        llx.StringDataPtr(cfg.Id),
-			"name":                      llx.StringDataPtr(cfg.Name),
-			"description":               llx.StringDataPtr(cfg.Description),
-			"engineType":                llx.StringData(string(cfg.EngineType)),
+			"__id":        llx.StringDataPtr(cfg.Arn),
+			"arn":         llx.StringDataPtr(cfg.Arn),
+			"id":          llx.StringDataPtr(cfg.Id),
+			"name":        llx.StringDataPtr(cfg.Name),
+			"description": llx.StringDataPtr(cfg.Description),
+			// see broker engineType: live API values are mixed case
+			"engineType":                llx.StringData(strings.ToUpper(string(cfg.EngineType))),
 			"engineVersion":             llx.StringDataPtr(cfg.EngineVersion),
 			"authenticationStrategy":    llx.StringData(string(cfg.AuthenticationStrategy)),
 			"created":                   created,
@@ -693,9 +699,8 @@ func initAwsMqBroker(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 		return args, nil, nil
 	}
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
-			args["name"] = llx.StringData(ids.name)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformMqBroker); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 	if args["arn"] == nil && args["name"] == nil {
@@ -730,12 +735,12 @@ func initAwsMqBroker(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 	if args["arn"] == nil {
 		return nil, nil, errors.New("arn required to fetch aws mq broker that is not in the brokers list")
 	}
-	// __id must equal arn so the runtime cache can match against brokers already
-	// listed by `aws.mq.brokers`. Without this, every NewResource("aws.mq.broker",
-	// {arn:…}) creates a fresh resource with no region/cacheBrokerId set, and
-	// every lazy-loaded field would call DescribeBroker with an empty broker ID.
-	args["__id"] = args["arn"]
-	return args, nil, nil
+	// The broker was not found in `aws.mq.brokers`, so region and cacheBrokerId
+	// are unknown and the resource's scalar fields would stay unset. Returning
+	// (args, nil, nil) here would let the runtime create a resource whose fields
+	// are all unset, which surfaces as malformed nil data when those fields are
+	// queried.
+	return nil, nil, fmt.Errorf("aws.mq.broker with arn %q not found", args["arn"].Value)
 }
 
 func (a *mqlAwsMqConfiguration) id() (string, error) {

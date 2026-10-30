@@ -7,17 +7,19 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/search/armsearch"
 	"github.com/rs/zerolog/log"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func initAzureSubscriptionSearchService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -86,6 +88,7 @@ func (a *mqlAzureSubscriptionSearchService) services() ([]any, error) {
 
 func searchServiceToMql(runtime *plugin.Runtime, svc *armsearch.Service) (*mqlAzureSubscriptionSearchServiceService, error) {
 	sku, err := convert.JsonToDict(svc.SKU)
+	svcSku := orZero(svc.SKU)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +101,12 @@ func searchServiceToMql(runtime *plugin.Runtime, svc *armsearch.Service) (*mqlAz
 	var hostingMode, endpoint, provisioningState, status string
 	var disableLocalAuth bool
 	var replicaCount, partitionCount int64
+	var authMode string
+	var aadAuthFailureMode, computeType, semanticSearch, upgradeAvailable *string
+	var serviceUpgradedAt *time.Time
+	dataExfiltrationProtections := []any{}
 	networkRuleSet := llx.NilData
+	ipRules := []string{}
 
 	if p := svc.Properties; p != nil {
 		if p.PublicNetworkAccess != nil {
@@ -133,16 +141,40 @@ func searchServiceToMql(runtime *plugin.Runtime, svc *armsearch.Service) (*mqlAz
 		if p.Status != nil {
 			status = string(*p.Status)
 		}
+		// AuthOptions is absent when disableLocalAuth is true, where Entra ID
+		// is the only option and there is no mode to report.
+		if ao := p.AuthOptions; ao != nil {
+			if ao.AADOrAPIKey != nil {
+				authMode = "aadOrApiKey"
+				aadAuthFailureMode = stringEnumPtr(ao.AADOrAPIKey.AADAuthFailureMode)
+			} else if ao.APIKeyOnly != nil {
+				authMode = "apiKeyOnly"
+			}
+		}
+		for _, dep := range p.DataExfiltrationProtections {
+			if dep != nil {
+				dataExfiltrationProtections = append(dataExfiltrationProtections, string(*dep))
+			}
+		}
+		computeType = stringEnumPtr(p.ComputeType)
+		semanticSearch = stringEnumPtr(p.SemanticSearch)
+		upgradeAvailable = stringEnumPtr(p.UpgradeAvailable)
+		serviceUpgradedAt = p.ServiceUpgradedAt
 		if p.NetworkRuleSet != nil {
 			d, err := convert.JsonToDict(p.NetworkRuleSet)
 			if err != nil {
 				return nil, err
 			}
 			networkRuleSet = llx.DictData(d)
+			for _, r := range p.NetworkRuleSet.IPRules {
+				if r != nil && r.Value != nil {
+					ipRules = append(ipRules, *r.Value)
+				}
+			}
 		}
 	}
 
-	res, err := CreateResource(runtime, "azure.subscription.searchService.service", map[string]*llx.RawData{
+	args := map[string]*llx.RawData{
 		"id":                            llx.StringDataPtr(svc.ID),
 		"name":                          llx.StringDataPtr(svc.Name),
 		"location":                      llx.StringDataPtr(svc.Location),
@@ -160,7 +192,24 @@ func searchServiceToMql(runtime *plugin.Runtime, svc *armsearch.Service) (*mqlAz
 		"provisioningState":             llx.StringData(provisioningState),
 		"status":                        llx.StringData(status),
 		"networkRuleSet":                networkRuleSet,
-	})
+
+		"authMode":                    llx.StringData(authMode),
+		"aadAuthFailureMode":          llx.StringDataPtr(aadAuthFailureMode),
+		"dataExfiltrationProtections": llx.ArrayData(dataExfiltrationProtections, types.String),
+		"computeType":                 llx.StringDataPtr(computeType),
+		"semanticSearch":              llx.StringDataPtr(semanticSearch),
+		"upgradeAvailable":            llx.StringDataPtr(upgradeAvailable),
+		"serviceUpgradedAt":           llx.TimeDataPtr(serviceUpgradedAt),
+	}
+	if err := setSkuData(runtime, args, skuName(svcSku.Name)); err != nil {
+		return nil, err
+	}
+	svcIdentity := orZero(svc.Identity)
+	if err := setResourceIdentity(runtime, args, sortedUserAssignedIdentityIDs(svcIdentity.UserAssignedIdentities),
+		identityType(svcIdentity.Type), identityPrincipalId(svcIdentity.PrincipalID), identityTenantId(svcIdentity.TenantID)); err != nil {
+		return nil, err
+	}
+	res, err := CreateResource(runtime, "azure.subscription.searchService.service", args)
 	if err != nil {
 		return nil, err
 	}
@@ -170,11 +219,56 @@ func searchServiceToMql(runtime *plugin.Runtime, svc *armsearch.Service) (*mqlAz
 		return nil, err
 	}
 	mqlService.cacheSystemData = sysData
+	mqlService.cacheIpRules = ipRules
 	return mqlService, nil
 }
 
 type mqlAzureSubscriptionSearchServiceServiceInternal struct {
 	cacheSystemData any
+	cacheIpRules    []string
+}
+
+// searchServiceInternetReachable reports whether any internet address can reach
+// a search service endpoint. The second result is false when the answer cannot
+// be given from the service's own properties.
+//
+// The IP rules are an allowlist that applies only while public access is
+// enabled: with no rules every address is admitted, and with rules only the
+// listed ranges are, judged as a set so that rules splitting the address space
+// between them count as open. When access is securedByPerimeter a network
+// security perimeter decides instead, and its rules are not on the service.
+func searchServiceInternetReachable(publicNetworkAccess string, ipRules []string) (bool, bool) {
+	if strings.EqualFold(strings.TrimSpace(publicNetworkAccess), string(armsearch.PublicNetworkAccessSecuredByPerimeter)) {
+		return false, false
+	}
+	if !publicNetworkAccessEnabled(publicNetworkAccess) {
+		return false, true
+	}
+	if len(ipRules) == 0 {
+		return true, true
+	}
+	return prefixesCoverInternet(ipRules), true
+}
+
+func (a *mqlAzureSubscriptionSearchServiceService) internetReachable() (bool, error) {
+	reachable, known := searchServiceInternetReachable(a.PublicNetworkAccess.Data, a.cacheIpRules)
+	if !known {
+		a.InternetReachable.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return reachable, nil
+}
+
+func (a *mqlAzureSubscriptionSearchServiceService) diagnosticSettings() ([]any, error) {
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
+
+func (a *mqlAzureSubscriptionSearchServiceService) roleAssignments() ([]any, error) {
+	return roleAssignmentsForScope(a.MqlRuntime, a.Id.Data, "search service")
 }
 
 func (a *mqlAzureSubscriptionSearchServiceService) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {

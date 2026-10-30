@@ -67,7 +67,7 @@ providers/digitalocean/
 
 ```lr
 option provider = "go.mondoo.com/mql/providers/digitalocean"
-option go_package = "go.mondoo.com/mql/v13/providers/digitalocean/resources"
+option go_package = "go.mondoo.com/mql/providers/digitalocean/resources"
 
 // DigitalOcean cloud provider
 digitalocean {
@@ -762,7 +762,7 @@ mql shell digitalocean
 
 ## References
 
-- [DigitalOcean API v2](https://docs.digitalocean.com/reference/api/api-reference/)
+- [DigitalOcean API v2](https://docs.digitalocean.com/reference/api/digitalocean/)
 - [godo Go SDK](https://github.com/digitalocean/godo)
 - [Terraform DigitalOcean Provider](https://github.com/digitalocean/terraform-provider-digitalocean)
 - Reference providers: `providers/shodan/`, `providers/ipinfo/`

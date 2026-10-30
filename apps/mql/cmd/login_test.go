@@ -4,83 +4,45 @@
 package cmd
 
 import (
+	"encoding/base64"
 	"testing"
 
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	cli_errors "go.mondoo.com/mql/cli/errors"
 )
 
-func TestLoginCmd_ProvidersURLFlag(t *testing.T) {
-	// Test that the providers-url flag is properly defined on the LoginCmd
-	flag := LoginCmd.Flags().Lookup("providers-url")
-	require.NotNil(t, flag, "providers-url flag should be defined")
-	assert.Equal(t, "", flag.DefValue, "providers-url default value should be empty")
-	assert.Equal(t, "string", flag.Value.Type(), "providers-url should be a string flag")
+func TestLoginCmd_ProvidersURLFlagRemoved(t *testing.T) {
+	// providers-url was deprecated in favor of updates-url and removed in v14.
+	// Guard against it being reintroduced.
+	assert.Nil(t, LoginCmd.Flags().Lookup("providers-url"),
+		"providers-url was removed in v14; use updates-url instead")
 }
 
-func TestProvidersURLViperSet(t *testing.T) {
-	tests := []struct {
-		name              string
-		providersURL      string
-		expectInConfig    bool
-		expectedConfigVal string
-	}{
-		{
-			name:              "with valid providers-url",
-			providersURL:      "https://my-custom-provider.com",
-			expectInConfig:    true,
-			expectedConfigVal: "https://my-custom-provider.com",
-		},
-		{
-			name:           "with empty providers-url",
-			providersURL:   "",
-			expectInConfig: false,
-		},
-		{
-			name:              "with custom path providers-url",
-			providersURL:      "https://internal.example.com/providers",
-			expectInConfig:    true,
-			expectedConfigVal: "https://internal.example.com/providers",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Reset viper before each test
-			viper.Reset()
-
-			// Simulate the behavior in the register function
-			if tt.providersURL != "" {
-				viper.Set("providers_url", tt.providersURL)
-			}
-
-			// Verify the viper state
-			if tt.expectInConfig {
-				assert.True(t, viper.IsSet("providers_url"), "providers_url should be set in viper")
-				assert.Equal(t, tt.expectedConfigVal, viper.GetString("providers_url"))
-			} else {
-				assert.False(t, viper.IsSet("providers_url"), "providers_url should not be set in viper")
-			}
-		})
-	}
+func TestLoginCmd_UpdatesURLFlag(t *testing.T) {
+	flag := LoginCmd.Flags().Lookup("updates-url")
+	require.NotNil(t, flag, "updates-url flag should be defined")
+	assert.Equal(t, "", flag.DefValue, "updates-url default value should be empty")
+	assert.Equal(t, "string", flag.Value.Type(), "updates-url should be a string flag")
 }
 
-func TestLoginCmd_GetProvidersURLFromFlag(t *testing.T) {
+func TestLoginCmd_GetUpdatesURLFromFlag(t *testing.T) {
 	// Reset any previous flag values
-	err := LoginCmd.Flags().Set("providers-url", "")
+	err := LoginCmd.Flags().Set("updates-url", "")
 	require.NoError(t, err)
 
 	// Test setting the flag value
-	err = LoginCmd.Flags().Set("providers-url", "https://custom-provider.example.com")
+	err = LoginCmd.Flags().Set("updates-url", "https://internal.example.com")
 	require.NoError(t, err)
 
 	// Retrieve the value
-	providersURL, err := LoginCmd.Flags().GetString("providers-url")
+	updatesURL, err := LoginCmd.Flags().GetString("updates-url")
 	require.NoError(t, err)
-	assert.Equal(t, "https://custom-provider.example.com", providersURL)
+	assert.Equal(t, "https://internal.example.com", updatesURL)
+
 	// Reset the flag for other tests
-	err = LoginCmd.Flags().Set("providers-url", "")
+	err = LoginCmd.Flags().Set("updates-url", "")
 	require.NoError(t, err)
 }
 
@@ -94,7 +56,7 @@ func TestLoginCmd_AllFlags(t *testing.T) {
 	}{
 		{"token", "t", "", "string"},
 		{"annotation", "", "[]", "stringToString"},
-		{"providers-url", "", "", "string"},
+		{"updates-url", "", "", "string"},
 		{"name", "", "", "string"},
 		{"api-endpoint", "", "", "string"},
 		{"timer", "", "0", "int"},
@@ -110,6 +72,34 @@ func TestLoginCmd_AllFlags(t *testing.T) {
 			if ef.shorthand != "" {
 				assert.Equal(t, ef.shorthand, flag.Shorthand, "flag %s shorthand mismatch", ef.name)
 			}
+		})
+	}
+}
+
+// A token rejected before registration must fail the command (exit 1), not
+// return nil: scripts check the exit code.
+func TestLoginCmd_RejectedTokenExitsNonZero(t *testing.T) {
+	b64 := base64.RawURLEncoding.EncodeToString
+	expired := b64([]byte(`{"alg":"HS256","typ":"JWT"}`)) + "." +
+		b64([]byte(`{"exp":1,"space":"//captain.api.mondoo.app/spaces/test"}`)) + ".sig"
+
+	for name, token := range map[string]string{
+		"expired":     expired,
+		"unparseable": "not-a-jwt",
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.NoError(t, LoginCmd.Flags().Set("token", token))
+			// LoginCmd is package-level: reset what RunE mutates so each case
+			// asserts its own effect. Not t.Parallel() for the same reason.
+			t.Cleanup(func() {
+				_ = LoginCmd.Flags().Set("token", "")
+				LoginCmd.SilenceUsage = false
+				LoginCmd.SilenceErrors = false
+			})
+
+			err := LoginCmd.RunE(LoginCmd, nil)
+			assert.Equal(t, cli_errors.ExitCode1WithoutError, err)
+			assert.True(t, LoginCmd.SilenceUsage, "a rejected token is not a usage error")
 		})
 	}
 }

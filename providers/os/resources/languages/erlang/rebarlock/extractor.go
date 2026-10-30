@@ -7,9 +7,9 @@ import (
 	"io"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/erlang/termparser"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/hex"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/erlang/termparser"
+	"go.mondoo.com/mql/providers/os/resources/languages/hex"
 )
 
 var (

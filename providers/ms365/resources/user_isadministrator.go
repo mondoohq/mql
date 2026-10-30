@@ -7,8 +7,8 @@ import (
 	"context"
 
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/ms365/connection"
 )
 
 // adminPrincipalIDs returns the set of principal IDs (users, groups, or service

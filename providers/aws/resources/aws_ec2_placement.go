@@ -12,12 +12,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // Placement Groups
@@ -181,6 +181,7 @@ func buildCapacityReservationResource(runtime *plugin.Runtime, region, accountID
 			"availableInstanceCount": llx.IntDataDefault(cr.AvailableInstanceCount, 0),
 			"state":                  llx.StringData(string(cr.State)),
 			"instanceMatchCriteria":  llx.StringData(string(cr.InstanceMatchCriteria)),
+			"launchStatus":           llx.StringDataPtr(nonEmptyEnum(cr.LaunchStatus)),
 			"endDateType":            llx.StringData(string(cr.EndDateType)),
 			"tenancy":                llx.StringData(string(cr.Tenancy)),
 			"ebsOptimized":           llx.BoolData(convert.ToValue(cr.EbsOptimized)),
@@ -211,12 +212,12 @@ func initAwsEc2CapacityReservation(runtime *plugin.Runtime, args map[string]*llx
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-			return args, nil, nil
+			return nil, nil, fmt.Errorf("cannot fetch aws.ec2.capacityReservation with id %q in region %s: %w", id, region, err)
 		}
 		return nil, nil, err
 	}
 	if len(resp.CapacityReservations) == 0 {
-		return args, nil, nil
+		return nil, nil, fmt.Errorf("aws.ec2.capacityReservation with id %q not found", id)
 	}
 	mqlCr, err := buildCapacityReservationResource(runtime, region, conn.AccountId(), resp.CapacityReservations[0])
 	if err != nil {
@@ -288,9 +289,6 @@ func (a *mqlAwsEc2) getInstanceConnectEndpoints(conn *connection.AwsConnection) 
 							"arn":              llx.StringDataPtr(ep.InstanceConnectEndpointArn),
 							"region":           llx.StringData(region),
 							"state":            llx.StringData(string(ep.State)),
-							"subnetId":         llx.StringDataPtr(ep.SubnetId),
-							"vpcId":            llx.StringDataPtr(ep.VpcId),
-							"securityGroupIds": llx.ArrayData(sgIds, types.String),
 							"preserveClientIp": llx.BoolData(convert.ToValue(ep.PreserveClientIp)),
 							"dnsName":          llx.StringDataPtr(ep.DnsName),
 							"fipsDnsName":      llx.StringDataPtr(ep.FipsDnsName),
@@ -300,6 +298,9 @@ func (a *mqlAwsEc2) getInstanceConnectEndpoints(conn *connection.AwsConnection) 
 					if err != nil {
 						return nil, err
 					}
+					mqlEp.(*mqlAwsEc2InstanceConnectEndpoint).cacheSubnetId = convert.ToValue(ep.SubnetId)
+					mqlEp.(*mqlAwsEc2InstanceConnectEndpoint).cacheVpcId = convert.ToValue(ep.VpcId)
+					mqlEp.(*mqlAwsEc2InstanceConnectEndpoint).cacheSecurityGroupIds = sgIds
 					res = append(res, mqlEp)
 				}
 			}
@@ -315,7 +316,7 @@ func (a *mqlAwsEc2InstanceConnectEndpoint) id() (string, error) {
 }
 
 func (a *mqlAwsEc2InstanceConnectEndpoint) subnet() (*mqlAwsVpcSubnet, error) {
-	subnetId := a.SubnetId.Data
+	subnetId := a.cacheSubnetId
 	if subnetId == "" {
 		a.Subnet.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -331,7 +332,7 @@ func (a *mqlAwsEc2InstanceConnectEndpoint) subnet() (*mqlAwsVpcSubnet, error) {
 }
 
 func (a *mqlAwsEc2InstanceConnectEndpoint) vpc() (*mqlAwsVpc, error) {
-	vpcId := a.VpcId.Data
+	vpcId := a.cacheVpcId
 	if vpcId == "" {
 		a.Vpc.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -347,7 +348,7 @@ func (a *mqlAwsEc2InstanceConnectEndpoint) vpc() (*mqlAwsVpc, error) {
 }
 
 func (a *mqlAwsEc2InstanceConnectEndpoint) securityGroups() ([]any, error) {
-	sgIds := a.SecurityGroupIds.Data
+	sgIds := a.cacheSecurityGroupIds
 	if len(sgIds) == 0 {
 		return nil, nil
 	}
@@ -367,4 +368,10 @@ func (a *mqlAwsEc2InstanceConnectEndpoint) securityGroups() ([]any, error) {
 		res = append(res, mqlSg)
 	}
 	return res, nil
+}
+
+type mqlAwsEc2InstanceConnectEndpointInternal struct {
+	cacheSubnetId         string
+	cacheVpcId            string
+	cacheSecurityGroupIds []any
 }

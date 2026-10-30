@@ -6,15 +6,19 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"io/fs"
+	"path"
 	"regexp"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/yum"
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"github.com/rs/zerolog/log"
+	"github.com/spf13/afero"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/yum"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/stringx"
 )
 
 var supportedPlatforms = []string{"amazonlinux"}
@@ -31,8 +35,15 @@ func (y *mqlYum) repos() ([]any, error) {
 		return nil, errors.New("yum.repos is only supported on redhat-based platforms")
 	}
 
+	// dnf5 rejects `repolist -v`, and where it accepts it, prints no repo details
+	command, parse := yum.RhelYumRepoListCommand, yum.ParseRepos
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+	if ok, _ := afs.Exists(dnf5Binary); ok {
+		command, parse = yum.Dnf5RepoInfoCommand, yum.ParseDnf5Repos
+	}
+
 	o, err := CreateResource(y.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("yum -v repolist all"),
+		"command": llx.StringData(command),
 	})
 	if err != nil {
 		return nil, err
@@ -42,7 +53,7 @@ func (y *mqlYum) repos() ([]any, error) {
 		return nil, errors.New("could not retrieve yum repo list")
 	}
 
-	repos, err := yum.ParseRepos(strings.NewReader(cmd.Stdout.Data))
+	repos, err := parse(strings.NewReader(cmd.Stdout.Data))
 	if err != nil {
 		return nil, err
 	}
@@ -79,6 +90,18 @@ func (y *mqlYum) repos() ([]any, error) {
 
 var rhel67release = regexp.MustCompile(`^[67].*$`)
 
+// dnf reads custom variables from one file per variable in these directories;
+// the file name is the variable name and the first line of the file its value.
+// A later directory overrides an earlier one, and every file variable overrides
+// the built-in substitutions (arch, basearch, releasever).
+// see VARS_DIRS in libdnf/conf/Const.hpp and libdnf5/conf/const.hpp
+var (
+	dnf4VarsDirs = []string{"/etc/yum/vars", "/etc/dnf/vars"}
+	dnf5VarsDirs = []string{"/usr/share/dnf5/vars.d", "/etc/dnf/vars"}
+)
+
+const dnf5Binary = "/usr/bin/dnf5"
+
 func (y *mqlYum) vars() (map[string]any, error) {
 	conn := y.MqlRuntime.Connection.(shared.Connection)
 	platform := conn.Asset().Platform
@@ -87,15 +110,53 @@ func (y *mqlYum) vars() (map[string]any, error) {
 		return nil, errors.New("yum.vars is only supported on redhat-based platforms")
 	}
 
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+	isDnf5, _ := afs.Exists(dnf5Binary)
+
+	res := map[string]any{}
+	var builtins map[string]string
+	var err error
+	if isDnf5 {
+		builtins, err = y.dnf5BuiltinVars()
+	} else {
+		builtins, err = y.builtinVars(platform.IsFamily("redhat"), platform.Version)
+	}
+	if err != nil {
+		// The built-in substitutions come from the package manager, which
+		// image scans cannot run. The variables on disk are still readable.
+		log.Debug().Err(err).Msg("yum.vars> could not retrieve built-in variables")
+	}
+	for k, v := range builtins {
+		res[k] = v
+	}
+
+	dirs := dnf4VarsDirs
+	if isDnf5 {
+		dirs = dnf5VarsDirs
+	}
+	fileVars, err := readYumVarsDirs(afs, dirs)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range fileVars {
+		res[k] = v
+	}
+
+	return res, nil
+}
+
+// builtinVars returns the built-in substitutions dnf (or yum on RHEL 6/7)
+// computes for this host, by asking its Python API.
+func (y *mqlYum) builtinVars(isRedhat bool, version string) (map[string]string, error) {
 	// use dnf script as default
 	script := fmt.Sprintf(yum.DnfVarsCommand, yum.PythonRhel)
-	if !platform.IsFamily("redhat") {
+	if !isRedhat {
 		// eg. amazon linux does not ship with /usr/libexec/platform-python
 		script = fmt.Sprintf(yum.DnfVarsCommand, yum.Python3)
 	}
 
 	// fallback for older versions like 6 and 7 version to use yum script
-	if rhel67release.MatchString(platform.Version) {
+	if rhel67release.MatchString(version) {
 		script = yum.Rhel6VarsCommand
 	}
 
@@ -106,20 +167,66 @@ func (y *mqlYum) vars() (map[string]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("could not retrieve yum repo list")
+	exit := cmd.GetExitcode()
+	if exit.Error != nil {
+		return nil, exit.Error
+	}
+	if exit.Data != 0 {
+		return nil, errors.New("could not retrieve yum variables")
 	}
 
-	vars, err := yum.ParseVariables(strings.NewReader(cmd.Stdout.Data))
+	return yum.ParseVariables(strings.NewReader(cmd.Stdout.Data))
+}
+
+// dnf5BuiltinVars returns the substitutions dnf5 computes for this host. dnf5
+// has no Python API; it prints them with --dump-variables.
+func (y *mqlYum) dnf5BuiltinVars() (map[string]string, error) {
+	o, err := CreateResource(y.MqlRuntime, "command", map[string]*llx.RawData{
+		"command": llx.StringData(yum.Dnf5DumpVariablesCommand),
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	res := map[string]any{}
-	for k := range vars {
-		res[k] = vars[k]
+	cmd := o.(*mqlCommand)
+	exit := cmd.GetExitcode()
+	if exit.Error != nil {
+		return nil, exit.Error
 	}
+	if exit.Data != 0 {
+		return nil, errors.New("could not retrieve dnf5 variables")
+	}
+	return yum.ParseDnf5Variables(strings.NewReader(cmd.Stdout.Data))
+}
 
+// readYumVarsDirs reads the variables defined on disk in dirs, least important
+// first, the way dnf does: each regular file directly in a directory is one
+// variable, named after the file, whose value is the file's first line.
+func readYumVarsDirs(afs *afero.Afero, dirs []string) (map[string]string, error) {
+	res := map[string]string{}
+	for _, dir := range dirs {
+		entries, err := afs.ReadDir(dir)
+		if err != nil {
+			// the connection's virtual filesystem may not return *os.PathError,
+			// so match the wrapped sentinel rather than using os.IsNotExist
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return nil, err
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			data, err := afs.ReadFile(path.Join(dir, e.Name()))
+			if err != nil {
+				// dnf warns and skips a variable file it cannot read
+				log.Debug().Err(err).Str("dir", dir).Str("name", e.Name()).Msg("yum.vars> skipping unreadable variable file")
+				continue
+			}
+			value, _, _ := strings.Cut(string(data), "\n")
+			res[e.Name()] = value
+		}
+	}
 	return res, nil
 }
 

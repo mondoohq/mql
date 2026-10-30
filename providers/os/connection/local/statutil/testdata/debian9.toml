@@ -1,0 +1,10 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+# Captured on Debian 9 (GNU coreutils 8.26) after
+#   touch -m -d "2026-01-15 10:00:00 UTC" /tmp/mtime-probe
+#   touch -a -d "2026-09-30 08:00:00 UTC" /tmp/mtime-probe
+# %X (access) is 1790755200, %Y (modification) is 1768471200.
+[commands."sh -c 'SL=0; test -L \"$1\" && SL=1; test -e \"$1\" -o $SL -eq 1 || exit 1; r=$(stat -L \"$1\" -c \"$SL.%s.%f.%u.%g.%X.%Y.%C\" 2>/dev/null) && printf \"%s\\n\" \"$r\" || { [ -n \"$r\" ] && printf \"%s\\n\" \"$r\" || stat \"$1\" -c \"$SL.%s.%f.%u.%g.%X.%Y.%C\" 2>/dev/null; }' _ /tmp/mtime-probe"]
+stdout = """0.3.81a4.1000.1000.1790755200.1768471200.?
+"""

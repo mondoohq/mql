@@ -11,17 +11,17 @@ import (
 	batch "cloud.google.com/go/batch/apiv1"
 	"cloud.google.com/go/batch/apiv1/batchpb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
 type mqlGcpProjectBatchServiceInternal struct {
-	serviceEnabled bool
+	serviceGate
 }
 
 func (g *mqlGcpProject) batch() (*mqlGcpProjectBatchService, error) {
@@ -43,7 +43,7 @@ func (g *mqlGcpProject) batch() (*mqlGcpProjectBatchService, error) {
 	}
 
 	svc := res.(*mqlGcpProjectBatchService)
-	svc.serviceEnabled = serviceEnabled
+	svc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_batch).Msg("gcp service is not enabled, skipping")
 	}
@@ -83,7 +83,11 @@ func (g *mqlGcpProjectBatchServiceJobTaskGroup) id() (string, error) {
 }
 
 func (g *mqlGcpProjectBatchService) jobs() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -116,9 +120,9 @@ func (g *mqlGcpProjectBatchService) jobs() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list Batch jobs")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -179,4 +183,9 @@ func (g *mqlGcpProjectBatchService) jobs() ([]any, error) {
 	}
 
 	return res, nil
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectBatchService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_batch)
 }

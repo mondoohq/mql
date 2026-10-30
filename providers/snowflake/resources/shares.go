@@ -7,10 +7,10 @@ import (
 	"context"
 
 	"github.com/Snowflake-Labs/terraform-provider-snowflake/pkg/sdk"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/snowflake/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/snowflake/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (r *mqlSnowflakeAccount) shares() ([]any, error) {
@@ -18,7 +18,7 @@ func (r *mqlSnowflakeAccount) shares() ([]any, error) {
 	client := conn.Client()
 	ctx := context.Background()
 
-	shares, err := client.Shares.Show(ctx, &sdk.ShowShareOptions{})
+	shares, err := client.Shares.Show(ctx, &sdk.ShowShareRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -47,17 +47,43 @@ func newMqlSnowflakeShare(runtime *plugin.Runtime, share sdk.Share) (*mqlSnowfla
 	}
 
 	r, err := CreateResource(runtime, "snowflake.share", map[string]*llx.RawData{
-		"__id":         llx.StringData(string(share.Kind) + "/" + share.Name.FullyQualifiedName()),
-		"name":         llx.StringData(share.Name.FullyQualifiedName()),
-		"kind":         llx.StringData(string(share.Kind)),
-		"databaseName": llx.StringData(databaseName),
-		"to":           llx.ArrayData(to, types.String),
-		"owner":        llx.StringData(share.Owner),
-		"comment":      llx.StringData(share.Comment),
-		"createdAt":    llx.TimeData(share.CreatedOn),
+		"__id":      llx.StringData(string(share.Kind) + "/" + shareFullyQualifiedName(share)),
+		"name":      llx.StringData(shareFullyQualifiedName(share)),
+		"kind":      llx.StringData(string(share.Kind)),
+		"to":        llx.ArrayData(to, types.String),
+		"comment":   llx.StringData(share.Comment),
+		"createdAt": llx.TimeData(share.CreatedOn),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return r.(*mqlSnowflakeShare), nil
+	mqlShare := r.(*mqlSnowflakeShare)
+	mqlShare.cacheDatabaseName = databaseName
+	mqlShare.cacheOwner = share.Owner
+	return mqlShare, nil
+}
+
+// mqlSnowflakeShareInternal holds the backing database name and owning role
+// name that database() and ownerRole() resolve.
+type mqlSnowflakeShareInternal struct {
+	cacheDatabaseName string
+	cacheOwner        string
+}
+
+func (r *mqlSnowflakeShare) database() (*mqlSnowflakeDatabase, error) {
+	return resolveDatabaseRef(r.MqlRuntime, r.cacheDatabaseName, &r.Database)
+}
+
+func (r *mqlSnowflakeShare) ownerRole() (*mqlSnowflakeRole, error) {
+	return resolveOwnerRole(r.MqlRuntime, r.cacheOwner, &r.OwnerRole)
+}
+
+// shareFullyQualifiedName is the owner-account-qualified share name, such as
+// "ORG"."ACCOUNT"."SHARE", which tells an inbound share apart from an outbound
+// share of the same name.
+func shareFullyQualifiedName(share sdk.Share) string {
+	return sdk.NewExternalObjectIdentifier(
+		sdk.NewAccountIdentifierFromFullyQualifiedName(share.OwnerAccount),
+		sdk.NewAccountObjectIdentifier(share.Name),
+	).FullyQualifiedName()
 }

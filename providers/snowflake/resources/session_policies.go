@@ -5,12 +5,15 @@ package resources
 
 import (
 	"context"
+	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/Snowflake-Labs/terraform-provider-snowflake/pkg/sdk"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/snowflake/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/snowflake/connection"
 )
 
 type mqlSnowflakeSessionPolicyInternal struct {
@@ -19,6 +22,7 @@ type mqlSnowflakeSessionPolicyInternal struct {
 	descLoadErr       error
 	descIdleTimeout   int64
 	descUiIdleTimeout int64
+	refsMemo          policyReferenceMemo
 }
 
 func (r *mqlSnowflakeAccount) sessionPolicies() ([]any, error) {
@@ -75,17 +79,68 @@ func (r *mqlSnowflakeSessionPolicy) gatherSessionPolicyDetails() error {
 	client := conn.Client()
 	ctx := context.Background()
 
-	desc, err := client.SessionPolicies.Describe(ctx, sdk.NewSchemaObjectIdentifier(r.DatabaseName.Data, r.SchemaName.Data, r.Name.Data))
+	// The SDK's typed Describe expects horizontal columns, but Snowflake returns
+	// DESCRIBE SESSION POLICY as a vertical property/value table, so the typed
+	// timeout fields come back zero. Read the raw rows and parse them here.
+	// FullyQualifiedName double-quotes each identifier component (`"db"."schema"."name"`),
+	// and the components originate from Snowflake's own SHOW output, so the
+	// interpolation into the QueryUnsafe statement is a properly quoted identifier.
+	id := sdk.NewSchemaObjectIdentifier(r.DatabaseName.Data, r.SchemaName.Data, r.Name.Data)
+	rows, err := client.QueryUnsafe(ctx, fmt.Sprintf("DESCRIBE SESSION POLICY %s", id.FullyQualifiedName()))
 	if err != nil {
 		r.descLoaded = true
 		r.descLoadErr = err
 		return err
 	}
 
-	r.descIdleTimeout = int64(desc.SessionIdleTimeoutMins)
-	r.descUiIdleTimeout = int64(desc.SessionUIIdleTimeoutMins)
+	props := sessionPolicyDescribeProps(rows)
+	r.descIdleTimeout = parseSnowflakeInt(props["SESSION_IDLE_TIMEOUT_MINS"])
+	r.descUiIdleTimeout = parseSnowflakeInt(props["SESSION_UI_IDLE_TIMEOUT_MINS"])
 	r.descLoaded = true
 	return nil
+}
+
+// sessionPolicyDescribeProps flattens DESCRIBE SESSION POLICY rows (each a
+// property/value pair) into a property-keyed map. Column names are matched
+// case-insensitively since the driver may return them in either case.
+func sessionPolicyDescribeProps(rows []map[string]*any) map[string]string {
+	props := map[string]string{}
+	for _, row := range rows {
+		var property, value string
+		for k, v := range row {
+			switch strings.ToLower(k) {
+			case "property":
+				property = unsafeCellString(v)
+			case "value":
+				value = unsafeCellString(v)
+			}
+		}
+		if property != "" {
+			props[property] = value
+		}
+	}
+	return props
+}
+
+// unsafeCellString renders a QueryUnsafe cell (a *any) as a trimmed string.
+func unsafeCellString(v *any) string {
+	if v == nil || *v == nil {
+		return ""
+	}
+	if s, ok := (*v).(string); ok {
+		return strings.TrimSpace(s)
+	}
+	return strings.TrimSpace(fmt.Sprintf("%v", *v))
+}
+
+// parseSnowflakeInt parses a Snowflake integer property value, returning 0 for
+// empty or non-numeric input.
+func parseSnowflakeInt(value string) int64 {
+	n, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 func (r *mqlSnowflakeSessionPolicy) sessionIdleTimeoutMins() (int64, error) {

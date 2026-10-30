@@ -6,26 +6,33 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"path"
+	"sort"
 	"strconv"
 	"strings"
 
-	"go.mondoo.com/mql/v13/checksums"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/sudoers"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/checksums"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/id/hostname"
+	"go.mondoo.com/mql/providers/os/resources/sudoers"
+	"go.mondoo.com/mql/types"
 )
 
 // sudoersPaths lists the sudoers file paths to check per platform.
-// Most systems use /etc/sudoers. BSD variants and AIX install sudo via
-// package managers to non-default prefixes, so /etc/sudoers does not exist.
+// Most systems use /etc/sudoers. BSD variants install sudo via package
+// managers to non-default prefixes, so /etc/sudoers does not exist. The AIX
+// Toolbox sudo reads /etc/sudoers (`sudo -V` on 1.9.17 says "Sudoers path:
+// /etc/sudoers"); older AIX Toolbox builds used /opt/freeware/etc/sudoers.
+const defaultSudoersFile = "/etc/sudoers"
+
 var sudoersPaths = map[string][]string{
 	"freebsd":      {"/usr/local/etc/sudoers"},
 	"dragonflybsd": {"/usr/local/etc/sudoers"},
 	"openbsd":      {"/usr/local/etc/sudoers"},
 	"netbsd":       {"/usr/pkg/etc/sudoers"},
-	"aix":          {"/opt/freeware/etc/sudoers"},
+	"aix":          {"/etc/sudoers", "/opt/freeware/etc/sudoers"},
 }
 
 func initSudoers(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -67,13 +74,18 @@ func (se *mqlSudoersUserSpec) id() (string, error) {
 }
 
 func (sd *mqlSudoersDefault) id() (string, error) {
-	file := sd.File.Data
-	lineNum := strconv.FormatInt(sd.LineNumber.Data, 10)
+	return sudoersDefaultID(sd.File.Data, int(sd.LineNumber.Data), 0), nil
+}
 
-	// Create unique ID from file path and line number
-	id := file + ":" + lineNum + ":default"
-
-	return id, nil
+// sudoersDefaultID identifies one setting of a Defaults line by its file, line
+// and position in the line's parameter list. The first setting keeps the id a
+// whole line had before lines were split into their settings.
+func sudoersDefaultID(file string, lineNumber int, index int) string {
+	id := file + ":" + strconv.Itoa(lineNumber) + ":default"
+	if index > 0 {
+		id += ":" + strconv.Itoa(index)
+	}
+	return id
 }
 
 func (sa *mqlSudoersAlias) id() (string, error) {
@@ -95,7 +107,7 @@ func sudoersPathsForPlatform(conn shared.Connection) []string {
 			return paths
 		}
 	}
-	return []string{"/etc/sudoers"}
+	return []string{resolveVendorConfigPath(conn.FileSystem(), defaultSudoersFile)}
 }
 
 // files returns the list of sudoers configuration files
@@ -154,23 +166,39 @@ func (s *mqlSudoers) collectSudoersFiles(conn shared.Connection, path string, vi
 		return
 	}
 
-	// Parse include directives
-	lines := strings.Split(content.Data, "\n")
-	for _, line := range lines {
+	// Parse include directives. Relative paths resolve against this file's
+	// directory and %h expands to the short host name, as sudo does.
+	lines := strings.SplitSeq(content.Data, "\n")
+	for line := range lines {
 		line = strings.TrimSpace(line)
 
 		// Check for @include or #include
 		if matches := sudoers.IncludeRegex.FindStringSubmatch(line); matches != nil {
-			includePath := strings.TrimSpace(matches[1])
+			includePath := sudoers.ResolveIncludePath(path, matches[1], s.shortHostname)
 			s.collectSudoersFiles(conn, includePath, visited, allFiles, errs)
 		}
 
 		// Check for @includedir or #includedir
 		if matches := sudoers.IncludedirRegex.FindStringSubmatch(line); matches != nil {
-			includeDir := strings.TrimSpace(matches[1])
+			includeDir := sudoers.ResolveIncludePath(path, matches[1], s.shortHostname)
 			s.collectSudoersDir(conn, includeDir, visited, allFiles, errs)
 		}
 	}
+}
+
+// shortHostname returns the host name sudo substitutes for %h in include
+// paths, or "" when it cannot be determined.
+func (s *mqlSudoers) shortHostname() string {
+	conn := s.MqlRuntime.Connection.(shared.Connection)
+	asset := conn.Asset()
+	if asset == nil || asset.Platform == nil {
+		return ""
+	}
+	host, ok := hostname.Hostname(conn, asset.Platform)
+	if !ok {
+		return ""
+	}
+	return sudoers.ShortHostname(host)
 }
 
 // collectSudoersDir collects all sudoers files from a directory
@@ -189,15 +217,21 @@ func (s *mqlSudoers) collectSudoersDir(conn shared.Connection, dirPath string, v
 		*errs = append(*errs, fmt.Errorf("failed to check if directory %s exists: %w", dirPath, dirExists.Error))
 		return
 	}
+	if err := sudoersIncludedirRefusal(conn.FileSystem(), dirPath); err != nil {
+		*errs = append(*errs, fmt.Errorf("failed to list files in %s: %w", dirPath, err))
+		return
+	}
 
 	if !dirExists.Data {
 		return
 	}
 
-	// Get all files from the directory
+	// Get the files directly inside the directory; sudo does not descend
+	// into subdirectories of an includedir.
 	files, err := CreateResource(s.MqlRuntime, "files.find", map[string]*llx.RawData{
-		"from": llx.StringData(dirPath),
-		"type": llx.StringData("file"),
+		"from":  llx.StringData(dirPath),
+		"type":  llx.StringData("file"),
+		"depth": llx.IntData(1),
 	})
 	if err != nil {
 		*errs = append(*errs, fmt.Errorf("failed to list files in %s: %w", dirPath, err))
@@ -211,29 +245,33 @@ func (s *mqlSudoers) collectSudoersDir(conn shared.Connection, dirPath string, v
 		return
 	}
 
-	// Process each file in the directory
+	paths := make([]string, 0, len(list.Data))
 	for i := range list.Data {
-		file := list.Data[i].(*mqlFile)
-		basename := file.GetBasename()
-		if basename.Error != nil {
-			*errs = append(*errs, fmt.Errorf("failed to get basename for file in %s: %w", dirPath, basename.Error))
-			continue
-		}
-
-		// Skip README files as per sudoers convention
-		if strings.Contains(strings.ToUpper(basename.Data), "README") {
-			continue
-		}
-
-		// Skip files with . or ~ in the name (sudoers convention)
-		if strings.Contains(basename.Data, ".") || strings.Contains(basename.Data, "~") {
-			continue
-		}
-
-		// Recursively process this file (it may have its own includes)
-		filePath := file.Path.Data
+		paths = append(paths, list.Data[i].(*mqlFile).Path.Data)
+	}
+	// Recursively process each file (it may have its own includes)
+	for _, filePath := range sudoersIncludedirFiles(dirPath, paths) {
 		s.collectSudoersFiles(conn, filePath, visited, allFiles, errs)
 	}
+}
+
+// sudoersIncludedirFiles returns the entries of an includedir listing that
+// sudo reads, in the order it reads them: sorted lexically (sudoers(5)), which
+// decides which rule wins when two match. sudo skips names containing a '.'
+// or ending in '~', and anything outside the directory itself; every other
+// name is read, README included: `visudo -c` reports
+// "/etc/sudoers.d/README: parsed OK" and a grant in it shows up in `sudo -l`.
+func sudoersIncludedirFiles(dir string, paths []string) []string {
+	var res []string
+	for _, p := range paths {
+		if sudoers.IsIncludedirEntry(dir, p, path.Base(p)) {
+			res = append(res, p)
+		}
+	}
+	// the listing comes in directory order: hash order on ext4, archive
+	// order in an image
+	sort.Strings(res)
+	return res
 }
 
 // content aggregates the content from all sudoers files
@@ -354,6 +392,8 @@ func parseSudoersDefaults(runtime *plugin.Runtime, filePath string, content stri
 
 	for _, def := range parsed {
 		entry, err := CreateResource(runtime, "sudoers.default", map[string]*llx.RawData{
+			// one entry per setting: a line can set several parameters
+			"__id":       llx.StringData(sudoersDefaultID(def.File, def.LineNumber, def.Index)),
 			"file":       llx.StringData(def.File),
 			"lineNumber": llx.IntData(int64(def.LineNumber)),
 			"raw":        llx.StringData(def.Raw),

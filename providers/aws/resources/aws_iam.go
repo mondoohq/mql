@@ -6,8 +6,7 @@ package resources
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"net/url"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,17 +19,55 @@ import (
 	"github.com/aws/smithy-go"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/providers/aws/resources/awsiam"
-	"go.mondoo.com/mql/v13/providers/aws/resources/awspolicy"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/providers/aws/resources/awsiam"
+	"go.mondoo.com/mql/types"
 )
+
+type mqlAwsIamInternal struct {
+	serverCertsFetched atomic.Bool
+	serverCertsCache   []iamtypes.ServerCertificateMetadata
+	serverCertsLock    sync.Mutex
+}
 
 func (a *mqlAwsIam) id() (string, error) {
 	return ResourceAwsIam, nil
+}
+
+// fetchServerCertificates pages ListServerCertificates once. Both
+// serverCertificates and tlsCertificates answer from it, so a query touching
+// the deprecated dict and its typed replacement together costs one walk of the
+// API rather than two.
+func (a *mqlAwsIam) fetchServerCertificates() ([]iamtypes.ServerCertificateMetadata, error) {
+	if a.serverCertsFetched.Load() {
+		return a.serverCertsCache, nil
+	}
+	a.serverCertsLock.Lock()
+	defer a.serverCertsLock.Unlock()
+	if a.serverCertsFetched.Load() {
+		return a.serverCertsCache, nil
+	}
+
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Iam("")
+	ctx := context.Background()
+
+	res := []iamtypes.ServerCertificateMetadata{}
+	paginator := iam.NewListServerCertificatesPaginator(svc, &iam.ListServerCertificatesInput{})
+	for paginator.HasMorePages() {
+		certsResp, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, certsResp.ServerCertificateMetadataList...)
+	}
+
+	a.serverCertsCache = res
+	a.serverCertsFetched.Store(true)
+	return res, nil
 }
 
 func (a *mqlAwsIam) accountAlias() (string, error) {
@@ -50,25 +87,37 @@ func (a *mqlAwsIam) accountAlias() (string, error) {
 }
 
 func (a *mqlAwsIam) serverCertificates() ([]any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	certs, err := a.fetchServerCertificates()
+	if err != nil {
+		return nil, err
+	}
+	if len(certs) == 0 {
+		return []any{}, nil
+	}
+	return convert.JsonToDictSlice(certs)
+}
 
-	svc := conn.Iam("")
-	ctx := context.Background()
+func (a *mqlAwsIam) tlsCertificates() ([]any, error) {
+	certs, err := a.fetchServerCertificates()
+	if err != nil {
+		return nil, err
+	}
 	res := []any{}
-	params := &iam.ListServerCertificatesInput{}
-	paginator := iam.NewListServerCertificatesPaginator(svc, params)
-	for paginator.HasMorePages() {
-		certsResp, err := paginator.NextPage(ctx)
+	for i := range certs {
+		cert := certs[i]
+		mqlCert, err := CreateResource(a.MqlRuntime, "aws.iam.serverCertificate", map[string]*llx.RawData{
+			"__id":       llx.StringDataPtr(cert.Arn),
+			"arn":        llx.StringDataPtr(cert.Arn),
+			"name":       llx.StringDataPtr(cert.ServerCertificateName),
+			"id":         llx.StringDataPtr(cert.ServerCertificateId),
+			"path":       llx.StringDataPtr(cert.Path),
+			"expiration": llx.TimeDataPtr(cert.Expiration),
+			"uploadedAt": llx.TimeDataPtr(cert.UploadDate),
+		})
 		if err != nil {
 			return nil, err
 		}
-		if len(certsResp.ServerCertificateMetadataList) > 0 {
-			certs, err := convert.JsonToDictSlice(certsResp.ServerCertificateMetadataList)
-			if err != nil {
-				return nil, err
-			}
-			res = append(res, certs)
-		}
+		res = append(res, mqlCert)
 	}
 	return res, nil
 }
@@ -99,9 +148,13 @@ func (a *mqlAwsIam) credentialReport() ([]any, error) {
 			}
 		}
 
-		// if we have an error and it is not 500 we generate a report
+		// if we have an error and it is not 500 we generate a report.
+		// ReportExpired (410) needs the same treatment as ReportNotPresent:
+		// AWS expires cached credential reports and the only way forward is to
+		// regenerate. Without this branch the whole credentialReport field --
+		// and every root-MFA / key-rotation check built on it -- hard-errors.
 		if errors.As(err, &ae) {
-			if ae.ErrorCode() == "ReportNotPresent" {
+			if code := ae.ErrorCode(); code == "ReportNotPresent" || code == "ReportExpired" {
 				// generate a new report
 				_, err := svc.GenerateCredentialReport(ctx, &iam.GenerateCredentialReportInput{})
 				if err != nil {
@@ -161,26 +214,6 @@ func (a *mqlAwsIam) credentialReport() ([]any, error) {
 	return res, nil
 }
 
-func (a *mqlAwsIam) accountPasswordPolicy() (map[string]any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-
-	svc := conn.Iam("")
-	ctx := context.Background()
-
-	resp, err := svc.GetAccountPasswordPolicy(ctx, &iam.GetAccountPasswordPolicyInput{})
-	var notFoundErr *iamtypes.NoSuchEntityException
-	if err != nil {
-		if errors.As(err, &notFoundErr) {
-			return nil, nil
-		}
-		return nil, errors.Wrap(err, "could not gather aws iam account-password-policy")
-	}
-
-	res := ParsePasswordPolicy(resp.PasswordPolicy)
-
-	return res, nil
-}
-
 func ParsePasswordPolicy(passwordPolicy *iamtypes.PasswordPolicy) map[string]any {
 	res := map[string]any{}
 
@@ -229,6 +262,87 @@ func initAwsIamPasswordPolicy(runtime *plugin.Runtime, args map[string]*llx.RawD
 		return nil, nil, pp.Error
 	}
 	return args, pp.Data, nil
+}
+
+// iamUserFromList resolves an IAM user out of the aws.iam users list, which a
+// scan fetches once for the whole account, instead of spending a GetUser per
+// referrer.
+//
+// The init runs before NewResource consults the resource cache, and the cache is
+// keyed on the resource's ARN while this lookup arrives with a name, so the
+// ARN-keyed check cannot fire and every reference re-fetched the same user: one
+// measured scan spent 59 GetUser calls on 4 distinct users.
+//
+// Resolving from the list costs nothing extra because ListUsers is already made
+// once per scan, and it loses no data: everything ListUsers omits is resolved
+// lazily anyway -- tags() through ListUserTags, and permissionsBoundary()
+// through its own GetUser fallback when the boundary was never set.
+//
+// Returns nil when the list cannot be read or holds no match, so callers keep
+// their existing fetch as the fallback rather than turning a readable user into
+// an error.
+func iamUserFromList(runtime *plugin.Runtime, name, arn string) *mqlAwsIamUser {
+	obj, err := NewResource(runtime, "aws.iam", map[string]*llx.RawData{})
+	if err != nil {
+		return nil
+	}
+	users := obj.(*mqlAwsIam).GetUsers()
+	if users.Error != nil {
+		return nil
+	}
+	for i := range users.Data {
+		usr, ok := users.Data[i].(*mqlAwsIamUser)
+		if !ok {
+			continue
+		}
+		// An ARN identifies exactly one user, so when the caller has one it
+		// decides on its own. Testing both per element would let an ARN match on
+		// one entry beat a name match on another purely by list order.
+		if arn != "" {
+			if usr.Arn.Data == arn {
+				return usr
+			}
+			continue
+		}
+		if name != "" && usr.Name.Data == name {
+			return usr
+		}
+	}
+	return nil
+}
+
+// iamGroupFromList is the group counterpart of iamUserFromList. GetGroup made no
+// calls in the account measured, so this is a latent case rather than a measured
+// one -- but the group init has no cache check at all, so it is the weaker of
+// the two.
+func iamGroupFromList(runtime *plugin.Runtime, name, arn string) *mqlAwsIamGroup {
+	obj, err := NewResource(runtime, "aws.iam", map[string]*llx.RawData{})
+	if err != nil {
+		return nil
+	}
+	groups := obj.(*mqlAwsIam).GetGroups()
+	if groups.Error != nil {
+		return nil
+	}
+	for i := range groups.Data {
+		grp, ok := groups.Data[i].(*mqlAwsIamGroup)
+		if !ok {
+			continue
+		}
+		// An ARN identifies exactly one group, so when the caller has one it
+		// decides on its own. Testing both per element would let an ARN match on
+		// one entry beat a name match on another purely by list order.
+		if arn != "" {
+			if grp.Arn.Data == arn {
+				return grp
+			}
+			continue
+		}
+		if name != "" && grp.Name.Data == name {
+			return grp
+		}
+	}
+	return nil
 }
 
 func (a *mqlAwsIam) passwordPolicy() (*mqlAwsIamPasswordPolicy, error) {
@@ -340,13 +454,79 @@ func (a *mqlAwsIam) users() ([]any, error) {
 	return res, nil
 }
 
-func iamTagsToMap(tags []iamtypes.Tag) map[string]any {
-	tagsMap := map[string]any{}
-	for i := range tags {
-		tag := tags[i]
-		tagsMap[convert.ToValue(tag.Key)] = convert.ToValue(tag.Value)
+// tags for IAM users/roles/instance profiles must be fetched separately: the
+// ListUsers / ListRoles / ListInstanceProfiles responses explicitly omit Tags
+// (the SDK documents this on each operation), so the collection path used to
+// report {} for every principal while the single-object path returned the real
+// tags. Fetching lazily keeps queries that don't select tags free of the call.
+// The init paths (GetUser/GetRole/GetInstanceProfile) already populate the
+// field eagerly, so GetOrCompute short-circuits and these never fire there.
+
+func (a *mqlAwsIamUser) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Iam("")
+	ctx := context.Background()
+
+	userName := a.Name.Data
+	res := []iamtypes.Tag{}
+	paginator := iam.NewListUserTagsPaginator(svc, &iam.ListUserTagsInput{UserName: &userName})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return markTagsUnreadable(&a.Tags)
+			}
+			return nil, err
+		}
+		res = append(res, page.Tags...)
 	}
-	return tagsMap
+	return iamTagsToMap(res), nil
+}
+
+func (a *mqlAwsIamRole) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Iam("")
+	ctx := context.Background()
+
+	roleName := a.Name.Data
+	res := []iamtypes.Tag{}
+	paginator := iam.NewListRoleTagsPaginator(svc, &iam.ListRoleTagsInput{RoleName: &roleName})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return markTagsUnreadable(&a.Tags)
+			}
+			return nil, err
+		}
+		res = append(res, page.Tags...)
+	}
+	return iamTagsToMap(res), nil
+}
+
+func (a *mqlAwsIamInstanceProfile) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Iam("")
+	ctx := context.Background()
+
+	name := a.InstanceProfileName.Data
+	res := []iamtypes.Tag{}
+	paginator := iam.NewListInstanceProfileTagsPaginator(svc, &iam.ListInstanceProfileTagsInput{InstanceProfileName: &name})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return markTagsUnreadable(&a.Tags)
+			}
+			return nil, err
+		}
+		res = append(res, page.Tags...)
+	}
+	return iamTagsToMap(res), nil
+}
+
+func iamTagsToMap(tags []iamtypes.Tag) map[string]any {
+	return tagsToMap(tags, func(t iamtypes.Tag) *string { return t.Key }, func(t iamtypes.Tag) *string { return t.Value })
 }
 
 func (a *mqlAwsIam) instanceProfiles() ([]any, error) {
@@ -386,7 +566,6 @@ func (a *mqlAwsIam) createInstanceProfile(instanceProfile *iamtypes.InstanceProf
 			"instanceProfileId":   llx.StringDataPtr(instanceProfile.InstanceProfileId),
 			"instanceProfileName": llx.StringDataPtr(instanceProfile.InstanceProfileName),
 			// "roles":               llx.MapDataPtr(instanceProfile.Roles),
-			"tags": llx.MapData(iamTagsToMap(instanceProfile.Tags), types.String),
 		},
 	)
 	if err != nil {
@@ -431,7 +610,6 @@ func (a *mqlAwsIam) createIamUser(usr *iamtypes.User) (plugin.Resource, error) {
 			"name":             llx.StringDataPtr(usr.UserName),
 			"createdAt":        llx.TimeDataPtr(usr.CreateDate),
 			"passwordLastUsed": llx.TimeDataPtr(usr.PasswordLastUsed),
-			"tags":             llx.MapData(iamTagsToMap(usr.Tags), types.String),
 			"path":             llx.StringDataPtr(usr.Path),
 		},
 	)
@@ -477,28 +655,73 @@ func (a *mqlAwsIamUser) permissionsBoundary() (*mqlAwsIamPolicy, error) {
 	return mqlPolicy.(*mqlAwsIamPolicy), nil
 }
 
-func (a *mqlAwsIamUser) mfaDevices() ([]any, error) {
+// fetchMfaDevices pages ListMFADevices once for the user. Both mfaDevices and
+// assignedMfaDevices answer from it, so querying the deprecated dict alongside
+// its typed replacement costs one call per user rather than two. An
+// access-denied response yields whatever pages were read, matching what the
+// individual accessors did before they shared this fetch.
+func (a *mqlAwsIamUser) fetchMfaDevices() ([]iamtypes.MFADevice, error) {
+	if a.mfaDevicesFetched.Load() {
+		return a.mfaDevicesCache, nil
+	}
+	a.mfaDevicesLock.Lock()
+	defer a.mfaDevicesLock.Unlock()
+	if a.mfaDevicesFetched.Load() {
+		return a.mfaDevicesCache, nil
+	}
+
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	svc := conn.Iam("")
 	ctx := context.Background()
-
 	userName := a.Name.Data
-	res := []any{}
-	params := &iam.ListMFADevicesInput{UserName: &userName}
-	paginator := iam.NewListMFADevicesPaginator(svc, params)
+
+	res := []iamtypes.MFADevice{}
+	paginator := iam.NewListMFADevicesPaginator(svc, &iam.ListMFADevicesInput{UserName: &userName})
 	for paginator.HasMorePages() {
 		devices, err := paginator.NextPage(ctx)
 		if err != nil {
 			if Is400AccessDeniedError(err) {
-				return res, nil
+				break
 			}
 			return nil, err
 		}
-		dicts, err := convert.JsonToDictSlice(devices.MFADevices)
+		res = append(res, devices.MFADevices...)
+	}
+
+	a.mfaDevicesCache = res
+	a.mfaDevicesFetched.Store(true)
+	return res, nil
+}
+
+func (a *mqlAwsIamUser) mfaDevices() ([]any, error) {
+	devices, err := a.fetchMfaDevices()
+	if err != nil {
+		return nil, err
+	}
+	if len(devices) == 0 {
+		return []any{}, nil
+	}
+	return convert.JsonToDictSlice(devices)
+}
+
+func (a *mqlAwsIamUser) assignedMfaDevices() ([]any, error) {
+	devices, err := a.fetchMfaDevices()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for i := range devices {
+		device := devices[i]
+		mqlDevice, err := CreateResource(a.MqlRuntime, "aws.iam.user.mfaDevice", map[string]*llx.RawData{
+			"__id":         llx.StringDataPtr(device.SerialNumber),
+			"serialNumber": llx.StringDataPtr(device.SerialNumber),
+			"userName":     llx.StringDataPtr(device.UserName),
+			"enabledAt":    llx.TimeDataPtr(device.EnableDate),
+		})
 		if err != nil {
 			return nil, err
 		}
-		res = append(res, dicts...)
+		res = append(res, mqlDevice)
 	}
 	return res, nil
 }
@@ -572,7 +795,6 @@ func (a *mqlAwsIam) mqlPolicies(policies []iamtypes.Policy) ([]any, error) {
 				"arn":             llx.StringDataPtr(policy.Arn),
 				"policyId":        llx.StringDataPtr(policy.PolicyId),
 				"name":            llx.StringDataPtr(policy.PolicyName),
-				"description":     llx.StringDataPtr(policy.Description),
 				"isAttachable":    llx.BoolData(policy.IsAttachable),
 				"attachmentCount": llx.IntDataDefault(policy.AttachmentCount, 0),
 				"createdAt":       llx.TimeDataPtr(policy.CreateDate),
@@ -654,26 +876,7 @@ func (a *mqlAwsIam) roles() ([]any, error) {
 		}
 
 		for _, role := range rolesResp.Roles {
-			var policyDocumentMap map[string]any
-			if role.AssumeRolePolicyDocument != nil {
-				policyDocument := *role.AssumeRolePolicyDocument
-				if decoded, err := url.QueryUnescape(policyDocument); err == nil {
-					policyDocument = decoded
-				}
-				json.Unmarshal([]byte(policyDocument), &policyDocumentMap)
-			}
-
-			var lastUsedAt *time.Time
-			var lastUsedRegion string
-			if role.RoleLastUsed != nil {
-				lastUsedAt = role.RoleLastUsed.LastUsedDate
-				lastUsedRegion = convert.ToValue(role.RoleLastUsed.Region)
-			}
-
-			var permBoundaryArn string
-			if role.PermissionsBoundary != nil {
-				permBoundaryArn = convert.ToValue(role.PermissionsBoundary.PermissionsBoundaryArn)
-			}
+			policyDocumentMap := decodeIamPolicyDocument(role.AssumeRolePolicyDocument)
 
 			mqlAwsIamRole, err := CreateResource(a.MqlRuntime, ResourceAwsIamRole,
 				map[string]*llx.RawData{
@@ -681,15 +884,11 @@ func (a *mqlAwsIam) roles() ([]any, error) {
 					"id":                       llx.StringDataPtr(role.RoleId),
 					"name":                     llx.StringDataPtr(role.RoleName),
 					"description":              llx.StringDataPtr(role.Description),
-					"tags":                     llx.MapData(iamTagsToMap(role.Tags), types.String),
 					"createdAt":                llx.TimeDataPtr(role.CreateDate),
 					"assumeRolePolicyDocument": llx.MapData(policyDocumentMap, types.Any),
-					"lastUsedAt":               llx.TimeDataPtr(lastUsedAt),
-					"lastUsedRegion":           llx.StringData(lastUsedRegion),
 					"maxSessionDuration":       llx.IntDataDefault(role.MaxSessionDuration, 3600),
-					"permissionsBoundaryArn":   llx.StringData(permBoundaryArn),
 					"path":                     llx.StringDataPtr(role.Path),
-					"isServiceLinked":          llx.BoolData(strings.HasPrefix(convert.ToValue(role.Path), "/aws-service-role/")),
+					"isServiceLinked":          llx.BoolData(isServiceLinkedRolePath(convert.ToValue(role.Path))),
 				})
 			if err != nil {
 				return nil, err
@@ -733,7 +932,13 @@ func (a *mqlAwsIam) groups() ([]any, error) {
 func (p *mqlAwsIamUsercredentialreportentry) id() (string, error) {
 	props := p.Properties.Data
 
-	userid := props["arn"].(string)
+	// The credential report is a hand-parsed CSV; a ragged row yields a map
+	// without "arn". A bare assertion here panics inside an executor goroutine
+	// and takes the whole scan with it.
+	userid, ok := props["arn"].(string)
+	if !ok {
+		return "", errors.New("aws iam credential report entry has no arn")
+	}
 
 	return "aws/iam/credentialreport/" + userid, nil
 }
@@ -905,14 +1110,23 @@ func (a *mqlAwsIamUsercredentialreportentry) user() (*mqlAwsIamUser, error) {
 		log.Info().Msgf("could not retrieve key")
 		return nil, errors.New("could not read the credentials report")
 	}
-	// handle special case for the root account since that user does not exist
+	// The root account always appears in the credential report but has no IAM
+	// user behind it, so there is nothing to resolve. That is a null, not a
+	// failure: reporting an error here made the whole credentialReport
+	// collection error out, because a field error renders as the value of the
+	// enclosing collection. Use isRoot to select the entry.
 	if props["user"] == "<root_account>" {
-		return nil, errors.New("root user does not exist")
+		a.User.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 
+	userName, ok := props["user"].(string)
+	if !ok {
+		return nil, errors.New("aws iam credential report entry has no user")
+	}
 	mqlUser, err := NewResource(a.MqlRuntime, ResourceAwsIamUser,
 		map[string]*llx.RawData{
-			"name": llx.StringData(props["user"].(string)),
+			"name": llx.StringData(userName),
 		},
 	)
 	if err != nil {
@@ -1034,43 +1248,61 @@ func initAwsIamUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 	if len(args) > 2 {
 		return args, nil, nil
 	}
+
+	// A reference already materialized by an earlier referrer or by the
+	// list that built it. NewResource consults the cache only after this
+	// init returns, so without this the same target is fetched once per
+	// referring resource and the result discarded.
+	if cached := cachedArgByArn(runtime, ResourceAwsIamUser, args); cached != nil {
+		return args, cached, nil
+	}
+	// The lookup is name-driven (GetUser); discovery sets the asset name to
+	// the IAM user name.
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
-			args["arn"] = llx.StringData(ids.arn)
+		if name := getAssetName(runtime, connection.PlatformIamUser); name != "" {
+			args["name"] = llx.StringData(name)
 		}
 	}
 
 	if args["name"] == nil {
 		return nil, nil, errors.New("name required to fetch aws iam user")
 	}
+
+	// Resolve from the account's user list before falling back to a GetUser the
+	// ARN-keyed cache check above cannot serve, because this lookup is by name.
+	if name, ok := args["name"].Value.(string); ok && name != "" {
+		if usr := iamUserFromList(runtime, name, ""); usr != nil {
+			return args, usr, nil
+		}
+	}
+
 	conn := runtime.Connection.(*connection.AwsConnection)
 
 	svc := conn.Iam("")
 	ctx := context.Background()
 
-	if args["name"] != nil {
-		if usr, ok := args["name"].Value.(string); ok {
-			username := usr
-			resp, err := svc.GetUser(ctx, &iam.GetUserInput{
-				UserName: &username,
-			})
-			if err != nil {
-				return nil, nil, err
-			}
-
-			usr := resp.User
-			args["arn"] = llx.StringDataPtr(usr.Arn)
-			args["id"] = llx.StringDataPtr(usr.UserId)
-			args["name"] = llx.StringDataPtr(usr.UserName)
-			args["createdAt"] = llx.TimeDataPtr(usr.CreateDate)
-			args["passwordLastUsed"] = llx.TimeDataPtr(usr.PasswordLastUsed)
-			args["tags"] = llx.MapData(iamTagsToMap(usr.Tags), types.String)
-			args["path"] = llx.StringDataPtr(usr.Path)
-
-			return args, nil, nil
-		}
+	usr, ok := args["name"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("invalid name argument for aws iam user")
 	}
+	resp, err := svc.GetUser(ctx, &iam.GetUserInput{
+		UserName: &usr,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if resp.User == nil {
+		return nil, nil, fmt.Errorf("aws.iam.user %q not found", usr)
+	}
+
+	user := resp.User
+	args["arn"] = llx.StringDataPtr(user.Arn)
+	args["id"] = llx.StringDataPtr(user.UserId)
+	args["name"] = llx.StringDataPtr(user.UserName)
+	args["createdAt"] = llx.TimeDataPtr(user.CreateDate)
+	args["passwordLastUsed"] = llx.TimeDataPtr(user.PasswordLastUsed)
+	args["tags"] = llx.MapData(iamTagsToMap(user.Tags), types.String)
+	args["path"] = llx.StringDataPtr(user.Path)
 
 	return args, nil, nil
 }
@@ -1095,6 +1327,10 @@ type mqlAwsIamUserInternal struct {
 	loginProfileFetched atomic.Bool
 	loginProfileCache   *mqlAwsIamLoginProfile
 	loginProfileLock    sync.Mutex
+
+	mfaDevicesFetched atomic.Bool
+	mfaDevicesCache   []iamtypes.MFADevice
+	mfaDevicesLock    sync.Mutex
 
 	permissionsBoundaryArn    string
 	permissionsBoundaryArnSet bool
@@ -1140,21 +1376,6 @@ func (a *mqlAwsIamUser) listAccessKeyMetadata() ([]iamtypes.AccessKeyMetadata, e
 	a.accessKeyMetaCache = res
 	a.accessKeyMetaFetched.Store(true)
 	return res, nil
-}
-
-func (a *mqlAwsIamUser) accessKeys() ([]any, error) {
-	metadata, err := a.listAccessKeyMetadata()
-	if err != nil {
-		return nil, err
-	}
-	// JsonToDictSlice already returns a []any of per-key dicts; return it
-	// directly. (The pre-refactor code wrapped it in another slice, yielding
-	// [[dict, …]] instead of [dict, …] — a latent bug, now fixed.)
-	dicts, err := convert.JsonToDictSlice(metadata)
-	if err != nil {
-		return nil, err
-	}
-	return dicts, nil
 }
 
 func (a *mqlAwsIamUser) accessKeyDetails() ([]any, error) {
@@ -1212,6 +1433,105 @@ func (a *mqlAwsIamUser) accessKeyDetails() ([]any, error) {
 	return res, nil
 }
 
+// serviceSpecificCredentials returns the static per-service credentials issued
+// to the user. These are long-lived passwords that the IAM credential report
+// does not cover, so they are invisible to an access-key review.
+func (a *mqlAwsIamUser) serviceSpecificCredentials() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Iam("")
+	ctx := context.Background()
+	username := a.Name.Data
+
+	res := []any{}
+	var marker *string
+	for {
+		resp, err := svc.ListServiceSpecificCredentials(ctx, &iam.ListServiceSpecificCredentialsInput{
+			UserName: &username,
+			Marker:   marker,
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				log.Warn().Str("user", username).Msg("no permission to list service-specific credentials")
+				return res, nil
+			}
+			return nil, err
+		}
+
+		for _, cred := range resp.ServiceSpecificCredentials {
+			mqlCred, err := CreateResource(a.MqlRuntime, "aws.iam.user.serviceSpecificCredential",
+				map[string]*llx.RawData{
+					"__id":                   llx.StringDataPtr(cred.ServiceSpecificCredentialId),
+					"id":                     llx.StringDataPtr(cred.ServiceSpecificCredentialId),
+					"username":               llx.StringDataPtr(cred.UserName),
+					"serviceName":            llx.StringDataPtr(cred.ServiceName),
+					"serviceUsername":        llx.StringDataPtr(cred.ServiceUserName),
+					"serviceCredentialAlias": llx.StringDataPtr(cred.ServiceCredentialAlias),
+					"status":                 llx.StringData(string(cred.Status)),
+					"createdAt":              llx.TimeDataPtr(cred.CreateDate),
+					"expiresAt":              llx.TimeDataPtr(cred.ExpirationDate),
+				})
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlCred)
+		}
+
+		if !resp.IsTruncated || resp.Marker == nil {
+			break
+		}
+		marker = resp.Marker
+	}
+	return res, nil
+}
+
+// sshPublicKeys returns the SSH public keys uploaded for the user. The keys
+// carry no expiry, so an Active key is a working credential until it is
+// removed.
+func (a *mqlAwsIamUser) sshPublicKeys() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Iam("")
+	ctx := context.Background()
+	username := a.Name.Data
+
+	res := []any{}
+	paginator := iam.NewListSSHPublicKeysPaginator(svc, &iam.ListSSHPublicKeysInput{
+		UserName: &username,
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				log.Warn().Str("user", username).Msg("no permission to list ssh public keys")
+				return res, nil
+			}
+			return nil, err
+		}
+		for _, key := range page.SSHPublicKeys {
+			mqlKey, err := CreateResource(a.MqlRuntime, "aws.iam.user.sshPublicKey",
+				map[string]*llx.RawData{
+					"__id":       llx.StringDataPtr(key.SSHPublicKeyId),
+					"id":         llx.StringDataPtr(key.SSHPublicKeyId),
+					"username":   llx.StringDataPtr(key.UserName),
+					"status":     llx.StringData(string(key.Status)),
+					"uploadedAt": llx.TimeDataPtr(key.UploadDate),
+				})
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlKey)
+		}
+	}
+	return res, nil
+}
+
+func (a *mqlAwsIamUserServiceSpecificCredential) id() (string, error) {
+	return a.Id.Data, nil
+}
+
+func (a *mqlAwsIamUserSshPublicKey) id() (string, error) {
+	return a.Id.Data, nil
+}
+
 func (a *mqlAwsIamUser) policies() ([]any, error) {
 	if a.policiesFetched.Load() {
 		return a.policiesCache, nil
@@ -1224,26 +1544,11 @@ func (a *mqlAwsIamUser) policies() ([]any, error) {
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
-	svc := conn.Iam("")
-	ctx := context.Background()
-
-	username := a.Name.Data
-
-	res := []any{}
-	params := &iam.ListUserPoliciesInput{
-		UserName: &username,
+	policyNames, err := listUserInlinePolicyNames(context.Background(), conn.Iam(""), a.Name.Data)
+	if err != nil {
+		return nil, err
 	}
-	paginator := iam.NewListUserPoliciesPaginator(svc, params)
-	for paginator.HasMorePages() {
-		userPolicies, err := paginator.NextPage(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		for i := range userPolicies.PolicyNames {
-			res = append(res, userPolicies.PolicyNames[i])
-		}
-	}
+	res := convert.SliceAnyToInterface(policyNames)
 
 	a.policiesCache = res
 	a.policiesFetched.Store(true)
@@ -1303,6 +1608,13 @@ type mqlAwsIamPolicyInternal struct {
 	versionsLock    sync.Mutex
 }
 
+// id keys the resource on the policy ARN. Without it every aws.iam.policy
+// shares the empty cache key, so CreateResource returns the first-created
+// policy for every subsequent one.
+func (a *mqlAwsIamPolicy) id() (string, error) {
+	return a.Arn.Data, nil
+}
+
 func (a *mqlAwsIamPolicy) loadPolicy(arn string) (*iamtypes.Policy, error) {
 	if a.policyFetched.Load() {
 		return a.cachePolicy, nil
@@ -1356,6 +1668,18 @@ func (a *mqlAwsIamPolicy) policyId() (string, error) {
 		return "", err
 	}
 	return convert.ToValue(policy.PolicyId), nil
+}
+
+// tags reads the policy tags off the cached GetPolicy response. ListPolicies,
+// which is what aws.iam.policies pages through, leaves Tags empty on every
+// Policy it returns even though the field exists, so the tags have to come from
+// the per-policy call that name and description already share.
+func (a *mqlAwsIamPolicy) tags() (map[string]any, error) {
+	policy, err := a.loadPolicy(a.Arn.Data)
+	if err != nil {
+		return nil, err
+	}
+	return iamTagsToMap(policy.Tags), nil
 }
 
 func (a *mqlAwsIamPolicy) isAttachable() (bool, error) {
@@ -1649,7 +1973,7 @@ func (a *mqlAwsIamPolicyversion) rawDocument() (string, error) {
 			return
 		}
 
-		if policyVersion.PolicyVersion.Document == nil {
+		if policyVersion == nil || policyVersion.PolicyVersion == nil || policyVersion.PolicyVersion.Document == nil {
 			a.rawDocErr = errors.New("could not retrieve the policy document")
 			return
 		}
@@ -1661,27 +1985,40 @@ func (a *mqlAwsIamPolicyversion) rawDocument() (string, error) {
 func (a *mqlAwsIamPolicyversion) document() (any, error) {
 	rawDoc, err := a.rawDocument()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	decodedValue, err := url.QueryUnescape(rawDoc)
+	// Decode to the document's own JSON rather than round-tripping through
+	// awspolicy.IamPolicyDocument. That struct has no Condition field, so
+	// re-marshalling it dropped every condition block, and its statementSection
+	// flattens a principal map to a list of quoted values, turning
+	// {"AWS": "*"} into ["\"*\""]. The schema calls this field the raw policy
+	// JSON, so hand back what IAM actually returned.
+	doc, err := parseIamPolicyDocument(rawDoc)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	policyDoc := awspolicy.IamPolicyDocument{}
-	err = json.Unmarshal([]byte(decodedValue), &policyDoc)
-	if err != nil {
-		return "", err
-	}
-	dict, err := convert.JsonToDict(policyDoc)
-	if err != nil {
-		return "", err
-	}
-	return dict, nil
+	return doc, nil
+}
+
+// isServiceLinkedRolePath reports whether an IAM role path marks the role as
+// service-linked. IAM does not return a flag for this; the path prefix is the
+// documented signal. Shared by roles() and initAwsIamRole so the two cannot
+// disagree about the same role.
+func isServiceLinkedRolePath(path string) bool {
+	return strings.HasPrefix(path, "/aws-service-role/")
 }
 
 func initAwsIamRole(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 2 {
 		return args, nil, nil
+	}
+
+	// Already materialized by an earlier reference or by the list that
+	// built it: NewResource consults the cache only after this init
+	// returns, so without this the same target is fetched once per
+	// referring resource and the result thrown away.
+	if cached := cachedArgByArn(runtime, ResourceAwsIamRole, args); cached != nil {
+		return args, cached, nil
 	}
 
 	if args["arn"] == nil && args["name"] == nil {
@@ -1702,8 +2039,8 @@ func initAwsIamRole(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 		// The ARN resource can include a path (e.g., "role/service-role/my-role").
 		// IAM GetRole requires just the role name, not the path.
 		resource := strings.TrimPrefix(a.Resource, "role/")
-		if idx := strings.LastIndex(resource, "/"); idx != -1 {
-			rolename = resource[idx+1:]
+		if _, after, ok := strings.CutLast(resource, "/"); ok {
+			rolename = after
 		} else {
 			rolename = resource
 		}
@@ -1720,16 +2057,12 @@ func initAwsIamRole(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 			return nil, nil, err
 		}
 
+		if resp == nil || resp.Role == nil {
+			return nil, nil, fmt.Errorf("aws iam role %q not found", rolename)
+		}
 		role := resp.Role
 
-		var policyDocumentMap map[string]any
-		if role != nil && role.AssumeRolePolicyDocument != nil {
-			policyDocument := *role.AssumeRolePolicyDocument
-			decodedPolicyDocument, decodeErr := url.QueryUnescape(policyDocument)
-			if decodeErr == nil {
-				json.Unmarshal([]byte(decodedPolicyDocument), &policyDocumentMap)
-			}
-		}
+		policyDocumentMap := decodeIamPolicyDocument(role.AssumeRolePolicyDocument)
 
 		args["arn"] = llx.StringDataPtr(role.Arn)
 		args["id"] = llx.StringDataPtr(role.RoleId)
@@ -1738,17 +2071,20 @@ func initAwsIamRole(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 		args["tags"] = llx.MapData(iamTagsToMap(role.Tags), types.String)
 		args["createdAt"] = llx.TimeDataPtr(role.CreateDate)
 		args["assumeRolePolicyDocument"] = llx.MapData(policyDocumentMap, types.Any)
-		var permBoundaryArn string
-		if role.PermissionsBoundary != nil {
-			permBoundaryArn = convert.ToValue(role.PermissionsBoundary.PermissionsBoundaryArn)
-		}
 		args["maxSessionDuration"] = llx.IntDataDefault(role.MaxSessionDuration, 3600)
-		args["permissionsBoundaryArn"] = llx.StringData(permBoundaryArn)
 		args["path"] = llx.StringDataPtr(role.Path)
+		// Leaving this unset reported null for every role reached through the
+		// init, and because the resource the init builds is cached under the
+		// role ARN, a query that touched aws.iam.role(...) also degraded
+		// isServiceLinked to null for aws.iam.roles in the same scan.
+		args["isServiceLinked"] = llx.BoolData(isServiceLinkedRolePath(convert.ToValue(role.Path)))
 		return args, nil, nil
 	}
 
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, errors.New("could not determine role name to fetch aws iam role")
 }
 
 func (a *mqlAwsIamRole) id() (string, error) {
@@ -1756,28 +2092,25 @@ func (a *mqlAwsIamRole) id() (string, error) {
 }
 
 func (a *mqlAwsIamRole) permissionsBoundary() (*mqlAwsIamPolicy, error) {
-	// roles() populates permissionsBoundaryArn directly from ListRoles, so prefer
-	// the cached value to avoid an extra GetRole per role. Only fall back to
-	// GetRole when this resource was constructed via NewResource without eager
-	// population (in which case the field's state flag will not be set).
-	boundaryArn := ""
-	if a.PermissionsBoundaryArn.IsSet() {
-		boundaryArn = a.PermissionsBoundaryArn.Data
-	} else {
-		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-		svc := conn.Iam("")
-		ctx := context.Background()
-
-		roleName := a.Name.Data
-		resp, err := svc.GetRole(ctx, &iam.GetRoleInput{RoleName: &roleName})
+	// ListRoles explicitly does not return PermissionsBoundary (see the SDK docs
+	// on ListRoles), so roles() always wrote "" into permissionsBoundaryArn.
+	// Because llx.StringData("") still marks the field StateIsSet, gating on
+	// PermissionsBoundaryArn.IsSet() made the GetRole fallback unreachable and
+	// every role reported "no permissions boundary". Track provenance with a
+	// dedicated flag instead, exactly as aws.iam.user does.
+	if !a.permissionsBoundaryArnSet {
+		// getRoleDetails memoizes GetRole, so this shares one call with
+		// lastUsedAt/lastUsedRegion instead of issuing a second one.
+		resp, err := a.getRoleDetails()
 		if err != nil {
 			return nil, err
 		}
-		if resp.Role != nil && resp.Role.PermissionsBoundary != nil {
-			boundaryArn = convert.ToValue(resp.Role.PermissionsBoundary.PermissionsBoundaryArn)
+		if resp != nil && resp.Role != nil && resp.Role.PermissionsBoundary != nil {
+			a.permissionsBoundaryArn = convert.ToValue(resp.Role.PermissionsBoundary.PermissionsBoundaryArn)
 		}
-		a.PermissionsBoundaryArn = plugin.TValue[string]{Data: boundaryArn, State: plugin.StateIsSet}
+		a.permissionsBoundaryArnSet = true
 	}
+	boundaryArn := a.permissionsBoundaryArn
 
 	if boundaryArn == "" {
 		a.PermissionsBoundary.State = plugin.StateIsNull | plugin.StateIsSet
@@ -1790,6 +2123,66 @@ func (a *mqlAwsIamRole) permissionsBoundary() (*mqlAwsIamPolicy, error) {
 		return nil, err
 	}
 	return mqlPolicy.(*mqlAwsIamPolicy), nil
+}
+
+type mqlAwsIamRoleInternal struct {
+	cachedRole  *iam.GetRoleOutput
+	roleFetched bool
+	roleLock    sync.Mutex
+	// permissionsBoundaryArn/-Set mirror the aws.iam.user pattern: ListRoles
+	// never returns PermissionsBoundary, so the eager value is meaningless and
+	// only a GetRole-sourced value may be trusted.
+	permissionsBoundaryArn    string
+	permissionsBoundaryArnSet bool
+}
+
+// getRoleDetails fetches and memoizes the full role via GetRole. The account-wide
+// ListRoles call that roles() uses to enumerate never populates RoleLastUsed, so
+// lastUsedAt and lastUsedRegion have to come from GetRole. The result is cached
+// so both fields share a single API call, and the call is only made when one
+// of those fields is actually queried. The two getters can be evaluated
+// concurrently, so lock unconditionally rather than double-checking the flag.
+func (a *mqlAwsIamRole) getRoleDetails() (*iam.GetRoleOutput, error) {
+	a.roleLock.Lock()
+	defer a.roleLock.Unlock()
+	if a.roleFetched {
+		return a.cachedRole, nil
+	}
+
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Iam("")
+	ctx := context.Background()
+
+	roleName := a.Name.Data
+	resp, err := svc.GetRole(ctx, &iam.GetRoleInput{RoleName: &roleName})
+	if err != nil {
+		return nil, err
+	}
+	a.cachedRole = resp
+	a.roleFetched = true
+	return resp, nil
+}
+
+func (a *mqlAwsIamRole) lastUsedAt() (*time.Time, error) {
+	resp, err := a.getRoleDetails()
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Role == nil || resp.Role.RoleLastUsed == nil {
+		return nil, nil
+	}
+	return resp.Role.RoleLastUsed.LastUsedDate, nil
+}
+
+func (a *mqlAwsIamRole) lastUsedRegion() (string, error) {
+	resp, err := a.getRoleDetails()
+	if err != nil {
+		return "", err
+	}
+	if resp == nil || resp.Role == nil || resp.Role.RoleLastUsed == nil {
+		return "", nil
+	}
+	return convert.ToValue(resp.Role.RoleLastUsed.Region), nil
 }
 
 func (a *mqlAwsIamRole) attachedPolicies() ([]any, error) {
@@ -1827,28 +2220,11 @@ func (a *mqlAwsIamRole) attachedPolicies() ([]any, error) {
 func (a *mqlAwsIamRole) inlinePolicies() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
-	svc := conn.Iam("")
-	ctx := context.Background()
-
-	rolename := a.Name.Data
-
-	res := []any{}
-	params := &iam.ListRolePoliciesInput{
-		RoleName: &rolename,
+	policyNames, err := listRoleInlinePolicyNames(context.Background(), conn.Iam(""), a.Name.Data)
+	if err != nil {
+		return nil, err
 	}
-	paginator := iam.NewListRolePoliciesPaginator(svc, params)
-	for paginator.HasMorePages() {
-		rolePolicies, err := paginator.NextPage(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		for i := range rolePolicies.PolicyNames {
-			res = append(res, rolePolicies.PolicyNames[i])
-		}
-	}
-
-	return res, nil
+	return convert.SliceAnyToInterface(policyNames), nil
 }
 
 // usedByInstances returns the EC2 instances that use this role through an
@@ -1939,14 +2315,35 @@ func initAwsIamGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 	if len(args) > 2 {
 		return args, nil, nil
 	}
+	// The lookup is name-driven (GetGroup); discovery sets the asset name to
+	// the IAM group name.
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
-			args["arn"] = llx.StringData(ids.arn)
+		if name := getAssetName(runtime, connection.PlatformIamGroup); name != "" {
+			args["name"] = llx.StringData(name)
 		}
 	}
 	if args["arn"] == nil && args["name"] == nil {
 		return nil, nil, errors.New("arn or name required to fetch aws iam group")
+	}
+
+	// Same as the user init: resolve from the account's group list first. This
+	// one has no cache check at all, so without it every reference to a group
+	// paid for its own GetGroup.
+	// args["x"] on an absent key is a nil *llx.RawData; dereferencing it panics
+	// the provider and takes the whole scan with it, and only one of the two is
+	// guaranteed present here.
+	wantName := ""
+	if args["name"] != nil {
+		wantName, _ = args["name"].Value.(string)
+	}
+	wantArn := ""
+	if args["arn"] != nil {
+		wantArn, _ = args["arn"].Value.(string)
+	}
+	if wantName != "" || wantArn != "" {
+		if grp := iamGroupFromList(runtime, wantName, wantArn); grp != nil {
+			return args, grp, nil
+		}
 	}
 
 	conn := runtime.Connection.(*connection.AwsConnection)
@@ -1971,6 +2368,9 @@ func initAwsIamGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 				usernames = append(usernames, convert.ToValue(user.UserName))
 			}
 		}
+		if grp == nil {
+			return nil, nil, fmt.Errorf("aws.iam.group %q not found", groupname)
+		}
 
 		args["arn"] = llx.StringDataPtr(grp.Arn)
 		args["id"] = llx.StringDataPtr(grp.GroupId)
@@ -1990,7 +2390,10 @@ func initAwsIamGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 		return args, g, nil
 	}
 
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.iam.group with arn %q not found", args["arn"].Value)
 }
 
 func (a *mqlAwsIamGroup) id() (string, error) {
@@ -2069,28 +2472,11 @@ func (a *mqlAwsIamGroup) attachedPolicies() ([]any, error) {
 func (a *mqlAwsIamGroup) inlinePolicies() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
-	svc := conn.Iam("")
-	ctx := context.Background()
-
-	groupname := a.Name.Data
-
-	res := []any{}
-	params := &iam.ListGroupPoliciesInput{
-		GroupName: &groupname,
+	policyNames, err := listGroupInlinePolicyNames(context.Background(), conn.Iam(""), a.Name.Data)
+	if err != nil {
+		return nil, err
 	}
-	paginator := iam.NewListGroupPoliciesPaginator(svc, params)
-	for paginator.HasMorePages() {
-		groupPolicies, err := paginator.NextPage(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		for i := range groupPolicies.PolicyNames {
-			res = append(res, groupPolicies.PolicyNames[i])
-		}
-	}
-
-	return res, nil
+	return convert.SliceAnyToInterface(policyNames), nil
 }
 
 func (a *mqlAwsIamUser) groups() ([]any, error) {
@@ -2177,6 +2563,7 @@ func (a *mqlAwsIamUser) loginProfile() (*mqlAwsIamLoginProfile, error) {
 	}
 
 	o, err := CreateResource(a.MqlRuntime, ResourceAwsIamLoginProfile, map[string]*llx.RawData{
+		"__id":                  llx.StringData(a.Arn.Data + "/loginProfile"),
 		"createdAt":             llx.TimeData(*date),
 		"passwordResetRequired": llx.BoolData(profile.LoginProfile.PasswordResetRequired),
 	})
@@ -2188,14 +2575,12 @@ func (a *mqlAwsIamUser) loginProfile() (*mqlAwsIamLoginProfile, error) {
 	return a.loginProfileCache, nil
 }
 
-func (a *mqlAwsIamLoginProfile) init() (string, error) {
-	date := a.CreatedAt.Data
-	if date == nil {
-		return "", nil
-	}
-	// Note: the precision of AWS logins is in seconds. Current AWS docs don't
-	// specify a precision. Using seconds is reasonable.
-	return strconv.FormatInt(date.Unix(), 10), nil
+// id returns the user-qualified cache key set at construction. This was
+// previously named `init`, which the code generator never registers, so the
+// resource had an empty __id and every user shared one login profile. Keying on
+// the creation timestamp would also collide for users created in the same second.
+func (a *mqlAwsIamLoginProfile) id() (string, error) {
+	return a.__id, nil
 }
 
 func initAwsIamInstanceProfile(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -2215,8 +2600,8 @@ func initAwsIamInstanceProfile(runtime *plugin.Runtime, args map[string]*llx.Raw
 		// The ARN resource can include a path (e.g., "instance-profile/path/name").
 		// GetInstanceProfile requires just the name, not the path.
 		resource := strings.TrimPrefix(a.Resource, "instance-profile/")
-		if idx := strings.LastIndex(resource, "/"); idx != -1 {
-			instanceProfileName = resource[idx+1:]
+		if _, after, ok := strings.CutLast(resource, "/"); ok {
+			instanceProfileName = after
 		} else {
 			instanceProfileName = resource
 		}
@@ -2235,6 +2620,9 @@ func initAwsIamInstanceProfile(runtime *plugin.Runtime, args map[string]*llx.Raw
 			return nil, nil, err
 		}
 
+		if resp == nil || resp.InstanceProfile == nil {
+			return nil, nil, fmt.Errorf("aws iam instance profile %q not found", instanceProfileName)
+		}
 		ip := resp.InstanceProfile
 		res, err := CreateResource(runtime, ResourceAwsIamInstanceProfile, map[string]*llx.RawData{
 			"arn":                 llx.StringDataPtr(ip.Arn),
@@ -2513,4 +2901,32 @@ func (a *mqlAwsIamSamlProvider) fetchSamlProviderDetails() (*iam.GetSAMLProvider
 	}
 
 	return resp, nil
+}
+
+type mqlAwsIamServerCertificateInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsIamServerCertificate) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Iam("")
+		name := a.Name.Data
+		res := []iamtypes.Tag{}
+		paginator := iam.NewListServerCertificateTagsPaginator(svc, &iam.ListServerCertificateTagsInput{ServerCertificateName: &name})
+		for paginator.HasMorePages() {
+			page, err := paginator.NextPage(context.Background())
+			if err != nil {
+				if Is400AccessDeniedError(err) {
+					if plugin.StructuredErrors() {
+						return nil, llx.Forbidden(err, llx.WithPermissions("iam:ListServerCertificateTags"))
+					}
+					return nil, errTagsUnreadable
+				}
+				return nil, err
+			}
+			res = append(res, page.Tags...)
+		}
+		return iamTagsToMap(res), nil
+	})
 }

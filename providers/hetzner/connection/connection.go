@@ -9,12 +9,33 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+)
+
+// requestTimeout bounds a single Hetzner API request. hcloud.NewClient
+// defaults to &http.Client{}, which has no timeout at all, and the plugin
+// runtime hands resources no context to carry a deadline instead: GetData
+// takes none, so every call site uses context.Background(). Without this a
+// request that never answers hangs the scan indefinitely.
+//
+// hcloud issues each retry as its own request, so this bounds an attempt
+// rather than the whole retried operation.
+// They are vars so tests can shrink them.
+var (
+	requestTimeout = 30 * time.Second
+
+	// maxRetries matches hcloud's own default. It is set explicitly because
+	// it multiplies requestTimeout: a completely unresponsive endpoint costs
+	// roughly maxRetries attempts plus hcloud's exponential backoff before
+	// the call gives up, so the two numbers only make sense together.
+	maxRetries = 5
 )
 
 var PlatformIdHetznerProject = "//platformid.api.mondoo.app/runtime/hetzner/project/"
@@ -42,7 +63,11 @@ func NewHetznerConnection(id uint32, asset *inventory.Asset, conf *inventory.Con
 			OPTION_TOKEN, HCLOUD_TOKEN_VAR)
 	}
 
-	opts := []hcloud.ClientOption{hcloud.WithToken(token)}
+	opts := []hcloud.ClientOption{
+		hcloud.WithToken(token),
+		hcloud.WithHTTPClient(&http.Client{Timeout: requestTimeout}),
+		hcloud.WithRetryOpts(hcloud.RetryOpts{MaxRetries: maxRetries}),
+	}
 	if endpoint, ok := GetEndpoint(conf); ok {
 		opts = append(opts, hcloud.WithEndpoint(endpoint))
 	}
@@ -57,13 +82,12 @@ func NewHetznerConnection(id uint32, asset *inventory.Asset, conf *inventory.Con
 // project-specific permissions.
 func (c *HetznerConnection) Verify() error {
 	_, _, err := c.client.Location.List(context.Background(), hcloud.LocationListOpts{
-		ListOpts: hcloud.ListOpts{PerPage: 1},
+		PerPage: 1,
 	})
 	if err == nil {
 		return nil
 	}
-	var hErr hcloud.Error
-	if errors.As(err, &hErr) {
+	if hErr, ok := errors.AsType[hcloud.Error](err); ok {
 		switch hErr.Code {
 		case hcloud.ErrorCodeUnauthorized, hcloud.ErrorCodeForbidden:
 			return errors.New("invalid Hetzner Cloud token; verify your credentials")

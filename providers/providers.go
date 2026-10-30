@@ -8,10 +8,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -25,12 +25,12 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"github.com/ulikunitz/xz"
-	"go.mondoo.com/mql/v13/cli/config"
-	"go.mondoo.com/mql/v13/logger/zerologadapter"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/providers/core/resources/versions/semver"
+	"go.mondoo.com/mql/cli/config"
+	"go.mondoo.com/mql/logger/zerologadapter"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/providers/core/resources/versions/semver"
 	"golang.org/x/exp/slices"
 )
 
@@ -63,9 +63,25 @@ func init() {
 
 	LastProviderInstall = time.Now().Unix()
 
+	stampBuiltinSchemas()
+
 	// Initialize the global coordinator instance
 	coordinator := newCoordinator()
 	Coordinator = coordinator
+}
+
+// stampBuiltinSchemas applies the provenance stamp (ADR 040 part 1) to the
+// builtin providers' schemas. Builtins never go through Provider.LoadResources,
+// which stamps on-disk providers. It runs once at init rather than on every
+// builtin start: the schema object is shared with extensibleSchema's
+// aggregate, which ranges over ProviderVersions under schema.sync, and a
+// concurrent stamp is a map write during that iteration.
+func stampBuiltinSchemas() {
+	for _, x := range builtinProviders {
+		if concrete, ok := x.Runtime.Schema.(*resources.Schema); ok && x.Config != nil {
+			stampProviderVersion(concrete, x.Config.ID, x.Config.Version)
+		}
+	}
 }
 
 // deleteProvider removes a single resolved provider from disk. The path it
@@ -125,6 +141,12 @@ type ProviderLookup struct {
 	ProviderName string
 	ConnName     string
 	ConnType     string
+	// Target and Discovery resolve a meta-target's --discover value, e.g.
+	// Target "iac", Discovery "k8s" -> the k8s provider (ADR 045). Both are
+	// required together: a Target on its own would match whichever provider
+	// happens to declare any opt-in for it.
+	Target    string
+	Discovery string
 }
 
 func (s ProviderLookup) String() string {
@@ -140,6 +162,12 @@ func (s ProviderLookup) String() string {
 	}
 	if s.ConnType != "" {
 		res = append(res, "conn type="+s.ConnType)
+	}
+	if s.Target != "" {
+		res = append(res, "target="+s.Target)
+	}
+	if s.Discovery != "" {
+		res = append(res, "discovery="+s.Discovery)
 	}
 	return strings.Join(res, " ")
 }
@@ -209,6 +237,20 @@ func (p Providers) Lookup(search ProviderLookup) *Provider {
 		}
 	}
 
+	// Target+Discovery resolves a meta-target's --discover value (ADR 045).
+	// Last, so the ID -> ProviderName -> ConnType -> ConnName precedence above
+	// is untouched: no caller sets a target alongside another key today, and if
+	// one ever does, the more specific key should still win.
+	if search.Target != "" && search.Discovery != "" {
+		for _, provider := range p {
+			for _, target := range provider.Targets {
+				if target.Target == search.Target && target.Discovery == search.Discovery {
+					return provider
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -239,15 +281,11 @@ var (
 )
 
 func httpClientWithRetry() (*http.Client, error) {
-	var proxyFn func(*http.Request) (*url.URL, error)
-
-	proxy, err := config.GetAPIProxy()
+	// api_proxy, the environment or the operating system's settings, in that
+	// order; see cli/config/proxy.go.
+	proxyFn, err := config.ProxyFunc()
 	if err != nil {
-		log.Fatal().Err(err).Msg("could not parse proxy URL")
-	}
-
-	if proxy != nil {
-		proxyFn = http.ProxyURL(proxy)
+		return nil, fmt.Errorf("could not parse proxy URL: %w", err)
 	}
 
 	retryClient := retryablehttp.NewClient()
@@ -402,7 +440,7 @@ func (e *ProviderNotFoundError) Error() string {
 
 // EnsureProvider makes sure that a given provider exists and returns it.
 // You can supply providers either via:
-//  1. providerID, which universally identifies it, e.g. "go.mondoo.com/mql/v13/providers/os"
+//  1. providerID, which universally identifies it, e.g. "go.mondoo.com/mql/providers/os"
 //  2. connectorName, which is what you see in the CLI e.g. "local", "ssh", ...
 //  3. connectorType, which is how assets define the connector type when
 //     they are moved between discovery and execution, e.g. "registry-image".
@@ -440,6 +478,11 @@ func EnsureProvider(search ProviderLookup, autoUpdate bool, existing Providers) 
 	if search.ID == sbomProvider.ID || search.ConnName == "sbom" || search.ConnType == "sbom" {
 		existing.Add(&sbomProvider)
 		return &sbomProvider, nil
+	}
+
+	if search.ID == iacProvider.ID || search.ConnName == "iac" || search.ConnType == "iac" {
+		existing.Add(&iacProvider)
+		return &iacProvider, nil
 	}
 
 	if search.ID == recordingProviderInstance.ID || search.ConnName == "recording" || search.ConnType == "recording" {
@@ -532,7 +575,95 @@ func installVersion(ctx context.Context, name string, version string) (*Provider
 	return installed[0], nil
 }
 
+// InstallSchemaOnly installs only a provider's config and resource schema,
+// without downloading the provider binary. The result is enough to compile
+// queries against the provider's resources. It is meant for workflows that
+// never start the provider; connecting to an asset requires a full install.
+func InstallSchemaOnly(name string, version string) (*Provider, error) {
+	ctx := context.Background()
+	if version == "" {
+		// if no version is specified, we default to installing the latest one
+		latestVersion, err := registry.GetLatestVersion(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		version = latestVersion
+	}
+
+	log.Info().
+		Str("version", version).
+		Msg("installing schema for provider '" + name + "'")
+	return installSchemaVersion(ctx, name, version, DefaultPath)
+}
+
+func installSchemaVersion(ctx context.Context, name string, version string, dst string) (*Provider, error) {
+	confJSON, schemaJSON, err := registry.DownloadProviderMetadata(ctx, name, version)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to install schema for "+name+"-"+version)
+	}
+
+	// Pack the two files into an in-memory tar.xz so the install goes
+	// through the same path as a full provider archive.
+	archive, err := buildTarXz(map[string][]byte{
+		name + ".json":           confJSON,
+		name + ".resources.json": schemaJSON,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	installed, err := InstallIO(io.NopCloser(bytes.NewReader(archive)), InstallConf{Dst: dst})
+	if err != nil {
+		return nil, err
+	}
+	if len(installed) != 1 {
+		return nil, errors.New("failed to install schema for provider " + name)
+	}
+	provider := installed[0]
+	if provider.Version != version {
+		return nil, errors.New("version for provider didn't match expected install version: expected " + version + ", installed: " + provider.Version)
+	}
+	return provider, nil
+}
+
+// buildTarXz packs the given files into an in-memory tar.xz archive.
+func buildTarXz(files map[string][]byte) ([]byte, error) {
+	var buf bytes.Buffer
+	xzWriter, err := xz.NewWriter(&buf)
+	if err != nil {
+		return nil, err
+	}
+	tarWriter := tar.NewWriter(xzWriter)
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		data := files[name]
+		header := &tar.Header{
+			Name: name,
+			Mode: 0o644,
+			Size: int64(len(data)),
+		}
+		if err := tarWriter.WriteHeader(header); err != nil {
+			return nil, err
+		}
+		if _, err := tarWriter.Write(data); err != nil {
+			return nil, err
+		}
+	}
+	if err := tarWriter.Close(); err != nil {
+		return nil, err
+	}
+	if err := xzWriter.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 // installDependencies ensures all dependencies of a provider are installed
+// and that every declared peer meets the version floor the provider declares.
 func installDependencies(provider *Provider, existing Providers) error {
 	// Builtins have no file-backed schema; their Schema is set at init time
 	// in builtinProviders and never mutated again, so reading it is safe.
@@ -549,7 +680,22 @@ func installDependencies(provider *Provider, existing Providers) error {
 		return nil
 	}
 
+	installed := false
 	for _, dependency := range provider.Schema.AllDependencies() {
+		// A builtin ships inside this executor; there is no separate binary to
+		// download, and asking the installer for one would fail (or worse,
+		// fetch something) for a provider that is already loaded. This is the
+		// rule the schema generator used to approximate by excluding the name
+		// "core", which also covers `mock` and `sbom` and anything built in
+		// later.
+		//
+		// Checked here rather than against `existing`, because ListAll returns
+		// early without builtins when no provider paths are configured -- the
+		// embedder case -- and the guard has to hold there too.
+		if _, isBuiltin := builtinProviders[dependency.Id]; isBuiltin {
+			continue
+		}
+
 		dependencyLookup := ProviderLookup{
 			ID:           dependency.Id,
 			ProviderName: dependency.Name,
@@ -573,8 +719,139 @@ func installDependencies(provider *Provider, existing Providers) error {
 
 		existing.Add(depProvider)
 		PrintInstallResults([]*Provider{depProvider})
+		installed = true
 	}
 
+	updated, err := updateOutdatedPeers(provider, existing)
+	if err != nil {
+		return err
+	}
+
+	if installed || updated {
+		// `existing` already carries what was installed above, and the floor
+		// check below reads it. The re-list is for the coordinator: `existing`
+		// is the caller's own map, which the coordinator never sees, while
+		// Runtime.AddConnection takes a clone of the published snapshot once
+		// per connection. Without this it keeps finding the version published
+		// before the install and installs the same provider again, once per
+		// call. Install reset CachedProviders, so this re-scans disk and
+		// publishes what is installed now.
+		if _, err := ListActive(); err != nil {
+			return err
+		}
+	}
+	return validateDeclaredPeers(provider, existing)
+}
+
+// updateOutdatedPeers installs the latest release of every declared peer that
+// is installed below the floor the provider declares for it (ADR 042), so a
+// provider update pulls along the peers it needs. Before this, only missing
+// peers were installed: a scan on a host whose providers had not been updated
+// in a while installed the newer provider, found its already-installed peer
+// below the new floor, and refused to start until the user ran
+// `providers update` by hand.
+//
+// Peers that are not installed are left to installDependencies. A builtin
+// ships inside this executor and cannot be replaced by a download, so it is
+// left to the floor check, which also reports a registry whose latest release
+// is still too old.
+func updateOutdatedPeers(provider *Provider, existing Providers) (bool, error) {
+	if provider.Provider == nil {
+		return false, nil
+	}
+
+	updated := false
+	for _, dep := range provider.Requires {
+		if _, isBuiltin := builtinProviders[dep.ID]; isBuiltin {
+			continue
+		}
+		peer := existing.Lookup(ProviderLookup{ID: dep.ID, ProviderName: dep.Name})
+		if peer == nil || peer.Provider == nil {
+			continue
+		}
+		if _, isBuiltin := builtinProviders[peer.ID]; isBuiltin {
+			continue
+		}
+		if !peerBelowFloor(peer.Version, dep.MinVersion) {
+			continue
+		}
+
+		// A release that cannot meet the floor is not worth downloading; the
+		// floor check reports the mismatch, and this says why it was left.
+		latest, err := LatestVersion(context.Background(), dep.Name)
+		if err != nil {
+			return updated, err
+		}
+		if peerBelowFloor(latest, dep.MinVersion) {
+			log.Warn().
+				Str("installed", peer.Version).
+				Str("latest", latest).
+				Str("required", dep.MinVersion).
+				Msg("provider '" + provider.Name + "' needs a newer '" + dep.Name + "' provider, but its latest release is below that too, not updating it")
+			continue
+		}
+
+		log.Info().
+			Str("installed", peer.Version).
+			Str("required", dep.MinVersion).
+			Msg("provider '" + provider.Name + "' needs a newer '" + dep.Name + "' provider, updating it")
+		fresh, err := Install(dep.Name, latest)
+		if err != nil {
+			return updated, err
+		}
+
+		// The stale entry may sit under an ID that older releases carried, so
+		// adding the new one beside it would leave two providers of this name
+		// in the list and a name lookup could still return the old one.
+		for key, p := range existing {
+			if p.ID == peer.ID {
+				delete(existing, key)
+			}
+		}
+		existing.Add(fresh)
+		PrintInstallResults([]*Provider{fresh})
+		updated = true
+	}
+	return updated, nil
+}
+
+// peerBelowFloor reports whether an installed peer version is below the floor
+// a provider declares for it. An empty floor is no constraint, and a version
+// that does not parse on either side is not evidence of a mismatch.
+func peerBelowFloor(installed, floor string) bool {
+	if floor == "" || installed == "" {
+		return false
+	}
+	diff, err := (semver.Parser{}).Compare(installed, floor)
+	if err != nil {
+		return false
+	}
+	return diff < 0
+}
+
+// validateDeclaredPeers checks each declared peer that is already installed
+// against the floor the provider declares (ADR 042).
+//
+// Eager, at the point dependencies are ensured, rather than lazily when the
+// first cross-call happens: a version mismatch is a property of the install,
+// not of the query that happened to trip over it, and surfacing it mid-query
+// makes it look like a query problem. Peers that are not installed are not
+// reported here -- they fail later, when something actually needs them.
+func validateDeclaredPeers(provider *Provider, existing Providers) error {
+	if provider.Provider == nil {
+		return nil
+	}
+
+	for _, dep := range provider.Requires {
+		peer := existing.Lookup(ProviderLookup{ID: dep.ID, ProviderName: dep.Name})
+		if peer == nil || peer.Provider == nil {
+			continue
+		}
+		if peerBelowFloor(peer.Version, dep.MinVersion) {
+			return errors.Newf("provider %s requires %s >= %s, but %s is installed",
+				provider.Name, dep.Name, dep.MinVersion, peer.Version)
+		}
+	}
 	return nil
 }
 
@@ -681,9 +958,13 @@ func InstallIO(reader io.ReadCloser, conf InstallConf) ([]*Provider, error) {
 	log.Debug().Str("path", tmpdir).Msg("unpacking providers")
 	files := map[string]struct{}{}
 	err = walkTarXz(reader, func(reader *tar.Reader, header *tar.Header) error {
-		files[header.Name] = struct{}{}
-		dst := filepath.Join(tmpdir, header.Name)
-		log.Debug().Str("name", header.Name).Str("dest", dst).Msg("unpacking file")
+		name, err := archiveFileName(header.Name)
+		if err != nil {
+			return err
+		}
+		files[name] = struct{}{}
+		dst := filepath.Join(tmpdir, name)
+		log.Debug().Str("name", name).Str("dest", dst).Msg("unpacking file")
 		writer, err := os.Create(dst)
 		if err != nil {
 			return err
@@ -712,22 +993,23 @@ func InstallIO(reader io.ReadCloser, conf InstallConf) ([]*Provider, error) {
 	log.Debug().Msg("move provider to destination")
 	providerDirs := []string{}
 	for name := range files {
-		// we only want to identify the binary and then all associated files from it
-		// NOTE: we need special handling for windows since binaries have the .exe extension
-		if !strings.HasSuffix(name, ".exe") && strings.Contains(name, ".") {
+		// Providers are identified by their schema file: every package has
+		// one, with or without a binary (schema-only installs have none).
+		if !strings.HasSuffix(name, ".resources.json") {
 			continue
 		}
-
-		providerName := name
-		if strings.HasSuffix(name, ".exe") {
-			providerName = strings.TrimSuffix(name, ".exe")
-		}
+		providerName := strings.TrimSuffix(name, ".resources.json")
 
 		if _, ok := files[providerName+".json"]; !ok {
 			return nil, errors.New("cannot find " + providerName + ".json in the archive")
 		}
-		if _, ok := files[providerName+".resources.json"]; !ok {
-			return nil, errors.New("cannot find " + providerName + ".resources.json in the archive")
+
+		// NOTE: we need special handling for windows since binaries have the .exe extension
+		binName := ""
+		if _, ok := files[providerName]; ok {
+			binName = providerName
+		} else if _, ok := files[providerName+".exe"]; ok {
+			binName = providerName + ".exe"
 		}
 
 		dstPath := filepath.Join(conf.Dst, providerName)
@@ -735,17 +1017,19 @@ func InstallIO(reader io.ReadCloser, conf InstallConf) ([]*Provider, error) {
 			return nil, err
 		}
 
-		// move the binary and the associated files
-		srcBin := filepath.Join(tmpdir, name)
-		dstBin := filepath.Join(dstPath, name)
-		log.Debug().Str("src", srcBin).Str("dst", dstBin).Msg("move provider binary")
-		if err = osRetry(func() error {
-			return os.Rename(srcBin, dstBin)
-		}, maxInstallBinaryRetries); err != nil {
-			return nil, err
-		}
-		if err = os.Chmod(dstBin, 0o755); err != nil {
-			return nil, err
+		// move the binary (if any) and the associated files
+		if binName != "" {
+			srcBin := filepath.Join(tmpdir, binName)
+			dstBin := filepath.Join(dstPath, binName)
+			log.Debug().Str("src", srcBin).Str("dst", dstBin).Msg("move provider binary")
+			if err = osRetry(func() error {
+				return os.Rename(srcBin, dstBin)
+			}, maxInstallBinaryRetries); err != nil {
+				return nil, err
+			}
+			if err = os.Chmod(dstBin, 0o755); err != nil {
+				return nil, err
+			}
 		}
 
 		srcMeta := filepath.Join(tmpdir, providerName)
@@ -804,11 +1088,17 @@ func InstallIO(reader io.ReadCloser, conf InstallConf) ([]*Provider, error) {
 }
 
 // syncDir flushes a directory's entries to disk so that renames into it
-// survive a crash. It is best-effort: directory fsync is not supported on
-// every platform (notably Windows), so failures are logged, not returned.
+// survive a crash. It is best-effort, so failures are logged, not returned.
 // Even when the directory sync is skipped, the per-file Sync in InstallIO
 // still prevents the renamed file from pointing at zeroed blocks.
+//
+// Windows does not support syncing a directory: opening one and calling Sync
+// fails with "Access is denied" every time, so every provider install logged
+// a warning about a step that cannot succeed there. It is skipped instead.
 func syncDir(path string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
 	dir, err := os.Open(path)
 	if err != nil {
 		log.Warn().Err(err).Str("path", path).Msg("failed to open provider directory for sync")
@@ -818,6 +1108,20 @@ func syncDir(path string) {
 	if err := dir.Sync(); err != nil {
 		log.Warn().Err(err).Str("path", path).Msg("failed to sync provider directory")
 	}
+}
+
+// archiveFileName returns the file name to unpack an archive entry to.
+// Provider archives are flat: the binary, the config and the schema all sit
+// at the top level, so every entry has to be a plain file name. Anything
+// carrying a directory component would let the archive pick where its
+// contents land, so it is rejected instead of unpacked.
+func archiveFileName(name string) (string, error) {
+	clean := filepath.Clean(filepath.FromSlash(name))
+	base := filepath.Base(clean)
+	if clean != base || base == "." || base == ".." || base == string(filepath.Separator) {
+		return "", errors.New("provider archive contains an unexpected file name: " + name)
+	}
+	return base, nil
 }
 
 func walkTarXz(reader io.Reader, callback func(reader *tar.Reader, header *tar.Header) error) error {
@@ -942,6 +1246,28 @@ func TryProviderUpdate(provider *Provider, update UpdateProvidersConfig) (*Provi
 		return nil, errors.New("cannot determine installation path for provider")
 	}
 
+	// A schema-only installation has no binary to run. Whatever its version,
+	// complete it by installing the full package for that version. This check
+	// comes before any freshness check: a provider whose schema is current is
+	// still unusable without its binary.
+	if !provider.HasBinary {
+		log.Info().
+			Str("version", provider.Version).
+			Msg("provider '" + provider.Name + "' is installed schema-only, downloading its binary")
+		completed, err := installVersion(ctx, provider.Name, provider.Version)
+		if err != nil {
+			return nil, err
+		}
+		PrintInstallResults([]*Provider{completed})
+
+		if providers, err := ListActive(); err == nil {
+			if err := installDependencies(completed, providers); err != nil {
+				return nil, err
+			}
+		}
+		return completed, nil
+	}
+
 	statPath := provider.confJSONPath()
 	stat, err := os.Stat(statPath)
 	if err != nil {
@@ -1051,8 +1377,49 @@ func (p *Provider) LoadResources() error {
 	if err := json.Unmarshal(res, &schema); err != nil {
 		return errors.New("failed to parse provider resources json from " + path + ": " + err.Error())
 	}
+	// Stamp the reader-schema provenance (ADR 040 part 1). The installed
+	// provider binary is the authority on its own version, so we take it from
+	// the config rather than from the serialized schema, which predates this
+	// field and will not carry it for a while yet.
+	stampProviderVersion(&schema, p.ID, p.Version)
+	stampProviderRoot(&schema, p.ID, p.Root)
+
 	p.Schema = &schema
 	return nil
+}
+
+// stampProviderVersion records which release of a provider produced a schema,
+// keyed the same way ResourceInfo.Provider is keyed so the compiler can get
+// from a resolved (or unresolved) name back to a version. It never clobbers an
+// entry that is already there: a schema that carries its own provenance is
+// more specific than what we can infer from the installed binary.
+func stampProviderVersion(schema *resources.Schema, id string, version string) {
+	if schema == nil || id == "" || version == "" {
+		return
+	}
+	if schema.ProviderVersions == nil {
+		schema.ProviderVersions = map[string]string{}
+	}
+	if _, ok := schema.ProviderVersions[id]; !ok {
+		schema.ProviderVersions[id] = version
+	}
+}
+
+// stampProviderRoot records the root a provider declares for its assets, keyed
+// like ProviderVersions. It travels with the schema so a compile that has no
+// runtime - a policy bundle, a lint, an editor - can still tell a resource that
+// hangs off the asset's tree from one that does not. Same never-clobber rule:
+// a schema that carries its own is more specific than the installed binary.
+func stampProviderRoot(schema *resources.Schema, id string, root string) {
+	if schema == nil || id == "" || root == "" {
+		return
+	}
+	if schema.ProviderRoots == nil {
+		schema.ProviderRoots = map[string]string{}
+	}
+	if _, ok := schema.ProviderRoots[id]; !ok {
+		schema.ProviderRoots[id] = root
+	}
 }
 
 func (p *Provider) confJSONPath() string {

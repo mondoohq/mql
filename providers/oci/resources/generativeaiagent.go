@@ -6,18 +6,14 @@ package resources
 import (
 	"context"
 	"errors"
-	"net"
-	"strings"
 
-	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/generativeaiagent"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/oci/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/oci/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (o *mqlOciAi) id() (string, error) {
@@ -28,119 +24,36 @@ func (o *mqlOciAiAgents) id() (string, error) {
 	return "oci.ai.agents", nil
 }
 
-// ociRegionServiceUnavailable reports whether the error indicates that an AI
-// service is not reachable in a given region — because the service is not
-// deployed there or the tenancy is not entitled to it. Such regions are skipped
-// so a tenancy-wide query still returns the resources that do exist instead of
-// failing outright. Shared by the Generative AI Agents, Data Science, and
-// Generative AI resources.
-func ociRegionServiceUnavailable(err error) bool {
-	if svcErr, ok := common.IsServiceError(err); ok {
-		switch svcErr.GetHTTPStatusCode() {
-		case 401, 403, 404:
-			return true
-		}
-	}
-	// Regions where the service is not deployed have no regional endpoint, so
-	// the DNS lookup for the host fails with "no such host".
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
-		return true
-	}
-	// Some regions publish a wildcard DNS record for a service that is not
-	// actually deployed there, so the host resolves but the TCP connection
-	// times out. Treat connection timeouts (and the deadline they surface as)
-	// the same as an absent endpoint.
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-	var netErr net.Error
-	if errors.As(err, &netErr) && netErr.Timeout() {
-		return true
-	}
-	// The OCI SDK wraps transport errors in a type that does not implement
-	// Unwrap, so errors.As/Is above can miss a timeout. Fall back to matching
-	// the message for the unreachable-endpoint signatures.
-	msg := strings.ToLower(err.Error())
-	for _, s := range []string{
-		"timeout", "timed out", "deadline exceeded",
-		"no such host", "connection refused", "no route to host",
-	} {
-		if strings.Contains(msg, s) {
-			return true
-		}
-	}
-	return false
-}
-
-func ociAgentRegions(runtime *plugin.Runtime) ([]any, error) {
-	ociResource, err := CreateResource(runtime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	regions := ociResource.(*mqlOci).GetRegions()
-	if regions.Error != nil {
-		return nil, regions.Error
-	}
-	return regions.Data, nil
-}
-
 // ----- agents -----
 
 func (o *mqlOciAiAgents) agents() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	regions, err := ociAgentRegions(o.MqlRuntime)
-	if err != nil {
-		return nil, err
-	}
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getAgents(conn, regions), 5)
-	poolOfJobs.Run()
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-	return res, nil
-}
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci generative ai agents with region %s", region)
 
-func (o *mqlOciAiAgents) getAgents(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci generative ai agents with region %s", regionResource.Id.Data)
-
-			svc, err := conn.GenerativeAiAgentClient(regionResource.Id.Data)
+			svc, err := conn.GenerativeAiAgentClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			items := []generativeaiagent.AgentSummary{}
-			var page *string
-			for {
+			items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]generativeaiagent.AgentSummary, *string, error) {
 				response, err := svc.ListAgents(ctx, generativeaiagent.ListAgentsRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					if ociRegionServiceUnavailable(err) {
-						log.Debug().Str("region", regionResource.Id.Data).Msg("generative ai agents not available in region, skipping")
-						return jobpool.JobResult([]any{}), nil
-					}
-					return nil, err
+					return nil, nil, err
 				}
-				items = append(items, response.Items...)
-				if response.OpcNextPage == nil {
-					break
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				if ociRegionServiceUnavailable(err) {
+					log.Debug().Str("region", region).Msg("generative ai agents not available in region, skipping")
+					return []any{}, nil
 				}
-				page = response.OpcNextPage
+				return nil, err
 			}
 
 			res := make([]any, 0, len(items))
@@ -169,13 +82,11 @@ func (o *mqlOciAiAgents) getAgents(conn *connection.OciConnection, regions []any
 				if err != nil {
 					return nil, err
 				}
+				mqlAgent.(*mqlOciAiAgentsAgent).cacheKnowledgeBaseIDs = a.KnowledgeBaseIds
 				res = append(res, mqlAgent)
 			}
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 func initOciAiAgentsAgent(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -200,7 +111,7 @@ func initOciAiAgentsAgent(runtime *plugin.Runtime, args map[string]*llx.RawData)
 			return args, a, nil
 		}
 	}
-	return args, nil, nil
+	return nil, nil, errors.New("oci.ai.agents.agent not found: " + idVal)
 }
 
 func (o *mqlOciAiAgentsAgent) id() (string, error) {
@@ -211,59 +122,41 @@ func (o *mqlOciAiAgentsAgent) compartment() (*mqlOciCompartment, error) {
 	return resolveOciCompartment(o.MqlRuntime, o.CompartmentID.Data, &o.Compartment)
 }
 
+type mqlOciAiAgentsAgentInternal struct {
+	cacheKnowledgeBaseIDs []string
+}
+
+func (o *mqlOciAiAgentsAgent) knowledgeBases() ([]any, error) {
+	return resolveOciAiKnowledgeBases(o.MqlRuntime, o.cacheKnowledgeBaseIDs)
+}
+
 // ----- agent endpoints -----
 
 func (o *mqlOciAiAgents) agentEndpoints() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	regions, err := ociAgentRegions(o.MqlRuntime)
-	if err != nil {
-		return nil, err
-	}
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getAgentEndpoints(conn, regions), 5)
-	poolOfJobs.Run()
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-	return res, nil
-}
-
-func (o *mqlOciAiAgents) getAgentEndpoints(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			svc, err := conn.GenerativeAiAgentClient(regionResource.Id.Data)
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			svc, err := conn.GenerativeAiAgentClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			items := []generativeaiagent.AgentEndpointSummary{}
-			var page *string
-			for {
+			items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]generativeaiagent.AgentEndpointSummary, *string, error) {
 				response, err := svc.ListAgentEndpoints(ctx, generativeaiagent.ListAgentEndpointsRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					if ociRegionServiceUnavailable(err) {
-						return jobpool.JobResult([]any{}), nil
-					}
-					return nil, err
+					return nil, nil, err
 				}
-				items = append(items, response.Items...)
-				if response.OpcNextPage == nil {
-					break
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				if ociRegionServiceUnavailable(err) {
+					return []any{}, nil
 				}
-				page = response.OpcNextPage
+				return nil, err
 			}
 
 			res := make([]any, 0, len(items))
@@ -283,6 +176,11 @@ func (o *mqlOciAiAgents) getAgentEndpoints(conn *connection.OciConnection, regio
 				if e.SessionConfig != nil {
 					idleTimeout = intValue(e.SessionConfig.IdleTimeoutInSeconds)
 				}
+				var humanInput *bool
+				if e.HumanInputConfig != nil {
+					humanInput = e.HumanInputConfig.ShouldEnableHumanInput
+				}
+				output := ociAgentEndpointOutput(e.OutputConfig)
 
 				mqlEndpoint, err := CreateResource(o.MqlRuntime, "oci.ai.agents.endpoint", map[string]*llx.RawData{
 					"id":                          llx.StringDataPtr(e.Id),
@@ -298,6 +196,9 @@ func (o *mqlOciAiAgents) getAgentEndpoints(conn *connection.OciConnection, regio
 					"traceEnabled":                llx.BoolDataPtr(e.ShouldEnableTrace),
 					"citationEnabled":             llx.BoolDataPtr(e.ShouldEnableCitation),
 					"multiLanguageEnabled":        llx.BoolDataPtr(e.ShouldEnableMultiLanguage),
+					"humanInputEnabled":           llx.BoolDataPtr(humanInput),
+					"outputPrefix":                llx.StringData(output.prefix),
+					"outputRetentionInMinutes":    llx.IntDataPtr(output.retentionInMinutes),
 					"metadata":                    llx.MapData(strMapToAny(e.Metadata), types.String),
 					"state":                       llx.StringData(string(e.LifecycleState)),
 					"lifecycleDetails":            llx.StringDataPtr(e.LifecycleDetails),
@@ -310,18 +211,19 @@ func (o *mqlOciAiAgents) getAgentEndpoints(conn *connection.OciConnection, regio
 					return nil, err
 				}
 				mqlEndpointTyped := mqlEndpoint.(*mqlOciAiAgentsEndpoint)
-				mqlEndpointTyped.cacheAgentId = stringValue(e.AgentId)
+				mqlEndpointTyped.cacheAgentID = stringValue(e.AgentId)
+				mqlEndpointTyped.cacheOutput = output
+				mqlEndpointTyped.cacheRegion = region
 				res = append(res, mqlEndpointTyped)
 			}
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 type mqlOciAiAgentsEndpointInternal struct {
-	cacheAgentId string
+	cacheAgentID string
+	cacheOutput  ociAgentOutput
+	cacheRegion  string
 }
 
 func initOciAiAgentsEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -346,7 +248,7 @@ func initOciAiAgentsEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawDa
 			return args, e, nil
 		}
 	}
-	return args, nil, nil
+	return nil, nil, errors.New("oci.ai.agents.endpoint not found: " + idVal)
 }
 
 func (o *mqlOciAiAgentsEndpoint) id() (string, error) {
@@ -358,62 +260,102 @@ func (o *mqlOciAiAgentsEndpoint) compartment() (*mqlOciCompartment, error) {
 }
 
 func (o *mqlOciAiAgentsEndpoint) agent() (*mqlOciAiAgentsAgent, error) {
-	return resolveOciAiAgent(o.MqlRuntime, o.cacheAgentId, &o.Agent)
+	return resolveOciAiAgent(o.MqlRuntime, o.cacheAgentID, &o.Agent)
+}
+
+// outputBucket resolves the Object Storage bucket the endpoint writes chat
+// output to. GetBucket is regional; the output location names no region, so
+// the bucket is looked up in the endpoint's own region.
+func (o *mqlOciAiAgentsEndpoint) outputBucket() (*mqlOciObjectStorageBucket, error) {
+	out := o.cacheOutput
+	// Both parts are required: an empty namespace would build the cache key
+	// "oci.objectStorage.bucket//<name>", shared by every such bucket.
+	if out.namespace == "" || out.bucket == "" || o.cacheRegion == "" {
+		o.OutputBucket.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	regionRes, err := NewResource(o.MqlRuntime, "oci.region", map[string]*llx.RawData{
+		"id": llx.StringData(o.cacheRegion),
+	})
+	if err != nil {
+		return nil, err
+	}
+	res, err := NewResource(o.MqlRuntime, "oci.objectStorage.bucket", map[string]*llx.RawData{
+		"namespace": llx.StringData(out.namespace),
+		"name":      llx.StringData(out.bucket),
+		"region":    llx.ResourceData(regionRes, "oci.region"),
+	})
+	if err != nil {
+		// The bucket can be deleted while the endpoint still names it.
+		if ociReferentGone(err) {
+			log.Debug().Str("bucket", out.bucket).Msg("agent endpoint output bucket no longer exists")
+			o.OutputBucket.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+	return res.(*mqlOciObjectStorageBucket), nil
+}
+
+// ociAgentOutput is where an agent endpoint persists chat output.
+type ociAgentOutput struct {
+	namespace          string
+	bucket             string
+	prefix             string
+	retentionInMinutes *int
+}
+
+// ociAgentEndpointOutput extracts the Object Storage output location and the
+// retention period from an agent endpoint's output configuration.
+func ociAgentEndpointOutput(cfg *generativeaiagent.OutputConfig) ociAgentOutput {
+	var res ociAgentOutput
+	if cfg == nil {
+		return res
+	}
+	res.retentionInMinutes = cfg.RetentionPeriodInMinutes
+	switch loc := cfg.OutputLocation.(type) {
+	case generativeaiagent.ObjectStoragePrefixOutputLocation:
+		res.namespace = stringValue(loc.NamespaceName)
+		res.bucket = stringValue(loc.BucketName)
+		res.prefix = stringValue(loc.Prefix)
+	case *generativeaiagent.ObjectStoragePrefixOutputLocation:
+		if loc != nil {
+			res.namespace = stringValue(loc.NamespaceName)
+			res.bucket = stringValue(loc.BucketName)
+			res.prefix = stringValue(loc.Prefix)
+		}
+	}
+	return res
 }
 
 // ----- knowledge bases -----
 
 func (o *mqlOciAiAgents) knowledgeBases() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	regions, err := ociAgentRegions(o.MqlRuntime)
-	if err != nil {
-		return nil, err
-	}
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getKnowledgeBases(conn, regions), 5)
-	poolOfJobs.Run()
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-	return res, nil
-}
-
-func (o *mqlOciAiAgents) getKnowledgeBases(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			svc, err := conn.GenerativeAiAgentClient(regionResource.Id.Data)
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			svc, err := conn.GenerativeAiAgentClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			items := []generativeaiagent.KnowledgeBaseSummary{}
-			var page *string
-			for {
+			items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]generativeaiagent.KnowledgeBaseSummary, *string, error) {
 				response, err := svc.ListKnowledgeBases(ctx, generativeaiagent.ListKnowledgeBasesRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					if ociRegionServiceUnavailable(err) {
-						return jobpool.JobResult([]any{}), nil
-					}
-					return nil, err
+					return nil, nil, err
 				}
-				items = append(items, response.Items...)
-				if response.OpcNextPage == nil {
-					break
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				if ociRegionServiceUnavailable(err) {
+					return []any{}, nil
 				}
-				page = response.OpcNextPage
+				return nil, err
 			}
 
 			res := make([]any, 0, len(items))
@@ -437,11 +379,8 @@ func (o *mqlOciAiAgents) getKnowledgeBases(conn *connection.OciConnection, regio
 				}
 				res = append(res, mqlKb)
 			}
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 func initOciAiAgentsKnowledgeBase(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -466,7 +405,7 @@ func initOciAiAgentsKnowledgeBase(runtime *plugin.Runtime, args map[string]*llx.
 			return args, kb, nil
 		}
 	}
-	return args, nil, nil
+	return nil, nil, errors.New("oci.ai.agents.knowledgeBase not found: " + idVal)
 }
 
 func (o *mqlOciAiAgentsKnowledgeBase) id() (string, error) {
@@ -481,55 +420,29 @@ func (o *mqlOciAiAgentsKnowledgeBase) compartment() (*mqlOciCompartment, error) 
 
 func (o *mqlOciAiAgents) dataSources() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	regions, err := ociAgentRegions(o.MqlRuntime)
-	if err != nil {
-		return nil, err
-	}
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getDataSources(conn, regions), 5)
-	poolOfJobs.Run()
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-	return res, nil
-}
-
-func (o *mqlOciAiAgents) getDataSources(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			svc, err := conn.GenerativeAiAgentClient(regionResource.Id.Data)
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			svc, err := conn.GenerativeAiAgentClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			items := []generativeaiagent.DataSourceSummary{}
-			var page *string
-			for {
+			items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]generativeaiagent.DataSourceSummary, *string, error) {
 				response, err := svc.ListDataSources(ctx, generativeaiagent.ListDataSourcesRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					if ociRegionServiceUnavailable(err) {
-						return jobpool.JobResult([]any{}), nil
-					}
-					return nil, err
+					return nil, nil, err
 				}
-				items = append(items, response.Items...)
-				if response.OpcNextPage == nil {
-					break
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				if ociRegionServiceUnavailable(err) {
+					return []any{}, nil
 				}
-				page = response.OpcNextPage
+				return nil, err
 			}
 
 			res := make([]any, 0, len(items))
@@ -553,18 +466,15 @@ func (o *mqlOciAiAgents) getDataSources(conn *connection.OciConnection, regions 
 					return nil, err
 				}
 				mqlDsTyped := mqlDs.(*mqlOciAiAgentsDataSource)
-				mqlDsTyped.cacheKnowledgeBaseId = stringValue(ds.KnowledgeBaseId)
+				mqlDsTyped.cacheKnowledgeBaseID = stringValue(ds.KnowledgeBaseId)
 				res = append(res, mqlDsTyped)
 			}
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 type mqlOciAiAgentsDataSourceInternal struct {
-	cacheKnowledgeBaseId string
+	cacheKnowledgeBaseID string
 }
 
 func initOciAiAgentsDataSource(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -589,7 +499,7 @@ func initOciAiAgentsDataSource(runtime *plugin.Runtime, args map[string]*llx.Raw
 			return args, ds, nil
 		}
 	}
-	return args, nil, nil
+	return nil, nil, errors.New("oci.ai.agents.dataSource not found: " + idVal)
 }
 
 func (o *mqlOciAiAgentsDataSource) id() (string, error) {
@@ -601,12 +511,12 @@ func (o *mqlOciAiAgentsDataSource) compartment() (*mqlOciCompartment, error) {
 }
 
 func (o *mqlOciAiAgentsDataSource) knowledgeBase() (*mqlOciAiAgentsKnowledgeBase, error) {
-	if o.cacheKnowledgeBaseId == "" {
+	if o.cacheKnowledgeBaseID == "" {
 		o.KnowledgeBase.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	r, err := NewResource(o.MqlRuntime, "oci.ai.agents.knowledgeBase", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheKnowledgeBaseId),
+		"id": llx.StringData(o.cacheKnowledgeBaseID),
 	})
 	if err != nil {
 		return nil, err
@@ -618,55 +528,29 @@ func (o *mqlOciAiAgentsDataSource) knowledgeBase() (*mqlOciAiAgentsKnowledgeBase
 
 func (o *mqlOciAiAgents) tools() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	regions, err := ociAgentRegions(o.MqlRuntime)
-	if err != nil {
-		return nil, err
-	}
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getTools(conn, regions), 5)
-	poolOfJobs.Run()
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-	return res, nil
-}
-
-func (o *mqlOciAiAgents) getTools(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			svc, err := conn.GenerativeAiAgentClient(regionResource.Id.Data)
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			svc, err := conn.GenerativeAiAgentClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			items := []generativeaiagent.ToolSummary{}
-			var page *string
-			for {
+			items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]generativeaiagent.ToolSummary, *string, error) {
 				response, err := svc.ListTools(ctx, generativeaiagent.ListToolsRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					if ociRegionServiceUnavailable(err) {
-						return jobpool.JobResult([]any{}), nil
-					}
-					return nil, err
+					return nil, nil, err
 				}
-				items = append(items, response.Items...)
-				if response.OpcNextPage == nil {
-					break
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				if ociRegionServiceUnavailable(err) {
+					return []any{}, nil
 				}
-				page = response.OpcNextPage
+				return nil, err
 			}
 
 			res := make([]any, 0, len(items))
@@ -697,18 +581,18 @@ func (o *mqlOciAiAgents) getTools(conn *connection.OciConnection, regions []any)
 					return nil, err
 				}
 				mqlToolTyped := mqlTool.(*mqlOciAiAgentsTool)
-				mqlToolTyped.cacheAgentId = stringValue(t.AgentId)
+				mqlToolTyped.cacheAgentID = stringValue(t.AgentId)
+				mqlToolTyped.cacheSubnetID, mqlToolTyped.cacheKnowledgeBaseIDs = ociToolConfigRefs(t.ToolConfig)
 				res = append(res, mqlToolTyped)
 			}
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 type mqlOciAiAgentsToolInternal struct {
-	cacheAgentId string
+	cacheAgentID          string
+	cacheSubnetID         string
+	cacheKnowledgeBaseIDs []string
 }
 
 func initOciAiAgentsTool(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -733,7 +617,7 @@ func initOciAiAgentsTool(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 			return args, t, nil
 		}
 	}
-	return args, nil, nil
+	return nil, nil, errors.New("oci.ai.agents.tool not found: " + idVal)
 }
 
 func (o *mqlOciAiAgentsTool) id() (string, error) {
@@ -745,7 +629,42 @@ func (o *mqlOciAiAgentsTool) compartment() (*mqlOciCompartment, error) {
 }
 
 func (o *mqlOciAiAgentsTool) agent() (*mqlOciAiAgentsAgent, error) {
-	return resolveOciAiAgent(o.MqlRuntime, o.cacheAgentId, &o.Agent)
+	return resolveOciAiAgent(o.MqlRuntime, o.cacheAgentID, &o.Agent)
+}
+
+func (o *mqlOciAiAgentsTool) subnet() (*mqlOciNetworkSubnet, error) {
+	return resolveOciSubnet(o.MqlRuntime, o.cacheSubnetID, &o.Subnet)
+}
+
+func (o *mqlOciAiAgentsTool) knowledgeBases() ([]any, error) {
+	return resolveOciAiKnowledgeBases(o.MqlRuntime, o.cacheKnowledgeBaseIDs)
+}
+
+// ociToolConfigRefs extracts the resources a tool configuration points at:
+// the subnet an HTTP endpoint tool calls out from, and the knowledge bases a
+// RAG tool retrieves from. Other tool types reference neither.
+func ociToolConfigRefs(cfg generativeaiagent.ToolConfig) (subnetID string, knowledgeBaseIDs []string) {
+	var kbConfigs []generativeaiagent.KnowledgeBaseConfig
+	switch c := cfg.(type) {
+	case generativeaiagent.HttpEndpointToolConfig:
+		subnetID = stringValue(c.SubnetId)
+	case *generativeaiagent.HttpEndpointToolConfig:
+		if c != nil {
+			subnetID = stringValue(c.SubnetId)
+		}
+	case generativeaiagent.RagToolConfig:
+		kbConfigs = c.KnowledgeBaseConfigs
+	case *generativeaiagent.RagToolConfig:
+		if c != nil {
+			kbConfigs = c.KnowledgeBaseConfigs
+		}
+	}
+	for _, kb := range kbConfigs {
+		if id := stringValue(kb.KnowledgeBaseId); id != "" {
+			knowledgeBaseIDs = append(knowledgeBaseIDs, id)
+		}
+	}
+	return subnetID, knowledgeBaseIDs
 }
 
 // ----- helpers -----
@@ -764,6 +683,43 @@ func resolveOciAiAgent(runtime *plugin.Runtime, id string, field *plugin.TValue[
 		return nil, err
 	}
 	return r.(*mqlOciAiAgentsAgent), nil
+}
+
+// resolveOciAiKnowledgeBases resolves knowledge base OCIDs through the
+// cached knowledge base listing. An OCID the listing does not contain (a
+// deleted knowledge base, or one in a compartment outside the scan) is
+// skipped; a failure to list is returned.
+func resolveOciAiKnowledgeBases(runtime *plugin.Runtime, ids []string) ([]any, error) {
+	if len(ids) == 0 {
+		return []any{}, nil
+	}
+	obj, err := CreateResource(runtime, "oci.ai.agents", nil)
+	if err != nil {
+		return nil, err
+	}
+	list := obj.(*mqlOciAiAgents).GetKnowledgeBases()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+	return ociSelectByID(list.Data, ids), nil
+}
+
+// ociSelectByID returns the resources from items whose id is in ids, in the
+// order of ids. Ids with no matching resource are skipped.
+func ociSelectByID(items []any, ids []string) []any {
+	byID := make(map[string]any, len(items))
+	for _, raw := range items {
+		if r, ok := raw.(interface{ GetId() *plugin.TValue[string] }); ok {
+			byID[r.GetId().Data] = raw
+		}
+	}
+	res := make([]any, 0, len(ids))
+	for _, id := range ids {
+		if r, ok := byID[id]; ok && id != "" {
+			res = append(res, r)
+		}
+	}
+	return res
 }
 
 // ociToolConfigType extracts the polymorphic tool-config discriminator

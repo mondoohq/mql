@@ -1,0 +1,29 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": [
+    {
+      "id": "ld-admin",
+      "description": "Pin wp-admin to the office",
+      "paused": false,
+      "urls": ["example.com/wp-admin*", "example.com/wp-login.php"],
+      "configurations": [
+        { "target": "ip", "value": "203.0.113.10" },
+        { "target": "ip_range", "value": "198.51.100.0/24" }
+      ],
+      "created_on": "2024-03-01T00:00:00Z",
+      "modified_on": "2024-03-02T00:00:00Z"
+    },
+    {
+      "id": "ld-staging",
+      "description": "Staging host",
+      "paused": true,
+      "urls": ["staging.example.com/*"],
+      "configurations": [{ "target": "ip", "value": "203.0.113.11" }],
+      "created_on": "2024-03-03T00:00:00Z",
+      "modified_on": "2024-03-04T00:00:00Z"
+    }
+  ],
+  "result_info": { "page": 1, "per_page": 100, "count": 2, "total_count": 2, "total_pages": 1 }
+}

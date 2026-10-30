@@ -1,0 +1,118 @@
+# all those variables need to be defined to activate this rule
+#@@define MUNIN_DOMAINS undefined
+#@@define MUNIN_HOSTS undefined
+#@@define MUNIN_DISKDEVS undefined
+#@@define MUNIN_DISKS undefined
+
+@@define MUNIN_VC var/cache/munin
+@@define MUNIN_VL var/lib/munin
+
+ /@@{RUN}/munin$ d RecreatedDir
+!/@@{RUN}/munin/munin-master-processmanager-[[:digit:]]+\\.sock$ s
+ /@@{MUNIN_VC}/www/static$ d VarDir
+ /@@{MUNIN_VC}/www/static/((definitions|dynazoom)\\.html|favicon\\.ico|(formatdate|querystring|zoom)\\.js|logo(-h)?\\.png|style(-1\\.2|-new)?\\.css)$ f VarFile
+ /@@{MUNIN_VL}$ d VarDir
+ /@@{MUNIN_VL}/graphs$ f VarFile
+ /@@{MUNIN_VL}/munin-(graph|update)\\.stats$ f VarFile
+!/@@{MUNIN_VL}/munin-update\\.stats\\.tmp$ f
+@@if defined MUNIN_DOMAINS
+@@if defined MUNIN_HOSTS
+@@if defined MUNIN_DISKDEVS
+@@if defined MUNIN_DISKS
+!/@@{RUN}/munin/munin-(graph|update|@@{MUNIN_DOMAINS}-@@{MUNIN_HOSTS})\\.lock$ f
+ /@@{MUNIN_VC}/www/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}$ d VarDir
+ /@@{MUNIN_VC}/www/(disk|exim|munin|network|processes|sensors|system|time)-(day|month|week|year)\\.html$ f VarFile
+@@define MUNIN_LOCAL (cpu|df|df_inode|entropy|exim_mail(queue|stats)|forks|fw_packets|http_loadtime|if(_err)?_@@{MUNIN_INTERFACES}|interrupts|iostat(_ios)?|irqstats|load|memory|munin_stats|ntp_kernel_(err|pll_freq|pll_off)|ntp_offset|open_(files|inodes)|proc_pri|processes|swap|threads|uptime|users|vmstat)
+!/@@{MUNIN_VC}/www/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}/(cpu-day\\.png)$ f
+ /@@{MUNIN_VC}/www/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}/diskstats_(iops|latency|throughput|utilization)$ d VarDir
+ /@@{MUNIN_VC}/www/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}/diskstats_(iops|latency|throughput|utilization)/@@{MUNIN_DISKDEVS}(\\.html|-(day|week|month|year)\\.png)$ f VarFile
+ /@@{MUNIN_VC}/www/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}/diskstats_(iops|latency|throughput|utilization)(\\.html|-(day|week|month|year)\\.png)$ f VarFile
+ /@@{MUNIN_VC}/www/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}/if_(errcoll|packets)_@@{MUNIN_INTERFACES}(\\.html|-(day|week|month|year)\\.png)$ f VarFile
+ /@@{MUNIN_VC}/www/mysql-(day|week|month|year)\\.html$ f VarFile
+ /@@{MUNIN_VC}/www/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}/mysql(_(bytes|(slow)?queries|threads))?(\\.html|-(day|week|month|year)\\.png)$ f VarFile
+ /@@{MUNIN_VC}/www/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}/netstat_(established)?(\\.html|-(day|week|month|year)\\.png)$ f VarFile
+ /@@{MUNIN_VC}/www/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}/sendmail(_mail(queue|stats|traffic))?(\\.html|-(day|week|month|year)\\.png)$ f VarFile
+ /@@{MUNIN_VC}/www/sendmail-(day|week|month|year)\\.html$ f VarFile
+ /@@{MUNIN_VC}/www/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}/(acpi|netstat|systat)(\\.html|-(day|week|month|year)\\.png)$ f VarFile
+@@if exists /usr/share/doc/tor/copyright
+ /@@{MUNIN_VC}/www/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}/tor_(bandwidth|connections|dormant|routers|traffic)(\\.html|-(day|week|month|year)\\.png)$ f VarFile
+@@endif
+ /@@{MUNIN_VC}/www/@@{MUNIN_DOMAINS}(/@@{MUNIN_HOSTS}/diskstats_(iops|latency|throughput|utilization))?/index\\.html$ f VarFile
+ /@@{MUNIN_VC}/www/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}/@@{MUNIN_LOCAL}(\\.html|-(day|month|week|year)\\.png)$ f VarFile
+ /@@{MUNIN_VC}/www/(@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}/)?(index|problems)\\.html$ f VarFile
+ /@@{MUNIN_VL}/(state-@@{MUNIN_DOMAINS}-@@{MUNIN_HOSTS}|datafile|limits|htmlconf)(\\.storable)?$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-(forks-forks|swap-swap_(in|out))-d\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-entropy-entropy-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-cpu-(guest|idle|iowait|interrupt|irq|nice|softirq|steal|system|user)-d\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-(load-load|threads-threads|uptime-uptime)-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-df(_inode)?-(_dev|@@{MUNIN_DISKS})-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-diskstats_iops-@@{MUNIN_DISKDEVS}[_-](avg(rd|wr)rqsz|(rd|wr)io)-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-diskstats_(latency)-@@{MUNIN_DISKDEVS}[-_](avg(rd|wr)?wait|svctm)-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-diskstats_(throughput)-@@{MUNIN_DISKDEVS}[-_]((rd|wr)bytes)-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-diskstats_(utilization)-@@{MUNIN_DISKDEVS}[-_](util)-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-exim_mail(queue-(frozen|mails)-g|stats-(completed|received|rejected)-d)\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-fw_packets-(forwarded|received)-d\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-if_err_@@{MUNIN_INTERFACES}-(collisions|rcvd|[rt]xdrop|trans)-c\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-if_errcoll_@@{MUNIN_INTERFACES}-(collisions|[io]errors)-c\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-if_packets_@@{MUNIN_INTERFACES}-([or]packets)-c\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-if_@@{MUNIN_INTERFACES}-(down|up|[ior]bytes)-d\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-interrupts-(ctx|intr)-d\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-iostat-(cd0|da0|dev[[:digit:]]+_[[:digit:]]|pass[01]){1,2}_(read|write)-d\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-iostat_ios-dev[[:digit:]]+_[[:digit:]]{1,2}_[rw]time-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-irqstats-i([[:digit:]]+|CAL|DFR|ERR|HYP|IWI|LOC|MCE|MCP|MIS|NMI|NPI|PIN|PIW|PMI|RES|RTR|SPU|THR|TLB|TRM)-d\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-lstime-lstime-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-memory-(active|apps|buffers|cached|committed|free|inactive|ksm_sharing|laundry|mapped|page_tables|per_cpu|shmem|slab|swap|swap_cache|vmalloc_used|wired)-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-munin_stats-(graph|html|limits|update)-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-mysql_(threads-threads)-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-mysql_(bytes-(recv|sent)|queries-(cache(_hits)?|delete|insert|replace|select|update)|slowqueries-queries)-d\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-netstat-(active|established|failed|passive|resets)-d\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-netstat(_established-established)?-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-ntp_(kernel_(err-ntp_err|pll_(freq|off)-ntp_pll_(freq|off)))-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-ntp_offset-(delay|jitter|offset)-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-open_((files|inodes)-(max|used))-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-proc_pri-(high|locked|low)-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-processes-(dead|idle|paging|processes|runnable|sleeping|stopped|uninterruptible|zombie)-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-sendmail_(mailqueue-mails)-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-sendmail_(mailstats-(discarded|received|rejected|sent)|mailtraffic-(received|sent))-d\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-users-(X|other|pts|pty|tty)-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-systat-(cs|forks|(hard|soft)int|syscall)-d\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-vmstat-(sleep|wait)-g\\.rrd$ f VarFile
+ /@@{MUNIN_VL}/@@{MUNIN_DOMAINS}/@@{MUNIN_HOSTS}-http_loadtime-http___localhost_-g\\.rrd$ f VarFile
+@@undef MUNIN_LOCAL
+@@endif
+@@endif
+@@endif
+@@endif
+
+@@define MUNIN_LOGDIR var/log/munin
+@@define MUNIN_LOGFILES munin-(graph|html|limits|update)\\.log
+ /@@{MUNIN_LOGDIR}$ d VarDir
+ /@@{MUNIN_LOGDIR}/@@{MUNIN_LOGFILES}$ f ActLog
+ /@@{MUNIN_LOGDIR}/@@{MUNIN_LOGFILES}\\.1$ f RotLog
+ /@@{MUNIN_LOGDIR}/@@{MUNIN_LOGFILES}\\.2\\.@@{LOGEXT}$ f CompSerLog
+ /@@{MUNIN_LOGDIR}/@@{MUNIN_LOGFILES}\\.[3-6]\\.@@{LOGEXT}$ f MidlSerLog
+ /@@{MUNIN_LOGDIR}/@@{MUNIN_LOGFILES}\\.7\\.@@{LOGEXT}$ f LastSerLog
+@@undef MUNIN_LOGDIR
+@@undef MUNIN_LOGFILES
+
+@@if defined MUNIN_INTERFACES
+@@undef MUNIN_INTERFACES
+@@endif
+@@if defined MUNIN_DOMAINS
+@@undef MUNIN_DOMAINS
+@@endif
+@@if defined MUNIN_HOSTS
+@@undef MUNIN_HOSTS
+@@endif
+@@if defined MUNIN_DISKDEVS
+@@undef MUNIN_DISKDEVS
+@@endif
+@@if defined MUNIN_DISKS
+@@undef MUNIN_DISKS
+@@endif
+@@if defined MUNIN_VL
+@@undef MUNIN_VL
+@@endif
+@@if defined MUNIN_VC
+@@undef MUNIN_VC
+@@endif

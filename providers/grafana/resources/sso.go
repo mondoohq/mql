@@ -11,18 +11,18 @@ import (
 	"strconv"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 )
 
 // grafanaSsoSettingsJSON mirrors one element of /api/v1/sso-settings.
 // Settings is provider-specific; Grafana redacts secret fields server-side.
 type grafanaSsoSettingsJSON struct {
-	ID       string                 `json:"id"`
-	Provider string                 `json:"provider"`
-	Source   string                 `json:"source"`
-	Settings map[string]interface{} `json:"settings"`
+	ID       string         `json:"id"`
+	Provider string         `json:"provider"`
+	Source   string         `json:"source"`
+	Settings map[string]any `json:"settings"`
 }
 
 // ssoSettings queries /api/v1/sso-settings, listing all configured identity

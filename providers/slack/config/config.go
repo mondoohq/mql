@@ -4,16 +4,22 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/slack/connection"
-	"go.mondoo.com/mql/v13/providers/slack/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/slack/connection"
+	"go.mondoo.com/mql/providers/slack/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "slack",
-	ID:              "go.mondoo.com/cnquery/v9/providers/slack",
-	Version:         "13.1.14",
+	Name: "slack",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "slack",
+	ID:      "go.mondoo.com/mql/providers/slack",
+	Version: "14.1.6",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.ConnectionType},
 	Platforms:       connection.Platforms,
 	Connectors: []plugin.Connector{

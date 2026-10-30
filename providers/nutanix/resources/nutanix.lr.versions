@@ -121,7 +121,6 @@ nutanix.host.isSecureBooted 13.0.0
 nutanix.host.maintenanceState 13.0.0
 nutanix.host.memorySizeBytes 13.0.0
 nutanix.host.name 13.0.0
-nutanix.host.nodeSerial 13.0.0
 nutanix.host.nodeStatus 13.0.0
 nutanix.host.rackableUnitUuid 13.0.0
 nutanix.host.tenantId 13.1.4
@@ -210,10 +209,12 @@ nutanix.iam.user.tenantId 13.1.4
 nutanix.iam.user.userType 13.0.0
 nutanix.iam.user.username 13.0.0
 nutanix.image 13.1.4
+nutanix.image.clusters 13.3.4
 nutanix.image.createTime 13.1.4
 nutanix.image.description 13.1.4
 nutanix.image.id 13.1.4
 nutanix.image.name 13.1.4
+nutanix.image.owner 13.3.4
 nutanix.image.sizeBytes 13.1.4
 nutanix.image.tenantId 13.1.4
 nutanix.image.type 13.1.4
@@ -257,6 +258,7 @@ nutanix.network.subnet.vpc 13.0.0
 nutanix.network.vpc 13.0.0
 nutanix.network.vpc.description 13.0.0
 nutanix.network.vpc.externalRoutingDomainReference 13.0.0
+nutanix.network.vpc.externalSubnets 13.3.4
 nutanix.network.vpc.externallyRoutablePrefixes 13.0.0
 nutanix.network.vpc.id 13.0.0
 nutanix.network.vpc.name 13.0.0
@@ -269,6 +271,7 @@ nutanix.network.vpc.vpcType 13.0.0
 nutanix.roles 13.0.0
 nutanix.samlIdentityProviders 13.0.0
 nutanix.storage.container 13.0.0
+nutanix.storage.container.affinityHost 13.3.4
 nutanix.storage.container.cacheDeduplication 13.0.0
 nutanix.storage.container.cluster 13.0.0
 nutanix.storage.container.compressionDelaySecs 13.0.0
@@ -280,7 +283,6 @@ nutanix.storage.container.isInlineEcEnabled 13.0.0
 nutanix.storage.container.isInternal 13.0.0
 nutanix.storage.container.isMarkedForRemoval 13.0.0
 nutanix.storage.container.isNfsWhitelistInherited 13.0.0
-nutanix.storage.container.isShared 13.0.0
 nutanix.storage.container.isSoftwareEncryptionEnabled 13.0.0
 nutanix.storage.container.logicalAdvertisedCapacityBytes 13.0.0
 nutanix.storage.container.logicalExplicitReservedCapacityBytes 13.0.0
@@ -404,7 +406,6 @@ nutanix.vm.numSockets 13.0.0
 nutanix.vm.numThreadsPerCore 13.0.0
 nutanix.vm.owner 13.1.4
 nutanix.vm.powerState 13.0.0
-nutanix.vm.projectId 13.1.4
 nutanix.vm.protectionType 13.0.0
 nutanix.vm.sourceId 13.1.4
 nutanix.vm.sourceType 13.1.4

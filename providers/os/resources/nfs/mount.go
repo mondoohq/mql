@@ -86,8 +86,8 @@ func splitNFSDevice(device string) (string, string) {
 			return device[:end+1], device[end+2:]
 		}
 	}
-	if idx := strings.Index(device, ":"); idx != -1 {
-		return device[:idx], device[idx+1:]
+	if before, after, ok := strings.Cut(device, ":"); ok {
+		return before, after
 	}
 	return device, ""
 }

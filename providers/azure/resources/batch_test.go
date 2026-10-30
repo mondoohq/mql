@@ -15,34 +15,34 @@ func TestBatchAccountDataConversion(t *testing.T) {
 	sharedKeyMode := armbatch.AuthenticationModeSharedKey
 
 	mockAccount := &armbatch.Account{
-		ID:       ptr("/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Batch/batchAccounts/test-account"),
-		Name:     ptr("test-account"),
-		Type:     ptr("Microsoft.Batch/batchAccounts"),
-		Location: ptr("eastus"),
+		ID:       new("/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Batch/batchAccounts/test-account"),
+		Name:     new("test-account"),
+		Type:     new("Microsoft.Batch/batchAccounts"),
+		Location: new("eastus"),
 		Identity: &armbatch.AccountIdentity{
 			Type:        ptr(armbatch.ResourceIdentityTypeSystemAssigned),
-			PrincipalID: ptr("principal-123"),
-			TenantID:    ptr("tenant-456"),
+			PrincipalID: new("principal-123"),
+			TenantID:    new("tenant-456"),
 		},
 		Properties: &armbatch.AccountProperties{
-			AccountEndpoint:                       ptr("test-account.eastus.batch.azure.com"),
+			AccountEndpoint:                       new("test-account.eastus.batch.azure.com"),
 			ProvisioningState:                     ptr(armbatch.ProvisioningStateSucceeded),
 			PoolAllocationMode:                    ptr(armbatch.PoolAllocationModeBatchService),
 			PublicNetworkAccess:                   ptr(armbatch.PublicNetworkAccessTypeEnabled),
-			NodeManagementEndpoint:                ptr("https://test-account.eastus.service.batch.azure.com"),
-			ActiveJobAndJobScheduleQuota:          ptr(int32(300)),
-			DedicatedCoreQuota:                    ptr(int32(500)),
-			DedicatedCoreQuotaPerVMFamilyEnforced: ptr(true),
-			LowPriorityCoreQuota:                  ptr(int32(100)),
-			PoolQuota:                             ptr(int32(64)),
+			NodeManagementEndpoint:                new("https://test-account.eastus.service.batch.azure.com"),
+			ActiveJobAndJobScheduleQuota:          new(int32(300)),
+			DedicatedCoreQuota:                    new(int32(500)),
+			DedicatedCoreQuotaPerVMFamilyEnforced: new(true),
+			LowPriorityCoreQuota:                  new(int32(100)),
+			PoolQuota:                             new(int32(64)),
 			AllowedAuthenticationModes: []*armbatch.AuthenticationMode{
 				&aadMode,
 				&sharedKeyMode,
 			},
 		},
 		Tags: map[string]*string{
-			"Environment": ptr("Test"),
-			"Team":        ptr("Platform"),
+			"Environment": new("Test"),
+			"Team":        new("Platform"),
 		},
 	}
 
@@ -80,8 +80,8 @@ func TestBatchAccountDataConversion(t *testing.T) {
 
 		// Dict fields
 		assert.NotNil(t, rawData["properties"].Value)
-		assert.NotNil(t, rawData["identity"].Value)
 		assert.NotNil(t, rawData["tags"].Value)
+		assert.Equal(t, "principal-123", rawData["principalId"].Value)
 	})
 
 	t.Run("EnumConversions", func(t *testing.T) {
@@ -97,10 +97,10 @@ func TestBatchAccountDataConversion(t *testing.T) {
 
 	t.Run("NilOptionalFields", func(t *testing.T) {
 		minimalAccount := &armbatch.Account{
-			ID:       ptr("/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Batch/batchAccounts/minimal"),
-			Name:     ptr("minimal"),
-			Type:     ptr("Microsoft.Batch/batchAccounts"),
-			Location: ptr("westus"),
+			ID:       new("/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Batch/batchAccounts/minimal"),
+			Name:     new("minimal"),
+			Type:     new("Microsoft.Batch/batchAccounts"),
+			Location: new("westus"),
 			Properties: &armbatch.AccountProperties{
 				ProvisioningState: ptr(armbatch.ProvisioningStateSucceeded),
 			},
@@ -121,15 +121,12 @@ func TestBatchAccountDataConversion(t *testing.T) {
 		assert.Nil(t, rawData["poolQuota"].Value)
 		assert.Nil(t, rawData["dedicatedCoreQuotaPerVmFamilyEnforced"].Value)
 		assert.Nil(t, rawData["allowedAuthenticationModes"].Value)
-		assert.Nil(t, rawData["autoStorage"].Value)
-		assert.Nil(t, rawData["encryption"].Value)
-		assert.Nil(t, rawData["keyVaultReference"].Value)
 		assert.Nil(t, rawData["networkProfile"].Value)
 		assert.Nil(t, rawData["privateEndpointConnections"].Value)
 		assert.Nil(t, rawData["dedicatedCoreQuotaPerVmFamily"].Value)
 
 		// Nil identity
-		assert.Nil(t, rawData["identity"].Value)
+		assert.Equal(t, "", rawData["principalId"].Value)
 
 		// Present fields still work
 		assert.Equal(t, "Succeeded", rawData["provisioningState"].Value)
@@ -137,10 +134,10 @@ func TestBatchAccountDataConversion(t *testing.T) {
 
 	t.Run("NilProperties", func(t *testing.T) {
 		noPropsAccount := &armbatch.Account{
-			ID:       ptr("/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Batch/batchAccounts/no-props"),
-			Name:     ptr("no-props"),
-			Type:     ptr("Microsoft.Batch/batchAccounts"),
-			Location: ptr("westus"),
+			ID:       new("/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Batch/batchAccounts/no-props"),
+			Name:     new("no-props"),
+			Type:     new("Microsoft.Batch/batchAccounts"),
+			Location: new("westus"),
 		}
 
 		rawData, err := createBatchAccountRawData(noPropsAccount)
@@ -155,21 +152,21 @@ func TestBatchAccountDataConversion(t *testing.T) {
 
 func TestBatchPoolDataConversion(t *testing.T) {
 	mockPool := &armbatch.Pool{
-		ID:   ptr("/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Batch/batchAccounts/test-account/pools/test-pool"),
-		Name: ptr("test-pool"),
-		Type: ptr("Microsoft.Batch/batchAccounts/pools"),
-		Etag: ptr("W/\"0x8D12345678\""),
+		ID:   new("/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Batch/batchAccounts/test-account/pools/test-pool"),
+		Name: new("test-pool"),
+		Type: new("Microsoft.Batch/batchAccounts/pools"),
+		Etag: new("W/\"0x8D12345678\""),
 		Properties: &armbatch.PoolProperties{
-			VMSize:            ptr("Standard_D2s_v3"),
+			VMSize:            new("Standard_D2s_v3"),
 			ProvisioningState: ptr(armbatch.PoolProvisioningStateSucceeded),
 			DeploymentConfiguration: &armbatch.DeploymentConfiguration{
 				VirtualMachineConfiguration: &armbatch.VirtualMachineConfiguration{
-					NodeAgentSKUID: ptr("batch.node.ubuntu 22.04"),
+					NodeAgentSKUID: new("batch.node.ubuntu 22.04"),
 					ImageReference: &armbatch.ImageReference{
-						Publisher: ptr("canonical"),
-						Offer:     ptr("0001-com-ubuntu-server-jammy"),
-						SKU:       ptr("22_04-lts"),
-						Version:   ptr("latest"),
+						Publisher: new("canonical"),
+						Offer:     new("0001-com-ubuntu-server-jammy"),
+						SKU:       new("22_04-lts"),
+						Version:   new("latest"),
 					},
 				},
 			},
@@ -177,7 +174,7 @@ func TestBatchPoolDataConversion(t *testing.T) {
 	}
 
 	t.Run("FullDataConversion", func(t *testing.T) {
-		rawData, err := createBatchPoolRawData(mockPool)
+		rawData, err := createBatchPoolRawData(azureTestRuntime(), mockPool)
 		assert.NoError(t, err)
 		assert.NotNil(t, rawData)
 
@@ -196,12 +193,12 @@ func TestBatchPoolDataConversion(t *testing.T) {
 
 	t.Run("NilOptionalFields", func(t *testing.T) {
 		minimalPool := &armbatch.Pool{
-			ID:   ptr("/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Batch/batchAccounts/test-account/pools/minimal"),
-			Name: ptr("minimal"),
-			Type: ptr("Microsoft.Batch/batchAccounts/pools"),
+			ID:   new("/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Batch/batchAccounts/test-account/pools/minimal"),
+			Name: new("minimal"),
+			Type: new("Microsoft.Batch/batchAccounts/pools"),
 		}
 
-		rawData, err := createBatchPoolRawData(minimalPool)
+		rawData, err := createBatchPoolRawData(azureTestRuntime(), minimalPool)
 		assert.NoError(t, err)
 		assert.NotNil(t, rawData)
 

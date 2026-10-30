@@ -6,11 +6,12 @@ package llx
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/types"
 )
 
 func TestRawDataJson_removeUnderscoreKeys(t *testing.T) {
@@ -70,8 +71,13 @@ func TestRawDataJson_duration(t *testing.T) {
 func TestRawDataJson_Umlauts(t *testing.T) {
 	var res bytes.Buffer
 	require.NoError(t, rawDataJSON(types.String, "Systemintegrit\x84t", "blfbjef", &CodeBundle{}, &res))
-	require.Equal(t, res.String(), "\"Systemintegrit\\ufffdt\"")
 	require.True(t, json.Valid(res.Bytes()))
+	// The invalid byte becomes U+FFFD. Go 1.27's encoding/json writes it as the
+	// raw character where earlier releases escaped it as �; both decode to
+	// the same string, which is what consumers of the output see.
+	var decoded string
+	require.NoError(t, json.Unmarshal(res.Bytes(), &decoded))
+	require.Equal(t, "Systemintegrit�t", decoded)
 }
 
 // Two block entries can resolve to the same human-readable label (e.g.
@@ -160,5 +166,74 @@ func TestRawDataJson_refMapJSON_collidingLabels(t *testing.T) {
 			}
 			require.Equal(t, len(tc.data), len(seen), "every entry must be present in JSON: %s", buf.String())
 		})
+	}
+}
+
+// An error value used to be written with PrettyPrintString, which un-escapes \n
+// and \t back into real control characters. JSON forbids those inside a string
+// (RFC 8259 section 7), so any multi-line error made the whole document
+// unparseable - and multi-line is the common case, since a multierror renders as
+// "N errors occurred:\n\t* ..." whenever more than one element of a collection
+// fails.
+func TestRawDataJson_errorValuesAreEscaped(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "single line error",
+			err:  errors.New("operation error IAM: GetRole, NoSuchEntity"),
+		},
+		{
+			// The shape a multierror produces, which is what broke this.
+			name: "multierror with newline and tab",
+			err:  errors.New("2 errors occurred:\n\t* subnet not found\n\t* role not found"),
+		},
+		{
+			name: "carriage return",
+			err:  errors.New("line one\rline two"),
+		},
+		{
+			name: "embedded quotes and backslashes",
+			err:  errors.New(`the role "x\y" cannot be found`),
+		},
+		{
+			name: "other control characters",
+			err:  errors.New("bell\x07 and null-ish\x1f"),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			bundle := &CodeBundle{Labels: &Labels{Labels: map[string]string{"e": "thing"}}}
+			data := map[string]any{"e": &RawData{Type: types.String, Error: tc.err}}
+
+			var buf bytes.Buffer
+			require.NoError(t, refMapJSON(types.Block, data, "", bundle, &buf))
+			require.True(t, json.Valid(buf.Bytes()),
+				"output is not valid JSON: %q", buf.String())
+
+			// the message must survive intact, not just be escaped away
+			var out map[string]string
+			require.NoError(t, json.Unmarshal(buf.Bytes(), &out))
+			require.Equal(t, "Error: "+tc.err.Error(), out["thing"])
+		})
+	}
+}
+
+// Guard the specific byte-level rule: no raw control character may appear in the
+// output, whatever the error contains.
+func TestRawDataJson_errorValuesCarryNoRawControlBytes(t *testing.T) {
+	bundle := &CodeBundle{Labels: &Labels{Labels: map[string]string{"e": "thing"}}}
+	data := map[string]any{
+		"e": &RawData{Type: types.String, Error: errors.New("a\n\tb\rc")},
+	}
+
+	var buf bytes.Buffer
+	require.NoError(t, refMapJSON(types.Block, data, "", bundle, &buf))
+
+	for i, b := range buf.Bytes() {
+		require.Greater(t, b, byte(0x1f),
+			"raw control byte %#x at offset %d in %q", b, i, buf.String())
 	}
 }

@@ -12,11 +12,11 @@ import (
 	alloydb "cloud.google.com/go/alloydb/apiv1"
 	"cloud.google.com/go/alloydb/apiv1/alloydbpb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -83,9 +83,9 @@ func (g *mqlGcpProjectAlloydbService) clusters() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list AlloyDB clusters")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -337,9 +337,9 @@ func (g *mqlGcpProjectAlloydbServiceCluster) users() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list AlloyDB users")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -402,6 +402,12 @@ func initGcpProjectAlloydbServiceCluster(runtime *plugin.Runtime, args map[strin
 		}
 	}
 
+	// Guard before building the parent: CreateResource hands args["projectId"]
+	// to the generated setter, which dereferences it, so nil panics the provider.
+	if args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.alloydbService.cluster requires a \"projectId\" argument")
+	}
+
 	obj, err := CreateResource(runtime, "gcp.project.alloydbService", map[string]*llx.RawData{
 		"projectId": args["projectId"],
 	})
@@ -414,10 +420,14 @@ func initGcpProjectAlloydbServiceCluster(runtime *plugin.Runtime, args map[strin
 		return nil, nil, clusters.Error
 	}
 
-	nameVal := args["name"].Value.(string)
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New("gcp.project.alloydbService.cluster requires a \"name\" argument")
+	}
+	nameVal, _ := nameRaw.Value.(string)
 	locationVal := ""
 	if args["location"] != nil {
-		locationVal = args["location"].Value.(string)
+		locationVal, _ = args["location"].Value.(string)
 	}
 	for _, c := range clusters.Data {
 		cluster := c.(*mqlGcpProjectAlloydbServiceCluster)
@@ -476,9 +486,9 @@ func (g *mqlGcpProjectAlloydbServiceCluster) instances() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list AlloyDB instances")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -637,9 +647,9 @@ func (g *mqlGcpProjectAlloydbServiceCluster) backups() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list AlloyDB backups")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}

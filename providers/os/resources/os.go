@@ -6,25 +6,28 @@ package resources
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/docker"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/connection/tar"
-	"go.mondoo.com/mql/v13/providers/os/id/hostname"
-	"go.mondoo.com/mql/v13/providers/os/id/hypervisor"
-	"go.mondoo.com/mql/v13/providers/os/id/platformid"
-	"go.mondoo.com/mql/v13/providers/os/resources/reboot"
-	"go.mondoo.com/mql/v13/providers/os/resources/systemd"
-	"go.mondoo.com/mql/v13/providers/os/resources/updates"
-	"go.mondoo.com/mql/v13/providers/os/resources/uptime"
-	"go.mondoo.com/mql/v13/providers/os/resources/windows"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/core/resources/versions/rpm"
+	"go.mondoo.com/mql/providers/os/connection/docker"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/tar"
+	"go.mondoo.com/mql/providers/os/detector/containerenv"
+	"go.mondoo.com/mql/providers/os/id/hostname"
+	"go.mondoo.com/mql/providers/os/id/hypervisor"
+	"go.mondoo.com/mql/providers/os/id/platformid"
+	"go.mondoo.com/mql/providers/os/resources/reboot"
+	"go.mondoo.com/mql/providers/os/resources/systemd"
+	"go.mondoo.com/mql/providers/os/resources/updates"
+	"go.mondoo.com/mql/providers/os/resources/uptime"
+	"go.mondoo.com/mql/providers/os/resources/windows"
 )
 
 func (p *mqlOs) rebootpending() (bool, error) {
@@ -35,39 +38,19 @@ func (p *mqlOs) rebootpending() (bool, error) {
 		return false, nil
 	}
 
-	// check photon
 	conn := p.MqlRuntime.Connection.(shared.Connection)
 	asset := conn.Asset()
 
-	if asset.Platform.Name == "photon" {
-		// get installed kernel and check if the found one is running
+	if rebootNeverPending(conn, asset.Platform) {
+		return false, nil
+	}
+
+	if rebootPendingFromKernelPackages(asset.Platform) {
 		k, err := CreateResource(p.MqlRuntime, "kernel", map[string]*llx.RawData{})
 		if err != nil {
 			return false, err
 		}
-		kernel := k.(*mqlKernel)
-
-		kernelInstalled := kernel.GetInstalled()
-		if kernelInstalled.Error != nil {
-			return false, kernelInstalled.Error
-		}
-
-		kernels := []KernelVersion{}
-		data, err := json.Marshal(kernelInstalled)
-		if err != nil {
-			return false, err
-		}
-		err = json.Unmarshal([]byte(data), &kernels)
-		if err != nil {
-			return false, err
-		}
-
-		// we should only have one kernel here
-		if len(kernels) != 1 {
-			return false, errors.New("unexpected kernel list result for photon os")
-		}
-
-		return !kernels[0].Running, nil
+		return kernelPackagesRebootPending(k.(*mqlKernel).GetInstalled())
 	}
 
 	// TODO: move more logic into MQL to leverage its cache
@@ -127,48 +110,109 @@ func (p *mqlOs) env() (map[string]any, error) {
 	conn := p.MqlRuntime.Connection.(shared.Connection)
 	platform := conn.Asset().Platform
 
+	if env, ok := imageEnv(conn); ok {
+		return env, nil
+	}
 	if platform.IsFamily("windows") {
 		return p.getWindowsEnv()
 	}
 	return p.getUnixEnv()
 }
 
+// imageEnv returns the environment a scanned container image declares, which
+// is what its processes start with. An image scan cannot run `env`: the
+// command answered with no output, so os.env read as {} and os.path as [] on
+// every image, PATH included.
+func imageEnv(conn shared.Connection) (map[string]any, bool) {
+	il, ok := conn.(imageLauncher)
+	if !ok {
+		return nil, false
+	}
+	cfg := il.LaunchConfig()
+	if cfg == nil {
+		return nil, false
+	}
+	res := map[string]any{}
+	for _, entry := range cfg.Env {
+		if name, value, ok := strings.Cut(entry, "="); ok && name != "" {
+			res[name] = value
+		}
+	}
+	return res, true
+}
+
 func (p *mqlOs) path(env map[string]any) ([]any, error) {
+	conn, ok := p.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		return nil, errors.New("cannot determine platform for path lookup")
+	}
+	return pathFromEnv(env, conn.Asset().Platform.IsFamily("windows"))
+}
+
+// pathFromEnv returns the PATH entries of an environment. Windows variable
+// names are case-insensitive and the variable comes back from
+// Get-ChildItem Env: as "Path", so an exact "PATH" lookup misses it there.
+func pathFromEnv(env map[string]any, isWindows bool) ([]any, error) {
 	rawPath, ok := env["PATH"]
+	if !ok && isWindows {
+		for k, v := range env {
+			if strings.EqualFold(k, "PATH") {
+				rawPath, ok = v, true
+				break
+			}
+		}
+	}
 	if !ok {
 		return []any{}, nil
 	}
 
-	path := rawPath.(string)
-	parts := strings.Split(path, ":")
+	path, ok := rawPath.(string)
+	if !ok {
+		return nil, fmt.Errorf("PATH is %T, expected a string", rawPath)
+	}
+
+	return splitPathList(path, isWindows), nil
+}
+
+// splitPathList splits a PATH value into its entries. Windows separates them
+// with ';'; splitting those on ':' cut every entry apart at its drive letter.
+// Empty entries are kept: on unix an empty element means the working directory,
+// which is worth being able to audit for.
+func splitPathList(path string, isWindows bool) []any {
+	separator := ":"
+	if isWindows {
+		separator = ";"
+	}
+
+	parts := strings.Split(path, separator)
 	res := make([]any, len(parts))
 	for i := range parts {
 		res[i] = parts[i]
 	}
-
-	return res, nil
+	return res
 }
 
+//go:fix inline
 func MqlTime(t time.Time) *time.Time {
-	return &t
+	return new(t)
 }
 
 // returns uptime in nanoseconds
 func (p *mqlOs) uptime() (*time.Time, error) {
 	uptime, err := uptime.New(p.MqlRuntime.Connection.(shared.Connection))
 	if err != nil {
-		return MqlTime(llx.DurationToTime(0)), err
+		return new(llx.DurationToTime(0)), err
 	}
 
 	t, err := uptime.Duration()
 	if err != nil {
-		return MqlTime(llx.DurationToTime(0)), err
+		return new(llx.DurationToTime(0)), err
 	}
 
 	// we get nano seconds but duration to time only takes seconds
 	bootTime := time.Now().Add(-t)
 	up := time.Now().Unix() - bootTime.Unix()
-	return MqlTime(llx.DurationToTime(up)), nil
+	return new(llx.DurationToTime(up)), nil
 }
 
 func (p *mqlOsUpdate) id() (string, error) {
@@ -222,7 +266,7 @@ func (s *mqlOs) hostname() (string, error) {
 	return "", errors.New("cannot determine hostname")
 }
 
-func (s *mqlOs) hypervisor() (string, error) {
+func (s *mqlOsBase) hypervisor() (string, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
 	platform := conn.Asset().Platform
 
@@ -231,6 +275,34 @@ func (s *mqlOs) hypervisor() (string, error) {
 	}
 	s.Hypervisor = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
 	return "", nil
+}
+
+// The deprecated `os` fields that also exist on the universal root forward to
+// it, so the logic has one home while the old name lives out the v14 line.
+func (s *mqlOs) hypervisor() (string, error) {
+	base, err := osBase(s.MqlRuntime)
+	if err != nil {
+		return "", err
+	}
+	v := base.GetHypervisor()
+	if v.Error != nil {
+		return "", v.Error
+	}
+	if v.State&plugin.StateIsNull != 0 {
+		s.Hypervisor = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+		return "", nil
+	}
+	return v.Data, nil
+}
+
+// osBase returns the universal OS root, which the deprecated `os` accessors
+// read through.
+func osBase(runtime *plugin.Runtime) (*mqlOsBase, error) {
+	res, err := CreateResource(runtime, "os.base", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlOsBase), nil
 }
 
 func (p *mqlOs) name() (string, error) {
@@ -302,8 +374,23 @@ func (p *mqlOs) name() (string, error) {
 	return "", errors.New("your platform is not supported by operating system resource")
 }
 
-// returns the OS native machine UUID/GUID
 func (s *mqlOs) machineid() (string, error) {
+	base, err := osBase(s.MqlRuntime)
+	if err != nil {
+		return "", err
+	}
+	v := base.GetMachineid()
+	if v.Error != nil {
+		return "", v.Error
+	}
+	if v.IsNull() {
+		s.Machineid.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return v.Data, nil
+}
+
+// returns the OS native machine UUID/GUID
+func (s *mqlOsBase) machineid() (string, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
 	platform := conn.Asset().Platform
 
@@ -317,6 +404,13 @@ func (s *mqlOs) machineid() (string, error) {
 	}
 
 	id, err := uuidProvider.ID()
+	// Container images and minimal systems ship no machine-id at all
+	// (systemd writes it on first boot): there is no id, which is not a
+	// failure to read one.
+	if errors.Is(err, fs.ErrNotExist) {
+		s.Machineid.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
 	if err != nil {
 		return "", errors.Wrap(err, "cannot determine platform uuid")
 	}
@@ -335,6 +429,16 @@ func (p *mqlOsBase) id() (string, error) {
 	return "os.base(" + ident + ")", nil
 }
 
+// rebootNeverPending reports whether the asset is a container, where no reboot
+// is ever pending. A container is not booted, it is started from an image, so
+// the checks below have nothing to compare against: needs-restarting and
+// zypper compare package install times with the host's boot time, and the
+// kernel comparison sets an image's kernel package against the host's running
+// kernel.
+func rebootNeverPending(conn shared.Connection, pf *inventory.Platform) bool {
+	return isContainerAsset(conn, pf) || containerenv.InContainer(conn)
+}
+
 func (p *mqlOsBase) rebootpending() (bool, error) {
 	// it is a container image, a reboot is never required
 	switch p.MqlRuntime.Connection.(type) {
@@ -344,38 +448,19 @@ func (p *mqlOsBase) rebootpending() (bool, error) {
 		return false, nil
 	}
 
-	// check photon
 	conn := p.MqlRuntime.Connection.(shared.Connection)
 	platform := conn.Asset().Platform
 
-	if platform.Name == "photon" {
-		// get installed kernel and check if the found one is running
+	if rebootNeverPending(conn, platform) {
+		return false, nil
+	}
+
+	if rebootPendingFromKernelPackages(platform) {
 		raw, err := CreateResource(p.MqlRuntime, "kernel", map[string]*llx.RawData{})
 		if err != nil {
 			return false, err
 		}
-		kernel := raw.(*mqlKernel)
-		installed := kernel.GetInstalled()
-		if installed.Error != nil {
-			return false, installed.Error
-		}
-
-		kernels := []KernelVersion{}
-		data, err := json.Marshal(installed)
-		if err != nil {
-			return false, err
-		}
-		err = json.Unmarshal([]byte(data), &kernels)
-		if err != nil {
-			return false, err
-		}
-
-		// we should only have one kernel here
-		if len(kernels) != 1 {
-			return false, errors.New("unexpected kernel list result for photon os")
-		}
-
-		return !kernels[0].Running, nil
+		return kernelPackagesRebootPending(raw.(*mqlKernel).GetInstalled())
 	}
 
 	// TODO: move more logic into MQL to leverage its cache
@@ -435,6 +520,9 @@ func (p *mqlOsBase) env() (map[string]any, error) {
 	conn := p.MqlRuntime.Connection.(shared.Connection)
 	platform := conn.Asset().Platform
 
+	if env, ok := imageEnv(conn); ok {
+		return env, nil
+	}
 	if platform.IsFamily("windows") {
 		return p.getWindowsEnv()
 	}
@@ -442,19 +530,11 @@ func (p *mqlOsBase) env() (map[string]any, error) {
 }
 
 func (p *mqlOsBase) path(env map[string]any) ([]any, error) {
-	rawPath, ok := env["PATH"]
+	conn, ok := p.MqlRuntime.Connection.(shared.Connection)
 	if !ok {
-		return []any{}, nil
+		return nil, errors.New("cannot determine platform for path lookup")
 	}
-
-	path := rawPath.(string)
-	parts := strings.Split(path, ":")
-	res := make([]any, len(parts))
-	for i := range parts {
-		res[i] = parts[i]
-	}
-
-	return res, nil
+	return pathFromEnv(env, conn.Asset().Platform.IsFamily("windows"))
 }
 
 // returns uptime in nanoseconds
@@ -462,18 +542,18 @@ func (p *mqlOsBase) uptime() (*time.Time, error) {
 	conn := p.MqlRuntime.Connection.(shared.Connection)
 	uptime, err := uptime.New(conn)
 	if err != nil {
-		return MqlTime(llx.DurationToTime(0)), err
+		return new(llx.DurationToTime(0)), err
 	}
 
 	t, err := uptime.Duration()
 	if err != nil {
-		return MqlTime(llx.DurationToTime(0)), err
+		return new(llx.DurationToTime(0)), err
 	}
 
 	// we get nano seconds but duration to time only takes seconds
 	bootTime := time.Now().Add(-t)
 	up := time.Now().Unix() - bootTime.Unix()
-	return MqlTime(llx.DurationToTime(up)), nil
+	return new(llx.DurationToTime(up)), nil
 }
 
 func (p *mqlOsBase) updates() ([]any, error) {
@@ -656,6 +736,50 @@ func (s *mqlOsLinux) unix() (*mqlOsUnix, error) {
 	return res.(*mqlOsUnix), nil
 }
 
+// The family roots and the union receiver identify the asset they describe, the
+// same way os.unix and os.linux do, and reach their embedded parent through an
+// accessor rather than holding a copy of it. See ADR 031.
+func (s *mqlOsWindows) id() (string, error) {
+	return rootID(s.MqlRuntime, "os.windows")
+}
+
+func (s *mqlOsWindows) base() (*mqlOsBase, error) {
+	return osBase(s.MqlRuntime)
+}
+
+func (s *mqlOsMacos) id() (string, error) {
+	return rootID(s.MqlRuntime, "os.macos")
+}
+
+func (s *mqlOsMacos) unix() (*mqlOsUnix, error) {
+	res, err := CreateResource(s.MqlRuntime, "os.unix", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlOsUnix), nil
+}
+
+func (s *mqlOsAny) id() (string, error) {
+	return rootID(s.MqlRuntime, "os.any")
+}
+
+func (s *mqlOsAny) base() (*mqlOsBase, error) {
+	return osBase(s.MqlRuntime)
+}
+
+// rootID names a root after the asset it describes, so two assets in one scan
+// never share a root instance in the resource cache.
+func rootID(runtime *plugin.Runtime, root string) (string, error) {
+	conn := runtime.Connection.(shared.Connection)
+	asset := conn.Asset()
+
+	ident := asset.GetMrn()
+	if ident == "" {
+		ident = strings.Join(asset.GetPlatformIds(), ",")
+	}
+	return root + "(" + ident + ")", nil
+}
+
 func (s *mqlOsLinux) iptables() (*mqlIptables, error) {
 	res, err := CreateResource(s.MqlRuntime, "iptables", map[string]*llx.RawData{})
 	if err != nil {
@@ -697,7 +821,10 @@ func (s *mqlOsLinux) firewalld() (*mqlFirewalld, error) {
 }
 
 func (s *mqlOsLinux) fstab() (*mqlFstab, error) {
-	res, err := CreateResource(s.MqlRuntime, "fstab", map[string]*llx.RawData{})
+	// NewResource, not CreateResource: only NewResource runs initFstab, which
+	// supplies the default /etc/fstab path. Without it the resource is built
+	// with an empty path and every read fails with "file does not exist".
+	res, err := NewResource(s.MqlRuntime, "fstab", map[string]*llx.RawData{})
 	if err != nil {
 		return nil, err
 	}
@@ -710,4 +837,90 @@ func (s *mqlOsLinux) apparmor() (*mqlApparmor, error) {
 		return nil, err
 	}
 	return res.(*mqlApparmor), nil
+}
+
+// rebootPendingFromKernelPackages reports whether os.rebootpending is decided
+// from kernel.installed on this platform, by kernelPackagesRebootPending.
+// These are the platforms with no reboot marker of their own whose kernel
+// packages kernel.installed knows how to match with the running kernel.
+//
+// From the arch family only Arch and EndeavourOS, which ship Arch's kernel
+// packages: Manjaro, SteamOS and CachyOS name theirs differently, so
+// kernel.installed would find none and the answer would be a confident false.
+func rebootPendingFromKernelPackages(pf *inventory.Platform) bool {
+	switch pf.Name {
+	case "photon", "azurelinux", "mariner", "mageia", "arch", "endeavouros", "void":
+		return true
+	}
+	return false
+}
+
+// kernelPackagesRebootPending decides os.rebootpending from the value of
+// kernel.installed.
+//
+// It decodes the list itself (installed.Data), not the TValue wrapper around
+// it: the wrapper marshals to a JSON object, which can never decode into
+// []KernelVersion.
+//
+// The answer is:
+//   - false when no kernel package is installed. That is the normal state of
+//     a container, which runs the host's kernel; there is nothing on disk to
+//     boot into.
+//   - true when kernel packages are installed but none of them is the running
+//     kernel, which is what an in-place kernel upgrade leaves behind (pacman
+//     on Arch, xbps on Void, which keep one version per kernel package).
+//   - true when a package of the same name as the running kernel is at a
+//     newer version, for kernels installed side by side (rpm on Photon,
+//     Mageia and Azure Linux). Only the same name counts, so a second kernel
+//     line installed beside the running one (Mageia's kernel-server beside a
+//     running kernel-desktop, Azure Linux's kernel-hwe beside kernel) does
+//     not by itself make a reboot pending.
+//   - false otherwise.
+//
+// kernel.installed on Photon also lists linux-* packages that are not kernels
+// (linux-api-headers, linux-esx-devel). They never match the running kernel
+// and share no name with it, so they do not affect the answer.
+func kernelPackagesRebootPending(installed *plugin.TValue[[]any]) (bool, error) {
+	if installed.Error != nil {
+		return false, installed.Error
+	}
+
+	data, err := json.Marshal(installed.Data)
+	if err != nil {
+		return false, err
+	}
+	kernels := []KernelVersion{}
+	if err := json.Unmarshal(data, &kernels); err != nil {
+		return false, err
+	}
+
+	if len(kernels) == 0 {
+		return false, nil
+	}
+
+	var running *KernelVersion
+	for i := range kernels {
+		if kernels[i].Running {
+			running = &kernels[i]
+			break
+		}
+	}
+	if running == nil {
+		return true, nil
+	}
+
+	var parser rpm.Parser
+	for i := range kernels {
+		if kernels[i].Running || kernels[i].Name != running.Name {
+			continue
+		}
+		cmp, err := parser.Compare(kernels[i].Version, running.Version)
+		if err != nil {
+			return false, err
+		}
+		if cmp > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }

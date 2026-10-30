@@ -12,11 +12,13 @@ import (
 
 	aiplatform "cloud.google.com/go/aiplatform/apiv1"
 	"cloud.google.com/go/aiplatform/apiv1/aiplatformpb"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	iampb "cloud.google.com/go/iam/apiv1/iampb"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
@@ -26,7 +28,7 @@ import (
 // vertexaiRegions lists the known Vertex AI regions to iterate when listing resources.
 // TODO: Replace with a dynamic location listing API call when available to avoid
 // missing resources in newly added GCP regions. Last updated: 2026-03.
-// See: https://cloud.google.com/vertex-ai/docs/general/locations
+// See: https://docs.cloud.google.com/gemini-enterprise-agent-platform/machine-learning/general/locations
 var vertexaiRegions = []string{
 	"us-central1",
 	"us-east1",
@@ -70,60 +72,48 @@ func vertexaiEndpoint(region string) string {
 	return fmt.Sprintf("%s-aiplatform.googleapis.com:443", region)
 }
 
-// isVertexAIRegionSkippable returns true for errors indicating the Vertex AI API
-// is not enabled or the region is not supported for this project.
-func isVertexAIRegionSkippable(err error) bool {
-	if s, ok := status.FromError(err); ok {
-		switch s.Code() {
-		case codes.PermissionDenied, codes.Unimplemented:
-			return true
-		case codes.InvalidArgument, codes.NotFound:
-			// "not enabled" and "is not supported" surface as these codes
-			return true
-		case codes.FailedPrecondition:
-			// some sub-services (e.g. the RAG data service) report
-			// "<service> is not supported in region <region>" as
-			// FailedPrecondition rather than InvalidArgument
-			return true
-		}
-	}
-	return false
-}
-
 type mqlGcpProjectVertexaiServiceInternal struct {
-	// skippedRegions tracks regions where the API is not available.
-	// We track skipped (not enabled) so that each resource type can
-	// independently discover regions — a region enabled for models
-	// but not endpoints won't be lost.
-	skippedRegions map[string]bool
+	serviceGate
+	// skippedRegions tracks regions where the API is not available, keyed by
+	// resource kind. It MUST be per-kind: Vertex AI sub-services have very
+	// different regional footprints (the RAG data service is available in a
+	// handful of regions and reports the rest as FailedPrecondition), so a
+	// single shared set lets the narrowest accessor shrink the region list for
+	// every other one — silently truncating models, endpoints and jobs.
+	skippedRegions map[string]map[string]bool
 	lock           sync.Mutex
 }
 
-// getRegions returns the list of candidate regions, excluding any that have
-// been previously marked as skipped.
-func (g *mqlGcpProjectVertexaiService) getRegions() []string {
+// getRegions returns the list of candidate regions for one resource kind,
+// excluding any that kind has previously marked as skipped.
+func (g *mqlGcpProjectVertexaiService) getRegions(kind string) []string {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	if len(g.skippedRegions) == 0 {
+	skipped := g.skippedRegions[kind]
+	if len(skipped) == 0 {
 		return vertexaiRegions
 	}
 	regions := make([]string, 0, len(vertexaiRegions))
 	for _, r := range vertexaiRegions {
-		if !g.skippedRegions[r] {
+		if !skipped[r] {
 			regions = append(regions, r)
 		}
 	}
 	return regions
 }
 
-// markRegionSkipped records a region where the API returned a skippable error.
-func (g *mqlGcpProjectVertexaiService) markRegionSkipped(region string) {
+// markRegionSkipped records a region where the API returned a skippable error
+// for one resource kind.
+func (g *mqlGcpProjectVertexaiService) markRegionSkipped(kind, region string) {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 	if g.skippedRegions == nil {
-		g.skippedRegions = make(map[string]bool)
+		g.skippedRegions = make(map[string]map[string]bool)
 	}
-	g.skippedRegions[region] = true
+	if g.skippedRegions[kind] == nil {
+		g.skippedRegions[kind] = make(map[string]bool)
+	}
+	g.skippedRegions[kind][region] = true
 }
 
 // vertexaiRegionResult holds the result of listing resources in a single region.
@@ -144,7 +134,24 @@ func (g *mqlGcpProject) vertexai() (*mqlGcpProjectVertexaiService, error) {
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlGcpProjectVertexaiService), nil
+
+	serviceEnabled, err := g.isServiceEnabled(service_aiplatform)
+	if err != nil {
+		return nil, err
+	}
+
+	svc := res.(*mqlGcpProjectVertexaiService)
+	svc.recordEnabled(serviceEnabled)
+	if !serviceEnabled {
+		log.Debug().Str("service", service_aiplatform).Msg("gcp service is not enabled, skipping")
+	}
+
+	return svc, nil
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectVertexaiService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_aiplatform)
 }
 
 func initGcpProjectVertexaiService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -169,9 +176,10 @@ func (g *mqlGcpProjectVertexaiService) id() (string, error) {
 // listAcrossRegions runs fn concurrently across all candidate regions with bounded
 // concurrency. It collects results, marks skipped regions, and returns the aggregated items.
 func (g *mqlGcpProjectVertexaiService) listAcrossRegions(
+	kind string,
 	fn func(ctx context.Context, region string) ([]any, bool, error),
 ) ([]any, error) {
-	regions := g.getRegions()
+	regions := g.getRegions(kind)
 	ctx := context.Background()
 
 	results := make([]vertexaiRegionResult, len(regions))
@@ -190,20 +198,49 @@ func (g *mqlGcpProjectVertexaiService) listAcrossRegions(
 	}
 	wg.Wait()
 
-	var res []any
+	// A single region failing must not discard the ~33 that succeeded. Vertex
+	// AI fans out over one regional endpoint per region, so any one of them can
+	// return Unavailable, DeadlineExceeded or ResourceExhausted independently --
+	// none of which isInapplicable covers -- and the whole inventory
+	// used to disappear behind it. Only report an error when EVERY region
+	// failed, which is the case that actually means "this did not work".
+	var (
+		res       []any
+		firstErr  error
+		failed    int
+		attempted int
+	)
 	for _, r := range results {
+		attempted++
 		if r.err != nil {
-			return nil, r.err
+			failed++
+			if firstErr == nil {
+				firstErr = r.err
+			}
+			log.Warn().Err(r.err).Str("kind", kind).Str("region", r.region).
+				Msg("vertexai region listing failed, continuing with the remaining regions")
+			continue
 		}
 		if r.skipped {
-			g.markRegionSkipped(r.region)
+			g.markRegionSkipped(kind, r.region)
 		}
 		res = append(res, r.items...)
+	}
+	if attempted > 0 && failed == attempted {
+		return nil, firstErr
 	}
 	return res, nil
 }
 
 func (g *mqlGcpProjectVertexaiService) models() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -215,7 +252,7 @@ func (g *mqlGcpProjectVertexaiService) models() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("models", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewModelClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -236,8 +273,11 @@ func (g *mqlGcpProjectVertexaiService) models() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -256,6 +296,10 @@ func (g *mqlGcpProjectVertexaiService) models() ([]any, error) {
 // shared by the models() lister and the deployment.model() reference.
 func newMqlVertexaiModel(runtime *plugin.Runtime, model *aiplatformpb.Model) (*mqlGcpProjectVertexaiServiceModel, error) {
 	modelSourceInfo, err := protoToDict(model.ModelSourceInfo)
+	if err != nil {
+		return nil, err
+	}
+	baseModelSource, err := protoToDict(model.BaseModelSource)
 	if err != nil {
 		return nil, err
 	}
@@ -281,6 +325,9 @@ func newMqlVertexaiModel(runtime *plugin.Runtime, model *aiplatformpb.Model) (*m
 		"versionAliases":                    llx.ArrayData(convert.SliceAnyToInterface(model.VersionAliases), types.String),
 		"versionDescription":                llx.StringData(model.VersionDescription),
 		"modelSourceInfo":                   llx.DictData(modelSourceInfo),
+		"baseModelSource":                   llx.DictData(baseModelSource),
+		"satisfiesPzs":                      llx.BoolData(model.SatisfiesPzs),
+		"satisfiesPzi":                      llx.BoolData(model.SatisfiesPzi),
 		"containerSpec":                     llx.DictData(containerSpec),
 		"supportedDeploymentResourcesTypes": llx.ArrayData(deploymentTypes, types.String),
 		"supportedInputStorageFormats":      llx.ArrayData(convert.SliceAnyToInterface(model.SupportedInputStorageFormats), types.String),
@@ -298,6 +345,8 @@ func newMqlVertexaiModel(runtime *plugin.Runtime, model *aiplatformpb.Model) (*m
 	}
 	res := mqlModel.(*mqlGcpProjectVertexaiServiceModel)
 	res.cacheKmsKeyName = model.GetEncryptionSpec().GetKmsKeyName()
+	res.cacheOriginalModelName = model.GetOriginalModelInfo().GetModel()
+	res.cachePipelineJobName = model.PipelineJob
 	return res, nil
 }
 
@@ -306,6 +355,14 @@ func (g *mqlGcpProjectVertexaiServiceModel) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiService) endpoints() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -317,7 +374,7 @@ func (g *mqlGcpProjectVertexaiService) endpoints() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("endpoints", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewEndpointClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -338,8 +395,11 @@ func (g *mqlGcpProjectVertexaiService) endpoints() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -367,15 +427,27 @@ func newMqlVertexaiEndpoint(runtime *plugin.Runtime, projectId string, ep *aipla
 		}
 		deployedModels = append(deployedModels, d)
 
+		var privSA, predictUri, explainUri, healthUri string
+		if pe := dm.PrivateEndpoints; pe != nil {
+			privSA = pe.ServiceAttachment
+			predictUri = pe.PredictHttpUri
+			explainUri = pe.ExplainHttpUri
+			healthUri = pe.HealthHttpUri
+		}
+
 		mqlDeployment, err := CreateResource(runtime, "gcp.project.vertexaiService.endpoint.deployment", map[string]*llx.RawData{
-			"__id":                    llx.StringData(fmt.Sprintf("%s/deployment/%s", ep.Name, dm.Id)),
-			"id":                      llx.StringData(dm.Id),
-			"displayName":             llx.StringData(dm.DisplayName),
-			"modelVersionId":          llx.StringData(dm.ModelVersionId),
-			"serviceAccountEmail":     llx.StringData(dm.ServiceAccount),
-			"disableContainerLogging": llx.BoolData(dm.DisableContainerLogging),
-			"enableAccessLogging":     llx.BoolData(dm.EnableAccessLogging),
-			"createdAt":               llx.TimeDataPtr(timestampAsTimePtr(dm.CreateTime)),
+			"__id":                     llx.StringData(fmt.Sprintf("%s/deployment/%s", ep.Name, dm.Id)),
+			"id":                       llx.StringData(dm.Id),
+			"displayName":              llx.StringData(dm.DisplayName),
+			"modelVersionId":           llx.StringData(dm.ModelVersionId),
+			"serviceAccountEmail":      llx.StringData(dm.ServiceAccount),
+			"disableContainerLogging":  llx.BoolData(dm.DisableContainerLogging),
+			"enableAccessLogging":      llx.BoolData(dm.EnableAccessLogging),
+			"privateServiceAttachment": llx.StringData(privSA),
+			"predictHttpUri":           llx.StringData(predictUri),
+			"explainHttpUri":           llx.StringData(explainUri),
+			"healthHttpUri":            llx.StringData(healthUri),
+			"createdAt":                llx.TimeDataPtr(timestampAsTimePtr(dm.CreateTime)),
 		})
 		if err != nil {
 			return nil, err
@@ -395,24 +467,56 @@ func newMqlVertexaiEndpoint(runtime *plugin.Runtime, projectId string, ep *aipla
 		trafficSplit[k] = int64(v)
 	}
 
+	pscProjectAllowlist := []any{}
+	var pscServiceAttachment string
+	if psc := ep.PrivateServiceConnectConfig; psc != nil {
+		pscServiceAttachment = psc.ServiceAttachment
+		for _, p := range psc.ProjectAllowlist {
+			pscProjectAllowlist = append(pscProjectAllowlist, p)
+		}
+	}
+	pscEnabled := vertexaiPscEnabled(ep.EnablePrivateServiceConnect, ep.PrivateServiceConnectConfig) //nolint:staticcheck // still set on endpoints created before the config message
+
+	var predictionLoggingEnabled bool
+	var predictionLoggingSamplingRate float64
+	var predictionLoggingBQ string
+	if pl := ep.PredictRequestResponseLoggingConfig; pl != nil {
+		predictionLoggingEnabled = pl.Enabled
+		predictionLoggingSamplingRate = pl.SamplingRate
+		if pl.BigqueryDestination != nil {
+			predictionLoggingBQ = pl.BigqueryDestination.OutputUri
+		}
+	}
+
 	mqlEndpoint, err := CreateResource(runtime, "gcp.project.vertexaiService.endpoint", map[string]*llx.RawData{
-		"name":                        llx.StringData(ep.Name),
-		"displayName":                 llx.StringData(ep.DisplayName),
-		"description":                 llx.StringData(ep.Description),
-		"deployedModels":              llx.ArrayData(deployedModels, types.Dict),
-		"deployments":                 llx.ArrayData(deployments, types.Resource("gcp.project.vertexaiService.endpoint.deployment")),
-		"encryptionSpec":              llx.DictData(encryptionSpec),
-		"network":                     llx.StringData(ep.Network),
-		"enablePrivateServiceConnect": llx.BoolData(ep.EnablePrivateServiceConnect),
-		"trafficSplit":                llx.MapData(trafficSplit, types.Int),
-		"labels":                      llx.MapData(convert.MapToInterfaceMap(ep.Labels), types.String),
-		"etag":                        llx.StringData(ep.Etag),
-		"createdAt":                   llx.TimeDataPtr(timestampAsTimePtr(ep.CreateTime)),
-		"updatedAt":                   llx.TimeDataPtr(timestampAsTimePtr(ep.UpdateTime)),
+		"name":                                 llx.StringData(ep.Name),
+		"displayName":                          llx.StringData(ep.DisplayName),
+		"description":                          llx.StringData(ep.Description),
+		"deployments":                          llx.ArrayData(deployments, types.Resource("gcp.project.vertexaiService.endpoint.deployment")),
+		"encryptionSpec":                       llx.DictData(encryptionSpec),
+		"enablePrivateServiceConnect":          llx.BoolData(pscEnabled),
+		"pscProjectAllowlist":                  llx.ArrayData(pscProjectAllowlist, types.String),
+		"pscServiceAttachment":                 llx.StringData(pscServiceAttachment),
+		"predictionLoggingEnabled":             llx.BoolData(predictionLoggingEnabled),
+		"predictionLoggingSamplingRate":        llx.FloatData(predictionLoggingSamplingRate),
+		"predictionLoggingBigqueryDestination": llx.StringData(predictionLoggingBQ),
+		"dedicatedEndpointEnabled":             llx.BoolData(ep.DedicatedEndpointEnabled),
+		"dedicatedEndpointDns":                 llx.StringData(ep.DedicatedEndpointDns),
+		"privateModelServerEnabled":            llx.BoolData(ep.PrivateModelServerEnabled),
+		"satisfiesPzs":                         llx.BoolData(ep.SatisfiesPzs),
+		"satisfiesPzi":                         llx.BoolData(ep.SatisfiesPzi),
+		"internetReachable":                    llx.BoolData(vertexaiEndpointInternetReachable(ep.Network, pscEnabled)),
+		"trafficSplit":                         llx.MapData(trafficSplit, types.Int),
+		"labels":                               llx.MapData(convert.MapToInterfaceMap(ep.Labels), types.String),
+		"etag":                                 llx.StringData(ep.Etag),
+		"createdAt":                            llx.TimeDataPtr(timestampAsTimePtr(ep.CreateTime)),
+		"updatedAt":                            llx.TimeDataPtr(timestampAsTimePtr(ep.UpdateTime)),
 	})
 	if err != nil {
 		return nil, err
 	}
+	mqlRef := mqlEndpoint.(*mqlGcpProjectVertexaiServiceEndpoint)
+	mqlRef.cacheNetwork = ep.Network
 	res := mqlEndpoint.(*mqlGcpProjectVertexaiServiceEndpoint)
 	res.cacheKmsKeyName = ep.GetEncryptionSpec().GetKmsKeyName()
 	return res, nil
@@ -448,7 +552,7 @@ func resolveVertexaiEndpointRef(runtime *plugin.Runtime, field *plugin.TValue[*m
 
 	ep, err := client.GetEndpoint(ctx, &aiplatformpb.GetEndpointRequest{Name: endpointName})
 	if err != nil {
-		if isVertexAIRegionSkippable(err) {
+		if isInapplicable(err) {
 			field.State = plugin.StateIsSet | plugin.StateIsNull
 			return nil, nil
 		}
@@ -462,10 +566,7 @@ func (g *mqlGcpProjectVertexaiServiceEndpoint) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiServiceEndpoint) networkRef() (*mqlGcpProjectComputeServiceNetwork, error) {
-	if g.Network.Error != nil {
-		return nil, g.Network.Error
-	}
-	n, err := getNetworkByUrl(g.Network.Data, g.MqlRuntime)
+	n, err := getNetworkByUrl(g.cacheNetwork, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -536,7 +637,7 @@ func resolveVertexaiModelRef(runtime *plugin.Runtime, field *plugin.TValue[*mqlG
 
 	m, err := client.GetModel(ctx, &aiplatformpb.GetModelRequest{Name: modelName})
 	if err != nil {
-		if isVertexAIRegionSkippable(err) {
+		if isInapplicable(err) {
 			field.State = plugin.StateIsSet | plugin.StateIsNull
 			return nil, nil
 		}
@@ -570,6 +671,14 @@ func (d *mqlGcpProjectVertexaiServiceEndpointDeployment) serviceAccount() (*mqlG
 }
 
 func (g *mqlGcpProjectVertexaiService) pipelineJobs() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -581,7 +690,7 @@ func (g *mqlGcpProjectVertexaiService) pipelineJobs() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("pipelineJobs", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewPipelineClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -602,54 +711,82 @@ func (g *mqlGcpProjectVertexaiService) pipelineJobs() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
 
-			pipelineSpec, err := protoToDict(job.PipelineSpec)
+			mqlJob, err := newMqlVertexaiPipelineJob(g.MqlRuntime, job)
 			if err != nil {
 				return nil, false, err
 			}
-			runtimeConfig, err := protoToDict(job.RuntimeConfig)
-			if err != nil {
-				return nil, false, err
-			}
-			encryptionSpec, err := protoToDict(job.EncryptionSpec)
-			if err != nil {
-				return nil, false, err
-			}
-			templateMetadata, err := protoToDict(job.TemplateMetadata)
-			if err != nil {
-				return nil, false, err
-			}
-
-			mqlJob, err := CreateResource(g.MqlRuntime, "gcp.project.vertexaiService.pipelineJob", map[string]*llx.RawData{
-				"name":             llx.StringData(job.Name),
-				"displayName":      llx.StringData(job.DisplayName),
-				"state":            llx.StringData(job.State.String()),
-				"pipelineSpec":     llx.DictData(pipelineSpec),
-				"runtimeConfig":    llx.DictData(runtimeConfig),
-				"serviceAccount":   llx.StringData(job.ServiceAccount),
-				"network":          llx.StringData(job.Network),
-				"encryptionSpec":   llx.DictData(encryptionSpec),
-				"templateUri":      llx.StringData(job.TemplateUri),
-				"templateMetadata": llx.DictData(templateMetadata),
-				"labels":           llx.MapData(convert.MapToInterfaceMap(job.Labels), types.String),
-				"createdAt":        llx.TimeDataPtr(timestampAsTimePtr(job.CreateTime)),
-				"updatedAt":        llx.TimeDataPtr(timestampAsTimePtr(job.UpdateTime)),
-				"startTime":        llx.TimeDataPtr(timestampAsTimePtr(job.StartTime)),
-				"endTime":          llx.TimeDataPtr(timestampAsTimePtr(job.EndTime)),
-			})
-			if err != nil {
-				return nil, false, err
-			}
-			mqlJob.(*mqlGcpProjectVertexaiServicePipelineJob).cacheKmsKeyName = job.GetEncryptionSpec().GetKmsKeyName()
 			items = append(items, mqlJob)
 		}
 		return items, false, nil
 	})
+}
+
+// newMqlVertexaiPipelineJob maps a Vertex AI PipelineJob proto into an MQL
+// resource. It is shared by the pipelineJobs() lister and the
+// initGcpProjectVertexaiServicePipelineJob single-instance resolver.
+func newMqlVertexaiPipelineJob(runtime *plugin.Runtime, job *aiplatformpb.PipelineJob) (*mqlGcpProjectVertexaiServicePipelineJob, error) {
+	pipelineSpec, err := protoToDict(job.PipelineSpec)
+	if err != nil {
+		return nil, err
+	}
+	runtimeConfig, err := protoToDict(job.RuntimeConfig)
+	if err != nil {
+		return nil, err
+	}
+	encryptionSpec, err := protoToDict(job.EncryptionSpec)
+	if err != nil {
+		return nil, err
+	}
+	templateMetadata, err := protoToDict(job.TemplateMetadata)
+	if err != nil {
+		return nil, err
+	}
+	errDict, err := protoToDict(job.Error)
+	if err != nil {
+		return nil, err
+	}
+
+	reservedIpRanges := make([]any, 0, len(job.ReservedIpRanges))
+	for _, r := range job.ReservedIpRanges {
+		reservedIpRanges = append(reservedIpRanges, r)
+	}
+
+	mqlJob, err := CreateResource(runtime, "gcp.project.vertexaiService.pipelineJob", map[string]*llx.RawData{
+		"name":             llx.StringData(job.Name),
+		"displayName":      llx.StringData(job.DisplayName),
+		"state":            llx.StringData(job.State.String()),
+		"pipelineSpec":     llx.DictData(pipelineSpec),
+		"runtimeConfig":    llx.DictData(runtimeConfig),
+		"encryptionSpec":   llx.DictData(encryptionSpec),
+		"templateUri":      llx.StringData(job.TemplateUri),
+		"templateMetadata": llx.DictData(templateMetadata),
+		"error":            llx.DictData(errDict),
+		"reservedIpRanges": llx.ArrayData(reservedIpRanges, types.String),
+		"labels":           llx.MapData(convert.MapToInterfaceMap(job.Labels), types.String),
+		"createdAt":        llx.TimeDataPtr(timestampAsTimePtr(job.CreateTime)),
+		"updatedAt":        llx.TimeDataPtr(timestampAsTimePtr(job.UpdateTime)),
+		"startTime":        llx.TimeDataPtr(timestampAsTimePtr(job.StartTime)),
+		"endTime":          llx.TimeDataPtr(timestampAsTimePtr(job.EndTime)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	mqlRef := mqlJob.(*mqlGcpProjectVertexaiServicePipelineJob)
+	mqlRef.cacheServiceAccount = job.ServiceAccount
+	mqlRef.cacheNetwork = job.Network
+	res := mqlJob.(*mqlGcpProjectVertexaiServicePipelineJob)
+	res.cacheKmsKeyName = job.GetEncryptionSpec().GetKmsKeyName()
+	res.cacheScheduleName = job.ScheduleName
+	return res, nil
 }
 
 func (g *mqlGcpProjectVertexaiServicePipelineJob) id() (string, error) {
@@ -657,13 +794,10 @@ func (g *mqlGcpProjectVertexaiServicePipelineJob) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiServicePipelineJob) serviceAccountRef() (*mqlGcpProjectIamServiceServiceAccount, error) {
-	if g.ServiceAccount.Error != nil {
-		return nil, g.ServiceAccount.Error
-	}
 	if g.Name.Error != nil {
 		return nil, g.Name.Error
 	}
-	email := g.ServiceAccount.Data
+	email := g.cacheServiceAccount
 	projectId := projectFromResourceName(g.Name.Data)
 	if email == "" || projectId == "" {
 		g.ServiceAccountRef.State = plugin.StateIsSet | plugin.StateIsNull
@@ -681,10 +815,7 @@ func (g *mqlGcpProjectVertexaiServicePipelineJob) serviceAccountRef() (*mqlGcpPr
 }
 
 func (g *mqlGcpProjectVertexaiServicePipelineJob) networkRef() (*mqlGcpProjectComputeServiceNetwork, error) {
-	if g.Network.Error != nil {
-		return nil, g.Network.Error
-	}
-	n, err := getNetworkByUrl(g.Network.Data, g.MqlRuntime)
+	n, err := getNetworkByUrl(g.cacheNetwork, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -695,10 +826,7 @@ func (g *mqlGcpProjectVertexaiServicePipelineJob) networkRef() (*mqlGcpProjectCo
 }
 
 func (g *mqlGcpProjectVertexaiServiceIndexEndpoint) networkRef() (*mqlGcpProjectComputeServiceNetwork, error) {
-	if g.Network.Error != nil {
-		return nil, g.Network.Error
-	}
-	n, err := getNetworkByUrl(g.Network.Data, g.MqlRuntime)
+	n, err := getNetworkByUrl(g.cacheNetwork, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -709,6 +837,14 @@ func (g *mqlGcpProjectVertexaiServiceIndexEndpoint) networkRef() (*mqlGcpProject
 }
 
 func (g *mqlGcpProjectVertexaiService) datasets() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -720,7 +856,7 @@ func (g *mqlGcpProjectVertexaiService) datasets() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("datasets", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewDatasetClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -741,8 +877,11 @@ func (g *mqlGcpProjectVertexaiService) datasets() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -785,6 +924,14 @@ func (g *mqlGcpProjectVertexaiServiceDataset) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiService) featureOnlineStores() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -796,7 +943,7 @@ func (g *mqlGcpProjectVertexaiService) featureOnlineStores() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("featureOnlineStores", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewFeatureOnlineStoreAdminClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -817,8 +964,11 @@ func (g *mqlGcpProjectVertexaiService) featureOnlineStores() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -877,6 +1027,14 @@ func (g *mqlGcpProjectVertexaiServiceTensorboard) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiService) tensorboards() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -888,7 +1046,7 @@ func (g *mqlGcpProjectVertexaiService) tensorboards() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("tensorboards", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewTensorboardClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -909,8 +1067,11 @@ func (g *mqlGcpProjectVertexaiService) tensorboards() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -949,13 +1110,10 @@ func (g *mqlGcpProjectVertexaiServiceCustomJob) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiServiceCustomJob) serviceAccountRef() (*mqlGcpProjectIamServiceServiceAccount, error) {
-	if g.ServiceAccount.Error != nil {
-		return nil, g.ServiceAccount.Error
-	}
 	if g.Name.Error != nil {
 		return nil, g.Name.Error
 	}
-	email := g.ServiceAccount.Data
+	email := g.cacheServiceAccount
 	projectId := projectFromResourceName(g.Name.Data)
 	if email == "" || projectId == "" {
 		g.ServiceAccountRef.State = plugin.StateIsSet | plugin.StateIsNull
@@ -972,14 +1130,11 @@ func (g *mqlGcpProjectVertexaiServiceCustomJob) serviceAccountRef() (*mqlGcpProj
 }
 
 func (g *mqlGcpProjectVertexaiServiceCustomJob) networkRef() (*mqlGcpProjectComputeServiceNetwork, error) {
-	if g.Network.Error != nil {
-		return nil, g.Network.Error
-	}
-	if g.Network.Data == "" {
+	if g.cacheNetwork == "" {
 		g.NetworkRef.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	n, err := getNetworkByUrl(g.Network.Data, g.MqlRuntime)
+	n, err := getNetworkByUrl(g.cacheNetwork, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -1007,9 +1162,12 @@ func initGcpProjectVertexaiServiceCustomJob(runtime *plugin.Runtime, args map[st
 
 	nameRaw := args["name"]
 	if nameRaw == nil {
-		return args, nil, nil
+		return nil, nil, errors.New(`gcp.project.vertexaiService.customJob requires a "name" argument`)
 	}
-	name := nameRaw.Value.(string)
+	name, ok := nameRaw.Value.(string)
+	if !ok || name == "" {
+		return nil, nil, errors.New(`gcp.project.vertexaiService.customJob requires a non-empty "name" argument`)
+	}
 
 	conn, ok := runtime.Connection.(*connection.GcpConnection)
 	if !ok {
@@ -1018,18 +1176,29 @@ func initGcpProjectVertexaiServiceCustomJob(runtime *plugin.Runtime, args map[st
 
 	// Accept either the full resource path or a short name + location from
 	// the asset-identifier-driven discovery path.
-	var fullName, region string
+	var fullName, region, projectId string
 	if strings.HasPrefix(name, "projects/") {
 		fullName = name
 		region = parseLocationFromPath(name)
+		projectId = parseProjectFromPath(name)
 	} else {
 		locRaw := args["location"]
 		projRaw := args["projectId"]
 		if locRaw == nil || projRaw == nil {
 			return nil, nil, errors.New("vertexai custom job init: projectId and location required when name is not a full resource path")
 		}
-		region = locRaw.Value.(string)
-		fullName = fmt.Sprintf("projects/%s/locations/%s/customJobs/%s", projRaw.Value.(string), region, name)
+		region, _ = locRaw.Value.(string)
+		projectId, _ = projRaw.Value.(string)
+		fullName = fmt.Sprintf("projects/%s/locations/%s/customJobs/%s", projectId, region, name)
+	}
+
+	// Ask whether the API is on before paying for a Get that cannot succeed
+	// without it. The answer is memoized per project, so this is free after the
+	// first caller.
+	if enabled, err := serviceEnabledForInit(runtime, projectId, service_aiplatform); err != nil {
+		return nil, nil, err
+	} else if !enabled {
+		return nil, nil, errors.New("Vertex AI API is not enabled on project " + projectId)
 	}
 
 	creds, err := conn.Credentials(aiplatform.DefaultAuthScopes()...)
@@ -1056,6 +1225,225 @@ func initGcpProjectVertexaiServiceCustomJob(runtime *plugin.Runtime, args map[st
 		return nil, nil, err
 	}
 	delete(args, "location")
+	return args, res, nil
+}
+
+// initGcpProjectVertexaiServiceEndpoint resolves a single Vertex AI endpoint.
+// When accessed as a discovered asset (no args) it reconstructs the full
+// resource name from the asset identifier, then fetches it directly with
+// GetEndpoint so the resource is fully populated instead of an empty husk.
+func initGcpProjectVertexaiServiceEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 1 {
+		return args, nil, nil
+	}
+	if args == nil {
+		args = make(map[string]*llx.RawData)
+	}
+	if len(args) == 0 {
+		ids := getAssetIdentifier(runtime)
+		if ids == nil {
+			return nil, nil, errors.New("no asset identifier found")
+		}
+		args["name"] = llx.StringData(fmt.Sprintf("projects/%s/locations/%s/endpoints/%s", ids.project, ids.region, ids.name))
+	}
+
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New(`gcp.project.vertexaiService.endpoint requires a "name" argument`)
+	}
+	name, ok := nameRaw.Value.(string)
+	if !ok || name == "" {
+		return nil, nil, errors.New(`gcp.project.vertexaiService.endpoint requires a non-empty "name" argument`)
+	}
+
+	region := vertexaiRegionFromName(name)
+	if region == "" {
+		return nil, nil, errors.New("vertexai endpoint init: could not determine region from name " + name)
+	}
+
+	conn, ok := runtime.Connection.(*connection.GcpConnection)
+	if !ok {
+		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
+	}
+	// Ask whether the API is on before paying for a Get that cannot succeed
+	// without it. The answer is memoized per project, so this is free after the
+	// first caller.
+	projectId := parseProjectFromPath(name)
+	if enabled, err := serviceEnabledForInit(runtime, projectId, service_aiplatform); err != nil {
+		return nil, nil, err
+	} else if !enabled {
+		return nil, nil, errors.New("Vertex AI API is not enabled on project " + projectId)
+	}
+
+	creds, err := conn.Credentials(aiplatform.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, nil, err
+	}
+	ctx := context.Background()
+	client, err := aiplatform.NewEndpointClient(ctx,
+		option.WithCredentials(creds), connection.GRPCClientTraceOption(),
+		option.WithEndpoint(vertexaiEndpoint(region)),
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer client.Close()
+
+	ep, err := client.GetEndpoint(ctx, &aiplatformpb.GetEndpointRequest{Name: name})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	res, err := newMqlVertexaiEndpoint(runtime, vertexaiProjectFromName(name), ep)
+	if err != nil {
+		return nil, nil, err
+	}
+	return args, res, nil
+}
+
+// initGcpProjectVertexaiServicePipelineJob resolves a single Vertex AI pipeline
+// job. Like the endpoint init, it reconstructs the full resource name from the
+// asset identifier when accessed as a discovered asset and fetches it with
+// GetPipelineJob.
+func initGcpProjectVertexaiServicePipelineJob(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 1 {
+		return args, nil, nil
+	}
+	if args == nil {
+		args = make(map[string]*llx.RawData)
+	}
+	if len(args) == 0 {
+		ids := getAssetIdentifier(runtime)
+		if ids == nil {
+			return nil, nil, errors.New("no asset identifier found")
+		}
+		args["name"] = llx.StringData(fmt.Sprintf("projects/%s/locations/%s/pipelineJobs/%s", ids.project, ids.region, ids.name))
+	}
+
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New(`gcp.project.vertexaiService.pipelineJob requires a "name" argument`)
+	}
+	name, ok := nameRaw.Value.(string)
+	if !ok || name == "" {
+		return nil, nil, errors.New(`gcp.project.vertexaiService.pipelineJob requires a non-empty "name" argument`)
+	}
+
+	region := vertexaiRegionFromName(name)
+	if region == "" {
+		return nil, nil, errors.New("vertexai pipeline job init: could not determine region from name " + name)
+	}
+
+	conn, ok := runtime.Connection.(*connection.GcpConnection)
+	if !ok {
+		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
+	}
+	// Ask whether the API is on before paying for a Get that cannot succeed
+	// without it. The answer is memoized per project, so this is free after the
+	// first caller.
+	projectId := parseProjectFromPath(name)
+	if enabled, err := serviceEnabledForInit(runtime, projectId, service_aiplatform); err != nil {
+		return nil, nil, err
+	} else if !enabled {
+		return nil, nil, errors.New("Vertex AI API is not enabled on project " + projectId)
+	}
+
+	creds, err := conn.Credentials(aiplatform.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, nil, err
+	}
+	ctx := context.Background()
+	client, err := aiplatform.NewPipelineClient(ctx,
+		option.WithCredentials(creds), connection.GRPCClientTraceOption(),
+		option.WithEndpoint(vertexaiEndpoint(region)),
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer client.Close()
+
+	job, err := client.GetPipelineJob(ctx, &aiplatformpb.GetPipelineJobRequest{Name: name})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	res, err := newMqlVertexaiPipelineJob(runtime, job)
+	if err != nil {
+		return nil, nil, err
+	}
+	return args, res, nil
+}
+
+// initGcpProjectVertexaiServiceNotebookRuntimeTemplate resolves a single Vertex
+// AI notebook runtime template. Like the endpoint init, it reconstructs the
+// full resource name from the asset identifier when accessed as a discovered
+// asset and fetches it with GetNotebookRuntimeTemplate.
+func initGcpProjectVertexaiServiceNotebookRuntimeTemplate(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 1 {
+		return args, nil, nil
+	}
+	if args == nil {
+		args = make(map[string]*llx.RawData)
+	}
+	if len(args) == 0 {
+		ids := getAssetIdentifier(runtime)
+		if ids == nil {
+			return nil, nil, errors.New("no asset identifier found")
+		}
+		args["name"] = llx.StringData(fmt.Sprintf("projects/%s/locations/%s/notebookRuntimeTemplates/%s", ids.project, ids.region, ids.name))
+	}
+
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New(`gcp.project.vertexaiService.notebookRuntimeTemplate requires a "name" argument`)
+	}
+	name, ok := nameRaw.Value.(string)
+	if !ok || name == "" {
+		return nil, nil, errors.New(`gcp.project.vertexaiService.notebookRuntimeTemplate requires a non-empty "name" argument`)
+	}
+
+	region := vertexaiRegionFromName(name)
+	if region == "" {
+		return nil, nil, errors.New("vertexai notebook runtime template init: could not determine region from name " + name)
+	}
+
+	conn, ok := runtime.Connection.(*connection.GcpConnection)
+	if !ok {
+		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
+	}
+	// Ask whether the API is on before paying for a Get that cannot succeed
+	// without it. The answer is memoized per project, so this is free after the
+	// first caller.
+	projectId := parseProjectFromPath(name)
+	if enabled, err := serviceEnabledForInit(runtime, projectId, service_aiplatform); err != nil {
+		return nil, nil, err
+	} else if !enabled {
+		return nil, nil, errors.New("Vertex AI API is not enabled on project " + projectId)
+	}
+
+	creds, err := conn.Credentials(aiplatform.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, nil, err
+	}
+	ctx := context.Background()
+	client, err := aiplatform.NewNotebookClient(ctx,
+		option.WithCredentials(creds), connection.GRPCClientTraceOption(),
+		option.WithEndpoint(vertexaiEndpoint(region)),
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer client.Close()
+
+	tmpl, err := client.GetNotebookRuntimeTemplate(ctx, &aiplatformpb.GetNotebookRuntimeTemplateRequest{Name: name})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	res, err := newMqlVertexaiNotebookRuntimeTemplate(runtime, tmpl)
+	if err != nil {
+		return nil, nil, err
+	}
 	return args, res, nil
 }
 
@@ -1087,8 +1475,6 @@ func mqlVertexAICustomJobFromProto(runtime *plugin.Runtime, job *aiplatformpb.Cu
 		"displayName":     llx.StringData(job.DisplayName),
 		"state":           llx.StringData(job.State.String()),
 		"jobSpec":         llx.DictData(jobSpec),
-		"serviceAccount":  llx.StringData(serviceAccount),
-		"network":         llx.StringData(network),
 		"enableWebAccess": llx.BoolData(enableWebAccess),
 		"labels":          llx.MapData(convert.MapToInterfaceMap(job.Labels), types.String),
 		"encryptionSpec":  llx.DictData(encryptionSpec),
@@ -1101,11 +1487,22 @@ func mqlVertexAICustomJobFromProto(runtime *plugin.Runtime, job *aiplatformpb.Cu
 	if err != nil {
 		return nil, err
 	}
+	mqlRef := res.(*mqlGcpProjectVertexaiServiceCustomJob)
+	mqlRef.cacheServiceAccount = serviceAccount
+	mqlRef.cacheNetwork = network
 	res.(*mqlGcpProjectVertexaiServiceCustomJob).cacheKmsKeyName = job.GetEncryptionSpec().GetKmsKeyName()
 	return res.(*mqlGcpProjectVertexaiServiceCustomJob), nil
 }
 
 func (g *mqlGcpProjectVertexaiService) customJobs() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -1117,7 +1514,7 @@ func (g *mqlGcpProjectVertexaiService) customJobs() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("customJobs", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewJobClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -1138,8 +1535,11 @@ func (g *mqlGcpProjectVertexaiService) customJobs() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -1163,6 +1563,14 @@ func (g *mqlGcpProjectVertexaiServiceIndex) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiService) indexes() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -1174,7 +1582,7 @@ func (g *mqlGcpProjectVertexaiService) indexes() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("indexes", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewIndexClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -1195,8 +1603,11 @@ func (g *mqlGcpProjectVertexaiService) indexes() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -1256,6 +1667,14 @@ func (g *mqlGcpProjectVertexaiServiceIndexEndpoint) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiService) indexEndpoints() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -1267,7 +1686,7 @@ func (g *mqlGcpProjectVertexaiService) indexEndpoints() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("indexEndpoints", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewIndexEndpointClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -1288,8 +1707,11 @@ func (g *mqlGcpProjectVertexaiService) indexEndpoints() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -1298,6 +1720,12 @@ func (g *mqlGcpProjectVertexaiService) indexEndpoints() ([]any, error) {
 			if err != nil {
 				return nil, false, err
 			}
+
+			pscProjectAllowlist := []any{}
+			for _, p := range ep.GetPrivateServiceConnectConfig().GetProjectAllowlist() {
+				pscProjectAllowlist = append(pscProjectAllowlist, p)
+			}
+			pscEnabled := vertexaiPscEnabled(ep.EnablePrivateServiceConnect, ep.PrivateServiceConnectConfig) //nolint:staticcheck // still set on index endpoints created before the config message
 
 			deployedIndexes := make([]any, 0, len(ep.DeployedIndexes))
 			for _, di := range ep.DeployedIndexes {
@@ -1309,21 +1737,26 @@ func (g *mqlGcpProjectVertexaiService) indexEndpoints() ([]any, error) {
 			}
 
 			mqlEP, err := CreateResource(g.MqlRuntime, "gcp.project.vertexaiService.indexEndpoint", map[string]*llx.RawData{
-				"name":                     llx.StringData(ep.Name),
-				"displayName":              llx.StringData(ep.DisplayName),
-				"description":              llx.StringData(ep.Description),
-				"deployedIndexes":          llx.ArrayData(deployedIndexes, types.Dict),
-				"network":                  llx.StringData(ep.Network),
-				"publicEndpointEnabled":    llx.BoolData(ep.PublicEndpointEnabled),
-				"publicEndpointDomainName": llx.StringData(ep.PublicEndpointDomainName),
-				"labels":                   llx.MapData(convert.MapToInterfaceMap(ep.Labels), types.String),
-				"encryptionSpec":           llx.DictData(encryptionSpec),
-				"created":                  llx.TimeDataPtr(timestampAsTimePtr(ep.CreateTime)),
-				"updated":                  llx.TimeDataPtr(timestampAsTimePtr(ep.UpdateTime)),
+				"name":                        llx.StringData(ep.Name),
+				"displayName":                 llx.StringData(ep.DisplayName),
+				"description":                 llx.StringData(ep.Description),
+				"deployedIndexes":             llx.ArrayData(deployedIndexes, types.Dict),
+				"publicEndpointEnabled":       llx.BoolData(ep.PublicEndpointEnabled),
+				"publicEndpointDomainName":    llx.StringData(ep.PublicEndpointDomainName),
+				"enablePrivateServiceConnect": llx.BoolData(pscEnabled),
+				"pscProjectAllowlist":         llx.ArrayData(pscProjectAllowlist, types.String),
+				"satisfiesPzs":                llx.BoolData(ep.SatisfiesPzs),
+				"satisfiesPzi":                llx.BoolData(ep.SatisfiesPzi),
+				"labels":                      llx.MapData(convert.MapToInterfaceMap(ep.Labels), types.String),
+				"encryptionSpec":              llx.DictData(encryptionSpec),
+				"created":                     llx.TimeDataPtr(timestampAsTimePtr(ep.CreateTime)),
+				"updated":                     llx.TimeDataPtr(timestampAsTimePtr(ep.UpdateTime)),
 			})
 			if err != nil {
 				return nil, false, err
 			}
+			mqlRef := mqlEP.(*mqlGcpProjectVertexaiServiceIndexEndpoint)
+			mqlRef.cacheNetwork = ep.Network
 			mqlEP.(*mqlGcpProjectVertexaiServiceIndexEndpoint).cacheKmsKeyName = ep.GetEncryptionSpec().GetKmsKeyName()
 			items = append(items, mqlEP)
 		}
@@ -1340,6 +1773,14 @@ func (g *mqlGcpProjectVertexaiServiceMetadataStore) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiService) metadataStores() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -1351,7 +1792,7 @@ func (g *mqlGcpProjectVertexaiService) metadataStores() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("metadataStores", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewMetadataClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -1372,8 +1813,11 @@ func (g *mqlGcpProjectVertexaiService) metadataStores() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -1411,6 +1855,14 @@ func (g *mqlGcpProjectVertexaiService) metadataStores() ([]any, error) {
 }
 
 func (g *mqlGcpProjectVertexaiService) notebookRuntimes() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -1422,7 +1874,7 @@ func (g *mqlGcpProjectVertexaiService) notebookRuntimes() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("notebookRuntimes", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewNotebookClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -1443,8 +1895,11 @@ func (g *mqlGcpProjectVertexaiService) notebookRuntimes() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -1479,28 +1934,32 @@ func (g *mqlGcpProjectVertexaiService) notebookRuntimes() ([]any, error) {
 			}
 
 			mqlRt, err := CreateResource(g.MqlRuntime, "gcp.project.vertexaiService.notebookRuntime", map[string]*llx.RawData{
-				"name":                llx.StringData(rt.Name),
-				"displayName":         llx.StringData(rt.DisplayName),
-				"description":         llx.StringData(rt.Description),
-				"runtimeUser":         llx.StringData(rt.RuntimeUser),
-				"proxyUri":            llx.StringData(rt.ProxyUri),
-				"healthState":         llx.StringData(rt.HealthState.String()),
-				"runtimeState":        llx.StringData(rt.RuntimeState.String()),
-				"notebookRuntimeType": llx.StringData(rt.NotebookRuntimeType.String()),
-				"isUpgradable":        llx.BoolData(rt.IsUpgradable),
-				"version":             llx.StringData(rt.Version),
-				"networkTags":         llx.ArrayData(convert.SliceAnyToInterface(rt.NetworkTags), types.String),
-				"machineSpec":         llx.DictData(machineSpec),
-				"networkSpec":         llx.DictData(networkSpec),
-				"idleShutdownConfig":  llx.DictData(idleShutdownConfig),
-				"eucConfig":           llx.DictData(eucConfig),
-				"shieldedVmConfig":    llx.DictData(shieldedVmConfig),
-				"softwareConfig":      llx.DictData(softwareConfig),
-				"labels":              llx.MapData(convert.MapToInterfaceMap(rt.Labels), types.String),
-				"encryptionSpec":      llx.DictData(encryptionSpec),
-				"createdAt":           llx.TimeDataPtr(timestampAsTimePtr(rt.CreateTime)),
-				"updatedAt":           llx.TimeDataPtr(timestampAsTimePtr(rt.UpdateTime)),
-				"expirationTime":      llx.TimeDataPtr(timestampAsTimePtr(rt.ExpirationTime)),
+				"name":                 llx.StringData(rt.Name),
+				"displayName":          llx.StringData(rt.DisplayName),
+				"description":          llx.StringData(rt.Description),
+				"runtimeUser":          llx.StringData(rt.RuntimeUser),
+				"proxyUri":             llx.StringData(rt.ProxyUri),
+				"healthState":          llx.StringData(rt.HealthState.String()),
+				"runtimeState":         llx.StringData(rt.RuntimeState.String()),
+				"notebookRuntimeType":  llx.StringData(rt.NotebookRuntimeType.String()),
+				"isUpgradable":         llx.BoolData(rt.IsUpgradable),
+				"version":              llx.StringData(rt.Version),
+				"networkTags":          llx.ArrayData(convert.SliceAnyToInterface(rt.NetworkTags), types.String),
+				"machineSpec":          llx.DictData(machineSpec),
+				"networkSpec":          llx.DictData(networkSpec),
+				"enableInternetAccess": llx.BoolData(rt.GetNetworkSpec().GetEnableInternetAccess()),
+				"idleShutdownConfig":   llx.DictData(idleShutdownConfig),
+				"eucConfig":            llx.DictData(eucConfig),
+				"eucDisabled":          llx.BoolData(rt.GetEucConfig().GetEucDisabled()),
+				"bypassActasCheck":     llx.BoolData(rt.GetEucConfig().GetBypassActasCheck()),
+				"shieldedVmConfig":     llx.DictData(shieldedVmConfig),
+				"enableSecureBoot":     llx.BoolData(rt.GetShieldedVmConfig().GetEnableSecureBoot()),
+				"softwareConfig":       llx.DictData(softwareConfig),
+				"labels":               llx.MapData(convert.MapToInterfaceMap(rt.Labels), types.String),
+				"encryptionSpec":       llx.DictData(encryptionSpec),
+				"createdAt":            llx.TimeDataPtr(timestampAsTimePtr(rt.CreateTime)),
+				"updatedAt":            llx.TimeDataPtr(timestampAsTimePtr(rt.UpdateTime)),
+				"expirationTime":       llx.TimeDataPtr(timestampAsTimePtr(rt.ExpirationTime)),
 			})
 			if err != nil {
 				return nil, false, err
@@ -1509,6 +1968,8 @@ func (g *mqlGcpProjectVertexaiService) notebookRuntimes() ([]any, error) {
 			mqlRtTyped.cacheKmsKeyName = rt.GetEncryptionSpec().GetKmsKeyName()
 			mqlRtTyped.cacheServiceAccountEmail = rt.ServiceAccount
 			mqlRtTyped.cacheProjectId = projectId
+			mqlRtTyped.cacheNetwork = rt.GetNetworkSpec().GetNetwork()
+			mqlRtTyped.cacheSubnetwork = rt.GetNetworkSpec().GetSubnetwork()
 			items = append(items, mqlRt)
 		}
 		return items, false, nil
@@ -1520,6 +1981,14 @@ func (g *mqlGcpProjectVertexaiServiceNotebookRuntime) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiService) notebookRuntimeTemplates() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -1531,7 +2000,7 @@ func (g *mqlGcpProjectVertexaiService) notebookRuntimeTemplates() ([]any, error)
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("notebookRuntimeTemplates", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewNotebookClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -1552,68 +2021,92 @@ func (g *mqlGcpProjectVertexaiService) notebookRuntimeTemplates() ([]any, error)
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
 
-			machineSpec, err := protoToDict(tmpl.MachineSpec)
+			mqlTmpl, err := newMqlVertexaiNotebookRuntimeTemplate(g.MqlRuntime, tmpl)
 			if err != nil {
 				return nil, false, err
 			}
-			networkSpec, err := protoToDict(tmpl.NetworkSpec)
-			if err != nil {
-				return nil, false, err
-			}
-			idleShutdownConfig, err := protoToDict(tmpl.IdleShutdownConfig)
-			if err != nil {
-				return nil, false, err
-			}
-			eucConfig, err := protoToDict(tmpl.EucConfig)
-			if err != nil {
-				return nil, false, err
-			}
-			shieldedVmConfig, err := protoToDict(tmpl.ShieldedVmConfig)
-			if err != nil {
-				return nil, false, err
-			}
-			softwareConfig, err := protoToDict(tmpl.SoftwareConfig)
-			if err != nil {
-				return nil, false, err
-			}
-			encryptionSpec, err := protoToDict(tmpl.EncryptionSpec)
-			if err != nil {
-				return nil, false, err
-			}
-
-			mqlTmpl, err := CreateResource(g.MqlRuntime, "gcp.project.vertexaiService.notebookRuntimeTemplate", map[string]*llx.RawData{
-				"name":                llx.StringData(tmpl.Name),
-				"displayName":         llx.StringData(tmpl.DisplayName),
-				"description":         llx.StringData(tmpl.Description),
-				"isDefault":           llx.BoolData(tmpl.IsDefault),
-				"notebookRuntimeType": llx.StringData(tmpl.NotebookRuntimeType.String()),
-				"networkTags":         llx.ArrayData(convert.SliceAnyToInterface(tmpl.NetworkTags), types.String),
-				"machineSpec":         llx.DictData(machineSpec),
-				"networkSpec":         llx.DictData(networkSpec),
-				"idleShutdownConfig":  llx.DictData(idleShutdownConfig),
-				"eucConfig":           llx.DictData(eucConfig),
-				"shieldedVmConfig":    llx.DictData(shieldedVmConfig),
-				"softwareConfig":      llx.DictData(softwareConfig),
-				"etag":                llx.StringData(tmpl.Etag),
-				"labels":              llx.MapData(convert.MapToInterfaceMap(tmpl.Labels), types.String),
-				"encryptionSpec":      llx.DictData(encryptionSpec),
-				"createdAt":           llx.TimeDataPtr(timestampAsTimePtr(tmpl.CreateTime)),
-				"updatedAt":           llx.TimeDataPtr(timestampAsTimePtr(tmpl.UpdateTime)),
-			})
-			if err != nil {
-				return nil, false, err
-			}
-			mqlTmpl.(*mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate).cacheKmsKeyName = tmpl.GetEncryptionSpec().GetKmsKeyName()
 			items = append(items, mqlTmpl)
 		}
 		return items, false, nil
 	})
+}
+
+// newMqlVertexaiNotebookRuntimeTemplate maps a Vertex AI
+// NotebookRuntimeTemplate proto into an MQL resource. It is shared by the
+// notebookRuntimeTemplates() lister and the
+// initGcpProjectVertexaiServiceNotebookRuntimeTemplate single-instance resolver.
+func newMqlVertexaiNotebookRuntimeTemplate(runtime *plugin.Runtime, tmpl *aiplatformpb.NotebookRuntimeTemplate) (*mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate, error) {
+	machineSpec, err := protoToDict(tmpl.MachineSpec)
+	if err != nil {
+		return nil, err
+	}
+	networkSpec, err := protoToDict(tmpl.NetworkSpec)
+	if err != nil {
+		return nil, err
+	}
+	idleShutdownConfig, err := protoToDict(tmpl.IdleShutdownConfig)
+	if err != nil {
+		return nil, err
+	}
+	eucConfig, err := protoToDict(tmpl.EucConfig)
+	if err != nil {
+		return nil, err
+	}
+	shieldedVmConfig, err := protoToDict(tmpl.ShieldedVmConfig)
+	if err != nil {
+		return nil, err
+	}
+	softwareConfig, err := protoToDict(tmpl.SoftwareConfig)
+	if err != nil {
+		return nil, err
+	}
+	encryptionSpec, err := protoToDict(tmpl.EncryptionSpec)
+	if err != nil {
+		return nil, err
+	}
+
+	mqlTmpl, err := CreateResource(runtime, "gcp.project.vertexaiService.notebookRuntimeTemplate", map[string]*llx.RawData{
+		"name":                 llx.StringData(tmpl.Name),
+		"displayName":          llx.StringData(tmpl.DisplayName),
+		"description":          llx.StringData(tmpl.Description),
+		"isDefault":            llx.BoolData(tmpl.IsDefault),
+		"notebookRuntimeType":  llx.StringData(tmpl.NotebookRuntimeType.String()),
+		"networkTags":          llx.ArrayData(convert.SliceAnyToInterface(tmpl.NetworkTags), types.String),
+		"machineSpec":          llx.DictData(machineSpec),
+		"networkSpec":          llx.DictData(networkSpec),
+		"enableInternetAccess": llx.BoolData(tmpl.GetNetworkSpec().GetEnableInternetAccess()),
+		"idleShutdownConfig":   llx.DictData(idleShutdownConfig),
+		"eucConfig":            llx.DictData(eucConfig),
+		"eucDisabled":          llx.BoolData(tmpl.GetEucConfig().GetEucDisabled()),
+		"bypassActasCheck":     llx.BoolData(tmpl.GetEucConfig().GetBypassActasCheck()),
+		"shieldedVmConfig":     llx.DictData(shieldedVmConfig),
+		"enableSecureBoot":     llx.BoolData(tmpl.GetShieldedVmConfig().GetEnableSecureBoot()),
+		"softwareConfig":       llx.DictData(softwareConfig),
+		"etag":                 llx.StringData(tmpl.Etag),
+		"labels":               llx.MapData(convert.MapToInterfaceMap(tmpl.Labels), types.String),
+		"encryptionSpec":       llx.DictData(encryptionSpec),
+		"createdAt":            llx.TimeDataPtr(timestampAsTimePtr(tmpl.CreateTime)),
+		"updatedAt":            llx.TimeDataPtr(timestampAsTimePtr(tmpl.UpdateTime)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	res := mqlTmpl.(*mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate)
+	res.cacheKmsKeyName = tmpl.GetEncryptionSpec().GetKmsKeyName()
+	res.cacheServiceAccountEmail = tmpl.ServiceAccount
+	res.cacheProjectId = vertexaiProjectFromName(tmpl.Name)
+	res.cacheNetwork = tmpl.GetNetworkSpec().GetNetwork()
+	res.cacheSubnetwork = tmpl.GetNetworkSpec().GetSubnetwork()
+	return res, nil
 }
 
 func (g *mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate) id() (string, error) {
@@ -1621,6 +2114,14 @@ func (g *mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate) id() (string, erro
 }
 
 func (g *mqlGcpProjectVertexaiService) notebookExecutionJobs() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -1632,7 +2133,7 @@ func (g *mqlGcpProjectVertexaiService) notebookExecutionJobs() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("notebookExecutionJobs", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewNotebookClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -1653,8 +2154,11 @@ func (g *mqlGcpProjectVertexaiService) notebookExecutionJobs() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -1675,7 +2179,6 @@ func (g *mqlGcpProjectVertexaiService) notebookExecutionJobs() ([]any, error) {
 				"jobState":                llx.StringData(job.JobState.String()),
 				"kernelName":              llx.StringData(job.KernelName),
 				"executionUser":           llx.StringData(job.GetExecutionUser()),
-				"scheduleResourceName":    llx.StringData(job.ScheduleResourceName),
 				"executionTimeoutSeconds": llx.IntData(timeoutSeconds),
 				"labels":                  llx.MapData(convert.MapToInterfaceMap(job.Labels), types.String),
 				"encryptionSpec":          llx.DictData(encryptionSpec),
@@ -1685,6 +2188,8 @@ func (g *mqlGcpProjectVertexaiService) notebookExecutionJobs() ([]any, error) {
 			if err != nil {
 				return nil, false, err
 			}
+			mqlRef := mqlJob.(*mqlGcpProjectVertexaiServiceNotebookExecutionJob)
+			mqlRef.cacheScheduleResourceName = job.ScheduleResourceName
 			mqlNotebookJob := mqlJob.(*mqlGcpProjectVertexaiServiceNotebookExecutionJob)
 			mqlNotebookJob.cacheKmsKeyName = job.GetEncryptionSpec().GetKmsKeyName()
 			mqlNotebookJob.cacheServiceAccountEmail = job.GetServiceAccount()
@@ -1701,6 +2206,14 @@ func (g *mqlGcpProjectVertexaiServiceNotebookExecutionJob) id() (string, error) 
 }
 
 func (g *mqlGcpProjectVertexaiService) reasoningEngines() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -1712,7 +2225,7 @@ func (g *mqlGcpProjectVertexaiService) reasoningEngines() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("reasoningEngines", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewReasoningEngineClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -1733,8 +2246,11 @@ func (g *mqlGcpProjectVertexaiService) reasoningEngines() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -1798,6 +2314,14 @@ func (a *mqlGcpProjectVertexaiServiceReasoningEngine) serviceAccount() (*mqlGcpP
 }
 
 func (g *mqlGcpProjectVertexaiService) ragCorpora() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -1809,7 +2333,7 @@ func (g *mqlGcpProjectVertexaiService) ragCorpora() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("ragCorpora", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewVertexRagDataClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -1830,8 +2354,11 @@ func (g *mqlGcpProjectVertexaiService) ragCorpora() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -1845,19 +2372,26 @@ func (g *mqlGcpProjectVertexaiService) ragCorpora() ([]any, error) {
 				return nil, false, err
 			}
 
+			backend := ragCorpusBackendOf(corpus)
+
 			mqlCorpus, err := CreateResource(g.MqlRuntime, "gcp.project.vertexaiService.ragCorpus", map[string]*llx.RawData{
-				"name":           llx.StringData(corpus.Name),
-				"displayName":    llx.StringData(corpus.DisplayName),
-				"description":    llx.StringData(corpus.Description),
-				"corpusStatus":   llx.DictData(corpusStatus),
-				"encryptionSpec": llx.DictData(encryptionSpec),
-				"createdAt":      llx.TimeDataPtr(timestampAsTimePtr(corpus.CreateTime)),
-				"updatedAt":      llx.TimeDataPtr(timestampAsTimePtr(corpus.UpdateTime)),
+				"name":                        llx.StringData(corpus.Name),
+				"displayName":                 llx.StringData(corpus.DisplayName),
+				"description":                 llx.StringData(corpus.Description),
+				"corpusStatus":                llx.DictData(corpusStatus),
+				"backendType":                 llx.StringData(backend.backendType),
+				"pineconeIndexName":           llx.StringData(backend.pineconeIndexName),
+				"apiKeySecretVersion":         llx.StringData(backend.apiKeySecret.version),
+				"vertexAiSearchServingConfig": llx.StringData(backend.servingConfig),
+				"encryptionSpec":              llx.DictData(encryptionSpec),
+				"createdAt":                   llx.TimeDataPtr(timestampAsTimePtr(corpus.CreateTime)),
+				"updatedAt":                   llx.TimeDataPtr(timestampAsTimePtr(corpus.UpdateTime)),
 			})
 			if err != nil {
 				return nil, false, err
 			}
 			mqlCorpus.(*mqlGcpProjectVertexaiServiceRagCorpus).cacheKmsKeyName = corpus.GetEncryptionSpec().GetKmsKeyName()
+			mqlCorpus.(*mqlGcpProjectVertexaiServiceRagCorpus).cacheApiKeySecret = backend.apiKeySecret
 			items = append(items, mqlCorpus)
 		}
 		return items, false, nil
@@ -1869,6 +2403,14 @@ func (g *mqlGcpProjectVertexaiServiceRagCorpus) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiService) featureGroups() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -1880,7 +2422,7 @@ func (g *mqlGcpProjectVertexaiService) featureGroups() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("featureGroups", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewFeatureRegistryClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -1901,8 +2443,11 @@ func (g *mqlGcpProjectVertexaiService) featureGroups() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -1935,6 +2480,14 @@ func (g *mqlGcpProjectVertexaiServiceFeatureGroup) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiService) persistentResources() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -1946,7 +2499,7 @@ func (g *mqlGcpProjectVertexaiService) persistentResources() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("persistentResources", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewPersistentResourceClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -1967,8 +2520,11 @@ func (g *mqlGcpProjectVertexaiService) persistentResources() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -2020,6 +2576,14 @@ func (g *mqlGcpProjectVertexaiServicePersistentResource) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiService) schedules() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -2031,7 +2595,7 @@ func (g *mqlGcpProjectVertexaiService) schedules() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("schedules", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewScheduleClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -2052,28 +2616,16 @@ func (g *mqlGcpProjectVertexaiService) schedules() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
 
-			mqlSched, err := CreateResource(g.MqlRuntime, "gcp.project.vertexaiService.schedule", map[string]*llx.RawData{
-				"name":                  llx.StringData(sched.Name),
-				"displayName":           llx.StringData(sched.DisplayName),
-				"state":                 llx.StringData(sched.State.String()),
-				"cron":                  llx.StringData(sched.GetCron()),
-				"maxRunCount":           llx.IntData(sched.MaxRunCount),
-				"startedRunCount":       llx.IntData(sched.StartedRunCount),
-				"maxConcurrentRunCount": llx.IntData(sched.MaxConcurrentRunCount),
-				"allowQueueing":         llx.BoolData(sched.AllowQueueing),
-				"catchUp":               llx.BoolData(sched.CatchUp),
-				"startedAt":             llx.TimeDataPtr(timestampAsTimePtr(sched.StartTime)),
-				"endedAt":               llx.TimeDataPtr(timestampAsTimePtr(sched.EndTime)),
-				"createdAt":             llx.TimeDataPtr(timestampAsTimePtr(sched.CreateTime)),
-				"updatedAt":             llx.TimeDataPtr(timestampAsTimePtr(sched.UpdateTime)),
-				"nextRunTime":           llx.TimeDataPtr(timestampAsTimePtr(sched.NextRunTime)),
-			})
+			mqlSched, err := newMqlVertexaiSchedule(g.MqlRuntime, sched)
 			if err != nil {
 				return nil, false, err
 			}
@@ -2087,7 +2639,105 @@ func (g *mqlGcpProjectVertexaiServiceSchedule) id() (string, error) {
 	return g.Name.Data, g.Name.Error
 }
 
+// newMqlVertexaiSchedule maps a Vertex AI Schedule onto the MQL resource. It is
+// shared by the schedules() collection and the single-schedule init so both
+// paths populate the identical field set.
+func newMqlVertexaiSchedule(runtime *plugin.Runtime, sched *aiplatformpb.Schedule) (plugin.Resource, error) {
+	return CreateResource(runtime, "gcp.project.vertexaiService.schedule", map[string]*llx.RawData{
+		"name":                  llx.StringData(sched.Name),
+		"displayName":           llx.StringData(sched.DisplayName),
+		"state":                 llx.StringData(sched.State.String()),
+		"cron":                  llx.StringData(sched.GetCron()),
+		"maxRunCount":           llx.IntData(sched.MaxRunCount),
+		"startedRunCount":       llx.IntData(sched.StartedRunCount),
+		"maxConcurrentRunCount": llx.IntData(sched.MaxConcurrentRunCount),
+		"allowQueueing":         llx.BoolData(sched.AllowQueueing),
+		"catchUp":               llx.BoolData(sched.CatchUp),
+		"startedAt":             llx.TimeDataPtr(timestampAsTimePtr(sched.StartTime)),
+		"endedAt":               llx.TimeDataPtr(timestampAsTimePtr(sched.EndTime)),
+		"createdAt":             llx.TimeDataPtr(timestampAsTimePtr(sched.CreateTime)),
+		"updatedAt":             llx.TimeDataPtr(timestampAsTimePtr(sched.UpdateTime)),
+		"nextRunTime":           llx.TimeDataPtr(timestampAsTimePtr(sched.NextRunTime)),
+	})
+}
+
+// initGcpProjectVertexaiServiceSchedule resolves a single Vertex AI schedule by
+// its full resource name.
+//
+// Without an init, NewResource falls straight through to Create, so a typed
+// scheduleRef() reference produced a resource carrying only `name` -- every
+// other field unset, surfacing client-side as "primitive with no type
+// information" with no attribution. Whether that was visible depended on
+// whether schedules() had already run in the same session, so the same query
+// passed or returned nulls depending on evaluation order.
+func initGcpProjectVertexaiServiceSchedule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 1 {
+		return args, nil, nil
+	}
+
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New(`gcp.project.vertexaiService.schedule requires a "name" argument`)
+	}
+	name, ok := nameRaw.Value.(string)
+	if !ok || name == "" {
+		return nil, nil, errors.New(`gcp.project.vertexaiService.schedule requires a non-empty "name" argument`)
+	}
+
+	region := vertexaiRegionFromName(name)
+	if region == "" {
+		return nil, nil, errors.New("vertexai schedule init: could not determine region from name " + name)
+	}
+
+	conn, ok := runtime.Connection.(*connection.GcpConnection)
+	if !ok {
+		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
+	}
+	// Ask whether the API is on before paying for a Get that cannot succeed
+	// without it. The answer is memoized per project, so this is free after the
+	// first caller.
+	projectId := parseProjectFromPath(name)
+	if enabled, err := serviceEnabledForInit(runtime, projectId, service_aiplatform); err != nil {
+		return nil, nil, err
+	} else if !enabled {
+		return nil, nil, errors.New("Vertex AI API is not enabled on project " + projectId)
+	}
+
+	creds, err := conn.Credentials(aiplatform.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, nil, err
+	}
+	ctx := context.Background()
+	client, err := aiplatform.NewScheduleClient(ctx,
+		option.WithCredentials(creds), connection.GRPCClientTraceOption(),
+		option.WithEndpoint(vertexaiEndpoint(region)),
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer client.Close()
+
+	sched, err := client.GetSchedule(ctx, &aiplatformpb.GetScheduleRequest{Name: name})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	res, err := newMqlVertexaiSchedule(runtime, sched)
+	if err != nil {
+		return nil, nil, err
+	}
+	return args, res, nil
+}
+
 func (g *mqlGcpProjectVertexaiService) deploymentResourcePools() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -2099,7 +2749,7 @@ func (g *mqlGcpProjectVertexaiService) deploymentResourcePools() ([]any, error) 
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("deploymentResourcePools", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewDeploymentResourcePoolClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -2120,8 +2770,11 @@ func (g *mqlGcpProjectVertexaiService) deploymentResourcePools() ([]any, error) 
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -2160,6 +2813,14 @@ func (g *mqlGcpProjectVertexaiServiceDeploymentResourcePool) id() (string, error
 }
 
 func (g *mqlGcpProjectVertexaiService) cachedContents() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -2171,7 +2832,7 @@ func (g *mqlGcpProjectVertexaiService) cachedContents() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("cachedContents", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewGenAiCacheClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -2192,8 +2853,11 @@ func (g *mqlGcpProjectVertexaiService) cachedContents() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -2232,6 +2896,14 @@ func (g *mqlGcpProjectVertexaiServiceCachedContent) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiService) batchPredictionJobs() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -2243,7 +2915,7 @@ func (g *mqlGcpProjectVertexaiService) batchPredictionJobs() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("batchPredictionJobs", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewJobClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -2264,8 +2936,11 @@ func (g *mqlGcpProjectVertexaiService) batchPredictionJobs() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -2318,6 +2993,14 @@ func (g *mqlGcpProjectVertexaiServiceBatchPredictionJob) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiService) tuningJobs() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -2329,7 +3012,7 @@ func (g *mqlGcpProjectVertexaiService) tuningJobs() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("tuningJobs", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewGenAiTuningClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -2350,8 +3033,11 @@ func (g *mqlGcpProjectVertexaiService) tuningJobs() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -2404,6 +3090,14 @@ func (g *mqlGcpProjectVertexaiServiceTuningJob) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiService) trainingPipelines() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -2415,7 +3109,7 @@ func (g *mqlGcpProjectVertexaiService) trainingPipelines() ([]any, error) {
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("trainingPipelines", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewPipelineClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -2436,8 +3130,11 @@ func (g *mqlGcpProjectVertexaiService) trainingPipelines() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -2484,6 +3181,14 @@ func (g *mqlGcpProjectVertexaiServiceTrainingPipeline) id() (string, error) {
 }
 
 func (g *mqlGcpProjectVertexaiService) hyperparameterTuningJobs() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -2495,7 +3200,7 @@ func (g *mqlGcpProjectVertexaiService) hyperparameterTuningJobs() ([]any, error)
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("hyperparameterTuningJobs", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewJobClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -2516,8 +3221,11 @@ func (g *mqlGcpProjectVertexaiService) hyperparameterTuningJobs() ([]any, error)
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -2572,6 +3280,14 @@ func (g *mqlGcpProjectVertexaiServiceHyperparameterTuningJob) id() (string, erro
 }
 
 func (g *mqlGcpProjectVertexaiService) modelDeploymentMonitoringJobs() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -2583,7 +3299,7 @@ func (g *mqlGcpProjectVertexaiService) modelDeploymentMonitoringJobs() ([]any, e
 		return nil, err
 	}
 
-	return g.listAcrossRegions(func(ctx context.Context, region string) ([]any, bool, error) {
+	return g.listAcrossRegions("modelDeploymentMonitoringJobs", func(ctx context.Context, region string) ([]any, bool, error) {
 		client, err := aiplatform.NewJobClient(ctx,
 			option.WithCredentials(creds), connection.GRPCClientTraceOption(),
 			option.WithEndpoint(vertexaiEndpoint(region)),
@@ -2604,8 +3320,11 @@ func (g *mqlGcpProjectVertexaiService) modelDeploymentMonitoringJobs() ([]any, e
 				break
 			}
 			if err != nil {
-				if isVertexAIRegionSkippable(err) {
-					return nil, true, nil
+				if isInapplicable(err) {
+					// Keep what this region already yielded: the iterator
+					// paginates lazily, so a skippable error on a later page
+					// must not discard the pages that succeeded.
+					return items, true, nil
 				}
 				return nil, false, err
 			}
@@ -2648,15 +3367,72 @@ func (g *mqlGcpProjectVertexaiServiceModelDeploymentMonitoringJob) id() (string,
 // ---------------------------------------------------------------
 
 type mqlGcpProjectVertexaiServiceModelInternal struct {
-	cacheKmsKeyName string
+	cacheKmsKeyName        string
+	cacheOriginalModelName string
+	cachePipelineJobName   string
 }
 
 func (a *mqlGcpProjectVertexaiServiceModel) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
 	return newKmsCryptoKeyRef(a.MqlRuntime, &a.KmsKey, a.cacheKmsKeyName)
 }
 
+func (a *mqlGcpProjectVertexaiServiceModel) iamPolicy() ([]any, error) {
+	if a.Name.Error != nil {
+		return nil, a.Name.Error
+	}
+	name := a.Name.Data
+
+	conn := a.MqlRuntime.Connection.(*connection.GcpConnection)
+	creds, err := conn.Credentials(aiplatform.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	client, err := aiplatform.NewModelClient(ctx,
+		option.WithCredentials(creds), connection.GRPCClientTraceOption(),
+		option.WithEndpoint(vertexaiEndpoint(vertexaiRegionFromName(name))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	policy, err := client.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{
+		Resource: name,
+		Options:  &iampb.GetPolicyOptions{RequestedPolicyVersion: 3},
+	})
+	return vertexaiIamPolicyBindings(a.MqlRuntime, name, policy, err)
+}
+
+func (a *mqlGcpProjectVertexaiServiceModel) public() (bool, error) {
+	bindings := a.GetIamPolicy()
+	if bindings.Error != nil {
+		return false, bindings.Error
+	}
+	return iamPolicyHasPublicMember(bindings.Data)
+}
+
+func (a *mqlGcpProjectVertexaiServiceModel) originalModel() (*mqlGcpProjectVertexaiServiceModel, error) {
+	return resolveVertexaiModelRef(a.MqlRuntime, &a.OriginalModel, a.cacheOriginalModelName)
+}
+
+func (a *mqlGcpProjectVertexaiServiceModel) pipelineJob() (*mqlGcpProjectVertexaiServicePipelineJob, error) {
+	if a.cachePipelineJobName == "" {
+		a.PipelineJob.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "gcp.project.vertexaiService.pipelineJob", map[string]*llx.RawData{
+		"name": llx.StringData(a.cachePipelineJobName),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGcpProjectVertexaiServicePipelineJob), nil
+}
+
 type mqlGcpProjectVertexaiServiceEndpointInternal struct {
 	cacheKmsKeyName string
+	cacheNetwork    string
 }
 
 func (a *mqlGcpProjectVertexaiServiceEndpoint) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
@@ -2664,11 +3440,28 @@ func (a *mqlGcpProjectVertexaiServiceEndpoint) kmsKey() (*mqlGcpProjectKmsServic
 }
 
 type mqlGcpProjectVertexaiServicePipelineJobInternal struct {
-	cacheKmsKeyName string
+	cacheKmsKeyName     string
+	cacheScheduleName   string
+	cacheNetwork        string
+	cacheServiceAccount string
 }
 
 func (a *mqlGcpProjectVertexaiServicePipelineJob) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
 	return newKmsCryptoKeyRef(a.MqlRuntime, &a.KmsKey, a.cacheKmsKeyName)
+}
+
+func (a *mqlGcpProjectVertexaiServicePipelineJob) scheduleRef() (*mqlGcpProjectVertexaiServiceSchedule, error) {
+	if a.cacheScheduleName == "" {
+		a.ScheduleRef.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "gcp.project.vertexaiService.schedule", map[string]*llx.RawData{
+		"name": llx.StringData(a.cacheScheduleName),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGcpProjectVertexaiServiceSchedule), nil
 }
 
 func (a *mqlGcpProjectVertexaiServicePipelineJob) managedBy() (string, error) {
@@ -2700,7 +3493,9 @@ func (a *mqlGcpProjectVertexaiServiceTensorboard) kmsKey() (*mqlGcpProjectKmsSer
 }
 
 type mqlGcpProjectVertexaiServiceCustomJobInternal struct {
-	cacheKmsKeyName string
+	cacheKmsKeyName     string
+	cacheNetwork        string
+	cacheServiceAccount string
 }
 
 func (a *mqlGcpProjectVertexaiServiceCustomJob) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
@@ -2721,6 +3516,7 @@ func (a *mqlGcpProjectVertexaiServiceIndex) kmsKey() (*mqlGcpProjectKmsServiceKe
 
 type mqlGcpProjectVertexaiServiceIndexEndpointInternal struct {
 	cacheKmsKeyName string
+	cacheNetwork    string
 }
 
 func (a *mqlGcpProjectVertexaiServiceIndexEndpoint) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
@@ -2757,6 +3553,8 @@ type mqlGcpProjectVertexaiServiceNotebookRuntimeInternal struct {
 	cacheKmsKeyName          string
 	cacheServiceAccountEmail string
 	cacheProjectId           string
+	cacheNetwork             string
+	cacheSubnetwork          string
 }
 
 func (a *mqlGcpProjectVertexaiServiceNotebookRuntime) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
@@ -2767,12 +3565,121 @@ func (a *mqlGcpProjectVertexaiServiceNotebookRuntime) serviceAccount() (*mqlGcpP
 	return vertexaiServiceAccountRef(a.MqlRuntime, &a.ServiceAccount, a.cacheProjectId, a.cacheServiceAccountEmail)
 }
 
+func (a *mqlGcpProjectVertexaiServiceNotebookRuntime) network() (*mqlGcpProjectComputeServiceNetwork, error) {
+	return vertexaiNetworkRef(a.MqlRuntime, &a.Network, a.cacheNetwork)
+}
+
+func (a *mqlGcpProjectVertexaiServiceNotebookRuntime) subnetwork() (*mqlGcpProjectComputeServiceSubnetwork, error) {
+	return vertexaiSubnetworkRef(a.MqlRuntime, &a.Subnetwork, a.cacheSubnetwork)
+}
+
 type mqlGcpProjectVertexaiServiceNotebookRuntimeTemplateInternal struct {
-	cacheKmsKeyName string
+	cacheKmsKeyName          string
+	cacheServiceAccountEmail string
+	cacheProjectId           string
+	cacheNetwork             string
+	cacheSubnetwork          string
 }
 
 func (a *mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
 	return newKmsCryptoKeyRef(a.MqlRuntime, &a.KmsKey, a.cacheKmsKeyName)
+}
+
+func (a *mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate) iamPolicy() ([]any, error) {
+	if a.Name.Error != nil {
+		return nil, a.Name.Error
+	}
+	name := a.Name.Data
+
+	conn := a.MqlRuntime.Connection.(*connection.GcpConnection)
+	creds, err := conn.Credentials(aiplatform.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	client, err := aiplatform.NewNotebookClient(ctx,
+		option.WithCredentials(creds), connection.GRPCClientTraceOption(),
+		option.WithEndpoint(vertexaiEndpoint(vertexaiRegionFromName(name))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	policy, err := client.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{
+		Resource: name,
+		Options:  &iampb.GetPolicyOptions{RequestedPolicyVersion: 3},
+	})
+	return vertexaiIamPolicyBindings(a.MqlRuntime, name, policy, err)
+}
+
+func (a *mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate) public() (bool, error) {
+	bindings := a.GetIamPolicy()
+	if bindings.Error != nil {
+		return false, bindings.Error
+	}
+	return iamPolicyHasPublicMember(bindings.Data)
+}
+
+// vertexaiIamPolicyBindings maps a fetched resource-level IAM policy to
+// gcp.resourcemanager.binding resources. It handles the GetIamPolicy error
+// (the Model and Notebook clients share the google.iam.v1 mixin), returning nil
+// on access-denied so a scan without getIamPolicy permission degrades
+// gracefully rather than erroring.
+func vertexaiIamPolicyBindings(runtime *plugin.Runtime, name string, policy *iampb.Policy, err error) ([]any, error) {
+	if err != nil {
+		if s, ok := status.FromError(err); ok && s.Code() == codes.PermissionDenied {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return iampbBindingsToMql(runtime, name, policy.Bindings)
+}
+
+func (a *mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate) serviceAccount() (*mqlGcpProjectIamServiceServiceAccount, error) {
+	return vertexaiServiceAccountRef(a.MqlRuntime, &a.ServiceAccount, a.cacheProjectId, a.cacheServiceAccountEmail)
+}
+
+func (a *mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate) network() (*mqlGcpProjectComputeServiceNetwork, error) {
+	return vertexaiNetworkRef(a.MqlRuntime, &a.Network, a.cacheNetwork)
+}
+
+func (a *mqlGcpProjectVertexaiServiceNotebookRuntimeTemplate) subnetwork() (*mqlGcpProjectComputeServiceSubnetwork, error) {
+	return vertexaiSubnetworkRef(a.MqlRuntime, &a.Subnetwork, a.cacheSubnetwork)
+}
+
+// vertexaiNetworkRef resolves a cached VPC network URL/name to the typed
+// compute network, marking the field null when empty or unresolvable.
+func vertexaiNetworkRef(runtime *plugin.Runtime, field *plugin.TValue[*mqlGcpProjectComputeServiceNetwork], networkUrl string) (*mqlGcpProjectComputeServiceNetwork, error) {
+	if networkUrl == "" {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	n, err := getNetworkByUrl(networkUrl, runtime)
+	if err != nil {
+		return nil, err
+	}
+	if n == nil {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return n, nil
+}
+
+// vertexaiSubnetworkRef resolves a cached subnetwork URL/name to the typed
+// compute subnetwork, marking the field null when empty or unresolvable.
+func vertexaiSubnetworkRef(runtime *plugin.Runtime, field *plugin.TValue[*mqlGcpProjectComputeServiceSubnetwork], subnetUrl string) (*mqlGcpProjectComputeServiceSubnetwork, error) {
+	if subnetUrl == "" {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	n, err := getSubnetworkByUrl(subnetUrl, runtime)
+	if err != nil {
+		return nil, err
+	}
+	if n == nil {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return n, nil
 }
 
 type mqlGcpProjectVertexaiServiceNotebookExecutionJobInternal struct {
@@ -2780,6 +3687,7 @@ type mqlGcpProjectVertexaiServiceNotebookExecutionJobInternal struct {
 	cacheServiceAccountEmail         string
 	cacheProjectId                   string
 	cacheNotebookRuntimeTemplateName string
+	cacheScheduleResourceName        string
 }
 
 func (a *mqlGcpProjectVertexaiServiceNotebookExecutionJob) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
@@ -2805,10 +3713,7 @@ func (a *mqlGcpProjectVertexaiServiceNotebookExecutionJob) notebookRuntimeTempla
 }
 
 func (a *mqlGcpProjectVertexaiServiceNotebookExecutionJob) scheduleRef() (*mqlGcpProjectVertexaiServiceSchedule, error) {
-	if a.ScheduleResourceName.Error != nil {
-		return nil, a.ScheduleResourceName.Error
-	}
-	name := a.ScheduleResourceName.Data
+	name := a.cacheScheduleResourceName
 	if name == "" {
 		a.ScheduleRef.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -2836,11 +3741,109 @@ func (a *mqlGcpProjectVertexaiServiceReasoningEngine) kmsKey() (*mqlGcpProjectKm
 }
 
 type mqlGcpProjectVertexaiServiceRagCorpusInternal struct {
-	cacheKmsKeyName string
+	cacheKmsKeyName   string
+	cacheApiKeySecret secretVersionRef
 }
 
 func (a *mqlGcpProjectVertexaiServiceRagCorpus) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
 	return newKmsCryptoKeyRef(a.MqlRuntime, &a.KmsKey, a.cacheKmsKeyName)
+}
+
+func (a *mqlGcpProjectVertexaiServiceRagCorpus) apiKeySecret() (*mqlGcpProjectSecretmanagerServiceSecret, error) {
+	ref := a.cacheApiKeySecret
+	if ref.project == "" || ref.secret == "" {
+		a.ApiKeySecret.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	args := map[string]*llx.RawData{
+		"name":      llx.StringData(ref.secret),
+		"projectId": llx.StringData(ref.project),
+	}
+	if ref.location != "" {
+		args["location"] = llx.StringData(ref.location)
+	}
+	res, err := NewResource(a.MqlRuntime, "gcp.project.secretmanagerService.secret", args)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGcpProjectSecretmanagerServiceSecret), nil
+}
+
+// vertexaiPscEnabled reports whether a Vertex AI endpoint or index endpoint is
+// exposed through Private Service Connect. The top-level flag is deprecated in
+// favor of privateServiceConnectConfig, but endpoints created before the config
+// message existed still carry only the flag, so either one counts.
+func vertexaiPscEnabled(deprecatedFlag bool, cfg *aiplatformpb.PrivateServiceConnectConfig) bool {
+	return deprecatedFlag || cfg.GetEnablePrivateServiceConnect()
+}
+
+// vertexaiEndpointInternetReachable derives whether a Vertex AI online
+// prediction endpoint can be reached from the internet. An endpoint is private
+// when it is peered into a VPC network or exposed only through Private Service
+// Connect (the API accepts one or the other). Otherwise it is served publicly,
+// either on the shared regional API host or, for a dedicated endpoint, on its
+// own public DNS name; both answer requests from any address that holds IAM
+// permission.
+func vertexaiEndpointInternetReachable(network string, pscEnabled bool) bool {
+	return network == "" && !pscEnabled
+}
+
+// ragCorpusBackend is the vector database configuration of a RAG corpus.
+type ragCorpusBackend struct {
+	backendType       string
+	pineconeIndexName string
+	apiKeySecret      secretVersionRef
+	servingConfig     string
+}
+
+// ragCorpusBackendOf reads which backend stores a RAG corpus: one of the
+// vectorDbConfig variants (ragManagedDb, pinecone, vertexVectorSearch) or
+// vertexAiSearch. The names are the proto JSON names of the oneof members.
+func ragCorpusBackendOf(corpus *aiplatformpb.RagCorpus) ragCorpusBackend {
+	var b ragCorpusBackend
+	if search := corpus.GetVertexAiSearchConfig(); search != nil {
+		b.backendType = "vertexAiSearch"
+		b.servingConfig = search.GetServingConfig()
+		return b
+	}
+	db := corpus.GetVectorDbConfig()
+	if db == nil {
+		return b
+	}
+	switch {
+	case db.GetRagManagedDb() != nil:
+		b.backendType = "ragManagedDb"
+	case db.GetPinecone() != nil:
+		b.backendType = "pinecone"
+		b.pineconeIndexName = db.GetPinecone().GetIndexName()
+	case db.GetVertexVectorSearch() != nil:
+		b.backendType = "vertexVectorSearch"
+	}
+	b.apiKeySecret = parseSecretVersionName(db.GetApiAuth().GetApiKeyConfig().GetApiKeySecretVersion())
+	return b
+}
+
+// secretVersionRef is a parsed Secret Manager secret version resource name.
+type secretVersionRef struct {
+	project  string
+	location string
+	secret   string
+	version  string
+}
+
+// parseSecretVersionName parses a Secret Manager secret version name of the
+// form "projects/{p}/secrets/{s}/versions/{v}" or, for a regional secret,
+// "projects/{p}/locations/{l}/secrets/{s}/versions/{v}". A name that does not
+// match either form yields the zero value.
+func parseSecretVersionName(name string) secretVersionRef {
+	parts := strings.Split(name, "/")
+	switch {
+	case len(parts) == 6 && parts[0] == "projects" && parts[2] == "secrets" && parts[4] == "versions":
+		return secretVersionRef{project: parts[1], secret: parts[3], version: parts[5]}
+	case len(parts) == 8 && parts[0] == "projects" && parts[2] == "locations" && parts[4] == "secrets" && parts[6] == "versions":
+		return secretVersionRef{project: parts[1], location: parts[3], secret: parts[5], version: parts[7]}
+	}
+	return secretVersionRef{}
 }
 
 type mqlGcpProjectVertexaiServicePersistentResourceInternal struct {

@@ -1,0 +1,1829 @@
+{
+    "ID": "cd40b0284b784800bd138f7a6a53c59a84651394f04c029038fda3d2d0d0e11e",
+    "Labels": {
+        "io.cri-containerd.kind": "container",
+        "io.kubernetes.container.name": "priv",
+        "io.kubernetes.pod.name": "priv",
+        "io.kubernetes.pod.namespace": "default",
+        "io.kubernetes.pod.uid": "d6fe366f-0570-4ca7-b224-b2bc5b6969cd"
+    },
+    "Image": "docker.io/library/busybox:1.36",
+    "Runtime": {
+        "Name": "io.containerd.runc.v2",
+        "Options": {
+            "type_url": "containerd.runc.v1.Options",
+            "value": "SAE="
+        }
+    },
+    "Snapshotter": "overlayfs",
+    "CreatedAt": "2026-10-08T00:33:14.249372501Z",
+    "UpdatedAt": "2026-10-08T00:33:14.249372501Z",
+    "Extensions": {
+        "io.cri-containerd.container.metadata": {
+            "type_url": "github.com/containerd/cri/pkg/store/container/Metadata",
+            "value": "eyJWZXJzaW9uIjoidjEiLCJNZXRhZGF0YSI6eyJJRCI6ImNkNDBiMDI4NGI3ODQ4MDBiZDEzOGY3YTZhNTNjNTlhODQ2NTEzOTRmMDRjMDI5MDM4ZmRhM2QyZDBkMGUxMWUiLCJOYW1lIjoicHJpdl9wcml2X2RlZmF1bHRfZDZmZTM2NmYtMDU3MC00Y2E3LWIyMjQtYjJiYzViNjk2OWNkXzAiLCJTYW5kYm94SUQiOiI0ZmUyODNjNmM0N2QwM2Q5NjYyN2JhMmVmYjMwOTRhNWJmOTI3NjUxYTM4NTM1M2MyOGIyODRhYTJmY2Y1YWQ5IiwiQ29uZmlnIjp7Im1ldGFkYXRhIjp7Im5hbWUiOiJwcml2In0sImltYWdlIjp7ImltYWdlIjoic2hhMjU2OmI3Yzg3M2JkOTdiZGM5MDQ2ZmM4OTRlMGIyMTZjOGFlZjMxZTBkYjRjNWI3NjFmYjUzMDIyZTQwNTc3YWI2YzAiLCJ1c2VyX3NwZWNpZmllZF9pbWFnZSI6ImJ1c3lib3g6MS4zNiJ9LCJjb21tYW5kIjpbInNsZWVwIiwiaW5maW5pdHkiXSwiZW52cyI6W3sia2V5IjoiS1VCRVJORVRFU19QT1JUXzQ0M19UQ1BfUFJPVE8iLCJ2YWx1ZSI6InRjcCJ9LHsia2V5IjoiS1VCRVJORVRFU19QT1JUXzQ0M19UQ1BfUE9SVCIsInZhbHVlIjoiNDQzIn0seyJrZXkiOiJLVUJFUk5FVEVTX1BPUlRfNDQzX1RDUF9BRERSIiwidmFsdWUiOiIxMC45Ni4wLjEifSx7ImtleSI6IktVQkVSTkVURVNfU0VSVklDRV9IT1NUIiwidmFsdWUiOiIxMC45Ni4wLjEifSx7ImtleSI6IktVQkVSTkVURVNfU0VSVklDRV9QT1JUIiwidmFsdWUiOiI0NDMifSx7ImtleSI6IktVQkVSTkVURVNfU0VSVklDRV9QT1JUX0hUVFBTIiwidmFsdWUiOiI0NDMifSx7ImtleSI6IktVQkVSTkVURVNfUE9SVCIsInZhbHVlIjoidGNwOi8vMTAuOTYuMC4xOjQ0MyJ9LHsia2V5IjoiS1VCRVJORVRFU19QT1JUXzQ0M19UQ1AiLCJ2YWx1ZSI6InRjcDovLzEwLjk2LjAuMTo0NDMifV0sIm1vdW50cyI6W3siY29udGFpbmVyX3BhdGgiOiIvdmFyL3J1bi9zZWNyZXRzL2t1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQiLCJob3N0X3BhdGgiOiIvdmFyL2xpYi9rdWJlbGV0L3BvZHMvZDZmZTM2NmYtMDU3MC00Y2E3LWIyMjQtYjJiYzViNjk2OWNkL3ZvbHVtZXMva3ViZXJuZXRlcy5pb35wcm9qZWN0ZWQva3ViZS1hcGktYWNjZXNzLWN6dHhzIiwicmVhZG9ubHkiOnRydWV9LHsiY29udGFpbmVyX3BhdGgiOiIvZXRjL2hvc3RzIiwiaG9zdF9wYXRoIjoiL3Zhci9saWIva3ViZWxldC9wb2RzL2Q2ZmUzNjZmLTA1NzAtNGNhNy1iMjI0LWIyYmM1YjY5NjljZC9ldGMtaG9zdHMifSx7ImNvbnRhaW5lcl9wYXRoIjoiL2Rldi90ZXJtaW5hdGlvbi1sb2ciLCJob3N0X3BhdGgiOiIvdmFyL2xpYi9rdWJlbGV0L3BvZHMvZDZmZTM2NmYtMDU3MC00Y2E3LWIyMjQtYjJiYzViNjk2OWNkL2NvbnRhaW5lcnMvcHJpdi83MWFjMDk2YyJ9XSwibGFiZWxzIjp7ImlvLmt1YmVybmV0ZXMuY29udGFpbmVyLm5hbWUiOiJwcml2IiwiaW8ua3ViZXJuZXRlcy5wb2QubmFtZSI6InByaXYiLCJpby5rdWJlcm5ldGVzLnBvZC5uYW1lc3BhY2UiOiJkZWZhdWx0IiwiaW8ua3ViZXJuZXRlcy5wb2QudWlkIjoiZDZmZTM2NmYtMDU3MC00Y2E3LWIyMjQtYjJiYzViNjk2OWNkIn0sImFubm90YXRpb25zIjp7ImlvLmt1YmVybmV0ZXMuY29udGFpbmVyLmhhc2giOiJmNGE2ZGY0NyIsImlvLmt1YmVybmV0ZXMuY29udGFpbmVyLnJlc3RhcnRDb3VudCI6IjAiLCJpby5rdWJlcm5ldGVzLmNvbnRhaW5lci50ZXJtaW5hdGlvbk1lc3NhZ2VQYXRoIjoiL2Rldi90ZXJtaW5hdGlvbi1sb2ciLCJpby5rdWJlcm5ldGVzLmNvbnRhaW5lci50ZXJtaW5hdGlvbk1lc3NhZ2VQb2xpY3kiOiJGaWxlIiwiaW8ua3ViZXJuZXRlcy5wb2QudGVybWluYXRpb25HcmFjZVBlcmlvZCI6IjMwIn0sImxvZ19wYXRoIjoicHJpdi8wLmxvZyIsImxpbnV4Ijp7InJlc291cmNlcyI6eyJjcHVfcGVyaW9kIjoxMDAwMDAsImNwdV9zaGFyZXMiOjIsIm9vbV9zY29yZV9hZGoiOjEwMDAsImh1Z2VwYWdlX2xpbWl0cyI6W3sicGFnZV9zaXplIjoiMk1CIn0seyJwYWdlX3NpemUiOiIzMk1CIn0seyJwYWdlX3NpemUiOiI2NEtCIn0seyJwYWdlX3NpemUiOiIxR0IifV0sInVuaWZpZWQiOnsibWVtb3J5Lm9vbS5ncm91cCI6IjEiLCJtZW1vcnkuc3dhcC5tYXgiOiIwIn19LCJzZWN1cml0eV9jb250ZXh0Ijp7InByaXZpbGVnZWQiOnRydWUsIm5hbWVzcGFjZV9vcHRpb25zIjp7InBpZCI6MSwidXNlcm5zX29wdGlvbnMiOnsibW9kZSI6Mn19LCJydW5fYXNfdXNlciI6e30sIm1hc2tlZF9wYXRocyI6WyIvcHJvYy9hc291bmQiLCIvcHJvYy9hY3BpIiwiL3Byb2MvaW50ZXJydXB0cyIsIi9wcm9jL2tjb3JlIiwiL3Byb2Mva2V5cyIsIi9wcm9jL2xhdGVuY3lfc3RhdHMiLCIvcHJvYy90aW1lcl9saXN0IiwiL3Byb2MvdGltZXJfc3RhdHMiLCIvcHJvYy9zY2hlZF9kZWJ1ZyIsIi9wcm9jL3Njc2kiLCIvc3lzL2Zpcm13YXJlIiwiL3N5cy9kZXZpY2VzL3ZpcnR1YWwvcG93ZXJjYXAiXSwicmVhZG9ubHlfcGF0aHMiOlsiL3Byb2MvYnVzIiwiL3Byb2MvZnMiLCIvcHJvYy9pcnEiLCIvcHJvYy9zeXMiLCIvcHJvYy9zeXNycS10cmlnZ2VyIl0sInNlY2NvbXAiOnsicHJvZmlsZV90eXBlIjoxfX19fSwiSW1hZ2VSZWYiOiJzaGEyNTY6YjdjODczYmQ5N2JkYzkwNDZmYzg5NGUwYjIxNmM4YWVmMzFlMGRiNGM1Yjc2MWZiNTMwMjJlNDA1NzdhYjZjMCIsIkxvZ1BhdGgiOiIvdmFyL2xvZy9wb2RzL2RlZmF1bHRfcHJpdl9kNmZlMzY2Zi0wNTcwLTRjYTctYjIyNC1iMmJjNWI2OTY5Y2QvcHJpdi8wLmxvZyIsIlN0b3BTaWduYWwiOiIiLCJQcm9jZXNzTGFiZWwiOiIifX0="
+        }
+    },
+    "SandboxID": "4fe283c6c47d03d96627ba2efb3094a5bf927651a385353c28b284aa2fcf5ad9",
+    "Spec": {
+        "ociVersion": "1.2.1",
+        "process": {
+            "user": {
+                "uid": 0,
+                "gid": 0,
+                "additionalGids": [
+                    0,
+                    10
+                ]
+            },
+            "args": [
+                "sleep",
+                "infinity"
+            ],
+            "env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "HOSTNAME=priv",
+                "KUBERNETES_PORT_443_TCP_PROTO=tcp",
+                "KUBERNETES_PORT_443_TCP_PORT=443",
+                "KUBERNETES_PORT_443_TCP_ADDR=10.96.0.1",
+                "KUBERNETES_SERVICE_HOST=10.96.0.1",
+                "KUBERNETES_SERVICE_PORT=443",
+                "KUBERNETES_SERVICE_PORT_HTTPS=443",
+                "KUBERNETES_PORT=tcp://10.96.0.1:443",
+                "KUBERNETES_PORT_443_TCP=tcp://10.96.0.1:443"
+            ],
+            "cwd": "/",
+            "capabilities": {
+                "bounding": [
+                    "CAP_CHOWN",
+                    "CAP_DAC_OVERRIDE",
+                    "CAP_DAC_READ_SEARCH",
+                    "CAP_FOWNER",
+                    "CAP_FSETID",
+                    "CAP_KILL",
+                    "CAP_SETGID",
+                    "CAP_SETUID",
+                    "CAP_SETPCAP",
+                    "CAP_LINUX_IMMUTABLE",
+                    "CAP_NET_BIND_SERVICE",
+                    "CAP_NET_BROADCAST",
+                    "CAP_NET_ADMIN",
+                    "CAP_NET_RAW",
+                    "CAP_IPC_LOCK",
+                    "CAP_IPC_OWNER",
+                    "CAP_SYS_MODULE",
+                    "CAP_SYS_RAWIO",
+                    "CAP_SYS_CHROOT",
+                    "CAP_SYS_PTRACE",
+                    "CAP_SYS_PACCT",
+                    "CAP_SYS_ADMIN",
+                    "CAP_SYS_BOOT",
+                    "CAP_SYS_NICE",
+                    "CAP_SYS_RESOURCE",
+                    "CAP_SYS_TIME",
+                    "CAP_SYS_TTY_CONFIG",
+                    "CAP_MKNOD",
+                    "CAP_LEASE",
+                    "CAP_AUDIT_WRITE",
+                    "CAP_AUDIT_CONTROL",
+                    "CAP_SETFCAP",
+                    "CAP_MAC_OVERRIDE",
+                    "CAP_MAC_ADMIN",
+                    "CAP_SYSLOG",
+                    "CAP_WAKE_ALARM",
+                    "CAP_BLOCK_SUSPEND",
+                    "CAP_AUDIT_READ",
+                    "CAP_PERFMON",
+                    "CAP_BPF",
+                    "CAP_CHECKPOINT_RESTORE"
+                ],
+                "effective": [
+                    "CAP_CHOWN",
+                    "CAP_DAC_OVERRIDE",
+                    "CAP_DAC_READ_SEARCH",
+                    "CAP_FOWNER",
+                    "CAP_FSETID",
+                    "CAP_KILL",
+                    "CAP_SETGID",
+                    "CAP_SETUID",
+                    "CAP_SETPCAP",
+                    "CAP_LINUX_IMMUTABLE",
+                    "CAP_NET_BIND_SERVICE",
+                    "CAP_NET_BROADCAST",
+                    "CAP_NET_ADMIN",
+                    "CAP_NET_RAW",
+                    "CAP_IPC_LOCK",
+                    "CAP_IPC_OWNER",
+                    "CAP_SYS_MODULE",
+                    "CAP_SYS_RAWIO",
+                    "CAP_SYS_CHROOT",
+                    "CAP_SYS_PTRACE",
+                    "CAP_SYS_PACCT",
+                    "CAP_SYS_ADMIN",
+                    "CAP_SYS_BOOT",
+                    "CAP_SYS_NICE",
+                    "CAP_SYS_RESOURCE",
+                    "CAP_SYS_TIME",
+                    "CAP_SYS_TTY_CONFIG",
+                    "CAP_MKNOD",
+                    "CAP_LEASE",
+                    "CAP_AUDIT_WRITE",
+                    "CAP_AUDIT_CONTROL",
+                    "CAP_SETFCAP",
+                    "CAP_MAC_OVERRIDE",
+                    "CAP_MAC_ADMIN",
+                    "CAP_SYSLOG",
+                    "CAP_WAKE_ALARM",
+                    "CAP_BLOCK_SUSPEND",
+                    "CAP_AUDIT_READ",
+                    "CAP_PERFMON",
+                    "CAP_BPF",
+                    "CAP_CHECKPOINT_RESTORE"
+                ],
+                "permitted": [
+                    "CAP_CHOWN",
+                    "CAP_DAC_OVERRIDE",
+                    "CAP_DAC_READ_SEARCH",
+                    "CAP_FOWNER",
+                    "CAP_FSETID",
+                    "CAP_KILL",
+                    "CAP_SETGID",
+                    "CAP_SETUID",
+                    "CAP_SETPCAP",
+                    "CAP_LINUX_IMMUTABLE",
+                    "CAP_NET_BIND_SERVICE",
+                    "CAP_NET_BROADCAST",
+                    "CAP_NET_ADMIN",
+                    "CAP_NET_RAW",
+                    "CAP_IPC_LOCK",
+                    "CAP_IPC_OWNER",
+                    "CAP_SYS_MODULE",
+                    "CAP_SYS_RAWIO",
+                    "CAP_SYS_CHROOT",
+                    "CAP_SYS_PTRACE",
+                    "CAP_SYS_PACCT",
+                    "CAP_SYS_ADMIN",
+                    "CAP_SYS_BOOT",
+                    "CAP_SYS_NICE",
+                    "CAP_SYS_RESOURCE",
+                    "CAP_SYS_TIME",
+                    "CAP_SYS_TTY_CONFIG",
+                    "CAP_MKNOD",
+                    "CAP_LEASE",
+                    "CAP_AUDIT_WRITE",
+                    "CAP_AUDIT_CONTROL",
+                    "CAP_SETFCAP",
+                    "CAP_MAC_OVERRIDE",
+                    "CAP_MAC_ADMIN",
+                    "CAP_SYSLOG",
+                    "CAP_WAKE_ALARM",
+                    "CAP_BLOCK_SUSPEND",
+                    "CAP_AUDIT_READ",
+                    "CAP_PERFMON",
+                    "CAP_BPF",
+                    "CAP_CHECKPOINT_RESTORE"
+                ]
+            },
+            "oomScoreAdj": 1000
+        },
+        "root": {
+            "path": "rootfs"
+        },
+        "mounts": [
+            {
+                "destination": "/proc",
+                "type": "proc",
+                "source": "proc",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "nodev"
+                ]
+            },
+            {
+                "destination": "/dev",
+                "type": "tmpfs",
+                "source": "tmpfs",
+                "options": [
+                    "nosuid",
+                    "strictatime",
+                    "mode=755",
+                    "size=65536k"
+                ]
+            },
+            {
+                "destination": "/dev/pts",
+                "type": "devpts",
+                "source": "devpts",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "newinstance",
+                    "ptmxmode=0666",
+                    "mode=0620",
+                    "gid=5"
+                ]
+            },
+            {
+                "destination": "/dev/mqueue",
+                "type": "mqueue",
+                "source": "mqueue",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "nodev"
+                ]
+            },
+            {
+                "destination": "/sys",
+                "type": "sysfs",
+                "source": "sysfs",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "nodev",
+                    "rw"
+                ]
+            },
+            {
+                "destination": "/sys/fs/cgroup",
+                "type": "cgroup",
+                "source": "cgroup",
+                "options": [
+                    "nosuid",
+                    "noexec",
+                    "nodev",
+                    "relatime",
+                    "rw"
+                ]
+            },
+            {
+                "destination": "/etc/hosts",
+                "type": "bind",
+                "source": "/var/lib/kubelet/pods/d6fe366f-0570-4ca7-b224-b2bc5b6969cd/etc-hosts",
+                "options": [
+                    "rbind",
+                    "rprivate",
+                    "rw"
+                ]
+            },
+            {
+                "destination": "/dev/termination-log",
+                "type": "bind",
+                "source": "/var/lib/kubelet/pods/d6fe366f-0570-4ca7-b224-b2bc5b6969cd/containers/priv/71ac096c",
+                "options": [
+                    "rbind",
+                    "rprivate",
+                    "rw"
+                ]
+            },
+            {
+                "destination": "/etc/hostname",
+                "type": "bind",
+                "source": "/var/lib/containerd/io.containerd.grpc.v1.cri/sandboxes/4fe283c6c47d03d96627ba2efb3094a5bf927651a385353c28b284aa2fcf5ad9/hostname",
+                "options": [
+                    "rbind",
+                    "rprivate",
+                    "rw"
+                ]
+            },
+            {
+                "destination": "/etc/resolv.conf",
+                "type": "bind",
+                "source": "/var/lib/containerd/io.containerd.grpc.v1.cri/sandboxes/4fe283c6c47d03d96627ba2efb3094a5bf927651a385353c28b284aa2fcf5ad9/resolv.conf",
+                "options": [
+                    "rbind",
+                    "rprivate",
+                    "rw"
+                ]
+            },
+            {
+                "destination": "/dev/shm",
+                "type": "bind",
+                "source": "/run/containerd/io.containerd.grpc.v1.cri/sandboxes/4fe283c6c47d03d96627ba2efb3094a5bf927651a385353c28b284aa2fcf5ad9/shm",
+                "options": [
+                    "rbind",
+                    "rprivate",
+                    "rw"
+                ]
+            },
+            {
+                "destination": "/var/run/secrets/kubernetes.io/serviceaccount",
+                "type": "bind",
+                "source": "/var/lib/kubelet/pods/d6fe366f-0570-4ca7-b224-b2bc5b6969cd/volumes/kubernetes.io~projected/kube-api-access-cztxs",
+                "options": [
+                    "rbind",
+                    "rprivate",
+                    "ro"
+                ]
+            }
+        ],
+        "hooks": {
+            "createContainer": [
+                {
+                    "path": "/kind/bin/mount-product-files.sh"
+                }
+            ]
+        },
+        "annotations": {
+            "io.kubernetes.cri.container-name": "priv",
+            "io.kubernetes.cri.container-type": "container",
+            "io.kubernetes.cri.image-name": "busybox:1.36",
+            "io.kubernetes.cri.sandbox-id": "4fe283c6c47d03d96627ba2efb3094a5bf927651a385353c28b284aa2fcf5ad9",
+            "io.kubernetes.cri.sandbox-name": "priv",
+            "io.kubernetes.cri.sandbox-namespace": "default",
+            "io.kubernetes.cri.sandbox-uid": "d6fe366f-0570-4ca7-b224-b2bc5b6969cd"
+        },
+        "linux": {
+            "resources": {
+                "devices": [
+                    {
+                        "allow": true,
+                        "access": "rwm"
+                    }
+                ],
+                "memory": {},
+                "cpu": {
+                    "shares": 2,
+                    "period": 100000
+                },
+                "unified": {
+                    "memory.oom.group": "1",
+                    "memory.swap.max": "0"
+                }
+            },
+            "cgroupsPath": "kubelet-kubepods-besteffort-podd6fe366f_0570_4ca7_b224_b2bc5b6969cd.slice:cri-containerd:cd40b0284b784800bd138f7a6a53c59a84651394f04c029038fda3d2d0d0e11e",
+            "namespaces": [
+                {
+                    "type": "pid"
+                },
+                {
+                    "type": "ipc",
+                    "path": "/proc/10388/ns/ipc"
+                },
+                {
+                    "type": "uts",
+                    "path": "/proc/10388/ns/uts"
+                },
+                {
+                    "type": "mount"
+                },
+                {
+                    "type": "network",
+                    "path": "/proc/10388/ns/net"
+                }
+            ],
+            "devices": [
+                {
+                    "path": "/dev/autofs",
+                    "type": "c",
+                    "major": 10,
+                    "minor": 235,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/btrfs-control",
+                    "type": "c",
+                    "major": 10,
+                    "minor": 234,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/bus/usb/001/001",
+                    "type": "c",
+                    "major": 189,
+                    "minor": 0,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/bus/usb/002/001",
+                    "type": "c",
+                    "major": 189,
+                    "minor": 128,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/cachefiles",
+                    "type": "c",
+                    "major": 10,
+                    "minor": 257,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/cpu_dma_latency",
+                    "type": "c",
+                    "major": 10,
+                    "minor": 260,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/cuse",
+                    "type": "c",
+                    "major": 10,
+                    "minor": 203,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/full",
+                    "type": "c",
+                    "major": 1,
+                    "minor": 7,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/fuse",
+                    "type": "c",
+                    "major": 10,
+                    "minor": 229,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/gpiochip0",
+                    "type": "c",
+                    "major": 254,
+                    "minor": 0,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/hvc0",
+                    "type": "c",
+                    "major": 229,
+                    "minor": 0,
+                    "fileMode": 384,
+                    "uid": 0,
+                    "gid": 5
+                },
+                {
+                    "path": "/dev/hvc1",
+                    "type": "c",
+                    "major": 229,
+                    "minor": 1,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/hvc2",
+                    "type": "c",
+                    "major": 229,
+                    "minor": 2,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/hvc3",
+                    "type": "c",
+                    "major": 229,
+                    "minor": 3,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/hvc4",
+                    "type": "c",
+                    "major": 229,
+                    "minor": 4,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/hvc5",
+                    "type": "c",
+                    "major": 229,
+                    "minor": 5,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/hvc6",
+                    "type": "c",
+                    "major": 229,
+                    "minor": 6,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/hvc7",
+                    "type": "c",
+                    "major": 229,
+                    "minor": 7,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/hwrng",
+                    "type": "c",
+                    "major": 10,
+                    "minor": 183,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/input/mice",
+                    "type": "c",
+                    "major": 13,
+                    "minor": 63,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/kmsg",
+                    "type": "c",
+                    "major": 1,
+                    "minor": 11,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/loop-control",
+                    "type": "c",
+                    "major": 10,
+                    "minor": 237,
+                    "fileMode": 432,
+                    "uid": 0,
+                    "gid": 6
+                },
+                {
+                    "path": "/dev/loop0",
+                    "type": "b",
+                    "major": 7,
+                    "minor": 0,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/loop1",
+                    "type": "b",
+                    "major": 7,
+                    "minor": 1,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/loop2",
+                    "type": "b",
+                    "major": 7,
+                    "minor": 2,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/loop3",
+                    "type": "b",
+                    "major": 7,
+                    "minor": 3,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/loop4",
+                    "type": "b",
+                    "major": 7,
+                    "minor": 4,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/loop5",
+                    "type": "b",
+                    "major": 7,
+                    "minor": 5,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/loop6",
+                    "type": "b",
+                    "major": 7,
+                    "minor": 6,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/loop7",
+                    "type": "b",
+                    "major": 7,
+                    "minor": 7,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/mapper/control",
+                    "type": "c",
+                    "major": 10,
+                    "minor": 236,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/mem",
+                    "type": "c",
+                    "major": 1,
+                    "minor": 1,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/nbd0",
+                    "type": "b",
+                    "major": 43,
+                    "minor": 0,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/nbd1",
+                    "type": "b",
+                    "major": 43,
+                    "minor": 32,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/nbd10",
+                    "type": "b",
+                    "major": 43,
+                    "minor": 320,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/nbd11",
+                    "type": "b",
+                    "major": 43,
+                    "minor": 352,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/nbd12",
+                    "type": "b",
+                    "major": 43,
+                    "minor": 384,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/nbd13",
+                    "type": "b",
+                    "major": 43,
+                    "minor": 416,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/nbd14",
+                    "type": "b",
+                    "major": 43,
+                    "minor": 448,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/nbd15",
+                    "type": "b",
+                    "major": 43,
+                    "minor": 480,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/nbd2",
+                    "type": "b",
+                    "major": 43,
+                    "minor": 64,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/nbd3",
+                    "type": "b",
+                    "major": 43,
+                    "minor": 96,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/nbd4",
+                    "type": "b",
+                    "major": 43,
+                    "minor": 128,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/nbd5",
+                    "type": "b",
+                    "major": 43,
+                    "minor": 160,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/nbd6",
+                    "type": "b",
+                    "major": 43,
+                    "minor": 192,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/nbd7",
+                    "type": "b",
+                    "major": 43,
+                    "minor": 224,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/nbd8",
+                    "type": "b",
+                    "major": 43,
+                    "minor": 256,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/nbd9",
+                    "type": "b",
+                    "major": 43,
+                    "minor": 288,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/net/tun",
+                    "type": "c",
+                    "major": 10,
+                    "minor": 200,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/null",
+                    "type": "c",
+                    "major": 1,
+                    "minor": 3,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/port",
+                    "type": "c",
+                    "major": 1,
+                    "minor": 4,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ppp",
+                    "type": "c",
+                    "major": 108,
+                    "minor": 0,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ram0",
+                    "type": "b",
+                    "major": 1,
+                    "minor": 0,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ram1",
+                    "type": "b",
+                    "major": 1,
+                    "minor": 1,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ram10",
+                    "type": "b",
+                    "major": 1,
+                    "minor": 10,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ram11",
+                    "type": "b",
+                    "major": 1,
+                    "minor": 11,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ram12",
+                    "type": "b",
+                    "major": 1,
+                    "minor": 12,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ram13",
+                    "type": "b",
+                    "major": 1,
+                    "minor": 13,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ram14",
+                    "type": "b",
+                    "major": 1,
+                    "minor": 14,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ram15",
+                    "type": "b",
+                    "major": 1,
+                    "minor": 15,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ram2",
+                    "type": "b",
+                    "major": 1,
+                    "minor": 2,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ram3",
+                    "type": "b",
+                    "major": 1,
+                    "minor": 3,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ram4",
+                    "type": "b",
+                    "major": 1,
+                    "minor": 4,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ram5",
+                    "type": "b",
+                    "major": 1,
+                    "minor": 5,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ram6",
+                    "type": "b",
+                    "major": 1,
+                    "minor": 6,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ram7",
+                    "type": "b",
+                    "major": 1,
+                    "minor": 7,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ram8",
+                    "type": "b",
+                    "major": 1,
+                    "minor": 8,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ram9",
+                    "type": "b",
+                    "major": 1,
+                    "minor": 9,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/random",
+                    "type": "c",
+                    "major": 1,
+                    "minor": 8,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/root",
+                    "type": "b",
+                    "major": 254,
+                    "minor": 16,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/rtc0",
+                    "type": "c",
+                    "major": 250,
+                    "minor": 0,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/sailor-uds",
+                    "type": "c",
+                    "major": 10,
+                    "minor": 258,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty",
+                    "type": "c",
+                    "major": 5,
+                    "minor": 0,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty0",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 0,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty1",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 1,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty10",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 10,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty11",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 11,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty12",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 12,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty13",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 13,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty14",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 14,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty15",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 15,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty16",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 16,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty17",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 17,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty18",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 18,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty19",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 19,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty2",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 2,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty20",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 20,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty21",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 21,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty22",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 22,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty23",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 23,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty24",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 24,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty25",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 25,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty26",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 26,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty27",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 27,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty28",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 28,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty29",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 29,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty3",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 3,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty30",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 30,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty31",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 31,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty32",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 32,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty33",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 33,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty34",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 34,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty35",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 35,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty36",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 36,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty37",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 37,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty38",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 38,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty39",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 39,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty4",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 4,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty40",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 40,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty41",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 41,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty42",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 42,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty43",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 43,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty44",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 44,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty45",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 45,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty46",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 46,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty47",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 47,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty48",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 48,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty49",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 49,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty5",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 5,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty50",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 50,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty51",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 51,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty52",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 52,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty53",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 53,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty54",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 54,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty55",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 55,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty56",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 56,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty57",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 57,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty58",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 58,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty59",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 59,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty6",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 6,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty60",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 60,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty61",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 61,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty62",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 62,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty63",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 63,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty7",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 7,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty8",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 8,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/tty9",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 9,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ttyS0",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 64,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ttyS1",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 65,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ttyS2",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 66,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/ttyS3",
+                    "type": "c",
+                    "major": 4,
+                    "minor": 67,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/uinput",
+                    "type": "c",
+                    "major": 10,
+                    "minor": 223,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/urandom",
+                    "type": "c",
+                    "major": 1,
+                    "minor": 9,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/usbmon0",
+                    "type": "c",
+                    "major": 244,
+                    "minor": 0,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/usbmon1",
+                    "type": "c",
+                    "major": 244,
+                    "minor": 1,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/usbmon2",
+                    "type": "c",
+                    "major": 244,
+                    "minor": 2,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/vcs",
+                    "type": "c",
+                    "major": 7,
+                    "minor": 0,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/vcs1",
+                    "type": "c",
+                    "major": 7,
+                    "minor": 1,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/vcsa",
+                    "type": "c",
+                    "major": 7,
+                    "minor": 128,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/vcsa1",
+                    "type": "c",
+                    "major": 7,
+                    "minor": 129,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/vcsu",
+                    "type": "c",
+                    "major": 7,
+                    "minor": 64,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/vcsu1",
+                    "type": "c",
+                    "major": 7,
+                    "minor": 65,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/vda",
+                    "type": "b",
+                    "major": 254,
+                    "minor": 0,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/vda1",
+                    "type": "b",
+                    "major": 254,
+                    "minor": 1,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/vdb",
+                    "type": "b",
+                    "major": 254,
+                    "minor": 16,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/vga_arbiter",
+                    "type": "c",
+                    "major": 10,
+                    "minor": 256,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/vhost-net",
+                    "type": "c",
+                    "major": 10,
+                    "minor": 238,
+                    "fileMode": 432,
+                    "uid": 0,
+                    "gid": 103
+                },
+                {
+                    "path": "/dev/vhost-vsock",
+                    "type": "c",
+                    "major": 10,
+                    "minor": 241,
+                    "fileMode": 432,
+                    "uid": 0,
+                    "gid": 103
+                },
+                {
+                    "path": "/dev/vport1p0",
+                    "type": "c",
+                    "major": 247,
+                    "minor": 0,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/vsock",
+                    "type": "c",
+                    "major": 10,
+                    "minor": 259,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                },
+                {
+                    "path": "/dev/zero",
+                    "type": "c",
+                    "major": 1,
+                    "minor": 5,
+                    "fileMode": 438,
+                    "uid": 0,
+                    "gid": 0
+                }
+            ]
+        }
+    }
+}

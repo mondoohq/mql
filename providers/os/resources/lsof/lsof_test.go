@@ -168,6 +168,61 @@ func TestParseLsofMalformedTcpField(t *testing.T) {
 	})
 }
 
+func TestNetworkFileEstablished(t *testing.T) {
+	// Established connections are "<local>-><remote>". IPv6 endpoints are
+	// bracketed and contain colons, so the local/remote host and port must be
+	// split on "->" and parsed per-endpoint rather than with a naive
+	// host:port regex.
+	cases := []struct {
+		name       string
+		fdName     string
+		localHost  string
+		localPort  int64
+		remoteHost string
+		remotePort int64
+	}{
+		{
+			name:       "ipv4",
+			fdName:     "10.184.10.188:64647->76.76.21.61:443",
+			localHost:  "10.184.10.188",
+			localPort:  64647,
+			remoteHost: "76.76.21.61",
+			remotePort: 443,
+		},
+		{
+			name:       "ipv6",
+			fdName:     "[fe80::1]:8080->[fe80::2]:9090",
+			localHost:  "fe80::1",
+			localPort:  8080,
+			remoteHost: "fe80::2",
+			remotePort: 9090,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fd := FileDescriptor{Name: tc.fdName}
+			localHost, localPort, remoteHost, remotePort, err := fd.NetworkFile()
+			require.NoError(t, err)
+			assert.Equal(t, tc.localHost, localHost)
+			assert.Equal(t, tc.localPort, localPort)
+			assert.Equal(t, tc.remoteHost, remoteHost)
+			assert.Equal(t, tc.remotePort, remotePort)
+		})
+	}
+}
+
+func TestNetworkFileListening(t *testing.T) {
+	// The listening branch (no "->") must keep working for bracketed IPv6.
+	fd := FileDescriptor{Name: "[::1]:17223"}
+	host, port, remoteHost, remotePort, err := fd.NetworkFile()
+	require.NoError(t, err)
+	assert.Equal(t, "::1", host)
+	assert.Equal(t, int64(17223), port)
+	assert.Equal(t, "", remoteHost)
+	assert.Equal(t, int64(0), remotePort)
+}
+
 func TestParseEmpty(t *testing.T) {
 	processes, err := Parse(strings.NewReader(""))
 	if err != nil {

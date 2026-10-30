@@ -1,0 +1,94 @@
+# A Linux host exercising every shape of rsyslog include:
+#
+#   * the conventional /etc/rsyslog.d/*.conf
+#   * a site-specific directory outside the conventional .d
+#   * a nested include, reached from a fragment rather than the main conf
+#   * an exact filename with no glob metacharacters
+#   * a directory that doesn't exist on the host
+#
+# The recorded `find` output is what a real host returns for each command.
+# /etc/rsyslog.extra holds a notes.txt that does not match the include's
+# `*.conf`, and /etc holds unrelated files that the exact-name include must not
+# drag in, so the glob has to be applied to each listing.
+#
+# /etc/rsyslog.absent has no recorded `find`, standing in for an include
+# pointing at a directory that isn't there.
+
+[files."/etc/rsyslog.conf"]
+path = "/etc/rsyslog.conf"
+content = """$ModLoad imuxsock
+
+*.info;mail.none /var/log/messages
+
+# Standard fragment directory
+$IncludeConfig /etc/rsyslog.d/*.conf
+
+# Site-specific fragments, outside the conventional .d directory
+$IncludeConfig /etc/rsyslog.extra/*.conf
+
+# A single file, no glob metacharacters
+$IncludeConfig /etc/rsyslog.single.conf
+
+# A directory that does not exist on this host
+$IncludeConfig /etc/rsyslog.absent/*.conf
+"""
+
+[files."/etc/rsyslog.d/50-default.conf"]
+path = "/etc/rsyslog.d/50-default.conf"
+content = """kern.* /var/log/kern.log
+"""
+
+# Reached from the main conf, and pulls in a further directory itself.
+[files."/etc/rsyslog.extra/10-site.conf"]
+path = "/etc/rsyslog.extra/10-site.conf"
+content = """local0.* /var/log/site.log
+
+$IncludeConfig /etc/rsyslog.deep/*.conf
+"""
+
+# Shares a directory with 10-site.conf but doesn't match `*.conf`.
+[files."/etc/rsyslog.extra/notes.txt"]
+path = "/etc/rsyslog.extra/notes.txt"
+content = """not a config fragment
+"""
+
+[files."/etc/rsyslog.single.conf"]
+path = "/etc/rsyslog.single.conf"
+content = """local1.* /var/log/single.log
+"""
+
+[files."/etc/rsyslog.deep/90-deep.conf"]
+path = "/etc/rsyslog.deep/90-deep.conf"
+content = """local2.* /var/log/deep.log
+"""
+
+# Lives in /etc alongside the exact-name include target; must not be included.
+[files."/etc/other.conf"]
+path = "/etc/other.conf"
+content = """unrelated
+"""
+
+# Include expansion: list the immediate directory.
+[commands."find -L \"/etc/rsyslog.d\" -xdev -type f -perm -0 -maxdepth 1"]
+stdout = """/etc/rsyslog.d/50-default.conf
+"""
+
+[commands."find -L \"/etc/rsyslog.extra\" -xdev -type f -perm -0 -maxdepth 1"]
+stdout = """/etc/rsyslog.extra/10-site.conf
+/etc/rsyslog.extra/notes.txt
+"""
+
+[commands."find -L \"/etc/rsyslog.deep\" -xdev -type f -perm -0 -maxdepth 1"]
+stdout = """/etc/rsyslog.deep/90-deep.conf
+"""
+
+[commands."find -L \"/etc\" -xdev -type f -perm -0 -maxdepth 1"]
+stdout = """/etc/rsyslog.conf
+/etc/rsyslog.single.conf
+/etc/other.conf
+"""
+
+# Legacy `<conf>.d` auto-discovery, which runs regardless of the includes.
+[commands."find -L \"/etc/rsyslog.d\" -xdev -type f -perm -0"]
+stdout = """/etc/rsyslog.d/50-default.conf
+"""

@@ -6,17 +6,40 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path"
+	"sort"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/resources/inetd"
+	"github.com/spf13/afero"
+
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/inetd"
 )
 
 const (
 	defaultInetdConfig    = "/etc/inetd.conf"
 	defaultInetdConfigDir = "/etc/inetd.d"
+	// debianInetutilsInetd is GNU inetutils' inetd as Debian and Ubuntu
+	// install it (package inetutils-inetd)
+	debianInetutilsInetd = "/usr/sbin/inetutils-inetd"
 )
+
+// inetdReadsDropIns reports whether the host's inetd reads /etc/inetd.d next
+// to /etc/inetd.conf. GNU inetutils' inetd does. openbsd-inetd, Debian's and
+// Ubuntu's default inetd, reads only inetd.conf, so on Debian-family hosts the
+// directory counts only when inetutils-inetd is installed. Other platforms
+// keep reading it.
+func inetdReadsDropIns(conn shared.Connection) bool {
+	asset := conn.Asset()
+	if asset == nil || asset.Platform == nil || !asset.Platform.IsFamily("debian") {
+		return true
+	}
+	_, err := conn.FileSystem().Stat(debianInetutilsInetd)
+	return err == nil
+}
 
 func initInetdConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if x, ok := args["path"]; ok {
@@ -65,9 +88,13 @@ func (s *mqlInetdConfig) files(file *mqlFile) ([]any, error) {
 	res := []any{file}
 
 	// Drop-in files under /etc/inetd.d are only part of the default
-	// configuration. When the caller points at a custom file, we read just
-	// that file.
-	if file.Path.Data == defaultInetdConfig {
+	// configuration, and only for an inetd that reads them. When the caller
+	// points at a custom file, we read just that file.
+	conn, ok := s.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		return nil, errors.New("wrong connection type")
+	}
+	if file.Path.Data == defaultInetdConfig && inetdReadsDropIns(conn) {
 		dropins, err := s.dropInFiles()
 		if err != nil {
 			return nil, err
@@ -75,6 +102,65 @@ func (s *mqlInetdConfig) files(file *mqlFile) ([]any, error) {
 		res = append(res, dropins...)
 	}
 
+	content, err := inetdFileContent(file)
+	if err != nil {
+		return nil, err
+	}
+	if inetd.IsXinetd(content) {
+		included, err := s.xinetdIncludedFiles(inetd.ParseXinetd(content))
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, included...)
+	}
+
+	return res, nil
+}
+
+// xinetdIncludedFiles returns the files an xinetd configuration file pulls in
+// with include and includedir. xinetd reads only the files directly inside an
+// includedir, and skips names that contain a dot or end with a tilde.
+func (s *mqlInetdConfig) xinetdIncludedFiles(cfg inetd.XinetdFile) ([]any, error) {
+	res := []any{}
+	for _, p := range cfg.Includes {
+		f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
+			"path": llx.StringData(p),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, f)
+	}
+	conn, ok := s.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		return nil, errors.New("wrong connection type")
+	}
+	for _, dir := range cfg.IncludeDirs {
+		entries, err := afero.ReadDir(conn.FileSystem(), dir)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, err
+		}
+		names := []string{}
+		for _, e := range entries {
+			if e.IsDir() || !inetd.XinetdIncludesFile(e.Name()) {
+				continue
+			}
+			names = append(names, e.Name())
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
+				"path": llx.StringData(path.Join(dir, name)),
+			})
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, f)
+		}
+	}
 	return res, nil
 }
 
@@ -135,46 +221,79 @@ func (s *mqlInetdConfig) content(files []any) (string, error) {
 }
 
 func (s *mqlInetdConfig) entries(files []any) ([]any, error) {
-	res := []any{}
-	for i := range files {
-		file := files[i].(*mqlFile)
+	type fileEntry struct {
+		file  *mqlFile
+		entry inetd.Entry
+	}
+	parsed := []fileEntry{}
 
-		content, err := inetdFileContent(file)
+	contents := make([]string, len(files))
+	for i := range files {
+		content, err := inetdFileContent(files[i].(*mqlFile))
 		if err != nil {
 			return nil, err
 		}
-		if content == "" {
-			continue
+		contents[i] = content
+	}
+
+	// The file the resource points at decides the syntax for the files it
+	// pulls in: xinetd's includes hold xinetd service blocks, and inetd's
+	// drop-in directory holds inetd.conf lines.
+	if len(contents) > 0 && inetd.IsXinetd(contents[0]) {
+		// xinetd: the defaults block can disable services of any file, so
+		// all files are read before deciding which services run
+		cfgs := make([]inetd.XinetdFile, len(files))
+		for i := range contents {
+			cfgs[i] = inetd.ParseXinetd(contents[i])
+		}
+		defaults := inetd.MergeXinetdDefaults(cfgs)
+		for i := range cfgs {
+			for _, e := range cfgs[i].Entries(defaults) {
+				parsed = append(parsed, fileEntry{file: files[i].(*mqlFile), entry: e})
+			}
+		}
+	} else {
+		parser := &inetd.Parser{}
+		for i := range contents {
+			if contents[i] == "" {
+				continue
+			}
+			for _, e := range parser.Parse(contents[i]) {
+				parsed = append(parsed, fileEntry{file: files[i].(*mqlFile), entry: e})
+			}
+		}
+	}
+
+	res := []any{}
+	for _, fe := range parsed {
+		file, e := fe.file, fe.entry
+		ctx, err := CreateResource(s.MqlRuntime, "file.context", map[string]*llx.RawData{
+			"file":  llx.ResourceData(file, "file"),
+			"range": llx.RangeData(llx.NewRange().AddLine(uint32(e.Line))),
+		})
+		if err != nil {
+			return nil, err
 		}
 
-		for _, e := range inetd.Parse(content) {
-			ctx, err := CreateResource(s.MqlRuntime, "file.context", map[string]*llx.RawData{
-				"file":  llx.ResourceData(file, "file"),
-				"range": llx.RangeData(llx.NewRange().AddLine(uint32(e.Line))),
-			})
-			if err != nil {
-				return nil, err
-			}
-
-			obj, err := CreateResource(s.MqlRuntime, "inetd.config.entry", map[string]*llx.RawData{
-				// The line number keeps the id unique when a file repeats the
-				// same service+protocol across multiple lines; without it the
-				// later entry would silently shadow the earlier one.
-				"__id":       llx.StringData(fmt.Sprintf("%s/%d/%s/%s", file.Path.Data, e.Line, e.Name, e.Protocol)),
-				"name":       llx.StringData(e.Name),
-				"socketType": llx.StringData(e.SocketType),
-				"protocol":   llx.StringData(e.Protocol),
-				"wait":       llx.StringData(e.Wait),
-				"user":       llx.StringData(e.User),
-				"server":     llx.StringData(e.Server),
-				"arguments":  llx.StringData(e.Arguments),
-				"context":    llx.ResourceData(ctx, "file.context"),
-			})
-			if err != nil {
-				return nil, err
-			}
-			res = append(res, obj)
+		obj, err := CreateResource(s.MqlRuntime, "inetd.config.entry", map[string]*llx.RawData{
+			// The line number keeps the id unique when a file repeats the
+			// same service+protocol across multiple lines; without it the
+			// later entry would silently shadow the earlier one.
+			"__id":       llx.StringData(fmt.Sprintf("%s/%d/%s/%s", file.Path.Data, e.Line, e.Name, e.Protocol)),
+			"name":       llx.StringData(e.Name),
+			"address":    llx.StringData(e.Address),
+			"socketType": llx.StringData(e.SocketType),
+			"protocol":   llx.StringData(e.Protocol),
+			"wait":       llx.StringData(e.Wait),
+			"user":       llx.StringData(e.User),
+			"server":     llx.StringData(e.Server),
+			"arguments":  llx.StringData(e.Arguments),
+			"context":    llx.ResourceData(ctx, "file.context"),
+		})
+		if err != nil {
+			return nil, err
 		}
+		res = append(res, obj)
 	}
 	return res, nil
 }

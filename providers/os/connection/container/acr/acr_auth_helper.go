@@ -16,7 +16,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/azauth"
+	"go.mondoo.com/mql/providers-sdk/v1/util/azauth"
 )
 
 const (
@@ -42,7 +42,7 @@ func NewAcrAuthHelperFromToken(tokenFn azauth.TokenResolverFn) *acrAuthHelper {
 
 func NewAcrAuthHelper() *acrAuthHelper {
 	fn := func() (azcore.TokenCredential, error) {
-		return azauth.GetDefaultChainedToken(nil)
+		return azauth.GetDefaultChainedToken(&azauth.ChainedTokenOptions{Source: "acr-auth-helper"})
 	}
 	return NewAcrAuthHelperFromToken(fn)
 }

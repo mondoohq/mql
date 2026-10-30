@@ -12,11 +12,11 @@ import (
 	firestoreadmin "cloud.google.com/go/firestore/apiv1/admin"
 	"cloud.google.com/go/firestore/apiv1/admin/adminpb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -65,6 +65,12 @@ func initGcpProjectFirestoreServiceDatabase(runtime *plugin.Runtime, args map[st
 		}
 	}
 
+	// Guard before building the parent: CreateResource hands args["projectId"]
+	// to the generated setter, which dereferences it, so nil panics the provider.
+	if args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.firestoreService.database requires a \"projectId\" argument")
+	}
+
 	obj, err := CreateResource(runtime, "gcp.project.firestoreService", map[string]*llx.RawData{
 		"projectId": args["projectId"],
 	})
@@ -77,7 +83,11 @@ func initGcpProjectFirestoreServiceDatabase(runtime *plugin.Runtime, args map[st
 		return nil, nil, databases.Error
 	}
 
-	nameVal := args["name"].Value.(string)
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New("gcp.project.firestoreService.database requires a \"name\" argument")
+	}
+	nameVal, _ := nameRaw.Value.(string)
 	for _, d := range databases.Data {
 		database := d.(*mqlGcpProjectFirestoreServiceDatabase)
 		// Firestore database name is a full resource path:
@@ -122,7 +132,7 @@ func (g *mqlGcpProjectFirestoreService) databases() ([]any, error) {
 		Parent: fmt.Sprintf("projects/%s", projectId),
 	})
 	if err != nil {
-		if isGRPCSkippable(err) {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not list Firestore databases")
 			return nil, nil
 		}
@@ -157,10 +167,10 @@ func (g *mqlGcpProjectFirestoreService) databases() ([]any, error) {
 			updatedAt = llx.NilData
 		}
 
-		var versionRetentionPeriod string
-		if db.VersionRetentionPeriod != nil {
-			versionRetentionPeriod = db.VersionRetentionPeriod.String()
-		}
+		// durationToString, not (*durationpb.Duration).String(): the latter is
+		// the generated proto stringer and renders protobuf TEXT
+		// ("seconds:604800"), not a duration.
+		versionRetentionPeriod := durationToString(db.VersionRetentionPeriod)
 
 		mqlDb, err := CreateResource(g.MqlRuntime, "gcp.project.firestoreService.database", map[string]*llx.RawData{
 			"projectId":                     llx.StringData(projectId),
@@ -262,9 +272,9 @@ func (g *mqlGcpProjectFirestoreServiceDatabase) indexes() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list Firestore indexes")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -317,7 +327,7 @@ func (g *mqlGcpProjectFirestoreServiceDatabase) backupSchedules() ([]any, error)
 		Parent: databaseName,
 	})
 	if err != nil {
-		if isGRPCSkippable(err) {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not list Firestore backup schedules")
 			return nil, nil
 		}
@@ -326,10 +336,7 @@ func (g *mqlGcpProjectFirestoreServiceDatabase) backupSchedules() ([]any, error)
 
 	res := make([]any, 0, len(resp.BackupSchedules))
 	for _, bs := range resp.BackupSchedules {
-		var retention string
-		if bs.Retention != nil {
-			retention = bs.Retention.String()
-		}
+		retention := durationToString(bs.Retention)
 
 		dailyRecurrence, err := protoToDict(bs.GetDailyRecurrence())
 		if err != nil {

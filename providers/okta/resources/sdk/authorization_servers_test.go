@@ -12,7 +12,7 @@ import (
 )
 
 // TestJsonWebKeyDecode verifies the full JWK shape decodes from the
-// credentials/keys response — in particular the fields that the v5 generated
+// credentials/keys response — in particular the fields that the generated
 // AuthorizationServerJsonWebKey model drops (created, lastUpdated, expiresAt,
 // key_ops, x5c, x5t, x5t#S256). This is the backward-compat guarantee for the
 // okta.authorizationServer.key resource.

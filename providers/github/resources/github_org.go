@@ -8,15 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cockroachdb/errors"
-	"github.com/google/go-github/v88/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/github/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/github/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlGithubOrganizationInternal struct {
@@ -155,14 +154,15 @@ func (g *mqlGithubOrganization) customProperties() ([]any, error) {
 		}
 
 		r, err := CreateResource(g.MqlRuntime, "github.organization.customProperty", map[string]*llx.RawData{
-			"name":             llx.StringDataPtr(property.PropertyName),
-			"description":      llx.StringDataPtr(property.Description),
-			"sourceType":       llx.StringDataPtr(property.SourceType),
-			"valueType":        llx.StringData(string(property.ValueType)),
-			"required":         llx.BoolDataPtr(property.Required),
-			"defaultValue":     llx.StringData(defaultValue),
-			"allowedValues":    llx.ArrayData(convert.SliceAnyToInterface[string](property.AllowedValues), types.String),
-			"valuesEditableBy": llx.StringDataPtr(property.ValuesEditableBy),
+			"name":                  llx.StringDataPtr(property.PropertyName),
+			"description":           llx.StringDataPtr(property.Description),
+			"sourceType":            llx.StringDataPtr(property.SourceType),
+			"valueType":             llx.StringData(string(property.ValueType)),
+			"required":              llx.BoolDataPtr(property.Required),
+			"requireExplicitValues": llx.BoolDataPtr(property.RequireExplicitValues),
+			"defaultValue":          llx.StringData(defaultValue),
+			"allowedValues":         llx.ArrayData(convert.SliceAnyToInterface[string](property.AllowedValues), types.String),
+			"valuesEditableBy":      llx.StringDataPtr(property.ValuesEditableBy),
 		})
 		if err != nil {
 			return nil, err
@@ -181,7 +181,7 @@ func (g *mqlGithubOrganization) members() ([]any, error) {
 	orgLogin := g.Login.Data
 
 	listOpts := &github.ListMembersOptions{
-		ListOptions: github.ListOptions{PerPage: paginationPerPage},
+		PerPage: paginationPerPage,
 	}
 	var allMembers []*github.User
 	for {
@@ -224,7 +224,7 @@ func (g *mqlGithubOrganization) outsideCollaborators() ([]any, error) {
 	orgLogin := g.Login.Data
 
 	listOpts := &github.ListOutsideCollaboratorsOptions{
-		ListOptions: github.ListOptions{PerPage: paginationPerPage},
+		PerPage: paginationPerPage,
 	}
 	var allUsers []*github.User
 	for {
@@ -266,8 +266,8 @@ func (g *mqlGithubOrganization) owners() ([]any, error) {
 	orgLogin := g.Login.Data
 
 	listOpts := &github.ListMembersOptions{
-		ListOptions: github.ListOptions{PerPage: paginationPerPage},
-		Role:        "admin",
+		PerPage: paginationPerPage,
+		Role:    "admin",
 	}
 	var allMembers []*github.User
 	for {
@@ -382,11 +382,9 @@ func (g *mqlGithubOrganization) repositories() ([]any, error) {
 	}
 	orgLogin := g.Login.Data
 	listOpts := &github.RepositoryListByOrgOptions{
-		ListOptions: github.ListOptions{
-			PerPage: paginationPerPage,
-			Page:    1,
-		},
-		Type: "all",
+		PerPage: paginationPerPage,
+		Page:    1,
+		Type:    "all",
 	}
 
 	log.Debug().
@@ -543,8 +541,8 @@ func (g *mqlGithubOrganization) packages() ([]any, error) {
 	res := []any{}
 	for i := range pkgTypes {
 		listOpts := &github.PackageListOptions{
-			ListOptions: github.ListOptions{PerPage: paginationPerPage},
-			PackageType: github.String(pkgTypes[i]),
+			PerPage:     paginationPerPage,
+			PackageType: new(pkgTypes[i]),
 		}
 
 		var allPackages []*github.Package
@@ -606,7 +604,10 @@ func (g *mqlGithubPackage) repository() (*mqlGithubRepository, error) {
 	conn := g.MqlRuntime.Connection.(*connection.GithubConnection)
 
 	if g.packageRepository == "" {
-		return nil, errors.New("could not load the repository")
+		// Container and other registry packages are not always attached to a
+		// repository; that is a valid empty state, not a failure.
+		g.Repository.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 
 	repoName := g.packageRepository
@@ -624,6 +625,10 @@ func (g *mqlGithubPackage) repository() (*mqlGithubRepository, error) {
 		return nil, g.Owner.Error
 	}
 	owner := g.Owner.Data
+	if owner == nil {
+		g.Repository.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
 
 	if owner.Login.Error != nil {
 		return nil, owner.Login.Error
@@ -758,7 +763,7 @@ func (g *mqlGithubOrganization) actionsSettings() (*mqlGithubOrganizationActions
 
 	res, err := CreateResource(g.MqlRuntime, "github.organizationActionsSettings", map[string]*llx.RawData{
 		"__id":                         llx.StringData("github.organizationActionsSettings/" + orgLogin),
-		"enabledRepositories":          llx.StringDataPtr(perms.EnabledRepositories),
+		"enabledRepositories":          llx.StringData(perms.EnabledRepositories),
 		"allowedActions":               llx.StringDataPtr(perms.AllowedActions),
 		"shaPinningRequired":           llx.BoolDataPtr(perms.SHAPinningRequired),
 		"defaultWorkflowPermissions":   llx.StringData(defaultWfPerms),
@@ -767,5 +772,7 @@ func (g *mqlGithubOrganization) actionsSettings() (*mqlGithubOrganizationActions
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlGithubOrganizationActionsSettings), nil
+	settings := res.(*mqlGithubOrganizationActionsSettings)
+	settings.orgLogin = orgLogin
+	return settings, nil
 }

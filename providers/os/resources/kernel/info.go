@@ -5,13 +5,11 @@ package kernel
 
 import (
 	"io"
-	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/cockroachdb/errors"
 )
-
-var LINUX_KERNEL_ARGUMENTS_REGEX = regexp.MustCompile(`(?:^BOOT_IMAGE=([^\s]*)\s)?(?:root=([^\s]*)\s)?(.*)`)
 
 type LinuxKernelArguments struct {
 	Path      string
@@ -19,6 +17,13 @@ type LinuxKernelArguments struct {
 	Arguments map[string]string
 }
 
+// ParseLinuxKernelArguments parses /proc/cmdline. Parameters are separated
+// by whitespace, and double quotes keep whitespace inside one (the kernel's
+// next_arg); a parameter is split at its first '=' only, so values like
+// `root=UUID=...` and `rootflags=subvol=root` keep their own '='.
+// BOOT_IMAGE (set by the boot loader) becomes Path and root becomes Device,
+// wherever they appear; both are left out of Arguments. When a parameter
+// repeats, the last one wins.
 func ParseLinuxKernelArguments(r io.Reader) (LinuxKernelArguments, error) {
 	res := LinuxKernelArguments{
 		Arguments: map[string]string{},
@@ -29,30 +34,49 @@ func ParseLinuxKernelArguments(r io.Reader) (LinuxKernelArguments, error) {
 		return res, err
 	}
 
-	m := LINUX_KERNEL_ARGUMENTS_REGEX.FindStringSubmatch(string(data))
-
-	if len(m) > 0 {
-		res.Path = m[1]
-		res.Device = m[2]
-
-		args := m[3]
-		keypairs := strings.Split(args, " ")
-
-		for i := range keypairs {
-			keypair := keypairs[i]
-			vals := strings.Split(keypair, "=")
-
-			key := vals[0]
-			value := ""
-			if len(vals) > 1 {
-				value = vals[1]
-			}
-
+	for _, param := range splitKernelCmdline(string(data)) {
+		key, value, _ := strings.Cut(param, "=")
+		switch key {
+		case "BOOT_IMAGE":
+			res.Path = value
+		case "root":
+			res.Device = value
+		default:
 			res.Arguments[key] = value
 		}
 	}
 
 	return res, nil
+}
+
+// splitKernelCmdline splits a kernel command line into parameters the way
+// the kernel does: whitespace separates them except inside double quotes,
+// and the quotes themselves are dropped.
+func splitKernelCmdline(cmdline string) []string {
+	var params []string
+	var cur strings.Builder
+	inQuote := false
+	started := false
+	for _, r := range cmdline {
+		switch {
+		case r == '"':
+			inQuote = !inQuote
+			started = true
+		case unicode.IsSpace(r) && !inQuote:
+			if started {
+				params = append(params, cur.String())
+				cur.Reset()
+				started = false
+			}
+		default:
+			cur.WriteRune(r)
+			started = true
+		}
+	}
+	if started {
+		params = append(params, cur.String())
+	}
+	return params
 }
 
 // kernel version includes the kernel version, build data, buildhost, compiler version and an optional build date

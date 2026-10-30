@@ -1,0 +1,689 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/redfish"
+option go_package = "go.mondoo.com/mql/providers/redfish/resources"
+option root = "redfish"
+
+// Redfish management service
+//
+// Management service exposed by a server's baseboard management controller
+// (BMC), such as HPE iLO or Dell iDRAC, over the DMTF Redfish REST API.
+// Provides the managed compute systems, management controllers, physical
+// chassis, BMC user accounts, and firmware inventory for out-of-band audits
+// that run independently of the host operating system.
+redfish @root {
+  // Compute systems managed through the controller
+  systems() []redfish.system
+  // Management controllers (BMCs) for this service
+  managers() []redfish.manager
+  // Physical chassis enclosures
+  chassis() []redfish.chassisEnclosure
+  // Local user accounts on the management controller
+  accounts() []redfish.account
+  // Firmware and software components tracked by the update service
+  firmware() []redfish.softwareInventory
+  // Management network protocols exposed by each controller
+  networkProtocols() []redfish.networkProtocol
+  // TLS certificates that the controllers present on their HTTPS endpoint
+  certificates() []redfish.certificate
+  // Sessions that are currently open on the management service
+  sessions() []redfish.session
+  // Whether the Redfish service root answers without credentials
+  //
+  // The provider sends an unauthenticated GET to `/redfish/v1/` on the same
+  // host and port. True means the controller returns the service root to an
+  // anonymous caller, which discloses the vendor, firmware version, and the
+  // resource layout to anyone who reaches the management network. Null when
+  // the probe cannot reach the controller, so an audit does not read a network
+  // failure as a closed service root.
+  serviceRootUnauthenticated() bool
+}
+
+// Managed computer system
+//
+// Compute node managed through the controller. Covers identity such as the
+// UUID, model, and serial number, along with the firmware level, power
+// state, UEFI Secure Boot status, and the installed processors, memory
+// modules, and network interfaces.
+redfish.system @defaults("model powerState") {
+  // Stable UUID of the system
+  uuid string
+  // Display name of the system
+  name string
+  // Hardware manufacturer
+  manufacturer string
+  // Model name
+  model string
+  // Serial number
+  serialNumber string
+  // Stock keeping unit
+  sku string
+  // Installed BIOS or UEFI firmware version
+  biosVersion string
+  // Configured host name
+  hostName string
+  // Current power state, such as On, Off, or PoweringOn
+  powerState string
+  // Kind of system, such as Physical, Virtual, OS, or PhysicallyPartitioned
+  systemType string
+  // Whether UEFI Secure Boot is enabled
+  //
+  // Null when the system does not expose a Secure Boot resource or the
+  // controller cannot report its state, so an audit can tell an unsupported
+  // or unreachable system apart from one where Secure Boot is switched off.
+  secureBootEnabled() bool
+  // Secure Boot key management mode
+  //
+  // One of SetupMode, UserMode, AuditMode, or DeployedMode. SetupMode is the
+  // value that matters for an audit. The firmware enrolls any key presented to
+  // it while in Setup Mode, so a system that reports Secure Boot as enabled
+  // still accepts an attacker supplied platform key. Null when the system
+  // exposes no Secure Boot resource or the controller does not report the mode.
+  secureBootMode() string
+  // Secure Boot state of the boot cycle that is running
+  //
+  // One of Enabled or Disabled. This is what the firmware actually enforced on
+  // the current boot, which differs from the configured state when the setting
+  // changed since the last reset. Null when the system exposes no Secure Boot
+  // resource or the controller does not report the value.
+  secureBootCurrentBoot() string
+  // Trusted Platform Modules installed in the system
+  //
+  // One entry per installed module, with the keys `interfaceType` (TPM1_2,
+  // TPM2_0, or TCM1_0), `interfaceTypeSelection`, `firmwareVersion`,
+  // `firmwareVersion2`, `health`, and `state`. An empty list means the system
+  // reports no trusted module, so an audit can require that a TPM 2.0 is
+  // present and healthy before trusting measured boot or a disk encryption key
+  // sealed to it.
+  trustedModules []dict
+  // Boot source override state, one of Disabled, Once, or Continuous
+  //
+  // Continuous is the value that matters for an audit. It keeps the system on
+  // the overridden boot source across every reset, so a network or removable
+  // boot source stays active until an operator clears it.
+  bootSourceOverrideEnabled string
+  // Boot source that the override selects, such as Pxe, Usb, Hdd, or None
+  bootSourceOverrideTarget string
+  // Firmware mode the override boots in, either Legacy or UEFI
+  bootSourceOverrideMode string
+  // Whether a boot source override is set to persist across resets
+  //
+  // True when the override state is Continuous and the target is a real boot
+  // source rather than None. A persistent override to Pxe or Usb lets anyone
+  // who controls the network or the virtual media device supply the operating
+  // system on every boot.
+  persistentBootOverride bool
+  // Installed processors
+  processors() []redfish.processor
+  // Installed memory modules
+  memory() []redfish.memory
+  // Network interfaces attached to the system
+  ethernetInterfaces() []redfish.ethernetInterface
+}
+
+// Processor
+//
+// Single processor installed in a managed system. Covers the manufacturer,
+// model, socket, instruction set, and the core and thread counts used to
+// inventory compute capacity.
+redfish.processor @defaults("model totalCores") {
+  // Manufacturer of the processor
+  manufacturer string
+  // Model name
+  model string
+  // Kind of processor, such as CPU, GPU, or FPGA
+  processorType string
+  // Instruction set, such as x86-64 or ARM-A64
+  instructionSet string
+  // Socket the processor occupies
+  socket string
+  // Number of physical cores
+  totalCores int
+  // Number of hardware threads
+  totalThreads int
+  // Maximum clock speed in MHz
+  maxSpeedMHz int
+}
+
+// Memory module
+//
+// Single memory module installed in a managed system. Covers the capacity,
+// device type, operating speed, and manufacturer part and serial numbers
+// used to inventory installed memory.
+redfish.memory @defaults("capacityMiB memoryDeviceType") {
+  // Capacity in mebibytes
+  capacityMiB int
+  // Device type, such as DDR4 or DDR5
+  memoryDeviceType string
+  // Operating speed in MHz
+  operatingSpeedMhz int
+  // Manufacturer of the module
+  manufacturer string
+  // Manufacturer part number
+  partNumber string
+  // Serial number
+  serialNumber string
+  // Number of ranks
+  rankCount int
+  // Data bus width in bits
+  dataWidthBits int
+}
+
+// Network interface
+//
+// Network interface reported by a managed system. Covers the MAC addresses,
+// link speed, duplex, and administrative and link state used to inventory
+// server connectivity.
+redfish.ethernetInterface @defaults("macAddress linkStatus") {
+  // Currently configured MAC address
+  macAddress string
+  // Factory assigned permanent MAC address
+  permanentMACAddress string
+  // Negotiated link speed in Mbps
+  speedMbps int
+  // Whether the link runs in full duplex
+  fullDuplex bool
+  // Link state
+  //
+  // One of LinkUp (available for communication on the interface),
+  // NoLink (no link or connection detected), or LinkDown (connected
+  // but no link detected).
+  linkStatus string
+  // Whether the interface is administratively enabled
+  interfaceEnabled bool
+}
+
+// Baseboard management controller
+//
+// Out-of-band management controller (the BMC) that operates independently of
+// the host operating system. Covers the controller firmware version, model,
+// power state, and the network services such as SSH, HTTPS, IPMI, SNMP,
+// KVM-IP, and virtual media that it exposes.
+redfish.manager @defaults("model firmwareVersion") {
+  // Stable UUID of the controller
+  uuid string
+  // Manufacturer of the controller
+  manufacturer string
+  // Model name
+  model string
+  // Installed controller firmware version
+  firmwareVersion string
+  // Kind of controller, such as BMC, EnclosureManager, or Service
+  managerType string
+  // Current power state of the controller
+  powerState string
+  // Controller date and time in ISO 8601 format
+  dateTime string
+  // Whether the command shell service is enabled
+  //
+  // The command shell gives an operator a text console on the controller
+  // itself. Every console field in this resource is null when the controller
+  // does not describe the service, so an audit can tell a console that is
+  // switched off apart from one the controller never reports.
+  commandShellEnabled bool
+  // Concurrent command shell sessions the controller supports
+  commandShellMaxConcurrentSessions int
+  // Transports the command shell accepts, such as SSH, Telnet, or IPMI
+  commandShellConnectTypes []string
+  // Whether the graphical console service is enabled
+  //
+  // The graphical console carries keyboard, video, and mouse for the host,
+  // which is enough to read the screen of a running operating system or to
+  // reinstall it.
+  graphicalConsoleEnabled bool
+  // Concurrent graphical console sessions the controller supports
+  graphicalConsoleMaxConcurrentSessions int
+  // Transports the graphical console accepts, such as KVMIP or RDP
+  graphicalConsoleConnectTypes []string
+  // Whether the serial console service is enabled
+  serialConsoleEnabled bool
+  // Concurrent serial console sessions the controller supports
+  serialConsoleMaxConcurrentSessions int
+  // Transports the serial console accepts, such as SSH, Telnet, or IPMI
+  serialConsoleConnectTypes []string
+  // Management network services and their enabled state and listening ports
+  //
+  // Deprecated in favor of `redfish.networkProtocols`, which types every field,
+  // covers telnet, and reports a protocol the controller does not describe as
+  // null rather than as disabled.
+  //
+  // The `hostName` and `fqdn` keys carry the controller's network identity.
+  // Each of `http`, `https`, `ssh`, `ipmi`, `snmp`, `kvmip`, and `virtualMedia`
+  // maps to an object with `enabled` (bool) and `port` (int), letting you audit
+  // which out-of-band management protocols are exposed and on which ports (for
+  // example flagging cleartext `http`, `snmp`, or `ipmi` that should be disabled).
+  networkProtocol() @maturity("deprecated") dict
+}
+
+// Physical chassis
+//
+// Physical enclosure that houses a managed system. Covers the chassis type,
+// manufacturer, model, serial number, and current power state used to
+// inventory physical hardware.
+redfish.chassisEnclosure @defaults("model chassisType") {
+  // Display name of the chassis
+  name string
+  // Kind of chassis, such as RackMount, Blade, or Enclosure
+  chassisType string
+  // Manufacturer of the chassis
+  manufacturer string
+  // Model name
+  model string
+  // Serial number
+  serialNumber string
+  // Stock keeping unit
+  sku string
+  // Current power state of the chassis
+  powerState string
+}
+
+// Management controller user account
+//
+// Local user account on the management controller. Covers the user name,
+// assigned role, and whether the account is enabled or locked, used to audit
+// who holds administrative access to out-of-band management.
+redfish.account @defaults("userName roleId enabled") {
+  // Login name of the account
+  userName string
+  // Role assigned to the account, such as Administrator, Operator, or ReadOnly
+  roleId string
+  // Whether the account is enabled
+  enabled bool
+  // Whether the account is locked out
+  locked bool
+  // Account categories, such as Redfish, SNMP, or OEM
+  accountTypes []string
+  // Whether the account must change its password at the next login
+  //
+  // True on an account that still holds a password somebody else set for it,
+  // which is the state a factory or handover credential stays in until its
+  // owner logs in. Null when the controller does not report the property.
+  passwordChangeRequired bool
+  // Whether the account is restricted to the categories it declares
+  //
+  // False lets the controller reach the account through categories beyond the
+  // ones in `accountTypes`, so that list understates what the account can do.
+  // Null when the controller does not report the property.
+  strictAccountTypes bool
+  // Time the password of the account expires
+  //
+  // Null when the password does not expire or the controller reports a date the
+  // provider cannot parse, so an audit does not read a missing date as an
+  // expired password.
+  passwordExpiration time
+  // Time the account itself expires
+  //
+  // Null when the account does not expire or the controller reports a date the
+  // provider cannot parse.
+  accountExpiration time
+  // Whether the login name is a known vendor default
+  //
+  // True when `userName` matches a name that a controller ships with from the
+  // factory, such as root on HPE iLO, root on Dell iDRAC, ADMIN on Supermicro,
+  // or USERID on Lenovo XClarity. The match ignores case. A default name keeps
+  // half of the credential pair public, so an audit can require that these
+  // accounts are renamed or disabled without hardcoding the vendor list.
+  defaultVendorAccount bool
+}
+
+// Management controller account service
+//
+// Service that governs the local accounts on the management controller. Covers
+// the password and lockout policy applied to them, whether HTTP Basic
+// authentication is accepted, and the external directories the controller
+// federates authentication to. These are the settings that decide how much a
+// guessed or stolen out-of-band credential is worth, and the accounts
+// themselves do not report any of them. Every field is null when the
+// controller exposes no account service or omits the property, so an audit can
+// tell an unreported setting apart from one the controller reports as zero or
+// as disabled.
+redfish.accountService @defaults("minPasswordLength accountLockoutThreshold httpBasicAuth") {
+  // Whether the account service is enabled
+  serviceEnabled() bool
+  // Shortest password the controller accepts
+  minPasswordLength() int
+  // Longest password the controller accepts
+  maxPasswordLength() int
+  // Failed login attempts that lock an account out
+  //
+  // Zero means the controller never locks an account out, which leaves every
+  // local account open to unlimited password guessing from the management
+  // network.
+  accountLockoutThreshold() int
+  // Seconds an account stays locked out once the threshold is reached
+  accountLockoutDuration() int
+  // Seconds after which the failed login counter returns to zero
+  accountLockoutCounterResetAfter() int
+  // Whether the failed login counter resets on its own
+  //
+  // False keeps the counter until an administrator clears it, so waiting out
+  // the lockout duration does not restore the account.
+  accountLockoutCounterResetEnabled() bool
+  // Failed login attempts after which the controller logs the failure
+  authFailureLoggingThreshold() int
+  // Number of previous passwords the controller refuses to accept again
+  enforcePasswordHistoryCount() int
+  // Days after which a password expires
+  passwordExpirationDays() int
+  // Whether the controller forces a password change on first login
+  requireChangePasswordAction() bool
+  // Whether HTTP Basic authentication is accepted
+  //
+  // One of Enabled, Unadvertised, or Disabled. Basic authentication sends the
+  // credential on every single request instead of exchanging it once for a
+  // session token, so it is the path that leaks a password into request logs
+  // and proxies. Unadvertised means the controller still accepts it but does
+  // not offer it in its authentication challenge.
+  httpBasicAuth() string
+  // How local accounts are treated once an external directory is configured
+  //
+  // One of Enabled, Disabled, Fallback, or LocalFirst. Enabled keeps local
+  // accounts usable at all times, so a local credential still opens the
+  // controller after the directory has revoked the operator's access.
+  localAccountAuth() string
+  // Whether the controller authenticates users against LDAP
+  ldapEnabled() bool
+  // LDAP servers the controller authenticates against
+  ldapServiceAddresses() []string
+  // How the controller authenticates itself to the LDAP server
+  //
+  // One of Token, KerberosKeytab, UsernameAndPassword, or OEM. The provider
+  // reads the method only, never the credential.
+  ldapAuthenticationType() string
+  // Whether the controller authenticates users against Active Directory
+  activeDirectoryEnabled() bool
+  // Active Directory servers the controller authenticates against
+  activeDirectoryServiceAddresses() []string
+  // How the controller authenticates itself to the Active Directory server
+  //
+  // One of Token, KerberosKeytab, UsernameAndPassword, or OEM. The provider
+  // reads the method only, never the credential.
+  activeDirectoryAuthenticationType() string
+  // Whether the controller authenticates users against TACACS+
+  tacacsPlusEnabled() bool
+  // TACACS+ servers the controller authenticates against
+  tacacsPlusServiceAddresses() []string
+  // How the controller authenticates itself to the TACACS+ server
+  //
+  // One of Token, KerberosKeytab, UsernameAndPassword, or OEM. The provider
+  // reads the method only, never the shared secret.
+  tacacsPlusAuthenticationType() string
+}
+
+// Management network protocol settings
+//
+// Network protocols that a management controller exposes, with the enabled
+// state and the listening port of each one. Covers the protocols that carry
+// out-of-band access to the server, so an audit can flag cleartext or legacy
+// paths such as telnet, IPMI over LAN, SNMP, and plain HTTP.
+redfish.networkProtocol @defaults("hostName ipmiEnabled telnetEnabled") {
+  // Host name of the controller, without domain information
+  hostName string
+  // Fully qualified domain name of the controller
+  fqdn string
+  // Whether the cleartext HTTP interface is enabled
+  //
+  // Every enabled state in this resource is null when the controller does not
+  // report the protocol at all, so an audit can tell a protocol that is
+  // switched off apart from one the controller does not describe.
+  httpEnabled bool
+  // TCP port of the HTTP interface, usually 80
+  httpPort int
+  // Whether the HTTPS interface is enabled
+  httpsEnabled bool
+  // TCP port of the HTTPS interface, usually 443
+  httpsPort int
+  // Whether the SSH interface is enabled
+  sshEnabled bool
+  // TCP port of the SSH interface, usually 22
+  sshPort int
+  // Whether the telnet interface is enabled
+  //
+  // Telnet carries credentials in cleartext and has no host authentication.
+  // An enabled telnet interface bypasses the controls that guard the Redfish
+  // and SSH paths.
+  telnetEnabled bool
+  // TCP port of the telnet interface, usually 23
+  telnetPort int
+  // Whether IPMI over LAN is enabled
+  //
+  // IPMI over LAN keeps password hashes retrievable before authentication in
+  // the RAKP handshake of IPMI 2.0. An enabled IPMI interface therefore
+  // bypasses the account controls that apply to the Redfish interface.
+  ipmiEnabled bool
+  // UDP port of the IPMI over LAN interface, usually 623
+  ipmiPort int
+  // Whether the SNMP agent is enabled
+  snmpEnabled bool
+  // UDP port of the SNMP agent, usually 161
+  snmpPort int
+  // Whether virtual media is enabled
+  //
+  // Virtual media lets the controller attach a remote image as a local drive,
+  // which supplies a boot source that the host operating system cannot see.
+  virtualMediaEnabled bool
+  // TCP port of the virtual media service
+  virtualMediaPort int
+  // Whether the KVM over IP console is enabled
+  kvmipEnabled bool
+  // TCP port of the KVM over IP console
+  kvmipPort int
+}
+
+// Management controller TLS certificate
+//
+// Certificate that a management controller presents on its HTTPS endpoint.
+// Covers the issuer, the subject, the validity window, and the public key
+// size, so an audit can find expired certificates, self-signed certificates,
+// and keys below the required strength.
+redfish.certificate @defaults("subjectCommonName validNotAfter") {
+  // Common name of the issuer
+  issuerCommonName string
+  // Organization of the issuer
+  issuerOrganization string
+  // Common name of the subject
+  subjectCommonName string
+  // Organization of the subject
+  subjectOrganization string
+  // Start of the validity period
+  //
+  // Null when the controller reports no start date or a date the provider
+  // cannot parse, so an audit does not read a missing date as a valid one.
+  validNotBefore time
+  // End of the validity period
+  //
+  // Null when the controller reports no expiry date or a date the provider
+  // cannot parse, so an audit does not read a missing date as a valid one.
+  validNotAfter time
+  // Serial number of the certificate
+  serialNumber string
+  // Object identifier of the signature algorithm, as defined by RFC 5280
+  signatureAlgorithm string
+  // Fingerprint of the certificate
+  fingerprint string
+  // Hash algorithm that produced the fingerprint, such as SHA256
+  fingerprintHashAlgorithm string
+  // Format of the certificate, such as PEM or PKCS7
+  certificateType string
+  // Purposes the certificate is used for, such as Web or Device
+  certificateUsageTypes []string
+  // Size of the public key in bits, such as 2048 for RSA or 256 for ECDSA
+  //
+  // Null when the controller does not return the encoded certificate or the
+  // provider cannot parse the key, so an audit does not read a missing value
+  // as a weak key.
+  keySizeBits int
+  // Public key algorithm, such as RSA, ECDSA, or Ed25519
+  keyAlgorithm string
+  // Whether the issuer and the subject are the same entity
+  //
+  // Null when the certificate carries no issuer or subject common name, so an
+  // audit does not read missing identity data as a certificate signed by a
+  // certificate authority.
+  selfSigned bool
+}
+
+// Session service
+//
+// Service that issues and tracks Redfish sessions on the management
+// controller. Covers whether the service accepts new sessions and how long an
+// idle or long-lived session stays open, so an audit can require that stale
+// management sessions close. Every field is null when the controller exposes
+// no session service, so an audit can tell an unsupported controller apart
+// from one that reports a disabled service or an unlimited timeout.
+redfish.sessionService @defaults("serviceEnabled sessionTimeout") {
+  // Whether the session service accepts new sessions
+  serviceEnabled() bool
+  // Idle time in seconds after which the service closes a session
+  sessionTimeout() int
+  // Maximum lifetime in seconds of a session, regardless of activity
+  absoluteSessionTimeout() int
+  // Whether the service applies the absolute session lifetime
+  absoluteSessionTimeoutEnabled() bool
+}
+
+// Redfish session
+//
+// Session that is currently open on the management controller. Covers the
+// account that opened it, the client address, and the timestamps, so an audit
+// can review who holds live out-of-band access.
+redfish.session @defaults("userName clientOriginIPAddress") {
+  // Account that opened the session
+  userName string
+  // IP address of the client that opened the session
+  clientOriginIPAddress string
+  // Kind of session, such as Redfish, HostConsole, or IPMI
+  sessionType string
+  // Time the session was created
+  createdTime time
+  // Time the session expires regardless of activity
+  //
+  // Null when the session does not expire on an absolute time.
+  expirationTime time
+  // Redfish roles that carry the privileges of the session
+  roles []string
+}
+
+// Firmware or software inventory item
+//
+// Firmware or software component tracked by the update service. Covers the
+// component version, manufacturer, release date, and whether it can be
+// updated, used to audit firmware levels against known-vulnerable releases.
+redfish.softwareInventory @defaults("name version") {
+  // Name of the component
+  name string
+  // Installed version
+  version string
+  // Manufacturer of the component
+  manufacturer string
+  // Vendor assigned software identifier
+  softwareId string
+  // Whether the component can be updated through the service
+  updateable bool
+  // Release date of the installed version
+  releaseDate string
+  // Lowest version the component can be downgraded to
+  lowestSupportedVersion string
+}
+
+// HPE iLO extensions
+//
+// HPE-specific management data exposed by HPE Integrated Lights-Out (iLO)
+// controllers, including the installed license edition that governs which
+// management capabilities are available. Populated when the connected server
+// is HPE hardware and empty otherwise.
+redfish.hpe @defaults("licenseLabel licenseType") {
+  // License term, such as Perpetual or Evaluation
+  licenseType() string
+  // License edition name, such as iLO Advanced or iLO Standard
+  licenseLabel() string
+}
+
+// Dell iDRAC extensions
+//
+// Dell-specific management data exposed by Dell Integrated Dell Remote Access
+// Controller (iDRAC) hardware, including the server hardware generation and
+// the BIOS release date. Populated when the connected server is Dell hardware
+// and empty otherwise.
+redfish.dell @defaults("generation") {
+  // Server hardware generation, such as 15G or 16G
+  generation() string
+  // Dell numeric system model identifier
+  systemID() int
+  // Release date of the installed BIOS
+  biosReleaseDate() string
+}
+
+// Supermicro BMC extensions
+//
+// Supermicro-specific management data exposed by the controller. Covers the
+// activated node-management licenses that unlock Redfish capabilities, system
+// lockdown mode, and the hardening settings that Supermicro keeps outside the
+// standard Redfish resources: the IPMI RAKP key exchange, the host side KCS
+// interface, source address filtering, and the RADIUS, NTP, and syslog servers
+// the controller talks to. Populated when the connected server is Supermicro
+// hardware and empty otherwise. The RAKP, KCS, access control, RADIUS, NTP and
+// syslog fields are null when the controller exposes no setting of that kind,
+// so an audit can tell a setting that is switched off apart from one the
+// controller never reports. In that same case `licenses` reports an empty list
+// and `systemLockdownEnabled` reports false.
+redfish.supermicro @defaults("systemLockdownEnabled rakpEnabled") {
+  // Activated license keys, such as SFT-DCMS-Single
+  licenses() []string
+  // Whether BMC system lockdown mode is enabled
+  systemLockdownEnabled() bool
+  // Whether the controller answers the IPMI RAKP key exchange
+  //
+  // RAKP is the authentication handshake of IPMI 2.0, and it returns a salted
+  // password hash for any valid user name before the caller has proven
+  // anything. Supermicro exposes a switch for it that is separate from the
+  // IPMI interface itself, so a controller can leave IPMI enabled with the
+  // handshake closed.
+  rakpEnabled() bool
+  // Privilege level granted over the host side KCS interface
+  //
+  // One of Administrator, Operator, User, or Callback. The KCS interface is
+  // reachable from the host operating system with no credential at all, so
+  // Administrator there lets any process running as root on the host create
+  // controller accounts and reach the out-of-band network.
+  kcsPrivilege() string
+  // Whether the controller filters management access by source address
+  ipAccessControlEnabled() bool
+  // Source address filter rules
+  //
+  // One entry per rule, with the keys `address`, `prefixLength`, and `policy`
+  // (Allow or Deny). Empty when the controller reports no rule, which leaves
+  // the management interface reachable from every source that can route to it.
+  ipAccessControlRules() []dict
+  // Whether the controller authenticates users against a RADIUS server
+  radiusEnabled() bool
+  // Address of the RADIUS server
+  radiusServer() string
+  // Port of the RADIUS server
+  radiusPort() int
+  // Whether the controller synchronizes its clock over NTP
+  //
+  // A controller with no time source stamps its event log from a clock that
+  // drifts, which breaks the ordering that an incident review depends on.
+  ntpEnabled() bool
+  // Primary NTP server the controller synchronizes with
+  ntpPrimaryServer() string
+  // Secondary NTP server the controller synchronizes with
+  ntpSecondaryServer() string
+  // Whether the controller forwards its event log to a syslog server
+  //
+  // A controller with no syslog destination keeps its security event log in
+  // local storage only, so the record of who opened a console or reset the
+  // host does not survive the next reboot.
+  syslogEnabled() bool
+  // Syslog destinations the controller forwards to
+  //
+  // One entry per configured destination, with the keys `host` and `port`.
+  // Firmware older than Gen 13 1.10 and Gen 14 1.08 reports a single
+  // destination, which appears here as a list of one. Empty when the
+  // controller reports no destination.
+  syslogServers() []dict
+}

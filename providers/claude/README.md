@@ -2,10 +2,11 @@
 
 The Claude provider queries the Claude Developer Platform API for security
 posture, compliance, and AI Bill of Materials (AIBOM) data. It covers the
-Models API (stable), Beta services (agents, environments, sessions, files,
-skills, vaults, memory stores, message batches, user profiles), and the Admin
+Models and User Profiles APIs (stable), Beta services (agents, environments,
+sessions, files, skills, vaults, memory stores, message batches), and the Admin
 API (organizations, workspaces, members, invites, API keys, rate limits, usage,
-cost, activities).
+cost, activities, encryption keys, compliance settings, organization webhooks,
+and the Claude Enterprise RBAC, spend limit, and plugin APIs).
 
 ## Authentication
 
@@ -14,7 +15,7 @@ separate admin key for organization management.
 
 ### Option 1: API Key
 
-Create an API key in the [Claude Console](https://console.anthropic.com/) under
+Create an API key in the [Claude Console](https://platform.claude.com/) under
 Settings > API Keys. Use a **read-only** key for least-privilege access.
 
 ```bash
@@ -138,7 +139,11 @@ The Go SDK auto-detects these without any flags:
 ### Admin API Key
 
 Organization resources (workspaces, members, invites, API keys, rate limits,
-usage, cost, activities) require an Admin API key. Admin keys can only be
+usage, cost, activities, encryption keys, RBAC, spend limits, plugins) require
+an Admin API key. RBAC groups and roles, effective spend limits, plugins, and
+plugin marketplaces are available to Claude Enterprise organizations only; on
+other organizations those fields report an error instead of an empty list. The plugin
+endpoints need a key with the `read:plugins` or `read:org_audit` scope. Admin keys can only be
 created by organization admins and are always read-write (no read-only option
 exists). The provider uses only read operations.
 
@@ -154,30 +159,6 @@ mql shell claude
 
 Admin keys work alongside both API key and WIF authentication for the standard
 API.
-
-## Resource Scoping
-
-| Key type | Resources |
-|----------|-----------|
-| Standard API key / WIF | `claude.models`, `claude.agents`, `claude.environments`, `claude.sessions`, `claude.files`, `claude.skills`, `claude.vaults`, `claude.memoryStores`, `claude.messageBatches`, `claude.userProfiles` |
-| Admin API key | `claude.organization` (workspaces, members, invites, apiKeys, rateLimits, usageReport, costReport, activities) |
-
-Standard API keys are workspace-scoped — each key accesses resources in one
-workspace. To scan multiple workspaces, either run separate scans per workspace
-or use the admin key for organization-level visibility (the admin key cannot
-access workspace-level standard API resources like models or agents).
-
-## Discovery
-
-When an admin token is provided, the provider discovers the organization and its
-workspaces as separate assets with distinct platform IDs:
-
-```bash
-# Discover org + workspaces
-mql shell claude --admin-token sk-ant-admin01-... --discover all
-```
-
-Discovery targets: `all`, `auto`, `organization`, `workspaces`.
 
 ## Usage
 
@@ -206,10 +187,43 @@ mql shell claude --admin-token sk-ant-admin01-...
 > claude.organization.rateLimits { groupType models requestsPerMinute }
 > claude.organization.usageReport { startingAt model workspaceId outputTokens }
 > claude.organization.costReport { startingAt amount costType workspaceId }
+> claude.organization.externalKeys { id provider attached workspaces { name } }
+> claude.organization.complianceApiState
+
+# Claude Enterprise organizations only
+> claude.organization.rbacGroups { name sourceType roles { name } members { email } }
+> claude.organization.rbacRoles { name permissions { resourceType action } }
+> claude.organization.effectiveSpendLimits { actorEmail period amount periodToDateSpend sourceType }
+> claude.organization.plugins { name reach installationPreference contentScanAssessment components { type name } }
+> claude.organization.pluginMarketplaces { name source syncStatus }
 
 # Combined: both standard and admin resources
 mql shell claude --token sk-ant-api03-... --admin-token sk-ant-admin01-...
 ```
+
+## Discovery
+
+When an admin token is provided, the provider discovers the organization and its
+workspaces as separate assets with distinct platform IDs:
+
+```bash
+# Discover org + workspaces
+mql shell claude --admin-token sk-ant-admin01-... --discover all
+```
+
+Discovery targets: `all`, `auto`, `organization`, `workspaces`.
+
+## Resource Scoping
+
+| Key type | Resources |
+|----------|-----------|
+| Standard API key / WIF | `claude.models`, `claude.agents`, `claude.environments`, `claude.sessions`, `claude.files`, `claude.skills`, `claude.vaults`, `claude.memoryStores`, `claude.messageBatches`, `claude.userProfiles` |
+| Admin API key | `claude.organization` (workspaces, members, invites, apiKeys, rateLimits, usageReport, costReport, activities, externalKeys, complianceApiState, rbacGroups, rbacRoles, effectiveSpendLimits, plugins, pluginMarketplaces) |
+
+Standard API keys are workspace-scoped — each key accesses resources in one
+workspace. To scan multiple workspaces, either run separate scans per workspace
+or use the admin key for organization-level visibility (the admin key cannot
+access workspace-level standard API resources like models or agents).
 
 ## Credential Chain
 
@@ -255,7 +269,7 @@ WIF environment variables.
 `ANTHROPIC_ADMIN_API_KEY`.
 
 **"401 Unauthorized"** — The API key is invalid or revoked. Verify it in the
-[Claude Console](https://console.anthropic.com/) under Settings > API Keys.
+[Claude Console](https://platform.claude.com/) under Settings > API Keys.
 
 **"403 Forbidden"** — The key lacks permission for the requested resource. Admin
 endpoints require an admin key; standard endpoints require a workspace-scoped

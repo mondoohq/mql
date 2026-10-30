@@ -6,25 +6,37 @@ package resources
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/keyspaces"
 	keyspaces_types "github.com/aws/aws-sdk-go-v2/service/keyspaces/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
+
+// keyspacesSystemKeyspaces is the closed set of Amazon Keyspaces system
+// keyspaces. It is an exact-match set rather than a "system" prefix test: a
+// prefix test also swallows user keyspaces such as systems_of_record or
+// system_test, which then never appear in aws.keyspaces.keyspaces and whose
+// tables are never audited -- with only a debug log to show for it.
+var keyspacesSystemKeyspaces = map[string]struct{}{
+	"system":                  {},
+	"system_schema":           {},
+	"system_schema_mcs":       {},
+	"system_multiregion_info": {},
+}
 
 // isSystemKeyspace returns true for Cassandra system keyspaces that are
 // present in every account/region and not relevant for security auditing.
 func isSystemKeyspace(name string) bool {
-	return strings.HasPrefix(name, "system")
+	_, ok := keyspacesSystemKeyspaces[name]
+	return ok
 }
 
 func (a *mqlAwsKeyspaces) id() (string, error) {

@@ -1,78 +1,133 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-package resources_test
+package resources
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/testutils"
 )
 
-func TestResource_NtpConf(t *testing.T) {
-	t.Run("ntp.conf settings", func(t *testing.T) {
-		res := x.TestQuery(t, "ntp.conf.settings")
-		assert.NotEmpty(t, res)
-	})
+func anyLines(lines ...string) []any {
+	out := make([]any, 0, len(lines))
+	for _, l := range lines {
+		out = append(out, l)
+	}
+	return out
+}
 
-	t.Run("ntp.conf servers", func(t *testing.T) {
-		res := x.TestQuery(t, "ntp.conf.servers")
-		assert.NotEmpty(t, res)
-		assert.Empty(t, res[0].Result().Error)
-		assert.Equal(t, []any{
-			"127.127.1.0", "66.187.224.4", "18.26.4.105", "128.249.1.10",
-		}, res[0].Data.Value)
-	})
+// ntp.conf separates a keyword from its arguments with any run of whitespace.
+// The old fixed-prefix match dropped tab-separated lines and kept the extra
+// space from double-spaced ones.
+func TestNtpConfDirectiveWhitespace(t *testing.T) {
+	settings := anyLines(
+		"server single.example.net iburst",
+		"server  doublespace.example.net iburst",
+		"server\ttabbed.example.net iburst",
+		"server\t  mixed.example.net",
+		"SERVER upper.example.net",
+		"restrict default nomodify notrap",
+		"restrict\t-6 ::1",
+		"fudge  127.127.1.0 stratum 10",
+		"serverfoo notadirective.example.net",
+		"# server commented.example.net",
+	)
 
-	t.Run("ntp.conf restrict", func(t *testing.T) {
-		res := x.TestQuery(t, "ntp.conf.restrict")
-		assert.NotEmpty(t, res)
-		assert.Empty(t, res[0].Result().Error)
-		assert.Equal(t, []any{
-			"default ignore",
-			"66.187.224.4 mask 255.255.255.255 nomodify notrap noquery",
-			"18.26.4.105 mask 255.255.255.255 nomodify notrap noquery",
-			"128.249.1.10 mask 255.255.255.255 nomodify notrap noquery",
-		}, res[0].Data.Value)
-	})
+	n := &mqlNtpConf{}
 
-	t.Run("ntp.conf fudge", func(t *testing.T) {
-		res := x.TestQuery(t, "ntp.conf.fudge")
-		assert.NotEmpty(t, res)
-		assert.Empty(t, res[0].Result().Error)
-		assert.Equal(t, []any{
-			"127.127.1.0 stratum 10",
-		}, res[0].Data.Value)
-	})
+	servers, err := n.servers(settings)
+	assert.NoError(t, err)
+	assert.Equal(t, []any{
+		"single.example.net iburst",
+		"doublespace.example.net iburst",
+		"tabbed.example.net iburst",
+		"mixed.example.net",
+		"upper.example.net",
+	}, servers, "every server line is returned with its arguments cleanly separated")
 
-	t.Run("missing ntp.conf returns empty data", func(t *testing.T) {
-		x.TestSimple(t, []testutils.SimpleTest{
-			{
-				Code:        `ntp.conf("/etc/ntp-does-not-exist.conf").content`,
-				ResultIndex: 0,
-				Expectation: "",
-			},
-			{
-				Code:        `ntp.conf("/etc/ntp-does-not-exist.conf").settings`,
-				ResultIndex: 0,
-				Expectation: []any{},
-			},
-			{
-				Code:        `ntp.conf("/etc/ntp-does-not-exist.conf").servers`,
-				ResultIndex: 0,
-				Expectation: []any{},
-			},
-			{
-				Code:        `ntp.conf("/etc/ntp-does-not-exist.conf").restrict`,
-				ResultIndex: 0,
-				Expectation: []any{},
-			},
-			{
-				Code:        `ntp.conf("/etc/ntp-does-not-exist.conf").fudge`,
-				ResultIndex: 0,
-				Expectation: []any{},
-			},
-		})
-	})
+	restrict, err := n.restrict(settings)
+	assert.NoError(t, err)
+	assert.Equal(t, []any{
+		"default nomodify notrap",
+		"-6 ::1",
+	}, restrict)
+
+	fudge, err := n.fudge(settings)
+	assert.NoError(t, err)
+	assert.Equal(t, []any{"127.127.1.0 stratum 10"}, fudge)
+}
+
+// A keyword that merely starts with the directive name is not that directive.
+func TestNtpConfDoesNotMatchLongerKeywords(t *testing.T) {
+	n := &mqlNtpConf{}
+	servers, err := n.servers(anyLines("serverfoo host.example.net", "servers host2.example.net"))
+	assert.NoError(t, err)
+	assert.Empty(t, servers)
+}
+
+func TestNtpConfEmptyAndBareDirectives(t *testing.T) {
+	n := &mqlNtpConf{}
+	servers, err := n.servers(anyLines("server", "server   ", ""))
+	assert.NoError(t, err)
+
+	// A "server" line carrying no argument yields an empty value rather than
+	// being skipped. chrony.conf shares the helper and behaves the same way, so
+	// this pins the current behaviour rather than changing it; such a line is
+	// malformed ntp.conf in the first place.
+	assert.Equal(t, []any{"", ""}, servers)
+}
+
+func TestSolarisNtpConfPath(t *testing.T) {
+	// verbatim from an Oracle Solaris 11.4.86 image on OCI
+	assert.Equal(t, "/etc/inet/ntp.linklocal", solarisNtpConfPath("/etc/inet/ntp.linklocal\n", 0))
+	// the property is unset, or the service is not installed
+	assert.Equal(t, "/etc/inet/ntp.conf", solarisNtpConfPath("", 1))
+	assert.Equal(t, "/etc/inet/ntp.conf", solarisNtpConfPath("svcprop: Pattern 'svc:/network/ntp:default' doesn't match any entities\n", 1))
+	assert.Equal(t, "/etc/inet/ntp.conf", solarisNtpConfPath("\"\"\n", 0))
+}
+
+// pool and peer lines are time sources as much as server lines; stock Debian
+// and Ubuntu configure only pools.
+func TestNtpConfPoolsAndPeers(t *testing.T) {
+	settings := anyLines(
+		"driftfile /var/lib/ntpsec/ntp.drift",
+		"pool 0.debian.pool.ntp.org iburst",
+		"pool\t1.debian.pool.ntp.org iburst",
+		"server 192.0.2.40 iburst",
+		"peer 192.0.2.50",
+		"restrict default kod nomodify nopeer noquery limited",
+	)
+	n := &mqlNtpConf{}
+
+	pools, err := n.pools(settings)
+	assert.NoError(t, err)
+	assert.Equal(t, []any{"0.debian.pool.ntp.org iburst", "1.debian.pool.ntp.org iburst"}, pools)
+
+	peers, err := n.peers(settings)
+	assert.NoError(t, err)
+	assert.Equal(t, []any{"192.0.2.50"}, peers)
+
+	servers, err := n.servers(settings)
+	assert.NoError(t, err)
+	assert.Equal(t, []any{"192.0.2.40 iburst"}, servers)
+}
+
+func TestNtpConfPath(t *testing.T) {
+	has := func(paths ...string) func(string) bool {
+		return func(p string) bool {
+			return slices.Contains(paths, p)
+		}
+	}
+	// classic ntp (Debian 9 to 11)
+	assert.Equal(t, "/etc/ntp.conf", ntpConfPath(has("/etc/ntp.conf")))
+	// NTPsec on Debian 12 and 13: only its own file
+	assert.Equal(t, "/etc/ntpsec/ntp.conf", ntpConfPath(has("/etc/ntpsec/ntp.conf")))
+	// NTPsec installed over a leftover /etc/ntp.conf
+	assert.Equal(t, "/etc/ntpsec/ntp.conf", ntpConfPath(has("/etc/ntp.conf", "/etc/ntpsec/ntp.conf", ntpsecDpkgList)))
+	// NTPsec removed (conffile left), classic ntp in use
+	assert.Equal(t, "/etc/ntp.conf", ntpConfPath(has("/etc/ntp.conf", "/etc/ntpsec/ntp.conf")))
+	// nothing installed
+	assert.Equal(t, "/etc/ntp.conf", ntpConfPath(has()))
 }

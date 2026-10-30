@@ -1,0 +1,160 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/clickhousecloud"
+option go_package = "go.mondoo.com/mql/providers/clickhousecloud/resources"
+option root = "clickhousecloud"
+
+// ClickHouse Cloud
+//
+// Root of the ClickHouse Cloud provider. The connected organization and
+// everything queryable through it (services, IP access lists, API keys, and
+// members) is reached from clickhousecloud.organization.
+clickhousecloud @root {
+}
+
+// ClickHouse Cloud organization
+//
+// The connected ClickHouse Cloud organization: its name and the services, API
+// keys, and members reached from here. Populated from the ClickHouse Cloud
+// control-plane API; data the API key is not permitted to read is left empty
+// rather than failing.
+clickhousecloud.organization @defaults("name") {
+  // Organization ID
+  id string
+  // Organization name
+  name string
+  // Time the organization was created
+  createdAt time
+  // Services (database deployments) in the organization
+  services() []clickhousecloud.service
+  // API keys defined on the organization
+  apiKeys() []clickhousecloud.apiKey
+  // Members of the organization
+  members() []clickhousecloud.member
+}
+
+// ClickHouse Cloud service
+//
+// A ClickHouse Cloud service (a managed database deployment) and its security
+// posture: cloud provider and region, running state, the IP allow-list and
+// endpoints, encryption at rest, and private-connectivity settings. The name
+// field selects the service, for example
+// clickhousecloud.organization.services.where(name == "prod"). Whether the
+// service is reachable from any IP is surfaced as openToAllIps.
+clickhousecloud.service @defaults("name state") {
+  // Service ID
+  id string
+  // Service name
+  name string
+  // Cloud provider hosting the service: "aws", "gcp", or "azure"
+  cloudProvider string
+  // Region the service runs in
+  region string
+  // Service state, for example "running", "idle", "stopped", or "provisioning"
+  state string
+  // Service tier, for example "development" or "production" (empty on scale-tier organizations)
+  tier string
+  // Whether the service is reachable from any IP address
+  //
+  // True when the IP allow-list contains an entry that permits all addresses
+  // ("0.0.0.0/0" or "::/0"), meaning the service is exposed to the whole
+  // internet. A CIS-style finding.
+  openToAllIps bool
+  // The IP allow-list controlling which sources may connect
+  ipAccessList []clickhousecloud.service.ipAccess
+  // The service's connection endpoints
+  endpoints []clickhousecloud.service.endpoint
+  // Whether encryption at rest with a customer-managed key is enabled
+  hasTransparentDataEncryption bool
+  // Whether the service has private endpoints attached
+  hasPrivateEndpoints bool
+  // IDs of the private endpoints attached to the service
+  privateEndpointIds []string
+  // Whether the service is read-only
+  isReadonly bool
+  // Minimum replica memory in GB the service can scale down to
+  minReplicaMemoryGb int
+  // Maximum replica memory in GB the service can scale up to
+  maxReplicaMemoryGb int
+  // Number of replicas
+  numReplicas int
+  // Whether idle scaling (scale to zero when unused) is enabled
+  idleScaling bool
+  // Minutes of inactivity before the service scales down
+  idleTimeoutMinutes int
+  // Release channel the service follows, for example "default" or "fast"
+  releaseChannel string
+}
+
+// ClickHouse Cloud IP allow-list entry
+//
+// A single source range permitted to connect to a service, with its
+// description. A source of "0.0.0.0/0" or "::/0" permits any address (see the
+// service's openToAllIps). Selected as a row of the service's ipAccessList.
+clickhousecloud.service.ipAccess @defaults("source description") {
+  // Permitted source, a CIDR or IP, for example "0.0.0.0/0" or "10.0.0.0/8"
+  source string
+  // Human-readable description of the entry
+  description string
+}
+
+// ClickHouse Cloud service endpoint
+//
+// A connection endpoint the service exposes: its protocol, host, and port.
+// Selected as a row of the service's endpoints.
+clickhousecloud.service.endpoint @defaults("protocol host") {
+  // Protocol, for example "nativesecure", "https", or "mysql"
+  protocol string
+  // Host name
+  host string
+  // Port number
+  port int
+}
+
+// ClickHouse Cloud API key
+//
+// An organization API key and its security attributes: its state, the roles it
+// grants, and when it expires and was last used. The name field selects the
+// key, for example clickhousecloud.organization.apiKeys.where(name == "ci").
+// Whether the key never expires is surfaced as neverExpires. The key secret is
+// never returned by the API and is never exposed here.
+clickhousecloud.apiKey @defaults("name state") {
+  // API key ID
+  id string
+  // API key name
+  name string
+  // Key state, for example "enabled" or "disabled"
+  state string
+  // Roles granted to the key, for example "Admin" or "Developer"
+  roles []string
+  // Whether the key never expires
+  //
+  // True when no expiration time is set. A non-expiring key is a finding.
+  neverExpires bool
+  // Time the key expires, when set
+  expiresAt time
+  // Time the key was last used, when known
+  usedAt time
+  // Time the key was created
+  createdAt time
+}
+
+// ClickHouse Cloud organization member
+//
+// A member of the organization and their role. The email field selects the
+// member, for example
+// clickhousecloud.organization.members.where(role == "admin"). Read from the
+// organization members endpoint.
+clickhousecloud.member @defaults("email role") {
+  // User ID of the member
+  userId string
+  // Member email address
+  email string
+  // Member name
+  name string
+  // Organization role, for example "admin" or "developer"
+  role string
+}

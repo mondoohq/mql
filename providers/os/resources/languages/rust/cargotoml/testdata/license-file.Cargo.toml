@@ -1,0 +1,7 @@
+[package]
+name = "custom-terms"
+version = "0.3.0"
+license-file = "LICENSE-CUSTOM"
+
+[dependencies]
+serde = "1.0"

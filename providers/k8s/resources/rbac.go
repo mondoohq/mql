@@ -5,12 +5,13 @@ package resources
 
 import (
 	"fmt"
+	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/stringx"
 	rbacv1 "k8s.io/api/rbac/v1"
 )
 
@@ -42,17 +43,34 @@ func rbacListMatches(list []string, target string) bool {
 	return stringx.Contains(list, "*") || stringx.Contains(list, target)
 }
 
+// rbacResourceMatches reports whether a rule's resources cover the requested
+// resource, written as "<resource>" or "<resource>/<subresource>". Besides "*"
+// and an exact match, a rule resource "*/<subresource>" covers that subresource
+// of every resource, as in the API server's RBAC authorizer. There is no
+// "<resource>/*" form: it matches only a subresource literally named "*".
+func rbacResourceMatches(ruleResources []string, resource string) bool {
+	if rbacListMatches(ruleResources, resource) {
+		return true
+	}
+	_, sub, ok := strings.Cut(resource, "/")
+	if !ok || sub == "" {
+		return false
+	}
+	return stringx.Contains(ruleResources, "*/"+sub)
+}
+
 // rbacRuleGrants reports whether the rule grants the given verb on the given
 // (apiGroup, resource, resourceName), honoring wildcards in the group, resource,
-// and verb dimensions. A rule with a non-empty ResourceNames list grants the
-// action only on those named objects; an empty list grants it on every object.
+// and verb dimensions, including the "*/<subresource>" resource form. A rule
+// with a non-empty ResourceNames list grants the action only on those named
+// objects; an empty list grants it on every object.
 // An empty resourceName means the action is not scoped to a specific object, so
 // a name-restricted rule still counts (the subject can act on at least the named
 // objects). This matches the API server's RBAC authorizer and keeps whoCan
 // consistent with k8s.accessReview.
 func rbacRuleGrants(rule rbacv1.PolicyRule, apiGroup, resource, verb, resourceName string) bool {
 	return rbacListMatches(rule.APIGroups, apiGroup) &&
-		rbacListMatches(rule.Resources, resource) &&
+		rbacResourceMatches(rule.Resources, resource) &&
 		rbacListMatches(rule.Verbs, verb) &&
 		rbacRuleMatchesResourceName(rule, resourceName)
 }

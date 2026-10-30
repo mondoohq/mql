@@ -1,0 +1,30 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": {
+    "created_at": "2024-01-02T03:04:05Z",
+    "updated_at": "2024-06-07T08:09:10Z",
+    "settings": {
+      "activity_log": { "enabled": false },
+      "antivirus": {
+        "enabled_download_phase": true,
+        "enabled_upload_phase": false,
+        "fail_closed": false
+      },
+      "body_scanning": { "inspection_mode": "shallow" },
+      "browser_isolation": {
+        "url_browser_isolation_enabled": true,
+        "non_identity_enabled": false
+      },
+      "certificate": { "id": "00000000-0000-0000-0000-000000000000" },
+      "extended_email_matching": { "enabled": true },
+      "fips": { "tls": false },
+      "host_selector": { "enabled": false },
+      "inspection": { "mode": "static" },
+      "protocol_detection": { "enabled": false },
+      "sandbox": { "enabled": true, "fallback_action": "allow" },
+      "tls_decrypt": { "enabled": false }
+    }
+  }
+}

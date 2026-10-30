@@ -5,23 +5,25 @@
 
 package providers
 
-import "go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+import "go.mondoo.com/mql/providers-sdk/v1/plugin"
 
 // DefaultProviders are useful when working in air-gapped environments
 // to tell users what providers are used for common connections, when there
 // is no other way to find out.
 var DefaultProviders Providers = map[string]*Provider{
+
 	"activedirectory": {
 		Provider: &plugin.Provider{
 			Name:            "activedirectory",
-			ID:              "go.mondoo.com/mql/v13/providers/activedirectory",
+			ID:              "go.mondoo.com/mql/providers/activedirectory",
 			ConnectionTypes: []string{"activedirectory"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:    "activedirectory",
 					Use:     "activedirectory",
-					Aliases: []string{"ad"},
 					Short:   "an Active Directory domain",
+					Aliases: []string{"ad"},
 				},
 			},
 		},
@@ -30,7 +32,7 @@ var DefaultProviders Providers = map[string]*Provider{
 	"ai": {
 		Provider: &plugin.Provider{
 			Name:            "ai",
-			ID:              "go.mondoo.com/cnquery/providers/ai",
+			ID:              "go.mondoo.com/mql/providers/ai",
 			ConnectionTypes: []string{"mcp"},
 			Connectors: []plugin.Connector{
 				{
@@ -42,16 +44,34 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"alicloud": {
+		Provider: &plugin.Provider{
+			Name:            "alicloud",
+			ID:              "go.mondoo.com/mql/providers/alicloud",
+			ConnectionTypes: []string{"alicloud"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "alicloud",
+					Use:   "alicloud",
+					Short: "an Alibaba Cloud account",
+				},
+			},
+		},
+	},
+
 	"ansible": {
 		Provider: &plugin.Provider{
 			Name:            "ansible",
-			ID:              "go.mondoo.com/cnquery/v12/providers/ansible",
+			ID:              "go.mondoo.com/mql/providers/ansible",
 			ConnectionTypes: []string{"ansible"},
+			Targets:         []plugin.TargetOptIn{plugin.TargetOptIn{Target: "iac", Discovery: "ansible", ConnType: "ansible", Match: []plugin.Matcher{plugin.Matcher{Glob: "ansible.cfg"}, plugin.Matcher{Glob: "roles/*/tasks/main.yml"}, plugin.Matcher{Glob: "roles/*/tasks/main.yaml"}, plugin.Matcher{Glob: "inventory"}, plugin.Matcher{Glob: "*.yml"}, plugin.Matcher{Glob: "*.yaml"}}, PerFile: false, Options: map[string]string(nil), Auto: true}},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "ansible",
 					Use:   "ansible PATH",
-					Short: "an Ansible playbook",
+					Short: "an Ansible playbook or project",
 				},
 			},
 		},
@@ -60,9 +80,10 @@ var DefaultProviders Providers = map[string]*Provider{
 	"arista": {
 		Provider: &plugin.Provider{
 			Name:            "arista",
-			ID:              "go.mondoo.com/cnquery/v9/providers/arista",
+			ID:              "go.mondoo.com/mql/providers/arista",
 			ConnectionTypes: []string{"arista"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "arista",
 					Use:   "arista user@host",
@@ -72,12 +93,29 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"artifactory": {
+		Provider: &plugin.Provider{
+			Name:            "artifactory",
+			ID:              "go.mondoo.com/mql/providers/artifactory",
+			ConnectionTypes: []string{"artifactory"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "artifactory",
+					Use:   "artifactory [url]",
+					Short: "a JFrog Artifactory instance",
+				},
+			},
+		},
+	},
+
 	"atlassian": {
 		Provider: &plugin.Provider{
 			Name:            "atlassian",
-			ID:              "go.mondoo.com/cnquery/v9/providers/atlassian",
+			ID:              "go.mondoo.com/mql/providers/atlassian",
 			ConnectionTypes: []string{"atlassian", "jira", "admin", "confluence", "scim"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "atlassian",
 					Use:   "atlassian",
@@ -87,16 +125,17 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
-	"bigip": {
+	"auth0": {
 		Provider: &plugin.Provider{
-			Name:            "bigip",
-			ID:              "go.mondoo.com/cnquery/providers/bigip",
-			ConnectionTypes: []string{"bigip"},
+			Name:            "auth0",
+			ID:              "go.mondoo.com/mql/providers/auth0",
+			ConnectionTypes: []string{"auth0"},
 			Connectors: []plugin.Connector{
+
 				{
-					Name:  "bigip",
-					Use:   "bigip",
-					Short: "an F5 BIG-IP load balancer",
+					Name:  "auth0",
+					Use:   "auth0",
+					Short: "an Auth0 tenant",
 				},
 			},
 		},
@@ -105,9 +144,10 @@ var DefaultProviders Providers = map[string]*Provider{
 	"aws": {
 		Provider: &plugin.Provider{
 			Name:            "aws",
-			ID:              "go.mondoo.com/cnquery/v9/providers/aws",
+			ID:              "go.mondoo.com/mql/providers/aws",
 			ConnectionTypes: []string{"aws", "ebs"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "aws",
 					Use:   "aws",
@@ -120,9 +160,10 @@ var DefaultProviders Providers = map[string]*Provider{
 	"azure": {
 		Provider: &plugin.Provider{
 			Name:            "azure",
-			ID:              "go.mondoo.com/cnquery/v9/providers/azure",
+			ID:              "go.mondoo.com/mql/providers/azure",
 			ConnectionTypes: []string{"azure", "azure-snapshot"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "azure",
 					Use:   "azure",
@@ -132,12 +173,30 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"azuredevops": {
+		Provider: &plugin.Provider{
+			Name:            "azuredevops",
+			ID:              "go.mondoo.com/mql/providers/azuredevops",
+			ConnectionTypes: []string{"azuredevops"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "azuredevops",
+					Use:   "azuredevops",
+					Short: "an Azure DevOps organization or repository",
+				},
+			},
+		},
+	},
+
 	"bicep": {
 		Provider: &plugin.Provider{
 			Name:            "bicep",
-			ID:              "go.mondoo.com/mql/v13/providers/bicep",
+			ID:              "go.mondoo.com/mql/providers/bicep",
 			ConnectionTypes: []string{"bicep"},
+			Targets:         []plugin.TargetOptIn{plugin.TargetOptIn{Target: "iac", Discovery: "bicep", ConnType: "bicep", Match: []plugin.Matcher{plugin.Matcher{Glob: "*.bicep"}, plugin.Matcher{Glob: "*.bicepparam"}}, PerFile: false, Options: map[string]string(nil), Auto: true}},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "bicep",
 					Use:   "bicep PATH",
@@ -147,10 +206,57 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"bigip": {
+		Provider: &plugin.Provider{
+			Name:            "bigip",
+			ID:              "go.mondoo.com/mql/providers/bigip",
+			ConnectionTypes: []string{"bigip"},
+			Connectors: []plugin.Connector{
+				{
+					Name:  "bigip",
+					Use:   "bigip",
+					Short: "an F5 BIG-IP load balancer",
+				},
+			},
+		},
+	},
+
+	"bitwarden": {
+		Provider: &plugin.Provider{
+			Name:            "bitwarden",
+			ID:              "go.mondoo.com/mql/providers/bitwarden",
+			ConnectionTypes: []string{"bitwarden"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "bitwarden",
+					Use:   "bitwarden",
+					Short: "a Bitwarden organization",
+				},
+			},
+		},
+	},
+
+	"cassandra": {
+		Provider: &plugin.Provider{
+			Name:            "cassandra",
+			ID:              "go.mondoo.com/mql/providers/cassandra",
+			ConnectionTypes: []string{"cassandra"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "cassandra",
+					Use:   "cassandra [host]",
+					Short: "an Apache Cassandra cluster",
+				},
+			},
+		},
+	},
+
 	"checkpoint": {
 		Provider: &plugin.Provider{
 			Name:            "checkpoint",
-			ID:              "go.mondoo.com/cnquery/providers/checkpoint",
+			ID:              "go.mondoo.com/mql/providers/checkpoint",
 			ConnectionTypes: []string{"checkpoint"},
 			Connectors: []plugin.Connector{
 				{
@@ -168,6 +274,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			ID:              "go.mondoo.com/mql/providers/claude",
 			ConnectionTypes: []string{"claude"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "claude",
 					Use:   "claude",
@@ -177,12 +284,45 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"clickhousecloud": {
+		Provider: &plugin.Provider{
+			Name:            "clickhousecloud",
+			ID:              "go.mondoo.com/mql/providers/clickhousecloud",
+			ConnectionTypes: []string{"clickhousecloud"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "clickhousecloud",
+					Use:   "clickhousecloud",
+					Short: "a ClickHouse Cloud organization",
+				},
+			},
+		},
+	},
+
+	"clickhousedb": {
+		Provider: &plugin.Provider{
+			Name:            "clickhousedb",
+			ID:              "go.mondoo.com/mql/providers/clickhousedb",
+			ConnectionTypes: []string{"clickhousedb"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "clickhousedb",
+					Use:   "clickhousedb [host]",
+					Short: "a ClickHouse server",
+				},
+			},
+		},
+	},
+
 	"cloudflare": {
 		Provider: &plugin.Provider{
 			Name:            "cloudflare",
-			ID:              "go.mondoo.com/cnquery/v12/providers/cloudflare",
+			ID:              "go.mondoo.com/mql/providers/cloudflare",
 			ConnectionTypes: []string{"cloudflare"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "cloudflare",
 					Use:   "cloudflare",
@@ -195,13 +335,31 @@ var DefaultProviders Providers = map[string]*Provider{
 	"cloudformation": {
 		Provider: &plugin.Provider{
 			Name:            "cloudformation",
-			ID:              "go.mondoo.com/cnquery/v12/providers/cloudformation",
+			ID:              "go.mondoo.com/mql/providers/cloudformation",
 			ConnectionTypes: []string{"cloudformation"},
+			Targets:         []plugin.TargetOptIn{plugin.TargetOptIn{Target: "iac", Discovery: "cloudformation", ConnType: "cloudformation", Match: []plugin.Matcher{plugin.Matcher{Glob: "*.yaml"}, plugin.Matcher{Glob: "*.yml"}, plugin.Matcher{Glob: "*.json"}, plugin.Matcher{Glob: "*.template"}}, PerFile: true, Options: map[string]string(nil), Auto: true}},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "cloudformation",
 					Use:   "cloudformation PATH",
 					Short: "an AWS CloudFormation template or AWS SAM template",
+				},
+			},
+		},
+	},
+
+	"cockroachdb": {
+		Provider: &plugin.Provider{
+			Name:            "cockroachdb",
+			ID:              "go.mondoo.com/mql/providers/cockroachdb",
+			ConnectionTypes: []string{"cockroachdb"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "cockroachdb",
+					Use:   "cockroachdb [host]",
+					Short: "a CockroachDB cluster",
 				},
 			},
 		},
@@ -216,16 +374,17 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
-	"depsdev": {
+	"databricks": {
 		Provider: &plugin.Provider{
-			Name:            "depsdev",
-			ID:              "go.mondoo.com/mql/v13/providers/depsdev",
-			ConnectionTypes: []string{"depsdev"},
+			Name:            "databricks",
+			ID:              "go.mondoo.com/mql/providers/databricks",
+			ConnectionTypes: []string{"databricks"},
 			Connectors: []plugin.Connector{
+
 				{
-					Name:  "depsdev",
-					Use:   "depsdev [path-to-go.mod]",
-					Short: "deps.dev dependency analysis",
+					Name:  "databricks",
+					Use:   "databricks",
+					Short: "a Databricks account or workspace",
 				},
 			},
 		},
@@ -237,10 +396,42 @@ var DefaultProviders Providers = map[string]*Provider{
 			ID:              "go.mondoo.com/mql/providers/datadog",
 			ConnectionTypes: []string{"datadog"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "datadog",
 					Use:   "datadog",
 					Short: "a Datadog account",
+				},
+			},
+		},
+	},
+
+	"db2": {
+		Provider: &plugin.Provider{
+			Name:            "db2",
+			ID:              "go.mondoo.com/mql/providers/db2",
+			ConnectionTypes: []string{"db2"},
+			Connectors: []plugin.Connector{
+				{
+					Name:  "db2",
+					Use:   "db2 [host]",
+					Short: "an IBM Db2 database",
+				},
+			},
+		},
+	},
+
+	"depsdev": {
+		Provider: &plugin.Provider{
+			Name:            "depsdev",
+			ID:              "go.mondoo.com/mql/providers/depsdev",
+			ConnectionTypes: []string{"depsdev"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "depsdev",
+					Use:   "depsdev [path-to-go.mod]",
+					Short: "deps.dev dependency analysis",
 				},
 			},
 		},
@@ -252,6 +443,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			ID:              "go.mondoo.com/mql/providers/digitalocean",
 			ConnectionTypes: []string{"digitalocean"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "digitalocean",
 					Use:   "digitalocean",
@@ -261,16 +453,64 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
-	"equinix": {
+	"dropbox": {
 		Provider: &plugin.Provider{
-			Name:            "equinix",
-			ID:              "go.mondoo.com/cnquery/v9/providers/equinix",
-			ConnectionTypes: []string{"equinix"},
+			Name:            "dropbox",
+			ID:              "go.mondoo.com/mql/providers/dropbox",
+			ConnectionTypes: []string{"dropbox"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "dropbox",
+					Use:   "dropbox",
+					Short: "a Dropbox Business team",
+				},
+			},
+		},
+	},
+
+	"elasticsearch": {
+		Provider: &plugin.Provider{
+			Name:            "elasticsearch",
+			ID:              "go.mondoo.com/mql/providers/elasticsearch",
+			ConnectionTypes: []string{"elasticsearch"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "elasticsearch",
+					Use:   "elasticsearch [host]",
+					Short: "an Elasticsearch cluster",
+				},
+			},
+		},
+	},
+
+	"exoscale": {
+		Provider: &plugin.Provider{
+			Name:            "exoscale",
+			ID:              "go.mondoo.com/mql/providers/exoscale",
+			ConnectionTypes: []string{"exoscale"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "exoscale",
+					Use:   "exoscale",
+					Short: "an Exoscale organization",
+				},
+			},
+		},
+	},
+
+	"fortios": {
+		Provider: &plugin.Provider{
+			Name:            "fortios",
+			ID:              "go.mondoo.com/mql/providers/fortios",
+			ConnectionTypes: []string{"fortios"},
 			Connectors: []plugin.Connector{
 				{
-					Name:  "equinix",
-					Use:   "equinix [org <org id>] [project <project-id>] [--token <token>]",
-					Short: "an Equinix Metal organization",
+					Name:  "fortios",
+					Use:   "fortios",
+					Short: "a remote FortiOS system",
 				},
 			},
 		},
@@ -279,9 +519,10 @@ var DefaultProviders Providers = map[string]*Provider{
 	"gcp": {
 		Provider: &plugin.Provider{
 			Name:            "gcp",
-			ID:              "go.mondoo.com/cnquery/v9/providers/gcp",
+			ID:              "go.mondoo.com/mql/providers/gcp",
 			ConnectionTypes: []string{"gcp", "gcp-snapshot"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "gcp",
 					Use:   "gcp",
@@ -291,42 +532,13 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
-	"grafana": {
-		Provider: &plugin.Provider{
-			Name:            "grafana",
-			ID:              "go.mondoo.com/mql/v13/providers/grafana",
-			ConnectionTypes: []string{"grafana"},
-			Connectors: []plugin.Connector{
-				{
-					Name:  "grafana",
-					Use:   "grafana",
-					Short: "a Grafana organization",
-				},
-			},
-		},
-	},
-
-	"huggingface": {
-		Provider: &plugin.Provider{
-			Name:            "huggingface",
-			ID:              "go.mondoo.com/mql/providers/huggingface",
-			ConnectionTypes: []string{"huggingface"},
-			Connectors: []plugin.Connector{
-				{
-					Name:  "huggingface",
-					Use:   "huggingface",
-					Short: "Hugging Face",
-				},
-			},
-		},
-	},
-
 	"github": {
 		Provider: &plugin.Provider{
 			Name:            "github",
-			ID:              "go.mondoo.com/cnquery/v9/providers/github",
+			ID:              "go.mondoo.com/mql/providers/github",
 			ConnectionTypes: []string{"github"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "github",
 					Use:   "github",
@@ -339,9 +551,10 @@ var DefaultProviders Providers = map[string]*Provider{
 	"gitlab": {
 		Provider: &plugin.Provider{
 			Name:            "gitlab",
-			ID:              "go.mondoo.com/cnquery/v9/providers/gitlab",
+			ID:              "go.mondoo.com/mql/providers/gitlab",
 			ConnectionTypes: []string{"gitlab", "gitlab-group", "gitlab-project"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "gitlab",
 					Use:   "gitlab",
@@ -354,13 +567,47 @@ var DefaultProviders Providers = map[string]*Provider{
 	"google-workspace": {
 		Provider: &plugin.Provider{
 			Name:            "google-workspace",
-			ID:              "go.mondoo.com/cnquery/v9/providers/google-workspace",
+			ID:              "go.mondoo.com/mql/providers/google-workspace",
 			ConnectionTypes: []string{"google-workspace"},
 			Connectors: []plugin.Connector{
+
 				{
-					Name:  "google-workspace",
-					Use:   "google-workspace [--credentials-path <credentials-path>] [--customer-id <customer-id>] [--impersonated-user-email <impersonated-user-email>]",
-					Short: "a Google Workspace account",
+					Name:    "google-workspace",
+					Use:     "google-workspace [--credentials-path <credentials-path>] [--customer-id <customer-id>] [--impersonated-user-email <impersonated-user-email>]",
+					Short:   "a Google Workspace account",
+					Aliases: []string{"googleworkspace"},
+				},
+			},
+		},
+	},
+
+	"grafana": {
+		Provider: &plugin.Provider{
+			Name:            "grafana",
+			ID:              "go.mondoo.com/mql/providers/grafana",
+			ConnectionTypes: []string{"grafana"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "grafana",
+					Use:   "grafana",
+					Short: "a Grafana organization",
+				},
+			},
+		},
+	},
+
+	"hcp": {
+		Provider: &plugin.Provider{
+			Name:            "hcp",
+			ID:              "go.mondoo.com/mql/providers/hcp",
+			ConnectionTypes: []string{"hcp"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "hcp",
+					Use:   "hcp",
+					Short: "a HashiCorp Cloud Platform organization",
 				},
 			},
 		},
@@ -369,9 +616,11 @@ var DefaultProviders Providers = map[string]*Provider{
 	"helm": {
 		Provider: &plugin.Provider{
 			Name:            "helm",
-			ID:              "go.mondoo.com/mql/v13/providers/helm",
+			ID:              "go.mondoo.com/mql/providers/helm",
 			ConnectionTypes: []string{"helm"},
+			Targets:         []plugin.TargetOptIn{plugin.TargetOptIn{Target: "iac", Discovery: "helm", ConnType: "helm", Match: []plugin.Matcher{plugin.Matcher{Glob: "Chart.yaml"}}, PerFile: false, Options: map[string]string(nil), Auto: true}},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "helm",
 					Use:   "helm PATH",
@@ -387,6 +636,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			ID:              "go.mondoo.com/mql/providers/hetzner",
 			ConnectionTypes: []string{"hetzner"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "hetzner",
 					Use:   "hetzner",
@@ -396,12 +646,61 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"huggingface": {
+		Provider: &plugin.Provider{
+			Name:            "huggingface",
+			ID:              "go.mondoo.com/mql/providers/huggingface",
+			ConnectionTypes: []string{"huggingface"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "huggingface",
+					Use:   "huggingface",
+					Short: "Hugging Face",
+				},
+			},
+		},
+	},
+
+	"iac": {
+		Provider: &plugin.Provider{
+			Name:            "iac",
+			ID:              "go.mondoo.com/mql/providers/iac",
+			ConnectionTypes: []string{"iac"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "iac",
+					Use:   "iac PATH",
+					Short: "a tree of infrastructure-as-code files",
+				},
+			},
+		},
+	},
+
+	"ibm": {
+		Provider: &plugin.Provider{
+			Name:            "ibm",
+			ID:              "go.mondoo.com/mql/providers/ibm",
+			ConnectionTypes: []string{"ibm"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "ibm",
+					Use:   "ibm",
+					Short: "an IBM Cloud account",
+				},
+			},
+		},
+	},
+
 	"ipinfo": {
 		Provider: &plugin.Provider{
 			Name:            "ipinfo",
-			ID:              "go.mondoo.com/cnquery/providers/ipinfo",
+			ID:              "go.mondoo.com/mql/providers/ipinfo",
 			ConnectionTypes: []string{"ipinfo"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "ipinfo",
 					Use:   "ipinfo",
@@ -414,13 +713,30 @@ var DefaultProviders Providers = map[string]*Provider{
 	"ipmi": {
 		Provider: &plugin.Provider{
 			Name:            "ipmi",
-			ID:              "go.mondoo.com/cnquery/v9/providers/ipmi",
+			ID:              "go.mondoo.com/mql/providers/ipmi",
 			ConnectionTypes: []string{"ipmi"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "ipmi",
 					Use:   "ipmi USER@HOST",
 					Short: "an IPMI interface",
+				},
+			},
+		},
+	},
+
+	"iru": {
+		Provider: &plugin.Provider{
+			Name:            "iru",
+			ID:              "go.mondoo.com/mql/providers/iru",
+			ConnectionTypes: []string{"iru"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "iru",
+					Use:   "iru",
+					Short: "an Iru tenant",
 				},
 			},
 		},
@@ -432,10 +748,27 @@ var DefaultProviders Providers = map[string]*Provider{
 			ID:              "go.mondoo.com/mql/providers/jamf",
 			ConnectionTypes: []string{"jamf"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "jamf",
 					Use:   "jamf",
-					Short: "a Jamf Pro instance",
+					Short: "a Jamf Pro account",
+				},
+			},
+		},
+	},
+
+	"jumpcloud": {
+		Provider: &plugin.Provider{
+			Name:            "jumpcloud",
+			ID:              "go.mondoo.com/mql/providers/jumpcloud",
+			ConnectionTypes: []string{"jumpcloud"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "jumpcloud",
+					Use:   "jumpcloud",
+					Short: "a JumpCloud organization",
 				},
 			},
 		},
@@ -444,7 +777,7 @@ var DefaultProviders Providers = map[string]*Provider{
 	"junos": {
 		Provider: &plugin.Provider{
 			Name:            "junos",
-			ID:              "go.mondoo.com/cnquery/providers/junos",
+			ID:              "go.mondoo.com/mql/providers/junos",
 			ConnectionTypes: []string{"junos"},
 			Connectors: []plugin.Connector{
 				{
@@ -459,13 +792,32 @@ var DefaultProviders Providers = map[string]*Provider{
 	"k8s": {
 		Provider: &plugin.Provider{
 			Name:            "k8s",
-			ID:              "go.mondoo.com/cnquery/v9/providers/k8s",
+			ID:              "go.mondoo.com/mql/providers/k8s",
 			ConnectionTypes: []string{"k8s"},
+			Targets:         []plugin.TargetOptIn{plugin.TargetOptIn{Target: "iac", Discovery: "k8s", ConnType: "k8s", Match: []plugin.Matcher{plugin.Matcher{Glob: "*.yaml"}, plugin.Matcher{Glob: "*.yml"}}, PerFile: false, Options: map[string]string(nil), Auto: true}},
 			Connectors: []plugin.Connector{
+
 				{
-					Name:  "k8s",
-					Use:   "k8s (optional MANIFEST path)",
-					Short: "a Kubernetes cluster or local manifest file(s)",
+					Name:    "k8s",
+					Use:     "k8s (optional MANIFEST path)",
+					Short:   "a Kubernetes cluster or local manifest file(s)",
+					Aliases: []string{"kubernetes"},
+				},
+			},
+		},
+	},
+
+	"keycloak": {
+		Provider: &plugin.Provider{
+			Name:            "keycloak",
+			ID:              "go.mondoo.com/mql/providers/keycloak",
+			ConnectionTypes: []string{"keycloak"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "keycloak",
+					Use:   "keycloak",
+					Short: "a Keycloak server",
 				},
 			},
 		},
@@ -474,28 +826,15 @@ var DefaultProviders Providers = map[string]*Provider{
 	"kustomize": {
 		Provider: &plugin.Provider{
 			Name:            "kustomize",
-			ID:              "go.mondoo.com/mql/v13/providers/kustomize",
+			ID:              "go.mondoo.com/mql/providers/kustomize",
 			ConnectionTypes: []string{"kustomize"},
+			Targets:         []plugin.TargetOptIn{plugin.TargetOptIn{Target: "iac", Discovery: "kustomize", ConnType: "kustomize", Match: []plugin.Matcher{plugin.Matcher{Glob: "kustomization.yaml"}, plugin.Matcher{Glob: "kustomization.yml"}, plugin.Matcher{Glob: "Kustomization"}}, PerFile: false, Options: map[string]string(nil), Auto: true}},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "kustomize",
 					Use:   "kustomize PATH",
 					Short: "a Kustomize overlay directory",
-				},
-			},
-		},
-	},
-
-	"mondoo": {
-		Provider: &plugin.Provider{
-			Name:            "mondoo",
-			ID:              "go.mondoo.com/cnquery/v12/providers/mondoo",
-			ConnectionTypes: []string{"mondoo"},
-			Connectors: []plugin.Connector{
-				{
-					Name:  "mondoo",
-					Use:   "mondoo",
-					Short: "Mondoo Platform",
 				},
 			},
 		},
@@ -507,9 +846,10 @@ var DefaultProviders Providers = map[string]*Provider{
 			ID:              "go.mondoo.com/mql/providers/mikrotik",
 			ConnectionTypes: []string{"mikrotik"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "mikrotik",
-					Use:   "mikrotik [user@host] [flags]",
+					Use:   "mikrotik user@host [flags]",
 					Short: "a MikroTik RouterOS device",
 				},
 			},
@@ -522,10 +862,59 @@ var DefaultProviders Providers = map[string]*Provider{
 			ID:              "go.mondoo.com/mql/providers/mistral",
 			ConnectionTypes: []string{"mistral"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "mistral",
 					Use:   "mistral",
-					Short: "a Mistral AI account",
+					Short: "a Mistral AI workspace",
+				},
+			},
+		},
+	},
+
+	"mondoo": {
+		Provider: &plugin.Provider{
+			Name:            "mondoo",
+			ID:              "go.mondoo.com/mql/providers/mondoo",
+			ConnectionTypes: []string{"mondoo"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "mondoo",
+					Use:   "mondoo",
+					Short: "Mondoo Platform",
+				},
+			},
+		},
+	},
+
+	"mongo": {
+		Provider: &plugin.Provider{
+			Name:            "mongo",
+			ID:              "go.mondoo.com/mql/providers/mongo",
+			ConnectionTypes: []string{"mongo"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "mongo",
+					Use:   "mongo [host]",
+					Short: "a self-hosted MongoDB server",
+				},
+			},
+		},
+	},
+
+	"mongodbatlas": {
+		Provider: &plugin.Provider{
+			Name:            "mongodbatlas",
+			ID:              "go.mondoo.com/mql/providers/mongodbatlas",
+			ConnectionTypes: []string{"mongodbatlas"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "mongodbatlas",
+					Use:   "mongodbatlas",
+					Short: "a MongoDB Atlas organization or project",
 				},
 			},
 		},
@@ -534,13 +923,110 @@ var DefaultProviders Providers = map[string]*Provider{
 	"ms365": {
 		Provider: &plugin.Provider{
 			Name:            "ms365",
-			ID:              "go.mondoo.com/cnquery/v9/providers/ms365",
+			ID:              "go.mondoo.com/mql/providers/ms365",
 			ConnectionTypes: []string{"ms365"},
 			Connectors: []plugin.Connector{
+
 				{
-					Name:  "ms365",
-					Use:   "ms365",
-					Short: "a Microsoft 365 tenant",
+					Name:    "ms365",
+					Use:     "ms365",
+					Short:   "a Microsoft 365 tenant",
+					Aliases: []string{"m365"},
+				},
+			},
+		},
+	},
+
+	"mssql": {
+		Provider: &plugin.Provider{
+			Name:            "mssql",
+			ID:              "go.mondoo.com/mql/providers/mssql",
+			ConnectionTypes: []string{"mssql"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "mssql",
+					Use:   "mssql [host]",
+					Short: "a Microsoft SQL Server instance",
+				},
+			},
+		},
+	},
+
+	"mysqldb": {
+		Provider: &plugin.Provider{
+			Name:            "mysqldb",
+			ID:              "go.mondoo.com/mql/providers/mysqldb",
+			ConnectionTypes: []string{"mysqldb"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "mysqldb",
+					Use:   "mysqldb [host]",
+					Short: "a MySQL or MariaDB server",
+				},
+			},
+		},
+	},
+
+	"n8n": {
+		Provider: &plugin.Provider{
+			Name:            "n8n",
+			ID:              "go.mondoo.com/mql/providers/n8n",
+			ConnectionTypes: []string{"n8n"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "n8n",
+					Use:   "n8n [url]",
+					Short: "an n8n instance",
+				},
+			},
+		},
+	},
+
+	"neon": {
+		Provider: &plugin.Provider{
+			Name:            "neon",
+			ID:              "go.mondoo.com/mql/providers/neon",
+			ConnectionTypes: []string{"neon"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "neon",
+					Use:   "neon",
+					Short: "a Neon organization or account",
+				},
+			},
+		},
+	},
+
+	"netlify": {
+		Provider: &plugin.Provider{
+			Name:            "netlify",
+			ID:              "go.mondoo.com/mql/providers/netlify",
+			ConnectionTypes: []string{"netlify"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "netlify",
+					Use:   "netlify",
+					Short: "a Netlify account",
+				},
+			},
+		},
+	},
+
+	"netscaler": {
+		Provider: &plugin.Provider{
+			Name:            "netscaler",
+			ID:              "go.mondoo.com/mql/providers/netscaler",
+			ConnectionTypes: []string{"netscaler"},
+			Connectors: []plugin.Connector{
+				{
+					Name:  "netscaler",
+					Use:   "netscaler",
+					Short: "a remote NetScaler ADC or NetScaler Gateway appliance",
 				},
 			},
 		},
@@ -549,13 +1035,49 @@ var DefaultProviders Providers = map[string]*Provider{
 	"network": {
 		Provider: &plugin.Provider{
 			Name:            "network",
-			ID:              "go.mondoo.com/cnquery/v9/providers/network",
+			ID:              "go.mondoo.com/mql/providers/network",
 			ConnectionTypes: []string{"host"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "host",
 					Use:   "host HOST",
 					Short: "a remote HTTP or HTTPS host",
+				},
+			},
+		},
+	},
+
+	"networkdevices": {
+		Provider: &plugin.Provider{
+			Name:            "networkdevices",
+			ID:              "go.mondoo.com/mql/providers/networkdevices",
+			ConnectionTypes: []string{"nd-ssh", "ciscocatalyst"},
+			Connectors: []plugin.Connector{
+				{
+					Name:  "ciscocatalyst",
+					Use:   "ciscocatalyst hostname",
+					Short: "Cisco Catalyst Connection",
+				},
+				{
+					Name:  "nd-ssh",
+					Use:   "nd-ssh user@host",
+					Short: "a remote network device via SSH",
+				},
+			},
+		},
+	},
+
+	"networkdiscovery": {
+		Provider: &plugin.Provider{
+			Name:            "networkdiscovery",
+			ID:              "go.mondoo.com/mql/providers/networkdiscovery",
+			ConnectionTypes: []string{"networkdiscovery"},
+			Connectors: []plugin.Connector{
+				{
+					Name:  "networkdiscovery",
+					Use:   "networkdiscovery DOMAIN_NAME",
+					Short: "Discover subdomains for a given domain.",
 				},
 			},
 		},
@@ -567,6 +1089,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			ID:              "go.mondoo.com/mql/providers/nextdns",
 			ConnectionTypes: []string{"nextdns"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "nextdns",
 					Use:   "nextdns",
@@ -579,9 +1102,10 @@ var DefaultProviders Providers = map[string]*Provider{
 	"nmap": {
 		Provider: &plugin.Provider{
 			Name:            "nmap",
-			ID:              "go.mondoo.com/cnquery/v12/providers/nmap",
+			ID:              "go.mondoo.com/mql/providers/nmap",
 			ConnectionTypes: []string{"nmap"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "nmap",
 					Use:   "nmap",
@@ -591,12 +1115,29 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"notion": {
+		Provider: &plugin.Provider{
+			Name:            "notion",
+			ID:              "go.mondoo.com/mql/providers/notion",
+			ConnectionTypes: []string{"notion"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "notion",
+					Use:   "notion",
+					Short: "a Notion workspace",
+				},
+			},
+		},
+	},
+
 	"nutanix": {
 		Provider: &plugin.Provider{
 			Name:            "nutanix",
-			ID:              "go.mondoo.com/mql/v13/providers/nutanix",
+			ID:              "go.mondoo.com/mql/providers/nutanix",
 			ConnectionTypes: []string{"nutanix"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "nutanix",
 					Use:   "nutanix --endpoint ENDPOINT [flags]",
@@ -609,13 +1150,30 @@ var DefaultProviders Providers = map[string]*Provider{
 	"oci": {
 		Provider: &plugin.Provider{
 			Name:            "oci",
-			ID:              "go.mondoo.com/cnquery/v9/providers/oci",
+			ID:              "go.mondoo.com/mql/providers/oci",
 			ConnectionTypes: []string{"oci"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "oci",
 					Use:   "oci",
 					Short: "an Oracle Cloud Infrastructure tenancy",
+				},
+			},
+		},
+	},
+
+	"okta": {
+		Provider: &plugin.Provider{
+			Name:            "okta",
+			ID:              "go.mondoo.com/mql/providers/okta",
+			ConnectionTypes: []string{"okta"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "okta",
+					Use:   "okta",
+					Short: "an Okta organization",
 				},
 			},
 		},
@@ -627,6 +1185,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			ID:              "go.mondoo.com/mql/providers/ollama",
 			ConnectionTypes: []string{"ollama"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "ollama",
 					Use:   "ollama",
@@ -636,27 +1195,13 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
-	"okta": {
-		Provider: &plugin.Provider{
-			Name:            "okta",
-			ID:              "go.mondoo.com/cnquery/v9/providers/okta",
-			ConnectionTypes: []string{"okta"},
-			Connectors: []plugin.Connector{
-				{
-					Name:  "okta",
-					Use:   "okta",
-					Short: "an Okta organization",
-				},
-			},
-		},
-	},
-
 	"opcua": {
 		Provider: &plugin.Provider{
 			Name:            "opcua",
-			ID:              "go.mondoo.com/cnquery/v9/providers/opcua",
+			ID:              "go.mondoo.com/mql/providers/opcua",
 			ConnectionTypes: []string{"opcua"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "opcua",
 					Use:   "opcua [--endpoint <endpoint>]",
@@ -672,10 +1217,27 @@ var DefaultProviders Providers = map[string]*Provider{
 			ID:              "go.mondoo.com/mql/providers/openai",
 			ConnectionTypes: []string{"openai"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "openai",
-					Use:   "openai [--token TOKEN]",
+					Use:   "openai",
 					Short: "an OpenAI account",
+				},
+			},
+		},
+	},
+
+	"opensearch": {
+		Provider: &plugin.Provider{
+			Name:            "opensearch",
+			ID:              "go.mondoo.com/mql/providers/opensearch",
+			ConnectionTypes: []string{"opensearch"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "opensearch",
+					Use:   "opensearch [host]",
+					Short: "an OpenSearch cluster",
 				},
 			},
 		},
@@ -687,6 +1249,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			ID:              "go.mondoo.com/mql/providers/openstack",
 			ConnectionTypes: []string{"openstack"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "openstack",
 					Use:   "openstack",
@@ -696,12 +1259,29 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"oracledb": {
+		Provider: &plugin.Provider{
+			Name:            "oracledb",
+			ID:              "go.mondoo.com/mql/providers/oracledb",
+			ConnectionTypes: []string{"oracledb"},
+			Connectors: []plugin.Connector{
+				{
+					Name:  "oracledb",
+					Use:   "oracledb [host]",
+					Short: "an Oracle Database",
+				},
+			},
+		},
+	},
+
 	"os": {
 		Provider: &plugin.Provider{
 			Name:            "os",
-			ID:              "go.mondoo.com/cnquery/v9/providers/os",
+			ID:              "go.mondoo.com/mql/providers/os",
 			ConnectionTypes: []string{"local", "ssh", "tar", "docker-snapshot", "vagrant", "docker-container", "docker-image", "docker-file", "docker-registry", "container-registry", "registry-image", "filesystem", "winrm", "device"},
+			Targets:         []plugin.TargetOptIn{plugin.TargetOptIn{Target: "iac", Discovery: "dockerfile", ConnType: "docker-file", Match: []plugin.Matcher{plugin.Matcher{Glob: "Dockerfile"}, plugin.Matcher{Glob: "Dockerfile.*"}, plugin.Matcher{Glob: "*.Dockerfile"}, plugin.Matcher{Glob: "*.dockerfile"}}, PerFile: true, Options: map[string]string(nil), Auto: true}},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "local",
 					Use:   "local",
@@ -739,9 +1319,10 @@ var DefaultProviders Providers = map[string]*Provider{
 				},
 
 				{
-					Name:  "filesystem",
-					Use:   "filesystem PATH [flags]",
-					Short: "a mounted file system target",
+					Name:    "filesystem",
+					Use:     "filesystem PATH [flags]",
+					Short:   "a mounted file system target",
+					Aliases: []string{"fs"},
 				},
 
 				{
@@ -753,16 +1334,48 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"panos": {
+		Provider: &plugin.Provider{
+			Name:            "panos",
+			ID:              "go.mondoo.com/mql/providers/panos",
+			ConnectionTypes: []string{"panos"},
+			Connectors: []plugin.Connector{
+				{
+					Name:  "panos",
+					Use:   "panos",
+					Short: "a remote PAN-OS system",
+				},
+			},
+		},
+	},
+
 	"portainer": {
 		Provider: &plugin.Provider{
 			Name:            "portainer",
 			ID:              "go.mondoo.com/mql/providers/portainer",
 			ConnectionTypes: []string{"portainer"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "portainer",
-					Use:   "portainer",
-					Short: "a Portainer server",
+					Use:   "portainer HOST",
+					Short: "a Portainer instance",
+				},
+			},
+		},
+	},
+
+	"postgresdb": {
+		Provider: &plugin.Provider{
+			Name:            "postgresdb",
+			ID:              "go.mondoo.com/mql/providers/postgresdb",
+			ConnectionTypes: []string{"postgresdb"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "postgresdb",
+					Use:   "postgresdb [host]",
+					Short: "a PostgreSQL server",
 				},
 			},
 		},
@@ -771,13 +1384,46 @@ var DefaultProviders Providers = map[string]*Provider{
 	"proxmox": {
 		Provider: &plugin.Provider{
 			Name:            "proxmox",
-			ID:              "go.mondoo.com/mql/v13/providers/proxmox",
+			ID:              "go.mondoo.com/mql/providers/proxmox",
 			ConnectionTypes: []string{"proxmox"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "proxmox",
-					Use:   "proxmox",
+					Use:   "proxmox --host HOST --token TOKEN [flags]",
 					Short: "a Proxmox VE hypervisor",
+				},
+			},
+		},
+	},
+
+	"redfish": {
+		Provider: &plugin.Provider{
+			Name:            "redfish",
+			ID:              "go.mondoo.com/mql/providers/redfish",
+			ConnectionTypes: []string{"redfish"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "redfish",
+					Use:   "redfish USER@HOST",
+					Short: "a Redfish management controller (BMC)",
+				},
+			},
+		},
+	},
+
+	"redisdb": {
+		Provider: &plugin.Provider{
+			Name:            "redisdb",
+			ID:              "go.mondoo.com/mql/providers/redisdb",
+			ConnectionTypes: []string{"redisdb"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "redisdb",
+					Use:   "redisdb [host]",
+					Short: "a Redis or Valkey server",
 				},
 			},
 		},
@@ -786,9 +1432,10 @@ var DefaultProviders Providers = map[string]*Provider{
 	"shodan": {
 		Provider: &plugin.Provider{
 			Name:            "shodan",
-			ID:              "go.mondoo.com/cnquery/v12/providers/shodan",
+			ID:              "go.mondoo.com/mql/providers/shodan",
 			ConnectionTypes: []string{"shodan"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "shodan",
 					Use:   "shodan",
@@ -801,13 +1448,30 @@ var DefaultProviders Providers = map[string]*Provider{
 	"slack": {
 		Provider: &plugin.Provider{
 			Name:            "slack",
-			ID:              "go.mondoo.com/cnquery/v9/providers/slack",
+			ID:              "go.mondoo.com/mql/providers/slack",
 			ConnectionTypes: []string{"slack"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "slack",
 					Use:   "slack",
 					Short: "a Slack team",
+				},
+			},
+		},
+	},
+
+	"snowflake": {
+		Provider: &plugin.Provider{
+			Name:            "snowflake",
+			ID:              "go.mondoo.com/mql/providers/snowflake",
+			ConnectionTypes: []string{"snowflake"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "snowflake",
+					Use:   "snowflake",
+					Short: "a Snowflake account",
 				},
 			},
 		},
@@ -819,6 +1483,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			ID:              "go.mondoo.com/mql/providers/stackit",
 			ConnectionTypes: []string{"stackit"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "stackit",
 					Use:   "stackit",
@@ -828,27 +1493,13 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
-	"snowflake": {
-		Provider: &plugin.Provider{
-			Name:            "snowflake",
-			ID:              "go.mondoo.com/cnquery/v12/providers/snowflake",
-			ConnectionTypes: []string{"snowflake"},
-			Connectors: []plugin.Connector{
-				{
-					Name:  "snowflake",
-					Use:   "snowflake",
-					Short: "a Snowflake account",
-				},
-			},
-		},
-	},
-
 	"tailscale": {
 		Provider: &plugin.Provider{
 			Name:            "tailscale",
-			ID:              "go.mondoo.com/cnquery/v12/providers/tailscale",
+			ID:              "go.mondoo.com/mql/providers/tailscale",
 			ConnectionTypes: []string{"tailscale"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "tailscale",
 					Use:   "tailscale",
@@ -861,13 +1512,22 @@ var DefaultProviders Providers = map[string]*Provider{
 	"terraform": {
 		Provider: &plugin.Provider{
 			Name:            "terraform",
-			ID:              "go.mondoo.com/cnquery/v9/providers/terraform",
-			ConnectionTypes: []string{},
+			ID:              "go.mondoo.com/mql/providers/terraform",
+			ConnectionTypes: []string{"terraform-state", "terraform-plan", "terraform-hcl", "terraform-hcl-git"},
+			Targets:         []plugin.TargetOptIn{plugin.TargetOptIn{Target: "iac", Discovery: "terraform", ConnType: "terraform-hcl", Match: []plugin.Matcher{plugin.Matcher{Glob: "*.tf"}, plugin.Matcher{Glob: "*.tf.json"}}, PerFile: false, Options: map[string]string{"iac-tool": "terraform"}, Auto: false}, plugin.TargetOptIn{Target: "iac", Discovery: "opentofu", ConnType: "terraform-hcl", Match: []plugin.Matcher{plugin.Matcher{Glob: "*.tofu"}, plugin.Matcher{Glob: "*.tofu.json"}}, PerFile: false, Options: map[string]string{"iac-tool": "opentofu"}, Auto: false}},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "terraform",
 					Use:   "terraform PATH",
 					Short: "Terraform HCL configurations, plan files, and state files",
+				},
+
+				{
+					Name:    "opentofu",
+					Use:     "opentofu PATH",
+					Short:   "OpenTofu HCL configurations, plan files, and state files",
+					Aliases: []string{"tofu"},
 				},
 			},
 		},
@@ -879,6 +1539,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			ID:              "go.mondoo.com/mql/providers/together",
 			ConnectionTypes: []string{"together"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "together",
 					Use:   "together",
@@ -891,7 +1552,7 @@ var DefaultProviders Providers = map[string]*Provider{
 	"unifi": {
 		Provider: &plugin.Provider{
 			Name:            "unifi",
-			ID:              "go.mondoo.com/cnquery/providers/unifi",
+			ID:              "go.mondoo.com/mql/providers/unifi",
 			ConnectionTypes: []string{"unifi"},
 			Connectors: []plugin.Connector{
 				{
@@ -906,13 +1567,30 @@ var DefaultProviders Providers = map[string]*Provider{
 	"vcd": {
 		Provider: &plugin.Provider{
 			Name:            "vcd",
-			ID:              "go.mondoo.com/cnquery/v9/providers/vcd",
+			ID:              "go.mondoo.com/mql/providers/vcd",
 			ConnectionTypes: []string{"vcd"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "vcd",
 					Use:   "vcd [--user <user>] [--host <host>] [--organization <organization>] [--ask-pass] [--password <password>]",
 					Short: "a VMware Cloud Director installation",
+				},
+			},
+		},
+	},
+
+	"vercel": {
+		Provider: &plugin.Provider{
+			Name:            "vercel",
+			ID:              "go.mondoo.com/mql/providers/vercel",
+			ConnectionTypes: []string{"vercel"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "vercel",
+					Use:   "vercel",
+					Short: "a Vercel account",
 				},
 			},
 		},
@@ -924,6 +1602,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			ID:              "go.mondoo.com/mql/providers/vllm",
 			ConnectionTypes: []string{"vllm"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "vllm",
 					Use:   "vllm ENDPOINT",
@@ -936,9 +1615,10 @@ var DefaultProviders Providers = map[string]*Provider{
 	"vsphere": {
 		Provider: &plugin.Provider{
 			Name:            "vsphere",
-			ID:              "go.mondoo.com/cnquery/v9/providers/vsphere",
+			ID:              "go.mondoo.com/mql/providers/vsphere",
 			ConnectionTypes: []string{"vsphere"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "vsphere",
 					Use:   "vsphere user@host",
@@ -947,77 +1627,45 @@ var DefaultProviders Providers = map[string]*Provider{
 			},
 		},
 	},
-	"networkdiscovery": {
+
+	"weaviate": {
 		Provider: &plugin.Provider{
-			Name:            "networkdiscovery",
-			ID:              "go.mondoo.com/cnquery/providers/networkdiscovery",
-			ConnectionTypes: []string{"networkdiscovery"},
-			CrossProviderTypes: []string{
-				"go.mondoo.com/cnquery/providers/network",
-				"go.mondoo.com/cnquery/v12/providers/network",
-			},
+			Name:            "weaviate",
+			ID:              "go.mondoo.com/mql/providers/weaviate",
+			ConnectionTypes: []string{"weaviate"},
 			Connectors: []plugin.Connector{
+
 				{
-					Name:  "networkdiscovery",
-					Use:   "networkdiscovery DOMAIN_NAME",
-					Short: "Discover subdomains for a given domain.",
+					Name:  "weaviate",
+					Use:   "weaviate [host]",
+					Short: "a Weaviate vector database",
 				},
 			},
 		},
 	},
-	"networkdevices": {
-		Provider: &plugin.Provider{
-			Name:            "networkdevices",
-			ID:              "go.mondoo.com/cnquery/providers/networkdevices",
-			ConnectionTypes: []string{"nd-ssh", "ciscocatalyst"},
-			Connectors: []plugin.Connector{
-				{
-					Name:  "ciscocatalyst",
-					Use:   "ciscocatalyst hostname",
-					Short: "Cisco Catalyst Connection",
-				},
-				{
-					Name:  "nd-ssh",
-					Use:   "nd-ssh user@host",
-					Short: "a remote network device via SSH",
-				},
-			},
-		},
-	},
-	"fortios": {
-		Provider: &plugin.Provider{
-			Name:            "fortios",
-			ID:              "go.mondoo.com/cnquery/providers/fortios",
-			ConnectionTypes: []string{"fortios"},
-			Connectors: []plugin.Connector{
-				{
-					Name:  "fortios",
-					Use:   "fortios",
-					Short: "a remote FortiOS system",
-				},
-			},
-		},
-	},
-	"panos": {
-		Provider: &plugin.Provider{
-			Name:            "panos",
-			ID:              "go.mondoo.com/cnquery/providers/panos",
-			ConnectionTypes: []string{"panos"},
-			Connectors: []plugin.Connector{
-				{
-					Name:  "panos",
-					Use:   "panos",
-					Short: "a remote PAN-OS system",
-				},
-			},
-		},
-	},
+
 	"yara": {
 		Provider: &plugin.Provider{
 			Name:            "yara",
-			ID:              "go.mondoo.com/cnquery/providers/yara",
+			ID:              "go.mondoo.com/mql/providers/yara",
 			ConnectionTypes: []string(nil),
 			Connectors:      []plugin.Connector{},
+		},
+	},
+
+	"zoom": {
+		Provider: &plugin.Provider{
+			Name:            "zoom",
+			ID:              "go.mondoo.com/mql/providers/zoom",
+			ConnectionTypes: []string{"zoom"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "zoom",
+					Use:   "zoom",
+					Short: "a Zoom account",
+				},
+			},
 		},
 	},
 }

@@ -1,0 +1,44 @@
+name: Cancel heavy CI on changes requested
+
+# When the Mondoo code-review bot requests changes on a PR, cancel the
+# in-progress expensive arc-runner test runs to stop wasting self-hosted
+# compute on code that's already known to need work. The cheap ubuntu-hosted
+# jobs live in the same run, so cancelling the run stops them too -- that's
+# fine, they're fast and free; the next push (or "Ready for review") starts a
+# fresh run.
+#
+# Scoped deliberately to the bot's `changes_requested` so a human reviewer
+# asking for changes does NOT wipe out CI they may still want to see. The bot
+# can produce false positives, so treat this as a cost optimisation, not a gate.
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  actions: write # required to cancel workflow runs
+
+jobs:
+  cancel-heavy-ci:
+    if: >-
+      github.event.review.state == 'changes_requested' &&
+      github.event.review.user.login == 'mondoo-code-review[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel in-progress heavy CI runs for this PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          # The PR head commit the review was submitted against; matches the
+          # head_sha of the workflow runs we want to cancel.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Workflows that contain the expensive arc-runner jobs.
+          for wf in pr-test-lint.yml pr-test-generated-files.yaml; do
+            for id in $(gh run list --repo "$REPO" --workflow "$wf" \
+                          --commit "$HEAD_SHA" --status in_progress \
+                          --json databaseId --jq '.[].databaseId'); do
+              echo "Cancelling in-progress run $id ($wf) for $HEAD_SHA"
+              gh run cancel "$id" --repo "$REPO" || true
+            done
+          done

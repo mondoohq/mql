@@ -1,0 +1,40 @@
+systemd-boot not installed in ESP.
+System:
+      Firmware: n/a (n/a)
+ Firmware Arch: aa64
+   Secure Boot: disabled (unknown)
+  TPM2 Support: no
+  Boot into FW: supported
+
+Current Boot Loader:
+      Product: n/a
+     Features: ✗ Boot counting
+               ✗ Menu timeout control
+               ✗ One-shot menu timeout control
+               ✗ Default entry control
+               ✗ One-shot entry control
+               ✗ Support for XBOOTLDR partition
+               ✗ Support for passing random seed to OS
+               ✗ Load drop-in drivers
+               ✗ Support Type #1 sort-key field
+               ✗ Support @saved pseudo-entry
+               ✗ Support Type #1 devicetree field
+               ✗ Boot loader sets ESP information
+          ESP: n/a
+         File: └─n/a
+
+Random Seed:
+ Passed to OS: no
+ System Token: not set
+       Exists: no
+
+Available Boot Loaders on ESP:
+          ESP: /boot/efi (/dev/disk/by-partuuid/cc28b2a9-5757-4d97-ba27-47afd1c92c4a)
+         File: └─/EFI/BOOT/BOOTAA64.EFI
+
+No boot loaders listed in EFI Variables.
+
+Boot Loader Entries:
+        $BOOT: /boot/efi (/dev/disk/by-partuuid/cc28b2a9-5757-4d97-ba27-47afd1c92c4a)
+
+0 entries, no entry could be determined as default.

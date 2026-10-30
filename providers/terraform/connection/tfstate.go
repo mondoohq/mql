@@ -8,8 +8,8 @@ import (
 	"os"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // This is designed around https://developer.hashicorp.com/terraform/internals/json-format
@@ -96,6 +96,11 @@ func NewStateConnection(id uint32, asset *inventory.Asset) (*Connection, error) 
 	if err != nil {
 		return nil, err
 	}
+	// Reject encrypted and raw state files up front. Both decode cleanly into an
+	// empty State, which would scan as a state file holding zero resources.
+	if err := validateStateDocument(data); err != nil {
+		return nil, err
+	}
 	err = json.Unmarshal(data, &tfState)
 	if err != nil {
 		return nil, err
@@ -107,5 +112,9 @@ func NewStateConnection(id uint32, asset *inventory.Asset) (*Connection, error) 
 		assetType:  assetType,
 
 		state: &tfState,
+		// The state JSON is identical between the two tools (OpenTofu keeps the
+		// `terraform_version` key for compatibility), so there is nothing in the
+		// file to detect. The dialect comes from the connector the user invoked.
+		dialect: ParseDialect(cc.Options[OptionDialect]),
 	}, nil
 }

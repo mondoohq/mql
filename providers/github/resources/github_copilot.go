@@ -4,14 +4,18 @@
 package resources
 
 import (
+	"context"
+	"net/url"
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"github.com/google/go-github/v88/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/github/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/github/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (g *mqlGithubOrganizationCopilot) id() (string, error) {
@@ -47,7 +51,7 @@ func (g *mqlGithubOrganization) copilot() (*mqlGithubOrganizationCopilot, error)
 	}
 	orgLogin := g.Login.Data
 
-	details, _, err := conn.Client().Copilot.GetCopilotBilling(conn.Context(), orgLogin)
+	details, err := getCopilotOrgBilling(conn.Context(), conn.Client(), orgLogin)
 	if err != nil {
 		switch githubResponseStatus(err) {
 		case 404, 403, 401:
@@ -62,11 +66,53 @@ func (g *mqlGithubOrganization) copilot() (*mqlGithubOrganizationCopilot, error)
 		return nil, nil
 	}
 
+	args := copilotArgs(orgLogin, details)
+	res, err := CreateResource(g.MqlRuntime, "github.organization.copilot", args)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGithubOrganizationCopilot), nil
+}
+
+// copilotOrgBilling is the response of GET /orgs/{org}/copilot/billing.
+// go-github's CopilotOrganizationDetails still decodes copilot_chat, which the
+// API no longer returns, and lacks ide_chat, platform_chat, cli and plan_type.
+type copilotOrgBilling struct {
+	SeatBreakdown         *github.CopilotSeatBreakdown `json:"seat_breakdown"`
+	PublicCodeSuggestions string                       `json:"public_code_suggestions"`
+	SeatManagementSetting string                       `json:"seat_management_setting"`
+	IdeChat               *string                      `json:"ide_chat"`
+	PlatformChat          *string                      `json:"platform_chat"`
+	Cli                   *string                      `json:"cli"`
+	PlanType              *string                      `json:"plan_type"`
+	CopilotChat           *string                      `json:"copilot_chat"`
+}
+
+func getCopilotOrgBilling(ctx context.Context, client *github.Client, orgLogin string) (*copilotOrgBilling, error) {
+	var details *copilotOrgBilling
+	if _, err := doRawJSON(ctx, client, "orgs/"+url.PathEscape(orgLogin)+"/copilot/billing", &details); err != nil {
+		return nil, err
+	}
+	return details, nil
+}
+
+func copilotArgs(orgLogin string, details *copilotOrgBilling) map[string]*llx.RawData {
+	// copilotChat is deprecated in favor of ideChat. Older API versions sent
+	// copilot_chat for the same IDE chat policy, so prefer it when present.
+	copilotChat := details.CopilotChat
+	if copilotChat == nil {
+		copilotChat = details.IdeChat
+	}
+
 	args := map[string]*llx.RawData{
 		"__id":                  llx.StringData("github.organization.copilot/" + orgLogin),
 		"seatManagementSetting": llx.StringData(details.SeatManagementSetting),
 		"publicCodeSuggestions": llx.StringData(details.PublicCodeSuggestions),
-		"copilotChat":           llx.StringData(details.CopilotChat),
+		"copilotChat":           llx.StringDataPtr(copilotChat),
+		"ideChat":               llx.StringDataPtr(details.IdeChat),
+		"platformChat":          llx.StringDataPtr(details.PlatformChat),
+		"cli":                   llx.StringDataPtr(details.Cli),
+		"planType":              llx.StringDataPtr(details.PlanType),
 	}
 	if b := details.SeatBreakdown; b != nil {
 		args["seatsTotal"] = llx.IntData(int64(b.Total))
@@ -83,12 +129,7 @@ func (g *mqlGithubOrganization) copilot() (*mqlGithubOrganizationCopilot, error)
 		args["seatsActiveThisCycle"] = llx.IntData(0)
 		args["seatsInactiveThisCycle"] = llx.IntData(0)
 	}
-
-	res, err := CreateResource(g.MqlRuntime, "github.organization.copilot", args)
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlGithubOrganizationCopilot), nil
+	return args
 }
 
 func (g *mqlGithubOrganizationCopilot) contentExclusion() (any, error) {
@@ -223,4 +264,78 @@ func newMqlCopilotSeat(runtime *plugin.Runtime, orgLogin string, seat *github.Co
 		args["user"] = llx.NilData
 	}
 	return CreateResource(runtime, "github.organization.copilot.seat", args)
+}
+
+func (g *mqlGithubRepositoryCopilotCloudAgent) id() (string, error) {
+	if g.__id == "" {
+		return "", errors.New("github.repository.copilotCloudAgent requires __id set by the creator")
+	}
+	return g.__id, nil
+}
+
+func initGithubRepositoryCopilotCloudAgent(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if _, ok := args["__id"]; ok {
+		return args, nil, nil
+	}
+	repo, err := NewResource(runtime, "github.repository", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, nil, err
+	}
+	cfg := repo.(*mqlGithubRepository).GetCopilotCloudAgent()
+	if cfg.Error != nil {
+		return nil, nil, cfg.Error
+	}
+	if cfg.Data == nil {
+		return nil, nil, errors.New("Copilot coding agent configuration is not available for this repository")
+	}
+	return args, cfg.Data, nil
+}
+
+func (g *mqlGithubRepository) copilotCloudAgent() (*mqlGithubRepositoryCopilotCloudAgent, error) {
+	conn := g.MqlRuntime.Connection.(*connection.GithubConnection)
+	ownerLogin, repoName, err := repoOwnerAndName(g)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, _, err := conn.Client().Copilot.GetCloudAgentConfiguration(conn.Context(), ownerLogin, repoName)
+	if err != nil {
+		switch githubResponseStatus(err) {
+		case 404, 403, 401:
+			log.Debug().Err(err).Msg("Copilot coding agent configuration not accessible")
+			g.CopilotCloudAgent.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+	if cfg == nil {
+		g.CopilotCloudAgent.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	args := map[string]*llx.RawData{
+		"__id":                                  llx.StringData("github.repository.copilotCloudAgent/" + ownerLogin + "/" + repoName),
+		"isFirewallEnabled":                     llx.BoolData(cfg.IsFirewallEnabled),
+		"isFirewallRecommendedAllowlistEnabled": llx.BoolData(cfg.IsFirewallRecommendedAllowlistEnabled),
+		"customAllowlist":                       llx.ArrayData(convert.SliceAnyToInterface[string](cfg.CustomAllowlist), types.String),
+		"requireActionsWorkflowApproval":        llx.BoolData(cfg.RequireActionsWorkflowApproval),
+		"mcpConfiguration":                      llx.DictData(cfg.MCPConfiguration),
+	}
+	if t := cfg.EnabledTools; t != nil {
+		args["codeqlEnabled"] = llx.BoolData(t.Codeql)
+		args["copilotCodeReviewEnabled"] = llx.BoolData(t.CopilotCodeReview)
+		args["secretScanningEnabled"] = llx.BoolData(t.SecretScanning)
+		args["dependencyVulnerabilityChecksEnabled"] = llx.BoolData(t.DependencyVulnerabilityChecks)
+	} else {
+		args["codeqlEnabled"] = llx.BoolData(false)
+		args["copilotCodeReviewEnabled"] = llx.BoolData(false)
+		args["secretScanningEnabled"] = llx.BoolData(false)
+		args["dependencyVulnerabilityChecksEnabled"] = llx.BoolData(false)
+	}
+
+	res, err := CreateResource(g.MqlRuntime, "github.repository.copilotCloudAgent", args)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGithubRepositoryCopilotCloudAgent), nil
 }

@@ -7,9 +7,9 @@ import (
 	"errors"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -130,6 +130,7 @@ func (k *mqlK8sPersistentvolume) mountOptions() ([]any, error) {
 
 func (k *mqlK8sPersistentvolume) claimNamespace() (string, error) {
 	if k.obj.Spec.ClaimRef == nil {
+		k.ClaimNamespace.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 	return k.obj.Spec.ClaimRef.Namespace, nil
@@ -137,6 +138,7 @@ func (k *mqlK8sPersistentvolume) claimNamespace() (string, error) {
 
 func (k *mqlK8sPersistentvolume) claimName() (string, error) {
 	if k.obj.Spec.ClaimRef == nil {
+		k.ClaimName.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 	return k.obj.Spec.ClaimRef.Name, nil

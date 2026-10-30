@@ -15,7 +15,9 @@ type SolarisRelease struct {
 	Release string
 }
 
-var solarisVersionRegex = regexp.MustCompile(`^\s+((?:[\w]\s*)*Solaris)\s([\w\d.]+)`)
+// (?m) so the release line is found even when /etc/release carries preceding
+// content, such as a site banner prepended ahead of the vendor line.
+var solarisVersionRegex = regexp.MustCompile(`(?m)^\s+((?:[\w]\s*)*Solaris)\s([\w\d.]+)`)
 
 func ParseSolarisRelease(content string) (*SolarisRelease, error) {
 	m := solarisVersionRegex.FindStringSubmatch(content)

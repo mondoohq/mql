@@ -5,7 +5,6 @@ package connection
 
 import (
 	"fmt"
-	"strconv"
 )
 
 // ---------------------------------------------------------------------------
@@ -16,24 +15,24 @@ import (
 // The shape mirrors VMInfo, but container-specific config (unprivileged,
 // features, hostname) only appears in the per-container config endpoint.
 type ContainerInfo struct {
-	VMID      int     `json:"vmid"`
-	Name      string  `json:"name"`
-	Node      string  `json:"node"`
-	Status    string  `json:"status"`
-	Type      string  `json:"type"`
-	CPU       float64 `json:"cpu"`
-	MaxCPU    int     `json:"maxcpu"`
-	Mem       int64   `json:"mem"`
-	MaxMem    int64   `json:"maxmem"`
-	Disk      int64   `json:"disk"`
-	MaxDisk   int64   `json:"maxdisk"`
-	DiskRead  int64   `json:"diskread"`
-	DiskWrite int64   `json:"diskwrite"`
-	NetIn     int64   `json:"netin"`
-	NetOut    int64   `json:"netout"`
-	Uptime    int64   `json:"uptime"`
-	Template  int     `json:"template"`
-	Tags      string  `json:"tags"`
+	VMID      int       `json:"vmid"`
+	Name      string    `json:"name"`
+	Node      string    `json:"node"`
+	Status    string    `json:"status"`
+	Type      string    `json:"type"`
+	CPU       float64   `json:"cpu"`
+	MaxCPU    PveNumber `json:"maxcpu"`
+	Mem       int64     `json:"mem"`
+	MaxMem    int64     `json:"maxmem"`
+	Disk      int64     `json:"disk"`
+	MaxDisk   int64     `json:"maxdisk"`
+	DiskRead  int64     `json:"diskread"`
+	DiskWrite int64     `json:"diskwrite"`
+	NetIn     int64     `json:"netin"`
+	NetOut    int64     `json:"netout"`
+	Uptime    int64     `json:"uptime"`
+	Template  PveBool   `json:"template"`
+	Tags      string    `json:"tags"`
 }
 
 func (c *PveConnection) GetAllContainers() ([]ContainerInfo, error) {
@@ -50,26 +49,27 @@ func (c *PveConnection) GetAllContainers() ([]ContainerInfo, error) {
 	return containers, nil
 }
 
-// nodeLXCEntry is the shape returned by /nodes/<node>/lxc. It uses string
-// VMIDs (unlike /cluster/resources which uses ints), so we unmarshal into
-// this intermediate type and copy across.
+// nodeLXCEntry is the shape returned by /nodes/<node>/lxc. The row carries
+// `cpus` where /cluster/resources carries `maxcpu`, and no node, so it is
+// decoded into this intermediate type and copied across. `cpus` is a quoted
+// fractional value when it comes from `cpulimit`, which PveNumber absorbs.
 type nodeLXCEntry struct {
-	VMID      string  `json:"vmid"`
-	Name      string  `json:"name"`
-	Status    string  `json:"status"`
-	CPU       float64 `json:"cpu"`
-	MaxCPU    int     `json:"cpus"`
-	Mem       int64   `json:"mem"`
-	MaxMem    int64   `json:"maxmem"`
-	Disk      int64   `json:"disk"`
-	MaxDisk   int64   `json:"maxdisk"`
-	DiskRead  int64   `json:"diskread"`
-	DiskWrite int64   `json:"diskwrite"`
-	NetIn     int64   `json:"netin"`
-	NetOut    int64   `json:"netout"`
-	Uptime    int64   `json:"uptime"`
-	Template  int     `json:"template"`
-	Tags      string  `json:"tags"`
+	VMID      PveNumber `json:"vmid"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`
+	CPU       float64   `json:"cpu"`
+	MaxCPU    PveNumber `json:"cpus"`
+	Mem       int64     `json:"mem"`
+	MaxMem    int64     `json:"maxmem"`
+	Disk      int64     `json:"disk"`
+	MaxDisk   int64     `json:"maxdisk"`
+	DiskRead  int64     `json:"diskread"`
+	DiskWrite int64     `json:"diskwrite"`
+	NetIn     int64     `json:"netin"`
+	NetOut    int64     `json:"netout"`
+	Uptime    int64     `json:"uptime"`
+	Template  PveBool   `json:"template"`
+	Tags      string    `json:"tags"`
 }
 
 // GetNodeContainers hits the per-node /nodes/<node>/lxc endpoint directly so
@@ -83,9 +83,9 @@ func (c *PveConnection) GetNodeContainers(node string) ([]ContainerInfo, error) 
 	}
 	out := make([]ContainerInfo, 0, len(entries))
 	for _, e := range entries {
-		vmid, err := strconv.Atoi(e.VMID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid VMID %q on node %s: %w", e.VMID, node, err)
+		vmid := int(e.VMID.Int())
+		if vmid <= 0 || float64(vmid) != e.VMID.Float() {
+			return nil, fmt.Errorf("invalid VMID %v on node %s", e.VMID.Float(), node)
 		}
 		out = append(out, ContainerInfo{
 			VMID:      vmid,

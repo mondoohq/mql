@@ -45,7 +45,7 @@ func TestSecretConsumptionRollups_Helpers(t *testing.T) {
 			Name: "a",
 			Env: []corev1.EnvVar{{Name: "K", ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: "s1"}, Key: "k",
+					Name: "s1", Key: "k",
 				},
 			}}},
 		}}}
@@ -57,16 +57,16 @@ func TestSecretConsumptionRollups_Helpers(t *testing.T) {
 	t.Run("projected secret volume and dedup", func(t *testing.T) {
 		spec := &corev1.PodSpec{
 			Volumes: []corev1.Volume{
-				{Name: "v1", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "shared"}}},
-				{Name: "v2", VolumeSource: corev1.VolumeSource{Projected: &corev1.ProjectedVolumeSource{
+				{Name: "v1", Secret: &corev1.SecretVolumeSource{SecretName: "shared"}},
+				{Name: "v2", Projected: &corev1.ProjectedVolumeSource{
 					Sources: []corev1.VolumeProjection{{Secret: &corev1.SecretProjection{
-						LocalObjectReference: corev1.LocalObjectReference{Name: "shared"},
+						Name: "shared",
 					}}},
-				}}},
+				}},
 			},
 			Containers: []corev1.Container{{
 				Name:    "a",
-				EnvFrom: []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "shared"}}}},
+				EnvFrom: []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{Name: "shared"}}},
 			}},
 		}
 		assert.True(t, specMountsSecretVolumes(spec))
@@ -78,7 +78,7 @@ func TestSecretConsumptionRollups_Helpers(t *testing.T) {
 	t.Run("configmap refs are not secrets", func(t *testing.T) {
 		spec := &corev1.PodSpec{Containers: []corev1.Container{{
 			Name:    "a",
-			EnvFrom: []corev1.EnvFromSource{{ConfigMapRef: &corev1.ConfigMapEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "cm"}}}},
+			EnvFrom: []corev1.EnvFromSource{{ConfigMapRef: &corev1.ConfigMapEnvSource{Name: "cm"}}},
 		}}}
 		assert.False(t, specUsesSecretsAsEnv(spec))
 		assert.Empty(t, specConsumedSecrets(spec))

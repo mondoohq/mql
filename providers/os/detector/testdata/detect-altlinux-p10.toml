@@ -1,0 +1,31 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[files."/etc/altlinux-release"]
+content = "ALT Container"
+
+[files."/etc/redhat-release"]
+content = "ALT Container"
+
+[files."/etc/fedora-release"]
+content = "ALT Container"
+
+[files."/etc/system-release"]
+content = "ALT Container"
+
+[files."/etc/os-release"]
+content = """
+NAME="ALT Container"
+VERSION="10"
+ID=altlinux
+VERSION_ID=10
+PRETTY_NAME="ALT Container"
+ANSI_COLOR="1;33"
+CPE_NAME="cpe:/o:alt:container:10"
+BUILD_ID="ALT Container 10"
+ALT_BRANCH_ID="p10"
+HOME_URL="https://basealt.ru/"
+"""

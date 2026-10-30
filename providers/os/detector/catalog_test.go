@@ -4,10 +4,14 @@
 package detector
 
 import (
+	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
 func TestCatalogPlatforms(t *testing.T) {
@@ -40,4 +44,84 @@ func TestCatalogPlatforms(t *testing.T) {
 	}
 	require.NotNil(t, ubuntu, "ubuntu should be a catalogued platform")
 	assert.Equal(t, []string{"debian", "linux", "unix", "os"}, ubuntu.fam)
+
+	// a resolver that emits more names than the one it is registered under has
+	// to catalogue every one of them: the azurelinux resolver also handles
+	// CBL-Mariner, which reports ID=mariner
+	assert.True(t, byName["azurelinux"], "azurelinux should be a catalogued platform")
+	assert.True(t, byName["mariner"], "mariner should be a catalogued platform")
+
+	// BellSoft Alpaquita and BellSoft Hardened Containers are Alpine-lineage but
+	// each is a platform of its own, with its own release line and its own
+	// advisory feed. Detection reads the name straight off os-release either
+	// way, so the catalog is what says they are known platforms rather than
+	// unrecognized systems that happened to carry an ID.
+	assert.True(t, byName["alpaquita"], "alpaquita should be a catalogued platform")
+	assert.True(t, byName["bellsoft-hardened-containers"],
+		"bellsoft-hardened-containers should be a catalogued platform")
+
+	// the centos resolver claims CentOS Stream too, under a name of its own.
+	// Stream is upstream of RHEL rather than a rebuild of it, so it needs to be
+	// distinguishable from CentOS Linux by name rather than by version alone.
+	assert.True(t, byName["centos"], "centos should be a catalogued platform")
+	assert.True(t, byName["centos-stream"], "centos-stream should be a catalogued platform")
+
+	// Chainguard OS is a platform of its own rather than Wolfi, which is what
+	// the free-tier images report. The catalog is what separates a known
+	// platform from an unrecognized system that happened to carry an ID:
+	// plugin.PlatformInfo.Apply degrades a name it cannot find here to
+	// "unknown".
+	assert.True(t, byName["chainguard"], "chainguard should be a catalogued platform")
+	assert.True(t, byName["wolfi"], "wolfi should be a catalogued platform")
+
+	// The hardened-image distributions are each a platform of their own. echo
+	// has no detection fixture: no Echo image can be pulled without an account,
+	// so nothing has confirmed its os-release, and the catalog entry is what
+	// this can honestly assert until one can be.
+	assert.True(t, byName["minimos"], "minimos should be a catalogued platform")
+	assert.True(t, byName["echo"], "echo should be a catalogued platform")
+	assert.True(t, byName["cleanstart"], "cleanstart should be a catalogued platform")
+
+	// SUSE Linux Micro 6 sets ID=sl-micro (6.0, 6.1) or ID=sles (6.2), and is
+	// reported as suse-microos, like SUSE Linux Enterprise Micro 5.
+	assert.True(t, byName["suse-microos"], "suse-microos should be a catalogued platform")
+	assert.False(t, byName["sl-micro"], "sl-micro is reported as suse-microos")
+
+	// darwin is a kernel and a family, never a platform of its own
+	assert.True(t, byName["macos"], "macos should be a catalogued platform")
+	assert.False(t, byName["darwin"], "darwin should not be a catalogued platform")
+}
+
+// Every name detection can actually emit has to be in the tree, or the platform
+// carries no family chain and plugin.PlatformInfo.Apply cannot find it in the
+// catalog, which degrades the asset to "unknown". The catalog test above only
+// compares the catalog against the tree; nothing compared the tree against what
+// resolvers really set, and a resolver does not always emit the name it is
+// registered under.
+//
+// Leaves claimed by defaultLinux are excluded: that resolver can emit any ID an
+// unknown system happens to carry, so it cannot be enumerated. A system landing
+// there is its own known problem, reported as "scratch" for container images,
+// and the fix is to give it a resolver.
+func TestEveryEmittedPlatformNameIsInTheTree(t *testing.T) {
+	fixtures, err := filepath.Glob("./testdata/*.toml")
+	require.NoError(t, err)
+	require.NotEmpty(t, fixtures)
+	sort.Strings(fixtures)
+
+	for _, fixture := range fixtures {
+		conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath(fixture))
+		if err != nil {
+			continue // not a platform-detection fixture
+		}
+
+		pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, conn)
+		if !resolved || leaf == nil || leaf == defaultLinux || leaf == debianLike || pf.Name == "" {
+			continue
+		}
+
+		_, ok := osTree[pf.Name]
+		assert.True(t, ok, "%s: resolver %q emits platform %q, which is not in the tree",
+			filepath.Base(fixture), leaf.Name, pf.Name)
+	}
 }

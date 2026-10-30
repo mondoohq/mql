@@ -9,9 +9,9 @@ import (
 	"errors"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // The MQL type names exposed as public consts for ease of reference.
@@ -470,9 +470,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"nutanix.host.rackableUnitUuid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNutanixHost).GetRackableUnitUuid()).ToDataRes(types.String)
 	},
-	"nutanix.host.nodeSerial": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlNutanixHost).GetNodeSerial()).ToDataRes(types.String)
-	},
 	"nutanix.host.cpuModel": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNutanixHost).GetCpuModel()).ToDataRes(types.String)
 	},
@@ -635,6 +632,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"nutanix.image.createTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNutanixImage).GetCreateTime()).ToDataRes(types.Time)
 	},
+	"nutanix.image.clusters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlNutanixImage).GetClusters()).ToDataRes(types.Array(types.Resource("nutanix.cluster")))
+	},
+	"nutanix.image.owner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlNutanixImage).GetOwner()).ToDataRes(types.Resource("nutanix.iam.user"))
+	},
 	"nutanix.vm.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNutanixVm).GetId()).ToDataRes(types.String)
 	},
@@ -721,9 +724,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"nutanix.vm.tenantId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNutanixVm).GetTenantId()).ToDataRes(types.String)
-	},
-	"nutanix.vm.projectId": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlNutanixVm).GetProjectId()).ToDataRes(types.String)
 	},
 	"nutanix.vm.sourceType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNutanixVm).GetSourceType()).ToDataRes(types.String)
@@ -1151,6 +1151,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"nutanix.network.vpc.owner": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNutanixNetworkVpc).GetOwner()).ToDataRes(types.Resource("nutanix.iam.user"))
 	},
+	"nutanix.network.vpc.externalSubnets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlNutanixNetworkVpc).GetExternalSubnets()).ToDataRes(types.Array(types.Resource("nutanix.network.subnet")))
+	},
 	"nutanix.network.subnet.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNutanixNetworkSubnet).GetId()).ToDataRes(types.String)
 	},
@@ -1304,9 +1307,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"nutanix.storage.container.isNfsWhitelistInherited": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNutanixStorageContainer).GetIsNfsWhitelistInherited()).ToDataRes(types.Bool)
 	},
-	"nutanix.storage.container.isShared": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlNutanixStorageContainer).GetIsShared()).ToDataRes(types.Bool)
-	},
 	"nutanix.storage.container.isInternal": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNutanixStorageContainer).GetIsInternal()).ToDataRes(types.Bool)
 	},
@@ -1324,6 +1324,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"nutanix.storage.container.owner": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNutanixStorageContainer).GetOwner()).ToDataRes(types.Resource("nutanix.iam.user"))
+	},
+	"nutanix.storage.container.affinityHost": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlNutanixStorageContainer).GetAffinityHost()).ToDataRes(types.Resource("nutanix.host"))
 	},
 	"nutanix.storage.volumeGroup.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNutanixStorageVolumeGroup).GetId()).ToDataRes(types.String)
@@ -1740,10 +1743,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlNutanixHost).RackableUnitUuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"nutanix.host.nodeSerial": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlNutanixHost).NodeSerial, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
 	"nutanix.host.cpuModel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlNutanixHost).CpuModel, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -1976,6 +1975,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlNutanixImage).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"nutanix.image.clusters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlNutanixImage).Clusters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"nutanix.image.owner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlNutanixImage).Owner, ok = plugin.RawToTValue[*mqlNutanixIamUser](v.Value, v.Error)
+		return
+	},
 	"nutanix.vm.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlNutanixVm).__id, ok = v.Value.(string)
 		return
@@ -2094,10 +2101,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"nutanix.vm.tenantId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlNutanixVm).TenantId, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
-	"nutanix.vm.projectId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlNutanixVm).ProjectId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"nutanix.vm.sourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2716,6 +2719,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlNutanixNetworkVpc).Owner, ok = plugin.RawToTValue[*mqlNutanixIamUser](v.Value, v.Error)
 		return
 	},
+	"nutanix.network.vpc.externalSubnets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlNutanixNetworkVpc).ExternalSubnets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"nutanix.network.subnet.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlNutanixNetworkSubnet).__id, ok = v.Value.(string)
 		return
@@ -2932,10 +2939,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlNutanixStorageContainer).IsNfsWhitelistInherited, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"nutanix.storage.container.isShared": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlNutanixStorageContainer).IsShared, ok = plugin.RawToTValue[bool](v.Value, v.Error)
-		return
-	},
 	"nutanix.storage.container.isInternal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlNutanixStorageContainer).IsInternal, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -2958,6 +2961,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"nutanix.storage.container.owner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlNutanixStorageContainer).Owner, ok = plugin.RawToTValue[*mqlNutanixIamUser](v.Value, v.Error)
+		return
+	},
+	"nutanix.storage.container.affinityHost": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlNutanixStorageContainer).AffinityHost, ok = plugin.RawToTValue[*mqlNutanixHost](v.Value, v.Error)
 		return
 	},
 	"nutanix.storage.volumeGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -3883,7 +3890,6 @@ type mqlNutanixHost struct {
 	BlockModel                         plugin.TValue[string]
 	BlockSerial                        plugin.TValue[string]
 	RackableUnitUuid                   plugin.TValue[string]
-	NodeSerial                         plugin.TValue[string]
 	CpuModel                           plugin.TValue[string]
 	CpuCores                           plugin.TValue[int64]
 	CpuSockets                         plugin.TValue[int64]
@@ -3978,10 +3984,6 @@ func (c *mqlNutanixHost) GetBlockSerial() *plugin.TValue[string] {
 
 func (c *mqlNutanixHost) GetRackableUnitUuid() *plugin.TValue[string] {
 	return &c.RackableUnitUuid
-}
-
-func (c *mqlNutanixHost) GetNodeSerial() *plugin.TValue[string] {
-	return &c.NodeSerial
 }
 
 func (c *mqlNutanixHost) GetCpuModel() *plugin.TValue[string] {
@@ -4378,7 +4380,7 @@ func (c *mqlNutanixHostDisk) GetStorageTier() *plugin.TValue[string] {
 type mqlNutanixImage struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlNutanixImageInternal it will be used here
+	mqlNutanixImageInternal
 	Id          plugin.TValue[string]
 	TenantId    plugin.TValue[string]
 	Name        plugin.TValue[string]
@@ -4386,6 +4388,8 @@ type mqlNutanixImage struct {
 	Type        plugin.TValue[string]
 	SizeBytes   plugin.TValue[int64]
 	CreateTime  plugin.TValue[*time.Time]
+	Clusters    plugin.TValue[[]any]
+	Owner       plugin.TValue[*mqlNutanixIamUser]
 }
 
 // createNutanixImage creates a new instance of this resource
@@ -4448,6 +4452,38 @@ func (c *mqlNutanixImage) GetCreateTime() *plugin.TValue[*time.Time] {
 	return &c.CreateTime
 }
 
+func (c *mqlNutanixImage) GetClusters() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Clusters, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("nutanix.image", c.__id, "clusters")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.clusters()
+	})
+}
+
+func (c *mqlNutanixImage) GetOwner() *plugin.TValue[*mqlNutanixIamUser] {
+	return plugin.GetOrCompute[*mqlNutanixIamUser](&c.Owner, func() (*mqlNutanixIamUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("nutanix.image", c.__id, "owner")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlNutanixIamUser), nil
+			}
+		}
+
+		return c.owner()
+	})
+}
+
 // mqlNutanixVm for the nutanix.vm resource
 type mqlNutanixVm struct {
 	MqlRuntime *plugin.Runtime
@@ -4482,7 +4518,6 @@ type mqlNutanixVm struct {
 	CreateTime                        plugin.TValue[*time.Time]
 	UpdateTime                        plugin.TValue[*time.Time]
 	TenantId                          plugin.TValue[string]
-	ProjectId                         plugin.TValue[string]
 	SourceType                        plugin.TValue[string]
 	SourceId                          plugin.TValue[string]
 	Owner                             plugin.TValue[*mqlNutanixIamUser]
@@ -4642,10 +4677,6 @@ func (c *mqlNutanixVm) GetUpdateTime() *plugin.TValue[*time.Time] {
 
 func (c *mqlNutanixVm) GetTenantId() *plugin.TValue[string] {
 	return &c.TenantId
-}
-
-func (c *mqlNutanixVm) GetProjectId() *plugin.TValue[string] {
-	return &c.ProjectId
 }
 
 func (c *mqlNutanixVm) GetSourceType() *plugin.TValue[string] {
@@ -5919,6 +5950,7 @@ type mqlNutanixNetworkVpc struct {
 	ProjectId                      plugin.TValue[string]
 	ProjectName                    plugin.TValue[string]
 	Owner                          plugin.TValue[*mqlNutanixIamUser]
+	ExternalSubnets                plugin.TValue[[]any]
 }
 
 // createNutanixNetworkVpc creates a new instance of this resource
@@ -6006,6 +6038,22 @@ func (c *mqlNutanixNetworkVpc) GetOwner() *plugin.TValue[*mqlNutanixIamUser] {
 		}
 
 		return c.owner()
+	})
+}
+
+func (c *mqlNutanixNetworkVpc) GetExternalSubnets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExternalSubnets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("nutanix.network.vpc", c.__id, "externalSubnets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.externalSubnets()
 	})
 }
 
@@ -6351,13 +6399,13 @@ type mqlNutanixStorageContainer struct {
 	IsSoftwareEncryptionEnabled          plugin.TValue[bool]
 	NfsWhitelistAddresses                plugin.TValue[[]any]
 	IsNfsWhitelistInherited              plugin.TValue[bool]
-	IsShared                             plugin.TValue[bool]
 	IsInternal                           plugin.TValue[bool]
 	IsMarkedForRemoval                   plugin.TValue[bool]
 	StoragePoolId                        plugin.TValue[string]
 	TenantId                             plugin.TValue[string]
 	Cluster                              plugin.TValue[*mqlNutanixCluster]
 	Owner                                plugin.TValue[*mqlNutanixIamUser]
+	AffinityHost                         plugin.TValue[*mqlNutanixHost]
 }
 
 // createNutanixStorageContainer creates a new instance of this resource
@@ -6460,10 +6508,6 @@ func (c *mqlNutanixStorageContainer) GetIsNfsWhitelistInherited() *plugin.TValue
 	return &c.IsNfsWhitelistInherited
 }
 
-func (c *mqlNutanixStorageContainer) GetIsShared() *plugin.TValue[bool] {
-	return &c.IsShared
-}
-
 func (c *mqlNutanixStorageContainer) GetIsInternal() *plugin.TValue[bool] {
 	return &c.IsInternal
 }
@@ -6509,6 +6553,22 @@ func (c *mqlNutanixStorageContainer) GetOwner() *plugin.TValue[*mqlNutanixIamUse
 		}
 
 		return c.owner()
+	})
+}
+
+func (c *mqlNutanixStorageContainer) GetAffinityHost() *plugin.TValue[*mqlNutanixHost] {
+	return plugin.GetOrCompute[*mqlNutanixHost](&c.AffinityHost, func() (*mqlNutanixHost, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("nutanix.storage.container", c.__id, "affinityHost")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlNutanixHost), nil
+			}
+		}
+
+		return c.affinityHost()
 	})
 }
 

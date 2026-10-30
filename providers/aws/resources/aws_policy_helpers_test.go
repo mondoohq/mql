@@ -11,14 +11,31 @@ import (
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestAnyWildcardResource(t *testing.T) {
 	assert.True(t, anyWildcardResource([]any{"arn:aws:s3:::bucket", "*"}))
+
+	// A service namespace wildcard names every resource of that kind in the
+	// account - every bucket, every secret - which is as broad as `*` within
+	// the service. This is the same `:*` test anyWildcardAction applies.
+	assert.True(t, anyWildcardResource([]any{"arn:aws:s3:::*"}))
+	assert.True(t, anyWildcardResource([]any{"arn:aws:secretsmanager:us-east-1:000000000000:secret:*"}))
+	assert.True(t, anyWildcardResource([]any{"arn:aws:s3:::bucket", "arn:aws:s3:::*"}))
+
+	// An ARN that wildcards the account as well as the resource is broader
+	// still, not narrower, so it matches for the same reason.
+	assert.True(t, anyWildcardResource([]any{"arn:aws:iam::*:*"}))
+
+	// A path wildcard under a named resource is every object in one bucket,
+	// which is scoped to that bucket and is what a correct bucket policy looks
+	// like.
 	assert.False(t, anyWildcardResource([]any{"arn:aws:s3:::bucket/*"}))
+	assert.False(t, anyWildcardResource([]any{"arn:aws:s3:::bucket"}))
 	assert.False(t, anyWildcardResource([]any{}))
+	assert.False(t, anyWildcardResource([]any{42}))
 }
 
 func TestAnyWildcardAction(t *testing.T) {

@@ -10,11 +10,11 @@ import (
 
 	datastream "cloud.google.com/go/datastream/apiv1"
 	"cloud.google.com/go/datastream/apiv1/datastreampb"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -291,16 +291,41 @@ func initGcpProjectDatastreamServiceConnectionProfile(runtime *plugin.Runtime, a
 	if len(args) > 1 {
 		return args, nil, nil
 	}
+	if args == nil {
+		args = make(map[string]*llx.RawData)
+	}
+
+	// Resolve from the asset identifier when accessed as a discovered
+	// gcp-datastream-connectionprofile asset (no explicit name arg).
+	if len(args) == 0 {
+		ids := getAssetIdentifier(runtime)
+		if ids == nil {
+			return nil, nil, errors.New("no asset identifier found")
+		}
+		args["name"] = llx.StringData(fmt.Sprintf("projects/%s/locations/%s/connectionProfiles/%s", ids.project, ids.region, ids.name))
+	}
+
 	nameRaw := args["name"]
 	if nameRaw == nil {
-		return args, nil, nil
+		return nil, nil, errors.New(`gcp.project.datastreamService.connectionProfile requires a "name" argument`)
 	}
-	name := nameRaw.Value.(string)
+	name, ok := nameRaw.Value.(string)
+	if !ok || name == "" {
+		return nil, nil, errors.New(`gcp.project.datastreamService.connectionProfile requires a non-empty "name" argument`)
+	}
 
 	conn, ok := runtime.Connection.(*connection.GcpConnection)
 	if !ok {
 		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
 	}
+	// Ask whether the API is on before paying for a Get that cannot succeed
+	// without it. Memoized per project, so this is free after the first caller.
+	if enabled, err := serviceEnabledForInit(runtime, conn.ResourceID(), service_datastream); err != nil {
+		return nil, nil, err
+	} else if !enabled {
+		return nil, nil, errors.New("Datastream API is not enabled on project " + conn.ResourceID())
+	}
+
 	creds, err := conn.Credentials(datastream.DefaultAuthScopes()...)
 	if err != nil {
 		return nil, nil, err
@@ -511,14 +536,25 @@ func initGcpProjectDatastreamServicePrivateConnection(runtime *plugin.Runtime, a
 	}
 	nameRaw := args["name"]
 	if nameRaw == nil {
-		return args, nil, nil
+		return nil, nil, errors.New(`gcp.project.datastreamService.privateConnection requires a "name" argument`)
 	}
-	name := nameRaw.Value.(string)
+	name, ok := nameRaw.Value.(string)
+	if !ok || name == "" {
+		return nil, nil, errors.New(`gcp.project.datastreamService.privateConnection requires a non-empty "name" argument`)
+	}
 
 	conn, ok := runtime.Connection.(*connection.GcpConnection)
 	if !ok {
 		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
 	}
+	// Ask whether the API is on before paying for a Get that cannot succeed
+	// without it. Memoized per project, so this is free after the first caller.
+	if enabled, err := serviceEnabledForInit(runtime, conn.ResourceID(), service_datastream); err != nil {
+		return nil, nil, err
+	} else if !enabled {
+		return nil, nil, errors.New("Datastream API is not enabled on project " + conn.ResourceID())
+	}
+
 	creds, err := conn.Credentials(datastream.DefaultAuthScopes()...)
 	if err != nil {
 		return nil, nil, err

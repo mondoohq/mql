@@ -1,0 +1,8 @@
+[org/gnome/desktop/session]
+idle-delay=uint32 600
+[org/gnome/desktop/input-sources]
+sources=[('xkb', 'us'), ('xkb', 'de')]
+xkb-options=@as []
+[org/gnome/desktop/media-handling]
+automount=false
+automount-open=false

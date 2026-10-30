@@ -11,14 +11,14 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mattn/go-isatty"
-	"go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/cli/theme"
-	"go.mondoo.com/mql/v13/exec"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/mqlc"
-	"go.mondoo.com/mql/v13/providers"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/cli/theme"
+	"go.mondoo.com/mql/exec"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/mqlc"
+	"go.mondoo.com/mql/providers"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/utils/stringx"
 )
 
 // Option configures a ShellProgram
@@ -35,6 +35,13 @@ func WithTheme(theme *ShellTheme) Option {
 func WithFeatures(features mql.Features) Option {
 	return func(s *ShellProgram) {
 		s.features = features
+	}
+}
+
+// WithStrict turns on ADR 043 strict mode for queries compiled by this shell.
+func WithStrict(strict bool) Option {
+	return func(s *ShellProgram) {
+		s.strict = strict
 	}
 }
 
@@ -72,6 +79,7 @@ type ShellProgram struct {
 	runtime        llx.Runtime
 	theme          *ShellTheme
 	features       mql.Features
+	strict         bool
 	upstreamConfig *upstream.UpstreamConfig
 	onCloseHandler func()
 	out            io.Writer
@@ -128,7 +136,7 @@ func (s *ShellProgram) RunWithCommand(initialCmd string) error {
 	}
 
 	// Create the model
-	model := newShellModel(s.runtime, s.theme, s.features, initialCmd, connectedProviderIDs)
+	model := newShellModel(s.runtime, s.theme, s.features, s.strict, initialCmd, connectedProviderIDs)
 
 	// Create and run the Bubble Tea program
 	// Note: We don't use WithAltScreen() so output stays in terminal scrollback
@@ -166,7 +174,7 @@ func (s *ShellProgram) Close() {
 
 // RunOnce executes a query and returns the results (non-interactive)
 func (s *ShellProgram) RunOnce(cmd string) (*llx.CodeBundle, map[string]*llx.RawResult, error) {
-	code, err := mqlc.Compile(cmd, nil, mqlc.NewConfig(s.runtime.Schema(), s.features))
+	code, err := mqlc.Compile(cmd, nil, s.compilerConfig())
 	if err != nil {
 		fmt.Fprintln(s.out, s.printTheme.Error("failed to compile: "+err.Error()))
 
@@ -194,6 +202,13 @@ func (s *ShellProgram) PrintResults(code *llx.CodeBundle, results map[string]*ll
 	}
 
 	fmt.Fprint(s.out, "\r")
+	// Deprecated names the bundle recorded, spelled the way this run's root
+	// spells them (ADR 040). The compiler records and never prints; this is the
+	// moment someone is reading. The JSON path does not come through here, so
+	// machine-consumed output stays clean.
+	for _, notice := range mqlc.DeprecationNotices(code, s.runtime.Schema()) {
+		fmt.Fprintln(s.out, s.printTheme.Secondary("deprecated: "+notice))
+	}
 	fmt.Fprintln(s.out, printedResult)
 }
 
@@ -205,4 +220,11 @@ func formatSuggestions(suggestions []*llx.Documentation, theme *theme.Theme) str
 		res.WriteString(theme.List(s.Field+": "+s.Title) + "\n")
 	}
 	return res.String()
+}
+
+// compilerConfig mirrors shellModel.compilerConfig for the non-interactive path.
+func (s *ShellProgram) compilerConfig() mqlc.CompilerConfig {
+	conf := mqlc.NewConfigFrom(s.runtime, s.features)
+	conf.Strict = s.strict
+	return conf
 }

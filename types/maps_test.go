@@ -36,7 +36,7 @@ func TestMaps_StringSet(t *testing.T) {
 
 	t.Run("concurrent runs", func(t *testing.T) {
 		s := StringSet{}
-		for i := 0; i < max; i++ {
+		for range max {
 			go RunStringSet(t, &s)
 		}
 	})
@@ -70,7 +70,7 @@ func TestMaps_StringToStrings(t *testing.T) {
 
 	t.Run("concurrent runs", func(t *testing.T) {
 		s := StringToStrings{}
-		for i := 0; i < max; i++ {
+		for range max {
 			go RunStringToStrings(t, &s)
 		}
 	})

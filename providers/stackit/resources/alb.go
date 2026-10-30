@@ -4,10 +4,12 @@
 package resources
 
 import (
-	"github.com/stackitcloud/stackit-sdk-go/services/alb"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"fmt"
+
+	alb "github.com/stackitcloud/stackit-sdk-go/services/alb/v2api"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 func (r *mqlStackit) albLoadBalancers() ([]any, error) {
@@ -16,23 +18,72 @@ func (r *mqlStackit) albLoadBalancers() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.ListLoadBalancersExecute(bgctx(), c.ProjectID(), c.Region())
-	if err != nil {
-		if isAccessDenied(err) {
-			return []any{}, nil
+	out := []any{}
+	pageId := ""
+	for {
+		req := client.DefaultAPI.ListLoadBalancers(bgctx(), c.ProjectID(), c.Region())
+		if pageId != "" {
+			req = req.PageId(pageId)
 		}
-		return nil, err
-	}
-	items, _ := resp.GetLoadBalancersOk()
-	out := make([]any, 0, len(items))
-	for i := range items {
-		res, err := buildAlbLoadBalancer(r.MqlRuntime, &items[i], c.Region())
+		resp, err := req.Execute()
 		if err != nil {
+			if isAccessDenied(err) {
+				return deniedList(err)
+			}
 			return nil, err
 		}
-		out = append(out, res)
+		items, _ := resp.GetLoadBalancersOk()
+		for i := range items {
+			res, err := buildAlbLoadBalancer(r.MqlRuntime, &items[i], c.Region())
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, res)
+		}
+		next, ok := resp.GetNextPageIdOk()
+		if !ok || next == nil || *next == "" {
+			break
+		}
+		pageId = *next
 	}
 	return out, nil
+}
+
+// mqlStackitAlbLoadBalancerInternal caches the raw listener and target-pool
+// slices so the certificate, plaintext-port, and TLS-bridging accessors read
+// typed SDK structs rather than the listeners/targetPools dicts, and the
+// managed security-group ids so the typed refs resolve against the project's
+// group list once per connection.
+type mqlStackitAlbLoadBalancerInternal struct {
+	rawListeners   []alb.Listener
+	rawTargetPools []alb.TargetPool
+
+	cacheLoadBalancerSecurityGroupId string
+	cacheTargetSecurityGroupId       string
+}
+
+func initStackitAlbLoadBalancer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	name, ok := idArg(args, "name")
+	if !ok {
+		return args, nil, nil
+	}
+	c := conn(runtime)
+	client, err := c.ALB()
+	if err != nil {
+		return nil, nil, err
+	}
+	lb, err := client.DefaultAPI.GetLoadBalancer(bgctx(), c.ProjectID(), c.Region(), name).Execute()
+	if err != nil {
+		return nil, nil, err
+	}
+	if lb == nil {
+		return nil, nil, fmt.Errorf("stackit.alb.loadBalancer with name %q not found", name)
+	}
+	res, err := buildAlbLoadBalancer(runtime, lb, c.Region())
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, res, nil
 }
 
 func buildAlbLoadBalancer(runtime *plugin.Runtime, lb *alb.LoadBalancer, region string) (plugin.Resource, error) {
@@ -50,10 +101,23 @@ func buildAlbLoadBalancer(runtime *plugin.Runtime, lb *alb.LoadBalancer, region 
 		"errors":                               llx.ArrayData(anySliceToDict(lb.GetErrors()), types.Dict),
 		"loadBalancerSecurityGroup":            llx.DictData(toDict(lb.GetLoadBalancerSecurityGroup())),
 		"targetSecurityGroup":                  llx.DictData(toDict(lb.GetTargetSecurityGroup())),
-		"disableTargetSecurityGroupAssignment": llx.BoolData(lb.GetDisableTargetSecurityGroupAssignment()),
+		"disableTargetSecurityGroupAssignment": llx.BoolDataPtr(lbDisableTargetSecurityGroupAssignment(lb)),
 		"labels":                               labelData(lb.GetLabels()),
 	}
-	return CreateResource(runtime, "stackit.alb.loadBalancer", args)
+	res, err := CreateResource(runtime, "stackit.alb.loadBalancer", args)
+	if err != nil {
+		return nil, err
+	}
+	mlb := res.(*mqlStackitAlbLoadBalancer)
+	mlb.rawListeners = lb.GetListeners()
+	mlb.rawTargetPools = lb.GetTargetPools()
+	if sg, ok := lb.GetLoadBalancerSecurityGroupOk(); ok && sg != nil {
+		mlb.cacheLoadBalancerSecurityGroupId = sg.GetId()
+	}
+	if sg, ok := lb.GetTargetSecurityGroupOk(); ok && sg != nil {
+		mlb.cacheTargetSecurityGroupId = sg.GetId()
+	}
+	return res, nil
 }
 
 func (r *mqlStackitAlbLoadBalancer) id() (string, error) {

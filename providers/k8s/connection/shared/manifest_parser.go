@@ -6,7 +6,6 @@ package shared
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -15,7 +14,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared/resources"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/resources"
 	v1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -23,13 +22,22 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 )
+
+// DefaultNamespace is the namespace Kubernetes places a namespaced object in
+// when the object names none and the client supplies none.
+// See https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+const DefaultNamespace = "default"
 
 type ManifestParser struct {
 	Objects            []runtime.Object
 	namespace          string
 	selectedResourceID string
+	// namespaced records, for every kind known to the parser, whether objects
+	// of that kind live in a namespace. It is filled by SetDefaultNamespaces.
+	namespaced map[schema.GroupKind]bool
 }
 
 func NewManifestParser(manifest []byte, namespace, selectedResourceID string) (ManifestParser, error) {
@@ -43,6 +51,110 @@ func NewManifestParser(manifest []byte, namespace, selectedResourceID string) (M
 		namespace:          namespace,
 		selectedResourceID: selectedResourceID,
 	}, nil
+}
+
+// WithNamespace returns a copy of the parser scoped to namespace. The copy
+// shares the parsed objects and the namespace-scope map with t, so neither may
+// write to them: call SetDefaultNamespaces, which writes both, before taking
+// any copy.
+func (t *ManifestParser) WithNamespace(namespace string) ManifestParser {
+	p := *t
+	p.namespace = namespace
+	return p
+}
+
+// SetDefaultNamespaces gives every namespaced object without a
+// metadata.namespace the namespace Kubernetes would create it in: "default".
+// An object in a manifest that names no namespace is applied to the default
+// namespace, so it is discovered, identified and queried there. Cluster-scoped
+// objects (Nodes, ClusterRoles, Namespaces, ...) keep their empty namespace,
+// as do objects of a kind whose scope is not known.
+//
+// This is for manifests only. An object in an admission request takes its
+// namespace from the request, not from this default.
+func (t *ManifestParser) SetDefaultNamespaces() error {
+	resTypes, err := t.resourceIndex()
+	if err != nil {
+		return err
+	}
+
+	t.namespaced = map[schema.GroupKind]bool{}
+	for _, r := range resTypes.Resources() {
+		gk := schema.GroupKind{Group: r.GroupVersion.Group, Kind: r.Resource.Kind}
+		t.namespaced[gk] = t.namespaced[gk] || r.Resource.Namespaced
+	}
+	// A CustomResourceDefinition in the manifest declares the scope of its kind.
+	for _, o := range t.Objects {
+		if gk, scope, ok := crdScope(o); ok {
+			t.namespaced[gk] = scope == string(apiextensionsv1.NamespaceScoped)
+		}
+	}
+
+	for _, o := range t.Objects {
+		gvk := o.GetObjectKind().GroupVersionKind()
+		gk := gvk.GroupKind()
+		if _, known := t.namespaced[gk]; !known {
+			// A kind served under an API group this index does not list (for
+			// example extensions/v1beta1 Deployments) is queried by its kind
+			// alone, so it takes the scope of the resource that kind resolves to.
+			if r, err := resTypes.Lookup(gvk.Kind); err == nil {
+				t.namespaced[gk] = r.Resource.Namespaced
+			}
+		}
+		if !t.namespaced[gk] {
+			continue
+		}
+		objMeta, err := meta.Accessor(o)
+		if err != nil {
+			continue
+		}
+		if objMeta.GetNamespace() == "" {
+			objMeta.SetNamespace(DefaultNamespace)
+		}
+	}
+	return nil
+}
+
+// crdScope returns the kind a CustomResourceDefinition defines and the scope
+// it declares for it.
+func crdScope(o runtime.Object) (schema.GroupKind, string, bool) {
+	switch crd := o.(type) {
+	case *apiextensionsv1.CustomResourceDefinition:
+		if crd.Spec.Names.Kind == "" {
+			return schema.GroupKind{}, "", false
+		}
+		return schema.GroupKind{Group: crd.Spec.Group, Kind: crd.Spec.Names.Kind}, string(crd.Spec.Scope), true
+	case *unstructured.Unstructured:
+		if crd.GroupVersionKind().GroupKind() != apiextensionsv1.Kind("CustomResourceDefinition") {
+			return schema.GroupKind{}, "", false
+		}
+		group, _, _ := unstructured.NestedString(crd.Object, "spec", "group")
+		kind, _, _ := unstructured.NestedString(crd.Object, "spec", "names", "kind")
+		scope, _, _ := unstructured.NestedString(crd.Object, "spec", "scope")
+		if kind == "" {
+			return schema.GroupKind{}, "", false
+		}
+		return schema.GroupKind{Group: group, Kind: kind}, scope, true
+	}
+	return schema.GroupKind{}, "", false
+}
+
+// EffectiveNamespace returns the namespace an object of the given apiVersion
+// and kind, written with the given metadata.namespace, ends up in: its own if
+// it names one, "default" for a namespaced kind once SetDefaultNamespaces has
+// run, and "" otherwise.
+func (t *ManifestParser) EffectiveNamespace(apiVersion, kind, namespace string) string {
+	if namespace != "" || t.namespaced == nil {
+		return namespace
+	}
+	gv, err := schema.ParseGroupVersion(apiVersion)
+	if err != nil {
+		return namespace
+	}
+	if t.namespaced[schema.GroupKind{Group: gv.Group, Kind: kind}] {
+		return DefaultNamespace
+	}
+	return namespace
 }
 
 func (t *ManifestParser) SupportedResourceTypes() (*resources.ApiResourceIndex, error) {
@@ -81,8 +193,10 @@ func (t *ManifestParser) Namespaces() ([]v1.Namespace, error) {
 			continue
 		}
 		// The universal deserializer strips TypeMeta, so set the Kind explicitly.
-		ns.Kind = "Namespace"
-		namespaces[ns.Name] = *ns
+		// Set it on the copy: the objects are shared between connections.
+		nsCopy := *ns
+		nsCopy.Kind = "Namespace"
+		namespaces[ns.Name] = nsCopy
 	}
 
 	// Second pass: add namespaces that are only referenced by other objects'
@@ -102,8 +216,8 @@ func (t *ManifestParser) Namespaces() ([]v1.Namespace, error) {
 			continue
 		}
 		namespaces[ns] = v1.Namespace{
-			TypeMeta:   metav1.TypeMeta{Kind: "Namespace"},
-			ObjectMeta: metav1.ObjectMeta{Name: ns},
+			Kind: "Namespace",
+			Name: ns,
 		}
 	}
 
@@ -239,7 +353,7 @@ func load(manifest []byte) ([]k8sRuntime.Object, error) {
 				addedCrds[crdName] = struct{}{}
 				res = append(
 					res,
-					&apiextensionsv1.CustomResourceDefinition{TypeMeta: metav1.TypeMeta{Kind: "CustomResourceDefinition"}, ObjectMeta: metav1.ObjectMeta{Name: crdName}})
+					&apiextensionsv1.CustomResourceDefinition{Kind: "CustomResourceDefinition", Name: crdName})
 			}
 		}
 	}
@@ -279,9 +393,49 @@ func ProjectNameFromPath(file string) string {
 	return name
 }
 
+// ManifestFile is one manifest file read from disk.
+type ManifestFile struct {
+	Path    string
+	Content []byte
+}
+
+// LoadManifestFile reads a manifest file, or every Kubernetes manifest in a
+// directory, and returns them as one multi-document stream.
 func LoadManifestFile(manifestFile string) ([]byte, error) {
+	files, err := LoadManifestFiles(manifestFile)
+	if err != nil {
+		return nil, err
+	}
+	return MergeManifests(files), nil
+}
+
+// MergeManifests joins manifest files into one multi-document stream, the way
+// `kubectl apply` reads several files.
+func MergeManifests(files []ManifestFile) []byte {
+	var buf bytes.Buffer
+	for _, f := range files {
+		buf.Write(f.Content)
+		buf.WriteString("\n---\n")
+	}
+	return buf.Bytes()
+}
+
+// RepositoryPath returns path as a user sees it in the repository cloned at
+// root: relative to root, with forward slashes. root itself and a path that is
+// not under root are returned as given.
+func RepositoryPath(root, path string) string {
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return path
+	}
+	return filepath.ToSlash(rel)
+}
+
+// LoadManifestFiles reads a manifest file, or every Kubernetes manifest in a
+// directory, keeping each file separate so a position within it can be
+// reported against the file it was read from.
+func LoadManifestFiles(manifestFile string) ([]ManifestFile, error) {
 	log.Debug().Str("filename", manifestFile).Msg("loading manifest file")
-	var input io.Reader
 
 	// return all resources from manifest
 	filenames := []string{}
@@ -303,6 +457,17 @@ func LoadManifestFile(manifestFile string) ([]byte, error) {
 				ext := filepath.Ext(path)
 				if ext != ".yaml" && ext != ".yml" {
 					log.Debug().Str("file", path).Msg("ignore file, no .yaml or .yml ending")
+					return nil
+				}
+				// A kustomization declares a kind, so it decodes as an
+				// unstructured object and would make every Kustomize directory
+				// look like a folder of manifests -- yielding a second asset
+				// beside the kustomize one. It is build instructions, not a
+				// manifest to apply, which is also why the forge classifiers
+				// match it ahead of their YAML arm.
+				switch d.Name() {
+				case "kustomization.yaml", "kustomization.yml", "Kustomization":
+					log.Debug().Str("file", path).Msg("ignore file, a kustomization is not a manifest")
 					return nil
 				}
 				// check whether this is valid k8s yaml
@@ -334,10 +499,13 @@ func LoadManifestFile(manifestFile string) ([]byte, error) {
 		filenames = append(filenames, manifestFile)
 	}
 
-	input, err = resources.MergeManifestFiles(filenames)
-	if err != nil {
-		return nil, err
+	files := make([]ManifestFile, 0, len(filenames))
+	for _, filename := range filenames {
+		content, err := os.ReadFile(filename)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, ManifestFile{Path: filename, Content: content})
 	}
-
-	return io.ReadAll(input)
+	return files, nil
 }

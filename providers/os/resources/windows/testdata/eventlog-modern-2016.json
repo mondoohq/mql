@@ -1,0 +1,10 @@
+{
+  "LogName": "Microsoft-Windows-PowerShell/Operational",
+  "IsEnabled": true,
+  "MaximumSizeInBytes": 15728640,
+  "IsClassicLog": false,
+  "LogFilePath": "%SystemRoot%\\System32\\Winevt\\Logs\\Microsoft-Windows-PowerShell%4Operational.evtx",
+  "SystemRoot": "C:\\Windows",
+  "RecordCount": 1883,
+  "LogMode": "Circular"
+}

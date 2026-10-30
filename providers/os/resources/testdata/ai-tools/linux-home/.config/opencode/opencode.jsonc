@@ -1,0 +1,27 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "remote": {
+      "type": "remote",
+      "url": "https://mcp.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer <redacted>"
+      }
+    },
+    "fs": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/tmp"
+      ],
+      "environment": {
+        "FS_TOKEN": "<redacted>"
+      }
+    }
+  },
+  "plugin": [
+    "opencode-wakatime"
+  ]
+}

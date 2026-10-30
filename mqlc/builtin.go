@@ -5,11 +5,12 @@ package mqlc
 
 import (
 	"errors"
+	"maps"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/mqlc/parser"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/mqlc/parser"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/types"
 )
 
 type compileHandler struct {
@@ -18,6 +19,10 @@ type compileHandler struct {
 	signature  FunctionSignature
 	compile    func(*compiler, types.Type, uint64, string, *parser.Call) (types.Type, error)
 	desc       string
+	// maturity is one of the resources.Maturity* values; empty means stable,
+	// which is what every builtin that does not set it is. It travels out
+	// through BuiltinDocs on the field, the same channel a schema field uses.
+	maturity string
 }
 
 func (c compileHandler) returnType(t types.Type) types.Type {
@@ -111,6 +116,11 @@ func init() {
 				typ: stringType, signature: FunctionSignature{Required: 0, Args: []types.Type{types.String}},
 				desc: "Remove all surrounding whitespaces (including newlines and tabs)",
 			},
+			"json": {
+				typ: dictType, signature: FunctionSignature{},
+				desc:     "Experimental. Decode this string as a JSON document and return it as a traversable dict",
+				maturity: resources.MaturityExperimental,
+			},
 		},
 		types.Time: {
 			"seconds": {typ: intType, signature: FunctionSignature{}},
@@ -134,6 +144,11 @@ func init() {
 			"lines":     {typ: stringArrayType, signature: FunctionSignature{}},
 			"split":     {typ: stringArrayType, signature: FunctionSignature{Required: 1, Args: []types.Type{types.String}}},
 			"trim":      {typ: stringType, signature: FunctionSignature{Required: 0, Args: []types.Type{types.String}}},
+			"json": {
+				typ: dictType, signature: FunctionSignature{},
+				desc:     "Experimental. Decode this string as a JSON document and return it as a traversable dict",
+				maturity: resources.MaturityExperimental,
+			},
 			// string / array
 			"in":    {typ: boolType, signature: FunctionSignature{Required: 1, Args: []types.Type{types.Array(types.String), types.Array(types.Dict)}}},
 			"notIn": {typ: boolType, signature: FunctionSignature{Required: 1, Args: []types.Type{types.Array(types.String), types.Array(types.Dict)}}},
@@ -174,8 +189,9 @@ func init() {
 			"values": {typ: dictArrayType, signature: FunctionSignature{}},
 		},
 		types.Version: {
-			"epoch":   {typ: intType, signature: FunctionSignature{}},
-			"inRange": {typ: intType, compile: compileVersionInRange},
+			"epoch":      {typ: intType, signature: FunctionSignature{}},
+			"stripEpoch": {typ: types.Version, signature: FunctionSignature{}},
+			"inRange":    {typ: intType, compile: compileVersionInRange},
 		},
 		types.IP: {
 			"address":       {typ: stringType, signature: FunctionSignature{}},
@@ -250,6 +266,10 @@ func init() {
 			"date":     {compile: compileResourceParseDate, signature: FunctionSignature{Required: 1, Args: []types.Type{types.String, types.String}}},
 			"duration": {compile: compileResourceParseDuration, signature: FunctionSignature{Required: 1, Args: []types.Type{types.String}}},
 		},
+		types.Resource("file.permissions"): {
+			"atMost":  {compile: compileFilePermissionsMask, signature: FunctionSignature{Required: 1, Args: []types.Type{types.Int}}},
+			"atLeast": {compile: compileFilePermissionsMask, signature: FunctionSignature{Required: 1, Args: []types.Type{types.Int}}},
+		},
 	}
 }
 
@@ -315,25 +335,34 @@ func (c *compiler) compileImplicitBuiltin(typ types.Type, id string) (*compileHa
 }
 
 func publicFieldsInfo(c *compiler, resourceInfo *resources.ResourceInfo) map[string]llx.Documentation {
+	return publicFieldsInfoFlat(c, resourceInfo, c.UseAssetContext)
+}
+
+// publicFieldsInfoFlat is publicFieldsInfo with control over whether embedded
+// resources are flattened into the answer.
+//
+// An asset root always flattens, regardless of the asset-context feature: its
+// embed chain (`os.linux` -> `os.unix` -> `os.base`) is the taxonomy, so not
+// descending it hides `hostname` and most of the surface - names that compile
+// fine, which is what made the shell suggest a different set than it accepts.
+func publicFieldsInfoFlat(c *compiler, resourceInfo *resources.ResourceInfo, flattenEmbedded bool) map[string]llx.Documentation {
 	res := map[string]llx.Documentation{}
 	for k, v := range resourceInfo.Fields {
 		if v.IsPrivate {
 			continue
 		}
-		if v.IsEmbedded && !c.UseAssetContext {
+		if v.IsEmbedded && !flattenEmbedded {
 			continue
 		}
 
-		if v.IsEmbedded && c.UseAssetContext {
+		if v.IsEmbedded && flattenEmbedded {
 			name := types.Type(v.Type).ResourceName()
 			child := c.Schema.Lookup(name)
 			if child == nil {
 				continue
 			}
-			childFields := publicFieldsInfo(c, child)
-			for k, v := range childFields {
-				res[k] = v
-			}
+			childFields := publicFieldsInfoFlat(c, child, flattenEmbedded)
+			maps.Copy(res, childFields)
 			continue
 		}
 
@@ -395,10 +424,24 @@ func availableGlobFields(c *compiler, typ types.Type, descend bool) map[string]l
 func availableFields(c *compiler, typ types.Type) map[string]llx.Documentation {
 	var res map[string]llx.Documentation
 
+	// An asset reference offers the fields of the resource that roots the
+	// referenced asset, since that is what chaining off it reaches. Nothing is
+	// offered when that schema is not loaded here — the root is known by name
+	// only, so there are no fields to name (ADR 031).
+	if typ.IsAsset() {
+		if root := typ.AssetRootName(); root != "" {
+			if info := c.Schema.Lookup(root); info != nil {
+				return publicFieldsInfo(c, info)
+			}
+		}
+		return nil
+	}
+
 	// resources maintain their own fields and may be list resources
 	if typ.IsResource() {
 		resourceInfo := c.Schema.Lookup(typ.ResourceName())
-		res = publicFieldsInfo(c, resourceInfo)
+		res = publicFieldsInfoFlat(c, resourceInfo,
+			c.UseAssetContext || typ.ResourceName() == c.AssetRoot)
 
 		_, err := listResource(c, typ)
 		if err == nil {
@@ -464,8 +507,9 @@ func BuiltinDocs() *BuiltinSchema {
 
 		for field, v := range fields {
 			res := &resources.Field{
-				Name: field,
-				Desc: v.desc,
+				Name:     field,
+				Desc:     v.desc,
+				Maturity: v.maturity,
 			}
 
 			if v.typHandler != nil {

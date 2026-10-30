@@ -11,8 +11,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/pflag"
-	"go.mondoo.com/mql/v13/logger"
-	inventory "go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/logger"
+	inventory "go.mondoo.com/mql/providers-sdk/v1/inventory"
 )
 
 type Provider struct {
@@ -20,25 +20,80 @@ type Provider struct {
 	ID              string
 	Version         string
 	ConnectionTypes []string
-	// CrossProviderTypes are asset providers that already
-	// have a primary provider set, but which may need to use
-	// resources from a different provider. For example:
-	// The primary provider of an asset may be the "os" provider.
-	// However, it now wants to use resources from the "network" provider.
-	// The "network" provider can indicate that it also supports
-	// assets from the "os" provider.
-	// TODO: This is only a hotfix and will be solved by
-	// each provider creating an asset object when it tries to
-	// call out.
-	CrossProviderTypes []string
-	Connectors         []Connector
-	AssetUrlTrees      []*inventory.AssetUrlBranch
+	Connectors      []Connector
+	AssetUrlTrees   []*inventory.AssetUrlBranch
 	// Platforms is the static catalog of platforms this provider can emit. It
 	// lets users see the supported platforms ahead of running, and lets the
 	// runtime construct platforms from a pre-defined descriptor instead of
 	// hardcoding name/family/kind/runtime inline.
 	Platforms []*PlatformInfo `json:",omitempty"`
 	Maturity  string          `json:",omitempty"`
+	// DefaultParallelism is how many of this provider's assets may be scanned
+	// concurrently when the user did not ask for a specific number. Zero (the
+	// default) means the provider has not opted in and its assets are scanned
+	// one at a time.
+	//
+	// Declare the number the provider's backend can sustain -- its API rate
+	// limits, its throttling behavior, the blast radius of hitting one account
+	// or cluster from several assets at once. The scanner caps whatever is
+	// declared here by the CPUs available on the machine, so this is a
+	// statement about the target, not about the host running the scan.
+	DefaultParallelism int `json:",omitempty"`
+	// Requires are the other providers this one calls into, declared by the
+	// consumer (ADR 042). The `.lr` import is the build-time half of the same
+	// declaration; this is the half the runtime can act on, because by then the
+	// question is not "does this resource exist" but "which provider answers for
+	// it, is it installed, and is it new enough."
+	//
+	// Derived at build from the peer's `.lr.versions` and reconciled with what
+	// the author declared, so it cannot drift the way the old hardcoded
+	// whitelist did.
+	Requires []ProviderDep `json:",omitempty"`
+	// Root is the resource that roots the tree of an asset this provider
+	// connects (ADR 031): the `os` provider's asset is rooted at `os`, the `ai`
+	// provider's MCP connection at `mcp`. It is what `_` resolves to at the top
+	// level of a query, and what an `asset<root>` chain resolves into.
+	//
+	// Declared here, and not on Connector, because the runtime resolves it from
+	// the connection *type* it holds, and types do not map onto connectors: the
+	// `os` provider ships 8 connectors covering 14 connection types
+	// (`docker-image`, `tar`, `registry-image` have no connector of their own).
+	// Every one of them exposes the same tree, so one declaration per provider
+	// is the honest granularity. A provider that grows two roots gets a
+	// per-type override, which is additive to this field.
+	//
+	// Empty means the provider declares no root, and `_` keeps failing for its
+	// assets - which is the state every provider starts in. Do not name a
+	// resource that only partly covers the asset just to make `_` answer
+	// something.
+	Root string `json:",omitempty"`
+	// Targets are the meta-targets this provider opts into (ADR 045): a
+	// declaration that some shape of file tree is this provider's, so a
+	// meta-target like `iac` can offer it a candidate without hardcoding the
+	// knowledge two more times the way the github and gitlab classifiers do.
+	//
+	// Demand-driven, and deliberately not Requires: declaring an opt-in
+	// installs nothing. Which providers a run needs follows from the
+	// meta-target's --discover value alone, resolved through
+	// ProviderLookup{Target, Discovery} before the tree is read.
+	Targets []TargetOptIn `json:",omitempty"`
+}
+
+// ProviderDep is one declared dependency on another provider.
+//
+// Both ID and Name are carried because both are used: the runtime matches a
+// peer by ID, and the installer resolves it by name. MinVersion is the lowest
+// peer version that has every resource and field this provider references.
+type ProviderDep struct {
+	ID   string
+	Name string
+	// MinVersion is a semver string, e.g. "13.3.1". Empty means no floor is
+	// known, which is treated as no constraint rather than as version zero.
+	MinVersion string `json:",omitempty"`
+	// MaxVersion is optional and usually unset: we have no good rules yet for
+	// predicting where a peer's API will break, so it is authored only when
+	// someone has a specific reason.
+	MaxVersion string `json:",omitempty"`
 }
 
 // PlatformInfo is the static, pre-declarable description of one platform a

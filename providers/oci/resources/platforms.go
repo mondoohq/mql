@@ -3,7 +3,7 @@
 
 package resources
 
-import "go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+import "go.mondoo.com/mql/providers-sdk/v1/plugin"
 
 // Platforms is the static catalog of platforms the OCI provider can emit: the
 // tenancy root ("oci", an "api" platform) plus one entry per discoverable OCI
@@ -21,6 +21,7 @@ var Platforms = []*plugin.PlatformInfo{
 	{Name: "oci-redis-cluster", Title: "OCI Redis Cluster", Family: []string{"oci"}, Kind: []string{"oci-object"}, Runtime: []string{"oci"}},
 	{Name: "oci-vault-secret", Title: "OCI Vault Secret", Family: []string{"oci"}, Kind: []string{"oci-object"}, Runtime: []string{"oci"}},
 	{Name: "oci-oke-cluster", Title: "OCI OKE Cluster", Family: []string{"oci"}, Kind: []string{"oci-object"}, Runtime: []string{"oci"}},
+	{Name: "oci-ai-generativeai-endpoint", Title: "OCI Generative AI Endpoint", Family: []string{"oci"}, Kind: []string{"oci-object"}, Runtime: []string{"oci"}},
 }
 
 var platformsByName = plugin.PlatformsByName(Platforms)

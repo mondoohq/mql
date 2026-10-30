@@ -4,12 +4,22 @@
 package resources
 
 import (
+	"errors"
+	"math"
+	"strconv"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
+
+// errFlexReachabilityUnknown is returned by a Flex instance's
+// internetReachable() when the instance detail (and thus its ACL) could not be
+// fetched, typically because the token can list instances but is denied
+// GetInstance. Surfacing an error keeps an `internetReachable == false`
+// assertion from passing vacuously when exposure was never actually determined.
+var errFlexReachabilityUnknown = errors.New("stackit: cannot determine internet reachability, instance ACL unavailable (access denied to GetInstance)")
 
 // nicsHavePublicIp reports whether any network interface dict carries a
 // non-empty public IP.
@@ -44,11 +54,7 @@ func (s *mqlStackitServer) exposure() (*mqlStackitNetworkExposure, error) {
 		return nil, id.Error
 	}
 
-	nics := s.GetNics()
-	if nics.Error != nil {
-		return nil, nics.Error
-	}
-	hasPublicIp := nicsHavePublicIp(nics.Data)
+	hasPublicIp := nicsHavePublicIp(s.cacheNics)
 
 	openRules := []any{}
 	sgs := s.GetSecurityGroups()
@@ -154,6 +160,44 @@ func dictStrSlice(v any) []string {
 	}
 }
 
+// dictStr reads a single string value out of a dict, returning "" when the
+// value is missing or not a string.
+func dictStr(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+// dictInt reads a whole number out of a dict value. Values that arrived
+// through a JSON round-trip are float64; native ints and numeric strings are
+// accepted too. The second result is false when the value is absent, not
+// numeric, or not a whole number.
+func dictInt(v any) (int64, bool) {
+	switch n := v.(type) {
+	case nil:
+		return 0, false
+	case int64:
+		return n, true
+	case int:
+		return int64(n), true
+	case int32:
+		return int64(n), true
+	case float64:
+		if n < math.MinInt64 || n > math.MaxInt64 || n != float64(int64(n)) {
+			return 0, false
+		}
+		return int64(n), true
+	case string:
+		i, err := strconv.ParseInt(strings.TrimSpace(n), 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return i, true
+	}
+	return 0, false
+}
+
 // dictBool reads a bool-ish value out of a dict. STACKIT parameter blobs encode
 // booleans as actual bools or as the strings "true"/"false".
 func dictBool(v any) bool {
@@ -207,16 +251,23 @@ func lbExposure(externalAddress string, privateNetworkOnly bool, options any) (i
 // dbaasInstanceReachable reports whether a DBaaS-style managed instance
 // (OpenSearch, MariaDB, Redis, RabbitMQ, LogMe) is reachable from the internet.
 // These instances surface their networking through the free-form `parameters`
-// blob: `enable_public_access` toggles a public endpoint, and `sgw_acl` is the
-// source-IP allow-list. The instance is reachable when public access is on and
-// the allow-list admits any address (or is absent).
+// blob, and the SDK's InstanceParameters model documents exactly one network
+// key on it: `sgw_acl`, the comma-separated CIDR allow-list ("IP networks
+// which are allowed to access this instance"). The instance is reachable when
+// that list admits any address, or is absent.
+//
+// An `enable_public_access` key is honored only when the API actually sends
+// it: an explicit false short-circuits to "not reachable". No engine's
+// InstanceParameters model declares the key, so it is usually absent, and an
+// absent key must not be read as false. Doing so reported every CF-broker
+// instance as unreachable regardless of its allow-list, which is the
+// reassuring answer and the wrong one.
 func dbaasInstanceReachable(parameters any) bool {
 	params, ok := parameters.(map[string]any)
 	if !ok {
 		return false
 	}
-	publicAccess := dictBool(params["enable_public_access"])
-	if !publicAccess {
+	if v, present := params["enable_public_access"]; present && !dictBool(v) {
 		return false
 	}
 	return aclAllowsAnyAddress(dictStrSlice(params["sgw_acl"]))
@@ -318,6 +369,13 @@ func newNetworkExposure(runtime *plugin.Runtime, id string, internetReachable, h
 // ---- Flex managed databases (ACL-based) ----
 
 func (c *mqlStackitPostgresFlexInstance) internetReachable() (bool, error) {
+	d, err := c.fetchDetail()
+	if err != nil {
+		return false, err
+	}
+	if d == nil {
+		return false, errFlexReachabilityUnknown
+	}
 	acl := c.GetAcl()
 	if acl.Error != nil {
 		return false, acl.Error
@@ -326,6 +384,13 @@ func (c *mqlStackitPostgresFlexInstance) internetReachable() (bool, error) {
 }
 
 func (c *mqlStackitMongoDbFlexInstance) internetReachable() (bool, error) {
+	d, err := c.fetchDetail()
+	if err != nil {
+		return false, err
+	}
+	if d == nil {
+		return false, errFlexReachabilityUnknown
+	}
 	acl := c.GetAcl()
 	if acl.Error != nil {
 		return false, acl.Error
@@ -334,6 +399,13 @@ func (c *mqlStackitMongoDbFlexInstance) internetReachable() (bool, error) {
 }
 
 func (c *mqlStackitSqlServerFlexInstance) internetReachable() (bool, error) {
+	d, err := c.fetchDetail()
+	if err != nil {
+		return false, err
+	}
+	if d == nil {
+		return false, errFlexReachabilityUnknown
+	}
 	acl := c.GetAcl()
 	if acl.Error != nil {
 		return false, acl.Error

@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13"
+	"go.mondoo.com/mql"
 	"go.mondoo.com/ranger-rpc/plugins/scope"
 )
 

@@ -9,10 +9,10 @@ import (
 
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/gcp/connection/shared"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/gcp/connection/shared"
 )
 
 const (
@@ -35,6 +35,10 @@ type GcpConnection struct {
 	plugin.Connection
 	Conf  *inventory.Config
 	asset *inventory.Asset
+
+	// Filters narrow discovery to a subset of resources (e.g. specific storage
+	// bucket names). Populated from the --filters flag on the connection config.
+	Filters DiscoveryFilters
 
 	opts gcpConnectionOptions
 
@@ -62,6 +66,7 @@ func NewGcpConnection(id uint32, asset *inventory.Asset, conf *inventory.Config)
 		Conf:       conf,
 		asset:      asset,
 		opts:       gcpConnectionOptions{},
+		Filters:    DiscoveryFiltersFromOpts(conf.GetDiscover().GetFilter()),
 	}
 
 	// initialize connection

@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/muesli/termenv"
-	"go.mondoo.com/mql/v13/cli/printer"
-	"go.mondoo.com/mql/v13/cli/theme/colors"
+	"go.mondoo.com/mql/cli/printer"
+	"go.mondoo.com/mql/cli/theme/colors"
 )
 
 // Theme to configure how the shell will look and feel

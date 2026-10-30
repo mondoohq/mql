@@ -4,7 +4,7 @@
 package connection
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // Platforms is the static catalog of platforms this provider can emit.
@@ -47,6 +47,13 @@ var Platforms = []*plugin.PlatformInfo{
 	{
 		Name:    "digitalocean-spaces-bucket",
 		Title:   "DigitalOcean Spaces Bucket",
+		Family:  []string{"digitalocean"},
+		Kind:    []string{"api"},
+		Runtime: []string{"digitalocean"},
+	},
+	{
+		Name:    "digitalocean-gradientai-agent",
+		Title:   "DigitalOcean GradientAI Agent",
 		Family:  []string{"digitalocean"},
 		Kind:    []string{"api"},
 		Runtime: []string{"digitalocean"},

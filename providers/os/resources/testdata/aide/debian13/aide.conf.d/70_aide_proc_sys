@@ -1,0 +1,6 @@
+# this is to cater for the incompatible semantic change in 0.19
+# see /usr/share/doc/debian/aide-common/NEWS.Debian.gz for more information
+# accept this change or see your aide break
+
+-/proc$ 0
+-/sys$ 0

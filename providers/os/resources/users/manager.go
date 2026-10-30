@@ -6,7 +6,7 @@ package users
 import (
 	"errors"
 
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 type User struct {
@@ -19,6 +19,10 @@ type User struct {
 	Shell       string
 	Home        string
 	Enabled     bool
+	// EnabledUnknown is set when the account state could not be read, for
+	// example /etc/shadow is not readable by a non-root user. Enabled is then
+	// meaningless and the user's enabled field is reported as null.
+	EnabledUnknown bool
 }
 
 type OSUserManager interface {

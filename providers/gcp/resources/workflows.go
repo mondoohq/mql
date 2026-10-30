@@ -10,11 +10,11 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/option"
 	workflows "google.golang.org/api/workflows/v1"
 )
@@ -161,7 +161,12 @@ func (g *mqlGcpProjectWorkflowsServiceWorkflow) serviceAccount() (*mqlGcpProject
 		return nil, nil
 	}
 
-	res, err := CreateResource(g.MqlRuntime, "gcp.project.iamService.serviceAccount", map[string]*llx.RawData{
+	// NewResource, not CreateResource: the service account has an init that
+	// resolves the real account. CreateResource skips it, leaving a husk with
+	// only projectId and email set -- and because that husk's id() falls back
+	// to the email form while a listed account keys on uniqueId, the two never
+	// share a cache entry, so it can't be repaired by a later lookup either.
+	res, err := NewResource(g.MqlRuntime, "gcp.project.iamService.serviceAccount", map[string]*llx.RawData{
 		"projectId": llx.StringData(g.ProjectId.Data),
 		"email":     llx.StringData(email),
 	})
@@ -187,8 +192,8 @@ func workflowsLocation(name string) string {
 // the API may return either as a bare email or as a
 // projects/{project}/serviceAccounts/{email} resource path.
 func workflowsServiceAccountEmail(sa string) string {
-	if idx := strings.LastIndex(sa, "/"); idx != -1 {
-		return sa[idx+1:]
+	if _, after, ok := strings.CutLast(sa, "/"); ok {
+		return after
 	}
 	return sa
 }

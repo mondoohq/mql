@@ -10,9 +10,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/dax"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 // isDaxAccessDeniedError checks for the DAX-specific access denied error which uses

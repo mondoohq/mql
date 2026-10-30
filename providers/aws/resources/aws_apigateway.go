@@ -8,17 +8,18 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/apigateway"
 	"github.com/aws/aws-sdk-go-v2/service/apigateway/types"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 
-	mqltypes "go.mondoo.com/mql/v13/types"
+	mqltypes "go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsApigateway) id() (string, error) {
@@ -129,9 +130,8 @@ func initAwsApigatewayRestapi(runtime *plugin.Runtime, args map[string]*llx.RawD
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformGatewayRestapi); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -190,9 +190,20 @@ func (a *mqlAwsApigatewayRestapi) stages() ([]any, error) {
 		if ms, ok := stage.MethodSettings["*/*"]; ok {
 			cacheDataEncrypted = ms.CacheDataEncrypted
 		}
+		stageArn := fmt.Sprintf(apiStageArnPattern, region, conn.AccountId(), restApiId, convert.ToValue(stage.StageName))
+		// Nil when access logging is off, which leaves the reference null, so
+		// `accessLog == null` is the test for "logging is not configured".
+		accessLog := llx.NilData
+		if stage.AccessLogSettings != nil {
+			accessLog, err = newMqlApigatewayAccessLog(a.MqlRuntime, "aws.apigateway.stage.accessLogConfiguration", stageArn,
+				convert.ToValue(stage.AccessLogSettings.DestinationArn), convert.ToValue(stage.AccessLogSettings.Format))
+			if err != nil {
+				return nil, err
+			}
+		}
 		mqlStage, err := CreateResource(a.MqlRuntime, ResourceAwsApigatewayStage,
 			map[string]*llx.RawData{
-				"arn":                  llx.StringData(fmt.Sprintf(apiStageArnPattern, region, conn.AccountId(), restApiId, convert.ToValue(stage.StageName))),
+				"arn":                  llx.StringData(stageArn),
 				"name":                 llx.StringData(convert.ToValue(stage.StageName)),
 				"description":          llx.StringData(convert.ToValue(stage.Description)),
 				"tracingEnabled":       llx.BoolData(stage.TracingEnabled),
@@ -202,8 +213,8 @@ func (a *mqlAwsApigatewayRestapi) stages() ([]any, error) {
 				"cacheClusterSize":     llx.StringData(string(stage.CacheClusterSize)),
 				"cacheClusterStatus":   llx.StringData(string(stage.CacheClusterStatus)),
 				"cacheDataEncrypted":   llx.BoolData(cacheDataEncrypted),
+				"accessLog":            accessLog,
 				"clientCertificateId":  llx.StringData(convert.ToValue(stage.ClientCertificateId)),
-				"webAclArn":            llx.StringData(convert.ToValue(stage.WebAclArn)),
 				"createdAt":            llx.TimeDataPtr(stage.CreatedDate),
 				"lastUpdatedAt":        llx.TimeDataPtr(stage.LastUpdatedDate),
 				"documentationVersion": llx.StringData(convert.ToValue(stage.DocumentationVersion)),
@@ -213,6 +224,7 @@ func (a *mqlAwsApigatewayRestapi) stages() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		mqlStage.(*mqlAwsApigatewayStage).cacheWebAclArn = convert.ToValue(stage.WebAclArn)
 		res = append(res, mqlStage)
 	}
 	return res, nil
@@ -226,8 +238,50 @@ func (a *mqlAwsApigatewayStage) id() (string, error) {
 	return a.Arn.Data, nil
 }
 
+// newMqlApigatewayAccessLog builds a stage's access-log configuration. REST
+// and HTTP API stages return the same two members through separate SDK types,
+// so the resource name says which of the two identical sub-resources to build.
+func newMqlApigatewayAccessLog(runtime *plugin.Runtime, resourceName, stageArn, destinationArn, format string) (*llx.RawData, error) {
+	res, err := CreateResource(runtime, resourceName, map[string]*llx.RawData{
+		"__id":           llx.StringData(stageArn + "/accessLogSettings"),
+		"destinationArn": llx.StringData(destinationArn),
+		"format":         llx.StringData(format),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return llx.ResourceData(res, resourceName), nil
+}
+
+func (a *mqlAwsApigatewayStageAccessLogConfiguration) logGroup() (*mqlAwsCloudwatchLoggroup, error) {
+	return resolveAccessLogGroup(a.MqlRuntime, a.DestinationArn.Data, &a.LogGroup.State)
+}
+
+// resolveAccessLogGroup turns an API Gateway access-log destination into a log
+// group resource. The destination is either a CloudWatch Logs log group or a
+// Kinesis Data Firehose delivery stream, so anything that is not a logs ARN
+// resolves to null rather than to a log group that does not exist.
+func resolveAccessLogGroup(runtime *plugin.Runtime, destinationArn string, state *plugin.State) (*mqlAwsCloudwatchLoggroup, error) {
+	if destinationArn == "" {
+		*state = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	parsed, err := arn.Parse(destinationArn)
+	if err != nil || parsed.Service != "logs" {
+		*state = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(runtime, "aws.cloudwatch.loggroup", map[string]*llx.RawData{
+		"arn": llx.StringData(destinationArn),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsCloudwatchLoggroup), nil
+}
+
 func (a *mqlAwsApigatewayStage) webAcl() (*mqlAwsWafAcl, error) {
-	arnVal := a.WebAclArn.Data
+	arnVal := a.cacheWebAclArn
 	if arnVal == "" {
 		a.WebAcl.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -368,16 +422,16 @@ func (a *mqlAwsApigatewayAuthorizer) iamRole() (*mqlAwsIamRole, error) {
 // is not a Lambda invocation URI (e.g. for COGNITO_USER_POOLS authorizers).
 func extractLambdaArnFromAuthorizerUri(uri string) string {
 	const marker = "/functions/"
-	idx := strings.Index(uri, marker)
-	if idx < 0 {
+	_, after, ok := strings.Cut(uri, marker)
+	if !ok {
 		return ""
 	}
-	rest := uri[idx+len(marker):]
-	end := strings.Index(rest, "/invocations")
-	if end < 0 {
+	rest := after
+	before0, _, ok0 := strings.Cut(rest, "/invocations")
+	if !ok0 {
 		return rest
 	}
-	return rest[:end]
+	return before0
 }
 
 func (a *mqlAwsApigatewayAuthorizer) lambdaFunction() (*mqlAwsLambdaFunction, error) {
@@ -754,4 +808,8 @@ func (a *mqlAwsApigatewayVpcLink) targets() ([]any, error) {
 		res = append(res, lb)
 	}
 	return res, nil
+}
+
+type mqlAwsApigatewayStageInternal struct {
+	cacheWebAclArn string
 }

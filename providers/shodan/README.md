@@ -1,13 +1,17 @@
 # Shodan Provider
 
-```shell
-mql shell shodan
-```
+## Authentication
 
 For authentication, you can use the `SHODAN_TOKEN` environment variable.
 
 ```shell
 export SHODAN_TOKEN="<token>"
+```
+
+## Usage
+
+```shell
+mql shell shodan
 ```
 
 ## Examples
@@ -126,7 +130,7 @@ shodan.domain.nsrecords.where.where: [
 ]
 ```
 
-# Advanced Usage
+## Advanced Usage
 
 Discover all exposed hosts on a network.
 

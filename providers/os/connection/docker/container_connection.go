@@ -11,22 +11,24 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/docker/docker/client"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
+	containertypes "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/cli/tmp"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/container"
-	"go.mondoo.com/mql/v13/providers/os/connection/container/image"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/connection/ssh/cat"
-	"go.mondoo.com/mql/v13/providers/os/connection/tar"
-	"go.mondoo.com/mql/v13/providers/os/id/containerid"
-	"go.mondoo.com/mql/v13/providers/os/resources/discovery/container_registry"
-	dockerDiscovery "go.mondoo.com/mql/v13/providers/os/resources/discovery/docker_engine"
+	"go.mondoo.com/mql/cli/tmp"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/container"
+	"go.mondoo.com/mql/providers/os/connection/container/image"
+	"go.mondoo.com/mql/providers/os/connection/dockerclient"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/ssh/cat"
+	"go.mondoo.com/mql/providers/os/connection/tar"
+	"go.mondoo.com/mql/providers/os/id/containerid"
+	"go.mondoo.com/mql/providers/os/resources/discovery/container_registry"
+	dockerDiscovery "go.mondoo.com/mql/providers/os/resources/discovery/docker_engine"
 )
 
 const (
@@ -63,10 +65,11 @@ func NewContainerConnection(id uint32, conf *inventory.Config, asset *inventory.
 	}
 
 	// check if we are having a container
-	data, err := dockerClient.ContainerInspect(context.Background(), conf.Host)
+	inspectRes, err := dockerClient.ContainerInspect(context.Background(), conf.Host, client.ContainerInspectOptions{})
 	if err != nil {
 		return nil, errors.New("cannot find container " + conf.Host)
 	}
+	data := inspectRes.Container
 
 	if !data.State.Running {
 		return nil, errors.New("container " + data.ID + " is not running")
@@ -81,31 +84,68 @@ func NewContainerConnection(id uint32, conf *inventory.Config, asset *inventory.
 		runtime:    "docker",
 	}
 
-	// this can later be used for containers build from scratch
-	serverVersion, err := dockerClient.ServerVersion(context.Background())
-	if err != nil {
-		log.Debug().Err(err).Msg("docker> cannot get server version")
-	} else {
-		log.Debug().Interface("serverVersion", serverVersion).Msg("docker> server version")
-		conn.PlatformArchitecture = serverVersion.Arch
-	}
+	conn.PlatformArchitecture = inspectedContainerArchitecture(dockerClient, data)
 
 	conn.Fs = &FS{
 		dockerClient: conn.Client,
 		Container:    conn.container,
 		Connection:   conn,
 		catFS:        cat.New(conn),
+		runner:       conn,
 	}
 	return conn, nil
 }
 
-func GetDockerClient() (*client.Client, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		return nil, err
+// inspectedContainerArchitecture returns the architecture of an inspected
+// container.
+func inspectedContainerArchitecture(dockerClient *client.Client, data containertypes.InspectResponse) string {
+	// The container runs its image's architecture, which is not the daemon's
+	// when the image was pulled for another platform (an amd64 image under
+	// emulation on an arm64 host). The daemon's is only the fallback.
+	//
+	// The platform-specific manifest the container was created from names it
+	// exactly. With the containerd image store an image can be a multi-platform
+	// index, and inspecting the image then reports no architecture at all.
+	var manifestArch, imageArch, daemonArch string
+	if d := data.ImageManifestDescriptor; d != nil && d.Platform != nil {
+		manifestArch = d.Platform.Architecture
 	}
-	cli.NegotiateAPIVersion(context.Background())
-	return cli, nil
+	if manifestArch == "" {
+		imageRes, err := dockerClient.ImageInspect(context.Background(), data.Image)
+		if err != nil {
+			log.Debug().Err(err).Str("image", data.Image).Msg("docker> cannot inspect the container's image")
+		} else {
+			imageArch = imageRes.Architecture
+		}
+	}
+	if manifestArch == "" && imageArch == "" {
+		serverVersionRes, err := dockerClient.ServerVersion(context.Background(), client.ServerVersionOptions{})
+		if err != nil {
+			log.Debug().Err(err).Msg("docker> cannot get server version")
+		} else {
+			log.Debug().Interface("serverVersion", serverVersionRes).Msg("docker> server version")
+			daemonArch = serverVersionRes.Arch
+		}
+	}
+	return containerArchitecture(manifestArch, imageArch, daemonArch)
+}
+
+// containerArchitecture picks the architecture a container runs: the one of
+// the manifest it was created from, else its image's, else the daemon's. All
+// three are in the OCI naming (amd64, arm64) that the image scan paths report.
+func containerArchitecture(manifestArch, imageArch, daemonArch string) string {
+	for _, arch := range []string{manifestArch, imageArch, daemonArch} {
+		if arch != "" {
+			return arch
+		}
+	}
+	return ""
+}
+
+func GetDockerClient() (*client.Client, error) {
+	// Route through the shared builder so we honor DOCKER_HOST *and* the active
+	// docker CLI context (rootless / remote contexts), not just DOCKER_HOST.
+	return dockerclient.NewDockerClient()
 }
 
 func (c *ContainerConnection) Name() string {
@@ -162,10 +202,49 @@ func (c *ContainerConnection) FileSystem() afero.Fs {
 	return c.Fs
 }
 
+// hasShell reports whether the container can start /bin/sh, which every
+// command of this connection runs in. Docker answers an exec of a missing or
+// unusable binary with exit 126 or 127 and the runtime's "exec failed"
+// message. Anything else, an error reaching the daemon included, keeps the
+// exec-based connection.
+func (c *ContainerConnection) hasShell() bool {
+	cmd, err := (&Command{Client: c.Client, Container: c.container}).Exec("exit 0")
+	if err != nil || cmd.ExitStatus == 0 {
+		return true
+	}
+	var out []byte
+	if cmd.Stdout != nil {
+		out, _ = io.ReadAll(cmd.Stdout)
+	}
+	if cmd.Stderr != nil {
+		e, _ := io.ReadAll(cmd.Stderr)
+		out = append(out, e...)
+	}
+	return !shellMissing(cmd.ExitStatus, string(out))
+}
+
+// shellMissing reports whether an exec's result says the runtime could not
+// start the shell, not that the shell ran and failed: it is missing or not
+// executable ("exec failed", 126 or 127), or built for another architecture
+// the host cannot run ("exec format error", 255).
+func shellMissing(exitStatus int, output string) bool {
+	switch exitStatus {
+	case 126, 127:
+		return strings.Contains(output, "exec failed")
+	case 255:
+		return strings.Contains(output, "exec format error")
+	}
+	return false
+}
+
 func (c *ContainerConnection) RunCommand(command string) (*shared.Command, error) {
+	return c.RunCommandContext(context.Background(), command)
+}
+
+func (c *ContainerConnection) RunCommandContext(ctx context.Context, command string) (*shared.Command, error) {
 	log.Debug().Str("command", command).Msg("docker> run command")
 	cmd := &Command{Client: c.Client, Container: c.container}
-	res, err := cmd.Exec(command)
+	res, err := cmd.ExecContext(ctx, command)
 	// this happens, when we try to run /bin/sh in a container, which does not have it
 	if err == nil && res.ExitStatus == 126 {
 		output := ""
@@ -206,17 +285,48 @@ func NewDockerEngineContainer(id uint32, conf *inventory.Config, asset *inventor
 		conn.PlatformIdentifier = platformID
 		conn.Metadata.Name = shortID
 		conn.Metadata.Labels = ci.Labels
+
+		// A container without a shell (distroless, a static binary on
+		// scratch) cannot run a command, and the file stats and directory
+		// listings of this connection run through one: every file read as
+		// unreadable and the package list failed, while a scan of its image
+		// read everything. Read its filesystem from an export instead, as for
+		// a stopped container.
+		if !conn.hasShell() {
+			log.Info().Str("container", shortID).Msg("the container cannot start a shell, reading its filesystem from an export")
+			if err := conn.Client.Close(); err != nil {
+				log.Debug().Err(err).Msg("docker> could not close the client of a container without a shell")
+			}
+			return newContainerSnapshot(id, conf, asset, ci.ID, platformID, shortID, ci.Labels)
+		}
 		return conn, nil
 	}
 
 	log.Debug().Msg("found stopped container " + ci.ID)
-	conn, err := NewSnapshotConnection(id, &inventory.Config{Host: ci.ID}, asset)
+	return newContainerSnapshot(id, conf, asset, ci.ID, platformID, shortID, ci.Labels)
+}
+
+// newContainerSnapshot scans a container from an export of its filesystem.
+func newContainerSnapshot(id uint32, conf *inventory.Config, asset *inventory.Asset, containerID string, platformID string, shortID string, labels map[string]string) (shared.Connection, error) {
+	conn, err := NewSnapshotConnection(id, &inventory.Config{Host: containerID}, asset)
 	if err != nil {
 		return nil, err
 	}
+	// The same architecture the container reports while it runs: the one of
+	// its image, in the OCI naming. Detection on the exported filesystem
+	// reported the kernel's name instead (aarch64 for arm64), so the
+	// container's asset changed when it stopped.
+	if dockerClient, err := GetDockerClient(); err == nil {
+		if inspectRes, err := dockerClient.ContainerInspect(context.Background(), containerID, client.ContainerInspectOptions{}); err == nil {
+			conn.PlatformArchitecture = inspectedContainerArchitecture(dockerClient, inspectRes.Container)
+		}
+		if err := dockerClient.Close(); err != nil {
+			log.Debug().Err(err).Msg("docker> could not close the client used to inspect a stopped container")
+		}
+	}
 	conn.PlatformIdentifier = platformID
 	conn.Metadata.Name = shortID
-	conn.Metadata.Labels = ci.Labels
+	conn.Metadata.Labels = labels
 	// FIXME: DEPRECATED, remove in v12.0 vv
 	// The DelayDiscovery flag should always be set from v12
 	if conf.Options == nil || conf.Options[plugin.DISABLE_DELAYED_DISCOVERY_OPTION] == "" {
@@ -253,6 +363,7 @@ func NewContainerImageConnection(id uint32, conf *inventory.Config, asset *inven
 	// manifest digest, which is stable across architectures for multi-arch tags.
 	ded, dockerErr := dockerDiscovery.NewDockerEngineDiscovery()
 	if dockerErr != nil {
+		log.Debug().Err(dockerErr).Str("image", conf.Host).Msg("could not reach local docker engine, resolving image from registry instead")
 		if err := fillAssetFromRegistry(asset, conf); err != nil {
 			return nil, err
 		}
@@ -261,6 +372,11 @@ func NewContainerImageConnection(id uint32, conf *inventory.Config, asset *inven
 
 	ii, err := ded.ImageInfo(conf.Host)
 	if err != nil {
+		// The local lookup failed, so we treat conf.Host as a registry reference.
+		// Surface the underlying reason: when the engine is unreachable (e.g. a
+		// rootless socket not picked up, see FromDockerEnv) a bare image ID cannot
+		// be resolved from a registry and the ensuing error is otherwise cryptic.
+		log.Debug().Err(err).Str("image", conf.Host).Msg("image not found in local docker engine, resolving from registry instead")
 		if err := fillAssetFromRegistry(asset, conf); err != nil {
 			return nil, err
 		}
@@ -279,9 +395,6 @@ func NewContainerImageConnection(id uint32, conf *inventory.Config, asset *inven
 
 	// This is the image id that is used to pull the image from the registry.
 	log.Debug().Msg("found docker engine image " + labelImageId)
-	if ii.Size > 1024 && !disableInmemoryCache { // > 1GB
-		log.Warn().Int64("size", ii.Size).Msg("Because the image is larger than 1 GB, this task will require a lot of memory. Consider disabling the in-memory cache by adding this flag to the command: `--disable-cache=true`")
-	}
 
 	identifier := containerid.MondooContainerImageID(labelImageId)
 
@@ -306,7 +419,8 @@ func NewContainerImageConnection(id uint32, conf *inventory.Config, asset *inven
 		imageRef = conf.Host
 	}
 
-	tarConn, err := tar.NewConnection(
+	var tarConn *tar.Connection
+	tarConn, err = tar.NewConnection(
 		id,
 		conf,
 		asset,
@@ -314,6 +428,15 @@ func NewContainerImageConnection(id uint32, conf *inventory.Config, asset *inven
 			img, err := image.LoadImageFromDockerEngine(imageRef, disableInmemoryCache)
 			if err != nil {
 				return filename, err
+			}
+
+			// Carry the architecture over from the image config, the same way the
+			// registry path does. A tar connection has no command capability to ask
+			// `uname -m`, so without this the asset reports an empty architecture.
+			// This runs before platform detection reads the field back.
+			if imgConfig, cfgErr := img.ConfigFile(); cfgErr == nil && imgConfig != nil {
+				tarConn.PlatformArchitecture = imgConfig.Architecture
+				tarConn.ImageConfig = tar.ImageConfigFrom(imgConfig)
 			}
 
 			err = tar.StreamToTmpFile(mutate.Extract(img), tmpFile)
@@ -359,19 +482,19 @@ func fillAssetFromRegistry(asset *inventory.Asset, conf *inventory.Config) error
 }
 
 func getImageStoreKind() string {
-	client, err := GetDockerClient()
+	cli, err := GetDockerClient()
 	if err != nil {
 		log.Warn().Err(err).Msg("docker> cannot create docker client")
 		return "unknown"
 	}
 
-	info, err := client.Info(context.Background())
+	infoRes, err := cli.Info(context.Background(), client.InfoOptions{})
 	if err != nil {
 		log.Warn().Err(err).Msg("docker> cannot get docker info")
 		return "unknown"
 	}
 
-	return info.Driver
+	return infoRes.Info.Driver
 }
 
 // FindDockerObjectConnectionType tries to find out what kind of connection we are dealing with, this can be either a

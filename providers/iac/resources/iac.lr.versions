@@ -1,0 +1,15 @@
+# Copyright Mondoo, Inc. 2024, 2026
+# SPDX-License-Identifier: BUSL-1.1
+
+iac 14.0.0
+iac.detection 14.0.0
+iac.detection.asset 14.0.0
+iac.detection.error 14.0.0
+iac.detection.files 14.0.0
+iac.detection.path 14.0.0
+iac.detection.tool 14.0.0
+iac.detections 14.0.0
+iac.source 14.0.0
+iac.source.kind 14.0.0
+iac.source.origin 14.0.0
+iac.source.ref 14.0.0

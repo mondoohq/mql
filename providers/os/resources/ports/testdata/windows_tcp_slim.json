@@ -1,0 +1,18 @@
+[
+  {
+    "LocalAddress":  "::",
+    "LocalPort":  49672,
+    "RemoteAddress":  "::",
+    "RemotePort":  0,
+    "State":  2,
+    "OwningProcess":  2136
+  },
+  {
+    "LocalAddress":  "10.0.0.5",
+    "LocalPort":  52014,
+    "RemoteAddress":  "93.184.216.34",
+    "RemotePort":  443,
+    "State":  5,
+    "OwningProcess":  4288
+  }
+]

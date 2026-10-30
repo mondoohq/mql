@@ -6,16 +6,17 @@ package resources
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/detective"
 	detectivetypes "github.com/aws/aws-sdk-go-v2/service/detective/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsDetective) id() (string, error) {
@@ -152,7 +153,9 @@ func newMqlAwsDetectiveGraphMember(runtime *plugin.Runtime, region string, m det
 			entry["volumeUsageInBytes"] = *info.VolumeUsageInBytes
 		}
 		if info.VolumeUsageUpdateTime != nil {
-			entry["volumeUsageUpdateTime"] = *info.VolumeUsageUpdateTime
+			// dict values must be JSON-native; a time.Time fails conversion at
+			// query time with "unsupported child type: time.Time".
+			entry["volumeUsageUpdateTime"] = info.VolumeUsageUpdateTime.Format(time.RFC3339)
 		}
 		volumeUsage[string(pkg)] = entry
 	}

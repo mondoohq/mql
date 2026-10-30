@@ -8,8 +8,8 @@ import (
 	"io"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/java"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/java"
 )
 
 var (
@@ -123,6 +123,10 @@ func (m *manifest) Root() *languages.Package {
 
 	if v := m.vendor(); v != "" {
 		pkg.Vendor = v
+	}
+
+	if l := m.license(); l != "" {
+		pkg.License = l
 	}
 
 	return pkg

@@ -10,17 +10,17 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	identitytoolkit "google.golang.org/api/identitytoolkit/v2"
 	"google.golang.org/api/option"
 )
 
 type mqlGcpProjectIdentityPlatformServiceInternal struct {
-	serviceEnabled bool
+	serviceGate
 }
 
 func (g *mqlGcpProject) identityPlatform() (*mqlGcpProjectIdentityPlatformService, error) {
@@ -40,7 +40,7 @@ func (g *mqlGcpProject) identityPlatform() (*mqlGcpProjectIdentityPlatformServic
 	}
 
 	svc := res.(*mqlGcpProjectIdentityPlatformService)
-	svc.serviceEnabled = serviceEnabled
+	svc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_identityplatform).Msg("gcp service is not enabled, skipping")
 	}
@@ -83,7 +83,11 @@ func (g *mqlGcpProjectIdentityPlatformService) identityPlatformClient() (*identi
 }
 
 func (g *mqlGcpProjectIdentityPlatformService) config() (*mqlGcpProjectIdentityPlatformServiceConfig, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		g.Config.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
@@ -99,7 +103,7 @@ func (g *mqlGcpProjectIdentityPlatformService) config() (*mqlGcpProjectIdentityP
 
 	cfg, err := svc.Projects.GetConfig(fmt.Sprintf("projects/%s/config", projectId)).Do()
 	if err != nil {
-		if isHTTPSkippable(err) {
+		if isSkippable(err) {
 			g.Config.State = plugin.StateIsSet | plugin.StateIsNull
 			return nil, nil
 		}
@@ -244,7 +248,11 @@ func (g *mqlGcpProjectIdentityPlatformServiceTenant) id() (string, error) {
 }
 
 func (g *mqlGcpProjectIdentityPlatformService) tenants() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -270,7 +278,7 @@ func (g *mqlGcpProjectIdentityPlatformService) tenants() ([]any, error) {
 			return nil
 		})
 	if err != nil {
-		if isHTTPSkippable(err) {
+		if isSkippable(err) {
 			return nil, nil
 		}
 		return nil, err
@@ -281,8 +289,8 @@ func (g *mqlGcpProjectIdentityPlatformService) tenants() ([]any, error) {
 
 func newMqlIdentityPlatformTenant(runtime *plugin.Runtime, t *identitytoolkit.GoogleCloudIdentitytoolkitAdminV2Tenant) (plugin.Resource, error) {
 	tenantId := t.Name
-	if idx := strings.LastIndex(t.Name, "/"); idx >= 0 {
-		tenantId = t.Name[idx+1:]
+	if _, after, ok := strings.CutLast(t.Name, "/"); ok {
+		tenantId = after
 	}
 
 	args := map[string]*llx.RawData{
@@ -323,4 +331,9 @@ func newMqlIdentityPlatformTenant(runtime *plugin.Runtime, t *identitytoolkit.Go
 	}
 
 	return CreateResource(runtime, "gcp.project.identityPlatformService.tenant", args)
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectIdentityPlatformService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_identityplatform)
 }

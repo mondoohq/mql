@@ -3,7 +3,10 @@
 
 package connection
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 // ---------------------------------------------------------------------------
 // Node listing
@@ -17,6 +20,68 @@ type NodeInfo struct {
 func (c *PveConnection) GetNodes() ([]NodeInfo, error) {
 	var nodes []NodeInfo
 	return nodes, c.apiGet("/nodes", &nodes)
+}
+
+// ---------------------------------------------------------------------------
+// Node index
+// ---------------------------------------------------------------------------
+
+// NodeDetail is one node as the index reports it: the /nodes row joined with
+// the address the cluster status advertises for that node.
+type NodeDetail struct {
+	Name   string
+	Status string
+	// IP is the address from the cluster status. It is empty on a
+	// standalone host, which has no cluster membership row at all.
+	IP string
+}
+
+// nodeIndex memoizes the cluster's node listing, keyed by node name. Node
+// references hang off every guest, every Ceph daemon, and every storage
+// volume, so resolving them per item would re-list the cluster once per
+// item. Building the map once turns that fan-out into a single pair of
+// calls. The error is memoized alongside the value so a token that cannot
+// read /nodes fails once instead of on every lookup.
+type nodeIndex struct {
+	once   sync.Once
+	byName map[string]NodeDetail
+	err    error
+}
+
+// LookupNode returns the node with the given name. The boolean result is
+// false when the cluster has no such node, which lets callers report a
+// dangling reference as null instead of fabricating a blank node.
+func (c *PveConnection) LookupNode(name string) (NodeDetail, bool, error) {
+	c.nodes.once.Do(c.buildNodeIndex)
+	if c.nodes.err != nil {
+		return NodeDetail{}, false, c.nodes.err
+	}
+	n, ok := c.nodes.byName[name]
+	return n, ok, nil
+}
+
+func (c *PveConnection) buildNodeIndex() {
+	nodes, err := c.GetNodes()
+	if err != nil {
+		c.nodes.err = fmt.Errorf("failed to index nodes: %w", err)
+		return
+	}
+	// The advertised address lives in the cluster status, not the nodes
+	// list. A standalone host has no cluster status to read, so a failure
+	// here leaves the addresses empty rather than failing every lookup.
+	addrs := map[string]string{}
+	if entries, statusErr := c.GetClusterStatus(); statusErr == nil {
+		for _, e := range entries {
+			if e.Type == "node" {
+				addrs[e.Name] = e.IP
+			}
+		}
+	}
+	index := make(map[string]NodeDetail, len(nodes))
+	for _, n := range nodes {
+		index[n.Node] = NodeDetail{Name: n.Node, Status: n.Status, IP: addrs[n.Node]}
+	}
+	c.nodes.byName = index
 }
 
 // ---------------------------------------------------------------------------
@@ -51,14 +116,12 @@ type NodeStatus struct {
 	PVEVer   string   `json:"pveversion"`
 	Uptime   int64    `json:"uptime"`
 	LoadAvg  []string `json:"loadavg"`
-	// BootInfo reports the running kernel image and what would boot
-	// on the next reboot. When the two differ a kernel package has
-	// been installed but the host hasn't picked it up yet.
+	// BootInfo reports the firmware the node booted through and, on EFI,
+	// whether Secure Boot is on. It does not name the kernel the node boots
+	// next; no status field does.
 	BootInfo struct {
-		Mode          string `json:"mode"`
-		SecureBoot    int    `json:"secureboot"`
-		CurrentKernel string `json:"current-kernel"`
-		BootKernel    string `json:"boot-kernel"`
+		Mode       string  `json:"mode"`
+		SecureBoot PveBool `json:"secureboot"`
 	} `json:"boot-info"`
 }
 
@@ -126,7 +189,7 @@ type ServiceInfo struct {
 	Name          string `json:"name"`
 	State         string `json:"state"`
 	Description   string `json:"desc"`
-	UnitFileState string `json:"unit-file-state"`
+	UnitFileState string `json:"unit-state"`
 }
 
 func (c *PveConnection) GetNodeServices(node string) ([]ServiceInfo, error) {

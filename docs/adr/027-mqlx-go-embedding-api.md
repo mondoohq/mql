@@ -84,7 +84,7 @@ err = res.Decode(&users)
 
 ## Decision
 
-Add a new top-level package `mqlx` (`go.mondoo.com/mql/v13/mqlx`, following
+Add a new top-level package `mqlx` (`go.mondoo.com/mql/mqlx`, following
 the `sqlx` naming precedent) as a purely additive facade over the existing
 engine. It introduces four concepts:
 

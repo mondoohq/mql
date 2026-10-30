@@ -10,37 +10,21 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers/os/resources/wmiquery"
 )
 
-func TestToString(t *testing.T) {
-	t.Run("nil returns empty string", func(t *testing.T) {
-		assert.Equal(t, "", toString(nil))
-	})
-
-	t.Run("non-nil returns value", func(t *testing.T) {
-		s := "hello"
-		assert.Equal(t, "hello", toString(&s))
-	})
-
-	t.Run("empty string returns empty string", func(t *testing.T) {
-		s := ""
-		assert.Equal(t, "", toString(&s))
-	})
-}
-
 func TestIntToString(t *testing.T) {
-	t.Run("nil returns empty string", func(t *testing.T) {
-		assert.Equal(t, "", intToString(nil))
+	t.Run("NULL returns empty string", func(t *testing.T) {
+		assert.Equal(t, "", intToString(wmiquery.Row{"OSType": nil}, "OSType"))
 	})
 
-	t.Run("non-nil returns string representation", func(t *testing.T) {
-		i := 42
-		assert.Equal(t, "42", intToString(&i))
+	t.Run("integer of any width returns its string representation", func(t *testing.T) {
+		assert.Equal(t, "42", intToString(wmiquery.Row{"OSType": uint16(42)}, "OSType"))
+		assert.Equal(t, "18", intToString(wmiquery.Row{"OSType": int32(18)}, "OSType"))
 	})
 
 	t.Run("zero returns 0", func(t *testing.T) {
-		i := 0
-		assert.Equal(t, "0", intToString(&i))
+		assert.Equal(t, "0", intToString(wmiquery.Row{"ProductType": uint32(0)}, "ProductType"))
 	})
 }
 
@@ -53,4 +37,5 @@ func TestGetWmiInformation_Integration(t *testing.T) {
 	assert.NotEmpty(t, info.Version, "Version should not be empty")
 	assert.NotEmpty(t, info.BuildNumber, "BuildNumber should not be empty")
 	assert.NotEmpty(t, info.Caption, "Caption should not be empty")
+	assert.NotEmpty(t, info.SerialNumber, "SerialNumber should not be empty, as the wmic fallback reports it")
 }

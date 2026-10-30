@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/sbom"
-	"go.mondoo.com/mql/v13/sbom/generator"
+	"go.mondoo.com/mql/sbom"
+	"go.mondoo.com/mql/sbom/generator"
 )
 
 func TestSimpleBomOutput(t *testing.T) {

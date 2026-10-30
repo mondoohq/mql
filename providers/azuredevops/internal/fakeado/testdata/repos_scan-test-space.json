@@ -1,0 +1,24 @@
+{
+  "count": 1,
+  "value": [
+    {
+      "id": "2b000000-0000-4000-8000-000000000005",
+      "name": "ado-scan-test-iac",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/1a000000-0000-4000-8000-000000000002/_apis/git/repositories/2b000000-0000-4000-8000-000000000005",
+      "project": {
+        "id": "1a000000-0000-4000-8000-000000000002",
+        "name": "scan test",
+        "state": "wellFormed",
+        "visibility": "private",
+        "lastUpdateTime": "2026-01-01T00:00:00.000Z"
+      },
+      "size": 2048,
+      "remoteUrl": "https://mondoo-ado-scan-test@dev.azure.com/mondoo-ado-scan-test/scan%20test/_git/ado-scan-test-iac",
+      "sshUrl": "git@ssh.dev.azure.com:v3/mondoo-ado-scan-test/scan%20test/ado-scan-test-iac",
+      "webUrl": "https://dev.azure.com/mondoo-ado-scan-test/scan%20test/_git/ado-scan-test-iac",
+      "isDisabled": false,
+      "isInMaintenance": false,
+      "defaultBranch": "refs/heads/main"
+    }
+  ]
+}

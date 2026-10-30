@@ -7,8 +7,8 @@ import (
 	"errors"
 	"sync"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 type SmBiosInfo struct {
@@ -81,13 +81,18 @@ func ResolveManager(conn shared.Connection, pf *inventory.Platform) (SmBiosManag
 
 	var biosM SmBiosManager
 
-	// check darwin before unix since darwin is also a unix
-	if pf.IsFamily("darwin") {
+	// check darwin before unix since darwin is also a unix.
+	if pf.Name == "solaris" {
+		biosM = &SolarisSmbiosManager{provider: conn}
+	} else if pf.IsFamily("darwin") {
 		biosM = &OSXSmbiosManager{provider: conn, platform: pf}
 	} else if pf.IsFamily(inventory.FAMILY_UNIX) {
-		if pf.Name == "aix" {
+		switch pf.Name {
+		case "aix":
 			biosM = &AIXSmbiosManager{provider: conn}
-		} else {
+		case "freebsd":
+			biosM = &FreeBSDSmbiosManager{provider: conn}
+		default:
 			biosM = &LinuxSmbiosManager{provider: conn}
 		}
 	} else if pf.IsFamily("windows") {
@@ -98,6 +103,8 @@ func ResolveManager(conn shared.Connection, pf *inventory.Platform) (SmBiosManag
 		return nil, errors.New("could not detect suitable smbios manager for platform: " + pf.Name)
 	}
 
-	mgr, _ := managerCache.LoadOrStore(connID, biosM)
+	// Wrap in the memo here rather than in each platform manager, so that every
+	// platform gets it and none can be added without it.
+	mgr, _ := managerCache.LoadOrStore(connID, &cachingManager{inner: biosM})
 	return mgr.(SmBiosManager), nil
 }

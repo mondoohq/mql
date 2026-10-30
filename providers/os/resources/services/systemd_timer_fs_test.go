@@ -4,11 +4,12 @@
 package services
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers/os/mountedfs"
+	"go.mondoo.com/mql/providers/os/mountedfs"
 )
 
 func TestSystemdFSTimerManagerList(t *testing.T) {
@@ -95,4 +96,29 @@ func TestSystemdFSTimerManagerShowProperties(t *testing.T) {
 		_, err := mgr.ShowTimerProperties("nonexistent")
 		require.ErrorIs(t, err, ErrServiceNotFound)
 	})
+}
+
+// An alias timer is listed under its own name with the settings and state of
+// the timer it names, as `systemctl list-unit-files` lists it (dnf5-makecache
+// on Fedora 43).
+func TestSystemdFSTimerManagerListsAliases(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fixture needs Unix symlinks")
+	}
+	m := &SystemdFSTimerManager{Fs: mountedfs.NewMountedFs("testdata/systemd-states")}
+	timers, err := m.List()
+	require.NoError(t, err)
+	byName := map[string]*SystemdTimer{}
+	for _, timer := range timers {
+		byName[timer.Name] = timer
+	}
+	require.Contains(t, byName, "admin")
+	require.Contains(t, byName, "admin-alias")
+	assert.True(t, byName["admin"].Enabled)
+	assert.True(t, byName["admin-alias"].Enabled)
+	assert.Equal(t, "Admin timer", byName["admin-alias"].Description)
+
+	props, err := m.ShowTimerProperties("admin-alias")
+	require.NoError(t, err)
+	assert.Equal(t, "daily", props["OnCalendar"])
 }

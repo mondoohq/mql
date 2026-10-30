@@ -5,12 +5,33 @@ package windows
 
 import "io"
 
+// $ErrorActionPreference is Stop on each of these deliberately.
+//
+// The SMB cmdlets report a failure as a non-terminating error: they write to
+// stderr, write nothing to stdout, and leave the exit status at 0. The
+// provider only treats a non-zero exit as a failure, so without the guard a
+// cmdlet that could not read anything is indistinguishable from a host that
+// genuinely has no shares, no sessions or no connections, and the resource
+// reports an empty list either way.
+//
+// An empty list is the worst possible answer to be wrong with, because every
+// assertion made about a collection is satisfied by it: none() and all() both
+// pass vacuously, so "no share is exposed to Everyone" passes on a host whose
+// share list nobody managed to read.
+//
+// With the guard the two cases separate cleanly. A cmdlet failure becomes a
+// terminating error and PowerShell exits non-zero, which the provider turns
+// into an error carrying stderr; a host that genuinely has none still exits 0
+// with empty output and still reports an empty list.
 const (
 	// ShareType is an enum; "$($_.ShareType)" forces its label (e.g.
 	// FileSystemDirectory) rather than its numeric value.
-	SMB_SHARES      = `Get-SmbShare | Select-Object Name,Path,Description,ScopeName,@{Name='ShareType';Expression={"$($_.ShareType)"}} | ConvertTo-Json`
-	SMB_SESSIONS    = `Get-SmbSession | Select-Object SessionId,ClientComputerName,ClientUserName,Dialect,NumOpens | ConvertTo-Json`
-	SMB_CONNECTIONS = `Get-SmbConnection | Select-Object ServerName,ShareName,UserName,Dialect | ConvertTo-Json`
+	SMB_SHARES = `$ErrorActionPreference='Stop'
+Get-SmbShare | Select-Object Name,Path,Description,ScopeName,@{Name='ShareType';Expression={"$($_.ShareType)"}} | ConvertTo-Json`
+	SMB_SESSIONS = `$ErrorActionPreference='Stop'
+Get-SmbSession | Select-Object SessionId,ClientComputerName,ClientUserName,Dialect,NumOpens | ConvertTo-Json`
+	SMB_CONNECTIONS = `$ErrorActionPreference='Stop'
+Get-SmbConnection | Select-Object ServerName,ShareName,UserName,Dialect | ConvertTo-Json`
 )
 
 type WindowsSmbShare struct {

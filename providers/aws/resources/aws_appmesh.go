@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -14,11 +15,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/appmesh"
 	appmesh_types "github.com/aws/aws-sdk-go-v2/service/appmesh/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 func (a *mqlAwsAppmesh) id() (string, error) {
@@ -326,6 +327,7 @@ func (a *mqlAwsAppmeshVirtualService) id() (string, error) {
 }
 
 type mqlAwsAppmeshVirtualServiceInternal struct {
+	lazyTags
 	fetched            bool
 	lock               sync.Mutex
 	descResp           *appmesh.DescribeVirtualServiceOutput
@@ -693,6 +695,7 @@ func (a *mqlAwsAppmeshVirtualNode) id() (string, error) {
 }
 
 type mqlAwsAppmeshVirtualNodeInternal struct {
+	lazyTags
 	fetched            bool
 	lock               sync.Mutex
 	descResp           *appmesh.DescribeVirtualNodeOutput
@@ -828,17 +831,6 @@ func (a *mqlAwsAppmeshVirtualNode) status() (string, error) {
 		return "", nil
 	}
 	return string(resp.VirtualNode.Status.Status), nil
-}
-
-func (a *mqlAwsAppmeshVirtualNode) backends() (int64, error) {
-	resp, err := a.fetchDetail()
-	if err != nil {
-		return 0, err
-	}
-	if resp.VirtualNode == nil || resp.VirtualNode.Spec == nil {
-		return 0, nil
-	}
-	return int64(len(resp.VirtualNode.Spec.Backends)), nil
 }
 
 func (a *mqlAwsAppmeshVirtualNode) backendServices() ([]any, error) {
@@ -1004,30 +996,6 @@ func (a *mqlAwsAppmeshVirtualNode) serviceDiscoveryCloudMapIpPreference() (strin
 		return string(cm.Value.IpPreference), nil
 	}
 	return "", nil
-}
-
-func (a *mqlAwsAppmeshVirtualNode) serviceDiscovery() (map[string]any, error) {
-	resp, err := a.fetchDetail()
-	if err != nil {
-		return nil, err
-	}
-	if resp.VirtualNode == nil || resp.VirtualNode.Spec == nil || resp.VirtualNode.Spec.ServiceDiscovery == nil {
-		return map[string]any{}, nil
-	}
-	sd := resp.VirtualNode.Spec.ServiceDiscovery
-	result := map[string]any{}
-	switch s := sd.(type) {
-	case *appmesh_types.ServiceDiscoveryMemberDns:
-		result["type"] = "dns"
-		result["hostname"] = convert.ToValue(s.Value.Hostname)
-		result["responseType"] = string(s.Value.ResponseType)
-		result["ipPreference"] = string(s.Value.IpPreference)
-	case *appmesh_types.ServiceDiscoveryMemberAwsCloudMap:
-		result["type"] = "awsCloudMap"
-		result["namespaceName"] = convert.ToValue(s.Value.NamespaceName)
-		result["serviceName"] = convert.ToValue(s.Value.ServiceName)
-	}
-	return result, nil
 }
 
 func (a *mqlAwsAppmeshVirtualNode) loggingAccessLogPath() (string, error) {
@@ -1836,6 +1804,52 @@ func (a *mqlAwsAppmeshVirtualGateway) tags() (map[string]any, error) {
 		for _, tag := range page.Tags {
 			tags[convert.ToValue(tag.Key)] = convert.ToValue(tag.Value)
 		}
+	}
+	return tags, nil
+}
+
+func (a *mqlAwsAppmeshVirtualService) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		region := a.region
+		if region == "" {
+			region = a.Region.Data
+		}
+		return appmeshTagsForArn(a.MqlRuntime, region, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsAppmeshVirtualNode) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		region := a.region
+		if region == "" {
+			region = a.Region.Data
+		}
+		return appmeshTagsForArn(a.MqlRuntime, region, a.Arn.Data)
+	})
+}
+
+// appmeshTagsForArn reads the tags of an App Mesh resource by ARN, following
+// the paginated ListTagsForResource response to the end.
+func appmeshTagsForArn(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.AppMesh(region)
+	ctx := context.Background()
+	tags := map[string]any{}
+	paginator := appmesh.NewListTagsForResourcePaginator(svc, &appmesh.ListTagsForResourceInput{ResourceArn: &resourceArn})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("appmesh:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		maps.Copy(tags, tagsToMap(page.Tags,
+			func(t appmesh_types.TagRef) *string { return t.Key },
+			func(t appmesh_types.TagRef) *string { return t.Value }))
 	}
 	return tags, nil
 }

@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "fs": {
+      "transport": {
+        "type": "stdio",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "/tmp"
+        ]
+      }
+    },
+    "remote": {
+      "transport": {
+        "type": "streamableHttp",
+        "url": "https://mcp.example.com/mcp",
+        "headers": {
+          "Authorization": "Bearer <redacted>"
+        }
+      }
+    }
+  }
+}

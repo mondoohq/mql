@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/mqlc"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/mqlc"
 )
 
 func label(t *testing.T, s string, f func(res *llx.Labels)) {
@@ -232,6 +232,7 @@ func TestLabels(t *testing.T) {
 				Labels: map[string]string{
 					"7NxXEUBD5O9yqcbS1gghsap3uMTanBAaQoU1061BWC4zNG74Nv4CoNIkjnhac27hKYIpxS8HcY3DgYKG5ct9Eg==": "permissions.string",
 					"7ssUZ+7ZcZ1C3VPTkHgoxXfjTCKWxzWqNgcg8KjukJ6gak4KRkuH8hnP4iCIo7WWuQBmAPuMDYmMAJP18YTPzQ==": "sshd.config.files.$whereNot",
+					"EF2j9MZ5k+98O64CFpYyIpeZlEKybXZBdhqyvpk4iYlZCsxohReNTQ3M4NNC3yHBRCgkmjBEM2UhXhPbDv67+Q==": "group",
 					"GtNpr16YRhlm6mLxwtpY85pTl5djJb0RM/JxMb2l9CgapVzIC/BJERmQcrTGlrMUoSL4JYCZOCJqMfEYJzuxtA==": "gid",
 					"WTVWqxulB/XLD1JGBWA2L43HNW0C6gvbfMIOeuNQaFqi9a2ZiDPTFnbeBjNxMuO7yst9EGdqXe//A6pm8AUOJA==": "[].all()",
 					"XP1c/yncrad6armVwSmXAvI84OcAOGlB0VCmfbGyCico7MDMHd5sT7KrqThFoSCi76HMHZGnLn4/x3mgMBX7+A==": "group",
@@ -248,6 +249,24 @@ func TestLabels(t *testing.T) {
 		test := tests[i]
 		label(t, test.src, func(labels *llx.Labels) {
 			assert.Equal(t, test.labels, labels)
+		})
+	}
+}
+
+// A builtin specific to one resource carries the resource name in its id, but
+// the label is what the author wrote.
+func TestLabels_ResourceBuiltins(t *testing.T) {
+	for src, want := range map[string]string{
+		`file("/etc/passwd").permissions.atMost(0644)`:  "file.permissions.atMost",
+		`file("/etc/passwd").permissions.atLeast(0600)`: "file.permissions.atLeast",
+		`parse.date("2024-01-01T00:00:00Z")`:            "parse.date",
+	} {
+		label(t, src, func(res *llx.Labels) {
+			labels := []string{}
+			for _, v := range res.Labels {
+				labels = append(labels, v)
+			}
+			assert.Contains(t, labels, want)
 		})
 	}
 }

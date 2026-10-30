@@ -11,13 +11,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	cloudflarev6 "github.com/cloudflare/cloudflare-go/v6"
-	"github.com/cloudflare/cloudflare-go/v6/option"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/cloudflare/connection"
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/syncx"
+	cloudflare "github.com/cloudflare/cloudflare-go/v7"
+	"github.com/cloudflare/cloudflare-go/v7/option"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/cloudflare/connection"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 const (
@@ -65,14 +65,14 @@ func setupTestEnv(t *testing.T) *testEnv {
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 
-	// Create a cloudflare-go v6 client pointed at the mock server.
-	v6Client := cloudflarev6.NewClient(
+	// Create a cloudflare-go client pointed at the mock server.
+	client := cloudflare.NewClient(
 		option.WithAPIToken("test-key"),
 		option.WithBaseURL(server.URL+"/"),
 	)
 
 	conn := &connection.CloudflareConnection{
-		Cf: v6Client,
+		Cf: client,
 	}
 
 	runtime := &plugin.Runtime{
@@ -96,11 +96,9 @@ func createTestZone(t *testing.T, env *testEnv) *mqlCloudflareZone {
 
 	// First create the account resource (needed by zone methods that call c.GetAccount())
 	acc, err := CreateResource(env.Runtime, "cloudflare.zone.account", map[string]*llx.RawData{
-		"__id":  llx.StringData("cloudflare.zone.account@" + testAccountID),
-		"id":    llx.StringData(testAccountID),
-		"name":  llx.StringData("Test Account"),
-		"type":  llx.StringData("standard"),
-		"email": llx.StringData(""),
+		"__id": llx.StringData("cloudflare.zone.account@" + testAccountID),
+		"id":   llx.StringData(testAccountID),
+		"name": llx.StringData("Test Account"),
 	})
 	if err != nil {
 		t.Fatalf("failed to create test account: %v", err)
@@ -118,7 +116,6 @@ func createTestZone(t *testing.T, env *testEnv) *mqlCloudflareZone {
 		"modifiedOn":          llx.TimeData(llx.DurationToTime(0)),
 		"account":             llx.ResourceData(acc, acc.MqlName()),
 		"owner":               llx.NilData,
-		"plan":                llx.NilData,
 	})
 	if err != nil {
 		t.Fatalf("failed to create test zone: %v", err)
@@ -176,4 +173,26 @@ func loadFixture(name string) string {
 func jsonResponse(w http.ResponseWriter, body string) {
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(w, body)
+}
+
+// boolPtr returns a pointer to v, for table tests that distinguish an absent
+// value from an explicit false.
+//
+//go:fix inline
+func boolPtr(v bool) *bool { return new(v) }
+
+// pagedFixture serves a fixture on the first page and an empty result on every
+// later page. cloudflare-go's V4 page paginator stops only when a page comes
+// back empty, so a handler that ignores `page` and always returns the same
+// fixture makes the auto-pager loop forever.
+func pagedFixture(name string) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		if page != "" && page != "1" {
+			jsonResponse(w, `{"success":true,"errors":[],"messages":[],"result":[],`+
+				`"result_info":{"page":2,"per_page":100,"count":0,"total_count":0,"total_pages":1}}`)
+			return
+		}
+		jsonResponse(w, loadFixture(name))
+	}
 }

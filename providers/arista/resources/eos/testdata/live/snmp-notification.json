@@ -1,0 +1,310 @@
+{
+ "notifications": [
+  {
+   "component": "bgp",
+   "enabled": true,
+   "name": "established",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "bgp",
+   "enabled": true,
+   "name": "arista-backward-transition",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "bgp",
+   "enabled": true,
+   "name": "backward-transition",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "bgp",
+   "enabled": true,
+   "name": "arista-established",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "bridge",
+   "enabled": true,
+   "name": "arista-mac-learn",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "bridge",
+   "enabled": true,
+   "name": "arista-mac-age",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "bridge",
+   "enabled": true,
+   "name": "arista-mac-move",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "capacity",
+   "enabled": true,
+   "name": "arista-hardware-utilization-alert",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "clb",
+   "enabled": true,
+   "name": "flow-below-limit",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "clb",
+   "enabled": true,
+   "name": "flow-at-or-above-threshold-warning",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "clb",
+   "enabled": true,
+   "name": "flow-at-or-above-limit",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "clb",
+   "enabled": true,
+   "name": "flow-below-threshold-warning",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "entity",
+   "enabled": true,
+   "name": "ent-state-oper-disabled",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "entity",
+   "enabled": true,
+   "name": "ent-state-oper-enabled",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "entity",
+   "enabled": true,
+   "name": "ent-config-change",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "entity",
+   "enabled": true,
+   "name": "arista-ent-sensor-alarm",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "entity ent-state-oper",
+   "enabled": true,
+   "name": "interfaces",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "external-alarm",
+   "enabled": true,
+   "name": "arista-external-alarm-deasserted-notif",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "external-alarm",
+   "enabled": true,
+   "name": "arista-external-alarm-asserted-notif",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "isis",
+   "enabled": true,
+   "name": "area-mismatch",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "isis",
+   "enabled": true,
+   "name": "adjacency-change",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "isis",
+   "enabled": true,
+   "name": "sequence-number-skip",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "isis",
+   "enabled": true,
+   "name": "database-overload",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "isis",
+   "enabled": true,
+   "name": "own-lsp-purge",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "isis",
+   "enabled": true,
+   "name": "rejected-adjacency",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "isis",
+   "enabled": true,
+   "name": "authentication-type-failure",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "isis",
+   "enabled": true,
+   "name": "attempt-to-exceed-max-sequence",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "lldp",
+   "enabled": true,
+   "name": "rem-tables-change",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "mpls-ldp",
+   "enabled": true,
+   "name": "mpls-ldp-session-down",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "mpls-ldp",
+   "enabled": true,
+   "name": "mpls-ldp-session-up",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "msdp",
+   "enabled": true,
+   "name": "established",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "msdp",
+   "enabled": true,
+   "name": "backward-transition",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "ospf",
+   "enabled": true,
+   "name": "if-state-change",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "ospf",
+   "enabled": true,
+   "name": "nbr-state-change",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "ospf",
+   "enabled": true,
+   "name": "if-auth-failure",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "ospf",
+   "enabled": true,
+   "name": "if-config-error",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "ospfv3",
+   "enabled": true,
+   "name": "if-state-change",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "ospfv3",
+   "enabled": true,
+   "name": "restart-status-change",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "ospfv3",
+   "enabled": true,
+   "name": "nbr-state-change",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "ospfv3",
+   "enabled": true,
+   "name": "if-config-error",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "ospfv3",
+   "enabled": true,
+   "name": "nbr-restart-helper-status-change",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "ospfv3",
+   "enabled": true,
+   "name": "if-rx-bad-packet",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "ospfv3",
+   "enabled": true,
+   "name": "nssa-translator-status-change",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "pim",
+   "enabled": true,
+   "name": "neighbor-loss",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "snmp",
+   "enabled": true,
+   "name": "authentication",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "snmp",
+   "enabled": true,
+   "name": "link-down",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "snmp",
+   "enabled": true,
+   "name": "link-up",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "snmpConfigManEvent",
+   "enabled": true,
+   "name": "arista-config-man-event",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "switchover",
+   "enabled": true,
+   "name": "arista-redundancy-switch-over-notif",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "test",
+   "enabled": true,
+   "name": "arista-test-notification",
+   "reason": "Yes (Global default)"
+  },
+  {
+   "component": "vrrp",
+   "enabled": true,
+   "name": "trap-new-master",
+   "reason": "Yes (Global default)"
+  }
+ ]
+}

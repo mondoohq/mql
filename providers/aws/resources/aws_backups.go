@@ -7,30 +7,121 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/backup"
 	backuptypes "github.com/aws/aws-sdk-go-v2/service/backup/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsBackup) id() (string, error) {
 	return "aws.backup", nil
 }
 
+type mqlAwsBackupVaultInternal struct {
+	lazyTags
+	cacheEncryptionKeyArn string
+
+	detailLock    sync.Mutex
+	detailFetched bool
+	detail        *backup.DescribeBackupVaultOutput
+}
+
 func (a *mqlAwsBackupVault) id() (string, error) {
 	return a.Arn.Data, nil
 }
 
+func (a *mqlAwsBackupVault) tags() (map[string]any, error) {
+	return backupResolveTags(a.MqlRuntime, &a.lazyTags, &a.Tags, a.Region.Data, a.Arn.Data)
+}
+
+type mqlAwsBackupVaultRecoveryPointInternal struct {
+	lazyTags
+	cacheEncryptionKeyArn string
+	cacheIamRoleArn       string
+}
+
 func (a *mqlAwsBackupVaultRecoveryPoint) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+// tags passes no region: a recovery point has no region field, so the region
+// comes from its ARN, which is only parsed when Backup manages the resource.
+func (a *mqlAwsBackupVaultRecoveryPoint) tags() (map[string]any, error) {
+	return backupResolveTags(a.MqlRuntime, &a.lazyTags, &a.Tags, "", a.Arn.Data)
+}
+
+// backupManagedArn reports whether Backup can read tags for resourceArn, and
+// the region to read them from.
+//
+// ListTags only accepts resources Backup fully manages, whose ARNs begin with
+// arn:aws:backup. A recovery point of a resource Backup does not fully manage
+// keeps the source service's ARN (arn:aws:dynamodb, arn:aws:ec2, and so on),
+// and ListTags rejects those. Callers must report unreadable rather than empty
+// tags for them, or an audit filtering on a tag would silently treat every such
+// recovery point as untagged.
+func backupManagedArn(resourceArn string) (region string, ok bool) {
+	parsed, err := arn.Parse(resourceArn)
+	if err != nil || parsed.Service != "backup" {
+		return "", false
+	}
+	return parsed.Region, true
+}
+
+// backupResolveTags resolves and caches a Backup resource's tags, marking the
+// field null when Backup cannot read them.
+func backupResolveTags(runtime *plugin.Runtime, cache *lazyTags, field *plugin.TValue[map[string]any], region, resourceArn string) (map[string]any, error) {
+	return cache.resolveTags(field, func() (map[string]any, error) {
+		return backupTagsForArn(runtime, region, resourceArn)
+	})
+}
+
+// backupTagsForArn reads the tags of a Backup-managed resource, reporting
+// errTagsUnreadable for a resource Backup does not manage (see
+// backupManagedArn) or when the call is denied.
+func backupTagsForArn(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
+	arnRegion, ok := backupManagedArn(resourceArn)
+	if !ok {
+		return nil, errTagsUnreadable
+	}
+	if region == "" {
+		region = arnRegion
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Backup(region)
+	ctx := context.Background()
+
+	tags := map[string]any{}
+	var nextToken *string
+	for {
+		resp, err := svc.ListTags(ctx, &backup.ListTagsInput{
+			ResourceArn: &resourceArn,
+			NextToken:   nextToken,
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		for k, v := range resp.Tags {
+			tags[k] = v
+		}
+		if resp.NextToken == nil {
+			break
+		}
+		nextToken = resp.NextToken
+	}
+	return tags, nil
 }
 
 func (a *mqlAwsBackup) vaults() ([]any, error) {
@@ -78,19 +169,22 @@ func (a *mqlAwsBackup) getVaults(conn *connection.AwsConnection) []*jobpool.Job 
 				for _, v := range page.BackupVaultList {
 					mqlGroup, err := CreateResource(a.MqlRuntime, "aws.backup.vault",
 						map[string]*llx.RawData{
-							"arn":              llx.StringDataPtr(v.BackupVaultArn),
-							"createdAt":        llx.TimeDataPtr(v.CreationDate),
-							"encryptionKeyArn": llx.StringDataPtr(v.EncryptionKeyArn),
-							"locked":           llx.BoolDataPtr(v.Locked),
-							"lockedAt":         llx.TimeDataPtr(v.LockDate),
-							"maxRetentionDays": llx.IntDataPtr(v.MaxRetentionDays),
-							"minRetentionDays": llx.IntDataPtr(v.MinRetentionDays),
-							"name":             llx.StringDataPtr(v.BackupVaultName),
-							"region":           llx.StringData(region),
+							"arn":               llx.StringDataPtr(v.BackupVaultArn),
+							"createdAt":         llx.TimeDataPtr(v.CreationDate),
+							"locked":            llx.BoolDataPtr(v.Locked),
+							"lockedAt":          llx.TimeDataPtr(v.LockDate),
+							"maxRetentionDays":  llx.IntDataPtr(v.MaxRetentionDays),
+							"minRetentionDays":  llx.IntDataPtr(v.MinRetentionDays),
+							"name":              llx.StringDataPtr(v.BackupVaultName),
+							"region":            llx.StringData(region),
+							"vaultType":         llx.StringDataPtr(nonEmptyEnum(v.VaultType)),
+							"vaultState":        llx.StringDataPtr(nonEmptyEnum(v.VaultState)),
+							"encryptionKeyType": llx.StringDataPtr(nonEmptyEnum(v.EncryptionKeyType)),
 						})
 					if err != nil {
 						return nil, err
 					}
+					mqlGroup.(*mqlAwsBackupVault).cacheEncryptionKeyArn = convert.ToValue(v.EncryptionKeyArn)
 					res = append(res, mqlGroup)
 				}
 			}
@@ -102,19 +196,155 @@ func (a *mqlAwsBackup) getVaults(conn *connection.AwsConnection) []*jobpool.Job 
 	return tasks
 }
 
+// backupVaultNameFromArn extracts the vault name from a backup vault ARN of the
+// form arn:aws:backup:<region>:<account>:backup-vault:<name>.
+func backupVaultNameFromArn(vaultArn string) (name, region string, err error) {
+	parsed, err := arn.Parse(vaultArn)
+	if err != nil {
+		return "", "", err
+	}
+	return strings.TrimPrefix(parsed.Resource, "backup-vault:"), parsed.Region, nil
+}
+
+// initAwsBackupVault resolves a vault from its ARN, or from a name and region.
+// Without it, the typed vault accessors on scan jobs, copy actions, and access
+// points would hand back a resource whose fields are all unset.
+func initAwsBackupVault(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	var name, region string
+	var accountID *string
+	if args["arn"] != nil {
+		vaultArn := args["arn"].Value.(string)
+		var err error
+		name, region, err = backupVaultNameFromArn(vaultArn)
+		if err != nil {
+			return nil, nil, err
+		}
+		// A restore access vault points at a logically air-gapped vault that
+		// may belong to another account; naming that account is what lets the
+		// describe call find it.
+		if owner := backupVaultAccountFromArn(vaultArn); owner != "" && owner != conn.AccountId() {
+			accountID = &owner
+		}
+	} else if args["name"] != nil && args["region"] != nil {
+		name = args["name"].Value.(string)
+		region = args["region"].Value.(string)
+	} else {
+		return nil, nil, errors.New("arn, or name and region, required to fetch aws backup vault")
+	}
+
+	svc := conn.Backup(region)
+	vault, err := svc.DescribeBackupVault(context.Background(), &backup.DescribeBackupVaultInput{
+		BackupVaultName:      &name,
+		BackupVaultAccountId: accountID,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	res, err := CreateResource(runtime, "aws.backup.vault", backupVaultArgs(vault, region))
+	if err != nil {
+		return nil, nil, err
+	}
+	// The encryption key is not an argument: the schema exposes it as the typed
+	// encryptionKey accessor, which reads the ARN back off the internal cache.
+	// Seeding it here is what makes that accessor resolve on this path as well
+	// as on the listing path.
+	mqlVault := res.(*mqlAwsBackupVault)
+	mqlVault.cacheEncryptionKeyArn = convert.ToValue(vault.EncryptionKeyArn)
+	// The describe output is what the detail fields read, so seed it rather
+	// than describe the vault a second time.
+	mqlVault.detail = vault
+	mqlVault.detailFetched = true
+	return nil, res, nil
+}
+
+// backupVaultArgs maps a described vault onto the fields aws.backup.vault
+// declares. Every key here has to be a settable field: SetAllData fails the
+// whole resource on an unknown one, so a field that the schema exposes through
+// a typed accessor - encryptionKey - must be seeded on the internal cache
+// instead of passed as an argument.
+func backupVaultArgs(vault *backup.DescribeBackupVaultOutput, region string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"arn":               llx.StringDataPtr(vault.BackupVaultArn),
+		"name":              llx.StringDataPtr(vault.BackupVaultName),
+		"region":            llx.StringData(region),
+		"createdAt":         llx.TimeDataPtr(vault.CreationDate),
+		"locked":            llx.BoolDataPtr(vault.Locked),
+		"lockedAt":          llx.TimeDataPtr(vault.LockDate),
+		"maxRetentionDays":  llx.IntDataPtr(vault.MaxRetentionDays),
+		"minRetentionDays":  llx.IntDataPtr(vault.MinRetentionDays),
+		"vaultType":         llx.StringDataPtr(nonEmptyEnum(vault.VaultType)),
+		"vaultState":        llx.StringDataPtr(nonEmptyEnum(vault.VaultState)),
+		"encryptionKeyType": llx.StringDataPtr(nonEmptyEnum(vault.EncryptionKeyType)),
+	}
+}
+
+// backupVaultAccountFromArn returns the account ID in a backup vault ARN, or
+// an empty string when the ARN does not parse.
+func backupVaultAccountFromArn(vaultArn string) string {
+	parsed, err := arn.Parse(vaultArn)
+	if err != nil {
+		return ""
+	}
+	return parsed.AccountID
+}
+
+// newMqlBackupRecoveryPoint builds a recovery point resource. Both the vault
+// listing and the per-recovery-point describe call feed through here so the two
+// paths populate an identical resource.
+func newMqlBackupRecoveryPoint(runtime *plugin.Runtime, rp backuptypes.RecoveryPointByBackupVault) (plugin.Resource, error) {
+	createdBy, err := convert.JsonToDict(rp.CreatedBy)
+	if err != nil {
+		return nil, err
+	}
+	res, err := CreateResource(runtime, "aws.backup.vaultRecoveryPoint",
+		backupRecoveryPointArgs(rp, createdBy))
+	if err != nil {
+		return nil, err
+	}
+	// The KMS key and the IAM role are not arguments: the schema exposes both
+	// as typed accessors, which read the ARNs back off the internal cache.
+	mqlRP := res.(*mqlAwsBackupVaultRecoveryPoint)
+	mqlRP.cacheEncryptionKeyArn = convert.ToValue(rp.EncryptionKeyArn)
+	mqlRP.cacheIamRoleArn = convert.ToValue(rp.IamRoleArn)
+	return mqlRP, nil
+}
+
+// backupRecoveryPointArgs maps a recovery point onto the fields
+// aws.backup.vaultRecoveryPoint declares. Every key has to be a settable
+// field: SetAllData fails the whole resource on an unknown one, so the two
+// ARNs the schema exposes through typed accessors - encryptionKey and iamRole
+// - are seeded on the internal cache instead of passed here.
+func backupRecoveryPointArgs(rp backuptypes.RecoveryPointByBackupVault, createdBy map[string]any) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"arn":                  llx.StringDataPtr(rp.RecoveryPointArn),
+		"completionDate":       llx.TimeDataPtr(rp.CompletionDate),
+		"createdAt":            llx.TimeDataPtr(rp.CreationDate),
+		"createdBy":            llx.MapData(createdBy, types.String),
+		"isEncrypted":          llx.BoolData(rp.IsEncrypted),
+		"resourceType":         llx.StringDataPtr(rp.ResourceType),
+		"status":               llx.StringData(string(rp.Status)),
+		"sourceResourceArn":    llx.StringDataPtr(rp.ResourceArn),
+		"sourceBackupVaultArn": llx.StringDataPtr(rp.SourceBackupVaultArn),
+	}
+}
+
 func (a *mqlAwsBackupVault) recoveryPoints() ([]any, error) {
-	vArn := a.Arn.Data
-	parsedArn, err := arn.Parse(vArn)
+	name, region, err := backupVaultNameFromArn(a.Arn.Data)
 	if err != nil {
 		return nil, err
 	}
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
-	svc := conn.Backup(parsedArn.Region)
+	svc := conn.Backup(region)
 	ctx := context.Background()
 	res := []any{}
 
-	name := strings.TrimPrefix(parsedArn.Resource, "backup-vault:")
 	params := &backup.ListRecoveryPointsByBackupVaultInput{BackupVaultName: &name}
 	paginator := backup.NewListRecoveryPointsByBackupVaultPaginator(svc, params)
 	for paginator.HasMorePages() {
@@ -123,27 +353,12 @@ func (a *mqlAwsBackupVault) recoveryPoints() ([]any, error) {
 			return nil, err
 		}
 		for _, rp := range recovPoints.RecoveryPoints {
-			createdBy, err := convert.JsonToDict(rp.CreatedBy)
+			mqlRP, err := newMqlBackupRecoveryPoint(a.MqlRuntime, rp)
 			if err != nil {
 				return nil, err
 			}
-			mqlRP, err := CreateResource(a.MqlRuntime, "aws.backup.vaultRecoveryPoint",
-				map[string]*llx.RawData{
-					"arn":                  llx.StringDataPtr(rp.RecoveryPointArn),
-					"completionDate":       llx.TimeDataPtr(rp.CompletionDate),
-					"createdAt":            llx.TimeDataPtr(rp.CreationDate),
-					"createdBy":            llx.MapData(createdBy, types.String),
-					"encryptionKeyArn":     llx.StringDataPtr(rp.EncryptionKeyArn),
-					"iamRoleArn":           llx.StringDataPtr(rp.IamRoleArn),
-					"isEncrypted":          llx.BoolData(rp.IsEncrypted),
-					"resourceType":         llx.StringDataPtr(rp.ResourceType),
-					"status":               llx.StringData(string(rp.Status)),
-					"sourceResourceArn":    llx.StringDataPtr(rp.ResourceArn),
-					"sourceBackupVaultArn": llx.StringDataPtr(rp.SourceBackupVaultArn),
-				})
-			if err != nil {
-				return nil, err
-			}
+			mqlRP.(*mqlAwsBackupVaultRecoveryPoint).cacheEncryptionKeyArn = convert.ToValue(rp.EncryptionKeyArn)
+			mqlRP.(*mqlAwsBackupVaultRecoveryPoint).cacheIamRoleArn = convert.ToValue(rp.IamRoleArn)
 			res = append(res, mqlRP)
 		}
 	}
@@ -167,8 +382,7 @@ func (a *mqlAwsBackupVault) accessPolicy() (string, error) {
 	})
 	if err != nil {
 		// vaults without an access policy return ResourceNotFoundException
-		var rnf *backuptypes.ResourceNotFoundException
-		if errors.As(err, &rnf) {
+		if _, ok := errors.AsType[*backuptypes.ResourceNotFoundException](err); ok {
 			return "", nil
 		}
 		return "", err
@@ -186,6 +400,14 @@ func (a *mqlAwsBackupVault) policyStatements() ([]any, error) {
 // ========================
 // aws.backup.plan
 // ========================
+
+type mqlAwsBackupPlanInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsBackupPlan) tags() (map[string]any, error) {
+	return backupResolveTags(a.MqlRuntime, &a.lazyTags, &a.Tags, a.Region.Data, a.Arn.Data)
+}
 
 func (a *mqlAwsBackupPlan) id() (string, error) {
 	return a.Arn.Data, nil
@@ -297,44 +519,6 @@ func (a *mqlAwsBackupPlan) rules() ([]any, error) {
 			return nil, err
 		}
 		res = append(res, mqlRule)
-	}
-	return res, nil
-}
-
-func (a *mqlAwsBackupPlan) selections() ([]any, error) {
-	planId := a.Id.Data
-	planArn := a.Arn.Data
-
-	region, err := GetRegionFromArn(planArn)
-	if err != nil {
-		return nil, err
-	}
-
-	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.Backup(region)
-	ctx := context.Background()
-
-	res := []any{}
-	var nextToken *string
-	for {
-		resp, err := svc.ListBackupSelections(ctx, &backup.ListBackupSelectionsInput{
-			BackupPlanId: &planId,
-			NextToken:    nextToken,
-		})
-		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return nil, nil
-			}
-			return nil, err
-		}
-		for _, sel := range resp.BackupSelectionsList {
-			d, _ := convert.JsonToDict(sel)
-			res = append(res, d)
-		}
-		if resp.NextToken == nil {
-			break
-		}
-		nextToken = resp.NextToken
 	}
 	return res, nil
 }
@@ -684,7 +868,6 @@ func newMqlBackupCopyAction(runtime *plugin.Runtime, ruleId string, ca backuptyp
 		map[string]*llx.RawData{
 			"__id":                                llx.StringData(uniqueId),
 			"id":                                  llx.StringData(uniqueId),
-			"destinationBackupVaultArn":           llx.StringData(destArn),
 			"deleteAfterDays":                     llx.IntData(deleteAfterDays),
 			"moveToColdStorageAfterDays":          llx.IntData(moveToColdStorageDays),
 			"optInToArchiveForSupportedResources": llx.BoolData(optInToArchive),
@@ -692,6 +875,7 @@ func newMqlBackupCopyAction(runtime *plugin.Runtime, ruleId string, ca backuptyp
 	if err != nil {
 		return nil, err
 	}
+	resource.(*mqlAwsBackupPlanRuleCopyAction).cacheDestinationBackupVaultArn = destArn
 	return resource.(*mqlAwsBackupPlanRuleCopyAction), nil
 }
 
@@ -733,7 +917,7 @@ func (a *mqlAwsBackupPlanRuleCopyAction) id() (string, error) {
 }
 
 func (a *mqlAwsBackupVault) encryptionKey() (*mqlAwsKmsKey, error) {
-	arnVal := a.EncryptionKeyArn.Data
+	arnVal := a.cacheEncryptionKeyArn
 	if arnVal == "" {
 		a.EncryptionKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -747,7 +931,7 @@ func (a *mqlAwsBackupVault) encryptionKey() (*mqlAwsKmsKey, error) {
 }
 
 func (a *mqlAwsBackupVaultRecoveryPoint) iamRole() (*mqlAwsIamRole, error) {
-	arnVal := a.IamRoleArn.Data
+	arnVal := a.cacheIamRoleArn
 	if arnVal == "" {
 		a.IamRole.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -761,7 +945,7 @@ func (a *mqlAwsBackupVaultRecoveryPoint) iamRole() (*mqlAwsIamRole, error) {
 }
 
 func (a *mqlAwsBackupVaultRecoveryPoint) encryptionKey() (*mqlAwsKmsKey, error) {
-	arnVal := a.EncryptionKeyArn.Data
+	arnVal := a.cacheEncryptionKeyArn
 	if arnVal == "" {
 		a.EncryptionKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -775,7 +959,7 @@ func (a *mqlAwsBackupVaultRecoveryPoint) encryptionKey() (*mqlAwsKmsKey, error) 
 }
 
 func (a *mqlAwsBackupPlanRuleCopyAction) destinationVault() (*mqlAwsBackupVault, error) {
-	arnVal := a.DestinationBackupVaultArn.Data
+	arnVal := a.cacheDestinationBackupVaultArn
 	if arnVal == "" {
 		a.DestinationVault.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -866,6 +1050,204 @@ func (a *mqlAwsBackupScanJob) scannerRole() (*mqlAwsIamRole, error) {
 	return res.(*mqlAwsIamRole), nil
 }
 
+// ========================
+// aws.backup.accessPoint
+// ========================
+
+type mqlAwsBackupAccessPointInternal struct {
+	lazyTags
+	cacheVaultArn         string
+	cacheVaultName        string
+	cacheRecoveryPointArn string
+	cacheRegion           string
+}
+
+func (a *mqlAwsBackupAccessPoint) tags() (map[string]any, error) {
+	return backupResolveTags(a.MqlRuntime, &a.lazyTags, &a.Tags, a.Region.Data, a.Arn.Data)
+}
+
+func (a *mqlAwsBackupAccessPoint) id() (string, error) {
+	return a.Arn.Data, nil
+}
+
+func newMqlBackupAccessPoint(runtime *plugin.Runtime, region string, ap backuptypes.ListAccessPointsMember) (*mqlAwsBackupAccessPoint, error) {
+	resource, err := CreateResource(runtime, ResourceAwsBackupAccessPoint,
+		map[string]*llx.RawData{
+			"__id":              llx.StringDataPtr(ap.AccessPointArn),
+			"arn":               llx.StringDataPtr(ap.AccessPointArn),
+			"name":              llx.StringDataPtr(ap.Name),
+			"region":            llx.StringData(region),
+			"status":            llx.StringData(string(ap.Status)),
+			"statusMessage":     llx.StringDataPtr(ap.StatusMessage),
+			"resourceType":      llx.StringDataPtr(ap.ResourceType),
+			"sourceResourceArn": llx.StringDataPtr(ap.ResourceArn),
+			"backupVaultName":   llx.StringDataPtr(ap.BackupVaultName),
+			"metadata":          llx.MapData(toInterfaceMap(ap.AccessPointMetadata), types.String),
+			"createdAt":         llx.TimeDataPtr(ap.CreationTime),
+		})
+	if err != nil {
+		return nil, err
+	}
+
+	mqlAp := resource.(*mqlAwsBackupAccessPoint)
+	mqlAp.cacheVaultArn = convert.ToValue(ap.BackupVaultArn)
+	mqlAp.cacheVaultName = convert.ToValue(ap.BackupVaultName)
+	mqlAp.cacheRecoveryPointArn = convert.ToValue(ap.RecoveryPointArn)
+	mqlAp.cacheRegion = region
+	return mqlAp, nil
+}
+
+func (a *mqlAwsBackup) accessPoints() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+
+	res := []any{}
+	poolOfJobs := jobpool.CreatePool(a.getAccessPoints(conn), 5)
+	poolOfJobs.Run()
+
+	if poolOfJobs.HasErrors() {
+		return nil, poolOfJobs.GetErrors()
+	}
+	for i := range poolOfJobs.Jobs {
+		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
+	}
+
+	return res, nil
+}
+
+func (a *mqlAwsBackup) getAccessPoints(conn *connection.AwsConnection) []*jobpool.Job {
+	tasks := make([]*jobpool.Job, 0)
+	regions, err := conn.Regions()
+	if err != nil {
+		return []*jobpool.Job{{Err: err}}
+	}
+
+	for _, region := range regions {
+		f := func() (jobpool.JobResult, error) {
+			svc := conn.Backup(region)
+			ctx := context.Background()
+			res := []any{}
+
+			paginator := backup.NewListBackupAccessPointsPaginator(svc, &backup.ListBackupAccessPointsInput{})
+			for paginator.HasMorePages() {
+				page, err := paginator.NextPage(ctx)
+				if err != nil {
+					if Is400AccessDeniedError(err) {
+						log.Warn().Str("region", region).Msg("error accessing region for AWS API")
+						return res, nil
+					}
+					if IsServiceNotAvailableInRegionError(err) {
+						log.Debug().Str("region", region).Msg("aws backup access points are not available in region")
+						return res, nil
+					}
+					return nil, err
+				}
+				for _, ap := range page.BackupAccessPoints {
+					mqlAp, err := newMqlBackupAccessPoint(a.MqlRuntime, region, ap)
+					if err != nil {
+						return nil, err
+					}
+					res = append(res, mqlAp)
+				}
+			}
+
+			return jobpool.JobResult(res), nil
+		}
+		tasks = append(tasks, jobpool.NewJob(f))
+	}
+	return tasks
+}
+
+func (a *mqlAwsBackupVaultRecoveryPoint) accessPoints() ([]any, error) {
+	rpArn := a.Arn.Data
+	region, err := GetRegionFromArn(rpArn)
+	if err != nil {
+		return nil, err
+	}
+
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Backup(region)
+	ctx := context.Background()
+
+	res := []any{}
+	paginator := backup.NewListBackupAccessPointsByRecoveryPointPaginator(svc, &backup.ListBackupAccessPointsByRecoveryPointInput{
+		RecoveryPointArn: &rpArn,
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return res, nil
+			}
+			return nil, err
+		}
+		for _, ap := range page.BackupAccessPoints {
+			mqlAp, err := newMqlBackupAccessPoint(a.MqlRuntime, region, ap)
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlAp)
+		}
+	}
+	return res, nil
+}
+
+func (a *mqlAwsBackupAccessPoint) vault() (*mqlAwsBackupVault, error) {
+	args := map[string]*llx.RawData{}
+	switch {
+	case a.cacheVaultArn != "":
+		args["arn"] = llx.StringData(a.cacheVaultArn)
+	case a.cacheVaultName != "" && a.cacheRegion != "":
+		args["name"] = llx.StringData(a.cacheVaultName)
+		args["region"] = llx.StringData(a.cacheRegion)
+	default:
+		a.Vault.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.backup.vault", args)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsBackupVault), nil
+}
+
+// recoveryPoint describes the recovery point the access point reads. A recovery
+// point ARN does not carry its vault name, so there is no ARN-only lookup to
+// defer to; the access point already knows both and resolves it here.
+func (a *mqlAwsBackupAccessPoint) recoveryPoint() (*mqlAwsBackupVaultRecoveryPoint, error) {
+	if a.cacheRecoveryPointArn == "" || a.cacheVaultName == "" {
+		a.RecoveryPoint.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Backup(a.cacheRegion)
+	rp, err := svc.DescribeRecoveryPoint(context.Background(), &backup.DescribeRecoveryPointInput{
+		BackupVaultName:  &a.cacheVaultName,
+		RecoveryPointArn: &a.cacheRecoveryPointArn,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := newMqlBackupRecoveryPoint(a.MqlRuntime, backuptypes.RecoveryPointByBackupVault{
+		RecoveryPointArn:     rp.RecoveryPointArn,
+		CompletionDate:       rp.CompletionDate,
+		CreationDate:         rp.CreationDate,
+		CreatedBy:            rp.CreatedBy,
+		EncryptionKeyArn:     rp.EncryptionKeyArn,
+		IamRoleArn:           rp.IamRoleArn,
+		IsEncrypted:          rp.IsEncrypted,
+		ResourceType:         rp.ResourceType,
+		Status:               rp.Status,
+		ResourceArn:          rp.ResourceArn,
+		SourceBackupVaultArn: rp.SourceBackupVaultArn,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsBackupVaultRecoveryPoint), nil
+}
+
 func (a *mqlAwsBackupScanJob) backupPlan() (*mqlAwsBackupPlan, error) {
 	if a.cacheBackupPlanArn == "" {
 		a.BackupPlan.State = plugin.StateIsNull | plugin.StateIsSet
@@ -877,4 +1259,8 @@ func (a *mqlAwsBackupScanJob) backupPlan() (*mqlAwsBackupPlan, error) {
 		return nil, err
 	}
 	return res.(*mqlAwsBackupPlan), nil
+}
+
+type mqlAwsBackupPlanRuleCopyActionInternal struct {
+	cacheDestinationBackupVaultArn string
 }

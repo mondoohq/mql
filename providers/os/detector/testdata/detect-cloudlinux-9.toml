@@ -1,0 +1,23 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[files."/etc/redhat-release"]
+content = "CloudLinux release 9.6 (Vladimir Lyakhov)"
+
+[files."/etc/os-release"]
+content = """
+NAME="CloudLinux"
+VERSION="9.6 (Vladimir Lyakhov)"
+ID="cloudlinux"
+ID_LIKE="rhel fedora centos"
+VERSION_ID="9.6"
+PLATFORM_ID="platform:el9"
+PRETTY_NAME="CloudLinux 9.6 (Vladimir Lyakhov)"
+ANSI_COLOR="0;31"
+CPE_NAME="cpe:/o:cloudlinux:cloudlinux:9.6:GA:server"
+HOME_URL="https://www.cloudlinux.com/"
+BUG_REPORT_URL="https://cloudlinux.zendesk.com/"
+"""

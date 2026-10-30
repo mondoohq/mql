@@ -6,13 +6,11 @@ package resources
 import (
 	"context"
 	"fmt"
-	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
-	"google.golang.org/api/googleapi"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/healthcare/v1"
 	"google.golang.org/api/option"
 )
@@ -23,19 +21,6 @@ func newHealthcareService(conn *connection.GcpConnection) (*healthcare.Service, 
 		return nil, err
 	}
 	return healthcare.NewService(context.Background(), option.WithHTTPClient(client))
-}
-
-// healthcareServiceUnavailable reports whether an API error should be treated
-// as graceful degradation (API not enabled or resource not found).
-func healthcareServiceUnavailable(err error) bool {
-	gerr, ok := err.(*googleapi.Error)
-	if !ok {
-		return false
-	}
-	if gerr.Code == 403 || gerr.Code == 404 {
-		return true
-	}
-	return strings.Contains(gerr.Message, "not enabled") || strings.Contains(gerr.Message, "has not been used")
 }
 
 func (g *mqlGcpProject) healthcare() (*mqlGcpProjectHealthcareService, error) {
@@ -101,7 +86,7 @@ func (g *mqlGcpProjectHealthcareService) datasets() ([]any, error) {
 				return nil
 			})
 			if listErr != nil {
-				if healthcareServiceUnavailable(listErr) {
+				if isSkippable(listErr) {
 					continue
 				}
 				return listErr
@@ -109,7 +94,7 @@ func (g *mqlGcpProjectHealthcareService) datasets() ([]any, error) {
 		}
 		return nil
 	}); err != nil {
-		if healthcareServiceUnavailable(err) {
+		if isSkippable(err) {
 			return []any{}, nil
 		}
 		return nil, err
@@ -172,7 +157,7 @@ func (g *mqlGcpProjectHealthcareServiceDataset) dicomStores() ([]any, error) {
 		}
 		return nil
 	}); err != nil {
-		if healthcareServiceUnavailable(err) {
+		if isSkippable(err) {
 			return []any{}, nil
 		}
 		return nil, err
@@ -219,7 +204,7 @@ func (g *mqlGcpProjectHealthcareServiceDataset) fhirStores() ([]any, error) {
 		}
 		return nil
 	}); err != nil {
-		if healthcareServiceUnavailable(err) {
+		if isSkippable(err) {
 			return []any{}, nil
 		}
 		return nil, err
@@ -268,7 +253,7 @@ func (g *mqlGcpProjectHealthcareServiceDataset) hl7v2Stores() ([]any, error) {
 		}
 		return nil
 	}); err != nil {
-		if healthcareServiceUnavailable(err) {
+		if isSkippable(err) {
 			return []any{}, nil
 		}
 		return nil, err

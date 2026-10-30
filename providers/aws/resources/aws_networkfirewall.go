@@ -14,11 +14,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/networkfirewall"
 	nftypes "github.com/aws/aws-sdk-go-v2/service/networkfirewall/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsNetworkfirewall) id() (string, error) {
@@ -114,18 +115,29 @@ func (a *mqlAwsNetworkfirewall) getFirewalls(conn *connection.AwsConnection) []*
 				}
 				var encryptionType string
 				var kmsKeyId *string
-				var encryptionDict any
 				if f.EncryptionConfiguration != nil {
 					encryptionType = string(f.EncryptionConfiguration.Type)
 					kmsKeyId = f.EncryptionConfiguration.KeyId
-					// Populate the deprecated encryptionConfiguration dict so existing
-					// queries continue to resolve. New code should use the typed
-					// encryptionType and kmsKey fields.
-					if d, derr := convert.JsonToDict(f.EncryptionConfiguration); derr == nil {
-						encryptionDict = d
-					}
 				}
 				tags := nfTagsToMap(f.Tags)
+
+				proxyListeners := []any{}
+				if f.ProxySettings != nil {
+					for _, lp := range f.ProxySettings.ListenerProperties {
+						d, derr := convert.JsonToDict(lp)
+						if derr != nil {
+							log.Warn().Err(derr).Msg("failed to convert proxy listener property")
+							continue
+						}
+						proxyListeners = append(proxyListeners, d)
+					}
+				}
+				natGatewayIds := make([]string, 0, len(f.NatGatewayMappings))
+				for _, ngm := range f.NatGatewayMappings {
+					if ngm.NatGatewayId != nil {
+						natGatewayIds = append(natGatewayIds, *ngm.NatGatewayId)
+					}
+				}
 
 				mqlFirewall, err := CreateResource(a.MqlRuntime, "aws.networkfirewall.firewall",
 					map[string]*llx.RawData{
@@ -139,7 +151,8 @@ func (a *mqlAwsNetworkfirewall) getFirewalls(conn *connection.AwsConnection) []*
 						"firewallPolicyArn":              llx.StringDataPtr(f.FirewallPolicyArn),
 						"subnetMappings":                 llx.ArrayData(subnetMappings, "dict"),
 						"encryptionType":                 llx.StringData(encryptionType),
-						"encryptionConfiguration":        llx.DictData(encryptionDict),
+						"noSourcePreservation":           llx.BoolData(f.NoSourcePreservation),
+						"proxyListeners":                 llx.ArrayData(proxyListeners, "dict"),
 						"tags":                           llx.MapData(tags, "string"),
 					})
 				if err != nil {
@@ -150,6 +163,7 @@ func (a *mqlAwsNetworkfirewall) getFirewalls(conn *connection.AwsConnection) []*
 				mqlFw.cacheSubnetIds = subnetIds
 				mqlFw.cacheKmsKeyId = kmsKeyId
 				mqlFw.cacheStatusVal = detail.FirewallStatus
+				mqlFw.cacheNatGatewayIds = natGatewayIds
 				res = append(res, mqlFirewall)
 			}
 			return jobpool.JobResult(res), nil
@@ -160,19 +174,25 @@ func (a *mqlAwsNetworkfirewall) getFirewalls(conn *connection.AwsConnection) []*
 }
 
 type mqlAwsNetworkfirewallFirewallInternal struct {
-	cacheVpcId      *string
-	cacheSubnetIds  []string
-	cacheKmsKeyId   *string
-	cacheStatusVal  *nftypes.FirewallStatus
-	cacheLogConfig  *nftypes.LoggingConfiguration
-	cacheLogFetched bool
-	cacheLogLock    sync.Mutex
+	cacheVpcId         *string
+	cacheSubnetIds     []string
+	cacheKmsKeyId      *string
+	cacheNatGatewayIds []string
+	cacheStatusVal     *nftypes.FirewallStatus
+	cacheLogConfig     *nftypes.LoggingConfiguration
+	cacheLogFetched    bool
+	cacheLogLock       sync.Mutex
 }
 
 type mqlAwsNetworkfirewallPolicyInternal struct {
 	cacheStatelessRuleGroupArns []string
 	cacheStatefulRuleGroupArns  []string
 	cacheKmsKeyId               *string
+	cacheResolvedIPValidation   *nftypes.Route53ResolvedIPValidation
+}
+
+type mqlAwsNetworkfirewallPolicyRoute53ResolvedIpValidationInternal struct {
+	cacheRuleGroupId string
 }
 
 type mqlAwsNetworkfirewallRulegroupInternal struct {
@@ -197,6 +217,27 @@ func (a *mqlAwsNetworkfirewallFirewall) vpc() (*mqlAwsVpc, error) {
 		return nil, err
 	}
 	return mqlVpc.(*mqlAwsVpc), nil
+}
+
+func (a *mqlAwsNetworkfirewallFirewall) natGateways() ([]any, error) {
+	res := []any{}
+	for _, natGatewayId := range a.cacheNatGatewayIds {
+		if natGatewayId == "" {
+			continue
+		}
+		// The NAT gateway id does not encode a region, so the init needs the
+		// firewall's region alongside it to run a targeted lookup.
+		mqlNat, err := NewResource(a.MqlRuntime, "aws.vpc.natgateway",
+			map[string]*llx.RawData{
+				"natGatewayId": llx.StringData(natGatewayId),
+				"region":       llx.StringData(a.Region.Data),
+			})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlNat)
+	}
+	return res, nil
 }
 
 func (a *mqlAwsNetworkfirewallFirewall) subnets() ([]any, error) {
@@ -595,7 +636,60 @@ func networkfirewallPolicyToMql(runtime *plugin.Runtime, policyResp *nftypes.Fir
 	mp.cacheStatelessRuleGroupArns = statelessArns
 	mp.cacheStatefulRuleGroupArns = statefulArns
 	mp.cacheKmsKeyId = kmsKeyId
+	mp.cacheResolvedIPValidation = policy.Route53ResolvedIPValidation
 	return mp, nil
+}
+
+func (a *mqlAwsNetworkfirewallPolicy) route53ResolvedIpValidation() (*mqlAwsNetworkfirewallPolicyRoute53ResolvedIpValidation, error) {
+	v := a.cacheResolvedIPValidation
+	if v == nil {
+		a.Route53ResolvedIpValidation.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := CreateResource(a.MqlRuntime, ResourceAwsNetworkfirewallPolicyRoute53ResolvedIpValidation,
+		map[string]*llx.RawData{
+			"__id":                      llx.StringData(a.Arn.Data + "/route53ResolvedIpValidation"),
+			"action":                    llx.StringData(string(v.Action)),
+			"dnsExpiryExceptionPolicy":  llx.StringData(string(v.DNSExpiryExceptionPolicy)),
+			"bypassDestinationIpRanges": nfAddressesToRaw(v.BypassDestinationValidationIPRanges, false),
+			"sourceIpRanges":            nfAddressesToRaw(v.SourceIPRanges, true),
+		})
+	if err != nil {
+		return nil, err
+	}
+	mv := res.(*mqlAwsNetworkfirewallPolicyRoute53ResolvedIpValidation)
+	mv.cacheRuleGroupId = convert.ToValue(v.DNSFirewallRuleGroupId)
+	return mv, nil
+}
+
+// nfAddressesToRaw converts Network Firewall address entries to a string list.
+// With nilIsNull set, an absent list becomes null instead of empty: for
+// SourceIPRanges an omitted list and an empty list mean different things.
+func nfAddressesToRaw(addrs []nftypes.Address, nilIsNull bool) *llx.RawData {
+	if addrs == nil && nilIsNull {
+		return llx.NilData
+	}
+	res := make([]any, 0, len(addrs))
+	for _, addr := range addrs {
+		if addr.AddressDefinition != nil {
+			res = append(res, *addr.AddressDefinition)
+		}
+	}
+	return llx.ArrayData(res, types.String)
+}
+
+func (a *mqlAwsNetworkfirewallPolicyRoute53ResolvedIpValidation) dnsFirewallRuleGroup() (*mqlAwsRoute53ResolverFirewallRuleGroup, error) {
+	if a.cacheRuleGroupId == "" {
+		a.DnsFirewallRuleGroup.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.route53.resolver.firewallRuleGroup", map[string]*llx.RawData{
+		"id": llx.StringData(a.cacheRuleGroupId),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsRoute53ResolverFirewallRuleGroup), nil
 }
 
 func (a *mqlAwsNetworkfirewallPolicy) statelessRuleGroups() ([]any, error) {
@@ -905,13 +999,7 @@ func (a *mqlAwsNetworkfirewallRulegroup) snsTopic() (*mqlAwsSnsTopic, error) {
 }
 
 func nfTagsToMap(tags []nftypes.Tag) map[string]any {
-	m := make(map[string]any, len(tags))
-	for _, t := range tags {
-		if t.Key != nil && t.Value != nil {
-			m[*t.Key] = *t.Value
-		}
-	}
-	return m
+	return tagsToMap(tags, func(t nftypes.Tag) *string { return t.Key }, func(t nftypes.Tag) *string { return t.Value })
 }
 
 type mqlAwsNetworkfirewallTlsInspectionConfigurationInternal struct {

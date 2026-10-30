@@ -6,17 +6,19 @@ package connection
 import (
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	subscriptions "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions/v2"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/azauth"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/azure/connection/shared"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/azauth"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/azure/connection/shared"
 )
 
 const (
@@ -26,6 +28,10 @@ const (
 	OptionSubscriptionID     = "subscription-id"
 	OptionPlatformOverride   = "platform-override"
 	OptionFederatedTokenFile = "azure-federated-token-file"
+	// OptionAuthMethod names the sign-in method(s) to use when no client secret
+	// or certificate is supplied, as a comma-separated list of
+	// azauth.CredentialMethod values. Unset means try all of them.
+	OptionAuthMethod = "auth-method"
 )
 
 type AzureConnection struct {
@@ -36,20 +42,85 @@ type AzureConnection struct {
 	// note: in the future, we might make this optional if we have a tenant-level asset.
 	subscriptionId string
 	clientOptions  policy.ClientOptions
+	// Filters holds the parsed discovery filters (from inventory.Discovery.Filter).
+	Filters DiscoveryFilters
+
+	// The ARM record of the subscription this connection is scoped to, fetched
+	// once and shared through Subscription.
+	subMu     sync.Mutex
+	subRecord *subscriptions.Subscription
 }
+
+// The credentials this process has built, by the identity each signs in as.
+//
+// Each discovered asset gets its own connection, and a credential built per
+// connection carries its own token cache, so a scan asked Entra for a fresh
+// token once per asset for an identity that already had a perfectly good one.
+// Discovery found these assets with this credential; it can scan them with it
+// too.
+//
+// Keyed by identity rather than shared outright because an inventory can hold
+// Azure assets under several tenants, and handing tenant A's token to tenant B's
+// asset would not fail cleanly -- it would scan as the wrong principal. Every
+// identity gets the same reuse, so an inventory spanning tenants is one
+// credential per tenant rather than one per asset.
+//
+// The map is bounded by the number of identities a process scans, which is the
+// number of Azure assets in its inventory, not the number of assets discovered
+// beneath them.
+var (
+	credentialMu    sync.Mutex
+	credentialCache = map[string]azcore.TokenCredential{}
+)
 
 // selectAzureCredential chooses the appropriate Azure token credential based on
 // the connection configuration. When a federated token file is provided (via
 // option or env var) and no explicit vault credential is present, it returns a
 // WorkloadIdentityCredential for keyless auth. Otherwise it falls through to
 // the standard cert/secret/default-chain path.
+//
+// The default chain is the expensive branch: it probes every sign-in method in
+// turn. A caller that knows how it authenticates can say so with
+// OptionAuthMethod and skip straight to the method that works.
 func selectAzureCredential(conf *inventory.Config) (azcore.TokenCredential, error) {
 	tenantId := conf.Options[OptionTenantID]
 	clientId := conf.Options[OptionClientID]
 
+	// parsed before the cache is consulted: an unusable auth-method is an error
+	// for the connection that names it, whether or not this identity already has
+	// a credential someone else built
+	methods, err := azauth.ParseCredentialMethods(conf.Options[OptionAuthMethod])
+	if err != nil {
+		return nil, err
+	}
+
 	var cred *vault.Credential
-	if len(conf.Credentials) != 0 {
+	if len(conf.Credentials) > 0 {
 		cred = conf.Credentials[0]
+	}
+
+	// held across the build, which is local -- constructing a credential
+	// contacts nothing -- so concurrent connects queue briefly rather than
+	// each building a chain of their own
+	//
+	// The Azure CLI signs in with the account and tenant that hold the
+	// connection's subscription (azauth.ChainedTokenOptions.Subscription).
+	// Under a tenant option every subscription is in that tenant, so they share
+	// a credential; without one, each subscription can be in another tenant,
+	// so it is part of the identity.
+	subscriptionId := conf.Options[OptionSubscriptionID]
+	identity := tenantId + "/" + clientId
+	if tenantId == "" {
+		identity += "/" + subscriptionId
+	}
+	credentialMu.Lock()
+	defer credentialMu.Unlock()
+	if cached, ok := credentialCache[identity]; ok {
+		log.Debug().
+			Str("tenant-id", tenantId).
+			Str("client-id", clientId).
+			Msg("azure: reusing cached credential")
+		return cached, nil
 	}
 
 	federatedTokenFile := conf.Options[OptionFederatedTokenFile]
@@ -57,10 +128,33 @@ func selectAzureCredential(conf *inventory.Config) (azcore.TokenCredential, erro
 		federatedTokenFile = os.Getenv("AZURE_FEDERATED_TOKEN_FILE")
 	}
 
-	if cred == nil && federatedTokenFile != "" {
-		return azauth.GetWorkloadIdentityToken(tenantId, clientId, federatedTokenFile)
+	// A token file with no method selection used to shortcut straight to a bare
+	// workload identity credential here, on the grounds that there was nothing
+	// left to probe. It cost more than it saved: the shortcut logged nothing, so
+	// a connection that authenticated this way was invisible and the only
+	// sign-ins in the logs were the ones configured some other way -- and the
+	// credential it returned had no chain behind it, so a stale token file was
+	// the end of the road rather than a fall back to the remaining methods.
+	//
+	// The chain is cheap to walk now that the managed identity probe sits at the
+	// end of it (see azauth.DefaultCredentialMethods), so there is nothing left
+	// to shortcut past.
+	token, err := azauth.GetTokenFromCredential(cred, &azauth.ChainedTokenOptions{
+		TenantID:           tenantId,
+		ClientID:           clientId,
+		Subscription:       subscriptionId,
+		FederatedTokenFile: federatedTokenFile,
+		Methods:            methods,
+		Source:             "azure-connection",
+	})
+	if err != nil {
+		// a failed build is not worth remembering: the next connection may be
+		// configured differently, and caching the failure would deny it its own try
+		return nil, err
 	}
-	return azauth.GetTokenFromCredential(cred, tenantId, clientId)
+
+	credentialCache[identity] = token
+	return token, nil
 }
 
 func NewAzureConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*AzureConnection, error) {
@@ -79,6 +173,7 @@ func NewAzureConnection(id uint32, asset *inventory.Asset, conf *inventory.Confi
 		clientOptions: policy.ClientOptions{
 			PerCallPolicies: []policy.Policy{&apiTracePolicy{}},
 		},
+		Filters: DiscoveryFiltersFromOpts(conf.GetDiscover().GetFilter()),
 	}, nil
 }
 
@@ -92,6 +187,32 @@ func (p *AzureConnection) Asset() *inventory.Asset {
 
 func (p *AzureConnection) SubId() string {
 	return p.subscriptionId
+}
+
+// Subscription returns the ARM record of the subscription this connection is
+// scoped to, fetched once and cached for the connection's lifetime. Asset
+// detection, discovery, and the azure.subscription resource all read the same
+// record; without the cache each of them pays its own GET.
+//
+// A failed fetch is not cached: the next caller gets its own try, the same way
+// credentialCache treats a failed credential build.
+func (p *AzureConnection) Subscription() (subscriptions.Subscription, error) {
+	if p.subscriptionId == "" {
+		return subscriptions.Subscription{}, errors.New("connection is not scoped to a subscription")
+	}
+
+	p.subMu.Lock()
+	defer p.subMu.Unlock()
+	if p.subRecord != nil {
+		return *p.subRecord, nil
+	}
+
+	record, err := NewSubscriptionsClient(p.token, p.clientOptions).GetSubscription(p.subscriptionId)
+	if err != nil {
+		return subscriptions.Subscription{}, err
+	}
+	p.subRecord = &record
+	return record, nil
 }
 
 func (p *AzureConnection) Token() azcore.TokenCredential {

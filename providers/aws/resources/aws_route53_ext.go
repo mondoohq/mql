@@ -11,10 +11,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 // ----- Traffic policies -----
@@ -40,7 +40,6 @@ func (a *mqlAwsRoute53) trafficPolicies() ([]any, error) {
 			return nil, err
 		}
 		for _, summary := range resp.TrafficPolicySummaries {
-			summary := summary
 			policy, err := getTrafficPolicy(ctx, svc, summary.Id, summary.LatestVersion)
 			if err != nil {
 				if Is400AccessDeniedError(err) {
@@ -156,7 +155,10 @@ func initAwsRoute53TrafficPolicy(runtime *plugin.Runtime, args map[string]*llx.R
 			return args, tp, nil
 		}
 	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.route53.trafficpolicy with id %q not found", idVal)
 }
 
 // ----- Traffic policy instances -----
@@ -187,7 +189,6 @@ func (a *mqlAwsRoute53) trafficPolicyInstances() ([]any, error) {
 			return nil, err
 		}
 		for _, inst := range resp.TrafficPolicyInstances {
-			inst := inst
 			mqlInst, err := newMqlAwsRoute53TrafficPolicyInstance(a.MqlRuntime, &inst)
 			if err != nil {
 				return nil, err
@@ -293,7 +294,6 @@ func (a *mqlAwsRoute53) cidrCollections() ([]any, error) {
 			return nil, err
 		}
 		for _, summary := range page.CidrCollections {
-			summary := summary
 			arnVal := convert.ToValue(summary.Arn)
 			idVal := convert.ToValue(summary.Id)
 			version := int64(0)
@@ -382,27 +382,6 @@ func fetchCidrBlocks(ctx context.Context, svc *route53.Client, collectionId, loc
 }
 
 // ----- DNSSEC per-zone view -----
-
-func (a *mqlAwsRoute53HostedZone) dnssecStatus() (any, error) {
-	if a.IsPrivate.Data {
-		return map[string]any{"serveSignature": "NOT_SIGNING", "statusMessage": "DNSSEC is not supported for private hosted zones"}, nil
-	}
-
-	resp, err := a.getDNSSEC()
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil {
-		return nil, nil
-	}
-
-	result := map[string]any{}
-	if resp.Status != nil {
-		result["serveSignature"] = convert.ToValue(resp.Status.ServeSignature)
-		result["statusMessage"] = convert.ToValue(resp.Status.StatusMessage)
-	}
-	return result, nil
-}
 
 func (a *mqlAwsRoute53HostedZone) dnssec() (*mqlAwsRoute53HostedZoneDnssec, error) {
 	hostedZoneId := a.Id.Data

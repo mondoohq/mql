@@ -4,19 +4,31 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/providers/helm/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/providers/helm/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "helm",
-	ID:              "go.mondoo.com/mql/v13/providers/helm",
-	Version:         "13.3.3",
+	Name: "helm",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "helm",
+	ID:      "go.mondoo.com/mql/providers/helm",
+	Version: "14.0.7",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	Maturity:        resources.MaturityExperimental,
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       provider.Platforms,
+	Targets: []plugin.TargetOptIn{
+		{
+			Target: "iac", Discovery: "helm", ConnType: provider.DefaultConnectionType, Auto: true,
+			Match: []plugin.Matcher{{Glob: "Chart.yaml"}},
+		},
+	},
 	Connectors: []plugin.Connector{
 		{
 			Name:  "helm",

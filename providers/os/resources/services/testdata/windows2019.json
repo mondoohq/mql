@@ -1,44 +1,47 @@
 [
     {
-        "Status":  4,
-        "Name":  "CoreMessagingRegistrar",
-        "DisplayName":  "CoreMessaging",
-        "StartType":  2
+        "Status": 4,
+        "Name": "CoreMessagingRegistrar",
+        "DisplayName": "CoreMessaging",
+        "StartType": 2
     },
     {
-        "Status":  4,
-        "Name":  "CryptSvc",
-        "DisplayName":  "Cryptographic Services",
-        "StartType":  2
+        "Status": 4,
+        "Name": "CryptSvc",
+        "DisplayName": "Cryptographic Services",
+        "StartType": 2
     },
     {
-        "Status":  1,
-        "Name":  "PhoneSvc",
-        "DisplayName":  "Phone Service",
-        "StartType":  4
+        "Status": 1,
+        "Name": "PhoneSvc",
+        "DisplayName": "Phone Service",
+        "StartType": 4,
+        "Description": null
     },
     {
-        "Status":  4,
-        "Name":  "PlugPlay",
-        "DisplayName":  "Plug and Play",
-        "StartType":  3
+        "Status": 4,
+        "Name": "PlugPlay",
+        "DisplayName": "Plug and Play",
+        "StartType": 3,
+        "Description": "Enables a computer to recognize and adapt to hardware changes with little or no user input. Stopping or disabling this service will result in system instability."
     },
     {
-        "Status":  1,
-        "Name":  "PolicyAgent",
-        "DisplayName":  "IPsec Policy Agent",
-        "StartType":  3
+        "Status": 1,
+        "Name": "PolicyAgent",
+        "DisplayName": "IPsec Policy Agent",
+        "StartType": 3,
+        "Description": "Internet Protocol security (IPsec) supports network-level peer authentication, data origin authentication, data integrity, data confidentiality (encryption), and replay protection.  This service enforces IPsec policies created through the IP Security Policies snap-in or the command-line tool \"netsh ipsec\".  If you stop this service, you may experience network connectivity issues if your policy requires that connections use IPsec.  Also,remote management of Windows Defender Firewall is not available when this service is stopped."
     },
     {
-        "Status":  4,
-        "Name":  "Power",
-        "DisplayName":  "Power",
-        "StartType":  2
+        "Status": 4,
+        "Name": "Power",
+        "DisplayName": "Power",
+        "StartType": 2
     },
     {
-        "Status":  1,
-        "Name":  "wuauserv",
-        "DisplayName":  "Windows Update",
-        "StartType":  3
+        "Status": 1,
+        "Name": "wuauserv",
+        "DisplayName": "Windows Update",
+        "StartType": 3
     }
 ]

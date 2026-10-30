@@ -6,12 +6,13 @@ package resources
 import (
 	"context"
 
+	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/stringx"
 )
 
 // connectedAppsTokenFanoutLimit bounds the parallel Tokens.List fan-out
@@ -29,11 +30,13 @@ type connectedApp struct {
 }
 
 func (g *mqlGoogleworkspace) connectedApps() ([]any, error) {
-	// get all users
-	if g.Users.Error != nil {
-		return nil, g.Users.Error
+	// get all users. Resolve via GetUsers() so connectedApps works even when
+	// the caller never touched googleworkspace.users directly.
+	usersField := g.GetUsers()
+	if usersField.Error != nil {
+		return nil, usersField.Error
 	}
-	users := g.Users.Data
+	users := usersField.Data
 
 	// Phase 1: fan out Tokens.List for every user in parallel. Each user's
 	// tokens are independent API calls, so the previous serial loop was
@@ -95,7 +98,11 @@ func (g *mqlGoogleworkspace) connectedApps() ([]any, error) {
 				return nil, tk.Scopes.Error
 			}
 			for _, scope := range tk.Scopes.Data {
-				cApp.scopes = append(cApp.scopes, scope.(string))
+				if s, ok := scope.(string); ok {
+					cApp.scopes = append(cApp.scopes, s)
+				} else {
+					log.Warn().Str("clientId", clientID).Msgf("googleworkspace> unexpected scope type %T in connected-app token; dropping", scope)
+				}
 			}
 
 			cApp.tokens = append(cApp.tokens, tk)

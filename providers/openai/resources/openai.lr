@@ -1,16 +1,24 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/openai"
-option go_package = "go.mondoo.com/mql/v13/providers/openai/resources"
+option go_package = "go.mondoo.com/mql/providers/openai/resources"
+option root = "openai"
 
 // OpenAI account
 //
-// Use the `openai` resource to examine an OpenAI account, including
-// available models, uploaded files, fine-tuning jobs, vector stores,
-// and projects. This resource provides the online API inventory for
-// AI Bill of Materials (AIBOM) generation.
-openai @defaults("organization") @maturity("preview") {
+// Online API inventory for an OpenAI account, spanning available
+// models, uploaded files, fine-tuning jobs, vector stores, projects,
+// organization users, groups, roles, admin API keys, pending invites,
+// and audit logs. This inventory supports AI Bill of Materials (AIBOM)
+// generation and lets you audit model lineage, organization membership,
+// privilege assignment, and security-relevant activity across the
+// organization. Several collections (users, groups, roles, admin API
+// keys, invites, audit logs, project keys, and service accounts)
+// require an admin API key.
+openai @defaults("organization") @maturity("preview") @root {
   // Organization ID associated with the API key
   organization() string
   // Project ID associated with the API key
@@ -29,19 +37,185 @@ openai @defaults("organization") @maturity("preview") {
   users() []openai.organizationUser
   // Pending invites (requires admin API key)
   invites() []openai.invite
-  // Audit log entries (requires admin API key)
+  // Audit log entries from the last 30 days (requires admin API key)
   auditLogs() []openai.auditLog
+  // Daily API usage by project, member, API key, and model (requires admin API key)
+  //
+  // One entry per UTC day and combination of usage type, project, member,
+  // API key, and model that saw usage, from the completions, embeddings,
+  // moderations, images, audio_speeches, and audio_transcriptions usage
+  // reports. Covers the seven UTC days before today and today so far.
+  usageReport() []openai.usageEntry
+  // Daily costs by project and line item (requires admin API key)
+  //
+  // Covers the seven UTC days before today and today so far.
+  costReport() []openai.costEntry
+  // Organization admin API keys (requires admin API key)
+  adminApiKeys() []openai.adminApiKey
+  // Roles available in the organization (requires admin API key)
+  roles() []openai.role
+  // Groups in the organization (requires admin API key)
+  groups() []openai.group
+  // Data retention policy applied to API traffic (requires admin API key)
+  //
+  // One of zero_data_retention, modified_abuse_monitoring,
+  // enhanced_zero_data_retention, or enhanced_modified_abuse_monitoring.
+  // Under zero data retention OpenAI stores no request or response
+  // content; the modified abuse monitoring settings turn off retention
+  // of content for human review.
+  dataRetentionType() string
+  // Hard spend limit in cents, null when no limit is set (requires admin API key)
+  spendLimitAmount() int
+  // Currency of the hard spend limit, null when no limit is set
+  spendLimitCurrency() string
+  // Interval the hard spend limit is evaluated over, null when no limit is set
+  //
+  // Currently always month.
+  spendLimitInterval() string
+  // Enforcement state of the hard spend limit, null when no limit is set
+  spendLimitEnforcement() string
+  // Spend alerts configured for the organization (requires admin API key)
+  spendAlerts() []openai.spendAlert
+  // Certificates uploaded to the organization (requires admin API key)
+  certificates() []openai.certificate
+  // Code interpreter containers
+  containers() []openai.container
+  // Batch jobs submitted to the Batch API
+  batches() []openai.batch
+  // Skills available to the project
+  skills() []openai.skill
+  // Reusable agents defined in the project
+  agents() []openai.agent
+  // Vaults holding MCP server credentials for the project
+  vaults() []openai.vault
+  // Environment templates that provision agent sandboxes
+  environmentTemplates() []openai.environmentTemplate
+}
+
+// OpenAI certificate
+//
+// Certificate uploaded to an organization for mutual TLS authentication,
+// activated either across the organization or for individual projects.
+// The `active` field reports whether the certificate is in force at the
+// scope it was read from, and `validAt` and `expiresAt` bound the window
+// it authenticates in, so certificates that have expired or are close to
+// expiring can be found before connections start failing.
+openai.certificate @defaults("name active expiresAt") @maturity("preview") {
+  // Certificate identifier
+  id string
+  // Certificate name
+  name string
+  // Whether the certificate is active at the scope it was read from
+  active bool
+  // Upload timestamp
+  createdAt time
+  // Timestamp the certificate becomes valid
+  validAt time
+  // Expiration timestamp
+  expiresAt time
+}
+
+// OpenAI container
+//
+// Sandbox that runs code on a model's behalf through the code
+// interpreter tool. The `networkPolicyType` field reports whether
+// outbound access is turned off or restricted to an allowlist, and
+// `networkPolicyAllowedDomains` names the destinations an allowlisted
+// container can reach, which bounds where code the model wrote is able
+// to send data. The `lastActiveAt` and `expiresAfterMinutes` fields show
+// how long an idle sandbox lingers before it is torn down.
+openai.container @defaults("name status networkPolicyType") @maturity("preview") {
+  // Container identifier
+  id string
+  // Container name
+  name string
+  // Container status
+  status string
+  // Creation timestamp
+  createdAt time
+  // Last activity timestamp (null when the container has not been used)
+  lastActiveAt time
+  // Reference point the expiration is measured from, null when no expiration is set
+  //
+  // Currently always last_active_at.
+  expiresAfterAnchor string
+  // Minutes after the anchor at which the container expires, null when no expiration is set
+  expiresAfterMinutes int
+  // Outbound network policy mode
+  //
+  // One of allowlist, where only the listed domains are reachable, or
+  // disabled, where the container has no outbound access at all. Null
+  // when the container reports no network policy.
+  networkPolicyType string
+  // Domains an allowlisted container may reach
+  //
+  // Empty under a disabled policy, and null when the container reports
+  // no network policy.
+  networkPolicyAllowedDomains []string
+  // Files present in the container
+  files() []openai.container.file
+}
+
+// OpenAI container file
+//
+// File inside a code interpreter sandbox, either uploaded into it or written
+// by the model while running code. The `source` field separates the two and
+// `path` locates the file in the sandbox, so what a model produced can be read
+// alongside the network policy that bounds where it could be sent.
+openai.container.file @defaults("path source bytes") @maturity("preview") {
+  // File identifier
+  id string
+  // Path of the file inside the container
+  path string
+  // Origin of the file
+  //
+  // For example user for a file uploaded into the container, or assistant for
+  // a file the model wrote while running code.
+  source string
+  // File size in bytes
+  bytes int
+  // Creation timestamp
+  createdAt time
+}
+
+// OpenAI spend alert
+//
+// Notification that fires when spend crosses a threshold within an
+// interval, configured either for the whole organization or for a single
+// project. An account with a hard spend limit but no alerts below it
+// stops working without warning, so the presence and placement of alerts
+// is worth auditing alongside the limit itself. The
+// `notificationRecipients` field lists the addresses the alert reaches.
+openai.spendAlert @defaults("thresholdAmount interval") @maturity("preview") {
+  // Spend alert identifier
+  id string
+  // Threshold in cents at which the alert fires
+  thresholdAmount int
+  // Currency of the threshold
+  currency string
+  // Interval the spend is evaluated over
+  //
+  // Currently always month.
+  interval string
+  // Delivery channel for the notification
+  //
+  // Currently always email.
+  notificationType string
+  // Addresses the alert is delivered to
+  notificationRecipients []string
+  // Prefix added to the notification subject line, empty when none is set
+  notificationSubjectPrefix string
 }
 
 // OpenAI model
 //
-// Examine an AI model available in the OpenAI account. Models include
-// both base models owned by OpenAI (such as gpt-4o or o3) and
-// fine-tuned models owned by the organization. The `id` field is the
-// model identifier used in API calls. For fine-tuned models the
-// structured ID encodes the base model, organization, and suffix
-// which are extracted into `baseModel` and `isFineTuned` for AIBOM
-// lineage tracking.
+// AI model available in the OpenAI account, including both base models
+// owned by OpenAI (such as gpt-4o or o3) and fine-tuned models owned by
+// the organization. The `id` field is the model identifier used in API
+// calls and selects the model, for example openai.model(id: "gpt-4o").
+// For fine-tuned models the structured ID encodes the base model,
+// organization, and suffix, surfaced through `baseModel` and
+// `isFineTuned` for AIBOM lineage tracking.
 openai.model @defaults("id ownedBy") @maturity("preview") {
   // Model identifier used in API calls (e.g., "gpt-4o", "ft:gpt-4o-mini:my-org:custom:abc123")
   id string
@@ -60,12 +234,106 @@ openai.model @defaults("id ownedBy") @maturity("preview") {
   baseModel() string
 }
 
+// OpenAI batch job
+//
+// Asynchronous job that runs a file of queued API requests at a reduced rate.
+// The `inputFile` and `outputFile` fields resolve the uploaded request file
+// and the generated result file, which are among the largest stored artifacts
+// on the platform, and `expiresAt` bounds how long the results stay
+// retrievable. The `status` and `requestCounts` fields report where a job
+// stopped and how many of its requests failed. A batch is selected by its
+// identifier, for example openai.batch(id: "batch_abc123").
+openai.batch @defaults("id endpoint status") @maturity("preview") {
+  // Batch identifier
+  id string
+  // API endpoint the queued requests are sent to
+  //
+  // For example /v1/chat/completions, /v1/embeddings, or /v1/responses.
+  endpoint string
+  // Batch status
+  //
+  // One of validating, failed, in_progress, finalizing, completed, expired,
+  // cancelling, or cancelled.
+  status string
+  // Time frame the batch is processed within
+  //
+  // Currently always 24h.
+  completionWindow string
+  // Creation timestamp
+  createdAt time
+  // Timestamp processing started, null until the batch runs
+  inProgressAt time
+  // Timestamp the batch started assembling results, null until it finalizes
+  finalizingAt time
+  // Completion timestamp, null unless the batch completed
+  completedAt time
+  // Failure timestamp, null unless the batch failed
+  failedAt time
+  // Timestamp the batch was cancelled, null unless it was cancelled
+  cancelledAt time
+  // Timestamp cancellation was requested, null unless it was requested
+  cancellingAt time
+  // Timestamp the batch expired before finishing, null unless it expired
+  expiredAt time
+  // Timestamp the batch expires at, null when the batch reports no expiration
+  expiresAt time
+  // Model the queued requests run against
+  //
+  // Null when the batch reports no model, and when the model is no longer in
+  // the account model list.
+  model() openai.model
+  // File holding the queued requests
+  //
+  // Null when the file is no longer listed in the account.
+  inputFile() openai.file
+  // File holding the results of successful requests
+  //
+  // Null until results exist, and when the file is no longer listed in the
+  // account.
+  outputFile() openai.file
+  // File holding the results of failed requests
+  //
+  // Null when no request failed, and when the file is no longer listed in the
+  // account.
+  errorFile() openai.file
+  // Request counts by outcome
+  //
+  // Keyed by total, completed, and failed.
+  requestCounts dict
+  // User-defined metadata
+  metadata dict
+}
+
+// OpenAI skill
+//
+// Reusable instruction package that a model loads and runs inside the project,
+// versioned independently of the code that calls it. The `defaultVersion`
+// field names the version a caller gets when it does not ask for one and
+// `latestVersion` the newest uploaded, so a skill whose default trails its
+// latest version runs older instructions than the ones most recently
+// published.
+openai.skill @defaults("name defaultVersion latestVersion") @maturity("preview") {
+  // Skill identifier
+  id string
+  // Skill name
+  name string
+  // Skill description
+  description string
+  // Version callers load when they do not name one
+  defaultVersion string
+  // Newest uploaded version
+  latestVersion string
+  // Creation timestamp
+  createdAt time
+}
+
 // OpenAI file
 //
-// Examine a file uploaded to the OpenAI platform. Files are used for
-// fine-tuning training data, batch input/output, assistant knowledge
-// retrieval, and vision inputs. The `purpose` field indicates the
-// intended use of the file.
+// File uploaded to the OpenAI platform, used for fine-tuning training
+// data, batch input/output, assistant knowledge retrieval, and vision
+// inputs. The `purpose` field indicates the file's intended use, and
+// `status` reports whether it has finished processing. Audit these to
+// track what data was uploaded to the organization and for what use.
 openai.file @defaults("id filename purpose") @maturity("preview") {
   // File identifier
   id string
@@ -77,7 +345,7 @@ openai.file @defaults("id filename purpose") @maturity("preview") {
   createdAt time
   // Intended use of the file
   //
-  // One of assistants, assistants_output, batch, batch_output, fine-tune, fine-tune-results, or vision.
+  // One of assistants, assistants_output, batch, batch_output, fine-tune, fine-tune-results, vision, or user_data.
   purpose string
   // Processing status
   //
@@ -87,12 +355,12 @@ openai.file @defaults("id filename purpose") @maturity("preview") {
 
 // OpenAI fine-tuning job
 //
-// Examine a fine-tuning job that customizes a base model on
-// organization-provided training data. Tracks the training status,
-// hyperparameters, token usage, and the resulting fine-tuned model
-// identifier. Use this resource to audit model lineage: which base
-// model was fine-tuned, with what training data, and what model was
-// produced.
+// Fine-tuning job that customizes a base model on organization-provided
+// training data. Records the training status, hyperparameters, token
+// usage, and the resulting fine-tuned model identifier, so you can audit
+// model lineage: which base model was fine-tuned, with what training and
+// validation data, and what model was produced. A job is selected by its
+// identifier, for example openai.fineTuningJob(id: "ftjob-abc123").
 openai.fineTuningJob @defaults("id model status") @maturity("preview") {
   // Job identifier
   id string
@@ -119,17 +387,64 @@ openai.fineTuningJob @defaults("id model status") @maturity("preview") {
   // Organization that owns this job
   organizationId string
   // Training hyperparameters
+  //
+  // Keyed by hyperparameter name. Contains `n_epochs`, the number of
+  // passes over the training data, given as an integer or the string
+  // "auto" when OpenAI selects the value.
   hyperparameters dict
   // Error information if the job failed
+  //
+  // Null unless the job failed. When present, `code` is the machine-readable
+  // failure code, `message` is the human-readable explanation, and `param`
+  // is the parameter that caused the failure (empty when not parameter-specific).
   error dict
+  // Checkpoints produced by this job
+  checkpoints() []openai.fineTuningJob.checkpoint
+}
+
+// OpenAI fine-tuning checkpoint
+//
+// Model snapshot written during a fine-tuning job and callable as a model of
+// its own. The `permissions` field lists the projects the checkpoint has been
+// shared into, which is how a model trained on one project's data becomes
+// reachable from another. The `fineTunedModelCheckpoint` field is the model
+// name the checkpoint is called by.
+openai.fineTuningJob.checkpoint @defaults("fineTunedModelCheckpoint stepNumber") @maturity("preview") {
+  // Checkpoint identifier
+  id string
+  // Model name the checkpoint is called by
+  fineTunedModelCheckpoint string
+  // Training step the checkpoint was written at
+  stepNumber int
+  // Creation timestamp
+  createdAt time
+  // Projects the checkpoint is shared into (requires an admin API key)
+  permissions() []openai.fineTuningJob.checkpoint.permission
+}
+
+// OpenAI fine-tuning checkpoint permission
+//
+// Grant that makes a fine-tuned checkpoint callable from a project other than
+// the one whose data trained it. The `project` field resolves the project the
+// grant names and `createdAt` records when the sharing started.
+openai.fineTuningJob.checkpoint.permission @defaults("createdAt") @maturity("preview") {
+  // Permission identifier
+  id string
+  // Timestamp the checkpoint was shared with the project
+  createdAt time
+  // Project the checkpoint is shared into
+  //
+  // Null when the project no longer exists.
+  project() openai.project
 }
 
 // OpenAI vector store
 //
-// Examine a vector store used for knowledge retrieval in the
-// Assistants API. Vector stores hold file embeddings for semantic
-// search and are identified by name. The `fileCounts` field reports
-// the number of files in each processing state.
+// Vector store used for knowledge retrieval in the Assistants API.
+// Vector stores hold file embeddings for semantic search over uploaded
+// files. The `fileCounts` field reports how many files are in each
+// processing state, and `expiresAfter` describes any automatic
+// expiration policy attached to the store.
 openai.vectorStore @defaults("id name status") @maturity("preview") {
   // Vector store identifier
   id string
@@ -146,20 +461,74 @@ openai.vectorStore @defaults("id name status") @maturity("preview") {
   // Last active timestamp
   lastActiveAt time
   // File counts by processing state
+  //
+  // Number of files in the store keyed by processing state: in_progress,
+  // completed, failed, and cancelled, plus total for the overall count.
   fileCounts dict
   // Expiration policy
+  //
+  // Automatic expiration policy, or null when none is set. The anchor key
+  // holds the reference timestamp the countdown starts from (for example
+  // last_active_at) and days holds the number of days after the anchor at
+  // which the store expires.
   expiresAfter dict
   // Expiration timestamp (null if no expiration policy)
   expiresAt time
   // User-defined metadata
   metadata dict
+  // Files attached to this store
+  files() []openai.vectorStore.file
+}
+
+// OpenAI vector store file
+//
+// Membership of an uploaded file in a vector store, which is what makes the
+// file retrievable by a model through file search. The `file` field resolves
+// the upload behind the membership, so the stores a single upload is reachable
+// through can be read off one query. The `status` field reports whether the
+// file finished embedding, and `lastErrorCode` and `lastErrorMessage` explain
+// a file that did not.
+openai.vectorStore.file @defaults("id status") @maturity("preview") {
+  // Membership identifier, which is the identifier of the uploaded file
+  id string
+  // Timestamp the file was attached to the store
+  createdAt time
+  // Embedding status
+  //
+  // One of in_progress, completed, cancelled, or failed. Only completed files
+  // are retrievable through file search.
+  status string
+  // Storage the file occupies in the store, in bytes
+  //
+  // Counted after chunking and embedding, so it differs from the size of the
+  // uploaded file.
+  usageBytes int
+  // Failure code for a file that could not be embedded
+  //
+  // One of server_error, unsupported_file, or invalid_file. Null when the file
+  // reports no error.
+  lastErrorCode string
+  // Failure explanation for a file that could not be embedded, null when the file reports no error
+  lastErrorMessage string
+  // How the file was split before embedding
+  //
+  // One of static, for fixed size chunks, or other, for a file added before
+  // the store recorded a strategy. Null when the store reports no chunking
+  // strategy.
+  chunkingStrategyType string
+  // Uploaded file behind this membership
+  //
+  // Null when the file is no longer listed in the account.
+  file() openai.file
 }
 
 // OpenAI project
 //
-// Examine an organization project in the OpenAI platform. Projects
-// provide isolation for API keys, usage limits, and team access.
-// Requires an admin API key.
+// Organization project in the OpenAI platform. Projects provide
+// isolation for API keys, usage limits, and team access. Query by
+// project id to audit which keys and service accounts belong to a
+// project, and whether it is active or archived. Requires an admin
+// API key.
 openai.project @defaults("id name status") @maturity("preview") {
   // Project identifier
   id string
@@ -173,18 +542,141 @@ openai.project @defaults("id name status") @maturity("preview") {
   createdAt time
   // Archive timestamp (null if active)
   archivedAt time
+  // Geography the project's data is stored and processed in
+  //
+  // One of GLOBAL, US_STORAGE_PROCESSING, EU_STORAGE_PROCESSING,
+  // JP_STORAGE, KR_STORAGE, CA_STORAGE, SG_STORAGE, IN_STORAGE,
+  // AU_STORAGE, GB_STORAGE, AE_STORAGE, or AE_STORAGE_PROCESSING. A
+  // value ending in STORAGE_PROCESSING pins both storage and inference
+  // to the region, where a plain STORAGE value pins storage only and
+  // lets inference run elsewhere. Null when the organization has no
+  // residency configuration, in which case data is not pinned to any
+  // region.
+  residency string
   // API keys in this project (requires admin API key)
   apiKeys() []openai.project.apiKey
   // Service accounts in this project (requires admin API key)
   serviceAccounts() []openai.project.serviceAccount
+  // Members of this project (requires admin API key)
+  users() []openai.project.user
+  // Groups granted access to this project (requires admin API key)
+  groups() []openai.group
+  // Roles available in this project (requires admin API key)
+  roles() []openai.role
+  // Data retention policy applied to this project (requires admin API key)
+  //
+  // One of organization_default, none, zero_data_retention,
+  // modified_abuse_monitoring, enhanced_zero_data_retention, or
+  // enhanced_modified_abuse_monitoring. A project set to
+  // organization_default inherits the organization policy, so a project
+  // can be less strict than the organization only by naming a weaker
+  // policy of its own.
+  dataRetentionType() string
+  // How the model policy treats the model list (requires admin API key)
+  //
+  // One of allow_list, where only the listed models may be called, or
+  // deny_list, where every model except the listed ones may be called.
+  // Null when no model policy is configured and every model is
+  // reachable.
+  modelPermissionMode() string
+  // Model identifiers named by the model policy
+  //
+  // Read together with modelPermissionMode: under allow_list these are
+  // the only models the project may call, under deny_list they are the
+  // models it may not. Null when no model policy is configured.
+  modelPermissionModelIds() []string
+  // Whether the project may run the hosted code interpreter
+  codeInterpreterEnabled() bool
+  // Whether the project may use hosted file search
+  fileSearchEnabled() bool
+  // Whether the project may use hosted image generation
+  imageGenerationEnabled() bool
+  // Whether the project may reach remote MCP servers
+  //
+  // Hosted MCP lets a model call tools on servers outside OpenAI, which
+  // widens both the data a prompt can reach and the actions a model can
+  // take on the project's behalf.
+  mcpEnabled() bool
+  // Whether the project may use hosted web search
+  webSearchEnabled() bool
+  // Per-model rate limits for this project (requires admin API key)
+  rateLimits() []openai.project.rateLimit
+  // Hard spend limit in cents, null when no limit is set (requires admin API key)
+  spendLimitAmount() int
+  // Currency of the hard spend limit, null when no limit is set
+  spendLimitCurrency() string
+  // Interval the hard spend limit is evaluated over, null when no limit is set
+  //
+  // Currently always month.
+  spendLimitInterval() string
+  // Enforcement state of the hard spend limit, null when no limit is set
+  spendLimitEnforcement() string
+  // Spend alerts configured for this project (requires admin API key)
+  spendAlerts() []openai.spendAlert
+  // Certificates activated for this project (requires admin API key)
+  certificates() []openai.certificate
+}
+
+// OpenAI project rate limit
+//
+// Per-model throughput ceiling applied to a project, covering requests
+// and tokens per minute and, for the models that support them, image,
+// audio, daily request, and batch input allowances. Rate limits bound
+// how much a compromised or runaway key inside the project can consume
+// before it is stopped. The `model` field names the model the limit
+// applies to. Allowances that do not apply to a model report null rather
+// than zero.
+openai.project.rateLimit @defaults("model maxRequestsPerMinute maxTokensPerMinute") @maturity("preview") {
+  // Rate limit identifier
+  id string
+  // Model the limit applies to
+  model string
+  // Maximum requests per minute
+  maxRequestsPerMinute int
+  // Maximum tokens per minute
+  maxTokensPerMinute int
+  // Maximum images per minute, null for models without an image allowance
+  maxImagesPerMinute int
+  // Maximum audio megabytes per minute, null for models without an audio allowance
+  maxAudioMegabytesPerMinute int
+  // Maximum requests per day, null for models without a daily request allowance
+  maxRequestsPerDay int
+  // Maximum batch input tokens per day, null for models without a batch allowance
+  batchMaxInputTokensPerDay int
+}
+
+// OpenAI project member
+//
+// Member of an organization project, holding a project role that governs
+// what the member may do inside that project. Project roles are separate
+// from organization roles: someone who is only a reader at the
+// organization level can still be an owner of an individual project, so
+// auditing owners requires walking projects as well as the organization.
+// The `user` field resolves the organization member record behind the
+// membership, and `addedAt` records when access was granted.
+openai.project.user @defaults("email role") @maturity("preview") {
+  // User identifier
+  id string
+  // User email address
+  email string
+  // User display name
+  name string
+  // Project role
+  //
+  // One of owner or member.
+  role string
+  // Timestamp when the user was added to the project
+  addedAt time
+  // Organization member record for this user
+  user() openai.organizationUser
 }
 
 // OpenAI project API key
 //
-// Examine an API key within an organization project. Each key has an
-// owner (user or service account) and a redacted value for
-// identification. Use this resource to audit key age, last usage, and
-// ownership for security reviews.
+// API key within an organization project. Each key has an owner
+// (user or service account) and a redacted value for identification.
+// Audit key age, last usage, expiration, and ownership to spot stale,
+// non-expiring, or over-privileged credentials during security reviews.
 openai.project.apiKey @defaults("id name") @maturity("preview") {
   // API key identifier
   id string
@@ -196,6 +688,10 @@ openai.project.apiKey @defaults("id name") @maturity("preview") {
   createdAt time
   // Last usage timestamp
   lastUsedAt time
+  // Expiration timestamp
+  //
+  // Null when the key does not expire.
+  expiresAt time
   // Owner type
   //
   // One of user or service_account.
@@ -204,13 +700,29 @@ openai.project.apiKey @defaults("id name") @maturity("preview") {
   ownerName string
   // Owner identifier
   ownerId string
+  // Organization member that owns the key
+  //
+  // Null when a service account owns the key, and when the member has since
+  // been removed from the organization.
+  owner() openai.organizationUser
+  // Service account that owns the key
+  //
+  // Null when a member owns the key.
+  serviceAccount() openai.project.serviceAccount
+  // Usage report entries for requests made with this key (requires admin API key)
+  //
+  // Covers the same window and usage types as the organization's
+  // usageReport: the seven UTC days before today and today so far. An empty
+  // list means the key made no requests of those types in that window.
+  usageReport() []openai.usageEntry
 }
 
 // OpenAI project service account
 //
-// Examine a service account within an organization project. Service
-// accounts are non-human identities used for API automation. Use this
-// resource to audit service account roles and creation dates.
+// Service account within an organization project. Service accounts
+// are non-human identities used for API automation, each assigned the
+// owner or member role, or none. Audit service account roles and creation
+// dates to keep automation credentials scoped and accounted for.
 openai.project.serviceAccount @defaults("id name role") @maturity("preview") {
   // Service account identifier
   id string
@@ -218,7 +730,7 @@ openai.project.serviceAccount @defaults("id name role") @maturity("preview") {
   name string
   // Assigned role
   //
-  // One of owner or member.
+  // One of owner, member, or none.
   role string
   // Creation timestamp
   createdAt time
@@ -226,10 +738,13 @@ openai.project.serviceAccount @defaults("id name role") @maturity("preview") {
 
 // OpenAI organization user
 //
-// Examine a user in the OpenAI organization. Users have roles, email
-// addresses, and API key usage tracking. Use this resource to audit
-// organization membership, privilege levels, and identify inactive
-// accounts by checking API key last usage timestamps.
+// Member of an OpenAI organization, with the role that grants their
+// privilege level (owner or reader), email address, and account
+// provenance flags. The `role` field surfaces who holds owner-level
+// control, and the `apiKeyLastUsedAt` timestamp helps identify
+// inactive accounts. Flags like `isScimManaged`, `isServiceAccount`,
+// and `isDefault` distinguish directory-synced members, machine
+// identities, and the default organization owner.
 openai.organizationUser @defaults("id email role") @maturity("preview") {
   // User identifier
   id string
@@ -253,14 +768,139 @@ openai.organizationUser @defaults("id email role") @maturity("preview") {
   createdAt time
   // Last API key usage timestamp
   apiKeyLastUsedAt time
+  // Roles held by the user
+  //
+  // The effective set, covering roles granted to the user directly and
+  // roles the user picks up through group membership.
+  roles() []openai.role
+  // Role assignments held by the user (requires an admin API key)
+  //
+  // One entry per role, recording whether the role was granted to the member
+  // directly or arrives through a group.
+  roleAssignments() []openai.organizationUser.roleAssignment
+  // Usage report entries attributed to this member (requires admin API key)
+  //
+  // Covers the same window and usage types as the organization's
+  // usageReport: the seven UTC days before today and today so far.
+  usageReport() []openai.usageEntry
+}
+
+// OpenAI role assignment
+//
+// Single role held by an organization member, together with where the grant
+// comes from. The `isDirect` field separates a role granted to the member
+// outright from one that arrives through group membership, which decides
+// whether removing the member from a group is enough to take the privilege
+// away. The `inheritedFromGroups` field names the groups that confer it.
+openai.organizationUser.roleAssignment @defaults("isDirect") @maturity("preview") {
+  // Whether the role is granted to the member directly
+  //
+  // True when an assignment source names a user principal. Null when the API
+  // reports no assignment sources for the role.
+  isDirect bool
+  // Role held through this assignment
+  role openai.role
+  // Groups that confer the role on the member
+  //
+  // Empty when no group confers it. Null when the API reports no assignment
+  // sources for the role.
+  inheritedFromGroups() []openai.group
+}
+
+// OpenAI admin API key
+//
+// Organization admin API key, the most privileged credential class in an
+// OpenAI account: an admin key reads and modifies organization
+// configuration, membership, projects, and the API keys inside them. The
+// `owner` field resolves the member the key was issued to, while
+// `expiresAt` and `lastUsedAt` surface keys that never expire or that
+// have gone unused and can be revoked.
+openai.adminApiKey @defaults("name ownerName lastUsedAt") @maturity("preview") {
+  // Admin API key identifier
+  id string
+  // Display name
+  name string
+  // Redacted key value for identification
+  redactedValue string
+  // Creation timestamp
+  createdAt time
+  // Expiration timestamp (null when the key never expires)
+  expiresAt time
+  // Last usage timestamp (null when the key has never been used)
+  lastUsedAt time
+  // Owner type
+  //
+  // One of user or service_account.
+  ownerType string
+  // Owner name (user email or service account name)
+  ownerName string
+  // Organization role recorded for the owner
+  ownerRole string
+  // Member the key was issued to (null when a service account owns it)
+  owner() openai.organizationUser
+}
+
+// OpenAI role
+//
+// Named set of permissions that can be granted to organization members
+// and to groups. Roles marked `isPredefined` ship with OpenAI, while the
+// rest are defined by the organization. The `permissions` list
+// enumerates every capability the role carries, so you can find the
+// roles that grant administrative capability and then walk members and
+// groups to see who holds them. The `resourceType` field records the
+// scope the role applies to.
+openai.role @defaults("name resourceType") @maturity("preview") {
+  // Role identifier
+  id string
+  // Role name
+  name string
+  // Role description
+  description string
+  // Permissions granted by the role
+  permissions []string
+  // Whether the role ships with OpenAI rather than being defined by the organization
+  isPredefined bool
+  // Scope the role applies to
+  //
+  // For example organization or project.
+  resourceType string
+}
+
+// OpenAI group
+//
+// Collection of organization members used to grant roles to several
+// people at once. Groups synchronized from an external identity provider
+// report `isScimManaged`, which separates directory-controlled
+// membership from membership edited in the OpenAI dashboard: a group
+// that is not SCIM managed can be changed without a corresponding change
+// in the identity provider. The `members` and `roles` fields expand who
+// belongs to the group and what privileges the group confers.
+openai.group @defaults("name groupType") @maturity("preview") {
+  // Group identifier
+  id string
+  // Group name
+  name string
+  // Group type
+  //
+  // One of group or tenant_group.
+  groupType string
+  // Whether the group is managed through SCIM
+  isScimManaged bool
+  // Creation timestamp
+  createdAt time
+  // Members of the group
+  members() []openai.organizationUser
+  // Roles granted to the group
+  roles() []openai.role
 }
 
 // OpenAI organization invite
 //
-// Examine a pending invitation to the OpenAI organization. Invites
-// track the email, assigned role, and acceptance status. Use this
-// resource to audit outstanding invitations and ensure timely
-// expiration of unclaimed invites.
+// Pending invitation to join the OpenAI organization, tracking the
+// invited email, the role that will be granted on acceptance, and the
+// current acceptance status. Query this resource to audit outstanding
+// invitations, surface unclaimed or expired invites, and confirm that
+// invitees are granted only the intended level of access.
 openai.invite @defaults("id email status") @maturity("preview") {
   // Invite identifier
   id string
@@ -284,11 +924,13 @@ openai.invite @defaults("id email status") @maturity("preview") {
 
 // OpenAI audit log entry
 //
-// Examine an audit log entry from the OpenAI organization. Audit logs
-// record user actions and configuration changes such as API key
-// creation, project updates, login events, and role changes. Use this
-// resource to monitor security-relevant activity and support compliance
-// requirements.
+// Record of a single user action or configuration change in the OpenAI
+// organization, such as API key creation, project updates, login events,
+// and role changes. Query these entries to monitor security-relevant
+// activity, detect unauthorized changes, and support compliance
+// requirements. The collection covers the last 30 days of activity. The
+// `type` field identifies the recorded event and `actorType` distinguishes
+// whether a user session or an API key performed it.
 openai.auditLog @defaults("id type effectiveAt") @maturity("preview") {
   // Log entry identifier
   id string
@@ -306,4 +948,423 @@ openai.auditLog @defaults("id type effectiveAt") @maturity("preview") {
   actorType string
   // Actor email (for session actors) or API key ID (for API key actors)
   actorId string
+  // Source address the action came from
+  //
+  // Recorded for browser session actors. Null for actions performed with an
+  // API key, where the API reports no source address.
+  actorIpAddress string
+  // Credential class behind an API key actor
+  //
+  // One of user, for a key issued to a person, or service_account, for a key
+  // issued to automation. Null when a browser session performed the action.
+  actorApiKeyType string
+  // Organization member that performed the action
+  //
+  // Resolved for session actors and for API keys issued to a person. Null for
+  // service account keys and for members who have since been removed from the
+  // organization.
+  actorUser() openai.organizationUser
+  // Project the action was scoped to
+  //
+  // Null for actions that are not scoped to a project, and for projects that
+  // no longer exist. Actions taken with an admin API key are recorded against
+  // the default project.
+  project() openai.project
+  // Change record for this entry
+  //
+  // The payload the API reports under the key named by `type`, so the shape
+  // varies by event. An api_key.created entry carries the new key identifier
+  // and the scopes requested, ip_allowlist.updated carries the address ranges
+  // before and after the edit, and the workload_identity_provider events carry
+  // the issuer and audience that were trusted. Null for event types that carry
+  // no payload, such as login.succeeded.
+  details dict
+}
+
+// OpenAI usage report entry
+//
+// One UTC day of API usage for one combination of usage type, project,
+// member, API key, and model. The `usageType` field names the usage report
+// the entry comes from, `requests` counts the model requests, and the token
+// fields carry consumption for the usage types billed in tokens. The
+// `apiKey`, `user`, and `project` fields say who used the API and from where.
+openai.usageEntry @defaults("startingAt usageType model requests") @maturity("preview") {
+  // Bucket start timestamp
+  startingAt time
+  // Bucket end timestamp
+  endingAt time
+  // Usage report the entry comes from
+  //
+  // One of completions, embeddings, moderations, images, audio_speeches, or
+  // audio_transcriptions.
+  usageType string
+  // Model identifier
+  model string
+  // Number of requests made to the model
+  requests int
+  // Input tokens consumed, cached input tokens included
+  //
+  // Null for usage types not measured in tokens: images, audio_speeches,
+  // and audio_transcriptions.
+  inputTokens int
+  // Input tokens read from cache
+  //
+  // Reported for completions only, null for other usage types.
+  cachedInputTokens int
+  // Output tokens produced
+  //
+  // Reported for completions only, null for other usage types.
+  outputTokens int
+  // Project the usage is attributed to
+  //
+  // Null when the project no longer exists.
+  project() openai.project
+  // API key the requests were made with
+  //
+  // Null when the report names no key, and for a key since deleted.
+  apiKey() openai.project.apiKey
+  // Organization member the usage is attributed to
+  //
+  // Null when the report names no member, and for a member who has since
+  // left the organization.
+  user() openai.organizationUser
+}
+
+// OpenAI cost report entry
+//
+// One UTC day of cost for one project and line item, such as a model's input
+// or output tokens. The `amount` field is in the unit named by `currency`,
+// and `quantity` with `quantityUnit` gives the amount billed for.
+openai.costEntry @defaults("startingAt lineItem amount currency") @maturity("preview") {
+  // Bucket start timestamp
+  startingAt time
+  // Bucket end timestamp
+  endingAt time
+  // Cost amount
+  //
+  // In whole units of `currency`, for example 1.5 is $1.50 when currency
+  // is usd.
+  amount float
+  // Lowercase ISO 4217 currency code, for example usd
+  currency string
+  // Line item the cost is billed under
+  //
+  // For example "gpt-4o, input_tokens".
+  lineItem string
+  // Quantity billed for the line item
+  //
+  // Null when the report gives no quantity.
+  quantity float
+  // Unit of quantity
+  //
+  // One of tokens, 1000_tokens, duration_seconds, duration_minutes,
+  // duration_hours, gibibyte_hours, images, or characters, and OpenAI may
+  // add values. Null when no single unit applies.
+  quantityUnit string
+  // Project the cost is attributed to
+  //
+  // Null for costs not attributed to a project, and when the project no
+  // longer exists.
+  project() openai.project
+}
+
+// OpenAI agent
+//
+// Reusable agent defined in the project, carrying the model it runs on, the
+// instructions appended to its base prompt, and the tools it may call. The
+// `tools` collection is where an agent reaches outside the project: an mcp
+// tool names an external MCP server, the vault credential it authenticates
+// with, and the subset of server tools it is limited to, while a web_search
+// tool carries the domain allowlist in force. The `multiAgentEnabled` field
+// reports whether the agent may spawn subagents, which takes a single run
+// beyond the agent that started it.
+openai.agent @defaults("id name model") @maturity("preview") {
+  init(id string)
+  // Agent identifier
+  id string
+  // Agent name, null when the agent is unnamed
+  name string
+  // Model used for inference
+  model string
+  // Instructions appended to the agent's base instructions
+  instructions string
+  // Service tier used for model requests
+  //
+  // One of auto, default, flex, priority, or fast.
+  serviceTier string
+  // User-provided metadata key-value pairs
+  metadata map[string]string
+  // Whether the agent may spawn subagents
+  multiAgentEnabled bool
+  // Maximum number of subagents that may run at the same time
+  //
+  // Null when subagents are turned off.
+  maxConcurrentSubagents int
+  // Reasoning effort applied on each turn
+  //
+  // One of none, minimal, low, medium, high, xhigh, or max.
+  reasoningEffort string
+  // Reasoning summary format requested from the agent
+  //
+  // One of concise, detailed, or auto.
+  reasoningSummary string
+  // Amount of text the agent produces
+  //
+  // One of low, medium, or high.
+  textVerbosity string
+  // Tools available to the agent
+  tools []openai.agent.tool
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+}
+
+// Tool available to an OpenAI agent
+//
+// Single tool an agent may call, where `type` selects which of the remaining
+// fields carry a value. An mcp tool names an external server in `serverLabel`
+// and `transportServerUrl`, the vault credential it authenticates with in
+// `credential`, and the server tools it is limited to in `allowedTools`, which
+// is empty when every tool the server publishes is allowed. A web_search tool
+// carries its domain allowlist in `allowedDomains` and the source it draws
+// results from in `mode`. The metadata an mcp tool sends alongside its requests
+// is not reported, because it can hold secret values.
+openai.agent.tool @defaults("type serverLabel name") @maturity("preview") {
+  // Tool type
+  //
+  // One of function, tool_search, programmatic_tool_calling, mcp, or web_search.
+  type string
+  // Name of a function tool, null for every other type
+  name string
+  // Description of a function tool
+  description string
+  // JSON Schema for a function tool's parameters
+  parameters dict
+  // Whether a function tool is discovered through tool search instead of loaded up front
+  deferLoading bool
+  // Whether tools can be called from model-generated code
+  //
+  // Carried by a programmatic_tool_calling tool, null for every other type.
+  enabled bool
+  // Label identifying the MCP server in tool calls
+  serverLabel string
+  // Where outbound MCP connections start
+  //
+  // One of service, where OpenAI reaches the server directly, or environment,
+  // where the connection leaves from the sandbox the agent runs in.
+  connectionOrigin string
+  // Vault credential the agent authenticates to the MCP server with
+  //
+  // Null when the MCP server takes no credential, and when the credential the
+  // tool names is no longer in any vault the project can read.
+  credential() openai.vault.credential
+  // MCP tools the agent is limited to
+  //
+  // Empty when the agent may call every tool the server publishes.
+  allowedTools []string
+  // Whether the MCP server must initialize before the first turn
+  required bool
+  // Transport used to reach the MCP server
+  //
+  // One of http or stdio.
+  transportType string
+  // URL of an MCP server reached over HTTP
+  transportServerUrl string
+  // Names of the HTTP headers sent to an MCP server
+  //
+  // Header values are not reported.
+  transportHeaderNames []string
+  // Command that starts a local MCP server process
+  transportCommand string
+  // Arguments passed to the MCP server command
+  transportArgs []string
+  // Working directory the MCP server command starts in
+  transportCwd string
+  // Environment variable names an MCP server process inherits from the sandbox
+  transportEnvVars []string
+  // Search domains a web_search tool is limited to
+  //
+  // Empty when web search is unrestricted.
+  allowedDomains []string
+  // Source web search results come from
+  //
+  // One of disabled, cached, or live.
+  mode string
+  // Amount of search context made available to the model
+  //
+  // One of low, medium, or high.
+  contextSize string
+}
+
+// OpenAI vault
+//
+// Collection of credentials that agent tools authenticate to MCP servers with.
+// The `credentials` collection reports the authentication method and server URL
+// of each entry without the secret behind it, so the external servers a
+// project's agents can reach are readable from the vault alone.
+openai.vault @defaults("id name") @maturity("preview") {
+  init(id string)
+  // Vault identifier
+  id string
+  // Vault name, null when the vault is unnamed
+  name string
+  // User-provided metadata key-value pairs
+  metadata map[string]string
+  // Creation timestamp
+  createdAt time
+  // Credentials stored in this vault
+  credentials() []openai.vault.credential
+}
+
+// OpenAI vault credential
+//
+// Credential an agent authenticates to an MCP server with, reported without the
+// secret behind it. The `authType` field names the authentication method:
+// mcp_oauth carries an access token that stops working at `expiresAt` and the
+// settings to renew it in `refreshClientId`, `refreshTokenEndpoint`,
+// `refreshScope`, `refreshResource` and `refreshTokenEndpointAuthType`, while
+// static_bearer carries a token with no expiration and nothing to renew it, so
+// a static_bearer credential against an external `mcpServerUrl` stays valid
+// until someone rotates it by hand.
+// environment_variable hands the secret to the agent's sandbox as an
+// environment variable.
+openai.vault.credential @defaults("id name authType mcpServerUrl") @maturity("preview") {
+  // Credential identifier
+  id string
+  // Credential name
+  name string
+  // Vault holding this credential
+  //
+  // Null when the vault is no longer readable by the project.
+  vault() openai.vault
+  // Authentication method
+  //
+  // One of mcp_oauth, static_bearer, or environment_variable.
+  authType string
+  // HTTPS MCP server URL this credential authorizes
+  mcpServerUrl string
+  // Point the OAuth access token stops working at
+  //
+  // Null for a static_bearer credential, which has no expiration, and for an
+  // mcp_oauth credential whose expiration the API does not report.
+  expiresAt time
+  // OAuth client ID sent when requesting a new access token
+  refreshClientId string
+  // HTTPS OAuth token endpoint used to renew the access token
+  refreshTokenEndpoint string
+  // Space-separated OAuth scopes requested when renewing the access token
+  refreshScope string
+  // Resource URI sent to the OAuth token endpoint when renewing the access token
+  refreshResource string
+  // How the OAuth client authenticates to the token endpoint
+  //
+  // One of none, client_secret_basic, or client_secret_post. The client secret
+  // itself is not reported.
+  refreshTokenEndpointAuthType string
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+}
+
+// OpenAI agent environment template
+//
+// Reusable configuration that provisions a fresh sandbox for each agent
+// session. The `networkPolicyType` field reports whether the sandbox reaches
+// any destination, none at all, or only the ones in
+// `networkPolicyAllowedDomains`, which bounds where an agent running in it can
+// send data. The package, plugin, skill and file fields list what is placed in
+// the sandbox before the agent starts, and `capabilityDirectories` names the
+// directories that expose capabilities to it.
+openai.environmentTemplate @defaults("id name networkPolicyType") @maturity("preview") {
+  init(id string)
+  // Template identifier
+  id string
+  // Template name, null when the template is unnamed
+  name string
+  // Outbound network policy mode
+  //
+  // One of enabled, where the sandbox reaches any destination, disabled, where
+  // it has no outbound access, or restricted, where only the listed domains
+  // are reachable.
+  networkPolicyType string
+  // Domains a restricted sandbox may reach
+  //
+  // Empty under the enabled and disabled modes, where no allowlist applies.
+  networkPolicyAllowedDomains []string
+  // Directories that expose capabilities to the agent
+  capabilityDirectories []string
+  // npm packages installed globally in the sandbox
+  npmPackages []string
+  // Python packages installed in the sandbox
+  pythonPackages []string
+  // System packages installed in the sandbox
+  systemPackages []string
+  // Plugins installed in the sandbox
+  //
+  // Maps each installed plugin name to the description it declares.
+  plugins map[string]string
+  // Skills placed in the sandbox
+  skills []openai.environmentTemplate.skill
+  // Files placed in the sandbox
+  files []openai.environmentTemplate.file
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+}
+
+// Skill placed in an OpenAI agent sandbox
+//
+// Skill available inside the sandbox an agent session runs in, either resolved
+// from the project skill library or supplied with the template. The `type`
+// field separates the two: a skill_reference entry resolves `skill` at the
+// selector in `version`, and an inline entry carries its own `name` and
+// `description` and is not registered in the project, so nothing else can
+// review or replace it.
+openai.environmentTemplate.skill @defaults("type name version") @maturity("preview") {
+  // Skill source
+  //
+  // One of skill_reference or inline.
+  type string
+  // Skill resolved from the project skill library
+  //
+  // Null for an inline skill, which is not registered in the project, and for
+  // a reference to a skill the project no longer lists.
+  skill() openai.skill
+  // Version selector applied to the referenced skill
+  //
+  // Includes latest, which resolves again whenever a session starts. Null for
+  // an inline skill.
+  version string
+  // Name an inline skill declares
+  name string
+  // Description an inline skill declares
+  description string
+}
+
+// File placed in an OpenAI agent sandbox
+//
+// File written into the sandbox an agent session runs in, before the agent
+// starts. The `type` field separates a file_id entry, which resolves `file`
+// from the project uploads at session start, from an inline entry, whose
+// contents travel with the template and are reported only as `sizeBytes`. The
+// `path` field is where the file lands inside the sandbox.
+openai.environmentTemplate.file @defaults("path type") @maturity("preview") {
+  // Absolute path the file takes inside the sandbox
+  path string
+  // File source
+  //
+  // One of file_id or inline.
+  type string
+  // Uploaded project file resolved at session start
+  //
+  // Null for an inline file, whose contents travel with the template, and for
+  // a reference to a file the project no longer lists.
+  file() openai.file
+  // Decoded size of an inline file in bytes
+  //
+  // Null for a file_id entry, whose size is reported on the uploaded file.
+  sizeBytes int
 }

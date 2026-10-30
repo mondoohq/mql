@@ -5,7 +5,7 @@ syntax = "proto3";
 
 package mql.etl.v1;
 
-option go_package = "go.mondoo.com/mql/v13/providers-sdk/v1/upstream/etl";
+option go_package = "go.mondoo.com/mql/providers-sdk/v1/upstream/etl";
 
 // VulnerabilityExchange are used for sharing information about vulnerabilities
 // across systems. MQL uses this format as a main mean to store detected

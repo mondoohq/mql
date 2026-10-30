@@ -6,7 +6,7 @@ syntax = "proto3";
 package mondoo.mvd.cvss.v1;
 
 option go_package = 
-  "go.mondoo.com/mql/v13/providers-sdk/v1/upstream/mvd/cvss";
+  "go.mondoo.com/mql/providers-sdk/v1/upstream/mvd/cvss";
 
 message Cvss {
   string vector = 1;

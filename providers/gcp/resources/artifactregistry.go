@@ -13,16 +13,20 @@ import (
 
 	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
 	"cloud.google.com/go/artifactregistry/apiv1/artifactregistrypb"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	locationpb "google.golang.org/genproto/googleapis/cloud/location"
 	iampb "google.golang.org/genproto/googleapis/iam/v1"
 )
+
+type mqlGcpProjectArtifactRegistryServiceRepositoryInternal struct {
+	cacheKmsKeyName string
+}
 
 func (g *mqlGcpProject) artifactRegistry() (*mqlGcpProjectArtifactRegistryService, error) {
 	if g.Id.Error != nil {
@@ -157,7 +161,6 @@ func newArtifactRegistryRepository(runtime *plugin.Runtime, projectId string, r 
 		"format":                      llx.StringData(r.Format.String()),
 		"mode":                        llx.StringData(r.Mode.String()),
 		"labels":                      llx.MapData(convert.MapToInterfaceMap(r.Labels), types.String),
-		"kmsKeyName":                  llx.StringData(r.KmsKeyName),
 		"createTime":                  llx.TimeDataPtr(timestampAsTimePtr(r.CreateTime)),
 		"updateTime":                  llx.TimeDataPtr(timestampAsTimePtr(r.UpdateTime)),
 		"sizeBytes":                   llx.IntData(r.SizeBytes),
@@ -173,6 +176,8 @@ func newArtifactRegistryRepository(runtime *plugin.Runtime, projectId string, r 
 	if err != nil {
 		return nil, err
 	}
+	mqlRef := res.(*mqlGcpProjectArtifactRegistryServiceRepository)
+	mqlRef.cacheKmsKeyName = r.KmsKeyName
 	return res.(*mqlGcpProjectArtifactRegistryServiceRepository), nil
 }
 
@@ -185,11 +190,7 @@ func (g *mqlGcpProjectArtifactRegistryServiceRepository) managedBy() (string, er
 }
 
 func (g *mqlGcpProjectArtifactRegistryServiceRepository) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
-	keyName := g.GetKmsKeyName()
-	if keyName.Error != nil {
-		return nil, keyName.Error
-	}
-	return newKmsCryptoKeyRef(g.MqlRuntime, &g.KmsKey, keyName.Data)
+	return newKmsCryptoKeyRef(g.MqlRuntime, &g.KmsKey, g.cacheKmsKeyName)
 }
 
 func initGcpProjectArtifactRegistryServiceRepository(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -211,6 +212,12 @@ func initGcpProjectArtifactRegistryServiceRepository(runtime *plugin.Runtime, ar
 	nameRaw, ok := args["name"]
 	if !ok || nameRaw == nil {
 		return nil, nil, errors.New("artifact registry repository init requires a \"name\" argument")
+	}
+
+	// Guard before building the parent: CreateResource hands args["projectId"]
+	// to the generated setter, which dereferences it, so nil panics the provider.
+	if args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.artifactRegistryService.repository requires a \"projectId\" argument")
 	}
 
 	obj, err := CreateResource(runtime, "gcp.project.artifactRegistryService", map[string]*llx.RawData{

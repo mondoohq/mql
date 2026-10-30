@@ -5,9 +5,11 @@ package resources
 
 import (
 	"encoding/json"
+	"strconv"
+	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/types"
 )
 
 // decodeExchangeList re-decodes the raw cmdlet payload (already unmarshalled
@@ -27,6 +29,68 @@ func decodeExchangeList[T any](raw any) ([]*T, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// exchangeDomainList decodes Exchange domain collections whose elements are
+// MultiValuedProperty<...> values (e.g. SmtpDomainWithSubdomains on hosted
+// content filter policies, SharingPolicyDomain on sharing policies).
+//
+// Depending on the cmdlet and PowerShell's ConvertTo-Json serialization, each
+// element is rendered either as a bare domain string ("contoso.com") or as an
+// object carrying a "Domain" field ({"Domain":"contoso.com",...}); a
+// single-element collection may additionally be emitted as a scalar instead of
+// an array. Decoding such objects into a plain []string fails with
+// "cannot unmarshal object into Go struct field ... of type string", which
+// aborts the whole resource. Normalizing every shape to a []string of domains
+// keeps decoding resilient for tenants that have any of these domains set.
+type exchangeDomainList []string
+
+func (d *exchangeDomainList) UnmarshalJSON(data []byte) error {
+	var raw any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*d = flattenExchangeDomains(raw)
+	return nil
+}
+
+func flattenExchangeDomains(v any) []string {
+	switch t := v.(type) {
+	case string:
+		if t == "" {
+			return nil
+		}
+		return []string{t}
+	case []any:
+		out := make([]string, 0, len(t))
+		for _, e := range t {
+			out = append(out, flattenExchangeDomains(e)...)
+		}
+		return out
+	case map[string]any:
+		if domain := exchangeDomainFromObject(t); domain != "" {
+			return []string{domain}
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
+func exchangeDomainFromObject(obj map[string]any) string {
+	// Preferred, explicitly-named keys first.
+	for _, key := range []string{"Domain", "SmtpDomain", "DomainName", "Name", "Address"} {
+		if s, ok := obj[key].(string); ok && s != "" {
+			return s
+		}
+	}
+	// Fallback: any string-valued key that looks like a domain.
+	for key, val := range obj {
+		if s, ok := val.(string); ok && s != "" && strings.Contains(strings.ToLower(key), "domain") {
+			return s
+		}
+	}
+	return ""
 }
 
 // --- Transport rules ---
@@ -293,17 +357,17 @@ func convertMalwareFilterPolicies(r *mqlMs365Exchangeonline, raw any) ([]any, er
 // --- Hosted content (spam) filter policies ---
 
 type ExchangeHostedContentFilterPolicy struct {
-	Identity                       string   `json:"Identity"`
-	Name                           string   `json:"Name"`
-	SpamAction                     string   `json:"SpamAction"`
-	HighConfidenceSpamAction       string   `json:"HighConfidenceSpamAction"`
-	PhishSpamAction                string   `json:"PhishSpamAction"`
-	HighConfidencePhishAction      string   `json:"HighConfidencePhishAction"`
-	BulkSpamAction                 string   `json:"BulkSpamAction"`
-	BulkThreshold                  int64    `json:"BulkThreshold"`
-	EnableEndUserSpamNotifications bool     `json:"EnableEndUserSpamNotifications"`
-	AllowedSenderDomains           []string `json:"AllowedSenderDomains"`
-	BlockedSenderDomains           []string `json:"BlockedSenderDomains"`
+	Identity                       string             `json:"Identity"`
+	Name                           string             `json:"Name"`
+	SpamAction                     string             `json:"SpamAction"`
+	HighConfidenceSpamAction       string             `json:"HighConfidenceSpamAction"`
+	PhishSpamAction                string             `json:"PhishSpamAction"`
+	HighConfidencePhishAction      string             `json:"HighConfidencePhishAction"`
+	BulkSpamAction                 string             `json:"BulkSpamAction"`
+	BulkThreshold                  int64              `json:"BulkThreshold"`
+	EnableEndUserSpamNotifications bool               `json:"EnableEndUserSpamNotifications"`
+	AllowedSenderDomains           exchangeDomainList `json:"AllowedSenderDomains"`
+	BlockedSenderDomains           exchangeDomainList `json:"BlockedSenderDomains"`
 }
 
 func convertHostedContentFilterPolicies(r *mqlMs365Exchangeonline, raw any) ([]any, error) {
@@ -328,8 +392,8 @@ func convertHostedContentFilterPolicies(r *mqlMs365Exchangeonline, raw any) ([]a
 				"bulkSpamAction":                 llx.StringData(p.BulkSpamAction),
 				"bulkThreshold":                  llx.IntData(p.BulkThreshold),
 				"enableEndUserSpamNotifications": llx.BoolData(p.EnableEndUserSpamNotifications),
-				"allowedSenderDomains":           llx.ArrayData(llx.TArr2Raw(p.AllowedSenderDomains), types.String),
-				"blockedSenderDomains":           llx.ArrayData(llx.TArr2Raw(p.BlockedSenderDomains), types.String),
+				"allowedSenderDomains":           llx.ArrayData(llx.TArr2Raw([]string(p.AllowedSenderDomains)), types.String),
+				"blockedSenderDomains":           llx.ArrayData(llx.TArr2Raw([]string(p.BlockedSenderDomains)), types.String),
 			})
 		if err != nil {
 			return nil, err
@@ -521,6 +585,11 @@ type ExchangeOwaMailboxPolicy struct {
 	WSSAccessOnPrivateComputersEnabled        bool     `json:"WSSAccessOnPrivateComputersEnabled"`
 	WSSAccessOnPublicComputersEnabled         bool     `json:"WSSAccessOnPublicComputersEnabled"`
 	WeatherEnabled                            bool     `json:"WeatherEnabled"`
+	// pointers: the cmdlet leaves these unset on a policy that never configured
+	// them, and a plain bool would report an unconfigured policy as one that
+	// disallows personal accounts
+	PersonalAccountsEnabled         *bool `json:"PersonalAccountsEnabled"`
+	PersonalAccountCalendarsEnabled *bool `json:"PersonalAccountCalendarsEnabled"`
 }
 
 func convertOwaMailboxPolicies(r *mqlMs365Exchangeonline, raw any) ([]any, error) {
@@ -574,6 +643,8 @@ func convertOwaMailboxPolicies(r *mqlMs365Exchangeonline, raw any) ([]any, error
 				"wssAccessOnPrivateComputersEnabled":        llx.BoolData(p.WSSAccessOnPrivateComputersEnabled),
 				"wssAccessOnPublicComputersEnabled":         llx.BoolData(p.WSSAccessOnPublicComputersEnabled),
 				"weatherEnabled":                            llx.BoolData(p.WeatherEnabled),
+				"personalAccountsEnabled":                   llx.BoolDataPtr(p.PersonalAccountsEnabled),
+				"personalAccountCalendarsEnabled":           llx.BoolDataPtr(p.PersonalAccountCalendarsEnabled),
 			})
 		if err != nil {
 			return nil, err
@@ -636,10 +707,96 @@ func convertRemoteDomains(r *mqlMs365Exchangeonline, raw any) ([]any, error) {
 // --- Quarantine policies ---
 
 type ExchangeQuarantinePolicy struct {
-	Identity                          string `json:"Identity"`
-	Name                              string `json:"Name"`
-	EndUserQuarantinePermissionsValue int64  `json:"EndUserQuarantinePermissionsValue"`
-	ESNEnabled                        bool   `json:"ESNEnabled"`
+	Identity string `json:"Identity"`
+	Name     string `json:"Name"`
+	// EndUserQuarantinePermissionsValue is no longer returned by
+	// Get-QuarantinePolicy; EndUserQuarantinePermissions carries the same data.
+	EndUserQuarantinePermissionsValue *int64 `json:"EndUserQuarantinePermissionsValue"`
+	// EndUserQuarantinePermissions is a string such as
+	// "[PermissionToBlockSender: False\r\nPermissionToDelete: True\r\n...]".
+	EndUserQuarantinePermissions string `json:"EndUserQuarantinePermissions"`
+	ESNEnabled                   bool   `json:"ESNEnabled"`
+}
+
+// quarantinePermissionBits maps each end-user quarantine permission to its bit
+// in EndUserQuarantinePermissionsValue, as documented for
+// New-QuarantinePolicy -EndUserQuarantinePermissionsValue.
+var quarantinePermissionBits = []struct {
+	name  string // permission name in EndUserQuarantinePermissions
+	field string // MQL field
+	bit   int64
+}{
+	{"PermissionToViewHeader", "permissionToViewHeader", 128},
+	{"PermissionToDownload", "permissionToDownload", 64},
+	{"PermissionToAllowSender", "permissionToAllowSender", 32},
+	{"PermissionToBlockSender", "permissionToBlockSender", 16},
+	{"PermissionToRequestRelease", "permissionToRequestRelease", 8},
+	{"PermissionToRelease", "permissionToRelease", 4},
+	{"PermissionToPreview", "permissionToPreview", 2},
+	{"PermissionToDelete", "permissionToDelete", 1},
+}
+
+// parseQuarantinePermissions parses the EndUserQuarantinePermissions string
+// into permission name -> granted. Unknown or malformed lines are skipped.
+func parseQuarantinePermissions(s string) map[string]bool {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "[")
+	s = strings.TrimSuffix(s, "]")
+	out := map[string]bool{}
+	for _, line := range strings.FieldsFunc(s, func(r rune) bool { return r == '\r' || r == '\n' || r == ',' || r == ';' }) {
+		key, val, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		b, err := strconv.ParseBool(strings.TrimSpace(val))
+		if err != nil {
+			continue
+		}
+		out[strings.TrimSpace(key)] = b
+	}
+	return out
+}
+
+// quarantinePolicyPermissions returns the bitmask and per-permission flags of a
+// quarantine policy. The bitmask comes from EndUserQuarantinePermissionsValue
+// when present, otherwise it is computed from EndUserQuarantinePermissions.
+// Each flag comes from EndUserQuarantinePermissions when it names the
+// permission, otherwise from the bitmask. With neither source, the bitmask
+// and flags are null.
+func quarantinePolicyPermissions(p *ExchangeQuarantinePolicy) (*int64, map[string]*bool) {
+	parsed := parseQuarantinePermissions(p.EndUserQuarantinePermissions)
+	flags := make(map[string]*bool, len(quarantinePermissionBits))
+
+	mask := p.EndUserQuarantinePermissionsValue
+	if mask == nil {
+		var computed int64
+		known := false
+		for _, perm := range quarantinePermissionBits {
+			granted, ok := parsed[perm.name]
+			if !ok {
+				continue
+			}
+			known = true
+			if granted {
+				computed |= perm.bit
+			}
+		}
+		if known {
+			mask = &computed
+		}
+	}
+
+	for _, perm := range quarantinePermissionBits {
+		if granted, ok := parsed[perm.name]; ok {
+			flags[perm.field] = &granted
+		} else if mask != nil {
+			granted := *mask&perm.bit != 0
+			flags[perm.field] = &granted
+		} else {
+			flags[perm.field] = nil
+		}
+	}
+	return mask, flags
 }
 
 func convertQuarantinePolicies(r *mqlMs365Exchangeonline, raw any) ([]any, error) {
@@ -652,14 +809,18 @@ func convertQuarantinePolicies(r *mqlMs365Exchangeonline, raw any) ([]any, error
 		if p == nil {
 			continue
 		}
-		mql, err := CreateResource(r.MqlRuntime, "ms365.exchangeonline.quarantinePolicyEntry",
-			map[string]*llx.RawData{
-				"__id":                              llx.StringData("quarantinePolicy-" + p.Identity),
-				"identity":                          llx.StringData(p.Identity),
-				"name":                              llx.StringData(p.Name),
-				"endUserQuarantinePermissionsValue": llx.IntData(p.EndUserQuarantinePermissionsValue),
-				"esnEnabled":                        llx.BoolData(p.ESNEnabled),
-			})
+		mask, flags := quarantinePolicyPermissions(p)
+		args := map[string]*llx.RawData{
+			"__id":                              llx.StringData("quarantinePolicy-" + p.Identity),
+			"identity":                          llx.StringData(p.Identity),
+			"name":                              llx.StringData(p.Name),
+			"endUserQuarantinePermissionsValue": llx.IntDataPtr(mask),
+			"esnEnabled":                        llx.BoolData(p.ESNEnabled),
+		}
+		for field, v := range flags {
+			args[field] = llx.BoolDataPtr(v)
+		}
+		mql, err := CreateResource(r.MqlRuntime, "ms365.exchangeonline.quarantinePolicyEntry", args)
 		if err != nil {
 			return nil, err
 		}
@@ -708,11 +869,11 @@ func convertAtpPoliciesForO365(r *mqlMs365Exchangeonline, raw any) ([]any, error
 // --- Sharing policies ---
 
 type ExchangeSharingPolicy struct {
-	Identity string   `json:"Identity"`
-	Name     string   `json:"Name"`
-	Enabled  bool     `json:"Enabled"`
-	Default  bool     `json:"Default"`
-	Domains  []string `json:"Domains"`
+	Identity string             `json:"Identity"`
+	Name     string             `json:"Name"`
+	Enabled  bool               `json:"Enabled"`
+	Default  bool               `json:"Default"`
+	Domains  exchangeDomainList `json:"Domains"`
 }
 
 func convertSharingPolicies(r *mqlMs365Exchangeonline, raw any) ([]any, error) {
@@ -732,7 +893,7 @@ func convertSharingPolicies(r *mqlMs365Exchangeonline, raw any) ([]any, error) {
 				"name":      llx.StringData(p.Name),
 				"enabled":   llx.BoolData(p.Enabled),
 				"isDefault": llx.BoolData(p.Default),
-				"domains":   llx.ArrayData(llx.TArr2Raw(p.Domains), types.String),
+				"domains":   llx.ArrayData(llx.TArr2Raw([]string(p.Domains)), types.String),
 			})
 		if err != nil {
 			return nil, err
@@ -839,4 +1000,77 @@ func (r *mqlMs365Exchangeonline) sharingPolicies() ([]any, error) {
 
 func (r *mqlMs365Exchangeonline) roleAssignmentPolicies() ([]any, error) {
 	return nil, r.getExchangeReport()
+}
+
+// --- Preset security policy rules ---
+
+// protectionPolicyRuleKinds maps a report section to the kind reported on each
+// rule it produced. A preset security policy is turned on by one Exchange
+// Online Protection rule and one Defender for Office 365 rule, and the two come
+// from different cmdlets, so the kind is what tells them apart once they are
+// merged into a single list.
+type protectionPolicyRuleSection struct {
+	kind string
+	rows []any
+}
+
+// convertProtectionPolicyRules renders the rules that apply the built-in
+// Standard and Strict preset security policies.
+//
+// The rows are read defensively rather than struct-decoded, the same way the
+// DLP policies are: these cmdlets are served both by the admin REST endpoint
+// and by the PowerShell module, and the two do not agree on how an enum or an
+// empty multi-valued property serializes.
+func convertProtectionPolicyRules(r *mqlMs365Exchangeonline, eopRows []any, atpRows []any) ([]any, error) {
+	result := []any{}
+
+	for _, section := range []protectionPolicyRuleSection{
+		{kind: "eop", rows: eopRows},
+		{kind: "atp", rows: atpRows},
+	} {
+		for _, item := range section.rows {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			identity := dlpString(m, "Identity")
+			id := identity
+			if id == "" {
+				id = dlpString(m, "Name")
+			}
+
+			mql, err := CreateResource(r.MqlRuntime, ResourceMs365ExchangeonlineProtectionPolicyRule,
+				protectionPolicyRuleFields(m, section.kind, id, identity))
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, mql)
+		}
+	}
+
+	return result, nil
+}
+
+// protectionPolicyRuleFields maps one rule row onto the resource's fields.
+func protectionPolicyRuleFields(m map[string]any, kind string, id string, identity string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":                      llx.StringData("protectionPolicyRule-" + kind + "-" + id),
+		"identity":                  llx.StringData(identity),
+		"name":                      llx.StringData(dlpString(m, "Name")),
+		"kind":                      llx.StringData(kind),
+		"state":                     llx.StringData(dlpString(m, "State")),
+		"priority":                  llx.IntData(dlpInt(m, "Priority")),
+		"eopProtectionPolicy":       llx.StringData(dlpString(m, "EOPProtectionPolicy")),
+		"safeAttachmentPolicy":      llx.StringData(dlpString(m, "SafeAttachmentPolicy")),
+		"safeLinksPolicy":           llx.StringData(dlpString(m, "SafeLinksPolicy")),
+		"sentTo":                    llx.ArrayData(dlpStringSlice(m, "SentTo"), types.String),
+		"sentToMemberOf":            llx.ArrayData(dlpStringSlice(m, "SentToMemberOf"), types.String),
+		"recipientDomainIs":         llx.ArrayData(dlpStringSlice(m, "RecipientDomainIs"), types.String),
+		"exceptIfSentTo":            llx.ArrayData(dlpStringSlice(m, "ExceptIfSentTo"), types.String),
+		"exceptIfSentToMemberOf":    llx.ArrayData(dlpStringSlice(m, "ExceptIfSentToMemberOf"), types.String),
+		"exceptIfRecipientDomainIs": llx.ArrayData(dlpStringSlice(m, "ExceptIfRecipientDomainIs"), types.String),
+		"comment":                   llx.StringData(dlpString(m, "Comment")),
+		"whenChanged":               llx.TimeDataPtr(dlpTime(m, "WhenChanged")),
+	}
 }

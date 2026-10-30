@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 )
 
 func TestNewPlatformPurl(t *testing.T) {
@@ -144,6 +144,16 @@ func TestNewPlatformPurl(t *testing.T) {
 				Build: "8.5",
 			},
 			want:    "pkg:platform/centplatform?build=8.5&distro=centplatform-8.5",
+			wantErr: "",
+		},
+		{
+			name: "rolling release without a version",
+			platform: &inventory.Platform{
+				Name:  "arch",
+				Arch:  "x86_64",
+				Build: "rolling",
+			},
+			want:    "pkg:platform/arch?arch=x86_64&build=rolling&distro=arch-rolling",
 			wantErr: "",
 		},
 		{

@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"sync"
@@ -18,11 +19,11 @@ import (
 	ddtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 func (a *mqlAwsDynamodb) id() (string, error) {
@@ -192,6 +193,97 @@ func (a *mqlAwsDynamodbExport) endTime() (*time.Time, error) {
 	return exp.EndTime, nil
 }
 
+func (a *mqlAwsDynamodbExport) filterSpecification() (any, error) {
+	exp, err := a.fetchExport()
+	if err != nil {
+		return nil, err
+	}
+	var spec *ddtypes.FilterSpecification
+	if exp != nil {
+		spec = exp.FilterSpecification
+	}
+	res := dynamodbFilterSpecificationToDict(spec)
+	if res == nil {
+		a.FilterSpecification.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res, nil
+}
+
+// dynamodbFilterSpecificationToDict renders an export filter as a dict, or nil
+// when the export has none. Expression attribute values are written in
+// DynamoDB JSON ({"S": "x"}, {"N": "1"}, ...) so their type survives.
+func dynamodbFilterSpecificationToDict(spec *ddtypes.FilterSpecification) map[string]any {
+	if spec == nil {
+		return nil
+	}
+	names := make(map[string]any, len(spec.ExpressionAttributeNames))
+	for k, v := range spec.ExpressionAttributeNames {
+		names[k] = v
+	}
+	values := make(map[string]any, len(spec.ExpressionAttributeValues))
+	for k, v := range spec.ExpressionAttributeValues {
+		values[k] = dynamodbAttributeValueToDict(v)
+	}
+	return map[string]any{
+		"filterExpression":          optionalString(spec.FilterExpression),
+		"keyConditionExpression":    optionalString(spec.KeyConditionExpression),
+		"projectionExpression":      optionalString(spec.ProjectionExpression),
+		"expressionAttributeNames":  names,
+		"expressionAttributeValues": values,
+	}
+}
+
+// optionalString returns the pointed-to string, or nil so an unset value reads
+// as null in a dict rather than as an empty string.
+func optionalString(s *string) any {
+	if s == nil {
+		return nil
+	}
+	return *s
+}
+
+// dynamodbAttributeValueToDict renders one attribute value in DynamoDB JSON.
+// Binary values are base64-encoded, as DynamoDB JSON writes them.
+func dynamodbAttributeValueToDict(av ddtypes.AttributeValue) any {
+	switch v := av.(type) {
+	case *ddtypes.AttributeValueMemberS:
+		return map[string]any{"S": v.Value}
+	case *ddtypes.AttributeValueMemberN:
+		return map[string]any{"N": v.Value}
+	case *ddtypes.AttributeValueMemberB:
+		return map[string]any{"B": base64.StdEncoding.EncodeToString(v.Value)}
+	case *ddtypes.AttributeValueMemberBOOL:
+		return map[string]any{"BOOL": v.Value}
+	case *ddtypes.AttributeValueMemberNULL:
+		return map[string]any{"NULL": v.Value}
+	case *ddtypes.AttributeValueMemberSS:
+		return map[string]any{"SS": convert.SliceAnyToInterface(v.Value)}
+	case *ddtypes.AttributeValueMemberNS:
+		return map[string]any{"NS": convert.SliceAnyToInterface(v.Value)}
+	case *ddtypes.AttributeValueMemberBS:
+		bs := make([]any, 0, len(v.Value))
+		for _, b := range v.Value {
+			bs = append(bs, base64.StdEncoding.EncodeToString(b))
+		}
+		return map[string]any{"BS": bs}
+	case *ddtypes.AttributeValueMemberL:
+		list := make([]any, 0, len(v.Value))
+		for _, item := range v.Value {
+			list = append(list, dynamodbAttributeValueToDict(item))
+		}
+		return map[string]any{"L": list}
+	case *ddtypes.AttributeValueMemberM:
+		m := make(map[string]any, len(v.Value))
+		for k, item := range v.Value {
+			m[k] = dynamodbAttributeValueToDict(item)
+		}
+		return map[string]any{"M": m}
+	default:
+		return nil
+	}
+}
+
 func (a *mqlAwsDynamodbExport) s3SseAlgorithm() (string, error) {
 	exp, err := a.fetchExport()
 	if err != nil {
@@ -233,9 +325,7 @@ func (a *mqlAwsDynamodbExport) kmsKey() (*mqlAwsKmsKey, error) {
 	}
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	mqlKey, err := NewResource(a.MqlRuntime, "aws.kms.key",
-		map[string]*llx.RawData{
-			"arn": llx.StringData(fmt.Sprintf(kmsKeyArnPattern, a.region, conn.AccountId(), convert.ToValue(exp.S3SseKmsKeyId))),
-		})
+		kmsKeyRefArgs(a.region, conn.AccountId(), convert.ToValue(exp.S3SseKmsKeyId)))
 	if err != nil {
 		return nil, err
 	}
@@ -334,9 +424,8 @@ func initAwsDynamodbTable(runtime *plugin.Runtime, args map[string]*llx.RawData)
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformDynamodbTable); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -374,7 +463,7 @@ func initAwsDynamodbTable(runtime *plugin.Runtime, args map[string]*llx.RawData)
 				"arn":    llx.StringData(arnVal),
 				"name":   llx.StringData(tableName),
 				"region": llx.StringData(region),
-				"id":     llx.StringData(""),
+				"id":     llx.NilData,
 			})
 		if err != nil {
 			return nil, nil, err
@@ -444,6 +533,14 @@ type mqlAwsDynamodbTableInternal struct {
 }
 
 func (a *mqlAwsDynamodbTable) sseKmsKey() (*mqlAwsKmsKey, error) {
+	// cacheSseKmsKeyArn is assigned by fetchDetail, so reading it without
+	// fetching first reports null for every table - including one encrypted
+	// with a customer-managed key, which is the case this field exists to
+	// answer. sourceTable, the sibling built on the same cache, already
+	// fetches first.
+	if err := a.fetchDetail(); err != nil {
+		return nil, err
+	}
 	if a.cacheSseKmsKeyArn == nil || *a.cacheSseKmsKeyArn == "" {
 		a.SseKmsKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -614,7 +711,7 @@ func (a *mqlAwsDynamodb) getTables(conn *connection.AwsConnection) []*jobpool.Jo
 							"arn":    llx.StringData(fmt.Sprintf(dynamoTableArnPattern, region, conn.AccountId(), tableName)),
 							"name":   llx.StringData(tableName),
 							"region": llx.StringData(region),
-							"id":     llx.StringData(""),
+							"id":     llx.NilData,
 						})
 					if err != nil {
 						return nil, err
@@ -682,7 +779,7 @@ func (a *mqlAwsDynamodbTable) fetchDetail() error {
 	a.CreatedAt = plugin.TValue[*time.Time]{Data: table.Table.CreationDateTime, State: plugin.StateIsSet}
 	a.DeletionProtectionEnabled = plugin.TValue[bool]{Data: convert.ToValue(table.Table.DeletionProtectionEnabled), State: plugin.StateIsSet}
 	a.GlobalTableVersion = plugin.TValue[string]{Data: convert.ToValue(table.Table.GlobalTableVersion), State: plugin.StateIsSet}
-	a.Id = plugin.TValue[string]{Data: convert.ToValue(table.Table.TableId), State: plugin.StateIsSet}
+	a.TableId = plugin.TValue[string]{Data: convert.ToValue(table.Table.TableId), State: plugin.StateIsSet}
 	a.SizeBytes = plugin.TValue[int64]{Data: convert.ToValue(table.Table.TableSizeBytes), State: plugin.StateIsSet}
 	a.Status = plugin.TValue[string]{Data: string(table.Table.TableStatus), State: plugin.StateIsSet}
 	a.Items = plugin.TValue[int64]{Data: convert.ToValue(table.Table.ItemCount), State: plugin.StateIsSet}
@@ -907,11 +1004,7 @@ func replicaRegionsFromDescriptions(replicas []ddtypes.ReplicaDescription) []any
 }
 
 func dynamoDBTagsToMap(tags []ddtypes.Tag) map[string]any {
-	tagsMap := make(map[string]any)
-	for _, tag := range tags {
-		tagsMap[convert.ToValue(tag.Key)] = convert.ToValue(tag.Value)
-	}
-	return tagsMap
+	return tagsToMap(tags, func(t ddtypes.Tag) *string { return t.Key }, func(t ddtypes.Tag) *string { return t.Value })
 }
 
 func (a *mqlAwsDynamodbGlobaltable) replicaSettings() ([]any, error) {
@@ -934,9 +1027,8 @@ func initAwsDynamodbGlobaltable(runtime *plugin.Runtime, args map[string]*llx.Ra
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			(args)["name"] = llx.StringData(ids.name)
-			(args)["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformDynamodbGlobaltable); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -1049,6 +1141,19 @@ func (a *mqlAwsDynamodbTable) pitrRecoveryPeriodInDays() (int64, error) {
 
 func (a *mqlAwsDynamodbGlobaltable) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+// tableId returns the identifier AWS assigns the table.
+//
+// ListTables reports only names, so the identifier costs a DescribeTable. The
+// old plain id field was set to "" at creation time and, because a plain field
+// is already StateIsSet, the runtime never called fetchDetail to replace it --
+// every table reported an empty identifier as though that were the value.
+func (a *mqlAwsDynamodbTable) tableId() (string, error) {
+	if err := a.fetchDetail(); err != nil {
+		return "", err
+	}
+	return a.TableId.Data, nil
 }
 
 func (a *mqlAwsDynamodbTable) id() (string, error) {

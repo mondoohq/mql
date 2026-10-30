@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // anyAddressCIDRs are the CIDR notations that mean "every address" — an
@@ -229,4 +230,262 @@ func (l *mqlDigitaloceanLoadBalancer) exposure() (*mqlDigitaloceanNetworkExposur
 		return nil, err
 	}
 	return res.(*mqlDigitaloceanNetworkExposure), nil
+}
+
+// exposure breaks down whether the cluster's API server is reachable from the
+// internet. A managed control plane is published on a public endpoint, so it
+// answers every address unless the control-plane firewall is enabled and its
+// allowed source addresses exclude the internet. An unset firewall flag counts
+// as "no firewall", which reports the cluster as reachable rather than quietly
+// clearing it on missing data.
+func (c *mqlDigitaloceanKubernetesCluster) exposure() (*mqlDigitaloceanNetworkExposure, error) {
+	id := c.GetId()
+	if id.Error != nil {
+		return nil, id.Error
+	}
+
+	endpoint := c.GetEndpoint()
+	if endpoint.Error != nil {
+		return nil, endpoint.Error
+	}
+	ipv4 := c.GetIpv4()
+	if ipv4.Error != nil {
+		return nil, ipv4.Error
+	}
+	hasPublicIp := endpoint.Data != "" || ipv4.Data != ""
+
+	firewallEnabled := c.GetControlPlaneFirewallEnabled()
+	if firewallEnabled.Error != nil {
+		return nil, firewallEnabled.Error
+	}
+	allowed := c.GetControlPlaneFirewallAllowedAddresses()
+	if allowed.Error != nil {
+		return nil, allowed.Error
+	}
+
+	firewallAllowsIngress := !firewallEnabled.Data || anyAddressInList(allowed.Data)
+	internetReachable := hasPublicIp && firewallAllowsIngress
+
+	res, err := CreateResource(c.MqlRuntime, "digitalocean.network.exposure", map[string]*llx.RawData{
+		"__id":                  llx.StringData("digitalocean.kubernetes.cluster/" + id.Data + "/exposure"),
+		"internetReachable":     llx.BoolData(internetReachable),
+		"hasPublicIp":           llx.BoolData(hasPublicIp),
+		"firewallAllowsIngress": llx.BoolData(firewallAllowsIngress),
+		// The control-plane firewall is a source address list rather than a set
+		// of cloud-firewall rules, so there are no ingress rules to report.
+		"openIngressRules": llx.ArrayData([]any{}, types.Resource("digitalocean.firewall.ingressRule")),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlDigitaloceanNetworkExposure), nil
+}
+
+// anyAddressInList reports whether a list of source CIDRs admits every address.
+func anyAddressInList(addresses []any) bool {
+	for _, a := range addresses {
+		cidr, ok := a.(string)
+		if !ok {
+			continue
+		}
+		if isAnyAddress(cidr) {
+			return true
+		}
+	}
+	return false
+}
+
+// spacesPolicyGrantsWildcard reports whether a parsed bucket policy has an Allow
+// statement naming the wildcard principal. The policy arrives as decoded JSON,
+// so every step uses the comma-ok form: an unparseable policy is stored as a
+// plain string, and a hand-written document can put any shape in any field.
+func spacesPolicyGrantsWildcard(policy any) bool {
+	doc, ok := policy.(map[string]any)
+	if !ok {
+		return false
+	}
+	for _, statement := range asSlice(doc["Statement"]) {
+		s, ok := statement.(map[string]any)
+		if !ok {
+			continue
+		}
+		effect, _ := s["Effect"].(string)
+		if !strings.EqualFold(effect, "Allow") {
+			continue
+		}
+		if principalIsWildcard(s["Principal"]) {
+			return true
+		}
+	}
+	return false
+}
+
+// principalIsWildcard reports whether a policy principal names "*". A principal
+// is either the bare string "*" or a map keyed by principal type, whose values
+// are a single string or a list of them.
+func principalIsWildcard(principal any) bool {
+	switch p := principal.(type) {
+	case string:
+		return p == "*"
+	case map[string]any:
+		for _, v := range p {
+			for _, entry := range asSlice(v) {
+				if s, ok := entry.(string); ok && s == "*" {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// asSlice normalizes a JSON field that may hold either a single value or a list
+// into a list, so callers can iterate it either way.
+func asSlice(v any) []any {
+	switch t := v.(type) {
+	case nil:
+		return nil
+	case []any:
+		return t
+	default:
+		return []any{v}
+	}
+}
+
+// hasWildcardPolicy reports whether the bucket policy allows the wildcard
+// principal, which grants the action to every requester.
+func (b *mqlDigitaloceanSpacesBucket) hasWildcardPolicy() (bool, error) {
+	policy := b.GetPolicy()
+	if policy.Error != nil {
+		return false, policy.Error
+	}
+	// A policy that was never read is not a policy that grants nothing.
+	if !b.policyRead {
+		b.HasWildcardPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return spacesPolicyGrantsWildcard(policy.Data), nil
+}
+
+// isPublic reports whether the bucket's contents are reachable by anyone on the
+// internet: a public ACL grant or a wildcard bucket policy, with public access
+// not blocked.
+//
+// The authenticated-users grant counts as public because it covers every
+// account on the platform rather than only this one. publicAccessBlocked is
+// only true when all four block-public-access settings are on, so a bucket with
+// a public grant and partial blocking is reported as public rather than
+// silently cleared. On DigitalOcean that field is null, because Spaces has no
+// block-public-access control at all, and a control that does not exist
+// cannot clear a public grant either: the verdict rests on the ACL and the
+// policy.
+func (b *mqlDigitaloceanSpacesBucket) isPublic() (bool, error) {
+	blocked := b.GetPublicAccessBlocked()
+	if blocked.Error != nil {
+		return false, blocked.Error
+	}
+	if blocked.State&plugin.StateIsNull == 0 && blocked.Data {
+		return false, nil
+	}
+
+	publicRead := b.GetPublicReadAcl()
+	if publicRead.Error != nil {
+		return false, publicRead.Error
+	}
+	publicWrite := b.GetPublicWriteAcl()
+	if publicWrite.Error != nil {
+		return false, publicWrite.Error
+	}
+	authenticatedRead := b.GetAuthenticatedReadAcl()
+	if authenticatedRead.Error != nil {
+		return false, authenticatedRead.Error
+	}
+	wildcardPolicy := b.GetHasWildcardPolicy()
+	if wildcardPolicy.Error != nil {
+		return false, wildcardPolicy.Error
+	}
+
+	// Any grant that was actually read and is public settles it, whatever else
+	// could not be read.
+	signals := []*plugin.TValue[bool]{publicRead, publicWrite, authenticatedRead, wildcardPolicy}
+	unknown := false
+	for _, s := range signals {
+		if s.State&plugin.StateIsNull != 0 {
+			unknown = true
+			continue
+		}
+		if s.Data {
+			return true, nil
+		}
+	}
+
+	// Nothing read said public, but something was not read. Reporting false
+	// here would clear the bucket on the strength of an answer nobody gave.
+	if unknown {
+		b.IsPublic.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return false, nil
+}
+
+// isPublic reports whether anyone on the internet can invoke the action: it is
+// published as a web endpoint and does not require an API key.
+func (a *mqlDigitaloceanFunctionAction) isPublic() (bool, error) {
+	webExported := a.GetWebExported()
+	if webExported.Error != nil {
+		return false, webExported.Error
+	}
+	requiresApiKey := a.GetRequiresApiKey()
+	if requiresApiKey.Error != nil {
+		return false, requiresApiKey.Error
+	}
+	return webExported.Data && !requiresApiKey.Data, nil
+}
+
+// isPublic reports whether the agent's deployment answers anyone on the
+// internet. DigitalOcean spells the visibility either as a bare "public" or as
+// a "VISIBILITY_PUBLIC" enum name depending on the endpoint, so the check looks
+// for the word rather than matching one spelling.
+func (a *mqlDigitaloceanGradientaiAgent) isPublic() (bool, error) {
+	visibility := a.GetDeploymentVisibility()
+	if visibility.Error != nil {
+		return false, visibility.Error
+	}
+	return strings.Contains(strings.ToLower(visibility.Data), "public"), nil
+}
+
+// publiclyRoutedComponents are the app spec component lists App Platform serves
+// over HTTP. Workers and jobs run without a public route.
+var publiclyRoutedComponents = []string{"services", "staticSites", "functions"}
+
+// isPublic reports whether the app serves traffic to the internet: it has a
+// live URL or a default ingress hostname, and its spec declares at least one
+// publicly routed component.
+func (a *mqlDigitaloceanApp) isPublic() (bool, error) {
+	liveUrl := a.GetLiveUrl()
+	if liveUrl.Error != nil {
+		return false, liveUrl.Error
+	}
+	defaultIngress := a.GetDefaultIngress()
+	if defaultIngress.Error != nil {
+		return false, defaultIngress.Error
+	}
+	if liveUrl.Data == "" && defaultIngress.Data == "" {
+		return false, nil
+	}
+
+	spec := a.GetSpec()
+	if spec.Error != nil {
+		return false, spec.Error
+	}
+	s, ok := spec.Data.(map[string]any)
+	if !ok {
+		return false, nil
+	}
+	for _, key := range publiclyRoutedComponents {
+		if len(asSlice(s[key])) > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }

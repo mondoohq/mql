@@ -1,0 +1,308 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/n8n"
+option go_package = "go.mondoo.com/mql/providers/n8n/resources"
+option root = "n8n"
+
+// n8n instance
+//
+// An n8n workflow automation instance, read through its Public API. The
+// `workflows`, `credentials`, `users`, and `tags` fields list what the instance
+// holds, `communityPackages` lists the installed community node packages, and
+// `securityAudit` runs the instance's built-in security audit, and
+// `instanceSettings` reports the security settings that audit lists.
+// `apiKeyScopes` lists what the API key in use is allowed to do.
+n8n @root {
+  // URL of the instance
+  url string
+  // Workflows on the instance, including archived ones
+  workflows() []n8n.workflow
+  // Credentials stored on the instance
+  credentials() []n8n.credential
+  // Users of the instance
+  users() []n8n.user
+  // Tags defined on the instance
+  tags() []n8n.tag
+  // Installed community node packages
+  communityPackages() []n8n.communityPackage
+  // Scopes of the API key used for the connection
+  apiKeyScopes() []string
+  // Security audit of the instance
+  securityAudit() n8n.audit
+  // Security settings of the instance
+  instanceSettings() n8n.securitySettings
+}
+
+// n8n instance security settings
+//
+// The instance's feature switches and node allow and deny lists, as its
+// security audit reports them. They come from the instance's environment,
+// for example `N8N_COMMUNITY_PACKAGES_ENABLED` and `NODES_EXCLUDE`. Reading
+// them needs the `securityAudit:generate` scope.
+private n8n.securitySettings {
+  // Whether community node packages can be installed
+  communityPackagesEnabled bool
+  // Whether the Public API is enabled
+  publicApiEnabled bool
+  // Whether workflow templates can be browsed and imported
+  templatesEnabled bool
+  // Whether the instance checks for new versions
+  versionNotificationsEnabled bool
+  // Whether the instance sends diagnostics to n8n
+  diagnosticsEnabled bool
+  // Node types that cannot be used, for example n8n-nodes-base.executeCommand
+  excludedNodes []string
+  // Node types allowed when an allowlist is set, empty when every node type is allowed
+  includedNodes []string
+}
+
+// n8n workflow
+//
+// A workflow with its nodes, tags, and execution settings. `active` is true
+// when a published version runs on the workflow's triggers. The settings
+// fields read null when the workflow does not set them and the instance
+// default applies. Select a workflow by name, for example
+// `n8n.workflows.where(name == "Sync CRM")`.
+n8n.workflow @defaults("name active") {
+  // Workflow ID
+  id string
+  // Workflow name
+  name string
+  // Whether a published version of the workflow runs on its triggers
+  active bool
+  // Whether the workflow is archived
+  isArchived bool
+  // ID of the current version of the workflow
+  versionId string
+  // Number of trigger nodes
+  triggerCount int
+  // Time the workflow was created
+  createdAt time
+  // Time the workflow was last updated
+  updatedAt time
+  // Tags on the workflow
+  tags() []n8n.tag
+  // Nodes that make up the workflow
+  nodes []n8n.workflow.node
+  // Credentials the workflow's nodes use
+  credentials() []n8n.credential
+  // Caller policy
+  //
+  // Which workflows may call this one with the Execute Workflow node: `any`,
+  // `none`, `workflowsFromSameOwner`, or `workflowsFromAList`.
+  callerPolicy string
+  // Workflows allowed to call this one
+  //
+  // Used when `callerPolicy` is `workflowsFromAList`.
+  callers() []n8n.workflow
+  // Workflow that runs when this workflow fails
+  errorWorkflow() n8n.workflow
+  // Node execution order, for example v1
+  executionOrder string
+  // Execution timeout in seconds
+  executionTimeout int
+  // Timezone the workflow's schedules run in
+  timezone string
+  // Whether failed executions are saved
+  //
+  // One of `all`, `none`, or `DEFAULT` (the instance default applies).
+  saveDataErrorExecution string
+  // Whether successful executions are saved
+  //
+  // One of `all`, `none`, or `DEFAULT` (the instance default applies).
+  saveDataSuccessExecution string
+  // Redaction of execution data
+  //
+  // One of `none`, `non-manual`, `manual-only`, or `all`.
+  redactionPolicy string
+  // Whether the workflow is reachable over the Model Context Protocol (MCP)
+  availableInMcp bool
+}
+
+// n8n workflow node
+private n8n.workflow.node @defaults("name type") {
+  // Node ID, unique within the workflow
+  id string
+  // Node name, unique within the workflow
+  name string
+  // Node type, for example n8n-nodes-base.httpRequest
+  type string
+  // Version of the node type
+  typeVersion float
+  // Whether the node is disabled
+  disabled bool
+  // Authentication the node uses
+  //
+  // Set on Webhook, Form Trigger, HTTP Request, and public Chat Trigger
+  // nodes, for example `none`, `basicAuth`, or `headerAuth` on a Webhook and
+  // `genericCredentialType` on an HTTP Request. Reports the node's default,
+  // `none`, when the workflow does not set it. Null on other node types.
+  authentication string
+  // URL path of a Webhook or Form Trigger node
+  path string
+  // Whether a Chat Trigger's chat is publicly available
+  //
+  // Reports false, the node's default, when unset. Null when an expression
+  // sets it, and on other node types.
+  public bool
+  // Origins allowed to call a public Chat Trigger
+  //
+  // Reports `*` (every origin), the node's default, when unset. Null on other
+  // node types and on a Chat Trigger that is known not to be public.
+  allowedOrigins []string
+  // IP addresses allowed to call a Webhook node
+  //
+  // Empty when every address may call it, the node's default. Null on other
+  // node types.
+  ipAllowlist []string
+  // Whether an HTTP Request node skips TLS certificate verification
+  //
+  // Reports false, the node's default, when unset. Null when an expression
+  // sets it, and on other node types.
+  allowUnauthorizedCerts bool
+  // Host an HTTP Request node calls
+  //
+  // Null when the URL is built from an expression, since it is only known
+  // when the workflow runs. Null on other node types.
+  requestHost string
+  // Webhook ID, set on nodes that receive webhooks
+  webhookId string
+  // What the workflow does when the node fails, for example stopWorkflow or continueRegularOutput
+  onError string
+  // Whether the node retries when it fails
+  retryOnFail bool
+  // Credentials the node uses
+  credentials() []n8n.credential
+}
+
+// n8n credential
+//
+// A stored credential: its name, type, and the workflows that use it. The API
+// never returns the secret data. `workflows` is empty for a credential no
+// workflow uses.
+n8n.credential @defaults("name type") {
+  // Credential ID
+  id string
+  // Credential name
+  name string
+  // Credential type, for example httpHeaderAuth or slackOAuth2Api
+  type string
+  // Time the credential was created
+  createdAt time
+  // Time the credential was last updated
+  updatedAt time
+  // Workflows whose nodes use the credential
+  workflows() []n8n.workflow
+}
+
+// n8n user
+//
+// A user of the instance with their global role, invitation state, and
+// whether they use multi-factor authentication. Select a user by email, for
+// example `n8n.users.where(email == "ops@example.com")`.
+n8n.user @defaults("email role") {
+  // User ID
+  id string
+  // Email address
+  email string
+  // First name
+  firstName string
+  // Last name
+  lastName string
+  // Global role, for example global:owner, global:admin, or global:member
+  role string
+  // Whether the user has not yet accepted their invitation
+  isPending bool
+  // Whether the user has multi-factor authentication enabled
+  mfaEnabled bool
+  // Time the user was created
+  createdAt time
+  // Time the user was last updated
+  updatedAt time
+}
+
+// n8n tag
+private n8n.tag @defaults("name") {
+  // Tag ID
+  id string
+  // Tag name
+  name string
+  // Time the tag was created
+  createdAt time
+  // Time the tag was last updated
+  updatedAt time
+}
+
+// n8n community package
+//
+// An installed community node package. Community nodes are not vetted by n8n
+// and run with full access to the host. `updateAvailable` names a newer
+// version when one exists, and `failedLoading` is true for a package the
+// instance could not load.
+n8n.communityPackage @defaults("name installedVersion") {
+  // npm package name
+  name string
+  // Installed version
+  installedVersion string
+  // Newer version available, or empty when the package is current
+  updateAvailable string
+  // Whether the instance failed to load the package
+  failedLoading bool
+  // Package author name
+  authorName string
+  // Package author email
+  authorEmail string
+  // Node types the package provides
+  nodeTypes []string
+  // Time the package was installed
+  createdAt time
+  // Time the package was last updated
+  updatedAt time
+}
+
+// n8n security audit
+//
+// The result of the instance's built-in security audit, one report per risk
+// category: credentials, database, filesystem, instance, and nodes. The
+// instance computes the audit when it is read. `reports` is empty when no
+// category found a risk.
+n8n.audit {
+  // Risk reports, one per category that found a risk
+  reports() []n8n.audit.report
+}
+
+// n8n security audit report
+private n8n.audit.report @defaults("risk") {
+  // Risk category: credentials, database, filesystem, instance, or nodes
+  risk string
+  // Findings of the report
+  sections []n8n.audit.section
+}
+
+// n8n security audit finding
+private n8n.audit.section @defaults("title") {
+  // Risk category of the report the finding belongs to
+  risk string
+  // Finding title, for example "Credentials not used in any workflow"
+  title string
+  // What the finding means
+  description string
+  // What to do about the finding
+  recommendation string
+  // What the finding is about
+  //
+  // One entry per affected item. The `kind` key selects the shape:
+  // `credential` (id, name), `node` (workflowId, workflowName, nodeId,
+  // nodeName, nodeType), `community` (nodeType, packageUrl), and `custom`
+  // (nodeType, filePath).
+  locations []dict
+  // Instance settings the finding reports on, set on the instance report's security settings finding
+  settings dict
+  // Workflows the finding names
+  workflows() []n8n.workflow
+  // Credentials the finding names
+  credentials() []n8n.credential
+}

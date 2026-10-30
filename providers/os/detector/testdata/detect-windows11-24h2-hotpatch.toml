@@ -12,10 +12,11 @@ stdout="""
 }
 """
 
-[commands."abb2e2bc03d2148718d9bb1a8069ea307dd97f1c2d81845558b0ea6d560b9900"]
+[commands."e96b1a0fd8be3aac8ea39250e33ce03fa1b4b3897bf207e36a1545c22b67ca42"]
 stdout="""
 {
     "AllowRebootlessUpdates":  "1",
-    "EnableVirtualizationBasedSecurity":  "1"
+    "EnableVirtualizationBasedSecurity":  "1",
+    "VirtualizationBasedSecurityStatus":  "2"
 }
 """

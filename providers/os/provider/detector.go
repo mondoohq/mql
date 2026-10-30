@@ -9,15 +9,16 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/detector"
-	"go.mondoo.com/mql/v13/providers/os/id"
-	"go.mondoo.com/mql/v13/providers/os/id/clouddetect"
-	"go.mondoo.com/mql/v13/providers/os/id/hostname"
-	"go.mondoo.com/mql/v13/providers/os/id/ids"
-	"go.mondoo.com/mql/v13/providers/os/id/machineid"
-	"go.mondoo.com/mql/v13/providers/os/resources/plist"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/detector"
+	"go.mondoo.com/mql/providers/os/detector/containerenv"
+	"go.mondoo.com/mql/providers/os/id"
+	"go.mondoo.com/mql/providers/os/id/clouddetect"
+	"go.mondoo.com/mql/providers/os/id/hostname"
+	"go.mondoo.com/mql/providers/os/id/ids"
+	"go.mondoo.com/mql/providers/os/id/machineid"
+	"go.mondoo.com/mql/providers/os/resources/plist"
 )
 
 // default id detectors
@@ -36,9 +37,7 @@ func hasDetector(detectors map[string]struct{}, any ...string) bool {
 }
 
 func mapDetectors(raw []string) map[string]struct{} {
-	if len(raw) == 0 {
-		raw = IdDetectors
-	}
+	raw = ids.ExpandDefault(raw, IdDetectors)
 	res := make(map[string]struct{}, len(raw))
 	for _, v := range raw {
 		res[v] = struct{}{}
@@ -53,6 +52,14 @@ func (s *Service) detect(asset *inventory.Asset, conn shared.Connection) error {
 	}
 	asset.MergePlatform(pf)
 
+	// A local scan started inside a container, or an SSH session into one,
+	// reaches a container even though the connection doesn't say so. connect
+	// has already defaulted an unset kind to baremetal by now.
+	inContainer := (asset.Platform.Kind == "" || asset.Platform.Kind == inventory.AssetKindBaremetal) &&
+		asset.Platform.IsFamily("linux") && containerenv.InContainer(conn)
+	if inContainer {
+		asset.Platform.Kind = "container"
+	}
 	if asset.Platform.Kind == "" {
 		asset.Platform.Kind = inventory.AssetKindBaremetal
 	}
@@ -61,8 +68,10 @@ func (s *Service) detect(asset *inventory.Asset, conn shared.Connection) error {
 		asset.Platform.Kind = inventory.AssetKindCloudVM
 	}
 
+	// Container connections bring their own platform id. A container found
+	// by looking from the inside has none, so it keeps the id detectors.
 	var detectors map[string]struct{}
-	if !slices.Contains([]string{"container-image", "container"}, asset.Platform.Kind) {
+	if inContainer || !slices.Contains([]string{"container-image", "container"}, asset.Platform.Kind) {
 		detectors = mapDetectors(asset.IdDetector)
 	}
 
@@ -83,7 +92,14 @@ func (s *Service) detect(asset *inventory.Asset, conn shared.Connection) error {
 				// if we weren't able to detect a name for this asset, don't update to an empty value
 				asset.Name = cloudPlatformInfo.Name
 			}
+			// This also wins over a container found from the inside: with
+			// the VM's metadata service reachable, the asset already carries
+			// the VM's platform id and name, and calling it a container
+			// would relabel the VM's asset.
 			asset.Platform.Kind = cloudPlatformInfo.Kind
+			// RelatedAssets is kept for backward compatibility until
+			// consumers migrate to relationships (ADR 030).
+			//nolint:staticcheck
 			asset.RelatedAssets = append(asset.RelatedAssets, relatedIds2assets(cloudPlatformInfo.RelatedPlatformIDs)...)
 		}
 	}
@@ -118,6 +134,10 @@ func relatedIds2assets(ids []string) []*inventory.Asset {
 	return res
 }
 
+// RelatedAssets is kept for backward compatibility until consumers migrate to
+// relationships (ADR 030).
+//
+//nolint:staticcheck
 func appendRelatedAssetsFromFingerprint(f *id.PlatformFingerprint, a *inventory.Asset) {
 	if f == nil || len(f.RelatedAssets) == 0 {
 		return

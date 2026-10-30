@@ -1,0 +1,391 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/iru"
+option go_package = "go.mondoo.com/mql/providers/iru/resources"
+option root = "iru"
+
+// Iru (formerly Kandji)
+//
+// Tenant of the Iru (formerly Kandji) MDM service, covering the device
+// fleet (hardware, OS, enrollment state, installed apps, configuration
+// profiles, storage volumes, and compliance parameters), configuration
+// blueprints, the custom library item catalog (custom apps, custom
+// profiles, custom scripts), and the directory of end-users. Sub-resources
+// are populated from the Iru API and respect the permissions granted to the
+// bearer token used to connect.
+iru @root {
+  // List every device enrolled in the Iru tenant
+  devices() []iru.device
+
+  // List every configuration blueprint defined in the tenant
+  blueprints() []iru.blueprint
+
+  // List every entry in the custom library catalog (custom apps, profiles, scripts)
+  libraryItems() []iru.libraryItem
+
+  // List every end-user in the Iru directory
+  users() []iru.user
+}
+
+// Iru device lookup by ID
+//
+// Single device identified by its Iru device ID. The `id`
+// field selects the device, for example
+// `iru.device(id: "abc123") { osVersion filevaultEnabled }`. Use
+// `iru.devices` when iterating the full fleet. Immediate fields come from
+// the device listing; hardware, FileVault, activation lock, network, and
+// recovery fields are read from the device detail endpoint on first
+// access, and `parameters` reports the device compliance controls.
+iru.device @defaults("name serialNumber osVersion platform") {
+  // Initialize the resource by Iru device ID
+  init(id string)
+
+  // Unique Iru device ID
+  id string
+
+  // Device display name as shown in the Iru admin console
+  name string
+
+  // Hardware serial number
+  serialNumber string
+
+  // Device UDID (Apple-assigned unique device identifier)
+  udid string
+
+  // Asset tag assigned in the Iru admin console
+  assetTag string
+
+  // Hardware model, for example "MacBook Pro (14-inch, M5)"
+  model string
+
+  // Device platform, one of `Mac`, `iPad`, `iPhone`, `AppleTV`, `Vision`
+  platform string
+
+  // Operating system version installed on the device
+  osVersion string
+
+  // Whether the MDM payload is currently installed and active
+  mdmEnabled bool
+
+  // Whether the Iru agent is installed on the device
+  agentInstalled bool
+
+  // Iru agent version installed on the device
+  agentVersion string
+
+  // Name of the blueprint assigned to the device
+  blueprintName string
+
+  // Last time the device checked in with Iru
+  lastCheckIn time
+
+  // First time the device enrolled with Iru
+  firstEnrollment time
+
+  // Most recent time the device enrolled with Iru
+  lastEnrollment time
+
+  // Whether the device is currently flagged as missing
+  isMissing bool
+
+  // Whether the device has been removed from the tenant
+  isRemoved bool
+
+  // Lost Mode status reported for the device, empty when not in Lost Mode
+  lostModeStatus string
+
+  // Tags applied to the device in the Iru admin console
+  tags []string
+
+  // Marketing system version string, for example "26.3.1 (25D2128)"
+  systemVersion() string
+
+  // Name of the device's boot volume
+  bootVolume() string
+
+  // Short name of the most recent local user seen on the device
+  lastUser() string
+
+  // Human-readable time since the device last booted, for example "1 month ago"
+  timeSinceBoot() string
+
+  // Whether the device is in Apple's supervised state
+  supervised() bool
+
+  // When the MDM payload was installed on the device
+  mdmInstallDate() time
+
+  // Apple model identifier, for example "Mac17,2"
+  modelIdentifier() string
+
+  // Processor name reported by the device, for example "Apple M5"
+  processor() string
+
+  // Processor speed reported by the device, empty on Apple silicon
+  processorSpeed() string
+
+  // Number of physical processors reported by the device
+  processorCount() int
+
+  // Total number of CPU cores reported by the device
+  coreCount() int
+
+  // Installed memory as a display string, for example "32 GB LPDDR5"
+  //
+  // This mirrors the value the API reports and is not a byte count. Use
+  // `memoryBytes` for size comparisons.
+  memory() string
+
+  // Installed memory in bytes parsed from the display string (0 if unparseable)
+  memoryBytes() int
+
+  // Battery health status reported by the device, for example "normal"
+  batteryHealth() string
+
+  // Whether FileVault full-disk encryption is enabled
+  filevaultEnabled() bool
+
+  // Whether the FileVault personal recovery key has been escrowed to Iru
+  filevaultRecoveryKeyEscrowed() bool
+
+  // Type of FileVault recovery key in use, typically `Personal` or `Institutional`
+  filevaultRecoveryKeyType() string
+
+  // When the FileVault personal recovery key is next scheduled to rotate
+  filevaultNextRotation() time
+
+  // Whether a FileVault recovery key regeneration is required
+  filevaultRegenRequired() bool
+
+  // Whether Activation Lock is supported on the device
+  activationLockSupported() bool
+
+  // Whether user-based Activation Lock is enabled
+  userActivationLockEnabled() bool
+
+  // Whether device-based (MDM) Activation Lock is enabled
+  deviceActivationLockEnabled() bool
+
+  // Whether Activation Lock is allowed while the device is supervised
+  activationLockAllowedWhileSupervised() bool
+
+  // Whether Remote Desktop (ARD) is enabled
+  remoteDesktopEnabled() bool
+
+  // Most recent private IP address recorded for the device
+  ipAddress() string
+
+  // Most recent public IP address recorded for the device
+  publicIpAddress() string
+
+  // Local host name reported by the device
+  localHostname() string
+
+  // Primary network MAC address reported by the device
+  macAddress() string
+
+  // Whether a recovery (Apple silicon) lock is enabled
+  recoveryLockEnabled() bool
+
+  // Whether an EFI firmware password is set (Intel Macs)
+  firmwarePasswordEnabled() bool
+
+  // Storage volumes reported by the device
+  //
+  // Each entry includes `name`, `format`, `identifier`, `capacity`,
+  // `available`, `percent_used`, and `encrypted`. Capacity and availability
+  // are the human-readable strings the API returns (for example "926.3 GB")
+  // and `encrypted` is "Yes" or "No".
+  volumes() []dict
+
+  // Compliance parameters reported for the device
+  //
+  // Each entry is one control with `item_id`, `name`, `category`,
+  // `subcategory`, and `status` (for example "PASS", "WARNING", "ERROR",
+  // "REMEDIATED", or "MUTED"). Query with, for example,
+  // `iru.devices.first.parameters.where(_['status'] == "WARNING")`.
+  parameters() []dict
+
+  // Installed applications reported by the device
+  apps() []iru.app
+
+  // Installed configuration profiles reported by the device
+  profiles() []iru.profile
+
+  // Blueprint assigned to the device
+  blueprint() iru.blueprint
+
+  // End-user assigned to the device, if any
+  user() iru.user
+}
+
+// Installed application on an Iru-managed device
+private iru.app @defaults("name version bundleId") {
+  // Application name as reported by the device
+  name string
+
+  // Application bundle identifier (for example `com.1password.1password`)
+  bundleId string
+
+  // CFBundleShortVersionString reported by the application
+  version string
+
+  // Iru catalog application identifier, empty for apps not in the catalog
+  appId string
+
+  // Application bundle size in bytes
+  bundleSize int
+
+  // Signing source reported by the device, for example "Identified Developer" or "Apple"
+  source string
+
+  // Process name reported for the running application
+  process string
+
+  // Full code-signing authority chain reported for the application
+  signature string
+
+  // Absolute filesystem path to the application bundle
+  path string
+
+  // When the application bundle was created on the device
+  creationDate time
+
+  // When the application bundle was last modified on the device
+  modificationDate time
+}
+
+// Configuration profile installed on an Iru-managed device
+private iru.profile @defaults("name identifier") {
+  // Profile display name
+  name string
+
+  // Profile UUID
+  uuid string
+
+  // Profile identifier (typically a reverse-DNS string)
+  identifier string
+
+  // Organization listed on the profile
+  organization string
+
+  // Verification state reported by the device, for example "verified"
+  verified string
+
+  // When the profile was installed on the device
+  installDate time
+
+  // Payload types contained in the profile, for example `com.apple.servicemanagement`
+  payloadTypes []string
+}
+
+// Iru blueprint, a bundle of settings and library items assigned to devices
+private iru.blueprint @defaults("name") {
+  // Blueprint identifier
+  id string
+
+  // Blueprint name
+  name string
+
+  // Free-form description set in the Iru admin console
+  description string
+
+  // Icon name configured for the blueprint
+  icon string
+
+  // Icon color configured for the blueprint
+  color string
+
+  // Blueprint type, for example "map" or "classic"
+  blueprintType string
+
+  // Number of devices currently assigned to the blueprint
+  computersCount int
+
+  // Enrollment code used during manual enrollment to assign the blueprint
+  enrollmentCode string
+
+  // Whether the blueprint's enrollment code is currently active
+  enrollmentCodeActive bool
+
+  // When the blueprint was created
+  created time
+
+  // When the blueprint was last modified
+  updatedAt time
+}
+
+// Iru library item, a single entry in the custom library catalog
+//
+// One entry in the tenant custom library catalog. Custom apps, custom
+// configuration profiles, and custom scripts share this shape. The `kind`
+// field discriminates the entry type (for example
+// `iru.libraryItems.where(kind == "custom-script")`) and `payload` carries
+// the kind-specific configuration: custom scripts expose `script` /
+// `remediation_script` / `execution_frequency`; custom apps expose
+// `file_url` / `sha256` / `install_type`; custom profiles expose the
+// profile plist and its `runs_on_*` platform flags.
+private iru.libraryItem @defaults("name kind active") {
+  // Library item identifier
+  id string
+
+  // Library item name
+  name string
+
+  // Library item kind, one of `custom-app`, `custom-profile`, or `custom-script`
+  kind string
+
+  // Whether the item is currently active in the tenant
+  active bool
+
+  // Kind-specific configuration; shape varies by `kind`
+  payload dict
+
+  // When the library item was created
+  created time
+
+  // When the library item was last modified
+  updatedAt time
+}
+
+// Iru end-user record
+private iru.user @defaults("name email") {
+  // User identifier
+  id string
+
+  // Display name for the user
+  name string
+
+  // Email address recorded for the user
+  email string
+
+  // Whether the user is currently active in the directory
+  active bool
+
+  // Whether the user is archived (no longer active in the directory)
+  archived bool
+
+  // Department recorded for the user
+  department string
+
+  // Job title recorded for the user
+  jobTitle string
+
+  // Number of devices currently assigned to the user
+  deviceCount int
+
+  // When the user record was created
+  created time
+
+  // When the user record was last modified
+  updatedAt time
+
+  // Name of the directory integration the user was synced from, if any
+  integrationName string
+
+  // Type of the directory integration the user was synced from, for example "gsuite"
+  integrationType string
+}

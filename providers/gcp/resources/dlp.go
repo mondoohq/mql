@@ -7,22 +7,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	dlp "cloud.google.com/go/dlp/apiv2"
 	"cloud.google.com/go/dlp/apiv2/dlppb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/protobuf/proto"
 )
 
 type mqlGcpProjectDlpServiceInternal struct {
-	serviceEnabled bool
+	serviceGate
 }
 
 func (g *mqlGcpProject) dlp() (*mqlGcpProjectDlpService, error) {
@@ -44,7 +45,7 @@ func (g *mqlGcpProject) dlp() (*mqlGcpProjectDlpService, error) {
 	}
 
 	svc := res.(*mqlGcpProjectDlpService)
-	svc.serviceEnabled = serviceEnabled
+	svc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_dlp).Msg("gcp service is not enabled, skipping")
 	}
@@ -84,7 +85,11 @@ func (g *mqlGcpProjectDlpServiceInspectTemplate) id() (string, error) {
 }
 
 func (g *mqlGcpProjectDlpService) inspectTemplates() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -117,9 +122,9 @@ func (g *mqlGcpProjectDlpService) inspectTemplates() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list DLP inspect templates")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -155,7 +160,11 @@ func (g *mqlGcpProjectDlpServiceDeidentifyTemplate) id() (string, error) {
 }
 
 func (g *mqlGcpProjectDlpService) deidentifyTemplates() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -188,9 +197,9 @@ func (g *mqlGcpProjectDlpService) deidentifyTemplates() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list DLP deidentify templates")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -226,7 +235,11 @@ func (g *mqlGcpProjectDlpServiceJobTrigger) id() (string, error) {
 }
 
 func (g *mqlGcpProjectDlpService) jobTriggers() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -259,9 +272,9 @@ func (g *mqlGcpProjectDlpService) jobTriggers() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list DLP job triggers")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -318,7 +331,11 @@ func (g *mqlGcpProjectDlpServiceStoredInfoType) id() (string, error) {
 }
 
 func (g *mqlGcpProjectDlpService) storedInfoTypes() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -351,9 +368,9 @@ func (g *mqlGcpProjectDlpService) storedInfoTypes() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list DLP stored info types")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -444,7 +461,11 @@ func (g *mqlGcpProjectDlpServiceDlpJob) id() (string, error) {
 }
 
 func (g *mqlGcpProjectDlpService) dlpJobs() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -476,9 +497,9 @@ func (g *mqlGcpProjectDlpService) dlpJobs() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list DLP jobs")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -531,7 +552,11 @@ func (g *mqlGcpProjectDlpServiceDiscoveryConfig) id() (string, error) {
 }
 
 func (g *mqlGcpProjectDlpService) discoveryConfigs() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -563,7 +588,7 @@ func (g *mqlGcpProjectDlpService) discoveryConfigs() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isGRPCSkippable(err) {
+				if isSkippable(err) {
 					log.Warn().Err(err).Str("location", loc).Msg("could not list DLP discovery configs")
 					break
 				}
@@ -624,7 +649,11 @@ func (g *mqlGcpProjectDlpServiceConnection) id() (string, error) {
 }
 
 func (g *mqlGcpProjectDlpService) connections() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -656,7 +685,7 @@ func (g *mqlGcpProjectDlpService) connections() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isGRPCSkippable(err) {
+				if isSkippable(err) {
 					log.Warn().Err(err).Str("location", loc).Msg("could not list DLP connections")
 					break
 				}
@@ -699,7 +728,11 @@ func (g *mqlGcpProjectDlpServiceProjectDataProfile) id() (string, error) {
 }
 
 func (g *mqlGcpProjectDlpService) projectDataProfiles() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -731,9 +764,9 @@ func (g *mqlGcpProjectDlpService) projectDataProfiles() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list DLP project data profiles")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -742,16 +775,29 @@ func (g *mqlGcpProjectDlpService) projectDataProfiles() ([]any, error) {
 		riskLevel, _ := protoToDict(p.DataRiskLevel)
 		status, _ := protoToDict(p.ProfileStatus)
 
-		mqlP, err := CreateResource(g.MqlRuntime, "gcp.project.dlpService.projectDataProfile", map[string]*llx.RawData{
+		scores, err := newMqlDlpProfileScores(g.MqlRuntime, p.Name, p.SensitivityScore, p.DataRiskLevel)
+		if err != nil {
+			return nil, err
+		}
+		lastProfileStatus, err := newMqlDlpProfileStatus(g.MqlRuntime, p.Name, p.ProfileStatus)
+		if err != nil {
+			return nil, err
+		}
+
+		projectProfileArgs := map[string]*llx.RawData{
 			"name":                      llx.StringData(p.Name),
 			"projectId":                 llx.StringData(p.ProjectId),
 			"sensitivityScore":          llx.DictData(sensitivity),
 			"dataRiskLevel":             llx.DictData(riskLevel),
 			"profileStatus":             llx.DictData(status),
+			"lastProfileStatus":         lastProfileStatus,
 			"tableDataProfileCount":     llx.IntData(p.TableDataProfileCount),
 			"fileStoreDataProfileCount": llx.IntData(p.FileStoreDataProfileCount),
 			"profileLastGenerated":      llx.TimeDataPtr(timestampAsTimePtr(p.ProfileLastGenerated)),
-		})
+		}
+		maps.Copy(projectProfileArgs, scores)
+
+		mqlP, err := CreateResource(g.MqlRuntime, "gcp.project.dlpService.projectDataProfile", projectProfileArgs)
 		if err != nil {
 			return nil, err
 		}
@@ -770,7 +816,11 @@ func (g *mqlGcpProjectDlpServiceTableDataProfile) id() (string, error) {
 }
 
 func (g *mqlGcpProjectDlpService) tableDataProfiles() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -802,9 +852,9 @@ func (g *mqlGcpProjectDlpService) tableDataProfiles() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list DLP table data profiles")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -831,7 +881,16 @@ func newMqlTableDataProfile(runtime *plugin.Runtime, t *dlppb.TableDataProfile) 
 	if err != nil {
 		return nil, err
 	}
-	return CreateResource(runtime, "gcp.project.dlpService.tableDataProfile", map[string]*llx.RawData{
+	scores, err := newMqlDlpProfileScores(runtime, t.Name, t.SensitivityScore, t.DataRiskLevel)
+	if err != nil {
+		return nil, err
+	}
+	lastProfileStatus, err := newMqlDlpProfileStatus(runtime, t.Name, t.ProfileStatus)
+	if err != nil {
+		return nil, err
+	}
+
+	tableArgs := map[string]*llx.RawData{
 		"name":                 llx.StringData(t.Name),
 		"datasetProjectId":     llx.StringData(t.DatasetProjectId),
 		"datasetLocation":      llx.StringData(t.DatasetLocation),
@@ -842,6 +901,7 @@ func newMqlTableDataProfile(runtime *plugin.Runtime, t *dlppb.TableDataProfile) 
 		"sensitivityScore":     llx.DictData(sensitivity),
 		"dataRiskLevel":        llx.DictData(riskLevel),
 		"profileStatus":        llx.DictData(status),
+		"lastProfileStatus":    lastProfileStatus,
 		"predictedInfoTypes":   llx.ArrayData(predicted, types.Dict),
 		"otherInfoTypes":       llx.ArrayData(other, types.Dict),
 		"encryptionStatus":     llx.StringData(t.EncryptionStatus.String()),
@@ -855,7 +915,10 @@ func newMqlTableDataProfile(runtime *plugin.Runtime, t *dlppb.TableDataProfile) 
 		"lastModifiedTime":     llx.TimeDataPtr(timestampAsTimePtr(t.LastModifiedTime)),
 		"expirationTime":       llx.TimeDataPtr(timestampAsTimePtr(t.ExpirationTime)),
 		"created":              llx.TimeDataPtr(timestampAsTimePtr(t.CreateTime)),
-	})
+	}
+	maps.Copy(tableArgs, scores)
+
+	return CreateResource(runtime, "gcp.project.dlpService.tableDataProfile", tableArgs)
 }
 
 func strMapToAny(in map[string]string) map[string]any {
@@ -874,9 +937,16 @@ func (g *mqlGcpProjectDlpServiceTableDataProfile) bigqueryTable() (*mqlGcpProjec
 		g.BigqueryTable.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	tblId := fmt.Sprintf("%s.%s.%s", projectId, datasetId, tableId)
+	// Key on the same (id, projectId, datasetId) the bigquery table resource is
+	// created with, so the computed __id
+	// (gcp.project.bigqueryService.table/{project}/{dataset}/{table}) matches a
+	// table already resolved via bigqueryService.datasets.tables. Passing a
+	// dotted "proj.dataset.table" id with no project/dataset never matched and
+	// left a husk.
 	mqlTbl, err := NewResource(g.MqlRuntime, "gcp.project.bigqueryService.table", map[string]*llx.RawData{
-		"id": llx.StringData(tblId),
+		"id":        llx.StringData(tableId),
+		"projectId": llx.StringData(projectId),
+		"datasetId": llx.StringData(datasetId),
 	})
 	if err != nil {
 		return nil, err
@@ -893,7 +963,11 @@ func (g *mqlGcpProjectDlpServiceColumnDataProfile) id() (string, error) {
 }
 
 func (g *mqlGcpProjectDlpService) columnDataProfiles() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -929,9 +1003,9 @@ func (g *mqlGcpProjectDlpService) columnDataProfiles() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list DLP table data profiles for column profile enumeration")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -951,7 +1025,7 @@ func (g *mqlGcpProjectDlpService) columnDataProfiles() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isGRPCSkippable(err) {
+				if isSkippable(err) {
 					log.Warn().Err(err).Str("table", t.TableId).Msg("could not list DLP column data profiles")
 					break
 				}
@@ -966,7 +1040,12 @@ func (g *mqlGcpProjectDlpService) columnDataProfiles() ([]any, error) {
 				return nil, err
 			}
 
-			mqlC, err := CreateResource(g.MqlRuntime, "gcp.project.dlpService.columnDataProfile", map[string]*llx.RawData{
+			scores, err := newMqlDlpProfileScores(g.MqlRuntime, c.Name, c.SensitivityScore, c.DataRiskLevel)
+			if err != nil {
+				return nil, err
+			}
+
+			columnArgs := map[string]*llx.RawData{
 				"name":                 llx.StringData(c.Name),
 				"column":               llx.StringData(c.Column),
 				"datasetId":            llx.StringData(c.DatasetId),
@@ -981,7 +1060,10 @@ func (g *mqlGcpProjectDlpService) columnDataProfiles() ([]any, error) {
 				"columnType":           llx.StringData(c.ColumnType.String()),
 				"policyState":          llx.StringData(c.PolicyState.String()),
 				"profileLastGenerated": llx.TimeDataPtr(timestampAsTimePtr(c.ProfileLastGenerated)),
-			})
+			}
+			maps.Copy(columnArgs, scores)
+
+			mqlC, err := CreateResource(g.MqlRuntime, "gcp.project.dlpService.columnDataProfile", columnArgs)
 			if err != nil {
 				return nil, err
 			}
@@ -1001,7 +1083,11 @@ func (g *mqlGcpProjectDlpServiceFileStoreDataProfile) id() (string, error) {
 }
 
 func (g *mqlGcpProjectDlpService) fileStoreDataProfiles() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -1033,9 +1119,9 @@ func (g *mqlGcpProjectDlpService) fileStoreDataProfiles() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list DLP file-store data profiles")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -1075,7 +1161,16 @@ func newMqlFileStoreDataProfile(runtime *plugin.Runtime, f *dlppb.FileStoreDataP
 		resourceAttributes[k] = d
 	}
 
-	return CreateResource(runtime, "gcp.project.dlpService.fileStoreDataProfile", map[string]*llx.RawData{
+	scores, err := newMqlDlpProfileScores(runtime, f.Name, f.SensitivityScore, f.DataRiskLevel)
+	if err != nil {
+		return nil, err
+	}
+	lastProfileStatus, err := newMqlDlpProfileStatus(runtime, f.Name, f.ProfileStatus)
+	if err != nil {
+		return nil, err
+	}
+
+	fileStoreArgs := map[string]*llx.RawData{
 		"name":                       llx.StringData(f.Name),
 		"projectId":                  llx.StringData(f.ProjectId),
 		"dataSourceType":             llx.StringData(dataSourceType),
@@ -1089,6 +1184,7 @@ func newMqlFileStoreDataProfile(runtime *plugin.Runtime, f *dlppb.FileStoreDataP
 		"resourceVisibility":         llx.StringData(f.ResourceVisibility.String()),
 		"sensitivityScore":           llx.DictData(sensitivity),
 		"dataRiskLevel":              llx.DictData(riskLevel),
+		"lastProfileStatus":          lastProfileStatus,
 		"fileClusterSummaries":       llx.ArrayData(clusterSummaries, types.Dict),
 		"resourceAttributes":         llx.DictData(resourceAttributes),
 		"resourceLabels":             llx.MapData(strMapToAny(f.ResourceLabels), types.String),
@@ -1097,7 +1193,10 @@ func newMqlFileStoreDataProfile(runtime *plugin.Runtime, f *dlppb.FileStoreDataP
 		"profileLastGenerated":       llx.TimeDataPtr(timestampAsTimePtr(f.ProfileLastGenerated)),
 		"created":                    llx.TimeDataPtr(timestampAsTimePtr(f.CreateTime)),
 		"lastModifiedTime":           llx.TimeDataPtr(timestampAsTimePtr(f.LastModifiedTime)),
-	})
+	}
+	maps.Copy(fileStoreArgs, scores)
+
+	return CreateResource(runtime, "gcp.project.dlpService.fileStoreDataProfile", fileStoreArgs)
 }
 
 func (g *mqlGcpProjectDlpServiceFileStoreDataProfile) bucket() (*mqlGcpProjectStorageServiceBucket, error) {
@@ -1111,8 +1210,11 @@ func (g *mqlGcpProjectDlpServiceFileStoreDataProfile) bucket() (*mqlGcpProjectSt
 		g.Bucket.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
+	// The storage bucket init keys on "name" (it does a Buckets.Get(name) and
+	// populates every field). Passing "id" instead no-ops the init and leaves a
+	// husk, so key it on "name" like the sibling logBucket() ref does.
 	mqlBucket, err := NewResource(g.MqlRuntime, "gcp.project.storageService.bucket", map[string]*llx.RawData{
-		"id": llx.StringData(bucketName),
+		"name": llx.StringData(bucketName),
 	})
 	if err != nil {
 		return nil, err
@@ -1159,7 +1261,7 @@ func (g *mqlGcpProjectStorageServiceBucket) dlpDataProfile() (*mqlGcpProjectDlpS
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not look up DLP file-store data profile for bucket")
 				g.DlpDataProfile.State = plugin.StateIsSet | plugin.StateIsNull
 				return nil, nil
@@ -1214,7 +1316,7 @@ func (g *mqlGcpProjectBigqueryServiceTable) dlpDataProfile() (*mqlGcpProjectDlpS
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not look up DLP table data profile for BigQuery table")
 				g.DlpDataProfile.State = plugin.StateIsSet | plugin.StateIsNull
 				return nil, nil
@@ -1232,4 +1334,304 @@ func (g *mqlGcpProjectBigqueryServiceTable) dlpDataProfile() (*mqlGcpProjectDlpS
 
 	g.DlpDataProfile.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectDlpService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_dlp)
+}
+
+// ---------------------------------------------------------------
+// Content Policies
+// ---------------------------------------------------------------
+
+// Kinds of sink a content policy records its verdicts to. LOG_TO_BIG_QUERY is
+// the only destination the API models today; DESTINATION_UNSPECIFIED covers a
+// logging config that names none, including one whose destination is a variant
+// added after this provider was built.
+const (
+	dlpLogDestinationBigQuery    = "LOG_TO_BIG_QUERY"
+	dlpLogDestinationUnspecified = "DESTINATION_UNSPECIFIED"
+)
+
+// dlpPolicyActionVerdict returns the verdict a content policy action produces,
+// or nil when the policy sets no action for that case at all.
+//
+// The distinction matters: a policy that sets no action for unsupported file
+// types is not the same as one that explicitly allows them, and collapsing the
+// first into ALLOW would report a decision the policy never made. An action that
+// exists but carries no verdict is a third state and reports the API's own
+// CONTENT_POLICY_VERDICT_UNSPECIFIED rather than being flattened into either.
+func dlpPolicyActionVerdict(action *dlppb.ContentPolicy_PolicyAction) *string {
+	if action == nil {
+		return nil
+	}
+	verdict := action.GetReturnVerdict().String()
+	return &verdict
+}
+
+// dlpDefaultVerdict returns the verdict applied to content that matched no rule.
+//
+// A content policy with no default action allows such content, which the API
+// documents as the default rather than reporting explicitly, so that is what
+// this returns. Reporting null instead would leave the most permissive
+// configuration a policy can have looking like an absence of data, and a check
+// asserting the default is BLOCK would then have nothing to fail on.
+func dlpDefaultVerdict(action *dlppb.ContentPolicy_PolicyAction) string {
+	if action == nil {
+		return "ALLOW"
+	}
+	return action.GetReturnVerdict().String()
+}
+
+// dlpConditionMinCount returns the number of findings a condition needs before
+// it holds.
+//
+// The API treats an unset count as 1, so an unset count is reported as 1. A
+// literal 0 would read as "no findings required", which inverts the meaning of
+// the field and would let a check asserting a positive threshold pass on a
+// condition that in fact fires on the first finding.
+func dlpConditionMinCount(minCount int64) int64 {
+	if minCount <= 0 {
+		return 1
+	}
+	return minCount
+}
+
+// dlpLoggingDestination reports the kind of sink a logging config writes to and,
+// when that sink is BigQuery, the table it names.
+//
+// An unrecognized or absent destination reports DESTINATION_UNSPECIFIED with no
+// table rather than an error, so a policy carrying a destination variant newer
+// than this provider still lists its other logging configs.
+func dlpLoggingDestination(cfg *dlppb.ContentPolicy_LoggingConfig) (destination, projectID, datasetID, tableID string) {
+	if bq := cfg.GetLogToBigQuery(); bq != nil {
+		return dlpLogDestinationBigQuery, bq.GetProjectId(), bq.GetDatasetId(), bq.GetTableId()
+	}
+	return dlpLogDestinationUnspecified, "", "", ""
+}
+
+func (g *mqlGcpProjectDlpServiceContentPolicy) id() (string, error) {
+	return g.Name.Data, g.Name.Error
+}
+
+type mqlGcpProjectDlpServiceContentPolicyLoggingConfigInternal struct {
+	cacheProjectId string
+	cacheDatasetId string
+	cacheTableId   string
+}
+
+func (g *mqlGcpProjectDlpServiceContentPolicyLoggingConfig) bigQueryDataset() (*mqlGcpProjectBigqueryServiceDataset, error) {
+	dataset, err := resolveBigqueryDataset(g.MqlRuntime, g.cacheProjectId, g.cacheDatasetId)
+	if err != nil {
+		return nil, err
+	}
+	if dataset == nil {
+		g.BigQueryDataset.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return dataset, nil
+}
+
+func (g *mqlGcpProjectDlpServiceContentPolicyLoggingConfig) bigQueryTable() (*mqlGcpProjectBigqueryServiceTable, error) {
+	table, err := resolveBigqueryTable(g.MqlRuntime, g.cacheProjectId, g.cacheDatasetId, g.cacheTableId)
+	if err != nil {
+		return nil, err
+	}
+	if table == nil {
+		g.BigQueryTable.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return table, nil
+}
+
+// dlpContentPolicyCondition is the flattened reading of one content policy
+// condition, in the form the MQL resource reports it.
+type dlpContentPolicyCondition struct {
+	// Known reports whether this is a condition shape the provider models. When
+	// it is false nothing about the condition was read, and every other field
+	// here is meaningless: the resource reports them all as null rather than as
+	// zeroes it cannot stand behind.
+	Known bool
+	// MinCount is the findings threshold, with the API's documented default of 1
+	// already applied.
+	MinCount int64
+	// InfoTypeNames is the named set the condition matches on, or nil when it
+	// matches every infoType. Nil is deliberate: an empty list would read as
+	// "matches nothing", the opposite of what AnyInfoType means.
+	InfoTypeNames []string
+	// AnyInfoType reports whether the condition matches every infoType the
+	// inspection looked for rather than a named set.
+	AnyInfoType bool
+}
+
+// readDlpContentPolicyCondition flattens a policy condition into the values the
+// MQL resource reports.
+//
+// A condition that is not an infoType condition (a oneof variant added after
+// this provider was built) comes back with Known false, so the resource reports
+// null throughout instead of a zero minCount and an empty infoType list, both of
+// which would be claims this code is in no position to make.
+func readDlpContentPolicyCondition(cond *dlppb.ContentPolicy_PolicyRule_PolicyCondition) dlpContentPolicyCondition {
+	itc := cond.GetInfoTypeCondition()
+	if itc == nil {
+		return dlpContentPolicyCondition{}
+	}
+
+	out := dlpContentPolicyCondition{
+		Known:       true,
+		MinCount:    dlpConditionMinCount(itc.GetMinCount()),
+		AnyInfoType: itc.GetAnyInfoType() != nil,
+	}
+	if names := itc.GetInfoTypes(); names != nil {
+		out.InfoTypeNames = names.GetInfoTypeNames()
+	}
+	return out
+}
+
+// newMqlDlpContentPolicyCondition builds one condition of a content policy rule.
+func newMqlDlpContentPolicyCondition(runtime *plugin.Runtime, id string, cond *dlppb.ContentPolicy_PolicyRule_PolicyCondition) (plugin.Resource, error) {
+	read := readDlpContentPolicyCondition(cond)
+
+	minCount := llx.NilData
+	infoTypeNames := llx.NilData
+	anyInfoType := llx.NilData
+	if read.Known {
+		minCount = llx.IntData(read.MinCount)
+		anyInfoType = llx.BoolData(read.AnyInfoType)
+		if read.InfoTypeNames != nil {
+			infoTypeNames = llx.ArrayData(stringsToAnySlice(read.InfoTypeNames), types.String)
+		}
+	}
+
+	return CreateResource(runtime, "gcp.project.dlpService.contentPolicy.rule.condition", map[string]*llx.RawData{
+		"__id":          llx.StringData(id),
+		"minCount":      minCount,
+		"infoTypeNames": infoTypeNames,
+		"anyInfoType":   anyInfoType,
+	})
+}
+
+func (g *mqlGcpProjectDlpService) contentPolicies() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+	if g.ProjectId.Error != nil {
+		return nil, g.ProjectId.Error
+	}
+	projectId := g.ProjectId.Data
+
+	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	creds, err := conn.Credentials(dlp.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	client, err := dlp.NewClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption())
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	var res []any
+	for _, loc := range dlpRegionalListLocations {
+		it := client.ListContentPolicies(ctx, &dlppb.ListContentPoliciesRequest{
+			Parent: fmt.Sprintf("projects/%s/locations/%s", projectId, loc),
+		})
+		for {
+			cp, err := it.Next()
+			if errors.Is(err, iterator.Done) {
+				break
+			}
+			if err != nil {
+				// Content policies are a newer part of the DLP API than the rest
+				// of this service, so a project that can list job triggers may
+				// still answer Unimplemented or PermissionDenied here. Both mean
+				// this caller sees no content policies in this location, which is
+				// a state to report rather than a failure that should take the
+				// whole DLP resource down with it.
+				if isSkippable(err) {
+					log.Warn().Err(err).Str("location", loc).Msg("could not list DLP content policies")
+					break
+				}
+				return nil, err
+			}
+
+			mqlRules := make([]any, 0, len(cp.Rules))
+			for i, rule := range cp.Rules {
+				ruleId := fmt.Sprintf("%s/rules/%d", cp.Name, i)
+
+				mqlConditions := make([]any, 0, len(rule.GetConditions()))
+				for j, cond := range rule.GetConditions() {
+					mqlCond, err := newMqlDlpContentPolicyCondition(g.MqlRuntime,
+						fmt.Sprintf("%s/conditions/%d", ruleId, j), cond)
+					if err != nil {
+						return nil, err
+					}
+					mqlConditions = append(mqlConditions, mqlCond)
+				}
+
+				mqlRule, err := CreateResource(g.MqlRuntime, "gcp.project.dlpService.contentPolicy.rule", map[string]*llx.RawData{
+					"__id":       llx.StringData(ruleId),
+					"verdict":    llx.StringDataPtr(dlpPolicyActionVerdict(rule.GetAction())),
+					"conditions": llx.ArrayData(mqlConditions, types.Resource("gcp.project.dlpService.contentPolicy.rule.condition")),
+				})
+				if err != nil {
+					return nil, err
+				}
+				mqlRules = append(mqlRules, mqlRule)
+			}
+
+			mqlLoggingConfigs := make([]any, 0, len(cp.LoggingConfigs))
+			for i, lc := range cp.LoggingConfigs {
+				destination, bqProject, bqDataset, bqTable := dlpLoggingDestination(lc)
+
+				mqlLc, err := CreateResource(g.MqlRuntime, "gcp.project.dlpService.contentPolicy.loggingConfig", map[string]*llx.RawData{
+					"__id":        llx.StringData(fmt.Sprintf("%s/loggingConfigs/%d", cp.Name, i)),
+					"destination": llx.StringData(destination),
+				})
+				if err != nil {
+					return nil, err
+				}
+				lcRes := mqlLc.(*mqlGcpProjectDlpServiceContentPolicyLoggingConfig)
+				lcRes.cacheProjectId = bqProject
+				lcRes.cacheDatasetId = bqDataset
+				lcRes.cacheTableId = bqTable
+				mqlLoggingConfigs = append(mqlLoggingConfigs, mqlLc)
+			}
+
+			inspectConfig, err := protoToDict(cp.InspectConfig)
+			if err != nil {
+				return nil, err
+			}
+			errs, err := dlpProtoSliceToDict(cp.Errors)
+			if err != nil {
+				return nil, err
+			}
+
+			mqlCp, err := CreateResource(g.MqlRuntime, "gcp.project.dlpService.contentPolicy", map[string]*llx.RawData{
+				"name":                                 llx.StringData(cp.Name),
+				"displayName":                          llx.StringData(cp.DisplayName),
+				"rules":                                llx.ArrayData(mqlRules, types.Resource("gcp.project.dlpService.contentPolicy.rule")),
+				"defaultVerdict":                       llx.StringData(dlpDefaultVerdict(cp.DefaultAction)),
+				"unsupportedFileTypeVerdict":           llx.StringDataPtr(dlpPolicyActionVerdict(cp.UnsupportedFileType)),
+				"inputTooLargeVerdict":                 llx.StringDataPtr(dlpPolicyActionVerdict(cp.InputTooLarge)),
+				"failedToScanSupportedFileTypeVerdict": llx.StringDataPtr(dlpPolicyActionVerdict(cp.FailedToScanSupportedFileType)),
+				"inspectConfig":                        llx.DictData(inspectConfig),
+				"loggingConfigs":                       llx.ArrayData(mqlLoggingConfigs, types.Resource("gcp.project.dlpService.contentPolicy.loggingConfig")),
+				"errors":                               llx.ArrayData(errs, types.Dict),
+				"created":                              llx.TimeDataPtr(timestampAsTimePtr(cp.CreateTime)),
+				"updated":                              llx.TimeDataPtr(timestampAsTimePtr(cp.UpdateTime)),
+			})
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlCp)
+		}
+	}
+
+	return res, nil
 }

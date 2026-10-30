@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -17,14 +18,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mitchellh/go-homedir"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/exec"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/mqlc"
-	"go.mondoo.com/mql/v13/mqlc/parser"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/exec"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/mqlc"
+	"go.mondoo.com/mql/mqlc/parser"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/utils/stringx"
 )
 
 // ErrNotTTY is returned when the shell is run without a terminal
@@ -51,6 +52,7 @@ type shellModel struct {
 	runtime  llx.Runtime
 	theme    *ShellTheme
 	features mql.Features
+	strict   bool
 	keyMap   KeyMap
 
 	// Input handling
@@ -97,7 +99,7 @@ type shellModel struct {
 // newShellModel creates a new shell model
 // connectedProviderIDs can be provided to filter autocomplete suggestions to only
 // show resources from connected providers. If nil, all resources are shown.
-func newShellModel(runtime llx.Runtime, theme *ShellTheme, features mql.Features, initialCmd string, connectedProviderIDs []string) *shellModel {
+func newShellModel(runtime llx.Runtime, theme *ShellTheme, features mql.Features, strict bool, initialCmd string, connectedProviderIDs []string) *shellModel {
 	// Create textarea for input
 	ta := textarea.New()
 	ta.Placeholder = ""
@@ -127,7 +129,7 @@ func newShellModel(runtime llx.Runtime, theme *ShellTheme, features mql.Features
 	// show resources from connected providers in autocomplete
 	schema := runtime.Schema()
 	theme.PolicyPrinter.SetSchema(schema)
-	completer := NewCompleter(schema, features, connectedProviderIDs)
+	completer := NewCompleter(runtime, features, strict, connectedProviderIDs)
 
 	// Create spinner for query execution
 	sp := spinner.New()
@@ -138,6 +140,7 @@ func newShellModel(runtime llx.Runtime, theme *ShellTheme, features mql.Features
 		runtime:     runtime,
 		theme:       theme,
 		features:    features,
+		strict:      strict,
 		keyMap:      DefaultKeyMap(),
 		input:       ta,
 		completer:   completer,
@@ -221,10 +224,7 @@ func (m *shellModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		// Update textarea width (leave space for prompt)
 		promptLen := len(m.theme.Prefix)
-		inputWidth := msg.Width - promptLen - 2
-		if inputWidth < 20 {
-			inputWidth = 20
-		}
+		inputWidth := max(msg.Width-promptLen-2, 20)
 		m.input.SetWidth(inputWidth)
 		// Recalculate height in case line wrapping changed
 		m.updateInputHeight()
@@ -254,6 +254,9 @@ func (m *shellModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Println(output)
 		}
 		output := m.formatResults(msg.code, msg.results)
+		if notices := m.deprecationNotices(msg.code); notices != "" {
+			output = notices + "\n" + output
+		}
 		return m, tea.Println(output)
 
 	case spinner.TickMsg:
@@ -514,8 +517,8 @@ func (m *shellModel) handleSubmit() (tea.Model, tea.Cmd) {
 		}
 
 		// Check for "help <resource>"
-		if strings.HasPrefix(input, "help ") {
-			resource := strings.TrimPrefix(input, "help ")
+		if after, ok := strings.CutPrefix(input, "help "); ok {
+			resource := after
 			output := m.listResources(resource)
 			m.input.SetValue("")
 			m.addToHistory(input)
@@ -539,9 +542,7 @@ func (m *shellModel) executeQuery(input string) (tea.Model, tea.Cmd) {
 	m.query += " " + input
 
 	// Try to compile
-	cfg := mqlc.NewConfig(m.runtime.Schema(), m.features)
-	cfg.EditorMode = true
-	code, err := mqlc.Compile(m.query, nil, cfg)
+	code, err := mqlc.Compile(m.query, nil, m.compilerConfig())
 	if err != nil {
 		if e, ok := err.(*parser.ErrIncomplete); ok {
 			// Incomplete query - enter multiline mode
@@ -582,7 +583,7 @@ func (m *shellModel) executeQuery(input string) (tea.Model, tea.Cmd) {
 		tea.Println(echoInput),
 		m.spinner.Tick,
 		func() tea.Msg {
-			code, err := mqlc.Compile(queryToRun, nil, mqlc.NewConfig(m.runtime.Schema(), m.features))
+			code, err := mqlc.Compile(queryToRun, nil, m.compilerConfig())
 			if err != nil {
 				return queryResultMsg{code: code, err: err}
 			}
@@ -739,8 +740,8 @@ func (m *shellModel) updateSearchMatches() {
 	query := strings.ToLower(m.searchQuery)
 
 	// Search backwards through history (most recent first)
-	for i := len(m.history) - 1; i >= 0; i-- {
-		if strings.Contains(strings.ToLower(m.history[i]), query) {
+	for i, v := range slices.Backward(m.history) {
+		if strings.Contains(strings.ToLower(v), query) {
 			m.searchMatches = append(m.searchMatches, i)
 		}
 	}
@@ -804,9 +805,7 @@ func (m *shellModel) updateCompletions() {
 
 	// Check for compile errors (for inline feedback)
 	fullQuery := m.query + " " + input
-	cfg := mqlc.NewConfig(m.runtime.Schema(), m.features)
-	cfg.EditorMode = true
-	_, err := mqlc.Compile(fullQuery, nil, cfg)
+	_, err := mqlc.Compile(fullQuery, nil, m.compilerConfig())
 	if err != nil {
 		// Ignore incomplete errors - those are expected for multi-line
 		if _, ok := err.(*parser.ErrIncomplete); !ok {
@@ -830,10 +829,7 @@ func (m *shellModel) acceptCompletion() (tea.Model, tea.Cmd) {
 		// Find the start of the current word (after last separator)
 		lastDot := strings.LastIndex(input, ".")
 		lastSpace := strings.LastIndex(input, " ")
-		wordStart := lastDot
-		if lastSpace > lastDot {
-			wordStart = lastSpace
-		}
+		wordStart := max(lastSpace, lastDot)
 
 		var newValue string
 		if wordStart >= 0 {
@@ -871,9 +867,7 @@ func (m *shellModel) recompileForErrors() {
 
 	// Check for compile errors
 	fullQuery := m.query + " " + input
-	cfg := mqlc.NewConfig(m.runtime.Schema(), m.features)
-	cfg.EditorMode = true
-	_, err := mqlc.Compile(fullQuery, nil, cfg)
+	_, err := mqlc.Compile(fullQuery, nil, m.compilerConfig())
 	if err != nil {
 		// Ignore incomplete errors - those are expected for multi-line
 		if _, ok := err.(*parser.ErrIncomplete); !ok {
@@ -941,7 +935,7 @@ func (m *shellModel) showAssetInfo() tea.Cmd {
 	return func() tea.Msg {
 		// Query for asset information using proper MQL syntax
 		query := "asset.name asset.platform asset.version"
-		code, err := mqlc.Compile(query, nil, mqlc.NewConfig(m.runtime.Schema(), m.features))
+		code, err := mqlc.Compile(query, nil, m.compilerConfig())
 		if err != nil {
 			return printOutputMsg{output: m.theme.ErrorText("Failed to get asset info: " + err.Error())}
 		}
@@ -1041,10 +1035,7 @@ func (m *shellModel) renderCompletionPopup() string {
 		return ""
 	}
 
-	maxItems := 10
-	if len(m.suggestions) < maxItems {
-		maxItems = len(m.suggestions)
-	}
+	maxItems := min(len(m.suggestions), 10)
 
 	// Calculate scroll offset
 	startIdx := 0
@@ -1060,15 +1051,11 @@ func (m *shellModel) renderCompletionPopup() string {
 
 	// Reserve space for: padding (4), separator (3), description (min 20)
 	minDescWidth := 20
-	maxNameWidth := availableWidth - minDescWidth - 7
+	maxNameWidth := max(
+		// Cap name column width
+		min(
 
-	// Cap name column width
-	if maxNameWidth > 40 {
-		maxNameWidth = 40
-	}
-	if maxNameWidth < 15 {
-		maxNameWidth = 15
-	}
+			availableWidth-minDescWidth-7, 40), 15)
 
 	// Find the longest name in visible items (for alignment)
 	nameWidth := 0
@@ -1087,13 +1074,7 @@ func (m *shellModel) renderCompletionPopup() string {
 	}
 
 	// Calculate description width
-	descWidth := availableWidth - nameWidth - 7
-	if descWidth < minDescWidth {
-		descWidth = minDescWidth
-	}
-	if descWidth > 50 {
-		descWidth = 50
-	}
+	descWidth := min(max(availableWidth-nameWidth-7, minDescWidth), 50)
 
 	var rows []string
 	for i := startIdx; i < startIdx+maxItems && i < len(m.suggestions); i++ {
@@ -1175,7 +1156,7 @@ func (m *shellModel) listResources(filter string) string {
 	// Sort keys
 	sortedKeys := make([]string, len(keys))
 	copy(sortedKeys, keys)
-	for i := 0; i < len(sortedKeys); i++ {
+	for i := range sortedKeys {
 		for j := i + 1; j < len(sortedKeys); j++ {
 			if sortedKeys[i] > sortedKeys[j] {
 				sortedKeys[i], sortedKeys[j] = sortedKeys[j], sortedKeys[i]
@@ -1213,4 +1194,37 @@ func (m *shellModel) listResources(filter string) string {
 	}
 
 	return b.String()
+}
+
+// compilerConfig is the shell's compile settings, including the strict-mode
+// default resolved from config. Queries typed at the shell carry no content of
+// their own, so the config default is all there is.
+func (m *shellModel) compilerConfig() mqlc.CompilerConfig {
+	conf := mqlc.NewConfigFrom(m.runtime, m.features)
+	conf.Strict = m.strict
+	// Interactive recompiles run on every keystroke, so keep non-fatal
+	// advisories like the standalone where warning out of the terminal.
+	conf.EditorMode = true
+	return conf
+}
+
+// deprecationNotices renders what the bundle recorded about deprecated names it
+// reads (ADR 040). The compiler only records - it runs on every keystroke
+// behind autocomplete, so a message printed from there lands in the middle of
+// the line being typed - and this is the moment a user is actually reading
+// output.
+//
+// Spellings are relative to the root this session connected to, so the notice
+// tells them what to type here rather than where the field lives in the schema.
+func (m *shellModel) deprecationNotices(code *llx.CodeBundle) string {
+	notices := mqlc.DeprecationNotices(code, m.runtime.Schema())
+	if len(notices) == 0 {
+		return ""
+	}
+	var out strings.Builder
+	for _, n := range notices {
+		out.WriteString(m.theme.Secondary.Render("deprecated: " + n))
+		out.WriteString("\n")
+	}
+	return strings.TrimRight(out.String(), "\n")
 }

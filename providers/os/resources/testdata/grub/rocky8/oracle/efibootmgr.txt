@@ -1,0 +1,6 @@
+BootCurrent: 0001
+Timeout: 0 seconds
+BootOrder: 0002,0000,0001
+Boot0000* UiApp	FvVol(7cb8bdc9-f8eb-4f34-aaea-3ee4af6516a1)/FvFile(462caa21-7614-4503-836e-8ab6f4662331)
+Boot0001* UEFI Amazon Elastic Block Store vol08044c086860f73cb 1	PciRoot(0x0)/Pci(0x4,0x0)/NVMe(0x1,00-00-00-00-00-00-00-00)N.....YM....R,Y.
+Boot0002* rocky	HD(1,GPT,5d7b7a5e-9cd6-4e38-a188-273a5c5e3551,0x800,0x31800)/File(\EFI\rocky\shimx64.efi)

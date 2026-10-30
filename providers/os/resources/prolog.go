@@ -9,12 +9,12 @@ import (
 	"sync"
 
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/prolog/packpl"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/prolog/packpl"
+	"go.mondoo.com/mql/types"
 )
 
 func initPrologPackages(_ *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -35,6 +35,33 @@ func (r *mqlPrologPackages) id() (string, error) {
 	return "prolog.packages", nil
 }
 
+// defaultPrologPackDirs are the directories SWI-Prolog installs packs into
+// for every user: /usr/lib/swi-prolog/pack, and the pack directory under each
+// common_app_data directory ($XDG_DATA_DIRS, /usr/local/share and /usr/share
+// by default), which is where pack_install puts a pack when root runs it.
+var defaultPrologPackDirs = []string{
+	"/usr/lib/swi-prolog/pack",
+	"/usr/local/share/swi-prolog/pack",
+	"/usr/share/swi-prolog/pack",
+}
+
+// scanPrologPackDirs reads the packs in each directory and returns them with
+// the directories that held at least one pack.
+func scanPrologPackDirs(afs *afero.Afero, dirs []string) ([]packpl.PrologPack, []string) {
+	var packs []packpl.PrologPack
+	var found []string
+	for _, dir := range dirs {
+		// ScanPackDir does not fail, an unreadable directory has no packs
+		dirPacks, _ := packpl.ScanPackDir(afs, dir)
+		if len(dirPacks) == 0 {
+			continue
+		}
+		packs = append(packs, dirPacks...)
+		found = append(found, dir)
+	}
+	return packs, found
+}
+
 type mqlPrologPackagesInternal struct {
 	mutex   sync.Mutex
 	fetched bool
@@ -53,15 +80,19 @@ func (r *mqlPrologPackages) gatherData() error {
 	conn := r.MqlRuntime.Connection.(shared.Connection)
 	afs := &afero.Afero{Fs: conn.FileSystem()}
 
-	path := r.Path.Data
-	if path == "" {
-		// SWI-Prolog default pack location
-		path = "/usr/lib/swi-prolog/pack"
-	}
-
-	packs, err := packpl.ScanPackDir(afs, path)
-	if err != nil {
-		return err
+	var packs []packpl.PrologPack
+	var packDirs []string
+	if r.Path.Data == "" {
+		packs, packDirs = scanPrologPackDirs(afs, defaultPrologPackDirs)
+	} else {
+		var err error
+		packs, err = packpl.ScanPackDir(afs, r.Path.Data)
+		if err != nil {
+			return err
+		}
+		if len(packs) > 0 {
+			packDirs = []string{r.Path.Data}
+		}
 	}
 	pkgs := packpl.ToPackages(packs)
 	slices.SortFunc(pkgs, languages.SortFn)
@@ -73,9 +104,9 @@ func (r *mqlPrologPackages) gatherData() error {
 	r.List = plugin.TValue[[]any]{Data: allResources, State: plugin.StateIsSet}
 
 	mqlFiles := []any{}
-	if len(packs) > 0 {
+	for _, dir := range packDirs {
 		lf, err := CreateResource(r.MqlRuntime, "pkgFileInfo", map[string]*llx.RawData{
-			"path": llx.StringData(path),
+			"path": llx.StringData(dir),
 		})
 		if err != nil {
 			return err

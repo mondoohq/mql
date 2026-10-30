@@ -1,0 +1,62 @@
+{
+  "@context": "https://spdx.org/rdf/3.0.1/spdx-context.jsonld",
+  "@graph": [
+    {
+      "type": "CreationInfo",
+      "@id": "_:creationinfo",
+      "specVersion": "3.0.1",
+      "created": "2026-10-23T00:00:00Z",
+      "createdBy": ["https://example.com/spdx/web-app#agent"]
+    },
+    {
+      "type": "Organization",
+      "spdxId": "https://example.com/spdx/web-app#agent",
+      "creationInfo": "_:creationinfo",
+      "name": "Example Inc."
+    },
+    {
+      "type": "software_Package",
+      "spdxId": "https://example.com/spdx/web-app#pkg-web-app",
+      "creationInfo": "_:creationinfo",
+      "name": "web-app",
+      "software_packageVersion": "1.0.0",
+      "software_primaryPurpose": "application"
+    },
+    {
+      "type": "software_Package",
+      "spdxId": "https://example.com/spdx/web-app#pkg-lodash",
+      "creationInfo": "_:creationinfo",
+      "name": "lodash",
+      "software_packageVersion": "4.17.21",
+      "software_packageUrl": "pkg:npm/lodash@4.17.21"
+    },
+    {
+      "type": "Relationship",
+      "spdxId": "https://example.com/spdx/web-app#rel-1",
+      "creationInfo": "_:creationinfo",
+      "from": "https://example.com/spdx/web-app#pkg-web-app",
+      "relationshipType": "dependsOn",
+      "to": ["https://example.com/spdx/web-app#pkg-lodash"]
+    },
+    {
+      "type": "software_Sbom",
+      "spdxId": "https://example.com/spdx/web-app#sbom",
+      "creationInfo": "_:creationinfo",
+      "rootElement": ["https://example.com/spdx/web-app#pkg-web-app"],
+      "element": [
+        "https://example.com/spdx/web-app#pkg-web-app",
+        "https://example.com/spdx/web-app#pkg-lodash",
+        "https://example.com/spdx/web-app#rel-1"
+      ]
+    },
+    {
+      "type": "SpdxDocument",
+      "spdxId": "https://example.com/spdx/web-app",
+      "creationInfo": "_:creationinfo",
+      "name": "web-app",
+      "profileConformance": ["core", "software"],
+      "rootElement": ["https://example.com/spdx/web-app#sbom"],
+      "element": ["https://example.com/spdx/web-app#sbom"]
+    }
+  ]
+}

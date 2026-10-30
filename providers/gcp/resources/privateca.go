@@ -9,15 +9,19 @@ import (
 	"fmt"
 	"strings"
 
+	iampb "cloud.google.com/go/iam/apiv1/iampb"
 	privateca "cloud.google.com/go/security/privateca/apiv1"
 	"cloud.google.com/go/security/privateca/apiv1/privatecapb"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // extractCaPoolName extracts the CA pool name from a GCP Certificate Authority Service resource path.
@@ -95,6 +99,10 @@ func (g *mqlGcpProjectCertificateAuthorityService) caPools() ([]any, error) {
 			break
 		}
 		if err != nil {
+			if isSkippable(err) {
+				log.Warn().Err(err).Msg("could not list resources (API disabled or access denied), skipping")
+				break
+			}
 			return nil, err
 		}
 
@@ -148,6 +156,41 @@ func (g *mqlGcpProjectCertificateAuthorityServiceCaPool) id() (string, error) {
 	return g.ResourcePath.Data, nil
 }
 
+func (g *mqlGcpProjectCertificateAuthorityServiceCaPool) iamPolicy() ([]any, error) {
+	if g.ResourcePath.Error != nil {
+		return nil, g.ResourcePath.Error
+	}
+	poolPath := g.ResourcePath.Data
+
+	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	creds, err := conn.Credentials(privateca.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	client, err := privateca.NewCertificateAuthorityClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption())
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	// Request policy schema version 3 so conditional bindings aren't silently
+	// stripped from the result.
+	policy, err := client.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{
+		Resource: poolPath,
+		Options:  &iampb.GetPolicyOptions{RequestedPolicyVersion: 3},
+	})
+	if err != nil {
+		if s, ok := status.FromError(err); ok && s.Code() == codes.PermissionDenied {
+			log.Warn().Str("caPool", poolPath).Err(err).Msg("could not retrieve CA pool IAM policy")
+			return nil, nil
+		}
+		return nil, err
+	}
+	return iampbBindingsToMql(g.MqlRuntime, poolPath, policy.Bindings)
+}
+
 func (g *mqlGcpProjectCertificateAuthorityServiceCaPool) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
 	if g.cacheKmsKeyName == "" {
 		g.KmsKey.State = plugin.StateIsNull | plugin.StateIsSet
@@ -195,6 +238,10 @@ func (g *mqlGcpProjectCertificateAuthorityServiceCaPool) certificateAuthorities(
 			break
 		}
 		if err != nil {
+			if isSkippable(err) {
+				log.Warn().Err(err).Msg("could not list resources (API disabled or access denied), skipping")
+				break
+			}
 			return nil, err
 		}
 
@@ -246,16 +293,18 @@ func (g *mqlGcpProjectCertificateAuthorityServiceCaPool) certificateAuthorities(
 		}
 
 		mqlCa, err := CreateResource(g.MqlRuntime, "gcp.project.certificateAuthorityService.certificateAuthority", map[string]*llx.RawData{
-			"projectId":         llx.StringData(projectId),
-			"resourcePath":      llx.StringData(ca.Name),
-			"name":              llx.StringData(parseResourceName(ca.Name)),
-			"location":          llx.StringData(parseLocationFromPath(ca.Name)),
-			"caPool":            llx.StringData(caPoolName),
-			"type":              llx.StringData(ca.Type.String()),
-			"state":             llx.StringData(ca.State.String()),
-			"keySpec":           llx.DictData(keySpec),
-			"config":            llx.DictData(config),
-			"lifetime":          llx.StringData(ca.Lifetime.String()),
+			"projectId":    llx.StringData(projectId),
+			"resourcePath": llx.StringData(ca.Name),
+			"name":         llx.StringData(parseResourceName(ca.Name)),
+			"location":     llx.StringData(parseLocationFromPath(ca.Name)),
+			"caPool":       llx.StringData(caPoolName),
+			"type":         llx.StringData(ca.Type.String()),
+			"state":        llx.StringData(ca.State.String()),
+			"keySpec":      llx.DictData(keySpec),
+			"config":       llx.DictData(config),
+			// durationToString, not (*durationpb.Duration).String(): the latter
+			// renders protobuf TEXT ("seconds:31536000") and "<nil>" when absent.
+			"lifetime":          llx.StringData(durationToString(ca.Lifetime)),
 			"pemCaCertificates": llx.ArrayData(convert.SliceAnyToInterface(ca.PemCaCertificates), types.String),
 			"subordinateConfig": llx.DictData(subordinateConfig),
 			"labels":            llx.MapData(convert.MapToInterfaceMap(ca.Labels), types.String),
@@ -324,6 +373,10 @@ func (g *mqlGcpProjectCertificateAuthorityServiceCaPool) certificates() ([]any, 
 			break
 		}
 		if err != nil {
+			if isSkippable(err) {
+				log.Warn().Err(err).Msg("could not list resources (API disabled or access denied), skipping")
+				break
+			}
 			return nil, err
 		}
 
@@ -370,7 +423,7 @@ func (g *mqlGcpProjectCertificateAuthorityServiceCaPool) certificates() ([]any, 
 			"location":                   llx.StringData(parseLocationFromPath(cert.Name)),
 			"caPool":                     llx.StringData(caPoolName),
 			"issuerCertificateAuthority": llx.StringData(cert.IssuerCertificateAuthority),
-			"lifetime":                   llx.StringData(cert.Lifetime.String()),
+			"lifetime":                   llx.StringData(durationToString(cert.Lifetime)),
 			"requestedNotBeforeTime":     requestedNotBeforeTime,
 			"subjectDescription":         llx.DictData(subjectDescription),
 			"certDescription":            llx.DictData(certConfig),
@@ -395,4 +448,170 @@ func (g *mqlGcpProjectCertificateAuthorityServiceCertificate) id() (string, erro
 		return "", g.ResourcePath.Error
 	}
 	return g.ResourcePath.Data, nil
+}
+
+func (g *mqlGcpProjectCertificateAuthorityServiceCertificateRevocationList) id() (string, error) {
+	if g.ResourcePath.Error != nil {
+		return "", g.ResourcePath.Error
+	}
+	return g.ResourcePath.Data, nil
+}
+
+func (g *mqlGcpProjectCertificateAuthorityServiceCertificateAuthority) certificateRevocationLists() ([]any, error) {
+	if g.ProjectId.Error != nil {
+		return nil, g.ProjectId.Error
+	}
+	if g.ResourcePath.Error != nil {
+		return nil, g.ResourcePath.Error
+	}
+	projectId := g.ProjectId.Data
+	caPath := g.ResourcePath.Data
+
+	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	creds, err := conn.Credentials(privateca.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	client, err := privateca.NewCertificateAuthorityClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption())
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	it := client.ListCertificateRevocationLists(ctx, &privatecapb.ListCertificateRevocationListsRequest{
+		Parent: caPath,
+	})
+
+	var res []any
+	for {
+		crl, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			if isSkippable(err) {
+				log.Warn().Err(err).Msg("could not list resources (API disabled or access denied), skipping")
+				break
+			}
+			return nil, err
+		}
+
+		revoked := make([]any, 0, len(crl.RevokedCertificates))
+		for _, rc := range crl.RevokedCertificates {
+			revoked = append(revoked, map[string]any{
+				"certificate":      rc.Certificate,
+				"hexSerialNumber":  rc.HexSerialNumber,
+				"revocationReason": rc.RevocationReason.String(),
+			})
+		}
+
+		mqlCrl, err := CreateResource(g.MqlRuntime, "gcp.project.certificateAuthorityService.certificateRevocationList", map[string]*llx.RawData{
+			"projectId":           llx.StringData(projectId),
+			"resourcePath":        llx.StringData(crl.Name),
+			"name":                llx.StringData(parseResourceName(crl.Name)),
+			"location":            llx.StringData(parseLocationFromPath(crl.Name)),
+			"sequenceNumber":      llx.IntData(crl.SequenceNumber),
+			"state":               llx.StringData(crl.State.String()),
+			"revisionId":          llx.StringData(crl.RevisionId),
+			"accessUrl":           llx.StringData(crl.AccessUrl),
+			"pemCrl":              llx.StringData(crl.PemCrl),
+			"revokedCertificates": llx.ArrayData(revoked, types.Dict),
+			"labels":              llx.MapData(convert.MapToInterfaceMap(crl.Labels), types.String),
+			"createdAt":           llx.TimeDataPtr(timestampAsTimePtr(crl.CreateTime)),
+			"updatedAt":           llx.TimeDataPtr(timestampAsTimePtr(crl.UpdateTime)),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlCrl)
+	}
+
+	return res, nil
+}
+
+func (g *mqlGcpProjectCertificateAuthorityServiceCertificateTemplate) id() (string, error) {
+	if g.ResourcePath.Error != nil {
+		return "", g.ResourcePath.Error
+	}
+	return g.ResourcePath.Data, nil
+}
+
+func (g *mqlGcpProjectCertificateAuthorityService) certificateTemplates() ([]any, error) {
+	if g.ProjectId.Error != nil {
+		return nil, g.ProjectId.Error
+	}
+	projectId := g.ProjectId.Data
+
+	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	creds, err := conn.Credentials(privateca.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	client, err := privateca.NewCertificateAuthorityClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption())
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	it := client.ListCertificateTemplates(ctx, &privatecapb.ListCertificateTemplatesRequest{
+		Parent: fmt.Sprintf("projects/%s/locations/-", projectId),
+	})
+
+	var res []any
+	for {
+		tmpl, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			if isSkippable(err) {
+				log.Warn().Err(err).Msg("could not list resources (API disabled or access denied), skipping")
+				break
+			}
+			return nil, err
+		}
+
+		predefinedValues, err := protoToDict(tmpl.PredefinedValues)
+		if err != nil {
+			return nil, err
+		}
+		identityConstraints, err := protoToDict(tmpl.IdentityConstraints)
+		if err != nil {
+			return nil, err
+		}
+		passthroughExtensions, err := protoToDict(tmpl.PassthroughExtensions)
+		if err != nil {
+			return nil, err
+		}
+
+		maximumLifetime := ""
+		if tmpl.MaximumLifetime != nil {
+			maximumLifetime = tmpl.MaximumLifetime.AsDuration().String()
+		}
+
+		mqlTmpl, err := CreateResource(g.MqlRuntime, "gcp.project.certificateAuthorityService.certificateTemplate", map[string]*llx.RawData{
+			"projectId":             llx.StringData(projectId),
+			"resourcePath":          llx.StringData(tmpl.Name),
+			"name":                  llx.StringData(parseResourceName(tmpl.Name)),
+			"location":              llx.StringData(parseLocationFromPath(tmpl.Name)),
+			"description":           llx.StringData(tmpl.Description),
+			"maximumLifetime":       llx.StringData(maximumLifetime),
+			"predefinedValues":      llx.DictData(predefinedValues),
+			"identityConstraints":   llx.DictData(identityConstraints),
+			"passthroughExtensions": llx.DictData(passthroughExtensions),
+			"labels":                llx.MapData(convert.MapToInterfaceMap(tmpl.Labels), types.String),
+			"createdAt":             llx.TimeDataPtr(timestampAsTimePtr(tmpl.CreateTime)),
+			"updatedAt":             llx.TimeDataPtr(timestampAsTimePtr(tmpl.UpdateTime)),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlTmpl)
+	}
+
+	return res, nil
 }

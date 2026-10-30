@@ -3,7 +3,7 @@
 
 package packages
 
-import "go.mondoo.com/mql/v13/providers/os/connection/shared"
+import "go.mondoo.com/mql/providers/os/connection/shared"
 
 type ScratchPkgManager struct {
 	conn shared.Connection

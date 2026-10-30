@@ -1,0 +1,193 @@
+{
+  "@context": "https://spdx.org/rdf/3.0.1/spdx-context.jsonld",
+  "@graph": [
+    {
+      "creationInfo": "_:creationinfo",
+      "name": "Anchore, Inc",
+      "spdxId": "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#agent-1",
+      "type": "Organization"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "name": "protobom-v0.6.2",
+      "spdxId": "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#tool-2",
+      "type": "Tool"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "name": "syft-1.38.2",
+      "spdxId": "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#tool-3",
+      "type": "Tool"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "name": "Natanael Copa (ncopa@alpinelinux.org)",
+      "spdxId": "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#agent-4",
+      "type": "Person"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "name": "Natanael Copa (ncopa@alpinelinux.org)",
+      "spdxId": "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#agent-5",
+      "type": "Person"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "description": "Alpine base dir structure and init scripts",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:apk/alpine/alpine-baselayout@3.4.3-r2?arch=aarch64&distro=alpine-3.19.9"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:alpine-baselayout:alpine-baselayout:3.4.3-r2:*:*:*:*:*:*:*"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:alpine-baselayout:alpine_baselayout:3.4.3-r2:*:*:*:*:*:*:*"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:alpine_baselayout:alpine-baselayout:3.4.3-r2:*:*:*:*:*:*:*"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:alpine_baselayout:alpine_baselayout:3.4.3-r2:*:*:*:*:*:*:*"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:alpine:alpine-baselayout:3.4.3-r2:*:*:*:*:*:*:*"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:alpine:alpine_baselayout:3.4.3-r2:*:*:*:*:*:*:*"
+        }
+      ],
+      "name": "alpine-baselayout",
+      "originatedBy": [
+        "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#agent-5"
+      ],
+      "software_copyrightText": "NOASSERTION",
+      "software_downloadLocation": "https://git.alpinelinux.org/cgit/aports/tree/main/alpine-baselayout",
+      "software_packageUrl": "pkg:apk/alpine/alpine-baselayout@3.4.3-r2?arch=aarch64&distro=alpine-3.19.9",
+      "software_packageVersion": "3.4.3-r2",
+      "software_sourceInfo": "acquired package info from APK DB: /lib/apk/db/installed",
+      "spdxId": "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#Package-apk-alpine-baselayout-ae5da50cd31875e4",
+      "suppliedBy": "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#agent-4",
+      "type": "software_Package"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "simplelicensing_licenseExpression": "GPL-2.0-only",
+      "spdxId": "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#license-6",
+      "type": "simplelicensing_LicenseExpression"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#Package-apk-alpine-baselayout-ae5da50cd31875e4",
+      "relationshipType": "hasDeclaredLicense",
+      "spdxId": "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#relationship-7",
+      "to": [
+        "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#license-6"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:oci/alpine@sha256%3Aa8c5e701581b659625e06d6a92383b6f3ac33b7acef6b49260b0b71286bb78c4?arch=arm64&tag=3.19"
+        }
+      ],
+      "name": "alpine",
+      "software_copyrightText": "NOASSERTION",
+      "software_downloadLocation": "NOASSERTION",
+      "software_packageUrl": "pkg:oci/alpine@sha256%3Aa8c5e701581b659625e06d6a92383b6f3ac33b7acef6b49260b0b71286bb78c4?arch=arm64&tag=3.19",
+      "software_packageVersion": "3.19",
+      "software_primaryPurpose": "container",
+      "spdxId": "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#DocumentRoot-Image-alpine",
+      "type": "software_Package",
+      "verifiedUsing": [
+        {
+          "algorithm": "sha256",
+          "hashValue": "a8c5e701581b659625e06d6a92383b6f3ac33b7acef6b49260b0b71286bb78c4",
+          "type": "Hash"
+        }
+      ]
+    },
+    {
+      "comment": "layerID: sha256:8ff721756ec0097ba331876f1502858f8849716bdf720516fafa96c72a8d7dac",
+      "contentType": "application/octet-stream",
+      "creationInfo": "_:creationinfo",
+      "name": "bin/busybox",
+      "software_copyrightText": "NOASSERTION",
+      "software_primaryPurpose": "application",
+      "spdxId": "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#File-bin-busybox-ba62bc2090e3865d",
+      "type": "software_File",
+      "verifiedUsing": [
+        {
+          "algorithm": "sha1",
+          "hashValue": "deb680f885ae960b4219edac60f4b616e10ff605",
+          "type": "Hash"
+        },
+        {
+          "algorithm": "sha256",
+          "hashValue": "908b56f33efa7fe5f8d9c3a6d297018e6c76cde2ce2115a8f352bf56405cf62f",
+          "type": "Hash"
+        }
+      ]
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "spdxId": "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#sbom-8",
+      "type": "software_Sbom"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "name": "alpine",
+      "profileConformance": [
+        "core",
+        "software",
+        "simpleLicensing"
+      ],
+      "rootElement": [
+        "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#sbom-8"
+      ],
+      "spdxId": "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c",
+      "type": "SpdxDocument"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c",
+      "relationshipType": "describes",
+      "spdxId": "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#relationship-9",
+      "to": [
+        "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#sbom-8"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "@id": "_:creationinfo",
+      "created": "2025-12-22T16:01:31Z",
+      "createdBy": [
+        "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#agent-1"
+      ],
+      "createdUsing": [
+        "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#tool-2",
+        "https://anchore.com/syft/image/alpine-ada2539f-3693-41c8-9e83-a3d4db40411c#tool-3"
+      ],
+      "specVersion": "3.0.1",
+      "type": "CreationInfo"
+    }
+  ]
+}

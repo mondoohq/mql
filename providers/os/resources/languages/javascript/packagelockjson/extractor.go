@@ -4,11 +4,13 @@
 package packagelockjson
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"io"
 
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/javascript"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/javascript"
 )
 
 var (
@@ -27,7 +29,7 @@ func (p *Extractor) Name() string {
 
 func (p *Extractor) Parse(r io.Reader, filename string) (languages.Bom, error) {
 	var packageJsonLock packageLock
-	err := json.NewDecoder(r).Decode(&packageJsonLock)
+	err := json.NewDecoder(skipByteOrderMark(r)).Decode(&packageJsonLock)
 	if err != nil {
 		return nil, err
 	}
@@ -63,19 +65,35 @@ func (p *packageLock) Direct() languages.Packages {
 		return nil
 	}
 
+	idx := p.purlIndex()
 	filteredList := []*languages.Package{}
-	for k := range rootPkg.Dependencies {
-		pkg, ok := p.Packages[k]
+	for name := range rootPkg.Dependencies {
+		// The root's declared dependencies are keyed in `packages` by their
+		// install path, node_modules/<name> (npm hoists direct deps to the root
+		// node_modules), not by bare name. Look them up there; keying by bare
+		// name matched nothing for lockfileVersion 2+, so Direct() returned an
+		// empty set. Build Name/Purl/Cpes from the path key exactly as
+		// Transitive() does, so a package's Direct and Transitive representations
+		// (and their refs) are identical.
+		path := "node_modules/" + name
+		pkg, ok := p.Packages[path]
 		if !ok {
 			continue
 		}
 
 		filteredList = append(filteredList, &languages.Package{
-			Name:         packageLockPackageName(k),
-			Version:      pkg.Version,
-			Purl:         javascript.NewPackageUrl(k, pkg.Version),
-			Cpes:         javascript.NewCpes(k, pkg.Version),
+			Name:    name,
+			Version: pkg.Version,
+			// npm's lockfile writes `license` as either a string or an array;
+			// the parser normalizes both to a slice, and an array means a
+			// choice among them.
+			License:      languages.LicenseExpression(pkg.License),
+			Purl:         idx[path],
+			Cpes:         javascript.NewCpes(name, pkg.Version),
 			EvidenceList: javascript.NewEvidenceList(p.evidence),
+			DependsOn:    dependsOnRefs(p.Packages, idx, path, pkg.Dependencies),
+			Scope:        scopeOf(pkg),
+			Hashes:       javascript.NewHashes(pkg.Integrity),
 		})
 	}
 
@@ -85,19 +103,28 @@ func (p *packageLock) Direct() languages.Packages {
 func (p *packageLock) Transitive() languages.Packages {
 	var transitive languages.Packages
 	if p.Packages != nil {
+		idx := p.purlIndex()
 		for k, v := range p.Packages {
-			name := k
-			// skip root package since we have that already
-			if name == "" {
+			// Keys are install paths; the package name is the last node_modules
+			// segment. The root package has key "" and carries its name in v.Name.
+			name := packageLockPackageName(k)
+			if k == "" {
 				name = v.Name
 			}
 
 			transitive = append(transitive, &languages.Package{
-				Name:         packageLockPackageName(name),
-				Version:      v.Version,
-				Purl:         javascript.NewPackageUrl(k, v.Version),
-				Cpes:         javascript.NewCpes(k, v.Version),
+				Name:    name,
+				Version: v.Version,
+				// Only lockfileVersion 2+ (the `packages` map) records a
+				// per-package license; the legacy v1 `dependencies` tree below
+				// carries none, so there is nothing to read there.
+				License:      languages.LicenseExpression(v.License),
+				Purl:         idx[k],
+				Cpes:         javascript.NewCpes(name, v.Version),
 				EvidenceList: javascript.NewEvidenceList(p.evidence),
+				DependsOn:    dependsOnRefs(p.Packages, idx, k, v.Dependencies),
+				Scope:        scopeOf(v),
+				Hashes:       javascript.NewHashes(v.Integrity),
 			})
 		}
 	} else if p.Dependencies != nil {
@@ -108,8 +135,20 @@ func (p *packageLock) Transitive() languages.Packages {
 				Purl:         javascript.NewPackageUrl(k, v.Version),
 				Cpes:         javascript.NewCpes(k, v.Version),
 				EvidenceList: javascript.NewEvidenceList(p.evidence),
+				Hashes:       javascript.NewHashes(v.Integrity),
 			})
 		}
 	}
 	return transitive
+}
+
+// skipByteOrderMark returns r without the UTF-8 byte order mark a lockfile
+// saved by some Windows editors starts with. npm strips it before parsing;
+// encoding/json rejects it.
+func skipByteOrderMark(r io.Reader) io.Reader {
+	br := bufio.NewReader(r)
+	if b, err := br.Peek(3); err == nil && bytes.Equal(b, []byte("\xef\xbb\xbf")) {
+		_, _ = br.Discard(3)
+	}
+	return br
 }

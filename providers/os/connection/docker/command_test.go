@@ -1,99 +1,120 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-//go:build debugtest
-// +build debugtest
-
 package docker
 
 import (
+	"bytes"
 	"context"
-	"io"
-	"os"
-	"testing"
-
-	docker_types "github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
+	"encoding/binary"
+	"fmt"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
 )
 
-func startContainer() (*client.Client, string, error) {
-	// os.Setenv("DOCKER_API_VERSION", "1.26")
-	// Start new docker container
-	ctx := context.Background()
-	var err error
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		return nil, "", err
-	}
-
-	// ensure we kill container if something went wrong during assertion
-	// we can ignore errors here
-	dockerClient.ContainerKill(ctx, "motor-docker-test", "SIGKILL")
-	dockerClient.ContainerRemove(ctx, "motor-docker-test", docker_types.ContainerRemoveOptions{Force: true})
-
-	imageName := "ubuntu"
-
-	out, err := dockerClient.ImagePull(ctx, imageName, docker_types.ImagePullOptions{})
-	if err != nil {
-		return nil, "", err
-	}
-	io.Copy(os.Stdout, out)
-
-	resp, err := dockerClient.ContainerCreate(ctx, &container.Config{
-		Image: imageName,
-		Cmd:   []string{"/bin/bash"},
-		Tty:   true,
-	}, nil, nil, "motor-docker-test")
-	if err != nil {
-		return nil, "", err
-	}
-
-	if err := dockerClient.ContainerStart(ctx, resp.ID, docker_types.ContainerStartOptions{}); err != nil {
-		return nil, "", err
-	}
-	return dockerClient, resp.ID, nil
+func dockerFrame(stream byte, body string) []byte {
+	header := make([]byte, 8)
+	header[0] = stream
+	binary.BigEndian.PutUint32(header[4:], uint32(len(body)))
+	return append(header, body...)
 }
-
-func tearDownContainer(dockerClient *client.Client, containerID string) error {
-	// Stop Container
-	return dockerClient.ContainerKill(context.Background(), containerID, "SIGKILL")
+func TestTransformHijack(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		input          []byte
+		stdout, stderr string
+		bad            bool
+	}{
+		{name: "streams", input: append(dockerFrame(STDOUT, "hello"), dockerFrame(STDERR, "warning")...), stdout: "hello", stderr: "warning"},
+		{name: "incomplete header", input: []byte{1, 0}, bad: true},
+		{name: "incomplete body", input: dockerFrame(STDOUT, "hello")[:10], bad: true},
+		{name: "unknown stream", input: dockerFrame(9, "hello"), bad: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out, stderr bytes.Buffer
+			err := (&Command{}).transformHijack(bytes.NewReader(tc.input), &out, &stderr)
+			if tc.bad {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.stdout, out.String())
+			assert.Equal(t, tc.stderr, stderr.String())
+		})
+	}
 }
-
-func TestDockerCommand(t *testing.T) {
-	dockerClient, containerID, err := startContainer()
-	require.NoError(t, err)
-	defer tearDownContainer(dockerClient, containerID)
-
-	// Execute tests
-	t.Run("echo", func(t *testing.T) {
-		c := &Command{dockerClient: dockerClient, Container: containerID}
-		cmd, err := c.Exec("echo 'test'")
-		require.NoError(t, err)
-		assert.Equal(t, "echo 'test'", cmd.Command, "they should be equal")
-		assert.Equal(t, nil, err, "should execute without error")
-
-		stdout, _ := io.ReadAll(cmd.Stdout)
-		assert.Equal(t, "test\n", string(stdout), "output should be correct")
-		stderr, _ := io.ReadAll(cmd.Stderr)
-		assert.Equal(t, "", string(stderr), "output should be correct")
-	})
-
-	t.Run("echo pipe", func(t *testing.T) {
-		cErr := &Command{dockerClient: dockerClient, Container: containerID}
-
-		cmd, err := cErr.Exec("echo 'This message goes to stderr' >&2")
-		require.NoError(t, err)
-
-		assert.Equal(t, "echo 'This message goes to stderr' >&2", cmd.Command, "they should be equal")
-		assert.Equal(t, nil, err, "should execute without error")
-
-		stdout, _ := io.ReadAll(cmd.Stdout)
-		assert.Equal(t, "", string(stdout), "output should be correct")
-
-		stderr, _ := io.ReadAll(cmd.Stderr)
-		assert.Equal(t, "This message goes to stderr\n", string(stderr), "output should be correct")
-	})
+func TestDockerCommandCancellationAndOutput(t *testing.T) {
+	for _, mode := range []string{"silent", "output", "normal"} {
+		t.Run(mode, func(t *testing.T) {
+			if mode == "output" {
+				t.Setenv("MONDOO_COMMAND_OUTPUT_LIMIT", "32")
+			}
+			closed := make(chan error, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = io.Copy(io.Discard, r.Body)
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/containers/test/exec"):
+					_, _ = io.WriteString(w, `{"Id":"command"}`)
+				case strings.HasSuffix(r.URL.Path, "/exec/command/start"):
+					conn, buffer, err := w.(http.Hijacker).Hijack()
+					if err != nil {
+						closed <- err
+						return
+					}
+					defer conn.Close()
+					_, _ = io.WriteString(buffer, "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: tcp\r\nContent-Type: application/vnd.docker.raw-stream\r\n\r\n")
+					_ = buffer.Flush()
+					if mode == "normal" {
+						_, _ = conn.Write(dockerFrame(STDOUT, "ready"))
+						closed <- nil
+						return
+					}
+					if mode == "output" {
+						_, _ = conn.Write(dockerFrame(STDOUT, strings.Repeat("x", 4096)))
+					}
+					_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+					_, err = io.Copy(io.Discard, conn)
+					closed <- err
+				case strings.HasSuffix(r.URL.Path, "/exec/command/json"):
+					_, _ = io.WriteString(w, `{"ExitCode":0,"Running":false}`)
+				default:
+					http.Error(w, fmt.Sprintf("unexpected path %s", r.URL.Path), 404)
+				}
+			}))
+			defer server.Close()
+			engine, err := client.New(client.WithHost(strings.Replace(server.URL, "http://", "tcp://", 1)), client.WithAPIVersion("1.56"))
+			require.NoError(t, err)
+			defer engine.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+			defer cancel()
+			result, err := (&Command{Client: engine, Container: "test"}).ExecContext(ctx, "harmless")
+			switch mode {
+			case "silent":
+				assert.ErrorIs(t, err, context.DeadlineExceeded)
+			case "output":
+				assert.ErrorIs(t, err, shared.ErrCommandOutputLimit)
+			case "normal":
+				require.NoError(t, err)
+				out, err := io.ReadAll(result.Stdout)
+				require.NoError(t, err)
+				assert.Equal(t, "ready", string(out))
+				assert.Zero(t, result.ExitStatus)
+			}
+			select {
+			case err := <-closed:
+				assert.NoError(t, err, "attachment socket should close on cancellation")
+			case <-time.After(time.Second):
+				t.Fatal("attachment leaked")
+			}
+		})
+	}
 }

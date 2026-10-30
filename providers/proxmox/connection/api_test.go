@@ -106,14 +106,14 @@ func TestGetStorages_EncryptedAndPlain(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// GetNodeContainers — regression for the Atoi VMID parsing
+// GetNodeContainers — VMID decoding
 // ---------------------------------------------------------------------------
 
 func TestGetNodeContainers_ValidVMIDs(t *testing.T) {
 	f := newFakePVE(t)
 	f.route("/nodes/pve1/lxc", []map[string]any{
-		{"vmid": "100", "name": "web", "status": "running", "maxmem": 512_000_000},
-		{"vmid": "201", "name": "db", "status": "stopped", "maxmem": 1_024_000_000},
+		{"vmid": 100, "name": "web", "status": "running", "maxmem": 512_000_000},
+		{"vmid": 201, "name": "db", "status": "stopped", "maxmem": 1_024_000_000},
 	})
 
 	cts, err := f.conn().GetNodeContainers("pve1")
@@ -166,8 +166,8 @@ func TestGetNodeVMs_HitsPerNodeEndpoint(t *testing.T) {
 	// regresses back to using GetAllVMs internally the test fails with a
 	// 404 instead of silently passing on a stale endpoint.
 	f.route("/nodes/pve1/qemu", []map[string]any{
-		{"vmid": "100", "name": "web", "status": "running", "maxmem": 2_000_000_000},
-		{"vmid": "201", "name": "db", "status": "stopped"},
+		{"vmid": 100, "name": "web", "status": "running", "maxmem": 2_000_000_000},
+		{"vmid": 201, "name": "db", "status": "stopped"},
 	})
 
 	vms, err := f.conn().GetNodeVMs("pve1")
@@ -259,7 +259,7 @@ func TestGetReplicationJobs_DisabledFlagAndRate(t *testing.T) {
 		t.Errorf("Disable = %d, want 1", j.Disable)
 	}
 	if j.Rate != 50 {
-		t.Errorf("Rate = %d, want 50", j.Rate)
+		t.Errorf("Rate = %v, want 50", j.Rate)
 	}
 	if j.VMID != 100 {
 		t.Errorf("VMID = %d, want 100", j.VMID)

@@ -1,0 +1,130 @@
+[
+  {
+    "FeatureName": "NetFx4ServerFeatures",
+    "State": 2
+  },
+  {
+    "FeatureName": "NetFx4Extended-ASPNET45",
+    "State": 0
+  },
+  {
+    "FeatureName": "NetFx3",
+    "State": 6
+  },
+  {
+    "FeatureName": "DNS-Server-Tools",
+    "State": 3
+  },
+  {
+    "FeatureName": "NetFx4",
+    "State": 2
+  },
+  {
+    "FeatureName": "MicrosoftWindowsPowerShellRoot",
+    "State": 2
+  },
+  {
+    "FeatureName": "MicrosoftWindowsPowerShell",
+    "State": 2
+  },
+  {
+    "FeatureName": "iSCSITargetServer-PowerShell",
+    "State": 0
+  },
+  {
+    "FeatureName": "PKIClient-PSH-Cmdlets",
+    "State": 0
+  },
+  {
+    "FeatureName": "KeyDistributionService-PSH-Cmdlets",
+    "State": 2
+  },
+  {
+    "FeatureName": "TlsSessionTicketKey-PSH-Cmdlets",
+    "State": 2
+  },
+  {
+    "FeatureName": "Tpm-PSH-Cmdlets",
+    "State": 2
+  },
+  {
+    "FeatureName": "MicrosoftWindowsPowerShellV2",
+    "State": 2
+  },
+  {
+    "FeatureName": "WindowsPowerShellWebAccess",
+    "State": 0
+  },
+  {
+    "FeatureName": "DataCenterBridging-LLDP-Tools",
+    "State": 0
+  },
+  {
+    "FeatureName": "Server-Psh-Cmdlets",
+    "State": 2
+  },
+  {
+    "FeatureName": "MicrosoftWindowsPowerShellISE",
+    "State": 2
+  },
+  {
+    "FeatureName": "RemoteAccessMgmtTools",
+    "State": 0
+  },
+  {
+    "FeatureName": "RemoteAccessPowerShell",
+    "State": 0
+  },
+  {
+    "FeatureName": "RasServerAdminTools",
+    "State": 0
+  },
+  {
+    "FeatureName": "DamgmtTools",
+    "State": 0
+  },
+  {
+    "FeatureName": "WSS-Product-Package",
+    "State": 0
+  },
+  {
+    "FeatureName": "ActiveDirectory-PowerShell",
+    "State": 0
+  },
+  {
+    "FeatureName": "DirectoryServices-DomainController",
+    "State": 0
+  },
+  {
+    "FeatureName": "DirectoryServices-ISM-Smtp",
+    "State": 0
+  },
+  {
+    "FeatureName": "HostGuardianService-Package",
+    "State": 0
+  },
+  {
+    "FeatureName": "DirectoryServices-AdministrativeCenter",
+    "State": 0
+  },
+  {
+    "FeatureName": "RemoteAccess",
+    "State": 0
+  },
+  {
+    "FeatureName": "RemoteAccessServer",
+    "State": 0
+  },
+  {
+    "FeatureName": "RasRoutingProtocols",
+    "State": 0
+  },
+  {
+    "FeatureName": "Web-Application-Proxy",
+    "State": 0
+  },
+  {
+    "FeatureName": "RightsManagementServices-Role",
+    "State": 0
+  }
+]

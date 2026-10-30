@@ -7,21 +7,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/servicebus/armservicebus"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlAzureSubscriptionServiceBusServiceNamespaceInternal struct {
-	networkRuleSetFetched           bool
+	networkRuleSetFetched           atomic.Bool
 	networkRuleSetProps             *armservicebus.NetworkRuleSetProperties
 	networkRuleSetLock              sync.Mutex
 	cacheSystemData                 any
@@ -42,6 +44,53 @@ type mqlAzureSubscriptionServiceBusServiceNamespaceTopicInternal struct {
 
 type mqlAzureSubscriptionServiceBusServiceNamespaceTopicSubscriptionInternal struct {
 	cacheSystemData any
+}
+
+type mqlAzureSubscriptionServiceBusServiceAuthorizationRuleInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionServiceBusServiceAuthorizationRule) id() (string, error) {
+	return a.Id.Data, nil
+}
+
+func (a *mqlAzureSubscriptionServiceBusServiceAuthorizationRule) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
+// serviceBusAuthorizationRulesToMql maps a list of Service Bus SAS authorization rules
+// (from a namespace, queue, or topic) to the shared authorizationRule resource.
+func serviceBusAuthorizationRulesToMql(runtime *plugin.Runtime, rules []*armservicebus.SBAuthorizationRule) ([]any, error) {
+	res := []any{}
+	for _, r := range rules {
+		if r == nil {
+			continue
+		}
+		rights := []any{}
+		if r.Properties != nil {
+			for _, right := range r.Properties.Rights {
+				if right == nil {
+					continue
+				}
+				rights = append(rights, string(*right))
+			}
+		}
+		mqlRule, err := CreateResource(runtime, "azure.subscription.serviceBusService.authorizationRule", map[string]*llx.RawData{
+			"id":     llx.StringDataPtr(r.ID),
+			"name":   llx.StringDataPtr(r.Name),
+			"rights": llx.ArrayData(rights, types.String),
+		})
+		if err != nil {
+			return nil, err
+		}
+		sysData, err := convert.JsonToDict(r.SystemData)
+		if err != nil {
+			return nil, err
+		}
+		mqlRule.(*mqlAzureSubscriptionServiceBusServiceAuthorizationRule).cacheSystemData = sysData
+		res = append(res, mqlRule)
+	}
+	return res, nil
 }
 
 func (a *mqlAzureSubscriptionServiceBusServiceNamespace) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
@@ -127,9 +176,13 @@ func (a *mqlAzureSubscriptionServiceBusService) namespaces() ([]any, error) {
 			var disableLocalAuth, zoneRedundant bool
 			var requireInfraEnc *bool
 			var cmkKeys []any
-			var creationTime *time.Time
+			var creationTime, updatedAt *time.Time
+			var alternateName, metricId *string
 			if ns.Properties != nil {
 				creationTime = ns.Properties.CreatedAt
+				updatedAt = ns.Properties.UpdatedAt
+				alternateName = ns.Properties.AlternateName
+				metricId = ns.Properties.MetricID
 				if ns.Properties.Status != nil {
 					status = *ns.Properties.Status
 				}
@@ -161,7 +214,7 @@ func (a *mqlAzureSubscriptionServiceBusService) namespaces() ([]any, error) {
 				}
 			}
 
-			mqlNs, err := CreateResource(a.MqlRuntime, "azure.subscription.serviceBusService.namespace", map[string]*llx.RawData{
+			args := map[string]*llx.RawData{
 				"id":                              llx.StringDataPtr(ns.ID),
 				"name":                            llx.StringDataPtr(ns.Name),
 				"location":                        llx.StringDataPtr(ns.Location),
@@ -176,7 +229,16 @@ func (a *mqlAzureSubscriptionServiceBusService) namespaces() ([]any, error) {
 				"requireInfrastructureEncryption": llx.BoolDataPtr(requireInfraEnc),
 				"cmkKeys":                         llx.ArrayData(cmkKeys, types.Dict),
 				"creationTime":                    llx.TimeDataPtr(creationTime),
-			})
+				"alternateName":                   llx.StringDataPtr(alternateName),
+				"metricId":                        llx.StringDataPtr(metricId),
+				"updatedAt":                       llx.TimeDataPtr(updatedAt),
+			}
+			nsSku := orZero(ns.SKU)
+			if err := setSkuData(a.MqlRuntime, args, skuName(nsSku.Name), skuTier(nsSku.Tier), skuCapacity(nsSku.Capacity)); err != nil {
+				return nil, err
+			}
+
+			mqlNs, err := CreateResource(a.MqlRuntime, "azure.subscription.serviceBusService.namespace", args)
 			if err != nil {
 				return nil, err
 			}
@@ -486,17 +548,87 @@ func (a *mqlAzureSubscriptionServiceBusServiceNamespaceTopic) subscriptions() ([
 	return res, nil
 }
 
-// networkRuleSet fetches the namespace-level network rule set (default action, public network access,
-// IP rules, virtual-network rules, trusted-service-access).
-func (a *mqlAzureSubscriptionServiceBusServiceNamespace) networkRuleSet() (any, error) {
-	props, err := a.fetchNetworkRuleSetProperties()
+func (a *mqlAzureSubscriptionServiceBusServiceNamespace) authorizationRules() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	ctx := context.Background()
+	resourceID, err := ParseResourceID(a.Id.Data)
 	if err != nil {
 		return nil, err
 	}
-	if props == nil {
-		return nil, nil
+	client, err := armservicebus.NewNamespacesClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return nil, err
 	}
-	return convert.JsonToDict(props)
+	pager := client.NewListAuthorizationRulesPager(resourceID.ResourceGroup, a.Name.Data, nil)
+	var rules []*armservicebus.SBAuthorizationRule
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		rules = append(rules, page.Value...)
+	}
+	return serviceBusAuthorizationRulesToMql(a.MqlRuntime, rules)
+}
+
+func (a *mqlAzureSubscriptionServiceBusServiceNamespaceQueue) authorizationRules() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	ctx := context.Background()
+	resourceID, err := ParseResourceID(a.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	nsName, err := resourceID.Component("namespaces")
+	if err != nil {
+		return nil, err
+	}
+	client, err := armservicebus.NewQueuesClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	pager := client.NewListAuthorizationRulesPager(resourceID.ResourceGroup, nsName, a.Name.Data, nil)
+	var rules []*armservicebus.SBAuthorizationRule
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		rules = append(rules, page.Value...)
+	}
+	return serviceBusAuthorizationRulesToMql(a.MqlRuntime, rules)
+}
+
+func (a *mqlAzureSubscriptionServiceBusServiceNamespaceTopic) authorizationRules() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	ctx := context.Background()
+	resourceID, err := ParseResourceID(a.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	nsName, err := resourceID.Component("namespaces")
+	if err != nil {
+		return nil, err
+	}
+	client, err := armservicebus.NewTopicsClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	pager := client.NewListAuthorizationRulesPager(resourceID.ResourceGroup, nsName, a.Name.Data, nil)
+	var rules []*armservicebus.SBAuthorizationRule
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		rules = append(rules, page.Value...)
+	}
+	return serviceBusAuthorizationRulesToMql(a.MqlRuntime, rules)
 }
 
 func (a *mqlAzureSubscriptionServiceBusServiceNamespace) networkRules() (*mqlAzureSubscriptionServiceBusServiceNamespaceNetworkRules, error) {
@@ -522,8 +654,10 @@ func (a *mqlAzureSubscriptionServiceBusServiceNamespace) networkRules() (*mqlAzu
 		trustedServiceAccess = *props.TrustedServiceAccessEnabled
 	}
 
+	const ipRuleResource = "azure.subscription.serviceBusService.namespace.networkRules.ipRule"
 	ipRules := []any{}
-	for _, r := range props.IPRules {
+	ipAllowRules := []any{}
+	for i, r := range props.IPRules {
 		if r == nil {
 			continue
 		}
@@ -535,6 +669,22 @@ func (a *mqlAzureSubscriptionServiceBusServiceNamespace) networkRules() (*mqlAzu
 			entry["action"] = string(*r.Action)
 		}
 		ipRules = append(ipRules, entry)
+
+		// The address range keys the rule; a namespace can be returned with a
+		// rule that carries none, and the position keeps those apart.
+		key := convert.ToValue(r.IPMask)
+		if key == "" {
+			key = strconv.Itoa(i)
+		}
+		mqlIPRule, err := CreateResource(a.MqlRuntime, ipRuleResource, map[string]*llx.RawData{
+			"__id":   llx.StringData(subResourceCacheID(nil, a.Id.Data+"/networkRules", "ipRules", key)),
+			"ipMask": llx.StringDataPtr(r.IPMask),
+			"action": llx.StringDataPtr(stringEnumPtr(r.Action)),
+		})
+		if err != nil {
+			return nil, err
+		}
+		ipAllowRules = append(ipAllowRules, mqlIPRule)
 	}
 
 	vnetRules := []any{}
@@ -569,6 +719,7 @@ func (a *mqlAzureSubscriptionServiceBusServiceNamespace) networkRules() (*mqlAzu
 		"publicNetworkAccess":         llx.StringData(publicNetworkAccess),
 		"trustedServiceAccessEnabled": llx.BoolData(trustedServiceAccess),
 		"ipRules":                     llx.ArrayData(ipRules, types.Dict),
+		"ipAllowRules":                llx.ArrayData(ipAllowRules, types.Resource(ipRuleResource)),
 		"virtualNetworkRules":         llx.ArrayData(vnetRules, types.Resource("azure.subscription.serviceBusService.namespace.networkRules.virtualNetworkRule")),
 	})
 	if err != nil {
@@ -578,12 +729,12 @@ func (a *mqlAzureSubscriptionServiceBusServiceNamespace) networkRules() (*mqlAzu
 }
 
 func (a *mqlAzureSubscriptionServiceBusServiceNamespace) fetchNetworkRuleSetProperties() (*armservicebus.NetworkRuleSetProperties, error) {
-	if a.networkRuleSetFetched {
+	if a.networkRuleSetFetched.Load() {
 		return a.networkRuleSetProps, nil
 	}
 	a.networkRuleSetLock.Lock()
 	defer a.networkRuleSetLock.Unlock()
-	if a.networkRuleSetFetched {
+	if a.networkRuleSetFetched.Load() {
 		return a.networkRuleSetProps, nil
 	}
 
@@ -608,7 +759,7 @@ func (a *mqlAzureSubscriptionServiceBusServiceNamespace) fetchNetworkRuleSetProp
 		return nil, err
 	}
 	a.networkRuleSetProps = resp.NetworkRuleSet.Properties
-	a.networkRuleSetFetched = true
+	a.networkRuleSetFetched.Store(true)
 	return a.networkRuleSetProps, nil
 }
 

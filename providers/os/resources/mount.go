@@ -5,19 +5,32 @@ package resources
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/mount"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/mount"
+	"go.mondoo.com/mql/providers/os/resources/windows"
+	"go.mondoo.com/mql/types"
 )
 
 func (m *mqlMount) id() (string, error) {
 	return "mount", nil
+}
+
+// isWindowsRuntime reports whether the asset is a Windows system, where mount
+// paths compare without regard to case and capacity comes with the listing.
+func isWindowsRuntime(runtime *plugin.Runtime) bool {
+	conn, ok := runtime.Connection.(shared.Connection)
+	if !ok {
+		return false
+	}
+	pf := conn.Asset().Platform
+	return pf != nil && pf.IsFamily("windows")
 }
 
 func (m *mqlMount) list() ([]any, error) {
@@ -25,15 +38,19 @@ func (m *mqlMount) list() ([]any, error) {
 	conn := m.MqlRuntime.Connection.(shared.Connection)
 	mm, err := mount.ResolveManager(conn)
 	if mm == nil || err != nil {
-		return nil, fmt.Errorf("could not detect suitable mount manager for platform")
+		return nil, fmt.Errorf("could not detect suitable mount manager for platform: %w", err)
 	}
 
-	// retrieve all system packages
 	osMounts, err := mm.List()
 	if err != nil {
-		return nil, fmt.Errorf("could not retrieve mount list for platform")
+		// %w keeps the error's kind (ADR 046): a scan that cannot read the
+		// mount table has to stay distinguishable from one that was refused.
+		return nil, fmt.Errorf("could not retrieve mount list for platform: %w", err)
 	}
 	log.Debug().Int("mounts", len(osMounts)).Msg("mql[mount]> mounted volumes")
+	mount.MarkOvermounted(osMounts)
+
+	usage := map[string]*mount.DfEntry{}
 
 	// create MQL mount entry resources for each mount
 	mountEntries := make([]any, len(osMounts))
@@ -44,18 +61,32 @@ func (m *mqlMount) list() ([]any, error) {
 			opts[k] = osMount.Options[k]
 		}
 
-		o, err := CreateResource(m.MqlRuntime, "mount.point", map[string]*llx.RawData{
+		args := map[string]*llx.RawData{
 			"device":  llx.StringData(osMount.Device),
 			"path":    llx.StringData(osMount.MountPoint),
 			"fstype":  llx.StringData(osMount.FSType),
 			"options": llx.MapData(opts, types.String),
-			"mounted": llx.BoolTrue,
-		})
+			"mounted": llx.BoolData(!osMount.Unmounted),
+		}
+		if osMount.Overmounted {
+			// The visible mount on a path keeps the path as its id, so a
+			// mount hidden under it needs one of its own. Without it the
+			// cache hands out the first mount on the path for both.
+			args["__id"] = llx.StringData(overmountedMountID(osMount.MountPoint, i))
+		}
+		o, err := CreateResource(m.MqlRuntime, "mount.point", args)
 		if err != nil {
 			return nil, err
 		}
 		mountEntries[i] = o.(*mqlMountPoint)
+		if osMount.Usage != nil && !osMount.Overmounted {
+			usage[osMount.MountPoint] = osMount.Usage
+		}
 	}
+
+	m.lock.Lock()
+	m.listUsage = usage
+	m.lock.Unlock()
 
 	// return the mounts as new entries
 	return mountEntries, nil
@@ -63,6 +94,18 @@ func (m *mqlMount) list() ([]any, error) {
 
 func (m *mqlMountPoint) id() (string, error) {
 	return m.Path.Data, nil
+}
+
+// overmountedMountID is the id of a mount hidden by a later mount on the same
+// path, told apart by its position in the mount table.
+func overmountedMountID(path string, index int) string {
+	return path + "\x00overmounted/" + strconv.Itoa(index)
+}
+
+// overmounted reports whether a later mount on the same path hides this one.
+// Only the visible mount carries the path as its id.
+func (m *mqlMountPoint) overmounted() bool {
+	return m.__id != "" && m.__id != m.Path.Data
 }
 
 func initMountPoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -91,9 +134,12 @@ func initMountPoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 		return nil, nil, list.Error
 	}
 
+	// Several mounts can share a path. The one the path shows is the one
+	// asked for, not one hidden underneath it.
+	matches := mountPathMatcher(isWindowsRuntime(runtime), path)
 	for i := range list.Data {
 		mp := list.Data[i].(*mqlMountPoint)
-		if mp.Path.Data == path {
+		if matches(mp.Path.Data) && !mp.overmounted() {
 			return nil, mp, nil
 		}
 	}
@@ -107,14 +153,44 @@ func initMountPoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 	}, nil, nil
 }
 
+// mountPathMatcher returns the test that selects a listed mount point for the
+// path a query asked for. Unix paths match exactly. Windows paths match without
+// regard to case, slash direction, or a trailing backslash, since C:, C:\ and
+// c:\ all name the same volume.
+func mountPathMatcher(windowsPaths bool, path string) func(string) bool {
+	if !windowsPaths {
+		return func(p string) bool { return p == path }
+	}
+	key := windows.VolumePathKey(path)
+	if key == "" {
+		return func(string) bool { return false }
+	}
+	return func(p string) bool { return windows.VolumePathKey(p) == key }
+}
+
 type mqlMountInternal struct {
 	dfFetched bool
 	dfEntries map[string]*mount.DfEntry
+	// listUsage is the capacity the mount listing carried itself, keyed by
+	// mount path. Windows reports it with the volumes, so no df runs there.
+	listUsage map[string]*mount.DfEntry
 	lock      sync.Mutex
 }
 
-// fetchDfEntries runs "df -P -k" once and caches the result for all mount points.
+// fetchDfEntries returns the capacity of every mount point, fetched once for
+// all of them: from the mount listing on Windows, from "df -P -k" elsewhere.
 func (m *mqlMount) fetchDfEntries() (map[string]*mount.DfEntry, error) {
+	if isWindowsRuntime(m.MqlRuntime) {
+		// GetList runs the listing at most once. Its error is the reason the
+		// capacity is unknown, so it reaches the caller instead of a null.
+		if list := m.GetList(); list.Error != nil {
+			return nil, list.Error
+		}
+		m.lock.Lock()
+		defer m.lock.Unlock()
+		return m.listUsage, nil
+	}
+
 	if m.dfFetched {
 		return m.dfEntries, nil
 	}
@@ -135,7 +211,10 @@ func (m *mqlMount) fetchDfEntries() (map[string]*mount.DfEntry, error) {
 		return m.dfEntries, nil
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
+	// df exits non-zero when it cannot stat a single mount point (Solaris,
+	// unprivileged, cannot stat /var/share/sstore/repo) yet still prints every
+	// other one. Only an empty listing means df could not answer.
+	if exit := cmd.GetExitcode(); exit.Data != 0 && strings.TrimSpace(cmd.Stdout.Data) == "" {
 		// df failed (not installed, no permission, etc.) — return empty, not error
 		log.Debug().Str("stderr", cmd.Stderr.Data).Msg("mql[mount]> df command failed")
 		m.dfEntries = map[string]*mount.DfEntry{}
@@ -149,6 +228,11 @@ func (m *mqlMount) fetchDfEntries() (map[string]*mount.DfEntry, error) {
 }
 
 func (m *mqlMountPoint) fetchDfEntry() (*mount.DfEntry, error) {
+	// df measures what a path shows, which is the mount on top. A mount
+	// hidden underneath it cannot be measured that way.
+	if m.overmounted() {
+		return nil, nil
+	}
 	obj, err := CreateResource(m.MqlRuntime, "mount", map[string]*llx.RawData{})
 	if err != nil {
 		return nil, err
@@ -195,4 +279,25 @@ func (m *mqlMountPoint) available() (int64, error) {
 		return 0, nil
 	}
 	return entry.Available, nil
+}
+
+func (m *mqlMountPoint) blockDevice() (*mqlLsblkEntry, error) {
+	// Only a device path can name a block device. Pseudo and network
+	// filesystems (tmpfs, proc, overlay, server:/export) are not backed by
+	// one, and asking lsblk about them would turn a plain absence into an
+	// error on hosts that have no lsblk.
+	if !strings.HasPrefix(m.Device.Data, "/dev/") {
+		m.BlockDevice.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	entry, err := lookupBlockDevice(m.MqlRuntime, m.Device.Data, m.Path.Data)
+	if err != nil {
+		return nil, err
+	}
+	if entry == nil {
+		m.BlockDevice.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return entry, nil
 }

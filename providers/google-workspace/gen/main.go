@@ -4,8 +4,8 @@
 package main
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin/gen"
-	"go.mondoo.com/mql/v13/providers/google-workspace/config"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin/gen"
+	"go.mondoo.com/mql/providers/google-workspace/config"
 )
 
 func main() {

@@ -12,13 +12,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/go-github/v88/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/github/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/github/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // ---------- helpers ----------
@@ -465,6 +465,7 @@ func (g *mqlGithubOrganization) customRoles() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		r.(*mqlGithubOrganizationCustomRole).cacheOrgLogin = orgLogin
 		res = append(res, r)
 	}
 	return res, nil
@@ -499,7 +500,7 @@ func (g *mqlGithubOrganization) oauthApps() ([]any, error) {
 	orgLogin := g.Login.Data
 
 	opts := &github.CredentialAuthorizationsListOptions{
-		ListOptions: github.ListOptions{PerPage: paginationPerPage},
+		PerPage: paginationPerPage,
 	}
 	var allCreds []*github.CredentialAuthorization
 	for {
@@ -644,7 +645,7 @@ func (g *mqlGithubOrganization) personalAccessTokens() ([]any, error) {
 	orgLogin := g.Login.Data
 
 	opts := &github.ListFineGrainedPATOptions{
-		ListOptions: github.ListOptions{PerPage: paginationPerPage},
+		PerPage: paginationPerPage,
 	}
 	var allPATs []*github.PersonalAccessToken
 	for {
@@ -702,9 +703,11 @@ func (g *mqlGithubOrganizationAuditLogStreamConfig) id() (string, error) {
 	return g.__id, nil
 }
 
-// ghAuditLogStream represents the response of the (private) GitHub Enterprise
-// Cloud audit log stream config endpoint.
-// API docs: GET /orgs/{org}/audit-log/stream-config (Enterprise Cloud only).
+// ghAuditLogStream represents the response of the GitHub audit log stream
+// config endpoint, GET /orgs/{org}/audit-log/stream-config. The path is absent
+// from GitHub's published REST descriptions for github.com, GitHub Enterprise
+// Cloud and GitHub Enterprise Server, all of which carry audit log streaming
+// only under /enterprises/{enterprise}/audit-log/streams.
 type ghAuditLogStream struct {
 	ID         int64      `json:"id"`
 	StreamType string     `json:"stream_type"`
@@ -712,6 +715,37 @@ type ghAuditLogStream struct {
 	PausedAt   *time.Time `json:"paused_at"`
 	CreatedAt  *time.Time `json:"created_at"`
 	UpdatedAt  *time.Time `json:"updated_at"`
+}
+
+// httpStatusOf returns the HTTP status a GitHub API failure carries, taken from
+// the response when the client returned one and otherwise from the typed error.
+// Transport failures carry no status and report 0.
+func httpStatusOf(resp *github.Response, err error) int {
+	if resp != nil && resp.Response != nil {
+		return resp.StatusCode
+	}
+	var ghErr *github.ErrorResponse
+	if errors.As(err, &ghErr) && ghErr.Response != nil {
+		return ghErr.Response.StatusCode
+	}
+	return 0
+}
+
+// auditLogStreamConfigError reports why an organization's audit log streaming
+// configuration could not be read. A failed read is never turned into a null
+// resource: a policy asserting `enabled` would then read "we could not tell" as
+// "streaming is off".
+func auditLogStreamConfigError(orgLogin string, resp *github.Response, err error) error {
+	if err == nil {
+		return nil
+	}
+	switch httpStatusOf(resp, err) {
+	case http.StatusNotFound:
+		return fmt.Errorf("audit log streaming configuration for organization %q could not be read: GitHub serves audit log streams from the enterprise endpoints (GET /enterprises/{enterprise}/audit-log/streams): %w", orgLogin, err)
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return fmt.Errorf("audit log streaming configuration for organization %q could not be read: access denied, this requires organization owner access on GitHub Enterprise Cloud: %w", orgLogin, err)
+	}
+	return fmt.Errorf("audit log streaming configuration for organization %q could not be read: %w", orgLogin, err)
 }
 
 func (g *mqlGithubOrganization) auditLogStreamConfig() (*mqlGithubOrganizationAuditLogStreamConfig, error) {
@@ -725,13 +759,7 @@ func (g *mqlGithubOrganization) auditLogStreamConfig() (*mqlGithubOrganizationAu
 	var stream ghAuditLogStream
 	resp, err := doRawJSON(conn.Context(), conn.Client(), urlStr, &stream)
 	if err != nil {
-		// 404 means no stream configured or org isn't enterprise; treat as null
-		// (matches samlConfig / ipAllowList pattern).
-		if isAccessDeniedOrNotFound(err) || (resp != nil && resp.StatusCode == http.StatusNotFound) {
-			g.AuditLogStreamConfig.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
-		return nil, err
+		return nil, auditLogStreamConfigError(orgLogin, resp, err)
 	}
 
 	// Prefer the API's `enabled` field; fall back to "stream is configured" if
@@ -842,7 +870,12 @@ func keyAgeInDays(createdAt *github.Timestamp) int64 {
 	return int64(time.Since(createdAt.Time).Hours() / 24)
 }
 
-func newMqlDeployKey(runtime *plugin.Runtime, k *github.Key, repoOwner, repoName string) (*mqlGithubDeployKey, error) {
+// newMqlDeployKey builds a deploy key. repo is the repository the key was read
+// from, when the caller has it; passing it sets the key's repository field
+// outright, so repository() -- one Repositories.Get per key, for a repository
+// the scan is already holding, repeated for every key on the same one -- never
+// runs. A caller without the repository passes nil and keeps that fallback.
+func newMqlDeployKey(runtime *plugin.Runtime, k *github.Key, repo *mqlGithubRepository, repoOwner, repoName string) (*mqlGithubDeployKey, error) {
 	var idVal int64
 	if k.ID != nil {
 		idVal = *k.ID
@@ -867,7 +900,10 @@ func newMqlDeployKey(runtime *plugin.Runtime, k *github.Key, repoOwner, repoName
 	if k.AddedBy != nil {
 		dk.cacheAddedByLogin = *k.AddedBy
 	}
-	if repoOwner == "" || repoName == "" {
+	switch {
+	case repo != nil:
+		dk.Repository = plugin.TValue[*mqlGithubRepository]{Data: repo, State: plugin.StateIsSet}
+	case repoOwner == "" || repoName == "":
 		dk.Repository.State = plugin.StateIsSet | plugin.StateIsNull
 	}
 	return dk, nil
@@ -906,18 +942,10 @@ func (g *mqlGithubDeployKey) repository() (*mqlGithubRepository, error) {
 
 func (g *mqlGithubRepository) deployKeys() ([]any, error) {
 	conn := g.MqlRuntime.Connection.(*connection.GithubConnection)
-	if g.Name.Error != nil {
-		return nil, g.Name.Error
+	ownerLogin, repoName, err := repoOwnerAndName(g)
+	if err != nil {
+		return nil, err
 	}
-	repoName := g.Name.Data
-	if g.Owner.Error != nil {
-		return nil, g.Owner.Error
-	}
-	owner := g.Owner.Data
-	if owner.Login.Error != nil {
-		return nil, owner.Login.Error
-	}
-	ownerLogin := owner.Login.Data
 
 	listOpts := &github.ListOptions{PerPage: paginationPerPage}
 	var allKeys []*github.Key
@@ -938,7 +966,7 @@ func (g *mqlGithubRepository) deployKeys() ([]any, error) {
 
 	res := make([]any, 0, len(allKeys))
 	for _, k := range allKeys {
-		dk, err := newMqlDeployKey(g.MqlRuntime, k, ownerLogin, repoName)
+		dk, err := newMqlDeployKey(g.MqlRuntime, k, g, ownerLogin, repoName)
 		if err != nil {
 			return nil, err
 		}
@@ -1050,6 +1078,13 @@ func (g *mqlGithubCodeownersRule) id() (string, error) {
 	return fmt.Sprintf("github.codeowners.rule/%s/%d", g.Pattern.Data, g.LineNumber.Data), nil
 }
 
+// codeownersRuleID keys a CODEOWNERS rule by repository. Patterns repeat across
+// repositories (`*` on line 1 is near-universal), so an unqualified key made
+// every repository after the first report the first one's owners.
+func codeownersRuleID(ownerLogin, repoName, pattern string, lineNumber int) string {
+	return fmt.Sprintf("github.codeowners.rule/%s/%s/%s/%d", ownerLogin, repoName, pattern, lineNumber)
+}
+
 // codeownersCandidatePaths returns the locations CODEOWNERS may live at, in
 // resolution priority order.
 var codeownersCandidatePaths = []string{
@@ -1108,18 +1143,10 @@ func parseCodeowners(content string) []codeownersRule {
 
 func (g *mqlGithubRepository) codeowners() (*mqlGithubRepositoryCodeowners, error) {
 	conn := g.MqlRuntime.Connection.(*connection.GithubConnection)
-	if g.Name.Error != nil {
-		return nil, g.Name.Error
+	ownerLogin, repoName, err := repoOwnerAndName(g)
+	if err != nil {
+		return nil, err
 	}
-	repoName := g.Name.Data
-	if g.Owner.Error != nil {
-		return nil, g.Owner.Error
-	}
-	owner := g.Owner.Data
-	if owner.Login.Error != nil {
-		return nil, owner.Login.Error
-	}
-	ownerLogin := owner.Login.Data
 
 	resID := llx.StringData(fmt.Sprintf("github.repository.codeowners/%s/%s", ownerLogin, repoName))
 
@@ -1147,6 +1174,7 @@ func (g *mqlGithubRepository) codeowners() (*mqlGithubRepositoryCodeowners, erro
 	rules := []any{}
 	for _, r := range parseCodeowners(content) {
 		rr, err := CreateResource(g.MqlRuntime, "github.codeowners.rule", map[string]*llx.RawData{
+			"__id":       llx.StringData(codeownersRuleID(ownerLogin, repoName, r.pattern, r.lineNumber)),
 			"pattern":    llx.StringData(r.pattern),
 			"owners":     llx.ArrayData(convert.SliceAnyToInterface[string](r.owners), types.String),
 			"lineNumber": llx.IntData(int64(r.lineNumber)),

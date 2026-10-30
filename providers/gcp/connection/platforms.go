@@ -3,7 +3,7 @@
 
 package connection
 
-import "go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+import "go.mondoo.com/mql/providers-sdk/v1/plugin"
 
 // gcpPlatformNames is the set of platform names the GCP provider can emit: the
 // org/project/folder roots plus every discoverable GCP object type (the
@@ -18,12 +18,14 @@ var gcpPlatformNames = []string{
 	"gcp-dns-zone", "gcp-kms-keyring",
 	"gcp-memorystore-redis", "gcp-memorystore-rediscluster", "gcp-memorystore-instance",
 	"gcp-artifactregistry-repository", "gcp-memcache-instance", "gcp-vertexai-job",
+	"gcp-vertexai-endpoint", "gcp-vertexai-pipelinejob", "gcp-vertexai-notebookruntimetemplate",
 	"gcp-secretmanager-secret",
 	"gcp-pubsub-topic", "gcp-pubsub-subscription", "gcp-pubsub-snapshot",
 	"gcp-cloudrun-service", "gcp-cloudrun-job", "gcp-cloud-function",
 	"gcp-dataproc-cluster", "gcp-alloydb-cluster", "gcp-spanner-instance",
 	"gcp-firestore-database", "gcp-bigtable-instance", "gcp-logging-bucket",
 	"gcp-apikey", "gcp-iam-service-account",
+	"gcp-modelarmor-template", "gcp-datastream-connectionprofile",
 }
 
 // Platforms is the static catalog of platforms the GCP provider can emit. Every

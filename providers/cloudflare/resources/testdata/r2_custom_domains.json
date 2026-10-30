@@ -1,0 +1,30 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": {
+    "domains": [
+      {
+        "domain": "assets.example.com",
+        "enabled": true,
+        "status": {
+          "ownership": "active",
+          "ssl": "active"
+        },
+        "minTLS": "1.2",
+        "zoneId": "d56084adb405e0b7e32c52321bf07be6",
+        "zoneName": "example.com"
+      },
+      {
+        "domain": "staging-assets.example.com",
+        "enabled": false,
+        "status": {
+          "ownership": "pending",
+          "ssl": "initializing"
+        },
+        "zoneId": "d56084adb405e0b7e32c52321bf07be6",
+        "zoneName": "example.com"
+      }
+    ]
+  }
+}

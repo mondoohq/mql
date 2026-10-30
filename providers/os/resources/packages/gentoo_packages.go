@@ -14,13 +14,47 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/purl"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/purl"
 )
 
 const (
 	GentooPkgFormat = "gentoo"
+
+	// PortageDB is the root of Portage's installed package database. Each
+	// installed package has a directory CATEGORY/NAME-VERSION holding one
+	// file per metadata key.
+	PortageDB = "/var/db/pkg"
+
+	// portagePkgDirsCommand lists the directory of every installed package.
+	// It is the authoritative list: a package with no metadata file still has
+	// a directory, so the list never depends on which files happen to exist.
+	portagePkgDirsCommand = "find " + PortageDB + " -mindepth 2 -maxdepth 2 -type d"
+
+	// portageMetaCommand prints the first line of the metadata files that
+	// carry the description and the license, each prefixed with its path.
+	//
+	// `qlist -Iv` prints only "CATEGORY/NAME:VERSION". Description and license
+	// live in these files and nowhere in that output, so a Gentoo host read
+	// through the CLI reported an empty description for every package -- and
+	// an empty license however it was read, because ParsePortageDB never
+	// opened LICENSE at all.
+	//
+	// find batches the paths rather than the shell expanding a glob, so the
+	// argument list stays within ARG_MAX however many packages are installed.
+	// -s hides the unreadable ones, -m1 stops at the first line, and the empty
+	// pattern matches every line, so the output is one "<path>:<value>" line
+	// per file that exists. -H is what keeps the path on every line: grep drops
+	// the prefix when it is handed a single file, which is what the last batch
+	// can be.
+	portageMetaCommand = "find " + PortageDB + " -mindepth 3 -maxdepth 3 -type f " +
+		`\( -name DESCRIPTION -o -name LICENSE \) -exec grep -sH -m1 '' {} +`
+
+	// portageMaxLine caps a single line of the stream above. A DESCRIPTION is
+	// one short sentence, so this only keeps a corrupt database from growing
+	// the buffer without limit.
+	portageMaxLine = 1024 * 1024
 )
 
 // ParseGentooPackages parses the output of
@@ -71,11 +105,11 @@ func newEbuildPurl(pf *inventory.Platform, categoryName, version string) string 
 
 // splitCategoryName splits "category/name" into its parts.
 func splitCategoryName(categoryName string) (string, string) {
-	idx := strings.LastIndex(categoryName, "/")
-	if idx < 0 {
+	before, after, ok := strings.CutLast(categoryName, "/")
+	if !ok {
 		return "", categoryName
 	}
-	return categoryName[:idx], categoryName[idx+1:]
+	return before, after
 }
 
 // Gentoo
@@ -93,9 +127,43 @@ func (f *GentooPkgManager) Format() string {
 }
 
 func (f *GentooPkgManager) List() ([]Package, error) {
-	// Primary: qlist CLI
 	if f.conn.Capabilities().Has(shared.Capability_RunCommand) {
-		cmd, err := f.conn.RunCommand("qlist -Iv --format '%{CATEGORY}/%{PN}:%{PVR}'")
+		// Primary: the Portage database. The directory listing is the package
+		// list; the metadata read fills the fields qlist leaves out and is
+		// allowed to fail on its own, since names and versions are already in
+		// hand by then.
+		cmd, err := f.conn.RunCommand(portagePkgDirsCommand)
+		if err == nil && cmd.ExitStatus == 0 {
+			// Distinct names rather than three nested err: only the
+			// outermost is reused for the qlist call below, and a reader has
+			// to be able to tell at a glance which failure each branch is
+			// about.
+			pkgs, parseErr := ParsePortageDBDirs(f.platform, cmd.Stdout)
+			if parseErr == nil && len(pkgs) > 0 {
+				meta, metaErr := f.conn.RunCommand(portageMetaCommand)
+				if metaErr == nil {
+					// grep exits 1 when nothing matched, which is not an error
+					// here: it only means no package carries either file.
+					applyPortageMeta(pkgs, ParsePortageMeta(meta.Stdout))
+				} else {
+					// The package list is already complete, so a metadata
+					// failure costs the two fields rather than the inventory.
+					log.Debug().Err(metaErr).Msg("mql[gentoo]> could not read portage metadata")
+				}
+				return pkgs, nil
+			}
+			// parseErr is nil when the database simply named no package, and
+			// logging it then prints "error=<nil>".
+			if parseErr != nil {
+				log.Debug().Err(parseErr).Msg("mql[gentoo]> could not read the portage database, falling back to qlist")
+			} else {
+				log.Debug().Msg("mql[gentoo]> portage database named no package, falling back to qlist")
+			}
+		}
+
+		// Fallback: qlist. Reached when the database is unreadable or the
+		// host ships no find(1); name and version still answer.
+		cmd, err = f.conn.RunCommand("qlist -Iv --format '%{CATEGORY}/%{PN}:%{PVR}'")
 		if err != nil {
 			log.Debug().Err(err).Msg("mql[gentoo]> could not run qlist, falling back to filesystem")
 		} else if cmd.ExitStatus != 0 {
@@ -109,13 +177,114 @@ func (f *GentooPkgManager) List() ([]Package, error) {
 	return f.listFromFS()
 }
 
+// ParsePortageDBDirs turns the output of portagePkgDirsCommand into packages
+// carrying their name and version. Description and license are filled in
+// afterwards by applyPortageMeta.
+func ParsePortageDBDirs(pf *inventory.Platform, r io.Reader) ([]Package, error) {
+	pkgs := []Package{}
+
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(nil, portageMaxLine)
+	for scanner.Scan() {
+		dir := strings.TrimSpace(scanner.Text())
+		if dir == "" {
+			continue
+		}
+		if pkg := packageFromPortageDir(pf, dir); pkg != nil {
+			pkgs = append(pkgs, *pkg)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		// A read that stopped early leaves the package list short, and an
+		// absent package is a CVE nobody sees.
+		return nil, fmt.Errorf("could not read the portage database to its end: %w", err)
+	}
+
+	return pkgs, nil
+}
+
+// ParsePortageMeta turns the output of portageMetaCommand into a map from
+// package directory to its metadata.
+//
+// Each line is "<PortageDB>/<category>/<name>-<version>/<KEY>:<value>". The
+// value may contain a colon, so the split is on the last colon that precedes
+// the value -- which is the one right after the key, and the key is the last
+// path element.
+func ParsePortageMeta(r io.Reader) map[string]map[string]string {
+	meta := map[string]map[string]string{}
+
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(nil, portageMaxLine)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// grep separates the file name from the line with the first colon,
+		// and a Portage path contains none, so the first colon is the split.
+		filePath, value, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		dir, key := path.Split(filePath)
+		dir = strings.TrimSuffix(dir, "/")
+		if dir == "" || key == "" {
+			continue
+		}
+		if meta[dir] == nil {
+			meta[dir] = map[string]string{}
+		}
+		meta[dir][key] = strings.TrimSpace(value)
+	}
+
+	return meta
+}
+
+// applyPortageMeta fills the description and license of each package from the
+// metadata read for its directory.
+func applyPortageMeta(pkgs []Package, meta map[string]map[string]string) {
+	for i := range pkgs {
+		// The directory round-trips exactly: Name is "<category>/<name>" and
+		// the directory is "<PortageDB>/<category>/<name>-<version>".
+		fields, ok := meta[PortageDB+"/"+pkgs[i].Name+"-"+pkgs[i].Version]
+		if !ok {
+			continue
+		}
+		pkgs[i].Description = fields["DESCRIPTION"]
+		pkgs[i].License = fields["LICENSE"]
+	}
+}
+
+// packageFromPortageDir builds a Package from one Portage database directory,
+// which is "<PortageDB>/<category>/<name>-<version>". Returns nil when the
+// path does not name a category, package and version.
+func packageFromPortageDir(pf *inventory.Platform, dir string) *Package {
+	dir = strings.TrimSuffix(dir, "/")
+	parent, base := path.Split(dir)
+	category := path.Base(strings.TrimSuffix(parent, "/"))
+	if category == "" || category == "." || category == "/" || base == "" {
+		return nil
+	}
+
+	name, version := splitPortageDirName(base)
+	if name == "" || version == "" {
+		return nil
+	}
+
+	fullName := category + "/" + name
+	return &Package{
+		Name:    fullName,
+		Version: version,
+		Format:  GentooPkgFormat,
+		PUrl:    newEbuildPurl(pf, fullName, version),
+	}
+}
+
 func (f *GentooPkgManager) listFromFS() ([]Package, error) {
 	fs := f.conn.FileSystem()
 	if fs == nil {
 		return nil, errors.New("gentoo package manager requires either command execution or filesystem access")
 	}
 	afs := &afero.Afero{Fs: fs}
-	return ParsePortageDB(f.platform, afs, "/var/db/pkg")
+	return ParsePortageDB(f.platform, afs, PortageDB)
 }
 
 // ParsePortageDB parses the Portage installed package database directory.
@@ -154,14 +323,14 @@ func ParsePortageDB(pf *inventory.Platform, afs *afero.Afero, dbPath string) ([]
 
 			fullName := category + "/" + name
 
-			// Try to read description
-			descPath := path.Join(catPath, entry.Name(), "DESCRIPTION")
-			description := readFileContent(afs, descPath)
-
+			pkgDir := path.Join(catPath, entry.Name())
 			pkgs = append(pkgs, Package{
-				Name:        fullName,
-				Version:     version,
-				Description: description,
+				Name:    fullName,
+				Version: version,
+				// The same two files the command reader above reads, so a
+				// package carries the same fields whichever path produced it.
+				Description: readFileContent(afs, path.Join(pkgDir, "DESCRIPTION")),
+				License:     readFileContent(afs, path.Join(pkgDir, "LICENSE")),
 				Format:      GentooPkgFormat,
 				PUrl:        newEbuildPurl(pf, fullName, version),
 			})
@@ -169,6 +338,19 @@ func ParsePortageDB(pf *inventory.Platform, afs *afero.Afero, dbPath string) ([]
 	}
 
 	return pkgs, nil
+}
+
+// PortageDBPackageName returns the name, CATEGORY/NAME as List reports it,
+// of the package whose Portage database directory is dir,
+// <PortageDB>/CATEGORY/NAME-VERSION. It is empty for any other directory.
+func PortageDBPackageName(dir string) string {
+	category, base := path.Split(path.Clean(dir))
+	category = path.Base(category)
+	name, version := splitPortageDirName(base)
+	if category == "" || category == "." || category == "/" || name == "" || version == "" {
+		return ""
+	}
+	return category + "/" + name
 }
 
 // splitPortageDirName splits a directory name like "curl-8.4.0" or

@@ -11,17 +11,21 @@ import (
 	ids "cloud.google.com/go/ids/apiv1"
 	"cloud.google.com/go/ids/apiv1/idspb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
+type mqlGcpProjectIdsServiceEndpointInternal struct {
+	cacheNetworkUrl string
+}
+
 type mqlGcpProjectIdsServiceInternal struct {
-	serviceEnabled bool
+	serviceGate
 }
 
 func (g *mqlGcpProject) ids() (*mqlGcpProjectIdsService, error) {
@@ -43,7 +47,7 @@ func (g *mqlGcpProject) ids() (*mqlGcpProjectIdsService, error) {
 	}
 
 	svc := res.(*mqlGcpProjectIdsService)
-	svc.serviceEnabled = serviceEnabled
+	svc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_ids).Msg("gcp service is not enabled, skipping")
 	}
@@ -79,7 +83,11 @@ func (g *mqlGcpProjectIdsServiceEndpoint) id() (string, error) {
 }
 
 func (g *mqlGcpProjectIdsService) endpoints() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -112,9 +120,9 @@ func (g *mqlGcpProjectIdsService) endpoints() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list Cloud IDS endpoints")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -122,7 +130,6 @@ func (g *mqlGcpProjectIdsService) endpoints() ([]any, error) {
 		mqlEp, err := CreateResource(g.MqlRuntime, "gcp.project.idsService.endpoint", map[string]*llx.RawData{
 			"name":                   llx.StringData(ep.Name),
 			"description":            llx.StringData(ep.Description),
-			"networkUrl":             llx.StringData(ep.Network),
 			"endpointForwardingRule": llx.StringData(ep.EndpointForwardingRule),
 			"endpointIp":             llx.StringData(ep.EndpointIp),
 			"severity":               llx.StringData(ep.Severity.String()),
@@ -135,6 +142,8 @@ func (g *mqlGcpProjectIdsService) endpoints() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		mqlRef := mqlEp.(*mqlGcpProjectIdsServiceEndpoint)
+		mqlRef.cacheNetworkUrl = ep.Network
 		res = append(res, mqlEp)
 	}
 
@@ -142,10 +151,7 @@ func (g *mqlGcpProjectIdsService) endpoints() ([]any, error) {
 }
 
 func (g *mqlGcpProjectIdsServiceEndpoint) network() (*mqlGcpProjectComputeServiceNetwork, error) {
-	if g.NetworkUrl.Error != nil {
-		return nil, g.NetworkUrl.Error
-	}
-	networkUrl := g.NetworkUrl.Data
+	networkUrl := g.cacheNetworkUrl
 	if networkUrl == "" {
 		g.Network.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -158,4 +164,9 @@ func (g *mqlGcpProjectIdsServiceEndpoint) network() (*mqlGcpProjectComputeServic
 		g.Network.State = plugin.StateIsNull | plugin.StateIsSet
 	}
 	return network, nil
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectIdsService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_ids)
 }

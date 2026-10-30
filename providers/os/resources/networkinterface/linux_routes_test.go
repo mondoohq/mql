@@ -371,9 +371,11 @@ func Test_parseLinuxIPv6RoutesFromProc(t *testing.T) {
 	l := &linuxRouteDetector{}
 	alpineRoutes, err := l.parseLinuxIPv6RoutesFromProc(alpineIPv6ProcOutput)
 	require.NoError(t, err)
-	// The test data has 3 lines: 2 default routes (::/0) and 1 localhost route (::1/128)
-	// So we expect 3 routes, but 2 are duplicates in the map
-	require.GreaterOrEqual(t, len(alpineRoutes), 2, "Should parse at least 2 routes from /proc/net/ipv6_route")
+	// The test data has 3 lines. Two are the unreachable ::/0 the kernel installs
+	// on a host with no IPv6 connectivity (flags 00200200 = RTF_NONEXTHOP|RTF_REJECT);
+	// they discard traffic and must not be reported as default routes. Only the
+	// ::1/128 localhost route is real.
+	require.Len(t, alpineRoutes, 1, "the unreachable ::/0 entries must not be reported")
 
 	// Test data from Debian machine /proc/net/ipv6_route
 	debianIPv6ProcOutput := `2a02810a0983f3000000000000000000 40 00000000000000000000000000000000 00 00000000000000000000000000000000 00000258 00000005 00000000 00000001     wlo1
@@ -433,6 +435,19 @@ func Test_parseLinuxIPv6RoutesFromProc(t *testing.T) {
 	require.NoError(t, err)
 	require.Greater(t, len(debianRoutes), 10, "Should parse many routes from /proc/net/ipv6_route (excluding multicast)")
 
+	// This host carries both a real default route via wlo1 (flags 00000003) and
+	// the unreachable one on lo (flags 00200200). Only the first is a route
+	// traffic travels over, so network.routes.defaults must see exactly one.
+	defaults := 0
+	for _, r := range debianRoutes {
+		if r.Destination == "::/0" {
+			defaults++
+			assert.Equal(t, "wlo1", r.Interface)
+			assert.Equal(t, "fe80::b2f2:8ff:fe4c:9c41", r.Gateway)
+		}
+	}
+	assert.Equal(t, 1, defaults, "the unreachable ::/0 on lo must not be counted as a default route")
+
 	alpineRouteMap := make(map[string]*Route, len(alpineRoutes))
 	for i := range alpineRoutes {
 		key := alpineRoutes[i].Destination + "|" + alpineRoutes[i].Gateway + "|" + alpineRoutes[i].Interface
@@ -453,18 +468,11 @@ func Test_parseLinuxIPv6RoutesFromProc(t *testing.T) {
 		expectedFlags []string
 	}{
 		{
-			name:          "IPv6 default route",
-			destination:   "::/0",
-			gateway:       "::",
-			interfaceName: "lo",
-			expectedFlags: []string{},
-		},
-		{
 			name:          "IPv6 localhost route",
 			destination:   "::1/128",
 			gateway:       "::",
 			interfaceName: "lo",
-			expectedFlags: []string{},
+			expectedFlags: []string{"LOCAL", "NONEXTHOP", "UP"},
 		},
 	}
 
@@ -494,7 +502,7 @@ func Test_parseLinuxIPv6RoutesFromProc(t *testing.T) {
 			destination:   "::1/128",
 			gateway:       "::",
 			interfaceName: "lo",
-			expectedFlags: []string{},
+			expectedFlags: []string{"LOCAL", "NONEXTHOP", "UP"},
 		},
 		// wlo1 interface
 		{
@@ -502,35 +510,35 @@ func Test_parseLinuxIPv6RoutesFromProc(t *testing.T) {
 			destination:   "::/0",
 			gateway:       "fe80::b2f2:8ff:fe4c:9c41",
 			interfaceName: "wlo1",
-			expectedFlags: []string{},
+			expectedFlags: []string{"GATEWAY", "UP"},
 		},
 		{
 			name:          "IPv6 link-local route on wlo1",
 			destination:   "fe80::/64",
 			gateway:       "::",
 			interfaceName: "wlo1",
-			expectedFlags: []string{},
+			expectedFlags: []string{"UP"},
 		},
 		{
 			name:          "IPv6 network route 2a02:810a:983:f300::/64 on wlo1",
 			destination:   "2a02:810a:983:f300::/64",
 			gateway:       "::",
 			interfaceName: "wlo1",
-			expectedFlags: []string{},
+			expectedFlags: []string{"UP"},
 		},
 		{
 			name:          "IPv6 ULA network route fdad:a22e:9f09::/64 on wlo1",
 			destination:   "fdad:a22e:9f09::/64",
 			gateway:       "::",
 			interfaceName: "wlo1",
-			expectedFlags: []string{},
+			expectedFlags: []string{"UP"},
 		},
 		{
 			name:          "IPv6 host route on wlo1",
 			destination:   "fe80::e0e1:af0:8971:6498/128",
 			gateway:       "::",
 			interfaceName: "wlo1",
-			expectedFlags: []string{},
+			expectedFlags: []string{"LOCAL", "NONEXTHOP", "UP"},
 		},
 		// br-01ca4fc8136f interface
 		{
@@ -538,14 +546,14 @@ func Test_parseLinuxIPv6RoutesFromProc(t *testing.T) {
 			destination:   "fe80::/64",
 			gateway:       "::",
 			interfaceName: "br-01ca4fc8136f",
-			expectedFlags: []string{},
+			expectedFlags: []string{"UP"},
 		},
 		{
 			name:          "IPv6 host route on br-01ca4fc8136f",
 			destination:   "fe80::42:36ff:fe7d:ca5/128",
 			gateway:       "::",
 			interfaceName: "br-01ca4fc8136f",
-			expectedFlags: []string{},
+			expectedFlags: []string{"LOCAL", "NONEXTHOP", "UP"},
 		},
 		// docker0 interface
 		{
@@ -553,14 +561,14 @@ func Test_parseLinuxIPv6RoutesFromProc(t *testing.T) {
 			destination:   "fe80::/64",
 			gateway:       "::",
 			interfaceName: "docker0",
-			expectedFlags: []string{},
+			expectedFlags: []string{"UP"},
 		},
 		{
 			name:          "IPv6 host route on docker0",
 			destination:   "fe80::42:74ff:fe55:e6ae/128",
 			gateway:       "::",
 			interfaceName: "docker0",
-			expectedFlags: []string{},
+			expectedFlags: []string{"LOCAL", "NONEXTHOP", "UP"},
 		},
 		// br-573cc74a8612 interface
 		{
@@ -568,14 +576,14 @@ func Test_parseLinuxIPv6RoutesFromProc(t *testing.T) {
 			destination:   "fe80::/64",
 			gateway:       "::",
 			interfaceName: "br-573cc74a8612",
-			expectedFlags: []string{},
+			expectedFlags: []string{"UP"},
 		},
 		{
 			name:          "IPv6 host route on br-573cc74a8612",
 			destination:   "fe80::42:1fff:feda:c5e0/128",
 			gateway:       "::",
 			interfaceName: "br-573cc74a8612",
-			expectedFlags: []string{},
+			expectedFlags: []string{"LOCAL", "NONEXTHOP", "UP"},
 		},
 		// veth13dad49 interface
 		{
@@ -583,14 +591,14 @@ func Test_parseLinuxIPv6RoutesFromProc(t *testing.T) {
 			destination:   "fe80::/64",
 			gateway:       "::",
 			interfaceName: "veth13dad49",
-			expectedFlags: []string{},
+			expectedFlags: []string{"UP"},
 		},
 		{
 			name:          "IPv6 host route on veth13dad49",
 			destination:   "fe80::6843:81ff:fe73:9c89/128",
 			gateway:       "::",
 			interfaceName: "veth13dad49",
-			expectedFlags: []string{},
+			expectedFlags: []string{"LOCAL", "NONEXTHOP", "UP"},
 		},
 		// vethce143da interface
 		{
@@ -598,14 +606,14 @@ func Test_parseLinuxIPv6RoutesFromProc(t *testing.T) {
 			destination:   "fe80::/64",
 			gateway:       "::",
 			interfaceName: "vethce143da",
-			expectedFlags: []string{},
+			expectedFlags: []string{"UP"},
 		},
 		{
 			name:          "IPv6 host route on vethce143da",
 			destination:   "fe80::ac61:28ff:fef4:319a/128",
 			gateway:       "::",
 			interfaceName: "vethce143da",
-			expectedFlags: []string{},
+			expectedFlags: []string{"LOCAL", "NONEXTHOP", "UP"},
 		},
 		// vethc4f5eec interface
 		{
@@ -613,14 +621,14 @@ func Test_parseLinuxIPv6RoutesFromProc(t *testing.T) {
 			destination:   "fe80::/64",
 			gateway:       "::",
 			interfaceName: "vethc4f5eec",
-			expectedFlags: []string{},
+			expectedFlags: []string{"UP"},
 		},
 		{
 			name:          "IPv6 host route on vethc4f5eec",
 			destination:   "fe80::2019:9cff:fe49:50a1/128",
 			gateway:       "::",
 			interfaceName: "vethc4f5eec",
-			expectedFlags: []string{},
+			expectedFlags: []string{"LOCAL", "NONEXTHOP", "UP"},
 		},
 		// veth303a5c2 interface
 		{
@@ -628,14 +636,14 @@ func Test_parseLinuxIPv6RoutesFromProc(t *testing.T) {
 			destination:   "fe80::/64",
 			gateway:       "::",
 			interfaceName: "veth303a5c2",
-			expectedFlags: []string{},
+			expectedFlags: []string{"UP"},
 		},
 		{
 			name:          "IPv6 host route on veth303a5c2",
 			destination:   "fe80::d43e:f5ff:fe24:dc2c/128",
 			gateway:       "::",
 			interfaceName: "veth303a5c2",
-			expectedFlags: []string{},
+			expectedFlags: []string{"LOCAL", "NONEXTHOP", "UP"},
 		},
 		// veth61d447b interface
 		{
@@ -643,14 +651,14 @@ func Test_parseLinuxIPv6RoutesFromProc(t *testing.T) {
 			destination:   "fe80::/64",
 			gateway:       "::",
 			interfaceName: "veth61d447b",
-			expectedFlags: []string{},
+			expectedFlags: []string{"UP"},
 		},
 		{
 			name:          "IPv6 host route on veth61d447b",
 			destination:   "fe80::5082:1eff:fed5:990a/128",
 			gateway:       "::",
 			interfaceName: "veth61d447b",
-			expectedFlags: []string{},
+			expectedFlags: []string{"LOCAL", "NONEXTHOP", "UP"},
 		},
 	}
 

@@ -12,12 +12,12 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"go.mondoo.com/mql/v13/cli/inventoryloader"
-	"go.mondoo.com/mql/v13/discovery"
-	"go.mondoo.com/mql/v13/discovery/export"
-	"go.mondoo.com/mql/v13/providers"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/cli/inventoryloader"
+	"go.mondoo.com/mql/discovery"
+	"go.mondoo.com/mql/discovery/export"
+	"go.mondoo.com/mql/providers"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func init() {

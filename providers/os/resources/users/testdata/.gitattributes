@@ -1,0 +1,3 @@
+# Fixtures are Unix command output and files: check them out as committed,
+# without CRLF conversion on Windows.
+* -text

@@ -165,7 +165,7 @@ func TestPipeFilterCriteriaFromDescribe(t *testing.T) {
 	})
 	t.Run("returns the criteria when present", func(t *testing.T) {
 		fc := &pipes_types.FilterCriteria{
-			Filters: []pipes_types.Filter{{Pattern: ptr(`{"source":["aws.s3"]}`)}},
+			Filters: []pipes_types.Filter{{Pattern: new(`{"source":["aws.s3"]}`)}},
 		}
 		got := pipeFilterCriteriaFromDescribe(&pipes.DescribePipeOutput{
 			SourceParameters: &pipes_types.PipeSourceParameters{FilterCriteria: fc},
@@ -174,4 +174,5 @@ func TestPipeFilterCriteriaFromDescribe(t *testing.T) {
 	})
 }
 
-func ptr[T any](v T) *T { return &v }
+//go:fix inline
+func ptr[T any](v T) *T { return new(v) }

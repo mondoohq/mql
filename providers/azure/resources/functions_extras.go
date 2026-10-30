@@ -14,8 +14,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	web "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v6"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/azure/connection"
 )
 
 func (a *mqlAzureSubscriptionFunctionsServiceFunctionAppAppSetting) id() (string, error) {
@@ -208,8 +208,7 @@ func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) connectionStrings() ([
 // app-settings/connection-strings endpoints require explicit permissions
 // (Microsoft.Web/sites/config/list/action) that the audit role may lack.
 func isFunctionAppForbiddenError(err error) bool {
-	var rerr *azcore.ResponseError
-	if errors.As(err, &rerr) {
+	if rerr, ok := errors.AsType[*azcore.ResponseError](err); ok {
 		return rerr.StatusCode == http.StatusForbidden
 	}
 	return false

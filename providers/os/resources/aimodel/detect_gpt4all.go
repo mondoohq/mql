@@ -4,15 +4,15 @@
 package aimodel
 
 import (
-	"path/filepath"
 	"strings"
 )
 
 // GPT4AllDetector discovers models cached by GPT4All. It checks the shared
 // cache directory (~/.cache/gpt4all) and the platform-specific application data
 // directory (e.g. ~/Library/Application Support/nomic.ai/GPT4All on macOS).
-// Supports .gguf and .bin (legacy ggml) files. Quantization and parameter
-// size are extracted from filenames via regex.
+// Supports .gguf and .bin (legacy ggml) files. Quantization is extracted from
+// filenames via regex. The parameter size is the GGUF general.size_label,
+// falling back to a count the filename states.
 type GPT4AllDetector struct{}
 
 func (d *GPT4AllDetector) Detect(ctx DetectContext) []ModelInfo {
@@ -47,20 +47,22 @@ func (d *GPT4AllDetector) Detect(ctx DetectContext) []ModelInfo {
 			if match := reQuantization.FindString(e.Name()); match != "" {
 				quant = strings.ToUpper(match)
 			}
-			paramSize := ""
-			if pm := reParamSize.FindStringSubmatch(e.Name()); len(pm) > 1 {
-				paramSize = pm[1] + "B"
+			paramSize := parameterSizeFromName(e.Name())
+			if format == "gguf" {
+				paramSize = parameterSizeFromGGUF(ctx.Fs, []string{joinPath(dir, e.Name())}, e.Name())
 			}
 
 			results = append(results, ModelInfo{
 				Name:          e.Name(),
 				Source:        "gpt4all",
-				Path:          filepath.Join(dir, e.Name()),
+				Path:          joinPath(dir, e.Name()),
 				Size:          e.Size(),
 				ModifiedAt:    e.ModTime(),
 				Format:        format,
 				Quantization:  quant,
 				ParameterSize: paramSize,
+
+				UnsafeSerialization: unsafeSerialization(ctx.Fs, []string{joinPath(dir, e.Name())}),
 			})
 		}
 	}
@@ -69,15 +71,15 @@ func (d *GPT4AllDetector) Detect(ctx DetectContext) []ModelInfo {
 
 func gpt4allDirs(home string, osFamily string) []string {
 	dirs := []string{
-		filepath.Join(home, ".cache", "gpt4all"),
+		joinPath(home, ".cache", "gpt4all"),
 	}
 	switch osFamily {
 	case "darwin":
-		dirs = append(dirs, filepath.Join(home, "Library", "Application Support", "nomic.ai", "GPT4All"))
+		dirs = append(dirs, joinPath(home, "Library", "Application Support", "nomic.ai", "GPT4All"))
 	case "linux":
-		dirs = append(dirs, filepath.Join(home, ".local", "share", "nomic.ai", "GPT4All"))
+		dirs = append(dirs, joinPath(home, ".local", "share", "nomic.ai", "GPT4All"))
 	case "windows":
-		dirs = append(dirs, filepath.Join(home, "AppData", "Local", "nomic.ai", "GPT4All"))
+		dirs = append(dirs, joinPath(home, "AppData", "Local", "nomic.ai", "GPT4All"))
 	}
 	return dirs
 }

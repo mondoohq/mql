@@ -5,14 +5,15 @@ package resources
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"text/template"
 	"text/template/parse"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"helm.sh/helm/v3/pkg/chart"
 )
 
@@ -130,7 +131,19 @@ func (t *mqlHelmTemplate) resources() ([]any, error) {
 		return []any{}, nil
 	}
 	templateKey := t.chartName + "/" + t.Name.Data
-	return parseK8sResources(t.MqlRuntime, templateKey, t.renderedContent, false)
+	resources, err := parseK8sResources(t.MqlRuntime, templateKey, t.renderedContent, false)
+	if err != nil {
+		return nil, err
+	}
+	// These resources came straight from this template, so link them back to it
+	// directly — helm.resource.template then returns this instance without a
+	// chart round-trip.
+	for _, r := range resources {
+		if res, ok := r.(*mqlHelmResource); ok {
+			res.ownerTemplate = t
+		}
+	}
+	return resources, nil
 }
 
 func (t *mqlHelmTemplate) directives() ([]any, error) {
@@ -169,10 +182,8 @@ func nodeUsesLookup(node parse.Node) bool {
 		if n == nil {
 			return false
 		}
-		for _, child := range n.Nodes {
-			if nodeUsesLookup(child) {
-				return true
-			}
+		if slices.ContainsFunc(n.Nodes, nodeUsesLookup) {
+			return true
 		}
 	case *parse.ActionNode:
 		return pipeUsesLookup(n.Pipe)

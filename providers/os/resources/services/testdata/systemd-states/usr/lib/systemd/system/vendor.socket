@@ -1,0 +1,6 @@
+[Unit]
+Description=Vendor socket
+[Socket]
+ListenStream=1
+[Install]
+WantedBy=sockets.target

@@ -12,9 +12,9 @@ env.Name
 
 * AWS Code Build [Spec](https://docs.aws.amazon.com/codebuild/latest/userguide/build-env-ref-env-vars.html)
 * Azure Build Pipeline [Spec](https://learn.microsoft.com/en-us/azure/devops/pipelines/build/variables?view=azure-devops)
-* GitLab [Spec](https://docs.gitlab.com/ee/ci/variables/)
-* Google Cloud Build [Spec](https://cloud.google.com/cloud-build/docs/configuring-builds/substitute-variable-values#using_default_substitutions)
-* CircleCI [Spec](https://circleci.com/docs/env-vars/#built-in-environment-variables)
+* GitLab [Spec](https://docs.gitlab.com/ci/variables/)
+* Google Cloud Build [Spec](https://docs.cloud.google.com/build/docs/configuring-builds/substitute-variable-values#using_default_substitutions)
+* CircleCI [Spec](https://circleci.com/docs/guides/security/env-vars/)
 * Jenkins [Spec](https://www.jenkins.io/doc/book/pipeline/jenkinsfile/#using-environment-variables)
 * Travis [Spec](https://docs.travis-ci.com/user/environment-variables/#default-environment-variables)
 * GoCD [Spec](https://docs.gocd.org/current/faq/environment_variables.html)

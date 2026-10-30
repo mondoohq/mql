@@ -7,7 +7,7 @@ import (
 	"errors"
 	"regexp"
 
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/types"
 )
 
 func falseMatcher(s string) bool {

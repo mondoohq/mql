@@ -36,7 +36,7 @@ func Register(t VaultType, b Builder) {
 
 // New instantiates a vault from the given configuration by looking up the
 // registered Builder for the configured VaultType. The implementation must be
-// linked into the binary (e.g. via go.mondoo.com/mql/v13/vault/register or an
+// linked into the binary (e.g. via go.mondoo.com/mql/vault/register or an
 // individual implementation package) for its type to be available.
 func New(cfg *VaultConfiguration) (Vault, error) {
 	if cfg == nil {

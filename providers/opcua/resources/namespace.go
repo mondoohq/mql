@@ -6,9 +6,9 @@ package resources
 import (
 	"strconv"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/opcua/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/opcua/connection"
 )
 
 func (o *mqlOpcuaNamespace) id() (string, error) {
@@ -19,7 +19,7 @@ func (o *mqlOpcuaNamespace) id() (string, error) {
 	return "opcua.namespace/" + s, nil
 }
 
-// https://reference.opcfoundation.org/DI/v102/docs/11.2
+// https://reference.opcfoundation.org/specs/OPC-10000-100/11
 func (o *mqlOpcua) namespaces() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OpcuaConnection)
 	client := conn.Client()

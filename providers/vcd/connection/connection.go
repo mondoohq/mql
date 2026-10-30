@@ -9,10 +9,10 @@ import (
 	"net/url"
 
 	"github.com/rs/zerolog/log"
-	"github.com/vmware/go-vcloud-director/v2/govcd"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	"github.com/vmware/go-vcloud-director/v3/govcd"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 )
 
 type VcdConnection struct {

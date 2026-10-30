@@ -54,6 +54,8 @@ func TestWindowsUpdateToOperatingSystemUpdate(t *testing.T) {
 		MsrcSeverity:   "Critical",
 		RebootRequired: true,
 		KBArticleIDs:   []string{"4537759"},
+		Categories:     []string{"Windows Server 2019", "Security Updates"},
+		Classification: "Security Updates",
 	}
 	osUpdate, ok := u.toOperatingSystemUpdate()
 	require.True(t, ok)
@@ -62,6 +64,7 @@ func TestWindowsUpdateToOperatingSystemUpdate(t *testing.T) {
 	assert.Equal(t, "2020-02 Security Update (KB4537759)", osUpdate.Description)
 	assert.Equal(t, "Critical", osUpdate.Severity)
 	assert.Equal(t, "windows/updates", osUpdate.Format)
+	assert.Equal(t, "Security Updates", osUpdate.Category, "the classification, not the first category")
 	assert.True(t, osUpdate.Restart)
 
 	// updates without a KB are dropped from os.update
@@ -86,4 +89,133 @@ func findKb(pkgs []OperatingSystemUpdate, name string) (OperatingSystemUpdate, e
 		}
 	}
 	return OperatingSystemUpdate{}, errors.New("not found")
+}
+
+func TestParseWindowsUpdatesDropsBlankRecords(t *testing.T) {
+	// What a failed Windows Update Agent search leaves on stdout: $searcher is
+	// null, so $searcher.Updates is null, and piping null to ForEach-Object
+	// still runs the block once. Counting that as an outstanding update is
+	// wrong, and so is counting it as a clean scan.
+	updates, err := ParseWindowsUpdates(strings.NewReader(`{"UpdateID": null, "Title": null}`))
+	require.NoError(t, err)
+	assert.Empty(t, updates)
+
+	updates, err = ParseWindowsUpdates(strings.NewReader(`[{"UpdateID": null, "Title": null}]`))
+	require.NoError(t, err)
+	assert.Empty(t, updates)
+
+	// A real update alongside a blank one keeps the real one.
+	updates, err = ParseWindowsUpdates(strings.NewReader(
+		`[{"UpdateID": null, "Title": null},{"UpdateID":"0f1e-2d3c","Title":"2026-08 Cumulative Update (KB5120242)","KBArticleIDs":["5120242"]}]`))
+	require.NoError(t, err)
+	require.Len(t, updates, 1)
+	assert.Equal(t, "0f1e-2d3c", updates[0].UpdateID)
+
+	// An update with a title but no identity is still an update.
+	updates, err = ParseWindowsUpdates(strings.NewReader(`[{"UpdateID":"","Title":"Some driver"}]`))
+	require.NoError(t, err)
+	require.Len(t, updates, 1)
+}
+
+func TestWindowsUpdateSearchQueryStopsOnError(t *testing.T) {
+	// Without this the COM failure is a non-terminating error, powershell.exe
+	// exits 0, the ExitStatus check never fires, and a host that could not be
+	// reached reports itself fully patched.
+	q := windowsUpdateSearchQuery(WindowsUpdateCriteriaAvailable, true)
+	assert.Contains(t, q, "$ErrorActionPreference='Stop'")
+	assert.Contains(t, q, WindowsUpdateCriteriaAvailable)
+}
+
+// TestWindowsUpdateSearchQueryOnlineFlag pins that the online/offline switch
+// only ever changes $searcher.Online, and that it is always set before
+// Search() runs -- setting IUpdateSearcher.Online after the search has
+// already started has no effect.
+func TestWindowsUpdateSearchQueryOnlineFlag(t *testing.T) {
+	online := windowsUpdateSearchQuery(WindowsUpdateCriteriaSoftware, true)
+	assert.Contains(t, online, "$searcher.Online = $true")
+	assert.NotContains(t, online, "$searcher.Online = $false")
+
+	offline := windowsUpdateSearchQuery(WindowsUpdateCriteriaAvailable, false)
+	assert.Contains(t, offline, "$searcher.Online = $false")
+	assert.NotContains(t, offline, "$searcher.Online = $true")
+
+	onlineIdx := strings.Index(offline, "$searcher.Online")
+	searchIdx := strings.Index(offline, ".Search(")
+	require.GreaterOrEqual(t, onlineIdx, 0)
+	require.GreaterOrEqual(t, searchIdx, 0)
+	assert.Less(t, onlineIdx, searchIdx, "Online must be set on the searcher before Search() runs")
+}
+
+// TestWindowsUpdateSearchQueryUsesForeachNotPipeline pins the
+// performance-motivated rewrite away from ForEach-Object/New-Object psobject
+// for the per-update record, and confirms the output field names used by
+// ParseWindowsUpdates did not move.
+func TestWindowsUpdateSearchQueryUsesForeachNotPipeline(t *testing.T) {
+	q := windowsUpdateSearchQuery(WindowsUpdateCriteriaAvailable, false)
+	assert.Contains(t, q, "foreach (")
+	assert.Contains(t, q, "[pscustomobject]@{")
+	assert.NotContains(t, q, "New-Object psobject")
+
+	for _, field := range []string{`"UpdateID"`, `"Title"`, `"MsrcSeverity"`, `"SupportUrl"`, `"RebootRequired"`, `"KBArticleIDs"`, `"CveIDs"`, `"Categories"`, `"RevisionNumber"`, `"Classification"`} {
+		assert.Contains(t, q, field)
+	}
+
+	// The classification is the category typed UpdateClassification, never
+	// whichever category the agent lists first.
+	assert.Contains(t, q, "$category.Type -eq 'UpdateClassification'")
+}
+
+// TestParseWindowsUpdatesClassification decodes a record shaped like the live
+// search result for the Malicious Software Removal Tool on Windows 10 22H2 and
+// Windows 11 25H2, whose first category is a product.
+func TestParseWindowsUpdatesClassification(t *testing.T) {
+	record := `[{"UpdateID":"3d6484a2-3e2f-4d89-8290-33b9e39f0aaf","RevisionNumber":200,` +
+		`"Title":"Windows Malicious Software Removal Tool x64 - v5.146 (KB890830)","KBArticleIDs":["890830"],` +
+		`"Categories":["EU Browser Choice Update-For Europe Only","Update Rollups","Windows 10","Windows 11"],` +
+		`"Classification":"Update Rollups"}]`
+	updates, err := ParseWindowsUpdates(strings.NewReader(record))
+	require.NoError(t, err)
+	require.Len(t, updates, 1)
+	assert.Equal(t, 200, updates[0].RevisionNumber)
+	assert.Equal(t, "Update Rollups", updates[0].Classification)
+
+	osUpdate, ok := updates[0].toOperatingSystemUpdate()
+	require.True(t, ok)
+	assert.Equal(t, "Update Rollups", osUpdate.Category)
+
+	// No category typed UpdateClassification: the category stays empty
+	// rather than borrowing a product name.
+	updates, err = ParseWindowsUpdates(strings.NewReader(
+		`{"UpdateID":"x","Title":"t (KB1)","KBArticleIDs":["1"],"Categories":["Windows 11"],"Classification":null}`))
+	require.NoError(t, err)
+	require.Len(t, updates, 1)
+	osUpdate, ok = updates[0].toOperatingSystemUpdate()
+	require.True(t, ok)
+	assert.Empty(t, osUpdate.Category)
+}
+
+func TestDropEmptyWindowsUpdatesKeepsTheInputWhenNothingIsBlank(t *testing.T) {
+	in := []WindowsUpdate{{UpdateID: "a", Title: "A"}, {UpdateID: "b", Title: "B"}}
+	got := dropEmptyWindowsUpdates(in)
+	require.Len(t, got, 2)
+	assert.Equal(t, in, got)
+
+	// Nothing is copied when there is nothing to drop, which is every
+	// successful search.
+	assert.Equal(t, &in[0], &got[0])
+}
+
+func TestDropEmptyWindowsUpdatesPreservesOrder(t *testing.T) {
+	in := []WindowsUpdate{
+		{UpdateID: "a", Title: "A"},
+		{},
+		{UpdateID: "b", Title: "B"},
+		{},
+		{UpdateID: "c", Title: "C"},
+	}
+	got := dropEmptyWindowsUpdates(in)
+	require.Len(t, got, 3)
+	assert.Equal(t, "a", got[0].UpdateID)
+	assert.Equal(t, "b", got[1].UpdateID)
+	assert.Equal(t, "c", got[2].UpdateID)
 }

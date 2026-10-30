@@ -8,12 +8,12 @@ import (
 
 	"github.com/package-url/packageurl-go"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/os/resources/cpe"
-	"go.mondoo.com/mql/v13/sbom"
+	"go.mondoo.com/mql/providers/os/resources/cpe"
+	"go.mondoo.com/mql/sbom"
 )
 
 // NewPackageUrl creates a Maven package URL for a given groupId, artifactId, and version.
-// See https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#maven
+// See https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/maven-definition.md
 func NewPackageUrl(groupId, artifactId, version string) string {
 	return packageurl.NewPackageURL(
 		packageurl.TypeMaven,
@@ -77,4 +77,25 @@ func NewEvidenceList(evidence []string) []*sbom.Evidence {
 		}
 	}
 	return evidenceList
+}
+
+// ConcreteVersion accepts a version that names one release, and rejects one that
+// names a set.
+//
+// Gradle lets a coordinate carry a dynamic version or a range -- "1.+",
+// "[1.0, 2.0[", "latest.release" -- and Maven allows the same range syntax.
+// None of them says which release is present, so recording one as the version
+// produces a purl that matches no release while reading downstream as a
+// definite claim about what is installed. The artifact is still worth
+// inventorying; its version is simply not known from the manifest, which is the
+// same state as a version a BOM was meant to supply and did not.
+//
+// Shared because every Java manifest reader faces the same strings, and two
+// copies of this rule would drift into disagreeing about the same coordinate.
+func ConcreteVersion(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" || strings.ContainsAny(s, "[],()") || strings.HasSuffix(s, "+") || strings.Contains(s, "latest") {
+		return ""
+	}
+	return s
 }

@@ -11,8 +11,11 @@ type workflow struct {
 	evidence []string `yaml:"-"`
 }
 
-// job represents a single job in a workflow.
+// job represents a single job in a workflow. A job either runs steps or calls
+// a reusable workflow with a job-level `uses`
+// (owner/repo/.github/workflows/build.yml@ref).
 type job struct {
+	Uses  string `yaml:"uses"`
 	Steps []step `yaml:"steps"`
 }
 

@@ -12,12 +12,12 @@ import (
 	"sync"
 
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/users"
-	"go.mondoo.com/mql/v13/utils/multierr"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/users"
+	"go.mondoo.com/mql/utils/multierr"
 )
 
 func (x *mqlUser) id() (string, error) {
@@ -124,6 +124,12 @@ type mqlUsersInternal struct {
 	lock        sync.Mutex
 	usersByID   map[int64]*mqlUser
 	usersByName map[string]*mqlUser
+	// usersBySid indexes the users that have a SID (Windows).
+	usersBySid map[string]*mqlUser
+
+	uidRangeOnce sync.Once
+	uidRange     uidRange
+	uidRangeErr  error
 }
 
 func (x *mqlUsers) list() ([]any, error) {
@@ -151,9 +157,13 @@ func (x *mqlUsers) list() ([]any, error) {
 		return nil, multierr.Wrap(err, "could not retrieve users list")
 	}
 
-	var res []any
+	res := make([]any, 0, len(users))
 	for i := range users {
 		user := users[i]
+		enabled := llx.BoolData(user.Enabled)
+		if user.EnabledUnknown {
+			enabled = llx.NilData
+		}
 		nu, err := CreateResource(x.MqlRuntime, "user", map[string]*llx.RawData{
 			"name":    llx.StringData(user.Name),
 			"uid":     llx.IntData(user.Uid),
@@ -161,7 +171,7 @@ func (x *mqlUsers) list() ([]any, error) {
 			"sid":     llx.StringData(user.Sid),
 			"home":    llx.StringData(user.Home),
 			"shell":   llx.StringData(user.Shell),
-			"enabled": llx.BoolData(user.Enabled),
+			"enabled": enabled,
 		})
 		if err != nil {
 			return nil, err
@@ -173,22 +183,46 @@ func (x *mqlUsers) list() ([]any, error) {
 	return res, x.refreshCache(res)
 }
 
+// refreshCache publishes the account indexes. The caller must hold x.lock when
+// all is non-nil. With nil, it reads GetList before acquiring the lock itself.
 func (x *mqlUsers) refreshCache(all []any) error {
 	if all == nil {
 		raw := x.GetList()
 		if raw.Error != nil {
 			return raw.Error
 		}
+		// list() publishes the indexes while holding this lock. A recording
+		// can supply List without indexes, so initialize that case once here.
+		// Completed indexes are immutable; a profile-only reader may copy them
+		// under TryLock without racing a redundant refresh.
+		x.lock.Lock()
+		defer x.lock.Unlock()
+		if x.usersByID != nil {
+			return nil
+		}
 		all = raw.Data
 	}
 
 	x.usersByID = map[int64]*mqlUser{}
 	x.usersByName = map[string]*mqlUser{}
+	x.usersBySid = map[string]*mqlUser{}
 
 	for i := range all {
 		u := all[i].(*mqlUser)
-		x.usersByID[u.Uid.Data] = u
-		x.usersByName[u.Name.Data] = u
+		// The first entry wins, as in getpw*/getgr*: an alias that shares an ID
+		// or name with an earlier entry (a second UID 0 account) must not
+		// rename the owner of every file with that ID.
+		if _, ok := x.usersByID[u.Uid.Data]; !ok {
+			x.usersByID[u.Uid.Data] = u
+		}
+		if _, ok := x.usersByName[u.Name.Data]; !ok {
+			x.usersByName[u.Name.Data] = u
+		}
+		if u.Sid.Data != "" {
+			if _, ok := x.usersBySid[u.Sid.Data]; !ok {
+				x.usersBySid[u.Sid.Data] = u
+			}
+		}
 	}
 
 	return nil
@@ -278,18 +312,96 @@ func (u *mqlUser) sshkeys() ([]any, error) {
 	// check if use ssh directory exists
 	exists, err := afutil.Exists(userSshPath)
 	if err != nil {
-		return nil, err
+		if isAbsentPath(err) {
+			return res, nil
+		}
+		return nil, classifyFsError(err)
 	}
 	if !exists {
 		return res, nil
 	}
 
+	potentialPrivateKeyFiles, err := sshKeyCandidates(conn.FileSystem(), userSshPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// iterate over files and check if the content is there
+	for i := range potentialPrivateKeyFiles {
+		path := potentialPrivateKeyFiles[i]
+		data, err := afutil.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+
+		content := string(data)
+
+		// check if content contains PRIVATE KEY
+		isPrivateKey := strings.Contains(content, "PRIVATE KEY")
+		if isPrivateKey {
+			info, infoErr := inspectPrivateKey(data)
+			// NOTE: we use new instead of create so that the file resource is properly initialized
+			upk, err := NewResource(u.MqlRuntime, "privatekey", map[string]*llx.RawData{
+				"pem":       llx.StringData(content),
+				"encrypted": llx.BoolData(infoErr == nil && info.Encrypted),
+				"path":      llx.StringData(path),
+			})
+			if err != nil {
+				return nil, err
+			}
+			pk := upk.(*mqlPrivatekey)
+			pk.seedParsedKey(info, infoErr)
+			res = append(res, pk)
+		}
+	}
+
+	return res, nil
+}
+
+// maxSSHKeyFileSize bounds what is read from ~/.ssh. The largest private key
+// OpenSSH writes (RSA 16384, PEM) is about 13 KB.
+const maxSSHKeyFileSize = 1 << 20
+
+// isSSHKeyFile reports whether the walked entry is a regular file, or a
+// symlink to one, small enough to be a key.
+func isSSHKeyFile(fs afero.Fs, path string, f os.FileInfo) bool {
+	if f.Mode()&os.ModeSymlink != 0 {
+		target, err := fs.Stat(path)
+		if err != nil {
+			return false
+		}
+		f = target
+	}
+	// The cat filesystem used over SSH --sudo marks a symlink by adding
+	// ModeSymlink to the target's type, so ignore that bit here.
+	if f.Mode().Type()&^os.ModeSymlink != 0 {
+		return false
+	}
+	return f.Size() <= maxSSHKeyFileSize
+}
+
+// sshKeyCandidates walks dir and returns every file that may hold a private
+// key: everything except public keys, known_hosts files and ssh config.
+func sshKeyCandidates(fs afero.Fs, dir string) ([]string, error) {
 	filter := []string{"config"}
 
-	// walk dir and search for all private keys
 	potentialPrivateKeyFiles := []string{}
-	err = afutil.Walk(userSshPath, func(path string, f os.FileInfo, err error) error {
+	err := afero.Walk(fs, dir, func(path string, f os.FileInfo, err error) error {
+		if err != nil {
+			// v13 skipped what it could not list, so an unreadable ~/.ssh
+			// looked like one holding no keys
+			if !plugin.StructuredErrors() {
+				return nil
+			}
+			return classifyFsError(err)
+		}
 		if f == nil || f.IsDir() {
+			return nil
+		}
+		// Reading a FIFO blocks until a writer shows up, and a socket or
+		// device cannot be read at all, so only regular files (and symlinks
+		// to them) can hold a key. ssh-keygen refuses the others too.
+		if !isSSHKeyFile(fs, path, f) {
 			return nil
 		}
 
@@ -310,35 +422,5 @@ func (u *mqlUser) sshkeys() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// iterate over files and check if the content is there
-	for i := range potentialPrivateKeyFiles {
-		path := potentialPrivateKeyFiles[i]
-		data, err := afutil.ReadFile(path)
-		if err != nil {
-			return nil, err
-		}
-
-		content := string(data)
-
-		// check if content contains PRIVATE KEY
-		isPrivateKey := strings.Contains(content, "PRIVATE KEY")
-		// check if the key is encrypted ENCRYPTED
-		isEncrypted := strings.Contains(content, "ENCRYPTED")
-
-		if isPrivateKey {
-			// NOTE: we use new instead of create so that the file resource is properly initialized
-			upk, err := NewResource(u.MqlRuntime, "privatekey", map[string]*llx.RawData{
-				"pem":       llx.StringData(content),
-				"encrypted": llx.BoolData(isEncrypted),
-				"path":      llx.StringData(path),
-			})
-			if err != nil {
-				return nil, err
-			}
-			res = append(res, upk.(*mqlPrivatekey))
-		}
-	}
-
-	return res, nil
+	return potentialPrivateKeyFiles, nil
 }

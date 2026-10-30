@@ -128,3 +128,31 @@ func TestParseUserReports_EmptyAndUnknownParams(t *testing.T) {
 	})
 	require.Nil(t, r.AppUsage.LastImapTime)
 }
+
+func TestReportActivityID(t *testing.T) {
+	// Distinct activities that share a unique qualifier (0 is the common
+	// "absent" value) must still get distinct cache keys via app + time.
+	a := reportActivityID("drive", "2026-01-01T00:00:00Z", 0)
+	b := reportActivityID("admin", "2026-01-01T00:00:00Z", 0)
+	c := reportActivityID("drive", "2026-01-02T00:00:00Z", 0)
+	require.NotEqual(t, a, b, "same qualifier across apps must not collide")
+	require.NotEqual(t, a, c, "same qualifier across times must not collide")
+
+	// Stable for identical inputs, and carries the composed parts.
+	require.Equal(t, a, reportActivityID("drive", "2026-01-01T00:00:00Z", 0))
+	require.Equal(t,
+		"googleworkspace.report.activity/login/2026-01-01T00:00:00Z/42",
+		reportActivityID("login", "2026-01-01T00:00:00Z", 42),
+	)
+}
+
+func TestHashActivity(t *testing.T) {
+	a := &reports.Activity{IpAddress: "1.2.3.4", OwnerDomain: "example.com"}
+	b := &reports.Activity{IpAddress: "5.6.7.8", OwnerDomain: "example.com"}
+
+	// Distinct nil-id activities get distinct discriminators.
+	require.NotEqual(t, hashActivity(a), hashActivity(b))
+	// Stable for identical content across calls.
+	require.Equal(t, hashActivity(a), hashActivity(&reports.Activity{IpAddress: "1.2.3.4", OwnerDomain: "example.com"}))
+	require.NotEmpty(t, hashActivity(a))
+}

@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/cloudflare/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/cloudflare/connection"
 )
 
 // emailRoutingDNSRecord is a suggested DNS record returned by the email-routing
@@ -162,6 +162,11 @@ func (c *mqlCloudflareZoneEmailRouting) dmarcConfigured() (bool, error) {
 	}
 	uri := fmt.Sprintf("zones/%s/dns_records?type=TXT&name=%s", c.zoneID, url.QueryEscape(dmarcName))
 	if err := conn.Cf.Get(context.TODO(), uri, nil, &env); err != nil {
+		// Degrade to "not configured" when the token can't read DNS records,
+		// matching the rest of this file rather than erroring the field.
+		if isUnavailable(err) {
+			return false, nil
+		}
 		return false, err
 	}
 
@@ -226,6 +231,14 @@ func (c *mqlCloudflareZoneEmailRouting) fetchSuggestedDNSRecords() ([]emailRouti
 	}
 	uri := fmt.Sprintf("zones/%s/email/routing/dns", c.zoneID)
 	if err := conn.Cf.Get(context.TODO(), uri, nil, &env); err != nil {
+		// A token without DNS-record read (403/404) degrades to "no suggested
+		// records" so mxConfigured/spfConfigured read false instead of erroring;
+		// cache the empty result since the permission won't change mid-scan.
+		if isUnavailable(err) {
+			c.dnsCache = nil
+			c.dnsFetched = true
+			return nil, nil
+		}
 		// Don't cache transient errors — leave dnsFetched=false so the next
 		// call retries instead of returning the stale failure forever.
 		return nil, err

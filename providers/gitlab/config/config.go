@@ -4,21 +4,32 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/gitlab/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/gitlab/provider"
 )
 
 var Config = plugin.Provider{
-	Name:    "gitlab",
-	ID:      "go.mondoo.com/cnquery/v9/providers/gitlab",
-	Version: "13.4.0",
+	Name: "gitlab",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	// A connection reports the concrete kind through ConnectRes.Root.
+	Root:    "gitlab.group",
+	ID:      "go.mondoo.com/mql/providers/gitlab",
+	Version: "14.1.7",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{
 		provider.ConnectionType,
 		provider.GitlabGroupConnection,
 		provider.GitlabProjectConnection,
 	},
-	Platforms: provider.Platforms,
+	// Held low by gitlab.com's request rate limit. The IaC targets clone each
+	// repository during connect, which the scanner still does one at a time, so
+	// a higher number would not buy much there either.
+	DefaultParallelism: 4,
+	Platforms:          provider.Platforms,
 	Connectors: []plugin.Connector{
 		{
 			Name:  "gitlab",
@@ -47,6 +58,11 @@ Notes:
 				provider.DiscoveryProject,
 				provider.DiscoveryTerraform,
 				provider.DiscoveryK8sManifests,
+				provider.DiscoveryCloudformation,
+				provider.DiscoveryDockerfiles,
+				provider.DiscoveryBicep,
+				provider.DiscoveryHelm,
+				provider.DiscoveryKustomize,
 			},
 			Flags: []plugin.Flag{
 				{

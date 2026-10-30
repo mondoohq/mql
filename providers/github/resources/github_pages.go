@@ -6,11 +6,11 @@ package resources
 import (
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/github/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/github/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (g *mqlGithubRepositoryPages) id() (string, error) {
@@ -40,18 +40,10 @@ func initGithubRepositoryPages(runtime *plugin.Runtime, args map[string]*llx.Raw
 
 func (g *mqlGithubRepository) pages() (*mqlGithubRepositoryPages, error) {
 	conn := g.MqlRuntime.Connection.(*connection.GithubConnection)
-	if g.Name.Error != nil {
-		return nil, g.Name.Error
+	ownerLogin, repoName, err := repoOwnerAndName(g)
+	if err != nil {
+		return nil, err
 	}
-	repoName := g.Name.Data
-	if g.Owner.Error != nil {
-		return nil, g.Owner.Error
-	}
-	owner := g.Owner.Data
-	if owner.Login.Error != nil {
-		return nil, owner.Login.Error
-	}
-	ownerLogin := owner.Login.Data
 
 	pages, _, err := conn.Client().Repositories.GetPagesInfo(conn.Context(), ownerLogin, repoName)
 	if err != nil {

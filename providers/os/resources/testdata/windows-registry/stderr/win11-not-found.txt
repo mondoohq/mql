@@ -1,0 +1,7 @@
+Get-Item : Cannot find path 'HKEY_LOCAL_MACHINE\SOFTWARE\NoSuchKey' because it does not exist.
+At line:3 char:8
++ $reg = Get-Item ('Registry::' + $path) -ErrorAction Stop
++        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (HKEY_LOCAL_MACHINE\SOFTWARE\NoSuchKey:String) [Get 
+   -Item], ItemNotFoundException
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.GetItemCommand

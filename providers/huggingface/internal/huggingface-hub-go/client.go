@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	"go.mondoo.com/mql/v13/providers/huggingface/internal/huggingface-hub-go/api"
-	"go.mondoo.com/mql/v13/providers/huggingface/internal/huggingface-hub-go/models"
+	"go.mondoo.com/mql/providers/huggingface/internal/huggingface-hub-go/api"
+	"go.mondoo.com/mql/providers/huggingface/internal/huggingface-hub-go/models"
 )
 
 const (
@@ -66,6 +66,10 @@ func (c *Client) GetDataset(ctx context.Context, datasetID string) (*models.Data
 
 func (c *Client) GetSpace(ctx context.Context, spaceID string) (*models.Space, error) {
 	return c.api.GetSpace(ctx, spaceID)
+}
+
+func (c *Client) GetRepoScan(ctx context.Context, repoType models.RepoType, repoID string) (*models.RepoScan, error) {
+	return c.api.GetRepoScan(ctx, repoType, repoID)
 }
 
 func (c *Client) ListModels(ctx context.Context, opts *models.ModelListOptions) (*models.ModelList, error) {

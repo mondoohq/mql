@@ -1,0 +1,10 @@
+[commands."uname -s"]
+stdout = "Darwin"
+
+# Captured on macOS 27 (BSD stat) after setting the modification time to
+# 2026-01-15 10:00 and the access time to 2026-09-30 08:00 (local time) with
+# touch -m and touch -a. %a (access) is 1790780400, %m (modification) is
+# 1768500000. BSD stat ends the line with a newline.
+[commands."sh -c 'SL=0; test -L \"$1\" && SL=1; test -e \"$1\" -o $SL -eq 1 || exit 1; stat -L -f \"$SL:%z:%p:%u:%g:%a:%m\" \"$1\" 2>/dev/null || stat -f \"$SL:%z:%p:%u:%g:%a:%m\" \"$1\"' _ /tmp/mtime-probe"]
+stdout = """0:3:100644:501:0:1790780400:1768500000
+"""

@@ -6,32 +6,121 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/wafv2"
 	waftypes "github.com/aws/aws-sdk-go-v2/service/wafv2/types"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
-// wafRegionForScope returns the region to use for WAF API calls.
-// CLOUDFRONT-scoped resources must use us-east-1; REGIONAL uses the default.
-func wafRegionForScope(scope string) string {
-	if scope == "CLOUDFRONT" {
-		return "us-east-1"
+const (
+	wafScopeCloudfront = "CLOUDFRONT"
+	wafScopeRegional   = "REGIONAL"
+
+	// WAF keeps every CLOUDFRONT-scoped resource in us-east-1, whatever regions
+	// the distribution serves from.
+	wafCloudfrontRegion = "us-east-1"
+)
+
+// wafScopesFor returns the scopes to list for. An explicit scope lists only
+// itself; no scope lists both, because CloudFront and regional web ACLs are
+// separate estates and neither on its own describes an account's WAF posture.
+func wafScopesFor(scope string) []string {
+	switch scope {
+	case wafScopeCloudfront, wafScopeRegional:
+		return []string{scope}
+	default:
+		return []string{wafScopeCloudfront, wafScopeRegional}
 	}
-	return ""
 }
 
+// wafRegionsFor returns the regions a scope has to be queried in. CLOUDFRONT
+// lives in one region; REGIONAL is per-region, so it takes the connection's
+// whole region list - querying only the default region reported an empty WAF
+// estate for every account whose ACLs live anywhere else.
+func wafRegionsFor(conn *connection.AwsConnection, scope string) ([]string, error) {
+	if scope == wafScopeCloudfront {
+		return []string{wafCloudfrontRegion}, nil
+	}
+	return conn.Regions()
+}
+
+// id includes the scope: aws.waf is parameterized on it, so a constant key made
+// aws.waf(scope: "REGIONAL") return the cached CLOUDFRONT instance (or vice
+// versa) whenever both were queried in one scan.
 func (a *mqlAwsWaf) id() (string, error) {
-	return "aws.waf", nil
+	return "aws.waf/" + a.Scope.Data, nil
+}
+
+// wafTagsForArn lists the tags on a WAF resource in the region that holds it.
+// A missing wafv2:ListTagsForResource permission is reported as
+// errTagsUnreadable, which each caller turns into a null tags field rather than
+// an empty one.
+func wafTagsForArn(runtime *plugin.Runtime, region, arn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Wafv2(region)
+	ctx := context.Background()
+
+	tags := map[string]any{}
+	var nextMarker *string
+	for {
+		resp, err := svc.ListTagsForResource(ctx, &wafv2.ListTagsForResourceInput{
+			ResourceARN: &arn,
+			NextMarker:  nextMarker,
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		if resp.TagInfoForResource != nil {
+			for _, t := range resp.TagInfoForResource.TagList {
+				if t.Key != nil {
+					tags[*t.Key] = convert.ToValue(t.Value)
+				}
+			}
+		}
+		// WAFv2 signals the end of pagination with an empty-but-non-nil
+		// NextMarker. Passing that empty string back to ListTagsForResource
+		// fails validation ("Member must have length greater than or equal to
+		// 1"), so treat empty the same as nil.
+		if resp.NextMarker == nil || *resp.NextMarker == "" {
+			break
+		}
+		nextMarker = resp.NextMarker
+	}
+	return tags, nil
+}
+
+func (a *mqlAwsWafAcl) tags() (map[string]any, error) {
+	tags, err := wafTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	return tagsOrUnreadable(&a.Tags, tags, err)
+}
+
+func (a *mqlAwsWafRulegroup) tags() (map[string]any, error) {
+	tags, err := wafTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	return tagsOrUnreadable(&a.Tags, tags, err)
+}
+
+func (a *mqlAwsWafIpset) tags() (map[string]any, error) {
+	tags, err := wafTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	return tagsOrUnreadable(&a.Tags, tags, err)
+}
+
+func (a *mqlAwsWafRegexPatternSet) tags() (map[string]any, error) {
+	tags, err := wafTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	return tagsOrUnreadable(&a.Tags, tags, err)
 }
 
 func (a *mqlAwsWafAcl) id() (string, error) {
@@ -42,6 +131,7 @@ type mqlAwsWafAclInternal struct {
 	fetched                  bool
 	cachedManagedByFwManager bool
 	cachedRules              []waftypes.Rule
+	cachedACL                *waftypes.WebACL
 	lock                     sync.Mutex
 }
 
@@ -56,7 +146,7 @@ func (a *mqlAwsWafAcl) fetchACLDetails() error {
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.Wafv2(wafRegionForScope(a.Scope.Data))
+	svc := conn.Wafv2(a.Region.Data)
 	ctx := context.Background()
 
 	resp, err := svc.GetWebACL(ctx, &wafv2.GetWebACLInput{
@@ -67,8 +157,12 @@ func (a *mqlAwsWafAcl) fetchACLDetails() error {
 	if err != nil {
 		return err
 	}
+	if resp.WebACL == nil {
+		return errors.New("GetWebACL returned no web acl for " + a.Name.Data)
+	}
 	a.cachedManagedByFwManager = resp.WebACL.ManagedByFirewallManager
 	a.cachedRules = resp.WebACL.Rules
+	a.cachedACL = resp.WebACL
 	a.fetched = true
 	return nil
 }
@@ -78,6 +172,158 @@ func (a *mqlAwsWafAcl) managedByFirewallManager() (bool, error) {
 		return false, err
 	}
 	return a.cachedManagedByFwManager, nil
+}
+
+func (a *mqlAwsWafAcl) defaultAction() (string, error) {
+	if err := a.fetchACLDetails(); err != nil {
+		return "", err
+	}
+	action := ""
+	if a.cachedACL != nil && a.cachedACL.DefaultAction != nil {
+		if a.cachedACL.DefaultAction.Allow != nil {
+			action = "allow"
+		} else if a.cachedACL.DefaultAction.Block != nil {
+			action = "block"
+		}
+	}
+	return action, nil
+}
+
+func (a *mqlAwsWafAcl) visibilityConfig() (any, error) {
+	if err := a.fetchACLDetails(); err != nil {
+		return nil, err
+	}
+	if a.cachedACL == nil {
+		return nil, nil
+	}
+	return wafVisibilityConfigToDict(a.cachedACL.VisibilityConfig), nil
+}
+
+func (a *mqlAwsWafAcl) visibility() (*mqlAwsWafVisibilityConfig, error) {
+	if err := a.fetchACLDetails(); err != nil {
+		return nil, err
+	}
+	if a.cachedACL == nil {
+		a.Visibility.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return newMqlWafVisibilityConfig(a.MqlRuntime, a.Arn.Data, a.cachedACL.VisibilityConfig)
+}
+
+func (a *mqlAwsWafAcl) capacity() (int64, error) {
+	if err := a.fetchACLDetails(); err != nil {
+		return 0, err
+	}
+	if a.cachedACL == nil {
+		return 0, nil
+	}
+	return a.cachedACL.Capacity, nil
+}
+
+func (a *mqlAwsWafAcl) tokenDomains() ([]any, error) {
+	if err := a.fetchACLDetails(); err != nil {
+		return nil, err
+	}
+	if a.cachedACL == nil {
+		return nil, nil
+	}
+	return convert.SliceAnyToInterface(a.cachedACL.TokenDomains), nil
+}
+
+func (a *mqlAwsWafAcl) labelNamespace() (string, error) {
+	if err := a.fetchACLDetails(); err != nil {
+		return "", err
+	}
+	if a.cachedACL == nil {
+		return "", nil
+	}
+	return convert.ToValue(a.cachedACL.LabelNamespace), nil
+}
+
+// newMqlWafVisibilityConfig builds the visibility settings shared by a web ACL
+// and every rule inside it. A nil VisibilityConfig means the ACL or rule
+// reports no visibility settings, which reads the same way as having them off:
+// nothing is emitted and nothing is sampled.
+func newMqlWafVisibilityConfig(runtime *plugin.Runtime, ownerID string, vc *waftypes.VisibilityConfig) (*mqlAwsWafVisibilityConfig, error) {
+	metricsEnabled := false
+	sampledRequests := false
+	metricName := ""
+	if vc != nil {
+		metricsEnabled = vc.CloudWatchMetricsEnabled
+		sampledRequests = vc.SampledRequestsEnabled
+		metricName = convert.ToValue(vc.MetricName)
+	}
+	res, err := CreateResource(runtime, "aws.waf.visibilityConfig", map[string]*llx.RawData{
+		"__id":                     llx.StringData(ownerID + "/visibilityConfig"),
+		"cloudWatchMetricsEnabled": llx.BoolData(metricsEnabled),
+		"sampledRequestsEnabled":   llx.BoolData(sampledRequests),
+		"metricName":               llx.StringData(metricName),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsWafVisibilityConfig), nil
+}
+
+func wafVisibilityConfigToDict(vc *waftypes.VisibilityConfig) map[string]any {
+	if vc == nil {
+		return nil
+	}
+	return map[string]any{
+		"cloudWatchMetricsEnabled": vc.CloudWatchMetricsEnabled,
+		"sampledRequestsEnabled":   vc.SampledRequestsEnabled,
+		"metricName":               convert.ToValue(vc.MetricName),
+	}
+}
+
+func wafLoggingFilterToDict(lf *waftypes.LoggingFilter) map[string]any {
+	if lf == nil {
+		return nil
+	}
+	filters := []any{}
+	for _, f := range lf.Filters {
+		conditions := []any{}
+		for _, c := range f.Conditions {
+			cond := map[string]any{}
+			if c.ActionCondition != nil {
+				cond["actionCondition"] = string(c.ActionCondition.Action)
+			}
+			if c.LabelNameCondition != nil {
+				cond["labelNameCondition"] = convert.ToValue(c.LabelNameCondition.LabelName)
+			}
+			conditions = append(conditions, cond)
+		}
+		filters = append(filters, map[string]any{
+			"behavior":    string(f.Behavior),
+			"requirement": string(f.Requirement),
+			"conditions":  conditions,
+		})
+	}
+	return map[string]any{
+		"defaultBehavior": string(lf.DefaultBehavior),
+		"filters":         filters,
+	}
+}
+
+func wafRuleLabelsToInterface(labels []waftypes.Label) []any {
+	res := []any{}
+	for _, l := range labels {
+		res = append(res, convert.ToValue(l.Name))
+	}
+	return res
+}
+
+func wafOverrideActionString(oa *waftypes.OverrideAction) string {
+	if oa == nil {
+		return ""
+	}
+	if oa.Count != nil {
+		return "count"
+	}
+	if oa.None != nil {
+		return "none"
+	}
+	return ""
 }
 
 func (a *mqlAwsWafRule) id() (string, error) {
@@ -114,7 +360,7 @@ func (a *mqlAwsWafIpset) fetchIPSet() error {
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.Wafv2(wafRegionForScope(a.Scope.Data))
+	svc := conn.Wafv2(a.Region.Data)
 	ctx := context.Background()
 
 	resp, err := svc.GetIPSet(ctx, &wafv2.GetIPSetInput{
@@ -124,6 +370,9 @@ func (a *mqlAwsWafIpset) fetchIPSet() error {
 	})
 	if err != nil {
 		return err
+	}
+	if resp.IPSet == nil {
+		return errors.New("GetIPSet returned no ip set for " + a.Name.Data)
 	}
 	a.cachedAddrType = string(resp.IPSet.IPAddressVersion)
 	a.cachedAddresses = convert.SliceAnyToInterface(resp.IPSet.Addresses)
@@ -150,57 +399,98 @@ func initAwsWaf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[stri
 		return args, nil, nil
 	}
 
+	// No scope means both. Defaulting to CLOUDFRONT reported an empty WAF
+	// estate for every account whose web ACLs are regional, which is most of
+	// them, and said nothing about having only looked at one half.
 	scope := ""
 	if x, ok := args["scope"]; ok {
-		scope = x.Value.(string)
-	} else {
-		scope = "CLOUDFRONT"
+		scope, _ = x.Value.(string)
 	}
 	args["scope"] = llx.StringData(scope)
 
-	log.Debug().Msgf("AWS WAF using scope: %s", scope)
+	log.Debug().Str("scope", scope).Msg("aws waf scope")
 
 	return args, nil, nil
+}
+
+// wafAcross runs fn once for every scope and region in play and concatenates
+// the results. CLOUDFRONT contributes one region; REGIONAL contributes the
+// connection's whole region list. forRegions does the per-region work, so a
+// region where WAF is unavailable contributes nothing, a region the caller may
+// not read is recorded as a coverage gap, and one bad region does not discard
+// the rest.
+//
+// A scope that fails outright does not discard the other one either: the error
+// is only returned when neither scope produced anything.
+func wafAcross(conn *connection.AwsConnection, scope string,
+	fn func(ctx context.Context, scope, region string) ([]any, error),
+) ([]any, error) {
+	res := []any{}
+	var firstErr error
+
+	for _, s := range wafScopesFor(scope) {
+		regions, err := wafRegionsFor(conn, s)
+		if err != nil {
+			return nil, err
+		}
+
+		items, err := forRegions(conn, "wafv2", regions,
+			func(ctx context.Context, region string) ([]any, error) {
+				return fn(ctx, s, region)
+			})
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		res = append(res, items...)
+	}
+
+	if firstErr != nil && len(res) == 0 {
+		return nil, firstErr
+	}
+	return res, nil
 }
 
 func (a *mqlAwsWaf) acls() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
-	scopeString := a.Scope.Data
-	svc := conn.Wafv2(wafRegionForScope(scopeString))
-	ctx := context.Background()
-	acls := []any{}
-	nextMarker := aws.String("No-Marker-to-begin-with")
-	scope := waftypes.Scope(scopeString)
-	params := &wafv2.ListWebACLsInput{Scope: scope}
-	for nextMarker != nil {
-		aclsRes, err := svc.ListWebACLs(ctx, params)
-		if err != nil {
-			return nil, err
-		}
-		nextMarker = aclsRes.NextMarker
-		if aclsRes.NextMarker != nil {
-			params.NextMarker = nextMarker
-		}
-
-		for _, acl := range aclsRes.WebACLs {
-			mqlAcl, err := CreateResource(a.MqlRuntime, "aws.waf.acl",
-				map[string]*llx.RawData{
-					"__id":        llx.StringDataPtr(acl.ARN),
-					"id":          llx.StringDataPtr(acl.Id),
-					"scope":       llx.StringData(scopeString),
-					"arn":         llx.StringDataPtr(acl.ARN),
-					"name":        llx.StringDataPtr(acl.Name),
-					"description": llx.StringDataPtr(acl.Description),
-				},
-			)
+	return wafAcross(conn, a.Scope.Data, func(ctx context.Context, scope, region string) ([]any, error) {
+		svc := conn.Wafv2(region)
+		acls := []any{}
+		params := &wafv2.ListWebACLsInput{Scope: waftypes.Scope(scope)}
+		for {
+			aclsRes, err := svc.ListWebACLs(ctx, params)
 			if err != nil {
 				return nil, err
 			}
-			acls = append(acls, mqlAcl)
+
+			for _, acl := range aclsRes.WebACLs {
+				mqlAcl, err := CreateResource(a.MqlRuntime, "aws.waf.acl",
+					map[string]*llx.RawData{
+						"__id":        llx.StringDataPtr(acl.ARN),
+						"id":          llx.StringDataPtr(acl.Id),
+						"scope":       llx.StringData(scope),
+						"region":      llx.StringData(region),
+						"arn":         llx.StringDataPtr(acl.ARN),
+						"name":        llx.StringDataPtr(acl.Name),
+						"description": llx.StringDataPtr(acl.Description),
+					},
+				)
+				if err != nil {
+					return nil, err
+				}
+				acls = append(acls, mqlAcl)
+			}
+
+			if aclsRes.NextMarker == nil {
+				break
+			}
+			params.NextMarker = aclsRes.NextMarker
 		}
-	}
-	return acls, nil
+		return acls, nil
+	})
 }
 
 func (a *mqlAwsWafRuleStatementSqlimatchstatement) id() (string, error) {
@@ -248,7 +538,7 @@ func (a *mqlAwsWafRuleStatementAndstatement) id() (string, error) {
 }
 
 func (a *mqlAwsWafRuleStatementRatebasedstatement) id() (string, error) {
-	return "not implemented", nil
+	return a.StatementID.Data, nil
 }
 
 func (a *mqlAwsWafRuleStatementRegexpatternsetreferencestatement) id() (string, error) {
@@ -310,10 +600,9 @@ func (a *mqlAwsWafRuleFieldtomatchJa3fingerprint) id() (string, error) {
 func (a *mqlAwsWafRulegroup) rules() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
-	scopeString := a.Scope.Data
-	scope := waftypes.Scope(scopeString)
+	scope := waftypes.Scope(a.Scope.Data)
 	ctx := context.Background()
-	svc := conn.Wafv2(wafRegionForScope(scopeString))
+	svc := conn.Wafv2(a.Region.Data)
 	rules := []any{}
 	params := &wafv2.GetRuleGroupInput{
 		Id:    &a.Id.Data,
@@ -324,24 +613,39 @@ func (a *mqlAwsWafRulegroup) rules() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if ruleGroupDetails.RuleGroup == nil {
+		return nil, errors.New("GetRuleGroup returned no rule group for " + a.Name.Data)
+	}
 	for _, rule := range ruleGroupDetails.RuleGroup.Rules {
+		if rule.Name == nil {
+			log.Debug().Str("rulegroup", a.Arn.Data).Msg("skipping a rule group rule with no name")
+			continue
+		}
 		ruleID := a.Arn.Data + "/" + *rule.Name
 		mqlStatement, err := createStatementResource(a.MqlRuntime, rule.Statement, rule.Name, ruleID)
 		if err != nil {
 			return nil, err
 		}
-		ruleAction, err := createActionResource(a.MqlRuntime, rule.Action, rule.Name)
+		ruleAction, err := createActionResource(a.MqlRuntime, rule.Action, rule.Name, ruleID)
+		if err != nil {
+			return nil, err
+		}
+		mqlVisibility, err := newMqlWafVisibilityConfig(a.MqlRuntime, ruleID, rule.VisibilityConfig)
 		if err != nil {
 			return nil, err
 		}
 		mqlRule, err := CreateResource(a.MqlRuntime, "aws.waf.rule",
 			map[string]*llx.RawData{
-				"id":        llx.StringData(ruleID),
-				"name":      llx.StringDataPtr(rule.Name),
-				"priority":  llx.IntData(int64(rule.Priority)),
-				"action":    llx.ResourceData(ruleAction, "aws.waf.rule.action"),
-				"statement": llx.ResourceData(mqlStatement, "aws.waf.rule.statement"),
-				"belongsTo": llx.StringData(a.Arn.Data),
+				"id":               llx.StringData(ruleID),
+				"name":             llx.StringDataPtr(rule.Name),
+				"priority":         llx.IntData(int64(rule.Priority)),
+				"action":           llx.ResourceData(ruleAction, "aws.waf.rule.action"),
+				"overrideAction":   llx.StringData(wafOverrideActionString(rule.OverrideAction)),
+				"visibilityConfig": llx.DictData(wafVisibilityConfigToDict(rule.VisibilityConfig)),
+				"ruleLabels":       llx.ArrayData(wafRuleLabelsToInterface(rule.RuleLabels), types.String),
+				"statement":        llx.ResourceData(mqlStatement, "aws.waf.rule.statement"),
+				"belongsTo":        llx.StringData(a.Arn.Data),
+				"visibility":       llx.ResourceData(mqlVisibility, "aws.waf.visibilityConfig"),
 			},
 		)
 		if err != nil {
@@ -355,81 +659,81 @@ func (a *mqlAwsWafRulegroup) rules() ([]any, error) {
 func (a *mqlAwsWaf) ruleGroups() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
-	scopeString := a.Scope.Data
-	svc := conn.Wafv2(wafRegionForScope(scopeString))
-	ctx := context.Background()
-	acls := []any{}
-	nextMarker := aws.String("No-Marker-to-begin-with")
-	scope := waftypes.Scope(scopeString)
-	params := &wafv2.ListRuleGroupsInput{Scope: scope}
-	for nextMarker != nil {
-		aclsRes, err := svc.ListRuleGroups(ctx, params)
-		if err != nil {
-			return nil, err
-		}
-		nextMarker = aclsRes.NextMarker
-		if aclsRes.NextMarker != nil {
-			params.NextMarker = nextMarker
-		}
-
-		for _, ruleGroup := range aclsRes.RuleGroups {
-			mqlRuleGroup, err := CreateResource(a.MqlRuntime, "aws.waf.rulegroup",
-				map[string]*llx.RawData{
-					"__id":        llx.StringDataPtr(ruleGroup.ARN),
-					"id":          llx.StringDataPtr(ruleGroup.Id),
-					"arn":         llx.StringDataPtr(ruleGroup.ARN),
-					"name":        llx.StringDataPtr(ruleGroup.Name),
-					"description": llx.StringDataPtr(ruleGroup.Description),
-					"scope":       llx.StringData(scopeString),
-				},
-			)
+	return wafAcross(conn, a.Scope.Data, func(ctx context.Context, scope, region string) ([]any, error) {
+		svc := conn.Wafv2(region)
+		res := []any{}
+		params := &wafv2.ListRuleGroupsInput{Scope: waftypes.Scope(scope)}
+		for {
+			listRes, err := svc.ListRuleGroups(ctx, params)
 			if err != nil {
 				return nil, err
 			}
-			acls = append(acls, mqlRuleGroup)
+
+			for _, ruleGroup := range listRes.RuleGroups {
+				mqlRes, err := CreateResource(a.MqlRuntime, "aws.waf.rulegroup",
+					map[string]*llx.RawData{
+						"__id":        llx.StringDataPtr(ruleGroup.ARN),
+						"id":          llx.StringDataPtr(ruleGroup.Id),
+						"arn":         llx.StringDataPtr(ruleGroup.ARN),
+						"name":        llx.StringDataPtr(ruleGroup.Name),
+						"description": llx.StringDataPtr(ruleGroup.Description),
+						"scope":       llx.StringData(scope),
+						"region":      llx.StringData(region),
+					},
+				)
+				if err != nil {
+					return nil, err
+				}
+				res = append(res, mqlRes)
+			}
+
+			if listRes.NextMarker == nil {
+				break
+			}
+			params.NextMarker = listRes.NextMarker
 		}
-	}
-	return acls, nil
+		return res, nil
+	})
 }
 
 func (a *mqlAwsWaf) ipSets() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
-	scopeString := a.Scope.Data
-	svc := conn.Wafv2(wafRegionForScope(scopeString))
-	ctx := context.Background()
-	acls := []any{}
-	nextMarker := aws.String("No-Marker-to-begin-with")
-	scope := waftypes.Scope(scopeString)
-	params := &wafv2.ListIPSetsInput{Scope: scope}
-	for nextMarker != nil {
-		aclsRes, err := svc.ListIPSets(ctx, params)
-		if err != nil {
-			return nil, err
-		}
-		nextMarker = aclsRes.NextMarker
-		if aclsRes.NextMarker != nil {
-			params.NextMarker = nextMarker
-		}
-
-		for _, ipset := range aclsRes.IPSets {
-			mqlIPSet, err := CreateResource(a.MqlRuntime, "aws.waf.ipset",
-				map[string]*llx.RawData{
-					"__id":        llx.StringDataPtr(ipset.ARN),
-					"id":          llx.StringDataPtr(ipset.Id),
-					"arn":         llx.StringDataPtr(ipset.ARN),
-					"name":        llx.StringDataPtr(ipset.Name),
-					"description": llx.StringDataPtr(ipset.Description),
-					"scope":       llx.StringData(scopeString),
-				},
-			)
+	return wafAcross(conn, a.Scope.Data, func(ctx context.Context, scope, region string) ([]any, error) {
+		svc := conn.Wafv2(region)
+		res := []any{}
+		params := &wafv2.ListIPSetsInput{Scope: waftypes.Scope(scope)}
+		for {
+			listRes, err := svc.ListIPSets(ctx, params)
 			if err != nil {
 				return nil, err
 			}
-			acls = append(acls, mqlIPSet)
+
+			for _, ipset := range listRes.IPSets {
+				mqlRes, err := CreateResource(a.MqlRuntime, "aws.waf.ipset",
+					map[string]*llx.RawData{
+						"__id":        llx.StringDataPtr(ipset.ARN),
+						"id":          llx.StringDataPtr(ipset.Id),
+						"arn":         llx.StringDataPtr(ipset.ARN),
+						"name":        llx.StringDataPtr(ipset.Name),
+						"description": llx.StringDataPtr(ipset.Description),
+						"scope":       llx.StringData(scope),
+						"region":      llx.StringData(region),
+					},
+				)
+				if err != nil {
+					return nil, err
+				}
+				res = append(res, mqlRes)
+			}
+
+			if listRes.NextMarker == nil {
+				break
+			}
+			params.NextMarker = listRes.NextMarker
 		}
-	}
-	return acls, nil
+		return res, nil
+	})
 }
 
 func (a *mqlAwsWafAcl) rules() ([]any, error) {
@@ -443,18 +747,26 @@ func (a *mqlAwsWafAcl) rules() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		ruleAction, err := createActionResource(a.MqlRuntime, rule.Action, rule.Name)
+		ruleAction, err := createActionResource(a.MqlRuntime, rule.Action, rule.Name, ruleID)
+		if err != nil {
+			return nil, err
+		}
+		mqlVisibility, err := newMqlWafVisibilityConfig(a.MqlRuntime, ruleID, rule.VisibilityConfig)
 		if err != nil {
 			return nil, err
 		}
 		mqlRule, err := CreateResource(a.MqlRuntime, "aws.waf.rule",
 			map[string]*llx.RawData{
-				"id":        llx.StringData(ruleID),
-				"name":      llx.StringDataPtr(rule.Name),
-				"priority":  llx.IntData(int64(rule.Priority)),
-				"action":    llx.ResourceData(ruleAction, "aws.waf.rule.action"),
-				"statement": llx.ResourceData(mqlStatement, "aws.waf.rule.statement"),
-				"belongsTo": llx.StringData(a.Arn.Data),
+				"id":               llx.StringData(ruleID),
+				"name":             llx.StringDataPtr(rule.Name),
+				"priority":         llx.IntData(int64(rule.Priority)),
+				"action":           llx.ResourceData(ruleAction, "aws.waf.rule.action"),
+				"overrideAction":   llx.StringData(wafOverrideActionString(rule.OverrideAction)),
+				"visibilityConfig": llx.DictData(wafVisibilityConfigToDict(rule.VisibilityConfig)),
+				"ruleLabels":       llx.ArrayData(wafRuleLabelsToInterface(rule.RuleLabels), types.String),
+				"statement":        llx.ResourceData(mqlStatement, "aws.waf.rule.statement"),
+				"belongsTo":        llx.StringData(a.Arn.Data),
+				"visibility":       llx.ResourceData(mqlVisibility, "aws.waf.visibilityConfig"),
 			},
 		)
 		if err != nil {
@@ -465,7 +777,7 @@ func (a *mqlAwsWafAcl) rules() ([]any, error) {
 	return rules, nil
 }
 
-func createActionResource(runtime *plugin.Runtime, ruleAction *waftypes.RuleAction, ruleName *string) (plugin.Resource, error) {
+func createActionResource(runtime *plugin.Runtime, ruleAction *waftypes.RuleAction, ruleName *string, ruleID string) (plugin.Resource, error) {
 	var mqlAction plugin.Resource
 	var err error
 
@@ -496,11 +808,50 @@ func createActionResource(runtime *plugin.Runtime, ruleAction *waftypes.RuleActi
 		}
 	}
 	mqlAction, err = CreateResource(runtime, "aws.waf.rule.action", map[string]*llx.RawData{
+		"__id":         llx.StringData(ruleID + "/action"),
 		"ruleName":     llx.StringDataPtr(ruleName),
 		"action":       llx.StringData(action),
 		"responseCode": llx.StringData(responseCode),
 	})
 	return mqlAction, err
+}
+
+// wafRuleActionOverridesToMap flattens the per-rule action overrides of a
+// managed rule group into a rule-name to action map. The action names match
+// those of aws.waf.rule.action, so a rule flipped to "count" reads the same on
+// both.
+func wafRuleActionOverridesToMap(overrides []waftypes.RuleActionOverride) map[string]any {
+	res := make(map[string]any, len(overrides))
+	for _, override := range overrides {
+		name := convert.ToValue(override.Name)
+		if name == "" {
+			continue
+		}
+		res[name] = wafRuleActionString(override.ActionToUse)
+	}
+	return res
+}
+
+// wafRuleActionString names the single action set on a RuleAction union.
+// It returns "" when no action is set, so an unset override never reads as an
+// allow.
+func wafRuleActionString(action *waftypes.RuleAction) string {
+	if action == nil {
+		return ""
+	}
+	switch {
+	case action.Allow != nil:
+		return "allow"
+	case action.Block != nil:
+		return "block"
+	case action.Count != nil:
+		return "count"
+	case action.Captcha != nil:
+		return "captcha"
+	case action.Challenge != nil:
+		return "challenge"
+	}
+	return ""
 }
 
 func createStatementResource(runtime *plugin.Runtime, statement *waftypes.Statement, ruleName *string, ruleID string) (plugin.Resource, error) {
@@ -616,6 +967,7 @@ func createStatementResource(runtime *plugin.Runtime, statement *waftypes.Statem
 			var IPSetForwardedIPConfig plugin.Resource
 			if statement.IPSetReferenceStatement.IPSetForwardedIPConfig != nil {
 				IPSetForwardedIPConfig, err = CreateResource(runtime, "aws.waf.rule.statement.ipsetreferencestatement.ipsetforwardedipconfig", map[string]*llx.RawData{
+					"__id":             llx.StringData(mqlStatementID + "/ipsetforwardedipconfig"),
 					"statementID":      llx.StringData(mqlStatementID),
 					"ruleName":         llx.StringDataPtr(ruleName),
 					"headerName":       llx.StringDataPtr(statement.IPSetReferenceStatement.IPSetForwardedIPConfig.HeaderName),
@@ -650,11 +1002,18 @@ func createStatementResource(runtime *plugin.Runtime, statement *waftypes.Statem
 		}
 		if statement.ManagedRuleGroupStatement != nil {
 			kind = "ManagedRuleGroupStatement"
+			excludedRules := make([]any, 0, len(statement.ManagedRuleGroupStatement.ExcludedRules))
+			for _, excluded := range statement.ManagedRuleGroupStatement.ExcludedRules {
+				excludedRules = append(excludedRules, convert.ToValue(excluded.Name))
+			}
 			managedrulegroupstatement, err = CreateResource(runtime, "aws.waf.rule.statement.managedrulegroupstatement", map[string]*llx.RawData{
-				"statementID": llx.StringData(mqlStatementID),
-				"ruleName":    llx.StringDataPtr(ruleName),
-				"name":        llx.StringDataPtr(statement.ManagedRuleGroupStatement.Name),
-				"vendorName":  llx.StringDataPtr(statement.ManagedRuleGroupStatement.VendorName),
+				"statementID":         llx.StringData(mqlStatementID),
+				"ruleName":            llx.StringDataPtr(ruleName),
+				"name":                llx.StringDataPtr(statement.ManagedRuleGroupStatement.Name),
+				"vendorName":          llx.StringDataPtr(statement.ManagedRuleGroupStatement.VendorName),
+				"version":             llx.StringDataPtr(statement.ManagedRuleGroupStatement.Version),
+				"ruleActionOverrides": llx.MapData(wafRuleActionOverridesToMap(statement.ManagedRuleGroupStatement.RuleActionOverrides), types.String),
+				"excludedRules":       llx.ArrayData(excludedRules, types.String),
 			})
 			if err != nil {
 				return nil, err
@@ -716,7 +1075,31 @@ func createStatementResource(runtime *plugin.Runtime, statement *waftypes.Statem
 		}
 		if statement.RateBasedStatement != nil {
 			kind = "RateBasedStatement"
-			ratebasedstatement, err = CreateResource(runtime, "aws.waf.rule.statement.ratebasedstatement", map[string]*llx.RawData{})
+			rbs := statement.RateBasedStatement
+			customKeys, err := convert.JsonToDictSlice(rbs.CustomKeys)
+			if err != nil {
+				return nil, err
+			}
+			// A rate limit that only counts a subset of requests carries a
+			// scope-down statement; without one the limit applies to everything
+			// the web ACL sees.
+			scopeDown := llx.NilData
+			if rbs.ScopeDownStatement != nil {
+				mqlScopeDown, err := createStatementResource(runtime, rbs.ScopeDownStatement, ruleName, ruleID)
+				if err != nil {
+					return nil, err
+				}
+				scopeDown = llx.ResourceData(mqlScopeDown, "aws.waf.rule.statement")
+			}
+			ratebasedstatement, err = CreateResource(runtime, "aws.waf.rule.statement.ratebasedstatement", map[string]*llx.RawData{
+				"statementID":         llx.StringData(mqlStatementID),
+				"ruleName":            llx.StringDataPtr(ruleName),
+				"limit":               llx.IntDataDefault(rbs.Limit, 0),
+				"evaluationWindowSec": llx.IntData(rbs.EvaluationWindowSec),
+				"aggregateKeyType":    llx.StringData(string(rbs.AggregateKeyType)),
+				"customKeys":          llx.ArrayData(customKeys, types.Dict),
+				"scopeDownStatement":  scopeDown,
+			})
 			if err != nil {
 				return nil, err
 			}
@@ -854,7 +1237,8 @@ func createFieldToMatchResource(runtime *plugin.Runtime, fieldToMatch *waftypes.
 	}
 	if fieldToMatch.HeaderOrder != nil {
 		target = "HeaderOrder"
-		headerOrder, err = CreateResource(runtime, "aws.waf.rule.fieldtomatch.headerOrder", map[string]*llx.RawData{
+		headerOrder, err = CreateResource(runtime, ResourceAwsWafRuleFieldtomatchHeaderorder, map[string]*llx.RawData{
+			"__id":             llx.StringData(mqlStatementID + "/headerOrder"),
 			"statementID":      llx.StringData(mqlStatementID),
 			"ruleName":         llx.StringDataPtr(ruleName),
 			"overSizeHandling": llx.StringData(string(fieldToMatch.HeaderOrder.OversizeHandling)),
@@ -881,7 +1265,8 @@ func createFieldToMatchResource(runtime *plugin.Runtime, fieldToMatch *waftypes.
 		if fieldToMatch.Headers.MatchPattern != nil {
 			includeHeaders := convert.SliceAnyToInterface(fieldToMatch.Headers.MatchPattern.IncludedHeaders)
 			excludeHeaders := convert.SliceAnyToInterface(fieldToMatch.Headers.MatchPattern.ExcludedHeaders)
-			matchPattern, err = CreateResource(runtime, "aws.waf.rule.fieldtomatch.jsonbody.matchpattern", map[string]*llx.RawData{
+			matchPattern, err = CreateResource(runtime, ResourceAwsWafRuleFieldtomatchHeadersMatchpattern, map[string]*llx.RawData{
+				"__id":           llx.StringData(mqlStatementID + "/headers/matchPattern"),
 				"statementID":    llx.StringData(mqlStatementID),
 				"ruleName":       llx.StringDataPtr(ruleName),
 				"all":            llx.BoolData(fieldToMatch.Headers.MatchPattern.All != nil),
@@ -892,10 +1277,11 @@ func createFieldToMatchResource(runtime *plugin.Runtime, fieldToMatch *waftypes.
 				return nil, err
 			}
 		}
-		headers, err = CreateResource(runtime, "aws.waf.rule.fieldtomatch.headers", map[string]*llx.RawData{
+		headers, err = CreateResource(runtime, ResourceAwsWafRuleFieldtomatchHeaders, map[string]*llx.RawData{
+			"__id":             llx.StringData(mqlStatementID + "/headers"),
 			"statementID":      llx.StringData(mqlStatementID),
 			"ruleName":         llx.StringDataPtr(ruleName),
-			"matchPattern":     llx.ResourceData(matchPattern, "aws.waf.rule.fieldtomatch.headers.matchpatern"),
+			"matchPattern":     llx.ResourceData(matchPattern, ResourceAwsWafRuleFieldtomatchHeadersMatchpattern),
 			"overSizeHandling": llx.StringData(string(fieldToMatch.Headers.OversizeHandling)),
 			"matchScope":       llx.StringData(string(fieldToMatch.Headers.MatchScope)),
 		})
@@ -973,69 +1359,93 @@ func (a *mqlAwsWafRegexPatternSet) id() (string, error) {
 func (a *mqlAwsWaf) regexPatternSets() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
-	scopeString := a.Scope.Data
-	svc := conn.Wafv2(wafRegionForScope(scopeString))
-	ctx := context.Background()
-	res := []any{}
-	nextMarker := aws.String("No-Marker-to-begin-with")
-	scope := waftypes.Scope(scopeString)
-	params := &wafv2.ListRegexPatternSetsInput{Scope: scope}
-	for nextMarker != nil {
-		setsRes, err := svc.ListRegexPatternSets(ctx, params)
-		if err != nil {
-			return nil, err
-		}
-		nextMarker = setsRes.NextMarker
-		if setsRes.NextMarker != nil {
-			params.NextMarker = nextMarker
-		}
-
-		for _, summary := range setsRes.RegexPatternSets {
-			getParams := &wafv2.GetRegexPatternSetInput{
-				Id:    summary.Id,
-				Name:  summary.Name,
-				Scope: scope,
-			}
-			details, err := svc.GetRegexPatternSet(ctx, getParams)
+	return wafAcross(conn, a.Scope.Data, func(ctx context.Context, scopeString, region string) ([]any, error) {
+		svc := conn.Wafv2(region)
+		scope := waftypes.Scope(scopeString)
+		res := []any{}
+		params := &wafv2.ListRegexPatternSetsInput{Scope: scope}
+		for {
+			setsRes, err := svc.ListRegexPatternSets(ctx, params)
 			if err != nil {
 				return nil, err
 			}
-			regexes := []any{}
-			if details.RegexPatternSet != nil {
-				for _, r := range details.RegexPatternSet.RegularExpressionList {
-					if r.RegexString != nil {
-						regexes = append(regexes, *r.RegexString)
+
+			for _, summary := range setsRes.RegexPatternSets {
+				getParams := &wafv2.GetRegexPatternSetInput{
+					Id:    summary.Id,
+					Name:  summary.Name,
+					Scope: scope,
+				}
+				details, err := svc.GetRegexPatternSet(ctx, getParams)
+				if err != nil {
+					return nil, err
+				}
+				regexes := []any{}
+				if details.RegexPatternSet != nil {
+					for _, r := range details.RegexPatternSet.RegularExpressionList {
+						if r.RegexString != nil {
+							regexes = append(regexes, *r.RegexString)
+						}
 					}
 				}
+				mqlSet, err := CreateResource(a.MqlRuntime, "aws.waf.regexPatternSet",
+					map[string]*llx.RawData{
+						"__id":               llx.StringDataPtr(summary.ARN),
+						"id":                 llx.StringDataPtr(summary.Id),
+						"arn":                llx.StringDataPtr(summary.ARN),
+						"name":               llx.StringDataPtr(summary.Name),
+						"description":        llx.StringDataPtr(summary.Description),
+						"scope":              llx.StringData(scopeString),
+						"region":             llx.StringData(region),
+						"regularExpressions": llx.ArrayData(regexes, types.String),
+					},
+				)
+				if err != nil {
+					return nil, err
+				}
+				res = append(res, mqlSet)
 			}
-			mqlSet, err := CreateResource(a.MqlRuntime, "aws.waf.regexPatternSet",
-				map[string]*llx.RawData{
-					"__id":               llx.StringDataPtr(summary.ARN),
-					"id":                 llx.StringDataPtr(summary.Id),
-					"arn":                llx.StringDataPtr(summary.ARN),
-					"name":               llx.StringDataPtr(summary.Name),
-					"description":        llx.StringDataPtr(summary.Description),
-					"scope":              llx.StringData(scopeString),
-					"regularExpressions": llx.ArrayData(regexes, types.String),
-				},
-			)
-			if err != nil {
-				return nil, err
+
+			if setsRes.NextMarker == nil {
+				break
 			}
-			res = append(res, mqlSet)
+			params.NextMarker = setsRes.NextMarker
 		}
-	}
-	return res, nil
+		return res, nil
+	})
 }
 
 func (a *mqlAwsWafAclLoggingConfiguration) id() (string, error) {
 	return a.Arn.Data, nil
 }
 
+// newEmptyWafLoggingConfiguration reports a web ACL that logs nowhere. Reading
+// that as a resource with no destinations rather than as a null keeps the
+// negative answer assertable: a null logDestinationConfigs would make a check
+// for "this ACL logs somewhere" pass without having established anything.
+func newEmptyWafLoggingConfiguration(runtime *plugin.Runtime, aclArn string) (*mqlAwsWafAclLoggingConfiguration, error) {
+	res, err := CreateResource(runtime, "aws.waf.acl.loggingConfiguration",
+		map[string]*llx.RawData{
+			"__id":                     llx.StringData(aclArn),
+			"arn":                      llx.StringData(aclArn),
+			"logDestinationConfigs":    llx.ArrayData([]any{}, types.String),
+			"managedByFirewallManager": llx.BoolData(false),
+			"redactedFields":           llx.ArrayData([]any{}, types.String),
+			"loggingFilter":            llx.DictData(nil),
+			"logScope":                 llx.StringData(""),
+			"logType":                  llx.StringData(""),
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsWafAclLoggingConfiguration), nil
+}
+
 func (a *mqlAwsWafAcl) loggingConfiguration() (*mqlAwsWafAclLoggingConfiguration, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
-	svc := conn.Wafv2(wafRegionForScope(a.Scope.Data))
+	svc := conn.Wafv2(a.Region.Data)
 	ctx := context.Background()
 
 	arnVal := a.Arn.Data
@@ -1043,27 +1453,19 @@ func (a *mqlAwsWafAcl) loggingConfiguration() (*mqlAwsWafAclLoggingConfiguration
 		ResourceArn: &arnVal,
 	})
 	if err != nil {
-		var notFound *waftypes.WAFNonexistentItemException
-		if !errors.As(err, &notFound) {
+		if _, ok := errors.AsType[*waftypes.WAFNonexistentItemException](err); !ok {
 			return nil, err
 		}
-		// No logging configuration exists — return resource with empty destinations
 		log.Debug().Str("acl", arnVal).Msg("no logging configuration found for web ACL")
-		res, createErr := CreateResource(a.MqlRuntime, "aws.waf.acl.loggingConfiguration",
-			map[string]*llx.RawData{
-				"__id":                     llx.StringData(arnVal),
-				"arn":                      llx.StringData(arnVal),
-				"logDestinationConfigs":    llx.ArrayData([]any{}, types.String),
-				"managedByFirewallManager": llx.BoolData(false),
-				"redactedFields":           llx.ArrayData([]any{}, types.String),
-			},
-		)
-		if createErr != nil {
-			return nil, createErr
-		}
-		return res.(*mqlAwsWafAclLoggingConfiguration), nil
+		return newEmptyWafLoggingConfiguration(a.MqlRuntime, arnVal)
 	}
 
+	if resp.LoggingConfiguration == nil {
+		// A 200 with no configuration in it means the same thing as the
+		// exception above, and WAF is not consistent about which one it sends.
+		log.Debug().Str("acl", arnVal).Msg("empty logging configuration returned for web ACL")
+		return newEmptyWafLoggingConfiguration(a.MqlRuntime, arnVal)
+	}
 	logConfig := resp.LoggingConfiguration
 	destinations := convert.SliceAnyToInterface(logConfig.LogDestinationConfigs)
 
@@ -1087,6 +1489,9 @@ func (a *mqlAwsWafAcl) loggingConfiguration() (*mqlAwsWafAclLoggingConfiguration
 			"logDestinationConfigs":    llx.ArrayData(destinations, types.String),
 			"managedByFirewallManager": llx.BoolData(logConfig.ManagedByFirewallManager),
 			"redactedFields":           llx.ArrayData(redactedFields, types.String),
+			"loggingFilter":            llx.DictData(wafLoggingFilterToDict(logConfig.LoggingFilter)),
+			"logScope":                 llx.StringData(string(logConfig.LogScope)),
+			"logType":                  llx.StringData(string(logConfig.LogType)),
 		},
 	)
 	if err != nil {
@@ -1102,11 +1507,11 @@ func (a *mqlAwsWafAcl) associatedResources() ([]any, error) {
 
 	// ListResourcesForWebACL only supports REGIONAL scope ACLs.
 	// CLOUDFRONT ACLs are associated via CloudFront distributions, not this API.
-	if scopeString == "CLOUDFRONT" {
+	if scopeString == wafScopeCloudfront {
 		return []any{}, nil
 	}
 
-	svc := conn.Wafv2(wafRegionForScope(scopeString))
+	svc := conn.Wafv2(a.Region.Data)
 	ctx := context.Background()
 
 	arnVal := a.Arn.Data
@@ -1127,4 +1532,172 @@ func (a *mqlAwsWafAcl) associatedResources() ([]any, error) {
 	}
 
 	return allArns, nil
+}
+
+// associatedLoadBalancers resolves the Application Load Balancers this regional
+// web ACL protects to typed resources. CloudFront-scoped ACLs attach through
+// distributions rather than this API and so return an empty list.
+func (a *mqlAwsWafAcl) associatedLoadBalancers() ([]any, error) {
+	if a.Scope.Data == "CLOUDFRONT" {
+		return []any{}, nil
+	}
+
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Wafv2(a.Region.Data)
+	arnVal := a.Arn.Data
+
+	resp, err := svc.ListResourcesForWebACL(context.Background(), &wafv2.ListResourcesForWebACLInput{
+		WebACLArn:    &arnVal,
+		ResourceType: waftypes.ResourceTypeApplicationLoadBalancer,
+	})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return []any{}, nil
+		}
+		return nil, err
+	}
+
+	res := []any{}
+	for _, lbArn := range resp.ResourceArns {
+		mqlLb, err := NewResource(a.MqlRuntime, ResourceAwsElbLoadbalancer,
+			map[string]*llx.RawData{"arn": llx.StringData(lbArn)})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlLb)
+	}
+	return res, nil
+}
+
+// webAcl resolves the WAFv2 web ACL protecting an Application Load Balancer.
+// Only Application Load Balancers can carry a WAFv2 web ACL, so other load
+// balancer types short-circuit to null.
+func (a *mqlAwsElbLoadbalancer) webAcl() (*mqlAwsWafAcl, error) {
+	elbType := a.GetElbType()
+	if elbType.Error != nil {
+		return nil, elbType.Error
+	}
+	if elbType.Data != "application" {
+		a.WebAcl.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+
+	arnVal := a.Arn.Data
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Wafv2(a.Region.Data)
+	resp, err := svc.GetWebACLForResource(context.Background(), &wafv2.GetWebACLForResourceInput{
+		ResourceArn: &arnVal,
+	})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			a.WebAcl.State = plugin.StateIsNull | plugin.StateIsSet
+			return nil, nil
+		}
+		return nil, err
+	}
+	if resp.WebACL == nil || resp.WebACL.ARN == nil {
+		a.WebAcl.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+
+	// Build the typed web ACL directly from the association response. An ALB's
+	// associated web ACL is always REGIONAL scope; setting scope here (rather
+	// than resolving through the account-wide aws.waf listing) both avoids a
+	// scopeless ListWebACLs call that fails validation and gives the returned
+	// ACL the scope its own accessors (associatedLoadBalancers, rules) need.
+	acl := resp.WebACL
+	mqlAcl, err := CreateResource(a.MqlRuntime, "aws.waf.acl", map[string]*llx.RawData{
+		"__id":        llx.StringDataPtr(acl.ARN),
+		"id":          llx.StringDataPtr(acl.Id),
+		"scope":       llx.StringData(string(waftypes.ScopeRegional)),
+		"arn":         llx.StringDataPtr(acl.ARN),
+		"name":        llx.StringDataPtr(acl.Name),
+		"description": llx.StringDataPtr(acl.Description),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mqlAcl.(*mqlAwsWafAcl), nil
+}
+
+// parseWafv2WebAclArn splits a WAFv2 web ACL ARN
+// (arn:aws:wafv2:<region>:<account>:<regional|global>/webacl/<name>/<id>) into
+// the region, scope, name, and id that GetWebACL needs. A global ARN is a
+// CLOUDFRONT-scoped ACL.
+func parseWafv2WebAclArn(aclArn string) (region, scope, name, id string, err error) {
+	parsed, err := arn.Parse(aclArn)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	if parsed.Service != "wafv2" {
+		return "", "", "", "", fmt.Errorf("not a WAFv2 ARN: %s", aclArn)
+	}
+	parts := strings.Split(parsed.Resource, "/")
+	if len(parts) != 4 || parts[1] != "webacl" || parts[2] == "" || parts[3] == "" {
+		return "", "", "", "", fmt.Errorf("not a WAFv2 web ACL ARN: %s", aclArn)
+	}
+	switch parts[0] {
+	case "regional":
+		scope = wafScopeRegional
+	case "global":
+		scope = wafScopeCloudfront
+	default:
+		return "", "", "", "", fmt.Errorf("unknown WAFv2 web ACL scope %q in %s", parts[0], aclArn)
+	}
+	return parsed.Region, scope, parts[2], parts[3], nil
+}
+
+// initAwsWafAcl resolves a web ACL referenced by ARN. A reference built from
+// the ARN alone would leave name, scope, and region unset, and every computed
+// field needs them to call GetWebACL.
+func initAwsWafAcl(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	if args["arn"] == nil {
+		return args, nil, nil
+	}
+	aclArn, _ := args["arn"].Value.(string)
+	if aclArn == "" {
+		return args, nil, nil
+	}
+	if cached, ok := runtime.Resources.Get("aws.waf.acl\x00" + aclArn); ok {
+		return args, cached, nil
+	}
+
+	region, scope, name, id, err := parseWafv2WebAclArn(aclArn)
+	if err != nil {
+		return nil, nil, err
+	}
+	conn := runtime.Connection.(*connection.AwsConnection)
+	resp, err := conn.Wafv2(region).GetWebACL(context.Background(), &wafv2.GetWebACLInput{
+		Id:    &id,
+		Name:  &name,
+		Scope: waftypes.Scope(scope),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if resp.WebACL == nil {
+		return nil, nil, fmt.Errorf("aws.waf.acl with arn %q not found", aclArn)
+	}
+	acl := resp.WebACL
+	res, err := CreateResource(runtime, "aws.waf.acl", map[string]*llx.RawData{
+		"__id":        llx.StringData(aclArn),
+		"id":          llx.StringData(id),
+		"scope":       llx.StringData(scope),
+		"region":      llx.StringData(region),
+		"arn":         llx.StringData(aclArn),
+		"name":        llx.StringData(name),
+		"description": llx.StringDataPtr(acl.Description),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	mqlAcl := res.(*mqlAwsWafAcl)
+	mqlAcl.cachedManagedByFwManager = acl.ManagedByFirewallManager
+	mqlAcl.cachedRules = acl.Rules
+	mqlAcl.cachedACL = acl
+	mqlAcl.fetched = true
+	return args, mqlAcl, nil
 }

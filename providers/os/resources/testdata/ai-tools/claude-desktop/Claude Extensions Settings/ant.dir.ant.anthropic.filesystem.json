@@ -1,0 +1,8 @@
+{
+  "isEnabled": true,
+  "userConfig": {
+    "allowed_directories": [
+      "/Users/alice/Documents"
+    ]
+  }
+}

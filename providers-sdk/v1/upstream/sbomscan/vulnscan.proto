@@ -1,0 +1,46 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+// Minimal client-facing definition for the Mondoo Platform vulnerability-scan
+// RPC (ExtendedVulnMgmt.ScanUploadedSbom). It mirrors the server-side wire
+// contract (go.mondoo.com/mondoo). Only the fields clients need are declared;
+// protojson/protobuf ignore the rest (e.g. the response page info).
+//
+// This is the canonical home for the client stub (promoted from xgrep).
+// Clients — cnspec, xgrep — import it from here.
+//
+// Field names mirror the server wire contract, so pluralization is disabled.
+// protolint:disable REPEATED_FIELD_NAMES_PLURALIZED
+syntax = "proto3";
+
+package mql.sbomscan.v1;
+
+import "providers-sdk/v1/upstream/fex/fex.proto";
+import "sbom/mql_sbom.proto";
+
+option go_package = "go.mondoo.com/mql/providers-sdk/v1/upstream/sbomscan";
+
+// ScanUploadedSbom scans an SBOM for vulnerabilities scoped to a space. It is
+// ephemeral: the server returns the VEX results without storing anything. The
+// caller uploads the returned VEX itself (via the findings-upload path) when
+// reporting to the platform. Wire-compatible with mondoo.policy
+// ExtendedVulnMgmt.ScanUploadedSbom.
+service ExtendedVulnMgmt {
+  rpc ScanUploadedSbom(ScanUploadedSbomRequest)
+      returns (ScanUploadedSbomResponse) {}
+}
+
+message ScanUploadedSbomRequest {
+  // The MRN to scope the scan to (field 1 on the server). Clients pass a space
+  // MRN; the field keeps the server's historical name asset_mrn for wire/JSON
+  // compatibility (the server resolves an asset/org MRN to its space too).
+  string asset_mrn = 1;
+  // The SBOM to scan (field 2 on the server).
+  mondoo.sbom.v1.Sbom sbom = 2;
+}
+
+message ScanUploadedSbomResponse {
+  // Field 1 on the server is page info; intentionally omitted here. The
+  // vulnerabilities found, as VEX documents.
+  repeated mql.fex.v1.VulnerabilityExchange vex = 2;
+}

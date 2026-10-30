@@ -9,11 +9,12 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"go.mondoo.com/mql/v13/cli/inventoryloader"
-	"go.mondoo.com/mql/v13/providers"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/shared/proto"
-	"go.mondoo.com/mql/v13/utils/iox"
+	"go.mondoo.com/mql/cli/config"
+	"go.mondoo.com/mql/cli/inventoryloader"
+	"go.mondoo.com/mql/providers"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/shared/proto"
+	"go.mondoo.com/mql/utils/iox"
 )
 
 func init() {
@@ -57,6 +58,7 @@ var RunCmdRun = func(cmd *cobra.Command, runtime *providers.Runtime, cliRes *plu
 	conf.DoInfo, _ = cmd.Flags().GetBool("info")
 	conf.DoParse, _ = cmd.Flags().GetBool("parse")
 	conf.Exit_1OnFailure, _ = cmd.Flags().GetBool("exit-1-on-failure")
+	conf.Strict = config.Strict
 	if doJSON, _ := cmd.Flags().GetBool("json"); doJSON {
 		conf.Format = "json"
 	}

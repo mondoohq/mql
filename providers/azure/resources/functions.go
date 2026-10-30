@@ -6,17 +6,16 @@ package resources
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	web "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice/v6"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAzureSubscriptionFunctionsService) id() (string, error) {
@@ -58,57 +57,10 @@ func (a *mqlAzureSubscriptionFunctionsServiceFunctionAppFunction) id() (string, 
 // directly without re-listing every Microsoft.Web/sites resource in the
 // subscription.
 func initAzureSubscriptionFunctionsServiceFunctionApp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	if len(args) > 1 {
-		return args, nil, nil
-	}
-
-	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["id"] = llx.StringData(ids.id)
-		}
-	}
-
-	if args["id"] == nil {
-		return args, nil, nil
-	}
-
-	conn, ok := runtime.Connection.(*connection.AzureConnection)
-	if !ok {
-		return nil, nil, errors.New("invalid connection provided, it is not an Azure connection")
-	}
-	id, ok := args["id"].Value.(string)
-	if !ok {
-		return nil, nil, errors.New("id must be a non-nil string value")
-	}
-	resourceID, err := ParseResourceID(id)
-	if err != nil {
-		return nil, nil, err
-	}
-	siteName, err := resourceID.Component("sites")
-	if err != nil {
-		return nil, nil, err
-	}
-
-	client, err := web.NewWebAppsClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
-		ClientOptions: conn.ClientOptions(),
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	resp, err := client.Get(context.Background(), resourceID.ResourceGroup, siteName, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	site := &resp.Site
-	if site.Kind == nil || !strings.Contains(strings.ToLower(*site.Kind), "functionapp") {
-		return nil, nil, fmt.Errorf("azure resource %q is not a function app", id)
-	}
-
-	mql, err := functionAppSiteToMql(runtime, site)
-	if err != nil {
-		return nil, nil, err
-	}
-	return args, mql, nil
+	return initFromServiceList(runtime, args,
+		ResourceAzureSubscriptionFunctionsService,
+		func(s *mqlAzureSubscriptionFunctionsService) *plugin.TValue[[]any] { return s.GetFunctionApps() },
+		ResourceAzureSubscriptionFunctionsServiceFunctionApp)
 }
 
 func (a *mqlAzureSubscriptionFunctionsService) functionApps() ([]any, error) {
@@ -149,7 +101,7 @@ func (a *mqlAzureSubscriptionFunctionsService) functionApps() ([]any, error) {
 		}
 	}
 
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 // functionAppSiteToMql converts a Web App ARM site (already known to be a
@@ -161,7 +113,7 @@ func functionAppSiteToMql(runtime *plugin.Runtime, site *web.Site) (plugin.Resou
 		return nil, err
 	}
 
-	var state, defaultHostName, clientCertMode, managedServiceIdentityId string
+	var state, defaultHostName, clientCertMode string
 	var keyVaultReferenceIdentity, virtualNetworkSubnetId string
 	var httpsOnly, clientCertEnabled bool
 	publicNetworkAccess := functionAppPublicNetworkAccess(site.Properties)
@@ -193,7 +145,6 @@ func functionAppSiteToMql(runtime *plugin.Runtime, site *web.Site) (plugin.Resou
 	if site.Identity != nil {
 		principalId = site.Identity.PrincipalID
 		if principalId != nil {
-			managedServiceIdentityId = *principalId
 		}
 		userAssignedIdentityIds = sortedUserAssignedIdentityIDs(site.Identity.UserAssignedIdentities)
 	}
@@ -209,7 +160,6 @@ func functionAppSiteToMql(runtime *plugin.Runtime, site *web.Site) (plugin.Resou
 		"httpsOnly":                 llx.BoolData(httpsOnly),
 		"clientCertEnabled":         llx.BoolData(clientCertEnabled),
 		"clientCertMode":            llx.StringData(clientCertMode),
-		"managedServiceIdentityId":  llx.StringData(managedServiceIdentityId),
 		"principalId":               llx.StringDataPtr(principalId),
 		"keyVaultReferenceIdentity": llx.StringData(keyVaultReferenceIdentity),
 		"publicNetworkAccess":       llx.StringData(publicNetworkAccess),
@@ -236,6 +186,14 @@ type mqlAzureSubscriptionFunctionsServiceFunctionAppInternal struct {
 
 func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) userAssignedIdentities() ([]any, error) {
 	return resolveUserAssignedIdentities(a.MqlRuntime, a.cacheUserAssignedIdentityIds)
+}
+
+func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) systemAssignedIdentity() (*mqlAzureSubscriptionManagedIdentity, error) {
+	// Unlike the other resources, the function app has no identity dict (it models
+	// identity as managedServiceIdentityId), so no tenant ID is available here;
+	// tenantID is cosmetic on the synthesized identity anyway, as role assignments
+	// resolve by principal ID.
+	return newSystemAssignedManagedIdentity(a.MqlRuntime, a.Id.Data, a.PrincipalId.Data, "", &a.SystemAssignedIdentity)
 }
 
 func (a *mqlAzureSubscriptionFunctionsServiceFunctionApp) virtualNetworkSubnet() (*mqlAzureSubscriptionNetworkServiceSubnet, error) {

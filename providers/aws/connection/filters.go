@@ -6,17 +6,19 @@ package connection
 import (
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/providers-sdk/v1/util/filteropts"
 )
 
 type DiscoveryFilters struct {
 	Ec2                  Ec2DiscoveryFilters
 	Ecr                  EcrDiscoveryFilters
 	Ecs                  EcsDiscoveryFilters
+	S3                   S3DiscoveryFilters
 	General              GeneralDiscoveryFilters
 	PropagateAccountTags bool
 	// AccountTags, when non-empty, is used as the source of account-level tags
@@ -29,45 +31,74 @@ type DiscoveryFilters struct {
 func DiscoveryFiltersFromOpts(opts map[string]string) DiscoveryFilters {
 	d := DiscoveryFilters{
 		General: GeneralDiscoveryFilters{
-			Regions:        parseCsvSliceOpt(opts, "regions"),
-			ExcludeRegions: parseCsvSliceOpt(opts, "exclude:regions"),
+			Regions:        filteropts.ParseCsvSliceOpt(opts, "regions"),
+			ExcludeRegions: filteropts.ParseCsvSliceOpt(opts, "exclude:regions"),
 			Tags:           parseMapOpt(opts, "tag:"),
 			ExcludeTags:    parseMapOpt(opts, "exclude:tag:"),
 		},
 		Ec2: Ec2DiscoveryFilters{
-			InstanceIds:        parseCsvSliceOpt(opts, "ec2:instance-ids"),
-			ExcludeInstanceIds: parseCsvSliceOpt(opts, "ec2:exclude:instance-ids"),
+			InstanceIds:        filteropts.ParseCsvSliceOpt(opts, "ec2:instance-ids"),
+			ExcludeInstanceIds: filteropts.ParseCsvSliceOpt(opts, "ec2:exclude:instance-ids"),
 		},
 		Ecr: EcrDiscoveryFilters{
-			Tags:                   parseCsvSliceOpt(opts, "ecr:tags"),
-			ExcludeTags:            parseCsvSliceOpt(opts, "ecr:exclude:tags"),
-			PrivateRepositoryNames: parseCsvSliceOpt(opts, "ecr:private-repository-names"),
-			PublicRepositoryNames:  parseCsvSliceOpt(opts, "ecr:public-repository-names"),
+			Tags:                   filteropts.ParseCsvSliceOpt(opts, "ecr:tags"),
+			ExcludeTags:            filteropts.ParseCsvSliceOpt(opts, "ecr:exclude:tags"),
+			PrivateRepositoryNames: filteropts.ParseCsvSliceOpt(opts, "ecr:private-repository-names"),
+			PublicRepositoryNames:  filteropts.ParseCsvSliceOpt(opts, "ecr:public-repository-names"),
 			Scope:                  parseStringOpt(opts, "ecr:scope"),
 		},
 		Ecs: EcsDiscoveryFilters{
-			OnlyRunningContainers: parseBoolOpt(opts, "ecs:only-running-containers", false),
-			DiscoverInstances:     parseBoolOpt(opts, "ecs:discover-instances", false),
-			DiscoverImages:        parseBoolOpt(opts, "ecs:discover-images", false),
+			OnlyRunningContainers: filteropts.ParseBoolOpt(opts, "ecs:only-running-containers", false),
+			DiscoverInstances:     filteropts.ParseBoolOpt(opts, "ecs:discover-instances", false),
+			DiscoverImages:        filteropts.ParseBoolOpt(opts, "ecs:discover-images", false),
 		},
-		PropagateAccountTags: parseBoolOpt(opts, "propagate-account-tags", false),
+		S3: S3DiscoveryFilters{
+			BucketNames:        filteropts.ParseCsvSliceOpt(opts, "s3:bucket-names"),
+			ExcludeBucketNames: filteropts.ParseCsvSliceOpt(opts, "s3:exclude:bucket-names"),
+		},
+		PropagateAccountTags: filteropts.ParseBoolOpt(opts, "propagate-account-tags", false),
 		AccountTags:          parseMapOpt(opts, "account-tag:"),
 	}
 
-	// TODO: backward compatibility, remove in future versions
-	ec2Tags := parseMapOpt(opts, "ec2:tag:")
-	ec2ExcludeTags := parseMapOpt(opts, "ec2:exclude:tag:")
-	for k, v := range ec2Tags {
-		if _, exists := d.General.Tags[k]; !exists {
-			d.General.Tags[k] = v
-		}
-	}
-	for k, v := range ec2ExcludeTags {
-		if _, exists := d.General.ExcludeTags[k]; !exists {
-			d.General.ExcludeTags[k] = v
-		}
-	}
+	// FIXME: DEPRECATED, remove in v15.0 vv
+	// `ec2:tag:` and `ec2:exclude:tag:` were folded into the general `tag:` and
+	// `exclude:tag:` filters. They still apply, but warn, so the removal lands
+	// on users who have already been told rather than silently dropping a
+	// filter they rely on to scope a scan.
+	mergeDeprecatedTagOpt("ec2:tag:", "tag:", parseMapOpt(opts, "ec2:tag:"), d.General.Tags)
+	mergeDeprecatedTagOpt("ec2:exclude:tag:", "exclude:tag:", parseMapOpt(opts, "ec2:exclude:tag:"), d.General.ExcludeTags)
+	// ^^
 	return d
+}
+
+// mergeDeprecatedTagOpt folds a retired `ec2:`-prefixed tag filter into its
+// general replacement, warning that the option is deprecated. The replacement
+// wins on conflict, so a key carrying a different value under each option gets
+// a second warning naming the value being dropped.
+// FIXME: DEPRECATED, remove in v15.0 vv
+func mergeDeprecatedTagOpt(deprecated, replacement string, from, into map[string]string) {
+	if len(from) == 0 {
+		return
+	}
+
+	log.Warn().
+		Str("option", deprecated).
+		Str("use", replacement).
+		Msg("deprecated AWS discovery filter, please switch to the replacement")
+
+	for k, v := range from {
+		if existing, exists := into[k]; exists {
+			if existing != v {
+				log.Warn().
+					Str("option", deprecated+k).
+					Str("ignored", v).
+					Str("using", existing).
+					Msg("filter key set by both the deprecated and the replacement option, the deprecated value is ignored")
+			}
+			continue
+		}
+		into[k] = v
+	}
 }
 
 type GeneralDiscoveryFilters struct {
@@ -214,27 +245,24 @@ type EcsDiscoveryFilters struct {
 	DiscoverInstances     bool
 }
 
+type S3DiscoveryFilters struct {
+	BucketNames        []string
+	ExcludeBucketNames []string
+}
+
+// note: if this function returns `true`, it means that the bucket should be skipped
+func (f S3DiscoveryFilters) IsFilteredOut(bucketName string) bool {
+	if len(f.BucketNames) > 0 && !slices.Contains(f.BucketNames, bucketName) {
+		return true
+	}
+	return slices.Contains(f.ExcludeBucketNames, bucketName)
+}
+
 func (f EcsDiscoveryFilters) MatchesOnlyRunningContainers(containerState string) bool {
 	if !f.OnlyRunningContainers {
 		return true
 	}
 	return containerState == "RUNNING"
-}
-
-// Given a key-value pair that matches a key, return the boolean value of the key.
-// If the key is not found or the value cannot be parsed as a boolean, return the default value.
-// Example: key = "ecs:only-running-containers", opts = {"ecs:only-running-containers": "true"}
-// Returns: true
-func parseBoolOpt(opts map[string]string, key string, defaultVal bool) bool {
-	for k, v := range opts {
-		if k == key {
-			parsed, err := strconv.ParseBool(v)
-			if err == nil {
-				return parsed
-			}
-		}
-	}
-	return defaultVal
 }
 
 // Given a map of options and a key prefix, return a map of key-value pairs
@@ -265,23 +293,4 @@ func parseMapOpt(opts map[string]string, keyPrefix string) map[string]string {
 // returns "private"
 func parseStringOpt(opts map[string]string, key string) string {
 	return opts[key]
-}
-
-// Given a map of options and a key, return a slice of strings
-// where the key matches the given key. The value is split by commas.
-// Example:
-// key = "regions"
-// opts = {"regions": "us-east-1,us-west-2"}
-// returns []string{"us-east-1", "us-west-2"}
-func parseCsvSliceOpt(opts map[string]string, key string) []string {
-	res := []string{}
-	for k, v := range opts {
-		if k == "" || v == "" {
-			continue
-		}
-		if k == key {
-			res = append(res, strings.Split(v, ",")...)
-		}
-	}
-	return res
 }

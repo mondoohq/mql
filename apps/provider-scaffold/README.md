@@ -44,6 +44,6 @@ The scaffold will:
 ## Conventions
 
 - **Provider ID**: `go.mondoo.com/mql/providers/{provider-id}` (no version number)
-- **Go package**: `go.mondoo.com/mql/v13/providers/{provider-id}` (derived automatically)
+- **Go package**: `go.mondoo.com/mql/providers/{provider-id}` (derived automatically)
 - **Go identifier**: Hyphen-separated IDs become CamelCase (e.g. `google-workspace` -> `GoogleWorkspaceConnection`)
 - **Platform `Runtime`**: When you customize `asset.Platform` in `provider/provider.go`, keep `Runtime` set to the provider ID (the scaffold does this for you). Downstream consumers — most notably the mondoohq/server asset atlas — classify assets by matching on `Runtime`. Omitting it causes real assets to fall through to "Unrecognized Assets" in the Mondoo UI. Every other cloud provider (AWS, Azure, GCP, OCI, Proxmox, Hetzner, Tailscale, vSphere) follows this convention.

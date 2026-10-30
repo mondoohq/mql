@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
 func TestParseSolarisSmfServices(t *testing.T) {
@@ -136,8 +138,8 @@ incomplete     22:01:42        svc:/application/graphical-login/gdm:default
 	incompleteService := findServiceByName(services, "svc:/application/graphical-login/gdm:default")
 	require.NotNil(t, incompleteService, "should find incomplete service")
 	assert.False(t, incompleteService.Running, "incomplete should not be running")
-	assert.True(t, incompleteService.Enabled, "incomplete should be enabled")
-	assert.True(t, incompleteService.Installed, "incomplete should be installed")
+	assert.False(t, incompleteService.Enabled, "incomplete should not be enabled")
+	assert.False(t, incompleteService.Installed, "incomplete should not be installed")
 	assert.Equal(t, ServiceStopped, incompleteService.State)
 }
 
@@ -176,7 +178,7 @@ incomplete     22:01:45        svc:/test/incomplete:default
 		{"svc:/test/maintenance:default", false, true, ServiceStopped},
 		{"svc:/test/degraded:default", true, true, ServiceRunning},
 		{"lrc:/etc/rc2_d/S99legacy", true, true, ServiceRunning},
-		{"svc:/test/incomplete:default", false, true, ServiceStopped},
+		{"svc:/test/incomplete:default", false, false, ServiceStopped},
 	}
 
 	for _, tc := range testCases {
@@ -199,7 +201,7 @@ func TestSmfStateMapping(t *testing.T) {
 		{"legacy_run", true, true},
 		{"offline", false, true},
 		{"maintenance", false, true},
-		{"incomplete", false, true},
+		{"incomplete", false, false},
 		{"disabled", false, false},
 		{"uninitialized", false, false},
 		{"unknown_state", false, false},
@@ -258,6 +260,75 @@ uninitialized  22:01:39        svc:/test/uninit:default
 	assert.False(t, svc.Running, "uninitialized should not be running")
 	assert.False(t, svc.Enabled, "uninitialized should not be enabled")
 	assert.Equal(t, ServiceStopped, svc.State)
+}
+
+// Verbatim `svcs -a` lines from an Oracle Solaris 11.4.86 instance. 11.4 prints
+// STIME as an ISO timestamp rather than the wall-clock time older releases used.
+func TestParseSolarisSmfServices114(t *testing.T) {
+	testOutput := `STATE          STIME               FMRI
+legacy_run     2026-08-27T07:02:19 lrc:/etc/rc2_d/S89PRESERVE
+disabled       2026-08-27T07:01:57 svc:/application/management/net-snmp:default
+online         2026-08-27T07:01:40 svc:/network/ssh:default
+offline*       2026-08-27T07:01:57 svc:/application/man-index:default
+incomplete     2026-08-27T07:01:33 svc:/system/early-manifest-import:default`
+
+	services := ParseSolarisSmfServices(strings.NewReader(testOutput))
+	require.Len(t, services, 5)
+
+	legacy := findServiceByName(services, "lrc:/etc/rc2_d/S89PRESERVE")
+	require.NotNil(t, legacy)
+	assert.True(t, legacy.Running, "legacy_run is running")
+
+	ssh := findServiceByName(services, "svc:/network/ssh:default")
+	require.NotNil(t, ssh)
+	assert.True(t, ssh.Running)
+	assert.True(t, ssh.Enabled)
+
+	// a transitioning state carries a trailing asterisk
+	manIndex := findServiceByName(services, "svc:/application/man-index:default")
+	require.NotNil(t, manIndex)
+	assert.False(t, manIndex.Running, "offline* is not yet running")
+	assert.True(t, manIndex.Enabled, "offline* is still enabled")
+
+	snmp := findServiceByName(services, "svc:/application/management/net-snmp:default")
+	require.NotNil(t, snmp)
+	assert.False(t, snmp.Running)
+	assert.False(t, snmp.Enabled)
+}
+
+// Headerless output must not lose its first service.
+func TestParseSolarisSmfServicesHeaderless(t *testing.T) {
+	testOutput := `online         2026-08-27T07:01:40 svc:/network/ssh:default
+disabled       2026-08-27T07:01:31 svc:/network/telnet:default`
+
+	services := ParseSolarisSmfServices(strings.NewReader(testOutput))
+	require.Len(t, services, 2)
+
+	ssh := findServiceByName(services, "svc:/network/ssh:default")
+	require.NotNil(t, ssh, "the first service must not be swallowed as a header")
+	assert.True(t, ssh.Running)
+
+	telnet := findServiceByName(services, "svc:/network/telnet:default")
+	require.NotNil(t, telnet)
+	assert.False(t, telnet.Running)
+}
+
+// A failing or unavailable `svcs` must surface an error rather than reporting a
+// system with no services at all.
+func TestSolarisSmfManagerCommandFailure(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"svcs -a": {
+				Stderr:     "bash: svcs: command not found",
+				ExitStatus: 127,
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	svcs, err := (&SolarisSmfServiceManager{conn: conn}).List()
+	require.Error(t, err)
+	assert.Empty(t, svcs)
 }
 
 func findServiceByName(services []*Service, name string) *Service {

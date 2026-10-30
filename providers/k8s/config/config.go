@@ -4,18 +4,42 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/k8s/provider"
-	"go.mondoo.com/mql/v13/providers/k8s/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/k8s/provider"
+	"go.mondoo.com/mql/providers/k8s/resources"
 )
 
 var Config = plugin.Provider{
-	Name:            "k8s",
-	ID:              "go.mondoo.com/cnquery/v9/providers/k8s",
-	Version:         "13.6.0",
+	Name: "k8s",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	// This names the one a compile with no connection targets; a connection
+	// reports the concrete kind through ConnectRes.Root.
+	Root:    "k8s",
+	ID:      "go.mondoo.com/mql/providers/k8s",
+	Version: "14.2.3",
+	Requires: []plugin.ProviderDep{
+		// Every root carries `asset`, which core owns, so rooting this provider
+		// makes core a peer it calls (ADR 042).
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "13.0.0"},
+		{ID: "go.mondoo.com/mql/providers/os", Name: "os", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.ConnectionType},
 	Platforms:       resources.Platforms,
+	// The client-go rate limiter is already raised well above its defaults, so
+	// concurrent asset scans reach the API server rather than queueing locally.
+	// Kept at 8 so a small control plane's API Priority and Fairness has room.
+	DefaultParallelism: 8,
+	// Broad on purpose: a glob cannot settle what a YAML file is, so the probe
+	// is what says no. The manifest connection rejects a folder holding no
+	// Kubernetes objects (ADR 045).
+	Targets: []plugin.TargetOptIn{
+		{
+			Target: "iac", Discovery: "k8s", ConnType: provider.ConnectionType, Auto: true,
+			Match: []plugin.Matcher{{Glob: "*.yaml"}, {Glob: "*.yml"}},
+		},
+	},
 	Connectors: []plugin.Connector{
 		{
 			Name:    "k8s",
@@ -69,10 +93,40 @@ Examples:
 					Desc:    "Only include Kubernetes objects in the matching namespaces",
 				},
 				{
+					Long:    "namespace-label-selector",
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Only include Kubernetes namespaces matching the label selector, along with all objects discovered within those namespaces",
+				},
+				{
+					Long:    "object-label-selector",
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Only include Kubernetes objects matching the label selector; for container image discovery this matches the pod that references the image",
+				},
+				{
+					Long:    "inherit-namespace-labels",
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Copy the namespace labels whose keys match this comma-separated list (glob supported) onto every workload discovered in that namespace; a label the workload already carries is kept",
+				},
+				{
 					Long:    "container-proxy",
 					Type:    plugin.FlagType_String,
 					Default: "",
 					Desc:    "HTTP proxy to use for container pulls",
+				},
+				{
+					Long:    "images",
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Only include container images matching the given image references during discovery (comma-separated, glob supported)",
+				},
+				{
+					Long:    "images-exclude",
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Filter out container images matching the given image references during discovery (comma-separated, glob supported)",
 				},
 				{
 					Long:    "kubelogin",

@@ -1,0 +1,51 @@
+# Captured from cgr.dev/mondoo.com/httpd:latest, a Chainguard OS image.
+#
+# Chainguard OS is the distribution behind Chainguard's production images and is
+# not the same thing as Wolfi, which is what the free-tier images report. It
+# sets no ID_LIKE, so nothing infers a lineage for it.
+#
+# The image ships an apk database but no apk binary, so /etc/os-release is the
+# only evidence detection has. There is no /etc/alpine-release for alpine's
+# fallback to find either.
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "6.6.12-linuxkit"
+
+[files."/etc/os-release"]
+content = """
+ID=chainguard
+NAME="Chainguard"
+PRETTY_NAME="Chainguard"
+VERSION_ID="20230214"
+HOME_URL="https://chainguard.dev/"
+"""
+
+[files."/lib/apk/db/installed"]
+content = """
+C:Q1eVpkIgfxaDOtQ1FjR8LVw2KzRIU=
+P:wolfi-baselayout
+V:20230201-r15
+A:x86_64
+S:11298
+I:21740
+T:The base filesystem layout for Wolfi
+U:https://wolfi.dev
+L:Apache-2.0
+D:/bin/sh
+
+C:Q1BVpkIgfxaDOtQ1FjR8LVw2KzRIV=
+P:glibc
+V:2.41-r0
+A:x86_64
+S:2884096
+I:8138752
+T:GNU C library
+U:https://www.gnu.org/software/libc/
+L:LGPL-2.1-or-later
+
+"""

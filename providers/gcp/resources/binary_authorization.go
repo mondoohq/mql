@@ -10,10 +10,10 @@ import (
 	binaryauthorization "cloud.google.com/go/binaryauthorization/apiv1"
 	"cloud.google.com/go/binaryauthorization/apiv1/binaryauthorizationpb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -41,7 +41,12 @@ func (g *mqlGcpProject) binaryAuthorization() (*mqlGcpProjectBinaryAuthorization
 	}
 
 	ctx := context.Background()
-	c, err := binaryauthorization.NewSystemPolicyClient(ctx, option.WithCredentials(credentials), connection.GRPCClientTraceOption(), option.WithQuotaProject(projectId))
+	// The project's own Binary Authorization policy comes from the management
+	// client's GetPolicy ("projects/*/policy"). GetSystemPolicy is a different
+	// API: it takes "locations/*/policy" and returns Google's system policy,
+	// which is not associated with a project and carries none of the project's
+	// cluster/namespace admission rules.
+	c, err := binaryauthorization.NewBinauthzManagementClient(ctx, option.WithCredentials(credentials), connection.GRPCClientTraceOption(), option.WithQuotaProject(projectId))
 	if err != nil {
 		return nil, err
 	}
@@ -49,10 +54,14 @@ func (g *mqlGcpProject) binaryAuthorization() (*mqlGcpProjectBinaryAuthorization
 	defer c.Close()
 
 	name := fmt.Sprintf("projects/%s/policy", projectId)
-	resp, err := c.GetSystemPolicy(ctx, &binaryauthorizationpb.GetSystemPolicyRequest{
+	resp, err := c.GetPolicy(ctx, &binaryauthorizationpb.GetPolicyRequest{
 		Name: name,
 	})
 	if err != nil {
+		if isSkippable(err) {
+			g.BinaryAuthorization.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -86,7 +95,7 @@ func (g *mqlGcpProject) binaryAuthorization() (*mqlGcpProjectBinaryAuthorization
 		return nil, err
 	}
 
-	updateTime := resp.GetUpdateTime().AsTime()
+	updateTime := timestampAsTimePtr(resp.GetUpdateTime())
 
 	policy, err := CreateResource(g.MqlRuntime, "gcp.project.binaryAuthorizationControl.policy", map[string]*llx.RawData{
 		"__id":                                   llx.StringData(name),
@@ -98,7 +107,7 @@ func (g *mqlGcpProject) binaryAuthorization() (*mqlGcpProjectBinaryAuthorization
 		"kubernetesServiceAccountAdmissionRules": llx.MapData(kubernetesServiceAccountAdmissionRules, types.Resource("gcp.project.binaryAuthorizationControl.admissionRule")),
 		"istioServiceIdentityAdmissionRules":     llx.MapData(istioServiceIdentityAdmissionRules, types.Resource("gcp.project.binaryAuthorizationControl.admissionRule")),
 		"defaultAdmissionRule":                   llx.ResourceData(defaultAdmissionRule, "gcp.project.binaryAuthorizationControl.admissionRule"),
-		"updated":                                llx.TimeData(updateTime),
+		"updated":                                llx.TimeDataPtr(updateTime),
 	})
 	if err != nil {
 		return nil, err
@@ -136,6 +145,7 @@ func (g *mqlGcpProject) toMqlBinaryAuthzAdmissionRule(rule *binaryauthorizationp
 	return CreateResource(g.MqlRuntime, "gcp.project.binaryAuthorizationControl.admissionRule", map[string]*llx.RawData{
 		"__id":                  llx.StringData(mqlId),
 		"evaluationMode":        llx.StringData(rule.GetEvaluationMode().String()),
+		"enforcementMode":       llx.StringData(rule.GetEnforcementMode().String()),
 		"requireAttestationsBy": llx.ArrayData(requiresAttestationsBy, types.String),
 	})
 }
@@ -174,11 +184,6 @@ func (g *mqlGcpProjectBinaryAuthorizationControl) attestors() ([]any, error) {
 			return nil, err
 		}
 
-		userOwnedGrafeasNote, err := protoToDict(attestor.GetUserOwnedGrafeasNote())
-		if err != nil {
-			return nil, err
-		}
-
 		note := attestor.GetUserOwnedGrafeasNote()
 		publicKeys, err := flattenAttestorPublicKeys(g.MqlRuntime, attestor.GetName(), note)
 		if err != nil {
@@ -188,7 +193,6 @@ func (g *mqlGcpProjectBinaryAuthorizationControl) attestors() ([]any, error) {
 		mqlAttestor, err := CreateResource(g.MqlRuntime, "gcp.project.binaryAuthorizationControl.attestor", map[string]*llx.RawData{
 			"name":                          llx.StringData(attestor.GetName()),
 			"description":                   llx.StringData(attestor.GetDescription()),
-			"userOwnedGrafeasNote":          llx.DictData(userOwnedGrafeasNote),
 			"noteReference":                 llx.StringData(note.GetNoteReference()),
 			"publicKeys":                    llx.ArrayData(publicKeys, types.Resource("gcp.project.binaryAuthorizationControl.attestor.publicKey")),
 			"delegationServiceAccountEmail": llx.StringData(note.GetDelegationServiceAccountEmail()),

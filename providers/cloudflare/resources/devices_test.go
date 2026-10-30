@@ -89,10 +89,10 @@ func TestDevicesPagination(t *testing.T) {
 	one := createTestOne(t, env)
 
 	const totalPages = 4
-	var calls int32
+	var calls atomic.Int32
 
 	env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/devices", testAccountID), func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&calls, 1)
+		calls.Add(1)
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		if page == 0 {
 			page = 1
@@ -108,7 +108,7 @@ func TestDevicesPagination(t *testing.T) {
 	result, err := one.devices()
 	require.NoError(t, err)
 	require.Len(t, result, totalPages)
-	require.Equal(t, int32(totalPages), atomic.LoadInt32(&calls))
+	require.Equal(t, int32(totalPages), calls.Load())
 
 	ids := make([]string, len(result))
 	for i, r := range result {

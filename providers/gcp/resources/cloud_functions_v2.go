@@ -12,15 +12,20 @@ import (
 	"cloud.google.com/go/functions/apiv2/functionspb"
 	iampb "cloud.google.com/go/iam/apiv1/iampb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+type mqlGcpProjectCloudFunctionV2BuildConfigInternal struct {
+	cacheDockerRepository string
+	cacheServiceAccount   string
+}
 
 func (g *mqlGcpProject) cloudFunctionsV2() ([]any, error) {
 	if g.Id.Error != nil {
@@ -52,6 +57,12 @@ func (g *mqlGcpProject) cloudFunctionsV2() ([]any, error) {
 			break
 		}
 		if err != nil {
+			// Gracefully skip when the Cloud Functions API is disabled or access
+			// is denied (matches the gRPC-based sibling resources), instead of
+			// failing the whole query with a hard error.
+			if isSkippable(err) {
+				break
+			}
 			return nil, err
 		}
 
@@ -240,8 +251,6 @@ func fnV2BuildConfig(runtime *plugin.Runtime, parentName string, cfg *functionsp
 		"source":               llx.DictData(sourceDict),
 		"buildWorkerPool":      llx.StringData(cfg.WorkerPool),
 		"environmentVariables": llx.MapData(envVars, types.String),
-		"dockerRepository":     llx.StringData(cfg.DockerRepository),
-		"serviceAccount":       llx.StringData(cfg.ServiceAccount),
 		"build":                llx.StringData(cfg.Build),
 		"sourceProvenance":     llx.DictData(sourceProvenanceDict),
 		"gitUri":               llx.StringData(gitUri),
@@ -249,16 +258,16 @@ func fnV2BuildConfig(runtime *plugin.Runtime, parentName string, cfg *functionsp
 	if err != nil {
 		return nil, err
 	}
+	mqlRef := res.(*mqlGcpProjectCloudFunctionV2BuildConfig)
+	mqlRef.cacheDockerRepository = cfg.DockerRepository
+	mqlRef.cacheServiceAccount = cfg.ServiceAccount
 	return res.(*mqlGcpProjectCloudFunctionV2BuildConfig), nil
 }
 
 func (g *mqlGcpProjectCloudFunctionV2BuildConfig) serviceAccountRef() (*mqlGcpProjectIamServiceServiceAccount, error) {
-	if g.ServiceAccount.Error != nil {
-		return nil, g.ServiceAccount.Error
-	}
 	// buildConfig.serviceAccount is a full "projects/{p}/serviceAccounts/{email}"
 	// path, so resolveServiceAccountRef derives the project — no fallback needed.
-	sa, err := resolveServiceAccountRef(g.MqlRuntime, g.ServiceAccount.Data, "")
+	sa, err := resolveServiceAccountRef(g.MqlRuntime, g.cacheServiceAccount, "")
 	if err != nil {
 		return nil, err
 	}
@@ -273,10 +282,7 @@ func (g *mqlGcpProjectCloudFunctionV2BuildConfig) id() (string, error) {
 }
 
 func (g *mqlGcpProjectCloudFunctionV2BuildConfig) dockerRepositoryRef() (*mqlGcpProjectArtifactRegistryServiceRepository, error) {
-	if g.DockerRepository.Error != nil {
-		return nil, g.DockerRepository.Error
-	}
-	project, location, repo := artifactRegistryRepoFromPath(g.DockerRepository.Data)
+	project, location, repo := artifactRegistryRepoFromPath(g.cacheDockerRepository)
 	ref, err := resolveArtifactRegistryRepoRef(g.MqlRuntime, project, location, repo)
 	if err != nil {
 		return nil, err
@@ -318,6 +324,31 @@ func fnV2ServiceConfig(runtime *plugin.Runtime, parentName string, projectId str
 		secretVolumes = append(secretVolumes, d)
 	}
 
+	envBindings := make([]cloudFunctionSecretBinding, 0, len(cfg.SecretEnvironmentVariables))
+	for _, v := range cfg.SecretEnvironmentVariables {
+		envBindings = append(envBindings, cloudFunctionSecretBinding{
+			key: v.Key, projectID: v.ProjectId, secret: v.Secret, version: v.Version,
+		})
+	}
+	volumeBindings := make([]cloudFunctionSecretBinding, 0, len(cfg.SecretVolumes))
+	for _, v := range cfg.SecretVolumes {
+		paths := make(map[string]string, len(v.Versions))
+		for _, vv := range v.Versions {
+			paths[vv.Version] = vv.Path
+		}
+		volumeBindings = append(volumeBindings, cloudFunctionSecretBinding{
+			mountPath: v.MountPath, projectID: v.ProjectId, secret: v.Secret, versionPaths: paths,
+		})
+	}
+	boundSecretEnvVars, err := newMqlFunctionSecretEnvVars(runtime, parentName+"/serviceConfig", envBindings)
+	if err != nil {
+		return nil, err
+	}
+	boundSecretVolumes, err := newMqlFunctionSecretVolumes(runtime, parentName+"/serviceConfig", volumeBindings)
+	if err != nil {
+		return nil, err
+	}
+
 	res, err := CreateResource(runtime, "gcp.project.cloudFunctionV2.serviceConfig", map[string]*llx.RawData{
 		"id":                         llx.StringData(parentName + "/serviceConfig"),
 		"service":                    llx.StringData(cfg.Service),
@@ -330,10 +361,14 @@ func fnV2ServiceConfig(runtime *plugin.Runtime, parentName string, projectId str
 		"vpcConnector":               llx.StringData(cfg.VpcConnector),
 		"vpcConnectorEgressSettings": llx.StringData(cfg.VpcConnectorEgressSettings.String()),
 		"ingressSettings":            llx.StringData(cfg.IngressSettings.String()),
+		"securityLevel":              llx.StringData(cfg.SecurityLevel.String()),
+		"binaryAuthorizationPolicy":  llx.StringData(cfg.BinaryAuthorizationPolicy),
 		"serviceAccountEmail":        llx.StringData(cfg.ServiceAccountEmail),
 		"allTrafficOnLatestRevision": llx.BoolData(cfg.AllTrafficOnLatestRevision),
 		"secretEnvironmentVariables": llx.ArrayData(secretEnvVars, types.Dict),
 		"secretVolumes":              llx.ArrayData(secretVolumes, types.Dict),
+		"boundSecretEnvVars":         llx.ArrayData(boundSecretEnvVars, types.Resource("gcp.project.cloudFunction.secretEnvVar")),
+		"boundSecretVolumes":         llx.ArrayData(boundSecretVolumes, types.Resource("gcp.project.cloudFunction.secretVolume")),
 	})
 	if err != nil {
 		return nil, err
@@ -463,16 +498,12 @@ func (g *mqlGcpProjectCloudFunctionV2EventTrigger) serviceAccount() (*mqlGcpProj
 }
 
 func (g *mqlGcpProjectCloudFunctionV2EventTrigger) topic() (*mqlGcpProjectPubsubServiceTopic, error) {
-	topicName := g.cachePubsubTopic
-	if topicName == "" {
-		g.Topic.State = plugin.StateIsNull | plugin.StateIsSet
-		return nil, nil
-	}
-	res, err := NewResource(g.MqlRuntime, "gcp.project.pubsubService.topic", map[string]*llx.RawData{
-		"name": llx.StringData(topicName),
-	})
+	ref, err := resolvePubsubTopicRef(g.MqlRuntime, g.cachePubsubTopic, "")
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlGcpProjectPubsubServiceTopic), nil
+	if ref == nil {
+		g.Topic.State = plugin.StateIsNull | plugin.StateIsSet
+	}
+	return ref, nil
 }

@@ -1,0 +1,29 @@
+@@if not defined APT_TRANSLATIONS
+@@define APT_TRANSLATIONS (ca|cs|da|de|de_DE|en|eo|es|eu|fi|fr|hr|hu|id|it|ja|km|ko|nb|nl|pl|pt|pt_BR|ro|ru|sk|sr|sv|uk|vi|zh|zh_CN|zh_TW)
+@@endif
+@@if not defined APT_ARCH
+@@define APT_ARCH (@@{ARCH}|all)
+@@endif
+
+
+
+
+/var/lib/apt/lists(/(auxfiles|partial))?$ d VarDir
+/var/lib/apt/lists/lock$ f VarFile
+/var/lib/apt/periodic/(download-upgradeable|update)-stamp$ f VarTime
+/var/lib/apt/(daily_lock|extended_states)$ f VarFile
+/var/lib/apt$ d VarDir
+
+/var/lib/systemd/timers/stamp-apt-daily(-upgrade)?\\.timer$ f VarFile
+
+/var/log/apt/(term|history)\\.log$ f ActLog
+/var/log/apt/(term|history)\\.log\\.1\\.@@{LOGEXT}$ f CompSerLog+ANF
+/var/log/apt/(term|history)\\.log\\.([2-9]|1[0-1])\\.@@{LOGEXT}$ f MidlSerLog
+/var/log/apt/(term|history)\\.log\\.12\\.@@{LOGEXT}$ f LastSerLog
+/var/log/apt/eipp\\.log\\.xz$ f VarFile
+/var/log/apt$ d VarDir
+
+/var/backups/apt\\.extended_states\\.0$ f ActLog
+/var/backups/apt\\.extended_states\\.1\\.@@{LOGEXT}$ f CompSerLog+ANF
+/var/backups/apt\\.extended_states\\.[2345]\\.@@{LOGEXT}$ f MidlSerLog
+/var/backups/apt\\.extended_states\\.6\\.@@{LOGEXT}$ f LastSerLog

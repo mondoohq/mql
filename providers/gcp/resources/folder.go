@@ -11,11 +11,11 @@ import (
 	"strings"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/cloudresourcemanager/v3"
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/iam/v1"
@@ -81,7 +81,7 @@ func initGcpFolder(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[s
 
 	folderId := conn.ResourceID()
 	if args["id"] != nil {
-		folderId = args["id"].Value.(string)
+		folderId, _ = args["id"].Value.(string)
 	}
 
 	folderPath := fmt.Sprintf("folders/%s", folderId)
@@ -260,8 +260,11 @@ func (g *mqlGcpFolder) projects() (*mqlGcpProjects, error) {
 }
 
 func folderToMql(runtime *plugin.Runtime, f *cloudresourcemanager.Folder) (any, error) {
+	// Store the bare id ("123456"), matching initGcpFolder. folders()/projects()
+	// re-prefix with "folders/", so storing the full "folders/123456" here would
+	// double-prefix and silently break child traversal.
 	return CreateResource(runtime, "gcp.folder", map[string]*llx.RawData{
-		"id":                llx.StringData(f.Name),
+		"id":                llx.StringData(strings.TrimPrefix(f.Name, "folders/")),
 		"name":              llx.StringData(f.DisplayName),
 		"created":           llx.TimeDataPtr(parseTime(f.CreateTime)),
 		"updated":           llx.TimeDataPtr(parseTime(f.UpdateTime)),

@@ -11,17 +11,18 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/databasemigrationservice"
 	dmstypes "github.com/aws/aws-sdk-go-v2/service/databasemigrationservice/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // ===== Internal struct layouts =====
 
 type mqlAwsDmsReplicationInstanceInternal struct {
+	lazyTags
 	securityGroupIdHandler
 	region                        string
 	accountID                     string
@@ -30,6 +31,7 @@ type mqlAwsDmsReplicationInstanceInternal struct {
 }
 
 type mqlAwsDmsEndpointInternal struct {
+	lazyTags
 	region                    string
 	accountID                 string
 	cacheKmsKeyId             *string
@@ -38,6 +40,7 @@ type mqlAwsDmsEndpointInternal struct {
 }
 
 type mqlAwsDmsReplicationTaskInternal struct {
+	lazyTags
 	region                      string
 	accountID                   string
 	cacheSourceEndpointArn      *string
@@ -132,6 +135,13 @@ func newMqlAwsDmsReplicationInstance(runtime *plugin.Runtime, region, accountID 
 		dict, err := convert.JsonToDict(inst.PendingModifiedValues)
 		if err != nil {
 			return nil, err
+		}
+		// Every unset pointer marshals as a null-valued key, so an instance
+		// with nothing pending would otherwise report a dict full of nulls.
+		for k, v := range dict {
+			if v == nil {
+				delete(dict, k)
+			}
 		}
 		if len(dict) > 0 {
 			pendingDict = dict
@@ -243,7 +253,10 @@ func initAwsDmsReplicationInstance(runtime *plugin.Runtime, args map[string]*llx
 			return args, inst, nil
 		}
 	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.dms.replicationInstance with arn %q not found", arnVal)
 }
 
 // ===== aws.dms.endpoint =====
@@ -414,7 +427,10 @@ func initAwsDmsEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 			return args, ep, nil
 		}
 	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.dms.endpoint with arn %q not found", arnVal)
 }
 
 // ===== aws.dms.replicationTask =====
@@ -736,7 +752,10 @@ func initAwsDmsReplicationSubnetGroup(runtime *plugin.Runtime, args map[string]*
 		}
 		return args, sg, nil
 	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.dms.replicationSubnetGroup with identifier %q not found", idVal)
 }
 
 // ===== shared helpers =====
@@ -747,4 +766,61 @@ func dmsGetParent(runtime *plugin.Runtime) (*mqlAwsDms, error) {
 		return nil, err
 	}
 	return res.(*mqlAwsDms), nil
+}
+
+func (a *mqlAwsDmsReplicationInstance) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Dms(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &databasemigrationservice.ListTagsForResourceInput{ResourceArn: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("dms:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.TagList, func(t dmstypes.Tag) *string { return t.Key }, func(t dmstypes.Tag) *string { return t.Value }), nil
+	})
+}
+
+func (a *mqlAwsDmsEndpoint) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Dms(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &databasemigrationservice.ListTagsForResourceInput{ResourceArn: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("dms:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.TagList, func(t dmstypes.Tag) *string { return t.Key }, func(t dmstypes.Tag) *string { return t.Value }), nil
+	})
+}
+
+func (a *mqlAwsDmsReplicationTask) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Dms(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &databasemigrationservice.ListTagsForResourceInput{ResourceArn: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("dms:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.TagList, func(t dmstypes.Tag) *string { return t.Key }, func(t dmstypes.Tag) *string { return t.Value }), nil
+	})
 }

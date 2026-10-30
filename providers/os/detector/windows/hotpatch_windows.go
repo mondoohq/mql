@@ -7,109 +7,38 @@
 package windows
 
 import (
-	"errors"
-	"runtime"
-	"strings"
-
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"golang.org/x/sys/windows/registry"
+	"go.mondoo.com/mql/providers/os/registry"
+	"go.mondoo.com/mql/providers/os/resources/wmiquery"
 )
 
-func GetWindowsHotpatch(conn shared.Connection, pf *inventory.Platform) (bool, error) {
-	log.Debug().Msg("checking windows hotpatch")
+// liveRegistry reads the registry of the machine the scanner runs on.
+type liveRegistry struct{}
 
-	if !hotpatchSupported(pf) {
-		return false, nil
-	}
-
-	// if we are running locally on windows, we want to avoid using powershell to be faster
-	if conn.Type() == shared.Type_Local && runtime.GOOS == "windows" {
-		if isClientOS(pf) {
-			return nativeGetWindowsClientHotpatch()
-		}
-		return nativeGetWindowsServerHotpatch(pf.Arch)
-	}
-
-	// for all non-local checks use powershell
-	return powershellGetWindowsHotpatch(conn, pf)
+func (liveRegistry) softwareItems(path string) ([]registry.RegistryKeyItem, error) {
+	return registry.GetNativeRegistryKeyItems(`HKEY_LOCAL_MACHINE\SOFTWARE\` + path)
 }
 
-// nativeGetWindowsClientHotpatch reads AllowRebootlessUpdates and VBS directly from the Windows registry.
-func nativeGetWindowsClientHotpatch() (bool, error) {
-	updateKey, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\PolicyManager\current\device\Update`, registry.QUERY_VALUE)
-	if err != nil {
-		log.Debug().Err(err).Msg("could not open registry key PolicyManager Update")
-		return false, nil
-	}
-	defer updateKey.Close()
-
-	allowRebootless, _, err := updateKey.GetIntegerValue("AllowRebootlessUpdates")
-	if err != nil && !errors.Is(err, registry.ErrNotExist) {
-		log.Debug().Err(err).Msg("could not get AllowRebootlessUpdates value")
-		return false, err
-	}
-
-	systemKey, err := registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Control\DeviceGuard`, registry.QUERY_VALUE)
-	if err != nil {
-		log.Debug().Err(err).Msg("could not open registry key DeviceGuard")
-		return false, nil
-	}
-	defer systemKey.Close()
-
-	enableVBS, _, err := systemKey.GetIntegerValue("EnableVirtualizationBasedSecurity")
-	if err != nil && !errors.Is(err, registry.ErrNotExist) {
-		log.Debug().Err(err).Msg("could not get EnableVirtualizationBasedSecurity value")
-		return false, err
-	}
-
-	log.Debug().Int("allowRebootlessUpdates", int(allowRebootless)).Int("enableVBS", int(enableVBS)).Msg("parsed windows client hotpatch settings")
-
-	return allowRebootless == 1 && enableVBS == 1, nil
+func (liveRegistry) systemItems(path string) ([]registry.RegistryKeyItem, error) {
+	return registry.GetNativeRegistryKeyItems(`HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\` + path)
 }
 
-// nativeGetWindowsServerHotpatch reads hotpatch enrollment, VBS, and HotPatchTableSize directly from the Windows registry.
-func nativeGetWindowsServerHotpatch(arch string) (bool, error) {
-	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows NT\CurrentVersion\Update\TargetingInfo\DynamicInstalled\Hotpatch.`+strings.ToLower(arch), registry.QUERY_VALUE)
-	if err != nil {
-		log.Debug().Err(err).Msg("could not open registry key DynamicInstalled")
-		return false, nil
-	}
-	defer k.Close()
+// nativeGetHotpatchState reads the hotpatch registry values of the local
+// machine and the VBS running state from WMI. When WMI yields nothing the
+// running state stays nil, like in the PowerShell path.
+func nativeGetHotpatchState(arch string) *HotpatchState {
+	st := readHotpatchRegistry(liveRegistry{}, arch)
 
-	hotpatchName, _, err := k.GetStringValue("Name")
-	if err != nil && !errors.Is(err, registry.ErrNotExist) {
-		return false, err
-	}
-
-	systemKey, err := registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Control\DeviceGuard`, registry.QUERY_VALUE)
-	if err != nil {
-		log.Debug().Err(err).Msg("could not open registry key DeviceGuard")
-		return false, nil
-	}
-	defer systemKey.Close()
-
-	enableVirtualizationBasedSecurity, _, err := systemKey.GetIntegerValue("EnableVirtualizationBasedSecurity")
-	if err != nil && !errors.Is(err, registry.ErrNotExist) {
-		log.Debug().Err(err).Msg("could not get EnableVirtualizationBasedSecurity value")
-		return false, err
+	rows, err := wmiquery.QueryNamespace(`root\Microsoft\Windows\DeviceGuard`,
+		"SELECT VirtualizationBasedSecurityStatus FROM Win32_DeviceGuard", "VirtualizationBasedSecurityStatus")
+	if err != nil || len(rows) == 0 {
+		log.Debug().Err(err).Msg("could not query Win32_DeviceGuard, the VBS running state is unknown")
+	} else if status, ok := rows[0].Int64("VirtualizationBasedSecurityStatus"); ok {
+		st.VirtualizationBasedSecurityStatus = &status
+	} else {
+		log.Debug().Msg("Win32_DeviceGuard returned no VBS status")
 	}
 
-	memoryKey, err := registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management`, registry.QUERY_VALUE)
-	if err != nil {
-		log.Debug().Err(err).Msg("could not open registry key Memory Management")
-		return false, nil
-	}
-	defer memoryKey.Close()
-
-	hotPatchTableSize, _, err := memoryKey.GetIntegerValue("HotPatchTableSize")
-	if err != nil && !errors.Is(err, registry.ErrNotExist) {
-		log.Debug().Err(err).Msg("could not get HotPatchTableSize value")
-		return false, err
-	}
-
-	log.Debug().Str("hotpatchName", hotpatchName).Int("enableVirtualizationBasedSecurity", int(enableVirtualizationBasedSecurity)).Int("hotPatchTableSize", int(hotPatchTableSize)).Msg("parsed windows server hotpatch settings")
-
-	return hotpatchName == HotpatchPackage && enableVirtualizationBasedSecurity == 1 && hotPatchTableSize > 0, nil
+	log.Debug().Interface("hotpatch", st).Msg("read windows hotpatch state")
+	return st
 }

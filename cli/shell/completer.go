@@ -7,11 +7,10 @@ import (
 	"slices"
 	"strings"
 
-	"go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/mqlc"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/mqlc"
+	"go.mondoo.com/mql/utils/stringx"
 )
 
 // Suggestion represents a completion suggestion for the shell
@@ -22,18 +21,27 @@ type Suggestion struct {
 
 // Completer is an auto-complete helper for the shell
 type Completer struct {
-	schema   resources.ResourcesSchema
+	runtime  llx.Runtime
 	features mql.Features
+	strict   bool
 	sortFn   func(a, b *llx.Documentation) int
 }
 
-// NewCompleter creates a new Mondoo completer object
-func NewCompleter(schema resources.ResourcesSchema, features mql.Features, connectedProviders []string) *Completer {
+// NewCompleter creates a new Mondoo completer object.
+//
+// It takes the runtime rather than a schema because completion compiles the
+// partial input, and a compile is configured from a runtime: that is where the
+// asset root comes from (ADR 031), along with the downgrade catalog and
+// everything else NewConfigFrom carries. Building the config from a bare schema
+// is what made the shell suggest a different set of names than it accepts -
+// `hostname` ran but never completed.
+func NewCompleter(runtime llx.Runtime, features mql.Features, strict bool, connectedProviders []string) *Completer {
 	sortFn := byProviderSortFn(connectedProviders)
 
 	return &Completer{
-		schema:   schema,
+		runtime:  runtime,
 		features: features,
+		strict:   strict,
 		sortFn:   sortFn,
 	}
 }
@@ -60,9 +68,7 @@ func (c *Completer) Complete(text string) []Suggestion {
 		}
 	}
 
-	cfg := mqlc.NewConfig(c.schema, c.features)
-	cfg.EditorMode = true
-	bundle, _ := mqlc.Compile(text, nil, cfg)
+	bundle, _ := mqlc.Compile(text, nil, c.compilerConfig())
 	if bundle != nil && len(bundle.Suggestions) > 0 {
 		// reorder suggestions to put the ones from connected providers first
 		slices.SortFunc(bundle.Suggestions, c.sortFn)
@@ -91,4 +97,13 @@ func byProviderSortFn(connectedProviders []string) func(a, b *llx.Documentation)
 		}
 		return 0
 	}
+}
+
+func (c *Completer) compilerConfig() mqlc.CompilerConfig {
+	conf := mqlc.NewConfigFrom(c.runtime, c.features)
+	conf.Strict = c.strict
+	// Interactive recompiles run on every keystroke, so keep non-fatal
+	// advisories like the standalone where warning out of the terminal.
+	conf.EditorMode = true
+	return conf
 }

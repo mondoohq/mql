@@ -7,67 +7,30 @@ import (
 	"context"
 	"errors"
 
-	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/generativeai"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/oci/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/oci/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (o *mqlOciAiGenerativeAi) id() (string, error) {
 	return "oci.ai.generativeAi", nil
 }
 
-func (o *mqlOciAiGenerativeAi) compartmentID() string {
-	return o.MqlRuntime.Connection.(*connection.OciConnection).TenantID()
-}
-
 // listRegional runs fetch against the Generative AI API in every subscribed
-// region concurrently and flattens the results. Regions where Generative AI is
-// not available are skipped (see ociRegionServiceUnavailable).
-func (o *mqlOciAiGenerativeAi) listRegional(fetch func(svc *generativeai.GenerativeAiClient) ([]any, error)) ([]any, error) {
+// region and every admitted compartment (see ociListRegionalAI). Base models
+// come back from every compartment asked and are deduplicated there.
+func (o *mqlOciAiGenerativeAi) listRegional(fetch func(svc *generativeai.GenerativeAiClient, region string, compartmentID string) ([]any, error)) ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	regions, err := ociAgentRegions(o.MqlRuntime)
-	if err != nil {
-		return nil, err
-	}
-
-	tasks := make([]*jobpool.Job, 0, len(regions))
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return nil, errors.New("invalid region type")
+	return ociListRegionalAI(o.MqlRuntime, func(region string, compartmentID string) ([]any, error) {
+		svc, err := conn.GenerativeAiClient(region)
+		if err != nil {
+			return nil, err
 		}
-		regionID := regionResource.Id.Data
-		tasks = append(tasks, jobpool.NewJob(func() (jobpool.JobResult, error) {
-			svc, err := conn.GenerativeAiClient(regionID)
-			if err != nil {
-				return nil, err
-			}
-			items, err := fetch(svc)
-			if err != nil {
-				if ociRegionServiceUnavailable(err) {
-					return jobpool.JobResult([]any{}), nil
-				}
-				return nil, err
-			}
-			return jobpool.JobResult(items), nil
-		}))
-	}
-
-	poolOfJobs := jobpool.CreatePool(tasks, 5)
-	poolOfJobs.Run()
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	res := []any{}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-	return res, nil
+		return fetch(svc, region, compartmentID)
+	})
 }
 
 // ----- dedicated AI clusters -----
@@ -76,23 +39,20 @@ func (o *mqlOciAiGenerativeAi) dedicatedAiClusters() ([]any, error) {
 	return o.listRegional(o.fetchDedicatedAiClusters)
 }
 
-func (o *mqlOciAiGenerativeAi) fetchDedicatedAiClusters(svc *generativeai.GenerativeAiClient) ([]any, error) {
+func (o *mqlOciAiGenerativeAi) fetchDedicatedAiClusters(svc *generativeai.GenerativeAiClient, _ string, compartmentID string) ([]any, error) {
 	ctx := context.Background()
-	var items []generativeai.DedicatedAiClusterSummary
-	var page *string
-	for {
+	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]generativeai.DedicatedAiClusterSummary, *string, error) {
 		resp, err := svc.ListDedicatedAiClusters(ctx, generativeai.ListDedicatedAiClustersRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: new(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		items = append(items, resp.Items...)
-		if resp.OpcNextPage == nil {
-			break
-		}
-		page = resp.OpcNextPage
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	res := make([]any, 0, len(items))
@@ -103,20 +63,21 @@ func (o *mqlOciAiGenerativeAi) fetchDedicatedAiClusters(svc *generativeai.Genera
 			return nil, err
 		}
 		mqlCluster, err := CreateResource(o.MqlRuntime, "oci.ai.generativeAi.dedicatedAiCluster", map[string]*llx.RawData{
-			"id":               llx.StringDataPtr(c.Id),
-			"name":             llx.StringDataPtr(c.DisplayName),
-			"compartmentID":    llx.StringDataPtr(c.CompartmentId),
-			"type":             llx.StringData(string(c.Type)),
-			"unitCount":        llx.IntDataPtr(c.UnitCount),
-			"unitShape":        llx.StringData(string(c.UnitShape)),
-			"capacity":         llx.DictData(capacity),
-			"description":      llx.StringDataPtr(c.Description),
-			"state":            llx.StringData(string(c.LifecycleState)),
-			"lifecycleDetails": llx.StringDataPtr(c.LifecycleDetails),
-			"created":          sdkTimeData(c.TimeCreated),
-			"timeUpdated":      sdkTimeData(c.TimeUpdated),
-			"freeformTags":     llx.MapData(strMapToAny(c.FreeformTags), types.String),
-			"definedTags":      llx.MapData(definedTagsToAny(c.DefinedTags), types.Any),
+			"id":                    llx.StringDataPtr(c.Id),
+			"name":                  llx.StringDataPtr(c.DisplayName),
+			"compartmentID":         llx.StringDataPtr(c.CompartmentId),
+			"type":                  llx.StringData(string(c.Type)),
+			"unitCount":             llx.IntDataPtr(c.UnitCount),
+			"unitShape":             llx.StringData(string(c.UnitShape)),
+			"capacity":              llx.DictData(capacity),
+			"description":           llx.StringDataPtr(c.Description),
+			"state":                 llx.StringData(string(c.LifecycleState)),
+			"lifecycleDetails":      llx.StringDataPtr(c.LifecycleDetails),
+			"capacityReservationID": llx.StringDataPtr(c.CapacityReservationId),
+			"created":               sdkTimeData(c.TimeCreated),
+			"timeUpdated":           sdkTimeData(c.TimeUpdated),
+			"freeformTags":          llx.MapData(strMapToAny(c.FreeformTags), types.String),
+			"definedTags":           llx.MapData(definedTagsToAny(c.DefinedTags), types.Any),
 		})
 		if err != nil {
 			return nil, err
@@ -127,7 +88,7 @@ func (o *mqlOciAiGenerativeAi) fetchDedicatedAiClusters(svc *generativeai.Genera
 }
 
 func initOciAiGenerativeAiDedicatedAiCluster(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	return findOciGenerativeAiByID(runtime, args, (*mqlOciAiGenerativeAi).GetDedicatedAiClusters)
+	return findOciGenerativeAiByID(runtime, args, "oci.ai.generativeAi.dedicatedAiCluster", (*mqlOciAiGenerativeAi).GetDedicatedAiClusters)
 }
 
 func (o *mqlOciAiGenerativeAiDedicatedAiCluster) id() (string, error) {
@@ -144,23 +105,20 @@ func (o *mqlOciAiGenerativeAi) models() ([]any, error) {
 	return o.listRegional(o.fetchModels)
 }
 
-func (o *mqlOciAiGenerativeAi) fetchModels(svc *generativeai.GenerativeAiClient) ([]any, error) {
+func (o *mqlOciAiGenerativeAi) fetchModels(svc *generativeai.GenerativeAiClient, _ string, compartmentID string) ([]any, error) {
 	ctx := context.Background()
-	var items []generativeai.ModelSummary
-	var page *string
-	for {
+	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]generativeai.ModelSummary, *string, error) {
 		resp, err := svc.ListModels(ctx, generativeai.ListModelsRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: new(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		items = append(items, resp.Items...)
-		if resp.OpcNextPage == nil {
-			break
-		}
-		page = resp.OpcNextPage
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	res := make([]any, 0, len(items))
@@ -209,7 +167,7 @@ type mqlOciAiGenerativeAiModelInternal struct {
 }
 
 func initOciAiGenerativeAiModel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	return findOciGenerativeAiByID(runtime, args, (*mqlOciAiGenerativeAi).GetModels)
+	return findOciGenerativeAiByID(runtime, args, "oci.ai.generativeAi.model", (*mqlOciAiGenerativeAi).GetModels)
 }
 
 func (o *mqlOciAiGenerativeAiModel) id() (string, error) {
@@ -230,28 +188,31 @@ func (o *mqlOciAiGenerativeAi) endpoints() ([]any, error) {
 	return o.listRegional(o.fetchEndpoints)
 }
 
-func (o *mqlOciAiGenerativeAi) fetchEndpoints(svc *generativeai.GenerativeAiClient) ([]any, error) {
+func (o *mqlOciAiGenerativeAi) fetchEndpoints(svc *generativeai.GenerativeAiClient, region string, compartmentID string) ([]any, error) {
 	ctx := context.Background()
-	var items []generativeai.EndpointSummary
-	var page *string
-	for {
+	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]generativeai.EndpointSummary, *string, error) {
 		resp, err := svc.ListEndpoints(ctx, generativeai.ListEndpointsRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: new(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		items = append(items, resp.Items...)
-		if resp.OpcNextPage == nil {
-			break
-		}
-		page = resp.OpcNextPage
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
+
+	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
 	res := make([]any, 0, len(items))
 	for i := range items {
 		e := items[i]
+
+		if conn.Filters.IsFilteredOutByTags(e.FreeformTags, e.DefinedTags) {
+			continue
+		}
 
 		var cmEnabled, piEnabled, piiEnabled bool
 		var cmMode, piMode, piiMode string
@@ -295,6 +256,8 @@ func (o *mqlOciAiGenerativeAi) fetchEndpoints(svc *generativeai.GenerativeAiClie
 		mqlEndpointTyped := mqlEndpoint.(*mqlOciAiGenerativeAiEndpoint)
 		mqlEndpointTyped.cacheModelID = stringValue(e.ModelId)
 		mqlEndpointTyped.cacheDedicatedAiClusterID = stringValue(e.DedicatedAiClusterId)
+		mqlEndpointTyped.cachePrivateEndpointID = stringValue(e.GenerativeAiPrivateEndpointId)
+		mqlEndpointTyped.cacheRegion = region
 		res = append(res, mqlEndpointTyped)
 	}
 	return res, nil
@@ -303,10 +266,29 @@ func (o *mqlOciAiGenerativeAi) fetchEndpoints(svc *generativeai.GenerativeAiClie
 type mqlOciAiGenerativeAiEndpointInternal struct {
 	cacheModelID              string
 	cacheDedicatedAiClusterID string
+	cachePrivateEndpointID    string
+	cacheRegion               string
 }
 
 func initOciAiGenerativeAiEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	return findOciGenerativeAiByID(runtime, args, (*mqlOciAiGenerativeAi).GetEndpoints)
+	// When selected as a discovered asset there is no "id" arg; fall back to
+	// the connection's platform id and pull the endpoint OCID from it, matching
+	// the oci-ai-generativeai-endpoint platform emitted during discovery.
+	if ociArgString(args, "id") == "" {
+		conn := runtime.Connection.(*connection.OciConnection)
+		if conn.Conf == nil || conn.Conf.PlatformId == "" {
+			return args, nil, nil
+		}
+		parsed, ok := parseOciObjectPlatformID(conn.Conf.PlatformId)
+		if !ok || parsed.service != "generativeai" || parsed.objectType != "endpoint" {
+			return args, nil, nil
+		}
+		if args == nil {
+			args = map[string]*llx.RawData{}
+		}
+		args["id"] = llx.StringData(parsed.id)
+	}
+	return findOciGenerativeAiByID(runtime, args, "oci.ai.generativeAi.endpoint", (*mqlOciAiGenerativeAi).GetEndpoints)
 }
 
 func (o *mqlOciAiGenerativeAiEndpoint) id() (string, error) {
@@ -335,12 +317,110 @@ func (o *mqlOciAiGenerativeAiEndpoint) dedicatedAiCluster() (*mqlOciAiGenerative
 	return r.(*mqlOciAiGenerativeAiDedicatedAiCluster), nil
 }
 
+func (o *mqlOciAiGenerativeAiEndpoint) privateEndpoint() (*mqlOciAiGenerativeAiPrivateEndpoint, error) {
+	return resolveRef(o.MqlRuntime, "oci.ai.generativeAi.privateEndpoint", o.cachePrivateEndpointID, &o.PrivateEndpoint)
+}
+
+// ----- private endpoints -----
+
+func (o *mqlOciAiGenerativeAi) privateEndpoints() ([]any, error) {
+	return o.listRegional(o.fetchPrivateEndpoints)
+}
+
+func (o *mqlOciAiGenerativeAi) fetchPrivateEndpoints(svc *generativeai.GenerativeAiClient, region string, compartmentID string) ([]any, error) {
+	ctx := context.Background()
+	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]generativeai.GenerativeAiPrivateEndpointSummary, *string, error) {
+		resp, err := svc.ListGenerativeAiPrivateEndpoints(ctx, generativeai.ListGenerativeAiPrivateEndpointsRequest{
+			CompartmentId: new(compartmentID),
+			Page:          page,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]any, 0, len(items))
+	for i := range items {
+		pe := items[i]
+		mqlPe, err := CreateResource(o.MqlRuntime, "oci.ai.generativeAi.privateEndpoint", map[string]*llx.RawData{
+			"id":               llx.StringDataPtr(pe.Id),
+			"name":             llx.StringDataPtr(pe.DisplayName),
+			"compartmentID":    llx.StringDataPtr(pe.CompartmentId),
+			"description":      llx.StringDataPtr(pe.Description),
+			"fqdn":             llx.StringDataPtr(pe.Fqdn),
+			"privateIp":        llx.StringDataPtr(pe.PrivateEndpointIp),
+			"isAllowOnDemand":  llx.BoolDataPtr(pe.IsAllowOnDemand),
+			"resourceType":     llx.StringData(string(pe.ResourceType)),
+			"state":            llx.StringData(string(pe.LifecycleState)),
+			"lifecycleDetails": llx.StringDataPtr(pe.LifecycleDetails),
+			"created":          sdkTimeData(pe.TimeCreated),
+			"timeUpdated":      sdkTimeData(pe.TimeUpdated),
+			"freeformTags":     llx.MapData(strMapToAny(pe.FreeformTags), types.String),
+			"definedTags":      llx.MapData(definedTagsToAny(pe.DefinedTags), types.Any),
+		})
+		if err != nil {
+			return nil, err
+		}
+		mqlPeTyped := mqlPe.(*mqlOciAiGenerativeAiPrivateEndpoint)
+		mqlPeTyped.cacheSubnetID = stringValue(pe.SubnetId)
+		mqlPeTyped.cacheRegion = region
+		res = append(res, mqlPeTyped)
+	}
+	return res, nil
+}
+
+type mqlOciAiGenerativeAiPrivateEndpointInternal struct {
+	cacheSubnetID string
+	cacheRegion   string
+}
+
+func initOciAiGenerativeAiPrivateEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return findOciGenerativeAiByID(runtime, args, "oci.ai.generativeAi.privateEndpoint", (*mqlOciAiGenerativeAi).GetPrivateEndpoints)
+}
+
+func (o *mqlOciAiGenerativeAiPrivateEndpoint) id() (string, error) {
+	return "oci.ai.generativeAi.privateEndpoint/" + o.Id.Data, nil
+}
+
+func (o *mqlOciAiGenerativeAiPrivateEndpoint) compartment() (*mqlOciCompartment, error) {
+	return resolveOciCompartment(o.MqlRuntime, o.CompartmentID.Data, &o.Compartment)
+}
+
+func (o *mqlOciAiGenerativeAiPrivateEndpoint) subnet() (*mqlOciNetworkSubnet, error) {
+	return resolveOciSubnet(o.MqlRuntime, o.cacheSubnetID, &o.Subnet)
+}
+
+// networkSecurityGroups reads the NSGs from the private endpoint's detail
+// record: the list API's summary does not carry them.
+func (o *mqlOciAiGenerativeAiPrivateEndpoint) networkSecurityGroups() ([]any, error) {
+	region := o.cacheRegion
+	if region == "" {
+		region = ociRegionFromOCID(o.Id.Data)
+	}
+	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+	svc, err := conn.GenerativeAiClient(region)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.GetGenerativeAiPrivateEndpoint(context.Background(), generativeai.GetGenerativeAiPrivateEndpointRequest{
+		GenerativeAiPrivateEndpointId: new(o.Id.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resolveOciNetworkSecurityGroups(o.MqlRuntime, resp.NsgIds), nil
+}
+
 // ----- helpers -----
 
 // findOciGenerativeAiByID powers the init functions for Generative AI
 // resources: it lists the requested collection and returns the entry whose id
 // matches the "id" argument, so a resource can be selected directly by OCID.
-func findOciGenerativeAiByID(runtime *plugin.Runtime, args map[string]*llx.RawData, list func(svc *mqlOciAiGenerativeAi) *plugin.TValue[[]any]) (map[string]*llx.RawData, plugin.Resource, error) {
+func findOciGenerativeAiByID(runtime *plugin.Runtime, args map[string]*llx.RawData, resourceName string, list func(svc *mqlOciAiGenerativeAi) *plugin.TValue[[]any]) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 2 {
 		return args, nil, nil
 	}
@@ -363,7 +443,7 @@ func findOciGenerativeAiByID(runtime *plugin.Runtime, args map[string]*llx.RawDa
 			return args, res, nil
 		}
 	}
-	return args, nil, nil
+	return nil, nil, errors.New(resourceName + " not found: " + idVal)
 }
 
 // resolveOciGenerativeAiModel resolves a typed model resource from a model

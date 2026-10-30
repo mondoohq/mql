@@ -4,16 +4,22 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/openstack/connection"
-	"go.mondoo.com/mql/v13/providers/openstack/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/openstack/connection"
+	"go.mondoo.com/mql/providers/openstack/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "openstack",
-	ID:              "go.mondoo.com/mql/providers/openstack",
-	Version:         "13.7.0",
+	Name: "openstack",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "openstack",
+	ID:      "go.mondoo.com/mql/providers/openstack",
+	Version: "14.0.7",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	Platforms:       connection.Platforms,
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Connectors: []plugin.Connector{
@@ -32,6 +38,12 @@ Authentication options (in priority order):
 
 Application credentials are also supported via --application-credential-id
 and --application-credential-secret.
+
+Examples:
+  cnspec shell openstack --cloud <CLOUDS-YAML-ENTRY>
+  cnspec scan openstack --auth-url <KEYSTONE-URL> --username <USERNAME> --password <PASSWORD> --project-name <PROJECT-NAME>
+  cnspec scan openstack --auth-url <KEYSTONE-URL> --application-credential-id <ID> --application-credential-secret <SECRET>
+  cnspec scan openstack --cloud <CLOUDS-YAML-ENTRY> --discover security-groups
 `,
 			MinArgs: 0,
 			MaxArgs: 0,

@@ -4,7 +4,7 @@
 package llx
 
 import (
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/types"
 )
 
 // Type of this chunk, by looking at either the primitive or function.

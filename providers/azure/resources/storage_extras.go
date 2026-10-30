@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -15,27 +16,76 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity"
 	storage "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage/v4"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAzureSubscriptionStorageServiceAccountFileShare) id() (string, error) {
 	return a.Id.Data, nil
 }
 
+type mqlAzureSubscriptionStorageServiceAccountFileShareInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionStorageServiceAccountFileShare) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
 func (a *mqlAzureSubscriptionStorageServiceAccountPrivateEndpointConnection) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+type mqlAzureSubscriptionStorageServiceAccountPrivateEndpointConnectionInternal struct {
+	cacheSystemData        any
+	cachePrivateEndpointId string
+}
+
+func (a *mqlAzureSubscriptionStorageServiceAccountPrivateEndpointConnection) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
+// privateEndpoint resolves the consumer-side private endpoint of this
+// connection so the subnet and virtual network it is reachable from can be
+// traversed, giving the private-access path into the storage account.
+func (a *mqlAzureSubscriptionStorageServiceAccountPrivateEndpointConnection) privateEndpoint() (*mqlAzureSubscriptionNetworkServicePrivateEndpoint, error) {
+	if a.cachePrivateEndpointId == "" {
+		a.PrivateEndpoint.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "azure.subscription.networkService.privateEndpoint",
+		map[string]*llx.RawData{"id": llx.StringData(a.cachePrivateEndpointId)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAzureSubscriptionNetworkServicePrivateEndpoint), nil
 }
 
 func (a *mqlAzureSubscriptionStorageServiceAccountObjectReplicationPolicy) id() (string, error) {
 	return a.Id.Data, nil
 }
 
+type mqlAzureSubscriptionStorageServiceAccountObjectReplicationPolicyInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionStorageServiceAccountObjectReplicationPolicy) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
 func (a *mqlAzureSubscriptionStorageServiceAccountBlobInventoryPolicy) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+type mqlAzureSubscriptionStorageServiceAccountBlobInventoryPolicyInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionStorageServiceAccountBlobInventoryPolicy) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 // storageAccountResourceGroup returns the {resourceGroup, accountName} pair
@@ -82,6 +132,9 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) fileShares() ([]any, error) 
 			return nil, err
 		}
 		for _, share := range page.Value {
+			if share == nil {
+				continue
+			}
 			mqlShare, err := fileShareToMQL(a.MqlRuntime, share)
 			if err != nil {
 				return nil, err
@@ -147,7 +200,7 @@ func fileShareToMQL(runtime *plugin.Runtime, share *storage.FileShareItem) (plug
 		}
 	}
 
-	return CreateResource(runtime, "azure.subscription.storageService.account.fileShare",
+	mqlShare, err := CreateResource(runtime, "azure.subscription.storageService.account.fileShare",
 		map[string]*llx.RawData{
 			"id":                        llx.StringDataPtr(share.ID),
 			"name":                      llx.StringDataPtr(share.Name),
@@ -170,6 +223,15 @@ func fileShareToMQL(runtime *plugin.Runtime, share *storage.FileShareItem) (plug
 			"leaseDuration":             llx.StringData(leaseDuration),
 			"metadata":                  llx.MapData(metadata, types.String),
 		})
+	if err != nil {
+		return nil, err
+	}
+	sysData, err := convert.JsonToDict(share.SystemData)
+	if err != nil {
+		return nil, err
+	}
+	mqlShare.(*mqlAzureSubscriptionStorageServiceAccountFileShare).cacheSystemData = sysData
+	return mqlShare, nil
 }
 
 func (a *mqlAzureSubscriptionStorageServiceAccount) privateEndpointConnections() ([]any, error) {
@@ -200,6 +262,9 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) privateEndpointConnections()
 			return nil, err
 		}
 		for _, c := range page.Value {
+			if c == nil {
+				continue
+			}
 			var privateEndpointId, status, description, actionsRequired, provisioningState string
 			if p := c.Properties; p != nil {
 				if p.PrivateEndpoint != nil && p.PrivateEndpoint.ID != nil {
@@ -225,7 +290,6 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) privateEndpointConnections()
 					"id":                llx.StringDataPtr(c.ID),
 					"name":              llx.StringDataPtr(c.Name),
 					"type":              llx.StringDataPtr(c.Type),
-					"privateEndpointId": llx.StringData(privateEndpointId),
 					"status":            llx.StringData(status),
 					"description":       llx.StringData(description),
 					"actionsRequired":   llx.StringData(actionsRequired),
@@ -234,6 +298,13 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) privateEndpointConnections()
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(c.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlPec := mqlPe.(*mqlAzureSubscriptionStorageServiceAccountPrivateEndpointConnection)
+			mqlPec.cacheSystemData = sysData
+			mqlPec.cachePrivateEndpointId = privateEndpointId
 			res = append(res, mqlPe)
 		}
 	}
@@ -269,6 +340,9 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) objectReplicationPolicies() 
 			return nil, err
 		}
 		for _, pol := range page.Value {
+			if pol == nil {
+				continue
+			}
 			var policyId, sourceAccount, destinationAccount string
 			var enabledTime *time.Time
 			var tagsReplicationEnabled bool
@@ -304,6 +378,11 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) objectReplicationPolicies() 
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(pol.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlPol.(*mqlAzureSubscriptionStorageServiceAccountObjectReplicationPolicy).cacheSystemData = sysData
 			res = append(res, mqlPol)
 		}
 	}
@@ -312,6 +391,14 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) objectReplicationPolicies() 
 
 func (a *mqlAzureSubscriptionStorageServiceAccountNetworkSecurityPerimeterConfiguration) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+type mqlAzureSubscriptionStorageServiceAccountNetworkSecurityPerimeterConfigurationInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionStorageServiceAccountNetworkSecurityPerimeterConfiguration) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 func (a *mqlAzureSubscriptionStorageServiceAccount) networkSecurityPerimeterConfigurations() ([]any, error) {
@@ -396,7 +483,7 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) networkSecurityPerimeterConf
 					if profile.DiagnosticSettingsVersion != nil {
 						args["diagnosticSettingsVersion"] = llx.IntData(int64(*profile.DiagnosticSettingsVersion))
 					}
-					args["enabledLogCategories"] = llx.ArrayData(convert.SliceStrPtrToInterface(profile.EnabledLogCategories), types.String)
+					args["enabledLogCategories"] = llx.ArrayData(strPtrsToAny(profile.EnabledLogCategories), types.String)
 					var rules []any
 					for _, rule := range profile.AccessRules {
 						if rule == nil {
@@ -432,6 +519,11 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) networkSecurityPerimeterConf
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(nsp.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlNsp.(*mqlAzureSubscriptionStorageServiceAccountNetworkSecurityPerimeterConfiguration).cacheSystemData = sysData
 			res = append(res, mqlNsp)
 		}
 	}
@@ -534,6 +626,11 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) blobInventoryPolicy() (*mqlA
 	if err != nil {
 		return nil, err
 	}
+	sysData, err := convert.JsonToDict(pol.SystemData)
+	if err != nil {
+		return nil, err
+	}
+	mqlPol.(*mqlAzureSubscriptionStorageServiceAccountBlobInventoryPolicy).cacheSystemData = sysData
 	return mqlPol.(*mqlAzureSubscriptionStorageServiceAccountBlobInventoryPolicy), nil
 }
 
@@ -567,6 +664,7 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) defenderForStorage() (*mqlAz
 		malwareScanningResultsEventGridTopicId string
 	)
 	var sensitiveDataDiscoveryStatus, malwareScanningStatus map[string]any
+	var sensitiveDataDiscoveryOperationStatus, malwareScanningOperationStatus *armsecurity.OperationStatus
 
 	malwareScanningCapGBPerMonth = -1
 
@@ -584,6 +682,7 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) defenderForStorage() (*mqlAz
 			if d, _ := convert.JsonToDict(p.SensitiveDataDiscovery.OperationStatus); d != nil {
 				sensitiveDataDiscoveryStatus = d
 			}
+			sensitiveDataDiscoveryOperationStatus = p.SensitiveDataDiscovery.OperationStatus
 		}
 		if p.MalwareScanning != nil {
 			if p.MalwareScanning.OnUpload != nil {
@@ -600,6 +699,7 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) defenderForStorage() (*mqlAz
 			if d, _ := convert.JsonToDict(p.MalwareScanning.OperationStatus); d != nil {
 				malwareScanningStatus = d
 			}
+			malwareScanningOperationStatus = p.MalwareScanning.OperationStatus
 		}
 	}
 
@@ -611,6 +711,15 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) defenderForStorage() (*mqlAz
 		settingId = resourceId + "/providers/Microsoft.Security/defenderForStorageSettings/current"
 	}
 
+	sensitiveDataDiscoveryStatusRef, err := defenderOperationStatusToMql(a.MqlRuntime, settingId, "sensitiveDataDiscovery", sensitiveDataDiscoveryOperationStatus)
+	if err != nil {
+		return nil, err
+	}
+	malwareScanningStatusRef, err := defenderOperationStatusToMql(a.MqlRuntime, settingId, "malwareScanning", malwareScanningOperationStatus)
+	if err != nil {
+		return nil, err
+	}
+
 	mqlSetting, err := CreateResource(a.MqlRuntime, "azure.subscription.storageService.account.defenderForStorageSetting",
 		map[string]*llx.RawData{
 			"id":                                     llx.StringData(settingId),
@@ -618,15 +727,39 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) defenderForStorage() (*mqlAz
 			"overrideSubscriptionLevelSettings":      llx.BoolData(overrideSubscriptionLevelSettings),
 			"sensitiveDataDiscoveryEnabled":          llx.BoolData(sensitiveDataDiscoveryEnabled),
 			"sensitiveDataDiscoveryStatus":           llx.DictData(sensitiveDataDiscoveryStatus),
+			"sensitiveDataDiscoveryOperationStatus":  sensitiveDataDiscoveryStatusRef,
 			"malwareScanningOnUploadEnabled":         llx.BoolData(malwareScanningOnUploadEnabled),
 			"malwareScanningCapGBPerMonth":           llx.IntData(malwareScanningCapGBPerMonth),
 			"malwareScanningResultsEventGridTopicId": llx.StringData(malwareScanningResultsEventGridTopicId),
 			"malwareScanningStatus":                  llx.DictData(malwareScanningStatus),
+			"malwareScanningOperationStatus":         malwareScanningStatusRef,
 		})
 	if err != nil {
 		return nil, err
 	}
 	return mqlSetting.(*mqlAzureSubscriptionStorageServiceAccountDefenderForStorageSetting), nil
+}
+
+// defenderOperationStatusToMql maps the status Defender reports for one of its
+// features onto the shared status resource.
+//
+// A feature can be switched on in the configuration and still not be running,
+// so a check that reads only the enabled flag can report protection that is
+// not in effect. A feature Defender reports no status for reads null.
+func defenderOperationStatusToMql(runtime *plugin.Runtime, settingID, feature string, status *armsecurity.OperationStatus) (*llx.RawData, error) {
+	if status == nil {
+		return llx.NilData, nil
+	}
+	const resourceName = "azure.subscription.storageService.account.defenderForStorageSetting.operationStatus"
+	res, err := CreateResource(runtime, resourceName, map[string]*llx.RawData{
+		"__id":    llx.StringData(settingID + "/" + feature + "/operationStatus"),
+		"code":    llx.StringDataPtr(status.Code),
+		"message": llx.StringDataPtr(status.Message),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return llx.ResourceData(res, resourceName), nil
 }
 
 func (a *mqlAzureSubscriptionStorageServiceAccountDefenderForStorageSetting) id() (string, error) {
@@ -672,8 +805,7 @@ func isInventoryPolicyNotFoundError(err error) bool {
 	if err == nil {
 		return false
 	}
-	var rerr *azcore.ResponseError
-	if errors.As(err, &rerr) {
+	if rerr, ok := errors.AsType[*azcore.ResponseError](err); ok {
 		return rerr.StatusCode == 404
 	}
 	return false
@@ -687,11 +819,24 @@ func (a *mqlAzureSubscriptionStorageServiceAccountTable) id() (string, error) {
 	return a.Id.Data, nil
 }
 
+type mqlAzureSubscriptionStorageServiceAccountTableInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionStorageServiceAccountTable) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
 type mqlAzureSubscriptionStorageServiceAccountQueueInternal struct {
-	cacheAccountId string
-	countFetched   bool
-	count          int64
-	countLock      sync.Mutex
+	cacheSystemData any
+	cacheAccountId  string
+	countFetched    atomic.Bool
+	count           int64
+	countLock       sync.Mutex
+}
+
+func (a *mqlAzureSubscriptionStorageServiceAccountQueue) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 func (a *mqlAzureSubscriptionStorageServiceAccount) queues() ([]any, error) {
@@ -745,6 +890,11 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) queues() ([]any, error) {
 			}
 			mqlQ := mqlQueue.(*mqlAzureSubscriptionStorageServiceAccountQueue)
 			mqlQ.cacheAccountId = a.Id.Data
+			sysData, err := convert.JsonToDict(q.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlQ.cacheSystemData = sysData
 			res = append(res, mqlQ)
 		}
 	}
@@ -752,12 +902,12 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) queues() ([]any, error) {
 }
 
 func (a *mqlAzureSubscriptionStorageServiceAccountQueue) approximateMessageCount() (int64, error) {
-	if a.countFetched {
+	if a.countFetched.Load() {
 		return a.count, nil
 	}
 	a.countLock.Lock()
 	defer a.countLock.Unlock()
-	if a.countFetched {
+	if a.countFetched.Load() {
 		return a.count, nil
 	}
 
@@ -784,7 +934,7 @@ func (a *mqlAzureSubscriptionStorageServiceAccountQueue) approximateMessageCount
 	if resp.QueueProperties != nil && resp.QueueProperties.ApproximateMessageCount != nil {
 		a.count = int64(*resp.QueueProperties.ApproximateMessageCount)
 	}
-	a.countFetched = true
+	a.countFetched.Store(true)
 	return a.count, nil
 }
 
@@ -844,15 +994,29 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) tables() ([]any, error) {
 					signedIdentifiers = append(signedIdentifiers, entry)
 				}
 			}
+			var tablePolicies []*storage.TableSignedIdentifier
+			if t.TableProperties != nil {
+				tablePolicies = t.TableProperties.SignedIdentifiers
+			}
+			storedAccessPolicies, err := storedAccessPoliciesToMql(a.MqlRuntime, convert.ToValue(t.ID), tableStoredAccessPolicies(tablePolicies))
+			if err != nil {
+				return nil, err
+			}
 			mqlTable, err := CreateResource(a.MqlRuntime, "azure.subscription.storageService.account.table",
 				map[string]*llx.RawData{
-					"id":                llx.StringDataPtr(t.ID),
-					"name":              llx.StringDataPtr(t.Name),
-					"signedIdentifiers": llx.ArrayData(signedIdentifiers, types.Dict),
+					"id":                   llx.StringDataPtr(t.ID),
+					"name":                 llx.StringDataPtr(t.Name),
+					"signedIdentifiers":    llx.ArrayData(signedIdentifiers, types.Dict),
+					"storedAccessPolicies": llx.ArrayData(storedAccessPolicies, types.Resource("azure.subscription.storageService.account.storedAccessPolicy")),
 				})
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(t.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlTable.(*mqlAzureSubscriptionStorageServiceAccountTable).cacheSystemData = sysData
 			res = append(res, mqlTable)
 		}
 	}

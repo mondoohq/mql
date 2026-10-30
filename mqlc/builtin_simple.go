@@ -5,11 +5,13 @@ package mqlc
 
 import (
 	"errors"
+	"slices"
 	"strconv"
+	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/mqlc/parser"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/mqlc/parser"
+	"go.mondoo.com/mql/types"
 )
 
 func callArgTypeIs(c *compiler, call *parser.Call, id string, argName string, idx int, types ...types.Type) (*llx.Primitive, error) {
@@ -32,17 +34,15 @@ func callArgTypeIs(c *compiler, call *parser.Call, id string, argName string, id
 		return nil, err
 	}
 
-	for _, t := range types {
-		if t == valType {
-			return val, nil
-		}
+	if slices.Contains(types, valType) {
+		return val, nil
 	}
 
-	var typesStr string
+	var typesStr strings.Builder
 	for _, t := range types {
-		typesStr += t.Label() + "/"
+		typesStr.WriteString(t.Label() + "/")
 	}
-	return nil, errors.New("function " + id + " type mismatch for " + argName + " (expected: " + typesStr[0:len(typesStr)-1] + ", got: " + valType.Label() + ")")
+	return nil, errors.New("function " + id + " type mismatch for " + argName + " (expected: " + typesStr.String()[0:len(typesStr.String())-1] + ", got: " + valType.Label() + ")")
 }
 
 func compileStringContains(c *compiler, typ types.Type, ref uint64, id string, call *parser.Call) (types.Type, error) {

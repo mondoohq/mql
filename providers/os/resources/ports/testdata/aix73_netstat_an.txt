@@ -1,0 +1,212 @@
+Active Internet connections (including servers)
+Proto Recv-Q Send-Q  Local Address          Foreign Address        (state)
+tcp        0      0  *.*                    *.*                    CLOSED
+tcp4       0      0  *.*                    *.*                    CLOSED
+tcp        0      0  *.*                    *.*                    CLOSED
+tcp4       0      0  *.*                    *.*                    CLOSED
+tcp6       0      0  *.22                   *.*                    LISTEN
+tcp4       0      0  *.22                   *.*                    LISTEN
+tcp4       0      0  *.25                   *.*                    LISTEN
+tcp        0      0  *.111                  *.*                    LISTEN
+tcp        0      0  *.199                  *.*                    LISTEN
+tcp        0      0  *.657                  *.*                    LISTEN
+tcp4       0      0  *.1334                 *.*                    LISTEN
+tcp        0      0  *.2049                 *.*                    LISTEN
+tcp        0      0  *.32768                *.*                    LISTEN
+tcp        0      0  *.32769                *.*                    LISTEN
+tcp        0      0  *.32796                *.*                    LISTEN
+tcp4       0      0  192.168.234.35.32818   192.168.76.105.657     SYN_SENT
+tcp4       0      0  192.168.234.35.32817   192.168.76.106.657     SYN_SENT
+tcp4       0    280  192.168.234.35.22      203.0.113.7.60152     ESTABLISHED
+tcp4       0      0  192.168.234.35.22      203.0.113.7.60158     ESTABLISHED
+tcp        0      0  *.16191                *.*                    LISTEN
+tcp4       0      0  *.47123                *.*                    LISTEN
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.*                    *.*                   
+udp        0      0  *.111                  *.*                   
+udp        0      0  192.168.234.39.123     *.*                   
+udp6       0      0  ::1.123                                       *.*                   
+udp4       0      0  127.0.0.1.123          *.*                   
+udp6       0      0  fe80::80de:eff:fe65:c1a.123                   *.*                   
+udp4       0      0  192.0.2.10.123         *.*                   
+udp4       0      0  192.168.234.35.123     *.*                   
+udp6       0      0  *.123                  *.*                   
+udp4       0      0  *.123                  *.*                   
+udp        0      0  *.161                  *.*                   
+udp        0      0  *.514                  *.*                   
+udp        0      0  *.657                  *.*                   
+udp        0      0  *.2049                 *.*                   
+udp        0      0  *.32768                *.*                   
+udp        0      0  *.32773                *.*                   
+udp        0      0  *.32855                *.*                   
+udp        0      0  *.32856                *.*                   
+udp        0      0  *.32919                *.*                   
+udp4       0      0  *.47124                *.*                   
+
+Active UNIX domain sockets
+SADR/PCB         Type   Recv-Q Send-Q      Inode            Conn             Refs           Nextref      Addr
+f100100000149408 dgram       0      0                0 f1001000062e6380                0 f1001000001cdb80
+f1001000001cd980
+f100100000149c08 dgram       0      0 f1000c02a0583c20                0                0                0 /dev/.SRC-unix/SRC0005177764DAtMea
+f10010000014af80
+f10010000dd6b008 stream      0      0 f1000c02a03aec20                0                0                0 /tmp/ecpvdpd_sock
+f100100003272f80
+f100100000113408 dgram       0      0 f1000c02a0444020                0                0                0 /dev/.SRC-unix/SRC0005177764DAtMeb
+f1001000062e6200
+f100100003237c08 dgram       0      0 f1000c02a0df0820                0                0                0 /dev/.SRC-unix/SRC0005177764jEtMe5
+f100100003266100
+f100100000124408 dgram       0      0 f1000c02a04c3820                0                0                0 /dev/SRC
+f1001000062e6980
+f1001000087d4808 dgram       0      0 f1000c02a0b2d420                0                0                0 /dev/.SRC-unix/SRC0005177764WAtMe3
+f100100003272300
+f100100000019808 dgram       0      0 f1000c02a0344020                0 f10010000320c600                0 /dev/log
+f1001000062e6380
+f1001000087d3c08 dgram       0      0 f1000c02a04c4c20                0                0                0 /dev/.SRC-unix/SRC0005177764EQtMef
+f1001000062e7780
+f1001000001db808 stream      0      0                0 f10010000019e400                0                0
+f10010000019e480
+f100100000128808 dgram       0      0 f1000c02a04c4820                0                0                0 /dev/.SRC-unix/SRC0005177764DAtMed
+f1001000062e7c00
+f100100000122c08 dgram       0      0 f1000c02a06f4820                0                0                0 /dev/.SRC-unix/SRC0005177764DAtMee
+f1001000062e7980
+f1001000087db008 dgram       0      0 f1000c02a06f4c20                0                0                0 /dev/.SRC-unix/SRC0005177764GItMeg
+f1001000062e9580
+f1001000001d7c08 stream      0      0                0 f10010000019e780                0                0 /var/ct/IW/soc/mc/RMIBM.SoftwareRM.0
+f10010000019e700
+f1001000087d4008 dgram       0      0 f1000c02a03c9020                0                0                0 /dev/.SRC-unix/SRC0005177764HYtMei
+f10010000c630800
+f100100000149008 dgram       0      0                0 f1001000062e6380                0                0
+f1001000001cdb80
+f100100000122808 dgram       0      0                0 f1001000062e6380                0 f1001000001cd980
+f10010000c630400
+f100100003261008 dgram       0      0 f1000c02a0bcdc20                0                0                0 /dev/.SRC-unix/SRC0005177764eEtMe4
+f100100003266f00
+f1001000087d3408 dgram       0      0 f1000c02a065e420                0                0                0 /dev/.SRC-unix/SRC0005177764VEtMel
+f100100003272580
+f1001000001d5c08 stream      0      0 f1000c02a060b820                0                0                0 /tmp/dpi_socket
+f1001000001cd080
+f100100000019008 stream      0      0                0 f100100003272800                0                0 /var/ct/IW/soc/mc/RMIBM.MgmtDomainRM.0
+f10010000c616000
+f10010000014d808 dgram       0      0 f1000c02a0b6b020                0                0                0 /dev/.SRC-unix/SRC0005177764KytMew
+f10010000019ee00
+f10010000dd6bc08 stream      0      0                0 f10010000c616000                0                0
+f100100003272800
+f10010000dd6b408 dgram       0      0                0 f1001000062e6380                0 f1001000001cdc00
+f100100003272f00
+f10010000324ec08 stream      0      0                0 f10010000320c200                0                0
+f100100003272c00
+f10010000c61f408 dgram       0      0 f1000c02a0e60c20                0                0                0 /dev/.SRC-unix/SRC000517776453tMe6
+f100100003217b80
+f10010000320a008 stream      0      0                0 f100100003272c00                0                0
+f10010000320c200
+f100100000124008 stream      0      0                0 f100100003272a80                0                0
+f10010000c616100
+f1001000087d4408 dgram       0      0 f1000c02a0babc20                0                0                0 /dev/.SRC-unix/SRC0005177764NYtMez
+f100100003272600
+f10010000abd9c08 stream      0      0 f1000c02a0b4cc20                0                0                0 /var/ct/IW/soc/mc/RMIBM.SoftwareRM.0
+f10010000c616080
+f10010000c633c08 stream      0      0 f1000c02a04cb820                0                0                0 /etc/cluster/clcomd_sec
+f1001000087ce900
+f1001000087d6408 stream      0      0                0                0                0                0
+f100100003272e80
+f1001000001d7008 stream      0      0                0 f100100003272d80                0                0
+f10010000019e880
+f10010000c639008 stream      0      0                0 f10010000019e880                0                0 /var/ct/IW/soc/mc/RMIBM.DRM.0
+f100100003272d80
+f1001000001d5408 stream      0      0 f1000c02a042e820                0                0                0 /var/run/lldpdsock
+f1001000001cda00
+f1001000001dbc08 dgram       0      0 f1000c02a0b3b420                0                0                0 /dev/.SRC-unix/SRC0005177764LetMex
+f10010000019ec80
+f1001000087d6008 stream      0      0 f1000c02a0b0ac20                0                0                0 /var/ct/IW/soc/mc/clsrv
+f1001000087ceb00
+f100100003263408 dgram       0      0 f1000c02a0bcb820                0                0                0 /dev/.SRC-unix/SRC0005177764MMtMey
+f100100003272500
+f100100003261c08 stream      0      0 f1000c02a0bbbc20                0                0                0 /var/ct/IW/soc/mc/RMIBM.HostRM.0
+f10010000c616480
+f1001000087d3808 stream      0      0 f1000c02a0afc820                0                0                0 /var/ct/IW/soc/mc/RMIBM.DRM.0
+f100100003272680
+f1001000001d7808 stream      0      0 f1000c02a0b7d020                0                0                0 /var/ct/IW/soc/mc/RMIBM.ConfigRM.0
+f10010000019e680
+f1001000087da408 stream      0      0 f1000c02a0b1ac20                0                0                0 /var/ct/IW/soc/mc/rmsrv
+f10010000c616200
+f1001000001d5008 stream      0      0                0 f10010000019e700                0                0
+f10010000019e780
+f1001000001db008 stream      0      0                0 f10010000019e500                0                0
+f10010000019e580
+f1001000087db408 dgram       0      0 f1000c02a04ee820                0                0                0 /dev/.SRC-unix/SRC0005177764W3tMem
+f10010000c616400
+f1001000087d5008 stream      0      0 f1000c02a0afd420                0                0                0 /var/ct/IW/soc/mc/RMIBM.ServiceRM.0
+f10010000c616180
+f100100000149808 dgram       0      0                0 f1001000062e6380                0 f10010000c630400
+f1001000001cdc00
+f1001000087d6c08 stream      0      0 f1000c02a0b3d820                0                0                0 /var/ct/IW/soc/mc/RMIBM.ERRM.0
+f100100003272400
+f100100003263008 stream      0      0                0 f10010000c616100                0                0 /var/ct/IW/soc/mc/RMIBM.ERRM.0
+f100100003272a80
+f10010000abd9408 stream      0      0                0                0                0                0
+f100100003272980
+f10010000324c008 stream      0      0                0                0                0                0
+f10010000320c080
+f100100000122008 stream      0      0                0 f100100003272100                0                0 /var/ct/IW/soc/mc/clsrv
+f10010000c630700
+f1001000087dc408 dgram       0      0 f1000c02a0b5c420                0                0                0 /dev/.SRC-unix/SRC0005177764PMtMe2
+f100100003272000
+f10010000c639408 dgram       0      0 f1000c02a0b7c020                0                0                0 /dev/.SRC-unix/SRC0005177764OMtMe1
+f100100003272480
+f100100003263808 dgram       0      0 f1000c02a0b58820                0                0                0 /dev/.SRC-unix/SRC00051777644QtMev
+f100100003272900
+f1001000087d5c08 stream      0      0                0 f10010000c630700                0                0
+f100100003272100
+f10010000c639808 stream      0      0                0 f10010000c616700                0                0
+f100100003272c80
+f10010000014d008 stream      0      0                0 f10010000019e480                0                0 /var/ct/IW/soc/mc/RMIBM.ServiceRM.0
+f10010000019e400
+f100100003267c08 stream      0      0                0 f100100003266c80                0                0 /var/ct/IW/soc/mc/RMIBM.AuditRM.0
+f100100003266c00
+f100100003261408 stream      0      0                0 f100100003272c80                0                0 /var/ct/IW/soc/mc/RMIBM.HostRM.0
+f10010000c616700
+f1001000087d5808 stream      0      0 f1000c02a0b8d820                0                0                0 /var/ct/IW/soc/mc/RMIBM.MgmtDomainRM.0
+f100100003272e00
+f1001000087d6808 stream      0      0                0 f100100003266c00                0                0
+f100100003266c80
+f10010000c633808 dgram       0      0 f1000c02a0b78420                0                0                0 /dev/.SRC-unix/SRC00051777642YtMeu
+f100100003272200
+f1001000001d7408 stream      0      0                0 f10010000019e580                0                0 /var/ct/IW/soc/mc/RMIBM.ConfigRM.0
+f10010000019e500
+f100100000284c08 dgram       0      0                0 f1001000062e6380                0 f100100003272f00
+f100100000287980
+f1001000087db808 stream      0      0 f1000c02a0b6e020                0                0                0 /var/ct/IW/soc/mc/RMIBM.AuditRM.0
+f100100003266e00
+f10010000325d008 stream      0      0                0 f100100003272080                0                0
+f100100003217d00
+f100100003258008 dgram       0      0                0 f1001000062e6380                0 f100100000287980
+f10010000320c600
+f10010000c61f008 stream      0      0                0                0                0                0
+f100100003217980
+f10010000c61fc08 stream      0      0                0 f100100003217d00                0                0
+f100100003272080
+f1001000031f9808 stream      0      0                0 f100100003217180                0                0
+f100100003266700
+f1001000031fdc08 stream      0      0                0 f100100003266700                0                0
+f100100003217180

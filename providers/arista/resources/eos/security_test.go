@@ -30,8 +30,6 @@ radius-server host 10.0.0.5
 	assert.Equal(t, []string{"group", "tacacs+", "none"}, a.AuthorizationExec["default"])
 	assert.Equal(t, []string{"group", "tacacs+"}, a.AccountingCommands["all/default"])
 	assert.Equal(t, []string{"group", "tacacs+"}, a.AccountingExec["default"])
-	assert.Equal(t, []string{"10.0.0.1", "10.0.0.2"}, a.TacacsServers)
-	assert.Equal(t, []string{"10.0.0.5"}, a.RadiusServers)
 	// Local is a fallback after group, not the only option.
 	assert.False(t, a.DefaultLoginPermitsLocalOnly)
 }
@@ -43,10 +41,20 @@ func TestParseAaaConfig_LocalOnly(t *testing.T) {
 	assert.True(t, a.DefaultLoginPermitsLocalOnly)
 }
 
+func TestParseAaaConfig_LocalBeforeGroup(t *testing.T) {
+	// "local" precedes "group", so local authenticates without a working
+	// remote source (the worse hardening posture). Order matters: presence of
+	// a group token alone must not clear the flag.
+	cfg := `aaa authentication login default local group tacacs+
+`
+	a := ParseAaaConfig(cfg)
+	assert.Equal(t, []string{"local", "group", "tacacs+"}, a.AuthenticationLogin["default"])
+	assert.True(t, a.DefaultLoginPermitsLocalOnly)
+}
+
 func TestParseAaaConfig_NoConfig(t *testing.T) {
 	a := ParseAaaConfig("")
 	assert.Empty(t, a.AuthenticationLogin)
-	assert.Empty(t, a.TacacsServers)
 	assert.False(t, a.DefaultLoginPermitsLocalOnly)
 }
 

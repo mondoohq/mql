@@ -7,11 +7,11 @@ import (
 	"strings"
 
 	"github.com/package-url/packageurl-go"
-	"go.mondoo.com/mql/v13/sbom"
+	"go.mondoo.com/mql/sbom"
 )
 
 // NewPackageUrl creates a GitHub Actions package URL.
-// See https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#github
+// See https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/github-definition.md
 func NewPackageUrl(owner, repo, ref string) string {
 	return packageurl.NewPackageURL(
 		"github",

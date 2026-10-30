@@ -73,3 +73,27 @@ func TestPolicyPrincipalArray(t *testing.T) {
 		"Service": {"lambda.amazonaws.com", "logs.amazonaws.com"},
 	}, policy.Statements[0].Principal.Data())
 }
+
+// TestS3BucketPolicySingleObjectStatement covers the single-object Statement
+// shape the IAM policy grammar allows. Without the s3Statements unmarshaller it
+// failed to decode, so policyStatements/isPublic/hasWildcardAllow errored on
+// such documents while the sibling IamPolicyDocument parsed them fine.
+func TestS3BucketPolicySingleObjectStatement(t *testing.T) {
+	var p S3BucketPolicy
+	err := json.Unmarshal([]byte(`{"Version":"2012-10-17","Statement":
+		{"Effect":"Allow","Principal":{"AWS":"*"},"Action":"s3:GetObject","Resource":"arn:aws:s3:::b/*"}}`), &p)
+	require.NoError(t, err)
+	require.Len(t, p.Statements, 1)
+	assert.Equal(t, "Allow", p.Statements[0].Effect)
+	assert.Equal(t, []string{"*"}, p.Statements[0].Principal["AWS"])
+}
+
+func TestS3BucketPolicyArrayStatementStillWorks(t *testing.T) {
+	var p S3BucketPolicy
+	err := json.Unmarshal([]byte(`{"Version":"2012-10-17","Statement":[
+		{"Effect":"Allow","Principal":{"AWS":"*"},"Action":"s3:GetObject","Resource":"arn:aws:s3:::b/*"},
+		{"Effect":"Deny","Principal":{"AWS":"*"},"Action":"s3:PutObject","Resource":"arn:aws:s3:::b/*"}]}`), &p)
+	require.NoError(t, err)
+	require.Len(t, p.Statements, 2)
+	assert.Equal(t, "Deny", p.Statements[1].Effect)
+}

@@ -12,38 +12,83 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/fsutil"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/python"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/python/pdmlock"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/python/pipfilelock"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/python/poetrylock"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/python/requirements"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/python/uvlock"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/python/wheelegg"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/fsutil"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/python"
+	"go.mondoo.com/mql/providers/os/resources/languages/python/pdmlock"
+	"go.mondoo.com/mql/providers/os/resources/languages/python/pipfilelock"
+	"go.mondoo.com/mql/providers/os/resources/languages/python/poetrylock"
+	"go.mondoo.com/mql/providers/os/resources/languages/python/requirements"
+	"go.mondoo.com/mql/providers/os/resources/languages/python/uvlock"
+	"go.mondoo.com/mql/providers/os/resources/languages/python/wheelegg"
+	"go.mondoo.com/mql/types"
 )
 
+// defaultPythonPaths lists the directories that *contain* a site-packages or
+// dist-packages directory; collectPythonPackagesInPaths appends those names.
+//
+// These are glob patterns evaluated by afero.Glob, which supports "*" but not
+// "**", so every directory level has to be spelled out. Note that, unlike shell
+// globbing, "*" here does match dot-directories, so "/app/*/lib/python*" picks
+// up "/app/.venv/lib/python3.13".
 var defaultPythonPaths = []string{
 	// Linux
 	"/usr/local/lib/python*",
 	"/usr/local/lib64/python*",
 	"/usr/lib/python*",
 	"/usr/lib64/python*",
+	// Virtualenvs. Applications -- container images especially -- commonly
+	// install their dependencies into a venv instead of the system paths above,
+	// so without these the application's own packages are missing entirely.
+	// The venv directory name varies (.venv, venv, env, ...), hence the "*".
+	//
+	// Known limitation: because there is no "**", these reach a venv sitting
+	// directly in one of these roots and one directory deeper (a project
+	// checkout that carries its own venv). A venv buried deeper than that --
+	// /app/myproject/backend/.venv, say -- is still missed. Set the python
+	// resource's `path` argument explicitly to cover such a layout.
+	"/venv/lib/python*",
+	"/.venv/lib/python*",
+	"/app/*/lib/python*",
+	"/code/*/lib/python*",
+	"/workspace/*/lib/python*",
+	"/srv/*/lib/python*",
+	"/opt/*/lib/python*",
+	"/usr/src/*/*/lib/python*",
+	// a project directory under one of the roots above holding its own venv
+	"/app/*/*/lib/python*",
+	"/code/*/*/lib/python*",
+	"/workspace/*/*/lib/python*",
+	"/srv/*/*/lib/python*",
+	"/opt/*/*/lib/python*",
+	// per-user venvs. The "*" covers .venv, venv and env alike; virtualenvwrapper
+	// and poetry instead collect them under a dedicated directory.
+	"/root/*/lib/python*",
+	"/root/*/*/lib/python*",
+	"/root/.virtualenvs/*/lib/python*",
+	"/home/*/*/lib/python*",
+	"/home/*/.virtualenvs/*/lib/python*",
 	// Windows
 	"C:\\Python*\\Lib",
 	"C:\\Program Files\\Python*\\Lib",
 	// per-user installs across all profiles
 	"C:\\Users\\*\\AppData\\Local\\Programs\\Python\\Python*\\Lib",
+	// Windows venvs put site-packages directly under Lib, with no pythonX.Y level
+	"C:\\venv\\Lib",
+	"C:\\.venv\\Lib",
+	"C:\\Users\\*\\.venv\\Lib",
+	"C:\\Users\\*\\*\\.venv\\Lib",
 	// macOS
 	"/opt/homebrew/lib/python*",
 	"/System/Library/Frameworks/Python.framework/Versions/*/lib/python*",
 	// we use 3.x to exclude the macOS 'Current' symlink
 	"/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.*/lib/python*",
+	"/Users/*/*/lib/python*",
+	"/Users/*/.virtualenvs/*/lib/python*",
 }
 
 func initPython(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -61,6 +106,12 @@ func initPython(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[stri
 }
 
 func (r *mqlPython) id() (string, error) {
+	// The path has to be part of the ID. Without it every python(path: ...)
+	// shares one cache key, so the first one scanned wins and every later
+	// lookup -- with a completely different path -- gets handed its packages.
+	if r.Path.Data != "" {
+		return "python/" + r.Path.Data, nil
+	}
 	return "python", nil
 }
 
@@ -171,14 +222,31 @@ func pythonPackageDetailsWithDependenciesToResource(
 func collectPythonPackagesInPaths(runtime *plugin.Runtime, fs afero.Fs, paths []string) ([]python.PackageDetails, error) {
 	allResults := []python.PackageDetails{}
 
+	// The default paths overlap: /opt/homebrew/lib/python3.11 is matched by both
+	// "/opt/*/lib/python*" and "/opt/homebrew/lib/python*". Without this set the
+	// directory is scanned once per matching pattern and every package inside it
+	// is reported that many times, which inflates the inventory and emits one
+	// duplicate SBOM entry and vulnerability finding per extra match.
+	seen := map[string]struct{}{}
+
 	err := fsutil.WalkGlob(fs, paths, func(fs afero.Fs, walkPath string) error {
 		log.Debug().Str("filepath", walkPath).Msg("found matching python path")
 		packageDirs := []string{"site-packages", "dist-packages"}
 		for _, packageDir := range packageDirs {
 			pythonPackageDir := filepath.Join(walkPath, packageDir)
+			if _, ok := seen[pythonPackageDir]; ok {
+				continue
+			}
+			seen[pythonPackageDir] = struct{}{}
+
 			results, err := collectPythonPackages(runtime, fs, pythonPackageDir)
 			if err != nil {
-				return err
+				// Skip this directory rather than abandoning the whole search.
+				// The default paths are broad globs, so a single match that is
+				// unreadable, or is a file rather than a directory, must not
+				// cost us every other venv on the system.
+				log.Debug().Err(err).Str("dir", pythonPackageDir).Msg("skipping unreadable python package directory")
+				continue
 			}
 			allResults = append(allResults, results...)
 		}
@@ -227,8 +295,14 @@ func collectPythonPackages(runtime *plugin.Runtime, fs afero.Fs, path string) ([
 			pythonPackageDir := filepath.Join(path, packagePayload)
 			packageDirFiles, err := afs.ReadDir(pythonPackageDir)
 			if err != nil {
-				log.Warn().Err(err).Str("dir", pythonPackageDir).Msg("error while walking through files in directory")
-				return nil, err
+				// Skip this package and keep the rest of the directory.
+				// Container images routinely list entries that cannot be read:
+				// a dist-info removed in a later layer still appears in the
+				// merged listing but fails to open. Aborting here discarded
+				// every other package in the same site-packages, so one stale
+				// entry cost an image its entire Python inventory.
+				log.Debug().Err(err).Str("dir", pythonPackageDir).Msg("skipping unreadable python package directory")
+				continue
 			}
 
 			foundMeta := false
@@ -246,8 +320,15 @@ func collectPythonPackages(runtime *plugin.Runtime, fs afero.Fs, path string) ([
 				}
 			}
 			if !foundMeta {
-				// nothing to process (happens when we've traversed a directory
-				// containing the actual python source files)
+				// A .dist-info / .egg-info directory with no METADATA or PKG-INFO
+				// is an incomplete install: the metadata was removed in a later
+				// container image layer, or the install was interrupted. The
+				// directory name still identifies the package, so report it from
+				// that rather than dropping it from the inventory.
+				if ppd := pythonPackageFromDirName(dEntry.Name(), filepath.Join(path, dEntry.Name())); ppd != nil {
+					ppd.IsLeaf = requestedPackage
+					allResults = append(allResults, *ppd)
+				}
 				continue
 			}
 		}
@@ -267,8 +348,13 @@ func collectPythonPackages(runtime *plugin.Runtime, fs afero.Fs, path string) ([
 			return nil, content.Error
 		}
 		ppd, err := wheelegg.ParseMIME(strings.NewReader(content.Data), pythonPackageFilepath)
-		if err != nil {
-			continue
+		if err != nil || ppd.Name == "" {
+			// Unparsable or nameless metadata -- fall back to the identity in the
+			// directory name so a corrupt file does not erase the package.
+			ppd = pythonPackageFromDirName(dEntry.Name(), filepath.Join(path, dEntry.Name()))
+			if ppd == nil {
+				continue
+			}
 		}
 		ppd.IsLeaf = requestedPackage
 
@@ -335,8 +421,40 @@ func newMqlPythonPackage(runtime *plugin.Runtime, ppd python.PackageDetails) (pl
 		log.Error().AnErr("err", err).Msg("error while creating MQL resource")
 		return nil, err
 	}
-	r.(*mqlPythonPackage).deps = ppd.Dependencies
+	pkg := r.(*mqlPythonPackage)
+	pkg.deps = ppd.Dependencies
+	pkg.siteDir = pythonPackageSiteDir(ppd.File)
 	return r, nil
+}
+
+// pythonPackageFromDirName builds package details from a ".dist-info" /
+// ".egg-info" entry name when its metadata file cannot be read. It returns nil
+// when the name carries no usable identity.
+func pythonPackageFromDirName(entry string, file string) *python.PackageDetails {
+	name, version := wheelegg.ParseDistInfoName(entry)
+	if name == "" {
+		return nil
+	}
+	return &python.PackageDetails{
+		Name:    name,
+		Version: version,
+		File:    file,
+		Purl:    python.NewPackageUrl(name, version),
+		Cpes:    python.NewCpes(name, version),
+	}
+}
+
+// pythonPackageSiteDir returns the directory a package was installed into, so
+// dependencies can be resolved among its siblings. For an installed package the
+// metadata path is "<site>/<name>.dist-info/METADATA", so the site directory is
+// two levels up; for a bare ".egg-info" file, and for packages read out of a
+// manifest such as requirements.txt, it is the file's own directory.
+func pythonPackageSiteDir(file string) string {
+	dir := filepath.Dir(file)
+	if base := filepath.Base(dir); strings.HasSuffix(base, ".dist-info") || strings.HasSuffix(base, ".egg-info") {
+		return filepath.Dir(dir)
+	}
+	return dir
 }
 
 func (r *mqlPythonPackage) id() (string, error) {
@@ -379,6 +497,9 @@ func initPythonPackage(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 
 type mqlPythonPackageInternal struct {
 	deps []string
+	// siteDir is the directory this package was installed into. Dependencies are
+	// resolved among its siblings only -- see dependencies().
+	siteDir string
 }
 
 func (r *mqlPythonPackage) dependencies() ([]any, error) {
@@ -392,13 +513,21 @@ func (r *mqlPythonPackage) dependencies() ([]any, error) {
 		return nil, pkgs.Error
 	}
 
+	// A dependency has to be resolved within the environment that declares it. An
+	// asset commonly carries the same package in several environments -- a venv
+	// per application, one site-packages per interpreter version -- and matching
+	// on name alone returns every one of them. That both inflates the list and
+	// silently answers questions about the wrong environment: a check asserting
+	// "this app pulls in a patched certifi" would pass on some other venv's copy.
 	deps := []any{}
 	for _, dep := range r.deps {
-		for i, pyPkgDetails := range pkgs.Data {
-			if pyPkgDetails.(*mqlPythonPackage).Name.Data == dep {
-				depRes := pkgs.Data[i]
-				deps = append(deps, depRes)
+		for i := range pkgs.Data {
+			candidate := pkgs.Data[i].(*mqlPythonPackage)
+			if candidate.Name.Data != dep || candidate.siteDir != r.siteDir {
+				continue
 			}
+			deps = append(deps, pkgs.Data[i])
+			break
 		}
 	}
 	return deps, nil
@@ -540,14 +669,17 @@ func mergePythonPackages(primary, secondary []python.PackageDetails) []python.Pa
 	if len(secondary) == 0 {
 		return primary
 	}
+	// Compare normalized names: installed metadata and manifests spell the same
+	// project differently ("ruamel.yaml" vs "ruamel-yaml"), so a plain lowercase
+	// key reports one project twice.
 	seen := make(map[string]bool, len(primary))
 	for _, p := range primary {
-		seen[strings.ToLower(p.Name)] = true
+		seen[python.NormalizeName(p.Name)] = true
 	}
 	for _, p := range secondary {
-		if !seen[strings.ToLower(p.Name)] {
+		if !seen[python.NormalizeName(p.Name)] {
 			primary = append(primary, p)
-			seen[strings.ToLower(p.Name)] = true
+			seen[python.NormalizeName(p.Name)] = true
 		}
 	}
 	return primary

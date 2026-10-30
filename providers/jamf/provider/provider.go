@@ -8,14 +8,14 @@ import (
 	"errors"
 	"os"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 
-	"go.mondoo.com/mql/v13/providers/jamf/connection"
-	"go.mondoo.com/mql/v13/providers/jamf/resources"
+	"go.mondoo.com/mql/providers/jamf/connection"
+	"go.mondoo.com/mql/providers/jamf/resources"
 )
 
 const ConnectionType = "jamf"
@@ -138,6 +138,14 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.JamfConnection
 	platform, err := conn.PlatformInfo()
 	if err != nil {
 		return err
+	}
+
+	// The Jamf Pro version belongs on the asset: `asset.version` is the
+	// canonical, cross-provider way to ask what version something is, and every
+	// root carries `asset` (ADR 031). A provider-specific `version` field is a
+	// second spelling of the same fact.
+	if info, err := conn.Client.GetJamfProVersion(); err == nil && info != nil && info.Version != nil {
+		platform.Version = *info.Version
 	}
 
 	asset.Platform = platform

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/proxmox/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/proxmox/connection"
 )
 
 type mqlProxmoxContainerInternal struct {
@@ -37,7 +37,7 @@ func containerInfoToResources(runtime *plugin.Runtime, cts []connection.Containe
 			"node":      llx.StringData(ct.Node),
 			"status":    llx.StringData(ct.Status),
 			"cpu":       llx.FloatData(ct.CPU),
-			"maxcpu":    llx.IntData(int64(ct.MaxCPU)),
+			"maxcpu":    llx.IntData(ct.MaxCPU.Ceil()),
 			"mem":       llx.IntData(ct.Mem),
 			"maxmem":    llx.IntData(ct.MaxMem),
 			"disk":      llx.IntData(ct.Disk),
@@ -47,7 +47,7 @@ func containerInfoToResources(runtime *plugin.Runtime, cts []connection.Containe
 			"netin":     llx.IntData(ct.NetIn),
 			"netout":    llx.IntData(ct.NetOut),
 			"uptime":    llx.IntData(ct.Uptime),
-			"template":  llx.BoolData(ct.Template == 1),
+			"template":  llx.BoolData(ct.Template.Bool()),
 		})
 		if err != nil {
 			return nil, err
@@ -81,35 +81,42 @@ func (r *mqlProxmoxContainer) ensureConfig() {
 	})
 }
 
-func (r *mqlProxmoxContainer) cfgStr(key string) string {
+// cfgStr reads a key out of the container config. A failed config read is
+// reported as an error rather than an empty value: "the key is absent" and
+// "we never got to see the config" are different answers and an audit has to
+// be able to tell them apart.
+func (r *mqlProxmoxContainer) cfgStr(key string) (string, error) {
 	r.ensureConfig()
-	if r.ctConfig == nil {
-		return ""
+	if r.configErr != nil {
+		return "", r.configErr
 	}
 	if v, ok := r.ctConfig[key]; ok {
-		return fmt.Sprintf("%v", v)
+		return fmt.Sprintf("%v", v), nil
 	}
-	return ""
+	return "", nil
 }
 
-func (r *mqlProxmoxContainer) cfgBool(key string) bool {
+// cfgBool reads a boolean-ish key out of the container config. PVE writes
+// flags as 1/0, so an absent key means the flag is off. A failed config read
+// is an error, not an off flag.
+func (r *mqlProxmoxContainer) cfgBool(key string) (bool, error) {
 	r.ensureConfig()
-	if r.ctConfig == nil {
-		return false
+	if r.configErr != nil {
+		return false, r.configErr
 	}
 	v, ok := r.ctConfig[key]
 	if !ok {
-		return false
+		return false, nil
 	}
 	switch val := v.(type) {
 	case bool:
-		return val
+		return val, nil
 	case float64:
-		return val == 1
+		return val == 1, nil
 	case string:
-		return val == "1" || val == "true"
+		return val == "1" || val == "true", nil
 	}
-	return false
+	return false, nil
 }
 
 func (r *mqlProxmoxContainer) config() (any, error) {
@@ -117,20 +124,23 @@ func (r *mqlProxmoxContainer) config() (any, error) {
 	return r.ctConfig, r.configErr
 }
 
-func (r *mqlProxmoxContainer) osType() (string, error)       { return r.cfgStr("ostype"), nil }
-func (r *mqlProxmoxContainer) hostname() (string, error)     { return r.cfgStr("hostname"), nil }
-func (r *mqlProxmoxContainer) unprivileged() (bool, error)   { return r.cfgBool("unprivileged"), nil }
-func (r *mqlProxmoxContainer) protection() (bool, error)     { return r.cfgBool("protection"), nil }
-func (r *mqlProxmoxContainer) onboot() (bool, error)         { return r.cfgBool("onboot"), nil }
-func (r *mqlProxmoxContainer) description() (string, error)  { return r.cfgStr("description"), nil }
-func (r *mqlProxmoxContainer) cmode() (string, error)        { return r.cfgStr("cmode"), nil }
-func (r *mqlProxmoxContainer) searchDomain() (string, error) { return r.cfgStr("searchdomain"), nil }
-func (r *mqlProxmoxContainer) nameserver() (string, error)   { return r.cfgStr("nameserver"), nil }
+func (r *mqlProxmoxContainer) osType() (string, error)       { return r.cfgStr("ostype") }
+func (r *mqlProxmoxContainer) hostname() (string, error)     { return r.cfgStr("hostname") }
+func (r *mqlProxmoxContainer) unprivileged() (bool, error)   { return r.cfgBool("unprivileged") }
+func (r *mqlProxmoxContainer) protection() (bool, error)     { return r.cfgBool("protection") }
+func (r *mqlProxmoxContainer) onboot() (bool, error)         { return r.cfgBool("onboot") }
+func (r *mqlProxmoxContainer) description() (string, error)  { return r.cfgStr("description") }
+func (r *mqlProxmoxContainer) cmode() (string, error)        { return r.cfgStr("cmode") }
+func (r *mqlProxmoxContainer) searchDomain() (string, error) { return r.cfgStr("searchdomain") }
+func (r *mqlProxmoxContainer) nameserver() (string, error)   { return r.cfgStr("nameserver") }
 
 // swap is configured in MB; convert to bytes for consistency with the
 // other size fields on the resource.
 func (r *mqlProxmoxContainer) swap() (int64, error) {
-	val := r.cfgStr("swap")
+	val, err := r.cfgStr("swap")
+	if err != nil {
+		return 0, err
+	}
 	if val == "" {
 		return 0, nil
 	}
@@ -142,7 +152,10 @@ func (r *mqlProxmoxContainer) swap() (int64, error) {
 }
 
 func (r *mqlProxmoxContainer) cpuLimit() (float64, error) {
-	val := r.cfgStr("cpulimit")
+	val, err := r.cfgStr("cpulimit")
+	if err != nil {
+		return 0, err
+	}
 	if val == "" {
 		return 0, nil
 	}
@@ -154,7 +167,10 @@ func (r *mqlProxmoxContainer) cpuLimit() (float64, error) {
 }
 
 func (r *mqlProxmoxContainer) cpuUnits() (int64, error) {
-	val := r.cfgStr("cpuunits")
+	val, err := r.cfgStr("cpuunits")
+	if err != nil {
+		return 0, err
+	}
 	if val == "" {
 		return 0, nil
 	}
@@ -165,20 +181,55 @@ func (r *mqlProxmoxContainer) cpuUnits() (int64, error) {
 	return units, nil
 }
 
-// rawLxc surfaces the user-injected `lxc.<key>: <value>` lines. PVE
-// stores the field as one logical newline-delimited string; split it
-// and trim so audits can iterate one override at a time.
+// rawLxc surfaces the user-injected `lxc.<key>: <value>` lines.
+//
+// The config endpoint returns them as an array of `[key, value]` pairs, not
+// as a string, so each pair is rendered back into the line it came from.
+// Formatting the array with `%v` would collapse every override into one
+// `[[lxc.apparmor.profile unconfined] ...]` entry that no line-oriented audit
+// can match.
 func (r *mqlProxmoxContainer) rawLxc() ([]any, error) {
-	val := r.cfgStr("lxc")
-	if val == "" {
-		return []any{}, nil
+	r.ensureConfig()
+	if r.configErr != nil {
+		return nil, r.configErr
 	}
-	lines := parseRawLxcLines(val)
+	lines := rawLxcLines(r.ctConfig["lxc"])
 	out := make([]any, len(lines))
 	for i, line := range lines {
 		out[i] = line
 	}
 	return out, nil
+}
+
+// rawLxcLines renders the `lxc` config value as `key: value` lines. It takes
+// the `[[key, value], ...]` shape the API returns and, for older responses, a
+// newline-delimited string.
+func rawLxcLines(v any) []string {
+	switch val := v.(type) {
+	case nil:
+		return []string{}
+	case string:
+		return parseRawLxcLines(val)
+	case []any:
+		out := []string{}
+		for _, entry := range val {
+			pair, ok := entry.([]any)
+			if !ok || len(pair) == 0 {
+				continue
+			}
+			key := strings.TrimSpace(fmt.Sprintf("%v", pair[0]))
+			if key == "" {
+				continue
+			}
+			value := ""
+			if len(pair) > 1 && pair[1] != nil {
+				value = strings.TrimSpace(fmt.Sprintf("%v", pair[1]))
+			}
+			out = append(out, key+": "+value)
+		}
+		return out
+	}
+	return []string{}
 }
 
 // parseRawLxcLines splits a multi-line `lxc` config value into its
@@ -201,7 +252,10 @@ func parseRawLxcLines(raw string) []string {
 }
 
 func (r *mqlProxmoxContainer) features() ([]any, error) {
-	val := r.cfgStr("features")
+	val, err := r.cfgStr("features")
+	if err != nil {
+		return nil, err
+	}
 	if val == "" {
 		return []any{}, nil
 	}
@@ -226,7 +280,10 @@ func (r *mqlProxmoxContainer) features() ([]any, error) {
 }
 
 func (r *mqlProxmoxContainer) tags() ([]any, error) {
-	tagStr := r.cfgStr("tags")
+	tagStr, err := r.cfgStr("tags")
+	if err != nil {
+		return nil, err
+	}
 	if tagStr == "" {
 		return []any{}, nil
 	}
@@ -238,8 +295,13 @@ func (r *mqlProxmoxContainer) tags() ([]any, error) {
 	return result, nil
 }
 
+// pool resolves the guest's resource pool. Membership is recorded on the pool,
+// not in the guest config, so it is read from the cluster resource listing.
 func (r *mqlProxmoxContainer) pool() (*mqlProxmoxPool, error) {
-	id := r.cfgStr("pool")
+	id, err := ctConn(r).GuestPool(int(r.Id.Data))
+	if err != nil {
+		return nil, err
+	}
 	if id == "" {
 		r.Pool.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil

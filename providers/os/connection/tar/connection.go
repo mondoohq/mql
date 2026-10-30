@@ -7,16 +7,19 @@ import (
 	"archive/tar"
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/fsutil"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/fsutil"
 )
 
 const (
@@ -34,6 +37,7 @@ type Connection struct {
 	conf      *inventory.Config
 	fetchFn   func() (string, error)
 	fetchOnce sync.Once
+	loadErr   error
 
 	fs      *FS
 	closeFN func()
@@ -42,6 +46,9 @@ type Connection struct {
 	PlatformRuntime      string
 	PlatformIdentifier   string
 	PlatformArchitecture string
+	// ImageConfig is the process the scanned container image starts, nil
+	// when the tar is not an image (an exported filesystem, a rootfs).
+	ImageConfig *ImageConfig
 	// optional metadata to store additional information
 	Metadata struct {
 		Name   string
@@ -82,20 +89,52 @@ func (p *Connection) RunCommand(command string) (*shared.Command, error) {
 	return &res, nil
 }
 
+// EnsureLoaded fetches and indexes the tar file on first use. A failure is
+// kept and returned by Fetch.
 func (p *Connection) EnsureLoaded() {
+	_ = p.Fetch()
+}
+
+// Fetch fetches and indexes the tar file once and returns the error if that
+// failed. Without it a tar that could not be fetched (an empty container id,
+// a missing file) scanned as an empty filesystem: no platform, no packages,
+// no files, and no failure.
+func (p *Connection) Fetch() error {
 	if p.fetchFn != nil {
 		p.fetchOnce.Do(func() {
 			f, err := p.fetchFn()
 			if err != nil {
 				log.Error().Err(err).Msg("tar> could not fetch tar file")
+				p.loadErr = fmt.Errorf("could not fetch tar file: %w", err)
 				return
 			}
 			if err := p.LoadFile(f); err != nil {
 				log.Error().Err(err).Str("file", f).Msg("tar> could not load tar file")
+				p.loadErr = fmt.Errorf("could not load tar file %s: %w", f, err)
 				return
 			}
 		})
 	}
+	return p.loadErr
+}
+
+// ImageConfig is what a container image's configuration says about the
+// process a container runs when started without a command.
+type ImageConfig struct {
+	Entrypoint []string
+	Cmd        []string
+	// Env holds NAME=value entries.
+	Env        []string
+	WorkingDir string
+	User       string
+}
+
+// LaunchConfig returns the process the scanned image starts, nil when the
+// tar is not an image. Some image connections read the configuration only
+// when they fetch the image, so this fetches it first.
+func (p *Connection) LaunchConfig() *ImageConfig {
+	p.EnsureLoaded()
+	return p.ImageConfig
 }
 
 func (p *Connection) FileSystem() afero.Fs {
@@ -103,25 +142,40 @@ func (p *Connection) FileSystem() afero.Fs {
 	return p.fs
 }
 
+// FileInfo reports on a path the way the local connection does. A symlink is
+// reported with its target's mode and size plus the symlink bit, a dangling
+// symlink exists as the link itself, and a link loop is an error. Using Stat
+// alone reported every link as its target (permissions.isSymlink was always
+// false) and a dangling link as absent.
 func (c *Connection) FileInfo(path string) (shared.FileInfoDetails, error) {
-	fs := c.FileSystem()
-	afs := &afero.Afero{Fs: fs}
-	stat, err := afs.Stat(path)
+	c.EnsureLoaded()
+
+	info, _, err := c.fs.LstatIfPossible(path)
 	if err != nil {
 		return shared.FileInfoDetails{}, err
+	}
+	mode := info.Mode()
+	if mode&os.ModeSymlink != 0 {
+		target, err := c.fs.Stat(path)
+		switch {
+		case err == nil:
+			info = target
+			mode = target.Mode() | os.ModeSymlink
+		case !os.IsNotExist(err):
+			return shared.FileInfoDetails{}, err
+		}
 	}
 
 	uid := int64(-1)
 	gid := int64(-1)
-	if stat, ok := stat.Sys().(*tar.Header); ok {
-		uid = int64(stat.Uid)
-		gid = int64(stat.Gid)
+	if h, ok := info.Sys().(*tar.Header); ok {
+		uid = int64(h.Uid)
+		gid = int64(h.Gid)
 	}
-	mode := stat.Mode()
 
 	return shared.FileInfoDetails{
 		Mode: shared.FileModeDetails{FileMode: mode},
-		Size: stat.Size(),
+		Size: info.Size(),
 		Uid:  uid,
 		Gid:  gid,
 	}, nil
@@ -133,11 +187,16 @@ func (c *Connection) Close() {
 	}
 	if c.fs != nil {
 		c.fs.FileMap = nil
+		c.fs.dataOffsets = nil
 	}
 }
 
 func (c *Connection) Load(stream io.Reader) error {
-	tr := tar.NewReader(stream)
+	// The reader counts what the tar reader consumed: right after Next, that
+	// is where the entry's data starts in the archive.
+	cr := &countingReader{r: stream}
+	tr := tar.NewReader(cr)
+	names := map[string]int{}
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
@@ -149,10 +208,55 @@ func (c *Connection) Load(stream io.Reader) error {
 		}
 
 		path := Abs(h.Name)
+		names[h.Name]++
+		if names[h.Name] == 1 && h.Size > 0 && isContiguous(h) {
+			c.fs.dataOffsets[h] = cr.n
+		}
+
+		// The map key holds the entry name with a leading separator, so the name is stored
+		// twice. Point the header name at the tail of the key when the bytes are the same.
+		// Both strings then share one backing array, and the header keeps its exact value.
+		if strings.HasSuffix(path, h.Name) {
+			h.Name = path[len(path)-len(h.Name):]
+		}
 		c.fs.FileMap[path] = h
+	}
+	// A name the archive holds more than once is read the way it always
+	// was, every copy concatenated, by scanning the archive for it.
+	for h := range c.fs.dataOffsets {
+		if names[h.Name] > 1 {
+			delete(c.fs.dataOffsets, h)
+		}
 	}
 	log.Debug().Int("files", len(c.fs.FileMap)).Msg("tar> successfully loaded")
 	return nil
+}
+
+// countingReader counts the bytes read through it.
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
+}
+
+// isContiguous reports whether the entry's data is stored as one run of
+// bytes. A sparse file's data is a list of fragments the tar reader puts
+// together, so it cannot be read at an offset.
+func isContiguous(h *tar.Header) bool {
+	if h.Typeflag == tar.TypeGNUSparse {
+		return false
+	}
+	for k := range h.PAXRecords {
+		if strings.HasPrefix(k, "GNU.sparse.") {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Connection) LoadFile(path string) error {
@@ -238,4 +342,19 @@ func NewConnection(id uint32, conf *inventory.Config, asset *inventory.Asset, op
 
 	c.PlatformIdentifier = identifier
 	return c, nil
+}
+
+// ImageConfigFrom copies what an image configuration says about the process
+// it starts. It returns nil for a nil configuration.
+func ImageConfigFrom(cfg *v1.ConfigFile) *ImageConfig {
+	if cfg == nil {
+		return nil
+	}
+	return &ImageConfig{
+		Entrypoint: cfg.Config.Entrypoint,
+		Cmd:        cfg.Config.Cmd,
+		Env:        cfg.Config.Env,
+		WorkingDir: cfg.Config.WorkingDir,
+		User:       cfg.Config.User,
+	}
 }

@@ -8,8 +8,8 @@ package providers
 
 import (
 	_ "embed"
-	// osconf "go.mondoo.com/mql/v13/providers/os/config"
-	// os "go.mondoo.com/mql/v13/providers/os/provider"
+	// osconf "go.mondoo.com/mql/providers/os/config"
+	// os "go.mondoo.com/mql/providers/os/provider"
 )
 
 // //go:embed os/resources/os.resources.json

@@ -1,19 +1,30 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/cnquery/v9/providers/gitlab"
-option go_package = "go.mondoo.com/mql/v13/providers/gitlab/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/gitlab"
+option go_package = "go.mondoo.com/mql/providers/gitlab/resources"
+option root = "gitlab.group"
 
 // GitLab Instance Application Settings
 //
-// Examine instance-wide security and configuration settings. Requires admin
-// access. Covers authentication controls (`requireTwoFactorAuthentication`,
-// `twoFactorGracePeriod`, `requireAdminTwoFactorAuthentication`,
-// `gitTwoFactorSessionExpiry`), password authentication toggles for web and
-// Git (`passwordAuthenticationEnabledForWeb`,
-// `passwordAuthenticationEnabledForGit`), new-user registration
-// (`signupEnabled`), and default visibility levels for projects and groups
-// (`defaultProjectVisibility`, `defaultGroupVisibility`).
+// Instance-wide security and configuration settings for a self-managed
+// GitLab deployment, readable only with an admin token. These settings
+// govern the whole instance rather than any single project or group,
+// which makes them the primary control surface for hardening audits:
+// two-factor enforcement and grace periods, web and Git password
+// authentication, new-user registration and admin approval, sign-up
+// domain allow/deny lists, password-complexity minimums, token and SSH
+// key expiration enforcement, default project and group visibility, and
+// SSRF-relevant toggles that let hooks and integrations reach the local
+// network. It also covers the credential lifecycle policy (token expiry
+// ceilings, runner token rotation, and the SSH key algorithms and sizes the
+// instance will accept), sign-in hardening (lockout thresholds, concurrent
+// sign-in IP limits, and whether users linked to an identity provider keep a
+// local password fallback), the instance-wide CI job token allowlist
+// enforcement, and the instance-scope CI/CD variables, system hooks, and
+// OAuth applications registered on it.
 gitlab.settings @defaults("requireTwoFactorAuthentication") {
   // Settings ID
   id int
@@ -77,20 +88,297 @@ gitlab.settings @defaults("requireTwoFactorAuthentication") {
   sessionExpireDelay int
   // Maximum web-terminal session time, in seconds
   terminalMaxSessionTime int
+  // Whether GitLab Duo AI features are enabled for the instance
+  //
+  // Reads false when the instance does not support or has not enabled Duo;
+  // older GitLab versions do not report this field.
+  duoFeaturesEnabled bool
+  // Whether the GitLab Duo features toggle is locked so groups and projects cannot override it
+  //
+  // Reads false on instances that do not report this setting.
+  lockDuoFeaturesEnabled bool
+  // Whether new personal access tokens must be given an expiration date
+  //
+  // Distinct from enforcePatExpiration, which decides whether a token that has
+  // already passed its expiry stops working. Null on instances that do not
+  // report the setting.
+  requirePersonalAccessTokenExpiry bool
+  // Maximum lifetime, in days, allowed for a personal access token
+  //
+  // Null when the instance sets no ceiling on token lifetime, and on instances
+  // that do not report the setting.
+  maxPersonalAccessTokenLifetime int
+  // Whether service account access tokens are forced to expire
+  //
+  // Null on instances that do not report the setting.
+  serviceAccessTokensExpirationEnforced bool
+  // Whether runner registration tokens are still accepted
+  //
+  // The legacy registration flow uses one long-lived, non-expiring token shared
+  // across every runner registered with it, so a leaked copy keeps working
+  // until the token is rotated by hand. True leaves that path open alongside
+  // the newer per-runner authentication tokens. Null on instances that do not
+  // report the setting.
+  allowRunnerRegistrationToken bool
+  // Rotation interval, in seconds, for instance runner authentication tokens
+  //
+  // Null when no rotation interval is configured, and on instances that do not
+  // report the setting.
+  runnerTokenExpirationInterval int
+  // Rotation interval, in seconds, for group runner authentication tokens
+  //
+  // Null when no rotation interval is configured, and on instances that do not
+  // report the setting.
+  groupRunnerTokenExpirationInterval int
+  // Rotation interval, in seconds, for project runner authentication tokens
+  //
+  // Null when no rotation interval is configured, and on instances that do not
+  // report the setting.
+  projectRunnerTokenExpirationInterval int
+  // Minimum RSA key size, in bits, accepted for uploaded SSH keys
+  //
+  // A value of -1 refuses RSA keys outright and 0 accepts any size. Any other
+  // value is the minimum bit length. Null on instances that do not report the
+  // setting.
+  rsaKeyRestriction int
+  // Minimum DSA key size, in bits, accepted for uploaded SSH keys
+  //
+  // A value of -1 refuses DSA keys outright and 0 accepts any size. Any other
+  // value is the minimum bit length. Null on instances that do not report the
+  // setting.
+  dsaKeyRestriction int
+  // Minimum ECDSA key size, in bits, accepted for uploaded SSH keys
+  //
+  // A value of -1 refuses ECDSA keys outright and 0 accepts any size. Any other
+  // value is the minimum bit length. Null on instances that do not report the
+  // setting.
+  ecdsaKeyRestriction int
+  // Minimum ECDSA key size, in bits, accepted for uploaded FIDO security key SSH keys
+  //
+  // A value of -1 refuses ECDSA security keys outright and 0 accepts any size.
+  // Any other value is the minimum bit length. Null on instances that do not
+  // report the setting.
+  ecdsaSkKeyRestriction int
+  // Whether Ed25519 SSH keys are accepted, expressed as a size restriction
+  //
+  // A value of -1 refuses Ed25519 keys and 0 accepts them. Ed25519 has a fixed
+  // key size, so no other value carries meaning. Null on instances that do not
+  // report the setting.
+  ed25519KeyRestriction int
+  // Whether Ed25519 FIDO security key SSH keys are accepted, expressed as a size restriction
+  //
+  // A value of -1 refuses Ed25519 security keys and 0 accepts them. Null on
+  // instances that do not report the setting.
+  ed25519SkKeyRestriction int
+  // Number of failed sign-in attempts before an account is locked
+  //
+  // Null when the instance does not lock accounts after repeated failures, and
+  // on instances that do not report the setting.
+  maxLoginAttempts int
+  // Minutes a locked account stays locked after too many failed sign-in attempts
+  //
+  // Null when a locked account is never released automatically, and on
+  // instances that do not report the setting.
+  failedLoginAttemptsUnlockPeriodInMinutes int
+  // Whether the number of IP addresses one user may sign in from is capped
+  //
+  // Null on instances that do not report the setting.
+  uniqueIpsLimitEnabled bool
+  // Maximum number of distinct IP addresses a single user may sign in from
+  //
+  // Takes effect only while uniqueIpsLimitEnabled is true. Null on instances
+  // that do not report the setting.
+  uniqueIpsLimitPerUser int
+  // Window, in seconds, over which distinct sign-in IP addresses are counted
+  //
+  // Takes effect only while uniqueIpsLimitEnabled is true. Null on instances
+  // that do not report the setting.
+  uniqueIpsLimitTimeWindow int
+  // Whether users linked to an identity provider are barred from signing in with a local password
+  //
+  // False leaves a password fallback in place for those users, so the identity
+  // provider's own controls, including its multi-factor requirement, can be
+  // sidestepped. Null on instances that do not report the setting.
+  disablePasswordAuthenticationForUsersWithSsoIdentities bool
+  // Whether a CAPTCHA is presented after repeated failed sign-in attempts
+  //
+  // Null on instances that do not report the setting.
+  loginRecaptchaProtectionEnabled bool
+  // Whether administrators must re-authenticate before using administrator rights
+  //
+  // False lets an account that holds administrator rights exercise them
+  // continuously for the whole session. Null on instances that do not report
+  // the setting.
+  adminMode bool
+  // Whether a web session expires a fixed time after sign-in rather than after idle time
+  //
+  // Null on instances that do not report the setting.
+  sessionExpireFromInit bool
+  // Whether accounts that have not signed in for a set period are deactivated automatically
+  //
+  // Null on instances that do not report the setting.
+  deactivateDormantUsers bool
+  // Days of inactivity before an account is treated as dormant
+  //
+  // Takes effect only while deactivateDormantUsers is true. Null on instances
+  // that do not report the setting.
+  deactivateDormantUsersPeriod int
+  // Whether every project on the instance must keep its inbound CI job token allowlist switched on
+  //
+  // The instance-wide backstop behind the per-project ciJobTokenScopeEnabled
+  // setting. False lets an individual project opt out and accept a job token
+  // issued to any other project on the instance. Null on instances that do not
+  // report the setting.
+  enforceCiInboundJobTokenScopeEnabled bool
+  // Whether packages may be pulled from the package registry without authentication
+  //
+  // True lets a project make its published packages readable by anyone who can
+  // reach the instance. Null on instances that do not report the setting.
+  packageRegistryAllowAnyoneToPullOption bool
+  // Whether a rate limit is enforced on unauthenticated API requests
+  //
+  // Null on instances that do not report the setting.
+  throttleUnauthenticatedApiEnabled bool
+  // Maximum unauthenticated API requests allowed per IP address within one rate-limit period
+  //
+  // Takes effect only while throttleUnauthenticatedApiEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleUnauthenticatedApiRequestsPerPeriod int
+  // Length, in seconds, of the rate-limit period for unauthenticated API requests
+  //
+  // Takes effect only while throttleUnauthenticatedApiEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleUnauthenticatedApiPeriodInSeconds int
+  // Whether a rate limit is enforced on authenticated API requests
+  //
+  // Null on instances that do not report the setting.
+  throttleAuthenticatedApiEnabled bool
+  // Maximum authenticated API requests allowed per user within one rate-limit period
+  //
+  // Takes effect only while throttleAuthenticatedApiEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleAuthenticatedApiRequestsPerPeriod int
+  // Length, in seconds, of the rate-limit period for authenticated API requests
+  //
+  // Takes effect only while throttleAuthenticatedApiEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleAuthenticatedApiPeriodInSeconds int
+  // Whether a rate limit is enforced on unauthenticated web requests
+  //
+  // Null on instances that do not report the setting.
+  throttleUnauthenticatedWebEnabled bool
+  // Maximum unauthenticated web requests allowed per IP address within one rate-limit period
+  //
+  // Takes effect only while throttleUnauthenticatedWebEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleUnauthenticatedWebRequestsPerPeriod int
+  // Length, in seconds, of the rate-limit period for unauthenticated web requests
+  //
+  // Takes effect only while throttleUnauthenticatedWebEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleUnauthenticatedWebPeriodInSeconds int
+  // Whether a rate limit is enforced on authenticated web requests
+  //
+  // Null on instances that do not report the setting.
+  throttleAuthenticatedWebEnabled bool
+  // Maximum authenticated web requests allowed per user within one rate-limit period
+  //
+  // Takes effect only while throttleAuthenticatedWebEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleAuthenticatedWebRequestsPerPeriod int
+  // Length, in seconds, of the rate-limit period for authenticated web requests
+  //
+  // Takes effect only while throttleAuthenticatedWebEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleAuthenticatedWebPeriodInSeconds int
+  // Whether a rate limit is enforced on unauthenticated Git over HTTP requests
+  //
+  // Null on instances that do not report the setting.
+  throttleUnauthenticatedGitHttpEnabled bool
+  // Maximum unauthenticated Git over HTTP requests allowed per IP address within one rate-limit period
+  //
+  // Takes effect only while throttleUnauthenticatedGitHttpEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleUnauthenticatedGitHttpRequestsPerPeriod int
+  // Length, in seconds, of the rate-limit period for unauthenticated Git over HTTP requests
+  //
+  // Takes effect only while throttleUnauthenticatedGitHttpEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleUnauthenticatedGitHttpPeriodInSeconds int
+  // Whether a rate limit is enforced on authenticated Git over HTTP requests
+  //
+  // Null on instances that do not report the setting.
+  throttleAuthenticatedGitHttpEnabled bool
+  // Maximum authenticated Git over HTTP requests allowed per user within one rate-limit period
+  //
+  // Takes effect only while throttleAuthenticatedGitHttpEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleAuthenticatedGitHttpRequestsPerPeriod int
+  // Length, in seconds, of the rate-limit period for authenticated Git over HTTP requests
+  //
+  // Takes effect only while throttleAuthenticatedGitHttpEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleAuthenticatedGitHttpPeriodInSeconds int
+  // Whether a rate limit is enforced on authenticated requests to the MCP server endpoint (/api/v4/mcp)
+  //
+  // Null on instances that do not report the setting.
+  throttleAuthenticatedMcpEnabled bool
+  // Maximum authenticated requests to the MCP server endpoint (/api/v4/mcp) allowed per user within one rate-limit period
+  //
+  // Takes effect only while throttleAuthenticatedMcpEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleAuthenticatedMcpRequestsPerPeriod int
+  // Length, in seconds, of the rate-limit period for authenticated requests to the MCP server endpoint (/api/v4/mcp)
+  //
+  // Takes effect only while throttleAuthenticatedMcpEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleAuthenticatedMcpPeriodInSeconds int
+  // Whether a rate limit is enforced on requests to protected paths such as sign-in, sign-up, and password reset
+  //
+  // Null on instances that do not report the setting.
+  throttleProtectedPathsEnabled bool
+  // Maximum requests to protected paths such as sign-in, sign-up, and password reset allowed per IP address within one rate-limit period
+  //
+  // Takes effect only while throttleProtectedPathsEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleProtectedPathsRequestsPerPeriod int
+  // Length, in seconds, of the rate-limit period for requests to protected paths such as sign-in, sign-up, and password reset
+  //
+  // Takes effect only while throttleProtectedPathsEnabled is true. Null on instances that do not
+  // report the setting.
+  throttleProtectedPathsPeriodInSeconds int
+  // Requests per minute allowed to each raw file path
+  //
+  // Zero disables the limit. Null on instances that do not report the setting.
+  rawBlobRequestLimit int
+  // Unauthenticated requests per minute allowed across all raw file paths in a project
+  //
+  // Null on instances that do not report the setting.
+  rawBlobRequestLimitUnauthenticated int
+  // Requests per minute each user may make to the instance audit events API
+  //
+  // Null on instances that do not report the setting.
+  auditEventsApiLimit int
+
+  // CI/CD variables defined at instance scope
+  variables() []gitlab.settings.variable
+  // System hooks registered on the instance
+  systemHooks() []gitlab.settings.systemHook
+  // OAuth applications registered on the instance
+  applications() []gitlab.settings.application
 }
 
 // GitLab user
 //
-// Examine a single GitLab user account by id. Surfaces basic identity
-// (username, name, email, avatar), account state (locked, bot,
-// twoFactorEnabled), profile metadata (jobTitle, organization, location),
-// linked SSO identities and SSH keys, and admin-scoped fields (isAdmin,
-// isAuditor, external, lastSignInAt, currentSignInAt, lastActivityOn,
-// confirmedAt, note, usingLicenseSeat, canCreateGroup, canCreateProject,
-// privateProfile). The admin-scoped fields require the calling token to
-// be able to read `/users/:id` — with a non-admin token they return zero
-// values rather than failing the resource graph; a one-time warning is
-// emitted at runtime when this fallback is hit.
+// User account on a GitLab instance, keyed by numeric id (for example
+// `gitlab.user(id: 42)`). Covers basic identity (username, name, email,
+// avatar), account state (locked, bot, twoFactorEnabled), profile metadata
+// (jobTitle, organization, location), linked SSO identities and SSH keys, and
+// admin-scoped fields such as isAdmin, isAuditor, external, the sign-in and
+// activity timestamps, and note. The admin-scoped fields require the calling
+// token to be able to read `/users/:id`. With a non-admin token they return
+// zero values rather than failing the resource graph, and a one-time warning
+// is emitted at runtime when this fallback is hit.
 gitlab.user @defaults("username name state") {
   // User ID
   id int
@@ -170,14 +458,16 @@ gitlab.user @defaults("username name state") {
   sshKeys() []gitlab.user.sshKey
   // Personal access tokens belonging to this user (requires admin or self-access)
   personalAccessTokens() []gitlab.user.personalAccessToken
+  // Email addresses registered to this user (requires admin or self-access)
+  emails() []gitlab.user.emailAddress
 }
 
 // GitLab personal access token
 //
-// Examine a personal access token and its security posture: the `scopes` it
-// grants, whether it is `active` or `revoked`, and its `expiresAt` and
-// `lastUsedAt` timestamps. Use these to audit over-scoped, stale, or
-// non-expiring tokens.
+// Personal access token belonging to a user, with the fields needed to audit
+// over-scoped, stale, or non-expiring credentials: the `scopes` it grants,
+// whether it is `active` or `revoked`, and its `expiresAt` and `lastUsedAt`
+// timestamps.
 private gitlab.user.personalAccessToken @defaults("name active expiresAt") {
   // Token ID
   id int
@@ -229,15 +519,46 @@ private gitlab.user.sshKey @defaults("id title createdAt") {
   user() gitlab.user
 }
 
-// GitLab member (used in both groups and projects)
+// Email address registered to a GitLab user account
+//
+// Email address linked to a user account and whether it has been confirmed.
+// Unconfirmed addresses (`confirmedAt` is null) can indicate a pending account
+// takeover or an unverified secondary identity. Requires the calling token to
+// be able to read the user's emails (admin or self-access).
+private gitlab.user.emailAddress @defaults("email confirmedAt") {
+  // Email ID
+  id int
+  // Email address
+  email string
+  // When the email address was confirmed; null when the address is unconfirmed
+  confirmedAt time
+}
+
+// GitLab group or project membership
+//
+// Membership record pairing a user account with the access level that
+// governs what they can do in a group or project (Guest, Reporter,
+// Developer, Maintainer, or Owner). Review memberships to find
+// over-privileged accounts, stale grants past their expiration, or
+// custom roles that elevate a member beyond their base access level.
+// The `role` and `accessLevel` fields report the effective permission
+// tier, `memberRole` resolves any custom role in effect, and
+// `isUsingSeat` indicates whether the member consumes a billable seat.
 private gitlab.member @defaults("user role") {
   // Member ID
   id int
   // User associated with this membership
   user gitlab.user
-  // Access level of the user within the group or project (e.g., Guest, Reporter, Developer, Maintainer, Owner)
+  // Role name derived from the numeric access level
+  //
+  // One of No access, Minimal Access, Guest, Planner, Reporter, Developer,
+  // Maintainer, Owner, or Admin. Unknown is reported for any access level the
+  // provider does not recognize.
   role string
-  // Numeric access level backing the role (10 Guest, 20 Reporter, 30 Developer, 40 Maintainer, 50 Owner)
+  // Numeric access level backing the role
+  //
+  // One of 0 No access, 5 Minimal Access, 10 Guest, 15 Planner, 20 Reporter,
+  // 30 Developer, 40 Maintainer, 50 Owner, or 60 Admin.
   accessLevel int
   // Membership state (for example active or awaiting)
   state string
@@ -313,13 +634,12 @@ private gitlab.memberRole @defaults("name baseAccessLevel") {
 
 // GitLab Namespace
 //
-// Examine a GitLab namespace — the container that scopes groups and user
-// projects. The `kind` field distinguishes group namespaces from user
-// namespaces. Subscription fields (`plan`, `trial`, `trialEndsOn`,
-// `maxSeatsUsed`, `seatsInUse`, `billableMembersCount`) reflect the
-// GitLab.com plan attached to the namespace. `membersCountWithDescendants`
-// counts members across the namespace hierarchy. Navigate to the parent
-// namespace via `parentId`.
+// Container that scopes groups and user projects in GitLab. The `kind`
+// field distinguishes group namespaces from user namespaces. Subscription
+// fields (`plan`, `trial`, `trialEndsOn`, `maxSeatsUsed`, `seatsInUse`,
+// `billableMembersCount`) reflect the GitLab.com plan attached to the
+// namespace, and `membersCountWithDescendants` counts members across the
+// namespace hierarchy.
 gitlab.namespace @defaults("name kind plan") {
   // Namespace ID
   id int
@@ -339,7 +659,10 @@ gitlab.namespace @defaults("name kind plan") {
   membersCountWithDescendants int
   // Number of billable members
   billableMembersCount int
-  // Subscription plan (free, premium, ultimate)
+  // Subscription plan
+  //
+  // One of default, free, bronze, silver, premium, gold, ultimate,
+  // premium_trial, ultimate_trial, ultimate_trial_paid_customer, or opensource.
   plan string
   // Whether the namespace is on a trial
   trial bool
@@ -353,16 +676,17 @@ gitlab.namespace @defaults("name kind plan") {
 
 // GitLab Group
 //
-// Examine a GitLab group and its security posture. Core identity fields
-// include `name`, `fullName`, `fullPath`, `visibility`, `webURL`, and
-// `createdAt`. Security controls cover two-factor authentication enforcement
-// (`requireTwoFactorAuthentication`, `twoFactorGracePeriod`),
-// `membershipLock`, `preventForkingOutsideGroup`, and `emailsDisabled`.
-// Computed collections expose `members`, `subgroups`, `projects`, `labels`,
-// `pushRules`, `accessTokens`, `deployTokens`, `protectedBranches`,
-// `samlGroupLinks` (Premium/Ultimate), and `auditEvents` (Premium/Ultimate).
-// The associated `namespace` is available as a typed reference.
-gitlab.group @defaults("name visibility webURL") {
+// Namespace that owns projects, members, and subgroups, together with the
+// security controls applied across them. Group-level settings include
+// two-factor authentication enforcement, membership locking, restrictions on
+// forking projects outside the group, allowed IP address ranges, and the
+// default branch-protection policy inherited by new projects. Also queryable
+// are the group's members and their roles, CI/CD variables inherited by every
+// project, access and deploy tokens, webhooks, push rules, SAML group links,
+// and audit events (the last two on Premium and Ultimate). Vulnerabilities,
+// packages, and container registry repositories aggregate across the group
+// and all of its subgroups.
+gitlab.group @defaults("name visibility webURL") @root {
   // Group ID
   id int
   // Group name
@@ -389,10 +713,6 @@ gitlab.group @defaults("name visibility webURL") {
   membershipLock bool
   // Whether forking projects outside this group is forbidden
   preventForkingOutsideGroup bool
-  // Whether group email notifications are disabled
-  //
-  // Deprecated in favor of emailsEnabled.
-  emailsDisabled @maturity("deprecated") bool
   // Whether group email notifications are enabled
   emailsEnabled bool
   // Whether group mentions within issues and merge requests are disabled
@@ -420,7 +740,7 @@ gitlab.group @defaults("name visibility webURL") {
   shareWithGroupLock bool
   // Shared-runner policy for the group (enabled, disabled_and_overridable, disabled_and_unoverridable)
   sharedRunnersSetting string
-  // Minimum role that can create projects in the group (noone, maintainer, developer)
+  // Minimum role that can create projects in the group (noone, maintainer, developer, owner, administrator)
   projectCreationLevel string
   // Minimum role that can create subgroups in the group (owner, maintainer)
   subGroupCreationLevel string
@@ -467,6 +787,24 @@ gitlab.group @defaults("name visibility webURL") {
   containerRegistryRepositories() []gitlab.project.containerRegistryRepository
   // Packages published across all projects in the group and its subgroups
   packages() []gitlab.project.package
+  // Parent group, or null when this is a top-level group
+  parentGroup() gitlab.group
+  // Personal access tokens held by enterprise users of the group
+  enterpriseAccessTokens() []gitlab.group.enterpriseAccessToken
+  // SSH keys held by enterprise users of the group
+  enterpriseSshKeys() []gitlab.group.enterpriseSshKey
+  // Service accounts created at group scope
+  serviceAccounts() []gitlab.group.serviceAccount
+  // Certificate authorities trusted for SSH access to the group
+  sshCertificates() []gitlab.group.sshCertificate
+  // Identity provider links for group members
+  scimIdentities() []gitlab.group.scimIdentity
+  // Requests to join the group
+  accessRequests() []gitlab.group.accessRequest
+  // Webhooks registered at the group level
+  webhooks() []gitlab.group.webhook
+  // CI/CD variables defined at the group level (inherited by every project in the group)
+  variables() []gitlab.group.variable
 }
 
 // GitLab SAML group link
@@ -519,7 +857,7 @@ private gitlab.group.auditEvent @defaults("id eventName createdAt") {
   ipAddress string
   // Path of the entity within the group hierarchy
   entityPath string
-  // Whether this was a failed login event
+  // Login method reported on a failed sign-in event (for example STANDARD), empty for other event types
   failedLogin string
   // User who performed the action (null if the author cannot be resolved)
   author() gitlab.user
@@ -533,8 +871,12 @@ private gitlab.group.auditEvent @defaults("id eventName createdAt") {
 
 // GitLab project audit event
 //
-// Records a security-relevant action against the project.
-// Available on Premium and Ultimate tiers via /projects/:id/audit_events.
+// Security-relevant action recorded against the project, such as a
+// member being added or removed, a deploy token created, or a
+// protected-branch setting changed. Available on Premium and Ultimate
+// tiers through the project audit events API. Useful for change
+// tracking and forensic investigation of who did what, when, and from
+// which IP address.
 private gitlab.project.auditEvent @defaults("id eventName createdAt") {
   // Audit event ID
   id int
@@ -566,7 +908,7 @@ private gitlab.project.auditEvent @defaults("id eventName createdAt") {
   ipAddress string
   // Path of the entity the event applies to
   entityPath string
-  // Whether this was a failed login event
+  // Login method reported on a failed sign-in event (for example STANDARD), empty for other event types
   failedLogin string
   // User who performed the action (null if the author cannot be resolved)
   author() gitlab.user
@@ -580,20 +922,18 @@ private gitlab.project.auditEvent @defaults("id eventName createdAt") {
 
 // GitLab Project
 //
-// Examine a GitLab project and its security configuration. Core identity
-// fields include `name`, `fullName`, `fullPath`, `visibility`, `webURL`,
-// `defaultBranch`, `archived`, and `mirror`. Feature toggles cover issues,
-// merge requests, wiki, snippets, container registry, Service Desk, packages,
-// Auto DevOps, and requirements. Merge-request governance fields include
-// `onlyAllowMergeIfPipelineSucceeds`,
-// `onlyAllowMergeIfAllDiscussionsAreResolved`,
-// `allowMergeOnSkippedPipeline`, and `mergeMethod`. Computed collections
-// expose `approvalRules`, `approvalSettings`, `protectedBranches`,
-// `projectMembers`, `projectFiles`, `webhooks`, `mergeRequests`, `issues`,
-// `releases`, `variables`, `milestones`, `labels`, `pipelines`, `runners`,
-// `pushRules`, `accessTokens`, `deployKeys`, `deployTokens`, and
-// `securitySettings`.
-gitlab.project @defaults("fullName visibility webURL") {
+// A GitLab project: the repository together with its CI/CD configuration,
+// feature toggles, and access controls. Projects hold source code, issues,
+// merge requests, pipelines, and packages, so a project is the primary unit
+// for auditing GitLab's security posture: who the code is visible to,
+// whether merges require passing pipelines and resolved discussions, how
+// branches and tags are protected, how approvals and push rules are
+// enforced, and which members, access tokens, deploy keys, and integrations
+// can reach the code. Computed collections also surface confirmed
+// vulnerabilities, audit events, and container-registry and package
+// protection rules. Select a project by its full path with namespace, for
+// example `gitlab.project(fullPath: "mondoohq/test-project")`.
+gitlab.project @defaults("fullName visibility webURL") @root {
   // Project ID
   id int
   // Project name
@@ -602,7 +942,10 @@ gitlab.project @defaults("fullName visibility webURL") {
   fullName string
   // Project path
   path string
-  // Path with namespace (e.g., `mondoohq/test-project`) — used as the project's stable identifier across GitLab APIs
+  // Path with namespace
+  //
+  // Full path including the namespace (e.g., `mondoohq/test-project`), used as
+  // the project's stable identifier across GitLab APIs.
   fullPath string
   // Create date of the project
   createdAt time
@@ -618,10 +961,6 @@ gitlab.project @defaults("fullName visibility webURL") {
   mirror bool
   // URL of the project
   webURL string
-  // Whether project email notifications are disabled
-  //
-  // Deprecated in favor of emailsEnabled.
-  emailsDisabled @maturity("deprecated") bool
   // Whether project email notifications are enabled
   emailsEnabled bool
   // Whether merging merge requests is allowed when a pipeline is skipped
@@ -630,34 +969,14 @@ gitlab.project @defaults("fullName visibility webURL") {
   onlyAllowMergeIfPipelineSucceeds bool
   // Whether merging merge requests is allowed only if all discussions are resolved
   onlyAllowMergeIfAllDiscussionsAreResolved bool
-  // Whether the issues feature is enabled
-  //
-  // Deprecated in favor of issuesAccessLevel.
-  issuesEnabled @maturity("deprecated") bool
   // Visibility of the issues feature (disabled, private, enabled)
   issuesAccessLevel string
-  // Whether the merge request feature is enabled
-  //
-  // Deprecated in favor of mergeRequestsAccessLevel.
-  mergeRequestsEnabled @maturity("deprecated") bool
   // Visibility of the merge requests feature (disabled, private, enabled)
   mergeRequestsAccessLevel string
-  // Whether the wiki feature is enabled
-  //
-  // Deprecated in favor of wikiAccessLevel.
-  wikiEnabled @maturity("deprecated") bool
   // Visibility of the wiki feature (disabled, private, enabled)
   wikiAccessLevel string
-  // Whether the snippets feature is enabled
-  //
-  // Deprecated in favor of snippetsAccessLevel.
-  snippetsEnabled @maturity("deprecated") bool
   // Visibility of the snippets feature (disabled, private, enabled)
   snippetsAccessLevel string
-  // Whether the container registry feature is enabled
-  //
-  // Deprecated in favor of containerRegistryAccessLevel.
-  containerRegistryEnabled @maturity("deprecated") bool
   // Visibility of the container registry feature (disabled, private, enabled)
   containerRegistryAccessLevel string
   // Whether the Service Desk feature is enabled
@@ -678,6 +997,20 @@ gitlab.project @defaults("fullName visibility webURL") {
   securityAndComplianceAccessLevel string
   // Whether CI job tokens are scoped to an allowlist of projects
   ciJobTokenScopeEnabled bool
+  // Components that make up the subject claim of the CI/CD ID token
+  //
+  // GitLab mints an OIDC token for each job whose subject claim is built from
+  // these components, and a cloud trust policy grants access by matching on
+  // it. The default set is project_path, ref_type, and ref. Adding components
+  // narrows what a pipeline of this project can assume, and removing them
+  // widens it. Null when the token cannot read the project's CI/CD settings.
+  ciIdTokenSubClaimComponents() []string
+  // Whether pipelines for a merge request from a fork run in this project
+  //
+  // True lets a merge request opened from an untrusted fork execute in this
+  // project's CI context, where it reaches the project's protected variables
+  // and runners. Null when the token cannot read the project's CI/CD settings.
+  ciAllowForkPipelinesToRunInParentProject() bool
   // Whether job logs and artifacts are visible to non-members
   publicJobs bool
   // Whether server-side secret push protection is enabled
@@ -693,6 +1026,21 @@ gitlab.project @defaults("fullName visibility webURL") {
   mirrorTriggerBuilds bool
   // Whether mirroring is limited to protected branches
   onlyMirrorProtectedBranches bool
+  // Whether GitLab Duo automatically reviews merge requests
+  //
+  // Reads false when the project's GitLab instance does not support or has not
+  // enabled Duo.
+  autoDuoCodeReviewEnabled bool
+  // Visibility of the machine-learning model experiments feature
+  //
+  // One of disabled, private, or enabled; empty on instances that do not report
+  // it.
+  modelExperimentsAccessLevel string
+  // Visibility of the machine-learning model registry feature
+  //
+  // One of disabled, private, or enabled; empty on instances that do not report
+  // it.
+  modelRegistryAccessLevel string
   // Approval rules for the project
   approvalRules() []gitlab.project.approvalRule
   // Merge methods for the project
@@ -707,10 +1055,6 @@ gitlab.project @defaults("fullName visibility webURL") {
   projectFiles() []gitlab.project.file
   // List of webhooks for the project
   webhooks() []gitlab.project.webhook
-  // Whether CI jobs are enabled
-  //
-  // Deprecated in favor of buildsAccessLevel.
-  jobsEnabled @maturity("deprecated") bool
   // Visibility of the CI/CD builds feature (disabled, private, enabled)
   buildsAccessLevel string
   // Whether the repo is empty
@@ -785,14 +1129,30 @@ gitlab.project @defaults("fullName visibility webURL") {
   integrations() []gitlab.project.integration
   // Protected environments and their deploy/approval gates
   protectedEnvironments() []gitlab.project.protectedEnvironment
+  // Project this project was forked from, or null when it is not a fork
+  forkedFromProject() gitlab.project
+  // Trigger tokens that let external callers start pipelines
+  pipelineTriggers() []gitlab.project.pipelineTrigger
+  // Recurring pipeline runs and the variables they inject
+  pipelineSchedules() []gitlab.project.pipelineSchedule
+  // Certificates and keystores mounted into CI jobs
+  secureFiles() []gitlab.project.secureFile
+  // Kubernetes clusters connected to the project
+  clusterAgents() []gitlab.project.clusterAgent
+  // Push mirrors replicating the repository to external Git hosts
+  remoteMirrors() []gitlab.project.remoteMirror
+  // Requests to join the project
+  accessRequests() []gitlab.project.accessRequest
 }
 
 // GitLab project integration
 //
-// Examine an active integration (external service) wired into the project,
-// such as Slack, Jira, or a generic webhook-style service. `slug` identifies
-// the integration type and the event flags show which project events are
-// forwarded to it. Integrations are a data-egress and inbound-trigger surface.
+// External service wired into a project, such as Slack, Jira, or a generic
+// webhook-style service. The `slug` field identifies the integration type
+// and the per-event boolean flags show which project events are forwarded to
+// the service. Because integrations push project activity outward and can
+// accept inbound triggers, they are a data-egress and inbound-trigger surface
+// worth auditing.
 private gitlab.project.integration @defaults("title slug active") {
   // Integration ID
   id int
@@ -844,10 +1204,12 @@ private gitlab.project.integration @defaults("title slug active") {
 
 // GitLab protected environment
 //
-// Examine a protected deployment environment and the gates guarding it. The
-// `name` field is the environment (or wildcard). `deployAccessLevels` lists
-// who may deploy, `requiredApprovalCount` is the number of approvals a
-// deployment needs, and `approvalRules` describes the approver groups/users.
+// Deployment gates guarding a protected environment (such as production).
+// The `name` field selects the environment or wildcard pattern it covers,
+// for example `production` or `review/*`. `deployAccessLevels` restricts who
+// may deploy, `requiredApprovalCount` sets how many approvals a deployment
+// needs, and `approvalRules` names the approver groups and users. Weak or
+// missing gates on a production environment let unreviewed changes reach it.
 private gitlab.project.protectedEnvironment @defaults("name requiredApprovalCount") {
   // Environment name or wildcard pattern
   name string
@@ -867,11 +1229,11 @@ private gitlab.project.protectedEnvironment @defaults("name requiredApprovalCoun
 
 // CI/CD job-token access scope
 //
-// Examine how the project restricts inbound CI/CD job-token access. When
+// Inbound CI/CD job-token access controls for the project, governing which
+// other projects and groups may use their job tokens to reach it. When
 // `inboundEnabled` is true, only the projects in `inboundAllowlistProjects`
-// and groups in `allowlistGroups` may use their job tokens to access this
-// project; when false, any project's job token may reach it (a lateral-
-// movement risk).
+// and groups in `allowlistGroups` are permitted; when false, any project's
+// job token may reach this project, a lateral-movement risk worth auditing.
 private gitlab.project.jobTokenScope @defaults("inboundEnabled") {
   // Whether inbound job-token access is limited to the allowlist
   inboundEnabled bool
@@ -883,9 +1245,10 @@ private gitlab.project.jobTokenScope @defaults("inboundEnabled") {
 
 // GitLab protected tag
 //
-// Examine a protected tag rule and the access levels permitted to create
-// tags matching it. The `name` is the tag name or wildcard pattern (for
-// example `v*`). `createAccessLevels` lists each role, user, group, or deploy
+// Protected tag rule and the access levels permitted to create tags
+// matching it, so you can audit who can cut release tags on the
+// project. The `name` is the tag name or wildcard pattern (for example
+// `v*`). `createAccessLevels` lists each role, user, group, or deploy
 // key allowed to create the tag.
 private gitlab.project.protectedTag @defaults("name") {
   // Tag name or wildcard pattern
@@ -896,14 +1259,14 @@ private gitlab.project.protectedTag @defaults("name") {
 
 // GitLab project approval rule
 //
-// Examine a single approval rule that gates merging into the project.
+// A single approval rule that gates merging into the project.
 // The rule's `ruleType` distinguishes `any_approver` (any user with
 // write access can approve), `regular` (a defined list of users and/or
 // groups), `code_owner` (the relevant CODEOWNERS entries must approve),
 // and `report_approver` (a security or license-scanning report must
-// pass — `reportType` narrows this further to `license_scanning`,
+// pass, with `reportType` narrowing this further to `license_scanning`,
 // `code_coverage`, or `scan_finding`). `approvalsRequired` is the
-// number of approvals the rule demands. The typed `users`,
+// number of approvals the rule demands. The `users`,
 // `eligibleApprovers`, `groups`, and `protectedBranches` accessors
 // resolve the approvers and the branches the rule applies to.
 // `appliesToAllProtectedBranches` is true when the rule covers every
@@ -923,7 +1286,7 @@ private gitlab.project.approvalRule @defaults("name ruleType approvalsRequired")
   ruleType string
   // Report type for report_approver rules
   //
-  // One of license_scanning, code_coverage, or scan_finding. Empty for non-report rules.
+  // One of license_scanning, code_coverage, scan_finding, or any_merge_request. Empty for non-report rules.
   reportType string
   // Whether the rule applies to all protected branches
   appliesToAllProtectedBranches bool
@@ -943,17 +1306,14 @@ private gitlab.project.approvalRule @defaults("name ruleType approvalsRequired")
 
 // GitLab project CODEOWNERS file
 //
-// Examine the CODEOWNERS file for a project. The file is resolved
-// from the default branch in this order: `CODEOWNERS`,
-// `.gitlab/CODEOWNERS`, `docs/CODEOWNERS`. Surfaces the `path` the
-// file was found at, the raw `content`, the parsed `rules` (each
-// with `section`, `pattern`, `owners`, `required`, and
-// `approvalsRequired`), and the convenience flag `present`
-// indicating whether any CODEOWNERS file exists at all. Use this to
-// audit code-review coverage gaps (paths with no required owners),
-// the presence of section overrides (`[Section][Approvals=N]`), and
-// any `^` optional sections that weaken default required-review
-// enforcement.
+// CODEOWNERS file for a project, resolved from the default branch in
+// this order: `CODEOWNERS`, `.gitlab/CODEOWNERS`, `docs/CODEOWNERS`.
+// The `present` flag reports whether any CODEOWNERS file exists at
+// all, `path` gives the location it was found at, `content` is the
+// raw text, and `rules` holds the parsed entries. Use this to audit
+// code-review coverage gaps (paths with no required owners), section
+// overrides (`[Section][Approvals=N]`), and any `^` optional sections
+// that weaken default required-review enforcement.
 private gitlab.project.codeowners @defaults("path present") {
   // Whether a CODEOWNERS file exists on the default branch
   present bool
@@ -967,18 +1327,16 @@ private gitlab.project.codeowners @defaults("path present") {
 
 // GitLab CODEOWNERS rule
 //
-// Examine a single rule extracted from a CODEOWNERS file. The
-// `pattern` is the path glob the rule applies to; `owners` lists
-// the user/group identifiers (with the leading `@` preserved); the
-// `section` field carries the name of the `[Section]` header the
-// rule appears under (empty for rules outside any section);
-// `required` is true when the section was declared as
-// `[Section]` (without a leading `^`); `optional` is true when the
-// section was declared as `^[Section]`. The `approvalsRequired`
-// field captures the section-level override (e.g.
-// `[Section][2]`); it is 0 when no override is set. The
-// `lineNumber` is preserved so audit reports can cite the file
-// location.
+// Single rule extracted from a CODEOWNERS file. The `pattern` is the
+// path glob the rule applies to; `owners` lists the user/group
+// identifiers (with the leading `@` preserved); `section` carries the
+// name of the `[Section]` header the rule appears under (empty for
+// rules outside any section); `required` is true when the section was
+// declared as `[Section]` (without a leading `^`); `optional` is true
+// when the section was declared as `^[Section]`. The
+// `approvalsRequired` field captures the section-level override (e.g.
+// `[Section][2]`); it is 0 when no override is set. The `lineNumber`
+// is preserved so audit reports can cite the file location.
 private gitlab.project.codeowners.rule @defaults("pattern owners section") {
   // Line number of the rule within the file (1-indexed)
   lineNumber int
@@ -986,7 +1344,7 @@ private gitlab.project.codeowners.rule @defaults("pattern owners section") {
   section string
   // Whether the parent section is `^[Section]` (optional review)
   optional bool
-  // Whether the parent section enforces required review (the default — `[Section]`)
+  // Whether the parent section enforces required review (the default, `[Section]`)
   required bool
   // Section-level override of the number of required approvals; 0 when no override is set
   approvalsRequired int
@@ -996,7 +1354,18 @@ private gitlab.project.codeowners.rule @defaults("pattern owners section") {
   owners []string
 }
 
-// GitLab project approval settings
+// Merge-request approval settings for a GitLab project
+//
+// The project's approval-enforcement configuration: how many approvals a
+// merge request needs before it can merge, whether those approvals are reset
+// when new commits are pushed, and who is trusted to grant them. The boolean
+// controls surface common weakenings of code review, such as authors or
+// committers approving their own changes (mergeRequestsAuthorApproval,
+// mergeRequestsDisableCommittersApproval), reviewers overriding the configured
+// approvers per merge request (disableOverridingApproversPerMergeRequest), and
+// whether a password is required to approve (requirePasswordToApprove). The
+// approvers and approverGroups lists name the users and groups configured as
+// default approvers on the project.
 private gitlab.project.approvalSetting @defaults("approvalsBeforeMerge requirePasswordToApprove") {
   // Number of approvals before merge
   approvalsBeforeMerge int
@@ -1019,6 +1388,16 @@ private gitlab.project.approvalSetting @defaults("approvalsBeforeMerge requirePa
 }
 
 // GitLab protected branch
+//
+// Branch protection rules for a project, controlling who can push, merge,
+// and remove protection on a given branch. Auditing these settings verifies
+// that critical branches (such as the default branch) enforce review and
+// prevent unauthorized or force pushes. Each branch is identified by `name`,
+// and `pushAccessLevels`, `mergeAccessLevels`, and `unprotectAccessLevels`
+// spell out exactly which roles, users, groups, or deploy keys hold each
+// permission. The `allowForcePush` and `codeOwnerApproval` flags capture
+// whether history-rewriting pushes are permitted and whether Code Owner
+// sign-off is required before merging.
 private gitlab.project.protectedBranch @defaults("name allowForcePush") {
   // Branch name
   name string
@@ -1040,9 +1419,9 @@ private gitlab.project.protectedBranch @defaults("name allowForcePush") {
 //
 // A single access grant on a protected branch, describing who may perform the
 // push, merge, or unprotect action. Each entry grants access either to a role
-// (via `accessLevel`), a specific `user`, a specific `group`, or a deploy key
-// (via `deployKeyId`). Read these from a protected branch's `pushAccessLevels`,
-// `mergeAccessLevels`, or `unprotectAccessLevels`.
+// (via `accessLevel`), a custom role (via `memberRole`), a specific `user`, a
+// specific `group`, or a deploy key (via `deployKeyId`). Exactly one of these
+// targets is set per grant; the others are null or zero.
 private gitlab.protectedBranch.accessLevel @defaults("accessLevel accessLevelDescription") {
   // Numeric access level (0 No access, 30 Developer, 40 Maintainer, 60 Admin)
   accessLevel int
@@ -1054,25 +1433,48 @@ private gitlab.protectedBranch.accessLevel @defaults("accessLevel accessLevelDes
   user() gitlab.user
   // Group granted access, when the grant targets a specific group (null otherwise)
   group() gitlab.group
+  // Custom role granted access, when the grant targets a custom member role (null otherwise)
+  memberRole() gitlab.memberRole
 }
 
-// GitLab project file
+// GitLab project repository file
+//
+// File tracked in a GitLab project's repository, listed recursively from
+// the project's default branch. Reading `content` returns the decoded file
+// text, which lets you audit tracked files for committed secrets,
+// credentials, or insecure configuration. The `path` field is the file's
+// full path within the repository and serves as the selection key.
 private gitlab.project.file @defaults("path type") {
-  // File path
+  // Full path of the file within the repository
   path string
-  // File type
+  // Repository tree entry type
+  //
+  // Object type of the entry in the git tree. Only file blobs are listed,
+  // so this is always "blob" (directory "tree" entries are excluded).
   type string
-  // File name
+  // File name (final path segment)
   name string
-  // File content
+  // Decoded file content
+  //
+  // Raw text of the file at the project's default branch, fetched on
+  // access. Query it to scan tracked files for secrets, credentials, or
+  // insecure settings.
   content() string
 }
 
 // GitLab project webhook
 //
-// Note: GitLab's API never returns the configured secret token in list/get
-// responses (write-only field), so we cannot expose its presence directly.
-// Use the GitLab UI or audit logs to verify a token is configured.
+// HTTP callback registered against a project that GitLab invokes to
+// deliver event payloads to an external endpoint whenever selected
+// activity occurs, such as pushes, merge requests, or pipeline runs.
+// Audit webhooks to confirm payloads reach only trusted destinations
+// over a verified TLS connection: url is the delivery target and
+// sslVerification reports whether the receiver's certificate is
+// validated. The per-event boolean fields (pushEvents,
+// mergeRequestsEvents, pipelineEvents, and the rest) show which
+// activity is sent to that endpoint. The configured secret token is
+// never returned by the API, so its presence cannot be read here;
+// confirm token configuration through the GitLab UI or audit logs.
 private gitlab.project.webhook @defaults("url sslVerification") {
   // Webhook ID
   id int
@@ -1082,7 +1484,11 @@ private gitlab.project.webhook @defaults("url sslVerification") {
   name string
   // Webhook description
   description string
-  // Whether SSL verification is enabled - disabling permits man-in-the-middle interception of webhook payloads
+  // Whether TLS certificate verification is enabled for webhook delivery
+  //
+  // When false, GitLab does not validate the receiving endpoint's TLS
+  // certificate, which permits man-in-the-middle interception of the
+  // webhook payload and any secret token sent with it.
   sslVerification bool
   // Whether push events trigger the webhook
   pushEvents bool
@@ -1126,21 +1532,53 @@ private gitlab.project.webhook @defaults("url sslVerification") {
   branchFilterStrategy string
   // Custom webhook payload template configured for this hook (empty when default payload is used)
   customWebhookTemplate string
-  // Custom HTTP headers sent with the webhook request (values may be redacted by GitLab)
+  // Custom HTTP headers sent with the webhook request
+  //
+  // Keyed by header name (for example an `Authorization` or custom
+  // `X-*` header) with the configured header value. GitLab redacts the
+  // values of headers it treats as secret, so those entries may be
+  // empty or masked.
   customHeaders map[string]string
-  // URL variables interpolated into the webhook URL (values may be redacted by GitLab)
+  // URL variables interpolated into the webhook URL
+  //
+  // Keyed by variable name, with the value substituted into `{name}`
+  // placeholders in the webhook url. Values GitLab treats as secret
+  // are redacted, so they may be empty or masked.
   urlVariables map[string]string
   // Webhook creation time
   createdAt time
   // Time until which the webhook is disabled (set by GitLab when too many failures occur)
   disabledUntil time
-  // Alert status of the webhook
+  // Delivery health of the webhook
+  //
+  // One of executable (delivering normally), disabled (permanently
+  // turned off after repeated delivery failures), or
+  // temporarily_disabled (auto-paused after recent failures, with
+  // disabledUntil giving the resume time).
   alertStatus string
+  // Whether a secret token is configured on the webhook
+  //
+  // The receiver uses that token to confirm a payload really came from GitLab.
+  // Without one, anything that learns the webhook URL can post a payload the
+  // receiver treats as genuine. The token value is write-only and is never
+  // returned. Null on instances that do not report token presence.
+  tokenPresent bool
   // The project this webhook is registered against
   project() gitlab.project
 }
 
 // GitLab project merge request
+//
+// Proposed set of changes from a source branch into a target branch,
+// identified by internalId (the project-scoped merge request number).
+// Merge requests are where code review and merge gating happen, so they
+// are central to auditing change control: state and detailedMergeStatus
+// show whether a change merged and whether it satisfied gating rules,
+// blockingDiscussionsResolved and reviewers reveal review coverage, and
+// mergeWhenPipelineSucceeds, forceRemoveSourceBranch, and
+// allowMaintainerToPush expose the merge automation and source-branch
+// settings in effect. The author, mergeUser, and closedBy accessors
+// attribute who opened, merged, and closed each request.
 private gitlab.project.mergeRequest @defaults("internalId title state") {
   // Merge request ID
   id int
@@ -1158,6 +1596,8 @@ private gitlab.project.mergeRequest @defaults("internalId title state") {
   targetBranch string
   // Merge request author username
   author string
+  // User who opened the merge request, or null when the author cannot be resolved
+  authorUser() gitlab.user
   // Merge request creation time
   createdAt time
   // Merge request update time
@@ -1209,6 +1649,12 @@ private gitlab.project.mergeRequest @defaults("internalId title state") {
 }
 
 // GitLab project issue
+//
+// Single issue tracked in a project, exposing its state, author, labels,
+// milestone, and due date. The confidential flag marks issues restricted
+// to project members, and state distinguishes opened from closed work.
+// Useful for auditing unresolved confidential reports or stale open items,
+// and for confirming that sensitive issues stay marked confidential.
 private gitlab.project.issue @defaults("internalId title state") {
   // Issue ID
   id int
@@ -1222,6 +1668,8 @@ private gitlab.project.issue @defaults("internalId title state") {
   description string
   // Issue author username
   author string
+  // User who opened the issue, or null when the author cannot be resolved
+  authorUser() gitlab.user
   // Issue creation time
   createdAt time
   // Issue update time
@@ -1241,6 +1689,15 @@ private gitlab.project.issue @defaults("internalId title state") {
 }
 
 // GitLab project release
+//
+// A published or scheduled release of a project, keyed by its Git
+// tag. Releases mark shippable versions and carry the release notes,
+// the commit they point at, the downloadable assets (source archives
+// and attached links), and any collected evidence. Use it to audit
+// what was shipped, verify that releases reference the expected
+// commits, and check release evidence for supply-chain integrity. The
+// upcomingRelease field distinguishes scheduled-but-unpublished
+// releases from live ones.
 private gitlab.project.release @defaults("tagName name") {
   // Release tag name
   tagName string
@@ -1275,6 +1732,16 @@ private gitlab.project.release @defaults("tagName name") {
 }
 
 // GitLab project CI/CD variable
+//
+// A single CI/CD variable exposed to a project's pipelines, holding a
+// key/value pair that jobs read as an environment variable or file. These
+// variables frequently carry secrets (deploy tokens, cloud credentials, API
+// keys), so they are a common audit target: `masked` reports whether the
+// value is hidden in job logs, `protected` restricts it to jobs on protected
+// branches and tags, and `environmentScope` limits which deployment
+// environments can use it. A variable is identified by its `key` together
+// with its `environmentScope`, so the same key can exist with different
+// values per environment.
 private gitlab.project.variable @defaults("key masked protected") {
   // Variable key/name
   key string
@@ -1295,6 +1762,13 @@ private gitlab.project.variable @defaults("key masked protected") {
 }
 
 // GitLab project milestone
+//
+// Milestone defined on a GitLab project, used to group issues and merge
+// requests toward a shared goal or release. Tracks the milestone title,
+// description, and scheduling window (startDate and dueDate), along with
+// its state (active or closed) and whether it has passed its due date
+// (expired). The internalId is the project-scoped number shown in the
+// GitLab UI, while id is the globally unique identifier.
 private gitlab.project.milestone @defaults("internalId title state") {
   // Milestone ID
   id int
@@ -1317,10 +1791,24 @@ private gitlab.project.milestone @defaults("internalId title state") {
   // Creation timestamp
   createdAt time
   // Whether the milestone has passed its due date
+  //
+  // Null when GitLab does not report the flag, which is not the same as the
+  // milestone being current.
   expired bool
+  // Project this milestone belongs to
+  project() gitlab.project
 }
 
 // GitLab project label
+//
+// Label defined on a GitLab project, used to categorize and triage
+// issues and merge requests. Fields cover the label's display
+// appearance (color, textColor), its description, and the counts of
+// open and closed issues and open merge requests carrying the label,
+// which help audit how labels are applied across a project. The
+// priority field orders labels within the project, and isProjectLabel
+// distinguishes a label scoped to this project from a group label
+// inherited across the group's projects.
 private gitlab.project.label @defaults("name color") {
   // Label ID
   id int
@@ -1332,8 +1820,6 @@ private gitlab.project.label @defaults("name color") {
   textColor string
   // Label description
   description string
-  // HTML-formatted description
-  descriptionHtml string
   // Count of open issues with this label
   openIssuesCount int
   // Count of closed issues with this label
@@ -1360,8 +1846,6 @@ private gitlab.group.label @defaults("name color") {
   textColor string
   // Label description
   description string
-  // HTML-formatted description
-  descriptionHtml string
   // Count of open issues with this label
   openIssuesCount int
   // Count of closed issues with this label
@@ -1376,7 +1860,134 @@ private gitlab.group.label @defaults("name color") {
   isProjectLabel bool
 }
 
+// GitLab group CI/CD variable
+//
+// CI/CD variable defined at the group level. Group variables are
+// inherited by every project in the group, so an unmasked or unprotected
+// secret here is exposed to all of that group's pipelines. Use `masked` to
+// find values printed in job logs and `protected` to find values available on
+// unprotected branches.
+private gitlab.group.variable @defaults("key masked protected") {
+  // Variable key/name
+  key string
+  // Variable type (env_var or file)
+  variableType string
+  // Whether the variable is protected (only available on protected branches/tags)
+  protected bool
+  // Whether the variable value is masked in job logs
+  masked bool
+  // Whether the variable is hidden
+  hidden bool
+  // Whether the variable is raw (not expanded)
+  raw bool
+  // Environment scope for the variable
+  environmentScope string
+  // Variable description
+  description string
+}
+
+// GitLab group webhook
+//
+// Webhook registered at the group level. Group webhooks fire for
+// events across every project in the group, making a misconfigured endpoint a
+// broad data-egress and inbound-trigger surface. `sslVerification` reflects
+// whether TLS certificates are validated (disabling it permits man-in-the-
+// middle interception of payloads). The event flags show which categories of
+// activity are forwarded.
+//
+// Note: GitLab's API never returns the configured secret token in list/get
+// responses (write-only field), so its presence cannot be exposed directly.
+private gitlab.group.webhook @defaults("url sslVerification") {
+  // Webhook ID
+  id int
+  // Webhook URL
+  url string
+  // Webhook display name
+  name string
+  // Webhook description
+  description string
+  // Whether SSL verification is enabled - disabling permits man-in-the-middle interception of webhook payloads
+  sslVerification bool
+  // Whether push events trigger the webhook
+  pushEvents bool
+  // Branch filter for push events
+  pushEventsBranchFilter string
+  // Whether issues events trigger the webhook
+  issuesEvents bool
+  // Whether confidential issues events trigger the webhook
+  confidentialIssuesEvents bool
+  // Whether merge request events trigger the webhook
+  mergeRequestsEvents bool
+  // Whether tag push events trigger the webhook
+  tagPushEvents bool
+  // Whether note (comment) events trigger the webhook
+  noteEvents bool
+  // Whether confidential note events trigger the webhook
+  confidentialNoteEvents bool
+  // Whether job events trigger the webhook
+  jobEvents bool
+  // Whether pipeline events trigger the webhook
+  pipelineEvents bool
+  // Whether wiki page events trigger the webhook
+  wikiPageEvents bool
+  // Whether deployment events trigger the webhook
+  deploymentEvents bool
+  // Whether release events trigger the webhook
+  releasesEvents bool
+  // Whether resource access token events trigger the webhook
+  resourceAccessTokenEvents bool
+  // Whether vulnerability events trigger the webhook
+  vulnerabilityEvents bool
+  // Whether feature flag events trigger the webhook
+  featureFlagEvents bool
+  // Whether milestone events trigger the webhook
+  milestoneEvents bool
+  // Whether emoji events trigger the webhook
+  emojiEvents bool
+  // Whether repository update events trigger the webhook
+  //
+  // Always null. Group webhooks have no repository update trigger, and
+  // the GitLab API does not return this attribute for them. Read the
+  // same field on gitlab.project.webhook, where the trigger exists.
+  repositoryUpdateEvents @maturity("deprecated") bool
+  // Whether subgroup events trigger the webhook
+  subGroupEvents bool
+  // Whether member events trigger the webhook
+  memberEvents bool
+  // Whether project events trigger the webhook
+  projectEvents bool
+  // Strategy used to filter branches for push events: all_branches, wildcard, or regex
+  branchFilterStrategy string
+  // Custom webhook payload template configured for this hook (empty when default payload is used)
+  customWebhookTemplate string
+  // Custom HTTP headers sent with the webhook request (values may be redacted by GitLab)
+  customHeaders map[string]string
+  // Webhook creation time
+  createdAt time
+  // Alert status of the webhook
+  alertStatus string
+  // Whether a secret token is configured on the webhook
+  //
+  // The receiver uses that token to confirm a payload really came from GitLab.
+  // Without one, anything that learns the webhook URL can post a payload the
+  // receiver treats as genuine. The token value is write-only and is never
+  // returned. Null on instances that do not report token presence.
+  tokenPresent bool
+  // The group this webhook is registered against
+  group() gitlab.group
+}
+
 // GitLab CI/CD pipeline
+//
+// A single CI/CD pipeline run for the project, covering how it was
+// triggered and how it finished. The `status` field reports the run's
+// outcome (success, failed, canceled, and so on) and `source` records
+// what kicked it off (a push, a schedule, an API call, a merge request
+// event). The `ref`, `sha`, and `user` fields tie the run to the branch
+// or tag, commit, and account behind it, while `yamlErrors` surfaces
+// invalid .gitlab-ci.yml configuration and `coverage` reports the
+// measured test coverage. Useful for auditing build provenance, failed
+// or skipped runs, and who is able to trigger pipelines.
 private gitlab.project.pipeline @defaults("id status ref") {
   // Pipeline ID
   id int
@@ -1388,7 +1999,7 @@ private gitlab.project.pipeline @defaults("id status ref") {
   status string
   // Pipeline source
   //
-  // One of: push, web, trigger, schedule, api, external, pipeline, chat, webide, merge_request_event, external_pull_request_event, parent_pipeline, ondemand_dast_scan, ondemand_dast_validation.
+  // One of: push, web, trigger, schedule, api, external, pipeline, chat, webide, merge_request_event, external_pull_request_event, parent_pipeline, ondemand_dast_scan, ondemand_dast_validation, security_orchestration_policy.
   source string
   // Git reference (branch or tag name)
   ref string
@@ -1431,19 +2042,18 @@ private gitlab.project.pipeline @defaults("id status ref") {
 
 // GitLab CI/CD runner
 //
-// Examine a runner registered for the project. Surfaces the basic
-// inventory fields (`id`, `name`, `description`, `runnerType`,
-// `paused`, `isShared`, `online`, `status`) and a set of
-// security-relevant fields fetched on demand via the runner-details
-// endpoint: `tagList` (job-scoping labels), `runUntagged` (whether
-// the runner accepts jobs without matching tags),
-// `lockedToProject`, `accessLevel` ("not_protected" /
-// "ref_protected" — whether the runner is allowed on non-protected
-// refs), `maximumTimeout`, `contactedAt` (last check-in),
-// `maintenanceNote`, and `projects` / `groups` listing the projects
-// and groups the runner is associated with. Use these to audit
-// untagged shared-runner exposure, runners pinned to protected
-// refs, and stale runners that have not contacted GitLab.
+// CI/CD runner registered for a GitLab project
+//
+// GitLab Runner that executes CI/CD jobs for the project, covering
+// project-specific runners as well as shared instance or group
+// runners visible to the project. Beyond inventory (type, paused,
+// shared, online, status), it exposes security-relevant settings
+// used to audit job exposure: whether the runner picks up untagged
+// jobs, whether it is locked to its associated projects, and the
+// access level governing whether it may run on non-protected refs.
+// Use it to find untagged shared-runner exposure, runners that are
+// not restricted to protected refs, and stale runners that have not
+// checked in.
 private gitlab.project.runner @defaults("id description status runnerType") {
   // Runner ID
   id int
@@ -1463,7 +2073,7 @@ private gitlab.project.runner @defaults("id description status runnerType") {
   status string
   // Registration token expiry; nil when the token does not expire
   tokenExpiresAt time
-  // Tags applied to the runner — jobs with matching `tags:` are routed here
+  // Tags applied to the runner; jobs whose `tags:` match are routed here
   tagList() []string
   // Whether the runner picks up jobs that don't carry a `tags:` directive
   runUntagged() bool
@@ -1479,11 +2089,19 @@ private gitlab.project.runner @defaults("id description status runnerType") {
   maintenanceNote() string
   // Path-with-namespace of projects the runner is associated with (e.g. "acme/api")
   projects() []string
-  // Web URLs of groups the runner is associated with (group-type runners) — the GitLab SDK exposes only the URL form for runner-detail groups
+  // Web URLs of the groups the runner is associated with (group-type runners)
   groups() []string
 }
 
 // GitLab project push rules
+//
+// Server-side constraints GitLab enforces on every push to a project's
+// repository. Push rules govern commit message formats, branch naming,
+// author and committer identity, file names and sizes, secret-leak
+// prevention, and commit-signature requirements. Query this to audit
+// whether a project blocks known secrets (preventSecrets), rejects
+// unsigned commits (rejectUnsignedCommits), and restricts commits to
+// verified GitLab users (commitCommitterCheck).
 private gitlab.project.pushRule @defaults("preventSecrets rejectUnsignedCommits commitCommitterCheck") {
   // Push rule ID
   id int
@@ -1552,6 +2170,15 @@ private gitlab.group.pushRule @defaults("preventSecrets rejectUnsignedCommits co
 }
 
 // GitLab project access token
+//
+// Project-scoped credential that authenticates automation and CI/CD
+// workloads as a dedicated bot user rather than a human account.
+// Review these tokens to catch over-privileged scopes, tokens that
+// never expire, revoked-but-lingering credentials, and tokens that
+// have not been used in a long time. The `scopes` and `accessLevel`
+// fields together define what a token can do, `expiresAt` and
+// `lastUsedAt` gauge exposure over time, and `revoked` and `active`
+// report whether it can still be used.
 private gitlab.project.accessToken @defaults("id name active expiresAt") {
   // Token ID
   id int
@@ -1570,6 +2197,10 @@ private gitlab.project.accessToken @defaults("id name active expiresAt") {
   // Last time the token was used
   lastUsedAt time
   // Access level granted by the token
+  //
+  // Numeric GitLab membership level the token acts with: 10 (Guest),
+  // 20 (Reporter), 30 (Developer), 40 (Maintainer), or 50 (Owner).
+  // Higher values grant broader project permissions.
   accessLevel int
   // Bot user the token authenticates as, or null when it cannot be resolved
   user() gitlab.user
@@ -1600,6 +2231,14 @@ private gitlab.group.accessToken @defaults("id name active expiresAt") {
 }
 
 // GitLab project deploy key
+//
+// SSH public key that grants a machine or automation access to a project's
+// repository without a user account. Deploy keys are a common supply-chain
+// exposure: `canPush` reports whether the key has write access (not just
+// read), `key` is the raw public key material, `fingerprint` and
+// `fingerprintSHA256` identify it, and `expiresAt` shows whether the key ever
+// stops being valid. Audit these to find long-lived or push-capable keys that
+// widen the project's attack surface.
 private gitlab.project.deployKey @defaults("id title canPush") {
   // Deploy key ID
   id int
@@ -1617,6 +2256,16 @@ private gitlab.project.deployKey @defaults("id title canPush") {
   expiresAt time
   // Whether the key has push (write) access
   canPush bool
+  // Time the key was last used
+  //
+  // Null when the key has never been used. GitLab refreshes this at most once
+  // a day, so recent use can lag by up to a day. A key with push access that
+  // has never been used, or not used in months, is a candidate for removal.
+  lastUsedAt time
+  // What the key may be used for
+  //
+  // One of `auth_and_signing`, `auth`, or `signing`.
+  usageType string
   // Age of the deploy key in days since creation
   daysOld() int
   // The project this deploy key is registered against
@@ -1624,6 +2273,14 @@ private gitlab.project.deployKey @defaults("id title canPush") {
 }
 
 // GitLab project deploy token
+//
+// Long-lived credential scoped to a single project that grants clients
+// (CI runners, external systems) read or write access to the project's
+// Git repository and its container and package registries. Auditing
+// deploy tokens surfaces standing credentials that bypass user
+// authentication: check `expired` and `revoked` to find inactive
+// entries and `scopes` to confirm each token is limited to the access
+// it actually needs.
 private gitlab.project.deployToken @defaults("id name expired revoked") {
   // Deploy token ID
   id int
@@ -1637,7 +2294,10 @@ private gitlab.project.deployToken @defaults("id name expired revoked") {
   revoked bool
   // Whether the token has expired
   expired bool
-  // Token scopes (read_repository, read_registry, write_registry, etc.)
+  // Access the token grants
+  //
+  // One or more of read_repository, read_registry, write_registry,
+  // read_package_registry, and write_package_registry.
   scopes []string
 }
 
@@ -1678,6 +2338,19 @@ private gitlab.group.protectedBranch @defaults("name allowForcePush") {
 }
 
 // GitLab project security settings
+//
+// Project-level toggles that govern GitLab's built-in security scanning
+// and remediation features. `secretPushProtectionEnabled` blocks commits
+// that contain detected secrets before they reach the repository, and
+// `continuousVulnerabilityScansEnabled` re-scans existing dependencies as
+// new advisories are published. The `autoFix*` flags control whether
+// GitLab opens automatic merge requests to remediate findings from SAST,
+// DAST, dependency scanning, and container scanning, and
+// `containerScanningForRegistryEnabled` extends container scanning to
+// images already stored in the project's registry. Audit these to confirm
+// a project enforces the scanning coverage its compliance policy expects.
+// Most fields require a GitLab tier that includes the corresponding
+// scanner.
 private gitlab.project.securitySetting @defaults("secretPushProtectionEnabled continuousVulnerabilityScansEnabled") {
   // Whether auto-fix for container scanning is enabled
   autoFixContainerScanning bool
@@ -1697,9 +2370,9 @@ private gitlab.project.securitySetting @defaults("secretPushProtectionEnabled co
 
 // Security scanner finding from a GitLab project
 //
-// Examine confirmed vulnerabilities surfaced by GitLab's built-in
-// security scanners — SAST, DAST, dependency scanning, secret
-// detection, and container scanning. Filter by `severity`, `state`,
+// Confirmed vulnerabilities surfaced by GitLab's built-in security
+// scanners: SAST, DAST, dependency scanning, secret detection, and
+// container scanning. Filter by `severity`, `state`,
 // or `reportType` to drive audit queries: open CRITICAL findings,
 // undismissed secrets in commits, or unresolved CVEs in
 // dependencies. Use `scanner` to attribute a finding to the tool
@@ -1727,7 +2400,7 @@ private gitlab.project.vulnerability @defaults("severity state reportType title"
   //
   // One of SAST, DAST, DEPENDENCY_SCANNING, CONTAINER_SCANNING,
   // SECRET_DETECTION, COVERAGE_FUZZING, API_FUZZING,
-  // CLUSTER_IMAGE_SCANNING, or GENERIC.
+  // CLUSTER_IMAGE_SCANNING, CONTAINER_SCANNING_FOR_REGISTRY, SARIF, or GENERIC.
   reportType string
   // When the vulnerability was first detected
   detectedAt time
@@ -1788,7 +2461,7 @@ private gitlab.project.vulnerability.scanner @defaults("name vendor") {
 
 // Container registry repository in a GitLab project
 //
-// Examine a Docker / OCI image repository published to the project's
+// Docker or OCI image repository published to the project's
 // container registry. Each repository carries `name`, `path` (the
 // pull path prefix), and `location` (the full pull URL).
 // `tagsCount` is a fast snapshot; iterate `tags` for the full list
@@ -1812,6 +2485,10 @@ private gitlab.project.containerRegistryRepository @defaults("path tagsCount sta
   // When the most recent cleanup policy run started for this repository
   cleanupPolicyStartedAt time
   // Tag count snapshot
+  //
+  // Null when the repository was reached through a group rollup, because the
+  // group-level registry listing has no tag-count parameter. Iterate tags for
+  // an exact count in that case.
   tagsCount int
   // Repository delete status
   //
@@ -1826,7 +2503,7 @@ private gitlab.project.containerRegistryRepository @defaults("path tagsCount sta
 
 // Container registry repository tag
 //
-// A single tag in a container repository — what `docker pull` would
+// A single tag in a container repository, what `docker pull` would
 // resolve. Use `digest` for tag-pinning audits (a moving tag like
 // `latest` can be re-pushed; the digest is immutable) and
 // `totalSize` to spot oversized images. `location` is the full
@@ -1852,10 +2529,10 @@ private gitlab.project.containerRegistryRepository.tag @defaults("name digest to
 
 // Container registry expiration (cleanup) policy
 //
-// Defines how the project's container registry trims old tags. The
-// policy runs on a `cadence` and deletes tags older than
-// `olderThan` whose names match `nameRegexDelete`, keeping at most
-// `keepN` per repository and always preserving names matching
+// Cleanup policy that trims old tags from the project's container
+// registry. The policy runs on a `cadence` and deletes tags older
+// than `olderThan` whose names match `nameRegexDelete`, keeping at
+// most `keepN` per repository and always preserving names matching
 // `nameRegexKeep`. `enabled` reflects whether the policy is active;
 // `nextRunAt` is the next scheduled run.
 private gitlab.project.containerExpirationPolicy @defaults("enabled cadence keepN olderThan") {
@@ -1881,9 +2558,9 @@ private gitlab.project.containerExpirationPolicy @defaults("enabled cadence keep
 
 // Container registry protection rule
 //
-// Gates pushes and deletes against container repositories whose path
+// Push and delete protection for container repositories whose path
 // matches `repositoryPathPattern`. The two minimum-access-level
-// fields enforce who in the project can perform each action — one of
+// fields enforce who in the project can perform each action: one of
 // `maintainer`, `owner`, or `admin`. An empty value means the action
 // is not protected.
 private gitlab.project.containerRegistryProtectionRule @defaults("repositoryPathPattern minimumAccessLevelForPush minimumAccessLevelForDelete") {
@@ -1903,16 +2580,14 @@ private gitlab.project.containerRegistryProtectionRule @defaults("repositoryPath
 
 // Package published to a GitLab project's package registry
 //
-// Examine a single package version in the project's package
-// registry. `packageType` distinguishes the package format
-// (`maven`, `npm`, `conan`, `nuget`, `pypi`, `composer`, `generic`,
-// `golang`, `debian`, `helm`, `terraform_module`, `rubygems`,
-// `ml_model`). `version` is the published version string; `tags`
-// lists distribution tags (e.g. npm `latest`). `status` is one of
-// `default`, `hidden`, `processing`, `error`, or `pending_destruction`.
-// `lastDownloadedAt` is null until the package is first pulled.
-// Iterate `files` for the package's contained artifacts with their
-// SHA-256/SHA-1/MD5 checksums.
+// Single package version in the project's package registry.
+// `packageType` distinguishes the package format (`maven`, `npm`,
+// `conan`, `nuget`, `pypi`, `composer`, `generic`, `golang`, `debian`,
+// `helm`, `terraform_module`, `rubygems`, `ml_model`) and `status` its
+// lifecycle state (`default`, `hidden`, `processing`, `error`,
+// `pending_destruction`). Auditing the registry reveals what artifacts
+// a project publishes; `files` holds the contained artifacts with their
+// SHA-256/SHA-1/MD5 checksums for tamper detection.
 private gitlab.project.package @defaults("name version packageType status") {
   // Package ID
   id int
@@ -1924,12 +2599,12 @@ private gitlab.project.package @defaults("name version packageType status") {
   //
   // One of `maven`, `npm`, `conan`, `nuget`, `pypi`, `composer`,
   // `generic`, `golang`, `debian`, `helm`, `terraform_module`,
-  // `rubygems`, or `ml_model`.
+  // `rubygems`, `rpm`, `ml_model`, or `cargo`.
   packageType string
   // Lifecycle status
   //
-  // One of `default`, `hidden`, `processing`, `error`, or
-  // `pending_destruction`.
+  // One of `default`, `hidden`, `processing`, `error`,
+  // `pending_destruction`, or `deprecated`.
   status string
   // When the package was published
   createdAt time
@@ -1943,12 +2618,22 @@ private gitlab.project.package @defaults("name version packageType status") {
   project() gitlab.project
   // Files contained in the package
   files() []gitlab.project.package.file
+  // User who published the package
+  //
+  // Null when GitLab does not record a creator, such as a package published
+  // by a deleted user.
+  creator() gitlab.user
+  // Pipeline that most recently built the package
+  //
+  // Null when the package was not published from a CI/CD pipeline or the
+  // token cannot read the project's pipelines.
+  pipeline() gitlab.project.pipeline
 }
 
 // File within a GitLab package
 //
-// One artifact inside a package — a `.jar`, `.tgz`, `.whl`, etc.
-// Use the SHA-256 checksum for tamper detection and SBOM
+// One artifact inside a package, such as a `.jar`, `.tgz`, or `.whl`.
+// The SHA-256 checksum supports tamper detection and SBOM
 // correlation; SHA-1 and MD5 are provided for legacy formats that
 // publish them.
 private gitlab.project.package.file @defaults("fileName size fileSHA256") {
@@ -1972,12 +2657,11 @@ private gitlab.project.package.file @defaults("fileName size fileSHA256") {
 
 // Package protection rule
 //
-// Gates pushes and deletes against packages whose name matches
-// `packageNamePattern` (with the format restricted to
-// `packageType`). The two minimum-access-level fields enforce who
-// can perform each action — one of `developer`, `maintainer`,
-// `owner`, or `admin`. An empty value means the action is not
-// protected.
+// Access control that gates pushes and deletes against packages whose
+// name matches `packageNamePattern` (with the format restricted to
+// `packageType`). The two minimum-access-level fields enforce who can
+// perform each action: one of `developer`, `maintainer`, `owner`, or
+// `admin`. An empty value means the action is not protected.
 private gitlab.project.packageProtectionRule @defaults("packageNamePattern packageType minimumAccessLevelForPush minimumAccessLevelForDelete") {
   // Rule ID
   id int
@@ -1987,7 +2671,7 @@ private gitlab.project.packageProtectionRule @defaults("packageNamePattern packa
   //
   // One of `maven`, `npm`, `conan`, `nuget`, `pypi`, `composer`,
   // `generic`, `golang`, `debian`, `helm`, `terraform_module`,
-  // `rubygems`, or `ml_model`.
+  // `rubygems`, `ml_model`, or `cargo`.
   packageType string
   // Minimum project access level required to push matching packages
   //
@@ -1999,4 +2683,561 @@ private gitlab.project.packageProtectionRule @defaults("packageNamePattern packa
   // One of `developer`, `maintainer`, `owner`, or `admin`; empty when
   // delete is unprotected.
   minimumAccessLevelForDelete string
+}
+
+// GitLab pipeline trigger token
+//
+// Standing credential that lets an external caller start a pipeline on
+// the project over the API. Trigger tokens carry no expiration, so a
+// token created for a one-off integration keeps working indefinitely
+// unless it is deleted. `lastUsedAt` distinguishes tokens still in
+// service from dormant ones that should be removed, `owner` names the
+// user whose permissions the triggered pipeline inherits, and
+// `createdAt` shows how long the credential has been outstanding. The
+// secret value itself is never exposed.
+private gitlab.project.pipelineTrigger @defaults("id description lastUsedAt") {
+  // Trigger token ID
+  id int
+  // Human-readable label given to the trigger
+  description string
+  // Time the trigger token was created
+  createdAt time
+  // Time the trigger token was last modified
+  updatedAt time
+  // Time the trigger token last started a pipeline
+  //
+  // Null when the token has never been used, which marks it as a
+  // dormant credential.
+  lastUsedAt time
+  // User whose permissions pipelines started by this token run with
+  owner() gitlab.user
+}
+
+// GitLab pipeline schedule
+//
+// Recurring pipeline run configured on the project, executing `ref` on
+// the `cron` cadence with the permissions of `owner`. Schedules persist
+// independently of the repository contents, so one created by an
+// attacker keeps running after the offending commit is reverted.
+// `variables` lists the names and types of the CI/CD variables the
+// schedule injects into each run without revealing their values, and
+// the `lastPipeline` fields report the outcome of the most recent
+// execution.
+private gitlab.project.pipelineSchedule @defaults("id description cron active") {
+  // Pipeline schedule ID
+  id int
+  // Human-readable label given to the schedule
+  description string
+  // Branch or tag the scheduled pipeline runs against
+  ref string
+  // Cron expression controlling the run cadence
+  cron string
+  // Time zone the cron expression is evaluated in
+  cronTimezone string
+  // Next time the schedule is due to run
+  nextRunAt time
+  // Whether the schedule is currently active
+  active bool
+  // Time the schedule was created
+  createdAt time
+  // Time the schedule was last modified
+  updatedAt time
+  // User whose permissions the scheduled pipeline runs with
+  owner() gitlab.user
+  // CI/CD variables the schedule injects, keyed by variable name
+  //
+  // The value of each entry is the variable type, either `env_var` or
+  // `file`. Variable values are deliberately omitted because GitLab
+  // returns them in clear text. GitLab discloses this list only to the
+  // schedule owner and to users with the Maintainer or Owner role, so
+  // it is empty for tokens below that threshold.
+  variables() map[string]string
+  // ID of the most recent pipeline started by this schedule
+  //
+  // Zero when the schedule has never run.
+  lastPipelineId() int
+  // Commit SHA the most recent scheduled pipeline ran against
+  lastPipelineSha() string
+  // Branch or tag the most recent scheduled pipeline ran against
+  lastPipelineRef() string
+  // Status of the most recent scheduled pipeline
+  //
+  // One of `created`, `waiting_for_resource`, `preparing`, `pending`,
+  // `running`, `success`, `failed`, `canceled`, `skipped`, `manual`, or
+  // `scheduled`. Empty when the schedule has never run.
+  lastPipelineStatus() string
+}
+
+// GitLab project secure file
+//
+// Certificate, keystore, or provisioning profile stored in the project
+// and mounted into CI jobs at run time. Secure files hold signing
+// material that outlives any single pipeline, so `expiresAt` and the
+// certificate fields matter for spotting credentials that are about to
+// lapse or that were issued by an unexpected authority. `checksum` and
+// `checksumAlgorithm` pin the exact bytes GitLab is serving to jobs.
+private gitlab.project.secureFile @defaults("name expiresAt") {
+  // Secure file ID
+  id int
+  // File name as referenced by CI jobs
+  name string
+  // Checksum of the stored file
+  checksum string
+  // Algorithm used to compute the checksum
+  checksumAlgorithm string
+  // Time the file was uploaded
+  createdAt time
+  // Time the file expires
+  expiresAt time
+  // Serial number of the certificate, when the file is a certificate
+  certificateId string
+  // Expiration recorded inside the certificate itself
+  certificateExpiresAt time
+  // Authority that issued the certificate
+  //
+  // Keys are the distinguished-name components GitLab parses out: `CN`,
+  // `O`, `OU`, and `C`.
+  issuer dict
+  // Entity the certificate was issued to
+  //
+  // Keys are the distinguished-name components GitLab parses out: `CN`,
+  // `O`, `OU`, `C`, and `UID`.
+  subject dict
+}
+
+// GitLab agent for Kubernetes
+//
+// Registration that connects a Kubernetes cluster to the project,
+// letting CI jobs and GitOps workflows act against that cluster. An
+// agent is a path from source control into a running cluster, so
+// `configProject` (the project holding the agent configuration, which
+// decides which other projects may use the agent) and `tokens` (the
+// credentials the in-cluster agent authenticates with) are the fields
+// that establish who can reach the cluster.
+private gitlab.project.clusterAgent @defaults("id name") {
+  // Agent ID
+  id int
+  // Agent name
+  name string
+  // Time the agent was registered
+  createdAt time
+  // Whether the agent is receptive
+  //
+  // A receptive agent is one GitLab connects to, for clusters that cannot
+  // open a connection to the GitLab instance. It accepts inbound connections
+  // from GitLab, so the cluster exposes an endpoint reachable from GitLab. A
+  // non-receptive agent dials out from the cluster to GitLab.
+  isReceptive bool
+  // User who registered the agent
+  createdBy() gitlab.user
+  // Project holding the agent configuration
+  configProject() gitlab.project
+  // Credentials the in-cluster agent authenticates with
+  tokens() []gitlab.project.clusterAgent.token
+}
+
+// GitLab agent for Kubernetes token
+//
+// Credential an in-cluster agent presents to authenticate back to
+// GitLab. Tokens remain listed after revocation, so `status` separates
+// live credentials from retired ones, and `lastUsedAt` identifies
+// active tokens that were provisioned but never connected. The secret
+// value itself is never exposed.
+private gitlab.project.clusterAgent.token @defaults("id name status lastUsedAt") {
+  // Agent token ID
+  id int
+  // Token name
+  name string
+  // Human-readable note recorded with the token
+  description string
+  // Whether the token is live
+  //
+  // Either `active` or `revoked`.
+  status string
+  // Time the token was created
+  createdAt time
+  // User who created the token
+  createdBy() gitlab.user
+  // Time the token last authenticated to GitLab
+  //
+  // Null when the token has never been used.
+  lastUsedAt time
+}
+
+// GitLab project push mirror
+//
+// Continuous replication of the project's repository to an external Git
+// host. A push mirror moves source code out of GitLab on every update,
+// so `url` records the destination the code is being sent to and
+// `authMethod` how the mirror authenticates there.
+// `onlyProtectedBranches` narrows what is replicated, and
+// `keepDivergentRefs` decides whether the remote keeps refs that have
+// diverged locally. GitLab redacts any password embedded in `url`.
+private gitlab.project.remoteMirror @defaults("url enabled updateStatus") {
+  // Mirror ID
+  id int
+  // Whether the mirror is active
+  enabled bool
+  // Destination repository the code is pushed to
+  //
+  // Any password embedded in the URL is redacted by GitLab before the
+  // value is returned.
+  url string
+  // How the mirror authenticates to the destination
+  //
+  // Either `password` or `ssh_public_key`.
+  authMethod string
+  // Whether replication is limited to protected branches
+  onlyProtectedBranches bool
+  // Whether refs that have diverged on the destination are preserved
+  keepDivergentRefs bool
+  // Regular expression selecting which branches are replicated
+  mirrorBranchRegex string
+  // Outcome of the most recent replication attempt
+  //
+  // One of `none`, `scheduled`, `started`, `finished`, `failed`, or `to_retry`.
+  updateStatus string
+  // Error reported by the most recent failed replication attempt
+  lastError string
+  // Time replication was last attempted
+  lastUpdateAt time
+  // Time replication last completed successfully
+  lastSuccessfulUpdateAt time
+}
+
+// GitLab enterprise user access token
+//
+// Personal access token belonging to an enterprise user of the group.
+// These tokens are created by individuals rather than by the group, so
+// they sit outside the group's own token inventory while carrying the
+// user's full permissions. `scopes` shows how much of the API the token
+// reaches, `expiresAt` whether it ever lapses, and `lastUsedAt` whether
+// it is still in service. The secret value itself is never exposed.
+private gitlab.group.enterpriseAccessToken @defaults("name active expiresAt lastUsedAt") {
+  // Token ID
+  id int
+  // Token name
+  name string
+  // Human-readable note recorded with the token
+  description string
+  // API access the token grants
+  //
+  // One or more of `api`, `read_api`, `read_user`, `read_repository`,
+  // `write_repository`, `read_registry`, `write_registry`,
+  // `create_runner`, `manage_runner`, `ai_features`, `k8s_proxy`,
+  // `self_rotate`, `read_virtual_registry`, `write_virtual_registry`,
+  // `read_observability`, `write_observability`, `mcp`, `mcp_orbit`,
+  // `granular`, `read_service_ping`, `admin_mode`, and `sudo`.
+  scopes []string
+  // Whether the token can currently authenticate
+  active bool
+  // Whether the token has been revoked
+  revoked bool
+  // Time the token was created
+  createdAt time
+  // Time the token expires
+  //
+  // Null when the token never expires.
+  expiresAt time
+  // Time the token was last used to authenticate
+  //
+  // Null when the token has never been used.
+  lastUsedAt time
+  // User the token authenticates as
+  user() gitlab.user
+}
+
+// GitLab enterprise user SSH key
+//
+// SSH key belonging to an enterprise user of the group, usable for Git
+// access to every project the user can reach. `expiresAt` and
+// `lastUsedAt` separate keys still in service from long-forgotten ones,
+// and `usageType` records whether the key authenticates, signs, or both.
+private gitlab.group.enterpriseSshKey @defaults("title expiresAt lastUsedAt") {
+  // Key ID
+  id int
+  // Key title
+  title string
+  // Time the key was added
+  createdAt time
+  // Time the key expires
+  //
+  // Null when the key never expires.
+  expiresAt time
+  // Time the key was last used
+  //
+  // Null when the key has never been used.
+  lastUsedAt time
+  // What the key may be used for
+  //
+  // One of `auth`, `signing`, or `auth_and_signing`.
+  usageType string
+  // User the key belongs to
+  user() gitlab.user
+}
+
+// GitLab group service account
+//
+// Non-human identity created at group scope to run automation. Service
+// accounts hold group membership like any other user but have no owner
+// to notice a compromise, so `accessTokens` is the field that matters:
+// it lists the credentials the account authenticates with, their scopes,
+// and whether they expire.
+private gitlab.group.serviceAccount @defaults("username name") {
+  // Service account user ID
+  id int
+  // Display name
+  name string
+  // Account username
+  username string
+  // Email address recorded for the account
+  email string
+  // Access tokens issued to the service account
+  accessTokens() []gitlab.group.enterpriseAccessToken
+}
+
+// GitLab group SSH certificate authority
+//
+// Public key of a certificate authority the group trusts to authenticate
+// Git access. Anyone able to sign with the matching private key can
+// reach the group's repositories without registering an individual SSH
+// key, which makes the set of trusted authorities worth reviewing.
+private gitlab.group.sshCertificate @defaults("title createdAt") {
+  // Certificate authority ID
+  id int
+  // Certificate authority title
+  title string
+  // Public key of the certificate authority
+  key string
+  // Time the certificate authority was added
+  createdAt time
+}
+
+// GitLab group SCIM identity
+//
+// Link between a group member and the identity provider account that
+// provisioned them. A member with no SCIM identity was created outside
+// the identity provider and survives deprovisioning there, so comparing
+// this list against the group's members finds accounts that offboarding
+// will not reach. `active` reports whether the provider still considers
+// the identity live.
+private gitlab.group.scimIdentity @defaults("externalUid active") {
+  // Identifier the identity provider knows the user by
+  externalUid string
+  // Whether the identity provider still considers the identity active
+  active bool
+  // Group member the identity is linked to
+  user() gitlab.user
+}
+
+// GitLab group access request
+//
+// Pending or resolved request to join the group. Requests sit in the
+// queue until an owner acts on them, so `requestedAt` combined with a
+// `state` of `pending` finds access decisions nobody has made.
+// `accessLevel` is the level the requester asked for.
+private gitlab.group.accessRequest @defaults("username state requestedAt") {
+  // User ID of the requester
+  id int
+  // Username of the requester
+  username string
+  // Display name of the requester
+  name string
+  // Where the request stands
+  //
+  // One of `pending`, `approved`, or `denied`.
+  state string
+  // Time the requesting account was created
+  createdAt time
+  // Time access was requested
+  requestedAt time
+  // Access level requested
+  //
+  // 10 Guest, 15 Planner, 20 Reporter, 30 Developer, 40 Maintainer, or
+  // 50 Owner.
+  accessLevel int
+  // User making the request
+  user() gitlab.user
+}
+
+// GitLab project access request
+//
+// Pending or resolved request to join the project, with the same
+// meaning as its group counterpart: a `state` of `pending` alongside an
+// old `requestedAt` marks an access decision nobody has made.
+private gitlab.project.accessRequest @defaults("username state requestedAt") {
+  // User ID of the requester
+  id int
+  // Username of the requester
+  username string
+  // Display name of the requester
+  name string
+  // Where the request stands
+  //
+  // One of `pending`, `approved`, or `denied`.
+  state string
+  // Time the requesting account was created
+  createdAt time
+  // Time access was requested
+  requestedAt time
+  // Access level requested
+  //
+  // 10 Guest, 15 Planner, 20 Reporter, 30 Developer, 40 Maintainer, or
+  // 50 Owner.
+  accessLevel int
+  // User making the request
+  user() gitlab.user
+}
+
+// Instance-scope CI/CD variable
+//
+// A CI/CD variable defined at instance scope, which is injected into every
+// pipeline that runs anywhere on the instance and therefore has the widest
+// blast radius of any variable tier. The `key` field names the variable and
+// `masked`, `protected`, and `variableType` describe how its value is handled.
+// The value itself is never reported.
+private gitlab.settings.variable @defaults("key masked protected") {
+  // Variable key
+  key string
+  // Variable type, either env_var or file
+  variableType string
+  // Whether the variable is exposed only to pipelines on protected branches and tags
+  protected bool
+  // Whether the variable value is masked in job logs
+  masked bool
+  // Whether the variable is passed to jobs without variable expansion
+  raw bool
+  // Variable description
+  description string
+}
+
+// GitLab system hook
+//
+// An instance-wide hook that receives events from every project and group on
+// the instance, a tier above the project and group webhooks. The `url` field
+// is the destination, `sslVerification` reports whether GitLab validates that
+// endpoint's certificate, and `tokenPresent` reports whether a secret token is
+// configured for the receiver to authenticate payloads with.
+private gitlab.settings.systemHook @defaults("url sslVerification tokenPresent") {
+  // System hook ID
+  id int
+  // Destination URL the hook posts to
+  url string
+  // Hook display name
+  name string
+  // Hook description
+  description string
+  // Whether TLS certificate verification is enabled for hook delivery
+  //
+  // When false, GitLab does not validate the receiving endpoint's TLS
+  // certificate, which permits man-in-the-middle interception of the payload
+  // and any secret token sent with it.
+  sslVerification bool
+  // Whether push events trigger the hook
+  pushEvents bool
+  // Whether tag push events trigger the hook
+  tagPushEvents bool
+  // Whether merge request events trigger the hook
+  mergeRequestsEvents bool
+  // Whether repository update events trigger the hook
+  //
+  // Null on instances that do not report the trigger, so that a hook whose
+  // state could not be read is not reported as having the trigger switched off.
+  repositoryUpdateEvents bool
+  // Whether a secret token is configured on the hook
+  //
+  // The receiver uses that token to confirm a payload really came from GitLab.
+  // Without one, anything that learns the hook URL can post a payload the
+  // receiver treats as genuine. The token value is write-only and is never
+  // returned. Null on instances that do not report token presence.
+  tokenPresent bool
+  // Whether a signing token is configured on the hook
+  //
+  // With a signing token, GitLab signs each payload so the receiver can verify
+  // both its origin and that it was not altered in transit. The token value is
+  // write-only and is never returned. Null on instances that do not report
+  // signing token presence.
+  signingTokenPresent bool
+  // URL variables interpolated into the hook URL
+  //
+  // Keyed by variable name, with the value substituted into `{name}`
+  // placeholders in the hook url. Values GitLab treats as secret are redacted,
+  // so they may be empty or masked.
+  urlVariables map[string]string
+  // Branch filter for push events
+  pushEventsBranchFilter string
+  // Strategy used to filter branches for push events: all_branches, wildcard, or regex
+  branchFilterStrategy string
+  // Custom payload template configured for this hook (empty when the default payload is used)
+  customWebhookTemplate string
+  // Custom HTTP headers sent with the hook request
+  //
+  // Keyed by header name (for example an `Authorization` or custom `X-*`
+  // header) with the configured header value. GitLab redacts the values of
+  // headers it treats as secret, so those entries may be empty or masked.
+  customHeaders map[string]string
+  // Delivery health of the hook
+  //
+  // One of executable (delivering normally), disabled (permanently turned off
+  // after repeated delivery failures), or temporarily_disabled (auto-paused
+  // after recent failures, with disabledUntil giving the resume time). A hook
+  // that is not executable no longer delivers the instance events it was set
+  // up to forward.
+  alertStatus string
+  // Time until which the hook is disabled (set by GitLab when too many failures occur)
+  disabledUntil time
+  // Hook creation time
+  createdAt time
+}
+
+// GitLab OAuth application
+//
+// An OAuth application registered on the instance, which can exchange an
+// authorization for a token that acts on a user's behalf. The `confidential`
+// field reports whether the application is able to hold a client secret and
+// `redirectUris` lists the destinations an authorization code may be returned
+// to, the pair that decides whether an intercepted authorization can be
+// redeemed by someone else. The client secret is never reported.
+private gitlab.settings.application @defaults("name confidential redirectUris") {
+  // Application ID
+  id int
+  // OAuth client identifier issued to the application
+  clientId string
+  // Application display name
+  name string
+  // Whether the application is able to hold a client secret
+  //
+  // False marks a public client, such as a single-page or mobile app, which
+  // cannot authenticate itself when redeeming an authorization code.
+  confidential bool
+  // Destinations an authorization code may be returned to
+  //
+  // One entry per redirect URI configured on the application. A wildcard or
+  // otherwise broad entry lets an authorization code be delivered to a host
+  // the application does not control.
+  redirectUris []string
+  // OAuth scopes the application may request
+  //
+  // Null on instances that do not report scopes when listing applications.
+  scopes []string
+}
+
+// GitLab Instance Metadata
+//
+// Version, revision, and edition of the GitLab instance under scan. The
+// version is what a published advisory is matched against, and `enterprise`
+// records whether the instance runs a licensed edition, which decides whether
+// an empty result from a Premium or Ultimate only collection means the
+// instance is clean or simply not licensed for the feature. Readable with any
+// authenticated token, unlike gitlab.settings, which needs an administrator.
+gitlab.metadata @defaults("version enterprise") {
+  // GitLab version the instance runs
+  version string
+  // Revision of the build the instance runs
+  revision string
+  // Whether the instance runs a licensed Enterprise Edition build
+  //
+  // False means Community Edition, where Premium and Ultimate features are
+  // absent rather than merely unconfigured.
+  enterprise bool
 }

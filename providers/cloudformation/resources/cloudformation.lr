@@ -1,41 +1,72 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/mql/v13/providers/cloudformation"
-option go_package = "go.mondoo.com/mql/v13/providers/cloudformation/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/cloudformation"
+option go_package = "go.mondoo.com/mql/providers/cloudformation/resources"
+option root = "cloudformation.template"
 
 // AWS CloudFormation template
 //
-// Top-level entry point for static analysis of a CloudFormation template
-// (or SAM template via Transform). Exposes the template metadata
-// (AWSTemplateFormatVersion, Transform, Description), the parameter /
-// mapping / condition / rule / global / metadata sections, the declared
-// resources, the outputs, and the full set of resource types referenced
-// — the surface for IaC policy checks of AWS infrastructure-as-code.
-cloudformation.template @defaults("description") {
+// CloudFormation template (or SAM template via Transform) parsed for
+// static analysis of infrastructure-as-code. Exposes the template
+// metadata (AWSTemplateFormatVersion, Transform, Description), the
+// parameter, mapping, condition, rule, global, and metadata sections,
+// the declared resources, the outputs, and the full set of AWS resource
+// types referenced. This is the surface for IaC policy checks against
+// CloudFormation and SAM templates.
+cloudformation.template @defaults("description") @root {
   // Template format version
   version string
   // Template macros
   transform []string
   // Template description
   description string
-  // Template mappings
+  // Mappings section
+  //
+  // The `Mappings` section keyed by each mapping's logical name. Every
+  // value is the raw mapping body: an inner set of keys (typically a
+  // region or environment name) each holding named attribute values that
+  // templates resolve with `Fn::FindInMap`.
   mappings() map[string]dict
-  // Template globals
+  // Globals section (SAM)
+  //
+  // The SAM `Globals` section keyed by resource-type name (`Function`,
+  // `Api`, `HttpApi`, `SimpleTable`, `StateMachine`). Each value is the
+  // raw body of default properties applied to every resource of that type
+  // in the template. Empty for a plain CloudFormation template.
   globals() map[string]dict
-  // Template parameters
+  // Parameters section as raw dicts
+  //
+  // The `Parameters` section keyed by parameter logical name, each value
+  // the raw parameter body (`Type`, `Default`, `AllowedValues`, `NoEcho`,
+  // and other constraints). Use `parameterList` for the same data as
+  // structured records with individual fields.
   parameters() map[string]dict
-  // Template metadata
+  // Metadata section
+  //
+  // The `Metadata` section keyed by metadata key (for example
+  // `AWS::CloudFormation::Interface` for console parameter grouping, or
+  // `AWS::CloudFormation::Designer`). Each value is the raw metadata body.
   metadata() map[string]dict
-  // Template conditions
+  // Conditions section
+  //
+  // The `Conditions` section keyed by condition name, each value the raw
+  // boolean expression (`Fn::Equals`, `Fn::And`, `Fn::Or`, `Fn::Not`) that
+  // gates whether a resource or output is created.
   conditions() map[string]dict
-  // Template rules for parameter validation
+  // Rules section for parameter validation
+  //
+  // The `Rules` section keyed by rule name, each value the raw rule body:
+  // an optional `RuleCondition` and the `Assertions` that validate
+  // parameter values at stack create or update time.
   rules() map[string]dict
   // Template resources
   resources() []cloudformation.resource
   // Template outputs
   outputs() []cloudformation.output
-  // Supported resource types
+  // AWS resource types referenced in the template
   types() []string
   // Parameter declarations as typed objects
   //
@@ -49,10 +80,13 @@ cloudformation.template @defaults("description") {
 
 // AWS CloudFormation resource declaration
 //
-// Examine a single declared resource: logical name, AWS resource type,
-// condition, full properties body, attributes, dependsOn list, and the
-// documentation URL — the unit IaC policies match against to enforce
-// resource-shape rules (encryption, public access, tags, etc.).
+// Single resource declared in the template's `Resources` section, the
+// unit that IaC policies match against to enforce resource-shape rules
+// such as encryption, public-access blocking, and tagging. The `name`
+// field is the logical ID as written in the template, for example
+// `cloudformation.resources.where(type == "AWS::S3::Bucket")`. The
+// `type` field carries the AWS resource type and `properties` holds the
+// declared configuration body.
 cloudformation.resource @defaults("name") @context("cloudformation.context") {
   // Resource name
   name string
@@ -62,9 +96,19 @@ cloudformation.resource @defaults("name") @context("cloudformation.context") {
   condition string
   // Resource documentation URL
   documentation string
-  // Resource attributes
+  // Resource `Attributes` section
+  //
+  // Map keyed by attribute name as declared in the template's
+  // `Attributes` block, with each value the raw attribute body. Used by
+  // modules and custom resources, and empty for most resource types.
   attributes map[string]dict
-  // Resource properties
+  // Resource `Properties` section
+  //
+  // Map keyed by property name as declared in the template (for example
+  // `BucketName` or `VersioningConfiguration` on an `AWS::S3::Bucket`),
+  // with each value the raw property body. A value may be a literal or
+  // an intrinsic-function call such as `Ref` or `Fn::GetAtt`, so audits
+  // pattern-match against the value shape.
   properties map[string]dict
   // Resource dependencies (DependsOn)
   dependsOn []string
@@ -103,13 +147,21 @@ cloudformation.resource @defaults("name") @context("cloudformation.context") {
 
 // AWS CloudFormation output
 //
-// Examine a single Outputs section entry: name and the properties body
-// (Value, Description, Export, Condition) — useful for spotting outputs
-// that leak resource ARNs, secrets, or sensitive state across stacks.
+// Single entry from a template's Outputs section, exposing the output
+// name and its properties body (Value, Description, Export, Condition).
+// Useful for spotting outputs that leak resource ARNs, secrets, or
+// sensitive state across stacks, since exported outputs can be imported
+// by unrelated stacks.
 cloudformation.output @defaults("name") @context("cloudformation.context") {
   // Output name
   name string
-  // Output properties
+  // Raw properties body of the Outputs entry
+  //
+  // The entry keyed by its CloudFormation property names: `Value`,
+  // `Description`, `Export`, and `Condition`, each mapping to the raw
+  // parsed structure. The individual fields value, description,
+  // exportName, and condition surface these same values already
+  // extracted.
   properties map[string]dict
   // The `Value` expression
   //
@@ -132,12 +184,11 @@ cloudformation.output @defaults("name") @context("cloudformation.context") {
 
 // AWS CloudFormation parameter declaration
 //
-// Examine a single entry from the `Parameters` section: type, default,
-// allowed-values / allowed-pattern constraints, length and value bounds,
-// the `NoEcho` flag, and any constraint description. This is the
-// primary surface for policies that enforce strong input typing, secret
-// masking (`NoEcho: true` for credential-shaped parameters), and bounded
-// inputs.
+// Single entry from the template `Parameters` section: its type, default,
+// allowed-values and allowed-pattern constraints, length and value bounds,
+// the `NoEcho` flag, and any constraint description. This is the primary
+// surface for policies that enforce strong input typing, secret masking
+// (`NoEcho: true` for credential-shaped parameters), and bounded inputs.
 cloudformation.parameter @defaults("name type") @context("cloudformation.context") {
   // Parameter name
   name string

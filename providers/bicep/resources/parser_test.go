@@ -107,10 +107,67 @@ func TestParseParameterDefaultValues(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := parseParameter(tt.input, nil)
+			p, ok := parseParameter(tt.input, nil)
+			require.True(t, ok, "well-formed declaration must parse")
 			assert.Equal(t, tt.wantName, p.name)
 			assert.Equal(t, tt.wantType, p.typ)
 			assert.Equal(t, tt.wantDef, p.defaultValue)
+		})
+	}
+}
+
+func TestParseParameterMultilineAndCommentDefaults(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantDef string
+	}{
+		{
+			name: "multi-line array default preserved",
+			input: `param locations array = [
+  'eastus'
+  'westus'
+]`,
+			wantDef: "[ 'eastus' 'westus' ]",
+		},
+		{
+			name: "multi-line object default preserved",
+			input: `param config object = {
+  environment: 'prod'
+  count: 3
+}`,
+			wantDef: "{ environment: 'prod' count: 3 }",
+		},
+		{
+			name:    "trailing line comment stripped",
+			input:   "param sku string = 'Standard_LRS' // default sku",
+			wantDef: "Standard_LRS",
+		},
+		{
+			name:    "double-slash inside string is not a comment",
+			input:   "param endpoint string = 'https://example.com'",
+			wantDef: "https://example.com",
+		},
+		{
+			name:    "internal string whitespace preserved",
+			input:   "param greeting string = 'hello   world'",
+			wantDef: "hello   world",
+		},
+		{
+			name: "comment on a continuation line stripped",
+			input: `param locations array = [
+  'eastus' // primary
+  'westus'
+]`,
+			wantDef: "[ 'eastus' 'westus' ]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseBicep(tt.input)
+			require.Len(t, result.parameters, 1)
+			assert.Equal(t, tt.wantDef, result.parameters[0].defaultValue)
 		})
 	}
 }
@@ -501,7 +558,8 @@ func TestParseModuleDecl(t *testing.T) {
 
 func TestParseOutput(t *testing.T) {
 	t.Run("simple output", func(t *testing.T) {
-		o := parseOutput("output rgId string = rg.id", nil)
+		o, ok := parseOutput("output rgId string = rg.id", nil)
+		require.True(t, ok)
 		assert.Equal(t, "rgId", o.name)
 		assert.Equal(t, "string", o.typ)
 		assert.Equal(t, "rg.id", o.expression)
@@ -516,7 +574,8 @@ output rgId string = rg.id`
 	})
 
 	t.Run("int output", func(t *testing.T) {
-		o := parseOutput("output count int = length(items)", nil)
+		o, ok := parseOutput("output count int = length(items)", nil)
+		require.True(t, ok)
 		assert.Equal(t, "count", o.name)
 		assert.Equal(t, "int", o.typ)
 		assert.Equal(t, "length(items)", o.expression)
@@ -886,6 +945,34 @@ func TestParseBicepObject(t *testing.T) {
 		obj := parseBicepObject(body)
 		assert.Equal(t, `it\'s here`, obj["message"])
 		assert.Equal(t, "plain", obj["other"])
+	})
+
+	// Regression test for #9081: keys that must be quoted in Bicep source
+	// (dotted keys, e.g. API Management `customProperties`) landed in the map
+	// with their quotes attached, so an index lookup written without quotes
+	// missed and returned null. The quotes must be stripped from the key.
+	t.Run("quoted dotted keys are unquoted", func(t *testing.T) {
+		body := `
+  customProperties: {
+    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Tls10': 'True'
+    publisherName: 'Contoso'
+  }
+`
+		obj := parseBicepObject(body)
+		cp, ok := obj["customProperties"].(map[string]any)
+		require.True(t, ok, "customProperties should be a nested map")
+		assert.Equal(t, "True", cp["Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Tls10"])
+		assert.Equal(t, "Contoso", cp["publisherName"])
+		_, quotedPresent := cp["'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Tls10'"]
+		assert.False(t, quotedPresent, "the quoted form must not leak into the map key")
+	})
+
+	t.Run("double-quoted keys are unquoted", func(t *testing.T) {
+		body := `
+  "a.b.c": 'x'
+`
+		obj := parseBicepObject(body)
+		assert.Equal(t, "x", obj["a.b.c"])
 	})
 }
 

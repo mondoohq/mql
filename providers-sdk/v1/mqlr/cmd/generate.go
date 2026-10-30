@@ -14,6 +14,9 @@ func init() {
 	rootCmd.AddCommand(generateCmd)
 	generateCmd.Flags().String("dist", "", "folder for output LR and docs generation")
 	generateCmd.MarkFlagRequired("dist") // nolint:errcheck
+	generateCmd.Flags().Bool("fail-on-breaking", false, "fail if the schema change is breaking and has no migration (ADR 040 part 5)")
+	generateCmd.Flags().Bool("fail-on-dep-drift", false, "fail if a peer dependency is undeclared or declared below what its references need (ADR 042)")
+	generateCmd.Flags().String("providers-root", "", "directory holding the providers that name-based imports resolve against (default: derived from the .lr path)")
 }
 
 var generateCmd = &cobra.Command{
@@ -31,10 +34,14 @@ var generateCmd = &cobra.Command{
 			log.Fatal().Msg("dist flag is required")
 		}
 
+		failOnBreaking, _ := cmd.Flags().GetBool("fail-on-breaking")
+		providersRoot, _ := cmd.Flags().GetString("providers-root")
+		failOnDepDrift, _ := cmd.Flags().GetBool("fail-on-dep-drift")
+
 		lrFile := args[0]
 		headerFile := ""
 		versionsFile := strings.TrimSuffix(lrFile, ".lr") + ".lr.versions"
-		runGoCmd(lrFile, dist, headerFile, false)
+		runGoCmd(lrFile, dist, headerFile, providersRoot, false, failOnBreaking, failOnDepDrift)
 		runVersionsCmd(lrFile, headerFile, defaultVersionField, versionsFile)
 	},
 }

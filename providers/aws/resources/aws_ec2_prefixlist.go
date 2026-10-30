@@ -10,12 +10,12 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsEc2ManagedPrefixList) id() (string, error) {
@@ -33,20 +33,20 @@ func initAwsEc2ManagedPrefixList(runtime *plugin.Runtime, args map[string]*llx.R
 
 	arnRaw, hasArn := args["arn"]
 	if !hasArn || arnRaw == nil || arnRaw.Value == nil {
-		return args, nil, nil
+		return nil, nil, fmt.Errorf("arn required to fetch ec2 managed prefix list")
 	}
 	arnVal, ok := arnRaw.Value.(string)
 	if !ok || arnVal == "" {
-		return args, nil, nil
+		return nil, nil, fmt.Errorf("arn required to fetch ec2 managed prefix list")
 	}
 
 	region, err := GetRegionFromArn(arnVal)
 	if err != nil {
-		return args, nil, nil
+		return nil, nil, err
 	}
 	parts := strings.Split(arnVal, "/")
 	if len(parts) < 2 {
-		return args, nil, nil
+		return nil, nil, fmt.Errorf("not a valid ec2 managed prefix list ARN '%s'", arnVal)
 	}
 	plId := parts[len(parts)-1]
 
@@ -61,13 +61,20 @@ func initAwsEc2ManagedPrefixList(runtime *plugin.Runtime, args map[string]*llx.R
 		PrefixListIds: []string{plId},
 	})
 	if err != nil {
+		// Intentionally an error rather than the old (args, nil, nil)
+		// fallback: a partially-initialized resource surfaces as malformed
+		// nil data when its unset fields are queried. Access-denied gets a
+		// descriptive message instead of the raw SDK error.
 		if Is400AccessDeniedError(err) {
-			return args, nil, nil
+			return nil, nil, fmt.Errorf("access denied fetching aws.ec2.managedPrefixList with id %q in region %s", plId, region)
 		}
 		return nil, nil, err
 	}
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
 	if len(resp.PrefixLists) == 0 {
-		return args, nil, nil
+		return nil, nil, fmt.Errorf("aws.ec2.managedPrefixList with id %q not found", plId)
 	}
 	pl := resp.PrefixLists[0]
 

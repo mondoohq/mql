@@ -3,15 +3,22 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/cloudflare/connection"
-	"go.mondoo.com/mql/v13/providers/cloudflare/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/cloudflare/connection"
+	"go.mondoo.com/mql/providers/cloudflare/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "cloudflare",
-	ID:              "go.mondoo.com/mql/v13/providers/cloudflare",
-	Version:         "13.6.0",
+	Name: "cloudflare",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	// A connection reports the concrete kind through ConnectRes.Root.
+	Root:    "cloudflare",
+	ID:      "go.mondoo.com/mql/providers/cloudflare",
+	Version: "14.2.6",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       connection.Platforms,
 	Connectors: []plugin.Connector{
@@ -26,7 +33,7 @@ Examples:
   cnspec scan cloudflare --token <access_token>
 
 Notes:
-  If you set the CLOUDFLARE_API_TOKEN environment variable, you can omit the token flag.
+  If you set the CLOUDFLARE_TOKEN environment variable, you can omit the token flag.
 `,
 			Discovery: []string{
 				connection.DiscoveryAll,

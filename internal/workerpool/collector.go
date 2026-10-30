@@ -14,7 +14,7 @@ type collector[R any] struct {
 	read      sync.Mutex
 
 	// The total number of requests read.
-	requestsRead int64
+	requestsRead atomic.Int64
 }
 
 func (c *collector[R]) start() {
@@ -24,13 +24,13 @@ func (c *collector[R]) start() {
 			c.results = append(c.results, result)
 			c.read.Unlock()
 
-			atomic.AddInt64(&c.requestsRead, 1)
+			c.requestsRead.Add(1)
 		}
 	}()
 }
 
 func (c *collector[R]) RequestsRead() int64 {
-	return atomic.LoadInt64(&c.requestsRead)
+	return c.requestsRead.Load()
 }
 
 func (c *collector[R]) GetResults() []Result[R] {

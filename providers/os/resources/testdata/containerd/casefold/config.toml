@@ -1,0 +1,5 @@
+version = 2
+[plugins."io.containerd.grpc.v1.cri"]
+  Enable_SELinux = true
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.Options]
+  systemdcgroup = true

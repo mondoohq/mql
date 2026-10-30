@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,4 +50,36 @@ func TestGetSection(t *testing.T) {
 	section = GetSection(bytes.NewReader(data), "management telnet")
 	expected = "shutdown\nidle-timeout 0\nsession-limit 20\nsession-limit per-host 20\n"
 	assert.Equal(t, expected, section)
+}
+
+// A running-config can contain lines indented more than one level deeper than
+// the previous line (an indented login/motd banner is the common case). Such a
+// jump must not underflow the parser's stack. Both functions previously
+// panicked with "slice bounds out of range" on this input.
+const deepIndentConfig = `management ssh
+   no shutdown
+banner login
+         welcome to the switch
+                  please authenticate
+EOF
+management telnet
+   shutdown
+   idle-timeout 0
+`
+
+func TestGetSection_DeepIndentDoesNotPanic(t *testing.T) {
+	var section string
+	assert.NotPanics(t, func() {
+		section = GetSection(strings.NewReader(deepIndentConfig), "management telnet")
+	})
+	// The parser must still recover and read a section that follows the
+	// irregularly-indented banner block.
+	assert.Equal(t, "shutdown\nidle-timeout 0\n", section)
+}
+
+func TestParseConfig_DeepIndentDoesNotPanic(t *testing.T) {
+	assert.NotPanics(t, func() {
+		dict := ParseConfig(strings.NewReader(deepIndentConfig))
+		assert.NotNil(t, dict)
+	})
 }

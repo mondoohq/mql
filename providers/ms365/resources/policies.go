@@ -11,13 +11,15 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/microsoft/kiota-abstractions-go/serialization"
+	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/policies"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlMicrosoftPolicies) authorizationPolicy() (any, error) {
@@ -50,7 +52,7 @@ func (a *mqlMicrosoftPolicies) identitySecurityDefaultsEnforcementPolicy() (any,
 	return convert.JsonToDict(newIdentitySecurityDefaultsEnforcementPolicy(policy))
 }
 
-// https://learn.microsoft.com/en-us/azure/active-directory/manage-apps/configure-user-consent?tabs=azure-powershell
+// https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/configure-user-consent?tabs=azure-powershell
 // https://learn.microsoft.com/en-us/graph/api/permissiongrantpolicy-list?view=graph-rest-1.0&tabs=http
 func (a *mqlMicrosoftPolicies) permissionGrantPolicies() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
@@ -119,20 +121,25 @@ func (a *mqlMicrosoftPolicies) authenticationMethodsPolicy() (*mqlMicrosoftAuthe
 		return nil, err
 	}
 
-	ctx := context.Background()
-	// expand authenticationMethodConfigurations to get all the details in one call
-	requestConfiguration := &policies.AuthenticationMethodsPolicyRequestBuilderGetRequestConfiguration{
-		QueryParameters: &policies.AuthenticationMethodsPolicyRequestBuilderGetQueryParameters{
-			Expand: []string{"authenticationMethodConfigurations"},
-		},
-	}
-
-	resp, err := graphClient.Policies().AuthenticationMethodsPolicy().Get(ctx, requestConfiguration)
+	resp, err := fetchAuthenticationMethodsPolicy(context.Background(), graphClient)
 	if err != nil {
-		return nil, transformError(err)
+		return nil, err
 	}
 
 	return newAuthenticationMethodsPolicy(a.MqlRuntime, resp)
+}
+
+// fetchAuthenticationMethodsPolicy reads the policy with a plain GET. Graph
+// returns authenticationMethodConfigurations inline, each with its
+// includeTargets. Adding $expand=authenticationMethodConfigurations makes
+// Graph drop includeTargets (a navigation property) from every configuration,
+// so every method would report no included users or groups.
+func fetchAuthenticationMethodsPolicy(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient) (models.AuthenticationMethodsPolicyable, error) {
+	resp, err := graphClient.Policies().AuthenticationMethodsPolicy().Get(ctx, nil)
+	if err != nil {
+		return nil, transformError(err)
+	}
+	return resp, nil
 }
 
 func (a *mqlMicrosoftPolicies) activityBasedTimeoutPolicies() ([]any, error) {
@@ -183,7 +190,7 @@ func newAuthenticationMethodsPolicy(runtime *plugin.Runtime, policy models.Authe
 			"id":                                 llx.StringDataPtr(policy.GetId()),
 			"description":                        llx.StringDataPtr(policy.GetDescription()),
 			"displayName":                        llx.StringDataPtr(policy.GetDisplayName()),
-			"lastModifiedDateTime":               llx.TimeDataPtr(policy.GetLastModifiedDateTime()),
+			"lastModifiedDateTime":               graphTimeData(policy.GetLastModifiedDateTime()),
 			"policyVersion":                      llx.StringDataPtr(policy.GetPolicyVersion()),
 			"authenticationMethodConfigurations": llx.ArrayData(authMethodConfigs, types.Resource(string(ResourceMicrosoftAuthenticationMethodConfiguration))),
 		})
@@ -386,6 +393,204 @@ func (a *mqlMicrosoftPolicies) externalIdentitiesPolicy() (*mqlMicrosoftExternal
 	return mqlPolicy.(*mqlMicrosoftExternalIdentitiesPolicy), nil
 }
 
+// deviceRegistrationMembershipScope reads the scope out of one
+// deviceRegistrationMembership: who it applies to, and the users and groups it
+// names when it applies to a chosen set.
+//
+// The variant carries the meaning, and the concrete type is what identifies it,
+// because the sibling interfaces add no methods over the shared base and so
+// every variant satisfies all of them. A variant Graph adds later deserializes
+// to the base type; that yields an empty scope, which the caller reports as
+// null rather than inventing one.
+func deviceRegistrationMembershipScope(m models.DeviceRegistrationMembershipable) (string, []any, []any) {
+	users := []any{}
+	groups := []any{}
+
+	switch v := m.(type) {
+	case *models.AllDeviceRegistrationMembership:
+		return "all", users, groups
+	case *models.NoDeviceRegistrationMembership:
+		return "none", users, groups
+	case *models.EnumeratedDeviceRegistrationMembership:
+		for _, u := range v.GetUsers() {
+			users = append(users, u)
+		}
+		for _, g := range v.GetGroups() {
+			groups = append(groups, g)
+		}
+		return "selected", users, groups
+	}
+	log.Warn().
+		Str("odataType", convert.ToValue(m.GetOdataType())).
+		Msg("unrecognized device registration membership, reporting its scope as null")
+	return "", users, groups
+}
+
+// deviceRegistrationMembership renders one deviceRegistrationMembership as a
+// resource. The Graph type is a union whose variant carries the meaning: the
+// membership either applies to everyone, to nobody, or to an enumerated set of
+// users and groups. The concrete type is what identifies the variant, because
+// the sibling interfaces add no methods over the shared base and so every
+// variant satisfies all of them.
+func deviceRegistrationMembership(runtime *plugin.Runtime, id string, m models.DeviceRegistrationMembershipable) (*mqlMicrosoftDeviceRegistrationPolicyMembership, error) {
+	if m == nil {
+		return nil, nil
+	}
+
+	appliesTo, users, groups := deviceRegistrationMembershipScope(m)
+
+	args := map[string]*llx.RawData{
+		"__id":          llx.StringData(id),
+		"allowedUsers":  llx.ArrayData(users, types.String),
+		"allowedGroups": llx.ArrayData(groups, types.String),
+	}
+	// a variant Graph adds later deserializes to the base type, which carries no
+	// scope of its own; reporting null says that rather than inventing one
+	if appliesTo == "" {
+		args["appliesTo"] = llx.NilData
+	} else {
+		args["appliesTo"] = llx.StringData(appliesTo)
+	}
+
+	res, err := CreateResource(runtime, ResourceMicrosoftDeviceRegistrationPolicyMembership, args)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlMicrosoftDeviceRegistrationPolicyMembership), nil
+}
+
+// deviceRegistrationLocalAdmins renders who becomes a local administrator on a
+// device joined to Microsoft Entra.
+func deviceRegistrationLocalAdmins(runtime *plugin.Runtime, id string, s models.LocalAdminSettingsable) (*mqlMicrosoftDeviceRegistrationPolicyLocalAdminSettings, error) {
+	if s == nil {
+		return nil, nil
+	}
+
+	registeringUsers, err := deviceRegistrationMembership(runtime, id+"/registeringUsers", s.GetRegisteringUsers())
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := CreateResource(runtime, ResourceMicrosoftDeviceRegistrationPolicyLocalAdminSettings,
+		map[string]*llx.RawData{
+			"__id":               llx.StringData(id),
+			"enableGlobalAdmins": llx.BoolDataPtr(s.GetEnableGlobalAdmins()),
+			"registeringUsers":   llx.ResourceData(registeringUsers, ResourceMicrosoftDeviceRegistrationPolicyMembership),
+		})
+	if err != nil {
+		return nil, err
+	}
+	mql := res.(*mqlMicrosoftDeviceRegistrationPolicyLocalAdminSettings)
+	if registeringUsers == nil {
+		mql.RegisteringUsers.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return mql, nil
+}
+
+// deviceRegistrationPolicy reports the tenant's Entra device settings.
+func (a *mqlMicrosoftPolicies) deviceRegistrationPolicy() (*mqlMicrosoftDeviceRegistrationPolicy, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+	policy, err := graphClient.Policies().DeviceRegistrationPolicy().Get(context.Background(), nil)
+	if err != nil {
+		return nil, transformError(err)
+	}
+	if policy == nil {
+		return nil, fmt.Errorf("device registration policy not found")
+	}
+
+	var mfaConfiguration *string
+	if v := policy.GetMultiFactorAuthConfiguration(); v != nil {
+		s := v.String()
+		mfaConfiguration = &s
+	}
+
+	var localAdminPasswordEnabled *bool
+	if lap := policy.GetLocalAdminPassword(); lap != nil {
+		localAdminPasswordEnabled = lap.GetIsEnabled()
+	}
+
+	policyId := convert.ToValue(policy.GetId())
+
+	var mqlJoin *mqlMicrosoftDeviceRegistrationPolicyJoinPolicy
+	if join := policy.GetAzureADJoin(); join != nil {
+		allowedToJoin, err := deviceRegistrationMembership(a.MqlRuntime, policyId+"/azureADJoin/allowedToJoin", join.GetAllowedToJoin())
+		if err != nil {
+			return nil, err
+		}
+		localAdmins, err := deviceRegistrationLocalAdmins(a.MqlRuntime, policyId+"/azureADJoin/localAdmins", join.GetLocalAdmins())
+		if err != nil {
+			return nil, err
+		}
+		res, err := CreateResource(a.MqlRuntime, ResourceMicrosoftDeviceRegistrationPolicyJoinPolicy,
+			map[string]*llx.RawData{
+				"__id":                llx.StringData(policyId + "/azureADJoin"),
+				"allowedToJoin":       llx.ResourceData(allowedToJoin, ResourceMicrosoftDeviceRegistrationPolicyMembership),
+				"isAdminConfigurable": llx.BoolDataPtr(join.GetIsAdminConfigurable()),
+				"localAdmins":         llx.ResourceData(localAdmins, ResourceMicrosoftDeviceRegistrationPolicyLocalAdminSettings),
+			})
+		if err != nil {
+			return nil, err
+		}
+		mqlJoin = res.(*mqlMicrosoftDeviceRegistrationPolicyJoinPolicy)
+		if allowedToJoin == nil {
+			mqlJoin.AllowedToJoin.State = plugin.StateIsSet | plugin.StateIsNull
+		}
+		if localAdmins == nil {
+			mqlJoin.LocalAdmins.State = plugin.StateIsSet | plugin.StateIsNull
+		}
+	}
+
+	var mqlRegistration *mqlMicrosoftDeviceRegistrationPolicyRegistrationPolicy
+	if registration := policy.GetAzureADRegistration(); registration != nil {
+		allowedToRegister, err := deviceRegistrationMembership(a.MqlRuntime, policyId+"/azureADRegistration/allowedToRegister", registration.GetAllowedToRegister())
+		if err != nil {
+			return nil, err
+		}
+		res, err := CreateResource(a.MqlRuntime, ResourceMicrosoftDeviceRegistrationPolicyRegistrationPolicy,
+			map[string]*llx.RawData{
+				"__id":                llx.StringData(policyId + "/azureADRegistration"),
+				"allowedToRegister":   llx.ResourceData(allowedToRegister, ResourceMicrosoftDeviceRegistrationPolicyMembership),
+				"isAdminConfigurable": llx.BoolDataPtr(registration.GetIsAdminConfigurable()),
+			})
+		if err != nil {
+			return nil, err
+		}
+		mqlRegistration = res.(*mqlMicrosoftDeviceRegistrationPolicyRegistrationPolicy)
+		if allowedToRegister == nil {
+			mqlRegistration.AllowedToRegister.State = plugin.StateIsSet | plugin.StateIsNull
+		}
+	}
+
+	mqlPolicy, err := CreateResource(a.MqlRuntime, ResourceMicrosoftDeviceRegistrationPolicy,
+		map[string]*llx.RawData{
+			"__id":                         llx.StringDataPtr(policy.GetId()),
+			"id":                           llx.StringDataPtr(policy.GetId()),
+			"displayName":                  llx.StringDataPtr(policy.GetDisplayName()),
+			"description":                  llx.StringDataPtr(policy.GetDescription()),
+			"multiFactorAuthConfiguration": llx.StringDataPtr(mfaConfiguration),
+			"userDeviceQuota":              llx.IntDataPtr(policy.GetUserDeviceQuota()),
+			"localAdminPasswordEnabled":    llx.BoolDataPtr(localAdminPasswordEnabled),
+			"azureADJoin":                  llx.ResourceData(mqlJoin, ResourceMicrosoftDeviceRegistrationPolicyJoinPolicy),
+			"azureADRegistration":          llx.ResourceData(mqlRegistration, ResourceMicrosoftDeviceRegistrationPolicyRegistrationPolicy),
+		})
+	if err != nil {
+		return nil, err
+	}
+
+	res := mqlPolicy.(*mqlMicrosoftDeviceRegistrationPolicy)
+	if mqlJoin == nil {
+		res.AzureADJoin.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	if mqlRegistration == nil {
+		res.AzureADRegistration.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return res, nil
+}
+
 func initMicrosoftExternalIdentitiesPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	// Create the parent policies resource and call its method
 	policiesResource, err := CreateResource(runtime, ResourceMicrosoftPolicies, map[string]*llx.RawData{})
@@ -461,24 +666,12 @@ func (a *mqlMicrosoftCrossTenantAccessPolicyDefault) getCrossTenantAccessPolicy(
 
 	a.policy = policy
 
-	if policy.GetIsServiceDefault() != nil {
-		a.IsServiceDefault = plugin.TValue[bool]{Data: *policy.GetIsServiceDefault(), State: plugin.StateIsSet}
-	} else {
-		a.IsServiceDefault = plugin.TValue[bool]{State: plugin.StateIsNull}
-	}
-
 	if policy.GetAutomaticUserConsentSettings() != nil {
-		consentSettings := policy.GetAutomaticUserConsentSettings()
-		consentResource, err := CreateResource(a.MqlRuntime, ResourceMicrosoftCrossTenantAccessPolicyDefaultAutomaticUserConsentSettings,
-			map[string]*llx.RawData{
-				"__id":            llx.StringData(a.__id + "-automaticUserConsentSettings"),
-				"inboundAllowed":  llx.BoolDataPtr(consentSettings.GetInboundAllowed()),
-				"outboundAllowed": llx.BoolDataPtr(consentSettings.GetOutboundAllowed()),
-			})
+		consentResource, err := newAutomaticUserConsentSettings(a.MqlRuntime, policy.GetAutomaticUserConsentSettings(), a.__id+"-automaticUserConsentSettings")
 		if err != nil {
 			return errHandler(err)
 		}
-		a.cachedAutomaticUserConsentSettings = consentResource.(*mqlMicrosoftCrossTenantAccessPolicyDefaultAutomaticUserConsentSettings)
+		a.cachedAutomaticUserConsentSettings = consentResource
 	}
 
 	if policy.GetB2bCollaborationInbound() != nil {
@@ -537,18 +730,11 @@ func (a *mqlMicrosoftCrossTenantAccessPolicyDefault) getCrossTenantAccessPolicy(
 	}
 
 	if policy.GetInboundTrust() != nil {
-		inboundTrustValue := policy.GetInboundTrust()
-		inboundTrustResource, err := CreateResource(a.MqlRuntime, ResourceMicrosoftCrossTenantAccessPolicyDefaultInboundTrust,
-			map[string]*llx.RawData{
-				"__id":                                llx.StringData(a.__id + "-inboundTrust"),
-				"isMfaAccepted":                       llx.BoolDataPtr(inboundTrustValue.GetIsMfaAccepted()),
-				"isCompliantDeviceAccepted":           llx.BoolDataPtr(inboundTrustValue.GetIsCompliantDeviceAccepted()),
-				"isHybridAzureADJoinedDeviceAccepted": llx.BoolDataPtr(inboundTrustValue.GetIsHybridAzureADJoinedDeviceAccepted()),
-			})
+		inboundTrustResource, err := newInboundTrust(a.MqlRuntime, policy.GetInboundTrust(), a.__id+"-inboundTrust")
 		if err != nil {
 			return errHandler(err)
 		}
-		a.cachedInboundTrust = inboundTrustResource.(*mqlMicrosoftCrossTenantAccessPolicyDefaultInboundTrust)
+		a.cachedInboundTrust = inboundTrustResource
 	}
 
 	if policy.GetTenantRestrictions() != nil {
@@ -568,6 +754,26 @@ func (a *mqlMicrosoftCrossTenantAccessPolicyDefault) automaticUserConsentSetting
 	}
 
 	return a.cachedAutomaticUserConsentSettings, nil
+}
+
+// isServiceDefault reports whether the tenant still runs the Microsoft-provided
+// cross-tenant defaults. It is computed rather than assigned during the fetch:
+// as a plain field it was only populated as a side effect of a sibling accessor
+// running first, so it read true, null, or unset depending on which other
+// fields the query happened to select -- and the fetch wrote it without the
+// lock that guards the rest of the shared policy state.
+func (a *mqlMicrosoftCrossTenantAccessPolicyDefault) isServiceDefault() (bool, error) {
+	if err := a.getCrossTenantAccessPolicy(); err != nil {
+		return false, err
+	}
+	if a.policy == nil {
+		return false, nil
+	}
+	// An absent value means Microsoft did not report a customization, which is
+	// the service default. Returning explicit false instead of null also keeps
+	// a { isServiceDefault && ... } assertion from passing vacuously, since MQL
+	// evaluates null && null as true.
+	return convert.ToValue(a.policy.GetIsServiceDefault()), nil
 }
 
 func (a *mqlMicrosoftCrossTenantAccessPolicyDefault) b2bCollaborationInbound() (*mqlMicrosoftCrossTenantAccessPolicyDefaultB2bSetting, error) {
@@ -710,7 +916,7 @@ func mapCredentialRestrictions[T credentialRestrictionConfig](creds []T, restric
 			d["state"] = c.GetState().String()
 		}
 		if c.GetRestrictForAppsCreatedAfterDateTime() != nil {
-			d["restrictForAppsCreatedAfterDateTime"] = *c.GetRestrictForAppsCreatedAfterDateTime()
+			d["restrictForAppsCreatedAfterDateTime"] = c.GetRestrictForAppsCreatedAfterDateTime().UTC().Format(time.RFC3339)
 		}
 		restrictions = append(restrictions, d)
 	}
@@ -749,6 +955,33 @@ func newAppManagementConfiguration(runtime *plugin.Runtime, config models.AppMan
 	return resource.(*mqlMicrosoftDefaultAppManagementPolicyAppManagementConfiguration), nil
 }
 
+func newAutomaticUserConsentSettings(runtime *plugin.Runtime, settings models.InboundOutboundPolicyConfigurationable, id string) (*mqlMicrosoftCrossTenantAccessPolicyDefaultAutomaticUserConsentSettings, error) {
+	resource, err := CreateResource(runtime, ResourceMicrosoftCrossTenantAccessPolicyDefaultAutomaticUserConsentSettings,
+		map[string]*llx.RawData{
+			"__id":            llx.StringData(id),
+			"inboundAllowed":  llx.BoolDataPtr(settings.GetInboundAllowed()),
+			"outboundAllowed": llx.BoolDataPtr(settings.GetOutboundAllowed()),
+		})
+	if err != nil {
+		return nil, err
+	}
+	return resource.(*mqlMicrosoftCrossTenantAccessPolicyDefaultAutomaticUserConsentSettings), nil
+}
+
+func newInboundTrust(runtime *plugin.Runtime, trust models.CrossTenantAccessPolicyInboundTrustable, id string) (*mqlMicrosoftCrossTenantAccessPolicyDefaultInboundTrust, error) {
+	resource, err := CreateResource(runtime, ResourceMicrosoftCrossTenantAccessPolicyDefaultInboundTrust,
+		map[string]*llx.RawData{
+			"__id":                                llx.StringData(id),
+			"isMfaAccepted":                       llx.BoolDataPtr(trust.GetIsMfaAccepted()),
+			"isCompliantDeviceAccepted":           llx.BoolDataPtr(trust.GetIsCompliantDeviceAccepted()),
+			"isHybridAzureADJoinedDeviceAccepted": llx.BoolDataPtr(trust.GetIsHybridAzureADJoinedDeviceAccepted()),
+		})
+	if err != nil {
+		return nil, err
+	}
+	return resource.(*mqlMicrosoftCrossTenantAccessPolicyDefaultInboundTrust), nil
+}
+
 func newB2BSetting(runtime *plugin.Runtime, setting models.CrossTenantAccessPolicyB2BSettingable, settingId string) (*mqlMicrosoftCrossTenantAccessPolicyDefaultB2bSetting, error) {
 	usersAndGroups, err := newCrossTenantAccessPolicyTarget(runtime, setting.GetUsersAndGroups(), settingId+"-usersAndGroups")
 	if err != nil {
@@ -763,8 +996,8 @@ func newB2BSetting(runtime *plugin.Runtime, setting models.CrossTenantAccessPoli
 	resource, err := CreateResource(runtime, ResourceMicrosoftCrossTenantAccessPolicyDefaultB2bSetting,
 		map[string]*llx.RawData{
 			"__id":           llx.StringData(settingId),
-			"usersAndGroups": llx.ResourceData(usersAndGroups, string(ResourceMicrosoftCrossTenantAccessPolicyDefaultB2bSettingTargetConfig)),
-			"applications":   llx.ResourceData(applications, string(ResourceMicrosoftCrossTenantAccessPolicyDefaultB2bSettingTargetConfig)),
+			"usersAndGroups": targetConfigData(usersAndGroups),
+			"applications":   targetConfigData(applications),
 		})
 	if err != nil {
 		return nil, err
@@ -781,7 +1014,23 @@ func (a *mqlMicrosoftCrossTenantAccessPolicyDefaultB2bSetting) applications() (*
 	return a.Applications.Data, a.Applications.Error
 }
 
+// targetConfigData wraps a target configuration for CreateResource, passing a
+// nil configuration as null so the field reads null instead of an empty
+// resource.
+func targetConfigData(c *mqlMicrosoftCrossTenantAccessPolicyDefaultB2bSettingTargetConfig) *llx.RawData {
+	if c == nil {
+		return llx.NilData
+	}
+	return llx.ResourceData(c, string(ResourceMicrosoftCrossTenantAccessPolicyDefaultB2bSettingTargetConfig))
+}
+
+// newCrossTenantAccessPolicyTarget returns nil for a nil configuration: Graph
+// omits usersAndGroups or applications on a B2B setting that does not
+// configure them.
 func newCrossTenantAccessPolicyTarget(runtime *plugin.Runtime, accessPolicyTargetConfiguration models.CrossTenantAccessPolicyTargetConfigurationable, id string) (*mqlMicrosoftCrossTenantAccessPolicyDefaultB2bSettingTargetConfig, error) {
+	if accessPolicyTargetConfiguration == nil {
+		return nil, nil
+	}
 	var accessType string
 	if accessPolicyTargetConfiguration.GetAccessType() != nil {
 		accessType = accessPolicyTargetConfiguration.GetAccessType().String()
@@ -789,6 +1038,9 @@ func newCrossTenantAccessPolicyTarget(runtime *plugin.Runtime, accessPolicyTarge
 
 	var targetResources []any
 	for _, target := range accessPolicyTargetConfiguration.GetTargets() {
+		if target == nil {
+			continue
+		}
 		var targetType string
 		if target.GetTargetType() != nil {
 			targetType = target.GetTargetType().String()
@@ -821,4 +1073,47 @@ func newCrossTenantAccessPolicyTarget(runtime *plugin.Runtime, accessPolicyTarge
 	}
 
 	return resource.(*mqlMicrosoftCrossTenantAccessPolicyDefaultB2bSettingTargetConfig), nil
+}
+
+// allowedUserRefs resolves the users an enumerated membership names.
+//
+// A principal that cannot be resolved fails the field rather than being
+// skipped: this list is the scope of who may join or administer a device, and
+// a list that quietly lost an entry still satisfies every assertion made
+// about it.
+func (a *mqlMicrosoftDeviceRegistrationPolicyMembership) allowedUserRefs() ([]any, error) {
+	res := []any{}
+	for _, id := range a.GetAllowedUsers().Data {
+		s, ok := id.(string)
+		if !ok || s == "" {
+			continue
+		}
+		user, err := NewResource(a.MqlRuntime, ResourceMicrosoftUser, map[string]*llx.RawData{
+			"id": llx.StringData(s),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, user)
+	}
+	return res, nil
+}
+
+// allowedGroupRefs resolves the groups an enumerated membership names.
+func (a *mqlMicrosoftDeviceRegistrationPolicyMembership) allowedGroupRefs() ([]any, error) {
+	res := []any{}
+	for _, id := range a.GetAllowedGroups().Data {
+		s, ok := id.(string)
+		if !ok || s == "" {
+			continue
+		}
+		group, err := NewResource(a.MqlRuntime, ResourceMicrosoftGroup, map[string]*llx.RawData{
+			"id": llx.StringData(s),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, group)
+	}
+	return res, nil
 }

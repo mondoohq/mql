@@ -10,9 +10,9 @@ import (
 	"sync"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/proxmox/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/proxmox/connection"
 )
 
 type mqlProxmoxVmInternal struct {
@@ -38,35 +38,42 @@ func (r *mqlProxmoxVm) ensureConfig() {
 	})
 }
 
-func (r *mqlProxmoxVm) cfgStr(key string) string {
+// cfgStr reads a key out of the VM config. A failed config read is reported
+// as an error rather than an empty value: "the key is absent" and "we never
+// got to see the config" are different answers and an audit has to be able to
+// tell them apart.
+func (r *mqlProxmoxVm) cfgStr(key string) (string, error) {
 	r.ensureConfig()
-	if r.vmConfig == nil {
-		return ""
+	if r.configErr != nil {
+		return "", r.configErr
 	}
 	if v, ok := r.vmConfig[key]; ok {
-		return fmt.Sprintf("%v", v)
+		return fmt.Sprintf("%v", v), nil
 	}
-	return ""
+	return "", nil
 }
 
-func (r *mqlProxmoxVm) cfgBool(key string) bool {
+// cfgBool reads a boolean-ish key out of the VM config. PVE writes flags as
+// 1/0, so an absent key means the flag is off. A failed config read is an
+// error, not an off flag.
+func (r *mqlProxmoxVm) cfgBool(key string) (bool, error) {
 	r.ensureConfig()
-	if r.vmConfig == nil {
-		return false
+	if r.configErr != nil {
+		return false, r.configErr
 	}
 	v, ok := r.vmConfig[key]
 	if !ok {
-		return false
+		return false, nil
 	}
 	switch val := v.(type) {
 	case bool:
-		return val
+		return val, nil
 	case float64:
-		return val == 1
+		return val == 1, nil
 	case string:
-		return val == "1" || val == "true"
+		return val == "1" || val == "true", nil
 	}
-	return false
+	return false, nil
 }
 
 func (r *mqlProxmoxVm) config() (any, error) {
@@ -74,32 +81,53 @@ func (r *mqlProxmoxVm) config() (any, error) {
 	return r.vmConfig, r.configErr
 }
 
-func (r *mqlProxmoxVm) osType() (string, error)  { return r.cfgStr("ostype"), nil }
-func (r *mqlProxmoxVm) machine() (string, error) { return r.cfgStr("machine"), nil }
+func (r *mqlProxmoxVm) osType() (string, error)  { return r.cfgStr("ostype") }
+func (r *mqlProxmoxVm) machine() (string, error) { return r.cfgStr("machine") }
 
+// bios falls back to seabios, which is what PVE boots a VM with when the key
+// is absent from the config. That default only holds for a config we actually
+// read; a failed read is reported as an error instead.
 func (r *mqlProxmoxVm) bios() (string, error) {
-	b := r.cfgStr("bios")
+	b, err := r.cfgStr("bios")
+	if err != nil {
+		return "", err
+	}
 	if b == "" {
 		b = "seabios"
 	}
 	return b, nil
 }
 
-func (r *mqlProxmoxVm) bootOrder() (string, error)   { return r.cfgStr("boot"), nil }
-func (r *mqlProxmoxVm) agent() (bool, error)         { return r.cfgBool("agent"), nil }
-func (r *mqlProxmoxVm) protection() (bool, error)    { return r.cfgBool("protection"), nil }
-func (r *mqlProxmoxVm) description() (string, error) { return r.cfgStr("description"), nil }
-func (r *mqlProxmoxVm) lock() (string, error)        { return r.cfgStr("lock"), nil }
-func (r *mqlProxmoxVm) hookscript() (string, error)  { return r.cfgStr("hookscript"), nil }
-func (r *mqlProxmoxVm) args() (string, error)        { return r.cfgStr("args"), nil }
-func (r *mqlProxmoxVm) vga() (string, error)         { return r.cfgStr("vga"), nil }
+func (r *mqlProxmoxVm) bootOrder() (string, error) { return r.cfgStr("boot") }
+
+// agent reads the `agent` line, which is a property string whose positional
+// value is `enabled`: `1`, `enabled=1`, and `1,fstrim_cloned_disks=1` all
+// mean the agent is on. Comparing the whole line against "1" reports every
+// agent configured with an option as disabled.
+func (r *mqlProxmoxVm) agent() (bool, error) {
+	props, found, err := r.cfgProps("agent", "enabled")
+	if err != nil || !found {
+		return false, err
+	}
+	if v := connection.PropBool(props, "enabled"); v != nil {
+		return *v, nil
+	}
+	return false, nil
+}
+
+func (r *mqlProxmoxVm) protection() (bool, error)    { return r.cfgBool("protection") }
+func (r *mqlProxmoxVm) description() (string, error) { return r.cfgStr("description") }
+func (r *mqlProxmoxVm) lock() (string, error)        { return r.cfgStr("lock") }
+func (r *mqlProxmoxVm) hookscript() (string, error)  { return r.cfgStr("hookscript") }
+func (r *mqlProxmoxVm) args() (string, error)        { return r.cfgStr("args") }
+func (r *mqlProxmoxVm) vga() (string, error)         { return r.cfgStr("vga") }
 
 // --- Cloud-init ---
 
-func (r *mqlProxmoxVm) ciuser() (string, error)       { return r.cfgStr("ciuser"), nil }
-func (r *mqlProxmoxVm) sshkeys() (string, error)      { return r.cfgStr("sshkeys"), nil }
-func (r *mqlProxmoxVm) searchDomain() (string, error) { return r.cfgStr("searchdomain"), nil }
-func (r *mqlProxmoxVm) nameserver() (string, error)   { return r.cfgStr("nameserver"), nil }
+func (r *mqlProxmoxVm) ciuser() (string, error)       { return r.cfgStr("ciuser") }
+func (r *mqlProxmoxVm) sshkeys() (string, error)      { return r.cfgStr("sshkeys") }
+func (r *mqlProxmoxVm) searchDomain() (string, error) { return r.cfgStr("searchdomain") }
+func (r *mqlProxmoxVm) nameserver() (string, error)   { return r.cfgStr("nameserver") }
 
 // cipasswordSet only reports whether the key is present in the VM
 // config; the password value itself is intentionally never read or
@@ -107,8 +135,8 @@ func (r *mqlProxmoxVm) nameserver() (string, error)   { return r.cfgStr("nameser
 // password is configured, not on what it is.
 func (r *mqlProxmoxVm) cipasswordSet() (bool, error) {
 	r.ensureConfig()
-	if r.vmConfig == nil {
-		return false, nil
+	if r.configErr != nil {
+		return false, r.configErr
 	}
 	v, ok := r.vmConfig["cipassword"]
 	if !ok {
@@ -126,7 +154,10 @@ func (r *mqlProxmoxVm) cipasswordSet() (bool, error) {
 func (r *mqlProxmoxVm) ciCustom() (any, error) {
 	// `cicustom` is serialized as comma-delimited key=storage:snippets/file
 	// pairs (e.g. `user=local:snippets/u.yaml,network=local:snippets/n.yaml`).
-	val := r.cfgStr("cicustom")
+	val, err := r.cfgStr("cicustom")
+	if err != nil {
+		return nil, err
+	}
 	out := map[string]any{}
 	if val == "" {
 		return out, nil
@@ -180,7 +211,10 @@ func isSerialPortKey(key string) bool {
 }
 
 func (r *mqlProxmoxVm) tags() ([]any, error) {
-	tagStr := r.cfgStr("tags")
+	tagStr, err := r.cfgStr("tags")
+	if err != nil {
+		return nil, err
+	}
 	if tagStr == "" {
 		return []any{}, nil
 	}
@@ -192,8 +226,13 @@ func (r *mqlProxmoxVm) tags() ([]any, error) {
 	return result, nil
 }
 
+// pool resolves the guest's resource pool. Membership is recorded on the pool,
+// not in the guest config, so it is read from the cluster resource listing.
 func (r *mqlProxmoxVm) pool() (*mqlProxmoxPool, error) {
-	id := r.cfgStr("pool")
+	id, err := vmConn(r).GuestPool(int(r.Id.Data))
+	if err != nil {
+		return nil, err
+	}
 	if id == "" {
 		r.Pool.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
@@ -252,8 +291,8 @@ func (r *mqlProxmoxVm) disks() ([]any, error) {
 			continue
 		}
 		disk := parseVMDiskConfig(key, valStr)
-		disk["__id"] = llx.StringData(fmt.Sprintf("proxmox.vm.disk/%d/%s", r.Id.Data, key))
-		res, err := CreateResource(r.MqlRuntime, "proxmox.vm.disk", disk)
+		disk["__id"] = llx.StringData(fmt.Sprintf("proxmox.vm.virtualDisk/%d/%s", r.Id.Data, key))
+		res, err := CreateResource(r.MqlRuntime, "proxmox.vm.virtualDisk", disk)
 		if err != nil {
 			return nil, err
 		}

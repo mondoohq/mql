@@ -4,9 +4,9 @@
 package provider
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/nextdns/connection"
-	"go.mondoo.com/mql/v13/providers/nextdns/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/nextdns/connection"
+	"go.mondoo.com/mql/providers/nextdns/resources"
 )
 
 func (s *Service) discover(conn *connection.NextdnsConnection) (*inventory.Inventory, error) {

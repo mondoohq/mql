@@ -1,0 +1,176 @@
+block
+  target: %%REJECT%%
+  icmp-block-inversion: no
+  interfaces: 
+  sources: 
+  services: 
+  ports: 
+  protocols: 
+  forward: yes
+  masquerade: no
+  forward-ports: 
+  source-ports: 
+  icmp-blocks: 
+  rich rules: 
+
+dmz (active)
+  target: DROP
+  icmp-block-inversion: no
+  interfaces: 
+  sources: 192.0.2.0/24
+  services: ssh
+  ports: 
+  protocols: 
+  forward: yes
+  masquerade: no
+  forward-ports: 
+  source-ports: 
+  icmp-blocks: 
+  rich rules: 
+
+drop
+  target: DROP
+  icmp-block-inversion: no
+  interfaces: 
+  sources: 
+  services: 
+  ports: 
+  protocols: 
+  forward: yes
+  masquerade: no
+  forward-ports: 
+  source-ports: 
+  icmp-blocks: 
+  rich rules: 
+
+external
+  target: default
+  icmp-block-inversion: no
+  interfaces: 
+  sources: 
+  services: ssh
+  ports: 
+  protocols: 
+  forward: yes
+  masquerade: yes
+  forward-ports: 
+  source-ports: 
+  icmp-blocks: 
+  rich rules: 
+
+home
+  target: default
+  icmp-block-inversion: no
+  interfaces: 
+  sources: 
+  services: cockpit dhcpv6-client mdns samba-client ssh
+  ports: 
+  protocols: 
+  forward: yes
+  masquerade: no
+  forward-ports: 
+  source-ports: 
+  icmp-blocks: 
+  rich rules: 
+
+internal
+  target: default
+  icmp-block-inversion: no
+  interfaces: 
+  sources: 
+  services: cockpit dhcpv6-client mdns samba-client ssh
+  ports: 
+  protocols: 
+  forward: yes
+  masquerade: no
+  forward-ports: 
+  source-ports: 
+  icmp-blocks: 
+  rich rules: 
+
+nm-shared
+  target: ACCEPT
+  icmp-block-inversion: no
+  interfaces: 
+  sources: 
+  services: dhcp dns ssh
+  ports: 
+  protocols: icmp ipv6-icmp
+  forward: no
+  masquerade: no
+  forward-ports: 
+  source-ports: 
+  icmp-blocks: 
+  rich rules: 
+	rule priority="32767" reject
+
+public (active)
+  target: default
+  icmp-block-inversion: no
+  interfaces: eth0
+  sources: 
+  services: cockpit dhcpv6-client ssh
+  ports: 22/tcp 8080/tcp 5000-5010/udp
+  protocols: gre
+  forward: yes
+  masquerade: yes
+  forward-ports: 
+	port=2022:proto=tcp:toport=22:toaddr=
+  source-ports: 1234/udp
+  icmp-blocks: timestamp-request
+  rich rules: 
+	rule family="ipv4" source address="198.51.100.0/24" service name="ftp" log prefix="ftp " level="info" limit value="1/m" accept
+	rule family="ipv4" source address="192.0.2.77" port port="8443" protocol="tcp" reject
+	rule source ipset="sweepips" drop
+	rule family="ipv4" source address="10.0.0.0/8" service name="http" accept
+	rule family="ipv4" source NOT address="192.168.0.0/16" port port="9100" protocol="tcp" drop
+	rule family="ipv6" destination address="2001:db8::1" drop
+	rule family="ipv4" destination NOT address="192.0.2.1" service name="dns" log prefix="dnsx" level="warning" drop
+	rule family="ipv4" source address="198.51.100.200" accept limit value="2/m"
+	rule family="ipv4" source address="203.0.113.0/24" reject type="icmp-host-prohibited"
+
+sweep (active)
+  target: default
+  icmp-block-inversion: yes
+  interfaces: 
+  sources: 198.51.100.64/26
+  services: 
+  ports: 
+  protocols: 
+  forward: no
+  masquerade: no
+  forward-ports: 
+  source-ports: 
+  icmp-blocks: 
+  rich rules: 
+
+trusted (active)
+  target: ACCEPT
+  icmp-block-inversion: no
+  interfaces: lo
+  sources: 
+  services: 
+  ports: 
+  protocols: 
+  forward: yes
+  masquerade: no
+  forward-ports: 
+  source-ports: 
+  icmp-blocks: 
+  rich rules: 
+
+work
+  target: default
+  icmp-block-inversion: no
+  interfaces: 
+  sources: 
+  services: cockpit dhcpv6-client ssh
+  ports: 
+  protocols: 
+  forward: yes
+  masquerade: no
+  forward-ports: 
+  source-ports: 
+  icmp-blocks: 
+  rich rules: 
+

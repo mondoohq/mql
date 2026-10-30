@@ -4,9 +4,17 @@
 package connection
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
+
+// Platforms is the static catalog of platforms this provider emits. The build
+// exports it into dist/{{ .ProviderID }}.json so the CLI and generated docs can
+// list what the provider supports. Add an entry here for every platform your
+// asset discovery produces.
+var Platforms = []*plugin.PlatformInfo{
+	{Name: "{{ .ProviderID }}", Title: "{{ .ProviderName }}", Family: []string{"{{ .ProviderID }}"}, Kind: []string{"api"}, Runtime: []string{"{{ .ProviderID }}"}},
+}
 
 type {{ .CamelcaseProviderID }}Connection struct {
 	plugin.Connection

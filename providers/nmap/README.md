@@ -4,17 +4,17 @@ Nmap, short for Network Mapper, is a powerful and versatile open-source tool use
 
 The nmap provider maps primary objects and attributes that nmap uses to store and manage information about scanned targets, discovered hosts, and their associated ports and services.
 
-## Pre-requisites
+## Prerequisites
 
 This provider requires the Nmap tool to be installed on your system. You can download and install Nmap from the official [website](https://nmap.org/download.html).
 
-## Get Started
+## Usage
 
 ```shell
 mql shell nmap
 ```
 
-## Example
+## Examples
 
 *Scan active IP address in network*
 
@@ -84,7 +84,7 @@ nmap.network.hosts: [
 ]
 ```
 
-# Advanced Usage
+## Advanced Usage
 
 Discover all exposed hosts on a network.
 
@@ -98,7 +98,7 @@ Connect to a specific IP address and display all open ports.
 mql shell nmap host 8.8.8.8
 ```
 
-## Verifying the Installation of nmap
+## Verification
 
 To verify the installation of nmap, run the following command:
 

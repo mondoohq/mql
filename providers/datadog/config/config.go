@@ -4,15 +4,21 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/datadog/connection"
-	"go.mondoo.com/mql/v13/providers/datadog/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/datadog/connection"
+	"go.mondoo.com/mql/providers/datadog/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "datadog",
-	ID:              "go.mondoo.com/mql/providers/datadog",
-	Version:         "13.0.13",
+	Name: "datadog",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "datadog",
+	ID:      "go.mondoo.com/mql/providers/datadog",
+	Version: "14.1.6",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       connection.Platforms,
 	Connectors: []plugin.Connector{

@@ -1,0 +1,17 @@
+[
+ {
+  "authentication": "pap,chap,mschap1,mschap2",
+  "certificate": "none",
+  "ciphers": "aes256-sha,aes256-gcm-sha384",
+  "default-profile": "default",
+  "enabled": "true",
+  "keepalive-timeout": "60",
+  "max-mru": "1500",
+  "max-mtu": "1500",
+  "mrru": "disabled",
+  "pfs": "no",
+  "port": "443",
+  "tls-version": "any",
+  "verify-client-certificate": "false"
+ }
+]

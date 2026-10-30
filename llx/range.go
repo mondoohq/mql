@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/types"
 )
 
 // RangePrimitive creates a range primitive from the given
@@ -345,10 +345,7 @@ func (r Range) ExtractString(src string, cfg ExtractConfig) string {
 			writeLine(int(lineIdx+1), lines[lineIdx], &cfg, &res, lineIdx+1 != maxLines)
 
 		case 2:
-			end := maxLines - 1
-			if x[1]-1 < end {
-				end = x[1] - 1
-			}
+			end := min(x[1]-1, maxLines-1)
 			cfg.maxLineDigits = len(strconv.Itoa(int(end)))
 			extractLineRange(lines, lineIdx, end, cfg.MaxLines, &cfg, &res)
 
@@ -367,10 +364,7 @@ func (r Range) ExtractString(src string, cfg ExtractConfig) string {
 				col1idx = x[1] - 1
 			}
 			colMax := uint32(len(line))
-			col2idx := colMax
-			if x[2] < col2idx {
-				col2idx = x[2]
-			}
+			col2idx := min(x[2], colMax)
 
 			res.WriteString(line[col1idx:col2idx])
 			if col2idx >= colMax && lineIdx+1 < maxLines {
@@ -394,10 +388,7 @@ func (r Range) ExtractString(src string, cfg ExtractConfig) string {
 			if x[1] == 0 {
 				continue
 			}
-			end := maxLines - 1
-			if x[1]-1 < end {
-				end = x[1] - 1
-			}
+			end := min(x[1]-1, maxLines-1)
 
 			var col1idx uint32
 			if x[2] != 0 {

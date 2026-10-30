@@ -359,7 +359,7 @@ func (a *AssetUrlSchema) BuildQueries(kvs []KV) []AssetUrlChain {
 		kv := kvs[i]
 		nuNodes := a.keys[kv.Key]
 		nodes = append(nodes, nuNodes...)
-		for j := 0; j < len(nuNodes); j++ {
+		for range nuNodes {
 			values = append(values, kv.Value)
 		}
 	}

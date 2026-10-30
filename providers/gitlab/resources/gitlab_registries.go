@@ -4,13 +4,15 @@
 package resources
 
 import (
+	"net/url"
 	"strconv"
+	"strings"
 
-	gitlab "gitlab.com/gitlab-org/api/client-go"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/gitlab/connection"
-	"go.mondoo.com/mql/v13/types"
+	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/gitlab/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // -----------------------------------------------------------------------------
@@ -23,10 +25,6 @@ func (r *mqlGitlabProjectContainerRegistryRepository) id() (string, error) {
 
 func (t *mqlGitlabProjectContainerRegistryRepositoryTag) id() (string, error) {
 	return "gitlab.project.containerRegistryRepository.tag/" + t.Path.Data + ":" + t.Name.Data, nil
-}
-
-func (p *mqlGitlabProjectContainerExpirationPolicy) id() (string, error) {
-	return "gitlab.project.containerExpirationPolicy/" + strconv.FormatInt(p.containerExpirationProjectID, 10), nil
 }
 
 func (r *mqlGitlabProjectContainerRegistryProtectionRule) id() (string, error) {
@@ -61,6 +59,8 @@ type mqlGitlabProjectContainerExpirationPolicyInternal struct {
 
 type mqlGitlabProjectPackageInternal struct {
 	packageProjectID int64
+	cacheCreatorID   int64
+	cachePipeline    *gitlab.PackagePipeline
 }
 
 // -----------------------------------------------------------------------------
@@ -78,7 +78,13 @@ func (p *mqlGitlabProject) containerRegistryRepositories() ([]any, error) {
 	page := int64(1)
 	for {
 		repos, resp, err := conn.Client().ContainerRegistry.ListProjectRegistryRepositories(projectID,
-			&gitlab.ListProjectRegistryRepositoriesOptions{ListOptions: gitlab.ListOptions{Page: page, PerPage: 50}})
+			&gitlab.ListProjectRegistryRepositoriesOptions{
+				Page: page, PerPage: 50,
+				// GitLab omits tags_count unless it is requested, and the SDK
+				// models it as a plain int64 — without this every repository
+				// reports tagsCount: 0.
+				TagsCount: gitlab.Ptr(true),
+			})
 		if err != nil {
 			if resp != nil && (resp.StatusCode == 403 || resp.StatusCode == 404) {
 				return []any{}, nil
@@ -91,7 +97,7 @@ func (p *mqlGitlabProject) containerRegistryRepositories() ([]any, error) {
 		}
 		page = resp.NextPage
 	}
-	return containerReposToMqlResources(p.MqlRuntime, all, p.Id.Data)
+	return containerReposToMqlResources(p.MqlRuntime, all, p.Id.Data, true)
 }
 
 func (g *mqlGitlabGroup) containerRegistryRepositories() ([]any, error) {
@@ -101,7 +107,7 @@ func (g *mqlGitlabGroup) containerRegistryRepositories() ([]any, error) {
 	page := int64(1)
 	for {
 		repos, resp, err := conn.Client().ContainerRegistry.ListGroupRegistryRepositories(groupID,
-			&gitlab.ListGroupRegistryRepositoriesOptions{ListOptions: gitlab.ListOptions{Page: page, PerPage: 50}})
+			&gitlab.ListGroupRegistryRepositoriesOptions{Page: page, PerPage: 50})
 		if err != nil {
 			if resp != nil && (resp.StatusCode == 403 || resp.StatusCode == 404) {
 				return []any{}, nil
@@ -114,14 +120,14 @@ func (g *mqlGitlabGroup) containerRegistryRepositories() ([]any, error) {
 		}
 		page = resp.NextPage
 	}
-	return containerReposToMqlResources(g.MqlRuntime, all, 0)
+	return containerReposToMqlResources(g.MqlRuntime, all, 0, false)
 }
 
 // containerReposToMqlResources maps SDK RegistryRepository values to MQL
 // resources. When parentProjectID is 0 (group rollup), the per-row ProjectID
 // is used; otherwise the parent project's ID overrides — both are correct
 // since the SDK populates ProjectID consistently.
-func containerReposToMqlResources(runtime *plugin.Runtime, repos []*gitlab.RegistryRepository, parentProjectID int64) ([]any, error) {
+func containerReposToMqlResources(runtime *plugin.Runtime, repos []*gitlab.RegistryRepository, parentProjectID int64, hasTagsCount bool) ([]any, error) {
 	out := make([]any, 0, len(repos))
 	for _, r := range repos {
 		ownerProjectID := parentProjectID
@@ -132,6 +138,14 @@ func containerReposToMqlResources(runtime *plugin.Runtime, repos []*gitlab.Regis
 		if r.Status != nil {
 			status = string(*r.Status)
 		}
+		// The group-level list endpoint has no tags_count parameter in the
+		// SDK's options struct, so we cannot ask for the value there. Report
+		// null rather than the decoded zero, which would claim every
+		// repository in the group holds no tags.
+		tagsCount := llx.NilData
+		if hasTagsCount {
+			tagsCount = llx.IntData(r.TagsCount)
+		}
 		args := map[string]*llx.RawData{
 			"id":                     llx.IntData(r.ID),
 			"name":                   llx.StringData(r.Name),
@@ -139,7 +153,7 @@ func containerReposToMqlResources(runtime *plugin.Runtime, repos []*gitlab.Regis
 			"location":               llx.StringData(r.Location),
 			"createdAt":              llx.TimeDataPtr(r.CreatedAt),
 			"cleanupPolicyStartedAt": llx.TimeDataPtr(r.CleanupPolicyStartedAt),
-			"tagsCount":              llx.IntData(r.TagsCount),
+			"tagsCount":              tagsCount,
 			"status":                 llx.StringData(status),
 		}
 		res, err := CreateResource(runtime, "gitlab.project.containerRegistryRepository", args)
@@ -163,7 +177,7 @@ func (r *mqlGitlabProjectContainerRegistryRepository) tags() ([]any, error) {
 	var all []*gitlab.RegistryRepositoryTag
 	for {
 		tags, resp, err := conn.Client().ContainerRegistry.ListRegistryRepositoryTags(projectID, repoID,
-			&gitlab.ListRegistryRepositoryTagsOptions{ListOptions: gitlab.ListOptions{Page: page, PerPage: 100}})
+			&gitlab.ListRegistryRepositoryTagsOptions{Page: page, PerPage: 100})
 		if err != nil {
 			if resp != nil && (resp.StatusCode == 403 || resp.StatusCode == 404) {
 				return []any{}, nil
@@ -235,6 +249,11 @@ func (p *mqlGitlabProject) containerExpirationPolicy() (*mqlGitlabProjectContain
 		return nil, nil
 	}
 	args := map[string]*llx.RawData{
+		// Pass the key explicitly rather than letting id() derive it from
+		// containerExpirationProjectID: that field is assigned after
+		// CreateResource returns, so id() always saw 0 and every project's
+		// policy collapsed onto one cache entry.
+		"__id":            llx.StringData(projectScopedID("gitlab.project.containerExpirationPolicy", p.Id.Data)),
 		"enabled":         llx.BoolData(policy.Enabled),
 		"cadence":         llx.StringData(policy.Cadence),
 		"keepN":           llx.IntData(int64(policy.KeepN)),
@@ -310,7 +329,7 @@ func (p *mqlGitlabProject) packages() ([]any, error) {
 	var all []*gitlab.Package
 	for {
 		pkgs, resp, err := conn.Client().Packages.ListProjectPackages(projectID,
-			&gitlab.ListProjectPackagesOptions{ListOptions: gitlab.ListOptions{Page: page, PerPage: 100}})
+			&gitlab.ListProjectPackagesOptions{Page: page, PerPage: 100})
 		if err != nil {
 			if resp != nil && (resp.StatusCode == 403 || resp.StatusCode == 404) {
 				return []any{}, nil
@@ -333,7 +352,7 @@ func (g *mqlGitlabGroup) packages() ([]any, error) {
 	var all []*gitlab.GroupPackage
 	for {
 		pkgs, resp, err := conn.Client().Packages.ListGroupPackages(groupID,
-			&gitlab.ListGroupPackagesOptions{ListOptions: gitlab.ListOptions{Page: page, PerPage: 100}})
+			&gitlab.ListGroupPackagesOptions{Page: page, PerPage: 100})
 		if err != nil {
 			if resp != nil && (resp.StatusCode == 403 || resp.StatusCode == 404) {
 				return []any{}, nil
@@ -397,7 +416,95 @@ func buildMqlPackage(runtime *plugin.Runtime, pkg *gitlab.Package, projectID int
 	}
 	mqlPkg := res.(*mqlGitlabProjectPackage)
 	mqlPkg.packageProjectID = projectID
+	mqlPkg.cacheCreatorID, mqlPkg.cachePipeline = packageProvenance(pkg)
 	return mqlPkg, nil
+}
+
+// packageProvenance returns the id of the user who published the package and
+// the pipeline that last built it. GitLab sends creator_id: null when no
+// creator is recorded and omits pipeline when the package was not built in
+// CI/CD or the caller cannot read pipelines; the ids then come back as 0 and
+// the pipeline as nil. The deprecated pipelines array is always empty and is
+// not consulted.
+func packageProvenance(pkg *gitlab.Package) (creatorID int64, pipeline *gitlab.PackagePipeline) {
+	if pkg == nil {
+		return 0, nil
+	}
+	if pkg.Pipeline != nil && pkg.Pipeline.ID > 0 {
+		pipeline = pkg.Pipeline
+	}
+	return pkg.CreatorID, pipeline
+}
+
+// pipelineProjectPath extracts the project's full path from a pipeline web
+// URL such as https://gitlab.example.com/group/sub/proj/-/pipelines/42. A job
+// in one project can publish into another project's registry, so the
+// pipeline's project is not necessarily the package's project. Returns ""
+// when the URL does not have that shape.
+func pipelineProjectPath(webURL string) string {
+	u, err := url.Parse(webURL)
+	if err != nil {
+		return ""
+	}
+	path := strings.Trim(u.Path, "/")
+	idx := strings.Index(path, "/-/pipelines/")
+	if idx <= 0 {
+		return ""
+	}
+	return path[:idx]
+}
+
+// creator returns the user who published the package, or null when GitLab
+// does not record one.
+func (p *mqlGitlabProjectPackage) creator() (*mqlGitlabUser, error) {
+	if p.cacheCreatorID <= 0 {
+		p.Creator.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(p.MqlRuntime, "gitlab.user", map[string]*llx.RawData{
+		"id": llx.IntData(p.cacheCreatorID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGitlabUser), nil
+}
+
+// pipeline returns the pipeline that most recently built the package. The
+// package payload carries only a subset of the pipeline's fields (no iid,
+// source, or name), so the full pipeline is fetched to avoid caching a
+// partial gitlab.project.pipeline under the same id that project.pipelines
+// would reuse. The pipeline is looked up in the project named by its web URL,
+// falling back to the package's project.
+func (p *mqlGitlabProjectPackage) pipeline() (*mqlGitlabProjectPipeline, error) {
+	if p.cachePipeline == nil {
+		p.Pipeline.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	var pid any = p.packageProjectID
+	if path := pipelineProjectPath(p.cachePipeline.WebURL); path != "" {
+		pid = path
+	} else if p.packageProjectID <= 0 {
+		p.Pipeline.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	conn := p.MqlRuntime.Connection.(*connection.GitLabConnection)
+	pl, resp, err := conn.Client().Pipelines.GetPipeline(pid, p.cachePipeline.ID)
+	// An instance served under a relative URL root prefixes the path, so a
+	// 404 on the URL-derived project retries against the package's project.
+	if err != nil && resp != nil && resp.StatusCode == 404 && p.packageProjectID > 0 {
+		if _, isPath := pid.(string); isPath {
+			pl, _, err = conn.Client().Pipelines.GetPipeline(p.packageProjectID, p.cachePipeline.ID)
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	if pl == nil {
+		p.Pipeline.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return newMqlGitlabPipelineFromDetail(p.MqlRuntime, pl)
 }
 
 func (p *mqlGitlabProjectPackage) project() (*mqlGitlabProject, error) {
@@ -426,7 +533,7 @@ func (p *mqlGitlabProjectPackage) files() ([]any, error) {
 	var all []*gitlab.PackageFile
 	for {
 		files, resp, err := conn.Client().Packages.ListPackageFiles(projectID, packageID,
-			&gitlab.ListPackageFilesOptions{ListOptions: gitlab.ListOptions{Page: page, PerPage: 100}})
+			&gitlab.ListPackageFilesOptions{Page: page, PerPage: 100})
 		if err != nil {
 			if resp != nil && (resp.StatusCode == 403 || resp.StatusCode == 404) {
 				return []any{}, nil
@@ -480,7 +587,7 @@ func (p *mqlGitlabProject) packageProtectionRules() ([]any, error) {
 	projectID := int(p.Id.Data)
 
 	var all []*gitlab.PackageProtectionRule
-	opts := &gitlab.ListPackageProtectionRulesOptions{ListOptions: gitlab.ListOptions{PerPage: 100}}
+	opts := &gitlab.ListPackageProtectionRulesOptions{PerPage: 100}
 	var nextOpts []gitlab.RequestOptionFunc
 	for {
 		rules, resp, err := conn.Client().ProtectedPackages.ListPackageProtectionRules(projectID, opts, nextOpts...)

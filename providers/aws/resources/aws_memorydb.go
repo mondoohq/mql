@@ -13,12 +13,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/memorydb"
 	memorydb_types "github.com/aws/aws-sdk-go-v2/service/memorydb/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsMemorydb) id() (string, error) {
@@ -98,8 +98,8 @@ func initAwsMemorydbCluster(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	// During a discovered-asset scan the resource is queried with no args; recover
 	// the cluster's region and name from the ARN carried on the asset.
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformMemorydbCluster); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 	if args["arn"] == nil {
@@ -107,6 +107,11 @@ func initAwsMemorydbCluster(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	}
 
 	arnVal := args["arn"].Value.(string)
+
+	if cached := cachedByArn(runtime, ResourceAwsMemorydbCluster, arnVal); cached != nil {
+		return args, cached, nil
+	}
+
 	parsed, err := arn.Parse(arnVal)
 	if err != nil {
 		return nil, nil, err
@@ -372,6 +377,18 @@ func newMqlAwsMemorydbUser(runtime *plugin.Runtime, region string, user memorydb
 	if err != nil {
 		return nil, err
 	}
+	mqlAuth := llx.NilData
+	if user.Authentication != nil {
+		authRes, err := CreateResource(runtime, "aws.memorydb.authentication", map[string]*llx.RawData{
+			"__id":          llx.StringData(convert.ToValue(user.ARN) + "/authentication"),
+			"type":          llx.StringData(string(user.Authentication.Type)),
+			"passwordCount": llx.IntData(int64(convert.ToValue(user.Authentication.PasswordCount))),
+		})
+		if err != nil {
+			return nil, err
+		}
+		mqlAuth = llx.ResourceData(authRes, "aws.memorydb.authentication")
+	}
 
 	resource, err := CreateResource(runtime, "aws.memorydb.user",
 		map[string]*llx.RawData{
@@ -383,6 +400,7 @@ func newMqlAwsMemorydbUser(runtime *plugin.Runtime, region string, user memorydb
 			"aclNames":             llx.ArrayData(convert.SliceAnyToInterface(user.ACLNames), types.String),
 			"minimumEngineVersion": llx.StringDataPtr(user.MinimumEngineVersion),
 			"authentication":       llx.DictData(auth),
+			"authenticationMode":   mqlAuth,
 			"region":               llx.StringData(region),
 		})
 	if err != nil {

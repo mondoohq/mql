@@ -12,13 +12,13 @@ import (
 	"strconv"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/vllm/connection"
-	"go.mondoo.com/mql/v13/providers/vllm/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/vllm/connection"
+	"go.mondoo.com/mql/providers/vllm/resources"
 )
 
 const (
@@ -157,6 +157,14 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.VllmConnection
 		TechnologyUrlSegments: []string{"ai", "vllm", "server"},
 	}
 	PlatformByName("vllm-server").Apply(asset.Platform)
+
+	// `asset.version` is the canonical, cross-provider way to ask what version
+	// something is, and every root carries `asset` (ADR 031). A server that
+	// does not answer leaves it empty rather than failing the connect: not
+	// knowing the version is not a reason to be unable to scan.
+	if version, err := conn.Version(context.Background()); err == nil {
+		asset.Platform.Version = version
+	}
 
 	asset.Fqdn = conn.Conf.Host
 	asset.PlatformIds = []string{"//platformid.api.mondoo.app/runtime/vllm/server/" + conn.BaseURL()}

@@ -5,8 +5,8 @@ package main
 import (
 	"os"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/tailscale/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/tailscale/provider"
 )
 
 func main() {

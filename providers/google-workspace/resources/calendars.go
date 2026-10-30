@@ -4,8 +4,8 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/google-workspace/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/google-workspace/connection"
 	"google.golang.org/api/calendar/v3"
 )
 
@@ -56,7 +56,10 @@ func (g *mqlGoogleworkspace) calendars() ([]any, error) {
 
 func (g *mqlGoogleworkspaceCalendar) acl() ([]any, error) {
 	conn := g.MqlRuntime.Connection.(*connection.GoogleWorkspaceConnection)
-	calendarService, err := calendarService(conn, calendar.CalendarScope)
+	// acl.list accepts calendar, calendar.acls or calendar.acls.readonly. Ask
+	// for the read-only one so the domain-wide delegation grant never needs
+	// read/write access to every calendar in the domain.
+	calendarService, err := calendarService(conn, calendar.CalendarAclsReadonlyScope)
 	if err != nil {
 		return nil, err
 	}

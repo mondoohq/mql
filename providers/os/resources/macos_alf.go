@@ -7,16 +7,26 @@ import (
 	"errors"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/plist"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/plist"
+	"go.mondoo.com/mql/types"
 )
 
+// alfPlistLocations holds the ALF preferences file, which is where the
+// firewall settings were stored through macOS 14.
+//
+// /usr/libexec/ApplicationFirewall/com.apple.alf.plist is deliberately NOT
+// listed. That file is the factory-default template the OS ships with, not
+// live state: it is owned by root inside a SIP-protected directory and always
+// reads globalstate 0 / stealthenabled 0. Recent macOS releases no longer
+// write /Library/Preferences/com.apple.alf.plist at all, so treating the
+// template as a fallback reported the firewall as disabled with stealth mode
+// off on every such machine, whatever the firewall was actually doing.
+// macos.firewall reads the live state from socketfilterfw instead.
 var alfPlistLocations = []string{
 	"/Library/Preferences/com.apple.alf.plist",
-	"/usr/libexec/ApplicationFirewall/com.apple.alf.plist",
 }
 
 func initMacosAlf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {

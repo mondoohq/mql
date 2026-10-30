@@ -14,16 +14,19 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/digitalocean/godo"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 	"golang.org/x/oauth2"
 )
 
 type DigitaloceanConnection struct {
 	plugin.Connection
-	Conf            *inventory.Config
-	asset           *inventory.Asset
+	Conf  *inventory.Config
+	asset *inventory.Asset
+	// Filters narrows which objects the listers return, and therefore which
+	// objects discovery turns into assets.
+	Filters         DiscoveryFilters
 	client          *godo.Client
 	spacesKey       string
 	spacesSecret    string
@@ -72,6 +75,8 @@ func NewDigitaloceanConnection(id uint32, asset *inventory.Asset, conf *inventor
 	tokenSource := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
 	oauthClient := oauth2.NewClient(context.Background(), tokenSource)
 	conn.client = godo.NewClient(oauthClient)
+
+	conn.Filters = DiscoveryFiltersFromOpts(conf.Options)
 
 	conn.spacesKey = os.Getenv("DIGITALOCEAN_SPACES_KEY")
 	conn.spacesSecret = os.Getenv("DIGITALOCEAN_SPACES_SECRET")

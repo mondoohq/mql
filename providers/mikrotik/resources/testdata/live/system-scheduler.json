@@ -1,0 +1,15 @@
+[
+ {
+  ".id": "*0",
+  "disabled": "false",
+  "interval": "1d",
+  "name": "lab-nightly",
+  "next-run": "2026-08-28 17:30:27",
+  "on-event": "/system/script run lab-backup",
+  "owner": "admin",
+  "policy": "ftp,reboot,read,write,policy,test,password,sniff,sensitive,romon",
+  "run-count": "0",
+  "start-date": "2026-08-27",
+  "start-time": "17:30:27"
+ }
+]

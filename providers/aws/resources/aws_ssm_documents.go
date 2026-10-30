@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,12 +15,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	mqlTypes "go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	mqlTypes "go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsSsm) documents() ([]any, error) {
@@ -222,11 +223,7 @@ func (a *mqlAwsSsmDocument) permissions() ([]any, error) {
 }
 
 func ssmTagsToMap(tags []types.Tag) map[string]string {
-	m := make(map[string]string, len(tags))
-	for _, t := range tags {
-		m[convert.ToValue(t.Key)] = convert.ToValue(t.Value)
-	}
-	return m
+	return tagsToStringMap(tags, func(t types.Tag) *string { return t.Key }, func(t types.Tag) *string { return t.Value })
 }
 
 func (a *mqlAwsSsm) patchBaselines() ([]any, error) {
@@ -246,6 +243,22 @@ func (a *mqlAwsSsm) patchBaselines() ([]any, error) {
 }
 
 const ssmPatchBaselineArnPattern = "arn:aws:ssm:%s:%s:patchbaseline/%s"
+
+// ssmPatchBaselineArn builds the ARN for a patch baseline.
+//
+// AWS-managed baselines - the ones every account has, and which an unfiltered
+// DescribePatchBaselines returns - report their BaselineId as a full ARN owned by
+// an AWS service account, not as a bare pb-* id. Wrapping that in the pattern
+// produced a doubled ARN that also claimed the caller's account owned an
+// AWS-owned baseline, and since id() returns Arn.Data it became the cache key
+// too. GetPatchBaseline documents the full ARN as the correct input for these,
+// so pass it through untouched.
+func ssmPatchBaselineArn(region, accountID, baselineID string) string {
+	if strings.HasPrefix(baselineID, "arn:") {
+		return baselineID
+	}
+	return fmt.Sprintf(ssmPatchBaselineArnPattern, region, accountID, baselineID)
+}
 
 func (a *mqlAwsSsm) getPatchBaselines(conn *connection.AwsConnection) []*jobpool.Job {
 	tasks := make([]*jobpool.Job, 0)
@@ -271,7 +284,7 @@ func (a *mqlAwsSsm) getPatchBaselines(conn *connection.AwsConnection) []*jobpool
 				}
 
 				for _, pb := range resp.BaselineIdentities {
-					arn := fmt.Sprintf(ssmPatchBaselineArnPattern, region, conn.AccountId(), convert.ToValue(pb.BaselineId))
+					arn := ssmPatchBaselineArn(region, conn.AccountId(), convert.ToValue(pb.BaselineId))
 
 					mqlPB, err := CreateResource(a.MqlRuntime, "aws.ssm.patchBaseline",
 						map[string]*llx.RawData{
@@ -306,6 +319,40 @@ func (a *mqlAwsSsmPatchBaseline) id() (string, error) {
 	return a.Arn.Data, nil
 }
 
+// ssmPatchApprovalRules maps a baseline's approval rules into dicts.
+//
+// Every value has to be JSON-native: dict2primitive rejects a *int32 or a
+// *bool outright, so leaving the SDK pointers in place fails the whole field
+// at query time rather than degrading it.
+func ssmPatchApprovalRules(rules *types.PatchRuleGroup) []any {
+	approvalRules := []any{}
+	if rules == nil {
+		return approvalRules
+	}
+	for _, rule := range rules.PatchRules {
+		patchFilters := []any{}
+		if rule.PatchFilterGroup != nil {
+			for _, pf := range rule.PatchFilterGroup.PatchFilters {
+				vals := make([]any, 0, len(pf.Values))
+				for _, v := range pf.Values {
+					vals = append(vals, v)
+				}
+				patchFilters = append(patchFilters, map[string]any{
+					"key":    string(pf.Key),
+					"values": vals,
+				})
+			}
+		}
+		approvalRules = append(approvalRules, map[string]any{
+			"approveAfterDays":  int64(convert.ToValue(rule.ApproveAfterDays)),
+			"complianceLevel":   string(rule.ComplianceLevel),
+			"enableNonSecurity": convert.ToValue(rule.EnableNonSecurity),
+			"patchFilters":      patchFilters,
+		})
+	}
+	return approvalRules
+}
+
 func (a *mqlAwsSsmPatchBaseline) fetchDetails() error {
 	if a.fetched {
 		return a.fetchErr
@@ -330,31 +377,7 @@ func (a *mqlAwsSsmPatchBaseline) fetchDetails() error {
 		return err
 	}
 
-	// Approval rules
-	approvalRules := []any{}
-	if resp.ApprovalRules != nil {
-		for _, rule := range resp.ApprovalRules.PatchRules {
-			patchFilters := []any{}
-			if rule.PatchFilterGroup != nil {
-				for _, pf := range rule.PatchFilterGroup.PatchFilters {
-					vals := make([]any, 0, len(pf.Values))
-					for _, v := range pf.Values {
-						vals = append(vals, v)
-					}
-					patchFilters = append(patchFilters, map[string]any{
-						"key":    string(pf.Key),
-						"values": vals,
-					})
-				}
-			}
-			approvalRules = append(approvalRules, map[string]any{
-				"approveAfterDays":  rule.ApproveAfterDays,
-				"complianceLevel":   string(rule.ComplianceLevel),
-				"enableNonSecurity": rule.EnableNonSecurity,
-				"patchFilters":      patchFilters,
-			})
-		}
-	}
+	approvalRules := ssmPatchApprovalRules(resp.ApprovalRules)
 
 	// Global filters
 	globalFilters := []any{}
@@ -394,6 +417,8 @@ func (a *mqlAwsSsmPatchBaseline) fetchDetails() error {
 	a.Sources = plugin.TValue[[]any]{Data: sources, State: plugin.StateIsSet}
 	a.CreatedAt = plugin.TValue[*time.Time]{Data: resp.CreatedDate, State: plugin.StateIsSet}
 	a.ModifiedAt = plugin.TValue[*time.Time]{Data: resp.ModifiedDate, State: plugin.StateIsSet}
+	a.ApprovedPatchesEnableNonSecurity = plugin.TValue[bool]{Data: convert.ToValue(resp.ApprovedPatchesEnableNonSecurity), State: plugin.StateIsSet}
+	a.AvailableSecurityUpdatesComplianceStatus = plugin.TValue[string]{Data: string(resp.AvailableSecurityUpdatesComplianceStatus), State: plugin.StateIsSet}
 
 	a.fetched = true
 	return nil
@@ -435,6 +460,14 @@ func (a *mqlAwsSsmPatchBaseline) modifiedAt() (*time.Time, error) {
 	return nil, a.fetchDetails()
 }
 
+func (a *mqlAwsSsmPatchBaseline) approvedPatchesEnableNonSecurity() (bool, error) {
+	return false, a.fetchDetails()
+}
+
+func (a *mqlAwsSsmPatchBaseline) availableSecurityUpdatesComplianceStatus() (string, error) {
+	return "", a.fetchDetails()
+}
+
 func (a *mqlAwsSsmPatchBaseline) tags() (map[string]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	ssmsvc := conn.Ssm(a.Region.Data)
@@ -447,7 +480,7 @@ func (a *mqlAwsSsmPatchBaseline) tags() (map[string]any, error) {
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return nil, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
@@ -557,7 +590,7 @@ func (a *mqlAwsSsmMaintenanceWindow) tags() (map[string]any, error) {
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return nil, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
@@ -626,7 +659,6 @@ func (a *mqlAwsSsm) getAssociations(conn *connection.AwsConnection) []*jobpool.J
 							"name":              llx.StringDataPtr(assoc.Name),
 							"associationName":   llx.StringDataPtr(assoc.AssociationName),
 							"region":            llx.StringData(region),
-							"documentVersion":   llx.StringDataPtr(assoc.DocumentVersion),
 							"instanceId":        llx.StringDataPtr(assoc.InstanceId),
 							"targets":           llx.ArrayData(targets, mqlTypes.Dict),
 							"schedule":          llx.StringDataPtr(assoc.ScheduleExpression),
@@ -636,6 +668,7 @@ func (a *mqlAwsSsm) getAssociations(conn *connection.AwsConnection) []*jobpool.J
 					if err != nil {
 						return nil, err
 					}
+					mqlAssoc.(*mqlAwsSsmAssociation).cacheDocumentVersion = assoc.DocumentVersion
 					res = append(res, mqlAssoc)
 				}
 			}
@@ -663,6 +696,20 @@ func assocTargetsToDict(in []types.Target) []any {
 
 func (a *mqlAwsSsmAssociation) id() (string, error) {
 	return a.Region.Data + "/" + a.AssociationId.Data, nil
+}
+
+func severitySummaryToDict(s *types.SeveritySummary) map[string]any {
+	if s == nil {
+		return nil
+	}
+	return map[string]any{
+		"criticalCount":      int64(s.CriticalCount),
+		"highCount":          int64(s.HighCount),
+		"mediumCount":        int64(s.MediumCount),
+		"lowCount":           int64(s.LowCount),
+		"informationalCount": int64(s.InformationalCount),
+		"unspecifiedCount":   int64(s.UnspecifiedCount),
+	}
 }
 
 func (a *mqlAwsSsm) complianceSummaries() ([]any, error) {
@@ -708,11 +755,14 @@ func (a *mqlAwsSsm) getComplianceSummaries(conn *connection.AwsConnection) []*jo
 
 				for _, item := range resp.ResourceComplianceSummaryItems {
 					var compliantCount, nonCompliantCount int64
+					var compliantSeverity, nonCompliantSeverity map[string]any
 					if item.CompliantSummary != nil {
 						compliantCount = int64(item.CompliantSummary.CompliantCount)
+						compliantSeverity = severitySummaryToDict(item.CompliantSummary.SeveritySummary)
 					}
 					if item.NonCompliantSummary != nil {
 						nonCompliantCount = int64(item.NonCompliantSummary.NonCompliantCount)
+						nonCompliantSeverity = severitySummaryToDict(item.NonCompliantSummary.SeveritySummary)
 					}
 
 					var execSummary map[string]any
@@ -726,14 +776,17 @@ func (a *mqlAwsSsm) getComplianceSummaries(conn *connection.AwsConnection) []*jo
 
 					mqlItem, err := CreateResource(a.MqlRuntime, "aws.ssm.complianceSummary",
 						map[string]*llx.RawData{
-							"complianceType":    llx.StringDataPtr(item.ComplianceType),
-							"resourceId":        llx.StringDataPtr(item.ResourceId),
-							"resourceType":      llx.StringDataPtr(item.ResourceType),
-							"region":            llx.StringData(region),
-							"status":            llx.StringData(string(item.Status)),
-							"compliantCount":    llx.IntData(compliantCount),
-							"nonCompliantCount": llx.IntData(nonCompliantCount),
-							"executionSummary":  llx.DictData(execSummary),
+							"complianceType":              llx.StringDataPtr(item.ComplianceType),
+							"resourceId":                  llx.StringDataPtr(item.ResourceId),
+							"resourceType":                llx.StringDataPtr(item.ResourceType),
+							"region":                      llx.StringData(region),
+							"status":                      llx.StringData(string(item.Status)),
+							"compliantCount":              llx.IntData(compliantCount),
+							"nonCompliantCount":           llx.IntData(nonCompliantCount),
+							"overallSeverity":             llx.StringData(string(item.OverallSeverity)),
+							"compliantSeveritySummary":    llx.DictData(compliantSeverity),
+							"nonCompliantSeveritySummary": llx.DictData(nonCompliantSeverity),
+							"executionSummary":            llx.DictData(execSummary),
 						})
 					if err != nil {
 						return nil, err

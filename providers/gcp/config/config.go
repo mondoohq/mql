@@ -4,22 +4,25 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/providers/gcp/connection/gcpinstancesnapshot"
-	"go.mondoo.com/mql/v13/providers/gcp/provider"
-	"go.mondoo.com/mql/v13/providers/gcp/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/providers/gcp/connection/gcpinstancesnapshot"
+	"go.mondoo.com/mql/providers/gcp/provider"
+	"go.mondoo.com/mql/providers/gcp/resources"
 )
 
 var Config = plugin.Provider{
 	Name:    "gcp",
-	ID:      "go.mondoo.com/cnquery/v9/providers/gcp",
-	Version: "13.29.0",
+	ID:      "go.mondoo.com/mql/providers/gcp",
+	Version: "14.7.0",
 	ConnectionTypes: []string{
 		provider.ConnectionType,
 		string(gcpinstancesnapshot.SnapshotConnectionType),
 	},
+	// Quotas are per project, and an organization scan spreads its calls over
+	// separate projects.
+	DefaultParallelism: 8,
 	Connectors: []plugin.Connector{
 		{
 			Name:  "gcp",
@@ -37,6 +40,13 @@ Note:
 Examples with the GCP project configured:
   cnspec scan gcp folder <FOLDER-ID>
   cnspec shell gcp project
+
+Examples for a single Compute Engine instance or snapshot:
+  cnspec scan gcp instance <INSTANCE-NAME> --project-id <PROJECT-ID> --zone <ZONE>
+  cnspec scan gcp snapshot <SNAPSHOT-NAME> --project-id <PROJECT-ID>
+
+Example for Google Container Registry:
+  cnspec scan gcp gcr <PROJECT-ID>
 `,
 			MaxArgs: 2,
 			Discovery: []string{
@@ -73,6 +83,11 @@ Examples with the GCP project configured:
 				resources.DiscoverSpannerInstances,
 				resources.DiscoverFirestoreDatabases,
 				resources.DiscoverBigtableInstances,
+				resources.DiscoverVertexAIEndpoints,
+				resources.DiscoverVertexAIPipelineJobs,
+				resources.DiscoverVertexAINotebookRuntimeTemplates,
+				resources.DiscoverModelArmorTemplates,
+				resources.DiscoverDatastreamProfiles,
 			},
 			Flags: []plugin.Flag{
 				{
@@ -104,6 +119,12 @@ Examples with the GCP project configured:
 					Type:    plugin.FlagType_Bool,
 					Default: "false",
 					Desc:    "[gcp snapshot, gcp instance] create a new snapshot instead of using the latest available snapshot (only used for instance)",
+				},
+				{
+					Long:    "filters",
+					Type:    plugin.FlagType_KeyValue,
+					Default: "",
+					Desc:    "Filter discovered resources, e.g., --filters storage:bucket-names=my-bucket --filters storage:exclude:bucket-names=noisy-bucket --filters propagate-project-labels=true",
 				},
 			},
 		},

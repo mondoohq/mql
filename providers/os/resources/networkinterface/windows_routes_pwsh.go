@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -19,25 +19,49 @@ const (
 	addressFamilyIPv6 = 23 // AF_INET6
 )
 
+// listViaCommands asks the target for its routes: Get-NetRoute, then netstat.
+// It is the path for every connection except a local one on Windows.
+func (w *windowsRouteDetector) listViaCommands() ([]Route, error) {
+	routes, err := w.detectWindowsRoutesViaPowerShell()
+	if err == nil && len(routes) > 0 {
+		return routes, nil
+	}
+	log.Debug().Err(err).Int("routeCount", len(routes)).Msg("PowerShell Get-NetRoute failed or returned no routes, trying netstat")
+	return w.detectWindowsRoutesViaNetstat()
+}
+
+// getNetRouteScript lists the routes with the first address of each route's
+// interface and address family. The addresses are read once into a table: a
+// Get-NetIPAddress per route (a CIM query each) made the script about 18x
+// slower on a host with 26 routes. The list is passed with -InputObject so a
+// host with one route still gets an array. Both cmdlets key the table with
+// [int]$_.AddressFamily, so the keys match whether a PowerShell version
+// returns the family as the CIM enum or as its number.
+const getNetRouteScript = `$addrs = @{}
+Get-NetIPAddress -ErrorAction SilentlyContinue | ForEach-Object {
+	$key = "$($_.InterfaceIndex)|$([int]$_.AddressFamily)"
+	if (-not $addrs.ContainsKey($key)) { $addrs[$key] = $_.IPAddress }
+}
+$routes = @(Get-NetRoute | ForEach-Object {
+	[PSCustomObject]@{
+		DestinationPrefix = $_.DestinationPrefix
+		NextHop = $_.NextHop
+		InterfaceIndex = $_.InterfaceIndex
+		InterfaceAlias = $_.InterfaceAlias
+		RouteMetric = $_.RouteMetric
+		AddressFamily = [int]$_.AddressFamily
+		InterfaceIP = $addrs["$($_.InterfaceIndex)|$([int]$_.AddressFamily)"]
+	}
+})
+ConvertTo-Json -InputObject $routes`
+
 // detectWindowsRoutesViaPowerShell uses PowerShell Get-NetRoute command
 func (w *windowsRouteDetector) detectWindowsRoutesViaPowerShell() ([]Route, error) {
-	cmd := `Get-NetRoute | ForEach-Object {
-		$route = $_
-		$ifIndex = $route.InterfaceIndex
-		$ifIP = (Get-NetIPAddress -InterfaceIndex $ifIndex -AddressFamily $route.AddressFamily -ErrorAction SilentlyContinue | Select-Object -First 1).IPAddress
-		[PSCustomObject]@{
-			DestinationPrefix = $route.DestinationPrefix
-			NextHop = $route.NextHop
-			InterfaceIndex = $route.InterfaceIndex
-			InterfaceAlias = $route.InterfaceAlias
-			RouteMetric = $route.RouteMetric
-			AddressFamily = $route.AddressFamily
-			InterfaceIP = $ifIP
-		}
-	} | ConvertTo-Json`
-	command := powershell.Encode(cmd)
-
-	output, err := runCommand(w.conn, w.platform, command)
+	cmd := getNetRouteScript
+	// runCommand encodes the script for a Windows target; encoding it here
+	// too sent a PowerShell that only started another encoded PowerShell,
+	// which failed over SSH.
+	output, err := runCommand(w.conn, w.platform, cmd)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get routes via PowerShell Get-NetRoute")
 	}
@@ -124,9 +148,10 @@ func (w *windowsRouteDetector) detectWindowsRoutesViaNetstat() ([]Route, error) 
 	}
 
 	cmd := `$a = netstat -rn; $a[8..$a.count] | ConvertFrom-String | select p1,p2,p3,p4,p5,p6 | ConvertTo-Json`
-	command := powershell.Encode(cmd)
-
-	output, err := runCommand(w.conn, w.platform, command)
+	// runCommand encodes the script for a Windows target; encoding it here
+	// too sent a PowerShell that only started another encoded PowerShell,
+	// which failed over SSH.
+	output, err := runCommand(w.conn, w.platform, cmd)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get routes via netstat")
 	}
@@ -137,9 +162,10 @@ func (w *windowsRouteDetector) detectWindowsRoutesViaNetstat() ([]Route, error) 
 // getWindowsIPToInterfaceMap uses PowerShell Get-NetIPAddress to create an IP -> Interface Name mapping
 func (w *windowsRouteDetector) getWindowsIPToInterfaceMap() (map[string]string, error) {
 	cmd := `Get-NetIPAddress | Select-Object IPAddress, InterfaceAlias | ConvertTo-Json`
-	command := powershell.Encode(cmd)
-
-	output, err := runCommand(w.conn, w.platform, command)
+	// runCommand encodes the script for a Windows target; encoding it here
+	// too sent a PowerShell that only started another encoded PowerShell,
+	// which failed over SSH.
+	output, err := runCommand(w.conn, w.platform, cmd)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get IP addresses via Get-NetIPAddress")
 	}
@@ -196,7 +222,7 @@ type NetstatRoute struct {
 
 // UnmarshalJSON handles unstable fields where type and field name is inconsistent
 func (n *NetstatRoute) UnmarshalJSON(data []byte) error {
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
 		return err
 	}

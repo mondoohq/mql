@@ -5,13 +5,14 @@ package ansibleinventory
 
 import (
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 
 	mapstructure "github.com/go-viper/mapstructure/v2"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 	"sigs.k8s.io/yaml"
 )
 
@@ -119,7 +120,7 @@ type Host struct {
 	Labels     []string
 }
 
-// https://docs.ansible.com/ansible/latest/user_guide/intro_inventory.html
+// https://docs.ansible.com/projects/ansible/latest/user_guide/intro_inventory.html
 func (inventory *Inventory) List(groups ...string) []*Host {
 	if inventory == nil {
 		return nil
@@ -128,12 +129,7 @@ func (inventory *Inventory) List(groups ...string) []*Host {
 	list := inventory.All.Children
 	if len(groups) > 0 {
 		list = Filter(list, func(x string) bool {
-			for i := range groups {
-				if groups[i] == x {
-					return true
-				}
-			}
-			return false
+			return slices.Contains(groups, x)
 		})
 	}
 
@@ -247,7 +243,7 @@ func (i *Inventory) ToV1Inventory() *inventory.Inventory {
 }
 
 // ansibleBackend maps an ansible connection to mondoo backend
-// https://docs.ansible.com/ansible/latest/plugins/connection.html
+// https://docs.ansible.com/projects/ansible/latest/plugins/connection.html
 // quickly get a list of available plugins via `ansible-doc -t connection -l`
 func ansibleBackend(connection string) string {
 	switch strings.TrimSpace(connection) {

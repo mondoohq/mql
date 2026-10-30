@@ -4,9 +4,8 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // --- WiFi interface (RouterOS 7 /interface/wifi) ---
@@ -28,9 +27,9 @@ func newMikrotikWifiInterface(runtime *plugin.Runtime, row map[string]string) (p
 		"channelBand":         llx.StringData(row["channel.band"]),
 		"channelFrequency":    llx.StringData(row["channel.frequency"]),
 		"channelWidth":        llx.StringData(row["channel.width"]),
-		"authenticationTypes": llx.ArrayData(splitList(row["security.authentication-types"]), types.String),
-		"running":             llx.BoolData(parseBool(row["running"])),
-		"disabled":            llx.BoolData(parseBool(row["disabled"])),
+		"authenticationTypes": listField(row, "security.authentication-types"),
+		"running":             boolField(row, "running"),
+		"disabled":            boolField(row, "disabled"),
 		"comment":             llx.StringData(row["comment"]),
 	})
 	if err != nil {

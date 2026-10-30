@@ -1,0 +1,38 @@
+{
+  "mcpServers": {
+    "fs": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/tmp"
+      ],
+      "env": {
+        "FS_TOKEN": "<redacted>"
+      },
+      "transport": "stdio",
+      "type": null,
+      "cwd": null,
+      "timeout": null,
+      "keep_alive": null,
+      "description": null,
+      "icon": null,
+      "authentication": null,
+      "enabled": true
+    },
+    "remote": {
+      "url": "https://mcp.example.com/mcp",
+      "transport": "http",
+      "headers": {
+        "Authorization": "Bearer <redacted>"
+      },
+      "auth": null,
+      "sse_read_timeout": null,
+      "timeout": null,
+      "description": null,
+      "icon": null,
+      "authentication": null,
+      "enabled": false
+    }
+  }
+}

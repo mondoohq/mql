@@ -4,11 +4,12 @@
 package services
 
 import (
-	"encoding/json"
 	"io"
+	"runtime"
 
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 // WindowsService calls powershell Get-Service
@@ -35,6 +36,9 @@ type WindowsService struct {
 	Name        string
 	DisplayName string
 	StartType   int
+	// Description is the service's own description (Win32_Service), not its
+	// display name. Empty when the service has none or it could not be read.
+	Description string
 }
 
 // State returns the State value for a Windows service
@@ -48,7 +52,7 @@ type WindowsService struct {
 // 6: Pause Pending
 // 7: Paused
 //
-// those are documented in https://msdn.microsoft.com/en-us/library/windows/desktop/ms685996(v=vs.85).aspx
+// those are documented in https://learn.microsoft.com/en-us/windows/win32/api/winsvc/ns-winsvc-service_status
 func (s WindowsService) State() State {
 	res := ServiceUnknown
 	switch s.Status {
@@ -57,7 +61,7 @@ func (s WindowsService) State() State {
 	case 2:
 		res = ServiceStartPending
 	case 3:
-		res = ServiceStopped
+		res = ServiceStopPending
 	case 4:
 		res = ServiceRunning
 	case 5:
@@ -89,7 +93,7 @@ func (s WindowsService) Enabled() bool {
 func (s WindowsService) Service() *Service {
 	return &Service{
 		Name:        s.Name,
-		Description: s.DisplayName,
+		Description: s.Description,
 		Installed:   true,
 		Running:     s.IsRunning(),
 		Enabled:     s.Enabled(),
@@ -104,8 +108,7 @@ func ParseWindowsService(r io.Reader) ([]*Service, error) {
 		return nil, err
 	}
 
-	var srvs []WindowsService
-	err = json.Unmarshal(data, &srvs)
+	srvs, err := powershell.UnmarshalList[WindowsService](data)
 	if err != nil {
 		return nil, err
 	}
@@ -126,8 +129,33 @@ func (s *WindowsServiceManager) Name() string {
 	return "Windows Service Manager"
 }
 
+// windowsServicesScript lists the services with Get-Service (status and start
+// type as before) and adds each one's description from Win32_Service, which
+// Get-Service does not return. Win32_Service resolves localized descriptions.
+// One process: the description lookup runs in the same PowerShell. If
+// Win32_Service cannot be read, the descriptions are empty and the rest of
+// the list is unaffected.
+const windowsServicesScript = `$d = @{}
+try { Get-CimInstance -ClassName Win32_Service -Property Name,Description -ErrorAction Stop | ForEach-Object { $d[$_.Name] = $_.Description } } catch {}
+Get-Service | Select-Object -Property Status, Name, DisplayName, StartType, @{Name='Description';Expression={$d[$_.Name]}} | ConvertTo-Json`
+
 func (s *WindowsServiceManager) List() ([]*Service, error) {
-	c, err := s.conn.RunCommand(powershell.Wrap("Get-Service | Select-Object -Property Status, Name, DisplayName, StartType | ConvertTo-Json"))
+	// With MONDOO_WINDOWS_NATIVE on and mql running on the Windows machine it
+	// scans, ask the Service Control Manager directly instead of starting
+	// PowerShell. If that fails for any service, use Get-Service for the whole
+	// list so nothing goes missing.
+	if useNativeWindowsServices(s.conn, runtime.GOOS) {
+		res, err := listNativeWindowsServices()
+		if err == nil {
+			return res, nil
+		}
+		log.Debug().Err(err).Msg("could not list services through the service control manager, falling back to PowerShell")
+	}
+	return s.listPowerShell()
+}
+
+func (s *WindowsServiceManager) listPowerShell() ([]*Service, error) {
+	c, err := s.conn.RunCommand(powershell.Encode(windowsServicesScript))
 	if err != nil {
 		return nil, err
 	}

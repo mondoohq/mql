@@ -1,0 +1,23 @@
+[
+ {
+  "address-list-extra-time": "0s",
+  "allow-remote-requests": "false",
+  "cache-max-ttl": "1w",
+  "cache-size": "2048",
+  "cache-used": "46",
+  "doh-max-concurrent-queries": "50",
+  "doh-max-server-connections": "5",
+  "doh-timeout": "5s",
+  "dynamic-servers": "10.98.0.2",
+  "max-concurrent-queries": "100",
+  "max-concurrent-tcp-sessions": "20",
+  "max-udp-packet-size": "4096",
+  "mdns-repeat-ifaces": "",
+  "query-server-timeout": "2s",
+  "query-total-timeout": "10s",
+  "servers": "8.8.8.8,1.1.1.1",
+  "use-doh-server": "",
+  "verify-doh-cert": "false",
+  "vrf": "main"
+ }
+]

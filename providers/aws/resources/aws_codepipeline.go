@@ -13,12 +13,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/codepipeline"
 	cptypes "github.com/aws/aws-sdk-go-v2/service/codepipeline/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsCodepipeline) id() (string, error) {
@@ -196,7 +196,6 @@ func newMqlAwsCodepipelinePipeline(runtime *plugin.Runtime, region, name string)
 		"updatedAt":      llx.TimeDataPtr(updatedAt),
 		"pipelineType":   llx.StringData(string(pipeline.PipelineType)),
 		"executionMode":  llx.StringData(string(pipeline.ExecutionMode)),
-		"roleArn":        llx.StringDataPtr(pipeline.RoleArn),
 		"artifactStore":  llx.MapData(artifactStoreDict, types.String),
 		"artifactStores": llx.MapData(artifactStoresMap, types.String),
 		"stages":         llx.ArrayData(stages, types.Dict),
@@ -416,12 +415,7 @@ func (a *mqlAwsCodepipelineWebhook) targetPipeline() (*mqlAwsCodepipelinePipelin
 // ===== helpers =====
 
 func cpTagsToMap(tags []cptypes.Tag) map[string]any {
-	tagsMap := make(map[string]any)
-	for i := range tags {
-		t := tags[i]
-		tagsMap[convert.ToValue(t.Key)] = convert.ToValue(t.Value)
-	}
-	return tagsMap
+	return tagsToMap(tags, func(t cptypes.Tag) *string { return t.Key }, func(t cptypes.Tag) *string { return t.Value })
 }
 
 func cpStagesToDicts(stages []cptypes.StageDeclaration) ([]any, error) {

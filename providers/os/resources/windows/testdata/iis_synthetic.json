@@ -1,0 +1,402 @@
+{
+  "installed": true,
+  "version": "10.0",
+  "applicationHostPath": "C:\\Windows\\system32\\inetsrv\\config\\applicationHost.config",
+  "config": {
+    "system.webServer/directoryBrowse": {
+      "enabled": false,
+      "showFlags": "Date, Time, Size, Extension"
+    },
+    "system.webServer/security/requestFiltering": {
+      "allowDoubleEscaping": false,
+      "allowHighBitCharacters": true,
+      "removeServerHeader": false,
+      "requestLimits": {
+        "maxAllowedContentLength": 30000000,
+        "maxUrl": 4096,
+        "maxQueryString": 2048
+      },
+      "fileExtensions": {
+        "allowUnlisted": true,
+        "applyToWebDAV": true,
+        "collection": [
+          { "element": "add", "fileExtension": ".asa", "allowed": false },
+          { "element": "add", "fileExtension": ".config", "allowed": false }
+        ]
+      },
+      "verbs": {
+        "allowUnlisted": true,
+        "applyToWebDAV": true,
+        "collection": [
+          { "element": "add", "verb": "TRACE", "allowed": false }
+        ]
+      }
+    },
+    "system.webServer/security/isapiCgiRestriction": {
+      "notListedIsapisAllowed": false,
+      "notListedCgisAllowed": false
+    },
+    "system.webServer/security/authentication/anonymousAuthentication": {
+      "enabled": true,
+      "userName": "",
+      "logonMethod": "ClearText"
+    },
+    "system.webServer/security/authentication/basicAuthentication": {
+      "enabled": false
+    },
+    "system.webServer/security/authentication/windowsAuthentication": {
+      "enabled": false
+    },
+    "system.webServer/security/authentication/digestAuthentication": {
+      "enabled": false
+    },
+    "system.webServer/handlers": {
+      "accessPolicy": "Read, Script"
+    },
+    "system.webServer/httpErrors": {
+      "errorMode": "DetailedLocalOnly"
+    },
+    "system.webServer/security/access": {
+      "sslFlags": 0
+    },
+    "system.applicationHost/sites": {
+      "siteDefaults": {
+        "logFile": {
+          "directory": "%SystemDrive%\\inetpub\\logs\\LogFiles",
+          "logFormat": "W3C"
+        },
+        "ftpServer": {
+          "security": {
+            "ssl": {
+              "controlChannelPolicy": "SslRequire",
+              "dataChannelPolicy": "SslRequire"
+            }
+          }
+        }
+      }
+    }
+  },
+  "sites": [
+    {
+      "id": 1,
+      "name": "Default Web Site",
+      "state": "Started",
+      "physicalPath": "%SystemDrive%\\inetpub\\wwwroot",
+      "applicationPool": "DefaultAppPool",
+      "serverAutoStart": true,
+      "logEnabled": true,
+      "logDirectory": "%SystemDrive%\\inetpub\\logs\\LogFiles",
+      "logFormat": "W3C",
+      "logPeriod": "Daily",
+      "logTruncateSize": 20971520,
+      "logFields": "Date,Time,ClientIP,UserName,Method,UriStem,UriQuery,HttpStatus,Referer",
+      "logTarget": "File",
+      "logLocalTimeRollover": false,
+      "hsts": {
+        "enabled": false,
+        "max-age": 0,
+        "includeSubDomains": false,
+        "redirectHttpToHttps": false
+      },
+      "bindings": [
+        {
+          "protocol": "http",
+          "bindingInformation": "*:80:",
+          "hostName": "",
+          "port": 80,
+          "ipAddress": "0.0.0.0",
+          "certificateHash": "",
+          "certificateStoreName": "",
+          "sslFlags": 0
+        }
+      ],
+      "applications": [
+        {
+          "path": "/",
+          "physicalPath": "%SystemDrive%\\inetpub\\wwwroot",
+          "applicationPool": "DefaultAppPool",
+          "enabledProtocols": "http",
+          "virtualDirectories": [
+            {
+              "path": "/",
+              "physicalPath": "%SystemDrive%\\inetpub\\wwwroot",
+              "userName": "",
+              "logonMethod": "ClearText"
+            }
+          ],
+          "config": null
+        }
+      ],
+      "config": {
+        "system.webServer/directoryBrowse": {
+          "enabled": false
+        },
+        "system.web/compilation": {
+          "debug": false,
+          "targetFramework": "4.0"
+        },
+        "system.web/customErrors": {
+          "mode": "RemoteOnly"
+        },
+        "system.web/sessionState": {
+          "mode": "InProc",
+          "cookieless": "UseCookies",
+          "timeout": 1200
+        },
+        "system.web/httpCookies": {
+          "httpOnlyCookies": true,
+          "requireSSL": true
+        },
+        "system.web/machineKey": {
+          "validation": "HMACSHA256",
+          "decryption": "Auto"
+        },
+        "system.web/trust": {
+          "level": "Full"
+        },
+        "system.web/authentication": {
+          "mode": "Windows",
+          "forms": {
+            "requireSSL": true,
+            "cookieless": "UseCookies",
+            "protection": "All",
+            "timeout": 1800,
+            "credentials": {
+              "passwordFormat": "SHA1",
+              "collection": []
+            }
+          }
+        },
+        "system.web/trace": {
+          "enabled": false
+        },
+        "system.webServer/security/access": {
+          "sslFlags": 8
+        },
+        "system.webServer/httpProtocol": {
+          "allowKeepAlive": true,
+          "customHeaders": {
+            "collection": [
+              { "element": "add", "name": "Strict-Transport-Security", "value": "max-age=31536000" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "name": "legacy",
+      "state": "Started",
+      "physicalPath": "D:\\sites\\legacy",
+      "applicationPool": "LegacyPool",
+      "serverAutoStart": true,
+      "logEnabled": false,
+      "logDirectory": "C:\\inetpub\\logs\\LogFiles",
+      "logFormat": "IIS",
+      "logPeriod": "MaxSize",
+      "logTruncateSize": 1048576,
+      "logFields": "",
+      "logTarget": "",
+      "logLocalTimeRollover": true,
+      "hsts": null,
+      "bindings": [
+        {
+          "protocol": "http",
+          "bindingInformation": "*:80:legacy.example.com",
+          "hostName": "legacy.example.com",
+          "port": 80,
+          "ipAddress": "0.0.0.0",
+          "certificateHash": "",
+          "certificateStoreName": "",
+          "sslFlags": 0
+        },
+        {
+          "protocol": "https",
+          "bindingInformation": "*:443:legacy.example.com",
+          "hostName": "legacy.example.com",
+          "port": 443,
+          "ipAddress": "0.0.0.0",
+          "certificateHash": "A1B2C3D4E5F60718293A4B5C6D7E8F9012345678",
+          "certificateStoreName": "My",
+          "sslFlags": 1
+        }
+      ],
+      "applications": [
+        {
+          "path": "/",
+          "physicalPath": "D:\\sites\\legacy",
+          "applicationPool": "LegacyPool",
+          "enabledProtocols": "http",
+          "virtualDirectories": [
+            {
+              "path": "/",
+              "physicalPath": "D:\\sites\\legacy",
+              "userName": "",
+              "logonMethod": "ClearText"
+            }
+          ],
+          "config": null
+        },
+        {
+          "path": "/shop",
+          "physicalPath": "D:\\sites\\legacy\\shop",
+          "applicationPool": "LegacyPool",
+          "enabledProtocols": "http",
+          "virtualDirectories": [
+            {
+              "path": "/",
+              "physicalPath": "D:\\sites\\legacy\\shop",
+              "userName": "svc_shop",
+              "logonMethod": "ClearText"
+            }
+          ],
+          "config": {
+            "system.webServer/directoryBrowse": {
+              "enabled": false
+            },
+            "system.web/compilation": {
+              "debug": false
+            },
+            "system.web/sessionState": {
+              "mode": "InProc",
+              "cookieless": "UseCookies",
+              "timeout": 900
+            },
+            "system.web/httpCookies": {
+              "httpOnlyCookies": true,
+              "requireSSL": true
+            }
+          }
+        }
+      ],
+      "config": {
+        "system.webServer/directoryBrowse": {
+          "enabled": true
+        },
+        "system.web/compilation": {
+          "debug": true
+        },
+        "system.web/customErrors": {
+          "mode": "Off"
+        },
+        "system.web/sessionState": {
+          "mode": "InProc",
+          "cookieless": "UseUri",
+          "timeout": 3600
+        },
+        "system.web/httpCookies": {
+          "httpOnlyCookies": false,
+          "requireSSL": false
+        },
+        "system.web/machineKey": {
+          "validation": "SHA1",
+          "decryption": "Auto"
+        },
+        "system.web/trace": {
+          "enabled": true
+        },
+        "system.web/authentication": {
+          "mode": "Forms",
+          "forms": {
+            "requireSSL": false,
+            "cookieless": "UseUri",
+            "protection": "None",
+            "timeout": 1800,
+            "credentials": {
+              "passwordFormat": "Clear",
+              "collection": [
+                { "element": "user", "name": "admin" }
+              ]
+            }
+          }
+        },
+        "system.webServer/security/access": {
+          "sslFlags": 0
+        },
+        "system.webServer/httpErrors": {
+          "errorMode": "Detailed"
+        },
+        "system.webServer/httpProtocol": {
+          "allowKeepAlive": true,
+          "customHeaders": {
+            "collection": [
+              { "element": "add", "name": "X-Powered-By", "value": "ASP.NET" }
+            ]
+          }
+        },
+        "system.webServer/security/requestFiltering": {
+          "allowDoubleEscaping": true,
+          "allowHighBitCharacters": true,
+          "removeServerHeader": false,
+          "requestLimits": {
+            "maxAllowedContentLength": 30000000,
+            "maxUrl": 8192,
+            "maxQueryString": 2048
+          },
+          "fileExtensions": {
+            "allowUnlisted": true
+          },
+          "verbs": {
+            "allowUnlisted": true
+          }
+        }
+      }
+    }
+  ],
+  "appPools": [
+    {
+      "name": "DefaultAppPool",
+      "state": "Started",
+      "autoStart": true,
+      "startMode": "OnDemand",
+      "managedRuntimeVersion": "v4.0",
+      "managedPipelineMode": "Integrated",
+      "enable32BitAppOnWin64": false,
+      "queueLength": 1000,
+      "identityType": "ApplicationPoolIdentity",
+      "userName": "",
+      "idleTimeout": 1200,
+      "maxProcesses": 1,
+      "pingingEnabled": true,
+      "loadUserProfile": true,
+      "periodicRestartTime": 104400,
+      "periodicRestartRequests": 0,
+      "periodicRestartPrivateMemory": 0,
+      "periodicRestartMemory": 0,
+      "periodicRestartSchedule": [],
+      "logEventOnRecycle": "Time,Requests,Schedule,Memory,IsapiUnhealthy,OnDemand,ConfigChange,PrivateMemory",
+      "disallowRotationOnConfigChange": false,
+      "disallowOverlappingRotation": false,
+      "rapidFailProtection": true,
+      "rapidFailProtectionInterval": 300,
+      "rapidFailProtectionMaxCrashes": 5
+    },
+    {
+      "name": "LegacyPool",
+      "state": "Started",
+      "autoStart": true,
+      "startMode": "AlwaysRunning",
+      "managedRuntimeVersion": "v2.0",
+      "managedPipelineMode": "Classic",
+      "enable32BitAppOnWin64": true,
+      "queueLength": 4000,
+      "identityType": "SpecificUser",
+      "userName": "CORP\\svc_legacy",
+      "idleTimeout": 0,
+      "maxProcesses": 4,
+      "pingingEnabled": false,
+      "loadUserProfile": false,
+      "periodicRestartTime": 0,
+      "periodicRestartRequests": 0,
+      "periodicRestartPrivateMemory": 0,
+      "periodicRestartMemory": 0,
+      "periodicRestartSchedule": [10800, 50400],
+      "logEventOnRecycle": "Time",
+      "disallowRotationOnConfigChange": false,
+      "disallowOverlappingRotation": false,
+      "rapidFailProtection": false,
+      "rapidFailProtectionInterval": 300,
+      "rapidFailProtectionMaxCrashes": 5
+    }
+  ]
+}

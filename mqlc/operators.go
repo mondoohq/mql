@@ -7,9 +7,9 @@ import (
 	"errors"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/mqlc/parser"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/mqlc/parser"
+	"go.mondoo.com/mql/types"
 )
 
 type fieldCompiler func(*compiler, string, *parser.Call) (types.Type, error)
@@ -165,7 +165,7 @@ func compileAssignment(c *compiler, id string, call *parser.Call) (types.Type, e
 		return types.Nil, err
 	}
 
-	c.vars.add(name, variable{
+	c.vars.assign(name, variable{
 		name: name,
 		ref:  ref,
 		typ:  c.Result.CodeV2.Chunk(ref).Type(),
@@ -267,6 +267,12 @@ func compileTransformation(c *compiler, id string, call *parser.Call) (types.Typ
 			return types.Nil, err
 		}
 	}
+
+	// An empty array literal carries no element type, so `[] + ["a"]` would
+	// otherwise report []unset and break any downstream call that needs a
+	// concrete element type. Resolve it from whichever operand knows it. This is
+	// done after the handler lookup above so the resolved function is unchanged.
+	lt = types.CoalesceArrays(lt, rt)
 
 	returnType := h.Typ
 	if returnType == types.NoType {

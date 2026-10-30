@@ -1,0 +1,44 @@
+{
+  "name": "my-app",
+  "version-string": "1.2.0",
+  "builtin-baseline": "9b75e789ece3f942159b8500584e35aafe3979ff",
+  "dependencies": [
+    "fmt",
+    "zlib",
+    {
+      "name": "boost-system",
+      "version>=": "1.84.0",
+      "features": [
+        "threading"
+      ]
+    },
+    "fmt",
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    }
+  ],
+  "overrides": [
+    {
+      "name": "zlib",
+      "version": "1.3.1"
+    }
+  ],
+  "features": {
+    "tests": {
+      "description": "build the test suite",
+      "dependencies": [
+        "catch2"
+      ]
+    },
+    "ssl": {
+      "description": "enable TLS",
+      "dependencies": [
+        {
+          "name": "openssl",
+          "version>=": "3.0.8"
+        }
+      ]
+    }
+  }
+}

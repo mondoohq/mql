@@ -1,0 +1,5 @@
+org.freedesktop.Platform	freedesktop-sdk-25.08.16	25.08	aarch64	flathub	2c80d3df465c	system
+org.freedesktop.Platform.GL.default	26.1.6	25.08	aarch64	flathub	af437ad807be	system
+org.freedesktop.Platform.GL.default	26.1.6	25.08-extra	aarch64	flathub	7695b981a6e0	system
+org.freedesktop.Platform.codecs-extra		25.08-extra	aarch64	flathub	9c99837c6427	system
+org.mozilla.firefox	154.0.1	stable	aarch64	flathub	c84b98e041e5	system

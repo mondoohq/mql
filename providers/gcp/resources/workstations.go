@@ -6,13 +6,11 @@ package resources
 import (
 	"context"
 	"fmt"
-	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
-	"google.golang.org/api/googleapi"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/option"
 	"google.golang.org/api/workstations/v1"
 )
@@ -23,22 +21,6 @@ func newWorkstationsService(conn *connection.GcpConnection) (*workstations.Servi
 		return nil, err
 	}
 	return workstations.NewService(context.Background(), option.WithHTTPClient(client))
-}
-
-// isWorkstationsServiceDisabled returns true for errors indicating the Cloud
-// Workstations API is not enabled or accessible for this project.
-func isWorkstationsServiceDisabled(err error) bool {
-	gerr, ok := err.(*googleapi.Error)
-	if !ok {
-		return false
-	}
-	if gerr.Code == 403 || gerr.Code == 404 {
-		return true
-	}
-	if strings.Contains(gerr.Message, "not enabled") || strings.Contains(gerr.Message, "has not been used") {
-		return true
-	}
-	return false
 }
 
 func (g *mqlGcpProject) workstations() (*mqlGcpProjectWorkstationsService, error) {
@@ -107,7 +89,7 @@ func (g *mqlGcpProjectWorkstationsService) clusters() ([]any, error) {
 		}
 		return nil
 	}); err != nil {
-		if isWorkstationsServiceDisabled(err) {
+		if isSkippable(err) {
 			return []any{}, nil
 		}
 		return nil, err

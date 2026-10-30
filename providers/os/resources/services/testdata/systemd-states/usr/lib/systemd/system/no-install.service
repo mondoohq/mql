@@ -1,0 +1,4 @@
+[Unit]
+Description=No install
+[Service]
+ExecStart=/bin/true

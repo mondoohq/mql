@@ -46,6 +46,50 @@ func TestCidrIsPublic(t *testing.T) {
 	}
 }
 
+func TestAddressIsPublic(t *testing.T) {
+	tests := []struct {
+		name string
+		addr string
+		want bool
+	}{
+		// CIDR members follow the same rules as a rule's remote IP prefix
+		{"all addresses", "0.0.0.0/0", true},
+		{"all addresses v6", "::/0", true},
+		{"private block", "10.0.0.0/8", false},
+		{"single host", "203.0.113.5/32", false},
+
+		// ranges: broad enough to count, and outside private space
+		{"range spanning a full /8", "13.0.0.0-13.255.255.255", true},
+		{"range spanning more than a /8", "13.0.0.0-15.255.255.255", true},
+		{"range one short of a /8", "13.0.0.1-13.255.255.255", false},
+		{"private range spanning a /8", "10.0.0.0-10.255.255.255", false},
+		{"loopback range", "127.0.0.0-127.255.255.255", false},
+		{"narrow public range", "203.0.113.10-203.0.113.20", false},
+		{"broad v6 range", "2600:1f00::-2600:1fff:ffff:ffff:ffff:ffff:ffff:ffff", true},
+		{"narrow v6 range", "2600:1f00::1-2600:1f00::ff", false},
+
+		// a range that spans out of private space into public is not contained
+		// by any single reserved block, so it counts
+		{"range crossing out of private space", "10.0.0.0-13.255.255.255", true},
+
+		// whitespace is tolerated; the members come from a JSON list
+		{"padded range", " 13.0.0.0 - 13.255.255.255 ", true},
+
+		// malformed and degenerate inputs
+		{"empty", "", false},
+		{"bare address", "203.0.113.5", false},
+		{"reversed range", "13.255.255.255-13.0.0.0", false},
+		{"mixed family range", "13.0.0.0-2600:1f00::", false},
+		{"garbage range", "not-an-ip-at-all", false},
+		{"half a range", "13.0.0.0-", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, addressIsPublic(tt.addr))
+		})
+	}
+}
+
 func TestAnyCidrPublic(t *testing.T) {
 	assert.True(t, anyCidrPublic([]any{"10.0.0.0/8", "0.0.0.0/1"}))
 	assert.False(t, anyCidrPublic([]any{"10.0.0.0/8", "192.168.1.0/24"}))

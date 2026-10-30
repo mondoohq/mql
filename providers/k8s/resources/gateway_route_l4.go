@@ -6,10 +6,10 @@ package resources
 import (
 	"errors"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/types"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -92,7 +92,10 @@ func gatewayRouteResources(rt *plugin.Runtime, kinds []string, resourceName stri
 			return nil, err
 		}
 
-		hostnames := stringsToAny(stringSlice(spec["hostnames"]))
+		// spec.hostnames must mirror the manifest: stringSlice() sorts and
+		// dedups (it is built for exposure classification), which silently
+		// rewrites the user's list and breaks hostnames[0].
+		hostnames := stringsToAny(orderedStringSlice(spec["hostnames"]))
 		ts := obj.GetCreationTimestamp()
 		r, err := CreateResource(rt, resourceName, map[string]*llx.RawData{
 			"id":              llx.StringData(objIdFromK8sObj(obj, objT)),
@@ -206,4 +209,36 @@ func (k *mqlK8sUdproute) ownerReferences() ([]any, error) {
 
 func (k *mqlK8sUdproute) managedFields() ([]any, error) {
 	return k8sManagedFields(k.MqlRuntime, k.obj)
+}
+
+// orderedStringSlice reads a string list from an unstructured field, preserving
+// the order and any duplicates the manifest declared.
+//
+// The sibling stringSlice() helper funnels every branch through
+// sortedUniqueStrings(), which is correct for exposure classification (where a
+// set of addresses is compared) but wrong for a schema field that has to mirror
+// the object: sorting rewrites hostnames[0] and deduping loses an entry.
+//
+// Elements still go through stringValue(), so a value is nil-safe and gets
+// TrimSpace'd. That is deliberate: the API server validates a route hostname as
+// a DNS name, so it cannot carry surrounding whitespace, and reusing the helper
+// keeps the *string and non-string cases handled in one place.
+func orderedStringSlice(value any) []string {
+	switch v := value.(type) {
+	case []string:
+		return v
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			out = append(out, stringValue(item))
+		}
+		return out
+	case string:
+		if v == "" {
+			return nil
+		}
+		return []string{v}
+	default:
+		return nil
+	}
 }

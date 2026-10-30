@@ -4,15 +4,17 @@
 package resources
 
 import (
+	"errors"
+	"slices"
 	"strconv"
 	"time"
 
-	gitlab "gitlab.com/gitlab-org/api/client-go"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gitlab/connection"
-	"go.mondoo.com/mql/v13/types"
+	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gitlab/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (g *mqlGitlabGroup) id() (string, error) {
@@ -21,10 +23,6 @@ func (g *mqlGitlabGroup) id() (string, error) {
 
 func (u *mqlGitlabUser) id() (string, error) {
 	return "gitlab.user/" + strconv.FormatInt(u.Id.Data, 10), nil
-}
-
-func (m *mqlGitlabMember) id() (string, error) {
-	return "gitlab.member/" + strconv.FormatInt(m.Id.Data, 10), nil
 }
 
 // mqlGitlabMemberInternal caches source data needed to resolve the member's
@@ -109,16 +107,16 @@ func newMqlGitlabMemberRole(runtime *plugin.Runtime, role *gitlab.MemberRole) (*
 func (g *mqlGitlabGroup) memberRoles() ([]any, error) {
 	conn := g.MqlRuntime.Connection.(*connection.GitLabConnection)
 
-	roles, resp, err := conn.Client().MemberRolesService.ListMemberRoles(int(g.Id.Data))
+	allRoles, err := listGroupMemberRoles(conn.Client(), int(g.Id.Data))
 	if err != nil {
-		if resp != nil && (resp.StatusCode == 403 || resp.StatusCode == 404) {
+		if isGitlabStatus(err, 403, 404) {
 			return []any{}, nil // not available on this GitLab tier
 		}
 		return nil, err
 	}
 
 	var mqlRoles []any
-	for _, role := range roles {
+	for _, role := range allRoles {
 		mqlRole, err := newMqlGitlabMemberRole(g.MqlRuntime, role)
 		if err != nil {
 			return nil, err
@@ -129,8 +127,68 @@ func (g *mqlGitlabGroup) memberRoles() ([]any, error) {
 	return mqlRoles, nil
 }
 
+// listGroupMemberRoles walks every page of a group's custom member roles. gid
+// is a group id or full path.
+//
+// ListMemberRoles takes no typed options struct, but the endpoint still
+// paginates and GitLab defaults to 20 per page: a group with more custom roles
+// than that would silently report only the first 20. gitlab.WithNext drives
+// the next page for offset, keyset, and cursor styles alike, and is what
+// samlGroupLinks below already uses for the same SDK shape.
+func listGroupMemberRoles(client *gitlab.Client, gid any) ([]*gitlab.MemberRole, error) {
+	var allRoles []*gitlab.MemberRole
+	var nextOpts []gitlab.RequestOptionFunc
+	for {
+		roles, resp, err := client.MemberRolesService.ListMemberRoles(gid, nextOpts...)
+		if err != nil {
+			return nil, err
+		}
+		allRoles = append(allRoles, roles...)
+		next, hasNext := gitlab.WithNext(resp)
+		if !hasNext {
+			break
+		}
+		nextOpts = []gitlab.RequestOptionFunc{next}
+	}
+	return allRoles, nil
+}
+
+// listInstanceMemberRoles walks every page of the instance-wide custom member
+// roles, which is where self-managed GitLab defines them.
+func listInstanceMemberRoles(client *gitlab.Client) ([]*gitlab.MemberRole, error) {
+	var allRoles []*gitlab.MemberRole
+	var nextOpts []gitlab.RequestOptionFunc
+	for {
+		roles, resp, err := client.MemberRolesService.ListInstanceMemberRoles(nextOpts...)
+		if err != nil {
+			return nil, err
+		}
+		allRoles = append(allRoles, roles...)
+		next, hasNext := gitlab.WithNext(resp)
+		if !hasNext {
+			break
+		}
+		nextOpts = []gitlab.RequestOptionFunc{next}
+	}
+	return allRoles, nil
+}
+
+// isGitlabStatus reports whether err is a GitLab API error response carrying
+// one of the given HTTP status codes.
+func isGitlabStatus(err error, codes ...int) bool {
+	var respErr *gitlab.ErrorResponse
+	if !errors.As(err, &respErr) {
+		return false
+	}
+	status := respErr.StatusCode
+	if status == 0 && respErr.Response != nil {
+		status = respErr.Response.StatusCode
+	}
+	return slices.Contains(codes, status)
+}
+
 // init initializes the gitlab group with the arguments
-// see https://docs.gitlab.com/ee/api/groups.html#new-group
+// see https://docs.gitlab.com/api/groups/#create-a-group
 func initGitlabGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 2 {
 		return args, nil, nil
@@ -180,7 +238,6 @@ func populateGroupArgs(args map[string]*llx.RawData, grp *gitlab.Group) {
 	args["membershipLock"] = llx.BoolData(grp.MembershipLock)
 	args["preventForkingOutsideGroup"] = llx.BoolData(grp.PreventForkingOutsideGroup)
 	args["mentionsDisabled"] = llx.BoolData(grp.MentionsDisabled)
-	args["emailsDisabled"] = llx.BoolData(!grp.EmailsEnabled)
 	args["requestAccessEnabled"] = llx.BoolData(grp.RequestAccessEnabled)
 	// Convert ISOTime to time.Time
 	var markedForDeletionOn *time.Time
@@ -265,7 +322,7 @@ func branchProtectionDefaultsToDict(d *gitlab.BranchProtectionDefaults) any {
 }
 
 // projects lists all projects that belong to a group
-// see https://docs.gitlab.com/ee/api/projects.html
+// see https://docs.gitlab.com/api/projects/
 func (g *mqlGitlabGroup) projects() ([]any, error) {
 	conn := g.MqlRuntime.Connection.(*connection.GitLabConnection)
 
@@ -281,10 +338,8 @@ func (g *mqlGitlabGroup) projects() ([]any, error) {
 
 	for {
 		projects, resp, err := conn.Client().Groups.ListGroupProjects(gid, &gitlab.ListGroupProjectsOptions{
-			ListOptions: gitlab.ListOptions{
-				Page:    page,
-				PerPage: perPage,
-			},
+			Page:    page,
+			PerPage: perPage,
 		})
 		if err != nil {
 			return nil, err
@@ -322,10 +377,12 @@ func (g *mqlGitlabGroup) members() ([]any, error) {
 
 	for {
 		members, resp, err := conn.Client().Groups.ListAllGroupMembers(groupID, &gitlab.ListGroupMembersOptions{
-			ListOptions: gitlab.ListOptions{
-				Page:    page,
-				PerPage: perPage,
-			},
+			Page:    page,
+			PerPage: perPage,
+			// GitLab omits is_using_seat from the members payload unless it is
+			// asked for, and the SDK models it as a plain bool — without this
+			// every member would decode as isUsingSeat=false.
+			ShowSeatInfo: gitlab.Ptr(true),
 		})
 		if err != nil {
 			return nil, err
@@ -363,6 +420,13 @@ func (g *mqlGitlabGroup) members() ([]any, error) {
 		}
 
 		memberInfo := map[string]*llx.RawData{
+			// GroupMember.ID is the *user* id, so it repeats for every group
+			// and project that user belongs to. ListAllGroupMembers also
+			// returns inherited members, which means a parent-group membership
+			// and a subgroup membership for the same user land in the same
+			// runtime — keying on the user id alone made the second one
+			// resolve to the first, hiding a deliberately narrowed role.
+			"__id":        llx.StringData(groupScopedID("gitlab.member/group", g.Id.Data, strconv.FormatInt(member.ID, 10))),
 			"id":          llx.IntData(member.ID),
 			"user":        llx.ResourceData(mqlUser, "gitlab.user"),
 			"role":        llx.StringData(role),
@@ -402,10 +466,8 @@ func (g *mqlGitlabGroup) subgroups() ([]any, error) {
 
 	for {
 		subgroups, resp, err := conn.Client().Groups.ListSubGroups(groupID, &gitlab.ListSubGroupsOptions{
-			ListOptions: gitlab.ListOptions{
-				Page:    page,
-				PerPage: perPage,
-			},
+			Page:    page,
+			PerPage: perPage,
 		})
 		if err != nil {
 			return nil, err
@@ -455,10 +517,8 @@ func (g *mqlGitlabGroup) labels() ([]any, error) {
 
 	for {
 		labels, resp, err := conn.Client().GroupLabels.ListGroupLabels(groupID, &gitlab.ListGroupLabelsOptions{
-			ListOptions: gitlab.ListOptions{
-				Page:    page,
-				PerPage: perPage,
-			},
+			Page:    page,
+			PerPage: perPage,
 		})
 		if err != nil {
 			return nil, err
@@ -475,17 +535,20 @@ func (g *mqlGitlabGroup) labels() ([]any, error) {
 	var mqlLabels []any
 	for _, label := range allLabels {
 		labelInfo := map[string]*llx.RawData{
-			"id":                     llx.IntData(label.ID),
-			"name":                   llx.StringData(label.Name),
-			"color":                  llx.StringData(label.Color),
-			"textColor":              llx.StringData(label.TextColor),
-			"description":            llx.StringData(label.Description),
-			"descriptionHtml":        llx.StringData(""), // Not in API response
+			"id":          llx.IntData(label.ID),
+			"name":        llx.StringData(label.Name),
+			"color":       llx.StringData(label.Color),
+			"textColor":   llx.StringData(label.TextColor),
+			"description": llx.StringData(label.Description),
+			// The SDK's Label struct does not model description_html, so we have
+			// no value to report. Null says "unknown"; an empty string would
+			// claim, for every label on every project, that no HTML
+			// description exists.
 			"openIssuesCount":        llx.IntData(label.OpenIssuesCount),
 			"closedIssuesCount":      llx.IntData(label.ClosedIssuesCount),
 			"openMergeRequestsCount": llx.IntData(label.OpenMergeRequestsCount),
 			"subscribed":             llx.BoolData(label.Subscribed),
-			"priority":               llx.IntData(label.Priority),
+			"priority":               llx.IntData(labelPriority(label.Priority)),
 			"isProjectLabel":         llx.BoolData(label.IsProjectLabel),
 		}
 
@@ -566,10 +629,8 @@ func (g *mqlGitlabGroup) accessTokens() ([]any, error) {
 
 	for {
 		tokens, resp, err := conn.Client().GroupAccessTokens.ListGroupAccessTokens(groupID, &gitlab.ListGroupAccessTokensOptions{
-			ListOptions: gitlab.ListOptions{
-				Page:    page,
-				PerPage: perPage,
-			},
+			Page:    page,
+			PerPage: perPage,
 		})
 		if err != nil {
 			return nil, err
@@ -655,10 +716,8 @@ func (g *mqlGitlabGroup) deployTokens() ([]any, error) {
 
 	for {
 		tokens, resp, err := conn.Client().DeployTokens.ListGroupDeployTokens(groupID, &gitlab.ListGroupDeployTokensOptions{
-			ListOptions: gitlab.ListOptions{
-				Page:    page,
-				PerPage: perPage,
-			},
+			Page:    page,
+			PerPage: perPage,
 		})
 		if err != nil {
 			return nil, err
@@ -702,11 +761,6 @@ type mqlGitlabGroupSamlGroupLinkInternal struct {
 	groupID int64
 }
 
-// id function for gitlab.group.samlGroupLink
-func (s *mqlGitlabGroupSamlGroupLink) id() (string, error) {
-	return "gitlab.group.samlGroupLink/" + strconv.FormatInt(s.groupID, 10) + "/" + s.Provider.Data + "/" + s.Name.Data, nil
-}
-
 // samlGroupLinks fetches SAML group links for the group.
 //
 // SAML group links are a Premium/Ultimate feature. On lower tiers the API
@@ -742,6 +796,11 @@ func (g *mqlGitlabGroup) samlGroupLinks() ([]any, error) {
 	var mqlLinks []any
 	for _, link := range allLinks {
 		linkInfo := map[string]*llx.RawData{
+			// The group id has to be passed here rather than read back out of
+			// the Internal struct by id(): CreateResource computes __id during
+			// construction, so a field assigned afterwards is always still
+			// zero at that point and every link keyed as ".../0/provider/name".
+			"__id":         llx.StringData(groupScopedID("gitlab.group.samlGroupLink", g.Id.Data, link.Provider, link.Name)),
 			"name":         llx.StringData(link.Name),
 			"accessLevel":  llx.IntData(int64(link.AccessLevel)),
 			"memberRoleId": llx.IntData(link.MemberRoleID),
@@ -842,10 +901,8 @@ func (g *mqlGitlabGroup) auditEvents() ([]any, error) {
 
 	for {
 		events, resp, err := conn.Client().AuditEvents.ListGroupAuditEvents(groupID, &gitlab.ListAuditEventsOptions{
-			ListOptions: gitlab.ListOptions{
-				Page:    page,
-				PerPage: perPage,
-			},
+			Page:    page,
+			PerPage: perPage,
 		})
 		if err != nil {
 			if resp != nil && (resp.StatusCode == 403 || resp.StatusCode == 404) {
@@ -909,10 +966,8 @@ func (g *mqlGitlabGroup) protectedBranches() ([]any, error) {
 
 	for {
 		branches, resp, err := conn.Client().GroupProtectedBranches.ListProtectedBranches(groupID, &gitlab.ListGroupProtectedBranchesOptions{
-			ListOptions: gitlab.ListOptions{
-				Page:    page,
-				PerPage: perPage,
-			},
+			Page:    page,
+			PerPage: perPage,
 		})
 		if err != nil {
 			return nil, err
@@ -929,15 +984,15 @@ func (g *mqlGitlabGroup) protectedBranches() ([]any, error) {
 	var mqlBranches []any
 	for _, branch := range allBranches {
 		prefix := "gitlab.group.protectedBranch/" + strconv.FormatInt(branch.ID, 10)
-		push, err := groupBranchAccessLevels(g.MqlRuntime, prefix+"/push", branch.PushAccessLevels)
+		push, err := groupBranchAccessLevels(g.MqlRuntime, prefix+"/push", g.FullPath.Data, branch.PushAccessLevels)
 		if err != nil {
 			return nil, err
 		}
-		merge, err := groupBranchAccessLevels(g.MqlRuntime, prefix+"/merge", branch.MergeAccessLevels)
+		merge, err := groupBranchAccessLevels(g.MqlRuntime, prefix+"/merge", g.FullPath.Data, branch.MergeAccessLevels)
 		if err != nil {
 			return nil, err
 		}
-		unprotect, err := groupBranchAccessLevels(g.MqlRuntime, prefix+"/unprotect", branch.UnprotectAccessLevels)
+		unprotect, err := groupBranchAccessLevels(g.MqlRuntime, prefix+"/unprotect", g.FullPath.Data, branch.UnprotectAccessLevels)
 		if err != nil {
 			return nil, err
 		}
@@ -963,7 +1018,7 @@ func (g *mqlGitlabGroup) protectedBranches() ([]any, error) {
 	return mqlBranches, nil
 }
 
-func groupBranchAccessLevels(runtime *plugin.Runtime, idPrefix string, descs []*gitlab.GroupBranchAccessDescription) ([]any, error) {
+func groupBranchAccessLevels(runtime *plugin.Runtime, idPrefix, namespacePath string, descs []*gitlab.GroupBranchAccessDescription) ([]any, error) {
 	out := make([]any, 0, len(descs))
 	for _, d := range descs {
 		if d == nil {
@@ -973,7 +1028,194 @@ func groupBranchAccessLevels(runtime *plugin.Runtime, idPrefix string, descs []*
 		if err != nil {
 			return nil, err
 		}
+		al.cacheMemberRoleID = d.MemberRoleID
+		al.cacheNamespacePath = namespacePath
 		out = append(out, al)
 	}
 	return out, nil
+}
+
+// parentGroup returns the group this group is nested under, or null when it is
+// a top-level group. The parent id is read from the full group payload; on
+// 403/404 it yields null rather than failing the resource graph.
+func (g *mqlGitlabGroup) parentGroup() (*mqlGitlabGroup, error) {
+	conn := g.MqlRuntime.Connection.(*connection.GitLabConnection)
+
+	grp, resp, err := conn.Client().Groups.GetGroup(int(g.Id.Data), nil)
+	if err != nil {
+		if resp != nil && (resp.StatusCode == 403 || resp.StatusCode == 404) {
+			g.ParentGroup.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+	if grp.ParentID <= 0 {
+		g.ParentGroup.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(g.MqlRuntime, "gitlab.group", map[string]*llx.RawData{
+		"id": llx.IntData(int64(grp.ParentID)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGitlabGroup), nil
+}
+
+// variables lists the group-level CI/CD variables. These are inherited by
+// every project in the group.
+func (g *mqlGitlabGroup) variables() ([]any, error) {
+	conn := g.MqlRuntime.Connection.(*connection.GitLabConnection)
+
+	groupID := int(g.Id.Data)
+
+	perPage := int64(50)
+	page := int64(1)
+	var allVars []*gitlab.GroupVariable
+
+	for {
+		vars, resp, err := conn.Client().GroupVariables.ListVariables(groupID, &gitlab.ListGroupVariablesOptions{
+			Page:    page,
+			PerPage: perPage,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		allVars = append(allVars, vars...)
+
+		if resp.NextPage == 0 {
+			break
+		}
+		page = resp.NextPage
+	}
+
+	var mqlVars []any
+	for _, v := range allVars {
+		varInfo := map[string]*llx.RawData{
+			// Subgroups routinely redefine a parent group's variable at the
+			// same scope (that is the whole point of group-level variables),
+			// so key+scope without the group id aliases the override onto the
+			// parent's row — including its masked/protected flags.
+			"__id":             llx.StringData(groupScopedID("gitlab.group.variable", g.Id.Data, v.Key, v.EnvironmentScope)),
+			"key":              llx.StringData(v.Key),
+			"variableType":     llx.StringData(string(v.VariableType)),
+			"protected":        llx.BoolData(v.Protected),
+			"masked":           llx.BoolData(v.Masked),
+			"hidden":           llx.BoolData(v.Hidden),
+			"raw":              llx.BoolData(v.Raw),
+			"environmentScope": llx.StringData(v.EnvironmentScope),
+			"description":      llx.StringData(v.Description),
+		}
+
+		mqlVar, err := CreateResource(g.MqlRuntime, "gitlab.group.variable", varInfo)
+		if err != nil {
+			return nil, err
+		}
+
+		mqlVars = append(mqlVars, mqlVar)
+	}
+
+	return mqlVars, nil
+}
+
+func (h *mqlGitlabGroupWebhook) id() (string, error) {
+	return "gitlab.group.webhook/" + strconv.FormatInt(h.Id.Data, 10), nil
+}
+
+// group returns the group a webhook is registered against.
+func (h *mqlGitlabGroupWebhook) group() (*mqlGitlabGroup, error) {
+	res, err := NewResource(h.MqlRuntime, "gitlab.group", map[string]*llx.RawData{
+		"id": llx.IntData(h.groupID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGitlabGroup), nil
+}
+
+// mqlGitlabGroupWebhookInternal carries the parent group ID so the group()
+// back-reference resolves lazily.
+type mqlGitlabGroupWebhookInternal struct {
+	groupID int64
+}
+
+// webhooks lists the webhooks registered at the group level. Group hooks fire
+// for events across every project in the group. The configured secret token is
+// write-only and never returned, but GitLab does report whether one is set, and
+// that is decoded separately from the SDK type so an instance that does not
+// report it leaves tokenPresent null instead of claiming no token is set.
+func (g *mqlGitlabGroup) webhooks() ([]any, error) {
+	conn := g.MqlRuntime.Connection.(*connection.GitLabConnection)
+
+	raw, _, err := listRawPages(conn.Client(), "groups/"+strconv.FormatInt(g.Id.Data, 10)+"/hooks", 50)
+	if err != nil {
+		return nil, err
+	}
+
+	allHooks, presence, err := decodeHooks[gitlab.GroupHook](raw)
+	if err != nil {
+		return nil, err
+	}
+
+	var mqlWebhooks []any
+	for i, hook := range allHooks {
+		customHeaders := map[string]any{}
+		for _, h := range hook.CustomHeaders {
+			if h == nil {
+				continue
+			}
+			customHeaders[h.Key] = h.Value
+		}
+
+		hookInfo := map[string]*llx.RawData{
+			"id":                        llx.IntData(hook.ID),
+			"url":                       llx.StringData(hook.URL),
+			"name":                      llx.StringData(hook.Name),
+			"description":               llx.StringData(hook.Description),
+			"sslVerification":           llx.BoolData(hook.EnableSSLVerification),
+			"pushEvents":                llx.BoolData(hook.PushEvents),
+			"pushEventsBranchFilter":    llx.StringData(hook.PushEventsBranchFilter),
+			"issuesEvents":              llx.BoolData(hook.IssuesEvents),
+			"confidentialIssuesEvents":  llx.BoolData(hook.ConfidentialIssuesEvents),
+			"mergeRequestsEvents":       llx.BoolData(hook.MergeRequestsEvents),
+			"tagPushEvents":             llx.BoolData(hook.TagPushEvents),
+			"noteEvents":                llx.BoolData(hook.NoteEvents),
+			"confidentialNoteEvents":    llx.BoolData(hook.ConfidentialNoteEvents),
+			"jobEvents":                 llx.BoolData(hook.JobEvents),
+			"pipelineEvents":            llx.BoolData(hook.PipelineEvents),
+			"wikiPageEvents":            llx.BoolData(hook.WikiPageEvents),
+			"deploymentEvents":          llx.BoolData(hook.DeploymentEvents),
+			"releasesEvents":            llx.BoolData(hook.ReleasesEvents),
+			"resourceAccessTokenEvents": llx.BoolData(hook.ResourceAccessTokenEvents),
+			"vulnerabilityEvents":       llx.BoolData(hook.VulnerabilityEvents),
+			"featureFlagEvents":         llx.BoolData(hook.FeatureFlagEvents),
+			"milestoneEvents":           llx.BoolData(hook.MilestoneEvents),
+			"emojiEvents":               llx.BoolData(hook.EmojiEvents),
+			// Group webhooks have no repository_update_events attribute: the
+			// GitLab API never returned one, and client-go dropped the field
+			// from GroupHook accordingly. Null says we cannot see it; the
+			// false this used to report claimed the trigger was switched off.
+			"repositoryUpdateEvents": llx.BoolDataPtr(nil),
+			"tokenPresent":           llx.BoolDataPtr(presence[i].TokenPresent),
+			"subGroupEvents":         llx.BoolData(hook.SubGroupEvents),
+			"memberEvents":           llx.BoolData(hook.MemberEvents),
+			"projectEvents":          llx.BoolData(hook.ProjectEvents),
+			"branchFilterStrategy":   llx.StringData(hook.BranchFilterStrategy),
+			"customWebhookTemplate":  llx.StringData(hook.CustomWebhookTemplate),
+			"customHeaders":          llx.MapData(customHeaders, types.String),
+			"createdAt":              llx.TimeDataPtr(hook.CreatedAt),
+			"alertStatus":            llx.StringData(hook.AlertStatus),
+		}
+
+		mqlWebhook, err := CreateResource(g.MqlRuntime, "gitlab.group.webhook", hookInfo)
+		if err != nil {
+			return nil, err
+		}
+
+		mqlWebhook.(*mqlGitlabGroupWebhook).groupID = g.Id.Data
+		mqlWebhooks = append(mqlWebhooks, mqlWebhook)
+	}
+
+	return mqlWebhooks, nil
 }

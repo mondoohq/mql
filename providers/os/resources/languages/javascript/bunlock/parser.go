@@ -57,10 +57,10 @@ func parseBunNameVersion(s string) (name, version string) {
 
 	// For scoped packages (@scope/name@version), the first @ is part of the
 	// scope. Find the last @ which separates name from version.
-	idx := strings.LastIndex(s, "@")
-	if idx <= 0 {
+	before, after, ok := strings.CutLast(s, "@")
+	if !ok || before == "" {
 		return "", ""
 	}
 
-	return s[:idx], s[idx+1:]
+	return before, after
 }

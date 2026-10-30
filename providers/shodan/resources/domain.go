@@ -6,14 +6,13 @@ package resources
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/shadowscatcher/shodan/models"
 	"github.com/shadowscatcher/shodan/search"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/shodan/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/shodan/connection"
 )
 
 func initShodanDomain(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -79,19 +78,15 @@ func (r *mqlShodanDomain) fetchBaseInformation() error {
 
 	var mqlNsRecords []any
 	for _, nsrecord := range nsrecords {
-		lastSeen := llx.NilData
-
-		t, err := time.Parse(time.RFC3339, nsrecord.LastSeen)
-		if err == nil {
-			lastSeen = llx.TimeData(t)
-		}
-
+		// Shodan emits DNS last_seen without a timezone (e.g.
+		// "2021-03-15T00:00:00.000000"), so use the shared parser rather than a
+		// strict RFC3339 parse that would silently null the field.
 		recordResource, err := CreateResource(r.MqlRuntime, "shodan.nsrecord", map[string]*llx.RawData{
 			"domain":    llx.StringData(domain),
 			"subdomain": llx.StringData(nsrecord.Subdomain),
 			"type":      llx.StringData(nsrecord.Type),
 			"value":     llx.StringData(nsrecord.Value),
-			"lastSeen":  lastSeen,
+			"lastSeen":  optionalShodanTime(nsrecord.LastSeen),
 		})
 		if err != nil {
 			return err

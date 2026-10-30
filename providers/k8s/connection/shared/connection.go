@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/distro"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/resources"
 	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -17,16 +18,25 @@ import (
 )
 
 const (
-	OPTION_GIT_HTTP          = "http-url"
-	OPTION_MANIFEST          = "path"
-	OPTION_IMMEMORY_CONTENT  = "manifest-content"
-	OPTION_NAMESPACE         = "namespaces"
-	OPTION_NAMESPACE_EXCLUDE = "namespaces-exclude"
-	OPTION_ADMISSION         = "k8s-admission-review"
-	OPTION_OBJECT_KIND       = "object-kind"
-	OPTION_CONTEXT           = "context"
-	OPTION_KUBELOGIN         = "kubelogin"
-	IdPrefix                 = "//platformid.api.mondoo.app/runtime/k8s/uid/"
+	OPTION_GIT_HTTP                 = "http-url"
+	OPTION_MANIFEST                 = "path"
+	OPTION_IMMEMORY_CONTENT         = "manifest-content"
+	OPTION_NAMESPACE                = "namespaces"
+	OPTION_NAMESPACE_EXCLUDE        = "namespaces-exclude"
+	OPTION_NAMESPACE_LABEL_SELECTOR = "namespace-label-selector"
+	OPTION_OBJECT_LABEL_SELECTOR    = "object-label-selector"
+	OPTION_INHERIT_NAMESPACE_LABELS = "inherit-namespace-labels"
+	// OPTION_INHERIT_NAMESPACE_LABELS_VERDICTS carries the container-image label
+	// verdicts from the cluster discovery stage to each namespace stage. Internal
+	// transport, set by the provider itself, never by users.
+	OPTION_INHERIT_NAMESPACE_LABELS_VERDICTS = "inherit-namespace-labels-verdicts"
+	OPTION_IMAGES                            = "images"
+	OPTION_IMAGES_EXCLUDE                    = "images-exclude"
+	OPTION_ADMISSION                         = "k8s-admission-review"
+	OPTION_OBJECT_KIND                       = "object-kind"
+	OPTION_CONTEXT                           = "context"
+	OPTION_KUBELOGIN                         = "kubelogin"
+	IdPrefix                                 = "//platformid.api.mondoo.app/runtime/k8s/uid/"
 )
 
 type ConnectionType string
@@ -40,6 +50,8 @@ type Connection interface {
 	// are provided, then all cluster resources are returned.
 	Resources(kind string, name string, namespace string) (*ResourceResult, error)
 	ServerVersion() *version.Info
+	// Distro returns the cluster's Kubernetes distribution, never nil
+	Distro() *distro.Result
 	SupportedResourceTypes() (*resources.ApiResourceIndex, error)
 	Platform() *inventory.Platform
 	Asset() *inventory.Asset

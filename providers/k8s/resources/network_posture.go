@@ -8,17 +8,19 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/netip"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/k8s/connection/shared"
+	"go.mondoo.com/mql/types"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -542,6 +544,12 @@ func serviceNetworkExposureArgs(svc *corev1.Service, publicNodeAddresses []strin
 		if len(addresses) == 0 {
 			exposureReason = "loadBalancerPending"
 			confidence = "low"
+		} else if internetExposed && hasInternalLoadBalancerAnnotation(svc.Annotations) {
+			// The declared scheme wins over the published address. An internal AWS
+			// NLB's DNS name looks exactly like an internet-facing one, so without
+			// this the address classification reports it as internet-reachable.
+			internetExposed = false
+			exposureReason = "internalLoadBalancerScheme"
 		} else if internetExposed && len(svc.Spec.LoadBalancerSourceRanges) > 0 && !contains(sourceRangeClassifications, "publicSourceRange") {
 			internetExposed = false
 			exposureReason = "restrictedLoadBalancerSourceRange"
@@ -610,18 +618,43 @@ func ingressNetworkExposureArgs(ing *networkingv1.Ingress) []map[string]*llx.Raw
 	specHostnames := ingressSpecHostnames(ing)
 	addresses := ingressExposureAddresses(ing)
 	classifications := classifyAddresses(addresses)
-	internetExposed := contains(classifications, "internet") || contains(classifications, "hostname")
+
+	// Reachability follows the address the controller actually published, not the
+	// rule hostnames. A rule host only matches the Host header of a request that
+	// already reached the load balancer, so an internal load balancer fronting
+	// public-looking names stays reachable only inside the VPC. The rule hostnames
+	// are consulted solely while no address has been published, where they are the
+	// one available signal of what the Ingress intends to serve.
+	reachabilityAddresses := statusAddresses
+	if len(reachabilityAddresses) == 0 {
+		reachabilityAddresses = specHostnames
+	}
+	reachability := classifyAddresses(reachabilityAddresses)
+	internetExposed := contains(reachability, "internet") || contains(reachability, "hostname")
+
 	exposureReason := "ingressNoPublishedAddress"
 	confidence := "low"
-	if internetExposed && len(statusAddresses) > 0 {
+	if hasInternalLoadBalancerAnnotation(ing.Annotations) {
+		// A declared scheme is authoritative and is reported as the reason in its own
+		// right: the controller provisions the load balancer from it, so it settles
+		// reachability whatever the published address or rule hostnames suggest.
+		internetExposed = false
+		exposureReason = "internalLoadBalancerScheme"
+		confidence = "high"
+	} else if internetExposed && len(statusAddresses) > 0 {
 		exposureReason = "publicIngressAddress"
 		confidence = "high"
 	} else if internetExposed && len(specHostnames) > 0 {
 		exposureReason = "publicIngressHostname"
 		confidence = "medium"
-	} else if len(addresses) > 0 {
+	} else if len(statusAddresses) > 0 {
 		exposureReason = "privateIngressAddress"
 		confidence = "high"
+	} else if len(specHostnames) > 0 {
+		// A rule hostname is a statement of intent, not a published address, so
+		// it carries the same lower confidence as its public counterpart above.
+		exposureReason = "privateIngressHostname"
+		confidence = "medium"
 	}
 
 	return []map[string]*llx.RawData{networkExposureArgs(networkExposureInputWithMetadata(ing, networkExposureInput{
@@ -1613,12 +1646,7 @@ func adminNetworkPolicyRuleHasCatchAllPeers(rule map[string]any, peerField strin
 	if len(peers) == 0 {
 		return true
 	}
-	for _, peer := range peers {
-		if adminNetworkPolicyPeerIsCatchAll(peer) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(peers, adminNetworkPolicyPeerIsCatchAll)
 }
 
 func adminNetworkPolicyPeerIsCatchAll(peer any) bool {
@@ -1857,7 +1885,10 @@ func primaryInterfaceCoverageArgsForPodWithSelectorContext(pod *corev1.Pod, poli
 		if !primaryPolicyCoversPodWithServiceAccount(policy, pod, namespaceLabels[pod.Namespace], serviceAccountLabels[podServiceAccountKey(pod)]) {
 			continue
 		}
-		policyRefs = append(policyRefs, rawStringData(policy, "policyRef"))
+		// policyRef is itself a comma-joined list, so it has to be split before
+		// dedup: sortedUniqueStrings compares whole strings, and "a,b" and "b"
+		// are distinct to it even though b is already covered.
+		policyRefs = append(policyRefs, splitPolicyRefs(rawStringData(policy, "policyRef"))...)
 		nativePolicies = append(nativePolicies, rawStringArrayData(policy, "nativeNetworkPolicies")...)
 		adminPolicies = append(adminPolicies, rawStringArrayData(policy, "adminNetworkPolicies")...)
 		calicoPolicies = append(calicoPolicies, rawStringArrayData(policy, "calicoPolicies")...)
@@ -1877,6 +1908,15 @@ func primaryInterfaceCoverageArgsForPodWithSelectorContext(pod *corev1.Pod, poli
 	}
 
 	gaps := []string{}
+	// NetworkPolicy is enforced on the pod network namespace, so it does not
+	// apply to a host-network pod whatever selector matched it. Reporting such
+	// a pod as default-denied contradicts k8s.pod.escapesNetworkPolicy and
+	// hides the gap that matters most.
+	if pod.Spec.HostNetwork {
+		defaultDenyIngress = false
+		defaultDenyEgress = false
+		gaps = append(gaps, "pod "+pod.Namespace+"/"+pod.Name+" uses host networking, which NetworkPolicy does not cover")
+	}
 	if !defaultDenyIngress {
 		gaps = append(gaps, "primary ingress is not default-deny for pod "+pod.Namespace+"/"+pod.Name)
 	}
@@ -1970,7 +2010,7 @@ func secondaryInterfaceCoverageArgsForPod(pod *corev1.Pod, policyCoverage []map[
 			if !secondaryPolicyCoversAttachment(policy, pod, attachment) {
 				continue
 			}
-			policyRefs = append(policyRefs, rawStringData(policy, "policyRef"))
+			policyRefs = append(policyRefs, splitPolicyRefs(rawStringData(policy, "policyRef"))...)
 			multiPolicies = append(multiPolicies, rawStringArrayData(policy, "multiNetworkPolicies")...)
 			calicoPolicies = append(calicoPolicies, rawStringArrayData(policy, "calicoPolicies")...)
 			ciliumPolicies = append(ciliumPolicies, rawStringArrayData(policy, "ciliumPolicies")...)
@@ -2176,9 +2216,7 @@ func namespacedNameKey(namespace, name string) string {
 
 func labelsWithNamespace(in map[string]string, namespace string) map[string]string {
 	out := make(map[string]string, len(in)+1)
-	for key, value := range in {
-		out[key] = value
-	}
+	maps.Copy(out, in)
 	if namespace != "" {
 		out["projectcalico.org/namespace"] = namespace
 	}
@@ -2247,19 +2285,19 @@ func evalCalicoSelectorTerm(expr string, values map[string]string) bool {
 }
 
 func splitCalicoComparison(expr, op string) (string, string, bool) {
-	idx := strings.Index(expr, op)
-	if idx < 0 {
+	before, after, ok := strings.Cut(expr, op)
+	if !ok {
 		return "", "", false
 	}
-	return expr[:idx], expr[idx+len(op):], true
+	return before, after, true
 }
 
 func splitCalicoSetExpression(expr, op string) (string, string, bool) {
-	idx := strings.Index(expr, op)
-	if idx < 0 {
+	before, after, ok := strings.Cut(expr, op)
+	if !ok {
 		return "", "", false
 	}
-	return expr[:idx], expr[idx+len(op):], true
+	return before, after, true
 }
 
 func parseCalicoSetValues(raw string) []string {
@@ -2434,7 +2472,7 @@ func parseNetworkSelectionAnnotation(value, defaultNamespace string) []secondary
 		}
 	}
 	out := []secondaryInterfaceAttachment{}
-	for _, item := range strings.Split(value, ",") {
+	for item := range strings.SplitSeq(value, ",") {
 		if attachment, ok := newSecondaryInterfaceAttachment(item, "", "", defaultNamespace); ok {
 			out = append(out, attachment)
 		}
@@ -2869,7 +2907,7 @@ func gatewayRouteParentRefString(routeNamespace string, ref map[string]any) stri
 func gatewayRouteParentAddresses(parentRefs []string, gatewayContexts map[string]networkExposureContext) []string {
 	out := []string{}
 	for _, ref := range parentRefs {
-		baseRef := strings.Split(ref, "#")[0]
+		baseRef, _, _ := strings.Cut(ref, "#")
 		ctx, ok := gatewayContexts[baseRef]
 		if !ok {
 			continue
@@ -2887,7 +2925,7 @@ func gatewayRouteExposureReason(routeHostnames, parentRefs []string, gatewayCont
 		return "gatewayRoutePublicParent"
 	}
 	for _, ref := range parentRefs {
-		baseRef := strings.Split(ref, "#")[0]
+		baseRef, _, _ := strings.Cut(ref, "#")
 		if ctx, ok := gatewayContexts[baseRef]; ok && len(ctx.addresses) > 0 {
 			return "gatewayRoutePrivateParent"
 		}
@@ -2905,7 +2943,7 @@ func gatewayRouteParentExposure(parentRefs []string, gatewayContexts map[string]
 	observed := false
 	internetExposed := false
 	for _, ref := range parentRefs {
-		baseRef := strings.Split(ref, "#")[0]
+		baseRef, _, _ := strings.Cut(ref, "#")
 		ctx, ok := gatewayContexts[baseRef]
 		if !ok {
 			continue
@@ -2979,7 +3017,7 @@ func gatewayRouteAcceptedParentRefs(u *unstructured.Unstructured, specParentRefs
 			continue
 		}
 		ref := gatewayRouteParentRefString(u.GetNamespace(), nestedMap(parent, "parentRef"))
-		baseRef := strings.Split(ref, "#")[0]
+		baseRef, _, _ := strings.Cut(ref, "#")
 		for _, conditionItem := range nestedSlice(parent, "conditions") {
 			condition, ok := conditionItem.(map[string]any)
 			if !ok || stringValue(condition["type"]) != "Accepted" {
@@ -3268,7 +3306,61 @@ func isInternalHostname(hostname string) bool {
 		strings.HasSuffix(hostname, ".cluster.local") ||
 		strings.HasSuffix(hostname, ".local") ||
 		strings.HasSuffix(hostname, ".internal") ||
-		strings.Contains(hostname, ".svc.")
+		strings.Contains(hostname, ".svc.") ||
+		isInternalCloudLoadBalancerHostname(hostname)
+}
+
+// isInternalCloudLoadBalancerHostname reports whether a cloud load balancer's DNS
+// name identifies it as internal (reachable only inside the VPC) rather than
+// internet-facing.
+//
+// A Service or Ingress usually publishes its load balancer as a hostname, not an
+// IP, and an unrecognized hostname is otherwise classified as internet-reachable.
+// That is the safe default for an arbitrary name, but it misreads AWS load
+// balancer DNS: an internal Application or Classic Load Balancer is always named
+// internal-<name>-<id>.<region>.elb.amazonaws.com, and AWS never applies that
+// prefix to an internet-facing one, so treating the prefix as internal removes a
+// large class of false positives without risking a false negative.
+//
+// Network Load Balancers carry no equivalent marker in their DNS name, so an
+// internal NLB is not detectable here; those are classified from the load
+// balancer scheme annotation instead (see hasInternalLoadBalancerAnnotation).
+func isInternalCloudLoadBalancerHostname(hostname string) bool {
+	return strings.HasPrefix(hostname, "internal-") &&
+		strings.HasSuffix(hostname, ".amazonaws.com") &&
+		strings.Contains(hostname, ".elb.")
+}
+
+// internalLoadBalancerAnnotations maps the cloud controller annotations that
+// explicitly request an internal load balancer to the value that means internal.
+// The AWS NLB case is the reason this exists: unlike an ALB, an internal NLB's DNS
+// name is indistinguishable from an internet-facing one, so the declared scheme is
+// the only signal available.
+var internalLoadBalancerAnnotations = map[string]string{
+	// AWS Load Balancer Controller, Ingress (ALB) and Service (NLB)
+	"alb.ingress.kubernetes.io/scheme":                      "internal",
+	"service.beta.kubernetes.io/aws-load-balancer-scheme":   "internal",
+	"service.beta.kubernetes.io/aws-load-balancer-internal": "true",
+	// Azure cloud provider
+	"service.beta.kubernetes.io/azure-load-balancer-internal": "true",
+	// GKE, current and legacy annotation
+	"networking.gke.io/load-balancer-type": "internal",
+	"cloud.google.com/load-balancer-type":  "internal",
+}
+
+// hasInternalLoadBalancerAnnotation reports whether the object explicitly requests
+// an internal load balancer through a cloud controller annotation. A declared
+// scheme is authoritative: the controller provisions the load balancer from it, so
+// it outranks any inference drawn from the published address.
+func hasInternalLoadBalancerAnnotation(annotations map[string]string) bool {
+	for key, internalValue := range internalLoadBalancerAnnotations {
+		if value, ok := annotations[key]; ok {
+			if strings.EqualFold(strings.TrimSpace(value), internalValue) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func filterNetworkObjectsByNamespace(runtime *plugin.Runtime, namespace string, list func(k8s *mqlK8s) *plugin.TValue[[]any]) ([]any, error) {
@@ -3324,6 +3416,17 @@ func stringsToAny(in []string) []any {
 	return out
 }
 
+// splitPolicyRefs expands a comma-joined policyRef into its members so they can
+// be deduplicated individually. sortedUniqueStrings compares whole strings, so
+// without this a pod matched by both a broad and a narrow policy reports the
+// broad one twice.
+func splitPolicyRefs(joined string) []string {
+	if joined == "" {
+		return nil
+	}
+	return strings.Split(joined, ",")
+}
+
 func sortedUniqueStrings(in []string) []string {
 	seen := map[string]struct{}{}
 	out := []string{}
@@ -3343,12 +3446,7 @@ func sortedUniqueStrings(in []string) []string {
 }
 
 func contains(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, want)
 }
 
 func publicCIDRs(cidrs []string, settings networkInventorySettings) []string {

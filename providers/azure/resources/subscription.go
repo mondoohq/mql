@@ -4,16 +4,13 @@
 package resources
 
 import (
-	"context"
 	"errors"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	subscriptions "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions/v2"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func initAzureSubscription(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -34,14 +31,9 @@ func initAzureSubscription(runtime *plugin.Runtime, args map[string]*llx.RawData
 		return nil, az.sub, nil
 	}
 
-	subscriptionsC, err := subscriptions.NewClient(conn.Token(), &arm.ClientOptions{
-		ClientOptions: conn.ClientOptions(),
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	ctx := context.Background()
-	resp, err := subscriptionsC.Get(ctx, conn.SubId(), &subscriptions.ClientGetOptions{})
+	// Cached on the connection: asset detection already fetched this record
+	// when it named the root asset, so the common case costs no API call.
+	resp, err := conn.Subscription()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -242,6 +234,17 @@ func (a *mqlAzureSubscription) advisor() (*mqlAzureSubscriptionAdvisorService, e
 	return advisorSvc, nil
 }
 
+func (a *mqlAzureSubscription) policy() (*mqlAzureSubscriptionPolicy, error) {
+	svc, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionPolicy, map[string]*llx.RawData{
+		"subscriptionId": llx.StringData(a.SubscriptionId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	policySvc := svc.(*mqlAzureSubscriptionPolicy)
+	return policySvc, nil
+}
+
 func (a *mqlAzureSubscription) iot() (*mqlAzureSubscriptionIotService, error) {
 	svc, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionIotService, map[string]*llx.RawData{
 		"subscriptionId": llx.StringData(a.SubscriptionId.Data),
@@ -306,6 +309,66 @@ func (a *mqlAzureSubscription) recoveryServices() (*mqlAzureSubscriptionRecovery
 	return svc.(*mqlAzureSubscriptionRecoveryServicesService), nil
 }
 
+func (a *mqlAzureSubscription) dataProtection() (*mqlAzureSubscriptionDataProtectionService, error) {
+	svc, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionDataProtectionService, map[string]*llx.RawData{
+		"subscriptionId": llx.StringData(a.SubscriptionId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return svc.(*mqlAzureSubscriptionDataProtectionService), nil
+}
+
+func (a *mqlAzureSubscription) dataBox() (*mqlAzureSubscriptionDataBoxService, error) {
+	svc, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionDataBoxService, map[string]*llx.RawData{
+		"subscriptionId": llx.StringData(a.SubscriptionId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return svc.(*mqlAzureSubscriptionDataBoxService), nil
+}
+
+func (a *mqlAzureSubscription) netApp() (*mqlAzureSubscriptionNetAppService, error) {
+	svc, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionNetAppService, map[string]*llx.RawData{
+		"subscriptionId": llx.StringData(a.SubscriptionId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return svc.(*mqlAzureSubscriptionNetAppService), nil
+}
+
+func (a *mqlAzureSubscription) fileShares() (*mqlAzureSubscriptionFileSharesService, error) {
+	svc, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionFileSharesService, map[string]*llx.RawData{
+		"subscriptionId": llx.StringData(a.SubscriptionId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return svc.(*mqlAzureSubscriptionFileSharesService), nil
+}
+
+func (a *mqlAzureSubscription) elasticSan() (*mqlAzureSubscriptionElasticSanService, error) {
+	svc, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionElasticSanService, map[string]*llx.RawData{
+		"subscriptionId": llx.StringData(a.SubscriptionId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return svc.(*mqlAzureSubscriptionElasticSanService), nil
+}
+
+func (a *mqlAzureSubscription) storageCache() (*mqlAzureSubscriptionStorageCacheService, error) {
+	svc, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionStorageCacheService, map[string]*llx.RawData{
+		"subscriptionId": llx.StringData(a.SubscriptionId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return svc.(*mqlAzureSubscriptionStorageCacheService), nil
+}
+
 func (a *mqlAzureSubscription) functions() (*mqlAzureSubscriptionFunctionsService, error) {
 	svc, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionFunctionsService, map[string]*llx.RawData{
 		"subscriptionId": llx.StringData(a.SubscriptionId.Data),
@@ -324,6 +387,16 @@ func (a *mqlAzureSubscription) serviceBus() (*mqlAzureSubscriptionServiceBusServ
 		return nil, err
 	}
 	return svc.(*mqlAzureSubscriptionServiceBusService), nil
+}
+
+func (a *mqlAzureSubscription) serviceFabric() (*mqlAzureSubscriptionServiceFabricService, error) {
+	svc, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionServiceFabricService, map[string]*llx.RawData{
+		"subscriptionId": llx.StringData(a.SubscriptionId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return svc.(*mqlAzureSubscriptionServiceFabricService), nil
 }
 
 func (a *mqlAzureSubscription) eventHub() (*mqlAzureSubscriptionEventHubService, error) {

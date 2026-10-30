@@ -1,0 +1,13 @@
+dr-xr-xr-x       4096 /boot
+drwxr-xr-x         17 /boot/efi
+drwxr-xr-x         30 /boot/efi/EFI
+drwx------         22 /boot/efi/EFI/amzn
+-rw-r--r--        134 /boot/efi/EFI/amzn/grub.cfg
+drwx------         25 /boot/efi/EFI/BOOT
+-rwx------    1218080 /boot/efi/EFI/BOOT/BOOTX64.EFI
+drwx------         79 /boot/grub2
+drwx------         25 /boot/grub2/fonts
+-rw-------       4471 /boot/grub2/grub.cfg
+-rw-------       1024 /boot/grub2/grubenv
+drwxr-xr-x       8192 /boot/grub2/i386-pc
+drwxr-xr-x       4096 /boot/grub2/locale

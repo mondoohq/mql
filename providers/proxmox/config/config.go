@@ -4,15 +4,21 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/proxmox/connection"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/proxmox/connection"
 )
 
 var Config = plugin.Provider{
-	Name:            "proxmox",
-	ID:              "go.mondoo.com/mql/v13/providers/proxmox",
-	Version:         "0.3.0",
+	Name: "proxmox",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "proxmox",
+	ID:      "go.mondoo.com/mql/providers/proxmox",
+	Version: "14.0.7",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	Platforms:       connection.Platforms,
 	ConnectionTypes: []string{"proxmox"},
 	Connectors: []plugin.Connector{

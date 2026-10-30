@@ -1,0 +1,101 @@
+[
+  {
+    "Status": null,
+    "Description": "Update",
+    "HotFixId": "KB5120702",
+    "Caption": "http://support.microsoft.com/?kbid=5120702",
+    "InstalledOn": {
+      "value": "/Date(1786492800000)/",
+      "DateTime": "Wednesday, August 12, 2026 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Security Update",
+    "HotFixId": "KB4465659",
+    "Caption": "http://support.microsoft.com/?kbid=4465659",
+    "InstalledOn": {
+      "value": "/Date(1542585600000)/",
+      "DateTime": "Monday, November 19, 2018 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Update",
+    "HotFixId": "KB3176936",
+    "Caption": "http://support.microsoft.com/?kbid=3176936",
+    "InstalledOn": {
+      "value": "/Date(1476748800000)/",
+      "DateTime": "Tuesday, October 18, 2016 12:00:00 AM"
+    },
+    "InstalledBy": ""
+  },
+  {
+    "Status": null,
+    "Description": "Update",
+    "HotFixId": "KB3186568",
+    "Caption": "http://support.microsoft.com/?kbid=3186568",
+    "InstalledOn": {
+      "value": "/Date(1497484800000)/",
+      "DateTime": "Thursday, June 15, 2017 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Update",
+    "HotFixId": "KB3192137",
+    "Caption": "http://support.microsoft.com/?kbid=3192137",
+    "InstalledOn": {
+      "value": "/Date(1473638400000)/",
+      "DateTime": "Monday, September 12, 2016 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Update",
+    "HotFixId": "KB3199209",
+    "Caption": "http://support.microsoft.com/?kbid=3199209",
+    "InstalledOn": {
+      "value": "/Date(1476748800000)/",
+      "DateTime": "Tuesday, October 18, 2016 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Update",
+    "HotFixId": "KB3199986",
+    "Caption": "http://support.microsoft.com/?kbid=3199986",
+    "InstalledOn": {
+      "value": "/Date(1479168000000)/",
+      "DateTime": "Tuesday, November 15, 2016 12:00:00 AM"
+    },
+    "InstalledBy": "WIN-FIXTURE01\\Administrator"
+  },
+  {
+    "Status": null,
+    "Description": "Update",
+    "HotFixId": "KB4013418",
+    "Caption": "http://support.microsoft.com/?kbid=4013418",
+    "InstalledOn": {
+      "value": "/Date(1489622400000)/",
+      "DateTime": "Thursday, March 16, 2017 12:00:00 AM"
+    },
+    "InstalledBy": "WIN-FIXTURE01\\Administrator"
+  },
+  {
+    "Status": null,
+    "Description": "Update",
+    "HotFixId": "KB4023834",
+    "Caption": "http://support.microsoft.com/?kbid=4023834",
+    "InstalledOn": {
+      "value": "/Date(1497484800000)/",
+      "DateTime": "Thursday, June 15, 2017 12:00:00 AM"
+    },
+    "InstalledBy": "WIN-FIXTURE01\\Administrator"
+  }
+]

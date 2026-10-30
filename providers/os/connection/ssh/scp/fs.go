@@ -11,8 +11,8 @@ import (
 
 	scp_client "github.com/hnakamur/go-scp"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers/os/connection/local/statutil"
-	"go.mondoo.com/mql/v13/providers/os/connection/ssh/cat"
+	"go.mondoo.com/mql/providers/os/connection/local/statutil"
+	"go.mondoo.com/mql/providers/os/connection/ssh/cat"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -76,9 +76,10 @@ func (s Fs) Stat(path string) (os.FileInfo, error) {
 	return statutil.New(s.commandRunner).Stat(path)
 }
 
-func (s Fs) Lstat(p string) (os.FileInfo, error) {
-	return nil, errors.New("lstat not implemented")
-}
+// NOTE: deliberately no Lstat. Connection.FileInfo probes for an Lstat method
+// and uses it as the primary call, so declaring one that always errors makes
+// every stat fail instead of falling through to Stat above, which works. Symlink
+// detection on this filesystem is handled by statutil's compound command.
 
 func (s Fs) Chmod(name string, mode os.FileMode) error {
 	return errors.New("chmod not implemented")

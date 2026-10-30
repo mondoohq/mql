@@ -1,0 +1,6 @@
+[Unit]
+Description=Linked under an undeclared name
+[Service]
+ExecStart=/bin/true
+[Install]
+WantedBy=multi-user.target

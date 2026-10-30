@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/digitalocean/godo"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/digitalocean/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/digitalocean/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func parseScanTime(s string) *time.Time {
@@ -40,11 +40,11 @@ func newMqlSecurityScan(runtime *plugin.Runtime, scan *godo.Scan) (*mqlDigitaloc
 	return res.(*mqlDigitaloceanSecurityScan), nil
 }
 
-func (r *mqlDigitalocean) securityScans() ([]interface{}, error) {
+func (r *mqlDigitalocean) securityScans() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var all []interface{}
+	var all []any
 	opt := &godo.ListOptions{PerPage: 200}
 	for {
 		scans, resp, err := client.Security.ListScans(context.Background(), opt)
@@ -53,7 +53,7 @@ func (r *mqlDigitalocean) securityScans() ([]interface{}, error) {
 			// treat that as an empty list rather than failing (mirrors the
 			// container-registry accessors).
 			if isDoNotFound(err) {
-				return []interface{}{}, nil
+				return []any{}, nil
 			}
 			return nil, err
 		}
@@ -100,37 +100,41 @@ func (r *mqlDigitalocean) latestSecurityScan() (*mqlDigitaloceanSecurityScan, er
 
 // findings fetches the scan's findings via GetScan. The scan list API
 // returns scans without findings, so they are loaded on demand here.
-func (r *mqlDigitaloceanSecurityScan) findings() ([]interface{}, error) {
+func (r *mqlDigitaloceanSecurityScan) findings() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var all []interface{}
-	opt := &godo.ScanFindingsOptions{ListOptions: godo.ListOptions{PerPage: 200}}
-	for {
-		scan, resp, err := client.Security.GetScan(context.Background(), r.Id.Data, opt)
+	// GetScan decodes into a struct that carries no pagination links, so
+	// godo never populates resp.Links for this endpoint (unlike ListScans).
+	// Drive pagination off the returned page size instead: keep advancing
+	// while a full page comes back, bounded by maxPages so a misbehaving
+	// cursor can't hang the scan.
+	const perPage = 200
+	const maxPages = 1000
+	var all []any
+	opt := &godo.ScanFindingsOptions{PerPage: perPage, Page: 1}
+	for range maxPages {
+		scan, _, err := client.Security.GetScan(context.Background(), r.Id.Data, opt)
 		if err != nil {
 			return nil, err
 		}
-		if scan != nil {
-			for _, f := range scan.Findings {
-				if f == nil {
-					continue
-				}
-				mqlFinding, err := r.newFinding(f)
-				if err != nil {
-					return nil, err
-				}
-				all = append(all, mqlFinding)
-			}
-		}
-		if resp == nil || resp.Links == nil || resp.Links.IsLastPage() {
+		if scan == nil {
 			break
 		}
-		page, err := resp.Links.CurrentPage()
-		if err != nil {
-			return nil, err
+		for _, f := range scan.Findings {
+			if f == nil {
+				continue
+			}
+			mqlFinding, err := r.newFinding(f)
+			if err != nil {
+				return nil, err
+			}
+			all = append(all, mqlFinding)
 		}
-		opt.Page = page + 1
+		if len(scan.Findings) < perPage {
+			break
+		}
+		opt.Page++
 	}
 	return all, nil
 }
@@ -140,12 +144,12 @@ type mqlDigitaloceanSecurityScanFindingInternal struct {
 }
 
 func (r *mqlDigitaloceanSecurityScan) newFinding(f *godo.ScanFinding) (*mqlDigitaloceanSecurityScanFinding, error) {
-	steps := make([]interface{}, 0, len(f.MitigationSteps))
+	steps := make([]any, 0, len(f.MitigationSteps))
 	for _, s := range f.MitigationSteps {
 		if s == nil {
 			continue
 		}
-		steps = append(steps, map[string]interface{}{
+		steps = append(steps, map[string]any{
 			"step":        int64(s.Step),
 			"title":       s.Title,
 			"description": s.Description,
@@ -171,7 +175,7 @@ func (r *mqlDigitaloceanSecurityScan) newFinding(f *godo.ScanFinding) (*mqlDigit
 	return finding, nil
 }
 
-func (r *mqlDigitaloceanSecurityScanFinding) affectedResources() ([]interface{}, error) {
+func (r *mqlDigitaloceanSecurityScanFinding) affectedResources() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
@@ -180,7 +184,7 @@ func (r *mqlDigitaloceanSecurityScanFinding) affectedResources() ([]interface{},
 		FindingUUID: r.RuleUuid.Data,
 	}
 
-	var all []interface{}
+	var all []any
 	opt := &godo.ListOptions{PerPage: 200}
 	for {
 		resources, resp, err := client.Security.ListFindingAffectedResources(context.Background(), req, opt)
@@ -191,7 +195,7 @@ func (r *mqlDigitaloceanSecurityScanFinding) affectedResources() ([]interface{},
 			if a == nil {
 				continue
 			}
-			all = append(all, map[string]interface{}{
+			all = append(all, map[string]any{
 				"urn":  a.URN,
 				"name": a.Name,
 				"type": a.Type,

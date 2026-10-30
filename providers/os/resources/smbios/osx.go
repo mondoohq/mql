@@ -8,8 +8,8 @@ import (
 	"io"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 	plist "howett.net/plist"
 )
 
@@ -29,7 +29,7 @@ import (
 // https://github.com/erikberglund/Scripts/blob/master/snippets/macos_hardware.md
 //
 // results can be compared with dmidecode
-// http://cavaliercoder.com/blog/dmidecode-for-apple-osx.html
+// https://hotsrc.dev/blog/dmidecode-for-apple-osx.html
 type OSXSmbiosManager struct {
 	provider shared.Connection
 	platform *inventory.Platform

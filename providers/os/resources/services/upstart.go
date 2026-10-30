@@ -11,7 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// see https://wiki.ubuntu.com/SystemdForUpstartUsers
+// see https://web.archive.org/web/20231231172843/https://wiki.ubuntu.com/SystemdForUpstartUsers
 type UpstartServiceManager struct {
 	SysVServiceManager
 }

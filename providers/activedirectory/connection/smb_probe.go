@@ -354,7 +354,7 @@ func parseEncryptionContext(resp, body []byte) bool {
 
 	// Contexts are at resp[ctxOffset:] (offset from header start).
 	pos := int(ctxOffset)
-	for i := uint16(0); i < ctxCount; i++ {
+	for range ctxCount {
 		if pos+8 > len(resp) {
 			break
 		}

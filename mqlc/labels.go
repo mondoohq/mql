@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/types"
 	"golang.org/x/text/runes"
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
@@ -55,9 +55,19 @@ func createLabel(res *llx.CodeBundle, ref uint64, schema resources.ResourcesSche
 			if err != nil {
 				return "", err
 			}
+			if isSynthesizedRoot(res, ref) {
+				parentLabel = ""
+			}
 		}
 	} else if chunk.Function.Binding != 0 {
 		parentLabel, err = createLabel(res, chunk.Function.Binding, schema)
+		if err == nil && isSynthesizedRoot(res, chunk.Function.Binding) {
+			// The asset root a rooted query starts from is not something the
+			// author wrote - `hostname` is what they typed - so it does not
+			// appear in the label. Asking for the root itself (`_`) still labels
+			// it, because then it is the answer rather than the path to one.
+			parentLabel = ""
+		}
 		if err != nil {
 			return "", err
 		}
@@ -102,26 +112,50 @@ func createLabel(res *llx.CodeBundle, ref uint64, schema resources.ResourcesSche
 		}
 	case "{}", "${}":
 		label = parentLabel
+	case llx.AssetRootChunkID:
+		// Dereferencing into the referenced asset is not a step the user wrote,
+		// so the label stays whatever produced the asset (`…running.tools`, not
+		// `…running.$assetRoot.tools`).
+		label = parentLabel
 	case "createResource":
 		typeName := string(chunk.Type())
+		// Only use the last segment of the resource type to avoid duplicating
+		// the parent path in the label (e.g. prevent
+		// "gcp.project.pubsub.gcp.project.pubsubService.topic").
+		short := typeName
+		if _, after, ok := strings.CutLast(typeName, "."); ok {
+			short = after
+		}
+		// The only emitter of this chunk reaches a resource *through* a binding
+		// (mqlc.go, the implicit-resource branch), so the author always wrote
+		// just the last segment. An empty parent label means that binding is
+		// itself unnamed - the asset root, or the resource a block is bound to -
+		// and the segment stands alone.
 		if parentLabel != "" {
-			// Only use the last segment of the resource type to avoid
-			// duplicating the parent path in the label (e.g. prevent
-			// "gcp.project.pubsub.gcp.project.pubsubService.topic").
-			if idx := strings.LastIndex(typeName, "."); idx >= 0 {
-				label = parentLabel + typeName[idx:]
-			} else {
-				label = parentLabel + "." + typeName
-			}
+			label = parentLabel + "." + short
 		} else {
-			label = typeName
+			label = short
 		}
 	case "if":
 		label = "if"
 	default:
+		// Builtins specific to one resource (parse.date,
+		// file.permissions.atMost) carry the resource name in their id, and
+		// the author wrote only the function after it.
+		if chunk.Function.Binding != 0 {
+			if typ := code.Chunk(chunk.Function.Binding).Type(); typ.IsResource() {
+				id = strings.TrimPrefix(id, string(typ)+".")
+			}
+		}
+
 		if x, ok := llx.ComparableLabel(id); ok {
 			arg := chunk.Function.Args[0].LabelV2(code)
 			label = parentLabel + " " + x + " " + arg
+		} else if isEmbedTraversal(code, chunk, schema) {
+			// Reaching a field through an embedded resource costs a chunk per
+			// hop (`os.linux` -> `unix` -> `base` -> `hostname`), and the author
+			// wrote none of them. The label is the field they asked for.
+			label = parentLabel
 		} else if parentLabel == "" {
 			label = id
 		} else {
@@ -133,15 +167,61 @@ func createLabel(res *llx.CodeBundle, ref uint64, schema resources.ResourcesSche
 	return stripCtlAndExtFromUnicode(label), nil
 }
 
+// isSynthesizedRoot reports whether a chunk is the asset root the compiler
+// inserted to resolve a rooted query, rather than a resource the author named.
+// It is the root of this bundle, taken as an operand (binding 0), which is
+// exactly the shape `hostname` compiles to and never the shape `os.linux.foo`
+// does - there the author named it and gets it back in the label.
+func isSynthesizedRoot(res *llx.CodeBundle, ref uint64) bool {
+	if res.AssetRoot == "" {
+		return false
+	}
+	chunk := res.CodeV2.Chunk(ref)
+	if chunk == nil || chunk.Call != llx.Chunk_FUNCTION || chunk.Id != res.AssetRoot {
+		return false
+	}
+	return chunk.Function == nil || chunk.Function.Binding == 0
+}
+
+// isEmbedTraversal reports whether a field chunk is one hop of an embed chain
+// rather than the field the author asked for. Embedded fields are reachable
+// directly on the embedding resource, so the path to them is machinery.
+func isEmbedTraversal(code *llx.CodeV2, chunk *llx.Chunk, schema resources.ResourcesSchema) bool {
+	if schema == nil || chunk.Function == nil || chunk.Function.Binding == 0 {
+		return false
+	}
+	binding := code.Chunk(chunk.Function.Binding)
+	if binding == nil {
+		return false
+	}
+	typ := binding.DereferencedTypeV2(code)
+	if !typ.IsResource() {
+		return false
+	}
+	_, field := schema.LookupField(typ.ResourceName(), chunk.Id)
+	return field.GetIsEmbedded()
+}
+
 var reAccessor = regexp.MustCompile(`^[\p{L}\d_]+$`)
 
 func isAccessor(s string) bool {
 	return reAccessor.MatchString(s)
 }
 
-// Unicode normalization and filtering, see http://blog.golang.org/normalization and
-// http://godoc.org/golang.org/x/text/unicode/norm for more details.
+// Unicode normalization and filtering, see https://go.dev/blog/normalization and
+// https://pkg.go.dev/golang.org/x/text/unicode/norm for more details.
 func stripCtlAndExtFromUnicode(str string) string {
+	// Almost every label is printable ASCII. NFKD leaves printable ASCII
+	// unchanged, because no ASCII rune has a compatibility decomposition, and
+	// the filter below removes nothing from it. So the transform is the
+	// identity here and the string can be returned as it is.
+	//
+	// The transform chain itself costs about 4.6 kB and 5 allocations per call,
+	// which dominates label creation on a large scan.
+	if isPrintableASCII(str) {
+		return str
+	}
+
 	isOk := func(r rune) bool {
 		return r < 32 || r >= 127
 	}
@@ -149,6 +229,18 @@ func stripCtlAndExtFromUnicode(str string) string {
 	t := transform.Chain(norm.NFKD, runes.Remove(runes.Predicate(isOk)))
 	str, _, _ = transform.String(t, str)
 	return str
+}
+
+// isPrintableASCII reports whether every byte of str is a printable ASCII
+// character, that is in the range [32, 127). A multi byte rune always has bytes
+// above 127, so a byte scan is enough and no decoding is needed.
+func isPrintableASCII(str string) bool {
+	for i := 0; i < len(str); i++ {
+		if str[i] < 32 || str[i] >= 127 {
+			return false
+		}
+	}
+	return true
 }
 
 // UpdateLabels for the given code under the schema

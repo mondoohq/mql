@@ -4,8 +4,8 @@
 package platformid
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 type UniquePlatformIDProvider interface {
@@ -25,6 +25,14 @@ func MachineIDProvider(conn shared.Connection, platform *inventory.Platform) (Un
 		uuidProvider = &MacOSIdProvider{connection: conn}
 	} else if uuidProvider == nil && platform.Name == "windows" {
 		uuidProvider = &WinIdProvider{connection: conn}
+	} else if uuidProvider == nil && platform.Name == "freebsd" {
+		uuidProvider = &FreeBSDIdProvider{connection: conn}
+	} else if uuidProvider == nil && platform.Name == "aix" {
+		uuidProvider = &AixIdProvider{connection: conn}
+	} else if uuidProvider == nil && platform.Name == "solaris" {
+		// Solaris 11.4 keeps a D-Bus machine id at /var/lib/dbus/machine-id,
+		// the file the linux provider reads first.
+		uuidProvider = &LinuxIdProvider{connection: conn}
 	}
 
 	return uuidProvider, nil

@@ -4,19 +4,26 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/providers/portainer/connection"
-	"go.mondoo.com/mql/v13/providers/portainer/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/providers/portainer/connection"
+	"go.mondoo.com/mql/providers/portainer/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "portainer",
-	ID:              "go.mondoo.com/mql/providers/portainer",
-	Version:         "13.1.1",
+	Name: "portainer",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "portainer",
+	ID:      "go.mondoo.com/mql/providers/portainer",
+	Version: "14.0.7",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	Maturity:        resources.MaturityExperimental,
 	ConnectionTypes: []string{provider.DefaultConnectionType},
+	Platforms:       connection.Platforms,
 	Connectors: []plugin.Connector{
 		{
 			Name:  "portainer",

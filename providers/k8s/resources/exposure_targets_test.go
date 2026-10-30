@@ -15,11 +15,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/manifest"
-	"go.mondoo.com/mql/v13/utils/syncx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/k8s/connection/manifest"
+	"go.mondoo.com/mql/utils/syncx"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -212,6 +212,73 @@ func TestPodExposures(t *testing.T) {
 	otherExps := other.(*mqlK8sPod).GetExposures()
 	require.NoError(t, otherExps.Error)
 	assert.Empty(t, otherExps.Data)
+}
+
+// requireServiceExposure asserts that the exposure list contains the
+// internet-exposed Service exposure for web-svc.
+func requireServiceExposure(t *testing.T, exps []any) {
+	t.Helper()
+	for i := range exps {
+		e, ok := exps[i].(*mqlK8sNetworkExposure)
+		if !ok {
+			continue
+		}
+		if e.SourceKind.Data == "Service" && e.Name.Data == "web-svc" {
+			internet := e.GetInternetExposed()
+			require.NoError(t, internet.Error)
+			assert.True(t, internet.Data, "web-svc exposure must classify as internet exposed")
+			return
+		}
+	}
+	t.Fatalf("expected the web-svc Service exposure, got %d other exposures", len(exps))
+}
+
+func TestWorkloadExposures(t *testing.T) {
+	runtime := exposureRuntime(t)
+
+	// The deployment backing web-1/web-2 inherits the exposures that route to
+	// its pods. This is the edge that lets controller-managed workloads carry
+	// the internet exposure their pods serve, since owned pods are not
+	// discovered as assets of their own.
+	dep, err := NewResource(runtime, "k8s.deployment", map[string]*llx.RawData{
+		"name":      llx.StringData("web"),
+		"namespace": llx.StringData("prod"),
+	})
+	require.NoError(t, err)
+	depExps := dep.(*mqlK8sDeployment).GetExposures()
+	require.NoError(t, depExps.Error)
+	requireServiceExposure(t, depExps.Data)
+
+	// A bare ReplicaSet with the same selector resolves the same exposure.
+	rs, err := NewResource(runtime, "k8s.replicaset", map[string]*llx.RawData{
+		"name":      llx.StringData("web-rs"),
+		"namespace": llx.StringData("prod"),
+	})
+	require.NoError(t, err)
+	rsExps := rs.(*mqlK8sReplicaset).GetExposures()
+	require.NoError(t, rsExps.Error)
+	requireServiceExposure(t, rsExps.Data)
+
+	// A workload whose pods no service selects reports no exposures.
+	ds, err := NewResource(runtime, "k8s.daemonset", map[string]*llx.RawData{
+		"name":      llx.StringData("other-ds"),
+		"namespace": llx.StringData("prod"),
+	})
+	require.NoError(t, err)
+	dsExps := ds.(*mqlK8sDaemonset).GetExposures()
+	require.NoError(t, dsExps.Error)
+	assert.Empty(t, dsExps.Data)
+
+	// Same pod labels in another namespace must not inherit the prod service's
+	// exposure: service selection is namespace scoped.
+	sts, err := NewResource(runtime, "k8s.statefulset", map[string]*llx.RawData{
+		"name":      llx.StringData("web-staging-sts"),
+		"namespace": llx.StringData("staging"),
+	})
+	require.NoError(t, err)
+	stsExps := sts.(*mqlK8sStatefulset).GetExposures()
+	require.NoError(t, stsExps.Error)
+	assert.Empty(t, stsExps.Data)
 }
 
 // testCertPEM generates a self-signed certificate that expires at notAfter.

@@ -9,11 +9,11 @@ import (
 
 	authn "github.com/nutanix/ntnx-api-golang-clients/iam-go-client/v4/models/iam/v4/authn"
 	authz "github.com/nutanix/ntnx-api-golang-clients/iam-go-client/v4/models/iam/v4/authz"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/nutanix/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/nutanix/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // ---------------------------------------------------------------------------
@@ -21,6 +21,9 @@ import (
 // ---------------------------------------------------------------------------
 
 func newMqlUser(runtime *plugin.Runtime, u *authn.User) (*mqlNutanixIamUser, error) {
+	if u.ExtId == nil {
+		return nil, nil
+	}
 	userType := ""
 	if u.UserType != nil {
 		userType = u.UserType.GetName()
@@ -87,6 +90,9 @@ func (a *mqlNutanix) users() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
+			if mqlUser == nil {
+				continue
+			}
 			res = append(res, mqlUser)
 		}
 		if len(items) < limit {
@@ -149,6 +155,9 @@ func (a *mqlNutanix) userGroups() ([]any, error) {
 		}
 		for i := range items {
 			g := items[i]
+			if g.ExtId == nil {
+				continue
+			}
 			groupType := ""
 			if g.GroupType != nil {
 				groupType = g.GroupType.GetName()
@@ -181,6 +190,9 @@ func (a *mqlNutanix) userGroups() ([]any, error) {
 // ---------------------------------------------------------------------------
 
 func newMqlRole(runtime *plugin.Runtime, r *authz.Role) (*mqlNutanixIamRole, error) {
+	if r.ExtId == nil {
+		return nil, nil
+	}
 	operations := []any{}
 	for _, op := range r.Operations {
 		operations = append(operations, op)
@@ -236,6 +248,9 @@ func (a *mqlNutanix) roles() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
+			if mqlRole == nil {
+				continue
+			}
 			res = append(res, mqlRole)
 		}
 		if len(items) < limit {
@@ -272,6 +287,9 @@ func (a *mqlNutanix) authorizationPolicies() ([]any, error) {
 		}
 		for i := range items {
 			ap := items[i]
+			if ap.ExtId == nil {
+				continue
+			}
 			policyType := ""
 			if ap.AuthorizationPolicyType != nil {
 				policyType = ap.AuthorizationPolicyType.GetName()
@@ -376,6 +394,9 @@ func (a *mqlNutanix) directoryServices() ([]any, error) {
 		}
 		for i := range items {
 			ds := items[i]
+			if ds.ExtId == nil {
+				continue
+			}
 			directoryType := ""
 			if ds.DirectoryType != nil {
 				directoryType = ds.DirectoryType.GetName()
@@ -464,6 +485,9 @@ func (a *mqlNutanix) samlIdentityProviders() ([]any, error) {
 		}
 		for i := range items {
 			idp := items[i]
+			if idp.ExtId == nil {
+				continue
+			}
 			mqlIdp, err := CreateResource(a.MqlRuntime, "nutanix.iam.samlIdentityProvider", map[string]*llx.RawData{
 				"__id":                    llx.StringDataPtr(idp.ExtId),
 				"id":                      llx.StringDataPtr(idp.ExtId),

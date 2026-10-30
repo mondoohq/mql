@@ -1,0 +1,48 @@
+[
+ {
+  ".id": "*1",
+  "action": "accept",
+  "bytes": "178383",
+  "chain": "input",
+  "comment": "mql-access-keep",
+  "dst-port": "8728,8729,22",
+  "dynamic": "false",
+  "invalid": "false",
+  "packets": "1316",
+  "protocol": "tcp"
+ },
+ {
+  ".id": "*2",
+  "action": "drop",
+  "bytes": "0",
+  "chain": "input",
+  "comment": "lab-drop-1",
+  "dynamic": "false",
+  "invalid": "false",
+  "log": "true",
+  "log-prefix": "LAB1",
+  "packets": "0",
+  "src-address": "192.0.2.0/24"
+ },
+ {
+  ".id": "*3",
+  "action": "drop",
+  "bytes": "0",
+  "chain": "input",
+  "comment": "lab-drop-2",
+  "dynamic": "false",
+  "invalid": "false",
+  "packets": "0",
+  "src-address": "198.51.100.0/24"
+ },
+ {
+  ".id": "*4",
+  "action": "accept",
+  "bytes": "0",
+  "chain": "forward",
+  "connection-state": "established,related",
+  "dynamic": "false",
+  "invalid": "false",
+  "packets": "0"
+ }
+]

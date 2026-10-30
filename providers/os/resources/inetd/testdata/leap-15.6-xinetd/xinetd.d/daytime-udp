@@ -1,0 +1,14 @@
+# default: off
+# description: A daytime server. This is the udp version.
+
+service daytime
+{
+	type		= INTERNAL UNLISTED
+	id		= daytime-dgram
+	socket_type	= dgram
+	protocol	= udp
+	user		= root
+	wait		= yes
+	disable		= yes
+	port		= 13
+}                                                                               

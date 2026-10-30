@@ -11,11 +11,12 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/redis/armredis/v4"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAzureSubscriptionCacheService) id() (string, error) {
@@ -23,12 +24,9 @@ func (a *mqlAzureSubscriptionCacheService) id() (string, error) {
 }
 
 type mqlAzureSubscriptionCacheServiceRedisInstanceInternal struct {
-	// cacheEncryptionKeyURI stores the customer-managed key URI for encryption.
-	// Note: armredis/v3 does not expose encryption fields on Properties.
-	// This will be populated when the SDK adds support for CMK encryption configuration.
-	cacheEncryptionKeyURI           string
 	cachePrivateEndpointConnections []*armredis.PrivateEndpointConnection
 	cacheUserAssignedIdentityIds    []string
+	cacheLinkedServerIds            []string
 	cacheSystemData                 any
 }
 
@@ -68,68 +66,10 @@ func initAzureSubscriptionCacheService(runtime *plugin.Runtime, args map[string]
 }
 
 func initAzureSubscriptionCacheServiceRedisInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	if len(args) > 1 {
-		return args, nil, nil
-	}
-
-	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["id"] = llx.StringData(ids.id)
-		}
-	}
-
-	if args["id"] == nil {
-		return nil, nil, errors.New("id required to fetch azure cache redis instance")
-	}
-	conn, ok := runtime.Connection.(*connection.AzureConnection)
-	if !ok {
-		return nil, nil, errors.New("invalid connection provided, it is not an Azure connection")
-	}
-	id, ok := args["id"].Value.(string)
-	if !ok {
-		return nil, nil, errors.New("id must be a non-nil string value")
-	}
-	resourceID, err := ParseResourceID(id)
-	if err != nil {
-		return nil, nil, err
-	}
-	cacheName, err := resourceID.Component("Redis")
-	if err != nil {
-		return nil, nil, err
-	}
-
-	clientFactory, err := armredis.NewClientFactory(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
-		ClientOptions: conn.ClientOptions(),
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	resp, err := clientFactory.NewClient().Get(context.Background(), resourceID.ResourceGroup, cacheName, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	rawData, err := createRedisInstanceRawData(runtime, &resp.ResourceInfo)
-	if err != nil {
-		return nil, nil, err
-	}
-	res, err := CreateResource(runtime, "azure.subscription.cacheService.redisInstance", rawData)
-	if err != nil {
-		return nil, nil, err
-	}
-	mqlRedis := res.(*mqlAzureSubscriptionCacheServiceRedisInstance)
-	if resp.Properties != nil {
-		mqlRedis.cachePrivateEndpointConnections = resp.Properties.PrivateEndpointConnections
-	}
-	if resp.Identity != nil {
-		mqlRedis.cacheUserAssignedIdentityIds = sortedUserAssignedIdentityIDs(resp.Identity.UserAssignedIdentities)
-	}
-	sysData, err := convert.JsonToDict(resp.ResourceInfo.SystemData)
-	if err != nil {
-		return nil, nil, err
-	}
-	mqlRedis.cacheSystemData = sysData
-	return args, mqlRedis, nil
+	return initFromServiceList(runtime, args,
+		ResourceAzureSubscriptionCacheService,
+		func(s *mqlAzureSubscriptionCacheService) *plugin.TValue[[]any] { return s.GetRedis() },
+		ResourceAzureSubscriptionCacheServiceRedisInstance)
 }
 
 func (a *mqlAzureSubscriptionCacheService) redis() ([]any, error) {
@@ -176,6 +116,13 @@ func (a *mqlAzureSubscriptionCacheService) redis() ([]any, error) {
 			mqlRedis := cacheData.(*mqlAzureSubscriptionCacheServiceRedisInstance)
 			if cache.Properties != nil {
 				mqlRedis.cachePrivateEndpointConnections = cache.Properties.PrivateEndpointConnections
+				linkedIds := []string{}
+				for _, ls := range cache.Properties.LinkedServers {
+					if ls != nil && ls.ID != nil {
+						linkedIds = append(linkedIds, *ls.ID)
+					}
+				}
+				mqlRedis.cacheLinkedServerIds = linkedIds
 			}
 			if cache.Identity != nil {
 				mqlRedis.cacheUserAssignedIdentityIds = sortedUserAssignedIdentityIDs(cache.Identity.UserAssignedIdentities)
@@ -189,7 +136,46 @@ func (a *mqlAzureSubscriptionCacheService) redis() ([]any, error) {
 		}
 	}
 
-	return caches, nil
+	return keepTagMatches(a.MqlRuntime, caches), nil
+}
+
+// redactedRedisConfiguration copies a cache's Redis configuration with the
+// persistence storage connection strings removed.
+//
+// Azure returns all three verbatim, and each carries either an account key or a
+// SAS token for the storage account holding the RDB/AOF backups. They reached
+// MQL twice -- once through redisConfiguration and again through properties,
+// which serializes the whole ResourceInfo -- so anyone printing either field
+// printed the storage credential.
+//
+// The copy is by field rather than by JSON key so that a field renamed in a
+// future SDK breaks the build instead of silently leaking again. Everything
+// else in the configuration is kept, including rdbBackupEnabled, so the audit
+// signal survives the redaction.
+func redactedRedisConfiguration(cfg *armredis.CommonPropertiesRedisConfiguration) *armredis.CommonPropertiesRedisConfiguration {
+	if cfg == nil {
+		return nil
+	}
+	safe := *cfg
+	safe.AofStorageConnectionString0 = nil
+	safe.AofStorageConnectionString1 = nil
+	safe.RdbStorageConnectionString = nil
+	return &safe
+}
+
+// redactedRedisResource copies a cache with its configuration redacted, for the
+// properties bag that serializes the whole record.
+func redactedRedisResource(cache *armredis.ResourceInfo) *armredis.ResourceInfo {
+	if cache == nil {
+		return nil
+	}
+	safe := *cache
+	if cache.Properties != nil {
+		props := *cache.Properties
+		props.RedisConfiguration = redactedRedisConfiguration(cache.Properties.RedisConfiguration)
+		safe.Properties = &props
+	}
+	return &safe
 }
 
 func createRedisInstanceRawData(runtime *plugin.Runtime, cache *armredis.ResourceInfo) (map[string]*llx.RawData, error) {
@@ -197,10 +183,19 @@ func createRedisInstanceRawData(runtime *plugin.Runtime, cache *armredis.Resourc
 	// throughout; normalize to an empty struct so a cache returned without
 	// properties doesn't panic here (the callers reach this before their own
 	// nil guards).
+	//
+	// Normalize onto a local copy rather than writing back through the pointer.
+	// The caller keeps using its own *ResourceInfo after this returns -- to seed
+	// the resource's caches, behind an `if cache.Properties != nil` guard -- so
+	// filling the field in here would turn that guard into a read of an empty
+	// struct, and would contradict what the redaction helpers below promise
+	// about leaving the source alone.
 	if cache.Properties == nil {
-		cache.Properties = &armredis.Properties{}
+		normalized := *cache
+		normalized.Properties = &armredis.Properties{}
+		cache = &normalized
 	}
-	properties, err := convert.JsonToDict(cache)
+	properties, err := convert.JsonToDict(redactedRedisResource(cache))
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +223,7 @@ func createRedisInstanceRawData(runtime *plugin.Runtime, cache *armredis.Resourc
 		minimumTlsVersion = &val
 	}
 
-	redisConfiguration, err := convert.JsonToDict(cache.Properties.RedisConfiguration)
+	redisConfiguration, err := convert.JsonToDict(redactedRedisConfiguration(cache.Properties.RedisConfiguration))
 	if err != nil {
 		return nil, err
 	}
@@ -238,10 +233,7 @@ func createRedisInstanceRawData(runtime *plugin.Runtime, cache *armredis.Resourc
 		return nil, err
 	}
 
-	var principalId *string
-	if cache.Identity != nil {
-		principalId = cache.Identity.PrincipalID
-	}
+	cacheIdentity := orZero(cache.Identity)
 
 	zones := []any{}
 	for _, z := range cache.Zones {
@@ -250,7 +242,7 @@ func createRedisInstanceRawData(runtime *plugin.Runtime, cache *armredis.Resourc
 		}
 	}
 
-	return map[string]*llx.RawData{
+	args := map[string]*llx.RawData{
 		"id":                  llx.StringDataPtr(cache.ID),
 		"name":                llx.StringDataPtr(cache.Name),
 		"type":                llx.StringDataPtr(cache.Type),
@@ -274,8 +266,81 @@ func createRedisInstanceRawData(runtime *plugin.Runtime, cache *armredis.Resourc
 		"subnetId":            llx.StringDataPtr(cache.Properties.SubnetID),
 		"zones":               llx.ArrayData(zones, types.String),
 		"identity":            llx.DictData(identity),
-		"principalId":         llx.StringDataPtr(principalId),
-	}, nil
+		"principalId":         llx.StringDataPtr(cacheIdentity.PrincipalID),
+
+		"disableAccessKeyAuthentication": llx.BoolDataPtr(cache.Properties.DisableAccessKeyAuthentication),
+		"updateChannel":                  llx.StringDataPtr(stringEnumPtr(cache.Properties.UpdateChannel)),
+		"zonalAllocationPolicy":          llx.StringDataPtr(stringEnumPtr(cache.Properties.ZonalAllocationPolicy)),
+		"tenantSettings":                 llx.MapData(convert.PtrMapStrToInterface(cache.Properties.TenantSettings), types.String),
+	}
+	redisSku := orZero(cache.Properties.SKU)
+	if err := setSkuData(runtime, args, skuName(redisSku.Name), skuFamily(redisSku.Family), skuCapacity(redisSku.Capacity)); err != nil {
+		return nil, err
+	}
+	if err := setResourceIdentity(runtime, args, sortedUserAssignedIdentityIDs(cacheIdentity.UserAssignedIdentities),
+		identityType(cacheIdentity.Type), identityPrincipalId(cacheIdentity.PrincipalID), identityTenantId(cacheIdentity.TenantID)); err != nil {
+		return nil, err
+	}
+	if err := setRedisConfigurationRef(runtime, args, cache.Properties.RedisConfiguration); err != nil {
+		return nil, err
+	}
+
+	return args, nil
+}
+
+// setRedisConfigurationRef publishes the Redis server settings as a child
+// resource of the cache.
+//
+// The storage connection strings on this block are credentials and are
+// deliberately not modeled; the auth method that selects between them is what
+// an audit needs.
+func setRedisConfigurationRef(runtime *plugin.Runtime, args map[string]*llx.RawData, cfg *armredis.CommonPropertiesRedisConfiguration) error {
+	if cfg == nil {
+		args["configuration"] = llx.NilData
+		return nil
+	}
+	parentID := subResourceParentKey(args)
+	if parentID == "" {
+		return errors.New("cannot key the Redis configuration: the cache has no id")
+	}
+	res, err := CreateResource(runtime, "azure.subscription.cacheService.redisInstance.configuration",
+		map[string]*llx.RawData{
+			"__id":                               llx.StringData(parentID + "/redisConfiguration"),
+			"authNotRequired":                    llx.StringDataPtr(cfg.Authnotrequired),
+			"aadEnabled":                         llx.StringDataPtr(cfg.AADEnabled),
+			"maxmemoryPolicy":                    llx.StringDataPtr(cfg.MaxmemoryPolicy),
+			"rdbBackupEnabled":                   llx.StringDataPtr(cfg.RdbBackupEnabled),
+			"rdbBackupFrequency":                 llx.StringDataPtr(cfg.RdbBackupFrequency),
+			"aofBackupEnabled":                   llx.StringDataPtr(cfg.AofBackupEnabled),
+			"preferredDataPersistenceAuthMethod": llx.StringDataPtr(cfg.PreferredDataPersistenceAuthMethod),
+		})
+	if err != nil {
+		return err
+	}
+	args["configuration"] = llx.ResourceData(res, "azure.subscription.cacheService.redisInstance.configuration")
+	return nil
+}
+
+// linkedServers resolves the caches this one is geo-replicated with, so a
+// replica's own TLS and network settings can be read rather than assumed to
+// match this cache's.
+func (a *mqlAzureSubscriptionCacheServiceRedisInstance) linkedServers() ([]any, error) {
+	res := []any{}
+	for _, id := range a.cacheLinkedServerIds {
+		if id == "" {
+			continue
+		}
+		linked, err := NewResource(a.MqlRuntime, "azure.subscription.cacheService.redisInstance",
+			map[string]*llx.RawData{"id": llx.StringData(id)})
+		if err != nil {
+			// A linked cache in a subscription this credential cannot read is a
+			// supported configuration. Skip it rather than failing the cache.
+			log.Warn().Err(err).Str("id", id).Msg("could not resolve linked Redis cache")
+			continue
+		}
+		res = append(res, linked)
+	}
+	return res, nil
 }
 
 func (a *mqlAzureSubscriptionCacheServiceRedisInstance) privateEndpointConnections() ([]any, error) {
@@ -315,7 +380,6 @@ func (a *mqlAzureSubscriptionCacheServiceRedisInstance) privateEndpointConnectio
 				"id":                llx.StringDataPtr(pec.ID),
 				"name":              llx.StringDataPtr(pec.Name),
 				"type":              llx.StringDataPtr(pec.Type),
-				"privateEndpointId": llx.StringDataPtr(privateEndpointId),
 				"status":            llx.StringDataPtr(status),
 				"description":       llx.StringDataPtr(description),
 				"provisioningState": llx.StringDataPtr(pecProvisioningState),
@@ -324,6 +388,13 @@ func (a *mqlAzureSubscriptionCacheServiceRedisInstance) privateEndpointConnectio
 		if err != nil {
 			return nil, err
 		}
+		sysData, err := convert.JsonToDict(pec.SystemData)
+		if err != nil {
+			return nil, err
+		}
+		mqlPec := pecResource.(*mqlAzureSubscriptionCacheServiceRedisInstancePrivateEndpointConnection)
+		mqlPec.cacheSystemData = sysData
+		mqlPec.cachePrivateEndpointId = convert.ToValue(privateEndpointId)
 		res = append(res, pecResource)
 	}
 	return res, nil
@@ -382,6 +453,11 @@ func (a *mqlAzureSubscriptionCacheServiceRedisInstance) firewallRules() ([]any, 
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(rule.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlRule.(*mqlAzureSubscriptionCacheServiceRedisInstanceFirewallRule).cacheSystemData = sysData
 			res = append(res, mqlRule)
 		}
 	}
@@ -450,34 +526,56 @@ func (a *mqlAzureSubscriptionCacheServiceRedisInstance) patchSchedules() ([]any,
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(schedule.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlSchedule.(*mqlAzureSubscriptionCacheServiceRedisInstancePatchSchedule).cacheSystemData = sysData
 			res = append(res, mqlSchedule)
 		}
 	}
 	return res, nil
 }
 
-func (a *mqlAzureSubscriptionCacheServiceRedisInstance) encryptionKey() (*mqlAzureSubscriptionKeyVaultServiceKey, error) {
-	if a.cacheEncryptionKeyURI == "" {
-		a.EncryptionKey.State = plugin.StateIsNull | plugin.StateIsSet
-		return nil, nil
-	}
-	return newKeyVaultKeyResource(a.MqlRuntime, a.cacheEncryptionKeyURI)
-}
-
 func (a *mqlAzureSubscriptionCacheServiceRedisInstanceFirewallRule) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+type mqlAzureSubscriptionCacheServiceRedisInstanceFirewallRuleInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionCacheServiceRedisInstanceFirewallRule) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 func (a *mqlAzureSubscriptionCacheServiceRedisInstancePatchSchedule) id() (string, error) {
 	return a.Id.Data, nil
 }
 
+type mqlAzureSubscriptionCacheServiceRedisInstancePatchScheduleInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionCacheServiceRedisInstancePatchSchedule) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
 func (a *mqlAzureSubscriptionCacheServiceRedisInstancePrivateEndpointConnection) id() (string, error) {
 	return a.Id.Data, nil
 }
 
+type mqlAzureSubscriptionCacheServiceRedisInstancePrivateEndpointConnectionInternal struct {
+	cacheSystemData        any
+	cachePrivateEndpointId string
+}
+
+func (a *mqlAzureSubscriptionCacheServiceRedisInstancePrivateEndpointConnection) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
 func (a *mqlAzureSubscriptionCacheServiceRedisInstancePrivateEndpointConnection) privateEndpoint() (*mqlAzureSubscriptionNetworkServicePrivateEndpoint, error) {
-	peId := a.PrivateEndpointId.Data
+	peId := a.cachePrivateEndpointId
 	if peId == "" {
 		a.PrivateEndpoint.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil

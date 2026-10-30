@@ -4,12 +4,17 @@
 package resources
 
 import (
+	"io"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers/os/resources/nginx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/resources/nginx"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 func TestParseNginxServerBlock(t *testing.T) {
@@ -150,6 +155,69 @@ func TestWalkHTTPBlock(t *testing.T) {
 	assert.Equal(t, "443 ssl", listenAddrs[1])
 }
 
+func TestWalkStreamBlock(t *testing.T) {
+	// Parse real config text rather than hand-built directives so the test
+	// also covers the tokenizer dropping the trailing comment.
+	directives, err := nginx.Parse(`
+stream {
+    log_format basic '$remote_addr $protocol';
+    upstream postgres {
+        least_conn;
+        server 10.0.0.1:5432 weight=2;
+        server 10.0.0.2:5432 backup;
+    }
+    server {
+        listen 5432 ssl;
+        ssl_protocols TLSv1.2 TLSv1.3; # Dropping SSLv3 (POODLE), TLS 1.0, 1.1
+        ssl_certificate /etc/ssl/db.pem;
+        proxy_pass postgres;
+    }
+    server {
+        listen 53 udp;
+        proxy_pass dns_backend;
+    }
+}
+`)
+	require.NoError(t, err)
+	require.Len(t, directives, 1)
+	require.Equal(t, "stream", directives[0].Name)
+
+	streamParams := map[string]any{}
+	var servers []nginxServer
+	var upstreams []nginxUpstream
+	walkStreamBlock(directives[0].Block, streamParams, &servers, &upstreams)
+
+	assert.Equal(t, "basic $remote_addr $protocol", streamParams["log_format"])
+
+	require.Len(t, upstreams, 1)
+	assert.Equal(t, "postgres", upstreams[0].Name)
+	assert.Equal(t, "least_conn", upstreams[0].LoadBalancingMethod)
+	require.Len(t, upstreams[0].ServerDetails, 2)
+	assert.Equal(t, int64(2), upstreams[0].ServerDetails[0].Weight)
+	assert.True(t, upstreams[0].ServerDetails[1].Backup)
+
+	require.Len(t, servers, 2)
+
+	// The TLS listener: the trailing comment must not reach the value.
+	assert.True(t, servers[0].SSL)
+	assert.Equal(t, "TLSv1.2 TLSv1.3", servers[0].SSLProtocols)
+	assert.Equal(t, "/etc/ssl/db.pem", servers[0].SSLCertificate)
+	assert.Equal(t, "postgres", servers[0].Params["proxy_pass"])
+	require.Len(t, servers[0].Listens, 1)
+	assert.Equal(t, int64(5432), servers[0].Listens[0].Port)
+	assert.False(t, servers[0].Listens[0].UDP)
+
+	// The UDP listener.
+	require.Len(t, servers[1].Listens, 1)
+	assert.Equal(t, int64(53), servers[1].Listens[0].Port)
+	assert.True(t, servers[1].Listens[0].UDP)
+	assert.False(t, servers[1].SSL)
+
+	// Directives that only exist in an http server block stay unset.
+	assert.Empty(t, servers[1].ServerName)
+	assert.Empty(t, servers[1].Locations)
+}
+
 func TestSetNginxParam(t *testing.T) {
 	t.Run("simple param overwrites", func(t *testing.T) {
 		m := map[string]any{}
@@ -173,6 +241,16 @@ func TestSetNginxParam(t *testing.T) {
 		setNginxParam(m, "listen", "443 ssl")
 		assert.Equal(t, "80,443 ssl", m["listen"])
 	})
+
+	t.Run("error_log and env keep every value", func(t *testing.T) {
+		m := map[string]any{}
+		setNginxParam(m, "error_log", "/var/log/nginx/error.log")
+		setNginxParam(m, "error_log", "syslog:server=unix:/dev/log warn")
+		setNginxParam(m, "env", "TZ")
+		setNginxParam(m, "env", "OPENSSL_CONF=/etc/ssl/nginx.cnf")
+		assert.Equal(t, "/var/log/nginx/error.log,syslog:server=unix:/dev/log warn", m["error_log"])
+		assert.Equal(t, "TZ,OPENSSL_CONF=/etc/ssl/nginx.cnf", m["env"])
+	})
 }
 
 func TestNginxConfPathDefault(t *testing.T) {
@@ -191,27 +269,27 @@ func TestScanBinaryForTagNginx(t *testing.T) {
 
 	t.Run("embedded version in binary data", func(t *testing.T) {
 		afs := writeBinary(t, []byte("\x00\x00nginx/1.25.3\x00\x00"))
-		assert.Equal(t, "1.25.3", scanBinaryForTag(afs, "/usr/sbin/nginx", tag))
+		assert.Equal(t, "1.25.3", scanBinaryForTag(afs, "/usr/sbin/nginx", tag, nil))
 	})
 
 	t.Run("four-part version", func(t *testing.T) {
 		afs := writeBinary(t, []byte("some binary stuff\x00nginx/1.21.4.2\x00more stuff"))
-		assert.Equal(t, "1.21.4.2", scanBinaryForTag(afs, "/usr/sbin/nginx", tag))
+		assert.Equal(t, "1.21.4.2", scanBinaryForTag(afs, "/usr/sbin/nginx", tag, nil))
 	})
 
 	t.Run("no version tag", func(t *testing.T) {
 		afs := writeBinary(t, []byte("no version here"))
-		assert.Equal(t, "", scanBinaryForTag(afs, "/usr/sbin/nginx", tag))
+		assert.Equal(t, "", scanBinaryForTag(afs, "/usr/sbin/nginx", tag, nil))
 	})
 
 	t.Run("file does not exist", func(t *testing.T) {
 		afs := &afero.Afero{Fs: afero.NewMemMapFs()}
-		assert.Equal(t, "", scanBinaryForTag(afs, "/usr/sbin/nginx", tag))
+		assert.Equal(t, "", scanBinaryForTag(afs, "/usr/sbin/nginx", tag, nil))
 	})
 
 	t.Run("tag without version digits", func(t *testing.T) {
 		afs := writeBinary(t, []byte("nginx/\x00rest"))
-		assert.Equal(t, "", scanBinaryForTag(afs, "/usr/sbin/nginx", tag))
+		assert.Equal(t, "", scanBinaryForTag(afs, "/usr/sbin/nginx", tag, nil))
 	})
 
 	t.Run("version spanning chunk boundary", func(t *testing.T) {
@@ -219,7 +297,75 @@ func TestScanBinaryForTagNginx(t *testing.T) {
 		prefix := make([]byte, 64*1024-3)
 		data := append(prefix, []byte("nginx/1.25.3\x00")...)
 		afs := writeBinary(t, data)
-		assert.Equal(t, "1.25.3", scanBinaryForTag(afs, "/usr/sbin/nginx", tag))
+		assert.Equal(t, "1.25.3", scanBinaryForTag(afs, "/usr/sbin/nginx", tag, nil))
+	})
+
+	t.Run("version literal at exact chunkSize+overlap boundary", func(t *testing.T) {
+		// Position the version so its numeric run reaches exactly the end of
+		// the first full buffer read (chunkSize+overlap) while more file data
+		// remains. The trailing digit ("2") lands in the next chunk. Without
+		// the fix the scanner returns a truncated "1.25.6" instead of the
+		// full "1.25.62".
+		const chunkSize = 64 * 1024
+		overlap := len(tag) + 20
+		bufLen := chunkSize + overlap
+		head := append([]byte("nginx/"), []byte("1.25.6")...) // ends at bufLen
+		prefix := make([]byte, bufLen-len(head))
+		data := append(prefix, head...)
+		data = append(data, []byte("2\x00trailing")...)
+		afs := writeBinary(t, data)
+		assert.Equal(t, "1.25.62", scanBinaryForTag(afs, "/usr/sbin/nginx", tag, nil))
+	})
+}
+
+// chunkReader returns at most max bytes per Read, letting tests exercise the
+// short-read paths of scanReaderForTag (a tag or version literal split across
+// multiple Reads).
+type chunkReader struct {
+	data []byte
+	pos  int
+	max  int
+}
+
+func (c *chunkReader) Read(p []byte) (int, error) {
+	if c.pos >= len(c.data) {
+		return 0, io.EOF
+	}
+	n := min(min(len(c.data)-c.pos, c.max), len(p))
+	copy(p, c.data[c.pos:c.pos+n])
+	c.pos += n
+	return n, nil
+}
+
+func TestScanReaderForTagShortReads(t *testing.T) {
+	tag := []byte("nginx/")
+	overlap := len(tag) + 20
+
+	t.Run("tag split across two short reads", func(t *testing.T) {
+		// Three bytes per Read forces the "nginx/" tag itself to span
+		// several reads. The pre-fix short-read handling discarded the
+		// unmatched tail (carry = 0), missing the tag entirely.
+		data := []byte("\x00\x00nginx/1.25.3\x00")
+		r := &chunkReader{data: data, max: 3}
+		assert.Equal(t, "1.25.3", scanReaderForTag(r, tag, overlap, isApacheVersionByte, nil))
+	})
+
+	t.Run("version literal split across short reads", func(t *testing.T) {
+		// Small reads make the numeric run reach the buffer end mid-version
+		// while more data remains. The pre-fix return-on-boundary truncated
+		// this to "1.25.6".
+		data := []byte("nginx/1.25.62\x00")
+		r := &chunkReader{data: data, max: 4}
+		assert.Equal(t, "1.25.62", scanReaderForTag(r, tag, overlap, isApacheVersionByte, nil))
+	})
+
+	t.Run("version ends exactly at final EOF read", func(t *testing.T) {
+		// The version literal runs to the very end of the data with no
+		// trailing terminator, so the final bytes arrive on the read that
+		// also reports io.EOF.
+		data := []byte("nginx/1.25.62")
+		r := &chunkReader{data: data, max: 4}
+		assert.Equal(t, "1.25.62", scanReaderForTag(r, tag, overlap, isApacheVersionByte, nil))
 	})
 }
 
@@ -238,6 +384,14 @@ func TestNginxVersionRegex(t *testing.T) {
 	})
 }
 
+func moduleNames(mods []nginxConfigureModule) []string {
+	names := make([]string, len(mods))
+	for i, m := range mods {
+		names[i] = m.name
+	}
+	return names
+}
+
 func TestParseNginxModules(t *testing.T) {
 	output := "nginx version: nginx/1.25.3\n" +
 		"built by gcc 12.2.0 (Debian 12.2.0-14)\n" +
@@ -249,19 +403,135 @@ func TestParseNginxModules(t *testing.T) {
 		"--with-http_gzip_static_module --with-stream_ssl_module " +
 		"--with-mail_ssl_module\n"
 
-	modules := parseNginxModules(output)
-	require.Len(t, modules, 5)
-	assert.Equal(t, "http_ssl_module", modules[0])
-	assert.Equal(t, "http_v2_module", modules[1])
-	assert.Equal(t, "http_gzip_static_module", modules[2])
-	assert.Equal(t, "stream_ssl_module", modules[3])
-	assert.Equal(t, "mail_ssl_module", modules[4])
+	configured, confPath := parseNginxConfigureModules(output)
+	assert.Equal(t, []string{"http_ssl_module", "http_v2_module", "http_gzip_static_module",
+		"stream_ssl_module", "mail_ssl_module"}, moduleNames(configured))
+	assert.Equal(t, "", confPath)
+	// no dynamic module, so nothing depends on the configuration
+	assert.Equal(t, moduleNames(configured), nginxModules(configured, nil))
 }
 
 func TestParseNginxModulesEmpty(t *testing.T) {
 	output := "nginx version: nginx/1.25.3\nconfigure arguments: --prefix=/etc/nginx\n"
-	modules := parseNginxModules(output)
-	assert.Empty(t, modules)
+	configured, _ := parseNginxConfigureModules(output)
+	assert.Empty(t, configured)
+	assert.Empty(t, nginxModules(configured, nil))
+}
+
+func readNginxTestdata(t *testing.T, name string) string {
+	t.Helper()
+	data, err := os.ReadFile("testdata/nginx/" + name)
+	require.NoError(t, err)
+	return string(data)
+}
+
+func TestParseNginxConfigureModulesRHEL(t *testing.T) {
+	// nginx -V of nginx 1.20.1 on RHEL 9
+	configured, confPath := parseNginxConfigureModules(readNginxTestdata(t, "rhel9-nginx-V.txt"))
+	assert.Equal(t, "/etc/nginx/nginx.conf", confPath)
+
+	dynamic := map[string]bool{}
+	for _, m := range configured {
+		dynamic[m.name] = m.dynamic
+	}
+	// --with-stream=dynamic and --with-mail=dynamic carry no _module suffix
+	assert.True(t, dynamic["stream_module"])
+	assert.True(t, dynamic["mail_module"])
+	assert.True(t, dynamic["http_xslt_module"])
+	assert.True(t, dynamic["http_perl_module"])
+	isDynamic, ok := dynamic["http_ssl_module"]
+	assert.True(t, ok)
+	assert.False(t, isDynamic)
+	isDynamic, ok = dynamic["stream_ssl_preread_module"]
+	assert.True(t, ok)
+	assert.False(t, isDynamic)
+}
+
+func TestNginxModulesLoadedDynamic(t *testing.T) {
+	t.Run("RHEL 9: only nginx-mod-stream installed and loaded", func(t *testing.T) {
+		configured, _ := parseNginxConfigureModules(readNginxTestdata(t, "rhel9-nginx-V.txt"))
+		mods := nginxModules(configured, []string{"/usr/lib64/nginx/modules/ngx_stream_module.so"})
+		assert.Contains(t, mods, "http_ssl_module")
+		assert.Contains(t, mods, "stream_module")
+		// built into ngx_stream_module.so, which is loaded
+		assert.Contains(t, mods, "stream_ssl_module")
+		assert.Contains(t, mods, "stream_ssl_preread_module")
+		// built as dynamic modules that no load_module names
+		assert.NotContains(t, mods, "http_perl_module")
+		assert.NotContains(t, mods, "http_xslt_module")
+		assert.NotContains(t, mods, "http_image_filter_module")
+		assert.NotContains(t, mods, "mail_module")
+		// built into ngx_mail_module.so, which is not loaded
+		assert.NotContains(t, mods, "mail_ssl_module")
+	})
+
+	t.Run("RHEL 8: every nginx-mod package installed and loaded", func(t *testing.T) {
+		configured, _ := parseNginxConfigureModules(readNginxTestdata(t, "rhel8-nginx-V.txt"))
+		mods := nginxModules(configured, []string{
+			"/usr/lib64/nginx/modules/ngx_http_image_filter_module.so",
+			"/usr/lib64/nginx/modules/ngx_http_perl_module.so",
+			"/usr/lib64/nginx/modules/ngx_http_xslt_filter_module.so",
+			"/usr/lib64/nginx/modules/ngx_mail_module.so",
+			"/usr/lib64/nginx/modules/ngx_stream_module.so",
+		})
+		for _, m := range []string{"http_image_filter_module", "http_perl_module", "http_xslt_module",
+			"mail_module", "mail_ssl_module", "stream_module", "stream_ssl_module", "http_ssl_module"} {
+			assert.Contains(t, mods, m)
+		}
+	})
+
+	t.Run("relative load_module path", func(t *testing.T) {
+		configured := []nginxConfigureModule{{name: "stream_module", dynamic: true}}
+		assert.Equal(t, []string{"stream_module"}, nginxModules(configured, []string{"modules/ngx_stream_module.so"}))
+	})
+
+	t.Run("static stream keeps its submodules", func(t *testing.T) {
+		configured, _ := parseNginxConfigureModules("configure arguments: --with-stream --with-stream_ssl_module --with-mail")
+		assert.Equal(t, []string{"stream_module", "stream_ssl_module", "mail_module"}, nginxModules(configured, nil))
+	})
+}
+
+func TestNginxLoadModulesAcrossIncludes(t *testing.T) {
+	// RHEL 8: nginx.conf includes one file per nginx-mod-* package
+	files := map[string]string{
+		"/etc/nginx/nginx.conf": "user nginx;\nworker_processes auto;\nerror_log /var/log/nginx/error.log;\n" +
+			"pid /run/nginx.pid;\n\n# Load dynamic modules. See /usr/share/doc/nginx/README.dynamic.\n" +
+			"include /usr/share/nginx/modules/*.conf;\n\nevents {\n    worker_connections 1024;\n}\n",
+		"/usr/share/nginx/modules/mod-http-image-filter.conf": `load_module "/usr/lib64/nginx/modules/ngx_http_image_filter_module.so";` + "\n",
+		"/usr/share/nginx/modules/mod-http-perl.conf":         `load_module "/usr/lib64/nginx/modules/ngx_http_perl_module.so";` + "\n",
+		"/usr/share/nginx/modules/mod-stream.conf":            `load_module "/usr/lib64/nginx/modules/ngx_stream_module.so";` + "\n",
+	}
+	open := func(path string) (io.ReadCloser, error) {
+		c, ok := files[path]
+		if !ok {
+			return nil, os.ErrNotExist
+		}
+		return io.NopCloser(strings.NewReader(c)), nil
+	}
+	glob := func(string) ([]string, error) {
+		return []string{
+			"/usr/share/nginx/modules/mod-http-image-filter.conf",
+			"/usr/share/nginx/modules/mod-http-perl.conf",
+			"/usr/share/nginx/modules/mod-stream.conf",
+		}, nil
+	}
+	cfg, err := nginx.ParseFiles("/etc/nginx/nginx.conf", open, glob)
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"/usr/lib64/nginx/modules/ngx_http_image_filter_module.so",
+		"/usr/lib64/nginx/modules/ngx_http_perl_module.so",
+		"/usr/lib64/nginx/modules/ngx_stream_module.so",
+	}, nginxLoadModules(cfg.Directives))
+
+	params := map[string]any{}
+	for _, d := range cfg.Directives {
+		if !d.IsBlock() {
+			setNginxParam(params, d.Name, strings.Join(d.Args, " "))
+		}
+	}
+	assert.Equal(t, "/usr/lib64/nginx/modules/ngx_http_image_filter_module.so,"+
+		"/usr/lib64/nginx/modules/ngx_http_perl_module.so,"+
+		"/usr/lib64/nginx/modules/ngx_stream_module.so", params["load_module"])
 }
 
 // New tests for TLS, header collection, listen parsing, upstream details, and
@@ -306,9 +576,9 @@ func TestParseNginxServerBlockTLSAndHeaders(t *testing.T) {
 	assert.Equal(t, int64(443), l.Port)
 
 	assert.Equal(t,
-		[]string{"DENY always", "SAMEORIGIN"},
+		[]string{"DENY", "SAMEORIGIN"},
 		srv.AddHeaders["X-Frame-Options"],
-		"add_header collects every value per name in source order, including trailing flags")
+		"add_header collects every value per name in source order, without the always flag")
 	assert.Equal(t,
 		[]string{"max-age=63072000"},
 		srv.AddHeaders["Strict-Transport-Security"])
@@ -332,6 +602,10 @@ func TestParseNginxListen(t *testing.T) {
 		}},
 		{"unix socket", []string{"unix:/var/run/nginx.sock"}, nginxListen{
 			Raw: "unix:/var/run/nginx.sock", Address: "unix:/var/run/nginx.sock",
+		}},
+		{"stream udp", []string{"53", "udp"}, nginxListen{Raw: "53 udp", Port: 53, UDP: true}},
+		{"stream udp on an address", []string{"127.0.0.1:53", "udp", "reuseport"}, nginxListen{
+			Raw: "127.0.0.1:53 udp reuseport", Address: "127.0.0.1", Port: 53, UDP: true,
 		}},
 	}
 	for _, tc := range cases {
@@ -451,4 +725,67 @@ func TestParseNginxLocationDetail(t *testing.T) {
 	assert.Equal(t, "$uri $uri/ =404", loc.TryFiles)
 	assert.Equal(t, "301 https://example.com$request_uri", loc.Return)
 	assert.Equal(t, "unix:/var/run/php-fpm.sock", loc.FastcgiPass)
+}
+
+// The `return` field cannot be read from inside an MQL block: the compiler
+// treats a bare `return` identifier as a return statement, so
+// `nginx.conf.servers { locations { return } }` compiles and silently reads
+// nothing. returnDirective carries the same value under a name the parser
+// does not claim, so it has to be populated wherever `return` is.
+func TestNginxLocationReturnDirective(t *testing.T) {
+	loc := parseNginxLocationBlock("/old", []nginx.Directive{
+		{Name: "return", Args: []string{"301", "https://example.com$request_uri"}},
+	})
+	empty := parseNginxLocationBlock("/plain", []nginx.Directive{
+		{Name: "root", Args: []string{"/var/www/html"}},
+	})
+
+	runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+	res, err := nginxLocations2Resources([]nginxLocation{loc, empty}, runtime, "nginx.conf/etc/nginx/nginx.conf")
+	require.NoError(t, err)
+	require.Len(t, res, 2)
+
+	redirect := res[0].(*mqlNginxConfLocation)
+	assert.Equal(t, "301 https://example.com$request_uri", redirect.ReturnDirective.Data)
+	assert.Equal(t, redirect.Return.Data, redirect.ReturnDirective.Data)
+
+	// a location without a return directive reads as the empty string on both
+	// fields, never as a stale value from the previous location
+	plain := res[1].(*mqlNginxConfLocation)
+	assert.Equal(t, "", plain.ReturnDirective.Data)
+	assert.Equal(t, plain.Return.Data, plain.ReturnDirective.Data)
+}
+
+// Debian 9 to 11 build their packaged modules out of tree (--add-dynamic-module,
+// or not in the configure arguments at all on Debian 11), so nginx -V lists
+// none of them as =dynamic. Every loaded ngx_<name>.so still runs.
+func TestNginxModulesLoadedOutOfTree(t *testing.T) {
+	// nginx -V on Debian 11 (nginx 1.18.0)
+	deb11 := `nginx version: nginx/1.18.0
+built with OpenSSL 1.1.1w  11 Sep 2023
+TLS SNI support enabled
+configure arguments: --with-cc-opt='-g -O2 -ffile-prefix-map=/build/reproducible-path/nginx-1.18.0=. -fstack-protector-strong -Wformat -Werror=format-security -fPIC -Wdate-time -D_FORTIFY_SOURCE=2' --with-ld-opt='-Wl,-z,relro -Wl,-z,now -fPIC' --prefix=/usr/share/nginx --conf-path=/etc/nginx/nginx.conf --http-log-path=/var/log/nginx/access.log --error-log-path=/var/log/nginx/error.log --lock-path=/var/lock/nginx.lock --pid-path=/run/nginx.pid --modules-path=/usr/lib/nginx/modules --http-client-body-temp-path=/var/lib/nginx/body --http-fastcgi-temp-path=/var/lib/nginx/fastcgi --http-proxy-temp-path=/var/lib/nginx/proxy --http-scgi-temp-path=/var/lib/nginx/scgi --http-uwsgi-temp-path=/var/lib/nginx/uwsgi --with-compat --with-debug --with-pcre-jit --with-http_ssl_module --with-http_stub_status_module --with-http_realip_module --with-http_auth_request_module --with-http_v2_module --with-http_dav_module --with-http_slice_module --with-threads --with-http_addition_module --with-http_gunzip_module --with-http_gzip_static_module --with-http_sub_module
+`
+	configured, _ := parseNginxConfigureModules(deb11)
+	mods := nginxModules(configured, []string{
+		"modules/ngx_http_geoip_module.so",
+		"modules/ngx_http_image_filter_module.so",
+		"modules/ngx_http_xslt_filter_module.so",
+		"modules/ngx_mail_module.so",
+		"modules/ngx_stream_module.so",
+		"modules/ngx_stream_geoip_module.so",
+	})
+	for _, m := range []string{"http_ssl_module", "http_v2_module", "http_geoip_module", "http_image_filter_module",
+		"http_xslt_module", "mail_module", "stream_module", "stream_geoip_module"} {
+		assert.Contains(t, mods, m)
+	}
+	assert.NotContains(t, mods, "http_xslt_filter_module")
+
+	// Debian 9's third-party modules (--add-dynamic-module)
+	mods = nginxModules(nil, []string{"modules/ngx_http_auth_pam_module.so", "modules/ngx_http_subs_filter_module.so"})
+	assert.Equal(t, []string{"http_auth_pam_module", "http_subs_filter_module"}, mods)
+
+	// a module both configured and loaded is listed once
+	configured, _ = parseNginxConfigureModules("configure arguments: --with-stream=dynamic --with-stream_ssl_module")
+	assert.Equal(t, []string{"stream_module", "stream_ssl_module"}, nginxModules(configured, []string{"/usr/lib/nginx/modules/ngx_stream_module.so"}))
 }

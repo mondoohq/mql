@@ -4,7 +4,7 @@
 package connection
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // Platforms is the static catalog of platforms this provider can emit.
@@ -12,6 +12,12 @@ var Platforms = []*plugin.PlatformInfo{
 	{
 		Name:   "snowflake",
 		Title:  "Snowflake Account",
+		Family: []string{"snowflake"},
+		Kind:   []string{"api"},
+	},
+	{
+		Name:   "snowflake-database",
+		Title:  "Snowflake Database",
 		Family: []string{"snowflake"},
 		Kind:   []string{"api"},
 	},

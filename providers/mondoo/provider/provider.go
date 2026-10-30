@@ -8,10 +8,10 @@ import (
 	"errors"
 	"fmt"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/mondoo/connection"
-	"go.mondoo.com/mql/v13/providers/mondoo/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/mondoo/connection"
+	"go.mondoo.com/mql/providers/mondoo/resources"
 )
 
 const (
@@ -53,6 +53,8 @@ func (s *Service) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 		Name:      conn.Name(),
 		Asset:     req.Asset,
 		Inventory: nil,
+		// Space or organization; the static Root can only name one (ADR 031).
+		Root: assetRoot(conn),
 	}, nil
 }
 

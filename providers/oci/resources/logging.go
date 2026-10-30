@@ -8,15 +8,13 @@ import (
 	"errors"
 	"time"
 
-	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/logging"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/oci/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/oci/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (o *mqlOciLogging) id() (string, error) {
@@ -26,74 +24,20 @@ func (o *mqlOciLogging) id() (string, error) {
 func (o *mqlOciLogging) logGroups() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	// Every compartment, not the root with the subtree flag: the Logging API
+	// documents isCompartmentIdInSubtree but ignores it, so a log group in a
+	// child compartment never came back from the root.
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci logging with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getLogGroups(conn, list.Data), 5)
-	poolOfJobs.Run()
-
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-
-	return res, nil
-}
-
-func (o *mqlOciLogging) getLogGroupsForRegion(ctx context.Context, client *logging.LoggingManagementClient, compartmentID string) ([]logging.LogGroupSummary, error) {
-	entries := []logging.LogGroupSummary{}
-	var page *string
-	for {
-		request := logging.ListLogGroupsRequest{
-			CompartmentId:            common.String(compartmentID),
-			IsCompartmentIdInSubtree: common.Bool(true),
-			Page:                     page,
-		}
-
-		response, err := client.ListLogGroups(ctx, request)
-		if err != nil {
-			return nil, err
-		}
-
-		entries = append(entries, response.Items...)
-
-		if response.OpcNextPage == nil {
-			break
-		}
-		page = response.OpcNextPage
-	}
-
-	return entries, nil
-}
-
-func (o *mqlOciLogging) getLogGroups(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci logging with region %s", regionResource.Id.Data)
-
-			svc, err := conn.LoggingClient(regionResource.Id.Data)
+			svc, err := conn.LoggingClient(region)
 			if err != nil {
 				return nil, err
 			}
 
 			var res []any
-			logGroups, err := o.getLogGroupsForRegion(ctx, svc, conn.TenantID())
+			logGroups, err := o.getLogGroupsForRegion(ctx, svc, compartmentID)
 			if err != nil {
 				return nil, err
 			}
@@ -106,32 +50,51 @@ func (o *mqlOciLogging) getLogGroups(conn *connection.OciConnection, regions []a
 					created = &lg.TimeCreated.Time
 				}
 
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.logging.logGroup", map[string]*llx.RawData{
-					"id":            llx.StringDataPtr(lg.Id),
-					"name":          llx.StringDataPtr(lg.DisplayName),
-					"description":   llx.StringDataPtr(lg.Description),
-					"compartmentID": llx.StringDataPtr(lg.CompartmentId),
-					"state":         llx.StringData(string(lg.LifecycleState)),
-					"created":       llx.TimeDataPtr(created),
-					"systemTags":    llx.MapData(definedTagsToAny(lg.SystemTags), types.Dict),
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.logging.logGroup", stringValue(lg.CompartmentId), map[string]*llx.RawData{
+					"id":           llx.StringDataPtr(lg.Id),
+					"name":         llx.StringDataPtr(lg.DisplayName),
+					"description":  llx.StringDataPtr(lg.Description),
+					"state":        llx.StringData(string(lg.LifecycleState)),
+					"created":      llx.TimeDataPtr(created),
+					"freeformTags": llx.MapData(strMapToAny(lg.FreeformTags), types.String),
+					"definedTags":  llx.MapData(definedTagsToAny(lg.DefinedTags), types.Any),
+					"systemTags":   llx.MapData(definedTagsToAny(lg.SystemTags), types.Dict),
 				})
 				if err != nil {
 					return nil, err
 				}
 				// Store the region internally so logs() knows which region to query
-				mqlInstance.(*mqlOciLoggingLogGroup).region = regionResource.Id.Data
+				mqlInstance.(*mqlOciLoggingLogGroup).cacheRegion = region
 				res = append(res, mqlInstance)
 			}
 
-			return jobpool.JobResult(res), nil
+			return res, nil
+		})
+}
+
+func (o *mqlOciLogging) getLogGroupsForRegion(ctx context.Context, client *logging.LoggingManagementClient, compartmentID string) ([]logging.LogGroupSummary, error) {
+	entries, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]logging.LogGroupSummary, *string, error) {
+		request := logging.ListLogGroupsRequest{
+			CompartmentId: new(compartmentID),
+			Page:          page,
 		}
-		tasks = append(tasks, jobpool.NewJob(f))
+
+		response, err := client.ListLogGroups(ctx, request)
+		if err != nil {
+			return nil, nil, err
+		}
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return tasks
+
+	return entries, nil
 }
 
 type mqlOciLoggingLogGroupInternal struct {
-	region string
+	ociCompartmentRef
+	cacheRegion string
 }
 
 func initOciLoggingLogGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -139,10 +102,10 @@ func initOciLoggingLogGroup(runtime *plugin.Runtime, args map[string]*llx.RawDat
 		return args, nil, nil
 	}
 
-	if args["id"] == nil {
+	idVal := ociArgString(args, "id")
+	if idVal == "" {
 		return nil, nil, errors.New("id required to fetch oci.logging.logGroup")
 	}
-	idVal := args["id"].Value.(string)
 
 	obj, err := CreateResource(runtime, "oci.logging", nil)
 	if err != nil {
@@ -175,7 +138,7 @@ func (o *mqlOciLoggingLogGroup) logs() ([]any, error) {
 
 	logGroupId := o.Id.Data
 
-	svc, err := conn.LoggingClient(o.region)
+	svc, err := conn.LoggingClient(o.cacheRegion)
 	if err != nil {
 		return nil, err
 	}
@@ -217,12 +180,14 @@ func (o *mqlOciLoggingLogGroup) logs() ([]any, error) {
 			"sourceResource":    llx.StringData(sourceResource),
 			"created":           llx.TimeDataPtr(logCreated),
 			"timeLastModified":  llx.TimeDataPtr(logLastModified),
+			"freeformTags":      llx.MapData(strMapToAny(l.FreeformTags), types.String),
+			"definedTags":       llx.MapData(definedTagsToAny(l.DefinedTags), types.Any),
 			"systemTags":        llx.MapData(definedTagsToAny(l.SystemTags), types.Dict),
 		})
 		if err != nil {
 			return nil, err
 		}
-		mqlInstance.(*mqlOciLoggingLog).cacheLogGroupId = stringValue(l.LogGroupId)
+		mqlInstance.(*mqlOciLoggingLog).cacheLogGroupID = stringValue(l.LogGroupId)
 		res = append(res, mqlInstance)
 	}
 
@@ -230,32 +195,27 @@ func (o *mqlOciLoggingLogGroup) logs() ([]any, error) {
 }
 
 func (o *mqlOciLoggingLogGroup) getLogsForGroup(ctx context.Context, client *logging.LoggingManagementClient, logGroupId string) ([]logging.LogSummary, error) {
-	entries := []logging.LogSummary{}
-	var page *string
-	for {
+	entries, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]logging.LogSummary, *string, error) {
 		request := logging.ListLogsRequest{
-			LogGroupId: common.String(logGroupId),
+			LogGroupId: new(logGroupId),
 			Page:       page,
 		}
 
 		response, err := client.ListLogs(ctx, request)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-
-		entries = append(entries, response.Items...)
-
-		if response.OpcNextPage == nil {
-			break
-		}
-		page = response.OpcNextPage
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return entries, nil
 }
 
 type mqlOciLoggingLogInternal struct {
-	cacheLogGroupId string
+	cacheLogGroupID string
 }
 
 func (o *mqlOciLoggingLog) id() (string, error) {
@@ -263,12 +223,12 @@ func (o *mqlOciLoggingLog) id() (string, error) {
 }
 
 func (o *mqlOciLoggingLog) logGroup() (*mqlOciLoggingLogGroup, error) {
-	if o.cacheLogGroupId == "" {
+	if o.cacheLogGroupID == "" {
 		o.LogGroup.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	mqlLg, err := NewResource(o.MqlRuntime, "oci.logging.logGroup", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheLogGroupId),
+		"id": llx.StringData(o.cacheLogGroupID),
 	})
 	if err != nil {
 		return nil, err
@@ -290,12 +250,12 @@ func extractLogSource(cfg *logging.Configuration) (category, service, resource s
 	return stringValue(svc.Category), stringValue(svc.Service), stringValue(svc.Resource)
 }
 
-func convertLogConfiguration(cfg *logging.Configuration) (map[string]interface{}, error) {
+func convertLogConfiguration(cfg *logging.Configuration) (map[string]any, error) {
 	if cfg == nil {
 		return nil, nil
 	}
 
-	result := map[string]interface{}{}
+	result := map[string]any{}
 
 	if cfg.CompartmentId != nil {
 		result["compartmentId"] = *cfg.CompartmentId
@@ -309,5 +269,48 @@ func convertLogConfiguration(cfg *logging.Configuration) (map[string]interface{}
 		result["source"] = source
 	}
 
+	// Archiving is the third field on the SDK's Configuration and was dropped
+	// entirely, so log-archiving state read as "not configured" on every log.
+	if cfg.Archiving != nil {
+		archiving, err := convert.JsonToDict(cfg.Archiving)
+		if err != nil {
+			return nil, err
+		}
+		result["archiving"] = archiving
+	}
+
 	return result, nil
+}
+
+// ociLogRef names a log by the log group that holds it and its own OCID, the
+// way services that write to OCI Logging record their log destination.
+type ociLogRef struct {
+	logGroupID string
+	logID      string
+}
+
+// resolveOciLoggingLog resolves a log reference to the typed log through the
+// cached log group listing and that group's cached logs. Returns (nil, nil)
+// and marks the field null when the reference is empty.
+func resolveOciLoggingLog(runtime *plugin.Runtime, ref ociLogRef, field *plugin.TValue[*mqlOciLoggingLog]) (*mqlOciLoggingLog, error) {
+	if ref.logID == "" || ref.logGroupID == "" {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	group, err := NewResource(runtime, "oci.logging.logGroup", map[string]*llx.RawData{
+		"id": llx.StringData(ref.logGroupID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	logs := group.(*mqlOciLoggingLogGroup).GetLogs()
+	if logs.Error != nil {
+		return nil, logs.Error
+	}
+	for _, raw := range logs.Data {
+		if l, ok := raw.(*mqlOciLoggingLog); ok && l.Id.Data == ref.logID {
+			return l, nil
+		}
+	}
+	return nil, errors.New("oci.logging.log not found: " + ref.logID)
 }

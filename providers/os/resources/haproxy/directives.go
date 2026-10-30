@@ -4,6 +4,7 @@
 package haproxy
 
 import (
+	"maps"
 	"strconv"
 	"strings"
 )
@@ -63,9 +64,7 @@ func ParseBindLines(dirs []Directive) []Bind {
 			// Copy Params so downstream mutations don't bleed across forms.
 			if base.Params != nil {
 				b.Params = make(map[string]string, len(base.Params))
-				for k, v := range base.Params {
-					b.Params[k] = v
-				}
+				maps.Copy(b.Params, base.Params)
 			}
 			out = append(out, b)
 		}
@@ -93,9 +92,9 @@ func fillBindAddress(b *Bind, addr string) {
 		}
 	}
 	// Try splitting at the LAST colon for IPv4 / hostname forms.
-	if i := strings.LastIndex(addr, ":"); i >= 0 {
-		b.Address = addr[:i]
-		fillPortOrRange(b, addr[i+1:])
+	if before, after, ok := strings.CutLast(addr, ":"); ok {
+		b.Address = before
+		fillPortOrRange(b, after)
 		return
 	}
 	// Bare port or bare address.
@@ -295,6 +294,20 @@ func ParseServerLines(dirs []Directive) []Server {
 	return out
 }
 
+// ParsePeerLines extracts the peers of a `peers` section: both the
+// classic `peer <name> <addr>:<port>` lines and the `server <name>
+// [<addr>:<port>]` lines HAProxy 2.0+ also accepts, in source order.
+func ParsePeerLines(dirs []Directive) []Server {
+	var out []Server
+	for _, d := range dirs {
+		if d.Name != "peer" && d.Name != "server" {
+			continue
+		}
+		out = append(out, parseServerArgs(d.Args, d.Raw))
+	}
+	return out
+}
+
 // ParseDefaultServer returns the parsed `default-server` directive (the
 // last one wins, matching HAProxy semantics), or nil when absent.
 func ParseDefaultServer(dirs []Directive) *Server {
@@ -332,9 +345,9 @@ func parseServerArgs(args []string, raw string) Server {
 			} else {
 				s.Address = addr
 			}
-		} else if i := strings.LastIndex(addr, ":"); i >= 0 {
-			s.Address = addr[:i]
-			s.Port, _ = parsePort(addr[i+1:])
+		} else if before, after, ok := strings.CutLast(addr, ":"); ok {
+			s.Address = before
+			s.Port, _ = parsePort(after)
 		} else {
 			s.Address = addr
 		}
@@ -562,16 +575,19 @@ type HTTPCheck struct {
 }
 
 // ParseHTTPCheck folds `option httpchk` and `http-check ...` directives
-// into a single structured view.
+// into a single structured view. `option httpchk [[<method>] <uri>
+// [<version>]]` defaults to OPTIONS / HTTP/1.0, and the meth, uri (or
+// uri-lf) and ver of `http-check send` (haproxy 2.2+) override it.
 func ParseHTTPCheck(dirs []Directive) HTTPCheck {
 	var hc HTTPCheck
+	var sendMethod, sendURI, sendVersion string
 	for _, d := range dirs {
 		switch d.Name {
 		case "option":
 			if len(d.Args) >= 1 && d.Args[0] == "httpchk" {
+				hc.Method, hc.URI, hc.Version = "OPTIONS", "/", "HTTP/1.0"
 				switch len(d.Args) {
 				case 1:
-					// bare `option httpchk` — defaults to OPTIONS /
 				case 2:
 					hc.URI = d.Args[1]
 				case 3:
@@ -594,10 +610,35 @@ func ParseHTTPCheck(dirs []Directive) HTTPCheck {
 			switch d.Args[0] {
 			case "send":
 				hc.Send = append(hc.Send, strings.Join(d.Args[1:], " "))
+				args := d.Args[1:]
+				for i := 0; i+1 < len(args); i++ {
+					switch args[i] {
+					case "meth":
+						sendMethod = args[i+1]
+					case "uri", "uri-lf":
+						sendURI = args[i+1]
+					case "ver":
+						sendVersion = args[i+1]
+					case "hdr":
+						// hdr <name> <value>
+						i += 2
+						continue
+					}
+					i++
+				}
 			case "expect":
 				hc.Expect = append(hc.Expect, strings.Join(d.Args[1:], " "))
 			}
 		}
+	}
+	if sendMethod != "" {
+		hc.Method = sendMethod
+	}
+	if sendURI != "" {
+		hc.URI = sendURI
+	}
+	if sendVersion != "" {
+		hc.Version = sendVersion
 	}
 	return hc
 }
@@ -794,9 +835,9 @@ func ParseAddrPort(s string) (addr string, port int64) {
 			return addr, 0
 		}
 	}
-	if i := strings.LastIndex(s, ":"); i >= 0 {
-		if p, ok := parseInt(s[i+1:]); ok {
-			return s[:i], p
+	if before, after, found := strings.CutLast(s, ":"); found {
+		if p, ok := parseInt(after); ok {
+			return before, p
 		}
 	}
 	return s, 0

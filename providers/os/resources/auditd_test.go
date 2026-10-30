@@ -1,122 +1,918 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-package resources_test
+package resources
 
 import (
+	"os"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/testutils"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/utils/multierr"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
-func TestResource_AuditdConfig(t *testing.T) {
-	x.TestSimpleErrors(t, []testutils.SimpleTest{
-		{
-			Code:        "auditd.config('nopath').params",
-			ResultIndex: 0,
-			Expectation: "file 'nopath' not found",
+func newAuditdRulesTestRuntime(t *testing.T) *plugin.Runtime {
+	t.Helper()
+
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:    "oraclelinux",
+			Version: "8",
+			Family:  []string{"oraclelinux", "linux"},
 		},
 	})
+	require.NoError(t, err)
 
-	t.Run("auditd file path", func(t *testing.T) {
-		res := x.TestQuery(t, "auditd.config.file.path")
-		assert.NotEmpty(t, res)
-		assert.NoError(t, res[0].Data.Error)
+	return &plugin.Runtime{
+		Connection: conn,
+		Resources:  &syncx.Map[plugin.Resource]{},
+	}
+}
+
+// newAuditdFilesTestRuntime serves files (path to content) and directories
+// from a mock filesystem.
+func newAuditdFilesTestRuntime(t *testing.T, files map[string]string, dirs ...string) *plugin.Runtime {
+	t.Helper()
+
+	data := &mock.TomlData{Files: map[string]*mock.MockFileData{}}
+	for path, content := range files {
+		data.Files[path] = &mock.MockFileData{Path: path, Content: content, StatData: mock.FileInfo{Mode: 0o640}}
+	}
+	for _, dir := range dirs {
+		data.Files[dir] = &mock.MockFileData{Path: dir, StatData: mock.FileInfo{Mode: os.ModeDir | 0o750, IsDir: true}}
+	}
+
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "ubuntu", Family: []string{"debian", "linux"}},
+	}, mock.WithData(data))
+	require.NoError(t, err)
+
+	return &plugin.Runtime{
+		Connection: conn,
+		Resources:  &syncx.Map[plugin.Resource]{},
+	}
+}
+
+func controlValues(t *testing.T, rules *mqlAuditdRules, flag string) []string {
+	t.Helper()
+	controls := rules.GetControls()
+	require.NoError(t, controls.Error)
+	res := []string{}
+	for _, raw := range controls.Data {
+		c := raw.(*mqlAuditdRuleControl)
+		if c.Flag.Data == flag {
+			res = append(res, c.Value.Data)
+		}
+	}
+	return res
+}
+
+func TestAuditdRulesReadsRulesDirLikeAugenrules(t *testing.T) {
+	runtime := newAuditdFilesTestRuntime(t, map[string]string{
+		"/etc/audit/rules.d/10-b.rules":        "-b 10\n",
+		"/etc/audit/rules.d/9-a.rules":         "-b 9\n",
+		"/etc/audit/rules.d/.hidden.rules":     "-b 0\n",
+		"/etc/audit/rules.d/README":            "-b 1\n",
+		"/etc/audit/rules.d/nested/x.rules":    "-b 2\n",
+		"/etc/audit/rules.d/old.rules/x.rules": "-b 3\n",
+		"/etc/audit/audit.rules":               "-b 4\n",
+	}, "/etc/audit/rules.d", "/etc/audit/rules.d/nested", "/etc/audit/rules.d/old.rules")
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	assert.Equal(t, "/etc/audit/rules.d", rules.GetPath().Data)
+	assert.True(t, rules.GetExists().Data)
+	// top-level *.rules only, in natural order: 9-a before 10-b
+	assert.Equal(t, []string{"9", "10"}, controlValues(t, rules, "-b"))
+}
+
+func TestAuditdRulesConcatenatesRulesDirLikeAugenrules(t *testing.T) {
+	// augenrules cats the files with no separator, so a file whose last line
+	// has no newline runs into the next file's first line. auditctl then
+	// rejects the merged line, and the kernel has neither watch.
+	runtime := newAuditdFilesTestRuntime(t, map[string]string{
+		"/etc/audit/rules.d/50-sweep.rules": "-w /etc/hosts -p wa -k hosts\n",
+		"/etc/audit/rules.d/59-nonl.rules":  "-w /etc/sudoers -p wa -k sudoers",
+		"/etc/audit/rules.d/60-next.rules":  "-w /etc/issue -p wa -k after60\n",
+	}, "/etc/audit/rules.d")
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	paths := watchPaths(t, rules)
+	assert.NotContains(t, paths, "watch:/etc/sudoers")
+	assert.NotContains(t, paths, "watch:/etc/issue")
+	assert.Contains(t, paths, "watch:/etc/hosts")
+}
+
+func TestAuditdRulesFallsBackToAuditRules(t *testing.T) {
+	t.Run("rules.d missing", func(t *testing.T) {
+		runtime := newAuditdFilesTestRuntime(t, map[string]string{
+			"/etc/audit/audit.rules": "-w /etc/shadow -p wa -k identity\n",
+		})
+		rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+		assert.Equal(t, "/etc/audit/audit.rules", rules.GetPath().Data)
+		assert.True(t, rules.GetExists().Data)
+		files := rules.GetFiles()
+		require.NoError(t, files.Error)
+		require.Len(t, files.Data, 1)
+		assert.Equal(t, "/etc/shadow", files.Data[0].(*mqlAuditdRuleFile).Path.Data)
 	})
 
-	t.Run("auditd params", func(t *testing.T) {
-		res := x.TestQuery(t, "auditd.config.params")
-		assert.NotEmpty(t, res)
-		assert.NoError(t, res[0].Data.Error)
-	})
+	t.Run("rules.d without rule files", func(t *testing.T) {
+		runtime := newAuditdFilesTestRuntime(t, map[string]string{
+			"/etc/audit/rules.d/README": "not a rule file\n",
+			"/etc/audit/audit.rules":    "-b 8192\n",
+		}, "/etc/audit/rules.d")
+		rules := &mqlAuditdRules{MqlRuntime: runtime}
 
-	t.Run("auditd is downcasing relevant params", func(t *testing.T) {
-		res := x.TestQuery(t, "auditd.config.params.log_format")
-		assert.NotEmpty(t, res)
-		assert.NoError(t, res[0].Data.Error)
-		assert.Equal(t, "enriched", res[0].Data.Value)
-	})
-
-	t.Run("auditd is NOT downcasing other params", func(t *testing.T) {
-		res := x.TestQuery(t, "auditd.config.params.log_file")
-		assert.NotEmpty(t, res)
-		assert.NoError(t, res[0].Data.Error)
-		assert.Equal(t, "/var/log/audit/AuDiT.log", res[0].Data.Value)
+		assert.Equal(t, "/etc/audit/audit.rules", rules.GetPath().Data)
+		assert.Equal(t, []string{"8192"}, controlValues(t, rules, "-b"))
 	})
 }
 
-func TestResource_AuditdRules(t *testing.T) {
-	t.Run("auditd rules path", func(t *testing.T) {
-		x.TestSimple(t, []testutils.SimpleTest{
-			{
-				Code:        "auditd.rules.path",
-				ResultIndex: 0,
-				Expectation: "/etc/audit/rules.d",
-			},
-			{
-				Code:        "auditd.rules.files.first.path",
-				ResultIndex: 0,
-				Expectation: "/etc/sudoers",
-			},
-			{
-				Code:        "auditd.rules.controls[0].flag",
-				ResultIndex: 0,
-				Expectation: "-D",
-			},
-			{
-				Code:        "auditd.rules.syscalls.where(action==\"always\" && fields.contains(key==\"path\" && value==\"/usr/bin/systemd-run\")).length",
-				ResultIndex: 0,
-				Expectation: int64(2),
-			},
-		})
+func TestAuditdRulesMissingPathReturnsEmptyLists(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	exists := rules.GetExists()
+	require.NoError(t, exists.Error)
+	assert.False(t, exists.Data)
+
+	watches := rules.GetWatches()
+	require.NoError(t, watches.Error)
+	assert.Empty(t, watches.Data)
+
+	immutable := rules.GetImmutable()
+	require.NoError(t, immutable.Error)
+	assert.False(t, immutable.Data)
+
+	controls := rules.GetControls()
+	require.NoError(t, controls.Error)
+	assert.Empty(t, controls.Data)
+	assert.Equal(t, plugin.StateIsSet, controls.State)
+
+	files := rules.GetFiles()
+	require.NoError(t, files.Error)
+	assert.Empty(t, files.Data)
+	assert.Equal(t, plugin.StateIsSet, files.State)
+
+	syscalls := rules.GetSyscalls()
+	require.NoError(t, syscalls.Error)
+	assert.Empty(t, syscalls.Data)
+	assert.Equal(t, plugin.StateIsSet, syscalls.State)
+}
+
+func TestAuditdSyscallRuleParsing(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	content := `
+# 64-bit DAC permission modification rule
+-a always,exit -F arch=b64 -S chmod,fchmod,chown -F auid>=1000 -F auid!=unset -k perm_mod
+# 32-bit variant using the raw unset sentinel
+-a always,exit -F arch=b32 -S chmod -F auid>=1000 -F auid!=4294967295 -k perm_mod
+# rule without any arch or auid filters
+-a always,exit -S execve -k exec
+`
+
+	var errs multierr.Errors
+	rules.parse(content, &errs)
+	require.NoError(t, errs.Deduplicate())
+	require.Len(t, rules.Syscalls.Data, 3)
+
+	t.Run("b64 rule derives arch, auidMin and excludesUnsetAuid", func(t *testing.T) {
+		r := rules.Syscalls.Data[0].(*mqlAuditdRuleSyscall)
+		assert.Equal(t, "b64", r.Arch.Data)
+		assert.Equal(t, []any{"chmod", "fchmod", "chown"}, r.Syscalls.Data)
+		assert.Equal(t, int64(1000), r.AuidMin.Data)
+		assert.Equal(t, plugin.StateIsSet, r.AuidMin.State)
+		assert.True(t, r.ExcludesUnsetAuid.Data)
+		assert.Equal(t, "perm_mod", r.Keyname.Data)
 	})
 
-	t.Run("-k flag normalized into fields", func(t *testing.T) {
-		// The -k flag is shorthand for -F key=<value>. Verify that the
-		// parser normalizes it into the fields array so queries don't
-		// need to check both representations.
-		x.TestSimple(t, []testutils.SimpleTest{
-			{
-				Code:        `auditd.rules.syscalls.where(keyname == "priv_escalation")[0].fields.where(key == "key" && value == "priv_escalation").length`,
-				ResultIndex: 0,
-				Expectation: int64(1),
-			},
-		})
+	t.Run("b32 rule treats the 4294967295 sentinel as unset", func(t *testing.T) {
+		r := rules.Syscalls.Data[1].(*mqlAuditdRuleSyscall)
+		assert.Equal(t, "b32", r.Arch.Data)
+		assert.Equal(t, int64(1000), r.AuidMin.Data)
+		assert.True(t, r.ExcludesUnsetAuid.Data)
 	})
 
-	t.Run("auditd comparisons field", func(t *testing.T) {
-		x.TestSimple(t, []testutils.SimpleTest{
-			// Test that rules with -C have populated comparisons
-			{
-				Code:        "auditd.rules.syscalls.where(comparisons.length > 0).length",
-				ResultIndex: 0,
-				Expectation: int64(1),
-			},
-			// Test that rules without -C have empty comparisons
-			{
-				Code:        "auditd.rules.syscalls.where(comparisons.length == 0).length",
-				ResultIndex: 0,
-				Expectation: int64(3),
-			},
-			// Test filtering by comparison field values
-			{
-				Code:        `auditd.rules.syscalls.where(comparisons.any(field1 == "uid" && op == "!=" && field2 == "euid")).length`,
-				ResultIndex: 0,
-				Expectation: int64(1),
-			},
-			// Test accessing comparisons field on a specific rule
-			{
-				Code:        `auditd.rules.syscalls.where(keyname == "priv_escalation")[0].comparisons[0].field1`,
-				ResultIndex: 0,
-				Expectation: "uid",
-			},
-			// Test accessing second comparison
-			{
-				Code:        `auditd.rules.syscalls.where(keyname == "priv_escalation")[0].comparisons[1].field2`,
-				ResultIndex: 0,
-				Expectation: "egid",
-			},
+	t.Run("rule without arch/auid filters leaves fields empty and auidMin null", func(t *testing.T) {
+		r := rules.Syscalls.Data[2].(*mqlAuditdRuleSyscall)
+		assert.Equal(t, "", r.Arch.Data)
+		assert.False(t, r.ExcludesUnsetAuid.Data)
+		assert.NotEqual(t, 0, r.AuidMin.State&plugin.StateIsNull)
+	})
+}
+
+func TestAuditdSyscallAuidGreaterThan(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	// `auid>999` is the strict-greater-than spelling of `auid>=1000`; auidMin
+	// reports the effective lower bound of 1000 either way.
+	content := "-a always,exit -F arch=b64 -S execve -F auid>999 -k t\n"
+
+	var errs multierr.Errors
+	rules.parse(content, &errs)
+	require.NoError(t, errs.Deduplicate())
+	require.Len(t, rules.Syscalls.Data, 1)
+
+	r := rules.Syscalls.Data[0].(*mqlAuditdRuleSyscall)
+	assert.Equal(t, int64(1000), r.AuidMin.Data)
+}
+
+func TestAuditdSyscallRuleRepeatedFlags(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	// Syscalls may be supplied via repeated -S flags as well as comma lists;
+	// both forms must accumulate into a single flat syscalls list.
+	content := "-a always,exit -F arch=b64 -S open -S openat,creat -k access\n"
+
+	var errs multierr.Errors
+	rules.parse(content, &errs)
+	require.NoError(t, errs.Deduplicate())
+	require.Len(t, rules.Syscalls.Data, 1)
+
+	r := rules.Syscalls.Data[0].(*mqlAuditdRuleSyscall)
+	assert.Equal(t, []any{"open", "openat", "creat"}, r.Syscalls.Data)
+}
+
+func TestNormalizeAuditdConfigFields(t *testing.T) {
+	t.Run("lowercases keys and downcases enum values", func(t *testing.T) {
+		res, err := normalizeAuditdConfigFields(map[string]any{
+			"Log_Format": "ENABLED",
+			"Log_File":   "/var/log/audit/audit.log",
 		})
+		require.NoError(t, err)
+		assert.Equal(t, "enabled", res["log_format"])
+		// log_file is not a downcase keyword, so its value is preserved verbatim.
+		assert.Equal(t, "/var/log/audit/audit.log", res["log_file"])
+	})
+
+	t.Run("reports the offending field name for non-string values", func(t *testing.T) {
+		_, err := normalizeAuditdConfigFields(map[string]any{
+			"broken": map[string]any{"nested": "value"},
+		})
+		require.Error(t, err)
+		// The error must name the field that failed (`broken`), not an empty string.
+		assert.Contains(t, err.Error(), "broken")
+	})
+}
+
+func TestAuditdSyscallRuleMalformedAction(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	// A malformed `-a` rule carries no comma (the list segment is missing).
+	// Parsing must not panic; the action is captured and the list is empty.
+	content := "-a always -S execve -k t\n"
+
+	var errs multierr.Errors
+	require.NotPanics(t, func() {
+		rules.parse(content, &errs)
+	})
+	require.NoError(t, errs.Deduplicate())
+	require.Len(t, rules.Syscalls.Data, 1)
+
+	r := rules.Syscalls.Data[0].(*mqlAuditdRuleSyscall)
+	assert.Equal(t, "always", r.Action.Data)
+	assert.Equal(t, "", r.List.Data)
+}
+
+func TestAuditdControlRuleParsing(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	content := `
+# comment line, must be skipped
+
+-D
+-b 8192
+-f 1
+--backlog_wait_time 60000
+`
+
+	var errs multierr.Errors
+	rules.parse(content, &errs)
+	require.NoError(t, errs.Deduplicate())
+	require.Len(t, rules.Controls.Data, 4)
+	assert.Empty(t, rules.Syscalls.Data)
+	assert.Empty(t, rules.Files.Data)
+
+	got := map[string]string{}
+	for _, raw := range rules.Controls.Data {
+		c := raw.(*mqlAuditdRuleControl)
+		got[c.Flag.Data] = c.Value.Data
+	}
+	assert.Equal(t, map[string]string{
+		"-D":                  "",
+		"-b":                  "8192",
+		"-f":                  "1",
+		"--backlog_wait_time": "60000",
+	}, got)
+}
+
+func TestAuditdFileRuleParsing(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	content := `
+-w /etc/shadow -p wa -k identity
+-w /etc/passwd
+`
+
+	var errs multierr.Errors
+	rules.parse(content, &errs)
+	require.NoError(t, errs.Deduplicate())
+	require.Len(t, rules.Files.Data, 2)
+
+	shadow := rules.Files.Data[0].(*mqlAuditdRuleFile)
+	assert.Equal(t, "/etc/shadow", shadow.Path.Data)
+	assert.Equal(t, "wa", shadow.Permissions.Data)
+	assert.Equal(t, "identity", shadow.Keyname.Data)
+
+	// A watch with no -p/-k still parses, with empty permissions and keyname.
+	passwd := rules.Files.Data[1].(*mqlAuditdRuleFile)
+	assert.Equal(t, "/etc/passwd", passwd.Path.Data)
+	assert.Equal(t, "", passwd.Permissions.Data)
+	assert.Equal(t, "", passwd.Keyname.Data)
+}
+
+func TestAuditdSyscallFieldOperatorParsing(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	// Exercises the reOperator ordering (>= must win over =/>) and a key-only
+	// field with no operator.
+	content := "-a always,exit -F arch=b64 -F auid>=1000 -F success!=0 -F exit -S execve -k t\n"
+
+	var errs multierr.Errors
+	rules.parse(content, &errs)
+	require.NoError(t, errs.Deduplicate())
+	require.Len(t, rules.Syscalls.Data, 1)
+
+	got := map[string][2]string{} // key -> {op, value}
+	keyOnly := []string{}
+	for _, raw := range rules.Syscalls.Data[0].(*mqlAuditdRuleSyscall).Fields.Data {
+		f := raw.(map[string]any)
+		key, _ := f["key"].(string)
+		op, hasOp := f["op"].(string)
+		if !hasOp {
+			keyOnly = append(keyOnly, key)
+			continue
+		}
+		val, _ := f["value"].(string)
+		got[key] = [2]string{op, val}
+	}
+
+	assert.Equal(t, [2]string{"=", "b64"}, got["arch"])
+	assert.Equal(t, [2]string{">=", "1000"}, got["auid"])
+	assert.Equal(t, [2]string{"!=", "0"}, got["success"])
+	assert.Contains(t, keyOnly, "exit")
+}
+
+func TestAuditdRulesImmutable(t *testing.T) {
+	t.Run("rules directory uses the last -e, as augenrules does", func(t *testing.T) {
+		runtime := newAuditdFilesTestRuntime(t, map[string]string{
+			"/etc/audit/rules.d/10-base.rules":     "-e 2\n",
+			"/etc/audit/rules.d/99-override.rules": "-e 1\n",
+		}, "/etc/audit/rules.d")
+		rules := &mqlAuditdRules{MqlRuntime: runtime}
+		assert.False(t, rules.GetImmutable().Data)
+	})
+
+	t.Run("rules directory ending in -e 2", func(t *testing.T) {
+		runtime := newAuditdFilesTestRuntime(t, map[string]string{
+			"/etc/audit/rules.d/10-base.rules":     "-e 1\n",
+			"/etc/audit/rules.d/99-finalize.rules": "-e 2\n",
+		}, "/etc/audit/rules.d")
+		rules := &mqlAuditdRules{MqlRuntime: runtime}
+		assert.True(t, rules.GetImmutable().Data)
+	})
+
+	t.Run("single rules file is locked by any -e 2", func(t *testing.T) {
+		runtime := newAuditdFilesTestRuntime(t, map[string]string{
+			"/etc/audit/audit.rules": "-e 2\n-e 1\n",
+		})
+		rules := &mqlAuditdRules{MqlRuntime: runtime}
+		assert.Equal(t, "/etc/audit/audit.rules", rules.GetPath().Data)
+		assert.True(t, rules.GetImmutable().Data)
+	})
+
+	t.Run("no -e control", func(t *testing.T) {
+		runtime := newAuditdFilesTestRuntime(t, map[string]string{
+			"/etc/audit/audit.rules": "-b 8192\n",
+		})
+		rules := &mqlAuditdRules{MqlRuntime: runtime}
+		assert.False(t, rules.GetImmutable().Data)
+	})
+}
+
+func TestAuditdRulesWatches(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	content := `
+-w /etc/shadow -p aw -k identity
+-w /etc/passwd
+-w /etc/sudoers.d/ -p wa -k scope
+-a always,exit -F path=/usr/bin/kmod -F perm=x -F auid>=1000 -F auid!=unset -F key=modules
+-a always,exit -F dir=/etc/apparmor.d/ -F perm=wa -k mac
+-a never,exit -F path=/tmp/excluded -F perm=wa
+-a always,exit -F arch=b64 -S chmod -F path=/etc/hosts -k no-perm
+`
+
+	var errs multierr.Errors
+	rules.parse(content, &errs)
+	require.NoError(t, errs.Deduplicate())
+	// -w rules are still reported as files, unchanged
+	require.Len(t, rules.Files.Data, 3)
+
+	type watch struct {
+		path, keyname, typ string
+		permissions        []any
+	}
+	got := []watch{}
+	for _, raw := range rules.Watches.Data {
+		w := raw.(*mqlAuditdRuleWatch)
+		got = append(got, watch{w.Path.Data, w.Keyname.Data, w.Type.Data, w.Permissions.Data})
+	}
+	assert.Equal(t, []watch{
+		{"/etc/shadow", "identity", "watch", []any{"w", "a"}},
+		{"/etc/passwd", "", "watch", []any{"r", "w", "x", "a"}},
+		{"/etc/sudoers.d", "scope", "watch", []any{"w", "a"}},
+		{"/usr/bin/kmod", "modules", "path", []any{"x"}},
+		{"/etc/apparmor.d", "mac", "dir", []any{"w", "a"}},
+	}, got)
+}
+
+func TestAuditdSyscallKeyFromField(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	// the form auditctl -l prints
+	content := "-a always,exit -F arch=b64 -S adjtimex,settimeofday -F key=time-change\n"
+
+	var errs multierr.Errors
+	rules.parse(content, &errs)
+	require.NoError(t, errs.Deduplicate())
+	require.Len(t, rules.Syscalls.Data, 1)
+
+	r := rules.Syscalls.Data[0].(*mqlAuditdRuleSyscall)
+	assert.Equal(t, "time-change", r.Keyname.Data)
+}
+
+func TestAuditdSyscallPrependAndReversedAction(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	content := `
+-A always,exit -F arch=b64 -S execve -k exec
+-a exit,always -F arch=b64 -S mount -k mounts
+`
+
+	var errs multierr.Errors
+	rules.parse(content, &errs)
+	require.NoError(t, errs.Deduplicate())
+	assert.Empty(t, rules.Controls.Data)
+	require.Len(t, rules.Syscalls.Data, 2)
+
+	for _, raw := range rules.Syscalls.Data {
+		r := raw.(*mqlAuditdRuleSyscall)
+		assert.Equal(t, "always", r.Action.Data, r.Keyname.Data)
+		assert.Equal(t, "exit", r.List.Data, r.Keyname.Data)
+	}
+}
+
+func TestAuditdRuleParsingMultibytePath(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	content := "-w /srv/données -p wa -k data\n"
+
+	var errs multierr.Errors
+	rules.parse(content, &errs)
+	require.NoError(t, errs.Deduplicate())
+	require.Len(t, rules.Files.Data, 1)
+
+	f := rules.Files.Data[0].(*mqlAuditdRuleFile)
+	assert.Equal(t, "/srv/données", f.Path.Data)
+	assert.Equal(t, "wa", f.Permissions.Data)
+	assert.Equal(t, "data", f.Keyname.Data)
+}
+
+func TestNaturalCompare(t *testing.T) {
+	names := []string{"a.rules", "99-finalize.rules", "10-b.rules", "1-first.rules", "9-a.rules", "01-first.rules"}
+	slices.SortFunc(names, naturalCompare)
+	assert.Equal(t, []string{"01-first.rules", "1-first.rules", "9-a.rules", "10-b.rules", "99-finalize.rules", "a.rules"}, names)
+}
+
+func TestAuditdConfigTypedFields(t *testing.T) {
+	cfg := &mqlAuditdConfig{}
+
+	t.Run("absent keys report auditd's built-in defaults", func(t *testing.T) {
+		params := map[string]any{}
+		n, err := cfg.maxLogFile(params)
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), n)
+		n, err = cfg.numLogs(params)
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), n)
+
+		for _, fn := range []func(map[string]any) (string, error){cfg.maxLogFileAction, cfg.spaceLeftAction, cfg.adminSpaceLeftAction, cfg.diskFullAction} {
+			v, err := fn(params)
+			require.NoError(t, err)
+			assert.Equal(t, "ignore", v)
+		}
+		v, _ := cfg.diskErrorAction(params)
+		assert.Equal(t, "syslog", v)
+		v, _ = cfg.actionMailAcct(params)
+		assert.Equal(t, "root", v)
+	})
+
+	t.Run("configured values", func(t *testing.T) {
+		params := map[string]any{
+			"max_log_file":            "32",
+			"num_logs":                "5",
+			"max_log_file_action":     "keep_logs",
+			"space_left_action":       "email",
+			"admin_space_left_action": "single",
+			"disk_full_action":        "halt",
+			"disk_error_action":       "suspend",
+			"action_mail_acct":        "auditors",
+		}
+		n, err := cfg.maxLogFile(params)
+		require.NoError(t, err)
+		assert.Equal(t, int64(32), n)
+		n, _ = cfg.numLogs(params)
+		assert.Equal(t, int64(5), n)
+		v, _ := cfg.maxLogFileAction(params)
+		assert.Equal(t, "keep_logs", v)
+		v, _ = cfg.spaceLeftAction(params)
+		assert.Equal(t, "email", v)
+		v, _ = cfg.adminSpaceLeftAction(params)
+		assert.Equal(t, "single", v)
+		v, _ = cfg.diskFullAction(params)
+		assert.Equal(t, "halt", v)
+		v, _ = cfg.diskErrorAction(params)
+		assert.Equal(t, "suspend", v)
+		v, _ = cfg.actionMailAcct(params)
+		assert.Equal(t, "auditors", v)
+	})
+
+	t.Run("a non-numeric size is an error, not a default", func(t *testing.T) {
+		_, err := cfg.maxLogFile(map[string]any{"max_log_file": "8M"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "max_log_file")
+	})
+}
+
+func TestAuditdConfigTypedFieldsMissingFile(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	raw, err := CreateResource(runtime, "auditd.config", map[string]*llx.RawData{})
+	require.NoError(t, err)
+	cfg := raw.(*mqlAuditdConfig)
+
+	// a missing auditd.conf must not read as "configured at the defaults"
+	assert.Error(t, cfg.GetMaxLogFile().Error)
+	assert.Error(t, cfg.GetSpaceLeftAction().Error)
+}
+
+func TestParseAuditctlStatus(t *testing.T) {
+	t.Run("numeric output", func(t *testing.T) {
+		res, err := parseAuditctlStatus(`enabled 2
+failure 1
+pid 812
+rate_limit 0
+backlog_limit 8192
+lost 3
+backlog 0
+backlog_wait_time 60000
+backlog_wait_time_actual 0
+loginuid_immutable 0 unlocked
+`)
+		require.NoError(t, err)
+		assert.Equal(t, map[string]int64{
+			"enabled": 2, "failure": 1, "pid": 812, "rate_limit": 0,
+			"backlog_limit": 8192, "lost": 3, "backlog": 0,
+		}, res)
+	})
+
+	t.Run("interpreted output from auditctl -i", func(t *testing.T) {
+		res, err := parseAuditctlStatus("enabled enabled+immutable\nfailure panic\npid 1\nrate_limit 0\nbacklog_limit 64\nlost 0\nbacklog 0\n")
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), res["enabled"])
+		assert.Equal(t, int64(2), res["failure"])
+	})
+
+	t.Run("incomplete output", func(t *testing.T) {
+		_, err := parseAuditctlStatus("enabled 1\n")
+		require.Error(t, err)
+	})
+}
+
+func TestInitAuditdStatus(t *testing.T) {
+	newRuntime := func(cmd *mock.Command) *plugin.Runtime {
+		conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+			Commands: map[string]*mock.Command{"auditctl -s": cmd},
+		}))
+		require.NoError(t, err)
+		return &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+	}
+
+	t.Run("reports the kernel audit status", func(t *testing.T) {
+		args, _, err := initAuditdStatus(newRuntime(&mock.Command{
+			Stdout: "enabled 1\nfailure 1\npid 812\nrate_limit 0\nbacklog_limit 8192\nlost 0\nbacklog 0\n",
+		}), map[string]*llx.RawData{})
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), args["enabled"].Value)
+		assert.Equal(t, int64(8192), args["backlogLimit"].Value)
+	})
+
+	t.Run("an unprivileged scan errors instead of reporting zeros", func(t *testing.T) {
+		_, _, err := initAuditdStatus(newRuntime(&mock.Command{
+			Stderr:     "Error sending status request (Operation not permitted)",
+			ExitStatus: 1,
+		}), map[string]*llx.RawData{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Operation not permitted")
+	})
+}
+
+func watchPaths(t *testing.T, rules *mqlAuditdRules) []string {
+	t.Helper()
+	watches := rules.GetWatches()
+	require.NoError(t, watches.Error)
+	res := []string{}
+	for _, raw := range watches.Data {
+		w := raw.(*mqlAuditdRuleWatch)
+		res = append(res, w.Type.Data+":"+w.Path.Data)
+	}
+	return res
+}
+
+func TestAuditdRulesDeleteWatchAcrossFiles(t *testing.T) {
+	// A watch added in one rules file and removed in a later one (#11063).
+	runtime := newAuditdFilesTestRuntime(t, map[string]string{
+		"/etc/audit/rules.d/30-identity.rules": "-w /etc/shadow -p wa -k identity\n-w /etc/passwd -p wa -k identity\n",
+		"/etc/audit/rules.d/99-local.rules":    "-W /etc/shadow -p wa -k identity\n",
+	}, "/etc/audit/rules.d")
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	files := rules.GetFiles()
+	require.NoError(t, files.Error)
+	require.Len(t, files.Data, 1)
+	assert.Equal(t, "/etc/passwd", files.Data[0].(*mqlAuditdRuleFile).Path.Data)
+	assert.Equal(t, []string{"watch:/etc/passwd"}, watchPaths(t, rules))
+	assert.Empty(t, controlValues(t, rules, "-W"), "a deletion is not a control")
+}
+
+func TestAuditdRulesDeleteWatchMustMatch(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	var errs multierr.Errors
+	rules.parse(`
+-W /etc/group -p wa -k identity
+-w /etc/group -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/passwd
+-w /etc/sudoers.d/ -p wa -k scope
+-W /etc/shadow -p wa -k other
+-W /etc/shadow -p w -k identity
+-W /etc/passwd -p rwxa
+-W /etc/sudoers.d -p aw -k scope
+`, &errs)
+	require.NoError(t, errs.Deduplicate())
+	rules.Controls.State = plugin.StateIsSet
+	rules.Watches.State = plugin.StateIsSet
+
+	// the -W before its -w removes nothing; a different key or permission set
+	// is a different rule; a -w without -p is the same rule as -p rwxa; the
+	// trailing slash and permission order do not matter
+	assert.Equal(t, []string{"watch:/etc/group", "watch:/etc/shadow"}, watchPaths(t, rules))
+	assert.Empty(t, rules.Controls.Data)
+}
+
+func TestAuditdRulesDeleteSyscallRule(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	var errs multierr.Errors
+	rules.parse(`
+-a always,exit -F arch=b64 -S chmod,fchmod -F auid>=1000 -F auid!=unset -k perm_mod
+-a always,exit -F arch=b32 -S chmod,fchmod -F auid>=1000 -F auid!=unset -k perm_mod
+-a always,exit -F arch=b64 -S mount -F auid>=1000 -k mounts
+-a always,exit -F path=/etc/shadow -F perm=aw -k identity
+-d exit,always -F arch=b64 -S fchmod -S chmod -F auid>=1000 -F auid!=unset -k perm_mod
+-d always,exit -F auid>=1000 -F arch=b64 -S mount -k mounts
+-W /etc/shadow -p wa -k identity
+`, &errs)
+	require.NoError(t, errs.Deduplicate())
+	rules.Syscalls.State = plugin.StateIsSet
+	rules.Watches.State = plugin.StateIsSet
+	rules.Controls.State = plugin.StateIsSet
+
+	type rule struct{ arch, key string }
+	got := []rule{}
+	for _, raw := range rules.Syscalls.Data {
+		r := raw.(*mqlAuditdRuleSyscall)
+		got = append(got, rule{r.Arch.Data, r.Keyname.Data})
+	}
+	// the b64 perm_mod rule is deleted (action order and syscall order do not
+	// matter), the mount rule is not (the kernel compares fields in order), and
+	// -W removes the equivalent -F path= rule together with its watch
+	assert.Equal(t, []rule{{"b32", "perm_mod"}, {"b64", "mounts"}}, got)
+	assert.Empty(t, watchPaths(t, rules))
+	assert.Empty(t, rules.Controls.Data)
+}
+
+func TestAuditdRuleIdentity(t *testing.T) {
+	watch := func(path, perm string) string {
+		return auditdRuleIdentity(true, "", "", nil, []string{"key=k"}, nil, path, perm)
+	}
+	assert.Equal(t, watch("/etc/audit/", "wa"), watch("/etc/audit", "aw"))
+	assert.Equal(t, watch("/etc/passwd", ""), watch("/etc/passwd", "RWXA"))
+	assert.NotEqual(t, watch("/", "wa"), watch("/etc", "wa"))
+
+	syscall := func(syscalls ...any) string {
+		return auditdRuleIdentity(false, "always", "exit", syscalls, []string{"path=/etc/shadow", "perm=wa", "key=k"}, nil, "", "")
+	}
+	assert.Equal(t, watch("/etc/shadow", "aw"), syscall(), "-w and -F path= describe the same kernel rule")
+	assert.Equal(t, syscall(), syscall("all"))
+	assert.Equal(t, syscall("open", "chmod"), syscall("chmod", "open", "chmod"))
+	assert.NotEqual(t, syscall(), syscall("chmod"))
+
+	withComparison := auditdRuleIdentity(false, "always", "exit", nil, nil, []string{"uid!=euid"}, "", "")
+	assert.NotEqual(t, withComparison, auditdRuleIdentity(false, "always", "exit", nil, nil, nil, "", ""))
+}
+
+func newAuditdLoadedRules(t *testing.T, cmd *mock.Command) *mqlAuditdLoadedRules {
+	t.Helper()
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "rockylinux", Family: []string{"redhat", "linux", "unix"}},
+	}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{"auditctl -l": cmd},
+	}))
+	require.NoError(t, err)
+	return &mqlAuditdLoadedRules{MqlRuntime: &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}}
+}
+
+func readAuditctlList(t *testing.T, name string) string {
+	t.Helper()
+	data, err := os.ReadFile("testdata/auditctl-list/" + name)
+	require.NoError(t, err)
+	return string(data)
+}
+
+// The rules of testdata/auditctl-list/rules-loaded.txt as the kernel lists
+// them: a path or dir rule without arch or syscalls comes back as a -w watch,
+// `auid!=unset` as `auid!=-1`, `-k` on a syscall rule as `-F key=`, and the
+// task list first.
+func TestAuditdLoadedRules(t *testing.T) {
+	rules := newAuditdLoadedRules(t, &mock.Command{Stdout: readAuditctlList(t, "arm64.txt")})
+
+	syscalls, err := rules.syscalls()
+	require.NoError(t, err)
+	require.Len(t, syscalls, 12)
+
+	never := syscalls[0].(*mqlAuditdRuleSyscall)
+	assert.Equal(t, "never", never.Action.Data)
+	assert.Equal(t, "task", never.List.Data)
+	assert.Empty(t, never.Syscalls.Data)
+
+	timeChange := syscalls[1].(*mqlAuditdRuleSyscall)
+	assert.Equal(t, "b64", timeChange.Arch.Data)
+	assert.Equal(t, []any{"settimeofday", "adjtimex"}, timeChange.Syscalls.Data)
+	assert.Equal(t, "time-change", timeChange.Keyname.Data)
+
+	emulation := syscalls[4].(*mqlAuditdRuleSyscall)
+	assert.Equal(t, []any{"execve"}, emulation.Syscalls.Data)
+	assert.Equal(t, []any{map[string]any{"field1": "uid", "op": "!=", "field2": "euid"}}, emulation.Comparisons.Data)
+	assert.True(t, emulation.ExcludesUnsetAuid.Data, "auid!=-1 is auid!=unset")
+	assert.Equal(t, plugin.StateIsNull, emulation.AuidMin.State&plugin.StateIsNull)
+
+	access := syscalls[6].(*mqlAuditdRuleSyscall)
+	assert.Contains(t, access.Fields.Data, map[string]any{"key": "exit", "op": "=", "value": "-EACCES"})
+	assert.Equal(t, int64(1000), access.AuidMin.Data)
+
+	mounts := syscalls[10].(*mqlAuditdRuleSyscall)
+	assert.Equal(t, int64(1000), mounts.AuidMin.Data, "auid>999 is auid>=1000")
+
+	files, err := rules.files()
+	require.NoError(t, err)
+	assert.Len(t, files, 9)
+
+	watches, err := rules.watches()
+	require.NoError(t, err)
+	got := []string{}
+	for _, raw := range watches {
+		w := raw.(*mqlAuditdRuleWatch)
+		got = append(got, w.Type.Data+":"+w.Path.Data+":"+strings.Join(anyStrings(w.Permissions.Data), "")+":"+w.Keyname.Data)
+	}
+	assert.Equal(t, []string{
+		"watch:/etc/localtime:wa:time-change",
+		"watch:/etc/issue:wa:system-locale",
+		"watch:/etc/hosts:wa:system-locale",
+		"watch:/etc/sysconfig/network:wa:system-locale",
+		"watch:/etc/NetworkManager:wa:system-locale",
+		"watch:/etc/sudoers.d:wa:scope",
+		"watch:/etc/sudoers:wa:scope",
+		"path:/usr/bin/sudo:x:privileged",
+		"watch:/var/log/lastlog:wa:logins",
+		"watch:/var/run/faillock:wa:",
+	}, got)
+}
+
+func anyStrings(list []any) []string {
+	res := make([]string, len(list))
+	for i := range list {
+		res[i] = list[i].(string)
+	}
+	return res
+}
+
+// An auditctl whose syscall tables lack an architecture lists its rules by
+// number; the arch still reads b32 or b64.
+func TestAuditdLoadedRulesNumericArch(t *testing.T) {
+	rules := newAuditdLoadedRules(t, &mock.Command{Stdout: readAuditctlList(t, "arm64-numeric-compat.txt")})
+
+	syscalls, err := rules.syscalls()
+	require.NoError(t, err)
+	compat := syscalls[len(syscalls)-1].(*mqlAuditdRuleSyscall)
+	assert.Equal(t, "b32", compat.Arch.Data)
+	assert.Equal(t, []any{"74", "121"}, compat.Syscalls.Data)
+	assert.Contains(t, compat.Fields.Data, map[string]any{"key": "arch", "op": "=", "value": "0x40000028"})
+}
+
+func TestAuditdArchName(t *testing.T) {
+	assert.Equal(t, "b64", auditdArchName("b64"))
+	assert.Equal(t, "b32", auditdArchName("0x40000028")) // ARM
+	assert.Equal(t, "b32", auditdArchName("0x40000003")) // i386
+	assert.Equal(t, "b64", auditdArchName("0xc000003e")) // x86_64
+	assert.Equal(t, "b64", auditdArchName("0xC00000B7")) // aarch64
+	assert.Equal(t, "x86_64", auditdArchName("x86_64"))  // a machine name stays
+	assert.Equal(t, "0xzz", auditdArchName("0xzz"))      // not a number
+}
+
+func TestAuditdLoadedRulesNoRules(t *testing.T) {
+	rules := newAuditdLoadedRules(t, &mock.Command{Stdout: "No rules\n"})
+
+	syscalls, err := rules.syscalls()
+	require.NoError(t, err)
+	assert.NotNil(t, syscalls)
+	assert.Empty(t, syscalls)
+	watches, err := rules.watches()
+	require.NoError(t, err)
+	assert.Empty(t, watches)
+}
+
+func TestAuditdLoadedRulesErrors(t *testing.T) {
+	t.Run("the kernel refuses an unprivileged request", func(t *testing.T) {
+		rules := newAuditdLoadedRules(t, &mock.Command{
+			Stderr:     "Error sending rule list data request (Operation not permitted)\nThere was an error while processing parameters\n",
+			ExitStatus: 255,
+		})
+		_, err := rules.watches()
+		require.Error(t, err)
+		assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(err))
+	})
+
+	t.Run("auditctl refuses a user other than root", func(t *testing.T) {
+		rules := newAuditdLoadedRules(t, &mock.Command{Stderr: "You must be root to run this program.\n", ExitStatus: 4})
+		_, err := rules.syscalls()
+		assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(err))
+	})
+
+	t.Run("auditctl is not installed", func(t *testing.T) {
+		rules := newAuditdLoadedRules(t, &mock.Command{Stderr: "sh: line 1: auditctl: command not found\n", ExitStatus: 127})
+		_, err := rules.files()
+		assert.Equal(t, llx.ErrorKind_ERROR_KIND_NOT_FOUND, llx.KindOf(err))
+	})
+
+	t.Run("another failure is an unclassified error", func(t *testing.T) {
+		rules := newAuditdLoadedRules(t, &mock.Command{Stderr: "Error receiving audit netlink packet (No buffer space available)\n", ExitStatus: 1})
+		_, err := rules.files()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "No buffer space available")
+		assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(err))
+	})
+
+	t.Run("a connection that cannot run commands", func(t *testing.T) {
+		conn, err := mock.New(0, &inventory.Asset{Platform: &inventory.Platform{Name: "debian", Family: []string{"debian", "linux", "unix"}}})
+		require.NoError(t, err)
+		rules := &mqlAuditdLoadedRules{MqlRuntime: &plugin.Runtime{Connection: &noCommandConnection{Connection: conn}}}
+		_, err = rules.watches()
+		require.Error(t, err)
+		assert.Equal(t, llx.ErrorKind_ERROR_KIND_NOT_APPLICABLE, llx.KindOf(err))
 	})
 }

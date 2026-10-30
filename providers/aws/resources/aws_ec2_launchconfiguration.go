@@ -11,15 +11,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/autoscaling"
 	astypes "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlAwsEc2LaunchconfigurationInternal struct {
+	cacheImageId string
 	securityGroupIdHandler
 	region    string
 	accountID string
@@ -30,15 +31,16 @@ func (a *mqlAwsEc2Launchconfiguration) id() (string, error) {
 }
 
 func (a *mqlAwsEc2Launchconfiguration) image() (*mqlAwsEc2Image, error) {
-	imageID := a.ImageId.Data
+	imageID := a.cacheImageId
 	if imageID == "" {
 		a.Image.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	arnStr := fmt.Sprintf(imageArnPattern, a.Region.Data, conn.AccountId(), imageID)
 	res, err := NewResource(a.MqlRuntime, ResourceAwsEc2Image,
-		map[string]*llx.RawData{"arn": llx.StringData(arnStr)})
+		map[string]*llx.RawData{
+			"id":     llx.StringData(imageID),
+			"region": llx.StringData(a.Region.Data),
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +56,7 @@ func (a *mqlAwsEc2LaunchconfigurationEbsBlockDevice) id() (string, error) {
 }
 
 func (a *mqlAwsEc2LaunchconfigurationEbsBlockDevice) snapshot() (*mqlAwsEc2Snapshot, error) {
-	snapshotId := a.SnapshotId.Data
+	snapshotId := a.cacheSnapshotId
 	if snapshotId == "" {
 		a.Snapshot.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -188,7 +190,6 @@ func createLaunchConfigurationResource(runtime *plugin.Runtime, conn *connection
 		"arn":                       llx.StringData(lcArn),
 		"name":                      llx.StringDataPtr(lc.LaunchConfigurationName),
 		"region":                    llx.StringData(region),
-		"imageId":                   llx.StringDataPtr(lc.ImageId),
 		"instanceType":              llx.StringDataPtr(lc.InstanceType),
 		"keyName":                   llx.StringDataPtr(lc.KeyName),
 		"associatePublicIpAddress":  llx.BoolDataPtr(lc.AssociatePublicIpAddress),
@@ -216,6 +217,7 @@ func createLaunchConfigurationResource(runtime *plugin.Runtime, conn *connection
 	if err != nil {
 		return nil, err
 	}
+	resource.(*mqlAwsEc2Launchconfiguration).cacheImageId = convert.ToValue(lc.ImageId)
 
 	mqlLc := resource.(*mqlAwsEc2Launchconfiguration)
 	mqlLc.region = region
@@ -250,7 +252,6 @@ func createLaunchConfigBlockDeviceMappings(runtime *plugin.Runtime, lcArn string
 				map[string]*llx.RawData{
 					"__id":                llx.StringData(ebsID),
 					"encrypted":           llx.BoolDataPtr(mapping.Ebs.Encrypted),
-					"snapshotId":          llx.StringDataPtr(mapping.Ebs.SnapshotId),
 					"volumeSize":          llx.IntDataDefault(mapping.Ebs.VolumeSize, 0),
 					"volumeType":          llx.StringDataPtr(mapping.Ebs.VolumeType),
 					"iops":                llx.IntDataDefault(mapping.Ebs.Iops, 0),
@@ -260,6 +261,7 @@ func createLaunchConfigBlockDeviceMappings(runtime *plugin.Runtime, lcArn string
 			if err != nil {
 				return nil, err
 			}
+			mqlEbs.(*mqlAwsEc2LaunchconfigurationEbsBlockDevice).cacheSnapshotId = convert.ToValue(mapping.Ebs.SnapshotId)
 			args["ebs"] = llx.ResourceData(mqlEbs, mqlEbs.MqlName())
 		} else {
 			args["ebs"] = llx.NilData
@@ -272,4 +274,8 @@ func createLaunchConfigBlockDeviceMappings(runtime *plugin.Runtime, lcArn string
 		result = append(result, mqlMapping)
 	}
 	return result, nil
+}
+
+type mqlAwsEc2LaunchconfigurationEbsBlockDeviceInternal struct {
+	cacheSnapshotId string
 }

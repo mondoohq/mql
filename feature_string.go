@@ -25,11 +25,19 @@ func _() {
 	_ = x[BiosUUIDAsID-15]
 	_ = x[ExchangeTokenForToken-16]
 	_ = x[TerraformResolveVars-17]
+	_ = x[ScanContentModeShadow-18]
+	_ = x[ScanContentModeServerCompare-19]
+	_ = x[ScanContentModeClientCompare-20]
+	_ = x[ScanContentModeNoCompare-21]
+	_ = x[UploadResourcesData-22]
+	_ = x[RootedNamespace-23]
+	_ = x[StructuredErrors-24]
+	_ = x[WindowsNative-25]
 }
 
-const _Feature_name = "MassQueriesPiperCodeBoolAssertionsK8sNodeDiscoveryMQLAssetContextErrorsAsFailuresStoreResourcesDataFineGrainedAssetsSerialNumberAsIDForceShellCompletionResourceContextFailIfNoEntryPointsUploadResultsV2AutoUpdateEngineBiosUUIDAsIDExchangeTokenForTokenTerraformResolveVars"
+const _Feature_name = "MassQueriesPiperCodeBoolAssertionsK8sNodeDiscoveryMQLAssetContextErrorsAsFailuresStoreResourcesDataFineGrainedAssetsSerialNumberAsIDForceShellCompletionResourceContextFailIfNoEntryPointsUploadResultsV2AutoUpdateEngineBiosUUIDAsIDExchangeTokenForTokenTerraformResolveVarsScanContentModeShadowScanContentModeServerCompareScanContentModeClientCompareScanContentModeNoCompareUploadResourcesDataRootedNamespaceStructuredErrorsWindowsNative"
 
-var _Feature_index = [...]uint16{0, 11, 20, 34, 50, 65, 81, 99, 116, 132, 152, 167, 186, 201, 217, 229, 250, 270}
+var _Feature_index = [...]uint16{0, 11, 20, 34, 50, 65, 81, 99, 116, 132, 152, 167, 186, 201, 217, 229, 250, 270, 291, 319, 347, 371, 390, 405, 421, 434}
 
 func (i Feature) String() string {
 	idx := int(i) - 1

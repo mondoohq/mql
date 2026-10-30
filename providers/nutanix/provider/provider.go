@@ -8,13 +8,13 @@ import (
 	"errors"
 	"fmt"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/nutanix/connection"
-	"go.mondoo.com/mql/v13/providers/nutanix/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/nutanix/connection"
+	"go.mondoo.com/mql/providers/nutanix/resources"
 )
 
 const (
@@ -46,7 +46,9 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 		conf.Host = string(x.Value)
 	}
 	if x, ok := flags["port"]; ok && len(x.Value) != 0 {
-		conf.Options["port"] = fmt.Sprintf("%d", x.RawData().Value.(int64))
+		if v, ok := x.RawData().Value.(int64); ok {
+			conf.Options["port"] = fmt.Sprintf("%d", v)
+		}
 	}
 
 	user := ""

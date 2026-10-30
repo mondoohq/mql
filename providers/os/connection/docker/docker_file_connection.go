@@ -7,18 +7,23 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/local"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/utils/multierr"
-	"go.mondoo.com/mql/v13/utils/urlx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/local"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/utils/multierr"
+	"go.mondoo.com/mql/utils/urlx"
 )
 
-var _ shared.Connection = &DockerfileConnection{}
+var (
+	_ shared.Connection = &DockerfileConnection{}
+	_ plugin.Closer     = &DockerfileConnection{}
+)
 
 type DockerfileConnection struct {
 	*local.LocalConnection
@@ -26,6 +31,7 @@ type DockerfileConnection struct {
 	// that we find the file downstream
 	FileAbsSrc string
 	osFamily   shared.OSFamily
+	closer     func()
 }
 
 func NewDockerfileConnection(_ uint32,
@@ -34,6 +40,29 @@ func NewDockerfileConnection(_ uint32,
 ) (*DockerfileConnection, error) {
 	if conf == nil {
 		return nil, errors.New("missing configuration to create dockerfile connection")
+	}
+
+	// When discovered from a git repository (e.g. by the GitHub provider) the
+	// asset carries the repo URL plus a repo-relative path to the Dockerfile.
+	// Clone the repo and resolve the Dockerfile within the checkout. The
+	// deferred cleanup removes the temporary clone directory on any error path;
+	// it is disarmed once ownership of the closer transfers to the connection.
+	var closer func()
+	cleanup := true
+	defer func() {
+		if cleanup && closer != nil {
+			closer()
+		}
+	}()
+	if conf.Path == "" {
+		if _, ok := conf.Options["http-url"]; ok {
+			clonePath, c, err := plugin.NewGitClone(asset)
+			if err != nil {
+				return nil, err
+			}
+			closer = c
+			conf.Path = filepath.Join(clonePath, conf.Options["path"])
+		}
 	}
 
 	src := conf.Path
@@ -51,11 +80,17 @@ func NewDockerfileConnection(_ uint32,
 		return nil, err
 	}
 
-	var filename string
-	if !stat.IsDir() {
-		filename = filepath.Base(absSrc)
-		conf.Path = absSrc
+	// A directory is not a Dockerfile. Handed one, this used to build an asset
+	// literally named "Dockerfile " whose platform ID hashed the directory
+	// path: a plausible-looking asset describing nothing, and the only one of
+	// these that failed silently. Discovery always hands over a single file, so
+	// nothing that works today stops working.
+	if stat.IsDir() {
+		return nil, fmt.Errorf("%s is a directory, not a Dockerfile: %w", absSrc, plugin.ErrNoMatch)
 	}
+
+	filename := filepath.Base(absSrc)
+	conf.Path = absSrc
 
 	asset.Platform = &inventory.Platform{
 		Name:                  "dockerfile",
@@ -72,9 +107,16 @@ func NewDockerfileConnection(_ uint32,
 			return nil, err
 		}
 		platformID := "//platformid.api.mondoo.app/runtime/dockerfile/domain/" + domain + "/org/" + org + "/repo/" + repo
+		name := org + "/" + repo
+		// A repository can contain multiple Dockerfiles; qualify the platform ID
+		// and name with the repo-relative path so each one is a distinct asset.
+		if relPath := conf.Options["path"]; relPath != "" {
+			platformID += "/path/" + relPath
+			name += "/" + relPath
+		}
 		conf.PlatformId = platformID
 		asset.PlatformIds = []string{platformID}
-		asset.Name = "Dockerfile analysis " + org + "/" + repo
+		asset.Name = "Dockerfile " + name
 
 	} else {
 		h := sha256.New()
@@ -84,7 +126,7 @@ func NewDockerfileConnection(_ uint32,
 
 		conf.PlatformId = platformID
 		asset.PlatformIds = []string{platformID}
-		asset.Name = "Dockerfile analysis " + filename
+		asset.Name = "Dockerfile " + filename
 	}
 
 	conn := &DockerfileConnection{
@@ -92,7 +134,10 @@ func NewDockerfileConnection(_ uint32,
 		// here we must use the absolute path of the Dockerfile so
 		// that we find the file downstream
 		FileAbsSrc: absSrc,
+		closer:     closer,
 	}
+	// the connection now owns the clone directory and cleans it up via Close()
+	cleanup = false
 
 	if slices.Contains(localFamily, "darwin") {
 		conn.osFamily = shared.OSFamily_Darwin
@@ -109,4 +154,11 @@ func NewDockerfileConnection(_ uint32,
 
 func (p *DockerfileConnection) OSFamily() shared.OSFamily {
 	return p.osFamily
+}
+
+// Close cleans up any temporary directory created by a git clone.
+func (p *DockerfileConnection) Close() {
+	if p.closer != nil {
+		p.closer()
+	}
 }

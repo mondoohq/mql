@@ -13,11 +13,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/kusto/armkusto/v2"
 	"github.com/rs/zerolog/log"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func initAzureSubscriptionKustoService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -91,7 +91,7 @@ func kustoClusterToMql(runtime *plugin.Runtime, cluster *armkusto.Cluster) (*mql
 
 	var uri, dataIngestionURI, state, provisioningState string
 	var publicNetworkAccess, publicIPType, restrictOutbound string
-	var cmkKeyName, cmkKeyVaultURI, cmkKeyVersion string
+	var cmkKeyName, cmkKeyVaultURI, cmkKeyVersion, cmkFederatedIdentityClientID string
 	var enableDiskEncryption, enableDoubleEncryption, enableStreamingIngest, enablePurge bool
 	allowedIPRangeList := []any{}
 	allowedFqdnList := []any{}
@@ -128,35 +128,48 @@ func kustoClusterToMql(runtime *plugin.Runtime, cluster *armkusto.Cluster) (*mql
 			cmkKeyName = convert.ToValue(kv.KeyName)
 			cmkKeyVaultURI = convert.ToValue(kv.KeyVaultURI)
 			cmkKeyVersion = convert.ToValue(kv.KeyVersion)
+			cmkFederatedIdentityClientID = convert.ToValue(kv.FederatedIdentityClientID)
 		}
 	}
 
-	res, err := CreateResource(runtime, "azure.subscription.kustoService.cluster",
-		map[string]*llx.RawData{
-			"id":                            llx.StringDataPtr(cluster.ID),
-			"name":                          llx.StringDataPtr(cluster.Name),
-			"location":                      llx.StringDataPtr(cluster.Location),
-			"tags":                          llx.MapData(convert.PtrMapStrToInterface(cluster.Tags), types.String),
-			"sku":                           llx.DictData(sku),
-			"identity":                      llx.DictData(identity),
-			"uri":                           llx.StringData(uri),
-			"dataIngestionUri":              llx.StringData(dataIngestionURI),
-			"state":                         llx.StringData(state),
-			"provisioningState":             llx.StringData(provisioningState),
-			"publicNetworkAccess":           llx.StringData(publicNetworkAccess),
-			"publicIpType":                  llx.StringData(publicIPType),
-			"restrictOutboundNetworkAccess": llx.StringData(restrictOutbound),
-			"enableDiskEncryption":          llx.BoolData(enableDiskEncryption),
-			"enableDoubleEncryption":        llx.BoolData(enableDoubleEncryption),
-			"enableStreamingIngest":         llx.BoolData(enableStreamingIngest),
-			"enablePurge":                   llx.BoolData(enablePurge),
-			"allowedIpRangeList":            llx.ArrayData(allowedIPRangeList, types.String),
-			"allowedFqdnList":               llx.ArrayData(allowedFqdnList, types.String),
-			"trustedExternalTenants":        llx.ArrayData(trustedExternalTenants, types.String),
-			"cmkKeyName":                    llx.StringData(cmkKeyName),
-			"cmkKeyVaultUri":                llx.StringData(cmkKeyVaultURI),
-			"cmkKeyVersion":                 llx.StringData(cmkKeyVersion),
-		})
+	args := map[string]*llx.RawData{
+		"id":                            llx.StringDataPtr(cluster.ID),
+		"name":                          llx.StringDataPtr(cluster.Name),
+		"location":                      llx.StringDataPtr(cluster.Location),
+		"tags":                          llx.MapData(convert.PtrMapStrToInterface(cluster.Tags), types.String),
+		"sku":                           llx.DictData(sku),
+		"identity":                      llx.DictData(identity),
+		"uri":                           llx.StringData(uri),
+		"dataIngestionUri":              llx.StringData(dataIngestionURI),
+		"state":                         llx.StringData(state),
+		"provisioningState":             llx.StringData(provisioningState),
+		"publicNetworkAccess":           llx.StringData(publicNetworkAccess),
+		"publicIpType":                  llx.StringData(publicIPType),
+		"restrictOutboundNetworkAccess": llx.StringData(restrictOutbound),
+		"enableDiskEncryption":          llx.BoolData(enableDiskEncryption),
+		"enableDoubleEncryption":        llx.BoolData(enableDoubleEncryption),
+		"enableStreamingIngest":         llx.BoolData(enableStreamingIngest),
+		"enablePurge":                   llx.BoolData(enablePurge),
+		"allowedIpRangeList":            llx.ArrayData(allowedIPRangeList, types.String),
+		"allowedFqdnList":               llx.ArrayData(allowedFqdnList, types.String),
+		"trustedExternalTenants":        llx.ArrayData(trustedExternalTenants, types.String),
+		"cmkKeyName":                    llx.StringData(cmkKeyName),
+		"cmkKeyVaultUri":                llx.StringData(cmkKeyVaultURI),
+		"cmkKeyVersion":                 llx.StringData(cmkKeyVersion),
+		"cmkFederatedIdentityClientId":  llx.StringData(cmkFederatedIdentityClientID),
+	}
+	clusterSku := orZero(cluster.SKU)
+	if err := setSkuData(runtime, args, skuName(clusterSku.Name), skuTier(clusterSku.Tier), skuCapacity(clusterSku.Capacity)); err != nil {
+		return nil, err
+	}
+
+	clusterIdentity := orZero(cluster.Identity)
+	if err := setResourceIdentity(runtime, args, sortedUserAssignedIdentityIDs(clusterIdentity.UserAssignedIdentities),
+		identityType(clusterIdentity.Type), identityPrincipalId(clusterIdentity.PrincipalID), identityTenantId(clusterIdentity.TenantID)); err != nil {
+		return nil, err
+	}
+
+	res, err := CreateResource(runtime, "azure.subscription.kustoService.cluster", args)
 	if err != nil {
 		return nil, err
 	}
@@ -235,8 +248,37 @@ func (a *mqlAzureSubscriptionKustoServiceClusterManagedPrivateEndpoint) systemMe
 	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
+type mqlAzureSubscriptionKustoServiceClusterDatabaseInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionKustoServiceClusterDatabase) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
+type mqlAzureSubscriptionKustoServiceClusterPrincipalAssignmentInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionKustoServiceClusterPrincipalAssignment) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
+type mqlAzureSubscriptionKustoServiceClusterDatabasePrincipalAssignmentInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionKustoServiceClusterDatabasePrincipalAssignment) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
 type mqlAzureSubscriptionKustoServiceClusterDatabaseDataConnectionInternal struct {
 	cacheManagedIdentityID string
+	cacheSystemData        any
+}
+
+func (a *mqlAzureSubscriptionKustoServiceClusterDatabaseDataConnection) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 // initAzureSubscriptionKustoServiceCluster resolves a Data Explorer cluster
@@ -403,6 +445,11 @@ func (a *mqlAzureSubscriptionKustoServiceCluster) databases() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(db.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlDb.(*mqlAzureSubscriptionKustoServiceClusterDatabase).cacheSystemData = sysData
 			res = append(res, mqlDb)
 		}
 	}
@@ -463,6 +510,11 @@ func (a *mqlAzureSubscriptionKustoServiceCluster) principalAssignments() ([]any,
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(pa.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlPa.(*mqlAzureSubscriptionKustoServiceClusterPrincipalAssignment).cacheSystemData = sysData
 			res = append(res, mqlPa)
 		}
 	}
@@ -722,6 +774,11 @@ func (a *mqlAzureSubscriptionKustoServiceClusterDatabase) principalAssignments()
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(pa.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlPa.(*mqlAzureSubscriptionKustoServiceClusterDatabasePrincipalAssignment).cacheSystemData = sysData
 			res = append(res, mqlPa)
 		}
 	}
@@ -803,6 +860,28 @@ func (a *mqlAzureSubscriptionKustoServiceClusterDatabase) dataConnections() ([]a
 					managedIdentityResourceID = convert.ToValue(p.ManagedIdentityResourceID)
 					provisioningState = string(convert.ToValue(p.ProvisioningState))
 				}
+			case *armkusto.EventHubDataConnectionWithManagedIdentity:
+				if p := d.Properties; p != nil {
+					tableName = convert.ToValue(p.TableName)
+					dataFormat = string(convert.ToValue(p.DataFormat))
+					mappingRuleName = convert.ToValue(p.MappingRuleName)
+					consumerGroup = convert.ToValue(p.ConsumerGroup)
+					databaseRouting = string(convert.ToValue(p.DatabaseRouting))
+					sourceResourceID = convert.ToValue(p.EventHubResourceIDForManagedIdentity)
+					managedIdentityResourceID = convert.ToValue(p.ManagedIdentityResourceID)
+					provisioningState = string(convert.ToValue(p.ProvisioningState))
+				}
+			case *armkusto.EventGridDataConnectionWithManagedIdentity:
+				if p := d.Properties; p != nil {
+					tableName = convert.ToValue(p.TableName)
+					dataFormat = string(convert.ToValue(p.DataFormat))
+					mappingRuleName = convert.ToValue(p.MappingRuleName)
+					consumerGroup = convert.ToValue(p.ConsumerGroup)
+					databaseRouting = string(convert.ToValue(p.DatabaseRouting))
+					sourceResourceID = convert.ToValue(p.StorageAccountResourceIDForManagedIdentity)
+					managedIdentityResourceID = convert.ToValue(p.ManagedIdentityResourceID)
+					provisioningState = string(convert.ToValue(p.ProvisioningState))
+				}
 			}
 			mqlDc, err := CreateResource(a.MqlRuntime, "azure.subscription.kustoService.cluster.database.dataConnection",
 				map[string]*llx.RawData{
@@ -822,6 +901,11 @@ func (a *mqlAzureSubscriptionKustoServiceClusterDatabase) dataConnections() ([]a
 				return nil, err
 			}
 			mqlDc.(*mqlAzureSubscriptionKustoServiceClusterDatabaseDataConnection).cacheManagedIdentityID = managedIdentityResourceID
+			sysData, err := convert.JsonToDict(dc.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlDc.(*mqlAzureSubscriptionKustoServiceClusterDatabaseDataConnection).cacheSystemData = sysData
 			res = append(res, mqlDc)
 		}
 	}

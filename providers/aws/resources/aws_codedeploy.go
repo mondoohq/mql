@@ -13,11 +13,11 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 const (
@@ -167,7 +167,6 @@ func (a *mqlAwsCodedeployApplication) deploymentGroups() ([]any, error) {
 					"deploymentGroupId":   llx.StringDataPtr(dgInfo.DeploymentGroupId),
 					"deploymentGroupName": llx.StringDataPtr(dgInfo.DeploymentGroupName),
 					"computePlatform":     llx.StringData(string(dgInfo.ComputePlatform)),
-					"serviceRoleArn":      llx.StringDataPtr(dgInfo.ServiceRoleArn),
 					"region":              llx.StringData(a.Region.Data),
 				}
 
@@ -175,6 +174,7 @@ func (a *mqlAwsCodedeployApplication) deploymentGroups() ([]any, error) {
 				if err != nil {
 					return nil, err
 				}
+				mqlDg.(*mqlAwsCodedeployDeploymentGroup).cacheServiceRoleArn = convert.ToValue(dgInfo.ServiceRoleArn)
 				// Store dgInfo in an internal struct if more fields are needed for resolver methods
 				mqlDg.(*mqlAwsCodedeployDeploymentGroup).sdkData = dgInfo
 
@@ -205,7 +205,8 @@ func (a *mqlAwsCodedeployApplication) deployments() ([]any, error) {
 }
 
 type mqlAwsCodedeployDeploymentGroupInternal struct {
-	sdkData codedeploytypes.DeploymentGroupInfo // Store fetched data
+	cacheServiceRoleArn string
+	sdkData             codedeploytypes.DeploymentGroupInfo // Store fetched data
 }
 
 func (dg *mqlAwsCodedeployDeploymentGroup) id() (string, error) {
@@ -213,7 +214,7 @@ func (dg *mqlAwsCodedeployDeploymentGroup) id() (string, error) {
 }
 
 func (dg *mqlAwsCodedeployDeploymentGroup) serviceRole() (*mqlAwsIamRole, error) {
-	arnVal := dg.ServiceRoleArn.Data
+	arnVal := dg.cacheServiceRoleArn
 	if arnVal == "" {
 		dg.ServiceRole.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -294,7 +295,18 @@ func (dg *mqlAwsCodedeployDeploymentGroup) lastSuccessfulDeployment() (*mqlAwsCo
 		dg.LastSuccessfulDeployment = plugin.TValue[*mqlAwsCodedeployDeployment]{State: plugin.StateIsSet | plugin.StateIsNull}
 		return nil, nil
 	}
-	return getDeploymentResource(dg.MqlRuntime, dg.Region.Data, &dg.ApplicationName.Data, &dg.DeploymentGroupName.Data, dg.sdkData.LastSuccessfulDeployment.DeploymentId)
+	dep, err := getDeploymentResource(dg.MqlRuntime, dg.Region.Data, &dg.ApplicationName.Data, &dg.DeploymentGroupName.Data, dg.sdkData.LastSuccessfulDeployment.DeploymentId)
+	if err != nil {
+		return nil, err
+	}
+	if dep == nil {
+		// The group still names a deployment that CodeDeploy no longer holds.
+		// Returning a typed nil with no error would leave the field set and
+		// not null, and serializing it calls MqlID on the nil receiver.
+		dg.LastSuccessfulDeployment = plugin.TValue[*mqlAwsCodedeployDeployment]{State: plugin.StateIsSet | plugin.StateIsNull}
+		return nil, nil
+	}
+	return dep, nil
 }
 
 func (dg *mqlAwsCodedeployDeploymentGroup) lastAttemptedDeployment() (*mqlAwsCodedeployDeployment, error) {
@@ -302,7 +314,18 @@ func (dg *mqlAwsCodedeployDeploymentGroup) lastAttemptedDeployment() (*mqlAwsCod
 		dg.LastAttemptedDeployment = plugin.TValue[*mqlAwsCodedeployDeployment]{State: plugin.StateIsSet | plugin.StateIsNull}
 		return nil, nil
 	}
-	return getDeploymentResource(dg.MqlRuntime, dg.Region.Data, &dg.ApplicationName.Data, &dg.DeploymentGroupName.Data, dg.sdkData.LastAttemptedDeployment.DeploymentId)
+	dep, err := getDeploymentResource(dg.MqlRuntime, dg.Region.Data, &dg.ApplicationName.Data, &dg.DeploymentGroupName.Data, dg.sdkData.LastAttemptedDeployment.DeploymentId)
+	if err != nil {
+		return nil, err
+	}
+	if dep == nil {
+		// The group still names a deployment that CodeDeploy no longer holds.
+		// Returning a typed nil with no error would leave the field set and
+		// not null, and serializing it calls MqlID on the nil receiver.
+		dg.LastAttemptedDeployment = plugin.TValue[*mqlAwsCodedeployDeployment]{State: plugin.StateIsSet | plugin.StateIsNull}
+		return nil, nil
+	}
+	return dep, nil
 }
 
 func (dg *mqlAwsCodedeployDeploymentGroup) deploymentStyle() (any, error) {
@@ -324,6 +347,23 @@ func (dg *mqlAwsCodedeployDeploymentGroup) loadBalancerInfo() (any, error) {
 		return nil, nil
 	}
 	return convert.JsonToDict(dg.sdkData.LoadBalancerInfo)
+}
+
+func (dg *mqlAwsCodedeployDeploymentGroup) autoScalingProcessesToSuspend() ([]any, error) {
+	return codedeployProcessesToSuspend(dg.sdkData.Ec2DeploymentOptions), nil
+}
+
+// codedeployProcessesToSuspend lists the Auto Scaling processes a deployment
+// group suspends during in-place deployments. Absent options suspend nothing.
+func codedeployProcessesToSuspend(opts *codedeploytypes.EC2DeploymentOptions) []any {
+	res := []any{}
+	if opts == nil {
+		return res
+	}
+	for _, p := range opts.AutoScalingGroupProcessesToSuspend {
+		res = append(res, string(p))
+	}
+	return res
 }
 
 func (d *mqlAwsCodedeployDeployment) id() (string, error) {
@@ -419,9 +459,9 @@ func listDeployments(runtime *plugin.Runtime, region string, appName, dgName *st
 					"status":                        llx.StringData(string(depInfo.Status)),
 					"deploymentGroupName":           llx.StringDataPtr(depInfo.DeploymentGroupName),
 					"deploymentConfigName":          llx.StringDataPtr(depInfo.DeploymentConfigName),
+					"deploymentMode":                codeDeployDeploymentMode(depInfo.DeploymentMode),
 					"createdAt":                     llx.TimeDataPtr(depInfo.CreateTime),
 					"completedAt":                   llx.TimeDataPtr(depInfo.CompleteTime),
-					"compleatedAt":                  llx.TimeDataPtr(depInfo.CompleteTime),
 					"description":                   llx.StringDataPtr(depInfo.Description),
 					"creator":                       llx.StringData(string(depInfo.Creator)),
 					"ignoreApplicationStopFailures": llx.BoolData(depInfo.IgnoreApplicationStopFailures),
@@ -437,6 +477,21 @@ func listDeployments(runtime *plugin.Runtime, region string, appName, dgName *st
 		}
 	}
 	return depResources, nil
+}
+
+// codeDeployDeploymentMode publishes DeploymentInfo.DeploymentMode.
+//
+// The SDK types the mode as a value rather than a pointer, so a deployment
+// that recorded no mode arrives as the empty string. AWS documents that state
+// as "no value was recorded either way" and explicitly not as STANDARD, so it
+// reports null: an empty string would read as a mode of "", and STANDARD would
+// claim the deployment downloaded a fresh revision when nothing says it did.
+func codeDeployDeploymentMode(mode codedeploytypes.DeploymentMode) *llx.RawData {
+	if mode == "" {
+		return llx.StringDataPtr(nil)
+	}
+	s := string(mode)
+	return llx.StringDataPtr(&s)
 }
 
 // Helper function to get a single deployment resource
@@ -471,9 +526,9 @@ func getDeploymentResource(runtime *plugin.Runtime, region string, appName, dgNa
 		"status":                        llx.StringData(string(depInfo.Status)),
 		"deploymentGroupName":           llx.StringDataPtr(depInfo.DeploymentGroupName),
 		"deploymentConfigName":          llx.StringDataPtr(depInfo.DeploymentConfigName),
+		"deploymentMode":                codeDeployDeploymentMode(depInfo.DeploymentMode),
 		"createdAt":                     llx.TimeDataPtr(depInfo.CreateTime),
 		"completedAt":                   llx.TimeDataPtr(depInfo.CompleteTime),
-		"compleatedAt":                  llx.TimeDataPtr(depInfo.CompleteTime),
 		"description":                   llx.StringDataPtr(depInfo.Description),
 		"creator":                       llx.StringData(string(depInfo.Creator)),
 		"ignoreApplicationStopFailures": llx.BoolData(depInfo.IgnoreApplicationStopFailures),

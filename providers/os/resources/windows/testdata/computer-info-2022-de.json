@@ -1,0 +1,46 @@
+{
+  "OsName": "Microsoft Windows Server 2022 Datacenter",
+  "OsVersion": "10.0.20348",
+  "OsBuildNumber": "20348",
+  "OsProductType": 3,
+  "OsLanguage": "de-DE",
+  "OsLocale": "de-DE",
+  "OsCountryCode": "49",
+  "OsMuiLanguages": [
+    "de-DE"
+  ],
+  "WindowsInstallationType": "Server",
+  "WindowsEditionId": "ServerDatacenter",
+  "WindowsProductName": "Windows Server 2022 Datacenter",
+  "WindowsProductId": "00000-00000-00000-AAAAA",
+  "CsName": "WIN-FIXTURE07",
+  "CsDNSHostName": "WIN-FIXTURE07",
+  "CsDomain": "WORKGROUP",
+  "CsDomainRole": 2,
+  "CsTotalPhysicalMemory": 8482484224,
+  "CsNumberOfProcessors": 1,
+  "CsNumberOfLogicalProcessors": 2,
+  "CsProcessors": [
+    {
+      "Name": "Intel(R) Xeon(R) Platinum 8259CL CPU @ 2.50GHz",
+      "Manufacturer": "GenuineIntel",
+      "Description": "Intel64 Family 6 Model 85 Stepping 7",
+      "Architecture": 9,
+      "AddressWidth": 64,
+      "DataWidth": 64,
+      "MaxClockSpeed": 2500,
+      "CurrentClockSpeed": 2500,
+      "NumberOfCores": 1,
+      "NumberOfLogicalProcessors": 2,
+      "ProcessorID": "BFEBFBFF00050657",
+      "SocketDesignation": "CPU 0",
+      "ProcessorType": 3,
+      "Role": "CPU",
+      "Status": "OK",
+      "CpuStatus": 1,
+      "Availability": 3
+    }
+  ],
+  "BiosFirmwareType": 1,
+  "TimeZone": "(UTC) Koordinierte Weltzeit"
+}

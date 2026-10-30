@@ -11,11 +11,12 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	logic "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/logic/armlogic"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAzureSubscriptionLogicService) id() (string, error) {
@@ -55,9 +56,16 @@ func (a *mqlAzureSubscriptionLogicService) workflows() ([]any, error) {
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			if isAzureNotConfigured(err) {
+				log.Warn().Err(err).Msg("could not list azure workflows, returning partial results")
+				return res, nil
+			}
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			mqlWf, err := logicWorkflowToMQL(a.MqlRuntime, entry)
 			if err != nil {
 				return nil, err
@@ -152,38 +160,47 @@ func logicWorkflowToMQL(runtime *plugin.Runtime, entry *logic.Workflow) (plugin.
 		triggers, actions, connectionNames = workflowDefinitionToMQL(props.Definition)
 	}
 
-	mqlWf, err := CreateResource(runtime, "azure.subscription.logicService.workflow",
-		map[string]*llx.RawData{
-			"id":                              llx.StringDataPtr(entry.ID),
-			"name":                            llx.StringDataPtr(entry.Name),
-			"location":                        llx.StringDataPtr(entry.Location),
-			"tags":                            llx.MapData(convert.PtrMapStrToInterface(entry.Tags), types.String),
-			"state":                           llx.StringData(state),
-			"provisioningState":               llx.StringData(provisioningState),
-			"skuName":                         llx.StringData(skuName),
-			"version":                         llx.StringData(version),
-			"accessEndpoint":                  llx.StringData(accessEndpoint),
-			"identity":                        llx.DictData(identity),
-			"integrationAccountId":            llx.StringData(integrationAccountId),
-			"integrationServiceEnvironmentId": llx.StringData(integrationServiceEnvironmentId),
-			"createdTime":                     llx.TimeDataPtr(workflowCreatedTime(props)),
-			"changedTime":                     llx.TimeDataPtr(workflowChangedTime(props)),
-			"endpointsConfiguration":          llx.DictData(endpointsConfig),
-			"accessControlTriggers":           llx.DictData(acTriggers),
-			"accessControlContents":           llx.DictData(acContents),
-			"accessControlActions":            llx.DictData(acActions),
-			"accessControlWorkflowManagement": llx.DictData(acManagement),
-			"hasIpRestrictions":               llx.BoolData(hasIpRestrictions),
-			"parameters":                      llx.ArrayData(parameters, types.Dict),
-			"secureParameterNames":            llx.ArrayData(secureNames, types.String),
-			"triggers":                        llx.ArrayData(triggers, types.Dict),
-			"actions":                         llx.ArrayData(actions, types.Dict),
-			"connectionNames":                 llx.ArrayData(connectionNames, types.String),
-		})
+	wfArgs := map[string]*llx.RawData{
+		"id":                              llx.StringDataPtr(entry.ID),
+		"name":                            llx.StringDataPtr(entry.Name),
+		"location":                        llx.StringDataPtr(entry.Location),
+		"tags":                            llx.MapData(convert.PtrMapStrToInterface(entry.Tags), types.String),
+		"state":                           llx.StringData(state),
+		"provisioningState":               llx.StringData(provisioningState),
+		"skuName":                         llx.StringData(skuName),
+		"version":                         llx.StringData(version),
+		"accessEndpoint":                  llx.StringData(accessEndpoint),
+		"identity":                        llx.DictData(identity),
+		"integrationAccountId":            llx.StringData(integrationAccountId),
+		"integrationServiceEnvironmentId": llx.StringData(integrationServiceEnvironmentId),
+		"createdTime":                     llx.TimeDataPtr(workflowCreatedTime(props)),
+		"changedTime":                     llx.TimeDataPtr(workflowChangedTime(props)),
+		"endpointsConfiguration":          llx.DictData(endpointsConfig),
+		"accessControlTriggers":           llx.DictData(acTriggers),
+		"accessControlContents":           llx.DictData(acContents),
+		"accessControlActions":            llx.DictData(acActions),
+		"accessControlWorkflowManagement": llx.DictData(acManagement),
+		"hasIpRestrictions":               llx.BoolData(hasIpRestrictions),
+		"parameters":                      llx.ArrayData(parameters, types.Dict),
+		"secureParameterNames":            llx.ArrayData(secureNames, types.String),
+		"triggers":                        llx.ArrayData(triggers, types.Dict),
+		"actions":                         llx.ArrayData(actions, types.Dict),
+		"connectionNames":                 llx.ArrayData(connectionNames, types.String),
+	}
+	wfIdentity := orZero(entry.Identity)
+	if err := setResourceIdentity(runtime, wfArgs, sortedUserAssignedIdentityIDs(wfIdentity.UserAssignedIdentities),
+		identityType(wfIdentity.Type), identityPrincipalId(wfIdentity.PrincipalID), identityTenantId(wfIdentity.TenantID)); err != nil {
+		return nil, err
+	}
+
+	mqlWf, err := CreateResource(runtime, "azure.subscription.logicService.workflow", wfArgs)
 	if err != nil {
 		return nil, err
 	}
 	return mqlWf, nil
+}
+
+type mqlAzureSubscriptionLogicServiceWorkflowInternal struct {
 }
 
 func workflowCreatedTime(p *logic.WorkflowProperties) *time.Time {

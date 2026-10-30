@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.mondoo.com/mql/v13/providers/os/resources/users"
+	"go.mondoo.com/mql/providers/os/resources/users"
 )
 
 func TestWindowsLocalUsersParser(t *testing.T) {
@@ -27,7 +27,7 @@ func TestWindowsLocalUsersParser(t *testing.T) {
 		PrincipalSource: 1,
 		SID: users.WindowsSID{
 			BinaryLength:     28,
-			AccountDomainSid: pointer("S-1-5-21-2356735557-1575748656-448136971"),
+			AccountDomainSid: new("S-1-5-21-2356735557-1575748656-448136971"),
 			Value:            "S-1-5-21-2356735557-1575748656-448136971-500",
 		},
 		ObjectClass:            "User",
@@ -36,10 +36,10 @@ func TestWindowsLocalUsersParser(t *testing.T) {
 		PasswordRequired:       true,
 		UserMayChangePassword:  true,
 		AccountExpires:         nil,
-		PasswordChangeableDate: pointer("2020-04-15T20:11:59.9620000+00:00"),
-		PasswordExpires:        pointer("2020-05-27T20:51:59.9620000+00:00"),
-		PasswordLastSet:        pointer("2020-04-15T20:11:59.9620000+00:00"),
-		LastLogon:              pointer("2020-04-16T14:55:59.0640000+00:00"),
+		PasswordChangeableDate: new("2020-04-15T20:11:59.9620000+00:00"),
+		PasswordExpires:        new("2020-05-27T20:51:59.9620000+00:00"),
+		PasswordLastSet:        new("2020-04-15T20:11:59.9620000+00:00"),
+		LastLogon:              new("2020-04-16T14:55:59.0640000+00:00"),
 		LocalPath:              `C:\Users\chris`,
 	}
 	found := findWindowsUser(localUsers, "chris")
@@ -70,10 +70,6 @@ func TestWindowsLocalUsersParser(t *testing.T) {
 	orphan := findWindowsUser(localUsers, "orphan.user")
 	assert.NotNil(t, orphan, "orphan profile should still appear with path-leaf name")
 	assert.Equal(t, `C:\Users\orphan.user`, orphan.LocalPath)
-}
-
-func pointer(val string) *string {
-	return &val
 }
 
 func findWindowsUser(users []users.WindowsLocalUser, username string) *users.WindowsLocalUser {

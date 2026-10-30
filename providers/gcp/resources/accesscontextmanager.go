@@ -9,11 +9,12 @@ import (
 
 	accesscontextmanager "cloud.google.com/go/accesscontextmanager/apiv1"
 	acmpb "cloud.google.com/go/accesscontextmanager/apiv1/accesscontextmanagerpb"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -28,6 +29,55 @@ func (g *mqlGcpAccesscontextmanagerAccessLevel) id() (string, error) {
 
 func (g *mqlGcpAccesscontextmanagerServicePerimeter) id() (string, error) {
 	return g.Name.Data, g.Name.Error
+}
+
+func (g *mqlGcpAccesscontextmanagerGcpUserAccessBinding) id() (string, error) {
+	return g.Name.Data, g.Name.Error
+}
+
+func (g *mqlGcpOrganization) gcpUserAccessBindings() ([]any, error) {
+	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	orgId, err := conn.OrganizationID()
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := newACMClient(conn)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	it := client.ListGcpUserAccessBindings(context.Background(), &acmpb.ListGcpUserAccessBindingsRequest{
+		Parent: "organizations/" + orgId,
+	})
+
+	var res []any
+	for {
+		binding, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			if isSkippable(err) {
+				log.Warn().Err(err).Msg("could not list resources (API disabled or access denied), skipping")
+				break
+			}
+			return nil, err
+		}
+
+		mqlBinding, err := CreateResource(g.MqlRuntime, "gcp.accesscontextmanager.gcpUserAccessBinding", map[string]*llx.RawData{
+			"name":         llx.StringData(binding.Name),
+			"groupKey":     llx.StringData(binding.GroupKey),
+			"accessLevels": llx.ArrayData(convert.SliceAnyToInterface(binding.AccessLevels), types.String),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlBinding)
+	}
+
+	return res, nil
 }
 
 func newACMClient(conn *connection.GcpConnection) (*accesscontextmanager.Client, error) {
@@ -66,6 +116,10 @@ func (g *mqlGcpOrganization) accessPolicies() ([]any, error) {
 			break
 		}
 		if err != nil {
+			if isSkippable(err) {
+				log.Warn().Err(err).Msg("could not list resources (API disabled or access denied), skipping")
+				break
+			}
 			return nil, err
 		}
 
@@ -109,6 +163,10 @@ func (g *mqlGcpAccesscontextmanagerAccessPolicy) accessLevels() ([]any, error) {
 			break
 		}
 		if err != nil {
+			if isSkippable(err) {
+				log.Warn().Err(err).Msg("could not list resources (API disabled or access denied), skipping")
+				break
+			}
 			return nil, err
 		}
 
@@ -163,15 +221,10 @@ func (g *mqlGcpAccesscontextmanagerAccessPolicy) servicePerimeters() ([]any, err
 			break
 		}
 		if err != nil {
-			return nil, err
-		}
-
-		status, err := protoToDict(perimeter.Status)
-		if err != nil {
-			return nil, err
-		}
-		spec, err := protoToDict(perimeter.Spec)
-		if err != nil {
+			if isSkippable(err) {
+				log.Warn().Err(err).Msg("could not list resources (API disabled or access denied), skipping")
+				break
+			}
 			return nil, err
 		}
 
@@ -180,8 +233,6 @@ func (g *mqlGcpAccesscontextmanagerAccessPolicy) servicePerimeters() ([]any, err
 			"title":                 llx.StringData(perimeter.Title),
 			"description":           llx.StringData(perimeter.Description),
 			"perimeterType":         llx.StringData(perimeter.PerimeterType.String()),
-			"status":                llx.DictData(status),
-			"spec":                  llx.DictData(spec),
 			"useExplicitDryRunSpec": llx.BoolData(perimeter.UseExplicitDryRunSpec),
 			"createTime":            llx.TimeDataPtr(timestampAsTimePtr(perimeter.CreateTime)),
 			"updateTime":            llx.TimeDataPtr(timestampAsTimePtr(perimeter.UpdateTime)),

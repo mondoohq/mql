@@ -1,0 +1,17 @@
+scrub in all fragment reassemble
+block return log all
+block drop in quick from <bruteforce> to any
+pass in quick on ena0 inet proto tcp from any to any port = ssh flags S/SA keep state (if-bound) label "ssh"
+pass in on ena0 inet proto tcp from <trusted> to (ena0) port = http flags S/SA modulate state (if-bound)
+pass in on ena0 inet proto tcp from <trusted> to (ena0) port = https flags S/SA modulate state (if-bound)
+pass in inet6 proto ipv6-icmp all icmp6-type neighbrsol keep state (if-bound)
+pass in inet6 proto udp from any port = domain to ::1 no state
+pass in on lo0 inet6 proto udp from any port = domain to fe80::1 no state
+pass in inet proto udp from any port = domain to 192.0.2.15 no state
+pass in inet proto udp from any port = domain to 127.0.0.1 no state
+pass out quick all flags S/SA keep state (if-bound)
+block return-rst in quick on ! ena0 proto tcp from any to any port 6000:6010
+pass in proto tcp from any to any port > 1024 flags S/SA synproxy state (if-bound)
+pass in log (all) quick inet proto tcp from ! 192.0.2.0/24 to any port 8080:8090 flags S/SA keep state (if-bound) label "web alt"
+pass in log (all) quick inet proto udp from ! 192.0.2.0/24 to any port 8080:8090 keep state (if-bound) label "web alt"
+anchor "test/*" all

@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/mqlc"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/testutils"
+	"go.mondoo.com/mql/mqlc"
+	"go.mondoo.com/mql/providers-sdk/v1/testutils"
 )
 
 // The IAM Access Analyzer sub-resources were renamed from the lowercase
@@ -34,7 +34,6 @@ func TestAwsAccessAnalyzerAliases(t *testing.T) {
 
 	t.Run("aliases resolve to the canonical resource", func(t *testing.T) {
 		for old, canonical := range aliases {
-			old, canonical := old, canonical
 			t.Run(old, func(t *testing.T) {
 				// the canonical resource must exist
 				want := awsSchema.Lookup(canonical)
@@ -65,7 +64,6 @@ func TestAwsAccessAnalyzerAliases(t *testing.T) {
 			"aws.iam.accessAnalyzer.findings { resourceType }",
 		}
 		for _, query := range queries {
-			query := query
 			t.Run(query, func(t *testing.T) {
 				_, err := mqlc.Compile(query, nil, mqlc.NewConfig(awsSchema, features))
 				require.NoError(t, err, "query %q should compile", query)

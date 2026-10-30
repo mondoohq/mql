@@ -12,7 +12,8 @@ import (
 	"github.com/package-url/packageurl-go"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/purl"
 )
 
 const (
@@ -269,7 +270,7 @@ func parseNuspec(afs *afero.Afero, path string) (*ChocolateyPackage, error) {
 // Uses pkg:chocolatey/<name>@<version>.
 func newChocolateyPurl(name, version string) string {
 	return packageurl.NewPackageURL(
-		"chocolatey",
+		string(purl.TypeChocolatey),
 		"",
 		name,
 		version,

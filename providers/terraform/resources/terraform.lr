@@ -1,21 +1,29 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/cnquery/v9/providers/terraform"
-option go_package = "go.mondoo.com/mql/v13/providers/terraform/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/terraform"
+option go_package = "go.mondoo.com/mql/providers/terraform/resources"
+option root = "terraform"
 
 // Terraform configuration
 //
-// Examine a directory of Terraform source: every parsed `.tf` and
+// Parsed Terraform source for a directory: every `.tf` and
 // `.tf.json` file, the `tfvars` and `tfvars.json` variable values,
-// the referenced modules, and the typed lists of provider, data
-// source, variable, and output blocks. Use it to write IaC policy
-// against the source representation of an infrastructure tree before
-// it has been planned or applied.
-terraform {
+// the referenced modules, and the lists of provider, data source,
+// variable, and output blocks. Use it to write infrastructure-as-code
+// policy against the source representation of an infrastructure tree
+// before it has been planned or applied.
+terraform @root {
   // Access to individual files including .tf and .tf.json files
   files() []terraform.file
-  // The attributes defined in .tfvars and .tfvars.json
+  // Variable values from .tfvars and .tfvars.json
+  //
+  // Dictionary keyed by variable name, with each value the raw input
+  // value assigned to that variable in the `.tfvars` and `.tfvars.json`
+  // files. Values are surfaced verbatim, without resolving var.* or
+  // local.* references.
   tfvars() dict
   // All referenced Terraform modules
   modules() []terraform.module
@@ -33,16 +41,24 @@ terraform {
 
 // Terraform resource blocks
 //
-// Examine every `resource` block declared across the parsed
-// configuration. Initialize with `terraform.resources(resource: ...,
-// name: ...)` to filter by Terraform resource type and / or
-// resource name without iterating manually.
+// Every `resource` block declared across the parsed configuration,
+// the source-level declaration of each managed resource before it
+// has been planned or applied. Select a subset with
+// `terraform.resources(resource: "aws_instance")` to filter by
+// Terraform resource type, or add `name:` to also filter by the
+// resource name, without iterating the full block list manually.
 terraform.resources {
   []terraform.block
   init(resource? any, name? any)
 }
 
 // Terraform configuration file (.tf or .tf.json file)
+//
+// A single parsed Terraform configuration file and the top-level HCL
+// blocks it declares (resource, data, provider, variable, module, and
+// others). Audit the file to inspect where a configuration lives on
+// disk and to iterate the blocks it contributes to the module. Select a
+// file by its path, for example `terraform.file(path: "main.tf").blocks`.
 private terraform.file @defaults("path") {
   // Path to the Terraform configuration file on disk
   path string
@@ -52,9 +68,9 @@ private terraform.file @defaults("path") {
 
 // File position of a Terraform configuration block
 //
-// Examine the source location of an HCL block: file path, line and
-// column numbers, and byte offset. Used to point reviewers at the
-// exact location of a flagged block in the original file.
+// Source location of an HCL block: the file path, line and column
+// numbers, and byte offset. Used to point reviewers at the exact
+// location of a flagged block in the original file.
 terraform.fileposition {
   // File path to the Terraform configuration file
   path string
@@ -62,22 +78,39 @@ terraform.fileposition {
   line int
   // Column of the block
   column int
-  // Size of the file
+  // Byte offset of the position from the start of the file
   byte int
 }
 
 // Terraform block source context
 //
-// Examine the source location and raw text of a Terraform block: the file
-// path, the line/column range it spans, and the configuration text within
-// that range. Used to point reviewers at the exact source of a flagged block.
+// Source location and raw configuration text of a Terraform block: the
+// file path, the line and column range the block spans, and the exact
+// text within that range. Useful for pointing reviewers at the precise
+// source of a flagged block. The content is available only for HCL
+// configuration assets, not plan or state assets, which carry no source
+// text.
 private terraform.context @defaults("path range content") {
+  // File path of the Terraform configuration file containing the block
   path string
+  // Line and column range within the file that the block spans
   range range
+  // Raw configuration text within the block's range, read from the source file
   content(path, range) string
 }
 
-// Terraform resource block
+// Terraform configuration block
+//
+// Single block parsed from Terraform HCL, a plan, or a state file,
+// such as a `resource`, `data`, `provider`, `module`, `variable`,
+// `output`, or the top-level `terraform` settings block. The `type`
+// field carries the block kind and `labels` holds its identifying
+// labels; for resource and data blocks, `resourceType` and
+// `resourceName` expose the two labels separately. Argument values
+// are available resolved, with variable and local references replaced
+// by their effective values, unresolved via `argumentReferences`, or
+// folded into the plan/state shape, so one audit can run across HCL,
+// plan, and state assets.
 private terraform.block @defaults("type labels") @context("terraform.context") {
   // Block type
   type string
@@ -94,12 +127,23 @@ private terraform.block @defaults("type labels") @context("terraform.context") {
   // Block end position
   end terraform.fileposition
   // Block arguments
+  //
+  // Argument values with `var.*` and `local.*` references resolved to
+  // their effective values (variable defaults overridden by .tfvars,
+  // locals evaluated from those). References that cannot be resolved
+  // statically, such as data sources and resource attributes, fall back
+  // to their reference string. For the unresolved view, use
+  // `argumentReferences`.
   arguments() dict
-  // Block arguments with variable and local references left unresolved (e.g. "var.bucket_acl"), regardless of the TerraformResolveVars feature flag
+  // Block arguments with variable and local references left unresolved (e.g. "var.bucket_acl")
   argumentReferences() dict
   // Arguments with child blocks folded in as lists-of-maps, mirroring the plan (change.after) and state (values) shape
   values() dict
-  // Raw block attributes
+  // Block attributes keyed by name
+  //
+  // Dict keyed by attribute name, where each value is a map with
+  // `value` (the evaluated argument) and `type` (its HCL type
+  // string). For the argument values on their own, use `arguments`.
   attributes() dict
   // Child blocks
   blocks() []terraform.block
@@ -111,11 +155,14 @@ private terraform.block @defaults("type labels") @context("terraform.context") {
 
 // Terraform module reference
 //
-// Examine a referenced module: a unique key identifying the module
-// instance, the source it was loaded from (registry, local path,
-// Git URL, …), the version constraint, the on-disk directory it was
-// expanded into, and the underlying HCL block including its
-// configuration arguments.
+// Module invocation drawn from a Terraform configuration, useful for
+// auditing which external modules a codebase pulls in and where they
+// come from. The `source` field reveals the origin (a public or private
+// registry, a local path, or a Git URL), which matters when reviewing
+// supply-chain trust and pinning; `version` records the constraint and
+// `dir` the on-disk directory the module expanded into. Each entry is
+// identified by `key`, and `block` exposes the underlying HCL block
+// with its configuration arguments.
 terraform.module @defaults("key source") {
   // Unique identifier for the module
   key string
@@ -132,16 +179,23 @@ terraform.module @defaults("key source") {
 
 // Terraform settings block
 //
-// Examine the contents of the `terraform { ... }` settings block: the
-// underlying HCL block, the parsed `required_providers` list (each
-// with its local name, source address, and version constraint), and
-// the configured `backend` block as a dict.
+// Contents of the `terraform { ... }` settings block that configures
+// Terraform itself: the provider requirements (each with its local
+// name, source address, and version constraint) and the state
+// `backend` configuration. Auditing this block surfaces which provider
+// versions a configuration pins and where its state is stored.
 terraform.settings {
   // The terraform { ... } block holding required_providers, backend, and version constraints
   block terraform.block
   // Provider requirements
   requiredProviders []terraform.settings.requiredProvider
   // Backend configuration
+  //
+  // Attributes of the state `backend "<type>" { ... }` block as a dict.
+  // The `type` key holds the backend type label (for example `s3`,
+  // `gcs`, `azurerm`, `remote`, or `local`); the remaining keys are the
+  // backend-specific settings as written (for example `bucket`, `key`,
+  // and `region` for an S3 backend). Empty when no backend is configured.
   backend dict
 }
 
@@ -157,7 +211,7 @@ private terraform.settings.requiredProvider @defaults("name source version") {
 
 // Terraform state file
 //
-// Examine a parsed Terraform state file (`terraform.tfstate` or the
+// Parsed Terraform state file (`terraform.tfstate` or the
 // `terraform show -json` output). Surfaces the state format version,
 // the Terraform version that wrote it, the declared output values,
 // the root module, a flat list of every module, and a flat list of
@@ -179,9 +233,9 @@ terraform.state {
 
 // Terraform state output value
 //
-// Examine a single declared output, identified by `identifier`: the
-// resolved value, its type definition, and a `sensitive` flag
-// indicating whether Terraform should redact the value in CLI output.
+// Single declared output, identified by `identifier`: the resolved
+// value, its type definition, and a `sensitive` flag indicating
+// whether Terraform should redact the value in CLI output.
 terraform.state.output @defaults("identifier") {
   init(identifier string)
   // Output identifier
@@ -196,10 +250,9 @@ terraform.state.output @defaults("identifier") {
 
 // Terraform state module
 //
-// Examine a single module captured in state, identified by its
-// absolute module `address`. Iterate `resources()` for the
-// infrastructure objects this module owns and `childModules()` to
-// walk into nested modules.
+// Single module captured in state, identified by its absolute module
+// `address`. The `resources` field holds the infrastructure objects
+// this module owns, and `childModules` walks into nested modules.
 terraform.state.module @defaults("address") {
   init(identifier string)
   // Module identifier address
@@ -212,12 +265,12 @@ terraform.state.module @defaults("address") {
 
 // Terraform state resource
 //
-// Examine a single managed or data resource as captured in state:
-// absolute address, mode (managed vs data), Terraform resource type
-// and name, the responsible provider, the schema version of the
-// `values` payload, the attribute values themselves, the dependency
-// list, the `tainted` flag, and any `deposedKey`. Use it to write
-// policies that match the post-apply shape of infrastructure.
+// Single managed or data resource as captured in state: absolute
+// address, mode (managed vs data), Terraform resource type and name,
+// the responsible provider, the schema version of the `values`
+// payload, the attribute values themselves, the dependency list, the
+// `tainted` flag, and any `deposedKey`. Use it to write policies that
+// match the post-apply shape of infrastructure.
 terraform.state.resource @defaults("type name") {
   // Address is the absolute resource address
   address string
@@ -243,11 +296,11 @@ terraform.state.resource @defaults("type name") {
 
 // Terraform plan file
 //
-// Examine a parsed Terraform plan (`terraform show -json plan`).
-// Surfaces the plan's format version, the Terraform version that
-// produced it, the variables used to generate the plan, every
-// proposed resource change, and `applyable` / `errored` flags
-// indicating whether `terraform apply` is expected to succeed.
+// Parsed Terraform plan (`terraform show -json plan`), the source for
+// auditing what a change set will do before it is applied. The
+// `resourceChanges` describe every create, update, delete, and replace
+// the plan proposes, so a policy can flag risky changes (a deleted
+// database, a security group opened to the world) ahead of apply.
 terraform.plan {
   // Terraform plan format version
   formatVersion string
@@ -265,9 +318,9 @@ terraform.plan {
 
 // Terraform plan configuration
 //
-// Examine the configuration section of a plan: the per-provider
-// configuration entries and the resource configuration belonging to
-// the root module — the shape Terraform was about to apply.
+// Configuration section of a plan: the per-provider configuration
+// entries and the resource configuration belonging to the root module,
+// the shape Terraform was about to apply.
 terraform.plan.configuration {
   // Provider configuration
   providerConfig() []dict
@@ -277,9 +330,8 @@ terraform.plan.configuration {
 
 // Terraform plan variable
 //
-// Examine a variable supplied to the plan: its name and the resolved
-// value (typed as a dict to preserve the original Terraform value
-// shape).
+// A single variable supplied to the plan, selected by `name`. The
+// `value` preserves the original Terraform value shape.
 terraform.plan.variable @defaults("name value") {
   // Variable name
   name string
@@ -289,14 +341,13 @@ terraform.plan.variable @defaults("name value") {
 
 // Terraform plan resource change
 //
-// Examine a single proposed change in a plan: the absolute resource
-// address, any `previousAddress` (when the resource was moved), the
-// owning module address, mode (managed vs data), Terraform resource
-// type and name, the responsible provider, a `deposed` marker (set
-// when the change applies to a deposed object), the typed
-// `proposedChange` describing the actions and before / after values,
-// and the human-readable `actionReason`.
-terraform.plan.resourceChange @defaults("type name") {
+// A single proposed change in a plan, selected by `address`. `change`
+// describes the actions and the before and after values, `mode`
+// distinguishes managed resources from data sources, `actionReason`
+// gives the human-readable reason for the change, and `previousAddress`
+// is set when the resource was moved. This is the primary record for
+// auditing what a plan will do to an individual resource.
+terraform.plan.resourceChange @defaults("address") {
   // Resource address
   address string
   // Resource previous address
@@ -321,12 +372,11 @@ terraform.plan.resourceChange @defaults("type name") {
 
 // Terraform plan proposed change
 //
-// Examine the actions Terraform will apply to a resource (create /
-// read / update / delete / no-op) along with the before / after
-// states, the per-attribute `afterUnknown` map, the
-// `beforeSensitive` / `afterSensitive` redaction flags, and the
-// `replacePaths` list identifying which attribute changes force a
-// replace.
+// The actions Terraform will apply to a resource (create, read, update,
+// delete, or no-op) with the before and after states. `beforeSensitive`
+// and `afterSensitive` mark which attributes Terraform redacts as
+// sensitive, and `replacePaths` identifies the attribute changes that
+// force the resource to be replaced rather than updated in place.
 terraform.plan.proposedChange @defaults("actions after") {
   // Resource address
   address string
@@ -337,8 +387,26 @@ terraform.plan.proposedChange @defaults("actions after") {
   // Resource after values
   after dict
 
+  // Attributes whose values are not known until apply
+  //
+  // Keyed by attribute name, mirroring the structure of `after`. A true
+  // value (or nested structure) marks an attribute Terraform cannot
+  // resolve until the change is applied.
   afterUnknown dict
+  // Attributes redacted as sensitive in the before state
+  //
+  // Keyed by attribute name; a true value marks an attribute Terraform
+  // treats as sensitive and hides in plan output.
   beforeSensitive dict
+  // Attributes redacted as sensitive in the after state
+  //
+  // Keyed by attribute name; a true value marks an attribute Terraform
+  // treats as sensitive and hides in plan output.
   afterSensitive dict
+  // Attribute paths whose change forces the resource to be replaced
+  //
+  // Each entry is a path (a list of attribute names and indexes)
+  // identifying an attribute whose modification requires destroying and
+  // recreating the resource rather than updating it in place.
   replacePaths dict
 }

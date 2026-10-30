@@ -36,7 +36,7 @@ opcua.server: {
     BuildNumber: "May 20 2023 15:51:32"
     ManufacturerName: "open62541"
     ProductName: "open62541 OPC UA Server"
-    ProductURI: "http://open62541.org"
+    ProductURI: "https://open62541.org"
     SoftwareVersion: "1.3.5-994-g5d73f0cc5"
   }
   node: opcua.node id="i=2253" name="Server"

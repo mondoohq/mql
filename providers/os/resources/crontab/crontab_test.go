@@ -202,3 +202,54 @@ func TestParseCrontab_SpecialStringsUserCrontab(t *testing.T) {
 	assert.Equal(t, "0", entries[1].Hour)
 	assert.Equal(t, "/usr/bin/backup.sh", entries[1].Command)
 }
+
+// SLES 15 SP7 and Leap 15.6 ship this /etc/crontab. cronie reads the leading
+// "-" as "do not log this command to syslog", so run-crons runs every 15
+// minutes; the minute field is */15, not -*/15.
+const sles15Crontab = `SHELL=/bin/sh
+PATH=/usr/bin:/usr/sbin:/sbin:/bin:/usr/lib/news/bin
+MAILTO=root
+#
+# check scripts in cron.hourly, cron.daily, cron.weekly, and cron.monthly
+
+# Example of job definition:
+# *  *  *  *  * user-name command to be executed
+-*/15 * * * *   root  test -x /usr/lib/cron/run-crons && /usr/lib/cron/run-crons >/dev/null 2>&1
+`
+
+func TestParseCronieCrontab_NoLogPrefix(t *testing.T) {
+	entries, err := ParseCronieCrontab(strings.NewReader(sles15Crontab), true, true)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "*/15", entries[0].Minute)
+	assert.Equal(t, "*", entries[0].Hour)
+	assert.Equal(t, "root", entries[0].User)
+	assert.Equal(t, "test -x /usr/lib/cron/run-crons && /usr/lib/cron/run-crons >/dev/null 2>&1", entries[0].Command)
+	assert.Equal(t, 9, entries[0].LineNumber)
+
+	// the prefix also goes in front of a special time string
+	entries, err = ParseCronieCrontab(strings.NewReader("-@daily root /usr/bin/true\n"), true, true)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "0", entries[0].Minute)
+	assert.Equal(t, "0", entries[0].Hour)
+	assert.Equal(t, "/usr/bin/true", entries[0].Command)
+}
+
+// cronie refuses the prefix in an unprivileged user's crontab ("Only
+// privileged user can disable logging") and does not run that line.
+func TestParseCronieCrontab_UnprivilegedRefusesNoLogPrefix(t *testing.T) {
+	content := "-*/15 * * * * /usr/bin/true quiet\n*/5 * * * * /usr/bin/true loud\n"
+	entries, err := ParseCronieCrontab(strings.NewReader(content), false, false)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "/usr/bin/true loud", entries[0].Command)
+}
+
+// Other cron implementations have no such prefix; their reading is unchanged.
+func TestParseCrontab_KeepsDashOutsideCronie(t *testing.T) {
+	entries, err := ParseCrontab(strings.NewReader(sles15Crontab), true)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "-*/15", entries[0].Minute)
+}

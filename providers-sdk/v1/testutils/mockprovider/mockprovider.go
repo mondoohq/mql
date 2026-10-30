@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/testutils/mockprovider/resources"
-	"go.mondoo.com/mql/v13/utils/syncx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/testutils/mockprovider/resources"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 var Config = plugin.Provider{
@@ -54,14 +54,33 @@ func (s *Service) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 	return &plugin.ConnectRes{
 		Id:   connID,
 		Name: "mockprovider",
+		// Every real provider echoes the asset it connected. The runtime reads
+		// it back to check whether the connection switched providers, so
+		// leaving it nil makes Runtime.Connect fail before it gets there.
+		Asset: req.Asset,
 	}, nil
 }
 
+// MockConnect connects against recorded data rather than a live target, which
+// is what the builtin mock provider calls when it replays a recorded asset.
+//
+// This stand-in used to refuse the call, on the reasoning that a mock provider
+// is the caller of MockConnect and never its callee. That is true of
+// providers/mock.go; it is not true of this file, which stands in for a
+// *target* provider - the thing being replayed - and every real provider
+// implements this. Refusing it made an asset served by this provider
+// unreachable through a recording, which cross-asset resolution (ADR 031)
+// needs.
+//
+// There is no live target here to differ from, so the recording flag is the
+// whole difference.
 func (s *Service) MockConnect(req *plugin.ConnectReq, callback plugin.ProviderCallback) (*plugin.ConnectRes, error) {
-	// Should never happen: the mock provider should not be called with MockConnect.
-	// It is the only thing that should ever call MockConnect to other providers
-	// (outside of tests).
-	return nil, errors.New("the mock provider does not support the mock connect call, this is an internal error")
+	if req == nil {
+		return nil, errors.New("no connection data provided")
+	}
+	mocked := *req
+	mocked.HasRecording = true
+	return s.Connect(&mocked, callback)
 }
 
 // Shutdown is automatically called when the shell closes.
@@ -69,6 +88,33 @@ func (s *Service) MockConnect(req *plugin.ConnectReq, callback plugin.ProviderCa
 // If you want to do some cleanup, you can do it here.
 func (s *Service) Shutdown(req *plugin.ShutdownReq) (*plugin.ShutdownRes, error) {
 	return &plugin.ShutdownRes{}, nil
+}
+
+// ResolveAsset answers plugin.AssetSource for this provider's resources. It
+// overrides the embedded plugin.Service for the same reason Disconnect does:
+// this provider keeps its own runtimes map, so the embedded implementation
+// would look in an empty one.
+func (s *Service) ResolveAsset(req *plugin.ResolveAssetReq) (*plugin.ResolveAssetRes, error) {
+	if req == nil {
+		return &plugin.ResolveAssetRes{}, nil
+	}
+	runtime, ok := s.runtimes[req.Connection]
+	if !ok {
+		return &plugin.ResolveAssetRes{}, nil
+	}
+	resource, ok := runtime.Resources.Get(req.ResourceType + "\x00" + req.ResourceId)
+	if !ok {
+		return &plugin.ResolveAssetRes{}, nil
+	}
+	source, ok := resource.(plugin.AssetSource)
+	if !ok {
+		return &plugin.ResolveAssetRes{}, nil
+	}
+	asset, err := source.MqlAsset()
+	if err != nil {
+		return nil, err
+	}
+	return &plugin.ResolveAssetRes{Asset: asset}, nil
 }
 
 // Disconnect releases a connection. This provider tracks its own runtimes

@@ -1,0 +1,393 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/azuredevops"
+option go_package = "go.mondoo.com/mql/providers/azuredevops/resources"
+option root = "azuredevops"
+
+// Azure DevOps
+//
+// Namespace root for Azure DevOps queries, exposing the connected organization,
+// its projects, and its Git repositories.
+private azuredevops @root {}
+
+// Azure DevOps organization
+//
+// Azure DevOps Services organization, the top-level container for projects and
+// their Git repositories. Provides the `name` and `id` of the organization, its
+// `projects`, and the `repositories` of every project the credential can read.
+// Projects whose repositories the credential cannot list are named in
+// `unreadableProjects` and are left out of `repositories`. The `--repos` and
+// `--repos-exclude` filters narrow discovery only, so `repositories` still lists
+// every repository, whatever its status.
+azuredevops.organization @defaults("name") @root {
+  // Organization name, as it appears in dev.azure.com/<name>
+  name string
+  // Organization ID, a GUID that Azure DevOps assigns
+  id string
+  // Deployment type that Azure DevOps reports, hosted for Azure DevOps Services
+  deploymentType string
+  // Projects of the organization
+  projects() []azuredevops.project
+  // Git repositories of every project the credential can read, of any status. The repository filters do not apply here
+  repositories() []azuredevops.repository
+  // Names of the projects the credential can see but whose repositories it cannot list
+  //
+  // Azure DevOps hides projects the credential has no access to, so they are in neither this list nor projects.
+  unreadableProjects() []string
+}
+
+// Azure DevOps project
+//
+// Project of an Azure DevOps organization, the container that groups Git
+// repositories, pipelines, and work items. Provides the `name`, `visibility`,
+// and `state` of the project, and its Git `repositories`.
+azuredevops.project @defaults("name") {
+  // Project ID, a GUID that Azure DevOps assigns
+  id string
+  // Project name
+  name string
+  // Project description
+  description string
+  // Project state, for example wellFormed
+  state string
+  // Project visibility, private or public
+  visibility string
+  // REST API address of the project
+  url string
+  // Time of the last change to the project
+  lastUpdateTime time
+  // Git repositories of the project. Fails when the credential cannot read the project
+  repositories() []azuredevops.repository
+  // Pipeline environments of the project, such as production. Reports a forbidden error when the credential cannot read them
+  environments() []azuredevops.environment
+}
+
+// Azure DevOps repository
+//
+// Git repository in an Azure DevOps project. Provides the `fullName` as
+// project and repository, the `defaultBranch`, and whether the repository is
+// `isDisabled` or `isEmpty`. The `status` is disabled, empty, or ready.
+// Organization discovery emits only ready repositories as assets; a repository
+// connection also emits an empty or disabled one, without Terraform or
+// Kubernetes children. Select a repository with
+// `azuredevops.repository(projectName: "<project>", name: "<repository>")`.
+azuredevops.repository @defaults("fullName") @root {
+  init(projectName string, name string)
+  // Repository ID, a GUID that Azure DevOps assigns
+  id string
+  // Repository name, unique only within its project
+  name string
+  // Name of the project that holds the repository
+  projectName string
+  // ID of the project that holds the repository, a GUID that Azure DevOps assigns
+  projectId string
+  // Project and repository name joined by a slash
+  fullName string
+  // Default branch as a full ref, empty for a repository with no commits
+  defaultBranch string
+  // Repository size in bytes
+  size int
+  // Whether an administrator disabled the repository
+  isDisabled bool
+  // Whether the repository has no commits and so no default branch
+  isEmpty bool
+  // Whether the repository is a fork
+  isFork bool
+  // Scan status: disabled when an administrator disabled the repository (even with no commits), empty when it has no commits, otherwise ready
+  status string
+  // Address of the repository in the web portal
+  webUrl string
+  // SSH address for cloning
+  sshUrl string
+  // HTTPS address for cloning, without embedded user information
+  cloneUrl string
+  // Project that holds the repository
+  project() azuredevops.project
+  // Branches of the repository. Reports a forbidden error when the credential cannot read the refs of the repository
+  branches() []azuredevops.branch
+  // Branch policies of the project that apply to the repository
+  //
+  // Every policy whose scope names the repository or every repository of the
+  // project, deleted ones left out. Reports a forbidden error when the
+  // credential cannot read the policies of the project.
+  policies() []azuredevops.policy
+  // Advanced Security state of the repository
+  //
+  // Reports a forbidden error when the credential cannot read it. When
+  // Advanced Security is off, `enabled` is false and `alerts` is null.
+  advancedSecurity() azuredevops.advancedSecurity
+  // Service hooks that send the events of the repository to an address
+  //
+  // Every service hook of the project that names the repository, or that sends
+  // code events of every repository of the project, and has a target address.
+  // Reports a forbidden error when the credential lacks View subscriptions on the
+  // project, which Readers lack by default; Azure DevOps would otherwise answer an empty list.
+  webhooks() []azuredevops.webhook
+  // Files and folders at the root of the default branch
+  //
+  // Empty for a repository with no commits. Reports a forbidden error when the
+  // credential cannot read the tree.
+  files() []azuredevops.file
+  // Every file and folder of the default branch, at any depth
+  //
+  // Empty for a repository with no commits. Reports a forbidden error when the
+  // credential cannot read the tree.
+  allFiles() []azuredevops.file
+  // Security policy file of the repository
+  //
+  // SECURITY.md at the root, in docs, or in .github, compared without regard
+  // to letter case, the first found in that order. When the repository has
+  // none, `exists` is false. Reports a forbidden error when the credential
+  // cannot read the tree.
+  securityFile() azuredevops.file
+  // Azure Pipelines definition files of the default branch
+  //
+  // Every azure-pipelines.yml or azure-pipelines.yaml at any depth, and every
+  // YAML file under a .azure-pipelines or .azuredevops folder at the root. A
+  // pipeline whose definition lives elsewhere is not found. Reports a
+  // forbidden error when the credential cannot read the tree.
+  pipelineFiles() []azuredevops.file
+}
+
+// Azure DevOps branch
+//
+// Branch of an Azure DevOps Git repository. Provides the branch `name`, its
+// full `refName`, the commit it points at, and whether it `isDefault`, the
+// default branch of the repository.
+private azuredevops.branch @defaults("name") {
+  // Branch name without the refs/heads/ prefix, for example release/1.0
+  name string
+  // Full ref of the branch, for example refs/heads/release/1.0
+  refName string
+  // Commit the branch points at
+  headCommitSha string
+  // Whether the branch is the default branch of the repository
+  isDefault bool
+  // Whether an enabled, blocking branch policy applies to the branch. Reports a forbidden error when the credential cannot read the policies
+  isProtected() bool
+  // Protection of the branch, from its branch policies. Reports a forbidden error when the credential cannot read the policies
+  protectionRules() azuredevops.branchProtection
+}
+
+// Azure DevOps branch protection
+//
+// Protection of one branch of an Azure DevOps Git repository, summarized from
+// the branch policies that apply to it. Only a policy that is enabled and
+// blocking counts. Provides whether pull requests need approving reviews and
+// how many, whether a required reviewer policy applies, whether comments must
+// be resolved, and whether a build or status must pass. `policies` lists the
+// policies behind the summary. `allowForcePushesEnabled`,
+// `enforceAdminsEnabled`, and `blockCreations` come from the Git repository
+// permissions at repository scope, so every branch of a repository gives the
+// same answer for them.
+private azuredevops.branchProtection @defaults("refName requiredApprovingReviewCount") {
+  // Full ref of the protected branch, for example refs/heads/main
+  refName string
+  // Whether a minimum number of reviewers policy requires at least one approving review
+  requiredPullRequestReviewsEnabled bool
+  // Approving reviews required, the highest count of the minimum number of reviewers policies that apply
+  requiredApprovingReviewCount int
+  // Whether a required reviewers policy applies, the Azure DevOps counterpart of code owner review
+  requireCodeOwnerReviews bool
+  // Whether a comment requirements policy makes every pull request comment resolved before completion
+  requiredConversationResolutionEnabled bool
+  // Whether a build or status policy must pass before completion
+  requiredStatusChecksEnabled bool
+  // Enabled, blocking policies that apply to the branch
+  policies []azuredevops.policy
+  // Whether an identity other than a service identity may force push to the repository
+  //
+  // True when a user or group other than a build or release service identity
+  // is allowed Force push at repository scope. Reports a forbidden error when
+  // the credential cannot read the permissions. Null when the permissions are
+  // unknown: the project has no permission list of its own, or the repository
+  // has no project ID.
+  allowForcePushesEnabled() bool
+  // Whether no identity other than a service identity may bypass the branch policies
+  //
+  // Azure DevOps has no setting that applies the policies to administrators
+  // too. True when no user or group other than a build or release service
+  // identity is allowed Bypass policies when pushing or Bypass policies when
+  // completing pull requests at repository scope. Reports a forbidden error
+  // when the credential cannot read the permissions. Null when the permissions
+  // are unknown: the project has no permission list of its own, or the
+  // repository has no project ID.
+  enforceAdminsEnabled() bool
+  // Whether the Contributors group of the project may not create branches in the repository
+  //
+  // Read at repository scope. Reports a forbidden error when the credential
+  // cannot read the permissions or the group. Null when the project has no
+  // Contributors group, or when the permissions are unknown: the project has no
+  // permission list of its own, or the repository has no project ID.
+  blockCreations() bool
+}
+
+// Azure DevOps branch policy
+//
+// Branch policy of an Azure DevOps project, such as a minimum number of
+// reviewers, comment resolution, or a build or status that must pass before a
+// pull request completes. A policy protects a branch only when it is `enabled`
+// and `blocking`. The `scope` lists the repositories and branches the policy
+// covers, and `settings` holds the settings of its `type`.
+private azuredevops.policy @defaults("typeName enabled blocking") {
+  // Policy configuration ID, unique within the project
+  id int
+  // Policy type ID, a GUID that is the same in every organization
+  type string
+  // Display name of the policy type, for example Minimum number of reviewers
+  typeName string
+  // Whether the policy is turned on
+  enabled bool
+  // Whether a failing policy stops the pull request from completing, rather than only warning
+  blocking bool
+  // Repositories and branches the policy applies to
+  //
+  // Each entry has `repositoryId` (empty for every repository of the project),
+  // `refName`, and `matchKind`: Exact, Prefix, or DefaultBranch.
+  scope []dict
+  // Settings of the policy type, without the scope, for example minimumApproverCount for the minimum reviewers policy
+  settings dict
+}
+
+// Azure DevOps Advanced Security
+//
+// GitHub Advanced Security for Azure DevOps state of one Git repository.
+// Provides whether it is `enabled`, when that last changed, and the `alerts`
+// it raised. `alerts` is null when Advanced Security is off, so a check of the
+// alerts does not apply rather than passing on an empty list.
+private azuredevops.advancedSecurity @defaults("enabled") {
+  // Whether Advanced Security is turned on for the repository
+  enabled bool
+  // Time Advanced Security was last turned on or off, null when it never was
+  enablementLastChangedDate time
+  // Alerts of the repository, of every state. Null when Advanced Security is off; reports a forbidden error when the credential cannot read them
+  alerts() []azuredevops.alert
+}
+
+// Azure DevOps Advanced Security alert
+//
+// Alert that Advanced Security raised for a Git repository: a leaked secret, a
+// code scanning result, or a vulnerable dependency. Provides the `alertType`,
+// `severity`, `state`, and `title` of the alert.
+private azuredevops.alert @defaults("alertType severity state title") {
+  // Alert ID, unique within the repository
+  id int
+  // Kind of alert: secret, code, or dependency
+  alertType string
+  // Severity: critical, high, medium, low, note, warning, error, or undefined
+  severity string
+  // State: active, dismissed, fixed, or autoDismissed
+  state string
+  // Short description of the alert
+  title string
+  // Ref the alert was found on, for example refs/heads/main
+  gitRef string
+  // Time the alert was first seen, null when unknown
+  firstSeenDate time
+}
+
+// Azure DevOps service hook
+//
+// Service hook subscription that sends the events of a Git repository to an
+// address outside Azure DevOps, such as a web hook. Provides the `eventType`,
+// the `consumerId`, whether it is `active`, and the `scheme` and `host` of the
+// target address. The full address is left out, since its path or query can
+// carry a secret.
+private azuredevops.webhook @defaults("eventType host isHttps") {
+  // Subscription ID, a GUID that Azure DevOps assigns
+  id string
+  // Event that triggers the hook, for example git.push
+  eventType string
+  // Service that receives the events, for example webHooks
+  consumerId string
+  // Subscription status, for example enabled or disabledBySystem
+  status string
+  // Whether the hook still sends events: enabled, or on probation after recent failures
+  active bool
+  // Scheme of the target address in lower case, for example https
+  scheme string
+  // Host and port of the target address, without user information
+  host string
+  // Whether the target address uses HTTPS
+  isHttps bool
+}
+
+// Azure DevOps environment
+//
+// Pipeline environment of an Azure DevOps project, such as production or
+// staging, that deployment jobs target. Its `protectionRules` are the checks a
+// pipeline run must pass before it deploys to the environment, such as an
+// approval.
+private azuredevops.environment @defaults("name") {
+  // Environment ID, unique within the organization
+  id int
+  // Environment name
+  name string
+  // Environment description
+  description string
+  // Checks a pipeline run must pass before it deploys to the environment. Reports a forbidden error when the credential cannot read them
+  protectionRules() []azuredevops.environmentProtectionRule
+}
+
+// Azure DevOps environment check
+//
+// Check that guards deployments to a pipeline environment, the Azure DevOps
+// counterpart of an environment protection rule. The `type` names the check,
+// for example Approval or Task Check. For an approval, `preventSelfReview`
+// tells whether the person who ran the pipeline is kept from approving it, and
+// `minRequiredApprovers` how many approvers must sign off. When the check asks
+// for every approver, that is the number of approvers.
+private azuredevops.environmentProtectionRule @defaults("type") {
+  // Check configuration ID
+  id int
+  // Display name of the check type, for example Approval
+  type string
+  // Check type ID, a GUID that is the same in every organization
+  typeId string
+  // Whether the person who ran the pipeline may not approve the deployment. False for a check that is not an approval
+  preventSelfReview bool
+  // Approvals an approval check needs, where zero means every approver must approve. Zero for a check that is not an approval
+  minRequiredApprovers int
+  // Settings of the check type, limited to keys that carry no secret
+  //
+  // The keys kept are approvers, blockedApprovers, executionOrder,
+  // minRequiredApprovers, requesterCannotBeApprover, instructions,
+  // displayName and definitionRef.
+  settings dict
+}
+
+// Azure DevOps repository file
+//
+// File or folder of the default branch of an Azure DevOps Git repository.
+// Provides the `path`, `name`, and `type` of the entry, whether it
+// `isBinary`, and the `content` of a file. A lookup such as `securityFile`
+// that finds nothing gives an entry whose `exists` is false.
+private azuredevops.file @defaults("name type") {
+  // Path from the repository root, for example /docs/SECURITY.md
+  path string
+  // Last segment of the path
+  name string
+  // Kind of entry: file, dir, or submodule. Empty for an entry that does not exist
+  type string
+  // Git object ID of the entry, empty for an entry that does not exist
+  sha string
+  // Whether the file is a binary
+  //
+  // Derived from the file extension, in any letter case, against a known set
+  // of executable and package types (for example exe, dll, so, jar, class,
+  // rpm, deb, msi, whl). Folders and files without a matching extension are
+  // false.
+  isBinary bool
+  // Whether the entry exists in the repository
+  exists bool
+  // Entries directly inside a folder, empty for a file. Reports a forbidden error when the credential cannot read the tree
+  files() []azuredevops.file
+  // Content of a file on the default branch
+  //
+  // Null for a folder or an entry that does not exist. Reports a forbidden
+  // error when the credential cannot read it.
+  content() string
+}

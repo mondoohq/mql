@@ -15,21 +15,42 @@ import (
 	rediscluster "cloud.google.com/go/redis/cluster/apiv1"
 	"cloud.google.com/go/redis/cluster/apiv1/clusterpb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
+// initGcpProjectRedisService fills in the project the service belongs to when the
+// resource is reached by its own type name rather than through the
+// gcp.project accessor. Without it the resource is built with an empty
+// projectId, and the serviceEnabled gate then asks Service Usage about
+// "projects/", which fails the whole query with an InvalidArgument.
+func initGcpProjectRedisService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 0 {
+		return args, nil, nil
+	}
+
+	conn, ok := runtime.Connection.(*connection.GcpConnection)
+	if !ok {
+		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
+	}
+
+	args["projectId"] = llx.StringData(conn.ResourceID())
+
+	return args, nil, nil
+}
+
 type mqlGcpProjectRedisServiceInternal struct {
-	serviceEnabled bool
+	serviceGate
 }
 
 type mqlGcpProjectRedisServiceInstanceInternal struct {
-	cacheKmsKey string
+	cacheKmsKey            string
+	cacheAuthorizedNetwork string
 }
 
 func (g *mqlGcpProjectRedisServiceInstance) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
@@ -79,7 +100,7 @@ func (g *mqlGcpProject) redis() (*mqlGcpProjectRedisService, error) {
 	}
 
 	redisSvc := res.(*mqlGcpProjectRedisService)
-	redisSvc.serviceEnabled = serviceEnabled
+	redisSvc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_redis).Msg("gcp service is not enabled, skipping")
 	}
@@ -104,6 +125,12 @@ func initGcpProjectRedisServiceInstance(runtime *plugin.Runtime, args map[string
 		}
 	}
 
+	// Guard before building the parent: CreateResource hands args["projectId"]
+	// to the generated setter, which dereferences it, so nil panics the provider.
+	if args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.redisService.instance requires a \"projectId\" argument")
+	}
+
 	obj, err := CreateResource(runtime, "gcp.project.redisService", map[string]*llx.RawData{
 		"projectId": args["projectId"],
 	})
@@ -116,6 +143,11 @@ func initGcpProjectRedisServiceInstance(runtime *plugin.Runtime, args map[string
 		return nil, nil, instances.Error
 	}
 
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New("gcp.project.redisService.instance requires a \"name\" argument")
+	}
+	wantName, _ := nameRaw.Value.(string)
 	for _, inst := range instances.Data {
 		instance := inst.(*mqlGcpProjectRedisServiceInstance)
 		// Redis instance name is a full resource path:
@@ -123,7 +155,7 @@ func initGcpProjectRedisServiceInstance(runtime *plugin.Runtime, args map[string
 		nameParts := strings.Split(instance.Name.Data, "/")
 		instanceName := nameParts[len(nameParts)-1]
 
-		if instanceName == args["name"].Value.(string) {
+		if instanceName == wantName {
 			return args, instance, nil
 		}
 	}
@@ -139,10 +171,7 @@ func (g *mqlGcpProjectRedisService) id() (string, error) {
 }
 
 func (g *mqlGcpProjectRedisServiceInstance) network() (*mqlGcpProjectComputeServiceNetwork, error) {
-	if g.AuthorizedNetwork.Error != nil {
-		return nil, g.AuthorizedNetwork.Error
-	}
-	n, err := getNetworkByUrl(g.AuthorizedNetwork.Data, g.MqlRuntime)
+	n, err := getNetworkByUrl(g.cacheAuthorizedNetwork, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -189,10 +218,14 @@ func (g *mqlGcpProjectRedisServiceInstance) id() (string, error) {
 //
 // https://www.googleapis.com/auth/cloud-platform
 //
-// Docs https://cloud.google.com/memorystore/docs/redis/reference/rest/v1/projects.locations/list#authorization-scopes
+// Docs https://docs.cloud.google.com/memorystore/docs/redis/reference/rest/v1/projects.locations/list#authorization-scopes
 func (g *mqlGcpProjectRedisService) instances() ([]any, error) {
 	// when the service is not enabled, we return nil
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -249,11 +282,9 @@ func (g *mqlGcpProjectRedisService) instances() ([]any, error) {
 			"redisVersion":           llx.StringData(instance.RedisVersion),
 			"reservedIpRange":        llx.StringData(instance.ReservedIpRange),
 			"secondaryIpRange":       llx.StringData(instance.SecondaryIpRange),
-			"AuthorizedNetwork":      llx.StringData(instance.AuthorizedNetwork),
 			"persistenceIamIdentity": llx.StringData(instance.PersistenceIamIdentity),
 			"connectMode":            llx.StringData(instance.ConnectMode.String()),
 			"readEndpoint":           llx.StringData(instance.ReadEndpoint),
-			"customerManagedKey":     llx.StringData(instance.CustomerManagedKey),
 			"maintenanceVersion":     llx.StringData(instance.MaintenanceVersion),
 			"host":                   llx.StringData(instance.Host),
 			"currentLocationId":      llx.StringData(instance.CurrentLocationId),
@@ -267,7 +298,7 @@ func (g *mqlGcpProjectRedisService) instances() ([]any, error) {
 			"replicaCount":           llx.IntData(instance.ReplicaCount),
 			"readEndpointPort":       llx.IntData(instance.ReadEndpointPort),
 			"authEnabled":            llx.BoolData(instance.AuthEnabled),
-			"createTime":             llx.TimeData(instance.CreateTime.AsTime()),
+			"createTime":             llx.TimeDataPtr(timestampAsTimePtr(instance.CreateTime)),
 			"labels":                 llx.MapData(convert.MapToInterfaceMap(instance.Labels), types.String),
 			"redisConfigs":           llx.MapData(convert.MapToInterfaceMap(instance.RedisConfigs), types.String),
 			"persistenceConfig":      llx.DictData(persistenceConfig),
@@ -278,17 +309,19 @@ func (g *mqlGcpProjectRedisService) instances() ([]any, error) {
 				convert.SliceAnyToInterface(instance.AvailableMaintenanceVersions), types.String,
 			),
 			"nodes": llx.ArrayData(
-				redisInstanceNodesToArrayInterface(g.MqlRuntime, projectId, instance.Nodes),
+				redisInstanceNodesToArrayInterface(g.MqlRuntime, projectId, instance.Name, instance.Nodes),
 				types.Resource("gcp.project.redisService.instance.nodeInfo"),
 			),
 			"serverCaCerts": llx.ArrayData(
-				redisConvertServerCaCerts(g.MqlRuntime, projectId, instance.ServerCaCerts),
+				redisConvertServerCaCerts(g.MqlRuntime, projectId, instance.Name, instance.ServerCaCerts),
 				types.Resource("gcp.project.redisService.instance.serverCaCert"),
 			),
 		})
 		if err != nil {
 			return nil, err
 		}
+		mqlRef := mqlRedisInstance.(*mqlGcpProjectRedisServiceInstance)
+		mqlRef.cacheAuthorizedNetwork = instance.AuthorizedNetwork
 		mqlRedisInstance.(*mqlGcpProjectRedisServiceInstance).cacheKmsKey = instance.CustomerManagedKey
 		res = append(res, mqlRedisInstance)
 	}
@@ -305,13 +338,18 @@ func (n *mqlGcpProjectRedisServiceInstanceNodeInfo) id() (string, error) {
 	), nil
 }
 
-func redisInstanceNodesToArrayInterface(runtime *plugin.Runtime, projectId string, nodes []*redispb.NodeInfo) (list []any) {
+// redisInstanceNodesToArrayInterface keys each node on its parent instance:
+// NodeInfo.Id is only "node-0", "node-1", ... which is unique within one
+// instance, so a project-scoped key aliased every instance's nodes onto the
+// first instance's.
+func redisInstanceNodesToArrayInterface(runtime *plugin.Runtime, projectId, instanceName string, nodes []*redispb.NodeInfo) (list []any) {
 	for _, node := range nodes {
 		if node == nil {
 			continue
 		}
 
 		r, err := CreateResource(runtime, "gcp.project.redisService.instance.nodeInfo", map[string]*llx.RawData{
+			"__id":      llx.StringData(instanceName + "/nodes/" + node.Id),
 			"projectId": llx.StringData(projectId),
 			"id":        llx.StringData(node.Id),
 			"zone":      llx.StringData(node.Zone),
@@ -334,7 +372,11 @@ func (c *mqlGcpProjectRedisServiceInstanceServerCaCert) id() (string, error) {
 	), nil
 }
 
-func redisConvertServerCaCerts(runtime *plugin.Runtime, projectId string, certs []*redispb.TlsCertificate) (list []any) {
+// redisConvertServerCaCerts keys each certificate on its parent instance:
+// Memorystore issues a per-instance server CA whose serial numbers start at
+// "1", so a project-scoped key made instance B render instance A's PEM and
+// expiry -- silently evaluating a CA-expiry audit against the wrong cert.
+func redisConvertServerCaCerts(runtime *plugin.Runtime, projectId, instanceName string, certs []*redispb.TlsCertificate) (list []any) {
 	for _, cert := range certs {
 		if cert == nil {
 			continue
@@ -349,6 +391,7 @@ func redisConvertServerCaCerts(runtime *plugin.Runtime, projectId string, certs 
 		}
 
 		r, err := CreateResource(runtime, "gcp.project.redisService.instance.serverCaCert", map[string]*llx.RawData{
+			"__id":            llx.StringData(instanceName + "/serverCaCerts/" + cert.SerialNumber),
 			"projectId":       llx.StringData(projectId),
 			"serialNumber":    llx.StringData(cert.SerialNumber),
 			"cert":            llx.StringData(cert.Cert),
@@ -506,6 +549,12 @@ func initGcpProjectRedisServiceCluster(runtime *plugin.Runtime, args map[string]
 		}
 	}
 
+	// Guard before building the parent: CreateResource hands args["projectId"]
+	// to the generated setter, which dereferences it, so nil panics the provider.
+	if args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.redisService.cluster requires a \"projectId\" argument")
+	}
+
 	obj, err := CreateResource(runtime, "gcp.project.redisService", map[string]*llx.RawData{
 		"projectId": args["projectId"],
 	})
@@ -518,12 +567,17 @@ func initGcpProjectRedisServiceCluster(runtime *plugin.Runtime, args map[string]
 		return nil, nil, clusters.Error
 	}
 
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New("gcp.project.redisService.cluster requires a \"name\" argument")
+	}
+	wantName, _ := nameRaw.Value.(string)
 	for _, c := range clusters.Data {
 		cluster := c.(*mqlGcpProjectRedisServiceCluster)
 		nameParts := strings.Split(cluster.Name.Data, "/")
 		clusterName := nameParts[len(nameParts)-1]
 
-		if clusterName == args["name"].Value.(string) {
+		if clusterName == wantName {
 			return args, cluster, nil
 		}
 	}
@@ -533,7 +587,11 @@ func initGcpProjectRedisServiceCluster(runtime *plugin.Runtime, args map[string]
 
 func (g *mqlGcpProjectRedisService) clusters() ([]any, error) {
 	// when the service is not enabled, we return nil
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -655,7 +713,7 @@ func (g *mqlGcpProjectRedisService) clusters() ([]any, error) {
 			"uid":                           llx.StringData(cluster.Uid),
 			"state":                         llx.StringData(cluster.State.String()),
 			"stateInfo":                     llx.DictData(stateInfo),
-			"createTime":                    llx.TimeData(cluster.CreateTime.AsTime()),
+			"createTime":                    llx.TimeDataPtr(timestampAsTimePtr(cluster.CreateTime)),
 			"authorizationMode":             llx.StringData(cluster.AuthorizationMode.String()),
 			"transitEncryptionMode":         llx.StringData(cluster.TransitEncryptionMode.String()),
 			"nodeType":                      llx.StringData(cluster.NodeType.String()),
@@ -664,7 +722,6 @@ func (g *mqlGcpProjectRedisService) clusters() ([]any, error) {
 			"sizeGb":                        llx.IntData(sizeGb),
 			"preciseSizeGb":                 llx.FloatData(preciseSizeGb),
 			"deletionProtectionEnabled":     llx.BoolData(deletionProtection),
-			"kmsKey":                        llx.StringData(kmsKey),
 			"backupCollection":              llx.StringData(backupCollection),
 			"redisConfigs":                  llx.MapData(convert.MapToInterfaceMap(cluster.RedisConfigs), types.String),
 			"persistenceConfig":             llx.DictData(persistenceConfig),
@@ -690,9 +747,10 @@ func (g *mqlGcpProjectRedisService) clusters() ([]any, error) {
 				clusterConvertClusterEndpoints(g.MqlRuntime, projectId, cluster.Name, cluster.ClusterEndpoints),
 				types.Resource("gcp.project.redisService.cluster.clusterEndpoint"),
 			),
-			"serverCaMode":          llx.StringData(serverCaMode),
-			"serverCaPool":          llx.StringData(serverCaPool),
-			"pscServiceAttachments": llx.ArrayData(pscServiceAttachments, types.Dict),
+			"serverCaMode":                         llx.StringData(serverCaMode),
+			"serverCaPool":                         llx.StringData(serverCaPool),
+			"pscServiceAttachments":                llx.ArrayData(pscServiceAttachments, types.Dict),
+			"asyncClusterEndpointsDeletionEnabled": llx.BoolDataPtr(cluster.AsyncClusterEndpointsDeletionEnabled),
 		})
 		if err != nil {
 			return nil, err
@@ -1265,4 +1323,9 @@ func clusterConvertConnectionDetails(runtime *plugin.Runtime, projectId, cluster
 		list = append(list, r)
 	}
 	return
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectRedisService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_redis)
 }

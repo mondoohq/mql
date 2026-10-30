@@ -1,0 +1,26 @@
+{
+  "claude-hud": {
+    "source": {
+      "source": "github",
+      "repo": "jarrodwatts/claude-hud"
+    },
+    "installLocation": "/Users/alice/.claude/plugins/marketplaces/claude-hud",
+    "lastUpdated": "2026-02-17T07:47:41.782Z"
+  },
+  "claude-plugins-official": {
+    "source": {
+      "source": "github",
+      "repo": "anthropics/claude-plugins-official"
+    },
+    "installLocation": "/Users/alice/.claude/plugins/marketplaces/claude-plugins-official",
+    "lastUpdated": "2026-10-23T01:26:08.658Z"
+  },
+  "claude-code-plugins": {
+    "source": {
+      "source": "github",
+      "repo": "anthropics/claude-code"
+    },
+    "installLocation": "/Users/alice/.claude/plugins/marketplaces/claude-code-plugins",
+    "lastUpdated": "2026-10-23T01:26:12.136Z"
+  }
+}

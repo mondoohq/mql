@@ -6,12 +6,16 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"path"
+	"sort"
 	"strconv"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/resources/limits"
+	"github.com/spf13/afero"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/limits"
 )
 
 const (
@@ -29,6 +33,10 @@ func (l *mqlLimits) id() (string, error) {
 
 func (le *mqlLimitsEntry) id() (string, error) {
 	file := le.File.Data
+	if file == nil {
+		return "", errors.New("cannot determine limits entry ID (missing file)")
+	}
+
 	lineNum := strconv.FormatInt(le.LineNumber.Data, 10)
 
 	// Create unique ID from file path and line number
@@ -41,9 +49,15 @@ func (le *mqlLimitsEntry) id() (string, error) {
 func (l *mqlLimits) files() ([]any, error) {
 	var allFiles []any
 
-	// Add main limits file
+	var fs afero.Fs
+	if conn, ok := l.MqlRuntime.Connection.(shared.Connection); ok {
+		fs = conn.FileSystem()
+	}
+
+	// Add main limits file. On distributions that ship packaged defaults under
+	// /usr/etc (openSUSE Leap 16, SLE 16) this is where the file actually is.
 	mainFile, err := CreateResource(l.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(defaultLimitsFile),
+		"path": llx.StringData(resolveVendorConfigPath(fs, defaultLimitsFile)),
 	})
 	if err != nil {
 		return nil, err
@@ -58,24 +72,16 @@ func (l *mqlLimits) files() ([]any, error) {
 		allFiles = append(allFiles, f)
 	}
 
-	// Check if limits.d directory exists
-	dirFile, err := CreateResource(l.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(defaultLimitsDir),
-	})
-	if err != nil {
-		return nil, err
-	}
-	dir := dirFile.(*mqlFile)
-	dirExists := dir.GetExists()
-	if dirExists.Error != nil {
-		return nil, dirExists.Error
-	}
-
-	if dirExists.Data {
-		// Get all files from limits.d directory
+	// Drop-ins merge across both trees, with /etc shadowing a same-named file
+	// in /usr/etc.
+	var dropIns []*mqlFile
+	for _, dir := range vendorConfigDirs(fs, defaultLimitsDir) {
+		// pam_limits globs limits.d/*.conf, which does not descend into
+		// subdirectories
 		files, err := CreateResource(l.MqlRuntime, "files.find", map[string]*llx.RawData{
-			"from": llx.StringData(defaultLimitsDir),
-			"type": llx.StringData("file"),
+			"from":  llx.StringData(dir),
+			"type":  llx.StringData("file"),
+			"depth": llx.IntData(1),
 		})
 		if err != nil {
 			return nil, err
@@ -95,14 +101,40 @@ func (l *mqlLimits) files() ([]any, error) {
 				continue
 			}
 
-			// Only include .conf files
-			if strings.HasSuffix(basename.Data, ".conf") {
-				allFiles = append(allFiles, file)
+			if !isLimitsDropIn(basename.Data) {
+				continue
 			}
+			if vendorConfigShadowed(fs, file.Path.Data) {
+				continue
+			}
+			dropIns = append(dropIns, file)
 		}
 	}
 
+	sortLimitsDropIns(dropIns)
+	for _, file := range dropIns {
+		allFiles = append(allFiles, file)
+	}
+
 	return allFiles, nil
+}
+
+// isLimitsDropIn reports whether pam_limits' limits.d/*.conf glob matches a
+// file name. Like any glob `*`, it does not match a leading dot.
+func isLimitsDropIn(name string) bool {
+	return strings.HasSuffix(name, ".conf") && !strings.HasPrefix(name, ".")
+}
+
+// sortLimitsDropIns puts limits.d files in the order pam_limits reads them:
+// sorted by file name with strcmp, whichever of /etc and /usr/etc they come
+// from (read_limits_dir in pam_limits.c). files.find returns them in
+// directory order, so on Debian 13 60-local.conf came before
+// 10-coredump-debian.conf. Order matters: for the same kind of domain, an
+// entry read later replaces an earlier one.
+func sortLimitsDropIns(files []*mqlFile) {
+	sort.SliceStable(files, func(i, j int) bool {
+		return path.Base(files[i].Path.Data) < path.Base(files[j].Path.Data)
+	})
 }
 
 // entries parses all limits files and returns structured entries

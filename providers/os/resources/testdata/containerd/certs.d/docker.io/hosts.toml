@@ -1,0 +1,7 @@
+server = "https://registry-1.docker.io"    # Exclude this to not use upstream
+
+[host."https://public-mirror.example.com"]
+  capabilities = ["pull"]                  # Requires less trust, won't resolve tag to digest from this host
+[host."https://docker-mirror.internal"]
+  capabilities = ["pull", "resolve"]
+  ca = "docker-mirror.crt"                 # Or absolute path /etc/containerd/certs.d/docker.io/docker-mirror.crt

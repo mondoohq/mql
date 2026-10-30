@@ -1,0 +1,47 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": [
+    {
+      "id": "9a7806061c88ada191ed06f989cc3dac",
+      "name": "ci-deploy",
+      "status": "active",
+      "issued_on": "2024-01-01T00:00:00Z",
+      "modified_on": "2024-01-02T00:00:00Z",
+      "not_before": "2024-01-01T00:00:00Z",
+      "expires_on": "2025-01-01T00:00:00Z",
+      "last_used_on": "2024-06-01T00:00:00Z",
+      "creator_email_at_creation": "ci-owner@example.com",
+      "provisioner_type": "oauth",
+      "provisioner_id": "3f1c9a7e2b5d4e8f",
+      "condition": {
+        "request_ip": {
+          "in": ["203.0.113.0/24"],
+          "not_in": ["198.51.100.0/24"]
+        }
+      },
+      "policies": [
+        {
+          "id": "f267e341f3dd4697bd3b9f71dd96247f",
+          "effect": "allow",
+          "resources": { "com.cloudflare.api.account.zone.*": "*" },
+          "permission_groups": [
+            { "id": "c8fed203ed3043cba015a93ad1616f1f", "name": "Zone Read" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "b1c2d3e4f5061728394a5b6c7d8e9f00",
+      "name": "never-expires",
+      "status": "active",
+      "issued_on": "2023-01-01T00:00:00Z",
+      "modified_on": "2023-01-01T00:00:00Z",
+      "provisioner_id": null,
+      "condition": {},
+      "policies": []
+    }
+  ],
+  "result_info": { "page": 1, "per_page": 100, "count": 2, "total_count": 2, "total_pages": 1 }
+}

@@ -7,12 +7,13 @@ import (
 	"context"
 	"errors"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/providers/ms365/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/providers/ms365/resources"
 )
 
 const (
@@ -29,35 +30,49 @@ func Init() *Service {
 	}
 }
 
+// flagBytes safely reads a flag's raw value. Unset flags (including keys the
+// running command never registered) are absent from the map, so a direct
+// lookup yields a nil primitive.
+func flagBytes(flags map[string]*llx.Primitive, key string) []byte {
+	if p, ok := flags[key]; ok && p != nil {
+		return p.Value
+	}
+	return nil
+}
+
 func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error) {
 	flags := req.GetFlags()
 
-	tenantId := flags["tenant-id"]
-	clientId := flags["client-id"]
-	clientSecret := flags["client-secret"]
-	certificatePath := flags["certificate-path"]
-	certificateSecret := flags["certificate-secret"]
-	organization := flags["organization"]
-	sharepointUrl := flags["sharepoint-url"]
+	tenantId := flagBytes(flags, "tenant-id")
+	clientId := flagBytes(flags, "client-id")
+	clientSecret := flagBytes(flags, "client-secret")
+	certificatePath := flagBytes(flags, "certificate-path")
+	certificateSecret := flagBytes(flags, "certificate-secret")
+	organization := flagBytes(flags, "organization")
+	sharepointUrl := flagBytes(flags, "sharepoint-url")
+	authMethod := flagBytes(flags, "auth-method")
 
 	opts := map[string]string{}
 	creds := []*vault.Credential{}
 
-	opts[connection.OptionTenantID] = string(tenantId.Value)
-	opts[connection.OptionClientID] = string(clientId.Value)
-	opts[connection.OptionOrganization] = string(organization.Value)
-	opts[connection.OptionSharepointUrl] = string(sharepointUrl.Value)
+	opts[connection.OptionTenantID] = string(tenantId)
+	opts[connection.OptionClientID] = string(clientId)
+	opts[connection.OptionOrganization] = string(organization)
+	opts[connection.OptionSharepointUrl] = string(sharepointUrl)
+	if len(authMethod) > 0 {
+		opts[connection.OptionAuthMethod] = string(authMethod)
+	}
 
-	if len(clientSecret.Value) > 0 {
+	if len(clientSecret) > 0 {
 		creds = append(creds, &vault.Credential{
 			Type:   vault.CredentialType_password,
-			Secret: clientSecret.Value,
+			Secret: clientSecret,
 		})
-	} else if len(certificatePath.Value) > 0 {
+	} else if len(certificatePath) > 0 {
 		creds = append(creds, &vault.Credential{
 			Type:           vault.CredentialType_pkcs12,
-			PrivateKeyPath: string(certificatePath.Value),
-			Password:       string(certificateSecret.Value),
+			PrivateKeyPath: string(certificatePath),
+			Password:       string(certificateSecret),
 		})
 	}
 	config := &inventory.Config{

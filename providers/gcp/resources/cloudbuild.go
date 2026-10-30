@@ -12,15 +12,19 @@ import (
 	cloudbuild "cloud.google.com/go/cloudbuild/apiv1/v2"
 	"cloud.google.com/go/cloudbuild/apiv1/v2/cloudbuildpb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+type mqlGcpProjectCloudBuildServiceWorkerPoolNetworkConfigInternal struct {
+	cachePeeredNetwork string
+}
 
 func (g *mqlGcpProject) cloudBuild() (*mqlGcpProjectCloudBuildService, error) {
 	if g.Id.Error != nil {
@@ -102,25 +106,25 @@ func (g *mqlGcpProjectCloudBuildService) triggers() ([]any, error) {
 		}
 
 		// Build GitHub events config sub-resource
-		github, err := buildTriggerGithubConfig(g.MqlRuntime, trigger.Name, trigger.GetGithub())
+		github, err := buildTriggerGithubConfig(g.MqlRuntime, trigger.Id, trigger.GetGithub())
 		if err != nil {
 			return nil, err
 		}
 
 		// Build Pub/Sub config sub-resource
-		pubsubConfig, err := buildTriggerPubsubConfig(g.MqlRuntime, trigger.Name, projectId, trigger.GetPubsubConfig())
+		pubsubConfig, err := buildTriggerPubsubConfig(g.MqlRuntime, trigger.Id, projectId, trigger.GetPubsubConfig())
 		if err != nil {
 			return nil, err
 		}
 
 		// Build webhook config sub-resource
-		webhookConfig, err := buildTriggerWebhookConfig(g.MqlRuntime, trigger.Name, trigger.GetWebhookConfig())
+		webhookConfig, err := buildTriggerWebhookConfig(g.MqlRuntime, trigger.Id, trigger.GetWebhookConfig())
 		if err != nil {
 			return nil, err
 		}
 
 		// Build repository event config sub-resource
-		repoEventConfig, err := buildTriggerRepoEventConfig(g.MqlRuntime, trigger.Name, trigger.GetRepositoryEventConfig())
+		repoEventConfig, err := buildTriggerRepoEventConfig(g.MqlRuntime, trigger.Id, trigger.GetRepositoryEventConfig())
 		if err != nil {
 			return nil, err
 		}
@@ -182,10 +186,14 @@ func (g *mqlGcpProjectCloudBuildServiceTrigger) id() (string, error) {
 	if g.ProjectId.Error != nil {
 		return "", g.ProjectId.Error
 	}
-	if g.Name.Error != nil {
-		return "", g.Name.Error
+	// BuildTrigger.Name is user-assigned, optional, and unique only within a
+	// project; Id is the service-generated unique identifier. Keying on the
+	// name aliased same-named triggers across projects (and collapsed every
+	// unnamed, Terraform-created trigger onto one row).
+	if g.TriggerId.Error != nil {
+		return "", g.TriggerId.Error
 	}
-	return fmt.Sprintf("gcp.project/%s/cloudBuildService.trigger/%s", g.ProjectId.Data, g.Name.Data), nil
+	return fmt.Sprintf("gcp.project/%s/cloudBuildService.trigger/%s", g.ProjectId.Data, g.TriggerId.Data), nil
 }
 
 type mqlGcpProjectCloudBuildServiceTriggerInternal struct {
@@ -200,8 +208,8 @@ func (g *mqlGcpProjectCloudBuildServiceTrigger) iamServiceAccount() (*mqlGcpProj
 	}
 	// Extract email from resource name: projects/{project}/serviceAccounts/{email}
 	email := sa
-	if idx := strings.LastIndex(sa, "/"); idx != -1 {
-		email = sa[idx+1:]
+	if _, after, ok := strings.CutLast(sa, "/"); ok {
+		email = after
 	}
 	res, err := NewResource(g.MqlRuntime, "gcp.project.iamService.serviceAccount", map[string]*llx.RawData{
 		"email":     llx.StringData(email),
@@ -285,18 +293,14 @@ type mqlGcpProjectCloudBuildServiceTriggerPubsubConfigInternal struct {
 }
 
 func (g *mqlGcpProjectCloudBuildServiceTriggerPubsubConfig) pubsubTopic() (*mqlGcpProjectPubsubServiceTopic, error) {
-	topic := g.cacheTopic
-	if topic == "" {
-		g.PubsubTopic.State = plugin.StateIsNull | plugin.StateIsSet
-		return nil, nil
-	}
-	res, err := NewResource(g.MqlRuntime, "gcp.project.pubsubService.topic", map[string]*llx.RawData{
-		"name": llx.StringData(topic),
-	})
+	ref, err := resolvePubsubTopicRef(g.MqlRuntime, g.cacheTopic, "")
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlGcpProjectPubsubServiceTopic), nil
+	if ref == nil {
+		g.PubsubTopic.State = plugin.StateIsNull | plugin.StateIsSet
+	}
+	return ref, nil
 }
 
 func (g *mqlGcpProjectCloudBuildServiceTriggerPubsubConfig) serviceAccount() (*mqlGcpProjectIamServiceServiceAccount, error) {
@@ -409,7 +413,7 @@ func (g *mqlGcpProjectCloudBuildService) workerPools() ([]any, error) {
 			if s, ok := status.FromError(err); ok && s.Code() == codes.InvalidArgument {
 				break
 			}
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				break
 			}
 			return nil, err
@@ -517,21 +521,19 @@ func buildWorkerPoolNetworkConfig(runtime *plugin.Runtime, parentName string, cf
 	nc := cfg.NetworkConfig
 	res, err := CreateResource(runtime, "gcp.project.cloudBuildService.workerPool.networkConfig", map[string]*llx.RawData{
 		"id":                   llx.StringData(parentName + "/networkConfig"),
-		"peeredNetwork":        llx.StringData(nc.PeeredNetwork),
 		"peeredNetworkIpRange": llx.StringData(nc.PeeredNetworkIpRange),
 		"egressOption":         llx.StringData(nc.EgressOption.String()),
 	})
 	if err != nil {
 		return nil, err
 	}
+	mqlRef := res.(*mqlGcpProjectCloudBuildServiceWorkerPoolNetworkConfig)
+	mqlRef.cachePeeredNetwork = nc.PeeredNetwork
 	return res.(*mqlGcpProjectCloudBuildServiceWorkerPoolNetworkConfig), nil
 }
 
 func (g *mqlGcpProjectCloudBuildServiceWorkerPoolNetworkConfig) peeredNetworkRef() (*mqlGcpProjectComputeServiceNetwork, error) {
-	if g.PeeredNetwork.Error != nil {
-		return nil, g.PeeredNetwork.Error
-	}
-	n, err := getNetworkByUrl(g.PeeredNetwork.Data, g.MqlRuntime)
+	n, err := getNetworkByUrl(g.cachePeeredNetwork, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -586,7 +588,7 @@ func (g *mqlGcpProjectCloudBuildService) builds() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				break
 			}
 			return nil, err
@@ -659,7 +661,6 @@ func newCloudBuild(runtime *plugin.Runtime, projectId string, b *cloudbuildpb.Bu
 		"buildTriggerId":   llx.StringData(b.BuildTriggerId),
 		"logUrl":           llx.StringData(b.LogUrl),
 		"logsBucket":       llx.StringData(b.LogsBucket),
-		"serviceAccount":   llx.StringData(b.ServiceAccount),
 		"substitutions":    llx.MapData(substitutions, types.String),
 		"tags":             llx.ArrayData(tags, types.String),
 	})
@@ -727,8 +728,8 @@ func (g *mqlGcpProjectCloudBuildServiceBuild) iamServiceAccount() (*mqlGcpProjec
 	}
 	// Extract email from resource name: projects/{project}/serviceAccounts/{email}
 	email := sa
-	if idx := strings.LastIndex(sa, "/"); idx != -1 {
-		email = sa[idx+1:]
+	if _, after, ok := strings.CutLast(sa, "/"); ok {
+		email = after
 	}
 	res, err := NewResource(g.MqlRuntime, "gcp.project.iamService.serviceAccount", map[string]*llx.RawData{
 		"email":     llx.StringData(email),

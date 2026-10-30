@@ -5,10 +5,11 @@ package resources
 
 import (
 	"fmt"
+	"path"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/types"
 )
 
 const (
@@ -29,6 +30,12 @@ type aptRepo struct {
 	SignedBy     string
 	Enabled      bool
 	SourceFile   string
+	// per-source trust options, nil when the entry does not set them
+	AllowInsecure            *bool
+	AllowWeak                *bool
+	AllowDowngradeToInsecure *bool
+	CheckValidUntil          *bool
+	CheckDate                *bool
 }
 
 func (a *mqlApt) id() (string, error) {
@@ -57,7 +64,7 @@ func (a *mqlApt) repos() ([]any, error) {
 
 		for i := range parsed {
 			parsed[i].SourceFile = f.Path.Data
-			mqlRepo, err := a.newRepo(f, parsed[i])
+			mqlRepo, err := a.newRepo(f, i, parsed[i])
 			if err != nil {
 				return nil, err
 			}
@@ -84,10 +91,15 @@ func (a *mqlApt) sourceFiles() ([]*mqlFile, error) {
 		out = append(out, mainFile)
 	}
 
+	// No name filter here. files.find's `name` becomes `find -name`, an fnmatch
+	// glob, so the regex this used to pass matched nothing and every fragment
+	// under sources.list.d was silently dropped. `regex` would reach
+	// `find -regex`, but that matches the whole path and its dialect differs
+	// between GNU and BSD find, so the extension check is done here instead
+	// where it behaves the same everywhere.
 	o, err := CreateResource(a.MqlRuntime, "files.find", map[string]*llx.RawData{
 		"from":  llx.StringData(aptSourcesListD),
 		"type":  llx.StringData("file"),
-		"name":  llx.StringData(`\.(list|sources)$`),
 		"depth": llx.IntData(1),
 	})
 	if err != nil {
@@ -96,17 +108,58 @@ func (a *mqlApt) sourceFiles() ([]*mqlFile, error) {
 	list := o.(*mqlFilesFind).GetList()
 	if list.Error == nil {
 		for _, item := range list.Data {
-			if mf, ok := item.(*mqlFile); ok {
-				out = append(out, mf)
+			mf, ok := item.(*mqlFile)
+			if !ok {
+				continue
 			}
+			if !isAptSourceFile(mf.Path.Data) {
+				continue
+			}
+			out = append(out, mf)
 		}
 	}
 
 	return out, nil
 }
 
-func (a *mqlApt) newRepo(file *mqlFile, repo aptRepo) (*mqlAptRepo, error) {
-	id := fmt.Sprintf("%s\x00%s %s %s", repo.SourceFile, repo.Type, repo.URL, repo.Distribution)
+// isAptSourceFile reports whether a path under sources.list.d is one apt would
+// read. apt honours exactly two extensions: .list for the one-line format and
+// .sources for deb822. Everything else in the directory, notably the .save and
+// .distUpgrade backups apt itself leaves behind, is ignored. apt also skips
+// names that start with a dot or hold any character other than ASCII
+// letters, digits, '_', '-', ':' and '.' (`apt-get -o
+// Debug::GetListOfFilesInDir=1` reports them as "bad character"), so
+// "my repo.list" or "docker~old.list" configure nothing.
+func isAptSourceFile(p string) bool {
+	name := path.Base(p)
+	if !strings.HasSuffix(name, ".list") && !strings.HasSuffix(name, ".sources") {
+		return false
+	}
+	if name[0] == '.' {
+		return false
+	}
+	for _, c := range name {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '_', c == '-', c == ':', c == '.':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// aptRepoID identifies the idx-th entry parsed from a source file. Type, URL
+// and suite alone do not: the stock Ubuntu sources.list repeats
+// `deb <mirror> focal` once per component group, and with a shared __id
+// CreateResource handed every later line the first line's resource, so the
+// universe and multiverse components vanished.
+func aptRepoID(idx int, repo aptRepo) string {
+	return fmt.Sprintf("%s\x00%d\x00%s %s %s", repo.SourceFile, idx, repo.Type, repo.URL, repo.Distribution)
+}
+
+func (a *mqlApt) newRepo(file *mqlFile, idx int, repo aptRepo) (*mqlAptRepo, error) {
+	id := aptRepoID(idx, repo)
 
 	components := make([]any, len(repo.Components))
 	for i := range repo.Components {
@@ -123,6 +176,12 @@ func (a *mqlApt) newRepo(file *mqlFile, repo aptRepo) (*mqlAptRepo, error) {
 		"signedBy":     llx.StringData(repo.SignedBy),
 		"enabled":      llx.BoolData(repo.Enabled),
 		"file":         llx.ResourceData(file, "file"),
+
+		"allowInsecure":            llx.BoolDataPtr(repo.AllowInsecure),
+		"allowWeak":                llx.BoolDataPtr(repo.AllowWeak),
+		"allowDowngradeToInsecure": llx.BoolDataPtr(repo.AllowDowngradeToInsecure),
+		"checkValidUntil":          llx.BoolDataPtr(repo.CheckValidUntil),
+		"checkDate":                llx.BoolDataPtr(repo.CheckDate),
 	})
 	if err != nil {
 		return nil, err
@@ -140,12 +199,17 @@ func (a *mqlApt) newRepo(file *mqlFile, repo aptRepo) (*mqlAptRepo, error) {
 // repositories; all other comments are ignored.
 func parseAptOneLine(content string) []aptRepo {
 	res := []aptRepo{}
-	for _, raw := range strings.Split(content, "\n") {
+	for raw := range strings.SplitSeq(content, "\n") {
 		line := strings.TrimSpace(raw)
 		enabled := true
 		if strings.HasPrefix(line, "#") {
 			enabled = false
 			line = strings.TrimSpace(strings.TrimLeft(line, "#"))
+		}
+		// apt ignores everything from a '#' to the end of the line, so a
+		// trailing comment is not a list of components
+		if i := strings.IndexByte(line, '#'); i >= 0 {
+			line = strings.TrimSpace(line[:i])
 		}
 		if line == "" {
 			continue
@@ -190,8 +254,8 @@ func parseAptOneLine(content string) []aptRepo {
 	return res
 }
 
-// applyAptOptions interprets one-line `key=value` options, of which
-// `trusted` and `signed-by` carry security meaning.
+// applyAptOptions interprets one-line `key=value` options: `trusted`,
+// `signed-by` and the per-source trust options.
 func applyAptOptions(repo *aptRepo, opts []string) {
 	for _, opt := range opts {
 		kv := strings.SplitN(opt, "=", 2)
@@ -205,9 +269,33 @@ func applyAptOptions(repo *aptRepo, opts []string) {
 			repo.Trusted = aptBool(val)
 		case "signed-by":
 			repo.SignedBy = val
+		default:
+			repo.setTrustOption(key, val)
 		}
 	}
 }
+
+// setTrustOption records one of the per-source trust options, named as the
+// one-line format writes it or as a lower-cased deb822 field. apt reads a
+// set option as a boolean that defaults to false.
+func (repo *aptRepo) setTrustOption(key string, val string) {
+	b := aptBool(val)
+	switch key {
+	case "allow-insecure":
+		repo.AllowInsecure = &b
+	case "allow-weak":
+		repo.AllowWeak = &b
+	case "allow-downgrade-to-insecure":
+		repo.AllowDowngradeToInsecure = &b
+	case "check-valid-until":
+		repo.CheckValidUntil = &b
+	case "check-date":
+		repo.CheckDate = &b
+	}
+}
+
+// aptTrustOptions are the per-source trust options, as deb822 field names.
+var aptTrustOptions = []string{"allow-insecure", "allow-weak", "allow-downgrade-to-insecure", "check-valid-until", "check-date"}
 
 // parseAptDeb822 parses the deb822 multi-line `.sources` format. Stanzas
 // are separated by blank lines; Types, URIs, and Suites may each list
@@ -231,12 +319,20 @@ func parseAptDeb822(content string) []aptRepo {
 		}
 
 		components := strings.Fields(fields["components"])
-		signedBy := strings.TrimSpace(fields["signed-by"])
+		signedBy := aptDeb822SignedBy(fields["signed-by"])
 		trusted := aptBool(fields["trusted"])
-		// Enabled defaults to true; only an explicit "no"/"false" disables.
+		// Enabled defaults to true: apt skips a stanza only when Enabled is
+		// a boolean false, so "Enabled: maybe" is still read.
 		enabled := true
-		if v, ok := fields["enabled"]; ok {
-			enabled = aptBool(v)
+		if v := fields["enabled"]; strings.TrimSpace(v) != "" {
+			enabled = aptStringToBool(strings.TrimSpace(v), true)
+		}
+
+		var opts aptRepo
+		for _, key := range aptTrustOptions {
+			if v, ok := fields[key]; ok {
+				opts.setTrustOption(key, v)
+			}
 		}
 
 		for _, t := range types {
@@ -250,6 +346,12 @@ func parseAptDeb822(content string) []aptRepo {
 						Trusted:      trusted,
 						SignedBy:     signedBy,
 						Enabled:      enabled,
+
+						AllowInsecure:            opts.AllowInsecure,
+						AllowWeak:                opts.AllowWeak,
+						AllowDowngradeToInsecure: opts.AllowDowngradeToInsecure,
+						CheckValidUntil:          opts.CheckValidUntil,
+						CheckDate:                opts.CheckDate,
 					})
 				}
 			}
@@ -257,6 +359,17 @@ func parseAptDeb822(content string) []aptRepo {
 	}
 
 	return res
+}
+
+// aptDeb822SignedBy returns a deb822 Signed-By value. An inline ASCII-armored
+// key keeps its lines, so it reads as the key it is; a list of keyring paths
+// or fingerprints spread over several lines is joined with spaces.
+func aptDeb822SignedBy(v string) string {
+	v = strings.TrimSpace(v)
+	if strings.HasPrefix(v, "-----BEGIN PGP") {
+		return v
+	}
+	return strings.Join(strings.Fields(v), " ")
 }
 
 // splitDeb822Stanzas splits a deb822 document into stanzas separated by
@@ -270,7 +383,7 @@ func splitDeb822Stanzas(content string) []string {
 			cur = nil
 		}
 	}
-	for _, raw := range strings.Split(content, "\n") {
+	for raw := range strings.SplitSeq(content, "\n") {
 		line := strings.TrimRight(raw, "\r")
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
@@ -288,16 +401,22 @@ func splitDeb822Stanzas(content string) []string {
 
 // parseDeb822Fields parses a single stanza into a lower-cased field map.
 // Continuation lines (leading whitespace) are appended to the previous
-// field's value.
+// field's value on a line of their own, and a continuation line holding only
+// "." stands for an empty line, as deb822 writes one inside a multi-line
+// value such as an inline Signed-By key.
 func parseDeb822Fields(stanza string) map[string]string {
 	fields := map[string]string{}
 	lastKey := ""
-	for _, line := range strings.Split(stanza, "\n") {
+	for line := range strings.SplitSeq(stanza, "\n") {
 		if line == "" {
 			continue
 		}
 		if (line[0] == ' ' || line[0] == '\t') && lastKey != "" {
-			fields[lastKey] += " " + strings.TrimSpace(line)
+			cont := strings.TrimSpace(line)
+			if cont == "." {
+				cont = ""
+			}
+			fields[lastKey] += "\n" + cont
 			continue
 		}
 		kv := strings.SplitN(line, ":", 2)
@@ -311,13 +430,13 @@ func parseDeb822Fields(stanza string) map[string]string {
 	return fields
 }
 
-// aptBool interprets apt boolean option values (yes/no, true/false,
-// 1/0). Unrecognized or empty values are false.
+// aptBool interprets a boolean source option the way apt does, with false
+// as the default: an empty value is false, anything else goes through
+// aptStringToBool. apt's source parsers hand over the value trimmed.
 func aptBool(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "yes", "true", "1":
-		return true
-	default:
+	v = strings.TrimSpace(v)
+	if v == "" {
 		return false
 	}
+	return aptStringToBool(v, false)
 }

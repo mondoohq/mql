@@ -6,10 +6,10 @@ package resources
 import (
 	"fmt"
 
-	"github.com/stackitcloud/stackit-sdk-go/services/modelserving"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	modelserving "github.com/stackitcloud/stackit-sdk-go/services/modelserving/v1api"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // ------------------------- Model Serving tokens -------------------------
@@ -31,10 +31,10 @@ func (r *mqlStackitModelServing) tokens() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.ListTokensExecute(bgctx(), c.Region(), c.ProjectID())
+	resp, err := client.DefaultAPI.ListTokens(bgctx(), c.Region(), c.ProjectID()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func initStackitModelServingToken(runtime *plugin.Runtime, args map[string]*llx.
 	if err != nil {
 		return nil, nil, err
 	}
-	resp, err := client.GetTokenExecute(bgctx(), c.Region(), c.ProjectID(), id)
+	resp, err := client.DefaultAPI.GetToken(bgctx(), c.Region(), c.ProjectID(), id).Execute()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -72,7 +72,7 @@ func initStackitModelServingToken(runtime *plugin.Runtime, args map[string]*llx.
 	if !ok {
 		return nil, nil, fmt.Errorf("stackit model serving token %q not found", id)
 	}
-	res, err := CreateResource(runtime, "stackit.modelServing.token", modelServingTokenArgs(&token))
+	res, err := CreateResource(runtime, "stackit.modelServing.token", modelServingTokenArgs(token))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -87,10 +87,10 @@ func (r *mqlStackitModelServing) models() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.ListModelsExecute(bgctx(), c.Region())
+	resp, err := client.DefaultAPI.ListModels(bgctx(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}

@@ -9,14 +9,24 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
-	"go.mondoo.com/mql/v13/utils/multierr"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
+	"go.mondoo.com/mql/utils/multierr"
 )
+
+const defaultIMDSBaseURL = "http://169.254.169.254"
+
+// reused across the instance+loadbalancer calls per identification
+var imdsHTTPClient = &http.Client{
+	Timeout:   10 * time.Second,
+	Transport: &http.Transport{Proxy: nil}, // link-local, never via a proxy
+}
 
 const (
 	// https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service?tabs=windows#supported-api-versions
@@ -65,7 +75,7 @@ type InstanceIdentifier interface {
 
 func Resolve(conn shared.Connection, pf *inventory.Platform) (InstanceIdentifier, error) {
 	if pf.IsFamily(inventory.FAMILY_UNIX) || pf.IsFamily(inventory.FAMILY_WINDOWS) {
-		return &commandInstanceMetadata{conn, pf}, nil
+		return &commandInstanceMetadata{conn: conn, platform: pf}, nil
 	}
 	return nil, errors.New("azure compute id detector is not supported for your asset: " + pf.Name + " " + pf.Version)
 }
@@ -73,6 +83,15 @@ func Resolve(conn shared.Connection, pf *inventory.Platform) (InstanceIdentifier
 type commandInstanceMetadata struct {
 	conn     shared.Connection
 	platform *inventory.Platform
+	// imdsBaseURL overrides the IMDS endpoint in tests; defaultIMDSBaseURL when empty.
+	imdsBaseURL string
+}
+
+func (m *commandInstanceMetadata) baseURL() string {
+	if m.imdsBaseURL != "" {
+		return m.imdsBaseURL
+	}
+	return defaultIMDSBaseURL
 }
 
 func (m *commandInstanceMetadata) RawMetadata() (any, error) {
@@ -138,7 +157,36 @@ func (m *commandInstanceMetadata) Identify() (Identity, error) {
 	}, nil
 }
 
+// httpMetadata fetches an IMDS endpoint over HTTP (local connection path).
+func (m *commandInstanceMetadata) httpMetadata(endpoint string) ([]byte, error) {
+	url := fmt.Sprintf("%s/metadata/%s?api-version=%s", m.baseURL(), endpoint, IMDSApiVersion)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Metadata", "true")
+
+	resp, err := imdsHTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("IMDS %s returned HTTP %d: %s", endpoint, resp.StatusCode, string(body))
+	}
+	return body, nil
+}
+
 func (m *commandInstanceMetadata) instanceDocument() ([]byte, error) {
+	if m.conn.Type() == shared.Type_Local {
+		return m.httpMetadata("instance")
+	}
+
 	var (
 		cmd *shared.Command
 		err error
@@ -161,6 +209,10 @@ func (m *commandInstanceMetadata) instanceDocument() ([]byte, error) {
 }
 
 func (m *commandInstanceMetadata) loadbalancerDocument() ([]byte, error) {
+	if m.conn.Type() == shared.Type_Local {
+		return m.httpMetadata("loadbalancer")
+	}
+
 	var (
 		cmd *shared.Command
 		err error

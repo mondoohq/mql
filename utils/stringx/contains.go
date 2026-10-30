@@ -3,13 +3,10 @@
 
 package stringx
 
+import "slices"
+
 func Contains(slice []string, entry string) bool {
-	for i := range slice {
-		if slice[i] == entry {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, entry)
 }
 
 func ContainsAnyOf(slice []string, entries ...string) bool {

@@ -4,9 +4,10 @@
 package resources
 
 import (
-	"github.com/stackitcloud/stackit-sdk-go/services/certificates"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	certificates "github.com/stackitcloud/stackit-sdk-go/services/certificates/v2api"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 func (r *mqlStackit) certificates() ([]any, error) {
@@ -18,14 +19,14 @@ func (r *mqlStackit) certificates() ([]any, error) {
 	out := []any{}
 	pageId := ""
 	for {
-		req := client.ListCertificates(bgctx(), c.ProjectID(), c.Region())
+		req := client.DefaultAPI.ListCertificates(bgctx(), c.ProjectID(), c.Region())
 		if pageId != "" {
 			req = req.PageId(pageId)
 		}
 		resp, err := req.Execute()
 		if err != nil {
 			if isAccessDenied(err) {
-				return []any{}, nil
+				return deniedList(err)
 			}
 			return nil, err
 		}
@@ -38,22 +39,65 @@ func (r *mqlStackit) certificates() ([]any, error) {
 			out = append(out, res)
 		}
 		next, ok := resp.GetNextPageIdOk()
-		if !ok || next == "" {
+		if !ok || next == nil || *next == "" {
 			break
 		}
-		pageId = next
+		pageId = *next
 	}
 	return out, nil
 }
 
 func buildCertificate(runtime *plugin.Runtime, cert *certificates.GetCertificateResponse) (plugin.Resource, error) {
+	labels := map[string]any{}
+	for k, v := range cert.GetLabels() {
+		labels[k] = v
+	}
+
+	data := cert.GetData()
+
 	args := map[string]*llx.RawData{
-		"id":        llx.StringData(cert.GetId()),
-		"name":      llx.StringData(cert.GetName()),
-		"region":    llx.StringData(cert.GetRegion()),
-		"publicKey": llx.StringData(cert.GetPublicKey()),
+		"id":                llx.StringData(cert.GetId()),
+		"name":              llx.StringData(cert.GetName()),
+		"region":            llx.StringData(cert.GetRegion()),
+		"publicKey":         llx.StringData(cert.GetPublicKey()),
+		"labels":            llx.MapData(labels, types.String),
+		"dnsNames":          llx.StringData(data.GetDnsNames()),
+		"extendedKeyUsage":  llx.StringData(data.GetExtendedKeyUsage()),
+		"fingerprintSha1":   llx.StringData(data.GetFingerprintSha1()),
+		"fingerprintSha256": llx.StringData(data.GetFingerprintSha256()),
+		"subject":           llx.StringData(data.GetSubjectCn()),
+		"issuer":            llx.StringData(data.GetIssuerCn()),
+		"serialNumber":      llx.StringData(data.GetSerialNumber()),
+		"keyAlgorithm":      llx.StringData(data.GetPublicKeyAlgorithm()),
+		"keyStrength":       llx.StringData(data.GetKeyStrength()),
+		"keyBitSize":        llx.IntDataPtr(parseKeyBitSize(data.GetKeyStrength())),
+		"signingAlgorithm":  llx.StringData(data.GetSignatureAlgorithm()),
+		"notBefore":         llx.TimeDataPtr(parseRFC3339(data.GetNotBefore())),
+		"notAfter":          llx.TimeDataPtr(parseRFC3339(data.GetNotAfter())),
+		"usage":             llx.ArrayData(certificateUsage(cert.GetUsage()), types.Dict),
+		"organization":      llx.StringData(data.GetOrganization()),
+		"isSelfSigned":      llx.BoolDataPtr(optBool(data.GetIsSelfSignedOk())),
+		"isCa":              llx.BoolDataPtr(optBool(data.GetIsCaOk())),
 	}
 	return CreateResource(runtime, "stackit.certificate", args)
+}
+
+// certificateUsage flattens the certificate's load balancer usage into the
+// dict form MQL expects: one entry per load balancer, each carrying the
+// load balancer name and the listener names on it that use the certificate.
+func certificateUsage(u certificates.Usage) []any {
+	usage := []any{}
+	for _, item := range u.GetItems() {
+		listeners := []any{}
+		for _, n := range item.GetListenerNames() {
+			listeners = append(listeners, n)
+		}
+		usage = append(usage, map[string]any{
+			"loadBalancerName": item.GetLoadBalancerName(),
+			"listenerNames":    listeners,
+		})
+	}
+	return usage
 }
 
 func (r *mqlStackitCertificate) id() (string, error) {
@@ -70,7 +114,7 @@ func initStackitCertificate(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	if err != nil {
 		return nil, nil, err
 	}
-	cert, err := client.GetCertificateExecute(bgctx(), c.ProjectID(), c.Region(), id)
+	cert, err := client.DefaultAPI.GetCertificate(bgctx(), c.ProjectID(), c.Region(), id).Execute()
 	if err != nil {
 		return nil, nil, err
 	}

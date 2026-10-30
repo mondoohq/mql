@@ -5,6 +5,8 @@ package hypervisor
 
 import (
 	"bytes"
+	"regexp"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
@@ -29,8 +31,7 @@ func (h *hyper) detectLinuxHypervisor() (hypervisor string, ok bool) {
 		// we will leave this detector as our last resource
 		h.detectSystemdDetectVirt,
 	}
-	// check for CPU "hypervisor" flag
-	if h.detectLinuxCPUHypervisor() {
+	if h.detectLinuxGuest() {
 		for _, detectFn := range detectors {
 			hypervisor, ok = detectFn()
 			if ok {
@@ -41,13 +42,44 @@ func (h *hyper) detectLinuxHypervisor() (hypervisor string, ok bool) {
 	return
 }
 
-// detectLinuxCPUHypervisor detects if the CPU has the "hypervisor" flag.
-func (h *hyper) detectLinuxCPUHypervisor() bool {
+// x86CPUFlagsLine matches the "flags" line /proc/cpuinfo carries on x86. Other
+// architectures list CPU features under a different label ("Features" on
+// arm64), so its absence means the CPUID-based check below cannot apply.
+var x86CPUFlagsLine = regexp.MustCompile(`(?m)^flags\s*:`)
+
+// detectLinuxGuest reports whether the system runs as a virtual machine guest.
+//
+// On x86 the answer is the CPUID "hypervisor" bit, which the kernel exposes as
+// a flag in /proc/cpuinfo. That bit does not exist on other architectures: an
+// arm64 guest under Apple Virtualization.framework, KVM or EC2 Graviton lists
+// no such flag. There the gate falls back to "systemd-detect-virt --vm", which
+// uses the checks systemd implements for that architecture (DMI, the SMBIOS
+// "virtual machine" bit, device tree) and needs no root. "--vm" leaves
+// container detection out, so a container on a physical host does not open
+// the gate.
+func (h *hyper) detectLinuxGuest() bool {
 	content, err := afero.ReadFile(h.connection.FileSystem(), "/proc/cpuinfo")
 	if err != nil {
 		return false
 	}
-	return bytes.Contains(content, []byte("hypervisor"))
+	if bytes.Contains(content, []byte("hypervisor")) {
+		return true
+	}
+	if x86CPUFlagsLine.Match(content) {
+		return false
+	}
+	return h.detectSystemdVM()
+}
+
+// detectSystemdVM reports whether "systemd-detect-virt --vm" names a virtual
+// machine. It prints "none" on a physical host.
+func (h *hyper) detectSystemdVM() bool {
+	out, err := h.RunCommand("systemd-detect-virt --vm")
+	if err != nil {
+		return false
+	}
+	out = strings.TrimSpace(out)
+	return out != "" && out != "none"
 }
 
 // detectSystemdDetectVirt runs "systemd-detect-virt" to identify the hypervisor.

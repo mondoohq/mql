@@ -72,7 +72,9 @@ func loadRequirements(root string) (*Requirements, error) {
 	// Old style: a bare list of roles.
 	var list []any
 	if err := yaml.Unmarshal(data, &list); err != nil {
-		return nil, err
+		// An unparseable requirements file should not abort the whole project
+		// load; treat it as absent, matching loadPlaybooks' skip behavior.
+		return nil, nil
 	}
 	for _, r := range list {
 		req.Roles = append(req.Roles, parseGalaxyRole(r))

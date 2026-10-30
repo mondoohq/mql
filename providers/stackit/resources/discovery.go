@@ -4,10 +4,12 @@
 package resources
 
 import (
+	"maps"
+
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/stackit/connection"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/stackit/connection"
 )
 
 // Discovery targets. "auto"/"all" expand to every specific target.
@@ -104,9 +106,7 @@ func objectAsset(conn *connection.StackitConnection, platformName, service, regi
 	cfg.PlatformId = platformID
 
 	assetLabels := map[string]string{}
-	for k, v := range labels {
-		assetLabels[k] = v
-	}
+	maps.Copy(assetLabels, labels)
 	assetLabels["mondoo.com/region"] = region
 	assetLabels["mondoo.com/parent-id"] = conn.ProjectID()
 

@@ -7,19 +7,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 
 	"github.com/rs/zerolog/log"
 	"google.golang.org/api/cloudresourcemanager/v3"
 	"google.golang.org/api/compute/v1"
-	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iam/v1"
 	"google.golang.org/api/option"
 )
@@ -69,12 +67,11 @@ func initGcpOrganization(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 	name := "organizations/" + orgId
 	org, err := svc.Organizations.Get(name).Do()
 	if err != nil {
-		if e, ok := err.(*googleapi.Error); ok {
-			if e.Code == 403 {
-				log.Error().Err(err).Msg("cannot fetch organization info")
-				return nil, nil, errors.New("403: permission denied")
-			}
-		}
+		// Return the error unchanged. Replacing it with a plain string here
+		// used to destroy the *googleapi.Error, which is the only thing
+		// callers can classify: discovery had to fall back to substring
+		// matching on the message to recognize a denial it could skip.
+		log.Error().Err(err).Str("organization", orgId).Msg("cannot fetch organization info")
 		return nil, nil, err
 	}
 
@@ -141,31 +138,7 @@ func (g *mqlGcpOrganization) iamPolicy() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	res := make([]any, 0, len(policy.Bindings))
-	for i, b := range policy.Bindings {
-		condTitle, condExpr, condDesc := "", "", ""
-		if b.Condition != nil {
-			condTitle = b.Condition.Title
-			condExpr = b.Condition.Expression
-			condDesc = b.Condition.Description
-		}
-
-		mqlServiceaccount, err := CreateResource(g.MqlRuntime, "gcp.resourcemanager.binding", map[string]*llx.RawData{
-			"id":                   llx.StringData(name + "-" + strconv.Itoa(i)),
-			"role":                 llx.StringData(b.Role),
-			"members":              llx.ArrayData(convert.SliceAnyToInterface(b.Members), types.String),
-			"conditionTitle":       llx.StringData(condTitle),
-			"conditionExpression":  llx.StringData(condExpr),
-			"conditionDescription": llx.StringData(condDesc),
-		})
-		if err != nil {
-			return nil, err
-		}
-		res = append(res, mqlServiceaccount)
-	}
-
-	return res, nil
+	return policyBindings(g.MqlRuntime, name, policy)
 }
 
 // auditConfigID returns the cache ID for an audit config resource.

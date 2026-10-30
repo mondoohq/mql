@@ -4,9 +4,9 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/google-workspace/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/google-workspace/connection"
 	directory "google.golang.org/api/admin/directory/v1"
 )
 
@@ -19,7 +19,11 @@ func (g *mqlGoogleworkspace) orgUnits() ([]any, error) {
 
 	res := []any{}
 
-	orgUnits, err := directoryService.Orgunits.List(conn.CustomerID()).Do()
+	// Type("all") returns the full org-unit subtree. The default ("children")
+	// returns only the immediate children of the root, silently omitting every
+	// nested org unit. The response carries no page token, so a single call
+	// returns the whole hierarchy.
+	orgUnits, err := directoryService.Orgunits.List(conn.CustomerID()).Type("all").Do()
 	if err != nil {
 		return nil, err
 	}

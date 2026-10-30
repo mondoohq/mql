@@ -1,0 +1,64 @@
+{
+  "minors": {
+    "1.34": {
+      "commit": "b5e5c04f3e07653105921a7f6c50a5ff8cee7b4a",
+      "items": {
+        "cmd/kubelet/app/options/options.go#applyLegacyDefaults": "sha256:79945cd64b7517727ace28c7d9a672286ffb45b9ba38d48b43513871e55167b7",
+        "pkg/cluster/ports/ports.go#KubeletHealthzPort": "sha256:680f4d6b13374685929e822df506ac657e7731d8d0b35142fd7797137f126e7a",
+        "pkg/cluster/ports/ports.go#KubeletPort": "sha256:c0559c1d91dcce5d384cc692cb97683792c470c9ca5a2eee621ef55590a643e2",
+        "pkg/cluster/ports/ports.go#KubeletReadOnlyPort": "sha256:a8cf4a2e467ecc0cb07e0957caff39deb30282c3aae250257015afc7b609c880",
+        "pkg/features/kube_features.go#gate:KubeletCrashLoopBackOffMax": "sha256:51002eef257fdc1338f6e9eb06cbecbd760184588db5c516a5d8e86ce6e822b4",
+        "pkg/features/kube_features.go#gate:KubeletEnsureSecretPulledImages": "sha256:b9e05274a09645dac87ff608e4280ae276f35d4cf3bf401f438020218042988f",
+        "pkg/kubelet/apis/config/v1beta1/defaults.go": "sha256:2b0219c6d8b1edee7746da8e559b42a97e345503c33342c4cea146163cb077b4",
+        "pkg/kubelet/eviction/defaults_linux.go#DefaultEvictionHard": "sha256:ac4a5cfc3056375398be070a219a5254f2f5be0f1c891f23392e6c2c37b9aba1",
+        "pkg/kubelet/qos/policy.go#KubeletOOMScoreAdj": "sha256:c0106f7b318f5ff4a7caccf768383e4981274f50b395f9224a6237b222eeca98",
+        "pkg/kubelet/types/constants.go#ResolvConfDefault": "sha256:6e26429d86908ea77e187efe5b893879325ea73b838651ed3f6f080e34d9cdd8"
+      }
+    },
+    "1.35": {
+      "commit": "2cc9e93d97618d40005823b4a5289a8bc6e23890",
+      "items": {
+        "cmd/kubelet/app/options/options.go#applyLegacyDefaults": "sha256:ff15c3215c192238ee706a7f01274f7645f91fc68bcdc313d9d904192b77cf8e",
+        "pkg/cluster/ports/ports.go#KubeletHealthzPort": "sha256:680f4d6b13374685929e822df506ac657e7731d8d0b35142fd7797137f126e7a",
+        "pkg/cluster/ports/ports.go#KubeletPort": "sha256:c0559c1d91dcce5d384cc692cb97683792c470c9ca5a2eee621ef55590a643e2",
+        "pkg/cluster/ports/ports.go#KubeletReadOnlyPort": "sha256:a8cf4a2e467ecc0cb07e0957caff39deb30282c3aae250257015afc7b609c880",
+        "pkg/features/kube_features.go#gate:KubeletCrashLoopBackOffMax": "sha256:1f9139f67b6ca792722cc48bba72465c48474e2c6bc0aa52366ef46fd0ea7d00",
+        "pkg/features/kube_features.go#gate:KubeletEnsureSecretPulledImages": "sha256:b5d78ef36ce30a0d94be7097a77fd987c6c3dd5237a7d4090bcb1bf37c7fece9",
+        "pkg/kubelet/apis/config/v1beta1/defaults.go": "sha256:9cce4c33e94bdcd0ae30443ee6a0b9082e68f184a4106b3d775a7436547fd9fb",
+        "pkg/kubelet/eviction/defaults_linux.go#DefaultEvictionHard": "sha256:ac4a5cfc3056375398be070a219a5254f2f5be0f1c891f23392e6c2c37b9aba1",
+        "pkg/kubelet/qos/policy.go#KubeletOOMScoreAdj": "sha256:c0106f7b318f5ff4a7caccf768383e4981274f50b395f9224a6237b222eeca98",
+        "pkg/kubelet/types/constants.go#ResolvConfDefault": "sha256:6e26429d86908ea77e187efe5b893879325ea73b838651ed3f6f080e34d9cdd8"
+      }
+    },
+    "1.36": {
+      "commit": "4501bd2777356cf08d443093db13ff018542edac",
+      "items": {
+        "cmd/kubelet/app/options/options.go#applyLegacyDefaults": "sha256:ff15c3215c192238ee706a7f01274f7645f91fc68bcdc313d9d904192b77cf8e",
+        "pkg/cluster/ports/ports.go#KubeletHealthzPort": "sha256:680f4d6b13374685929e822df506ac657e7731d8d0b35142fd7797137f126e7a",
+        "pkg/cluster/ports/ports.go#KubeletPort": "sha256:c0559c1d91dcce5d384cc692cb97683792c470c9ca5a2eee621ef55590a643e2",
+        "pkg/cluster/ports/ports.go#KubeletReadOnlyPort": "sha256:a8cf4a2e467ecc0cb07e0957caff39deb30282c3aae250257015afc7b609c880",
+        "pkg/features/kube_features.go#gate:KubeletCrashLoopBackOffMax": "sha256:1f9139f67b6ca792722cc48bba72465c48474e2c6bc0aa52366ef46fd0ea7d00",
+        "pkg/features/kube_features.go#gate:KubeletEnsureSecretPulledImages": "sha256:b5d78ef36ce30a0d94be7097a77fd987c6c3dd5237a7d4090bcb1bf37c7fece9",
+        "pkg/kubelet/apis/config/v1beta1/defaults.go": "sha256:e1f782318a3ed72b4e2873b529dbd82e86e790b9b51d6be1ab5184255e6c5b3d",
+        "pkg/kubelet/eviction/defaults_linux.go#DefaultEvictionHard": "sha256:ac4a5cfc3056375398be070a219a5254f2f5be0f1c891f23392e6c2c37b9aba1",
+        "pkg/kubelet/qos/policy.go#KubeletOOMScoreAdj": "sha256:c0106f7b318f5ff4a7caccf768383e4981274f50b395f9224a6237b222eeca98",
+        "pkg/kubelet/types/constants.go#ResolvConfDefault": "sha256:6e26429d86908ea77e187efe5b893879325ea73b838651ed3f6f080e34d9cdd8"
+      }
+    },
+    "1.37": {
+      "commit": "8aaeb4e53d1a489570afe94ef5258554de68897a",
+      "items": {
+        "cmd/kubelet/app/options/options.go#applyLegacyDefaults": "sha256:ff15c3215c192238ee706a7f01274f7645f91fc68bcdc313d9d904192b77cf8e",
+        "pkg/cluster/ports/ports.go#KubeletHealthzPort": "sha256:680f4d6b13374685929e822df506ac657e7731d8d0b35142fd7797137f126e7a",
+        "pkg/cluster/ports/ports.go#KubeletPort": "sha256:c0559c1d91dcce5d384cc692cb97683792c470c9ca5a2eee621ef55590a643e2",
+        "pkg/cluster/ports/ports.go#KubeletReadOnlyPort": "sha256:a8cf4a2e467ecc0cb07e0957caff39deb30282c3aae250257015afc7b609c880",
+        "pkg/features/kube_features.go#gate:KubeletCrashLoopBackOffMax": "sha256:1f9139f67b6ca792722cc48bba72465c48474e2c6bc0aa52366ef46fd0ea7d00",
+        "pkg/features/kube_features.go#gate:KubeletEnsureSecretPulledImages": "sha256:b5d78ef36ce30a0d94be7097a77fd987c6c3dd5237a7d4090bcb1bf37c7fece9",
+        "pkg/kubelet/apis/config/v1beta1/defaults.go": "sha256:57b12c69b91ce5d6f99191bab64bffd98dff3a8241e8610989bcb9f225cdec8e",
+        "pkg/kubelet/eviction/defaults_linux.go#DefaultEvictionHard": "sha256:ac4a5cfc3056375398be070a219a5254f2f5be0f1c891f23392e6c2c37b9aba1",
+        "pkg/kubelet/qos/policy.go#KubeletOOMScoreAdj": "sha256:c0106f7b318f5ff4a7caccf768383e4981274f50b395f9224a6237b222eeca98",
+        "pkg/kubelet/types/constants.go#ResolvConfDefault": "sha256:6e26429d86908ea77e187efe5b893879325ea73b838651ed3f6f080e34d9cdd8"
+      }
+    }
+  }
+}

@@ -12,7 +12,7 @@ import (
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
 )
 
 func TestTranslateHcloudError(t *testing.T) {
@@ -20,17 +20,23 @@ func TestTranslateHcloudError(t *testing.T) {
 		assert.NoError(t, translateHcloudError(nil))
 	})
 
-	t.Run("unauthorized swallowed", func(t *testing.T) {
+	// A refused read establishes nothing about what exists. Swallowing it
+	// would report an empty list, which asserts the project holds none of the
+	// resource, and every audit over that list would pass without reading
+	// anything.
+	t.Run("unauthorized propagates", func(t *testing.T) {
 		err := hcloud.Error{Code: hcloud.ErrorCodeUnauthorized, Message: "bad token"}
-		assert.NoError(t, translateHcloudError(err))
+		assert.Error(t, translateHcloudError(err))
 	})
 
-	t.Run("forbidden swallowed", func(t *testing.T) {
+	t.Run("forbidden propagates", func(t *testing.T) {
 		err := hcloud.Error{Code: hcloud.ErrorCodeForbidden, Message: "no access"}
-		assert.NoError(t, translateHcloudError(err))
+		assert.Error(t, translateHcloudError(err))
 	})
 
-	t.Run("not found swallowed", func(t *testing.T) {
+	// A collection endpoint answering 404 means the product is not provisioned
+	// for the project, which genuinely is none.
+	t.Run("not found is an empty collection", func(t *testing.T) {
 		err := hcloud.Error{Code: hcloud.ErrorCodeNotFound, Message: "gone"}
 		assert.NoError(t, translateHcloudError(err))
 	})
@@ -45,9 +51,16 @@ func TestTranslateHcloudError(t *testing.T) {
 		assert.Equal(t, err, translateHcloudError(err))
 	})
 
-	t.Run("wrapped hcloud error", func(t *testing.T) {
-		// errors.As must unwrap through fmt.Errorf wrapping
+	t.Run("wrapped hcloud error is still classified", func(t *testing.T) {
+		// errors.As must unwrap through wrapping, so a wrapped denial is
+		// recognised as a denial and propagates like a bare one.
 		inner := hcloud.Error{Code: hcloud.ErrorCodeUnauthorized}
+		wrapped := errors.Join(errors.New("context"), inner)
+		assert.Error(t, translateHcloudError(wrapped))
+	})
+
+	t.Run("wrapped not found is still an empty collection", func(t *testing.T) {
+		inner := hcloud.Error{Code: hcloud.ErrorCodeNotFound}
 		wrapped := errors.Join(errors.New("context"), inner)
 		assert.NoError(t, translateHcloudError(wrapped))
 	})
@@ -107,7 +120,9 @@ func TestPaginate(t *testing.T) {
 		assert.ErrorIs(t, err, want)
 	})
 
-	t.Run("returns accumulated rows when an auth error appears mid-stream", func(t *testing.T) {
+	t.Run("an auth error mid-stream fails rather than truncating", func(t *testing.T) {
+		// Returning the rows gathered so far would present a partial list as
+		// a complete one, which reads as "the project holds only these".
 		calls := 0
 		out, err := paginate(func(opts hcloud.ListOpts) ([]int, *hcloud.Response, error) {
 			calls++
@@ -118,8 +133,35 @@ func TestPaginate(t *testing.T) {
 			}
 			return nil, nil, hcloud.Error{Code: hcloud.ErrorCodeForbidden}
 		})
+		assert.Error(t, err)
+		assert.Nil(t, out)
+	})
+
+	t.Run("a collection absent from the start is empty", func(t *testing.T) {
+		// The product is not provisioned for this project, which is a real
+		// answer. Storage Boxes behave this way on a plain cloud project.
+		out, err := paginate(func(opts hcloud.ListOpts) ([]int, *hcloud.Response, error) {
+			return nil, nil, hcloud.Error{Code: hcloud.ErrorCodeNotFound}
+		})
 		require.NoError(t, err)
-		assert.Equal(t, []int{1, 2}, out)
+		assert.Empty(t, out)
+	})
+
+	t.Run("a collection that vanishes mid-walk is not a short list", func(t *testing.T) {
+		// Pages were read, so the collection existed. Returning only those
+		// would present a truncated list as the complete one.
+		calls := 0
+		out, err := paginate(func(opts hcloud.ListOpts) ([]int, *hcloud.Response, error) {
+			calls++
+			if calls == 1 {
+				return []int{1, 2}, &hcloud.Response{
+					Meta: hcloud.Meta{Pagination: &hcloud.Pagination{NextPage: 2}},
+				}, nil
+			}
+			return nil, nil, hcloud.Error{Code: hcloud.ErrorCodeNotFound}
+		})
+		assert.Error(t, err)
+		assert.Nil(t, out)
 	})
 
 	t.Run("nil response terminates loop", func(t *testing.T) {

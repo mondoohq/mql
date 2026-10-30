@@ -41,10 +41,15 @@ func NewEd25519Keys() (*SSH, error) {
 		return nil, err
 	}
 
+	privateKeyBytes, err := MarshalED25519PrivateKey(privateKey)
+	if err != nil {
+		return nil, err
+	}
+
 	return &SSH{
 		PrivateKey: pem.EncodeToMemory(&pem.Block{
 			Type:  "OPENSSH PRIVATE KEY",
-			Bytes: MarshalED25519PrivateKey(privateKey),
+			Bytes: privateKeyBytes,
 		}),
 		PublicKey: MarshalPublicKey(publicKey, ""),
 	}, nil

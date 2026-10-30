@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
 )
 
 const (
@@ -51,9 +51,7 @@ func NewBufferedCollector(collector *ResultCollector, opts ...BufferedCollectorO
 }
 
 func (c *BufferedCollector) run() {
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
+	c.wg.Go(func() {
 
 		done := false
 		results := []*llx.RawResult{}
@@ -88,7 +86,7 @@ func (c *BufferedCollector) run() {
 			}
 			timer.Stop()
 		}
-	}()
+	})
 }
 
 func (c *BufferedCollector) FlushAndStop() {

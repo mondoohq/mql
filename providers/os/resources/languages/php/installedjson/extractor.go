@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"io"
 
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/php"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/php"
 )
 
 var (
@@ -51,8 +51,12 @@ func (ij *installedJson) Transitive() languages.Packages {
 	var packages languages.Packages
 	for _, pkg := range ij.Packages {
 		packages = append(packages, &languages.Package{
-			Name:         pkg.Name,
-			Version:      pkg.Version,
+			Name:    pkg.Name,
+			Version: pkg.Version,
+			// installed.json records the license as an array, which means a
+			// choice among them; LicenseExpression renders that as SPDX.
+			License:      languages.LicenseExpression(pkg.License),
+			Description:  pkg.Description,
 			Purl:         php.NewPackageUrl(pkg.Name, pkg.Version),
 			Cpes:         php.NewCpes(pkg.Name, pkg.Version),
 			EvidenceList: php.NewEvidenceList(ij.evidence),

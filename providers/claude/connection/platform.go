@@ -3,7 +3,7 @@
 
 package connection
 
-import "go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+import "go.mondoo.com/mql/providers-sdk/v1/inventory"
 
 const (
 	DiscoveryAll        = "all"

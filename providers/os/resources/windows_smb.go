@@ -9,12 +9,13 @@ import (
 	"io"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/registry"
-	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
-	"go.mondoo.com/mql/v13/providers/os/resources/windows"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/registry"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
+	"go.mondoo.com/mql/providers/os/resources/windows"
+	"go.mondoo.com/mql/types"
 	"go.mondoo.com/ranger-rpc/codes"
 	"go.mondoo.com/ranger-rpc/status"
 )
@@ -273,14 +274,27 @@ func computeSmbClientConfig(policy, params, service map[string]registry.Registry
 }
 
 // computeSmbV1Enabled reports whether the SMBv1 client driver (mrxsmb10) is
-// enabled. The driver is enabled unless its Start value is explicitly 4
-// (disabled); an absent value means the default-installed driver is present, so
-// it is treated as enabled.
+// enabled.
+//
+// The driver is enabled when its Start value is present and is anything other
+// than 4 (disabled). An absent Start value means the driver is not installed:
+// removing the SMB1Protocol optional feature deletes the mrxsmb10 service key
+// outright, which is exactly the state a host that has had SMBv1 removed is
+// in. Server 2019, 2022 and 2025 all ship that way, and all three report
+// Get-WindowsOptionalFeature -FeatureName SMB1Protocol as Disabled while the
+// key is gone; Server 2016 still carries the key with Start 2 and reports the
+// feature as Enabled.
+//
+// Treating the absent key as enabled reported SMBv1 as on for every host that
+// had properly removed it, so the field could not return false on any
+// supported Windows Server and an audit requiring SMBv1 to be disabled failed
+// on hosts that had disabled it.
 func computeSmbV1Enabled(driver map[string]registry.RegistryKeyItem) bool {
-	if it, ok := driver["start"]; ok {
-		return it.Value.Number != smbServiceDisabled
+	it, ok := driver["start"]
+	if !ok {
+		return false
 	}
-	return true
+	return it.Value.Number != smbServiceDisabled
 }
 
 func (w *mqlWindowsSmb) serverConfiguration() (*mqlWindowsSmbServerConfiguration, error) {
@@ -396,4 +410,47 @@ func (w *mqlWindowsSmb) connections() ([]any, error) {
 		res = append(res, r)
 	}
 	return res, nil
+}
+
+// windows.smb.serverConfiguration and windows.smb.clientConfiguration are both
+// a field path on windows.smb and a resource name in their own right. The
+// compiler resolves the longest matching resource name before it considers a
+// field, so the dotted form instantiates the sub-resource directly and the
+// parent's accessor never runs. Every field on these resources is a plain
+// schema field that only the parent populates, so none is ever set: the query
+// reports null for each one with "provider returned no data and no error", and
+// the values convert as primitives carrying no type information.
+//
+// That is worse than an error, because a check reading "SMB signing is
+// required" off a null does not fail on a host that does not require it.
+//
+// Delegating to the parent's accessor fills the resource in. The block form
+// `windows.smb { serverConfiguration { ... } }` binds the field instead of
+// resolving a resource name and was never affected. When the resource is
+// created normally by the parent it carries an __id and this is a no-op.
+func initWindowsSmbChild[T plugin.Resource](
+	runtime *plugin.Runtime,
+	args map[string]*llx.RawData,
+	get func(*mqlWindowsSmb) *plugin.TValue[T],
+) (map[string]*llx.RawData, plugin.Resource, error) {
+	if _, ok := args["__id"]; ok {
+		return args, nil, nil
+	}
+	parent, err := CreateResource(runtime, "windows.smb", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, nil, err
+	}
+	v := get(parent.(*mqlWindowsSmb))
+	if v.Error != nil {
+		return nil, nil, v.Error
+	}
+	return args, v.Data, nil
+}
+
+func initWindowsSmbServerConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return initWindowsSmbChild(runtime, args, (*mqlWindowsSmb).GetServerConfiguration)
+}
+
+func initWindowsSmbClientConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return initWindowsSmbChild(runtime, args, (*mqlWindowsSmb).GetClientConfiguration)
 }

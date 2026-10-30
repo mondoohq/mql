@@ -1,0 +1,27 @@
+[core]
+repo_version=1
+mode=bare-user-only
+min-free-space-size=500MB
+xa.applied-remotes=rhel;
+
+[remote "rhel"]
+url=oci+https://flatpaks.redhat.io/rhel/
+xa.title=Red Hat Enterprise Linux
+gpg-verify=false
+collection-id=com.redhat.Stable
+gpg-verify-summary=false
+xa.authenticator-name=org.flatpak.Authenticator.Oci
+xa.comment=Red Hat Enterprise Linux Flatpak applications and runtimes
+xa.description=This repository contains Flatpaks of applications built for Red Hat Enterprise Linux, along with the Red Hat Flatpak Runtime and SDK.
+xa.icon=https://www.redhat.com/misc/favicon.ico
+xa.homepage=https://catalog.redhat.com/software/containers/explore
+
+[remote "flathub"]
+url=https://dl.flathub.org/repo/
+xa.title=Flathub
+gpg-verify=true
+gpg-verify-summary=true
+xa.comment=Central repository of Flatpak applications
+xa.description=Central repository of Flatpak applications
+xa.icon=https://dl.flathub.org/repo/logo.svg
+xa.homepage=https://flathub.org/

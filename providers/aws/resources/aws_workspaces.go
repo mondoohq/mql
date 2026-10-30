@@ -5,8 +5,10 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -15,12 +17,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/workspaces"
 	workspacestypes "github.com/aws/aws-sdk-go-v2/service/workspaces/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsWorkspaces) id() (string, error) {
@@ -125,17 +127,94 @@ func newMqlAwsWorkspacesDirectory(runtime *plugin.Runtime, region string, dir wo
 			"ipGroupIds":                     llx.ArrayData(toInterfaceArr(dir.IpGroupIds), types.String),
 			"selfservicePermissions":         llx.MapData(selfservicePerms, types.Any),
 			"iamRoleId":                      llx.StringDataPtr(dir.IamRoleId),
-			"subnetIds":                      llx.ArrayData(toInterfaceArr(dir.SubnetIds), types.String),
 			"region":                         llx.StringData(region),
 		})
 	if err != nil {
 		return nil, err
 	}
+	resource.(*mqlAwsWorkspacesDirectory).cacheSubnetIds = toInterfaceArr(dir.SubnetIds)
 	return resource.(*mqlAwsWorkspacesDirectory), nil
 }
 
 func (a *mqlAwsWorkspacesDirectory) id() (string, error) {
 	return "aws.workspaces.directory/" + a.Region.Data + "/" + a.DirectoryId.Data, nil
+}
+
+const (
+	workspacesWorkspaceArnPattern = "arn:aws:workspaces:%s:%s:workspace/%s"
+	workspacesDirectoryArnPattern = "arn:aws:workspaces:%s:%s:directory/%s"
+	workspacesIpGroupArnPattern   = "arn:aws:workspaces:%s:%s:workspaceipgroup/%s"
+)
+
+func (a *mqlAwsWorkspacesDirectory) arn() (string, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return fmt.Sprintf(workspacesDirectoryArnPattern, a.Region.Data, conn.AccountId(), a.DirectoryId.Data), nil
+}
+
+type mqlAwsWorkspacesDirectoryInternal struct {
+	clientPropsFetched atomic.Bool
+	clientProps        *workspacestypes.ClientProperties
+	clientPropsLock    sync.Mutex
+	cacheSubnetIds     []any
+}
+
+// fetchClientProperties loads the directory's client properties once and shares
+// the result across clientExperiencePolicy, clientReconnectEnabled, and
+// clientLogUploadEnabled, which all come from the same call.
+func (a *mqlAwsWorkspacesDirectory) fetchClientProperties() (*workspacestypes.ClientProperties, error) {
+	if a.clientPropsFetched.Load() {
+		return a.clientProps, nil
+	}
+	a.clientPropsLock.Lock()
+	defer a.clientPropsLock.Unlock()
+	if a.clientPropsFetched.Load() {
+		return a.clientProps, nil
+	}
+
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Workspaces(a.Region.Data)
+	resp, err := svc.DescribeClientProperties(context.Background(), &workspaces.DescribeClientPropertiesInput{
+		ResourceIds: []string{a.DirectoryId.Data},
+	})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			a.clientPropsFetched.Store(true)
+			return nil, nil
+		}
+		return nil, err
+	}
+	for _, r := range resp.ClientPropertiesList {
+		if r.ClientProperties != nil {
+			a.clientProps = r.ClientProperties
+			break
+		}
+	}
+	a.clientPropsFetched.Store(true)
+	return a.clientProps, nil
+}
+
+func (a *mqlAwsWorkspacesDirectory) clientExperiencePolicy() (string, error) {
+	props, err := a.fetchClientProperties()
+	if err != nil || props == nil {
+		return "", err
+	}
+	return convert.ToValue(props.ClientExperiencePolicy), nil
+}
+
+func (a *mqlAwsWorkspacesDirectory) clientReconnectEnabled() (bool, error) {
+	props, err := a.fetchClientProperties()
+	if err != nil || props == nil {
+		return false, err
+	}
+	return props.ReconnectEnabled == workspacestypes.ReconnectEnumEnabled, nil
+}
+
+func (a *mqlAwsWorkspacesDirectory) clientLogUploadEnabled() (bool, error) {
+	props, err := a.fetchClientProperties()
+	if err != nil || props == nil {
+		return false, err
+	}
+	return props.LogUploadEnabled == workspacestypes.LogUploadEnumEnabled, nil
 }
 
 func (a *mqlAwsWorkspacesDirectory) tags() (map[string]any, error) {
@@ -148,7 +227,7 @@ func (a *mqlAwsWorkspacesDirectory) tags() (map[string]any, error) {
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return nil, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
@@ -226,6 +305,15 @@ func newMqlAwsWorkspacesWorkspace(runtime *plugin.Runtime, region string, ws wor
 		workspaceId = *ws.WorkspaceId
 	}
 
+	// WorkspaceProperties is absent on some responses, and nested
+	// virtualization is only reported for the WorkSpace types that support
+	// it. Leaving the pointer nil keeps the field null in both cases: a
+	// false would claim we looked and the feature was switched off.
+	var nestedVirtualizationEnabled *bool
+	if ws.WorkspaceProperties != nil {
+		nestedVirtualizationEnabled = ws.WorkspaceProperties.NestedVirtualizationEnabled
+	}
+
 	resource, err := CreateResource(runtime, "aws.workspaces.workspace",
 		map[string]*llx.RawData{
 			"__id":                        llx.StringData("aws.workspaces.workspace/" + region + "/" + workspaceId),
@@ -235,10 +323,10 @@ func newMqlAwsWorkspacesWorkspace(runtime *plugin.Runtime, region string, ws wor
 			"ipAddress":                   llx.StringDataPtr(ws.IpAddress),
 			"computerName":                llx.StringDataPtr(ws.ComputerName),
 			"bundleId":                    llx.StringDataPtr(ws.BundleId),
-			"subnetId":                    llx.StringDataPtr(ws.SubnetId),
 			"state":                       llx.StringData(string(ws.State)),
 			"rootVolumeEncryptionEnabled": llx.BoolDataPtr(ws.RootVolumeEncryptionEnabled),
 			"userVolumeEncryptionEnabled": llx.BoolDataPtr(ws.UserVolumeEncryptionEnabled),
+			"nestedVirtualizationEnabled": llx.BoolDataPtr(nestedVirtualizationEnabled),
 			"volumeEncryptionKey":         llx.StringDataPtr(ws.VolumeEncryptionKey),
 			"errorCode":                   llx.StringDataPtr(ws.ErrorCode),
 			"errorMessage":                llx.StringDataPtr(ws.ErrorMessage),
@@ -247,16 +335,23 @@ func newMqlAwsWorkspacesWorkspace(runtime *plugin.Runtime, region string, ws wor
 	if err != nil {
 		return nil, err
 	}
+	resource.(*mqlAwsWorkspacesWorkspace).cacheSubnetId = convert.ToValue(ws.SubnetId)
 	return resource.(*mqlAwsWorkspacesWorkspace), nil
 }
 
 type mqlAwsWorkspacesWorkspaceInternal struct {
+	cacheSubnetId     string
 	connStatusFetched bool
 	connStatusLock    sync.Mutex
 }
 
 func (a *mqlAwsWorkspacesWorkspace) id() (string, error) {
 	return "aws.workspaces.workspace/" + a.Region.Data + "/" + a.WorkspaceId.Data, nil
+}
+
+func (a *mqlAwsWorkspacesWorkspace) arn() (string, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return fmt.Sprintf(workspacesWorkspaceArnPattern, a.Region.Data, conn.AccountId(), a.WorkspaceId.Data), nil
 }
 
 func (a *mqlAwsWorkspacesWorkspace) tags() (map[string]any, error) {
@@ -269,7 +364,7 @@ func (a *mqlAwsWorkspacesWorkspace) tags() (map[string]any, error) {
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return nil, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
@@ -582,6 +677,78 @@ func (a *mqlAwsWorkspacesBundle) id() (string, error) {
 	return "aws.workspaces.bundle/" + a.Region.Data + "/" + a.BundleId.Data, nil
 }
 
+// errWorkspacesBundleUnresolved marks a bundle reference that names no readable
+// bundle. Returning it beats handing back a half-populated resource: a resource
+// built from the reference args alone leaves every other field *unset*, and an
+// unset field encodes to a primitive with no type, which llx logs as malformed
+// before coercing it to null (see plugin.TValue.ToDataRes and
+// llx.Primitive.RawData). Callers that would rather have a null bundle than an
+// error convert it back at the accessor.
+var errWorkspacesBundleUnresolved = errors.New("aws workspaces bundle unresolved")
+
+// parseWorkspacesBundleRef reads the region and bundle ID a bundle reference was
+// created with. Both are required: DescribeWorkspaceBundles with neither a
+// bundle ID nor an owner answers with every bundle the account owns, so falling
+// through on a partial reference would bind an arbitrary bundle.
+func parseWorkspacesBundleRef(args map[string]*llx.RawData) (string, string, error) {
+	var region, bundleId string
+	if r := args["region"]; r != nil {
+		if s, ok := r.Value.(string); ok {
+			region = s
+		}
+	}
+	if b := args["bundleId"]; b != nil {
+		if s, ok := b.Value.(string); ok {
+			bundleId = s
+		}
+	}
+	if region == "" || bundleId == "" {
+		return "", "", errors.New("bundleId + region required to fetch aws workspaces bundle")
+	}
+	return region, bundleId, nil
+}
+
+// initAwsWorkspacesBundle fetches a single bundle by ID.
+//
+// Filtering by bundle ID reaches AMAZON-provided bundles as well as
+// account-owned ones, which an unfiltered DescribeWorkspaceBundles does not:
+// AWS answers that with the caller's own bundles unless an owner is named.
+func initAwsWorkspacesBundle(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	region, bundleId, err := parseWorkspacesBundleRef(args)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Workspaces(region)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	resp, err := svc.DescribeWorkspaceBundles(ctx, &workspaces.DescribeWorkspaceBundlesInput{
+		BundleIds: []string{bundleId},
+	})
+	if err != nil {
+		if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
+			log.Debug().Str("region", region).Msg("error accessing region for AWS WorkSpaces bundles API")
+			return nil, nil, fmt.Errorf("%w: %q in %s is not readable", errWorkspacesBundleUnresolved, bundleId, region)
+		}
+		return nil, nil, err
+	}
+	// a bundle deleted after the WorkSpace was built no longer resolves
+	if len(resp.Bundles) == 0 {
+		return nil, nil, fmt.Errorf("%w: %q not found in %s", errWorkspacesBundleUnresolved, bundleId, region)
+	}
+
+	mqlBundle, err := newMqlAwsWorkspacesBundle(runtime, region, resp.Bundles[0])
+	if err != nil {
+		return nil, nil, err
+	}
+	return args, mqlBundle, nil
+}
+
 // ---- IP Groups ----
 
 func (a *mqlAwsWorkspaces) ipGroups() ([]any, error) {
@@ -678,8 +845,13 @@ func (a *mqlAwsWorkspacesIpGroup) id() (string, error) {
 	return "aws.workspaces.ipGroup/" + a.Region.Data + "/" + a.GroupId.Data, nil
 }
 
+func (a *mqlAwsWorkspacesIpGroup) arn() (string, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return fmt.Sprintf(workspacesIpGroupArnPattern, a.Region.Data, conn.AccountId(), a.GroupId.Data), nil
+}
+
 func (a *mqlAwsWorkspacesDirectory) subnets() ([]any, error) {
-	subnetIds := a.SubnetIds.Data
+	subnetIds := a.cacheSubnetIds
 	if len(subnetIds) == 0 {
 		return nil, nil
 	}
@@ -701,8 +873,32 @@ func (a *mqlAwsWorkspacesDirectory) subnets() ([]any, error) {
 	return res, nil
 }
 
+func (a *mqlAwsWorkspacesWorkspace) bundle() (*mqlAwsWorkspacesBundle, error) {
+	bundleId := a.BundleId.Data
+	if bundleId == "" {
+		a.Bundle.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.workspaces.bundle", map[string]*llx.RawData{
+		"bundleId": llx.StringData(bundleId),
+		"region":   llx.StringData(a.Region.Data),
+	})
+	if err != nil {
+		// a bundle that names nothing readable is this WorkSpace having no
+		// bundle to report, not a failure: one deleted or unreadable bundle
+		// must not take down a fleet-wide query
+		if errors.Is(err, errWorkspacesBundleUnresolved) {
+			log.Debug().Str("bundleId", bundleId).Str("region", a.Region.Data).Msg("workspaces>bundle>unresolved")
+			a.Bundle.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+	return res.(*mqlAwsWorkspacesBundle), nil
+}
+
 func (a *mqlAwsWorkspacesWorkspace) subnet() (*mqlAwsVpcSubnet, error) {
-	subnetId := a.SubnetId.Data
+	subnetId := a.cacheSubnetId
 	if subnetId == "" {
 		a.Subnet.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
@@ -714,4 +910,55 @@ func (a *mqlAwsWorkspacesWorkspace) subnet() (*mqlAwsVpcSubnet, error) {
 		return nil, err
 	}
 	return res.(*mqlAwsVpcSubnet), nil
+}
+
+type mqlAwsWorkspacesImageInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsWorkspacesImage) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return workspacesResourceTags(a.MqlRuntime, a.Region.Data, a.ImageId.Data)
+	})
+}
+
+type mqlAwsWorkspacesBundleInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsWorkspacesBundle) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return workspacesResourceTags(a.MqlRuntime, a.Region.Data, a.BundleId.Data)
+	})
+}
+
+type mqlAwsWorkspacesIpGroupInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsWorkspacesIpGroup) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return workspacesResourceTags(a.MqlRuntime, a.Region.Data, a.GroupId.Data)
+	})
+}
+
+// workspacesResourceTags lists the tags on a WorkSpaces resource by its ID.
+func workspacesResourceTags(runtime *plugin.Runtime, region string, resourceId string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Workspaces(region)
+	resp, err := svc.DescribeTags(context.Background(), &workspaces.DescribeTagsInput{
+		ResourceId: &resourceId,
+	})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("workspaces:DescribeTags"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return tagsToMap(resp.TagList,
+		func(t workspacestypes.Tag) *string { return t.Key },
+		func(t workspacestypes.Tag) *string { return t.Value }), nil
 }

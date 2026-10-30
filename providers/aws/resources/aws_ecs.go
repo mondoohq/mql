@@ -17,14 +17,14 @@ import (
 	ecstypes "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/slicesx"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/slicesx"
+	"go.mondoo.com/mql/utils/stringx"
 )
 
 func (a *mqlAwsEcs) id() (string, error) {
@@ -157,12 +157,6 @@ func initAwsEcsCluster(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 		return args, nil, nil
 	}
 
-	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
-		}
-	}
-
 	if args["arn"] == nil {
 		return nil, nil, errors.New("arn required to fetch ecs cluster")
 	}
@@ -249,11 +243,172 @@ func initAwsEcsCluster(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 		args["serviceConnectNamespace"] = llx.NilData
 	}
 
+	execCfg, err := newMqlEcsExecuteCommandConfiguration(runtime, a, region, conn.AccountId(), c.Configuration)
+	if err != nil {
+		return nil, nil, err
+	}
+	if execCfg != nil {
+		args["executeCommandConfiguration"] = llx.ResourceData(execCfg, "aws.ecs.cluster.executeCommandConfiguration")
+	} else {
+		args["executeCommandConfiguration"] = llx.NilData
+	}
+
+	managedStorage, err := newMqlEcsManagedStorageConfiguration(runtime, a, c.Configuration)
+	if err != nil {
+		return nil, nil, err
+	}
+	args["managedStorage"] = managedStorage
+
 	return args, nil, nil
+}
+
+// newMqlEcsExecuteCommandConfiguration builds the ECS Exec configuration
+// resource for a cluster, or returns nil when the cluster reports none.
+func newMqlEcsExecuteCommandConfiguration(runtime *plugin.Runtime, clusterArn, region, accountID string, cfg *ecstypes.ClusterConfiguration) (plugin.Resource, error) {
+	if cfg == nil || cfg.ExecuteCommandConfiguration == nil {
+		return nil, nil
+	}
+	ec := cfg.ExecuteCommandConfiguration
+
+	var logGroupName, s3Bucket, s3KeyPrefix string
+	var cwEncrypted, s3Encrypted bool
+	if ec.LogConfiguration != nil {
+		logGroupName = convert.ToValue(ec.LogConfiguration.CloudWatchLogGroupName)
+		s3Bucket = convert.ToValue(ec.LogConfiguration.S3BucketName)
+		s3KeyPrefix = convert.ToValue(ec.LogConfiguration.S3KeyPrefix)
+		cwEncrypted = ec.LogConfiguration.CloudWatchEncryptionEnabled
+		s3Encrypted = ec.LogConfiguration.S3EncryptionEnabled
+	}
+
+	res, err := CreateResource(runtime, "aws.ecs.cluster.executeCommandConfiguration", map[string]*llx.RawData{
+		"__id":                        llx.StringData(clusterArn + "/executeCommandConfiguration"),
+		"logging":                     llx.StringData(string(ec.Logging)),
+		"cloudWatchEncryptionEnabled": llx.BoolData(cwEncrypted),
+		"s3EncryptionEnabled":         llx.BoolData(s3Encrypted),
+		"s3KeyPrefix":                 llx.StringData(s3KeyPrefix),
+	})
+	if err != nil {
+		return nil, err
+	}
+	mqlCfg := res.(*mqlAwsEcsClusterExecuteCommandConfiguration)
+	mqlCfg.region = region
+	mqlCfg.accountID = accountID
+	mqlCfg.cacheKmsKeyId = convert.ToValue(ec.KmsKeyId)
+	mqlCfg.cacheLogGroupName = logGroupName
+	mqlCfg.cacheS3BucketName = s3Bucket
+	return mqlCfg, nil
+}
+
+type mqlAwsEcsClusterExecuteCommandConfigurationInternal struct {
+	region            string
+	accountID         string
+	cacheKmsKeyId     string
+	cacheLogGroupName string
+	cacheS3BucketName string
+}
+
+func (a *mqlAwsEcsClusterExecuteCommandConfiguration) kmsKey() (*mqlAwsKmsKey, error) {
+	if a.cacheKmsKeyId == "" {
+		a.KmsKey.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceAwsKmsKey, map[string]*llx.RawData{
+		"arn": llx.StringData(a.cacheKmsKeyId),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsKmsKey), nil
+}
+
+func (a *mqlAwsEcsClusterExecuteCommandConfiguration) cloudWatchLogGroup() (*mqlAwsCloudwatchLoggroup, error) {
+	if a.cacheLogGroupName == "" {
+		a.CloudWatchLogGroup.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	// ECS reports the log group by name; the log group init only accepts an
+	// ARN, so build one from the cluster's own region and account.
+	res, err := NewResource(a.MqlRuntime, "aws.cloudwatch.loggroup", map[string]*llx.RawData{
+		"arn": llx.StringData(fmt.Sprintf(logGroupArnPattern, a.region, a.accountID, a.cacheLogGroupName)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsCloudwatchLoggroup), nil
+}
+
+func (a *mqlAwsEcsClusterExecuteCommandConfiguration) s3Bucket() (*mqlAwsS3Bucket, error) {
+	if a.cacheS3BucketName == "" {
+		a.S3Bucket.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.s3.bucket", map[string]*llx.RawData{
+		"name": llx.StringData(a.cacheS3BucketName),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsS3Bucket), nil
 }
 
 func (a *mqlAwsEcsCluster) defaultCapacityProviderStrategy() ([]any, error) {
 	return nil, errors.New("defaultCapacityProviderStrategy not set during init")
+}
+
+func (a *mqlAwsEcsCluster) executeCommandConfiguration() (*mqlAwsEcsClusterExecuteCommandConfiguration, error) {
+	return nil, errors.New("executeCommandConfiguration not set during init")
+}
+
+func (a *mqlAwsEcsCluster) managedStorage() (*mqlAwsEcsClusterManagedStorageConfiguration, error) {
+	return nil, errors.New("managedStorage not set during init")
+}
+
+// newMqlEcsManagedStorageConfiguration builds the cluster's managed storage
+// encryption settings. A cluster with no ManagedStorageConfiguration names no
+// key of its own, which is reported as null rather than as a resource with two
+// empty keys.
+func newMqlEcsManagedStorageConfiguration(runtime *plugin.Runtime, clusterArn string, cfg *ecstypes.ClusterConfiguration) (*llx.RawData, error) {
+	if cfg == nil || cfg.ManagedStorageConfiguration == nil {
+		return llx.NilData, nil
+	}
+	msc := cfg.ManagedStorageConfiguration
+	res, err := CreateResource(runtime, "aws.ecs.cluster.managedStorageConfiguration", map[string]*llx.RawData{
+		"__id": llx.StringData(clusterArn + "/managedStorageConfiguration"),
+	})
+	if err != nil {
+		return nil, err
+	}
+	mqlMsc := res.(*mqlAwsEcsClusterManagedStorageConfiguration)
+	mqlMsc.cacheKmsKeyId = convert.ToValue(msc.KmsKeyId)
+	mqlMsc.cacheFargateEphemeralStorageKmsKeyId = convert.ToValue(msc.FargateEphemeralStorageKmsKeyId)
+	return llx.ResourceData(mqlMsc, "aws.ecs.cluster.managedStorageConfiguration"), nil
+}
+
+type mqlAwsEcsClusterManagedStorageConfigurationInternal struct {
+	cacheKmsKeyId                        string
+	cacheFargateEphemeralStorageKmsKeyId string
+}
+
+func (a *mqlAwsEcsClusterManagedStorageConfiguration) kmsKey() (*mqlAwsKmsKey, error) {
+	return resolveEcsManagedStorageKey(a.MqlRuntime, a.cacheKmsKeyId, &a.KmsKey.State)
+}
+
+func (a *mqlAwsEcsClusterManagedStorageConfiguration) fargateEphemeralStorageKmsKey() (*mqlAwsKmsKey, error) {
+	return resolveEcsManagedStorageKey(a.MqlRuntime, a.cacheFargateEphemeralStorageKmsKeyId, &a.FargateEphemeralStorageKmsKey.State)
+}
+
+func resolveEcsManagedStorageKey(runtime *plugin.Runtime, keyId string, state *plugin.State) (*mqlAwsKmsKey, error) {
+	if keyId == "" {
+		*state = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(runtime, ResourceAwsKmsKey, map[string]*llx.RawData{
+		"arn": llx.StringData(keyId),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsKmsKey), nil
 }
 
 func (a *mqlAwsEcsCluster) fargateEphemeralStorageKmsKey() (*mqlAwsKmsKey, error) {
@@ -314,8 +469,12 @@ func (a *mqlAwsEcsCluster) containerInstances() ([]any, error) {
 		}
 		nextToken = containerInstances.NextToken
 	}
-	if len(allContainerInstanceArns) > 0 {
-		containerInstancesDetail, err := svc.DescribeContainerInstances(ctx, &ecsservice.DescribeContainerInstancesInput{Cluster: &clustera, ContainerInstances: allContainerInstanceArns, Include: []ecstypes.ContainerInstanceField{ecstypes.ContainerInstanceFieldTags}})
+	// DescribeContainerInstances accepts at most 100 entries per request, so a
+	// cluster with more registered instances than that used to fail the call
+	// outright -- and the error was only logged, so the cluster reported zero
+	// container instances.
+	for _, batch := range slicesx.Batch(allContainerInstanceArns, 100) {
+		containerInstancesDetail, err := svc.DescribeContainerInstances(ctx, &ecsservice.DescribeContainerInstancesInput{Cluster: &clustera, ContainerInstances: batch, Include: []ecstypes.ContainerInstanceField{ecstypes.ContainerInstanceFieldTags}})
 		if err == nil {
 			for _, ci := range containerInstancesDetail.ContainerInstances {
 				versionInfo, err := convert.JsonToDict(ci.VersionInfo)
@@ -426,12 +585,6 @@ func (s *mqlAwsEcsTask) id() (string, error) {
 func initAwsEcsTask(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 2 {
 		return args, nil, nil
-	}
-
-	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
-		}
 	}
 
 	if args["arn"] == nil {
@@ -628,8 +781,6 @@ func (t *mqlAwsEcsTask) containers() ([]any, error) {
 				"region":             llx.StringData(t.region),
 				"runtimeId":          llx.StringDataPtr(c.RuntimeId),
 				"status":             llx.StringDataPtr(c.LastStatus),
-				"taskArn":            llx.StringData(t.Arn.Data),
-				"taskDefinitionArn":  llx.StringDataPtr(t.taskDefArn),
 				"memorySoftLimit":    llx.StringDataPtr(c.MemoryReservation),
 				"memoryHardLimit":    llx.StringDataPtr(c.Memory),
 				"reason":             llx.StringDataPtr(c.Reason),
@@ -639,6 +790,8 @@ func (t *mqlAwsEcsTask) containers() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		mqlContainer.(*mqlAwsEcsContainer).cacheTaskArn = t.Arn.Data
+		mqlContainer.(*mqlAwsEcsContainer).cacheTaskDefinitionArn = convert.ToValue(t.taskDefArn)
 		mqlContainer.(*mqlAwsEcsContainer).cacheRepositoryCredentialsArn = containerRepoCredsMap[convert.ToValue(c.Name)]
 		containers = append(containers, mqlContainer)
 	}
@@ -646,6 +799,8 @@ func (t *mqlAwsEcsTask) containers() ([]any, error) {
 }
 
 type mqlAwsEcsContainerInternal struct {
+	cacheTaskArn                  string
+	cacheTaskDefinitionArn        string
 	cacheRepositoryCredentialsArn string
 }
 
@@ -766,13 +921,7 @@ func (s *mqlAwsEcsContainer) id() (string, error) {
 }
 
 func ecsTagsToMap(tags []ecstypes.Tag) map[string]any {
-	res := map[string]any{}
-	for _, tag := range tags {
-		if tag.Key != nil && tag.Value != nil {
-			res[convert.ToValue(tag.Key)] = convert.ToValue(tag.Value)
-		}
-	}
-	return res
+	return tagsToMap(tags, func(t ecstypes.Tag) *string { return t.Key }, func(t ecstypes.Tag) *string { return t.Value })
 }
 
 // validateAndParseARN validates that the given string is a valid ECS ARN
@@ -922,7 +1071,7 @@ func createTaskDefinitionResource(runtime *plugin.Runtime, region string, td *ec
 	// Create volumes
 	volumes := []any{}
 	for i := range td.Volumes {
-		mqlVolume, err := createVolumeResource(runtime, region, &td.Volumes[i])
+		mqlVolume, err := createVolumeResource(runtime, region, convert.ToValue(td.TaskDefinitionArn), &td.Volumes[i])
 		if err != nil {
 			return nil, err
 		}
@@ -1088,19 +1237,10 @@ func createContainerDefinitionResource(runtime *plugin.Runtime, taskDefArn strin
 			return nil, err
 		}
 		logConfig = mqlLogConfig
-	} else {
-		// Create empty log configuration
-		mqlLogConfig, err := CreateResource(runtime, ResourceAwsEcsTaskDefinitionContainerDefinitionLogConfiguration,
-			map[string]*llx.RawData{
-				"__id":      llx.StringData(taskDefArn + "/container/" + name + "/logConfiguration"),
-				"logDriver": llx.StringData(""),
-				"options":   llx.MapData(map[string]any{}, types.String),
-			})
-		if err != nil {
-			return nil, err
-		}
-		logConfig = mqlLogConfig
 	}
+	// When the API returns no log configuration, the field stays null. Creating
+	// an empty sub-resource here made `logConfiguration != empty` true for
+	// EVERY container, so logging checks could never fail.
 
 	// Create port mappings
 	portMappings := []any{}
@@ -1175,10 +1315,10 @@ func createContainerDefinitionResource(runtime *plugin.Runtime, taskDefArn strin
 		repositoryCredentialsParameter = convert.ToValue(cd.RepositoryCredentials.CredentialsParameter)
 	}
 
-	// Type assert logConfig to Resource
-	logConfigResource, ok := logConfig.(plugin.Resource)
-	if !ok {
-		return nil, errors.New("failed to convert logConfig to Resource")
+	// Null when the container has no log configuration.
+	logConfigData := llx.NilData
+	if logConfigResource, ok := logConfig.(plugin.Resource); ok {
+		logConfigData = llx.ResourceData(logConfigResource, "aws.ecs.taskDefinition.containerDefinition.logConfiguration")
 	}
 
 	return CreateResource(runtime, ResourceAwsEcsTaskDefinitionContainerDefinition,
@@ -1191,7 +1331,7 @@ func createContainerDefinitionResource(runtime *plugin.Runtime, taskDefArn strin
 			"user":                           llx.StringData(user),
 			"environment":                    llx.ArrayData(envVars, types.Resource("aws.ecs.taskDefinition.containerDefinition.environmentVariable")),
 			"secrets":                        llx.ArrayData(secrets, types.Resource("aws.ecs.taskDefinition.containerDefinition.secret")),
-			"logConfiguration":               llx.ResourceData(logConfigResource, "aws.ecs.taskDefinition.containerDefinition.logConfiguration"),
+			"logConfiguration":               logConfigData,
 			"memory":                         llx.IntData(memory),
 			"cpu":                            llx.IntData(cpu),
 			"portMappings":                   llx.ArrayData(portMappings, types.Resource("aws.ecs.taskDefinition.containerDefinition.portMapping")),
@@ -1218,11 +1358,16 @@ func createContainerDefinitionResource(runtime *plugin.Runtime, taskDefArn strin
 		})
 }
 
-func createVolumeResource(runtime *plugin.Runtime, region string, vol *ecstypes.Volume) (any, error) {
+// createVolumeResource builds one task-definition volume. taskDefArn qualifies
+// every cache key below: volume names are unique only within a single task
+// definition revision, so keying on the bare name collapses same-named volumes
+// (data, tmp, config) across every revision in the account onto the first one.
+func createVolumeResource(runtime *plugin.Runtime, region string, taskDefArn string, vol *ecstypes.Volume) (any, error) {
 	volName := ""
 	if vol.Name != nil {
 		volName = *vol.Name
 	}
+	volKey := taskDefArn + "/volume/" + volName
 
 	// Create EFS volume configuration
 	var efsVolConfig any
@@ -1252,7 +1397,7 @@ func createVolumeResource(runtime *plugin.Runtime, region string, vol *ecstypes.
 			iam := string(efsConfig.AuthorizationConfig.Iam)
 			mqlAuthConfig, err := CreateResource(runtime, "aws.ecs.taskDefinition.volume.efsVolumeConfiguration.authorizationConfig",
 				map[string]*llx.RawData{
-					"__id":          llx.StringData(volName + "/efs/auth"),
+					"__id":          llx.StringData(volKey + "/efs/auth"),
 					"accessPointId": llx.StringData(accessPointId),
 					"iam":           llx.StringData(iam),
 				})
@@ -1264,7 +1409,7 @@ func createVolumeResource(runtime *plugin.Runtime, region string, vol *ecstypes.
 			// Create empty authorization config
 			mqlAuthConfig, err := CreateResource(runtime, "aws.ecs.taskDefinition.volume.efsVolumeConfiguration.authorizationConfig",
 				map[string]*llx.RawData{
-					"__id":          llx.StringData(volName + "/efs/auth"),
+					"__id":          llx.StringData(volKey + "/efs/auth"),
 					"accessPointId": llx.StringData(""),
 					"iam":           llx.StringData(""),
 				})
@@ -1281,8 +1426,7 @@ func createVolumeResource(runtime *plugin.Runtime, region string, vol *ecstypes.
 		}
 		mqlEfsConfig, err := CreateResource(runtime, "aws.ecs.taskDefinition.volume.efsVolumeConfiguration",
 			map[string]*llx.RawData{
-				"__id":                  llx.StringData(volName + "/efs"),
-				"fileSystemId":          llx.StringData(fileSystemId),
+				"__id":                  llx.StringData(volKey + "/efs"),
 				"rootDirectory":         llx.StringData(rootDirectory),
 				"transitEncryption":     llx.StringData(transitEncryption),
 				"transitEncryptionPort": llx.IntData(transitEncryptionPort),
@@ -1291,6 +1435,7 @@ func createVolumeResource(runtime *plugin.Runtime, region string, vol *ecstypes.
 		if err != nil {
 			return nil, err
 		}
+		mqlEfsConfig.(*mqlAwsEcsTaskDefinitionVolumeEfsVolumeConfiguration).cacheFileSystemId = fileSystemId
 		mqlEfsConfig.(*mqlAwsEcsTaskDefinitionVolumeEfsVolumeConfiguration).region = region
 		efsVolConfig = mqlEfsConfig
 	} else {
@@ -1298,7 +1443,7 @@ func createVolumeResource(runtime *plugin.Runtime, region string, vol *ecstypes.
 		// Create empty authorization config for empty EFS config
 		emptyAuthConfig, err := CreateResource(runtime, "aws.ecs.taskDefinition.volume.efsVolumeConfiguration.authorizationConfig",
 			map[string]*llx.RawData{
-				"__id":          llx.StringData(volName + "/efs/auth"),
+				"__id":          llx.StringData(volKey + "/efs/auth"),
 				"accessPointId": llx.StringData(""),
 				"iam":           llx.StringData(""),
 			})
@@ -1307,8 +1452,7 @@ func createVolumeResource(runtime *plugin.Runtime, region string, vol *ecstypes.
 		}
 		mqlEfsConfig, err := CreateResource(runtime, "aws.ecs.taskDefinition.volume.efsVolumeConfiguration",
 			map[string]*llx.RawData{
-				"__id":                  llx.StringData(volName + "/efs"),
-				"fileSystemId":          llx.StringData(""),
+				"__id":                  llx.StringData(volKey + "/efs"),
 				"rootDirectory":         llx.StringData(""),
 				"transitEncryption":     llx.StringData(""),
 				"transitEncryptionPort": llx.IntData(0),
@@ -1317,6 +1461,7 @@ func createVolumeResource(runtime *plugin.Runtime, region string, vol *ecstypes.
 		if err != nil {
 			return nil, err
 		}
+		mqlEfsConfig.(*mqlAwsEcsTaskDefinitionVolumeEfsVolumeConfiguration).cacheFileSystemId = ""
 		efsVolConfig = mqlEfsConfig
 	}
 
@@ -1329,7 +1474,7 @@ func createVolumeResource(runtime *plugin.Runtime, region string, vol *ecstypes.
 		}
 		mqlHost, err := CreateResource(runtime, "aws.ecs.taskDefinition.volume.host",
 			map[string]*llx.RawData{
-				"__id":       llx.StringData(volName + "/host"),
+				"__id":       llx.StringData(volKey + "/host"),
 				"sourcePath": llx.StringData(sourcePath),
 			})
 		if err != nil {
@@ -1340,7 +1485,7 @@ func createVolumeResource(runtime *plugin.Runtime, region string, vol *ecstypes.
 		// Create empty host config
 		mqlHost, err := CreateResource(runtime, "aws.ecs.taskDefinition.volume.host",
 			map[string]*llx.RawData{
-				"__id":       llx.StringData(volName + "/host"),
+				"__id":       llx.StringData(volKey + "/host"),
 				"sourcePath": llx.StringData(""),
 			})
 		if err != nil {
@@ -1376,7 +1521,7 @@ func createVolumeResource(runtime *plugin.Runtime, region string, vol *ecstypes.
 		}
 		mqlDocker, err := CreateResource(runtime, "aws.ecs.taskDefinition.volume.dockerVolumeConfiguration",
 			map[string]*llx.RawData{
-				"__id":          llx.StringData(volName + "/docker"),
+				"__id":          llx.StringData(volKey + "/docker"),
 				"scope":         llx.StringData(scope),
 				"autoprovision": llx.BoolData(autoprovision),
 				"driver":        llx.StringData(driver),
@@ -1391,7 +1536,7 @@ func createVolumeResource(runtime *plugin.Runtime, region string, vol *ecstypes.
 		// Create empty docker config
 		mqlDocker, err := CreateResource(runtime, "aws.ecs.taskDefinition.volume.dockerVolumeConfiguration",
 			map[string]*llx.RawData{
-				"__id":          llx.StringData(volName + "/docker"),
+				"__id":          llx.StringData(volKey + "/docker"),
 				"scope":         llx.StringData(""),
 				"autoprovision": llx.BoolData(false),
 				"driver":        llx.StringData(""),
@@ -1426,7 +1571,7 @@ func createVolumeResource(runtime *plugin.Runtime, region string, vol *ecstypes.
 		}
 		mqlS3files, err := CreateResource(runtime, "aws.ecs.taskDefinition.volume.s3filesVolumeConfiguration",
 			map[string]*llx.RawData{
-				"__id":                  llx.StringData(volName + "/s3files"),
+				"__id":                  llx.StringData(volKey + "/s3files"),
 				"fileSystemArn":         llx.StringData(fileSystemArn),
 				"accessPointArn":        llx.StringData(accessPointArn),
 				"rootDirectory":         llx.StringData(rootDirectory),
@@ -1439,7 +1584,7 @@ func createVolumeResource(runtime *plugin.Runtime, region string, vol *ecstypes.
 	} else {
 		mqlS3files, err := CreateResource(runtime, "aws.ecs.taskDefinition.volume.s3filesVolumeConfiguration",
 			map[string]*llx.RawData{
-				"__id":                  llx.StringData(volName + "/s3files"),
+				"__id":                  llx.StringData(volKey + "/s3files"),
 				"fileSystemArn":         llx.StringData(""),
 				"accessPointArn":        llx.StringData(""),
 				"rootDirectory":         llx.StringData(""),
@@ -1471,7 +1616,7 @@ func createVolumeResource(runtime *plugin.Runtime, region string, vol *ecstypes.
 
 	return CreateResource(runtime, "aws.ecs.taskDefinition.volume",
 		map[string]*llx.RawData{
-			"__id":                       llx.StringData(volName),
+			"__id":                       llx.StringData(volKey),
 			"name":                       llx.StringData(volName),
 			"efsVolumeConfiguration":     llx.ResourceData(efsVolConfigResource, "aws.ecs.taskDefinition.volume.efsVolumeConfiguration"),
 			"host":                       llx.ResourceData(hostConfigResource, "aws.ecs.taskDefinition.volume.host"),
@@ -1782,7 +1927,7 @@ func (a *mqlAwsEcsTaskDefinition) volumes() ([]any, error) {
 	}
 	volumes := []any{}
 	for i := range td.Volumes {
-		mqlVolume, err := createVolumeResource(a.MqlRuntime, a.Region.Data, &td.Volumes[i])
+		mqlVolume, err := createVolumeResource(a.MqlRuntime, a.Region.Data, a.Arn.Data, &td.Volumes[i])
 		if err != nil {
 			return nil, err
 		}
@@ -1902,8 +2047,10 @@ func (a *mqlAwsEcsTaskDefinitionVolume) s3filesVolumeConfiguration() (*mqlAwsEcs
 	return a.S3filesVolumeConfiguration.Data, nil
 }
 
+// id returns the task-definition-qualified cache key set at construction.
+// `name` alone is unique only within one task definition revision.
 func (a *mqlAwsEcsTaskDefinitionVolume) id() (string, error) {
-	return a.Name.Data, nil
+	return a.__id, nil
 }
 
 func (a *mqlAwsEcsTaskDefinitionEphemeralStorage) id() (string, error) {
@@ -1938,7 +2085,8 @@ func (a *mqlAwsEcsTaskDefinitionVolumeEfsVolumeConfiguration) authorizationConfi
 }
 
 type mqlAwsEcsTaskDefinitionVolumeEfsVolumeConfigurationInternal struct {
-	region string
+	cacheFileSystemId string
+	region            string
 }
 
 func (a *mqlAwsEcsTaskDefinitionVolumeEfsVolumeConfiguration) id() (string, error) {
@@ -1946,7 +2094,7 @@ func (a *mqlAwsEcsTaskDefinitionVolumeEfsVolumeConfiguration) id() (string, erro
 }
 
 func (a *mqlAwsEcsTaskDefinitionVolumeEfsVolumeConfiguration) fileSystem() (*mqlAwsEfsFilesystem, error) {
-	fsID := a.FileSystemId.Data
+	fsID := a.cacheFileSystemId
 	if fsID == "" {
 		a.FileSystem.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -2091,12 +2239,6 @@ func initAwsEcsService(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 		return args, nil, nil
 	}
 
-	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
-		}
-	}
-
 	if args["arn"] == nil {
 		return nil, nil, errors.New("arn required to fetch ecs service")
 	}
@@ -2179,7 +2321,6 @@ func initAwsEcsService(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	}
 
 	args["name"] = llx.StringDataPtr(s.ServiceName)
-	args["clusterArn"] = llx.StringDataPtr(s.ClusterArn)
 	args["status"] = llx.StringDataPtr(s.Status)
 	args["desiredCount"] = llx.IntData(int64(s.DesiredCount))
 	args["runningCount"] = llx.IntData(int64(s.RunningCount))
@@ -2246,12 +2387,103 @@ func initAwsEcsService(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	if err != nil {
 		return args, nil, err
 	}
+	res.(*mqlAwsEcsService).cacheClusterArn = convert.ToValue(s.ClusterArn)
 	res.(*mqlAwsEcsService).cacheRoleArn = s.RoleArn
+	res.(*mqlAwsEcsService).cachePrimaryDeployment = primaryEcsDeployment(s.Deployments)
 	return args, res, nil
 }
 
 type mqlAwsEcsServiceInternal struct {
-	cacheRoleArn *string
+	cacheClusterArn        string
+	cacheRoleArn           *string
+	cachePrimaryDeployment *ecstypes.Deployment
+}
+
+// primaryEcsDeployment returns the deployment carrying the service's current
+// configuration, or nil when there is none (a service using the EXTERNAL
+// deployment controller has task sets instead of deployments).
+func primaryEcsDeployment(deployments []ecstypes.Deployment) *ecstypes.Deployment {
+	for i := range deployments {
+		if convert.ToValue(deployments[i].Status) == "PRIMARY" {
+			return &deployments[i]
+		}
+	}
+	return nil
+}
+
+func (a *mqlAwsEcsService) vpcLatticeConfigurations() ([]any, error) {
+	if a.cachePrimaryDeployment == nil {
+		a.VpcLatticeConfigurations.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res := []any{}
+	for i, cfg := range a.cachePrimaryDeployment.VpcLatticeConfigurations {
+		args := map[string]*llx.RawData{
+			"__id":     llx.StringData(fmt.Sprintf("%s/vpcLatticeConfiguration/%d", a.Arn.Data, i)),
+			"portName": llx.StringDataPtr(cfg.PortName),
+		}
+		var advanced ecstypes.VpcLatticeAdvancedConfiguration
+		if cfg.AdvancedConfiguration != nil {
+			advanced = *cfg.AdvancedConfiguration
+		}
+		args["productionListenerRule"] = llx.StringDataPtr(advanced.ProductionListenerRule)
+		args["testListenerRule"] = llx.StringDataPtr(advanced.TestListenerRule)
+		mqlCfg, err := CreateResource(a.MqlRuntime, ResourceAwsEcsServiceVpcLatticeConfiguration, args)
+		if err != nil {
+			return nil, err
+		}
+		internal := mqlCfg.(*mqlAwsEcsServiceVpcLatticeConfiguration)
+		internal.cacheRoleArn = cfg.RoleArn
+		internal.cacheTargetGroupArn = convert.ToValue(cfg.TargetGroupArn)
+		internal.cacheAlternateTargetGroupArn = convert.ToValue(advanced.AlternateTargetGroupArn)
+		res = append(res, internal)
+	}
+	return res, nil
+}
+
+type mqlAwsEcsServiceVpcLatticeConfigurationInternal struct {
+	cacheRoleArn                 *string
+	cacheTargetGroupArn          string
+	cacheAlternateTargetGroupArn string
+}
+
+func (a *mqlAwsEcsServiceVpcLatticeConfiguration) iamRole() (*mqlAwsIamRole, error) {
+	return ecsIamRoleRef(a.MqlRuntime, a.cacheRoleArn, &a.IamRole)
+}
+
+func (a *mqlAwsEcsServiceVpcLatticeConfiguration) targetGroup() (*mqlAwsVpclatticeTargetGroup, error) {
+	return ecsVpcLatticeTargetGroupRef(a.MqlRuntime, a.cacheTargetGroupArn, &a.TargetGroup)
+}
+
+func (a *mqlAwsEcsServiceVpcLatticeConfiguration) alternateTargetGroup() (*mqlAwsVpclatticeTargetGroup, error) {
+	return ecsVpcLatticeTargetGroupRef(a.MqlRuntime, a.cacheAlternateTargetGroupArn, &a.AlternateTargetGroup)
+}
+
+// ecsVpcLatticeTargetGroupRef resolves a VPC Lattice target group by ARN.
+// aws.vpclattice.targetGroup has no by-ARN init, so the ARN is matched against
+// the account's target group list, which is enumerated once and cached on the
+// aws.vpclattice singleton. A target group outside the scanned account and
+// regions resolves to null.
+func ecsVpcLatticeTargetGroupRef(runtime *plugin.Runtime, tgArn string, field *plugin.TValue[*mqlAwsVpclatticeTargetGroup]) (*mqlAwsVpclatticeTargetGroup, error) {
+	if tgArn == "" {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	obj, err := CreateResource(runtime, ResourceAwsVpclattice, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	targetGroups := obj.(*mqlAwsVpclattice).GetTargetGroups()
+	if targetGroups.Error != nil {
+		return nil, targetGroups.Error
+	}
+	for _, tg := range targetGroups.Data {
+		if mqlTg, ok := tg.(*mqlAwsVpclatticeTargetGroup); ok && mqlTg.Arn.Data == tgArn {
+			return mqlTg, nil
+		}
+	}
+	field.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
 }
 
 func (a *mqlAwsEcsService) iamRole() (*mqlAwsIamRole, error) {
@@ -2317,6 +2549,19 @@ func createDeploymentConfigurationResource(runtime *plugin.Runtime, dc *ecstypes
 		"minimumHealthyPercent": llx.IntDataPtr(dc.MinimumHealthyPercent),
 		"bakeTimeInMinutes":     llx.IntDataPtr(dc.BakeTimeInMinutes),
 		"strategy":              llx.StringData(string(dc.Strategy)),
+	}
+	// A deployment that sets no early success criteria reports the three fields
+	// as null rather than as false/0/"": `enable: false` is a legitimate
+	// reading, so a zero value here would report "criteria configured and
+	// turned off" for a service that configured nothing.
+	if esc := dc.EarlySuccessCriteria; esc != nil {
+		args["earlySuccessCriteriaEnabled"] = llx.BoolData(esc.Enable)
+		args["earlySuccessCriteriaHealthyPercent"] = llx.IntDataPtr(esc.HealthyPercent)
+		args["earlySuccessCriteriaRevisionCleanup"] = llx.StringData(string(esc.SourceServiceRevisionCleanup))
+	} else {
+		args["earlySuccessCriteriaEnabled"] = llx.NilData
+		args["earlySuccessCriteriaHealthyPercent"] = llx.NilData
+		args["earlySuccessCriteriaRevisionCleanup"] = llx.NilData
 	}
 	// Always set deploymentCircuitBreaker, even if nil
 	if circuitBreakerResource != nil {
@@ -2400,7 +2645,7 @@ func (t *mqlAwsEcsTaskSet) networkConfiguration() (*mqlAwsEcsTaskSetNetworkConfi
 func (s *mqlAwsEcsService) taskSets() ([]any, error) {
 	conn := s.MqlRuntime.Connection.(*connection.AwsConnection)
 	serviceArn := s.Arn.Data
-	clusterArn := s.ClusterArn.Data
+	clusterArn := s.cacheClusterArn
 
 	parsedARN, err := arn.Parse(serviceArn)
 	if err != nil {
@@ -2446,8 +2691,6 @@ func (s *mqlAwsEcsService) taskSets() ([]any, error) {
 		args := map[string]*llx.RawData{
 			"arn":                  llx.StringData(taskSetArn),
 			"id":                   llx.StringData(convert.ToValue(ts.Id)),
-			"clusterArn":           llx.StringData(convert.ToValue(ts.ClusterArn)),
-			"serviceArn":           llx.StringData(convert.ToValue(ts.ServiceArn)),
 			"status":               llx.StringData(convert.ToValue(ts.Status)),
 			"taskDefinition":       llx.StringData(convert.ToValue(ts.TaskDefinition)),
 			"launchType":           llx.StringData(string(ts.LaunchType)),
@@ -2474,6 +2717,8 @@ func (s *mqlAwsEcsService) taskSets() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		mqlTaskSet.(*mqlAwsEcsTaskSet).cacheClusterArn = convert.ToValue(ts.ClusterArn)
+		mqlTaskSet.(*mqlAwsEcsTaskSet).cacheServiceArn = convert.ToValue(ts.ServiceArn)
 		res = append(res, mqlTaskSet)
 	}
 
@@ -2506,7 +2751,7 @@ func createTaskSetNetworkConfigurationResource(runtime *plugin.Runtime, nc *ecst
 }
 
 func (a *mqlAwsEcsContainer) taskDefinition() (*mqlAwsEcsTaskDefinition, error) {
-	arnVal := a.TaskDefinitionArn.Data
+	arnVal := a.cacheTaskDefinitionArn
 	if arnVal == "" {
 		a.TaskDefinition.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -2524,7 +2769,7 @@ func (a *mqlAwsEcsContainer) taskDefinition() (*mqlAwsEcsTaskDefinition, error) 
 }
 
 func (a *mqlAwsEcsContainer) task() (*mqlAwsEcsTask, error) {
-	arnVal := a.TaskArn.Data
+	arnVal := a.cacheTaskArn
 	if arnVal == "" {
 		a.Task.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -2556,7 +2801,7 @@ func (a *mqlAwsEcsService) taskDefinitionRef() (*mqlAwsEcsTaskDefinition, error)
 }
 
 func (a *mqlAwsEcsService) cluster() (*mqlAwsEcsCluster, error) {
-	arnVal := a.ClusterArn.Data
+	arnVal := a.cacheClusterArn
 	if arnVal == "" {
 		a.Cluster.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -2570,7 +2815,7 @@ func (a *mqlAwsEcsService) cluster() (*mqlAwsEcsCluster, error) {
 }
 
 func (a *mqlAwsEcsTaskSet) cluster() (*mqlAwsEcsCluster, error) {
-	arnVal := a.ClusterArn.Data
+	arnVal := a.cacheClusterArn
 	if arnVal == "" {
 		a.Cluster.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -2584,7 +2829,7 @@ func (a *mqlAwsEcsTaskSet) cluster() (*mqlAwsEcsCluster, error) {
 }
 
 func (a *mqlAwsEcsTaskSet) service() (*mqlAwsEcsService, error) {
-	arnVal := a.ServiceArn.Data
+	arnVal := a.cacheServiceArn
 	if arnVal == "" {
 		a.Service.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -2603,8 +2848,8 @@ func initAwsEcsTaskDefinition(runtime *plugin.Runtime, args map[string]*llx.RawD
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformEcsTaskdefinition); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -2753,8 +2998,8 @@ func (a *mqlAwsEcsCapacityProvider) autoScalingGroup() (*mqlAwsAutoscalingGroup,
 	// The Auto Scaling group name is the segment after the final "/" in the ARN,
 	// e.g. arn:aws:autoscaling:...:autoScalingGroupName/my-asg -> my-asg
 	name := a.cacheAutoScalingGroupArn
-	if idx := strings.LastIndex(name, "/"); idx >= 0 {
-		name = name[idx+1:]
+	if _, after, ok := strings.CutLast(name, "/"); ok {
+		name = after
 	}
 	if name == "" {
 		a.AutoScalingGroup.State = plugin.StateIsSet | plugin.StateIsNull
@@ -2855,4 +3100,9 @@ func ecsIamRoleRef(runtime *plugin.Runtime, arnPtr *string, field *plugin.TValue
 		return nil, err
 	}
 	return res.(*mqlAwsIamRole), nil
+}
+
+type mqlAwsEcsTaskSetInternal struct {
+	cacheClusterArn string
+	cacheServiceArn string
 }

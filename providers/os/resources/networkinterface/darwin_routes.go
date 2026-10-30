@@ -75,7 +75,7 @@ func (d *darwinRouteDetector) fetchDarwinRoutes(af int) ([]Route, error) {
 		routes = append(routes, Route{
 			Destination: dest,
 			Gateway:     gateway,
-			Flags:       parseRouteFlags(int64(routeMsg.Flags)),
+			Flags:       parseBSDRouteFlags(int64(routeMsg.Flags)),
 			Interface:   iface,
 		})
 	}

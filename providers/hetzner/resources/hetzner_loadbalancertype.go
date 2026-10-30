@@ -5,11 +5,10 @@ package resources
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func (r *mqlHetznerLoadBalancerType) id() (string, error) {
@@ -36,12 +35,6 @@ func (h *mqlHetzner) loadBalancerTypes() ([]any, error) {
 }
 
 func newMqlHetznerLoadBalancerType(runtime *plugin.Runtime, t *hcloud.LoadBalancerType) (*mqlHetznerLoadBalancerType, error) {
-	var dep *time.Time
-	if t.Deprecated != nil && *t.Deprecated != "" {
-		if parsed, err := time.Parse(time.RFC3339, *t.Deprecated); err == nil {
-			dep = &parsed
-		}
-	}
 	res, err := CreateResource(runtime, "hetzner.loadBalancerType", map[string]*llx.RawData{
 		"__id":                    llx.StringData(fmt.Sprintf("hetzner.loadBalancerType/%d", t.ID)),
 		"id":                      llx.IntData(t.ID),
@@ -51,7 +44,7 @@ func newMqlHetznerLoadBalancerType(runtime *plugin.Runtime, t *hcloud.LoadBalanc
 		"maxServices":             llx.IntData(int64(t.MaxServices)),
 		"maxTargets":              llx.IntData(int64(t.MaxTargets)),
 		"maxAssignedCertificates": llx.IntData(int64(t.MaxAssignedCertificates)),
-		"deprecated":              llx.TimeDataPtr(dep),
+		"deprecation":             llx.DictData(deprecationDict(t.Deprecation)),
 	})
 	if err != nil {
 		return nil, err
@@ -60,9 +53,9 @@ func newMqlHetznerLoadBalancerType(runtime *plugin.Runtime, t *hcloud.LoadBalanc
 }
 
 func initHetznerLoadBalancerType(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "loadBalancerType")
+	if err != nil {
+		return nil, nil, err
 	}
 	t, _, err := conn(runtime).Client().LoadBalancerType.GetByID(ctx(), id)
 	if err != nil {

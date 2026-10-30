@@ -1,0 +1,11 @@
+[
+ {
+  "ciphers": "auto",
+  "forwarding-enabled": "no",
+  "host-key-size": "2048",
+  "host-key-type": "rsa",
+  "password-authentication": "yes-if-no-key",
+  "publickey-authentication-options": "none",
+  "strong-crypto": "false"
+ }
+]

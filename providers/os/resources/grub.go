@@ -5,16 +5,25 @@ package resources
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
+	"fmt"
 	"io"
+	"os"
+	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/iox"
 )
 
 // Known paths for /etc/default/grub
@@ -48,11 +57,59 @@ var grubCfgPaths = []string{
 	"/boot/efi/EFI/Microsoft/grub.cfg",   // WSL/Hyper-V (EFI)
 }
 
+// Known paths for a GRUB legacy menu. GRUB 0.97 keeps the whole menu in one
+// file, and the distributions that shipped it disagree on its name: Debian and
+// Ubuntu wrote menu.lst, the Red Hat family through RHEL 6 and Amazon Linux 1
+// wrote grub.conf. On the Red Hat family only one of them is a real file and
+// the others are symlinks to it, so every name it answers to is listed, since a
+// filesystem or image scan need not resolve a link.
+var grubLegacyCfgPaths = []string{
+	"/boot/grub/menu.lst",
+	"/boot/grub/grub.conf",
+	"/boot/grub2/grub.conf",
+	"/etc/grub.conf",
+}
+
+// Boot Loader Specification entries. Red Hat Enterprise Linux 8 and later,
+// CentOS Stream, Rocky Linux, AlmaLinux and Amazon Linux 2023 keep their kernel
+// command lines here and leave grub.cfg with no kernel lines at all.
+const blsEntriesDir = "/boot/loader/entries"
+
+// Every directory the entries are kept in. GRUB's blscfg reads loader/entries
+// on the filesystem it booted from, and boot/loader/entries there when that
+// holds none, so the Red Hat family's entries sit under /boot. SUSE's
+// sdbootutil, which installs systemd-boot and grub2-bls on SUSE Linux
+// Enterprise 16 and openSUSE Leap 16, writes them to $BOOT, the EFI system
+// partition, which is mounted at /efi or /boot/efi.
+var blsEntriesDirs = []string{
+	blsEntriesDir,
+	"/efi/loader/entries",
+	"/boot/efi/loader/entries",
+}
+
+// The GRUB environment block, which holds the value of $kernelopts on the
+// releases whose entries reference it. On some distributions the path under
+// /boot/grub2 is a symlink to a copy on the EFI system partition.
+var grubEnvPaths = []string{
+	"/boot/grub2/grubenv",
+	"/boot/grub/grubenv",
+}
+
 type mqlGrubConfigInternal struct {
 	lock              sync.Mutex
 	fetched           bool
-	cachedEntries     []GrubEntry
+	cachedGrubFound   bool
+	cachedEntriesOK   bool
+	cachedEntries     []BootEntry
 	cachedPwProtected bool
+
+	// A non-root scan of the Red Hat family cannot read /boot/grub2 or
+	// /boot/loader/entries (both 0700). cachedGrubRefused records that no
+	// boot menu was found because a known location refused to be read, and
+	// cachedEntriesRefused that the entry files refused to be read, so that
+	// the fields report the refusal rather than a host without GRUB.
+	cachedGrubRefused    error
+	cachedEntriesRefused error
 }
 
 func initGrubConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -69,20 +126,20 @@ func initGrubConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 	if x, ok := args["defaultsPath"]; ok {
 		path, ok := x.Value.(string)
 		if !ok || path == "" {
-			args["defaultsPath"] = llx.StringData(findExistingPath(fs, grubDefaultsPaths))
+			args["defaultsPath"] = llx.StringData(findGrubDefaultsPath(fs))
 		}
 	} else {
-		args["defaultsPath"] = llx.StringData(findExistingPath(fs, grubDefaultsPaths))
+		args["defaultsPath"] = llx.StringData(findGrubDefaultsPath(fs))
 	}
 
 	// Resolve grubPath
 	if x, ok := args["grubPath"]; ok {
 		path, ok := x.Value.(string)
 		if !ok || path == "" {
-			args["grubPath"] = llx.StringData(findExistingPath(fs, grubCfgPaths))
+			args["grubPath"] = llx.StringData(findBootConfig(fs))
 		}
 	} else {
-		args["grubPath"] = llx.StringData(findExistingPath(fs, grubCfgPaths))
+		args["grubPath"] = llx.StringData(findBootConfig(fs))
 	}
 
 	return args, nil, nil
@@ -101,13 +158,74 @@ func findExistingPath(fs afero.Fs, candidates []string) string {
 	return ""
 }
 
+// findGrubDefaultsPath returns the defaults file grub-mkconfig sources, or ""
+// when there is none. A file that exists but may not be read is returned, so
+// that params reports the refusal instead of describing a host without one.
+func findGrubDefaultsPath(fs afero.Fs) string {
+	for _, path := range grubDefaultsPaths {
+		f, err := fs.Open(path)
+		if err == nil {
+			f.Close()
+			return path
+		}
+		if isReadRefused(err) {
+			return path
+		}
+	}
+	return ""
+}
+
+// findBootConfig returns the boot loader configuration to read. A GRUB 2
+// grub.cfg wins wherever one exists, since a host that has been upgraded can
+// keep a stale legacy menu beside the configuration it actually boots from.
+func findBootConfig(fs afero.Fs) string {
+	if p := findGrubCfg(fs, grubCfgPaths); p != "" {
+		return p
+	}
+	return findExistingPath(fs, grubLegacyCfgPaths)
+}
+
+// findGrubCfg returns the first candidate holding a real configuration. A
+// distribution that boots via EFI commonly installs a grub.cfg on the EFI
+// system partition that only chains to the configuration under /boot, and that
+// stub declares no entries, so it is used only when nothing else is readable.
+//
+// A candidate that exists but cannot be read, which is what a non-root scan
+// meets where grub.cfg is 0600 (SUSE) or /boot/grub2 is 0700 (the Red Hat
+// family), wins over a stub: the stub only says the real configuration is
+// elsewhere, and reading it as the configuration would report a host whose
+// boot menu is password protected as one without a password.
+func findGrubCfg(fs afero.Fs, candidates []string) string {
+	fallback := ""
+	denied := ""
+	for _, path := range candidates {
+		content, err := afero.ReadFile(fs, path)
+		if err != nil {
+			if denied == "" && isReadRefused(err) {
+				denied = path
+			}
+			continue
+		}
+		if fallback == "" {
+			fallback = path
+		}
+		if !isGrubCfgStub(content) {
+			return path
+		}
+	}
+	if denied != "" {
+		return denied
+	}
+	return fallback
+}
+
 func (g *mqlGrubConfig) id() (string, error) {
 	return "grub.config:" + g.DefaultsPath.Data + "+" + g.GrubPath.Data, nil
 }
 
 func (g *mqlGrubConfig) params() (map[string]any, error) {
-	path := g.GetDefaultsPath().Data
-	if path == "" {
+	defaultsPath := g.GetDefaultsPath().Data
+	if defaultsPath == "" {
 		return map[string]any{}, nil
 	}
 
@@ -120,15 +238,26 @@ func (g *mqlGrubConfig) params() (map[string]any, error) {
 		return nil, errors.New("filesystem not available")
 	}
 
-	f, err := fs.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
+	asset := conn.Asset()
+	readDropIns := asset != nil && grubMkconfigReadsDropIns(asset.Platform)
+	return grubDefaultsParams(fs, defaultsPath, readDropIns)
+}
 
-	params, err := ParseGrubDefaults(f)
+// grubDefaultsParams returns the settings of the defaults file at
+// defaultsPath and, with dropIns set, its drop-ins. A file or drop-in
+// directory that refuses to be read is a forbidden error. v13 reported a
+// refused /etc/default/grub as no settings at all; that stays until structured
+// errors are the default (ADR 046 §9).
+func grubDefaultsParams(fs afero.Fs, defaultsPath string, dropIns bool) (map[string]any, error) {
+	params, err := loadGrubDefaults(fs, defaultsPath, dropIns)
 	if err != nil {
-		return nil, err
+		if !isReadRefused(err) {
+			return nil, err
+		}
+		if !plugin.StructuredErrors() {
+			return map[string]any{}, nil
+		}
+		return nil, llx.Forbidden(fmt.Errorf("cannot read the GRUB defaults: %w", err))
 	}
 
 	result := make(map[string]any, len(params))
@@ -150,12 +279,6 @@ func (g *mqlGrubConfig) fetchGrubCfg() error {
 		return nil
 	}
 
-	path := g.GetGrubPath().Data
-	if path == "" {
-		g.fetched = true
-		return nil
-	}
-
 	conn, ok := g.MqlRuntime.Connection.(shared.Connection)
 	if !ok {
 		return errors.New("wrong connection type")
@@ -165,26 +288,88 @@ func (g *mqlGrubConfig) fetchGrubCfg() error {
 		return errors.New("filesystem not available")
 	}
 
-	f, err := fs.Open(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
+	return g.loadGrubCfg(fs, g.GetGrubPath().Data)
+}
 
-	content, err := io.ReadAll(f)
-	if err != nil {
-		return err
+// loadGrubCfg reads the boot menu at cfgPath, and the entry files it hands
+// over to, into the cache.
+func (g *mqlGrubConfig) loadGrubCfg(fs afero.Fs, cfgPath string) error {
+	if cfgPath == "" {
+		g.loadWithoutGrubCfg(fs, grubConfigRefused(fs))
+		return nil
 	}
 
-	entries, err := ParseGrubCfgEntries(strings.NewReader(string(content)))
+	content, err := afero.ReadFile(fs, cfgPath)
 	if err != nil {
-		return err
+		if !isReadRefused(err) {
+			return err
+		}
+		refused := grubCfgReadRefused(cfgPath, err)
+		if !isKnownBootConfig(cfgPath) {
+			// A path the query names is answered with the refusal, as v13
+			// answered it with the error.
+			return refused
+		}
+		// init found the boot menu but may not read it. It is reported the
+		// way v13 reported a boot menu it could not find.
+		g.loadWithoutGrubCfg(fs, refused)
+		return nil
+	}
+
+	entries, err := LoadGrubEntries(fs, cfgPath, content)
+	if err != nil {
+		if !errors.Is(err, llx.ErrForbidden) {
+			return err
+		}
+		// grub.cfg was read, so password protection is still answered.
+		g.cachedEntriesRefused = err
+	}
+	g.cachedEntriesOK = len(entries) > 0
+
+	if isGrubLegacyCfg(content) {
+		// A legacy menu states password protection with a directive of its
+		// own, which the GRUB 2 parser does not recognise and would read as
+		// no password on a host that has one.
+		g.cachedEntries = entries
+		g.cachedPwProtected = ParseGrubLegacyPasswordProtected(content)
+		g.cachedGrubFound = true
+		g.fetched = true
+		return nil
+	}
+
+	pwCfg := ParseGrubPasswordConfig(content)
+	protected := pwCfg.Protected()
+	// RHEL-family grub.cfg files carry a templated 01_users block whose
+	// credential is read from ${prefix}/user.cfg at boot. When grub.cfg only
+	// references those variables, the credential itself lives in user.cfg.
+	if !protected && pwCfg.ReferencesVars() {
+		if vars := readGrubUserCfg(fs, cfgPath); vars != nil {
+			protected = pwCfg.ProtectedWith(vars)
+		}
 	}
 
 	g.cachedEntries = entries
-	g.cachedPwProtected = ParseGrubPasswordProtected(content)
+	g.cachedPwProtected = protected
+	g.cachedGrubFound = true
 	g.fetched = true
 	return nil
+}
+
+// loadWithoutGrubCfg reads what can be read when there is no grub.cfg to read,
+// or the one that exists refused to be read. The entry files can still be read
+// directly. The Boot Loader Specification is not GRUB's alone, so entries here
+// say nothing about which bootloader reads them, and systemd-boot keeps its
+// entries in the same directories. cachedGrubFound therefore stays false and
+// passwordProtected stays null: reporting false would say GRUB is installed and
+// unprotected on a host that may not run GRUB at all, or whose configuration
+// sets a password that could not be read.
+func (g *mqlGrubConfig) loadWithoutGrubCfg(fs afero.Fs, grubRefused error) {
+	entries, err := LoadGrubEntries(fs, "", nil)
+	g.cachedEntriesRefused = forbiddenOnly(err)
+	g.cachedGrubRefused = grubRefused
+	g.cachedEntries = entries
+	g.cachedEntriesOK = len(entries) > 0
+	g.fetched = true
 }
 
 func (g *mqlGrubConfig) entries() ([]any, error) {
@@ -192,15 +377,39 @@ func (g *mqlGrubConfig) entries() ([]any, error) {
 		return nil, err
 	}
 
+	if !g.cachedEntriesOK {
+		refused := g.cachedEntriesRefused
+		if refused == nil {
+			refused = g.cachedGrubRefused
+		}
+		if refused != nil && plugin.StructuredErrors() {
+			return nil, refused
+		}
+		// A host that does not boot with GRUB has no entries to report. An
+		// empty list would read as "GRUB is installed and offers nothing to
+		// boot", and would satisfy every assertion made over the entries.
+		// v13 also reported entries it was refused as null; that stays until
+		// structured errors are the default.
+		g.Entries.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
 	resources := make([]any, 0, len(g.cachedEntries))
 	for _, entry := range g.cachedEntries {
-		entryID := "grub.config.entry:" + entry.Title + ":" + entry.Cmdline
+		entryID := "grub.config.entry:" + entry.Source + ":" + entry.Title + ":" + entry.Cmdline
 		resource, err := CreateResource(g.MqlRuntime, "grub.config.entry", map[string]*llx.RawData{
-			"__id":      llx.StringData(entryID),
-			"title":     llx.StringData(entry.Title),
-			"cmdline":   llx.StringData(entry.Cmdline),
-			"initrd":    llx.StringData(entry.Initrd),
-			"isSubmenu": llx.BoolData(entry.IsSubmenu),
+			"__id":            llx.StringData(entryID),
+			"title":           llx.StringData(entry.Title),
+			"kind":            llx.StringData(entry.Kind),
+			"bootable":        llx.BoolData(entry.Bootable),
+			"kernel":          llx.StringData(entry.Kernel),
+			"cmdline":         llx.StringData(entry.Cmdline),
+			"parameters":      llx.MapData(convert.MapToInterfaceMap(entry.Parameters), types.String),
+			"parameterValues": llx.MapData(parameterValuesData(entry.ParameterValues), types.Array(types.String)),
+			"flags":           llx.ArrayData(convert.SliceAnyToInterface(entry.Flags), types.String),
+			"source":          llx.StringData(entry.Source),
+			"initrd":          llx.StringData(entry.Initrd),
+			"isSubmenu":       llx.BoolData(entry.IsSubmenu),
 		})
 		if err != nil {
 			return nil, err
@@ -215,6 +424,17 @@ func (g *mqlGrubConfig) passwordProtected() (bool, error) {
 	if err := g.fetchGrubCfg(); err != nil {
 		return false, err
 	}
+	if !g.cachedGrubFound {
+		if g.cachedGrubRefused != nil && plugin.StructuredErrors() {
+			return false, g.cachedGrubRefused
+		}
+		// No grub.cfg exists in any known location, so the host either boots
+		// with a different bootloader or keeps its configuration somewhere we
+		// cannot see. Reporting false there would read as "GRUB is installed
+		// and has no password", which is a finding we have not made.
+		g.PasswordProtected.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
 	return g.cachedPwProtected, nil
 }
 
@@ -222,28 +442,380 @@ func (e *mqlGrubConfigEntry) id() (string, error) {
 	return e.MqlID(), nil
 }
 
+// grubMkconfigReadsDropIns reports whether the platform's grub-mkconfig
+// sources /etc/default/grub.d/*.cfg after /etc/default/grub. Only Debian's
+// does, through a patch Ubuntu and the other derivatives carry. Upstream GRUB,
+// and the grub2-mkconfig of SUSE, Fedora, the Red Hat family and Amazon Linux,
+// source /etc/default/grub alone, so a drop-in there never reaches the
+// configuration those hosts boot with.
+func grubMkconfigReadsDropIns(platform *inventory.Platform) bool {
+	return platform.IsFamily("debian")
+}
+
+// loadGrubDefaults returns the settings grub-mkconfig sees: it sources the
+// defaults file (/etc/default/grub) and then, when dropIns is set, every
+// *.cfg file in the matching .d directory (/etc/default/grub.d) in name
+// order, so a drop-in overrides the defaults file and a later drop-in
+// overrides an earlier one. Ubuntu cloud images set
+// GRUB_CMDLINE_LINUX_DEFAULT in such a drop-in.
+func loadGrubDefaults(fs afero.Fs, defaultsPath string, dropIns bool) (map[string]string, error) {
+	// One map carries the settings from file to file, so that a drop-in
+	// appending to a setting, as in GRUB_CMDLINE_LINUX="$GRUB_CMDLINE_LINUX x",
+	// sees what the files before it assigned.
+	params := map[string]string{}
+	if err := readGrubDefaultsFile(fs, defaultsPath, params); err != nil {
+		return nil, err
+	}
+	if !dropIns {
+		return params, nil
+	}
+
+	files, err := grubDefaultsDropIns(fs, defaultsPath+".d")
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range files {
+		if err := readGrubDefaultsFile(fs, name, params); err != nil {
+			return nil, err
+		}
+	}
+	return params, nil
+}
+
+func readGrubDefaultsFile(fs afero.Fs, name string, vars map[string]string) error {
+	f, err := fs.Open(name)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return parseGrubDefaultsInto(f, vars)
+}
+
+// grubDefaultsDropIns lists the files grub-mkconfig's `for x in
+// ${sysconfdir}/default/grub.d/*.cfg` loop sources, in glob order
+// (afero.ReadDir sorts by name). A missing directory means there are none.
+func grubDefaultsDropIns(fs afero.Fs, dir string) ([]string, error) {
+	entries, err := afero.ReadDir(fs, dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var names []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || strings.HasPrefix(name, ".") || !strings.HasSuffix(name, ".cfg") {
+			continue
+		}
+		names = append(names, path.Join(dir, name))
+	}
+	return names, nil
+}
+
 // ParseGrubDefaults parses /etc/default/grub which is a shell-style key=value file.
 func ParseGrubDefaults(r io.Reader) (map[string]string, error) {
 	params := map[string]string{}
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		// Skip comments and empty lines
+	if err := parseGrubDefaultsInto(r, params); err != nil {
+		return nil, err
+	}
+	return params, nil
+}
+
+// parseGrubDefaultsInto reads the assignments of a defaults file the way
+// grub-mkconfig's shell does when it sources the file, and stores them in
+// vars. A reference to a variable ($VAR or ${VAR}) outside single quotes is
+// replaced by what vars holds for it, so a file can extend a setting an
+// earlier file made.
+func parseGrubDefaultsInto(r io.Reader, vars map[string]string) error {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(data), "\n")
+	for i := 0; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
 		if line == "" || line[0] == '#' {
 			continue
 		}
-		// Parse KEY=VALUE (shell-style, with optional quoting)
-		idx := strings.IndexByte(line, '=')
-		if idx < 0 {
+
+		// A quoted value may run on over several lines.
+		stmt := line
+		end := i
+		for parseGrubShellAssignments(stmt, vars) {
+			if end+1 >= len(lines) {
+				// The quote never closes, which the shell rejects. Keep the
+				// line as written and go on with the next one.
+				parseGrubDefaultsLineLiteral(line, vars)
+				end = i
+				break
+			}
+			end++
+			stmt += "\n" + strings.TrimRight(lines[end], "\r")
+		}
+		i = end
+	}
+	return nil
+}
+
+// parseGrubDefaultsLineLiteral stores KEY=VALUE without interpreting the
+// value beyond removing the quotes around it.
+func parseGrubDefaultsLineLiteral(line string, vars map[string]string) {
+	before, after, ok := strings.Cut(line, "=")
+	if !ok {
+		return
+	}
+	key := strings.TrimSpace(before)
+	if fields := strings.Fields(key); len(fields) == 2 && fields[0] == "export" {
+		key = fields[1]
+	}
+	vars[key] = stripQuotes(strings.TrimSpace(after))
+}
+
+// grubMkconfigComputedVars are the variables grub-mkconfig sets itself
+// before it sources the defaults files. A reference to one of them keeps
+// its $NAME form, since its value depends on the host's disks.
+var grubMkconfigComputedVars = map[string]bool{
+	"GRUB_DEVICE":           true,
+	"GRUB_DEVICE_UUID":      true,
+	"GRUB_DEVICE_PARTUUID":  true,
+	"GRUB_DEVICE_BOOT":      true,
+	"GRUB_DEVICE_BOOT_UUID": true,
+	"GRUB_FS":               true,
+}
+
+// parseGrubShellAssignments interprets one shell statement made of
+// assignments separated by blanks or semicolons, which may end in a comment,
+// and stores them in vars. A statement that runs a command assigns nothing
+// to the shell (`KEY=value cmd` sets KEY for cmd alone), so it is skipped.
+// The result reports an unterminated quote, in which case vars is untouched
+// and the caller retries with the next line appended.
+func parseGrubShellAssignments(stmt string, vars map[string]string) (unterminated bool) {
+	type assignment struct{ key, value string }
+	var pending []assignment
+	lookup := func(name string) (string, bool) {
+		for _, p := range slices.Backward(pending) {
+			if p.key == name {
+				return p.value, true
+			}
+		}
+		v, ok := vars[name]
+		return v, ok
+	}
+
+	commit := func() {
+		for _, a := range pending {
+			vars[a.key] = a.value
+		}
+		pending = nil
+	}
+
+	pos := 0
+	for {
+		for pos < len(stmt) && (stmt[pos] == ' ' || stmt[pos] == '\t') {
+			pos++
+		}
+		if pos >= len(stmt) || stmt[pos] == '#' {
+			commit()
+			return false
+		}
+		if stmt[pos] == ';' {
+			commit()
+			pos++
 			continue
 		}
-		key := strings.TrimSpace(line[:idx])
-		value := strings.TrimSpace(line[idx+1:])
-		// Strip surrounding quotes
-		value = stripQuotes(value)
-		params[key] = value
+
+		rest := stmt[pos:]
+		if after, ok := strings.CutPrefix(rest, "export"); ok && after != "" && (after[0] == ' ' || after[0] == '\t') {
+			pos += len("export")
+			for pos < len(stmt) && (stmt[pos] == ' ' || stmt[pos] == '\t') {
+				pos++
+			}
+			rest = stmt[pos:]
+		}
+
+		n := shellNameLen(rest)
+		if n == 0 || n >= len(rest) || rest[n] != '=' {
+			// A command, not an assignment.
+			return false
+		}
+		key := rest[:n]
+		value, used, open := readGrubShellWord(rest[n+1:], lookup)
+		if open {
+			return true
+		}
+		pending = append(pending, assignment{key, value})
+		pos += n + 1 + used
 	}
-	return params, scanner.Err()
+}
+
+// shellNameLen returns the length of the shell variable name s starts with.
+func shellNameLen(s string) int {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (i > 0 && c >= '0' && c <= '9') {
+			continue
+		}
+		return i
+	}
+	return len(s)
+}
+
+// readGrubShellWord reads the value of an assignment up to the first
+// unquoted blank or semicolon and returns it with quotes removed and
+// variables expanded, as the shell assigns it. Command substitutions are
+// not run: they are kept as written. open reports a quote that does not
+// close within s.
+func readGrubShellWord(s string, lookup func(string) (string, bool)) (value string, used int, open bool) {
+	var b strings.Builder
+	i := 0
+	for i < len(s) {
+		c := s[i]
+		switch c {
+		case ' ', '\t', ';':
+			return b.String(), i, false
+		case '\\':
+			if i+1 >= len(s) {
+				return "", 0, true
+			}
+			if s[i+1] != '\n' {
+				b.WriteByte(s[i+1])
+			}
+			i += 2
+		case '\'':
+			j := strings.IndexByte(s[i+1:], '\'')
+			if j < 0 {
+				return "", 0, true
+			}
+			b.WriteString(s[i+1 : i+1+j])
+			i += j + 2
+		case '"':
+			i++
+			closed := false
+			for i < len(s) && !closed {
+				switch c := s[i]; c {
+				case '"':
+					closed = true
+					i++
+				case '\\':
+					if i+1 >= len(s) {
+						return "", 0, true
+					}
+					switch next := s[i+1]; next {
+					case '$', '`', '"', '\\':
+						b.WriteByte(next)
+					case '\n':
+					default:
+						b.WriteByte(c)
+						b.WriteByte(next)
+					}
+					i += 2
+				case '$':
+					n, ok := expandGrubShellVar(s[i:], lookup, &b)
+					if !ok {
+						return "", 0, true
+					}
+					i += n
+				case '`':
+					j := strings.IndexByte(s[i+1:], '`')
+					if j < 0 {
+						return "", 0, true
+					}
+					b.WriteString(s[i : i+j+2])
+					i += j + 2
+				default:
+					b.WriteByte(c)
+					i++
+				}
+			}
+			if !closed {
+				return "", 0, true
+			}
+		case '$':
+			n, ok := expandGrubShellVar(s[i:], lookup, &b)
+			if !ok {
+				return "", 0, true
+			}
+			i += n
+		case '`':
+			j := strings.IndexByte(s[i+1:], '`')
+			if j < 0 {
+				return "", 0, true
+			}
+			b.WriteString(s[i : i+j+2])
+			i += j + 2
+		default:
+			b.WriteByte(c)
+			i++
+		}
+	}
+	return b.String(), i, false
+}
+
+// expandGrubShellVar writes the expansion of the $ expression s starts with
+// to b and returns how much of s it consumed. ok is false when a $( or ${
+// does not close within s.
+//
+// A variable the files assigned expands to its value. One they never
+// assigned expands to nothing, as in the shell, unless grub-mkconfig sets it
+// itself or it is not a GRUB_ setting: those keep their $NAME form, since
+// their value is not in the files. Command substitutions and parameter
+// expansions with operators are kept as written.
+func expandGrubShellVar(s string, lookup func(string) (string, bool), b *strings.Builder) (used int, ok bool) {
+	resolve := func(name, written string) {
+		if v, ok := lookup(name); ok {
+			b.WriteString(v)
+			return
+		}
+		if grubMkconfigComputedVars[name] || !strings.HasPrefix(name, "GRUB_") {
+			b.WriteString(written)
+		}
+	}
+
+	if len(s) < 2 {
+		b.WriteByte('$')
+		return 1, true
+	}
+	switch s[1] {
+	case '(':
+		// Parentheses are counted without regard to quoting, so a quoted ")"
+		// inside the substitution ends it early. Defaults files do not
+		// carry such substitutions.
+		depth := 0
+		for i := 1; i < len(s); i++ {
+			switch s[i] {
+			case '(':
+				depth++
+			case ')':
+				depth--
+				if depth == 0 {
+					b.WriteString(s[:i+1])
+					return i + 1, true
+				}
+			}
+		}
+		return 0, false
+	case '{':
+		j := strings.IndexByte(s, '}')
+		if j < 0 {
+			return 0, false
+		}
+		name := s[2:j]
+		if n := shellNameLen(name); n > 0 && n == len(name) && (name[0] < '0' || name[0] > '9') {
+			resolve(name, s[:j+1])
+		} else {
+			b.WriteString(s[:j+1])
+		}
+		return j + 1, true
+	}
+	n := shellNameLen(s[1:])
+	if n == 0 || (s[1] >= '0' && s[1] <= '9') {
+		b.WriteByte('$')
+		return 1, true
+	}
+	resolve(s[1:1+n], s[:1+n])
+	return 1 + n, true
 }
 
 // stripQuotes removes surrounding single or double quotes from a string.
@@ -256,25 +828,307 @@ func stripQuotes(s string) string {
 	return s
 }
 
-// GrubEntry represents a parsed GRUB menu entry.
-type GrubEntry struct {
-	Title     string
-	Cmdline   string
-	Initrd    string
-	IsSubmenu bool
-}
-
 var (
 	reMenuEntry = regexp.MustCompile(`^\s*menuentry\s+['"]([^'"]+)['"]`)
 	reSubmenu   = regexp.MustCompile(`^\s*submenu\s+['"]([^'"]+)['"]`)
 	reLinux     = regexp.MustCompile(`^\s*(?:linux|linux16|linuxefi)\s+(.+)`)
 	reInitrd    = regexp.MustCompile(`^\s*(?:initrd|initrd16|initrdefi)\s+(.+)`)
+	reClass     = regexp.MustCompile(`--class\s+(\S+)`)
+
+	// reBlscfg matches the command that hands the menu over to the Boot Loader
+	// Specification entry files.
+	reBlscfg = regexp.MustCompile(`(?m)^\s*blscfg\s*$`)
+
+	// A GRUB legacy menu introduces each entry with a title line and names the
+	// kernel with `kernel`, where GRUB 2 writes `menuentry` and `linux`.
+	reLegacyTitle    = regexp.MustCompile(`^\s*title\s+(.*)$`)
+	reLegacyKernel   = regexp.MustCompile(`^\s*kernel\s+(.+)$`)
+	reLegacyInitrd   = regexp.MustCompile(`^\s*initrd\s+(.+)$`)
+	reAnyLegacyTitle = regexp.MustCompile(`(?m)^\s*title\s+\S`)
+
+	// A stub grub.cfg chains to the real configuration instead of declaring
+	// any entries of its own. Most distributions chain with configfile; SUSE's
+	// stub on the EFI system partition reads the real one with source.
+	reConfigfile   = regexp.MustCompile(`(?m)^\s*(?:configfile|source)\s`)
+	reAnyMenuEntry = regexp.MustCompile(`(?m)^\s*(?:menuentry|submenu)\s+['"]`)
+	reAnyLinux     = regexp.MustCompile(`(?m)^\s*(?:linux|linux16|linuxefi)\s`)
 )
 
+// isGrubLegacyCfg reports whether content is a GRUB legacy menu rather than a
+// GRUB 2 configuration. The decision is made from the file itself rather than
+// from the path it was found at, because the Red Hat family shipped the legacy
+// menu under a name that GRUB 2 also uses on other distributions.
+//
+// Declaring an entry with `title` is what separates the two formats: GRUB 2
+// writes `menuentry`, and none of the 44 grub.cfg files in testdata/grub, which
+// cover 24 hosts across every layout the provider meets, contains a line
+// beginning with `title`. TestGrubCfgCorpusIsNotLegacy holds that.
+func isGrubLegacyCfg(content []byte) bool {
+	return reAnyLegacyTitle.Match(content)
+}
+
+// ParseGrubLegacyEntries parses a GRUB legacy menu. An entry opens with a
+// title line and runs to the next one, so there is no nesting to track and no
+// submenus to separate. `kernel` carries the image and its arguments on one
+// line, exactly as a GRUB 2 `linux` line does, which is why the split into
+// kernel and arguments is left to finalizeEntries. An entry that boots another
+// loader with `chainloader`, which is how a legacy menu offers Windows, names
+// no kernel and is classified as booting no operating system.
+func ParseGrubLegacyEntries(r io.Reader) ([]BootEntry, error) {
+	var entries []BootEntry
+	var current *BootEntry
+
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || trimmed[0] == '#' {
+			continue
+		}
+
+		if m := reLegacyTitle.FindStringSubmatch(line); m != nil {
+			if current != nil {
+				entries = append(entries, *current)
+			}
+			current = &BootEntry{Title: strings.TrimSpace(m[1])}
+			continue
+		}
+		if current == nil {
+			// Menu-level settings such as default, timeout and password
+			// precede the first entry and belong to no entry.
+			continue
+		}
+
+		if m := reLegacyKernel.FindStringSubmatch(line); m != nil {
+			current.Cmdline = strings.TrimSpace(m[1])
+			continue
+		}
+		if m := reLegacyInitrd.FindStringSubmatch(line); m != nil {
+			current.Initrd = strings.TrimSpace(m[1])
+		}
+	}
+	if current != nil {
+		entries = append(entries, *current)
+	}
+
+	return entries, scanner.Err()
+}
+
+// isGrubCfgStub reports whether a grub.cfg only points at another
+// configuration file. Booting from the EFI system partition commonly installs
+// one of these beside the real configuration under /boot.
+func isGrubCfgStub(content []byte) bool {
+	if !reConfigfile.Match(content) {
+		return false
+	}
+	return !reAnyMenuEntry.Match(content) && !reAnyLinux.Match(content) && !reBlscfg.Match(content)
+}
+
+// ParseGrubEnv parses a GRUB environment block. The file is a fixed 1024 bytes
+// padded to the end with '#', which the comment rule discards along with the
+// header line.
+func ParseGrubEnv(r io.Reader) (map[string]string, error) {
+	vars := map[string]string{}
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || line[0] == '#' {
+			continue
+		}
+		key, value, found := strings.Cut(line, "=")
+		if !found {
+			continue
+		}
+		vars[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	}
+	return vars, scanner.Err()
+}
+
+// reGrubSetVar matches a variable assignment in grub.cfg, quoted either way or
+// bare.
+var reGrubSetVar = regexp.MustCompile(`(?m)^[ \t]*set[ \t]+([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"]*)"|'([^']*)'|([^ \t\n]*))[ \t]*$`)
+
+// parseGrubCfgVars returns the variables grub.cfg assigns, later assignments
+// winning as GRUB executes them in order.
+//
+// These answer only for a variable the environment block does not define.
+// grub2-mkconfig writes a kernelopts fallback for the host whose entries
+// reference the variable and whose grubenv does not set it, guarded by a test
+// for the variable being unset, which is what makes it a fallback rather than
+// an override:
+//
+//	if [ -z "${kernelopts}" ]; then
+//	  set kernelopts="root=/dev/vda2 ro rhgb quiet audit=1 "
+//	fi
+func parseGrubCfgVars(content []byte) map[string]string {
+	vars := map[string]string{}
+	for _, match := range reGrubSetVar.FindAllSubmatch(content, -1) {
+		value := string(match[2]) + string(match[3]) + string(match[4])
+		vars[string(match[1])] = value
+	}
+	return vars
+}
+
+// readGrubEnv returns the GRUB environment variables, or an empty map when no
+// environment block is readable.
+func readGrubEnv(fs afero.Fs) map[string]string {
+	for _, path := range grubEnvPaths {
+		f, err := fs.Open(path)
+		if err != nil {
+			continue
+		}
+		vars, err := ParseGrubEnv(f)
+		f.Close()
+		if err == nil && len(vars) > 0 {
+			return vars
+		}
+	}
+	return map[string]string{}
+}
+
+// LoadGrubEntries returns the entries the bootloader offers on the next boot,
+// reading whichever source it takes them from. content is the grub.cfg at
+// cfgPath, which may be empty when the host has none.
+func LoadGrubEntries(fs afero.Fs, cfgPath string, content []byte) ([]BootEntry, error) {
+	vars := readGrubEnv(fs)
+
+	// GRUB loads the environment block before it reads grub.cfg, so a variable
+	// the block defines is the one the host boots with and the assignments in
+	// grub.cfg answer for the rest. Without this an entry whose options are
+	// $kernelopts, on a host whose grubenv does not define it, reports the
+	// literal variable and no parameters at all, so a control over a kernel
+	// parameter finds nothing to read on a host that boots with it set.
+	for name, value := range parseGrubCfgVars(content) {
+		if _, ok := vars[name]; !ok {
+			vars[name] = value
+		}
+	}
+
+	// A grub.cfg that calls blscfg hands the menu over to the entry files, so
+	// whatever menu entries it declares itself do not boot.
+	if cfgPath == "" || reBlscfg.Match(content) {
+		return readBLSEntryDirs(fs, blsEntriesDirsFor(cfgPath), vars)
+	}
+
+	var entries []BootEntry
+	var err error
+	if isGrubLegacyCfg(content) {
+		entries, err = ParseGrubLegacyEntries(bytes.NewReader(content))
+	} else {
+		entries, err = ParseGrubCfgEntries(bytes.NewReader(content))
+	}
+	if err != nil {
+		return nil, err
+	}
+	finalizeEntries(entries, cfgPath, vars)
+	return entries, nil
+}
+
+// blsEntriesDirsFor returns the directories to read entries from, the one on
+// the filesystem that holds cfgPath first, since that is where blscfg looks.
+func blsEntriesDirsFor(cfgPath string) []string {
+	first := ""
+	for _, dir := range blsEntriesDirs {
+		mount := strings.TrimSuffix(dir, "/loader/entries")
+		if strings.HasPrefix(cfgPath, mount+"/") && len(dir) > len(first) {
+			first = dir
+		}
+	}
+	if first == "" {
+		return blsEntriesDirs
+	}
+	dirs := []string{first}
+	for _, dir := range blsEntriesDirs {
+		if dir != first {
+			dirs = append(dirs, dir)
+		}
+	}
+	return dirs
+}
+
+// readBLSEntryDirs returns the entries of the first directory that holds any.
+// A refusal is returned only when no directory yielded an entry, as the
+// refused one may be where the entries are.
+//
+// A directory under an automount point that nothing has triggered yet, such as
+// the /efi that systemd's gpt-auto-generator sets up for the EFI system
+// partition, is skipped: looking inside would mount the partition on the
+// scanned host.
+func readBLSEntryDirs(fs afero.Fs, dirs []string, vars map[string]string) ([]BootEntry, error) {
+	var refused error
+	var untriggered map[string]bool
+	if mountinfo, err := afero.ReadFile(fs, "/proc/self/mountinfo"); err == nil {
+		untriggered = parseUntriggeredAutomounts(mountinfo)
+	}
+	for _, dir := range dirs {
+		if underUntriggeredAutomount(untriggered, dir) {
+			continue
+		}
+		entries, err := readBLSEntries(fs, dir, vars)
+		if len(entries) > 0 {
+			return entries, err
+		}
+		if refused == nil {
+			refused = err
+		}
+	}
+	return nil, refused
+}
+
+// parseUntriggeredAutomounts returns the mount points in a mountinfo table whose
+// topmost mount is autofs, which is an automount nothing has accessed yet.
+// Once accessed, the real filesystem is mounted on top and listed after it.
+func parseUntriggeredAutomounts(mountinfo []byte) map[string]bool {
+	top := map[string]string{}
+	for line := range strings.SplitSeq(string(mountinfo), "\n") {
+		fields, rest, ok := strings.Cut(line, " - ")
+		if !ok {
+			continue
+		}
+		f := strings.Fields(fields)
+		r := strings.Fields(rest)
+		if len(f) < 5 || len(r) < 1 {
+			continue
+		}
+		top[f[4]] = r[0]
+	}
+	res := map[string]bool{}
+	for mountpoint, fstype := range top {
+		if fstype == "autofs" {
+			res[mountpoint] = true
+		}
+	}
+	return res
+}
+
+// underUntriggeredAutomount reports whether dir lies under one of the
+// untriggered automount points.
+func underUntriggeredAutomount(untriggered map[string]bool, dir string) bool {
+	for p := dir; p != "/" && p != "." && p != ""; p = path.Dir(p) {
+		if untriggered[p] {
+			return true
+		}
+	}
+	return false
+}
+
+// menuEntryClasses returns the --class values declared on a menuentry line.
+func menuEntryClasses(line string) []string {
+	matches := reClass.FindAllStringSubmatch(line, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	classes := make([]string, 0, len(matches))
+	for _, m := range matches {
+		classes = append(classes, m[1])
+	}
+	return classes
+}
+
 // ParseGrubCfgEntries parses grub.cfg for menuentry and submenu blocks.
-func ParseGrubCfgEntries(r io.Reader) ([]GrubEntry, error) {
-	var entries []GrubEntry
-	var current *GrubEntry
+func ParseGrubCfgEntries(r io.Reader) ([]BootEntry, error) {
+	var entries []BootEntry
+	var current *BootEntry
 	depth := 0
 	// opened tracks whether the current entry's opening brace has been seen.
 	// GRUB allows the `{` on a line after `menuentry`, so until it appears we
@@ -290,7 +1144,7 @@ func ParseGrubCfgEntries(r io.Reader) ([]GrubEntry, error) {
 			if current != nil {
 				entries = append(entries, *current)
 			}
-			current = &GrubEntry{Title: m[1]}
+			current = &BootEntry{Title: m[1], Classes: menuEntryClasses(line)}
 			depth = 0
 			opened = false
 			if strings.Contains(line, "{") {
@@ -306,7 +1160,7 @@ func ParseGrubCfgEntries(r io.Reader) ([]GrubEntry, error) {
 				entries = append(entries, *current)
 				current = nil
 			}
-			entries = append(entries, GrubEntry{Title: m[1], IsSubmenu: true})
+			entries = append(entries, BootEntry{Title: m[1], IsSubmenu: true})
 			depth = 0
 			if strings.Contains(line, "{") {
 				depth = 1
@@ -361,13 +1215,194 @@ func ParseGrubCfgEntries(r io.Reader) ([]GrubEntry, error) {
 }
 
 var (
-	reSuperusers = regexp.MustCompile(`(?m)^\s*set\s+superusers\s*=`)
-	rePassword   = regexp.MustCompile(`(?m)^\s*password(?:_pbkdf2)?\s+`)
+	reSuperusers = regexp.MustCompile(`^set\s+superusers\s*=\s*(.*)$`)
+	rePassword   = regexp.MustCompile(`^password(?:_pbkdf2)?\s+(.*)$`)
 )
 
+// GrubPasswordConfig captures what a grub.cfg states about password protection.
+// The distinction that matters is whether the superuser list and the credential
+// are literal values or unexpanded shell variables: every RHEL-family grub.cfg
+// carries a templated `password_pbkdf2 root ${GRUB2_PASSWORD}` block emitted by
+// /etc/grub.d/01_users, and on a host without a GRUB password that variable is
+// never defined.
+type GrubPasswordConfig struct {
+	// SuperusersLiteral is true when a `set superusers=` directive assigns a
+	// literal, non-empty user list.
+	SuperusersLiteral bool
+	// SuperusersVars holds the variable names a `set superusers=` directive
+	// reads its value from.
+	SuperusersVars []string
+	// PasswordLiteral is true when a `password` or `password_pbkdf2` directive
+	// carries a literal, non-empty credential.
+	PasswordLiteral bool
+	// PasswordVars holds the variable names a password directive reads its
+	// credential from.
+	PasswordVars []string
+}
+
+// ParseGrubPasswordConfig scans grub.cfg for superuser and password directives.
+func ParseGrubPasswordConfig(content []byte) GrubPasswordConfig {
+	var cfg GrubPasswordConfig
+
+	scanner := iox.NewLineScanner(bytes.NewReader(content))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || line[0] == '#' {
+			continue
+		}
+
+		if m := reSuperusers.FindStringSubmatch(line); m != nil {
+			value := stripQuotes(strings.TrimSpace(m[1]))
+			if vars := shellVarNames(value); len(vars) > 0 {
+				cfg.SuperusersVars = append(cfg.SuperusersVars, vars...)
+			} else if value != "" {
+				cfg.SuperusersLiteral = true
+			}
+			continue
+		}
+
+		if m := rePassword.FindStringSubmatch(line); m != nil {
+			// `password <user> <cleartext>` and
+			// `password_pbkdf2 <user> <hash>` both carry the credential as the
+			// second argument. Anything shorter states no credential at all.
+			fields := strings.Fields(m[1])
+			if len(fields) < 2 {
+				continue
+			}
+			credential := stripQuotes(fields[1])
+			if vars := shellVarNames(credential); len(vars) > 0 {
+				cfg.PasswordVars = append(cfg.PasswordVars, vars...)
+			} else if credential != "" {
+				cfg.PasswordLiteral = true
+			}
+		}
+	}
+
+	return cfg
+}
+
+// Protected reports whether grub.cfg on its own proves a password is set, which
+// requires a literal superuser list and a literal credential.
+func (c GrubPasswordConfig) Protected() bool {
+	return c.SuperusersLiteral && c.PasswordLiteral
+}
+
+// ReferencesVars reports whether any directive takes its value from a shell
+// variable that grub.cfg does not define, in which case the credential has to be
+// resolved from user.cfg before the config can be judged.
+func (c GrubPasswordConfig) ReferencesVars() bool {
+	return len(c.SuperusersVars) > 0 || len(c.PasswordVars) > 0
+}
+
+// ProtectedWith reports whether the config is password protected once the
+// variables it references are resolved from the given assignments, typically the
+// contents of ${prefix}/user.cfg.
+func (c GrubPasswordConfig) ProtectedWith(vars map[string]string) bool {
+	superusers := c.SuperusersLiteral || anyVarSet(c.SuperusersVars, vars)
+	password := c.PasswordLiteral || anyVarSet(c.PasswordVars, vars)
+	return superusers && password
+}
+
+// anyVarSet reports whether any of the named variables has a non-empty value.
+func anyVarSet(names []string, vars map[string]string) bool {
+	for _, name := range names {
+		if strings.TrimSpace(vars[name]) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// shellVarNames returns the names of every unexpanded shell variable in value.
+func shellVarNames(value string) []string {
+	matches := reShellVar.FindAllStringSubmatch(value, -1)
+	if matches == nil {
+		return nil
+	}
+	names := make([]string, 0, len(matches))
+	for _, m := range matches {
+		if m[1] != "" {
+			names = append(names, m[1])
+		} else if m[2] != "" {
+			names = append(names, m[2])
+		}
+	}
+	return names
+}
+
 // ParseGrubPasswordProtected checks grub.cfg content for password protection.
-// GRUB password protection requires both 'set superusers=' and a 'password' or
-// 'password_pbkdf2' directive.
+// GRUB password protection requires both a `set superusers=` directive and a
+// `password` or `password_pbkdf2` directive, and both have to carry literal
+// values. A credential that is still an unexpanded shell variable, as in the
+// `password_pbkdf2 root ${GRUB2_PASSWORD}` block that /etc/grub.d/01_users emits
+// on every RHEL-family host, is a template rather than a password.
 func ParseGrubPasswordProtected(content []byte) bool {
-	return reSuperusers.Match(content) && rePassword.Match(content)
+	return ParseGrubPasswordConfig(content).Protected()
+}
+
+// ParseGrubLegacyPasswordProtected reports whether a GRUB legacy menu requires
+// a password before its boot parameters can be changed. GRUB 0.97 has no
+// superusers list and no separate password file: a single menu-level
+// `password` directive gates the interactive command line and the editing of
+// any entry, and is what a `lock` line on an individual entry defers to.
+//
+//	password --md5 $1$salt$hash
+//	password --encrypted $6$salt$hash
+//	password cleartext
+//
+// The directive is only meaningful before the first entry, which is where GRUB
+// reads it, so a `password` line inside an entry body is not counted. The
+// credential is taken literally: unlike a GRUB 2 configuration, a legacy menu
+// is written by hand rather than generated, so there is no templated variable
+// to resolve, and an MD5 crypt hash begins with the `$` that a variable would.
+func ParseGrubLegacyPasswordProtected(content []byte) bool {
+	scanner := iox.NewLineScanner(bytes.NewReader(content))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || line[0] == '#' {
+			continue
+		}
+		if reLegacyTitle.MatchString(line) {
+			// Past the menu-level section.
+			return false
+		}
+
+		fields := strings.Fields(line)
+		if fields[0] != "password" {
+			continue
+		}
+		// Skip the option flags that say how the credential is encoded. A
+		// directive carrying nothing but flags, or nothing at all, names no
+		// credential and protects nothing, so it falls through to the next
+		// line rather than counting.
+		for _, field := range fields[1:] {
+			if strings.HasPrefix(field, "--") {
+				continue
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// readGrubUserCfg reads user.cfg next to grub.cfg. That is the ${prefix}/user.cfg
+// the 01_users block sources, and where grub2-setpassword stores GRUB2_PASSWORD
+// on RHEL-family systems. A missing or unreadable file is the normal case and
+// returns a nil map rather than an error.
+func readGrubUserCfg(fs afero.Fs, grubCfgPath string) map[string]string {
+	if grubCfgPath == "" {
+		return nil
+	}
+
+	f, err := fs.Open(path.Join(path.Dir(grubCfgPath), "user.cfg"))
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	vars, err := ParseGrubDefaults(f)
+	if err != nil {
+		return nil
+	}
+	return vars
 }

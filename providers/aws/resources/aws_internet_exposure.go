@@ -4,22 +4,9 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
-
-// internetReachable reports whether a Redshift cluster is reachable from the
-// internet. Redshift does not expose its VPC security groups as a queryable
-// field, so reachability follows the public-access toggle alone: a publicly
-// accessible cluster is assigned a publicly resolvable endpoint reachable from
-// outside its VPC.
-func (a *mqlAwsRedshiftCluster) internetReachable() (bool, error) {
-	publiclyAccessible := a.GetPubliclyAccessible()
-	if publiclyAccessible.Error != nil {
-		return false, publiclyAccessible.Error
-	}
-	return publiclyAccessible.Data, nil
-}
 
 // exposure builds the shared network-exposure breakdown for a Neptune instance.
 // The public-access flag lives on the instance, while the VPC security groups
@@ -38,7 +25,7 @@ func (a *mqlAwsNeptuneInstance) exposure() (*mqlAwsNetworkExposure, error) {
 	if err != nil {
 		return nil, err
 	}
-	return buildNetworkExposure(a.MqlRuntime, arn.Data+"/exposure", publiclyAccessible.Data, sgs)
+	return buildNetworkExposure(a.MqlRuntime, arn.Data+"/exposure", publiclyAccessible, sgs)
 }
 
 // clusterSecurityGroups returns the security groups of the Neptune cluster that
@@ -82,8 +69,13 @@ func (a *mqlAwsSecretsmanagerSecret) isPublic() (bool, error) {
 	return resourceIsPublic(a.GetPolicyStatements())
 }
 
+// isPublic reports whether the file system policy grants a wildcard principal.
+// It routes through resourceIsPublicOrUnknown so that a policy that could not
+// be read reports null: a denied DescribeFileSystemPolicy used to collapse
+// into an empty statement list and a confident false on a file system that
+// grants ClientMount to everyone.
 func (a *mqlAwsEfsFilesystem) isPublic() (bool, error) {
-	return resourceIsPublic(a.GetPolicyStatements())
+	return resourceIsPublicOrUnknown(a.GetPolicyStatements(), &a.IsPublic)
 }
 
 func (a *mqlAwsBackupVault) isPublic() (bool, error) {
@@ -120,4 +112,10 @@ func (a *mqlAwsEsDomain) isPublic() (bool, error) {
 	// access policy grants a wildcard principal. esDomainIsPublic encodes the full
 	// rule and is covered directly by unit tests.
 	return resourceIsPublic(a.GetPolicyStatements())
+}
+
+type mqlAwsNeptuneInstanceInternal struct {
+	lazyTags
+	cacheKmsKeyId          string
+	cacheMonitoringRoleArn string
 }

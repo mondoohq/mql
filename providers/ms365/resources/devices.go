@@ -12,11 +12,11 @@ import (
 	"github.com/microsoftgraph/msgraph-sdk-go/devices"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // see https://learn.microsoft.com/en-us/graph/api/resources/device?view=graph-rest-1.0
@@ -209,17 +209,17 @@ func newMqlMicrosoftDevice(runtime *plugin.Runtime, u models.Deviceable) (*mqlMi
 			"operatingSystem":               llx.StringDataPtr(u.GetOperatingSystem()),
 			"operatingSystemVersion":        llx.StringDataPtr(u.GetOperatingSystemVersion()),
 			"physicalIds":                   llx.ArrayData(convert.SliceAnyToInterface(u.GetPhysicalIds()), types.String),
-			"registrationDateTime":          llx.TimeDataPtr(u.GetRegistrationDateTime()),
+			"registrationDateTime":          graphTimeData(u.GetRegistrationDateTime()),
 			"systemLabels":                  llx.ArrayData(convert.SliceAnyToInterface(u.GetSystemLabels()), types.String),
 			"trustType":                     llx.StringDataPtr(u.GetTrustType()),
 			"accountEnabled":                llx.BoolDataPtr(u.GetAccountEnabled()),
-			"deletedDateTime":               llx.TimeDataPtr(u.GetDeletedDateTime()),
+			"deletedDateTime":               graphTimeData(u.GetDeletedDateTime()),
 			"onPremisesSyncEnabled":         llx.BoolDataPtr(u.GetOnPremisesSyncEnabled()),
-			"onPremisesLastSyncDateTime":    llx.TimeDataPtr(u.GetOnPremisesLastSyncDateTime()),
+			"onPremisesLastSyncDateTime":    graphTimeData(u.GetOnPremisesLastSyncDateTime()),
 			"profileType":                   llx.StringDataPtr(u.GetProfileType()),
-			"approximateLastSignInDateTime": llx.TimeDataPtr(u.GetApproximateLastSignInDateTime()),
+			"approximateLastSignInDateTime": graphTimeData(u.GetApproximateLastSignInDateTime()),
 			"deviceOwnership":               llx.StringDataPtr(u.GetDeviceOwnership()),
-			"complianceExpirationDateTime":  llx.TimeDataPtr(u.GetComplianceExpirationDateTime()),
+			"complianceExpirationDateTime":  graphTimeData(u.GetComplianceExpirationDateTime()),
 		})
 	if err != nil {
 		return nil, err

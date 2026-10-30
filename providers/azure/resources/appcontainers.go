@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -14,17 +15,19 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	apps "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v4"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	apps "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v5"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlAzureSubscriptionContainerAppServiceContainerAppInternal struct {
 	cacheSystemData              any
 	cacheUserAssignedIdentityIds []string
+	cacheIdentityTenantId        string
 	cacheRGAndName               struct {
 		resourceGroup string
 		name          string
@@ -197,54 +200,18 @@ func initAzureSubscriptionContainerAppService(runtime *plugin.Runtime, args map[
 // queried directly without re-listing every container app in the
 // subscription.
 func initAzureSubscriptionContainerAppServiceContainerApp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	if len(args) > 1 {
-		return args, nil, nil
-	}
-
-	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["id"] = llx.StringData(ids.id)
-		}
-	}
-
-	if args["id"] == nil {
-		return args, nil, nil
-	}
-
-	conn, ok := runtime.Connection.(*connection.AzureConnection)
-	if !ok {
-		return nil, nil, errors.New("invalid connection provided, it is not an Azure connection")
-	}
-	id, ok := args["id"].Value.(string)
-	if !ok {
-		return nil, nil, errors.New("id must be a non-nil string value")
-	}
-	resourceID, err := ParseResourceID(id)
-	if err != nil {
-		return nil, nil, err
-	}
-	appName, err := resourceID.Component("containerApps")
-	if err != nil {
-		return nil, nil, err
-	}
-
-	client, err := apps.NewContainerAppsClient(resourceID.SubscriptionID, conn.Token(), acaClientOptions(conn))
-	if err != nil {
-		return nil, nil, err
-	}
-	resp, err := client.Get(context.Background(), resourceID.ResourceGroup, appName, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	mql, err := acaContainerAppToMQL(runtime, &resp.ContainerApp)
-	if err != nil {
-		return nil, nil, err
-	}
-	return args, mql, nil
+	return initFromServiceList(runtime, args,
+		ResourceAzureSubscriptionContainerAppService,
+		func(s *mqlAzureSubscriptionContainerAppService) *plugin.TValue[[]any] { return s.GetContainerApps() },
+		ResourceAzureSubscriptionContainerAppServiceContainerApp)
 }
 
 func (a *mqlAzureSubscriptionContainerAppServiceContainerApp) userAssignedIdentities() ([]any, error) {
 	return resolveUserAssignedIdentities(a.MqlRuntime, a.cacheUserAssignedIdentityIds)
+}
+
+func (a *mqlAzureSubscriptionContainerAppServiceContainerApp) systemAssignedIdentity() (*mqlAzureSubscriptionManagedIdentity, error) {
+	return newSystemAssignedManagedIdentity(a.MqlRuntime, a.Id.Data, a.PrincipalId.Data, a.cacheIdentityTenantId, &a.SystemAssignedIdentity)
 }
 
 // managedEnvironment resolves the parent managed environment of the container
@@ -274,7 +241,7 @@ func initAzureSubscriptionContainerAppServiceManagedEnvironment(runtime *plugin.
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
+		if ids := getAssetIdentifier(runtime); ids != nil && ids.id != "" {
 			args["id"] = llx.StringData(ids.id)
 		}
 	}
@@ -298,6 +265,13 @@ func initAzureSubscriptionContainerAppServiceManagedEnvironment(runtime *plugin.
 	envName, err := resourceID.Component("managedEnvironments")
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// Already fetched by an earlier reference: NewResource consults the
+	// cache only after this init returns, so without this the same target is
+	// re-fetched once per reference and the result thrown away.
+	if cached := cachedResource(runtime, ResourceAzureSubscriptionContainerAppServiceManagedEnvironment, id); cached != nil {
+		return args, cached, nil
 	}
 
 	client, err := apps.NewManagedEnvironmentsClient(resourceID.SubscriptionID, conn.Token(), acaClientOptions(conn))
@@ -360,9 +334,16 @@ func (a *mqlAzureSubscriptionContainerAppService) managedEnvironments() ([]any, 
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			if isAzureNotConfigured(err) {
+				log.Warn().Err(err).Msg("could not list azure managedEnvironments, returning partial results")
+				return res, nil
+			}
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			mqlEnv, err := acaManagedEnvironmentToMQL(a.MqlRuntime, entry)
 			if err != nil {
 				return nil, err
@@ -539,6 +520,9 @@ func (a *mqlAzureSubscriptionContainerAppServiceManagedEnvironment) daprComponen
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			var componentType, version, provisioningState, deploymentErrors string
 			var ignoreErrors *bool
 			secretNames := []any{}
@@ -633,6 +617,9 @@ func (a *mqlAzureSubscriptionContainerAppServiceManagedEnvironment) certificates
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			var subject, thumbprint, provisioningState, deploymentErrors, issuer, publicKeyHash string
 			var issueDate, notAfter *time.Time
 			var validPtr *bool
@@ -722,9 +709,16 @@ func (a *mqlAzureSubscriptionContainerAppService) containerApps() ([]any, error)
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			if isAzureNotConfigured(err) {
+				log.Warn().Err(err).Msg("could not list azure containerApps, returning partial results")
+				return keepTagMatches(a.MqlRuntime, res), nil
+			}
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			mqlApp, err := acaContainerAppToMQL(a.MqlRuntime, entry)
 			if err != nil {
 				return nil, err
@@ -732,7 +726,7 @@ func (a *mqlAzureSubscriptionContainerAppService) containerApps() ([]any, error)
 			res = append(res, mqlApp)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func acaContainerAppToMQL(runtime *plugin.Runtime, entry *apps.ContainerApp) (plugin.Resource, error) {
@@ -747,13 +741,14 @@ func acaContainerAppToMQL(runtime *plugin.Runtime, entry *apps.ContainerApp) (pl
 	httpsOnly := true
 	corsOrigins := []any{}
 	ipRules := []any{}
+	ingressIpRestrictions := []any{}
 	registries := []any{}
 	registryUsesIdentity := false
 	secretNames := []any{}
-	identity := map[string]any{}
 	scaleRules := []any{}
 	volumes := []any{}
 	var minReplicas, maxReplicas *int32
+	var allowScalingRuleOverride *bool
 	containerSpecs := []*apps.Container{}
 	initContainerSpecs := []*apps.Container{}
 
@@ -823,6 +818,29 @@ func acaContainerAppToMQL(runtime *plugin.Runtime, entry *apps.ContainerApp) (pl
 					}
 					ipRules = d
 				}
+				for i, rule := range ing.IPSecurityRestrictions {
+					if rule == nil {
+						continue
+					}
+					// The rule name is unique within an app's ingress; the
+					// position covers a rule the API returned without one.
+					key := convert.ToValue(rule.Name)
+					if key == "" {
+						key = strconv.Itoa(i)
+					}
+					mqlRule, err := CreateResource(runtime, "azure.subscription.containerAppService.containerApp.ipRestriction",
+						map[string]*llx.RawData{
+							"__id":           llx.StringData(subResourceCacheID(nil, convert.ToValue(entry.ID), "ingressIpRestrictions", key)),
+							"name":           llx.StringDataPtr(rule.Name),
+							"description":    llx.StringDataPtr(rule.Description),
+							"ipAddressRange": llx.StringDataPtr(rule.IPAddressRange),
+							"action":         llx.StringDataPtr(stringEnumPtr(rule.Action)),
+						})
+					if err != nil {
+						return nil, err
+					}
+					ingressIpRestrictions = append(ingressIpRestrictions, mqlRule)
+				}
 			}
 			if len(cfg.Registries) > 0 {
 				d, err := convert.JsonToDictSlice(cfg.Registries)
@@ -848,6 +866,7 @@ func acaContainerAppToMQL(runtime *plugin.Runtime, entry *apps.ContainerApp) (pl
 			if tpl.Scale != nil {
 				minReplicas = tpl.Scale.MinReplicas
 				maxReplicas = tpl.Scale.MaxReplicas
+				allowScalingRuleOverride = tpl.Scale.AllowScalingRuleOverride
 				if len(tpl.Scale.Rules) > 0 {
 					d, err := convert.JsonToDictSlice(tpl.Scale.Rules)
 					if err != nil {
@@ -886,14 +905,13 @@ func acaContainerAppToMQL(runtime *plugin.Runtime, entry *apps.ContainerApp) (pl
 
 	var principalId *string
 	var userAssignedIdentityIds []string
+	var identityTenantId string
 	if entry.Identity != nil {
-		d, err := convert.JsonToDict(entry.Identity)
-		if err != nil {
-			return nil, err
-		}
-		identity = d
 		principalId = entry.Identity.PrincipalID
 		userAssignedIdentityIds = sortedUserAssignedIdentityIDs(entry.Identity.UserAssignedIdentities)
+		if entry.Identity.TenantID != nil {
+			identityTenantId = *entry.Identity.TenantID
+		}
 	}
 	if entry.Kind != nil {
 		kind = string(*entry.Kind)
@@ -923,11 +941,12 @@ func acaContainerAppToMQL(runtime *plugin.Runtime, entry *apps.ContainerApp) (pl
 			"clientCertificateMode":    llx.StringData(clientCertMode),
 			"corsAllowedOrigins":       llx.ArrayData(corsOrigins, types.String),
 			"ipSecurityRestrictions":   llx.ArrayData(ipRules, types.Dict),
+			"ingressIpRestrictions":    llx.ArrayData(ingressIpRestrictions, types.Resource("azure.subscription.containerAppService.containerApp.ipRestriction")),
 			"workloadProfileName":      llx.StringData(workloadProfile),
 			"minReplicas":              llx.IntDataDefault(minReplicas, 0),
 			"maxReplicas":              llx.IntDataDefault(maxReplicas, 0),
 			"scaleRules":               llx.ArrayData(scaleRules, types.Dict),
-			"identity":                 llx.DictData(identity),
+			"allowScalingRuleOverride": llx.BoolDataPtr(allowScalingRuleOverride),
 			"principalId":              llx.StringDataPtr(principalId),
 			"registries":               llx.ArrayData(registries, types.Dict),
 			"registryAuthUsesIdentity": llx.BoolData(registryUsesIdentity),
@@ -940,6 +959,7 @@ func acaContainerAppToMQL(runtime *plugin.Runtime, entry *apps.ContainerApp) (pl
 
 	appRes := mqlApp.(*mqlAzureSubscriptionContainerAppServiceContainerApp)
 	appRes.cacheUserAssignedIdentityIds = userAssignedIdentityIds
+	appRes.cacheIdentityTenantId = identityTenantId
 	rg, name := resourceGroupAndName(appRes.Id.Data, "containerApps")
 	appRes.cacheRGAndName.resourceGroup = rg
 	appRes.cacheRGAndName.name = name
@@ -1087,6 +1107,9 @@ func (a *mqlAzureSubscriptionContainerAppServiceContainerApp) revisions() ([]any
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			var active *bool
 			var trafficWeight, replicas *int32
 			var provisioningState, healthState, runningState, provisioningError string
@@ -1186,6 +1209,9 @@ func (a *mqlAzureSubscriptionContainerAppServiceContainerApp) authConfigs() ([]a
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			enabled := false
 			var unauth string
 			providers := []any{}
@@ -1282,116 +1308,144 @@ func (a *mqlAzureSubscriptionContainerAppService) jobs() ([]any, error) {
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			if isAzureNotConfigured(err) {
+				log.Warn().Err(err).Msg("could not list azure jobs, returning partial results")
+				return res, nil
+			}
 			return nil, err
 		}
 		for _, entry := range page.Value {
-			var managedEnvId, provisioningState, triggerType, cron, workloadProfile, eventStreamEndpoint string
-			var replicaTimeout, replicaRetry *int32
-			eventTrigger := map[string]any{}
-			containers := []any{}
-			registries := []any{}
-			registryUsesIdentity := false
-			secretNames := []any{}
-			identity := map[string]any{}
-
-			if entry.Properties != nil {
-				p := entry.Properties
-				if p.EnvironmentID != nil {
-					managedEnvId = *p.EnvironmentID
-				}
-				if p.ProvisioningState != nil {
-					provisioningState = string(*p.ProvisioningState)
-				}
-				if p.EventStreamEndpoint != nil {
-					eventStreamEndpoint = *p.EventStreamEndpoint
-				}
-				if p.WorkloadProfileName != nil {
-					workloadProfile = *p.WorkloadProfileName
-				}
-				if p.Configuration != nil {
-					cfg := p.Configuration
-					if cfg.TriggerType != nil {
-						triggerType = string(*cfg.TriggerType)
-					}
-					replicaTimeout = cfg.ReplicaTimeout
-					replicaRetry = cfg.ReplicaRetryLimit
-					if cfg.ScheduleTriggerConfig != nil && cfg.ScheduleTriggerConfig.CronExpression != nil {
-						cron = *cfg.ScheduleTriggerConfig.CronExpression
-					}
-					if cfg.EventTriggerConfig != nil {
-						d, err := convert.JsonToDict(cfg.EventTriggerConfig)
-						if err != nil {
-							return nil, err
-						}
-						eventTrigger = d
-					}
-					if len(cfg.Registries) > 0 {
-						d, err := convert.JsonToDictSlice(cfg.Registries)
-						if err != nil {
-							return nil, err
-						}
-						registries = d
-						for _, r := range cfg.Registries {
-							if r != nil && r.Identity != nil && *r.Identity != "" {
-								registryUsesIdentity = true
-							}
-						}
-					}
-					for _, sec := range cfg.Secrets {
-						if sec != nil && sec.Name != nil {
-							secretNames = append(secretNames, *sec.Name)
-						}
-					}
-				}
-				if p.Template != nil && len(p.Template.Containers) > 0 {
-					d, err := convert.JsonToDictSlice(p.Template.Containers)
-					if err != nil {
-						return nil, err
-					}
-					containers = d
-				}
+			if entry == nil {
+				continue
 			}
-			if entry.Identity != nil {
-				d, err := convert.JsonToDict(entry.Identity)
-				if err != nil {
-					return nil, err
-				}
-				identity = d
-			}
-
-			mqlJob, err := CreateResource(a.MqlRuntime, "azure.subscription.containerAppService.job",
-				map[string]*llx.RawData{
-					"id":                       llx.StringDataPtr(entry.ID),
-					"name":                     llx.StringDataPtr(entry.Name),
-					"location":                 llx.StringDataPtr(entry.Location),
-					"tags":                     llx.MapData(convert.PtrMapStrToInterface(entry.Tags), types.String),
-					"managedEnvironmentId":     llx.StringData(managedEnvId),
-					"provisioningState":        llx.StringData(provisioningState),
-					"eventStreamEndpoint":      llx.StringData(eventStreamEndpoint),
-					"triggerType":              llx.StringData(triggerType),
-					"cronExpression":           llx.StringData(cron),
-					"eventTriggerConfig":       llx.DictData(eventTrigger),
-					"replicaTimeoutSeconds":    llx.IntDataDefault(replicaTimeout, 0),
-					"replicaRetryLimit":        llx.IntDataDefault(replicaRetry, 0),
-					"identity":                 llx.DictData(identity),
-					"containers":               llx.ArrayData(containers, types.Dict),
-					"workloadProfileName":      llx.StringData(workloadProfile),
-					"registries":               llx.ArrayData(registries, types.Dict),
-					"registryAuthUsesIdentity": llx.BoolData(registryUsesIdentity),
-					"secretNames":              llx.ArrayData(secretNames, types.String),
-				})
+			mqlJob, err := acaJobToMQL(a.MqlRuntime, entry)
 			if err != nil {
 				return nil, err
 			}
-			sysData, err := convert.JsonToDict(entry.SystemData)
-			if err != nil {
-				return nil, err
-			}
-			mqlJob.(*mqlAzureSubscriptionContainerAppServiceJob).cacheSystemData = sysData
 			res = append(res, mqlJob)
 		}
 	}
 	return res, nil
+}
+
+// acaJobToMQL maps one Container Apps job from the list response.
+func acaJobToMQL(runtime *plugin.Runtime, entry *apps.Job) (*mqlAzureSubscriptionContainerAppServiceJob, error) {
+	var managedEnvId, provisioningState, triggerType, cron, workloadProfile, eventStreamEndpoint string
+	var replicaTimeout, replicaRetry *int32
+	var runningState *string
+	eventTrigger := map[string]any{}
+	containers := []any{}
+	registries := []any{}
+	registryUsesIdentity := false
+	secretNames := []any{}
+	outboundIpAddresses := []any{}
+	identity := map[string]any{}
+
+	if entry.Properties != nil {
+		p := entry.Properties
+		outboundIpAddresses = strPtrsToAny(p.OutboundIPAddresses)
+		if p.EnvironmentID != nil {
+			managedEnvId = *p.EnvironmentID
+		}
+		if p.ProvisioningState != nil {
+			provisioningState = string(*p.ProvisioningState)
+		}
+		runningState = stringEnumPtr(p.RunningState)
+		if p.EventStreamEndpoint != nil {
+			eventStreamEndpoint = *p.EventStreamEndpoint
+		}
+		if p.WorkloadProfileName != nil {
+			workloadProfile = *p.WorkloadProfileName
+		}
+		if p.Configuration != nil {
+			cfg := p.Configuration
+			if cfg.TriggerType != nil {
+				triggerType = string(*cfg.TriggerType)
+			}
+			replicaTimeout = cfg.ReplicaTimeout
+			replicaRetry = cfg.ReplicaRetryLimit
+			if cfg.ScheduleTriggerConfig != nil && cfg.ScheduleTriggerConfig.CronExpression != nil {
+				cron = *cfg.ScheduleTriggerConfig.CronExpression
+			}
+			if cfg.EventTriggerConfig != nil {
+				d, err := convert.JsonToDict(cfg.EventTriggerConfig)
+				if err != nil {
+					return nil, err
+				}
+				eventTrigger = d
+			}
+			if len(cfg.Registries) > 0 {
+				d, err := convert.JsonToDictSlice(cfg.Registries)
+				if err != nil {
+					return nil, err
+				}
+				registries = d
+				for _, r := range cfg.Registries {
+					if r != nil && r.Identity != nil && *r.Identity != "" {
+						registryUsesIdentity = true
+					}
+				}
+			}
+			for _, sec := range cfg.Secrets {
+				if sec != nil && sec.Name != nil {
+					secretNames = append(secretNames, *sec.Name)
+				}
+			}
+		}
+		if p.Template != nil && len(p.Template.Containers) > 0 {
+			d, err := convert.JsonToDictSlice(p.Template.Containers)
+			if err != nil {
+				return nil, err
+			}
+			containers = d
+		}
+	}
+	if entry.Identity != nil {
+		d, err := convert.JsonToDict(entry.Identity)
+		if err != nil {
+			return nil, err
+		}
+		identity = d
+	}
+
+	jobArgs := map[string]*llx.RawData{
+		"id":                       llx.StringDataPtr(entry.ID),
+		"name":                     llx.StringDataPtr(entry.Name),
+		"location":                 llx.StringDataPtr(entry.Location),
+		"tags":                     llx.MapData(convert.PtrMapStrToInterface(entry.Tags), types.String),
+		"managedEnvironmentId":     llx.StringData(managedEnvId),
+		"provisioningState":        llx.StringData(provisioningState),
+		"runningState":             llx.StringDataPtr(runningState),
+		"eventStreamEndpoint":      llx.StringData(eventStreamEndpoint),
+		"triggerType":              llx.StringData(triggerType),
+		"cronExpression":           llx.StringData(cron),
+		"eventTriggerConfig":       llx.DictData(eventTrigger),
+		"replicaTimeoutSeconds":    llx.IntDataDefault(replicaTimeout, 0),
+		"replicaRetryLimit":        llx.IntDataDefault(replicaRetry, 0),
+		"identity":                 llx.DictData(identity),
+		"containers":               llx.ArrayData(containers, types.Dict),
+		"workloadProfileName":      llx.StringData(workloadProfile),
+		"registries":               llx.ArrayData(registries, types.Dict),
+		"registryAuthUsesIdentity": llx.BoolData(registryUsesIdentity),
+		"secretNames":              llx.ArrayData(secretNames, types.String),
+		"outboundIpAddresses":      llx.ArrayData(outboundIpAddresses, types.String),
+	}
+	jobIdentity := orZero(entry.Identity)
+	if err := setResourceIdentity(runtime, jobArgs, sortedUserAssignedIdentityIDs(jobIdentity.UserAssignedIdentities),
+		identityType(jobIdentity.Type), identityPrincipalId(jobIdentity.PrincipalID), identityTenantId(jobIdentity.TenantID)); err != nil {
+		return nil, err
+	}
+	mqlJob, err := CreateResource(runtime, "azure.subscription.containerAppService.job", jobArgs)
+	if err != nil {
+		return nil, err
+	}
+	sysData, err := convert.JsonToDict(entry.SystemData)
+	if err != nil {
+		return nil, err
+	}
+	mqlJobRes := mqlJob.(*mqlAzureSubscriptionContainerAppServiceJob)
+	mqlJobRes.cacheSystemData = sysData
+	return mqlJobRes, nil
 }
 
 // ----------------- managed environment sub-resources (v4) -----------------
@@ -1428,6 +1482,9 @@ func (a *mqlAzureSubscriptionContainerAppServiceManagedEnvironment) privateEndpo
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			var status, description, actionsRequired, provisioningState, privateEndpointId string
 			groupIds := []any{}
 			if entry.Properties != nil {
@@ -1517,6 +1574,9 @@ func (a *mqlAzureSubscriptionContainerAppServiceManagedEnvironment) httpRouteCon
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			var fqdn, provisioningState string
 			customDomains := []any{}
 			rules := []any{}
@@ -1611,6 +1671,9 @@ func (a *mqlAzureSubscriptionContainerAppServiceManagedEnvironment) maintenanceC
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			entries := []any{}
 			if entry.Properties != nil && len(entry.Properties.ScheduledEntries) > 0 {
 				d, err := convert.JsonToDictSlice(entry.Properties.ScheduledEntries)

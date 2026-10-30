@@ -9,8 +9,9 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/detector/containerenv"
 )
 
 const (
@@ -63,9 +64,11 @@ var containerVariantIDPrefixes = []string{
 // desktopPlatformNames lists platform names (from os-release ID) that are
 // inherently desktop-oriented distributions.
 var desktopPlatformNames = map[string]bool{
+	"deepin":     true,
 	"elementary": true,
 	"linuxmint":  true,
 	"nobara":     true,
+	"openkylin":  true,
 	"pop":        true,
 	"steamos":    true,
 	"zorin":      true,
@@ -77,13 +80,15 @@ var desktopPlatformNames = map[string]bool{
 // are containers or servers. Desktop Alpine users will be detected via the
 // systemd target or session directory fallbacks.
 var serverPlatformNames = map[string]bool{
-	"alpine":       true,
-	"bottlerocket": true,
-	"cos":          true,
-	"flatcar":      true,
-	"gardenlinux":  true,
-	"photon":       true,
-	"suse-microos": true,
+	"alpine":           true,
+	"bottlerocket":     true,
+	"cos":              true,
+	"flatcar":          true,
+	"gardenlinux":      true,
+	"opensuse-microos": true,
+	"photon":           true,
+	"suse-microos":     true,
+	"talos":            true,
 }
 
 // systemdDefaultTargetPaths lists the paths where systemd stores the default
@@ -120,6 +125,12 @@ func DetectDeviceType(pf *inventory.Platform, conn shared.Connection) {
 func classifyDeviceType(pf *inventory.Platform, conn shared.Connection) string {
 	// Containers and container images.
 	if pf.Kind == "container" || pf.Kind == "container-image" {
+		return DeviceTypeContainer
+	}
+	// A local scan started inside a container sees an ordinary Linux. The
+	// kind check above doesn't catch it: DetectOS classifies the device
+	// before IdentifyPlatform or detect set the kind.
+	if pf.IsFamily("linux") && containerenv.InContainer(conn) {
 		return DeviceTypeContainer
 	}
 

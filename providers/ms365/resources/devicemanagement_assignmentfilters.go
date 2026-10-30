@@ -7,10 +7,10 @@ import (
 	"context"
 
 	betamodels "github.com/microsoftgraph/msgraph-beta-sdk-go/models"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // assignmentFilters lists the Intune assignment filters used to scope policy
@@ -55,8 +55,8 @@ func newMqlAssignmentFilter(runtime *plugin.Runtime, f betamodels.DeviceAndAppMa
 			"rule":                           llx.StringDataPtr(f.GetRule()),
 			"assignmentFilterManagementType": llx.StringDataPtr(enumPtrString(f.GetAssignmentFilterManagementType())),
 			"roleScopeTags":                  llx.ArrayData(llx.TArr2Raw(f.GetRoleScopeTags()), types.String),
-			"createdDateTime":                llx.TimeDataPtr(f.GetCreatedDateTime()),
-			"lastModifiedDateTime":           llx.TimeDataPtr(f.GetLastModifiedDateTime()),
+			"createdDateTime":                graphTimeData(f.GetCreatedDateTime()),
+			"lastModifiedDateTime":           graphTimeData(f.GetLastModifiedDateTime()),
 		})
 }
 
@@ -91,7 +91,7 @@ func initMicrosoftDevicemanagementAssignmentFilter(runtime *plugin.Runtime, args
 
 // filter resolves the assignment filter applied to the target, when one is set.
 func (m *mqlMicrosoftDevicemanagementPolicyAssignment) filter() (*mqlMicrosoftDevicemanagementAssignmentFilter, error) {
-	id := m.FilterId.Data
+	id := m.cacheFilterID
 	if id == "" {
 		m.Filter.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil

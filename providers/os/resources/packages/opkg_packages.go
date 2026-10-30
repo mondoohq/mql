@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 const (
@@ -53,6 +53,9 @@ func ParseOpkgPackages(input io.Reader) ([]Package, error) {
 	add := func(pkg Package) {
 		// do sanitization checks to ensure we have minimal information
 		if pkg.Name != "" && pkg.Version != "" {
+			// opkg records a hold in the flag field of the status triple,
+			// where dpkg carried it historically.
+			pkg.Pinned = isHeldStatus(pkg.Status)
 			pkgs = append(pkgs, pkg)
 		} else {
 			log.Debug().Msg("ignored opkg packages since information is missing")

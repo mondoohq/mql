@@ -1,0 +1,68 @@
+AIDE 0.19.2
+
+Compile-time options:
+use pcre2: mandatory
+use pthread: mandatory
+use zlib compression: yes
+use POSIX ACLs: yes
+use SELinux: yes
+use xattr: yes
+use POSIX 1003.1e capabilities: no
+use e2fsattrs: yes
+use cURL: yes
+use Nettle crypto library: yes
+use GNU crypto library: no
+use Linux Auditing Framework: yes
+use locale: no
+syslog ident: aide
+syslog logopt: LOG_CONS
+syslog priority: LOG_NOTICE
+default syslog facility: LOG_LOCAL0
+
+Default config values:
+config file: /etc/aide.conf
+database_in: file:/etc/aide.db
+database_out: file:/etc/aide.db.new
+
+Available compiled-in attributes:
+acl: yes
+xattrs: yes
+selinux: yes
+e2fsattrs: yes
+caps: no
+
+Available hashsum attributes:
+md5: yes
+sha1: yes
+sha256: yes
+sha512: yes
+rmd160: yes
+tiger: no
+crc32: no
+crc32b: no
+haval: no
+whirlpool: no
+gost: yes
+stribog256: yes
+stribog512: yes
+sha512_256: yes
+sha3_256: yes
+sha3_512: yes
+
+Available file system type names:
+9p                  autofs              bcachefs            binfmt              
+bpf                 btrfs               cgroup              cgroup2             
+configfs            debugfs             devpts              efivarfs            
+exfat               ext                 f2fs                fuse                
+fusectl             hugetlbfs           mqueue              nfs                 
+nilfs               overlayfs           proc                pstore              
+ramfs               securityfs          selinuxfs           squashfs            
+sysfs               tmpfs               tracefs             udf                 
+vfat                xfs                 
+
+Default compound groups:
+R: l+p+u+g+s+c+m+i+n+acl+selinux+xattrs+ftype+e2fsattrs+sha3_256
+L: l+p+u+g+i+n+acl+selinux+xattrs+ftype+e2fsattrs
+>: l+p+u+g+s+i+n+acl+selinux+xattrs+ftype+e2fsattrs+growing
+H: sha256+sha512+stribog256+stribog512+sha512_256+sha3_256+sha3_512
+X: acl+selinux+xattrs+e2fsattrs

@@ -7,12 +7,13 @@ import (
 	"context"
 
 	"github.com/aws/aws-sdk-go-v2/service/timestreamwrite"
+	timestreamwritetypes "github.com/aws/aws-sdk-go-v2/service/timestreamwrite/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 	"slices"
 )
 
@@ -91,7 +92,6 @@ func (a *mqlAwsTimestreamLiveanalytics) getDatabases(conn *connection.AwsConnect
 							"__id":       llx.StringDataPtr(database.Arn),
 							"arn":        llx.StringDataPtr(database.Arn),
 							"name":       llx.StringDataPtr(database.DatabaseName),
-							"kmsKeyId":   llx.StringDataPtr(database.KmsKeyId),
 							"region":     llx.StringData(region),
 							"createdAt":  llx.TimeDataPtr(database.CreationTime),
 							"updatedAt":  llx.TimeDataPtr(database.LastUpdatedTime),
@@ -100,6 +100,7 @@ func (a *mqlAwsTimestreamLiveanalytics) getDatabases(conn *connection.AwsConnect
 					if err != nil {
 						return nil, err
 					}
+					mqlCluster.(*mqlAwsTimestreamLiveanalyticsDatabase).cacheKmsKeyId = convert.ToValue(database.KmsKeyId)
 					res = append(res, mqlCluster)
 				}
 			}
@@ -121,7 +122,7 @@ func (a *mqlAwsTimestreamLiveanalyticsDatabase) tags() (map[string]any, error) {
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return nil, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
@@ -135,13 +136,13 @@ func (a *mqlAwsTimestreamLiveanalyticsDatabase) tags() (map[string]any, error) {
 }
 
 func (a *mqlAwsTimestreamLiveanalyticsDatabase) kmsKey() (*mqlAwsKmsKey, error) {
-	if a.KmsKeyId.Data == "" {
+	if a.cacheKmsKeyId == "" {
 		a.KmsKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
 	mqlKey, err := NewResource(a.MqlRuntime, ResourceAwsKmsKey,
 		map[string]*llx.RawData{
-			"arn": llx.StringData(a.KmsKeyId.Data),
+			"arn": llx.StringData(a.cacheKmsKeyId),
 		})
 	if err != nil {
 		return nil, err
@@ -200,8 +201,18 @@ func (a *mqlAwsTimestreamLiveanalytics) getTables(conn *connection.AwsConnection
 					return nil, err
 				}
 				for _, table := range resp.Tables {
-					magneticStoreProperties, _ := convert.JsonToDictSlice(table.MagneticStoreWriteProperties)
-					retentionProperties, _ := convert.JsonToDictSlice(table.RetentionProperties)
+					// Both are struct pointers, not slices: JsonToDictSlice marshals
+					// them to a JSON object and then fails to unmarshal it into a
+					// []any, so the discarded error left both fields permanently
+					// null even though the .lr docs enumerate the keys to query.
+					magneticStoreProperties, err := convert.JsonToDict(table.MagneticStoreWriteProperties)
+					if err != nil {
+						return nil, err
+					}
+					retentionProperties, err := convert.JsonToDict(table.RetentionProperties)
+					if err != nil {
+						return nil, err
+					}
 
 					mqlCluster, err := CreateResource(a.MqlRuntime, "aws.timestream.liveanalytics.table",
 						map[string]*llx.RawData{
@@ -226,4 +237,31 @@ func (a *mqlAwsTimestreamLiveanalytics) getTables(conn *connection.AwsConnection
 		tasks = append(tasks, jobpool.NewJob(f))
 	}
 	return tasks
+}
+
+type mqlAwsTimestreamLiveanalyticsDatabaseInternal struct {
+	cacheKmsKeyId string
+}
+
+type mqlAwsTimestreamLiveanalyticsTableInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsTimestreamLiveanalyticsTable) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.TimestreamLiveAnalytics(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &timestreamwrite.ListTagsForResourceInput{ResourceARN: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("timestream:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.Tags, func(t timestreamwritetypes.Tag) *string { return t.Key }, func(t timestreamwritetypes.Tag) *string { return t.Value }), nil
+	})
 }

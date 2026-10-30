@@ -5,8 +5,14 @@ rc
 ssh
 """
 
-[commands."find -L /etc/rc*.d -name 'S*'"]
-stdout = """
+# The runlevel links behind Service.Enabled. `ssh` is linked into the multi-user
+# runlevels; `cron` is installed but linked into none, which is what an enabled
+# and a disabled sysv service look like side by side.
+[commands."find /etc/rc*.d -name 'S*'"]
+stdout = """/etc/rc2.d/S20ssh
+/etc/rc3.d/S20ssh
+/etc/rc4.d/S20ssh
+/etc/rc5.d/S20ssh
 """
 
 [commands."/sbin/initctl list"]

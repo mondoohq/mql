@@ -4,8 +4,8 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // --- interface ---
@@ -16,26 +16,26 @@ func interfaceArgs(row map[string]string) map[string]*llx.RawData {
 		"name":             llx.StringData(row["name"]),
 		"defaultName":      llx.StringData(row["default-name"]),
 		"type":             llx.StringData(row["type"]),
-		"mtu":              llx.IntData(parseInt(row["mtu"])),
-		"actualMtu":        llx.IntData(parseInt(row["actual-mtu"])),
-		"l2mtu":            llx.IntData(parseInt(row["l2mtu"])),
-		"maxL2mtu":         llx.IntData(parseInt(row["max-l2mtu"])),
+		"mtu":              intField(row, "mtu"),
+		"actualMtu":        intField(row, "actual-mtu"),
+		"l2mtu":            intField(row, "l2mtu"),
+		"maxL2mtu":         intField(row, "max-l2mtu"),
 		"macAddress":       llx.StringData(row["mac-address"]),
 		"lastLinkUpTime":   llx.StringData(row["last-link-up-time"]),
 		"lastLinkDownTime": llx.StringData(row["last-link-down-time"]),
-		"linkDowns":        llx.IntData(parseInt(row["link-downs"])),
-		"rxByte":           llx.IntData(parseInt(row["rx-byte"])),
-		"txByte":           llx.IntData(parseInt(row["tx-byte"])),
-		"rxPacket":         llx.IntData(parseInt(row["rx-packet"])),
-		"txPacket":         llx.IntData(parseInt(row["tx-packet"])),
-		"rxDrop":           llx.IntData(parseInt(row["rx-drop"])),
-		"txDrop":           llx.IntData(parseInt(row["tx-drop"])),
-		"rxError":          llx.IntData(parseInt(row["rx-error"])),
-		"txError":          llx.IntData(parseInt(row["tx-error"])),
-		"running":          llx.BoolData(parseBool(row["running"])),
-		"slave":            llx.BoolData(parseBool(row["slave"])),
-		"dynamic":          llx.BoolData(parseBool(row["dynamic"])),
-		"disabled":         llx.BoolData(parseBool(row["disabled"])),
+		"linkDowns":        intField(row, "link-downs"),
+		"rxByte":           intField(row, "rx-byte"),
+		"txByte":           intField(row, "tx-byte"),
+		"rxPacket":         intField(row, "rx-packet"),
+		"txPacket":         intField(row, "tx-packet"),
+		"rxDrop":           intField(row, "rx-drop"),
+		"txDrop":           intField(row, "tx-drop"),
+		"rxError":          intField(row, "rx-error"),
+		"txError":          intField(row, "tx-error"),
+		"running":          boolField(row, "running"),
+		"slave":            boolField(row, "slave"),
+		"dynamic":          boolField(row, "dynamic"),
+		"disabled":         boolField(row, "disabled"),
 		"comment":          llx.StringData(row["comment"]),
 	}
 }
@@ -91,7 +91,8 @@ func (r *mqlMikrotikInterface) addresses() ([]any, error) {
 
 func (r *mqlMikrotikInterface) ipv6Addresses() ([]any, error) {
 	conn := mikrotikConn(r.MqlRuntime)
-	rows, err := conn.Print("/ipv6/address")
+	// see mikrotik.ipv6Addresses: the menu is gone without the ipv6 package
+	rows, err := conn.PrintOptional("/ipv6/address")
 	if err != nil {
 		return nil, err
 	}
@@ -113,25 +114,29 @@ func (r *mqlMikrotikInterface) ipv6Addresses() ([]any, error) {
 // --- bridge ---
 
 func newMikrotikBridge(runtime *plugin.Runtime, row map[string]string) (plugin.Resource, error) {
-	return CreateResource(runtime, "mikrotik.interface.bridge", map[string]*llx.RawData{
+	return CreateResource(runtime, "mikrotik.interface.bridge", bridgeArgs(row))
+}
+
+func bridgeArgs(row map[string]string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
 		"__id":          llx.StringData("mikrotik.interface.bridge/" + row["name"]),
 		"name":          llx.StringData(row["name"]),
 		"macAddress":    llx.StringData(row["mac-address"]),
 		"protocolMode":  llx.StringData(row["protocol-mode"]),
-		"vlanFiltering": llx.BoolData(parseBool(row["vlan-filtering"])),
-		"fastForward":   llx.BoolData(parseBool(row["fast-forward"])),
-		"igmpSnooping":  llx.BoolData(parseBool(row["igmp-snooping"])),
-		"dhcpSnooping":  llx.BoolData(parseBool(row["dhcp-snooping"])),
-		"mtu":           llx.IntData(parseInt(row["mtu"])),
-		"actualMtu":     llx.IntData(parseInt(row["actual-mtu"])),
-		"l2mtu":         llx.IntData(parseInt(row["l2mtu"])),
+		"vlanFiltering": boolField(row, "vlan-filtering"),
+		"fastForward":   boolField(row, "fast-forward"),
+		"igmpSnooping":  boolField(row, "igmp-snooping"),
+		"dhcpSnooping":  boolField(row, "dhcp-snooping"),
+		"mtu":           intField(row, "mtu"),
+		"actualMtu":     intField(row, "actual-mtu"),
+		"l2mtu":         intField(row, "l2mtu"),
 		"ageingTime":    llx.StringData(row["ageing-time"]),
 		"priority":      llx.StringData(row["priority"]),
 		"arp":           llx.StringData(row["arp"]),
-		"running":       llx.BoolData(parseBool(row["running"])),
-		"disabled":      llx.BoolData(parseBool(row["disabled"])),
+		"running":       boolField(row, "running"),
+		"disabled":      boolField(row, "disabled"),
 		"comment":       llx.StringData(row["comment"]),
-	})
+	}
 }
 
 // --- vlan ---
@@ -141,23 +146,27 @@ type mqlMikrotikInterfaceVlanInternal struct {
 }
 
 func newMikrotikVlan(runtime *plugin.Runtime, row map[string]string) (plugin.Resource, error) {
-	res, err := CreateResource(runtime, "mikrotik.interface.vlan", map[string]*llx.RawData{
-		"__id":          llx.StringData("mikrotik.interface.vlan/" + row["name"]),
-		"name":          llx.StringData(row["name"]),
-		"vlanId":        llx.IntData(parseInt(row["vlan-id"])),
-		"mtu":           llx.IntData(parseInt(row["mtu"])),
-		"l2mtu":         llx.IntData(parseInt(row["l2mtu"])),
-		"macAddress":    llx.StringData(row["mac-address"]),
-		"useServiceTag": llx.BoolData(parseBool(row["use-service-tag"])),
-		"running":       llx.BoolData(parseBool(row["running"])),
-		"disabled":      llx.BoolData(parseBool(row["disabled"])),
-		"comment":       llx.StringData(row["comment"]),
-	})
+	res, err := CreateResource(runtime, "mikrotik.interface.vlan", vlanArgs(row))
 	if err != nil {
 		return nil, err
 	}
 	res.(*mqlMikrotikInterfaceVlan).cacheInterface = row["interface"]
 	return res, nil
+}
+
+func vlanArgs(row map[string]string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":          llx.StringData("mikrotik.interface.vlan/" + row["name"]),
+		"name":          llx.StringData(row["name"]),
+		"vlanId":        intField(row, "vlan-id"),
+		"mtu":           intField(row, "mtu"),
+		"l2mtu":         intField(row, "l2mtu"),
+		"macAddress":    llx.StringData(row["mac-address"]),
+		"useServiceTag": boolField(row, "use-service-tag"),
+		"running":       boolField(row, "running"),
+		"disabled":      boolField(row, "disabled"),
+		"comment":       llx.StringData(row["comment"]),
+	}
 }
 
 func (r *mqlMikrotikInterfaceVlan) compute_interface() (*mqlMikrotikInterface, error) {

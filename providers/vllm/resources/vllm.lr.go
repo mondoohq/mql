@@ -9,18 +9,21 @@ import (
 	"errors"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceVllm         string = "vllm"
-	ResourceVllmModel    string = "vllm.model"
-	ResourceVllmServer   string = "vllm.server"
-	ResourceVllmEndpoint string = "vllm.endpoint"
-	ResourceVllmMetrics  string = "vllm.metrics"
+	ResourceVllm                string = "vllm"
+	ResourceVllmModel           string = "vllm.model"
+	ResourceVllmModelPermission string = "vllm.model.permission"
+	ResourceVllmServer          string = "vllm.server"
+	ResourceVllmServerInfo      string = "vllm.serverInfo"
+	ResourceVllmTokenizerInfo   string = "vllm.tokenizerInfo"
+	ResourceVllmEndpoint        string = "vllm.endpoint"
+	ResourceVllmMetrics         string = "vllm.metrics"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -35,9 +38,21 @@ func init() {
 			// to override args, implement: initVllmModel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createVllmModel,
 		},
+		"vllm.model.permission": {
+			// to override args, implement: initVllmModelPermission(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createVllmModelPermission,
+		},
 		"vllm.server": {
 			// to override args, implement: initVllmServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createVllmServer,
+		},
+		"vllm.serverInfo": {
+			// to override args, implement: initVllmServerInfo(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createVllmServerInfo,
+		},
+		"vllm.tokenizerInfo": {
+			// to override args, implement: initVllmTokenizerInfo(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createVllmTokenizerInfo,
 		},
 		"vllm.endpoint": {
 			Init:   initVllmEndpoint,
@@ -133,6 +148,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"vllm.models": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVllm).GetModels()).ToDataRes(types.Array(types.Resource("vllm.model")))
 	},
+	"vllm.serverInfo": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllm).GetServerInfo()).ToDataRes(types.Resource("vllm.serverInfo"))
+	},
+	"vllm.tokenizerInfo": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllm).GetTokenizerInfo()).ToDataRes(types.Resource("vllm.tokenizerInfo"))
+	},
 	"vllm.model.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVllmModel).GetId()).ToDataRes(types.String)
 	},
@@ -150,6 +171,42 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"vllm.model.ownedBy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVllmModel).GetOwnedBy()).ToDataRes(types.String)
+	},
+	"vllm.model.permissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmModel).GetPermissions()).ToDataRes(types.Array(types.Resource("vllm.model.permission")))
+	},
+	"vllm.model.permission.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmModelPermission).GetId()).ToDataRes(types.String)
+	},
+	"vllm.model.permission.allowSampling": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmModelPermission).GetAllowSampling()).ToDataRes(types.Bool)
+	},
+	"vllm.model.permission.allowLogprobs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmModelPermission).GetAllowLogprobs()).ToDataRes(types.Bool)
+	},
+	"vllm.model.permission.allowFineTuning": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmModelPermission).GetAllowFineTuning()).ToDataRes(types.Bool)
+	},
+	"vllm.model.permission.allowCreateEngine": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmModelPermission).GetAllowCreateEngine()).ToDataRes(types.Bool)
+	},
+	"vllm.model.permission.allowSearchIndices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmModelPermission).GetAllowSearchIndices()).ToDataRes(types.Bool)
+	},
+	"vllm.model.permission.allowView": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmModelPermission).GetAllowView()).ToDataRes(types.Bool)
+	},
+	"vllm.model.permission.organization": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmModelPermission).GetOrganization()).ToDataRes(types.String)
+	},
+	"vllm.model.permission.group": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmModelPermission).GetGroup()).ToDataRes(types.String)
+	},
+	"vllm.model.permission.isBlocking": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmModelPermission).GetIsBlocking()).ToDataRes(types.Bool)
+	},
+	"vllm.model.permission.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmModelPermission).GetCreated()).ToDataRes(types.Time)
 	},
 	"vllm.server.baseUrl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVllmServer).GetBaseUrl()).ToDataRes(types.String)
@@ -190,6 +247,132 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"vllm.server.usesTls": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVllmServer).GetUsesTls()).ToDataRes(types.Bool)
 	},
+	"vllm.server.anonymousInferenceAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServer).GetAnonymousInferenceAllowed()).ToDataRes(types.Bool)
+	},
+	"vllm.server.apiKeyRequired": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServer).GetApiKeyRequired()).ToDataRes(types.Bool)
+	},
+	"vllm.server.runtimeLoraUpdatingEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServer).GetRuntimeLoraUpdatingEnabled()).ToDataRes(types.Bool)
+	},
+	"vllm.server.storedResponsesExposed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServer).GetStoredResponsesExposed()).ToDataRes(types.Bool)
+	},
+	"vllm.server.weightUpdateRoutesExposed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServer).GetWeightUpdateRoutesExposed()).ToDataRes(types.Bool)
+	},
+	"vllm.serverInfo.exposed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetExposed()).ToDataRes(types.Bool)
+	},
+	"vllm.serverInfo.configReadable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetConfigReadable()).ToDataRes(types.Bool)
+	},
+	"vllm.serverInfo.trustRemoteCode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetTrustRemoteCode()).ToDataRes(types.Bool)
+	},
+	"vllm.serverInfo.model": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetModel()).ToDataRes(types.String)
+	},
+	"vllm.serverInfo.tokenizer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetTokenizer()).ToDataRes(types.String)
+	},
+	"vllm.serverInfo.tokenizerMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetTokenizerMode()).ToDataRes(types.String)
+	},
+	"vllm.serverInfo.servedModelNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetServedModelNames()).ToDataRes(types.Array(types.String))
+	},
+	"vllm.serverInfo.maxModelLen": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetMaxModelLen()).ToDataRes(types.Int)
+	},
+	"vllm.serverInfo.quantization": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetQuantization()).ToDataRes(types.String)
+	},
+	"vllm.serverInfo.enforceEager": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetEnforceEager()).ToDataRes(types.Bool)
+	},
+	"vllm.serverInfo.enablePrefixCaching": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetEnablePrefixCaching()).ToDataRes(types.Bool)
+	},
+	"vllm.serverInfo.loraEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetLoraEnabled()).ToDataRes(types.Bool)
+	},
+	"vllm.serverInfo.maxLoras": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetMaxLoras()).ToDataRes(types.Int)
+	},
+	"vllm.serverInfo.maxLoraRank": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetMaxLoraRank()).ToDataRes(types.Int)
+	},
+	"vllm.serverInfo.loraConfig": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetLoraConfig()).ToDataRes(types.Dict)
+	},
+	"vllm.serverInfo.tensorParallelSize": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetTensorParallelSize()).ToDataRes(types.Int)
+	},
+	"vllm.serverInfo.pipelineParallelSize": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetPipelineParallelSize()).ToDataRes(types.Int)
+	},
+	"vllm.serverInfo.dataParallelSize": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetDataParallelSize()).ToDataRes(types.Int)
+	},
+	"vllm.serverInfo.parallelConfig": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetParallelConfig()).ToDataRes(types.Dict)
+	},
+	"vllm.serverInfo.otlpTracesEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetOtlpTracesEndpoint()).ToDataRes(types.String)
+	},
+	"vllm.serverInfo.collectDetailedTraces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetCollectDetailedTraces()).ToDataRes(types.Array(types.String))
+	},
+	"vllm.serverInfo.loggingIterationDetailsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetLoggingIterationDetailsEnabled()).ToDataRes(types.Bool)
+	},
+	"vllm.serverInfo.allowRuntimeLoraUpdating": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetAllowRuntimeLoraUpdating()).ToDataRes(types.Bool)
+	},
+	"vllm.serverInfo.serverDevMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServerInfo).GetServerDevMode()).ToDataRes(types.Bool)
+	},
+	"vllm.tokenizerInfo.exposed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmTokenizerInfo).GetExposed()).ToDataRes(types.Bool)
+	},
+	"vllm.tokenizerInfo.tokenizerClass": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmTokenizerInfo).GetTokenizerClass()).ToDataRes(types.String)
+	},
+	"vllm.tokenizerInfo.chatTemplateConfigured": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmTokenizerInfo).GetChatTemplateConfigured()).ToDataRes(types.Bool)
+	},
+	"vllm.tokenizerInfo.chatTemplate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmTokenizerInfo).GetChatTemplate()).ToDataRes(types.String)
+	},
+	"vllm.tokenizerInfo.chatTemplateSha256": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmTokenizerInfo).GetChatTemplateSha256()).ToDataRes(types.String)
+	},
+	"vllm.tokenizerInfo.maxLength": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmTokenizerInfo).GetMaxLength()).ToDataRes(types.Int)
+	},
+	"vllm.tokenizerInfo.addBosToken": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmTokenizerInfo).GetAddBosToken()).ToDataRes(types.Bool)
+	},
+	"vllm.tokenizerInfo.addEosToken": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmTokenizerInfo).GetAddEosToken()).ToDataRes(types.Bool)
+	},
+	"vllm.tokenizerInfo.bosToken": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmTokenizerInfo).GetBosToken()).ToDataRes(types.String)
+	},
+	"vllm.tokenizerInfo.eosToken": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmTokenizerInfo).GetEosToken()).ToDataRes(types.String)
+	},
+	"vllm.tokenizerInfo.padToken": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmTokenizerInfo).GetPadToken()).ToDataRes(types.String)
+	},
+	"vllm.tokenizerInfo.unkToken": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmTokenizerInfo).GetUnkToken()).ToDataRes(types.String)
+	},
+	"vllm.tokenizerInfo.cleanUpTokenizationSpaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmTokenizerInfo).GetCleanUpTokenizationSpaces()).ToDataRes(types.Bool)
+	},
 	"vllm.endpoint.method": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVllmEndpoint).GetMethod()).ToDataRes(types.String)
 	},
@@ -225,6 +408,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"vllm.metrics.loadTrackingVisible": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVllmMetrics).GetLoadTrackingVisible()).ToDataRes(types.Bool)
+	},
+	"vllm.metrics.exposedModelNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmMetrics).GetExposedModelNames()).ToDataRes(types.Array(types.String))
+	},
+	"vllm.metrics.exposedLoraAdapters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmMetrics).GetExposedLoraAdapters()).ToDataRes(types.Array(types.String))
+	},
+	"vllm.metrics.cacheConfigExposed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmMetrics).GetCacheConfigExposed()).ToDataRes(types.Bool)
+	},
+	"vllm.metrics.exposedCacheConfig": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmMetrics).GetExposedCacheConfig()).ToDataRes(types.Map(types.String, types.String))
 	},
 }
 
@@ -262,6 +457,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlVllm).Models, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"vllm.serverInfo": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllm).ServerInfo, ok = plugin.RawToTValue[*mqlVllmServerInfo](v.Value, v.Error)
+		return
+	},
+	"vllm.tokenizerInfo": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllm).TokenizerInfo, ok = plugin.RawToTValue[*mqlVllmTokenizerInfo](v.Value, v.Error)
+		return
+	},
 	"vllm.model.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlVllmModel).__id, ok = v.Value.(string)
 		return
@@ -288,6 +491,58 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"vllm.model.ownedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlVllmModel).OwnedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.model.permissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmModel).Permissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"vllm.model.permission.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmModelPermission).__id, ok = v.Value.(string)
+		return
+	},
+	"vllm.model.permission.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmModelPermission).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.model.permission.allowSampling": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmModelPermission).AllowSampling, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.model.permission.allowLogprobs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmModelPermission).AllowLogprobs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.model.permission.allowFineTuning": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmModelPermission).AllowFineTuning, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.model.permission.allowCreateEngine": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmModelPermission).AllowCreateEngine, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.model.permission.allowSearchIndices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmModelPermission).AllowSearchIndices, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.model.permission.allowView": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmModelPermission).AllowView, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.model.permission.organization": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmModelPermission).Organization, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.model.permission.group": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmModelPermission).Group, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.model.permission.isBlocking": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmModelPermission).IsBlocking, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.model.permission.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmModelPermission).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"vllm.server.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -346,6 +601,182 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlVllmServer).UsesTls, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"vllm.server.anonymousInferenceAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServer).AnonymousInferenceAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.server.apiKeyRequired": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServer).ApiKeyRequired, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.server.runtimeLoraUpdatingEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServer).RuntimeLoraUpdatingEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.server.storedResponsesExposed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServer).StoredResponsesExposed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.server.weightUpdateRoutesExposed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServer).WeightUpdateRoutesExposed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).__id, ok = v.Value.(string)
+		return
+	},
+	"vllm.serverInfo.exposed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).Exposed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.configReadable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).ConfigReadable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.trustRemoteCode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).TrustRemoteCode, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.model": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).Model, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.tokenizer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).Tokenizer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.tokenizerMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).TokenizerMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.servedModelNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).ServedModelNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.maxModelLen": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).MaxModelLen, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.quantization": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).Quantization, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.enforceEager": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).EnforceEager, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.enablePrefixCaching": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).EnablePrefixCaching, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.loraEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).LoraEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.maxLoras": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).MaxLoras, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.maxLoraRank": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).MaxLoraRank, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.loraConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).LoraConfig, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.tensorParallelSize": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).TensorParallelSize, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.pipelineParallelSize": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).PipelineParallelSize, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.dataParallelSize": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).DataParallelSize, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.parallelConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).ParallelConfig, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.otlpTracesEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).OtlpTracesEndpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.collectDetailedTraces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).CollectDetailedTraces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.loggingIterationDetailsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).LoggingIterationDetailsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.allowRuntimeLoraUpdating": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).AllowRuntimeLoraUpdating, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.serverInfo.serverDevMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServerInfo).ServerDevMode, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.tokenizerInfo.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmTokenizerInfo).__id, ok = v.Value.(string)
+		return
+	},
+	"vllm.tokenizerInfo.exposed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmTokenizerInfo).Exposed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.tokenizerInfo.tokenizerClass": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmTokenizerInfo).TokenizerClass, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.tokenizerInfo.chatTemplateConfigured": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmTokenizerInfo).ChatTemplateConfigured, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.tokenizerInfo.chatTemplate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmTokenizerInfo).ChatTemplate, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.tokenizerInfo.chatTemplateSha256": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmTokenizerInfo).ChatTemplateSha256, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.tokenizerInfo.maxLength": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmTokenizerInfo).MaxLength, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"vllm.tokenizerInfo.addBosToken": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmTokenizerInfo).AddBosToken, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.tokenizerInfo.addEosToken": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmTokenizerInfo).AddEosToken, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.tokenizerInfo.bosToken": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmTokenizerInfo).BosToken, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.tokenizerInfo.eosToken": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmTokenizerInfo).EosToken, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.tokenizerInfo.padToken": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmTokenizerInfo).PadToken, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.tokenizerInfo.unkToken": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmTokenizerInfo).UnkToken, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vllm.tokenizerInfo.cleanUpTokenizationSpaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmTokenizerInfo).CleanUpTokenizationSpaces, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"vllm.endpoint.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlVllmEndpoint).__id, ok = v.Value.(string)
 		return
@@ -402,6 +833,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlVllmMetrics).LoadTrackingVisible, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"vllm.metrics.exposedModelNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmMetrics).ExposedModelNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"vllm.metrics.exposedLoraAdapters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmMetrics).ExposedLoraAdapters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"vllm.metrics.cacheConfigExposed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmMetrics).CacheConfigExposed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.metrics.exposedCacheConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmMetrics).ExposedCacheConfig, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 }
 
 func SetData(resource plugin.Resource, field string, val *llx.RawData) error {
@@ -431,11 +878,13 @@ type mqlVllm struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlVllmInternal it will be used here
-	Server    plugin.TValue[*mqlVllmServer]
-	Endpoints plugin.TValue[[]any]
-	Metrics   plugin.TValue[*mqlVllmMetrics]
-	Version   plugin.TValue[string]
-	Models    plugin.TValue[[]any]
+	Server        plugin.TValue[*mqlVllmServer]
+	Endpoints     plugin.TValue[[]any]
+	Metrics       plugin.TValue[*mqlVllmMetrics]
+	Version       plugin.TValue[string]
+	Models        plugin.TValue[[]any]
+	ServerInfo    plugin.TValue[*mqlVllmServerInfo]
+	TokenizerInfo plugin.TValue[*mqlVllmTokenizerInfo]
 }
 
 // createVllm creates a new instance of this resource
@@ -545,17 +994,50 @@ func (c *mqlVllm) GetModels() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlVllm) GetServerInfo() *plugin.TValue[*mqlVllmServerInfo] {
+	return plugin.GetOrCompute[*mqlVllmServerInfo](&c.ServerInfo, func() (*mqlVllmServerInfo, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("vllm", c.__id, "serverInfo")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlVllmServerInfo), nil
+			}
+		}
+
+		return c.serverInfo()
+	})
+}
+
+func (c *mqlVllm) GetTokenizerInfo() *plugin.TValue[*mqlVllmTokenizerInfo] {
+	return plugin.GetOrCompute[*mqlVllmTokenizerInfo](&c.TokenizerInfo, func() (*mqlVllmTokenizerInfo, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("vllm", c.__id, "tokenizerInfo")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlVllmTokenizerInfo), nil
+			}
+		}
+
+		return c.tokenizerInfo()
+	})
+}
+
 // mqlVllmModel for the vllm.model resource
 type mqlVllmModel struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlVllmModelInternal it will be used here
+	mqlVllmModelInternal
 	Id          plugin.TValue[string]
 	Root        plugin.TValue[string]
 	Parent      plugin.TValue[string]
 	MaxModelLen plugin.TValue[int64]
 	Created     plugin.TValue[*time.Time]
 	OwnedBy     plugin.TValue[string]
+	Permissions plugin.TValue[[]any]
 }
 
 // createVllmModel creates a new instance of this resource
@@ -619,24 +1101,139 @@ func (c *mqlVllmModel) GetOwnedBy() *plugin.TValue[string] {
 	return &c.OwnedBy
 }
 
+func (c *mqlVllmModel) GetPermissions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Permissions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("vllm.model", c.__id, "permissions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.permissions()
+	})
+}
+
+// mqlVllmModelPermission for the vllm.model.permission resource
+type mqlVllmModelPermission struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlVllmModelPermissionInternal it will be used here
+	Id                 plugin.TValue[string]
+	AllowSampling      plugin.TValue[bool]
+	AllowLogprobs      plugin.TValue[bool]
+	AllowFineTuning    plugin.TValue[bool]
+	AllowCreateEngine  plugin.TValue[bool]
+	AllowSearchIndices plugin.TValue[bool]
+	AllowView          plugin.TValue[bool]
+	Organization       plugin.TValue[string]
+	Group              plugin.TValue[string]
+	IsBlocking         plugin.TValue[bool]
+	Created            plugin.TValue[*time.Time]
+}
+
+// createVllmModelPermission creates a new instance of this resource
+func createVllmModelPermission(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlVllmModelPermission{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("vllm.model.permission", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlVllmModelPermission) MqlName() string {
+	return "vllm.model.permission"
+}
+
+func (c *mqlVllmModelPermission) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlVllmModelPermission) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlVllmModelPermission) GetAllowSampling() *plugin.TValue[bool] {
+	return &c.AllowSampling
+}
+
+func (c *mqlVllmModelPermission) GetAllowLogprobs() *plugin.TValue[bool] {
+	return &c.AllowLogprobs
+}
+
+func (c *mqlVllmModelPermission) GetAllowFineTuning() *plugin.TValue[bool] {
+	return &c.AllowFineTuning
+}
+
+func (c *mqlVllmModelPermission) GetAllowCreateEngine() *plugin.TValue[bool] {
+	return &c.AllowCreateEngine
+}
+
+func (c *mqlVllmModelPermission) GetAllowSearchIndices() *plugin.TValue[bool] {
+	return &c.AllowSearchIndices
+}
+
+func (c *mqlVllmModelPermission) GetAllowView() *plugin.TValue[bool] {
+	return &c.AllowView
+}
+
+func (c *mqlVllmModelPermission) GetOrganization() *plugin.TValue[string] {
+	return &c.Organization
+}
+
+func (c *mqlVllmModelPermission) GetGroup() *plugin.TValue[string] {
+	return &c.Group
+}
+
+func (c *mqlVllmModelPermission) GetIsBlocking() *plugin.TValue[bool] {
+	return &c.IsBlocking
+}
+
+func (c *mqlVllmModelPermission) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
 // mqlVllmServer for the vllm.server resource
 type mqlVllmServer struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlVllmServerInternal it will be used here
-	BaseUrl                  plugin.TValue[string]
-	Reachable                plugin.TValue[bool]
-	Version                  plugin.TValue[string]
-	DocsExposed              plugin.TValue[bool]
-	OpenapiExposed           plugin.TValue[bool]
-	MetricsExposed           plugin.TValue[bool]
-	LoadEndpointExposed      plugin.TValue[bool]
-	TokenizerInfoExposed     plugin.TValue[bool]
-	DevEndpointsExposed      plugin.TValue[bool]
-	ProfilerEndpointsExposed plugin.TValue[bool]
-	CorsConfigured           plugin.TValue[bool]
-	CorsAllowsAnyOrigin      plugin.TValue[bool]
-	UsesTls                  plugin.TValue[bool]
+	BaseUrl                    plugin.TValue[string]
+	Reachable                  plugin.TValue[bool]
+	Version                    plugin.TValue[string]
+	DocsExposed                plugin.TValue[bool]
+	OpenapiExposed             plugin.TValue[bool]
+	MetricsExposed             plugin.TValue[bool]
+	LoadEndpointExposed        plugin.TValue[bool]
+	TokenizerInfoExposed       plugin.TValue[bool]
+	DevEndpointsExposed        plugin.TValue[bool]
+	ProfilerEndpointsExposed   plugin.TValue[bool]
+	CorsConfigured             plugin.TValue[bool]
+	CorsAllowsAnyOrigin        plugin.TValue[bool]
+	UsesTls                    plugin.TValue[bool]
+	AnonymousInferenceAllowed  plugin.TValue[bool]
+	ApiKeyRequired             plugin.TValue[bool]
+	RuntimeLoraUpdatingEnabled plugin.TValue[bool]
+	StoredResponsesExposed     plugin.TValue[bool]
+	WeightUpdateRoutesExposed  plugin.TValue[bool]
 }
 
 // createVllmServer creates a new instance of this resource
@@ -754,6 +1351,383 @@ func (c *mqlVllmServer) GetUsesTls() *plugin.TValue[bool] {
 	})
 }
 
+func (c *mqlVllmServer) GetAnonymousInferenceAllowed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AnonymousInferenceAllowed, func() (bool, error) {
+		return c.anonymousInferenceAllowed()
+	})
+}
+
+func (c *mqlVllmServer) GetApiKeyRequired() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ApiKeyRequired, func() (bool, error) {
+		return c.apiKeyRequired()
+	})
+}
+
+func (c *mqlVllmServer) GetRuntimeLoraUpdatingEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RuntimeLoraUpdatingEnabled, func() (bool, error) {
+		return c.runtimeLoraUpdatingEnabled()
+	})
+}
+
+func (c *mqlVllmServer) GetStoredResponsesExposed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.StoredResponsesExposed, func() (bool, error) {
+		return c.storedResponsesExposed()
+	})
+}
+
+func (c *mqlVllmServer) GetWeightUpdateRoutesExposed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.WeightUpdateRoutesExposed, func() (bool, error) {
+		return c.weightUpdateRoutesExposed()
+	})
+}
+
+// mqlVllmServerInfo for the vllm.serverInfo resource
+type mqlVllmServerInfo struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlVllmServerInfoInternal it will be used here
+	Exposed                        plugin.TValue[bool]
+	ConfigReadable                 plugin.TValue[bool]
+	TrustRemoteCode                plugin.TValue[bool]
+	Model                          plugin.TValue[string]
+	Tokenizer                      plugin.TValue[string]
+	TokenizerMode                  plugin.TValue[string]
+	ServedModelNames               plugin.TValue[[]any]
+	MaxModelLen                    plugin.TValue[int64]
+	Quantization                   plugin.TValue[string]
+	EnforceEager                   plugin.TValue[bool]
+	EnablePrefixCaching            plugin.TValue[bool]
+	LoraEnabled                    plugin.TValue[bool]
+	MaxLoras                       plugin.TValue[int64]
+	MaxLoraRank                    plugin.TValue[int64]
+	LoraConfig                     plugin.TValue[any]
+	TensorParallelSize             plugin.TValue[int64]
+	PipelineParallelSize           plugin.TValue[int64]
+	DataParallelSize               plugin.TValue[int64]
+	ParallelConfig                 plugin.TValue[any]
+	OtlpTracesEndpoint             plugin.TValue[string]
+	CollectDetailedTraces          plugin.TValue[[]any]
+	LoggingIterationDetailsEnabled plugin.TValue[bool]
+	AllowRuntimeLoraUpdating       plugin.TValue[bool]
+	ServerDevMode                  plugin.TValue[bool]
+}
+
+// createVllmServerInfo creates a new instance of this resource
+func createVllmServerInfo(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlVllmServerInfo{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("vllm.serverInfo", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlVllmServerInfo) MqlName() string {
+	return "vllm.serverInfo"
+}
+
+func (c *mqlVllmServerInfo) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlVllmServerInfo) GetExposed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Exposed, func() (bool, error) {
+		return c.exposed()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetConfigReadable() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ConfigReadable, func() (bool, error) {
+		return c.configReadable()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetTrustRemoteCode() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.TrustRemoteCode, func() (bool, error) {
+		return c.trustRemoteCode()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetModel() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Model, func() (string, error) {
+		return c.model()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetTokenizer() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Tokenizer, func() (string, error) {
+		return c.tokenizer()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetTokenizerMode() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.TokenizerMode, func() (string, error) {
+		return c.tokenizerMode()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetServedModelNames() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ServedModelNames, func() ([]any, error) {
+		return c.servedModelNames()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetMaxModelLen() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxModelLen, func() (int64, error) {
+		return c.maxModelLen()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetQuantization() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Quantization, func() (string, error) {
+		return c.quantization()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetEnforceEager() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnforceEager, func() (bool, error) {
+		return c.enforceEager()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetEnablePrefixCaching() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnablePrefixCaching, func() (bool, error) {
+		return c.enablePrefixCaching()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetLoraEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.LoraEnabled, func() (bool, error) {
+		return c.loraEnabled()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetMaxLoras() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxLoras, func() (int64, error) {
+		return c.maxLoras()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetMaxLoraRank() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxLoraRank, func() (int64, error) {
+		return c.maxLoraRank()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetLoraConfig() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.LoraConfig, func() (any, error) {
+		return c.loraConfig()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetTensorParallelSize() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.TensorParallelSize, func() (int64, error) {
+		return c.tensorParallelSize()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetPipelineParallelSize() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.PipelineParallelSize, func() (int64, error) {
+		return c.pipelineParallelSize()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetDataParallelSize() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.DataParallelSize, func() (int64, error) {
+		return c.dataParallelSize()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetParallelConfig() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.ParallelConfig, func() (any, error) {
+		return c.parallelConfig()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetOtlpTracesEndpoint() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.OtlpTracesEndpoint, func() (string, error) {
+		return c.otlpTracesEndpoint()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetCollectDetailedTraces() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CollectDetailedTraces, func() ([]any, error) {
+		return c.collectDetailedTraces()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetLoggingIterationDetailsEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.LoggingIterationDetailsEnabled, func() (bool, error) {
+		return c.loggingIterationDetailsEnabled()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetAllowRuntimeLoraUpdating() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AllowRuntimeLoraUpdating, func() (bool, error) {
+		return c.allowRuntimeLoraUpdating()
+	})
+}
+
+func (c *mqlVllmServerInfo) GetServerDevMode() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ServerDevMode, func() (bool, error) {
+		return c.serverDevMode()
+	})
+}
+
+// mqlVllmTokenizerInfo for the vllm.tokenizerInfo resource
+type mqlVllmTokenizerInfo struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlVllmTokenizerInfoInternal it will be used here
+	Exposed                   plugin.TValue[bool]
+	TokenizerClass            plugin.TValue[string]
+	ChatTemplateConfigured    plugin.TValue[bool]
+	ChatTemplate              plugin.TValue[string]
+	ChatTemplateSha256        plugin.TValue[string]
+	MaxLength                 plugin.TValue[int64]
+	AddBosToken               plugin.TValue[bool]
+	AddEosToken               plugin.TValue[bool]
+	BosToken                  plugin.TValue[string]
+	EosToken                  plugin.TValue[string]
+	PadToken                  plugin.TValue[string]
+	UnkToken                  plugin.TValue[string]
+	CleanUpTokenizationSpaces plugin.TValue[bool]
+}
+
+// createVllmTokenizerInfo creates a new instance of this resource
+func createVllmTokenizerInfo(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlVllmTokenizerInfo{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("vllm.tokenizerInfo", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlVllmTokenizerInfo) MqlName() string {
+	return "vllm.tokenizerInfo"
+}
+
+func (c *mqlVllmTokenizerInfo) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlVllmTokenizerInfo) GetExposed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Exposed, func() (bool, error) {
+		return c.exposed()
+	})
+}
+
+func (c *mqlVllmTokenizerInfo) GetTokenizerClass() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.TokenizerClass, func() (string, error) {
+		return c.tokenizerClass()
+	})
+}
+
+func (c *mqlVllmTokenizerInfo) GetChatTemplateConfigured() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ChatTemplateConfigured, func() (bool, error) {
+		return c.chatTemplateConfigured()
+	})
+}
+
+func (c *mqlVllmTokenizerInfo) GetChatTemplate() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ChatTemplate, func() (string, error) {
+		return c.chatTemplate()
+	})
+}
+
+func (c *mqlVllmTokenizerInfo) GetChatTemplateSha256() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ChatTemplateSha256, func() (string, error) {
+		return c.chatTemplateSha256()
+	})
+}
+
+func (c *mqlVllmTokenizerInfo) GetMaxLength() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxLength, func() (int64, error) {
+		return c.maxLength()
+	})
+}
+
+func (c *mqlVllmTokenizerInfo) GetAddBosToken() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AddBosToken, func() (bool, error) {
+		return c.addBosToken()
+	})
+}
+
+func (c *mqlVllmTokenizerInfo) GetAddEosToken() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AddEosToken, func() (bool, error) {
+		return c.addEosToken()
+	})
+}
+
+func (c *mqlVllmTokenizerInfo) GetBosToken() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.BosToken, func() (string, error) {
+		return c.bosToken()
+	})
+}
+
+func (c *mqlVllmTokenizerInfo) GetEosToken() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.EosToken, func() (string, error) {
+		return c.eosToken()
+	})
+}
+
+func (c *mqlVllmTokenizerInfo) GetPadToken() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.PadToken, func() (string, error) {
+		return c.padToken()
+	})
+}
+
+func (c *mqlVllmTokenizerInfo) GetUnkToken() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.UnkToken, func() (string, error) {
+		return c.unkToken()
+	})
+}
+
+func (c *mqlVllmTokenizerInfo) GetCleanUpTokenizationSpaces() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CleanUpTokenizationSpaces, func() (bool, error) {
+		return c.cleanUpTokenizationSpaces()
+	})
+}
+
 // mqlVllmEndpoint for the vllm.endpoint resource
 type mqlVllmEndpoint struct {
 	MqlRuntime *plugin.Runtime
@@ -865,6 +1839,10 @@ type mqlVllmMetrics struct {
 	PrometheusExposed   plugin.TValue[bool]
 	LoadEndpointExposed plugin.TValue[bool]
 	LoadTrackingVisible plugin.TValue[bool]
+	ExposedModelNames   plugin.TValue[[]any]
+	ExposedLoraAdapters plugin.TValue[[]any]
+	CacheConfigExposed  plugin.TValue[bool]
+	ExposedCacheConfig  plugin.TValue[map[string]any]
 }
 
 // createVllmMetrics creates a new instance of this resource
@@ -919,5 +1897,29 @@ func (c *mqlVllmMetrics) GetLoadEndpointExposed() *plugin.TValue[bool] {
 func (c *mqlVllmMetrics) GetLoadTrackingVisible() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.LoadTrackingVisible, func() (bool, error) {
 		return c.loadTrackingVisible()
+	})
+}
+
+func (c *mqlVllmMetrics) GetExposedModelNames() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExposedModelNames, func() ([]any, error) {
+		return c.exposedModelNames()
+	})
+}
+
+func (c *mqlVllmMetrics) GetExposedLoraAdapters() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExposedLoraAdapters, func() ([]any, error) {
+		return c.exposedLoraAdapters()
+	})
+}
+
+func (c *mqlVllmMetrics) GetCacheConfigExposed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CacheConfigExposed, func() (bool, error) {
+		return c.cacheConfigExposed()
+	})
+}
+
+func (c *mqlVllmMetrics) GetExposedCacheConfig() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.ExposedCacheConfig, func() (map[string]any, error) {
+		return c.exposedCacheConfig()
 	})
 }

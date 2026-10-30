@@ -9,19 +9,43 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/option"
 )
 
+type mqlGcpProjectComputeServiceHealthCheckInternal struct {
+	cacheRegionUrl string
+}
+
+type mqlGcpProjectComputeServiceTargetHttpProxyInternal struct {
+	cacheRegionUrl string
+	cacheUrlMapUrl string
+}
+
+type mqlGcpProjectComputeServiceTargetHttpsProxyInternal struct {
+	cacheRegionUrl    string
+	cacheSslPolicyUrl string
+	cacheUrlMapUrl    string
+}
+
+type mqlGcpProjectComputeServiceUrlMapInternal struct {
+	cacheDefaultServiceUrl string
+	cacheRegionUrl         string
+}
+
 // Health checks
 
 func (g *mqlGcpProjectComputeService) healthChecks() ([]any, error) {
-	if !g.GetEnabled().Data {
+	enabled, err := g.serviceEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -73,11 +97,12 @@ func (g *mqlGcpProjectComputeService) healthChecks() ([]any, error) {
 					"http2HealthCheck":   llx.DictData(http2HC),
 					"grpcHealthCheck":    llx.DictData(grpcHC),
 					"logConfig":          llx.DictData(logCfg),
-					"regionUrl":          llx.StringData(hc.Region),
 				})
 				if err != nil {
 					return err
 				}
+				mqlRef := mqlHC.(*mqlGcpProjectComputeServiceHealthCheck)
+				mqlRef.cacheRegionUrl = hc.Region
 				res = append(res, mqlHC)
 			}
 		}
@@ -95,7 +120,11 @@ func (g *mqlGcpProjectComputeServiceHealthCheck) id() (string, error) {
 // URL maps
 
 func (g *mqlGcpProjectComputeService) urlMaps() ([]any, error) {
-	if !g.GetEnabled().Data {
+	enabled, err := g.serviceEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -125,21 +154,22 @@ func (g *mqlGcpProjectComputeService) urlMaps() ([]any, error) {
 				tests, _ := convert.JsonToDictSlice(um.Tests)
 
 				mqlUM, err := CreateResource(g.MqlRuntime, "gcp.project.computeService.urlMap", map[string]*llx.RawData{
-					"id":             llx.StringData(strconv.FormatUint(um.Id, 10)),
-					"projectId":      llx.StringData(projectId),
-					"name":           llx.StringData(um.Name),
-					"description":    llx.StringData(um.Description),
-					"defaultService": llx.StringData(um.DefaultService),
-					"hostRules":      llx.ArrayData(hostRules, types.Dict),
-					"pathMatchers":   llx.ArrayData(pathMatchers, types.Dict),
-					"tests":          llx.ArrayData(tests, types.Dict),
-					"created":        llx.TimeDataPtr(parseTime(um.CreationTimestamp)),
-					"selfLink":       llx.StringData(um.SelfLink),
-					"regionUrl":      llx.StringData(um.Region),
+					"id":           llx.StringData(strconv.FormatUint(um.Id, 10)),
+					"projectId":    llx.StringData(projectId),
+					"name":         llx.StringData(um.Name),
+					"description":  llx.StringData(um.Description),
+					"hostRules":    llx.ArrayData(hostRules, types.Dict),
+					"pathMatchers": llx.ArrayData(pathMatchers, types.Dict),
+					"tests":        llx.ArrayData(tests, types.Dict),
+					"created":      llx.TimeDataPtr(parseTime(um.CreationTimestamp)),
+					"selfLink":     llx.StringData(um.SelfLink),
 				})
 				if err != nil {
 					return err
 				}
+				mqlRef := mqlUM.(*mqlGcpProjectComputeServiceUrlMap)
+				mqlRef.cacheDefaultServiceUrl = um.DefaultService
+				mqlRef.cacheRegionUrl = um.Region
 				res = append(res, mqlUM)
 			}
 		}
@@ -157,7 +187,11 @@ func (g *mqlGcpProjectComputeServiceUrlMap) id() (string, error) {
 // Target HTTP proxies
 
 func (g *mqlGcpProjectComputeService) targetHttpProxies() ([]any, error) {
-	if !g.GetEnabled().Data {
+	enabled, err := g.serviceEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -187,15 +221,16 @@ func (g *mqlGcpProjectComputeService) targetHttpProxies() ([]any, error) {
 					"projectId":   llx.StringData(projectId),
 					"name":        llx.StringData(proxy.Name),
 					"description": llx.StringData(proxy.Description),
-					"urlMapUrl":   llx.StringData(proxy.UrlMap),
 					"created":     llx.TimeDataPtr(parseTime(proxy.CreationTimestamp)),
 					"selfLink":    llx.StringData(proxy.SelfLink),
 					"proxyBind":   llx.BoolData(proxy.ProxyBind),
-					"regionUrl":   llx.StringData(proxy.Region),
 				})
 				if err != nil {
 					return err
 				}
+				mqlRef := mqlProxy.(*mqlGcpProjectComputeServiceTargetHttpProxy)
+				mqlRef.cacheUrlMapUrl = proxy.UrlMap
+				mqlRef.cacheRegionUrl = proxy.Region
 				res = append(res, mqlProxy)
 			}
 		}
@@ -211,10 +246,7 @@ func (g *mqlGcpProjectComputeServiceTargetHttpProxy) id() (string, error) {
 }
 
 func (g *mqlGcpProjectComputeServiceTargetHttpProxy) urlMap() (*mqlGcpProjectComputeServiceUrlMap, error) {
-	if g.UrlMapUrl.Error != nil {
-		return nil, g.UrlMapUrl.Error
-	}
-	url := g.UrlMapUrl.Data
+	url := g.cacheUrlMapUrl
 	if url == "" {
 		g.UrlMap.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -232,7 +264,11 @@ func (g *mqlGcpProjectComputeServiceTargetHttpProxy) urlMap() (*mqlGcpProjectCom
 // Target HTTPS proxies
 
 func (g *mqlGcpProjectComputeService) targetHttpsProxies() ([]any, error) {
-	if !g.GetEnabled().Data {
+	enabled, err := g.serviceEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -258,22 +294,27 @@ func (g *mqlGcpProjectComputeService) targetHttpsProxies() ([]any, error) {
 		for _, scoped := range page.Items {
 			for _, proxy := range scoped.TargetHttpsProxies {
 				mqlProxy, err := CreateResource(g.MqlRuntime, "gcp.project.computeService.targetHttpsProxy", map[string]*llx.RawData{
-					"id":                 llx.StringData(strconv.FormatUint(proxy.Id, 10)),
-					"projectId":          llx.StringData(projectId),
-					"name":               llx.StringData(proxy.Name),
-					"description":        llx.StringData(proxy.Description),
-					"urlMapUrl":          llx.StringData(proxy.UrlMap),
-					"sslCertificateUrls": llx.ArrayData(convert.SliceAnyToInterface(proxy.SslCertificates), types.String),
-					"sslPolicyUrl":       llx.StringData(proxy.SslPolicy),
-					"quicOverride":       llx.StringData(proxy.QuicOverride),
-					"created":            llx.TimeDataPtr(parseTime(proxy.CreationTimestamp)),
-					"selfLink":           llx.StringData(proxy.SelfLink),
-					"proxyBind":          llx.BoolData(proxy.ProxyBind),
-					"regionUrl":          llx.StringData(proxy.Region),
+					"id":                  llx.StringData(strconv.FormatUint(proxy.Id, 10)),
+					"projectId":           llx.StringData(projectId),
+					"name":                llx.StringData(proxy.Name),
+					"description":         llx.StringData(proxy.Description),
+					"sslCertificateUrls":  llx.ArrayData(convert.SliceAnyToInterface(proxy.SslCertificates), types.String),
+					"quicOverride":        llx.StringData(proxy.QuicOverride),
+					"certificateMap":      llx.StringData(proxy.CertificateMap),
+					"serverTlsPolicy":     llx.StringData(proxy.ServerTlsPolicy),
+					"authorizationPolicy": llx.StringData(proxy.AuthorizationPolicy),
+					"tlsEarlyData":        llx.StringData(proxy.TlsEarlyData),
+					"created":             llx.TimeDataPtr(parseTime(proxy.CreationTimestamp)),
+					"selfLink":            llx.StringData(proxy.SelfLink),
+					"proxyBind":           llx.BoolData(proxy.ProxyBind),
 				})
 				if err != nil {
 					return err
 				}
+				mqlRef := mqlProxy.(*mqlGcpProjectComputeServiceTargetHttpsProxy)
+				mqlRef.cacheUrlMapUrl = proxy.UrlMap
+				mqlRef.cacheSslPolicyUrl = proxy.SslPolicy
+				mqlRef.cacheRegionUrl = proxy.Region
 				res = append(res, mqlProxy)
 			}
 		}
@@ -289,10 +330,7 @@ func (g *mqlGcpProjectComputeServiceTargetHttpsProxy) id() (string, error) {
 }
 
 func (g *mqlGcpProjectComputeServiceTargetHttpsProxy) urlMap() (*mqlGcpProjectComputeServiceUrlMap, error) {
-	if g.UrlMapUrl.Error != nil {
-		return nil, g.UrlMapUrl.Error
-	}
-	url := g.UrlMapUrl.Data
+	url := g.cacheUrlMapUrl
 	if url == "" {
 		g.UrlMap.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -308,10 +346,7 @@ func (g *mqlGcpProjectComputeServiceTargetHttpsProxy) urlMap() (*mqlGcpProjectCo
 }
 
 func (g *mqlGcpProjectComputeServiceTargetHttpsProxy) sslPolicy() (*mqlGcpProjectComputeServiceSslPolicy, error) {
-	if g.SslPolicyUrl.Error != nil {
-		return nil, g.SslPolicyUrl.Error
-	}
-	url := g.SslPolicyUrl.Data
+	url := g.cacheSslPolicyUrl
 	if url == "" {
 		g.SslPolicy.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil

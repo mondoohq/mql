@@ -7,10 +7,10 @@ import (
 	"context"
 
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // managedAppConfigurations lists the app configuration policies that deliver
@@ -51,8 +51,8 @@ func (a *mqlMicrosoftDevicemanagement) managedAppConfigurations() ([]any, error)
 				"customSettings":       llx.MapData(customSettings, types.String),
 				"deployedAppCount":     llx.IntDataPtr(c.GetDeployedAppCount()),
 				"isAssigned":           llx.BoolDataPtr(c.GetIsAssigned()),
-				"createdDateTime":      llx.TimeDataPtr(c.GetCreatedDateTime()),
-				"lastModifiedDateTime": llx.TimeDataPtr(c.GetLastModifiedDateTime()),
+				"createdDateTime":      graphTimeData(c.GetCreatedDateTime()),
+				"lastModifiedDateTime": graphTimeData(c.GetLastModifiedDateTime()),
 			})
 		if err != nil {
 			return nil, err
@@ -91,8 +91,8 @@ func (a *mqlMicrosoftDevicemanagement) mobileAppConfigurations() ([]any, error) 
 				"description":          llx.StringDataPtr(c.GetDescription()),
 				"version":              llx.IntDataPtr(c.GetVersion()),
 				"targetedMobileApps":   llx.ArrayData(llx.TArr2Raw(c.GetTargetedMobileApps()), types.String),
-				"createdDateTime":      llx.TimeDataPtr(c.GetCreatedDateTime()),
-				"lastModifiedDateTime": llx.TimeDataPtr(c.GetLastModifiedDateTime()),
+				"createdDateTime":      graphTimeData(c.GetCreatedDateTime()),
+				"lastModifiedDateTime": graphTimeData(c.GetLastModifiedDateTime()),
 			})
 		if err != nil {
 			return nil, err

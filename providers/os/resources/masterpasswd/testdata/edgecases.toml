@@ -1,0 +1,19 @@
+# Hand-written master.passwd edge cases, in the FreeBSD 14 layout.
+# - alice: a hash, the default (empty) class, change and expire set
+# - bob: locked with `pw lock`, class staff
+# - carol: an empty password, class unknownclass
+# - a line with a non-numeric uid, which must be skipped, never read as uid 0
+# - a line with nine fields, which must be skipped
+
+[files."/etc/master.passwd"]
+content = '''
+# $FreeBSD$
+#
+root:$6$rounds=5000$saltsalt$roothash:0:0::0:0:Charlie &:/root:/bin/sh
+
+alice:$6$saltsalt$alicehash:1001:1001::1767225600:1798761600:Alice:/home/alice:/bin/sh
+bob:*LOCKED*$6$saltsalt$bobhash:1002:1002:staff:0:0:Bob:/home/bob:/bin/csh
+carol::1003:1003:unknownclass:0:0:Carol:/home/carol:/bin/sh
+mallory:*:abc:1004::0:0:Mallory:/home/mallory:/bin/sh
+eve:*:1005:1005::0:0:Eve:/home/eve
+'''

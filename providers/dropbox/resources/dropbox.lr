@@ -1,0 +1,185 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/dropbox"
+option go_package = "go.mondoo.com/mql/providers/dropbox/resources"
+option root = "dropbox"
+
+// Dropbox Business team
+//
+// Root of a Dropbox Business team account, reachable through a
+// team-scoped access token. Exposes the team's identity and size via
+// `team`, the members enrolled in it, the groups used to manage sharing
+// and permissions, the devices linked to member accounts, and the
+// third-party apps members have authorized. Use this resource to audit
+// a team's overall security posture: external sharing exposure and the
+// devices and apps with standing access to team data.
+dropbox @maturity("experimental") @root {
+  // Team members
+  members() []dropbox.member
+  // Team-managed groups
+  groups() []dropbox.group
+  // Devices linked to team member accounts
+  devices() []dropbox.device
+  // Third-party apps linked to team member accounts
+  linkedApps() []dropbox.linkedApp
+}
+
+// Dropbox Business team account
+//
+// Team-wide identity and sharing configuration returned by
+// `team/get_info` and `team/features/get_values`. There is one `team`
+// per Dropbox Business account. `externalSharingAllowed` reports
+// whether shared folders may include members outside the team, and
+// `publicSharingAllowed` reports whether team members are permitted to
+// create shared links with a public (non-team) audience.
+private dropbox.team @defaults("name") @maturity("experimental") {
+  // Team name
+  name string
+  // Team ID
+  id string
+  // Number of licenses available to the team
+  numLicensedUsers int
+  // Number of accounts invited to or already active on the team
+  numProvisionedUsers int
+  // Number of licenses currently used by the team
+  numUsedLicenses int
+  // Whether shared folders may include members from outside the team
+  externalSharingAllowed bool
+  // Whether team members are permitted to create shared links with a publicly accessible audience
+  publicSharingAllowed bool
+  // Upload API rate limit in calls per month, 0 when unlimited or not configured
+  uploadApiRateLimit int
+}
+
+// Dropbox Business team member
+//
+// A single member enrolled in the team, selected by `teamMemberId` as
+// returned by `team/members/list_v2`. Carries the member's login
+// email, role, and account status, the signals most relevant to
+// auditing account exposure across a team. The `secondaryEmails` field
+// lists additional verified addresses tied to the same account.
+dropbox.member @defaults("email status") @maturity("experimental") {
+  // Team member ID
+  teamMemberId string
+  // Primary login email address
+  email string
+  // Whether the primary email has been verified
+  emailVerified bool
+  // Member's display name
+  displayName string
+  // Account status
+  //
+  // One of active, invited, suspended, or removed (removed members are
+  // only present when the connection includes removed accounts).
+  status string
+  // Membership type
+  //
+  // One of full (uses a license) or limited (does not use a license and
+  // has no access to the team's shared quota).
+  membershipType string
+  // Role name(s) assigned to the member
+  //
+  // For example team_admin, user_management_admin, support_admin, or
+  // member_only. A member can hold more than one role; multiple roles
+  // are joined with a comma.
+  role string
+  // Additional verified email addresses linked to the account
+  secondaryEmails []string
+  // Timestamp the member joined the team
+  joinedAt time
+  // Devices linked to this member's account
+  devices() []dropbox.device
+  // Third-party apps this member has linked
+  linkedApps() []dropbox.linkedApp
+}
+
+// Dropbox Business group
+//
+// A team-managed group used to organize members for sharing and
+// permission assignment, selected by `groupId` as returned by
+// `team/groups/list`. Groups created and managed within the admin
+// console (`user_managed` or `company_managed`) are distinguished from
+// groups synced in from an external identity provider
+// (`system_managed`).
+dropbox.group @defaults("name memberCount") @maturity("experimental") {
+  // Group ID
+  groupId string
+  // Group name
+  name string
+  // External ID attached to the group by an admin
+  //
+  // An arbitrary identifier an admin can attach to a group, commonly
+  // used to correlate it with a group synced in from an external
+  // identity provider. Empty when not set.
+  externalId string
+  // Number of members in the group
+  memberCount int
+  // Group management type
+  //
+  // One of user_managed, company_managed, or system_managed.
+  managementType string
+}
+
+// Device linked to a Dropbox Business member account
+//
+// A single client session or linked device for a team member, as
+// returned by `team/devices/list_members_devices`. Covers desktop and
+// mobile clients as well as active web sessions, distinguished by
+// `clientType`. Use `lastActivity` to find stale sessions that should
+// be revoked.
+dropbox.device @defaults("clientType hostName") @maturity("experimental") {
+  // Session or device ID
+  id string
+  // Team member ID of the account this device is linked to
+  memberId string
+  // Client type
+  //
+  // One of desktop, mobile, or web.
+  clientType string
+  // Device or session display name
+  hostName string
+  // Client application version, empty for web sessions
+  clientVersion string
+  // Platform the client runs on (e.g. windows, mac, linux, iphone, android)
+  platform string
+  // IP address the session was last seen from
+  ipAddress string
+  // Country the session was last seen from
+  country string
+  // Whether the account's files can be remotely wiped when this device is unlinked
+  //
+  // Only reported for desktop clients. Mobile clients and web sessions
+  // do not carry this capability.
+  isDeleteOnUnlinkSupported bool
+  // Timestamp the client was linked to the account
+  createdAt time
+  // Timestamp of the client's last recorded activity
+  lastActivity time
+}
+
+// Third-party app linked to a Dropbox Business member account
+//
+// An OAuth application a team member has authorized against their
+// Dropbox account, as returned by
+// `team/linked_apps/list_members_linked_apps`. Use this to audit the
+// blast radius of third-party integrations with standing access to
+// team content.
+dropbox.linkedApp @defaults("appName publisherName") @maturity("experimental") {
+  // App ID
+  appId string
+  // Team member ID of the account that linked this app
+  memberId string
+  // App display name
+  appName string
+  // App publisher name, empty when not provided by the app
+  publisherName string
+  // Publisher's URL, empty when not provided by the app
+  publisherUrl string
+  // Timestamp the member linked the app
+  linked time
+  // Whether the app is restricted to its own app folder instead of having full Dropbox access
+  isAppFolder bool
+}

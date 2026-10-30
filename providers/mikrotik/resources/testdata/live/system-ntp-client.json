@@ -1,0 +1,13 @@
+[
+ {
+  "enabled": "true",
+  "freq-drift": "0",
+  "mode": "unicast",
+  "servers": "0.pool.ntp.org,1.pool.ntp.org",
+  "status": "synchronized",
+  "synced-server": "1.pool.ntp.org",
+  "synced-stratum": "2",
+  "system-offset": "4.129",
+  "vrf": "main"
+ }
+]

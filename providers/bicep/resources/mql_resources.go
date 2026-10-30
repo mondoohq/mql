@@ -8,18 +8,20 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/bicep/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/bicep/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // mqlBicepParameterInternal carries the owning file's symbol resolver so the
 // lazy resolvedType() accessor can resolve the declared `type` name to the
 // same-file `bicep.type` it names.
 type mqlBicepParameterInternal struct {
-	resolver *symbolResolver
+	stampOnce sync.Once
+	resolver  *symbolResolver
 }
 
 func createMqlParameters(runtime *plugin.Runtime, filePath string, params []parsedParameter, resolver *symbolResolver) ([]any, error) {
@@ -51,7 +53,12 @@ func createMqlParameters(runtime *plugin.Runtime, filePath string, params []pars
 		if err != nil {
 			return nil, err
 		}
-		res.(*mqlBicepParameter).resolver = resolver
+		// CreateResource returns the CACHED instance when this __id is already
+		// in the runtime cache, and the same declaration is reached
+		// concurrently from bicep.file.parameters and the symbol resolver.
+		// stampOnce keeps the write race-free and happens-before any reader.
+		mqlP := res.(*mqlBicepParameter)
+		mqlP.stampOnce.Do(func() { mqlP.resolver = resolver })
 		mqlParams = append(mqlParams, res)
 	}
 	return mqlParams, nil
@@ -76,7 +83,8 @@ func (p *mqlBicepParameter) resolvedType() (*mqlBicepType, error) {
 // lazy expressionTree() accessor can resolve the root identifiers its nodes
 // reference to same-file declarations.
 type mqlBicepVariableInternal struct {
-	resolver *symbolResolver
+	stampOnce sync.Once
+	resolver  *symbolResolver
 }
 
 func createMqlVariables(runtime *plugin.Runtime, filePath string, vars []parsedVariable, resolver *symbolResolver) ([]any, error) {
@@ -98,7 +106,8 @@ func createMqlVariables(runtime *plugin.Runtime, filePath string, vars []parsedV
 		if err != nil {
 			return nil, err
 		}
-		res.(*mqlBicepVariable).resolver = resolver
+		mqlV := res.(*mqlBicepVariable)
+		mqlV.stampOnce.Do(func() { mqlV.resolver = resolver })
 		mqlVars = append(mqlVars, res)
 	}
 	return mqlVars, nil
@@ -113,8 +122,9 @@ func createMqlVariables(runtime *plugin.Runtime, filePath string, vars []parsedV
 // root identifiers to same-file declarations. Nested child resources inherit
 // the same resolver since symbols stay file-scoped regardless of nesting.
 type mqlBicepResourceInternal struct {
-	nested   []parsedResource
-	resolver *symbolResolver
+	stampOnce sync.Once
+	nested    []parsedResource
+	resolver  *symbolResolver
 	// propertiesBody is the raw text of the resource's `properties: { ... }`
 	// block (between the outer braces), kept so propertyExpressions() can
 	// re-walk it with quoting intact — the parsed `properties` dict has already
@@ -133,7 +143,7 @@ func createMqlResources(runtime *plugin.Runtime, filePath string, resources []pa
 		if err != nil {
 			return nil, err
 		}
-		res, err := newMqlBicepResource(runtime, "bicep.resource:"+filePath+":"+r.symbolicName, r, resolver, ctx)
+		res, err := newMqlBicepResource(runtime, bicepResourceID(filePath, r), r, resolver, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -148,13 +158,13 @@ func createMqlResources(runtime *plugin.Runtime, filePath string, resources []pa
 // first `{` and the final `}`, leaving the top-level field block that
 // parseBicepObject expects. Returns "" when no braces are present.
 func resourceBodyInner(body string) string {
-	open := strings.IndexByte(body, '{')
-	if open < 0 {
+	_, after, ok := strings.Cut(body, "{")
+	if !ok {
 		return ""
 	}
-	inner := body[open+1:]
-	if close := strings.LastIndexByte(inner, '}'); close >= 0 {
-		inner = inner[:close]
+	inner := after
+	if before, _, ok := strings.CutLast(inner, "}"); ok {
+		inner = before
 	}
 	return inner
 }
@@ -231,11 +241,23 @@ func newMqlBicepResource(runtime *plugin.Runtime, id string, r parsedResource, r
 		return nil, err
 	}
 	mqlRes := res.(*mqlBicepResource)
-	mqlRes.nested = r.nested
-	mqlRes.resolver = resolver
-	mqlRes.propertiesBody = propertiesBody
-	mqlRes.rawName = r.name
+	mqlRes.stampOnce.Do(func() {
+		mqlRes.nested = r.nested
+		mqlRes.resolver = resolver
+		mqlRes.propertiesBody = propertiesBody
+		mqlRes.rawName = r.name
+	})
 	return mqlRes, nil
+}
+
+// bicepResourceID builds the cache id of a top-level resource declaration.
+// The declaration's start line is part of the key because a symbolic name is
+// not guaranteed unique within a file: two `resource sa ...` declarations are
+// invalid Bicep the compiler rejects, but on that input a name-only id made
+// both list entries alias the first declaration's data. The line makes the id
+// collision-proof at no cost.
+func bicepResourceID(filePath string, r parsedResource) string {
+	return "bicep.resource:" + filePath + ":" + r.symbolicName + ":" + strconv.Itoa(r.startLine)
 }
 
 // resources materializes this resource's nested child resources. Each child
@@ -263,6 +285,7 @@ func (r *mqlBicepResource) resources() ([]any, error) {
 // file that declared this module; a relative `source` is resolved against its
 // directory by the target() accessor.
 type mqlBicepModuleInternal struct {
+	stampOnce      sync.Once
 	resolver       *symbolResolver
 	owningFilePath string
 	// paramsBody is the raw text of the module's `params: { ... }` block,
@@ -310,9 +333,11 @@ func createMqlModules(runtime *plugin.Runtime, filePath string, modules []parsed
 			return nil, err
 		}
 		mqlMod := res.(*mqlBicepModule)
-		mqlMod.resolver = resolver
-		mqlMod.owningFilePath = filePath
-		mqlMod.paramsBody = paramsBody
+		mqlMod.stampOnce.Do(func() {
+			mqlMod.resolver = resolver
+			mqlMod.owningFilePath = filePath
+			mqlMod.paramsBody = paramsBody
+		})
 		mqlModules = append(mqlModules, res)
 	}
 	return mqlModules, nil
@@ -323,7 +348,8 @@ func createMqlModules(runtime *plugin.Runtime, filePath string, modules []parsed
 // child resources without re-parsing. The synthetic `__id` of each child is
 // derived from its parent's id (`<exprId>/arg[<i>]`, `<exprId>/seg[<i>]`).
 type mqlBicepExpressionInternal struct {
-	node *exprNode
+	stampOnce sync.Once
+	node      *exprNode
 	// resolver is the owning file's symbol table, threaded down from the
 	// declaration whose value this expression is. It lets referenceKind and
 	// the referenced*() accessors resolve `target` (the root identifier of a
@@ -351,8 +377,10 @@ func newMqlBicepExpression(runtime *plugin.Runtime, parentID string, node *exprN
 		return nil, err
 	}
 	mqlExpr := res.(*mqlBicepExpression)
-	mqlExpr.node = node
-	mqlExpr.resolver = resolver
+	mqlExpr.stampOnce.Do(func() {
+		mqlExpr.node = node
+		mqlExpr.resolver = resolver
+	})
 	return mqlExpr, nil
 }
 
@@ -513,8 +541,9 @@ func (m *mqlBicepModule) conditionTree() (*mqlBicepExpression, error) {
 // into a bicep.expression with symbol resolution intact (the same resolver the
 // owning resource/module's scalar expression trees thread through).
 type mqlBicepPropertyExpressionInternal struct {
-	raw      string
-	resolver *symbolResolver
+	stampOnce sync.Once
+	raw       string
+	resolver  *symbolResolver
 }
 
 // propertyExpressionEntry is one flattened string leaf of a properties/params
@@ -596,8 +625,10 @@ func newMqlBicepPropertyExpressions(runtime *plugin.Runtime, parentID, accessor,
 			return nil, err
 		}
 		mqlPE := res.(*mqlBicepPropertyExpression)
-		mqlPE.raw = e.raw
-		mqlPE.resolver = resolver
+		mqlPE.stampOnce.Do(func() {
+			mqlPE.raw = e.raw
+			mqlPE.resolver = resolver
+		})
 		out = append(out, mqlPE)
 	}
 	return out, nil
@@ -688,7 +719,8 @@ func (m *mqlBicepModule) target() (*mqlBicepFile, error) {
 // lazy expressionTree() accessor can resolve referenced root identifiers to
 // same-file declarations.
 type mqlBicepOutputInternal struct {
-	resolver *symbolResolver
+	stampOnce sync.Once
+	resolver  *symbolResolver
 }
 
 func createMqlOutputs(runtime *plugin.Runtime, filePath string, outputs []parsedOutput, resolver *symbolResolver) ([]any, error) {
@@ -711,7 +743,8 @@ func createMqlOutputs(runtime *plugin.Runtime, filePath string, outputs []parsed
 		if err != nil {
 			return nil, err
 		}
-		res.(*mqlBicepOutput).resolver = resolver
+		mqlO := res.(*mqlBicepOutput)
+		mqlO.stampOnce.Do(func() { mqlO.resolver = resolver })
 		mqlOutputs = append(mqlOutputs, res)
 	}
 	return mqlOutputs, nil
@@ -736,6 +769,7 @@ func (o *mqlBicepOutput) resolvedType() (*mqlBicepType, error) {
 // properties() accessor can materialize them without re-parsing the raw
 // definition.
 type mqlBicepTypeInternal struct {
+	stampOnce       sync.Once
 	cacheProperties []parsedTypeProperty
 }
 
@@ -758,7 +792,8 @@ func createMqlTypes(runtime *plugin.Runtime, filePath string, types_ []parsedTyp
 		if err != nil {
 			return nil, err
 		}
-		res.(*mqlBicepType).cacheProperties = t.properties
+		mqlT := res.(*mqlBicepType)
+		mqlT.stampOnce.Do(func() { mqlT.cacheProperties = t.properties })
 		mqlTypes = append(mqlTypes, res)
 	}
 	return mqlTypes, nil
@@ -814,6 +849,7 @@ func createMqlFunctions(runtime *plugin.Runtime, filePath string, functions []pa
 // import; a relative `source` is resolved against its directory by the
 // targetFile() accessor.
 type mqlBicepImportInternal struct {
+	stampOnce      sync.Once
 	owningFilePath string
 }
 
@@ -834,7 +870,8 @@ func createMqlImports(runtime *plugin.Runtime, filePath string, imports []parsed
 		if err != nil {
 			return nil, err
 		}
-		res.(*mqlBicepImport).owningFilePath = filePath
+		mqlImp := res.(*mqlBicepImport)
+		mqlImp.stampOnce.Do(func() { mqlImp.owningFilePath = filePath })
 		mqlImports = append(mqlImports, res)
 	}
 	return mqlImports, nil
@@ -943,12 +980,28 @@ func (i *mqlBicepImport) resolvedFunctions() ([]any, error) {
 
 // importSymbolSet turns the `symbols` list (an []any of strings) into a lookup
 // set for filtering a target file's types/functions on a named import.
+//
+// A `{ ... }` import element may rename what it pulls in
+// (`import { sku as skuAlias } from './shared.bicep'`), and the parser stores
+// the element verbatim, so the entry arrives as "sku as skuAlias". What the
+// target file declares is the name before the alias, so that is what has to be
+// matched; without the split an aliased import resolves to nothing at all.
+//
+// The alias is split here rather than at parse time because the parser is
+// being changed concurrently on another branch. Splitting it in the parser
+// would be cleaner, and would also let `symbols` report the imported names
+// without their aliases.
 func importSymbolSet(symbols []any) map[string]bool {
 	set := make(map[string]bool, len(symbols))
 	for _, s := range symbols {
-		if name, ok := s.(string); ok {
-			set[name] = true
+		name, ok := s.(string)
+		if !ok {
+			continue
 		}
+		if idx := strings.Index(name, " as "); idx >= 0 {
+			name = strings.TrimSpace(name[:idx])
+		}
+		set[name] = true
 	}
 	return set
 }

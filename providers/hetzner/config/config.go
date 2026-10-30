@@ -6,15 +6,21 @@ package config
 import (
 	"fmt"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/hetzner/connection"
-	"go.mondoo.com/mql/v13/providers/hetzner/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/hetzner/connection"
+	"go.mondoo.com/mql/providers/hetzner/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "hetzner",
-	ID:              "go.mondoo.com/mql/providers/hetzner",
-	Version:         "13.5.1",
+	Name: "hetzner",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "hetzner",
+	ID:      "go.mondoo.com/mql/providers/hetzner",
+	Version: "14.2.6",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       connection.Platforms,
 	Connectors: []plugin.Connector{

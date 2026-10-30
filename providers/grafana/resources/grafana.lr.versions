@@ -2,16 +2,6 @@
 # SPDX-License-Identifier: BUSL-1.1
 
 grafana 13.0.1
-grafana.apiKey 13.0.5
-grafana.apiKey.expiration 13.0.5
-grafana.apiKey.hasExpiration 13.0.5
-grafana.apiKey.id 13.0.5
-grafana.apiKey.isExpired 13.0.5
-grafana.apiKey.name 13.0.5
-grafana.apiKey.orgId 13.0.5
-grafana.apiKey.role 13.0.5
-grafana.apiKey.serviceAccountId 13.0.5
-grafana.apiKeys 13.0.5
 grafana.contactPoint 13.0.1
 grafana.contactPoint.disableResolveMessage 13.0.1
 grafana.contactPoint.hasHttpAuth 13.0.5
@@ -93,8 +83,11 @@ grafana.serviceAccountToken.expiration 13.0.1
 grafana.serviceAccountToken.hasExpiration 13.0.1
 grafana.serviceAccountToken.id 13.0.1
 grafana.serviceAccountToken.isExpired 13.0.1
+grafana.serviceAccountToken.isRevoked 13.1.22
+grafana.serviceAccountToken.lastUsedAt 13.1.22
 grafana.serviceAccountToken.name 13.0.1
 grafana.serviceAccountToken.secondsUntilExpiration 13.0.1
+grafana.serviceAccountToken.serviceAccount 13.1.22
 grafana.serviceAccountToken.serviceAccountId 13.0.1
 grafana.serviceAccounts 13.0.1
 grafana.ssoSettings 13.0.5

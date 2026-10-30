@@ -10,11 +10,11 @@ import (
 
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/security"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (m *mqlMicrosoftSecuritySecurityscore) id() (string, error) {
@@ -89,7 +89,7 @@ func newMqlMicrosoftSecureScore(runtime *plugin.Runtime, score models.SecureScor
 			"azureTenantId":            llx.StringDataPtr(score.GetAzureTenantId()),
 			"controlScores":            llx.ArrayData(controlScores, types.Any),
 			"controls":                 llx.ArrayData(controls, types.Resource("microsoft.security.securityscore.controlScore")),
-			"createdDateTime":          llx.TimeDataPtr(score.GetCreatedDateTime()),
+			"createdDateTime":          graphTimeData(score.GetCreatedDateTime()),
 			"currentScore":             llx.FloatData(convert.ToValue(score.GetCurrentScore())),
 			"enabledServices":          llx.ArrayData(enabledServices, types.String),
 			"licensedUserCount":        llx.IntDataDefault(score.GetLicensedUserCount(), 0),

@@ -14,11 +14,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appconfiguration/armappconfiguration/v3"
 	"github.com/rs/zerolog/log"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func initAzureSubscriptionAppConfigurationService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -85,6 +85,7 @@ func (a *mqlAzureSubscriptionAppConfigurationService) configurationStores() ([]a
 
 func configurationStoreToMql(runtime *plugin.Runtime, store *armappconfiguration.ConfigurationStore) (*mqlAzureSubscriptionAppConfigurationServiceConfigurationStore, error) {
 	sku, err := convert.JsonToDict(store.SKU)
+	storeSku := orZero(store.SKU)
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +96,7 @@ func configurationStoreToMql(runtime *plugin.Runtime, store *armappconfiguration
 
 	var publicNetworkAccess, cmkKeyIdentifier, cmkIdentityClientId string
 	var endpoint, provisioningState, createMode string
+	var dataPlaneProxyAuthenticationMode, dataPlaneProxyPrivateLinkDelegation *string
 	var disableLocalAuth, enablePurgeProtection bool
 	var softDeleteRetentionInDays, defaultKeyValueRevisionRetentionPeriodInSeconds int64
 	var creationTime *time.Time
@@ -133,27 +135,42 @@ func configurationStoreToMql(runtime *plugin.Runtime, store *armappconfiguration
 		if p.CreateMode != nil {
 			createMode = string(*p.CreateMode)
 		}
+		if dpp := p.DataPlaneProxy; dpp != nil {
+			dataPlaneProxyAuthenticationMode = stringEnumPtr(dpp.AuthenticationMode)
+			dataPlaneProxyPrivateLinkDelegation = stringEnumPtr(dpp.PrivateLinkDelegation)
+		}
 	}
 
-	res, err := CreateResource(runtime, "azure.subscription.appConfigurationService.configurationStore", map[string]*llx.RawData{
-		"id":                        llx.StringDataPtr(store.ID),
-		"name":                      llx.StringDataPtr(store.Name),
-		"location":                  llx.StringDataPtr(store.Location),
-		"tags":                      llx.MapData(convert.PtrMapStrToInterface(store.Tags), types.String),
-		"sku":                       llx.DictData(sku),
-		"identity":                  llx.DictData(identity),
-		"publicNetworkAccess":       llx.StringData(publicNetworkAccess),
-		"disableLocalAuth":          llx.BoolData(disableLocalAuth),
-		"cmkKeyIdentifier":          llx.StringData(cmkKeyIdentifier),
-		"cmkIdentityClientId":       llx.StringData(cmkIdentityClientId),
-		"softDeleteRetentionInDays": llx.IntData(softDeleteRetentionInDays),
-		"enablePurgeProtection":     llx.BoolData(enablePurgeProtection),
-		"endpoint":                  llx.StringData(endpoint),
-		"provisioningState":         llx.StringData(provisioningState),
-		"createMode":                llx.StringData(createMode),
+	args := map[string]*llx.RawData{
+		"id":                                  llx.StringDataPtr(store.ID),
+		"name":                                llx.StringDataPtr(store.Name),
+		"location":                            llx.StringDataPtr(store.Location),
+		"tags":                                llx.MapData(convert.PtrMapStrToInterface(store.Tags), types.String),
+		"sku":                                 llx.DictData(sku),
+		"identity":                            llx.DictData(identity),
+		"publicNetworkAccess":                 llx.StringData(publicNetworkAccess),
+		"disableLocalAuth":                    llx.BoolData(disableLocalAuth),
+		"cmkKeyIdentifier":                    llx.StringData(cmkKeyIdentifier),
+		"cmkIdentityClientId":                 llx.StringData(cmkIdentityClientId),
+		"softDeleteRetentionInDays":           llx.IntData(softDeleteRetentionInDays),
+		"enablePurgeProtection":               llx.BoolData(enablePurgeProtection),
+		"dataPlaneProxyAuthenticationMode":    llx.StringDataPtr(dataPlaneProxyAuthenticationMode),
+		"dataPlaneProxyPrivateLinkDelegation": llx.StringDataPtr(dataPlaneProxyPrivateLinkDelegation),
+		"endpoint":                            llx.StringData(endpoint),
+		"provisioningState":                   llx.StringData(provisioningState),
+		"createMode":                          llx.StringData(createMode),
 		"defaultKeyValueRevisionRetentionPeriodInSeconds": llx.IntData(defaultKeyValueRevisionRetentionPeriodInSeconds),
 		"creationTime": llx.TimeDataPtr(creationTime),
-	})
+	}
+	if err := setSkuData(runtime, args, skuName(storeSku.Name)); err != nil {
+		return nil, err
+	}
+	storeIdentity := orZero(store.Identity)
+	if err := setResourceIdentity(runtime, args, sortedUserAssignedIdentityIDs(storeIdentity.UserAssignedIdentities),
+		identityType(storeIdentity.Type), identityPrincipalId(storeIdentity.PrincipalID), identityTenantId(storeIdentity.TenantID)); err != nil {
+		return nil, err
+	}
+	res, err := CreateResource(runtime, "azure.subscription.appConfigurationService.configurationStore", args)
 	if err != nil {
 		return nil, err
 	}

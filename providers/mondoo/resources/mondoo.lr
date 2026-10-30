@@ -1,16 +1,17 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-import "../../core/resources/core.lr"
-import "../../network/resources/network.lr"
 
-option provider = "go.mondoo.com/mql/v13/providers/mondoo"
-option go_package = "go.mondoo.com/mql/v13/providers/mondoo/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/mondoo"
+option go_package = "go.mondoo.com/mql/providers/mondoo/resources"
+option root = "mondoo.organization"
 
 // Mondoo Client
 //
-// Examine the Mondoo Resource Name (MRN) of the client (cnspec / mql /
-// the platform agent) executing the current scan — the identifier audits
+// Mondoo Resource Name (MRN) of the client (cnspec, mql, or the platform
+// agent) executing the current scan. This is the stable identifier audits
 // can use to attribute findings back to a specific Mondoo client.
 mondoo.client @defaults("mrn") {
   // Client identifier
@@ -19,10 +20,12 @@ mondoo.client @defaults("mrn") {
 
 // Mondoo Organization
 //
-// Examine an organization in Mondoo Platform: its display name, its MRN
-// (Mondoo Resource Name), and the spaces it contains. Use it to walk
-// the organization → space → asset hierarchy from policy.
-mondoo.organization @defaults ("name mrn") {
+// Organization in Mondoo Platform, the top of the ownership hierarchy:
+// its display name, its MRN (Mondoo Resource Name), and the spaces it
+// contains. The starting point for walking the organization, space, and
+// asset hierarchy from policy, so audits can attribute findings to the
+// space and asset that produced them.
+mondoo.organization @defaults ("name mrn") @root {
   // Organization name
   name string
   // Organization identifier
@@ -33,10 +36,12 @@ mondoo.organization @defaults ("name mrn") {
 
 // Mondoo Space
 //
-// Examine a space in Mondoo Platform: its display name, its MRN, and the
-// assets that have been registered into it. Spaces are the unit of
-// access control and policy assignment in Mondoo.
-mondoo.space @defaults("name mrn") {
+// Space in Mondoo Platform, the unit of access control and policy
+// assignment. A space groups the assets registered into it and is
+// identified by its `mrn` (Mondoo Resource Name). Query the assets field
+// to walk into every asset the space contains, its display name, and its
+// scan results.
+mondoo.space @defaults("name mrn") @root {
   // Space name
   name string
   // Space identifier
@@ -46,6 +51,12 @@ mondoo.space @defaults("name mrn") {
 }
 
 // Mondoo Asset
+//
+// Asset registered in Mondoo Platform, with its security score and
+// letter grade, lifecycle state, labels and annotations, and the
+// resources gathered from it during scans. Query it to attribute
+// findings to a specific asset and to track how an asset's score
+// changes over time.
 private mondoo.asset @defaults("name platform") {
   // Asset name
   name string
@@ -66,18 +77,28 @@ private mondoo.asset @defaults("name platform") {
   updatedAt time
   // Time this asset's score was last updated
   lastScoreUpdateTime time
-  // Asset score value
+  // Numeric security score for the asset, from 0 to 100
   scoreValue int
   // Asset score grade
+  //
+  // Letter grade for the asset's security score. One of A, B, C, D, F,
+  // or U (unrated).
   scoreGrade string
   // Asset resources
   resources() []mondoo.resource
 }
 
-// Resource
+// MQL resource collected on a Mondoo asset
+//
+// A single resource that was gathered during a Mondoo scan of an
+// asset, identified by the MQL resource type name and the unique
+// instance identifier for that collected resource. The name field
+// holds the resource type (for example "aws.ec2.instance"), and id
+// holds the instance identifier that distinguishes one collected
+// resource of that type from another.
 private mondoo.resource @defaults("name id") {
-  // Resource name
+  // MQL resource type name, for example "aws.ec2.instance"
   name string
-  // Resource identifier
+  // Unique identifier of the collected resource instance
   id string
 } 

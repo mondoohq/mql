@@ -9,7 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/sbom"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/sbom"
 )
 
 func TestGradleLockfileExtractor(t *testing.T) {
@@ -40,10 +41,21 @@ func TestGradleLockfileExtractor(t *testing.T) {
 	assert.Equal(t, "3.12.0", p.Version)
 	assert.Equal(t, "pkg:maven/org.apache.commons/commons-lang3@3.12.0", p.Purl)
 
-	// Test deps are included in transitive
+	// Test deps are included in transitive, tagged dev so a consumer can rank a
+	// CVE in a test harness apart from one in the shipped runtime.
 	p = transitive.Find("junit:junit")
 	require.NotNil(t, p)
 	assert.Equal(t, "4.13.2", p.Version)
+	assert.Equal(t, languages.PackageScopeDev, p.Scope)
+
+	p = transitive.Find("org.mockito:mockito-core")
+	require.NotNil(t, p)
+	assert.Equal(t, languages.PackageScopeDev, p.Scope)
+
+	// A dependency any non-test configuration resolved is production, even
+	// though the test configurations resolve it too.
+	assert.Equal(t, languages.PackageScopeProd, transitive.Find("com.google.guava:guava").Scope)
+	assert.Equal(t, languages.PackageScopeProd, transitive.Find("com.fasterxml.jackson.core:jackson-databind").Scope)
 }
 
 func TestIsTestOnly(t *testing.T) {

@@ -1,0 +1,80 @@
+[
+  {
+    "Name": "Universal Print Class Driver",
+    "PrinterEnvironment": "Windows x64",
+    "Manufacturer": "Microsoft",
+    "DriverVersion": 2814751477629456,
+    "MajorVersion": 4,
+    "HardwareID": "{6d170653-5280-44c2-ba44-2c04bc9d46da}",
+    "InfPath": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms014.inf_amd64_ca38556227efef1e\\prnms014.inf",
+    "ConfigFile": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms003.inf_amd64_e73d71c1e8fca3e7\\Amd64\\PrintConfig.dll",
+    "DataFile": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms014.inf_amd64_ca38556227efef1e\\MSMPS.xml",
+    "DriverPath": null,
+    "PrintProcessor": "winprint"
+  },
+  {
+    "Name": "Microsoft Virtual Print Class Driver",
+    "PrinterEnvironment": "Windows x64",
+    "Manufacturer": "Microsoft",
+    "DriverVersion": 2814751477629456,
+    "MajorVersion": 4,
+    "HardwareID": "{c1f56d94-a46f-492e-a129-7f54d1ee2356}",
+    "InfPath": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms015.inf_amd64_1592972d1063a186\\prnms015.inf",
+    "ConfigFile": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms003.inf_amd64_e73d71c1e8fca3e7\\Amd64\\PrintConfig.dll",
+    "DataFile": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms015.inf_amd64_1592972d1063a186\\MSVPD-PDC.xml",
+    "DriverPath": null,
+    "PrintProcessor": "winprint"
+  },
+  {
+    "Name": "Microsoft Print To PDF",
+    "PrinterEnvironment": "Windows x64",
+    "Manufacturer": "Microsoft",
+    "DriverVersion": 2814751477600644,
+    "MajorVersion": 4,
+    "HardwareID": "{084f01fa-e634-4d77-83ee-074817c03581}",
+    "InfPath": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms009.inf_amd64_8cdc889b3f73e3da\\prnms009.inf",
+    "ConfigFile": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms003.inf_amd64_e73d71c1e8fca3e7\\Amd64\\PrintConfig.dll",
+    "DataFile": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms009.inf_amd64_8cdc889b3f73e3da\\MPDW-PDC.xml",
+    "DriverPath": null,
+    "PrintProcessor": "winprint"
+  },
+  {
+    "Name": "Microsoft IPP Class Driver",
+    "PrinterEnvironment": "Windows x64",
+    "Manufacturer": "Microsoft",
+    "DriverVersion": 2814751477629456,
+    "MajorVersion": 4,
+    "HardwareID": "{b71661f4-a4dc-43df-bc16-39d337d15a95}",
+    "InfPath": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms012.inf_amd64_11f81a61f2c68298\\prnms012.inf",
+    "ConfigFile": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms003.inf_amd64_e73d71c1e8fca3e7\\Amd64\\PrintConfig.dll",
+    "DataFile": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms012.inf_amd64_11f81a61f2c68298\\MSIPP.xml",
+    "DriverPath": null,
+    "PrintProcessor": "winprint"
+  },
+  {
+    "Name": "Microsoft enhanced Point and Print compatibility driver",
+    "PrinterEnvironment": "Windows x64",
+    "Manufacturer": "Microsoft",
+    "DriverVersion": 2814751477629456,
+    "MajorVersion": 3,
+    "HardwareID": "microsoftmicrosoft_musd",
+    "InfPath": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms003.inf_amd64_e73d71c1e8fca3e7\\prnms003.inf",
+    "ConfigFile": "C:\\Windows\\system32\\spool\\DRIVERS\\x64\\3\\PrintConfig.dll",
+    "DataFile": "C:\\Windows\\system32\\spool\\DRIVERS\\x64\\3\\unishare.gpd",
+    "DriverPath": null,
+    "PrintProcessor": "winprint"
+  },
+  {
+    "Name": "Microsoft enhanced Point and Print compatibility driver",
+    "PrinterEnvironment": "Windows NT x86",
+    "Manufacturer": "Microsoft",
+    "DriverVersion": 2814751477629456,
+    "MajorVersion": 3,
+    "HardwareID": "microsoftmicrosoft_musd",
+    "InfPath": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms003.inf_x86_69386925029ab2cd\\prnms003.inf",
+    "ConfigFile": "C:\\Windows\\system32\\spool\\DRIVERS\\W32X86\\3\\PrintConfig.dll",
+    "DataFile": "C:\\Windows\\system32\\spool\\DRIVERS\\W32X86\\3\\unishare.gpd",
+    "DriverPath": null,
+    "PrintProcessor": "winprint"
+  }
+]

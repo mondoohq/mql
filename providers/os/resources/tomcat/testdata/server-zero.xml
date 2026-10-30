@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A Server with no Service, no Listener and no Connector anywhere. Every
+     collection must still read as an empty list rather than null. -->
+<Server port="-1" shutdown="disabled">
+</Server>

@@ -7,10 +7,11 @@ import (
 	"context"
 	"strings"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/id/containerid"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/id/containerid"
 )
 
 func (e *dockerEngineDiscovery) containerList() ([]container.Summary, error) {
@@ -19,7 +20,11 @@ func (e *dockerEngineDiscovery) containerList() ([]container.Summary, error) {
 		return nil, err
 	}
 
-	return dc.ContainerList(context.Background(), container.ListOptions{})
+	res, err := dc.ContainerList(context.Background(), client.ContainerListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return res.Items, nil
 }
 
 func (e *dockerEngineDiscovery) ListContainerShas() ([]string, error) {
@@ -53,10 +58,11 @@ func (e *dockerEngineDiscovery) ContainerInfo(name string) (ContainerInfo, error
 		return ci, err
 	}
 
-	cdata, err := dc.ContainerInspect(context.Background(), name)
+	res, err := dc.ContainerInspect(context.Background(), name, client.ContainerInspectOptions{})
 	if err != nil {
 		return ci, err
 	}
+	cdata := res.Container
 
 	cName := cdata.Name
 	cName = strings.TrimPrefix(cName, "/")

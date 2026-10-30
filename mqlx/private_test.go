@@ -9,9 +9,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/mqlx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/testutils"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/testutils/mockprovider"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/mqlx"
+	"go.mondoo.com/mql/providers-sdk/v1/testutils"
+	"go.mondoo.com/mql/providers-sdk/v1/testutils/mockprovider"
 )
 
 // privateEnv registers the mockprovider as a caller-supplied private,
@@ -88,4 +89,33 @@ func TestPrivateProviderValidation(t *testing.T) {
 	schema := testutils.MustLoadSchema(testutils.SchemaProvider{Provider: "mockprovider"})
 	_, err = mqlx.NewEnv(mqlx.WithPrivateProvider(mockprovider.Config, schema, nil))
 	require.ErrorContains(t, err, "no plugin provided")
+}
+
+// TestAssetPrimitive exercises the native `asset` primitive end-to-end through a
+// real (in-process) provider: compile -> serialize (asset2result) -> wire ->
+// deserialize (passet2raw) -> return to caller. muser.running returns an asset
+// value anchored on the muser resource. The anchor is not introspectable from
+// MQL (no field accessors); only the value and nil comparisons are exposed.
+// See ADR 030.
+func TestAssetPrimitive(t *testing.T) {
+	env := privateEnv(t)
+	ctx := context.Background()
+
+	t.Run("running returns an asset value carrying the anchor", func(t *testing.T) {
+		res, err := env.MustCompile(`muser(name: "bob").running`).Eval(ctx)
+		require.NoError(t, err)
+		require.NoError(t, res.Err())
+		av, ok := res.Value().(*llx.AssetValue)
+		require.True(t, ok, "expected *llx.AssetValue, got %T", res.Value())
+		require.NotNil(t, av)
+		assert.Equal(t, "muser", av.ResourceType)
+		assert.NotEmpty(t, av.ResourceId)
+	})
+
+	t.Run("running is not null", func(t *testing.T) {
+		res, err := env.MustCompile(`muser(name: "bob").running != null`).Eval(ctx)
+		require.NoError(t, err)
+		require.NoError(t, res.Err())
+		assert.Equal(t, true, res.Value())
+	})
 }

@@ -1,0 +1,23 @@
+[commands."55dbc0e9b838caa11145eed07f6e73644bda27bf65a0c58a52291f9a18384481"]
+stdout="""
+{
+    "CurrentBuild":  "26100",
+    "UBR":  33650,
+    "InstallationType":  "Server",
+    "EditionID":  "ServerTurbine",
+    "ProductName":  "Windows Server 2025 Datacenter Azure Edition",
+    "DisplayVersion":  "24H2",
+    "Architecture":  "AMD64",
+    "ProductType":  "ServerNT"
+}
+"""
+
+[commands."e96b1a0fd8be3aac8ea39250e33ce03fa1b4b3897bf207e36a1545c22b67ca42"]
+stdout="""
+{
+    "Branch":  "lt_release_svc_prod1",
+    "HotPatchTableSize":  "8192",
+    "EnableVirtualizationBasedSecurity":  "1",
+    "VirtualizationBasedSecurityStatus":  "2"
+}
+"""

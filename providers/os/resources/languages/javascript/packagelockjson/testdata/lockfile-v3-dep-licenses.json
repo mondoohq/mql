@@ -1,0 +1,42 @@
+{
+  "name": "dep-licenses",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "dep-licenses",
+      "version": "1.0.0",
+      "license": "Artistic-2.0",
+      "dependencies": {
+        "lodash": "^4.17.21",
+        "dual-licensed": "^1.0.0",
+        "no-license": "^2.0.0"
+      },
+      "devDependencies": {
+        "mocha": "^10.0.0"
+      }
+    },
+    "node_modules/lodash": {
+      "version": "4.17.21",
+      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+      "integrity": "sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg==",
+      "license": "MIT"
+    },
+    "node_modules/dual-licensed": {
+      "version": "1.0.0",
+      "resolved": "https://registry.npmjs.org/dual-licensed/-/dual-licensed-1.0.0.tgz",
+      "license": ["MIT", "Apache-2.0"]
+    },
+    "node_modules/no-license": {
+      "version": "2.0.0",
+      "resolved": "https://registry.npmjs.org/no-license/-/no-license-2.0.0.tgz"
+    },
+    "node_modules/mocha": {
+      "version": "10.2.0",
+      "resolved": "https://registry.npmjs.org/mocha/-/mocha-10.2.0.tgz",
+      "license": "MIT",
+      "dev": true
+    }
+  }
+}

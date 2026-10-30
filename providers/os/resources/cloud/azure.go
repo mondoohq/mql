@@ -11,9 +11,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/id/azcompute"
-	"go.mondoo.com/mql/v13/providers/os/id/hostname"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/id/azcompute"
+	"go.mondoo.com/mql/providers/os/id/hostname"
 )
 
 const AZURE Provider = "Azure"

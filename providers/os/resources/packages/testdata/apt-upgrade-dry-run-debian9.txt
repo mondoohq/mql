@@ -1,0 +1,23 @@
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Calculating upgrade...
+The following packages have been kept back:
+  g03-hold g03-keptback
+The following packages will be upgraded:
+  g03-bin g03-epoch g03-epochbump g03-ma:i386 g03-ma g03-plain g03-tilde
+7 upgraded, 0 newly installed, 0 to remove and 2 not upgraded.
+Inst g03-bin [1.0-1+b1] (1.0-1+b2 localhost [amd64])
+Inst g03-epoch [1:1.0-1] (1:2.0-1 localhost [amd64])
+Inst g03-epochbump [2.0-1] (1:0.9-1 localhost [amd64])
+Inst g03-ma:i386 [1.0-1] (2.0-1 localhost [i386]) [g03-ma:i386 on g03-ma:amd64] [g03-ma:amd64 on g03-ma:i386] [g03-ma:amd64 ]
+Inst g03-ma [1.0-1] (2.0-1 localhost [amd64])
+Inst g03-plain [1.0-1] (2.0-1 localhost [all])
+Inst g03-tilde [1.0~rc1-1] (1.0-1 localhost [amd64])
+Conf g03-bin (1.0-1+b2 localhost [amd64])
+Conf g03-epoch (1:2.0-1 localhost [amd64])
+Conf g03-epochbump (1:0.9-1 localhost [amd64])
+Conf g03-ma:i386 (2.0-1 localhost [i386])
+Conf g03-ma (2.0-1 localhost [amd64])
+Conf g03-plain (2.0-1 localhost [all])
+Conf g03-tilde (1.0-1 localhost [amd64])

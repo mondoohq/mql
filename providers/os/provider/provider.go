@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -17,37 +18,151 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/os/connection/container"
-	"go.mondoo.com/mql/v13/providers/os/connection/device"
-	"go.mondoo.com/mql/v13/providers/os/connection/docker"
-	"go.mondoo.com/mql/v13/providers/os/connection/fs"
-	"go.mondoo.com/mql/v13/providers/os/connection/local"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/connection/ssh"
-	"go.mondoo.com/mql/v13/providers/os/connection/tar"
-	"go.mondoo.com/mql/v13/providers/os/connection/vagrant"
-	"go.mondoo.com/mql/v13/providers/os/connection/winrm"
-	"go.mondoo.com/mql/v13/providers/os/detector"
-	"go.mondoo.com/mql/v13/providers/os/id"
-	"go.mondoo.com/mql/v13/providers/os/resources"
-	"go.mondoo.com/mql/v13/providers/os/resources/discovery/docker_engine"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/os/connection/container"
+	"go.mondoo.com/mql/providers/os/connection/device"
+	"go.mondoo.com/mql/providers/os/connection/docker"
+	"go.mondoo.com/mql/providers/os/connection/fs"
+	"go.mondoo.com/mql/providers/os/connection/local"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/ssh"
+	"go.mondoo.com/mql/providers/os/connection/tar"
+	"go.mondoo.com/mql/providers/os/connection/vagrant"
+	"go.mondoo.com/mql/providers/os/connection/winrm"
+	"go.mondoo.com/mql/providers/os/detector"
+	"go.mondoo.com/mql/providers/os/id"
+	"go.mondoo.com/mql/providers/os/id/ids"
+	"go.mondoo.com/mql/providers/os/resources"
+	"go.mondoo.com/mql/providers/os/resources/discovery/docker_engine"
+	"go.mondoo.com/mql/providers/os/resources/discovery/mcp_servers"
+	"go.mondoo.com/mql/utils/stringx"
 )
 
 type Service struct {
 	*plugin.Service
+
+	// deferredDetects tracks platform detection that Connect skipped, keyed by
+	// connection id. See ensurePlatformDetected.
+	deferredDetects sync.Map
 }
 
 func Init() *Service {
 	return &Service{
 		Service: plugin.NewService(),
 	}
+}
+
+// deferredDetect is one connection's postponed platform detection. The once
+// keeps concurrent field reads from detecting several times over, and holding
+// the error keeps a failure from being retried on every subsequent field.
+type deferredDetect struct {
+	once sync.Once
+	err  error
+}
+
+// GetData serves a resource field, after making sure the connection knows what
+// platform it is talking to.
+//
+// Connect skips detection for a connection that delays discovery, and for a
+// container image that is every connection: the image connection constructor
+// sets DelayDiscovery during Connect precisely so the layers are not downloaded
+// just to answer "what is this". Detection then happens in the second, post
+// discovery connect.
+//
+// Between those two points the connection is live and can be queried, and until
+// this guard existed it answered with no platform at all -- so every resource
+// that reads conn.Asset().Platform saw nil. That is not a clean failure:
+// Platform.IsFamily is nil-safe and returns false, so a chain like
+//
+//	platform.IsFamily("linux") || ... || platform.Name == "aix"
+//
+// short-circuits past the safe calls and dereferences nil on the last one. The
+// plugin layer recovers the panic and answers the query with an error, so the
+// scan completes, reports the check as "error", and exits 0.
+//
+// Detecting here rather than at Connect keeps what DelayDiscovery is for -- no
+// work until something actually asks -- while making the platform available to
+// whatever asked. A resource query is exactly the point at which the platform
+// is needed and the cost is warranted.
+func (s *Service) GetData(req *plugin.DataReq) (*plugin.DataRes, error) {
+	if err := s.ensurePlatformDetected(req.Connection); err != nil {
+		return nil, err
+	}
+	return s.Service.GetData(req)
+}
+
+// StoreData caches resources the caller already has, creating any that this
+// connection has not seen, and takes the same guard as GetData.
+//
+// Not because a path from here to a platform read is known -- CreateResource
+// reaches the generated create* constructors, which set fields rather than
+// consult the platform, so today it does not. It is here because the invariant
+// is about resources existing on this connection at all, not about which RPC
+// asked for them: there are 56 platform reads across this provider's resources,
+// and the one that makes a constructor consult the platform would otherwise
+// reintroduce the bug silently. Symmetry at the boundary costs one call.
+//
+// ResolveAsset needs no guard: it only looks up a resource that already exists.
+func (s *Service) StoreData(req *plugin.StoreReq) (*plugin.StoreRes, error) {
+	if err := s.ensurePlatformDetected(req.Connection); err != nil {
+		return nil, err
+	}
+	return s.Service.StoreData(req)
+}
+
+// Disconnect drops the connection's detection state along with the connection.
+func (s *Service) Disconnect(req *plugin.DisconnectReq) (*plugin.DisconnectRes, error) {
+	s.deferredDetects.Delete(req.Connection)
+	return s.Service.Disconnect(req)
+}
+
+// ensurePlatformDetected runs detection for a connection that does not have a
+// platform yet, once, and refuses the request when it cannot.
+//
+// Refusing is the point. Every resource in this provider reads
+// conn.Asset().Platform, and none of them can report a missing one cleanly:
+// the IsFamily chains dereference nil on their last term. So a connection this
+// cannot give a platform to must not have resources created on it at all --
+// an asset with no connection config for detect to read is an error here, not
+// something to wave through for the resource to deal with.
+//
+// Two cases are left for GetData, because they never reach a resource: a
+// connection this service has no runtime for (GetData fails on the same lookup
+// and returns its own error), and one that is not an os connection.
+func (s *Service) ensurePlatformDetected(connID uint32) error {
+	runtime, err := s.GetRuntime(connID)
+	if err != nil {
+		return nil
+	}
+	conn, ok := runtime.Connection.(shared.Connection)
+	if !ok {
+		return nil
+	}
+
+	asset := conn.Asset()
+	if asset == nil {
+		return errors.New("connection has no asset, so its platform cannot be determined")
+	}
+	// The common path: detection already ran, at Connect or on an earlier field.
+	if asset.Platform != nil && asset.Platform.Name != "" {
+		return nil
+	}
+	if len(asset.Connections) == 0 {
+		return errors.New("connection has no configuration to detect its platform from")
+	}
+
+	entry, _ := s.deferredDetects.LoadOrStore(connID, &deferredDetect{})
+	d := entry.(*deferredDetect)
+	d.once.Do(func() {
+		log.Debug().Uint32("connection", connID).Msg("detecting platform on first resource access")
+		d.err = s.detect(asset, conn)
+	})
+	return d.err
 }
 
 func parseDiscover(flags map[string]*llx.Primitive) *inventory.Discovery {
@@ -185,14 +300,12 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 		Connections: []*inventory.Config{conf},
 	}
 
-	idDetector := ""
+	// id-detector takes one detector or a comma-separated list. `default`
+	// in the list stands for the detectors used when none are given.
 	if flag, ok := flags["id-detector"]; ok {
-		if string(flag.Value) != "" {
-			idDetector = string(flag.Value)
+		if detectors := ids.Parse(string(flag.Value)); len(detectors) > 0 {
+			asset.IdDetector = detectors
 		}
-	}
-	if idDetector != "" {
-		asset.IdDetector = []string{idDetector}
 	}
 
 	if conf.Options == nil {
@@ -305,6 +418,16 @@ func (s *Service) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 		if err != nil {
 			return nil, err
 		}
+		mcpInv, err := s.discoverMCPServers(conn)
+		if err != nil {
+			log.Warn().Err(err).Msg("failed to discover mcp servers")
+		} else if mcpInv != nil {
+			if inv == nil {
+				inv = mcpInv
+			} else {
+				inv.AddAssets(mcpInv.Spec.GetAssets()...)
+			}
+		}
 	}
 
 	for _, connCreds := range conn.Asset().Connections[0].Credentials {
@@ -325,6 +448,12 @@ func (s *Service) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 		Name:      conn.Name(),
 		Asset:     req.Asset,
 		Inventory: inv,
+		Root:      assetRoot(req.Asset.GetPlatform()),
+		// A Dockerfile is one asset and a repository holds many, so taking this
+		// one says nothing about the rest of the tree. Every other connection
+		// type this provider serves is a host or an image, which a tree walk
+		// never offers in the first place (ADR 045).
+		ContinueExploration: req.Asset.Connections[0].Type == shared.Type_DockerFile.String(),
 	}, nil
 }
 
@@ -335,6 +464,7 @@ func (s *Service) MockConnect(req *plugin.ConnectReq, callback plugin.ProviderCa
 
 	asset := &inventory.Asset{
 		Mrn:         req.Asset.Mrn,
+		Name:        req.Asset.Name,
 		PlatformIds: req.Asset.PlatformIds,
 		Platform:    req.Asset.Platform,
 		Connections: []*inventory.Config{{
@@ -355,6 +485,7 @@ func (s *Service) MockConnect(req *plugin.ConnectReq, callback plugin.ProviderCa
 		Id:    uint32(conn.ID()),
 		Name:  conn.Name(),
 		Asset: asset,
+		Root:  assetRoot(asset.GetPlatform()),
 	}, nil
 }
 
@@ -427,10 +558,20 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 			}
 
 		case shared.Type_Tar.String():
-			conn, err = tar.NewConnection(connId, conf, asset)
+			var tarConn *tar.Connection
+			if img, ok := container.OpenImageTarball(conf.Options[tar.OPTION_FILE]); ok {
+				// `docker save` output: scan the image's filesystem
+				tarConn, err = container.NewFromTarImage(connId, conf, asset, img)
+			} else {
+				tarConn, err = tar.NewConnection(connId, conf, asset)
+			}
 			if err != nil {
 				return nil, err
 			}
+			if err := tarConn.Fetch(); err != nil {
+				return nil, err
+			}
+			conn = tarConn
 
 			fingerprint, p, err := id.IdentifyPlatform(conn, req, asset.Platform, asset.IdDetector)
 			if err == nil {
@@ -442,10 +583,14 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 			}
 
 		case shared.Type_DockerSnapshot.String():
-			conn, err = docker.NewSnapshotConnection(connId, conf, asset)
+			snapshot, err := docker.NewSnapshotConnection(connId, conf, asset)
 			if err != nil {
 				return nil, err
 			}
+			if err := snapshot.Fetch(); err != nil {
+				return nil, err
+			}
+			conn = snapshot
 
 			fingerprint, p, err := id.IdentifyPlatform(conn, req, asset.Platform, asset.IdDetector)
 			if err == nil {
@@ -501,10 +646,17 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 			if err != nil {
 				fingerprint, p, err := id.IdentifyPlatform(conn, req, asset.Platform, asset.IdDetector)
 				if err == nil {
-					asset.Name = fingerprint.Name
+					// A filesystem can be identified by something that carries no
+					// name, such as a machine id, so an existing name is kept
+					// rather than blanked.
+					if fingerprint.Name != "" {
+						asset.Name = fingerprint.Name
+					}
 					asset.PlatformIds = fingerprint.PlatformIDs
 					asset.IdDetector = fingerprint.ActiveIdDetectors
 					asset.MergePlatform(p)
+				} else {
+					log.Error().Err(err).Msg("could not identify the filesystem, it has no platform id and will not be scanned")
 				}
 			} else {
 				// In this case asset.Name should already be set via the inventory
@@ -624,6 +776,35 @@ func (s *Service) discoverLocalContainers(conf *inventory.Config) (*inventory.In
 	return inventory, nil
 }
 
+// discoverMCPServers discovers MCP servers configured on the host as their own
+// assets. It is opt-in: it runs only when the `mcp-servers` target (or `all`) is
+// explicitly requested, so it stays off by default and under `auto`. The os
+// provider emits the connection info the AI provider needs; it never connects to
+// the MCP server itself. See ADR 030.
+func (s *Service) discoverMCPServers(conn shared.Connection) (*inventory.Inventory, error) {
+	conf := conn.Asset().Connections[0]
+	if conf == nil || conf.Discover == nil {
+		return nil, nil
+	}
+	if !stringx.ContainsAnyOf(conf.Discover.Targets, "all", mcp_servers.DiscoveryMCPServers) {
+		return nil, nil
+	}
+
+	runtime, err := s.GetRuntime(uint32(conn.ID()))
+	if err != nil {
+		return nil, err
+	}
+
+	resolvedAssets, err := resources.DiscoverMCPServerAssets(runtime, conn.Asset())
+	if err != nil {
+		return nil, err
+	}
+
+	inv := &inventory.Inventory{}
+	inv.AddAssets(resolvedAssets...)
+	return inv, nil
+}
+
 // parseContainerSubcommand translates one of the shared `image|registry|tar|container`
 // subcommands (used by both the `docker` and `container` connectors) into the
 // matching conf.Type plus host/path assignment. Unknown subcommands are a no-op
@@ -638,8 +819,15 @@ func parseContainerSubcommand(subcommand, target string, conf *inventory.Config)
 		conf.Host = target
 		conf.DelayDiscovery = true
 	case "tar":
-		conf.Type = shared.Type_DockerSnapshot.String()
+		// a tar file on disk: an exported filesystem or a saved image. The
+		// snapshot connection exports a stopped container by id and never
+		// read a path, so a tar scanned as an empty filesystem.
+		conf.Type = shared.Type_Tar.String()
 		conf.Path = target
+		if conf.Options == nil {
+			conf.Options = map[string]string{}
+		}
+		conf.Options[tar.OPTION_FILE] = target
 	case "container":
 		conf.Type = shared.Type_DockerContainer.String()
 		conf.Host = target

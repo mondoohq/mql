@@ -5,6 +5,7 @@ package resources
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,16 +14,16 @@ import (
 	"github.com/package-url/packageurl-go"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/types"
 )
 
 // newVscodeExtensionPurl builds a vscode-extension PURL per the purl-spec
 // definition at:
 //
-//	https://github.com/package-url/purl-spec/blob/main/types-doc/vscode-extension-definition.md
+//	https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/vscode-extension-definition.md
 //
 // Format: pkg:vscode-extension/<publisher>/<name>@<version>
 // Empty publisher / name / version yields an empty string — callers that
@@ -48,6 +49,7 @@ var vsCodeEditors = []vsCodeEditor{
 	{".cursor/extensions", "Cursor"},
 	{".antigravity/extensions", "Antigravity"},
 	{".windsurf/extensions", "Windsurf"},
+	{".breezell-editor/extensions", "Breezell"},
 	{".positron/extensions", "Positron"},
 	{".kiro/extensions", "Kiro"},
 }
@@ -66,13 +68,17 @@ var validHomePrefixes = []string{
 
 // isSystemHomeDir returns true if home looks like a system-account directory.
 // It uses an allowlist approach: only paths under known user-home prefixes
-// (e.g. /Users/, /home/, /root) are considered real users.
+// (e.g. /Users/, /home/, /root) are considered real users. Comparison is
+// case- and separator-insensitive so Windows homes match regardless of drive
+// case or slash direction (C:\Users\, c:\users\, C:/Users/).
 func isSystemHomeDir(home string) bool {
 	if home == "" {
 		return true
 	}
+	norm := strings.ToLower(strings.ReplaceAll(home, "\\", "/"))
 	for _, p := range validHomePrefixes {
-		if strings.HasPrefix(home, p) || home == strings.TrimSuffix(p, "/") {
+		pp := strings.ToLower(strings.ReplaceAll(p, "\\", "/"))
+		if strings.HasPrefix(norm, pp) || norm == strings.TrimSuffix(pp, "/") {
 			return false
 		}
 	}
@@ -96,31 +102,51 @@ func (c *mqlVscode) id() (string, error) {
 	return "vscode", nil
 }
 
+// vscodeUserHomePaths needs the profiles on disk, not account details. On
+// Windows, users.list also runs Get-LocalUser, which can block a scan before
+// it ever looks for extensions. ProfileList already contains the paths for
+// local, domain and Entra ID users, including users who are not logged in.
+func vscodeUserHomePaths(runtime *plugin.Runtime) ([]string, error) {
+	conn := runtime.Connection.(shared.Connection)
+	if asset := conn.Asset(); asset != nil && asset.Platform != nil && asset.Platform.IsFamily("windows") {
+		return vscodeWindowsProfilePaths(runtime)
+	}
+
+	users, err := targetUserHomes(runtime)
+	if err != nil {
+		return nil, err
+	}
+	homes := make([]string, 0, len(users))
+	for _, user := range users {
+		homes = append(homes, user.home)
+	}
+	return homes, nil
+}
+
+func vscodeWindowsProfilePaths(runtime *plugin.Runtime) ([]string, error) {
+	profiles, err := windowsProfileHomes(runtime)
+	if err != nil {
+		return nil, err
+	}
+	homes := make([]string, 0, len(profiles))
+	for _, profile := range profiles {
+		homes = append(homes, profile.home)
+	}
+	return homes, nil
+}
+
 func (c *mqlVscode) paths() ([]any, error) {
 	conn := c.MqlRuntime.Connection.(shared.Connection)
 	afs := &afero.Afero{Fs: conn.FileSystem()}
 
-	// Get all users to find home directories
-	usersResource, err := CreateResource(c.MqlRuntime, "users", map[string]*llx.RawData{})
+	homes, err := vscodeUserHomePaths(c.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
 
-	userList := usersResource.(*mqlUsers).GetList()
-	if userList.Error != nil {
-		return nil, userList.Error
-	}
-
 	var paths []string
 
-	for _, u := range userList.Data {
-		user := u.(*mqlUser)
-		homeDir := user.GetHome().Data
-
-		if isSystemHomeDir(homeDir) {
-			continue
-		}
-
+	for _, homeDir := range homes {
 		for _, editor := range vsCodeEditors {
 			extensionsDir := filepath.Join(homeDir, editor.dir)
 			// Use DirExists which is more efficient than Exists for directories
@@ -145,28 +171,15 @@ func (c *mqlVscode) extensions() ([]any, error) {
 	conn := c.MqlRuntime.Connection.(shared.Connection)
 	afs := &afero.Afero{Fs: conn.FileSystem()}
 
-	// Get all users to find home directories
-	usersResource, err := CreateResource(c.MqlRuntime, "users", map[string]*llx.RawData{})
+	homes, err := vscodeUserHomePaths(c.MqlRuntime)
 	if err != nil {
 		return nil, err
-	}
-
-	userList := usersResource.(*mqlUsers).GetList()
-	if userList.Error != nil {
-		return nil, userList.Error
 	}
 
 	var extensions []any
 	seen := make(map[string]bool)
 
-	for _, u := range userList.Data {
-		user := u.(*mqlUser)
-		homeDir := user.GetHome().Data
-
-		if isSystemHomeDir(homeDir) {
-			continue
-		}
-
+	for _, homeDir := range homes {
 		for _, editor := range vsCodeEditors {
 			extensionsDir := filepath.Join(homeDir, editor.dir)
 
@@ -195,10 +208,10 @@ func (c *mqlVscode) extensions() ([]any, error) {
 				// ReadFile will fail if file doesn't exist - no need for separate Exists check
 				pkgJSON, err := readVSCodePackageJSON(afs, packageJSONPath)
 				if err != nil {
-					if !os.IsNotExist(err) {
-						log.Debug().Err(err).Str("path", packageJSONPath).Msg("failed to parse VS Code extension package.json")
+					if os.IsNotExist(err) {
+						continue
 					}
-					continue
+					return nil, fmt.Errorf("cannot inspect VS Code extension manifest %s: %w", packageJSONPath, err)
 				}
 
 				// Create unique identifier
@@ -265,7 +278,7 @@ func (e *mqlVscodeExtension) purl() (string, error) {
 
 // readVSCodePackageJSON reads and parses a VS Code extension package.json file
 func readVSCodePackageJSON(afs *afero.Afero, path string) (*vscodePackageJSON, error) {
-	data, err := afs.ReadFile(path)
+	data, err := readBoundedRegularFile(afs, path, maxExtensionManifestSize)
 	if err != nil {
 		return nil, err
 	}

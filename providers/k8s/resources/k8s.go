@@ -6,12 +6,13 @@ package resources
 import (
 	"sync"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 )
 
 type mqlK8sInternal struct {
-	lock        sync.Mutex
-	nodesByName map[string]*mqlK8sNode
+	lock                  sync.Mutex
+	nodesByName           map[string]*mqlK8sNode
+	serviceAccountsByName map[string]*mqlK8sServiceaccount
 }
 
 func (k *mqlK8s) serverVersion() (any, error) {

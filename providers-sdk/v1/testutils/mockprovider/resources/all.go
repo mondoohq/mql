@@ -6,12 +6,43 @@ package resources
 import (
 	"fmt"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func (c *mqlMuser) id() (string, error) {
 	return c.Name.Data, nil
+}
+
+func (c *mqlMuser) running() (*llx.AssetValue, error) {
+	return &llx.AssetValue{
+		ResourceType: c.MqlName(),
+		ResourceId:   c.MqlID(),
+	}, nil
+}
+
+// MqlAsset implements plugin.AssetSource: the asset the `running` anchor stands
+// for (ADR 031 phase 8). A real provider builds this from the resource - the
+// launch command of an MCP server, the id of a container - and this stand-in
+// names the second asset in the cross-asset test recording.
+//
+// A `mock` connection rather than a live one, because a unit test has nothing
+// real to connect to. What it exercises is the path: the value carries only the
+// anchor, and the connection is asked for here, at connect time.
+func (c *mqlMuser) MqlAsset() (*inventory.Asset, error) {
+	return &inventory.Asset{
+		Name:        "resolved-target",
+		PlatformIds: []string{"resolved-target"},
+		Connections: []*inventory.Config{{Type: "mock"}},
+	}, nil
+}
+
+func (c *mqlMuser) runningUnknown() (*llx.AssetValue, error) {
+	return &llx.AssetValue{
+		ResourceType: c.MqlName(),
+		ResourceId:   c.MqlID(),
+	}, nil
 }
 
 func (c *mqlMuser) group() (*mqlMgroup, error) {
@@ -79,7 +110,7 @@ func (c *mqlMos) groups() (*mqlCustomGroups, error) {
 // list() is where we actually load the real resources, which could be slow in big environments
 func (c *mqlCustomGroups) list() ([]any, error) {
 	res := []any{}
-	for i := 0; i < 7; i++ {
+	for i := range 7 {
 		group, err := CreateResource(c.MqlRuntime, "mgroup", map[string]*llx.RawData{
 			"name": llx.StringData(fmt.Sprintf("group%d", i+1)),
 		})

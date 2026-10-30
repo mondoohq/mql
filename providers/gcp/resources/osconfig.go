@@ -12,11 +12,11 @@ import (
 	"sync"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/option"
@@ -24,7 +24,7 @@ import (
 )
 
 type mqlGcpProjectOsConfigServiceInternal struct {
-	serviceEnabled bool
+	serviceGate
 }
 
 func (g *mqlGcpProject) osConfig() (*mqlGcpProjectOsConfigService, error) {
@@ -49,7 +49,7 @@ func (g *mqlGcpProject) osConfig() (*mqlGcpProjectOsConfigService, error) {
 	}
 
 	svc := res.(*mqlGcpProjectOsConfigService)
-	svc.serviceEnabled = serviceEnabled
+	svc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_osconfig).Msg("gcp service is not enabled, skipping")
 	}
@@ -99,7 +99,11 @@ func parseSecondsDuration(d string) int64 {
 }
 
 func (g *mqlGcpProjectOsConfigService) patchDeployments() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -166,7 +170,7 @@ func (g *mqlGcpProjectOsConfigService) patchDeployments() ([]any, error) {
 		}
 		return nil
 	}); err != nil {
-		if isHTTPSkippable(err) {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not list OS patch deployments")
 			return nil, nil
 		}
@@ -176,7 +180,11 @@ func (g *mqlGcpProjectOsConfigService) patchDeployments() ([]any, error) {
 }
 
 func (g *mqlGcpProjectOsConfigService) osPolicyAssignments() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -206,7 +214,7 @@ func (g *mqlGcpProjectOsConfigService) osPolicyAssignments() ([]any, error) {
 		}
 		return nil
 	}); err != nil {
-		if isHTTPSkippable(err) {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not list zones for OS policy assignments")
 			return nil, nil
 		}
@@ -244,7 +252,7 @@ func (g *mqlGcpProjectOsConfigService) osPolicyAssignments() ([]any, error) {
 				return nil
 			})
 			if err != nil {
-				if isHTTPSkippable(err) {
+				if isSkippable(err) {
 					log.Warn().Err(err).Str("zone", zone).Msg("could not list OS policy assignments")
 					return nil
 				}
@@ -337,26 +345,15 @@ func (g *mqlGcpProjectComputeServiceInstance) inventory() (*mqlGcpProjectCompute
 
 	inv, err := osConfigSvc.Projects.Locations.Instances.Inventories.Get(parent + "/inventory").View("FULL").Do()
 	if err != nil {
-		if isHTTPSkippable(err) {
+		if isSkippable(err) {
 			g.Inventory.State = plugin.StateIsNull | plugin.StateIsSet
 			return nil, nil
 		}
 		return nil, err
 	}
 
-	osInfo, err := convert.JsonToDict(inv.OsInfo)
-	if err != nil {
-		return nil, err
-	}
-	items := make([]any, 0, len(inv.Items))
 	inventoryItems := make([]any, 0, len(inv.Items))
 	for _, item := range inv.Items {
-		dict, err := convert.JsonToDict(item)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, dict)
-
 		mqlItem, err := newMqlOsInventoryItem(g.MqlRuntime, inv.Name, &item)
 		if err != nil {
 			return nil, err
@@ -378,8 +375,6 @@ func (g *mqlGcpProjectComputeServiceInstance) inventory() (*mqlGcpProjectCompute
 
 	res, err := CreateResource(g.MqlRuntime, "gcp.project.computeService.instance.osInventory", map[string]*llx.RawData{
 		"name":                 llx.StringData(inv.Name),
-		"osInfo":               llx.DictData(osInfo),
-		"items":                llx.ArrayData(items, types.Dict),
 		"osHostname":           llx.StringData(osHostname),
 		"osLongName":           llx.StringData(osLongName),
 		"osShortName":          llx.StringData(osShortName),
@@ -474,15 +469,10 @@ func (g *mqlGcpProjectComputeServiceInstance) vulnerabilityReport() (*mqlGcpProj
 
 	report, err := osConfigSvc.Projects.Locations.Instances.VulnerabilityReports.Get(parent + "/vulnerabilityReport").Do()
 	if err != nil {
-		if isHTTPSkippable(err) {
+		if isSkippable(err) {
 			g.VulnerabilityReport.State = plugin.StateIsNull | plugin.StateIsSet
 			return nil, nil
 		}
-		return nil, err
-	}
-
-	vulnerabilities, err := convert.JsonToDictSlice(report.Vulnerabilities)
-	if err != nil {
 		return nil, err
 	}
 
@@ -497,7 +487,6 @@ func (g *mqlGcpProjectComputeServiceInstance) vulnerabilityReport() (*mqlGcpProj
 
 	res, err := CreateResource(g.MqlRuntime, "gcp.project.computeService.instance.vulnerabilityReport", map[string]*llx.RawData{
 		"name":                         llx.StringData(report.Name),
-		"vulnerabilities":              llx.ArrayData(vulnerabilities, types.Dict),
 		"vulnerabilityDetails":         llx.ArrayData(vulnDetails, types.Resource("gcp.project.computeService.instance.vulnerabilityReport.vulnerability")),
 		"highestUpgradableCveSeverity": llx.StringData(report.HighestUpgradableCveSeverity),
 		"updateTime":                   llx.TimeDataPtr(parseTime(report.UpdateTime)),
@@ -557,4 +546,9 @@ func newMqlVulnerabilityReportVulnerability(runtime *plugin.Runtime, reportName 
 		"references":                llx.ArrayData(references, types.Dict),
 		"updateTime":                llx.TimeDataPtr(parseTime(v.UpdateTime)),
 	})
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectOsConfigService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_osconfig)
 }

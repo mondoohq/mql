@@ -1,4 +1,4 @@
-[commands."rpm -q kernel --queryformat '%{NAME} %{EPOCHNUM}:%{VERSION}-%{RELEASE} %{ARCH}__%{VENDOR}__%{SUMMARY}__%{LICENSE}__%{INSTALLTIME}\n'"]
+[commands."rpm -q --whatprovides kernel --queryformat '%{NAME} %{EPOCHNUM}:%{VERSION}-%{RELEASE} %{ARCH}__%{VENDOR}__%{SUMMARY}__%{LICENSE}__%{INSTALLTIME}\n'"]
 stdout = """
 kernel 0:4.18.0-80.el8 x86_64__Red Hat, Inc.__The Linux kernel__GPLv2__1704067200
 kernel 0:4.18.0-80.4.2.el8_0 x86_64__Red Hat, Inc.__The Linux kernel__GPLv2__1704067200

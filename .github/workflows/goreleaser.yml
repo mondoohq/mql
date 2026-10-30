@@ -36,15 +36,71 @@ on:
         required: false
         default: true
         type: boolean
+      skip-test-gate:
+        description: "Release even if the tagged commit has no successful test run (emergencies only)"
+        required: false
+        default: false
+        type: boolean
 
 env:
   REGISTRY: docker.io
+  # C07QZDJFF89 == #release-coordination
+  SLACK_BOT_CHANNEL_ID: "C07QZDJFF89"
 
 permissions:
   contents: read
 
 jobs:
+  # A tag can be created on any commit, including one whose tests never passed.
+  # Nothing downstream re-checks: goreleaser builds whatever the tag points at,
+  # publishes it, and the installer chain copies it to the release bucket.
+  #
+  # On 2026-09-14 five consecutive commits on main had their test runs cancelled
+  # while still queued -- merges arrived faster than the suite completes, and a
+  # concurrency group keeps at most one running plus one pending run. Those
+  # commits were never red, they were never anything, and tagging one would have
+  # produced a release with no test result behind it.
+  #
+  # Testing every commit was the wrong answer to that: git is cumulative, so the
+  # newest commit in a burst already covers the ones behind it, and re-running
+  # the suite on superseded commits spends runner time confirming states nobody
+  # will release. The commit that matters is the one being tagged, so that is
+  # the one this checks.
+  verify-tested:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      # When a commit has no test run, the gate reads the workflow's path
+      # filters and the diff since the last passing commit, both through the
+      # contents API.
+      contents: read
+    steps:
+      - name: Check out the gate script
+        if: ${{ !inputs.goreleaser-snapshot && !inputs.skip-test-gate }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      # The logic lives in .github/scripts/verify-tested.sh, with the reasoning
+      # and the cases it has to tell apart, and is covered by bats tests there.
+      - name: Require a successful test run for this commit
+        if: ${{ !inputs.goreleaser-snapshot && !inputs.skip-test-gate }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: .github/scripts/verify-tested.sh
+
+      - name: Report a bypassed gate
+        if: ${{ inputs.goreleaser-snapshot || inputs.skip-test-gate }}
+        run: |
+          echo "::warning::Test gate bypassed (snapshot=${{ inputs.goreleaser-snapshot }}, skip-test-gate=${{ inputs.skip-test-gate }}). This release has not been checked against its commit's test results."
+
   goreleaser:
+    needs: [verify-tested]
+    outputs:
+      channel: ${{ steps.channel.outputs.channel }}
     permissions:
       # Add "contents" to write release
       contents: "write"
@@ -52,12 +108,12 @@ jobs:
       id-token: "write"
 
     runs-on:
-      group: Default
+      group: arc-runners
     environment: prod
     timeout-minutes: 120
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -67,9 +123,69 @@ jobs:
           echo "github.ref: ${{ github.ref }}"
           echo "github.ref_name: ${{ github.ref_name }}"
           echo "github.event_name: ${{ github.event_name }}"
+      # A tag's release channel is derived from its semver pre-release segment,
+      # never declared: `14.0.0-rc.2` is preview, `13.38.1` is stable, and build
+      # metadata (`8.4.0+41`) is not a pre-release so it stays stable. This
+      # replaces a substring test for alpha/beta/pre/rc that disagreed with the
+      # equivalent lists in cnspec and in the publishing tools. The rule is
+      # SemVer 9 and 10 with nothing added: everything after a `-` and before
+      # any `+` is the pre-release segment, and its presence is the channel.
+      - name: Determine release channel
+        id: channel
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [ "$REF_TYPE" != "tag" ]; then
+            echo "not a tag ($REF_NAME), treating as stable"
+            echo "channel=stable" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Build metadata is everything after a `+`, and SemVer 10 says it MUST
+          # be ignored when determining precedence. So `v14.0.0+rc.1` does not
+          # mean "release candidate": it compares EQUAL to `14.0.0`, outranks
+          # every real `14.0.0-rc.N`, derives the stable channel, and ships to
+          # every user on their next update check. A pre-release is introduced
+          # with `-`, never `+`.
+          #
+          # This is worth failing on rather than warning about, because
+          # everything downstream would accept it happily.
+          #
+          # The boundaries on both sides keep the marker list from firing on
+          # real words that merely contain one of them. Verified:
+          #   rejects: +rc.1 +alpha3 +pre-2 +preview +edge.7 +test +next.1
+          #   allows:  +3508 +build.7 +attestation +contest +greatest +latest
+          #            +protest +nextcloud +edgecase
+          META="${REF_NAME#*+}"
+          if [ "$META" != "$REF_NAME" ]; then
+            if printf '%s' "$META" | grep -Eiq '(^|[.-])(pre|rc|alpha|beta|dev|canary|nightly|snapshot|preview|edge|test|next)([.-]|[0-9]|$)'; then
+              echo "::error::tag $REF_NAME puts a pre-release marker in build metadata. Build metadata is ignored for precedence, so this tag means the FINAL ${REF_NAME%%+*} and would publish to the stable channel. Use a hyphen: ${REF_NAME%%+*}-${META}"
+              exit 1
+            fi
+            echo "::warning::tag $REF_NAME carries build metadata (+${META}), which is ignored when comparing versions"
+          fi
+
+          CORE="${REF_NAME#v}"
+          CORE="${CORE%%+*}"
+          if ! printf '%s' "$CORE" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::tag $REF_NAME is not a semver version, so its release channel cannot be derived"
+            exit 1
+          fi
+
+          case "$CORE" in
+            *-*) CHANNEL=preview ;;
+            *)   CHANNEL=stable ;;
+          esac
+
+          echo "$REF_NAME -> channel=$CHANNEL"
+          echo "channel=$CHANNEL" >> $GITHUB_OUTPUT
+
+      # A pre-release still builds and still gets a GitHub release; what it must
+      # not do is promote `latest` or start the cnspec release train.
       - name: Skip Publish for non-release tags
         id: skip-publish
-        if: contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'pre') || contains(github.ref, 'rc') || inputs.skip-publish == true
+        if: steps.channel.outputs.channel != 'stable' || inputs.skip-publish == true
         run: |
           echo "Skipping publish for non-release tags"
           echo "skip-publish=true" >> $GITHUB_OUTPUT
@@ -79,9 +195,9 @@ jobs:
         run: cat ".github/env" >> $GITHUB_ENV
 
       - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ">=${{ env.golang-version }}"
+          go-version: "${{ env.golang-version }}"
           check-latest: true
           cache: false
 
@@ -109,7 +225,7 @@ jobs:
       # These packages have been installed on the self-hosted runner using ansible from the private repo
 
       - name: Azure login
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.TSIGN_AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.TSIGN_AZURE_TENANT_ID}}
@@ -136,11 +252,34 @@ jobs:
           /tmp/quill help
 
       - name: Log in to the Container registry
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # goreleaser builds container images for eight architectures that are not
+      # the runner's own -- arm64, arm/v6, arm/v7, 386, ppc64le, s390x and the
+      # rest -- and every one of them runs `apk add` inside the image while it
+      # builds. Running a foreign binary needs binfmt handlers registered on the
+      # host, and this workflow never registered them: it inherited whatever the
+      # runner image happened to provide.
+      #
+      # That is a dependency, not a coincidence, and it broke v14.0.0-rc.8 when
+      # the runner image changed underneath it:
+      #
+      #   #7 [root 2/3] RUN apk update && apk add ca-certificates wget tar
+      #   #7 0.637 exec /bin/sh: exec format error
+      #
+      # Nothing in the repository had changed -- no Dockerfile, no goreleaser
+      # config, and the alpine pin had not moved since June. Declaring the
+      # dependency here means the release no longer depends on which runner it
+      # lands on.
+      - name: Set up QEMU for the non-native container images
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # Run GoReleaser
       # This will build the binaries, create the docker images, and publish the release to Git
@@ -149,11 +288,11 @@ jobs:
       # if you upgrade then when validating the signatures 'rpm -qpi dist/*.rpm' it will error with
       # Header RSA signature: BAD (package tag 268: invalid OpenPGP signature)
       # This is because a goreleaser dep was changed to https://github.com/goreleaser/nfpm/releases/tag/v2.41.2
-      # created a discussion on the issue here https://github.com/orgs/goreleaser/discussions/5943
+      # created a discussion on the issue here https://github.com/goreleaser/goreleaser/discussions/5943
 
       - name: Run GoReleaser and promote latest
         if: ${{ steps.skip-publish.outputs.skip-publish != 'true' }}
-        uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           distribution: goreleaser
           version: v2.5.1
@@ -179,7 +318,7 @@ jobs:
 
       - name: Run GoReleaser without promoting 'latest'
         if: ${{ steps.skip-publish.outputs.skip-publish == 'true' }}
-        uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           distribution: goreleaser
           version: v2.5.1
@@ -204,6 +343,11 @@ jobs:
           TSIGN_ACCESS_TOKEN: ${{ steps.get_token.outputs.TSIGN_ACCESS_TOKEN }}
           MAKE_LATEST: ${{ inputs.make-latest == false && 'false' || 'true' }}
 
+      - name: Install rpm tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
       - name: Check RPMs
         run: |
           rpm -qpi dist/*.rpm
@@ -219,7 +363,7 @@ jobs:
 
       - name: Upload artifacts
         if: ${{ inputs.upload-artifacts == true }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-artifacts
           path: dist/*.zip
@@ -228,13 +372,142 @@ jobs:
       # At this point we know the docker container is published.
       # We can now trigger the mql bump in cnspec, which will also trigger the release of cnspec.
       # The docker container is a pre-requisite for cnspec release.
+      # Fires for every tag, pre-release included. Which channel a tag belongs
+      # to is derived from its semver pre-release segment, and that decides what
+      # gets promoted -- not whether cnspec is bumped. cnspec's bump workflow
+      # handles a pre-release version and the unversioned mql module path on its
+      # side (cnspec#3603).
+      #
+      # Deliberately NOT gated on steps.skip-publish. That step answers two
+      # different questions at once -- "is the channel non-stable?" and "did the
+      # operator ask us not to publish?" -- and only the first should stop the
+      # bump. The operator opt-outs are therefore spelled out here, so dropping
+      # the channel block cannot silently drop them too: `skip-publish` means
+      # mql never reaches the bucket, and a cnspec release pinned to an mql
+      # version that was never published is not something to kick off.
       - name: Trigger mql bump in cnspec
-        if: ${{ steps.skip-publish.outputs.skip-publish != 'true' && (github.event_name == 'push' || (inputs.skip-cnspec-bump != true && inputs.make-latest != false)) }}
+        if: ${{ github.event_name == 'push' || (inputs.skip-cnspec-bump != true && inputs.skip-publish != true && inputs.make-latest != false) }}
         uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
         with:
           token: ${{ secrets.RELEASR_ACTION_TOKEN }}
           repository: "mondoohq/cnspec"
           event-type: update-mql
-          client-payload: '{
-            "version": "${{  github.ref_name }}"
-            }'
+          # toJSON, not a raw interpolation into a quoted JSON string: git
+          # allows `"` and `\` in a ref name, either of which would produce
+          # malformed JSON and a dispatch the other repo cannot parse. Matches
+          # how cnspec builds the same kind of payload.
+          client-payload: >-
+            {"version": ${{ toJSON(github.ref_name) }}}
+
+  # Reports the release outcome to #release-coordination.
+  #
+  # Nothing depends on this job, and it never gates the release: a Slack outage,
+  # a rotated token or a renamed channel must not turn a good release red. It
+  # runs on failure too, because a release that did not happen is the case most
+  # worth announcing.
+  notify:
+    name: Report the release to Slack
+    if: ${{ always() && github.ref_type == 'tag' }}
+    needs: [goreleaser]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compose the message
+        id: meta
+        env:
+          CHANNEL: ${{ needs.goreleaser.outputs.channel }}
+          BUILD: ${{ needs.goreleaser.result }}
+          # Through env rather than `${{ }}` inline: an expression is pasted into
+          # the script before bash parses it, so a tag carrying a quote or `$(…)`
+          # would be read as shell rather than as text.
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          # The tag reaches Slack through two different parsers, and it is not
+          # validated anywhere upstream -- git allows `"`, `&`, `<` and `>` in a
+          # ref name. `ref_safe` is escaped for both: backslash and quote so the
+          # value cannot terminate the double-quoted YAML scalar it is pasted
+          # into (that one fails the whole step, not just the rendering), then
+          # the three characters Slack reads as markup. `ref_url` is for the
+          # link target, where percent-encoding rather than escaping is correct.
+          ref_safe=$REF_NAME
+          ref_safe=${ref_safe//\\/\\\\}
+          ref_safe=${ref_safe//\"/\\\"}
+          ref_safe=${ref_safe//&/&amp;}
+          ref_safe=${ref_safe//</&lt;}
+          ref_safe=${ref_safe//>/&gt;}
+          ref_url=$(jq -rn --arg v "$REF_NAME" '$v|@uri')
+          {
+            echo "version=$ref_safe"
+            echo "version_url=$ref_url"
+          } >> "$GITHUB_OUTPUT"
+
+          # build_status carries the value alone. Its label and the newline stay
+          # in the Slack payload, where `\n` inside a double-quoted YAML scalar
+          # is a real escape -- a `\n` that arrives by substitution only renders
+          # because of when GitHub interpolates, which is not worth depending on.
+          case "$BUILD" in
+            success)
+              echo "header=:rocket: mql $ref_safe released" >> "$GITHUB_OUTPUT"
+              echo "mention=" >> "$GITHUB_OUTPUT"
+              echo "build_status=:white_check_mark: Done" >> "$GITHUB_OUTPUT"
+              ;;
+            skipped)
+              echo "header=:double_vertical_bar: mql $ref_safe build skipped" >> "$GITHUB_OUTPUT"
+              echo "mention=" >> "$GITHUB_OUTPUT"
+              echo "build_status=:double_vertical_bar: Skipped" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "header=:x: mql $ref_safe failed to release" >> "$GITHUB_OUTPUT"
+              echo "mention=<!here> " >> "$GITHUB_OUTPUT"
+              echo "build_status=:x: $BUILD" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+          # cnspec carries the user-facing release; mql being on preview tells a
+          # reader why nothing was promoted to latest. The cnspec bump PR opens
+          # either way now, so its absence would be a real problem rather than
+          # an expected consequence of the channel.
+          case "$CHANNEL" in
+            preview) echo "channel_line=:test_tube: *preview* — not promoted to latest; the cnspec bump is dispatched as usual" >> "$GITHUB_OUTPUT" ;;
+            *)       echo "channel_line=:package: *stable* — promotes latest and triggers the cnspec bump" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Post to Slack
+        continue-on-error: true
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.postMessage
+          # The action's default, `errors: false`, discards a Slack API error
+          # without logging it, so a rejected post reads as a green step.
+          # `true` fails the step with Slack's error as an annotation;
+          # continue-on-error above still keeps the job and the run green.
+          errors: true
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: "${{ env.SLACK_BOT_CHANNEL_ID }}"
+            text: "${{ steps.meta.outputs.mention }}${{ steps.meta.outputs.header }}"
+            blocks:
+              - type: "header"
+                text:
+                  type: "plain_text"
+                  text: "${{ steps.meta.outputs.header }}"
+                  emoji: true
+              - type: "section"
+                text:
+                  type: "mrkdwn"
+                  text: "${{ steps.meta.outputs.channel_line }}"
+              - type: "section"
+                fields:
+                  - type: "mrkdwn"
+                    text: "*Repository:*\n`${{ github.repository }}`"
+                  - type: "mrkdwn"
+                    text: "*Version:*\n`${{ steps.meta.outputs.version }}`"
+                  - type: "mrkdwn"
+                    text: "*Triggered by:*\n${{ github.actor }}"
+                  - type: "mrkdwn"
+                    text: "*Workflow run:*\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|Open run>"
+                  - type: "mrkdwn"
+                    text: "*Build:*\n${{ steps.meta.outputs.build_status }}"
+                  - type: "mrkdwn"
+                    text: "*Release notes:*\n<https://github.com/${{ github.repository }}/releases/tag/${{ steps.meta.outputs.version_url }}|${{ steps.meta.outputs.version }}>"

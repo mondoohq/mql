@@ -13,12 +13,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers/cloudformation/connection"
-	"go.mondoo.com/mql/v13/providers/cloudformation/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers/cloudformation/connection"
+	"go.mondoo.com/mql/providers/cloudformation/resources"
+	"go.mondoo.com/mql/utils/urlx"
 )
 
 const (
@@ -81,6 +82,9 @@ func (s *Service) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 		Name:      conn.Name(),
 		Asset:     req.Asset,
 		Inventory: nil,
+		// One template is one asset, and a repository holds many, so taking
+		// this file says nothing about the rest of the tree (ADR 045).
+		ContinueExploration: true,
 	}, nil
 }
 
@@ -131,12 +135,39 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 
 func (s *Service) detect(asset *inventory.Asset, conn *connection.CloudformationConnection) error {
 	asset.Id = conn.Conf.Type
-	asset.Name = conn.Conf.Host
 
 	asset.Platform = &inventory.Platform{
 		TechnologyUrlSegments: []string{"iac", "cloudformation", "template"},
 	}
 	PlatformByName("cloudformation").Apply(asset.Platform)
+
+	// When discovered from a git repository (e.g. by the GitHub provider) prefer
+	// the repo (org/repo) plus the repo-relative template path for the name and
+	// platform ID. The local path is a temporary clone directory whose hash
+	// would change on every scan.
+	if url, ok := asset.Connections[0].Options["ssh-url"]; ok {
+		domain, org, repo, err := urlx.ParseGitSshUrl(url)
+		if err == nil {
+			name := org + "/" + repo
+			platformID := "//platformid.api.mondoo.app/runtime/cloudformation/domain/" + domain + "/org/" + org + "/repo/" + repo
+			// A repository can hold multiple templates; qualify by the
+			// repo-relative path so each one is a distinct asset.
+			if relPath := asset.Connections[0].Options["path"]; relPath != "" {
+				platformID += "/path/" + relPath
+				name += "/" + relPath
+			}
+			asset.Id = platformID
+			asset.Connections[0].PlatformId = platformID
+			asset.PlatformIds = []string{platformID}
+			// Only name an asset that has no name. A caller who passed --asset-name
+			// has already named this asset, and detection running afterwards must not
+			// take that back; identity still comes from the platform ID above.
+			if asset.Name == "" {
+				asset.Name = "CloudFormation template " + name
+			}
+			return nil
+		}
+	}
 
 	projectPath, ok := asset.Connections[0].Options["path"]
 	if ok {
@@ -147,10 +178,16 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.Cloudformation
 		platformID := "//platformid.api.mondoo.app/runtime/cloudformation/hash/" + hash
 		asset.Connections[0].PlatformId = platformID
 		asset.PlatformIds = []string{platformID}
-		asset.Name = "CloudFormation Static Analysis " + parseNameFromPath(projectPath)
+		if asset.Name == "" {
+			asset.Name = "CloudFormation template " + parseNameFromPath(projectPath)
+		}
 		return nil
 	}
 
+	// Neither branch applied, so the connection host is all there is to go on.
+	if asset.Name == "" {
+		asset.Name = conn.Conf.Host
+	}
 	return nil
 }
 

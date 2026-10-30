@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,16 +17,45 @@ import (
 	ml "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/machinelearning/armmachinelearning/v4"
 	"github.com/rs/zerolog/log"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlAzureSubscriptionMachineLearningServiceWorkspaceInternal struct {
-	cacheEncryptionKeyUri string
-	cacheSystemData       any
+	cacheEncryptionKeyUri              string
+	cacheSystemData                    any
+	cacheOutboundRules                 map[string]ml.OutboundRuleClassification
+	cacheServerlessComputeSubnetId     *string
+	cachePrimaryUserAssignedIdentityId *string
+}
+
+// serverlessComputeSubnet resolves the subnet serverless jobs attach to. Null
+// when serverless compute uses the Microsoft-managed network.
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) serverlessComputeSubnet() (*mqlAzureSubscriptionNetworkServiceSubnet, error) {
+	return resolveDelegatedSubnet(a.MqlRuntime, a.cacheServerlessComputeSubnetId, &a.ServerlessComputeSubnet)
+}
+
+// primaryUserAssignedIdentity resolves the identity the workspace acts through
+// for managed resources. Null when it acts through its system-assigned
+// identity.
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) primaryUserAssignedIdentity() (*mqlAzureSubscriptionManagedIdentity, error) {
+	if a.cachePrimaryUserAssignedIdentityId == nil || *a.cachePrimaryUserAssignedIdentityId == "" {
+		a.PrimaryUserAssignedIdentity.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	// "__id", not "id": azure.subscription.managedIdentity declares no id field,
+	// so SetAllData rejected the arg and this accessor returned an error for
+	// every workspace that has a primary user-assigned identity. The other
+	// twelve callers all key it this way.
+	res, err := NewResource(a.MqlRuntime, "azure.subscription.managedIdentity",
+		map[string]*llx.RawData{"__id": llx.StringDataPtr(a.cachePrimaryUserAssignedIdentityId)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAzureSubscriptionManagedIdentity), nil
 }
 
 func initAzureSubscriptionMachineLearningService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -48,6 +78,73 @@ func (a *mqlAzureSubscriptionMachineLearningService) id() (string, error) {
 
 func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+// managedNetworkOutboundRules maps the workspace's managed-network approved
+// outbound rules (a name-keyed, type-discriminated map) to the unified rule
+// resource. Rules are emitted in name order for stable output.
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) managedNetworkOutboundRules() ([]any, error) {
+	names := make([]string, 0, len(a.cacheOutboundRules))
+	for name := range a.cacheOutboundRules {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	res := []any{}
+	for _, name := range names {
+		rule := a.cacheOutboundRules[name]
+		if rule == nil {
+			continue
+		}
+		var ruleType, category, status string
+		if base := rule.GetOutboundRule(); base != nil {
+			if base.Type != nil {
+				ruleType = string(*base.Type)
+			}
+			if base.Category != nil {
+				category = string(*base.Category)
+			}
+			if base.Status != nil {
+				status = string(*base.Status)
+			}
+		}
+		args := map[string]*llx.RawData{
+			"__id":                             llx.StringData(a.Id.Data + "/outboundRules/" + name),
+			"name":                             llx.StringData(name),
+			"type":                             llx.StringData(ruleType),
+			"category":                         llx.StringData(category),
+			"status":                           llx.StringData(status),
+			"destinationFqdn":                  llx.StringData(""),
+			"privateEndpointResourceId":        llx.StringData(""),
+			"privateEndpointSubresourceTarget": llx.StringData(""),
+			"privateEndpointSparkEnabled":      llx.BoolDataPtr(nil),
+			"serviceTag":                       llx.StringData(""),
+			"serviceTagProtocol":               llx.StringData(""),
+			"serviceTagPortRanges":             llx.StringData(""),
+		}
+		switch r := rule.(type) {
+		case *ml.FqdnOutboundRule:
+			args["destinationFqdn"] = llx.StringDataPtr(r.Destination)
+		case *ml.PrivateEndpointOutboundRule:
+			if d := r.Destination; d != nil {
+				args["privateEndpointResourceId"] = llx.StringDataPtr(d.ServiceResourceID)
+				args["privateEndpointSubresourceTarget"] = llx.StringDataPtr(d.SubresourceTarget)
+				args["privateEndpointSparkEnabled"] = llx.BoolDataPtr(d.SparkEnabled)
+			}
+		case *ml.ServiceTagOutboundRule:
+			if d := r.Destination; d != nil {
+				args["serviceTag"] = llx.StringDataPtr(d.ServiceTag)
+				args["serviceTagProtocol"] = llx.StringDataPtr(d.Protocol)
+				args["serviceTagPortRanges"] = llx.StringDataPtr(d.PortRanges)
+			}
+		}
+		mqlRule, err := CreateResource(a.MqlRuntime, "azure.subscription.machineLearningService.workspace.managedNetworkOutboundRule", args)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlRule)
+	}
+	return res, nil
 }
 
 func (a *mqlAzureSubscriptionMachineLearningService) workspaces() ([]any, error) {
@@ -95,6 +192,7 @@ func machineLearningWorkspaceToMql(runtime *plugin.Runtime, ws *ml.Workspace) (*
 	if err != nil {
 		return nil, err
 	}
+	wsSku := orZero(ws.SKU)
 	identity, err := convert.JsonToDict(ws.Identity)
 	if err != nil {
 		return nil, err
@@ -112,8 +210,12 @@ func machineLearningWorkspaceToMql(runtime *plugin.Runtime, ws *ml.Workspace) (*
 	if props.ProvisioningState != nil {
 		provisioningState = string(*props.ProvisioningState)
 	}
-	if props.ManagedNetwork != nil && props.ManagedNetwork.IsolationMode != nil {
-		managedNetworkIsolationMode = string(*props.ManagedNetwork.IsolationMode)
+	var outboundRules map[string]ml.OutboundRuleClassification
+	if props.ManagedNetwork != nil {
+		if props.ManagedNetwork.IsolationMode != nil {
+			managedNetworkIsolationMode = string(*props.ManagedNetwork.IsolationMode)
+		}
+		outboundRules = props.ManagedNetwork.OutboundRules
 	}
 
 	var encryptionStatus, encryptionKeyUri string
@@ -131,40 +233,70 @@ func machineLearningWorkspaceToMql(runtime *plugin.Runtime, ws *ml.Workspace) (*
 		return nil, err
 	}
 
-	resource, err := CreateResource(runtime, ResourceAzureSubscriptionMachineLearningServiceWorkspace,
-		map[string]*llx.RawData{
-			"id":                              llx.StringDataPtr(ws.ID),
-			"name":                            llx.StringDataPtr(ws.Name),
-			"location":                        llx.StringDataPtr(ws.Location),
-			"tags":                            llx.MapData(convert.PtrMapStrToInterface(ws.Tags), types.String),
-			"kind":                            llx.StringDataPtr(ws.Kind),
-			"sku":                             llx.DictData(sku),
-			"identity":                        llx.DictData(identity),
-			"workspaceId":                     llx.StringDataPtr(props.WorkspaceID),
-			"friendlyName":                    llx.StringDataPtr(props.FriendlyName),
-			"description":                     llx.StringDataPtr(props.Description),
-			"provisioningState":               llx.StringData(provisioningState),
-			"publicNetworkAccess":             llx.StringData(publicNetworkAccess),
-			"managedNetworkIsolationMode":     llx.StringData(managedNetworkIsolationMode),
-			"hbiWorkspace":                    llx.BoolDataPtr(props.HbiWorkspace),
-			"allowPublicAccessWhenBehindVnet": llx.BoolDataPtr(props.AllowPublicAccessWhenBehindVnet),
-			"v1LegacyMode":                    llx.BoolDataPtr(props.V1LegacyMode),
-			"discoveryUrl":                    llx.StringDataPtr(props.DiscoveryURL),
-			"mlFlowTrackingUri":               llx.StringDataPtr(props.MlFlowTrackingURI),
-			"imageBuildCompute":               llx.StringDataPtr(props.ImageBuildCompute),
-			"encryptionStatus":                llx.StringData(encryptionStatus),
-			"privateEndpointConnections":      llx.ArrayData(peConns, types.Dict),
-			"keyVaultId":                      llx.StringDataPtr(props.KeyVault),
-			"storageAccountId":                llx.StringDataPtr(props.StorageAccount),
-			"applicationInsightsId":           llx.StringDataPtr(props.ApplicationInsights),
-			"containerRegistryId":             llx.StringDataPtr(props.ContainerRegistry),
-		})
+	// Serverless compute settings are absent on a workspace that has none, in
+	// which case both values stay null rather than reading as "no public IP
+	// restriction configured".
+	var serverlessComputeNoPublicIp *bool
+	var serverlessComputeSubnetId *string
+	if scs := props.ServerlessComputeSettings; scs != nil {
+		serverlessComputeNoPublicIp = scs.ServerlessComputeNoPublicIP
+		serverlessComputeSubnetId = scs.ServerlessComputeCustomSubnet
+	}
+
+	args := map[string]*llx.RawData{
+		"id":                              llx.StringDataPtr(ws.ID),
+		"name":                            llx.StringDataPtr(ws.Name),
+		"location":                        llx.StringDataPtr(ws.Location),
+		"tags":                            llx.MapData(convert.PtrMapStrToInterface(ws.Tags), types.String),
+		"kind":                            llx.StringDataPtr(ws.Kind),
+		"sku":                             llx.DictData(sku),
+		"identity":                        llx.DictData(identity),
+		"workspaceId":                     llx.StringDataPtr(props.WorkspaceID),
+		"friendlyName":                    llx.StringDataPtr(props.FriendlyName),
+		"description":                     llx.StringDataPtr(props.Description),
+		"provisioningState":               llx.StringData(provisioningState),
+		"publicNetworkAccess":             llx.StringData(publicNetworkAccess),
+		"managedNetworkIsolationMode":     llx.StringData(managedNetworkIsolationMode),
+		"hbiWorkspace":                    llx.BoolDataPtr(props.HbiWorkspace),
+		"allowPublicAccessWhenBehindVnet": llx.BoolDataPtr(props.AllowPublicAccessWhenBehindVnet),
+		"v1LegacyMode":                    llx.BoolDataPtr(props.V1LegacyMode),
+		"discoveryUrl":                    llx.StringDataPtr(props.DiscoveryURL),
+		"mlFlowTrackingUri":               llx.StringDataPtr(props.MlFlowTrackingURI),
+		"imageBuildCompute":               llx.StringDataPtr(props.ImageBuildCompute),
+		"encryptionStatus":                llx.StringData(encryptionStatus),
+		"privateEndpointConnections":      llx.ArrayData(peConns, types.Dict),
+		"keyVaultId":                      llx.StringDataPtr(props.KeyVault),
+		"storageAccountId":                llx.StringDataPtr(props.StorageAccount),
+		"applicationInsightsId":           llx.StringDataPtr(props.ApplicationInsights),
+		"containerRegistryId":             llx.StringDataPtr(props.ContainerRegistry),
+
+		"enableDataIsolation": llx.BoolDataPtr(props.EnableDataIsolation),
+		"hubResourceId":       llx.StringDataPtr(props.HubResourceID),
+		"associatedWorkspaces": llx.ArrayData(
+			strPtrsToAny(props.AssociatedWorkspaces), types.String),
+		"privateLinkCount":            llx.IntDataPtr(props.PrivateLinkCount),
+		"storageHnsEnabled":           llx.BoolDataPtr(props.StorageHnsEnabled),
+		"workspaceTenantId":           llx.StringDataPtr(props.TenantID),
+		"serverlessComputeNoPublicIp": llx.BoolDataPtr(serverlessComputeNoPublicIp),
+	}
+	if err := setSkuData(runtime, args, skuName(wsSku.Name), skuTier(wsSku.Tier), skuSize(wsSku.Size), skuFamily(wsSku.Family), skuCapacity(wsSku.Capacity)); err != nil {
+		return nil, err
+	}
+	wsIdentity := orZero(ws.Identity)
+	if err := setResourceIdentity(runtime, args, sortedUserAssignedIdentityIDs(wsIdentity.UserAssignedIdentities),
+		identityType(wsIdentity.Type), identityPrincipalId(wsIdentity.PrincipalID), identityTenantId(wsIdentity.TenantID)); err != nil {
+		return nil, err
+	}
+	resource, err := CreateResource(runtime, ResourceAzureSubscriptionMachineLearningServiceWorkspace, args)
 	if err != nil {
 		return nil, err
 	}
 
 	mqlWs := resource.(*mqlAzureSubscriptionMachineLearningServiceWorkspace)
 	mqlWs.cacheEncryptionKeyUri = encryptionKeyUri
+	mqlWs.cacheOutboundRules = outboundRules
+	mqlWs.cacheServerlessComputeSubnetId = serverlessComputeSubnetId
+	mqlWs.cachePrimaryUserAssignedIdentityId = props.PrimaryUserAssignedIdentity
 	sysData, err := convert.JsonToDict(ws.SystemData)
 	if err != nil {
 		return nil, err
@@ -329,7 +461,7 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) onlineEndpoints() 
 				traffic = intMapToMql(p.Traffic)
 				mirrorTraffic = intMapToMql(p.MirrorTraffic)
 			}
-			mqlRes, err := CreateResource(a.MqlRuntime, "azure.subscription.machineLearningService.workspace.onlineEndpoint", map[string]*llx.RawData{
+			epArgs := map[string]*llx.RawData{
 				"id":                  llx.StringDataPtr(ep.ID),
 				"name":                llx.StringDataPtr(ep.Name),
 				"location":            llx.StringDataPtr(ep.Location),
@@ -344,7 +476,13 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) onlineEndpoints() 
 				"traffic":             llx.MapData(traffic, types.Int),
 				"mirrorTraffic":       llx.MapData(mirrorTraffic, types.Int),
 				"provisioningState":   llx.StringData(provisioningState),
-			})
+			}
+			epIdentity := orZero(ep.Identity)
+			if err := setResourceIdentity(a.MqlRuntime, epArgs, sortedUserAssignedIdentityIDs(epIdentity.UserAssignedIdentities),
+				identityType(epIdentity.Type), identityPrincipalId(epIdentity.PrincipalID), identityTenantId(epIdentity.TenantID)); err != nil {
+				return nil, err
+			}
+			mqlRes, err := CreateResource(a.MqlRuntime, "azure.subscription.machineLearningService.workspace.onlineEndpoint", epArgs)
 			if err != nil {
 				return nil, err
 			}
@@ -578,7 +716,7 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) serverlessEndpoint
 					provisioningState = string(*p.ProvisioningState)
 				}
 			}
-			mqlEp, err := CreateResource(a.MqlRuntime, "azure.subscription.machineLearningService.workspace.serverlessEndpoint", map[string]*llx.RawData{
+			slArgs := map[string]*llx.RawData{
 				"id":                        llx.StringDataPtr(ep.ID),
 				"name":                      llx.StringDataPtr(ep.Name),
 				"location":                  llx.StringDataPtr(ep.Location),
@@ -591,7 +729,13 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) serverlessEndpoint
 				"marketplaceSubscriptionId": llx.StringData(marketplaceSubscriptionId),
 				"contentSafetyStatus":       llx.StringData(contentSafetyStatus),
 				"provisioningState":         llx.StringData(provisioningState),
-			})
+			}
+			slIdentity := orZero(ep.Identity)
+			if err := setResourceIdentity(a.MqlRuntime, slArgs, sortedUserAssignedIdentityIDs(slIdentity.UserAssignedIdentities),
+				identityType(slIdentity.Type), identityPrincipalId(slIdentity.PrincipalID), identityTenantId(slIdentity.TenantID)); err != nil {
+				return nil, err
+			}
+			mqlEp, err := CreateResource(a.MqlRuntime, "azure.subscription.machineLearningService.workspace.serverlessEndpoint", slArgs)
 			if err != nil {
 				return nil, err
 			}
@@ -599,7 +743,8 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) serverlessEndpoint
 			if err != nil {
 				return nil, err
 			}
-			mqlEp.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceServerlessEndpoint).cacheSystemData = sysData
+			mqlServerless := mqlEp.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceServerlessEndpoint)
+			mqlServerless.cacheSystemData = sysData
 			res = append(res, mqlEp)
 		}
 	}
@@ -675,7 +820,7 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) computes() ([]any,
 					modifiedOn = p.ModifiedOn
 				}
 			}
-			mqlCompute, err := CreateResource(a.MqlRuntime, "azure.subscription.machineLearningService.workspace.compute", map[string]*llx.RawData{
+			computeArgs := map[string]*llx.RawData{
 				"id":                llx.StringDataPtr(c.ID),
 				"name":              llx.StringDataPtr(c.Name),
 				"location":          llx.StringDataPtr(c.Location),
@@ -690,7 +835,18 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) computes() ([]any,
 				"provisioningState": llx.StringData(provisioningState),
 				"createdOn":         llx.TimeDataPtr(createdOn),
 				"modifiedOn":        llx.TimeDataPtr(modifiedOn),
-			})
+			}
+			nodeAccess := mlComputeNodeAccessFrom(c.Properties)
+			computeArgs["enableNodePublicIp"] = llx.BoolDataPtr(nodeAccess.enableNodePublicIP)
+			computeArgs["sshPublicAccess"] = llx.StringDataPtr(nodeAccess.sshPublicAccess)
+			computeArgs["assignedUserObjectId"] = llx.StringDataPtr(nodeAccess.assignedUserObjectID)
+			computeArgs["assignedUserTenantId"] = llx.StringDataPtr(nodeAccess.assignedUserTenantID)
+			computeIdentity := orZero(c.Identity)
+			if err := setResourceIdentity(a.MqlRuntime, computeArgs, sortedUserAssignedIdentityIDs(computeIdentity.UserAssignedIdentities),
+				identityType(computeIdentity.Type), identityPrincipalId(computeIdentity.PrincipalID), identityTenantId(computeIdentity.TenantID)); err != nil {
+				return nil, err
+			}
+			mqlCompute, err := CreateResource(a.MqlRuntime, "azure.subscription.machineLearningService.workspace.compute", computeArgs)
 			if err != nil {
 				return nil, err
 			}
@@ -698,7 +854,9 @@ func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) computes() ([]any,
 			if err != nil {
 				return nil, err
 			}
-			mqlCompute.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute).cacheSystemData = sysData
+			mqlComputeRes := mqlCompute.(*mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute)
+			mqlComputeRes.cacheSystemData = sysData
+			mqlComputeRes.cacheSubnetId = nodeAccess.subnetID
 			res = append(res, mqlCompute)
 		}
 	}
@@ -795,6 +953,72 @@ type mqlAzureSubscriptionMachineLearningServiceWorkspaceServerlessEndpointIntern
 
 type mqlAzureSubscriptionMachineLearningServiceWorkspaceComputeInternal struct {
 	cacheSystemData any
+	cacheSubnetId   *string
+}
+
+// mlComputeNodeAccess holds the node-level network and access settings of a
+// compute target. Only ComputeInstance and AmlCompute carry them; every field
+// stays nil for other compute types so the MQL fields read null rather than a
+// false or empty value that would claim the setting was measured.
+type mlComputeNodeAccess struct {
+	enableNodePublicIP   *bool
+	sshPublicAccess      *string
+	subnetID             *string
+	assignedUserObjectID *string
+	assignedUserTenantID *string
+}
+
+func mlComputeNodeAccessFrom(c ml.ComputeClassification) mlComputeNodeAccess {
+	var out mlComputeNodeAccess
+	switch v := c.(type) {
+	case *ml.ComputeInstance:
+		if v == nil || v.Properties == nil {
+			return out
+		}
+		p := v.Properties
+		out.enableNodePublicIP = p.EnableNodePublicIP
+		if p.SSHSettings != nil && p.SSHSettings.SSHPublicAccess != nil {
+			out.sshPublicAccess = new(string(*p.SSHSettings.SSHPublicAccess))
+		}
+		if p.Subnet != nil {
+			out.subnetID = p.Subnet.ID
+		}
+		if s := p.PersonalComputeInstanceSettings; s != nil && s.AssignedUser != nil {
+			out.assignedUserObjectID = s.AssignedUser.ObjectID
+			out.assignedUserTenantID = s.AssignedUser.TenantID
+		}
+	case *ml.AmlCompute:
+		if v == nil || v.Properties == nil {
+			return out
+		}
+		p := v.Properties
+		out.enableNodePublicIP = p.EnableNodePublicIP
+		if p.RemoteLoginPortPublicAccess != nil {
+			out.sshPublicAccess = new(string(*p.RemoteLoginPortPublicAccess))
+		}
+		if p.Subnet != nil {
+			out.subnetID = p.Subnet.ID
+		}
+	}
+	return out
+}
+
+// subnet resolves the subnet the compute nodes are placed in. Null when the
+// compute is not in a customer subnet or its type has no subnet setting.
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspaceCompute) subnet() (*mqlAzureSubscriptionNetworkServiceSubnet, error) {
+	return resolveDelegatedSubnet(a.MqlRuntime, a.cacheSubnetId, &a.Subnet)
+}
+
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) diagnosticSettings() ([]any, error) {
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
+
+func (a *mqlAzureSubscriptionMachineLearningServiceWorkspace) roleAssignments() ([]any, error) {
+	return roleAssignmentsForScope(a.MqlRuntime, a.Id.Data, "machine learning workspace")
 }
 
 type mqlAzureSubscriptionMachineLearningServiceWorkspaceModelInternal struct {

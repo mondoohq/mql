@@ -1,0 +1,8 @@
+# this variable is pulled in to places where logs are rotated
+# if you have modified your log rotation mechanisms to use different
+# comprssion tools, you can change the extension here.
+# This changes the behavior for all aide rules, so if you have
+# only changed part of your log rotation mechanisms, you still
+# need to touch the respective rules.
+
+@@define LOGEXT gz

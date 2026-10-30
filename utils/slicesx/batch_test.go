@@ -12,7 +12,7 @@ import (
 
 func TestBatch(t *testing.T) {
 	slice := []string{}
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		slice = append(slice, fmt.Sprintf("item-%d", i))
 	}
 
@@ -28,7 +28,7 @@ func TestBatch(t *testing.T) {
 
 func TestBatch_Uneven(t *testing.T) {
 	slice := []string{}
-	for i := 0; i < 101; i++ {
+	for i := range 101 {
 		slice = append(slice, fmt.Sprintf("item-%d", i))
 	}
 

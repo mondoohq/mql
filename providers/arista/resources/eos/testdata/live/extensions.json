@@ -1,0 +1,23 @@
+{
+ "extensionStoredDir": "flash:",
+ "extensions": {
+  "awslogs.swix": {
+   "affectedAgents": [],
+   "agentsToRestart": [],
+   "boot": true,
+   "description": " awsclicwlogs This awscli plugin provides the pull, push and filter commands to\naccess AWS CloudWatch Logs service. The awsclicwlogs package works on Python\nversions:* 2.6.5 and greater * 2.7.x and greater * 3.3.x and greater\nInstallation The easiest way to install awsclicwlogs is to use pip_:: $ pip\ninstall awsclicwlogsor, if you are not installing in a virtualenv:: $ sudo pip\ninstall ...",
+   "error": false,
+   "installedSize": 0,
+   "numRpms": 1,
+   "presence": "present",
+   "release": "1.el7",
+   "rpms": {},
+   "status": "notInstalled",
+   "statusDetail": "Transaction check failed: libpython2.7.so.1.0()(64bit) is needed by awslogs-1.4.0-1.el7.noarch",
+   "summary": "AWSCLI CloudWatch Logs plugin",
+   "vendor": "Amazon <UNKNOWN>",
+   "version": "1.4.0"
+  }
+ },
+ "pastErrors": []
+}

@@ -1,0 +1,17 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": [
+    {
+      "id": "rs-enforcement-1",
+      "name": "zone entrypoint",
+      "description": "Zone-level entrypoint ruleset",
+      "kind": "root",
+      "phase": "http_request_firewall_managed",
+      "version": "9",
+      "last_updated": "2024-05-01T00:00:00Z"
+    }
+  ],
+  "result_info": { "page": 1, "per_page": 100, "count": 1, "total_count": 1, "total_pages": 1 }
+}

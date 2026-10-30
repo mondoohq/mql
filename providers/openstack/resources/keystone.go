@@ -4,14 +4,19 @@
 package resources
 
 import (
+	"context"
+
+	"github.com/gophercloud/gophercloud/v2"
 	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/applicationcredentials"
 	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/domains"
 	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/groups"
 	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/projects"
 	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/roles"
 	"github.com/gophercloud/gophercloud/v2/openstack/identity/v3/users"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"github.com/gophercloud/gophercloud/v2/pagination"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // ---- openstack.project ----
@@ -189,15 +194,18 @@ func (o *mqlOpenstack) users() ([]any, error) {
 
 func newMqlOpenstackUser(runtime *plugin.Runtime, u *users.User) (*mqlOpenstackUser, error) {
 	res, err := CreateResource(runtime, "openstack.user", map[string]*llx.RawData{
-		"__id":                         llx.StringData("openstack.user/" + u.ID),
-		"id":                           llx.StringData(u.ID),
-		"name":                         llx.StringData(u.Name),
-		"enabled":                      llx.BoolData(u.Enabled),
-		"description":                  llx.StringData(u.Description),
-		"passwordExpiresAt":            llx.TimeDataPtr(timePtr(u.PasswordExpiresAt)),
-		"ignoreLockoutFailureAttempts": llx.BoolData(userOptionBool(u.Options, "ignore_lockout_failure_attempts")),
-		"multiFactorAuthEnabled":       llx.BoolData(userOptionBool(u.Options, "multi_factor_auth_enabled")),
-		"multiFactorAuthRules":         dictSliceData(userMFARules(u.Options)),
+		"__id":                             llx.StringData("openstack.user/" + u.ID),
+		"id":                               llx.StringData(u.ID),
+		"name":                             llx.StringData(u.Name),
+		"enabled":                          llx.BoolData(u.Enabled),
+		"description":                      llx.StringData(u.Description),
+		"passwordExpiresAt":                llx.TimeDataPtr(timePtr(u.PasswordExpiresAt)),
+		"ignoreLockoutFailureAttempts":     llx.BoolData(userOptionBool(u.Options, "ignore_lockout_failure_attempts")),
+		"multiFactorAuthEnabled":           llx.BoolData(userOptionBool(u.Options, "multi_factor_auth_enabled")),
+		"multiFactorAuthRules":             dictSliceData(userMFARules(u.Options)),
+		"ignorePasswordExpiry":             llx.BoolData(userOptionBool(u.Options, "ignore_password_expiry")),
+		"ignoreChangePasswordUponFirstUse": llx.BoolData(userOptionBool(u.Options, "ignore_change_password_upon_first_use")),
+		"ignoreUserInactivity":             llx.BoolData(userOptionBool(u.Options, "ignore_user_inactivity")),
 	})
 	if err != nil {
 		return nil, err
@@ -637,6 +645,11 @@ func resolveAssignedRoles(runtime *plugin.Runtime, items []roles.RoleAssignment)
 type mqlOpenstackApplicationCredentialInternal struct {
 	cacheUserID    string
 	cacheProjectID string
+	cacheRoleIDs   []string
+}
+
+func (r *mqlOpenstackApplicationCredential) roles() ([]any, error) {
+	return rolesByID(r.MqlRuntime, r.cacheRoleIDs)
 }
 
 func (r *mqlOpenstackApplicationCredential) id() (string, error) {
@@ -673,8 +686,12 @@ func (r *mqlOpenstackUser) applicationCredentials() ([]any, error) {
 	out := make([]any, 0, len(items))
 	for _, ac := range items {
 		roleNames := make([]string, 0, len(ac.Roles))
+		roleIDs := make([]string, 0, len(ac.Roles))
 		for _, role := range ac.Roles {
 			roleNames = append(roleNames, role.Name)
+			if role.ID != "" {
+				roleIDs = append(roleIDs, role.ID)
+			}
 		}
 		rules := make([]any, 0, len(ac.AccessRules))
 		for _, rule := range ac.AccessRules {
@@ -701,6 +718,7 @@ func (r *mqlOpenstackUser) applicationCredentials() ([]any, error) {
 		mqlAC := res.(*mqlOpenstackApplicationCredential)
 		mqlAC.cacheUserID = r.Id.Data
 		mqlAC.cacheProjectID = ac.ProjectID
+		mqlAC.cacheRoleIDs = roleIDs
 		out = append(out, mqlAC)
 	}
 	return out, nil
@@ -744,6 +762,43 @@ type mqlOpenstackIdentityRoleAssignmentInternal struct {
 	cacheScopeDomainID  string
 }
 
+// rolesByID resolves a set of role IDs against the cached role catalog. Trusts
+// and application credentials each carry a handful of role IDs, and a
+// NewResource per id would run openstack.role's init before the runtime cache
+// is consulted, turning one catalog listing into one lookup per delegated role.
+// Walking the already-fetched list keeps it at a single call for the whole scan.
+//
+// A cloud where the role catalog is not readable (it is admin-only) yields an
+// empty list rather than an error: roleNames still carries the names, so the
+// delegation itself stays visible.
+func rolesByID(runtime *plugin.Runtime, ids []string) ([]any, error) {
+	out := make([]any, 0, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	root, err := CreateResource(runtime, "openstack", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	list := root.(*mqlOpenstack).GetRoles()
+	if list.Error != nil {
+		log.Warn().Err(list.Error).Msg("openstack> role catalog not readable; returning no typed roles")
+		return out, nil
+	}
+	byID := make(map[string]*mqlOpenstackRole, len(list.Data))
+	for _, raw := range list.Data {
+		if role, ok := raw.(*mqlOpenstackRole); ok {
+			byID[role.Id.Data] = role
+		}
+	}
+	for _, id := range ids {
+		if role, ok := byID[id]; ok {
+			out = append(out, role)
+		}
+	}
+	return out, nil
+}
+
 // roleNamesByID builds a role-ID to role-name lookup from the role catalog. It
 // is the fallback used to populate a role assignment's `roleName` when the
 // cloud does not inline names in the assignment listing. Returns nil (an empty
@@ -765,6 +820,74 @@ func roleNamesByID(runtime *plugin.Runtime) map[string]string {
 	return byID
 }
 
+// roleAssignmentEntry mirrors one entry of the Keystone role_assignments
+// response. The client's own RoleAssignment struct models only the project and
+// domain scopes, so a system-scoped grant (the deployment-wide `admin` that
+// outranks every project) and the OS-INHERIT flag (which pushes a domain grant
+// down onto every project inside it) are both absent from it. Decoding the
+// response ourselves keeps those two out of the blind spot.
+type roleAssignmentEntry struct {
+	Role struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"role"`
+	User struct {
+		ID string `json:"id"`
+	} `json:"user"`
+	Group struct {
+		ID string `json:"id"`
+	} `json:"group"`
+	Scope struct {
+		Domain struct {
+			ID string `json:"id"`
+		} `json:"domain"`
+		Project struct {
+			ID string `json:"id"`
+		} `json:"project"`
+		System struct {
+			All bool `json:"all"`
+		} `json:"system"`
+		// "projects" when the grant applies to the projects below the scoped
+		// object rather than to the object itself.
+		InheritedTo string `json:"OS-INHERIT:inherited_to"`
+	} `json:"scope"`
+}
+
+// scope reports what the grant applies to and the id of that object. A
+// system-scoped grant names no object, so it reports the fixed id "all", the
+// only system scope Keystone defines.
+func (a *roleAssignmentEntry) scope() (scopeType, scopeID string) {
+	switch {
+	case a.Scope.Project.ID != "":
+		return "project", a.Scope.Project.ID
+	case a.Scope.Domain.ID != "":
+		return "domain", a.Scope.Domain.ID
+	case a.Scope.System.All:
+		return "system", "all"
+	}
+	return "", ""
+}
+
+// listRoleAssignments pages through /role_assignments, decoding each page into
+// roleAssignmentEntry rather than the client's lossy struct.
+func listRoleAssignments(client *gophercloud.ServiceClient, opts roles.ListAssignmentsOpts) ([]roleAssignmentEntry, error) {
+	out := []roleAssignmentEntry{}
+	err := roles.ListAssignments(client, opts).EachPage(ctx(), func(_ context.Context, page pagination.Page) (bool, error) {
+		var body struct {
+			RoleAssignments []roleAssignmentEntry `json:"role_assignments"`
+		}
+		if err := (page.(roles.RoleAssignmentPage)).ExtractInto(&body); err != nil {
+			return false, err
+		}
+		out = append(out, body.RoleAssignments...)
+		return true, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (o *mqlOpenstack) roleAssignments() ([]any, error) {
 	c := conn(o.MqlRuntime)
 	client, err := c.IdentityClient()
@@ -772,17 +895,13 @@ func (o *mqlOpenstack) roleAssignments() ([]any, error) {
 		return nil, err
 	}
 	includeNames := true
-	pages, err := roles.ListAssignments(client, roles.ListAssignmentsOpts{
+	items, err := listRoleAssignments(client, roles.ListAssignmentsOpts{
 		IncludeNames: &includeNames,
-	}).AllPages(ctx())
+	})
 	if err != nil {
 		if translateOpenstackError(err) == nil {
 			return []any{}, nil
 		}
-		return nil, err
-	}
-	items, err := roles.ExtractRoleAssignments(pages)
-	if err != nil {
 		return nil, err
 	}
 
@@ -796,23 +915,23 @@ func (o *mqlOpenstack) roleAssignments() ([]any, error) {
 			actorType = "group"
 			actorID = a.Group.ID
 		}
-		scopeType := ""
-		scopeID := ""
-		if a.Scope.Project.ID != "" {
-			scopeType = "project"
-			scopeID = a.Scope.Project.ID
-		} else if a.Scope.Domain.ID != "" {
-			scopeType = "domain"
-			scopeID = a.Scope.Domain.ID
-		}
+		scopeType, scopeID := a.scope()
+		inherited := a.Scope.InheritedTo != ""
 		roleName := a.Role.Name
 		if roleName == "" {
 			roleName = byID[a.Role.ID]
 		}
+		// The same role, principal, and scope can be granted both directly and
+		// by inheritance, so the flag belongs in the identity.
+		id := "openstack.identity.roleAssignment/" + a.Role.ID + "/" + actorType + "/" + actorID + "/" + scopeType + "/" + scopeID
+		if inherited {
+			id += "/inherited"
+		}
 		res, err := CreateResource(o.MqlRuntime, "openstack.identity.roleAssignment", map[string]*llx.RawData{
-			"__id":      llx.StringData("openstack.identity.roleAssignment/" + a.Role.ID + "/" + actorType + "/" + actorID + "/" + scopeType + "/" + scopeID),
+			"__id":      llx.StringData(id),
 			"actorType": llx.StringData(actorType),
 			"scopeType": llx.StringData(scopeType),
+			"inherited": llx.BoolData(inherited),
 			"roleName":  llx.StringData(roleName),
 		})
 		if err != nil {

@@ -4,6 +4,7 @@
 package llx
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"regexp"
@@ -12,7 +13,7 @@ import (
 	"time"
 	"unicode"
 
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/types"
 )
 
 // run an operation that returns true/false on a bind data vs a chunk call.
@@ -80,9 +81,11 @@ func boolOrOpV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64, fLeft
 		return nil, dref, nil
 	}
 
-	if bind.Value == nil {
-		return BoolData(v.Value == nil), 0, nil
-	}
+	// A null left side is falsy, so the result is whatever the right side says -
+	// exactly what a false left side does. This branch used to carry the AND
+	// rule verbatim (`v.Value == nil`), which made `null || true` return false:
+	// wrong under three-valued logic, wrong under null-as-false, and wrong under
+	// null-as-true. Falling through to the shared tail is the whole fix.
 	if v == nil || v.Value == nil {
 		return BoolData(false), 0, nil
 	}
@@ -90,13 +93,24 @@ func boolOrOpV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64, fLeft
 	return BoolData(fRight(v.Value)), 0, nil
 }
 
-// boolAndOp behaves like boolOp, but checks if the left argument is false first
-// (and stop if it is). Only then proceeds to check the right argument.
+// boolAndOp behaves like boolOp, but checks if the left argument is falsy first
+// (and stops if it is). Only then proceeds to check the right argument.
+//
+// A null operand is falsy. It used to be its own case, returning true when the
+// other side was also null, which made `a && b` pass when neither a nor b could
+// be read - an assertion reporting success over two values it never measured.
+// Nine providers grew regression tests to keep their resources from tripping it.
+// Treating null as falsy removes the case rather than special-casing it: null
+// now takes the identical path false takes, including the short circuit.
+//
+// Comparison stays untouched. `null == null` is still true, because asking
+// whether two absent values are equal is a different question from asking
+// whether an absent value satisfies a check.
 func boolAndOpV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64, fLeft func(any) bool, fRight func(any) bool) (*RawData, uint64, error) {
 	arg := chunk.Function.Args[0]
 
-	if bind.Value != nil && !fLeft(bind.Value) {
-		// if the left side is false, we can return false immediately
+	if bind.Value == nil || !fLeft(bind.Value) {
+		// if the left side is falsy, we can return false immediately
 		// We need to write a nil result for the right side to avoid
 		// it being executed, for example to get its data for the
 		// datapoints
@@ -122,9 +136,6 @@ func boolAndOpV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64, fLef
 		return nil, dref, nil
 	}
 
-	if bind.Value == nil {
-		return BoolData(v.Value == nil), 0, nil
-	}
 	if v == nil || v.Value == nil {
 		return BoolData(false), 0, nil
 	}
@@ -730,6 +741,83 @@ func timeCmpNilV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 
 func timeNotNilV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
 	return rawboolNotOpV2(e, bind, chunk, ref, opTimeCmpNil)
+}
+
+// The native `asset` primitive (types.Asset) carries an *AssetValue payload with
+// the anchor (resourceType, resourceId) that points at another asset. The anchor
+// is not introspectable from MQL; it is serialized out for the platform to
+// correlate against the separately-discovered asset. The only MQL-facing builtins
+// are nil comparisons. See ADR 030.
+
+func opAssetCmpNil(left *RawData, right *RawData) bool {
+	if left.Value == nil {
+		return true
+	}
+	v, ok := left.Value.(*AssetValue)
+	return !ok || v == nil
+}
+
+func assetCmpNilV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
+	return rawboolOpV2(e, bind, chunk, ref, opAssetCmpNil)
+}
+
+func assetNotNilV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
+	return rawboolNotOpV2(e, bind, chunk, ref, opAssetCmpNil)
+}
+
+// AssetRootChunkID is the chunk that turns an `asset<root>` value into the root
+// resource of the asset it points at. The compiler emits it for every chain that
+// resolves into another asset, so the chunks above it are an ordinary resource
+// chain. See ADR 031.
+const AssetRootChunkID = "$assetRoot"
+
+// runAssetRoot resolves the asset reference it is bound to into that asset's
+// root resource.
+//
+// Resolution runs host-side, where the coordinator and the recording layer are,
+// because llx can reach neither: a builtin sees only its runtime, and that
+// interface cannot connect (ADR 031). So this dereferences through the optional
+// AssetResolver and does nothing else - converting the asset to a resource once
+// is what makes every chunk above it an ordinary resource chain.
+//
+// A runtime that does not implement AssetResolver fails here with that reason
+// rather than with a missing-function error from the dispatch table.
+func runAssetRoot(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
+	if bind.Value == nil {
+		return NilData, 0, nil
+	}
+	v, ok := bind.Value.(*AssetValue)
+	if !ok || v == nil {
+		return NilData, 0, nil
+	}
+
+	// The compiler put the root's resource type on this chunk, so the root is
+	// read from the bytecode rather than re-derived from the asset type.
+	typ := chunk.Type()
+	root := ""
+	if typ.IsResource() {
+		root = typ.ResourceName()
+	}
+	if root == "" {
+		return nil, 0, errors.New("cannot resolve into asset " + v.ResourceType + " (id " + v.ResourceId +
+			"): the reference declares no root type")
+	}
+
+	resolver, ok := e.ctx.runtime.(AssetResolver)
+	if !ok {
+		return nil, 0, errors.New("cannot resolve into asset " + v.ResourceType + " (id " + v.ResourceId +
+			"): this runtime cannot reach other assets")
+	}
+
+	resource, err := resolver.ResolveAssetRoot(v, root)
+	if err != nil {
+		return nil, 0, err
+	}
+	if resource == nil {
+		return &RawData{Type: typ}, 0, nil
+	}
+
+	return &RawData{Type: typ, Value: resource}, 0, nil
 }
 
 // string </>/<=/>= string
@@ -2450,6 +2538,51 @@ func stringTrimV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 	return StringData(res), 0, nil
 }
 
+// stringJsonV2 decodes the bound string as a JSON document and returns the
+// result as a traversable dict, the same value `parse.json(...).params` yields
+// for a file on disk.
+//
+// Providers hand back nested documents as strings wherever the upstream API
+// types the attribute as one. Terraform writes an IAM or KMS policy into plan
+// and state JSON that way, so indexing such a value directly produces a
+// primitive with no type information, which coerces to null; a check reading
+// it then answers about nothing at all. `parse.json` cannot serve those assets
+// because it belongs to the os provider, which a terraform-plan connection
+// does not load. This is a builtin rather than a resource so it runs on every
+// asset and needs no connection.
+//
+// A value that is already decoded is an error rather than a pass-through: it
+// tells the author the attribute never carried a JSON string, so they learn
+// the real shape instead of writing a query that happens to work.
+//
+// Declared experimental (resources.MaturityExperimental in mqlc/builtin.go).
+// The name collides with a dict key called `json` in dot form, so the surface
+// may change.
+func stringJsonV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
+	if bind.Value == nil {
+		return &RawData{Type: types.Dict}, 0, nil
+	}
+
+	s, ok := bind.Value.(string)
+	if !ok {
+		return nil, 0, errors.New("failed to parse JSON, value is not a string")
+	}
+
+	var res any
+	if err := json.Unmarshal([]byte(s), &res); err != nil {
+		// A document that does not parse is reported, not returned as null.
+		// Null would make `.json[...]` read null, `where` yield nothing and an
+		// enclosing `all`/`none` pass vacuously, so malformed input would show
+		// up as a passing check rather than as a problem.
+		return &RawData{
+			Type:  types.Dict,
+			Error: errors.New("failed to parse JSON: " + err.Error()),
+		}, 0, nil
+	}
+
+	return DictData(res), 0, nil
+}
+
 // time methods
 
 // zeroTimeOffset to help convert unix times into base times that start at the year 0
@@ -2602,8 +2735,8 @@ func stringsliceEqString(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint
 	return dataOpV2(e, bind, chunk, ref, types.Int, func(left any, right any) *RawData {
 		l := left.(string)
 		r := right.(string)
-		idx := strings.Index(l, r)
-		if idx == -1 {
+		found := strings.Contains(l, r)
+		if !found {
 			return StringData("")
 		}
 		return StringData(r)
@@ -2630,8 +2763,8 @@ func stringsliceEqArrayString(e *blockExecutor, bind *RawData, chunk *Chunk, ref
 		arr := right.([]any)
 		for i := range arr {
 			r := arr[i].(string)
-			idx := strings.Index(l, r)
-			if idx != -1 {
+			found := strings.Contains(l, r)
+			if found {
 				return StringData(r)
 			}
 		}

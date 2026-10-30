@@ -1,0 +1,17 @@
+{imply "with-lock" if "with-strict"}
+auth        required      pam_env.so
+auth        required      pam_faillock.so preauth silent        {include if "with-lock"}
+auth        sufficient    pam_fprintd.so                        {exclude if "without-fprint"}
+auth        sufficient    pam_unix.so {if not "without-nullok":nullok} try_first_pass
+auth        sufficient    pam_unix.so {if "with-md5":md5|sha512} shadow
+auth        required      pam_faillock.so authfail              {include if "with-lock" AND not "without-fail"}
+auth        optional      pam_echo.so {if ("a" or "b") and "c":abc|none}
+auth        optional      pam_echo.so {if "a" or "b" and "c":left|right}
+auth        optional      pam_echo.so {if not not "with-lock":double}
+auth        required      pam_deny.so   {include if "with-lock"} {exclude if "with-strict"}
+# comment kept {include if "with-lock"}
+
+account     required      pam_faillock.so                       {include if "with-lock"}
+account     required      pam_unix.so   {if "with-x":}
+password    requisite     pam_pwhistory.so remember={if "with-strict":24|5} use_authtok
+session     optional      pam_echo.so {if "with-a":A}{if "with-b":B}

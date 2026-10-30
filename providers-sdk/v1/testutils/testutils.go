@@ -9,28 +9,28 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/exec"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/mqlc"
-	"go.mondoo.com/mql/v13/providers"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/mqlr/lrcore"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/recording"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/testutils/mockprovider"
-	networkconf "go.mondoo.com/mql/v13/providers/network/config"
-	networkprovider "go.mondoo.com/mql/v13/providers/network/provider"
-	osconf "go.mondoo.com/mql/v13/providers/os/config"
-	osprovider "go.mondoo.com/mql/v13/providers/os/provider"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/exec"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/mqlc"
+	"go.mondoo.com/mql/providers"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/mqlr/lrcore"
+	"go.mondoo.com/mql/providers-sdk/v1/recording"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/testutils/mockprovider"
+	networkconf "go.mondoo.com/mql/providers/network/config"
+	networkprovider "go.mondoo.com/mql/providers/network/provider"
+	osconf "go.mondoo.com/mql/providers/os/config"
+	osprovider "go.mondoo.com/mql/providers/os/provider"
 )
 
 var (
@@ -120,9 +120,7 @@ func (ctx *tester) TestMqlc(t *testing.T, bundle *llx.CodeBundle, props map[stri
 		refs = append(refs, datapointArr...)
 	}
 
-	sort.Slice(refs, func(i, j int) bool {
-		return refs[i] < refs[j]
-	})
+	slices.Sort(refs)
 
 	for idx, ref := range refs {
 		checksum := bundle.CodeV2.Checksums[ref]
@@ -295,6 +293,20 @@ func MockFromAsset(a *inventory.Asset) llx.Runtime {
 
 func LinuxMock() llx.Runtime {
 	return mockRuntime("testdata/arch.json")
+}
+
+// CrossAssetMock is LinuxMock plus a second recorded asset that names `muser`
+// as the resource anchoring it (ADR 031). It is what a query resolving into
+// another asset needs and a single-asset recording cannot provide.
+func CrossAssetMock() llx.Runtime {
+	return mockRuntime("testdata/cross-asset.json")
+}
+
+// CrossAssetLiveMock is CrossAssetMock with the reverse edge left out, so the
+// recorded leg of resolution finds nothing and the target has to be asked for
+// from the provider that owns the anchor resource (ADR 031 phase 8).
+func CrossAssetLiveMock() llx.Runtime {
+	return mockRuntime("testdata/cross-asset-live.json")
 }
 
 func KubeletMock() llx.Runtime {

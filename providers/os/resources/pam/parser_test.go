@@ -134,6 +134,31 @@ func TestParseLine(t *testing.T) {
 		})
 	})
 
+	t.Run("leading dash on the type", func(t *testing.T) {
+		// from Rocky Linux 9's authselect system-auth
+		result, err := ParseLine("-session    optional    pam_systemd.so")
+		require.NoError(t, err)
+		require.Equal(t, &PamLine{
+			PamType:       "session",
+			Control:       "optional",
+			Module:        "pam_systemd.so",
+			Options:       []any{},
+			IgnoreMissing: true,
+		}, result)
+	})
+
+	t.Run("leading dash on the type with a bracketed control", func(t *testing.T) {
+		result, err := ParseLine("-auth [success=1 default=ignore] pam_sss.so use_first_pass")
+		require.NoError(t, err)
+		require.Equal(t, &PamLine{
+			PamType:       "auth",
+			Control:       "[success=1 default=ignore]",
+			Module:        "pam_sss.so",
+			Options:       []any{"use_first_pass"},
+			IgnoreMissing: true,
+		}, result)
+	})
+
 	t.Run("bracketed control with closing bracket in last token before module", func(t *testing.T) {
 		// Regression: the closing `]` lands in the final field that the loop
 		// previously refused to inspect.
@@ -370,5 +395,14 @@ func TestStripComments(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.expected, StripComments(tc.line))
 		})
+	}
+}
+
+func TestIsType(t *testing.T) {
+	for _, tok := range []string{"auth", "account", "password", "session", "-session", "AUTH", "-Auth"} {
+		assert.True(t, IsType(tok), tok)
+	}
+	for _, tok := range []string{"", "-", "@include", "su", "sshd", "include", "--auth", "authx"} {
+		assert.False(t, IsType(tok), tok)
 	}
 }

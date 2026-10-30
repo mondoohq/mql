@@ -19,9 +19,9 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"go.mondoo.com/mql/v13/logger"
-	cproviders "go.mondoo.com/mql/v13/providers"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/logger"
+	cproviders "go.mondoo.com/mql/providers"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
 	"golang.org/x/mod/modfile"
 	"sigs.k8s.io/yaml"
 )
@@ -148,22 +148,22 @@ var editProvidersCmd = &cobra.Command{
 }
 
 func genBuiltinGo(conf ProvidersConf) ([]byte, error) {
-	var imports string
-	var infos string
-	var configs string
+	var imports strings.Builder
+	var infos strings.Builder
+	var configs strings.Builder
 
 	for _, provider := range conf.Builtin {
 		// imports cannot contain dashes
 		trimProvider := strings.ReplaceAll(provider.Name, "-", "")
-		imports += fmt.Sprintf("\t%sconf \"%s/config\"\n", trimProvider, provider.GoPackage)
-		imports += fmt.Sprintf("\t%s \"%s/provider\"\n", trimProvider, provider.GoPackage)
+		fmt.Fprintf(&imports, "\t%sconf \"%s/config\"\n", trimProvider, provider.GoPackage)
+		fmt.Fprintf(&imports, "\t%s \"%s/provider\"\n", trimProvider, provider.GoPackage)
 
-		infos += fmt.Sprintf(
+		fmt.Fprintf(&infos,
 			"//go:embed %s.resources.json\n"+
 				"var %sInfo []byte\n",
 			provider.Name, trimProvider)
 
-		configs += fmt.Sprintf(`
+		fmt.Fprintf(&configs, `
 	builtinProviders[%sconf.Config.ID] = &builtinProvider{
 		Runtime: &RunningProvider{
 			Name:     %sconf.Config.Name,
@@ -177,7 +177,7 @@ func genBuiltinGo(conf ProvidersConf) ([]byte, error) {
 `, trimProvider, trimProvider, trimProvider, trimProvider, provider.Name, trimProvider, trimProvider)
 	}
 
-	res := fmt.Sprintf(template, imports, infos, configs)
+	res := fmt.Sprintf(template, imports.String(), infos.String(), configs.String())
 	return format.Source([]byte(res))
 }
 
@@ -191,8 +191,8 @@ package providers
 
 import (
 	_ "embed"
-	// osconf "go.mondoo.com/mql/v13/providers/os/config"
-	// os "go.mondoo.com/mql/v13/providers/os/provider"
+	// osconf "go.mondoo.com/mql/providers/os/config"
+	// os "go.mondoo.com/mql/providers/os/provider"
 %s)
 
 // //go:embed os/resources/os.resources.json
@@ -291,8 +291,8 @@ func buildDependencies(deps map[string]*resources.ProviderInfo) {
 }
 
 var (
-	reBuiltinReplace = regexp.MustCompile(`replace go.mondoo.com/mql/v13/providers/.* => ./providers/.*`)
-	reBuiltinDep     = regexp.MustCompile(`go.mondoo.com/mql/v13/providers/.*`)
+	reBuiltinReplace = regexp.MustCompile(`replace go\.mondoo\.com/mql/providers/.* => \./providers/.*`)
+	reBuiltinDep     = regexp.MustCompile(`go\.mondoo\.com/mql/providers/.*`)
 )
 
 func rewireDependencies(providers []Builtin) {
@@ -305,8 +305,8 @@ func rewireDependencies(providers []Builtin) {
 	raws = reBuiltinReplace.ReplaceAllString(raws, "")
 	raws = reBuiltinDep.ReplaceAllString(raws, "")
 
-	deps := ""
-	replace := ""
+	var deps strings.Builder
+	var replace strings.Builder
 	for _, provider := range providers {
 		goModPath := provider.GoMod()
 		_, err := os.Stat(goModPath)
@@ -329,25 +329,25 @@ func rewireDependencies(providers []Builtin) {
 		}
 
 		// we don't care about the specific version for dev
-		deps += "\n\t" + provider.GoPackage + " v0.0.0"
+		deps.WriteString("\n\t" + provider.GoPackage + " v0.0.0")
 		if provider.Remote != "" {
-			replace += "\nreplace " + provider.GoPackage + " => " + provider.Remote
+			replace.WriteString("\nreplace " + provider.GoPackage + " => " + provider.Remote)
 		} else {
-			replace += "\nreplace " + provider.GoPackage + " => ./providers/" + provider.Name
+			replace.WriteString("\nreplace " + provider.GoPackage + " => ./providers/" + provider.Name)
 		}
 		// if the provider has any specific pinned replacements, we also add those to allow compiling
 		for _, r := range goMod.Replace {
-			// special case: we don't want to pull in provider's 'replace go.mondoo.com/mql/v13 => ../..' in.
-			if r.Old.Path == "go.mondoo.com/mql/v13" {
+			// special case: we don't want to pull in provider's 'replace go.mondoo.com/mql => ../..' in.
+			if r.Old.Path == "go.mondoo.com/mql" {
 				continue
 			}
 			// TODO: maybe we also use the modfile module to update the go.mod we're modifying
-			replace += "\nreplace " + r.Old.Path + " => " + r.New.Path + " " + r.New.Version
+			replace.WriteString("\nreplace " + r.Old.Path + " => " + r.New.Path + " " + r.New.Version)
 		}
 	}
-	if deps != "" {
-		raws = strings.Replace(raws, "require (", "require ("+deps, 1)
-		raws = strings.Replace(raws, "module go.mondoo.com/mql/v13", "module go.mondoo.com/mql/v13\n"+replace, 1)
+	if deps.String() != "" {
+		raws = strings.Replace(raws, "require (", "require ("+deps.String(), 1)
+		raws = strings.Replace(raws, "module go.mondoo.com/mql", "module go.mondoo.com/mql\n"+replace.String(), 1)
 	}
 
 	err = os.WriteFile("go.mod", []byte(raws), 0o644)

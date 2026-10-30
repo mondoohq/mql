@@ -8,14 +8,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
 )
 
 // ===== portal typed-ref null-state =====
 
 func TestPortalIpAccessSettingsNullWhenNoArn(t *testing.T) {
 	p := &mqlAwsWorkspaceswebPortal{}
-	p.IpAccessSettingsArn = plugin.TValue[string]{Data: "", State: plugin.StateIsSet}
+	p.cacheIpAccessSettingsArn = ""
 	got, err := p.ipAccessSettings()
 	require.NoError(t, err)
 	assert.Nil(t, got)
@@ -25,7 +24,7 @@ func TestPortalIpAccessSettingsNullWhenNoArn(t *testing.T) {
 
 func TestPortalTrustStoreNullWhenNoArn(t *testing.T) {
 	p := &mqlAwsWorkspaceswebPortal{}
-	p.TrustStoreArn = plugin.TValue[string]{Data: "", State: plugin.StateIsSet}
+	p.cacheTrustStoreArn = ""
 	got, err := p.trustStore()
 	require.NoError(t, err)
 	assert.Nil(t, got)
@@ -34,7 +33,7 @@ func TestPortalTrustStoreNullWhenNoArn(t *testing.T) {
 
 func TestPortalUserSettingsNullWhenNoArn(t *testing.T) {
 	p := &mqlAwsWorkspaceswebPortal{}
-	p.UserSettingsArn = plugin.TValue[string]{Data: "", State: plugin.StateIsSet}
+	p.cacheUserSettingsArn = ""
 	got, err := p.userSettings()
 	require.NoError(t, err)
 	assert.Nil(t, got)
@@ -43,7 +42,7 @@ func TestPortalUserSettingsNullWhenNoArn(t *testing.T) {
 
 func TestPortalUserAccessLoggingSettingNullWhenNoArn(t *testing.T) {
 	p := &mqlAwsWorkspaceswebPortal{}
-	p.UserAccessLoggingSettingsArn = plugin.TValue[string]{Data: "", State: plugin.StateIsSet}
+	p.cacheUserAccessLoggingSettingsArn = ""
 	got, err := p.userAccessLoggingSetting()
 	require.NoError(t, err)
 	assert.Nil(t, got)

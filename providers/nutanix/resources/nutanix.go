@@ -13,10 +13,10 @@ import (
 	clustercommon "github.com/nutanix/ntnx-api-golang-clients/clustermgmt-go-client/v4/models/common/v1/config"
 	vmcommon "github.com/nutanix/ntnx-api-golang-clients/vmm-go-client/v4/models/common/v1/config"
 	vmmconfig "github.com/nutanix/ntnx-api-golang-clients/vmm-go-client/v4/models/vmm/v4/ahv/config"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/nutanix/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/nutanix/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // pageSize is the number of items requested per list page from the v4 APIs.
@@ -71,6 +71,18 @@ func derefBool(v *bool) bool {
 		return false
 	}
 	return *v
+}
+
+// subResourceID returns extID when it is set, otherwise a stable
+// parent-qualified fallback of the form "<parentID>/<kind>/<index>". Child
+// records (disks, NICs, nodes, ...) whose ExtId/UUID the API omits would
+// otherwise all share an empty cache key and collapse onto the first sibling
+// built, so the index makes each one unique within its parent.
+func subResourceID(extID, parentID, kind string, index int) string {
+	if extID != "" {
+		return extID
+	}
+	return fmt.Sprintf("%s/%s/%d", parentID, kind, index)
 }
 
 // usecsToTime converts a microsecond Unix timestamp pointer to a *time.Time,
@@ -141,6 +153,9 @@ func (a *mqlNutanix) clusters() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		if mqlCluster == nil {
+			continue
+		}
 		res = append(res, mqlCluster)
 	}
 	return res, nil
@@ -168,6 +183,9 @@ func (a *mqlNutanix) hosts() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		if mqlHost == nil {
+			continue
+		}
 		res = append(res, mqlHost)
 	}
 	return res, nil
@@ -194,6 +212,9 @@ func (a *mqlNutanix) vms() ([]any, error) {
 		mqlVm, err := newMqlVm(a.MqlRuntime, &vm)
 		if err != nil {
 			return nil, err
+		}
+		if mqlVm == nil {
+			continue
 		}
 		res = append(res, mqlVm)
 	}
@@ -293,6 +314,9 @@ func listVms(conn *connection.NutanixConnection) ([]vmmconfig.Vm, error) {
 // ---------------------------------------------------------------------------
 
 func newMqlCluster(runtime *plugin.Runtime, c *clustermgmtconfig.Cluster) (*mqlNutanixCluster, error) {
+	if c.ExtId == nil {
+		return nil, nil
+	}
 	hypervisorTypes := []any{}
 	functions := []any{}
 	encryptionOptions := []any{}
@@ -601,7 +625,7 @@ func (a *mqlNutanixCluster) nodes() ([]any, error) {
 			nodeUuid = *n.NodeUuid
 		}
 		mqlNode, err := CreateResource(a.MqlRuntime, "nutanix.cluster.node", map[string]*llx.RawData{
-			"__id":           llx.StringData(nodeUuid),
+			"__id":           llx.StringData(subResourceID(nodeUuid, a.clusterId, "node", i)),
 			"id":             llx.StringData(nodeUuid),
 			"hostIp":         llx.StringData(clusterIPToString(n.HostIp)),
 			"controllerVmIp": llx.StringData(clusterIPToString(n.ControllerVmIp)),
@@ -627,31 +651,46 @@ func (a *mqlNutanixClusterNode) host() (*mqlNutanixHost, error) {
 		a.Host.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	if h, ok := cachedResource[*mqlNutanixHost](a.MqlRuntime, "nutanix.host", a.cacheNodeUuid); ok {
+	res, err := hostByID(a.MqlRuntime, a.cacheClusterId, a.cacheNodeUuid)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		a.Host.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return res, nil
+}
+
+// hostByID resolves a host by the pair of identifiers the clustermgmt API
+// needs, the external UUID of the owning cluster and the external UUID of the
+// host itself, returning the cached resource when it was already created
+// during this scan. A nil result means the host could not be found.
+func hostByID(runtime *plugin.Runtime, clusterID, hostID string) (*mqlNutanixHost, error) {
+	if h, ok := cachedResource[*mqlNutanixHost](runtime, "nutanix.host", hostID); ok {
 		return h, nil
 	}
-	conn := a.MqlRuntime.Connection.(*connection.NutanixConnection)
-	clusterID, nodeUUID := a.cacheClusterId, a.cacheNodeUuid
+	conn := runtime.Connection.(*connection.NutanixConnection)
 	resp, err := guard(conn.CmgMu(), func() (*clustermgmtconfig.GetHostApiResponse, error) {
-		return conn.ClustersApi().GetHostById(&clusterID, &nodeUUID)
+		return conn.ClustersApi().GetHostById(&clusterID, &hostID)
 	})
 	if err != nil {
 		return nil, err
 	}
 	data := resp.GetData()
 	if data == nil {
-		a.Host.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	host, ok := data.(clustermgmtconfig.Host)
 	if !ok {
-		a.Host.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	return newMqlHost(a.MqlRuntime, &host)
+	return newMqlHost(runtime, &host)
 }
 
 func newMqlHost(runtime *plugin.Runtime, h *clustermgmtconfig.Host) (*mqlNutanixHost, error) {
+	if h.ExtId == nil {
+		return nil, nil
+	}
 	hypervisorType := ""
 	hypervisorFullName := ""
 	hypervisorState := ""
@@ -704,7 +743,6 @@ func newMqlHost(runtime *plugin.Runtime, h *clustermgmtconfig.Host) (*mqlNutanix
 		"blockSerial":      llx.StringDataPtr(h.BlockSerial),
 		"rackableUnitUuid": llx.StringDataPtr(h.RackableUnitUuid),
 		// The v4.0 API does not report a node-level serial number.
-		"nodeSerial":                         llx.StringDataPtr(nil),
 		"cpuModel":                           llx.StringDataPtr(h.CpuModel),
 		"cpuCores":                           llx.IntData(derefInt64(h.NumberOfCpuCores)),
 		"cpuSockets":                         llx.IntData(derefInt64(h.NumberOfCpuSockets)),
@@ -812,7 +850,7 @@ func (a *mqlNutanixHost) disks() ([]any, error) {
 			storageTier = d.StorageTier.GetName()
 		}
 		mqlDisk, err := CreateResource(a.MqlRuntime, "nutanix.host.disk", map[string]*llx.RawData{
-			"__id":        llx.StringData(uuid),
+			"__id":        llx.StringData(subResourceID(uuid, a.hostId, "disk", i)),
 			"id":          llx.StringData(uuid),
 			"mountPath":   llx.StringDataPtr(d.MountPath),
 			"serialId":    llx.StringDataPtr(d.SerialId),
@@ -828,6 +866,9 @@ func (a *mqlNutanixHost) disks() ([]any, error) {
 }
 
 func newMqlVm(runtime *plugin.Runtime, vm *vmmconfig.Vm) (*mqlNutanixVm, error) {
+	if vm.ExtId == nil {
+		return nil, nil
+	}
 	powerState := ""
 	if vm.PowerState != nil {
 		powerState = vm.PowerState.GetName()
@@ -871,7 +912,6 @@ func newMqlVm(runtime *plugin.Runtime, vm *vmmconfig.Vm) (*mqlNutanixVm, error) 
 		"id":       llx.StringDataPtr(vm.ExtId),
 		"tenantId": llx.StringDataPtr(vm.TenantId),
 		// The v4.0 API does not report a project reference on the VM.
-		"projectId":                         llx.StringDataPtr(nil),
 		"sourceType":                        llx.StringData(sourceType),
 		"sourceId":                          llx.StringData(sourceId),
 		"name":                              llx.StringDataPtr(vm.Name),
@@ -984,7 +1024,7 @@ func (a *mqlNutanixVm) disks() ([]any, error) {
 			}
 		}
 		mqlDisk, err := CreateResource(a.MqlRuntime, "nutanix.vm.disk", map[string]*llx.RawData{
-			"__id":                  llx.StringData(extId),
+			"__id":                  llx.StringData(subResourceID(extId, a.vmId, "disk", i)),
 			"id":                    llx.StringData(extId),
 			"tenantId":              llx.StringData(tenantId),
 			"busType":               llx.StringData(busType),
@@ -1108,7 +1148,7 @@ func (a *mqlNutanixVm) nics() ([]any, error) {
 			}
 		}
 		mqlNic, err := CreateResource(a.MqlRuntime, "nutanix.vm.nic", map[string]*llx.RawData{
-			"__id":               llx.StringData(extId),
+			"__id":               llx.StringData(subResourceID(extId, a.vmId, "nic", i)),
 			"id":                 llx.StringData(extId),
 			"macAddress":         llx.StringData(macAddress),
 			"model":              llx.StringData(model),
@@ -1163,7 +1203,7 @@ func (a *mqlNutanixVm) gpus() ([]any, error) {
 			vendor = g.Vendor.GetName()
 		}
 		mqlGpu, err := CreateResource(a.MqlRuntime, "nutanix.vm.gpu", map[string]*llx.RawData{
-			"__id":                   llx.StringData(extId),
+			"__id":                   llx.StringData(subResourceID(extId, a.vmId, "gpu", i)),
 			"id":                     llx.StringData(extId),
 			"name":                   llx.StringDataPtr(g.Name),
 			"mode":                   llx.StringData(mode),
@@ -1211,7 +1251,7 @@ func (a *mqlNutanixVm) cdRoms() ([]any, error) {
 			}
 		}
 		mqlCdRom, err := CreateResource(a.MqlRuntime, "nutanix.vm.cdrom", map[string]*llx.RawData{
-			"__id":      llx.StringData(extId),
+			"__id":      llx.StringData(subResourceID(extId, a.vmId, "cdrom", i)),
 			"id":        llx.StringData(extId),
 			"isoType":   llx.StringData(isoType),
 			"busType":   llx.StringData(busType),
@@ -1422,28 +1462,14 @@ func (a *mqlNutanixVm) host() (*mqlNutanixHost, error) {
 		a.Host.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	if h, ok := cachedResource[*mqlNutanixHost](a.MqlRuntime, "nutanix.host", a.hostExtId); ok {
-		return h, nil
-	}
-	conn := a.MqlRuntime.Connection.(*connection.NutanixConnection)
-	clusterID, hostID := a.clusterExtId, a.hostExtId
-	resp, err := guard(conn.CmgMu(), func() (*clustermgmtconfig.GetHostApiResponse, error) {
-		return conn.ClustersApi().GetHostById(&clusterID, &hostID)
-	})
+	res, err := hostByID(a.MqlRuntime, a.clusterExtId, a.hostExtId)
 	if err != nil {
 		return nil, err
 	}
-	data := resp.GetData()
-	if data == nil {
+	if res == nil {
 		a.Host.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
 	}
-	host, ok := data.(clustermgmtconfig.Host)
-	if !ok {
-		a.Host.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
-	}
-	return newMqlHost(a.MqlRuntime, &host)
+	return res, nil
 }
 
 func clusterByID(runtime *plugin.Runtime, clusterID string) (*mqlNutanixCluster, error) {

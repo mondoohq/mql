@@ -11,8 +11,8 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp/clearsign"
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"gopkg.in/yaml.v3"
 )
 
@@ -99,7 +99,7 @@ func provenanceKeyID(block *clearsign.Block) string {
 // separator and inspect each part. It returns the .tgz entry's digest,
 // falling back to the first recorded file when no .tgz entry is present.
 func provenanceDigest(plaintext []byte) string {
-	for _, part := range bytes.Split(plaintext, []byte("\n...\n")) {
+	for part := range bytes.SplitSeq(plaintext, []byte("\n...\n")) {
 		var doc map[string]any
 		if err := yaml.Unmarshal(part, &doc); err != nil {
 			continue

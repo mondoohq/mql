@@ -3,7 +3,7 @@
 
 package plugin
 
-import inventory "go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+import inventory "go.mondoo.com/mql/providers-sdk/v1/inventory"
 
 const (
 	// OptionStagedDiscovery is set on an asset's inventory config to opt in

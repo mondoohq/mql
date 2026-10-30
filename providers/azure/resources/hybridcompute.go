@@ -6,16 +6,18 @@ package resources
 import (
 	"context"
 	"errors"
+	"maps"
 	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	hybridcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/hybridcompute/armhybridcompute/v2"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	hybridcompute "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/hybridcompute/armhybridcompute/v3"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAzureSubscriptionComputeService) hybridMachines() ([]any, error) {
@@ -37,6 +39,10 @@ func (a *mqlAzureSubscriptionComputeService) hybridMachines() ([]any, error) {
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			if isAzureNotConfigured(err) {
+				log.Warn().Err(err).Msg("could not list azure hybridMachines, returning partial results")
+				return res, nil
+			}
 			return nil, err
 		}
 		for _, m := range page.Value {
@@ -61,6 +67,10 @@ func (a *mqlAzureSubscriptionComputeService) hybridMachines() ([]any, error) {
 				vmID, vmUUID, provisioningState, parentClusterResourceID, privateLinkScopeResourceID *string
 				cloudMetadataDict, licenseProfileDict                                                map[string]any
 				detectedProperties                                                                   map[string]any
+				identityKeyStore, statusReason, tpmEkCertificate                                     *string
+				firmwareType, firmwareSerialNumber                                                   *string
+				numberOfCPUSockets, totalPhysicalMemoryInBytes                                       *int64
+				processorsDict, disksDict                                                            []any
 			)
 
 			if p := m.Properties; p != nil {
@@ -82,6 +92,34 @@ func (a *mqlAzureSubscriptionComputeService) hybridMachines() ([]any, error) {
 				provisioningState = p.ProvisioningState
 				parentClusterResourceID = p.ParentClusterResourceID
 				privateLinkScopeResourceID = p.PrivateLinkScopeResourceID
+
+				identityKeyStore = stringEnumPtr(p.IdentityKeyStore)
+				statusReason = stringEnumPtr(p.StatusReason)
+				tpmEkCertificate = p.TpmEkCertificate
+
+				if fw := p.FirmwareProfile; fw != nil {
+					firmwareType = fw.Type
+					firmwareSerialNumber = fw.SerialNumber
+				}
+
+				if hw := p.HardwareProfile; hw != nil {
+					if hw.NumberOfCPUSockets != nil {
+						v := int64(*hw.NumberOfCPUSockets)
+						numberOfCPUSockets = &v
+					}
+					totalPhysicalMemoryInBytes = hw.TotalPhysicalMemoryInBytes
+					processorsDict, err = convert.JsonToDictSlice(hw.Processors)
+					if err != nil {
+						return nil, err
+					}
+				}
+
+				if sp := p.StorageProfile; sp != nil {
+					disksDict, err = convert.JsonToDictSlice(sp.Disks)
+					if err != nil {
+						return nil, err
+					}
+				}
 
 				cloudMetadataDict, err = convert.JsonToDict(p.CloudMetadata)
 				if err != nil {
@@ -110,40 +148,54 @@ func (a *mqlAzureSubscriptionComputeService) hybridMachines() ([]any, error) {
 				id = &normalized
 			}
 
-			mqlMachine, err := CreateResource(a.MqlRuntime, "azure.subscription.computeService.hybridMachine",
-				map[string]*llx.RawData{
-					"id":                         llx.StringDataPtr(id),
-					"name":                       llx.StringDataPtr(m.Name),
-					"location":                   llx.StringDataPtr(m.Location),
-					"tags":                       llx.MapData(convert.PtrMapStrToInterface(m.Tags), types.String),
-					"type":                       llx.StringDataPtr(m.Type),
-					"status":                     llx.StringDataPtr(status),
-					"lastStatusChange":           llx.TimeDataPtr(lastStatusChange),
-					"agentVersion":               llx.StringDataPtr(agentVersion),
-					"osName":                     llx.StringDataPtr(osName),
-					"osSku":                      llx.StringDataPtr(osSku),
-					"osEdition":                  llx.StringDataPtr(osEdition),
-					"osVersion":                  llx.StringDataPtr(osVersion),
-					"osType":                     llx.StringDataPtr(osType),
-					"displayName":                llx.StringDataPtr(displayName),
-					"machineFqdn":                llx.StringDataPtr(machineFqdn),
-					"dnsFqdn":                    llx.StringDataPtr(dnsFqdn),
-					"domainName":                 llx.StringDataPtr(domainName),
-					"adFqdn":                     llx.StringDataPtr(adFqdn),
-					"vmId":                       llx.StringDataPtr(vmID),
-					"vmUuid":                     llx.StringDataPtr(vmUUID),
-					"provisioningState":          llx.StringDataPtr(provisioningState),
-					"parentClusterResourceId":    llx.StringDataPtr(parentClusterResourceID),
-					"privateLinkScopeResourceId": llx.StringDataPtr(privateLinkScopeResourceID),
-					"detectedProperties":         llx.MapData(detectedProperties, types.String),
-					"cloudMetadata":              llx.DictData(cloudMetadataDict),
-					"licenseProfile":             llx.DictData(licenseProfileDict),
-					"properties":                 llx.DictData(properties),
-					"systemData":                 llx.DictData(systemDataDict),
-				})
+			machineArgs := map[string]*llx.RawData{
+				"id":                         llx.StringDataPtr(id),
+				"name":                       llx.StringDataPtr(m.Name),
+				"location":                   llx.StringDataPtr(m.Location),
+				"tags":                       llx.MapData(convert.PtrMapStrToInterface(m.Tags), types.String),
+				"type":                       llx.StringDataPtr(m.Type),
+				"status":                     llx.StringDataPtr(status),
+				"lastStatusChange":           llx.TimeDataPtr(lastStatusChange),
+				"agentVersion":               llx.StringDataPtr(agentVersion),
+				"osName":                     llx.StringDataPtr(osName),
+				"osSku":                      llx.StringDataPtr(osSku),
+				"osEdition":                  llx.StringDataPtr(osEdition),
+				"osVersion":                  llx.StringDataPtr(osVersion),
+				"osType":                     llx.StringDataPtr(osType),
+				"displayName":                llx.StringDataPtr(displayName),
+				"machineFqdn":                llx.StringDataPtr(machineFqdn),
+				"dnsFqdn":                    llx.StringDataPtr(dnsFqdn),
+				"domainName":                 llx.StringDataPtr(domainName),
+				"adFqdn":                     llx.StringDataPtr(adFqdn),
+				"vmId":                       llx.StringDataPtr(vmID),
+				"vmUuid":                     llx.StringDataPtr(vmUUID),
+				"provisioningState":          llx.StringDataPtr(provisioningState),
+				"parentClusterResourceId":    llx.StringDataPtr(parentClusterResourceID),
+				"privateLinkScopeResourceId": llx.StringDataPtr(privateLinkScopeResourceID),
+				"identityKeyStore":           llx.StringDataPtr(identityKeyStore),
+				"tpmEkCertificate":           llx.StringDataPtr(tpmEkCertificate),
+				"statusReason":               llx.StringDataPtr(statusReason),
+				"firmwareType":               llx.StringDataPtr(firmwareType),
+				"firmwareSerialNumber":       llx.StringDataPtr(firmwareSerialNumber),
+				"numberOfCpuSockets":         llx.IntDataPtr(numberOfCPUSockets),
+				"totalPhysicalMemoryInBytes": llx.IntDataPtr(totalPhysicalMemoryInBytes),
+				"processors":                 llx.ArrayData(processorsDict, types.Dict),
+				"disks":                      llx.ArrayData(disksDict, types.Dict),
+				"detectedProperties":         llx.MapData(detectedProperties, types.String),
+				"cloudMetadata":              llx.DictData(cloudMetadataDict),
+				"licenseProfile":             llx.DictData(licenseProfileDict),
+				"properties":                 llx.DictData(properties),
+			}
+			var agentConfig *hybridcompute.AgentConfiguration
+			if m.Properties != nil {
+				agentConfig = m.Properties.AgentConfiguration
+			}
+			maps.Copy(machineArgs, hybridAgentConfigArgs(agentConfig))
+			mqlMachine, err := CreateResource(a.MqlRuntime, "azure.subscription.computeService.hybridMachine", machineArgs)
 			if err != nil {
 				return nil, err
 			}
+			mqlMachine.(*mqlAzureSubscriptionComputeServiceHybridMachine).cacheSystemData = systemDataDict
 			res = append(res, mqlMachine)
 		}
 	}
@@ -190,6 +242,10 @@ func (a *mqlAzureSubscriptionComputeServiceHybridMachine) extensions() ([]any, e
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			if isAzureNotConfigured(err) {
+				log.Warn().Err(err).Msg("could not list azure extensions, returning partial results")
+				return res, nil
+			}
 			return nil, err
 		}
 		for _, ext := range page.Value {
@@ -255,13 +311,22 @@ func hybridMachineExtensionToMql(runtime *plugin.Runtime, ext *hybridcompute.Mac
 			"provisioningState":       llx.StringDataPtr(provisioningState),
 			"settings":                llx.DictData(settingsDict),
 			"forceUpdateTag":          llx.StringDataPtr(forceUpdateTag),
-			"systemData":              llx.DictData(systemData),
 			"instanceView":            llx.DictData(instanceViewDict),
 		})
 	if err != nil {
 		return nil, err
 	}
-	return mqlExt.(*mqlAzureSubscriptionComputeServiceHybridMachineExtension), nil
+	mqlExtension := mqlExt.(*mqlAzureSubscriptionComputeServiceHybridMachineExtension)
+	mqlExtension.cacheSystemData = systemData
+	return mqlExtension, nil
+}
+
+type mqlAzureSubscriptionComputeServiceHybridMachineInternal struct {
+	cacheSystemData any
+}
+
+type mqlAzureSubscriptionComputeServiceHybridMachineExtensionInternal struct {
+	cacheSystemData any
 }
 
 func initAzureSubscriptionComputeServiceHybridMachine(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -270,7 +335,7 @@ func initAzureSubscriptionComputeServiceHybridMachine(runtime *plugin.Runtime, a
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
+		if ids := getAssetIdentifier(runtime); ids != nil && ids.id != "" {
 			args["id"] = llx.StringData(ids.id)
 		}
 	}
@@ -295,14 +360,88 @@ func initAzureSubscriptionComputeServiceHybridMachine(runtime *plugin.Runtime, a
 	if machines.Error != nil {
 		return nil, nil, machines.Error
 	}
-	id := args["id"].Value.(string)
+	id, ok := args["id"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("id must be a non-nil string value")
+	}
 	wantID := strings.ToLower(id)
 	for _, entry := range machines.Data {
-		machine := entry.(*mqlAzureSubscriptionComputeServiceHybridMachine)
+		machine, ok := entry.(*mqlAzureSubscriptionComputeServiceHybridMachine)
+		if !ok {
+			continue
+		}
 		if strings.ToLower(machine.Id.Data) == wantID {
 			return args, machine, nil
 		}
 	}
 
 	return nil, nil, errors.New("azure hybrid machine does not exist")
+}
+
+// parseAgentBool reads the "true"/"false" strings the Connected Machine agent
+// reports for its switches. Anything else, including an absent value, is nil.
+func parseAgentBool(v *string) *bool {
+	if v == nil {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(*v)) {
+	case "true":
+		b := true
+		return &b
+	case "false":
+		b := false
+		return &b
+	}
+	return nil
+}
+
+// agentExtensionList renders the agent's extension allow or block list in the
+// "publisher/type" form the agent itself is configured with.
+func agentExtensionList(list []*hybridcompute.ConfigurationExtension) []any {
+	res := []any{}
+	for _, e := range list {
+		if e == nil {
+			continue
+		}
+		publisher := convert.ToValue(e.Publisher)
+		typ := convert.ToValue(e.Type)
+		if publisher == "" && typ == "" {
+			continue
+		}
+		res = append(res, publisher+"/"+typ)
+	}
+	return res
+}
+
+// hybridAgentConfigArgs flattens the Connected Machine agent configuration
+// onto the machine's args. The proxy URL loses any user information and query
+// string, since a proxy URL can embed its password.
+func hybridAgentConfigArgs(cfg *hybridcompute.AgentConfiguration) map[string]*llx.RawData {
+	if cfg == nil {
+		return map[string]*llx.RawData{
+			"extensionsEnabled":         llx.NilData,
+			"extensionsAllowList":       llx.ArrayData([]any{}, types.String),
+			"extensionsBlockList":       llx.ArrayData([]any{}, types.String),
+			"guestConfigurationEnabled": llx.NilData,
+			"incomingConnectionsPorts":  llx.ArrayData([]any{}, types.String),
+			"agentConfigMode":           llx.NilData,
+			"proxyUrl":                  llx.NilData,
+			"proxyBypass":               llx.ArrayData([]any{}, types.String),
+		}
+	}
+	var proxyURL *string
+	if cfg.ProxyURL != nil {
+		clean, _ := stripURLCredentials(*cfg.ProxyURL)
+		proxyURL = &clean
+	}
+	return map[string]*llx.RawData{
+		"extensionsEnabled":         llx.BoolDataPtr(parseAgentBool(cfg.ExtensionsEnabled)),
+		"extensionsAllowList":       llx.ArrayData(agentExtensionList(cfg.ExtensionsAllowList), types.String),
+		"extensionsBlockList":       llx.ArrayData(agentExtensionList(cfg.ExtensionsBlockList), types.String),
+		"guestConfigurationEnabled": llx.BoolDataPtr(parseAgentBool(cfg.GuestConfigurationEnabled)),
+		"incomingConnectionsPorts":  llx.ArrayData(strPtrsToAny(cfg.IncomingConnectionsPorts), types.String),
+		"agentConfigMode":           llx.StringDataPtr(stringEnumPtr(cfg.ConfigMode)),
+		"proxyUrl":                  llx.StringDataPtr(proxyURL),
+		"proxyBypass":               llx.ArrayData(strPtrsToAny(cfg.ProxyBypass), types.String),
+	}
 }

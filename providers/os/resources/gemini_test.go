@@ -8,8 +8,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func createTestGeminiConfig(t *testing.T) string {
@@ -28,6 +30,9 @@ func createTestGeminiConfig(t *testing.T) string {
 				"command": "npx",
 				"args": ["-y", "@modelcontextprotocol/server-filesystem"],
 				"env": {"HOME": "/tmp"}
+			},
+			"remote": {
+				"httpUrl": "https://mcp.example.com/mcp"
 			}
 		}
 	}`)
@@ -53,15 +58,23 @@ func TestGeminiMCPParsing(t *testing.T) {
 	data, err := afs.ReadFile(filepath.Join(dir, "antigravity", "mcp_config.json"))
 	require.NoError(t, err)
 
-	var config geminiMCPConfig
-	err = json.Unmarshal(data, &config)
+	specs, err := parseMcpServersJSON(data, "mcpServers", "mcp_config.json")
 	require.NoError(t, err)
-	assert.Len(t, config.McpServers, 1)
+	require.Len(t, specs, 2)
 
-	fs := config.McpServers["filesystem"]
-	assert.Equal(t, "npx", fs.Command)
-	assert.Len(t, fs.Args, 2)
-	assert.Len(t, fs.Env, 1)
+	fs := specs[0]
+	assert.Equal(t, "filesystem", fs.name)
+	assert.Equal(t, "npx", fs.command)
+	assert.Len(t, fs.args, 2)
+	assert.True(t, fs.hasEnv)
+	assert.Equal(t, mcpTransportStdio, fs.transport)
+
+	// remote server uses httpUrl, which is read as its url
+	remote := specs[1]
+	assert.Equal(t, "remote", remote.name)
+	assert.Equal(t, "https://mcp.example.com/mcp", remote.url)
+	assert.Equal(t, mcpTransportHTTP, remote.transport)
+	assert.Empty(t, remote.command)
 }
 
 func TestGeminiConfigMissing(t *testing.T) {
@@ -71,4 +84,140 @@ func TestGeminiConfigMissing(t *testing.T) {
 	var settings geminiSettings
 	err := readJSONFileAfero(afs, dir, "settings.json", &settings)
 	assert.Error(t, err)
+}
+
+// Current Gemini CLI releases keep MCP servers under `mcpServers` in
+// settings.json, next to `model.name` and `security.auth.selectedType`.
+func TestGeminiMCPServersFromSettings(t *testing.T) {
+	afs := testAfero()
+	dir := t.TempDir()
+	writeTestFile(t, dir, "settings.json", `{"model":{"name":"gemini-2.5-pro"},"security":{"auth":{"selectedType":"oauth-personal"}},"mcpServers":{"memory":{"command":"npx","args":["-y","@modelcontextprotocol/server-memory"]}}}`)
+
+	servers, err := geminiMCPServers(afs, dir)
+	require.NoError(t, err)
+	require.Contains(t, servers, "memory")
+	assert.Equal(t, "npx", servers["memory"].command)
+	assert.Equal(t, []string{"-y", "@modelcontextprotocol/server-memory"}, servers["memory"].args)
+}
+
+// Both files are read; a server named in both is reported with its
+// settings.json definition.
+func TestGeminiMCPServersMergesBothFiles(t *testing.T) {
+	afs := testAfero()
+	dir := createTestGeminiConfig(t) // antigravity/mcp_config.json: filesystem, remote
+	writeTestFile(t, dir, "settings.json", `{"mcpServers":{
+		"filesystem": {"command": "uvx", "args": ["mcp-server-filesystem"]},
+		"memory": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"]}
+	}}`)
+
+	servers, err := geminiMCPServers(afs, dir)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"filesystem", "remote", "memory"}, keysOf(servers))
+	assert.Equal(t, "uvx", servers["filesystem"].command, "settings.json wins over antigravity")
+	assert.Equal(t, "https://mcp.example.com/mcp", servers["remote"].url)
+}
+
+func TestGeminiMCPServersNoFiles(t *testing.T) {
+	servers, err := geminiMCPServers(testAfero(), t.TempDir())
+	require.NoError(t, err)
+	assert.Empty(t, servers)
+}
+
+func TestGeminiMCPServersMalformedSettings(t *testing.T) {
+	dir := t.TempDir()
+	writeTestFile(t, dir, "settings.json", `{"mcpServers": [`)
+	_, err := geminiMCPServers(testAfero(), dir)
+	assert.Error(t, err)
+}
+
+func TestGeminiAuthType(t *testing.T) {
+	var nested geminiSettings
+	require.NoError(t, json.Unmarshal([]byte(`{"security":{"auth":{"selectedType":"oauth-personal"}}}`), &nested))
+	assert.Equal(t, "oauth-personal", nested.authType())
+
+	var flat geminiSettings
+	require.NoError(t, json.Unmarshal([]byte(`{"selectedAuthType":"gemini-api-key"}`), &flat))
+	assert.Equal(t, "gemini-api-key", flat.authType())
+
+	var both geminiSettings
+	require.NoError(t, json.Unmarshal([]byte(`{"selectedAuthType":"gemini-api-key","security":{"auth":{"selectedType":"vertex-ai"}}}`), &both))
+	assert.Equal(t, "vertex-ai", both.authType(), "the nested key is current and wins")
+
+	assert.Empty(t, geminiSettings{}.authType())
+}
+
+func keysOf[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// gemini-cli strips comments from settings.json before parsing it, so a file
+// with // and /* */ comments is a valid configuration (written as the sweep
+// fixture that gemini-cli accepted).
+const geminiSettingsWithComments = "{\n  // auth\n  \"security\": {\"auth\": {\"selectedType\": \"oauth-personal\"}},\n  \"model\": {\"name\": \"m-gem\"} /* trailing */,\n  \"mcpServers\": {\"memory\": {\"command\": \"npx\"}}\n}\n"
+
+func TestGeminiSettingsWithComments(t *testing.T) {
+	afs := testAfero()
+	dir := t.TempDir()
+	writeTestFile(t, dir, "settings.json", geminiSettingsWithComments)
+
+	var settings geminiSettings
+	require.NoError(t, readGeminiSettings(afs, dir, &settings))
+	assert.Equal(t, "oauth-personal", settings.authType())
+	assert.Equal(t, "m-gem", settings.Model.Name)
+
+	servers, err := geminiMCPServers(afs, dir)
+	require.NoError(t, err)
+	assert.Equal(t, "npx", servers["memory"].command)
+}
+
+func TestGeminiSettingsMalformedStillErrors(t *testing.T) {
+	afs := testAfero()
+	dir := t.TempDir()
+	writeTestFile(t, dir, "settings.json", `{"model": {"name": `)
+
+	var settings geminiSettings
+	assert.Error(t, readGeminiSettings(afs, dir, &settings))
+	_, err := geminiMCPServers(afs, dir)
+	assert.Error(t, err)
+}
+
+// An empty settings.json is an empty configuration, as for the other tools.
+func TestGeminiSettingsEmptyFile(t *testing.T) {
+	afs := testAfero()
+	dir := t.TempDir()
+	writeTestFile(t, dir, "settings.json", "")
+
+	var settings map[string]any
+	require.NoError(t, readGeminiSettings(afs, dir, &settings))
+	assert.NotNil(t, settings, "an empty file is an empty map, as a missing one is")
+	assert.Empty(t, settings)
+}
+
+func TestGeminiSettingsRedactsSecrets(t *testing.T) {
+	// Synthetic: an MCP server in settings.json with an env token and an
+	// Authorization header, in the shape the Gemini CLI docs show.
+	mockFS := afero.NewMemMapFs()
+	writeMemFSFile(t, mockFS, "/home/alice/.gemini/settings.json", []byte(`{
+		"mcpServers": {
+			"github": {"command": "github-mcp", "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": "abc123"}},
+			"remote": {"httpUrl": "https://mcp.example.com/mcp", "headers": {"Authorization": "Bearer abc123"}}
+		}
+	}`))
+	r := &mqlGemini{
+		MqlRuntime: memFSRuntime(t, mockFS),
+		ConfigPath: plugin.TValue[string]{Data: "/home/alice/.gemini", State: plugin.StateIsSet},
+	}
+
+	got, err := r.settings()
+	require.NoError(t, err)
+	servers := got.(map[string]any)["mcpServers"].(map[string]any)
+	gh := servers["github"].(map[string]any)
+	assert.Equal(t, "github-mcp", gh["command"])
+	assert.Equal(t, redactedValue, gh["env"].(map[string]any)["GITHUB_PERSONAL_ACCESS_TOKEN"])
+	remote := servers["remote"].(map[string]any)
+	assert.Equal(t, redactedValue, remote["headers"].(map[string]any)["Authorization"])
 }

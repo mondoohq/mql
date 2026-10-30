@@ -10,18 +10,16 @@ import (
 	"os"
 	"testing"
 
-	"github.com/docker/docker/client"
-
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/network"
 	"github.com/google/uuid"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 	specs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/tar"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/tar"
 )
 
 // The two TestAssetNameForRemoteImages* tests below use a tag reference
@@ -102,14 +100,14 @@ func TestAssetNameForRemoteImages_DisableDelayedDiscovery(t *testing.T) {
 	assert.Contains(t, asset.PlatformIds, "//platformid.api.mondoo.app/runtime/docker/images/73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662")
 }
 
-func fetchAndCreateImage(t *testing.T, ctx context.Context, dClient *client.Client, img string) container.CreateResponse {
+func fetchAndCreateImage(t *testing.T, ctx context.Context, dClient *client.Client, img string) client.ContainerCreateResult {
 	// If docker is not available, then skip the test.
-	_, err := dClient.ServerVersion(ctx)
+	_, err := dClient.ServerVersion(ctx, client.ServerVersionOptions{})
 	if err != nil {
 		t.SkipNow()
 	}
 
-	responseBody, err := dClient.ImagePull(ctx, img, image.PullOptions{})
+	responseBody, err := dClient.ImagePull(ctx, img, client.ImagePullOptions{})
 	defer func() {
 		err = responseBody.Close()
 		if err != nil {
@@ -123,7 +121,7 @@ func fetchAndCreateImage(t *testing.T, ctx context.Context, dClient *client.Clie
 
 	// Make sure the docker image is cleaned up
 	defer func() {
-		_, err := dClient.ImageRemove(ctx, img, image.RemoveOptions{Force: true})
+		_, err := dClient.ImageRemove(ctx, img, client.ImageRemoveOptions{Force: true})
 		// ignore error, worst case is that the image is not removed but parallel tests may fail otherwise
 		fmt.Printf("failed to cleanup pre-pulled docker image: %v", err)
 	}()
@@ -137,10 +135,17 @@ func fetchAndCreateImage(t *testing.T, ctx context.Context, dClient *client.Clie
 	}
 
 	uuidVal := uuid.New()
-	created, err := dClient.ContainerCreate(ctx, cfg, &container.HostConfig{}, &network.NetworkingConfig{}, &specs.Platform{}, uuidVal.String())
+	created, err := dClient.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:           cfg,
+		HostConfig:       &container.HostConfig{},
+		NetworkingConfig: &network.NetworkingConfig{},
+		Platform:         &specs.Platform{},
+		Name:             uuidVal.String(),
+	})
 	require.NoError(t, err)
 
-	require.NoError(t, dClient.ContainerStart(ctx, created.ID, container.StartOptions{}))
+	_, err = dClient.ContainerStart(ctx, created.ID, client.ContainerStartOptions{})
+	require.NoError(t, err)
 
 	return created
 }
@@ -155,7 +160,7 @@ func TestDockerContainerConnection(t *testing.T) {
 
 	// Make sure the container is cleaned up
 	defer func() {
-		err := dClient.ContainerRemove(ctx, created.ID, container.RemoveOptions{Force: true})
+		_, err := dClient.ContainerRemove(ctx, created.ID, client.ContainerRemoveOptions{Force: true})
 		require.NoError(t, err)
 	}()
 
@@ -176,4 +181,28 @@ func TestDockerContainerConnection(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, cmd)
 	assert.Equal(t, 0, cmd.ExitStatus)
+}
+
+// An amd64 image running under emulation on an arm64 Docker Desktop reported
+// the daemon's arm64, so its packages got arm64 purls and matched the wrong
+// advisories. The image's architecture wins.
+func TestContainerArchitecture(t *testing.T) {
+	assert.Equal(t, "amd64", containerArchitecture("amd64", "", "arm64"),
+		"a multi-platform image inspects with no architecture; the manifest names it")
+	assert.Equal(t, "amd64", containerArchitecture("", "amd64", "arm64"))
+	assert.Equal(t, "arm64", containerArchitecture("", "", "arm64"), "the daemon's is the fallback")
+	assert.Equal(t, "", containerArchitecture("", "", ""))
+}
+
+func TestShellMissing(t *testing.T) {
+	// docker exec into gcr.io/distroless/static-debian12
+	assert.True(t, shellMissing(127, "OCI runtime exec failed: exec failed: unable to start container process: exec: \"/bin/sh\": stat /bin/sh: no such file or directory\r\n"))
+	assert.True(t, shellMissing(126, "OCI runtime exec failed: exec failed: unable to start container process: exec: \"/bin/sh\": permission denied\r\n"))
+	// an amd64 image's shell on an arm64 host without emulation
+	assert.True(t, shellMissing(255, "exec /bin/sh: exec format error\n"))
+	assert.False(t, shellMissing(255, "ssh: connect to host"))
+	// the shell ran, and a command in it was not found
+	assert.False(t, shellMissing(127, "/bin/sh: 1: nonexistent: not found\n"))
+	assert.False(t, shellMissing(0, ""))
+	assert.False(t, shellMissing(1, "exec failed"))
 }

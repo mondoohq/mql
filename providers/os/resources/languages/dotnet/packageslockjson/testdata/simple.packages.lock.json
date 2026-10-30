@@ -12,12 +12,19 @@
         "type": "Direct",
         "requested": "[3.1.1, )",
         "resolved": "3.1.1",
-        "contentHash": "abc123def456"
+        "contentHash": "abc123def456",
+        "dependencies": {
+          "Serilog.Sinks.Console": "4.0.0",
+          "NotRestored.Package": "1.0.0"
+        }
       },
       "Serilog.Sinks.Console": {
         "type": "Transitive",
         "resolved": "5.0.1",
-        "contentHash": "xyz789"
+        "contentHash": "xyz789",
+        "dependencies": {
+          "System.Text.Json": "8.0.0"
+        }
       },
       "System.Text.Json": {
         "type": "Transitive",

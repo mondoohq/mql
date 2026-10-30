@@ -8,34 +8,34 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	subject "go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
+	subject "go.mondoo.com/mql/providers-sdk/v1/util/convert"
 )
 
 func TestPtr(t *testing.T) {
 	t.Run("Pointer to int", func(t *testing.T) {
 		value := 42
-		ptr := subject.ToPtr(value)
+		ptr := new(value)
 		assert.NotNil(t, ptr)
 		assert.Equal(t, value, *ptr)
 	})
 
 	t.Run("Pointer to string", func(t *testing.T) {
 		value := "test"
-		ptr := subject.ToPtr(value)
+		ptr := new(value)
 		assert.NotNil(t, ptr)
 		assert.Equal(t, value, *ptr)
 	})
 
 	t.Run("Pointer to bool", func(t *testing.T) {
 		value := true
-		ptr := subject.ToPtr(value)
+		ptr := new(value)
 		assert.NotNil(t, ptr)
 		assert.Equal(t, value, *ptr)
 	})
 
 	t.Run("Pointer to float64", func(t *testing.T) {
 		value := 3.14
-		ptr := subject.ToPtr(value)
+		ptr := new(value)
 		assert.NotNil(t, ptr)
 		assert.Equal(t, value, *ptr)
 	})
@@ -45,21 +45,21 @@ func TestPtr(t *testing.T) {
 			Field string
 		}
 		value := Example{Field: "value"}
-		ptr := subject.ToPtr(value)
+		ptr := new(value)
 		assert.NotNil(t, ptr)
 		assert.Equal(t, value, *ptr)
 	})
 
 	t.Run("Pointer to slice", func(t *testing.T) {
 		value := []int{1, 2, 3}
-		ptr := subject.ToPtr(value)
+		ptr := new(value)
 		assert.NotNil(t, ptr)
 		assert.Equal(t, value, *ptr)
 	})
 
 	t.Run("Pointer to nil interface", func(t *testing.T) {
 		var value any
-		ptr := subject.ToPtr(value)
+		ptr := new(value)
 		assert.NotNil(t, ptr)
 		assert.Nil(t, *ptr)
 	})
@@ -76,15 +76,15 @@ func TestValue(t *testing.T) {
 		want any
 	}{
 		{"Nil int pointer", (*int)(nil), 0},
-		{"Non-nil int pointer", subject.ToPtr(42), 42},
+		{"Non-nil int pointer", new(42), 42},
 		{"Nil string pointer", (*string)(nil), ""},
-		{"Non-nil string pointer", subject.ToPtr("hello"), "hello"},
+		{"Non-nil string pointer", new("hello"), "hello"},
 		{"Nil float64 pointer", (*float64)(nil), 0.0},
-		{"Non-nil float64 pointer", subject.ToPtr(3.14), 3.14},
+		{"Non-nil float64 pointer", new(3.14), 3.14},
 		{"Nil bool pointer", (*bool)(nil), false},
-		{"Non-nil bool pointer", subject.ToPtr(true), true},
+		{"Non-nil bool pointer", new(true), true},
 		{"Nil custom struct pointer", (*custom)(nil), custom{}},
-		{"Non-nil bool pointer", subject.ToPtr(custom{true}), custom{true}},
+		{"Non-nil bool pointer", new(custom{true}), custom{true}},
 	}
 
 	for _, tt := range tests {

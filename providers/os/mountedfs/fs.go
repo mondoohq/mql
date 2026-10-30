@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/fsutil"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/fsutil"
 )
 
 var _ shared.FileSearch = (*MountedFs)(nil)
@@ -120,4 +120,8 @@ func (t *MountedFs) Chown(name string, uid, gid int) error {
 func (t *MountedFs) Find(from string, r *regexp.Regexp, typ string, perm *uint32, depth *int) ([]string, error) {
 	iofs := afero.NewIOFS(t)
 	return fsutil.FindFiles(iofs, from, r, typ, perm, depth)
+}
+
+func (t *MountedFs) FindWithOptions(from string, r *regexp.Regexp, typ string, perm *uint32, depth *int, options fsutil.FindOptions) ([]string, error) {
+	return fsutil.FindFilesWithOptions(afero.NewIOFS(t), from, r, typ, perm, depth, options)
 }

@@ -9,15 +9,17 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	cosmos "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v3"
+	cosmos "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAzureSubscriptionCosmosDbServiceAccountSqlDatabase) id() (string, error) {
@@ -85,6 +87,9 @@ func (a *mqlAzureSubscriptionCosmosDbServiceAccount) sqlDatabases() ([]any, erro
 			return nil, err
 		}
 		for _, db := range page.Value {
+			if db == nil {
+				continue
+			}
 			mqlDb, err := sqlDatabaseToMQL(a.MqlRuntime, db)
 			if err != nil {
 				return nil, err
@@ -109,13 +114,22 @@ func sqlDatabaseToMQL(runtime *plugin.Runtime, db *cosmos.SQLDatabaseGetResults)
 		dbName = *db.Name
 	}
 
-	return CreateResource(runtime, "azure.subscription.cosmosDbService.account.sqlDatabase",
+	res, err := CreateResource(runtime, "azure.subscription.cosmosDbService.account.sqlDatabase",
 		map[string]*llx.RawData{
 			"id":   llx.StringDataPtr(db.ID),
 			"name": llx.StringData(dbName),
 			"type": llx.StringDataPtr(db.Type),
 			"etag": llx.StringData(etag),
 		})
+	if err != nil {
+		return nil, err
+	}
+	sysData, err := convert.JsonToDict(db.SystemData)
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlAzureSubscriptionCosmosDbServiceAccountSqlDatabase).cacheSystemData = sysData
+	return res, nil
 }
 
 // throughputCache is a one-shot fetch result used by both the database and
@@ -127,25 +141,35 @@ type throughputCache struct {
 	autoEn     bool
 	sharedAway bool
 
-	fetched bool
+	fetched atomic.Bool
 	lock    sync.Mutex
 }
 
 type mqlAzureSubscriptionCosmosDbServiceAccountSqlDatabaseInternal struct {
-	throughput throughputCache
+	throughput      throughputCache
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionCosmosDbServiceAccountSqlDatabase) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 type mqlAzureSubscriptionCosmosDbServiceAccountSqlDatabaseContainerInternal struct {
-	throughput throughputCache
+	throughput      throughputCache
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionCosmosDbServiceAccountSqlDatabaseContainer) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 func (a *mqlAzureSubscriptionCosmosDbServiceAccountSqlDatabase) loadThroughput() error {
-	if a.throughput.fetched {
+	if a.throughput.fetched.Load() {
 		return nil
 	}
 	a.throughput.lock.Lock()
 	defer a.throughput.lock.Unlock()
-	if a.throughput.fetched {
+	if a.throughput.fetched.Load() {
 		return nil
 	}
 
@@ -163,7 +187,7 @@ func (a *mqlAzureSubscriptionCosmosDbServiceAccountSqlDatabase) loadThroughput()
 	}
 	a.throughput.manual, a.throughput.autoMax, a.throughput.autoEn, a.throughput.sharedAway =
 		fetchSqlDatabaseThroughput(ctx, client, rg, account, a.Name.Data)
-	a.throughput.fetched = true
+	a.throughput.fetched.Store(true)
 	return nil
 }
 
@@ -284,6 +308,9 @@ func (a *mqlAzureSubscriptionCosmosDbServiceAccountSqlDatabase) containers() ([]
 			return nil, err
 		}
 		for _, c := range page.Value {
+			if c == nil {
+				continue
+			}
 			mqlC, err := sqlContainerToMQL(a.MqlRuntime, c)
 			if err != nil {
 				return nil, err
@@ -362,7 +389,7 @@ func sqlContainerToMQL(runtime *plugin.Runtime, c *cosmos.SQLContainerGetResults
 		name = *c.Name
 	}
 
-	return CreateResource(runtime, "azure.subscription.cosmosDbService.account.sqlDatabase.container",
+	res, err := CreateResource(runtime, "azure.subscription.cosmosDbService.account.sqlDatabase.container",
 		map[string]*llx.RawData{
 			"id":                     llx.StringDataPtr(c.ID),
 			"name":                   llx.StringData(name),
@@ -378,15 +405,24 @@ func sqlContainerToMQL(runtime *plugin.Runtime, c *cosmos.SQLContainerGetResults
 			"conflictResolutionMode": llx.StringData(conflictMode),
 			"conflictResolutionPath": llx.StringData(conflictPath),
 		})
+	if err != nil {
+		return nil, err
+	}
+	sysData, err := convert.JsonToDict(c.SystemData)
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlAzureSubscriptionCosmosDbServiceAccountSqlDatabaseContainer).cacheSystemData = sysData
+	return res, nil
 }
 
 func (a *mqlAzureSubscriptionCosmosDbServiceAccountSqlDatabaseContainer) loadThroughput() error {
-	if a.throughput.fetched {
+	if a.throughput.fetched.Load() {
 		return nil
 	}
 	a.throughput.lock.Lock()
 	defer a.throughput.lock.Unlock()
-	if a.throughput.fetched {
+	if a.throughput.fetched.Load() {
 		return nil
 	}
 
@@ -404,7 +440,7 @@ func (a *mqlAzureSubscriptionCosmosDbServiceAccountSqlDatabaseContainer) loadThr
 	}
 	a.throughput.manual, a.throughput.autoMax, a.throughput.autoEn, a.throughput.sharedAway =
 		fetchSqlContainerThroughput(ctx, client, rg, account, dbName, a.Name.Data)
-	a.throughput.fetched = true
+	a.throughput.fetched.Store(true)
 	return nil
 }
 
@@ -440,8 +476,7 @@ func (a *mqlAzureSubscriptionCosmosDbServiceAccountSqlDatabaseContainer) autosca
 // to distinguish "no offer at this scope" (database/container has shared
 // throughput) from real errors.
 func isCosmosNotFoundError(err error) bool {
-	var rerr *azcore.ResponseError
-	if errors.As(err, &rerr) {
+	if rerr, ok := errors.AsType[*azcore.ResponseError](err); ok {
 		return rerr.StatusCode == http.StatusNotFound
 	}
 	return false
@@ -477,8 +512,7 @@ func isCosmosServerlessThroughputError(err error) bool {
 // than fatal so an over-scoped audit role still works on the rest of the
 // schema.
 func isCosmosForbiddenError(err error) bool {
-	var rerr *azcore.ResponseError
-	if errors.As(err, &rerr) {
+	if rerr, ok := errors.AsType[*azcore.ResponseError](err); ok {
 		return rerr.StatusCode == http.StatusForbidden
 	}
 	return false

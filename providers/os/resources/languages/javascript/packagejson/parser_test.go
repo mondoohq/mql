@@ -150,19 +150,25 @@ func TestPackageJson(t *testing.T) {
 			},
 		},
 		{
+			// the deprecated object form of `license`: the `type` is the
+			// license, the `url` only links its text
 			Fixture: "./testdata/license_deprecated_01.json",
 			Expected: packageJson{
-				// we ignore those licenses for now
 				License: &packageJsonLicense{
-					Value: "",
+					Value: "ISC",
 				},
 			},
 		},
 		{
+			// the deprecated `licenses` array, which npm replaced with the
+			// single `license` string
 			Fixture: "./testdata/license_deprecated_02.json",
 			Expected: packageJson{
-				// we ignore those licenses for now
 				License: nil,
+				Licenses: []packageJsonLicense{
+					{Value: "MIT"},
+					{Value: "Apache-2.0"},
+				},
 			},
 		},
 		{

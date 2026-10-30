@@ -6,7 +6,7 @@
   "ScanScheduleOffset": 120,
   "ScanAvgCPULoadFactor": 50,
   "ScanOnlyIfIdleEnabled": true,
-  "CheckForSignaturesBeforeRunningScan": 0,
+  "CheckForSignaturesBeforeRunningScan": false,
   "DisableArchiveScanning": false,
   "DisableEmailScanning": true,
   "DisableRemovableDriveScanning": true,
@@ -17,6 +17,7 @@
   "DisableCpuThrottleOnIdleScans": true,
   "EnableFullScanOnBatteryPower": false,
   "EnableLowCpuPriority": false,
+  "QuickScanIncludeExclusions": 1,
   "DisableRealtimeMonitoring": false,
   "DisableBehaviorMonitoring": false,
   "DisableIOAVProtection": false,
@@ -24,6 +25,7 @@
   "DisableIntrusionPreventionSystem": false,
   "RealTimeScanDirection": 0,
   "EnableFileHashComputation": false,
+  "OobeEnableRtpAndSigUpdate": true,
   "MAPSReporting": 2,
   "SubmitSamplesConsent": 1,
   "CloudBlockLevel": 2,
@@ -42,6 +44,7 @@
   "EngineUpdatesChannel": 0,
   "PlatformUpdatesChannel": 0,
   "MeteredConnectionUpdates": false,
+  "ReportDynamicSignatureDroppedEvent": true,
   "SevereThreatDefaultAction": 2,
   "HighThreatDefaultAction": 2,
   "ModerateThreatDefaultAction": 2,
@@ -67,6 +70,7 @@
   "AllowNetworkProtectionDownLevel": false,
   "AllowDatagramProcessingOnWinServer": false,
   "EnableDnsSinkhole": true,
+  "EnableConvertWarnToBlock": true,
   "RemediationScheduleDay": 0,
   "RemediationScheduleTime": "/Date(1705287600000)/",
   "QuarantinePurgeItemsAfterDelay": 90,
@@ -80,6 +84,7 @@
     "msbuild.exe"
   ],
   "ExclusionIpAddress": null,
+  "HideExclusionsFromLocalUsers": false,
   "AttackSurfaceReductionRules_Ids": [
     "56a863a9-875e-4185-98a7-b882c64b5ce5",
     "d4f940ab-401b-4efc-aadc-ad5f3c50688a"

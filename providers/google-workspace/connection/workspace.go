@@ -10,18 +10,26 @@ import (
 
 	"github.com/hashicorp/go-cleanhttp"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 	"golang.org/x/oauth2"
 	googleoauth "golang.org/x/oauth2/google"
 	directory "google.golang.org/api/admin/directory/v1"
 	reports "google.golang.org/api/admin/reports/v1"
+	"google.golang.org/api/calendar/v3"
 	cloudidentity "google.golang.org/api/cloudidentity/v1"
+	"google.golang.org/api/groupssettings/v1"
 	"google.golang.org/api/option"
 	"google.golang.org/api/transport"
 )
 
+// DefaultWorkspaceClientScopes is the OAuth scope set the provider needs. It
+// doubles as the list administrators paste into the domain-wide delegation
+// grant in the Google Workspace admin console, so it has to stay in exact sync
+// with the scopes the resource code asserts: a scope that is asserted but not
+// granted makes the whole token request fail with unauthorized_client, and a
+// scope that is granted but never asserted is an unnecessary privilege on a
+// directory-wide delegation.
 var DefaultWorkspaceClientScopes = []string{
-	directory.AdminChromePrintersReadonlyScope,
 	directory.AdminDirectoryCustomerReadonlyScope,
 	directory.AdminDirectoryDeviceChromeosReadonlyScope,
 	directory.AdminDirectoryDeviceMobileReadonlyScope,
@@ -29,14 +37,15 @@ var DefaultWorkspaceClientScopes = []string{
 	directory.AdminDirectoryGroupMemberReadonlyScope,
 	directory.AdminDirectoryGroupReadonlyScope,
 	directory.AdminDirectoryOrgunitReadonlyScope,
-	directory.AdminDirectoryResourceCalendarReadonlyScope,
 	directory.AdminDirectoryRolemanagementReadonlyScope,
-	directory.AdminDirectoryUserAliasReadonlyScope,
 	directory.AdminDirectoryUserReadonlyScope,
-	directory.AdminDirectoryUserschemaReadonlyScope,
 	directory.AdminDirectoryUserSecurityScope,
 	reports.AdminReportsAuditReadonlyScope,
 	reports.AdminReportsUsageReadonlyScope,
+	calendar.CalendarReadonlyScope,
+	calendar.CalendarSettingsReadonlyScope,
+	calendar.CalendarAclsReadonlyScope,
+	groupssettings.AppsGroupsSettingsScope,
 	cloudidentity.CloudIdentityGroupsReadonlyScope,
 	cloudidentity.CloudIdentityDevicesReadonlyScope,
 	cloudidentity.CloudIdentityPoliciesReadonlyScope,

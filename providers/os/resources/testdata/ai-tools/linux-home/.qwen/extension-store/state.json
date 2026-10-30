@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "generation": 3,
+  "legacyProjectionHash": "d46a919c64e216e2fe196b4101558ec048d3232115e6c5bf952c7af2740401f3",
+  "extensions": {
+    "3cd3f2199bc2138259a06d9fcff3e3c9e5bd0150ddf64c051097080eebe88f29": {
+      "name": "gemini-cli-security",
+      "artifactGeneration": 1,
+      "defaultActivation": "enabled",
+      "workspaceOverrides": {},
+      "legacyPathRules": [
+        "/root/*"
+      ]
+    }
+  }
+}

@@ -18,6 +18,7 @@ package squid
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -313,9 +314,9 @@ func parseListen(directive string, args []string) Listen {
 			}
 		}
 	default:
-		if i := strings.LastIndex(target, ":"); i >= 0 {
-			l.Address = target[:i]
-			if p, ok := parsePort(target[i+1:]); ok {
+		if before, after, found := strings.CutLast(target, ":"); found {
+			l.Address = before
+			if p, ok := parsePort(after); ok {
 				l.Port = p
 			}
 		} else if p, ok := parsePort(target); ok {
@@ -544,9 +545,10 @@ func parseAccessLog(args []string) AccessLog {
 // ----------------------------------------------------------------------
 
 // splitAndClean returns the logical directive lines for content: it
-// strips comments, joins backslash-continuations, and drops blank
-// lines. Inline comments (mid-line `#`) are not stripped because Squid
-// uses `#` only as a full-line comment marker.
+// strips full-line comments, joins backslash-continuations, and drops
+// blank lines. Trailing comments are handled one layer down, in
+// tokenize, because Squid strips them at the token layer — after
+// continuations have been joined.
 func splitAndClean(content string) []string {
 	raw := strings.Split(content, "\n")
 	var lines []string
@@ -567,8 +569,8 @@ func splitAndClean(content string) []string {
 		}
 
 		// Continuation: a single trailing backslash means "join with next".
-		if strings.HasSuffix(trim, "\\") {
-			continued.WriteString(strings.TrimSuffix(trim, "\\"))
+		if before, ok := strings.CutSuffix(trim, "\\"); ok {
+			continued.WriteString(before)
 			continued.WriteByte(' ')
 			continue
 		}
@@ -629,6 +631,18 @@ func tokenize(line string) []string {
 			flush()
 		case '"', '\'':
 			inQuote = c
+		case '#':
+			// An unquoted `#` at a token boundary starts a trailing
+			// comment: the rest of the line is discarded. This mirrors
+			// ConfigParser::TokenParse in src/ConfigParser.cc, which
+			// skips leading whitespace and bails on `#`.
+			//
+			// A `#` *inside* a token is data, not a comment marker, so
+			// values such as a password containing `#` survive intact.
+			if buf.Len() == 0 {
+				return tokens
+			}
+			buf.WriteByte(c)
 		default:
 			buf.WriteByte(c)
 		}
@@ -661,12 +675,7 @@ func isNumeric(s string) bool {
 }
 
 func containsString(s []string, v string) bool {
-	for i := range s {
-		if s[i] == v {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s, v)
 }
 
 // setMultiParam stores a directive value in the flat params map.

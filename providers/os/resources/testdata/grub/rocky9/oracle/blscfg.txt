@@ -1,0 +1,3 @@
+/boot/grub2/grub.cfg: blscfg
+/boot/efi/EFI/BOOT/grub.cfg: no-blscfg
+/boot/efi/EFI/rocky/grub.cfg: no-blscfg

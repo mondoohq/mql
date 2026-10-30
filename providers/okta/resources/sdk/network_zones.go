@@ -24,7 +24,7 @@ import (
 //
 // We use json.RawMessage for all polymorphic fields and normalize them after decoding.
 type NetworkZone struct {
-	Links       interface{}     `json:"_links,omitempty"`
+	Links       any             `json:"_links,omitempty"`
 	Asns        json.RawMessage `json:"asns,omitempty"`
 	Created     *time.Time      `json:"created,omitempty"`
 	Gateways    json.RawMessage `json:"gateways,omitempty"`
@@ -118,7 +118,7 @@ func (m *ApiExtension) ListNetworkZones(ctx context.Context, limit int) ([]*Netw
 		if resp == nil {
 			break
 		}
-		nextURL = nextLinkURL(resp.Header.Values("Link"))
+		nextURL = nextPageURL(nextURL, resp.Header.Values("Link"))
 	}
 
 	return zones, nil

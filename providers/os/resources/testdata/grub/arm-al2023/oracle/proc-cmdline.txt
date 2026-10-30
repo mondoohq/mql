@@ -1,0 +1,1 @@
+BOOT_IMAGE=(hd0,gpt1)/boot/vmlinuz-6.1.186-228.374.amzn2023.aarch64 root=UUID=256ab97e-ef68-4cb0-9b60-c122ac38e45a ro console=tty0 console=ttyS0,115200n8 nvme_core.io_timeout=4294967295 rd.emergency=poweroff rd.shell=0 selinux=1 security=selinux quiet numa_cma=1:64M

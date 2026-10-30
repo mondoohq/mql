@@ -4,7 +4,8 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"{{ .GoPackage }}/connection"
 	"{{ .GoPackage }}/provider"
 )
 
@@ -22,4 +23,5 @@ var Config = plugin.Provider{
 			Flags:     []plugin.Flag{},
 		},
 	},
+	Platforms: connection.Platforms,
 }

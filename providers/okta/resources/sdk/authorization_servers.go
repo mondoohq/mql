@@ -9,11 +9,11 @@ import (
 	"time"
 )
 
-// JsonWebKey mirrors the full JWK shape that the v2 SDK's shared JsonWebKey type
-// exposed. The v5 generated AuthorizationServerJsonWebKey model only types a
-// subset (alg/e/kid/kty/n/status/use), dropping created/lastUpdated/expiresAt/
+// JsonWebKey is the full JWK shape the endpoint returns. The generated
+// AuthorizationServerJsonWebKey model only types a subset
+// (alg/e/kid/kty/n/status/use), dropping created/lastUpdated/expiresAt/
 // keyOps/x5c/x5t/x5tS256. We decode the raw credentials/keys response ourselves
-// so those fields stay populated for callers that relied on them under v2.
+// so those fields stay populated rather than reading empty.
 type JsonWebKey struct {
 	Kid         string     `json:"kid,omitempty"`
 	Status      string     `json:"status,omitempty"`
@@ -33,7 +33,7 @@ type JsonWebKey struct {
 
 // ListAuthorizationServerKeys fetches the signing keys for an authorization
 // server, decoding the full JWK shape (see JsonWebKey) rather than the trimmed
-// v5 model.
+// generated model.
 func (m *ApiExtension) ListAuthorizationServerKeys(ctx context.Context, authServerId string) ([]*JsonWebKey, error) {
 	var keys []*JsonWebKey
 	url := m.url(fmt.Sprintf("/api/v1/authorizationServers/%s/credentials/keys", authServerId))

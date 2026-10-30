@@ -1,0 +1,1 @@
+[{"path":"HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\SSL 2.0","name":"SSL 2.0","properties":[],"children":1},{"path":"HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\SSL 2.0\\Client","name":"Client","properties":["DisabledByDefault"],"children":0}]

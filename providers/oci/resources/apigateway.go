@@ -6,18 +6,15 @@ package resources
 import (
 	"context"
 	"errors"
-	"sync"
 	"time"
 
 	"github.com/oracle/oci-go-sdk/v65/apigateway"
-	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/oci/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/oci/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (o *mqlOciApigateway) id() (string, error) {
@@ -29,59 +26,27 @@ func (o *mqlOciApigateway) id() (string, error) {
 func (o *mqlOciApigateway) gateways() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci api gateways with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getGateways(conn, list.Data), 5)
-	poolOfJobs.Run()
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-	return res, nil
-}
-
-func (o *mqlOciApigateway) getGateways(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci api gateways with region %s", regionResource.Id.Data)
-
-			svc, err := conn.ApiGatewayGatewayClient(regionResource.Id.Data)
+			svc, err := conn.ApiGatewayGatewayClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			var items []apigateway.GatewaySummary
-			var page *string
-			for {
+			items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]apigateway.GatewaySummary, *string, error) {
 				response, err := svc.ListGateways(ctx, apigateway.ListGatewaysRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
-				items = append(items, response.Items...)
-				if response.OpcNextPage == nil {
-					break
-				}
-				page = response.OpcNextPage
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				return nil, err
 			}
 
 			res := make([]any, 0, len(items))
@@ -96,57 +61,44 @@ func (o *mqlOciApigateway) getGateways(conn *connection.OciConnection, regions [
 					updated = &g.TimeUpdated.Time
 				}
 
-				freeformTags := make(map[string]interface{}, len(g.FreeformTags))
-				for k, v := range g.FreeformTags {
-					freeformTags[k] = v
-				}
-				definedTags := make(map[string]interface{}, len(g.DefinedTags))
-				for k, v := range g.DefinedTags {
-					definedTags[k] = v
-				}
-
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.apigateway.gateway", map[string]*llx.RawData{
-					"id":            llx.StringDataPtr(g.Id),
-					"name":          llx.StringDataPtr(g.DisplayName),
-					"compartmentID": llx.StringDataPtr(g.CompartmentId),
-					"endpointType":  llx.StringData(string(g.EndpointType)),
-					"ipMode":        llx.StringData(string(g.IpMode)),
-					"hostname":      llx.StringDataPtr(g.Hostname),
-					"state":         llx.StringData(string(g.LifecycleState)),
-					"created":       llx.TimeDataPtr(created),
-					"timeUpdated":   llx.TimeDataPtr(updated),
-					"freeformTags":  llx.MapData(freeformTags, types.String),
-					"definedTags":   llx.MapData(definedTags, types.Any),
-					"systemTags":    llx.MapData(definedTagsToAny(g.SystemTags), types.Dict),
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.apigateway.gateway", stringValue(g.CompartmentId), map[string]*llx.RawData{
+					"id":           llx.StringDataPtr(g.Id),
+					"name":         llx.StringDataPtr(g.DisplayName),
+					"endpointType": llx.StringData(string(g.EndpointType)),
+					"ipMode":       llx.StringData(string(g.IpMode)),
+					"hostname":     llx.StringDataPtr(g.Hostname),
+					"state":        llx.StringData(string(g.LifecycleState)),
+					"created":      llx.TimeDataPtr(created),
+					"timeUpdated":  llx.TimeDataPtr(updated),
+					"freeformTags": llx.MapData(strMapToAny(g.FreeformTags), types.String),
+					"definedTags":  llx.MapData(definedTagsToAny(g.DefinedTags), types.Any),
+					"systemTags":   llx.MapData(definedTagsToAny(g.SystemTags), types.Dict),
 				})
 				if err != nil {
 					return nil, err
 				}
 				mqlGw := mqlInstance.(*mqlOciApigatewayGateway)
-				mqlGw.region = regionResource.Id.Data
-				mqlGw.cacheSubnetId = stringValue(g.SubnetId)
-				mqlGw.cacheCertificateId = stringValue(g.CertificateId)
-				mqlGw.cacheNsgIds = append([]string(nil), g.NetworkSecurityGroupIds...)
+				mqlGw.cacheRegion = region
+				mqlGw.cacheSubnetID = stringValue(g.SubnetId)
+				mqlGw.cacheCertificateID = stringValue(g.CertificateId)
+				mqlGw.cacheNsgIDs = append([]string(nil), g.NetworkSecurityGroupIds...)
 				res = append(res, mqlGw)
 			}
 
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 type mqlOciApigatewayGatewayInternal struct {
-	region             string
-	cacheSubnetId      string
-	cacheCertificateId string
-	cacheNsgIds        []string
+	ociCompartmentRef
+	cacheRegion        string
+	cacheSubnetID      string
+	cacheCertificateID string
+	cacheNsgIDs        []string
 
 	// details fetched lazily from GetGateway (ip addresses, CA bundles,
 	// response cache) — not in the list summary.
-	detailsLock sync.Mutex
-	detailsDone bool
+	details ociOnce
 }
 
 func (o *mqlOciApigatewayGateway) id() (string, error) {
@@ -154,12 +106,12 @@ func (o *mqlOciApigatewayGateway) id() (string, error) {
 }
 
 func (o *mqlOciApigatewayGateway) subnet() (*mqlOciNetworkSubnet, error) {
-	if o.cacheSubnetId == "" {
+	if o.cacheSubnetID == "" {
 		o.Subnet.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	r, err := NewResource(o.MqlRuntime, "oci.network.subnet", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheSubnetId),
+		"id": llx.StringData(o.cacheSubnetID),
 	})
 	if err != nil {
 		return nil, err
@@ -168,8 +120,8 @@ func (o *mqlOciApigatewayGateway) subnet() (*mqlOciNetworkSubnet, error) {
 }
 
 func (o *mqlOciApigatewayGateway) networkSecurityGroups() ([]any, error) {
-	res := make([]any, 0, len(o.cacheNsgIds))
-	for _, nsgId := range o.cacheNsgIds {
+	res := make([]any, 0, len(o.cacheNsgIDs))
+	for _, nsgId := range o.cacheNsgIDs {
 		if nsgId == "" {
 			continue
 		}
@@ -185,12 +137,12 @@ func (o *mqlOciApigatewayGateway) networkSecurityGroups() ([]any, error) {
 }
 
 func (o *mqlOciApigatewayGateway) certificate() (*mqlOciApigatewayCertificate, error) {
-	if o.cacheCertificateId == "" {
+	if o.cacheCertificateID == "" {
 		o.Certificate.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	r, err := NewResource(o.MqlRuntime, "oci.apigateway.certificate", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheCertificateId),
+		"id": llx.StringData(o.cacheCertificateID),
 	})
 	if err != nil {
 		return nil, err
@@ -202,58 +154,49 @@ func (o *mqlOciApigatewayGateway) certificate() (*mqlOciApigatewayCertificate, e
 // does not return: ipAddresses, caBundles, responseCacheDetails. Safe for
 // concurrent callers.
 func (o *mqlOciApigatewayGateway) fetchDetails() error {
-	if o.detailsDone {
-		return nil
-	}
-	o.detailsLock.Lock()
-	defer o.detailsLock.Unlock()
-	if o.detailsDone {
-		return nil
-	}
+	return o.details.do(func() error {
+		conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+		svc, err := conn.ApiGatewayGatewayClient(o.cacheRegion)
+		if err != nil {
+			return err
+		}
+		resp, err := svc.GetGateway(context.Background(), apigateway.GetGatewayRequest{
+			GatewayId: new(o.Id.Data),
+		})
+		if err != nil {
+			return err
+		}
 
-	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	svc, err := conn.ApiGatewayGatewayClient(o.region)
-	if err != nil {
-		return err
-	}
-	resp, err := svc.GetGateway(context.Background(), apigateway.GetGatewayRequest{
-		GatewayId: common.String(o.Id.Data),
+		ips := make([]any, 0, len(resp.IpAddresses))
+		for i := range resp.IpAddresses {
+			ips = append(ips, stringValue(resp.IpAddresses[i].IpAddress))
+		}
+		o.IpAddresses = plugin.TValue[[]any]{Data: ips, State: plugin.StateIsSet}
+
+		caBundles := make([]any, 0, len(resp.CaBundles))
+		for i := range resp.CaBundles {
+			switch cb := resp.CaBundles[i].(type) {
+			case apigateway.CertificatesCaBundle:
+				caBundles = append(caBundles, stringValue(cb.CaBundleId))
+			case apigateway.CertificatesCertificateAuthority:
+				caBundles = append(caBundles, stringValue(cb.CertificateAuthorityId))
+			}
+		}
+		o.CaBundleIds = plugin.TValue[[]any]{Data: caBundles, State: plugin.StateIsSet}
+
+		// response cache presence only — the concrete config may hold a
+		// Redis/external endpoint we don't want to expose carte-blanche.
+		hasCache := false
+		if resp.ResponseCacheDetails != nil {
+			// NoCache is modeled as a concrete type; anything else indicates
+			// a cache is configured.
+			if _, isNone := resp.ResponseCacheDetails.(apigateway.NoCache); !isNone {
+				hasCache = true
+			}
+		}
+		o.HasResponseCache = plugin.TValue[bool]{Data: hasCache, State: plugin.StateIsSet}
+		return nil
 	})
-	if err != nil {
-		return err
-	}
-
-	ips := make([]any, 0, len(resp.IpAddresses))
-	for i := range resp.IpAddresses {
-		ips = append(ips, stringValue(resp.IpAddresses[i].IpAddress))
-	}
-	o.IpAddresses = plugin.TValue[[]any]{Data: ips, State: plugin.StateIsSet}
-
-	caBundles := make([]any, 0, len(resp.CaBundles))
-	for i := range resp.CaBundles {
-		switch cb := resp.CaBundles[i].(type) {
-		case apigateway.CertificatesCaBundle:
-			caBundles = append(caBundles, stringValue(cb.CaBundleId))
-		case apigateway.CertificatesCertificateAuthority:
-			caBundles = append(caBundles, stringValue(cb.CertificateAuthorityId))
-		}
-	}
-	o.CaBundleIds = plugin.TValue[[]any]{Data: caBundles, State: plugin.StateIsSet}
-
-	// response cache presence only — the concrete config may hold a
-	// Redis/external endpoint we don't want to expose carte-blanche.
-	hasCache := false
-	if resp.ResponseCacheDetails != nil {
-		// NoCache is modeled as a concrete type; anything else indicates
-		// a cache is configured.
-		if _, isNone := resp.ResponseCacheDetails.(apigateway.NoCache); !isNone {
-			hasCache = true
-		}
-	}
-	o.HasResponseCache = plugin.TValue[bool]{Data: hasCache, State: plugin.StateIsSet}
-
-	o.detailsDone = true
-	return nil
 }
 
 func (o *mqlOciApigatewayGateway) ipAddresses() ([]any, error) {
@@ -282,64 +225,36 @@ func (o *mqlOciApigatewayGateway) hasResponseCache() (bool, error) {
 func (o *mqlOciApigateway) deployments() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci api gateway deployments with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getDeployments(conn, list.Data), 5)
-	poolOfJobs.Run()
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-	return res, nil
-}
-
-func (o *mqlOciApigateway) getDeployments(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci api gateway deployments with region %s", regionResource.Id.Data)
-
-			svc, err := conn.ApiGatewayDeploymentClient(regionResource.Id.Data)
+			svc, err := conn.ApiGatewayDeploymentClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			var items []apigateway.DeploymentSummary
-			var page *string
-			for {
+			items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]apigateway.DeploymentSummary, *string, error) {
 				response, err := svc.ListDeployments(ctx, apigateway.ListDeploymentsRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
-				items = append(items, response.Items...)
-				if response.OpcNextPage == nil {
-					break
-				}
-				page = response.OpcNextPage
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				return nil, err
 			}
 
 			res := make([]any, 0, len(items))
 			for i := range items {
 				d := items[i]
+
+				if conn.Filters.IsFilteredOutByTags(d.FreeformTags, d.DefinedTags) {
+					continue
+				}
 
 				var created, updated *time.Time
 				if d.TimeCreated != nil {
@@ -349,52 +264,38 @@ func (o *mqlOciApigateway) getDeployments(conn *connection.OciConnection, region
 					updated = &d.TimeUpdated.Time
 				}
 
-				freeformTags := make(map[string]interface{}, len(d.FreeformTags))
-				for k, v := range d.FreeformTags {
-					freeformTags[k] = v
-				}
-				definedTags := make(map[string]interface{}, len(d.DefinedTags))
-				for k, v := range d.DefinedTags {
-					definedTags[k] = v
-				}
-
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.apigateway.deployment", map[string]*llx.RawData{
-					"id":            llx.StringDataPtr(d.Id),
-					"name":          llx.StringDataPtr(d.DisplayName),
-					"compartmentID": llx.StringDataPtr(d.CompartmentId),
-					"pathPrefix":    llx.StringDataPtr(d.PathPrefix),
-					"endpoint":      llx.StringDataPtr(d.Endpoint),
-					"state":         llx.StringData(string(d.LifecycleState)),
-					"created":       llx.TimeDataPtr(created),
-					"timeUpdated":   llx.TimeDataPtr(updated),
-					"freeformTags":  llx.MapData(freeformTags, types.String),
-					"definedTags":   llx.MapData(definedTags, types.Any),
-					"systemTags":    llx.MapData(definedTagsToAny(d.SystemTags), types.Dict),
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.apigateway.deployment", stringValue(d.CompartmentId), map[string]*llx.RawData{
+					"id":           llx.StringDataPtr(d.Id),
+					"name":         llx.StringDataPtr(d.DisplayName),
+					"pathPrefix":   llx.StringDataPtr(d.PathPrefix),
+					"endpoint":     llx.StringDataPtr(d.Endpoint),
+					"state":        llx.StringData(string(d.LifecycleState)),
+					"created":      llx.TimeDataPtr(created),
+					"timeUpdated":  llx.TimeDataPtr(updated),
+					"freeformTags": llx.MapData(strMapToAny(d.FreeformTags), types.String),
+					"definedTags":  llx.MapData(definedTagsToAny(d.DefinedTags), types.Any),
+					"systemTags":   llx.MapData(definedTagsToAny(d.SystemTags), types.Dict),
 				})
 				if err != nil {
 					return nil, err
 				}
 				mqlDep := mqlInstance.(*mqlOciApigatewayDeployment)
-				mqlDep.region = regionResource.Id.Data
-				mqlDep.cacheGatewayId = stringValue(d.GatewayId)
+				mqlDep.cacheRegion = region
+				mqlDep.cacheGatewayID = stringValue(d.GatewayId)
 				res = append(res, mqlDep)
 			}
 
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 type mqlOciApigatewayDeploymentInternal struct {
-	region         string
-	cacheGatewayId string
+	ociCompartmentRef
+	cacheRegion    string
+	cacheGatewayID string
 
-	// specFetched + spec populate the request-policy-derived fields.
-	specLock    sync.Mutex
-	specFetched bool
-	spec        *apigateway.ApiSpecification
+	// the deployment spec backs the request-policy-derived fields.
+	spec ociRetryLazy[*apigateway.ApiSpecification]
 }
 
 func (o *mqlOciApigatewayDeployment) id() (string, error) {
@@ -444,12 +345,12 @@ func initOciApigatewayDeployment(runtime *plugin.Runtime, args map[string]*llx.R
 }
 
 func (o *mqlOciApigatewayDeployment) gateway() (*mqlOciApigatewayGateway, error) {
-	if o.cacheGatewayId == "" {
+	if o.cacheGatewayID == "" {
 		o.Gateway.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	r, err := NewResource(o.MqlRuntime, "oci.apigateway.gateway", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheGatewayId),
+		"id": llx.StringData(o.cacheGatewayID),
 	})
 	if err != nil {
 		return nil, err
@@ -461,40 +362,32 @@ func (o *mqlOciApigatewayDeployment) gateway() (*mqlOciApigatewayGateway, error)
 // (routes, request policies, mTLS, CORS, rate limits). Subsequent callers
 // use the cached spec. The request is intentionally serialized behind a
 // mutex to avoid N concurrent GetDeployment calls on first access.
-func (o *mqlOciApigatewayDeployment) fetchSpec() error {
-	if o.specFetched {
-		return nil
-	}
-	o.specLock.Lock()
-	defer o.specLock.Unlock()
-	if o.specFetched {
-		return nil
-	}
-
-	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	svc, err := conn.ApiGatewayDeploymentClient(o.region)
-	if err != nil {
-		return err
-	}
-	resp, err := svc.GetDeployment(context.Background(), apigateway.GetDeploymentRequest{
-		DeploymentId: common.String(o.Id.Data),
+func (o *mqlOciApigatewayDeployment) getSpec() (*apigateway.ApiSpecification, error) {
+	return o.spec.get(func() (*apigateway.ApiSpecification, error) {
+		conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+		svc, err := conn.ApiGatewayDeploymentClient(o.cacheRegion)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := svc.GetDeployment(context.Background(), apigateway.GetDeploymentRequest{
+			DeploymentId: new(o.Id.Data),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return resp.Specification, nil
 	})
-	if err != nil {
-		return err
-	}
-	o.spec = resp.Specification
-	o.specFetched = true
-	return nil
 }
 
 func (o *mqlOciApigatewayDeployment) requestPolicies() (*apigateway.ApiSpecificationRequestPolicies, error) {
-	if err := o.fetchSpec(); err != nil {
+	spec, err := o.getSpec()
+	if err != nil {
 		return nil, err
 	}
-	if o.spec == nil {
+	if spec == nil {
 		return nil, nil
 	}
-	return o.spec.RequestPolicies, nil
+	return spec.RequestPolicies, nil
 }
 
 // flattenAuthenticationType maps the SDK's authentication-policy union type
@@ -515,11 +408,13 @@ func flattenAuthenticationType(rp *apigateway.ApiSpecificationRequestPolicies) s
 	return "UNKNOWN"
 }
 
-// flattenIsAnonymousAccessAllowed returns the authentication policy's
-// anonymous-access flag, defaulting to false when absent.
+// flattenIsAnonymousAccessAllowed reports whether unauthenticated requests
+// reach the backend. A deployment with no authentication policy at all
+// enforces nothing, so every request is anonymous - reporting false there
+// would clear the most exposed deployment in the tenancy.
 func flattenIsAnonymousAccessAllowed(rp *apigateway.ApiSpecificationRequestPolicies) bool {
 	if rp == nil || rp.Authentication == nil {
-		return false
+		return true
 	}
 	if v := rp.Authentication.GetIsAnonymousAccessAllowed(); v != nil {
 		return *v
@@ -700,59 +595,27 @@ func (o *mqlOciApigatewayDeployment) hasDynamicAuthentication() (bool, error) {
 func (o *mqlOciApigateway) certificates() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci api gateway certificates with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getCertificates(conn, list.Data), 5)
-	poolOfJobs.Run()
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-	return res, nil
-}
-
-func (o *mqlOciApigateway) getCertificates(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci api gateway certificates with region %s", regionResource.Id.Data)
-
-			svc, err := conn.ApiGatewayClient(regionResource.Id.Data)
+			svc, err := conn.ApiGatewayClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			var items []apigateway.CertificateSummary
-			var page *string
-			for {
+			items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]apigateway.CertificateSummary, *string, error) {
 				response, err := svc.ListCertificates(ctx, apigateway.ListCertificatesRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
-				items = append(items, response.Items...)
-				if response.OpcNextPage == nil {
-					break
-				}
-				page = response.OpcNextPage
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				return nil, err
 			}
 
 			res := make([]any, 0, len(items))
@@ -772,26 +635,16 @@ func (o *mqlOciApigateway) getCertificates(conn *connection.OciConnection, regio
 
 				subjectNames := convert.SliceAnyToInterface(c.SubjectNames)
 
-				freeformTags := make(map[string]interface{}, len(c.FreeformTags))
-				for k, v := range c.FreeformTags {
-					freeformTags[k] = v
-				}
-				definedTags := make(map[string]interface{}, len(c.DefinedTags))
-				for k, v := range c.DefinedTags {
-					definedTags[k] = v
-				}
-
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.apigateway.certificate", map[string]*llx.RawData{
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.apigateway.certificate", stringValue(c.CompartmentId), map[string]*llx.RawData{
 					"id":                llx.StringDataPtr(c.Id),
 					"name":              llx.StringDataPtr(c.DisplayName),
-					"compartmentID":     llx.StringDataPtr(c.CompartmentId),
 					"subjectNames":      llx.ArrayData(subjectNames, types.String),
 					"timeNotValidAfter": llx.TimeDataPtr(notValidAfter),
 					"state":             llx.StringData(string(c.LifecycleState)),
 					"created":           llx.TimeDataPtr(created),
 					"timeUpdated":       llx.TimeDataPtr(updated),
-					"freeformTags":      llx.MapData(freeformTags, types.String),
-					"definedTags":       llx.MapData(definedTags, types.Any),
+					"freeformTags":      llx.MapData(strMapToAny(c.FreeformTags), types.String),
+					"definedTags":       llx.MapData(definedTagsToAny(c.DefinedTags), types.Any),
 					"systemTags":        llx.MapData(definedTagsToAny(c.SystemTags), types.Dict),
 				})
 				if err != nil {
@@ -799,21 +652,18 @@ func (o *mqlOciApigateway) getCertificates(conn *connection.OciConnection, regio
 				}
 				res = append(res, mqlInstance)
 			}
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 func initOciApigatewayCertificate(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 2 {
 		return args, nil, nil
 	}
-	if args["id"] == nil {
+	idVal := ociArgString(args, "id")
+	if idVal == "" {
 		return nil, nil, errors.New("id required to fetch oci.apigateway.certificate")
 	}
-	idVal := args["id"].Value.(string)
 
 	obj, err := CreateResource(runtime, "oci.apigateway", nil)
 	if err != nil {
@@ -835,4 +685,8 @@ func initOciApigatewayCertificate(runtime *plugin.Runtime, args map[string]*llx.
 
 func (o *mqlOciApigatewayCertificate) id() (string, error) {
 	return "oci.apigateway.certificate/" + o.Id.Data, nil
+}
+
+type mqlOciApigatewayCertificateInternal struct {
+	ociCompartmentRef
 }

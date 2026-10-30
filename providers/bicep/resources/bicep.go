@@ -6,10 +6,10 @@ package resources
 import (
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/bicep/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/bicep/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (r *mqlBicep) id() (string, error) {
@@ -77,14 +77,33 @@ func (r *mqlBicep) paramFiles() ([]any, error) {
 	return mqlFiles, nil
 }
 
+// template returns the first ARM template the scan discovered. It stays the
+// right answer for a direct `bicep <file>.json` connection, where the scan
+// yields exactly one; a tree holding several is reached through templates.
 func (r *mqlBicep) template() (*mqlBicepTemplate, error) {
 	conn := r.MqlRuntime.Connection.(*connection.BicepConnection)
-	armTmpl := conn.ARMTemplate()
-	if armTmpl == nil {
+	tmpls := conn.ARMTemplates()
+	if len(tmpls) == 0 {
 		r.Template.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-	return newMqlBicepTemplate(r.MqlRuntime, conn.Path(), armTmpl)
+	return newMqlBicepTemplate(r.MqlRuntime, tmpls[0].Path, tmpls[0].Template)
+}
+
+// templates returns every ARM template the scan discovered, each keyed by its
+// own path so a repo with more than one has all of them audited.
+func (r *mqlBicep) templates() ([]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.BicepConnection)
+	tmpls := conn.ARMTemplates()
+	out := make([]any, 0, len(tmpls))
+	for _, t := range tmpls {
+		mqlT, err := newMqlBicepTemplate(r.MqlRuntime, t.Path, t.Template)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, mqlT)
+	}
+	return out, nil
 }
 
 type mqlBicepFileInternal struct {

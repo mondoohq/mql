@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/sbom"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/sbom"
 )
 
 func TestGoModExtractorSimple(t *testing.T) {
@@ -100,4 +100,29 @@ func TestGoModExtractorWithReplace(t *testing.T) {
 
 	transitive := info.Transitive()
 	assert.Equal(t, 3, len(transitive))
+}
+
+// TestGoModExtractorWithLocalReplace: a LOCAL (filesystem) replacement — no
+// version on the RHS, as a monorepo vendoring a module in-tree does — must keep
+// the ORIGINAL module path as the package name/purl, not the directory path.
+// Naming it `./staging/apimachinery` instead of `k8s.io/apimachinery` breaks
+// advisory matching (mondoohq/xgrep#3173).
+func TestGoModExtractorWithLocalReplace(t *testing.T) {
+	f, err := os.Open("./testdata/with-local-replace.go.mod")
+	require.NoError(t, err)
+	defer f.Close()
+
+	info, err := (&Extractor{}).Parse(f, "go.mod")
+	require.NoError(t, err)
+
+	direct := info.Direct()
+
+	// The locally-replaced module keeps its module-path identity...
+	p := direct.Find("k8s.io/apimachinery")
+	require.NotNil(t, p, "a local-replaced module must be named by its module path")
+	assert.Equal(t, "v0.0.0", p.Version)
+	assert.Equal(t, "pkg:golang/k8s.io/apimachinery@v0.0.0", p.Purl)
+
+	// ...and the filesystem path is never used as a package name.
+	assert.Nil(t, direct.Find("./staging/apimachinery"), "the replacement directory must not be a package name")
 }

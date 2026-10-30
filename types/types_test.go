@@ -34,6 +34,9 @@ func TestTypes(t *testing.T) {
 		{T: Array(String), ExpectedLabel: "[]string"},
 		{T: Map(String, String), ExpectedLabel: "map[string]string"},
 		{T: Resource("mockresource"), ExpectedLabel: "mockresource"},
+		{T: AssetLike, ExpectedLabel: "asset"},
+		{T: Asset("mcp"), ExpectedLabel: "asset<mcp>"},
+		{T: Array(Asset("mcp")), ExpectedLabel: "[]asset<mcp>"},
 		{T: Function('f', []Type{String, Int}), ExpectedLabel: "func()"},
 	}
 
@@ -68,4 +71,62 @@ func TestEqual_NilOperands(t *testing.T) {
 		assert.False(t, eq(nil, c.value), "%s: nil == value", c.typ.Label())
 		assert.True(t, eq(nil, nil), "%s: nil == nil", c.typ.Label())
 	}
+}
+
+func TestCoalesceArrays(t *testing.T) {
+	list := []struct {
+		title    string
+		left     Type
+		right    Type
+		expected Type
+	}{
+		// An empty array literal compiles to []unset, so the element type has to
+		// come from the other operand no matter which side it sits on.
+		{"unset left takes the right element type", Array(Unset), Array(String), Array(String)},
+		{"unset right keeps the left element type", Array(String), Array(Unset), Array(String)},
+		{"both unset stay unset", Array(Unset), Array(Unset), Array(Unset)},
+		{"null element type is also replaced", Array(Nil), Array(Int), Array(Int)},
+		{"bare array carries no element type", ArrayLike, Array(String), Array(String)},
+
+		// Known element types are never rewritten, mismatched or not.
+		{"matching element types keep left", Array(String), Array(String), Array(String)},
+		{"mismatched element types keep left", Array(String), Array(Int), Array(String)},
+		{"resource arrays keep left", Array(Resource("a")), Array(Unset), Array(Resource("a"))},
+
+		// Arithmetic on scalars must be untouched.
+		{"non-array left is returned unchanged", Int, Array(String), Int},
+		{"non-array right is returned unchanged", Array(Unset), String, Array(Unset)},
+		{"two scalars are returned unchanged", String, String, String},
+	}
+
+	for i := range list {
+		cur := list[i]
+		t.Run(cur.title, func(t *testing.T) {
+			assert.Equal(t, cur.expected, CoalesceArrays(cur.left, cur.right))
+		})
+	}
+}
+
+// TestAssetRoot covers the type parameter that makes chaining off an asset
+// reference possible: the root has to survive on the type, and an asset type
+// still has to dispatch as an asset so the builtins registered on AssetLike
+// (the nil comparisons) keep applying to a typed asset. See ADR 031.
+func TestAssetRoot(t *testing.T) {
+	typed := Asset("mcp")
+	assert.True(t, typed.IsAsset())
+	assert.Equal(t, "mcp", typed.AssetRootName())
+	assert.Equal(t, AssetLike, typed.Underlying())
+	assert.False(t, typed.IsResource())
+	assert.False(t, typed.ContainsResource())
+
+	bare := Asset("")
+	assert.Equal(t, AssetLike, bare)
+	assert.True(t, bare.IsAsset())
+	assert.Equal(t, "", bare.AssetRootName())
+
+	// A root with dots is a resource name like any other.
+	assert.Equal(t, "aws.ec2.instance", Asset("aws.ec2.instance").AssetRootName())
+
+	assert.False(t, NoType.IsAsset(), "an unset type is not an asset")
+	assert.Panics(t, func() { String.AssetRootName() })
 }

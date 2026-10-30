@@ -1,8 +1,11 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/cnquery/v9/providers/arista"
-option go_package = "go.mondoo.com/mql/v13/providers/arista/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/arista"
+option go_package = "go.mondoo.com/mql/providers/arista/resources"
+option root = "arista.eos"
 
 // Arista EOS network operating system
 //
@@ -11,16 +14,35 @@ option go_package = "go.mondoo.com/mql/v13/providers/arista/resources"
 // surfaces (interfaces, IP interfaces, switchports, VLANs, routes, BGP, MLAG,
 // ACLs), the management-plane services (SSH, telnet, SNMP, NTP), the AAA
 // stack, control-plane policing, and the local user / role / password-policy
-// hardening that auditors check against CIS / DISA STIG benchmarks.
-arista.eos {
-  // System configuration key-value pairs
+// hardening that auditors check against network-device benchmarks.
+arista.eos @root {
+  // Global system settings parsed from the running-config
+  //
+  // Keyed map of top-level system settings. `hostname` is the configured
+  // device hostname (defaults to `localhost` when unset), and `iprouting`
+  // is `true` or `false` reflecting whether IP routing is enabled on the
+  // device.
   systemConfig() map[string]string
   // IP-enabled interfaces with addresses
   ipInterfaces() []arista.eos.ipInterface
   // All network interfaces
   interfaces() []arista.eos.interface
-  // EOS software and hardware version info
-  version() dict
+  // EOS software release and hardware identity
+  //
+  // Deprecated in favor of systemInfo, which returns the same dict under a
+  // name that says what is in it: the running image, the chassis, memory and
+  // uptime. The comparable version number on its own is asset.version.
+  version() @maturity("deprecated") @replaced_by("arista.eos.systemInfo") dict
+  // Software release, hardware identity, memory and uptime
+  //
+  // The same dict this resource has always returned, under a name that says
+  // what is in it: the running image (`version`, `internalVersion`,
+  // `internalBuildId`, `architecture`), the chassis (`modelName`, `mfgName`,
+  // `serialNumber`, `hardwareRevision`, and the MAC addresses), memory
+  // (`memTotal`, `memFree`, in kilobytes) and `uptime`/`bootupTimestamp` in
+  // seconds. Only a fraction of it is the version, which is why `version` was
+  // the wrong name; the version number on its own is asset.version.
+  systemInfo() dict
   // System hostname
   hostname() string
   // Fully qualified domain name
@@ -43,8 +65,36 @@ arista.eos {
   bgp() arista.eos.bgp
   // MLAG high-availability configuration
   mlag() arista.eos.mlag
-  // Standard IP access control lists
+  // IP access control lists (standard, extended, and IPv6)
   acls() []arista.eos.acl
+  // Every place an access-list is applied
+  aclBindings() []arista.eos.aclBinding
+  // Route-maps, the named routing policies applied to routing adjacencies
+  routeMaps() []arista.eos.routeMap
+  // Prefix-lists referenced by routing policy
+  prefixLists() []arista.eos.prefixList
+  // Event handlers, the configured reactions to device events
+  eventHandlers() []arista.eos.eventHandler
+  // Recurring commands the device runs on its own
+  schedules() []arista.eos.schedule
+  // Installed EOS extensions
+  extensions() []arista.eos.extension
+  // Port-mirroring sessions
+  monitorSessions() []arista.eos.monitorSession
+  // sFlow sampling configuration and collectors
+  sflow() arista.eos.sflow
+  // Boot image and console configuration
+  bootConfig() arista.eos.bootConfig
+  // Saved configuration the device loads on boot
+  startupConfig() arista.eos.startupConfig
+  // Whether the running configuration has been saved to startup
+  //
+  // False when the running and saved configurations differ, meaning the
+  // device would come back from a reboot in a different state than it is in
+  // now. Comparison ignores comment lines, blank lines, and trailing
+  // whitespace, since those differ between two renderings of identical
+  // content.
+  configSavedToStartup() bool
   // Hardware environment and inventory
   hardware() arista.eos.hardware
   // AAA (Authentication, Authorization, Accounting) configuration
@@ -53,26 +103,56 @@ arista.eos {
   sshSettings() arista.eos.sshSettings
   // SNMPv1/v2c community strings (plaintext shared secrets)
   snmpCommunities() []arista.eos.snmpCommunity
+  // SNMPv3 users, the principals that replace community strings
+  snmpUsers() []arista.eos.snmpUser
+  // SNMPv3 groups, which bind a security level to the views its members reach
+  snmpGroups() []arista.eos.snmpGroup
+  // Named MIB subtree filters that groups read and write through
+  snmpViews() []arista.eos.snmpView
   // Management telnet service configuration (insecure plaintext protocol)
   telnetService() arista.eos.telnetService
   // Password policy and account-lockout configuration
   passwordPolicy() arista.eos.passwordPolicy
   // Control-Plane Policing (CoPP) configuration
   controlPlanePolicer() arista.eos.controlPlanePolicer
+  // Management console (serial console) settings
+  consoleSettings() arista.eos.consoleSettings
   // Per-interface switchport port-security configurations
   portSecurity() []arista.eos.portSecurity
+  // Per-interface storm-control thresholds
+  stormControls() []arista.eos.stormControl
   // eAPI (management API) service configuration
   eapi() arista.eos.eapi
   // VRRP (Virtual Router Redundancy Protocol) configuration
   vrrp() arista.eos.vrrp
+  // System logging (syslog) configuration and remote collectors
+  logging() arista.eos.logging
+  // 802.1X port-based network access control
+  dot1x() arista.eos.dot1x
+  // DHCP snooping configuration and trusted ports
+  dhcpSnooping() arista.eos.dhcpSnooping
+  // Dynamic ARP Inspection configuration and trusted ports
+  arpInspection() arista.eos.arpInspection
+  // Login banner shown before authentication
+  //
+  // Literal banner text from the `banner login` block, including its
+  // indentation. This is the notice-and-consent text a user sees before
+  // supplying credentials, so it is what banner-content requirements are
+  // checked against. Empty when no login banner is configured.
+  loginBanner() string
+  // Message-of-the-day banner shown after authentication
+  //
+  // Literal banner text from the `banner motd` block, including its
+  // indentation. Empty when no MOTD banner is configured.
+  motdBanner() string
 }
 
 // Arista EOS running-config (full device configuration)
 //
-// Examine the full running-configuration text as emitted by
+// Full running-configuration text as emitted by
 // `show running-config`. `content` is the entire config as one string;
 // use it for pattern matching or line-oriented audits, or as a
-// fall-through when no more specific typed resource exists. To inspect
+// fall-through when no more specific resource exists. To inspect
 // a single block of the configuration use
 // `arista.eos.runningConfig.section(name: "<header>")`.
 arista.eos.runningConfig {
@@ -82,12 +162,12 @@ arista.eos.runningConfig {
 
 // Section of the Arista EOS running-config
 //
-// Examine a single named section of the running-config when you need the
+// A single named section of the running-config, for when you need the
 // raw text of one configuration block rather than the whole device. The
-// `name` field selects the section as it appears in the running-config —
-// for example `arista.eos.runningConfig.section(name: "interface Ethernet1")`
-// or `... section(name: "router bgp 65001")` — and `content` returns the
-// raw text of that block.
+// `name` field selects the section as it appears in the running-config.
+// For example `arista.eos.runningConfig.section(name: "interface Ethernet1")`
+// or `... section(name: "router bgp 65001")`. The `content` field returns
+// the raw text of that block.
 arista.eos.runningConfig.section {
   // Section name
   name string
@@ -97,20 +177,24 @@ arista.eos.runningConfig.section {
 
 // Arista EOS local user account
 //
-// Examine a single user defined by `username ...` in the running-config:
-// login name, EOS privilege level, assigned role, the no-password and
-// password-encoding fields, the configured SSH key, and whether the
-// account is currently locked out — the input audits use to find
-// privilege-15 accounts, accounts with no password, weak secret
-// encodings, and stale credentials.
+// Local user account defined by a `username` line in the running-config:
+// login name, EOS privilege level, assigned role, password state, secret
+// encoding, and any configured SSH key. Audits use these accounts to find
+// privilege-15 users, accounts with no password, weak secret encodings,
+// and stale credentials. The `locked` predicate reports accounts that can
+// no longer authenticate.
 arista.eos.user @defaults("name privilege") {
   // The name of the user
   name string
-  // Whether the user can authenticate without a password
+  // EOS privilege level, from 0 (most restricted) to 15 (full administrative access)
   privilege string
   // User's assigned role
   role string
-  // If the user is not password protected
+  // Whether the account is configured with `nopassword`
+  //
+  // One of "true" or "false". An account written with the `nopassword`
+  // keyword has no password at all, so the only credential it can present
+  // is an SSH key.
   nopassword string
   // Specifies how the secret is encoded
   format string
@@ -118,39 +202,340 @@ arista.eos.user @defaults("name privilege") {
   secret string
   // User's sshkey
   sshkey string
-  // Whether the account is locked
+  // Whether the account can no longer authenticate
+  //
+  // Computed as true when the account has no password (nopassword) and no
+  // configured SSH key, so no credential exists to log in with.
   locked() bool
+  // Command-authorization role the account is assigned, resolved to the role named by role
+  //
+  // Reaching the role from the account is what lets one query ask which
+  // accounts can run a command matching a pattern, since the permit and
+  // deny regexes live on the role rather than the account.
+  //
+  // Null when the account names no role of its own, in which case the
+  // device applies the role marked default, and null when the name does
+  // not match a role defined on the device. The role field keeps the
+  // configured name in both cases, so an account pointing at a role that
+  // was never created is still visible.
+  roleRef() arista.eos.role
 }
 
-// Arista EOS role resource
+// Arista EOS command-authorization role
+//
+// Named role that restricts which CLI commands the users assigned to it
+// may run, the building block of role-based access control on EOS. Each
+// role carries an ordered list of permit and deny rules matched against
+// command text (see `rules`), and `default` marks the role applied to
+// users who have no role of their own. Auditing roles confirms that
+// privileged commands are limited to the operators who should have them.
 private arista.eos.role @defaults("name default"){
   // Name of role
   name string
   // Whether this is the default role
   default bool
-  // List of rules that restricts access to specified commands
+  // Command-authorization rules that restrict access to specified commands
+  //
+  // Ordered list of rules evaluated for the role. Each entry has
+  // `cmdPermission` (whether commands matching the rule are permitted or
+  // denied), `cmdRegex` (the regular expression matched against command
+  // text), `sequenceNumber` (the rule's position in evaluation order),
+  // and `mode` (the CLI mode the rule applies to).
   rules []dict
 }
 
 // Arista EOS SNMP daemon configuration
 //
-// Examine whether SNMP logging is enabled and which trap notifications
-// the device is configured to send. For SNMPv1 / v2c community strings
-// — a common hardening finding — see `arista.eos.snmpCommunities`.
+// SNMP daemon state on the switch, covering whether SNMP logging is
+// enabled and which trap notifications the device is configured to
+// send. For SNMPv1 / v2c community strings (a common hardening finding)
+// see `arista.eos.snmpCommunities`.
 arista.eos.snmpSetting {
   // Whether SNMP logging is enabled
   enabled bool
-  // SNMP trap generation information
+  // SNMP trap notification types and their enabled state
+  //
+  // One entry per trap notification type. Each entry carries `name` (the
+  // notification name), `reason` (why it is or is not active), `enabled`
+  // (whether the device is configured to send this trap), and `component`
+  // (the subsystem the notification belongs to).
   notifications() []dict
+  // Destinations the device sends notifications to
+  //
+  // Which trap types are enabled says nothing about where the traps go.
+  // Each entry carries the destination's protocol version and routing
+  // instance, which together decide whether device state leaves in
+  // cleartext and across which network.
+  //
+  // Empty when the device is configured to send notifications nowhere.
+  hosts() []arista.eos.snmpHost
+  // Routing instances SNMP answers in
+  //
+  // EOS enables SNMP in the default instance and nowhere else unless told
+  // otherwise, so this reports `default` on a device that never mentions
+  // routing instances, and omits it on one that withdraws it with
+  // `no snmp-server vrf default`.
+  vrfs() []string
+  // Interface notifications are sourced from
+  //
+  // From the device-wide `snmp-server local-interface`. Empty when unset,
+  // in which case the source address follows the egress interface.
+  localInterface() string
+  // Configured system location reported over SNMP
+  //
+  // Empty when unset.
+  location() string
+  // Configured system contact reported over SNMP
+  //
+  // Empty when unset.
+  contact() string
+  // Configured chassis identifier reported over SNMP
+  //
+  // Empty when unset, in which case the device reports its serial number.
+  chassisId() string
+}
+
+// Arista EOS SNMP notification destination
+//
+// One destination the device sends traps or informs to, from an
+// `snmp-server host` line. Enumerating destinations answers where device
+// state is sent, which the trap type list alone cannot.
+//
+// `version` is the field to read first: a `v1` or `v2c` destination
+// authenticates with a community string that travels in cleartext with every
+// notification, so the device state and the credential are both exposed to
+// anything on the path. `vrf` says which network that path runs over.
+//
+// The community string itself is deliberately not a field here. For a v1 or
+// v2c destination use `community` to reach the community it names, and for a
+// v3 destination use `user`.
+private arista.eos.snmpHost @defaults("host vrf version securityLevel") {
+  // Destination hostname or address as configured
+  host string
+  // Routing instance used to reach the destination
+  //
+  // Empty means the default instance.
+  vrf string
+  // Protocol version used toward this destination
+  //
+  // One of `v1`, `v2c`, or `v3`. Reported as `v2c` when the line carries no
+  // version clause, matching the version the device actually uses.
+  version string
+  // Security level for a v3 destination
+  //
+  // One of `noauth`, `auth`, or `priv`. Empty for v1 and v2c, which have no
+  // security level. A `noauth` destination is unauthenticated even though
+  // it runs v3.
+  securityLevel string
+  // Whether the device expects the destination to acknowledge
+  //
+  // Either `traps` (fire and forget) or `informs` (acknowledged and
+  // retried). Reported as `traps` when the line omits the keyword, matching
+  // the device default.
+  notificationType string
+  // Destination UDP port
+  //
+  // Reported as 162 when the line omits the port, matching the port the
+  // device uses.
+  port int
+  // Community this destination authenticates with, resolved to the community named on the line
+  //
+  // Null for a v3 destination, which names a user instead, and null when
+  // the name does not match a community defined on the device.
+  community() arista.eos.snmpCommunity
+  // User this destination authenticates as, resolved to the user named on the line
+  //
+  // Null for a v1 or v2c destination, which names a community instead, and
+  // null when the name does not match a user defined on the device.
+  user() arista.eos.snmpUser
+}
+
+// Arista EOS SNMPv3 user
+//
+// One principal defined by an `snmp-server user` line, selected by `name`.
+// SNMPv3 replaces the shared community string with per-user credentials, so
+// a device that has moved to v3 has no communities at all and is described
+// entirely by these users and the groups they belong to.
+//
+// `securityLevel` is the field the hardening question turns on: a
+// `noAuthNoPriv` user authenticates with nothing and reads the device over
+// the wire in the clear, while `authNoPriv` authenticates but still sends
+// everything in the clear. `authAlgorithm` and `privAlgorithm` carry the
+// algorithm names, which is where a legacy `md5` or `des` shows up.
+//
+// No credential is exposed. The passphrase and the localized key that follow
+// the algorithm names on the configuration line are not read.
+private arista.eos.snmpUser @defaults("name group securityLevel") {
+  // Security name the user authenticates as
+  name string
+  // Group whose views the user inherits
+  group string
+  // Protocol version the user is defined for
+  //
+  // One of `v1`, `v2c`, or `v3`. Credentials exist only on `v3`.
+  version string
+  // Security level the user operates at
+  //
+  // One of `noAuthNoPriv`, `authNoPriv`, or `authPriv`, the level names
+  // SNMPv3 itself uses. Derived from which credential clauses the line
+  // carries: no authentication clause means `noAuthNoPriv`, and an
+  // authentication clause without a privacy clause means `authNoPriv`.
+  securityLevel string
+  // Authentication algorithm
+  //
+  // For example `md5` or `sha`. Empty when the user authenticates with
+  // nothing, which is also what `securityLevel` reports as `noAuthNoPriv`.
+  authAlgorithm string
+  // Privacy (encryption) algorithm
+  //
+  // For example `des` or `aes`. Empty when the user's traffic is not
+  // encrypted.
+  privAlgorithm string
+  // Whether the credentials are already localized to an engine
+  //
+  // True for a line carrying a `localized` clause, meaning the stored
+  // credentials are keys derived for a specific engine rather than
+  // passphrases.
+  localized bool
+  // Remote agent the user is defined against
+  //
+  // Empty for the local agent, which is the usual case. A non-empty value
+  // means the user exists to reach an agent on another device.
+  remoteAddress string
+  // Port of the remote agent
+  //
+  // 0 when the line omits it or the user is local.
+  remotePort int
+  // Group the user belongs to, resolved to the group named by group
+  //
+  // Null when the name does not match a group defined on the device, which
+  // leaves the user's read and write reach undefined.
+  groupRef() arista.eos.snmpGroup
+}
+
+// Arista EOS SNMPv3 group
+//
+// A group defined by an `snmp-server group` line, selected by `name`. The
+// group binds a required security level to the MIB views its members may
+// read, write, and be notified through, so it is where a user's actual reach
+// is decided.
+//
+// `securityLevel` is the minimum a member must meet: a group at `noauth`
+// accepts members that authenticate with nothing. `writeView` is the other
+// field to read, since a group with a write view can change device
+// configuration over SNMP.
+private arista.eos.snmpGroup @defaults("name version securityLevel") {
+  // Group name
+  name string
+  // Protocol version the group is defined for
+  //
+  // One of `v1`, `v2c`, or `v3`.
+  version string
+  // Minimum security level a member must meet
+  //
+  // One of `noauth`, `auth`, or `priv`. Empty for `v1` and `v2c` groups,
+  // which have no security level at all.
+  securityLevel string
+  // Context the group is scoped to
+  //
+  // Empty when the group is not scoped to a context.
+  context string
+  // Name of the view members read through
+  //
+  // Empty when the group grants no read access.
+  readView string
+  // Name of the view members write through
+  //
+  // Empty when the group grants no write access, which is the posture a
+  // monitoring-only group should have.
+  writeView string
+  // Name of the view members are notified through
+  //
+  // Empty when the group has no notify view.
+  notifyView string
+  // View members read through, resolved to the view named by readView
+  //
+  // Null when the group grants no read access, and null when the name does
+  // not match a view defined on the device.
+  readViewRef() arista.eos.snmpView
+  // View members write through, resolved to the view named by writeView
+  //
+  // Null when the group grants no write access, and null when the name does
+  // not match a view defined on the device.
+  writeViewRef() arista.eos.snmpView
+}
+
+// Arista EOS SNMP view
+//
+// One entry of a named MIB subtree filter, from an `snmp-server view` line.
+// A view is what bounds how much of the device an SNMP principal can see or
+// change, so a group pointed at a view rooted at `iso` reaches the whole MIB
+// tree regardless of how strong its credentials are.
+//
+// A view name may appear on several lines, one per subtree, and each is a
+// separate entry here. `included` says whether the entry adds the subtree to
+// the view or carves it out.
+private arista.eos.snmpView @defaults("name mibFamily included") {
+  // View name, as referenced by a group's read, write, or notify clause
+  name string
+  // MIB subtree the entry covers
+  //
+  // For example `iso` for the whole tree, or a narrower subtree such as
+  // `system`.
+  mibFamily string
+  // Whether the entry adds the subtree to the view or removes it
+  //
+  // True for an `included` entry and false for an `excluded` one.
+  included bool
+}
+
+// Arista EOS per-interface storm-control threshold
+//
+// One storm-control statement on one interface, the ceiling on inbound
+// flooded traffic of a single class. This is the only per-port rate control
+// against a broadcast or flood denial of service that originates inside the
+// Layer 2 domain, where no routed control can see it.
+//
+// Interfaces with no storm-control statement are absent from the collection.
+// EOS has no implicit threshold and removes the statement from the
+// configuration entirely when it is negated, so an absent interface has no
+// ceiling at all rather than a permissive one. Policies that require a
+// ceiling on every access port must check for presence, not for a value.
+//
+// An interface may carry one statement per class, so it can appear several
+// times. A statement for the `all` class overrides the broadcast and
+// multicast thresholds on the same interface.
+private arista.eos.stormControl @defaults("interface trafficClass level unit") {
+  // Parent interface name, for example `Ethernet1`
+  interface string
+  // Traffic class the ceiling applies to
+  //
+  // One of `broadcast`, `multicast`, `unknown-unicast`, or `all`.
+  trafficClass string
+  // Configured threshold
+  //
+  // A percentage of port capacity when `unit` is `percent`, where the
+  // device accepts two decimal places and a level of 100 suppresses storm
+  // control entirely. A packet count when `unit` is `pps`.
+  level float
+  // Unit the threshold is expressed in
+  //
+  // Either `percent` or `pps`. A statement written without a unit keyword
+  // is a percentage.
+  unit string
+  // Whether the ceiling bounds traffic to the control plane rather than across the port
+  //
+  // True for the `cpu` form of the statement.
+  cpu bool
 }
 
 // Arista EOS NTP configuration and authentication state
 //
-// Examine the NTP service status, whether `ntp authenticate` is globally
-// enabled, and the configured NTP authentication keys via `authKeys()`
-// — each key's ID, hash algorithm, and `trusted` flag. The combination
-// is what benchmarks check when they require cryptographic protection
-// of time synchronization.
+// NTP service status, whether `ntp authenticate` is globally enabled, and
+// the configured NTP authentication keys, each carrying its key ID, hash
+// algorithm, and trusted flag. This is what benchmarks check when they
+// require cryptographic protection of time synchronization, so an
+// unauthenticated or untrusted key set is a finding.
 arista.eos.ntp {
   // Status of NTP on the switch
   status string
@@ -158,11 +543,78 @@ arista.eos.ntp {
   authenticationEnabled() bool
   // NTP authentication keys and trusted-key state
   authKeys() []arista.eos.ntpAuthKey
+  // Upstream time sources the device synchronizes against
+  servers() []arista.eos.ntp.server
+  // Whether the device answers NTP queries from clients
+  //
+  // True when `ntp serve all` is configured, or when an access-group is
+  // bound to the serve function. A device that serves time to any client
+  // that asks is usable as a reflection and amplification source.
+  serveEnabled() bool
+  // Access-list bounding which clients may query the device for time
+  //
+  // Name of the access-list applied via `ntp serve ipv4 access-group` or
+  // its IPv6 form. Empty when the device either does not serve time or
+  // serves it without restriction.
+  serveAccessGroup() string
+  // Access-list that bounds NTP clients, resolved from serveAccessGroup (null when none is bound)
+  serveAccessGroupAcl() arista.eos.acl
 }
 
-// Arista EOS interface resource
+// Arista EOS upstream NTP server
+//
+// A single upstream time source the device synchronizes against, selected by
+// its configured `address` (for example
+// `arista.eos.ntp.servers.where(address == "0.pool.ntp.org")`). Covers the
+// routing instance used to reach it, the poll-interval bounds, the source
+// interface, and whether the server is preferred. Time an attacker can move
+// undermines certificate validity windows, log correlation, and any
+// authentication scheme with a replay window, so both the server list and its
+// authentication state are worth auditing.
+private arista.eos.ntp.server @defaults("address vrf prefer") {
+  // Server hostname or IP address as configured
+  address string
+  // Routing instance used to reach the server (empty = default VRF)
+  vrf string
+  // Whether this server is marked as the preferred synchronization source
+  prefer bool
+  // Whether a burst of packets is sent on startup for faster initial sync
+  iburst bool
+  // NTP protocol version (0 = unset)
+  version int
+  // Minimum poll interval as a power of two seconds (0 = unset)
+  minPoll int
+  // Maximum poll interval as a power of two seconds (0 = unset)
+  maxPoll int
+  // Source interface for packets sent to this server
+  //
+  // From either the `local-interface` or `source` keyword on the server
+  // line. Empty when the device picks the source by route lookup.
+  localInterface string
+  // Authentication key ID referenced by this server
+  //
+  // 0 means the server line references no key, so its responses are
+  // accepted unauthenticated. A non-zero value paired with a null authKey
+  // means the server references a key that is not defined on the device.
+  keyId int
+  // Authentication key this server is authenticated with, resolved from keyId
+  //
+  // Null when the server references no key, or references a key ID with no
+  // matching `ntp authentication-key` line.
+  authKey() arista.eos.ntpAuthKey
+}
+
+// Arista EOS network interface
+//
+// Physical or logical interface on the switch, selected by `name`
+// (for example `arista.eos.interfaces.where(name == "Ethernet1")`).
+// Exposes administrative and line-protocol status, IP addressing,
+// MTU and layer-2 MTU, hardware and burned-in MAC addresses, the
+// forwarding model, and traffic and error counters. Use it to audit
+// which interfaces are enabled, how they are addressed, and their
+// operational state.
 private arista.eos.interface @defaults("name") {
-  // Interface name, link status, vlan, duplex, speed, and type of the specified interfaces
+  // Interface name (for example `Ethernet1` or `Management1`)
   name string
   // Interface bandwidth
   bandwidth int
@@ -174,13 +626,29 @@ private arista.eos.interface @defaults("name") {
   forwardingModel string
   // Hardware Name
   hardware string
-  // Interface address information
+  // Interface addressing
+  //
+  // One entry per configured address. Each is a dict with keys
+  // `PrimaryIP` and `VirtualIP` (each `{Address, MaskLen}`),
+  // `SecondaryIPOrderedList` (a list of the same shape),
+  // `SecondaryIPs`, and `BroadcastAddress`.
   interfaceAddress []dict
-  // Traffic count information
+  // Traffic and error counters
+  //
+  // Dict of interface counters with keys `InOctets`, `OutOctets`,
+  // `InUcastPkts`, `OutUcastPkts`, `InMulticastPkts`, `OutMulticastPkts`,
+  // `InBroadcastPkts`, `OutBroadcastPkts`, `InDiscards`, `OutDiscards`,
+  // `TotalInErrors`, `TotalOutErrors`, `LinkStatusChanges`, `LastClear`,
+  // `CounterRefreshTime`, and the nested `InputErrorsDetail` and
+  // `OutErrorsDetail` error breakdowns.
   interfaceCounters dict
   // Interface membership
   interfaceMembership string
-  // Interface statistics
+  // Interface throughput rates
+  //
+  // Dict of rate statistics with keys `InBitsRate`, `OutBitsRate`,
+  // `InPktsRate`, `OutPktsRate`, and `UpdateInterval` (the sampling
+  // window over which the rates are computed).
   interfaceStatistics dict
   // Interface status
   interfaceStatus string
@@ -194,17 +662,52 @@ private arista.eos.interface @defaults("name") {
   mtu int
   // MAC address of the interface
   physicalAddress string
-  // Interface link status, vlan, duplex, speed, and type
+  // Link status details
+  //
+  // Dict from `show interfaces status` with keys `bandwidth`,
+  // `interfaceType`, `description`, `autoNegotiateActive`, `duplex`,
+  // `linkStatus`, `lineProtocolStatus`, and `vlanInformation`
+  // (`{interfaceMode, vlanId, interfaceForwardingModel}`). The
+  // `duplex` and `autoNegotiate` fields are derived from this dict.
   status() dict
   // Whether the interface is enabled administratively
+  //
+  // True unless `interfaceStatus` is `disabled`, meaning the interface
+  // has not been shut down in the configuration.
   enabled() bool
   // Duplex setting (full, half, auto)
   duplex() string
   // Auto-negotiation enabled
   autoNegotiate() bool
+  // Whether the interface answers ARP for addresses that are not its own
+  //
+  // Proxy ARP blurs the segmentation a subnet boundary is meant to provide,
+  // letting hosts reach destinations they could not otherwise resolve. Off
+  // unless configured.
+  proxyArpEnabled() bool
+  // Whether the interface sends ICMP redirects
+  //
+  // Redirects disclose routing topology to hosts on the segment. The device
+  // sends them unless `no ip redirects` is configured, so an interface that
+  // says nothing about it reports true.
+  icmpRedirectsEnabled() bool
+  // Reverse-path-forwarding mode for anti-spoofing
+  //
+  // Either `rx`, which drops packets arriving from a direction the routing
+  // table would not use to reach their source, or `any`, which accepts any
+  // reachable direction. Empty when unicast RPF is not configured, which
+  // leaves the interface accepting spoofed source addresses.
+  unicastRpfMode() string
 }
 
 // Arista EOS IP interface
+//
+// A Layer 3 IP interface configured on the switch, covering routed
+// Ethernet ports, VLAN (SVI) interfaces, loopbacks, and management
+// interfaces. The `name` field selects the interface as it appears in
+// the running-config, for example `Ethernet1`, `Vlan10`, `Loopback0`,
+// or `Management1`. Use it to audit which interfaces carry an IP
+// address, the addresses assigned, and the configured MTU.
 private arista.eos.ipInterface @defaults("name") {
   // Interface Name
   name string
@@ -216,9 +719,10 @@ private arista.eos.ipInterface @defaults("name") {
 
 // Arista EOS Spanning Tree Protocol (STP) configuration
 //
-// Examine every configured Multiple Spanning Tree (MST) instance via
-// `mstInstances()`, each with its bridge / root-bridge / regional-root
-// state and per-interface participation.
+// Spanning Tree Protocol state for the device, exposing each configured
+// Multiple Spanning Tree (MST) instance through mstInstances. Use it to
+// audit the STP topology: which bridge is elected root, which is the
+// regional root, and how each interface participates in loop prevention.
 arista.eos.stp {
   // Multiple Spanning Tree Protocol (MST) instances
   mstInstances() []arista.eos.stp.mst
@@ -226,10 +730,11 @@ arista.eos.stp {
 
 // Arista EOS MST (Multiple Spanning Tree) instance
 //
-// Examine a single MST instance by `instanceId`: the STP protocol
-// variant, the bridge information (forward delay, MAC, priority), the
-// elected root and regional-root bridges, and the interfaces
-// participating in this instance.
+// Single Multiple Spanning Tree instance selected by instanceId, for
+// example instanceId "0". Covers the STP protocol variant, the local
+// bridge parameters, the elected root and regional-root bridges, and
+// the interfaces participating in this instance, so you can verify the
+// spanning-tree topology and root-bridge placement.
 arista.eos.stp.mst @defaults("instanceId name") {
   // MST instance number
   instanceId string
@@ -237,11 +742,18 @@ arista.eos.stp.mst @defaults("instanceId name") {
   name string
   // Spanning Tree Protocol variant for this MST instance
   protocol string
-  // Detailed bridge information (Forward Delay, MAC, Priority)
+  // Local bridge parameters for this MST instance
+  //
+  // Keys: priority, macAddress, systemIdExtension, and (for the default
+  // instance) forwardDelay, helloTime, maxAge.
   bridge dict
-  // Root bridge information
+  // Elected root bridge for this MST instance
+  //
+  // Keys: priority, macAddress, systemIdExtension.
   rootBridge dict
-  // Regional root bridge information
+  // Regional root bridge for this MST region
+  //
+  // Keys: priority, macAddress, systemIdExtension.
   regionalRootBridge dict
   // Interfaces on the specified MST instances
   interfaces []arista.eos.spt.mstInterface
@@ -249,10 +761,12 @@ arista.eos.stp.mst @defaults("instanceId name") {
 
 // Arista EOS MST per-interface state
 //
-// Examine the per-interface state for one interface inside one MST
-// instance, identified by interface `name` and `mstInstanceId`: the
-// port role and state, priority, cost, link type, and edge-port flag,
-// plus BPDU counters and boundary / inconsistency features.
+// Spanning-tree state for one interface within one Multiple Spanning Tree
+// (MST) instance, selected by interface `name` and `mstInstanceId`. Useful
+// for confirming that a port carries the role and state expected by the
+// spanning-tree design and for surfacing loop-prevention problems: the
+// `inconsistentFeatures` map flags loop-guard, root-guard, MST/PVST-border,
+// and bridge-assurance conditions that hold a port out of forwarding.
 arista.eos.spt.mstInterface @defaults("name") {
   id string
   // MST instance number
@@ -269,27 +783,45 @@ arista.eos.spt.mstInterface @defaults("name") {
   cost int
   // Port role
   role string
-  // Interface inconsistent features
+  // Loop-prevention inconsistencies detected on the interface
+  //
+  // Boolean flags for each guard that has put the port into an inconsistent
+  // (blocked) state: `loopGuard`, `rootGuard`, `mstPvstBorder`, and
+  // `bridgeAssurance`.
   inconsistentFeatures dict
   // Port Number
   portNumber int
   // Whether the interface is an edge port
   isEdgePort bool
-  // Details about Designated root, Designated bridge and Designated port
+  // Designated root, bridge, and port for the interface
+  //
+  // Keys `designatedRootAddress` and `designatedRootPriority` identify the
+  // designated root; `designatedBridgeAddress`, `designatedBridgePriority`,
+  // `designatedPortNumber`, and `designatedPortPriority` identify the
+  // designated bridge and port; `regionalRootAddress` and
+  // `regionalRootPriority` identify the MST regional root.
   detail dict
-  // Interface Boundary Type
-  boundaryType string
-  // Number of BPDU transactions on this interface
+  // BPDU transaction counters for the interface
+  //
+  // Keys `bpduSent`, `bpduReceived`, `bpduTaggedError`, `bpduOtherError`,
+  // and `bpduRateLimitCount`.
   counters() dict
-  // Interface features: BPDU filter, specifies the BPDU reception rate & link type of the interface
+  // Spanning-tree feature configuration for the interface
+  //
+  // Keys `linkType`, `bpduGuard`, and `BpduFilter`, each a map holding a
+  // `value` and a `default` boolean indicating whether the value is the
+  // interface default.
   features() dict
 }
 
 // Arista EOS VLAN
 //
-// Examine a single VLAN by its ID: the VLAN name, state (active vs
-// suspend), associated trunk groups, whether it was dynamically
-// learned, and the interfaces assigned to it.
+// Layer 2 broadcast domain configured on the switch, selected by its
+// numeric `id` (for example `arista.eos.vlan(id: "10")`). Covers the
+// VLAN name, its administrative state (active or suspend), the trunk
+// groups it belongs to, whether it was learned dynamically, and the
+// interfaces assigned to it, so you can audit segmentation and confirm
+// that only expected VLANs and ports are in use.
 arista.eos.vlan @defaults("id name") {
   // VLAN ID
   id string
@@ -307,12 +839,13 @@ arista.eos.vlan @defaults("id name") {
 
 // Arista EOS IP route
 //
-// Examine a single entry in the IP routing table, identified by its
-// `destination` prefix (e.g., "10.0.0.0/8"): the VRF, source protocol
-// (connected, static, BGP, OSPF, …), administrative distance and
-// metric, hardware-programmed and kernel-programmed flags, the
-// next-hop list (interface + next-hop address), the route action, and
-// an `active()` flag indicating whether the route is currently in use.
+// Single entry in the IP routing table, selected by its `destination`
+// prefix (for example `arista.eos.routes.where(destination == "10.0.0.0/8")`):
+// the VRF it belongs to, the source protocol (connected, static, BGP,
+// OSPF, and so on), the administrative distance and metric, the
+// hardware-programmed and kernel-programmed flags, the next-hop list,
+// the route action, and an `active` flag indicating whether the route
+// is currently in use for forwarding.
 arista.eos.route @defaults("destination") {
   // Route destination prefix (e.g., "10.0.0.0/8")
   destination string
@@ -330,7 +863,13 @@ arista.eos.route @defaults("destination") {
   kernelProgrammed bool
   // Route action
   routeAction string
-  // Next-hop information (interface, nexthop address)
+  // Next hops for the route
+  //
+  // One entry per available next hop. Each carries `interface` (the
+  // outgoing interface name, e.g. "Ethernet1") and `nexthopAddr` (the
+  // next-hop IP address). Either value can be an empty string when it
+  // does not apply to the route (for example a directly connected
+  // route has no next-hop address).
   nextHops []dict
   // Whether the route is active
   active() bool
@@ -338,11 +877,12 @@ arista.eos.route @defaults("destination") {
 
 // Arista EOS Layer-2 switchport configuration
 //
-// Examine switchport state for one interface, identified by `name`
-// (e.g., "Ethernet1"): the switchport mode (access vs trunk), the
-// access VLAN, the trunk native VLAN, the allowed-VLAN list, and any
-// trunk groups — useful for finding misconfigured trunks or
-// unexpected access-VLAN assignments.
+// Layer-2 switchport state for one interface, selected by `name`
+// (for example `arista.eos.switchports.where(name == "Ethernet1")`).
+// Reports the switchport `mode` (access or trunk), the access VLAN,
+// the trunk native VLAN, the allowed-VLAN list, and any trunk groups,
+// so you can flag misconfigured trunks or unexpected access-VLAN
+// assignments.
 arista.eos.switchport @defaults("name mode") {
   // Interface name
   name string
@@ -360,10 +900,11 @@ arista.eos.switchport @defaults("name mode") {
 
 // Arista EOS BGP configuration
 //
-// Examine whether BGP is enabled, the global AS number and router ID,
-// and the per-VRF BGP configurations via `vrfs()` — each VRF lists its
-// peers with their states, prefix counts, and inbound / outbound route
-// maps.
+// Border Gateway Protocol configuration for the device, covering whether
+// BGP is enabled, the global autonomous system number, the router ID, and
+// the per-VRF configurations in vrfs. Each VRF lists its peers with their
+// session state, prefix counts, and inbound and outbound route maps, so
+// you can audit routing adjacencies and the filters applied to them.
 arista.eos.bgp {
   // Whether BGP is enabled on this device
   enabled() bool
@@ -371,6 +912,11 @@ arista.eos.bgp {
   asNumber() string
   // BGP Router ID
   routerId() string
+  // Whether session state transitions are logged
+  //
+  // Reflects `bgp log-neighbor-changes`. Without it a session that flaps or
+  // is taken over leaves no record to correlate after the fact.
+  logNeighborChanges() bool
   // BGP VRFs
   vrfs() []arista.eos.bgp.vrf
 }
@@ -403,20 +949,158 @@ private arista.eos.bgp.peer @defaults("peerAddress") {
   prefixesReceived int
   // Number of prefixes accepted from peer (after inbound filtering)
   prefixesAccepted int
-  // Inbound route map
-  inboundRouteMap string
-  // Outbound route map
-  outboundRouteMap string
+  // Route-map applied to routes received from the peer
+  //
+  // Null when no inbound policy is applied, which accepts whatever the peer
+  // announces, or when the configured name matches no route-map on the
+  // device, which has the same effect.
+  inboundPolicy() arista.eos.routeMap
+  // Route-map applied to routes advertised to the peer
+  outboundPolicy() arista.eos.routeMap
+  // Whether the session is authenticated with a password
+  //
+  // An unauthenticated session can be taken over by anything that can reach
+  // the port and spoof the peer address. The password itself is never read
+  // off the device.
+  passwordConfigured bool
+  // How the session password is stored
+  //
+  // Either `0` for cleartext in the running-config or `7` for the
+  // reversible obfuscation. Empty when no password is configured.
+  passwordEncryptionType string
+  // Maximum hops the peer may be away (0 = unset)
+  //
+  // From `neighbor <peer> ttl maximum-hops`. Setting it to the real
+  // distance makes the session unreachable from anywhere further away,
+  // which defeats spoofing attempts from off-path.
+  ttlMaximumHops int
+  // Maximum prefixes accepted from the peer (0 = no limit configured)
+  //
+  // Without a limit, a peer that announces the full routing table, by
+  // mistake or otherwise, can exhaust the device's forwarding resources.
+  maximumRoutes int
+  // Whether the neighbor is configured but administratively down
+  shutdown bool
+  // Interface sourcing the session (empty = chosen by route lookup)
+  updateSource string
+  // Configured multihop limit for an external peer (0 = unset)
+  ebgpMultihop int
   // Peer description
   description string
+  // Peer group the session takes its settings from
+  //
+  // Empty when the session is configured on its own. A fabric is normally
+  // built by configuring the session controls once on a group and pointing
+  // every session at it, so a session with a group name here is protected by
+  // whatever that group sets even though its own lines say nothing. The
+  // controls above already report the inherited values.
+  peerGroup string
+}
+
+// Arista EOS route-map
+//
+// A named routing policy, selected by `name` (for example
+// `arista.eos.routeMaps.where(name == "IMPORT-FILTER")`), made of ordered
+// clauses in `entries`. Route-maps decide which routes a device accepts from
+// and announces to its neighbors, so they are where a routing leak is either
+// prevented or created.
+//
+// The last clause usually decides the posture: a map whose final clause is a
+// bare `deny` rejects everything the earlier clauses did not explicitly
+// accept, while a map with no deny clause accepts the remainder.
+private arista.eos.routeMap @defaults("name") {
+  // Route-map name as referenced by routing configuration
+  name string
+  // Ordered clauses, by sequence number
+  entries() []arista.eos.routeMap.entry
+}
+
+// Arista EOS route-map clause
+//
+// One clause of a route-map, selected by its `sequenceNumber`. `match` and
+// `set` carry the statements as written, without their leading keyword: the
+// statement grammar is wide and still growing, so structuring every variant
+// would be both a losing game and a lossy one.
+//
+// `matchPrefixLists` resolves the prefix-lists a clause matches against, so a
+// policy can be followed from the adjacency through the clause to the actual
+// prefixes it admits.
+private arista.eos.routeMap.entry @defaults("routeMapName sequenceNumber action") {
+  // Route-map this clause belongs to
+  routeMapName string
+  // Sequence number (determines evaluation order)
+  sequenceNumber int
+  // Clause action, `permit` or `deny`
+  action string
+  // Clause description
+  description string
+  // Match statements, without the leading `match` keyword
+  match []string
+  // Set statements, without the leading `set` keyword
+  set []string
+  // Clause number that processing continues at (0 = unset)
+  continueAt int
+  // Prefix-lists this clause matches against
+  //
+  // Empty when the clause matches on something other than a prefix-list, or
+  // when it names prefix-lists that are not defined on the device.
+  matchPrefixLists() []arista.eos.prefixList
+}
+
+// Arista EOS prefix-list
+//
+// A named list of prefixes referenced by routing policy, selected by `name`
+// and `family`. The two address families are separate namespaces and can
+// share a name.
+//
+// The prefix-length qualifiers on each entry matter as much as the prefixes:
+// a rule with a wide `le` accepts far more than its prefix suggests, and
+// `permit 0.0.0.0/0 le 32` accepts every route there is.
+private arista.eos.prefixList @defaults("name family") {
+  // Prefix-list name as referenced by routing policy
+  name string
+  // Address family the list matches, `ipv4` or `ipv6`
+  family string
+  // Ordered rules, by sequence number
+  entries() []arista.eos.prefixList.entry
+}
+
+// Arista EOS prefix-list rule
+//
+// One rule of a prefix-list. `ge` and `le` bound the prefix lengths the rule
+// accepts, widening it beyond the prefix alone.
+private arista.eos.prefixList.entry @defaults("sequenceNumber action prefix") {
+  // Prefix-list this rule belongs to
+  prefixListName string
+  // Address family of the prefix-list this rule belongs to, `ipv4` or `ipv6`
+  //
+  // Present because a name alone does not identify a list: the two address
+  // families are separate namespaces and can share a name.
+  prefixListFamily string
+  // Sequence number (determines evaluation order)
+  sequenceNumber int
+  // Rule action, `permit` or `deny`
+  action string
+  // Network in CIDR form
+  prefix string
+  // Exact prefix length the rule accepts (0 = unset)
+  eq int
+  // Minimum prefix length the rule accepts (0 = unset)
+  ge int
+  // Maximum prefix length the rule accepts (0 = unset)
+  le int
 }
 
 // Arista EOS MLAG (Multi-Chassis Link Aggregation) configuration
 //
-// Examine the MLAG domain ID, the local interface used for MLAG
-// control (typically a VLAN interface), the peer-switch IP, the
-// peer-link Port-Channel, the administrative shutdown flag, and the
-// Port-Channel interfaces that carry an MLAG ID.
+// Multi-Chassis Link Aggregation domain, which lets two switches
+// present themselves as a single logical device so downstream hosts
+// can dual-home a Port-Channel across both chassis for redundancy.
+// Query this to confirm the peer relationship is healthy: the domain
+// pairing (domainId, peerAddress), the control path (localInterface
+// and peerLink), whether the domain is administratively disabled
+// (shutdown), and which Port-Channels carry an MLAG ID. A shutdown or
+// misconfigured peer link breaks the redundancy the design depends on.
 arista.eos.mlag {
   // MLAG domain ID
   domainId() string
@@ -440,45 +1124,148 @@ private arista.eos.mlag.interface @defaults("name mlagId") {
   mlagId string
 }
 
-// Arista EOS standard IP access control list
+// Arista EOS IP access control list
 //
-// Examine a single standard IP access control list by `name`: its type
-// (currently only "standard" is supported by the EOS SDK) and the
-// ordered entries — sequence number, permit / deny action, source
-// address and prefix length, and per-rule logging — used for
-// connectivity audits and ingress-filtering reviews.
-arista.eos.acl @defaults("name") {
+// A single access control list, selected by `name` and optionally `family`
+// (for example `arista.eos.acl(name: "MGMT-ACCESS")`, or
+// `arista.eos.acl(name: "MGMT", family: "ipv6")` when an IPv4 and an IPv6
+// list share a name). Covers the standard, extended, and
+// IPv6 forms: `family` reports whether the list matches IPv4 or IPv6 traffic
+// and `type` reports whether it matches on source address alone (standard)
+// or on the full five-tuple (extended).
+//
+// The ordered `entries` give each rule's action, protocol, source and
+// destination, port matches, and per-rule logging. To find where a list is
+// actually applied, and therefore what it protects, see
+// `arista.eos.aclBindings`.
+arista.eos.acl @defaults("name family type") {
   // ACL name
   name string
-  // ACL type (currently only "standard" supported by SDK)
+  // Address family the list matches, `ipv4` or `ipv6`
+  family string
+  // ACL form
+  //
+  // Either `standard`, which matches on source address alone, or
+  // `extended`, which matches on protocol, source, destination, and
+  // ports. A list declared without an explicit keyword is extended.
   type string
-  // ACL entries (rules)
+  // ACL entries (rules), ordered by sequence number
   entries() []arista.eos.acl.entry
 }
 
 // Arista EOS ACL entry (rule)
-private arista.eos.acl.entry @defaults("sequenceNumber action") {
+//
+// One rule inside an access-list. `text` carries the rule exactly as
+// configured: the structured fields cover the forms the device emits, but the
+// rule grammar accepts qualifiers that are not broken out separately, so
+// `text` is what guarantees a rule is never reduced to less than it says.
+private arista.eos.acl.entry @defaults("sequenceNumber action text") {
   // ACL name this entry belongs to
   aclName string
+  // Address family of the ACL this entry belongs to, `ipv4` or `ipv6`
+  //
+  // Present because a name alone does not identify a list: IPv4 and IPv6
+  // access-lists live in separate namespaces and can share a name.
+  aclFamily string
   // Sequence number (determines evaluation order)
   sequenceNumber int
-  // Action: "permit" or "deny"
+  // Rule action
+  //
+  // One of `permit`, `deny`, or `remark` for a comment entry.
   action string
-  // Source IP address
+  // Protocol matched by the rule
+  //
+  // For example `ip`, `tcp`, `udp`, `icmp`, `ipv6`, or a protocol number.
+  // Empty on standard lists, which match on source address alone.
+  protocol string
+  // Source IP address, or `any` for a wildcard match
   srcAddress string
   // Source prefix length (CIDR notation, e.g., 24 for /24)
   srcPrefixLen int
+  // Source port match operator
+  //
+  // One of `eq`, `neq`, `lt`, `gt`, or `range`. Empty when the rule does
+  // not match on source port.
+  srcPortOperator string
+  // Source port operands for srcPortOperator
+  srcPorts []string
+  // Destination IP address, or `any` for a wildcard match
+  //
+  // Empty on standard lists, which have no destination match.
+  dstAddress string
+  // Destination prefix length (CIDR notation, e.g., 24 for /24)
+  dstPrefixLen int
+  // Destination port match operator
+  //
+  // One of `eq`, `neq`, `lt`, `gt`, or `range`. Empty when the rule does
+  // not match on destination port.
+  dstPortOperator string
+  // Destination port operands for dstPortOperator
+  dstPorts []string
+  // Whether the rule matches only packets belonging to an existing TCP session
+  established bool
   // Whether logging is enabled for this rule
   log bool
+  // Comment text on a `remark` entry
+  remark string
+  // The rule as written, without its sequence number
+  text string
+}
+
+// Arista EOS access-list binding
+//
+// One place an access-list is applied. Knowing which access-lists exist says
+// nothing about what they protect: a list that is written but never applied
+// filters nothing, and a question like "is management access restricted to
+// the admin network?" cannot be answered from the rules alone.
+//
+// `target` reports what the list is bound to, one of `interface`,
+// `managementSsh`, `managementTelnet`, `managementApi`, or `controlPlane`.
+// `targetName` carries the interface name for interface bindings and is empty
+// for the management services and the control plane, which are singletons.
+// `acl` resolves to the list itself, so a single query can walk from a
+// binding to the rules it enforces.
+private arista.eos.aclBinding @defaults("target targetName direction aclName") {
+  // What the list is applied to
+  //
+  // One of `interface`, `managementSsh`, `managementTelnet`,
+  // `managementApi`, or `controlPlane`.
+  target string
+  // Interface name for interface bindings, empty for the singleton targets
+  targetName string
+  // Traffic direction, `in` or `out`
+  //
+  // A binding written without a direction is inbound, matching how the
+  // device applies it.
+  direction string
+  // Address family of the binding, `ipv4` or `ipv6`
+  family string
+  // Name of the applied access-list
+  aclName string
+  // Routing instance the binding is scoped to
+  //
+  // Empty when the line names no instance, in which case the binding
+  // applies device-wide. A management service can be bound per instance, so
+  // a list scoped to the management instance leaves the service unrestricted
+  // in every other instance, including the one carrying production traffic.
+  vrf string
+  // The applied access-list, resolved from aclName
+  //
+  // Null when the binding names a list that is not defined on the device,
+  // which permits all traffic in that direction.
+  acl() arista.eos.acl
 }
 
 // Arista EOS hardware environment and inventory
 //
-// Examine the chassis hardware: `powerSupplies()` (each PSU's state,
-// capacity, output, embedded temperature sensors and fans), `fans()`
-// (each cooling fan's status and configured-vs-current speed), and
-// `inventory()` (every chassis / module / transceiver entry with its
-// serial number and hardware revision).
+// Chassis hardware and environmental state for an EOS device. The
+// `powerSupplies` field reports each PSU's state, capacity, output,
+// and embedded temperature sensors and fans; `fans` reports each
+// cooling fan's status and configured-versus-current speed; and
+// `inventory` lists every chassis, module, and transceiver with its
+// serial number and hardware revision. Useful for auditing power and
+// cooling redundancy (missing or failed PSUs and fans) and tracking
+// installed components by serial number.
 arista.eos.hardware {
   // Power supply units
   powerSupplies() []arista.eos.hardware.powerSupply
@@ -509,8 +1296,15 @@ private arista.eos.hardware.powerSupply @defaults("name state modelName") {
   // Whether this PSU is managed by the system
   managed bool
   // Temperature sensors on this PSU
+  //
+  // One entry per sensor, each with `name` (sensor identifier),
+  // `status` (sensor operational status), and `temperature` (current
+  // reading in degrees Celsius).
   tempSensors []dict
   // Cooling fans on this PSU
+  //
+  // One entry per fan, each with `name` (fan identifier), `status`
+  // (fan operational status), and `speed` (current speed percentage).
   fans []dict
 }
 
@@ -546,39 +1340,170 @@ private arista.eos.hardware.inventoryItem @defaults("name description serialNumb
 
 // Arista EOS AAA (Authentication, Authorization, Accounting) configuration
 //
-// Examine the configured method lists for login, enable, command/exec
-// authorization, and command/exec accounting, the configured TACACS+ and
-// RADIUS server hosts, and whether the default authentication list permits
-// local-only authentication (a common hardening finding in environments
-// that should require remote AAA).
-arista.eos.aaa {
+// Authentication, authorization, and accounting (AAA) settings parsed from
+// the running-config: the method lists that govern login and enable
+// authentication, command and exec authorization, and command and exec
+// accounting, plus the configured TACACS+ and RADIUS server hosts. The
+// defaultLoginPermitsLocalOnly predicate flags when the default login list
+// can authenticate against the switch's local account database alone with no
+// remote AAA source, a common hardening finding where policy requires
+// TACACS+ or RADIUS.
+private arista.eos.aaa {
   // Authentication login method lists (key = list name, e.g. "default")
   authenticationLogin map[string][]string
   // Authentication enable method lists
   authenticationEnable map[string][]string
   // Authorization commands method lists (key = "<level>/<list>")
   authorizationCommands map[string][]string
+  // Console command authorization method lists (key = "<level>/<list>")
+  //
+  // The console is authorized separately from remote sessions, so a device
+  // can require remote command authorization over SSH while leaving the
+  // console unauthorized. Empty means no console authorization is
+  // configured.
+  authorizationConsoleCommands map[string][]string
+  // Whether exec authorization extends to the serial console (`aaa authorization serial-console`)
+  serialConsoleAuthorization bool
   // Authorization exec method lists
   authorizationExec map[string][]string
   // Accounting commands method lists (key = "<level>/<list>")
   accountingCommands map[string][]string
   // Accounting exec method lists
   accountingExec map[string][]string
-  // TACACS+ server hosts
-  tacacsServers []string
-  // RADIUS server hosts
-  radiusServers []string
+  // TACACS+ servers with their transport and shared-secret state
+  tacacsServerHosts() []arista.eos.aaa.tacacsServer
+  // RADIUS servers with their transport and shared-secret state
+  radiusServerHosts() []arista.eos.aaa.radiusServer
+  // Named server groups referenced by the method lists
+  serverGroups() []arista.eos.aaa.serverGroup
+  // Whether the root account can be logged into
+  //
+  // The root account is the escape hatch to a shell on the underlying
+  // system. True when `aaa root secret` or `aaa root nopassword` is
+  // configured. An absent `aaa root` line leaves the account disabled,
+  // which is the shipped default.
+  rootAccountEnabled bool
+  // Whether the root account authenticates with no password
+  //
+  // True for `aaa root nopassword`, the worst of the three root states:
+  // anyone reaching the console or a remote session can become root.
+  rootAccountNoPassword bool
+  // Encoding of the root account secret
+  //
+  // Selector from the `aaa root secret` line, for example `5` or `sha512`.
+  // Empty when root has no secret configured.
+  rootSecretFormat string
   // Whether the default authentication list uses only the local user database (no remote AAA configured before local)
   defaultLoginPermitsLocalOnly bool
+  // Whether a password is required to enter enable mode
+  //
+  // False when no `enable secret` is configured, which lets any
+  // authenticated account escalate to enable mode without a second
+  // credential. The secret itself is never read off the device.
+  enableSecretConfigured bool
+  // Encoding of the enable secret
+  //
+  // One of `0` for cleartext, `5` for MD5-crypt, or `sha512`. A line
+  // written without an encoding selector is cleartext and is reported as
+  // `0`. Empty when no enable secret is configured.
+  enableSecretFormat string
+}
+
+// Arista EOS TACACS+ server
+//
+// A single TACACS+ server the device authenticates against, selected by its
+// `host` address. Covers the routing instance used to reach it, the port and
+// timeout, and the state of the shared secret. `keyEncryptionType` is what
+// hardening reviews read: `0` means the secret sits in the running-config in
+// the clear, and `7` is a reversible obfuscation that any config reader can
+// undo.
+//
+// `timeout`, `keyConfigured`, and `keyEncryptionType` report the value in
+// effect for this server. An option omitted from the host line falls back to
+// the global `tacacs-server` setting, matching how the device resolves it.
+// The shared secret itself is never read off the device.
+private arista.eos.aaa.tacacsServer @defaults("host vrf keyEncryptionType") {
+  // Server hostname or IP address as configured
+  host string
+  // Routing instance used to reach the server (empty = default VRF)
+  vrf string
+  // TACACS+ port (49 when the configuration omits it)
+  port int
+  // Timeout in seconds (0 = unset with no global default configured)
+  timeout int
+  // Whether sessions are multiplexed over a single TCP connection
+  singleConnection bool
+  // Whether a shared secret is configured for this server
+  keyConfigured bool
+  // How the shared secret is stored
+  //
+  // One of `0` (cleartext in the running-config), `7` (reversible type-7
+  // obfuscation), or `8a` (a stronger hash). Empty when no secret is
+  // configured.
+  keyEncryptionType string
+}
+
+// Arista EOS RADIUS server
+//
+// A single RADIUS server the device authenticates against, selected by its
+// `host` address. Covers the routing instance used to reach it, the
+// authentication and accounting ports, the timeout and retry count, and the
+// state of the shared secret. The same effective-value and secret-handling
+// rules as `arista.eos.aaa.tacacsServer` apply.
+private arista.eos.aaa.radiusServer @defaults("host vrf keyEncryptionType") {
+  // Server hostname or IP address as configured
+  host string
+  // Routing instance used to reach the server (empty = default VRF)
+  vrf string
+  // Authentication port (1812 when the configuration omits it)
+  authPort int
+  // Accounting port (1813 when the configuration omits it)
+  acctPort int
+  // Timeout in seconds (0 = unset with no global default configured)
+  timeout int
+  // Retry count (0 = unset)
+  retransmit int
+  // Whether a shared secret is configured for this server
+  keyConfigured bool
+  // How the shared secret is stored
+  //
+  // One of `0` (cleartext in the running-config), `7` (reversible type-7
+  // obfuscation), or `8a` (a stronger hash). Empty when no secret is
+  // configured.
+  keyEncryptionType string
+}
+
+// Arista EOS AAA server group
+//
+// A named set of AAA servers, selected by `name`. Method lists reference
+// groups rather than hosts, as in
+// `aaa authentication login default group TACACS-GROUP local`, so the group
+// membership is what connects a method list to the servers it actually
+// reaches. A group with no members authenticates against nothing, which
+// makes every method list pointing at it fall through to whatever follows.
+private arista.eos.aaa.serverGroup @defaults("name protocol") {
+  // Group name as referenced by the method lists
+  name string
+  // Protocol the group speaks, `tacacs+` or `radius`
+  protocol string
+  // Member server hosts, in configured order
+  //
+  // Held as addresses rather than server resources because a group's
+  // members resolve to a different resource depending on protocol.
+  servers []string
 }
 
 // Arista EOS management SSH service configuration
 //
-// Examine SSH service enabled state, protocol version, idle timeout, server
-// port, authentication mode, configured cipher / KEX / MAC / hostkey
-// algorithms, and whether `fips restrictions` are applied — the surface
-// auditors check against SSH hardening benchmarks.
-arista.eos.sshSettings {
+// Configuration of the on-device SSH management service, the primary
+// remote-administration channel into the switch. Covers whether the service
+// is enabled, the negotiated protocol version and idle timeout, the server
+// port and authentication mode, and the negotiated cryptographic
+// primitives (ciphers, key-exchange, MAC, and host-key algorithms), plus
+// whether FIPS restrictions are enforced. This is the surface auditors
+// compare against SSH hardening benchmarks for weak algorithms, missing
+// idle timeouts, and non-standard ports.
+private arista.eos.sshSettings {
   // Whether the SSH service is enabled (no shutdown)
   enabled bool
   // Configured SSH protocol version (typically "2")
@@ -599,6 +1524,50 @@ arista.eos.sshSettings {
   hostkeyAlgorithms []string
   // Whether `fips restrictions` is enabled on the SSH service
   fipsRestrictions bool
+  // Routing instances the block enables SSH in
+  //
+  // One entry per nested `vrf` sub-block that is not shut down. Which
+  // instances a management service answers in is how EOS expresses
+  // management-plane separation, so an entry for the instance carrying
+  // production traffic means SSH is reachable from the data plane.
+  //
+  // Empty when the block names no routing instance, in which case SSH is
+  // reachable in the default instance only.
+  vrfs []string
+  // Seconds a connection has to finish authenticating before it is dropped
+  //
+  // 0 when the block does not set it, in which case the device applies its
+  // own default of 120.
+  loginTimeout int
+  // Ceiling on concurrent SSH sessions
+  //
+  // 0 means no ceiling is configured, so the service accepts as many
+  // sessions as the platform allows.
+  connectionLimit int
+  // Ceiling on concurrent SSH sessions from a single host
+  //
+  // The bound that stops one source consuming the whole allowance. 0 means
+  // no ceiling is configured.
+  connectionPerHostLimit int
+  // Whether accounts with an empty password may authenticate
+  //
+  // One of `auto`, `permit`, or `deny`. Reported as `auto` when the block
+  // does not set it, which is the EOS default.
+  emptyPasswords string
+  // SSH daemon log level
+  //
+  // Empty when the block does not set it, in which case the device applies
+  // its own default of `info`.
+  logLevel string
+  // Seconds between keepalive probes sent to an unresponsive client
+  //
+  // Paired with clientAliveCountMax, this is what ends a session whose peer
+  // has gone away without closing it. 0 when unset.
+  clientAliveInterval int
+  // Unanswered keepalive probes tolerated before the session is closed
+  //
+  // 0 when unset.
+  clientAliveCountMax int
 }
 
 // Arista EOS SNMPv1/v2c community string configuration
@@ -612,7 +1581,7 @@ private arista.eos.snmpCommunity @defaults("name access acl") {
   // Empty = no ACL. When `ipv6` is true this is an IPv6 access-list;
   // otherwise IPv4.
   acl string
-  // Typed reference to the access-list ACL applied to this community
+  // Access-list that restricts this community, resolved to the `arista.eos.acl` named by `acl`
   aclResource() arista.eos.acl
   // Whether the community line declares an IPv6 ACL
   //
@@ -622,11 +1591,11 @@ private arista.eos.snmpCommunity @defaults("name access acl") {
 
 // Arista EOS management telnet service
 //
-// Examine whether a `management telnet` block exists and is actually enabled,
-// the idle timeout, session limits (global and per-host), and any access-list
-// restricting connections. Telnet is a plaintext protocol; benchmarks
-// generally require it to be disabled.
-arista.eos.telnetService {
+// State of the `management telnet` service, covering whether the block
+// exists and is actually enabled, the idle timeout, session limits (global
+// and per-host), and any access-list restricting connections. Telnet is a
+// plaintext protocol, so benchmarks generally require it to be disabled.
+private arista.eos.telnetService {
   // Whether a `management telnet` block exists in the running-config
   configured bool
   // Whether the telnet service is enabled (configured AND not shutdown)
@@ -641,13 +1610,50 @@ arista.eos.telnetService {
   ipAccessGroup string
 }
 
+// Arista EOS management console settings
+//
+// Settings of the `management console` block, which governs the physically
+// attached serial console. The console is a separate access path from the
+// remote services, governed by its own block and authorized separately (see
+// `authorizationConsoleCommands` on `arista.eos.aaa`), so hardening applied
+// to SSH does not reach it.
+//
+// `idleTimeout` is the control that ends a privileged session someone walked
+// away from, and it is the reason to read this resource: EOS leaves it unset
+// by default, so a console session stays open until the operator closes it.
+private arista.eos.consoleSettings {
+  // Whether a `management console` block exists in the running-config
+  //
+  // False means the console runs on the shipped defaults rather than
+  // meaning the console is unavailable.
+  configured bool
+  // Console idle timeout in minutes
+  //
+  // 0 means sessions never time out. That is both the EOS default when no
+  // timeout is configured and the meaning of an explicit `idle-timeout 0`,
+  // so read `configured` alongside it to tell the two apart.
+  idleTimeout int
+  // Absolute session timeout in minutes
+  //
+  // From `timeout <minutes> warning <minutes>`, which ends a session
+  // whether or not it is idle. 0 when the console sets no absolute
+  // timeout.
+  sessionTimeout int
+  // Minutes before the absolute timeout that a warning is issued
+  //
+  // 0 when the console sets no absolute timeout.
+  sessionTimeoutWarning int
+}
+
 // Arista EOS password policy and account-lockout configuration
 //
-// Examine lockout thresholds (failure count, observation window, lock
-// duration), whether no-password remote login is permitted, login event
-// logging, and the configured password-complexity rules (minimum length,
-// digits, uppercase, lowercase, special, repetitive, sequential characters).
-arista.eos.passwordPolicy {
+// Account-lockout thresholds and password-complexity rules enforced for
+// local authentication on the device. Covers the lockout trigger (failure
+// count, observation window, lock duration), whether users with no password
+// may log in remotely, login-event logging, and the minimum-character and
+// maximum-repetition rules from the `password policy` block. Audit these to
+// confirm brute-force protection is enabled and complexity meets policy.
+private arista.eos.passwordPolicy {
   // Failures allowed before account lockout (0 = lockout not configured)
   lockoutFailure int
   // Rolling window during which failures count, in seconds
@@ -690,11 +1696,14 @@ private arista.eos.ntpAuthKey @defaults("id hashAlgo trusted") {
 
 // Arista EOS Control-Plane Policing (CoPP) configuration
 //
-// Examine whether a `control-plane` block is present, whether a service
-// policy is applied, and which IPv4 / IPv6 access-groups are bound to the
-// control plane (with typed references to the underlying ACL resources)
-// — control-plane policing is required for protection against
-// management-plane DoS.
+// Control-Plane Policing (CoPP) protects the device CPU and management
+// plane against denial-of-service by rate-limiting and filtering the
+// traffic destined for the control plane. The fields report whether a
+// `control-plane` block is present, whether a service policy is applied,
+// and which IPv4 and IPv6 access-groups are bound to the control plane.
+// The ipAccessGroupAcl and ip6AccessGroupAcl fields resolve to the
+// underlying arista.eos.acl resources so audits can inspect the rules
+// actually enforced.
 arista.eos.controlPlanePolicer {
   // Whether a `control-plane` block exists in the running-config
   configured bool
@@ -704,15 +1713,24 @@ arista.eos.controlPlanePolicer {
   policyName string
   // IPv4 access-group applied to control-plane (empty if none)
   ipAccessGroup string
-  // Typed reference to the IPv4 access-group ACL applied to control-plane
+  // IPv4 access-group ACL bound to the control plane, resolved from ipAccessGroup (null when none is bound)
   ipAccessGroupAcl() arista.eos.acl
   // IPv6 access-group applied to control-plane (empty if none)
   ip6AccessGroup string
-  // Typed reference to the IPv6 access-group ACL applied to control-plane
+  // IPv6 access-group ACL bound to the control plane, resolved from ip6AccessGroup (null when none is bound)
   ip6AccessGroupAcl() arista.eos.acl
 }
 
 // Arista EOS per-interface switchport port-security configuration
+//
+// Port-security posture for switched interfaces, covering how many MAC
+// addresses each port may learn, what the switch does when that limit is
+// exceeded, and whether learned addresses are pinned into the running
+// config. Auditing this confirms that access-facing ports restrict which
+// end stations can connect, limiting MAC-flooding and rogue-device
+// attacks. The `violationAction` field reports the enforcement mode
+// ("protect", "restrict", or "shutdown"). There is one row per interface,
+// identified by the interface field.
 private arista.eos.portSecurity @defaults("interface enabled violationAction") {
   // Parent interface name (e.g. "Ethernet1")
   interface string
@@ -728,16 +1746,15 @@ private arista.eos.portSecurity @defaults("interface enabled violationAction") {
 
 // Arista EOS eAPI (management API) configuration
 //
-// Examine the management-API service surface so audits can verify that
-// the data plane through which mql itself connects is locked down.
-// `enabled` indicates whether eAPI is configured at all; the per-protocol
-// fields (`httpServerConfigured` / `httpServerRunning` / `httpServerPort`,
-// the matching `httpsServer*` and `localHttpServer*` triplets, and the
-// `unixSocketServer*` pair) tell you which transports are actually
-// listening. Common compliance audits check that `httpServerConfigured`
-// is false (no plaintext HTTP) while `httpsServerConfigured` and
-// `httpsServerRunning` are both true.
-arista.eos.eapi @defaults("enabled httpsServerRunning httpServerRunning") {
+// Management-API (eAPI) service surface, the transport through which mql
+// itself connects to the device. `enabled` indicates whether eAPI is
+// configured at all; the per-protocol fields (`httpServerConfigured` /
+// `httpServerRunning` / `httpServerPort`, the matching `httpsServer*` and
+// `localHttpServer*` triplets, and the `unixSocketServer*` pair) report
+// which transports are actually listening. Common compliance audits
+// check that `httpServerConfigured` is false (no plaintext HTTP) while
+// `httpsServerConfigured` and `httpsServerRunning` are both true.
+private arista.eos.eapi @defaults("enabled httpsServerRunning httpServerRunning") {
   // Whether eAPI is enabled on the device
   enabled bool
   // Whether the plaintext HTTP eAPI server is configured
@@ -762,16 +1779,31 @@ arista.eos.eapi @defaults("enabled httpsServerRunning httpServerRunning") {
   unixSocketServerConfigured bool
   // Whether the Unix-domain-socket eAPI server is currently running
   unixSocketServerRunning bool
+  // Routing instances the configuration enables eAPI in
+  //
+  // One entry per nested `vrf` sub-block of `management api http-commands`
+  // that is not shut down. The transport fields above report which
+  // listeners are running but not where they can be reached from, and eAPI
+  // answering in the instance that carries production traffic is reachable
+  // from the data plane.
+  //
+  // Empty when the configuration names no routing instance.
+  vrfs() []string
+  // Minutes an authenticated eAPI session stays usable
+  //
+  // 0 when the configuration does not set it, in which case the device
+  // applies its own default of 1440.
+  sessionTimeout() int
 }
 
 // Arista EOS VRRP (Virtual Router Redundancy Protocol) configuration
 //
-// Examine the VRRP first-hop redundancy state. `groups` lists every VRRP
-// instance configured on the device (each with its parent `interface`,
-// `groupId`, `priority`, `preempt` behavior, `state` of master / backup /
-// initial, the `virtualIps` it advertises, and the `virtualMac`). Use this
-// to audit gateway redundancy — for example asserting that every L3
-// subnet has a VRRP group, that priorities are split between the pair of
+// VRRP first-hop redundancy state on the device. `groups` lists every
+// VRRP instance configured (each with its `interface`, `groupId`,
+// `priority`, `preempt` behavior, `state` of master / backup / initial,
+// the `virtualIps` it advertises, and the `virtualMac`). Query this to
+// audit gateway redundancy, for example asserting that every L3 subnet
+// has a VRRP group, that priorities are split between the pair of
 // switches, or that preempt is enabled.
 arista.eos.vrrp {
   // VRRP groups configured on this device
@@ -780,12 +1812,12 @@ arista.eos.vrrp {
 
 // Arista EOS VRRP group
 //
-// Examine a single VRRP group. The group is keyed by `interface`/`groupId`
-// (a `Vlan100` SVI typically hosts group `1`); `priority` plus `preempt`
-// determine which device becomes master, `state` reports the current FSM
-// state (master / backup / initial), and `virtualIps` is the list of
-// gateway addresses the group advertises. `virtualMac` is the synthetic
-// MAC the group answers ARP for.
+// Single VRRP group, keyed by `interface`/`groupId` (a `Vlan100` SVI
+// typically hosts group `1`). `priority` plus `preempt` determine which
+// device becomes master, `state` reports the current FSM state (master /
+// backup / initial), and `virtualIps` is the list of gateway addresses
+// the group advertises. `virtualMac` is the synthetic MAC the group
+// answers ARP for.
 private arista.eos.vrrp.group @defaults("interface groupId state priority") {
   // Parent interface (the SVI or routed port the group runs on)
   interface string
@@ -816,4 +1848,388 @@ private arista.eos.vrrp.group @defaults("interface groupId state priority") {
   skewTime float
   // Virtual IP addresses the group advertises (the gateways clients use)
   virtualIps []string
+}
+
+// Arista EOS 802.1X port-based network access control
+//
+// Device-wide 802.1X state and the per-port configuration under
+// `interfaces`. 802.1X is the control that decides whether an unknown device
+// plugged into a switch port reaches the network at all, so it is the layer
+// beneath every other segmentation control.
+//
+// `systemAuthControl` is the master switch and is worth reading first: with
+// it off, per-interface `dot1x port-control auto` lines are configured but
+// inert, so a device can carry a complete-looking 802.1X configuration and
+// enforce nothing.
+private arista.eos.dot1x {
+  // Whether 802.1X authentication is globally active (`dot1x system-auth-control`)
+  systemAuthControl bool
+  // Whether a RADIUS server may change or revoke an authorized session
+  //
+  // Reflects `dot1x dynamic-authorization`, which allows change-of-
+  // authorization requests to move or disconnect a session after the
+  // initial exchange.
+  dynamicAuthorization bool
+  // Hold period in seconds after a failed MAC authentication (0 = unset)
+  macBasedAuthHoldPeriod int
+  // Per-interface 802.1X configuration
+  //
+  // One row per interface carrying at least one `dot1x` line. Interfaces
+  // with no 802.1X configuration are absent, leaving the meaning of an
+  // unconfigured port to the policy that reads this.
+  interfaces() []arista.eos.dot1x.interface
+}
+
+// Arista EOS per-interface 802.1X configuration
+//
+// 802.1X settings on one switched interface, selected by `interface` (for
+// example `arista.eos.dot1x.interfaces.where(interface == "Ethernet1")`).
+// `portControl` decides whether the port enforces anything: `auto` runs the
+// authentication exchange, while `force-authorized` admits whatever plugs in
+// and is the device default. `macBasedAuth` weakens the control to a MAC
+// allowlist for endpoints that cannot speak 802.1X, and `reauthentication`
+// stops a station holding access indefinitely on a single success.
+private arista.eos.dot1x.interface @defaults("interface portControl hostMode") {
+  // Parent interface name (for example `Ethernet1`)
+  interface string
+  // Port access entity role, typically `authenticator`
+  paeMode string
+  // Enforcement mode
+  //
+  // One of `auto` (run the authentication exchange), `force-authorized`
+  // (admit everything, the device default), or `force-unauthorized`
+  // (admit nothing). Empty when the interface does not set it.
+  portControl string
+  // How many stations may authenticate on the port
+  //
+  // One of `single-host` or `multi-host`. Empty when the interface does
+  // not set it.
+  hostMode string
+  // Whether MAC authentication bypass is enabled on the port
+  macBasedAuth bool
+  // Whether an authorized port periodically re-runs the authentication exchange
+  reauthentication bool
+  // Reauthentication interval in seconds (0 = unset)
+  reauthPeriod int
+  // EAP request retransmit interval in seconds (0 = unset)
+  txPeriod int
+  // Hold-down after a failed exchange, in seconds (0 = unset)
+  quietPeriod int
+  // Whether EAPOL frames are suppressed on the port
+  eapolDisabled bool
+}
+
+// Arista EOS DHCP snooping configuration
+//
+// DHCP snooping state and the ports exempted from it. Snooping drops
+// server-role DHCP traffic arriving on untrusted ports, which is what stops a
+// rogue DHCP server from handing out its own address as the default gateway
+// and putting itself in the path of every conversation on the segment.
+//
+// `trustedInterfaces` is the field to audit: an uplink toward the real DHCP
+// server has to be trusted, and an access port facing users must not be.
+private arista.eos.dhcpSnooping {
+  // Whether DHCP snooping is globally enabled
+  enabled bool
+  // VLANs snooping is enabled on
+  //
+  // Entries appear as configured, so a range stays a single token such as
+  // `300-310` rather than being expanded into its members.
+  vlans []string
+  // Whether relay-agent information (option 82) is stamped onto forwarded requests
+  insertOption82 bool
+  // Whether snooping applies to bridged traffic (`ip dhcp snooping bridging`)
+  bridging bool
+  // Interfaces exempted from snooping (`ip dhcp snooping trust`)
+  //
+  // Held as interface names, matching how the other interface-scoped
+  // resources in this provider report the ports they cover.
+  trustedInterfaces []string
+}
+
+// Arista EOS Dynamic ARP Inspection configuration
+//
+// Dynamic ARP Inspection validates ARP replies against the DHCP snooping
+// bindings, which is what stops one host on a VLAN from claiming another
+// host's address and intercepting its traffic. It pairs with DHCP snooping:
+// without snooping bindings there is nothing to validate against.
+//
+// DAI has no device-wide on switch. It is enabled per VLAN, so `enabled` is
+// derived from whether any VLAN is covered.
+private arista.eos.arpInspection {
+  // Whether Dynamic ARP Inspection covers at least one VLAN
+  enabled bool
+  // VLANs inspection is enabled on
+  //
+  // Entries appear as configured, so a range stays a single token such as
+  // `300-310` rather than being expanded into its members.
+  vlans []string
+  // Interfaces exempted from inspection (`ip arp inspection trust`)
+  //
+  // Held as interface names, matching how the other interface-scoped
+  // resources in this provider report the ports they cover.
+  trustedInterfaces []string
+}
+
+// Arista EOS port-mirroring session
+//
+// A port-mirroring session, selected by `name`. A session copies production
+// traffic somewhere else, which is a normal troubleshooting tool and also the
+// cleanest way to take traffic off a switch without touching a host.
+//
+// `destinationInterfaces` keeps the copy on the device; `tunnelDestinations`
+// does not. An encapsulated session sends mirrored traffic to a remote
+// address, so any entry there is worth an explanation.
+private arista.eos.monitorSession @defaults("name") {
+  // Session name
+  name string
+  // Mirrored interfaces and the direction each is mirrored in
+  sources []arista.eos.monitorSession.source
+  // Local ports the mirrored copy is sent to
+  destinationInterfaces []string
+  // Remote addresses an encapsulated session sends mirrored traffic to
+  //
+  // Empty for a session that stays on the device. A non-empty list means
+  // production traffic leaves the switch.
+  tunnelDestinations []string
+  // Whether mirrored packets are truncated
+  truncateEnabled bool
+  // Truncation size in bytes (0 = unset)
+  truncateSize int
+}
+
+// Arista EOS mirrored interface
+//
+// One mirrored interface within a port-mirroring session.
+private arista.eos.monitorSession.source @defaults("interface direction") {
+  // Session this source belongs to
+  sessionName string
+  // Mirrored interface name
+  interface string
+  // Mirrored direction
+  //
+  // One of `rx`, `tx`, or `both`. A source configured without a direction
+  // mirrors both.
+  direction string
+}
+
+// Arista EOS sFlow configuration
+//
+// sFlow sampling state and the collectors it reports to. sFlow ships sampled
+// packet headers and interface counters off the device, and the headers carry
+// real traffic, so the collector list is a data-egress path in the same way a
+// mirroring destination is.
+//
+// Collectors can be configured while sampling is off, so `enabled` and
+// `destinations` answer different questions and both are worth reading.
+private arista.eos.sflow {
+  // Whether sFlow sampling is running
+  enabled bool
+  // One-in-N packet sampling rate (0 = unset)
+  sampleRate int
+  // Counter polling interval in seconds (0 = unset)
+  pollingInterval int
+  // Interface sourcing packets sent to the collectors
+  sourceInterface string
+  // Collectors sampled data is sent to
+  destinations() []arista.eos.sflow.destination
+}
+
+// Arista EOS sFlow collector
+//
+// One collector sampled data is sent to, selected by `address`.
+private arista.eos.sflow.destination @defaults("address port vrf") {
+  // Collector hostname or IP address as configured
+  address string
+  // Collector port (6343 when the configuration omits it)
+  port int
+  // Routing instance used to reach the collector (empty = default VRF)
+  vrf string
+}
+
+// Arista EOS event handler
+//
+// A configured reaction to a device event, selected by `name`. An
+// event-handler whose `actionType` is `bash` runs an arbitrary shell command
+// on the switch whenever its trigger fires, which makes it the closest thing
+// the platform has to a cron backdoor: an `on-boot` trigger paired with a
+// bash action re-executes on every reboot and survives most remediation.
+//
+// `action` carries the command text in full, because what the command does is
+// the whole question. Enumerating handlers and reading their actions is the
+// point of this resource.
+private arista.eos.eventHandler @defaults("name trigger actionType action") {
+  // Handler name
+  name string
+  // Event class the handler fires on
+  //
+  // For example `on-boot`, `on-startup-config`, `on-intf`, `on-counters`,
+  // or `on-logging`.
+  trigger string
+  // Remainder of the trigger line
+  //
+  // For example the interface and condition on an `on-intf` trigger. Empty
+  // when the trigger takes no further arguments.
+  triggerDetail string
+  // Kind of action the handler runs
+  //
+  // Typically `bash` for a shell command or `log` for a log message. Empty
+  // when the handler has no action configured, in which case it does
+  // nothing.
+  actionType string
+  // Action text as configured
+  //
+  // For a bash action this is the command line that runs on the switch.
+  action string
+  // Wait before the action runs, in seconds (0 = unset)
+  delay int
+  // Bound on how long the action may run, in seconds (0 = unset)
+  timeout int
+  // Whether the action runs without blocking the event
+  asynchronous bool
+}
+
+// Arista EOS scheduled task
+//
+// A recurring command the device runs on its own, selected by `name`. Like an
+// event handler, a schedule whose `command` starts with `bash` executes a
+// shell command on the switch, on a timer, with no operator present.
+private arista.eos.schedule @defaults("name interval command") {
+  // Schedule name
+  name string
+  // Run interval in minutes (0 = unset)
+  interval int
+  // Cap on retained output files (0 = unset)
+  maxLogFiles int
+  // Bound on how long the command may run, in minutes (0 = unset)
+  timeout int
+  // Command line the schedule runs
+  command string
+}
+
+// Arista EOS installed extension
+//
+// An RPM package installed onto the switch, selected by `name`. Extensions
+// are how third-party and in-house software gets onto EOS, so each one is
+// code running on a network device from outside the vendor image and the
+// installed set is worth inventorying.
+//
+// `presence` and `status` answer different questions: an extension file can
+// be on the device without being activated, and one activated now but not
+// configured to install at boot disappears on the next reload.
+private arista.eos.extension @defaults("name version status") {
+  // Extension file name
+  name string
+  // Extension version
+  version string
+  // Extension release
+  release string
+  // Whether the extension file is on the device, for example `present`
+  presence string
+  // Whether the extension is activated, for example `installed` or `notInstalled`
+  status string
+  // How many RPM packages the extension contains
+  numPackages int
+  // Whether the device reports a problem with the extension
+  error bool
+}
+
+// Arista EOS boot configuration
+//
+// Boot settings for the device: the software image loaded on the next boot
+// and the console speed it comes up with. The image path is what a device
+// actually runs after a reload, so it is worth confirming it points at the
+// image that was reviewed rather than one staged beside it.
+private arista.eos.bootConfig {
+  // Path to the software image loaded on next boot
+  softwareImage string
+  // Console baud rate
+  consoleSpeed int
+  // Memory test setting (empty when unset)
+  memoryTest string
+}
+
+// Arista EOS startup configuration
+//
+// Saved configuration the device loads on boot, as one string. Compare it
+// against the running configuration to find changes that were made live and
+// never saved, which would be lost on the next reload. The
+// `arista.eos.configSavedToStartup` predicate does that comparison.
+arista.eos.startupConfig {
+  // EOS startup-config
+  content() string
+}
+
+// Arista EOS system logging configuration
+//
+// Syslog configuration for the device: the remote collectors it ships
+// messages to, the severity threshold applied to each destination (remote
+// trap, console, terminal monitors, and the on-box buffer), the source
+// interface and facility stamped on outbound messages, and the message
+// format. The `hosts` field is what most audits read first: a device with no
+// collector keeps its log messages on-box, where a reboot loses them and no
+// central system can correlate them.
+//
+// Severity fields carry the token as configured, such as `informational`,
+// `errors`, `disabled`, or a numeric level. An empty severity means the
+// running-config did not set that destination and the release default
+// applies, which is reported as unset rather than filled in with a guess.
+private arista.eos.logging {
+  // Whether system logging is enabled
+  //
+  // True unless `no logging on` is configured. EOS logs by default, so an
+  // absent `logging on` line still means logging is on.
+  enabled bool
+  // Severity threshold for messages sent to remote collectors (`logging trap`)
+  trapSeverity string
+  // Severity threshold for the console (`logging console`)
+  consoleSeverity string
+  // Severity threshold for terminal monitors (`logging monitor`)
+  monitorSeverity string
+  // Severity threshold for the on-box buffer (`logging buffered`)
+  bufferedSeverity string
+  // On-box log buffer size in bytes (0 = unset)
+  bufferedSize int
+  // Whether the log buffer is written to flash so it survives a reboot
+  persistentEnabled bool
+  // Persistent log size in bytes (0 = unset)
+  persistentSize int
+  // Interface whose address is used as the source of outbound syslog traffic
+  sourceInterface string
+  // Syslog facility stamped on outbound messages (for example `local6`)
+  facility string
+  // Timestamp format applied to messages
+  //
+  // Token from `logging format timestamp`, for example `traditional` or
+  // `high-resolution`. Empty when unset.
+  timestampFormat string
+  // Hostname format applied to messages
+  //
+  // Token from `logging format hostname`, for example `fqdn` or `ipv4`.
+  // Empty when unset.
+  hostnameFormat string
+  // Whether messages are emitted in RFC 5424 syslog format
+  rfc5424Format bool
+  // Whether console output is synchronized with command output
+  synchronous bool
+  // Remote syslog collectors the device ships messages to
+  hosts() []arista.eos.logging.host
+}
+
+// Arista EOS remote syslog collector
+//
+// A single remote destination the device ships log messages to, selected by
+// its `host` address. `port` and `protocol` report the transport actually
+// used, falling back to the UDP port 514 default that EOS applies when the
+// configuration line omits them, and `vrf` is the routing instance the
+// collector is reached through.
+private arista.eos.logging.host @defaults("host port protocol vrf") {
+  // Collector hostname or IP address as configured
+  host string
+  // Destination port (514 when the configuration omits it)
+  port int
+  // Transport protocol, `udp` or `tcp` (`udp` when the configuration omits it)
+  protocol string
+  // Routing instance used to reach the collector (empty = default VRF)
+  vrf string
 }

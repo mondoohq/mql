@@ -6,7 +6,7 @@ package resources
 import (
 	"fmt"
 
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
 	corev1 "k8s.io/api/core/v1"
 )
 

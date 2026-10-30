@@ -4,25 +4,31 @@
 package id
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/detector"
-	"go.mondoo.com/mql/v13/providers/os/id/awsec2"
-	"go.mondoo.com/mql/v13/providers/os/id/awsecs"
-	"go.mondoo.com/mql/v13/providers/os/id/biosuuid"
-	"go.mondoo.com/mql/v13/providers/os/id/clouddetect"
-	"go.mondoo.com/mql/v13/providers/os/id/hostname"
-	"go.mondoo.com/mql/v13/providers/os/id/hypervisor"
-	"go.mondoo.com/mql/v13/providers/os/id/ids"
-	"go.mondoo.com/mql/v13/providers/os/id/machineid"
-	"go.mondoo.com/mql/v13/providers/os/id/serialnumber"
-	"go.mondoo.com/mql/v13/providers/os/id/windowsadsid"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/detector"
+	"go.mondoo.com/mql/providers/os/detector/containerenv"
+	"go.mondoo.com/mql/providers/os/detector/crowdstrike"
+	win "go.mondoo.com/mql/providers/os/detector/windows"
+	"go.mondoo.com/mql/providers/os/id/awsec2"
+	"go.mondoo.com/mql/providers/os/id/awsecs"
+	"go.mondoo.com/mql/providers/os/id/biosuuid"
+	"go.mondoo.com/mql/providers/os/id/clouddetect"
+	"go.mondoo.com/mql/providers/os/id/hostname"
+	"go.mondoo.com/mql/providers/os/id/hypervisor"
+	"go.mondoo.com/mql/providers/os/id/ids"
+	"go.mondoo.com/mql/providers/os/id/machineid"
+	"go.mondoo.com/mql/providers/os/id/serialnumber"
+	"go.mondoo.com/mql/providers/os/id/windowsadsid"
 )
 
 type PlatformFingerprint struct {
@@ -55,42 +61,20 @@ func IdentifyPlatform(conn shared.Connection, req *plugin.ConnectReq, p *invento
 	var relatedIds []string
 
 	// Detect hypervisor for two purposes: auto-adding the BIOS UUID detector
-	// when no idDetectors are provided, and setting p.Kind at the bottom.
+	// to the default id detectors, and setting p.Kind at the bottom.
 	var detectedHypervisor string
 	var isVM bool
-	if len(idDetectors) == 0 || p.Kind == "" {
+	if ids.HasDefault(idDetectors) || p.Kind == "" {
 		detectedHypervisor, isVM = hypervisor.Hypervisor(conn, p)
 		if isVM {
 			log.Debug().Str("hypervisor", detectedHypervisor).Msg("detected hypervisor for ID detection")
 		}
 	}
 
-	if len(idDetectors) == 0 {
-		// fallback to default id detectors
-		//
-		// we want to make sure that we mark assets running in the cloud to `virtualmachine`,
-		// therefore we use the cloud detect detector as our first option.
-
-		switch conn.Type() {
-		case shared.Type_Local:
-			idDetectors = []string{ids.IdDetector_CloudDetect, ids.IdDetector_Hostname}
-			if mql.Features(req.Features).IsActive(mql.SerialNumberAsID) {
-				idDetectors = append(idDetectors, ids.IdDetector_SerialNumber)
-			}
-			// Automatically use BIOS UUID for VMs since serial numbers may not be unique
-			// (e.g., OpenStack passes through the host's serial number to VMs)
-			if mql.Features(req.Features).IsActive(mql.BiosUUIDAsID) || isVM {
-				idDetectors = append(idDetectors, ids.IdDetector_BiosUUID)
-			}
-		case shared.Type_SSH:
-			idDetectors = []string{ids.IdDetector_CloudDetect, ids.IdDetector_Hostname}
-			// Use BIOS UUID for SSH connections when explicitly enabled or when VM is detected
-			if mql.Features(req.Features).IsActive(mql.BiosUUIDAsID) || isVM {
-				idDetectors = append(idDetectors, ids.IdDetector_BiosUUID)
-			}
-		case shared.Type_Tar, shared.Type_FileSystem, shared.Type_DockerSnapshot:
-			idDetectors = []string{ids.IdDetector_Hostname}
-		}
+	// An empty list means the default id detectors, and `default` in a list
+	// stands for them next to the detectors named with it.
+	if ids.HasDefault(idDetectors) {
+		idDetectors = ids.ExpandDefault(idDetectors, DefaultIdDetectors(conn.Type(), req, isVM))
 	}
 	fingerprint.ActiveIdDetectors = idDetectors
 
@@ -135,6 +119,33 @@ func IdentifyPlatform(conn shared.Connection, req *plugin.ConnectReq, p *invento
 		}
 	}
 
+	// A mounted filesystem is the one target that can legitimately carry no
+	// machine identity. An extracted container root filesystem is the common
+	// case: the runtime writes /etc/hostname when the container starts, so the
+	// copy in the image layers is empty, and the DMI and cloud-init sources the
+	// other detectors read are absent from an image altogether. Fall back to
+	// whatever identity the tree does hold, and finally to the mount path, so
+	// the asset stays scannable instead of being discarded for having no id.
+	if len(platformIds) == 0 && conn.Type() == shared.Type_FileSystem {
+		for _, fallback := range []string{ids.IdDetector_MachineID, ids.IdDetector_MountPath} {
+			info, err := gatherPlatformInfo(conn, p, fallback)
+			if err != nil || len(info.IDs) == 0 {
+				log.Debug().Err(err).Str("detector", fallback).Msg("no platform id from fallback detector")
+				continue
+			}
+
+			log.Debug().Str("detector", fallback).Strs("platform-ids", info.IDs).
+				Msg("filesystem carries no hostname, falling back for the platform id")
+			platformIds = append(platformIds, info.IDs...)
+			if fingerprint.Name == "" {
+				fingerprint.Name = info.Name
+			}
+			idDetectors = append(idDetectors, fallback)
+			fingerprint.ActiveIdDetectors = idDetectors
+			break
+		}
+	}
+
 	// if we found zero platform ids something went wrong
 	if len(platformIds) == 0 {
 		return nil, p, errors.New("could not determine a platform identifier")
@@ -148,6 +159,14 @@ func IdentifyPlatform(conn shared.Connection, req *plugin.ConnectReq, p *invento
 		})
 	}
 
+	// A local scan started inside a container, or an SSH session into one,
+	// sees an ordinary Linux. It runs on a VM as often as not, so this comes
+	// before the hypervisor fallback.
+	if p.Kind == "" && p.IsFamily("linux") && containerenv.InContainer(conn) {
+		log.Debug().Msg("setting platform kind to container")
+		p.Kind = "container"
+	}
+
 	// If at this point we couldn't detect the platform kind, use the hypervisor
 	// detection result to mark the asset as a virtual machine
 	if p.Kind == "" && isVM {
@@ -157,6 +176,41 @@ func IdentifyPlatform(conn shared.Connection, req *plugin.ConnectReq, p *invento
 
 	log.Debug().Interface("id-detector", idDetectors).Strs("platform-ids", platformIds).Msg("detected platform ids")
 	return &fingerprint, p, nil
+}
+
+// DefaultIdDetectors returns the id detectors a connection of the given type
+// uses when none are requested, or when the request names `default`.
+//
+// We want to make sure that we mark assets running in the cloud as
+// `virtualmachine`, therefore the cloud detect detector is the first option.
+func DefaultIdDetectors(connType shared.ConnectionType, req *plugin.ConnectReq, isVM bool) []string {
+	var features []byte
+	if req != nil {
+		features = req.Features
+	}
+	switch connType {
+	case shared.Type_Local:
+		res := []string{ids.IdDetector_CloudDetect, ids.IdDetector_Hostname}
+		if mql.Features(features).IsActive(mql.SerialNumberAsID) {
+			res = append(res, ids.IdDetector_SerialNumber)
+		}
+		// Automatically use BIOS UUID for VMs since serial numbers may not be unique
+		// (e.g., OpenStack passes through the host's serial number to VMs)
+		if mql.Features(features).IsActive(mql.BiosUUIDAsID) || isVM {
+			res = append(res, ids.IdDetector_BiosUUID)
+		}
+		return res
+	case shared.Type_SSH:
+		res := []string{ids.IdDetector_CloudDetect, ids.IdDetector_Hostname}
+		// Use BIOS UUID for SSH connections when explicitly enabled or when VM is detected
+		if mql.Features(features).IsActive(mql.BiosUUIDAsID) || isVM {
+			res = append(res, ids.IdDetector_BiosUUID)
+		}
+		return res
+	case shared.Type_Tar, shared.Type_FileSystem, shared.Type_DockerSnapshot:
+		return []string{ids.IdDetector_Hostname}
+	}
+	return nil
 }
 
 func GatherNameForPlatformId(id string) string {
@@ -242,6 +296,35 @@ func gatherPlatformInfo(conn shared.Connection, pf *inventory.Platform, idDetect
 			}, nil
 		}
 		return &platformInfo{}, nil
+	case ids.IdDetector_CrowdStrikeAID:
+		// PlatformID is "" without a sensor, and for a sensor that has no
+		// AID (not registered yet) or no CID.
+		if identifier := crowdstrike.Resolve(conn, pf).PlatformID(); identifier != "" {
+			return &platformInfo{
+				IDs:                []string{identifier},
+				Name:               "",
+				RelatedPlatformIDs: []string{},
+			}, nil
+		}
+		return &platformInfo{}, nil
+	case ids.IdDetector_IntuneDevice:
+		identity := win.DeviceIdentityFromLabels(pf)
+		if identity.IntunePlatformID() == "" && pf.IsFamily("windows") {
+			info, err := win.GetIntuneInfo(conn)
+			if err != nil {
+				log.Debug().Err(err).Msg("could not get Intune device information")
+			}
+			identity = info.Identity()
+		}
+		if identifier := identity.IntunePlatformID(); identifier != "" {
+			return &platformInfo{
+				IDs:                []string{identifier},
+				Name:               "",
+				RelatedPlatformIDs: []string{},
+			}, nil
+		}
+		// not Intune-enrolled, or the tenant is unknown
+		return &platformInfo{}, nil
 	case ids.IdDetector_AwsEcs:
 		metadata, err := awsecs.Resolve(conn, pf)
 		if err != nil {
@@ -259,6 +342,26 @@ func gatherPlatformInfo(conn shared.Connection, pf *inventory.Platform, idDetect
 			}, nil
 		}
 		return &platformInfo{}, nil
+	case ids.IdDetector_MountPath:
+		mounted, ok := conn.(shared.ConnectionWithMountPath)
+		if !ok || mounted.MountPath() == "" {
+			return &platformInfo{}, nil
+		}
+
+		// The path is resolved to an absolute one so that the same tree reached
+		// by two spellings stays one asset. Two directories still collide only
+		// if they are the same directory.
+		path, err := filepath.Abs(mounted.MountPath())
+		if err != nil {
+			return nil, err
+		}
+
+		sum := sha256.Sum256([]byte(path))
+		return &platformInfo{
+			IDs:                []string{"//platformid.api.mondoo.app/runtime/filesystem/hash/" + hex.EncodeToString(sum[:])},
+			Name:               path,
+			RelatedPlatformIDs: []string{},
+		}, nil
 	case ids.IdDetector_CloudDetect:
 		cloudPlatformInfo := clouddetect.Detect(conn, pf)
 		if cloudPlatformInfo != nil {

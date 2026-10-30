@@ -7,10 +7,15 @@ import (
 	"bytes"
 	"regexp"
 	"strconv"
+	"strings"
 	"text/template"
 
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"github.com/facebookincubator/nvdtools/wfn"
+	"go.mondoo.com/mql/utils/stringx"
 )
+
+// amznLegacyVersion matches the Amazon Linux 1 version scheme.
+var amznLegacyVersion = regexp.MustCompile(`^(2017|2018)\.`)
 
 type platformCPEEntry struct {
 	Platform    string
@@ -36,10 +41,9 @@ var platformCPES = []platformCPEEntry{
 	{
 		Platform: "amazonlinux",
 		CPEBuilder: func(platform, version string, workstation bool) (string, error) {
-			amzn1 := regexp.MustCompile(`^(2017|2018)\.`)
 			product := ""
 
-			if amzn1.MatchString(version) {
+			if amznLegacyVersion.MatchString(version) {
 				product = "linux"
 			} else if version == "2" {
 				product = "linux_2"
@@ -58,6 +62,22 @@ var platformCPES = []platformCPEEntry{
 	// centos
 	{
 		Platform: "centos",
+		CPEBuilder: func(platform, version string, workstation bool) (string, error) {
+			return cpeVersionPatternFunc(
+				"cpe:2.3:o:centos:centos:{{.Version}}:*:*:*:*:*:*:*",
+				cpePatternArgs{
+					Version: version,
+				})
+		},
+	},
+	// centos stream
+	//
+	// Stream is its own platform for advisory purposes but not for CPE: its
+	// os-release declares CPE_NAME="cpe:/o:centos:centos:9", and NVD has no
+	// centos_stream product to point at, so it keeps the centos:centos name the
+	// distribution gives itself.
+	{
+		Platform: "centos-stream",
 		CPEBuilder: func(platform, version string, workstation bool) (string, error) {
 			return cpeVersionPatternFunc(
 				"cpe:2.3:o:centos:centos:{{.Version}}:*:*:*:*:*:*:*",
@@ -133,13 +153,19 @@ var platformCPES = []platformCPEEntry{
 		},
 	},
 	// suse
+	//
+	// Only used when os-release carries no CPE_NAME (see OsReleaseCPE). SUSE
+	// puts the service pack in the update field: 15.7 is 15:sp7, 15 is 15:*,
+	// and from 16 on the update field carries the full version (16:16.0).
 	{
 		Platform: "sles",
 		CPEBuilder: func(platform, version string, workstation bool) (string, error) {
+			v, update := slesVersionUpdate(version)
 			return cpeVersionPatternFunc(
-				"cpe:2.3:o:suse:suse_linux_enterprise_server:{{.Version}}:*:*:*:*:*:*:*",
+				"cpe:2.3:o:suse:suse_linux_enterprise_server:{{.Version}}:{{.Update}}:*:*:*:*:*:*",
 				cpePatternArgs{
-					Version: version,
+					Version: v,
+					Update:  update,
 				})
 		},
 	},
@@ -227,10 +253,50 @@ var platformCPES = []platformCPEEntry{
 type cpePatternArgs struct {
 	Product   string
 	Version   string
+	Update    string
 	SwEdition string
 }
 
+// slesVersionUpdate splits a SLES version into the version and update fields
+// SUSE uses in its own CPE_NAME: 15.7 is 15 and sp7, 15 is 15 and *, and from
+// SLES 16 on the update is the full version (16.0 is 16 and 16.0).
+func slesVersionUpdate(version string) (string, string) {
+	major, minor, hasMinor := strings.Cut(version, ".")
+	m, err := strconv.Atoi(major)
+	if err != nil {
+		return version, "*"
+	}
+	if m >= 16 {
+		return major, version
+	}
+	if !hasMinor || minor == "" || minor == "0" {
+		return major, "*"
+	}
+	if _, err := strconv.Atoi(minor); err != nil {
+		return version, "*"
+	}
+	return major, "sp" + minor
+}
+
+// OsReleaseCPE binds the CPE_NAME value of an os-release file (a CPE 2.2 URI
+// such as cpe:/o:suse:sles:15:sp7) to a CPE 2.3 formatted string. It reports
+// false when the value is empty or not a CPE.
+func OsReleaseCPE(cpeName string) (string, bool) {
+	cpeName = strings.TrimSpace(cpeName)
+	if cpeName == "" {
+		return "", false
+	}
+	attr, err := wfn.Parse(cpeName)
+	if err != nil {
+		return "", false
+	}
+	return attr.BindToFmtString(), true
+}
+
 func cpeVersionPatternFunc(pattern string, args cpePatternArgs) (string, error) {
+	args.Version = quoteCPEValue(args.Version)
+	args.Update = quoteCPEValue(args.Update)
+	args.SwEdition = quoteCPEValue(args.SwEdition)
 	t := template.Must(template.New("cpe-template").Parse(pattern))
 	buf := bytes.Buffer{}
 	err := t.Execute(&buf, args)
@@ -238,6 +304,26 @@ func cpeVersionPatternFunc(pattern string, args cpePatternArgs) (string, error) 
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+// quoteCPEValue quotes a value for a CPE 2.3 formatted string, where any
+// character other than a letter, digit, "_", "-" or "." is escaped with a
+// backslash. Debian sid's version "forky/sid" otherwise made the CPE invalid.
+// The logical values "*" (ANY) and "-" (NA) stay as they are.
+func quoteCPEValue(v string) string {
+	if v == "*" || v == "-" {
+		return v
+	}
+	var b strings.Builder
+	for _, r := range v {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteByte('\\')
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func PlatformCPE(platform string, version string, workstation bool) (string, bool) {

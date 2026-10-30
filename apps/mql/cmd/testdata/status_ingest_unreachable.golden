@@ -1,0 +1,33 @@
+
+  ● Client     registered   ✓ authenticated
+  ● Platform   reachable · SERVING   ⚠ ingest unreachable
+  ● Updates    up to date
+
+  ── System ──────────────────────────────────────────────
+  │  Host       workstation.localdomain · 192.0.2.10
+  │  Platform   macos 26.5.1 · arm64
+
+  ── mql ──────────────────────────────────────────────
+  │  Version    13.25.0
+  │  API        v13
+  │  Config     defaults — no config file loaded
+  │  Updates    https://releases.mondoo.com
+  │  Channel    stable — the default
+
+  ── Mondoo Platform ──────────────────────────────────────────────
+  │  Endpoint   https://us.api.mondoo.com
+  │  Proxy      none — direct connection
+  │  Status     SERVING   API v13 ✓ in sync
+  │  Time       2026-06-29T21:37:00Z
+  │  Ingest     https://ingest.us.mondoo.com   ✗ unreachable · timeout
+  │  Client     //agents.api.mondoo.app/spaces/test/agents/123
+  │  Account    //agents.api.mondoo.app/spaces/test/serviceaccounts/abc
+
+  ── Providers ──────────────────────────────────────────────
+  │  3 installed · 0 outdated · 3 current
+  │
+  │  ✓ current  aws, core, os
+
+  next steps:
+    → allow egress to ingest.us.mondoo.com:443    scan results are uploaded to this endpoint
+

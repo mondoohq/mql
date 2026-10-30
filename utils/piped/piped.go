@@ -21,7 +21,7 @@ func IsPipe() bool {
 	// Therefore we always want to check for file size if we detected its not a terminal
 	// If we are not checking for fi.Size() > 0 even a run inside of a bash script turn out
 	// to be pipes, therefore we need to verify that there is some data available at the pipe
-	// also read https://flaviocopes.com/go-shell-pipes/
+	// also read https://web.archive.org/web/20221204144717/https://flaviocopes.com/go-shell-pipes/
 	fi, _ := os.Stdin.Stat()
 	isTerminal := (fi.Mode() & os.ModeCharDevice) == os.ModeCharDevice
 	isNamedPipe := (fi.Mode() & os.ModeNamedPipe) == os.ModeNamedPipe

@@ -11,9 +11,9 @@ import (
 	"slices"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/types"
 )
 
 // grafanaDatasourceJSON mirrors one element of the /api/datasources response.
@@ -40,7 +40,7 @@ type grafanaDatasourceJSON struct {
 	JSONData          json.RawMessage `json:"jsonData"`
 }
 
-func (g *mqlGrafana) datasources() ([]interface{}, error) {
+func (g *mqlGrafana) datasources() ([]any, error) {
 	conn, err := grafanaConnection(g.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -59,11 +59,11 @@ func (g *mqlGrafana) datasources() ([]interface{}, error) {
 		return nil, fmt.Errorf("grafana: decoding /api/datasources response: %w", err)
 	}
 
-	list := make([]interface{}, 0, len(raw))
+	list := make([]any, 0, len(raw))
 	for _, ds := range raw {
-		var jsonDataDict interface{}
+		var jsonDataDict any
 		if len(ds.JSONData) > 0 && string(ds.JSONData) != "null" {
-			var parsed interface{}
+			var parsed any
 			if err := json.Unmarshal(ds.JSONData, &parsed); err != nil {
 				return nil, fmt.Errorf("grafana: parsing jsonData for datasource %s: %w", ds.UID, err)
 			}
@@ -167,18 +167,23 @@ func (d *mqlGrafanaDatasource) tlsSkipVerify() (bool, error) {
 	return boolFromJsonData(d.jsonDataMap(), "tlsSkipVerify"), nil
 }
 
-// tlsClientAuth is true if the datasource is configured for mutual TLS, either
-// via the tlsAuth flag in jsonData or by having a stored tlsClientCert secret.
-func (d *mqlGrafanaDatasource) tlsClientAuth() (bool, error) {
-	if boolFromJsonData(d.jsonDataMap(), "tlsAuth") {
-		return true, nil
+// datasourceTLSClientAuth is true if the datasource is configured for mutual
+// TLS, either via the tlsAuth flag in jsonData or by having a stored
+// tlsClientCert / tlsClientKey secret listed in secureJsonFields.
+func datasourceTLSClientAuth(jsonData map[string]any, secureFields []any) bool {
+	if boolFromJsonData(jsonData, "tlsAuth") {
+		return true
 	}
-	for _, f := range d.SecureJsonFields.Data {
+	for _, f := range secureFields {
 		if s, ok := f.(string); ok && (s == "tlsClientCert" || s == "tlsClientKey") {
-			return true, nil
+			return true
 		}
 	}
-	return false, nil
+	return false
+}
+
+func (d *mqlGrafanaDatasource) tlsClientAuth() (bool, error) {
+	return datasourceTLSClientAuth(d.jsonDataMap(), d.SecureJsonFields.Data), nil
 }
 
 func (d *mqlGrafanaDatasource) oauthPassThru() (bool, error) {

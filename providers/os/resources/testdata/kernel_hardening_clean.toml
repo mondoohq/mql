@@ -1,0 +1,21 @@
+# A running Linux kernel that answered all three reads with the "nothing is
+# on" values: ASLR off, lockdown not engaged, and an untainted kernel.
+#
+# The taint word of 0 here is a real measurement of a clean kernel and must
+# stay distinguishable from the unmeasured case in kernel_hardening_absent.toml,
+# which produces the same numbers if the reads are not guarded.
+
+[files."/proc/sys/kernel/randomize_va_space"]
+path = "/proc/sys/kernel/randomize_va_space"
+content = """0
+"""
+
+[files."/sys/kernel/security/lockdown"]
+path = "/sys/kernel/security/lockdown"
+content = """[none] integrity confidentiality
+"""
+
+[files."/proc/sys/kernel/tainted"]
+path = "/proc/sys/kernel/tainted"
+content = """0
+"""

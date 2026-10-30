@@ -1,0 +1,13 @@
+name: ci
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+  shared:
+    uses: octo-org/shared-workflows/.github/workflows/build.yml@main
+  lint:
+    uses: ./.github/workflows/reusable-lint.yml
+    with:
+      only-new-issues: true

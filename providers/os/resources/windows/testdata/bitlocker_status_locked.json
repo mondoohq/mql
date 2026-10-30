@@ -1,0 +1,65 @@
+[
+  {
+    "volume": {
+      "DeviceID": "\\\\?\\Volume{d28d95a1-e183-401f-a374-aa87853f1686}\\",
+      "DriveLetter": "C:",
+      "EncryptionMethod": 0,
+      "PersistentVolumeID": "",
+      "ProtectionStatus": 0,
+      "ConversionStatus": 0
+    },
+    "version": {
+      "Version": 0,
+      "ReturnValue": 0
+    },
+    "conversionStatus": {
+      "ConversionStatus": 0,
+      "WipingStatus": 4294967295,
+      "WipingPercentage": 0,
+      "ReturnValue": 0,
+      "EncryptionPercentage": 0
+    },
+    "lockStatus": {
+      "ReturnValue": 0,
+      "LockStatus": 0
+    },
+    "keyProtectors": [],
+    "keyProtectorReturnValue": 0
+  },
+  {
+    "volume": {
+      "DeviceID": "\\\\?\\Volume{e8b55609-0000-0000-0000-010000000000}\\",
+      "DriveLetter": "Q:",
+      "EncryptionMethod": 6,
+      "PersistentVolumeID": "{4D27EC53-6896-40C2-A8DD-1E826117DDEE}",
+      "ProtectionStatus": 2,
+      "ConversionStatus": 4294967295
+    },
+    "version": {
+      "Version": 2,
+      "ReturnValue": 0
+    },
+    "conversionStatus": {
+      "ConversionStatus": 4294967295,
+      "WipingStatus": 4294967295,
+      "WipingPercentage": 0,
+      "ReturnValue": 2150694912,
+      "EncryptionPercentage": 0
+    },
+    "lockStatus": {
+      "ReturnValue": 0,
+      "LockStatus": 1
+    },
+    "keyProtectors": [
+      {
+        "KeyProtectorID": "{7D07F89B-9EFF-4681-ADBA-E21918964E13}",
+        "KeyProtectorType": 8
+      },
+      {
+        "KeyProtectorID": "{BCDC2F27-19D6-49F8-926D-ADD05EEC0CFB}",
+        "KeyProtectorType": 3
+      }
+    ],
+    "keyProtectorReturnValue": 0
+  }
+]

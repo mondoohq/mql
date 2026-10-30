@@ -1,7 +1,7 @@
 {
   "provider": "gcp",
-  "version": "13.28.0",
-  "generated_at": "2026-07-01T17:26:26-07:00",
+  "version": "14.6.2",
+  "generated_at": "2026-10-27T23:04:21+01:00",
   "permissions": [
     "accessapproval.settings.get",
     "aiplatform.batchPredictionJobs.list",
@@ -22,12 +22,16 @@
     "aiplatform.models.get",
     "aiplatform.models.list",
     "aiplatform.notebookExecutionJobs.list",
+    "aiplatform.notebookRuntimeTemplates.get",
+    "aiplatform.notebookRuntimeTemplates.getIamPolicy",
     "aiplatform.notebookRuntimeTemplates.list",
     "aiplatform.notebookRuntimes.list",
     "aiplatform.persistentResources.list",
+    "aiplatform.pipelineJobs.get",
     "aiplatform.pipelineJobs.list",
     "aiplatform.ragCorpora.list",
     "aiplatform.reasoningEngines.list",
+    "aiplatform.schedules.get",
     "aiplatform.schedules.list",
     "aiplatform.tensorboards.list",
     "aiplatform.trainingPipelines.list",
@@ -60,6 +64,7 @@
     "certificatemanager.dnsauthorizations.get",
     "certificatemanager.dnsauthorizations.list",
     "certificatemanager.trustconfigs.list",
+    "cloudasset.assets.analyzeIamPolicy",
     "cloudasset.assets.searchAllIamPolicies",
     "cloudasset.assets.searchAllResources",
     "cloudbuild.builds.list",
@@ -77,6 +82,7 @@
     "cloudkms.importJobs.list",
     "cloudkms.keyRings.list",
     "cloudkms.locations.list",
+    "cloudkms.protectedResources.search",
     "cloudkms.retiredResources.list",
     "cloudscheduler.jobs.list",
     "cloudsql.backupRuns.list",
@@ -84,6 +90,7 @@
     "cloudsql.instances.list",
     "cloudsql.sslCerts.list",
     "cloudsql.users.list",
+    "cloudtasks.cmekConfig.get",
     "cloudtasks.queues.getIamPolicy",
     "cloudtasks.queues.list",
     "composer.environments.list",
@@ -104,6 +111,8 @@
     "compute.instances.list",
     "compute.interconnectAttachments.list",
     "compute.interconnects.list",
+    "compute.machineImages.getIamPolicy",
+    "compute.machineImages.list",
     "compute.machineTypes.get",
     "compute.machineTypes.list",
     "compute.networkEndpointGroups.list",
@@ -112,6 +121,9 @@
     "compute.packetMirrorings.list",
     "compute.projects.get",
     "compute.publicAdvertisedPrefixes.list",
+    "compute.regionFirewallPolicies.get",
+    "compute.regionFirewallPolicies.list",
+    "compute.regionSecurityPolicies.get",
     "compute.regions.get",
     "compute.regions.list",
     "compute.routers.list",
@@ -146,7 +158,7 @@
     "dataproc.jobs.list",
     "datastore.backupSchedules.list",
     "datastore.databases.list",
-    "datastore.indexes.list",
+    "datastore.schemas.list",
     "datastream.connectionProfiles.get",
     "datastream.connectionProfiles.list",
     "datastream.privateConnections.get",
@@ -158,6 +170,7 @@
     "discoveryengine.engines.list",
     "dlp.columnDataProfiles.list",
     "dlp.connections.list",
+    "dlp.contentPolicies.list",
     "dlp.deidentifyTemplates.list",
     "dlp.fileStoreProfiles.list",
     "dlp.inspectTemplates.list",
@@ -166,25 +179,34 @@
     "dlp.projectDataProfiles.list",
     "dlp.storedInfoTypes.list",
     "dlp.tableDataProfiles.list",
+    "dns.dnsKeys.list",
     "dns.managedZones.getIamPolicy",
     "dns.managedZones.list",
     "dns.policies.list",
     "dns.resourceRecordSets.list",
     "dns.responsePolicies.list",
+    "documentai.processorVersions.get",
+    "documentai.processorVersions.list",
+    "documentai.processors.list",
     "domains.registrations.list",
     "essentialcontacts.contacts.list",
     "eventarc.channels.list",
     "eventarc.triggers.list",
     "file.instances.list",
+    "firebaserules.releases.list",
+    "firebaserules.rulesets.get",
+    "firebaserules.rulesets.list",
     "gkebackup.backupPlans.list",
     "gkebackup.restorePlans.list",
     "iam.denypolicies.list",
+    "iam.googleapis.com/workloadIdentityPoolProviders.list",
+    "iam.googleapis.com/workloadIdentityPools.list",
+    "iam.policybindings.list",
+    "iam.principalaccessboundarypolicies.list",
     "iam.roles.list",
     "iam.serviceAccountKeys.list",
     "iam.serviceAccounts.getIamPolicy",
     "iam.serviceAccounts.list",
-    "iam.workloadIdentityPoolProviders.list",
-    "iam.workloadIdentityPools.list",
     "iap.projects.getSettings",
     "iap.tunnelDestGroups.list",
     "iap.web.getIamPolicy",
@@ -192,6 +214,7 @@
     "ids.endpoints.list",
     "logging.buckets.list",
     "logging.exclusions.list",
+    "logging.logMetrics.list",
     "logging.settings.get",
     "logging.sinks.list",
     "logging.views.list",
@@ -203,6 +226,7 @@
     "memorystore.instances.get",
     "memorystore.instances.list",
     "modelarmor.floorSettings.get",
+    "modelarmor.templates.get",
     "modelarmor.templates.list",
     "monitoring.alertPolicies.list",
     "monitoring.dashboards.list",
@@ -211,9 +235,18 @@
     "monitoring.services.list",
     "monitoring.slos.list",
     "monitoring.uptimeCheckConfigs.list",
+    "networkconnectivity.hubs.list",
+    "networkconnectivity.spokes.list",
+    "networkmanagement.connectivitytests.list",
     "networksecurity.addressGroups.list",
     "networksecurity.authorizationPolicies.list",
     "networksecurity.clientTlsPolicies.list",
+    "networksecurity.firewallEndpointAssociations.list",
+    "networksecurity.firewallEndpoints.get",
+    "networksecurity.firewallEndpoints.list",
+    "networksecurity.gatewaySecurityPolicies.list",
+    "networksecurity.gatewaySecurityPolicyRules.list",
+    "networksecurity.locations.list",
     "networksecurity.securityProfileGroups.list",
     "networksecurity.securityProfiles.list",
     "networksecurity.serverTlsPolicies.list",
@@ -221,30 +254,45 @@
     "networksecurity.urlLists.list",
     "orgpolicy.constraints.list",
     "orgpolicy.policies.list",
+    "orgpolicy.policy.get",
     "osconfig.inventories.get",
     "osconfig.osPolicyAssignments.list",
     "osconfig.patchDeployments.list",
     "osconfig.vulnerabilityReports.get",
     "policyanalyzer.serviceAccountLastAuthenticationActivities.query",
+    "privateca.caPools.getIamPolicy",
     "privateca.caPools.list",
     "privateca.certificateAuthorities.list",
+    "privateca.certificateRevocationLists.list",
+    "privateca.certificateTemplates.list",
     "privateca.certificates.list",
+    "privilegedaccessmanager.entitlements.list",
+    "privilegedaccessmanager.grants.list",
     "pubsub.schemas.get",
     "pubsub.schemas.list",
     "redis.backups.list",
     "redis.clusters.list",
     "redis.instances.list",
+    "resourcemanager.hierarchyNodes.listTagBindings",
     "resourcemanager.projects.get",
     "resourcemanager.projects.getIamPolicy",
-    "resourcemanager.resourceTagBindings.list",
+    "resourcemanager.tagKeys.get",
+    "resourcemanager.tagKeys.getIamPolicy",
+    "resourcemanager.tagKeys.list",
+    "resourcemanager.tagValues.get",
+    "resourcemanager.tagValues.getIamPolicy",
+    "resourcemanager.tagValues.list",
     "run.jobs.getIamPolicy",
     "run.jobs.list",
     "run.operations.list",
     "run.services.getIamPolicy",
     "run.services.list",
+    "secretmanager.locations.list",
     "secretmanager.secrets.getIamPolicy",
     "secretmanager.secrets.list",
     "secretmanager.versions.list",
+    "securitycenter.effectivesecurityhealthanalyticscustommodules.list",
+    "securitycentermanagement.effectiveEventThreatDetectionCustomModules.list",
     "serviceusage.services.get",
     "serviceusage.services.list",
     "source.repos.list",
@@ -262,6 +310,7 @@
     "storage.buckets.getIamPolicy",
     "storage.buckets.list",
     "storage.buckets.listEffectiveTags",
+    "storage.hmacKeys.list",
     "workflows.workflows.list"
   ],
   "details": [
@@ -380,6 +429,18 @@
       "source_file": "vertexai.go"
     },
     {
+      "permission": "aiplatform.notebookRuntimeTemplates.get",
+      "service": "aiplatform",
+      "action": "GetNotebookRuntimeTemplate",
+      "source_file": "vertexai.go"
+    },
+    {
+      "permission": "aiplatform.notebookRuntimeTemplates.getIamPolicy",
+      "service": "aiplatform",
+      "action": "GetIamPolicy",
+      "source_file": "vertexai.go"
+    },
+    {
       "permission": "aiplatform.notebookRuntimeTemplates.list",
       "service": "aiplatform",
       "action": "ListNotebookRuntimeTemplates",
@@ -398,6 +459,12 @@
       "source_file": "vertexai.go"
     },
     {
+      "permission": "aiplatform.pipelineJobs.get",
+      "service": "aiplatform",
+      "action": "GetPipelineJob",
+      "source_file": "vertexai.go"
+    },
+    {
       "permission": "aiplatform.pipelineJobs.list",
       "service": "aiplatform",
       "action": "ListPipelineJobs",
@@ -413,6 +480,12 @@
       "permission": "aiplatform.reasoningEngines.list",
       "service": "aiplatform",
       "action": "ListReasoningEngines",
+      "source_file": "vertexai.go"
+    },
+    {
+      "permission": "aiplatform.schedules.get",
+      "service": "aiplatform",
+      "action": "GetSchedule",
       "source_file": "vertexai.go"
     },
     {
@@ -494,6 +567,20 @@
       "source_file": "artifactregistry.go"
     },
     {
+      "permission": "assuredworkloads.violations.list",
+      "service": "assuredworkloads",
+      "action": "Violations.List",
+      "source_file": "assured_workloads.go",
+      "scope": "org"
+    },
+    {
+      "permission": "assuredworkloads.workload.list",
+      "service": "assuredworkloads",
+      "action": "Workloads.List",
+      "source_file": "assured_workloads.go",
+      "scope": "org"
+    },
+    {
       "permission": "backupdr.backupPlans.list",
       "service": "backupdr",
       "action": "ListBackupPlans",
@@ -550,7 +637,7 @@
     {
       "permission": "binaryauthorization.policy.get",
       "service": "binaryauthorization",
-      "action": "GetSystemPolicy",
+      "action": "GetPolicy",
       "source_file": "binary_authorization.go"
     },
     {
@@ -606,6 +693,12 @@
       "service": "certificatemanager",
       "action": "ListTrustConfigs",
       "source_file": "certificatemanager.go"
+    },
+    {
+      "permission": "cloudasset.assets.analyzeIamPolicy",
+      "service": "cloudasset",
+      "action": "AnalyzeIamPolicy",
+      "source_file": "asset_access_analysis.go"
     },
     {
       "permission": "cloudasset.assets.searchAllIamPolicies",
@@ -722,6 +815,12 @@
       "source_file": "kms.go"
     },
     {
+      "permission": "cloudkms.protectedResources.search",
+      "service": "kmsinventory",
+      "action": "CryptoKeys.GetProtectedResourcesSummary",
+      "source_file": "kms_protected_resources.go"
+    },
+    {
       "permission": "cloudkms.retiredResources.list",
       "service": "cloudkms",
       "action": "ListRetiredResources",
@@ -762,6 +861,12 @@
       "service": "cloudsql",
       "action": "Users.List",
       "source_file": "sql.go"
+    },
+    {
+      "permission": "cloudtasks.cmekConfig.get",
+      "service": "cloudtasks",
+      "action": "GetCmekConfig",
+      "source_file": "cloudtasks.go"
     },
     {
       "permission": "cloudtasks.queues.getIamPolicy",
@@ -824,6 +929,12 @@
       "source_file": "compute_instance_groups_firewall_policies.go"
     },
     {
+      "permission": "compute.firewallPolicies.list",
+      "service": "compute",
+      "action": "FirewallPolicies.List",
+      "source_file": "firewall_policies_hierarchical.go"
+    },
+    {
       "permission": "compute.firewalls.list",
       "service": "compute",
       "action": "Firewalls.List",
@@ -860,6 +971,12 @@
       "source_file": "compute_instance_groups_firewall_policies.go"
     },
     {
+      "permission": "compute.instanceGroups.list",
+      "service": "compute",
+      "action": "InstanceGroups.ListInstances",
+      "source_file": "compute_network_edges.go"
+    },
+    {
       "permission": "compute.instanceTemplates.list",
       "service": "compute",
       "action": "InstanceTemplates.List",
@@ -882,6 +999,18 @@
       "service": "compute",
       "action": "Interconnects.List",
       "source_file": "compute_networking.go"
+    },
+    {
+      "permission": "compute.machineImages.getIamPolicy",
+      "service": "compute",
+      "action": "MachineImages.GetIamPolicy",
+      "source_file": "compute_machine_images.go"
+    },
+    {
+      "permission": "compute.machineImages.list",
+      "service": "compute",
+      "action": "MachineImages.List",
+      "source_file": "compute_machine_images.go"
     },
     {
       "permission": "compute.machineTypes.get",
@@ -922,6 +1051,12 @@
     {
       "permission": "compute.projects.get",
       "service": "compute",
+      "action": "Projects.GetXpnHost",
+      "source_file": "compute_shared_vpc.go"
+    },
+    {
+      "permission": "compute.projects.get",
+      "service": "compute",
       "action": "Projects.Get",
       "source_file": "project.go"
     },
@@ -930,6 +1065,24 @@
       "service": "compute",
       "action": "PublicAdvertisedPrefixes.List",
       "source_file": "compute_networking.go"
+    },
+    {
+      "permission": "compute.regionFirewallPolicies.get",
+      "service": "compute",
+      "action": "RegionNetworkFirewallPolicies.Get",
+      "source_file": "compute_instance_groups_firewall_policies.go"
+    },
+    {
+      "permission": "compute.regionFirewallPolicies.list",
+      "service": "compute",
+      "action": "NetworkFirewallPolicies.AggregatedList",
+      "source_file": "compute_instance_groups_firewall_policies.go"
+    },
+    {
+      "permission": "compute.regionSecurityPolicies.get",
+      "service": "compute",
+      "action": "RegionSecurityPolicies.Get",
+      "source_file": "compute.go"
     },
     {
       "permission": "compute.regions.get",
@@ -960,6 +1113,12 @@
       "service": "compute",
       "action": "Regions.List",
       "source_file": "dataproc.go"
+    },
+    {
+      "permission": "compute.regions.list",
+      "service": "compute",
+      "action": "Regions.List",
+      "source_file": "insights.go"
     },
     {
       "permission": "compute.routers.list",
@@ -1091,13 +1250,13 @@
       "permission": "compute.zones.list",
       "service": "compute",
       "action": "Zones.List",
-      "source_file": "osconfig.go"
+      "source_file": "insights.go"
     },
     {
       "permission": "compute.zones.list",
       "service": "compute",
       "action": "Zones.List",
-      "source_file": "recommendations.go"
+      "source_file": "osconfig.go"
     },
     {
       "permission": "container.clusters.list",
@@ -1172,7 +1331,7 @@
       "source_file": "firestore.go"
     },
     {
-      "permission": "datastore.indexes.list",
+      "permission": "datastore.schemas.list",
       "service": "datastore",
       "action": "ListIndexes",
       "source_file": "firestore.go"
@@ -1244,6 +1403,12 @@
       "source_file": "dlp.go"
     },
     {
+      "permission": "dlp.contentPolicies.list",
+      "service": "dlp",
+      "action": "ListContentPolicies",
+      "source_file": "dlp.go"
+    },
+    {
       "permission": "dlp.deidentifyTemplates.list",
       "service": "dlp",
       "action": "ListDeidentifyTemplates",
@@ -1292,6 +1457,12 @@
       "source_file": "dlp.go"
     },
     {
+      "permission": "dns.dnsKeys.list",
+      "service": "dns",
+      "action": "DnsKeys.List",
+      "source_file": "dns_dnskeys.go"
+    },
+    {
       "permission": "dns.managedZones.getIamPolicy",
       "service": "dns",
       "action": "ManagedZones.GetIamPolicy",
@@ -1320,6 +1491,24 @@
       "service": "dns",
       "action": "ResponsePolicies.List",
       "source_file": "dns.go"
+    },
+    {
+      "permission": "documentai.processorVersions.get",
+      "service": "documentai",
+      "action": "GetProcessorVersion",
+      "source_file": "documentai.go"
+    },
+    {
+      "permission": "documentai.processorVersions.list",
+      "service": "documentai",
+      "action": "ListProcessorVersions",
+      "source_file": "documentai.go"
+    },
+    {
+      "permission": "documentai.processors.list",
+      "service": "documentai",
+      "action": "ListProcessors",
+      "source_file": "documentai.go"
     },
     {
       "permission": "domains.registrations.list",
@@ -1352,6 +1541,24 @@
       "source_file": "filestore.go"
     },
     {
+      "permission": "firebaserules.releases.list",
+      "service": "firebaserules",
+      "action": "Releases.List",
+      "source_file": "firebaserules.go"
+    },
+    {
+      "permission": "firebaserules.rulesets.get",
+      "service": "firebaserules",
+      "action": "Rulesets.Get",
+      "source_file": "firebaserules.go"
+    },
+    {
+      "permission": "firebaserules.rulesets.list",
+      "service": "firebaserules",
+      "action": "Rulesets.List",
+      "source_file": "firebaserules.go"
+    },
+    {
       "permission": "gkebackup.backupPlans.list",
       "service": "gkebackup",
       "action": "ListBackupPlans",
@@ -1370,6 +1577,44 @@
       "source_file": "iam.go"
     },
     {
+      "permission": "iam.googleapis.com/workforcePoolProviders.list",
+      "service": "iam",
+      "action": "WorkforcePools.Providers.List",
+      "source_file": "iam_workforce.go",
+      "scope": "org"
+    },
+    {
+      "permission": "iam.googleapis.com/workforcePools.list",
+      "service": "iam",
+      "action": "WorkforcePools.List",
+      "source_file": "iam_workforce.go",
+      "scope": "org"
+    },
+    {
+      "permission": "iam.googleapis.com/workloadIdentityPoolProviders.list",
+      "service": "iam",
+      "action": "WorkloadIdentityPools.Providers.List",
+      "source_file": "iam_workload_identity.go"
+    },
+    {
+      "permission": "iam.googleapis.com/workloadIdentityPools.list",
+      "service": "iam",
+      "action": "WorkloadIdentityPools.List",
+      "source_file": "iam_workload_identity.go"
+    },
+    {
+      "permission": "iam.policybindings.list",
+      "service": "iam",
+      "action": "ListPolicyBindings",
+      "source_file": "iam_pab.go"
+    },
+    {
+      "permission": "iam.principalaccessboundarypolicies.list",
+      "service": "iam",
+      "action": "ListPrincipalAccessBoundaryPolicies",
+      "source_file": "iam_pab.go"
+    },
+    {
       "permission": "iam.roles.list",
       "service": "iam",
       "action": "ListRolesIter",
@@ -1378,7 +1623,7 @@
     {
       "permission": "iam.serviceAccountKeys.list",
       "service": "iam",
-      "action": "ListServiceAccountKeys",
+      "action": "Keys.List",
       "source_file": "iam.go"
     },
     {
@@ -1392,18 +1637,6 @@
       "service": "iam",
       "action": "ListServiceAccounts",
       "source_file": "iam.go"
-    },
-    {
-      "permission": "iam.workloadIdentityPoolProviders.list",
-      "service": "iam",
-      "action": "Providers.List",
-      "source_file": "iam_workload_identity.go"
-    },
-    {
-      "permission": "iam.workloadIdentityPools.list",
-      "service": "iam",
-      "action": "WorkloadIdentityPools.List",
-      "source_file": "iam_workload_identity.go"
     },
     {
       "permission": "iap.projects.getSettings",
@@ -1448,10 +1681,22 @@
       "source_file": "logging.go"
     },
     {
+      "permission": "logging.logMetrics.list",
+      "service": "logging",
+      "action": "Metrics.List",
+      "source_file": "logging.go"
+    },
+    {
       "permission": "logging.settings.get",
       "service": "logging",
       "action": "Projects.GetCmekSettings",
       "source_file": "logging.go"
+    },
+    {
+      "permission": "logging.settings.get",
+      "service": "logging",
+      "action": "Folders.GetSettings",
+      "source_file": "logging_settings.go"
     },
     {
       "permission": "logging.sinks.list",
@@ -1514,6 +1759,12 @@
       "source_file": "modelarmor.go"
     },
     {
+      "permission": "modelarmor.templates.get",
+      "service": "modelarmor",
+      "action": "GetTemplate",
+      "source_file": "modelarmor.go"
+    },
+    {
       "permission": "modelarmor.templates.list",
       "service": "modelarmor",
       "action": "ListTemplates",
@@ -1562,6 +1813,24 @@
       "source_file": "monitoring.go"
     },
     {
+      "permission": "networkconnectivity.hubs.list",
+      "service": "networkconnectivity",
+      "action": "ListHubs",
+      "source_file": "network_connectivity.go"
+    },
+    {
+      "permission": "networkconnectivity.spokes.list",
+      "service": "networkconnectivity",
+      "action": "ListSpokes",
+      "source_file": "network_connectivity.go"
+    },
+    {
+      "permission": "networkmanagement.connectivitytests.list",
+      "service": "networkmanagement",
+      "action": "ListConnectivityTests",
+      "source_file": "network_management.go"
+    },
+    {
       "permission": "networksecurity.addressGroups.list",
       "service": "networksecurity",
       "action": "AddressGroups.List",
@@ -1578,6 +1847,42 @@
       "service": "networksecurity",
       "action": "ClientTlsPolicies.List",
       "source_file": "networksecurity.go"
+    },
+    {
+      "permission": "networksecurity.firewallEndpointAssociations.list",
+      "service": "networksecurity",
+      "action": "FirewallEndpointAssociations.List",
+      "source_file": "networksecurity_ngfw.go"
+    },
+    {
+      "permission": "networksecurity.firewallEndpoints.get",
+      "service": "networksecurity",
+      "action": "FirewallEndpoints.Get",
+      "source_file": "networksecurity_ngfw.go"
+    },
+    {
+      "permission": "networksecurity.firewallEndpoints.list",
+      "service": "networksecurity",
+      "action": "FirewallEndpoints.List",
+      "source_file": "networksecurity_ngfw.go"
+    },
+    {
+      "permission": "networksecurity.gatewaySecurityPolicies.list",
+      "service": "networksecurity",
+      "action": "GatewaySecurityPolicies.List",
+      "source_file": "networksecurity_ngfw.go"
+    },
+    {
+      "permission": "networksecurity.gatewaySecurityPolicyRules.list",
+      "service": "networksecurity",
+      "action": "Rules.List",
+      "source_file": "networksecurity_ngfw.go"
+    },
+    {
+      "permission": "networksecurity.locations.list",
+      "service": "networksecurity",
+      "action": "Locations.List",
+      "source_file": "networksecurity_ngfw.go"
     },
     {
       "permission": "networksecurity.securityProfileGroups.list",
@@ -1629,6 +1934,12 @@
       "source_file": "orgpolicy.go"
     },
     {
+      "permission": "orgpolicy.policy.get",
+      "service": "orgpolicy",
+      "action": "GetEffectivePolicy",
+      "source_file": "orgpolicy_effective.go"
+    },
+    {
       "permission": "osconfig.inventories.get",
       "service": "osconfig",
       "action": "Inventories.Get",
@@ -1659,6 +1970,12 @@
       "source_file": "iam.go"
     },
     {
+      "permission": "privateca.caPools.getIamPolicy",
+      "service": "privateca",
+      "action": "GetIamPolicy",
+      "source_file": "privateca.go"
+    },
+    {
       "permission": "privateca.caPools.list",
       "service": "privateca",
       "action": "ListCaPools",
@@ -1671,10 +1988,34 @@
       "source_file": "privateca.go"
     },
     {
+      "permission": "privateca.certificateRevocationLists.list",
+      "service": "privateca",
+      "action": "ListCertificateRevocationLists",
+      "source_file": "privateca.go"
+    },
+    {
+      "permission": "privateca.certificateTemplates.list",
+      "service": "privateca",
+      "action": "ListCertificateTemplates",
+      "source_file": "privateca.go"
+    },
+    {
       "permission": "privateca.certificates.list",
       "service": "privateca",
       "action": "ListCertificates",
       "source_file": "privateca.go"
+    },
+    {
+      "permission": "privilegedaccessmanager.entitlements.list",
+      "service": "privilegedaccessmanager",
+      "action": "ListEntitlements",
+      "source_file": "privileged_access_manager.go"
+    },
+    {
+      "permission": "privilegedaccessmanager.grants.list",
+      "service": "privilegedaccessmanager",
+      "action": "ListGrants",
+      "source_file": "privileged_access_manager.go"
     },
     {
       "permission": "pubsub.schemas.get",
@@ -1726,6 +2067,12 @@
       "action": "Folders.List",
       "source_file": "folder.go",
       "scope": "org"
+    },
+    {
+      "permission": "resourcemanager.hierarchyNodes.listTagBindings",
+      "service": "resourcemanager",
+      "action": "TagBindings.List",
+      "source_file": "project.go"
     },
     {
       "permission": "resourcemanager.organizations.get",
@@ -1781,10 +2128,40 @@
       "scope": "org"
     },
     {
-      "permission": "resourcemanager.resourceTagBindings.list",
+      "permission": "resourcemanager.tagKeys.get",
       "service": "resourcemanager",
-      "action": "TagBindings.List",
-      "source_file": "project.go"
+      "action": "TagKeys.Get",
+      "source_file": "resourcemanager_tags.go"
+    },
+    {
+      "permission": "resourcemanager.tagKeys.getIamPolicy",
+      "service": "resourcemanager",
+      "action": "TagKeys.GetIamPolicy",
+      "source_file": "resourcemanager_tags.go"
+    },
+    {
+      "permission": "resourcemanager.tagKeys.list",
+      "service": "resourcemanager",
+      "action": "TagKeys.List",
+      "source_file": "resourcemanager_tags.go"
+    },
+    {
+      "permission": "resourcemanager.tagValues.get",
+      "service": "resourcemanager",
+      "action": "TagValues.Get",
+      "source_file": "resourcemanager_tags.go"
+    },
+    {
+      "permission": "resourcemanager.tagValues.getIamPolicy",
+      "service": "resourcemanager",
+      "action": "TagValues.GetIamPolicy",
+      "source_file": "resourcemanager_tags.go"
+    },
+    {
+      "permission": "resourcemanager.tagValues.list",
+      "service": "resourcemanager",
+      "action": "TagValues.List",
+      "source_file": "resourcemanager_tags.go"
     },
     {
       "permission": "run.jobs.getIamPolicy",
@@ -1817,6 +2194,12 @@
       "source_file": "cloudrun.go"
     },
     {
+      "permission": "secretmanager.locations.list",
+      "service": "secretmanager",
+      "action": "ListLocations",
+      "source_file": "secretmanager.go"
+    },
+    {
       "permission": "secretmanager.secrets.getIamPolicy",
       "service": "secretmanager",
       "action": "GetIamPolicy",
@@ -1833,6 +2216,18 @@
       "service": "secretmanager",
       "action": "ListSecretVersions",
       "source_file": "secretmanager.go"
+    },
+    {
+      "permission": "securitycenter.effectivesecurityhealthanalyticscustommodules.list",
+      "service": "securitycenter",
+      "action": "ListEffectiveSecurityHealthAnalyticsCustomModules",
+      "source_file": "securitycenter_custom_modules.go"
+    },
+    {
+      "permission": "securitycentermanagement.effectiveEventThreatDetectionCustomModules.list",
+      "service": "securitycenter",
+      "action": "ListEffectiveEventThreatDetectionCustomModules",
+      "source_file": "securitycenter_custom_modules.go"
     },
     {
       "permission": "serviceusage.services.get",
@@ -1937,6 +2332,12 @@
       "source_file": "storage.go"
     },
     {
+      "permission": "storage.hmacKeys.list",
+      "service": "storage",
+      "action": "HmacKeys.List",
+      "source_file": "storage_hmac.go"
+    },
+    {
       "permission": "workflows.workflows.list",
       "service": "workflows",
       "action": "Workflows.List",
@@ -1944,6 +2345,10 @@
     }
   ],
   "org_level_permissions": [
+    "assuredworkloads.violations.list",
+    "assuredworkloads.workload.list",
+    "iam.googleapis.com/workforcePoolProviders.list",
+    "iam.googleapis.com/workforcePools.list",
     "orgpolicy.customConstraints.list",
     "resourcemanager.folders.get",
     "resourcemanager.folders.getIamPolicy",

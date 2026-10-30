@@ -4,10 +4,12 @@
 package resources
 
 import (
+	"strconv"
 	"strings"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 // systemProfilerSharingCmd populates the unified Sharing panel view —
@@ -21,21 +23,24 @@ type mqlMacosSharingInternal struct {
 	lock    sync.Mutex
 	fetched bool
 	state   map[string]bool
+
+	sourcesLock sync.Mutex
+	sources     *sharingSources
 }
 
 func (s *mqlMacosSharing) id() (string, error) {
 	return "macos.sharing", nil
 }
 
-// fetchState runs `system_profiler SPSharingDataType` once and
-// returns the parsed map of service name → enabled. Non-Darwin hosts
-// (or hosts where system_profiler is unreachable) get an empty map,
-// which surfaces as `false` on every accessor — fail-soft for
-// systems that simply don't have a Sharing panel.
+// fetchState runs `system_profiler SPSharingDataType` once and returns the
+// parsed map of service name → enabled.
+//
+// An empty map means the Sharing panel could not be read, not that every
+// service is off. macOS 26 dropped SPSharingDataType altogether -- the
+// command exits 0 and prints nothing -- so an empty result must never be
+// read as "everything is off". sharingFlag reads each toggle from its own
+// setting instead (see macos_sharing_sources.go).
 func (s *mqlMacosSharing) fetchState() (map[string]bool, error) {
-	if s.fetched {
-		return s.state, nil
-	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	if s.fetched {
@@ -77,7 +82,7 @@ func (s *mqlMacosSharing) fetchState() (map[string]bool, error) {
 // don't match the On/Off shape and are quietly skipped.
 func parseSharingOutput(stdout string) map[string]bool {
 	out := map[string]bool{}
-	for _, raw := range strings.Split(stdout, "\n") {
+	for raw := range strings.SplitSeq(stdout, "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" {
 			continue
@@ -98,17 +103,52 @@ func parseSharingOutput(stdout string) map[string]bool {
 	return out
 }
 
-// sharingFlag returns the bool for one Sharing panel entry. Missing
-// entries (some macOS versions omit services that aren't installed,
-// e.g. DVD or CD Sharing on Apple Silicon) read as `false` — the
-// "service is not present" outcome is operationally equivalent to
-// "service is off" for audit purposes.
+// sharingFlag returns the bool for one Sharing panel entry.
+//
+// A panel that returned entries but not this one reads as `false`: some macOS
+// versions omit services that aren't installed (DVD or CD Sharing on Apple
+// Silicon), and "not present" is operationally the same as "off".
+//
+// A panel that returned nothing at all is a different thing -- nothing was
+// measured. That is the normal outcome on macOS 26, which has no
+// SPSharingDataType reporter, so the toggle is read from the setting behind
+// it instead, never assumed off.
 func (s *mqlMacosSharing) sharingFlag(name string) (bool, error) {
-	state, err := s.fetchState()
-	if err != nil {
-		return false, err
+	conn := s.MqlRuntime.Connection.(shared.Connection)
+	// Before macOS 26 the panel is tried first. An empty panel there falls
+	// through to the settings below instead of erroring: they exist on
+	// those releases too, so a read value beats "unavailable".
+	if !sharingPanelRemoved(conn.Asset().GetPlatform().GetVersion()) {
+		state, err := s.fetchState()
+		if err != nil {
+			return false, err
+		}
+		if len(state) > 0 {
+			return state[name], nil
+		}
 	}
-	return state[name], nil
+
+	s.sourcesLock.Lock()
+	if s.sources == nil {
+		runtime := s.MqlRuntime
+		s.sources = &sharingSources{
+			conn:      conn,
+			listUsers: func() ([]targetUser, error) { return targetUserHomes(runtime) },
+		}
+	}
+	sources := s.sources
+	s.sourcesLock.Unlock()
+	return sources.flag(name)
+}
+
+// sharingPanelRemoved reports whether this macOS release has no
+// SPSharingDataType reporter: macOS 26 and later. There system_profiler
+// exits 0 with no output, and at 150-290ms it is the most expensive step of
+// reading the panel, so it is skipped. An unknown version still tries it.
+func sharingPanelRemoved(version string) bool {
+	major, _, _ := strings.Cut(version, ".")
+	n, err := strconv.Atoi(major)
+	return err == nil && n >= 26
 }
 
 func (s *mqlMacosSharing) screenSharing() (bool, error) {

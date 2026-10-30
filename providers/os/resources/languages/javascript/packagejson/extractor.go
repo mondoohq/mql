@@ -6,9 +6,11 @@ package packagejson
 import (
 	"encoding/json"
 	"io"
+	"regexp"
+	"strings"
 
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/javascript"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/javascript"
 )
 
 var (
@@ -66,19 +68,48 @@ func (p *packageJson) authorName() string {
 	return p.Author.Name
 }
 
-// licenseExpression returns the SPDX expression from package.json
-// `license`. Older packages may use the deprecated `licenses` array;
-// we don't support that here yet — surface empty in that case and add
-// it later if a real package hits it.
+// licenseExpression returns the SPDX expression the package.json states.
+//
+// `license` is the current field and wins whenever it names a license. Packages
+// published before npm settled on it instead carry a `licenses` array, whose
+// members are `{"type": ..., "url": ...}` objects; a package listing several is
+// offering a choice among them, which LicenseExpression renders as SPDX's OR.
+//
+// npm deprecated `licenses` in 2014, but a registry does not rewrite what was
+// published: packages carrying only the array are still installed today, and
+// reading only `license` reported them as stating no license at all.
 func (p *packageJson) licenseExpression() string {
-	if p.License == nil {
-		return ""
+	if p.License != nil {
+		if expr := languages.LicenseExpression([]string{p.License.Value}); expr != "" {
+			return expr
+		}
 	}
-	return p.License.Value
+
+	values := make([]string, 0, len(p.Licenses))
+	for _, l := range p.Licenses {
+		values = append(values, l.Value)
+	}
+	return languages.LicenseExpression(values)
 }
 
 func (p *packageJson) Direct() languages.Packages {
 	return nil
+}
+
+// exactVersionSpec matches a dependency spec that names exactly one version:
+// a full semver version, optionally written with a leading "=" or "v", as npm
+// accepts it. Anything else is a range, a dist-tag, a URL or a path.
+var exactVersionSpec = regexp.MustCompile(`^=?v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$`)
+
+// pinnedVersion returns the version a dependency spec pins, or "" when the spec
+// allows more than one version ("^4.3.4", "~1.2.0", "4", "4.x", "*", "latest",
+// "file:..", "git+https://..").
+func pinnedVersion(spec string) string {
+	m := exactVersionSpec.FindStringSubmatch(strings.TrimSpace(spec))
+	if m == nil {
+		return ""
+	}
+	return m[1]
 }
 
 func (p *packageJson) Transitive() languages.Packages {
@@ -90,7 +121,15 @@ func (p *packageJson) Transitive() languages.Packages {
 		transitive = append(transitive, r)
 	}
 
-	for k, v := range p.Dependencies {
+	// A dependency in package.json is a declaration, not an installed package:
+	// "^4.3.4" or "4" says which versions would be accepted, not which one is
+	// on disk. Installed packages are read from node_modules or a lockfile.
+	// Only a spec that pins one exact version names the version npm installs.
+	for k, spec := range p.Dependencies {
+		v := pinnedVersion(spec)
+		if v == "" {
+			continue
+		}
 		transitive = append(transitive, &languages.Package{
 			Name:         k,
 			Version:      v,

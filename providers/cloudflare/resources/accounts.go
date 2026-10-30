@@ -7,11 +7,11 @@ import (
 	"errors"
 	"strings"
 
-	cloudflare "github.com/cloudflare/cloudflare-go/v6"
-	"github.com/cloudflare/cloudflare-go/v6/accounts"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/cloudflare/connection"
+	cloudflare "github.com/cloudflare/cloudflare-go/v7"
+	"github.com/cloudflare/cloudflare-go/v7/accounts"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/cloudflare/connection"
 )
 
 func (c *mqlCloudflareAccount) id() (string, error) {
@@ -37,7 +37,7 @@ func initCloudflareAccount(runtime *plugin.Runtime, args map[string]*llx.RawData
 	}
 
 	for _, platformId := range conn.Asset().PlatformIds {
-		if accId := strings.TrimPrefix(platformId, connection.PlatformIdCloudflareAccount); accId != platformId {
+		if accId, ok := strings.CutPrefix(platformId, connection.PlatformIdCloudflareAccount); ok {
 			acc, ok := runtime.Resources.Get("cloudflare.account\x00" + accId)
 			if !ok {
 				return nil, nil, errors.New("account not found")

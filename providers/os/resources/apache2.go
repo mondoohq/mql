@@ -6,7 +6,10 @@ package resources
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
+	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,27 +18,39 @@ import (
 	"sync"
 
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/apache2"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/apache2"
+	"go.mondoo.com/mql/providers/os/resources/haproxy"
+	"go.mondoo.com/mql/providers/os/resources/systemd"
+	"go.mondoo.com/mql/types"
 )
 
 func (s *mqlApache2) id() (string, error) {
 	return "apache2", nil
 }
 
-// apacheVersionBinaries lists the well-known binary paths for the Apache httpd
-// server. The version string (e.g. "Apache/2.4.62") is embedded as a constant in
-// the binary, so we can extract it by reading the file directly — no command
-// execution required.
-var apacheVersionBinaries = []string{
+// apacheBinaries lists the well-known binary paths for the Apache httpd
+// server. Both the version string (e.g. "Apache/2.4.62") and the compiled-in
+// configuration layout are embedded as constants in the binary, so we can
+// extract them by reading the file directly — no command execution required,
+// which keeps this working on image and filesystem scans.
+var apacheBinaries = []string{
 	"/usr/sbin/apache2",
 	"/usr/sbin/httpd",
 	"/usr/local/sbin/httpd",
 	"/usr/local/bin/httpd",
+	// A source build defaults to --prefix=/usr/local/apache2 and keeps its
+	// binary, configuration and content under it. The upstream httpd container
+	// image is built this way.
+	"/usr/local/apache2/bin/httpd",
+	// Homebrew, on Apple Silicon and Intel respectively.
+	"/opt/homebrew/bin/httpd",
+	"/usr/local/opt/httpd/bin/httpd",
+	// AIX Toolbox, with HTTPD_ROOT /opt/freeware/etc/httpd.
+	"/opt/freeware/sbin/httpd",
 }
 
 // apacheVersionCommands are tried as a fallback when the binary cannot be read.
@@ -45,13 +60,25 @@ var apacheVersionTag = []byte("Apache/")
 
 func (s *mqlApache2) version() (string, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
+	if v := apacheInstalledVersion(conn); v != "" {
+		return v, nil
+	}
+
+	// Apache is likely not installed; return nil rather than an error.
+	s.Version = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+	return "", nil
+}
+
+// apacheInstalledVersion returns the installed httpd's version ("2.4.62"), or
+// "" when none is found.
+func apacheInstalledVersion(conn shared.Connection) string {
 	afs := &afero.Afero{Fs: conn.FileSystem()}
 
 	// Prefer file-based detection: scan the httpd binary for the embedded
 	// "Apache/x.y.z" version string without loading the full binary into memory.
-	for _, bin := range apacheVersionBinaries {
-		if v := scanBinaryForTag(afs, bin, apacheVersionTag); v != "" {
-			return v, nil
+	for _, bin := range apacheBinaries {
+		if v := scanBinaryForTag(afs, bin, apacheVersionTag, isFullApacheVersion); v != "" {
+			return v
 		}
 	}
 
@@ -71,71 +98,287 @@ func (s *mqlApache2) version() (string, error) {
 		}
 		// Output looks like: "Server version: Apache/2.4.62 (Ubuntu)"
 		if m := reApacheVersion.FindSubmatch(data); m != nil {
-			return string(m[1]), nil
+			return string(m[1])
 		}
 	}
-
-	// Apache is likely not installed; return nil rather than an error.
-	s.Version = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
-	return "", nil
+	return ""
 }
 
 var reApacheVersion = regexp.MustCompile(`Apache/(\S+)`)
 
+// isFullApacheVersion accepts only a major.minor.patch version. httpd embeds
+// the reduced ServerTokens forms "Apache/2" and "Apache/2.4" next to the full
+// "Apache/2.4.68", and the linker may place either of them first.
+func isFullApacheVersion(v []byte) bool {
+	parts := bytes.Split(v, []byte("."))
+	if len(parts) < 3 {
+		return false
+	}
+	for _, p := range parts {
+		if len(p) == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // scanBinaryForTag reads a file in chunks and looks for tag followed by a
 // dot-separated version number (e.g. "Apache/2.4.62"). This avoids loading
-// multi-megabyte binaries entirely into memory.
-func scanBinaryForTag(fs *afero.Afero, path string, tag []byte) string {
+// multi-megabyte binaries entirely into memory. When accept is not nil, a
+// match it rejects is skipped and the scan continues with the next one.
+func scanBinaryForTag(fs *afero.Afero, path string, tag []byte, accept func([]byte) bool) string {
 	f, err := fs.Open(path)
 	if err != nil {
 		return ""
 	}
 	defer f.Close()
 
-	const chunkSize = 64 * 1024
 	// Overlap must be at least len(tag) + max version length to avoid
 	// missing a match that spans two chunks.
-	overlap := len(tag) + 20
+	return scanReaderForTag(f, tag, len(tag)+20, isApacheVersionByte, accept)
+}
+
+// isApacheVersionByte reports whether b belongs to an Apache/nginx style
+// dot-separated numeric version (e.g. "2.4.62").
+func isApacheVersionByte(b byte) bool {
+	return b == '.' || (b >= '0' && b <= '9')
+}
+
+// The server's compiled-in layout. `httpd -V` prints these two values, but they
+// are plain string constants in the binary, so reading the file gives the same
+// answer on an asset we cannot run commands on.
+var (
+	apacheRootTag       = []byte(`-D HTTPD_ROOT="`)
+	apacheConfigFileTag = []byte(`-D SERVER_CONFIG_FILE="`)
+)
+
+// isNotDoubleQuote terminates a scan at the closing quote of a `-D NAME="value"`
+// literal.
+func isNotDoubleQuote(b byte) bool { return b != '"' }
+
+// maxApacheLayoutValue bounds how far a scan will run looking for that closing
+// quote, so a spurious tag match cannot walk the rest of a binary.
+const maxApacheLayoutValue = 512
+
+// apacheLayout is where a particular build of httpd keeps its configuration.
+type apacheLayout struct {
+	// root is HTTPD_ROOT, the directory relative paths resolve against.
+	root string
+	// conf is SERVER_CONFIG_FILE. Every vendor build observed states it
+	// relative to root, but an absolute value is legal and is honoured.
+	conf string
+}
+
+// confPath returns the absolute path of the main configuration file, or "" when
+// the layout is too incomplete to name one.
+func (l apacheLayout) confPath() string {
+	if l.conf == "" {
+		return ""
+	}
+	if filepath.IsAbs(l.conf) {
+		return l.conf
+	}
+	if l.root == "" {
+		return ""
+	}
+	return filepath.Join(l.root, l.conf)
+}
+
+// apacheLayoutFromBinary reads the layout out of an httpd binary.
+func apacheLayoutFromBinary(fs *afero.Afero, path string) apacheLayout {
+	return apacheLayout{
+		root: scanBinaryForQuotedTag(fs, path, apacheRootTag),
+		conf: scanBinaryForQuotedTag(fs, path, apacheConfigFileTag),
+	}
+}
+
+// scanBinaryForQuotedTag returns the value of a `-D NAME="value"` literal.
+func scanBinaryForQuotedTag(fs *afero.Afero, path string, tag []byte) string {
+	f, err := fs.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	// The overlap has to cover the tag plus the longest value we are willing to
+	// read, so a literal straddling two chunks is not truncated.
+	return scanReaderForTag(f, tag, len(tag)+maxApacheLayoutValue, isNotDoubleQuote, nil)
+}
+
+var (
+	reApacheRoot       = regexp.MustCompile(`-D HTTPD_ROOT="([^"]*)"`)
+	reApacheConfigFile = regexp.MustCompile(`-D SERVER_CONFIG_FILE="([^"]*)"`)
+)
+
+// apacheLayoutFromCommand asks the server itself. This is the last resort: it
+// covers a build whose binary sits somewhere apacheBinaries does not list, and
+// it only works on an asset we can run commands on.
+func apacheLayoutFromCommand(conn shared.Connection) apacheLayout {
+	for _, bin := range apacheVersionCommands {
+		cmd, err := conn.RunCommand(bin + " -V")
+		if err != nil || cmd.ExitStatus != 0 {
+			continue
+		}
+		data, err := io.ReadAll(cmd.Stdout)
+		if err != nil {
+			continue
+		}
+		var layout apacheLayout
+		if m := reApacheRoot.FindSubmatch(data); m != nil {
+			layout.root = string(m[1])
+		}
+		if m := reApacheConfigFile.FindSubmatch(data); m != nil {
+			layout.conf = string(m[1])
+		}
+		if layout.confPath() != "" {
+			return layout
+		}
+	}
+	return apacheLayout{}
+}
+
+// apacheDebianStaticModules are the modules Debian and Ubuntu compile into
+// apache2, as `apache2 -l` prints them on Ubuntu 16.04 through 26.04 (26.04
+// adds mod_systemd.c). They are used when the binary cannot be asked.
+var apacheDebianStaticModules = []string{
+	"core.c", "mod_so.c", "mod_watchdog.c", "http_core.c",
+	"mod_log_config.c", "mod_logio.c", "mod_version.c", "mod_unixd.c",
+}
+
+// apacheMinimalStaticModules are compiled into every httpd build that can
+// load modules at all.
+var apacheMinimalStaticModules = []string{"core.c", "mod_so.c", "http_core.c"}
+
+// apacheStaticModules returns the modules compiled into the installed httpd,
+// which satisfy <IfModule> without a LoadModule line. `httpd -l` needs no
+// configuration and no privileges; when no binary can be run (an image or
+// filesystem scan) it falls back to the platform's known set.
+func apacheStaticModules(conn shared.Connection, afs *afero.Afero) []string {
+	for _, bin := range apacheBinaries {
+		if ok, _ := afs.Exists(bin); !ok {
+			continue
+		}
+		cmd, err := conn.RunCommand(bin + " -l")
+		if err != nil || cmd.ExitStatus != 0 {
+			continue
+		}
+		data, err := io.ReadAll(cmd.Stdout)
+		if err != nil {
+			continue
+		}
+		if mods := apache2.ParseStaticModuleList(string(data)); len(mods) > 0 {
+			return mods
+		}
+	}
+	if apacheEnvvarsPath(conn) != "" {
+		return apacheDebianStaticModules
+	}
+	return apacheMinimalStaticModules
+}
+
+// apacheDiscoverLayout finds where the installed server keeps its
+// configuration, preferring the binary over running anything.
+func apacheDiscoverLayout(conn shared.Connection, afs *afero.Afero) apacheLayout {
+	for _, bin := range apacheBinaries {
+		if layout := apacheLayoutFromBinary(afs, bin); layout.confPath() != "" {
+			return layout
+		}
+	}
+	return apacheLayoutFromCommand(conn)
+}
+
+// scanReaderForTag streams r in chunks, looking for tag followed by a run of
+// version bytes (as classified by isVersionByte). It is the reader-based core
+// shared by the binary version scanners; the caller owns opening/closing the
+// underlying file. `overlap` is the number of trailing bytes retained between
+// chunks so a match spanning a chunk boundary isn't missed. When accept is not
+// nil, matches it rejects are skipped and the scan moves on to the next match.
+func scanReaderForTag(r io.Reader, tag []byte, overlap int, isVersionByte func(byte) bool, accept func([]byte) bool) string {
+	const chunkSize = 64 * 1024
 	buf := make([]byte, chunkSize+overlap)
 	carry := 0
 
+read:
 	for {
-		n, err := f.Read(buf[carry:])
-		if n == 0 && err != nil {
-			break
-		}
+		n, err := r.Read(buf[carry:])
 		active := buf[:carry+n]
 
-		idx := bytes.Index(active, tag)
-		if idx >= 0 {
+		for search := 0; search < len(active); {
+			rel := bytes.Index(active[search:], tag)
+			if rel < 0 {
+				break
+			}
+			idx := search + rel
 			start := idx + len(tag)
 			end := start
-			for end < len(active) && (active[end] == '.' || (active[end] >= '0' && active[end] <= '9')) {
+			for end < len(active) && isVersionByte(active[end]) {
 				end++
 			}
 			if end > start {
-				return string(active[start:end])
+				// If the version run reaches the end of the current buffer
+				// and more data may still follow (err == nil), the literal
+				// might continue into the next chunk. Carry the tag and the
+				// partial run forward and keep reading rather than returning
+				// a truncated version (e.g. "2.4.6" instead of "2.4.62").
+				// The len(active)-idx guard ensures carrying from the tag
+				// frees room in the buffer for the next read (avoiding an
+				// infinite loop when a run fills the whole buffer).
+				if end == len(active) && err == nil && len(active)-idx < len(buf) {
+					copy(buf, active[idx:])
+					carry = len(active) - idx
+					continue read
+				}
+				if accept == nil || accept(active[start:end]) {
+					return string(active[start:end])
+				}
 			}
+			search = idx + 1
 		}
 
-		// Keep the last `overlap` bytes so a tag spanning chunks isn't missed.
+		// Stop once the reader is drained. `active` was already scanned
+		// above, so any tail carried from a previous iteration has had its
+		// final chance to match.
+		if err != nil {
+			break
+		}
+
+		// Keep the last `overlap` bytes so a tag spanning chunks isn't
+		// missed. On a short read (len(active) <= overlap) retain the whole
+		// buffer instead of discarding it, so a tag split across two short
+		// reads is still found.
 		if len(active) > overlap {
 			copy(buf, active[len(active)-overlap:])
 			carry = overlap
 		} else {
-			carry = 0
-		}
-
-		if err != nil {
-			break
+			copy(buf, active)
+			carry = len(active)
 		}
 	}
 	return ""
 }
 
 type mqlApache2ConfInternal struct {
-	lock       sync.Mutex
+	lock sync.Mutex
+	// serverRoot comes from the config's own ServerRoot directive and wins.
 	serverRoot string
+	// binaryServerRoot is the server's compiled-in HTTPD_ROOT, discovered while
+	// locating the config file. It is only consulted when the config does not
+	// state a ServerRoot, and is written once by file() before any parsing.
+	binaryServerRoot string
+	// defaultFile is set when file() chose the configuration file, rather
+	// than apache2.conf(path) naming it.
+	defaultFile bool
+	// noConfig is set when parse found no configuration to read, so httpd's
+	// compiled-in directive defaults do not apply.
+	noConfig bool
+	// launch is how httpd is started (see apacheLaunch), read once.
+	launchOnce sync.Once
+	launch     *apache2.Launch
+	launchErr  error
+	// processLaunch is the httpd master found without a pid file, or the
+	// httpd a scanned image starts (see effectiveLaunch), read once.
+	processLaunchOnce sync.Once
+	processLaunch     *apache2.Launch
 }
 
 // apacheConfByFamily maps platform families (and a few standalone platform
@@ -229,7 +472,7 @@ func apacheServerRoot(conn shared.Connection) string {
 // prescanServerRoot does a quick scan of the config content for a ServerRoot
 // directive so that relative Include paths can be resolved before full parsing.
 func prescanServerRoot(content string) string {
-	for _, line := range strings.Split(content, "\n") {
+	for line := range strings.SplitSeq(content, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || line[0] == '#' {
 			continue
@@ -289,6 +532,30 @@ func (s *mqlApache2Conf) id() (string, error) {
 // directly, bypassing this method entirely (same pattern as sshd.config).
 func (s *mqlApache2Conf) file() (*mqlFile, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
+	s.defaultFile = true
+
+	// A configuration file named on httpd's command line (-f) is the one it
+	// loads.
+	launch, err := s.effectiveLaunch()
+	if err != nil {
+		return nil, err
+	}
+	if launch != nil && launch.ConfigFile != "" {
+		path := apacheLaunchConfigFile(conn, launch)
+		ok, err := apacheConfigExists(&afero.Afero{Fs: conn.FileSystem()}, path)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
+				"path": llx.StringData(path),
+			})
+			if err != nil {
+				return nil, err
+			}
+			return f.(*mqlFile), nil
+		}
+	}
 
 	// Try the platform-preferred path first, then fall back to all known paths.
 	preferred := apacheConfPath(conn)
@@ -301,7 +568,37 @@ func (s *mqlApache2Conf) file() (*mqlFile, error) {
 
 	afs := &afero.Afero{Fs: conn.FileSystem()}
 	for _, path := range candidates {
-		if ok, _ := afs.Exists(path); ok {
+		ok, err := apacheConfigExists(afs, path)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
+				"path": llx.StringData(path),
+			})
+			if err != nil {
+				return nil, err
+			}
+			return f.(*mqlFile), nil
+		}
+	}
+
+	// Nothing at a packaged location. Ask the installed server where it keeps
+	// its configuration: a source build with a custom --prefix puts everything
+	// under that prefix, which no vendor path list can anticipate. The vendor
+	// paths are still tried first, so a packaged install is unaffected by this.
+	if layout := apacheDiscoverLayout(conn, afs); layout.confPath() != "" {
+		path := layout.confPath()
+		ok, err := apacheConfigExists(afs, path)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			// Relative Include paths resolve against HTTPD_ROOT. The platform
+			// default would be wrong for a custom prefix, and the config's own
+			// ServerRoot directive (which takes precedence) is not read yet.
+			s.binaryServerRoot = layout.root
+
 			f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
 				"path": llx.StringData(path),
 			})
@@ -319,19 +616,51 @@ func (s *mqlApache2Conf) file() (*mqlFile, error) {
 	return nil, nil
 }
 
+// apacheConfigExists reports whether the configuration file at path exists. A
+// path the scan may not stat, such as a non-root scan of a 0700 /etc/httpd/conf,
+// is a refusal rather than an absence: reading it as absent reported Apache as
+// not installed. That is returned as an error only with structured errors on
+// (ADR 046), since v13 read it as absent.
+func apacheConfigExists(afs *afero.Afero, path string) (bool, error) {
+	_, err := afs.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, fs.ErrNotExist) || !plugin.StructuredErrors() {
+		return false, nil
+	}
+	if errors.Is(err, fs.ErrPermission) {
+		return false, llx.Forbidden(fmt.Errorf("cannot read the Apache configuration %s: %w", path, err))
+	}
+	return false, err
+}
+
 var reApacheGlob = regexp.MustCompile(`[*?\[]`)
+
+// resolvePath resolves a relative path against ServerRoot: the directive in
+// the config wins, then the server's compiled-in HTTPD_ROOT, then the
+// platform default.
+func (s *mqlApache2Conf) resolvePath(p string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	serverRoot := s.serverRoot
+	if serverRoot == "" {
+		serverRoot = s.binaryServerRoot
+	}
+	if serverRoot == "" {
+		serverRoot = apacheServerRoot(s.MqlRuntime.Connection.(shared.Connection))
+	}
+	return filepath.Join(serverRoot, p)
+}
 
 func (s *mqlApache2Conf) expandGlob(pattern string) ([]string, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
 
-	// Resolve relative paths against ServerRoot (prefer config value, fall back to platform default)
-	if !filepath.IsAbs(pattern) {
-		serverRoot := s.serverRoot
-		if serverRoot == "" {
-			serverRoot = apacheServerRoot(conn)
-		}
-		pattern = filepath.Join(serverRoot, pattern)
-	}
+	pattern = s.resolvePath(pattern)
+
+	// SUSE's start_apache2 passes "Include /etc/apache2/sysconfig.d//global.conf"
+	pattern = filepath.Clean(pattern)
 
 	if !reApacheGlob.MatchString(pattern) {
 		return []string{pattern}, nil
@@ -387,6 +716,17 @@ func (s *mqlApache2Conf) setEmpty() {
 	s.Locations = plugin.TValue[[]any]{Data: []any{}, State: plugin.StateIsSet}
 	s.SecurityHeaders = plugin.TValue[map[string]any]{Data: map[string]any{}, State: plugin.StateIsSet}
 	s.Files = plugin.TValue[[]any]{Data: []any{}, State: plugin.StateIsSet}
+	s.noConfig = true
+}
+
+func (s *mqlApache2Conf) setError(err error) {
+	s.Params = plugin.TValue[map[string]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
+	s.Modules = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
+	s.VirtualHosts = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
+	s.Directories = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
+	s.Locations = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
+	s.SecurityHeaders = plugin.TValue[map[string]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
+	s.Files = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
 }
 
 func (s *mqlApache2Conf) parse(file *mqlFile) error {
@@ -402,11 +742,26 @@ func (s *mqlApache2Conf) parse(file *mqlFile) error {
 		return nil
 	}
 
-	// When the config file doesn't exist (e.g. Apache is not installed),
-	// return empty data instead of cascading errors.
-	if exists := file.GetExists(); exists.Error != nil || !exists.Data {
-		s.setEmpty()
-		return nil
+	// A default location that does not exist means Apache is not installed,
+	// which reads as empty. A path named with apache2.conf(path) must exist,
+	// as with nginx.conf, haproxy.config and snmpd.config.
+	exists := file.GetExists()
+	if exists.Error != nil {
+		if !plugin.StructuredErrors() {
+			s.setEmpty()
+			return nil
+		}
+		s.setError(exists.Error)
+		return exists.Error
+	}
+	if !exists.Data {
+		if s.defaultFile {
+			s.setEmpty()
+			return nil
+		}
+		err := fmt.Errorf("could not read %q: no such file", file.Path.Data)
+		s.setError(err)
+		return err
 	}
 
 	// Pre-scan root file for ServerRoot directive so that relative Include
@@ -451,17 +806,63 @@ func (s *mqlApache2Conf) parse(file *mqlFile) error {
 	// directives like `User ${APACHE_RUN_USER}` are resolved.
 	envvars := s.loadEnvvars(fileContent)
 
-	cfg, err := apache2.ParseWithGlob(file.Path.Data, fileContent, globExpand, envvars)
+	// <IfModule> and <IfDefine> are evaluated against the modules compiled
+	// into the binary plus those loaded by LoadModule, and against -D
+	// parameters (Debian passes APACHE_ARGUMENTS from envvars) plus Define.
+	conn := s.MqlRuntime.Connection.(shared.Connection)
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+	defines := apache2.DefinesFromArguments(envvars["APACHE_ARGUMENTS"])
+
+	// Without an envvars file, httpd gets its environment and -D parameters
+	// from its systemd unit; RHEL 7's reads /etc/sysconfig/httpd
+	var unitErr error
+	if apacheEnvvarsPath(conn) == "" {
+		var unitEnv map[string]string
+		var unitDefines []string
+		unitEnv, unitDefines, unitErr = apacheUnitEnvironment(afs, systemdDropInDirs(s.MqlRuntime, afs))
+		if len(unitEnv) > 0 {
+			envvars = unitEnv
+		}
+		defines = append(defines, unitDefines...)
+	}
+
+	// httpd's own command line: the running master's, or on SUSE the one
+	// start_apache2 builds from /etc/sysconfig/apache2. It applies to the
+	// file httpd loads, not to another file named with apache2.conf(path).
+	var preDirectives, postDirectives []string
+	launch, launchErr := s.effectiveLaunch()
+	if launch != nil && (s.defaultFile || (launch.ConfigFile != "" && apacheLaunchConfigFile(conn, launch) == file.Path.Data)) {
+		defines = append(defines, launch.Defines...)
+		preDirectives = launch.PreDirectives
+		postDirectives = launch.PostDirectives
+		if launch.ServerRoot != "" {
+			s.binaryServerRoot = launch.ServerRoot
+		}
+	}
+
+	opts := apache2.ParseOptions{
+		StaticModules:  apacheStaticModules(conn, afs),
+		Defines:        defines,
+		PreDirectives:  preDirectives,
+		PostDirectives: postDirectives,
+		Version:        apacheInstalledVersion(conn),
+		FileExists: func(p string) bool {
+			ok, _ := afs.Exists(s.resolvePath(p))
+			return ok
+		},
+	}
+
+	var cfg *apache2.Config
+	err := unitErr
+	if err == nil {
+		err = launchErr
+	}
+	if err == nil {
+		cfg, err = apache2.ParseWithGlobOptions(file.Path.Data, fileContent, globExpand, envvars, opts)
+	}
 
 	if err != nil {
-		errState := plugin.TValue[map[string]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
-		s.Params = errState
-		s.Modules = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
-		s.VirtualHosts = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
-		s.Directories = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
-		s.Locations = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
-		s.SecurityHeaders = plugin.TValue[map[string]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
-		s.Files = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
+		s.setError(err)
 	} else {
 		s.Params = plugin.TValue[map[string]any]{Data: cfg.Params, State: plugin.StateIsSet}
 
@@ -537,16 +938,43 @@ func (s *mqlApache2Conf) securityHeaders(file *mqlFile) (map[string]any, error) 
 
 // serverTokens / serverSignature / traceEnable derive from the params map.
 // They take params() as input so the .lr-declared dependency is correct.
+// When the config does not set the directive, httpd runs with its compiled-in
+// default (https://httpd.apache.org/docs/2.4/mod/core.html), so that is what
+// these report rather than an empty string. With no configuration read there
+// is no server to describe, and they are null.
 func (s *mqlApache2Conf) serverTokens(params map[string]any) (string, error) {
-	return apacheParamScalar(params, "ServerTokens"), nil
+	return s.directiveOrDefault(&s.ServerTokens, params, "ServerTokens", "Full"), nil
 }
 
 func (s *mqlApache2Conf) serverSignature(params map[string]any) (string, error) {
-	return apacheParamScalar(params, "ServerSignature"), nil
+	return s.directiveOrDefault(&s.ServerSignature, params, "ServerSignature", "Off"), nil
 }
 
 func (s *mqlApache2Conf) traceEnable(params map[string]any) (string, error) {
-	return apacheParamScalar(params, "TraceEnable"), nil
+	return s.directiveOrDefault(&s.TraceEnable, params, "TraceEnable", "On"), nil
+}
+
+// directiveOrDefault is apacheParamScalarOr, except that the field is null when
+// parse read no configuration.
+func (s *mqlApache2Conf) directiveOrDefault(field *plugin.TValue[string], params map[string]any, name string, def string) string {
+	s.lock.Lock()
+	noConfig := s.noConfig
+	s.lock.Unlock()
+	if noConfig {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return ""
+	}
+	return apacheParamScalarOr(params, name, def)
+}
+
+// apacheParamScalarOr is apacheParamScalar with a default for a directive the
+// config does not set. httpd rejects these directives without an argument, so
+// an empty value only occurs when the directive is absent.
+func apacheParamScalarOr(params map[string]any, name string, def string) string {
+	if v := apacheParamScalar(params, name); v != "" {
+		return v
+	}
+	return def
 }
 
 // apacheParamScalar returns the first scalar value from the case-insensitive
@@ -563,8 +991,8 @@ func apacheParamScalar(params map[string]any, name string) string {
 		if !ok {
 			continue
 		}
-		if comma := strings.IndexByte(s, ','); comma >= 0 {
-			return strings.TrimSpace(s[:comma])
+		if before, _, ok := strings.Cut(s, ","); ok {
+			return strings.TrimSpace(before)
 		}
 		return s
 	}
@@ -591,6 +1019,228 @@ func (s *mqlApache2Conf) loadEnvvars(fileContent func(string) (string, error)) m
 	return apache2.ParseEnvvars(content)
 }
 
+// apachePidFiles are where httpd records its master's pid: SUSE's
+// start_apache2 passes -C "PidFile /run/httpd.pid", Red Hat's httpd.conf
+// sets /run/httpd/httpd.pid and Debian's envvars /run/apache2/apache2.pid.
+var apachePidFiles = []string{"/run/httpd.pid", "/run/httpd/httpd.pid", "/run/apache2/apache2.pid", apacheImagePidFile}
+
+const (
+	// apacheSUSEStartScript is the wrapper SUSE's apache2.service runs. It
+	// builds httpd's command line from apacheSUSESysconfig.
+	apacheSUSEStartScript = "/usr/sbin/start_apache2"
+	apacheSUSESysconfig   = "/etc/sysconfig/apache2"
+)
+
+// launchArgs returns how httpd is started, read once per resource.
+func (s *mqlApache2Conf) launchArgs() (*apache2.Launch, error) {
+	s.launchOnce.Do(func() {
+		conn := s.MqlRuntime.Connection.(shared.Connection)
+		afs := &afero.Afero{Fs: conn.FileSystem()}
+		s.launch, s.launchErr = apacheLaunch(afs, systemdDropInDirs(s.MqlRuntime, afs))
+	})
+	return s.launch, s.launchErr
+}
+
+// apacheLaunch returns the command line httpd runs with: the running
+// master's, found through its pid file; when that cannot be read (no httpd
+// runs, or a non-root scan of Red Hat's 0710 /run/httpd), on SUSE the one
+// start_apache2 builds from /etc/sysconfig/apache2, elsewhere the one the
+// systemd unit starts. It returns nil when none applies, and httpd then reads
+// its configuration file as is.
+func apacheLaunch(afs *afero.Afero, dirs systemd.DropInDirs) (*apache2.Launch, error) {
+	if l := apacheRunningLaunch(afs); l != nil {
+		return l, nil
+	}
+	if ok, _ := afs.Exists(apacheSUSEStartScript); ok {
+		return apacheSUSELaunch(afs, dirs)
+	}
+	return apacheUnitLaunch(afs, dirs), nil
+}
+
+// apacheServiceUnits are the units that start httpd: httpd.service on Red
+// Hat, Fedora and Arch, apache2.service on SUSE (through start_apache2) and
+// Debian (through apachectl, which reads envvars).
+var apacheServiceUnits = []string{"httpd.service", "apache2.service"}
+
+// apacheUnitLaunch returns the -f, -d, -C and -c arguments of the httpd
+// command line the systemd unit starts, after $OPTIONS and the unit's other
+// variables are expanded, or nil when the unit starts httpd without them.
+// Its -D parameters come from apacheUnitEnvironment.
+func apacheUnitLaunch(afs *afero.Afero, dirs systemd.DropInDirs) *apache2.Launch {
+	argv := systemdServiceArgv(afs, dirs, apacheServiceUnits...)
+	if len(argv) == 0 {
+		return nil
+	}
+	base := filepath.Base(argv[0])
+	if !strings.HasPrefix(base, "httpd") && !strings.HasPrefix(base, "apache2") {
+		return nil
+	}
+	l := apache2.ParseLaunchArgs(argv[1:])
+	if l.ConfigFile == "" && l.ServerRoot == "" && len(l.PreDirectives) == 0 && len(l.PostDirectives) == 0 {
+		return nil
+	}
+	l.Defines = nil
+	return &l
+}
+
+// apacheRunningLaunch reads the command line of the httpd master recorded in
+// a pid file. A missing or stale pid file gives nil.
+func apacheRunningLaunch(afs *afero.Afero) *apache2.Launch {
+	for _, pidFile := range apachePidFiles {
+		data, err := afs.ReadFile(pidFile)
+		if err != nil {
+			continue
+		}
+		pid := strings.TrimSpace(string(data))
+		if _, err := strconv.Atoi(pid); err != nil {
+			continue
+		}
+		raw, err := afs.ReadFile(filepath.Join("/proc", pid, "cmdline"))
+		if err != nil {
+			continue
+		}
+		argv := haproxy.SplitProcCmdline(raw)
+		if len(argv) == 0 {
+			continue
+		}
+		// SUSE runs httpd-prefork (or -worker, -event), Debian apache2
+		base := filepath.Base(argv[0])
+		if !strings.HasPrefix(base, "httpd") && !strings.HasPrefix(base, "apache2") {
+			continue
+		}
+		l := apache2.ParseLaunchArgs(argv[1:])
+		return &l
+	}
+	return nil
+}
+
+// apacheSUSELaunch returns the command line SUSE's start_apache2 runs httpd
+// with, built from /etc/sysconfig/apache2, or nil on any other layout.
+func apacheSUSELaunch(afs *afero.Afero, dirs systemd.DropInDirs) (*apache2.Launch, error) {
+	data, err := afs.ReadFile(apacheSUSESysconfig)
+	if errors.Is(err, fs.ErrNotExist) {
+		// start_apache2 then leaves out -DSYSCONFIG, and httpd.conf loads
+		// the static loadmodule.conf and global.conf itself
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	vars := apache2.ParseEnvironmentFile(string(data))
+	mpm := vars["APACHE_MPM"]
+	if mpm == "" {
+		mpm = apacheSUSEMPM(afs)
+	}
+	var unitArgs []string
+	if argv := systemdServiceArgv(afs, dirs, apacheServiceUnits...); len(argv) > 1 {
+		unitArgs = argv[1:]
+	}
+	l := apache2.SUSESysconfig{
+		Vars:     vars,
+		MPM:      mpm,
+		UnitArgs: unitArgs,
+		Exists: func(p string) bool {
+			ok, _ := afs.Exists(p)
+			return ok
+		},
+	}.Launch()
+	return &l, nil
+}
+
+// apacheSUSEMPMs are the httpd binaries SUSE ships, one per MPM.
+var apacheSUSEMPMs = []string{"prefork", "worker", "event"}
+
+// apacheSUSEMPM returns the MPM start_apache2 picks when APACHE_MPM is unset:
+// the target of the /usr/sbin/httpd alternative (/usr/sbin/httpd-prefork).
+// When the link cannot be read, a single installed httpd-<mpm> binary is the
+// answer; otherwise it is unknown.
+func apacheSUSEMPM(afs *afero.Afero) string {
+	if lr, ok := afs.Fs.(afero.LinkReader); ok {
+		target := "/usr/sbin/httpd"
+		for range 2 {
+			next, err := lr.ReadlinkIfPossible(target)
+			if err != nil {
+				break
+			}
+			if !filepath.IsAbs(next) {
+				next = filepath.Join(filepath.Dir(target), next)
+			}
+			target = next
+		}
+		if mpm, ok := strings.CutPrefix(target, "/usr/sbin/httpd-"); ok {
+			return mpm
+		}
+	}
+	found := ""
+	for _, mpm := range apacheSUSEMPMs {
+		if ok, _ := afs.Exists("/usr/sbin/httpd-" + mpm); ok {
+			if found != "" {
+				return ""
+			}
+			found = mpm
+		}
+	}
+	return found
+}
+
+// apacheLaunchConfigFile resolves the -f argument: a relative path is
+// relative to the -d ServerRoot, or the platform's.
+func apacheLaunchConfigFile(conn shared.Connection, launch *apache2.Launch) string {
+	if launch.ConfigFile == "" || filepath.IsAbs(launch.ConfigFile) {
+		return launch.ConfigFile
+	}
+	root := launch.ServerRoot
+	if root == "" {
+		root = apacheServerRoot(conn)
+	}
+	return filepath.Join(root, launch.ConfigFile)
+}
+
+// apacheUnitEnvironment returns the environment systemd starts httpd with
+// (Environment= plus the EnvironmentFile= files, which take precedence) and
+// the -D parameters of its ExecStart line. Apache resolves ${VAR} from that
+// environment. The unit is httpd.service on Red Hat, Fedora and Arch and
+// apache2.service on SUSE, with the drop-ins of all its names. A missing
+// unit or file contributes nothing; one that can't be read is an error.
+// These files are not Apache configuration, so they are read directly rather
+// than listed in files.
+func apacheUnitEnvironment(afs *afero.Afero, dirs systemd.DropInDirs) (map[string]string, []string, error) {
+	name, aliases, unitContent, err := systemdServiceUnit(afs, apacheServiceUnits...)
+	if err != nil {
+		return nil, nil, err
+	}
+	if name == "" {
+		return nil, nil, nil
+	}
+
+	// drop-ins apply in file-name order; a name in a higher-priority
+	// directory hides the same name further down. dirs adds the type-level
+	// service.d that systemd 246 and later (and RHEL 8's 239) apply to every
+	// service.
+	contents := []string{unitContent}
+	for _, p := range systemd.FindDropIns(afs, name, dirs, aliases...) {
+		content, err := afs.ReadFile(p)
+		if err != nil {
+			return nil, nil, err
+		}
+		contents = append(contents, string(content))
+	}
+
+	unit := apache2.ParseServiceUnit(contents...)
+	env := unit.Environment
+	for _, f := range unit.EnvironmentFiles {
+		data, err := afs.ReadFile(f)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		maps.Copy(env, apache2.ParseEnvironmentFile(string(data)))
+	}
+	return env, apache2.UnitDefines(unit.ExecStart, env), nil
+}
+
 // envvars returns the apache2.conf.envvars resource representing the parsed
 // envvars file. When the platform doesn't use one or the file is missing,
 // the field is marked set+null so the resource is cleanly absent rather than
@@ -609,9 +1259,17 @@ func (s *mqlApache2Conf) envvars() (*mqlApache2ConfEnvvars, error) {
 		return nil, nil
 	}
 
+	// CreateResource does not run initApache2ConfEnvvars, so pass the file
+	// resource the schema declares rather than the init-only path argument.
+	f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
+		"path": llx.StringData(path),
+	})
+	if err != nil {
+		return nil, err
+	}
 	res, err := CreateResource(s.MqlRuntime, "apache2.conf.envvars", map[string]*llx.RawData{
 		"__id": llx.StringData("apache2.conf.envvars/" + path),
-		"path": llx.StringData(path),
+		"file": llx.ResourceData(f, "file"),
 	})
 	if err != nil {
 		return nil, err
@@ -688,12 +1346,7 @@ func (s *mqlApache2ConfEnvvars) params(file *mqlFile) (map[string]any, error) {
 }
 
 func (s *mqlApache2Conf) listenAddresses(params map[string]any) ([]any, error) {
-	raw, ok := params["Listen"]
-	if !ok {
-		return nil, nil
-	}
-
-	str, ok := raw.(string)
+	str, ok := apache2.ParamValue(params, "Listen")
 	if !ok {
 		return nil, nil
 	}
@@ -809,8 +1462,9 @@ func (v *mqlApache2ConfVirtualHost) certificate() ([]any, error) {
 }
 
 // readCertificatesFromPath reads a PEM file via the runtime's file resource
-// and returns the parsed []network.certificate. Returns an empty slice when
-// the file is unreadable so audits don't blow up on a misconfigured path.
+// and returns the parsed []network.certificate. A file that does not exist or
+// holds no certificate yields an empty slice. A file that exists but cannot be
+// read is an error once structured errors are on, see certificateReadError.
 func readCertificatesFromPath(runtime *plugin.Runtime, path string) ([]any, error) {
 	f, err := CreateResource(runtime, "file", map[string]*llx.RawData{
 		"path": llx.StringData(path),
@@ -820,7 +1474,13 @@ func readCertificatesFromPath(runtime *plugin.Runtime, path string) ([]any, erro
 	}
 	mqlF := f.(*mqlFile)
 	content := mqlF.GetContent()
-	if content.Error != nil || content.Data == "" {
+	if content.Error != nil {
+		if err := certificateReadError(content.Error); err != nil {
+			return nil, err
+		}
+		return []any{}, nil
+	}
+	if content.Data == "" {
 		return []any{}, nil
 	}
 	c, err := runtime.CreateSharedResource("certificates", map[string]*llx.RawData{

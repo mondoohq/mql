@@ -4,15 +4,17 @@
 package resources
 
 import (
+	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/oci/connection"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/oci/connection"
+	"go.mondoo.com/mql/utils/stringx"
 )
 
 // Discovery target constants. `auto` covers the tenancy plus every listed
@@ -32,24 +34,328 @@ const (
 	DiscoveryRedisClusters         = "redis-clusters"
 	DiscoveryVaultSecrets          = "vault-secrets"
 	DiscoveryOkeClusters           = "oke-clusters"
+	DiscoveryGenerativeAiEndpoints = "generativeai-endpoints"
 )
 
-// AllAPIResources lists every fine-grained per-resource discovery target.
-// Keep sorted alphabetically by target string for diff stability.
-var AllAPIResources = []string{
-	DiscoveryAPIGatewayDeployments,
-	DiscoveryBuckets,
-	DiscoveryLoadBalancers,
-	DiscoveryOkeClusters,
-	DiscoveryPolicies,
-	DiscoveryRedisClusters,
-	DiscoverySecurityLists,
-	DiscoveryUsers,
-	DiscoveryVaultSecrets,
+// A discovery target used to be spread across four places: the constant above, a
+// `case` in discover(), an entry in AllAPIResources, and an arm of a
+// getPlatformName switch that re-derived the platform name from the service and
+// object type the `case` had just written. The two switches encoded the same
+// facts, so they could disagree - and a target whose pair was missing from
+// getPlatformName silently emitted no asset at all, because an unmapped pair
+// returns "" and the caller skips it.
+//
+// One row per target instead. The tuple that composes the platform id and the
+// platform name that cnspec policy filters match on now live together, and
+// TestDiscoveryTargetsMatchPlatformCatalog checks the row set against the
+// platform catalog in both directions, so neither side can grow an entry the
+// other lacks.
+
+// ociDiscovered is what a target's extractor pulls off one resource: the parts
+// that vary per object type, where everything else about the asset is uniform.
+type ociDiscovered struct {
+	id          string // OCID, or a composite id (e.g. namespace/name for buckets)
+	name        string
+	compartment string
+	region      string
+	labels      map[string]string
+	// state is the resource's lifecycle state, empty for an object type that
+	// has none (buckets). discover() skips a resource that is deleted or
+	// being deleted; see ociDiscoveryGone.
+	state string
 }
 
-// Auto expands to the tenancy plus all API resources. The order puts tenancy
-// first so it's visible in `cnspec scan` output before any sub-assets.
+// ociDiscoveryGone reports whether a lifecycle state means the resource no
+// longer exists, or is on its way out. OCI keeps listing a deleted resource
+// for a while (a deleted OCI Cache cluster, API Gateway deployment or OKE
+// cluster; a terminated security list), with the settings and tags it had.
+// Emitting it as an asset scored a resource that is not there, and since
+// tags are the usual way to pick a deployment's assets, a deleted resource
+// carrying the same tags as its live replacement was scored as if it were
+// that replacement. States such as INACTIVE (an identity user) or
+// PENDING_DELETION (a vault secret) still describe a resource that exists and
+// are kept.
+func ociDiscoveryGone(state string) bool {
+	switch strings.ToUpper(state) {
+	case "DELETED", "DELETING", "TERMINATED", "TERMINATING":
+		return true
+	}
+	return false
+}
+
+// ociDiscoveryTarget describes one fine-grained discovery target end to end.
+type ociDiscoveryTarget struct {
+	// Target is the --discover value.
+	Target string
+	// Platform is the platform name cnspec policy filters match on. It must
+	// exist in the Platforms catalog.
+	Platform string
+	// Service and ObjectType compose the asset's platform id. Changing either
+	// changes the identity of every asset the target emits.
+	Service    string
+	ObjectType string
+	// List reaches the MQL collection the target iterates.
+	List func(runtime *plugin.Runtime) ([]any, error)
+	// Extract pulls the per-object asset fields. Returning false skips an entry
+	// whose type does not match, rather than panicking on the assertion.
+	Extract func(item any) (ociDiscovered, bool)
+}
+
+// ociDiscoveryList initializes a resource and reads one of its collection
+// fields, which is what every target's List does.
+func ociDiscoveryList[T plugin.Resource](runtime *plugin.Runtime, name string, field func(T) *plugin.TValue[[]any]) ([]any, error) {
+	res, err := NewResource(runtime, name, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	typed, ok := res.(T)
+	if !ok {
+		return nil, fmt.Errorf("oci discovery: %s did not resolve to a %T", name, typed)
+	}
+	list := field(typed)
+	if list.Error != nil {
+		return nil, list.Error
+	}
+	return list.Data, nil
+}
+
+// ociDiscoveryTargets is the registry. Adding a discoverable object type means
+// adding a row here, a constant above, and a platform to the Platforms catalog.
+var ociDiscoveryTargets = []ociDiscoveryTarget{
+	{
+		Target: DiscoverySecurityLists, Platform: "oci-network-securitylist",
+		Service: "network", ObjectType: "securitylist",
+		List: func(rt *plugin.Runtime) ([]any, error) {
+			return ociDiscoveryList(rt, "oci.network", (*mqlOciNetwork).GetSecurityLists)
+		},
+		Extract: func(item any) (ociDiscovered, bool) {
+			sl, ok := item.(*mqlOciNetworkSecurityList)
+			if !ok {
+				return ociDiscovered{}, false
+			}
+			// cacheRegion was populated when the security list was enumerated;
+			// empty only when the enumeration didn't hit a region.
+			return ociDiscovered{
+				id: sl.Id.Data, name: sl.Name.Data,
+				compartment: sl.cacheCompartmentID, region: sl.cacheRegion,
+				labels: tagsToLabels(sl.FreeformTags.Data),
+				state:  sl.State.Data,
+			}, true
+		},
+	},
+	{
+		Target: DiscoveryUsers, Platform: "oci-identity-user",
+		Service: "identity", ObjectType: "user",
+		List: func(rt *plugin.Runtime) ([]any, error) {
+			return ociDiscoveryList(rt, "oci.identity", (*mqlOciIdentity).GetUsers)
+		},
+		Extract: func(item any) (ociDiscovered, bool) {
+			u, ok := item.(*mqlOciIdentityUser)
+			if !ok {
+				return ociDiscovered{}, false
+			}
+			// OCI IAM is global (single realm per tenancy); mark users as such
+			// so the platform id stays stable regardless of which region the
+			// scan connects to.
+			return ociDiscovered{
+				id: u.Id.Data, name: u.Name.Data,
+				compartment: u.cacheCompartmentID, region: "global",
+				labels: tagsToLabels(u.FreeformTags.Data),
+				state:  u.State.Data,
+			}, true
+		},
+	},
+	{
+		Target: DiscoveryPolicies, Platform: "oci-identity-policy",
+		Service: "identity", ObjectType: "policy",
+		List: func(rt *plugin.Runtime) ([]any, error) {
+			return ociDiscoveryList(rt, "oci.identity", (*mqlOciIdentity).GetPolicies)
+		},
+		Extract: func(item any) (ociDiscovered, bool) {
+			p, ok := item.(*mqlOciIdentityPolicy)
+			if !ok {
+				return ociDiscovered{}, false
+			}
+			return ociDiscovered{
+				id: p.Id.Data, name: p.Name.Data,
+				compartment: p.cacheCompartmentID, region: "global",
+				labels: tagsToLabels(p.FreeformTags.Data),
+				state:  p.State.Data,
+			}, true
+		},
+	},
+	{
+		Target: DiscoveryBuckets, Platform: "oci-objectstorage-bucket",
+		Service: "objectstorage", ObjectType: "bucket",
+		List: func(rt *plugin.Runtime) ([]any, error) {
+			return ociDiscoveryList(rt, "oci.objectStorage", (*mqlOciObjectStorage).GetBuckets)
+		},
+		Extract: func(item any) (ociDiscovered, bool) {
+			b, ok := item.(*mqlOciObjectStorageBucket)
+			if !ok {
+				return ociDiscovered{}, false
+			}
+			// Region is exposed as a typed oci.region resource on the bucket;
+			// pull its id (region key) for the platform id.
+			regionKey := ""
+			if region := b.GetRegion(); region.Error == nil && region.Data != nil {
+				regionKey = region.Data.Id.Data
+			}
+			return ociDiscovered{
+				// Buckets aren't globally unique by name alone - namespace
+				// qualifies them - so use namespace/name to match the __id.
+				id: b.Namespace.Data + "/" + b.Name.Data, name: b.Name.Data,
+				compartment: b.cacheCompartmentID, region: regionKey,
+				// Listed with the bucket (fields=tags), so no GetBucket.
+				labels: tagsToLabels(b.GetFreeformTags().Data),
+			}, true
+		},
+	},
+	{
+		Target: DiscoveryAPIGatewayDeployments, Platform: "oci-apigateway-deployment",
+		Service: "apigateway", ObjectType: "deployment",
+		List: func(rt *plugin.Runtime) ([]any, error) {
+			return ociDiscoveryList(rt, "oci.apigateway", (*mqlOciApigateway).GetDeployments)
+		},
+		Extract: func(item any) (ociDiscovered, bool) {
+			d, ok := item.(*mqlOciApigatewayDeployment)
+			if !ok {
+				return ociDiscovered{}, false
+			}
+			return ociDiscovered{
+				id: d.Id.Data, name: d.Name.Data,
+				compartment: d.cacheCompartmentID, region: d.cacheRegion,
+				labels: tagsToLabels(d.FreeformTags.Data),
+				state:  d.State.Data,
+			}, true
+		},
+	},
+	{
+		Target: DiscoveryLoadBalancers, Platform: "oci-loadbalancer",
+		Service: "loadbalancer", ObjectType: "loadBalancer",
+		List: func(rt *plugin.Runtime) ([]any, error) {
+			return ociDiscoveryList(rt, "oci.loadBalancer", (*mqlOciLoadBalancer).GetLoadBalancers)
+		},
+		Extract: func(item any) (ociDiscovered, bool) {
+			lb, ok := item.(*mqlOciLoadBalancerLoadBalancer)
+			if !ok {
+				return ociDiscovered{}, false
+			}
+			return ociDiscovered{
+				id: lb.Id.Data, name: lb.Name.Data,
+				compartment: lb.cacheCompartmentID, region: lb.cacheRegion,
+				labels: tagsToLabels(lb.FreeformTags.Data),
+				state:  lb.State.Data,
+			}, true
+		},
+	},
+	{
+		Target: DiscoveryRedisClusters, Platform: "oci-redis-cluster",
+		Service: "redis", ObjectType: "cluster",
+		List: func(rt *plugin.Runtime) ([]any, error) {
+			return ociDiscoveryList(rt, "oci.redis", (*mqlOciRedis).GetClusters)
+		},
+		Extract: func(item any) (ociDiscovered, bool) {
+			c, ok := item.(*mqlOciRedisCluster)
+			if !ok {
+				return ociDiscovered{}, false
+			}
+			return ociDiscovered{
+				id: c.Id.Data, name: c.Name.Data,
+				compartment: c.cacheCompartmentID, region: c.cacheRegion,
+				labels: tagsToLabels(c.FreeformTags.Data),
+				state:  c.State.Data,
+			}, true
+		},
+	},
+	{
+		Target: DiscoveryVaultSecrets, Platform: "oci-vault-secret",
+		Service: "vault", ObjectType: "secret",
+		List: func(rt *plugin.Runtime) ([]any, error) {
+			return ociDiscoveryList(rt, "oci.vault", (*mqlOciVault).GetSecrets)
+		},
+		Extract: func(item any) (ociDiscovered, bool) {
+			s, ok := item.(*mqlOciVaultSecret)
+			if !ok {
+				return ociDiscovered{}, false
+			}
+			return ociDiscovered{
+				id: s.Id.Data, name: s.Name.Data,
+				compartment: s.cacheCompartmentID, region: s.cacheRegion,
+				labels: tagsToLabels(s.FreeformTags.Data),
+				state:  s.State.Data,
+			}, true
+		},
+	},
+	{
+		Target: DiscoveryOkeClusters, Platform: "oci-oke-cluster",
+		Service: "oke", ObjectType: "cluster",
+		List: func(rt *plugin.Runtime) ([]any, error) {
+			return ociDiscoveryList(rt, "oci.oke", (*mqlOciOke).GetClusters)
+		},
+		Extract: func(item any) (ociDiscovered, bool) {
+			c, ok := item.(*mqlOciOkeCluster)
+			if !ok {
+				return ociDiscovered{}, false
+			}
+			return ociDiscovered{
+				id: c.Id.Data, name: c.Name.Data,
+				compartment: c.cacheCompartmentID, region: c.cacheRegion,
+				labels: tagsToLabels(c.FreeformTags.Data),
+				state:  c.State.Data,
+			}, true
+		},
+	},
+	{
+		Target: DiscoveryGenerativeAiEndpoints, Platform: "oci-ai-generativeai-endpoint",
+		Service: "generativeai", ObjectType: "endpoint",
+		List: func(rt *plugin.Runtime) ([]any, error) {
+			return ociDiscoveryList(rt, "oci.ai.generativeAi", (*mqlOciAiGenerativeAi).GetEndpoints)
+		},
+		Extract: func(item any) (ociDiscovered, bool) {
+			e, ok := item.(*mqlOciAiGenerativeAiEndpoint)
+			if !ok {
+				return ociDiscovered{}, false
+			}
+			return ociDiscovered{
+				id: e.Id.Data, name: e.Name.Data,
+				compartment: e.CompartmentID.Data, region: e.cacheRegion,
+				labels: tagsToLabels(e.FreeformTags.Data),
+				state:  e.State.Data,
+			}, true
+		},
+	},
+}
+
+// ociDiscoveryTargetsByName indexes the registry for dispatch.
+var ociDiscoveryTargetsByName = func() map[string]ociDiscoveryTarget {
+	res := make(map[string]ociDiscoveryTarget, len(ociDiscoveryTargets))
+	for _, t := range ociDiscoveryTargets {
+		res[t.Target] = t
+	}
+	return res
+}()
+
+// AllAPIResources lists every fine-grained per-resource discovery target,
+// sorted by target string for diff stability.
+var AllAPIResources = func() []string {
+	res := make([]string, 0, len(ociDiscoveryTargets))
+	for _, t := range ociDiscoveryTargets {
+		res = append(res, t.Target)
+	}
+	slices.Sort(res)
+	return res
+}()
+
+// Auto expands to the tenancy plus all API resources, tenancy first.
+//
+// That ordering only survives on the `all` path. getDiscoveryTargets returns All
+// directly, but it runs everything else through stringx.DedupStringArray, which
+// collects into a map and therefore returns the targets in a random order - so
+// `--discover auto`, the default, does not in fact list the tenancy first.
+// Pre-existing; left alone here because this change is not meant to alter
+// behavior, but it is a real defect rather than a quirk: the ordering is what
+// puts the tenancy above its own sub-assets in scan output.
 var Auto = append(
 	[]string{DiscoveryTenancy},
 	AllAPIResources...,
@@ -70,13 +376,27 @@ func Discover(runtime *plugin.Runtime) (*inventory.Inventory, error) {
 	}}
 
 	targets := getDiscoveryTargets(conn.Conf)
+	var (
+		discoveryErr error
+		succeeded    int
+	)
 	for _, target := range targets {
 		list, err := discover(runtime, conn, target)
 		if err != nil {
 			log.Error().Err(err).Str("target", target).Msg("error during OCI discovery")
+			discoveryErr = errors.Join(discoveryErr, fmt.Errorf("%s: %w", target, err))
 			continue
 		}
+		succeeded++
 		in.Spec.Assets = append(in.Spec.Assets, list...)
+	}
+
+	// One failing target among several is a partial result worth keeping, but
+	// every target failing means discovery learned nothing - almost always an
+	// under-scoped token. Returning a clean empty inventory there reported a
+	// successful scan that had silently discovered nothing.
+	if succeeded == 0 && discoveryErr != nil {
+		return nil, discoveryErr
 	}
 
 	return in, nil
@@ -104,223 +424,45 @@ func getDiscoveryTargets(config *inventory.Config) []string {
 }
 
 func discover(runtime *plugin.Runtime, conn *connection.OciConnection, target string) ([]*inventory.Asset, error) {
-	tenantID := conn.TenantID()
-	assetList := []*inventory.Asset{}
+	// The tenancy asset already exists in the request (the user connected to it
+	// directly), so there is no work to do for it here.
+	if target == DiscoveryTenancy {
+		return nil, nil
+	}
 
-	switch target {
-	case DiscoveryTenancy:
-		// The tenancy asset already exists in the request (the user connected
-		// to it directly); no work needed here.
-	case DiscoverySecurityLists:
-		res, err := NewResource(runtime, "oci.network", map[string]*llx.RawData{})
-		if err != nil {
-			return nil, err
-		}
-		network := res.(*mqlOciNetwork)
-		secLists := network.GetSecurityLists()
-		if secLists.Error != nil {
-			return nil, secLists.Error
-		}
-		for i := range secLists.Data {
-			sl := secLists.Data[i].(*mqlOciNetworkSecurityList)
-			appendIfNotNil(&assetList, ociObjectToAsset(ociObject{
-				tenantID:    tenantID,
-				compartment: sl.CompartmentID.Data,
-				// cacheRegion was populated when the security list was
-				// enumerated; empty only when the enumeration didn't hit a
-				// region (defensive fallback).
-				region:     fallbackRegion(sl.cacheRegion),
-				id:         sl.Id.Data,
-				service:    "network",
-				objectType: "securitylist",
-			}, sl.Name.Data, tagsToLabels(sl.FreeformTags.Data), conn))
-		}
-	case DiscoveryBuckets:
-		res, err := NewResource(runtime, "oci.objectStorage", map[string]*llx.RawData{})
-		if err != nil {
-			return nil, err
-		}
-		os := res.(*mqlOciObjectStorage)
-		buckets := os.GetBuckets()
-		if buckets.Error != nil {
-			return nil, buckets.Error
-		}
-		for i := range buckets.Data {
-			b := buckets.Data[i].(*mqlOciObjectStorageBucket)
-			// Region is exposed as a typed oci.region resource on the bucket;
-			// pull its id (region key) for the platform id.
-			regionKey := ""
-			region := b.GetRegion()
-			if region.Error == nil && region.Data != nil {
-				regionKey = region.Data.Id.Data
-			}
-			// Tags on bucket are lazy-loaded (require an extra GetBucket call);
-			// at discovery time surface empty labels so we don't pay N API
-			// round-trips per bucket just to populate discovery labels.
-			appendIfNotNil(&assetList, ociObjectToAsset(ociObject{
-				tenantID:    tenantID,
-				compartment: b.CompartmentID.Data,
-				region:      fallbackRegion(regionKey),
-				// Buckets aren't globally unique by name alone — namespace
-				// qualifies them — so use namespace/name as the platform id
-				// suffix to match the existing __id.
-				id:         b.Namespace.Data + "/" + b.Name.Data,
-				service:    "objectstorage",
-				objectType: "bucket",
-			}, b.Name.Data, map[string]string{}, conn))
-		}
-	case DiscoveryUsers:
-		res, err := NewResource(runtime, "oci.identity", map[string]*llx.RawData{})
-		if err != nil {
-			return nil, err
-		}
-		identity := res.(*mqlOciIdentity)
-		users := identity.GetUsers()
-		if users.Error != nil {
-			return nil, users.Error
-		}
-		for i := range users.Data {
-			u := users.Data[i].(*mqlOciIdentityUser)
-			appendIfNotNil(&assetList, ociObjectToAsset(ociObject{
-				tenantID:    tenantID,
-				compartment: u.CompartmentID.Data,
-				// OCI IAM is global (single realm per tenancy); mark users as
-				// such so the platform id stays stable regardless of which
-				// region the scan connects to.
-				region:     "global",
-				id:         u.Id.Data,
-				service:    "identity",
-				objectType: "user",
-			}, u.Name.Data, tagsToLabels(u.FreeformTags.Data), conn))
-		}
-	case DiscoveryPolicies:
-		res, err := NewResource(runtime, "oci.identity", map[string]*llx.RawData{})
-		if err != nil {
-			return nil, err
-		}
-		identity := res.(*mqlOciIdentity)
-		policies := identity.GetPolicies()
-		if policies.Error != nil {
-			return nil, policies.Error
-		}
-		for i := range policies.Data {
-			p := policies.Data[i].(*mqlOciIdentityPolicy)
-			appendIfNotNil(&assetList, ociObjectToAsset(ociObject{
-				tenantID:    tenantID,
-				compartment: p.CompartmentID.Data,
-				region:      "global",
-				id:          p.Id.Data,
-				service:     "identity",
-				objectType:  "policy",
-			}, p.Name.Data, tagsToLabels(p.FreeformTags.Data), conn))
-		}
-	case DiscoveryAPIGatewayDeployments:
-		res, err := NewResource(runtime, "oci.apigateway", map[string]*llx.RawData{})
-		if err != nil {
-			return nil, err
-		}
-		apigw := res.(*mqlOciApigateway)
-		deps := apigw.GetDeployments()
-		if deps.Error != nil {
-			return nil, deps.Error
-		}
-		for i := range deps.Data {
-			d := deps.Data[i].(*mqlOciApigatewayDeployment)
-			appendIfNotNil(&assetList, ociObjectToAsset(ociObject{
-				tenantID:    tenantID,
-				compartment: d.CompartmentID.Data,
-				region:      fallbackRegion(d.region),
-				id:          d.Id.Data,
-				service:     "apigateway",
-				objectType:  "deployment",
-			}, d.Name.Data, tagsToLabels(d.FreeformTags.Data), conn))
-		}
-	case DiscoveryLoadBalancers:
-		res, err := NewResource(runtime, "oci.loadBalancer", map[string]*llx.RawData{})
-		if err != nil {
-			return nil, err
-		}
-		lbSvc := res.(*mqlOciLoadBalancer)
-		lbs := lbSvc.GetLoadBalancers()
-		if lbs.Error != nil {
-			return nil, lbs.Error
-		}
-		for i := range lbs.Data {
-			lb := lbs.Data[i].(*mqlOciLoadBalancerLoadBalancer)
-			appendIfNotNil(&assetList, ociObjectToAsset(ociObject{
-				tenantID:    tenantID,
-				compartment: lb.CompartmentID.Data,
-				region:      fallbackRegion(lb.cacheRegion),
-				id:          lb.Id.Data,
-				service:     "loadbalancer",
-				objectType:  "loadBalancer",
-			}, lb.Name.Data, tagsToLabels(lb.FreeformTags.Data), conn))
-		}
-	case DiscoveryRedisClusters:
-		res, err := NewResource(runtime, "oci.redis", map[string]*llx.RawData{})
-		if err != nil {
-			return nil, err
-		}
-		redis := res.(*mqlOciRedis)
-		clusters := redis.GetClusters()
-		if clusters.Error != nil {
-			return nil, clusters.Error
-		}
-		for i := range clusters.Data {
-			c := clusters.Data[i].(*mqlOciRedisCluster)
-			appendIfNotNil(&assetList, ociObjectToAsset(ociObject{
-				tenantID:    tenantID,
-				compartment: c.CompartmentID.Data,
-				region:      fallbackRegion(c.cacheRegion),
-				id:          c.Id.Data,
-				service:     "redis",
-				objectType:  "cluster",
-			}, c.Name.Data, tagsToLabels(c.FreeformTags.Data), conn))
-		}
-	case DiscoveryVaultSecrets:
-		res, err := NewResource(runtime, "oci.vault", map[string]*llx.RawData{})
-		if err != nil {
-			return nil, err
-		}
-		v := res.(*mqlOciVault)
-		secrets := v.GetSecrets()
-		if secrets.Error != nil {
-			return nil, secrets.Error
-		}
-		for i := range secrets.Data {
-			s := secrets.Data[i].(*mqlOciVaultSecret)
-			appendIfNotNil(&assetList, ociObjectToAsset(ociObject{
-				tenantID:    tenantID,
-				compartment: s.CompartmentID.Data,
-				region:      fallbackRegion(s.cacheRegion),
-				id:          s.Id.Data,
-				service:     "vault",
-				objectType:  "secret",
-			}, s.Name.Data, tagsToLabels(s.FreeformTags.Data), conn))
-		}
-	case DiscoveryOkeClusters:
-		res, err := NewResource(runtime, "oci.oke", map[string]*llx.RawData{})
-		if err != nil {
-			return nil, err
-		}
-		oke := res.(*mqlOciOke)
-		clusters := oke.GetClusters()
-		if clusters.Error != nil {
-			return nil, clusters.Error
-		}
-		for i := range clusters.Data {
-			c := clusters.Data[i].(*mqlOciOkeCluster)
-			appendIfNotNil(&assetList, ociObjectToAsset(ociObject{
-				tenantID:    tenantID,
-				compartment: c.CompartmentID.Data,
-				region:      fallbackRegion(c.region),
-				id:          c.Id.Data,
-				service:     "oke",
-				objectType:  "cluster",
-			}, c.Name.Data, tagsToLabels(c.FreeformTags.Data), conn))
-		}
-	default:
+	t, ok := ociDiscoveryTargetsByName[target]
+	if !ok {
 		log.Warn().Str("target", target).Msg("oci discovery: unknown target; skipping")
+		return nil, nil
+	}
+
+	items, err := t.List(runtime)
+	if err != nil {
+		return nil, err
+	}
+
+	tenantID := conn.TenantID()
+	assetList := make([]*inventory.Asset, 0, len(items))
+	for i := range items {
+		obj, ok := t.Extract(items[i])
+		if !ok {
+			log.Warn().Str("target", target).
+				Msgf("oci discovery: unexpected item type %T in the collection; skipping", items[i])
+			continue
+		}
+		if ociDiscoveryGone(obj.state) {
+			log.Debug().Str("target", target).Str("id", obj.id).Str("state", obj.state).
+				Msg("oci discovery: skipping a deleted resource")
+			continue
+		}
+		appendIfNotNil(&assetList, ociObjectToAsset(ociObject{
+			tenantID:    tenantID,
+			compartment: obj.compartment,
+			region:      fallbackRegion(obj.region),
+			id:          obj.id,
+			service:     t.Service,
+			objectType:  t.ObjectType,
+		}, t.Platform, obj.name, obj.labels, conn))
 	}
 	return assetList, nil
 }
@@ -356,58 +498,15 @@ func mondooOciObjectID(obj ociObject) string {
 		"/" + obj.objectType + "/" + obj.id
 }
 
-// getPlatformName maps (service, objectType) to the platform name used by
-// cnspec policy filters. Returning "" for an unknown pair makes the caller
-// skip the asset rather than emit a broken one.
-func getPlatformName(obj ociObject) string {
-	switch obj.service {
-	case "network":
-		if obj.objectType == "securitylist" {
-			return "oci-network-securitylist"
-		}
-	case "identity":
-		switch obj.objectType {
-		case "user":
-			return "oci-identity-user"
-		case "policy":
-			return "oci-identity-policy"
-		}
-	case "objectstorage":
-		if obj.objectType == "bucket" {
-			return "oci-objectstorage-bucket"
-		}
-	case "apigateway":
-		if obj.objectType == "deployment" {
-			return "oci-apigateway-deployment"
-		}
-	case "loadbalancer":
-		if obj.objectType == "loadBalancer" {
-			return "oci-loadbalancer"
-		}
-	case "redis":
-		if obj.objectType == "cluster" {
-			return "oci-redis-cluster"
-		}
-	case "vault":
-		if obj.objectType == "secret" {
-			return "oci-vault-secret"
-		}
-	case "oke":
-		if obj.objectType == "cluster" {
-			return "oci-oke-cluster"
-		}
-	}
-	return ""
-}
-
 // ociObjectToAsset wraps an ociObject into an inventory.Asset suitable for
-// returning from Discover(). Returns nil if the object can't be mapped to a
-// known platform (discovery then skips it rather than emitting a broken asset).
-func ociObjectToAsset(obj ociObject, name string, labels map[string]string, conn *connection.OciConnection) *inventory.Asset {
-	platformName := getPlatformName(obj)
-	if platformName == "" {
-		log.Warn().Str("service", obj.service).Str("objectType", obj.objectType).
-			Msg("oci discovery: unknown service/objectType pair; skipping asset")
+// returning from Discover(). Returns nil if the platform name is not in the
+// catalog (discovery then skips it rather than emitting a broken asset).
+func ociObjectToAsset(obj ociObject, platformName string, name string, labels map[string]string, conn *connection.OciConnection) *inventory.Asset {
+	descriptor := PlatformByName(platformName)
+	if descriptor == nil {
+		log.Warn().Str("platform", platformName).Str("service", obj.service).
+			Str("objectType", obj.objectType).
+			Msg("oci discovery: platform is not in the catalog; skipping asset")
 		return nil
 	}
 	if name == "" {
@@ -423,7 +522,7 @@ func ociObjectToAsset(obj ociObject, name string, labels map[string]string, conn
 	)
 	clonedConfig.PlatformId = platformID
 	platform := &inventory.Platform{}
-	PlatformByName(platformName).Apply(platform)
+	descriptor.Apply(platform)
 	return &inventory.Asset{
 		PlatformIds: []string{platformID},
 		Name:        name,
@@ -437,7 +536,7 @@ func ociObjectToAsset(obj ociObject, name string, labels map[string]string, conn
 // the plain string map the asset schema expects. Non-string values are
 // skipped — OCI freeform tags are declared as strings, but the MQL layer
 // types them as `any` because they flow through the dict path.
-func tagsToLabels(in map[string]interface{}) map[string]string {
+func tagsToLabels(in map[string]any) map[string]string {
 	if len(in) == 0 {
 		return map[string]string{}
 	}

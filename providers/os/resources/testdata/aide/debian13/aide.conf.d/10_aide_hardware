@@ -1,0 +1,3 @@
+@@define USB_ADDRESS [[:digit:]]+([:.][[:digit:]]+)+
+@@define PCI_ADDRESS ([[:xdigit:]]{4}:[[:xdigit:]]{2}:[[:xdigit:]]{2}\.[0-7])
+

@@ -1,0 +1,6 @@
+BootCurrent: 0001
+Timeout: 0 seconds
+BootOrder: 0002,0000,0001
+Boot0000* UiApp	FvVol(7cb8bdc9-f8eb-4f34-aaea-3ee4af6516a1)/FvFile(462caa21-7614-4503-836e-8ab6f4662331)
+Boot0001* UEFI Amazon Elastic Block Store vol078e899f5648e978c 1	PciRoot(0x0)/Pci(0x4,0x0)/NVMe(0x1,00-00-00-00-00-00-00-00)N.....YM....R,Y.
+Boot0002* redhat	HD(2,GPT,ca2ad5f1-9c24-4931-9e5f-8481a79d1924,0x1000,0x64000)/File(\EFI\redhat\shimx64.efi)

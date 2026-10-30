@@ -6,15 +6,16 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/service/sagemaker"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 // ---- Init for lineageGroup cross-reference ----
@@ -44,14 +45,10 @@ func initAwsSagemakerLineageGroup(runtime *plugin.Runtime, args map[string]*llx.
 		}
 	}
 
-	_, region, _, name := parseSagemakerArn(arnVal)
-	if args["name"] == nil && name != "" {
-		args["name"] = llx.StringData(name)
-	}
-	if args["region"] == nil && region != "" {
-		args["region"] = llx.StringData(region)
-	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.sagemaker.lineageGroup with arn %q not found", arnVal)
 }
 
 // ---- Artifacts ----
@@ -130,7 +127,7 @@ func (a *mqlAwsSagemaker) getArtifacts(conn *connection.AwsConnection) []*jobpoo
 					m := mqlArt.(*mqlAwsSagemakerArtifact)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlArt)
 				}
@@ -292,7 +289,7 @@ func (a *mqlAwsSagemaker) getActions(conn *connection.AwsConnection) []*jobpool.
 					m := mqlAct.(*mqlAwsSagemakerAction)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlAct)
 				}
@@ -462,7 +459,7 @@ func (a *mqlAwsSagemaker) getContexts(conn *connection.AwsConnection) []*jobpool
 					m := mqlCtx.(*mqlAwsSagemakerContext)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlCtx)
 				}
@@ -698,7 +695,7 @@ func (a *mqlAwsSagemaker) getLineageGroups(conn *connection.AwsConnection) []*jo
 					m := mqlLg.(*mqlAwsSagemakerLineageGroup)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlLg)
 				}

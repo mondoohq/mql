@@ -4,10 +4,35 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"strings"
+
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
+
+// keyVaultKeyURI builds the canonical Key Vault key identifier from the parts
+// ARM reports on a resource's customer-managed-key settings.
+//
+// ARM returns the vault URI WITH a trailing slash
+// ("https://myvault.vault.azure.net/"), so appending "/keys/" naively yields a
+// doubled separator that parseKeyVaultId's regex rejects -- the key then reads
+// as an error on exactly the resources that use a customer-managed key. Trim
+// the separator rather than assuming ARM's shape.
+//
+// Returns "" when either required part is missing, which callers surface as a
+// null reference rather than a broken URI.
+func keyVaultKeyURI(vaultURI, keyName, keyVersion string) string {
+	vaultURI = strings.TrimSuffix(strings.TrimSpace(vaultURI), "/")
+	keyName = strings.TrimSpace(keyName)
+	if vaultURI == "" || keyName == "" {
+		return ""
+	}
+	uri := vaultURI + "/keys/" + keyName
+	if keyVersion = strings.TrimSpace(keyVersion); keyVersion != "" {
+		uri += "/" + keyVersion
+	}
+	return uri
+}
 
 // newKeyVaultKeyResource creates a typed azure.subscription.keyVaultService.key
 // reference from a Key Vault key URI (e.g. https://myvault.vault.azure.net/keys/mykey/version).
@@ -17,13 +42,16 @@ func newKeyVaultKeyResource(runtime *plugin.Runtime, keyURI string) (*mqlAzureSu
 		return nil, nil
 	}
 
-	// Use NewResource so that if the key is already cached it gets reused.
+	// Use NewResource so that if the key is already cached it gets reused, and
+	// so initAzureSubscriptionKeyVaultServiceKey resolves the rest of the key.
 	// The KID field is the canonical identifier for key vault keys.
+	//
+	// managed and tags used to be passed as literals here. Nothing had read
+	// them, so a certificate-backed key reported managed: false and every key
+	// reached this way reported no tags -- both as fact.
 	mqlKey, err := NewResource(runtime, "azure.subscription.keyVaultService.key",
 		map[string]*llx.RawData{
-			"kid":     llx.StringData(keyURI),
-			"managed": llx.BoolData(false),
-			"tags":    llx.MapData(map[string]interface{}{}, types.String),
+			"kid": llx.StringData(keyURI),
 		})
 	if err != nil {
 		return nil, err
@@ -39,13 +67,12 @@ func newKeyVaultSecretResource(runtime *plugin.Runtime, secretURI string) (*mqlA
 		return nil, nil
 	}
 
-	// Use NewResource so that if the secret is already cached it gets reused.
+	// Use NewResource so that if the secret is already cached it gets reused, and
+	// so initAzureSubscriptionKeyVaultServiceSecret resolves the rest of it.
 	// The id field (the secret URI) is the canonical identifier for key vault secrets.
 	mqlSecret, err := NewResource(runtime, "azure.subscription.keyVaultService.secret",
 		map[string]*llx.RawData{
-			"id":      llx.StringData(secretURI),
-			"managed": llx.BoolData(false),
-			"tags":    llx.MapData(map[string]interface{}{}, types.String),
+			"id": llx.StringData(secretURI),
 		})
 	if err != nil {
 		return nil, err

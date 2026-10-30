@@ -5,8 +5,8 @@ package resources
 
 import (
 	"github.com/gophercloud/gophercloud/v2/openstack/compute/v2/quotasets"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func (o *mqlOpenstack) computeQuotaSet() (*mqlOpenstackComputeQuotaSet, error) {
@@ -30,7 +30,6 @@ func (o *mqlOpenstack) computeQuotaSet() (*mqlOpenstackComputeQuotaSet, error) {
 	}
 	res, err := CreateResource(o.MqlRuntime, "openstack.compute.quotaSet", map[string]*llx.RawData{
 		"__id":                     llx.StringData("openstack.compute.quotaSet/" + projectId),
-		"projectId":                llx.StringData(projectId),
 		"instances":                llx.IntData(int64(q.Instances)),
 		"cores":                    llx.IntData(int64(q.Cores)),
 		"ram":                      llx.IntData(int64(q.RAM)),
@@ -49,9 +48,17 @@ func (o *mqlOpenstack) computeQuotaSet() (*mqlOpenstackComputeQuotaSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlOpenstackComputeQuotaSet), nil
+	mqlQuota := res.(*mqlOpenstackComputeQuotaSet)
+	mqlQuota.cacheProjectID = projectId
+	return mqlQuota, nil
+}
+
+// mqlOpenstackComputeQuotaSetInternal holds the project id the quota applies
+// to, which project() resolves.
+type mqlOpenstackComputeQuotaSetInternal struct {
+	cacheProjectID string
 }
 
 func (r *mqlOpenstackComputeQuotaSet) project() (*mqlOpenstackProject, error) {
-	return resolveProject(r.MqlRuntime, r.ProjectId.Data, &r.Project)
+	return resolveProject(r.MqlRuntime, r.cacheProjectID, &r.Project)
 }

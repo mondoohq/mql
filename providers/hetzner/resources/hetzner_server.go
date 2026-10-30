@@ -5,16 +5,67 @@ package resources
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
+
+type mqlHetznerInternal struct {
+	// serversOnce guards a single project-wide Server.List so the servers()
+	// field and the location server rollups share one API round-trip
+	// instead of each firing its own list call.
+	serversOnce sync.Once
+	serversList []*hcloud.Server
+	serversErr  error
+
+	// The remaining caches serve DNS record resolution, which asks whether an
+	// address record points at anything the project holds. Answering that for
+	// one record needs every public address in the project, so each list is
+	// taken once per scan and shared across all records. See
+	// hetzner_dnsrecords.go.
+	primaryIPsOnce sync.Once
+	primaryIPsList []*hcloud.PrimaryIP
+	primaryIPsErr  error
+
+	floatingIPsOnce sync.Once
+	floatingIPsList []*hcloud.FloatingIP
+	floatingIPsErr  error
+
+	loadBalancersOnce sync.Once
+	loadBalancersList []*hcloud.LoadBalancer
+	loadBalancersErr  error
+
+	// certificatesOnce backs the load balancer certificate union, which
+	// resolves certificate IDs against the project list rather than looking
+	// each one up on its own.
+	certificatesOnce sync.Once
+	certificatesList []*hcloud.Certificate
+	certificatesErr  error
+
+	// volumesOnce and storageBoxesOnce back the location residency rollups
+	// alongside the address lists above, so `hetzner.locations { volumes }`
+	// costs one list call rather than one per location.
+	volumesOnce sync.Once
+	volumesList []*hcloud.Volume
+	volumesErr  error
+
+	storageBoxesOnce sync.Once
+	storageBoxesList []*hcloud.StorageBox
+	storageBoxesErr  error
+
+	// zoneRecords backs the reverse edge, server.dnsRecords. It costs a zone
+	// list plus one record-set list per zone, so it stays separate from the
+	// address lists above and is only paid when that edge is queried.
+	zoneRecordsOnce sync.Once
+	zoneRecordsList []zoneRecord
+	zoneRecordsErr  error
+}
 
 type mqlHetznerServerInternal struct {
 	cacheServerType     *hcloud.ServerType
-	cacheDatacenter     *hcloud.Datacenter
 	cacheLocation       *hcloud.Location
 	cacheImage          *hcloud.Image
 	cacheVolumes        []*hcloud.Volume
@@ -26,23 +77,73 @@ type mqlHetznerServerInternal struct {
 	cachePrivateNet     []hcloud.ServerPrivateNet
 	cacheFirewalls      []*hcloud.ServerFirewallStatus
 	cacheLoadBalancers  []*hcloud.LoadBalancer
+	cachePublicNet      hcloud.ServerPublicNet
 }
 
 func (r *mqlHetznerServer) id() (string, error) {
 	return fmt.Sprintf("hetzner.server/%d", r.Id.Data), nil
 }
 
-func (h *mqlHetzner) servers() ([]any, error) {
-	c := conn(h.MqlRuntime)
-	items, err := paginate(func(opts hcloud.ListOpts) ([]*hcloud.Server, *hcloud.Response, error) {
-		return c.Client().Server.List(ctx(), hcloud.ServerListOpts{ListOpts: opts})
+// allServers lists every project server exactly once and caches the raw
+// result on the hetzner namespace resource. The servers() field and the
+// location/datacenter server rollups all resolve through here, so a bulk query
+// like `hetzner.locations { servers }` costs a single Server.List rather than
+// one per location.
+func (h *mqlHetzner) allServers() ([]*hcloud.Server, error) {
+	h.serversOnce.Do(func() {
+		c := conn(h.MqlRuntime)
+		h.serversList, h.serversErr = paginate(func(opts hcloud.ListOpts) ([]*hcloud.Server, *hcloud.Response, error) {
+			return c.Client().Server.List(ctx(), hcloud.ServerListOpts{ListOpts: opts})
+		})
 	})
+	return h.serversList, h.serversErr
+}
+
+func (h *mqlHetzner) servers() ([]any, error) {
+	items, err := h.allServers()
 	if err != nil {
 		return nil, err
 	}
 	out := make([]any, 0, len(items))
 	for _, s := range items {
 		res, err := newMqlHetznerServer(h.MqlRuntime, s)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+// hetznerNamespace resolves the singleton hetzner namespace resource so shared
+// caches (e.g. the server list) can be reached from other resources.
+func hetznerNamespace(runtime *plugin.Runtime) (*mqlHetzner, error) {
+	res, err := NewResource(runtime, "hetzner", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlHetzner), nil
+}
+
+// serversMatching returns full server resources for the servers the match
+// predicate selects, filtering the once-cached project server list in memory.
+// The location.servers reverse edge uses it so repeated calls across a bulk
+// query share a single Server.List round-trip.
+func serversMatching(runtime *plugin.Runtime, match func(*hcloud.Server) bool) ([]any, error) {
+	h, err := hetznerNamespace(runtime)
+	if err != nil {
+		return nil, err
+	}
+	items, err := h.allServers()
+	if err != nil {
+		return nil, err
+	}
+	out := []any{}
+	for _, s := range items {
+		if !match(s) {
+			continue
+		}
+		res, err := newMqlHetznerServer(runtime, s)
 		if err != nil {
 			return nil, err
 		}
@@ -72,6 +173,7 @@ func newMqlHetznerServer(runtime *plugin.Runtime, s *hcloud.Server) (*mqlHetzner
 		"publicIpv6Blocked": llx.BoolData(s.PublicNet.IPv6.Blocked),
 		"publicIpv6DnsPtr":  dictArrayData(dnsPtrSliceFromMap(s.PublicNet.IPv6.DNSPtr)),
 		"backupWindow":      llx.StringData(s.BackupWindow),
+		"backupsEnabled":    llx.BoolData(s.BackupWindow != ""),
 		"rescueEnabled":     llx.BoolData(s.RescueEnabled),
 		"locked":            llx.BoolData(s.Locked),
 		"includedTraffic":   llx.IntData(int64(s.IncludedTraffic)),
@@ -85,11 +187,11 @@ func newMqlHetznerServer(runtime *plugin.Runtime, s *hcloud.Server) (*mqlHetzner
 	}
 	m := res.(*mqlHetznerServer)
 	m.cacheServerType = s.ServerType
-	m.cacheDatacenter = s.Datacenter
 	m.cacheLocation = s.Location
 	m.cacheImage = s.Image
 	m.cacheVolumes = s.Volumes
 	m.cacheFloatingIPs = s.PublicNet.FloatingIPs
+	m.cachePublicNet = s.PublicNet
 	m.cachePrimaryIPv4ID = s.PublicNet.IPv4.ID
 	m.cachePrimaryIPv6ID = s.PublicNet.IPv6.ID
 	m.cachePlacementGroup = s.PlacementGroup
@@ -101,9 +203,9 @@ func newMqlHetznerServer(runtime *plugin.Runtime, s *hcloud.Server) (*mqlHetzner
 }
 
 func initHetznerServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "server")
+	if err != nil {
+		return nil, nil, err
 	}
 	s, _, err := conn(runtime).Client().Server.GetByID(ctx(), id)
 	if err != nil {
@@ -122,18 +224,8 @@ func (m *mqlHetznerServer) serverType() (*mqlHetznerServerType, error) {
 	})
 }
 
-func (m *mqlHetznerServer) datacenter() (*mqlHetznerDatacenter, error) {
-	return resolveTypedResource(&m.Datacenter, m.cacheDatacenter, func(dc *hcloud.Datacenter) (*mqlHetznerDatacenter, error) {
-		return newMqlHetznerDatacenter(m.MqlRuntime, dc)
-	})
-}
-
 func (m *mqlHetznerServer) location() (*mqlHetznerLocation, error) {
-	loc := m.cacheLocation
-	if loc == nil && m.cacheDatacenter != nil {
-		loc = m.cacheDatacenter.Location
-	}
-	return resolveTypedResource(&m.Location, loc, func(l *hcloud.Location) (*mqlHetznerLocation, error) {
+	return resolveTypedResource(&m.Location, m.cacheLocation, func(l *hcloud.Location) (*mqlHetznerLocation, error) {
 		return newMqlHetznerLocation(m.MqlRuntime, l)
 	})
 }
@@ -261,8 +353,15 @@ func (m *mqlHetznerServer) privateNet() ([]any, error) {
 
 // --- server.privateNet sub-resource ---
 
+// mqlHetznerServerPrivateNetInternal holds the server and network the
+// attachment joins, which the server and network accessors resolve.
+type mqlHetznerServerPrivateNetInternal struct {
+	cacheServerID  int64
+	cacheNetworkID int64
+}
+
 func (r *mqlHetznerServerPrivateNet) id() (string, error) {
-	return fmt.Sprintf("hetzner.server.privateNet/%d/%d", r.ServerId.Data, r.NetworkId.Data), nil
+	return fmt.Sprintf("hetzner.server.privateNet/%d/%d", r.cacheServerID, r.cacheNetworkID), nil
 }
 
 func newMqlHetznerServerPrivateNet(runtime *plugin.Runtime, serverID int64, p hcloud.ServerPrivateNet) (*mqlHetznerServerPrivateNet, error) {
@@ -276,8 +375,6 @@ func newMqlHetznerServerPrivateNet(runtime *plugin.Runtime, serverID int64, p hc
 	}
 	res, err := CreateResource(runtime, "hetzner.server.privateNet", map[string]*llx.RawData{
 		"__id":       llx.StringData(fmt.Sprintf("hetzner.server.privateNet/%d/%d", serverID, networkID)),
-		"serverId":   llx.IntData(serverID),
-		"networkId":  llx.IntData(networkID),
 		"ip":         llx.StringData(ipString(p.IP)),
 		"aliasIps":   llx.ArrayData(aliases, types.String),
 		"macAddress": llx.StringData(p.MACAddress),
@@ -285,16 +382,39 @@ func newMqlHetznerServerPrivateNet(runtime *plugin.Runtime, serverID int64, p hc
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlHetznerServerPrivateNet), nil
+	m := res.(*mqlHetznerServerPrivateNet)
+	m.cacheServerID = serverID
+	m.cacheNetworkID = networkID
+	return m, nil
+}
+
+// serverRef builds a lazy hetzner.server reference from its id, used by the
+// sub-resources that point back at their parent server.
+func serverRef(runtime *plugin.Runtime, field *plugin.TValue[*mqlHetznerServer], id int64) (*mqlHetznerServer, error) {
+	if id == 0 {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	ref, err := NewResource(runtime, "hetzner.server", map[string]*llx.RawData{
+		"id": llx.IntData(id),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ref.(*mqlHetznerServer), nil
+}
+
+func (m *mqlHetznerServerPrivateNet) server() (*mqlHetznerServer, error) {
+	return serverRef(m.MqlRuntime, &m.Server, m.cacheServerID)
 }
 
 func (m *mqlHetznerServerPrivateNet) network() (*mqlHetznerNetwork, error) {
-	if m.NetworkId.Data == 0 {
+	if m.cacheNetworkID == 0 {
 		m.Network.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	ref, err := NewResource(m.MqlRuntime, "hetzner.network", map[string]*llx.RawData{
-		"id": llx.IntData(m.NetworkId.Data),
+		"id": llx.IntData(m.cacheNetworkID),
 	})
 	if err != nil {
 		return nil, err
@@ -304,30 +424,42 @@ func (m *mqlHetznerServerPrivateNet) network() (*mqlHetznerNetwork, error) {
 
 // --- server.firewallBinding sub-resource ---
 
+// mqlHetznerServerFirewallBindingInternal holds the server and firewall the
+// binding joins, which the server and firewall accessors resolve.
+type mqlHetznerServerFirewallBindingInternal struct {
+	cacheServerID   int64
+	cacheFirewallID int64
+}
+
 func (r *mqlHetznerServerFirewallBinding) id() (string, error) {
-	return fmt.Sprintf("hetzner.server.firewallBinding/%d/%d", r.ServerId.Data, r.FirewallId.Data), nil
+	return fmt.Sprintf("hetzner.server.firewallBinding/%d/%d", r.cacheServerID, r.cacheFirewallID), nil
 }
 
 func newMqlHetznerServerFirewallBinding(runtime *plugin.Runtime, serverID int64, fw *hcloud.ServerFirewallStatus) (*mqlHetznerServerFirewallBinding, error) {
 	res, err := CreateResource(runtime, "hetzner.server.firewallBinding", map[string]*llx.RawData{
-		"__id":       llx.StringData(fmt.Sprintf("hetzner.server.firewallBinding/%d/%d", serverID, fw.Firewall.ID)),
-		"serverId":   llx.IntData(serverID),
-		"firewallId": llx.IntData(fw.Firewall.ID),
-		"status":     llx.StringData(string(fw.Status)),
+		"__id":   llx.StringData(fmt.Sprintf("hetzner.server.firewallBinding/%d/%d", serverID, fw.Firewall.ID)),
+		"status": llx.StringData(string(fw.Status)),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlHetznerServerFirewallBinding), nil
+	m := res.(*mqlHetznerServerFirewallBinding)
+	m.cacheServerID = serverID
+	m.cacheFirewallID = fw.Firewall.ID
+	return m, nil
+}
+
+func (m *mqlHetznerServerFirewallBinding) server() (*mqlHetznerServer, error) {
+	return serverRef(m.MqlRuntime, &m.Server, m.cacheServerID)
 }
 
 func (m *mqlHetznerServerFirewallBinding) firewall() (*mqlHetznerFirewall, error) {
-	if m.FirewallId.Data == 0 {
+	if m.cacheFirewallID == 0 {
 		m.Firewall.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	ref, err := NewResource(m.MqlRuntime, "hetzner.firewall", map[string]*llx.RawData{
-		"id": llx.IntData(m.FirewallId.Data),
+		"id": llx.IntData(m.cacheFirewallID),
 	})
 	if err != nil {
 		return nil, err

@@ -9,7 +9,7 @@ import (
 	"io"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 // AIXSmbiosManager gets system information from AIX systems.

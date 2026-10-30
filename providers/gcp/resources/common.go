@@ -11,13 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/gcp/connection"
 
-	"google.golang.org/api/googleapi"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -82,8 +80,8 @@ func resolveServiceAccountRef(runtime *plugin.Runtime, raw, fallbackProjectId st
 		return nil, nil
 	}
 	projectId, email := fallbackProjectId, raw
-	if idx := strings.Index(raw, "/serviceAccounts/"); idx != -1 {
-		email = raw[idx+len("/serviceAccounts/"):]
+	if _, after, ok := strings.Cut(raw, "/serviceAccounts/"); ok {
+		email = after
 		if p := projectFromResourceName(raw); p != "" {
 			projectId = p
 		}
@@ -212,7 +210,7 @@ func protoToDict(msg proto.Message) (map[string]any, error) {
 	if msg == nil {
 		return nil, nil
 	}
-	if v := reflect.ValueOf(msg); v.Kind() == reflect.Ptr && v.IsNil() {
+	if v := reflect.ValueOf(msg); v.Kind() == reflect.Pointer && v.IsNil() {
 		return nil, nil
 	}
 	data, err := protojson.Marshal(msg)
@@ -226,29 +224,20 @@ func protoToDict(msg proto.Message) (map[string]any, error) {
 	return result, nil
 }
 
-// isHTTPSkippable returns true for REST API errors that indicate the API
-// is not enabled, the caller lacks permission, or the resource is not found.
-func isHTTPSkippable(err error) bool {
-	gerr, ok := err.(*googleapi.Error)
-	if !ok {
-		return false
-	}
-	if gerr.Code == 403 || gerr.Code == 404 {
-		return true
-	}
-	return strings.Contains(gerr.Message, "not enabled") || strings.Contains(gerr.Message, "has not been used")
-}
-
-// isGRPCSkippable returns true for gRPC errors that indicate the API
-// is not enabled, the caller lacks permission, or the resource is not found.
-func isGRPCSkippable(err error) bool {
-	if s, ok := status.FromError(err); ok {
-		switch s.Code() {
-		case codes.PermissionDenied, codes.Unimplemented, codes.NotFound:
-			return true
+// protoToDictSlice converts a slice of protobuf messages the same way
+// protoToDict converts one. Use it instead of convert.JsonToDictSlice for
+// protobuf-generated types: encoding/json emits their snake_case json tags and
+// renders enums as numbers, neither of which matches what the schema documents.
+func protoToDictSlice[T proto.Message](msgs []T) ([]any, error) {
+	res := make([]any, 0, len(msgs))
+	for _, msg := range msgs {
+		d, err := protoToDict(msg)
+		if err != nil {
+			return nil, err
 		}
+		res = append(res, d)
 	}
-	return false
+	return res, nil
 }
 
 func (g *mqlGcpRetryConfig) id() (string, error) {
@@ -321,6 +310,32 @@ func parseProjectFromPath(fullPath string) string {
 	return ""
 }
 
+// resolvePubsubTopicRef resolves a Pub/Sub topic reference to the typed
+// gcp.project.pubsubService.topic resource. The reference is typically a full
+// "projects/{project}/topics/{topic}" path; both the project and the short
+// topic name are pulled from it (fallbackProjectId is used only when the path
+// carries no project segment). Both are required: the topic init matches on the
+// short name and needs the project to build its parent service, so passing the
+// full path as the name (or omitting the project) leaves the ref unresolved.
+// Returns nil when the reference is empty.
+func resolvePubsubTopicRef(runtime *plugin.Runtime, topicRef, fallbackProjectId string) (*mqlGcpProjectPubsubServiceTopic, error) {
+	if topicRef == "" {
+		return nil, nil
+	}
+	projectId := fallbackProjectId
+	if p := parseProjectFromPath(topicRef); p != "" {
+		projectId = p
+	}
+	res, err := NewResource(runtime, "gcp.project.pubsubService.topic", map[string]*llx.RawData{
+		"name":      llx.StringData(parseResourceName(topicRef)),
+		"projectId": llx.StringData(projectId),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGcpProjectPubsubServiceTopic), nil
+}
+
 // parseLocationFromPath extracts the location/region from a GCP resource path.
 // The path format is: projects/{project}/locations/{location}/...
 // Returns "global" if no location segment is found.
@@ -345,7 +360,15 @@ func getAssetIdentifier(runtime *plugin.Runtime) *assetIdentifier {
 	if !ok {
 		return nil
 	}
-	id := conn.Asset().PlatformIds[0]
+	// The root asset and any inventory-file asset without a platform_ids block
+	// carry no platform ids, so this must not index blindly: a panic here is
+	// unrecoverable and takes down the whole scan. Every caller already handles
+	// a nil return.
+	asset := conn.Asset()
+	if asset == nil || len(asset.PlatformIds) == 0 {
+		return nil
+	}
+	id := asset.PlatformIds[0]
 
 	if strings.HasPrefix(id, "//platformid.api.mondoo.app/runtime/gcp/") {
 		// "//platformid.api.mondoo.app/runtime/gcp/{o.service}/v1/projects/{project}/regions/{region}/{objectType}/{name}"
@@ -374,31 +397,101 @@ func getDiskByUrl(diskUrl string, runtime *plugin.Runtime) (*mqlGcpProjectComput
 	}
 
 	// URL format: https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/disks/{disk}
-	//          or https://compute.googleapis.com/compute/v1/projects/{project}/zones/{zone}/disks/{disk}
-	// Also handles regional disks: .../projects/{project}/regions/{region}/disks/{disk}
-	params := diskUrl
-	switch {
-	case strings.HasPrefix(params, "https://www.googleapis.com/compute/v1/"):
-		params = strings.TrimPrefix(params, "https://www.googleapis.com/compute/v1/")
-	case strings.HasPrefix(params, "https://compute.googleapis.com/compute/v1/"):
-		params = strings.TrimPrefix(params, "https://compute.googleapis.com/compute/v1/")
-	default:
-		return nil, errors.New("unrecognized source disk URL prefix: " + diskUrl)
-	}
-	parts := strings.Split(params, "/")
-	// Expect at least: projects/{project}/{zones|regions}/{loc}/disks/{disk}
-	if len(parts) < 6 {
-		return nil, errors.New("invalid source disk URL: " + diskUrl)
+	//          or https://compute.googleapis.com/compute/v1/projects/{project}/regions/{region}/disks/{disk}
+	diskId, err := getDiskIdByUrl(diskUrl)
+	if err != nil {
+		return nil, err
 	}
 
-	res, err := NewResource(runtime, "gcp.project.computeService.disk", map[string]*llx.RawData{
-		"name":      llx.StringData(parts[len(parts)-1]),
-		"projectId": llx.StringData(parts[1]),
+	// The gcp.project.computeService.disk resource has no init, so NewResource
+	// would leave a husk whose id() (derived from the unset Id field) collides
+	// with every other url-resolved disk. Instead scan the parent project's
+	// already-populated disks() list and return the real resource, mirroring
+	// attachedDisk.source(). Returns (nil, nil) when the disk isn't in the
+	// scanned project (e.g. a cross-project reference not otherwise scanned).
+	obj, err := CreateResource(runtime, "gcp.project.computeService", map[string]*llx.RawData{
+		"projectId": llx.StringData(diskId.Project),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlGcpProjectComputeServiceDisk), nil
+	computeSvc := obj.(*mqlGcpProjectComputeService)
+	disks := computeSvc.GetDisks()
+	if disks.Error != nil {
+		return nil, disks.Error
+	}
+	for _, d := range disks.Data {
+		disk, ok := d.(*mqlGcpProjectComputeServiceDisk)
+		if !ok || disk.Name.Data != diskId.Name {
+			continue
+		}
+		// Disk names are unique per zone/region, so match the location segment
+		// when the disk is zonal; regional disks carry no Zone, so fall back to
+		// a name match within the project.
+		if zone := disk.Zone.Data; zone != nil {
+			if zone.GetName().Data == diskId.Region {
+				return disk, nil
+			}
+			continue
+		}
+		// Regional disk (no zone): the location segment can't be matched against
+		// a zone, so this falls back to a name match within the project. Two
+		// regional disks with the same name in different regions would be
+		// ambiguous; warn so it's visible.
+		log.Warn().Str("disk", diskId.Name).Str("location", diskId.Region).
+			Msg("resolving regional source disk by name only; result may be ambiguous across regions")
+		return disk, nil
+	}
+	return nil, nil
+}
+
+// resolveComputeSnapshotByName returns the fully-populated snapshot with the
+// given name from the project's snapshots() list. The snapshot resource has no
+// init, so a NewResource by-name would collide on an empty __id; scanning the
+// parent list returns the real resource. Returns (nil, nil) when not found.
+func resolveComputeSnapshotByName(runtime *plugin.Runtime, projectId, name string) (*mqlGcpProjectComputeServiceSnapshot, error) {
+	obj, err := CreateResource(runtime, "gcp.project.computeService", map[string]*llx.RawData{
+		"projectId": llx.StringData(projectId),
+	})
+	if err != nil {
+		return nil, err
+	}
+	computeSvc := obj.(*mqlGcpProjectComputeService)
+	snapshots := computeSvc.GetSnapshots()
+	if snapshots.Error != nil {
+		return nil, snapshots.Error
+	}
+	for _, s := range snapshots.Data {
+		snap, ok := s.(*mqlGcpProjectComputeServiceSnapshot)
+		if ok && snap.Name.Data == name {
+			return snap, nil
+		}
+	}
+	return nil, nil
+}
+
+// resolveComputeStoragePoolByName returns the fully-populated storage pool with
+// the given name from the project's storagePools() list. Same rationale as
+// resolveComputeSnapshotByName. Returns (nil, nil) when not found.
+func resolveComputeStoragePoolByName(runtime *plugin.Runtime, projectId, name string) (*mqlGcpProjectComputeServiceStoragePool, error) {
+	obj, err := CreateResource(runtime, "gcp.project.computeService", map[string]*llx.RawData{
+		"projectId": llx.StringData(projectId),
+	})
+	if err != nil {
+		return nil, err
+	}
+	computeSvc := obj.(*mqlGcpProjectComputeService)
+	pools := computeSvc.GetStoragePools()
+	if pools.Error != nil {
+		return nil, pools.Error
+	}
+	for _, p := range pools.Data {
+		pool, ok := p.(*mqlGcpProjectComputeServiceStoragePool)
+		if ok && pool.Name.Data == name {
+			return pool, nil
+		}
+	}
+	return nil, nil
 }
 
 // getNetworkByUrl resolves a typed network resource from either of the two
@@ -420,13 +513,10 @@ func getNetworkByUrl(networkUrl string, runtime *plugin.Runtime) (*mqlGcpProject
 		return nil, nil
 	}
 
-	params := strings.TrimPrefix(networkUrl, "https://www.googleapis.com/compute/v1/")
-	params = strings.TrimPrefix(params, "https://compute.googleapis.com/compute/v1/")
-	parts := strings.Split(params, "/")
-	if len(parts) < 5 || parts[0] != "projects" || parts[3] != "networks" {
+	project, name, ok := parseNetworkURL(networkUrl)
+	if !ok {
 		return nil, fmt.Errorf("unrecognized network reference: %q", networkUrl)
 	}
-	project, name := parts[1], parts[4]
 
 	// Use NewResource so initGcpProjectComputeServiceNetwork runs and
 	// populates every field (scalars like autoCreateSubnetworks would
@@ -441,34 +531,58 @@ func getNetworkByUrl(networkUrl string, runtime *plugin.Runtime) (*mqlGcpProject
 	return res.(*mqlGcpProjectComputeServiceNetwork), nil
 }
 
-func getSubnetworkByUrl(subnetUrl string, runtime *plugin.Runtime) (*mqlGcpProjectComputeServiceSubnetwork, error) {
-	// A reference to a subnetwork is not mandatory for this resource
+// parseSubnetworkURL extracts the project, region, and name from a compute
+// subnetwork self-link. It accepts both the www.googleapis.com and
+// compute.googleapis.com hosts. ok is false when the URL is empty or is not a
+// recognized subnetwork reference.
+func parseSubnetworkURL(subnetUrl string) (project, region, name string, ok bool) {
 	if subnetUrl == "" {
-		return nil, nil
+		return "", "", "", false
 	}
-
 	// Format is https://www.googleapis.com/compute/v1/projects/project1/regions/us-central1/subnetworks/subnet-1
 	// or https://compute.googleapis.com/compute/v1/projects/project1/regions/us-central1/subnetworks/subnet-1
 	params := strings.TrimPrefix(subnetUrl, "https://www.googleapis.com/compute/v1/")
 	params = strings.TrimPrefix(params, "https://compute.googleapis.com/compute/v1/")
 	parts := strings.Split(params, "/")
 	if len(parts) < 6 || parts[0] != "projects" || parts[2] != "regions" || parts[4] != "subnetworks" {
+		return "", "", "", false
+	}
+	return parts[1], parts[3], parts[5], true
+}
+
+func getSubnetworkByUrl(subnetUrl string, runtime *plugin.Runtime) (*mqlGcpProjectComputeServiceSubnetwork, error) {
+	// A reference to a subnetwork is not mandatory for this resource
+	if subnetUrl == "" {
+		return nil, nil
+	}
+
+	project, region, name, ok := parseSubnetworkURL(subnetUrl)
+	if !ok {
 		return nil, fmt.Errorf("unrecognized subnetwork reference: %q", subnetUrl)
 	}
-	resId := resourceId{Project: parts[1], Region: parts[3], Name: parts[5]}
 	// regionUrl is the full URL up to and including the region segment
-	regionUrl := "https://www.googleapis.com/compute/v1/projects/" + resId.Project + "/regions/" + resId.Region
+	regionUrl := "https://www.googleapis.com/compute/v1/projects/" + project + "/regions/" + region
 
 	// Use NewResource so initGcpProjectComputeServiceSubnetwork runs and
 	// populates every field instead of leaving the resource partially set.
+	//
+	// regionUrl has to go in the args, not just onto cacheRegionUrl afterwards.
+	// The init matches a listed subnetwork on name, project *and* region, and
+	// with no regionUrl its region is "", which matches nothing. It then falls
+	// through to a direct Get carrying that empty region and GCP rejects it:
+	//   GET .../projects/{p}/regions//subnetworks/{n} -> 400 Invalid value for
+	//   field 'region': ''
+	// which surfaces as an errored check rather than a resolved subnetwork.
 	res, err := NewResource(runtime, "gcp.project.computeService.subnetwork", map[string]*llx.RawData{
-		"name":      llx.StringData(resId.Name),
-		"projectId": llx.StringData(resId.Project),
+		"name":      llx.StringData(name),
+		"projectId": llx.StringData(project),
 		"regionUrl": llx.StringData(regionUrl),
 	})
 	if err != nil {
 		return nil, err
 	}
+	mqlRef := res.(*mqlGcpProjectComputeServiceSubnetwork)
+	mqlRef.cacheRegionUrl = regionUrl
 	return res.(*mqlGcpProjectComputeServiceSubnetwork), nil
 }
 
@@ -483,6 +597,9 @@ func getDiskIdByUrl(diskUrl string) (*resourceId, error) {
 	params := strings.TrimPrefix(diskUrl, "https://www.googleapis.com/compute/v1/")
 	params = strings.TrimPrefix(params, "https://compute.googleapis.com/compute/v1/")
 	parts := strings.Split(params, "/")
+	if len(parts) < 6 || parts[0] != "projects" {
+		return nil, errors.New("invalid disk URL: " + diskUrl)
+	}
 	return &resourceId{Project: parts[1], Region: parts[3], Name: parts[5]}, nil
 }
 
@@ -551,4 +668,20 @@ func getZoneByUrl(zoneUrl string, runtime *plugin.Runtime) (*mqlGcpProjectComput
 		return nil, err
 	}
 	return res.(*mqlGcpProjectComputeServiceZone), nil
+}
+
+// cachedResource returns a resource already built in this runtime, or nil.
+//
+// The runtime keys its resource cache on resourceName + "\x00" + id. Callers
+// that check the cache before doing I/O need that same key, and spelling it out
+// at each call site means a future change to the format has to find every copy.
+// Mirrors the helper of the same name in the azure provider.
+func cachedResource(runtime *plugin.Runtime, resourceName, id string) plugin.Resource {
+	if id == "" || runtime == nil || runtime.Resources == nil {
+		return nil
+	}
+	if res, ok := runtime.Resources.Get(resourceName + "\x00" + id); ok {
+		return res
+	}
+	return nil
 }

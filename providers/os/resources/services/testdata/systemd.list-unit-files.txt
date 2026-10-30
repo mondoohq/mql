@@ -1,0 +1,24 @@
+UNIT FILE                        STATE    PRESET
+aliased-requires.service         static   -
+aliased-wants.service            static   -
+aliased.service                  indirect enabled
+aliastest.service                alias    -
+explicit-socket-service.service  static   -
+implicit-socket.service          static   -
+intermediate-dep-require.service enabled  enabled
+intermediate-dep-want.service    enabled  enabled
+masked.service                   masked   enabled
+not-enabled.service              static   -
+sshd.service                     disabled enabled
+explicit-socket.socket           static   -
+implicit-socket.socket           static   -
+multi-listen.socket              disabled enabled
+default.target                   static   -
+graphical.target                 static   -
+intermediate.target              static   -
+runlevel5.target                 alias    -
+fstrim.timer                     disabled enabled
+logrotate.timer                  enabled  enabled
+static-check.timer               static   -
+
+21 unit files listed.

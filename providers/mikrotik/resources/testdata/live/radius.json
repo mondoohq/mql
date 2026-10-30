@@ -1,0 +1,21 @@
+[
+ {
+  ".id": "*1",
+  "accounting-backup": "false",
+  "accounting-port": "1813",
+  "address": "192.0.2.60",
+  "authentication-port": "1812",
+  "called-id": "",
+  "certificate": "none",
+  "disabled": "false",
+  "domain": "",
+  "protocol": "udp",
+  "radsec-timeout": "3s300ms",
+  "realm": "",
+  "require-message-auth": "yes-for-request-resp",
+  "secret": "REDACTED",
+  "service": "login",
+  "status": "",
+  "timeout": "1s"
+ }
+]

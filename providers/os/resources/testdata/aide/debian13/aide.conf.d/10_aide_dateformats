@@ -1,0 +1,26 @@
+@@define YYYY                     (19|20)[0-9]{2}
+@@define MM                       (0[1-9]|1[0-2])
+@@define DD                       (0[1-9]|[12][0-9]|3[01])
+@@define DATE_MM_DD               ((01|03|05|07|08|10|12)-(0[1-9]|[12][0-9]|3[01])|(04|06|09|11)-(0[1-9]|[12][0-9]|30)|02-(0[1-9]|[12][0-9]))
+@@define DATE_DD_MM               ((0[1-9]|[12][0-9]|3[01])-(01|03|05|07|08|10|12)|(0[1-9]|[12][0-9]|30)-(04|06|09|11)|(0[1-9]|[12][0-9])-(02))
+@@define DATE_MMDD                ((01|03|05|07|08|10|12)(0[1-9]|[12][0-9]|3[01])|(04|06|09|11)(0[1-9]|[12][0-9]|30)|02(0[1-9]|[12][0-9]))
+@@define DATE_DDMM                ((0[1-9]|[12][0-9]|3[01])(01|03|05|07|08|10|12)|(0[1-9]|[12][0-9]|30)(04|06|09|11)|(0[1-9]|[12][0-9])(02))
+
+@@define DATE_YYYY_MM_DD          @@{YYYY}-@@{DATE_MM_DD}
+@@define DATE_YYYYMMDD            @@{YYYY}@@{DATE_MMDD}
+@@define DATE_DDMMYYYY            @@{DATE_DDMM}@@{YYYY}
+@@define DATE_MMDDYYYY            @@{DATE_MMDD}@@{YYYY}
+@@define TIME_0_59                ([0-5][0-9])
+@@define TIME_0_23                ([01][0-9]|2[0-3])
+@@define TIME_HHMM                @@{TIME_0_23}@@{TIME_0_59}
+@@define TIME_HHMMSS              @@{TIME_HHMM}@@{TIME_0_59}
+@@define TIME_HH_MM               @@{TIME_0_23}:@@{TIME_0_59}
+@@define TIME_HH_MM_SS            @@{TIME_HH_MM}:@@{TIME_0_59}
+@@define TIME_ISO                 @@{TIME_0_23}:@@{TIME_0_59}:@@{TIME_0_59}(Z|[+-]@@{TIME_0_23}:@@{TIME_0_59})
+@@define DATETIME_ISO8601         @@{YYYY}-@@{DATE_MM_DD}T@@{TIME_0_23}:@@{TIME_0_59}:@@{TIME_0_59}(Z|[+-]@@{TIME_0_23}:@@{TIME_0_59})
+@@define DATETIME_COMPACT         @@{YYYY}@@{DATE_MMDD}T@@{TIME_0_23}@@{TIME_0_59}@@{TIME_0_59}
+@@define DATETIME_SPACE           @@{YYYY}-@@{DATE_MM_DD}[[:space:]]@@{TIME_0_23}:@@{TIME_0_59}(:@@{TIME_0_59})?
+
+# UNIX_TS matches from a 100 megaseconds upwards, that is 1973-03-03T09:46:40
+#     and still rules out unrealisticaly small numbers.
+@@define UNIX_TS                  [1-9][[:digit:]]{8,9}

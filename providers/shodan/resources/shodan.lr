@@ -1,28 +1,35 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/mql/v13/providers/shodan"
-option go_package = "go.mondoo.com/mql/v13/providers/shodan/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/shodan"
+option go_package = "go.mondoo.com/mql/providers/shodan/resources"
+option root = "shodan"
 
 // Shodan Search Engine
 //
-// Empty namespace for the Shodan provider. Use `shodan.host(ip: "...")`,
-// `shodan.domain(name: "...")`, `shodan.profile`, and `shodan.apiPlan`
-// to query host posture, domain DNS state, the connected Shodan
-// account, and the API plan limits.
-shodan {}
+// Root of the Shodan internet-intelligence data this provider exposes.
+// Shodan continuously indexes internet-reachable hosts, cataloging their
+// open ports, service banners, TLS posture, and known vulnerabilities.
+// Query `shodan.host(ip: "1.2.3.4")` for a single host's exposure,
+// `shodan.domain(name: "example.com")` for a domain's subdomains and DNS
+// records, `shodan.profile` for the connected account, and
+// `shodan.apiPlan` for the plan's scan-credit and monitored-IP limits.
+shodan @root {}
 
 // Shodan host information
 //
-// Examine what Shodan knows about a single internet-reachable host,
-// identified by `ip` (e.g., `shodan.host(ip: "1.2.3.4")`). Surfaces
-// reverse-DNS hostnames and ASN / ISP / organization ownership, the
-// open-port list and the per-banner service inventory, geolocation
-// (country, region, city, postal, lat/lon), Shodan's tag set with
-// derived predicates (`isCloud`, `isCdn`, `isVpn`, `isTor`, `isProxy`,
-// `isInfrastructure`), the `lastUpdate` timestamp, and the host-level
-// vulnerability list (with CVSS and severity per CVE) plus the
-// per-banner vulnerabilities through `services()`.
+// Everything Shodan knows about a single internet-reachable host,
+// selected by `ip` (e.g., `shodan.host(ip: "1.2.3.4")`). Covers
+// ownership (ASN, ISP, organization), reverse-DNS hostnames, the
+// open-port list, and the per-banner service inventory reached through
+// `services`, along with geolocation and Shodan's tag set. The tag set
+// drives the `isCloud`, `isCdn`, `isVpn`, `isTor`, `isProxy`, and
+// `isInfrastructure` predicates for classifying the host's hosting
+// environment. Host-level vulnerabilities are exposed through `vulns`
+// with CVSS and severity per CVE, and per-banner findings are available
+// on each service.
 shodan.host @defaults("ip") {
   init(ip string)
   // Host IP
@@ -43,7 +50,7 @@ shodan.host @defaults("ip") {
   ports() []int
   // Host-level CVE IDs without CVSS metadata
   //
-  // Deprecated in favor of `vulns()`. CVE IDs sourced from the host-level
+  // Deprecated in favor of `vulns`. CVE IDs sourced from the host-level
   // `vulns` map Shodan returns alongside the host record (flat list, no CVSS
   // metadata).
   vulnerabilities() @maturity("deprecated") []string
@@ -215,9 +222,12 @@ private shodan.host.vulnerability @defaults("cve cvss severity") {
 
 // Shodan domain information
 //
-// Examine what Shodan knows about a domain, identified by `name`
-// (e.g., `shodan.domain(name: "example.com")`): tags, the discovered
-// subdomain list, and the DNS NS records Shodan has seen.
+// Shodan's DNS and reconnaissance view of a domain, selected by `name`
+// (for example `shodan.domain(name: "example.com")`). Covers the tags
+// Shodan applies to the domain, the discovered subdomains, the DNS NS
+// records Shodan has observed, and the hosts the domain and its
+// subdomains resolve to, useful for mapping a domain's external attack
+// surface.
 shodan.domain @defaults("name") {
   init(name string)
   // Domain name
@@ -232,13 +242,23 @@ shodan.domain @defaults("name") {
   hosts() []shodan.host
 }
 
-// Shodan Search Engine DNS NS record
+// Shodan Search Engine DNS record
+//
+// DNS record that Shodan observed for a domain through its domain
+// intelligence data. Each record carries the subdomain it belongs to,
+// its record type (A, AAAA, CNAME, MX, NS, TXT, SOA, and others), the
+// value it points to, and when Shodan last saw it. The A and AAAA
+// records supply the IP addresses the domain and its subdomains
+// resolve to.
 private shodan.nsrecord @defaults("domain subdomain type") {
   // DNS domain
   domain string
   // DNS subdomain
   subdomain string
-  // DNS record types
+  // DNS record type
+  //
+  // One of A, AAAA, CNAME, MX, NS, TXT, SOA, and other DNS record
+  // types returned by Shodan.
   type string
   // DNS record value
   value string
@@ -248,9 +268,10 @@ private shodan.nsrecord @defaults("domain subdomain type") {
 
 // Shodan Search Engine account
 //
-// Examine the Shodan account that the API key belongs to: display
-// name, whether it's a member account, the number of remaining search
-// credits, and the account creation timestamp.
+// Account that the connected API key belongs to. Confirms which
+// identity is querying Shodan, whether it holds a paid membership,
+// and how many search credits remain before queries are throttled or
+// blocked, which matters when the account is shared by automation.
 shodan.profile @defaults("displayName"){
   // Whether the account is a member
   member bool
@@ -264,10 +285,12 @@ shodan.profile @defaults("displayName"){
 
 // Shodan Search Engine API plan information
 //
-// Examine the API plan attached to the connected account: plan name,
-// whether the plan is active (`unlocked`), the scan-credit total and
-// remaining count, the `telnet` permission, and the number of
-// monitored IPs allowed by the plan.
+// API plan attached to the connected account, describing the entitlements
+// and remaining quota available to queries: the plan name, whether the
+// plan is active (unlocked), the scan-credit balance, whether Telnet
+// banner grabbing is permitted, and how many IPs the plan is allowed to
+// monitor. Query this to confirm an account holds the credits and
+// permissions a scan depends on before it runs.
 shodan.apiPlan @defaults("plan"){
   // Number of scan credits
   scanCredits int

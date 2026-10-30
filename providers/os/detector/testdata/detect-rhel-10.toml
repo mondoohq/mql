@@ -1,0 +1,38 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "6.12.0-55.95.1.el10_0.x86_64"
+
+[files."/etc/os-release"]
+content = """
+NAME="Red Hat Enterprise Linux"
+VERSION="10.0 (Coughlan)"
+ID="rhel"
+ID_LIKE="centos fedora"
+VERSION_ID="10.0"
+PLATFORM_ID="platform:el10"
+PRETTY_NAME="Red Hat Enterprise Linux 10.0 (Coughlan)"
+ANSI_COLOR="0;31"
+LOGO="fedora-logo-icon"
+CPE_NAME="cpe:/o:redhat:enterprise_linux:10.0"
+HOME_URL="https://www.redhat.com/"
+VENDOR_NAME="Red Hat"
+VENDOR_URL="https://www.redhat.com/"
+DOCUMENTATION_URL="https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/10"
+BUG_REPORT_URL="https://issues.redhat.com/"
+
+REDHAT_BUGZILLA_PRODUCT="Red Hat Enterprise Linux 10"
+REDHAT_BUGZILLA_PRODUCT_VERSION=10.0
+REDHAT_SUPPORT_PRODUCT="Red Hat Enterprise Linux"
+REDHAT_SUPPORT_PRODUCT_VERSION="10.0"
+"""
+
+[files."/etc/redhat-release"]
+content = "Red Hat Enterprise Linux release 10.0 (Coughlan)"
+
+[files."/etc/system-release"]
+content = "Red Hat Enterprise Linux release 10.0 (Coughlan)"

@@ -130,7 +130,7 @@ func parsePluginManifest(file *zip.File) (*JenkinsPlugin, error) {
 	// Parse dependencies: "credentials:1289.vb,git-client:4.7.0,..."
 	var deps []string
 	if depStr := headers["Plugin-Dependencies"]; depStr != "" {
-		for _, dep := range strings.Split(depStr, ",") {
+		for dep := range strings.SplitSeq(depStr, ",") {
 			dep = strings.TrimSpace(dep)
 			// Remove optional resolution marker
 			dep = strings.TrimSuffix(dep, ";resolution:=optional")

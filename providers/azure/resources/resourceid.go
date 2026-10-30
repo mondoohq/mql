@@ -21,7 +21,7 @@ type ResourceID struct {
 // ParseResourceID parses a fully qualified ID into its components
 // Resources have the following format:
 // /subscriptions/{guid}/resourceGroups/{resource-group-name}/{resource-provider-namespace}/{resource-type}/{resource-name}
-// @see https://learn.microsoft.com/bs-latn-ba/rest/api/resources/resources/getbyid
+// @see https://learn.microsoft.com/en-us/rest/api/resources/resources/get-by-id
 func ParseResourceID(id string) (*ResourceID, error) {
 	// sanitize resource id
 	idURL, err := url.ParseRequestURI(id)

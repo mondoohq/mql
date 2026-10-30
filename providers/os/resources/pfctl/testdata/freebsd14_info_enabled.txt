@@ -1,0 +1,24 @@
+Status: Enabled for 0 days 00:00:00           Debug: Urgent
+
+State Table                          Total             Rate
+  current entries                        0               
+  searches                               0               
+  inserts                                0               
+  removals                               0               
+Counters
+  match                                  0               
+  bad-offset                             0               
+  fragment                               0               
+  short                                  0               
+  normalize                              0               
+  memory                                 0               
+  bad-timestamp                          0               
+  congestion                             0               
+  ip-option                              0               
+  proto-cksum                            0               
+  state-mismatch                         0               
+  state-insert                           0               
+  state-limit                            0               
+  src-limit                              0               
+  synproxy                               0               
+  map-failed                             0               

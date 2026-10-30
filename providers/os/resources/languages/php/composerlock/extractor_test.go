@@ -9,7 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/sbom"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/sbom"
 )
 
 func TestComposerLockExtractor(t *testing.T) {
@@ -39,9 +40,39 @@ func TestComposerLockExtractor(t *testing.T) {
 	// Dev packages should NOT be in direct
 	assert.Nil(t, direct.Find("phpunit/phpunit"))
 
-	// Transitive = all packages
+	// Transitive = all packages, scoped: "packages" → prod, "packages-dev" → dev.
 	transitive := info.Transitive()
 	assert.Equal(t, 5, len(transitive))
-	assert.NotNil(t, transitive.Find("phpunit/phpunit"))
-	assert.NotNil(t, transitive.Find("mockery/mockery"))
+	assert.Equal(t, languages.PackageScopeProd, transitive.Find("monolog/monolog").Scope)
+	assert.Equal(t, languages.PackageScopeDev, transitive.Find("phpunit/phpunit").Scope)
+	assert.Equal(t, languages.PackageScopeDev, transitive.Find("mockery/mockery").Scope)
+}
+
+// TestComposerLockExtractorLicense pins that the license composer.lock states
+// reaches the package.
+//
+// The parser has always read the field; makePackage dropped it, so every PHP
+// dependency reached an SBOM with an empty License and a policy evaluating them
+// could only report "unknown". Consumers worked around it by re-reading the
+// lockfile themselves.
+func TestComposerLockExtractorLicense(t *testing.T) {
+	f, err := os.Open("./testdata/simple.composer.lock")
+	require.NoError(t, err)
+	defer f.Close()
+
+	info, err := (&Extractor{}).Parse(f, "path/to/composer.lock")
+	require.NoError(t, err)
+
+	transitive := info.Transitive()
+	for name, want := range map[string]string{
+		"monolog/monolog": "MIT",
+		"symfony/console": "MIT",
+		"psr/log":         "MIT",
+		"phpunit/phpunit": "BSD-3-Clause", // a dev package still states one
+		"mockery/mockery": "BSD-3-Clause",
+	} {
+		p := transitive.Find(name)
+		require.NotNil(t, p, name)
+		assert.Equal(t, want, p.License, name)
+	}
 }

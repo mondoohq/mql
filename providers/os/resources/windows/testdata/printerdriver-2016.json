@@ -1,0 +1,80 @@
+[
+  {
+    "Name": "Microsoft XPS Document Writer v4",
+    "PrinterEnvironment": "Windows x64",
+    "Manufacturer": "Microsoft",
+    "DriverVersion": 2814750710366208,
+    "MajorVersion": 4,
+    "HardwareID": "{0f4130dd-19c7-7ab6-99a1-980f03b2ee4e}",
+    "InfPath": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms001.inf_amd64_10bd6dee10a7dfd0\\prnms001.inf",
+    "ConfigFile": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms003.inf_amd64_86701a754ecead3b\\Amd64\\PrintConfig.dll",
+    "DataFile": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms001.inf_amd64_10bd6dee10a7dfd0\\MXDW.gpd",
+    "DriverPath": null,
+    "PrintProcessor": "winprint"
+  },
+  {
+    "Name": "Microsoft Print To PDF",
+    "PrinterEnvironment": "Windows x64",
+    "Manufacturer": "Microsoft",
+    "DriverVersion": 2814750710366208,
+    "MajorVersion": 4,
+    "HardwareID": "{084f01fa-e634-4d77-83ee-074817c03581}",
+    "InfPath": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms009.inf_amd64_bd3f6a64dee1535d\\prnms009.inf",
+    "ConfigFile": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms003.inf_amd64_86701a754ecead3b\\Amd64\\PrintConfig.dll",
+    "DataFile": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms009.inf_amd64_bd3f6a64dee1535d\\MPDW-PDC.xml",
+    "DriverPath": null,
+    "PrintProcessor": "winprint"
+  },
+  {
+    "Name": "Remote Desktop Easy Print",
+    "PrinterEnvironment": "Windows x64",
+    "Manufacturer": "Microsoft",
+    "DriverVersion": 2814750710369650,
+    "MajorVersion": 3,
+    "HardwareID": null,
+    "InfPath": "C:\\Windows\\System32\\DriverStore\\FileRepository\\tsprint.inf_amd64_4fd96b71ea19a42f\\tsprint.inf",
+    "ConfigFile": "C:\\Windows\\system32\\spool\\DRIVERS\\x64\\3\\tsprint.dll",
+    "DataFile": "C:\\Windows\\system32\\spool\\DRIVERS\\x64\\3\\tsprint-datafile.dat",
+    "DriverPath": null,
+    "PrintProcessor": "winprint"
+  },
+  {
+    "Name": "Microsoft Shared Fax Driver",
+    "PrinterEnvironment": "Windows x64",
+    "Manufacturer": "Microsoft",
+    "DriverVersion": 2814750710373634,
+    "MajorVersion": 3,
+    "HardwareID": "microsoftmicrosoft_s7d14",
+    "InfPath": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms002.inf_amd64_1f6c01d3b8a5c657\\prnms002.inf",
+    "ConfigFile": "C:\\Windows\\system32\\spool\\DRIVERS\\x64\\3\\FXSUI.DLL",
+    "DataFile": "C:\\Windows\\system32\\spool\\DRIVERS\\x64\\3\\FXSUI.DLL",
+    "DriverPath": null,
+    "PrintProcessor": "winprint"
+  },
+  {
+    "Name": "Microsoft enhanced Point and Print compatibility driver",
+    "PrinterEnvironment": "Windows x64",
+    "Manufacturer": "Microsoft",
+    "DriverVersion": 2814750710375547,
+    "MajorVersion": 3,
+    "HardwareID": "microsoftmicrosoft_musd",
+    "InfPath": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms003.inf_amd64_86701a754ecead3b\\prnms003.inf",
+    "ConfigFile": "C:\\Windows\\system32\\spool\\DRIVERS\\x64\\3\\PrintConfig.dll",
+    "DataFile": "C:\\Windows\\system32\\spool\\DRIVERS\\x64\\3\\unishare.gpd",
+    "DriverPath": null,
+    "PrintProcessor": "winprint"
+  },
+  {
+    "Name": "Microsoft enhanced Point and Print compatibility driver",
+    "PrinterEnvironment": "Windows NT x86",
+    "Manufacturer": "Microsoft",
+    "DriverVersion": 2814750710375547,
+    "MajorVersion": 3,
+    "HardwareID": "microsoftmicrosoft_musd",
+    "InfPath": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms003.inf_x86_e87bdd3342c5452f\\prnms003.inf",
+    "ConfigFile": "C:\\Windows\\system32\\spool\\DRIVERS\\W32X86\\3\\PrintConfig.dll",
+    "DataFile": "C:\\Windows\\system32\\spool\\DRIVERS\\W32X86\\3\\unishare.gpd",
+    "DriverPath": null,
+    "PrintProcessor": "winprint"
+  }
+]

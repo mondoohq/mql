@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/ranger-rpc/codes"
 	"go.mondoo.com/ranger-rpc/status"
 )
@@ -25,6 +25,9 @@ const (
 	rdpPolicyClientPath   = `HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services\Client`
 	rdpWinStationsPath    = `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp`
 	rdpTerminalServerPath = `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server`
+	// Remote Assistance keeps its local (non-policy) settings in a key of its
+	// own; the System Properties > Remote toggle writes fAllowToGetHelp here.
+	rdpRemoteAssistancePath = `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Remote Assistance`
 )
 
 // rdpSource selects which non-policy key holds the effective value for a
@@ -46,6 +49,7 @@ type mqlWindowsRdpInternal struct {
 	policyClient map[string]int64
 	winSta       map[string]int64
 	tsRoot       map[string]int64
+	remoteAssist map[string]int64
 	loadErr      error
 }
 
@@ -80,9 +84,6 @@ func (r *mqlWindowsRdp) readRdpKey(path string) (map[string]int64, error) {
 // load reads the policy and effective registry keys exactly once and caches
 // them so every field shares a single set of registry reads.
 func (r *mqlWindowsRdp) load() error {
-	if r.loaded {
-		return nil
-	}
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	if r.loaded || r.loadErr != nil {
@@ -110,10 +111,17 @@ func (r *mqlWindowsRdp) load() error {
 		return err
 	}
 
+	remoteAssist, err := r.readRdpKey(rdpRemoteAssistancePath)
+	if err != nil {
+		r.loadErr = err
+		return err
+	}
+
 	r.policy = policy
 	r.policyClient = policyClient
 	r.winSta = winSta
 	r.tsRoot = tsRoot
+	r.remoteAssist = remoteAssist
 	r.loaded = true
 	return nil
 }
@@ -181,8 +189,13 @@ func (r *mqlWindowsRdp) pnpDeviceRedirectionDisabled() (bool, error) {
 }
 
 func (r *mqlWindowsRdp) passwordSavingDisabled() (bool, error) {
-	// Windows disables saving Remote Desktop passwords by default
-	return r.resolveBool("DisablePasswordSaving", rdpWinStations, 1)
+	// Policy-only setting. Microsoft documents the unconfigured behavior as
+	// "the user will be able to save passwords using Remote Desktop
+	// Connection", so saving is allowed and this reports false. Defaulting to
+	// true claimed the hardened state on every host that had not set the
+	// policy, which is the direction that makes a check pass without reading
+	// anything.
+	return r.resolveBool("DisablePasswordSaving", rdpWinStations, 0)
 }
 
 func (r *mqlWindowsRdp) deleteTempDirsOnExit() (bool, error) {
@@ -231,13 +244,34 @@ func (r *mqlWindowsRdp) perSessionTempDirsUsed() (bool, error) {
 }
 
 func (r *mqlWindowsRdp) solicitedRemoteAssistanceAllowed() (bool, error) {
-	// Remote Assistance is a policy-only setting; off when not configured
-	return r.resolveBool("fAllowToGetHelp", rdpWinStations, 0)
+	if err := r.load(); err != nil {
+		return false, err
+	}
+	return rdpSolicitedRemoteAssistanceAllowed(r.policy, r.remoteAssist), nil
 }
 
 func (r *mqlWindowsRdp) offerRemoteAssistanceAllowed() (bool, error) {
-	// offering unsolicited Remote Assistance is off when not configured
-	return r.resolveBool("fAllowUnsolicited", rdpWinStations, 0)
+	if err := r.load(); err != nil {
+		return false, err
+	}
+	return rdpOfferRemoteAssistanceAllowed(r.policy, r.remoteAssist), nil
+}
+
+// rdpSolicitedRemoteAssistanceAllowed resolves fAllowToGetHelp. Remote
+// Assistance is machine-wide and not part of Remote Desktop: the Group Policy
+// value under the Terminal Services policy key wins, otherwise the local value
+// under Control\Remote Assistance applies (written by the System Properties
+// toggle, and set to 1 on a Windows client install). The value is never under
+// Control\Terminal Server, so reading that key reported Remote Assistance as
+// off on every host that had it on. Off when neither key sets it.
+func rdpSolicitedRemoteAssistanceAllowed(policy, remoteAssist map[string]int64) bool {
+	return resolveRdpValue(policy, remoteAssist, "fAllowToGetHelp", 0) == 1
+}
+
+// rdpOfferRemoteAssistanceAllowed resolves fAllowUnsolicited with the same
+// precedence as fAllowToGetHelp. Off when neither key sets it.
+func rdpOfferRemoteAssistanceAllowed(policy, remoteAssist map[string]int64) bool {
+	return resolveRdpValue(policy, remoteAssist, "fAllowUnsolicited", 0) == 1
 }
 
 func (r *mqlWindowsRdp) webAuthnRedirectionDisabled() (bool, error) {

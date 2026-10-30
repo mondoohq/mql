@@ -1,0 +1,14 @@
+[
+ {
+  ".id": "*1",
+  "address": "192.0.2.70/32",
+  "disabled": "false",
+  "dynamic": "false",
+  "exchange-mode": "ike2",
+  "name": "lab-peer",
+  "ppk-secret": "",
+  "profile": "lab-profile",
+  "responder": "false",
+  "send-initial-contact": "true"
+ }
+]

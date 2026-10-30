@@ -12,57 +12,59 @@ import (
 )
 
 // Helper function to create pointers using generics
+//
+//go:fix inline
 func ptr[T any](v T) *T {
-	return &v
+	return new(v)
 }
 
 func TestAzureSubscriptionCacheServiceRedis(t *testing.T) {
 	// Create mock data
 	mockRedisCache := &armredis.ResourceInfo{
-		ID:       ptr("/subscriptions/test-subscription/resourceGroups/test-rg/providers/Microsoft.Cache/redis/test-cache"),
-		Name:     ptr("test-cache"),
-		Type:     ptr("Microsoft.Cache/redis"),
-		Location: ptr("eastus"),
-		Zones:    []*string{ptr("1"), ptr("2")},
+		ID:       new("/subscriptions/test-subscription/resourceGroups/test-rg/providers/Microsoft.Cache/redis/test-cache"),
+		Name:     new("test-cache"),
+		Type:     new("Microsoft.Cache/redis"),
+		Location: new("eastus"),
+		Zones:    []*string{new("1"), new("2")},
 		Identity: &armredis.ManagedServiceIdentity{
 			Type:        ptr(armredis.ManagedServiceIdentityTypeSystemAssigned),
-			PrincipalID: ptr("principal-123"),
-			TenantID:    ptr("tenant-456"),
+			PrincipalID: new("principal-123"),
+			TenantID:    new("tenant-456"),
 		},
 		Properties: &armredis.Properties{
-			HostName:            ptr("test-cache.redis.cache.windows.net"),
-			EnableNonSSLPort:    ptr(true),
+			HostName:            new("test-cache.redis.cache.windows.net"),
+			EnableNonSSLPort:    new(true),
 			PublicNetworkAccess: ptr(armredis.PublicNetworkAccessEnabled),
-			Port:                ptr(int32(6379)),
-			SSLPort:             ptr(int32(6380)),
+			Port:                new(int32(6379)),
+			SSLPort:             new(int32(6380)),
 			ProvisioningState:   ptr(armredis.ProvisioningStateSucceeded),
-			RedisVersion:        ptr("6.0"),
-			ReplicasPerMaster:   ptr(int32(1)),
-			ReplicasPerPrimary:  ptr(int32(1)),
+			RedisVersion:        new("6.0"),
+			ReplicasPerMaster:   new(int32(1)),
+			ReplicasPerPrimary:  new(int32(1)),
 			MinimumTLSVersion:   ptr(armredis.TLSVersionOne2),
-			ShardCount:          ptr(int32(3)),
-			StaticIP:            ptr("10.0.0.5"),
-			SubnetID:            ptr("/subscriptions/test-subscription/resourceGroups/test-rg/providers/Microsoft.Network/virtualNetworks/test-vnet/subnets/test-subnet"),
+			ShardCount:          new(int32(3)),
+			StaticIP:            new("10.0.0.5"),
+			SubnetID:            new("/subscriptions/test-subscription/resourceGroups/test-rg/providers/Microsoft.Network/virtualNetworks/test-vnet/subnets/test-subnet"),
 			RedisConfiguration: &armredis.CommonPropertiesRedisConfiguration{
-				MaxmemoryPolicy:  ptr("allkeys-lru"),
-				RdbBackupEnabled: ptr("true"),
+				MaxmemoryPolicy:  new("allkeys-lru"),
+				RdbBackupEnabled: new("true"),
 			},
 			SKU: &armredis.SKU{
 				Name:     ptr(armredis.SKUNameStandard),
-				Capacity: ptr(int32(1)),
+				Capacity: new(int32(1)),
 				Family:   ptr(armredis.SKUFamilyC),
 			},
 		},
 		Tags: map[string]*string{
-			"Environment": ptr("Test"),
-			"Project":     ptr("Redis-Test"),
+			"Environment": new("Test"),
+			"Project":     new("Redis-Test"),
 		},
 	}
 
 	t.Run("TestRedisDataConversion", func(t *testing.T) {
 		// runtime is nil because mock data has no PrivateEndpointConnections;
 		// if PECs are added, a real runtime is needed to avoid nil dereference in CreateResource.
-		rawData, err := createRedisInstanceRawData(nil, mockRedisCache)
+		rawData, err := createRedisInstanceRawData(azureTestRuntime(), mockRedisCache)
 		require.NoError(t, err)
 		require.NotNil(t, rawData)
 
@@ -133,20 +135,20 @@ func TestAzureSubscriptionCacheServiceRedis(t *testing.T) {
 	t.Run("TestNilOptionalFields", func(t *testing.T) {
 		// Test with minimal mock data to ensure nil fields are handled gracefully.
 		minimalCache := &armredis.ResourceInfo{
-			ID:       ptr("/subscriptions/test-subscription/resourceGroups/test-rg/providers/Microsoft.Cache/redis/minimal-cache"),
-			Name:     ptr("minimal-cache"),
-			Type:     ptr("Microsoft.Cache/redis"),
-			Location: ptr("westus"),
+			ID:       new("/subscriptions/test-subscription/resourceGroups/test-rg/providers/Microsoft.Cache/redis/minimal-cache"),
+			Name:     new("minimal-cache"),
+			Type:     new("Microsoft.Cache/redis"),
+			Location: new("westus"),
 			Properties: &armredis.Properties{
 				SKU: &armredis.SKU{
 					Name:     ptr(armredis.SKUNameBasic),
-					Capacity: ptr(int32(0)),
+					Capacity: new(int32(0)),
 					Family:   ptr(armredis.SKUFamilyC),
 				},
 			},
 		}
 
-		rawData, err := createRedisInstanceRawData(nil, minimalCache)
+		rawData, err := createRedisInstanceRawData(azureTestRuntime(), minimalCache)
 		require.NoError(t, err)
 		require.NotNil(t, rawData)
 

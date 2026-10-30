@@ -15,11 +15,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/apprunner"
 	apprunnertypes "github.com/aws/aws-sdk-go-v2/service/apprunner/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 func (a *mqlAwsApprunner) id() (string, error) {
@@ -53,7 +53,6 @@ func (a *mqlAwsApprunner) getServices(conn *connection.AwsConnection) []*jobpool
 	}
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			log.Debug().Msgf("apprunner>getServices>calling aws with region %s", region)
 			svc := conn.AppRunner(region)
@@ -376,7 +375,7 @@ func (a *mqlAwsApprunnerService) tags() (map[string]any, error) {
 	resp, err := svc.ListTagsForResource(ctx, &apprunner.ListTagsForResourceInput{ResourceArn: aws.String(a.Arn.Data)})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return map[string]any{}, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
@@ -486,7 +485,6 @@ func (a *mqlAwsApprunner) getAutoScalingConfigurations(conn *connection.AwsConne
 	}
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			log.Debug().Msgf("apprunner>getAutoScalingConfigurations>calling aws with region %s", region)
 			svc := conn.AppRunner(region)
@@ -495,8 +493,12 @@ func (a *mqlAwsApprunner) getAutoScalingConfigurations(conn *connection.AwsConne
 
 			var nextToken *string
 			for {
+				// LatestOnly defaults to true server-side when the field is
+				// omitted, which hid every non-latest revision -- including
+				// revisions that services are actively pinned to.
 				resp, err := svc.ListAutoScalingConfigurations(ctx, &apprunner.ListAutoScalingConfigurationsInput{
-					NextToken: nextToken,
+					NextToken:  nextToken,
+					LatestOnly: false,
 				})
 				if err != nil {
 					if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
@@ -550,6 +552,7 @@ func (a *mqlAwsApprunnerAutoScalingConfiguration) id() (string, error) {
 }
 
 type mqlAwsApprunnerAutoScalingConfigurationInternal struct {
+	lazyTags
 	detailFetched bool
 	detailErr     error
 	detail        *apprunnertypes.AutoScalingConfiguration
@@ -721,7 +724,6 @@ func (a *mqlAwsApprunner) getConnections(conn *connection.AwsConnection) []*jobp
 	}
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			log.Debug().Msgf("apprunner>getConnections>calling aws with region %s", region)
 			svc := conn.AppRunner(region)
@@ -773,6 +775,10 @@ func (a *mqlAwsApprunnerConnection) id() (string, error) {
 	return a.Arn.Data, nil
 }
 
+type mqlAwsApprunnerConnectionInternal struct {
+	lazyTags
+}
+
 // VPC connectors
 
 func (a *mqlAwsApprunner) vpcConnectors() ([]any, error) {
@@ -802,7 +808,6 @@ func (a *mqlAwsApprunner) getVpcConnectors(conn *connection.AwsConnection) []*jo
 	accountID := conn.AccountId()
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			log.Debug().Msgf("apprunner>getVpcConnectors>calling aws with region %s", region)
 			svc := conn.AppRunner(region)
@@ -873,6 +878,7 @@ func (a *mqlAwsApprunnerVpcConnector) id() (string, error) {
 }
 
 type mqlAwsApprunnerVpcConnectorInternal struct {
+	lazyTags
 	securityGroupIdHandler
 	region         string
 	accountID      string
@@ -964,7 +970,6 @@ func (a *mqlAwsApprunner) getObservabilityConfigurations(conn *connection.AwsCon
 	}
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			log.Debug().Msgf("apprunner>getObservabilityConfigurations>calling aws with region %s", region)
 			svc := conn.AppRunner(region)
@@ -973,7 +978,12 @@ func (a *mqlAwsApprunner) getObservabilityConfigurations(conn *connection.AwsCon
 
 			var nextToken *string
 			for {
-				resp, err := svc.ListObservabilityConfigurations(ctx, &apprunner.ListObservabilityConfigurationsInput{NextToken: nextToken})
+				// See the note on ListAutoScalingConfigurations: LatestOnly defaults to
+				// true when omitted.
+				resp, err := svc.ListObservabilityConfigurations(ctx, &apprunner.ListObservabilityConfigurationsInput{
+					NextToken:  nextToken,
+					LatestOnly: false,
+				})
 				if err != nil {
 					if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
 						log.Debug().Str("region", region).Msg("error accessing region for App Runner ListObservabilityConfigurations")
@@ -1023,6 +1033,7 @@ func (a *mqlAwsApprunnerObservabilityConfiguration) id() (string, error) {
 }
 
 type mqlAwsApprunnerObservabilityConfigurationInternal struct {
+	lazyTags
 	detailFetched bool
 	detailErr     error
 	detail        *apprunnertypes.ObservabilityConfiguration
@@ -1187,7 +1198,6 @@ func (a *mqlAwsApprunner) getVpcIngressConnections(conn *connection.AwsConnectio
 	}
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			log.Debug().Msgf("apprunner>getVpcIngressConnections>calling aws with region %s", region)
 			svc := conn.AppRunner(region)
@@ -1246,6 +1256,7 @@ func (a *mqlAwsApprunnerVpcIngressConnection) id() (string, error) {
 }
 
 type mqlAwsApprunnerVpcIngressConnectionInternal struct {
+	lazyTags
 	cacheServiceArn *string
 	detailFetched   bool
 	detailErr       error
@@ -1422,4 +1433,53 @@ func initAwsApprunnerVpcIngressConnection(runtime *plugin.Runtime, args map[stri
 	mqlIngressRes.detailFetched = true
 	mqlIngressRes.cacheServiceArn = v.ServiceArn
 	return args, mqlIngressRes, nil
+}
+
+func (a *mqlAwsApprunnerAutoScalingConfiguration) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return apprunnerTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsApprunnerConnection) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return apprunnerTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsApprunnerVpcConnector) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return apprunnerTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsApprunnerObservabilityConfiguration) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return apprunnerTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsApprunnerVpcIngressConnection) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return apprunnerTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+// apprunnerTagsForArn reads the tags of any App Runner resource by ARN.
+func apprunnerTagsForArn(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.AppRunner(region)
+	resp, err := svc.ListTagsForResource(context.Background(), &apprunner.ListTagsForResourceInput{ResourceArn: &resourceArn})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("apprunner:ListTagsForResource"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return tagsToMap(resp.Tags,
+		func(t apprunnertypes.Tag) *string { return t.Key },
+		func(t apprunnertypes.Tag) *string { return t.Value }), nil
 }

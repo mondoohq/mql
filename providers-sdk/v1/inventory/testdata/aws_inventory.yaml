@@ -17,7 +17,7 @@ spec:
     # option 2: use an instance directly with a secret
 #    - name: i-01a46ade2364692a0
 #      connections:
-#      - backend: ssh
+#      - type: ssh
 #        host: 54.145.57.6
 #        credentials:
 #          - secret_id: 'arn:aws:secretsmanager:us-east-1:921877552404:secret:ec2-secret-v2-3G3DVF'
@@ -28,7 +28,7 @@ spec:
     # option 3: instance with credential query
 #    - name: i-01a46ade2364692a0
 #      connections:
-#        - backend: ssh
+#        - type: ssh
 #          host: 54.145.57.6
 
   vault:

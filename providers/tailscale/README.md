@@ -3,6 +3,8 @@
 Use the tailscale provider to query devices, users, DNS namespaces, and more information about a Tailscale network,
 known as a `tailnet`.
 
+## Authentication
+
 To authenticate using an API access token:
 
 ```
@@ -83,7 +85,7 @@ tailscale.user: {
 }
 ```
 
-# Advanced usage
+## Advanced Usage
 
 **Discover all devices (any computer or mobile device) that join the tailnet `example.com`**
 

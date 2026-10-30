@@ -10,16 +10,19 @@ import (
 	"strings"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/mqlc"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/multierr"
-	"go.mondoo.com/mql/v13/utils/sortx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/mqlc"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/multierr"
+	"go.mondoo.com/mql/utils/sortx"
 	"golang.org/x/exp/slices"
 )
 
 const MsgUnsupported = "unsupported platform"
+
+// MsgTranslated marks a value a downgrade translation produced.
+const MsgTranslated = "(translated for this provider version)"
 
 type printCache struct {
 	bundle         *llx.CodeBundle
@@ -60,11 +63,16 @@ func (print *Printer) Datas(bundle *llx.CodeBundle, results map[string]*llx.RawR
 func (print *Printer) Results(bundle *llx.CodeBundle, results map[string]*llx.RawResult) string {
 	assessment := llx.Results2Assessment(bundle, results)
 
+	var body string
 	if assessment != nil {
-		return print.Assessment(bundle, assessment)
+		body = print.Assessment(bundle, assessment)
+	} else {
+		body = print.Datas(bundle, results)
 	}
 
-	return print.Datas(bundle, results)
+	// What could not be read, then what failed more than once (ADR 046).
+	body = appendLines(body, print.coverageGapLines(results))
+	return appendLines(body, print.errorSummary(results))
 }
 
 // Assessment prints a complete comparable assessment
@@ -139,11 +147,15 @@ func (print *Printer) assessment(assessment *llx.AssessmentItem, indent string, 
 			return print.Secondary("[ok] true")
 		}
 
+		// The operands are not reported for a combinator, so there is nothing to
+		// print on either side of the operator. This used to render them anyway,
+		// which cost every `a || b` statement the guarantee that its right side
+		// only runs when the left side does not decide the result.
 		var res strings.Builder
 		res.WriteString(print.Secondary("[failed] "))
-		res.WriteString(print.primitive(assessment.Actual, "", nextIndent, cache))
-		res.WriteString(" " + assessment.Operation + " ")
-		res.WriteString(print.primitive(assessment.Expected, "", nextIndent, cache))
+		if bundle != nil && bundle.Labels != nil {
+			res.WriteString(bundle.Labels.Labels[checksum])
+		}
 		return res.String()
 	}
 
@@ -363,10 +375,10 @@ func (print *Printer) refMap(data map[string]any, checksum string, indent string
 		}
 	}
 
+	code := cache.bundle.CodeV2
 	ep := cache.checksumLookup[checksum]
 	listType := ""
 	if ep != 0 {
-		code := cache.bundle.CodeV2
 		chunk := code.Chunk(ep)
 		switch chunk.Id {
 		case "$one", "$all", "$none", "$any":
@@ -406,19 +418,92 @@ func (print *Printer) refMap(data map[string]any, checksum string, indent string
 			res.WriteString("  " + label + print.Disabled(MsgUnsupported) + "\n")
 			continue
 		}
+		// A field this build was never going to have reads as not-measured, not
+		// as a failure: nothing went wrong here, the content is simply newer
+		// than the provider. Dimmed rather than red, and it still says which
+		// version would supply it.
+		if llx.IsUnavailable(val.Error) {
+			res.WriteString("  " + label + print.Disabled(val.Error.Error()) + "\n")
+			continue
+		}
 		if val.Error != nil {
-			res.WriteString("  " + label + print.Error(val.Error.Error()) + " ")
+			res.WriteString("  " + label + print.fieldError(val.Error) + " ")
 			continue
 		}
 
 		data := print.data(val.Type, val.Value, k, "", &inlineCache)
-		res.WriteString(label + data + " ")
+		res.WriteString(label + data + print.translatedNote(val) + " ")
 	}
 
 	if len(nonDefaultFields) > 0 {
 		res.WriteString("{\n")
+
+		// Work out which fields render as an assessment, and which fields those
+		// assessments consume. A consumed field can sit earlier in the list than
+		// the assessment using it, so this has to be settled before we write
+		// anything -- otherwise the output order would depend on it.
+		assessments := map[string]string{}
+		skipFields := map[string]struct{}{}
+		for _, k := range nonDefaultFields {
+			ref, ok := cache.checksumLookup[k]
+			if !ok {
+				continue
+			}
+
+			consumed := []string{}
+			assessment := code.Entrypoint2Assessment(cache.bundle, ref, func(s string) (*llx.RawResult, bool) {
+				found, ok := data[s]
+				if !ok {
+					return nil, false
+				}
+				raw, ok := found.(*llx.RawData)
+				if !ok {
+					return nil, false
+				}
+				consumed = append(consumed, s)
+				return &llx.RawResult{Data: raw, CodeID: s}, true
+			})
+			// Entrypoint2Assessment also returns items for plain fields. Only
+			// actual assertions are worth rendering as an assessment; anything
+			// else stays a regular field.
+			if assessment == nil || !assessment.IsAssertion {
+				continue
+			}
+
+			// The operands an assessment compares are already conveyed by it, so
+			// they must not also show up as standalone fields. Note that lookup
+			// is first called for the assertion itself, and that one only gets
+			// suppressed when we go on to render the expanded form below.
+			for _, v := range consumed {
+				if v == k && assessment.Success {
+					continue
+				}
+				skipFields[v] = struct{}{}
+			}
+
+			// A passing assertion needs no expansion: "x == 'a': true" already
+			// says everything, and an [ok] block would drop the label and cost
+			// three lines to say the same thing.
+			if assessment.Success {
+				continue
+			}
+
+			assessments[k] = print.assessment(assessment, indent+"  ", cache)
+		}
+
 		for _, k := range nonDefaultFields {
 			if k == "_" {
+				continue
+			}
+			if _, ok := skipFields[k]; ok {
+				// Either this field is an assertion we expand here, or it is an
+				// operand some other assertion already reported on.
+				if a, ok := assessments[k]; ok {
+					res.WriteString(indent)
+					res.WriteString("  ")
+					res.WriteString(a)
+					res.WriteByte('\n')
+				}
 				continue
 			}
 
@@ -430,8 +515,12 @@ func (print *Printer) refMap(data map[string]any, checksum string, indent string
 				res.WriteString(indent + "  " + label + print.Disabled(MsgUnsupported) + "\n")
 				continue
 			}
+			if llx.IsUnavailable(val.Error) {
+				res.WriteString(indent + "  " + label + print.Disabled(val.Error.Error()) + "\n")
+				continue
+			}
 			if val.Error != nil {
-				res.WriteString(indent + "  " + label + print.Error(val.Error.Error()) + "\n")
+				res.WriteString(indent + "  " + label + print.fieldError(val.Error) + "\n")
 				continue
 			}
 
@@ -676,6 +765,19 @@ func (print *Printer) autoExpand(blockRef uint64, data any, indent string, cache
 				}
 			}
 
+			// Multi-line string values (e.g. a source-context `content` snippet)
+			// read best as a raw block indented on the following lines rather than
+			// trailing off a `label=` on the current line. The preceding fields
+			// (path, range) already identify it, so we drop the label entirely.
+			if s, ok := vv.Value.(string); ok && strings.Contains(s, "\n") {
+				fieldIndent := indent + "  "
+				res.WriteByte('\n')
+				res.WriteString(fieldIndent)
+				res.WriteString(indentBlock(strings.TrimRight(s, "\n"), fieldIndent))
+				first = false
+				continue
+			}
+
 			val := print.data(vv.Type, vv.Value, checksum, indent, cache)
 			if !first || !hasEntrypoints {
 				res.WriteByte(' ')
@@ -812,11 +914,22 @@ func (print *Printer) data(typ types.Type, data any, checksum string, indent str
 		}
 
 	case types.Range:
+		// A range is a scalar value, so (like int/string) it must not carry the
+		// block indent — otherwise it renders right-shifted when printed inline
+		// after a `range=` label.
 		if d, ok := data.(llx.Range); ok {
-			return indent + d.String()
+			return d.String()
 		} else {
-			return indent + "<bad range>"
+			return "<bad range>"
 		}
+
+	case types.AssetLike:
+		v, ok := data.(*llx.AssetValue)
+		if !ok || v == nil {
+			return "null"
+		}
+		// TODO: store and retrieve more information about the referenced asset
+		return "asset"
 
 	default:
 		return indent + fmt.Sprintf("🤷 %#v", data)
@@ -851,7 +964,7 @@ func (print *Printer) DataWithLabel(r *llx.RawData, checksum string, bundle *llx
 	b := strings.Builder{}
 	errs := filterErrors(r.Error)
 	if errs != nil {
-		b.WriteString(print.Error(strings.TrimSpace(errs.Error())))
+		b.WriteString(print.fieldError(errs))
 		b.WriteByte('\n')
 	}
 
@@ -1018,4 +1131,18 @@ func (print *Printer) primitive(primitive *llx.Primitive, checksum string, inden
 
 func indentBlock(text string, indent string) string {
 	return strings.ReplaceAll(text, "\n", "\n"+indent)
+}
+
+// translatedNote marks a value that a downgrade translation produced rather
+// than the call the bundle was compiled with (ADR 040 part 6).
+//
+// The value is correct as far as we know, so this is a note and not an error:
+// it is dimmed and appended, never in place of the data. It exists because
+// patching decouples what ran from what is reported, and without a visible
+// marker a bad translation looks exactly like a bad provider.
+func (print *Printer) translatedNote(val *llx.RawData) string {
+	if val == nil || !val.Translated {
+		return ""
+	}
+	return " " + print.Disabled(MsgTranslated)
 }

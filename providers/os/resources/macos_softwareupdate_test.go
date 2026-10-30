@@ -271,3 +271,39 @@ func TestStripPrefix(t *testing.T) {
 	assert.False(t, ok)
 	assert.Equal(t, "", rest)
 }
+
+// AutomaticCheckEnabled is only written once someone changes the setting.
+// Its absence is not "off" -- automatic checking is on by default -- so the
+// key's presence has to be distinguished from its value.
+func TestKeyPresentInPlist(t *testing.T) {
+	d := map[string]any{
+		"AutomaticDownload": float64(1),
+		"ExplicitFalse":     false,
+		"ExplicitNil":       nil,
+	}
+	assert.True(t, keyPresentInPlist(d, "AutomaticDownload"))
+	assert.True(t, keyPresentInPlist(d, "ExplicitFalse"), "an explicit false is still a written key")
+	assert.False(t, keyPresentInPlist(d, "ExplicitNil"))
+	assert.False(t, keyPresentInPlist(d, "AutomaticCheckEnabled"))
+}
+
+func TestParseSoftwareUpdateSchedule(t *testing.T) {
+	for name, tt := range map[string]struct {
+		stdout string
+		want   bool
+		ok     bool
+	}{
+		"on":           {"Automatic checking for updates is turned on\n", true, true},
+		"off":          {"Automatic checking for updates is turned off\n", false, true},
+		"unrecognised": {"softwareupdate: unknown option\n", false, false},
+		"empty":        {"", false, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			v, ok := parseSoftwareUpdateSchedule(tt.stdout)
+			assert.Equal(t, tt.ok, ok)
+			if tt.ok {
+				assert.Equal(t, tt.want, v)
+			}
+		})
+	}
+}

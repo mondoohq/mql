@@ -1,0 +1,11 @@
+[
+ {
+  ".id": "*1",
+  "address": "203.0.113.0/24",
+  "comment": "lab-al",
+  "creation-time": "2026-08-27 17:30:22",
+  "disabled": "false",
+  "dynamic": "false",
+  "list": "lab-blocklist"
+ }
+]

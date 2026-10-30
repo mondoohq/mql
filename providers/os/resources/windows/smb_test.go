@@ -54,3 +54,21 @@ func TestParseWindowsSmbConnections(t *testing.T) {
 	require.Len(t, connections, 1)
 	require.Equal(t, WindowsSmbConnection{ServerName: "fs01", ShareName: "SAP_Export", UserName: "CORP\\bob", Dialect: "3.1.1"}, connections[0])
 }
+
+// The SMB cmdlets report a failure as a non-terminating error: stderr gets the
+// message, stdout gets nothing, and the exit status stays 0. The provider only
+// treats a non-zero exit as a failure, so without this guard a cmdlet that read
+// nothing is indistinguishable from a host that genuinely has no shares, and
+// the resource reports an empty list either way. An empty list satisfies every
+// assertion made about a collection, so the wrong answer passes silently.
+func TestSmbCommandsFailLoudly(t *testing.T) {
+	for name, cmd := range map[string]string{
+		"shares":      SMB_SHARES,
+		"sessions":    SMB_SESSIONS,
+		"connections": SMB_CONNECTIONS,
+	} {
+		require.True(t, strings.HasPrefix(cmd, "$ErrorActionPreference='Stop'\n"),
+			"%s must turn a cmdlet failure into a non-zero exit, or it degrades to an empty list", name)
+		require.LessOrEqual(t, len(cmd), PSMaxScriptLength, "%s", name)
+	}
+}

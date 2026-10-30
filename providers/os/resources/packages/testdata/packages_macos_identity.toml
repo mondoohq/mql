@@ -1,0 +1,503 @@
+# system_profiler output and bundle files captured on a macOS 26 Mac (Apple Silicon),
+# trimmed to the keys the parser reads, and the first 128 bytes of each main executable
+# (the Mach-O header). The home directory is renamed to /Users/alice.
+
+[commands."system_profiler SPApplicationsDataType -xml"]
+stdout = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>_dataType</key>
+		<string>SPApplicationsDataType</string>
+		<key>_items</key>
+		<array>
+			<dict>
+				<key>_name</key>
+				<string>TextEdit</string>
+				<key>arch_kind</key>
+				<string>arch_arm_i64</string>
+				<key>lastModified</key>
+				<date>2026-04-30T19:33:17Z</date>
+				<key>obtained_from</key>
+				<string>apple</string>
+				<key>path</key>
+				<string>/System/Applications/TextEdit.app</string>
+				<key>signed_by</key>
+				<array>
+					<string>Software Signing</string>
+					<string>Apple Code Signing Certification Authority</string>
+					<string>Apple Root CA</string>
+				</array>
+				<key>version</key>
+				<string>1.20</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>Microsoft Edge</string>
+				<key>arch_kind</key>
+				<string>arch_arm</string>
+				<key>lastModified</key>
+				<date>2026-07-18T23:16:40Z</date>
+				<key>obtained_from</key>
+				<string>identified_developer</string>
+				<key>path</key>
+				<string>/Applications/Microsoft Edge.app</string>
+				<key>signed_by</key>
+				<array>
+					<string>Developer ID Application: Microsoft Corporation (UBF8T346G9)</string>
+					<string>Developer ID Certification Authority</string>
+					<string>Apple Root CA</string>
+				</array>
+				<key>version</key>
+				<string>154.0.4258.37</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>VLC</string>
+				<key>arch_kind</key>
+				<string>arch_ios</string>
+				<key>lastModified</key>
+				<date>2025-01-04T16:41:20Z</date>
+				<key>obtained_from</key>
+				<string>identified_developer</string>
+				<key>path</key>
+				<string>/Applications/VLC.app</string>
+				<key>signed_by</key>
+				<array>
+					<string>Developer ID Application: VideoLAN (75GAHG3SZQ)</string>
+					<string>Developer ID Certification Authority</string>
+					<string>Apple Root CA</string>
+				</array>
+				<key>version</key>
+				<string>3.0.20</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>Monodraw</string>
+				<key>arch_kind</key>
+				<string>arch_arm_i64</string>
+				<key>lastModified</key>
+				<date>2025-05-07T08:17:36Z</date>
+				<key>obtained_from</key>
+				<string>mac_app_store</string>
+				<key>path</key>
+				<string>/Applications/Monodraw.app</string>
+				<key>signed_by</key>
+				<array>
+					<string>Apple Mac OS Application Signing</string>
+					<string>Apple Worldwide Developer Relations Certification Authority</string>
+					<string>Apple Root CA</string>
+				</array>
+				<key>version</key>
+				<string>1.7.1</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>Oracle Secure Global Desktop Client</string>
+				<key>arch_kind</key>
+				<string>arch_i64</string>
+				<key>lastModified</key>
+				<date>2025-03-12T11:01:23Z</date>
+				<key>obtained_from</key>
+				<string>identified_developer</string>
+				<key>path</key>
+				<string>/Applications/Oracle Secure Global Desktop Client.app</string>
+				<key>signed_by</key>
+				<array>
+					<string>Developer ID Application: Oracle America, Inc. (VB5E2TV963)</string>
+					<string>Developer ID Certification Authority</string>
+					<string>Apple Root CA</string>
+				</array>
+				<key>version</key>
+				<string>5.60.567</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>ZAP</string>
+				<key>arch_kind</key>
+				<string>arch_other</string>
+				<key>lastModified</key>
+				<date>2024-05-07T17:10:01Z</date>
+				<key>obtained_from</key>
+				<string>unknown</string>
+				<key>path</key>
+				<string>/Applications/ZAP.app</string>
+				<key>version</key>
+				<string>2.15.0</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>Claude Code URL Handler</string>
+				<key>arch_kind</key>
+				<string>arch_ios</string>
+				<key>lastModified</key>
+				<date>2026-05-30T15:07:13Z</date>
+				<key>obtained_from</key>
+				<string>identified_developer</string>
+				<key>path</key>
+				<string>/Users/alice/Applications/Claude Code URL Handler.app</string>
+				<key>signed_by</key>
+				<array>
+					<string>Developer ID Application: Anthropic PBC (Q6L2SF6YDW)</string>
+					<string>Developer ID Certification Authority</string>
+					<string>Apple Root CA</string>
+				</array>
+				<key>version</key>
+				<string>1.0</string>
+			</dict>
+		</array>
+	</dict>
+</array>
+</plist>
+"""
+
+[files."/Applications"]
+content = ""
+
+[files."/System/Applications"]
+content = ""
+
+[files."/Users"]
+content = ""
+
+[files."/Users/Shared"]
+content = ""
+
+[files."/Users/alice"]
+content = ""
+
+[files."/Users/alice/Applications"]
+content = ""
+
+[files."/Applications/WhatsApp.localized"]
+content = ""
+
+[files."/System/Applications/TextEdit.app"]
+content = ""
+
+[files."/System/Applications/TextEdit.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>TextEdit</string>
+	<key>CFBundleExecutable</key>
+	<string>TextEdit</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.apple.TextEdit</string>
+	<key>CFBundleName</key>
+	<string>TextEdit</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.20</string>
+	<key>CFBundleVersion</key>
+	<string>415</string>
+</dict>
+</plist>
+"""
+
+[files."/System/Applications/TextEdit.app/Contents/MacOS/TextEdit"]
+data = [202, 254, 186, 190, 0, 0, 0, 2, 1, 0, 0, 7, 0, 0, 0, 3, 0, 0, 64, 0, 0, 5, 72, 144, 0, 0, 0, 14, 1, 0, 0, 12, 128, 0, 0, 2, 0, 5, 192, 0, 0, 6, 48, 48, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+[files."/Applications/Microsoft Edge.app"]
+content = ""
+
+[files."/Applications/Microsoft Edge.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Microsoft Edge</string>
+	<key>CFBundleExecutable</key>
+	<string>Microsoft Edge</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.microsoft.edgemac</string>
+	<key>CFBundleName</key>
+	<string>Edge</string>
+	<key>CFBundleShortVersionString</key>
+	<string>154.0.4258.37</string>
+	<key>CFBundleVersion</key>
+	<string>154.0.4258.37</string>
+</dict>
+</plist>
+"""
+
+[files."/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"]
+data = [207, 250, 237, 254, 12, 0, 0, 1, 0, 0, 0, 0, 2, 0, 0, 0, 15, 0, 0, 0, 8, 7, 0, 0, 133, 0, 160, 0, 0, 0, 0, 0, 25, 0, 0, 0, 72, 0, 0, 0, 95, 95, 80, 65, 71, 69, 90, 69, 82, 79, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 120, 2, 0, 0, 95, 95, 84, 69, 88, 84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+[files."/Applications/VLC.app"]
+content = ""
+
+[files."/Applications/VLC.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>VLC</string>
+	<key>CFBundleExecutable</key>
+	<string>VLC</string>
+	<key>CFBundleIdentifier</key>
+	<string>org.videolan.vlc</string>
+	<key>CFBundleName</key>
+	<string>VLC media player</string>
+	<key>CFBundleShortVersionString</key>
+	<string>3.0.20</string>
+	<key>CFBundleVersion</key>
+	<string>3.0.20</string>
+</dict>
+</plist>
+"""
+
+[files."/Applications/VLC.app/Contents/MacOS/VLC"]
+data = [207, 250, 237, 254, 12, 0, 0, 1, 0, 0, 0, 0, 2, 0, 0, 0, 29, 0, 0, 0, 192, 10, 0, 0, 133, 0, 32, 0, 0, 0, 0, 0, 25, 0, 0, 0, 72, 0, 0, 0, 95, 95, 80, 65, 71, 69, 90, 69, 82, 79, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 120, 2, 0, 0, 95, 95, 84, 69, 88, 84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+[files."/Applications/Monodraw.app"]
+content = ""
+
+[files."/Applications/Monodraw.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>Monodraw</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.helftone.monodraw</string>
+	<key>CFBundleName</key>
+	<string>Monodraw</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.7.1</string>
+	<key>CFBundleVersion</key>
+	<string>118</string>
+</dict>
+</plist>
+"""
+
+[files."/Applications/Monodraw.app/Contents/_MASReceipt/receipt"]
+content = ""
+
+[files."/Applications/Monodraw.app/Contents/MacOS/Monodraw"]
+data = [202, 254, 186, 190, 0, 0, 0, 2, 1, 0, 0, 7, 0, 0, 0, 3, 0, 0, 64, 0, 0, 0, 126, 128, 0, 0, 0, 14, 1, 0, 0, 12, 0, 0, 0, 0, 0, 0, 192, 0, 0, 1, 16, 80, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+[files."/Applications/Oracle Secure Global Desktop Client.app"]
+content = ""
+
+[files."/Applications/Oracle Secure Global Desktop Client.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>ttatcc</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.oracle.sgd.ttatcc</string>
+	<key>CFBundleName</key>
+	<string>Oracle Secure Global Desktop Client</string>
+	<key>CFBundleShortVersionString</key>
+	<string>5.60.567</string>
+	<key>CFBundleVersion</key>
+	<string>567.1</string>
+</dict>
+</plist>
+"""
+
+[files."/Applications/Oracle Secure Global Desktop Client.app/Contents/MacOS/ttatcc"]
+data = [207, 250, 237, 254, 7, 0, 0, 1, 3, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 40, 18, 0, 0, 133, 128, 33, 0, 0, 0, 0, 0, 25, 0, 0, 0, 72, 0, 0, 0, 95, 95, 80, 65, 71, 69, 90, 69, 82, 79, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 104, 3, 0, 0, 95, 95, 84, 69, 88, 84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+[files."/Applications/ZAP.app"]
+content = ""
+
+[files."/Applications/ZAP.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>ZAP</string>
+	<key>CFBundleExecutable</key>
+	<string>ZAP.sh</string>
+	<key>CFBundleIdentifier</key>
+	<string>org.zaproxy.zap.ZAP</string>
+	<key>CFBundleName</key>
+	<string>ZAP</string>
+	<key>CFBundleShortVersionString</key>
+	<string>2.15.0</string>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+</dict>
+</plist>
+"""
+
+[files."/Applications/ZAP.app/Contents/MacOS/ZAP.sh"]
+content = """#!/usr/bin/env bash
+
+# cd into the Java directory of the .app file
+cd "$( dirname "${BASH_SOURCE[0]}" )"
+cd ../Java
+
+# execute z"""
+
+[files."/Users/alice/Applications/Claude Code URL Handler.app"]
+content = ""
+
+[files."/Users/alice/Applications/Claude Code URL Handler.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>claude</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.anthropic.claude-code-url-handler</string>
+	<key>CFBundleName</key>
+	<string>Claude Code URL Handler</string>
+	<key>CFBundleVersion</key>
+	<string>1.0</string>
+</dict>
+</plist>
+"""
+
+[files."/Users/alice/Applications/Claude Code URL Handler.app/Contents/MacOS/claude"]
+data = [207, 250, 237, 254, 12, 0, 0, 1, 0, 0, 0, 0, 2, 0, 0, 0, 21, 0, 0, 0, 224, 10, 0, 0, 133, 0, 161, 0, 0, 0, 0, 0, 25, 0, 0, 0, 72, 0, 0, 0, 95, 95, 80, 65, 71, 69, 90, 69, 82, 79, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 8, 4, 0, 0, 95, 95, 84, 69, 88, 84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+[files."/Applications/Slack.app"]
+content = ""
+
+[files."/Applications/Slack.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Slack</string>
+	<key>CFBundleExecutable</key>
+	<string>Slack</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.tinyspeck.slackmacgap</string>
+	<key>CFBundleName</key>
+	<string>Slack</string>
+	<key>CFBundleShortVersionString</key>
+	<string>4.52.162</string>
+	<key>CFBundleVersion</key>
+	<string>452000162</string>
+</dict>
+</plist>
+"""
+
+[files."/Applications/Slack.app/Contents/MacOS/Slack"]
+data = [207, 250, 237, 254, 12, 0, 0, 1, 0, 0, 0, 0, 2, 0, 0, 0, 16, 0, 0, 0, 32, 4, 0, 0, 133, 0, 32, 0, 0, 0, 0, 0, 25, 0, 0, 0, 72, 0, 0, 0, 95, 95, 80, 65, 71, 69, 90, 69, 82, 79, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 56, 1, 0, 0, 95, 95, 84, 69, 88, 84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+[files."/Applications/Telegram.app"]
+content = ""
+
+[files."/Applications/Telegram.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>Telegram</string>
+	<key>CFBundleIdentifier</key>
+	<string>ru.keepcoder.Telegram</string>
+	<key>CFBundleName</key>
+	<string>Telegram</string>
+	<key>CFBundleShortVersionString</key>
+	<string>12.10</string>
+	<key>CFBundleVersion</key>
+	<string>282987</string>
+</dict>
+</plist>
+"""
+
+[files."/Applications/Telegram.app/Contents/_MASReceipt/receipt"]
+content = ""
+
+[files."/Applications/Telegram.app/Contents/MacOS/Telegram"]
+data = [202, 254, 186, 190, 0, 0, 0, 2, 1, 0, 0, 7, 0, 0, 0, 3, 0, 0, 64, 0, 6, 77, 82, 208, 0, 0, 0, 14, 1, 0, 0, 12, 0, 0, 0, 0, 6, 77, 192, 0, 5, 122, 16, 208, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+[files."/Applications/WhatsApp.localized/WhatsApp.app"]
+content = ""
+
+[files."/Applications/WhatsApp.localized/WhatsApp.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>‎WhatsApp</string>
+	<key>CFBundleExecutable</key>
+	<string>WhatsApp</string>
+	<key>CFBundleIdentifier</key>
+	<string>net.whatsapp.WhatsApp</string>
+	<key>CFBundleName</key>
+	<string>WhatsApp</string>
+	<key>CFBundleShortVersionString</key>
+	<string>26.37.76</string>
+	<key>CFBundleVersion</key>
+	<string>1074875611</string>
+</dict>
+</plist>
+"""
+
+[files."/Applications/WhatsApp.localized/WhatsApp.app/Contents/_MASReceipt/receipt"]
+content = ""
+
+[files."/Applications/WhatsApp.localized/WhatsApp.app/Contents/MacOS/WhatsApp"]
+data = [202, 254, 186, 190, 0, 0, 0, 2, 1, 0, 0, 7, 0, 0, 0, 3, 0, 0, 64, 0, 12, 237, 58, 208, 0, 0, 0, 14, 1, 0, 0, 12, 0, 0, 0, 0, 12, 237, 128, 0, 11, 44, 75, 160, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+[files."/Applications/zoom.us.app"]
+content = ""
+
+[files."/Applications/zoom.us.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>zoom.us</string>
+	<key>CFBundleExecutable</key>
+	<string>zoom.us</string>
+	<key>CFBundleIdentifier</key>
+	<string>us.zoom.xos</string>
+	<key>CFBundleName</key>
+	<string>zoom.us</string>
+	<key>CFBundleShortVersionString</key>
+	<string>7.2.2 (88465)</string>
+	<key>CFBundleVersion</key>
+	<string>7.2.2.88465</string>
+</dict>
+</plist>
+"""
+
+[files."/Applications/zoom.us.app/Contents/MacOS/zoom.us"]
+data = [202, 254, 186, 190, 0, 0, 0, 2, 1, 0, 0, 7, 0, 0, 0, 3, 0, 0, 64, 0, 0, 1, 71, 160, 0, 0, 0, 14, 1, 0, 0, 12, 0, 0, 0, 0, 0, 1, 192, 0, 0, 1, 148, 208, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+[files."/System/Applications/News.app"]
+content = ""
+
+[files."/System/Applications/News.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>News</string>
+	<key>CFBundleExecutable</key>
+	<string>News</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.apple.news</string>
+	<key>CFBundleName</key>
+	<string>News</string>
+	<key>CFBundleShortVersionString</key>
+	<string>11.5</string>
+	<key>CFBundleVersion</key>
+	<string>5883</string>
+</dict>
+</plist>
+"""
+
+[files."/System/Applications/News.app/Contents/MacOS/News"]
+data = [202, 254, 186, 190, 0, 0, 0, 2, 1, 0, 0, 7, 0, 0, 0, 3, 0, 0, 64, 0, 0, 15, 243, 208, 0, 0, 0, 14, 1, 0, 0, 12, 128, 0, 0, 2, 0, 16, 64, 0, 0, 15, 167, 176, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]

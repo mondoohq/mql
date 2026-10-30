@@ -10,9 +10,9 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/ctreminiom/go-atlassian/v2/pkg/infra/models"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/atlassian/connection/jira"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/atlassian/connection/jira"
+	"go.mondoo.com/mql/types"
 )
 
 // ---------- Custom fields ----------
@@ -43,6 +43,13 @@ func (a *mqlAtlassianJira) customFields() ([]any, error) {
 			schemaCustom = f.Schema.Custom
 			schemaCustomId = int64(f.Schema.CustomID)
 		}
+		var lastUsed any
+		if f.LastUsed != nil {
+			lastUsed = map[string]any{
+				"type":  f.LastUsed.Type,
+				"value": f.LastUsed.Value,
+			}
+		}
 		mqlField, err := CreateResource(a.MqlRuntime, "atlassian.jira.customField",
 			map[string]*llx.RawData{
 				"id":             llx.StringData(f.ID),
@@ -61,6 +68,7 @@ func (a *mqlAtlassianJira) customFields() ([]any, error) {
 				"schemaCustomId": llx.IntData(schemaCustomId),
 				"screensCount":   llx.IntData(int64(f.ScreensCount)),
 				"contextsCount":  llx.IntData(int64(f.ContextsCount)),
+				"lastUsed":       llx.DictData(lastUsed),
 			})
 		if err != nil {
 			return nil, err

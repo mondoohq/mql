@@ -7,7 +7,7 @@ import (
 	"slices"
 
 	"github.com/rs/zerolog/log"
-	inventory "go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+	inventory "go.mondoo.com/mql/providers-sdk/v1/inventory"
 )
 
 // Apply copies the static fields of the descriptor onto a runtime platform.

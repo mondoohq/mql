@@ -14,11 +14,12 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 var sharepointReport = `
@@ -74,6 +75,11 @@ type SpoTenantConfig struct {
 	ConditionalAccessPolicy                    string `json:"ConditionalAccessPolicy"`
 	IsUnmanagedSyncClientForTenantRestricted   bool   `json:"IsUnmanagedSyncClientForTenantRestricted"`
 	DisallowInfectedFileDownload               bool   `json:"DisallowInfectedFileDownload"`
+	// pointers so that a tenant which does not report the setting yields null
+	// rather than a zero value that reads as "disabled"
+	EnableAzureADB2BIntegration            *bool    `json:"EnableAzureADB2BIntegration"`
+	OneDriveSharingCapability              *string  `json:"OneDriveSharingCapability"`
+	WhoCanShareAuthenticatedGuestAllowList []string `json:"WhoCanShareAuthenticatedGuestAllowList"`
 }
 
 type SpoSite struct {
@@ -87,6 +93,18 @@ type SpoSite struct {
 	AllowSelfServiceUpgrade  bool   `json:"AllowSelfServiceUpgrade"`
 	Owner                    string `json:"Owner"`
 	Status                   string `json:"Status"`
+}
+
+// stringListData keeps a nil slice null instead of turning it into an empty
+// array. convert.SliceAnyToInterface allocates for a nil input, so passing its
+// result straight to llx.ArrayData would report a setting the tenant never
+// returned as an empty list -- e.g. "no security group restricts guest
+// sharing", which is a security answer rather than a missing one.
+func stringListData(v []string) *llx.RawData {
+	if v == nil {
+		return llx.NilData
+	}
+	return llx.ArrayData(convert.SliceAnyToInterface(v), types.String)
 }
 
 func (m *mqlMs365SharepointonlineSite) id() (string, error) {
@@ -261,6 +279,10 @@ func (r *mqlMs365Sharepointonline) getSharepointOnlineReport() error {
 				"conditionalAccessPolicy":                    llx.StringData(tenantConfig.ConditionalAccessPolicy),
 				"isUnmanagedSyncClientForTenantRestricted":   llx.BoolData(tenantConfig.IsUnmanagedSyncClientForTenantRestricted),
 				"disallowInfectedFileDownload":               llx.BoolData(tenantConfig.DisallowInfectedFileDownload),
+				"enableAzureADB2BIntegration":                llx.BoolDataPtr(tenantConfig.EnableAzureADB2BIntegration),
+				"oneDriveSharingCapability":                  llx.StringDataPtr(tenantConfig.OneDriveSharingCapability),
+				"whoCanShareAuthenticatedGuestAllowList": stringListData(
+					tenantConfig.WhoCanShareAuthenticatedGuestAllowList),
 			})
 		if mqlTenantConfigErr != nil {
 			r.TenantConfiguration = plugin.TValue[*mqlMs365SharepointonlineTenantConfig]{State: plugin.StateIsSet, Error: mqlTenantConfigErr}

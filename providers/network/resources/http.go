@@ -5,7 +5,7 @@ package resources
 
 import (
 	"errors"
-	"io"
+	"net"
 	"net/http"
 	"net/textproto"
 	"strconv"
@@ -13,17 +13,21 @@ import (
 	"sync"
 	"time"
 
-	"go.mondoo.com/mql/v13/checksums"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/network/connection"
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/sortx"
+	"go.mondoo.com/mql/checksums"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/network/connection"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/iox"
+	"go.mondoo.com/mql/utils/sortx"
 )
 
 type mqlHttpGetInternal struct {
-	lock sync.Mutex
-	resp plugin.TValue[*http.Response]
+	lock         sync.Mutex
+	resp         plugin.TValue[*http.Response]
+	bodyOnce     sync.Once
+	responseBody string
+	bodyError    error
 }
 
 func initHttpGet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -57,14 +61,7 @@ func initHttpGet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 
 		scheme := conn.Conf.Runtime
 		if scheme == "" {
-			// At this point we are in best effort territory. Which means we will
-			// go HTTP unless port 443 is specified. Users can always provide a
-			// scheme to be prescriptive.
-			if conn.Conf.Port == 443 {
-				scheme = "https"
-			} else {
-				scheme = "http"
-			}
+			scheme = defaultHTTPScheme(conn.Conf.Port)
 		}
 		url, err := NewResource(runtime, "url", map[string]*llx.RawData{
 			"host":   llx.StringData(conn.Conf.Host),
@@ -83,6 +80,23 @@ func initHttpGet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 	}
 
 	return args, nil, nil
+}
+
+// defaultHTTPScheme picks the URL scheme for http.get when the target carried no
+// explicit scheme (a bare `host <domain>`). It defaults to HTTPS — the modern
+// web default and consistent with the tls resource, which assumes 443 for a bare
+// target — so scanning a bare domain exercises the HTTPS endpoint, where the
+// hardening headers policies check (HSTS, CSP, cookie flags) actually live,
+// instead of plain :80. Only an explicit non-TLS port falls back to HTTP, so
+// `http.get` on `example.com:8080` still speaks HTTP. Users can always prefix a
+// scheme to be prescriptive.
+func defaultHTTPScheme(port int32) string {
+	switch port {
+	case 0, 443:
+		return "https"
+	default:
+		return "http"
+	}
 }
 
 func (x *mqlHttpGet) id() (string, error) {
@@ -118,8 +132,39 @@ func (x *mqlHttpGet) do() error {
 	return nil
 }
 
+// httpNotReachable reports whether err means the target did not speak HTTP on
+// this endpoint — nothing was listening, the connection was refused/reset, the
+// dial timed out, or the name did not resolve — as opposed to an unexpected
+// internal error. In that case the http.get fields (header, statusCode, version,
+// body) all resolve to null (like the tls resource's params when TLS is not
+// enabled), so policies can gate on `http.get.header != empty` and skip instead
+// of erroring on non-HTTP hosts (mail/DNS/infra servers commonly surfaced by
+// attack-surface enumeration).
+func httpNotReachable(err error) bool {
+	if err == nil {
+		return false
+	}
+	// A timeout is an incomplete inspection, not proof that HTTP is absent.
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return false
+	}
+	if _, ok := errors.AsType[*net.DNSError](err); ok {
+		return true
+	}
+	if _, ok := errors.AsType[*net.OpError](err); ok {
+		// dial/read/write at the socket level: connection refused, reset, no route
+		return true
+	}
+	return false
+}
+
 func (x *mqlHttpGet) header() (*mqlHttpHeader, error) {
 	if err := x.do(); err != nil {
+		if httpNotReachable(err) {
+			x.Header.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -158,19 +203,43 @@ func normalizeHeaderKey(key string) string {
 }
 
 func (x *mqlHttpGet) statusCode() (int64, error) {
-	return 0, x.do()
+	if err := x.do(); err != nil {
+		if httpNotReachable(err) {
+			x.StatusCode.State = plugin.StateIsSet | plugin.StateIsNull
+			return 0, nil
+		}
+		return 0, err
+	}
+	// do() sets StatusCode on success.
+	return 0, nil
 }
 
 func (x *mqlHttpGet) version() (string, error) {
-	return "", x.do()
+	if err := x.do(); err != nil {
+		if httpNotReachable(err) {
+			x.Version.State = plugin.StateIsSet | plugin.StateIsNull
+			return "", nil
+		}
+		return "", err
+	}
+	// do() sets Version on success.
+	return "", nil
 }
 
 func (x *mqlHttpGet) body() (string, error) {
 	if err := x.do(); err != nil {
+		if httpNotReachable(err) {
+			x.Body.State = plugin.StateIsSet | plugin.StateIsNull
+			return "", nil
+		}
 		return "", err
 	}
-	raw, err := io.ReadAll(x.resp.Data.Body)
-	return string(raw), err
+	x.bodyOnce.Do(func() {
+		defer x.resp.Data.Body.Close()
+		raw, err := iox.ReadAllLimit(x.resp.Data.Body, 16<<20)
+		x.responseBody, x.bodyError = string(raw), err
+	})
+	return x.responseBody, x.bodyError
 }
 
 func parseHeaderFields(raw []any, f func(key string, value string)) {
@@ -395,32 +464,61 @@ func (x *mqlHttpHeaderContentType) id() (string, error) {
 	return id.String(), nil
 }
 
-func parseSetCookieDirectives(raw []any) (name *llx.RawData, value *llx.RawData, params *llx.RawData) {
+// parseSetCookieDirectives parses a single Set-Cookie header value. Each header
+// carries exactly one cookie, so this takes one value rather than the whole
+// list: parsing several at once folds the later cookies' name=value pairs into
+// this cookie's attribute map.
+func parseSetCookieDirectives(raw any) (name *llx.RawData, value *llx.RawData, params *llx.RawData) {
 	name, value, params = llx.NilData, llx.NilData, llx.NilData
-	parseHeaderFields(raw, func(key string, val string) {
-		// RFC 6265 section 5.2: attribute names are case-insensitive,
-		// while cookie names and values keep their casing
-		if name.Value == nil && val != "" {
-			name = llx.StringData(key)
-			value = llx.StringData(val)
-			return
+
+	header, ok := raw.(string)
+	if !ok {
+		return name, value, params
+	}
+
+	for i, field := range strings.Split(header, ";") {
+		key, val, hasValue := strings.Cut(strings.TrimSpace(field), "=")
+
+		// RFC 6265 section 5.2: the first field is the cookie's name and value,
+		// and every field after it is an attribute. Position is what decides
+		// this, not whether a value is present - a cookie cleared by setting it
+		// to the empty string is still that cookie, and reading it as an
+		// attribute shifts every following attribute onto the wrong key.
+		if i == 0 {
+			// No "=" at all is not a name-value pair, so the header sets no
+			// cookie; a browser discards the whole thing.
+			if hasValue {
+				name, value = llx.StringData(key), llx.StringData(val)
+			}
+			continue
 		}
+
+		// Attribute names are case-insensitive; their values keep their casing.
 		if params.Value == nil {
 			params = llx.MapData(map[string]any{}, types.String)
 		}
 		params.Value.(map[string]any)[strings.ToLower(key)] = val
-	})
+	}
+
 	return name, value, params
 }
 
-func (x *mqlHttpHeader) setCookie() (*mqlHttpHeaderSetCookie, error) {
+// setCookieValues returns the raw Set-Cookie header values, one per cookie.
+func (x *mqlHttpHeader) setCookieValues() ([]any, bool) {
 	raw, ok := x.Params.Data["Set-Cookie"]
 	if !ok {
-		x.SetCookie.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
+		return nil, false
 	}
+	values, ok := raw.([]any)
+	if !ok || len(values) == 0 {
+		return nil, false
+	}
+	return values, true
+}
 
-	cname, cval, params := parseSetCookieDirectives(raw.([]any))
+// newSetCookie builds the resource for one Set-Cookie header value.
+func (x *mqlHttpHeader) newSetCookie(raw any) (*mqlHttpHeaderSetCookie, error) {
+	cname, cval, params := parseSetCookieDirectives(raw)
 
 	o, err := CreateResource(x.MqlRuntime, "http.header.setCookie", map[string]*llx.RawData{
 		"name":   cname,
@@ -431,6 +529,36 @@ func (x *mqlHttpHeader) setCookie() (*mqlHttpHeaderSetCookie, error) {
 		return nil, err
 	}
 	return o.(*mqlHttpHeaderSetCookie), nil
+}
+
+// Deprecated: use setCookies, which reports every cookie the response sets.
+func (x *mqlHttpHeader) setCookie() (*mqlHttpHeaderSetCookie, error) {
+	values, ok := x.setCookieValues()
+	if !ok {
+		x.SetCookie.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	return x.newSetCookie(values[0])
+}
+
+func (x *mqlHttpHeader) setCookies() ([]any, error) {
+	values, ok := x.setCookieValues()
+	if !ok {
+		x.SetCookies.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	res := make([]any, 0, len(values))
+	for i := range values {
+		cookie, err := x.newSetCookie(values[i])
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, cookie)
+	}
+
+	return res, nil
 }
 
 func parseCspDirectives(raw []any) map[string]any {

@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 
 	"strconv"
 
@@ -25,6 +25,10 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/api/sqladmin/v1"
 )
+
+type mqlGcpProjectSqlServiceInstanceSettingsIpConfigurationInternal struct {
+	cachePrivateNetwork string
+}
 
 func initGcpProjectSqlService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 0 {
@@ -61,6 +65,12 @@ func initGcpProjectSqlServiceInstance(runtime *plugin.Runtime, args map[string]*
 	}
 
 	// Create the parent SQL service and find the specific instance
+	// Guard before building the parent: CreateResource hands args["projectId"]
+	// to the generated setter, which dereferences it, so nil panics the provider.
+	if args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.sqlService.instance requires a \"projectId\" argument")
+	}
+
 	obj, err := CreateResource(runtime, "gcp.project.sqlService", map[string]*llx.RawData{
 		"projectId": args["projectId"],
 	})
@@ -71,6 +81,19 @@ func initGcpProjectSqlServiceInstance(runtime *plugin.Runtime, args map[string]*
 	instances := sqlSvc.GetInstances()
 	if instances.Error != nil {
 		return nil, nil, instances.Error
+	}
+
+	// args["name"] on an absent key is a nil *llx.RawData; dereferencing it
+	// panics the provider and kills the whole scan. `region` narrows the match
+	// when supplied but is optional, so a two-arg lookup still resolves.
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New("gcp.project.sqlService.instance requires a \"name\" argument")
+	}
+	nameVal, _ := nameRaw.Value.(string)
+	regionVal := ""
+	if args["region"] != nil {
+		regionVal, _ = args["region"].Value.(string)
 	}
 
 	// Find the matching instance
@@ -89,7 +112,8 @@ func initGcpProjectSqlServiceInstance(runtime *plugin.Runtime, args map[string]*
 			return nil, nil, instanceRegion.Error
 		}
 
-		if instanceRegion.Data == args["region"].Value && name.Data == args["name"].Value && projectId.Data == args["projectId"].Value {
+		if name.Data == nameVal && projectId.Data == args["projectId"].Value &&
+			(regionVal == "" || instanceRegion.Data == regionVal) {
 			return args, instance, nil
 		}
 	}
@@ -107,8 +131,8 @@ func getSqlInstanceByName(runtime *plugin.Runtime, projectId, name string) (*mql
 	if name == "" {
 		return nil, nil
 	}
-	if i := strings.LastIndex(name, ":"); i >= 0 {
-		name = name[i+1:]
+	if _, after, ok := strings.CutLast(name, ":"); ok {
+		name = after
 	}
 
 	obj, err := CreateResource(runtime, "gcp.project.sqlService", map[string]*llx.RawData{
@@ -241,7 +265,7 @@ func (g *mqlGcpProjectSqlService) id() (string, error) {
 }
 
 type mqlGcpProjectSqlServiceInternal struct {
-	serviceEnabled bool
+	serviceGate
 }
 
 func (g *mqlGcpProject) sql() (*mqlGcpProjectSqlService, error) {
@@ -263,7 +287,7 @@ func (g *mqlGcpProject) sql() (*mqlGcpProjectSqlService, error) {
 	}
 
 	svc := res.(*mqlGcpProjectSqlService)
-	svc.serviceEnabled = serviceEnabled
+	svc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_sqladmin).Msg("gcp service is not enabled, skipping")
 	}
@@ -271,8 +295,52 @@ func (g *mqlGcpProject) sql() (*mqlGcpProjectSqlService, error) {
 	return svc, nil
 }
 
+// sqlDiskEncryptionConfigDict maps an instance's customer-managed encryption
+// configuration to the diskEncryptionConfiguration dict. Absent
+// configurations yield nil.
+func sqlDiskEncryptionConfigDict(cfg *sqladmin.DiskEncryptionConfiguration) map[string]any {
+	if cfg == nil {
+		return nil
+	}
+	return map[string]any{
+		"kmsKeyName":                      cfg.KmsKeyName,
+		"cmekSourceLogEncryptionEnforced": cfg.CmekSourceLogEncryptionEnforced,
+	}
+}
+
+// sqlCmekSourceLogEncryptionEnforced reports whether transaction logs are
+// encrypted with the customer-managed key at source. It is nil when the
+// instance has no customer-managed key, where the setting does not apply.
+func sqlCmekSourceLogEncryptionEnforced(cfg *sqladmin.DiskEncryptionConfiguration) *bool {
+	if cfg == nil || cfg.KmsKeyName == "" {
+		return nil
+	}
+	v := cfg.CmekSourceLogEncryptionEnforced
+	return &v
+}
+
+// sqlDiskConfidentialMode reports whether Confidential Mode is enabled for an
+// instance's or a backup's disks.
+//
+// The whole DiskEncryptionConfiguration message is absent on an instance using
+// Google-managed encryption with no confidential disks, which is the common
+// case, so the nil guard is the normal path rather than an edge case. Absent
+// means not enabled: Cloud SQL only supports Confidential Mode on zonal C4A
+// instances, so false is the truthful reading everywhere else, and reporting it
+// as such keeps an "is confidential mode on" check failing rather than erroring.
+func sqlDiskConfidentialMode(cfg *sqladmin.DiskEncryptionConfiguration) bool {
+	if cfg == nil {
+		return false
+	}
+	return cfg.ConfidentialMode
+}
+
 func (g *mqlGcpProjectSqlService) instances() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -302,18 +370,7 @@ func (g *mqlGcpProjectSqlService) instances() ([]any, error) {
 			instance := page.Items[i]
 			instanceId := fmt.Sprintf("%s/%s", projectId, instance.Name)
 
-			type mqlDiskEncryptionCfg struct {
-				KmsKeyName string `json:"kmsKeyName"`
-			}
-			var mqlEncCfg map[string]any
-			if instance.DiskEncryptionConfiguration != nil {
-				mqlEncCfg, err = convert.JsonToDict(mqlDiskEncryptionCfg{
-					KmsKeyName: instance.DiskEncryptionConfiguration.KmsKeyName,
-				})
-				if err != nil {
-					return err
-				}
-			}
+			mqlEncCfg := sqlDiskEncryptionConfigDict(instance.DiskEncryptionConfiguration)
 
 			type mqlDiskEncryptionStatus struct {
 				KmsKeyVersionName string `json:"kmsKeyVersionName"`
@@ -357,24 +414,20 @@ func (g *mqlGcpProjectSqlService) instances() ([]any, error) {
 				mqlIpAddresses = append(mqlIpAddresses, mqlIpAddress)
 			}
 
+			// Settings is nil for instances that are mid-provisioning or in a
+			// failed state; fall back to an empty struct so a single such
+			// instance doesn't panic (and take down) the whole instances() list.
 			s := instance.Settings
+			if s == nil {
+				s = &sqladmin.Settings{}
+			}
 			dbFlags := make(map[string]string)
 			for _, f := range s.DatabaseFlags {
 				dbFlags[f.Name] = f.Value
 			}
 
-			type mqlActiveDirectoryCfg struct {
-				Domain string `json:"domain,omitempty"`
-			}
-			var mqlADCfg map[string]any
 			var mqlActiveDirectory plugin.Resource
 			if s.ActiveDirectoryConfig != nil {
-				mqlADCfg, err = convert.JsonToDict(mqlActiveDirectoryCfg{
-					Domain: s.ActiveDirectoryConfig.Domain,
-				})
-				if err != nil {
-					return err
-				}
 				mqlActiveDirectory, err = CreateResource(g.MqlRuntime, "gcp.project.sqlService.instance.settings.activeDirectory", map[string]*llx.RawData{
 					"__id":                      llx.StringData(fmt.Sprintf("%s/settings/activeDirectory", instanceId)),
 					"domain":                    llx.StringData(s.ActiveDirectoryConfig.Domain),
@@ -393,12 +446,15 @@ func (g *mqlGcpProjectSqlService) instances() ([]any, error) {
 					RetainedBackups int64  `json:"retainedBackups"`
 					RetentionUnit   string `json:"retentionUnit"`
 				}
-				mqlRetention, err := convert.JsonToDict(mqlRetentionSettings{
-					RetainedBackups: s.BackupConfiguration.BackupRetentionSettings.RetainedBackups,
-					RetentionUnit:   s.BackupConfiguration.BackupRetentionSettings.RetentionUnit,
-				})
-				if err != nil {
-					return err
+				var mqlRetention map[string]any
+				if brs := s.BackupConfiguration.BackupRetentionSettings; brs != nil {
+					mqlRetention, err = convert.JsonToDict(mqlRetentionSettings{
+						RetainedBackups: brs.RetainedBackups,
+						RetentionUnit:   brs.RetentionUnit,
+					})
+					if err != nil {
+						return err
+					}
 				}
 
 				mqlBackupCfg, err = CreateResource(g.MqlRuntime, "gcp.project.sqlService.instance.settings.backupconfiguration", map[string]*llx.RawData{
@@ -501,7 +557,6 @@ func (g *mqlGcpProjectSqlService) instances() ([]any, error) {
 					"enablePrivatePathForGoogleCloudServices": llx.BoolData(s.IpConfiguration.EnablePrivatePathForGoogleCloudServices),
 					"id":                            llx.StringData(fmt.Sprintf("%s/settings/ipConfiguration", instanceId)),
 					"ipv4Enabled":                   llx.BoolData(s.IpConfiguration.Ipv4Enabled),
-					"privateNetwork":                llx.StringData(s.IpConfiguration.PrivateNetwork),
 					"requireSsl":                    llx.BoolData(s.IpConfiguration.RequireSsl),
 					"sslMode":                       llx.StringData(s.IpConfiguration.SslMode),
 					"serverCaMode":                  llx.StringData(s.IpConfiguration.ServerCaMode),
@@ -512,6 +567,8 @@ func (g *mqlGcpProjectSqlService) instances() ([]any, error) {
 				if err != nil {
 					return err
 				}
+				mqlRef := mqlIpCfg.(*mqlGcpProjectSqlServiceInstanceSettingsIpConfiguration)
+				mqlRef.cachePrivateNetwork = s.IpConfiguration.PrivateNetwork
 			}
 
 			type mqlLocationPref struct {
@@ -605,9 +662,55 @@ func (g *mqlGcpProjectSqlService) instances() ([]any, error) {
 				}
 			}
 
+			var mqlPerformanceCaptureConfig map[string]any
+			if s.PerformanceCaptureConfig != nil {
+				mqlPerformanceCaptureConfig, err = convert.JsonToDict(s.PerformanceCaptureConfig)
+				if err != nil {
+					return err
+				}
+			}
+
+			// Each of the three configs below is optional. A nil config leaves
+			// its fields at the zero value rather than reporting a default the
+			// API never returned; the booleans read false, which is the safe
+			// direction for "not enabled".
+			var finalBackupEnabled bool
+			var finalBackupRetentionDays int64
+			if s.FinalBackupConfig != nil {
+				finalBackupEnabled = s.FinalBackupConfig.Enabled
+				finalBackupRetentionDays = s.FinalBackupConfig.RetentionDays
+			}
+
+			var connectionPoolingEnabled bool
+			var connectionPoolerCount int64
+			connectionPoolFlags := map[string]any{}
+			if s.ConnectionPoolConfig != nil {
+				connectionPoolingEnabled = s.ConnectionPoolConfig.ConnectionPoolingEnabled
+				connectionPoolerCount = s.ConnectionPoolConfig.PoolerCount
+				for _, f := range s.ConnectionPoolConfig.Flags {
+					if f == nil {
+						continue
+					}
+					connectionPoolFlags[f.Name] = f.Value
+				}
+			}
+
+			var threadsPerCore int64
+			if s.AdvancedMachineFeatures != nil {
+				threadsPerCore = s.AdvancedMachineFeatures.ThreadsPerCore
+			}
+
 			mqlSettings, err := CreateResource(g.MqlRuntime, "gcp.project.sqlService.instance.settings", map[string]*llx.RawData{
+				"retainBackupsOnDelete":       llx.BoolData(s.RetainBackupsOnDelete),
+				"finalBackupEnabled":          llx.BoolData(finalBackupEnabled),
+				"finalBackupRetentionDays":    llx.IntData(finalBackupRetentionDays),
+				"autoUpgradeEnabled":          llx.BoolData(s.AutoUpgradeEnabled),
+				"connectionPoolingEnabled":    llx.BoolData(connectionPoolingEnabled),
+				"connectionPoolerCount":       llx.IntData(connectionPoolerCount),
+				"connectionPoolFlags":         llx.MapData(connectionPoolFlags, types.String),
+				"threadsPerCore":              llx.IntData(threadsPerCore),
+				"performanceCaptureConfig":    llx.DictData(mqlPerformanceCaptureConfig),
 				"activationPolicy":            llx.StringData(s.ActivationPolicy),
-				"activeDirectoryConfig":       llx.DictData(mqlADCfg),
 				"activeDirectory":             llx.ResourceData(mqlActiveDirectory, "gcp.project.sqlService.instance.settings.activeDirectory"),
 				"availabilityType":            llx.StringData(s.AvailabilityType),
 				"backupConfiguration":         llx.DictData(mqlBackupCfg),
@@ -737,34 +840,78 @@ func (g *mqlGcpProjectSqlService) instances() ([]any, error) {
 				serverCaCertExpiration = parseTime(instance.ServerCaCert.ExpirationTime)
 			}
 
+			mqlPoolNodes := make([]any, 0, len(instance.Nodes))
+			for _, node := range instance.Nodes {
+				if node == nil {
+					continue
+				}
+				nodeDict, err := convert.JsonToDict(node)
+				if err != nil {
+					return err
+				}
+				mqlPoolNodes = append(mqlPoolNodes, nodeDict)
+			}
+
+			// An instance that is not an external-primary replica reports no
+			// on-premises configuration at all. Leave the field null rather
+			// than creating an empty sub-resource, so a check for an insecure
+			// SSL mode cannot match an instance that has no external link.
+			onPremisesConfigData := llx.NilData
+			if opc := instance.OnPremisesConfiguration; opc != nil {
+				mqlOnPrem, err := CreateResource(g.MqlRuntime, "gcp.project.sqlService.instance.onPremisesConfiguration", map[string]*llx.RawData{
+					"__id":              llx.StringData(fmt.Sprintf("%s/%s/onPremisesConfiguration", projectId, instance.Name)),
+					"hostPort":          llx.StringData(opc.HostPort),
+					"username":          llx.StringData(opc.Username),
+					"caCertificate":     llx.StringData(opc.CaCertificate),
+					"clientCertificate": llx.StringData(opc.ClientCertificate),
+					"sslOption":         llx.StringData(opc.SslOption),
+					"dmsManaged":        llx.BoolData(opc.DmsManaged),
+					"dumpFilePath":      llx.StringData(opc.DumpFilePath),
+				})
+				if err != nil {
+					return err
+				}
+				mqlOnPremRes := mqlOnPrem.(*mqlGcpProjectSqlServiceInstanceOnPremisesConfiguration)
+				mqlOnPremRes.cacheProjectId = projectId
+				if src := opc.SourceInstance; src != nil {
+					mqlOnPremRes.cacheSourceInstanceName = src.Name
+					mqlOnPremRes.cacheSourceInstanceRegion = src.Region
+					// A cross-project source names its own project.
+					if src.Project != "" {
+						mqlOnPremRes.cacheProjectId = src.Project
+					}
+				}
+				onPremisesConfigData = llx.ResourceData(mqlOnPrem, "gcp.project.sqlService.instance.onPremisesConfiguration")
+			}
+
 			mqlInstance, err := CreateResource(g.MqlRuntime, "gcp.project.sqlService.instance", map[string]*llx.RawData{
-				"availableMaintenanceVersions": llx.ArrayData(convert.SliceAnyToInterface(instance.AvailableMaintenanceVersions), types.String),
-				"backendType":                  llx.StringData(instance.BackendType),
-				"connectionName":               llx.StringData(instance.ConnectionName),
-				"created":                      llx.TimeDataPtr(parseTime(instance.CreateTime)),
-				"databaseInstalledVersion":     llx.StringData(instance.DatabaseInstalledVersion),
-				"databaseVersion":              llx.StringData(instance.DatabaseVersion),
-				"diskEncryptionConfiguration":  llx.DictData(mqlEncCfg),
-				"diskEncryptionStatus":         llx.DictData(mqlEncStatus),
-				"failoverReplica":              llx.DictData(mqlFailoverReplica),
-				"gceZone":                      llx.StringData(instance.GceZone),
-				"instanceType":                 llx.StringData(instance.InstanceType),
-				"ipAddresses":                  llx.ArrayData(mqlIpAddresses, types.Resource("gcp.project.sqlService.instance.ipMapping")),
-				"maintenanceVersion":           llx.StringData(instance.MaintenanceVersion),
-				"masterInstanceName":           llx.StringData(instance.MasterInstanceName),
-				"maxDiskSize":                  llx.IntData(instance.MaxDiskSize),
-				"name":                         llx.StringData(instance.Name),
-				"projectId":                    llx.StringData(projectId),
-				"region":                       llx.StringData(instance.Region),
-				"replicaNames":                 llx.ArrayData(convert.SliceAnyToInterface(instance.ReplicaNames), types.String),
-				"serviceAccountEmailAddress":   llx.StringData(instance.ServiceAccountEmailAddress),
-				"settings":                     llx.ResourceData(mqlSettings, "gcp.project.sqlService.instance.settings"),
-				"state":                        llx.StringData(instance.State),
-				"satisfiesPzi":                 llx.BoolData(instance.SatisfiesPzi),
-				"satisfiesPzs":                 llx.BoolData(instance.SatisfiesPzs),
-				"dnsName":                      llx.StringData(instance.DnsName),
-				"sqlNetworkArchitecture":       llx.StringData(instance.SqlNetworkArchitecture),
-				"suspensionReason":             llx.ArrayData(convert.SliceAnyToInterface(instance.SuspensionReason), types.String),
+				"availableMaintenanceVersions":    llx.ArrayData(convert.SliceAnyToInterface(instance.AvailableMaintenanceVersions), types.String),
+				"backendType":                     llx.StringData(instance.BackendType),
+				"connectionName":                  llx.StringData(instance.ConnectionName),
+				"created":                         llx.TimeDataPtr(parseTime(instance.CreateTime)),
+				"databaseInstalledVersion":        llx.StringData(instance.DatabaseInstalledVersion),
+				"databaseVersion":                 llx.StringData(instance.DatabaseVersion),
+				"diskEncryptionConfiguration":     llx.DictData(mqlEncCfg),
+				"cmekSourceLogEncryptionEnforced": llx.BoolDataPtr(sqlCmekSourceLogEncryptionEnforced(instance.DiskEncryptionConfiguration)),
+				"diskConfidentialMode":            llx.BoolData(sqlDiskConfidentialMode(instance.DiskEncryptionConfiguration)),
+				"diskEncryptionStatus":            llx.DictData(mqlEncStatus),
+				"failoverReplica":                 llx.DictData(mqlFailoverReplica),
+				"instanceType":                    llx.StringData(instance.InstanceType),
+				"ipAddresses":                     llx.ArrayData(mqlIpAddresses, types.Resource("gcp.project.sqlService.instance.ipMapping")),
+				"maintenanceVersion":              llx.StringData(instance.MaintenanceVersion),
+				"masterInstanceName":              llx.StringData(instance.MasterInstanceName),
+				"maxDiskSize":                     llx.IntData(instance.MaxDiskSize),
+				"name":                            llx.StringData(instance.Name),
+				"projectId":                       llx.StringData(projectId),
+				"region":                          llx.StringData(instance.Region),
+				"replicaNames":                    llx.ArrayData(convert.SliceAnyToInterface(instance.ReplicaNames), types.String),
+				"settings":                        llx.ResourceData(mqlSettings, "gcp.project.sqlService.instance.settings"),
+				"state":                           llx.StringData(instance.State),
+				"satisfiesPzi":                    llx.BoolData(instance.SatisfiesPzi),
+				"satisfiesPzs":                    llx.BoolData(instance.SatisfiesPzs),
+				"dnsName":                         llx.StringData(instance.DnsName),
+				"sqlNetworkArchitecture":          llx.StringData(instance.SqlNetworkArchitecture),
+				"suspensionReason":                llx.ArrayData(convert.SliceAnyToInterface(instance.SuspensionReason), types.String),
 				"switchTransactionLogsToCloudStorageEnabled": llx.BoolData(instance.SwitchTransactionLogsToCloudStorageEnabled),
 				"primaryDnsName":             llx.StringData(instance.PrimaryDnsName),
 				"writeEndpoint":              llx.StringData(instance.WriteEndpoint),
@@ -777,10 +924,17 @@ func (g *mqlGcpProjectSqlService) instances() ([]any, error) {
 				"upgradableDatabaseVersions": llx.ArrayData(mqlUpgradableVersions, types.Dict),
 				"replicationCluster":         llx.DictData(mqlReplicationClusterDict),
 				"serverCaCertExpiration":     llx.TimeDataPtr(serverCaCertExpiration),
+				"ipv6Address":                llx.StringData(instance.Ipv6Address),
+				"nodeCount":                  llx.IntData(instance.NodeCount),
+				"nodes":                      llx.ArrayData(mqlPoolNodes, types.Dict),
+				"onPremisesConfig":           onPremisesConfigData,
 			})
 			if err != nil {
 				return err
 			}
+			mqlRef := mqlInstance.(*mqlGcpProjectSqlServiceInstance)
+			mqlRef.cacheGceZone = instance.GceZone
+			mqlRef.cacheServiceAccountEmailAddress = instance.ServiceAccountEmailAddress
 			mqlSqlInstance := mqlInstance.(*mqlGcpProjectSqlServiceInstance)
 			mqlSqlInstance.cacheSecondaryGceZone = instance.SecondaryGceZone
 			if instance.DiskEncryptionConfiguration != nil {
@@ -829,6 +983,13 @@ func (g *mqlGcpProjectSqlServiceInstance) databases() ([]any, error) {
 
 	dbs, err := sqladminSvc.Databases.List(projectId, instanceName).Do()
 	if err != nil {
+		// A principal often holds cloudsql.instances.list without the
+		// per-instance sub-collection permissions. Degrade to null so the
+		// instance still reports, rather than failing the whole query.
+		if isSkippable(err) {
+			log.Warn().Err(err).Str("instance", instanceName).Msg("could not list Cloud SQL databases")
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -866,10 +1027,38 @@ func (g *mqlGcpProjectSqlServiceInstance) databases() ([]any, error) {
 }
 
 type mqlGcpProjectSqlServiceInstanceInternal struct {
-	cacheSecondaryGceZone    string
-	cacheKmsKeyName          string
-	cacheFailoverReplicaName string
-	cacheDrReplicaName       string
+	cacheSecondaryGceZone           string
+	cacheKmsKeyName                 string
+	cacheFailoverReplicaName        string
+	cacheDrReplicaName              string
+	cacheGceZone                    string
+	cacheServiceAccountEmailAddress string
+}
+
+type mqlGcpProjectSqlServiceInstanceOnPremisesConfigurationInternal struct {
+	cacheProjectId            string
+	cacheSourceInstanceName   string
+	cacheSourceInstanceRegion string
+}
+
+// sourceInstance resolves the Cloud SQL instance this replica reads from.
+//
+// Most external-primary replicas point at a self-managed server that Cloud SQL
+// does not model, in which case the API returns no sourceInstance and the field
+// is null. It is only populated when the source is itself a Cloud SQL instance.
+func (g *mqlGcpProjectSqlServiceInstanceOnPremisesConfiguration) sourceInstance() (*mqlGcpProjectSqlServiceInstance, error) {
+	if g.cacheSourceInstanceName == "" {
+		g.SourceInstance.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	src, err := getSqlInstanceByName(g.MqlRuntime, g.cacheProjectId, g.cacheSourceInstanceName)
+	if err != nil {
+		return nil, err
+	}
+	if src == nil {
+		g.SourceInstance.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return src, nil
 }
 
 func (g *mqlGcpProjectSqlServiceInstance) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
@@ -886,10 +1075,7 @@ func (g *mqlGcpProjectSqlServiceInstance) kmsKey() (*mqlGcpProjectKmsServiceKeyr
 }
 
 func (g *mqlGcpProjectSqlServiceInstance) serviceAccount() (*mqlGcpProjectIamServiceServiceAccount, error) {
-	if g.ServiceAccountEmailAddress.Error != nil {
-		return nil, g.ServiceAccountEmailAddress.Error
-	}
-	sa, err := resolveServiceAccountRef(g.MqlRuntime, g.ServiceAccountEmailAddress.Data, g.ProjectId.Data)
+	sa, err := resolveServiceAccountRef(g.MqlRuntime, g.cacheServiceAccountEmailAddress, g.ProjectId.Data)
 	if err != nil {
 		return nil, err
 	}
@@ -900,10 +1086,7 @@ func (g *mqlGcpProjectSqlServiceInstance) serviceAccount() (*mqlGcpProjectIamSer
 }
 
 func (g *mqlGcpProjectSqlServiceInstanceSettingsIpConfiguration) network() (*mqlGcpProjectComputeServiceNetwork, error) {
-	if g.PrivateNetwork.Error != nil {
-		return nil, g.PrivateNetwork.Error
-	}
-	n, err := getNetworkByUrl(g.PrivateNetwork.Data, g.MqlRuntime)
+	n, err := getNetworkByUrl(g.cachePrivateNetwork, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -911,6 +1094,13 @@ func (g *mqlGcpProjectSqlServiceInstanceSettingsIpConfiguration) network() (*mql
 		g.Network.State = plugin.StateIsSet | plugin.StateIsNull
 	}
 	return n, nil
+}
+
+// dumpFileBucket resolves the Cloud Storage bucket holding the source database
+// dump. A dump is a full copy of the external database's contents, so the
+// bucket's own IAM policy decides who can read that copy.
+func (g *mqlGcpProjectSqlServiceInstanceOnPremisesConfiguration) dumpFileBucket() (*mqlGcpProjectStorageServiceBucket, error) {
+	return resolveGcsBucketFromURI(g.MqlRuntime, g.DumpFilePath.Data, &g.DumpFileBucket)
 }
 
 func (g *mqlGcpProjectSqlServiceInstance) id() (string, error) {
@@ -926,10 +1116,7 @@ func (g *mqlGcpProjectSqlServiceInstance) id() (string, error) {
 }
 
 func (g *mqlGcpProjectSqlServiceInstance) zone() (*mqlGcpProjectComputeServiceZone, error) {
-	if g.GceZone.Error != nil {
-		return nil, g.GceZone.Error
-	}
-	zoneName := g.GceZone.Data
+	zoneName := g.cacheGceZone
 	if zoneName == "" {
 		g.Zone.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -1083,6 +1270,13 @@ func (g *mqlGcpProjectSqlServiceInstance) users() ([]any, error) {
 
 	resp, err := sqladminSvc.Users.List(projectId, instanceName).Do()
 	if err != nil {
+		// hasBuiltInUsers() and localRootEnabled() both read this collection,
+		// so propagating a 403 here failed the two headline Cloud SQL
+		// hardening checks with an opaque error.
+		if isSkippable(err) {
+			log.Warn().Err(err).Str("instance", instanceName).Msg("could not list Cloud SQL users")
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -1165,6 +1359,10 @@ func (g *mqlGcpProjectSqlServiceInstance) sslCerts() ([]any, error) {
 
 	resp, err := sqladminSvc.SslCerts.List(projectId, instanceName).Do()
 	if err != nil {
+		if isSkippable(err) {
+			log.Warn().Err(err).Str("instance", instanceName).Msg("could not list Cloud SQL SSL certificates")
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -1276,6 +1474,7 @@ func (g *mqlGcpProjectSqlServiceInstance) backupRuns() ([]any, error) {
 				"databaseVersion":             llx.StringData(run.DatabaseVersion),
 				"description":                 llx.StringData(run.Description),
 				"diskEncryptionConfiguration": llx.DictData(encCfg),
+				"diskConfidentialMode":        llx.BoolData(sqlDiskConfidentialMode(run.DiskEncryptionConfiguration)),
 				"diskEncryptionStatus":        llx.DictData(encStatus),
 				"endTime":                     llx.TimeDataPtr(parseTime(run.EndTime)),
 				"enqueuedTime":                llx.TimeDataPtr(parseTime(run.EnqueuedTime)),
@@ -1349,12 +1548,33 @@ func (g *mqlGcpProjectSqlServiceInstance) iamAuthenticationEnabled() (bool, erro
 	if flags.Error != nil {
 		return false, flags.Error
 	}
-	v, ok := flags.Data["cloudsql.iam_authentication"]
-	if !ok {
-		return false, nil
+	return sqlFlagOn(flags.Data, "cloudsql.iam_authentication"), nil
+}
+
+// normalizeSqlFlagName folds the separators Cloud SQL uses to spell the same
+// database flag differently per engine. IAM database authentication, for
+// example, is "cloudsql.iam_authentication" on PostgreSQL,
+// "cloudsql_iam_authentication" on MySQL and "cloudsql iam authentication" on
+// SQL Server. Matching one spelling literally reported IAM auth as disabled on
+// every instance of the other two engines.
+func normalizeSqlFlagName(name string) string {
+	return strings.ToLower(strings.NewReplacer(".", "_", " ", "_", "-", "_").Replace(name))
+}
+
+// sqlFlagOn reports whether the named database flag is set to "on", comparing
+// flag names by their normalized form so any engine's spelling matches. A flag
+// that is absent reports false, which matches the Cloud SQL default.
+func sqlFlagOn(flags map[string]any, name string) bool {
+	want := normalizeSqlFlagName(name)
+	for k, v := range flags {
+		if normalizeSqlFlagName(k) != want {
+			continue
+		}
+		if s, ok := v.(string); ok && strings.EqualFold(s, "on") {
+			return true
+		}
 	}
-	s, _ := v.(string)
-	return s == "on", nil
+	return false
 }
 
 func (g *mqlGcpProjectSqlServiceInstance) backupConfigurationEnabled() (bool, error) {
@@ -1448,4 +1668,9 @@ func (g *mqlGcpProjectSqlServiceInstance) localRootEnabled() (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectSqlService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_sqladmin)
 }

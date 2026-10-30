@@ -7,16 +7,15 @@ import (
 	"context"
 	"github.com/rs/zerolog/log"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/Ullaakut/nmap/v3"
 	"github.com/cockroachdb/errors"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/nmap/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/nmap/connection"
 )
 
 type mqlNmapHostInternal struct {
@@ -39,19 +38,39 @@ func initNmapHost(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[st
 	return args, nil, nil
 }
 
-func newMqlNmapHost(runtime *plugin.Runtime, host nmap.Host) (*mqlNmapHost, error) {
-	name := ""
-	if len(host.Addresses) == 1 {
-		name = host.Addresses[0].Addr
-	} else {
-		entries := []string{}
-		for _, addr := range host.Addresses {
-			if addr.Addr != "" {
-				entries = append(entries, addr.Addr)
+// hostScanName picks a single, scannable identifier for a host from its
+// addresses. A host frequently reports more than one address (e.g. an IPv4
+// address plus a MAC address on a local segment). We must not join them into
+// one string, because the result is later handed back to nmap as a scan
+// target and a comma-joined value is not a valid target. We prefer an IP
+// address (IPv4, then IPv6) and fall back to the first non-empty address.
+func hostScanName(addresses []nmap.Address) string {
+	var ipv6, fallback string
+	for _, addr := range addresses {
+		if addr.Addr == "" {
+			continue
+		}
+		switch addr.AddrType {
+		case "ipv4":
+			return addr.Addr
+		case "ipv6":
+			if ipv6 == "" {
+				ipv6 = addr.Addr
+			}
+		default:
+			if fallback == "" {
+				fallback = addr.Addr
 			}
 		}
-		name = strings.Join(entries, ", ")
 	}
+	if ipv6 != "" {
+		return ipv6
+	}
+	return fallback
+}
+
+func newMqlNmapHost(runtime *plugin.Runtime, host nmap.Host) (*mqlNmapHost, error) {
+	name := hostScanName(host.Addresses)
 
 	mqlNmapHostResource, err := CreateResource(runtime, "nmap.host", map[string]*llx.RawData{
 		"__id": llx.StringData("nmap.host/" + name),
@@ -131,8 +150,9 @@ func (r *mqlNmapHost) scan() error {
 	if len(result.Hosts) == 0 {
 		return nil
 	} else if len(result.Hosts) > 1 {
+		err := errors.New("nmap scan returned more than one host")
 		setError(err)
-		return errors.New("nmap scan returned more than one host")
+		return err
 	}
 
 	host := result.Hosts[0]

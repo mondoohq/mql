@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/okta/okta-sdk-golang/v5/okta"
+	"github.com/okta/okta-sdk-golang/v6/okta"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,8 +26,7 @@ func TestOktaBool(t *testing.T) {
 }
 
 // TestOktaUserArgs_FromUser exercises the *okta.User fast path: pointer/Nullable
-// fields are dereferenced, the typed profile is flattened to a dict, and the
-// nested type id is lifted out.
+// fields are dereferenced and the typed profile is flattened to a dict.
 func TestOktaUserArgs_FromUser(t *testing.T) {
 	const payload = `{
 		"id": "00u1abc",
@@ -47,7 +46,6 @@ func TestOktaUserArgs_FromUser(t *testing.T) {
 
 	assert.Equal(t, "00u1abc", args["id"].Value)
 	assert.Equal(t, "ACTIVE", args["status"].Value)
-	assert.Equal(t, "otyp123", args["typeId"].Value)
 	assert.Equal(t, "PROVISIONED", args["transitioningToStatus"].Value)
 
 	profile, ok := args["profile"].Value.(map[string]any)
@@ -63,20 +61,27 @@ func TestOktaUserArgs_FromUser(t *testing.T) {
 	activated, ok := args["activated"].Value.(*time.Time)
 	require.True(t, ok, "activated (NullableTime) should be a *time.Time")
 	assert.NotNil(t, activated)
+
+	// The user type is not a schema field; its id reaches userType through the
+	// internal cache, so pin that it decodes off the SDK record.
+	require.NotNil(t, u.Type)
+	assert.Equal(t, "otyp123", oktaStr(u.Type.Id))
 }
 
 // TestOktaUserArgs_FromGroupMember exercises the JSON-normalization branch used
 // for the non-okta.User user-shaped types (GroupMember, UserGetSingleton).
-func TestOktaUserArgs_FromGroupMember(t *testing.T) {
+func TestOktaUserArgs_FromGroupMembership(t *testing.T) {
 	const payload = `{
 		"id": "00u9zzz",
 		"status": "ACTIVE",
 		"profile": {"firstName": "Sam", "login": "sam@example.com"}
 	}`
-	var m okta.GroupMember
+	var m okta.User
 	require.NoError(t, json.Unmarshal([]byte(payload), &m))
 
-	args, err := oktaUserArgs(&m)
+	user, err := oktaUserFromAny(&m)
+	require.NoError(t, err)
+	args, err := oktaUserArgs(user)
 	require.NoError(t, err)
 
 	assert.Equal(t, "00u9zzz", args["id"].Value)
@@ -170,7 +175,7 @@ func TestOktaPolicyRuleRawDecode(t *testing.T) {
 }
 
 // TestAuthzServerPolicyRawDecode verifies that the authorization-server policy
-// scalars (which v5 keeps only in AdditionalProperties) decode from the
+// scalars (which the SDK keeps only in AdditionalProperties) decode from the
 // canonical JSON.
 func TestAuthzServerPolicyRawDecode(t *testing.T) {
 	const payload = `{
@@ -213,4 +218,45 @@ func TestUserFactorRawDecode(t *testing.T) {
 	assert.Equal(t, "OKTA", f.Provider)
 	assert.Equal(t, "+1 555 0100", f.Profile["phoneNumber"])
 	require.NotNil(t, f.Created)
+}
+
+// TestOktaApplicationRawUniversalLogout pins the Universal Logout decode.
+//
+// These four values decide whether ending an Okta session actually ends the
+// application's session. A mistyped tag would read empty on every app, which
+// is indistinguishable from an app that does not support Universal Logout at
+// all, so the wrong answer would look like a plausible one.
+func TestOktaApplicationRawUniversalLogout(t *testing.T) {
+	t.Parallel()
+
+	const payload = `{
+		"id": "0oa1",
+		"label": "Workspace",
+		"universalLogout": {
+			"status": "ACTIVE",
+			"supportType": "FULL",
+			"protocol": "OIDC_BACKCHANNEL",
+			"identityStack": "google"
+		}
+	}`
+
+	entry := &oktaApplicationRaw{}
+	require.NoError(t, json.Unmarshal([]byte(payload), entry))
+
+	require.NotNil(t, entry.UniversalLogout)
+	assert.Equal(t, "ACTIVE", entry.UniversalLogout.Status)
+	assert.Equal(t, "FULL", entry.UniversalLogout.SupportType)
+	assert.Equal(t, "OIDC_BACKCHANNEL", entry.UniversalLogout.Protocol)
+	assert.Equal(t, "google", entry.UniversalLogout.IdentityStack)
+}
+
+// TestOktaApplicationRawWithoutUniversalLogout covers an application Okta
+// cannot sign the user out of, which omits the block entirely.
+func TestOktaApplicationRawWithoutUniversalLogout(t *testing.T) {
+	t.Parallel()
+
+	entry := &oktaApplicationRaw{}
+	require.NoError(t, json.Unmarshal([]byte(`{"id":"0oa2","label":"Legacy"}`), entry))
+	assert.Nil(t, entry.UniversalLogout,
+		"an absent block must not decode to a populated one")
 }

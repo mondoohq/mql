@@ -10,10 +10,10 @@ import (
 	"net/http"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/types"
 )
 
 // grafanaContactPointJSON mirrors one element of the
@@ -33,7 +33,7 @@ type grafanaNotificationPolicyJSON struct {
 	Routes   json.RawMessage `json:"routes"`
 }
 
-func (g *mqlGrafana) contactPoints() ([]interface{}, error) {
+func (g *mqlGrafana) contactPoints() ([]any, error) {
 	conn, err := grafanaConnection(g.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -52,11 +52,11 @@ func (g *mqlGrafana) contactPoints() ([]interface{}, error) {
 		return nil, fmt.Errorf("grafana: decoding /api/v1/provisioning/contact-points response: %w", err)
 	}
 
-	list := make([]interface{}, 0, len(raw))
+	list := make([]any, 0, len(raw))
 	for _, cp := range raw {
-		var settingsDict interface{}
+		var settingsDict any
 		if len(cp.Settings) > 0 && string(cp.Settings) != "null" {
-			var parsed interface{}
+			var parsed any
 			if err := json.Unmarshal(cp.Settings, &parsed); err != nil {
 				return nil, fmt.Errorf("grafana: parsing settings for contact point %s: %w", cp.UID, err)
 			}
@@ -131,53 +131,62 @@ func (c *mqlGrafanaContactPoint) isHttps() (bool, error) {
 	return strings.HasPrefix(strings.ToLower(u), "https://"), nil
 }
 
-func (c *mqlGrafanaContactPoint) tlsSkipVerify() (bool, error) {
-	s := c.contactPointSettings()
-	if s == nil {
-		return false, nil
+// contactPointTLSSkipVerify reports whether the contact-point settings disable
+// TLS server-certificate verification. httpConfig.tlsConfig is the standard
+// Alertmanager-style nested key; a top-level tlsConfig is the flatter
+// Grafana-managed key.
+func contactPointTLSSkipVerify(settings map[string]any) bool {
+	if settings == nil {
+		return false
 	}
-	// httpConfig is the standard Alertmanager-style nested key; tlsConfig is the
-	// flatter Grafana-managed key.
-	if hc, ok := s["httpConfig"].(map[string]any); ok {
+	if hc, ok := settings["httpConfig"].(map[string]any); ok {
 		if tls, ok := hc["tlsConfig"].(map[string]any); ok {
 			if v, ok := tls["insecureSkipVerify"].(bool); ok && v {
-				return true, nil
+				return true
 			}
 		}
 	}
-	if tls, ok := s["tlsConfig"].(map[string]any); ok {
+	if tls, ok := settings["tlsConfig"].(map[string]any); ok {
 		if v, ok := tls["insecureSkipVerify"].(bool); ok && v {
-			return true, nil
+			return true
 		}
 	}
-	return false, nil
+	return false
 }
 
-// hasHttpAuth reports whether basic-auth or bearer-token auth is configured on
-// the contact point, indicating the alert receiver requires authentication.
-func (c *mqlGrafanaContactPoint) hasHttpAuth() (bool, error) {
-	s := c.contactPointSettings()
-	if s == nil {
-		return false, nil
+func (c *mqlGrafanaContactPoint) tlsSkipVerify() (bool, error) {
+	return contactPointTLSSkipVerify(c.contactPointSettings()), nil
+}
+
+// contactPointHasHTTPAuth reports whether basic-auth or bearer-token auth is
+// configured on the contact point, indicating the alert receiver requires
+// authentication.
+func contactPointHasHTTPAuth(settings map[string]any) bool {
+	if settings == nil {
+		return false
 	}
-	if _, ok := s["username"]; ok {
-		return true, nil
+	if _, ok := settings["username"]; ok {
+		return true
 	}
-	if _, ok := s["authorizationCredentials"]; ok {
-		return true, nil
+	if _, ok := settings["authorizationCredentials"]; ok {
+		return true
 	}
-	if hc, ok := s["httpConfig"].(map[string]any); ok {
+	if hc, ok := settings["httpConfig"].(map[string]any); ok {
 		if _, ok := hc["basicAuth"]; ok {
-			return true, nil
+			return true
 		}
 		if _, ok := hc["bearerToken"]; ok {
-			return true, nil
+			return true
 		}
 		if _, ok := hc["authorization"]; ok {
-			return true, nil
+			return true
 		}
 	}
-	return false, nil
+	return false
+}
+
+func (c *mqlGrafanaContactPoint) hasHttpAuth() (bool, error) {
+	return contactPointHasHTTPAuth(c.contactPointSettings()), nil
 }
 
 // initGrafanaNotificationPolicy delegates to the parent grafana resource when
@@ -219,19 +228,19 @@ func (g *mqlGrafana) notificationPolicy() (*mqlGrafanaNotificationPolicy, error)
 	}
 
 	// Convert groupBy string slice to []interface{} for the MQL array.
-	groupByAny := make([]interface{}, len(policy.GroupBy))
+	groupByAny := make([]any, len(policy.GroupBy))
 	for i, v := range policy.GroupBy {
 		groupByAny[i] = v
 	}
 
 	// Decode routes to []interface{} and convert each element to a dict.
-	var rawRoutes []interface{}
+	var rawRoutes []any
 	if len(policy.Routes) > 0 && string(policy.Routes) != "null" {
 		if err := json.Unmarshal(policy.Routes, &rawRoutes); err != nil {
 			return nil, fmt.Errorf("grafana: parsing routes in notification policy: %w", err)
 		}
 	}
-	routeDicts := make([]interface{}, 0, len(rawRoutes))
+	routeDicts := make([]any, 0, len(rawRoutes))
 	for _, r := range rawRoutes {
 		d, err := convert.JsonToDict(r)
 		if err != nil {

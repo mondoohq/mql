@@ -11,11 +11,11 @@ import (
 	certificatemanager "cloud.google.com/go/certificatemanager/apiv1"
 	"cloud.google.com/go/certificatemanager/apiv1/certificatemanagerpb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -39,7 +39,7 @@ func (g *mqlGcpProject) certificateManager() (*mqlGcpProjectCertificateManagerSe
 	}
 
 	svc := res.(*mqlGcpProjectCertificateManagerService)
-	svc.serviceEnabled = serviceEnabled
+	svc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_certificatemanager).Msg("gcp service is not enabled, skipping")
 	}
@@ -47,7 +47,7 @@ func (g *mqlGcpProject) certificateManager() (*mqlGcpProjectCertificateManagerSe
 }
 
 type mqlGcpProjectCertificateManagerServiceInternal struct {
-	serviceEnabled bool
+	serviceGate
 }
 
 type mqlGcpProjectCertificateManagerServiceCertificateInternal struct {
@@ -79,7 +79,11 @@ func (g *mqlGcpProjectCertificateManagerService) id() (string, error) {
 }
 
 func (g *mqlGcpProjectCertificateManagerService) certificates() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -110,6 +114,10 @@ func (g *mqlGcpProjectCertificateManagerService) certificates() ([]any, error) {
 			break
 		}
 		if err != nil {
+			if isSkippable(err) {
+				log.Warn().Err(err).Msg("could not list resources (API disabled or access denied), skipping")
+				break
+			}
 			return nil, err
 		}
 
@@ -161,6 +169,7 @@ func newCertificateResource(
 		"managedState":                    llx.StringData(managedState),
 		"managedProvisioningIssue":        llx.DictData(managedIssue),
 		"managedAuthorizationAttemptInfo": llx.ArrayData(managedAttempts, types.Dict),
+		"usedBy":                          llx.ArrayData(certificateUsedBy(c.UsedBy), types.String),
 	})
 	if err != nil {
 		return nil, err
@@ -184,7 +193,11 @@ func (g *mqlGcpProjectCertificateManagerServiceCertificate) daysUntilExpiry() (i
 }
 
 func (g *mqlGcpProjectCertificateManagerService) certificateMaps() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -215,6 +228,10 @@ func (g *mqlGcpProjectCertificateManagerService) certificateMaps() ([]any, error
 			break
 		}
 		if err != nil {
+			if isSkippable(err) {
+				log.Warn().Err(err).Msg("could not list resources (API disabled or access denied), skipping")
+				break
+			}
 			return nil, err
 		}
 
@@ -278,6 +295,10 @@ func (g *mqlGcpProjectCertificateManagerServiceCertificateMap) entries() ([]any,
 			break
 		}
 		if err != nil {
+			if isSkippable(err) {
+				log.Warn().Err(err).Msg("could not list resources (API disabled or access denied), skipping")
+				break
+			}
 			return nil, err
 		}
 
@@ -312,7 +333,11 @@ func (g *mqlGcpProjectCertificateManagerServiceCertificateMapEntry) id() (string
 }
 
 func (g *mqlGcpProjectCertificateManagerService) dnsAuthorizations() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -343,6 +368,10 @@ func (g *mqlGcpProjectCertificateManagerService) dnsAuthorizations() ([]any, err
 			break
 		}
 		if err != nil {
+			if isSkippable(err) {
+				log.Warn().Err(err).Msg("could not list resources (API disabled or access denied), skipping")
+				break
+			}
 			return nil, err
 		}
 
@@ -381,7 +410,11 @@ func (g *mqlGcpProjectCertificateManagerServiceDnsAuthorization) id() (string, e
 }
 
 func (g *mqlGcpProjectCertificateManagerService) certificateIssuanceConfigs() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -412,6 +445,10 @@ func (g *mqlGcpProjectCertificateManagerService) certificateIssuanceConfigs() ([
 			break
 		}
 		if err != nil {
+			if isSkippable(err) {
+				log.Warn().Err(err).Msg("could not list resources (API disabled or access denied), skipping")
+				break
+			}
 			return nil, err
 		}
 
@@ -451,7 +488,11 @@ func (g *mqlGcpProjectCertificateManagerServiceCertificateIssuanceConfig) id() (
 }
 
 func (g *mqlGcpProjectCertificateManagerService) trustConfigs() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 	if g.ProjectId.Error != nil {
@@ -482,6 +523,10 @@ func (g *mqlGcpProjectCertificateManagerService) trustConfigs() ([]any, error) {
 			break
 		}
 		if err != nil {
+			if isSkippable(err) {
+				log.Warn().Err(err).Msg("could not list resources (API disabled or access denied), skipping")
+				break
+			}
 			return nil, err
 		}
 
@@ -496,6 +541,9 @@ func (g *mqlGcpProjectCertificateManagerService) trustConfigs() ([]any, error) {
 			"updateTime":   llx.TimeDataPtr(timestampAsTimePtr(t.UpdateTime)),
 			"etag":         llx.StringData(t.Etag),
 			"trustStores":  llx.ArrayData(flattenTrustStores(t.TrustStores), types.Dict),
+
+			"spiffeTrustStores":       llx.MapData(flattenSpiffeTrustStores(t.SpiffeTrustStores), types.Dict),
+			"allowlistedCertificates": llx.ArrayData(flattenAllowlistedCertificates(t.AllowlistedCertificates), types.Dict),
 		})
 		if err != nil {
 			return nil, err
@@ -602,18 +650,59 @@ func flattenGclbTargets(targets []*certificatemanagerpb.CertificateMap_GclbTarge
 func flattenTrustStores(stores []*certificatemanagerpb.TrustConfig_TrustStore) []any {
 	res := make([]any, 0, len(stores))
 	for _, s := range stores {
-		anchors := make([]any, 0, len(s.TrustAnchors))
-		for _, a := range s.TrustAnchors {
-			anchors = append(anchors, map[string]any{"pemCertificate": a.GetPemCertificate()})
+		res = append(res, flattenTrustStore(s))
+	}
+	return res
+}
+
+// flattenTrustStore shapes one trust store as
+// {trustAnchors:[{pemCertificate}], intermediateCas:[{pemCertificate}]}.
+// A nil store yields two empty lists.
+func flattenTrustStore(s *certificatemanagerpb.TrustConfig_TrustStore) map[string]any {
+	anchors := make([]any, 0, len(s.GetTrustAnchors()))
+	for _, a := range s.GetTrustAnchors() {
+		anchors = append(anchors, map[string]any{"pemCertificate": a.GetPemCertificate()})
+	}
+	intermediates := make([]any, 0, len(s.GetIntermediateCas()))
+	for _, i := range s.GetIntermediateCas() {
+		intermediates = append(intermediates, map[string]any{"pemCertificate": i.GetPemCertificate()})
+	}
+	return map[string]any{
+		"trustAnchors":    anchors,
+		"intermediateCas": intermediates,
+	}
+}
+
+// flattenSpiffeTrustStores keys each SPIFFE trust store by its trust domain.
+func flattenSpiffeTrustStores(stores map[string]*certificatemanagerpb.TrustConfig_TrustStore) map[string]any {
+	res := make(map[string]any, len(stores))
+	for domain, s := range stores {
+		res[domain] = flattenTrustStore(s)
+	}
+	return res
+}
+
+// flattenAllowlistedCertificates shapes each allowlisted certificate as
+// {pemCertificate}, matching the trust store entries.
+func flattenAllowlistedCertificates(certs []*certificatemanagerpb.TrustConfig_AllowlistedCertificate) []any {
+	res := make([]any, 0, len(certs))
+	for _, c := range certs {
+		if c == nil {
+			continue
 		}
-		intermediates := make([]any, 0, len(s.IntermediateCas))
-		for _, i := range s.IntermediateCas {
-			intermediates = append(intermediates, map[string]any{"pemCertificate": i.GetPemCertificate()})
+		res = append(res, map[string]any{"pemCertificate": c.GetPemCertificate()})
+	}
+	return res
+}
+
+// certificateUsedBy returns the full resource names of the resources using a
+// certificate, skipping nil and unnamed entries.
+func certificateUsedBy(usedBy []*certificatemanagerpb.Certificate_UsedBy) []any {
+	res := make([]any, 0, len(usedBy))
+	for _, u := range usedBy {
+		if name := u.GetName(); name != "" {
+			res = append(res, name)
 		}
-		res = append(res, map[string]any{
-			"trustAnchors":    anchors,
-			"intermediateCas": intermediates,
-		})
 	}
 	return res
 }
@@ -673,15 +762,26 @@ func initGcpProjectCertificateManagerServiceCertificate(runtime *plugin.Runtime,
 		return args, nil, nil
 	}
 	resourcePathRaw, ok := args["resourcePath"]
-	if !ok || resourcePathRaw == nil || resourcePathRaw.Value == nil || resourcePathRaw.Value.(string) == "" {
-		return args, nil, nil
+	if !ok || resourcePathRaw == nil {
+		return nil, nil, errors.New(`gcp.project.certificateManagerService.certificate requires a "resourcePath" argument`)
 	}
-	resourcePath := resourcePathRaw.Value.(string)
+	resourcePath, ok := resourcePathRaw.Value.(string)
+	if !ok || resourcePath == "" {
+		return nil, nil, errors.New(`gcp.project.certificateManagerService.certificate requires a non-empty "resourcePath" argument`)
+	}
 
 	conn, ok := runtime.Connection.(*connection.GcpConnection)
 	if !ok {
 		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
 	}
+	// Ask whether the API is on before paying for a Get that cannot succeed
+	// without it. Memoized per project, so this is free after the first caller.
+	if enabled, err := serviceEnabledForInit(runtime, conn.ResourceID(), service_certificatemanager); err != nil {
+		return nil, nil, err
+	} else if !enabled {
+		return nil, nil, errors.New("Certificate Manager API is not enabled on project " + conn.ResourceID())
+	}
+
 	creds, err := conn.Credentials(certificatemanager.DefaultAuthScopes()...)
 	if err != nil {
 		return nil, nil, err
@@ -717,15 +817,26 @@ func initGcpProjectCertificateManagerServiceDnsAuthorization(runtime *plugin.Run
 		return args, nil, nil
 	}
 	resourcePathRaw, ok := args["resourcePath"]
-	if !ok || resourcePathRaw == nil || resourcePathRaw.Value == nil || resourcePathRaw.Value.(string) == "" {
-		return args, nil, nil
+	if !ok || resourcePathRaw == nil {
+		return nil, nil, errors.New(`gcp.project.certificateManagerService.dnsAuthorization requires a "resourcePath" argument`)
 	}
-	resourcePath := resourcePathRaw.Value.(string)
+	resourcePath, ok := resourcePathRaw.Value.(string)
+	if !ok || resourcePath == "" {
+		return nil, nil, errors.New(`gcp.project.certificateManagerService.dnsAuthorization requires a non-empty "resourcePath" argument`)
+	}
 
 	conn, ok := runtime.Connection.(*connection.GcpConnection)
 	if !ok {
 		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
 	}
+	// Ask whether the API is on before paying for a Get that cannot succeed
+	// without it. Memoized per project, so this is free after the first caller.
+	if enabled, err := serviceEnabledForInit(runtime, conn.ResourceID(), service_certificatemanager); err != nil {
+		return nil, nil, err
+	} else if !enabled {
+		return nil, nil, errors.New("Certificate Manager API is not enabled on project " + conn.ResourceID())
+	}
+
 	creds, err := conn.Credentials(certificatemanager.DefaultAuthScopes()...)
 	if err != nil {
 		return nil, nil, err
@@ -778,15 +889,26 @@ func initGcpProjectCertificateManagerServiceCertificateIssuanceConfig(runtime *p
 		return args, nil, nil
 	}
 	resourcePathRaw, ok := args["resourcePath"]
-	if !ok || resourcePathRaw == nil || resourcePathRaw.Value == nil || resourcePathRaw.Value.(string) == "" {
-		return args, nil, nil
+	if !ok || resourcePathRaw == nil {
+		return nil, nil, errors.New(`gcp.project.certificateManagerService.certificateIssuanceConfig requires a "resourcePath" argument`)
 	}
-	resourcePath := resourcePathRaw.Value.(string)
+	resourcePath, ok := resourcePathRaw.Value.(string)
+	if !ok || resourcePath == "" {
+		return nil, nil, errors.New(`gcp.project.certificateManagerService.certificateIssuanceConfig requires a non-empty "resourcePath" argument`)
+	}
 
 	conn, ok := runtime.Connection.(*connection.GcpConnection)
 	if !ok {
 		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
 	}
+	// Ask whether the API is on before paying for a Get that cannot succeed
+	// without it. Memoized per project, so this is free after the first caller.
+	if enabled, err := serviceEnabledForInit(runtime, conn.ResourceID(), service_certificatemanager); err != nil {
+		return nil, nil, err
+	} else if !enabled {
+		return nil, nil, errors.New("Certificate Manager API is not enabled on project " + conn.ResourceID())
+	}
+
 	creds, err := conn.Credentials(certificatemanager.DefaultAuthScopes()...)
 	if err != nil {
 		return nil, nil, err
@@ -830,4 +952,9 @@ func initGcpProjectCertificateManagerServiceCertificateIssuanceConfig(runtime *p
 		return nil, nil, err
 	}
 	return args, res, nil
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectCertificateManagerService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_certificatemanager)
 }

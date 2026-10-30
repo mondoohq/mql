@@ -1,0 +1,4 @@
+[Unit]
+Description=Serial %I
+[Install]
+WantedBy=multi-user.target

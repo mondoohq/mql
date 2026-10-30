@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers/os/detector"
+	"go.mondoo.com/mql/providers/os/detector"
 )
 
 func TestOpenSolaris2009Release(t *testing.T) {
@@ -37,6 +37,37 @@ func TestSolaris11Release(t *testing.T) {
 	assert.Equal(t, "solaris", r.ID)
 	assert.Equal(t, "Oracle Solaris", r.Title)
 	assert.Equal(t, "11", r.Release)
+}
+
+// Verbatim /etc/release from an Oracle Solaris 11.4.86 instance.
+func TestSolaris114Release(t *testing.T) {
+	input := `                             Oracle Solaris 11.4 X86
+             Copyright (c) 1983, 2025, Oracle and/or its affiliates.
+                            Assembled 07 October 2025
+`
+
+	r, err := detector.ParseSolarisRelease(input)
+	require.NoError(t, err)
+
+	assert.Equal(t, "solaris", r.ID)
+	assert.Equal(t, "Oracle Solaris", r.Title)
+	assert.Equal(t, "11.4", r.Release)
+}
+
+// Some sites prepend a banner to /etc/release. The release line still has to be
+// found rather than only being matched when it happens to come first.
+func TestSolarisReleaseAfterPrecedingLine(t *testing.T) {
+	input := `Authorized use only. Activity may be monitored.
+                             Oracle Solaris 11.4 SPARC
+  Copyright (c) 1983, 2024, Oracle and/or its affiliates.
+`
+
+	r, err := detector.ParseSolarisRelease(input)
+	require.NoError(t, err)
+
+	assert.Equal(t, "solaris", r.ID)
+	assert.Equal(t, "Oracle Solaris", r.Title)
+	assert.Equal(t, "11.4", r.Release)
 }
 
 func TestSolaris10Release(t *testing.T) {

@@ -23,6 +23,11 @@ import (
 // (e.g. "meta-llama/Llama-2-7B" -> "7B").
 type HuggingFaceDetector struct{}
 
+// hfSnapshotDepth is how many directory levels below a snapshot are searched
+// for weight files, enough for the onnx/ or 1_Pooling/ subdirectories
+// repositories keep weights in.
+const hfSnapshotDepth = 3
+
 type hfConfig struct {
 	ModelType          string         `json:"model_type"`
 	Architectures      []string       `json:"architectures"`
@@ -36,7 +41,7 @@ type hfReadmeMeta struct {
 }
 
 func (d *HuggingFaceDetector) Detect(ctx DetectContext) []ModelInfo {
-	hubDir := filepath.Join(ctx.Home, ".cache", "huggingface", "hub")
+	hubDir := joinPath(ctx.Home, ".cache", "huggingface", "hub")
 	entries, err := ctx.Fs.ReadDir(hubDir)
 	if err != nil {
 		return nil
@@ -55,16 +60,13 @@ func (d *HuggingFaceDetector) Detect(ctx DetectContext) []ModelInfo {
 		}
 		modelName := nameParts[1] + "/" + nameParts[2]
 
-		modelDir := filepath.Join(hubDir, entry.Name())
-		blobsDir := filepath.Join(modelDir, "blobs")
+		modelDir := joinPath(hubDir, entry.Name())
+		blobsDir := joinPath(modelDir, "blobs")
 
 		totalSize, modTime := dirSizeAndLatestMtime(ctx.Fs, blobsDir)
 		meta := extractHuggingFaceMetadata(ctx.Fs, modelDir)
 
-		paramSize := ""
-		if m := reParamSize.FindStringSubmatch(modelName); len(m) > 1 {
-			paramSize = m[1] + "B"
-		}
+		paramSize := parameterSizeFromName(modelName)
 
 		results = append(results, ModelInfo{
 			Name:          modelName,
@@ -82,6 +84,8 @@ func (d *HuggingFaceDetector) Detect(ctx DetectContext) []ModelInfo {
 			License:       meta.License,
 			Tags:          meta.Tags,
 			Description:   meta.Description,
+
+			UnsafeSerialization: meta.UnsafeSerialization,
 		})
 	}
 	return results
@@ -96,11 +100,13 @@ type hfExtracted struct {
 	License      string
 	Tags         []string
 	Description  string
+
+	UnsafeSerialization *bool
 }
 
 func extractHuggingFaceMetadata(afs *afero.Afero, modelDir string) hfExtracted {
 	var result hfExtracted
-	snapshotsDir := filepath.Join(modelDir, "snapshots")
+	snapshotsDir := joinPath(modelDir, "snapshots")
 	snapshots, err := afs.ReadDir(snapshotsDir)
 	if err != nil || len(snapshots) == 0 {
 		result.Format = "unknown"
@@ -113,7 +119,7 @@ func extractHuggingFaceMetadata(afs *afero.Afero, modelDir string) hfExtracted {
 			latest = s
 		}
 	}
-	latestSnapshot := filepath.Join(snapshotsDir, latest.Name())
+	latestSnapshot := joinPath(snapshotsDir, latest.Name())
 
 	// Version = first 12 chars of snapshot dir name (revision hash)
 	rev := latest.Name()
@@ -123,7 +129,7 @@ func extractHuggingFaceMetadata(afs *afero.Afero, modelDir string) hfExtracted {
 	result.Version = rev
 
 	// Read config.json
-	configPath := filepath.Join(latestSnapshot, "config.json")
+	configPath := joinPath(latestSnapshot, "config.json")
 	if data, readErr := afs.ReadFile(configPath); readErr == nil {
 		var cfg hfConfig
 		if json.Unmarshal(data, &cfg) == nil {
@@ -153,7 +159,7 @@ func extractHuggingFaceMetadata(afs *afero.Afero, modelDir string) hfExtracted {
 	} else {
 		subdirs, _ := afs.ReadDir(latestSnapshot)
 		for _, d := range subdirs {
-			fullPath := filepath.Join(latestSnapshot, d.Name())
+			fullPath := joinPath(latestSnapshot, d.Name())
 			info, err := afs.Stat(fullPath)
 			if err != nil || !info.IsDir() {
 				continue
@@ -167,6 +173,11 @@ func extractHuggingFaceMetadata(afs *afero.Afero, modelDir string) hfExtracted {
 			result.Format = "unknown"
 		}
 	}
+
+	// Every weight file of the snapshot, not only the format reported above:
+	// a repository can ship model.safetensors next to pytorch_model.bin.
+	weights := weightFiles(afs, latestSnapshot, hfSnapshotDepth)
+	result.UnsafeSerialization = unsafeSerialization(afs, weights)
 
 	// Quantization fallback from filenames
 	if result.Quantization == "" {
@@ -184,7 +195,7 @@ func extractHuggingFaceMetadata(afs *afero.Afero, modelDir string) hfExtracted {
 
 func parseHFReadmeFrontmatter(afs *afero.Afero, snapshotDir string) hfReadmeMeta {
 	var meta hfReadmeMeta
-	readmePath := filepath.Join(snapshotDir, "README.md")
+	readmePath := joinPath(snapshotDir, "README.md")
 	data, err := afs.ReadFile(readmePath)
 	if err != nil {
 		return meta

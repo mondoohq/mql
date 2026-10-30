@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,21 +18,33 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
-	mql "go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/checksums"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/terraform/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/checksums"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/terraform/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlTerraformInternal struct {
-	blocksByName  map[string]*mqlTerraformBlock
-	relatedBlocks map[string][]*mqlTerraformBlock
+	// lock guards every field below. The cache is populated exactly once by
+	// ensureCache and is immutable afterwards; all readers must hold lock.
+	lock sync.Mutex
+	// cached reports whether ensureCache has already populated the fields below.
+	cached bool
+
+	// The parsed HCL blocks, split by type. allBlocks holds every block;
+	// the type-specific slices are views into the same block instances.
+	allBlocks        []any
+	providerBlocks   []any
+	datasourceBlocks []any
+	variableBlocks   []any
+	outputBlocks     []any
+	resources        []*mqlTerraformBlock
 	// these are blocks with the type set to "terraform", used for settings
 	terraformBlocks []*mqlTerraformBlock
-	lock            sync.Mutex
-	resources       []*mqlTerraformBlock
+
+	blocksByName  map[string]*mqlTerraformBlock
+	relatedBlocks map[string][]*mqlTerraformBlock
 }
 
 func (t *mqlTerraform) files() ([]any, error) {
@@ -95,69 +108,73 @@ func (t *mqlTerraform) modules() ([]any, error) {
 }
 
 func (t *mqlTerraform) blocks() ([]any, error) {
-	conn := t.MqlRuntime.Connection.(*connection.Connection)
-	parser := conn.Parser()
-	if parser == nil {
-		return []any{}, nil
+	if err := t.ensureCache(); err != nil {
+		return nil, err
 	}
-
-	files := parser.Files()
-	mqlHclBlocks := make([]any, 0)
-	for k := range files {
-		f := files[k]
-		blocks, err := listHclBlocks(t.MqlRuntime, f.Body, f)
-		if err != nil {
-			return nil, err
-		}
-		mqlHclBlocks = append(mqlHclBlocks, blocks...)
-	}
-
-	return mqlHclBlocks, t.refreshCache(mqlHclBlocks)
-}
-
-func (t *mqlTerraform) refreshCache(blocks []any) error {
-	if blocks == nil {
-		raw := t.GetBlocks()
-		return raw.Error
-	}
-
 	t.lock.Lock()
 	defer t.lock.Unlock()
-	if t.blocksByName != nil {
+	return t.allBlocks, nil
+}
+
+// ensureCache parses the HCL configuration once and populates every cached
+// collection on the terraform singleton. It is safe to call concurrently from
+// any terraform.* field getter or init function: the first caller does the
+// work while holding lock, and every other caller blocks on lock and then
+// observes the fully-populated cache. Populating under a single lock (instead
+// of bouncing through GetBlocks/GetOrCompute, which is not synchronized) is
+// what prevents the intermittently-empty terraform.resources list — several
+// terraform.* fields resolve in parallel during a policy scan and previously
+// raced on this shared state (mondoohq/mql#8966).
+func (t *mqlTerraform) ensureCache() error {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	if t.cached {
 		return nil
 	}
 
+	var blocks []any
+	// plan and state assets have no HCL parser; there are no blocks to list and
+	// the cache is left empty (but marked populated so we don't re-parse).
+	conn, ok := t.MqlRuntime.Connection.(*connection.Connection)
+	if ok && conn != nil {
+		if parser := conn.Parser(); parser != nil {
+			files := parser.Files()
+			for k := range files {
+				f := files[k]
+				bs, err := listHclBlocks(t.MqlRuntime, f.Body, f)
+				if err != nil {
+					return err
+				}
+				blocks = append(blocks, bs...)
+			}
+		}
+	}
+
+	t.allBlocks = blocks
 	t.blocksByName = map[string]*mqlTerraformBlock{}
 	t.relatedBlocks = map[string][]*mqlTerraformBlock{}
-
-	t.Providers.State = plugin.StateIsSet
-	t.Providers.Data = []any{}
-	t.Datasources.State = plugin.StateIsSet
-	t.Datasources.Data = []any{}
-	t.mqlTerraformInternal.resources = []*mqlTerraformBlock{}
-	t.Variables.State = plugin.StateIsSet
-	t.Variables.Data = []any{}
-	t.Outputs.State = plugin.StateIsSet
-	t.Outputs.Data = []any{}
+	t.providerBlocks = []any{}
+	t.datasourceBlocks = []any{}
+	t.variableBlocks = []any{}
+	t.outputBlocks = []any{}
+	t.resources = []*mqlTerraformBlock{}
 	t.terraformBlocks = []*mqlTerraformBlock{}
 
 	for i := range blocks {
 		block := blocks[i].(*mqlTerraformBlock)
 
 		// type must be pre-initialized
-		typ := block.Type.Data
-
-		switch typ {
+		switch block.Type.Data {
 		case "provider":
-			t.Providers.Data = append(t.Providers.Data, block)
+			t.providerBlocks = append(t.providerBlocks, block)
 		case "data":
-			t.Datasources.Data = append(t.Datasources.Data, block)
+			t.datasourceBlocks = append(t.datasourceBlocks, block)
 		case "resource":
-			t.mqlTerraformInternal.resources = append(t.mqlTerraformInternal.resources, block)
+			t.resources = append(t.resources, block)
 		case "variable":
-			t.Variables.Data = append(t.Variables.Data, block)
+			t.variableBlocks = append(t.variableBlocks, block)
 		case "output":
-			t.Outputs.Data = append(t.Outputs.Data, block)
+			t.outputBlocks = append(t.outputBlocks, block)
 		case "terraform":
 			t.terraformBlocks = append(t.terraformBlocks, block)
 		default:
@@ -192,23 +209,7 @@ func (t *mqlTerraform) refreshCache(blocks []any) error {
 		}
 	}
 
-	for k, v := range t.relatedBlocks {
-		block, ok := t.blocksByName[k]
-		if !ok {
-			return errors.New("cannot find terraform block by name: " + k)
-		}
-
-		vi := make([]any, len(v))
-		for i := range v {
-			vi[i] = v[i]
-		}
-
-		block.Related = plugin.TValue[[]any]{
-			State: plugin.StateIsSet,
-			Data:  vi,
-		}
-	}
-
+	t.cached = true
 	return nil
 }
 
@@ -238,23 +239,39 @@ func listRelatedBlocks(t *mqlTerraform, rawBody any) ([]*mqlTerraformBlock, erro
 }
 
 func (t *mqlTerraform) providers() ([]any, error) {
-	return nil, t.refreshCache(nil)
+	if err := t.ensureCache(); err != nil {
+		return nil, err
+	}
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	return t.providerBlocks, nil
 }
 
 func (t *mqlTerraform) datasources() ([]any, error) {
-	return nil, t.refreshCache(nil)
-}
-
-func (t *mqlTerraform) resources() ([]any, error) {
-	return nil, t.refreshCache(nil)
+	if err := t.ensureCache(); err != nil {
+		return nil, err
+	}
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	return t.datasourceBlocks, nil
 }
 
 func (t *mqlTerraform) variables() ([]any, error) {
-	return nil, t.refreshCache(nil)
+	if err := t.ensureCache(); err != nil {
+		return nil, err
+	}
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	return t.variableBlocks, nil
 }
 
 func (t *mqlTerraform) outputs() ([]any, error) {
-	return nil, t.refreshCache(nil)
+	if err := t.ensureCache(); err != nil {
+		return nil, err
+	}
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	return t.outputBlocks, nil
 }
 
 func extractHclCodeSnippet(file *hcl.File, fileRange hcl.Range) string {
@@ -461,10 +478,13 @@ func initTerraformResources(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	}
 
 	tf := tfraw.(*mqlTerraform)
-	if err := tf.refreshCache(nil); err != nil {
+	if err := tf.ensureCache(); err != nil {
 		return nil, nil, err
 	}
-	resources := tf.mqlTerraformInternal.resources
+	tf.lock.Lock()
+	resources := make([]*mqlTerraformBlock, len(tf.resources))
+	copy(resources, tf.resources)
+	tf.lock.Unlock()
 
 	resourceArg := args["resource"]
 	nameArg := args["name"]
@@ -478,7 +498,10 @@ func initTerraformResources(runtime *plugin.Runtime, args map[string]*llx.RawDat
 		return nil, nil, err
 	}
 
-	var id string
+	// The unfiltered list must have a stable, non-empty __id. An empty __id
+	// makes the resource cache key collide/race with concurrently-resolved
+	// terraform.resources("...") selector instances (mondoohq/mql#8966).
+	id := "terraform.resources"
 	if matchResource != nil || matchName != nil {
 		s := checksums.New
 		if matchResource != nil {
@@ -545,16 +568,13 @@ func (t *mqlTerraformBlock) attributes() (map[string]any, error) {
 }
 
 // evalContext returns the HCL evaluation context used to resolve this block's
-// argument expressions. When the TerraformResolveVars feature flag is
-// active, it returns the connection's context that resolves var.*/local.*
-// references; otherwise it returns nil, preserving the historical behavior of
-// surfacing those references as strings.
+// argument expressions: the connection's context that resolves var.*/local.*
+// references to their effective values. It returns nil for connections that
+// carry no such context (plan and state assets, which have no HCL parser), in
+// which case references are surfaced as strings.
 func (t *mqlTerraformBlock) evalContext() *hcl.EvalContext {
 	conn, ok := t.MqlRuntime.Connection.(*connection.Connection)
 	if !ok || conn == nil {
-		return nil
-	}
-	if !mql.Features(conn.Features()).IsActive(mql.TerraformResolveVars) {
 		return nil
 	}
 	return conn.VariableEvalContext()
@@ -577,9 +597,9 @@ func (t *mqlTerraformBlock) arguments() (map[string]any, error) {
 }
 
 // argumentReferences returns the block's arguments with variable and local
-// references left unresolved (e.g. "var.bucket_acl"), regardless of the
-// TerraformResolveVars feature flag. Use it to inspect that a value is
-// parameterized even when arguments() resolves to the effective value.
+// references left unresolved (e.g. "var.bucket_acl"). Use it to inspect that a
+// value is parameterized even though arguments() resolves it to the effective
+// value.
 func (t *mqlTerraformBlock) argumentReferences() (map[string]any, error) {
 	var hclBlock *hcl.Block
 	if t.block.State == plugin.StateIsSet {
@@ -620,17 +640,25 @@ func hclBodyToValuesDict(rawBody hcl.Body, ctx *hcl.EvalContext) (map[string]any
 	if err != nil {
 		return nil, err
 	}
-	for k, v := range resolved {
-		dict[k] = v
-	}
+	maps.Copy(dict, resolved)
 
 	for _, block := range body.Blocks {
-		child, err := hclBodyToValuesDict(block.Body, ctx)
-		if err != nil {
-			return nil, err
+		// Expand `dynamic "X"` blocks into the `X` blocks they generate, exactly
+		// as listHclBlocks does for blocks(). Terraform plan/state already expose
+		// the generated blocks under their real type, so without this the HCL
+		// values() folds them under a "dynamic" key (nested under "content") and a
+		// policy written as values["X"] silently sees nothing on an HCL asset while
+		// matching on the plan/state asset. normalizeHclSyntaxBlock returns the
+		// block unchanged when it is not a dynamic block, so static blocks keep
+		// their existing shape.
+		for _, nb := range normalizeHclSyntaxBlock(block) {
+			child, err := hclBodyToValuesDict(nb.Body, ctx)
+			if err != nil {
+				return nil, err
+			}
+			existing, _ := dict[nb.Type].([]any)
+			dict[nb.Type] = append(existing, child)
 		}
-		existing, _ := dict[block.Type].([]any)
-		dict[block.Type] = append(existing, child)
 	}
 
 	return dict, nil
@@ -647,8 +675,8 @@ func (t *mqlTerraformBlock) values() (map[string]any, error) {
 }
 
 // hclEvalContextOrDefault returns ctx when it carries resolved variable/local
-// values, or a functions-only context (the historical, no-resolution behavior)
-// when ctx is nil.
+// values, or a functions-only context (no var.*/local.* resolution, as used by
+// argumentReferences and by plan/state assets) when ctx is nil.
 func hclEvalContextOrDefault(ctx *hcl.EvalContext) *hcl.EvalContext {
 	if ctx != nil {
 		return ctx
@@ -753,11 +781,10 @@ func getCtyValue(expr hcl.Expression, ctx *hcl.EvalContext) any {
 		}
 		return results
 	case *hclsyntax.ScopeTraversalExpr:
-		// When the eval context carries resolved var.*/local.* values (the
-		// TerraformResolveVars feature flag), resolve the traversal to its
-		// effective value. If it can't be resolved (no such variable/local,
-		// data/resource references, …), fall back to surfacing the reference as
-		// a dotted string below.
+		// When the eval context carries resolved var.*/local.* values, resolve
+		// the traversal to its effective value. If it can't be resolved (no
+		// such variable/local, data/resource references, …), fall back to
+		// surfacing the reference as a dotted string below.
 		if ctx != nil && len(ctx.Variables) > 0 {
 			if val, diags := t.Value(ctx); !diags.HasErrors() {
 				return ctyValueToGo(val)
@@ -783,25 +810,45 @@ func getCtyValue(expr hcl.Expression, ctx *hcl.EvalContext) any {
 		subVal, err := t.Value(ctx)
 		if err == nil && subVal.Type() == cty.String {
 			if t.Name == "jsonencode" {
-				res := map[string]any{}
-				err := json.Unmarshal([]byte(subVal.AsString()), &res)
-				if err == nil {
-					results = append(results, res)
+				// Decode into `any` so both a JSON object (`jsonencode({...})`)
+				// and a JSON array (`jsonencode([...])`) resolve. Unmarshalling
+				// into a map[string]any silently failed for a top-level array,
+				// leaving the argument empty so a check iterating the encoded
+				// list saw nothing and passed vacuously. appendCtyResult keeps
+				// the object case list-wrapped while flattening a decoded list
+				// into the result so it stays iterable.
+				var res any
+				if err := json.Unmarshal([]byte(subVal.AsString()), &res); err == nil {
+					appendCtyResult(&results, res)
 				}
 			} else {
 				results = append(results, subVal.AsString())
 			}
+		} else if t.Name == "jsonencode" && len(t.Args) == 1 {
+			// The call cannot be evaluated statically when its argument
+			// references a resource or data source (`aws_kms_key.k.arn`),
+			// which is the common case for policies and security
+			// configurations. Returning the empty result here dropped the
+			// whole document, so every check reading it saw nothing. Walk the
+			// argument instead, surfacing references as dotted strings like
+			// every other expression, in the same shape as the evaluated case.
+			appendCtyResult(&results, getCtyValue(t.Args[0], ctx))
 		}
 		return results
 	case *hclsyntax.ConditionalExpr:
-		results := []any{}
-		subVal, err := t.Value(ctx)
-		if err == nil && subVal.Type() == cty.String {
-			results = append(results, subVal.AsString())
-			return results
+		// When the whole ternary resolves to a concrete value (the condition
+		// and chosen branch are statically knowable, e.g. `var.x ? a : b` with
+		// var defaults in ctx), return that value. The previous fast path only
+		// accepted a string result, so a bool/number ternary — the natural
+		// output of `... ? true : false` — fell through to reference-surfacing
+		// and returned the branch list `[cond, true, false]` instead of the
+		// scalar, defeating a `!= true` scalar-equality check.
+		if subVal, diags := t.Value(ctx); !diags.HasErrors() && subVal.IsKnown() && !subVal.IsNull() {
+			return ctyValueToGo(subVal)
 		}
 		// Unbound variables/refs: surface the references in each branch so
 		// policies can still inspect what the conditional depends on.
+		results := []any{}
 		appendCtyResult(&results, getCtyValue(t.Condition, ctx))
 		appendCtyResult(&results, getCtyValue(t.TrueResult, ctx))
 		appendCtyResult(&results, getCtyValue(t.FalseResult, ctx))
@@ -828,6 +875,14 @@ func getCtyValue(expr hcl.Expression, ctx *hcl.EvalContext) any {
 		appendCtyResult(&results, getCtyValue(t.RHS, ctx))
 		return results
 	case *hclsyntax.UnaryOpExpr:
+		// `-1` and `!true` parse as a unary op wrapping a literal. Evaluate the
+		// whole expression so the operator is actually applied — a bare descent
+		// into t.Val drops the negation and surfaces the positive magnitude
+		// (e.g. the `-1` sentinel becoming `1`). Fall back to the operand's
+		// references when it can't be evaluated statically (e.g. `-var.x`).
+		if val, diags := t.Value(ctx); !diags.HasErrors() {
+			return ctyValueToGo(val)
+		}
 		return getCtyValue(t.Val, ctx)
 	case *hclsyntax.SplatExpr:
 		results := []any{}
@@ -974,13 +1029,38 @@ func GetKeyString(key any) string {
 	case []string:
 		return strings.Join(v, ",")
 	case []any:
-		s := ""
+		var sb strings.Builder
 		for i := range v {
-			s = s + v[i].(string)
+			sb.WriteString(keyScalarToString(v[i]))
 		}
-		return s
+		return sb.String()
 	default:
-		return key.(string)
+		return keyScalarToString(key)
+	}
+}
+
+// keyScalarToString renders an evaluated object key as the string Terraform
+// itself would use for a map key. Object keys resolve to whatever type the key
+// expression evaluates to: with variable resolution active a `{ (var.x) = ... }`
+// key can be a number/bool/null, and a bareword numeric key like `{ 8080 = ... }`
+// always evaluates to a number. A bare `key.(string)` assertion on any of those
+// panics, and because query blocks run in goroutines that panic crashes the
+// entire scan rather than one query. Stringify each scalar kind explicitly and
+// treat null/unknown keys as empty.
+func keyScalarToString(key any) string {
+	switch k := key.(type) {
+	case string:
+		return k
+	case bool:
+		return strconv.FormatBool(k)
+	case float64:
+		return strconv.FormatFloat(k, 'f', -1, 64)
+	case int64:
+		return strconv.FormatInt(k, 10)
+	case nil:
+		return ""
+	default:
+		return fmt.Sprint(k)
 	}
 }
 
@@ -1013,13 +1093,21 @@ func listHclBlocks(runtime *plugin.Runtime, rawBody any, file *hcl.File) ([]any,
 	switch body := rawBody.(type) {
 	case *hclsyntax.Body:
 		for i := range body.Blocks {
-			mqlBlock, err := newMqlHclBlock(runtime, body.Blocks[i].AsHCLBlock(), file)
-			if err != nil {
-				return nil, err
+			for _, hb := range normalizeHclSyntaxBlock(body.Blocks[i]) {
+				mqlBlock, err := newMqlHclBlock(runtime, hb, file)
+				if err != nil {
+					return nil, err
+				}
+				mqlHclBlocks = append(mqlHclBlocks, mqlBlock)
 			}
-			mqlHclBlocks = append(mqlHclBlocks, mqlBlock)
 		}
 	case hcl.Body:
+		// Native-syntax .tf files (where `dynamic "x" {}` blocks are written)
+		// always parse to *hclsyntax.Body above, so normalizeHclSyntaxBlock only
+		// needs to run there. This branch handles JSON-syntax HCL and plan/state
+		// bodies, which do not carry native `dynamic` blocks (JSON encodes them
+		// differently and PartialContent's typed schema would not surface them),
+		// so no normalization is applied here.
 		content, _, _ := body.PartialContent(connection.TerraformSchema_1)
 		for i := range content.Blocks {
 			mqlBlock, err := newMqlHclBlock(runtime, content.Blocks[i], file)
@@ -1035,17 +1123,57 @@ func listHclBlocks(runtime *plugin.Runtime, rawBody any, file *hcl.File) ([]any,
 	return mqlHclBlocks, nil
 }
 
+// normalizeHclSyntaxBlock expands a `dynamic "X"` block into the `content { ... }`
+// sub-blocks it generates, retyped as `X`, so `blocks.where(type == "X")` sees
+// them the same as a statically written `X { ... }` block. A dynamic block's
+// real fields live one level deeper inside `content`, and the block itself
+// parses as type=="dynamic"/nameLabel=="X" — without this normalization every
+// block-iterating check is blind to the (extremely common) dynamic form, so a
+// violation-detection check passes vacuously and a presence check false-fails.
+// Any non-dynamic block is returned unchanged; a malformed dynamic block with
+// no `content` sub-block falls back to itself rather than being dropped.
+func normalizeHclSyntaxBlock(block *hclsyntax.Block) []*hcl.Block {
+	if block.Type != "dynamic" || len(block.Labels) != 1 {
+		return []*hcl.Block{block.AsHCLBlock()}
+	}
+
+	var out []*hcl.Block
+	for _, inner := range block.Body.Blocks {
+		if inner.Type != "content" {
+			continue
+		}
+		hb := inner.AsHCLBlock()
+		hb.Type = block.Labels[0]
+		hb.Labels = nil
+		out = append(out, hb)
+	}
+	if len(out) == 0 {
+		return []*hcl.Block{block.AsHCLBlock()}
+	}
+	return out
+}
+
 func (g *mqlTerraformBlock) related() ([]any, error) {
-	// This field should be default be set by the Terraform routine that
-	// initializes all blocks. If we land here from a recording or other
-	// path, re-run it.
+	// The related-block graph is built once by the terraform singleton's
+	// ensureCache; look this block up in it.
 	o, err := CreateResource(g.MqlRuntime, "terraform", map[string]*llx.RawData{})
 	if err != nil {
 		return nil, err
 	}
 
 	terraform := o.(*mqlTerraform)
-	return nil, terraform.refreshCache(nil)
+	if err := terraform.ensureCache(); err != nil {
+		return nil, err
+	}
+
+	terraform.lock.Lock()
+	defer terraform.lock.Unlock()
+	related := terraform.relatedBlocks[g.terraformID()]
+	res := make([]any, len(related))
+	for i := range related {
+		res[i] = related[i]
+	}
+	return res, nil
 }
 
 func newFilePosRange(runtime *plugin.Runtime, r hcl.Range) (plugin.Resource, plugin.Resource, error) {
@@ -1158,11 +1286,14 @@ func initTerraformSettings(runtime *plugin.Runtime, args map[string]*llx.RawData
 	}
 
 	terraform := o.(*mqlTerraform)
-	if err := terraform.refreshCache(nil); err != nil {
+	if err := terraform.ensureCache(); err != nil {
 		return nil, nil, err
 	}
 
-	blocks := terraform.terraformBlocks
+	terraform.lock.Lock()
+	blocks := make([]*mqlTerraformBlock, len(terraform.terraformBlocks))
+	copy(blocks, terraform.terraformBlocks)
+	terraform.lock.Unlock()
 	if len(blocks) == 0 {
 		// no terraform settings block found, this is ok for terraform and not an error
 		// TODO: return modified arguments to load from recording
@@ -1252,6 +1383,12 @@ func getBlockByName(hb *hcl.Block, name string) *hcl.Block {
 			}
 		}
 	case hcl.Body:
+		// Native-syntax .tf files (where `dynamic "x" {}` blocks are written)
+		// always parse to *hclsyntax.Body above, so normalizeHclSyntaxBlock only
+		// needs to run there. This branch handles JSON-syntax HCL and plan/state
+		// bodies, which do not carry native `dynamic` blocks (JSON encodes them
+		// differently and PartialContent's typed schema would not surface them),
+		// so no normalization is applied here.
 		content, _, _ := body.PartialContent(connection.TerraformSchema_1)
 		for i := range content.Blocks {
 			b := content.Blocks[i]

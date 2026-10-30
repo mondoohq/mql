@@ -9,13 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/objectstorage"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/oci/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/oci/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (e *mqlOciObjectStorage) id() (string, error) {
@@ -55,132 +54,129 @@ func (o *mqlOciObjectStorage) namespace() (string, error) {
 func (o *mqlOciObjectStorage) buckets() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	// fetch regions
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
+	regions, err := ociRegionsFor(o.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
+	regionsByID, err := ociRegionsByID(regions)
+	if err != nil {
+		return nil, err
 	}
 
-	// fetch buckets
 	namespace, err := o.namespace()
 	if err != nil {
 		return nil, err
 	}
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getBuckets(conn, namespace, list.Data), 5)
-	poolOfJobs.Run()
+	// Buckets live in any compartment, and ListBuckets answers for one.
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci with region %s", region)
 
-	// check for errors
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	// get all the results
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
+			regionResource, ok := regionsByID[region]
+			if !ok {
+				return nil, errors.New("no oci.region resource for region " + region)
+			}
 
-	return res, nil
-}
+			svc, err := conn.ObjectStorageClient(region)
+			if err != nil {
+				return nil, err
+			}
 
-func (o *mqlOciObjectStorage) getBucketsForRegion(ctx context.Context, objectStorageClient *objectstorage.ObjectStorageClient, compartmentID string, namespace string) ([]objectstorage.BucketSummary, error) {
-	entries := []objectstorage.BucketSummary{}
-	var page *string
-	for {
-		request := objectstorage.ListBucketsRequest{
-			NamespaceName: common.String(namespace),
-			CompartmentId: common.String(compartmentID),
-			Page:          page,
-		}
-
-		response, err := objectStorageClient.ListBuckets(ctx, request)
-		if err != nil {
-			return nil, err
-		}
-
-		entries = append(entries, response.Items...)
-
-		if response.OpcNextPage == nil {
-			break
-		}
-
-		page = response.OpcNextPage
-	}
-
-	return entries, nil
-}
-
-func (o *mqlOciObjectStorage) getBuckets(conn *connection.OciConnection, namespace string, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci with region %s", regionResource.Id.Data)
-
-			svc, err := conn.ObjectStorageClient(regionResource.Id.Data)
+			buckets, err := o.getBucketsForRegion(ctx, svc, compartmentID, namespace)
 			if err != nil {
 				return nil, err
 			}
 
 			var res []any
-			buckets, err := o.getBucketsForRegion(ctx, svc, conn.TenantID(), namespace)
-			if err != nil {
-				return nil, err
-			}
-
 			for i := range buckets {
 				bucket := buckets[i]
+
+				if conn.Filters.IsFilteredOutByTags(bucket.FreeformTags, bucket.DefinedTags) {
+					continue
+				}
 
 				var created *time.Time
 				if bucket.TimeCreated != nil {
 					created = &bucket.TimeCreated.Time
 				}
 
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.objectStorage.bucket", map[string]*llx.RawData{
-					"namespace":     llx.StringDataPtr(bucket.Namespace),
-					"name":          llx.StringDataPtr(bucket.Name),
-					"compartmentID": llx.StringDataPtr(bucket.CompartmentId),
-					"region":        llx.ResourceData(regionResource, "oci.region"),
-					"created":       llx.TimeDataPtr(created),
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.objectStorage.bucket", stringValue(bucket.CompartmentId), map[string]*llx.RawData{
+					"__id":      llx.StringData(ociBucketCacheKey(stringValue(bucket.Namespace), stringValue(bucket.Name))),
+					"namespace": llx.StringDataPtr(bucket.Namespace),
+					"name":      llx.StringDataPtr(bucket.Name),
+					"region":    llx.ResourceData(regionResource, "oci.region"),
+					"created":   llx.TimeDataPtr(created),
+					// Listed with the bucket, so no GetBucket is needed for them.
+					"freeformTags": llx.MapData(strMapToAny(bucket.FreeformTags), types.String),
+					"definedTags":  llx.MapData(definedTagsToAny(bucket.DefinedTags), types.Any),
 				})
 				if err != nil {
 					return nil, err
 				}
 				res = append(res, mqlInstance)
 			}
+			return res, nil
+		})
+}
 
-			return jobpool.JobResult(res), nil
+// getBucketsForRegion lists a compartment's buckets with their tags.
+// ListBuckets returns tags only when they are asked for: without them every
+// bucket failed a tag filter, and the bucket assets carried no labels.
+func (o *mqlOciObjectStorage) getBucketsForRegion(ctx context.Context, objectStorageClient *objectstorage.ObjectStorageClient, compartmentID string, namespace string) ([]objectstorage.BucketSummary, error) {
+	fields := []objectstorage.ListBucketsFieldsEnum{objectstorage.ListBucketsFieldsTags}
+	entries, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]objectstorage.BucketSummary, *string, error) {
+		request := objectstorage.ListBucketsRequest{
+			NamespaceName: new(namespace),
+			CompartmentId: new(compartmentID),
+			Fields:        fields,
+			Page:          page,
 		}
-		tasks = append(tasks, jobpool.NewJob(f))
+
+		response, err := objectStorageClient.ListBuckets(ctx, request)
+		if err != nil {
+			return nil, nil, err
+		}
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return tasks
+
+	return entries, nil
 }
 
 type mqlOciObjectStorageBucketInternal struct {
-	bucket *objectstorage.Bucket
+	ociCompartmentRef
+	bucket ociRetryLazy[*objectstorage.Bucket]
 }
 
-func (o *mqlOciObjectStorageBucket) id() (string, error) {
-	return "oci.objectStorage.bucket/" + o.Namespace.Data + "/" + o.Name.Data, nil
+// ociBucketCacheKey is the bucket's cache key. It is passed explicitly as
+// "__id" at every construction site rather than derived from an id() method,
+// because id() now reports the real bucket OCID, which is only knowable from
+// the detail call - deriving the cache key from it would make constructing a
+// bucket resource issue an API request.
+func ociBucketCacheKey(namespace, name string) string {
+	return "oci.objectStorage.bucket/" + namespace + "/" + name
+}
+
+// ocid reports the bucket OCID, which ListBuckets does not return. It resolves
+// identically on the listing and single-bucket paths, since both reach the
+// detail call.
+func (o *mqlOciObjectStorageBucket) ocid() (string, error) {
+	bucketInfo, err := o.getBucketDetails()
+	if err != nil {
+		return "", err
+	}
+	return stringValue(bucketInfo.Id), nil
 }
 
 func initOciObjectStorageBucket(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	// Check if id is already populated
-	if id, ok := args["id"]; ok && id.Value != nil {
-		if idStr, ok := id.Value.(string); ok && idStr != "" {
-			return args, nil, nil
-		}
-	}
+	// There is deliberately no id-only fast path. OCI keys GetBucket on
+	// namespace+name, not on the bucket OCID, so an id alone cannot be
+	// resolved - and the resulting resource would take the cache key
+	// "oci.objectStorage.bucket//" (both name parts empty), which every
+	// id-only bucket would share.
 
 	// When cnspec scans a discovered oci-objectstorage-bucket asset the only
 	// context we have is the Conf.PlatformId. Parse out namespace/name so the
@@ -213,68 +209,84 @@ func initOciObjectStorageBucket(runtime *plugin.Runtime, args map[string]*llx.Ra
 		}
 	}
 
+	// The cache key must be supplied explicitly: id() reports the bucket OCID
+	// from the detail call, so letting the generated Create fall back to it
+	// would issue an API request just to key the resource.
+	if ns, name := ociArgString(args, "namespace"), ociArgString(args, "name"); ns != "" || name != "" {
+		if args == nil {
+			args = map[string]*llx.RawData{}
+		}
+		args["__id"] = llx.StringData(ociBucketCacheKey(ns, name))
+	}
+
 	obj, err := CreateResource(runtime, "oci.objectStorage.bucket", args)
 	if err != nil {
 		return nil, nil, err
 	}
 	bucket := obj.(*mqlOciObjectStorageBucket)
 
-	// Fetch bucket details to populate the id field
-	bucketDetails, err := bucket.getBucketDetails()
+	// This is the only compartment-bearing resource whose init constructs its
+	// own resource rather than handing back one the listing path already built,
+	// so nothing has recorded the compartment OCID for it. The detail call is
+	// made here anyway, and it carries the compartment - take it from there, or
+	// a single-bucket lookup reports a null compartment().
+	details, err := bucket.getBucketDetails()
 	if err != nil {
 		return nil, nil, err
 	}
-
-	if bucketDetails.Id != nil {
-		args["id"] = llx.StringData(*bucketDetails.Id)
-	}
+	bucket.setCompartmentID(stringValue(details.CompartmentId))
 
 	return args, bucket, nil
 }
 
+// getBucketDetails lazily fetches the full bucket, which carries the fields
+// ListBuckets omits (public access, versioning, encryption, counts). Sixteen
+// accessors share it, and the runtime resolves them concurrently, so the fetch
+// is guarded rather than racing sixteen identical GetBucket calls.
 func (o *mqlOciObjectStorageBucket) getBucketDetails() (*objectstorage.Bucket, error) {
-	if o.bucket != nil {
-		return o.bucket, nil
-	}
+	return o.bucket.get(func() (*objectstorage.Bucket, error) {
+		conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+		region := o.GetRegion()
+		if region.Error != nil {
+			return nil, region.Error
+		}
 
-	region := o.GetRegion()
-	if region.Error != nil {
-		return nil, region.Error
-	}
+		if region.Data == nil {
+			return nil, errors.New("oci.objectStorage.bucket: region is required to fetch bucket details")
+		}
 
-	r := region.Data
-	client, err := conn.ObjectStorageClient(r.Id.Data)
-	if err != nil {
-		return nil, err
-	}
+		r := region.Data
+		client, err := conn.ObjectStorageClient(r.Id.Data)
+		if err != nil {
+			return nil, err
+		}
 
-	namespace := o.GetNamespace()
-	if namespace.Error != nil {
-		return nil, namespace.Error
-	}
+		namespace := o.GetNamespace()
+		if namespace.Error != nil {
+			return nil, namespace.Error
+		}
 
-	name := o.GetName()
-	if name.Error != nil {
-		return nil, name.Error
-	}
+		name := o.GetName()
+		if name.Error != nil {
+			return nil, name.Error
+		}
 
-	response, err := client.GetBucket(context.Background(), objectstorage.GetBucketRequest{
-		NamespaceName: common.String(namespace.Data),
-		BucketName:    common.String(name.Data),
-		Fields: []objectstorage.GetBucketFieldsEnum{
-			objectstorage.GetBucketFieldsApproximatecount,
-			objectstorage.GetBucketFieldsApproximatesize,
-			objectstorage.GetBucketFieldsAutotiering,
-		},
+		response, err := client.GetBucket(context.Background(), objectstorage.GetBucketRequest{
+			NamespaceName: new(namespace.Data),
+			BucketName:    new(name.Data),
+			Fields: []objectstorage.GetBucketFieldsEnum{
+				objectstorage.GetBucketFieldsApproximatecount,
+				objectstorage.GetBucketFieldsApproximatesize,
+				objectstorage.GetBucketFieldsAutotiering,
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		return &response.Bucket, nil
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	o.bucket = &response.Bucket
-	return o.bucket, nil
 }
 
 func (o *mqlOciObjectStorageBucket) publicAccessType() (string, error) {
@@ -364,6 +376,42 @@ func (o *mqlOciObjectStorageBucket) kmsKeyId() (string, error) {
 	return *bucketInfo.KmsKeyId, nil
 }
 
+// kmsKey resolves the customer-managed key the bucket is encrypted with.
+//
+// Null for a bucket on an Oracle-managed key, which is the absence of a
+// customer key rather than an unread one.
+func (o *mqlOciObjectStorageBucket) kmsKey() (*mqlOciKmsKey, error) {
+	bucketInfo, err := o.getBucketDetails()
+	if err != nil {
+		return nil, err
+	}
+	return resolveOciKmsKey(o.MqlRuntime, ocidOrEmpty(stringValue(bucketInfo.KmsKeyId)), &o.KmsKey)
+}
+
+func (o *mqlOciObjectStorageBucket) isBucketKeyEnabled() (bool, error) {
+	bucketInfo, err := o.getBucketDetails()
+	if err != nil {
+		return false, err
+	}
+	return boolValue(bucketInfo.IsBucketKeyEnabled), nil
+}
+
+func (o *mqlOciObjectStorageBucket) bucketScope() (string, error) {
+	bucketInfo, err := o.getBucketDetails()
+	if err != nil {
+		return "", err
+	}
+	return string(bucketInfo.BucketScope), nil
+}
+
+func (o *mqlOciObjectStorageBucket) metadata() (map[string]any, error) {
+	bucketInfo, err := o.getBucketDetails()
+	if err != nil {
+		return nil, err
+	}
+	return strMapToAny(bucketInfo.Metadata), nil
+}
+
 func (o *mqlOciObjectStorageBucket) approximateCount() (int64, error) {
 	bucketInfo, err := o.getBucketDetails()
 	if err != nil {
@@ -397,24 +445,24 @@ func (o *mqlOciObjectStorageBucket) objectLifecyclePolicyEtag() (string, error) 
 	return *bucketInfo.ObjectLifecyclePolicyEtag, nil
 }
 
-func (o *mqlOciObjectStorageBucket) freeformTags() (map[string]interface{}, error) {
+func (o *mqlOciObjectStorageBucket) freeformTags() (map[string]any, error) {
 	bucketInfo, err := o.getBucketDetails()
 	if err != nil {
 		return nil, err
 	}
-	tags := make(map[string]interface{})
+	tags := make(map[string]any)
 	for k, v := range bucketInfo.FreeformTags {
 		tags[k] = v
 	}
 	return tags, nil
 }
 
-func (o *mqlOciObjectStorageBucket) definedTags() (map[string]interface{}, error) {
+func (o *mqlOciObjectStorageBucket) definedTags() (map[string]any, error) {
 	bucketInfo, err := o.getBucketDetails()
 	if err != nil {
 		return nil, err
 	}
-	tags := make(map[string]interface{})
+	tags := make(map[string]any)
 	for k, v := range bucketInfo.DefinedTags {
 		tags[k] = v
 	}
@@ -458,6 +506,9 @@ func (o *mqlOciObjectStorageBucket) retentionRules() ([]any, error) {
 	if region.Error != nil {
 		return nil, region.Error
 	}
+	if region.Data == nil {
+		return nil, errors.New("oci.objectStorage.bucket: region is required")
+	}
 
 	client, err := conn.ObjectStorageClient(region.Data.Id.Data)
 	if err != nil {
@@ -475,22 +526,19 @@ func (o *mqlOciObjectStorageBucket) retentionRules() ([]any, error) {
 	}
 
 	ctx := context.Background()
-	var rules []objectstorage.RetentionRuleSummary
-	var page *string
-	for {
+	rules, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]objectstorage.RetentionRuleSummary, *string, error) {
 		response, err := client.ListRetentionRules(ctx, objectstorage.ListRetentionRulesRequest{
-			NamespaceName: common.String(namespace.Data),
-			BucketName:    common.String(name.Data),
+			NamespaceName: new(namespace.Data),
+			BucketName:    new(name.Data),
 			Page:          page,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		rules = append(rules, response.Items...)
-		if response.OpcNextPage == nil {
-			break
-		}
-		page = response.OpcNextPage
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	res := make([]any, 0, len(rules))
@@ -546,6 +594,9 @@ func (o *mqlOciObjectStorageBucket) preauthenticatedRequests() ([]any, error) {
 	if region.Error != nil {
 		return nil, region.Error
 	}
+	if region.Data == nil {
+		return nil, errors.New("oci.objectStorage.bucket: region is required")
+	}
 
 	client, err := conn.ObjectStorageClient(region.Data.Id.Data)
 	if err != nil {
@@ -563,22 +614,19 @@ func (o *mqlOciObjectStorageBucket) preauthenticatedRequests() ([]any, error) {
 	}
 
 	ctx := context.Background()
-	var pars []objectstorage.PreauthenticatedRequestSummary
-	var page *string
-	for {
+	pars, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]objectstorage.PreauthenticatedRequestSummary, *string, error) {
 		response, err := client.ListPreauthenticatedRequests(ctx, objectstorage.ListPreauthenticatedRequestsRequest{
-			NamespaceName: common.String(namespace.Data),
-			BucketName:    common.String(name.Data),
+			NamespaceName: new(namespace.Data),
+			BucketName:    new(name.Data),
 			Page:          page,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		pars = append(pars, response.Items...)
-		if response.OpcNextPage == nil {
-			break
-		}
-		page = response.OpcNextPage
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	res := make([]any, 0, len(pars))

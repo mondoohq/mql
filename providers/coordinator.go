@@ -4,9 +4,16 @@
 package providers
 
 import (
+	"fmt"
+	"maps"
 	"math"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -15,12 +22,14 @@ import (
 	"github.com/muesli/termenv"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	pp "go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/recording"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	coreconf "go.mondoo.com/mql/v13/providers/core/config"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	pp "go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/recording"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream/health"
+	coreconf "go.mondoo.com/mql/providers/core/config"
 )
 
 //go:generate mockgen -source=./coordinator.go -destination=./mock_coordinator.go -package=providers
@@ -60,14 +69,42 @@ type coordinator struct {
 	lastConnectionID uint32
 	connectionsLock  sync.Mutex
 
+	// providersMu guards providers. It is a leaf lock: it is taken while
+	// holding mutex (unsafeStartProvider) and while holding schema.sync
+	// (extensibleSchema.unsafeLoadAll -> LoadSchema), so it must never be
+	// held while acquiring either of those.
+	//
+	// providers is only ever replaced wholesale, never mutated in place.
+	// That is enforced rather than assumed: SetProviders stores a clone and
+	// Providers returns one, so no caller holds an alias of the published
+	// map. It has to be, because callers do mutate what they are handed —
+	// EnsureProvider adds the builtin connection providers, and
+	// installDependencies adds freshly installed dependencies — while
+	// LoadSchema reads the published map under providersMu without
+	// coordinator.mutex to keep the lock order below acyclic. Concurrent
+	// map read and write is a fatal runtime error, not a recoverable one.
+	providersMu sync.RWMutex
 	providers   Providers
 	runningByID map[string]*RunningProvider
 
 	unprocessedRuntimes []*Runtime
 	runtimes            map[string]*Runtime
 	runtimeCnt          int
-	mutex               sync.Mutex
-	schema              extensibleSchema
+	// mutex guards runningByID and the runtime bookkeeping. Lock order is
+	// mutex -> schema.sync -> providersMu: unsafeStartProvider holds mutex
+	// while it calls schema.Add (so a provider is never visible before its
+	// schema is registered), and schema lookups hold schema.sync while they
+	// call LoadSchema, which therefore must not take mutex. Doing so wedged
+	// scans in an ABBA deadlock; see TestCoordinatorSchemaLockOrder.
+	mutex  sync.Mutex
+	schema extensibleSchema
+
+	// reportedStartFailures remembers which providers already had a start
+	// failure reported to the Mondoo Platform, so a broken provider that is
+	// retried on every asset of an inventory reports once per process, not
+	// once per asset. Guarded by mutex; initialized lazily so bare
+	// &coordinator{} literals (tests) stay valid.
+	reportedStartFailures map[string]struct{}
 }
 
 type builtinProvider struct {
@@ -107,6 +144,7 @@ func (c *coordinator) newRuntime() *Runtime {
 		coordinator:     c,
 		providers:       map[string]*ConnectedProvider{},
 		recording:       recording.Null{},
+		fields:          newFieldCache(),
 		shutdownTimeout: defaultShutdownTimeout,
 		AutoUpdate: UpdateProvidersConfig{
 			Enabled: true,
@@ -128,9 +166,7 @@ func (c *coordinator) NewRuntimeFrom(parent *Runtime) *Runtime {
 	res.UpstreamConfig = parent.UpstreamConfig
 	res.AutoUpdate = parent.AutoUpdate
 	res.recording = parent.Recording()
-	for k, v := range parent.providers {
-		res.providers[k] = v
-	}
+	maps.Copy(res.providers, parent.providers)
 	return res
 }
 
@@ -247,16 +283,224 @@ func (c *coordinator) RemoveRuntime(runtime *Runtime) {
 
 func (c *coordinator) GetRunningProvider(id string, update UpdateProvidersConfig) (*RunningProvider, error) {
 	c.mutex.Lock()
-	defer c.mutex.Unlock()
 	running := c.runningByID[id]
+	var err error
 	if running == nil {
-		var err error
 		running, err = c.unsafeStartProvider(id, update)
-		if err != nil {
-			return nil, err
+	}
+
+	// Decide under the lock whether this is the provider's first start
+	// failure; the report itself (a synchronous HTTP call) runs after the
+	// unlock so it never stalls other providers' starts.
+	firstFailure := false
+	if err != nil {
+		if c.reportedStartFailures == nil {
+			c.reportedStartFailures = map[string]struct{}{}
+		}
+		if _, reported := c.reportedStartFailures[id]; !reported {
+			c.reportedStartFailures[id] = struct{}{}
+			firstFailure = true
 		}
 	}
+	c.mutex.Unlock()
+
+	if err != nil {
+		if firstFailure {
+			c.reportProviderStartFailure(id, err)
+		}
+		return nil, err
+	}
 	return running, nil
+}
+
+// sendProviderStartFailureFn is a seam over health.ReportError so tests can
+// observe what gets reported without a configured service account or a live
+// network call. health.ReportError swallows its own errors and returns
+// nothing, and it no-ops when no service account is configured.
+var sendProviderStartFailureFn = func(errMsg string, tags map[string]string) {
+	health.ReportError("mql", mql.Version, mql.Build, errMsg, health.WithTags(tags))
+}
+
+// reportProviderStartFailure reports a provider that never came up to the
+// Mondoo Platform, tagged so the platform classifies it as a dedicated
+// provider_start.failed record instead of a generic error report
+// (server#22011). Without this, a provider whose go-plugin subprocess fails
+// the initial handshake — killed binary, wrong architecture, missing
+// libraries — is invisible fleet-wide. Called once per provider per process
+// (see reportedStartFailures) and without coordinator locks held.
+func (c *coordinator) reportProviderStartFailure(id string, err error) {
+	name := id
+	version := ""
+	providerPath := ""
+	if provider, ok := c.lookupProvider(id); ok {
+		if provider.Name != "" {
+			name = provider.Name
+		}
+		version = provider.Version
+		providerPath = provider.Path
+	}
+	tags := map[string]string{
+		health.TagReportKind: health.ReportKindProviderStartFailure,
+		health.TagProvider:   name,
+		health.TagOS:         runtime.GOOS,
+		health.TagArch:       runtime.GOARCH,
+	}
+	if version != "" {
+		tags[health.TagProviderVersion] = version
+	}
+	if kind := classifyProviderStartFailure(err.Error()); kind != "" {
+		tags[health.TagFailureKind] = kind
+	}
+	home, _ := os.UserHomeDir()
+	msg := scrubStartFailureReport("failed to start provider '"+name+"': "+err.Error(), providerPath, home)
+	sendProviderStartFailureFn(msg, tags)
+}
+
+// ownerGroupNameRe matches the bracketed user/group names in go-plugin's
+// "Additional notes about plugin" block ("Owner: 501 [jsmith] (current: 501
+// [jsmith])"), keeping the numeric ids.
+var ownerGroupNameRe = regexp.MustCompile(`\b((?:Owner|Group|current): -?[0-9]+) \[[^\]]*\]`)
+
+// scrubStartFailureReport redacts host-identifying detail from a start
+// failure report before it is sent upstream: the provider's install path
+// (which on a user install sits under the home directory and names the
+// user — in the fork/exec error and in go-plugin's "Path:" note), the home
+// directory anywhere else in the message (e.g. in dynamic linker stderr
+// lines), and the local user/group names go-plugin prints. The numeric
+// ids and everything diagnostic stay. The local log line is NOT scrubbed —
+// the operator debugging their own host wants the real paths.
+func scrubStartFailureReport(msg, providerPath, home string) string {
+	// The provider path first: it usually sits under home, and replacing
+	// home first would break the match.
+	if providerPath != "" {
+		msg = strings.ReplaceAll(msg, providerPath, "<providers>/"+filepath.Base(providerPath))
+	}
+	if home != "" {
+		msg = strings.ReplaceAll(msg, home, "~")
+	}
+	return ownerGroupNameRe.ReplaceAllString(msg, "$1")
+}
+
+// enrichStartFailure attaches what was observed of a failed subprocess start
+// — exit disposition and a stderr tail — to the error itself, so both the
+// local log line and the platform report carry it. The dynamic linker's
+// "cannot open shared object file" lines land in stderr, which is the whole
+// diagnosis for the missing-libraries cause. Wraps with %w so the original
+// chain (e.g. os.ErrNotExist under a fork/exec failure) stays reachable for
+// errors.Is/As; returns the error unchanged when nothing was observed.
+func enrichStartFailure(err error, ps *os.ProcessState, stderr []string) error {
+	diag := startFailureDiagnostics(ps, stderr)
+	if diag == "" {
+		return err
+	}
+	return fmt.Errorf("%w%s", err, diag)
+}
+
+// startFailureDiagnostics renders what was observed of a plugin subprocess
+// that failed to start: its exit disposition when it ran at all, and a
+// bounded tail of its stderr. Returns "" when nothing was observed, so a
+// binary that never started adds no noise.
+func startFailureDiagnostics(ps *os.ProcessState, stderr []string) string {
+	var sb strings.Builder
+	if ps != nil {
+		sb.WriteString("\n[exit=")
+		sb.WriteString(formatExitStatus(ps))
+		if rss := maxRSSBytes(ps); rss > 0 {
+			sb.WriteString(" max_rss=")
+			sb.WriteString(strconv.FormatInt(rss, 10))
+		}
+		sb.WriteString("]")
+	}
+	if len(stderr) > 0 {
+		// Keep the LAST lines: with a line budget, what the process printed
+		// just before it died says more than its startup banner.
+		const maxTail = 20
+		truncated := false
+		if len(stderr) > maxTail {
+			stderr = stderr[len(stderr)-maxTail:]
+			truncated = true
+		}
+		sb.WriteString("\nplugin stderr:")
+		if truncated {
+			sb.WriteString("\n... (truncated)")
+		}
+		for _, line := range stderr {
+			sb.WriteString("\n")
+			sb.WriteString(line)
+		}
+	}
+	return sb.String()
+}
+
+// classifyProviderStartFailure maps a start failure's error text to a coarse
+// failure kind for the platform's provider_start.failed record. It matches
+// the Unix os/exec error shapes (gated on "fork/exec" so a file error from,
+// say, reading a resources json is not mistaken for a binary problem) and
+// go-plugin's handshake messages. Anything it does not recognize stays
+// unclassified ("") — the full message travels with the report either way,
+// and a wrong kind is worse than none.
+func classifyProviderStartFailure(msg string) string {
+	if strings.Contains(msg, "fork/exec") {
+		switch {
+		case strings.Contains(msg, "exec format error"):
+			return "exec_format"
+		case strings.Contains(msg, "permission denied"):
+			return "permission"
+		case strings.Contains(msg, "no such file or directory"):
+			return "missing_binary"
+		}
+		return "exec"
+	}
+	switch {
+	case strings.Contains(msg, "Unrecognized remote plugin message"):
+		return "handshake"
+	case strings.Contains(msg, "timeout while waiting for plugin to start"):
+		return "timeout"
+	case strings.Contains(msg, "installed schema-only"):
+		return "incomplete_install"
+	case strings.Contains(msg, "cannot find provider"):
+		return "not_installed"
+	}
+	return ""
+}
+
+// lookupProvider reads a single entry from the published snapshot. Callers on
+// the provider-start path use this rather than Providers, which has to clone
+// the whole map to hand it out safely.
+func (c *coordinator) lookupProvider(id string) (*Provider, bool) {
+	c.providersMu.RLock()
+	defer c.providersMu.RUnlock()
+	provider, ok := c.providers[id]
+	return provider, ok
+}
+
+// unsafeResolveProvider finds an installed provider by id, re-listing once if
+// the published snapshot doesn't have it. A snapshot goes stale on the
+// install-on-demand path: EnsureProvider installs the provider an asset needs
+// and adds it to the map it was handed, which is the caller's own copy, so the
+// coordinator never sees that write. Install resets CachedProviders, so
+// re-listing re-scans disk and picks it up. When the id is simply unknown the
+// re-list is cheap — ListActive rebuilds its map from CachedProviders without
+// touching disk.
+//
+// It is called with coordinator.mutex held and takes only providersMu, which
+// is the documented order: mutex -> schema.sync -> providersMu.
+func (c *coordinator) unsafeResolveProvider(id string) (*Provider, error) {
+	if provider, ok := c.lookupProvider(id); ok {
+		return provider, nil
+	}
+
+	refreshed, err := ListActive()
+	if err != nil {
+		return nil, err
+	}
+	c.SetProviders(refreshed)
+
+	provider, ok := refreshed[id]
+	if !ok {
+		return nil, errors.New("cannot find provider " + id)
+	}
+	return provider, nil
 }
 
 // unsafeStartProvider will start a provider and add it to the list of running providers. Must be called
@@ -265,7 +509,8 @@ func (c *coordinator) unsafeStartProvider(id string, update UpdateProvidersConfi
 	if x, ok := builtinProviders[id]; ok {
 		// We don't warn for core providers, which are the only providers
 		// built into the binary (for now).
-		if id != BuiltinCoreID && id != mockProvider.ID && id != sbomProvider.ID && id != recordingProviderInstance.ID {
+		if id != BuiltinCoreID && id != mockProvider.ID && id != sbomProvider.ID &&
+			id != recordingProviderInstance.ID && id != iacProvider.ID {
 			log.Warn().Msg("using builtin provider for " + x.Config.Name)
 		}
 		if id == mockProvider.ID {
@@ -277,21 +522,16 @@ func (c *coordinator) unsafeStartProvider(id string, update UpdateProvidersConfi
 			mp.Init(x.Runtime)
 		}
 
+		// The provenance stamp (ADR 040 part 1) is applied once at init, see
+		// stampBuiltinSchemas: the schema object is shared with the
+		// aggregate, which reads it under schema.sync while we hold mutex.
 		c.schema.Add(id, x.Runtime.Schema)
 		return x.Runtime, nil
 	}
 
-	if c.providers == nil {
-		var err error
-		c.providers, err = ListActive()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	provider, ok := c.providers[id]
-	if !ok {
-		return nil, errors.New("cannot find provider " + id)
+	provider, err := c.unsafeResolveProvider(id)
+	if err != nil {
+		return nil, err
 	}
 
 	if update.Enabled {
@@ -309,6 +549,18 @@ func (c *coordinator) unsafeStartProvider(id string, update UpdateProvidersConfi
 		}
 	}
 
+	// Without a binary the exec below can only fail with an obscure
+	// fork/exec error, so catch schema-only installations here. With
+	// auto-update enabled, TryProviderUpdate above already completed such an
+	// installation, so this only fires when auto-update is off or the
+	// completing download failed (logged right above).
+	if !provider.HasBinary {
+		if update.Enabled {
+			return nil, errors.New("provider '" + provider.Name + "' is installed schema-only and completing its installation failed")
+		}
+		return nil, errors.New("provider '" + provider.Name + "' is installed schema-only and has no binary to run; install it fully or enable auto-update")
+	}
+
 	// LoadResources is idempotent and safe under concurrent calls; it
 	// also synchronizes the Schema read below via Provider.schemaMu.
 	if err := provider.LoadResources(); err != nil {
@@ -324,10 +576,31 @@ func (c *coordinator) unsafeStartProvider(id string, update UpdateProvidersConfi
 	// restarts triggered by RestartableProvider.Reconnect().
 	crashLog := newCrashLogBuffer(logger.LogOutputWriter, defaultCrashLogLines)
 
+	// procTracker follows the current plugin subprocess (across restarts) so
+	// crash diagnostics can report how it died: exit code vs. signal
+	// (SIGKILL with empty stderr ≈ OOM killer) and peak RSS.
+	procTracker := &processTracker{}
+
+	// On Windows the plugin transport is loopback TCP and the client picks the
+	// port range; see plugin_ports.go for why go-plugin's own default is not
+	// acceptable and how the range is resolved. Other platforms ignore it.
+	ports, err := resolvePluginPortRange()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to start provider "+id)
+	}
+
+	// lastCmd remembers the subprocess of the most recent connect attempt so
+	// the initial-start failure path below can report how it ended. Written
+	// again by reconnect attempts later, but only read here, before the
+	// supervised provider exists.
+	var lastCmd *exec.Cmd
+
 	connectFunc := func() (pp.ProviderPlugin, *plugin.Client, error) {
 		pluginCmd := exec.Command(provider.binPath(), []string{"run_as_plugin", "--log-level", zerolog.GlobalLevel().String()}...)
+		lastCmd = pluginCmd
 
 		addColorConfig(pluginCmd)
+		addProxyConfig(pluginCmd)
 
 		pluginLogger := &hclogger{Logger: log.Logger}
 		pluginLogger.SetLevel(hclog.Warn)
@@ -338,8 +611,11 @@ func (c *coordinator) unsafeStartProvider(id string, update UpdateProvidersConfi
 			AllowedProtocols: []plugin.Protocol{
 				plugin.ProtocolNetRPC, plugin.ProtocolGRPC,
 			},
-			Logger: pluginLogger,
-			Stderr: crashLog,
+			Logger:   pluginLogger,
+			Stderr:   crashLog,
+			MinPort:  ports.Min,
+			MaxPort:  ports.Max,
+			AutoMTLS: providerTransportUsesMTLS(),
 		})
 
 		// Connect via RPC
@@ -357,12 +633,22 @@ func (c *coordinator) unsafeStartProvider(id string, update UpdateProvidersConfi
 			return nil, nil, errors.Wrap(err, "failed to call "+pluginName+" plugin")
 		}
 
+		// Track only after the handshake succeeds: a failed reconnect
+		// attempt must not re-point the tracker away from the previous
+		// (crashed) subprocess, whose exit disposition is what crash
+		// diagnostics still need to report.
+		procTracker.track(client, pluginCmd)
+
 		return raw.(pp.ProviderPlugin), client, nil
 	}
 
 	plug, client, err := connectFunc()
 	if err != nil {
-		return nil, err
+		var ps *os.ProcessState
+		if lastCmd != nil {
+			ps = lastCmd.ProcessState
+		}
+		return nil, enrichStartFailure(err, ps, crashLog.Snapshot())
 	}
 
 	c.schema.Add(provider.ID, provider.Schema)
@@ -372,18 +658,34 @@ func (c *coordinator) unsafeStartProvider(id string, update UpdateProvidersConfi
 		return nil, err
 	}
 	res.Version = provider.Version
+	res.Requires = provider.Requires
+	res.Root = provider.Root
 	res.crashLog = crashLog
+	res.proc = procTracker
 	c.runningByID[res.ID] = res
 
 	return res, nil
 }
 
+// SetProviders publishes a snapshot of providers. It clones because callers
+// keep and mutate the map they pass (ListActive hands its map to
+// installDependencies), and the published one is read by LoadSchema under
+// providersMu alone.
 func (c *coordinator) SetProviders(providers Providers) {
-	c.providers = providers
+	c.providersMu.Lock()
+	c.providers = maps.Clone(providers)
+	c.providersMu.Unlock()
 }
 
+// Providers returns a snapshot of the installed providers. It is a clone:
+// callers mutate what they get (see EnsureProvider), and the published map
+// is read concurrently by LoadSchema. Writes to the returned map are local
+// to the caller — a provider installed that way is picked up by the next
+// ListActive, which re-scans after Install resets the cache.
 func (c *coordinator) Providers() Providers {
-	return c.providers
+	c.providersMu.RLock()
+	defer c.providersMu.RUnlock()
+	return maps.Clone(c.providers)
 }
 
 // stop will stop a provider and remove it from the list of running providers. Must be called
@@ -428,14 +730,18 @@ func (c *coordinator) Schema() resources.ResourcesSchema {
 // LoadSchema for a given provider. Providers also cache their Schemas, so
 // calling this with the same provider multiple times will use the loaded
 // cached schema after the first call.
+//
+// It is called by extensibleSchema with schema.sync held, so it must not
+// take c.mutex (unsafeStartProvider holds c.mutex while it waits for
+// schema.sync in schema.Add — the two would deadlock). Nothing here needs
+// it: builtinProviders is immutable, providers has its own lock, and
+// LoadResources synchronizes itself.
 func (c *coordinator) LoadSchema(name string) (resources.ResourcesSchema, error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
 	if x, ok := builtinProviders[name]; ok {
 		return x.Runtime.Schema, nil
 	}
 
-	provider, ok := c.providers[name]
+	provider, ok := c.lookupProvider(name)
 	if !ok {
 		return nil, errors.New("cannot find provider '" + name + "'")
 	}

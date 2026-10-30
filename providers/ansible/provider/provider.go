@@ -13,12 +13,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers/ansible/connection"
-	"go.mondoo.com/mql/v13/providers/ansible/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers/ansible/connection"
+	"go.mondoo.com/mql/providers/ansible/resources"
 )
 
 const (
@@ -81,6 +81,10 @@ func (s *Service) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 		Name:      conn.Name(),
 		Asset:     req.Asset,
 		Inventory: nil,
+		// A project reads the playbooks in its own directory and in
+		// playbooks/, and nothing deeper, so a playbook further down belongs to
+		// no project here and is still worth looking for (ADR 045).
+		ContinueExploration: true,
 	}, nil
 }
 
@@ -142,7 +146,9 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.AnsibleConnect
 
 	projectPath, ok := asset.Connections[0].Options["path"]
 	if !ok || projectPath == "" {
-		asset.Name = conn.Conf.Host
+		if asset.Name == "" {
+			asset.Name = conn.Conf.Host
+		}
 		return nil
 	}
 
@@ -155,7 +161,12 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.AnsibleConnect
 	platformID := "//platformid.api.mondoo.app/runtime/ansible/hash/" + hex.EncodeToString(h.Sum(nil))
 	asset.Connections[0].PlatformId = platformID
 	asset.PlatformIds = []string{platformID}
-	asset.Name = nameKind + parseNameFromPath(projectPath)
+	// Only name an asset that has no name. A caller who passed --asset-name has
+	// already named this asset, and detection running afterwards must not take
+	// that back; identity still comes from the platform ID above.
+	if asset.Name == "" {
+		asset.Name = nameKind + parseNameFromPath(projectPath)
+	}
 	return nil
 }
 

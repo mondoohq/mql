@@ -4,14 +4,16 @@
 package resources
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"gopkg.in/yaml.v3"
 	kustomizeTypes "sigs.k8s.io/kustomize/api/types"
 )
@@ -45,6 +47,42 @@ type jsonPatchOp struct {
 type mqlKustomizePatchInternal struct {
 	format string
 	ops    []jsonPatchOp
+	// stampOnce guards the post-construction write of format and ops.
+	// CreateResource may return a cached instance for concurrent callers
+	// with the same __id; stampOnce ensures the stamp happens exactly once
+	// across those goroutines, so it never races a concurrent operations()
+	// read. Matches the pattern in newMqlKustomization and
+	// newMqlKustomizeReplacement.
+	stampOnce sync.Once
+}
+
+// strategicMergePatchEntry turns one legacy `patchesStrategicMerge` entry into
+// a Patch, deciding whether it names a file or carries an inline patch body.
+//
+// The field is genuinely polymorphic, and kustomize disambiguates the same way
+// — `types.Kustomization.FixKustomizationPreMarshalling` tries to read the
+// entry as a file and falls back to treating it as an inline patch:
+//
+//	if _, err := fSys.ReadFile(string(patchStrategicMerge)); err == nil {
+//	    k.Patches = append(k.Patches, Patch{Path: string(patchStrategicMerge)})
+//	} else {
+//	    k.Patches = append(k.Patches, Patch{Patch: string(patchStrategicMerge)})
+//	}
+//
+// A nonexistent path stays a path so a genuine typo still reports as a missing
+// patch file (with a warning from newMqlKustomizePatch) rather than dumping the
+// filename into `content` as though it were a patch body.
+func strategicMergePatchEntry(kustPath, entry string) kustomizeTypes.Patch {
+	if fi, err := os.Stat(filepath.Join(kustPath, entry)); err == nil && !fi.IsDir() {
+		return kustomizeTypes.Patch{Path: entry}
+	}
+	// An inline body always contains a `:` (it is YAML), and a path never
+	// spans lines. Anything that can't be a filename is treated as inline;
+	// everything else keeps the path reading.
+	if strings.ContainsAny(entry, "\n:") {
+		return kustomizeTypes.Patch{Patch: entry}
+	}
+	return kustomizeTypes.Patch{Path: entry}
 }
 
 func newMqlKustomizePatch(runtime *plugin.Runtime, kustPath string, index int, p *kustomizeTypes.Patch, hint formatHint) (*mqlKustomizePatch, error) {
@@ -67,41 +105,36 @@ func newMqlKustomizePatch(runtime *plugin.Runtime, kustPath string, index int, p
 	}
 
 	// Read the raw patch bytes: inline content wins, otherwise the file the
-	// patch points at (relative to the kustomization directory).
+	// patch points at (relative to the kustomization directory). `content`
+	// tracks the same bytes so a file-based patch surfaces its body through
+	// the `content` field rather than an empty string.
 	raw := []byte(p.Patch)
+	content := p.Patch
 	if len(raw) == 0 && p.Path != "" {
 		// Best-effort read; a missing/unreadable file falls back to
 		// strategic-merge with no operations rather than failing the audit.
-		// Constrain the read to the kustomization directory so a malicious
-		// patch path (e.g. "../../etc/passwd") — or a symlink inside the
-		// directory whose target is outside it — can't escape the scan root.
-		// Both the base and the candidate are symlink-resolved before the
-		// containment check so a symlinked scan root (e.g. /tmp on macOS,
-		// which resolves to /private/tmp) doesn't cause false rejections.
-		full := filepath.Join(kustPath, p.Path)
-		// Prefer symlink-resolved paths for the containment check (this catches
-		// a symlink inside the directory whose target escapes it). When symlink
-		// resolution fails for any reason other than the target being a
-		// resolvable escape — e.g. a broken/unresolvable symlink component in
-		// kustPath itself — fall back to a lexical containment check so a
-		// perfectly readable patch file isn't silently dropped and misclassified
-		// as an empty strategic-merge patch.
-		base, target := filepath.Clean(kustPath), filepath.Clean(full)
-		if rb, err1 := filepath.EvalSymlinks(kustPath); err1 == nil {
-			if rt, err2 := filepath.EvalSymlinks(full); err2 == nil {
-				base, target = rb, rt
-			}
-		}
-		if rel, err := filepath.Rel(base, target); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		// The read is constrained to the kustomization directory so a
+		// malicious patch path (e.g. "../../etc/passwd") can't escape the
+		// scan root; see resolveContainedPath.
+		if target, ok := resolveContainedPath(kustPath, p.Path); ok {
 			data, readErr := os.ReadFile(target)
 			switch {
 			case readErr == nil:
 				raw = data
-			case !os.IsNotExist(readErr):
-				// A genuinely missing file is the expected best-effort case; any
-				// other read failure would silently misclassify the patch, so
-				// surface it.
-				log.Warn().Err(readErr).Str("path", p.Path).Msg("kustomize: could not read patch file; treating it as an empty patch")
+				content = string(data)
+			case os.IsNotExist(readErr):
+				// A patch that names a file which isn't there changes nothing
+				// during rendering, and kustomize itself fails the build. Say
+				// so: reporting it as an empty patch with no signal lets a
+				// policy iterating `patches.operations` pass vacuously on what
+				// is really a typo.
+				log.Warn().Str("path", p.Path).Str("kustomization", kustPath).
+					Msg("kustomize: patch file does not exist; treating it as an empty patch")
+			default:
+				// Any other read failure would silently misclassify the patch,
+				// so surface it too.
+				log.Warn().Err(readErr).Str("path", p.Path).
+					Msg("kustomize: could not read patch file; treating it as an empty patch")
 			}
 		} else {
 			log.Warn().Str("path", p.Path).Msg("kustomize: patch path escapes the kustomization directory; ignoring")
@@ -114,7 +147,7 @@ func newMqlKustomizePatch(runtime *plugin.Runtime, kustPath string, index int, p
 
 	res, err := CreateResource(runtime, "kustomize.patch", map[string]*llx.RawData{
 		"__id":                     llx.StringData(id),
-		"content":                  llx.StringData(p.Patch),
+		"content":                  llx.StringData(content),
 		"path":                     llx.StringData(p.Path),
 		"format":                   llx.StringData(format),
 		"targetGroup":              llx.StringData(targetGroup),
@@ -129,8 +162,10 @@ func newMqlKustomizePatch(runtime *plugin.Runtime, kustPath string, index int, p
 		return nil, err
 	}
 	mqlP := res.(*mqlKustomizePatch)
-	mqlP.format = format
-	mqlP.ops = ops
+	mqlP.stampOnce.Do(func() {
+		mqlP.format = format
+		mqlP.ops = ops
+	})
 	return mqlP, nil
 }
 
@@ -187,6 +222,13 @@ func decodeJSON6902(raw []byte) ([]jsonPatchOp, bool) {
 
 		pathVal, _ := elem["path"].(string)
 		value, hasValue := elem["value"]
+		if hasValue {
+			// yaml.v3 decodes integer scalars to Go `int`, which the llx dict
+			// serializer rejects (it accepts only int64/float64 among numbers).
+			// Normalize every value to JSON-native types so a common patch such
+			// as `value: 3` doesn't error when the `value` field is queried.
+			value = toJSONNative(value)
+		}
 
 		ops = append(ops, jsonPatchOp{
 			op:       opStr,
@@ -196,6 +238,28 @@ func decodeJSON6902(raw []byte) ([]jsonPatchOp, bool) {
 		})
 	}
 	return ops, true
+}
+
+// toJSONNative round-trips a yaml.v3-decoded value through encoding/json so
+// every number, map, and slice is expressed with the JSON-native Go types the
+// llx dict serializer accepts (float64/string/bool/[]any/map[string]any/nil).
+// yaml.v3 hands back Go `int` for integer scalars, which dict serialization
+// rejects; the round-trip converts those to float64. On the (practically
+// impossible for yaml-derived data) marshal error, the original value is
+// returned unchanged so behavior is never worse than before.
+func toJSONNative(v any) any {
+	if v == nil {
+		return nil
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return v
+	}
+	var out any
+	if err := json.Unmarshal(data, &out); err != nil {
+		return v
+	}
+	return out
 }
 
 func (c *mqlKustomizePatch) operations() ([]any, error) {

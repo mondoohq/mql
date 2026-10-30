@@ -67,6 +67,7 @@ activedirectory.computer.passwordAgeDays 13.0.1
 activedirectory.computer.protocolTransition 13.0.1
 activedirectory.computer.pwdLastSet 13.0.1
 activedirectory.computer.rbcd 13.0.1
+activedirectory.computer.rbcdPrincipals 14.0.0
 activedirectory.computer.sAMAccountName 13.0.1
 activedirectory.computer.servicePrincipalNames 13.0.1
 activedirectory.computer.sid 13.0.1
@@ -237,6 +238,7 @@ activedirectory.user.ouPath 13.0.1
 activedirectory.user.passwordAgeDays 13.0.1
 activedirectory.user.passwordNeverExpires 13.0.1
 activedirectory.user.passwordNotRequired 13.0.1
+activedirectory.user.primaryGroupId 14.0.0
 activedirectory.user.protectedUser 13.0.1
 activedirectory.user.pwdLastSet 13.0.1
 activedirectory.user.reversibleEncryption 13.0.1

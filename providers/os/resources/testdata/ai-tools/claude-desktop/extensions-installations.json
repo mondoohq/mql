@@ -1,0 +1,202 @@
+{
+  "extensions": {
+    "ant.dir.ant.anthropic.filesystem": {
+      "id": "ant.dir.ant.anthropic.filesystem",
+      "version": "2026.7.10",
+      "installedAt": "2026-07-30T03:33:15.770Z",
+      "manifest": {
+        "manifest_version": "0.3",
+        "name": "Filesystem",
+        "display_name": "Filesystem",
+        "version": "2026.7.10",
+        "description": "Let Claude access your filesystem to read and write files.",
+        "author": {
+          "name": "Anthropic",
+          "url": "https://www.claude.ai"
+        },
+        "repository": {
+          "type": "git",
+          "url": "https://github.com/modelcontextprotocol/servers"
+        },
+        "server": {
+          "type": "node",
+          "entry_point": "dist/index.js",
+          "mcp_config": {
+            "command": "node",
+            "args": [
+              "${__dirname}/dist/index.js",
+              "${user_config.allowed_directories}"
+            ]
+          }
+        },
+        "tools": [
+          {
+            "name": "read_file",
+            "description": "Read the complete contents of a file as text. DEPRECATED: Use read_text_file instead."
+          },
+          {
+            "name": "read_text_file",
+            "description": "Read the complete contents of a file from the file system as text. Handles various text encodings and provides detailed error messages if the file cannot be read. Use this tool when you need to examine the contents of a single file. Use the 'head' parameter to read only the first N lines of a file, or the 'tail' parameter to read only the last N lines of a file. Operates on the file as text regardless of extension. Only works within allowed directories."
+          },
+          {
+            "name": "read_media_file",
+            "description": "Read an image or audio file. Returns the base64 encoded data and MIME type. Only works within allowed directories."
+          }
+        ],
+        "license": "MIT",
+        "user_config": {
+          "allowed_directories": {
+            "type": "directory",
+            "title": "Allowed Directories",
+            "description": "Select directories the filesystem server can access",
+            "required": true,
+            "default": [],
+            "multiple": true
+          }
+        }
+      },
+      "signatureInfo": {
+        "status": "unsigned"
+      },
+      "source": "registry"
+    },
+    "ant.dir.gh.apius-tech.panos-mcp": {
+      "id": "ant.dir.gh.apius-tech.panos-mcp",
+      "version": "1.3.29",
+      "installedAt": "2026-08-20T23:49:31.101Z",
+      "manifest": {
+        "manifest_version": "0.3",
+        "name": "panos-mcp",
+        "display_name": "PanOS MCP",
+        "version": "1.3.29",
+        "description": "Control Palo Alto Networks PA-Series firewalls and Panorama with AI. 117 tools across 16 modules: security policies, NAT, objects, VPN, logs, WildFire, GlobalProtect, decryption, and more. Supports staged commits and read-only inspection. For multi-firewall setups use the CLI mode — see github.com/apius-tech/Palo-MCP.",
+        "author": {
+          "name": "Apius Technologies SA",
+          "url": "https://github.com/apius-tech"
+        },
+        "repository": {
+          "type": "git",
+          "url": "https://github.com/apius-tech/Palo-MCP"
+        },
+        "server": {
+          "type": "node",
+          "entry_point": "server/index.cjs",
+          "mcp_config": {
+            "command": "node",
+            "args": [
+              "${__dirname}/server/index.cjs"
+            ],
+            "env": {
+              "PANOS_HOST": "${user_config.host}",
+              "PANOS_API_KEY": "${user_config.api_key}"
+            }
+          }
+        },
+        "tools": [
+          {
+            "name": "get_firewall_info",
+            "description": "Retrieves system information from the PanOS firewall"
+          },
+          {
+            "name": "get_ha_status",
+            "description": "Retrieves high-availability state and peer information"
+          },
+          {
+            "name": "get_active_sessions",
+            "description": "Retrieves active session count and summary"
+          }
+        ],
+        "privacy_policies": [
+          "https://github.com/apius-tech/Palo-MCP#privacy",
+          "https://github.com/apius-tech/Palo-MCP#security"
+        ],
+        "user_config": {
+          "host": {
+            "type": "string",
+            "title": "Firewall Host",
+            "description": "PanOS firewall or Panorama hostname or IP address",
+            "required": true
+          },
+          "api_key": {
+            "type": "string",
+            "title": "API Key",
+            "description": "PanOS API key",
+            "required": true,
+            "sensitive": true
+          }
+        }
+      },
+      "signatureInfo": {
+        "status": "unsigned"
+      },
+      "source": "registry"
+    },
+    "ant.dir.gh.anthropic.pdf-server-mcp": {
+      "id": "ant.dir.gh.anthropic.pdf-server-mcp",
+      "version": "2.0.0",
+      "installedAt": "2026-09-18T22:20:18.264Z",
+      "manifest": {
+        "manifest_version": "0.3",
+        "name": "pdf-viewer",
+        "display_name": "pdf-viewer",
+        "version": "2.0.0",
+        "description": "Read, annotate, and interact with PDF files — interactive viewer with search, navigation, annotations, form filling, and text extraction",
+        "author": {
+          "name": "Anthropic",
+          "url": "https://www.anthropic.com"
+        },
+        "repository": {
+          "type": "git",
+          "url": "https://github.com/modelcontextprotocol/ext-apps"
+        },
+        "server": {
+          "type": "node",
+          "entry_point": "dist/index.js",
+          "mcp_config": {
+            "command": "node",
+            "args": [
+              "${__dirname}/dist/index.js",
+              "--stdio",
+              "${user_config.pdf_directories}"
+            ],
+            "env": {}
+          }
+        },
+        "tools": [
+          {
+            "name": "list_pdfs",
+            "description": "List available PDF files that can be displayed"
+          },
+          {
+            "name": "display_pdf",
+            "description": "Display an interactive PDF viewer with search and navigation"
+          },
+          {
+            "name": "interact",
+            "description": "Interact with the PDF viewer — navigate, annotate, highlight text, fill forms, extract pages"
+          }
+        ],
+        "license": "MIT",
+        "privacy_policies": [
+          "https://www.anthropic.com/privacy"
+        ],
+        "user_config": {
+          "pdf_directories": {
+            "type": "directory",
+            "title": "PDF Directories",
+            "description": "Folders the PDF viewer may list and open PDFs from",
+            "required": false,
+            "default": [
+              "${HOME}/Documents"
+            ],
+            "multiple": true
+          }
+        }
+      },
+      "signatureInfo": {
+        "status": "unsigned"
+      },
+      "source": "registry"
+    }
+  }
+}

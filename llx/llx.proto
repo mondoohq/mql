@@ -5,7 +5,7 @@ syntax = "proto3";
 
 package mql.llx;
 
-option go_package = "go.mondoo.com/mql/v13/llx";
+option go_package = "go.mondoo.com/mql/llx";
 
 message Primitive {
   string type = 1;
@@ -23,22 +23,53 @@ message Primitive {
   map<string, Primitive> map = 4;
 }
 
+// AssetValue is the payload of the native `asset` primitive type. It points at
+// another asset by the resource that anchors it in the current asset's resource
+// tree: the anchor is `(resource_type, resource_id)`. The owning asset id is
+// contextual (the caller knows which asset it is evaluating), so it is NOT part
+// of this value. See ADR 030.
+message AssetValue {
+  string resource_type = 1;
+  string resource_id = 2;
+}
+
 message Function {
   string type = 1;
   repeated Primitive args = 3;
   // FIXME: this is a suggestion to allow function calls to be bound
   // to non-local references; Remove this comment or remove the feature
   uint64 binding = 4;
+
+  // How this call behaves when it cannot resolve. See ADR 043 (strict mode).
+  // A link fails to resolve when its binding is null, or - for a map or dict -
+  // when the key it names is absent.
+  enum Nullability {
+    // Non-strict: a link that cannot resolve yields null, as it always has.
+    NULLABILITY_UNSPECIFIED = 0;
+    // Strict: a link that cannot resolve is an error. A binding that is a
+    // short-circuited null (produced by an upstream NULLABILITY_OPTIONAL link)
+    // still passes straight through.
+    NULLABILITY_REQUIRED = 1;
+    // The author wrote `?` before this link. It never errors, and a null result
+    // is marked short-circuited so the rest of the chain passes it through.
+    NULLABILITY_OPTIONAL = 2;
+  }
+  Nullability nullability = 5;
 }
 
 message Chunk {
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
+  // These values predate the CALL_ prefix rule and renaming them is a wire
+  // change, so it stays suppressed. Block form rather than `disable:next`:
+  // protolint takes the expected prefix from the preceding enum, so adding
+  // Function.Nullability above made a one-line suppression stop covering these.
+  // protolint:disable ENUM_FIELD_NAMES_PREFIX
   enum Call {
     // protolint:disable:next ENUM_FIELD_NAMES_ZERO_VALUE_END_WITH
     PRIMITIVE = 0;
     FUNCTION = 1;
     PROPERTY = 2;
   }
+  // protolint:enable ENUM_FIELD_NAMES_PREFIX
   Call call = 1;
   string id = 2;
   Primitive primitive = 3;
@@ -111,12 +142,201 @@ message CodeBundle {
   // ref + variable name; only used during label creation and discarded 
   // afterwards
   map<uint64,string> vars = 25;
+
+  // Writer-schema identity (ADR 040 part 1): the version of every provider
+  // whose schema this bundle was compiled against, keyed by the stable
+  // provider name ("aws", "os") rather than by its module-path id, so the key
+  // survives an id migration.
+  //
+  // This says what the compiler *saw*. It is provenance, not a requirement -
+  // use min_provider_versions to decide whether a reader can execute the
+  // bundle.
+  map<string,string> provider_schemas = 26;
+
+  // Minimum version of each provider required to execute this bundle, keyed by
+  // the stable provider name.
+  //
+  // Derived at compile time as the highest `min_provider_version` over every
+  // resource and field the bundle actually touches, so it is a real
+  // requirement rather than a snapshot of the compiling machine. A reader whose
+  // provider is older than this cannot resolve every name in the bundle, and
+  // should say so instead of degrading the missing ones to null.
+  map<string,string> min_provider_versions = 27;
+
+  // Downgrade translations (ADR 040 part 6).
+  //
+  // Each entry says: a reader whose `provider` is older than `below_version`
+  // cannot make the call at `ref`, and should run the block at `block_ref`
+  // instead. The blocks themselves ship inside code_v2 as ordinary blocks with
+  // their checksums already in place; nothing points at them until a patch
+  // does, so a current reader carries them as unreachable weight and executes
+  // pristine code.
+  //
+  // Patching rewrites one chunk in place and never touches the checksum map, so
+  // a downgraded reader reports under exactly the checksums the producer
+  // shipped and scoring does not fork across versions.
+  repeated TranslationRef translations = 28;
+
+  // Resources this bundle reached through the global namespace that do not hang
+  // off an asset root and are not marked `@global` (ADR 031 point 7).
+  //
+  // In v14 a bare name resolves globally first and falls back to the asset
+  // root, so both spellings work. In v15 the root is the namespace, and a name
+  // that is neither rooted nor global stops resolving. This list is what makes
+  // cutover measurable: it is the set of names in this bundle that have no home
+  // in the asset's tree, recorded rather than logged so tooling can show which
+  // parts of a bundle reach outside it.
+  //
+  // Empty when every name resolved is either rooted or marked global, which is
+  // the state a fully migrated provider produces.
+  repeated string unrooted_resources = 29;
+
+  // The asset root this bundle was compiled against (ADR 031), empty when it
+  // was compiled without one. Provenance - what the query was bounded by - and
+  // what lets a reader tell the chunks the compiler inserted to reach the root
+  // from the ones the author wrote.
+  string asset_root = 30;
+
+  // The asset roots that can execute this bundle (ADR 031), narrowed from what
+  // it touched: a query reading only universal members is satisfied by every
+  // root, one reading `iptables` only by the Linux root and the union above it.
+  //
+  // Empty means no requirement was derived - nothing was reached through a
+  // root, which is every bundle compiled before this existed and every one that
+  // only uses the global namespace. A reader treats empty as "runs anywhere".
+  //
+  // This is applicability derived from the query rather than declared beside
+  // it: the same job a hand-written platform filter does today, computed from
+  // what the code actually reads.
+  repeated string compatible_roots = 31;
+
+  // Names this bundle uses that are deprecated and say where they moved to
+  // (ADR 040). Recorded, never logged: the compiler is called per keystroke by
+  // autocomplete, so the decision to show a notice belongs to whoever is
+  // driving it.
+  //
+  // Only uses with a `@replaced_by` target land here. A deprecation with no
+  // destination has nothing actionable to tell a user, so it stays silent.
+  repeated DeprecatedUse deprecated_uses = 32;
+}
+
+// DeprecatedUse is one deprecated name a bundle reads, and its replacement.
+message DeprecatedUse {
+  // The deprecated name as it exists in the schema, e.g. `os.hostname`.
+  string from = 1;
+  // Where it moved to, as a full schema path, e.g. `os.base.hostname`. What a
+  // user is shown is rendered from this against the root the query compiled
+  // with, so the same entry reads as `hostname` in a rooted shell and as
+  // `os.base.hostname` where there is no root to shorten it against.
+  string to = 2;
+}
+
+// TranslationRef points one call that an older reader cannot make at a block
+// that computes the same value out of vocabulary it does have.
+message TranslationRef {
+  // Ref of the chunk in code_v2 to replace.
+  uint64 ref = 1;
+  // Provider id whose version decides whether this applies.
+  string provider = 2;
+  // Readers older than this need the translation. It is the version that
+  // introduced the change being compensated for.
+  string below_version = 3;
+  // Block ref computing the replacement. It is bound to the replaced chunk's
+  // own binding - the parent - because the field being replaced may not exist
+  // on the reader at all, so there is no old value to transform.
+  uint64 block_ref = 4;
+}
+
+// ErrorKind classifies a failure so that a consumer can act on it without
+// parsing the message text (ADR 046). It lives here, in the lowest layer, so
+// that Result can carry it: plugin.proto imports llx.proto, not the other way
+// around.
+//
+// The HTTP status in each comment names the kind for a reader. Nothing maps a
+// status onto a kind: a provider reads whatever its SDK hands it and decides.
+// ERROR_KIND_UNSPECIFIED means unclassified, which is the honest default - a
+// kind is a claim, and a provider that does not know makes none.
+enum ErrorKind {
+  ERROR_KIND_UNSPECIFIED = 0;
+  // The connection type was right and the content was not: this target is not
+  // this provider's (ADR 045). Connect only.
+  ERROR_KIND_NO_MATCH = 1;
+  // 401. We are not who we need to be: no credentials, wrong credentials, an
+  // expired or revoked token.
+  ERROR_KIND_UNAUTHENTICATED = 2;
+  // 403. We are authenticated and not permitted. Includes an OS elevation
+  // failure: needing sudo and not having it is a permission we are asking for.
+  ERROR_KIND_FORBIDDEN = 3;
+  // 404. The provider could not answer because what it had to read is not
+  // there. A legitimate absence is a null value, not this kind.
+  ERROR_KIND_NOT_FOUND = 4;
+  // 501. The question does not apply to this target: API not enabled, resource
+  // provider not registered, feature not in this plan, service not offered in
+  // this region, resource not supported on this platform.
+  ERROR_KIND_NOT_APPLICABLE = 5;
+  // 410. The API we call existed and does not any more.
+  ERROR_KIND_GONE = 6;
+  // 429. Throttled. Carries retry_after_ms when the target said so.
+  ERROR_KIND_TOO_MANY_REQUESTS = 7;
+  // 503. The target is temporarily not answering: 5xx, connection refused,
+  // timeout, DNS failure.
+  ERROR_KIND_UNAVAILABLE = 8;
+  // The target answered and what it said cannot be read.
+  ERROR_KIND_MALFORMED_DATA = 9;
+  // The asset went away while we were scanning it.
+  ERROR_KIND_ASSET_VANISHED = 10;
+}
+
+// ErrorScope says how far a failure reaches, which is what lets a consumer
+// aggregate identical failures and decide whether continuing is worthwhile.
+enum ErrorScope {
+  ERROR_SCOPE_UNSPECIFIED = 0;
+  // This one field.
+  ERROR_SCOPE_FIELD = 1;
+  // This resource, including any listing it would have produced.
+  ERROR_SCOPE_RESOURCE = 2;
+  // Everything in one region, project, or subscription, named by scope_id.
+  ERROR_SCOPE_PARTITION = 3;
+  // Every remaining call on this asset, e.g. an expired credential.
+  ERROR_SCOPE_ASSET = 4;
+}
+
+// ErrorDetail carries a kind and what a consumer needs to act on it. It rides
+// beside the error message rather than replacing it: the message keeps the
+// target's own words verbatim, which is what a human reads when the kind is not
+// enough.
+message ErrorDetail {
+  ErrorKind kind = 1;
+  ErrorScope scope = 2;
+  // Names the partition for ERROR_SCOPE_PARTITION: a region, project, or
+  // subscription. Empty for every other scope.
+  string scope_id = 3;
+  // Permissions the refused call needed, e.g. "ec2:DescribeInstances", or the
+  // elevation an OS scan lacked. Possibly several, possibly none.
+  repeated string permissions = 4;
+  // Server-stated wait for 429 and 503. Zero means "no hint", not "retry now".
+  // Carried, not acted on: nothing in mql retries on it.
+  int64 retry_after_ms = 5;
+}
+
+// A part of a result that could not be read (ADR 046 §8). The message is the
+// upstream error, verbatim; the detail classifies it and names the partition.
+message CoverageGap {
+  string error = 1;
+  ErrorDetail detail = 2;
 }
 
 message Result {
   Primitive data = 1;
   string error = 2;
   string code_id = 3;
+  // Why this result failed, when the provider or the runtime could say (ADR
+  // 046). Absent means unclassified, which is also what every result written
+  // before this field existed carries.
+  ErrorDetail error_detail = 4;
+  // The value in data is incomplete: these parts could not be read. Empty on
+  // every complete result. It never means the result failed; that is error.
+  repeated CoverageGap coverage_gaps = 5;
 }
 
 message ResourceRecording {

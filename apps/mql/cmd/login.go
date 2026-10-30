@@ -13,14 +13,14 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/cli/config"
-	cli_errors "go.mondoo.com/mql/v13/cli/errors"
-	"go.mondoo.com/mql/v13/providers"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/sysinfo"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream/health"
-	rangerUtils "go.mondoo.com/mql/v13/utils/ranger"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/cli/config"
+	cli_errors "go.mondoo.com/mql/cli/errors"
+	"go.mondoo.com/mql/providers"
+	"go.mondoo.com/mql/providers-sdk/v1/sysinfo"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream/health"
+	rangerUtils "go.mondoo.com/mql/utils/ranger"
 	"go.mondoo.com/ranger-rpc"
 	"go.mondoo.com/ranger-rpc/codes"
 	"go.mondoo.com/ranger-rpc/plugins/authentication/statictoken"
@@ -37,8 +37,6 @@ func init() {
 	LoginCmd.Flags().StringP("token", "t", "", "Set a client registration token")
 	LoginCmd.Flags().StringToString("annotation", nil, "Set the client annotations")
 	LoginCmd.Flags().String("updates-url", "", "Set the updates URL for mql and provider updates")
-	LoginCmd.Flags().String("providers-url", "", "Set the providers URL (deprecated: use updates-url instead)")
-	_ = LoginCmd.Flags().MarkHidden("providers-url")
 	LoginCmd.Flags().String("name", "", "Set asset name")
 	LoginCmd.Flags().String("api-endpoint", "", "Set the Mondoo API endpoint")
 	LoginCmd.Flags().Int("timer", 0, "Set the scan interval in minutes")
@@ -68,17 +66,19 @@ You remain logged in until you explicitly log out using the 'logout' subcommand.
 		token, _ := cmd.Flags().GetString("token")
 		annotations, _ := cmd.Flags().GetStringToString("annotation")
 		updatesURL, _ := cmd.Flags().GetString("updates-url")
-		providersURL, _ := cmd.Flags().GetString("providers-url")
 		timer, _ := cmd.Flags().GetInt("timer")
 		splay, _ := cmd.Flags().GetInt("splay")
 		apiEndpointOverride, _ := cmd.Flags().GetString("api-endpoint")
-		err := register(token, annotations, updatesURL, providersURL, timer, splay, apiEndpointOverride)
+		err := register(token, annotations, updatesURL, timer, splay, apiEndpointOverride)
 		if err != nil {
+			// A login failure is not a usage error: don't print the help text,
+			// and don't let cobra repeat an error we log ourselves.
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
+
 			if err == tokenValidationErr {
 				log.Error().Msg(err.Error())
-
-				// Prevents help message from being printed
-				return nil
+				return cli_errors.ExitCode1WithoutError
 			}
 			defer func() {
 				opts, optsErr := config.Read()
@@ -106,16 +106,14 @@ You remain logged in until you explicitly log out using the 'logout' subcommand.
 
 			if err == tokenExpiredErr {
 				log.Error().Msg(err.Error())
-
-				// Prevents help message from being printed
-				return nil
+				return cli_errors.ExitCode1WithoutError
 			}
 		}
 		return err
 	},
 }
 
-func register(token string, annotations map[string]string, updatesURL string, providersURL string, timer int, splay int, apiEndpointOverride string) error {
+func register(token string, annotations map[string]string, updatesURL string, timer int, splay int, apiEndpointOverride string) error {
 	var err error
 	var credential *upstream.ServiceAccountCredentials
 
@@ -130,11 +128,10 @@ func register(token string, annotations map[string]string, updatesURL string, pr
 	token = strings.TrimSpace(token)
 
 	// NOTE: login is special because we do not have a config yet
-	proxy, err := config.GetAPIProxy()
+	httpClient, err := config.NewHttpClient()
 	if err != nil {
 		return cli_errors.NewCommandError(errors.Wrap(err, "could not parse proxy URL"), 1)
 	}
-	httpClient := ranger.NewHttpClient(ranger.WithProxy(proxy))
 
 	// we handle three cases here:
 	// 1. user has a token provided
@@ -215,10 +212,6 @@ func register(token string, annotations map[string]string, updatesURL string, pr
 		viper.Set("annotations", annotations)
 		if updatesURL != "" {
 			viper.Set("updates_url", updatesURL)
-		}
-		if providersURL != "" {
-			log.Warn().Msgf("providers-url is deprecated, please use updates-url: %s", strings.TrimSuffix(providersURL, "/providers"))
-			viper.Set("providers_url", providersURL)
 		}
 		if timer > 0 {
 			viper.Set("scan_interval.timer", timer)

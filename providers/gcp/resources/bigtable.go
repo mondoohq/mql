@@ -8,17 +8,38 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/bigtable"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
+
+// bigtablePartialResult reports whether err is the Bigtable SDK's
+// ErrPartiallyUnavailable, which the admin client returns ALONGSIDE a populated
+// result slice when some locations are unreachable ("Return partial results and
+// an error in case of some locations are unavailable").
+//
+// It is a plain struct with no GRPCStatus(), so status.FromError does not
+// recognise it and isSkippable returns false -- the callers therefore took
+// the hard-error path and threw away the instances, clusters or backups the SDK
+// had just handed them. A transient blip in one region emptied the whole
+// Bigtable inventory.
+func bigtablePartialResult(err error, what string) bool {
+	var partial bigtable.ErrPartiallyUnavailable
+	if !errors.As(err, &partial) {
+		return false
+	}
+	log.Warn().Strs("locations", partial.Locations).Str("kind", what).
+		Msg("some Bigtable locations were unreachable; returning partial results")
+	return true
+}
 
 // bigtableAdminScopes are the OAuth scopes needed for Bigtable admin operations.
 var bigtableAdminScopes = []string{
@@ -71,6 +92,12 @@ func initGcpProjectBigtableServiceInstance(runtime *plugin.Runtime, args map[str
 		}
 	}
 
+	// Guard before building the parent: CreateResource hands args["projectId"]
+	// to the generated setter, which dereferences it, so nil panics the provider.
+	if args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.bigtableService.instance requires a \"projectId\" argument")
+	}
+
 	obj, err := CreateResource(runtime, "gcp.project.bigtableService", map[string]*llx.RawData{
 		"projectId": args["projectId"],
 	})
@@ -83,7 +110,11 @@ func initGcpProjectBigtableServiceInstance(runtime *plugin.Runtime, args map[str
 		return nil, nil, instances.Error
 	}
 
-	nameVal := args["name"].Value.(string)
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New("gcp.project.bigtableService.instance requires a \"name\" argument")
+	}
+	nameVal, _ := nameRaw.Value.(string)
 	for _, i := range instances.Data {
 		instance := i.(*mqlGcpProjectBigtableServiceInstance)
 		// Bigtable instance name from the SDK is the short ID; it may also
@@ -126,11 +157,14 @@ func (g *mqlGcpProjectBigtableService) instances() ([]any, error) {
 
 	instances, err := iac.Instances(ctx)
 	if err != nil {
-		if isGRPCSkippable(err) {
-			log.Warn().Err(err).Msg("could not list Bigtable instances")
-			return nil, nil
+		if !bigtablePartialResult(err, "instances") {
+			if isSkippable(err) {
+				log.Warn().Err(err).Msg("could not list Bigtable instances")
+				return nil, nil
+			}
+			return nil, err
 		}
-		return nil, err
+		// fall through: instances holds the reachable locations' results
 	}
 
 	res := make([]any, 0, len(instances))
@@ -213,8 +247,8 @@ func (g *mqlGcpProjectBigtableServiceInstance) clusters() ([]any, error) {
 	defer iac.Close()
 
 	clusters, err := iac.Clusters(ctx, instanceName)
-	if err != nil {
-		if isGRPCSkippable(err) {
+	if err != nil && !bigtablePartialResult(err, "clusters") {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not list Bigtable clusters")
 			return nil, nil
 		}
@@ -225,11 +259,13 @@ func (g *mqlGcpProjectBigtableServiceInstance) clusters() ([]any, error) {
 	for _, c := range clusters {
 		var autoscalingConfig map[string]any
 		if c.AutoscalingConfig != nil {
+			// The SDK models these as Go `int`, which is not JSON-native and so
+			// fails dict2primitive at query time; widen to int64.
 			autoscalingConfig = map[string]any{
-				"minNodes":                  c.AutoscalingConfig.MinNodes,
-				"maxNodes":                  c.AutoscalingConfig.MaxNodes,
-				"cpuTargetPercent":          c.AutoscalingConfig.CPUTargetPercent,
-				"storageUtilizationPerNode": c.AutoscalingConfig.StorageUtilizationPerNode,
+				"minNodes":                  int64(c.AutoscalingConfig.MinNodes),
+				"maxNodes":                  int64(c.AutoscalingConfig.MaxNodes),
+				"cpuTargetPercent":          int64(c.AutoscalingConfig.CPUTargetPercent),
+				"storageUtilizationPerNode": int64(c.AutoscalingConfig.StorageUtilizationPerNode),
 			}
 		}
 
@@ -341,7 +377,7 @@ func (g *mqlGcpProjectBigtableServiceInstance) iamPolicy() ([]any, error) {
 
 	policy, err := iac.InstanceIAM(instanceName).Policy(ctx)
 	if err != nil {
-		if isGRPCSkippable(err) {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not get Bigtable instance IAM policy")
 			return nil, nil
 		}
@@ -393,7 +429,7 @@ func (g *mqlGcpProjectBigtableServiceInstance) tables() ([]any, error) {
 
 	tableNames, err := ac.Tables(ctx)
 	if err != nil {
-		if isGRPCSkippable(err) {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not list Bigtable tables")
 			return nil, nil
 		}
@@ -404,7 +440,7 @@ func (g *mqlGcpProjectBigtableServiceInstance) tables() ([]any, error) {
 	for _, tableName := range tableNames {
 		tableInfo, err := ac.TableInfo(ctx, tableName)
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Str("table", tableName).Msg("could not read Bigtable table info")
 				continue
 			}
@@ -420,21 +456,11 @@ func (g *mqlGcpProjectBigtableServiceInstance) tables() ([]any, error) {
 			}
 		}
 
-		var automatedBackupPolicy map[string]any
-		if abp, ok := tableInfo.AutomatedBackupConfig.(*bigtable.TableAutomatedBackupPolicy); ok && abp != nil {
-			automatedBackupPolicy = map[string]any{
-				"retentionPeriod": fmt.Sprintf("%v", abp.RetentionPeriod),
-				"frequency":       fmt.Sprintf("%v", abp.Frequency),
-				"locations":       abp.Locations,
-			}
-		}
+		configuredPolicy, _ := tableInfo.AutomatedBackupConfig.(*bigtable.TableAutomatedBackupPolicy)
+		automatedBackupPolicy := bigtableAutomatedBackupPolicyDict(configuredPolicy)
+		automatedBackupsDisabled := configuredPolicy != nil && configuredPolicy.Disabled
 
-		var changeStreamConfig map[string]any
-		if tableInfo.ChangeStreamRetention != 0 {
-			changeStreamConfig = map[string]any{
-				"retentionPeriod": fmt.Sprintf("%v", tableInfo.ChangeStreamRetention),
-			}
-		}
+		changeStreamConfig := bigtableChangeStreamConfig(tableInfo.ChangeStreamRetention)
 
 		var tieredStorageConfig map[string]any
 		if tsc := tableInfo.TieredStorageConfig; tsc != nil {
@@ -452,24 +478,121 @@ func (g *mqlGcpProjectBigtableServiceInstance) tables() ([]any, error) {
 			deletionProtection = true
 		}
 
-		mqlTable, err := CreateResource(g.MqlRuntime, "gcp.project.bigtableService.table", map[string]*llx.RawData{
-			"projectId":             llx.StringData(projectId),
-			"instanceName":          llx.StringData(instanceName),
-			"name":                  llx.StringData(tableName),
-			"columnFamilies":        llx.DictData(columnFamilies),
-			"granularity":           llx.StringData("MILLIS"),
-			"deletionProtection":    llx.BoolData(deletionProtection),
-			"automatedBackupPolicy": llx.DictData(automatedBackupPolicy),
-			"changeStreamConfig":    llx.DictData(changeStreamConfig),
-			"tieredStorageConfig":   llx.DictData(tieredStorageConfig),
-		})
+		tableId := fmt.Sprintf("gcp.project/%s/bigtableService/%s/table/%s", projectId, instanceName, tableName)
+		tableArgs := map[string]*llx.RawData{
+			"projectId":                llx.StringData(projectId),
+			"instanceName":             llx.StringData(instanceName),
+			"name":                     llx.StringData(tableName),
+			"columnFamilies":           llx.DictData(columnFamilies),
+			"granularity":              llx.StringData("MILLIS"),
+			"deletionProtection":       llx.BoolData(deletionProtection),
+			"automatedBackupPolicy":    dictDataOrNil(automatedBackupPolicy),
+			"automatedBackupsDisabled": llx.BoolData(automatedBackupsDisabled),
+			"changeStreamConfig":       dictDataOrNil(changeStreamConfig),
+			"tieredStorageConfig":      dictDataOrNil(tieredStorageConfig),
+		}
+		var effectivePolicy plugin.Resource
+		if ep := tableInfo.EffectiveAutomatedBackupPolicy; ep != nil {
+			args := bigtableBackupPolicyArgs(ep)
+			args["__id"] = llx.StringData(tableId + "/effectiveAutomatedBackupPolicy")
+			effectivePolicy, err = CreateResource(g.MqlRuntime, "gcp.project.bigtableService.table.backupPolicy", args)
+			if err != nil {
+				return nil, err
+			}
+			tableArgs["effectiveAutomatedBackupPolicy"] = llx.ResourceData(effectivePolicy, "gcp.project.bigtableService.table.backupPolicy")
+		}
+
+		mqlTable, err := CreateResource(g.MqlRuntime, "gcp.project.bigtableService.table", tableArgs)
 		if err != nil {
 			return nil, err
+		}
+		if effectivePolicy == nil {
+			mqlTable.(*mqlGcpProjectBigtableServiceTable).EffectiveAutomatedBackupPolicy.State = plugin.StateIsNull | plugin.StateIsSet
 		}
 		res = append(res, mqlTable)
 	}
 
 	return res, nil
+}
+
+// bigtableOptionalDuration reads an optional.Duration, which the SDK leaves as
+// a nil interface when the API response does not set it.
+func bigtableOptionalDuration(d any) (time.Duration, bool) {
+	switch v := d.(type) {
+	case time.Duration:
+		return v, true
+	case *time.Duration:
+		if v != nil {
+			return *v, true
+		}
+	}
+	return 0, false
+}
+
+// bigtableAutomatedBackupPolicyDict renders a table's configured automated
+// backup policy. It returns nil when the table has no policy or explicitly
+// disables automated backups, and omits duration keys the policy leaves unset.
+// dictDataOrNil reports a nil map as null. llx.DictData on a nil
+// map[string]any stores a typed nil, which reads as an empty dict, so a
+// table with no policy would answer `!= null` with true.
+func dictDataOrNil(m map[string]any) *llx.RawData {
+	if m == nil {
+		return llx.NilData
+	}
+	return llx.DictData(m)
+}
+
+// bigtableChangeStreamConfig reports the change stream retention of a table,
+// or nil when change streams are off. The retention is an optional duration:
+// nil when unset, a time.Duration otherwise.
+func bigtableChangeStreamConfig(retention bigtable.ChangeStreamRetention) map[string]any {
+	d, ok := retention.(time.Duration)
+	if !ok || d <= 0 {
+		return nil
+	}
+	return map[string]any{"retentionPeriod": d.String()}
+}
+
+func bigtableAutomatedBackupPolicyDict(abp *bigtable.TableAutomatedBackupPolicy) map[string]any {
+	if abp == nil || abp.Disabled {
+		return nil
+	}
+	res := map[string]any{
+		// []string is not JSON-native inside a dict.
+		"locations": convert.SliceAnyToInterface(abp.Locations),
+	}
+	if d, ok := bigtableOptionalDuration(abp.RetentionPeriod); ok {
+		res["retentionPeriod"] = d.String()
+	}
+	if d, ok := bigtableOptionalDuration(abp.Frequency); ok {
+		res["frequency"] = d.String()
+	}
+	if d, ok := bigtableOptionalDuration(abp.KeepHotDuration); ok {
+		res["keepHotDuration"] = d.String()
+	}
+	return res
+}
+
+// bigtableBackupPolicyArgs maps an automated backup policy onto the fields of
+// gcp.project.bigtableService.table.backupPolicy. Unset durations are null.
+func bigtableBackupPolicyArgs(abp *bigtable.TableAutomatedBackupPolicy) map[string]*llx.RawData {
+	seconds := func(d any) *llx.RawData {
+		if v, ok := bigtableOptionalDuration(d); ok {
+			return llx.IntData(int64(v / time.Second))
+		}
+		return llx.NilData
+	}
+	locations := abp.Locations
+	if locations == nil {
+		locations = []string{}
+	}
+	return map[string]*llx.RawData{
+		"frequencySeconds":       seconds(abp.Frequency),
+		"retentionPeriodSeconds": seconds(abp.RetentionPeriod),
+		"keepHotDurationSeconds": seconds(abp.KeepHotDuration),
+		"locations":              llx.ArrayData(convert.SliceAnyToInterface(locations), types.String),
+		"disabled":               llx.BoolData(abp.Disabled),
+	}
 }
 
 func (g *mqlGcpProjectBigtableServiceTable) id() (string, error) {
@@ -517,9 +640,9 @@ func (g *mqlGcpProjectBigtableServiceInstance) appProfiles() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list Bigtable app profiles")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -597,8 +720,8 @@ func (g *mqlGcpProjectBigtableServiceInstance) backups() ([]any, error) {
 	defer iac.Close()
 
 	clusters, err := iac.Clusters(ctx, instanceName)
-	if err != nil {
-		if isGRPCSkippable(err) {
+	if err != nil && !bigtablePartialResult(err, "clusters") {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not list Bigtable clusters for backup lookup")
 			return nil, nil
 		}
@@ -616,8 +739,8 @@ func (g *mqlGcpProjectBigtableServiceInstance) backups() ([]any, error) {
 	for _, c := range clusters {
 		// Extract just the cluster ID from the full name
 		clusterID := c.Name
-		if idx := strings.LastIndex(c.Name, "/"); idx >= 0 {
-			clusterID = c.Name[idx+1:]
+		if _, after, ok := strings.CutLast(c.Name, "/"); ok {
+			clusterID = after
 		}
 
 		it := ac.Backups(ctx, clusterID)
@@ -627,7 +750,7 @@ func (g *mqlGcpProjectBigtableServiceInstance) backups() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isGRPCSkippable(err) {
+				if isSkippable(err) {
 					log.Warn().Err(err).Str("cluster", clusterID).Msg("could not list Bigtable backups")
 					break
 				}
@@ -644,6 +767,12 @@ func (g *mqlGcpProjectBigtableServiceInstance) backups() ([]any, error) {
 			}
 
 			mqlBackup, err := CreateResource(g.MqlRuntime, "gcp.project.bigtableService.backup", map[string]*llx.RawData{
+				// Cluster ids are unique only within an instance, so the key
+				// must name the instance -- matching table/appProfile/cluster.
+				// cacheInstanceName is assigned after CreateResource returns and
+				// so is not visible to id(); pass the key explicitly instead.
+				"__id": llx.StringData(fmt.Sprintf("gcp.project/%s/bigtableService/%s/cluster/%s/backup/%s",
+					projectId, instanceName, c.Name, backup.Name)),
 				"projectId":      llx.StringData(projectId),
 				"clusterName":    llx.StringData(c.Name),
 				"name":           llx.StringData(backup.Name),
@@ -741,7 +870,11 @@ func getBigtableBackupByName(runtime *plugin.Runtime, backupResourceName string)
 	}
 	projectId := parts[1]
 	instanceName := parts[3]
-	clusterFullName := fmt.Sprintf("projects/%s/instances/%s/clusters/%s", parts[1], parts[3], parts[5])
+	// backups() stores ClusterInfo.Name, which the Bigtable SDK sets to the
+	// short cluster id (the last path segment), not the full resource path.
+	// Comparing against a full path here never matched, so sourceBackup was
+	// always null and backup lineage was invisible.
+	clusterShort := parts[5]
 	backupShort := parts[7]
 
 	obj, err := CreateResource(runtime, "gcp.project.bigtableService.instance", map[string]*llx.RawData{
@@ -764,7 +897,7 @@ func getBigtableBackupByName(runtime *plugin.Runtime, backupResourceName string)
 		if backup.ClusterName.Error != nil {
 			return nil, backup.ClusterName.Error
 		}
-		if backup.Name.Data == backupShort && backup.ClusterName.Data == clusterFullName {
+		if backup.Name.Data == backupShort && backup.ClusterName.Data == clusterShort {
 			return backup, nil
 		}
 	}

@@ -6,7 +6,7 @@ package resources
 import (
 	"fmt"
 
-	"go.mondoo.com/mql/v13/providers/proxmox/connection"
+	"go.mondoo.com/mql/providers/proxmox/connection"
 )
 
 // id() methods + Internal-struct declarations for resources whose

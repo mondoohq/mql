@@ -19,11 +19,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	advisor "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/advisor/armadvisor"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func initAzureSubscriptionAdvisorService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -38,6 +38,17 @@ func initAzureSubscriptionAdvisorService(runtime *plugin.Runtime, args map[strin
 	args["subscriptionId"] = llx.StringData(conn.SubId())
 
 	return args, nil, nil
+}
+
+// id keys the advisor service on its subscription, the way every other
+// per-subscription service resource does.
+//
+// Without it the cache key is "azure.subscription.advisorService\x00" for every
+// subscription, so a query that walks more than one -- azure.subscriptions
+// { advisor { ... } } -- gets the first subscription's advisor object back for
+// all of them, carrying the first subscription's recommendations and scores.
+func (a *mqlAzureSubscriptionAdvisorService) id() (string, error) {
+	return "azure.subscription.advisor/" + a.SubscriptionId.Data, nil
 }
 
 func (a *mqlAzureSubscriptionAdvisorService) recommendations() ([]any, error) {
@@ -59,25 +70,35 @@ func (a *mqlAzureSubscriptionAdvisorService) recommendations() ([]any, error) {
 			return nil, err
 		}
 		for _, r := range page.Value {
+			if r == nil {
+				continue
+			}
 			props, err := convert.JsonToDict(r.Properties)
 			if err != nil {
 				return nil, err
+			}
+			// Properties is a nullable pointer dereferenced throughout the
+			// arg map; normalize to an empty struct to avoid a panic on a
+			// null-properties recommendation (mirrors newMqlRoleAssignment).
+			recProps := r.Properties
+			if recProps == nil {
+				recProps = &advisor.RecommendationProperties{}
 			}
 			args := map[string]*llx.RawData{
 				"id":                   llx.StringDataPtr(r.ID),
 				"name":                 llx.StringDataPtr(r.Name),
 				"type":                 llx.StringDataPtr(r.Type),
-				"category":             llx.StringDataPtr((*string)(r.Properties.Category)),
-				"impact":               llx.StringDataPtr((*string)(r.Properties.Impact)),
-				"risk":                 llx.StringDataPtr((*string)(r.Properties.Risk)),
+				"category":             llx.StringDataPtr((*string)(recProps.Category)),
+				"impact":               llx.StringDataPtr((*string)(recProps.Impact)),
+				"risk":                 llx.StringDataPtr((*string)(recProps.Risk)),
 				"properties":           llx.DictData(props),
-				"impactedResourceType": llx.StringDataPtr(r.Properties.ImpactedField),
-				"impactedResource":     llx.StringDataPtr(r.Properties.ImpactedValue),
+				"impactedResourceType": llx.StringDataPtr(recProps.ImpactedField),
+				"impactedResource":     llx.StringDataPtr(recProps.ImpactedValue),
 			}
-			if r.Properties.ShortDescription != nil {
+			if recProps.ShortDescription != nil {
 				// the 'Description' field in the API response is always empty, use the short description instead
-				args["description"] = llx.StringDataPtr(r.Properties.ShortDescription.Problem)
-				args["remediation"] = llx.StringDataPtr(r.Properties.ShortDescription.Solution)
+				args["description"] = llx.StringDataPtr(recProps.ShortDescription.Problem)
+				args["remediation"] = llx.StringDataPtr(recProps.ShortDescription.Solution)
 			}
 			mqlRecomm, err := CreateResource(a.MqlRuntime, "azure.subscription.advisorService.recommendation", args)
 			if err != nil {
@@ -201,7 +222,10 @@ func (a *mqlAzureSubscriptionAdvisorService) averageScore() (float64, error) {
 	}
 	values := make([]*float64, 0, len(scores.Data))
 	for _, s := range scores.Data {
-		score := s.(*mqlAzureSubscriptionAdvisorServiceScore)
+		score, ok := s.(*mqlAzureSubscriptionAdvisorServiceScore)
+		if !ok {
+			continue
+		}
 		if score.CurrentScore.Data == nil {
 			continue
 		}
@@ -231,8 +255,12 @@ func getAdvisorScoresByCategory(ctx context.Context, subscriptionId, host, token
 	urlPath := "/subscriptions/{subscriptionId}/providers/Microsoft.Advisor/advisorScore"
 	urlPath = strings.ReplaceAll(urlPath, "{subscriptionId}", url.PathEscape(subscriptionId))
 	urlPath = runtime.JoinPaths(host, urlPath)
-	client := http.Client{}
-	req, err := http.NewRequest("GET", urlPath, nil)
+	// The Advisor score endpoint is genuinely single-page: AdvisorScoreResponse
+	// carries only `value`, with no nextLink, and armadvisor ships no client for
+	// it -- which is why this is hand-rolled at all. It still needs the shared
+	// client's timeout, since nothing else bounds a request made outside the
+	// azcore pipeline.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlPath, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -242,13 +270,13 @@ func getAdvisorScoresByCategory(ctx context.Context, subscriptionId, host, token
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 
-	resp, err := client.Do(req)
+	resp, err := armHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return nil, errors.New("failed to fetch advisor scores " + urlPath + ": " + resp.Status)
 	}
 

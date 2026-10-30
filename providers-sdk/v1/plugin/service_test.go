@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/utils/syncx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/utils/syncx"
 	"go.uber.org/goleak"
 )
 
@@ -34,6 +36,12 @@ func (c *TestConnection) ParentID() uint32 {
 }
 
 func TestMain(m *testing.M) {
+	// A re-execution of this binary as a go-plugin plugin serves and exits
+	// instead of running tests; see transport_test.go.
+	if servePluginForTransportTests() {
+		return
+	}
+
 	// Prevent "goleak: Errors on successful test run: found unexpected goroutines"
 	opts := []goleak.Option{
 		goleak.IgnoreTopFunction("internal/poll.runtime_pollWait"),
@@ -122,7 +130,7 @@ func TestDeprecatedAddRuntime(t *testing.T) {
 	wg.Add(4)
 	addRuntimes := func() {
 		defer wg.Done()
-		for i := 0; i < 50; i++ {
+		for range 50 {
 			_, err := s.AddRuntime(&inventory.Config{}, func(connId uint32) (*Runtime, error) {
 				return &Runtime{}, nil
 			})
@@ -131,7 +139,7 @@ func TestDeprecatedAddRuntime(t *testing.T) {
 	}
 
 	// Add runtimes concurrently
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		go addRuntimes()
 	}
 
@@ -160,29 +168,29 @@ func TestDeprecatedAddRuntime_DisableDelayedDiscovery(t *testing.T) {
 func TestAddRuntime_ParentNotExist(t *testing.T) {
 	s := NewService()
 	parentId := uint32(10)
-	_, err := s.AddRuntime(&inventory.Config{Id: 1}, func(connId uint32) (*Runtime, error) {
+	runtime, err := s.AddRuntime(&inventory.Config{Id: 1}, func(connId uint32) (*Runtime, error) {
 		c := newTestConnection(connId)
 		c.parentId = parentId
 		return &Runtime{
 			Connection: c,
 		}, nil
 	})
-	require.Error(t, err)
-	assert.Equal(t, "parent connection 10 not found", err.Error())
+	require.NoError(t, err, "missing parent should not cause an error")
+	require.NotNil(t, runtime)
 }
 
 func TestDeprecatedAddRuntime_ParentNotExist(t *testing.T) {
 	s := NewService()
 	parentId := uint32(10)
-	_, err := s.AddRuntime(&inventory.Config{}, func(connId uint32) (*Runtime, error) {
+	runtime, err := s.AddRuntime(&inventory.Config{}, func(connId uint32) (*Runtime, error) {
 		c := newTestConnection(connId)
 		c.parentId = parentId
 		return &Runtime{
 			Connection: c,
 		}, nil
 	})
-	require.Error(t, err)
-	assert.Equal(t, "parent connection 10 not found", err.Error())
+	require.NoError(t, err, "missing parent should not cause an error")
+	require.NotNil(t, runtime)
 }
 
 func TestAddRuntime_Parent(t *testing.T) {
@@ -260,7 +268,7 @@ func TestGetRuntime(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add some more runtimes
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		_, err := s.AddRuntime(&inventory.Config{}, func(connId uint32) (*Runtime, error) {
 			return &Runtime{
 				Connection: newTestConnection(connId),
@@ -331,7 +339,7 @@ func TestShutdown(t *testing.T) {
 	s := NewService()
 
 	// Add some more runtimes
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		_, err := s.AddRuntime(&inventory.Config{}, func(connId uint32) (*Runtime, error) {
 			return &Runtime{
 				Connection: newTestConnection(connId),
@@ -351,7 +359,7 @@ func TestShutdown_Closer(t *testing.T) {
 
 	// Add some more runtimes
 	runtimes := []*Runtime{}
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		runtime, err := s.AddRuntime(&inventory.Config{}, func(connId uint32) (*Runtime, error) {
 			return &Runtime{
 				Connection: newTestConnectionWithClose(connId),
@@ -369,5 +377,174 @@ func TestShutdown_Closer(t *testing.T) {
 	// Verify that all runtimes are closed
 	for _, runtime := range runtimes {
 		assert.True(t, runtime.Connection.(*TestConnectionWithClose).closed)
+	}
+}
+
+// The provider used to exit on the first missed heartbeat window. On a loaded
+// host that window is routinely missed by a provider that is perfectly healthy,
+// and the exit throws away the whole scan's in-flight work.
+func TestWatchdogShouldExit(t *testing.T) {
+	window := 5 * time.Second
+
+	t.Run("idle", func(t *testing.T) {
+		assert.False(t, watchdogShouldExit(window+time.Second, window, 0), "one missed window is not death")
+		assert.False(t, watchdogShouldExit(heartbeatMissesBeforeExit*window, window, 0))
+		assert.True(t, watchdogShouldExit(heartbeatMissesBeforeExit*window+time.Second, window, 0))
+	})
+
+	t.Run("serving requests", func(t *testing.T) {
+		// a request in flight proves the parent was there to send it
+		assert.False(t, watchdogShouldExit(heartbeatMissesBeforeExit*window+time.Second, window, 1))
+		assert.False(t, watchdogShouldExit(heartbeatBusyMissesBeforeExit*window, window, 3))
+		assert.True(t, watchdogShouldExit(heartbeatBusyMissesBeforeExit*window+time.Second, window, 3))
+	})
+}
+
+func TestHeartbeat(t *testing.T) {
+	s := NewService()
+	t.Cleanup(s.stopWatchdog)
+
+	_, err := s.Heartbeat(&HeartbeatReq{})
+	require.Error(t, err, "an interval of 0 has no tolerance to apply")
+
+	before := int64(s.sinceClockBase(time.Now()))
+	_, err = s.Heartbeat(&HeartbeatReq{Interval: uint64(time.Hour)})
+	require.NoError(t, err)
+	assert.Equal(t, int64(time.Hour), s.heartbeatWindow.Load())
+	assert.GreaterOrEqual(t, s.lastHeartbeat.Load(), before)
+}
+
+func TestTrackRequest(t *testing.T) {
+	s := NewService()
+	done := s.TrackRequest()
+	assert.Equal(t, int64(1), s.inflightRequests.Load())
+	done()
+	assert.Equal(t, int64(0), s.inflightRequests.Load())
+}
+
+// captureWatchdogExit replaces the process exit with a recorder. The fake exit
+// parks its goroutine like a real exit would, so the watchdog cannot loop and
+// report twice.
+func captureWatchdogExit(t *testing.T) <-chan int {
+	t.Helper()
+	exited := make(chan int, 1)
+	parked := make(chan struct{})
+	original := watchdogExit
+	watchdogExit = func(code int) {
+		select {
+		case exited <- code:
+		default:
+		}
+		<-parked
+	}
+	t.Cleanup(func() {
+		watchdogExit = original
+		close(parked)
+	})
+	return exited
+}
+
+func TestHeartbeatWatchdog_ExitsWhenParentIsGone(t *testing.T) {
+	exited := captureWatchdogExit(t)
+
+	s := NewService()
+	t.Cleanup(s.stopWatchdog)
+	// poll interval is floored, so the effective tolerance here is
+	// heartbeatMissesBeforeExit * 100ms, noticed on the next poll
+	_, err := s.Heartbeat(&HeartbeatReq{Interval: uint64(100 * time.Millisecond)})
+	require.NoError(t, err)
+
+	select {
+	case code := <-exited:
+		assert.Equal(t, 4, code)
+	case <-time.After(5 * time.Second):
+		t.Fatal("watchdog did not reap an abandoned provider")
+	}
+}
+
+func TestHeartbeatWatchdog_HoldsOutWhileServingRequests(t *testing.T) {
+	exited := captureWatchdogExit(t)
+
+	s := NewService()
+	t.Cleanup(s.stopWatchdog)
+	done := s.TrackRequest()
+
+	// A 300ms window puts the idle tolerance at 900ms and the busy tolerance at
+	// 1.8s, so surviving 1.3s of silence can only come from the in-flight request.
+	const window = 300 * time.Millisecond
+	_, err := s.Heartbeat(&HeartbeatReq{Interval: uint64(window)})
+	require.NoError(t, err)
+
+	select {
+	case <-exited:
+		t.Fatal("watchdog reaped a provider that was serving a request")
+	case <-time.After(heartbeatMissesBeforeExit*window + 400*time.Millisecond):
+	}
+
+	// once the request is done, the same silence is fatal
+	done()
+	select {
+	case code := <-exited:
+		assert.Equal(t, 4, code)
+	case <-time.After(5 * time.Second):
+		t.Fatal("watchdog did not reap an abandoned provider")
+	}
+}
+
+func TestHeartbeatWatchdog_SurvivesSuspend(t *testing.T) {
+	exited := captureWatchdogExit(t)
+
+	// the whole process tree freezes: when the watchdog next runs, an hour has
+	// passed for it just as much as for the heartbeat it last saw
+	var frozen, calls atomic.Int64
+	armed := make(chan struct{})
+	original := watchdogNow
+	watchdogNow = func() time.Time {
+		// NewService reads the clock, then Heartbeat, then the watchdog it
+		// starts: the third read is the watchdog's own first reading
+		if calls.Add(1) == 3 {
+			close(armed)
+		}
+		return time.Now().Add(time.Duration(frozen.Load()))
+	}
+	t.Cleanup(func() { watchdogNow = original })
+
+	s := NewService()
+	t.Cleanup(s.stopWatchdog)
+	// idle tolerance is heartbeatMissesBeforeExit * 100ms, polled every 250ms
+	_, err := s.Heartbeat(&HeartbeatReq{Interval: uint64(100 * time.Millisecond)})
+	require.NoError(t, err)
+	<-armed // the watchdog has taken its first reading, now freeze
+	frozen.Store(int64(time.Hour))
+
+	select {
+	case <-exited:
+		t.Fatal("watchdog reaped a provider for silence it slept through itself")
+	case <-time.After(minHeartbeatPollInterval + 150*time.Millisecond):
+	}
+
+	// after waking up, a parent that stays silent is still gone
+	select {
+	case code := <-exited:
+		assert.Equal(t, 4, code)
+	case <-time.After(5 * time.Second):
+		t.Fatal("watchdog did not reap an abandoned provider after a suspend")
+	}
+}
+
+func TestHeartbeatWatchdog_StopsOnShutdown(t *testing.T) {
+	exited := captureWatchdogExit(t)
+
+	s := NewService()
+	_, err := s.Heartbeat(&HeartbeatReq{Interval: uint64(10 * time.Millisecond)})
+	require.NoError(t, err)
+
+	_, err = s.Shutdown(&ShutdownReq{})
+	require.NoError(t, err)
+
+	select {
+	case <-exited:
+		t.Fatal("watchdog reported a crash during a graceful shutdown")
+	case <-time.After(minHeartbeatPollInterval * 3):
 	}
 }

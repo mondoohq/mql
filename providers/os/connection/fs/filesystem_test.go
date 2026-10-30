@@ -4,15 +4,21 @@
 package fs_test
 
 import (
+	"compress/gzip"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/fs"
-	"go.mondoo.com/mql/v13/providers/os/detector"
-	"go.mondoo.com/mql/v13/providers/os/fsutil"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/fs"
+	"go.mondoo.com/mql/providers/os/detector"
+	"go.mondoo.com/mql/providers/os/fsutil"
+	"go.mondoo.com/mql/providers/os/registry"
 )
 
 func TestOsDetection(t *testing.T) {
@@ -77,4 +83,51 @@ func TestRunCommandReturnsErr(t *testing.T) {
 	_, err = conn.RunCommand("aa-status")
 	require.Error(t, err)
 	assert.Equal(t, "provider does not implement RunCommand", err.Error())
+}
+
+// A Windows disk mounted on a POSIX scanner has the hives at
+// Windows/System32/config. The registry path constants must find them through
+// the connection, and the hive must then be readable.
+func TestMountedWindowsRegistryHive(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("loading a hive on windows needs the backup privilege")
+	}
+	mount := t.TempDir()
+	dir := filepath.Join(mount, "Windows", "System32", "config")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	in, err := os.Open(filepath.Join("..", "..", "registry", "testdata", "fixture.hiv.gz"))
+	require.NoError(t, err)
+	defer in.Close()
+	zr, err := gzip.NewReader(in)
+	require.NoError(t, err)
+	out, err := os.Create(filepath.Join(dir, "SOFTWARE"))
+	require.NoError(t, err)
+	_, err = io.Copy(out, zr)
+	require.NoError(t, err)
+	require.NoError(t, out.Close())
+
+	conn, err := fs.NewConnection(0, &inventory.Config{Path: mount}, &inventory.Asset{})
+	require.NoError(t, err)
+
+	fi, err := conn.FileInfo(registry.SoftwareRegPath)
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(mount, "Windows", "System32", "config", "SOFTWARE"), fi.Path)
+
+	_, err = conn.FileInfo(registry.SystemRegPath)
+	assert.Error(t, err, "no SYSTEM hive on this disk")
+
+	rh := registry.NewRegistryHandler()
+	t.Cleanup(func() { assert.NoError(t, rh.UnloadSubkeys()) })
+	require.NoError(t, rh.LoadSubkey(registry.Software, fi.Path))
+	items, err := rh.GetNativeRegistryKeyItems(registry.Software, "Values")
+	require.NoError(t, err)
+	found := false
+	for _, i := range items {
+		if i.Key == "Sz" {
+			found = true
+			assert.Equal(t, "hello world", i.Value.String)
+		}
+	}
+	assert.True(t, found, "value Sz not read")
 }

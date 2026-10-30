@@ -1,0 +1,11 @@
+[
+ {
+  "authentication": "mschap1,mschap2",
+  "default-profile": "default-encryption",
+  "enabled": "false",
+  "keepalive-timeout": "30",
+  "max-mru": "1450",
+  "max-mtu": "1450",
+  "mrru": "disabled"
+ }
+]

@@ -119,11 +119,11 @@ func isSectionHeader(trimmed string) bool {
 // cipher-mode values can themselves contain colons (e.g.
 // `cbc-essiv:sha256`). Splitting on the last colon would corrupt those.
 func splitColon(line string) (string, string, bool) {
-	idx := strings.IndexByte(line, ':')
-	if idx < 0 {
+	before, after, ok := strings.Cut(line, ":")
+	if !ok {
 		return "", "", false
 	}
-	return strings.TrimSpace(line[:idx]), strings.TrimSpace(line[idx+1:]), true
+	return strings.TrimSpace(before), strings.TrimSpace(after), true
 }
 
 // decodeNoneSentinel translates cryptsetup's "(no ...)" sentinels into
@@ -346,9 +346,11 @@ func applyLuks2KeyslotField(k *luksKeyslotInfo, d *luksDump, key, value string) 
 	case "Area offset":
 		// "32768 [bytes]" — convert to 512-byte sectors to match LUKS1.
 		k.KeyMaterialOffset = firstInt(value) / 512
-	case "Cipher key":
-		// "Cipher key: 512 bits" — the underlying segment cipher's
-		// master-key size. LUKS2 has no global "MK bits" header; take
+	case "Key", "Cipher key":
+		// "Key: 512 bits" is the size of the volume key the slot wraps.
+		// cryptsetup 2.0.x (RHEL 7) prints only that line; later releases
+		// follow it with "Cipher key: 512 bits", the keyslot area cipher's
+		// key, which matches it. LUKS2 has no global "MK bits" header; take
 		// the first keyslot we see as authoritative since all slots in
 		// a single-segment volume wrap the same master key.
 		if d.MasterKeyBits == 0 {

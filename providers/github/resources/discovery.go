@@ -5,20 +5,21 @@ package resources
 
 import (
 	"context"
+	gopath "path"
 	"strings"
 	"time"
 
 	"github.com/gobwas/glob"
-	"github.com/google/go-github/v88/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/github/connection"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/github/connection"
+	"go.mondoo.com/mql/utils/stringx"
 )
 
 func Discover(runtime *plugin.Runtime, opts map[string]string) (*inventory.Inventory, error) {
@@ -40,6 +41,9 @@ func Discover(runtime *plugin.Runtime, opts map[string]string) (*inventory.Inven
 
 func handleTargets(targets []string) []string {
 	if stringx.Contains(targets, connection.DiscoveryAll) {
+		// CloudFormation, Dockerfile, Bicep, Helm, and Kustomize discovery
+		// each shallow-clone matched repos, so they stay opt-in via an
+		// explicit --discover <type> and are deliberately left out of `all`.
 		return []string{
 			connection.DiscoveryRepos,
 			connection.DiscoveryUsers,
@@ -84,12 +88,8 @@ func discover(runtime *plugin.Runtime, targets []string) ([]*inventory.Asset, er
 		assetList = append(assetList, repoAssets...)
 	}
 
-	userId := conf.Options["user"]
-	if userId == "" {
-		userId = conf.Options["owner"]
-	}
-	if userId != "" {
-		userAssets, err := user(runtime, userId, conn)
+	if userId := userDiscoveryTarget(conf); userId != "" {
+		userAssets, err := user(runtime, userId, conn, targets)
 		if err != nil {
 			return nil, err
 		}
@@ -97,6 +97,22 @@ func discover(runtime *plugin.Runtime, targets []string) ([]*inventory.Asset, er
 	}
 
 	return assetList, nil
+}
+
+// userDiscoveryTarget returns the account to discover as a user scope, or "" for
+// none. An explicit "user" option is always a user scope. "owner" is only a user
+// shortcut when it stands alone (`--owner someuser`): once a "repository" is set,
+// "owner" is merely that repo's namespace, not a user to scan — returning it
+// there would emit a phantom user asset for the repo's owner (empty-named when
+// the owner is an organization rather than a user).
+func userDiscoveryTarget(conf *inventory.Config) string {
+	if user := conf.Options["user"]; user != "" {
+		return user
+	}
+	if conf.Options["repository"] == "" {
+		return conf.Options["owner"]
+	}
+	return ""
 }
 
 func org(runtime *plugin.Runtime, orgName string, conn *connection.GithubConnection, targets []string) ([]*inventory.Asset, error) {
@@ -146,33 +162,30 @@ func org(runtime *plugin.Runtime, orgName string, conn *connection.GithubConnect
 				Connections: []*inventory.Config{cfg},
 			})
 
-			if stringx.ContainsAnyOf(targets, connection.DiscoveryAll, connection.DiscoveryTerraform) {
-				terraformAssets, err := discoverTerraform(conn, repo)
-				if err != nil {
-					return nil, err
-				}
-				assetList = append(assetList, terraformAssets...)
+			iacAssets, err := discoverRepoIac(conn, repo, targets)
+			if err != nil {
+				return nil, err
 			}
-			if stringx.ContainsAnyOf(targets, connection.DiscoveryAll, connection.DiscoveryK8sManifests) {
-				k8sAssets, err := discoverK8sManifests(conn, repo)
-				if err != nil {
-					return nil, err
-				}
-				assetList = append(assetList, k8sAssets...)
-			}
+			assetList = append(assetList, iacAssets...)
 		}
 	}
 	if stringx.ContainsAnyOf(targets, connection.DiscoveryUsers) {
 		for i := range org.GetMembers().Data {
 			user := org.GetMembers().Data[i].(*mqlGithubUser)
-			if user.Name.Data == "" {
+			if user.Login.Data == "" {
 				continue
+			}
+			// Most GitHub accounts leave the profile name blank; fall back to
+			// the login so those members are still discovered.
+			name := user.Name.Data
+			if name == "" {
+				name = user.Login.Data
 			}
 			cfg := conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(conn.ID()))
 			cfg.Options["user"] = user.Login.Data
 			assetList = append(assetList, &inventory.Asset{
 				PlatformIds: []string{connection.NewGithubUserIdentifier(user.Login.Data)},
-				Name:        user.Name.Data,
+				Name:        name,
 				Platform:    connection.NewGithubUserPlatform(user.Login.Data),
 				Labels:      map[string]string{},
 				Connections: []*inventory.Config{cfg},
@@ -198,30 +211,41 @@ func repo(runtime *plugin.Runtime, repoName string, owner string, conn *connecti
 	if err != nil {
 		return nil, err
 	}
-	cfg := conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(conn.ID()))
-	cfg.Options["repository"] = repo.Name.Data
-	assetList = append(assetList, &inventory.Asset{
-		PlatformIds: []string{connection.NewGitHubRepoIdentifier(owner, repo.Name.Data)},
-		Name:        owner + "/" + repo.Name.Data,
-		Platform:    connection.NewGitHubRepoPlatform(owner, repo.Name.Data),
-		Labels:      convert.DictToTypedMap[string](repo.CustomProperties.Data),
-		Connections: []*inventory.Config{cfg},
-	})
+	// The mondoo.yml at the repository root governs the repository asset and
+	// the terraform asset discovered from it (cnspec ADR-0006). It is read
+	// once, and only when one of them is discovered.
+	withRepoAsset := discoverRepoAsset(targets)
+	withTerraform := stringx.ContainsAnyOf(targets, connection.DiscoveryAll, connection.DiscoveryTerraform)
+	var contextConfig *inventory.ContextConfig
+	if withRepoAsset || withTerraform {
+		contextConfig = repoContextConfig(conn.Context(), conn.Client(), owner, repo)
+	}
 
-	if stringx.ContainsAnyOf(targets, connection.DiscoveryAll, connection.DiscoveryTerraform) {
-		terraformAssets, err := discoverTerraform(conn, repo)
-		if err != nil {
-			return nil, err
-		}
-		assetList = append(assetList, terraformAssets...)
+	if withRepoAsset {
+		cfg := conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(conn.ID()))
+		cfg.Options["repository"] = repo.Name.Data
+		assetList = append(assetList, &inventory.Asset{
+			PlatformIds:   []string{connection.NewGitHubRepoIdentifier(owner, repo.Name.Data)},
+			Name:          owner + "/" + repo.Name.Data,
+			Platform:      connection.NewGitHubRepoPlatform(owner, repo.Name.Data),
+			Labels:        convert.DictToTypedMap[string](repo.CustomProperties.Data),
+			Connections:   []*inventory.Config{cfg},
+			ContextConfig: contextConfig,
+		})
 	}
-	if stringx.ContainsAnyOf(targets, connection.DiscoveryAll, connection.DiscoveryK8sManifests) {
-		k8sAssets, err := discoverK8sManifests(conn, repo)
-		if err != nil {
-			return nil, err
-		}
-		assetList = append(assetList, k8sAssets...)
+
+	iacAssets, err := discoverRepoIac(conn, repo, targets)
+	if err != nil {
+		return nil, err
 	}
+	for _, a := range iacAssets {
+		// The terraform asset scans the whole checkout, so it sits at the
+		// config's own directory. Other IaC types are not covered yet.
+		if a.Connections[0].Type == "terraform-hcl-git" {
+			a.ContextConfig = withAssetPath(contextConfig, ".")
+		}
+	}
+	assetList = append(assetList, iacAssets...)
 
 	return assetList, nil
 }
@@ -235,24 +259,136 @@ func getMqlGithubRepo(runtime *plugin.Runtime, repoName string) (*mqlGithubRepos
 	return res.(*mqlGithubRepository), nil
 }
 
-func user(runtime *plugin.Runtime, userName string, conn *connection.GithubConnection) ([]*inventory.Asset, error) {
+func user(runtime *plugin.Runtime, userName string, conn *connection.GithubConnection, targets []string) ([]*inventory.Asset, error) {
 	conf := conn.Asset().Connections[0]
+	reposFilter := NewReposFilter(conf)
 	assetList := []*inventory.Asset{}
 
 	user, err := getMqlGithubUser(runtime, userName)
 	if err != nil {
 		return nil, err
 	}
-	cfg := conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(conn.ID()))
-	cfg.Options["user"] = user.Login.Data
-	assetList = append(assetList, &inventory.Asset{
-		PlatformIds: []string{connection.NewGithubUserIdentifier(user.Login.Data)},
-		Name:        user.Name.Data,
-		Platform:    connection.NewGithubUserPlatform(user.Login.Data),
-		Labels:      make(map[string]string),
-		Connections: []*inventory.Config{cfg},
-	})
+	if discoverUserAsset(targets) {
+		cfg := conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(conn.ID()))
+		cfg.Options["user"] = user.Login.Data
+		assetList = append(assetList, &inventory.Asset{
+			PlatformIds: []string{connection.NewGithubUserIdentifier(user.Login.Data)},
+			Name:        user.Name.Data,
+			Platform:    connection.NewGithubUserPlatform(user.Login.Data),
+			Labels:      make(map[string]string),
+			Connections: []*inventory.Config{cfg},
+		})
+	}
+
+	if discoverUserRepos(conf, targets) {
+		repos, err := userScopeRepos(runtime, conn, user)
+		if err != nil {
+			return nil, err
+		}
+		for _, repo := range repos {
+			if reposFilter.skipRepo(repo.Name.Data) {
+				continue
+			}
+			repoCfg := conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(conn.ID()))
+			repoCfg.Options["repository"] = repo.Name.Data
+			// The repository resource resolves its owner from the "owner" /
+			// "organization" options; a user-scoped config carries neither, so
+			// without this every repo asset discovered here fails to
+			// initialize github.repository.
+			repoCfg.Options["owner"] = user.Login.Data
+			assetList = append(assetList, &inventory.Asset{
+				PlatformIds: []string{connection.NewGitHubRepoIdentifier(user.Login.Data, repo.Name.Data)},
+				Name:        user.Login.Data + "/" + repo.Name.Data,
+				Platform:    connection.NewGitHubRepoPlatform(user.Login.Data, repo.Name.Data),
+				Labels:      convert.DictToTypedMap[string](repo.CustomProperties.Data),
+				Connections: []*inventory.Config{repoCfg},
+			})
+
+			iacAssets, err := discoverRepoIac(conn, repo, targets)
+			if err != nil {
+				return nil, err
+			}
+			assetList = append(assetList, iacAssets...)
+		}
+	}
 	return assetList, nil
+}
+
+// userScopeRepos returns the repositories a user-scoped scan fans out to:
+// everything the credential can see on that account. The user listing
+// (GET /users/{login}/repos) is the base — for PATs it includes the private
+// repositories the token can access, but for GitHub App installation tokens
+// it only ever returns public repositories. So for installation tokens the
+// installation's own grant (GET /installation/repositories — the private
+// repositories picked in GitHub's install UI) is merged in on top; other
+// tokens get a 403 on that endpoint and just use the user listing.
+func userScopeRepos(runtime *plugin.Runtime, conn *connection.GithubConnection, user *mqlGithubUser) ([]*mqlGithubRepository, error) {
+	login := user.Login.Data
+	listOpts := &github.ListOptions{PerPage: paginationPerPage}
+	var granted []*github.Repository
+	for {
+		repos, resp, err := conn.Client().Apps.ListRepos(conn.Context(), listOpts)
+		if err != nil {
+			// not an installation token — the user listing alone is complete
+			granted = nil
+			break
+		}
+		granted = append(granted, repos.Repositories...)
+		if resp.NextPage == 0 {
+			break
+		}
+		listOpts.Page = resp.NextPage
+	}
+
+	res := []*mqlGithubRepository{}
+	seen := map[int64]bool{}
+	for _, repo := range granted {
+		// an installation on this user account only grants repos the account
+		// owns; guard anyway so a shared credential never leaks another
+		// owner's repos into this user's scope
+		if repo.GetOwner().GetLogin() != login {
+			continue
+		}
+		r, err := newMqlGithubRepository(runtime, repo)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, r)
+		seen[repo.GetID()] = true
+	}
+	for _, r := range user.GetRepositories().Data {
+		repo := r.(*mqlGithubRepository)
+		if seen[repo.Id.Data] {
+			continue
+		}
+		res = append(res, repo)
+	}
+	return res, nil
+}
+
+// discoverUserRepos reports whether a user-scoped connection fans out to the
+// account's repositories, mirroring the org path (a personal-account GitHub
+// App install scans through the user scope). It must stay false when an
+// explicit repository is configured: discover() also reaches the user path
+// through the owner fallback of single-repo scans, which must not fan out to
+// every repository the owner has.
+// discoverRepoAsset reports whether the repository itself should be emitted as
+// an asset, mirroring the target check the organization asset already makes.
+func discoverRepoAsset(targets []string) bool {
+	return stringx.ContainsAnyOf(targets,
+		connection.DiscoveryRepos, connection.DiscoveryAll, connection.DiscoveryAuto)
+}
+
+// discoverUserAsset reports whether the account being scanned should be emitted
+// as an asset.
+func discoverUserAsset(targets []string) bool {
+	return stringx.ContainsAnyOf(targets,
+		connection.DiscoveryUsers, connection.DiscoveryAll, connection.DiscoveryAuto)
+}
+
+func discoverUserRepos(conf *inventory.Config, targets []string) bool {
+	return conf.Options["repository"] == "" &&
+		stringx.ContainsAnyOf(targets, connection.DiscoveryRepos, connection.DiscoveryAll, connection.DiscoveryAuto)
 }
 
 func getMqlGithubUser(runtime *plugin.Runtime, userName string) (*mqlGithubUser, error) {
@@ -320,18 +456,233 @@ func (f *ReposFilter) skipRepo(namespace string) bool {
 	return false
 }
 
-func discoverTerraform(conn *connection.GithubConnection, repo *mqlGithubRepository) ([]*inventory.Asset, error) {
-	// For git clone we need to set the user to oauth2 to be usable with the token.
-	conf := conn.Asset().Connections[0]
+// gitCredentials clones the parent GitHub connection credentials for use in a
+// git clone, defaulting the user to "oauth2" so the token works over HTTPS.
+func gitCredentials(conf *inventory.Config) []*vault.Credential {
 	creds := make([]*vault.Credential, len(conf.Credentials))
 	for i := range conf.Credentials {
-		cred := conf.Credentials[i]
-		cc := cred.CloneVT()
+		cc := conf.Credentials[i].CloneVT()
 		if cc.User == "" {
 			cc.User = "oauth2"
 		}
 		creds[i] = cc
 	}
+	return creds
+}
+
+// isHiddenPath reports whether any path segment is hidden (starts with a dot),
+// e.g. files under .github/ or a top-level .drone.yml.
+func isHiddenPath(p string) bool {
+	for fragment := range strings.SplitSeq(p, "/") {
+		if strings.HasPrefix(fragment, ".") {
+			return true
+		}
+	}
+	return false
+}
+
+// searchCode runs a GitHub code search and returns every matching result,
+// following pagination. The code search API returns at most 100 items per page
+// (30 by default), so a repo with many matching files would otherwise be
+// silently truncated to the first page.
+func searchCode(ctx context.Context, client *github.Client, query string) ([]*github.CodeResult, error) {
+	opts := &github.SearchOptions{PerPage: 100}
+	var results []*github.CodeResult
+	for {
+		res, resp, err := client.Search.Code(ctx, query, opts)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, res.CodeResults...)
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return results, nil
+}
+
+// discoverRepoIac runs every IaC discovery target for a single repository.
+//
+// Terraform (a language check) and CloudFormation (a content search for the
+// AWSTemplateFormatVersion marker) each need their own API call. The remaining
+// detectors — k8s manifests, Dockerfiles, Bicep, Helm, and Kustomize — are all
+// filename/extension based, so they share a single recursive git-tree walk
+// rather than spending one GitHub Code Search call per type. The Code Search
+// API is limited to 30 requests/minute, so the previous per-type approach made
+// `--discover all` start throttling at only a handful of repos per org.
+func discoverRepoIac(conn *connection.GithubConnection, repo *mqlGithubRepository, targets []string) ([]*inventory.Asset, error) {
+	var assetList []*inventory.Asset
+
+	if stringx.ContainsAnyOf(targets, connection.DiscoveryAll, connection.DiscoveryTerraform) {
+		terraformAssets, err := discoverTerraform(conn, repo)
+		if err != nil {
+			return nil, err
+		}
+		assetList = append(assetList, terraformAssets...)
+	}
+	if stringx.Contains(targets, connection.DiscoveryCloudformation) {
+		cfAssets, err := discoverCloudformation(conn, repo)
+		if err != nil {
+			return nil, err
+		}
+		assetList = append(assetList, cfAssets...)
+	}
+
+	if !stringx.ContainsAnyOf(targets, connection.DiscoveryAll, connection.DiscoveryK8sManifests,
+		connection.DiscoveryDockerfiles, connection.DiscoveryBicep, connection.DiscoveryHelm,
+		connection.DiscoveryKustomize) {
+		return assetList, nil
+	}
+
+	iac, err := repoIacFromTree(conn.Context(), conn.Client(), repo)
+	if err != nil {
+		// Tree discovery is best-effort; a missing/empty repo or permission
+		// issue should not fail discovery of the rest of the org.
+		log.Error().Err(err).Str("project", repo.FullName.Data).Msg("failed to walk repository tree for IaC discovery")
+		return assetList, nil
+	}
+
+	creds := gitCredentials(conn.Asset().Connections[0])
+	if iac.hasYaml && stringx.ContainsAnyOf(targets, connection.DiscoveryAll, connection.DiscoveryK8sManifests) {
+		k8sAsset := gitAsset("k8s", repo, "", creds)
+		k8sAsset.Connections[0].Discover = &inventory.Discovery{Targets: []string{"auto"}}
+		assetList = append(assetList, k8sAsset)
+	}
+	if stringx.Contains(targets, connection.DiscoveryDockerfiles) {
+		for _, path := range iac.dockerfiles {
+			assetList = append(assetList, gitAsset("docker-file", repo, path, creds))
+		}
+	}
+	if iac.hasBicep && stringx.Contains(targets, connection.DiscoveryBicep) {
+		assetList = append(assetList, gitAsset("bicep", repo, "", creds))
+	}
+	if stringx.Contains(targets, connection.DiscoveryHelm) {
+		for _, dir := range iac.helmChartDirs {
+			assetList = append(assetList, gitAsset("helm", repo, dir, creds))
+		}
+	}
+	if stringx.Contains(targets, connection.DiscoveryKustomize) {
+		for _, dir := range iac.kustomizeDirs {
+			assetList = append(assetList, gitAsset("kustomize", repo, dir, creds))
+		}
+	}
+	return assetList, nil
+}
+
+// repoIac holds the IaC entry points found by a single recursive git-tree walk.
+// CloudFormation is intentionally absent: it requires file-content inspection
+// (the AWSTemplateFormatVersion marker), not a path match.
+type repoIac struct {
+	hasYaml       bool // k8s manifests
+	hasBicep      bool
+	dockerfiles   []string
+	helmChartDirs []string
+	kustomizeDirs []string
+}
+
+// repoIacFromTree fetches the repository's default-branch tree once (recursively)
+// and classifies its files into the IaC entry points each detector needs. The
+// git-tree endpoint is on the generous core rate limit rather than the Code
+// Search limit, so this is one cheap call per repo instead of one Code Search
+// call per IaC type. The switch ordering mirrors the GitLab provider so the two
+// behave identically — notably, Chart.yaml and kustomization.yaml match their
+// own cases and so do not also count as k8s manifests.
+func repoIacFromTree(ctx context.Context, client *github.Client, repo *mqlGithubRepository) (*repoIac, error) {
+	out := &repoIac{}
+
+	ref := repo.DefaultBranchName.Data
+	if ref == "" {
+		// Empty repositories have no default branch and therefore no tree.
+		return out, nil
+	}
+
+	owner, err := repoOwner(repo)
+	if err != nil {
+		return nil, err
+	}
+	if owner.Login.Error != nil {
+		return nil, owner.Login.Error
+	}
+
+	tree, _, err := client.Git.GetTree(ctx, owner.Login.Data, repo.Name.Data, ref, true)
+	if err != nil {
+		return nil, err
+	}
+	if tree.GetTruncated() {
+		// The recursive tree endpoint truncates rather than paginating, so for
+		// very large repositories some files may be missing from this walk.
+		log.Warn().Str("project", repo.FullName.Data).Msg("github repository tree is truncated; some IaC files may not be discovered")
+	}
+
+	return classifyIacTree(tree.Entries), nil
+}
+
+// classifyIacTree sorts the blobs of a repository tree into the IaC entry
+// points each detector needs. The switch ordering mirrors the GitLab provider
+// so the two behave identically — notably, Chart.yaml and kustomization.yaml
+// match their own cases and so do not also count as k8s manifests.
+func classifyIacTree(entries []*github.TreeEntry) *repoIac {
+	out := &repoIac{}
+	helmSeen := map[string]bool{}
+	kustomizeSeen := map[string]bool{}
+	for _, entry := range entries {
+		if entry.GetType() != "blob" {
+			continue
+		}
+		path := entry.GetPath()
+		if isHiddenPath(path) {
+			continue
+		}
+
+		base := gopath.Base(path)
+		switch {
+		case strings.HasSuffix(path, ".bicep"):
+			out.hasBicep = true
+		case base == "Chart.yaml":
+			dir := iacDir(path)
+			if !helmSeen[dir] {
+				helmSeen[dir] = true
+				out.helmChartDirs = append(out.helmChartDirs, dir)
+			}
+		case isKustomization(base):
+			dir := iacDir(path)
+			if !kustomizeSeen[dir] {
+				kustomizeSeen[dir] = true
+				out.kustomizeDirs = append(out.kustomizeDirs, dir)
+			}
+		case isDockerfile(base):
+			out.dockerfiles = append(out.dockerfiles, path)
+		case (strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml")) &&
+			!strings.HasSuffix(path, "mql.yaml") && !strings.HasSuffix(path, "mql.yml"):
+			out.hasYaml = true
+		}
+	}
+	return out
+}
+
+// gitAsset builds a child asset that clones the repository and scans it with the
+// given connection type. path is the repo-relative file or directory to scan,
+// or "" when the connection scans the whole checkout.
+func gitAsset(connType string, repo *mqlGithubRepository, path string, creds []*vault.Credential) *inventory.Asset {
+	opts := map[string]string{
+		"ssh-url":  repo.SshUrl.Data,
+		"http-url": repo.CloneUrl.Data,
+	}
+	if path != "" {
+		opts["path"] = path
+	}
+	return &inventory.Asset{
+		Connections: []*inventory.Config{{
+			Type:        connType,
+			Options:     opts,
+			Credentials: creds,
+		}},
+	}
+}
+
+func discoverTerraform(conn *connection.GithubConnection, repo *mqlGithubRepository) ([]*inventory.Asset, error) {
+	creds := gitCredentials(conn.Asset().Connections[0])
 
 	var res []*inventory.Asset
 	hasTf, err := hasTerraformHcl(conn.Context(), conn.Client(), repo)
@@ -354,7 +705,15 @@ func discoverTerraform(conn *connection.GithubConnection, repo *mqlGithubReposit
 
 // hasTerraformHcl will check if the repository contains terraform files
 func hasTerraformHcl(ctx context.Context, client *github.Client, repo *mqlGithubRepository) (bool, error) {
-	languages, _, err := client.Repositories.ListLanguages(ctx, repo.Owner.Data.Login.Data, repo.Name.Data)
+	owner, err := repoOwner(repo)
+	if err != nil {
+		return false, err
+	}
+	if owner.Login.Error != nil {
+		return false, owner.Login.Error
+	}
+
+	languages, _, err := client.Repositories.ListLanguages(ctx, owner.Login.Data, repo.Name.Data)
 	if err != nil {
 		return false, err
 	}
@@ -364,70 +723,95 @@ func hasTerraformHcl(ctx context.Context, client *github.Client, repo *mqlGithub
 	return false, nil
 }
 
-func discoverK8sManifests(conn *connection.GithubConnection, repo *mqlGithubRepository) ([]*inventory.Asset, error) {
-	// For git clone we need to set the user to oauth2 to be usable with the token.
-	conf := conn.Asset().Connections[0]
-	creds := make([]*vault.Credential, len(conf.Credentials))
-	for i := range conf.Credentials {
-		cred := conf.Credentials[i]
-		cc := cred.CloneVT()
-		if cc.User == "" {
-			cc.User = "oauth2"
-		}
-		creds[i] = cc
+// discoverCloudformation emits one asset per CloudFormation template found in
+// the repository. The CloudFormation connection scans a single template file
+// (not a directory), so each asset carries its own repo-relative path and
+// performs its own shallow clone of the repo on connect. For a repo with many
+// templates this means several clones of the same repo — an accepted trade-off
+// that keeps the connection's single-template model and avoids a shared clone
+// cache.
+func discoverCloudformation(conn *connection.GithubConnection, repo *mqlGithubRepository) ([]*inventory.Asset, error) {
+	creds := gitCredentials(conn.Asset().Connections[0])
+
+	paths, err := cloudformationTemplatePaths(conn.Context(), conn.Client(), repo)
+	if err != nil {
+		log.Error().Err(err).Str("project", repo.FullName.Data).Msg("failed to discover cloudformation repo")
+		return nil, nil
 	}
 
 	var res []*inventory.Asset
-	hasTf, err := hasYaml(conn.Context(), conn.Client(), repo)
-	if err != nil {
-		log.Error().Err(err).Str("project", repo.FullName.Data).Msg("failed to discover k8s manifests repo")
-	} else if hasTf {
+	for _, path := range paths {
 		res = append(res, &inventory.Asset{
 			Connections: []*inventory.Config{{
-				Type: "k8s",
+				Type: "cloudformation",
 				Options: map[string]string{
 					"ssh-url":  repo.SshUrl.Data,
 					"http-url": repo.CloneUrl.Data,
+					"path":     path,
 				},
 				Credentials: creds,
-				Discover:    &inventory.Discovery{Targets: []string{"auto"}},
 			}},
 		})
 	}
 	return res, nil
 }
 
-// hasYaml will check if the repository contains YAML files
-func hasYaml(ctx context.Context, client *github.Client, repo *mqlGithubRepository) (bool, error) {
-	query := "repo:" + repo.FullName.Data + " extension:yaml OR extension:yml"
-	res, _, err := client.Search.Code(ctx, query, &github.SearchOptions{})
+// cloudformationTemplatePaths searches the repository for CloudFormation/SAM
+// templates. Because CloudFormation templates share the .yaml/.json extensions
+// with many other config files, we match on the template marker
+// `AWSTemplateFormatVersion` rather than the extension alone.
+func cloudformationTemplatePaths(ctx context.Context, client *github.Client, repo *mqlGithubRepository) ([]string, error) {
+	query := "repo:" + repo.FullName.Data + " AWSTemplateFormatVersion"
+	results, err := searchCode(ctx, client, query)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
-	// Ignore YAML files that are hidden or are in a hidden folder
-	nonHiddenYaml := 0
-	for _, code := range res.CodeResults {
+	var paths []string
+	seen := map[string]bool{}
+	for _, code := range results {
 		path := code.GetPath()
-
-		// Skip MQL files
-		if strings.HasSuffix(path, "mql.yaml") || strings.HasSuffix(path, "mql.yml") {
+		if isHiddenPath(path) || seen[path] {
 			continue
 		}
-
-		fragments := strings.Split(code.GetPath(), "/")
-		// skip hidden files
-		isHidden := false
-		for _, fragment := range fragments {
-			if strings.HasPrefix(fragment, ".") {
-				isHidden = true
-				break
-			}
-		}
-
-		if !isHidden {
-			nonHiddenYaml++
+		switch strings.ToLower(gopath.Ext(path)) {
+		case ".yaml", ".yml", ".json", ".template":
+			seen[path] = true
+			paths = append(paths, path)
 		}
 	}
-	return nonHiddenYaml > 0, nil
+	return paths, nil
+}
+
+// isDockerfile reports whether a base file name follows a Dockerfile naming
+// convention: `Dockerfile`, `Dockerfile.<suffix>` (e.g. Dockerfile.prod), or
+// `<prefix>.Dockerfile`/`<prefix>.dockerfile` (e.g. app.Dockerfile). It rejects
+// unrelated names that merely begin with "Dockerfile", like `DockerfileLint.md`.
+func isDockerfile(base string) bool {
+	return base == "Dockerfile" ||
+		strings.HasPrefix(base, "Dockerfile.") ||
+		strings.HasSuffix(base, ".Dockerfile") ||
+		strings.HasSuffix(base, ".dockerfile")
+}
+
+// iacDir returns the repo-relative directory containing the given file, with a
+// top-level file (".") normalized to "" so it joins onto the clone root
+// cleanly. Repository paths are always slash-separated, so this uses path
+// rather than path/filepath, which on Windows would treat the whole path as a
+// single segment.
+func iacDir(filePath string) string {
+	if dir := gopath.Dir(filePath); dir != "." {
+		return dir
+	}
+	return ""
+}
+
+// isKustomization reports whether a base file name is one of the recognized
+// Kustomize entry-point file names.
+func isKustomization(base string) bool {
+	switch base {
+	case "kustomization.yaml", "kustomization.yml", "Kustomization":
+		return true
+	}
+	return false
 }

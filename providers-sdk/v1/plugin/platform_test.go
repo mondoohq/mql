@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	inventory "go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+	inventory "go.mondoo.com/mql/providers-sdk/v1/inventory"
 )
 
 func TestPlatformInfoApply(t *testing.T) {

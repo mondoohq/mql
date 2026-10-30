@@ -1,35 +1,27 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/openstack"
-option go_package = "go.mondoo.com/mql/v13/providers/openstack/resources"
+option go_package = "go.mondoo.com/mql/providers/openstack/resources"
+option root = "openstack"
 
 // OpenStack connection
 //
-// Use the OpenStack provider to query identity, compute, network, storage, and
-// other service resources within a scoped project. The root resource exposes
-// Keystone principals (`projects`, `users`, `roles`, `domains`, `groups`),
-// Keystone credentials and the service catalog (`credentials`, `trusts`,
-// `identityServices`, `identityEndpoints`, `regions`),
-// Nova compute assets (`servers`, `flavors`, `keypairs`, `serverGroups`,
-// `hypervisors`, `computeServices`, `aggregates`, `computeLimits`), Placement
-// resource inventory (`resourceProviders`), Neutron
-// networking (`networks`, `subnets`, `routers`, `ports`, `floatingIps`,
-// `securityGroups`, `subnetPools`, `qosPolicies`, `trunks`), FWaaS v2
-// (`firewallGroups`, `firewallPolicies`, `firewallRules`), VPNaaS v2
-// (`vpnServices`, `vpnIkePolicies`, `vpnIpsecPolicies`, `vpnEndpointGroups`,
-// `vpnSiteConnections`), Cinder block storage
-// (`volumes`, `snapshots`, `backups`, `volumeTypes`, `blockStorageQuotaSet`),
-// Glance images (`images`), Barbican key management (`secrets`,
-// `secretContainers`, `secretOrders`), Octavia load balancing
-// (`loadBalancers`, `listeners`, `pools`, `healthMonitors`, `l7Policies`),
-// Swift object storage (`objectStorageAccount`, `objectStorageContainers`),
-// Designate DNS (`dnsZones`), Manila shared file systems (`shares`,
-// `securityServices`, `shareNetworks`), Magnum container infrastructure
-// (`clusters`, `clusterTemplates`), Trove databases (`databaseInstances`),
-// Ironic bare metal (`baremetalNodes`), and Heat orchestration (`stacks`).
-// `authUrl`, `projectId`, and `region` identify the connection scope.
-openstack {
+// Root entry point to a single scoped OpenStack project, gathering its
+// identity, compute, networking, storage, load-balancing, key-management, DNS,
+// shared-file, container-infrastructure, database, bare-metal, and
+// orchestration resources under one connection. Keystone principals and the
+// service catalog support identity and access-control audits (who exists, what
+// roles they hold, and where credentials and trusts delegate authority); Nova,
+// Placement, and Cinder collections surface the compute, capacity, and
+// block-storage posture of the project; and the Neutron, FWaaS v2, VPNaaS v2,
+// Octavia, and Barbican collections cover the networking, perimeter
+// firewalling, site-to-site VPN, load-balancing, and secret-management surface
+// most relevant to security review. The `authUrl`, `projectId`, and `region`
+// fields identify the connection scope every other resource is read against.
+openstack @root {
   // Keystone auth URL the connection is bound to
   authUrl string
   // Scoped project ID
@@ -61,6 +53,12 @@ openstack {
   roleAssignments() []openstack.identity.roleAssignment
   // Keystone role inference rules mapping a prior role to an implied role (typically admin-only)
   roleInferences() []openstack.identity.roleInference
+  // Keystone federated identity providers
+  federationIdentityProviders() []openstack.identity.federation.identityProvider
+  // Keystone federation mappings
+  federationMappings() []openstack.identity.federation.mapping
+  // Keystone federation service providers
+  federationServiceProviders() []openstack.identity.federation.serviceProvider
 
   // Nova compute servers (instances) in the scoped project
   servers() []openstack.compute.server
@@ -99,6 +97,8 @@ openstack {
   floatingIps() []openstack.floatingIp
   // Neutron security groups (with embedded rules)
   securityGroups() []openstack.securityGroup
+  // Neutron address groups referenced by security group rules
+  addressGroups() []openstack.network.addressGroup
 
   // Cinder block-storage volumes in the scoped project
   volumes() []openstack.blockstorage.volume
@@ -110,6 +110,8 @@ openstack {
   volumeTypes() []openstack.blockstorage.volumeType
   // Cinder QoS specifications (IOPS/bandwidth throttling policies); admin-only
   blockStorageQosSpecs() []openstack.blockstorage.qosSpec
+  // Pending Cinder volume ownership transfers
+  volumeTransfers() []openstack.blockstorage.transfer
   // Glance images visible to the scoped project
   images() []openstack.image
   // Barbican secrets in the scoped project
@@ -128,12 +130,20 @@ openstack {
   healthMonitors() []openstack.octavia.healthMonitor
   // Octavia L7 policies in the scoped project
   l7Policies() []openstack.octavia.l7Policy
+  // Octavia amphorae backing the load balancers
+  amphorae() []openstack.octavia.amphora
   // Neutron subnet pools (admin-allocated CIDR ranges) visible to the scoped project
   subnetPools() []openstack.subnetPool
+  // Neutron address scopes grouping subnet pools into a single routable address namespace
+  addressScopes() []openstack.network.addressScope
   // Neutron QoS policies in the scoped project
   qosPolicies() []openstack.qosPolicy
-  // Neutron RBAC policies controlling which projects a network or QoS policy is shared with
+  // Neutron RBAC policies controlling which projects a network, QoS policy, security group, subnet pool, address scope, or address group is shared with
   rbacPolicies() []openstack.network.rbacPolicy
+  // Neutron agents running the network control plane
+  networkAgents() []openstack.network.agent
+  // Neutron tap mirrors copying port traffic off-cloud
+  tapMirrors() []openstack.network.tapMirror
   // Neutron trunks (parent/subport multi-VLAN containers) in the scoped project
   trunks() []openstack.trunk
   // Neutron FWaaS v2 firewall groups in the scoped project
@@ -160,6 +170,12 @@ openstack {
 
   // Designate DNS zones visible to the scoped project
   dnsZones() []openstack.dns.zone
+  // Designate zone ownership transfer offers
+  dnsTransferRequests() []openstack.dns.transferRequest
+  // Designate zone ownership transfers that were accepted
+  dnsTransferAccepts() []openstack.dns.transferAccept
+  // Designate TSIG keys authenticating zone traffic
+  dnsTsigKeys() []openstack.dns.tsigKey
 
   // Manila shared file systems (NFS/CIFS shares) in the scoped project
   shares() []openstack.sharedfilesystem.share
@@ -167,6 +183,8 @@ openstack {
   securityServices() []openstack.sharedfilesystem.securityService
   // Manila share networks tying shares to Neutron networks and subnets
   shareNetworks() []openstack.sharedfilesystem.shareNetwork
+  // Pending Manila share ownership transfers
+  shareTransfers() []openstack.sharedfilesystem.transfer
 
   // Magnum container-orchestration clusters (Kubernetes, Docker Swarm) in the scoped project
   clusters() []openstack.containerinfra.cluster
@@ -175,6 +193,8 @@ openstack {
 
   // Trove managed database instances in the scoped project
   databaseInstances() []openstack.db.instance
+  // Trove configuration groups applied to database instances
+  databaseConfigurations() []openstack.db.configuration
 
   // Ironic bare-metal nodes in the scoped project
   baremetalNodes() []openstack.baremetal.node
@@ -184,6 +204,15 @@ openstack {
 }
 
 // OpenStack Keystone project (formerly "tenant")
+//
+// Keystone project that owns and scopes cloud resources such as compute
+// instances, networks, and volumes. Projects are the primary unit of
+// ownership, quota, and access control in OpenStack, so auditing them
+// reveals which tenancies exist, whether they are still enabled, and how
+// they nest beneath domains and parent projects. Select a project by its
+// UUID, for example `openstack.project(id: "a1b2c3d4-...")`. The isDomain
+// field distinguishes an ordinary project from one that acts as a domain,
+// and parent is null for top-level projects.
 private openstack.project @defaults("id name enabled") {
   init(id? string)
   // Project ID (UUID)
@@ -205,6 +234,15 @@ private openstack.project @defaults("id name enabled") {
 }
 
 // OpenStack Keystone user
+//
+// Identity account in the Keystone identity service, selected by its
+// UUID with `openstack.user(id: "...")`. Exposes the account's enabled
+// state, password expiry, and per-user security options such as
+// multi-factor authentication enforcement and lockout exemption, along
+// with the domain it belongs to, its effective role assignments, group
+// memberships, and the application and EC2-compatible credentials it
+// owns. Audit these to find over-privileged, stale, or MFA-exempt
+// accounts.
 private openstack.user @defaults("id name enabled") {
   init(id? string)
   // User ID (UUID)
@@ -221,6 +259,18 @@ private openstack.user @defaults("id name enabled") {
   ignoreLockoutFailureAttempts bool
   // Whether multi-factor authentication is required for this user (Keystone option `multi_factor_auth_enabled`)
   multiFactorAuthEnabled bool
+  // Whether the user is exempt from password expiry (Keystone option `ignore_password_expiry`)
+  //
+  // True when the domain password-expiry policy does not apply to this account, so its
+  // password never ages out no matter what the domain security compliance settings require.
+  ignorePasswordExpiry bool
+  // Whether the user is exempt from the forced password change on first use (Keystone option `ignore_change_password_upon_first_use`)
+  //
+  // True when the account keeps whatever password an administrator set for it instead of
+  // being required to rotate it at first login.
+  ignoreChangePasswordUponFirstUse bool
+  // Whether the user is exempt from automatic disabling after a period of inactivity (Keystone option `ignore_user_inactivity`)
+  ignoreUserInactivity bool
   // Multi-factor authentication rule sets (Keystone option `multi_factor_auth_rules`)
   //
   // Each entry is a list of auth-method names that together satisfy MFA, for example `["password", "totp"]`. Empty when no rules are configured.
@@ -240,6 +290,15 @@ private openstack.user @defaults("id name enabled") {
 }
 
 // OpenStack Keystone role
+//
+// Named permission set that Keystone grants to users or groups on a
+// project or domain, driving what actions an identity may perform.
+// Auditing roles surfaces the privilege vocabulary of the cloud (for
+// example admin, member, and reader) so you can reason about who holds
+// elevated access. A role is selected by its UUID, for example
+// openstack.role(id: "9fe2ff9ee4384b1894a90878d3e92bab"). The domain
+// field is null for global roles and set for roles scoped to a single
+// domain.
 private openstack.role @defaults("id name") {
   init(id? string)
   // Role ID (UUID)
@@ -253,6 +312,13 @@ private openstack.role @defaults("id name") {
 }
 
 // OpenStack Keystone domain
+//
+// Top-level identity boundary in Keystone that contains projects, users, and
+// groups, providing administrative separation between tenants. Auditing a
+// domain reveals whether it is enabled and which groups it holds, which
+// together govern the scope of authentication and authorization within it. A
+// domain is selected by its `id`, for example `openstack.domain(id: "default")`
+// for the bootstrap domain.
 private openstack.domain @defaults("id name enabled") {
   init(id? string)
   // Domain ID (UUID, or "default" for the bootstrap domain)
@@ -268,6 +334,13 @@ private openstack.domain @defaults("id name enabled") {
 }
 
 // OpenStack Keystone group
+//
+// Keystone group that aggregates users so roles can be granted collectively
+// rather than to each user individually. Auditing groups reveals who inherits
+// privileged access through membership: the users field lists the members and
+// the roles field reports the effective roles the group confers across project,
+// domain, and system scopes. Select a group by its UUID, for example
+// openstack.group(id: "a1b2c3d4...").
 private openstack.group @defaults("id name") {
   init(id? string)
   // Group ID (UUID)
@@ -287,16 +360,27 @@ private openstack.group @defaults("id name") {
 // OpenStack Keystone role assignment
 //
 // Flattened record of a single role granted to a single principal (a user or a
-// group) at a single scope (a project or a domain). Enumerating these is how a
-// policy audits who holds privileged roles such as `admin` across the whole
-// cloud, instead of walking each user or group. System-scoped grants and the
-// inherited flag are not reported, because the underlying client does not
-// return them.
+// group) at a single scope (a project, a domain, or the whole deployment).
+// Enumerating these is how a policy audits who holds privileged roles such as
+// `admin` across the whole cloud, instead of walking each user or group. A
+// system-scoped grant carries a role across every project and domain at once,
+// and an inherited domain grant applies to every project underneath, so both
+// reach far past the object named by scopeProject or scopeDomain.
 private openstack.identity.roleAssignment @defaults("roleName actorType scopeType") {
   // Whether the role is granted to a user or a group ("user" or "group")
   actorType string
-  // Whether the grant applies to a project or a domain ("project" or "domain")
+  // What the grant applies to
+  //
+  // One of "project", "domain", or "system". A system grant covers the entire
+  // deployment rather than one object, so neither scopeProject nor scopeDomain
+  // is set for it.
   scopeType string
+  // Whether a domain or project grant also applies to the projects underneath it
+  //
+  // An inherited grant is not held on the named object itself. It is applied to
+  // every project below it, so a single inherited domain grant of `admin`
+  // confers that role on every project in the domain, present and future.
+  inherited bool
   // Name of the granted role; empty when the role catalog is not readable
   roleName string
   // Role granted by this assignment
@@ -305,9 +389,9 @@ private openstack.identity.roleAssignment @defaults("roleName actorType scopeTyp
   user() openstack.user
   // Group the role is granted to; null when the grant is to a user
   group() openstack.group
-  // Project the grant applies to; null when the grant is domain-scoped
+  // Project the grant applies to; null when the grant is domain- or system-scoped
   scopeProject() openstack.project
-  // Domain the grant applies to; null when the grant is project-scoped
+  // Domain the grant applies to; null when the grant is project- or system-scoped
   scopeDomain() openstack.domain
 }
 
@@ -329,6 +413,15 @@ private openstack.identity.roleInference @defaults("priorRoleName impliedRoleNam
 }
 
 // OpenStack Nova compute server (instance)
+//
+// Nova virtual machine instance, the primary compute workload in an
+// OpenStack cloud. Query lifecycle and power state through status,
+// vmState, powerState, and taskState; the image and flavor it booted
+// from; and attached securityGroups, ports, floatingIps, and volumes.
+// Boot-time inputs such as keyName, metadata, and userData reveal how the
+// instance was provisioned, and userData is a common place to audit for
+// hardcoded credentials. Use exposure to check public reachability.
+// Select a server by its id with `openstack.compute.server(id: "...")`.
 private openstack.compute.server @defaults("id name status") {
   init(id? string)
   // Server ID (UUID)
@@ -369,7 +462,9 @@ private openstack.compute.server @defaults("id name status") {
   //
   // Admin-only and empty for non-admin tokens. The raw value may embed bootstrap secrets, so auditing it for hardcoded credentials is a common use.
   userData string
-  // Per-network address allocations (network name -> [{addr, version, type, macAddr}])
+  // Per-network address allocations
+  //
+  // Keyed by network name; each value is a list of address entries with `addr`, `version` (4 or 6), `OS-EXT-IPS:type` (fixed or floating), and `OS-EXT-IPS-MAC:mac_addr`.
   addresses dict
   // Free-form server metadata
   metadata map[string]string
@@ -403,6 +498,8 @@ private openstack.compute.server @defaults("id name status") {
   floatingIps() []openstack.floatingIp
   // Internet-exposure summary for this server (public reachability plus the security-group rules that open it up)
   exposure() openstack.compute.server.exposure
+  // Log of state-changing actions performed on this server
+  actions() []openstack.compute.server.action
 }
 
 // OpenStack Nova compute server internet exposure
@@ -427,6 +524,13 @@ private openstack.compute.server.exposure @defaults("internetReachable publiclyA
 }
 
 // OpenStack Nova flavor (VM size)
+//
+// Nova flavor defining the CPU, memory, and disk a server is allocated at
+// boot. vcpus, ram, disk, swap, and ephemeral set the sizing, while
+// extraSpecs carries scheduler hints and hardware policies (CPU pinning,
+// NUMA placement, hardware acceleration) and isPublic controls whether
+// every project can boot it. Select a flavor by its id with
+// `openstack.compute.flavor(id: "...")`.
 private openstack.compute.flavor @defaults("id name vcpus ram disk") {
   init(id? string)
   // Flavor ID (UUID for v2.55+, integer string for older clouds)
@@ -454,6 +558,12 @@ private openstack.compute.flavor @defaults("id name vcpus ram disk") {
 }
 
 // OpenStack Nova SSH keypair
+//
+// SSH keypair registered with Nova and injectable into a server at boot.
+// fingerprint and publicKey identify the key material and type
+// distinguishes an ssh key from an x509 certificate. Keypairs are scoped
+// per user, so a stale or widely shared key is worth auditing as a
+// persistent access path into instances that booted with it.
 private openstack.compute.keypair @defaults("name type fingerprint") {
   // Keypair name (unique per user)
   name string
@@ -468,6 +578,13 @@ private openstack.compute.keypair @defaults("name type fingerprint") {
 }
 
 // OpenStack Nova server group (affinity / anti-affinity)
+//
+// Nova server group that constrains how its member instances are placed
+// across compute hosts. policies records the scheduling rule (affinity,
+// anti-affinity, soft-affinity, soft-anti-affinity) and members lists the
+// instances bound by it, which matters for availability and blast-radius
+// analysis. Select a server group by its id with
+// `openstack.compute.serverGroup(id: "...")`.
 private openstack.compute.serverGroup @defaults("id name policies") {
   init(id? string)
   // Server group ID
@@ -489,6 +606,18 @@ private openstack.compute.serverGroup @defaults("id name policies") {
 }
 
 // OpenStack Neutron network
+//
+// Layer-2 virtual network in the Neutron networking service, the
+// broadcast domain that ports and subnets attach to. Query it to audit
+// tenant isolation and exposure: `shared` reveals a network usable by
+// other projects, `external` marks a provider network that bridges to
+// the outside world, and `portSecurityEnabled` sets whether ports
+// created on the network get anti-spoofing and security-group
+// enforcement by default. The provider attributes
+// (providerNetworkType, providerPhysicalNetwork,
+// providerSegmentationId) expose the underlying segmentation, and
+// subnets returns the address ranges carved from the network. Select a
+// network by id with `openstack.network(id: "...")`.
 private openstack.network @defaults("id name status") {
   init(id? string)
   // Network ID (UUID)
@@ -530,6 +659,14 @@ private openstack.network @defaults("id name status") {
 }
 
 // OpenStack Neutron subnet
+//
+// IP address range carved out of a Neutron network, defined by its `cidr`,
+// IP version, default gateway, and DHCP behavior. A subnet governs how
+// addresses are handed to ports and which DNS nameservers and host routes
+// instances receive. Selected by ID, for example
+// `openstack.subnet(id: "a1b2c3d4-...")`. Query subnets to confirm CIDR
+// sizing, gateway placement, whether DHCP is enabled, and the IPv6 address
+// and router-advertisement modes.
 private openstack.subnet @defaults("id name cidr") {
   init(id? string)
   // Subnet ID (UUID)
@@ -552,9 +689,17 @@ private openstack.subnet @defaults("id name cidr") {
   ipv6RaMode string
   // DNS nameservers advertised by DHCP
   dnsNameservers []string
-  // Allocation pools ([{start, end}])
+  // Allocation pools
+  //
+  // IP ranges from which addresses are assigned to ports on this subnet.
+  // Each entry is a dict with `start` and `end` keys holding the first and
+  // last IP of the pool.
   allocationPools []dict
-  // Host routes ([{destination, nexthop}])
+  // Host routes
+  //
+  // Additional routes advertised to instances through DHCP. Each entry is a
+  // dict with `destination` (the target CIDR) and `nexthop` (the gateway IP
+  // used to reach it).
   hostRoutes []dict
   // Network this subnet belongs to
   network() openstack.network
@@ -573,13 +718,24 @@ private openstack.subnet @defaults("id name cidr") {
 }
 
 // OpenStack Neutron router
+//
+// A Neutron router that connects tenant networks to each other and to
+// external networks, providing routing, source NAT, and floating-IP
+// gateway services. Query a single router by its UUID, for example
+// openstack.router(id: "a1b2c3d4-..."). Security-relevant surface
+// includes externalGatewayInfo and enableSnat (whether tenant traffic
+// egresses through source NAT), the static routes it advertises, and
+// whether admin state is up. The externalNetwork field resolves the
+// external network used for the gateway.
 private openstack.router @defaults("id name status") {
   init(id? string)
   // Router ID (UUID)
   id string
   // Router name
   name string
-  // Status
+  // Operational status
+  //
+  // One of ACTIVE, DOWN, BUILD, ALLOCATING, or ERROR.
   status string
   // Whether the router is administratively up
   adminStateUp bool
@@ -606,13 +762,23 @@ private openstack.router @defaults("id name status") {
 }
 
 // OpenStack Neutron port
+//
+// Virtual network interface attached to a server, router, or other network
+// device, carrying the security posture of that attachment. Select a port by
+// its UUID, for example `openstack.port(id: "a1b2c3d4-...")`. The
+// `portSecurityEnabled` flag governs whether MAC/IP anti-spoofing and security
+// group filtering apply at all, `allowedAddressPairs` widens which source
+// addresses bypass that filtering, and `deviceOwner` records what the port is
+// bound to (compute instance, router interface, DHCP agent). Fixed and
+// floating IP bindings, attached security groups, and the owning network,
+// server, router, and project are all reachable from the port.
 private openstack.port @defaults("id name status macAddress") {
   init(id? string)
   // Port ID (UUID)
   id string
   // Port name
   name string
-  // Status (ACTIVE, DOWN, BUILD)
+  // Status (ACTIVE, DOWN, BUILD, ERROR, N/A)
   status string
   // Whether the port is administratively up
   adminStateUp bool
@@ -628,6 +794,30 @@ private openstack.port @defaults("id name status macAddress") {
   allowedAddressPairs []dict
   // Whether port security is enabled
   portSecurityEnabled bool
+  // Whether the port is a trusted SR-IOV virtual function
+  //
+  // A trusted virtual function may change its MAC address and enter promiscuous
+  // mode, which lets the guest spoof addresses and observe traffic addressed to
+  // others regardless of security groups or port security. Null when the cloud
+  // does not run the port trusted VIF extension or the attribute is unset, both
+  // of which mean untrusted.
+  trustedVif bool
+  // Virtual interface card type bound to the port
+  //
+  // One of normal, direct, direct-physical, macvtap, baremetal,
+  // virtio-forwarder, vdpa, remote-managed, smart-nic, accelerator-direct, or
+  // accelerator-direct-physical. Everything other than
+  // normal and macvtap hands the guest a hardware function, so the software
+  // datapath that enforces security groups is bypassed. Empty when the cloud
+  // does not expose port binding attributes to this user.
+  bindingVnicType string
+  // Virtual interface type the mechanism driver bound the port with
+  //
+  // Examples include ovs, bridge, vhostuser, hw_veb, hostdev_physical,
+  // distributed, and other. The values binding_failed and unbound mean no
+  // datapath was established. Empty when the cloud does not expose port binding
+  // attributes to this user.
+  bindingVifType string
   // Whether port uplink status propagation is enabled
   propagateUplinkStatus bool
   // Description
@@ -648,18 +838,35 @@ private openstack.port @defaults("id name status macAddress") {
   project() openstack.project
   // Server this port is attached to; null when the port is not bound to a compute instance
   server() openstack.compute.server
-  // Router this port is attached to; null when the port is not a router interface or gateway
+  // Router this port is attached to
+  //
+  // Covers the legacy and distributed router interfaces, the external gateway
+  // port, the HA keepalived interface, the centralized SNAT port, and the
+  // replicated interfaces that DVR and HA deployments create on compute and
+  // network nodes. Null when the port is not owned by a router.
   router() openstack.router
   // Floating (public) IPs bound to this port; empty when none are bound
   floatingIps() []openstack.floatingIp
 }
 
 // OpenStack Neutron floating IP
+//
+// Public IPv4 address allocated from an external network and mapped
+// through NAT to a private fixed IP on a Neutron port, giving an
+// instance inbound reachability from outside the tenant network.
+// Select a floating IP by its UUID, for example
+// `openstack.floatingIp(id: "a1b2c3d4-...")`. Auditing floating IPs
+// reveals which internal workloads are exposed to the internet, the
+// external network they draw from, the port and router carrying their
+// NAT, and any DNAT port-forwarding rules that publish additional
+// private services.
 private openstack.floatingIp @defaults("id floatingIpAddress status") {
   init(id? string)
   // Floating IP ID (UUID)
   id string
-  // Status (ACTIVE, DOWN)
+  // Status
+  //
+  // One of ACTIVE, DOWN, or ERROR.
   status string
   // The floating (public) IP address
   floatingIpAddress string
@@ -715,6 +922,15 @@ private openstack.floatingIp.portForwarding @defaults("protocol externalPort int
 }
 
 // OpenStack Neutron security group
+//
+// Set of firewall rules that govern ingress and egress traffic for the
+// ports and instances the group is attached to. Audit security groups to
+// find overly permissive access, such as rules that expose services to the
+// public internet. The stateful field distinguishes connection-tracking
+// groups from stateless ones that require explicit return-traffic rules,
+// and allowsPublicIngress flags any group whose ingress rules reach a
+// public source. Select a group by its UUID, for example
+// openstack.securityGroup(id: "9d6f...").
 private openstack.securityGroup @defaults("id name") {
   init(id? string)
   // Security group ID (UUID)
@@ -740,6 +956,15 @@ private openstack.securityGroup @defaults("id name") {
 }
 
 // OpenStack Neutron security group rule
+//
+// Single ingress or egress rule within a security group, defining the
+// protocol, port range, and remote source or destination that traffic is
+// matched against. Audit rules to find open ports and public exposure:
+// includesPublicSource flags a rule whose source or destination reaches
+// the public internet. A rule scopes its remote endpoint by exactly one of
+// remoteIpPrefix (a CIDR), remoteGroup (another security group), or
+// remoteAddressGroupId (an address group), which determines where the rule
+// applies.
 private openstack.securityGroup.rule @defaults("id direction protocol portRangeMin portRangeMax") {
   // Rule ID (UUID)
   id string
@@ -755,8 +980,6 @@ private openstack.securityGroup.rule @defaults("id direction protocol portRangeM
   portRangeMax int
   // Remote IP prefix (CIDR; empty when matched by remote group instead)
   remoteIpPrefix string
-  // Remote address group ID the rule matches; empty when matched by IP prefix or remote security group instead
-  remoteAddressGroupId string
   // Description
   description string
   // Creation timestamp
@@ -767,15 +990,23 @@ private openstack.securityGroup.rule @defaults("id direction protocol portRangeM
   securityGroup() openstack.securityGroup
   // Remote security group the rule matches; null when matched by IP prefix instead
   remoteGroup() openstack.securityGroup
+  // Remote address group the rule matches; null when matched by IP prefix or remote security group instead
+  remoteAddressGroup() openstack.network.addressGroup
   // Whether the rule's source reaches the public internet
   //
-  // True when remoteIpPrefix is a public CIDR (a broad block such as 0.0.0.0/0 or ::/0, excluding private and reserved ranges) or when the rule is unscoped (no remote IP prefix, no remote group, and no remote address group), which Neutron treats as any source. A rule scoped to a remote security group or remote address group is not public. Direction-agnostic, so it also classifies egress destinations.
+  // True when remoteIpPrefix is a public CIDR (a broad block such as 0.0.0.0/0 or ::/0, excluding private and reserved ranges), when the rule matches a remote address group that holds such a range, or when the rule is unscoped (no remote IP prefix, no remote group, and no remote address group), which Neutron treats as any source. A rule scoped to a remote security group is not public. Direction-agnostic, so it also classifies egress destinations.
   includesPublicSource() bool
   // Project that owns this security group rule
   project() openstack.project
 }
 
 // OpenStack Cinder block-storage volume
+//
+// Cinder block-storage volume backing compute servers or held as
+// standalone storage. Records its encryption-at-rest posture, whether
+// it can attach to multiple servers concurrently, its attachment
+// records, and the project and user that own it. Select a volume by id
+// with `openstack.blockstorage.volume(id: "...")`.
 private openstack.blockstorage.volume @defaults("id name status size") {
   init(id? string)
   // Volume ID (UUID)
@@ -829,6 +1060,12 @@ private openstack.blockstorage.volume @defaults("id name status size") {
 }
 
 // OpenStack Cinder volume snapshot
+//
+// Point-in-time snapshot of a Cinder volume, used for backup and clone
+// workflows. Records the source volume, whether the snapshot counts
+// against project quota, and its status through the creation lifecycle.
+// Select a snapshot by id with
+// `openstack.blockstorage.snapshot(id: "...")`.
 private openstack.blockstorage.snapshot @defaults("id name status size") {
   init(id? string)
   // Snapshot ID (UUID)
@@ -862,6 +1099,16 @@ private openstack.blockstorage.snapshot @defaults("id name status size") {
 }
 
 // OpenStack Glance image
+//
+// Virtual machine image registered in Glance, the source template instances
+// boot from. Select one by its UUID, for example
+// `openstack.image(id: "7c9d9e5f-...")`. Audit `visibility` to find images
+// exposed publicly or to the whole community, `protected` and `hidden` to
+// understand lifecycle and listing controls, and the integrity fields
+// (`checksum`, `osHashAlgo`, `osHashValue`) alongside `imageSignature` to
+// confirm images are signed and untampered. The `members` field enumerates
+// the projects a shared image is visible to, and `kernel` and `ramdisk`
+// resolve the AMI-style boot components.
 private openstack.image @defaults("id name status visibility") {
   init(id? string)
   // Image ID (UUID)
@@ -918,7 +1165,15 @@ private openstack.image @defaults("id name status visibility") {
   ramdisk() openstack.image
 }
 
-// OpenStack Barbican secret. The `payload` (raw secret material) is intentionally not exposed.
+// OpenStack Barbican secret
+//
+// Cryptographic secret material held by the Barbican key manager: symmetric
+// keys, public and private keys, passphrases, certificates, and opaque blobs.
+// Select a secret by its `id`, for example `openstack.keymanager.secret(id:
+// "...")`. Query `secretType`, `algorithm`, and `bitLength` to audit what kind
+// of key material is stored, `status` and `expiresAt` to find inactive or
+// expired secrets, and `acl` to see who is allowed to read it. The raw
+// `payload` (the secret material itself) is intentionally not exposed.
 private openstack.keymanager.secret @defaults("id name secretType status") {
   init(id? string)
   // Secret ID (UUID extracted from secretRef)
@@ -953,7 +1208,15 @@ private openstack.keymanager.secret @defaults("id name secretType status") {
   acl() openstack.keymanager.acl
 }
 
-// OpenStack Barbican secret container. Bundles secrets together; certificate-typed containers are what Octavia listeners reference for TLS termination.
+// OpenStack Barbican secret container
+//
+// Bundle of related Barbican secrets grouped under a single reference. Select
+// a container by its `id`, for example `openstack.keymanager.container(id:
+// "...")`. Certificate-typed containers hold a certificate together with its
+// private key and any intermediate CA bundle, and are what Octavia listeners
+// point at for TLS termination. Query `type` to tell generic, rsa, and
+// certificate containers apart, `secrets` for the referenced secret material,
+// and `consumers` to see which services depend on the container.
 private openstack.keymanager.container @defaults("id name type status") {
   init(id? string)
   // Container ID (UUID extracted from containerRef)
@@ -966,7 +1229,12 @@ private openstack.keymanager.container @defaults("id name type status") {
   status string
   // Full Barbican container URL; matches the `default_tls_container_ref` / `sni_container_refs` strings used by Octavia listeners
   containerRef string
-  // Raw secret references on this container ([{name, secret_ref}])
+  // Raw secret references on this container
+  //
+  // One entry per referenced secret as `{name, secret_ref}`, where `name` is
+  // the role within the container (for example certificate, private_key, or
+  // intermediates) and `secret_ref` is the full Barbican secret URL. See
+  // `secrets` for the resolved secret material.
   secretRefs []dict
   // Consumers registered on this container ([{name, url}])
   consumers []dict
@@ -989,6 +1257,13 @@ private openstack.keymanager.container @defaults("id name type status") {
 }
 
 // OpenStack Barbican secret-generation order
+//
+// Asynchronous request that has Barbican generate secret material server-side:
+// a key, an asymmetric key pair, or a certificate. Select an order by its
+// `id`, for example `openstack.keymanager.order(id: "...")`. Query `type` for
+// what is being produced, `status` and `subStatus` to track progress,
+// `errorReason` when generation fails, and `secret` or `container` for the
+// material produced once the order completes.
 private openstack.keymanager.order @defaults("id type status subStatus") {
   init(id? string)
   // Order ID (UUID extracted from orderRef)
@@ -1022,6 +1297,15 @@ private openstack.keymanager.order @defaults("id type status subStatus") {
 }
 
 // OpenStack Octavia load balancer
+//
+// Load balancer fronting backend pools through Octavia, the OpenStack
+// load-balancing service. Query it to audit public reachability, TLS
+// enforcement across its listeners, the VIP's network and subnet
+// placement, and the provider serving traffic (amphora, ovn). Select one
+// by its UUID, for example `openstack.octavia.loadBalancer(id: "8f8a...")`.
+// The exposure field reports whether the VIP is reachable from the
+// internet and which listeners are open to the world, and enforcesTls is
+// true only when every listener uses an encrypted protocol.
 private openstack.octavia.loadBalancer @defaults("id name provisioningStatus operatingStatus vipAddress") {
   init(id? string)
   // Load balancer ID (UUID)
@@ -1091,6 +1375,15 @@ private openstack.octavia.loadBalancer.exposure @defaults("internetReachable pub
 }
 
 // OpenStack Octavia listener
+//
+// Frontend that binds a protocol and port on a load balancer's virtual IP
+// and forwards matching traffic to a default pool or through L7 policies.
+// Query it to audit which ports accept connections, whether traffic is
+// TLS-terminated and with which ciphers, versions, and client
+// authentication mode, and how far the source is restricted through
+// allowedCidrs. The openToWorld field is true when the listener accepts
+// connections from any source. Select one by its UUID, for example
+// `openstack.octavia.listener(id: "...")`.
 private openstack.octavia.listener @defaults("id name protocol protocolPort provisioningStatus") {
   init(id? string)
   // Listener ID (UUID)
@@ -1131,6 +1424,16 @@ private openstack.octavia.listener @defaults("id name protocol protocolPort prov
   timeoutTcpInspect int
   // Whether HSTS includeSubDomains is enabled (microversion 2.27+)
   hstsIncludeSubdomains bool
+  // Value of the HSTS max-age directive in seconds; 0 when HSTS is off (microversion 2.27+)
+  hstsMaxAge int
+  // Whether the HSTS preload directive is added (microversion 2.27+)
+  hstsPreload bool
+  // Whether HSTS is in force on this listener
+  //
+  // True only when hstsMaxAge is greater than zero, which is what turns the
+  // Strict-Transport-Security header on. The includeSubDomains and preload directives are
+  // inert on their own.
+  hstsEnabled() bool
   // Tags
   tags []string
   // Project that owns this listener
@@ -1141,12 +1444,36 @@ private openstack.octavia.listener @defaults("id name protocol protocolPort prov
   defaultPool() openstack.octavia.pool
   // Barbican container holding the listener's default TLS material; null when not set or when the ref points at a bare Barbican secret
   defaultTlsContainer() openstack.keymanager.container
+  // Barbican secret holding the listener's default TLS material
+  //
+  // Octavia accepts either a container or a bare secret for
+  // `default_tls_container_ref`, and a PKCS12 bundle stored as a single secret
+  // is the common form on modern clouds. Null when the ref is unset or names a
+  // container, in which case defaultTlsContainer carries the material instead.
+  // Check both to decide whether a listener terminates TLS.
+  defaultTlsSecret() openstack.keymanager.secret
   // Barbican containers used for SNI; empty when SNI is not configured
   sniContainers() []openstack.keymanager.container
+  // Barbican secrets used for SNI
+  //
+  // The entries of `sni_container_refs` that name a bare secret rather than a
+  // container. Empty when SNI is not configured or every ref names a
+  // container, which sniContainers then resolves.
+  sniSecrets() []openstack.keymanager.secret
   // Barbican container holding the client CA bundle for mTLS; null when not configured
   clientCATlsContainer() openstack.keymanager.container
+  // Barbican secret holding the client CA bundle for mTLS
+  //
+  // Null when the client CA ref is unset or names a container, which
+  // clientCATlsContainer then resolves.
+  clientCATlsSecret() openstack.keymanager.secret
   // Barbican container holding the client CRL list; null when not configured
   clientCRLContainer() openstack.keymanager.container
+  // Barbican secret holding the client CRL list
+  //
+  // Null when the CRL ref is unset or names a container, which
+  // clientCRLContainer then resolves.
+  clientCRLSecret() openstack.keymanager.secret
   // L7 policies attached to this listener
   l7Policies() []openstack.octavia.l7Policy
   // Whether the listener accepts connections from any source (allowedCidrs is empty or contains a public CIDR)
@@ -1154,6 +1481,13 @@ private openstack.octavia.listener @defaults("id name protocol protocolPort prov
 }
 
 // OpenStack Octavia backend pool
+//
+// Group of backend members that a listener load-balances across using a
+// selection algorithm. Query it to audit the algorithm in use, whether
+// backend connections are encrypted (tlsEnabled with its ciphers and
+// versions), the session persistence policy, and the health monitor
+// guarding the members. Select one by its UUID, for example
+// `openstack.octavia.pool(id: "...")`.
 private openstack.octavia.pool @defaults("id name lbAlgorithm protocol provisioningStatus") {
   init(id? string)
   // Pool ID (UUID)
@@ -1198,10 +1532,25 @@ private openstack.octavia.pool @defaults("id name lbAlgorithm protocol provision
   subnet() openstack.subnet
   // Barbican container holding the CA bundle used to verify backend TLS; null when not set
   caTlsContainer() openstack.keymanager.container
+  // Barbican secret holding the CA bundle used to verify backend TLS
+  //
+  // Null when `ca_tls_container_ref` is unset or names a container, which
+  // caTlsContainer then resolves.
+  caTlsSecret() openstack.keymanager.secret
   // Barbican container holding the CRL list for backend TLS; null when not set
   crlContainer() openstack.keymanager.container
+  // Barbican secret holding the CRL list for backend TLS
+  //
+  // Null when `crl_container_ref` is unset or names a container, which
+  // crlContainer then resolves.
+  crlSecret() openstack.keymanager.secret
   // Barbican container holding the client cert/key bundle for backend mTLS; null when not set
   clientTlsContainer() openstack.keymanager.container
+  // Barbican secret holding the client cert/key bundle for backend mTLS
+  //
+  // Null when `tls_container_ref` is unset or names a container, which
+  // clientTlsContainer then resolves.
+  clientTlsSecret() openstack.keymanager.secret
   // Members in this pool
   members() []openstack.octavia.member
 }
@@ -1228,7 +1577,7 @@ private openstack.octavia.member @defaults("id name address protocolPort weight"
   monitorPort int
   // Provisioning status (ACTIVE, PENDING_*, ERROR)
   provisioningStatus string
-  // Operating status (ONLINE, OFFLINE, DEGRADED, ERROR, NO_MONITOR)
+  // Operating status (ONLINE, OFFLINE, DEGRADED, ERROR, NO_MONITOR, DRAINING)
   operatingStatus string
   // Tags (microversion 2.5+)
   tags []string
@@ -1245,6 +1594,12 @@ private openstack.octavia.member @defaults("id name address protocolPort weight"
 }
 
 // OpenStack Octavia health monitor
+//
+// Probe configuration Octavia uses to test the health of a pool's backend
+// members and remove failing ones from rotation. Query it to audit the
+// probe type, interval and timeout, retry thresholds, and the HTTP method,
+// path, and expected response codes used by HTTP and HTTPS probes. Select
+// one by its UUID, for example `openstack.octavia.healthMonitor(id: "...")`.
 private openstack.octavia.healthMonitor @defaults("id name type delay timeout") {
   init(id? string)
   // Health monitor ID (UUID)
@@ -1288,6 +1643,12 @@ private openstack.octavia.healthMonitor @defaults("id name type delay timeout") 
 }
 
 // OpenStack Octavia L7 policy
+//
+// Layer-7 policy on a listener that inspects HTTP requests and, when all of
+// its rules match, redirects them to a pool or URL or rejects them. Query
+// it to audit the action taken, its evaluation position among sibling
+// policies, any redirect target, and the match rules that trigger it.
+// Select one by its UUID, for example `openstack.octavia.l7Policy(id: "...")`.
 private openstack.octavia.l7Policy @defaults("id name action position provisioningStatus") {
   init(id? string)
   // L7 policy ID (UUID)
@@ -1352,7 +1713,16 @@ private openstack.octavia.l7Rule @defaults("id ruleType compareType value") {
   l7Policy() openstack.octavia.l7Policy
 }
 
-// OpenStack Neutron subnet pool. Admins pre-allocate CIDR ranges; tenant subnets are carved from these.
+// OpenStack Neutron subnet pool
+//
+// Pool of CIDR prefixes that Neutron carves tenant subnets from, so
+// address space is managed centrally instead of assigned ad hoc. The
+// `id` field selects a specific pool, for example
+// `openstack.subnetPool(id: "a1b2c3d4-...")`. Auditing a pool shows the
+// prefixes it can allocate, the allowed prefix-length bounds
+// (minPrefixLen, maxPrefixLen), the per-project address quota, whether
+// the pool is shared across projects, and the address scope it is bound
+// to, all of which govern how much address space each tenant can claim.
 private openstack.subnetPool @defaults("id name ipVersion shared isDefault") {
   init(id? string)
   // Subnet pool ID (UUID)
@@ -1372,7 +1742,9 @@ private openstack.subnetPool @defaults("id name ipVersion shared isDefault") {
   // Per-project quota in addresses
   defaultQuota int
   // Address scope ID this pool is bound to; empty when not in any address scope
-  addressScopeId string
+  //
+  // Deprecated in favor of addressScope.
+  addressScopeId @maturity("deprecated") string
   // IP version (4 or 6)
   ipVersion int
   // Whether the pool is shared across projects
@@ -1385,11 +1757,46 @@ private openstack.subnetPool @defaults("id name ipVersion shared isDefault") {
   createdAt time
   // Last update timestamp
   updatedAt time
+  // Address scope this pool is bound to; null when the pool is not in any address scope
+  addressScope() openstack.network.addressScope
   // Project that owns this subnet pool
   project() openstack.project
 }
 
-// OpenStack Neutron QoS policy. Attaches bandwidth-limit, DSCP, and minimum-bandwidth rules to ports/networks/floating IPs.
+// OpenStack Neutron address scope
+//
+// Namespace of non-overlapping routable addresses that Neutron subnet pools are
+// bound to, so every subnet carved from those pools can route to every other one
+// without translation. The `id` field selects a scope, for example
+// `openstack.network.addressScope(id: "a1b2c3d4-...")`. The `shared` flag is the
+// one to audit: a shared scope lets subnet pools owned by different projects
+// allocate out of the same routable namespace, which is what allows those
+// projects' address space to reach each other directly instead of through NAT
+// or a floating IP.
+private openstack.network.addressScope @defaults("id name ipVersion shared") {
+  init(id? string)
+  // Address scope ID (UUID)
+  id string
+  // Address scope name
+  name string
+  // IP version (4 or 6)
+  ipVersion int
+  // Whether the address scope is shared with other projects
+  shared bool
+  // Project that owns the address scope
+  project() openstack.project
+}
+
+// OpenStack Neutron QoS policy
+//
+// Quality-of-Service policy that attaches traffic-shaping rules to Neutron
+// ports, networks, and floating IPs. Each policy holds a set of rules
+// (bandwidth limits, DSCP marking, minimum guaranteed bandwidth, and
+// packet-rate limits) exposed through `rules`. The `shared` flag governs
+// whether other projects can attach the policy, and `isDefault` marks the
+// policy that new ports inherit, so both are worth auditing when reviewing
+// tenant traffic controls. Select a policy by its UUID, for example
+// `openstack.qosPolicy(id: "d1e2f3a4-...")`.
 private openstack.qosPolicy @defaults("id name shared isDefault") {
   init(id? string)
   // QoS policy ID (UUID)
@@ -1416,7 +1823,16 @@ private openstack.qosPolicy @defaults("id name shared isDefault") {
   project() openstack.project
 }
 
-// OpenStack Neutron trunk. Parent port plus a set of subports identified by VLAN tags.
+// OpenStack Neutron trunk
+//
+// Neutron trunk port that multiplexes traffic from several networks onto a
+// single parent port. Traffic for each attached network arrives on a subport
+// tagged with its own VLAN ID, letting one instance reach many networks over
+// one virtual NIC. Select a trunk by its UUID, for example
+// `openstack.trunk(id: "...")`. Audit trunks to see which ports an instance is
+// bridged onto, whether the trunk is administratively up (adminStateUp), and
+// its operational status. The parentPort and subportPorts accessors resolve the
+// underlying Neutron ports for reachability and security-group analysis.
 private openstack.trunk @defaults("id name status") {
   init(id? string)
   // Trunk ID (UUID)
@@ -1429,7 +1845,13 @@ private openstack.trunk @defaults("id name status") {
   adminStateUp bool
   // Status (ACTIVE, DOWN, BUILD, DEGRADED, ERROR)
   status string
-  // Subport entries ([{port_id, segmentation_type, segmentation_id}])
+  // Subport entries
+  //
+  // Each entry is a dict with keys `port_id` (the Neutron port carried on the
+  // trunk), `segmentation_type` (the tagging scheme, typically `vlan`), and
+  // `segmentation_id` (the VLAN tag that isolates the subport's traffic on the
+  // parent port). See subportPorts for these ports resolved as Neutron port
+  // resources.
   subports []dict
   // Tags
   tags []string
@@ -1445,7 +1867,14 @@ private openstack.trunk @defaults("id name status") {
   subportPorts() []openstack.port
 }
 
-// OpenStack FWaaS v2 firewall group. Binds ingress/egress policies to a set of ports.
+// OpenStack FWaaS v2 firewall group
+//
+// Firewall-as-a-Service v2 group that binds an ingress and an egress
+// policy to a set of Neutron ports, applying stateful packet filtering
+// at the port level. The status field reports the provisioning state
+// (ACTIVE, INACTIVE, PENDING_*, ERROR), adminStateUp reports whether the
+// group is administratively enabled, and shared reports whether other
+// projects can use it. Selected by group ID.
 private openstack.firewall.group @defaults("id name status adminStateUp") {
   init(id? string)
   // Firewall group ID (UUID)
@@ -1470,7 +1899,12 @@ private openstack.firewall.group @defaults("id name status adminStateUp") {
   egressPolicy() openstack.firewall.policy
 }
 
-// OpenStack FWaaS v2 firewall policy. Ordered list of rules used by a firewall group.
+// OpenStack FWaaS v2 firewall policy
+//
+// Firewall-as-a-Service v2 policy holding an ordered list of rules that a
+// firewall group evaluates in sequence. The audited flag records whether
+// an administrator has reviewed the current rule set, and shared reports
+// whether other projects can reference the policy. Selected by policy ID.
 private openstack.firewall.policy @defaults("id name audited shared") {
   init(id? string)
   // Firewall policy ID (UUID)
@@ -1489,7 +1923,14 @@ private openstack.firewall.policy @defaults("id name audited shared") {
   rules() []openstack.firewall.rule
 }
 
-// OpenStack FWaaS v2 firewall rule. Single match-action entry referenced by one or more policies.
+// OpenStack FWaaS v2 firewall rule
+//
+// Firewall-as-a-Service v2 rule, a single match-action entry that one or
+// more policies reference. Matches on protocol, source and destination
+// IP/CIDR, and source and destination port ranges, then applies the
+// action (allow, deny, reject). The enabled flag controls whether the
+// rule is evaluated, and ipVersion selects IPv4 or IPv6. Selected by
+// rule ID.
 private openstack.firewall.rule @defaults("id name action protocol enabled") {
   init(id? string)
   // Firewall rule ID (UUID)
@@ -1556,7 +1997,7 @@ private openstack.vpn.service @defaults("id name status adminStateUp") {
 
 // OpenStack VPNaaS v2 IKE policy
 //
-// Phase 1 (IKE) negotiation parameters referenced by site-to-site
+// IKE key-exchange negotiation parameters referenced by site-to-site
 // connections. The authentication and encryption algorithms, the
 // perfect-forward-secrecy group, the IKE version, the negotiation mode,
 // and the security-association lifetime are the values to audit for weak
@@ -1576,7 +2017,7 @@ private openstack.vpn.ikePolicy @defaults("id name authAlgorithm encryptionAlgor
   encryptionAlgorithm string
   // Perfect forward secrecy group (for example "group2", "group5", "group14")
   pfs string
-  // Phase 1 negotiation mode (for example "main")
+  // IKE key-exchange negotiation mode (for example "main")
   phase1NegotiationMode string
   // IKE protocol version ("v1" or "v2")
   ikeVersion string
@@ -1590,7 +2031,7 @@ private openstack.vpn.ikePolicy @defaults("id name authAlgorithm encryptionAlgor
 
 // OpenStack VPNaaS v2 IPsec policy
 //
-// Phase 2 (IPsec) negotiation parameters referenced by site-to-site
+// IPsec data-channel negotiation parameters referenced by site-to-site
 // connections. The authentication and encryption algorithms, the
 // perfect-forward-secrecy group, the encapsulation mode, the transform
 // protocol, and the security-association lifetime are the values to audit
@@ -1688,9 +2129,9 @@ private openstack.vpn.siteConnection @defaults("id name status peerAddress admin
   dpdInterval int
   // VPN service this connection runs on
   service() openstack.vpn.service
-  // IKE policy used for phase 1 negotiation
+  // IKE policy used for key-exchange negotiation
   ikePolicy() openstack.vpn.ikePolicy
-  // IPsec policy used for phase 2 negotiation
+  // IPsec policy used for data-channel negotiation
   ipsecPolicy() openstack.vpn.ipsecPolicy
   // Local endpoint group (local subnets); null when the connection binds a subnet directly
   localEndpointGroup() openstack.vpn.endpointGroup
@@ -1700,7 +2141,14 @@ private openstack.vpn.siteConnection @defaults("id name status peerAddress admin
   project() openstack.project
 }
 
-// OpenStack Swift object-storage account. Singular per scoped project; aggregates totals across all containers.
+// OpenStack Swift object-storage account
+//
+// Account-level totals for a scoped project's Swift object storage,
+// aggregating byte usage, container count, and object count across
+// every container. There is one account per scoped project. Compare
+// quotaBytes against bytesUsed for capacity planning, and check
+// tempUrlKeySet to confirm whether a temporary-URL signing key is
+// configured on the account.
 private openstack.objectstorage.account @defaults("bytesUsed containerCount objectCount") {
   // Account identifier (Swift account URL path, e.g. AUTH_<project_id>)
   id string
@@ -1719,6 +2167,14 @@ private openstack.objectstorage.account @defaults("bytesUsed containerCount obje
 }
 
 // OpenStack Swift object-storage container
+//
+// Storage container within a Swift account, holding objects along
+// with its own read/write ACLs, storage policy, and versioning
+// settings. The name field selects the container, for example
+// openstack.objectstorage.container(name: "backups"). The public
+// predicate reports whether the read ACL grants unauthenticated read
+// access (the ACL contains ".r:*"), the key check for unintended data
+// exposure.
 private openstack.objectstorage.container @defaults("name objectCount bytes public") {
   init(name? string)
   // Container name (also acts as identifier within the account)
@@ -1739,6 +2195,28 @@ private openstack.objectstorage.container @defaults("name objectCount bytes publ
   versionsLocation() string
   // Container that records overwritten/deleted object versions (X-History-Location); empty when history is disabled
   historyLocation() string
+  // Whether object versioning is turned on for the container (X-Versions-Enabled)
+  versioningEnabled() bool
+  // Destination this container replicates to (X-Sync-To); empty when container sync is not configured
+  //
+  // A standing replication edge that copies every object to another container, commonly on
+  // a different Swift cluster, so the data leaves the boundary the container ACLs describe.
+  syncTo() string
+  // Whether a container-sync shared secret is configured (X-Sync-Key)
+  //
+  // Reports presence only. The key itself authenticates the sync peer and is never exposed.
+  hasSyncKey() bool
+  // Whether a temporary-URL signing key is configured (X-Container-Meta-Temp-URL-Key)
+  //
+  // A temp-URL key mints pre-signed URLs that grant unauthenticated access to objects for a
+  // chosen lifetime, bypassing the container read ACL. Reports presence only; the key value
+  // is never exposed.
+  hasTempUrlKey() bool
+  // Whether a second temporary-URL signing key is configured (X-Container-Meta-Temp-URL-Key-2)
+  //
+  // The second slot used while rotating temp-URL keys. URLs signed with it are honoured just
+  // as those signed with the first key are. Reports presence only.
+  hasTempUrlKey2() bool
   // Free-form container metadata (X-Container-Meta-* headers, without the prefix)
   metadata() map[string]string
   // Whether the container's read ACL grants unauthenticated read access (i.e. contains ".r:*")
@@ -1748,11 +2226,16 @@ private openstack.objectstorage.container @defaults("name objectCount bytes publ
 }
 
 // OpenStack Swift object stored in a container
+//
+// Individual object within a Swift container, exposing its size,
+// content type, MD5/ETag hash, and last-modification time. Selected
+// by container and object name, for example
+// openstack.objectstorage.object(containerName: "backups", name: "db.sql").
 private openstack.objectstorage.object @defaults("name contentType bytes") {
   init(containerName? string, name? string)
   // Object name (path within the container)
   name string
-  // Container that holds this object
+  // Name of the container that holds this object
   containerName string
   // MIME content type
   contentType string
@@ -1762,11 +2245,20 @@ private openstack.objectstorage.object @defaults("name contentType bytes") {
   hash string
   // Last modification timestamp
   lastModified time
-  // Container that holds this object (typed reference)
+  // Container that holds this object
   container() openstack.objectstorage.container
 }
 
 // OpenStack Designate DNS zone
+//
+// A domain namespace managed by the Designate DNS service, holding the
+// records that resolve names under it. Query a single zone by its id, for
+// example `openstack.dns.zone(id: "a86dba58-0043-4cc6-a1bb-69d5e86f3ca3")`.
+// Audit zones to review which domains a project serves, check the SOA email
+// and default ttl, and spot SECONDARY zones that transfer records from
+// external masters. The type field distinguishes PRIMARY zones from
+// SECONDARY ones, and recordsets returns the individual record collections
+// defined within the zone.
 private openstack.dns.zone @defaults("id name type ttl status") {
   init(id? string)
   // Zone ID (UUID)
@@ -1789,10 +2281,6 @@ private openstack.dns.zone @defaults("id name type ttl status") {
   type string
   // Master nameservers for SECONDARY zones (empty for PRIMARY zones)
   masters []string
-  // Owning project ID
-  //
-  // Deprecated in favor of project.
-  projectId @maturity("deprecated") string
   // Creation timestamp
   createdAt time
   // Last update timestamp
@@ -1806,16 +2294,21 @@ private openstack.dns.zone @defaults("id name type ttl status") {
 }
 
 // OpenStack Designate DNS recordset (one or more records sharing a name and type)
+//
+// A collection of DNS records that share the same name and record type
+// within a Designate zone, along with the values they resolve to. Query a
+// single recordset by its id, for example
+// `openstack.dns.recordset(id: "f7b10e9b-0cae-4a91-b162-562bc6096648")`.
+// Audit recordsets to review what a zone resolves, catch entries pointing at
+// unexpected or externally controlled targets, and check the type and ttl.
+// The records field holds the raw values (one per record, formatted per type)
+// and zone links back to the owning zone.
 private openstack.dns.recordset @defaults("id name type ttl") {
   init(id? string)
   // Recordset ID (UUID)
   id string
   // Recordset name (FQDN, e.g. "www.example.com.")
   name string
-  // Owning zone ID
-  //
-  // Deprecated in favor of zone.
-  zoneId @maturity("deprecated") string
   // Record type (A, AAAA, MX, CNAME, TXT, SRV, NS, PTR, SPF, SSHFP, CAA, ...)
   type string
   // TTL in seconds; null when the zone default applies
@@ -1836,7 +2329,14 @@ private openstack.dns.recordset @defaults("id name type ttl") {
   zone() openstack.dns.zone
 }
 
-// OpenStack Nova hypervisor (compute host). Admin-only.
+// OpenStack Nova hypervisor (compute host)
+//
+// Compute host as reported by Nova, exposing its capacity and current
+// load: total and used vcpus, memoryMb, and localGb, runningVms,
+// currentWorkload, and cpuInfo. state and status show whether the host is
+// reachable and administratively enabled. Reading it requires an admin
+// token. Select a hypervisor by its id with
+// `openstack.compute.hypervisor(id: "...")`.
 private openstack.compute.hypervisor @defaults("id hostname type state status") {
   init(id? string)
   // Hypervisor ID (Nova-assigned UUID or integer string)
@@ -1873,13 +2373,22 @@ private openstack.compute.hypervisor @defaults("id hostname type state status") 
   runningVms int
   // Current scheduler workload metric
   currentWorkload int
-  // Hypervisor CPU info (model, vendor, features, topology)
+  // Hypervisor CPU information
+  //
+  // Keys: `vendor`, `arch`, `model`, `features` (list of CPU feature flags), and `topology` (with `sockets`, `cores`, and `threads`).
   cpuInfo dict
   // The compute service backing this hypervisor (typically the nova-compute on the same host)
   service() openstack.compute.service
 }
 
-// OpenStack Nova compute service (e.g. nova-compute, nova-scheduler, nova-conductor). Admin-only.
+// OpenStack Nova compute service
+//
+// Nova control-plane or compute daemon (nova-compute, nova-scheduler,
+// nova-conductor, and similar) and its health. state reports whether the
+// daemon is up or down, status reports whether it is administratively
+// enabled or disabled, and disabledReason records why a service was taken
+// out of rotation. Reading it requires an admin token. Select a service
+// by its id with `openstack.compute.service(id: "...")`.
 private openstack.compute.service @defaults("id binary host zone status state") {
   init(id? string)
   // Service ID (Nova-assigned UUID or integer string)
@@ -1902,7 +2411,14 @@ private openstack.compute.service @defaults("id binary host zone status state") 
   updatedAt time
 }
 
-// OpenStack Cinder volume type (storage class). Encryption posture, if any, is exposed via the encryption* fields.
+// OpenStack Cinder volume type
+//
+// Storage class that governs which backend a volume lands on and its
+// encryption posture. When the type is encrypted, the encryption*
+// fields report the provider class, cipher, key size, and where
+// encryption is performed; they are empty on unencrypted types.
+// `extraSpecs` holds the backend-specific configuration. Select a type
+// by id with `openstack.blockstorage.volumeType(id: "...")`.
 private openstack.blockstorage.volumeType @defaults("id name isPublic encryptionProvider") {
   init(id? string)
   // Volume type ID (UUID)
@@ -1931,7 +2447,14 @@ private openstack.blockstorage.volumeType @defaults("id name isPublic encryption
   volumes() []openstack.blockstorage.volume
 }
 
-// OpenStack Cinder volume backup. Backups live in object storage (e.g. Swift) and can be incremental, unlike snapshots.
+// OpenStack Cinder volume backup
+//
+// Backup of a Cinder volume stored in object storage (for example
+// Swift). Unlike snapshots, backups can be incremental and live
+// independently of the source volume. Records the backup status, the
+// source volume or snapshot, and whether other incrementals depend on
+// it. Select a backup by id with
+// `openstack.blockstorage.backup(id: "...")`.
 private openstack.blockstorage.backup @defaults("id name status size createdAt") {
   init(id? string)
   // Backup ID (UUID)
@@ -1958,10 +2481,6 @@ private openstack.blockstorage.backup @defaults("id name status size createdAt")
   availabilityZone string
   // Free-form backup metadata (requires Cinder microversion >= 3.43)
   metadata map[string]string
-  // Owning project ID (admin-only attribute; empty for non-admin tokens)
-  //
-  // Deprecated in favor of project.
-  projectId @maturity("deprecated") string
   // Timestamp when the data on the source volume was first saved (matches the source's data, not the backup's creation)
   dataTimestamp time
   // Backup creation timestamp
@@ -2012,7 +2531,18 @@ private openstack.applicationCredential @defaults("id name unrestricted expiresA
   unrestricted bool
   // Role names this credential is allowed to assume (subset of the owning user's roles)
   roleNames []string
-  // Access rules ([{id, service, method, path}]) limiting which API endpoints this credential can call; empty means all endpoints the granted roles allow
+  // Roles this credential is allowed to assume
+  //
+  // The grants a holder of the credential secret can exercise. Empty when the role
+  // catalog is not readable, in which case roleNames still carries the names.
+  roles() []openstack.role
+  // API endpoint access rules
+  //
+  // Restrictions limiting which API calls the credential may make. Each entry
+  // is a dict with `id` (the rule UUID), `service` (the service type, for
+  // example `compute` or `image`), `method` (the HTTP method, for example
+  // `GET` or `POST`), and `path` (the request path the rule permits). An empty
+  // list means the credential can call every endpoint its granted roles allow.
   accessRules []dict
   // Expiration timestamp; null when the credential never expires
   expiresAt time
@@ -2024,12 +2554,11 @@ private openstack.applicationCredential @defaults("id name unrestricted expiresA
 
 // OpenStack Keystone credential
 //
-// Examine a stored authentication credential — most commonly an EC2-style
-// access/secret key pair (`type` ec2) or an X.509 certificate (`type` cert) —
-// owned by a user and scoped to a project. Select a credential by its `id`.
-// The secret material (the credential blob) is intentionally not exposed;
-// query `type`, `user`, and `project` to audit who holds long-lived
-// credentials.
+// Stored authentication credential owned by a user and scoped to a project,
+// most commonly an EC2-style access/secret key pair (`type` ec2) or an X.509
+// certificate (`type` cert). Select a credential by its `id`. The secret
+// material (the credential blob) is intentionally not exposed; query `type`,
+// `user`, and `project` to audit who holds long-lived credentials.
 private openstack.credential @defaults("id type") {
   init(id? string)
   // Credential ID (UUID)
@@ -2047,10 +2576,11 @@ private openstack.credential @defaults("id type") {
 
 // OpenStack Keystone EC2-compatible credential
 //
-// Examine an EC2-style access credential owned by a user, used by EC2/S3-
-// compatible API clients. Select a credential by its `access` key. The secret
-// key is intentionally not exposed; query `access`, `user`, `project`, and
-// `trust` to audit long-lived programmatic access.
+// EC2-style access credential owned by a user, used by EC2/S3-compatible API
+// clients. Select a credential by its `access` key, for example
+// `openstack.ec2Credential(access: "abc123...")`. The secret key is
+// intentionally not exposed; query `access`, `user`, `project`, and `trust` to
+// audit long-lived programmatic access.
 private openstack.ec2Credential @defaults("access") {
   init(access? string)
   // Access key (UUID) identifying the credential
@@ -2065,11 +2595,12 @@ private openstack.ec2Credential @defaults("access") {
 
 // OpenStack Keystone trust
 //
-// Examine a delegation of authorization from a trustor user to a trustee user,
+// Delegation of authorization from a trustor user to a trustee user,
 // optionally limited to a subset of roles on a project, with optional
-// impersonation and re-delegation. Select a trust by its `id`. Trusts that
-// allow impersonation or unlimited uses grant standing access on the trustor's
-// behalf and should be reviewed closely.
+// impersonation and re-delegation. Select a trust by its `id`, for example
+// `openstack.trust(id: "3d2c...")`. Trusts that allow impersonation or
+// unlimited uses grant standing access on the trustor's behalf and should be
+// reviewed closely.
 private openstack.trust @defaults("id impersonation") {
   init(id? string)
   // Trust ID (UUID)
@@ -2078,8 +2609,15 @@ private openstack.trust @defaults("id impersonation") {
   impersonation bool
   // Role names delegated by this trust
   roleNames []string
+  // Roles delegated by this trust
+  //
+  // The grants the trustee can exercise on the trustor's behalf. Empty when the role
+  // catalog is not readable, in which case roleNames still carries the names.
+  roles() []openstack.role
   // Whether the trustee may re-delegate the trust to another user
   allowRedelegation bool
+  // How many further re-delegations the chain still allows; 0 when re-delegation is not permitted
+  redelegationCount int
   // Remaining number of times the trust can be used; 0 when unlimited
   remainingUses int
   // Expiration timestamp; null when the trust never expires
@@ -2096,8 +2634,8 @@ private openstack.trust @defaults("id impersonation") {
 
 // OpenStack Keystone service-catalog service
 //
-// Examine a registered service in the Keystone catalog — the abstract service
-// (such as `compute`, `identity`, or `network`) that endpoints are attached to.
+// Registered service in the Keystone catalog: the abstract service
+// (such as `compute`, `identity`, or `network`) that endpoints attach to.
 // Select a service by its `id`. Query `type` and `enabled` to inventory which
 // services the deployment advertises.
 private openstack.identity.service @defaults("id name type enabled") {
@@ -2119,7 +2657,7 @@ private openstack.identity.service @defaults("id name type enabled") {
 
 // OpenStack Keystone service-catalog endpoint
 //
-// Examine a single URL at which a service is reachable, for one interface type
+// Single URL at which a service is reachable, for one interface type
 // (public, internal, or admin) in one region. Select an endpoint by its `id`.
 // Auditing which services expose `public` endpoints, and on which URLs, is the
 // primary use.
@@ -2147,7 +2685,7 @@ private openstack.identity.endpoint @defaults("id interface url") {
 
 // OpenStack Keystone region
 //
-// Examine a region — a logical grouping of service endpoints, optionally nested
+// Logical grouping of service endpoints, optionally nested
 // under a parent region. Select a region by its `id`. Query `parentRegion` to
 // walk the region hierarchy.
 private openstack.identity.region @defaults("id parentRegionId") {
@@ -2191,10 +2729,6 @@ private openstack.compute.aggregate @defaults("id name availabilityZone hostCoun
 //
 // Reports both the configured maximum (`max*`) and the current usage (`*Used`) for each tracked resource. Limits without a usage counter are admin-set caps only.
 private openstack.compute.limits @defaults("maxTotalInstances totalInstancesUsed maxTotalCores totalCoresUsed maxTotalRAMSize totalRAMUsed") {
-  // Project ID the limits report applies to
-  //
-  // Deprecated in favor of project.
-  projectId @maturity("deprecated") string
   // Project the limits report applies to
   project() openstack.project
   // Maximum number of vCPU cores
@@ -2239,13 +2773,13 @@ private openstack.compute.limits @defaults("maxTotalInstances totalInstancesUsed
 
 // OpenStack Placement resource provider
 //
-// Examine a Placement resource provider — a source of consumable inventory
-// such as a compute node, a shared storage pool, or an accelerator device
-// (GPU/FPGA). Select a provider by its `id` (UUID). Query `inventories` and
-// `traits` to audit accelerator capacity — for example the `VGPU` / `PGPU`
-// resource classes and `HW_GPU_*` traits — and how much of each class is
-// already allocated. Walk `parent` and `root` to traverse nested provider
-// trees, such as a compute node with child GPU providers.
+// Source of consumable inventory in the Placement service, such as a compute
+// node, a shared storage pool, or an accelerator device (GPU/FPGA). Select a
+// provider by its `id` (UUID). The `inventories` and `traits` fields audit
+// accelerator capacity, for example the `VGPU` and `PGPU` resource classes and
+// `HW_GPU_*` traits, and how much of each class is already allocated. The
+// `parent` and `root` fields traverse nested provider trees, such as a compute
+// node with child GPU providers.
 private openstack.placement.resourceProvider @defaults("id name generation") {
   init(id? string)
   // Resource provider ID (UUID)
@@ -2272,10 +2806,6 @@ private openstack.placement.resourceProvider @defaults("id name generation") {
 
 // OpenStack Cinder block-storage quota for the scoped project (configured maximums; usage values are not exposed by the default API path).
 private openstack.blockstorage.quotaSet @defaults("volumes snapshots gigabytes backups") {
-  // Project ID the quota applies to
-  //
-  // Deprecated in favor of project.
-  projectId @maturity("deprecated") string
   // Project the quota applies to
   project() openstack.project
   // Maximum number of volumes
@@ -2294,12 +2824,15 @@ private openstack.blockstorage.quotaSet @defaults("volumes snapshots gigabytes b
   groups int
 }
 
-// OpenStack Neutron network-service quota for the scoped project (configured maximums; usage values are not exposed by the default API path).
+// OpenStack Neutron network-service quota
+//
+// Per-project ceilings the networking service enforces on Neutron
+// objects: networks, subnets, ports, routers, floating IPs, security
+// groups and their rules, subnet pools, RBAC policies, and trunks.
+// These are the configured maximums; current usage is not exposed by
+// the default API path. The quota applies to the scoped project,
+// reachable through project.
 private openstack.network.quotaSet @defaults("network subnet port floatingIp router") {
-  // Project ID the quota applies to
-  //
-  // Deprecated in favor of project.
-  projectId @maturity("deprecated") string
   // Project the quota applies to
   project() openstack.project
   // Maximum number of networks
@@ -2324,7 +2857,12 @@ private openstack.network.quotaSet @defaults("network subnet port floatingIp rou
   trunk int
 }
 
-// OpenStack Barbican access control list for a secret or container. Per-operation list of users granted access; operation keys typically include "read".
+// OpenStack Barbican access control list for a secret or container
+//
+// Per-operation grants that override the default project-scoped access to a
+// Barbican secret or container. The `entries` dict is keyed by operation
+// (typically "read") and lists the users allowed to perform it, so you can
+// audit whether secret material has been shared beyond its owning project.
 private openstack.keymanager.acl @defaults("entries") {
   // ACL entries keyed by operation (e.g. "read"); each entry contains `{users: [string], project_access: bool, created, updated}`
   entries dict
@@ -2332,8 +2870,8 @@ private openstack.keymanager.acl @defaults("entries") {
 
 // OpenStack Manila shared file system
 //
-// Examine a shared file system (an NFS or CIFS/SMB export) provisioned by
-// Manila. Select a share by its `id`. Query `isPublic`, `shareProto`, and
+// Shared file system (an NFS or CIFS/SMB export) provisioned by Manila.
+// Select a share by its `id`. Query `isPublic`, `shareProto`, and
 // `accessRules` to audit who can reach the share, and `shareNetwork` to see
 // which Neutron network it is attached to.
 private openstack.sharedfilesystem.share @defaults("id name shareProto status size isPublic") {
@@ -2370,10 +2908,6 @@ private openstack.sharedfilesystem.share @defaults("id name shareProto status si
   snapshotSupport bool
   // Snapshot ID the share was created from; empty when not created from a snapshot
   snapshotId string
-  // Owning project ID
-  //
-  // Deprecated in favor of project.
-  projectId @maturity("deprecated") string
   // User-defined metadata
   metadata map[string]string
   // Creation timestamp
@@ -2390,8 +2924,8 @@ private openstack.sharedfilesystem.share @defaults("id name shareProto status si
 
 // OpenStack Manila share access rule
 //
-// Examine a single rule granting a client access to a share — the access type
-// (IP, user, or certificate), the value it matches, and the level (read-only or
+// Single rule granting a client access to a share: the access type (IP,
+// user, or certificate), the value it matches, and the level (read-only or
 // read-write). The access key/secret is intentionally not exposed.
 private openstack.sharedfilesystem.share.accessRule @defaults("id accessType accessTo accessLevel state") {
   // Access rule ID (UUID)
@@ -2420,11 +2954,10 @@ private openstack.sharedfilesystem.share.accessRule @defaults("id accessType acc
 
 // OpenStack Manila security service
 //
-// Examine a security service — the Active Directory, LDAP, or Kerberos
-// configuration that share networks authenticate against. Select a service by
-// its `id`. Stored credentials (the bind password) are intentionally not
-// exposed; query `type`, `server`, `domain`, and `user` to audit directory
-// integration.
+// Active Directory, LDAP, or Kerberos configuration that share networks
+// authenticate against. Select a service by its `id`. Stored credentials
+// (the bind password) are intentionally not exposed; query `type`, `server`,
+// `domain`, and `user` to audit directory integration.
 private openstack.sharedfilesystem.securityService @defaults("id name type status") {
   init(id? string)
   // Security service ID (UUID)
@@ -2449,10 +2982,6 @@ private openstack.sharedfilesystem.securityService @defaults("id name type statu
   user string
   // Directory server hostname or IP address
   server string
-  // Owning project ID
-  //
-  // Deprecated in favor of project.
-  projectId @maturity("deprecated") string
   // Creation timestamp
   createdAt time
   // Last update timestamp
@@ -2463,10 +2992,10 @@ private openstack.sharedfilesystem.securityService @defaults("id name type statu
 
 // OpenStack Manila share network
 //
-// Examine a share network — the binding of Manila shares to a Neutron network
-// and subnet, with the CIDR and segmentation used to reach the share servers.
-// Select a share network by its `id`. Query `network` and `subnet` to trace
-// shares back to their L2/L3 placement.
+// Binding of Manila shares to a Neutron network and subnet, with the CIDR
+// and segmentation used to reach the share servers. Select a share network
+// by its `id`. Query `network` and `subnet` to trace shares back to their
+// L2/L3 placement.
 private openstack.sharedfilesystem.shareNetwork @defaults("id name networkType cidr") {
   init(id? string)
   // Share network ID (UUID)
@@ -2487,10 +3016,6 @@ private openstack.sharedfilesystem.shareNetwork @defaults("id name networkType c
   cidr string
   // IP version (4 or 6)
   ipVersion int
-  // Owning project ID
-  //
-  // Deprecated in favor of project.
-  projectId @maturity("deprecated") string
   // Creation timestamp
   createdAt time
   // Last update timestamp
@@ -2505,11 +3030,12 @@ private openstack.sharedfilesystem.shareNetwork @defaults("id name networkType c
 
 // OpenStack Magnum cluster
 //
-// Examine a container-orchestration cluster (typically Kubernetes) provisioned
-// by Magnum from a cluster template. Select a cluster by its `id`. Query
-// `apiAddress` and `floatingIpEnabled` to see whether the control plane is
-// reachable externally, and `clusterTemplate` for the security posture it was
-// built from (TLS, registry, network).
+// Container-orchestration cluster (typically Kubernetes) provisioned by Magnum
+// from a cluster template. Select a cluster by its `id`, for example
+// `openstack.containerinfra.cluster(id: "...")`. The `apiAddress` and
+// `floatingIpEnabled` fields reveal whether the control plane is reachable
+// externally, and `clusterTemplate` carries the security posture it was built
+// from (TLS, registry, network).
 private openstack.containerinfra.cluster @defaults("id name status nodeCount masterCount") {
   init(id? string)
   // Cluster ID (UUID)
@@ -2544,10 +3070,6 @@ private openstack.containerinfra.cluster @defaults("id name status nodeCount mas
   discoveryUrl string
   // Labels (key/value tuning and feature flags) applied to the cluster
   labels map[string]string
-  // Owning project ID
-  //
-  // Deprecated in favor of project.
-  projectId @maturity("deprecated") string
   // Creation timestamp
   createdAt time
   // Last update timestamp
@@ -2570,14 +3092,25 @@ private openstack.containerinfra.cluster @defaults("id name status nodeCount mas
   user() openstack.user
   // Heat stack backing the cluster; null when the API did not report a stack
   stack() openstack.orchestration.stack
+  // Node groups making up the cluster
+  nodeGroups() []openstack.containerinfra.cluster.nodeGroup
+  // Expiry of the cluster's certificate authority
+  //
+  // The authority signs the certificates the cluster's components authenticate
+  // to each other with, so once it lapses those components stop trusting one
+  // another. Null when the authority is not readable.
+  caCertificateExpiresAt() time
+  // Subject of the cluster's certificate authority; empty when it is not readable
+  caCertificateSubject() string
 }
 
 // OpenStack Magnum cluster template
 //
-// Examine a cluster template — the reusable blueprint that defines how Magnum
-// builds clusters (orchestration engine, image, network, TLS, and registry
-// settings). Select a template by its `id`. `tlsDisabled`, `public`, and
-// `floatingIpEnabled` are the key security toggles to audit.
+// Reusable blueprint that defines how Magnum builds clusters (orchestration
+// engine, image, network, TLS, and registry settings). Select a template by
+// its `id`, for example `openstack.containerinfra.clusterTemplate(id: "...")`.
+// The `tlsDisabled`, `public`, and `floatingIpEnabled` fields are the key
+// security toggles to audit.
 private openstack.containerinfra.clusterTemplate @defaults("id name coe tlsDisabled public") {
   init(id? string)
   // Cluster template ID (UUID)
@@ -2652,11 +3185,13 @@ private openstack.containerinfra.clusterTemplate @defaults("id name coe tlsDisab
 
 // OpenStack Trove database instance
 //
-// Examine a managed database instance provisioned by Trove. Select an instance
-// by its `id`. Query `addresses` and `hostname` to see how the database is
-// reachable, and `datastoreType`/`datastoreVersion` to flag outdated engines.
-// The `databases` and `users` accessors enumerate the logical databases and
-// accounts on the instance; user passwords are intentionally not exposed.
+// Managed database instance provisioned by the Trove database service. Select
+// an instance by its `id`, for example `openstack.db.instance(id: "...")`. The
+// `addresses` and `hostname` fields show how the database is reachable, and
+// `datastoreType`/`datastoreVersion` identify the engine and version so you can
+// flag outdated database software. The `databases` and `users` fields enumerate
+// the logical databases and accounts on the instance; user passwords are
+// intentionally not exposed.
 private openstack.db.instance @defaults("id name status datastoreType datastoreVersion") {
   init(id? string)
   // Instance ID (UUID)
@@ -2687,10 +3222,12 @@ private openstack.db.instance @defaults("id name status datastoreType datastoreV
 
 // OpenStack Ironic bare-metal node
 //
-// Examine a physical machine managed by Ironic. Select a node by its `id`
-// (UUID). Query `provisionState`, `maintenance`, and `instance` to see whether
-// the node is in service and which Nova instance (if any) it backs, and
-// `owner`/`lessee` for multi-tenant ownership.
+// Physical machine managed by Ironic, the OpenStack bare-metal provisioning
+// service. Select a node by its `id` (UUID). The `provisionState`,
+// `maintenance`, `powerState`, and `fault` fields report whether the node is
+// in service or has a hardware problem, `instance` links to the Nova instance
+// (if any) that the node backs, and `owner` and `lessee` capture multi-tenant
+// ownership.
 private openstack.baremetal.node @defaults("id name provisionState powerState maintenance") {
   init(id? string)
   // Node ID (UUID)
@@ -2725,6 +3262,16 @@ private openstack.baremetal.node @defaults("id name provisionState powerState ma
   protected bool
   // Reason the node is protected; empty when not protected
   protectedReason string
+  // Whether Ironic runs automated cleaning when the node is unprovisioned; null when the node does not report it
+  //
+  // Automated cleaning erases the node's disks between tenants. False leaves the previous
+  // tenant's data on the hardware for whoever is scheduled onto it next. Null means the
+  // node left the setting unset, so the conductor's own default applies.
+  automatedClean bool
+  // Whether the node is marked retired and will not be scheduled again
+  retired bool
+  // Reason the node was retired; empty when not retired
+  retiredReason string
   // Free-form description of the node
   description string
   // Whether serial console access is enabled
@@ -2755,8 +3302,10 @@ private openstack.baremetal.node @defaults("id name provisionState powerState ma
 
 // OpenStack Ironic bare-metal port
 //
-// Examine a network port (NIC) on a bare-metal node — its MAC address, PXE
-// setting, and physical-network binding. Select a port by its `id` (UUID).
+// Network port (NIC) on an Ironic bare-metal node, covering its MAC address,
+// PXE setting, and physical-network binding. Select a port by its `id` (UUID).
+// The `pxeEnabled` and `localLinkConnection` fields describe how the port boots
+// and which switch port it connects to.
 private openstack.baremetal.port @defaults("id address nodeUuid pxeEnabled") {
   // Port ID (UUID)
   id string
@@ -2784,10 +3333,12 @@ private openstack.baremetal.port @defaults("id address nodeUuid pxeEnabled") {
 
 // OpenStack Heat orchestration stack
 //
-// Examine a Heat stack — a set of OpenStack resources deployed and managed
-// together from a template (OpenStack's infrastructure-as-code). Select a stack
-// by its `id`. Query `status` to track deployment/drift state and
-// `disableRollback` to flag stacks that won't roll back on failure.
+// Set of OpenStack resources deployed and managed together from a Heat
+// template (OpenStack's infrastructure-as-code). Select a stack by its `id`.
+// The `status` field tracks deployment and drift state (for example
+// `CREATE_COMPLETE`, `UPDATE_FAILED`, or `ROLLBACK_COMPLETE`), and
+// `disableRollback` flags stacks that will not roll back on failure, leaving
+// partially created resources behind.
 private openstack.orchestration.stack @defaults("id name status") {
   init(id? string)
   // Stack ID (UUID)
@@ -2815,14 +3366,24 @@ private openstack.orchestration.stack @defaults("id name status") {
   timeoutMinutes() int
   // Input parameters the stack was deployed with
   parameters() map[string]string
+  // Resources the stack created and still manages
+  resources() []openstack.orchestration.stack.resource
+  // Template the stack was created from
+  //
+  // The full template body, including the parameter and resource definitions.
+  // Parameter defaults written into a template are stored with it, so a
+  // credential passed that way is readable here.
+  template() dict
 }
 
 // OpenStack Nova compute quota for the scoped project
+//
+// Configured per-project ceilings Nova enforces on compute consumption:
+// instances, cores, ram, keyPairs, serverGroups, and the legacy
+// nova-network limits. Comparing these caps against actual usage (see
+// openstack.compute.limits) surfaces projects near capacity or with
+// overly permissive quotas.
 private openstack.compute.quotaSet @defaults("instances cores ram") {
-  // Project ID the quota applies to
-  //
-  // Deprecated in favor of project.
-  projectId @maturity("deprecated") string
   // Project the quota applies to
   project() openstack.project
   // Maximum number of instances
@@ -2857,43 +3418,93 @@ private openstack.compute.quotaSet @defaults("instances cores ram") {
 
 // Neutron RBAC policy
 //
-// Examine a Neutron role-based access control policy, which governs
-// cross-project sharing of a network or QoS policy. The `action`
-// distinguishes `access_as_shared` (other projects may use the object)
-// from `access_as_external` (the network may be used as an external
-// gateway), `objectType` and the typed `network()` / `qosPolicy()`
-// accessors identify the shared object, and `targetProjectId` names the
-// project the share is granted to — the literal `*` meaning every
-// project, a cloud-wide share worth flagging. Select a policy by id with
-// `openstack.network.rbacPolicy(id: "...")`.
+// Role-based access control policy that governs cross-project sharing
+// of a network or QoS policy. The `action` distinguishes
+// `access_as_shared` (other projects may use the object) from
+// `access_as_external` (the network may be used as an external
+// gateway), `objectType` together with the `network` and `qosPolicy`
+// accessors identifies the shared object, and `targetProjectId` names
+// the project the share is granted to. The literal `*` means every
+// project, a cloud-wide share worth flagging. Select a policy by id
+// with `openstack.network.rbacPolicy(id: "...")`.
 private openstack.network.rbacPolicy @defaults("id action objectType targetProjectId") {
   init(id? string)
   // RBAC policy ID (UUID)
   id string
   // Action (access_as_shared, access_as_external)
   action string
-  // Type of the shared object (network, qos-policy)
+  // Type of the shared object
+  //
+  // One of `network`, `qos_policy`, `security_group`, `subnetpool`, `address_scope`, or
+  // `address_group`. Some deployments spell the QoS type `qos-policy`; both spellings
+  // resolve to the same object.
   objectType string
-  // ID of the shared object (a network ID or QoS policy ID, per objectType)
+  // ID of the shared object, of whichever kind objectType names
   objectId string
   // Project the share is granted to; the literal "*" means all projects (cloud-wide share)
   targetProjectId string
-  // Shared network; null unless objectType is "network"
+  // Shared network; null unless objectType is a network
   network() openstack.network
-  // Shared QoS policy; null unless objectType is "qos-policy"
+  // Shared QoS policy; null unless objectType is a QoS policy
   qosPolicy() openstack.qosPolicy
+  // Shared security group; null unless objectType is a security group
+  //
+  // A security group shared into another project can be attached to that project's ports,
+  // so its rules govern traffic to instances the owning project does not control.
+  securityGroup() openstack.securityGroup
+  // Shared subnet pool; null unless objectType is a subnet pool
+  subnetPool() openstack.subnetPool
+  // Shared address scope; null unless objectType is an address scope
+  addressScope() openstack.network.addressScope
+  // Shared address group; null unless objectType is an address group
+  addressGroup() openstack.network.addressGroup
   // Project that owns the RBAC policy
+  project() openstack.project
+}
+
+// OpenStack Neutron address group
+//
+// Named collection of addresses that security group rules match against
+// instead of a single remote IP prefix. The `addresses` field holds the
+// members, each either a CIDR (`203.0.113.0/24`) or an inclusive IP range
+// (`203.0.113.10-203.0.113.20`), and `containsPublicAddress` reports
+// whether any member opens a broad slice of the public internet. Because
+// one address group can be reused by many rules, widening it silently
+// widens every rule that references it, which makes the group itself the
+// unit worth auditing. Select a group by id with
+// `openstack.network.addressGroup(id: "...")`.
+private openstack.network.addressGroup @defaults("id name addresses") {
+  init(id? string)
+  // Address group ID (UUID)
+  id string
+  // Address group name
+  name string
+  // Description
+  description string
+  // Member addresses
+  //
+  // Each entry is either a CIDR ("203.0.113.0/24", "2001:db8::/64") or an
+  // inclusive IP range ("203.0.113.10-203.0.113.20").
+  addresses []string
+  // Whether any member address reaches the public internet
+  //
+  // True when a member is a broad public block such as 0.0.0.0/0 or ::/0, or an
+  // IP range spanning an equivalent number of addresses, excluding private and
+  // reserved ranges. A single public host or a narrow allow-listed range is not
+  // treated as public.
+  containsPublicAddress() bool
+  // Project that owns the address group
   project() openstack.project
 }
 
 // Cinder QoS specification
 //
-// Examine a Cinder quality-of-service specification — the IOPS and
+// Quality-of-service specification for Cinder: the IOPS and
 // bandwidth throttling limits a deployment can attach to volume types.
 // `consumer` records where the limits are enforced (`front-end` on the
 // Nova host, `back-end` on the storage system, or `both`), and `specs`
 // holds the rate-limit key/value pairs. Volume types reference a QoS
-// spec through `openstack.blockstorage.volumeType.qosSpec()`. Listing
+// spec through the volumeType `qosSpec` field. Listing
 // QoS specs is admin-only. Select a spec by id with
 // `openstack.blockstorage.qosSpec(id: "...")`.
 private openstack.blockstorage.qosSpec @defaults("id name consumer") {
@@ -2906,4 +3517,490 @@ private openstack.blockstorage.qosSpec @defaults("id name consumer") {
   consumer string
   // Rate-limit key/value pairs (e.g. total_iops_sec, read_bytes_sec)
   specs map[string]string
+}
+
+// OpenStack Keystone federated identity provider
+//
+// External identity provider Keystone accepts assertions from, letting users
+// authenticate against a corporate SAML or OpenID Connect system instead of a
+// local Keystone password. The `remoteIds` field holds the issuer identifiers
+// the provider is recognized by, and `enabled` reports whether it can currently
+// be used to log in. Every protocol attached to the provider names the mapping
+// that turns an incoming assertion into local groups and roles, so a provider
+// plus its protocols and mappings describe who from outside the cloud can get
+// in and what they arrive holding.
+private openstack.identity.federation.identityProvider @defaults("id enabled description") {
+  // Identity provider ID
+  id string
+  // Whether the provider may currently be used to authenticate
+  enabled bool
+  // Description
+  description string
+  // Issuer identifiers this provider is recognized by
+  //
+  // An assertion is attributed to this provider when its issuer matches one of
+  // these values, so each entry is a trusted issuer.
+  remoteIds []string
+  // Seconds a token issued through this provider stays valid; 0 when the deployment default applies
+  authorizationTtl int
+  // Domain that federated users from this provider are created in
+  domain() openstack.domain
+  // Authentication protocols enabled on this provider
+  protocols() []openstack.identity.federation.protocol
+}
+
+// OpenStack Keystone federation protocol
+//
+// Authentication protocol (for example `saml2` or `openid`) enabled on a
+// federated identity provider, together with the mapping applied to assertions
+// that arrive over it. The mapping is the point where an external assertion
+// becomes local authorization, so the protocol is the link that decides which
+// rules a given provider's users are run through.
+private openstack.identity.federation.protocol @defaults("id") {
+  // Protocol ID, for example saml2 or openid
+  id string
+  // Identity provider this protocol is enabled on
+  identityProvider() openstack.identity.federation.identityProvider
+  // Mapping applied to assertions arriving over this protocol
+  mapping() openstack.identity.federation.mapping
+}
+
+// OpenStack Keystone federation mapping
+//
+// Set of rules that translate an external identity assertion into a local
+// Keystone identity. Each rule pairs a `remote` condition matched against the
+// incoming assertion with a `local` grant naming the user, groups, projects, or
+// domain the caller receives. A rule whose condition matches broadly, or whose
+// grant names a privileged group, hands that privilege to everyone the external
+// provider is willing to assert for, which makes mappings worth auditing
+// alongside direct role assignments.
+private openstack.identity.federation.mapping @defaults("id") {
+  // Mapping ID
+  id string
+  // Rules translating assertions into local identities
+  //
+  // Each entry holds a `remote` list of conditions matched against the incoming
+  // assertion (`type` plus one of `any_one_of`, `not_any_of`, `blacklist`, or
+  // `whitelist`, with an optional `regex` flag) and a `local` list of grants
+  // naming the `user`, `group`, `groups`, `group_ids`, `projects`, or `domain`
+  // the caller receives.
+  rules []dict
+}
+
+// OpenStack Keystone federation service provider
+//
+// Remote service provider this cloud issues federated assertions to, the
+// outbound half of federation. The cloud vouches for its users to the system at
+// `spUrl`, so an enabled entry means local identities are accepted somewhere
+// else, and `authUrl` is where the remote system exchanges the assertion for a
+// token.
+private openstack.identity.federation.serviceProvider @defaults("id enabled spUrl") {
+  // Service provider ID
+  id string
+  // Whether assertions are currently issued to this service provider
+  enabled bool
+  // Description
+  description string
+  // URL of the remote service provider that consumes the assertion
+  spUrl string
+  // URL the remote service provider exchanges the assertion for a token at
+  authUrl string
+  // Prefix prepended to the relay state during the exchange
+  relayStatePrefix string
+}
+
+// OpenStack Designate zone transfer request
+//
+// Standing offer to hand ownership of a DNS zone to another project. Until the
+// offer is accepted or deleted it remains a live path for the zone to change
+// hands, and an offer whose targetProject is null may be accepted by any
+// project that learns its key, not just an intended recipient. The `status`
+// field distinguishes an outstanding offer (ACTIVE) from one already completed.
+private openstack.dns.transferRequest @defaults("id zoneName status") {
+  // Transfer request ID
+  id string
+  // Name of the zone being offered
+  zoneName string
+  // Description
+  description string
+  // Status
+  //
+  // One of ACTIVE (the offer is outstanding), COMPLETE, DELETED, PENDING, or
+  // ERROR.
+  status string
+  // Zone whose ownership is being offered
+  zone() openstack.dns.zone
+  // Project that currently owns the zone
+  project() openstack.project
+  // Project the offer is restricted to; null when any project may accept it
+  targetProject() openstack.project
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+}
+
+// OpenStack Designate zone transfer acceptance
+//
+// Record of a DNS zone that changed hands, naming the project that accepted the
+// offer and the request it was accepted against. These are the completed half
+// of zone transfers and form the audit trail for how a zone came to be owned by
+// its current project.
+private openstack.dns.transferAccept @defaults("id status") {
+  // Transfer acceptance ID
+  id string
+  // Status
+  //
+  // One of ACTIVE, COMPLETE, or ERROR.
+  status string
+  // Zone whose ownership was transferred
+  zone() openstack.dns.zone
+  // Project that accepted the transfer and now owns the zone
+  project() openstack.project
+  // Transfer request that was accepted
+  transferRequest() openstack.dns.transferRequest
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+}
+
+// OpenStack Designate TSIG key
+//
+// Shared key authenticating DNS traffic between Designate and the servers it
+// exchanges zone data with. The `scope` field records whether the key covers a
+// single zone or a whole pool, and `algorithm` records the HMAC it signs with,
+// which is where a deployment still running a weakened digest shows up. The
+// secret itself is not reported.
+private openstack.dns.tsigKey @defaults("id name algorithm scope") {
+  // TSIG key ID
+  id string
+  // Key name
+  name string
+  // Signing algorithm
+  //
+  // One of hmac-md5, hmac-sha1, hmac-sha224, hmac-sha256, hmac-sha384, or
+  // hmac-sha512.
+  algorithm string
+  // What the key covers
+  //
+  // Either ZONE (a single zone) or POOL (every zone served by a pool).
+  scope string
+  // ID of the zone or pool the key covers, per scope
+  resourceId string
+  // Zone the key covers; null when the scope is POOL
+  zone() openstack.dns.zone
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+}
+
+// OpenStack Cinder volume transfer
+//
+// Standing offer to hand ownership of a block-storage volume to another
+// project. The volume, and every byte on it, moves to whichever project
+// redeems the offer, so an outstanding transfer is data leaving the owning
+// project's control with no further approval step. The transfer's auth key is
+// not reported.
+private openstack.blockstorage.transfer @defaults("id name") {
+  // Transfer ID
+  id string
+  // Transfer name
+  name string
+  // Volume whose ownership is being offered
+  volume() openstack.blockstorage.volume
+  // Creation timestamp
+  createdAt time
+}
+
+// OpenStack Manila share transfer
+//
+// Standing offer to hand ownership of a shared file system to another project.
+// The `accepted` field separates offers already redeemed from those still open,
+// and `expiresAt` records when an unredeemed offer lapses. The transfer's auth
+// key is not reported.
+private openstack.sharedfilesystem.transfer @defaults("id name accepted") {
+  // Transfer ID
+  id string
+  // Transfer name
+  name string
+  // Whether the transfer has been redeemed
+  accepted bool
+  // Type of resource being transferred, currently always "share"
+  resourceType string
+  // Share whose ownership is being offered
+  share() openstack.sharedfilesystem.share
+  // Project that owns the share and made the offer
+  sourceProject() openstack.project
+  // Project that redeemed the offer; null while the offer is outstanding
+  destinationProject() openstack.project
+  // Creation timestamp
+  createdAt time
+  // Time the offer lapses if it is not redeemed
+  expiresAt time
+}
+
+// Action performed on an OpenStack compute server
+//
+// One entry of a server's action log, naming what was done, who did it, and
+// when. Nova keeps a record per state-changing request, so these answer who
+// rebuilt, rescued, evacuated, or reset the root password on an instance and
+// when it happened, which is the only per-instance audit trail the compute API
+// offers.
+private openstack.compute.server.action @defaults("action startTime message") {
+  // What was done
+  //
+  // Examples include create, delete, reboot, rebuild, rescue, resize,
+  // evacuate, changePassword, attach_volume, and detach_volume.
+  action string
+  // Message attached to the action, usually only set when it failed
+  message string
+  // Nova request ID the action was recorded under
+  requestId string
+  // Time the action started
+  startTime time
+  // Server the action was performed on
+  server() openstack.compute.server
+  // User that requested the action
+  user() openstack.user
+  // Project the action was requested in
+  project() openstack.project
+}
+
+// Node group of an OpenStack Magnum cluster
+//
+// Set of cluster nodes sharing one flavor, image, and label set. The `role`
+// field separates the control plane from workers, `isDefault` marks the group
+// the cluster was created with, and `labels` carries the per-group overrides
+// that change how those nodes are configured. Because a node group can run a
+// different image from the rest of the cluster, these are where an unpatched
+// subset of nodes becomes visible.
+private openstack.containerinfra.cluster.nodeGroup @defaults("id name role nodeCount status") {
+  // Node group UUID
+  id string
+  // Node group name
+  name string
+  // Role of the nodes in this group, for example master or worker
+  role string
+  // Status
+  status string
+  // Reason for the current status
+  statusReason string
+  // Number of nodes currently in the group
+  nodeCount int
+  // Smallest number of nodes the group may scale to
+  minNodeCount int
+  // Largest number of nodes the group may scale to; 0 when unbounded
+  maxNodeCount int
+  // Whether this is the group the cluster was created with
+  isDefault bool
+  // Size in GB of the volume backing the container runtime on each node; 0 when unset
+  dockerVolumeSize int
+  // Configuration labels applied to the nodes in this group
+  labels map[string]string
+  // Addresses of the nodes in the group
+  nodeAddresses []string
+  // Cluster the group belongs to
+  cluster() openstack.containerinfra.cluster
+  // Image the nodes boot from
+  image() openstack.image
+  // Flavor the nodes run on
+  flavor() openstack.compute.flavor
+  // Project that owns the node group
+  project() openstack.project
+}
+
+// OpenStack Trove configuration group
+//
+// Named set of database engine parameters that Trove applies to the instances
+// attached to it. The `values` field holds the parameter overrides themselves,
+// which is where engine-level security settings (logging, TLS enforcement,
+// local file loading, authentication plugins) are turned on or off for every
+// instance the group covers at once.
+private openstack.db.configuration @defaults("id name datastoreName datastoreVersionName") {
+  // Configuration group ID
+  id string
+  // Configuration group name
+  name string
+  // Description
+  description string
+  // Database engine the group applies to, for example mysql or postgresql
+  datastoreName string
+  // Engine version the group applies to
+  datastoreVersionName string
+  // Parameter overrides applied to attached instances
+  values dict
+  // Database instances the group is attached to
+  instances() []openstack.db.instance
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+}
+
+// OpenStack Octavia amphora
+//
+// Virtual machine running the load-balancing data plane for an Octavia load
+// balancer. Every request through the balancer passes through it, so its image
+// is the patch level of that path, and `certExpiration` is when the certificate
+// securing the control channel to it stops being valid. The `role` field
+// separates the active amphora from a standby in an active-standby pair.
+private openstack.octavia.amphora @defaults("id role status certExpiration") {
+  // Amphora ID
+  id string
+  // Role in the load balancer
+  //
+  // One of MASTER, BACKUP, or STANDALONE.
+  role string
+  // Status
+  //
+  // One of BOOTING, ALLOCATED, READY, PENDING_CREATE, PENDING_DELETE, DELETED,
+  // FAILOVER_STOPPED, or ERROR.
+  status string
+  // Expiry of the certificate securing the control channel to this amphora
+  certExpiration time
+  // Whether a certificate rotation is currently in progress
+  certBusy bool
+  // Availability zone the amphora runs in
+  cachedZone string
+  // Address the control plane reaches this amphora on
+  lbNetworkIp string
+  // Address serving the load balancer's virtual IP
+  haIp string
+  // Address used for failover coordination between amphorae
+  vrrpIp string
+  // Interface failover coordination runs over
+  vrrpInterface string
+  // Identifier distinguishing this failover group
+  vrrpId int
+  // Priority deciding which amphora holds the virtual IP
+  vrrpPriority int
+  // Load balancer the amphora serves
+  loadBalancer() openstack.octavia.loadBalancer
+  // Compute server the amphora runs as
+  server() openstack.compute.server
+  // Image the amphora booted from
+  image() openstack.image
+  // Port carrying the load balancer's virtual IP
+  haPort() openstack.port
+  // Port carrying failover coordination
+  vrrpPort() openstack.port
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+}
+
+// Resource created by an OpenStack Heat stack
+//
+// One object a stack created and still manages, linking the name it has in the
+// template to the id of the live object it became. Enumerating these answers
+// which live resources are owned by orchestration, so a change made directly on
+// one of them is a change that the next stack update will overwrite, and it
+// gives every stack-created object a path back to the template that defines it.
+private openstack.orchestration.stack.resource @defaults("name type status") {
+  // Name of the resource in the stack
+  name string
+  // Name the resource has in the template
+  logicalId string
+  // ID of the live object the resource became
+  physicalId string
+  // Heat resource type, for example OS::Nova::Server
+  type string
+  // Status
+  //
+  // One of INIT_COMPLETE, CREATE_IN_PROGRESS, CREATE_COMPLETE, CREATE_FAILED,
+  // UPDATE_IN_PROGRESS, UPDATE_COMPLETE, UPDATE_FAILED, DELETE_IN_PROGRESS,
+  // DELETE_COMPLETE, DELETE_FAILED, CHECK_COMPLETE, SNAPSHOT_COMPLETE,
+  // ROLLBACK_IN_PROGRESS, ROLLBACK_COMPLETE, ROLLBACK_FAILED, SUSPEND_IN_PROGRESS,
+  // SUSPEND_COMPLETE, SUSPEND_FAILED, RESUME_IN_PROGRESS, RESUME_COMPLETE,
+  // RESUME_FAILED, ADOPT_IN_PROGRESS, ADOPT_COMPLETE, ADOPT_FAILED,
+  // SNAPSHOT_IN_PROGRESS, SNAPSHOT_FAILED, CHECK_IN_PROGRESS, or CHECK_FAILED.
+  status string
+  // Reason for the current status
+  statusReason string
+  // Description
+  description string
+  // Names of the resources in the stack that depend on this one
+  requiredBy []string
+  // Stack that manages the resource
+  stack() openstack.orchestration.stack
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+}
+
+// OpenStack Neutron agent
+//
+// Process running part of the networking control plane on a host, such as the
+// L3, DHCP, metadata, or Open vSwitch agent. The `alive` field reports whether
+// the agent has sent a heartbeat recently and `adminStateUp` whether it is
+// meant to be scheduled work at all, so an agent that is administratively up
+// but not alive is a piece of the control plane that has stopped enforcing what
+// it was given, including security group and routing changes.
+private openstack.network.agent @defaults("id agentType host alive adminStateUp") {
+  // Agent ID
+  id string
+  // Kind of agent
+  //
+  // Examples include "Open vSwitch agent", "L3 agent", "DHCP agent",
+  // "Metadata agent", and "Loadbalancerv2 agent".
+  agentType string
+  // Executable the agent runs as, for example neutron-l3-agent
+  binary string
+  // Host the agent runs on
+  host string
+  // Message queue topic the agent listens on
+  topic string
+  // Whether the agent has sent a heartbeat within the timeout
+  alive bool
+  // Whether the agent is administratively enabled and eligible for scheduling
+  adminStateUp bool
+  // Whether the agent has finished applying the state it was given
+  resourcesSynced bool
+  // Availability zone the agent serves
+  availabilityZone string
+  // Description
+  description string
+  // Agent configuration reported by the agent itself
+  configurations dict
+  // Time of the most recent heartbeat
+  heartbeatTimestamp time
+  // Time the agent first registered
+  createdAt time
+  // Time the agent process last started
+  startedAt time
+}
+
+// OpenStack Neutron tap mirror
+//
+// Rule that copies the traffic of a Neutron port to an address outside the
+// cloud over a GRE or ERSPAN tunnel. A mirror reads every packet the port sends
+// or receives without appearing in its security groups, so each one is an
+// active interception path worth confirming is intended. The `directions` in
+// and out fields carry the tunnel identifiers per direction, and a direction
+// with no tunnel identifier is not mirrored.
+private openstack.network.tapMirror @defaults("id name mirrorType remoteIp") {
+  // Tap mirror ID
+  id string
+  // Tap mirror name
+  name string
+  // Description
+  description string
+  // Tunnel type the copied traffic is carried over
+  //
+  // Either erspanv1 or gre.
+  mirrorType string
+  // Address the copied traffic is sent to
+  remoteIp string
+  // Tunnel identifier for traffic arriving at the port; 0 when inbound traffic is not mirrored
+  directionIn int
+  // Tunnel identifier for traffic leaving the port; 0 when outbound traffic is not mirrored
+  directionOut int
+  // Port whose traffic is copied
+  port() openstack.port
+  // Project that owns the tap mirror
+  project() openstack.project
 }

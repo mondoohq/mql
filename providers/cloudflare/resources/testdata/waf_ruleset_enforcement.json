@@ -1,0 +1,107 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": {
+    "id": "rs-enforcement-1",
+    "name": "zone entrypoint",
+    "description": "Zone-level entrypoint ruleset",
+    "kind": "root",
+    "phase": "http_request_firewall_managed",
+    "version": "9",
+    "last_updated": "2024-05-01T00:00:00Z",
+    "rules": [
+      {
+        "id": "rule-exec-001",
+        "ref": "rule-exec-001",
+        "version": "9",
+        "action": "execute",
+        "expression": "true",
+        "description": "Execute Cloudflare Managed Ruleset",
+        "enabled": true,
+        "last_updated": "2024-05-01T00:00:00Z",
+        "logging": { "enabled": false },
+        "action_parameters": {
+          "id": "efb7b8c949ac4650a09736fc376e9aee",
+          "overrides": {
+            "action": "log",
+            "enabled": false,
+            "sensitivity_level": "low",
+            "categories": [
+              { "category": "wordpress", "action": "block", "enabled": true },
+              { "category": "joomla", "enabled": false }
+            ],
+            "rules": [
+              {
+                "id": "5de7edfa648c4d6891dc3e7f84534ffa",
+                "action": "log",
+                "enabled": false,
+                "score_threshold": 60,
+                "sensitivity_level": "eoff",
+                "status": "disabled"
+              },
+              {
+                "id": "e3a567afc347477d9702d9047e97d760",
+                "action": "block"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "rule-skip-001",
+        "ref": "rule-skip-001",
+        "version": "9",
+        "action": "skip",
+        "expression": "ip.src in {203.0.113.0/24}",
+        "description": "Skip the WAF for partner traffic",
+        "enabled": true,
+        "last_updated": "2024-05-01T00:00:00Z",
+        "logging": { "enabled": true },
+        "action_parameters": {
+          "phases": ["http_ratelimit", "http_request_firewall_managed"],
+          "products": ["waf", "rateLimit", "zoneLockdown"],
+          "rulesets": ["efb7b8c949ac4650a09736fc376e9aee"],
+          "rules": {
+            "efb7b8c949ac4650a09736fc376e9aee": ["5de7edfa648c4d6891dc3e7f84534ffa"]
+          }
+        }
+      },
+      {
+        "id": "rule-rl-001",
+        "ref": "rule-rl-001",
+        "version": "9",
+        "action": "block",
+        "expression": "http.request.uri.path eq \"/login\"",
+        "description": "Rate limit logins",
+        "enabled": true,
+        "last_updated": "2024-05-01T00:00:00Z",
+        "ratelimit": {
+          "characteristics": ["cf.colo.id", "ip.src"],
+          "period": 60,
+          "requests_per_period": 100,
+          "mitigation_timeout": 600,
+          "counting_expression": "http.response.code eq 401",
+          "requests_to_origin": true
+        }
+      },
+      {
+        "id": "rule-plain-001",
+        "ref": "rule-plain-001",
+        "version": "9",
+        "action": "block",
+        "expression": "http.host eq \"admin.example.com\"",
+        "description": "Plain block with no enforcement parameters",
+        "enabled": true,
+        "last_updated": "2024-05-01T00:00:00Z",
+        "action_parameters": {
+          "response": {
+            "content": "blocked",
+            "content_type": "text/plain",
+            "status_code": 403
+          }
+        }
+      }
+    ]
+  }
+}

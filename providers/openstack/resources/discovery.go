@@ -7,10 +7,10 @@ import (
 	"maps"
 
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/security/groups"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/openstack/connection"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/openstack/connection"
+	"go.mondoo.com/mql/utils/stringx"
 )
 
 // Discover expands the connected OpenStack scope into the child assets the

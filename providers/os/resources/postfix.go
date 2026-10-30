@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"path/filepath"
@@ -12,9 +13,9 @@ import (
 	"strings"
 
 	"github.com/kballard/go-shellquote"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 const (
@@ -78,7 +79,31 @@ func (p *mqlPostfix) masterCfPath() (string, error) {
 	return filepath.Join(filepath.Dir(mainCf.Data), postfixMasterCfName), nil
 }
 
+// explicitMainCfExists returns an error when postfix(path) names a main.cf
+// that does not exist, as snmpd.config and nginx.conf do; postconf then
+// fails and the main.cf fallback reads nothing, which passed
+// inetInterfaces.all(_ == "127.0.0.1"). A missing main.cf at the default
+// location means postfix is not configured and reads as empty.
+func (p *mqlPostfix) explicitMainCfExists() error {
+	mainCf := p.GetMainCfPath()
+	if mainCf.Error != nil {
+		return mainCf.Error
+	}
+	conn := p.MqlRuntime.Connection.(shared.Connection)
+	if mainCf.Data == filepath.Join(postfixConfigDir(conn), postfixMainCfName) {
+		return nil
+	}
+	if _, err := conn.FileSystem().Stat(mainCf.Data); errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("could not read %q: no such file", mainCf.Data)
+	}
+	return nil
+}
+
 func (p *mqlPostfix) params() (map[string]any, error) {
+	if err := p.explicitMainCfExists(); err != nil {
+		return nil, err
+	}
+
 	// prefer postconf: it reports effective values, including built-in defaults
 	// for parameters that are not written to main.cf
 	params, ok, err := p.postconfParams()
@@ -147,6 +172,9 @@ func (p *mqlPostfix) inetInterfaces() ([]any, error) {
 }
 
 func (p *mqlPostfix) services() ([]any, error) {
+	if err := p.explicitMainCfExists(); err != nil {
+		return nil, err
+	}
 	masterCf := p.GetMasterCfPath()
 	if masterCf.Error != nil {
 		return nil, masterCf.Error
@@ -209,7 +237,7 @@ func (s *mqlPostfixService) id() (string, error) {
 // parsePostconf parses `postconf` output (one `name = value` per line).
 func parsePostconf(out string) map[string]any {
 	params := map[string]any{}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		line = strings.TrimRight(line, "\r")
 		idx := strings.Index(line, "=")
 		if idx < 0 {
@@ -241,18 +269,18 @@ func parsePostfixMainCf(content string) map[string]any {
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		idx := strings.Index(trimmed, "=")
-		if idx < 0 {
+		before, after, ok := strings.Cut(trimmed, "=")
+		if !ok {
 			continue
 		}
-		key := strings.TrimSpace(trimmed[:idx])
+		key := strings.TrimSpace(before)
 		if key == "" {
 			continue
 		}
 		if _, seen := raw[key]; !seen {
 			order = append(order, key)
 		}
-		raw[key] = strings.TrimSpace(trimmed[idx+1:])
+		raw[key] = strings.TrimSpace(after)
 	}
 
 	// $name / ${name} references are expanded a single level against the
@@ -276,25 +304,27 @@ func parsePostfixMainCf(content string) map[string]any {
 }
 
 // foldContinuationLines joins lines that start with whitespace into the
-// preceding logical line, matching how Postfix reads main.cf and master.cf.
+// preceding logical line, matching how Postfix reads main.cf and master.cf
+// (readllines in src/util/readlline.c, unchanged since at least 2.10).
+// Comment lines (first non-blank character '#', indented or not) and blank
+// lines are skipped without ending the logical line, so an indented line after
+// them still continues it. Text that starts with whitespace before any logical
+// line is discarded, as Postfix does with a warning.
 func foldContinuationLines(content string) []string {
 	var logical []string
-	// a blank (empty or whitespace-only) line terminates a logical line, so an
-	// indented line after it starts fresh rather than continuing the previous
-	// value
-	brokenByBlank := true
-	for _, raw := range strings.Split(content, "\n") {
+	for raw := range strings.SplitSeq(content, "\n") {
 		line := strings.TrimRight(raw, "\r")
-		if strings.TrimSpace(line) == "" {
-			brokenByBlank = true
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || trimmed[0] == '#' {
 			continue
 		}
-		if (line[0] == ' ' || line[0] == '\t') && len(logical) > 0 && !brokenByBlank {
-			logical[len(logical)-1] += " " + strings.TrimSpace(line)
+		if line[0] == ' ' || line[0] == '\t' {
+			if len(logical) > 0 {
+				logical[len(logical)-1] += " " + trimmed
+			}
 			continue
 		}
 		logical = append(logical, line)
-		brokenByBlank = false
 	}
 	return logical
 }

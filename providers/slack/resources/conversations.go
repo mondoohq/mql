@@ -7,11 +7,12 @@ import (
 	"errors"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"github.com/slack-go/slack"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/slack/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/slack/connection"
 )
 
 func (o *mqlSlackConversations) id() (string, error) {
@@ -27,7 +28,7 @@ func (s *mqlSlackConversations) listChannels(excludeArchived bool, types ...stri
 
 	list := []any{}
 
-	// https://api.slack.com/methods/conversations.list
+	// https://docs.slack.dev/reference/methods/conversations.list/
 	// scopes: channels:read, groups:read, im:read, mpim:read
 	opts := &slack.GetConversationsParameters{
 		Limit:           999, // use maximum, must be lower than 1000
@@ -212,10 +213,21 @@ func (s *mqlSlackConversation) members() ([]any, error) {
 		}
 
 		for i := range members {
-
 			user := findUser(members[i])
 			if user == nil {
-				return nil, errors.New("could not find user " + members[i])
+				// The member is not part of this workspace's user list, which
+				// happens for external participants in Slack Connect / shared
+				// channels. Resolve them directly; skip only if that also fails,
+				// rather than failing the entire members list.
+				ext, err := NewResource(s.MqlRuntime, "slack.user", map[string]*llx.RawData{
+					"id": llx.StringData(members[i]),
+				})
+				if err != nil {
+					log.Warn().Str("user", members[i]).Str("channel", s.Id.Data).
+						Msg("slack: skipping conversation member that could not be resolved")
+					continue
+				}
+				user = ext.(*mqlSlackUser)
 			}
 			list = append(list, user)
 		}

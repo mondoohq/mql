@@ -11,8 +11,8 @@ import (
 	"github.com/gophercloud/gophercloud/v2/openstack/sharedfilesystems/v2/shareaccessrules"
 	"github.com/gophercloud/gophercloud/v2/openstack/sharedfilesystems/v2/sharenetworks"
 	"github.com/gophercloud/gophercloud/v2/openstack/sharedfilesystems/v2/shares"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // translateManilaError treats a 406 (microversion not supported by this cloud)
@@ -34,6 +34,7 @@ func translateManilaError(err error) error {
 
 type mqlOpenstackSharedfilesystemShareInternal struct {
 	cacheShareNetworkID string
+	cacheProjectID      string
 }
 
 func (r *mqlOpenstackSharedfilesystemShare) id() (string, error) {
@@ -104,7 +105,6 @@ func (o *mqlOpenstack) shares() ([]any, error) {
 			"replicationType":  llx.StringData(s.ReplicationType),
 			"snapshotSupport":  llx.BoolData(s.SnapshotSupport),
 			"snapshotId":       llx.StringData(s.SnapshotID),
-			"projectId":        llx.StringData(s.ProjectID),
 			"metadata":         stringMapData(s.Metadata),
 			"createdAt":        llx.TimeDataPtr(timePtr(s.CreatedAt)),
 			"updatedAt":        llx.TimeDataPtr(timePtr(s.UpdatedAt)),
@@ -114,6 +114,7 @@ func (o *mqlOpenstack) shares() ([]any, error) {
 		}
 		mqlShare := res.(*mqlOpenstackSharedfilesystemShare)
 		mqlShare.cacheShareNetworkID = s.ShareNetworkID
+		mqlShare.cacheProjectID = s.ProjectID
 		out = append(out, mqlShare)
 	}
 	return out, nil
@@ -134,7 +135,7 @@ func (r *mqlOpenstackSharedfilesystemShare) shareNetwork() (*mqlOpenstackSharedf
 }
 
 func (r *mqlOpenstackSharedfilesystemShare) project() (*mqlOpenstackProject, error) {
-	return resolveProject(r.MqlRuntime, r.ProjectId.Data, &r.Project)
+	return resolveProject(r.MqlRuntime, r.cacheProjectID, &r.Project)
 }
 
 func (r *mqlOpenstackSharedfilesystemShare) accessRules() ([]any, error) {
@@ -263,20 +264,26 @@ func (o *mqlOpenstack) securityServices() ([]any, error) {
 			"ou":          llx.StringData(s.OU),
 			"user":        llx.StringData(s.User),
 			"server":      llx.StringData(s.Server),
-			"projectId":   llx.StringData(s.ProjectID),
 			"createdAt":   llx.TimeDataPtr(timePtr(s.CreatedAt)),
 			"updatedAt":   llx.TimeDataPtr(timePtr(s.UpdatedAt)),
 		})
 		if err != nil {
 			return nil, err
 		}
+		res.(*mqlOpenstackSharedfilesystemSecurityService).cacheProjectID = s.ProjectID
 		out = append(out, res)
 	}
 	return out, nil
 }
 
+// mqlOpenstackSharedfilesystemSecurityServiceInternal holds the owning project
+// id that project() resolves.
+type mqlOpenstackSharedfilesystemSecurityServiceInternal struct {
+	cacheProjectID string
+}
+
 func (r *mqlOpenstackSharedfilesystemSecurityService) project() (*mqlOpenstackProject, error) {
-	return resolveProject(r.MqlRuntime, r.ProjectId.Data, &r.Project)
+	return resolveProject(r.MqlRuntime, r.cacheProjectID, &r.Project)
 }
 
 // ---- openstack.sharedfilesystem.shareNetwork ----
@@ -343,16 +350,22 @@ func (o *mqlOpenstack) shareNetworks() ([]any, error) {
 			"segmentationId":  llx.IntData(int64(n.SegmentationID)),
 			"cidr":            llx.StringData(n.CIDR),
 			"ipVersion":       llx.IntData(int64(n.IPVersion)),
-			"projectId":       llx.StringData(n.ProjectID),
 			"createdAt":       llx.TimeDataPtr(timePtr(n.CreatedAt)),
 			"updatedAt":       llx.TimeDataPtr(timePtr(n.UpdatedAt)),
 		})
 		if err != nil {
 			return nil, err
 		}
+		res.(*mqlOpenstackSharedfilesystemShareNetwork).cacheProjectID = n.ProjectID
 		out = append(out, res)
 	}
 	return out, nil
+}
+
+// mqlOpenstackSharedfilesystemShareNetworkInternal holds the owning project id
+// that project() resolves.
+type mqlOpenstackSharedfilesystemShareNetworkInternal struct {
+	cacheProjectID string
 }
 
 func (r *mqlOpenstackSharedfilesystemShareNetwork) network() (*mqlOpenstackNetwork, error) {
@@ -384,5 +397,5 @@ func (r *mqlOpenstackSharedfilesystemShareNetwork) subnet() (*mqlOpenstackSubnet
 }
 
 func (r *mqlOpenstackSharedfilesystemShareNetwork) project() (*mqlOpenstackProject, error) {
-	return resolveProject(r.MqlRuntime, r.ProjectId.Data, &r.Project)
+	return resolveProject(r.MqlRuntime, r.cacheProjectID, &r.Project)
 }

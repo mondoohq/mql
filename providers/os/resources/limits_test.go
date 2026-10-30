@@ -1,71 +1,114 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-package resources_test
+package resources
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
-func TestResource_Limits(t *testing.T) {
-	// Uses the global 'x' tester from os_test.go which is LinuxMock()
-	// The Linux mock (arch.json) may not include limits.conf test data
-	// These tests verify the resource handles missing files gracefully
-	// For parsing tests, see the TOML-based tests in limits/limits_test.go
-
-	t.Run("limits resource exists", func(t *testing.T) {
-		res := x.TestQuery(t, "limits")
-		require.NotEmpty(t, res)
+// Entry sub-resources are reachable through their singular accessor with no
+// arguments. The runtime then builds the resource with `file` unset, so id()
+// runs against a nil *mqlFile. It must report that, not dereference it.
+func TestLimitsEntryID(t *testing.T) {
+	t.Run("missing file", func(t *testing.T) {
+		id, err := (&mqlLimitsEntry{}).id()
+		require.Error(t, err)
+		assert.Empty(t, id)
+		assert.Contains(t, err.Error(), "missing file")
 	})
 
-	t.Run("limits files returns empty when no config files exist", func(t *testing.T) {
-		res := x.TestQuery(t, "limits.files")
-		require.NotEmpty(t, res)
-		require.NoError(t, res[0].Data.Error)
-		// When limits files don't exist, returns empty array
-		files, ok := res[0].Data.Value.([]any)
-		require.True(t, ok)
-		assert.GreaterOrEqual(t, len(files), 0)
+	t.Run("with file", func(t *testing.T) {
+		f := &mqlFile{}
+		f.Path.Data = "/etc/security/limits.conf"
+		f.Path.State = plugin.StateIsSet
+
+		e := &mqlLimitsEntry{}
+		e.File.Data = f
+		e.File.State = plugin.StateIsSet
+		e.LineNumber.Data = 42
+		e.LineNumber.State = plugin.StateIsSet
+
+		id, err := e.id()
+		require.NoError(t, err)
+		assert.Equal(t, "/etc/security/limits.conf:42", id)
+	})
+}
+
+func limitsTestFiles(paths ...string) []*mqlFile {
+	files := make([]*mqlFile, len(paths))
+	for i, p := range paths {
+		f := &mqlFile{}
+		f.Path.Data = p
+		f.Path.State = plugin.StateIsSet
+		files[i] = f
+	}
+	return files
+}
+
+func limitsTestPaths(files []*mqlFile) []string {
+	paths := make([]string, len(files))
+	for i, f := range files {
+		paths[i] = f.Path.Data
+	}
+	return paths
+}
+
+// pam_limits reads limits.d files sorted by file name with strcmp, across
+// /etc/security/limits.d and the vendor directory (read_limits_dir in
+// pam_limits.c).
+func TestSortLimitsDropIns(t *testing.T) {
+	t.Run("Debian 13 directory order", func(t *testing.T) {
+		// the order files.find returned them on Debian 13
+		files := limitsTestFiles(
+			"/etc/security/limits.d/60-mqltest.conf",
+			"/etc/security/limits.d/10-coredump-debian.conf",
+		)
+		sortLimitsDropIns(files)
+		assert.Equal(t, []string{
+			"/etc/security/limits.d/10-coredump-debian.conf",
+			"/etc/security/limits.d/60-mqltest.conf",
+		}, limitsTestPaths(files))
 	})
 
-	t.Run("limits entries returns empty when no config files exist", func(t *testing.T) {
-		res := x.TestQuery(t, "limits.entries")
-		require.NotEmpty(t, res)
-		require.NoError(t, res[0].Data.Error)
-		// When limits files don't exist, returns empty array
-		entries, ok := res[0].Data.Value.([]any)
-		require.True(t, ok)
-		assert.GreaterOrEqual(t, len(entries), 0)
+	t.Run("merged across /etc and /usr/etc by file name", func(t *testing.T) {
+		files := limitsTestFiles(
+			"/etc/security/limits.d/90-local.conf",
+			"/etc/security/limits.d/10-site.conf",
+			"/usr/etc/security/limits.d/50-vendor.conf",
+		)
+		sortLimitsDropIns(files)
+		assert.Equal(t, []string{
+			"/etc/security/limits.d/10-site.conf",
+			"/usr/etc/security/limits.d/50-vendor.conf",
+			"/etc/security/limits.d/90-local.conf",
+		}, limitsTestPaths(files))
 	})
 
-	t.Run("limits files length is accessible", func(t *testing.T) {
-		res := x.TestQuery(t, "limits.files.length")
-		require.NotEmpty(t, res)
-		require.NoError(t, res[0].Data.Error)
-		// Length should be 0 or more
-		assert.GreaterOrEqual(t, res[0].Data.Value.(int64), int64(0))
+	t.Run("byte order, not natural order", func(t *testing.T) {
+		files := limitsTestFiles(
+			"/etc/security/limits.d/a.conf",
+			"/etc/security/limits.d/9-x.conf",
+			"/etc/security/limits.d/Z.conf",
+			"/etc/security/limits.d/10-x.conf",
+		)
+		sortLimitsDropIns(files)
+		assert.Equal(t, []string{
+			"/etc/security/limits.d/10-x.conf",
+			"/etc/security/limits.d/9-x.conf",
+			"/etc/security/limits.d/Z.conf",
+			"/etc/security/limits.d/a.conf",
+		}, limitsTestPaths(files))
 	})
+}
 
-	t.Run("limits entries length is accessible", func(t *testing.T) {
-		res := x.TestQuery(t, "limits.entries.length")
-		require.NotEmpty(t, res)
-		require.NoError(t, res[0].Data.Error)
-		// Length should be 0 or more
-		assert.GreaterOrEqual(t, res[0].Data.Value.(int64), int64(0))
-	})
-
-	t.Run("limits where filter works on empty entries", func(t *testing.T) {
-		res := x.TestQuery(t, "limits.entries.where(domain == \"*\")")
-		require.NotEmpty(t, res)
-		require.NoError(t, res[0].Data.Error)
-	})
-
-	t.Run("limits map works on empty entries", func(t *testing.T) {
-		res := x.TestQuery(t, "limits.entries.map(domain)")
-		require.NotEmpty(t, res)
-		require.NoError(t, res[0].Data.Error)
-	})
+func TestIsLimitsDropIn(t *testing.T) {
+	assert.True(t, isLimitsDropIn("60-mqltest.conf"))
+	assert.False(t, isLimitsDropIn("mqltest.notconf"))
+	assert.False(t, isLimitsDropIn(".hidden.conf"))
+	assert.False(t, isLimitsDropIn("60-mqltest.conf.dpkg-old"))
 }

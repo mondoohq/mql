@@ -7,12 +7,12 @@ import (
 	"context"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v10"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // securityPerimeters lists the network security perimeters in the subscription.
@@ -62,14 +62,27 @@ func (a *mqlAzureSubscriptionNetworkService) securityPerimeters() ([]any, error)
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(nsp.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlNsp.(*mqlAzureSubscriptionNetworkServiceSecurityPerimeter).cacheSystemData = sysData
 			res = append(res, mqlNsp)
 		}
 	}
 	return res, nil
 }
 
+type mqlAzureSubscriptionNetworkServiceSecurityPerimeterInternal struct {
+	cacheSystemData any
+}
+
 func (a *mqlAzureSubscriptionNetworkServiceSecurityPerimeter) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+func (a *mqlAzureSubscriptionNetworkServiceSecurityPerimeter) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 // profiles resolves the access-rule profiles defined on the perimeter. The
@@ -299,10 +312,10 @@ func nspAccessRuleFields(props *network.NspAccessRuleProperties) (direction, pro
 	if props.ProvisioningState != nil {
 		provisioningState = string(*props.ProvisioningState)
 	}
-	addressPrefixes = convert.SliceStrPtrToInterface(props.AddressPrefixes)
-	fqdns = convert.SliceStrPtrToInterface(props.FullyQualifiedDomainNames)
-	serviceTags = convert.SliceStrPtrToInterface(props.ServiceTags)
-	emailAddresses = convert.SliceStrPtrToInterface(props.EmailAddresses)
+	addressPrefixes = strPtrsToAny(props.AddressPrefixes)
+	fqdns = strPtrsToAny(props.FullyQualifiedDomainNames)
+	serviceTags = strPtrsToAny(props.ServiceTags)
+	emailAddresses = strPtrsToAny(props.EmailAddresses)
 	for _, sub := range props.Subscriptions {
 		if sub != nil && sub.ID != nil {
 			subscriptions = append(subscriptions, *sub.ID)

@@ -1,0 +1,15 @@
+[
+ {
+  "contact": "lab@mondoo.com",
+  "enabled": "true",
+  "engine-id": "80003a8c04",
+  "engine-id-suffix": "",
+  "location": "mql lab",
+  "src-address": "::",
+  "trap-community": "public",
+  "trap-generators": "temp-exception",
+  "trap-target": "",
+  "trap-version": "2",
+  "vrf": "main"
+ }
+]

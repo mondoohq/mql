@@ -8,9 +8,9 @@ import (
 
 	betadevicemanagement "github.com/microsoftgraph/msgraph-beta-sdk-go/devicemanagement"
 	betamodels "github.com/microsoftgraph/msgraph-beta-sdk-go/models"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // groupPolicyConfigurations lists the administrative-templates (ADMX) policy
@@ -43,8 +43,8 @@ func (a *mqlMicrosoftDevicemanagement) groupPolicyConfigurations() ([]any, error
 				"description":                      llx.StringDataPtr(c.GetDescription()),
 				"policyConfigurationIngestionType": llx.StringDataPtr(enumPtrString(c.GetPolicyConfigurationIngestionType())),
 				"roleScopeTagIds":                  llx.ArrayData(llx.TArr2Raw(c.GetRoleScopeTagIds()), types.String),
-				"createdDateTime":                  llx.TimeDataPtr(c.GetCreatedDateTime()),
-				"lastModifiedDateTime":             llx.TimeDataPtr(c.GetLastModifiedDateTime()),
+				"createdDateTime":                  graphTimeData(c.GetCreatedDateTime()),
+				"lastModifiedDateTime":             graphTimeData(c.GetLastModifiedDateTime()),
 			})
 		if err != nil {
 			return nil, err
@@ -101,8 +101,8 @@ func (g *mqlMicrosoftDevicemanagementGroupPolicyConfiguration) definitionValues(
 				"definitionName":         llx.StringDataPtr(definitionName),
 				"definitionClassType":    llx.StringDataPtr(definitionClassType),
 				"definitionCategoryPath": llx.StringDataPtr(definitionCategoryPath),
-				"createdDateTime":        llx.TimeDataPtr(v.GetCreatedDateTime()),
-				"lastModifiedDateTime":   llx.TimeDataPtr(v.GetLastModifiedDateTime()),
+				"createdDateTime":        graphTimeData(v.GetCreatedDateTime()),
+				"lastModifiedDateTime":   graphTimeData(v.GetLastModifiedDateTime()),
 			})
 		if err != nil {
 			return nil, err

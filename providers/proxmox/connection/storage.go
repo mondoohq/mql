@@ -3,7 +3,10 @@
 
 package connection
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 // ---------------------------------------------------------------------------
 // Storage pools
@@ -27,6 +30,12 @@ type StorageInfo struct {
 	// either an explicit key fingerprint or the literal "autogen" when
 	// Proxmox manages the key. An empty string means encryption is off.
 	EncryptionKey string `json:"encryption-key"`
+	// Nodes is the comma-separated node restriction from the storage config.
+	// Empty means the storage is available on every node.
+	Nodes string `json:"nodes"`
+	// Active reports whether the storage is currently reachable. Only the
+	// per-node /nodes/<n>/storage endpoint returns it.
+	Active int `json:"active"`
 }
 
 func (c *PveConnection) GetStorages() ([]StorageInfo, error) {
@@ -52,6 +61,46 @@ func normalizeClusterStorageEnabled(storages []StorageInfo) {
 			storages[i].Enabled = 1
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Storage index
+// ---------------------------------------------------------------------------
+
+// storageIndex memoizes the cluster's storage listing, keyed by storage name.
+// Every guest disk, mount point, and stored volume names the pool it sits on,
+// so resolving those references per item would re-list every storage once per
+// item. The error is memoized alongside the value so an unreadable listing
+// fails once instead of on every lookup.
+type storageIndex struct {
+	once   sync.Once
+	byName map[string]StorageInfo
+	err    error
+}
+
+// LookupStorage returns the storage with the given name. The boolean result
+// is false when the cluster has no such storage, which lets callers report a
+// dangling reference as null instead of fabricating a blank storage.
+func (c *PveConnection) LookupStorage(name string) (StorageInfo, bool, error) {
+	c.storages.once.Do(c.buildStorageIndex)
+	if c.storages.err != nil {
+		return StorageInfo{}, false, c.storages.err
+	}
+	s, ok := c.storages.byName[name]
+	return s, ok, nil
+}
+
+func (c *PveConnection) buildStorageIndex() {
+	storages, err := c.GetStorages()
+	if err != nil {
+		c.storages.err = fmt.Errorf("failed to index storages: %w", err)
+		return
+	}
+	index := make(map[string]StorageInfo, len(storages))
+	for _, s := range storages {
+		index[s.Storage] = s
+	}
+	c.storages.byName = index
 }
 
 // ---------------------------------------------------------------------------

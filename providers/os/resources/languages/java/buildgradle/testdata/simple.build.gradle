@@ -1,0 +1,53 @@
+// A Groovy DSL build script exercising the declaration forms that appear in the wild.
+buildscript {
+    repositories { mavenCentral() }
+    dependencies {
+        classpath 'org.springframework.boot:spring-boot-gradle-plugin:2.5.0'
+    }
+}
+
+plugins {
+    id 'java'
+}
+
+ext {
+    jacksonVersion = '2.9.10.1'
+}
+
+def log4jVersion = '2.14.1'
+
+repositories {
+    // a URL containing // must not be read as a comment
+    maven { url 'https://repo.example.com/releases' }
+}
+
+dependencies {
+    implementation 'com.fasterxml.jackson.core:jackson-databind:' + jacksonVersion
+    implementation "org.apache.logging.log4j:log4j-core:$log4jVersion"
+    implementation "org.yaml:snakeyaml:${snakeyamlVersion}"
+    api 'org.apache.commons:commons-text:1.9'
+
+    // map notation
+    implementation group: 'com.google.guava', name: 'guava', version: '24.1.1-jre'
+
+    // trailing closure with an exclusion that must not be read as a coordinate
+    implementation('org.apache.httpcomponents:httpclient:4.5.13') {
+        exclude group: 'commons-logging', module: 'commons-logging'
+    }
+
+    // no version: managed by a BOM elsewhere
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // not Maven coordinates
+    implementation project(':core')
+    implementation files('libs/local.jar')
+    implementation platform('com.fasterxml.jackson:jackson-bom:2.9.10')
+
+    compileOnly 'org.projectlombok:lombok:1.18.20'
+    annotationProcessor 'org.projectlombok:lombok:1.18.20'
+
+    testImplementation 'junit:junit:4.13.1'
+    testImplementation 'org.mockito:mockito-core:3.9.0'
+}
+
+ext.snakeyamlVersion = '1.29'

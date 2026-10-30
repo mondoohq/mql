@@ -1,0 +1,19 @@
+[
+ {
+  ".id": "*1",
+  "available": "91",
+  "name": "lab-pool",
+  "ranges": "10.98.5.10-10.98.5.100",
+  "total": "91",
+  "used": "0"
+ },
+ {
+  ".id": "*2",
+  "available": "91",
+  "name": "lab-pool2",
+  "next-pool": "lab-pool",
+  "ranges": "10.98.6.10-10.98.6.100",
+  "total": "91",
+  "used": "0"
+ }
+]

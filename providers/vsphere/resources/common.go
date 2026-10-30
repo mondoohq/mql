@@ -11,7 +11,7 @@ import (
 	"github.com/vmware/govmomi/vapi/tags"
 	"github.com/vmware/govmomi/vim25/mo"
 	vmwaretypes "github.com/vmware/govmomi/vim25/types"
-	"go.mondoo.com/mql/v13/providers/vsphere/connection"
+	"go.mondoo.com/mql/providers/vsphere/connection"
 )
 
 // extractTagKeys extracts tag keys from vmware Tag slice

@@ -6,9 +6,9 @@ package resources
 import (
 	"fmt"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/types"
 )
 
 func (k *mqlK8s) apiResources() ([]any, error) {
@@ -48,5 +48,10 @@ func (k *mqlK8s) apiResources() ([]any, error) {
 }
 
 func (k *mqlK8sApiresource) id() (string, error) {
-	return fmt.Sprintf("%s.%s", k.Version.Data, k.Name.Data), nil
+	// The group is part of the identity: "events" exists in both the core group
+	// and events.k8s.io, and CRDs routinely share a plural across groups. Two
+	// entries with the same __id collapse in the resource cache, so the list
+	// reports the first one twice and the other disappears. Matches the
+	// resource.version.group order of ApiResource.FullApiName().
+	return fmt.Sprintf("%s.%s.%s", k.Name.Data, k.Version.Data, k.Group.Data), nil
 }

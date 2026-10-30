@@ -7,11 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlLuksVolumeInternal struct {
@@ -34,12 +35,11 @@ func (l *mqlLuks) id() (string, error) {
 var validDevicePath = regexp.MustCompile(`^/dev/[A-Za-z0-9._/=:+@-]+$`)
 
 func (l *mqlLuks) volumes() ([]any, error) {
-	// Walk the lsblk tree ourselves instead of reusing the `lsblk`
-	// resource: `lsblk.list` only enumerates direct children of each
-	// top-level disk, so whole-disk LUKS volumes (LUKS formatted
-	// directly on `/dev/sdb`, not on `/dev/sdb1`) would be missed.
+	// Run lsblk ourselves instead of reusing the `lsblk` resource:
+	// `cryptsetup luksDump` needs a device path, and only `--paths`
+	// yields the canonical `/dev/...` form.
 	o, err := CreateResource(l.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("lsblk --json --fs --paths"),
+		"command": llx.StringData(luksLsblkCommand),
 	})
 	if err != nil {
 		return nil, err
@@ -63,9 +63,12 @@ func (l *mqlLuks) volumes() ([]any, error) {
 			continue
 		}
 
-		dump, err := runLuksDump(l.MqlRuntime, dev.Name)
+		dump, skip, err := runLuksDump(l.MqlRuntime, dev.Name)
 		if err != nil {
-			log.Debug().Err(err).Str("device", dev.Name).Msg("luks: skipping device")
+			return nil, err
+		}
+		if skip {
+			log.Debug().Str("device", dev.Name).Msg("luks: skipping a device cryptsetup may not read")
 			continue
 		}
 
@@ -97,21 +100,43 @@ func collectLuksDevices(devs []blockdevice) []blockdevice {
 	return out
 }
 
-func runLuksDump(runtime *plugin.Runtime, device string) (luksDump, error) {
+// runLuksDump reads the LUKS header of device. skip is true for a device the
+// v13 behavior leaves out of the list (see luksDumpFailure).
+func runLuksDump(runtime *plugin.Runtime, device string) (luksDump, bool, error) {
 	// device has already been validated against validDevicePath. The %q
 	// quoting is belt-and-braces in case the command resource shells
 	// out — it survives both shell-eval and exec-style invocation.
-	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
-		"command": llx.StringData(fmt.Sprintf("cryptsetup luksDump %q", device)),
-	})
+	cmd, err := runSbinCommand(runtime, fmt.Sprintf("cryptsetup luksDump %q", device))
 	if err != nil {
-		return luksDump{}, err
+		return luksDump{}, false, err
 	}
-	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return luksDump{}, errors.New("cryptsetup luksDump failed: " + cmd.Stderr.Data)
+	if exit := cmd.GetExitcode().Data; exit != 0 {
+		skip, err := luksDumpFailure(device, exit, cmd.GetStderr().Data)
+		return luksDump{}, skip, err
 	}
-	return parseLuksDump(cmd.Stdout.Data)
+	dump, err := parseLuksDump(cmd.Stdout.Data)
+	return dump, false, err
+}
+
+// luksDumpFailure decides what a failed `cryptsetup luksDump` of a device
+// lsblk reports as LUKS means. Run by a regular user, cryptsetup cannot open
+// the device and says it "does not exist or access denied" (exit 4): that is
+// forbidden under structured errors, and v13 left the device out of the list,
+// which stays until structured errors are the default (ADR 046 §9). Anything
+// else, cryptsetup missing included, is an error, since leaving the device
+// out would describe a host without it.
+func luksDumpFailure(device string, exit int64, stderr string) (skip bool, err error) {
+	msg := strings.TrimSpace(stderr)
+	if isCommandNotFound(exit, stderr) {
+		return false, fmt.Errorf("luks: cannot read the LUKS header of %s: cryptsetup is not installed", device)
+	}
+	if strings.Contains(stderr, "access denied") || strings.Contains(stderr, "Permission denied") {
+		if !plugin.StructuredErrors() {
+			return true, nil
+		}
+		return false, llx.Forbidden(fmt.Errorf("luks: cannot read the LUKS header of %s: %s", device, msg))
+	}
+	return false, fmt.Errorf("luks: cryptsetup luksDump %s failed (exit %d): %s", device, exit, msg)
 }
 
 func newLuksVolume(runtime *plugin.Runtime, device string, dump luksDump) (*mqlLuksVolume, error) {
@@ -166,26 +191,19 @@ func (v *mqlLuksVolume) id() (string, error) {
 }
 
 func (v *mqlLuksVolume) blockDevice() (*mqlLsblkEntry, error) {
-	// Best-effort lookup against the `lsblk` resource — works for the
-	// common LUKS-on-partition layout. For LUKS volumes that don't
-	// appear in lsblk's flattened list (whole-disk LUKS, some mapper
-	// targets), we report a null reference rather than fabricating one.
-	lsblkRes, err := CreateResource(v.MqlRuntime, "lsblk", map[string]*llx.RawData{})
+	// The volume name is the path lsblk --paths printed, which resolves the
+	// same way a mount source does. The plain lsblk names never carry the
+	// /dev/ prefix, so comparing names directly never matched. A LUKS volume
+	// lsblk does not report is a null reference rather than a fabricated one.
+	entry, err := lookupBlockDevice(v.MqlRuntime, v.Name.Data, "")
 	if err != nil {
 		return nil, err
 	}
-	list := lsblkRes.(*mqlLsblk).GetList()
-	if list.Error != nil {
-		return nil, list.Error
+	if entry == nil {
+		v.BlockDevice.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
-	for _, raw := range list.Data {
-		entry := raw.(*mqlLsblkEntry)
-		if entry.Name.Data == v.Name.Data {
-			return entry, nil
-		}
-	}
-	v.BlockDevice.State = plugin.StateIsSet | plugin.StateIsNull
-	return nil, nil
+	return entry, nil
 }
 
 func (v *mqlLuksVolume) cipher() (*mqlLuksVolumeCipher, error) {

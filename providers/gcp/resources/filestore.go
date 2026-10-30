@@ -10,14 +10,18 @@ import (
 
 	filestore "cloud.google.com/go/filestore/apiv1"
 	"cloud.google.com/go/filestore/apiv1/filestorepb"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
+
+type mqlGcpProjectFilestoreServiceInstanceInternal struct {
+	cacheKmsKeyName string
+}
 
 func (g *mqlGcpProject) filestore() (*mqlGcpProjectFilestoreService, error) {
 	if g.Id.Error != nil {
@@ -99,10 +103,22 @@ func (g *mqlGcpProjectFilestoreService) instances() ([]any, error) {
 
 		fileShares := make([]any, 0, len(instance.FileShares))
 		for _, fs := range instance.FileShares {
+			nfsExportOptions := make([]any, 0, len(fs.NfsExportOptions))
+			for _, opt := range fs.NfsExportOptions {
+				nfsExportOptions = append(nfsExportOptions, map[string]any{
+					"ipRanges":   convert.SliceAnyToInterface(opt.IpRanges),
+					"accessMode": opt.AccessMode.String(),
+					"squashMode": opt.SquashMode.String(),
+					"anonUid":    opt.AnonUid,
+					"anonGid":    opt.AnonGid,
+				})
+			}
+
 			mqlFs, err := CreateResource(g.MqlRuntime, "gcp.project.filestoreService.instance.fileShare", map[string]*llx.RawData{
-				"id":         llx.StringData(fmt.Sprintf("%s/fileShares/%s", instance.Name, fs.Name)),
-				"name":       llx.StringData(fs.Name),
-				"capacityGb": llx.IntData(fs.CapacityGb),
+				"id":               llx.StringData(fmt.Sprintf("%s/fileShares/%s", instance.Name, fs.Name)),
+				"name":             llx.StringData(fs.Name),
+				"capacityGb":       llx.IntData(fs.CapacityGb),
+				"nfsExportOptions": llx.ArrayData(nfsExportOptions, types.Dict),
 			})
 			if err != nil {
 				return nil, err
@@ -142,11 +158,10 @@ func (g *mqlGcpProjectFilestoreService) instances() ([]any, error) {
 			"description":               llx.StringData(instance.Description),
 			"tier":                      llx.StringData(instance.Tier.String()),
 			"state":                     llx.StringData(instance.State.String()),
-			"createTime":                llx.TimeData(instance.CreateTime.AsTime()),
+			"createTime":                llx.TimeDataPtr(timestampAsTimePtr(instance.CreateTime)),
 			"labels":                    llx.MapData(convert.MapToInterfaceMap(instance.Labels), types.String),
 			"fileShares":                llx.ArrayData(fileShares, types.Resource("gcp.project.filestoreService.instance.fileShare")),
 			"networks":                  llx.ArrayData(networks, types.Resource("gcp.project.filestoreService.instance.network")),
-			"kmsKeyName":                llx.StringData(instance.KmsKeyName),
 			"satisfiesPzi":              llx.BoolData(instance.SatisfiesPzi),
 			"satisfiesPzs":              llx.BoolDataPtr(satisfiesPzs),
 			"deletionProtectionEnabled": llx.BoolData(instance.DeletionProtectionEnabled),
@@ -155,6 +170,8 @@ func (g *mqlGcpProjectFilestoreService) instances() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		mqlRef := mqlInstance.(*mqlGcpProjectFilestoreServiceInstance)
+		mqlRef.cacheKmsKeyName = instance.KmsKeyName
 		res = append(res, mqlInstance)
 	}
 
@@ -169,11 +186,7 @@ func (g *mqlGcpProjectFilestoreServiceInstance) id() (string, error) {
 }
 
 func (g *mqlGcpProjectFilestoreServiceInstance) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
-	keyName := g.GetKmsKeyName()
-	if keyName.Error != nil {
-		return nil, keyName.Error
-	}
-	return newKmsCryptoKeyRef(g.MqlRuntime, &g.KmsKey, keyName.Data)
+	return newKmsCryptoKeyRef(g.MqlRuntime, &g.KmsKey, g.cacheKmsKeyName)
 }
 
 func (g *mqlGcpProjectFilestoreServiceInstanceFileShare) id() (string, error) {

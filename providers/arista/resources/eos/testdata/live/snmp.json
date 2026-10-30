@@ -1,0 +1,60 @@
+{
+ "chassis": {
+  "chassisId": "B84265A8FF3F9D9B0B030E51732B45EE"
+ },
+ "contact": {
+  "contact": "\"lab@mondoo.com\""
+ },
+ "counters": {
+  "groupLength": 1,
+  "inBadCommunityNames": 0,
+  "inBadCommunityUses": 0,
+  "inGetNextPdus": 0,
+  "inGetPdus": 0,
+  "inParseErrs": 0,
+  "inPkts": 0,
+  "inRequestVars": 0,
+  "inSetPdus": 0,
+  "inSetVars": 0,
+  "inVersionErrs": 0,
+  "numberOfGroups": 1,
+  "numberOfViews": 1,
+  "outBadValueErrs": 0,
+  "outGeneralErrs": 0,
+  "outGetResponsePdus": 0,
+  "outNoSuchNameErrs": 0,
+  "outPkts": 76,
+  "outTooBigErrs": 0,
+  "outTrapDrops": 0,
+  "outTrapPdus": 76,
+  "serviceEnabled": true
+ },
+ "enabled": true,
+ "location": {
+  "location": "\"Mondoo Lab - CloudEOS Test Instance\""
+ },
+ "logging": {
+  "hosts": {
+   "192.168.100.204": {
+    "port": 162,
+    "vrf": ""
+   },
+   "192.168.100.205": {
+    "port": 162,
+    "vrf": ""
+   }
+  },
+  "loggingEnabled": true
+ },
+ "misc": {
+  "transmitMsgMaxSize": 65536
+ },
+ "srcIntf": {
+  "sourceInterfaces": {}
+ },
+ "vrfs": {
+  "snmpVrfs": [
+   "default"
+  ]
+ }
+}

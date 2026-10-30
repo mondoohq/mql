@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers/mondoo/connection"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers/mondoo/connection"
 )
 
 func TestFillAsset(t *testing.T) {
@@ -24,9 +24,7 @@ func TestFillAsset(t *testing.T) {
 			Connection: plugin.NewConnection(1, a),
 			Type:       connection.ConnTypeOrganization,
 			Upstream: &upstream.UpstreamClient{
-				UpstreamConfig: upstream.UpstreamConfig{
-					SpaceMrn: "//captain.api.mondoo.app/organization/romantic-hopper-662653",
-				},
+				SpaceMrn: "//captain.api.mondoo.app/organization/romantic-hopper-662653",
 			},
 		}
 		fillAsset(conn, a)
@@ -53,9 +51,7 @@ func TestFillAsset(t *testing.T) {
 			Connection: plugin.NewConnection(1, a),
 			Type:       connection.ConnTypeSpace,
 			Upstream: &upstream.UpstreamClient{
-				UpstreamConfig: upstream.UpstreamConfig{
-					SpaceMrn: "//captain.api.mondoo.app/spaces/romantic-hopper-662653",
-				},
+				SpaceMrn: "//captain.api.mondoo.app/spaces/romantic-hopper-662653",
 			},
 		}
 		fillAsset(conn, a)

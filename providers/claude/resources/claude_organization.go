@@ -8,15 +8,77 @@ import (
 	"fmt"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/claude/connection"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/anthropics/anthropic-sdk-go/v2"
+
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/claude/connection"
+	"go.mondoo.com/mql/types"
 )
+
+// lookupWorkspace returns the organization workspace carrying the given id.
+func lookupWorkspace(runtime *plugin.Runtime, id string) (*mqlClaudeOrganizationWorkspace, bool, error) {
+	return lookupOrganizationChild[*mqlClaudeOrganizationWorkspace](runtime, id, (*mqlClaudeOrganization).GetWorkspaces)
+}
+
+// lookupMember returns the organization member carrying the given id.
+func lookupMember(runtime *plugin.Runtime, id string) (*mqlClaudeOrganizationMember, bool, error) {
+	return lookupOrganizationChild[*mqlClaudeOrganizationMember](runtime, id, (*mqlClaudeOrganization).GetMembers)
+}
 
 // claude.organization
 
-func (r *mqlClaudeOrganization) workspaces() ([]interface{}, error) {
+// workspaceArgs maps an organization workspace onto resource arguments.
+func workspaceArgs(w connection.AdminWorkspace) (map[string]*llx.RawData, error) {
+	createdAt, err := parseTime(w.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("parsing workspace createdAt: %w", err)
+	}
+
+	// A live workspace has no archive date at all. Reporting the zero time
+	// would date every active workspace to year 1 and make it read as the
+	// oldest archived workspace in the organization.
+	var archivedAt *time.Time
+	if w.ArchivedAt != nil && *w.ArchivedAt != "" {
+		parsed, err := parseTime(*w.ArchivedAt)
+		if err != nil {
+			return nil, fmt.Errorf("parsing workspace archivedAt: %w", err)
+		}
+		archivedAt = &parsed
+	}
+
+	var workspaceGeo, defaultInferenceGeo string
+	var allowedInferenceGeos []any
+	if w.DataResidency != nil {
+		workspaceGeo = w.DataResidency.WorkspaceGeo
+		defaultInferenceGeo = w.DataResidency.DefaultInferenceGeo
+		allowedInferenceGeos = toInterfaceSlice(w.DataResidency.AllowedInferenceGeos)
+	}
+	if allowedInferenceGeos == nil {
+		allowedInferenceGeos = []any{}
+	}
+
+	return map[string]*llx.RawData{
+		"__id":         llx.StringData(w.ID),
+		"id":           llx.StringData(w.ID),
+		"name":         llx.StringData(w.Name),
+		"displayColor": llx.StringData(w.DisplayColor),
+		"createdAt":    llx.TimeData(createdAt),
+		"archivedAt":   llx.TimeDataPtr(archivedAt),
+		// A workspace on Anthropic-managed encryption has no key at all,
+		// which has to read as null. An empty string would make
+		// "every workspace has a customer-managed key" look satisfiable by
+		// a workspace that has none.
+		"externalKeyId":        llx.StringDataPtr(w.ExternalKeyID),
+		"compartmentId":        llx.StringDataPtr(nullableString(w.CompartmentID)),
+		"tags":                 llx.MapData(toInterfaceMap(w.Tags), types.String),
+		"workspaceGeo":         llx.StringData(workspaceGeo),
+		"defaultInferenceGeo":  llx.StringData(defaultInferenceGeo),
+		"allowedInferenceGeos": llx.ArrayData(allowedInferenceGeos, types.String),
+	}, nil
+}
+
+func (r *mqlClaudeOrganization) workspaces() ([]any, error) {
 	admin, err := requireAdmin(r.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -27,45 +89,14 @@ func (r *mqlClaudeOrganization) workspaces() ([]interface{}, error) {
 		return nil, err
 	}
 
-	res := make([]interface{}, 0, len(workspaces))
+	res := make([]any, 0, len(workspaces))
 	for _, w := range workspaces {
-		createdAt, err := parseTime(w.CreatedAt)
+		args, err := workspaceArgs(w)
 		if err != nil {
-			return nil, fmt.Errorf("parsing workspace createdAt: %w", err)
-		}
-		var archivedAt time.Time
-		if w.ArchivedAt != nil {
-			archivedAt, err = parseTime(*w.ArchivedAt)
-			if err != nil {
-				return nil, fmt.Errorf("parsing workspace archivedAt: %w", err)
-			}
+			return nil, err
 		}
 
-		var workspaceGeo, defaultInferenceGeo string
-		var allowedInferenceGeos []interface{}
-		if w.DataResidency != nil {
-			workspaceGeo = w.DataResidency.WorkspaceGeo
-			defaultInferenceGeo = w.DataResidency.DefaultInferenceGeo
-			allowedInferenceGeos = make([]interface{}, len(w.DataResidency.AllowedInferenceGeos))
-			for i, g := range w.DataResidency.AllowedInferenceGeos {
-				allowedInferenceGeos[i] = g
-			}
-		}
-		if allowedInferenceGeos == nil {
-			allowedInferenceGeos = []interface{}{}
-		}
-
-		mqlWs, err := CreateResource(r.MqlRuntime, "claude.organization.workspace", map[string]*llx.RawData{
-			"__id":                 llx.StringData(w.ID),
-			"id":                   llx.StringData(w.ID),
-			"name":                 llx.StringData(w.Name),
-			"displayColor":         llx.StringData(w.DisplayColor),
-			"createdAt":            llx.TimeData(createdAt),
-			"archivedAt":           llx.TimeData(archivedAt),
-			"workspaceGeo":         llx.StringData(workspaceGeo),
-			"defaultInferenceGeo":  llx.StringData(defaultInferenceGeo),
-			"allowedInferenceGeos": llx.ArrayData(allowedInferenceGeos, types.String),
-		})
+		mqlWs, err := CreateResource(r.MqlRuntime, "claude.organization.workspace", args)
 		if err != nil {
 			return nil, err
 		}
@@ -75,7 +106,7 @@ func (r *mqlClaudeOrganization) workspaces() ([]interface{}, error) {
 	return res, nil
 }
 
-func (r *mqlClaudeOrganization) members() ([]interface{}, error) {
+func (r *mqlClaudeOrganization) members() ([]any, error) {
 	admin, err := requireAdmin(r.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -86,7 +117,7 @@ func (r *mqlClaudeOrganization) members() ([]interface{}, error) {
 		return nil, err
 	}
 
-	res := make([]interface{}, 0, len(users))
+	res := make([]any, 0, len(users))
 	for _, u := range users {
 		addedAt, err := parseTime(u.AddedAt)
 		if err != nil {
@@ -110,7 +141,7 @@ func (r *mqlClaudeOrganization) members() ([]interface{}, error) {
 	return res, nil
 }
 
-func (r *mqlClaudeOrganization) invites() ([]interface{}, error) {
+func (r *mqlClaudeOrganization) invites() ([]any, error) {
 	admin, err := requireAdmin(r.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -121,7 +152,7 @@ func (r *mqlClaudeOrganization) invites() ([]interface{}, error) {
 		return nil, err
 	}
 
-	res := make([]interface{}, 0, len(invites))
+	res := make([]any, 0, len(invites))
 	for _, inv := range invites {
 		invitedAt, err := parseTime(inv.InvitedAt)
 		if err != nil {
@@ -151,114 +182,121 @@ func (r *mqlClaudeOrganization) invites() ([]interface{}, error) {
 }
 
 type mqlClaudeOrganizationApiKeyInternal struct {
-	cacheWorkspaceID *string
-	cacheCreatedByID string
+	cacheWorkspaceID               *string
+	cacheCreatedByID               string
+	cachePrincipalUserID           string
+	cachePrincipalServiceAccountID string
 }
 
-func (r *mqlClaudeOrganization) apiKeys() ([]interface{}, error) {
-	admin, err := requireAdmin(r.MqlRuntime)
+func (r *mqlClaudeOrganization) apiKeys() ([]any, error) {
+	client, err := adminSDKClient(r.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
 
-	keys, err := admin.ListAPIKeys(context.Background())
-	if err != nil {
-		return nil, err
-	}
+	pager := client.Beta.Organization.APIKeys.ListAutoPaging(
+		context.Background(), anthropic.BetaOrganizationAPIKeyListParams{})
 
-	res := make([]interface{}, 0, len(keys))
-	for _, k := range keys {
-		createdAt, err := parseTime(k.CreatedAt)
-		if err != nil {
-			return nil, fmt.Errorf("parsing apiKey createdAt: %w", err)
-		}
-		var expiresAt time.Time
-		if k.ExpiresAt != nil {
-			expiresAt, err = parseTime(*k.ExpiresAt)
-			if err != nil {
-				return nil, fmt.Errorf("parsing apiKey expiresAt: %w", err)
-			}
-		}
+	var res []any
+	for pager.Next() {
+		k := pager.Current()
 
-		mqlKey, err := CreateResource(r.MqlRuntime, "claude.organization.apiKey", map[string]*llx.RawData{
-			"__id":           llx.StringData(k.ID),
-			"id":             llx.StringData(k.ID),
-			"name":           llx.StringData(k.Name),
-			"status":         llx.StringData(k.Status),
-			"createdAt":      llx.TimeData(createdAt),
-			"expiresAt":      llx.TimeData(expiresAt),
-			"partialKeyHint": llx.StringData(k.PartialKeyHint),
-		})
+		mqlKey, err := CreateResource(r.MqlRuntime, "claude.organization.apiKey", apiKeyArgs(k))
 		if err != nil {
 			return nil, err
 		}
 
 		apiKey := mqlKey.(*mqlClaudeOrganizationApiKey)
-		apiKey.cacheWorkspaceID = k.WorkspaceID
+		apiKey.cacheWorkspaceID = nullableString(k.Scope.WorkspaceID)
 		apiKey.cacheCreatedByID = k.CreatedBy.ID
+		apiKey.cachePrincipalUserID = k.Principal.UserID
+		apiKey.cachePrincipalServiceAccountID = k.Principal.ServiceAccountID
 
 		res = append(res, mqlKey)
+	}
+	if err := pager.Err(); err != nil {
+		return nil, fmt.Errorf("listing api keys: %w", err)
 	}
 
 	return res, nil
 }
 
-// MQL caches CreateResource by __id and caches computed fields like members(), so repeated calls don't cause extra API requests.
+// apiKeyArgs maps an organization API key onto resource arguments.
+func apiKeyArgs(k anthropic.BetaAPIKey) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":      llx.StringData(k.ID),
+		"id":        llx.StringData(k.ID),
+		"name":      llx.StringData(k.Name),
+		"status":    llx.StringData(string(k.Status)),
+		"createdAt": llx.TimeDataPtr(nullableTime(k.CreatedAt)),
+		// A key that never expires reports no expiry at all. The zero time
+		// would date it to year 1, which an expiry check reads as long
+		// expired.
+		"expiresAt":      llx.TimeDataPtr(nullableTime(k.ExpiresAt)),
+		"partialKeyHint": llx.StringData(k.PartialKeyHint),
+		"principalType":  llx.StringDataPtr(nullableString(k.Principal.Type)),
+		"scopeType":      llx.StringDataPtr(nullableString(k.Scope.Type)),
+	}
+}
+
+func (r *mqlClaudeOrganizationApiKey) principalUser() (*mqlClaudeOrganizationMember, error) {
+	member, ok, err := lookupMember(r.MqlRuntime, r.cachePrincipalUserID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.PrincipalUser.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return member, nil
+}
+
+func (r *mqlClaudeOrganizationApiKey) principalServiceAccount() (*mqlClaudeOrganizationServiceAccount, error) {
+	sa, ok, err := lookupOrganizationChild[*mqlClaudeOrganizationServiceAccount](
+		r.MqlRuntime, r.cachePrincipalServiceAccountID,
+		(*mqlClaudeOrganization).GetServiceAccounts)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.PrincipalServiceAccount.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return sa, nil
+}
+
 func (r *mqlClaudeOrganizationApiKey) createdBy() (*mqlClaudeOrganizationMember, error) {
-	if r.cacheCreatedByID == "" {
+	member, ok, err := lookupMember(r.MqlRuntime, r.cacheCreatedByID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		r.CreatedBy.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-
-	res, err := CreateResource(r.MqlRuntime, "claude.organization", map[string]*llx.RawData{})
-	if err != nil {
-		return nil, err
-	}
-	org := res.(*mqlClaudeOrganization)
-	members, err := org.members()
-	if err != nil {
-		return nil, err
-	}
-	for _, m := range members {
-		member := m.(*mqlClaudeOrganizationMember)
-		if member.Id.Data == r.cacheCreatedByID {
-			return member, nil
-		}
-	}
-
-	r.CreatedBy.State = plugin.StateIsNull | plugin.StateIsSet
-	return nil, nil
+	return member, nil
 }
 
 func (r *mqlClaudeOrganizationApiKey) workspace() (*mqlClaudeOrganizationWorkspace, error) {
-	if r.cacheWorkspaceID == nil || *r.cacheWorkspaceID == "" {
+	var workspaceID string
+	if r.cacheWorkspaceID != nil {
+		workspaceID = *r.cacheWorkspaceID
+	}
+
+	ws, ok, err := lookupWorkspace(r.MqlRuntime, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		r.Workspace.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-
-	res, err := CreateResource(r.MqlRuntime, "claude.organization", map[string]*llx.RawData{})
-	if err != nil {
-		return nil, err
-	}
-	org := res.(*mqlClaudeOrganization)
-	workspaces, err := org.workspaces()
-	if err != nil {
-		return nil, err
-	}
-	for _, w := range workspaces {
-		ws := w.(*mqlClaudeOrganizationWorkspace)
-		if ws.Id.Data == *r.cacheWorkspaceID {
-			return ws, nil
-		}
-	}
-
-	r.Workspace.State = plugin.StateIsNull | plugin.StateIsSet
-	return nil, nil
+	return ws, nil
 }
 
 // claude.organization.rateLimit
 
-func (r *mqlClaudeOrganization) rateLimits() ([]interface{}, error) {
+func (r *mqlClaudeOrganization) rateLimits() ([]any, error) {
 	admin, err := requireAdmin(r.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -272,16 +310,16 @@ func (r *mqlClaudeOrganization) rateLimits() ([]interface{}, error) {
 	return convertRateLimits(r.MqlRuntime, limits, "org")
 }
 
-func convertRateLimits(runtime *plugin.Runtime, limits []connection.AdminRateLimit, prefix string) ([]interface{}, error) {
-	res := make([]interface{}, 0, len(limits))
+func convertRateLimits(runtime *plugin.Runtime, limits []connection.AdminRateLimit, prefix string) ([]any, error) {
+	res := make([]any, 0, len(limits))
 	for _, l := range limits {
-		models := make([]interface{}, len(l.Models))
+		models := make([]any, len(l.Models))
 		for j, m := range l.Models {
 			models[j] = m
 		}
 
 		mqlLimit, err := CreateResource(runtime, "claude.organization.rateLimit", map[string]*llx.RawData{
-			"__id":                  llx.StringData(fmt.Sprintf("%s/ratelimit/%s", prefix, l.GroupType)),
+			"__id":                  llx.StringData(prefix + "/ratelimit/" + l.GroupType),
 			"groupType":             llx.StringData(l.GroupType),
 			"models":                llx.ArrayData(models, types.String),
 			"requestsPerMinute":     llx.IntData(l.LimitValue("requests_per_minute")),
@@ -300,7 +338,36 @@ func convertRateLimits(runtime *plugin.Runtime, limits []connection.AdminRateLim
 
 type mqlClaudeOrganizationWorkspaceInternal struct{}
 
-func (r *mqlClaudeOrganizationWorkspace) members() ([]interface{}, error) {
+type mqlClaudeOrganizationWorkspaceMemberInternal struct {
+	cacheUserID      string
+	cacheWorkspaceID string
+}
+
+func (r *mqlClaudeOrganizationWorkspaceMember) user() (*mqlClaudeOrganizationMember, error) {
+	member, ok, err := lookupMember(r.MqlRuntime, r.cacheUserID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.User.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return member, nil
+}
+
+func (r *mqlClaudeOrganizationWorkspaceMember) workspace() (*mqlClaudeOrganizationWorkspace, error) {
+	ws, ok, err := lookupWorkspace(r.MqlRuntime, r.cacheWorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.Workspace.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return ws, nil
+}
+
+func (r *mqlClaudeOrganizationWorkspace) members() ([]any, error) {
 	admin, err := requireAdmin(r.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -312,24 +379,27 @@ func (r *mqlClaudeOrganizationWorkspace) members() ([]interface{}, error) {
 		return nil, err
 	}
 
-	res := make([]interface{}, 0, len(members))
+	res := make([]any, 0, len(members))
 	for _, m := range members {
 		mqlMember, err := CreateResource(r.MqlRuntime, "claude.organization.workspace.member", map[string]*llx.RawData{
 			"__id":          llx.StringData(m.WorkspaceID + "/" + m.UserID),
-			"userId":        llx.StringData(m.UserID),
-			"workspaceId":   llx.StringData(m.WorkspaceID),
 			"workspaceRole": llx.StringData(m.WorkspaceRole),
 		})
 		if err != nil {
 			return nil, err
 		}
+
+		wsMember := mqlMember.(*mqlClaudeOrganizationWorkspaceMember)
+		wsMember.cacheUserID = m.UserID
+		wsMember.cacheWorkspaceID = m.WorkspaceID
+
 		res = append(res, mqlMember)
 	}
 
 	return res, nil
 }
 
-func (r *mqlClaudeOrganizationWorkspace) rateLimits() ([]interface{}, error) {
+func (r *mqlClaudeOrganizationWorkspace) rateLimits() ([]any, error) {
 	admin, err := requireAdmin(r.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -346,7 +416,111 @@ func (r *mqlClaudeOrganizationWorkspace) rateLimits() ([]interface{}, error) {
 
 // claude.organization.usageEntry
 
-func (r *mqlClaudeOrganization) usageReport() ([]interface{}, error) {
+type mqlClaudeOrganizationUsageEntryInternal struct {
+	cacheWorkspaceID      string
+	cacheAPIKeyID         string
+	cacheAccountID        string
+	cacheServiceAccountID string
+}
+
+func (r *mqlClaudeOrganizationUsageEntry) apiKey() (*mqlClaudeOrganizationApiKey, error) {
+	key, ok, err := lookupOrganizationChild[*mqlClaudeOrganizationApiKey](
+		r.MqlRuntime, r.cacheAPIKeyID, (*mqlClaudeOrganization).GetApiKeys)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.ApiKey.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return key, nil
+}
+
+func (r *mqlClaudeOrganizationUsageEntry) user() (*mqlClaudeOrganizationMember, error) {
+	member, ok, err := lookupMember(r.MqlRuntime, r.cacheAccountID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.User.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return member, nil
+}
+
+func (r *mqlClaudeOrganizationUsageEntry) serviceAccount() (*mqlClaudeOrganizationServiceAccount, error) {
+	sa, ok, err := lookupOrganizationChild[*mqlClaudeOrganizationServiceAccount](
+		r.MqlRuntime, r.cacheServiceAccountID, (*mqlClaudeOrganization).GetServiceAccounts)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.ServiceAccount.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return sa, nil
+}
+
+// organizationUsageFor returns the organization's usage report entries whose
+// caller, as picked by callerID, is id. It reads the organization's cached
+// report, so every key, member and service account shares one report fetch.
+func organizationUsageFor(runtime *plugin.Runtime, id string, callerID func(*mqlClaudeOrganizationUsageEntry) string) ([]any, error) {
+	res, err := CreateResource(runtime, "claude.organization", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	report := res.(*mqlClaudeOrganization).GetUsageReport()
+	if report.Error != nil {
+		return nil, report.Error
+	}
+	return usageEntriesFor(report.Data, id, callerID), nil
+}
+
+// usageEntriesFor filters usage report entries down to those whose caller, as
+// picked by callerID, is id. An empty id matches nothing, so usage without a
+// key, member or service account is never attributed to one.
+func usageEntriesFor(entries []any, id string, callerID func(*mqlClaudeOrganizationUsageEntry) string) []any {
+	res := []any{}
+	if id == "" {
+		return res
+	}
+	for _, e := range entries {
+		entry, ok := e.(*mqlClaudeOrganizationUsageEntry)
+		if ok && callerID(entry) == id {
+			res = append(res, entry)
+		}
+	}
+	return res
+}
+
+func (r *mqlClaudeOrganizationApiKey) usageReport() ([]any, error) {
+	return organizationUsageFor(r.MqlRuntime, r.Id.Data,
+		func(e *mqlClaudeOrganizationUsageEntry) string { return e.cacheAPIKeyID })
+}
+
+func (r *mqlClaudeOrganizationMember) usageReport() ([]any, error) {
+	return organizationUsageFor(r.MqlRuntime, r.Id.Data,
+		func(e *mqlClaudeOrganizationUsageEntry) string { return e.cacheAccountID })
+}
+
+func (r *mqlClaudeOrganizationServiceAccount) usageReport() ([]any, error) {
+	return organizationUsageFor(r.MqlRuntime, r.Id.Data,
+		func(e *mqlClaudeOrganizationUsageEntry) string { return e.cacheServiceAccountID })
+}
+
+func (r *mqlClaudeOrganizationUsageEntry) workspace() (*mqlClaudeOrganizationWorkspace, error) {
+	ws, ok, err := lookupWorkspace(r.MqlRuntime, r.cacheWorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.Workspace.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return ws, nil
+}
+
+func (r *mqlClaudeOrganization) usageReport() ([]any, error) {
 	admin, err := requireAdmin(r.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -357,7 +531,7 @@ func (r *mqlClaudeOrganization) usageReport() ([]interface{}, error) {
 		return nil, err
 	}
 
-	var res []interface{}
+	var res []any
 	for _, b := range buckets {
 		startingAt, err := parseTime(b.StartingAt)
 		if err != nil {
@@ -370,11 +544,10 @@ func (r *mqlClaudeOrganization) usageReport() ([]interface{}, error) {
 
 		for _, result := range b.Results {
 			mqlEntry, err := CreateResource(r.MqlRuntime, "claude.organization.usageEntry", map[string]*llx.RawData{
-				"__id":                 llx.StringData(fmt.Sprintf("usage/%s/%s/%s/%s", b.StartingAt, result.Model, result.WorkspaceID, result.ServiceTier)),
+				"__id":                 llx.StringData(usageEntryID(b.StartingAt, result)),
 				"startingAt":           llx.TimeData(startingAt),
 				"endingAt":             llx.TimeData(endingAt),
 				"model":                llx.StringData(result.Model),
-				"workspaceId":          llx.StringData(result.WorkspaceID),
 				"serviceTier":          llx.StringData(result.ServiceTier),
 				"uncachedInputTokens":  llx.IntData(result.UncachedInputTokens),
 				"cacheReadInputTokens": llx.IntData(result.CacheReadInputTokens),
@@ -383,6 +556,13 @@ func (r *mqlClaudeOrganization) usageReport() ([]interface{}, error) {
 			if err != nil {
 				return nil, err
 			}
+
+			entry := mqlEntry.(*mqlClaudeOrganizationUsageEntry)
+			entry.cacheWorkspaceID = result.WorkspaceID
+			entry.cacheAPIKeyID = result.APIKeyID
+			entry.cacheAccountID = result.AccountID
+			entry.cacheServiceAccountID = result.ServiceAccountID
+
 			res = append(res, mqlEntry)
 		}
 	}
@@ -390,9 +570,33 @@ func (r *mqlClaudeOrganization) usageReport() ([]interface{}, error) {
 	return res, nil
 }
 
+// usageEntryID keys a usage report row. The report is grouped by every
+// dimension below, so together they identify a row within a bucket. A null
+// dimension reads as the empty string, which no real id equals.
+func usageEntryID(startingAt string, result connection.AdminUsageResult) string {
+	return "usage/" + startingAt + "/" + result.WorkspaceID + "/" + result.Model + "/" + result.ServiceTier +
+		"/" + result.APIKeyID + "/" + result.AccountID + "/" + result.ServiceAccountID
+}
+
 // claude.organization.costEntry
 
-func (r *mqlClaudeOrganization) costReport() ([]interface{}, error) {
+type mqlClaudeOrganizationCostEntryInternal struct {
+	cacheWorkspaceID string
+}
+
+func (r *mqlClaudeOrganizationCostEntry) workspace() (*mqlClaudeOrganizationWorkspace, error) {
+	ws, ok, err := lookupWorkspace(r.MqlRuntime, r.cacheWorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.Workspace.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return ws, nil
+}
+
+func (r *mqlClaudeOrganization) costReport() ([]any, error) {
 	admin, err := requireAdmin(r.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -403,7 +607,7 @@ func (r *mqlClaudeOrganization) costReport() ([]interface{}, error) {
 		return nil, err
 	}
 
-	var res []interface{}
+	var res []any
 	for _, b := range buckets {
 		startingAt, err := parseTime(b.StartingAt)
 		if err != nil {
@@ -416,18 +620,21 @@ func (r *mqlClaudeOrganization) costReport() ([]interface{}, error) {
 
 		for _, result := range b.Results {
 			mqlEntry, err := CreateResource(r.MqlRuntime, "claude.organization.costEntry", map[string]*llx.RawData{
-				"__id":        llx.StringData(fmt.Sprintf("cost/%s/%s/%s/%s", b.StartingAt, result.CostType, result.Model, result.WorkspaceID)),
+				"__id":        llx.StringData(costEntryID(b.StartingAt, result)),
 				"startingAt":  llx.TimeData(startingAt),
 				"endingAt":    llx.TimeData(endingAt),
 				"amount":      llx.StringData(result.Amount),
 				"currency":    llx.StringData(result.Currency),
 				"costType":    llx.StringData(result.CostType),
 				"model":       llx.StringData(result.Model),
-				"workspaceId": llx.StringData(result.WorkspaceID),
+				"description": llx.StringData(result.Description),
 			})
 			if err != nil {
 				return nil, err
 			}
+
+			mqlEntry.(*mqlClaudeOrganizationCostEntry).cacheWorkspaceID = result.WorkspaceID
+
 			res = append(res, mqlEntry)
 		}
 	}
@@ -435,9 +642,16 @@ func (r *mqlClaudeOrganization) costReport() ([]interface{}, error) {
 	return res, nil
 }
 
+// costEntryID keys a cost report row. The report is grouped by workspace and
+// description, so those two identify a row within a bucket: one model and cost
+// type yields several rows (one per token type, service tier, context window).
+func costEntryID(startingAt string, result connection.AdminCostResult) string {
+	return "cost/" + startingAt + "/" + result.WorkspaceID + "/" + result.Description
+}
+
 // claude.organization.activity
 
-func (r *mqlClaudeOrganization) activities() ([]interface{}, error) {
+func (r *mqlClaudeOrganization) activities() ([]any, error) {
 	admin, err := requireAdmin(r.MqlRuntime)
 	if err != nil {
 		return nil, err
@@ -448,21 +662,14 @@ func (r *mqlClaudeOrganization) activities() ([]interface{}, error) {
 		return nil, err
 	}
 
-	res := make([]interface{}, 0, len(activities))
+	res := make([]any, 0, len(activities))
 	for _, a := range activities {
-		createdAt, err := parseTime(a.CreatedAt)
+		args, err := activityArgs(a)
 		if err != nil {
-			return nil, fmt.Errorf("parsing activity createdAt: %w", err)
+			return nil, err
 		}
 
-		mqlActivity, err := CreateResource(r.MqlRuntime, "claude.organization.activity", map[string]*llx.RawData{
-			"__id":       llx.StringData(a.ID),
-			"id":         llx.StringData(a.ID),
-			"type":       llx.StringData(a.Type),
-			"actorEmail": llx.StringData(a.Actor.Email),
-			"actorId":    llx.StringData(a.Actor.ID),
-			"createdAt":  llx.TimeData(createdAt),
-		})
+		mqlActivity, err := CreateResource(r.MqlRuntime, "claude.organization.activity", args)
 		if err != nil {
 			return nil, err
 		}
@@ -470,4 +677,108 @@ func (r *mqlClaudeOrganization) activities() ([]interface{}, error) {
 	}
 
 	return res, nil
+}
+
+// activityArgs maps a compliance activity onto resource arguments. Each actor
+// variant defines a different subset of the union, so a field the variant does
+// not carry reads as null rather than as the empty string, which would be a
+// measurement the API never made. actorEmail and actorId are the exception,
+// for the reason given below.
+func activityArgs(a connection.AdminActivity) (map[string]*llx.RawData, error) {
+	createdAt, err := parseTime(a.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("parsing activity createdAt: %w", err)
+	}
+
+	return map[string]*llx.RawData{
+		"__id":      llx.StringData(a.ID),
+		"id":        llx.StringData(a.ID),
+		"type":      llx.StringData(a.Type),
+		"actorType": llx.StringDataPtr(nullableString(a.Actor.Type)),
+		// actorEmail and actorId shipped at 13.0.0 reporting a concrete
+		// string, so they keep doing that. Turning an absent value into null
+		// here would be the fail-open direction: a null operand of && or ||
+		// is falsy (ADR 040 part 4), so a shipped assertion that used to fail
+		// could start passing. actorType is the field that says why an email
+		// is empty.
+		"actorEmail":           llx.StringData(a.Actor.Email),
+		"actorId":              llx.StringData(a.Actor.ID),
+		"unauthenticatedEmail": llx.StringDataPtr(nullableString(a.Actor.UnauthenticatedEmail)),
+		"ipAddress":            llx.StringDataPtr(nullableString(a.Actor.IPAddress)),
+		"userAgent":            llx.StringDataPtr(nullableString(a.Actor.UserAgent)),
+		"apiKeyId":             llx.StringDataPtr(nullableString(a.Actor.APIKeyID)),
+		"adminApiKeyId":        llx.StringDataPtr(nullableString(a.Actor.AdminAPIKeyID)),
+		"directoryId":          llx.StringDataPtr(nullableString(a.Actor.DirectoryID)),
+		"idpConnectionType":    llx.StringDataPtr(nullableString(a.Actor.IdpConnectionType)),
+		"workosEventId":        llx.StringDataPtr(nullableString(a.Actor.WorkosEventID)),
+		"createdAt":            llx.TimeData(createdAt),
+	}, nil
+}
+
+// apiKey resolves the organization API key behind an api_actor activity. The
+// feed is retained far longer than the keys it names, so a key that has since
+// been deleted resolves to nothing and leaves apiKeyId as the only record of
+// which credential acted.
+func (r *mqlClaudeOrganizationActivity) apiKey() (*mqlClaudeOrganizationApiKey, error) {
+	key, ok, err := lookupOrganizationChild[*mqlClaudeOrganizationApiKey](
+		r.MqlRuntime, r.ApiKeyId.Data, (*mqlClaudeOrganization).GetApiKeys)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.ApiKey.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return key, nil
+}
+
+// claude.organization.webhook
+
+// webhooks lists the organization's webhook endpoints. Anthropic turns the
+// API on per organization and answers 404 until it is, so a 404 means the
+// question does not apply to this organization. The response never carries
+// an endpoint's signing secret.
+func (r *mqlClaudeOrganization) webhooks() ([]any, error) {
+	client, err := adminSDKClient(r.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+
+	pager := client.Beta.Organization.Webhooks.ListAutoPaging(
+		context.Background(), anthropic.BetaOrganizationWebhookListParams{Limit: anthropic.Int(100)})
+
+	res := []any{}
+	for pager.Next() {
+		mqlHook, err := CreateResource(r.MqlRuntime, "claude.organization.webhook", webhookArgs(pager.Current()))
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlHook)
+	}
+	if err := pager.Err(); err != nil {
+		return nil, classifyAdminError(fmt.Errorf("listing organization webhooks: %w", err), endpointUnavailable)
+	}
+	return res, nil
+}
+
+// webhookArgs maps an organization webhook endpoint onto resource arguments.
+// The API sends an empty string for an absent name, description and
+// disabled reason; those read as null.
+func webhookArgs(w anthropic.BetaOrganizationWebhookEndpoint) map[string]*llx.RawData {
+	events := make([]any, 0, len(w.EnabledEvents))
+	for _, e := range w.EnabledEvents {
+		events = append(events, e)
+	}
+	return map[string]*llx.RawData{
+		"__id":           llx.StringData(w.ID),
+		"id":             llx.StringData(w.ID),
+		"name":           llx.StringDataPtr(nullableString(w.Name)),
+		"description":    llx.StringDataPtr(nullableString(w.Description)),
+		"url":            llx.StringData(w.URL),
+		"enabledEvents":  llx.ArrayData(events, types.String),
+		"state":          llx.StringDataPtr(nullableString(string(w.State))),
+		"disabledReason": llx.StringDataPtr(nullableString(w.DisabledReason)),
+		"createdAt":      llx.TimeDataPtr(nullableTime(w.CreatedAt)),
+		"updatedAt":      llx.TimeDataPtr(nullableTime(w.UpdatedAt)),
+	}
 }

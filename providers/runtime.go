@@ -4,23 +4,31 @@
 package providers
 
 import (
+	"context"
 	"errors"
+	"io"
+	"net"
+	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/recording"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/multierr"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/recording"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers/core/resources/versions/semver"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/multierr"
+	"go.mondoo.com/mql/utils/stringx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -38,18 +46,37 @@ type Runtime struct {
 	AutoUpdate     UpdateProvidersConfig
 
 	recording llx.Recording
-	features  []byte
+	// fields keeps every field answer, so a field many queries read crosses
+	// the plugin boundary once. See fieldCache.
+	fields   *fieldCache
+	features []byte
 	// coordinator is used to grab providers
 	coordinator ProvidersCoordinator
 	// providers for with open connections
-	providers       map[string]*ConnectedProvider
-	isClosed        bool
-	close           sync.Once
-	shutdownTimeout time.Duration
+	providers map[string]*ConnectedProvider
+	isClosed  bool
+	close     sync.Once
+	// translations is the downgrade catalog, built on first use so a compile
+	// that needs no fallbacks never starts a provider to ask.
+	translations     llx.TranslationSource
+	translationsOnce sync.Once
+	shutdownTimeout  time.Duration
 
 	// criticalErrors collects serious errors (e.g. recovered provider panics)
 	// that should be reported to an error tracker even though execution continues.
 	criticalErrors []error
+
+	// resolvedAssets caches the runtime opened for each asset anchor this
+	// runtime resolved into, and subRuntimes owns them so they are torn down
+	// with this runtime rather than left for the coordinator. resolveChain is
+	// the path of anchors that led here, which is what bounds a cycle across
+	// runtimes. See asset_resolver.go and ADR 031.
+	resolvedAssets map[string]*Runtime
+	subRuntimes    []*Runtime
+	resolveChain   []string
+	// assetReachTimeoutOverride bounds each step of reaching another asset when
+	// the default does not fit. Zero means the default.
+	assetReachTimeoutOverride time.Duration
 
 	// used to lock unsafe tasks
 	mu sync.Mutex
@@ -59,6 +86,31 @@ type ConnectedProvider struct {
 	Instance        *RunningProvider
 	Connection      *plugin.ConnectRes
 	ConnectionError error
+
+	// assetFailure is the first ASSET-scoped error this connection reported.
+	// An ASSET-scoped failure, such as a 401, means every remaining call on
+	// the asset fails the same way, so the runtime answers them with it
+	// instead of asking the provider again (ADR 046 phase 8). It belongs to
+	// the connection, not the asset: another provider on the same runtime
+	// holds its own credentials and may still succeed.
+	assetFailure atomic.Pointer[llx.Error]
+}
+
+// failedAsset returns the ASSET-scoped error this connection already reported,
+// or nil.
+func (c *ConnectedProvider) failedAsset() *llx.Error {
+	return c.assetFailure.Load()
+}
+
+// noteAssetFailure remembers err if it is an ASSET-scoped classified error. The
+// first one wins, so every short-circuited call repeats the same error. It
+// reports whether err was the one stored.
+func (c *ConnectedProvider) noteAssetFailure(err error) bool {
+	var classified *llx.Error
+	if !errors.As(err, &classified) || classified.Scope != llx.ErrorScope_ERROR_SCOPE_ASSET {
+		return false
+	}
+	return c.assetFailure.CompareAndSwap(nil, classified)
 }
 
 func (c *coordinator) RuntimeWithShutdownTimeout(timeout time.Duration) *Runtime {
@@ -94,6 +146,10 @@ func (r *Runtime) tryShutdown() shutdownResult {
 func (r *Runtime) Close() {
 	r.isClosed = true
 	r.close.Do(func() {
+		// Runtimes opened for other assets are owned by this one (ADR 031).
+		r.closeSubRuntimes()
+		r.fields.clear()
+
 		if err := r.Recording().Save(); err != nil {
 			log.Error().Err(err).Msg("failed to save recording")
 		}
@@ -170,6 +226,7 @@ func (r *Runtime) UseBuiltinProvider(id string, features []byte) error {
 		return err
 	}
 	r.features = features
+	plugin.ReadFeatures(features)
 
 	callbacks := &providerCallbacks{runtime: r}
 	conn, err := r.Provider.Instance.Plugin.Connect(&plugin.ConnectReq{
@@ -211,13 +268,16 @@ func (r *Runtime) UseInProcessProvider(config plugin.Provider, schema resources.
 	if r.features == nil {
 		r.features = features
 	}
+	plugin.ReadFeatures(features)
 
 	running := &RunningProvider{
-		Name:    config.Name,
-		ID:      config.ID,
-		Version: config.Version,
-		Plugin:  plug,
-		Schema:  schema,
+		Name:     config.Name,
+		ID:       config.ID,
+		Version:  config.Version,
+		Plugin:   plug,
+		Schema:   schema,
+		Requires: config.Requires,
+		Root:     config.Root,
 	}
 	connected := &ConnectedProvider{Instance: running}
 
@@ -249,11 +309,56 @@ func (r *Runtime) ConnectedProviderIDs() []string {
 	return ids
 }
 
+// keepContextConfig carries the context config of the asset a provider was
+// asked to connect onto the asset it answered with (cnspec ADR-0006). Most
+// providers answer with the asset they were given, which keeps it already; one
+// that builds a new asset would otherwise drop the config its discoverer read
+// at the scanned root. A config the provider set itself wins.
+func keepContextConfig(requested *inventory.Asset, res *plugin.ConnectRes) {
+	if requested.GetContextConfig() == nil || res == nil || res.Asset == nil || res.Asset.ContextConfig != nil {
+		return
+	}
+	res.Asset.ContextConfig = requested.ContextConfig.CloneVT()
+}
+
+// keepAssetClaims carries the claims of the asset a provider was asked to
+// connect onto the asset it answered with. Most
+// providers answer with the asset they were given, which keeps them already;
+// one that builds a new asset would otherwise drop the claims its discoverer
+// recorded. Claims the provider set itself win.
+func keepAssetClaims(requested *inventory.Asset, res *plugin.ConnectRes) {
+	if len(requested.GetClaims()) == 0 || res == nil || res.Asset == nil || len(res.Asset.Claims) != 0 {
+		return
+	}
+	for _, c := range requested.Claims {
+		if c == nil {
+			continue
+		}
+		res.Asset.Claims = append(res.Asset.Claims, c.CloneVT())
+	}
+}
+
 func (r *Runtime) setProviderConnection(c *plugin.ConnectRes, err error) {
 	r.mu.Lock()
 	r.Provider.Connection = c
 	r.Provider.ConnectionError = err
+	// A new connection may carry new credentials; what the old one failed
+	// on says nothing about it.
+	r.Provider.assetFailure.Store(nil)
 	r.mu.Unlock()
+}
+
+// crossProviderAsset returns a clone of the main provider's asset with
+// ParentConnectionId cleared. Parent-child resource cache sharing only
+// applies within the same provider; passing the original parent ID to an
+// unrelated provider triggers a spurious "parent connection not found"
+// warning because that provider never had the parent's runtime.
+func (r *Runtime) crossProviderAsset() *inventory.Asset {
+	asset := r.Provider.Connection.Asset.CloneVT()
+	if len(asset.Connections) > 0 {
+		asset.Connections[0].ParentConnectionId = 0
+	}
+	return asset
 }
 
 func (r *Runtime) addProvider(id string) (*ConnectedProvider, error) {
@@ -266,6 +371,33 @@ func (r *Runtime) addProvider(id string) (*ConnectedProvider, error) {
 	res := &ConnectedProvider{Instance: running}
 	r.AddConnectedProvider(res)
 
+	return res, nil
+}
+
+// addRecordedProvider is addProvider for a provider that is being mock-connected
+// from a recording.
+//
+// It reuses a running instance this runtime already carries instead of asking
+// the coordinator to start one. A runtime created for another asset inherits its
+// parent's providers (NewRuntimeFrom), so the instance is usually right there -
+// and it is the only one available when the providers were registered directly
+// on a runtime rather than through the coordinator, which is what an in-process
+// host does.
+//
+// The ConnectedProvider is always fresh: the inherited one holds the *parent's*
+// connection, and those structs are shared by pointer, so mock-connecting into
+// it would replace the connection the parent is still using.
+func (r *Runtime) addRecordedProvider(id string) (*ConnectedProvider, error) {
+	r.mu.Lock()
+	existing := r.providers[id]
+	r.mu.Unlock()
+
+	if existing == nil || existing.Instance == nil {
+		return r.addProvider(id)
+	}
+
+	res := &ConnectedProvider{Instance: existing.Instance}
+	r.AddConnectedProvider(res)
 	return res, nil
 }
 
@@ -293,8 +425,8 @@ func (r *Runtime) providerForAsset(asset *inventory.Asset) (*Provider, error) {
 	for i := range asset.Connections {
 		conn := asset.Connections[i]
 		if conn.Type == "" {
-			log.Warn().Msg("no connection `type` provided in inventory, falling back to deprecated `backend` field")
-			conn.Type = inventory.ConnBackendToType(conn.Backend)
+			errs.Add(errors.New("no connection `type` provided in inventory"))
+			continue
 		}
 
 		provider, err := EnsureProvider(ProviderLookup{ConnType: conn.Type}, r.AutoUpdate.Enabled, r.coordinator.Providers())
@@ -353,6 +485,9 @@ func (r *Runtime) Connect(req *plugin.ConnectReq) error {
 	}
 
 	r.features = req.Features
+	// A builtin provider runs in this process, where no SDK gRPC server reads
+	// the features for it (ADR 046 §9).
+	plugin.ReadFeatures(req.Features)
 	callbacks := providerCallbacks{
 		runtime: r,
 	}
@@ -363,6 +498,11 @@ func (r *Runtime) Connect(req *plugin.ConnectReq) error {
 	// }
 
 	conn, err := r.Provider.Instance.Plugin.Connect(req, &callbacks)
+	if err != nil {
+		_, err = r.handlePluginError(err, r.Provider, "", "")
+	}
+	keepContextConfig(req.GetAsset(), conn)
+	keepAssetClaims(req.GetAsset(), conn)
 	r.setProviderConnection(conn, err)
 	if err != nil {
 		return err
@@ -385,13 +525,16 @@ func (r *Runtime) Connect(req *plugin.ConnectReq) error {
 		return err
 	}
 	if postProvider.ID != r.Provider.Instance.ID {
-		req.Asset = r.Provider.Connection.Asset
+		req.Asset = r.crossProviderAsset()
 		err = r.UseProvider(postProvider.ID)
 		if err != nil {
 			return err
 		}
 
 		conn, err := r.Provider.Instance.Plugin.Connect(req, &callbacks)
+		if err != nil {
+			_, err = r.handlePluginError(err, r.Provider, "", "")
+		}
 		r.setProviderConnection(conn, err)
 		if err != nil {
 			return err
@@ -406,6 +549,20 @@ func (r *Runtime) Connect(req *plugin.ConnectReq) error {
 }
 
 func (r *Runtime) AssetUpdated(asset *inventory.Asset) {
+	// Discovery hands each asset out as an independent clone of the connection asset
+	// (see discovery.CreateAssetWithRuntime), so metadata a caller adds to that clone
+	// after connecting is invisible to the providers: every provider connect derives
+	// its asset from r.Provider.Connection.Asset (crossProviderAsset), and the core
+	// provider snapshots that into the `asset` resource once, at Connect. Copy the two
+	// fields the `asset` resource exposes back onto the connection asset so a later
+	// provider start observes them.
+	//
+	// This is what makes upstream-synced annotations reach MQL. cnspec merges the
+	// annotations returned by SynchronizeAssets onto the scanned asset and calls this
+	// method; without the copy, asset.annotations keeps only the locally supplied set
+	// and any policy or risk factor keyed on a server-side annotation never matches.
+	syncAssetMetadata(r.Provider, asset)
+
 	rec := r.Recording()
 	rec.EnsureAsset(
 		asset,
@@ -414,7 +571,42 @@ func (r *Runtime) AssetUpdated(asset *inventory.Asset) {
 		asset.Connections[0])
 }
 
+// syncAssetMetadata copies the mutable metadata of an updated asset onto the
+// provider's connection asset. Only labels and annotations are copied: they are the
+// fields CreateAssetResourceArgs reads that a caller may legitimately change after
+// connecting, whereas platform data and connections describe how the connection was
+// established and must not be rewritten underneath it.
+//
+// This works by getting ahead of the provider start rather than by refreshing an
+// already-built resource, which is deliberate: the generated CreateResource discards a
+// newly built resource when one is already cached under the same id
+// (`if x, ok := runtime.Resources.Get(id); ok { return x, nil }`), so re-creating
+// `asset` returns the stale instance. Providers are started lazily on first use of one
+// of their resources and the connection is then cached, and no MQL runs before the
+// caller that updates the asset, so the copy lands before the snapshot is taken. If
+// that ever stops holding, the fix is to make resource creation replace a cached
+// instance, not to call CreateResource again here.
+func syncAssetMetadata(provider *ConnectedProvider, asset *inventory.Asset) {
+	if provider == nil || provider.Connection == nil || asset == nil {
+		return
+	}
+	connAsset := provider.Connection.Asset
+	if connAsset == nil || connAsset == asset {
+		return
+	}
+	if asset.Labels != nil {
+		connAsset.Labels = asset.Labels
+	}
+	if asset.Annotations != nil {
+		connAsset.Annotations = asset.Annotations
+	}
+}
+
 func (r *Runtime) CreateResource(name string, args map[string]*llx.Primitive) (llx.Resource, error) {
+	return r.createResource(context.Background(), name, args)
+}
+
+func (r *Runtime) createResource(ctx context.Context, name string, args map[string]*llx.Primitive) (llx.Resource, error) {
 	provider, info, err := r.lookupResourceProvider(name)
 	if err != nil {
 		return nil, err
@@ -433,13 +625,21 @@ func (r *Runtime) CreateResource(name string, args map[string]*llx.Primitive) (l
 		return nil, errors.New("no connection to provider")
 	}
 
+	if crashErr := provider.Instance.crashError(); crashErr != nil {
+		return nil, crashErr
+	}
+	if failed := provider.failedAsset(); failed != nil {
+		return nil, failed
+	}
+
 	req := &plugin.DataReq{
 		Connection: provider.Connection.Id,
 		Resource:   name,
 		Args:       args,
 	}
-	res, err := provider.Instance.Plugin.GetData(req)
+	res, err := plugin.GetDataContext(ctx, provider.Instance.Plugin, req)
 	if err != nil {
+		_, err = r.handlePluginError(err, provider, name, "")
 		return nil, err
 	}
 
@@ -468,6 +668,10 @@ func PrimitiveArgsToResultArgs(args map[string]*llx.Primitive) map[string]*llx.R
 }
 
 func (r *Runtime) CloneResource(src llx.Resource, id string, fields []string, args map[string]*llx.Primitive) (llx.Resource, error) {
+	return r.cloneResource(context.Background(), src, id, fields, args)
+}
+
+func (r *Runtime) cloneResource(ctx context.Context, src llx.Resource, id string, fields []string, args map[string]*llx.Primitive) (llx.Resource, error) {
 	name := src.MqlName()
 	srcID := src.MqlID()
 
@@ -476,15 +680,20 @@ func (r *Runtime) CloneResource(src llx.Resource, id string, fields []string, ar
 		return nil, err
 	}
 
+	if crashErr := provider.Instance.crashError(); crashErr != nil {
+		return nil, crashErr
+	}
+
 	for i := range fields {
 		field := fields[i]
-		data, err := provider.Instance.Plugin.GetData(&plugin.DataReq{
+		data, err := plugin.GetDataContext(ctx, provider.Instance.Plugin, &plugin.DataReq{
 			Connection: provider.Connection.Id,
 			Resource:   name,
 			ResourceId: srcID,
 			Field:      field,
 		})
 		if err != nil {
+			_, err = r.handlePluginError(err, provider, name, field)
 			return nil, err
 		}
 		args[field] = data.Data
@@ -492,7 +701,7 @@ func (r *Runtime) CloneResource(src llx.Resource, id string, fields []string, ar
 
 	args["__id"] = llx.StringPrimitive(id)
 
-	_, err = provider.Instance.Plugin.StoreData(&plugin.StoreReq{
+	_, err = plugin.StoreDataContext(ctx, provider.Instance.Plugin, &plugin.StoreReq{
 		Connection: provider.Connection.Id,
 		Resources: []*plugin.ResourceData{{
 			Name:   name,
@@ -501,6 +710,7 @@ func (r *Runtime) CloneResource(src llx.Resource, id string, fields []string, ar
 		}},
 	})
 	if err != nil {
+		_, err = r.handlePluginError(err, provider, name, "")
 		return nil, err
 	}
 
@@ -514,14 +724,33 @@ func (r *Runtime) Unregister(watcherUID string) error {
 
 // WatchAndUpdate a resource field and call the function if it changes with its current value
 func (r *Runtime) WatchAndUpdate(resource llx.Resource, field string, watcherUID string, callback func(res any, err error)) error {
-	raw, err := r.watchAndUpdate(resource.MqlName(), resource.MqlID(), field, watcherUID)
+	return r.watchAndUpdateCallback(context.Background(), resource, field, watcherUID, callback)
+}
+
+func (r *Runtime) watchAndUpdateCallback(ctx context.Context, resource llx.Resource, field string, watcherUID string, callback func(res any, err error)) error {
+	raw, err := r.watchAndUpdateContext(ctx, resource.MqlName(), resource.MqlID(), field, watcherUID)
 	if raw != nil {
-		callback(raw.Value, raw.Error)
+		fieldErr := raw.Error
+		if fieldErr == nil && len(raw.CoverageGaps) != 0 {
+			// The callback has no slot for gaps, so a partial field travels
+			// the way a provider returns it (ADR 046 §8); the executor
+			// unpacks it.
+			gaps := make([]error, len(raw.CoverageGaps))
+			for i := range raw.CoverageGaps {
+				gaps[i] = raw.CoverageGaps[i]
+			}
+			fieldErr = llx.Partial(gaps...)
+		}
+		callback(raw.Value, fieldErr)
 	}
 	return err
 }
 
 func (r *Runtime) watchAndUpdate(resource string, resourceID string, field string, watcherUID string) (*llx.RawData, error) {
+	return r.watchAndUpdateContext(context.Background(), resource, resourceID, field, watcherUID)
+}
+
+func (r *Runtime) watchAndUpdateContext(ctx context.Context, resource string, resourceID string, field string, watcherUID string) (*llx.RawData, error) {
 	provider, info, fieldInfo, err := r.lookupFieldProvider(resource, field)
 	if err != nil {
 		return nil, err
@@ -530,10 +759,20 @@ func (r *Runtime) watchAndUpdate(resource string, resourceID string, field strin
 		return nil, errors.New("cannot get field '" + field + "' for resource '" + resource + "'")
 	}
 
+	if crashErr := provider.Instance.crashError(); crashErr != nil {
+		return nil, crashErr
+	}
+
+	// Answered before the reference resource below is stored with the field's
+	// provider: a cached field needs no provider call at all.
+	if cached, ok := r.fields.get(provider.Connection.Id, resource, resourceID, field); ok {
+		return cached, nil
+	}
+
 	if info.Provider != fieldInfo.Provider {
 		// technically we don't need to look up the resource provider, since
 		// it had to have been called beforehand to get here
-		_, err := provider.Instance.Plugin.StoreData(&plugin.StoreReq{
+		_, err := plugin.StoreDataContext(ctx, provider.Instance.Plugin, &plugin.StoreReq{
 			Connection: provider.Connection.Id,
 			Resources: []*plugin.ResourceData{{
 				Name: resource,
@@ -541,7 +780,8 @@ func (r *Runtime) watchAndUpdate(resource string, resourceID string, field strin
 			}},
 		})
 		if err != nil {
-			return nil, multierr.Wrap(err, "failed to create reference resource "+resource+" in provider "+provider.Instance.Name)
+			_, handledErr := r.handlePluginError(err, provider, resource, field)
+			return nil, multierr.Wrap(handledErr, "failed to create reference resource "+resource+" in provider "+provider.Instance.Name)
 		}
 	}
 
@@ -555,7 +795,28 @@ func (r *Runtime) watchAndUpdate(resource string, resourceID string, field strin
 		ResourceId: resourceID,
 		Field:      field,
 	}
-	data, err := provider.Instance.Plugin.GetData(req)
+
+	if failed := provider.failedAsset(); failed != nil {
+		// The field fails the way the provider already said every call on
+		// this asset fails, without asking it again. It is recorded like any
+		// other answer, so the results are the same either way.
+		raw := &llx.RawData{Error: failed}
+		r.Recording().AddData(llx.AddDataReq{
+			ConnectionID:      provider.Connection.Id,
+			Resource:          resource,
+			ResourceID:        resourceID,
+			RequestResourceId: req.ResourceId,
+			Data:              raw,
+			Field:             field,
+		})
+		return raw, nil
+	}
+
+	data, err := plugin.GetDataContext(ctx, provider.Instance.Plugin, req)
+	// Only an answer from the provider is kept. A failed call (a crash, a
+	// timeout, a cancelled query) says nothing about the field, so the next
+	// query asks again.
+	answered := err == nil
 	if err != nil {
 		// Recoverable errors can continue with the execution,
 		// they only store errors in the place of actual data.
@@ -564,14 +825,66 @@ func (r *Runtime) watchAndUpdate(resource string, resourceID string, field strin
 		if !handled {
 			return nil, err
 		}
-		data = &plugin.DataRes{Error: err.Error()}
+		data = &plugin.DataRes{
+			Error:       err.Error(),
+			ErrorDetail: llx.ErrorDetailOf(err),
+		}
 	}
 
 	var raw *llx.RawData
 	if data.Error != "" {
-		raw = &llx.RawData{Error: errors.New(data.Error)}
+		// Rebuild the provider's classification rather than an anonymous
+		// error (ADR 046): this is the site where a kind would otherwise be
+		// flattened into a string for the rest of its life.
+		raw = &llx.RawData{Error: llx.ErrorFromDetail(data.Error, data.ErrorDetail)}
+		if classified, ok := errors.AsType[*llx.Error](raw.Error); ok {
+			log.Debug().
+				Str("provider", provider.Instance.Name).
+				Str("resource", resource).
+				Str("id", resourceID).
+				Str("field", field).
+				Err(raw.Error).
+				EmbedObject(classified).
+				Msg("provider field failed")
+			if provider.noteAssetFailure(classified) {
+				log.Debug().
+					Str("provider", provider.Instance.Name).
+					Err(classified).
+					EmbedObject(classified).
+					Msg("asset-scoped failure, answering the remaining calls on this connection with it")
+			}
+		}
 	} else {
-		raw = data.Data.RawData()
+		if data.Data == nil {
+			// The provider answered with neither data nor an error. This
+			// happens when the requested field's TValue was never set on the
+			// resource (e.g. a resource created from partial init args, or an
+			// accessor returning nil without marking the field null) —
+			// TValue.ToDataRes encodes an unset field as an empty DataRes.
+			// Log-only: the conversion below still receives the nil primitive
+			// and coerces it to null exactly as before; this line just adds
+			// the provider/resource/field attribution that the anonymous
+			// "primitive with no type information" error lacks.
+			log.Error().
+				Str("provider", provider.Instance.Name).
+				Str("resource", resource).
+				Str("id", resourceID).
+				Str("field", field).
+				Msg("provider returned no data and no error for a field; the field was never set on the resource (provider bug)")
+		}
+		// The parts the provider could not read ride beside the value, not in
+		// the error slot, which would mark the whole field failed (ADR 046 §8).
+		raw = data.Data.RawData().WithCoverageGaps(llx.CoverageGapsFromProto(data.CoverageGaps))
+		for _, gap := range raw.CoverageGaps {
+			log.Debug().
+				Str("provider", provider.Instance.Name).
+				Str("resource", resource).
+				Str("id", resourceID).
+				Str("field", field).
+				Err(gap).
+				EmbedObject(gap).
+				Msg("provider field is incomplete")
+		}
 	}
 
 	addDataReq := llx.AddDataReq{
@@ -583,6 +896,9 @@ func (r *Runtime) watchAndUpdate(resource string, resourceID string, field strin
 		Field:             field,
 	}
 	r.Recording().AddData(addDataReq)
+	if answered {
+		r.fields.set(provider.Connection.Id, resource, resourceID, field, raw)
+	}
 	return raw, nil
 }
 
@@ -598,15 +914,85 @@ func (r *Runtime) handlePluginError(err error, provider *ConnectedProvider, reso
 		ctx += ")"
 	}
 
+	// A provider already known dead answers every further RPC with some shape
+	// of "the connection is gone" - codes.Canceled ("grpc: the client
+	// connection is closing"), codes.Unavailable, or even a bare transport
+	// error, depending on exactly when the caller raced the teardown. Once we
+	// have a diagnostic for this provider, fold every later failure into it
+	// instead of reclassifying and re-recording a critical error per field.
+	if crashErr := provider.Instance.crashError(); crashErr != nil {
+		return false, crashErr
+	}
+
 	st, ok := status.FromError(err)
 	if !ok {
-		// Transport-level errors (e.g. "dial tcp" connection failures) don't
-		// carry a gRPC status code. Record them as critical so they reach
-		// error reporting (Sentry) via runtime.CriticalErrors().
-		base := "the '" + provider.Instance.Name + "' provider connection failed" + ctx + ": " + err.Error()
-		transportErr := errors.New(base + buildCrashDiagnostics(provider.Instance))
-		r.addCriticalError(transportErr)
-		return false, transportErr
+		// An error without a gRPC status is NOT reliably a transport
+		// failure. status.FromError only returns ok=true when the error
+		// implements (or wraps) grpc's status interface, which every error a
+		// live gRPC call produces does - grpc-go converts dial/stream/
+		// transport failures into status errors (typically Unavailable)
+		// before handing them back to the caller. So in practice this
+		// branch is reached for errors that never went through gRPC at all:
+		// the builtin/core provider and plugin mocks call straight into Go
+		// resource code and return its errors verbatim, e.g. "cannot find
+		// user with name 'notthere'" from a bad `user(name: ...)` lookup.
+		// Treating every such error as "the provider crashed" mislabels an
+		// ordinary, per-call application error - and would be
+		// far worse if it also called recordCrash: one bad lookup would
+		// mark the whole provider permanently closed and hand its stored
+		// diagnostic to every unrelated field for the rest of the run.
+		//
+		// So only the errors that are genuinely transport-level are treated
+		// as a crash here: a *net.OpError (dial/read/write network
+		// failures - what "dial tcp ...: connect: connection refused"
+		// actually is), the connection-refused/reset/broken-pipe syscall
+		// errnos, a stream ending in EOF/ErrUnexpectedEOF, or net.ErrClosed
+		// ("use of closed network connection"). Anything else is returned
+		// unchanged, unrecorded - exactly as if handlePluginError had not
+		// been in the call chain at all.
+		//
+		// That classification alone is still not enough: a *net.OpError or
+		// io.EOF is exactly as ordinary for a provider that makes its own
+		// network/file calls as part of answering a query - a builtin
+		// `port`/`http.get` check against a closed port returns a real
+		// *net.OpError with ECONNREFUSED, and a file read past EOF returns
+		// io.EOF, neither of which says anything about whether the plugin
+		// serving the RPC is still alive. That distinction only means
+		// something for an out-of-process provider, where GetData/StoreData/
+		// Connect themselves ARE the RPC to the plugin, so a transport error
+		// on that call is about the plugin's own connection. For a builtin/
+		// in-process provider there is no RPC underneath the call at all -
+		// GetData is a direct Go call into resource code - so the same error
+		// shapes are just whatever the resource implementation happened to
+		// return. Gate on provider.Instance.proc: it is nil for builtin
+		// providers and any provider constructed without a subprocess
+		// (see its doc comment, and awaitExit's identical nil check), and
+		// set to the real process tracker only by the subprocess-launching
+		// path in coordinator.go - the same signal the rest of this file
+		// already trusts to know whether there is a plugin process to be
+		// dead in the first place.
+		if provider.Instance.proc != nil && isTransportFailure(err) {
+			// This means the same thing a codes.Unavailable does: the
+			// provider process is not there to answer the RPC. There is no
+			// reconnect/restart path (see the TODO below) that could make a
+			// second attempt succeed, so there is nothing to gain by not
+			// marking it crashed - and every remaining field would
+			// otherwise redial the same dead port, get the same error, and
+			// (absent dedup) add its own critical error, risking the
+			// 100-entry cap for one crash. recordCrash stores the
+			// diagnostic once and every later call - of any error shape -
+			// returns that same stored error, same as the
+			// Unavailable/Canceled branch below.
+			crashErr, first := provider.Instance.recordCrash(func() error {
+				base := "the '" + provider.Instance.Name + "' provider crashed" + ctx + ": " + err.Error()
+				return errors.New(base + buildCrashDiagnostics(provider.Instance))
+			})
+			if first {
+				r.addCriticalError(crashErr)
+			}
+			return false, crashErr
+		}
+		return false, err
 	}
 
 	switch st.Code() {
@@ -621,23 +1007,53 @@ func (r *Runtime) handlePluginError(err error, provider *ConnectedProvider, reso
 			return true, panicErr
 		}
 
-	case codes.Unavailable:
-		// Happens when the plugin crashes or the gRPC connection drops.
+	case codes.Unavailable, codes.Canceled:
+		// Unavailable is the plugin crashing or the gRPC connection dropping;
+		// Canceled ("grpc: the client connection is closing") is go-plugin
+		// tearing the client down right after. Both mean this provider is
+		// gone. recordCrash stores the diagnostic once (on whichever call
+		// observes the crash first) and every later call - regardless of
+		// which of the two codes it happens to see - returns that same
+		// stored error instead of building and recording its own.
 		// TODO: try to restart the plugin and reset its connections
-		provider.Instance.isClosed = true
-		base := "the '" + provider.Instance.Name + "' provider crashed" + ctx + ": " + err.Error()
-		provider.Instance.err = errors.New(base + buildCrashDiagnostics(provider.Instance))
-		r.addCriticalError(provider.Instance.err)
-		return false, provider.Instance.err
+		crashErr, first := provider.Instance.recordCrash(func() error {
+			base := "the '" + provider.Instance.Name + "' provider crashed" + ctx + ": " + err.Error()
+			return errors.New(base + buildCrashDiagnostics(provider.Instance))
+		})
+		if first {
+			r.addCriticalError(crashErr)
+		}
+		return false, crashErr
 	}
 	return false, err
 }
 
+// isTransportFailure reports whether err is a genuine network/transport
+// failure rather than an ordinary application error that merely lacks a
+// gRPC status. Kept deliberately narrow (type/sentinel checks only, no
+// substring matching on err.Error()) so a resource-level error that happens
+// to mention "connection" in its message is never misclassified.
+func isTransportFailure(err error) bool {
+	if _, ok := errors.AsType[*net.OpError](err); ok {
+		// Covers "dial tcp ...", "read tcp ...", "write tcp ..." failures -
+		// the shape a real dial/connection failure takes.
+		return true
+	}
+	return errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, io.EOF) ||
+		errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, io.ErrClosedPipe) ||
+		errors.Is(err, net.ErrClosed)
+}
+
 // buildCrashDiagnostics returns a multi-line suffix to append to a crash error
 // with whatever extra context we have about the dead/dying provider:
-// version, uptime, whether the subprocess actually exited, whether the
-// shutdown was triggered by a heartbeat probe, and the most recent stderr
-// (panic/fatal trace if one was captured).
+// version, uptime, whether the subprocess actually exited (and if so, its
+// exit code or killing signal plus peak RSS), whether the shutdown was
+// triggered by a heartbeat probe, and the most recent stderr (panic/fatal
+// trace if one was captured).
 //
 // Returns "" when there's nothing useful to report, so the message stays
 // compact for cases where the optional context is unavailable (mostly tests
@@ -654,8 +1070,17 @@ func buildCrashDiagnostics(p *RunningProvider) string {
 	if up := p.uptime(); up > 0 {
 		meta = append(meta, "uptime="+up.Round(time.Millisecond).String())
 	}
-	if p.hasExited() {
+	if exited, ps := p.awaitExit(2 * time.Second); exited {
 		meta = append(meta, "subprocess=exited")
+		// Exit disposition separates the silent-death causes: a SIGKILL with
+		// empty stderr and no trigger= flag is near-certainly the OOM
+		// killer, a regular exit code points at the plugin terminating
+		// itself. Peak RSS (bytes) corroborates the OOM classification
+		// without host access.
+		meta = append(meta, "exit="+formatExitStatus(ps))
+		if rss := maxRSSBytes(ps); rss > 0 {
+			meta = append(meta, "max_rss="+strconv.FormatInt(rss, 10))
+		}
 	} else if p.startedAt.IsZero() {
 		// builtin/in-process — no subprocess to report on
 	} else {
@@ -663,6 +1088,10 @@ func buildCrashDiagnostics(p *RunningProvider) string {
 	}
 	if p.hadHeartbeatFailure() {
 		meta = append(meta, "trigger=heartbeat-timeout")
+	} else if p.wasKilledLocally() {
+		// We sent the kill signal ourselves (shutdown race) — without this
+		// flag, our own SIGKILL would wear the OOM killer's fingerprint.
+		meta = append(meta, "trigger=local-kill")
 	}
 
 	var sb strings.Builder
@@ -714,8 +1143,29 @@ type providerCallbacks struct {
 	runtime   *Runtime
 }
 
+// runtimeFromCallback recovers the runtime a builtin provider service is
+// connecting on behalf of.
+//
+// The builtin services (mock, sbom) are single instances shared by every
+// runtime in the process, so they cannot keep the runtime in a field: whoever
+// connected last would overwrite it, and a concurrent connect would then read
+// another runtime's providers and recording. The callback the connect is handed
+// already belongs to exactly one runtime, which makes it the right place to
+// take it from.
+//
+// A nil or foreign callback means the caller has no in-process runtime to offer,
+// which these services cannot work without - so it is an error rather than a
+// dereference.
+func runtimeFromCallback(callback plugin.ProviderCallback) (*Runtime, error) {
+	cb, ok := callback.(*providerCallbacks)
+	if !ok || cb == nil || cb.runtime == nil {
+		return nil, errors.New("cannot connect: this provider needs an in-process runtime, and the connect call supplied none")
+	}
+	return cb.runtime, nil
+}
+
 func (p *providerCallbacks) GetRecording(req *plugin.DataReq) (*plugin.ResourceData, error) {
-	resource, ok := p.recording.GetResource(req.Resource, req.ResourceId)
+	fields, ok := p.recordedFields(req)
 	if !ok {
 		return nil, nil
 	}
@@ -723,13 +1173,36 @@ func (p *providerCallbacks) GetRecording(req *plugin.DataReq) (*plugin.ResourceD
 	res := plugin.ResourceData{
 		Name:   req.Resource,
 		Id:     req.ResourceId,
-		Fields: make(map[string]*llx.Result, len(resource.Fields)),
+		Fields: make(map[string]*llx.Result, len(fields)),
 	}
-	for k, v := range resource.Fields {
+	for k, v := range fields {
 		res.Fields[k] = v.Result()
 	}
 
 	return &res, nil
+}
+
+// recordedFields reads a recorded resource for a callback.
+//
+// Callbacks built for one asset carry that asset's recording directly. The ones
+// Runtime.Connect builds do not - they are made for a live connection, which
+// has no recording to carry - so they resolve through the runtime's own
+// recording, keyed by the connection the request came in on. That is the path a
+// recorded asset connected for cross-asset resolution takes (ADR 031), and
+// dereferencing the nil is what it used to do instead.
+func (p *providerCallbacks) recordedFields(req *plugin.DataReq) (map[string]*llx.RawData, bool) {
+	if p.recording != nil {
+		resource, ok := p.recording.GetResource(req.Resource, req.ResourceId)
+		if !ok {
+			return nil, false
+		}
+		return resource.Fields, true
+	}
+	if p.runtime == nil || p.runtime.Recording() == nil {
+		return nil, false
+	}
+	return p.runtime.Recording().GetResource(
+		llx.AssetRecordingLookup{ConnectionId: req.Connection}, req.Resource, req.ResourceId)
 }
 
 func (p *providerCallbacks) GetData(req *plugin.DataReq) (*plugin.DataRes, error) {
@@ -753,8 +1226,10 @@ func (p *providerCallbacks) GetData(req *plugin.DataReq) (*plugin.DataRes, error
 	}
 	res := raw.Result()
 	return &plugin.DataRes{
-		Data:  res.Data,
-		Error: res.Error,
+		Data:         res.Data,
+		Error:        res.Error,
+		ErrorDetail:  res.ErrorDetail,
+		CoverageGaps: res.CoverageGaps,
 	}, err
 }
 
@@ -780,30 +1255,75 @@ func (r *Runtime) EnableResourcesRecording() error {
 	return r.SetRecording(recording)
 }
 
+// EnsureResourcesRecording makes this runtime record resource data for
+// asset, regardless of when it is called relative to the runtime's
+// connection. It mounts an in-memory recording if none is mounted (the same
+// Null-only swap as EnableResourcesRecording, so a recording the caller
+// mounted — e.g. via --record — is never clobbered) and registers asset
+// with the mounted recording.
+//
+// The registration is what makes late enabling work, and it encodes three
+// invariants of the recording machinery that callers should not have to
+// know: assets are normally registered at CONNECT time (a recording mounted
+// afterwards knows no connections), AddData silently drops rows for
+// connections the recording does not know, and readers look assets up by
+// the identity on the registered asset — so asset should be the one
+// carrying the identity readers will use (e.g. the platform-assigned MRN),
+// with the connection config whose Id writes are keyed under. An asset with
+// no connections mounts the recording and skips registration: the runtime
+// has not connected yet, and connect-time registration will cover it.
+func (r *Runtime) EnsureResourcesRecording(asset *inventory.Asset) error {
+	if err := r.EnableResourcesRecording(); err != nil {
+		return err
+	}
+	if asset == nil || len(asset.Connections) == 0 {
+		return nil
+	}
+
+	providerID := ""
+	var connectionID uint32
+	if r.Provider != nil && r.Provider.Instance != nil {
+		providerID = r.Provider.Instance.ID
+	}
+	if r.Provider != nil && r.Provider.Connection != nil {
+		connectionID = r.Provider.Connection.Id
+	}
+
+	// Register under the config of the runtime's ACTIVE connection when the
+	// asset carries several: the recording indexes writes by conf.Id, and
+	// AddData silently drops rows for connection ids it does not know — so
+	// registering a non-active connection's config would reproduce exactly
+	// the silent-drop failure this method exists to prevent. Fall back to
+	// the first connection when none matches (or the runtime has not
+	// connected yet, where connect-time registration covers the rest).
+	conf := asset.Connections[0]
+	if connectionID > 0 {
+		for _, c := range asset.Connections {
+			if c != nil && c.Id == connectionID {
+				conf = c
+				break
+			}
+		}
+	}
+	if conf != nil {
+		// A nil connection config cannot be registered (EnsureAsset derefs
+		// it); in that case the recording stays mounted and connect-time
+		// registration covers the asset once a real connection exists.
+		r.recording.EnsureAsset(asset, providerID, connectionID, conf)
+	}
+	return nil
+}
+
 func (r *Runtime) SetRecording(recording llx.Recording) error {
 	r.recording = recording
 	if r.Provider == nil || r.Provider.Instance == nil {
 		log.Warn().Msg("set recording while no provider is set on runtime")
-		return nil
 	}
-	if r.Provider.Instance.ID != mockProvider.ID && r.Provider.Instance.ID != sbomProvider.ID {
-		return nil
-	}
-
-	if r.Provider.Instance.ID == mockProvider.ID {
-		service := r.Provider.Instance.Plugin.(*mockProviderService)
-		// TODO: This is problematic, since we don't have multiple instances of
-		// the service!!
-		service.runtime = r
-	}
-
-	if r.Provider.Instance.ID == sbomProvider.ID {
-		service := r.Provider.Instance.Plugin.(*sbomProviderService)
-		// TODO: This is problematic, since we don't have multiple instances of
-		// the service!!
-		service.runtime = r
-	}
-
+	// The builtin mock and sbom services used to be handed this runtime here,
+	// to be read back when they connect. They take it from the connect
+	// callback instead: one service instance is shared by every runtime, so a
+	// field on it is whichever runtime set a recording most recently, not the
+	// one connecting. See runtimeFromCallback.
 	return nil
 }
 
@@ -904,7 +1424,19 @@ func (r *Runtime) lookupResourceProvider(resource string) (*ConnectedProvider, *
 		"go.mondoo.com/mql/providers/ai",
 		"go.mondoo.com/mql/providers/ipinfo",
 		"go.mondoo.com/mql/providers/yara",
-		// FIXME: DEPRECATED, remove in v14.0 vv
+		// DEPRECATED, remove in v15.0 vv
+		// As of v14 every shipped provider uses the version-less
+		// "go.mondoo.com/mql/providers/<name>" form above, so nothing built from
+		// this tree matches the two blocks below any more. They are NOT dead: a
+		// provider is installed and versioned independently of the engine, so a
+		// v14+ engine routinely runs against provider binaries released before
+		// the ID change, which still report their old IDs from their own
+		// <name>.json. Deleting these entries breaks cross-provider calls for
+		// those users, silently -- the failure surfaces only as "incorrect
+		// provider for asset" at the gate below.
+		//
+		// ADR 042 retires this whitelist wholesale in v15, replacing it with
+		// consumer-declared dependencies. Until then, keep every entry.
 		"go.mondoo.com/cnquery/providers/core",
 		"go.mondoo.com/cnquery/providers/network",
 		"go.mondoo.com/cnquery/providers/os",
@@ -914,12 +1446,10 @@ func (r *Runtime) lookupResourceProvider(resource string) (*ConnectedProvider, *
 		"go.mondoo.com/cnquery/providers/ai",
 		"go.mondoo.com/cnquery/providers/ipinfo",
 		"go.mondoo.com/cnquery/providers/yara",
-		// FIXME: DEPRECATED, remove in v12.0 vv
 		// Providers traditionally had a version indication in their ID. With v10
 		// this is no longer necessary (but still supported due to a bug,
-		// see https://github.com/mondoohq/mql/pull/3053).
-		// Once we get far enough away from legacy
-		// version support, we can safely remove this.
+		// see https://github.com/mondoohq/mql/pull/3053). This block covers the
+		// last providers to carry one; same v15 removal as the block above.
 		"go.mondoo.com/cnquery/v9/providers/core",
 		"go.mondoo.com/cnquery/v9/providers/network",
 		"go.mondoo.com/cnquery/v9/providers/os",
@@ -928,9 +1458,22 @@ func (r *Runtime) lookupResourceProvider(resource string) (*ConnectedProvider, *
 		// ^^
 	}
 
-	if info.Provider != providerConn && !stringx.Contains(crossProviderList, info.Provider) {
+	// ADR 042 step 3: the gate accepts a declared dependency OR the legacy
+	// whitelist, and logs when only the legacy path matched. Every remaining
+	// legacy-only hit is a missing declaration; when that log goes quiet for a
+	// release, the whitelist can be deleted (step 5, v15).
+	minVersion, declared := r.declaresPeer(r.Provider.Instance, info.Provider)
+	legacy := stringx.Contains(crossProviderList, info.Provider)
+
+	if !declared && !legacy {
 		log.Debug().Str("infoProvider", info.Provider).Str("connectionProvider", providerConn).Msg("mismatch between expected and received provider, ignoring provider")
 		return nil, nil, errors.New("incorrect provider for asset, not adding " + info.Provider)
+	}
+	if !declared && legacy {
+		log.Warn().
+			Str("caller", providerConn).
+			Str("peer", info.Provider).
+			Msg("undeclared cross-provider call, allowed by the legacy whitelist; add it to Requires in the caller's config.go (ADR 042)")
 	}
 
 	res, err := r.addProvider(info.Provider)
@@ -938,10 +1481,14 @@ func (r *Runtime) lookupResourceProvider(resource string) (*ConnectedProvider, *
 		return nil, nil, multierr.Wrap(err, "failed to start provider '"+info.Provider+"'")
 	}
 
+	if err := checkPeerVersion(res.Instance, minVersion); err != nil {
+		return nil, nil, err
+	}
+
 	res.Connection, res.ConnectionError = res.Instance.Plugin.Connect(&plugin.ConnectReq{
 		Features: r.features,
 		Upstream: r.UpstreamConfig,
-		Asset:    r.Provider.Connection.Asset,
+		Asset:    r.crossProviderAsset(),
 	}, nil)
 	if res.ConnectionError != nil {
 		return nil, nil, res.ConnectionError
@@ -953,7 +1500,10 @@ func (r *Runtime) lookupResourceProvider(resource string) (*ConnectedProvider, *
 func (r *Runtime) lookupResource(resource string) (*resources.ResourceInfo, error) {
 	info := r.coordinator.Schema().Lookup(resource)
 	if info == nil {
-		return nil, errors.New("cannot find resource '" + resource + "' in schema")
+		// Typed for the same reason a missing field is: this is what version
+		// skew looks like when a whole resource is new, and the executor has to
+		// be able to tell it apart from a genuine failure.
+		return nil, &llx.ErrResourceNotFound{Resource: resource}
 	}
 
 	// prioritize ids
@@ -965,8 +1515,8 @@ func (r *Runtime) lookupResource(resource string) (*resources.ResourceInfo, erro
 	}
 
 	priority := []string{BuiltinCoreID, r.Provider.Instance.ID}
-	for i := len(priority) - 1; i >= 0; i-- {
-		id := priority[i]
+	for _, id := range slices.Backward(priority) {
+
 		if s := resourcesPerProvider[id]; s != nil {
 			info = s
 		}
@@ -984,7 +1534,10 @@ func (r *Runtime) lookupFieldProvider(resource string, field string) (*Connected
 	// Then find the field we are looking for
 	fieldInfo, ok := resourceInfo.Fields[field]
 	if !ok {
-		return nil, nil, nil, errors.New("cannot find field '" + field + "' in resource '" + resource + "'")
+		// Typed, because the executor has to tell this apart from other
+		// failures: a field the reader has never heard of is the signature of
+		// version skew, and only skew may be degraded rather than propagated.
+		return nil, nil, nil, &llx.ErrFieldNotFound{Resource: resource, Field: field}
 	}
 
 	fieldsPerProvider := map[string]*resources.Field{
@@ -1009,8 +1562,8 @@ func (r *Runtime) lookupFieldProvider(resource string, field string) (*Connected
 	// prioritize ids
 	priority := []string{BuiltinCoreID, r.Provider.Instance.ID}
 	priorityMatched := false
-	for i := len(priority) - 1; i >= 0; i-- {
-		id := priority[i]
+	for _, id := range slices.Backward(priority) {
+
 		if s := fieldsPerProvider[id]; s != nil {
 			fieldInfo = s
 			priorityMatched = true
@@ -1073,6 +1626,20 @@ func (r *Runtime) lookupFieldProvider(resource string, field string) (*Connected
 		return provider, resourceInfo, fieldInfo, provider.ConnectionError
 	}
 
+	// ADR 042 step 3: the same predicate as the resource path, but **log-only**
+	// here. This path allows everything today -- it is how GetSharedData and
+	// every query-driven field access reach a foreign provider -- so enforcing
+	// it now would break callers that the resource-path gate never saw. The log
+	// measures the population first; v15 turns it into the same check.
+	if _, declared := r.declaresPeer(r.Provider.Instance, fieldInfo.Provider); !declared {
+		log.Warn().
+			Str("caller", r.Provider.Instance.ID).
+			Str("peer", fieldInfo.Provider).
+			Str("resource", resource).
+			Str("field", field).
+			Msg("undeclared cross-provider field access, allowed for now; add it to Requires in the caller's config.go (ADR 042)")
+	}
+
 	res, err := r.addProvider(fieldInfo.Provider)
 	if err != nil {
 		return nil, nil, nil, multierr.Wrap(err, "failed to start provider '"+fieldInfo.Provider+"'")
@@ -1081,7 +1648,7 @@ func (r *Runtime) lookupFieldProvider(resource string, field string) (*Connected
 	res.Connection, res.ConnectionError = res.Instance.Plugin.Connect(&plugin.ConnectReq{
 		Features: r.features,
 		Upstream: r.UpstreamConfig,
-		Asset:    r.Provider.Connection.Asset,
+		Asset:    r.crossProviderAsset(),
 	}, nil)
 	if res.ConnectionError != nil {
 		return nil, nil, nil, res.ConnectionError
@@ -1094,6 +1661,71 @@ func (r *Runtime) Schema() resources.ResourcesSchema {
 	return r.coordinator.Schema()
 }
 
+// AssetRoot implements llx.AssetRootSource: the root of the connected asset's
+// tree (ADR 031).
+//
+// The connection's answer wins. A provider's static declaration has to cover
+// every platform it serves, so for `os` it is the `os.any` union; the connection
+// knows which family it actually reached and says so in ConnectRes. Preferring
+// it is what makes `_` on a Linux host mean `os.linux`, so the query is bounded
+// by what that platform has rather than by the union of every platform. The
+// concrete root is a member of the declared union, so this is a refinement of
+// the declaration and not a disagreement with it.
+//
+// Falls back to the static declaration when the connection says nothing, which
+// is every provider that has not implemented this yet, and to "" when there is
+// no root at all - where `_` keeps failing.
+//
+// Only the main provider is consulted. A runtime can have several providers
+// attached - a cross-provider call adds one - but they are all answering about
+// the same asset, and the asset is rooted where its own connection put it.
+func (r *Runtime) AssetRoot() string {
+	if r.Provider == nil {
+		return ""
+	}
+	if root := r.Provider.Connection.GetRoot(); root != "" {
+		return root
+	}
+	return r.DeclaredAssetRoot()
+}
+
+// DeclaredAssetRoot implements llx.AssetRootSource: the root the provider
+// declares statically, which for a multi-platform provider is the union of its
+// roots.
+func (r *Runtime) DeclaredAssetRoot() string {
+	if r.Provider == nil || r.Provider.Instance == nil {
+		return ""
+	}
+	return r.Provider.Instance.Root
+}
+
+// TranslationsFor implements llx.TranslationSource, so a compile that has a
+// runtime has the downgrade catalog too (ADR 040 part 6).
+//
+// This is what makes the mechanism reachable without any caller assembling it:
+// mql is the only compiler there is, so whatever compiles content - here or in
+// anything built on this - reaches the catalog through the runtime it already
+// has. The lookup is lazy and cached, so a compile that emits no fallbacks
+// starts no providers.
+func (r *Runtime) TranslationsFor(provider string) []*llx.TranslationStep {
+	r.translationsOnce.Do(func() {
+		r.translations = NewTranslationSource(r)
+	})
+	return r.translations.TranslationsFor(provider)
+}
+
+// UnavailableTranslationProviders names providers whose catalog could not be
+// read during this runtime's compiles, for the one aggregate warning.
+func (r *Runtime) UnavailableTranslationProviders() UnavailableProviders {
+	if r.translations == nil {
+		return nil
+	}
+	if src, ok := r.translations.(*translationSource); ok {
+		return src.Unavailable()
+	}
+	return nil
+}
+
 func (r *Runtime) asset() *inventory.Asset {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1102,4 +1734,74 @@ func (r *Runtime) asset() *inventory.Asset {
 		return nil
 	}
 	return r.Provider.Connection.Asset
+}
+
+// declaresPeer reports whether the calling provider declares a dependency on
+// the target provider, and the floor it declared (ADR 042 step 3).
+//
+// The declaration of record is `Requires` in the caller's own config.go,
+// carried into its manifest. Matching is by ID first and name second.
+//
+// The name fallback is not laziness about identity. Every provider built from
+// this tree uses the version-less `go.mondoo.com/mql/providers/<name>` ID, but
+// providers are installed and versioned independently of the engine, so a v14
+// caller routinely runs against a peer binary released before that change,
+// which reports `go.mondoo.com/cnquery[/v9]/providers/<name>` from its own
+// <name>.json. A declaration naming the normalized ID would not match it.
+//
+// Getting that wrong would not merely reject a call -- the legacy whitelist
+// would still allow it -- it would log a correctly-declared call as
+// "legacy-only". That log is the retirement signal for the whitelist itself
+// (ADR 042 step 5: delete it after a release with zero legacy-only hits), so
+// false positives from mixed installs would keep the condition from ever being
+// met. The fallback retires with the whitelist, not before.
+func (r *Runtime) declaresPeer(caller *RunningProvider, targetProviderID string) (string, bool) {
+	if caller == nil {
+		return "", false
+	}
+	if caller.ID == targetProviderID {
+		return "", true
+	}
+
+	targetName := path.Base(targetProviderID)
+	for _, dep := range caller.Requires {
+		if dep.ID == targetProviderID || (dep.Name != "" && dep.Name == targetName) {
+			return dep.MinVersion, true
+		}
+	}
+	return "", false
+}
+
+// checkPeerVersion reports whether a started peer satisfies the floor the
+// caller declared.
+//
+// This is the runtime half of the split in ADR 042: the build checks that a
+// referenced resource *exists* in the peer's schema, because mid-PR the peer's
+// config.go still carries the pre-release version and a build-time comparison
+// would fail with the resource sitting right there. The version is checked
+// here, against the peer that is actually installed -- the only place the two
+// can genuinely disagree.
+//
+// A mismatch fails the call rather than warning, which is safe because the
+// declared floor and the support boundary are the same number: floors start at
+// lrcore.SupportedBaseline (13.0.0), and v14 deprecates everything below
+// v13.0.0, so a refused peer is one that is already out of support. A floor
+// above the baseline only ever comes from referencing a field that peer version
+// genuinely does not have, where proceeding would produce a null that reads as
+// a passing check.
+func checkPeerVersion(peer *RunningProvider, minVersion string) error {
+	if minVersion == "" || peer == nil || peer.Version == "" {
+		return nil
+	}
+	diff, err := (semver.Parser{}).Compare(peer.Version, minVersion)
+	if err != nil {
+		// An unparseable version on either side is not evidence of a mismatch;
+		// reporting one would break a call over a formatting problem.
+		return nil
+	}
+	if diff < 0 {
+		return errors.New("provider " + peer.Name + " " + peer.Version +
+			" is older than the required " + minVersion)
+	}
+	return nil
 }

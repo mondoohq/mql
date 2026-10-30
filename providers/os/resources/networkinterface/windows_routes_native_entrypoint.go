@@ -8,11 +8,13 @@ package networkinterface
 import (
 	"fmt"
 	"net"
+	"runtime"
 	"syscall"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 	"golang.org/x/sys/windows"
 )
 
@@ -39,23 +41,24 @@ var (
 	procGetAdaptersAddresses = iphlpapi.NewProc("GetAdaptersAddresses")
 )
 
-// List detects network routes on Windows using native IP Helper API
-// Falls back to PowerShell and netstat if native APIs fail
-func (w *windowsRouteDetector) List() ([]Route, error) {
-	routes, err := w.detectWindowsRoutesViaGetIpForwardTable()
-	if err == nil && len(routes) > 0 {
-		return routes, nil
-	}
-	log.Debug().Err(err).Msg("native Windows API failed")
-	// Fallback to PowerShell if native APIs fail
-	routes, err = w.detectWindowsRoutesViaPowerShell()
-	if err == nil && len(routes) > 0 {
-		return routes, nil
-	}
-	log.Debug().Err(err).Int("routeCount", len(routes)).Msg("PowerShell Get-NetRoute failed, trying netstat")
+// nativeRoutes reads the routing table of the machine the provider runs on;
+// tests replace it.
+var nativeRoutes = (*windowsRouteDetector).detectWindowsRoutesViaGetIpForwardTable
 
-	// fallback to netstat
-	return w.detectWindowsRoutesViaNetstat()
+// List detects network routes on Windows. The IP Helper API reads the routing
+// table of the machine this process runs on, so it answers only for a local
+// connection: a Windows scanner scanning another host over SSH or WinRM must
+// report the target's routes, not its own. Everything else, and a native
+// read that fails, goes through PowerShell and netstat on the target.
+func (w *windowsRouteDetector) List() ([]Route, error) {
+	if w.conn.Type() == shared.Type_Local && runtime.GOOS == "windows" {
+		routes, err := nativeRoutes(w)
+		if err == nil && len(routes) > 0 {
+			return routes, nil
+		}
+		log.Debug().Err(err).Msg("native Windows API failed")
+	}
+	return w.listViaCommands()
 }
 
 // ipv4Address represents an IPv4 socket address
@@ -80,14 +83,24 @@ type socketInetAddress struct {
 	Data [28]byte
 }
 
-// mibIpForwardRow2 structure stores information about an IP route entry.
+// ipAddressPrefix is IP_ADDRESS_PREFIX: a SOCKADDR_INET and its prefix
+// length, padded to 32 bytes.
+// https://learn.microsoft.com/en-us/windows/win32/api/netioapi/ns-netioapi-ip_address_prefix
+type ipAddressPrefix struct {
+	Prefix       socketInetAddress
+	PrefixLength uint8
+	_            [3]byte
+}
+
+// mibIpForwardRow2 is MIB_IPFORWARD_ROW2, declared field for field so that
+// every value is read by name. The layout (104 bytes, InterfaceIndex at 8,
+// DestinationPrefix at 12, NextHop at 44) is asserted in
+// windows_routes_layout_windows_test.go.
 // https://learn.microsoft.com/en-us/windows/win32/api/netioapi/ns-netioapi-mib_ipforward_row2
 type mibIpForwardRow2 struct {
-	// NET_LUID InterfaceLuid (8 bytes) - we skip this
-	_                    [8]byte
+	InterfaceLuid        uint64 // NET_LUID; its 8-byte alignment places the rows at offset 8 of the table
 	InterfaceIndex       uint32
-	DestinationPrefix    socketInetAddress
-	_                    [4]byte
+	DestinationPrefix    ipAddressPrefix
 	NextHop              socketInetAddress
 	SitePrefixLength     uint8
 	ValidLifetime        uint32
@@ -102,9 +115,38 @@ type mibIpForwardRow2 struct {
 	Origin               uint32
 }
 
+// mibIpForwardTable2 is MIB_IPFORWARD_TABLE2: the entry count, then the rows.
 type mibIpForwardTable2 struct {
 	NumEntries uint32
 	Table      [1]mibIpForwardRow2
+}
+
+// interfaceIPv4s maps each local interface index to its first IPv4 address.
+func interfaceIPv4s() map[uint32]string {
+	res := map[uint32]string{}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		log.Debug().Err(err).Msg("could not list interfaces for on-link gateways")
+		return res
+	}
+	for _, iface := range ifaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			if ipnet, ok := a.(*net.IPNet); ok && ipnet.IP.To4() != nil {
+				res[uint32(iface.Index)] = ipnet.IP.String()
+				break
+			}
+		}
+	}
+	return res
+}
+
+// family returns the address family of a SOCKADDR_INET, its first two bytes.
+func (a socketInetAddress) family() uint16 {
+	return uint16(a.Data[0]) | uint16(a.Data[1])<<8
 }
 
 // detectWindowsRoutesViaGetIpForwardTable uses GetIpForwardTable2 to get routes (IPv4 + IPv6)
@@ -129,34 +171,21 @@ func (w *windowsRouteDetector) detectWindowsRoutesViaGetIpForwardTable() ([]Rout
 		return []Route{}, nil
 	}
 
-	rowSize := unsafe.Sizeof(mibIpForwardRow2{})
-	tableStart := uintptr(unsafe.Pointer(&table.Table[0]))
+	// An on-link IPv4 route (next hop 0.0.0.0) reports the interface's own
+	// address as its gateway, as Get-NetRoute and netstat do on the command
+	// path, so a local scan and a remote one agree.
+	ifIPv4 := interfaceIPv4s()
+
+	rows := unsafe.Slice(&table.Table[0], table.NumEntries)
 	var routes []Route
 
-	for i := uint32(0); i < table.NumEntries; i++ {
-		entryOffset := tableStart + uintptr(i)*rowSize
-
-		// Manually read fields from correct offsets
-		// Structure layout (from raw bytes analysis):
-		// - Offset 0-7: InterfaceLuid (8 bytes)
-		// - Offset 8-11: padding (4 bytes)
-		// - Offset 12-15: InterfaceIndex (4 bytes)
-		// - Offset 16-43: DestinationPrefix SOCKADDR_INET (28 bytes)
-		// - Offset 44-47: PrefixLength (4 bytes)
-		// - Offset 48-75: NextHop SOCKADDR_INET (28 bytes)
-		// - Offset 76: SitePrefixLength (1 byte)
-		// - Offset 77-79: Padding (3 bytes)
-		// - Offset 80+: Rest of fields
-
-		interfaceIndexOffset := entryOffset + 12
-		interfaceIndex := *(*uint32)(unsafe.Pointer(interfaceIndexOffset))
-
-		destPrefixOffset := entryOffset + 16
-		actualFamily := *(*uint16)(unsafe.Pointer(destPrefixOffset))
-
-		destPrefix := socketInetAddress{Data: *(*[28]byte)(unsafe.Pointer(destPrefixOffset))}
-		prefixLength := *(*uint32)(unsafe.Pointer(entryOffset + 44))
-		nextHop := socketInetAddress{Data: *(*[28]byte)(unsafe.Pointer(entryOffset + 48))}
+	for i := range rows {
+		row := &rows[i]
+		interfaceIndex := row.InterfaceIndex
+		actualFamily := row.DestinationPrefix.Prefix.family()
+		destPrefix := row.DestinationPrefix.Prefix
+		prefixLength := uint32(row.DestinationPrefix.PrefixLength)
+		nextHop := row.NextHop
 
 		if actualFamily != AF_INET && actualFamily != AF_INET6 {
 			continue
@@ -178,6 +207,11 @@ func (w *windowsRouteDetector) detectWindowsRoutesViaGetIpForwardTable() ([]Rout
 		}
 
 		gateway := w.formatGateway(gatewayIP, actualFamily)
+		if actualFamily == AF_INET && gateway == "0.0.0.0" {
+			if ip, ok := ifIPv4[interfaceIndex]; ok {
+				gateway = ip
+			}
+		}
 		iface := w.getInterfaceName(interfaceIndex, interfaceMap)
 
 		routes = append(routes, Route{
@@ -278,45 +312,55 @@ type ipAdapterAddresses struct {
 
 // getWindowsInterfaceMap creates a map of interface index to interface name
 // Uses native Windows GetAdaptersAddresses API https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getadaptersaddresses
-func (w *windowsRouteDetector) getWindowsInterfaceMap() (map[uint32]string, error) {
-	interfaceMap := make(map[uint32]string)
-
-	var size uint32
-	ret, _, err := procGetAdaptersAddresses.Call(
+// getAdaptersAddresses calls GetAdaptersAddresses into buf, updating size;
+// tests replace it. It returns the API's own result code. The error that
+// LazyProc.Call returns is the thread's last error (GetLastError), which the
+// API does not set on success and a goroutine can inherit stale from an
+// unrelated call, so it is never used to decide the outcome.
+var getAdaptersAddresses = func(buf *byte, size *uint32) uintptr {
+	ret, _, _ := procGetAdaptersAddresses.Call(
 		uintptr(syscall.AF_UNSPEC), // Family: AF_UNSPEC = both IPv4 and IPv6
 		uintptr(GAA_FLAG_SKIP_ANYCAST|GAA_FLAG_SKIP_MULTICAST|GAA_FLAG_SKIP_DNS_SERVER),
 		0,
-		0,
-		uintptr(unsafe.Pointer(&size)),
+		uintptr(unsafe.Pointer(buf)),
+		uintptr(unsafe.Pointer(size)),
 	)
-	if err != syscall.Errno(0) {
-		return nil, errors.Errorf("GetAdaptersAddresses (buffer size) failed: %v", err)
-	}
+	return ret
+}
 
-	if ret == ERROR_NO_DATA || (ret == 0 && size == 0) {
+// adapterAddressesBuffer returns the buffer GetAdaptersAddresses filled, or
+// nil when the host has no adapters. It starts with the 15 KB Microsoft
+// recommends and retries with the size the API asks for, since adapters can
+// appear between two calls.
+func adapterAddressesBuffer() ([]byte, error) {
+	size := uint32(15 * 1024)
+	for attempt := 0; attempt < 3; attempt++ {
+		buf := make([]byte, size)
+		switch ret := getAdaptersAddresses(&buf[0], &size); ret {
+		case 0: // ERROR_SUCCESS
+			return buf, nil
+		case ERROR_NO_DATA:
+			return nil, nil
+		case ERROR_BUFFER_OVERFLOW:
+			continue // size now holds what the API needs
+		default:
+			return nil, errors.Errorf("GetAdaptersAddresses failed with error code: %d", ret)
+		}
+	}
+	return nil, errors.New("GetAdaptersAddresses: the buffer size kept changing")
+}
+
+func (w *windowsRouteDetector) getWindowsInterfaceMap() (map[uint32]string, error) {
+	interfaceMap := make(map[uint32]string)
+
+	buf, err := adapterAddressesBuffer()
+	if err != nil {
+		return nil, err
+	}
+	if buf == nil {
 		return interfaceMap, nil
 	}
-	if ret != 0 && ret != ERROR_BUFFER_OVERFLOW && ret != ERROR_INSUFFICIENT_BUFFER {
-		return nil, errors.Errorf("GetAdaptersAddresses failed with error code: %d", ret)
-	}
-
-	buf := make([]byte, size)
 	adapter := (*ipAdapterAddresses)(unsafe.Pointer(&buf[0]))
-
-	ret, _, err = procGetAdaptersAddresses.Call(
-		uintptr(syscall.AF_UNSPEC),
-		uintptr(GAA_FLAG_SKIP_ANYCAST|GAA_FLAG_SKIP_MULTICAST|GAA_FLAG_SKIP_DNS_SERVER),
-		0,
-		uintptr(unsafe.Pointer(adapter)),
-		uintptr(unsafe.Pointer(&size)),
-	)
-	if err != syscall.Errno(0) {
-		return nil, errors.Errorf("GetAdaptersAddresses failed: %v", err)
-	}
-
-	if ret != 0 {
-		return nil, errors.Errorf("GetAdaptersAddresses failed with error code: %d", ret)
-	}
 
 	for adapter != nil {
 		if adapter.IfIndex != 0 {

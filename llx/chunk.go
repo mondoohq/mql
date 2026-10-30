@@ -7,8 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/sortx"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/sortx"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -123,6 +123,17 @@ func (f *Function) checksumV2(code *CodeV2) []byte {
 	for i := range f.Args {
 		cs := f.Args[i].checksumV2(code)
 		res = append(res, cs...)
+	}
+
+	// Nullability has to reach the checksum: `a.b.c` and `a.b?.c` are the same
+	// bytes everywhere else, so without this they collide in the code cache and
+	// in any store keyed on chunk checksums while meaning different things.
+	//
+	// Mixed only when set, the same way Binding is above. A non-strict
+	// compilation leaves this at NULLABILITY_UNSPECIFIED, so every checksum
+	// predating strict mode stays byte-identical.
+	if f.Nullability != Function_NULLABILITY_UNSPECIFIED {
+		res = append(res, byte(f.Nullability))
 	}
 
 	return res

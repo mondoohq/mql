@@ -1,0 +1,67 @@
+# Captured from a live Harvester v1.8.2 node installed from the release ISO.
+# Harvester runs SUSE Linux Micro 6.2. Its build replaces PRETTY_NAME and
+# appends a second VARIANT and VARIANT_ID, and the installer writes
+# /etc/harvester-release.yaml.
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "6.12.0-160000.36-default"
+
+[files."/etc/os-release"]
+content = """
+# The NAME and PRETTY_NAME fields have been chosen to state compatibility between our products.
+# The use of "SLES" and "SUSE Linux Enterprise" rather than a more generic name is due to backward compatibility with existing OS detection code in applications of third party vendors.
+NAME="SLES"
+PRETTY_NAME="Harvester v1.8.2"
+VARIANT="Micro"
+VARIANT_ID="transactional"
+VERSION="16.0"
+VERSION_ID="16.0"
+ANSI_COLOR="0;32"
+ID="sles"
+ID_LIKE="suse opensuse sle-micro sl-micro microos opensuse-microos"
+CPE_NAME="cpe:/o:suse:sles:16:16.0"
+SUSE_SUPPORT_PRODUCT="SUSE Linux Micro"
+SUSE_SUPPORT_PRODUCT_VERSION="6.2"
+SUSE_PRETTY_NAME="SUSE Linux Micro 6.2"
+HOME_URL="https://www.suse.com/products/micro/"
+DOCUMENTATION_URL="https://documentation.suse.com/sl-micro/6.2/"
+LOGO="distributor-logo"
+IMAGE_REPO="suse/sl-micro/6.2/base-os-container"
+IMAGE_TAG="2.3.1-8.50"
+IMAGE="registry.suse.com/suse/sl-micro/6.2/base-os-container:2.3.1-8.50"
+TIMESTAMP=20260805123712
+GRUB_ENTRY_NAME="SUSE Linux Micro"
+VARIANT="Harvester"
+VARIANT_ID="Harvester-v1.8-20260806"
+GRUB_ENTRY_NAME="Harvester v1.8.2"
+"""
+
+[files."/etc/harvester-release.yaml"]
+content = """
+harvester: v1.8.2
+harvesterChart: 1.8.2
+installer: 89d3751
+os: Harvester v1.8.2
+kubernetes: v1.35.7+rke2r1
+rancher: v2.14.3
+monitoringChart: 108.0.2+up77.9.1-rancher.11
+loggingChart: 108.0.2+up4.10.0-rancher.18
+loggingChartHarvesterEventRouter: rancher/harvester-eventrouter:v1.8.2
+kubevirt: 1.7.4-150700.3.24.2
+minUpgradableVersion: 'v1.7.0'
+rancherDependencies:
+  fleet:
+    chart: 109.0.4+up0.15.4
+    app: 0.15.4
+  fleet-crd:
+    chart: 109.0.4+up0.15.4
+    app: 0.15.4
+  rancher-webhook:
+    chart: 109.0.3+up0.10.7
+    app: 0.10.7
+"""

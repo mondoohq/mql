@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"go.mondoo.com/mql/v13/providers/os/resources/uptime"
+	"go.mondoo.com/mql/providers/os/resources/uptime"
 )
 
 func TestLinuxUptime(t *testing.T) {
@@ -161,6 +161,34 @@ func TestMacOSUptime(t *testing.T) {
 		LoadFifteenMinutes: float64(2.91),
 	}, duration)
 	assert.Equal(t, "192h13m0s", time.Duration(duration.Duration).String())
+
+	// When the minutes component is exactly zero, macOS prints "N hrs"
+	// instead of "N:00" — for one minute every hour the old regex failed
+	// and the uptime resource errored. Captured verbatim from a real scan.
+	data = "12:18  up 11 days, 16 hrs, 1 user, load averages: 7.12 6.59 4.92"
+	duration, err = uptime.ParseUnixUptime(data)
+	assert.Nil(t, err)
+	assert.Equal(t, &uptime.UnixUptimeResult{
+		Duration:           (11*24 + 16) * int64(time.Hour),
+		Users:              1,
+		LoadOneMinute:      float64(7.12),
+		LoadFiveMinutes:    float64(6.59),
+		LoadFifteenMinutes: float64(4.92),
+	}, duration)
+	assert.Equal(t, "280h0m0s", time.Duration(duration.Duration).String())
+
+	// Singular form, one hour exactly.
+	data = "9:05  up 1 hr, 2 users, load averages: 1.10 0.90 0.80"
+	duration, err = uptime.ParseUnixUptime(data)
+	assert.Nil(t, err)
+	assert.Equal(t, &uptime.UnixUptimeResult{
+		Duration:           int64(time.Hour),
+		Users:              2,
+		LoadOneMinute:      float64(1.10),
+		LoadFiveMinutes:    float64(0.90),
+		LoadFifteenMinutes: float64(0.80),
+	}, duration)
+	assert.Equal(t, "1h0m0s", time.Duration(duration.Duration).String())
 }
 
 func TestFreebsdUptime(t *testing.T) {
@@ -175,4 +203,35 @@ func TestFreebsdUptime(t *testing.T) {
 		LoadFifteenMinutes: float64(0.37),
 	}, duration)
 	assert.Equal(t, "24m0s", time.Duration(duration.Duration).String())
+}
+
+// Solaris pluralizes with "(s)" rather than a bare "s". Verbatim output from an
+// Oracle Solaris 11.4.86 host.
+func TestSolarisUptimeMinutes(t *testing.T) {
+	data := "  7:28am  up 27 min(s),  0 users,  load average: 0.02, 0.01, 0.03"
+	duration, err := uptime.ParseUnixUptime(data)
+	assert.Nil(t, err)
+	assert.Equal(t, &uptime.UnixUptimeResult{
+		Duration:           int64(27 * time.Minute),
+		Users:              0,
+		LoadOneMinute:      float64(0.02),
+		LoadFiveMinutes:    float64(0.01),
+		LoadFifteenMinutes: float64(0.03),
+	}, duration)
+	assert.Equal(t, "27m0s", time.Duration(duration.Duration).String())
+}
+
+func TestSolarisUptimeDaysAndClock(t *testing.T) {
+	data := " 10:47am  up 5 day(s), 21:03,  1 user,  load average: 0.10, 0.20, 0.30"
+	duration, err := uptime.ParseUnixUptime(data)
+	assert.Nil(t, err)
+	assert.Equal(t, "141h3m0s", time.Duration(duration.Duration).String())
+	assert.Equal(t, 1, duration.Users)
+}
+
+func TestSolarisUptimeHours(t *testing.T) {
+	data := " 10:47am  up 2 hr(s), 15 min(s),  3 users,  load average: 0.10, 0.20, 0.30"
+	duration, err := uptime.ParseUnixUptime(data)
+	assert.Nil(t, err)
+	assert.Equal(t, "2h15m0s", time.Duration(duration.Duration).String())
 }

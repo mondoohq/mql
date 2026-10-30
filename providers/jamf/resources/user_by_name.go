@@ -6,9 +6,9 @@ package resources
 import (
 	"errors"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/jamf/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/jamf/connection"
 )
 
 func (u *mqlJamfUserByName) id() (string, error) {
@@ -26,8 +26,8 @@ func initJamfUserByName(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 		// Bare resource access is a valid empty state, not an error.
 		return args, nil, nil
 	}
-	name := nameArg.Value.(string)
-	if name == "" {
+	name, ok := nameArg.Value.(string)
+	if !ok || name == "" {
 		return nil, nil, errors.New("jamf.userByName requires a non-empty name")
 	}
 

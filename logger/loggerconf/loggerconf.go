@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"os"
 
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/logger/stackdriver"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/logger/stackdriver"
 	"sigs.k8s.io/yaml"
 )
 

@@ -1,14 +1,18 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/cnquery/v9/providers/github"
-option go_package = "go.mondoo.com/mql/v13/providers/github/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/github"
+option go_package = "go.mondoo.com/mql/providers/github/resources"
+option root = "github"
 
 // GitHub
 //
-// Use to access GitHub organizations, repositories, teams, users, packages,
-// deploy keys, and security and governance settings across the connected account.
-private github {}
+// Namespace root for GitHub queries, exposing organizations, repositories,
+// teams, users, packages, deploy keys, and security and governance settings
+// across the connected account.
+private github @root {}
 
 // Git commit
 //
@@ -62,15 +66,14 @@ private git.gpgSignature @defaults("sha") {
 
 // GitHub Organization
 //
-// Examine a GitHub organization's profile, membership, and security configuration.
-// Provides identity fields (`login`, `name`, `email`, `company`), repository and
-// membership counts, governance flags such as `twoFactorRequirementEnabled`,
-// `membersCanCreateRepositories`, and Advanced Security settings, plus computed
-// collections including `members`, `owners`, `teams`, `repositories`,
-// `webhooks`, `packages`, `runners`, `auditLog`, `samlConfig`, `ipAllowList`,
-// `customRoles`, `oauthApps`, `personalAccessTokens`, `auditLogStreamConfig`,
-// `secrets`, and `variables`.
-github.organization @defaults("login name") {
+// GitHub organization account, the top-level container for its repositories,
+// members, teams, and org-wide governance. Query it to audit an organization's
+// security posture: two-factor enforcement, the default repository permission and
+// member creation policies, GitHub Advanced Security, secret scanning and
+// Dependabot defaults for new repositories, SAML single sign-on, the IP allow
+// list, custom roles, approved OAuth apps and fine-grained personal access
+// tokens, audit log streaming, and GitHub Copilot Business configuration.
+github.organization @defaults("login name") @root {
   // Organization login
   login string
   // Organization ID
@@ -115,8 +118,11 @@ github.organization @defaults("login name") {
   collaborators int
   // Organization billing email
   billingEmail string
-  // GitHub plan details (name, seats, filled_seats, private_repos)
-  plan dict
+  // GitHub plan details
+  //
+  // Deprecated in favor of subscription, which reports the same values as
+  // typed fields.
+  plan @maturity("deprecated") @replaced_by("github.organization.subscription") dict
   // Whether two-factor authentication is required for all members
   //
   // This value will be null if the API token does not have owner access on the organization.
@@ -223,13 +229,239 @@ github.organization @defaults("login name") {
   variables() []github.actionsVariable
   // GitHub Copilot Business configuration for the organization (requires Copilot admin)
   copilot() github.organization.copilot
+  // Organization memberships with role and two-factor authentication status
+  //
+  // One entry per organization member, pairing the member with their
+  // organization role and whether their account has two-factor authentication
+  // enabled. Requires organization owner access to report the two-factor state.
+  memberships() []github.organization.membership
+  // Invitations that have been sent but not yet accepted
+  pendingInvitations() []github.organization.invitation
+  // Invitations that failed to be delivered or were cancelled
+  failedInvitations() []github.organization.invitation
+  // Self-hosted runner groups defined for the organization
+  runnerGroups() []github.organization.runnerGroup
+  // Rulesets defined at the organization level
+  //
+  // Rulesets the organization applies across its repositories. These are
+  // enforced in addition to any ruleset defined on an individual repository,
+  // so a repository's effective protections are the union of both.
+  rulesets() []github.repositoryRuleset
+  // Claims added to the subject of OIDC tokens issued to workflows
+  //
+  // Claim names the organization adds to the `sub` claim of the OpenID Connect
+  // tokens its workflows present to cloud providers. The subject is what a
+  // cloud role's trust policy matches on, so this controls how narrowly an
+  // external role can be scoped. Null when the organization uses GitHub's
+  // default subject format.
+  oidcSubjectClaimKeys() []string
+  // Teams granted the organization's security manager role
+  //
+  // A security manager team holds read access to every repository in the
+  // organization and write access to its security alerts, whatever repository
+  // permissions the team is otherwise granted, so the role is a standing
+  // org-wide read grant. Empty when no team holds the role. Null when the role
+  // cannot be read, for example without organization admin access.
+  securityManagerTeams() []github.team
+  // Dependabot secrets configured at the organization level
+  //
+  // Credentials Dependabot presents when it resolves dependencies, most often
+  // private registry passwords. Names, scope and timestamps only, never the
+  // values. A separate store from the GitHub Actions secrets that `secrets`
+  // reports.
+  dependabotSecrets() []github.dependabotSecret
+  // Copilot cloud agent secrets configured at the organization level
+  //
+  // Credentials passed to the Copilot cloud agent when it works in the
+  // organization's repositories. Names, visibility and timestamps only, never
+  // the values. A separate store from the GitHub Actions secrets that `secrets`
+  // reports and the Dependabot secrets that `dependabotSecrets` reports.
+  agentSecrets() []github.agentSecret
+  // Immutable release enforcement across the organization's repositories
+  //
+  // Whether a published release's tag and assets can still be changed after
+  // consumers have pinned to them. Null when the setting cannot be read, for
+  // example without organization admin access.
+  immutableReleases() github.organization.immutableReleases
+  // Plan the organization is subscribed to
+  //
+  // Plan name, seat counts and repository allowances for the organization.
+  // Null unless the token has owner access on the organization, which is what
+  // GitHub requires before it reports a plan, and on a GitHub Enterprise
+  // Server installation, which serves no plan.
+  subscription() github.organization.subscription
+  // Availability of the features GitHub gates behind an Enterprise account
+  //
+  // Whether the organization's account includes each of the features that
+  // GitHub sells only with an Enterprise plan, so a check covering one of them
+  // can be skipped where the account does not include it rather than reported
+  // as a finding.
+  features() github.organization.features
+}
+
+// GitHub Organization Subscription
+//
+// Plan a GitHub organization is subscribed to, with the seat counts and
+// repository allowances it carries. The `name` field decides which entries of
+// github.organization.features the organization can use. GitHub reports a plan
+// only to a token with owner access on the organization, and a GitHub
+// Enterprise Server installation serves none at all.
+private github.organization.subscription @defaults("name seats filledSeats") {
+  // Plan name
+  //
+  // Commonly `free`, `team`, or `enterprise`. GitHub does not publish the full
+  // set, and an account created under an earlier plan reports the name that
+  // plan carried.
+  name string
+  // Disk space the plan allows, in kilobytes
+  space int
+  // Number of collaborators the plan allows
+  collaborators int
+  // Number of private repositories the plan allows
+  privateRepos int
+  // Number of seats currently filled
+  filledSeats int
+  // Number of seats the plan carries
+  seats int
+}
+
+// GitHub Organization Feature Availability
+//
+// Whether the organization's account includes each of the features GitHub
+// gates behind an Enterprise plan. A policy that checks one of these features
+// reads the matching field first, so that an account without the feature is
+// skipped rather than reported for a control it cannot configure.
+//
+// Each field is true on a GitHub Enterprise Cloud plan, true on a GitHub
+// Enterprise Server installation running at least the release that introduced
+// the feature, and false on Free and Team. Every field is null when the plan
+// cannot be read, which is the case for a token without owner access on the
+// organization, since nothing was measured either way.
+private github.organization.features @defaults("auditLog samlSingleSignOn ipAllowList") {
+  // Whether the organization audit log is available
+  auditLog bool
+  // Whether SAML single sign-on is available
+  samlSingleSignOn bool
+  // Whether the IP allow list is available
+  ipAllowList bool
+  // Whether custom organization roles are available
+  //
+  // Requires GitHub Enterprise Server 3.13 or later.
+  customRoles bool
+  // Whether approval of fine-grained personal access tokens is available
+  //
+  // Requires GitHub Enterprise Server 3.12 or later.
+  approvedTokens bool
+  // Whether audit log streaming is available
+  //
+  // Requires GitHub Enterprise Server 3.16 or later.
+  auditLogStreaming bool
+}
+
+// Self-hosted runner group
+//
+// Group of self-hosted runners in an organization, together with the rules
+// governing which repositories and workflows may use them. A group whose
+// `allowsPublicRepositories` is true lets workflows in public repositories,
+// including those triggered from forks, run on the organization's own
+// infrastructure. `visibility` reports whether every repository can reach the
+// group (`all`), only selected ones (`selected`), or only private ones
+// (`private`), and `restrictedToWorkflows` narrows use to the workflows named
+// in `selectedWorkflows`.
+private github.organization.runnerGroup @defaults("name visibility allowsPublicRepositories") {
+  // Runner group ID
+  id int
+  // Runner group name
+  name string
+  // Which repositories may use the group
+  //
+  // One of all, selected, or private.
+  visibility string
+  // Whether this is the organization's default runner group
+  isDefault bool
+  // Whether the group is inherited from the enterprise that owns the organization
+  inherited bool
+  // Whether workflows in public repositories may run on the group's runners
+  allowsPublicRepositories bool
+  // Whether use of the group is restricted to specific workflows
+  restrictedToWorkflows bool
+  // Workflows allowed to use the group when restrictedToWorkflows is set
+  selectedWorkflows []string
+  // Whether the workflow restrictions are managed by the enterprise and cannot be changed
+  workflowRestrictionsReadOnly bool
+  // ID of the network configuration the group's runners use, empty when none is set
+  networkConfigurationId string
+  // Repositories allowed to use the group when visibility is selected
+  selectedRepositories() []github.repository
+  // Self-hosted runners belonging to the group
+  runners() []github.runner
+}
+
+// Organization membership
+//
+// Membership of a single user in an organization, pairing the account with the
+// role it holds (`admin` for organization owners, `member` for everyone else)
+// and whether that account has two-factor authentication enabled. Two-factor
+// state is only visible to organization owners; when the token cannot read it,
+// `twoFactorEnabled` is null rather than false, so audits should test for
+// `twoFactorEnabled == false` instead of negating the field.
+private github.organization.membership @defaults("user.login role twoFactorEnabled") {
+  // Member account
+  user github.user
+  // Login of the member account
+  login string
+  // Role held in the organization
+  //
+  // Either `admin` for organization owners or `member` for regular members.
+  // Null when the connected token cannot list the organization's owners, so
+  // that an owner is never reported as a regular member.
+  role string
+  // Whether the member account has two-factor authentication enabled
+  //
+  // Null when the connected token lacks organization owner access, since the
+  // two-factor state of other accounts is not otherwise visible.
+  twoFactorEnabled bool
+  // Whether the member is a GitHub site administrator
+  siteAdmin bool
+}
+
+// Organization invitation
+//
+// Invitation to join an organization that has been sent but not yet accepted,
+// or that failed. A pending invitation is a standing grant of the `role` it
+// carries, so long-lived pending invitations widen the organization's access
+// surface the same way an unused member account does. Failed invitations
+// report `failedAt` and `failedReason`.
+private github.organization.invitation @defaults("login role createdAt") {
+  // Invitation ID
+  id int
+  // Login of the invited account, empty when the invite was sent to an email address
+  login string
+  // Email address the invitation was sent to, empty when it was sent to an account
+  email string
+  // Role the invitation grants
+  //
+  // One of admin, direct_member, billing_manager, hiring_manager, or reinstate.
+  role string
+  // Time the invitation was created
+  createdAt time
+  // Time the invitation failed, null while it is still pending
+  failedAt time
+  // Reason the invitation failed, empty while it is still pending
+  failedReason string
+  // Number of teams the invitation grants membership in
+  teamCount int
+  // Account that sent the invitation
+  inviter github.user
 }
 
 // SAML SSO configuration for a GitHub organization
 //
-// Examine the SAML single sign-on configuration for a GitHub Enterprise Cloud
-// organization. Provides `enabled`, the `ssoUrl`, the IdP `issuer`, `digestMethod`,
-// `signatureMethod`, and the PEM-encoded `idpCertificate`.
+// SAML single sign-on configuration for a GitHub Enterprise Cloud organization,
+// governing whether members authenticate through an external identity provider.
+// Reports whether SSO is `enabled`, the identity-provider sign-in `ssoUrl` and
+// `issuer`, the negotiated `digestMethod` and `signatureMethod` algorithms, and
+// the PEM-encoded `idpCertificate` used to validate assertions.
 private github.organization.samlConfig @defaults("enabled ssoUrl") {
   // Whether SAML SSO is enabled for the organization
   enabled bool
@@ -247,9 +479,10 @@ private github.organization.samlConfig @defaults("enabled ssoUrl") {
 
 // IP allow list configuration for a GitHub organization
 //
-// Examine the IP allow list for a GitHub Enterprise Cloud organization. Provides
-// `enabled`, `enabledForInstalledApps`, and the list of `entries` (each a
-// `github.organization.ipAllowList.entry` with an IP/CIDR range and active status).
+// IP allow list for a GitHub Enterprise Cloud organization, restricting which
+// source addresses may reach the organization. Reports whether the list is
+// `enabled`, whether it also applies to installed GitHub Apps
+// (`enabledForInstalledApps`), and the individual allowed `entries`.
 private github.organization.ipAllowList @defaults("enabled") {
   // Whether the IP allow list is enabled
   enabled bool
@@ -261,9 +494,9 @@ private github.organization.ipAllowList @defaults("enabled") {
 
 // IP allow list entry
 //
-// Examine a single allowed IP address or CIDR range in an organization's IP allow
-// list. Provides `name`, `allowedValue` (the IP or CIDR), `isActive`, and the
-// `createdAt` and `updatedAt` timestamps.
+// Single allowed IP address or CIDR range in an organization's IP allow list. The
+// `allowedValue` field holds the address or range and `isActive` reports whether
+// the entry is currently enforced.
 private github.organization.ipAllowList.entry @defaults("name allowedValue") {
   // Entry ID
   id string
@@ -281,10 +514,11 @@ private github.organization.ipAllowList.entry @defaults("name allowedValue") {
 
 // GitHub organization custom role
 //
-// Examine a custom organization role in a GitHub Enterprise Cloud organization.
-// Provides `name`, `description`, the `baseRole` it extends (read, triage, write,
-// maintain, admin), the list of `permissions` identifiers granted, the `source`
-// origin (Organization or Enterprise), and `createdAt`/`updatedAt` timestamps.
+// Custom organization role in a GitHub Enterprise Cloud organization. A custom
+// role extends a `baseRole` (read, triage, write, maintain, admin) with an
+// explicit set of granted `permissions` identifiers, letting you audit exactly
+// what elevated access a non-standard role confers and where it was defined
+// (`source`: Organization or Enterprise).
 private github.organization.customRole @defaults("id name baseRole") {
   // Role ID
   id int
@@ -302,14 +536,19 @@ private github.organization.customRole @defaults("id name baseRole") {
   createdAt time
   // Role update time
   updatedAt time
+  // Users the role is assigned to directly
+  users() []github.user
+  // Teams the role is assigned to
+  teams() []github.team
 }
 
 // OAuth application or SAML SSO-authorized credential
 //
-// Examine an OAuth application or other credential (personal access token, SSH key)
-// that has been authorized through SAML SSO for a GitHub Enterprise Cloud organization.
-// Provides the owning user `login`, `credentialType`, granted `scopes`,
-// `authorizedAt`, `lastAccessedAt`, and expiry details.
+// OAuth application or SAML SSO-authorized credential (personal access token or
+// SSH key) that has been granted standing access to a GitHub Enterprise Cloud
+// organization. Use it to review third-party and user credentials that can act
+// against the org: the owning user `login`, the `credentialType`, granted
+// `scopes`, and when the credential was authorized and last accessed.
 private github.organization.oauthApp @defaults("login credentialType") {
   // Login of the user that owns the underlying credential
   login string
@@ -341,10 +580,11 @@ private github.organization.oauthApp @defaults("login credentialType") {
 
 // Fine-grained personal access token approved for an organization
 //
-// Examine a fine-grained personal access token that has been approved to access
-// a GitHub Enterprise Cloud organization. Provides `tokenName`, `tokenId`, the
-// owning `owner` user, `repositorySelection`, granted `permissions` (categorized
-// by organization, repository, and other), `expired`, `expiresAt`, and `lastUsedAt`.
+// Fine-grained personal access token approved to access a GitHub Enterprise Cloud
+// organization. Reports the token `owner`, its `repositorySelection` (none, all,
+// or a subset), the categorized `permissions` it was granted, and its lifecycle
+// (`expired`, `expiresAt`, `lastUsedAt`) so you can audit standing programmatic
+// access to the organization.
 private github.organization.personalAccessToken @defaults("tokenName tokenId") {
   // Approval ID
   id int
@@ -358,7 +598,10 @@ private github.organization.personalAccessToken @defaults("tokenName tokenId") {
   owner() github.user
   // Repository selection (none, all, subset)
   repositorySelection string
-  // Permissions granted, categorized (organization, repository, other)
+  // Permissions granted by the token
+  //
+  // Keyed by category: `organization`, `repository`, and `other`. Each value maps
+  // a permission name to the granted access level (for example `read` or `write`).
   permissions dict
   // Time the token was granted access to the organization
   accessGrantedAt time
@@ -372,10 +615,11 @@ private github.organization.personalAccessToken @defaults("tokenName tokenId") {
 
 // Audit log streaming configuration for a GitHub organization
 //
-// Examine the audit log streaming destination configured for a GitHub Enterprise
-// Cloud organization. Provides `enabled`, `streamType` (Azure Blob Storage, Amazon
-// S3, Splunk, HTTPS Endpoint, Datadog, Google Cloud Storage, etc.), `streamId`,
-// and `createdAt`/`updatedAt` timestamps.
+// Audit log streaming destination configured for a GitHub Enterprise Cloud
+// organization. Reports whether streaming is `enabled` and the `streamType`
+// destination (Azure Blob Storage, Azure Event Hubs, Amazon S3, Splunk, HTTPS
+// Endpoint, Datadog, or Google Cloud Storage), so you can confirm audit events
+// are forwarded to an external system for retention.
 private github.organization.auditLogStreamConfig @defaults("enabled streamType") {
   // Whether audit log streaming is enabled
   enabled bool
@@ -393,8 +637,11 @@ private github.organization.auditLogStreamConfig @defaults("enabled streamType")
 
 // GitHub repository fine-grained permission
 //
-// Examine a single fine-grained permission available for organization repositories.
-// Provides the permission `name` and its human-readable `description`.
+// Fine-grained permission that can be granted on the repositories of an
+// organization, forming the building blocks of custom repository roles.
+// Enumerating these permissions lets you audit which capabilities an
+// organization can delegate through its roles. The permission is selected
+// by its name, with a human-readable description of what it grants.
 private github.repositoryFineGrainedPermission @defaults("name") {
   // Permission name
   name string
@@ -404,10 +651,11 @@ private github.repositoryFineGrainedPermission @defaults("name") {
 
 // GitHub organization custom property
 //
-// Examine a custom property defined at the organization level. Provides `name`,
-// `description`, `valueType`, whether the property is `required`, `defaultValue`,
-// `allowedValues`, `valuesEditableBy`, and `sourceType` (where the property
-// was defined).
+// Custom property defined at the organization level. Custom properties attach
+// governed metadata to repositories; this reports the property `name`, its
+// `valueType`, whether a value is `required`, the `defaultValue` and
+// `allowedValues` that constrain it, who may set it (`valuesEditableBy`), and
+// where it was defined (`sourceType`).
 private github.organization.customProperty @defaults("name required") {
   // The name of the property
   name string
@@ -419,6 +667,10 @@ private github.organization.customProperty @defaults("name required") {
   valueType string
   // Whether the property is required
   required bool
+  // Whether each repository must set a value explicitly
+  //
+  // When true, a repository does not inherit `defaultValue` and has no value until one is set on it.
+  requireExplicitValues bool
   // Default value of the property
   defaultValue string
   // An ordered list of the allowed values of the property
@@ -429,12 +681,11 @@ private github.organization.customProperty @defaults("name required") {
 
 // GitHub Copilot Business configuration
 //
-// Examine the GitHub Copilot Business configuration for an organization. Provides
-// the `seatManagementSetting` (assign_all, assign_selected, disabled), the
-// `publicCodeSuggestions` policy (allow, block), the `copilotChat` setting, the
-// seat breakdown (`seatsTotal`, `seatsActiveThisCycle`, `seatsInactiveThisCycle`,
-// `seatsPendingCancellation`, `seatsPendingInvitation`, `seatsAddedThisCycle`),
-// the `contentExclusion` patterns keyed by repository, and the per-user `seats`.
+// GitHub Copilot Business configuration for an organization. Reports how seats are
+// assigned (`seatManagementSetting`: assign_all, assign_selected, disabled, or unconfigured),
+// the Copilot `planType`, the `publicCodeSuggestions`, `ideChat`, `platformChat` and
+// `cli` policies, the seat-usage breakdown, the `contentExclusion` glob patterns
+// that keep files out of suggestions, and the per-user `seats`.
 private github.organization.copilot @defaults("seatManagementSetting seatsTotal") {
   // Seat management setting (assign_all, assign_selected, disabled, unconfigured)
   seatManagementSetting string
@@ -444,8 +695,25 @@ private github.organization.copilot @defaults("seatManagementSetting seatsTotal"
   publicCodeSuggestions string
   // Copilot Chat setting
   //
+  // Deprecated in favor of ideChat. Reports the policy for Copilot Chat in the
+  // IDE, which is the value of ideChat on current API versions.
+  copilotChat @maturity("deprecated") @replaced_by("github.organization.copilot.ideChat") string
+  // Policy for Copilot Chat in the IDE
+  //
   // One of `enabled`, `disabled`, or `unconfigured`.
-  copilotChat string
+  ideChat string
+  // Policy for Copilot features on GitHub.com
+  //
+  // One of `enabled`, `disabled`, or `unconfigured`.
+  platformChat string
+  // Policy for Copilot CLI
+  //
+  // One of `enabled`, `disabled`, or `unconfigured`.
+  cli string
+  // Copilot plan of the organization, or of its parent enterprise
+  //
+  // One of `business`, `enterprise`, or `access`.
+  planType string
   // Total seats currently assigned for the organization
   seatsTotal int
   // Number of seats added during the current billing cycle
@@ -469,11 +737,11 @@ private github.organization.copilot @defaults("seatManagementSetting seatsTotal"
 
 // GitHub Copilot seat assignment
 //
-// Examine a single Copilot for Business seat assignment in an organization.
-// Provides the `user` the seat is assigned to, the `assigningTeamName` when the
-// seat is granted via team membership, the `planType`, the
-// `pendingCancellationDate` if the seat is scheduled for removal, and last-activity
-// tracking (`lastActivityAt`, `lastActivityEditor`).
+// Single Copilot Business seat assignment in an organization. Identifies the
+// `user` the seat is assigned to (or the `assigningTeamName` when granted through
+// team membership), the `planType`, any `pendingCancellationDate`, and
+// last-activity tracking (`lastActivityAt`, `lastActivityEditor`) for spotting
+// unused seats.
 private github.organization.copilot.seat @defaults("assigneeLogin planType lastActivityAt") {
   // Login of the user the seat is assigned to (empty when the assignee is a team)
   assigneeLogin string
@@ -499,18 +767,19 @@ private github.organization.copilot.seat @defaults("assigneeLogin planType lastA
   updatedAt time
   // Copilot plan type for this seat
   //
-  // One of `business`, `enterprise`, or `individual`.
+  // One of `business`, `enterprise`, `individual`, or `unknown`.
   planType string
 }
 
 // GitHub user
 //
-// Examine a GitHub user account. Provides profile fields (`login`, `name`, `email`,
-// `bio`, `company`, `location`, `avatarUrl`, `twitterUsername`), account stats
-// (`followers`, `following`), status flags (`siteAdmin`, `hireable`), timestamps
-// (`createdAt`, `updatedAt`, `suspendedAt`), and computed collections
-// `repositories`, `gists`, and `publicKeys`.
-private github.user @defaults("login name email company") {
+// GitHub user account, covering public profile details, follower and following
+// counts, and account status. The `siteAdmin` flag identifies instance
+// administrators on GitHub Enterprise, and `suspendedAt` records when an account
+// was suspended, both useful for auditing privileged or disabled accounts. Also
+// exposes the user's `repositories`, `gists`, and registered `publicKeys` for
+// reviewing what an account owns and which SSH keys can act on its behalf.
+private github.user @defaults("login name email company") @root {
   // User ID
   id int
   // User login
@@ -551,14 +820,30 @@ private github.user @defaults("login name email company") {
   gists() []github.gist
   // User's public SSH keys
   publicKeys() []github.publicKey
+  // User's GPG keys
+  //
+  // Public GPG keys the account can sign commits and tags with. A branch
+  // protection rule or ruleset that requires signed commits is enforceable
+  // only for members who hold one, so an empty list means the account cannot
+  // contribute a commit such a rule accepts.
+  gpgKeys() []github.gpgKey
+  // User's SSH signing keys
+  //
+  // Public SSH keys registered for signing commits and tags, a separate
+  // registration from the authentication keys `publicKeys` reports. The same
+  // key material can carry both registrations, and one registered for
+  // authentication alone cannot sign.
+  sshSigningKeys() []github.sshSigningKey
 }
 
 // GitHub team
 //
-// Examine a team within a GitHub organization. Provides `name`, `slug`,
-// `description`, `privacy`, `defaultPermission`, and `type`, plus computed
-// collections `members` (team members) and `repositories` (repositories the
-// team has access to), and the parent `organization`.
+// Team within a GitHub organization, grouping members and granting them
+// shared access to repositories. Teams are a primary unit of access
+// control: auditing a team's `privacy`, its `defaultPermission`, and the
+// `repositories` it can reach shows which members inherit access to which
+// code. The `members` collection lists the users on the team and
+// `organization` links back to the owning org.
 private github.team @defaults("id name") {
   // Team ID
   id int
@@ -568,11 +853,18 @@ private github.team @defaults("id name") {
   description string
   // Team slug
   slug string
-  // Team privacy configuration
+  // Team visibility
+  //
+  // One of `secret` (visible only to members and organization owners) or
+  // `closed` (visible to all organization members).
   privacy string
-  // Team default permission
+  // Default permission the team is granted on repositories it is added to
+  //
+  // One of `pull`, `triage`, `push`, `maintain`, or `admin`.
   defaultPermission string
-  // Team type (organization, enterprise)
+  // Team type
+  //
+  // One of `organization` or `enterprise`.
   type string
   // Team members
   members() []github.user
@@ -582,31 +874,72 @@ private github.team @defaults("id name") {
   organization github.organization
 }
 
+// Team access grant on a repository
+//
+// Access a single team holds on a repository, pairing the team with the
+// permission level that grant confers. Team grants are the way most
+// organizations hand out repository access, and they are invisible in the
+// collaborator list, so reviewing who can write to or administer a repository
+// means reading both. The `permission` field reports the highest level the
+// grant confers and `accessSource` reports where the grant originates, which
+// distinguishes a team granted access on the repository itself from one that
+// inherits it through the organization or enterprise.
+private github.repository.team @defaults("slug permission accessSource") {
+  // Team holding the grant
+  team github.team
+  // Slug of the team holding the grant
+  slug string
+  // Permission level the grant confers
+  //
+  // One of pull, triage, push, maintain, or admin.
+  permission string
+  // Origin of the team's access to the repository
+  //
+  // One of direct, organization, or enterprise.
+  accessSource string
+  // Every permission level the grant satisfies
+  //
+  // Any of admin, maintain, push, triage, or pull. A grant satisfies every
+  // level at or below the one it confers.
+  permissions []string
+}
+
 // GitHub repository collaborator
 //
-// Examine an external collaborator on a GitHub repository. Provides the
-// collaborator's `user` identity and the list of `permissions` granted.
+// User granted access to a GitHub repository, along with the permission
+// levels they hold. Auditing collaborators reveals who can read, write, or
+// administer a repository and helps spot over-privileged access. The `user`
+// field carries the collaborator's GitHub identity and `permissions` lists
+// the granted access levels.
 private github.collaborator @defaults("user.login user.name") {
   // Collaborator ID
   id int
   // Collaborator's user information
   user github.user
-  // Collaborator's permissions
+  // Access levels granted to the collaborator
+  //
+  // Permission levels the collaborator holds on the repository. Any of
+  // admin, maintain, push, triage, or pull.
   permissions []string
 }
 
 // GitHub package
 //
-// Examine a package hosted on GitHub Packages. Provides `name`, `packageType`,
-// `visibility`, `versionCount`, `owner`, timestamps (`createdAt`, `updatedAt`),
-// the associated `repository`, and computed `versions` listing all
-// `github.packageVersion` entries.
+// Package hosted on GitHub Packages, such as a container image, npm
+// module, or Maven artifact published from a repository. Query it to
+// audit what a repository publishes, who owns it, and how each version
+// is exposed. The `packageType` field identifies the registry
+// ecosystem and `visibility` reports whether consumers outside the
+// organization can pull the package.
 private github.package @defaults("name packageType visibility repository.fullName") {
   // Package ID
   id int
   // Package name
   name string
   // Package type
+  //
+  // Registry ecosystem hosting the package. One of npm, maven,
+  // rubygems, docker, nuget, or container.
   packageType string
   // Package owner
   owner github.user
@@ -614,9 +947,11 @@ private github.package @defaults("name packageType visibility repository.fullNam
   createdAt time
   // Package update time
   updatedAt time
-  // Package version numbers
+  // Number of versions published for the package
   versionCount int
   // Package visibility
+  //
+  // Who can pull the package. One of public, private, or internal.
   visibility string
   // Package repository information
   repository() github.repository
@@ -626,9 +961,10 @@ private github.package @defaults("name packageType visibility repository.fullNam
 
 // GitHub package version
 //
-// Examine a specific version of a GitHub package. Provides `name`, `url`,
-// `packageHtmlUrl`, `license`, `description`, and `createdAt`/`updatedAt`
-// timestamps.
+// A single published version of a package hosted on GitHub Packages,
+// carrying the version's name, canonical url, packageHtmlUrl landing page,
+// license, description, and the createdAt and updatedAt timestamps that
+// let you audit how recently a version was published or refreshed.
 private github.packageVersion @defaults("id name") {
   // Version ID
   id int
@@ -650,9 +986,11 @@ private github.packageVersion @defaults("id name") {
 
 // GitHub Packages collection
 //
-// Iterate over packages hosted on GitHub Packages for the connected account.
-// Provides filtered views by `visibility`: `public`, `private`, and `internal`
-// packages, each returning a list of `github.package` resources.
+// Packages hosted on GitHub Packages for the connected account, covering
+// container images, npm/Maven/NuGet/RubyGems artifacts, and other supported
+// registries. The default list returns every `github.package`, while `public`,
+// `private`, and `internal` return the subsets filtered by package visibility,
+// so you can audit which artifacts are exposed beyond the organization.
 github.packages {
   []github.package
   // Public packages
@@ -665,20 +1003,16 @@ github.packages {
 
 // GitHub repository
 //
-// Examine a GitHub repository. Provides identity fields (`fullName`, `name`,
-// `description`, `visibility`, `language`, `topics`), counts (`watchersCount`,
-// `forksCount`, `stargazersCount`, `openIssuesCount`), behavioral flags
-// (`archived`, `disabled`, `private`, `isFork`, `isTemplate`, `allowAutoMerge`,
-// `allowMergeCommit`, `allowRebaseMerge`, `allowSquashMerge`), security settings
-// (`advancedSecurityEnabled`, `secretScanningEnabled`,
-// `secretScanningPushProtectionEnabled`, `dependabotSecurityUpdatesEnabled`), and
-// computed collections including `branches`, `commits`, `contributors`,
-// `collaborators`, `files`, `releases`, `webhooks`, `workflows`, `forks`,
-// `openIssues`, `closedIssues`, `milestones`, `dependabotAlerts`,
-// `secretScanningAlerts`, `codeScanningAlerts`, `runners`, `environments`,
-// `deployments`, `rulesets`, `deployKeys`, `codeowners`, `actionsSettings`,
-// `license`, `spdxSbom`, `secrets`, and `variables`.
-github.repository @defaults("fullName") {
+// Single repository in an organization or user account, the core unit for
+// auditing source-code security and supply-chain posture. Covers visibility and
+// merge settings, the GitHub Advanced Security stack (secret scanning, push
+// protection, Dependabot, and code scanning), and access surfaces such as
+// collaborators, deploy keys, webhooks, and Actions secrets and variables. Also
+// exposes CI and release history through workflows, runners, deployments,
+// environments, and branch and tag rulesets. Selected by repository name within
+// the connected owner, for example `github.repository(name: "cnquery")`, when
+// authenticated as a user.
+github.repository @defaults("fullName") @root {
   // can only be used when logged in to github as a user
   init(name string)
   // Repository ID
@@ -745,9 +1079,19 @@ github.repository @defaults("fullName") {
   hasDownloads bool
   // Whether the repository has discussions
   hasDiscussions bool
+  // Whether the repository has pull requests enabled
+  hasPullRequests bool
   // Whether the repository is an organization repository template
   isTemplate bool
-  // Repository custom properties
+  // Policy for who can create pull requests
+  //
+  // One of "all" or "collaborators_only".
+  pullRequestCreationPolicy string
+  // Custom properties assigned to the repository
+  //
+  // Keyed by the organization-defined custom property name, with each value
+  // being the string or list of strings assigned to that property on this
+  // repository. Empty when the organization defines no custom properties.
   customProperties dict
   // List of open merge requests for the repository
   openMergeRequests() []github.mergeRequest
@@ -769,8 +1113,20 @@ github.repository @defaults("fullName") {
   collaborators() []github.collaborator
   // List of admin collaborators for the repository
   adminCollaborators() []github.collaborator
+  // Teams granted access to the repository, with the permission each one holds
+  teams() []github.repository.team
   // List of files in the repository
+  //
+  // Only the root of the default branch. Use `allFiles` to walk the whole tree.
   files() []github.file
+  // Every entry in the repository's default branch, listed recursively
+  //
+  // Directory entries appear alongside files, each carrying its full path from
+  // the repository root. The list comes from a single Git Trees API call, so it
+  // reaches arbitrary depth rather than the one level `files` returns. Empty
+  // when the repository has no commits. Git records a submodule as a commit
+  // entry, which is reported with type "submodule".
+  allFiles() []github.file
   // List of releases for the repository
   releases() []github.release
   // Repository owner
@@ -802,7 +1158,20 @@ github.repository @defaults("fullName") {
   // Secret scanning alerts for the repository
   secretScanningAlerts() []github.secretScanningAlert
   // Code scanning alerts for the repository
+  //
+  // Empty both when the repository has no open alerts and when code scanning
+  // was never turned on, so pair it with `codeScanningEnabled` before reading
+  // an empty list as a clean result.
   codeScanningAlerts() []github.codeScanningAlert
+  // Whether code scanning is configured for the repository
+  //
+  // True when CodeQL default setup reports `configured`, and also when at
+  // least one code scanning analysis has been uploaded, which is how advanced
+  // setup through a GitHub Actions workflow presents itself. Null when neither
+  // can be read, for example with a token that lacks the `security_events`
+  // scope, so an authorization failure is not reported as the feature being
+  // off.
+  codeScanningEnabled() bool
   // Self-hosted runners for the repository
   runners() []github.runner
   // Deployment environments for the repository
@@ -847,11 +1216,74 @@ github.repository @defaults("fullName") {
   variables() []github.actionsVariable
   // GitHub Pages site configuration (null when the repository does not have Pages enabled)
   pages() github.repository.pages
+  // Copilot coding agent configuration (null when the repository has no coding agent configuration)
+  copilotCloudAgent() github.repository.copilotCloudAgent
+  // Claims added to the subject of OIDC tokens issued to workflows
+  //
+  // Claim names the repository adds to the `sub` claim of the OpenID Connect
+  // tokens its workflows present to cloud providers. The subject is what a
+  // cloud role's trust policy matches on, so this controls how narrowly an
+  // external role can be scoped. Null when the repository uses the default
+  // subject format, whether GitHub's or the one its organization sets.
+  oidcSubjectClaimKeys() []string
+  // Code scanning default setup for the repository
+  //
+  // CodeQL default setup as configured on the repository, covering the query
+  // suite it runs and the languages it analyzes. Null when the configuration
+  // cannot be read, for example on a repository where code scanning is
+  // unavailable or with a token that lacks the `security_events` scope.
+  codeScanningDefaultSetup() github.repository.codeScanningDefaultSetup
+  // Dependabot secrets configured at the repository level
+  //
+  // Credentials Dependabot presents when it resolves this repository's
+  // dependencies, most often private registry passwords. Names and timestamps
+  // only, never the values. A separate store from the GitHub Actions secrets
+  // that `secrets` reports.
+  dependabotSecrets() []github.dependabotSecret
+  // Copilot cloud agent secrets configured at the repository level
+  //
+  // Credentials passed to the Copilot cloud agent when it works in this
+  // repository. Names and timestamps only, never the values. Organization
+  // agent secrets shared with the repository are reported on the organization.
+  agentSecrets() []github.agentSecret
+}
+
+// Copilot coding agent configuration for a repository
+//
+// Configuration governing how the Copilot coding agent operates in a repository:
+// whether its network `isFirewallEnabled` and the
+// `isFirewallRecommendedAllowlistEnabled` allowlist are on, any extra hosts in
+// the `customAllowlist`, whether the agent must get approval before running
+// Actions workflows via `requireActionsWorkflowApproval`, and which security
+// tools run during an agent session (`codeqlEnabled`, `copilotCodeReviewEnabled`,
+// `secretScanningEnabled`, and `dependencyVulnerabilityChecksEnabled`). The raw
+// MCP server block is available as `mcpConfiguration`. Selected from a
+// repository as `copilotCloudAgent`, and null when the repository has no coding
+// agent configuration or the token lacks access.
+private github.repository.copilotCloudAgent @defaults("isFirewallEnabled requireActionsWorkflowApproval") {
+  // Whether the coding agent network firewall is enabled
+  isFirewallEnabled bool
+  // Whether the recommended firewall allowlist is enabled
+  isFirewallRecommendedAllowlistEnabled bool
+  // Custom hosts added to the firewall allowlist
+  customAllowlist []string
+  // Whether the agent must get approval before running Actions workflows
+  requireActionsWorkflowApproval bool
+  // Whether CodeQL scanning runs during a coding agent session
+  codeqlEnabled bool
+  // Whether Copilot code review runs during a coding agent session
+  copilotCodeReviewEnabled bool
+  // Whether secret scanning runs during a coding agent session
+  secretScanningEnabled bool
+  // Whether dependency vulnerability checks run during a coding agent session
+  dependencyVulnerabilityChecksEnabled bool
+  // MCP server configuration for the coding agent
+  mcpConfiguration dict
 }
 
 // GitHub Pages site
 //
-// Examine the GitHub Pages configuration for a repository. Provides the published
+// GitHub Pages configuration for a repository, covering the published
 // `url` and `htmlUrl`, the build `status` (built, building, errored, or empty
 // when no build has happened), the `buildType` (legacy publishing from a branch
 // vs. workflow-based), the source `sourceBranch` and `sourcePath` (for legacy
@@ -909,9 +1341,12 @@ private github.repository.pages @defaults("status cname httpsEnforced") {
 
 // GitHub repository deploy key
 //
-// Examine an SSH deploy key configured on a repository. Provides `title`,
-// the `key` (public SSH key material), `readOnly` status, `verified`, `createdAt`,
-// `lastUsed`, `ageInDays`, the `addedBy` user, and the associated `repository`.
+// SSH deploy key granting a repository access for automated clients such as
+// CI systems and deployment tooling. Deploy keys are a common source of
+// long-lived, unrotated credentials, so audit them for keys that carry write
+// access (`readOnly` is false), have gone stale (`lastUsed`, `ageInDays`), or
+// are unverified. The `key` field holds the public SSH key material, and
+// `addedBy` attributes the key to the user who configured it.
 private github.deployKey @defaults("id title readOnly") {
   // Deploy key ID
   id int
@@ -937,9 +1372,11 @@ private github.deployKey @defaults("id title readOnly") {
 
 // GitHub user public SSH key
 //
-// Examine a public SSH key registered to a GitHub user account. Provides `title`,
-// the `key` (public SSH key material), `verified`, `createdAt`, `ageInDays`, and
-// the owning `user`.
+// Public SSH key registered to a GitHub user account and used to authenticate
+// Git operations over SSH. Auditing these keys surfaces stale or unverified
+// credentials: `verified` reports whether GitHub confirmed the key belongs to
+// the account, while `createdAt` and `ageInDays` reveal long-lived keys that
+// may warrant rotation.
 private github.publicKey @defaults("id title") {
   // Public key ID
   id int
@@ -959,10 +1396,11 @@ private github.publicKey @defaults("id title") {
 
 // GitHub repository CODEOWNERS configuration
 //
-// Examine the parsed CODEOWNERS configuration for a repository. Provides `path`
-// (the location where the file was found: `.github/CODEOWNERS`, `CODEOWNERS`, or
-// `docs/CODEOWNERS`), `exists`, `content` (raw file text), and `rules` — each
-// a `github.codeowners.rule` with a `pattern` and list of `owners`.
+// Parsed CODEOWNERS configuration for a repository, mapping path patterns to the
+// users and teams required to review matching changes. Provides `path` (the
+// location where the file was found: `.github/CODEOWNERS`, `CODEOWNERS`, or
+// `docs/CODEOWNERS`), `exists`, `content` (raw file text), and `rules`, each a
+// `github.codeowners.rule` with a `pattern` and list of `owners`.
 private github.repository.codeowners @defaults("path exists") {
   // Path within the repository where CODEOWNERS was found (.github/CODEOWNERS, CODEOWNERS, or docs/CODEOWNERS); empty if not found
   path string
@@ -976,9 +1414,10 @@ private github.repository.codeowners @defaults("path exists") {
 
 // CODEOWNERS rule
 //
-// Examine a single rule from a repository CODEOWNERS file. Provides the path
-// `pattern` (e.g., `*.go`, `docs/*`), the list of `owners` (GitHub usernames,
-// team slugs, or email addresses), and the `lineNumber` in the source file.
+// Single rule from a repository CODEOWNERS file, mapping a path `pattern`
+// (e.g., `*.go`, `docs/*`) to the `owners` responsible for those paths. The
+// `owners` list holds GitHub usernames, team slugs, or email addresses, and
+// `lineNumber` gives the rule's position in the source file.
 private github.codeowners.rule @defaults("pattern") {
   // The path pattern (e.g. *, *.go, docs/*)
   pattern string
@@ -990,10 +1429,11 @@ private github.codeowners.rule @defaults("pattern") {
 
 // GitHub repository SPDX SBOM
 //
-// Examine the Software Bill of Materials (SPDX format) generated by GitHub for a
-// repository. Provides `spdxVersion`, `name`, `dataLicense`, `documentNamespace`,
-// `createdAt`, `creators`, a list of `packages` (`github.repository.sbom.package`),
-// and `relationships` between those packages.
+// Software Bill of Materials (SPDX format) generated by GitHub for a repository,
+// enumerating every dependency GitHub detected so you can audit supply-chain
+// components and their licenses. Provides `spdxVersion`, `name`, `dataLicense`,
+// `documentNamespace`, `createdAt`, `creators`, a list of `packages`
+// (`github.repository.sbom.package`), and `relationships` between those packages.
 private github.repository.sbom @defaults("name spdxVersion") {
   // SPDX identifier for the document
   spdxId string
@@ -1017,10 +1457,11 @@ private github.repository.sbom @defaults("name spdxVersion") {
 
 // SPDX SBOM package entry
 //
-// Examine a package listed in a GitHub repository's SPDX SBOM. Provides `spdxId`,
-// `name`, `versionInfo`, `downloadLocation`, `filesAnalyzed`,
-// `licenseConcluded`, `licenseDeclared`, and `externalRefs` (each a
-// `github.repository.sbom.package.externalRef` with a locator such as a purl).
+// Single package listed in a GitHub repository's SPDX SBOM, one detected
+// dependency of the repository. Provides `spdxId`, `name`, `versionInfo`,
+// `downloadLocation`, `filesAnalyzed`, `licenseConcluded`, `licenseDeclared`,
+// and `externalRefs` (each a `github.repository.sbom.package.externalRef` with
+// a locator such as a purl).
 private github.repository.sbom.package @defaults("name versionInfo") {
   // Unique SPDX identifier for this package
   spdxId string
@@ -1042,9 +1483,10 @@ private github.repository.sbom.package @defaults("name versionInfo") {
 
 // SPDX SBOM package external reference
 //
-// Examine an external reference for a package in a GitHub repository SBOM. Provides
-// `referenceCategory` (e.g., `PACKAGE-MANAGER`), `referenceType` (e.g., `purl`),
-// and `referenceLocator` (e.g., `pkg:gem/rails@6.0.1`).
+// External reference for a package in a GitHub repository SBOM, linking the
+// package to an outside identifier or resource. Provides `referenceCategory`
+// (e.g., `PACKAGE-MANAGER`), `referenceType` (e.g., `purl`), and
+// `referenceLocator` (e.g., `pkg:gem/rails@6.0.1`).
 private github.repository.sbom.package.externalRef {
   // The category of reference to an external resource this reference refers to. E.g. `PACKAGE-MANAGER`.
   referenceCategory string
@@ -1056,9 +1498,10 @@ private github.repository.sbom.package.externalRef {
 
 // SPDX SBOM dependency relationship
 //
-// Examine a dependency relationship between two elements in a GitHub repository's
-// SPDX SBOM. Provides `relationshipType` (e.g., `DEPENDS_ON`), `spdxElementId`
-// (the source), and `relatedSpdxElement` (the target).
+// Dependency relationship between two elements in a GitHub repository's SPDX
+// SBOM, connecting a source element to a related target. Provides
+// `relationshipType` (e.g., `DEPENDS_ON`), `spdxElementId` (the source), and
+// `relatedSpdxElement` (the target).
 private github.repository.sbom.relationship {
   // Type of relationship (e.g., "DEPENDS_ON")
   relationshipType string
@@ -1070,8 +1513,10 @@ private github.repository.sbom.relationship {
 
 // GitHub repository license
 //
-// Examine the license detected for a repository. Provides the license `key`,
-// `name`, `spdxId`, and `url` to the license text.
+// Open-source license that GitHub detected for a repository, used to audit
+// license compliance and confirm a repository carries an approved license.
+// The `spdxId` identifies the license under the SPDX standard (for example
+// MIT or Apache-2.0), and `url` links to the full license text.
 private github.license @defaults("spdxId") {
   // License key
   key string
@@ -1085,29 +1530,51 @@ private github.license @defaults("spdxId") {
 
 // GitHub repository ruleset
 //
-// Examine a repository or organization ruleset that controls branch and tag
-// protections. Provides `name`, `target` (branch or tag), `sourceType`,
-// `enforcement` level (active, evaluate, disabled), `bypassActors`, `conditions`
-// (ref and repository name patterns), and `rules` (the individual protection
-// constraints configured).
+// Rule-based branch and tag protection defined at the repository or
+// organization level. Rulesets replace classic branch protection, so
+// auditing them reveals which refs are guarded, how strictly the rules
+// are applied, and who can bypass them. The `sourceType` field
+// distinguishes rules defined directly on the repository from those
+// inherited from the organization. The `enforcement` level determines
+// whether a ruleset actively blocks non-conforming changes, only reports
+// them, or is turned off, and `bypassActors` exposes the escape hatches
+// that let specific users, teams, or apps sidestep the protections.
 private github.repositoryRuleset @defaults("id name enforcement") {
   // Ruleset ID
   id int
   // Ruleset name
   name string
-  // Target type (branch, tag)
+  // Target type (branch, tag, push, repository)
   target string
-  // Source type (Repository, Organization)
+  // Source type (Repository, Organization, Enterprise)
   sourceType string
   // Source (repo or org name)
   source string
   // Enforcement level (active, evaluate, disabled)
   enforcement string
-  // Users, teams, or apps allowed to bypass this ruleset (each dict has actor type, id, and bypass mode)
+  // Actors allowed to bypass this ruleset
+  //
+  // Each entry has `actor_id` (numeric id of the actor), `actor_type`
+  // (one of Integration, OrganizationAdmin, RepositoryRole, Team, DeployKey,
+  // or User), and `bypass_mode` (always, exempt, or pull_request to bypass
+  // only for pull requests).
   bypassActors []dict
-  // Conditions that select which refs the ruleset applies to (ref_name, repository_name patterns)
+  // Conditions that select which refs and repositories the ruleset targets
+  //
+  // Keyed by condition type, including `ref_name`, `repository_name`,
+  // `repository_id`, and `repository_property`. Name-based conditions
+  // (`ref_name`, `repository_name`) hold `include` and `exclude` arrays
+  // of fnmatch patterns; the special value `~ALL` matches everything and
+  // `~DEFAULT_BRANCH` matches the default branch.
   conditions dict
-  // Protection rules in this ruleset (each dict configures a constraint such as required reviews or status checks)
+  // Protection rules enforced by this ruleset
+  //
+  // Each entry has a `type` (the constraint kind, such as pull_request,
+  // required_status_checks, required_signatures, deletion,
+  // non_fast_forward, or required_linear_history) and a `parameters`
+  // object whose shape depends on the type (for example the required
+  // approving-review count for pull_request, or the list of required
+  // checks for required_status_checks).
   rules []dict
   // Ruleset creation time
   createdAt time
@@ -1117,10 +1584,15 @@ private github.repositoryRuleset @defaults("id name enforcement") {
 
 // GitHub Actions settings for a repository
 //
-// Examine the GitHub Actions security configuration for a repository. Provides
-// `enabled`, `allowedActions` (all, local_only, selected), `shaPinningRequired`,
-// `defaultWorkflowPermissions` (read or write), and
-// `canApprovePullRequestReviews`.
+// GitHub Actions security configuration for a single repository. Determines
+// whether workflows can run, which actions and reusable workflows are permitted
+// to run (`allowedActions` is one of all, local_only, or selected), whether
+// action references must be pinned to a full commit SHA, the default token
+// permissions granted to the GITHUB_TOKEN at the start of a workflow run
+// (`defaultWorkflowPermissions` is read or write), and whether Actions is
+// allowed to approve pull requests. Audit these to catch overly permissive
+// supply-chain settings, such as unrestricted actions, write-by-default tokens,
+// or self-approving workflows.
 private github.repositoryActionsSettings @defaults("allowedActions") {
   // Whether GitHub Actions is enabled
   enabled bool
@@ -1132,14 +1604,40 @@ private github.repositoryActionsSettings @defaults("allowedActions") {
   defaultWorkflowPermissions string
   // Whether Actions can approve pull request reviews
   canApprovePullRequestReviews bool
+  // Access other repositories have to this repository's actions and reusable workflows
+  //
+  // One of none, user, organization, or enterprise. A private repository set to
+  // organization lets workflows in every other repository in the organization
+  // consume its actions and reusable workflows, which widens the blast radius
+  // of a compromise here. Null when the setting does not apply, as on a public
+  // repository, or when it cannot be read.
+  accessLevel() string
+  // Action patterns permitted when allowedActions is selected
+  //
+  // The allowlist itself, as `owner/repo@ref` patterns. It is the whole content
+  // of the selected setting, so a repository reads as restricted while still
+  // permitting everything through a pattern such as `*/*`. Null when
+  // allowedActions is not selected, where no allowlist applies.
+  patternsAllowed() []string
+  // Whether actions published by GitHub are permitted when allowedActions is selected
+  //
+  // Null when allowedActions is not selected.
+  githubOwnedAllowed() bool
+  // Whether actions from Marketplace verified creators are permitted when allowedActions is selected
+  //
+  // Null when allowedActions is not selected.
+  verifiedAllowed() bool
 }
 
 // GitHub Actions settings for an organization
 //
-// Examine the GitHub Actions security configuration for an organization. Provides
-// `enabledRepositories` (all, none, selected), `allowedActions` (all, local_only,
-// selected), `shaPinningRequired`, `defaultWorkflowPermissions` (read or write),
-// and `canApprovePullRequestReviews`.
+// Organization-wide GitHub Actions security configuration, useful for auditing
+// which repositories may run Actions, which actions and workflows are permitted,
+// and how much power the default `GITHUB_TOKEN` grants. The `enabledRepositories`
+// field controls scope (all, none, selected), `allowedActions` restricts sources
+// (all, local_only, selected), `defaultWorkflowPermissions` sets the token grant
+// (read or write), and `canApprovePullRequestReviews` reveals whether workflow
+// runs can approve their own pull request reviews.
 private github.organizationActionsSettings @defaults("allowedActions") {
   // Which repositories can use Actions (all, none, selected)
   enabledRepositories string
@@ -1151,24 +1649,47 @@ private github.organizationActionsSettings @defaults("allowedActions") {
   defaultWorkflowPermissions string
   // Whether Actions can approve pull request reviews
   canApprovePullRequestReviews bool
+  // Action patterns permitted when allowedActions is selected
+  //
+  // The allowlist itself, as `owner/repo@ref` patterns. It is the whole content
+  // of the selected setting, so an organization reads as restricted while still
+  // permitting everything through a pattern such as `*/*`. Null when
+  // allowedActions is not selected, where no allowlist applies.
+  patternsAllowed() []string
+  // Whether actions published by GitHub are permitted when allowedActions is selected
+  //
+  // Null when allowedActions is not selected.
+  githubOwnedAllowed() bool
+  // Whether actions from Marketplace verified creators are permitted when allowedActions is selected
+  //
+  // Null when allowedActions is not selected.
+  verifiedAllowed() bool
 }
 
 // GitHub repository file
 //
-// Examine a file or directory entry in a GitHub repository. Provides `path`,
-// `name`, `type`, `sha`, `isBinary`, `downloadUrl`, `exists`, and computed
-// `content` (file text). For directory entries, `files` lists child
-// `github.file` resources.
+// File or directory entry in a GitHub repository, used to audit the presence
+// and contents of tracked files such as workflow definitions, security
+// policies, or CODEOWNERS. The `type` field distinguishes a regular file from
+// a directory, `files` lists the child entries of a directory, and `content`
+// returns the decoded text of a file.
 private github.file @defaults("name type") {
   // File path
   path string
   // File name
   name string
   // File type
+  //
+  // One of "file" for a regular file, "dir" for a directory, "submodule" for a
+  // Git submodule, or "symlink" for a symbolic link.
   type string
   // File shasum
   sha string
   // Whether the file is a binary
+  //
+  // Derived from the file extension against a known set of executable and
+  // package types (for example exe, dll, so, jar, class, rpm, deb, msi, whl).
+  // Directory entries and files without a matching extension are false.
   isBinary bool
   // List of files in the directory
   files() []github.file
@@ -1186,8 +1707,11 @@ private github.file @defaults("name type") {
 
 // GitHub release
 //
-// Examine a release published from a repository. Provides `name`, `tagName`,
-// `preRelease`, `createdAt`, `publishedAt`, `url`, and the release `author`.
+// Published release cut from a repository, tied to a git tag and often
+// carrying distributable artifacts. Auditing releases confirms that
+// shipped versions map to expected tags, distinguishes stable releases
+// from pre-releases via `preRelease`, and attributes each publish to an
+// `author` for change-provenance review.
 private github.release @defaults("name tagName") {
   // Release URL
   url string
@@ -1207,10 +1731,12 @@ private github.release @defaults("name tagName") {
 
 // GitHub webhook
 //
-// Examine a webhook configured on a repository or organization. Provides `name`,
-// `url`, subscribed `events`, `config` (content type, insecure_ssl flag, and
-// redacted secret reference), the `contentType` and `insecureSsl` fields,
-// `active` status, and `createdAt`/`updatedAt` timestamps.
+// HTTP callback that GitHub invokes when subscribed events occur on a repository
+// or organization, delivering event payloads to an external endpoint. Auditing
+// webhooks reveals where repository and organization activity is sent, which
+// events trigger delivery, whether the endpoint is still `active`, and whether
+// TLS certificate verification is disabled (`insecureSsl`), which would expose
+// payloads to interception.
 private github.webhook @defaults("id name") {
   // Webhook ID
   id int
@@ -1220,7 +1746,12 @@ private github.webhook @defaults("id name") {
   url string
   // List of events for the webhook
   events []string
-  // Webhook configuration: content_type (json/form), insecure_ssl (0/1), and a redacted secret reference
+  // Webhook delivery configuration
+  //
+  // Keys: `content_type` (`json` or `form`), `insecure_ssl` (`0` or `1`, where
+  // `1` skips TLS certificate verification), `url` (the delivery endpoint), and
+  // `secret` (returned obfuscated by GitHub). The `contentType` and `insecureSsl`
+  // fields surface the content-type and SSL-verification values directly.
   config dict
   // Payload media type: "json" or "form"
   contentType string
@@ -1236,10 +1767,12 @@ private github.webhook @defaults("id name") {
 
 // GitHub Actions workflow
 //
-// Examine a GitHub Actions workflow definition in a repository. Provides `name`,
-// `path`, `state`, `createdAt`, `updatedAt`, the associated `file`, and
-// `configuration` (the parsed workflow YAML including trigger events, jobs, and
-// environment variables).
+// GitHub Actions workflow defined in a repository under `.github/workflows`.
+// Workflows drive CI/CD and automation, so auditing them matters for supply
+// chain security: what events trigger a run, which jobs and permissions they
+// grant, and whether a workflow is active or disabled. The `configuration`
+// field exposes the parsed workflow YAML so trigger events, jobs, and
+// permissions can be inspected, and `file` links to the underlying source file.
 private github.workflow @defaults("id name") {
   // Workflow ID
   id int
@@ -1248,6 +1781,9 @@ private github.workflow @defaults("id name") {
   // Workflow path
   path string
   // Workflow state
+  //
+  // Whether the workflow is enabled or why it is disabled. One of active,
+  // deleted, disabled_fork, disabled_inactivity, or disabled_manually.
   state string
   // Workflow create time
   createdAt time
@@ -1255,15 +1791,62 @@ private github.workflow @defaults("id name") {
   updatedAt time
   // Workflow file
   file() github.file
-  // Parsed workflow YAML (name, on, jobs, env, etc.)
+  // Parsed workflow YAML
+  //
+  // The workflow definition parsed from its YAML source. Top-level keys mirror
+  // the GitHub Actions workflow syntax: name, jobs, permissions, env,
+  // defaults, concurrency, and run-name. The trigger block appears under the
+  // key `true` rather than `on`, because the source is parsed as YAML 1.1
+  // where the bare word `on` is a boolean. Read triggers rather than this
+  // block to avoid that.
   configuration() dict
+  // Events that trigger the workflow
+  //
+  // Names of the events in the workflow's `on` block, for example push,
+  // pull_request, pull_request_target, workflow_call, or workflow_dispatch.
+  // A workflow triggered by pull_request_target runs with repository secrets
+  // and a writable token in the context of the base repository, so a fork can
+  // reach them if the workflow also checks out the pull request head.
+  triggers() []string
+  // Permissions granted to the token issued to the workflow
+  //
+  // The workflow's top-level `permissions` block, mapping each scope to the
+  // access it grants. A string value of read-all or write-all appears under
+  // the key `all`. Null when the workflow sets no top-level permissions, in
+  // which case the repository or organization default applies.
+  tokenPermissions() dict
+  // Runner labels the workflow's jobs request
+  //
+  // Every distinct value the workflow's jobs name in `runs-on`, including
+  // labels reached through a group. Labels other than the GitHub-hosted ones
+  // indicate the job runs on self-hosted infrastructure. Expressions that
+  // resolve at run time are reported verbatim.
+  runsOnLabels() []string
+  // Actions the workflow's steps use
+  //
+  // Every distinct `uses` value across the workflow's steps, in the form the
+  // workflow wrote it, for example actions/checkout@v4 or
+  // actions/checkout@8f4b7f8. Local actions and container actions are
+  // included.
+  actionRefs() []string
+  // Actions the workflow references by something other than a commit SHA
+  //
+  // The subset of actionRefs pinned to a tag or branch rather than a full
+  // 40-character commit SHA. A tag can be moved to point at different code
+  // after review, so these references do not pin the code that will run.
+  // Local actions, which are not fetched from another repository, are
+  // excluded.
+  unpinnedActionRefs() []string
 }
 
 // GitHub repository branch
 //
-// Examine a branch in a GitHub repository. Provides `name`, `isProtected`,
-// `isDefault`, `headCommitSha`, computed `headCommit` (the tip `github.commit`),
-// and `protectionRules` (the associated `github.branchprotection` configuration).
+// A single branch within a GitHub repository, selected by `name`. Central to
+// auditing whether critical branches are guarded: `isProtected` reports whether
+// branch protection applies, and `protectionRules` reaches the associated
+// `github.branchprotection` settings that govern required reviews, status checks,
+// and force-push or deletion limits. `isDefault` marks the repository's default
+// branch, while `headCommit` resolves the commit at the branch tip.
 private github.branch @defaults("name") {
   // Repository branch name
   name string
@@ -1285,35 +1868,75 @@ private github.branch @defaults("name") {
 
 // GitHub branch protection rule
 //
-// Examine the branch protection configuration for a repository branch. Provides
-// required check settings (`requiredStatusChecks`, `requiredPullRequestReviews`,
-// `requiredConversationResolution`, `requiredSignatures`, `requireLinearHistory`),
-// enforcement options (`enforceAdmins`, `restrictions`, `allowForcePushes`,
-// `allowDeletions`, `lockBranch`, `allowForkSyncing`, `blockCreations`),
-// and review requirements (`requiredApprovingReviewCount`, `requireCodeOwnerReviews`,
-// `dismissStaleReviews`, `requireLastPushApproval`, `dismissalRestrictions`).
+// Branch protection configuration for a repository branch, covering the controls
+// that gate merges and pushes: required status checks, required pull-request
+// reviews and approval counts, required conversation resolution, signed-commit
+// and linear-history requirements, administrator enforcement, push restrictions,
+// and whether force pushes, deletions, and branch locking are allowed. Auditing
+// these settings shows whether a branch enforces code review and blocks
+// unreviewed or destructive changes.
 private github.branchprotection @defaults("id") {
   // Repository branch protection ID
   id string
-  // Require status checks to pass before merging
+  // Required status checks
+  //
+  // Status-check requirements for merging into the branch. Keys: `strict`
+  // (branches must be up to date before merging), `contexts` (list of required
+  // check names, deprecated), `checks` (list of `{context, app_id}` entries
+  // naming each required check and the app that must provide it), `contexts_url`,
+  // and `url`. Whether this protection is configured at all is flattened onto
+  // this resource as requiredStatusChecksEnabled.
   requiredStatusChecks dict
-  // Require a pull request before merging
+  // Required pull request reviews
+  //
+  // Pull-request review requirements. Keys: `dismissStaleReviews`,
+  // `requireCodeOwnerReviews`, `requiredApprovingReviewCount`,
+  // `requireLastPushApproval`, `dismissalRestrictions` (a `{users, teams}` object
+  // listing who may dismiss reviews), and `bypassPullRequestAllowances` (a
+  // `{users, teams, apps}` object listing who may bypass the requirement). The
+  // most-asserted values are also flattened onto this resource as
+  // requiredApprovingReviewCount, requireCodeOwnerReviews, dismissStaleReviews,
+  // and requireLastPushApproval.
   requiredPullRequestReviews dict
-  // Require conversation resolution before merging
+  // Required conversation resolution
+  //
+  // Whether all pull-request comments must be resolved before merging. The
+  // single key `enabled` holds the state; the same value is flattened onto this
+  // resource as requiredConversationResolutionEnabled.
   requiredConversationResolution dict
   // Whether signed commits are required
   requiredSignatures bool
   // Whether signed commits are required (alias for requiredSignatures)
   requireSignedCommits bool
-  // Require linear history
+  // Linear history requirement
+  //
+  // Whether a linear commit history is enforced (no merge commits). The single
+  // key `enabled` holds the state; the same value is flattened onto this resource
+  // as requireLinearHistoryEnabled.
   requireLinearHistory dict
-  // Include administrators
+  // Administrator enforcement
+  //
+  // Whether the branch protections also apply to repository administrators. Keys:
+  // `enabled` and `url`. The state is also flattened onto this resource as
+  // enforceAdminsEnabled.
   enforceAdmins dict
-  // Restrict who can push to matching branches
+  // Push restrictions
+  //
+  // Restriction of who may push to matching branches. Keys: `users` (list of user
+  // logins), `teams` (list of team slugs), and `apps` (list of app slugs) with
+  // push access. Empty or absent when no push restriction is configured.
   restrictions dict
-  // Allow force pushes
+  // Force-push allowance
+  //
+  // Whether force pushes are permitted on matching branches. The single key
+  // `enabled` holds the state; the same value is flattened onto this resource as
+  // allowForcePushesEnabled.
   allowForcePushes dict
-  // Allow deletions
+  // Deletion allowance
+  //
+  // Whether matching branches may be deleted. The single key `enabled` holds the
+  // state; the same value is flattened onto this resource as
+  // allowDeletionsEnabled.
   allowDeletions dict
   // Whether creation of branches matching the pattern is blocked
   blockCreations bool
@@ -1343,16 +1966,23 @@ private github.branchprotection @defaults("id") {
   dismissStaleReviews bool
   // Whether the most recent pusher is required to approve a pull request
   requireLastPushApproval bool
-  // Users and teams allowed to dismiss reviews
+  // Review dismissal restrictions
+  //
+  // Users and teams permitted to dismiss pull-request reviews, flattened from the
+  // pull-request review settings. Keys: `users` (list of user logins) and `teams`
+  // (list of team names).
   dismissalRestrictions dict
 }
 
 // GitHub repository commit
 //
-// Examine a commit in a GitHub repository. Provides `sha`, `url`, `author`,
-// `committer`, `authoredDate`, `committedDate`, commit change `stats`
-// (additions, deletions, total), and the underlying `commit` object
-// (`git.commit`) with the full message and GPG signature.
+// A single commit in a GitHub repository, keyed by its `sha`. Ties the
+// version-control record to GitHub accounts: the `author` and `committer`
+// resolve to the GitHub users who wrote and applied the change, while the
+// underlying `commit` carries the raw Git commit including the full message
+// and GPG signature for verifying provenance and signed-commit policies.
+// The `stats` report the size of the change (lines added, deleted, and the
+// combined total).
 private github.commit @defaults("sha") {
   // Commit owner
   owner string
@@ -1368,7 +1998,10 @@ private github.commit @defaults("sha") {
   committer github.user
   // Commit resource object
   commit git.commit
-  // Commit statistics: additions, deletions, total
+  // Change size statistics
+  //
+  // Line-count summary for the commit. Keys: `additions` (lines added),
+  // `deletions` (lines removed), and `total` (additions plus deletions).
   stats dict
   // Authored date
   authoredDate time
@@ -1378,16 +2011,21 @@ private github.commit @defaults("sha") {
 
 // GitHub pull request
 //
-// Examine a pull request in a GitHub repository. Provides `number`, `title`,
-// `state`, `createdAt`, `updatedAt`, `closedAt`, `merged`, `mergedAt`, `mergedBy`,
-// `labels`, `assignees`, `requestedReviewers`, `milestone`, `owner`, and computed
-// collections `commits` and `reviews`.
+// Pull request in a GitHub repository, covering its lifecycle state,
+// authorship, review activity, and merge outcome. Useful for auditing who
+// authored and merged a change, whether reviewers were requested, and how
+// code reached the target branch. The commits collection exposes the
+// change set and the reviews collection the review decisions recorded
+// against it.
 private github.mergeRequest @defaults("id state") {
   // Pull request ID
   id int
   // Pull request number
   number int
   // Pull request state
+  //
+  // One of "open" or "closed". A merged pull request reports "closed"; use
+  // the merged field to distinguish a merge from a close-without-merge.
   state string
   // Pull request creation time (in UTC)
   createdAt time
@@ -1411,6 +2049,12 @@ private github.mergeRequest @defaults("id state") {
   reviews() []github.review
   // Pull request repository name
   repoName string
+  // Login of the account that owns the pull request's repository
+  //
+  // The organization or user the repository belongs to, which is what
+  // addresses the repository in the API. This is distinct from owner, which
+  // is the account that authored the pull request.
+  repoOwnerLogin string
   // Pull request milestone
   milestone github.milestone
   // Whether the pull request has been merged
@@ -1419,18 +2063,51 @@ private github.mergeRequest @defaults("id state") {
   mergedAt time
   // User who merged the pull request
   mergedBy github.user
+  // Identifier of the stack this pull request belongs to
+  //
+  // A stack is an ordered chain of pull requests that split one change into
+  // reviewable steps, each targeting the one below it and the whole chain
+  // targeting a single base branch. Null when the pull request is not part
+  // of a stack.
+  stackId int
+  // Number of the stack this pull request belongs to
+  stackNumber int
+  // Count of pull requests in the stack
+  stackSize int
+  // Position of this pull request within the stack
+  //
+  // Counts from 1 at the bottom of the stack, the pull request closest to
+  // the base branch. Every entry above it builds on the ones below, so a
+  // change merged out of order reaches the base branch without the review
+  // recorded against its predecessors.
+  stackPosition int
+  // Branch the whole stack targets
+  stackBaseBranch string
+  // Commit SHA the whole stack targets
+  stackBaseSha string
 }
 
 // GitHub pull request review
 //
-// Examine a review submitted on a pull request. Provides `state`, `url`,
-// `authorAssociation`, and the reviewing `user`.
+// A review submitted against a pull request, recording whether a reviewer
+// approved, requested changes, or only commented. Useful for auditing that
+// merged changes received the approvals a branch protection or compliance
+// policy requires, and that reviewers have the expected relationship to the
+// repository. The `state` field carries the review verdict and
+// `authorAssociation` describes how the reviewer relates to the project.
 private github.review @defaults("url state") {
   // Review URL
   url string
   // Review state
+  //
+  // The verdict the reviewer submitted. One of APPROVED,
+  // CHANGES_REQUESTED, COMMENTED, DISMISSED, or PENDING.
   state string
   // Author association
+  //
+  // How the reviewer relates to the repository at the time of the review.
+  // One of COLLABORATOR, CONTRIBUTOR, FIRST_TIMER, FIRST_TIME_CONTRIBUTOR,
+  // MANNEQUIN, MEMBER, NONE, or OWNER.
   authorAssociation string
   // Review user information
   user github.user
@@ -1438,11 +2115,12 @@ private github.review @defaults("url state") {
 
 // GitHub App installation
 //
-// Examine a GitHub App installation on an organization or user account. Provides
-// `appId`, `appSlug`, `targetType`, `repositorySelection`, subscribed `events`,
-// `permissions` (resource type to access level), `suspendedAt`, `suspendedBy`,
-// `createdAt`, `updatedAt`, and computed `repositories` accessible to this
-// installation when `repositorySelection` is "selected".
+// GitHub App installed on an organization or user account, granting the app a
+// scoped set of permissions and a repository selection. Audit installations to
+// see which apps hold access, the `permissions` they were granted, the `events`
+// they subscribe to, and whether the installation is currently suspended. When
+// `repositorySelection` is "selected", `repositories` lists the exact set of
+// repositories the app can reach.
 private github.installation @defaults("id appId") {
   // Application installation ID
   id int
@@ -1460,7 +2138,11 @@ private github.installation @defaults("id appId") {
   repositorySelection string
   // Subscribed events
   events []string
-  // Permissions granted to this installation (resource type → access level, e.g., contents: read, pull_requests: write)
+  // Permissions granted to this installation
+  //
+  // Map of resource type to access level, keyed by the resource name
+  // (contents, pull_requests, metadata, issues, actions, and so on).
+  // Each value is one of "read", "write", or "admin".
   permissions dict
   // Time the installation was suspended (null if not suspended)
   suspendedAt time
@@ -1472,9 +2154,11 @@ private github.installation @defaults("id appId") {
 
 // GitHub gist
 //
-// Examine a GitHub gist. Provides `description`, `public` status, `owner`,
-// `createdAt`, `updatedAt`, and the list of `files` (each a `github.gistfile`
-// with name, language, size, and content).
+// Shareable code snippet or set of files hosted on GitHub. Audit gists to
+// catch code, configuration, or secrets that a user has published outside of
+// managed repositories. The `public` field distinguishes a secret gist
+// (unlisted but reachable by URL) from one that is fully public, and `files`
+// exposes the contents of each file for inspection.
 private github.gist @defaults("description") {
   // Gist ID
   id string
@@ -1494,14 +2178,15 @@ private github.gist @defaults("description") {
 
 // GitHub gist file
 //
-// Examine a file within a GitHub gist. Provides `filename`, `type`, `language`,
-// `rawUrl`, `size`, and computed `content` (the file text).
+// Single file within a GitHub gist, including its detected `language`, MIME
+// `type`, `size` in bytes, and the raw `content`. Reading the content lets
+// audits scan published gist files for secrets or sensitive data.
 private github.gistfile @defaults("filename") {
   // Gist ID
   gistId string
   // Gist file name
   filename string
-  // Gist file type
+  // MIME content type of the gist file
   type string
   // Gist file language
   language string
@@ -1510,14 +2195,20 @@ private github.gistfile @defaults("filename") {
   // Gist file size
   size int
   // Gist file content
+  //
+  // Raw text of the file, retrieved from its `rawUrl`. Resolves only for
+  // text-based MIME `type` values (for example text/plain, text/markdown,
+  // application/json, application/javascript, and common script types);
+  // binary or unsupported content types return an error.
   content() string
 }
 
 // GitHub milestone
 //
-// Examine a milestone in a GitHub repository. Provides `title`, `description`,
-// `state` (open or closed), `openIssues`, `closedIssues`, `creator`, `dueOn`,
-// and `createdAt`/`updatedAt`/`closedAt` timestamps.
+// Milestone that groups issues and pull requests in a GitHub repository
+// toward a shared goal or release. Track progress with the `openIssues`
+// and `closedIssues` counts, the `state` (open or closed), and the `dueOn`
+// target date to audit whether planned work is on schedule.
 private github.milestone @defaults("title state") {
   // Milestone ID
   id int
@@ -1551,9 +2242,11 @@ private github.milestone @defaults("title state") {
 
 // GitHub issue
 //
-// Examine an issue in a GitHub repository. Provides `number`, `title`, `state`,
-// `body`, `url`, `user` (opener), `assignees`, `labels`, `milestone`, `locked`,
-// `draft`, `closedBy`, and `createdAt`/`updatedAt`/`closedAt` timestamps.
+// Issue tracked in a GitHub repository, covering its open or closed state,
+// the user who opened it, current assignees, applied labels, associated
+// milestone, lock status, and the user who closed it. Useful for auditing
+// issue triage ownership, backlog hygiene, and whether a conversation has
+// been locked to collaborators.
 private github.issue @defaults("title") {
   // Issue ID
   id int
@@ -1562,6 +2255,8 @@ private github.issue @defaults("title") {
   // Issue title
   title string
   // Issue state
+  //
+  // Either "open" or "closed".
   state string
   // Issue body
   body string
@@ -1575,7 +2270,10 @@ private github.issue @defaults("title") {
   closedAt time
   // User who opened the issue
   user github.user
-  // Labels applied to the issue (each dict: name, color, description)
+  // Labels applied to the issue
+  //
+  // Each entry carries the label `name`, hex `color`, `description`, and
+  // `default` flag (true for labels created with the repository).
   labels []dict
   // Users to whom the issue is assigned
   assignees []github.user
@@ -1591,11 +2289,13 @@ private github.issue @defaults("title") {
 
 // GitHub Dependabot alert
 //
-// Examine a Dependabot vulnerability alert for a repository. Provides `number`,
-// `state` (auto_dismissed, dismissed, fixed, open), `severity`, `dependency`,
-// `securityAdvisory`, `securityVulnerability`, `dismissedBy`, `dismissedReason`,
-// `dismissedComment`, and
-// `createdAt`/`updatedAt`/`dismissedAt`/`fixedAt`/`autoDismissedAt` timestamps.
+// Dependabot vulnerability alert raised against a repository's dependency graph,
+// flagging a dependency with a known security advisory. Each alert is keyed by
+// its per-repository `number` and carries the affected `dependency`, the
+// `securityAdvisory` and `securityVulnerability` that triggered it, its
+// remediation lifecycle (`state`, `fixedAt`, and dismissal details), and its
+// `severity`. Query these to audit which repositories carry unresolved
+// vulnerable dependencies and how each alert was triaged.
 private github.dependabotAlert @defaults("number state severity") {
   // Alert number
   number int
@@ -1603,11 +2303,24 @@ private github.dependabotAlert @defaults("number state severity") {
   state string
   // Severity of the alert: low, medium, high, or critical
   severity string
-  // Vulnerable dependency information
+  // Vulnerable dependency
+  //
+  // Keys: `package` (a nested object with `ecosystem` and `name`),
+  // `manifest_path` (the file that declares the dependency), and `scope`
+  // (development or runtime).
   dependency dict
-  // Security advisory details
+  // Security advisory
+  //
+  // The GitHub advisory behind the alert. Keys: `ghsa_id`, `cve_id`, `summary`,
+  // `description`, `severity`, `cvss`, `cwes`, `epss`, `identifiers`,
+  // `references`, `vulnerabilities`, `published_at`, `updated_at`, and
+  // `withdrawn_at`.
   securityAdvisory dict
-  // Specific vulnerability details
+  // Vulnerability matched against the dependency
+  //
+  // The specific advisory entry that applies to this dependency. Keys:
+  // `package` (with `ecosystem` and `name`), `severity`,
+  // `vulnerable_version_range`, and `first_patched_version`.
   securityVulnerability dict
   // API URL
   url string
@@ -1626,6 +2339,9 @@ private github.dependabotAlert @defaults("number state severity") {
   // User who dismissed the alert
   dismissedBy github.user
   // Reason for dismissal
+  //
+  // One of fix_started, inaccurate, no_bandwidth, not_used, or tolerable_risk.
+  // Empty for alerts that have not been dismissed.
   dismissedReason string
   // Comment on dismissal
   dismissedComment string
@@ -1633,12 +2349,14 @@ private github.dependabotAlert @defaults("number state severity") {
 
 // GitHub secret scanning alert
 //
-// Examine a secret scanning alert for a repository. Provides `number`, `state`
-// (open, resolved), `resolution`, `secretType`, `secretTypeDisplayName`, `secret`
-// (partially redacted), `validity` (active, inactive, unknown), `publiclyLeaked`,
-// `multiRepo`, push protection bypass details (`pushProtectionBypassed`,
-// `pushProtectionBypassedBy`, `pushProtectionBypassedAt`), `resolvedBy`,
-// `resolutionComment`, and timestamp fields.
+// Credential (API key, token, or password) that GitHub secret scanning detected
+// committed to a repository, exposing it for potential misuse. Auditing these
+// alerts surfaces leaked secrets that need rotation: `secretType` and
+// `secretTypeDisplayName` identify the kind of credential, `validity` reports
+// whether it is still live (active, inactive, unknown), and `publiclyLeaked`
+// and `multiRepo` flag broader exposure across public code or several
+// repositories. The `state` (open, resolved), `resolution`, and
+// push-protection bypass fields track whether the leak has been remediated.
 private github.secretScanningAlert @defaults("number state") {
   // Alert number
   number int
@@ -1678,23 +2396,48 @@ private github.secretScanningAlert @defaults("number state") {
   pushProtectionBypassedAt time
   // Comment on resolution
   resolutionComment string
+  // User the alert is assigned to
+  assignedTo github.user
+  // Comment the requester gave when asking for the alert to be closed
+  closureRequestComment string
+  // User who reviewed the request to close the alert
+  closureRequestReviewer github.user
+  // Comment the reviewer gave on the request to close the alert
+  closureRequestReviewerComment string
+  // Name of the provider that issued the secret
+  provider string
+  // Provider identifier in lowercase with underscores
+  //
+  // For example `slack` or `github_secret_scanning`. This is the value the `providers` filter of the secret scanning API accepts.
+  providerSlug string
+  // Metadata GitHub attaches to the alert, keyed by name
+  metadata() map[string]string
 }
 
 // GitHub code scanning alert
 //
-// Examine a code scanning alert for a repository. Provides `number`, `state`
-// (open, closed, dismissed, fixed), `rule` (id, severity, description, tags),
-// `tool` (name, version, GUID), `dismissedBy`, `dismissedReason`,
-// `dismissedComment`, `closedBy`, `mostRecentInstance`, and
-// `createdAt`/`updatedAt`/`fixedAt`/`closedAt`/`dismissedAt` timestamps.
+// Security finding raised by a code scanning tool (such as CodeQL) against a
+// repository. Each alert records an unresolved or resolved vulnerability along
+// with its `state` (open, closed, dismissed, fixed), the `rule` that fired,
+// the analysis `tool` that produced it, and, when suppressed, who dismissed it
+// and the reason. Use it to audit outstanding findings and verify that
+// dismissals are justified.
 private github.codeScanningAlert @defaults("number state") {
   // Alert number
   number int
   // Alert state (open, closed, dismissed, fixed)
   state string
-  // Rule metadata for the alert (id, severity, description, tags)
+  // Rule that triggered the alert
+  //
+  // Dictionary describing the code scanning rule, with keys `id`, `name`,
+  // `severity` (none, note, warning, error), `security_severity_level` (low,
+  // medium, high, critical), `description`, `full_description`, `help`, and
+  // `tags`.
   rule dict
-  // Analysis tool that produced the alert (name, version, GUID)
+  // Analysis tool that produced the alert
+  //
+  // Dictionary describing the scanning tool, with keys `name`, `version`, and
+  // `guid`.
   tool dict
   // API URL
   url string
@@ -1715,21 +2458,32 @@ private github.codeScanningAlert @defaults("number state") {
   // User who dismissed the alert
   dismissedBy github.user
   // Reason for dismissal
+  //
+  // One of `false positive`, `won't fix`, `used in tests`, or `mitigated`, or empty when
+  // the alert has not been dismissed.
   dismissedReason string
   // Comment on dismissal
   dismissedComment string
   // Most recent instance of this alert
+  //
+  // Dictionary describing the latest occurrence, with keys `ref`,
+  // `analysis_key`, `category`, `environment`, `state`, `commit_sha`,
+  // `message` (with a `text` field), `location` (with `path`, `start_line`,
+  // `end_line`, `start_column`, `end_column`), `html_url`, and
+  // `classifications`.
   mostRecentInstance dict
 }
 
 // GitHub organization audit log entry
 //
-// Examine a single event in a GitHub organization's audit log. Provides `action`
-// (e.g., `user.login`, `repo.create`), `actor`, `actorLocation`, the affected
-// `user`, `org`, `business`, `timestamp`, SAML identity fields
-// (`externalIdentityNameId`, `externalIdentityUsername`), token metadata
-// (`hashedToken`, `tokenId`, `tokenScopes`), and additional `data` and
-// `additionalFields` dictionaries for event-specific attributes.
+// Single event from a GitHub organization's audit log, available for GitHub
+// Enterprise Cloud organizations. Records the `action` performed (for example
+// `user.login` or `repo.create`), the `actor` and their `actorLocation`, the
+// affected `user`, `org`, and `business`, the event `timestamp`, SAML identity
+// attributes (`externalIdentityNameId`, `externalIdentityUsername`), and token
+// metadata (`hashedToken`, `tokenId`, `tokenScopes`). The `data` and
+// `additionalFields` maps carry attributes specific to each action, useful for
+// auditing who did what, from where, and with which credentials.
 private github.auditLogEntry @defaults("action actor timestamp") {
   // Unique document ID
   documentId string
@@ -1767,17 +2521,31 @@ private github.auditLogEntry @defaults("action actor timestamp") {
   tokenId int
   // Token scopes (if applicable)
   tokenScopes string
-  // Additional event data
+  // Event-specific attributes
+  //
+  // Map of extra attributes GitHub attaches to certain actions, keyed by
+  // attribute name with action-dependent values. The set of keys present
+  // depends on the entry's `action` (for example a repository event may
+  // include `repo` and `visibility`, a permission change `permission`).
   data dict
-  // Additional fields not explicitly defined
+  // Attributes not mapped to a dedicated field
+  //
+  // Catch-all map of any audit-log attributes GitHub returns for the event
+  // that this resource does not expose as a named field, keyed by the raw
+  // attribute name. Contents vary by `action`.
   additionalFields dict
 }
 
 // GitHub Actions self-hosted runner
 //
-// Examine a self-hosted runner registered to a repository or organization. Provides
-// `name`, `os` (linux, macos, windows), `architecture`, `status` (online, offline),
-// `busy`, `ephemeral`, and `labels` (each a `github.runnerLabel`).
+// Self-hosted runner registered to a repository or organization to execute
+// GitHub Actions workflow jobs on infrastructure you control. Because a
+// self-hosted runner runs workflow code on your own hosts, its configuration
+// carries real risk: use it to audit which platform (`os` of linux, macos, or
+// windows) and `architecture` a runner reports, whether it is currently
+// `online` or `offline` via `status`, whether it is `ephemeral` (torn down
+// after a single job) versus persistent, and the `labels` that route jobs to
+// it. The `busy` flag reports whether a job is executing right now.
 private github.runner @defaults("id name os status") {
   // Runner ID
   id int
@@ -1799,8 +2567,11 @@ private github.runner @defaults("id name os status") {
 
 // GitHub Actions runner label
 //
-// Examine a label assigned to a self-hosted runner. Provides `name` and `type`
-// (read-only for system labels, custom for user-defined labels).
+// Label assigned to a self-hosted Actions runner, used to route workflow jobs
+// to runners with matching `runs-on` labels. The `type` field distinguishes
+// read-only labels applied by the system from custom labels defined by the
+// runner administrator, which is useful when auditing whether jobs can be
+// steered onto specific self-hosted machines.
 private github.runnerLabel @defaults("name type") {
   // Label ID
   id int
@@ -1812,10 +2583,14 @@ private github.runnerLabel @defaults("name type") {
 
 // GitHub deployment environment
 //
-// Examine a deployment environment configured in a repository. Provides `name`,
-// `waitTimer`, `canAdminsBypass`, `protectedBranches`, `customBranchPolicies`,
-// `protectionRules` (each a `github.environmentProtectionRule`), `createdAt`,
-// `updatedAt`, `secrets`, and `variables`.
+// Deployment environment configured in a repository, such as production or
+// staging. Environments gate deployments through protection rules: required
+// reviewers, a `waitTimer` delay before a deployment can proceed, and branch
+// restrictions governed by `protectedBranches` and `customBranchPolicies`.
+// `canAdminsBypass` reveals whether administrators can override those rules,
+// and each entry in `protectionRules` is a github.environmentProtectionRule.
+// Environment-scoped `secrets` and `variables` expose the configuration made
+// available to workflows deploying to this environment.
 private github.environment @defaults("name id") {
   // Environment ID
   id int
@@ -1847,9 +2622,13 @@ private github.environment @defaults("name id") {
 
 // GitHub environment protection rule
 //
-// Examine a protection rule on a deployment environment. Provides `type`
-// (required_reviewers, wait_timer, or branch_policy), `waitTimer` in minutes,
-// `preventSelfReview`, and `reviewers` (users or teams required to approve).
+// Protection rule guarding deployments to an environment, the control that
+// decides whether a deployment can proceed and who must sign off. The `type`
+// field selects which control applies: `required_reviewers` gates a deployment
+// behind approvals from the listed reviewers, `wait_timer` delays it by a fixed
+// number of minutes, and `branch_policy` restricts which branches or tags may
+// deploy. Audit these rules to confirm production environments require review
+// and cannot be deployed to directly.
 private github.environmentProtectionRule @defaults("type") {
   // Rule ID
   id int
@@ -1859,15 +2638,23 @@ private github.environmentProtectionRule @defaults("type") {
   waitTimer int
   // Whether to prevent self-review
   preventSelfReview bool
-  // Required reviewers (users or teams)
+  // Reviewers required to approve a deployment
+  //
+  // One entry per required reviewer, present for the `required_reviewers` rule
+  // type. Each entry carries `type` (`User` or `Team`) plus the reviewer's own
+  // fields flattened in: `login` and `id` for a user, `name`, `slug`, and `id`
+  // for a team.
   reviewers []dict
 }
 
 // GitHub deployment
 //
-// Examine a deployment record for a repository. Provides `sha`, `ref`, `task`,
-// `environment`, `description`, `creator`, `payload`, `createdAt`, `updatedAt`,
-// and the computed `latestStatus` (`github.deploymentStatus`).
+// Deployment record requesting that a specific commit be released to an
+// environment. The `sha` and `ref` identify the code being deployed, while
+// `environment` and `task` describe where and how. Query it to audit what
+// reached production and staging, who triggered each release, and the
+// `latestStatus` reporting whether the deployment succeeded, failed, or is
+// still in progress.
 private github.deployment @defaults("id environment sha") {
   // Deployment ID
   id int
@@ -1891,7 +2678,11 @@ private github.deployment @defaults("id environment sha") {
   createdAt time
   // Deployment update time
   updatedAt time
-  // Deployment payload (custom data)
+  // Deployment payload
+  //
+  // Free-form JSON data supplied by the client when the deployment was
+  // created. Keys are user-defined and vary by workflow (for example a
+  // release version or a feature-flag set); GitHub imposes no schema on it.
   payload dict
   // Statuses URL
   statusesUrl string
@@ -1901,10 +2692,13 @@ private github.deployment @defaults("id environment sha") {
 
 // GitHub deployment status
 //
-// Examine a status update on a deployment. Provides `state` (pending, success,
-// failure, error, inactive, in_progress, queued), `description`, `environment`,
-// `creator`, `targetUrl`, `logUrl`, `environmentUrl`, and
-// `createdAt`/`updatedAt` timestamps.
+// A single status update recorded against a deployment, tracking how a release
+// progressed through an environment over time. The `state` field carries the
+// outcome (pending, success, failure, error, inactive, in_progress, or queued),
+// `environment` names the target it applied to, and `creator` identifies who or
+// what posted it. Auditing the status history shows whether deployments to
+// sensitive environments succeeded, stalled, or errored, and links out to the
+// deployed target and its logs.
 private github.deploymentStatus @defaults("id state") {
   // Status ID
   id int
@@ -1930,12 +2724,14 @@ private github.deploymentStatus @defaults("id state") {
 
 // GitHub Actions secret
 //
-// Examine a GitHub Actions secret configured at the repository, organization, or
-// environment scope. Secret values are never exposed by the API; this resource
-// provides metadata only: `name`, `scope`, `visibility` (for organization secrets:
-// all, private, selected), `organizationName`, `repositoryName`,
-// `repositoryOwner`, `environmentName`, `createdAt`, `updatedAt`, and computed
-// `selectedRepositories` when visibility is "selected".
+// Encrypted secret available to GitHub Actions workflows, configured at the
+// repository, organization, or environment scope. Secret values are never
+// returned by the API, so this exposes metadata only, which is useful for
+// auditing where secrets live and how broadly they are shared. The scope
+// field selects which owner fields apply, and for an organization secret the
+// visibility field (all, private, or selected) determines which repositories
+// may read it; when visibility is "selected", selectedRepositories enumerates
+// exactly which repositories have access.
 private github.actionsSecret @defaults("name scope visibility") {
   // Secret name
   name string
@@ -1963,12 +2759,16 @@ private github.actionsSecret @defaults("name scope visibility") {
 
 // GitHub Actions variable
 //
-// Examine a GitHub Actions variable configured at the repository, organization, or
-// environment scope. Variable values are readable by anyone with read access to the
-// scope. Provides `name`, `value`, `scope`, `visibility` (for organization
-// variables: all, private, selected), `organizationName`, `repositoryName`,
-// `repositoryOwner`, `environmentName`, `createdAt`, `updatedAt`, and computed
-// `selectedRepositories` when visibility is "selected".
+// Plaintext configuration value available to GitHub Actions workflows, defined at
+// the repository, organization, or environment scope. Unlike secrets, variable
+// values are stored and returned in cleartext and are readable by anyone with read
+// access to the owning scope, so auditing them catches sensitive data that should
+// have been a secret. The `scope` field records where the variable lives
+// (organization, repository, or environment) and selects which of the
+// `organizationName`, `repositoryName`, `repositoryOwner`, and `environmentName`
+// owner fields are populated. For organization variables, `visibility` controls
+// which repositories can consume the variable, and `selectedRepositories` resolves
+// the allowed set when visibility is "selected".
 private github.actionsVariable @defaults("name scope visibility") {
   // Variable name
   name string
@@ -1994,4 +2794,193 @@ private github.actionsVariable @defaults("name scope visibility") {
   selectedRepositoriesUrl string
   // Repositories that have access to this organization variable (only when visibility is "selected")
   selectedRepositories() []github.repository
+}
+
+// Code scanning default setup for a repository
+//
+// CodeQL default setup as configured on a repository, covering the query suite
+// it runs and the languages it analyzes. A repository that runs code scanning
+// from its own Actions workflow (advanced setup) reports a `state` of
+// not-configured here while still scanning, so read this alongside
+// `codeScanningEnabled` rather than on its own.
+private github.repository.codeScanningDefaultSetup @defaults("state querySuite") {
+  // Whether default setup is configured
+  //
+  // One of configured or not-configured.
+  state string
+  // Query suite the default setup runs
+  //
+  // One of default or extended. The extended suite adds queries of lower
+  // severity and lower precision than the default one, so a repository on the
+  // default suite is scanned more narrowly. GitHub reports a suite even where
+  // `state` is not-configured, describing what default setup would run rather
+  // than what runs today, so read it together with `state`.
+  querySuite string
+  // Languages the default setup analyzes
+  //
+  // A language absent from this list is not analyzed by default setup. GitHub
+  // reports the eligible languages even where `state` is not-configured, so as
+  // with `querySuite` this describes the configuration rather than proving that
+  // anything is being scanned.
+  languages []string
+  // Last time the default setup configuration changed
+  updatedAt time
+}
+
+// Immutable release enforcement for an organization
+//
+// Whether releases published in the organization's repositories are immutable,
+// meaning a published tag and its assets cannot be replaced after consumers
+// have pinned to them. `enforcedRepositories` reports the scope, and
+// `selectedRepositories` resolves the repositories covered when that scope is
+// selected.
+private github.organization.immutableReleases @defaults("enforcedRepositories") {
+  // Scope of immutable release enforcement
+  //
+  // One of all, none, or selected.
+  enforcedRepositories string
+  // Repositories immutable releases are enforced on
+  //
+  // Null when `enforcedRepositories` is not selected, where the scope alone
+  // determines coverage.
+  selectedRepositories() []github.repository
+}
+
+// Dependabot secret
+//
+// Credential Dependabot presents when it resolves dependencies, usually the
+// password for a private package registry. Only the name, scope, visibility and
+// timestamps are reported, never the value. Dependabot keeps its own secret
+// store, separate from GitHub Actions, so a secret here is not readable by a
+// workflow run and an Actions secret is not readable by Dependabot. For an
+// organization secret, `visibility` controls which repositories can consume it
+// and `selectedRepositories` resolves the allowed set when visibility is
+// selected.
+private github.dependabotSecret @defaults("name scope visibility") {
+  // Secret name
+  name string
+  // Scope of the secret (organization, repository)
+  scope string
+  // Owning organization login (set for organization scope)
+  organizationName string
+  // Owning repository name (set for repository scope)
+  repositoryName string
+  // Owning repository owner login (set for repository scope)
+  repositoryOwner string
+  // Secret create time
+  createdAt time
+  // Secret last update time
+  updatedAt time
+  // Visibility of an organization secret (all, private, selected); empty for repository scope
+  visibility string
+  // Repositories that have access to this organization secret (only when visibility is "selected")
+  selectedRepositories() []github.repository
+}
+
+// Copilot cloud agent secret
+//
+// Credential passed to the Copilot cloud agent as an environment variable while
+// it works in a repository, for example a token for a private package registry
+// or an internal service the agent calls. Only the name, scope, visibility and
+// timestamps are reported, never the value. The agent reads only this store,
+// not GitHub Actions, Codespaces or Dependabot secrets. For an organization
+// secret, `visibility` controls which repositories the agent can use it in and
+// `selectedRepositories` resolves the allowed set when visibility is selected.
+private github.agentSecret @defaults("name scope visibility") {
+  // Secret name
+  name string
+  // Scope of the secret (organization, repository)
+  scope string
+  // Owning organization login (set for organization scope)
+  organizationName string
+  // Owning repository name (set for repository scope)
+  repositoryName string
+  // Owning repository owner login (set for repository scope)
+  repositoryOwner string
+  // Secret create time
+  createdAt time
+  // Secret last update time
+  updatedAt time
+  // Visibility of an organization secret (all, private, selected); empty for repository scope
+  visibility string
+  // Repositories that have access to this organization secret (only when visibility is "selected")
+  selectedRepositories() []github.repository
+}
+
+// GPG key
+//
+// Public GPG key registered on a user account for signing commits and tags.
+// Only public key material is reported. `canSignCommits` answers whether the
+// key or one of its subkeys carries the signing capability, which is what a
+// rule requiring signed commits depends on, and differs from `canSign`, which
+// covers the primary key alone.
+private github.gpgKey @defaults("keyId canSignCommits expired") {
+  // Key ID assigned by GitHub
+  id int
+  // Long key ID of the GPG key
+  keyId string
+  // Armored public key
+  publicKey string
+  // Email addresses attached to the key, mapped to whether GitHub verified each one
+  emails map[string]bool
+  // Whether the primary key carries the signing capability
+  canSign bool
+  // Whether the key or any of its subkeys carries the signing capability
+  //
+  // What a branch protection rule or ruleset requiring signed commits depends
+  // on. A primary key that cannot sign is still usable when it has a signing
+  // subkey, which is the layout a key generated with GnuPG defaults has.
+  canSignCommits bool
+  // Time the key was created
+  createdAt time
+  // Time the key expires, null when the key does not expire
+  expiresAt time
+  // Whether the key's expiry has passed
+  //
+  // False for a key with no expiry, which never expires.
+  expired bool
+  // Approximate age of the key in days since createdAt (-1 if createdAt is unknown)
+  ageInDays int
+  // The user this key belongs to
+  user() github.user
+}
+
+// SSH signing key
+//
+// Public SSH key registered on a user account for signing commits and tags.
+// This registration is separate from the authentication keys `publicKeys`
+// reports: the same key material can carry both, and one registered for
+// authentication alone cannot sign.
+private github.sshSigningKey @defaults("title ageInDays") {
+  // Key ID assigned by GitHub
+  id int
+  // Title given to the key
+  title string
+  // The public SSH key
+  key string
+  // Time the key was created
+  createdAt time
+  // Approximate age of the key in days since createdAt (-1 if createdAt is unknown)
+  ageInDays int
+  // The user this key belongs to
+  user() github.user
+}
+
+// GitHub Deployment Metadata
+//
+// Where the GitHub account under scan is hosted and, for a GitHub Enterprise
+// Server installation, which release it runs. `enterpriseServer` separates a
+// self-hosted installation from GitHub.com, and `version` is what a feature
+// introduced in a particular release is compared against, which is how
+// github.organization.features decides whether an installation carries a
+// feature. Readable with any authenticated token.
+github.metadata @defaults("enterpriseServer version") {
+  // Whether the target is a GitHub Enterprise Server installation
+  enterpriseServer bool
+  // GitHub Enterprise Server release the installation runs
+  //
+  // Null on GitHub.com and on GitHub Enterprise Cloud, neither of which
+  // reports a release, and on an installation that does not answer with a
+  // version.
+  version string
 }

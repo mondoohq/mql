@@ -13,11 +13,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sfn"
 	sfntypes "github.com/aws/aws-sdk-go-v2/service/sfn/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 func (a *mqlAwsSfn) id() (string, error) {
@@ -237,28 +237,6 @@ func (a *mqlAwsSfnStateMachine) loggingDestinations() ([]any, error) {
 	return out, nil
 }
 
-func (a *mqlAwsSfnStateMachine) loggingConfiguration() (map[string]any, error) {
-	resp, err := a.fetchDetail()
-	if err != nil {
-		return nil, err
-	}
-	if resp.LoggingConfiguration == nil {
-		return map[string]any{}, nil
-	}
-	cfg := resp.LoggingConfiguration
-	destinations := make([]any, 0, len(cfg.Destinations))
-	for _, d := range cfg.Destinations {
-		if d.CloudWatchLogsLogGroup != nil {
-			destinations = append(destinations, convert.ToValue(d.CloudWatchLogsLogGroup.LogGroupArn))
-		}
-	}
-	return map[string]any{
-		"level":                string(cfg.Level),
-		"includeExecutionData": cfg.IncludeExecutionData,
-		"destinations":         destinations,
-	}, nil
-}
-
 func (a *mqlAwsSfnStateMachine) tracingEnabled() (bool, error) {
 	resp, err := a.fetchDetail()
 	if err != nil {
@@ -340,27 +318,6 @@ func (a *mqlAwsSfnStateMachine) encryptionKmsDataKeyReusePeriodSeconds() (int64,
 		return 0, nil
 	}
 	return int64(*resp.EncryptionConfiguration.KmsDataKeyReusePeriodSeconds), nil
-}
-
-func (a *mqlAwsSfnStateMachine) encryptionConfiguration() (map[string]any, error) {
-	resp, err := a.fetchDetail()
-	if err != nil {
-		return nil, err
-	}
-	if resp.EncryptionConfiguration == nil {
-		return map[string]any{}, nil
-	}
-	cfg := resp.EncryptionConfiguration
-	result := map[string]any{
-		"type": string(cfg.Type),
-	}
-	if cfg.KmsKeyId != nil {
-		result["kmsKeyId"] = *cfg.KmsKeyId
-	}
-	if cfg.KmsDataKeyReusePeriodSeconds != nil && *cfg.KmsDataKeyReusePeriodSeconds > 0 {
-		result["kmsDataKeyReusePeriodSeconds"] = *cfg.KmsDataKeyReusePeriodSeconds
-	}
-	return result, nil
 }
 
 func (a *mqlAwsSfnStateMachine) versions() ([]any, error) {
@@ -591,12 +548,29 @@ func (a *mqlAwsSfnActivity) id() (string, error) {
 	return a.Arn.Data, nil
 }
 
-func sfnTagsToMap(tags []sfntypes.Tag) map[string]any {
-	tagsMap := make(map[string]any)
-	for _, tag := range tags {
-		if tag.Key != nil && tag.Value != nil {
-			tagsMap[*tag.Key] = *tag.Value
+type mqlAwsSfnActivityInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsSfnActivity) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Sfn(a.Region.Data)
+		activityArn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &sfn.ListTagsForResourceInput{ResourceArn: &activityArn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("states:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
 		}
-	}
-	return tagsMap
+		return sfnTagsToMap(resp.Tags), nil
+	})
+}
+
+func sfnTagsToMap(tags []sfntypes.Tag) map[string]any {
+	return tagsToMap(tags, func(t sfntypes.Tag) *string { return t.Key }, func(t sfntypes.Tag) *string { return t.Value })
 }

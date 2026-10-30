@@ -1,0 +1,124 @@
+# Real NixOS system closure, captured from an EC2 host running the official
+# nixos/26.05.9592.21a67dc47014-x86_64-linux AMI:
+#
+#   nix-store --query --requisites /run/current-system \
+#     | while IFS= read -r p; do [ -d "$p" ] && printf '%s\n' "$p"; done
+#
+# The full closure is 681 store paths, 566 of them directories. This is a
+# curated subset of those directories: every output of a handful of packages,
+# so the multi-output collapse is exercised on real names; both shapes of
+# generated systemd unit directory; the generation itself, the initrd and the
+# kernel; and a spread of the rest.
+#
+# The 115 non-directories are left out because the command does not emit them:
+# NixOS builds generated configuration into the store as plain files
+# (etc-sysctl.d-60-nixos.conf, etc-systemd-system-preset-00-nixos.preset),
+# and those are not installed packages.
+/nix/store/00hcb86xi0dgd7rcprf8fz1p277aygf6-unit-script-apply-ec2-data-start
+/nix/store/0248m4p5xbxby1kg0xma16h44v3qi1i0-libcap-ng-0.9.3
+/nix/store/04z4jhpm21d574qhaqfby4mvycs31wg0-unit-firewall.service
+/nix/store/0a8ykv725b5nnq3328b2zz1vc7p9nc2b-unit-remote-fs.target
+/nix/store/0djmqy9c50czxaakvi7xqinz30wlbs6g-nix-2.34.8
+/nix/store/0dkf9vibmq9yn880kck42ykriy67yw5y-unit-user-.service
+/nix/store/0g4rslgfslpqjd7pnkq4jiq8jl0pw06x-unit-dbus-broker.service
+/nix/store/0gl0nppk9is1g0n5kbkrrwwxc2x10svz-libuv-1.52.1
+/nix/store/0h79bqb3njwk451cqmmr5pri44441zxi-lvm2-2.03.39-man
+/nix/store/0kbdz7lqam74236c5lc6sm0fkvmypifv-gmp-with-cxx-6.3.0
+/nix/store/0ll8j4gj5x2zs020dhhi02fhv3f5whvl-xxhash-0.8.3
+/nix/store/0m12m01x89sr7cdfd1p17fjs1f9fblxm-unit-nscd.service
+/nix/store/0skr5gxnrh4ax1apa6iba41nifj9smkp-perl5.42.0-FCGI-ProcManager-0.28
+/nix/store/0ssq46388lcsxm2bf3z1g5zln5gmihv2-nix-expr-2.34.8
+/nix/store/0svpws07al77h054na894bbbz61p8rj7-initrd-linux-6.18.50
+/nix/store/14jj8966lr7nxqgvw6ar34680isyhlm0-perl5.42.0-File-Copy-Recursive-0.45
+/nix/store/14mlcc6n1d008yqbg2yxmm4dm849f4jz-nixos-build-vms
+/nix/store/14nvl13g8my4b5kqcb54ryai4g6k32ay-npth-1.8
+/nix/store/15m0m4jygzvm0a2h165h40y4352lj23n-perl5.42.0-FCGI-0.82
+/nix/store/163bkj6bis0jkzgnwkgb1nqkp3r3hhjw-system-sendmail-1.0
+/nix/store/17gvdyp5n1rpp8d3qh7zh45jh84jqb36-libselinux-3.10
+/nix/store/1ai04hv614ylzw0s77v349md09gylnq3-security-wrapper-newgidmap-x86_64-unknown-linux-musl
+/nix/store/1b5zq3p28iaikfg0xlv1mzqn3wgwgj6r-which-2.23-info
+/nix/store/1cnqsbklqng87a7hx5w3adz42n2y70pi-diffutils-3.12
+/nix/store/1jxwdyqgcff5558amk5rkxk01hyb3ipp-security-wrapper-chsh-x86_64-unknown-linux-musl
+/nix/store/1k0cvlz3z3an0il23gai1zja7bizmlm9-switch-to-configuration-0.1.0
+/nix/store/1nnsca2xfhhz8xkadcpy4hv2kwffs0zy-dejavu-fonts-minimal-2.37
+/nix/store/1vvj459fvxg8f1crw0z3i0da3pnknqbb-xz-5.8.3-doc
+/nix/store/1w9qgjv9pcmgqmlzrdc0qml4nfsp5p2f-libxau-1.0.12
+/nix/store/1yljg5d8nynk2p9bimdqy9rypg93s637-unit-script-suid-sgid-wrappers-start
+/nix/store/20mr5gacgcc6zrxgmxnlbiy27y0h50w5-json-c-0.18
+/nix/store/25myrvj4vszs3bh68di7vr5l5p2zkm0l-texinfo-interactive-7.2
+/nix/store/25xmxg1by9lxx6vmakw21fv1ni1q561b-util-linux-2.42.2-login
+/nix/store/262a1v2z92sbgqhh7k9n694hjbpvv3gy-lz4-1.10.0-lib
+/nix/store/26ffr5bwnsa0f6k0hxnpdv1b20w1v086-bzip2-1.0.8-man
+/nix/store/26jzl3n1ixfqcwr74hzsgd29n5vkgfhh-libxmu-1.3.1
+/nix/store/2c5pv97v3mzjcdy6vwvx0ssnl388n8dh-readline-8.3p3
+/nix/store/2g9xwk5kis01003gynr7xfca667dpgv8-libx11-1.8.13
+/nix/store/2ib0zkrvsyk7b8i3mjxriazrpwjnrwam-unit-systemd-modules-load.service
+/nix/store/2j99qqcxknjr6357pp19p1xiclxnalbb-procps-4.0.6
+/nix/store/2n1rzjngpw6bfb8r9gk5457rm0hp5da5-libcap-2.77-lib
+/nix/store/2wyw03178cxxbyjfmb2mfhm43gndjfyg-shadow-4.19.4-man
+/nix/store/30drwqyl8jp4ral4mwwhihyjdysm1pd1-unit-systemd-journald.service
+/nix/store/32zyi24q3mzzza5gh2pym4hffll6l7sf-nix-manual-2.34.8-man
+/nix/store/35mizn7gqfbrr4bq08xnwkrs9a1h95sw-kmod-blacklist-31+20240202-2ubuntu8
+/nix/store/368aipn6s922sl4v70vs0fvr800fjqkn-hwloc-2.13.0-lib
+/nix/store/373aqrg57wpip0arcfrhlyv1zxx9dbjd-acl-2.4.0-man
+/nix/store/37ri5k8y938jq7sxam47wjhcr3wsq84f-security-wrapper-mount-x86_64-unknown-linux-musl
+/nix/store/389a70m1z11xiz1b5b4gawz1z7w085rh-glibc-2.42-84-bin
+/nix/store/3b7njvjfc2w5lhj1jklrsw4lq7nwypri-gcc-15.2.0-lib
+/nix/store/3bn34q2w61f3n6x1zfa59p2kx1c65qzx-aws-c-event-stream-0.7.0
+/nix/store/3c1xkvvvmm4cwikxwf7cf54qmbs1gq3q-dosfstools-4.2-doc
+/nix/store/3cavgp9jaq7jpvcwq3x71x4sqsygsn8w-dash-0.5.13.3
+/nix/store/3ddb0w5y71a0fnvhj49w8mn7lnn8vl0x-nixos-rebuild-ng-26.05
+/nix/store/3dnq5b3jd0bpnvc19w8dyx2byl2dhq3d-c-rbtree-3.2.0
+/nix/store/3dpb8k3p145iagw1gas07kd9acvh6x7r-unit-sshd-vsock.socket
+/nix/store/3hyi6j0l54p8xcj7zbakzvx330llw1wq-iputils-20250605
+/nix/store/3ikilpq6sgv4ckxw00hz1k0kps4vw5vy-cpio-2.15
+/nix/store/3is6h8kl4fic748fsm6m19x8a13p76bk-security-wrapper-newgrp-x86_64-unknown-linux-musl
+/nix/store/3jdbra59k1zvb2ml8wc0xiwy2f10x8m4-gettext-1.0
+/nix/store/3kfmw6ad2cykbvw9djimngh23218l7a4-perl5.42.0-libnet-3.15
+/nix/store/3mfkj0xvz1khmf27zm1m3gl852vnh33n-libpipeline-1.5.8
+/nix/store/3mh73rpyhdgf1ji0lywdfqhkihyhalqj-unit-serial-getty-hvc0.service-disabled
+/nix/store/3nf6r9s0wd9jwpy036wygsch97wir1xp-libarchive-3.8.9-lib
+/nix/store/3nkqlnrl1qs7cyr7jhphz68vnc6zaava-hostname-debian-3.25-man
+/nix/store/3qaliiz7cmnxy291fwvsf47m91py0x6y-nixos-version
+/nix/store/3rfpa810ni2sfiv185rbssc7rnj9gcvk-perl5.42.0-libwww-perl-6.72
+/nix/store/3ssfwfhv7na87d8mdbnwwp7bqkjip01a-unit-run-wrappers.mount
+/nix/store/3xa99s6wnhrw6lyqadq4lclk1gz4giyb-unit-systemd-update-utmp.service
+/nix/store/3zrzn6fp2ylm7y1cya5jjsgi47ffgbdc-glib-2.88.3
+/nix/store/3zvl71k6zvl6ilwkdg9mpf48qbcpa7bq-security-wrapper-passwd-x86_64-unknown-linux-musl
+/nix/store/3zw61qx1c914kxgjj2ayfi0xyh4gwccr-fontconfig-2.17.1
+/nix/store/401jkmdkffab3vsiv68bjlblq3ggdqh1-unit-systemd-oomd.service
+/nix/store/473m2zam5zgd23yzzqk95fawmsnb8x4m-bash-interactive-5.3p9-doc
+/nix/store/4wczb0xssqg1rqgxsykwc2cnnvvs407k-attr-2.6.0-man
+/nix/store/5l6va3d5mpx275fy37yiwxqw5y58h85y-systemd-minimal-260.2
+/nix/store/61685rbaxmpigwi3z23i33sv3jyfl70q-coreutils-9.11
+/nix/store/8ghgn3gv6k8cvjv92f7blmyrjd1ycf51-linux-6.18.50-modules
+/nix/store/99bljb0jiac0rzkjv0hhclbzz2fn3jx5-nixos-system-unnamed-amazon-26.05.9592.21a67dc47014
+/nix/store/ackz66vvxyrl3di7r8z1v35vfhflhm0s-glibc-locales-2.42-84
+/nix/store/axl12yr00f105bjqvj628f5f0s6r0cnp-bash-5.3p9
+/nix/store/bfsqis9g7kpbvibgsrwqhnzb3firlqni-util-linux-2.42.2-lib
+/nix/store/blycm46bvmfji10v32khnj8m5lvk8i1n-attr-2.6.0-bin
+/nix/store/bmi7h6s5agcrv34slyirf3nj9kj86wfw-bash-interactive-5.3p9-man
+/nix/store/cjxc4x3cnlzlcdrsi92k5i7pkn78ixnz-curl-8.21.0
+/nix/store/dvab2dg1czm40gp5si151sj86rfjwnfm-linux-6.18.50
+/nix/store/frljwrcd9gl19l5ybmwqn19wjzphiy0i-acl-2.4.0
+/nix/store/hx2ghzi4sapjw1mqhxp7l0knsajjg3n0-curl-8.21.0-man
+/nix/store/ivjxzg1i3lab63k4vgmjrp9iz1g3xspm-curl-8.21.0-bin
+/nix/store/j5wssm0i20lr5kwiqd1mk9ghfd2hiksq-bash-interactive-5.3p9-info
+/nix/store/jabdcdyxpiswx3b9hhp8wl740hqx9kv3-util-linux-2.42.2-swap
+/nix/store/khnfirshq5j299s6sfj0laxj0vr7gaa6-systemd-260.2
+/nix/store/kql2l4nafrby8ghb3klj5n8arhd2v61h-util-linux-2.42.2-bin
+/nix/store/kycqp125rm2vhwfr8p7va57ccf20nygr-systemd-260.2-man
+/nix/store/l70vbl5kalkancp45i0xg3606rqkdih8-util-linux-2.42.2-man
+/nix/store/lm4wg5hhxlmrsxm9czrmys0yk7d74ah7-attr-2.6.0-doc
+/nix/store/mzcxsv4qgymhbff4qxy1d02mln8g9553-glibc-2.42-84-getent
+/nix/store/njxgc2gff9ws5lwnrm6zvgjyxwrs240w-acl-2.4.0-bin
+/nix/store/nxpw2vcmafy10hhm96p30zsm7qizpn5g-util-linux-2.42.2-lastlog
+/nix/store/q1w855dvrm32p15r256k4c9srlr8z5b5-attr-2.6.0
+/nix/store/qilxjlbdj0rvrz8isfmnfb9cp91fbvv1-openssh-10.5p1
+/nix/store/r2qhq8nplb3j5a8mzcyg68wj58nq495z-linux-6.18.50-modules
+/nix/store/rc5i0xgp7s5ph280hs7xsx33qmh8xpi5-acl-2.4.0-doc
+/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84
+/nix/store/rqzm26y92kdqys6qjjdzfh087cf0vam4-getent-glibc-2.42-84
+/nix/store/rww67gmlsva48rqj4xqyrynrxavjg5wx-util-linux-2.42.2-mount
+/nix/store/wpv267cm8p06c9jkvkqmybp8i5b95awk-openssh-10.5p1-man
+/nix/store/yisa2lg79zcvgk4ck4yr6r0lz6j63hs3-bash-interactive-5.3p9

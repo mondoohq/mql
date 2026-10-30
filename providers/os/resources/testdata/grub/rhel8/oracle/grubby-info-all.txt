@@ -1,0 +1,14 @@
+index=0
+kernel="/boot/vmlinuz-4.18.0-553.158.1.el8_10.x86_64"
+args="console=tty0 console=ttyS0,115200n8 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 crashkernel=auto $tuned_params"
+root="UUID=8875bdd5-696b-4a06-9a4f-10359af2e044"
+initrd="/boot/initramfs-4.18.0-553.158.1.el8_10.x86_64.img $tuned_initrd"
+title="Red Hat Enterprise Linux (4.18.0-553.158.1.el8_10.x86_64) 8.10 (Ootpa)"
+id="ffffffffffffffffffffffffffffffff-4.18.0-553.158.1.el8_10.x86_64"
+index=1
+kernel="/boot/vmlinuz-0-rescue-ffffffffffffffffffffffffffffffff"
+args="console=tty0 console=ttyS0,115200n8 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 crashkernel=auto"
+root="UUID=8875bdd5-696b-4a06-9a4f-10359af2e044"
+initrd="/boot/initramfs-0-rescue-ffffffffffffffffffffffffffffffff.img"
+title="Red Hat Enterprise Linux (0-rescue-ffffffffffffffffffffffffffffffff) 8.10 (Ootpa)"
+id="ffffffffffffffffffffffffffffffff-0-rescue"

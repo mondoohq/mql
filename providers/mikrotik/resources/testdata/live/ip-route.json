@@ -1,0 +1,32 @@
+[
+ {
+  ".id": "*80000001",
+  "active": "true",
+  "dhcp": "true",
+  "distance": "1",
+  "dst-address": "0.0.0.0/0",
+  "dynamic": "true",
+  "gateway": "10.98.0.1",
+  "immediate-gw": "10.98.0.1%ether1",
+  "inactive": "false",
+  "routing-table": "main",
+  "scope": "30",
+  "target-scope": "10",
+  "vrf-interface": "ether1"
+ },
+ {
+  ".id": "*20183020",
+  "active": "true",
+  "connect": "true",
+  "distance": "0",
+  "dst-address": "10.98.0.0/24",
+  "dynamic": "true",
+  "gateway": "ether1",
+  "immediate-gw": "ether1",
+  "inactive": "false",
+  "local-address": "10.98.0.103%ether1",
+  "routing-table": "main",
+  "scope": "10",
+  "target-scope": "5"
+ }
+]

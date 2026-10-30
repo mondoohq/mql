@@ -29,7 +29,7 @@ func vmNetworkKey(vmid int64, slot string) string {
 }
 
 func vmDiskKey(vmid int64, slot string) string {
-	return fmt.Sprintf("proxmox.vm.disk/%d/%s", vmid, slot)
+	return fmt.Sprintf("proxmox.vm.virtualDisk/%d/%s", vmid, slot)
 }
 
 func vmSnapshotKey(vmid int64, name string) string {
@@ -103,6 +103,14 @@ func firewallAliasKey(scope, name string) string {
 	return "proxmox.firewall.alias/" + scope + "/" + name
 }
 
+// firewall.rule has no natural scalar id, so its __id is scope + the rule
+// tuple. Scope MUST be part of the key: it's an Internal-struct field set
+// after CreateResource, so it can't come from id() (which would run with an
+// empty scope) — the __id is built explicitly at the call site instead.
+func firewallRuleKey(scope string, pos int, typ, action, source, dest string) string {
+	return fmt.Sprintf("proxmox.firewall.rule/%s/%d/%s/%s/%s/%s", scope, pos, typ, action, source, dest)
+}
+
 // TestVMSnapshotAndContainerSnapshotKeysDoNotCollide guards the bug
 // motivating this refactor: VM and container snapshots share the
 // proxmox.vm.snapshot resource type, so without a scope prefix a VM
@@ -155,6 +163,8 @@ func TestCacheKeysIncludeParentContext(t *testing.T) {
 		{"firewall.ipset.entry", firewallIpsetEntryKey("vm/100/allow", "10.0.0.0/24"), "vm/100/allow"},
 		{"firewall.alias (cluster)", firewallAliasKey("cluster", "office"), "cluster"},
 		{"firewall.alias (ct)", firewallAliasKey("ct/200", "internal"), "ct/200"},
+		{"firewall.rule (vm)", firewallRuleKey("vm/100", 0, "in", "ACCEPT", "", ""), "vm/100"},
+		{"firewall.rule (ct)", firewallRuleKey("ct/200", 0, "in", "ACCEPT", "", ""), "ct/200"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -188,6 +198,16 @@ func TestCacheKeysDistinctAcrossParents(t *testing.T) {
 		{"firewall.ipset across scopes", firewallIpsetKey("cluster", "blocklist"), firewallIpsetKey("vm/100", "blocklist")},
 		{"firewall.ipset.entry across parent ipsets", firewallIpsetEntryKey("vm/100/allow", "10.0.0.0/24"), firewallIpsetEntryKey("vm/101/allow", "10.0.0.0/24")},
 		{"firewall.alias across scopes", firewallAliasKey("cluster", "office"), firewallAliasKey("vm/100", "office")},
+		// The C1 regression: two rules with an identical pos/type/action/
+		// source/dest tuple on different guests must NOT collide. With an empty
+		// scope segment (the bug) both were "proxmox.firewall.rule//0/in/ACCEPT//"
+		// and the second aliased the first.
+		{"firewall.rule identical tuple across VMs",
+			firewallRuleKey("vm/100", 0, "in", "ACCEPT", "", ""),
+			firewallRuleKey("vm/101", 0, "in", "ACCEPT", "", "")},
+		{"firewall.rule identical tuple vm vs ct",
+			firewallRuleKey("vm/100", 0, "in", "ACCEPT", "", ""),
+			firewallRuleKey("ct/100", 0, "in", "ACCEPT", "", "")},
 	}
 	for _, tt := range pairs {
 		t.Run(tt.name, func(t *testing.T) {
@@ -207,7 +227,7 @@ func TestCacheKeyHelpersMatchProductionFormat(t *testing.T) {
 	vmGo := mustReadFile(t, "vm.go")
 	for _, expected := range []string{
 		`"proxmox.vm.network/%d/%s"`,
-		`"proxmox.vm.disk/%d/%s"`,
+		`"proxmox.vm.virtualDisk/%d/%s"`,
 		`"proxmox.vm.snapshot/vm/%d/%s"`,
 		`"proxmox.vm.update/%d/%s"`,
 		`"proxmox.vm.serialPort/%d/%s"`,
@@ -236,5 +256,10 @@ func TestCacheKeyHelpersMatchProductionFormat(t *testing.T) {
 		if !containsSubstring(fwGo, expected) {
 			t.Errorf("firewall.go is missing the __id format %s", expected)
 		}
+	}
+	// firewall.rule builds its __id at the CreateResource site in helpers.go.
+	helpersGo := mustReadFile(t, "helpers.go")
+	if !containsSubstring(helpersGo, `"proxmox.firewall.rule/%s/%d/%s/%s/%s/%s"`) {
+		t.Error("helpers.go is missing the firewall.rule __id format")
 	}
 }

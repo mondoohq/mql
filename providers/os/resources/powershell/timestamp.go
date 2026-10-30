@@ -9,7 +9,9 @@ import (
 	"time"
 )
 
-var powershellTimestamp = regexp.MustCompile(`Date\((\d+)\)`)
+// Date(ms) or Date(ms+hhmm): the offset only says which zone the value was
+// local to, ms is always since the unix epoch in UTC.
+var powershellTimestamp = regexp.MustCompile(`Date\((-?\d+)(?:[+-]\d{4})?\)`)
 
 func PSJsonTimestamp(date string) *time.Time {
 	// extract unix seconds
@@ -20,7 +22,11 @@ func PSJsonTimestamp(date string) *time.Time {
 			return nil
 		}
 
-		tm := time.Unix(0, i*int64(time.Millisecond))
+		// UnixMilli rather than time.Unix(0, i*int64(time.Millisecond)): the
+		// regex captures an unbounded run of digits, and that multiplication
+		// overflows int64 past ~year 2262, wrapping to a confident-looking wrong
+		// date instead of the nil callers check for.
+		tm := time.UnixMilli(i)
 		return &tm
 	}
 	return nil

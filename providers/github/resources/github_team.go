@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/google/go-github/v88/github"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/github/connection"
+	"github.com/google/go-github/v93/github"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/github/connection"
 )
 
 func (g *mqlGithubTeam) id() (string, error) {
@@ -91,7 +91,7 @@ func (g *mqlGithubTeam) members() ([]any, error) {
 	orgID := org.Id.Data
 
 	listOpts := &github.TeamListTeamMembersOptions{
-		ListOptions: github.ListOptions{PerPage: paginationPerPage},
+		PerPage: paginationPerPage,
 	}
 	var allMembers []*github.User
 	for {

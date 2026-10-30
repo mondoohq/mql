@@ -1,0 +1,57 @@
+{
+ "vrfs": {
+  "default": {
+   "asn": "65001",
+   "peers": {
+    "10.0.0.2": {
+     "asn": "65001",
+     "description": "IBGP-PEER-STANDALONE",
+     "inMsgQueue": 0,
+     "msgReceived": 4,
+     "msgSent": 4,
+     "outMsgQueue": 0,
+     "peerState": "Connect",
+     "prefixAccepted": 0,
+     "prefixAdvertised": 0,
+     "prefixReceived": 0,
+     "underMaintenance": false,
+     "upDownTime": 1787803992.099067,
+     "version": 4
+    },
+    "10.1.1.2": {
+     "asn": "65002",
+     "description": "EBGP-PEER-VIA-GROUP",
+     "inMsgQueue": 0,
+     "msgReceived": 0,
+     "msgSent": 0,
+     "outMsgQueue": 0,
+     "peerState": "Idle",
+     "peerStateIdleReason": "NoInterface",
+     "prefixAccepted": 0,
+     "prefixAdvertised": 0,
+     "prefixReceived": 0,
+     "underMaintenance": false,
+     "upDownTime": 1787803992.098534,
+     "version": 4
+    },
+    "10.1.1.6": {
+     "asn": "65003",
+     "inMsgQueue": 0,
+     "msgReceived": 0,
+     "msgSent": 0,
+     "outMsgQueue": 0,
+     "peerState": "Idle",
+     "peerStateIdleReason": "Admin",
+     "prefixAccepted": 0,
+     "prefixAdvertised": 0,
+     "prefixReceived": 0,
+     "underMaintenance": false,
+     "upDownTime": 1787803992.092055,
+     "version": 4
+    }
+   },
+   "routerId": "10.0.0.1",
+   "vrf": "default"
+  }
+ }
+}

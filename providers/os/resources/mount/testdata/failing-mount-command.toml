@@ -1,0 +1,14 @@
+# A host where the `mount` binary exists but refuses to answer. Pre-fix its
+# stderr parsed to an empty list, so the resource reported "nothing is mounted".
+
+[commands."mount"]
+stdout = ""
+stderr = "mount: failed to read mtab: Permission denied"
+exit_status = 1
+
+[files."/proc/mounts"]
+content = """
+proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0
+/dev/nvme0n1p1 / ext4 rw,relatime,discard 0 0
+tmpfs /run tmpfs rw,nosuid,nodev,size=799604k,mode=755 0 0
+"""

@@ -1,0 +1,14 @@
+filesystem	1.1-21.azl3	1790188862	1721470617	Microsoft Corporation	(none)	7700	aarch64	0	filesystem-1.1-21.azl3.src.rpm
+azurelinux-release	3.0-51.azl3	1790188863	1790174966	Microsoft Corporation	(none)	4516	noarch	0	azurelinux-release-3.0-51.azl3.src.rpm
+glibc	2.38-21.azl3	1790188863	1788918112	Microsoft Corporation	(none)	10042061	aarch64	0	glibc-2.38-21.azl3.src.rpm
+SymCrypt	103.8.0-1.azl3	1790188863	1738881432	Microsoft Corporation	(none)	1503266	aarch64	0	SymCrypt-103.8.0-1.azl3.src.rpm
+openssl	3.3.7-6.azl3	1790188863	1788918706	Microsoft Corporation	(none)	1861327	aarch64	0	openssl-3.3.7-6.azl3.src.rpm
+openssl-libs	3.3.7-6.azl3	1790188863	1788918706	Microsoft Corporation	(none)	5700312	aarch64	0	openssl-3.3.7-6.azl3.src.rpm
+SymCrypt-OpenSSL	1.10.2-1.azl3	1790188863	1790174966	Microsoft Corporation	(none)	603616	aarch64	0	SymCrypt-OpenSSL-1.10.2-1.azl3.src.rpm
+tzdata	2026c-1.azl3	1790188863	1788925330	Microsoft Corporation	(none)	1493560	noarch	0	tzdata-2026c-1.azl3.src.rpm
+distroless-packages-minimal	3.0-5.azl3	1790188863	1721477125	Microsoft Corporation	(none)	0	aarch64	0	distroless-packages-3.0-5.azl3.src.rpm
+libgcc	13.2.0-7.azl3	1790188863	1721471032	Microsoft Corporation	(none)	136544	aarch64	0	gcc-13.2.0-7.azl3.src.rpm
+glibc-iconv	2.38-21.azl3	1790188863	1788918112	Microsoft Corporation	(none)	19895826	aarch64	0	glibc-2.38-21.azl3.src.rpm
+iana-etc	20240125-1.azl3	1790188863	1721477116	Microsoft Corporation	(none)	569841	noarch	0	iana-etc-20240125-1.azl3.src.rpm
+distroless-packages-base	3.0-5.azl3	1790188863	1721477125	Microsoft Corporation	(none)	0	aarch64	0	distroless-packages-3.0-5.azl3.src.rpm
+prebuilt-ca-certificates	3.0.0-16.azl3	1790188863	1788925330	Microsoft Corporation	(none)	2285161	noarch	1	prebuilt-ca-certificates-3.0.0-16.azl3.src.rpm

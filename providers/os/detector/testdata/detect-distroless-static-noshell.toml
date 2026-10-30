@@ -1,0 +1,18 @@
+# gcr.io/distroless/static-debian12: no shell, no uname, os-release under /usr/lib
+[files."/etc/debian_version"]
+content = "12.15\n"
+
+[files."/usr/lib/os-release"]
+content = """PRETTY_NAME="Distroless"
+NAME="Debian GNU/Linux"
+ID="debian"
+VERSION_ID="12"
+VERSION="Debian GNU/Linux 12 (bookworm)"
+HOME_URL="https://github.com/GoogleContainerTools/distroless"
+"""
+
+[files."/proc/sys/kernel/ostype"]
+content = "Linux\n"
+
+[files."/proc/sys/kernel/osrelease"]
+content = "6.12.76-linuxkit\n"

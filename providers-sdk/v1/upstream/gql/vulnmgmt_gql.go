@@ -99,14 +99,15 @@ type Cve struct {
 	State string
 }
 
+// Advisory's fields are the GraphQL selection set. It deliberately does not
+// select the deprecated Advisory.cves: the server resolves it with several MVD
+// calls per advisory, and nothing here reads it. The report's top-level Cves
+// carries the asset's CVEs.
 type Advisory struct {
 	Id          string
 	Title       string
 	Description string
 
-	Cves []struct {
-		Cve
-	}
 	CvssScore struct {
 		Id     string
 		Value  int

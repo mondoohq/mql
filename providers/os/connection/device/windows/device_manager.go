@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/os/connection/snapshot"
+	"go.mondoo.com/mql/providers/os/connection/snapshot"
 )
 
 const (
@@ -63,7 +63,7 @@ func (d *WindowsDeviceManager) IdentifyMountTargets(opts map[string]string) ([]*
 		if err != nil {
 			return nil, err
 		}
-		d.diskSetToOnline = true
+		d.diskSetToReadonly = true
 		d.diskIndex = targetDrive.Index
 	}
 	if diskStatus.Offline {

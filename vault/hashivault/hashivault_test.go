@@ -14,7 +14,7 @@ import (
 	"github.com/hashicorp/vault/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 )
 
 func TestHashiVault(t *testing.T) {
@@ -31,11 +31,11 @@ func TestHashiVault(t *testing.T) {
 		"key":  "value",
 		"key2": "value2",
 	}
-	id, err := set(c, key, fields)
+	v := New(endpoint, token)
+	id, err := set(v, c, key, fields)
 	require.NoError(t, err)
 
 	// get secret
-	v := New(endpoint, token)
 	newCred, err := v.Get(ctx, id)
 	require.NoError(t, err)
 
@@ -59,7 +59,7 @@ func client(endpoint string, token string) (*api.Client, error) {
 	return c, nil
 }
 
-func set(c *api.Client, key string, fields map[string]string) (*vault.SecretID, error) {
+func set(v *Vault, c *api.Client, key string, fields map[string]string) (*vault.SecretID, error) {
 	err := validKey(key)
 	if err != nil {
 		return nil, err
@@ -79,7 +79,7 @@ func set(c *api.Client, key string, fields map[string]string) (*vault.SecretID, 
 	}
 
 	// store secret
-	_, err = c.Logical().Write(vaultSecretId(key), secretData)
+	_, err = c.Logical().Write(v.secretPath(key), secretData)
 	if err != nil {
 		return nil, err
 	}

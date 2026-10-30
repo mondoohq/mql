@@ -121,7 +121,10 @@ func loadInventory(root string) (*Inventory, error) {
 		if isINIInventory(data) {
 			parseINIInventory(b, data)
 		} else if err := parseYAMLInventory(b, data); err != nil {
-			return nil, err
+			// A single unparseable inventory file (e.g. YAML that yaml.v3
+			// rejects but Ansible tolerates) should not abort the whole
+			// project load; skip it, matching loadPlaybooks.
+			continue
 		}
 		found = true
 	}
@@ -179,10 +182,17 @@ func inventorySources(root string) []string {
 // INI inventories open with a `[section]` header or bare host lines, whereas
 // YAML inventories use `key:` mappings.
 func isINIInventory(data []byte) bool {
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
 			continue
+		}
+		// A YAML document marker (--- / ...) can only start a YAML inventory;
+		// INI has no such construct. Skip it so classification keys off the
+		// first real content line (e.g. an `all:` mapping) rather than
+		// mistaking `---` for a bare INI host line.
+		if line == "---" || line == "..." {
+			return false
 		}
 		if strings.HasPrefix(line, "[") {
 			return true
@@ -203,7 +213,7 @@ func parseINIInventory(b *inventoryBuilder, data []byte) {
 	section := "ungrouped"
 	sectionType := "hosts"
 
-	for _, raw := range strings.Split(string(data), "\n") {
+	for raw := range strings.SplitSeq(string(data), "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
 			continue
@@ -212,8 +222,8 @@ func parseINIInventory(b *inventoryBuilder, data []byte) {
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			name := strings.TrimSuffix(strings.TrimPrefix(line, "["), "]")
 			section, sectionType = name, "hosts"
-			if idx := strings.LastIndex(name, ":"); idx >= 0 {
-				section, sectionType = name[:idx], name[idx+1:]
+			if before, after, ok := strings.CutLast(name, ":"); ok {
+				section, sectionType = before, after
 			}
 			b.group(section) // ensure empty groups still appear
 			continue

@@ -14,11 +14,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/webpubsub/armwebpubsub"
 	"github.com/rs/zerolog/log"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func initAzureSubscriptionSignalRService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -108,25 +108,36 @@ func signalRToMql(runtime *plugin.Runtime, sr *armsignalr.ResourceInfo) (*mqlAzu
 		}
 	}
 
-	res, err := CreateResource(runtime, "azure.subscription.signalRService.signalR",
-		map[string]*llx.RawData{
-			"id":                       llx.StringDataPtr(sr.ID),
-			"name":                     llx.StringDataPtr(sr.Name),
-			"location":                 llx.StringDataPtr(sr.Location),
-			"tags":                     llx.MapData(convert.PtrMapStrToInterface(sr.Tags), types.String),
-			"kind":                     llx.StringData(string(convert.ToValue(sr.Kind))),
-			"sku":                      llx.DictData(sku),
-			"identity":                 llx.DictData(identity),
-			"hostName":                 llx.StringData(hostName),
-			"externalIp":               llx.StringData(externalIP),
-			"version":                  llx.StringData(version),
-			"publicNetworkAccess":      llx.StringData(publicNetworkAccess),
-			"disableLocalAuth":         llx.BoolData(disableLocalAuth),
-			"disableAadAuth":           llx.BoolData(disableAadAuth),
-			"clientCertEnabled":        llx.BoolData(clientCertEnabled),
-			"networkAclsDefaultAction": llx.StringData(networkAclsDefaultAction),
-			"provisioningState":        llx.StringData(provisioningState),
-		})
+	args := map[string]*llx.RawData{
+		"id":                       llx.StringDataPtr(sr.ID),
+		"name":                     llx.StringDataPtr(sr.Name),
+		"location":                 llx.StringDataPtr(sr.Location),
+		"tags":                     llx.MapData(convert.PtrMapStrToInterface(sr.Tags), types.String),
+		"kind":                     llx.StringData(string(convert.ToValue(sr.Kind))),
+		"sku":                      llx.DictData(sku),
+		"identity":                 llx.DictData(identity),
+		"hostName":                 llx.StringData(hostName),
+		"externalIp":               llx.StringData(externalIP),
+		"version":                  llx.StringData(version),
+		"publicNetworkAccess":      llx.StringData(publicNetworkAccess),
+		"disableLocalAuth":         llx.BoolData(disableLocalAuth),
+		"disableAadAuth":           llx.BoolData(disableAadAuth),
+		"clientCertEnabled":        llx.BoolData(clientCertEnabled),
+		"networkAclsDefaultAction": llx.StringData(networkAclsDefaultAction),
+		"provisioningState":        llx.StringData(provisioningState),
+	}
+	srSku := orZero(sr.SKU)
+	if err := setSkuData(runtime, args, skuName(srSku.Name), skuTier(srSku.Tier), skuCapacity(srSku.Capacity)); err != nil {
+		return nil, err
+	}
+
+	srIdentity := orZero(sr.Identity)
+	if err := setResourceIdentity(runtime, args, sortedUserAssignedIdentityIDs(srIdentity.UserAssignedIdentities),
+		identityType(srIdentity.Type), identityPrincipalId(srIdentity.PrincipalID), identityTenantId(srIdentity.TenantID)); err != nil {
+		return nil, err
+	}
+
+	res, err := CreateResource(runtime, "azure.subscription.signalRService.signalR", args)
 	if err != nil {
 		return nil, err
 	}
@@ -242,25 +253,36 @@ func webPubSubToMql(runtime *plugin.Runtime, wps *armwebpubsub.ResourceInfo) (*m
 		}
 	}
 
-	res, err := CreateResource(runtime, "azure.subscription.webPubSubService.webPubSub",
-		map[string]*llx.RawData{
-			"id":                       llx.StringDataPtr(wps.ID),
-			"name":                     llx.StringDataPtr(wps.Name),
-			"location":                 llx.StringDataPtr(wps.Location),
-			"tags":                     llx.MapData(convert.PtrMapStrToInterface(wps.Tags), types.String),
-			"kind":                     llx.StringData(string(convert.ToValue(wps.Kind))),
-			"sku":                      llx.DictData(sku),
-			"identity":                 llx.DictData(identity),
-			"hostName":                 llx.StringData(hostName),
-			"externalIp":               llx.StringData(externalIP),
-			"version":                  llx.StringData(version),
-			"publicNetworkAccess":      llx.StringData(publicNetworkAccess),
-			"disableLocalAuth":         llx.BoolData(disableLocalAuth),
-			"disableAadAuth":           llx.BoolData(disableAadAuth),
-			"clientCertEnabled":        llx.BoolData(clientCertEnabled),
-			"networkAclsDefaultAction": llx.StringData(networkAclsDefaultAction),
-			"provisioningState":        llx.StringData(provisioningState),
-		})
+	args := map[string]*llx.RawData{
+		"id":                       llx.StringDataPtr(wps.ID),
+		"name":                     llx.StringDataPtr(wps.Name),
+		"location":                 llx.StringDataPtr(wps.Location),
+		"tags":                     llx.MapData(convert.PtrMapStrToInterface(wps.Tags), types.String),
+		"kind":                     llx.StringData(string(convert.ToValue(wps.Kind))),
+		"sku":                      llx.DictData(sku),
+		"identity":                 llx.DictData(identity),
+		"hostName":                 llx.StringData(hostName),
+		"externalIp":               llx.StringData(externalIP),
+		"version":                  llx.StringData(version),
+		"publicNetworkAccess":      llx.StringData(publicNetworkAccess),
+		"disableLocalAuth":         llx.BoolData(disableLocalAuth),
+		"disableAadAuth":           llx.BoolData(disableAadAuth),
+		"clientCertEnabled":        llx.BoolData(clientCertEnabled),
+		"networkAclsDefaultAction": llx.StringData(networkAclsDefaultAction),
+		"provisioningState":        llx.StringData(provisioningState),
+	}
+	wpsSku := orZero(wps.SKU)
+	if err := setSkuData(runtime, args, skuName(wpsSku.Name), skuTier(wpsSku.Tier), skuCapacity(wpsSku.Capacity)); err != nil {
+		return nil, err
+	}
+
+	wpsIdentity := orZero(wps.Identity)
+	if err := setResourceIdentity(runtime, args, sortedUserAssignedIdentityIDs(wpsIdentity.UserAssignedIdentities),
+		identityType(wpsIdentity.Type), identityPrincipalId(wpsIdentity.PrincipalID), identityTenantId(wpsIdentity.TenantID)); err != nil {
+		return nil, err
+	}
+
+	res, err := CreateResource(runtime, "azure.subscription.webPubSubService.webPubSub", args)
 	if err != nil {
 		return nil, err
 	}

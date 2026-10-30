@@ -13,16 +13,58 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
+	cftypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/cockroachdb/errors"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsCloudfront) id() (string, error) {
 	return "aws.cloudfront", nil
+}
+
+type mqlAwsCloudfrontInternal struct {
+	domainIndexMu    sync.Mutex
+	domainIndexBuilt bool
+	domainIndex      map[string]*mqlAwsCloudfrontDistribution
+}
+
+// distributionByDomainName returns the distribution whose domain name matches
+// the given already-normalized DNS name, or nil when none matches. It builds a
+// normalized-domain-name index on first call and reuses it afterwards. The index
+// lives on the aws.cloudfront list resource, which the runtime caches, so many
+// callers (for example Route 53 alias records) share one index instead of each
+// rescanning every distribution.
+func (a *mqlAwsCloudfront) distributionByDomainName(normalized string) (*mqlAwsCloudfrontDistribution, error) {
+	a.domainIndexMu.Lock()
+	defer a.domainIndexMu.Unlock()
+
+	if !a.domainIndexBuilt {
+		dists := a.GetDistributions()
+		if dists.Error != nil {
+			return nil, dists.Error
+		}
+		idx := make(map[string]*mqlAwsCloudfrontDistribution, len(dists.Data))
+		for _, d := range dists.Data {
+			dist, ok := d.(*mqlAwsCloudfrontDistribution)
+			if !ok {
+				continue
+			}
+			domainName := dist.GetDomainName()
+			if domainName.Error != nil {
+				return nil, domainName.Error
+			}
+			if domainName.Data != "" {
+				idx[normalizeAliasDNSName(domainName.Data)] = dist
+			}
+		}
+		a.domainIndex = idx
+		a.domainIndexBuilt = true
+	}
+	return a.domainIndex[normalized], nil
 }
 
 func (a *mqlAwsCloudfrontDistribution) id() (string, error) {
@@ -33,6 +75,25 @@ func (a *mqlAwsCloudfrontDistributionOrigin) id() (string, error) {
 	account := a.Account.Data
 	id := a.Id.Data
 	return account + "/" + id, nil
+}
+
+// cloudfrontOriginTls reports how CloudFront reaches a custom origin. The
+// origin leg is configured independently of the viewer leg, so a distribution
+// can enforce HTTPS to viewers while fetching from the origin in plaintext or
+// over a deprecated TLS version. S3 origins served through the S3 origin config
+// carry no custom origin config and yield an empty policy and no protocols,
+// rather than a policy that would read as plaintext.
+func cloudfrontOriginTls(config *cftypes.CustomOriginConfig) (string, []any) {
+	protocols := []any{}
+	if config == nil {
+		return "", protocols
+	}
+	if config.OriginSslProtocols != nil {
+		for _, p := range config.OriginSslProtocols.Items {
+			protocols = append(protocols, string(p))
+		}
+	}
+	return string(config.OriginProtocolPolicy), protocols
 }
 
 func (a *mqlAwsCloudfront) distributions() ([]any, error) {
@@ -61,8 +122,16 @@ func (a *mqlAwsCloudfront) distributions() ([]any, error) {
 					if origin.S3OriginConfig != nil && origin.S3OriginConfig.OriginAccessIdentity != nil {
 						oai = *origin.S3OriginConfig.OriginAccessIdentity
 					}
+					originProtocolPolicy, originSslProtocols := cloudfrontOriginTls(origin.CustomOriginConfig)
 					mqlAwsCloudfrontOrigin, err := CreateResource(a.MqlRuntime, "aws.cloudfront.distribution.origin",
 						map[string]*llx.RawData{
+							// Origin.Id is documented as unique only *within* a
+							// distribution, so the key must name the distribution.
+							// Reusing an origin id like "S3Origin" across distributions
+							// is routine, and the collision also lets the
+							// cacheOriginMtlsCertArn write below land on another
+							// distribution's already-emitted origin.
+							"__id":                  llx.StringData(convert.ToValue(distribution.ARN) + "/origin/" + convert.ToValue(origin.Id)),
 							"domainName":            llx.StringDataPtr(origin.DomainName),
 							"id":                    llx.StringDataPtr(origin.Id),
 							"connectionAttempts":    llx.IntDataDefault(origin.ConnectionAttempts, 0),
@@ -71,6 +140,8 @@ func (a *mqlAwsCloudfront) distributions() ([]any, error) {
 							"account":               llx.StringData(conn.AccountId()),
 							"originAccessControlId": llx.StringDataPtr(origin.OriginAccessControlId),
 							"originAccessIdentity":  llx.StringData(oai),
+							"originProtocolPolicy":  llx.StringData(originProtocolPolicy),
+							"originSslProtocols":    llx.ArrayData(originSslProtocols, types.String),
 						})
 					if err != nil {
 						return nil, err
@@ -263,7 +334,7 @@ func (a *mqlAwsCloudfrontDistribution) tags() (map[string]any, error) {
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return map[string]any{}, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
@@ -340,7 +411,7 @@ func (a *mqlAwsCloudfrontFunction) tags() (map[string]any, error) {
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return map[string]any{}, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
@@ -533,9 +604,8 @@ func initAwsCloudfrontDistribution(runtime *plugin.Runtime, args map[string]*llx
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["domainName"] = llx.StringData(ids.name)
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformCloudfrontDistribution); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -687,4 +757,50 @@ func (a *mqlAwsCloudfrontDistribution) enforcesHttps() (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+type mqlAwsCloudfrontTrustStoreInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsCloudfrontTrustStore) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return cloudfrontResourceTags(a.MqlRuntime, a.Arn.Data)
+	})
+}
+
+type mqlAwsCloudfrontKeyValueStoreInternal struct {
+	lazyTags
+	cacheComment *string
+}
+
+func (a *mqlAwsCloudfrontKeyValueStore) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return cloudfrontResourceTags(a.MqlRuntime, a.Arn.Data)
+	})
+}
+
+// cloudfrontResourceTags lists the tags on a CloudFront resource by ARN.
+// CloudFront is a global service, so the call goes through the default client.
+func cloudfrontResourceTags(runtime *plugin.Runtime, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Cloudfront("")
+	resp, err := svc.ListTagsForResource(context.Background(), &cloudfront.ListTagsForResourceInput{
+		Resource: &resourceArn,
+	})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("cloudfront:ListTagsForResource"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	if resp.Tags == nil {
+		return map[string]any{}, nil
+	}
+	return tagsToMap(resp.Tags.Items,
+		func(t cftypes.Tag) *string { return t.Key },
+		func(t cftypes.Tag) *string { return t.Value }), nil
 }

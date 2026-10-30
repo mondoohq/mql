@@ -1,0 +1,15 @@
+drwxr-xr-x       4096 /boot
+drwxr-xr-x      16384 /boot/efi
+drwxr-xr-x       2048 /boot/efi/EFI
+drwxr-xr-x       2048 /boot/efi/EFI/BOOT
+-rwxr-xr-x    1048504 /boot/efi/EFI/BOOT/BOOTX64.EFI
+drwxr-xr-x       2048 /boot/efi/EFI/debian
+-rwxr-xr-x        108 /boot/efi/EFI/debian/BOOTX64.CSV
+-rwxr-xr-x        117 /boot/efi/EFI/debian/grub.cfg
+drwxr-xr-x       4096 /boot/grub
+drwxr-xr-x       4096 /boot/grub/fonts
+-rw-r--r--       5516 /boot/grub/grub.cfg
+-rw-r--r--       1024 /boot/grub/grubenv
+drwxr-xr-x      12288 /boot/grub/i386-pc
+drwxr-xr-x       4096 /boot/grub/locale
+drwxr-xr-x      12288 /boot/grub/x86_64-efi

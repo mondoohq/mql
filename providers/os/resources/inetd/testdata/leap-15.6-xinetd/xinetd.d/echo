@@ -1,0 +1,13 @@
+# default: off
+# description: An echo server. This is the tcp version.
+
+service echo
+{
+	type		= INTERNAL
+	id		= echo-stream
+	socket_type	= stream
+	protocol	= tcp
+	user		= root
+	wait		= no
+	disable = no
+}                                                                               

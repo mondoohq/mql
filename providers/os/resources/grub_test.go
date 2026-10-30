@@ -7,8 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 )
 
 func TestParseGrubDefaults(t *testing.T) {
@@ -50,6 +52,162 @@ GRUB_TIMEOUT=10
 
 	assert.Equal(t, "audit=1", params["GRUB_CMDLINE_LINUX"])
 	assert.Equal(t, "10", params["GRUB_TIMEOUT"])
+}
+
+// grub-mkconfig sources the defaults file in a shell, so `export KEY=value`
+// assigns KEY. Taken from a hand-written defaults file on Ubuntu 24.04.
+func TestParseGrubDefaultsExport(t *testing.T) {
+	input := `# test defaults
+GRUB_DEFAULT=0
+GRUB_TIMEOUT=5
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+GRUB_CMDLINE_LINUX="audit=1 apparmor=1 security=apparmor"
+export GRUB_DISABLE_RECOVERY='true'
+`
+	params, err := ParseGrubDefaults(strings.NewReader(input))
+	require.NoError(t, err)
+
+	assert.Equal(t, "true", params["GRUB_DISABLE_RECOVERY"])
+	assert.NotContains(t, params, "export GRUB_DISABLE_RECOVERY")
+	assert.Len(t, params, 5)
+}
+
+// The /etc/default/grub and /etc/default/grub.d files of an Ubuntu 22.04
+// cloud image. grub-mkconfig sources the drop-ins after the defaults file,
+// so the cloud image's GRUB_CMDLINE_LINUX_DEFAULT is the one that reaches
+// the kernel command line.
+func ubuntuCloudGrubDefaultsFs(t *testing.T) afero.Fs {
+	t.Helper()
+	fs := afero.NewMemMapFs()
+	files := map[string]string{
+		"/etc/default/grub": `# If you change this file, run 'update-grub' afterwards to update
+# /boot/grub/grub.cfg.
+# For full documentation of the options in this file, see:
+#   info -f grub -n 'Simple configuration'
+
+GRUB_DEFAULT=0
+GRUB_TIMEOUT_STYLE=hidden
+GRUB_TIMEOUT=0
+GRUB_DISTRIBUTOR=` + "`lsb_release -i -s 2> /dev/null || echo Debian`" + `
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+GRUB_CMDLINE_LINUX=""
+
+# Uncomment to disable graphical terminal (grub-pc only)
+#GRUB_TERMINAL=console
+`,
+		"/etc/default/grub.d/40-force-partuuid.cfg": `# Force boot without an initramfs by setting GRUB_FORCE_PARTUUID
+# Remove this line to enable boot with an initramfs
+GRUB_FORCE_PARTUUID=0d1f34a7-78b7-4ddf-9ea2-d42390d32d7c
+`,
+		"/etc/default/grub.d/50-cloudimg-settings.cfg": `# Cloud Image specific Grub settings for AWS EC2 images
+# CLOUD_IMG: This file was created/modified by the Cloud Image build process
+
+# Set the recordfail timeout
+GRUB_RECORDFAIL_TIMEOUT=0
+
+# Do not wait on grub prompt
+GRUB_TIMEOUT=0
+
+# Set the default commandline
+GRUB_CMDLINE_LINUX_DEFAULT="console=tty1 console=ttyS0 nvme_core.io_timeout=4294967295"
+
+# Set the grub console type
+GRUB_TERMINAL=console
+
+GRUB_HIDDEN_TIMEOUT=0.1
+`,
+		"/etc/default/grub.d/init-select.cfg": `# Work around a bug in the obsolete init-select package which broke
+# grub-mkconfig when init-select was removed but not purged.  This file does
+# nothing and will be removed in a later release.
+`,
+	}
+	for name, content := range files {
+		require.NoError(t, afero.WriteFile(fs, name, []byte(content), 0o644))
+	}
+	return fs
+}
+
+func TestLoadGrubDefaultsDropIns(t *testing.T) {
+	fs := ubuntuCloudGrubDefaultsFs(t)
+
+	params, err := loadGrubDefaults(fs, "/etc/default/grub", true)
+	require.NoError(t, err)
+
+	assert.Equal(t, "console=tty1 console=ttyS0 nvme_core.io_timeout=4294967295", params["GRUB_CMDLINE_LINUX_DEFAULT"])
+	assert.Equal(t, "console", params["GRUB_TERMINAL"])
+	assert.Equal(t, "0", params["GRUB_RECORDFAIL_TIMEOUT"])
+	assert.Equal(t, "0.1", params["GRUB_HIDDEN_TIMEOUT"])
+	assert.Equal(t, "0d1f34a7-78b7-4ddf-9ea2-d42390d32d7c", params["GRUB_FORCE_PARTUUID"])
+	// keys only the defaults file sets are kept
+	assert.Equal(t, "hidden", params["GRUB_TIMEOUT_STYLE"])
+	assert.Equal(t, "", params["GRUB_CMDLINE_LINUX"])
+}
+
+// Drop-ins are sourced in name order, so a later file wins, and only *.cfg
+// files are sourced.
+func TestLoadGrubDefaultsDropInOrder(t *testing.T) {
+	fs := ubuntuCloudGrubDefaultsFs(t)
+	require.NoError(t, afero.WriteFile(fs, "/etc/default/grub.d/99-local.cfg", []byte("GRUB_TIMEOUT=3\n"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/default/grub.d/10-early.cfg", []byte("GRUB_TERMINAL=serial\n"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/default/grub.d/99-local.cfg.dpkg-old", []byte("GRUB_TIMEOUT=30\n"), 0o644))
+
+	params, err := loadGrubDefaults(fs, "/etc/default/grub", true)
+	require.NoError(t, err)
+
+	assert.Equal(t, "3", params["GRUB_TIMEOUT"])
+	assert.Equal(t, "console", params["GRUB_TERMINAL"])
+}
+
+func TestLoadGrubDefaultsWithoutDropInDir(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/etc/default/grub", []byte("GRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash\"\n"), 0o644))
+
+	params, err := loadGrubDefaults(fs, "/etc/default/grub", true)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"GRUB_CMDLINE_LINUX_DEFAULT": "quiet splash"}, params)
+
+	_, err = loadGrubDefaults(fs, "/etc/default/missing", true)
+	assert.Error(t, err)
+}
+
+// SUSE's grub2-mkconfig sources /etc/default/grub alone, so a drop-in that
+// would add audit=1 never reaches grub.cfg there. The defaults line is the one
+// openSUSE Leap 16.0 ships on EC2.
+func TestLoadGrubDefaultsIgnoresDropInsWhereMkconfigDoes(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/etc/default/grub", []byte(
+		"GRUB_CMDLINE_LINUX_DEFAULT=\"console=ttyS0 net.ifnames=0 iommu.passthrough=1 8250.nr_uarts=4 dis_ucode_ldr multipath=off nvme_core.admin_timeout=4294967295 nvme_core.io_timeout=4294967295 security=selinux selinux=1\"\n"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/default/grub.d/50-audit.cfg", []byte(
+		"GRUB_CMDLINE_LINUX_DEFAULT=\"$GRUB_CMDLINE_LINUX_DEFAULT audit=1\"\n"), 0o644))
+
+	params, err := loadGrubDefaults(fs, "/etc/default/grub", false)
+	require.NoError(t, err)
+	assert.Equal(t, "console=ttyS0 net.ifnames=0 iommu.passthrough=1 8250.nr_uarts=4 dis_ucode_ldr multipath=off nvme_core.admin_timeout=4294967295 nvme_core.io_timeout=4294967295 security=selinux selinux=1", params["GRUB_CMDLINE_LINUX_DEFAULT"])
+}
+
+func TestGrubMkconfigReadsDropIns(t *testing.T) {
+	tests := []struct {
+		platform *inventory.Platform
+		want     bool
+	}{
+		{&inventory.Platform{Name: "ubuntu", Family: []string{"debian", "linux", "unix", "os"}}, true},
+		{&inventory.Platform{Name: "debian", Family: []string{"debian", "linux", "unix", "os"}}, true},
+		{&inventory.Platform{Name: "sles", Family: []string{"suse", "linux", "unix", "os"}}, false},
+		{&inventory.Platform{Name: "opensuse-leap", Family: []string{"suse", "linux", "unix", "os"}}, false},
+		{&inventory.Platform{Name: "rhel", Family: []string{"redhat", "linux", "unix", "os"}}, false},
+		{&inventory.Platform{Name: "fedora", Family: []string{"redhat", "linux", "unix", "os"}}, false},
+		{&inventory.Platform{Name: "amazonlinux", Family: []string{"linux", "unix", "os"}}, false},
+		{nil, false},
+	}
+	for _, tt := range tests {
+		name := "nil"
+		if tt.platform != nil {
+			name = tt.platform.Name
+		}
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.want, grubMkconfigReadsDropIns(tt.platform))
+		})
+	}
 }
 
 func TestParseGrubCfgEntries(t *testing.T) {
@@ -286,4 +444,349 @@ func TestStripQuotes(t *testing.T) {
 	assert.Equal(t, "", stripQuotes(`""`))
 	assert.Equal(t, "", stripQuotes(`''`))
 	assert.Equal(t, "a", stripQuotes("a"))
+}
+
+// stockRhelUsersBlock is the block /etc/grub.d/01_users writes into grub.cfg on
+// every RHEL-family host, whether or not a GRUB password was ever set. It is
+// dead code unless ${prefix}/user.cfg defines GRUB2_PASSWORD.
+const stockRhelUsersBlock = `### BEGIN /etc/grub.d/01_users ###
+if [ -f ${prefix}/user.cfg ]; then
+  source ${prefix}/user.cfg
+  if [ -n "${GRUB2_PASSWORD}" ]; then
+    set superusers="root"
+    export superusers
+    password_pbkdf2 root ${GRUB2_PASSWORD}
+  fi
+fi
+### END /etc/grub.d/01_users ###
+`
+
+func TestParseGrubPasswordProtectedTemplates(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{
+			name:    "stock RHEL 01_users block is a template, not a password",
+			content: stockRhelUsersBlock,
+			want:    false,
+		},
+		{
+			name: "stock RHEL block inside a full grub.cfg",
+			content: `set pager=1
+` + stockRhelUsersBlock + `### BEGIN /etc/grub.d/10_linux ###
+menuentry 'Red Hat Enterprise Linux (5.14.0) 9.4' {
+	linux /vmlinuz-5.14.0 root=/dev/mapper/rhel-root ro
+	initrd /initramfs-5.14.0.img
+}
+### END /etc/grub.d/10_linux ###
+`,
+			want: false,
+		},
+		{
+			name: "configured pbkdf2 password",
+			content: `set superusers="root"
+password_pbkdf2 root grub.pbkdf2.sha512.10000.ABC123.DEF456
+`,
+			want: true,
+		},
+		{
+			name: "configured plaintext password",
+			content: `set superusers="root"
+password root hunter2
+`,
+			want: true,
+		},
+		{
+			name: "superusers without a password directive",
+			content: `set superusers="root"
+export superusers
+`,
+			want: false,
+		},
+		{
+			name: "password directive without superusers",
+			content: `password_pbkdf2 root grub.pbkdf2.sha512.10000.ABC123.DEF456
+`,
+			want: false,
+		},
+		{
+			name:    "empty content",
+			content: "",
+			want:    false,
+		},
+		{
+			name: "braceless shell variable credential",
+			content: `set superusers="root"
+password_pbkdf2 root $GRUB2_PASSWORD
+`,
+			want: false,
+		},
+		{
+			name: "templated superuser list",
+			content: `set superusers="${GRUB2_SUPERUSER}"
+password_pbkdf2 root grub.pbkdf2.sha512.10000.ABC123.DEF456
+`,
+			want: false,
+		},
+		{
+			name: "empty superusers assignment",
+			content: `set superusers=""
+password_pbkdf2 root grub.pbkdf2.sha512.10000.ABC123.DEF456
+`,
+			want: false,
+		},
+		{
+			name: "password directive with no credential argument",
+			content: `set superusers="root"
+password_pbkdf2 root
+`,
+			want: false,
+		},
+		{
+			name: "indented directives inside a conditional",
+			content: `if [ -n "${x}" ]; then
+    set superusers="admin"
+    password_pbkdf2 admin grub.pbkdf2.sha512.10000.ABC123.DEF456
+fi
+`,
+			want: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, ParseGrubPasswordProtected([]byte(test.content)))
+		})
+	}
+}
+
+func TestParseGrubPasswordConfig(t *testing.T) {
+	t.Run("stock RHEL block records the variable it depends on", func(t *testing.T) {
+		cfg := ParseGrubPasswordConfig([]byte(stockRhelUsersBlock))
+		assert.True(t, cfg.SuperusersLiteral)
+		assert.False(t, cfg.PasswordLiteral)
+		assert.Equal(t, []string{"GRUB2_PASSWORD"}, cfg.PasswordVars)
+		assert.True(t, cfg.ReferencesVars())
+		assert.False(t, cfg.Protected())
+	})
+
+	t.Run("configured host references no variables", func(t *testing.T) {
+		cfg := ParseGrubPasswordConfig([]byte(`set superusers="root"
+password_pbkdf2 root grub.pbkdf2.sha512.10000.ABC123.DEF456
+`))
+		assert.True(t, cfg.Protected())
+		assert.False(t, cfg.ReferencesVars())
+	})
+}
+
+func TestGrubPasswordConfigProtectedWith(t *testing.T) {
+	cfg := ParseGrubPasswordConfig([]byte(stockRhelUsersBlock))
+
+	t.Run("user.cfg with a password", func(t *testing.T) {
+		vars, err := ParseGrubDefaults(strings.NewReader("GRUB2_PASSWORD=grub.pbkdf2.sha512.10000.ABC123.DEF456\n"))
+		require.NoError(t, err)
+		assert.True(t, cfg.ProtectedWith(vars))
+	})
+
+	t.Run("user.cfg with an empty password", func(t *testing.T) {
+		vars, err := ParseGrubDefaults(strings.NewReader("GRUB2_PASSWORD=\n"))
+		require.NoError(t, err)
+		assert.False(t, cfg.ProtectedWith(vars))
+	})
+
+	t.Run("user.cfg without the variable", func(t *testing.T) {
+		vars, err := ParseGrubDefaults(strings.NewReader("GRUB2_SOMETHING_ELSE=1\n"))
+		require.NoError(t, err)
+		assert.False(t, cfg.ProtectedWith(vars))
+	})
+
+	t.Run("absent user.cfg", func(t *testing.T) {
+		assert.False(t, cfg.ProtectedWith(map[string]string{}))
+	})
+
+	t.Run("templated superusers resolved from user.cfg", func(t *testing.T) {
+		templated := ParseGrubPasswordConfig([]byte(`set superusers="${GRUB2_SUPERUSER}"
+password_pbkdf2 root ${GRUB2_PASSWORD}
+`))
+		assert.False(t, templated.ProtectedWith(map[string]string{
+			"GRUB2_PASSWORD": "grub.pbkdf2.sha512.10000.ABC123.DEF456",
+		}))
+		assert.True(t, templated.ProtectedWith(map[string]string{
+			"GRUB2_SUPERUSER": "root",
+			"GRUB2_PASSWORD":  "grub.pbkdf2.sha512.10000.ABC123.DEF456",
+		}))
+	})
+}
+
+func TestReadGrubUserCfg(t *testing.T) {
+	t.Run("reads user.cfg beside grub.cfg", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		require.NoError(t, afero.WriteFile(fs, "/boot/grub2/grub.cfg", []byte(stockRhelUsersBlock), 0o644))
+		require.NoError(t, afero.WriteFile(fs, "/boot/grub2/user.cfg",
+			[]byte("GRUB2_PASSWORD=grub.pbkdf2.sha512.10000.ABC123.DEF456\n"), 0o600))
+
+		vars := readGrubUserCfg(fs, "/boot/grub2/grub.cfg")
+		require.NotNil(t, vars)
+		assert.Equal(t, "grub.pbkdf2.sha512.10000.ABC123.DEF456", vars["GRUB2_PASSWORD"])
+	})
+
+	t.Run("reads user.cfg from an EFI directory", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		require.NoError(t, afero.WriteFile(fs, "/boot/efi/EFI/redhat/user.cfg",
+			[]byte("GRUB2_PASSWORD=grub.pbkdf2.sha512.10000.ABC123.DEF456\n"), 0o600))
+
+		vars := readGrubUserCfg(fs, "/boot/efi/EFI/redhat/grub.cfg")
+		require.NotNil(t, vars)
+		assert.NotEmpty(t, vars["GRUB2_PASSWORD"])
+	})
+
+	t.Run("missing user.cfg is not an error", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		require.NoError(t, afero.WriteFile(fs, "/boot/grub2/grub.cfg", []byte(stockRhelUsersBlock), 0o644))
+
+		assert.Nil(t, readGrubUserCfg(fs, "/boot/grub2/grub.cfg"))
+	})
+
+	t.Run("empty grub.cfg path", func(t *testing.T) {
+		assert.Nil(t, readGrubUserCfg(afero.NewMemMapFs(), ""))
+	})
+}
+
+// The stock /etc/default/grub and /etc/default/grub.d of a Debian 10 EC2
+// image. 10_cloud_disk_scheduler.cfg appends to GRUB_CMDLINE_LINUX by
+// referencing it, and grub-mkconfig, which sources the files in a shell,
+// boots with console=tty0 console=ttyS0,115200 earlyprintk=ttyS0,115200
+// scsi_mod.use_blk_mq=Y.
+func debian10CloudGrubDefaultsFs(t *testing.T) afero.Fs {
+	t.Helper()
+	fs := afero.NewMemMapFs()
+	files := map[string]string{
+		"/etc/default/grub": `# If you change this file, run 'update-grub' afterwards to update
+# /boot/grub/grub.cfg.
+# For full documentation of the options in this file, see:
+#   info -f grub -n 'Simple configuration'
+
+GRUB_DEFAULT=0
+GRUB_TIMEOUT=5
+GRUB_DISTRIBUTOR=` + "`lsb_release -i -s 2> /dev/null || echo Debian`" + `
+GRUB_CMDLINE_LINUX_DEFAULT=""
+GRUB_CMDLINE_LINUX="console=tty0 console=ttyS0,115200 earlyprintk=ttyS0,115200"
+GRUB_TERMINAL="console serial"
+GRUB_SERIAL_COMMAND="serial --speed=115200"
+`,
+		"/etc/default/grub.d/10_cloud.cfg": `# Use PARTUUID instead of UUID for root=
+GRUB_DISABLE_LINUX_UUID=true
+GRUB_DISABLE_LINUX_PARTUUID=
+`,
+		"/etc/default/grub.d/10_cloud_disk_scheduler.cfg": `# Set disk scheduler to noop and request block multiqueue usage
+
+GRUB_CMDLINE_LINUX="$GRUB_CMDLINE_LINUX scsi_mod.use_blk_mq=Y"
+`,
+		"/etc/default/grub.d/15_timeout.cfg": "GRUB_TIMEOUT=0\n",
+	}
+	for name, content := range files {
+		require.NoError(t, afero.WriteFile(fs, name, []byte(content), 0o644))
+	}
+	return fs
+}
+
+func TestLoadGrubDefaultsExpandsVariables(t *testing.T) {
+	t.Run("stock Debian 10 drop-in appends to the defaults file", func(t *testing.T) {
+		fs := debian10CloudGrubDefaultsFs(t)
+		params, err := loadGrubDefaults(fs, "/etc/default/grub", true)
+		require.NoError(t, err)
+		assert.Equal(t, "console=tty0 console=ttyS0,115200 earlyprintk=ttyS0,115200 scsi_mod.use_blk_mq=Y", params["GRUB_CMDLINE_LINUX"])
+		assert.Equal(t, "0", params["GRUB_TIMEOUT"])
+		assert.Equal(t, "", params["GRUB_DISABLE_LINUX_PARTUUID"])
+		assert.Equal(t, "`lsb_release -i -s 2> /dev/null || echo Debian`", params["GRUB_DISTRIBUTOR"])
+	})
+
+	// kdump-tools ships a drop-in that appends crashkernel= to the defaults.
+	// A parameter set in /etc/default/grub must still be read once it is there.
+	t.Run("kdump-tools drop-in keeps the parameters set before it", func(t *testing.T) {
+		fs := debian10CloudGrubDefaultsFs(t)
+		require.NoError(t, afero.WriteFile(fs, "/etc/default/grub", []byte(
+			"GRUB_CMDLINE_LINUX_DEFAULT=\"quiet\"\nGRUB_CMDLINE_LINUX=\"apparmor=0 console=tty0\"\n"), 0o644))
+		require.NoError(t, afero.WriteFile(fs, "/etc/default/grub.d/kdump-tools.cfg", []byte(
+			"GRUB_CMDLINE_LINUX_DEFAULT=\"$GRUB_CMDLINE_LINUX_DEFAULT crashkernel=384M-:128M\"\n"), 0o644))
+		params, err := loadGrubDefaults(fs, "/etc/default/grub", true)
+		require.NoError(t, err)
+		assert.Equal(t, "quiet crashkernel=384M-:128M", params["GRUB_CMDLINE_LINUX_DEFAULT"])
+		assert.Equal(t, "apparmor=0 console=tty0 scsi_mod.use_blk_mq=Y", params["GRUB_CMDLINE_LINUX"])
+	})
+
+	// A setting nothing assigned before is empty to the shell.
+	t.Run("unset setting expands to empty", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		require.NoError(t, afero.WriteFile(fs, "/etc/default/grub", []byte("GRUB_TIMEOUT=5\n"), 0o644))
+		require.NoError(t, afero.WriteFile(fs, "/etc/default/grub.d/kdump-tools.cfg", []byte(
+			"GRUB_CMDLINE_LINUX_DEFAULT=\"$GRUB_CMDLINE_LINUX_DEFAULT crashkernel=384M-:128M\"\n"), 0o644))
+		params, err := loadGrubDefaults(fs, "/etc/default/grub", true)
+		require.NoError(t, err)
+		// the leading space is the shell's: the empty expansion stays in front
+		// of crashkernel=
+		assert.Equal(t, " crashkernel=384M-:128M", params["GRUB_CMDLINE_LINUX_DEFAULT"])
+	})
+}
+
+func TestParseGrubDefaultsShellSyntax(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		key   string
+		want  string
+	}{
+		{"braced reference", "A=x\nGRUB_CMDLINE_LINUX=\"${A} y\"\n", "GRUB_CMDLINE_LINUX", "x y"},
+		{"unquoted reference", "A=x\nGRUB_CMDLINE_LINUX=$A\n", "GRUB_CMDLINE_LINUX", "x"},
+		{"single quotes are literal", "A=x\nGRUB_CMDLINE_LINUX='$A y'\n", "GRUB_CMDLINE_LINUX", "$A y"},
+		{"escaped dollar is literal", "A=x\nGRUB_CMDLINE_LINUX=\"\\$A y\"\n", "GRUB_CMDLINE_LINUX", "$A y"},
+		{"trailing comment after closing quote", "GRUB_CMDLINE_LINUX_DEFAULT=\"quiet\" # trailing comment\n", "GRUB_CMDLINE_LINUX_DEFAULT", "quiet"},
+		{"trailing comment after unquoted value", "GRUB_TIMEOUT=5 # seconds\n", "GRUB_TIMEOUT", "5"},
+		{"hash inside a word is literal", "GRUB_X=a#b\n", "GRUB_X", "a#b"},
+		{"escaped double quote", "GRUB_X=\"a b\\\"c\"\n", "GRUB_X", "a b\"c"},
+		{"other backslash kept in double quotes", "GRUB_X=\"a\\b\"\n", "GRUB_X", "a\\b"},
+		{"adjacent quoted parts", "GRUB_X=\"a b\"'c d'e\n", "GRUB_X", "a bc de"},
+		{"value continued on the next line", "GRUB_CMDLINE_LINUX=\"audit=1\n  apparmor=1\"\n", "GRUB_CMDLINE_LINUX", "audit=1\n  apparmor=1"},
+		{"command substitution is kept", "GRUB_DISTRIBUTOR=\"$(lsb_release -i -s 2> /dev/null) || echo Debian\"\n", "GRUB_DISTRIBUTOR", "$(lsb_release -i -s 2> /dev/null) || echo Debian"},
+		{"variable grub-mkconfig sets is kept", "GRUB_CMDLINE_LINUX=\"root=$GRUB_DEVICE\"\n", "GRUB_CMDLINE_LINUX", "root=$GRUB_DEVICE"},
+		{"two assignments on one line", "GRUB_A=1; GRUB_B=2\n", "GRUB_B", "2"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params, err := ParseGrubDefaults(strings.NewReader(tt.input))
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, params[tt.key])
+		})
+	}
+}
+
+// `KEY=value cmd` sets KEY for cmd only, and a line that is not an
+// assignment, like a test, assigns nothing.
+func TestParseGrubDefaultsIgnoresCommands(t *testing.T) {
+	params, err := ParseGrubDefaults(strings.NewReader("GRUB_X=1 true\n[ \"$GRUB_Y\" = 1 ] && GRUB_Z=2\nGRUB_W=3\n"))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"GRUB_W": "3"}, params)
+}
+
+// An unterminated quote is a syntax error to the shell. The line keeps the
+// value as written rather than swallowing the rest of the file.
+func TestParseGrubDefaultsUnterminatedQuote(t *testing.T) {
+	params, err := ParseGrubDefaults(strings.NewReader("GRUB_X=\"abc\nGRUB_Y=1\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "\"abc", params["GRUB_X"])
+	assert.Equal(t, "1", params["GRUB_Y"])
+}
+
+// Each of these parsers reads a whole file already held in memory. A line
+// over 64 KiB must not end the parse and drop the settings after it.
+
+func TestParseGrubPasswordConfigAfterLongLine(t *testing.T) {
+	cfg := ParseGrubPasswordConfig([]byte("# " + strings.Repeat("x", 70000) + "\nset superusers=\"root\"\npassword_pbkdf2 root grub.pbkdf2.sha512.10000.ABC123.DEF456\n"))
+	assert.True(t, cfg.Protected())
+}
+
+func TestParseGrubLegacyPasswordProtectedAfterLongLine(t *testing.T) {
+	assert.True(t, ParseGrubLegacyPasswordProtected([]byte("# "+strings.Repeat("x", 70000)+"\npassword --md5 $1$4Ktpx$aYSvUvC8JTHKbLZmPQz4S0\ntitle Linux\nkernel /vmlinuz ro\n")))
 }

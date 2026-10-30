@@ -1,15 +1,18 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/cnquery/v9/providers/network"
-option go_package = "go.mondoo.com/mql/v13/providers/network/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/network"
+option go_package = "go.mondoo.com/mql/providers/network/resources"
+option root = "network.host"
 
 // Network socket
 //
-// Examine an addressable network endpoint by `protocol`, `port`, and
-// `address`. Used as a building block for higher-level resources like
-// `tls` that need to know "what to talk to".
-socket @defaults("protocol port address") {
+// Addressable network endpoint identified by its transport `protocol`,
+// `port`, and `address`. Serves as a building block for higher-level
+// resources such as `tls` that need to know what to connect to.
+socket @defaults("protocol port address") @global {
   // Transport protocol (e.g., tcp, udp)
   protocol string
   // Port number
@@ -20,20 +23,21 @@ socket @defaults("protocol port address") {
 
 // HTTP endpoint
 //
-// Empty namespace for HTTP probing. Use `http.get(url: "https://...")`
+// Entry point for HTTP probing. Use `http.get("https://...")`
 // to perform a GET against a URL and inspect the response status,
-// headers (parsed into typed sub-resources for HSTS, CSP, cookies,
-// etc.), and body.
-http {}
+// headers (parsed into sub-resources for HSTS, CSP, cookies, and other
+// security headers), and body.
+http @global {}
 
 // HTTP GET request
 //
-// Examine the result of an HTTP GET against a URL. Initialize with
-// `http.get(rawUrl: "https://example.com", followRedirects: true)`.
-// Surfaces the parsed `url`, the `statusCode`, the HTTP `version`,
-// the response `body`, and a typed `header` sub-resource exposing
-// HSTS, CSP, X-Frame-Options, X-XSS-Protection, X-Content-Type-Options,
-// Referrer-Policy, Content-Type, and Set-Cookie semantics.
+// Result of an HTTP GET against a URL, for probing how a web endpoint
+// responds. Initialize with `http.get("https://example.com", true)`,
+// where the second argument decides whether redirects are followed. The
+// `header` sub-resource parses the response's security headers (HSTS,
+// CSP, X-Frame-Options, X-XSS-Protection, X-Content-Type-Options,
+// Referrer-Policy, Content-Type, and Set-Cookie) into individually
+// queryable values.
 http.get @defaults("url statusCode") {
   init(rawUrl string, followRedirects bool)
   // URL for this request
@@ -52,7 +56,12 @@ http.get @defaults("url statusCode") {
 
 // HTTP header
 private http.header @defaults("length=params.length") {
-  // Raw list of parameters for this header
+  // Raw response headers, keyed by header name
+  //
+  // Each key is a canonical response header name (for example
+  // `Content-Type` or `Set-Cookie`) and each value is the list of values
+  // sent for that header. The other fields on this resource parse
+  // individual headers out of this map into structured values.
   params map[string][]string
   // HTTP Strict-Transport-Security (HSTS) header
   sts() http.header.sts
@@ -63,12 +72,34 @@ private http.header @defaults("length=params.length") {
   // X-Content-Type-Options header: nosniff
   xContentTypeOptions() string
   // Referrer-Policy header
+  //
+  // Controls how much referrer information the browser sends with
+  // requests. One of no-referrer, no-referrer-when-downgrade, origin,
+  // origin-when-cross-origin, same-origin, strict-origin,
+  // strict-origin-when-cross-origin, or unsafe-url. Empty when no
+  // Referrer-Policy header is sent.
   referrerPolicy() string
   // Content-Type header
   contentType() http.header.contentType
   // Set-Cookie header
-  setCookie() http.header.setCookie
-  // Content-Security-Policy header
+  //
+  // Deprecated in favor of setCookies. Reports only the first cookie the
+  // response sets, so an assertion made over it silently ignores every other
+  // cookie. Null when the response sets no cookies. Will be removed in the
+  // next major release.
+  setCookie() @maturity("deprecated") http.header.setCookie
+  // Every cookie the response sets, one entry per Set-Cookie header
+  //
+  // Null when the response sets no cookies. Each entry parses one
+  // Set-Cookie header, so attributes stay attached to the cookie that
+  // carried them.
+  setCookies() []http.header.setCookie
+  // Content-Security-Policy header directives
+  //
+  // The parsed Content-Security-Policy header, keyed by directive name
+  // lowercased (for example `default-src`, `script-src`, or
+  // `frame-ancestors`) with that directive's source list as the value.
+  // Null when no Content-Security-Policy header is present.
   csp() map[string]string
   // Server header value, e.g. "nginx" or "Apache/2.4.62"
   //
@@ -90,9 +121,11 @@ private http.header.sts @defaults("maxAge includeSubDomains preload") {
 
 // HTTP header X-XSS-Protection
 //
-// Now outdated (replaced by Content Security Policy) and may even cause
-// security vulnerabilities. Examine `enabled`, `mode`, and `report` to
-// see how a server is configuring the legacy XSS filter.
+// Configuration of the legacy browser XSS filter, parsed from the
+// X-XSS-Protection response header. Now outdated (replaced by
+// Content-Security-Policy) and, when enabled, capable of introducing
+// security vulnerabilities of its own, so hardening policies generally
+// expect it disabled.
 private http.header.xssProtection @defaults("enabled mode report") {
   // Whether the header is enabled (Enabled when the header value is set to 1; disabled if set to 0)
   enabled bool
@@ -106,7 +139,11 @@ private http.header.xssProtection @defaults("enabled mode report") {
 private http.header.contentType @defaults("type") {
   // MIME type for the content
   type string
-  // Additional parameters for this content type
+  // Content-Type parameters, keyed by parameter name
+  //
+  // Parameters that follow the media type, keyed by name lowercased (for
+  // example `charset` or `boundary`) with the parameter value. Empty when
+  // the Content-Type header carries no parameters.
   params map[string]string
 }
 
@@ -116,19 +153,24 @@ private http.header.setCookie @defaults("name value") {
   name string
   // Value of the cookie to set
   value string
-  // Additional parameters for setting this cookie
+  // Cookie attributes, keyed by attribute name
+  //
+  // Attributes set on the cookie, keyed by name lowercased (for example
+  // `path`, `domain`, `secure`, `httponly`, `samesite`, `max-age`, or
+  // `expires`) with the attribute value. Flag attributes such as `secure`
+  // and `httponly` carry an empty value.
   params map[string]string
 }
 
 // Parsed URL
 //
-// Examine a parsed URL, generally represented as
+// URL broken into its components, generally represented as
 // `[scheme:][//[user[:password]@]host[:port]][/]path[?query][#fragment]`.
-// Initialize with `url(raw: "https://user:pass@host:443/p?q=1#f")` and
+// Initialize with `url("https://user:pass@host:443/p?q=1#f")` and
 // inspect any of the parsed components individually: scheme, user /
 // password user-info pair, host, port, path, parsed query map, raw
 // query string, and fragment.
-url @defaults("string") {
+url @defaults("string") @global {
   init(raw string)
   // The full URL as a string
   string() string
@@ -154,22 +196,27 @@ url @defaults("string") {
 
 // TLS/SSL connection inspection
 //
-// Examine the TLS posture of a network endpoint. Initialize with
-// `tls(target: "host:port")` (an optional `domainName` enables SNI
+// TLS posture of a network endpoint. Initialize with
+// `tls("host:port")` (an optional `domainName` enables SNI
 // testing). Surfaces every TLS / SSL version the endpoint accepts,
-// the cipher suites and extensions advertised, the version / cipher
-// / key-exchange group a modern client actually negotiates, and the
-// served certificate chain — both the SNI-aware chain and the
-// non-SNI fallback. The resource an audit uses to find weak protocol
+// the cipher suites and extensions advertised, the version, cipher,
+// and key-exchange group a modern client actually negotiates, and the
+// served certificate chain (both the SNI-aware chain and the
+// non-SNI fallback). Use it to find weak protocol
 // versions, weak ciphers, expired certs, and missing OCSP / SCT
 // support.
-tls @defaults("socket domainName") {
+tls @defaults("socket domainName") @global {
   init(target string)
   // Socket of this connection
   socket socket
   // An optional domain name to test
   domainName string
-  // List of all parameters for this TLS/SSL connection
+  // Raw TLS/SSL handshake findings for this connection
+  //
+  // Dict with three keys: `versions`, `ciphers`, and `extensions`. Each
+  // maps a protocol version, cipher suite, or extension name to a bool
+  // recording whether the endpoint accepts it. The versions, ciphers, and
+  // extensions fields expose the accepted entries drawn from this bag.
   params(socket, domainName) dict
   // Version of TLS/SSL that is being used
   versions(params) []string
@@ -241,36 +288,46 @@ private tls.cipher @defaults("name") {
 
 // X.509 certificate bundle
 //
-// Examine a list of certificates parsed from PEM content. Use it to
-// iterate over a chain and apply per-certificate checks, or to
-// extract the underlying `pem` source.
-certificates {
+// Certificates parsed from PEM content, typically a full chain of a
+// leaf, its intermediates, and a root. The list supports per-certificate
+// checks across the chain (validity window, key usage, signing
+// algorithm, revocation, and expiration), and the raw `pem` field
+// returns the original source. Blocks that cannot be decoded are left
+// out of the list and counted in unparseable, so a bundle holding one
+// malformed certificate still yields the rest.
+certificates @global {
   []certificate
   // PEM content
   pem string
+  // Number of certificate blocks in pem that could not be parsed
+  //
+  // Counts the blocks skipped while decoding pem, for example a
+  // truncated or malformed certificate. Any value above zero means the
+  // list is an incomplete view of pem, so assert on it before treating
+  // the list as the full contents of the bundle.
+  unparseable() int
 }
 
 // X.509 certificate
 //
-// Examine a single X.509 certificate parsed from PEM. Surfaces the
-// raw PEM, every SHA-1 / SHA-256 fingerprint, the serial number, the
-// subject and authority key identifiers, the parsed PKIX subject and
-// issuer distinguished names, version, validity window
-// (`notBefore`, `notAfter`, `expiresIn`), signature and signing
-// algorithm, the `isCA` flag, key usages and extended key usages, the
-// raw and SAN extensions, policy identifiers, CRL distribution points,
-// OCSP server and issuing-certificate URLs, the revoked / verified /
-// expired flags, public-key algorithm and bit length, the
-// `hasSCTs` flag (Certificate Transparency) and the maximum CA chain
-// path length.
-certificate @defaults("serial subject.commonName subject.dn") {
+// Single X.509 certificate parsed from its PEM encoding, exposing the
+// identity and trust properties auditors care about: the subject and
+// issuer distinguished names, the validity window (notBefore, notAfter,
+// and the expiresIn countdown), the public-key algorithm and bit length,
+// the isCA and key-usage constraints, and the revocation, verification,
+// and expiration status. Useful for flagging weak keys, expired or
+// soon-to-expire leaf certificates, and untrusted or revoked chains.
+certificate @defaults("serial subject.commonName subject.dn") @global {
   // PEM content
   pem string
   // Certificate fingerprints
+  //
+  // Keyed by hash algorithm: `sha1`, `sha256`, and `md5`, each mapping to
+  // the hex-encoded digest of the certificate's DER encoding.
   fingerprints() map[string]string
   // Serial number
   serial() string
-  // Subject unique identifier
+  // Subject key identifier
   subjectKeyID() string
   // Authority key identifier
   authorityKeyID() string
@@ -280,9 +337,9 @@ certificate @defaults("serial subject.commonName subject.dn") {
   issuer() pkix.name
   // Version number
   version() int
-  // Validity period validity period
+  // Start of the validity period, before which the certificate is not valid
   notBefore() time
-  // Validity period not after
+  // End of the validity period, after which the certificate has expired
   notAfter() time
   // Expiration duration
   expiresIn() time
@@ -290,7 +347,7 @@ certificate @defaults("serial subject.commonName subject.dn") {
   signature() string
   // Signature algorithm ID
   signingAlgorithm() string
-  // Whether the certificate is from a certificate authority
+  // Whether the certificate is a certificate authority (CA) certificate
   isCA() bool
   // Key usage
   keyUsage() []string
@@ -307,14 +364,35 @@ certificate @defaults("serial subject.commonName subject.dn") {
   // Issuing certificate URL
   issuingCertificateUrl() []string
   // Whether this certificate has been revoked
+  //
+  // Determined from OCSP, or from the certificate's CRL when it names no OCSP
+  // responder or the responder cannot be reached. Null when neither could
+  // answer, so an unchecked certificate never reports itself as good. Read
+  // `revocationChecked` first, or assert on it alongside this, because a null
+  // does not fail a check written as `isRevoked == false`.
   isRevoked() bool
   // The time at which this certificate was revoked
+  //
+  // Null when the certificate is not revoked, and null when revocation could
+  // not be determined.
   revokedAt() time
+  // Whether the certificate's revocation status could be determined
+  //
+  // False when the certificate names no OCSP responder and no CRL, and when
+  // every responder and distribution point it does name could not be reached
+  // or returned something unusable. `isRevoked` is null in that case rather
+  // than false, so a policy that must not pass on an unchecked certificate
+  // should require this.
+  //
+  // Certificates that are the last in a served chain are not checked: there is
+  // no issuer below them to check against, and a trust anchor's revocation is
+  // not a question its own chain can answer.
+  revocationChecked() bool
   // Whether the certificate is valid (based on its chain)
   isVerified() bool
   // SAN extension value params
   sanExtension() pkix.sanExtension
-  // Public key algorithm (e.g., RSA, ECDSA, Ed25519)
+  // Public key algorithm (e.g., RSA, ECDSA, Ed25519, ML-DSA)
   publicKeyAlgorithm() string
   // Public key size in bits (e.g., 2048, 256, 384)
   publicKeyBits() int
@@ -328,15 +406,16 @@ certificate @defaults("serial subject.commonName subject.dn") {
 
 // X.509 PKIX name
 //
-// Examine a parsed RFC 5280 distinguished name (DN) — the structured
-// form of a certificate's subject or issuer. Surfaces the canonical
-// DN string, common name, country, organization and organizational
-// unit, locality, province, street address, postal code, serial
-// number, and any extra named attributes.
+// Distinguished name (DN) parsed per RFC 5280: the structured identity
+// of a certificate's subject or issuer. Exposes the canonical DN string,
+// common name, country, organization and organizational unit, locality,
+// province, street address, postal code, serial number, and any
+// additional named attributes, so you can audit who a certificate was
+// issued to and who issued it.
 pkix.name @defaults("id dn commonName") {
   // Cache key derived from the distinguished name
   id string
-  // Distinguished name qualifier
+  // Canonical distinguished name (DN) string
   dn string
   // Serial number
   serialNumber string
@@ -348,6 +427,7 @@ pkix.name @defaults("id dn commonName") {
   organization []string
   // Organizational unit
   organizationalUnit []string
+  // Locality or city
   locality []string
   // State or province
   province []string
@@ -355,15 +435,26 @@ pkix.name @defaults("id dn commonName") {
   streetAddress []string
   // Postal code
   postalCode []string
+  // Distinguished name attributes by OID
+  //
+  // All relative distinguished name (RDN) attributes parsed from the DN,
+  // keyed by attribute OID (for example "2.5.4.3" for commonName or
+  // "2.5.4.10" for organization) with the attribute value as the value.
   names      map[string]string
+  // Non-standard distinguished name attributes by OID
+  //
+  // RDN attributes beyond the dedicated fields (commonName, country,
+  // organization, and so on), keyed by attribute OID with the attribute
+  // value as the value.
   extraNames map[string]string
 }
 
 // X.509 PKIX extension
 //
-// Examine a single extension carried by an X.509 certificate: its
-// OID identifier (e.g., 2.5.29.37 for extKeyUsage), the `critical`
-// flag, and the raw extension value.
+// Single extension carried by an X.509 certificate, identified by its
+// OID (for example 2.5.29.37 for extKeyUsage). The `critical` flag marks
+// whether a client that does not recognize the extension must reject the
+// certificate, and `value` holds the raw extension bytes.
 pkix.extension @defaults("id") {
   // Cache key derived from the extension identifier
   id string
@@ -446,6 +537,10 @@ private openpgp.signature {
   // Signature version
   version int
   // Signature type
+  //
+  // One of binary, text, generic_cert, persona_cert, casual_cert,
+  // positive_cert, subkey_binding, primary_key_binding, direct_signature,
+  // key_revocation, subkey_revocation, or cert_revocation.
   signatureType string
   // Public-key algorithm of the signing key (e.g., RSA, ECDSA, Ed25519)
   keyAlgorithm string
@@ -463,16 +558,18 @@ private openpgp.signature {
 
 // Domain name
 //
-// Examine a parsed FQDN. Initialize with `domainName(fqdn: "x.example.com")`.
-// Surfaces the FQDN itself, the effective TLD plus one (the
-// registrable domain), the TLD, an `tldIcannManaged` flag indicating
-// whether the TLD is in the ICANN-managed list, and the individual
-// dot-separated labels.
-domainName @defaults("fqdn") {
+// Parsed view of a fully qualified domain name, broken into its
+// registrable parts. Select the name with `domainName(fqdn:
+// "x.example.com")`. Use it to reason about the registrable domain
+// (the effective TLD plus one label) and the top-level domain
+// independently of subdomain labels, for example to group hosts by
+// their owning domain or to check whether a name sits under an
+// ICANN-managed TLD.
+domainName @defaults("fqdn") @global {
   init(fqdn string)
   // Fully qualified domain name (FQDN)
   fqdn string
-  // effectiveTLDPlusOne returns the effective top level domain plus one more label
+  // Effective top-level domain plus one label (the registrable domain)
   effectiveTLDPlusOne string
   // Top-level domain
   tld string
@@ -484,40 +581,117 @@ domainName @defaults("fqdn") {
 
 // DNS resource
 //
-// Examine the DNS records published for a fully-qualified domain
-// name. Initialize with `dns(fqdn: "example.com")`. Surfaces every
-// resolved record, the MX record list, and a parsed view of any DKIM
-// public-key records discovered for the domain.
-dns @defaults("fqdn") {
+// DNS records published for a fully-qualified domain name.
+// Select a domain with `dns(fqdn: "example.com")`. Surfaces every
+// resolved record, the MX record list, DNSSEC signing state, and
+// parsed SPF, DMARC, and DKIM policy records, so mail-authentication
+// and zone-signing audits run without hand-building DNS lookups.
+dns @defaults("fqdn") @global {
   init(fqdn string)
   // Fully qualified domain name (FQDN)
   fqdn string
-  // Params is a list of all parameters for DNS FQDN
+  // Apex of the zone that contains this name
+  //
+  // The closest enclosing name that is served as a zone of its own, which is
+  // where a zone-wide question has an answer. DNSKEY, NS and SOA records exist
+  // at a zone apex and nowhere else inside the zone, so `zone.dnssec` and
+  // `zone.records` report how the containing zone is signed and served even
+  // when the name itself publishes neither. Comparing `fqdn` against
+  // `zone.fqdn` tells an apex from a name that merely sits inside a zone,
+  // which is what scopes a zone-wide audit to the one name it can hold for.
+  //
+  // The zone is established by delegation rather than by the public suffix
+  // list, so it is the zone the name belongs to and not the registrable
+  // domain. The two agree for `www.example.com`, whose zone is `example.com`.
+  // They differ for a delegated subdomain such as `corp.example.com`, which is
+  // a zone of its own, signed with its own keys and served by its own
+  // nameservers. Null when nothing answers as a zone, such as for a name that
+  // does not resolve or a scan target given as an IP address.
+  zone(fqdn) dns
+  // DNS query results keyed by record type
+  //
+  // Map keyed by DNS record type (such as `A`, `AAAA`, `MX`, or `TXT`),
+  // where each value carries that query's `name`, `ttl`, `class`, `type`,
+  // `rData` payload, and `rCode` response status. The `records`, `mx`,
+  // `dkim`, `spf`, `dmarc`, and `dnssec` fields parse this into records.
   params(fqdn) dict
+  // DNS query results from the zone's authoritative nameservers
+  //
+  // Same shape as `params`, resolved against the nameservers authoritative
+  // for the zone rather than through a caching resolver. The records match;
+  // the TTLs are the values configured in the zone.
+  authoritativeParams(fqdn) dict
   // Successful DNS records
   records(params) []dns.record
+  // Successful DNS records as published in the zone
+  //
+  // Same records as `records`, carrying the TTL configured in the zone rather
+  // than the time remaining on a resolver's cached copy. Use this whenever a
+  // TTL is being asserted on: a caching resolver counts its cached TTL down
+  // toward zero, so a record configured at 300 answers 300, then 208, then
+  // 144 as the entry ages, and a threshold check on that flaps depending on
+  // when the scan ran.
+  //
+  // Unlike `records`, this does not follow CNAMEs, because the zone's own
+  // nameservers answer only for what the zone contains. A name published as a
+  // CNAME therefore appears here as a CNAME and not as the address it
+  // eventually resolves to: `records` for a CNAME'd name returns A and CNAME,
+  // while this returns CNAME alone. Filtering to `type == "A"` on such a name
+  // yields an empty list, so guard against that rather than letting an
+  // `all()` pass vacuously.
+  authoritativeRecords(authoritativeParams) []dns.record
   // Successful DNS MX records
   mx(params) []dns.mxRecord
   // DKIM TXT records
   dkim(params) []dns.dkimRecord
   // DNSSEC signing state for the domain
   dnssec(params) dns.dnssecConfig
+  // Outcome of a DNSSEC-validating resolution of the domain
+  //
+  // What a validating query actually got back, as opposed to what the zone
+  // publishes. Issues an EDNS0 query with the DNSSEC OK bit set, reports
+  // whether the resolver returned the Authenticated Data flag, whether the
+  // answer carried RRSIG records, whether those signatures verify against the
+  // zone's published keys, and whether the chain of trust links to the root.
+  // Use `dnssec` to audit how a zone is signed; use this to audit whether
+  // resolving it validates.
+  //
+  // Depends on fqdn rather than params, so it issues its own targeted queries
+  // instead of a full record-type sweep, which keeps it affordable to
+  // instantiate per element of a list.
+  dnssecValidation(fqdn) dns.dnssecValidationResult
   // Parsed SPF (Sender Policy Framework) records
   spf(params) []dns.spfRecord
   // Parsed DMARC record published at the domain's _dmarc subdomain
   dmarc() dns.dmarcRecord
   // Reverse DNS (PTR) records for the domain's resolved addresses
   //
+  // Deprecated in favor of `reverseRecords`.
+  //
+  // Returns the same records as reverseRecords, but derives the addresses from
+  // params, which queries every DNS record type. That is affordable once for
+  // the scanned asset, where the other fields reuse the same result, but it
+  // makes this field too expensive to instantiate per element of a list —
+  // resolvers rate-limit at that volume and PTR lookups then come back empty,
+  // which is indistinguishable from a missing PTR record.
+  reverse(params) @maturity("deprecated") []dns.record
+  // Reverse DNS (PTR) records for the domain's resolved addresses
+  //
   // Resolves the domain's A and AAAA addresses, then looks up the PTR
   // record for each — the forward-confirmed reverse DNS round trip. Use
   // it to confirm an address resolves back to the expected hostname
   // without hand-building `in-addr.arpa` names.
-  reverse(params) []dns.record
+  //
+  // Depends on fqdn rather than params, so it issues two address queries
+  // instead of a full record-type sweep. That keeps it affordable to
+  // instantiate per element of a list, such as checking the reverse DNS of
+  // every mail exchanger.
+  reverseRecords(fqdn) []dns.record
 }
 
 // DNS record
 //
-// Examine a single resolved DNS record: name, type, class, TTL, and
+// Single resolved DNS record: name, type, class, TTL, and
 // the rdata payload (IP addresses, hostnames, or other values
 // depending on the record type).
 dns.record @defaults("name type") {
@@ -535,9 +709,9 @@ dns.record @defaults("name type") {
 
 // DNS MX record
 //
-// Examine a single MX record: the record name, the resolved target
-// `domainName`, and the `preference` value used to choose between
-// multiple MX records.
+// Mail-exchange (MX) record for the domain: the record name, the
+// resolved target `domainName`, and the `preference` value used to
+// choose between multiple MX records.
 dns.mxRecord @defaults("domainName") {
   // Record name
   name string
@@ -549,12 +723,14 @@ dns.mxRecord @defaults("domainName") {
 
 // DNSSEC configuration for a domain
 //
-// Examine whether a domain is signed with DNSSEC and how. Reports whether
-// the domain publishes DNSKEY records, the parsed signing keys, and the
-// distinct algorithm numbers in use, so audits can require DNSSEC and flag
-// weak or deprecated algorithms without parsing raw DNSKEY rdata. `enabled`
-// reflects the presence of published DNSKEY records and does not, on its own,
-// validate the DS chain of trust at the parent zone.
+// How a domain's zone is signed: whether it publishes DNSKEY records, the
+// parsed signing keys and their algorithms and lengths, the delegation the
+// parent zone publishes, and the way the zone proves a name does not exist.
+// This is the zone's configuration, which is stable between re-signings.
+// What a resolution of the domain actually returned is a separate question,
+// answered by `dnssecValidation` on the parent dns resource. `enabled`
+// reflects published DNSKEY records and does not, on its own, mean the chain
+// of trust resolves.
 dns.dnssecConfig @defaults("enabled") {
   // Whether the domain publishes DNSKEY records
   enabled bool
@@ -566,14 +742,66 @@ dns.dnssecConfig @defaults("enabled") {
   // 13 (ECDSAP256SHA256). Use it to flag deprecated algorithms such as
   // 5/7 (RSASHA1) or 3 (DSA).
   algorithms []int
+  // Whether the parent zone publishes a DS record for this zone
+  //
+  // A zone can be signed and still be an insecure delegation: without a DS
+  // record in the parent, a validating resolver has no way to reach the
+  // zone's keys and treats the whole zone as unsigned. Signing without
+  // delegating is the most common way a DNSSEC deployment silently does
+  // nothing, so this is a different question from `enabled`.
+  delegationSigned bool
+  // DS records the parent zone publishes for this zone
+  dsRecords []dns.dsRecord
+  // Whether every published DS record matches a published DNSKEY
+  //
+  // False when the parent still publishes a DS for a key the zone has rolled
+  // away from, or when the child publishes keys the parent has never been
+  // told about. Either breaks validation for part of the internet while the
+  // zone continues to look correctly signed from the inside. True when there
+  // is at least one DS record and every one of them matches a key.
+  dsDigestsMatchKeys bool
+  // How the zone proves that a name does not exist
+  //
+  // `NSEC3` when the zone publishes an NSEC3PARAM record, `NSEC` when the
+  // zone is signed and publishes none, and empty when the zone is not
+  // signed. NSEC lets anyone walk the zone and enumerate every name in it;
+  // NSEC3 publishes hashes instead.
+  denialOfExistence string
+  // NSEC3 hash iteration count, or 0 when the zone does not use NSEC3
+  //
+  // Additional iterations beyond the first. RFC 9276 recommends 0: the extra
+  // rounds cost the server and every validating resolver far more than they
+  // cost an attacker, and resolvers increasingly treat high counts as
+  // insecure rather than doing the work.
+  nsec3Iterations int
+  // NSEC3 salt length in bytes, or 0 when there is no salt
+  //
+  // A zone with no salt publishes `-`, which is zero bytes rather than a
+  // one-character salt. RFC 9276 recommends an empty salt, because the salt
+  // only helps against precomputation that a zone re-signing already defeats.
+  nsec3SaltLength int
+  // Whether NSEC3 opt-out is enabled, allowing unsigned delegations to go unproven
+  nsec3OptOut bool
+  // NSEC3 hash algorithm number, or 0 when the zone does not use NSEC3
+  //
+  // Only 1 (SHA-1) is assigned.
+  nsec3HashAlgorithm int
 }
 
 // DNSKEY record (RFC 4034)
 //
-// Examine a single published DNSSEC key: its flags, protocol, algorithm
-// number, and base64-encoded public key. `keySigningKey` is true for a
-// key-signing key — the one whose SEP flag is set (flags value 257) — as
-// opposed to a zone-signing key (flags value 256).
+// Single published DNSSEC key: its flags, protocol, algorithm number and
+// length, and the base64-encoded public key. `keySigningKey` is true for a
+// key-signing key, the one whose Secure Entry Point bit is set, as opposed to
+// a zone-signing key. The flags are read bit by bit rather than compared
+// against 256 and 257, so a revoked key-signing key (flags 385) is still
+// reported as one.
+//
+// The key tag and the signature bytes are deliberately not exposed. They
+// change every time the zone is re-signed, so a check built on either reports
+// a different answer on a schedule the operator did not choose. Algorithm,
+// key length and the flag bits survive re-signing and are what an audit
+// should assert on.
 private dns.dnssecKey @defaults("algorithm keySigningKey") {
   // DNSKEY flags field, e.g. 256 for a zone-signing key or 257 for a key-signing key
   flags int
@@ -581,15 +809,219 @@ private dns.dnssecKey @defaults("algorithm keySigningKey") {
   protocol int
   // DNSSEC algorithm number (RFC 8624), e.g. 8 (RSASHA256) or 13 (ECDSAP256SHA256)
   algorithm int
+  // IANA mnemonic for the algorithm number, e.g. RSASHA256 or ECDSAP256SHA256
+  //
+  // Empty when the algorithm number is unassigned, so an unknown algorithm
+  // reads as unknown instead of being reported under someone else's name.
+  algorithmName string
+  // Key length in bits
+  //
+  // Derived from the published key material rather than assumed from the
+  // algorithm, so a malformed key does not report a confident wrong size.
+  // 0 means the length could not be determined, not that the key is empty.
+  keyLength int
   // Base64-encoded public key
   publicKey string
-  // Whether this is a key-signing key (the SEP flag is set)
+  // Whether this is a key-signing key (the Secure Entry Point bit is set)
   keySigningKey bool
+  // Whether the key may be used to sign zone data (the Zone Key bit is set)
+  //
+  // A DNSKEY without this bit is published in the zone but must not validate
+  // any record in it.
+  zoneKey bool
+  // Whether the key carries the RFC 5011 revoke bit
+  revoked bool
+}
+
+// DS record (RFC 4034)
+//
+// One delegation signer record published by the parent zone, which is what
+// ties a child zone's key into the chain of trust. Carries the algorithm and
+// digest type, the digest itself, and whether that digest matches a key the
+// child zone currently publishes.
+//
+// The key tag is deliberately not exposed: it changes on every key rollover.
+// Assert on `matchesPublishedKey`, the algorithm, and the digest type, which
+// do not.
+private dns.dsRecord @defaults("algorithm digestType matchesPublishedKey") {
+  // DNSSEC algorithm number of the key this record delegates to
+  algorithm int
+  // IANA mnemonic for the algorithm number, empty when unassigned
+  algorithmName string
+  // Digest type number: 1 (SHA-1), 2 (SHA-256), or 4 (SHA-384)
+  digestType int
+  // IANA mnemonic for the digest type, empty when unassigned
+  digestTypeName string
+  // Hex-encoded digest of the delegated key
+  //
+  // Changes whenever the key it covers is rolled, so audit
+  // `matchesPublishedKey` rather than comparing this against a pinned value.
+  digest string
+  // Whether this digest matches a DNSKEY the zone currently publishes
+  //
+  // False for a DS the parent has kept past a key rollover, which is a chain
+  // of trust that fails for resolvers while the zone still looks signed.
+  matchesPublishedKey bool
+}
+
+// RRSIG record (RFC 4034)
+//
+// One signature covering a resolved record set: the record type it covers,
+// the algorithm that produced it, the zone that signed it, and the validity
+// window it is usable in. Reachable through `dnssecValidation` on a dns
+// resource, which collects the signatures a validating query returned.
+//
+// The key tag and the signature bytes are deliberately not exposed, because
+// both change every time the zone is re-signed. The validity window does not
+// change in the same way: a zone re-signed weekly with a fourteen day window
+// reports roughly the same remaining validity whenever it is looked at, which
+// is what makes `expiresIn` something an audit can assert on.
+private dns.rrsigRecord @defaults("typeCovered algorithm signerName") {
+  // Name the signed record set belongs to
+  name string
+  // Record type this signature covers, e.g. A, DNSKEY, or CNAME
+  typeCovered string
+  // DNSSEC algorithm number that produced the signature
+  algorithm int
+  // IANA mnemonic for the algorithm number, empty when unassigned
+  algorithmName string
+  // Number of labels in the original signed name
+  labels int
+  // Original TTL of the signed record set, as it appears in the zone
+  originalTtl int
+  // When the signature became valid
+  inception time
+  // When the signature stops being valid
+  expiration time
+  // How long the signature has left before it expires
+  //
+  // Negative once the signature has already expired. Assert a floor on this
+  // to catch a zone whose re-signing has stopped, which takes the zone down
+  // for validating resolvers at the moment the last signature lapses, with no
+  // warning from anything else.
+  expiresIn time
+  // Whether the signature's validity has already ended
+  expired bool
+  // Whether the signature's validity has not yet begun
+  //
+  // A resolver rejects a signature from the future exactly as harshly as an
+  // expired one, so a clock skewed forward on the signing server breaks the
+  // zone the same way a lapsed signature does.
+  notYetValid bool
+  // Zone that produced the signature
+  signerName string
+}
+
+// DNSSEC validation result for a domain
+//
+// What a DNSSEC-validating resolution of a domain actually returned, as
+// distinct from what the zone publishes. Reports whether the resolver honored
+// the DNSSEC OK bit, whether it set the Authenticated Data flag, whether the
+// answer carried signatures, whether those signatures verify against the
+// zone's published keys, and whether the chain of trust links all the way to
+// the root trust anchor. Reachable as
+// `dns(fqdn: "example.com").dnssecValidation`.
+//
+// Nothing here raises an error when validation does not succeed. An unsigned
+// zone, an unreachable resolver, a resolver that does not return DNSSEC
+// records, and a genuinely broken chain of trust all report their state in
+// these fields with `error` explaining which one happened, so a scan of a
+// fleet that includes unsigned domains still completes.
+//
+// The last of those is not a statement about the zone: when `dnssecOk` is
+// false the resolver answered without signatures whatever the zone publishes,
+// so the verdict fields are null rather than false.
+dns.dnssecValidationResult @defaults("chainOfTrustValidated authenticatedData") {
+  // Name that was queried
+  name string
+  // Record type that was queried
+  recordType string
+  // Response code of the validating query, e.g. NOERROR, SERVFAIL, or NXDOMAIN
+  //
+  // A validating resolver answers SERVFAIL, not NOERROR, when a zone's
+  // signatures do not verify, so a bogus zone and a broken server look alike
+  // from the response code alone. Read `error` to tell them apart.
+  responseCode string
+  // Whether the resolver returned DNSSEC records for a query that asked for them
+  //
+  // False when the path to the resolver strips EDNS0 or the resolver does not
+  // support DNSSEC. Every resolver the host is configured with is tried before
+  // this reports false. When it does, the answer describes the resolver rather
+  // than the zone, so signed, signaturesVerified, signaturesCurrentlyValid and
+  // chainOfTrustValidated are all null instead of reporting a verdict, and
+  // error says which case this is.
+  dnssecOk bool
+  // Whether the resolver set the Authenticated Data flag on the response
+  //
+  // This is the resolver's own verdict: it validated the answer and vouches
+  // for it. It says nothing when the resolver does not validate, which is why
+  // `chainOfTrustValidated` is computed here rather than taken on trust.
+  authenticatedData bool
+  // Whether the answer carried at least one RRSIG record
+  //
+  // Null when dnssecOk is false: a resolver that did not return DNSSEC records
+  // answers the same way for a signed zone and an unsigned one, so an unsigned
+  // answer is not evidence that the zone is unsigned.
+  signed bool
+  // Signatures covering the answer
+  signatures []dns.rrsigRecord
+  // Whether every signature over the answer verified against a published DNSKEY
+  //
+  // The cryptographic check of the answer itself, independent of anything the
+  // resolver claims. False when no signature could be verified, including
+  // when the answer carried none. Null when dnssecOk is false.
+  signaturesVerified bool
+  // Whether the chain of trust validated from this answer up to the root
+  //
+  // Verified here rather than delegated to the resolver: each zone's DNSKEY
+  // set is checked against the DS record its parent publishes, up to the IANA
+  // root trust anchor. False for an unsigned zone, an insecure delegation, a
+  // DS that no longer matches a published key, and any zone the walk could not
+  // reach. Null when dnssecOk is false, because the answer the walk would
+  // start from never carried a signature.
+  chainOfTrustValidated bool
+  // Zones the chain of trust walk traversed, from the signed answer up to the root
+  chain []string
+  // Zone the chain of trust broke at, empty when it validated
+  //
+  // Names the first zone walking upward whose link to its parent could not be
+  // established, which is the zone whose operator has something to fix.
+  brokenAtZone string
+  // Distinct zones that signed the answer
+  signerNames []string
+  // Distinct DNSSEC algorithm numbers across the answer's signatures
+  //
+  // The algorithm that actually signed the answer, which is not necessarily
+  // every algorithm the zone publishes a key for. A zone mid-migration
+  // publishes keys for both and signs with one.
+  signatureAlgorithms []int
+  // When the earliest-expiring signature over the answer expires
+  //
+  // Null when the answer carried no signatures.
+  earliestSignatureExpiry time
+  // How long the earliest-expiring signature over the answer has left
+  //
+  // Negative once that signature has expired. Null when the answer carried no
+  // signatures.
+  signatureExpiresIn time
+  // Whether every signature over the answer is inside its validity window now
+  //
+  // False when any signature has expired or has not yet become valid, and
+  // false when the answer carried no signatures at all, so it cannot pass
+  // vacuously on an unsigned zone. Null when dnssecOk is false.
+  signaturesCurrentlyValid bool
+  // Why validation did not complete, empty when the chain of trust validated
+  //
+  // Distinguishes the cases that all otherwise read as an unvalidated
+  // resolution: a zone that is not signed, a resolver that could not be
+  // reached, a signature that did not verify, and a delegation with no DS
+  // record at the parent.
+  error string
 }
 
 // SPF policy record (RFC 7208)
 //
-// Examine a parsed Sender Policy Framework record from a domain's TXT records:
+// Parsed Sender Policy Framework record from a domain's TXT records:
 // the version, the ordered list of mechanisms, and the qualifier on the
 // terminating `all` mechanism that decides how unauthorized senders are
 // handled. Select a domain's records with `dns(fqdn: "example.com").spf`.
@@ -615,7 +1047,7 @@ private dns.spfRecord @defaults("dnsTxt allQualifier") {
 
 // DMARC policy record (RFC 7489)
 //
-// Examine a parsed DMARC record from a domain's `_dmarc` TXT record: the policy
+// Parsed DMARC record from a domain's `_dmarc` TXT record: the policy
 // applied to failing mail, the subdomain policy, the aggregate and forensic
 // report destinations, the percentage of mail the policy covers, and the
 // SPF/DKIM identifier alignment modes. Reachable as
@@ -648,7 +1080,7 @@ private dns.dmarcRecord @defaults("policy") {
 
 // DKIM public-key DNS record (RFC 6376)
 //
-// Examine a parsed DKIM TXT record: the raw DNS text, the selector
+// Parsed DKIM TXT record: the raw DNS text, the selector
 // domain, the version, the acceptable hash algorithms, the key type,
 // the base64-encoded public-key data, the service-type restrictions,
 // the DKIM flags, free-form notes, and a `valid()` predicate that
@@ -674,4 +1106,32 @@ dns.dkimRecord @defaults("dnsTxt") {
   flags []string
   // Whether the DKIM entry and public key is valid
   valid() bool
+}
+
+// Remote host
+//
+// The host this connection targets, addressed by a domain name or an IP. What
+// the provider can tell you about it hangs off here: `domainName` parses the
+// name into its registrable domain and labels, `dns` reads its records, and
+// `tls` inspects its TLS endpoint. Each of those also stands on its own with an
+// explicit target, which is how they were reached before this resource existed.
+network.host @defaults("fqdn") @root {
+  // Domain name or IP address this connection targets
+  fqdn() string
+  // URL scheme the target was given with, e.g. https
+  //
+  // Empty when the target carried none, which is deliberate rather than
+  // unknown: the connection leaves it empty and each resource decides what
+  // that means to it. `tls` and `http.get` both read an unschemed target as
+  // HTTPS, so `host example.com` inspects the HTTPS endpoint.
+  scheme() string
+  // Parsed domain name
+  //
+  // The target broken into its registrable domain, TLD and labels. Empty of
+  // meaning for an IP target.
+  domainName() domainName
+  // DNS records for this host
+  dns() dns
+  // TLS endpoint of this host
+  tls() tls
 }

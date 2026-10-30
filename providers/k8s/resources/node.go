@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/utils/multierr"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/utils/multierr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -252,4 +252,52 @@ func (k *mqlK8sNode) ownerReferences() ([]any, error) {
 
 func (k *mqlK8sNode) managedFields() ([]any, error) {
 	return k8sManagedFields(k.MqlRuntime, k.obj)
+}
+
+// nodeRuntimeHandlerFeatures reports whether any advertised runtime handler
+// supports the named feature. It returns (value, true) only when at least one
+// handler carries a features block; a kubelet that advertises no features at
+// all yields (false, false), which the accessors report as null. Reporting
+// false there would claim the node cannot do something it never spoke about.
+func nodeRuntimeHandlerFeatures(handlers []corev1.NodeRuntimeHandler, pick func(*corev1.NodeRuntimeHandlerFeatures) *bool) (bool, bool) {
+	reported := false
+	supported := false
+	for i := range handlers {
+		f := handlers[i].Features
+		if f == nil {
+			continue
+		}
+		v := pick(f)
+		if v == nil {
+			continue
+		}
+		reported = true
+		if *v {
+			supported = true
+		}
+	}
+	return supported, reported
+}
+
+func (k *mqlK8sNode) runtimeHandlers() ([]any, error) {
+	return convert.JsonToDictSlice(k.obj.Status.RuntimeHandlers)
+}
+
+func (k *mqlK8sNode) supportsUserNamespaces() (bool, error) {
+	supported, reported := nodeRuntimeHandlerFeatures(k.obj.Status.RuntimeHandlers,
+		func(f *corev1.NodeRuntimeHandlerFeatures) *bool { return f.UserNamespaces })
+	if !reported {
+		k.SupportsUserNamespaces.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return supported, nil
+}
+
+func (k *mqlK8sNode) supportsSupplementalGroupsPolicy() (bool, error) {
+	features := k.obj.Status.Features
+	if features == nil || features.SupplementalGroupsPolicy == nil {
+		k.SupportsSupplementalGroupsPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *features.SupplementalGroupsPolicy, nil
 }

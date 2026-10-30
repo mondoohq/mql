@@ -13,12 +13,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/appsync"
 	appsynctypes "github.com/aws/aws-sdk-go-v2/service/appsync/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsAppsync) id() (string, error) {
@@ -61,7 +61,6 @@ func (a *mqlAwsAppsync) getApis(conn *connection.AwsConnection) []*jobpool.Job {
 		return []*jobpool.Job{{Err: err}}
 	}
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			res := []any{}
 			svc := conn.Appsync(region)

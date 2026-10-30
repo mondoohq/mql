@@ -4,17 +4,33 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/detector"
-	"go.mondoo.com/mql/v13/providers/os/resources/discovery/docker_engine"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/detector"
+	"go.mondoo.com/mql/providers/os/resources/discovery/docker_engine"
+	"go.mondoo.com/mql/providers/os/resources/discovery/mcp_servers"
 )
 
 var Config = plugin.Provider{
 	Name:    "os",
-	ID:      "go.mondoo.com/cnquery/v9/providers/os",
-	Version: "13.34.0",
+	ID:      "go.mondoo.com/mql/providers/os",
+	Version: "14.33.0",
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "13.4.0"},
+	},
+	// Every connection this provider serves - a host over SSH, a container
+	// image, a mounted filesystem - exposes an OS, so `_` answers with the
+	// operating system of whatever the query runs against (ADR 031).
+	//
+	// The root is `os.any`, the union of the OS roots, because the platform is
+	// only known after connecting while this declaration is read at compile
+	// time. The universal surface arrives through the embedded `os.base` and
+	// the family-specific surface through aliases on the union, so a query
+	// compiles against any platform and the compiler narrows the requirement to
+	// the roots it actually touched.
+	Root: "os.any",
 	ConnectionTypes: []string{
 		shared.Type_Local.String(),
 		shared.Type_SSH.String(),
@@ -48,6 +64,9 @@ Examples:
 			Discovery: []string{
 				docker_engine.DiscoveryContainerRunning,
 				docker_engine.DiscoveryContainerImages,
+				// advertising the target in --discover help does NOT enable it
+				// (opt-in only).
+				mcp_servers.DiscoveryMCPServers,
 			},
 			Flags: []plugin.Flag{
 				{
@@ -61,7 +80,7 @@ Examples:
 					Long:    "id-detector",
 					Type:    plugin.FlagType_String,
 					Default: "",
-					Desc:    "User override for platform ID detection mechanism",
+					Desc:    "User override for platform ID detection mechanism, as one detector or a comma-separated list; default stands for the detectors used when none are given",
 					Option:  plugin.FlagOption_Hidden,
 				},
 			},
@@ -118,7 +137,7 @@ Examples:
 					Long:    "id-detector",
 					Type:    plugin.FlagType_String,
 					Default: "",
-					Desc:    "User override for platform ID detection mechanism",
+					Desc:    "User override for platform ID detection mechanism, as one detector or a comma-separated list; default stands for the detectors used when none are given",
 					Option:  plugin.FlagOption_Hidden,
 				},
 			},
@@ -161,7 +180,7 @@ Examples:
 					Long:    "id-detector",
 					Type:    plugin.FlagType_String,
 					Default: "",
-					Desc:    "User override for platform ID detection mechanism",
+					Desc:    "User override for platform ID detection mechanism, as one detector or a comma-separated list; default stands for the detectors used when none are given",
 					Option:  plugin.FlagOption_Hidden,
 				},
 			},
@@ -189,7 +208,7 @@ Examples:
 					Long:    "id-detector",
 					Type:    plugin.FlagType_String,
 					Default: "",
-					Desc:    "User override for platform ID detection mechanism",
+					Desc:    "User override for platform ID detection mechanism, as one detector or a comma-separated list; default stands for the detectors used when none are given",
 					Option:  plugin.FlagOption_Hidden,
 				},
 			},
@@ -222,7 +241,7 @@ Examples:
 					Long:    "id-detector",
 					Type:    plugin.FlagType_String,
 					Default: "",
-					Desc:    "User override for platform ID detection mechanism",
+					Desc:    "User override for platform ID detection mechanism, as one detector or a comma-separated list; default stands for the detectors used when none are given",
 					Option:  plugin.FlagOption_Hidden,
 				},
 				{
@@ -271,7 +290,7 @@ Examples:
 					Long:    "id-detector",
 					Type:    plugin.FlagType_String,
 					Default: "",
-					Desc:    "User override for platform ID detection mechanism",
+					Desc:    "User override for platform ID detection mechanism, as one detector or a comma-separated list; default stands for the detectors used when none are given",
 					Option:  plugin.FlagOption_Hidden,
 				},
 				{
@@ -378,6 +397,21 @@ Examples:
 					Desc:   "List of platform IDs to inject to the asset",
 					Option: plugin.FlagOption_Hidden,
 				},
+			},
+		},
+	},
+	// *.dockerfile is the lowercase arm the forge classifiers already match;
+	// PerFile because a Dockerfile connection reads exactly one file, and
+	// handed a directory it would build an asset describing nothing.
+	Targets: []plugin.TargetOptIn{
+		{
+			Target: "iac", Discovery: "dockerfile", ConnType: shared.Type_DockerFile.String(),
+			Auto: true, PerFile: true,
+			Match: []plugin.Matcher{
+				{Glob: "Dockerfile"},
+				{Glob: "Dockerfile.*"},
+				{Glob: "*.Dockerfile"},
+				{Glob: "*.dockerfile"},
 			},
 		},
 	},

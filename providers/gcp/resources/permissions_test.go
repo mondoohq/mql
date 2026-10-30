@@ -19,15 +19,18 @@ import (
 // IMPORTANT: Do NOT edit this list just to make the test pass after a provider
 // code change. Every entry here has been validated as a REAL GCP IAM permission
 // against the live IAM API (`gcloud iam list-testable-permissions` on a project
-// and an organization, cross-checked against predefined roles). The permission
-// scanner derives permission strings heuristically from SDK method names and
-// regularly emits names that are NOT real permissions (wrong casing, singular
-// vs. plural, abbreviated resource segments such as certificatemanager.certs,
-// or an entirely different resource). When the scanner produces a new
-// permission, first confirm the real permission name, add a
-// gcpPermissionOverrides entry in
+// and an organization, cross-checked against predefined roles) or against the
+// predefined-role catalog that `go run ./providers-sdk/v1/util/permissions/validate`
+// checks the manifest with. The permission scanner derives permission strings
+// heuristically from SDK method names and regularly emits names that are NOT
+// real permissions (wrong casing, singular vs. plural, abbreviated resource
+// segments such as certificatemanager.certs, or an entirely different
+// resource). When the scanner produces a new permission, run the validator,
+// confirm the real permission name, add a gcpPermissionOverrides entry in
 // providers-sdk/v1/util/permissions/permissions.go if the derived name is
 // wrong, regenerate the manifest, and only then add the validated name here.
+// This list has been wrong before (five entries, caught by the validator in
+// 2026-10), so "it is in the list" is not evidence on its own.
 //
 // Note: when verifying against list-testable-permissions, remember that the API
 // omits permissions whose customRolesSupportLevel is NOT_SUPPORTED, so absence
@@ -57,12 +60,16 @@ var validatedGCPPermissions = []string{
 	"aiplatform.models.get",
 	"aiplatform.models.list",
 	"aiplatform.notebookExecutionJobs.list",
+	"aiplatform.notebookRuntimeTemplates.get",
+	"aiplatform.notebookRuntimeTemplates.getIamPolicy",
 	"aiplatform.notebookRuntimeTemplates.list",
 	"aiplatform.notebookRuntimes.list",
 	"aiplatform.persistentResources.list",
+	"aiplatform.pipelineJobs.get",
 	"aiplatform.pipelineJobs.list",
 	"aiplatform.ragCorpora.list",
 	"aiplatform.reasoningEngines.list",
+	"aiplatform.schedules.get",
 	"aiplatform.schedules.list",
 	"aiplatform.tensorboards.list",
 	"aiplatform.trainingPipelines.list",
@@ -95,6 +102,7 @@ var validatedGCPPermissions = []string{
 	"certificatemanager.dnsauthorizations.get",
 	"certificatemanager.dnsauthorizations.list",
 	"certificatemanager.trustconfigs.list",
+	"cloudasset.assets.analyzeIamPolicy",
 	"cloudasset.assets.searchAllIamPolicies",
 	"cloudasset.assets.searchAllResources",
 	"cloudbuild.builds.list",
@@ -112,6 +120,11 @@ var validatedGCPPermissions = []string{
 	"cloudkms.importJobs.list",
 	"cloudkms.keyRings.list",
 	"cloudkms.locations.list",
+	// The KMS Inventory API publishes no permissions of its own; reading a key's
+	// protected-resources summary is governed by this one, the single permission
+	// in roles/cloudkms.protectedResourcesViewer (verified against the live role
+	// definition and present in queryTestablePermissions at project scope).
+	"cloudkms.protectedResources.search",
 	"cloudkms.retiredResources.list",
 	"cloudscheduler.jobs.list",
 	"cloudsql.backupRuns.list",
@@ -119,6 +132,7 @@ var validatedGCPPermissions = []string{
 	"cloudsql.instances.list",
 	"cloudsql.sslCerts.list",
 	"cloudsql.users.list",
+	"cloudtasks.cmekConfig.get",
 	"cloudtasks.queues.getIamPolicy",
 	"cloudtasks.queues.list",
 	"composer.environments.list",
@@ -139,6 +153,8 @@ var validatedGCPPermissions = []string{
 	"compute.instances.list",
 	"compute.interconnectAttachments.list",
 	"compute.interconnects.list",
+	"compute.machineImages.getIamPolicy",
+	"compute.machineImages.list",
 	"compute.machineTypes.get",
 	"compute.machineTypes.list",
 	"compute.networkEndpointGroups.list",
@@ -147,6 +163,9 @@ var validatedGCPPermissions = []string{
 	"compute.packetMirrorings.list",
 	"compute.projects.get",
 	"compute.publicAdvertisedPrefixes.list",
+	"compute.regionFirewallPolicies.get",
+	"compute.regionFirewallPolicies.list",
+	"compute.regionSecurityPolicies.get",
 	"compute.regions.get",
 	"compute.regions.list",
 	"compute.routers.list",
@@ -181,7 +200,9 @@ var validatedGCPPermissions = []string{
 	"dataproc.jobs.list",
 	"datastore.backupSchedules.list",
 	"datastore.databases.list",
-	"datastore.indexes.list",
+	// Renamed from datastore.indexes.list; only the schemas spelling is in a
+	// predefined role or in the Firestore IAM documentation now.
+	"datastore.schemas.list",
 	"datastream.connectionProfiles.get",
 	"datastream.connectionProfiles.list",
 	"datastream.privateConnections.get",
@@ -193,6 +214,11 @@ var validatedGCPPermissions = []string{
 	"discoveryengine.engines.list",
 	"dlp.columnDataProfiles.list",
 	"dlp.connections.list",
+	// Validated against Google's own documentation for
+	// projects.locations.contentPolicies.list rather than against the live IAM
+	// API, which no one has run this against yet. The generic derivation happens
+	// to produce the documented name, so no override is needed.
+	"dlp.contentPolicies.list",
 	"dlp.deidentifyTemplates.list",
 	"dlp.fileStoreProfiles.list",
 	"dlp.inspectTemplates.list",
@@ -201,11 +227,15 @@ var validatedGCPPermissions = []string{
 	"dlp.projectDataProfiles.list",
 	"dlp.storedInfoTypes.list",
 	"dlp.tableDataProfiles.list",
+	"dns.dnsKeys.list",
 	"dns.managedZones.getIamPolicy",
 	"dns.managedZones.list",
 	"dns.policies.list",
 	"dns.resourceRecordSets.list",
 	"dns.responsePolicies.list",
+	"documentai.processorVersions.get",
+	"documentai.processorVersions.list",
+	"documentai.processors.list",
 	// Real and required (Cloud Domains), but customRolesSupportLevel is
 	// NOT_SUPPORTED: GCP grants it only via a predefined role (roles/domains.viewer),
 	// never a custom role. It is therefore absent from list-testable-permissions and
@@ -215,15 +245,21 @@ var validatedGCPPermissions = []string{
 	"eventarc.channels.list",
 	"eventarc.triggers.list",
 	"file.instances.list",
+	"firebaserules.releases.list",
+	"firebaserules.rulesets.get",
+	"firebaserules.rulesets.list",
 	"gkebackup.backupPlans.list",
 	"gkebackup.restorePlans.list",
 	"iam.denypolicies.list",
+	"iam.policybindings.list",
+	"iam.principalaccessboundarypolicies.list",
 	"iam.roles.list",
 	"iam.serviceAccountKeys.list",
 	"iam.serviceAccounts.getIamPolicy",
 	"iam.serviceAccounts.list",
-	"iam.workloadIdentityPoolProviders.list",
-	"iam.workloadIdentityPools.list",
+	// Google's primary names; the dotted spellings are aliases.
+	"iam.googleapis.com/workloadIdentityPoolProviders.list",
+	"iam.googleapis.com/workloadIdentityPools.list",
 	"iap.projects.getSettings",
 	"iap.tunnelDestGroups.list",
 	"iap.web.getIamPolicy",
@@ -231,6 +267,7 @@ var validatedGCPPermissions = []string{
 	"ids.endpoints.list",
 	"logging.buckets.list",
 	"logging.exclusions.list",
+	"logging.logMetrics.list",
 	"logging.settings.get",
 	"logging.sinks.list",
 	"logging.views.list",
@@ -242,6 +279,7 @@ var validatedGCPPermissions = []string{
 	"memorystore.instances.get",
 	"memorystore.instances.list",
 	"modelarmor.floorSettings.get",
+	"modelarmor.templates.get",
 	"modelarmor.templates.list",
 	"monitoring.alertPolicies.list",
 	"monitoring.dashboards.list",
@@ -250,9 +288,18 @@ var validatedGCPPermissions = []string{
 	"monitoring.services.list",
 	"monitoring.slos.list",
 	"monitoring.uptimeCheckConfigs.list",
+	"networkconnectivity.hubs.list",
+	"networkconnectivity.spokes.list",
+	"networkmanagement.connectivitytests.list",
 	"networksecurity.addressGroups.list",
 	"networksecurity.authorizationPolicies.list",
 	"networksecurity.clientTlsPolicies.list",
+	"networksecurity.firewallEndpointAssociations.list",
+	"networksecurity.firewallEndpoints.get",
+	"networksecurity.firewallEndpoints.list",
+	"networksecurity.gatewaySecurityPolicies.list",
+	"networksecurity.gatewaySecurityPolicyRules.list",
+	"networksecurity.locations.list",
 	"networksecurity.securityProfileGroups.list",
 	"networksecurity.securityProfiles.list",
 	"networksecurity.serverTlsPolicies.list",
@@ -260,30 +307,45 @@ var validatedGCPPermissions = []string{
 	"networksecurity.urlLists.list",
 	"orgpolicy.constraints.list",
 	"orgpolicy.policies.list",
+	"orgpolicy.policy.get",
 	"osconfig.inventories.get",
 	"osconfig.osPolicyAssignments.list",
 	"osconfig.patchDeployments.list",
 	"osconfig.vulnerabilityReports.get",
 	"policyanalyzer.serviceAccountLastAuthenticationActivities.query",
+	"privateca.caPools.getIamPolicy",
 	"privateca.caPools.list",
 	"privateca.certificateAuthorities.list",
+	"privateca.certificateRevocationLists.list",
+	"privateca.certificateTemplates.list",
 	"privateca.certificates.list",
 	"pubsub.schemas.get",
+	"privilegedaccessmanager.entitlements.list",
+	"privilegedaccessmanager.grants.list",
 	"pubsub.schemas.list",
 	"redis.backups.list",
 	"redis.clusters.list",
 	"redis.instances.list",
 	"resourcemanager.projects.get",
 	"resourcemanager.projects.getIamPolicy",
-	"resourcemanager.resourceTagBindings.list",
+	"resourcemanager.hierarchyNodes.listTagBindings",
+	"resourcemanager.tagKeys.get",
+	"resourcemanager.tagKeys.getIamPolicy",
+	"resourcemanager.tagKeys.list",
+	"resourcemanager.tagValues.get",
+	"resourcemanager.tagValues.getIamPolicy",
+	"resourcemanager.tagValues.list",
 	"run.jobs.getIamPolicy",
 	"run.jobs.list",
 	"run.operations.list",
 	"run.services.getIamPolicy",
 	"run.services.list",
+	"secretmanager.locations.list",
 	"secretmanager.secrets.getIamPolicy",
 	"secretmanager.secrets.list",
 	"secretmanager.versions.list",
+	"securitycenter.effectivesecurityhealthanalyticscustommodules.list",
+	"securitycentermanagement.effectiveEventThreatDetectionCustomModules.list",
 	"serviceusage.services.get",
 	"serviceusage.services.list",
 	"source.repos.list",
@@ -301,29 +363,57 @@ var validatedGCPPermissions = []string{
 	"storage.buckets.getIamPolicy",
 	"storage.buckets.list",
 	"storage.buckets.listEffectiveTags",
+	"storage.hmacKeys.list",
 	"workflows.workflows.list",
 }
 
-type permissionManifest struct {
-	Permissions []string `json:"permissions"`
+// validatedGCPOrgLevelPermissions is the same for the manifest's
+// org_level_permissions: permissions that are granted on an organization, not
+// a project, because the resource they read lives there (folders, the
+// organization itself, custom org-policy constraints, workforce identity
+// pools, Assured Workloads). Every entry was confirmed present at organization
+// scope and absent or not applicable at project scope with
+// queryTestablePermissions (2026-10-07; assuredworkloads on 2026-10-27).
+var validatedGCPOrgLevelPermissions = []string{
+	"assuredworkloads.violations.list",
+	"assuredworkloads.workload.list",
+	"iam.googleapis.com/workforcePoolProviders.list",
+	"iam.googleapis.com/workforcePools.list",
+	"orgpolicy.customConstraints.list",
+	"resourcemanager.folders.get",
+	"resourcemanager.folders.getIamPolicy",
+	"resourcemanager.folders.list",
+	"resourcemanager.organizations.get",
+	"resourcemanager.organizations.getIamPolicy",
+	"resourcemanager.projects.list",
 }
 
-func TestGCPPermissionsMatchValidatedList(t *testing.T) {
+type permissionManifest struct {
+	Permissions         []string `json:"permissions"`
+	OrgLevelPermissions []string `json:"org_level_permissions"`
+}
+
+func readGCPManifest(t *testing.T) permissionManifest {
+	t.Helper()
 	data, err := os.ReadFile("gcp.permissions.json")
 	require.NoError(t, err, "failed to read gcp.permissions.json")
-
 	var manifest permissionManifest
 	require.NoError(t, json.Unmarshal(data, &manifest), "failed to parse gcp.permissions.json")
+	return manifest
+}
 
-	actual := make([]string, len(manifest.Permissions))
-	copy(actual, manifest.Permissions)
+// assertPermissionsMatch compares one manifest list with its validated list
+// and names every entry on only one side.
+func assertPermissionsMatch(t *testing.T, list string, manifestPerms, validated []string) {
+	t.Helper()
+	actual := make([]string, len(manifestPerms))
+	copy(actual, manifestPerms)
 	sort.Strings(actual)
 
-	expected := make([]string, len(validatedGCPPermissions))
-	copy(expected, validatedGCPPermissions)
+	expected := make([]string, len(validated))
+	copy(expected, validated)
 	sort.Strings(expected)
 
-	// Build sets for detailed diff
 	actualSet := map[string]bool{}
 	for _, p := range actual {
 		actualSet[p] = true
@@ -346,17 +436,25 @@ func TestGCPPermissionsMatchValidatedList(t *testing.T) {
 	}
 
 	if len(unexpected) > 0 {
-		t.Errorf("unexpected permissions in manifest (not in validated list):\n")
+		t.Errorf("unexpected %s in manifest (not in validated list):\n", list)
 		for _, p := range unexpected {
 			t.Errorf("  - %s", p)
 		}
 	}
 	if len(missing) > 0 {
-		t.Errorf("missing permissions from manifest (expected but not found):\n")
+		t.Errorf("missing %s from manifest (expected but not found):\n", list)
 		for _, p := range missing {
 			t.Errorf("  - %s", p)
 		}
 	}
 
-	assert.Equal(t, expected, actual, "permissions in gcp.permissions.json must exactly match the validated list")
+	assert.Equal(t, expected, actual, "%s in gcp.permissions.json must exactly match the validated list", list)
+}
+
+func TestGCPPermissionsMatchValidatedList(t *testing.T) {
+	assertPermissionsMatch(t, "permissions", readGCPManifest(t).Permissions, validatedGCPPermissions)
+}
+
+func TestGCPOrgLevelPermissionsMatchValidatedList(t *testing.T) {
+	assertPermissionsMatch(t, "org_level_permissions", readGCPManifest(t).OrgLevelPermissions, validatedGCPOrgLevelPermissions)
 }

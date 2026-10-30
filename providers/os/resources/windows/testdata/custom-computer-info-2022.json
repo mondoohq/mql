@@ -1,0 +1,79 @@
+{
+  "Bios": {
+    "Manufacturer": "Amazon EC2",
+    "SMBIOSBIOSVersion": "1.0",
+    "Version": "AMAZON - 1",
+    "SerialNumber": "00000000-0000-0000-0000-000000000000"
+  },
+  "ComputerSystem": {
+    "Name": "WIN-FIXTURE06",
+    "DNSHostName": "WIN-FIXTURE06",
+    "Domain": "WORKGROUP",
+    "DomainRole": 2,
+    "Manufacturer": "Amazon EC2",
+    "Model": "t3.large",
+    "NumberOfProcessors": 1,
+    "NumberOfLogicalProcessors": 2,
+    "TotalPhysicalMemory": 8482484224,
+    "PartOfDomain": false,
+    "SystemType": "x64-based PC"
+  },
+  "Os": {
+    "Caption": "Microsoft Windows Server 2022 Datacenter",
+    "Version": "10.0.20348",
+    "BuildNumber": "20348",
+    "OSArchitecture": "64-bit",
+    "OSLanguage": 1033,
+    "Locale": "0409",
+    "CountryCode": "1",
+    "ProductType": 3,
+    "OperatingSystemSKU": 8,
+    "MUILanguages": [
+      "en-US"
+    ],
+    "SerialNumber": "00000-00000-00000-AAAAA",
+    "CSName": "WIN-FIXTURE06"
+  },
+  "TimeZone": {
+    "StandardName": "Coordinated Universal Time",
+    "DaylightName": "Coordinated Universal Time",
+    "Bias": 0
+  },
+  "WindowsProduct": {
+    "CurrentVersion": "6.3",
+    "EditionID": "ServerDatacenter",
+    "InstallationType": "Server",
+    "ProductName": "Windows Server 2022 Datacenter",
+    "ProductId": "00000-00000-00000-AAAAA",
+    "RegisteredOwner": "EC2"
+  },
+  "FirmwareType": "Legacy",
+  "Hal": "10.0.20348.5499",
+  "PhysicalMemoryKB": 8388608,
+  "Uptime": {
+    "TotalSeconds": 592.1694755
+  },
+  "OsLanguageName": "en-US",
+  "OsLocaleName": "en-US",
+  "Processors": [
+    {
+      "Name": "Intel(R) Xeon(R) Platinum 8259CL CPU @ 2.50GHz",
+      "Manufacturer": "GenuineIntel",
+      "Description": "Intel64 Family 6 Model 85 Stepping 7",
+      "Architecture": 9,
+      "AddressWidth": 64,
+      "DataWidth": 64,
+      "MaxClockSpeed": 2500,
+      "CurrentClockSpeed": 2500,
+      "NumberOfCores": 1,
+      "NumberOfLogicalProcessors": 2,
+      "ProcessorID": "BFEBFBFF00050657",
+      "SocketDesignation": "CPU 0",
+      "ProcessorType": 3,
+      "Role": "CPU",
+      "Status": "OK",
+      "CpuStatus": 1,
+      "Availability": 3
+    }
+  ]
+}

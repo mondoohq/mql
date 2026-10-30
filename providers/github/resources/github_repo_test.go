@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/google/go-github/v88/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -168,4 +168,65 @@ func TestGithubResponseStatus(t *testing.T) {
 			assert.Equal(t, tc.want, githubResponseStatus(tc.err))
 		})
 	}
+}
+
+func TestGitTreeEntryType(t *testing.T) {
+	tests := []struct {
+		objectType string
+		want       string
+	}{
+		{objectType: "blob", want: "file"},
+		{objectType: "tree", want: "dir"},
+		{objectType: "commit", want: "submodule"},
+		{objectType: "", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.objectType, func(t *testing.T) {
+			assert.Equal(t, tt.want, gitTreeEntryType(tt.objectType))
+		})
+	}
+}
+
+func TestIsBinaryFileFromTreeEntry(t *testing.T) {
+	// Tree entries carry a full path, so the extension has to be read off the
+	// last segment rather than by splitting the whole path on ".".
+	assert.True(t, isBinaryFile("file", "tools/vendor/bin/helper.so"))
+	assert.True(t, isBinaryFile("file", "build/my.app.exe"))
+	assert.False(t, isBinaryFile("file", "docs/readme.md"))
+	assert.False(t, isBinaryFile("dir", "tools/vendor/bin"))
+	assert.False(t, isBinaryFile("submodule", "third_party/dep"))
+}
+
+func TestSecretScanningAlertMetadata(t *testing.T) {
+	t.Run("pairs become a map", func(t *testing.T) {
+		got := secretScanningAlertMetadata([]*github.SecretScanningAlertMetadata{
+			{Key: "owner_email", Value: "dev@example.com"},
+			{Key: "environment", Value: "production"},
+		})
+		assert.Equal(t, map[string]any{
+			"owner_email": "dev@example.com",
+			"environment": "production",
+		}, got)
+	})
+
+	t.Run("nil entries and entries without a key are dropped", func(t *testing.T) {
+		got := secretScanningAlertMetadata([]*github.SecretScanningAlertMetadata{
+			nil,
+			{Value: "orphan"},
+			{Key: "", Value: "orphan"},
+			{Key: "kept"},
+		})
+		assert.Equal(t, map[string]any{"kept": ""}, got)
+	})
+
+	t.Run("no metadata is an empty map", func(t *testing.T) {
+		assert.Empty(t, secretScanningAlertMetadata(nil))
+	})
+}
+
+func TestAlertUserAbsent(t *testing.T) {
+	u, err := alertUser(nil, nil)
+	assert.NoError(t, err)
+	assert.Nil(t, u)
 }

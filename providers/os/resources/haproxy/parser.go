@@ -295,7 +295,6 @@ func parseStreamWithIncludes(filename string, r io.Reader, open OpenFunc, glob G
 			}
 			if i+1 < len(args) && args[i] == "from" {
 				s.Inherits = args[i+1]
-				i += 2
 			}
 			// Anything past the recognized header tokens stays in the
 			// section's raw text but isn't otherwise modeled.

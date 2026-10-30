@@ -1,0 +1,16 @@
+# Copyright Mondoo, Inc. 2026
+# SPDX-License-Identifier: BUSL-1.1
+
+# A pod in a namespace the manifest never declares. Discovery synthesizes a
+# bare namespace for it, so there is nothing to inherit and nothing to fail.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web
+  namespace: undeclared
+  labels:
+    app: web
+spec:
+  containers:
+    - name: web
+      image: nginx:1.25

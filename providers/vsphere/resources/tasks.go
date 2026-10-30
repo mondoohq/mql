@@ -13,8 +13,8 @@ import (
 	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/vim25/mo"
 	vmwaretypes "github.com/vmware/govmomi/vim25/types"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/vsphere/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/vsphere/connection"
 )
 
 // eventPageSize bounds how many of the most recent events vsphere.events

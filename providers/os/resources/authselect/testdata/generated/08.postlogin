@@ -1,0 +1,3 @@
+session     optional      pam_umask.so silent
+session     optional      pam_echo.so first
+

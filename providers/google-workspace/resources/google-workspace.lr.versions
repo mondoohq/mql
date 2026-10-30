@@ -121,7 +121,6 @@ googleworkspace.group.members 9.0.0
 googleworkspace.group.name 9.0.0
 googleworkspace.group.nonEditableAliases 11.1.122
 googleworkspace.group.securitySettings 9.0.0
-googleworkspace.group.settings 9.0.0
 googleworkspace.group.settingsConfig 13.1.5
 googleworkspace.group.settingsConfig.allowExternalMembers 13.1.5
 googleworkspace.group.settingsConfig.allowWebPosting 13.1.5
@@ -202,15 +201,18 @@ googleworkspace.policy.type 13.1.5
 googleworkspace.policy.value 13.1.5
 googleworkspace.report.activity 9.0.0
 googleworkspace.report.activity.actor 9.0.0
+googleworkspace.report.activity.deviceId 13.2.9
+googleworkspace.report.activity.deviceOsVersion 13.2.9
+googleworkspace.report.activity.deviceType 13.2.9
 googleworkspace.report.activity.events 9.0.0
 googleworkspace.report.activity.id 9.0.0
 googleworkspace.report.activity.ipAddress 9.0.0
+googleworkspace.report.activity.isAgenticAction 13.2.9
 googleworkspace.report.activity.ownerDomain 9.0.0
 googleworkspace.report.apps 9.0.0
 googleworkspace.report.apps.admin 9.0.0
 googleworkspace.report.apps.drive 9.0.0
 googleworkspace.report.usage 9.0.0
-googleworkspace.report.usage.account 9.0.0
 googleworkspace.report.usage.appUsage 9.0.0
 googleworkspace.report.usage.customerId 9.0.0
 googleworkspace.report.usage.date 9.0.0
@@ -228,7 +230,6 @@ googleworkspace.report.usage.parameters 9.0.0
 googleworkspace.report.usage.passwordLengthCompliance 13.1.5
 googleworkspace.report.usage.passwordStrength 13.1.5
 googleworkspace.report.usage.profileId 9.0.0
-googleworkspace.report.usage.security 9.0.0
 googleworkspace.report.usage.type 9.0.0
 googleworkspace.report.usage.usedQuotaInMb 13.1.5
 googleworkspace.report.usage.userEmail 9.0.0
@@ -239,6 +240,7 @@ googleworkspace.role.assignment 13.1.5
 googleworkspace.role.assignment.assignedTo 13.1.5
 googleworkspace.role.assignment.assigneeType 13.1.5
 googleworkspace.role.assignment.condition 13.1.5
+googleworkspace.role.assignment.expiresAt 14.0.1
 googleworkspace.role.assignment.id 13.1.5
 googleworkspace.role.assignment.orgUnitId 13.1.5
 googleworkspace.role.assignment.role 13.1.5

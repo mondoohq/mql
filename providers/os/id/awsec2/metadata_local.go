@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	"go.mondoo.com/mql/v13/providers/os/id/metadata"
+	"go.mondoo.com/mql/providers/os/id/metadata"
 
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 )

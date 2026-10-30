@@ -1,0 +1,133 @@
+
+# A MySQL host carrying per-user option files: a world-readable /root/.my.cnf
+# holding a plaintext password, and an obfuscated /home/app/.mylogin.cnf whose
+# contents are deliberately never decoded.
+
+[files."/etc"]
+path = "/etc"
+[files."/etc".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/my.cnf.d"]
+path = "/etc/my.cnf.d"
+[files."/etc/my.cnf.d".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/mysql"]
+path = "/etc/mysql"
+[files."/etc/mysql".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/mysql/conf.d"]
+path = "/etc/mysql/conf.d"
+[files."/etc/mysql/conf.d".stat]
+isdir = true
+mode = 16877
+
+[files."/home"]
+path = "/home"
+[files."/home".stat]
+isdir = true
+mode = 16877
+
+[files."/home/app"]
+path = "/home/app"
+[files."/home/app".stat]
+isdir = true
+mode = 16877
+
+[files."/root"]
+path = "/root"
+[files."/root".stat]
+isdir = true
+mode = 16877
+
+[files."/usr"]
+path = "/usr"
+[files."/usr".stat]
+isdir = true
+mode = 16877
+
+[files."/usr/sbin"]
+path = "/usr/sbin"
+[files."/usr/sbin".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/my.cnf"]
+path = "/etc/my.cnf"
+content = '''
+# For advice on how to change settings please see
+# http://dev.mysql.com/doc/refman/8.0/en/server-configuration-defaults.html
+
+[mysqld]
+#
+# Remove leading # and set to the amount of RAM for the most important data
+# cache in MySQL. Start at 70% of total RAM for dedicated server, else 10%.
+# innodb_buffer_pool_size = 128M
+#
+# Remove leading # to turn on a very important data integrity option: logging
+# changes to the binary log between backups.
+# log_bin
+#
+# Remove leading # to set options mainly useful for reporting servers.
+# The server defaults are faster for transactions and fast SELECTs.
+# Adjust sizes as needed, experiment to find the optimal values.
+# join_buffer_size = 128M
+# sort_buffer_size = 2M
+# read_rnd_buffer_size = 2M
+
+# Remove leading # to revert to previous value for default_authentication_plugin,
+# this will increase compatibility with older clients. For background, see:
+# https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_default_authentication_plugin
+# default-authentication-plugin=mysql_native_password
+skip-host-cache
+skip-name-resolve
+datadir=/var/lib/mysql
+socket=/var/run/mysqld/mysqld.sock
+secure-file-priv=/var/lib/mysql-files
+user=mysql
+
+pid-file=/var/run/mysqld/mysqld.pid
+[client]
+socket=/var/run/mysqld/mysqld.sock
+
+!includedir /etc/mysql/conf.d/
+'''
+
+[files."/etc/passwd"]
+path = "/etc/passwd"
+content = '''
+root:x:0:0:root:/root:/bin/bash
+mysql:x:110:110:MySQL Server:/nonexistent:/bin/false
+app:x:1000:1000:App:/home/app:/bin/bash
+'''
+
+[files."/home/app/.mylogin.cnf"]
+path = "/home/app/.mylogin.cnf"
+# Stands in for the obfuscated credential store mysql_config_editor writes.
+# The real file begins with a NUL-padded header, which TOML cannot carry, and
+# the exact bytes do not matter here: what matters is that the resource
+# reports the file without decoding it.
+content = 'BINARY-MYLOGIN-HEADER\xef\xbf\xbdobfuscated-credential-store'
+
+[files."/root/.my.cnf"]
+path = "/root/.my.cnf"
+content = '''
+[client]
+user=root
+password=hunter2
+'''
+# 0644: readable by every account on the host.
+[files."/root/.my.cnf".stat]
+mode = 420
+uid = 0
+gid = 0
+
+[files."/usr/sbin/mysqld"]
+path = "/usr/sbin/mysqld"
+content = ''
+

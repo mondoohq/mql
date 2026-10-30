@@ -8,27 +8,33 @@ import (
 	"fmt"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/types"
 
 	corev1 "k8s.io/api/core/v1"
+	extensionsv1beta1 "k8s.io/api/extensions/v1beta1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 type mqlK8sIngressInternal struct {
-	lock  sync.Mutex
-	obj   runtime.Object
-	objId string
+	lock sync.Mutex
+	// obj is the object as it was read, so manifest reports its own apiVersion.
+	obj runtime.Object
+	// ingress is obj in networking.k8s.io/v1 form.
+	ingress *networkingv1.Ingress
+	objId   string
 }
 
 func (k *mqlK8sIngress) getIngress() (*networkingv1.Ingress, error) {
-	ing, ok := k.obj.(*networkingv1.Ingress)
-	if ok {
-		return ing, nil
+	if k.ingress != nil {
+		return k.ingress, nil
 	}
 	return nil, errors.New("invalid k8s ingress")
 }
@@ -37,9 +43,9 @@ func (k *mqlK8s) ingresses() ([]any, error) {
 	return k8sResourceToMql(k.MqlRuntime, gvkString(networkingv1.SchemeGroupVersion.WithKind("ingresses")), func(kind string, resource runtime.Object, obj metav1.Object, objT metav1.Type) (any, error) {
 		ts := obj.GetCreationTimestamp()
 
-		ingress, ok := resource.(*networkingv1.Ingress)
-		if !ok {
-			return nil, errors.New("not a k8s ingress")
+		ingress, err := toNetworkingV1Ingress(resource)
+		if err != nil {
+			return nil, err
 		}
 
 		objId := objIdFromK8sObj(obj, objT)
@@ -62,10 +68,106 @@ func (k *mqlK8s) ingresses() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		r.(*mqlK8sIngress).obj = ingress
+		r.(*mqlK8sIngress).obj = resource
+		r.(*mqlK8sIngress).ingress = ingress
 		r.(*mqlK8sIngress).objId = objId
 		return r, nil
 	})
+}
+
+// toNetworkingV1Ingress returns an Ingress in its networking.k8s.io/v1 form.
+//
+// Manifests can still carry the extensions/v1beta1 and networking.k8s.io/v1beta1
+// versions, which were removed in Kubernetes 1.22. Their objects describe the
+// same Ingress, so they are converted the way the API server converted them:
+// spec.backend becomes spec.defaultBackend, and a backend's serviceName and
+// servicePort become service.name and service.port (a number or a port name).
+func toNetworkingV1Ingress(resource runtime.Object) (*networkingv1.Ingress, error) {
+	switch x := resource.(type) {
+	case *networkingv1.Ingress:
+		return x, nil
+	case *extensionsv1beta1.Ingress:
+		return convertV1beta1Ingress(x), nil
+	case *unstructured.Unstructured:
+		// networking.k8s.io/v1beta1 is not part of the manifest scheme, and its
+		// Ingress has the same schema as the extensions/v1beta1 one.
+		gvk := x.GroupVersionKind()
+		if gvk.Kind == "Ingress" && gvk.Version == "v1beta1" &&
+			(gvk.Group == "networking.k8s.io" || gvk.Group == "extensions") {
+			legacy := &extensionsv1beta1.Ingress{}
+			if err := runtime.DefaultUnstructuredConverter.FromUnstructured(x.Object, legacy); err != nil {
+				return nil, fmt.Errorf("could not read %s ingress %q: %w", gvk.GroupVersion(), x.GetName(), err)
+			}
+			return convertV1beta1Ingress(legacy), nil
+		}
+		return nil, fmt.Errorf("ingress %q with version %s is not supported", x.GetName(), gvk.GroupVersion())
+	}
+	return nil, errors.New("not a k8s ingress")
+}
+
+func convertV1beta1Ingress(in *extensionsv1beta1.Ingress) *networkingv1.Ingress {
+	out := &networkingv1.Ingress{
+		APIVersion: networkingv1.SchemeGroupVersion.String(),
+		Kind:       "Ingress",
+		ObjectMeta: in.ObjectMeta,
+		Spec: networkingv1.IngressSpec{
+			IngressClassName: in.Spec.IngressClassName,
+		},
+	}
+	if in.Spec.Backend != nil {
+		backend := convertV1beta1IngressBackend(*in.Spec.Backend)
+		out.Spec.DefaultBackend = &backend
+	}
+	for _, tls := range in.Spec.TLS {
+		out.Spec.TLS = append(out.Spec.TLS, networkingv1.IngressTLS{
+			Hosts:      tls.Hosts,
+			SecretName: tls.SecretName,
+		})
+	}
+	for _, rule := range in.Spec.Rules {
+		r := networkingv1.IngressRule{Host: rule.Host}
+		if rule.HTTP != nil {
+			r.HTTP = &networkingv1.HTTPIngressRuleValue{}
+			for _, path := range rule.HTTP.Paths {
+				var pathType *networkingv1.PathType
+				if path.PathType != nil {
+					pt := networkingv1.PathType(*path.PathType)
+					pathType = &pt
+				}
+				r.HTTP.Paths = append(r.HTTP.Paths, networkingv1.HTTPIngressPath{
+					Path:     path.Path,
+					PathType: pathType,
+					Backend:  convertV1beta1IngressBackend(path.Backend),
+				})
+			}
+		}
+		out.Spec.Rules = append(out.Spec.Rules, r)
+	}
+	for _, lb := range in.Status.LoadBalancer.Ingress {
+		ports := make([]networkingv1.IngressPortStatus, 0, len(lb.Ports))
+		for _, p := range lb.Ports {
+			ports = append(ports, networkingv1.IngressPortStatus{Port: p.Port, Protocol: p.Protocol, Error: p.Error})
+		}
+		out.Status.LoadBalancer.Ingress = append(out.Status.LoadBalancer.Ingress, networkingv1.IngressLoadBalancerIngress{
+			IP:       lb.IP,
+			Hostname: lb.Hostname,
+			Ports:    ports,
+		})
+	}
+	return out
+}
+
+func convertV1beta1IngressBackend(in extensionsv1beta1.IngressBackend) networkingv1.IngressBackend {
+	out := networkingv1.IngressBackend{Resource: in.Resource}
+	if in.ServiceName != "" {
+		out.Service = &networkingv1.IngressServiceBackend{Name: in.ServiceName}
+		if in.ServicePort.Type == intstr.String {
+			out.Service.Port.Name = in.ServicePort.StrVal
+		} else {
+			out.Service.Port.Number = in.ServicePort.IntVal
+		}
+	}
+	return out
 }
 
 func (k *mqlK8sIngress) tls() ([]any, error) {
@@ -125,6 +227,7 @@ func (k *mqlK8sIngress) ingressClassName() (string, error) {
 		return "", err
 	}
 	if ing.Spec.IngressClassName == nil {
+		k.IngressClassName.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 	return *ing.Spec.IngressClassName, nil
@@ -361,9 +464,17 @@ func getTLS(ingress *networkingv1.Ingress, objId string, runtime *plugin.Runtime
 
 			certs := secret.GetCertificates()
 			if certs.Error != nil {
-				return nil, errors.New("error getting certificate data from Secret")
+				// A Secret whose tls.crt is absent or not parseable as PEM is a
+				// property of this one entry, not of the Ingress. Skip it and keep
+				// the remaining entries, the same way a missing Secret and a Secret
+				// with no TLS data are handled.
+				log.Debug().Err(certs.Error).
+					Str("ingress", ingress.Name).
+					Str("secret", tls.SecretName).
+					Msg("skipping ingress TLS entry whose certificate could not be read")
+				continue
 			}
-			if certs.Data == nil || len(certs.Data) == 0 {
+			if len(certs.Data) == 0 {
 				// no TLS data in Secret referenced
 				// k8s will allow this, so we'll just follow along with this being
 				// a non-critical issue and skip processing the Secret

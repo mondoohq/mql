@@ -1,0 +1,163 @@
+[
+  {
+    "Name": "Package_10_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 112,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": "2026-08-10T15:18:31.2647023Z"
+  },
+  {
+    "Name": "Package_11_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 112,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": "2026-08-10T15:18:31.2647023Z"
+  },
+  {
+    "Name": "Package_12_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 112,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": "2026-08-10T15:18:31.2647023Z"
+  },
+  {
+    "Name": "Package_13_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 112,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": "2026-08-10T15:18:31.2647023Z"
+  },
+  {
+    "Name": "Package_14_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 112,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": "2026-08-10T15:18:31.2647023Z"
+  },
+  {
+    "Name": "Package_15_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 112,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": "2026-08-10T15:18:31.2647023Z"
+  },
+  {
+    "Name": "Package_16_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 112,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": "2026-08-10T15:18:31.2647023Z"
+  },
+  {
+    "Name": "Package_17_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 64,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": null
+  },
+  {
+    "Name": "Package_18_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 64,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": null
+  },
+  {
+    "Name": "Package_19_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 112,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": "2026-08-10T15:18:31.2647023Z"
+  },
+  {
+    "Name": "Package_20_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 112,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": "2026-08-10T15:18:31.2647023Z"
+  },
+  {
+    "Name": "Package_21_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 112,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": "2026-08-10T15:18:31.2647023Z"
+  },
+  {
+    "Name": "Package_22_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 112,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": "2026-08-10T15:18:31.2647023Z"
+  },
+  {
+    "Name": "Package_23_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 64,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": null
+  },
+  {
+    "Name": "Package_6_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 112,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": "2026-08-10T15:18:31.2647023Z"
+  },
+  {
+    "Name": "Package_7_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 112,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": "2026-08-10T15:18:31.2647023Z"
+  },
+  {
+    "Name": "Package_8_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 112,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": "2026-08-10T15:18:31.2647023Z"
+  },
+  {
+    "Name": "Package_9_for_KB5120708~31bf3856ad364e35~amd64~~10.0.9344.1",
+    "CurrentState": 112,
+    "Identifier": "KB5120708",
+    "ReleaseType": "Update",
+    "InstallTimeUtc": "2026-08-10T15:18:31.2647023Z"
+  },
+  {
+    "Name": "Package_for_HotpatchFix_33222~31bf3856ad364e35~amd64~~26100.33222.1.16",
+    "CurrentState": 112,
+    "Identifier": "KB5120228",
+    "ReleaseType": "Security Update",
+    "InstallTimeUtc": "2026-08-10T15:49:51.3766408Z"
+  },
+  {
+    "Name": "Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.1742.1.10",
+    "CurrentState": 64,
+    "Identifier": "KB5043080",
+    "ReleaseType": "Security Update",
+    "InstallTimeUtc": null
+  },
+  {
+    "Name": "Package_for_RollupFix~31bf3856ad364e35~amd64~~26100.33158.1.29",
+    "CurrentState": 112,
+    "Identifier": "KB5099536",
+    "ReleaseType": "Security Update",
+    "InstallTimeUtc": "2026-08-10T15:32:38.6515843Z"
+  },
+  {
+    "Name": "Package_for_ServicingStack_33150~31bf3856ad364e35~amd64~~26100.33150.1.3",
+    "CurrentState": 112,
+    "Identifier": "KB5101372",
+    "ReleaseType": "Security Update",
+    "InstallTimeUtc": "2026-08-10T15:25:52.4391501Z"
+  },
+  {
+    "Name": "Package_for_ServicingStack_33288~31bf3856ad364e35~amd64~~26100.33288.1.4",
+    "CurrentState": 112,
+    "Identifier": "KB5120232",
+    "ReleaseType": "Security Update",
+    "InstallTimeUtc": "2026-08-10T15:49:43.6888834Z"
+  }
+]

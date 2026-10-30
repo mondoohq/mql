@@ -1,0 +1,25 @@
+{
+  "count": 2,
+  "value": [
+    {
+      "id": "1a000000-0000-4000-8000-000000000003",
+      "name": "locked-down",
+      "description": "Fabricated fixture project",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/projects/1a000000-0000-4000-8000-000000000003",
+      "state": "wellFormed",
+      "revision": 13,
+      "visibility": "private",
+      "lastUpdateTime": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "1a000000-0000-4000-8000-000000000004",
+      "name": "legacy-apps",
+      "description": "Fabricated fixture project",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/projects/1a000000-0000-4000-8000-000000000004",
+      "state": "wellFormed",
+      "revision": 14,
+      "visibility": "private",
+      "lastUpdateTime": "2026-01-01T00:00:00.000Z"
+    }
+  ]
+}

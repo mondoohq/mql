@@ -10,8 +10,8 @@ import (
 	"slices"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/types"
 )
 
 func Schema(ast *LR) (*resources.Schema, error) {
@@ -25,10 +25,25 @@ func Schema(ast *LR) (*resources.Schema, error) {
 		Dependencies: make(map[string]*resources.ProviderInfo, 0),
 	}
 
+	// `option root` travels in the generated schema, so a compile that only has
+	// the schema file - a policy bundle, a lint, an editor - can still tell what
+	// hangs off the asset's tree. A connected compile learns the concrete root
+	// from the connection instead; this is the declaration. See ADR 031.
+	if root, ok := ast.Options["root"]; ok && root != "" {
+		res.ProviderRoots = map[string]string{provider: root}
+	}
+
+	// Every declared peer is recorded, including core. Core used to be excluded
+	// here because it is built into every executor and must never be downloaded
+	// as a separate binary -- but that is a fact about *installing* a provider,
+	// not about whether the dependency exists, and it belongs at the install
+	// decision (see installDependencies) rather than as a name in this loop.
+	// Excluding it here also cost core the one thing a declaration carries: a
+	// version floor.
 	for dep := range ast.imports {
-		if !strings.HasSuffix(provider, dep) && dep != "core" {
+		if !strings.HasSuffix(provider, dep) {
 			res.Dependencies[dep] = &resources.ProviderInfo{
-				Id:   strings.TrimSuffix(ast.packPaths[dep], "/resources"),
+				Id:   ast.packProviders[dep],
 				Name: dep,
 			}
 		}
@@ -75,10 +90,24 @@ func Schema(ast *LR) (*resources.Schema, error) {
 		}
 	}
 
+	// Shallowest first, so a parent is finalized before anything that hangs off
+	// it, then by name so the order is total.
+	//
+	// The name tie-break is not cosmetic. Depth alone leaves every same-depth
+	// group in Go's randomized map order, and the loop below writes into shared
+	// state: an alias and its target are the same *ResourceInfo (see the alias
+	// block above), so two aliases of one target both write the same field on
+	// the same object, and the first one wins. Whichever spelling that was
+	// decided the field's type, so the same .lr produced two different schemas
+	// from run to run -- enough to make the ADR 040 change report warn about
+	// breaking changes that nobody made.
 	sorted := slices.SortedFunc(maps.Keys(res.Resources), func(a, b string) int {
 		aDepth := strings.Count(a, ".")
 		bDepth := strings.Count(b, ".")
-		return aDepth - bDepth
+		if aDepth != bDepth {
+			return aDepth - bDepth
+		}
+		return strings.Compare(a, b)
 	})
 
 	// In this block we finalize the schema. This means:
@@ -94,14 +123,13 @@ func Schema(ast *LR) (*resources.Schema, error) {
 		fieldInfo := v
 		isPrivate := v.Private
 		for {
-			last := strings.LastIndex(rem, ".")
-			if last == -1 {
+			parent, basename, found := strings.CutLast(rem, ".")
+			if !found {
 				break
 			}
 
 			resource := rem
-			basename := rem[last+1:]
-			rem = rem[:last]
+			rem = parent
 
 			child, ok := res.Resources[rem]
 			if !ok {
@@ -140,6 +168,8 @@ func Schema(ast *LR) (*resources.Schema, error) {
 		}
 	}
 
+	attachAssetToRoots(res, provider)
+
 	// Validate all maturity values
 	for name, ri := range res.Resources {
 		if err := resources.ValidateMaturity(ri.Maturity); err != nil {
@@ -150,6 +180,10 @@ func Schema(ast *LR) (*resources.Schema, error) {
 				return nil, fmt.Errorf("resource %s field %s: %w", name, fname, err)
 			}
 		}
+	}
+
+	if err := validateReplacedBy(res, ast); err != nil {
+		return nil, err
 	}
 
 	if len(schemaErrs) > 0 {
@@ -228,6 +262,7 @@ func resourceFields(r *Resource, ast *LR) (map[string]*resources.Field, error) {
 			Refs:        refs,
 			IsEmbedded:  f.BasicField.isEmbedded,
 			Maturity:    f.BasicField.Maturity,
+			ReplacedBy:  f.BasicField.ReplacedBy,
 		}
 	}
 
@@ -263,6 +298,9 @@ func resourceSchema(r *Resource, ast *LR) (*resources.ResourceInfo, error) {
 		Defaults:    r.Defaults,
 		Context:     r.Context,
 		Maturity:    r.Maturity,
+		Global:      r.IsGlobal,
+		Root:        r.IsRoot,
+		ReplacedBy:  r.ReplacedBy,
 	}
 
 	if r.ListType != nil {
@@ -270,4 +308,145 @@ func resourceSchema(r *Resource, ast *LR) (*resources.ResourceInfo, error) {
 	}
 
 	return res, fieldsErr
+}
+
+// validateReplacedBy checks that every `@replaced_by` names something that
+// exists in this schema. The annotation carries the *schema* path of the
+// replacement (`os.base.hostname`), not the spelling a user types - the
+// relative form is rendered later against whatever root the query compiles
+// with - so a typo here would otherwise survive all the way to a message that
+// points a user at nothing. See ADR 040.
+func validateReplacedBy(res *resources.Schema, ast *LR) error {
+	var errs []error
+
+	// A replacement may live in a peer provider: every rooted provider now
+	// carries `asset`, which core owns, so `@replaced_by("asset.version")` is
+	// the natural way to retire a provider's own scalar version field. Those
+	// targets are checked against what the peer's schema actually exposes,
+	// recorded while imports were resolved - a cross-provider pointer nobody
+	// verifies is exactly the kind that rots.
+	peerHasMember := func(resource, field string) bool {
+		if ast == nil || ast.importedMembers == nil {
+			return false
+		}
+		members, ok := ast.importedMembers[resource]
+		if !ok {
+			return false
+		}
+		_, ok = members[field]
+		return ok
+	}
+	peerHasResource := func(resource string) bool {
+		if ast == nil || ast.importedMembers == nil {
+			return false
+		}
+		_, ok := ast.importedMembers[resource]
+		return ok
+	}
+
+	// The owner of the target - the target itself when it names a resource -
+	// has to survive the v15 cutover, or the notice points a user at something
+	// that will not compile by the time they read it. Checking it here means
+	// checking it once, when the provider is built, instead of discovering it
+	// from a confused user.
+	reachable := func(what string, name string) {
+		if resources.RootReachable(res, name) {
+			return
+		}
+		errs = append(errs, fmt.Errorf("%s: @replaced_by target %q cannot be reached from any asset root, so it stops resolving in v15", what, name))
+	}
+
+	check := func(what string, target string) {
+		if target == "" {
+			return
+		}
+		if _, ok := res.Resources[target]; ok {
+			reachable(what, target)
+			return
+		}
+		if peerHasResource(target) {
+			// A peer's resource is reachable by definition of being imported;
+			// this provider's roots are not the judge of another's tree.
+			return
+		}
+		// Not a resource, so it has to be a field on one. Only the last segment
+		// can be the field name; everything before it is the owning resource,
+		// which is itself dotted.
+		if owner, field, found := strings.CutLast(target, "."); found && owner != "" {
+			if ri, ok := res.Resources[owner]; ok {
+				if _, ok := ri.Fields[field]; ok {
+					reachable(what, owner)
+					return
+				}
+				errs = append(errs, fmt.Errorf("%s: @replaced_by(%q) - resource %q has no field %q", what, target, owner, field))
+				return
+			}
+			if peerHasResource(owner) {
+				if peerHasMember(owner, field) {
+					return
+				}
+				errs = append(errs, fmt.Errorf("%s: @replaced_by(%q) - %q is imported but has no field %q", what, target, owner, field))
+				return
+			}
+		}
+		errs = append(errs, fmt.Errorf("%s: @replaced_by(%q) does not name a resource or field in this schema", what, target))
+	}
+
+	for name, ri := range res.Resources {
+		if ri.ReplacedBy == name {
+			errs = append(errs, fmt.Errorf("resource %s: @replaced_by points at itself", name))
+		} else {
+			check("resource "+name, ri.ReplacedBy)
+		}
+		for fname, f := range ri.Fields {
+			if f.ReplacedBy == name+"."+fname {
+				errs = append(errs, fmt.Errorf("resource %s field %s: @replaced_by points at itself", name, fname))
+				continue
+			}
+			check("resource "+name+" field "+fname, f.ReplacedBy)
+		}
+	}
+
+	slices.SortFunc(errs, func(a, b error) int { return strings.Compare(a.Error(), b.Error()) })
+	return errors.Join(errs...)
+}
+
+// attachAssetToRoots gives every asset root the `asset` member.
+//
+// `asset` is what a query asks for the platform, version and identity it is
+// looking at. Standing on an asset's root and not being able to ask what asset
+// it is has no sensible reading, so this is not a choice a provider makes: it is
+// true of every root, and the shape is the same one core defines.
+//
+// That is why it is attached here rather than written as an alias in each
+// provider's schema. A rule that is always true and always identical should not
+// be restated once per provider, with a validator to catch whoever forgets -
+// and forgetting would be quiet, because `asset` is `@global`: a bare mention
+// still resolves, to whichever runtime is executing, which is the wrong asset
+// the moment a query has crossed into another one (ADR 031).
+//
+// The field names core's `asset` directly rather than aliasing it. An alias
+// generates a separate resource carrying only the part *this* provider extends
+// onto it, which then has to be reconciled with the real one somewhere else;
+// naming the resource means there is only ever one of it.
+func attachAssetToRoots(res *resources.Schema, provider string) {
+	for _, info := range res.Resources {
+		if info == nil || !info.GetRoot() {
+			continue
+		}
+		if info.Fields == nil {
+			info.Fields = map[string]*resources.Field{}
+		}
+		if _, ok := info.Fields["asset"]; ok {
+			continue
+		}
+		info.Fields["asset"] = &resources.Field{
+			Name:               "asset",
+			Type:               string(types.Resource("asset")),
+			Provider:           provider,
+			IsImplicitResource: true,
+			Title:              "Asset this root belongs to",
+			Desc:               "Platform, version, identity and labels of the asset this root describes.",
+		}
+	}
 }

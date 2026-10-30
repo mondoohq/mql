@@ -8,8 +8,11 @@ import (
 	"regexp"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 )
+
+// Compiled once: applied to each eviction threshold flag.
+var evictionRegex = regexp.MustCompile(`^(.+)[<>=]+([\d]+[A-Za-z%]*)$`)
 
 // mergeFlagsIntoConfig adds flags to the kubelet config
 // It does not take care of deprecated flags
@@ -45,9 +48,26 @@ func mergeFlagsIntoConfig(kubeletConfig map[string]any, flags map[string]any) er
 		}
 	}
 
+	// --container-runtime-endpoint is also the config file's
+	// containerRuntimeEndpoint (Canonical Kubernetes sets it only as a flag).
+	if v, ok := flags["container-runtime-endpoint"]; ok {
+		kubeletConfig["containerRuntimeEndpoint"] = v
+	}
+
+	// -v / --v sets the log verbosity of the kubelet's logging config (k0s
+	// passes --v=1).
+	if v, ok := flags["v"]; ok {
+		logging := map[string]any{}
+		if existing, ok := kubeletConfig["logging"].(map[string]any); ok {
+			logging = existing
+		}
+		logging["verbosity"] = v
+		kubeletConfig["logging"] = logging
+	}
+
 	if _, ok := flags["node-labels"]; ok {
 		nodeLabels := map[string]string{}
-		for _, label := range strings.Split(flags["node-labels"].(string), ",") {
+		for label := range strings.SplitSeq(flags["node-labels"].(string), ",") {
 			labelSplit := strings.Split(label, "=")
 			labelVal := ""
 			if len(labelSplit) > 1 {
@@ -70,7 +90,7 @@ func mergeFlagsIntoConfig(kubeletConfig map[string]any, flags map[string]any) er
 // which previously panicked on malformed input (e.g. a trailing comma).
 func parseKeyValueListFlag(s string) map[string]string {
 	res := map[string]string{}
-	for _, item := range strings.Split(s, ",") {
+	for item := range strings.SplitSeq(s, ",") {
 		kv := strings.SplitN(strings.TrimSpace(item), "=", 2)
 		if len(kv) < 2 {
 			continue
@@ -86,8 +106,6 @@ func parseKeyValueListFlag(s string) map[string]string {
 // The list of flags is taken from
 // https://github.com/kubernetes/kubernetes/blob/release-1.25/cmd/kubelet/app/options/options.go
 func mergeDeprecatedFlagsIntoConfig(kubeletConfig map[string]any, flags map[string]any) error {
-	evictionRegex := regexp.MustCompile(`^(.+)[<>=]+([\d]+[A-Za-z%]*)$`)
-
 	if _, ok := flags["enable-server"]; ok {
 		kubeletConfig["enableServer"] = flags["enable-server"]
 	}
@@ -111,7 +129,7 @@ func mergeDeprecatedFlagsIntoConfig(kubeletConfig map[string]any, flags map[stri
 	}
 	if v, ok := flags["manifest-url-header"]; ok {
 		urlHeaders := map[string]string{}
-		for _, urlHeader := range strings.Split(v.(string), ",") {
+		for urlHeader := range strings.SplitSeq(v.(string), ",") {
 			urlHeaderSplit := strings.SplitN(urlHeader, ":", 2)
 			if len(urlHeaderSplit) < 2 {
 				continue
@@ -360,7 +378,7 @@ func mergeDeprecatedFlagsIntoConfig(kubeletConfig map[string]any, flags map[stri
 		kubeletConfig["podPidsLimit"] = flags["pod-max-pids"]
 	}
 	if _, ok := flags["resolv-conf"]; ok {
-		kubeletConfig["resolverConfig"] = flags["resolv-conf"]
+		kubeletConfig["resolvConf"] = flags["resolv-conf"]
 	}
 	if _, ok := flags["runonce"]; ok {
 		kubeletConfig["runOnce"] = flags["runonce"]
@@ -418,7 +436,7 @@ func mergeDeprecatedFlagsIntoConfig(kubeletConfig map[string]any, flags map[stri
 	}
 	if _, ok := flags["eviction-hard"]; ok {
 		evictions := map[string]string{}
-		for _, eviction := range strings.Split(flags["eviction-hard"].(string), ",") {
+		for eviction := range strings.SplitSeq(flags["eviction-hard"].(string), ",") {
 			m := evictionRegex.FindStringSubmatch(eviction)
 			if len(m) == 0 {
 				continue
@@ -433,7 +451,7 @@ func mergeDeprecatedFlagsIntoConfig(kubeletConfig map[string]any, flags map[stri
 	}
 	if _, ok := flags["eviction-soft"]; ok {
 		evictions := map[string]string{}
-		for _, eviction := range strings.Split(flags["eviction-soft"].(string), ",") {
+		for eviction := range strings.SplitSeq(flags["eviction-soft"].(string), ",") {
 			m := evictionRegex.FindStringSubmatch(eviction)
 			if len(m) == 0 {
 				continue

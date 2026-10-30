@@ -8,18 +8,19 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/service/redshift"
 	redshifttypes "github.com/aws/aws-sdk-go-v2/service/redshift/types"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsRedshift) id() (string, error) {
@@ -134,63 +135,70 @@ func (a *mqlAwsRedshift) getClusters(conn *connection.AwsConnection) []*jobpool.
 						}
 					}
 
+					sysTables := redshiftSystemTables(cluster)
+
 					mqlDBInstance, err := CreateResource(a.MqlRuntime, ResourceAwsRedshiftCluster,
 						map[string]*llx.RawData{
-							"restoredFromSnapshot":               llx.BoolData(cluster.RestoreStatus != nil),
-							"restoreStatus":                      llx.StringData(restoreStatus),
-							"restoreProgressPercent":             llx.FloatData(redshiftRestoreProgressPercent(cluster.RestoreStatus)),
-							"clusterNamespaceArn":                llx.StringDataPtr(cluster.ClusterNamespaceArn),
-							"crossRegionSnapshotCopyEnabled":     llx.BoolData(cluster.ClusterSnapshotCopyStatus != nil),
-							"snapshotCopyDestinationRegion":      llx.StringData(snapshotCopyDestinationRegion),
-							"snapshotCopyRetentionPeriod":        llx.IntDataDefault(snapshotCopyRetentionPeriod, 0),
-							"snapshotCopyManualRetentionPeriod":  llx.IntDataDefault(snapshotCopyManualRetentionPeriod, 0),
-							"snapshotCopyGrantName":              llx.StringData(snapshotCopyGrantName),
-							"expectedNextSnapshotScheduleAt":     llx.TimeDataPtr(cluster.ExpectedNextSnapshotScheduleTime),
-							"expectedNextSnapshotScheduleStatus": llx.StringDataPtr(cluster.ExpectedNextSnapshotScheduleTimeStatus),
-							"snapshotScheduleState":              llx.StringData(string(cluster.SnapshotScheduleState)),
-							"customDomainName":                   llx.StringDataPtr(cluster.CustomDomainName),
-							"customDomainCertificateExpiresAt":   llx.TimeDataPtr(cluster.CustomDomainCertificateExpiryDate),
-							"availabilityZoneRelocationStatus":   llx.StringDataPtr(cluster.AvailabilityZoneRelocationStatus),
-							"elasticIp":                          llx.StringData(elasticIp),
-							"allowVersionUpgrade":                llx.BoolDataPtr(cluster.AllowVersionUpgrade),
-							"arn":                                llx.StringData(fmt.Sprintf(redshiftClusterArnPattern, region, conn.AccountId(), convert.ToValue(cluster.ClusterIdentifier))),
-							"automatedSnapshotRetentionPeriod":   llx.IntDataDefault(cluster.AutomatedSnapshotRetentionPeriod, 0),
-							"availabilityZone":                   llx.StringDataPtr(cluster.AvailabilityZone),
-							"clusterParameterGroupNames":         llx.ArrayData(names, types.String),
-							"clusterRevisionNumber":              llx.StringDataPtr(cluster.ClusterRevisionNumber),
-							"clusterStatus":                      llx.StringDataPtr(cluster.ClusterStatus),
-							"clusterSubnetGroupName":             llx.StringDataPtr(cluster.ClusterSubnetGroupName),
-							"clusterVersion":                     llx.StringDataPtr(cluster.ClusterVersion),
-							"createdAt":                          llx.TimeDataPtr(cluster.ClusterCreateTime),
-							"dbName":                             llx.StringDataPtr(cluster.DBName),
-							"encrypted":                          llx.BoolDataPtr(cluster.Encrypted),
-							"enhancedVpcRouting":                 llx.BoolDataPtr(cluster.EnhancedVpcRouting),
-							"masterUsername":                     llx.StringDataPtr(cluster.MasterUsername),
-							"name":                               llx.StringDataPtr(cluster.ClusterIdentifier),
-							"nextMaintenanceWindowStartTime":     llx.TimeDataPtr(cluster.NextMaintenanceWindowStartTime),
-							"nodeType":                           llx.StringDataPtr(cluster.NodeType),
-							"numberOfNodes":                      llx.IntDataDefault(cluster.NumberOfNodes, 0),
-							"preferredMaintenanceWindow":         llx.StringDataPtr(cluster.PreferredMaintenanceWindow),
-							"publiclyAccessible":                 llx.BoolDataPtr(cluster.PubliclyAccessible),
-							"endpointAddress":                    llx.StringData(endpointAddress),
-							"endpointPort":                       llx.IntData(endpointPort),
-							"endpointVpcEndpoints":               llx.ArrayData(endpointVpcEndpoints, types.Dict),
-							"region":                             llx.StringData(region),
-							"tags":                               llx.MapData(redshiftTagsToMap(cluster.Tags), types.String),
-							"vpcId":                              llx.StringDataPtr(cluster.VpcId),
-							"clusterAvailabilityStatus":          llx.StringDataPtr(cluster.ClusterAvailabilityStatus),
-							"totalStorageCapacityInMegaBytes":    llx.IntDataDefault(cluster.TotalStorageCapacityInMegaBytes, 0),
-							"multiAZ":                            llx.BoolData(strings.EqualFold(convert.ToValue(cluster.MultiAZ), "enabled")),
-							"manualSnapshotRetentionPeriod":      llx.IntDataDefault(cluster.ManualSnapshotRetentionPeriod, 0),
-							"ipAddressType":                      llx.StringDataPtr(cluster.IpAddressType),
-							"maintenanceTrackName":               llx.StringDataPtr(cluster.MaintenanceTrackName),
-							"hsmStatus":                          llx.DictData(redshiftHsmStatusToDict(cluster.HsmStatus)),
-							"modifyStatus":                       llx.StringDataPtr(cluster.ModifyStatus),
-							"snapshotScheduleIdentifier":         llx.StringDataPtr(cluster.SnapshotScheduleIdentifier),
+							"restoredFromSnapshot":                    llx.BoolData(cluster.RestoreStatus != nil),
+							"restoreStatus":                           llx.StringData(restoreStatus),
+							"restoreProgressPercent":                  llx.FloatData(redshiftRestoreProgressPercent(cluster.RestoreStatus)),
+							"clusterNamespaceArn":                     llx.StringDataPtr(cluster.ClusterNamespaceArn),
+							"crossRegionSnapshotCopyEnabled":          llx.BoolData(cluster.ClusterSnapshotCopyStatus != nil),
+							"snapshotCopyDestinationRegion":           llx.StringData(snapshotCopyDestinationRegion),
+							"snapshotCopyRetentionPeriod":             llx.IntDataDefault(snapshotCopyRetentionPeriod, 0),
+							"snapshotCopyManualRetentionPeriod":       llx.IntDataDefault(snapshotCopyManualRetentionPeriod, 0),
+							"snapshotCopyGrantName":                   llx.StringData(snapshotCopyGrantName),
+							"expectedNextSnapshotScheduleAt":          llx.TimeDataPtr(cluster.ExpectedNextSnapshotScheduleTime),
+							"expectedNextSnapshotScheduleStatus":      llx.StringDataPtr(cluster.ExpectedNextSnapshotScheduleTimeStatus),
+							"snapshotScheduleState":                   llx.StringData(string(cluster.SnapshotScheduleState)),
+							"customDomainName":                        llx.StringDataPtr(cluster.CustomDomainName),
+							"customDomainCertificateExpiresAt":        llx.TimeDataPtr(cluster.CustomDomainCertificateExpiryDate),
+							"availabilityZoneRelocationStatus":        llx.StringDataPtr(cluster.AvailabilityZoneRelocationStatus),
+							"elasticIp":                               llx.StringData(elasticIp),
+							"allowVersionUpgrade":                     llx.BoolDataPtr(cluster.AllowVersionUpgrade),
+							"arn":                                     llx.StringData(fmt.Sprintf(redshiftClusterArnPattern, region, conn.AccountId(), convert.ToValue(cluster.ClusterIdentifier))),
+							"automatedSnapshotRetentionPeriod":        llx.IntDataDefault(cluster.AutomatedSnapshotRetentionPeriod, 0),
+							"availabilityZone":                        llx.StringDataPtr(cluster.AvailabilityZone),
+							"clusterParameterGroupNames":              llx.ArrayData(names, types.String),
+							"clusterRevisionNumber":                   llx.StringDataPtr(cluster.ClusterRevisionNumber),
+							"clusterStatus":                           llx.StringDataPtr(cluster.ClusterStatus),
+							"clusterSubnetGroupName":                  llx.StringDataPtr(cluster.ClusterSubnetGroupName),
+							"clusterVersion":                          llx.StringDataPtr(cluster.ClusterVersion),
+							"createdAt":                               llx.TimeDataPtr(cluster.ClusterCreateTime),
+							"dbName":                                  llx.StringDataPtr(cluster.DBName),
+							"encrypted":                               llx.BoolDataPtr(cluster.Encrypted),
+							"enhancedVpcRouting":                      llx.BoolDataPtr(cluster.EnhancedVpcRouting),
+							"masterUsername":                          llx.StringDataPtr(cluster.MasterUsername),
+							"name":                                    llx.StringDataPtr(cluster.ClusterIdentifier),
+							"nextMaintenanceWindowStartTime":          llx.TimeDataPtr(cluster.NextMaintenanceWindowStartTime),
+							"nodeType":                                llx.StringDataPtr(cluster.NodeType),
+							"numberOfNodes":                           llx.IntDataDefault(cluster.NumberOfNodes, 0),
+							"preferredMaintenanceWindow":              llx.StringDataPtr(cluster.PreferredMaintenanceWindow),
+							"publiclyAccessible":                      llx.BoolDataPtr(cluster.PubliclyAccessible),
+							"endpointAddress":                         llx.StringData(endpointAddress),
+							"endpointPort":                            llx.IntData(endpointPort),
+							"endpointVpcEndpoints":                    llx.ArrayData(endpointVpcEndpoints, types.Dict),
+							"region":                                  llx.StringData(region),
+							"tags":                                    llx.MapData(redshiftTagsToMap(cluster.Tags), types.String),
+							"clusterAvailabilityStatus":               llx.StringDataPtr(cluster.ClusterAvailabilityStatus),
+							"totalStorageCapacityInMegaBytes":         llx.IntDataDefault(cluster.TotalStorageCapacityInMegaBytes, 0),
+							"multiAZ":                                 llx.BoolData(strings.EqualFold(convert.ToValue(cluster.MultiAZ), "enabled")),
+							"manualSnapshotRetentionPeriod":           llx.IntDataDefault(cluster.ManualSnapshotRetentionPeriod, 0),
+							"ipAddressType":                           llx.StringDataPtr(cluster.IpAddressType),
+							"maintenanceTrackName":                    llx.StringDataPtr(cluster.MaintenanceTrackName),
+							"hsmStatus":                               llx.DictData(redshiftHsmStatusToDict(cluster.HsmStatus)),
+							"modifyStatus":                            llx.StringDataPtr(cluster.ModifyStatus),
+							"snapshotScheduleIdentifier":              llx.StringDataPtr(cluster.SnapshotScheduleIdentifier),
+							"systemTablePublishingEnabledAll":         llx.BoolDataPtr(sysTables.enabledAll),
+							"systemTablePublishingGranularity":        llx.StringDataPtr(sysTables.granularity),
+							"systemTablePublishingNamespace":          llx.StringDataPtr(sysTables.namespace),
+							"systemTablePublishingTables":             llx.ArrayData(sysTables.tables, types.String),
+							"systemTablePublishingLastIngestionTimes": llx.MapData(sysTables.lastIngestion, types.String),
 						})
 					if err != nil {
 						return nil, err
 					}
+					mqlDBInstance.(*mqlAwsRedshiftCluster).cacheVpcId = convert.ToValue(cluster.VpcId)
 					mqlCluster := mqlDBInstance.(*mqlAwsRedshiftCluster)
 					mqlCluster.cacheKmsKeyId = cluster.KmsKeyId
 					mqlCluster.cacheMasterPasswordSecretKmsKey = cluster.MasterPasswordSecretKmsKeyId
@@ -227,14 +235,11 @@ func redshiftHsmStatusToDict(hsm *redshifttypes.HsmStatus) map[string]any {
 }
 
 func redshiftTagsToMap(tags []redshifttypes.Tag) map[string]any {
-	tagsMap := make(map[string]any)
-	for _, tag := range tags {
-		tagsMap[convert.ToValue(tag.Key)] = convert.ToValue(tag.Value)
-	}
-	return tagsMap
+	return tagsToMap(tags, func(t redshifttypes.Tag) *string { return t.Key }, func(t redshifttypes.Tag) *string { return t.Value })
 }
 
 type mqlAwsRedshiftClusterInternal struct {
+	cacheVpcId string
 	securityGroupIdHandler
 	cacheKmsKeyId                   *string
 	cacheMasterPasswordSecretKmsKey *string
@@ -242,6 +247,10 @@ type mqlAwsRedshiftClusterInternal struct {
 	cacheDefaultIamRoleArn          *string
 	cacheMasterPasswordSecretArn    *string
 	cacheCustomDomainCertificateArn *string
+
+	loggingStatusOnce sync.Once
+	loggingStatus     *redshift.DescribeLoggingStatusOutput
+	loggingStatusErr  error
 }
 
 // redshiftRestoreProgressPercent computes how far a restore-from-snapshot has
@@ -259,7 +268,7 @@ func (a *mqlAwsRedshiftCluster) id() (string, error) {
 }
 
 func (a *mqlAwsRedshiftCluster) vpc() (*mqlAwsVpc, error) {
-	vpcId := a.VpcId.Data
+	vpcId := a.cacheVpcId
 	if vpcId == "" {
 		a.Vpc.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -275,7 +284,9 @@ func (a *mqlAwsRedshiftCluster) vpc() (*mqlAwsVpc, error) {
 }
 
 func (a *mqlAwsRedshiftCluster) kmsKey() (*mqlAwsKmsKey, error) {
-	if a.cacheKmsKeyId == nil || *a.cacheKmsKeyId == "" {
+	// Clusters without a customer-referenceable key report the sentinel
+	// "AWS_OWNED_KMS_KEY" instead of a key ARN; resolving it as a key errors.
+	if a.cacheKmsKeyId == nil || *a.cacheKmsKeyId == "" || *a.cacheKmsKeyId == "AWS_OWNED_KMS_KEY" {
 		a.KmsKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
@@ -382,9 +393,8 @@ func initAwsRedshiftCluster(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformRedshiftCluster); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -438,19 +448,71 @@ func (a *mqlAwsRedshiftCluster) parameters() ([]any, error) {
 	return convert.JsonToDictSlice(res)
 }
 
+// fetchLoggingStatus reads the cluster's audit-log delivery status once and
+// hands the same response to every field derived from it. Nine fields read
+// this, and DescribeLoggingStatus is one call per cluster per read.
+func (a *mqlAwsRedshiftCluster) fetchLoggingStatus() (*redshift.DescribeLoggingStatusOutput, error) {
+	a.loggingStatusOnce.Do(func() {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Redshift(a.Region.Data)
+		name := a.Name.Data
+		a.loggingStatus, a.loggingStatusErr = svc.DescribeLoggingStatus(context.Background(),
+			&redshift.DescribeLoggingStatusInput{ClusterIdentifier: &name})
+	})
+	return a.loggingStatus, a.loggingStatusErr
+}
+
 func (a *mqlAwsRedshiftCluster) logging() (any, error) {
-	name := a.Name.Data
-	region := a.Region.Data
-	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-
-	svc := conn.Redshift(region)
-	ctx := context.Background()
-
-	params, err := svc.DescribeLoggingStatus(ctx, &redshift.DescribeLoggingStatusInput{ClusterIdentifier: &name})
+	params, err := a.fetchLoggingStatus()
 	if err != nil {
 		return nil, err
 	}
 	return convert.JsonToDict(params)
+}
+
+func (a *mqlAwsRedshiftCluster) auditLogging() (*mqlAwsRedshiftClusterLoggingStatus, error) {
+	params, err := a.fetchLoggingStatus()
+	if err != nil {
+		return nil, err
+	}
+	if params == nil {
+		a.AuditLogging.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := CreateResource(a.MqlRuntime, "aws.redshift.cluster.loggingStatus", map[string]*llx.RawData{
+		"__id":                     llx.StringData(a.Arn.Data + "/loggingStatus"),
+		"enabled":                  llx.BoolData(convert.ToValue(params.LoggingEnabled)),
+		"destinationType":          llx.StringData(string(params.LogDestinationType)),
+		"logExports":               llx.ArrayData(convert.SliceAnyToInterface(params.LogExports), types.String),
+		"s3KeyPrefix":              llx.StringData(convert.ToValue(params.S3KeyPrefix)),
+		"lastSuccessfulDeliveryAt": llx.TimeDataPtr(params.LastSuccessfulDeliveryTime),
+		"lastFailureMessage":       llx.StringData(convert.ToValue(params.LastFailureMessage)),
+		"lastFailureAt":            llx.TimeDataPtr(params.LastFailureTime),
+	})
+	if err != nil {
+		return nil, err
+	}
+	mqlStatus := res.(*mqlAwsRedshiftClusterLoggingStatus)
+	mqlStatus.cacheBucketName = convert.ToValue(params.BucketName)
+	return mqlStatus, nil
+}
+
+type mqlAwsRedshiftClusterLoggingStatusInternal struct {
+	cacheBucketName string
+}
+
+func (a *mqlAwsRedshiftClusterLoggingStatus) bucket() (*mqlAwsS3Bucket, error) {
+	if a.cacheBucketName == "" {
+		a.Bucket.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.s3.bucket", map[string]*llx.RawData{
+		"name": llx.StringData(a.cacheBucketName),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsS3Bucket), nil
 }
 
 func (a *mqlAwsRedshiftSnapshot) id() (string, error) {
@@ -653,6 +715,16 @@ func (a *mqlAwsRedshiftSubnetGroup) id() (string, error) {
 	return a.__id, nil
 }
 
+const (
+	redshiftSubnetGroupArnPattern       = "arn:aws:redshift:%s:%s:subnetgroup:%s"
+	redshiftEventSubscriptionArnPattern = "arn:aws:redshift:%s:%s:eventsubscription:%s"
+)
+
+func (a *mqlAwsRedshiftSubnetGroup) arn() (string, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return fmt.Sprintf(redshiftSubnetGroupArnPattern, a.Region.Data, conn.AccountId(), a.Name.Data), nil
+}
+
 func (a *mqlAwsRedshiftSubnetGroup) vpc() (*mqlAwsVpc, error) {
 	if a.cacheVpcId == nil || *a.cacheVpcId == "" {
 		a.Vpc.State = plugin.StateIsNull | plugin.StateIsSet
@@ -724,7 +796,6 @@ func (a *mqlAwsRedshift) getEventSubscriptions(conn *connection.AwsConnection) [
 							"enabled":         llx.BoolDataPtr(sub.Enabled),
 							"eventCategories": llx.ArrayData(categories, types.String),
 							"severity":        llx.StringDataPtr(sub.Severity),
-							"snsTopicArn":     llx.StringDataPtr(sub.SnsTopicArn),
 							"sourceIds":       llx.ArrayData(sourceIds, types.String),
 							"sourceType":      llx.StringDataPtr(sub.SourceType),
 							"status":          llx.StringDataPtr(sub.Status),
@@ -734,6 +805,7 @@ func (a *mqlAwsRedshift) getEventSubscriptions(conn *connection.AwsConnection) [
 					if err != nil {
 						return nil, err
 					}
+					mqlSub.(*mqlAwsRedshiftEventSubscription).cacheSnsTopicArn = convert.ToValue(sub.SnsTopicArn)
 					res = append(res, mqlSub)
 				}
 			}
@@ -748,8 +820,13 @@ func (a *mqlAwsRedshiftEventSubscription) id() (string, error) {
 	return a.__id, nil
 }
 
+func (a *mqlAwsRedshiftEventSubscription) arn() (string, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return fmt.Sprintf(redshiftEventSubscriptionArnPattern, a.Region.Data, conn.AccountId(), a.Name.Data), nil
+}
+
 func (a *mqlAwsRedshiftEventSubscription) snsTopic() (*mqlAwsSnsTopic, error) {
-	arn := a.SnsTopicArn.Data
+	arn := a.cacheSnsTopicArn
 	if arn == "" {
 		a.SnsTopic.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -905,4 +982,44 @@ func (a *mqlAwsRedshift) getSnapshotSchedules(conn *connection.AwsConnection) []
 
 func (a *mqlAwsRedshiftSnapshotSchedule) id() (string, error) {
 	return a.__id, nil
+}
+
+type mqlAwsRedshiftEventSubscriptionInternal struct {
+	cacheSnsTopicArn string
+}
+
+// redshiftSystemTablePublishing is the flattened view of a cluster's system
+// table publishing status.
+//
+// DescribeClusters omits LoggingPublishStatus entirely when publishing is not
+// configured, so each scalar stays a pointer: nil reports null, which keeps
+// "not configured" distinguishable from "configured and switched off".
+type redshiftSystemTablePublishing struct {
+	enabledAll    *bool
+	granularity   *string
+	namespace     *string
+	tables        []any
+	lastIngestion map[string]any
+}
+
+func redshiftSystemTables(cluster redshifttypes.Cluster) redshiftSystemTablePublishing {
+	out := redshiftSystemTablePublishing{
+		tables:        []any{},
+		lastIngestion: map[string]any{},
+	}
+	if cluster.LoggingPublishStatus == nil || cluster.LoggingPublishStatus.S3Tables == nil {
+		return out
+	}
+
+	st := cluster.LoggingPublishStatus.S3Tables
+	out.enabledAll = st.EnabledAll
+	out.granularity = st.S3TableGranularity
+	out.namespace = st.S3TableNamespace
+	for _, t := range st.S3Tables {
+		out.tables = append(out.tables, t)
+	}
+	for k, v := range st.LastIngestionTimes {
+		out.lastIngestion[k] = v
+	}
+	return out
 }

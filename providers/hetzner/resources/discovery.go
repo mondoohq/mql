@@ -7,10 +7,10 @@ import (
 	"strconv"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/hetzner/connection"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/hetzner/connection"
+	"go.mondoo.com/mql/utils/stringx"
 )
 
 // Discover expands a Hetzner Cloud project connection into the specific
@@ -27,8 +27,7 @@ func Discover(runtime *plugin.Runtime) (*inventory.Inventory, error) {
 	assets := []*inventory.Asset{}
 
 	childAsset := func(platform *inventory.Platform, platformID, name, optKey, optVal string) *inventory.Asset {
-		cfg := conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(c.ID()))
-		cfg.Options[optKey] = optVal
+		cfg := childConfig(conf, c.ID(), optKey, optVal)
 		return &inventory.Asset{
 			PlatformIds: []string{platformID},
 			Name:        name,
@@ -74,6 +73,19 @@ func Discover(runtime *plugin.Runtime) (*inventory.Inventory, error) {
 	}
 
 	return &inventory.Inventory{Spec: &inventory.InventorySpec{Assets: assets}}, nil
+}
+
+// childConfig clones the connected asset's config for a discovered child asset,
+// stamping the child's discriminating option. Config.Clone leaves Options nil
+// when the source config had no options (an inventory-file or env-token asset
+// that omits them), so guard before writing to avoid a nil-map assignment panic.
+func childConfig(conf *inventory.Config, parentID uint32, optKey, optVal string) *inventory.Config {
+	cfg := conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(parentID))
+	if cfg.Options == nil {
+		cfg.Options = map[string]string{}
+	}
+	cfg.Options[optKey] = optVal
+	return cfg
 }
 
 // resolveDiscoveryTargets expands the "auto"/"all" aliases into the full

@@ -6,11 +6,12 @@ package services
 import (
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/detector"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/detector"
 )
 
 type Service struct {
@@ -24,6 +25,11 @@ type Service struct {
 	Masked      bool
 	Static      bool
 	Path        string
+
+	// needsIsEnabled is set while systemctl has reported the unit-file state
+	// as "bad" or "generated", which says nothing about whether the service
+	// is enabled.
+	needsIsEnabled bool
 }
 
 type State string
@@ -82,6 +88,45 @@ func (n *noopOsServiceManager) Get(name string) (*Service, error) {
 
 var amazonlinux1version = regexp.MustCompile(`^201\d`)
 
+// initSystemPaths are the on-disk traces of an init system, in the order they
+// are probed. /sbin/init alone is not enough to go on: Debian, Ubuntu, Fedora,
+// openSUSE and Amazon Linux all ship systemd unit files in their images without
+// shipping /sbin/init, and probing only that path put every one of them on the
+// noop manager, which reports an empty service list rather than saying it could
+// not look. A scan of such a target answered "no services" about a system whose
+// units were sitting on disk unread.
+var initSystemPaths = []string{
+	"/sbin/init",
+	// systemd, both the binary and the unit trees. The usr-merged and
+	// non-merged layouts are both listed because /lib is only a symlink to
+	// /usr/lib on some of them.
+	"/usr/lib/systemd/systemd",
+	"/lib/systemd/systemd",
+	"/usr/lib/systemd/system",
+	"/lib/systemd/system",
+	"/etc/systemd/system",
+}
+
+// hasInitSystem reports whether the target carries any init system this package
+// knows how to read. It is deliberately a presence check rather than a decision
+// about which manager applies: that choice belongs to the switch in
+// ResolveManager, which keys off the platform.
+func hasInitSystem(conn shared.Connection) bool {
+	for _, path := range initSystemPaths {
+		if _, err := conn.FileInfo(path); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// systemdBooted reports whether systemd is the running init, the check
+// sd_booted(3) makes: systemd creates the /run/systemd/system directory at boot.
+func systemdBooted(conn shared.Connection) bool {
+	fi, err := conn.FileInfo("/run/systemd/system")
+	return err == nil && fi.Mode.IsDir()
+}
+
 func ResolveManager(conn shared.Connection) (OSServiceManager, error) {
 	var osm OSServiceManager
 
@@ -90,14 +135,9 @@ func ResolveManager(conn shared.Connection) (OSServiceManager, error) {
 		return nil, errors.New("cannot find OS information for package detection")
 	}
 
-	useNoopInit := false
-	if asset.Platform.IsFamily("linux") {
-		// If we're on linux, check if there is no init system. If there is no init system,
-		// we don't have managed services. This happens in containers.
-		if _, err := conn.FileInfo("/sbin/init"); err != nil {
-			useNoopInit = true
-		}
-	}
+	// Nothing on the target names an init system, so there are no managed
+	// services to report. This happens in containers.
+	useNoopInit := asset.Platform.IsFamily("linux") && !hasInitSystem(conn)
 
 	switch {
 	case useNoopInit:
@@ -108,6 +148,11 @@ func ResolveManager(conn shared.Connection) (OSServiceManager, error) {
 		} else {
 			osm = ResolveSystemdServiceManager(conn)
 		}
+	// Alibaba Cloud Linux numbers its releases 2 and 3, which the redhat branch
+	// below would read as pre-systemd RHEL majors and hand to upstart. Every
+	// release of it runs systemd.
+	case asset.Platform.Name == "alinux":
+		osm = ResolveSystemdServiceManager(conn)
 	// NOTE: we need to check fedora before rhel family, since its also rhel family
 	case asset.Platform.Name == "fedora":
 		rv := detector.ParseOsVersion(asset.Platform.Version)
@@ -133,6 +178,15 @@ func ResolveManager(conn shared.Connection) (OSServiceManager, error) {
 		} else {
 			osm = ResolveSystemdServiceManager(conn)
 		}
+	// MX Linux installs both sysvinit and systemd and boots sysvinit unless
+	// systemd is picked at the boot menu. SysV needs commands to list
+	// services, so without them read the systemd units, the only ones on disk.
+	case asset.Platform.Name == "mx":
+		if !systemdBooted(conn) && conn.Capabilities().Has(shared.Capability_RunCommand) {
+			osm = &SysVServiceManager{conn: conn}
+		} else {
+			osm = ResolveSystemdServiceManager(conn)
+		}
 	case asset.Platform.Name == "ubuntu" || asset.Platform.Name == "linuxmint" || asset.Platform.Name == "pop":
 		rv := detector.ParseOsVersion(asset.Platform.Version)
 		v, err := rv.MajorAtoi()
@@ -149,7 +203,12 @@ func ResolveManager(conn shared.Connection) (OSServiceManager, error) {
 		rv := detector.ParseOsVersion(asset.Platform.Version)
 		v, err := rv.MajorAtoi()
 		if err != nil {
-			return nil, errors.New("unknown debian version: " + asset.Platform.Version)
+			// testing and sid carry "<codename>/sid" rather than a number;
+			// both are later than any numbered release
+			if !strings.HasSuffix(asset.Platform.Version, "/sid") {
+				return nil, errors.New("unknown debian version: " + asset.Platform.Version)
+			}
+			v = math.MaxInt
 		}
 
 		if v < 7 {
@@ -174,7 +233,9 @@ func ResolveManager(conn shared.Connection) (OSServiceManager, error) {
 		}
 	case asset.Platform.IsFamily("darwin"): // "macos", "darwin"
 		osm = &LaunchDServiceManager{conn: conn}
-	case asset.Platform.Name == "freebsd" || asset.Platform.Name == "dragonflybsd":
+	case asset.Platform.Name == "freebsd":
+		osm = &BsdInitServiceManager{conn: conn, checkStatus: true}
+	case asset.Platform.Name == "dragonflybsd":
 		osm = &BsdInitServiceManager{conn: conn}
 	case asset.Platform.Name == "netbsd":
 		osm = &NetBsdServiceManager{conn: conn}
@@ -182,7 +243,10 @@ func ResolveManager(conn shared.Connection) (OSServiceManager, error) {
 		osm = &OpenBsdRcctlServiceManager{conn: conn}
 	case asset.Platform.Name == "windows":
 		osm = &WindowsServiceManager{conn: conn}
-	case asset.Platform.Name == "alpine":
+	// wizos and alpaquita are Alpine-based and use OpenRC. BellSoft Hardened
+	// Containers are deliberately left out: they are container images with no
+	// init system and no service manager to query.
+	case asset.Platform.Name == "alpine" || asset.Platform.Name == "wizos" || asset.Platform.Name == "alpaquita":
 		osm = &OpenrcServiceManager{conn: conn}
 	case asset.Platform.Name == "gentoo":
 		osm = &OpenrcServiceManager{conn: conn}

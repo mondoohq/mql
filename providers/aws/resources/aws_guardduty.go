@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,12 +17,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/guardduty"
 	"github.com/aws/aws-sdk-go-v2/service/guardduty/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	mqlTypes "go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	mqlTypes "go.mondoo.com/mql/types"
 )
 
 // guarddutyDetailConcurrency caps the per-detector fan-out of GetIPSet and
@@ -53,6 +54,13 @@ func (a *mqlAwsGuardduty) detectors() ([]any, error) {
 
 func (a *mqlAwsGuarddutyDetector) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+const guarddutyDetectorArnPattern = "arn:aws:guardduty:%s:%s:detector/%s"
+
+func (a *mqlAwsGuarddutyDetector) arn() (string, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return fmt.Sprintf(guarddutyDetectorArnPattern, a.Region.Data, conn.AccountId(), a.Id.Data), nil
 }
 
 func (a *mqlAwsGuardduty) getDetectors(conn *connection.AwsConnection) []*jobpool.Job {
@@ -112,7 +120,6 @@ func (a *mqlAwsGuarddutyDetector) populateData() error {
 	// default set values
 	a.Status = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
 	a.FindingPublishingFrequency = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
-	a.Features = plugin.TValue[[]any]{State: plugin.StateIsSet | plugin.StateIsNull}
 	a.Tags = plugin.TValue[map[string]any]{State: plugin.StateIsSet | plugin.StateIsNull}
 	a.CreatedAt = plugin.TValue[*time.Time]{State: plugin.StateIsSet | plugin.StateIsNull}
 	a.UpdatedAt = plugin.TValue[*time.Time]{State: plugin.StateIsSet | plugin.StateIsNull}
@@ -143,8 +150,6 @@ func (a *mqlAwsGuarddutyDetector) populateData() error {
 
 	a.Status = plugin.TValue[string]{Data: string(detector.Status), State: plugin.StateIsSet}
 	a.FindingPublishingFrequency = plugin.TValue[string]{Data: string(detector.FindingPublishingFrequency), State: plugin.StateIsSet}
-	features, _ := convert.JsonToDictSlice(detector.Features)
-	a.Features = plugin.TValue[[]any]{Data: features, State: plugin.StateIsSet}
 	a.Tags = plugin.TValue[map[string]any]{Data: convert.MapToInterfaceMap(detector.Tags), State: plugin.StateIsSet}
 
 	if detector.CreatedAt != nil {
@@ -163,10 +168,6 @@ func (a *mqlAwsGuarddutyDetector) populateData() error {
 
 func (a *mqlAwsGuarddutyDetector) status() (string, error) {
 	return "", a.populateData()
-}
-
-func (a *mqlAwsGuarddutyDetector) features() ([]any, error) {
-	return nil, a.populateData()
 }
 
 func (a *mqlAwsGuarddutyDetector) tags() (map[string]any, error) {
@@ -397,24 +398,39 @@ func parseAwsTimestampPtr(value *string) *time.Time {
 	return parseAwsTimestamp(*value)
 }
 
+// awsTimestampLayouts lists every shape a string timestamp arrives in from the
+// AWS APIs that hand back timestamps as strings instead of typed times. They
+// are tried in order; the first that parses wins.
+var awsTimestampLayouts = []string{
+	// The common case, e.g. "2026-04-09T05:40:04Z" or "2026-04-09T05:40:04+00:00".
+	time.RFC3339,
+	// Some AWS APIs (e.g., Lambda layers) return timestamps with a non-RFC3339
+	// timezone offset like "2026-04-12T18:11:01.019+0000" (missing colon).
+	"2006-01-02T15:04:05.000-0700",
+	// The same offset shape without fractional seconds, e.g. Lambda provisioned
+	// concurrency: "2026-08-31T20:11:24+0000". The layout above demands the
+	// fractional part, so this form needs its own entry.
+	"2006-01-02T15:04:05-0700",
+	// Some AWS APIs (e.g., EC2 Verified Access) return timestamps without
+	// timezone info like "2026-04-09T05:40:04". Read as UTC in that case.
+	"2006-01-02T15:04:05",
+}
+
 func parseAwsTimestamp(value string) *time.Time {
-	timestamp, err := time.Parse(time.RFC3339, value)
-	if err != nil {
-		// Some AWS APIs (e.g., Lambda layers) return timestamps with non-RFC3339
-		// timezone offset like "2026-04-12T18:11:01.019+0000" (missing colon).
-		timestamp, err = time.Parse("2006-01-02T15:04:05.000-0700", value)
+	for _, layout := range awsTimestampLayouts {
+		timestamp, err := time.Parse(layout, value)
 		if err != nil {
-			// Some AWS APIs (e.g., EC2 Verified Access) return timestamps without
-			// timezone info like "2026-04-09T05:40:04". Parse as UTC in that case.
-			timestamp, err = time.Parse("2006-01-02T15:04:05", value)
-			if err != nil {
-				log.Warn().Err(err).Str("timestamp", value).Msg("failed to parse timestamp")
-				return nil
-			}
+			continue
+		}
+		// A layout carrying no zone parses into UTC already; normalizing keeps
+		// the location explicit rather than the zero Location value.
+		if layout == "2006-01-02T15:04:05" {
 			timestamp = timestamp.UTC()
 		}
+		return &timestamp
 	}
-	return &timestamp
+	log.Warn().Str("timestamp", value).Msg("failed to parse timestamp")
+	return nil
 }
 
 func (a *mqlAwsGuarddutyDetector) featureConfigurations() ([]any, error) {
@@ -437,6 +453,7 @@ func (a *mqlAwsGuarddutyDetector) featureConfigurations() ([]any, error) {
 				"name":                    llx.StringData(string(feat.Name)),
 				"status":                  llx.StringData(string(feat.Status)),
 				"updatedAt":               llx.TimeDataPtr(feat.UpdatedAt),
+				"managedBy":               llx.StringDataPtr(nonEmptyEnum(feat.ManagedBy)),
 				"additionalConfiguration": llx.ArrayData(additionalConfig, mqlTypes.Dict),
 			})
 		if err != nil {
@@ -496,11 +513,13 @@ type mqlAwsGuarddutyDetectorPublishingDestinationInternal struct {
 	lock           sync.Mutex
 	cacheBucketArn *string
 	cacheKmsKeyArn *string
+	cacheOwner     *string
 	fetchErr       error
 }
 
 // fetchDetail lazily calls DescribePublishingDestination once to resolve the
-// destination's S3 bucket and KMS key, shared by s3Bucket() and kmsKey().
+// destination's S3 bucket, KMS key, and expected bucket owner, shared by
+// s3Bucket(), kmsKey(), and expectedBucketOwner().
 func (a *mqlAwsGuarddutyDetectorPublishingDestination) fetchDetail() error {
 	if a.fetched.Load() {
 		return a.fetchErr
@@ -526,6 +545,7 @@ func (a *mqlAwsGuarddutyDetectorPublishingDestination) fetchDetail() error {
 	if detail.DestinationProperties != nil {
 		a.cacheBucketArn = detail.DestinationProperties.DestinationArn
 		a.cacheKmsKeyArn = detail.DestinationProperties.KmsKeyArn
+		a.cacheOwner = detail.DestinationProperties.ExpectedBucketOwner
 	}
 	a.fetched.Store(true)
 	return nil
@@ -551,7 +571,7 @@ func (a *mqlAwsGuarddutyDetectorPublishingDestination) s3Bucket() (*mqlAwsS3Buck
 		a.S3Bucket.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	bucketName := strings.Split(parts[1], "/")[0]
+	bucketName, _, _ := strings.Cut(parts[1], "/")
 
 	mqlBucket, err := NewResource(a.MqlRuntime, "aws.s3.bucket",
 		map[string]*llx.RawData{"name": llx.StringData(bucketName)})
@@ -559,6 +579,17 @@ func (a *mqlAwsGuarddutyDetectorPublishingDestination) s3Bucket() (*mqlAwsS3Buck
 		return nil, err
 	}
 	return mqlBucket.(*mqlAwsS3Bucket), nil
+}
+
+func (a *mqlAwsGuarddutyDetectorPublishingDestination) expectedBucketOwner() (string, error) {
+	if err := a.fetchDetail(); err != nil {
+		return "", err
+	}
+	if a.cacheOwner == nil || *a.cacheOwner == "" {
+		a.ExpectedBucketOwner.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *a.cacheOwner, nil
 }
 
 func (a *mqlAwsGuarddutyDetectorPublishingDestination) kmsKey() (*mqlAwsKmsKey, error) {
@@ -875,16 +906,28 @@ func (a *mqlAwsGuarddutyDetectorMember) id() (string, error) {
 	return a.__id, nil
 }
 
-// parseGuardDutyTimestamp converts a *string epoch timestamp to *time.Time.
-// GuardDuty member timestamps are formatted as epoch second strings.
+// parseGuardDutyTimestamp converts a GuardDuty member timestamp to *time.Time.
+//
+// These arrive as ISO-8601 strings, the same shape the detector path parses
+// with RFC3339. The previous implementation assumed epoch seconds and used
+// fmt.Sscanf(s, "%f", ...), which does not require consuming the whole input:
+// on "2023-01-19T20:31:32.152Z" it read the leading "2023", reported no error,
+// and produced 1970-01-01T00:33:43Z for every member.
+//
+// Epoch input is still accepted so the behaviour is a superset of both
+// readings, since the SDK types the field as an opaque *string.
 func parseGuardDutyTimestamp(s *string) *time.Time {
 	if s == nil || *s == "" {
 		return nil
 	}
-	var epoch float64
-	if _, err := fmt.Sscanf(*s, "%f", &epoch); err != nil {
-		return nil
+	if t := parseAwsTimestamp(*s); t != nil {
+		return t
 	}
-	t := time.Unix(int64(epoch), 0)
-	return &t
+	// fall back to an epoch-second string, but only when the value is entirely
+	// numeric -- a partial numeric prefix is what caused the original bug.
+	if epoch, err := strconv.ParseFloat(*s, 64); err == nil {
+		t := time.Unix(int64(epoch), 0).UTC()
+		return &t
+	}
+	return nil
 }

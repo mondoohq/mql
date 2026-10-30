@@ -7,12 +7,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/google/go-github/v88/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/github/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/github/connection"
 )
 
 const (
@@ -84,7 +84,7 @@ func (g *mqlGithubPackage) versions() ([]any, error) {
 	}
 
 	listOpts := &github.PackageListOptions{
-		ListOptions: github.ListOptions{PerPage: paginationPerPage},
+		PerPage: paginationPerPage,
 	}
 	var allVersions []*github.PackageVersion
 	for {
@@ -133,8 +133,8 @@ func newMqlGithubPackages(runtime *plugin.Runtime, visibility *string) ([]any, e
 	res := []any{}
 	for i := range pkgTypes {
 		listOpts := &github.PackageListOptions{
-			ListOptions: github.ListOptions{PerPage: paginationPerPage},
-			PackageType: github.String(pkgTypes[i]),
+			PerPage:     paginationPerPage,
+			PackageType: new(pkgTypes[i]),
 			Visibility:  visibility,
 		}
 

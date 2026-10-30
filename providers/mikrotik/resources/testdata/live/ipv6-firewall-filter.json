@@ -1,0 +1,12 @@
+[
+ {
+  ".id": "*1",
+  "action": "drop",
+  "bytes": "16400",
+  "chain": "input",
+  "comment": "lab-v6-drop",
+  "dynamic": "false",
+  "invalid": "false",
+  "packets": "80"
+ }
+]

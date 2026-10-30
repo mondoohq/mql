@@ -5,6 +5,7 @@ package resources
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,11 @@ import (
 	"strings"
 	"time"
 )
+
+// errNotGitHubProject marks a project identifier that is not a github.com
+// repository (e.g. a GitLab or Bitbucket source). Callers use it to tell a
+// genuinely-unsupported project apart from a real GitHub API failure.
+var errNotGitHubProject = errors.New("not a GitHub repository")
 
 const depsDevBaseURL = "https://api.deps.dev/v3"
 const githubAPIBaseURL = "https://api.github.com"
@@ -172,16 +178,26 @@ type githubRepoResponse struct {
 	Archived bool `json:"archived"`
 }
 
+// githubOwnerRepo extracts "owner/repo" from a deps.dev project identifier in
+// the format "github.com/owner/repo" or "github.com/owner/repo/subpath". It
+// returns errNotGitHubProject (wrapped) when the identifier is not a github.com
+// repository.
+func githubOwnerRepo(projectID string) (string, error) {
+	parts := strings.Split(projectID, "/")
+	if len(parts) < 3 || parts[0] != "github.com" {
+		return "", fmt.Errorf("%w: %s", errNotGitHubProject, projectID)
+	}
+	return parts[1] + "/" + parts[2], nil
+}
+
 // fetchGitHubRepo retrieves repository info from the GitHub API.
 // The projectID is expected to be in the format "github.com/owner/repo" or
 // "github.com/owner/repo/subpath" (only owner/repo is used).
 func fetchGitHubRepo(client *http.Client, projectID string) (*githubRepoResponse, error) {
-	// Extract owner/repo from "github.com/owner/repo[/...]"
-	parts := strings.Split(projectID, "/")
-	if len(parts) < 3 || parts[0] != "github.com" {
-		return nil, fmt.Errorf("project %q is not a GitHub repository", projectID)
+	ownerRepo, err := githubOwnerRepo(projectID)
+	if err != nil {
+		return nil, err
 	}
-	ownerRepo := parts[1] + "/" + parts[2]
 
 	u := fmt.Sprintf("%s/repos/%s", githubAPIBaseURL, ownerRepo)
 	req, err := http.NewRequest("GET", u, nil)

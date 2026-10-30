@@ -1,0 +1,6 @@
+NAME="Ubuntu"
+ID=ubuntu
+ID_LIKE=debian
+PRETTY_NAME="Ubuntu 22.04.3 LTS"
+VERSION="22.04.3 LTS (Jammy Jellyfish)"
+VERSION_ID="22.04"

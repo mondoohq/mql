@@ -42,7 +42,12 @@ mkdir -p "$BUNDLE_DIST"
 START_TIME=$(date +%s)
 
 # Extract the version from the provider
-PROVIDER_VERSION=$(grep "Version:" ${PROVIDER_PATH}/config/config.go | cut -f2 -d\")
+# Anchor on the Version field. A bare `grep "Version:"` also matches the
+# MinVersion entries in the Requires block, which exist on main and not on
+# v13. That made PROVIDER_VERSION two lines, and the bundle filename below
+# then split into two words, so tar read the second as a file to archive:
+#   tar: go.mondoo.com/mql/providers/core_linux_arm.tar.xz: Cannot stat
+PROVIDER_VERSION=$(grep -m1 -E '^[[:space:]]*Version:' "${PROVIDER_PATH}/config/config.go" | cut -f2 -d\")
 
 # Build the provider
 echo "Building the ${PROVIDER_NAME} provider (Version: ${PROVIDER_VERSION})..."
@@ -76,8 +81,12 @@ build_bundle(){
     PROVIDER_EXECUTABLE="${PROVIDER_EXECUTABLE}.exe"
   fi
 
-  # Build the binary into the arch-specific directory
-  cd ${PROVIDER_PATH} && CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} GOARM=${GOARM} go build -tags production -ldflags "-s -w" -o ${ARCH_DIST}/${PROVIDER_EXECUTABLE} main.go
+  # Build the binary into the arch-specific directory.
+  #
+  # NOTE: the build target must stay the package ("."), not main.go. Go only
+  # links rsrc_windows_*.syso when building a package directory; passing an
+  # explicit .go file silently drops the version resource and manifest.
+  cd ${PROVIDER_PATH} && CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${GOARCH} GOARM=${GOARM} go build -tags production -ldflags "-s -w" -o ${ARCH_DIST}/${PROVIDER_EXECUTABLE} .
 
   if [[ "${GOOS}" == "windows" ]]; then
     ### SIGN THE BINARY
@@ -118,7 +127,77 @@ BUILDS=(
   "windows arm64"
 )
 
+# A provider may drop build targets its dependencies cannot compile for (for
+# example a dependency that assumes a 64-bit int fails to build on 32-bit
+# targets). List one "GOOS GOARCH [GOARM]" target per line, matching the entries
+# above, in providers/<name>/.build-skip. Blank lines and # comments are ignored.
+SKIP_FILE="${PROVIDER_PATH}/.build-skip"
+if [ -f "$SKIP_FILE" ]; then
+  FILTERED=()
+  for build in "${BUILDS[@]}"; do
+    keep=1
+    while IFS= read -r line || [ -n "$line" ]; do
+      line="${line%%#*}"
+      # Trim leading and trailing whitespace in pure bash (no subshell, no glob
+      # expansion of * or ? that xargs would perform).
+      line="${line#"${line%%[![:space:]]*}"}"
+      line="${line%"${line##*[![:space:]]}"}"
+      [ -z "$line" ] && continue
+      if [ "$build" = "$line" ]; then
+        keep=0
+        break
+      fi
+    done < "$SKIP_FILE"
+    if [ "$keep" -eq 1 ]; then
+      FILTERED+=("$build")
+    else
+      echo "  - Skipping ${build} for ${PROVIDER_NAME} (listed in .build-skip)"
+    fi
+  done
+  BUILDS=("${FILTERED[@]}")
+fi
+
 echo "  - Building ${#BUILDS[@]} architecture targets (max parallel: ${MAX_PARALLEL})..."
+
+# The generated resource objects live in the provider source directory, so drop
+# them once every target has been linked rather than leaving them in the tree.
+remove_winres() {
+  rm -f "${PROVIDER_PATH}"/rsrc_windows_*.syso
+}
+
+# On every exit path, not just the expected ones: nothing clears these objects
+# at the start of a run, so a leaked one would be linked into the next windows
+# build of this provider carrying a stale version. A background build does not
+# inherit an EXIT trap, so this cannot fire while another target is linking.
+trap remove_winres EXIT
+
+# Windows binaries carry a VERSIONINFO resource and an application manifest.
+# Without them the provider .exe reports no CompanyName/ProductName/
+# FileDescription, which contributes to heuristic AV/EDR misclassification.
+#
+# This has to happen before the build loop below rather than inside
+# build_bundle: both windows targets share these files, so generating them per
+# target would race whenever MAX_PARALLEL > 1.
+#
+# The template carries only what go-winres does not already default to. Of the
+# manifest settings, `dpi-awareness` is the one that is not a default: left out,
+# a binary is marked DPI-aware, which is a claim a headless plugin has no
+# business making.
+for build in "${BUILDS[@]}"; do
+  if [[ "${build}" == windows* ]]; then
+    echo "  - Generate the Windows version resource..."
+    WINRES_JSON="${PROVIDER_DIST}/winres.json"
+    sed "s|__PROVIDER_NAME__|${PROVIDER_NAME}|g" \
+      "${REPOROOT}/scripts/winres/provider.json.tmpl" > "${WINRES_JSON}"
+    go run github.com/tc-hib/go-winres@v0.3.3 make \
+      --in "${WINRES_JSON}" \
+      --out "${PROVIDER_PATH}/rsrc" \
+      --arch amd64,arm64 \
+      --file-version "${PROVIDER_VERSION}" \
+      --product-version "${PROVIDER_VERSION}"
+    break
+  fi
+done
 
 # Kill all background build processes on interrupt/termination
 cleanup() {

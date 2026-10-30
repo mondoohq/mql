@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/oracle/oci-go-sdk/v65/certificatesmanagement"
-	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -70,8 +69,8 @@ func TestExtractCertificateRenewal(t *testing.T) {
 	t.Run("renewal rule present", func(t *testing.T) {
 		rules := []certificatesmanagement.CertificateRule{
 			certificatesmanagement.CertificateRenewalRule{
-				RenewalInterval:      common.String("P90D"),
-				AdvanceRenewalPeriod: common.String("P7D"),
+				RenewalInterval:      new("P90D"),
+				AdvanceRenewalPeriod: new("P7D"),
 			},
 		}
 		enabled, interval := extractCertificateRenewal(rules)
@@ -99,10 +98,10 @@ func TestExtractCertificateRenewal(t *testing.T) {
 		rules := []certificatesmanagement.CertificateRule{
 			unknownCertRule{},
 			certificatesmanagement.CertificateRenewalRule{
-				RenewalInterval: common.String("P30D"),
+				RenewalInterval: new("P30D"),
 			},
 			certificatesmanagement.CertificateRenewalRule{
-				RenewalInterval: common.String("P60D"),
+				RenewalInterval: new("P60D"),
 			},
 		}
 		enabled, interval := extractCertificateRenewal(rules)
@@ -124,11 +123,11 @@ func TestSanSliceToAny(t *testing.T) {
 		sans := []certificatesmanagement.CertificateSubjectAlternativeName{
 			{
 				Type:  certificatesmanagement.CertificateSubjectAlternativeNameTypeDns,
-				Value: common.String("api.example.com"),
+				Value: new("api.example.com"),
 			},
 			{
 				Type:  certificatesmanagement.CertificateSubjectAlternativeNameTypeIp,
-				Value: common.String("10.0.0.1"),
+				Value: new("10.0.0.1"),
 			},
 		}
 		out := sanSliceToAny(sans)

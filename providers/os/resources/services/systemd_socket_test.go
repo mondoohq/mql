@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
 func TestParseSystemdSocketUnitFiles(t *testing.T) {
@@ -113,6 +113,18 @@ func TestSystemdSocketManagerList(t *testing.T) {
 					"",
 				}, "\n"),
 			},
+			// docker.socket is disabled and not loaded, so list-units leaves
+			// it out and only systemctl show knows its description
+			"systemctl show --property=Id,LoadState,ActiveState,UnitFileState,Description docker.socket": {
+				Stdout: strings.Join([]string{
+					"Id=docker.socket",
+					"Description=Docker Socket for the API",
+					"LoadState=loaded",
+					"ActiveState=inactive",
+					"UnitFileState=disabled",
+					"",
+				}, "\n"),
+			},
 		},
 	}))
 	require.NoError(t, err)
@@ -133,6 +145,7 @@ func TestSystemdSocketManagerList(t *testing.T) {
 
 	assert.False(t, socketMap["docker"].Enabled)
 	assert.False(t, socketMap["docker"].Running)
+	assert.Equal(t, "Docker Socket for the API", socketMap["docker"].Description)
 }
 
 func TestSystemdSocketManagerGet(t *testing.T) {
@@ -286,4 +299,93 @@ func TestShowSocketProperties(t *testing.T) {
 	// Verify ParseListenProperty works with the fetched value
 	addrs := ParseListenProperty(props["Listen"])
 	assert.Equal(t, []string{"/run/dbus/system_bus_socket"}, addrs)
+}
+
+// `systemctl show --property=Triggers,Accept,Listen g04.socket` on RHEL 7.9
+// (systemd 219); Debian 9 (232) and Ubuntu 18.04 (237) print the same
+// ListenStream= lines.
+const rhel7ShowSocketListen = `Accept=yes
+ListenStream=127.0.0.1:7777
+ListenStream=/run/g04.sock
+Triggers=
+`
+
+func TestShowSocketPropertiesFoldsListenTypes(t *testing.T) {
+	conn := unitFallbackConn(t, map[string]*mock.Command{
+		buildShowPropertyCommand("Triggers,Accept,Listen", "g04.socket"): {Stdout: rhel7ShowSocketListen},
+	})
+	props, err := NewSystemdSocketManager(conn).ShowSocketProperties("g04")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"127.0.0.1:7777", "/run/g04.sock"}, ParseListenProperty(props["Listen"]))
+}
+
+func TestFoldListenTypeProperties(t *testing.T) {
+	props := map[string]string{"ListenDatagram": "0.0.0.0:69", "ListenStream": "[::]:22"}
+	foldListenTypeProperties(props)
+	assert.Equal(t, "[::]:22 (Stream)\n0.0.0.0:69 (Datagram)", props["Listen"])
+
+	// a current systemd's Listen= is kept as printed
+	props = map[string]string{"Listen": "/run/dbus/system_bus_socket (Stream)", "ListenStream": "/other"}
+	foldListenTypeProperties(props)
+	assert.Equal(t, "/run/dbus/system_bus_socket (Stream)", props["Listen"])
+}
+
+func TestSystemdSocketManagerListAddsTemplateInstances(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "amazonlinux", Family: []string{"linux"}},
+	}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"systemctl list-unit-files --type socket --all": {
+				Stdout: strings.Join([]string{
+					"UNIT FILE                        STATE    PRESET",
+					"g04-sk@.socket                   indirect disabled",
+					"g04.socket                       enabled  disabled",
+					"systemd-journald@.socket         static   -",
+					"",
+					"3 unit files listed.",
+					"",
+				}, "\n"),
+			},
+			"systemctl list-units --type socket --all": {
+				Stdout: strings.Join([]string{
+					"  UNIT                            LOAD   ACTIVE   SUB       DESCRIPTION",
+					"  g04-sk@a.socket                 loaded active   listening g04 templated socket a",
+					"  g04.socket                      loaded active   listening g04 socket",
+					"  gone@b.socket                   not-found inactive dead   gone@b.socket",
+					"",
+					"LOAD   = Reflects whether the unit definition was properly loaded.",
+					"3 loaded units listed.",
+					"",
+				}, "\n"),
+			},
+			"systemctl show --property=Id,LoadState,ActiveState,UnitFileState,Description g04-sk@a.socket": {
+				Stdout: strings.Join([]string{
+					"Id=g04-sk@a.socket",
+					"Description=g04 templated socket a",
+					"LoadState=loaded",
+					"ActiveState=active",
+					"UnitFileState=enabled",
+					"",
+				}, "\n"),
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	sockets, err := (&SystemdSocketManager{conn: mockConn}).List()
+	require.NoError(t, err)
+	byName := map[string]*SystemdSocket{}
+	for _, socket := range sockets {
+		byName[socket.Name] = socket
+	}
+	require.Len(t, byName, 4)
+
+	a := byName["g04-sk@a"]
+	require.NotNil(t, a)
+	assert.True(t, a.Installed)
+	assert.True(t, a.Enabled)
+	assert.True(t, a.Running)
+	assert.Equal(t, "g04 templated socket a", a.Description)
+	// an instance that does not load is not a socket on this host
+	assert.Nil(t, byName["gone@b"])
 }

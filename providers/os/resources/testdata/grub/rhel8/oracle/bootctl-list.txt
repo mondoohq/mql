@@ -1,0 +1,3 @@
+Failed to open "/boot/efi/loader/loader.conf": No such file or directory
+Failed to read boot config from "/boot/efi/loader/loader.conf": No such file or directory
+Failed to load bootspec config from "/boot/efi/loader": No such file or directory

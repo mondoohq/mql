@@ -13,22 +13,42 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/kballard/go-shellquote"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func NewFile(catfs *Fs, path string, useBase64encoding bool) *File {
 	return &File{catfs: catfs, path: path, useBase64encoding: useBase64encoding}
 }
 
+// File is a file read through `cat` on the target. The first Read, ReadAt or
+// Seek reads the whole file into memory; all later calls are served from that
+// copy. Holding the content makes the file seekable, which decoders such as
+// the binary plist one need: they read the header, seek back to the start and
+// read again.
 type File struct {
 	catfs             *Fs
-	buf               *bytes.Buffer
+	content           *bytes.Reader
 	path              string
 	useBase64encoding bool
 }
 
-func (f *File) readContent() (*bytes.Buffer, error) {
+// load reads the file content on first use.
+func (f *File) load() (*bytes.Reader, error) {
+	if f.content != nil {
+		return f.content, nil
+	}
+	data, err := f.readContent()
+	if err != nil {
+		return nil, err
+	}
+	f.content = bytes.NewReader(data)
+	return f.content, nil
+}
+
+func (f *File) readContent() ([]byte, error) {
 	// we need shellquote to escape filenames with spaces
-	catCmd := shellquote.Join("cat", f.path)
+	catCmd := shellquote.Join("cat", argPath(f.path))
 	if f.useBase64encoding {
 		catCmd = catCmd + " | base64"
 	}
@@ -50,7 +70,7 @@ func (f *File) readContent() (*bytes.Buffer, error) {
 		}
 	}
 
-	return bytes.NewBuffer(data), nil
+	return data, nil
 }
 
 func (f *File) Close() error {
@@ -74,18 +94,19 @@ func (f *File) Truncate(size int64) error {
 }
 
 func (f *File) Read(b []byte) (n int, err error) {
-	if f.buf == nil {
-		bufData, err := f.readContent()
-		if err != nil {
-			return 0, err
-		}
-		f.buf = bufData
+	content, err := f.load()
+	if err != nil {
+		return 0, err
 	}
-	return f.buf.Read(b)
+	return content.Read(b)
 }
 
 func (f *File) ReadAt(b []byte, off int64) (n int, err error) {
-	return 0, errors.New("not implemented")
+	content, err := f.load()
+	if err != nil {
+		return 0, err
+	}
+	return content.ReadAt(b, off)
 }
 
 func (f *File) Readdir(count int) (res []os.FileInfo, err error) {
@@ -94,27 +115,56 @@ func (f *File) Readdir(count int) (res []os.FileInfo, err error) {
 		return nil, err
 	}
 
-	res = make([]os.FileInfo, len(names))
-	for i, name := range names {
+	// One command stats the whole directory where the target's stat allows
+	// it. Stat'ing each entry with its own command cost a round trip per
+	// entry: over docker exec a walk of / took minutes.
+	var batch map[string]os.FileInfo
+	if ds, ok := f.catfs.statter.(dirStatter); ok {
+		var relative []string
+		for _, name := range names {
+			if !filepath.IsAbs(name) {
+				relative = append(relative, name)
+			}
+		}
+		batch, _ = ds.StatDir(f.path, relative)
+	}
+
+	res = []os.FileInfo{}
+	for _, name := range names {
+		if fi, ok := batch[name]; ok {
+			res = append(res, fi)
+			continue
+		}
 		var statPath string
 		if filepath.IsAbs(name) {
 			statPath = name
 		} else {
 			statPath = filepath.Join(f.path, name)
 		}
-		res[i], err = f.catfs.Stat(statPath)
+		fi, err := f.catfs.Stat(statPath)
 		if err != nil {
-			return nil, err
+			// An entry can vanish between the listing and the stat (a process
+			// leaving /proc, a rotated log), and a name containing a newline
+			// arrives split across lines. Skip it like os.File.Readdir does for
+			// vanished entries, instead of dropping the whole directory.
+			log.Debug().Err(err).Str("path", statPath).Msg("cat> skip directory entry that cannot be stat'ed")
+			continue
 		}
+		res = append(res, fi)
 	}
 
 	return res, nil
 }
 
+// dirStatter stats the entries of a directory in one go.
+type dirStatter interface {
+	StatDir(dir string, names []string) (map[string]os.FileInfo, bool)
+}
+
 func (f *File) Readdirnames(n int) (names []string, err error) {
 	// TODO: input n is ignored
 
-	cmd, err := f.catfs.commandRunner.RunCommand("ls -1 '" + f.path + "'")
+	cmd, err := f.catfs.commandRunner.RunCommand(listDirCommand(f.path))
 	if err != nil {
 		return nil, err
 	}
@@ -124,31 +174,80 @@ func (f *File) Readdirnames(n int) (names []string, err error) {
 		return nil, err
 	}
 
-	list := strings.Split(strings.TrimSpace(string(data)), "\n")
-
-	if list != nil {
-		// filter . and ..
-		keep := func(x string) bool {
-			if x == "." || x == ".." || x == "" {
-				return false
-			}
-			return true
+	names = parseDirListing(data)
+	if cmd.ExitStatus != 0 && len(names) == 0 {
+		var stderr []byte
+		if cmd.Stderr != nil {
+			stderr, _ = io.ReadAll(cmd.Stderr)
 		}
-		m := 0
-		for _, x := range list {
-			if keep(x) {
-				list[m] = x
-				m++
-			}
+		err = listDirError(f.path, string(stderr))
+		if errors.Is(err, os.ErrPermission) && !plugin.StructuredErrors() {
+			return []string{}, nil
 		}
-		list = list[:m]
+		return nil, err
 	}
 
-	return list, nil
+	return names, nil
+}
+
+// listDirCommand builds the command that lists the entries of a directory,
+// one per line. -A includes dotfiles (but not . and ..), which plain ls
+// hides. The path is quoted so it survives as a single argument.
+func listDirCommand(path string) string {
+	return shellquote.Join("ls", "-1A", argPath(path))
+}
+
+// argPath keeps a path that starts with a dash from being parsed as an
+// option. "./" is used instead of "--" because the same commands also run
+// through PowerShell on WinRM connections.
+func argPath(path string) string {
+	if strings.HasPrefix(path, "-") {
+		return "./" + path
+	}
+	return path
+}
+
+// parseDirListing splits the output of listDirCommand into entry names. Only
+// line breaks separate entries: a name may start or end with a space.
+func parseDirListing(data []byte) []string {
+	lines := strings.Split(string(data), "\n")
+	names := []string{}
+	for _, line := range lines {
+		line = strings.TrimSuffix(line, "\r")
+		if line == "" || line == "." || line == ".." {
+			continue
+		}
+		names = append(names, line)
+	}
+	return names
+}
+
+// listDirError turns the stderr of a failed listing into an error that
+// errors.Is recognizes as os.ErrNotExist or os.ErrPermission, matching
+// what the sftp and local filesystems return.
+func listDirError(path string, stderr string) error {
+	msg := strings.TrimSpace(stderr)
+	var cause error
+	switch {
+	case strings.Contains(msg, "No such file or directory"):
+		cause = os.ErrNotExist
+	case strings.Contains(msg, "Permission denied"):
+		cause = os.ErrPermission
+	default:
+		if msg == "" {
+			msg = "could not list directory"
+		}
+		cause = errors.New(msg)
+	}
+	return &os.PathError{Op: "readdir", Path: path, Err: cause}
 }
 
 func (f *File) Seek(offset int64, whence int) (int64, error) {
-	return 0, errors.New("not implemented")
+	content, err := f.load()
+	if err != nil {
+		return 0, err
+	}
+	return content.Seek(offset, whence)
 }
 
 func (f *File) Write(b []byte) (n int, err error) {

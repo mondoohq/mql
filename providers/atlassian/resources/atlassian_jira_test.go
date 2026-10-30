@@ -24,6 +24,23 @@ func TestJiraResolutionName(t *testing.T) {
 	assert.Equal(t, "", jiraResolutionName(&models.ResolutionScheme{}))
 }
 
+func TestJiraFieldPointerHelpers(t *testing.T) {
+	// These guard the issues() mapping against nil Project/Status/IssueType
+	// pointers (all omitempty in the SDK), which would otherwise panic and
+	// crash the whole scan.
+	assert.Equal(t, "", jiraProjectName(nil))
+	assert.Equal(t, "Platform", jiraProjectName(&models.ProjectScheme{Name: "Platform"}))
+
+	assert.Equal(t, "", jiraProjectKey(nil))
+	assert.Equal(t, "PLAT", jiraProjectKey(&models.ProjectScheme{Key: "PLAT"}))
+
+	assert.Equal(t, "", jiraStatusName(nil))
+	assert.Equal(t, "Done", jiraStatusName(&models.StatusScheme{Name: "Done"}))
+
+	assert.Equal(t, "", jiraIssueTypeName(nil))
+	assert.Equal(t, "Bug", jiraIssueTypeName(&models.IssueTypeScheme{Name: "Bug"}))
+}
+
 func TestJiraDateTime(t *testing.T) {
 	t.Run("nil returns nil", func(t *testing.T) {
 		assert.Nil(t, jiraDateTime(nil))

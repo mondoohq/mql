@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // mapResources is a trivial in-memory implementation of the plugin resource
@@ -81,8 +81,16 @@ func findParam(parsed *parsedBicepFile, name string) parsedParameter {
 // exprFor builds a bicep.expression resource for a raw expression string,
 // wired with the given resolver, the way expressionTreeFor does.
 func exprFor(t *testing.T, runtime *plugin.Runtime, resolver *symbolResolver, raw string) *mqlBicepExpression {
+	return exprForID(t, runtime, resolver, "test:"+raw, raw)
+}
+
+// exprForID is exprFor with an explicit cache id. Two expressions wired with
+// DIFFERENT resolvers must not share an id: CreateResource returns the cached
+// instance for an id it already holds, so the second call would read the first
+// call's resolver.
+func exprForID(t *testing.T, runtime *plugin.Runtime, resolver *symbolResolver, id, raw string) *mqlBicepExpression {
 	node := parseExpression(raw)
-	expr, err := newMqlBicepExpression(runtime, "test:"+raw, node, resolver)
+	expr, err := newMqlBicepExpression(runtime, id, node, resolver)
 	require.NoError(t, err)
 	return expr
 }
@@ -249,8 +257,11 @@ func TestExpressionReferenceResolution(t *testing.T) {
 
 	t.Run("unparented expression with nil resolver resolves to empty", func(t *testing.T) {
 		// Defensive: a node built without a resolver (e.g. reconstructed
-		// across gRPC) must not panic and resolves to the empty kind.
-		expr := exprFor(t, runtime, nil, "namePrefix")
+		// across gRPC) must not panic and resolves to the empty kind. It needs
+		// its own cache id: an earlier subtest already built "namePrefix" WITH
+		// a resolver, and a resource is stamped once, by whichever caller
+		// created it.
+		expr := exprForID(t, runtime, nil, "test:nilresolver:namePrefix", "namePrefix")
 		assertOnlyKind(t, expr, "")
 	})
 }

@@ -90,6 +90,21 @@ func (a *Asset) AddLabels(labels map[string]string) {
 	}
 }
 
+// AnnotationAwsAccountId is the asset annotation naming the AWS account an
+// asset belongs to, as the 12-digit account id. It gives every AWS-hosted
+// asset, whatever scanned it, one key to be grouped by.
+//
+// A provider sets it where it knows the account and the asset's own identity
+// does not name it, such as the workloads of an EKS cluster. Assets whose
+// platform identifiers carry the account (every resource the aws provider
+// discovers, EC2 instances) need no provider to set it: the platform derives
+// it from those identifiers on ingest.
+//
+// It is an annotation rather than a label because the platform replaces an
+// asset's labels on every scan but merges its annotations, so the account
+// survives a later scan by a path that does not know it.
+const AnnotationAwsAccountId = "mondoo.com/aws-account-id"
+
 func (a *Asset) AddAnnotations(annotations map[string]string) {
 	if len(annotations) == 0 {
 		return
@@ -137,15 +152,25 @@ func NewState(state string) State {
 }
 
 var AssetCategory_schemevalue = map[string]AssetCategory{
-	// FIXME: DEPRECATED, remove in v11.0 vv
+	// FIXME: DEPRECATED, remove in v15.0 vv
 	"fleet": AssetCategory_CATEGORY_INVENTORY,
 	// ^^
 	"inventory": AssetCategory_CATEGORY_INVENTORY,
 	"cicd":      AssetCategory_CATEGORY_CICD,
 }
 
+// deprecatedAssetCategories maps retired category names to the name that
+// replaced them. Values here still resolve, but warn on use so v15 can drop
+// them from AssetCategory_schemevalue.
+// FIXME: DEPRECATED, remove in v15.0 vv
+var deprecatedAssetCategories = map[string]string{
+	"fleet": "inventory",
+}
+
+// ^^
+
 // UnmarshalJSON parses either an int or a string representation of
-// CredentialType into the struct
+// AssetCategory into the struct
 func (s *AssetCategory) UnmarshalJSON(data []byte) error {
 	// check if we have a number
 	var code int32
@@ -155,12 +180,21 @@ func (s *AssetCategory) UnmarshalJSON(data []byte) error {
 	} else {
 		var name string
 		// we can ignore the error here because we just look it up and otherwise
-		// tell users that we can't find the backend value
+		// tell users that we can't find the category value
 		_ = json.Unmarshal(data, &name)
-		code, ok := AssetCategory_schemevalue[strings.TrimSpace(name)]
+		name = strings.TrimSpace(name)
+		code, ok := AssetCategory_schemevalue[name]
 		if !ok {
-			return errors.New("unknown backend value: " + string(data))
+			return errors.New("unknown asset category value: " + string(data))
 		}
+		// FIXME: DEPRECATED, remove in v15.0 vv
+		if replacement, deprecated := deprecatedAssetCategories[name]; deprecated {
+			log.Warn().
+				Str("category", name).
+				Str("use", replacement).
+				Msg("deprecated asset category in inventory, please switch to the replacement")
+		}
+		// ^^
 		*s = code
 	}
 	return nil

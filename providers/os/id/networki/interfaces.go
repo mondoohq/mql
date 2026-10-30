@@ -10,11 +10,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/endobit/oui"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/id/networki/oui"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 // neti is a helper struct to avoid passing the connection and platform
@@ -31,6 +31,12 @@ type neti struct {
 func Interfaces(conn shared.Connection, pf *inventory.Platform) ([]Interface, error) {
 	n := &neti{conn, pf}
 
+	if pf.Name == "solaris" {
+		return n.detectSolarisInterfaces()
+	}
+	if pf.Name == "aix" {
+		return n.detectAixInterfaces()
+	}
 	if pf.IsFamily(inventory.FAMILY_LINUX) {
 		return n.detectLinuxInterfaces()
 	}
@@ -85,8 +91,18 @@ type enrichmentFn func(in *Interface)
 func (i *Interface) SetMAC(mac string) {
 	if mac != "" {
 		i.MACAddress = strings.ReplaceAll(mac, "-", ":")
-		i.Vendor = oui.Vendor(i.MACAddress)
+		// An all-zero address (loopback, tunnels) is no address, and its
+		// 00:00:00 prefix would otherwise read as XEROX's OUI.
+		if !isZeroMAC(i.MACAddress) {
+			i.Vendor = oui.Vendor(i.MACAddress)
+		}
 	}
+}
+
+// isZeroMAC reports whether every hex digit of a colon-separated hardware
+// address is zero.
+func isZeroMAC(mac string) bool {
+	return strings.Trim(mac, "0:") == ""
 }
 
 // AddOrUpdateInterfaces adds or updates one or many network interfaces
@@ -175,8 +191,8 @@ func FindInterface(interfaces []Interface, iinterface Interface) int {
 // baseInterfaceName strips the peer suffix (@ifN) from interface names.
 // For example, "eth0@if103" returns "eth0", while "enX0" returns "enX0".
 func baseInterfaceName(name string) string {
-	if i := strings.Index(name, "@"); i != -1 {
-		return name[:i]
+	if before, _, ok := strings.Cut(name, "@"); ok {
+		return before
 	}
 	return name
 }

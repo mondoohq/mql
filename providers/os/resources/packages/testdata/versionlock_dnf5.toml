@@ -1,0 +1,11 @@
+version = "1.0"
+
+[[packages]]
+name = "vim-minimal"
+comment = "Added by 'versionlock add' command on 2026-08-23 10:40:07"
+
+[[packages.conditions]]
+key = "evr"
+comparator = "="
+value = "2:9.2.530-1.fc44"
+

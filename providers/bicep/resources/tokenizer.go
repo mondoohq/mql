@@ -51,16 +51,34 @@ var knownKeywords = map[string]string{
 // statements are skipped.
 func tokenizeBicep(content string) []bicepStatement {
 	lines := strings.Split(content, "\n")
-	var statements []bicepStatement
+
+	// Every top-level construct starts at column 0 and its continuation lines
+	// are indented, so the unindented lines are a tight upper bound on the
+	// statement count. Sizing the slice from that one cheap pass beats growing
+	// it by doubling, which reallocates and copies the whole run of statements
+	// a dozen times on a large template.
+	starts := 0
+	for _, line := range lines {
+		if line != "" && line[0] != ' ' && line[0] != '\t' {
+			starts++
+		}
+	}
+	statements := make([]bicepStatement, 0, starts)
+
+	// One scratch slice for every statement's body: reset per statement rather
+	// than reallocated. strings.Join copies what it needs (and returns the
+	// single line unchanged when a statement is one line), so no statement
+	// keeps a reference to this backing array.
+	var bodyLines []string
 
 	i := 0
 	for i < len(lines) {
 		trimmed := strings.TrimSpace(lines[i])
 
-		// Skip blank lines and comment-only lines that sit between
-		// statements (decorators are handled below, so we only land here
-		// for separators).
-		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
+		// Skip blank lines, comment-only lines, and `#` directives that sit
+		// between statements (decorators are handled below, so we only land
+		// here for separators).
+		if isSeparatorLine(trimmed) {
 			i++
 			continue
 		}
@@ -71,27 +89,28 @@ func tokenizeBicep(content string) []bicepStatement {
 		// don't keep it open past its real end.
 		var decorators []string
 		for strings.HasPrefix(trimmed, "@") {
-			decLine := trimmed
+			var decLine strings.Builder
+			decLine.WriteString(trimmed)
 			st := scanState{}
 			st.feed(trimmed)
 			i++
-			for st.totalDepth() > 0 && i < len(lines) {
+			for st.open() && i < len(lines) {
 				t := strings.TrimSpace(lines[i])
-				decLine += "\n" + t
+				decLine.WriteString("\n" + t)
 				st.feed(t)
 				i++
 			}
-			decorators = append(decorators, decLine)
+			decorators = append(decorators, decLine.String())
 
-			// Advance past any blank/comment lines between a decorator and
-			// the statement (or the next decorator) it attaches to.
+			// Advance past any blank, comment, or directive lines between a
+			// decorator and the statement (or the next decorator) it attaches
+			// to. `#disable-next-line` idiomatically sits right here, below
+			// the decorators and above the declaration.
 			for i < len(lines) {
-				t := strings.TrimSpace(lines[i])
-				if t == "" || strings.HasPrefix(t, "//") {
-					i++
-					continue
+				if !isSeparatorLine(strings.TrimSpace(lines[i])) {
+					break
 				}
-				break
+				i++
 			}
 			if i >= len(lines) {
 				break
@@ -117,12 +136,12 @@ func tokenizeBicep(content string) []bicepStatement {
 		// pulling continuation lines until the running depth returns to zero.
 		startLine := i + 1 // 1-based
 		st := scanState{}
-		var bodyLines []string
+		bodyLines = bodyLines[:0]
 
 		bodyLines = append(bodyLines, lines[i])
 		st.feed(lines[i])
 		i++
-		for st.totalDepth() > 0 && i < len(lines) {
+		for st.open() && i < len(lines) {
 			bodyLines = append(bodyLines, lines[i])
 			st.feed(lines[i])
 			i++
@@ -140,6 +159,20 @@ func tokenizeBicep(content string) []bicepStatement {
 	}
 
 	return statements
+}
+
+// isSeparatorLine reports whether a trimmed line carries no statement content
+// and may be skipped between (or inside) statements.
+//
+// Besides blank and `// …` comment lines, this covers Bicep's `#` directives —
+// `#disable-next-line <rule>` is a first-class construct that idiomatically
+// sits between a declaration's decorators and the declaration itself. Treating
+// it as content there detached every decorator onto a phantom empty statement,
+// so an `@secure()` parameter read back as not secure.
+func isSeparatorLine(trimmed string) bool {
+	return trimmed == "" ||
+		strings.HasPrefix(trimmed, "//") ||
+		strings.HasPrefix(trimmed, "#")
 }
 
 // classifyKeyword returns the canonical statement keyword for the leading

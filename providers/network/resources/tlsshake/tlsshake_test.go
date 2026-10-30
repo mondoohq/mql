@@ -66,3 +66,69 @@ func TestTlsshake_Tls13(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, ok)
 }
+
+// TestParsers_MalformedInputReturnsErrorNotPanic feeds truncated / oversized
+// records (what a broken or hostile TLS server can return to a scanner) to each
+// wire-format parser and asserts they return an error instead of panicking. A
+// panic in these worker goroutines is unrecoverable and crashes the whole scan.
+func TestParsers_MalformedInputReturnsErrorNotPanic(t *testing.T) {
+	conf := &ScanConfig{}
+	newTester := func() *Tester { return New("tcp", "example.com", "example.com", 443) }
+
+	t.Run("parseAlert 1-byte body", func(t *testing.T) {
+		s := newTester()
+		assert.NotPanics(t, func() {
+			assert.Error(t, s.parseAlert([]byte{0x02}, conf))
+		})
+	})
+
+	t.Run("parseHandshake header shorter than 4 bytes", func(t *testing.T) {
+		s := newTester()
+		assert.NotPanics(t, func() {
+			_, _, err := s.parseHandshake([]byte{0x02, 0x00}, "tls1.2", conf)
+			assert.Error(t, err)
+		})
+	})
+
+	t.Run("parseHandshake ServerHello length exceeds record", func(t *testing.T) {
+		s := newTester()
+		// type=ServerHello, declared length 0xffffff, but only the 4 header bytes
+		data := []byte{HANDSHAKE_TYPE_ServerHello, 0xff, 0xff, 0xff}
+		assert.NotPanics(t, func() {
+			_, _, err := s.parseHandshake(data, "tls1.2", conf)
+			assert.Error(t, err)
+		})
+	})
+
+	t.Run("parseServerHello shorter than fixed fields", func(t *testing.T) {
+		s := newTester()
+		assert.NotPanics(t, func() {
+			assert.Error(t, s.parseServerHello([]byte{0x03, 0x03}, "tls1.2", conf))
+		})
+	})
+
+	t.Run("parseServerHello sessionID length overruns buffer", func(t *testing.T) {
+		s := newTester()
+		data := make([]byte, 35) // version(2)+random(32)+sessionIDlen(1)
+		data[34] = 0xff          // sessionIDlen=255 pushes idx past the buffer
+		assert.NotPanics(t, func() {
+			assert.Error(t, s.parseServerHello(data, "tls1.2", conf))
+		})
+	})
+
+	t.Run("parseCertificate shorter than 3-byte length", func(t *testing.T) {
+		s := newTester()
+		assert.NotPanics(t, func() {
+			assert.Error(t, s.parseCertificate([]byte{0x00, 0x02}, conf))
+		})
+	})
+
+	t.Run("parseCertificate inner cert length exceeds record", func(t *testing.T) {
+		s := newTester()
+		// certsLen=2, total len=5 → the per-cert length prefix runs off the end
+		data := []byte{0x00, 0x00, 0x02, 0xff, 0xff}
+		assert.NotPanics(t, func() {
+			assert.Error(t, s.parseCertificate(data, conf))
+		})
+	})
+}

@@ -4,17 +4,85 @@
 package recording
 
 import (
+	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 )
 
 func TestLoadRecording(t *testing.T) {
 	record, err := LoadRecordingFile("testdata/recording.json")
 	assert.NoError(t, err)
 	assert.NotNil(t, record)
+}
+
+// TestSaveWhileAddingData reproduces the data race that crashes a parallel scan:
+// a shared recording is saved (which finalizes every asset by iterating its
+// `resources` map) while another goroutine is still fetching data for that asset
+// via AddData (which writes to the same map). Without synchronization this panics
+// with "index out of range" in finalize() or "concurrent map ... write", and the
+// race detector flags it. See providers-sdk/v1/recording/asset_recording.go.
+func TestSaveWhileAddingData(t *testing.T) {
+	r := newTestRecording(t, "test-asset-race", []string{"pid-race"}, 1)
+	r.doNotSave = true // exercise finalize() without touching the filesystem
+	lookup := llx.AssetRecordingLookup{Mrn: "test-asset-race"}
+
+	const iterations = 20000
+	var wg sync.WaitGroup
+
+	// Writer 1: keeps inserting distinct resources, growing asset.resources.
+	// This races finalize()'s iteration of that map.
+	wg.Go(func() {
+		for i := range iterations {
+			r.AddData(llx.AddDataReq{
+				ConnectionID:      1,
+				Resource:          "aws.ec2.instance",
+				ResourceID:        strconv.Itoa(i),
+				RequestResourceId: strconv.Itoa(i),
+				Field:             "name",
+				Data:              llx.StringData("instance"),
+			})
+		}
+	})
+
+	// Writer 2: repeatedly writes fields on a single "hot" resource, mutating
+	// its Fields map. This races the reader goroutine's Fields access.
+	wg.Go(func() {
+		for i := range iterations {
+			r.AddData(llx.AddDataReq{
+				ConnectionID:      1,
+				Resource:          "aws.ec2.instance",
+				ResourceID:        "hot",
+				RequestResourceId: "hot",
+				Field:             strconv.Itoa(i % 64),
+				Data:              llx.StringData("v"),
+			})
+		}
+	})
+
+	// Reader: finalizes the recording repeatedly, iterating the resources map.
+	wg.Go(func() {
+		for range iterations / 10 {
+			assert.NoError(t, r.Save())
+		}
+	})
+
+	// Reader: exercises the data-read paths, which access Resource.Fields while
+	// Writer 2 mutates it. GetResource must hand back a safe snapshot.
+	wg.Go(func() {
+		for i := range iterations {
+			r.GetData(lookup, "aws.ec2.instance", "hot", strconv.Itoa(i%64))
+			if fields, ok := r.GetResource(lookup, "aws.ec2.instance", "hot"); ok {
+				for range fields { // iterate the returned map; must be a safe snapshot
+				}
+			}
+		}
+	})
+
+	wg.Wait()
 }
 
 // newTestRecording creates a fresh recording and ensures an asset with the given

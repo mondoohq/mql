@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.example</groupId>
+  <artifactId>myapp</artifactId>
+  <version>2.5.0</version>
+
+  <properties>
+    <jackson.version>2.13.0</jackson.version>
+    <spring.version>5.3.18</spring.version>
+    <!-- A property whose value is another property: Maven resolves the chain. -->
+    <jackson.databind.version>${jackson.version}</jackson.databind.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.google.guava</groupId>
+        <artifactId>guava</artifactId>
+        <version>31.1-jre</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>${jackson.databind.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-core</artifactId>
+      <version>${spring.version}</version>
+    </dependency>
+    <!-- No version: dependencyManagement states it. -->
+    <dependency>
+      <groupId>com.google.guava</groupId>
+      <artifactId>guava</artifactId>
+    </dependency>
+    <!-- A sibling module, versioned with the project's own version. -->
+    <dependency>
+      <groupId>com.example</groupId>
+      <artifactId>myapp-core</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- A property that is declared nowhere. It must stay unresolved. -->
+    <dependency>
+      <groupId>org.example</groupId>
+      <artifactId>mystery</artifactId>
+      <version>${undeclared.version}</version>
+    </dependency>
+  </dependencies>
+</project>

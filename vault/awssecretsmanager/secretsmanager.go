@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 )
 
 type Option func(*Vault)
@@ -91,8 +91,7 @@ func (v *Vault) Set(ctx context.Context, cred *vault.Secret) (*vault.SecretID, e
 		KmsKeyId:     kmsKeyID,
 	})
 	if err != nil {
-		var aerr *types.ResourceExistsException
-		if errors.As(err, &aerr) {
+		if _, ok := errors.AsType[*types.ResourceExistsException](err); ok {
 			return v.updateSecret(ctx, cred)
 		}
 

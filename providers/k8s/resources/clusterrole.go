@@ -7,10 +7,10 @@ import (
 	"errors"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/types"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -34,9 +34,16 @@ func (k *mqlK8s) clusterroles() ([]any, error) {
 			return nil, err
 		}
 
-		aggregationRule, err := convert.JsonToDict(clusterRole.AggregationRule)
-		if err != nil {
-			return nil, err
+		// A ClusterRole that does not aggregate has no aggregationRule at all.
+		// Report that as null, not as an empty selector set, so "this role must
+		// not aggregate" is expressible.
+		aggregationRuleData := llx.NilData
+		if clusterRole.AggregationRule != nil {
+			aggregationRule, err := convert.JsonToDict(clusterRole.AggregationRule)
+			if err != nil {
+				return nil, err
+			}
+			aggregationRuleData = llx.DictData(aggregationRule)
 		}
 
 		r, err := CreateResource(k.MqlRuntime, "k8s.rbac.clusterrole", map[string]*llx.RawData{
@@ -47,7 +54,7 @@ func (k *mqlK8s) clusterroles() ([]any, error) {
 			"kind":            llx.StringData(objT.GetKind()),
 			"created":         llx.TimeData(ts.Time),
 			"rules":           llx.ArrayData(rules, types.Dict),
-			"aggregationRule": llx.DictData(aggregationRule),
+			"aggregationRule": aggregationRuleData,
 		})
 		if err != nil {
 			return nil, err

@@ -6,11 +6,11 @@ import (
 	"errors"
 	"os"
 
-	cloudflare "github.com/cloudflare/cloudflare-go/v6"
-	"github.com/cloudflare/cloudflare-go/v6/option"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	cloudflare "github.com/cloudflare/cloudflare-go/v7"
+	"github.com/cloudflare/cloudflare-go/v7/option"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 )
 
 type CloudflareConnection struct {
@@ -18,7 +18,7 @@ type CloudflareConnection struct {
 	Conf  *inventory.Config
 	asset *inventory.Asset
 
-	// Cf is the cloudflare-go v6 client.
+	// Cf is the cloudflare-go v7 client.
 	Cf *cloudflare.Client
 }
 

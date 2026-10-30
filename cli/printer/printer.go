@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/muesli/termenv"
-	"go.mondoo.com/mql/v13/cli/theme/colors"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/cli/theme/colors"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
 )
 
 // Printer turns code into human-readable strings

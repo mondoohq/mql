@@ -1,5 +1,5 @@
 module {{ .GoPackage }}
 
-replace go.mondoo.com/mql/v13 => ../..
+replace go.mondoo.com/mql => ../..
 
-go 1.25.8
+go 1.27.3

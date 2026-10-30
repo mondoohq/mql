@@ -12,16 +12,17 @@ import (
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/organization"
 	graphpolicies "github.com/microsoftgraph/msgraph-sdk-go/policies"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 const (
 	defaultRequestFilterDirectoryRole = "scopeId eq '/' and scopeType eq 'DirectoryRole'"
 
+	identityAndAccessID                                     = "microsoft.identityAndAccess"
 	identityAndAccessPrivilegedIdentityManagementID         = "microsoft.identityAndAccess/privilegedIdentityManagement"
 	identityAndAccessPrivilegedIdentityManagementPoliciesID = "microsoft.identityAndAccess/privilegedIdentityManagement/policies"
 )
@@ -74,10 +75,6 @@ func (pim *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement) policies()
 	return resource.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicies), nil
 }
 
-func initMicrosoftIdentityAndAccess(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	return args, nil, nil
-}
-
 func initMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicies(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	return args, nil, nil
 }
@@ -92,12 +89,8 @@ func filterID(filter string) string {
 	return filter
 }
 
-// id derives the resource cache key from the filter so that querying the same
-// resource with different filters yields distinct instances. Without the
-// filter in the __id, the runtime caches the first result and reuses it for
-// every later filter.
 func (a *mqlMicrosoftIdentityAndAccess) id() (string, error) {
-	return "microsoft.identityAndAccess/filter/" + filterID(a.Filter.Data), nil
+	return identityAndAccessID, nil
 }
 
 func (a *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicies) id() (string, error) {
@@ -108,17 +101,11 @@ func (a *mqlMicrosoftIdentityAndAccessAccessReviews) id() (string, error) {
 	return "microsoft.identityAndAccess.accessReviews/filter/" + filterID(a.Filter.Data), nil
 }
 
-func (a *mqlMicrosoftIdentityAndAccess) list() ([]any, error) {
-	return listRoleManagementPolicies(a.MqlRuntime, a.Filter.Data, newDeprecatedMqlRoleManagementPolicy)
-}
-
 func (a *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicies) list() ([]any, error) {
-	return listRoleManagementPolicies(a.MqlRuntime, a.Filter.Data, newMqlRoleManagementPolicy)
+	return listRoleManagementPolicies(a.MqlRuntime, a.Filter.Data)
 }
 
-type roleManagementPolicyFactory func(*plugin.Runtime, models.UnifiedRoleManagementPolicyable) (any, error)
-
-func listRoleManagementPolicies(runtime *plugin.Runtime, requestFilter string, createPolicy roleManagementPolicyFactory) ([]any, error) {
+func listRoleManagementPolicies(runtime *plugin.Runtime, requestFilter string) ([]any, error) {
 	conn := runtime.Connection.(*connection.Ms365Connection)
 	graphClient, err := conn.GraphClient()
 	if err != nil {
@@ -167,7 +154,7 @@ func listRoleManagementPolicies(runtime *plugin.Runtime, requestFilter string, c
 	var policyResources []any
 	for _, policy := range policies {
 		if policy.GetId() != nil && policy.GetDisplayName() != nil {
-			policyResource, err := createPolicy(runtime, policy)
+			policyResource, err := newMqlRoleManagementPolicy(runtime, policy)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create MQL resource for policy ID %s: %w", *policy.GetId(), err)
 			}
@@ -178,23 +165,7 @@ func listRoleManagementPolicies(runtime *plugin.Runtime, requestFilter string, c
 	return policyResources, nil
 }
 
-func newDeprecatedMqlRoleManagementPolicy(runtime *plugin.Runtime, u models.UnifiedRoleManagementPolicyable) (any, error) {
-	resource, err := newRoleManagementPolicyResource(runtime, u, ResourceMicrosoftIdentityAndAccessPolicy)
-	if err != nil {
-		return nil, err
-	}
-	return resource.(*mqlMicrosoftIdentityAndAccessPolicy), nil
-}
-
 func newMqlRoleManagementPolicy(runtime *plugin.Runtime, u models.UnifiedRoleManagementPolicyable) (any, error) {
-	resource, err := newRoleManagementPolicyResource(runtime, u, ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy)
-	if err != nil {
-		return nil, err
-	}
-	return resource.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy), nil
-}
-
-func newRoleManagementPolicyResource(runtime *plugin.Runtime, u models.UnifiedRoleManagementPolicyable, resourceName string) (plugin.Resource, error) {
 	lastModifiedByDict := map[string]any{}
 	var err error
 
@@ -205,7 +176,7 @@ func newRoleManagementPolicyResource(runtime *plugin.Runtime, u models.UnifiedRo
 		}
 	}
 
-	return CreateResource(runtime, resourceName,
+	resource, err := CreateResource(runtime, ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy,
 		map[string]*llx.RawData{
 			"__id":                  llx.StringDataPtr(u.GetId()),
 			"id":                    llx.StringDataPtr(u.GetId()),
@@ -214,22 +185,20 @@ func newRoleManagementPolicyResource(runtime *plugin.Runtime, u models.UnifiedRo
 			"isOrganizationDefault": llx.BoolDataPtr(u.GetIsOrganizationDefault()),
 			"scopeId":               llx.StringDataPtr(u.GetScopeId()),
 			"scopeType":             llx.StringDataPtr(u.GetScopeType()),
-			"lastModifiedDateTime":  llx.TimeDataPtr(u.GetLastModifiedDateTime()),
+			"lastModifiedDateTime":  graphTimeData(u.GetLastModifiedDateTime()),
 			"lastModifiedBy":        llx.DictData(lastModifiedByDict),
 		})
-}
-
-func (m *mqlMicrosoftIdentityAndAccessPolicy) rules() ([]any, error) {
-	return listRoleManagementPolicyRules(m.MqlRuntime, m.Id.Data, newDeprecatedMqlRoleManagementPolicyRule)
+	if err != nil {
+		return nil, err
+	}
+	return resource.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy), nil
 }
 
 func (m *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy) rules() ([]any, error) {
-	return listRoleManagementPolicyRules(m.MqlRuntime, m.Id.Data, newMqlRoleManagementPolicyRule)
+	return listRoleManagementPolicyRules(m.MqlRuntime, m.Id.Data)
 }
 
-type roleManagementPolicyRuleFactory func(*plugin.Runtime, models.UnifiedRoleManagementPolicyRuleable) (any, error)
-
-func listRoleManagementPolicyRules(runtime *plugin.Runtime, policyID string, createRule roleManagementPolicyRuleFactory) ([]any, error) {
+func listRoleManagementPolicyRules(runtime *plugin.Runtime, policyID string) ([]any, error) {
 	conn := runtime.Connection.(*connection.Ms365Connection)
 	graphClient, err := conn.GraphClient()
 	if err != nil {
@@ -263,7 +232,7 @@ func listRoleManagementPolicyRules(runtime *plugin.Runtime, policyID string, cre
 		if rule.GetId() == nil {
 			continue
 		}
-		ruleResource, err := createRule(runtime, rule)
+		ruleResource, err := newMqlRoleManagementPolicyRule(runtime, rule)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create MQL resource for rule ID %s: %w", *rule.GetId(), err)
 		}
@@ -273,33 +242,8 @@ func listRoleManagementPolicyRules(runtime *plugin.Runtime, policyID string, cre
 	return ruleResources, nil
 }
 
-func newDeprecatedMqlRoleManagementPolicyRule(runtime *plugin.Runtime, rule models.UnifiedRoleManagementPolicyRuleable) (any, error) {
-	resource, err := newRoleManagementPolicyRuleResource(
-		runtime,
-		rule,
-		ResourceMicrosoftIdentityAndAccessPolicyRule,
-		ResourceMicrosoftIdentityAndAccessPolicyRuleTarget,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return resource.(*mqlMicrosoftIdentityAndAccessPolicyRule), nil
-}
-
 func newMqlRoleManagementPolicyRule(runtime *plugin.Runtime, rule models.UnifiedRoleManagementPolicyRuleable) (any, error) {
-	resource, err := newRoleManagementPolicyRuleResource(
-		runtime,
-		rule,
-		ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule,
-		ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRuleTarget,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return resource.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule), nil
-}
-
-func newRoleManagementPolicyRuleResource(runtime *plugin.Runtime, rule models.UnifiedRoleManagementPolicyRuleable, ruleResourceName string, targetResourceName string) (plugin.Resource, error) {
+	const targetResource = ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRuleTarget
 	var mqlPolicyRuleTarget plugin.Resource
 	var err error
 
@@ -314,18 +258,22 @@ func newRoleManagementPolicyRuleResource(runtime *plugin.Runtime, rule models.Un
 			"operations":          llx.ArrayData(convert.SliceAnyToInterface(convertEnumCollectionToStrings(rule.GetTarget().GetOperations())), types.String),
 		}
 
-		mqlPolicyRuleTarget, err = CreateResource(runtime, targetResourceName, targetData)
+		mqlPolicyRuleTarget, err = CreateResource(runtime, targetResource, targetData)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return CreateResource(runtime, ruleResourceName,
+	resource, err := CreateResource(runtime, ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule,
 		map[string]*llx.RawData{
 			"__id":   llx.StringDataPtr(rule.GetId()),
 			"id":     llx.StringDataPtr(rule.GetId()),
-			"target": llx.ResourceData(mqlPolicyRuleTarget, targetResourceName),
+			"target": llx.ResourceData(mqlPolicyRuleTarget, targetResource),
 		})
+	if err != nil {
+		return nil, err
+	}
+	return resource.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule), nil
 }
 
 // Least privileged permissions: RoleEligibilitySchedule.Read.Directory
@@ -364,28 +312,35 @@ func (a *mqlMicrosoftIdentityAndAccess) roleEligibilityScheduleInstances() ([]an
 	return instances, nil
 }
 
+type mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstanceInternal struct {
+	cacheRoleDefinitionID string
+}
+
 func newMqlRoleEligibilityScheduleInstance(runtime *plugin.Runtime, inst models.UnifiedRoleEligibilityScheduleInstanceable) (*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance, error) {
 	resource, err := CreateResource(runtime, "microsoft.identityAndAccess.roleEligibilityScheduleInstance", map[string]*llx.RawData{
 		"id":                        llx.StringDataPtr(inst.GetId()),
 		"__id":                      llx.StringDataPtr(inst.GetId()),
 		"principalId":               llx.StringDataPtr(inst.GetPrincipalId()),
-		"roleDefinitionId":          llx.StringDataPtr(inst.GetRoleDefinitionId()),
 		"directoryScopeId":          llx.StringDataPtr(inst.GetDirectoryScopeId()),
 		"appScopeId":                llx.StringDataPtr(inst.GetAppScopeId()),
-		"startDateTime":             llx.TimeDataPtr(inst.GetStartDateTime()),
-		"endDateTime":               llx.TimeDataPtr(inst.GetEndDateTime()),
+		"startDateTime":             graphTimeData(inst.GetStartDateTime()),
+		"endDateTime":               graphTimeData(inst.GetEndDateTime()),
 		"memberType":                llx.StringDataPtr(inst.GetMemberType()),
 		"roleEligibilityScheduleId": llx.StringDataPtr(inst.GetRoleEligibilityScheduleId()),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return resource.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance), nil
+	mqlInstance := resource.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance)
+	if roleDefinitionID := inst.GetRoleDefinitionId(); roleDefinitionID != nil {
+		mqlInstance.cacheRoleDefinitionID = *roleDefinitionID
+	}
+	return mqlInstance, nil
 }
 
 // roleDefinition resolves the role definition this eligibility grants.
 func (a *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) roleDefinition() (*mqlMicrosoftRolemanagementRoledefinition, error) {
-	id := a.RoleDefinitionId.Data
+	id := a.cacheRoleDefinitionID
 	if id == "" {
 		a.RoleDefinition.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
@@ -565,19 +520,62 @@ func (a *mqlMicrosoftIdentityAndAccessAccessReviews) list() ([]any, error) {
 	return accessReviewResources, nil
 }
 
-func newMqlAccessReviewDefinition(runtime *plugin.Runtime, d models.AccessReviewScheduleDefinitionable) (*mqlMicrosoftIdentityAndAccessAccessReviewDefinition, error) {
-	reviewersDict := []any{}
-	if d.GetReviewers() != nil {
-		for _, reviewer := range d.GetReviewers() {
-			reviewerDict := map[string]*llx.RawData{
-				"reviewer":  llx.StringDataPtr(reviewer.GetQuery()),
-				"queryType": llx.StringDataPtr(reviewer.GetQueryType()),
-				"queryRoot": llx.StringDataPtr(reviewer.GetQueryRoot()),
-			}
-
-			reviewersDict = append(reviewersDict, reviewerDict)
-		}
+// stringPtrOrNil dereferences s for use as a dict value, keeping an absent
+// value as nil.
+func stringPtrOrNil(s *string) any {
+	if s == nil {
+		return nil
 	}
+	return *s
+}
+
+// accessReviewReviewersDict builds the deprecated reviewers list: one dict
+// per reviewer scope with `reviewer` (the query), `queryType`, and
+// `queryRoot`.
+func accessReviewReviewersDict(reviewers []models.AccessReviewReviewerScopeable) []any {
+	res := []any{}
+	for _, reviewer := range reviewers {
+		if reviewer == nil {
+			continue
+		}
+		res = append(res, map[string]any{
+			"reviewer":  stringPtrOrNil(reviewer.GetQuery()),
+			"queryType": stringPtrOrNil(reviewer.GetQueryType()),
+			"queryRoot": stringPtrOrNil(reviewer.GetQueryRoot()),
+		})
+	}
+	return res
+}
+
+// accessReviewRecurrenceDict builds the recurrence dict of an access review
+// schedule: `pattern` and `range` with Graph's property names, each nil when
+// the recurrence does not set it.
+func accessReviewRecurrenceDict(recurrence models.PatternedRecurrenceable) (map[string]any, error) {
+	res := map[string]any{"pattern": nil, "range": nil}
+	if recurrence == nil {
+		return res, nil
+	}
+	patternDict, err := kiotaToDict(recurrence.GetPattern())
+	if err != nil {
+		return nil, err
+	}
+	if patternDict != nil {
+		delete(patternDict, "@odata.type")
+		res["pattern"] = patternDict
+	}
+	rangeDict, err := kiotaToDict(recurrence.GetRangeEscaped())
+	if err != nil {
+		return nil, err
+	}
+	if rangeDict != nil {
+		delete(rangeDict, "@odata.type")
+		res["range"] = rangeDict
+	}
+	return res, nil
+}
+
+func newMqlAccessReviewDefinition(runtime *plugin.Runtime, d models.AccessReviewScheduleDefinitionable) (*mqlMicrosoftIdentityAndAccessAccessReviewDefinition, error) {
+	reviewersDict := accessReviewReviewersDict(d.GetReviewers())
 
 	var mqlScope plugin.Resource
 	if scope := d.GetScope(); scope != nil {
@@ -601,28 +599,9 @@ func newMqlAccessReviewDefinition(runtime *plugin.Runtime, d models.AccessReview
 	if d.GetSettings() != nil {
 		settingsId := *d.GetId() + "_settings"
 
-		var patternDict map[string]any
-		var rangeDict map[string]any
-
-		if recurrence := d.GetSettings().GetRecurrence(); recurrence != nil {
-			if pattern := recurrence.GetPattern(); pattern != nil {
-				patternDict, err = convert.JsonToDict(pattern)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			if recurrenceRange := recurrence.GetRangeEscaped(); recurrenceRange != nil {
-				rangeDict, err = convert.JsonToDict(recurrenceRange)
-				if err != nil {
-					return nil, err
-				}
-			}
-		}
-
-		recurrenceDict := map[string]any{
-			"pattern": patternDict,
-			"range":   rangeDict,
+		recurrenceDict, err := accessReviewRecurrenceDict(d.GetSettings().GetRecurrence())
+		if err != nil {
+			return nil, err
 		}
 
 		targetData := map[string]*llx.RawData{
@@ -645,15 +624,21 @@ func newMqlAccessReviewDefinition(runtime *plugin.Runtime, d models.AccessReview
 		}
 	}
 
+	reviewerScopes, err := newMqlAccessReviewReviewerScopes(runtime, convert.ToValue(d.GetId()), d.GetReviewers())
+	if err != nil {
+		return nil, err
+	}
+
 	resource, err := CreateResource(runtime, "microsoft.identityAndAccess.accessReviewDefinition",
 		map[string]*llx.RawData{
-			"__id":        llx.StringDataPtr(d.GetId()),
-			"id":          llx.StringDataPtr(d.GetId()),
-			"displayName": llx.StringDataPtr(d.GetDisplayName()),
-			"status":      llx.StringDataPtr(d.GetStatus()),
-			"scope":       llx.ResourceData(mqlScope, ResourceMicrosoftIdentityAndAccessAccessReviewDefinitionScope),
-			"reviewers":   llx.DictData(reviewersDict),
-			"settings":    llx.ResourceData(mqlAccessReviewScheduleSettings, "microsoft.identityAndAccess.accessReviewDefinition.accessReviewScheduleSettings"),
+			"__id":           llx.StringDataPtr(d.GetId()),
+			"id":             llx.StringDataPtr(d.GetId()),
+			"displayName":    llx.StringDataPtr(d.GetDisplayName()),
+			"status":         llx.StringDataPtr(d.GetStatus()),
+			"scope":          llx.ResourceData(mqlScope, ResourceMicrosoftIdentityAndAccessAccessReviewDefinitionScope),
+			"reviewers":      llx.DictData(reviewersDict),
+			"reviewerScopes": llx.ArrayData(reviewerScopes, types.Resource(ResourceMicrosoftIdentityAndAccessAccessReviewDefinitionReviewerScope)),
+			"settings":       llx.ResourceData(mqlAccessReviewScheduleSettings, "microsoft.identityAndAccess.accessReviewDefinition.accessReviewScheduleSettings"),
 		})
 	if err != nil {
 		return nil, err

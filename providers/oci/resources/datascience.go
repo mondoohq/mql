@@ -7,14 +7,12 @@ import (
 	"context"
 	"errors"
 
-	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/datascience"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/oci/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/oci/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (o *mqlOciAiDataScience) id() (string, error) {
@@ -22,52 +20,16 @@ func (o *mqlOciAiDataScience) id() (string, error) {
 }
 
 // listRegional runs fetch against the Data Science API in every subscribed
-// region concurrently and flattens the results. Regions where Data Science is
-// not available are skipped (see ociRegionServiceUnavailable).
-func (o *mqlOciAiDataScience) listRegional(fetch func(svc *datascience.DataScienceClient) ([]any, error)) ([]any, error) {
+// region and every admitted compartment (see ociListRegionalAI).
+func (o *mqlOciAiDataScience) listRegional(fetch func(svc *datascience.DataScienceClient, compartmentID string) ([]any, error)) ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	regions, err := ociAgentRegions(o.MqlRuntime)
-	if err != nil {
-		return nil, err
-	}
-
-	tasks := make([]*jobpool.Job, 0, len(regions))
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return nil, errors.New("invalid region type")
+	return ociListRegionalAI(o.MqlRuntime, func(region string, compartmentID string) ([]any, error) {
+		svc, err := conn.DataScienceClient(region)
+		if err != nil {
+			return nil, err
 		}
-		regionID := regionResource.Id.Data
-		tasks = append(tasks, jobpool.NewJob(func() (jobpool.JobResult, error) {
-			svc, err := conn.DataScienceClient(regionID)
-			if err != nil {
-				return nil, err
-			}
-			items, err := fetch(svc)
-			if err != nil {
-				if ociRegionServiceUnavailable(err) {
-					return jobpool.JobResult([]any{}), nil
-				}
-				return nil, err
-			}
-			return jobpool.JobResult(items), nil
-		}))
-	}
-
-	poolOfJobs := jobpool.CreatePool(tasks, 5)
-	poolOfJobs.Run()
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	res := []any{}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-	return res, nil
-}
-
-func (o *mqlOciAiDataScience) compartmentID() string {
-	return o.MqlRuntime.Connection.(*connection.OciConnection).TenantID()
+		return fetch(svc, compartmentID)
+	})
 }
 
 // ----- projects -----
@@ -76,23 +38,20 @@ func (o *mqlOciAiDataScience) projects() ([]any, error) {
 	return o.listRegional(o.fetchProjects)
 }
 
-func (o *mqlOciAiDataScience) fetchProjects(svc *datascience.DataScienceClient) ([]any, error) {
+func (o *mqlOciAiDataScience) fetchProjects(svc *datascience.DataScienceClient, compartmentID string) ([]any, error) {
 	ctx := context.Background()
-	var items []datascience.ProjectSummary
-	var page *string
-	for {
+	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.ProjectSummary, *string, error) {
 		resp, err := svc.ListProjects(ctx, datascience.ListProjectsRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: new(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		items = append(items, resp.Items...)
-		if resp.OpcNextPage == nil {
-			break
-		}
-		page = resp.OpcNextPage
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	res := make([]any, 0, len(items))
@@ -118,7 +77,7 @@ func (o *mqlOciAiDataScience) fetchProjects(svc *datascience.DataScienceClient) 
 }
 
 func initOciAiDataScienceProject(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	return findOciDataScienceByID(runtime, args, (*mqlOciAiDataScience).GetProjects)
+	return findOciDataScienceByID(runtime, args, "oci.ai.dataScience.project", (*mqlOciAiDataScience).GetProjects)
 }
 
 func (o *mqlOciAiDataScienceProject) id() (string, error) {
@@ -135,23 +94,20 @@ func (o *mqlOciAiDataScience) notebookSessions() ([]any, error) {
 	return o.listRegional(o.fetchNotebookSessions)
 }
 
-func (o *mqlOciAiDataScience) fetchNotebookSessions(svc *datascience.DataScienceClient) ([]any, error) {
+func (o *mqlOciAiDataScience) fetchNotebookSessions(svc *datascience.DataScienceClient, compartmentID string) ([]any, error) {
 	ctx := context.Background()
-	var items []datascience.NotebookSessionSummary
-	var page *string
-	for {
+	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.NotebookSessionSummary, *string, error) {
 		resp, err := svc.ListNotebookSessions(ctx, datascience.ListNotebookSessionsRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: new(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		items = append(items, resp.Items...)
-		if resp.OpcNextPage == nil {
-			break
-		}
-		page = resp.OpcNextPage
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	res := make([]any, 0, len(items))
@@ -194,18 +150,20 @@ func (o *mqlOciAiDataScience) fetchNotebookSessions(svc *datascience.DataScience
 		mqlSessionTyped := mqlSession.(*mqlOciAiDataScienceNotebookSession)
 		mqlSessionTyped.cacheProjectID = stringValue(ns.ProjectId)
 		mqlSessionTyped.cacheSubnetID = subnetID
+		mqlSessionTyped.cachePrivateEndpointID = privateEndpointID
 		res = append(res, mqlSessionTyped)
 	}
 	return res, nil
 }
 
 type mqlOciAiDataScienceNotebookSessionInternal struct {
-	cacheProjectID string
-	cacheSubnetID  string
+	cacheProjectID         string
+	cacheSubnetID          string
+	cachePrivateEndpointID string
 }
 
 func initOciAiDataScienceNotebookSession(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	return findOciDataScienceByID(runtime, args, (*mqlOciAiDataScience).GetNotebookSessions)
+	return findOciDataScienceByID(runtime, args, "oci.ai.dataScience.notebookSession", (*mqlOciAiDataScience).GetNotebookSessions)
 }
 
 func (o *mqlOciAiDataScienceNotebookSession) id() (string, error) {
@@ -234,29 +192,30 @@ func (o *mqlOciAiDataScienceNotebookSession) subnet() (*mqlOciNetworkSubnet, err
 	return r.(*mqlOciNetworkSubnet), nil
 }
 
+func (o *mqlOciAiDataScienceNotebookSession) privateEndpoint() (*mqlOciAiDataSciencePrivateEndpoint, error) {
+	return resolveRef(o.MqlRuntime, "oci.ai.dataScience.privateEndpoint", o.cachePrivateEndpointID, &o.PrivateEndpoint)
+}
+
 // ----- models -----
 
 func (o *mqlOciAiDataScience) models() ([]any, error) {
 	return o.listRegional(o.fetchModels)
 }
 
-func (o *mqlOciAiDataScience) fetchModels(svc *datascience.DataScienceClient) ([]any, error) {
+func (o *mqlOciAiDataScience) fetchModels(svc *datascience.DataScienceClient, compartmentID string) ([]any, error) {
 	ctx := context.Background()
-	var items []datascience.ModelSummary
-	var page *string
-	for {
+	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.ModelSummary, *string, error) {
 		resp, err := svc.ListModels(ctx, datascience.ListModelsRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: new(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		items = append(items, resp.Items...)
-		if resp.OpcNextPage == nil {
-			break
-		}
-		page = resp.OpcNextPage
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	res := make([]any, 0, len(items))
@@ -297,7 +256,7 @@ type mqlOciAiDataScienceModelInternal struct {
 }
 
 func initOciAiDataScienceModel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	return findOciDataScienceByID(runtime, args, (*mqlOciAiDataScience).GetModels)
+	return findOciDataScienceByID(runtime, args, "oci.ai.dataScience.model", (*mqlOciAiDataScience).GetModels)
 }
 
 func (o *mqlOciAiDataScienceModel) id() (string, error) {
@@ -332,23 +291,20 @@ func (o *mqlOciAiDataScience) modelVersionSets() ([]any, error) {
 	return o.listRegional(o.fetchModelVersionSets)
 }
 
-func (o *mqlOciAiDataScience) fetchModelVersionSets(svc *datascience.DataScienceClient) ([]any, error) {
+func (o *mqlOciAiDataScience) fetchModelVersionSets(svc *datascience.DataScienceClient, compartmentID string) ([]any, error) {
 	ctx := context.Background()
-	var items []datascience.ModelVersionSetSummary
-	var page *string
-	for {
+	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.ModelVersionSetSummary, *string, error) {
 		resp, err := svc.ListModelVersionSets(ctx, datascience.ListModelVersionSetsRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: new(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		items = append(items, resp.Items...)
-		if resp.OpcNextPage == nil {
-			break
-		}
-		page = resp.OpcNextPage
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	res := make([]any, 0, len(items))
@@ -382,7 +338,7 @@ type mqlOciAiDataScienceModelVersionSetInternal struct {
 }
 
 func initOciAiDataScienceModelVersionSet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	return findOciDataScienceByID(runtime, args, (*mqlOciAiDataScience).GetModelVersionSets)
+	return findOciDataScienceByID(runtime, args, "oci.ai.dataScience.modelVersionSet", (*mqlOciAiDataScience).GetModelVersionSets)
 }
 
 func (o *mqlOciAiDataScienceModelVersionSet) id() (string, error) {
@@ -403,23 +359,20 @@ func (o *mqlOciAiDataScience) modelDeployments() ([]any, error) {
 	return o.listRegional(o.fetchModelDeployments)
 }
 
-func (o *mqlOciAiDataScience) fetchModelDeployments(svc *datascience.DataScienceClient) ([]any, error) {
+func (o *mqlOciAiDataScience) fetchModelDeployments(svc *datascience.DataScienceClient, compartmentID string) ([]any, error) {
 	ctx := context.Background()
-	var items []datascience.ModelDeploymentSummary
-	var page *string
-	for {
+	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.ModelDeploymentSummary, *string, error) {
 		resp, err := svc.ListModelDeployments(ctx, datascience.ListModelDeploymentsRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: new(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		items = append(items, resp.Items...)
-		if resp.OpcNextPage == nil {
-			break
-		}
-		page = resp.OpcNextPage
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	res := make([]any, 0, len(items))
@@ -435,6 +388,8 @@ func (o *mqlOciAiDataScience) fetchModelDeployments(svc *datascience.DataScience
 			return nil, err
 		}
 
+		network := ociModelDeploymentNetwork(md.ModelDeploymentConfigurationDetails)
+
 		mqlDeployment, err := CreateResource(o.MqlRuntime, "oci.ai.dataScience.modelDeployment", map[string]*llx.RawData{
 			"id":                   llx.StringDataPtr(md.Id),
 			"name":                 llx.StringDataPtr(md.DisplayName),
@@ -445,6 +400,7 @@ func (o *mqlOciAiDataScience) fetchModelDeployments(svc *datascience.DataScience
 			"modelDeploymentUrl":   llx.StringDataPtr(md.ModelDeploymentUrl),
 			"configuration":        llx.DictData(configuration),
 			"loggingConfiguration": llx.DictData(logging),
+			"networkAccessType":    llx.StringData(network.networkAccessType),
 			"state":                llx.StringData(string(md.LifecycleState)),
 			"created":              sdkTimeData(md.TimeCreated),
 			"freeformTags":         llx.MapData(strMapToAny(md.FreeformTags), types.String),
@@ -455,17 +411,22 @@ func (o *mqlOciAiDataScience) fetchModelDeployments(svc *datascience.DataScience
 		}
 		mqlDeploymentTyped := mqlDeployment.(*mqlOciAiDataScienceModelDeployment)
 		mqlDeploymentTyped.cacheProjectID = stringValue(md.ProjectId)
+		mqlDeploymentTyped.cacheNetwork = network
+		mqlDeploymentTyped.cacheAccessLog, mqlDeploymentTyped.cachePredictLog = ociModelDeploymentLogs(md.CategoryLogDetails)
 		res = append(res, mqlDeploymentTyped)
 	}
 	return res, nil
 }
 
 type mqlOciAiDataScienceModelDeploymentInternal struct {
-	cacheProjectID string
+	cacheProjectID  string
+	cacheNetwork    ociModelDeploymentNetworkConfig
+	cacheAccessLog  ociLogRef
+	cachePredictLog ociLogRef
 }
 
 func initOciAiDataScienceModelDeployment(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	return findOciDataScienceByID(runtime, args, (*mqlOciAiDataScience).GetModelDeployments)
+	return findOciDataScienceByID(runtime, args, "oci.ai.dataScience.modelDeployment", (*mqlOciAiDataScience).GetModelDeployments)
 }
 
 func (o *mqlOciAiDataScienceModelDeployment) id() (string, error) {
@@ -480,29 +441,202 @@ func (o *mqlOciAiDataScienceModelDeployment) project() (*mqlOciAiDataScienceProj
 	return resolveOciDataScienceProject(o.MqlRuntime, o.cacheProjectID, &o.Project)
 }
 
+func (o *mqlOciAiDataScienceModelDeployment) subnet() (*mqlOciNetworkSubnet, error) {
+	return resolveOciSubnet(o.MqlRuntime, o.cacheNetwork.subnetID, &o.Subnet)
+}
+
+func (o *mqlOciAiDataScienceModelDeployment) privateEndpoint() (*mqlOciAiDataSciencePrivateEndpoint, error) {
+	return resolveRef(o.MqlRuntime, "oci.ai.dataScience.privateEndpoint", o.cacheNetwork.privateEndpointID, &o.PrivateEndpoint)
+}
+
+func (o *mqlOciAiDataScienceModelDeployment) model() (*mqlOciAiDataScienceModel, error) {
+	return resolveRef(o.MqlRuntime, "oci.ai.dataScience.model", o.cacheNetwork.modelID, &o.Model)
+}
+
+func (o *mqlOciAiDataScienceModelDeployment) accessLog() (*mqlOciLoggingLog, error) {
+	return resolveOciLoggingLog(o.MqlRuntime, o.cacheAccessLog, &o.AccessLog)
+}
+
+func (o *mqlOciAiDataScienceModelDeployment) predictLog() (*mqlOciLoggingLog, error) {
+	return resolveOciLoggingLog(o.MqlRuntime, o.cachePredictLog, &o.PredictLog)
+}
+
+// ociModelDeploymentNetworkConfig is what a model deployment's configuration
+// says about the model it serves and the network its instances sit in.
+type ociModelDeploymentNetworkConfig struct {
+	modelID           string
+	subnetID          string
+	privateEndpointID string
+	networkAccessType string
+}
+
+// ociModelDeploymentNetwork extracts the served model and the instance network
+// settings from the polymorphic deployment configuration. A single-model
+// deployment carries both under its model configuration; a model-group
+// deployment serves a model group (not a catalog model) and carries the
+// network settings on its instance-pool infrastructure; a flex deployment on
+// a managed compute cluster names its model but reports no instance network.
+func ociModelDeploymentNetwork(cfg datascience.ModelDeploymentConfigurationDetails) ociModelDeploymentNetworkConfig {
+	var res ociModelDeploymentNetworkConfig
+	var ic *datascience.InstanceConfiguration
+
+	switch c := cfg.(type) {
+	case datascience.SingleModelDeploymentConfigurationDetails:
+		if mc := c.ModelConfigurationDetails; mc != nil {
+			res.modelID = stringValue(mc.ModelId)
+			ic = mc.InstanceConfiguration
+		}
+	case *datascience.SingleModelDeploymentConfigurationDetails:
+		if c != nil && c.ModelConfigurationDetails != nil {
+			res.modelID = stringValue(c.ModelConfigurationDetails.ModelId)
+			ic = c.ModelConfigurationDetails.InstanceConfiguration
+		}
+	case datascience.ModelGroupDeploymentConfigurationDetails:
+		ic = ociInstancePoolInstanceConfiguration(c.InfrastructureConfigurationDetails)
+	case *datascience.ModelGroupDeploymentConfigurationDetails:
+		if c != nil {
+			ic = ociInstancePoolInstanceConfiguration(c.InfrastructureConfigurationDetails)
+		}
+	case datascience.SingleModelDeploymentFlexConfigurationDetails:
+		if c.ModelConfigurationDetails != nil {
+			res.modelID = stringValue(c.ModelConfigurationDetails.ModelId)
+		}
+	case *datascience.SingleModelDeploymentFlexConfigurationDetails:
+		if c != nil && c.ModelConfigurationDetails != nil {
+			res.modelID = stringValue(c.ModelConfigurationDetails.ModelId)
+		}
+	}
+
+	if ic != nil {
+		res.subnetID = stringValue(ic.SubnetId)
+		res.privateEndpointID = stringValue(ic.PrivateEndpointId)
+		res.networkAccessType = string(ic.NetworkAccessType)
+	}
+	return res
+}
+
+func ociInstancePoolInstanceConfiguration(infra datascience.InfrastructureConfigurationDetails) *datascience.InstanceConfiguration {
+	switch c := infra.(type) {
+	case datascience.InstancePoolInfrastructureConfigurationDetails:
+		return c.InstanceConfiguration
+	case *datascience.InstancePoolInfrastructureConfigurationDetails:
+		if c != nil {
+			return c.InstanceConfiguration
+		}
+	}
+	return nil
+}
+
+// ociModelDeploymentLogs returns the access and predict log references of a
+// model deployment. Either is empty when that category is not logged.
+func ociModelDeploymentLogs(details *datascience.CategoryLogDetails) (access ociLogRef, predict ociLogRef) {
+	if details == nil {
+		return access, predict
+	}
+	if l := details.Access; l != nil {
+		access = ociLogRef{logGroupID: stringValue(l.LogGroupId), logID: stringValue(l.LogId)}
+	}
+	if l := details.Predict; l != nil {
+		predict = ociLogRef{logGroupID: stringValue(l.LogGroupId), logID: stringValue(l.LogId)}
+	}
+	return access, predict
+}
+
+// ----- private endpoints -----
+
+func (o *mqlOciAiDataScience) privateEndpoints() ([]any, error) {
+	return o.listRegional(o.fetchPrivateEndpoints)
+}
+
+func (o *mqlOciAiDataScience) fetchPrivateEndpoints(svc *datascience.DataScienceClient, compartmentID string) ([]any, error) {
+	ctx := context.Background()
+	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.DataSciencePrivateEndpointSummary, *string, error) {
+		resp, err := svc.ListDataSciencePrivateEndpoints(ctx, datascience.ListDataSciencePrivateEndpointsRequest{
+			CompartmentId: new(compartmentID),
+			Page:          page,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]any, 0, len(items))
+	for i := range items {
+		pe := items[i]
+		mqlPe, err := CreateResource(o.MqlRuntime, "oci.ai.dataScience.privateEndpoint", map[string]*llx.RawData{
+			"id":                      llx.StringDataPtr(pe.Id),
+			"name":                    llx.StringDataPtr(pe.DisplayName),
+			"compartmentID":           llx.StringDataPtr(pe.CompartmentId),
+			"createdBy":               llx.StringDataPtr(pe.CreatedBy),
+			"fqdn":                    llx.StringDataPtr(pe.Fqdn),
+			"dataScienceResourceType": llx.StringData(string(pe.DataScienceResourceType)),
+			"state":                   llx.StringData(string(pe.LifecycleState)),
+			"lifecycleDetails":        llx.StringDataPtr(pe.LifecycleDetails),
+			"created":                 sdkTimeData(pe.TimeCreated),
+			"timeUpdated":             sdkTimeData(pe.TimeUpdated),
+			"freeformTags":            llx.MapData(strMapToAny(pe.FreeformTags), types.String),
+			"definedTags":             llx.MapData(definedTagsToAny(pe.DefinedTags), types.Any),
+		})
+		if err != nil {
+			return nil, err
+		}
+		mqlPeTyped := mqlPe.(*mqlOciAiDataSciencePrivateEndpoint)
+		mqlPeTyped.cacheSubnetID = stringValue(pe.SubnetId)
+		mqlPeTyped.cacheNsgIDs = pe.NsgIds
+		res = append(res, mqlPeTyped)
+	}
+	return res, nil
+}
+
+type mqlOciAiDataSciencePrivateEndpointInternal struct {
+	cacheSubnetID string
+	cacheNsgIDs   []string
+}
+
+func initOciAiDataSciencePrivateEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return findOciDataScienceByID(runtime, args, "oci.ai.dataScience.privateEndpoint", (*mqlOciAiDataScience).GetPrivateEndpoints)
+}
+
+func (o *mqlOciAiDataSciencePrivateEndpoint) id() (string, error) {
+	return "oci.ai.dataScience.privateEndpoint/" + o.Id.Data, nil
+}
+
+func (o *mqlOciAiDataSciencePrivateEndpoint) compartment() (*mqlOciCompartment, error) {
+	return resolveOciCompartment(o.MqlRuntime, o.CompartmentID.Data, &o.Compartment)
+}
+
+func (o *mqlOciAiDataSciencePrivateEndpoint) subnet() (*mqlOciNetworkSubnet, error) {
+	return resolveOciSubnet(o.MqlRuntime, o.cacheSubnetID, &o.Subnet)
+}
+
+func (o *mqlOciAiDataSciencePrivateEndpoint) networkSecurityGroups() ([]any, error) {
+	return resolveOciNetworkSecurityGroups(o.MqlRuntime, o.cacheNsgIDs), nil
+}
+
 // ----- jobs -----
 
 func (o *mqlOciAiDataScience) jobs() ([]any, error) {
 	return o.listRegional(o.fetchJobs)
 }
 
-func (o *mqlOciAiDataScience) fetchJobs(svc *datascience.DataScienceClient) ([]any, error) {
+func (o *mqlOciAiDataScience) fetchJobs(svc *datascience.DataScienceClient, compartmentID string) ([]any, error) {
 	ctx := context.Background()
-	var items []datascience.JobSummary
-	var page *string
-	for {
+	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.JobSummary, *string, error) {
 		resp, err := svc.ListJobs(ctx, datascience.ListJobsRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: new(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		items = append(items, resp.Items...)
-		if resp.OpcNextPage == nil {
-			break
-		}
-		page = resp.OpcNextPage
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	res := make([]any, 0, len(items))
@@ -534,7 +668,7 @@ type mqlOciAiDataScienceJobInternal struct {
 }
 
 func initOciAiDataScienceJob(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	return findOciDataScienceByID(runtime, args, (*mqlOciAiDataScience).GetJobs)
+	return findOciDataScienceByID(runtime, args, "oci.ai.dataScience.job", (*mqlOciAiDataScience).GetJobs)
 }
 
 func (o *mqlOciAiDataScienceJob) id() (string, error) {
@@ -555,23 +689,20 @@ func (o *mqlOciAiDataScience) pipelines() ([]any, error) {
 	return o.listRegional(o.fetchPipelines)
 }
 
-func (o *mqlOciAiDataScience) fetchPipelines(svc *datascience.DataScienceClient) ([]any, error) {
+func (o *mqlOciAiDataScience) fetchPipelines(svc *datascience.DataScienceClient, compartmentID string) ([]any, error) {
 	ctx := context.Background()
-	var items []datascience.PipelineSummary
-	var page *string
-	for {
+	items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]datascience.PipelineSummary, *string, error) {
 		resp, err := svc.ListPipelines(ctx, datascience.ListPipelinesRequest{
-			CompartmentId: common.String(o.compartmentID()),
+			CompartmentId: new(compartmentID),
 			Page:          page,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		items = append(items, resp.Items...)
-		if resp.OpcNextPage == nil {
-			break
-		}
-		page = resp.OpcNextPage
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	res := make([]any, 0, len(items))
@@ -604,7 +735,7 @@ type mqlOciAiDataSciencePipelineInternal struct {
 }
 
 func initOciAiDataSciencePipeline(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	return findOciDataScienceByID(runtime, args, (*mqlOciAiDataScience).GetPipelines)
+	return findOciDataScienceByID(runtime, args, "oci.ai.dataScience.pipeline", (*mqlOciAiDataScience).GetPipelines)
 }
 
 func (o *mqlOciAiDataSciencePipeline) id() (string, error) {
@@ -624,7 +755,7 @@ func (o *mqlOciAiDataSciencePipeline) project() (*mqlOciAiDataScienceProject, er
 // findOciDataScienceByID powers the init functions for Data Science resources:
 // it lists the requested collection and returns the entry whose id matches the
 // "id" argument, so a resource can be selected directly by OCID.
-func findOciDataScienceByID(runtime *plugin.Runtime, args map[string]*llx.RawData, list func(svc *mqlOciAiDataScience) *plugin.TValue[[]any]) (map[string]*llx.RawData, plugin.Resource, error) {
+func findOciDataScienceByID(runtime *plugin.Runtime, args map[string]*llx.RawData, resourceName string, list func(svc *mqlOciAiDataScience) *plugin.TValue[[]any]) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 2 {
 		return args, nil, nil
 	}
@@ -650,7 +781,7 @@ func findOciDataScienceByID(runtime *plugin.Runtime, args map[string]*llx.RawDat
 			return args, res, nil
 		}
 	}
-	return args, nil, nil
+	return nil, nil, errors.New(resourceName + " not found: " + idVal)
 }
 
 // resolveOciDataScienceProject resolves a typed project resource from a project

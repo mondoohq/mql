@@ -4,7 +4,6 @@
 package aimodel
 
 import (
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,13 +13,14 @@ import (
 // LMStudioDetector discovers GGUF models cached by LM Studio. It checks both
 // the legacy path (~/.lmstudio/models) and the newer cache path
 // (~/.cache/lm-studio/models). Models are organized as publisher/repo/file.gguf.
-// Quantization and parameter size are extracted from filenames via regex.
+// Quantization is extracted from filenames via regex. The parameter size is
+// the GGUF general.size_label, falling back to a count the name states.
 type LMStudioDetector struct{}
 
 func (d *LMStudioDetector) Detect(ctx DetectContext) []ModelInfo {
 	dirs := []string{
-		filepath.Join(ctx.Home, ".lmstudio", "models"),
-		filepath.Join(ctx.Home, ".cache", "lm-studio", "models"),
+		joinPath(ctx.Home, ".lmstudio", "models"),
+		joinPath(ctx.Home, ".cache", "lm-studio", "models"),
 	}
 
 	seen := map[string]bool{}
@@ -34,7 +34,7 @@ func (d *LMStudioDetector) Detect(ctx DetectContext) []ModelInfo {
 			if !publisher.IsDir() {
 				continue
 			}
-			publisherDir := filepath.Join(modelsDir, publisher.Name())
+			publisherDir := joinPath(modelsDir, publisher.Name())
 			repos, err := ctx.Fs.ReadDir(publisherDir)
 			if err != nil {
 				continue
@@ -43,7 +43,7 @@ func (d *LMStudioDetector) Detect(ctx DetectContext) []ModelInfo {
 				if !repo.IsDir() {
 					continue
 				}
-				repoDir := filepath.Join(publisherDir, repo.Name())
+				repoDir := joinPath(publisherDir, repo.Name())
 				modelName := publisher.Name() + "/" + repo.Name()
 				if seen[modelName] {
 					continue
@@ -52,15 +52,12 @@ func (d *LMStudioDetector) Detect(ctx DetectContext) []ModelInfo {
 
 				ggufFiles := findGGUFFiles(ctx.Fs, repoDir)
 				for _, m := range ggufFiles {
-					filename := filepath.Base(m.path)
+					filename := baseName(m.path)
 					quant := ""
 					if match := reQuantization.FindString(filename); match != "" {
 						quant = strings.ToUpper(match)
 					}
-					paramSize := ""
-					if pm := reParamSize.FindStringSubmatch(modelName); len(pm) > 1 {
-						paramSize = pm[1] + "B"
-					}
+					paramSize := parameterSizeFromGGUF(ctx.Fs, []string{m.path}, modelName)
 
 					results = append(results, ModelInfo{
 						Name:          modelName + "/" + filename,
@@ -72,6 +69,8 @@ func (d *LMStudioDetector) Detect(ctx DetectContext) []ModelInfo {
 						Format:        "gguf",
 						Quantization:  quant,
 						ParameterSize: paramSize,
+
+						UnsafeSerialization: unsafeSerialization(ctx.Fs, []string{m.path}),
 					})
 				}
 			}
@@ -98,7 +97,7 @@ func findGGUFFiles(afs *afero.Afero, dir string) []fileEntry {
 		}
 		if strings.HasSuffix(strings.ToLower(e.Name()), ".gguf") {
 			results = append(results, fileEntry{
-				path:    filepath.Join(dir, e.Name()),
+				path:    joinPath(dir, e.Name()),
 				size:    e.Size(),
 				modTime: e.ModTime(),
 			})

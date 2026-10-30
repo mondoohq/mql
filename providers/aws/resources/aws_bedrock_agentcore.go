@@ -6,17 +6,21 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/bedrockagentcorecontrol"
 	bacctypes "github.com/aws/aws-sdk-go-v2/service/bedrockagentcorecontrol/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // --- AgentCore namespace ---
@@ -61,7 +65,6 @@ func (a *mqlAwsBedrockAgentCore) agentCoreRegionTasks(conn *connection.AwsConnec
 		return []*jobpool.Job{{Err: err}}
 	}
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			ctx := context.Background()
 			res, err := fn(ctx, region)
@@ -123,6 +126,8 @@ func (a *mqlAwsBedrockAgentCore) gateways() ([]any, error) {
 }
 
 type mqlAwsBedrockAgentCoreGatewayInternal struct {
+	lazyTags
+	agentCorePolicyCache
 	cacheRegion    string
 	cacheGatewayId string
 	fetchLock      sync.Mutex
@@ -149,6 +154,9 @@ func (a *mqlAwsBedrockAgentCoreGateway) fetchDetail() (*bedrockagentcorecontrol.
 	gatewayId := a.cacheGatewayId
 	detail, err := svc.GetGateway(ctx, &bedrockagentcorecontrol.GetGatewayInput{GatewayIdentifier: &gatewayId})
 	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:GetGateway"))
+		}
 		return nil, err
 	}
 	a.detail = detail
@@ -292,6 +300,524 @@ func (a *mqlAwsBedrockAgentCoreGateway) targets() ([]any, error) {
 	return res, nil
 }
 
+// --- Gateway rate limits ---
+
+// rateConfigsToDicts renders a rate-limit rule's rate configs as a list of
+// {rate, period} maps. An absent or empty list means that dimension of traffic
+// is uncapped, which is preserved as an empty list rather than a null.
+func rateConfigsToDicts(configs []bacctypes.RateConfig) []any {
+	res := make([]any, 0, len(configs))
+	for _, c := range configs {
+		res = append(res, map[string]any{
+			"rate":   convert.ToValue(c.Rate),
+			"period": string(c.Period),
+		})
+	}
+	return res
+}
+
+func (a *mqlAwsBedrockAgentCoreGateway) rateLimits() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgentCoreControl(a.cacheRegion)
+	ctx := context.Background()
+	gatewayId := a.cacheGatewayId
+	region := a.Region.Data
+	res := []any{}
+	paginator := bedrockagentcorecontrol.NewListGatewayRateLimitsPaginator(svc, &bedrockagentcorecontrol.ListGatewayRateLimitsInput{
+		GatewayIdentifier: &gatewayId,
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return res, nil
+			}
+			return nil, err
+		}
+		for _, rl := range page.RateLimits {
+			dimensionKeys := make([]any, 0, len(rl.DimensionKeys))
+			for _, k := range rl.DimensionKeys {
+				dimensionKeys = append(dimensionKeys, k)
+			}
+
+			entries := make([]any, 0, len(rl.Entries))
+			for _, e := range rl.Entries {
+				entries = append(entries, map[string]any{
+					"dimensions":  convert.MapToInterfaceMap(e.Dimensions),
+					"requests":    rateConfigsToDicts(e.Requests),
+					"tokens":      rateConfigsToDicts(e.Tokens),
+					"connections": rateConfigsToDicts(e.Connections),
+				})
+			}
+
+			rateLimitId := convert.ToValue(rl.RateLimitId)
+			mqlRl, err := CreateResource(a.MqlRuntime, ResourceAwsBedrockAgentCoreGatewayRateLimit, map[string]*llx.RawData{
+				"__id":          llx.StringData(region + "/" + gatewayId + "/rateLimit/" + rateLimitId),
+				"id":            llx.StringData(rateLimitId),
+				"gatewayId":     llx.StringData(gatewayId),
+				"region":        llx.StringData(region),
+				"status":        llx.StringData(string(rl.Status)),
+				"description":   llx.StringDataPtr(rl.Description),
+				"dimensionKeys": llx.ArrayData(dimensionKeys, types.String),
+				"entries":       llx.ArrayData(entries, types.Dict),
+				"createdAt":     llx.TimeDataPtr(rl.CreatedAt),
+				"updatedAt":     llx.TimeDataPtr(rl.UpdatedAt),
+			})
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlRl)
+		}
+	}
+	return res, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreGatewayRateLimit) id() (string, error) {
+	return a.Region.Data + "/" + a.GatewayId.Data + "/rateLimit/" + a.Id.Data, nil
+}
+
+// --- Capacity providers ---
+
+func (a *mqlAwsBedrockAgentCore) capacityProviders() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return a.collectJobs(a.agentCoreRegionTasks(conn, func(ctx context.Context, region string) ([]any, error) {
+		svc := conn.BedrockAgentCoreControl(region)
+		res := []any{}
+		paginator := bedrockagentcorecontrol.NewListCapacityProvidersPaginator(svc, &bedrockagentcorecontrol.ListCapacityProvidersInput{})
+		for paginator.HasMorePages() {
+			page, err := paginator.NextPage(ctx)
+			if err != nil {
+				return nil, err
+			}
+			for _, cp := range page.CapacityProviders {
+				mqlCp, err := CreateResource(a.MqlRuntime, ResourceAwsBedrockAgentCoreCapacityProvider, map[string]*llx.RawData{
+					"__id":      llx.StringDataPtr(cp.CapacityProviderArn),
+					"id":        llx.StringDataPtr(cp.CapacityProviderId),
+					"arn":       llx.StringDataPtr(cp.CapacityProviderArn),
+					"name":      llx.StringDataPtr(cp.Name),
+					"region":    llx.StringData(region),
+					"status":    llx.StringData(string(cp.Status)),
+					"updatedAt": llx.TimeDataPtr(cp.LastUpdatedAt),
+				})
+				if err != nil {
+					return nil, err
+				}
+				mqlCpRes := mqlCp.(*mqlAwsBedrockAgentCoreCapacityProvider)
+				mqlCpRes.cacheRegion = region
+				res = append(res, mqlCpRes)
+			}
+		}
+		return res, nil
+	}))
+}
+
+type mqlAwsBedrockAgentCoreCapacityProviderInternal struct {
+	lazyTags
+	cacheRegion string
+	fetchLock   sync.Mutex
+	fetched     atomic.Bool
+	detail      *bedrockagentcorecontrol.GetCapacityProviderOutput
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) id() (string, error) {
+	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) fetchDetail() (*bedrockagentcorecontrol.GetCapacityProviderOutput, error) {
+	if a.fetched.Load() {
+		return a.detail, nil
+	}
+	a.fetchLock.Lock()
+	defer a.fetchLock.Unlock()
+	if a.fetched.Load() {
+		return a.detail, nil
+	}
+	if a.Id.Error != nil {
+		return nil, a.Id.Error
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgentCoreControl(a.cacheRegion)
+	capacityProviderId := a.Id.Data
+	detail, err := svc.GetCapacityProvider(context.Background(), &bedrockagentcorecontrol.GetCapacityProviderInput{
+		CapacityProviderId: &capacityProviderId,
+	})
+	if err != nil {
+		return nil, err
+	}
+	a.detail = detail
+	a.fetched.Store(true)
+	return a.detail, nil
+}
+
+// ec2Config unwraps the compute-configuration union. EC2 is the only compute
+// type this SDK version models; anything else yields a nil config and leaves
+// the EC2-derived fields at their zero values.
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) ec2Config() (*bacctypes.Ec2Configuration, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil {
+		return nil, nil
+	}
+	cfg, ok := detail.ComputeConfiguration.(*bacctypes.ComputeConfigurationMemberEc2Configuration)
+	if !ok {
+		return nil, nil
+	}
+	return &cfg.Value, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) statusCode() (string, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return "", err
+	}
+	if detail == nil {
+		return "", nil
+	}
+	return string(detail.StatusCode), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) statusReason() (string, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return "", err
+	}
+	if detail == nil {
+		return "", nil
+	}
+	return convert.ToValue(detail.StatusReason), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) description() (string, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return "", err
+	}
+	if detail == nil {
+		return "", nil
+	}
+	return convert.ToValue(detail.Description), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) createdAt() (*time.Time, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil {
+		return nil, nil
+	}
+	return detail.CreatedAt, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) operatorRole() (*mqlAwsIamRole, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil || detail.PermissionsConfiguration == nil ||
+		convert.ToValue(detail.PermissionsConfiguration.CapacityProviderOperatorRoleArn) == "" {
+		a.OperatorRole.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.iam.role",
+		map[string]*llx.RawData{"arn": llx.StringDataPtr(detail.PermissionsConfiguration.CapacityProviderOperatorRoleArn)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsIamRole), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) subnets() ([]any, error) {
+	cfg, err := a.ec2Config()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	if cfg == nil || cfg.VpcConfiguration == nil {
+		return res, nil
+	}
+	for _, subnetId := range cfg.VpcConfiguration.Subnets {
+		mqlSubnet, err := NewResource(a.MqlRuntime, "aws.vpc.subnet", map[string]*llx.RawData{
+			"id":     llx.StringData(subnetId),
+			"region": llx.StringData(a.Region.Data),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlSubnet)
+	}
+	return res, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) securityGroups() ([]any, error) {
+	cfg, err := a.ec2Config()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	if cfg == nil || cfg.VpcConfiguration == nil {
+		return res, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	region := a.Region.Data
+	for _, sgId := range cfg.VpcConfiguration.SecurityGroups {
+		mqlSg, err := NewResource(a.MqlRuntime, "aws.ec2.securitygroup", map[string]*llx.RawData{
+			"arn": llx.StringData(fmt.Sprintf(securityGroupArnPattern, region, conn.AccountId(), sgId)),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlSg)
+	}
+	return res, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) idleInstanceTimeout() (int64, error) {
+	cfg, err := a.ec2Config()
+	if err != nil {
+		return 0, err
+	}
+	if cfg == nil || cfg.LifecycleConfiguration == nil {
+		return 0, nil
+	}
+	return int64(convert.ToValue(cfg.LifecycleConfiguration.IdleInstanceTimeout)), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) maxInstanceLifetime() (int64, error) {
+	cfg, err := a.ec2Config()
+	if err != nil {
+		return 0, err
+	}
+	if cfg == nil || cfg.LifecycleConfiguration == nil {
+		return 0, nil
+	}
+	return int64(convert.ToValue(cfg.LifecycleConfiguration.MaxLifetime)), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) rootVolume() (*bacctypes.RootVolumeConfiguration, error) {
+	cfg, err := a.ec2Config()
+	if err != nil {
+		return nil, err
+	}
+	if cfg == nil {
+		return nil, nil
+	}
+	return cfg.RootVolume, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) rootVolumeEncrypted() (bool, error) {
+	rv, err := a.rootVolume()
+	if err != nil || rv == nil {
+		return false, err
+	}
+	return convert.ToValue(rv.Encrypted), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) rootVolumeFreeSpaceGiB() (int64, error) {
+	rv, err := a.rootVolume()
+	if err != nil || rv == nil {
+		return 0, err
+	}
+	return int64(convert.ToValue(rv.FreeSpaceGiB)), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) rootVolumeIops() (int64, error) {
+	rv, err := a.rootVolume()
+	if err != nil || rv == nil {
+		return 0, err
+	}
+	return int64(convert.ToValue(rv.Iops)), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) rootVolumeThroughput() (int64, error) {
+	rv, err := a.rootVolume()
+	if err != nil || rv == nil {
+		return 0, err
+	}
+	return int64(convert.ToValue(rv.Throughput)), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) rootVolumeType() (string, error) {
+	rv, err := a.rootVolume()
+	if err != nil || rv == nil {
+		return "", err
+	}
+	return string(rv.VolumeType), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) rootVolumeKmsKey() (*mqlAwsKmsKey, error) {
+	rv, err := a.rootVolume()
+	if err != nil {
+		return nil, err
+	}
+	if rv == nil || convert.ToValue(rv.KmsKeyId) == "" {
+		a.RootVolumeKmsKey.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.kms.key", map[string]*llx.RawData{
+		"arn":    llx.StringDataPtr(rv.KmsKeyId),
+		"region": llx.StringData(a.Region.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsKmsKey), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) volumes() ([]any, error) {
+	cfg, err := a.ec2Config()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	if cfg == nil {
+		return res, nil
+	}
+	region := a.Region.Data
+	for _, v := range cfg.Volumes {
+		ebs, ok := v.(*bacctypes.VolumeConfigurationMemberEbsConfiguration)
+		if !ok {
+			// A volume type this SDK version does not model yet.
+			continue
+		}
+		name := convert.ToValue(ebs.Value.Name)
+		mqlVol, err := CreateResource(a.MqlRuntime, ResourceAwsBedrockAgentCoreCapacityProviderVolume, map[string]*llx.RawData{
+			"__id":       llx.StringData(a.Arn.Data + "/volume/" + name),
+			"name":       llx.StringData(name),
+			"sizeGiB":    llx.IntData(int64(convert.ToValue(ebs.Value.SizeGiB))),
+			"encrypted":  llx.BoolDataPtr(ebs.Value.Encrypted),
+			"iops":       llx.IntData(int64(convert.ToValue(ebs.Value.Iops))),
+			"throughput": llx.IntData(int64(convert.ToValue(ebs.Value.Throughput))),
+			"volumeType": llx.StringData(string(ebs.Value.VolumeType)),
+		})
+		if err != nil {
+			return nil, err
+		}
+		mqlVolRes := mqlVol.(*mqlAwsBedrockAgentCoreCapacityProviderVolume)
+		mqlVolRes.cacheRegion = region
+		mqlVolRes.cacheKmsKeyId = convert.ToValue(ebs.Value.KmsKeyId)
+		mqlVolRes.cacheSnapshotId = convert.ToValue(ebs.Value.SnapshotId)
+		res = append(res, mqlVolRes)
+	}
+	return res, nil
+}
+
+// capacityProviderIdFromArn pulls the capacity provider id out of an ARN of the
+// form arn:aws:bedrock-agentcore:<region>:<account>:capacity-provider/<id>.
+func capacityProviderIdFromArn(capacityProviderArn string) (string, error) {
+	_, after, ok := strings.CutLast(capacityProviderArn, "/")
+	if !ok || after == "" {
+		return "", fmt.Errorf("cannot derive capacity provider id from arn %q", capacityProviderArn)
+	}
+	return after, nil
+}
+
+// initAwsBedrockAgentCoreCapacityProvider resolves a capacity provider from its
+// ARN. It builds and returns the resource rather than only filling in args, so
+// the region needed for the later detail fetch travels with it.
+func initAwsBedrockAgentCoreCapacityProvider(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	if args["arn"] == nil {
+		return nil, nil, errors.New("arn required to fetch aws bedrock agentcore capacity provider")
+	}
+	arnVal := args["arn"].Value.(string)
+
+	region, err := GetRegionFromArn(arnVal)
+	if err != nil {
+		return nil, nil, err
+	}
+	capacityProviderId, err := capacityProviderIdFromArn(arnVal)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgentCoreControl(region)
+	detail, err := svc.GetCapacityProvider(context.Background(), &bedrockagentcorecontrol.GetCapacityProviderInput{
+		CapacityProviderId: &capacityProviderId,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	resource, err := CreateResource(runtime, ResourceAwsBedrockAgentCoreCapacityProvider, map[string]*llx.RawData{
+		"__id":      llx.StringDataPtr(detail.CapacityProviderArn),
+		"id":        llx.StringDataPtr(detail.CapacityProviderId),
+		"arn":       llx.StringDataPtr(detail.CapacityProviderArn),
+		"name":      llx.StringDataPtr(detail.Name),
+		"region":    llx.StringData(region),
+		"status":    llx.StringData(string(detail.Status)),
+		"updatedAt": llx.TimeDataPtr(detail.LastUpdatedAt),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	mqlCp := resource.(*mqlAwsBedrockAgentCoreCapacityProvider)
+	mqlCp.cacheRegion = region
+	mqlCp.detail = detail
+	mqlCp.fetched.Store(true)
+	return nil, mqlCp, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) capacityProvider() (*mqlAwsBedrockAgentCoreCapacityProvider, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil || detail.CapacityProviderConfiguration == nil ||
+		convert.ToValue(detail.CapacityProviderConfiguration.CapacityProviderArn) == "" {
+		a.CapacityProvider.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.bedrock.agentCore.capacityProvider",
+		map[string]*llx.RawData{"arn": llx.StringDataPtr(detail.CapacityProviderConfiguration.CapacityProviderArn)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsBedrockAgentCoreCapacityProvider), nil
+}
+
+type mqlAwsBedrockAgentCoreCapacityProviderVolumeInternal struct {
+	cacheRegion     string
+	cacheKmsKeyId   string
+	cacheSnapshotId string
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProviderVolume) kmsKey() (*mqlAwsKmsKey, error) {
+	if a.cacheKmsKeyId == "" {
+		a.KmsKey.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.kms.key", map[string]*llx.RawData{
+		"arn":    llx.StringData(a.cacheKmsKeyId),
+		"region": llx.StringData(a.cacheRegion),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsKmsKey), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProviderVolume) snapshot() (*mqlAwsEc2Snapshot, error) {
+	if a.cacheSnapshotId == "" {
+		a.Snapshot.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.ec2.snapshot", map[string]*llx.RawData{
+		"id":     llx.StringData(a.cacheSnapshotId),
+		"region": llx.StringData(a.cacheRegion),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsEc2Snapshot), nil
+}
+
 // --- Gateway targets ---
 
 type mqlAwsBedrockAgentCoreGatewayTargetInternal struct {
@@ -391,6 +917,8 @@ func (a *mqlAwsBedrockAgentCore) runtimes() ([]any, error) {
 }
 
 type mqlAwsBedrockAgentCoreRuntimeInternal struct {
+	lazyTags
+	agentCorePolicyCache
 	cacheRegion string
 	fetchLock   sync.Mutex
 	fetched     bool
@@ -416,6 +944,9 @@ func (a *mqlAwsBedrockAgentCoreRuntime) fetchDetail() (*bedrockagentcorecontrol.
 	runtimeId := a.Id.Data
 	detail, err := svc.GetAgentRuntime(ctx, &bedrockagentcorecontrol.GetAgentRuntimeInput{AgentRuntimeId: &runtimeId})
 	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:GetAgentRuntime"))
+		}
 		return nil, err
 	}
 	a.detail = detail
@@ -476,6 +1007,28 @@ func (a *mqlAwsBedrockAgentCoreRuntime) authorizerType() (string, error) {
 		return "CUSTOM_JWT", nil
 	}
 	return "", nil
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) platformVersion() (string, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return "", err
+	}
+	v := agentRuntimePlatformVersion(detail)
+	if v == nil {
+		a.PlatformVersion.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *v, nil
+}
+
+// agentRuntimePlatformVersion returns the runtime platform version reported by
+// GetAgentRuntime, or nil when the response or the value is absent.
+func agentRuntimePlatformVersion(detail *bedrockagentcorecontrol.GetAgentRuntimeOutput) *string {
+	if detail == nil || detail.PlatformVersion == nil || *detail.PlatformVersion == "" {
+		return nil
+	}
+	return detail.PlatformVersion
 }
 
 func (a *mqlAwsBedrockAgentCoreRuntime) environmentVariables() (map[string]any, error) {
@@ -561,6 +1114,7 @@ func (a *mqlAwsBedrockAgentCore) memories() ([]any, error) {
 				if err != nil {
 					return nil, err
 				}
+				mqlMem.(*mqlAwsBedrockAgentCoreMemory).cacheRegion = region
 				res = append(res, mqlMem)
 			}
 		}
@@ -568,8 +1122,171 @@ func (a *mqlAwsBedrockAgentCore) memories() ([]any, error) {
 	}))
 }
 
+type mqlAwsBedrockAgentCoreMemoryInternal struct {
+	lazyTags
+	cacheRegion string
+	fetchLock   sync.Mutex
+	fetched     atomic.Bool
+	detail      *bedrockagentcorecontrol.GetMemoryOutput
+}
+
 func (a *mqlAwsBedrockAgentCoreMemory) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+// fetchDetail reads the full memory store. ListMemories returns a summary that
+// omits the namespace keys, so they need a per-store call.
+func (a *mqlAwsBedrockAgentCoreMemory) fetchDetail() (*bedrockagentcorecontrol.GetMemoryOutput, error) {
+	if a.fetched.Load() {
+		return a.detail, nil
+	}
+	a.fetchLock.Lock()
+	defer a.fetchLock.Unlock()
+	if a.fetched.Load() {
+		return a.detail, nil
+	}
+	if a.Id.Error != nil {
+		return nil, a.Id.Error
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgentCoreControl(a.cacheRegion)
+	memoryId := a.Id.Data
+	detail, err := svc.GetMemory(context.Background(), &bedrockagentcorecontrol.GetMemoryInput{
+		MemoryId: &memoryId,
+	})
+	if err != nil {
+		return nil, err
+	}
+	a.detail = detail
+	a.fetched.Store(true)
+	return a.detail, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreMemory) namespaceKeys() ([]any, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil || detail.Memory == nil {
+		return []any{}, nil
+	}
+
+	res := make([]any, 0, len(detail.Memory.NamespaceKeys))
+	for _, entry := range detail.Memory.NamespaceKeys {
+		if entry.Key == nil {
+			continue
+		}
+
+		// A key with no validation accepts any value. Reporting an empty
+		// allowed-value list and an empty pattern is the honest rendering of
+		// that: neither constraint is in force.
+		allowed := []any{}
+		regexPattern := ""
+		if entry.Validation != nil {
+			for _, v := range entry.Validation.AllowedValues {
+				allowed = append(allowed, v)
+			}
+			if entry.Validation.RegexPattern != nil {
+				regexPattern = *entry.Validation.RegexPattern
+			}
+		}
+
+		mqlKey, err := CreateResource(a.MqlRuntime, "aws.bedrock.agentCore.memory.namespaceKey",
+			map[string]*llx.RawData{
+				"__id":          llx.StringData(a.Arn.Data + "/namespaceKey/" + *entry.Key),
+				"key":           llx.StringDataPtr(entry.Key),
+				"allowedValues": llx.ArrayData(allowed, types.String),
+				"regexPattern":  llx.StringData(regexPattern),
+			})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlKey)
+	}
+	return res, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreMemory) kmsKey() (*mqlAwsKmsKey, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil || detail.Memory == nil || convert.ToValue(detail.Memory.EncryptionKeyArn) == "" {
+		a.KmsKey.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.kms.key", map[string]*llx.RawData{
+		"arn": llx.StringDataPtr(detail.Memory.EncryptionKeyArn),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsKmsKey), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreMemory) iamRole() (*mqlAwsIamRole, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	var roleArn *string
+	if detail != nil && detail.Memory != nil {
+		roleArn = detail.Memory.MemoryExecutionRoleArn
+	}
+	return agentCoreRole(a.MqlRuntime, roleArn, &a.IamRole)
+}
+
+func (a *mqlAwsBedrockAgentCoreMemory) eventExpiryDuration() (int64, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return 0, err
+	}
+	if detail == nil || detail.Memory == nil || detail.Memory.EventExpiryDuration == nil {
+		a.EventExpiryDuration.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return int64(*detail.Memory.EventExpiryDuration), nil
+}
+
+func (a *mqlAwsBedrockAgentCoreMemory) deliveryStreams() ([]any, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	if detail == nil || detail.Memory == nil {
+		return res, nil
+	}
+	for _, streamArn := range memoryDeliveryStreamArns(detail.Memory.StreamDeliveryResources) {
+		mqlStream, err := NewResource(a.MqlRuntime, "aws.kinesis.stream", map[string]*llx.RawData{
+			"arn": llx.StringData(streamArn),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlStream)
+	}
+	return res, nil
+}
+
+// memoryDeliveryStreamArns returns the Kinesis data stream ARNs a memory store
+// delivers its records to, skipping destination kinds other than Kinesis and
+// entries without an ARN.
+func memoryDeliveryStreamArns(resources *bacctypes.StreamDeliveryResources) []string {
+	arns := []string{}
+	if resources == nil {
+		return arns
+	}
+	for _, r := range resources.Resources {
+		kinesis, ok := r.(*bacctypes.StreamDeliveryResourceMemberKinesis)
+		if !ok {
+			continue
+		}
+		if streamArn := convert.ToValue(kinesis.Value.DataStreamArn); streamArn != "" {
+			arns = append(arns, streamArn)
+		}
+	}
+	return arns
 }
 
 // --- Browsers ---
@@ -607,8 +1324,114 @@ func (a *mqlAwsBedrockAgentCore) browsers() ([]any, error) {
 	}))
 }
 
+type mqlAwsBedrockAgentCoreBrowserInternal struct {
+	lazyTags
+	fetchLock sync.Mutex
+	fetched   atomic.Bool
+	detail    *bedrockagentcorecontrol.GetBrowserOutput
+}
+
 func (a *mqlAwsBedrockAgentCoreBrowser) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreBrowser) fetchDetail() (*bedrockagentcorecontrol.GetBrowserOutput, error) {
+	if a.fetched.Load() {
+		return a.detail, nil
+	}
+	a.fetchLock.Lock()
+	defer a.fetchLock.Unlock()
+	if a.fetched.Load() {
+		return a.detail, nil
+	}
+	if a.Id.Error != nil {
+		return nil, a.Id.Error
+	}
+	if a.Region.Error != nil {
+		return nil, a.Region.Error
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgentCoreControl(a.Region.Data)
+	browserId := a.Id.Data
+	detail, err := svc.GetBrowser(context.Background(), &bedrockagentcorecontrol.GetBrowserInput{BrowserId: &browserId})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:GetBrowser"))
+		}
+		return nil, err
+	}
+	a.detail = detail
+	a.fetched.Store(true)
+	return a.detail, nil
+}
+
+type mqlAwsBedrockAgentCoreFilesystemConfigurationInternal struct {
+	cacheEfsFilesystemArn string
+}
+
+func (a *mqlAwsBedrockAgentCoreFilesystemConfiguration) fileSystem() (*mqlAwsEfsFilesystem, error) {
+	if a.cacheEfsFilesystemArn == "" {
+		a.FileSystem.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.efs.filesystem", map[string]*llx.RawData{
+		"arn": llx.StringData(a.cacheEfsFilesystemArn),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsEfsFilesystem), nil
+}
+
+// newAgentCoreFilesystemConfigurations flattens the EFS / S3 Files union that
+// AgentCore returns for a sandbox's mounts into one resource per mount.
+func newAgentCoreFilesystemConfigurations(runtime *plugin.Runtime, parentArn string, configs []bacctypes.ToolsFileSystemConfiguration) ([]any, error) {
+	res := []any{}
+	for _, cfg := range configs {
+		var kind, accessPointArn, fileSystemArn, mountPath string
+		switch v := cfg.(type) {
+		case *bacctypes.ToolsFileSystemConfigurationMemberEfsConfiguration:
+			kind = "EFS"
+			accessPointArn = convert.ToValue(v.Value.AccessPointArn)
+			fileSystemArn = convert.ToValue(v.Value.FileSystemArn)
+			mountPath = convert.ToValue(v.Value.MountPath)
+		case *bacctypes.ToolsFileSystemConfigurationMemberS3FilesConfiguration:
+			kind = "S3_FILES"
+			accessPointArn = convert.ToValue(v.Value.AccessPointArn)
+			fileSystemArn = convert.ToValue(v.Value.FileSystemArn)
+			mountPath = convert.ToValue(v.Value.MountPath)
+		default:
+			// A mount type this SDK version does not model yet.
+			continue
+		}
+
+		mqlCfg, err := CreateResource(runtime, "aws.bedrock.agentCore.filesystemConfiguration", map[string]*llx.RawData{
+			"__id":           llx.StringData(parentArn + "/filesystemConfigurations/" + mountPath),
+			"type":           llx.StringData(kind),
+			"accessPointArn": llx.StringData(accessPointArn),
+			"fileSystemArn":  llx.StringData(fileSystemArn),
+			"mountPath":      llx.StringData(mountPath),
+		})
+		if err != nil {
+			return nil, err
+		}
+		if kind == "EFS" {
+			mqlCfg.(*mqlAwsBedrockAgentCoreFilesystemConfiguration).cacheEfsFilesystemArn = fileSystemArn
+		}
+		res = append(res, mqlCfg)
+	}
+	return res, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreBrowser) filesystemConfigurations() ([]any, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil {
+		return []any{}, nil
+	}
+	return newAgentCoreFilesystemConfigurations(a.MqlRuntime, a.Arn.Data, detail.FilesystemConfigurations)
 }
 
 // --- Code interpreters ---
@@ -646,8 +1469,58 @@ func (a *mqlAwsBedrockAgentCore) codeInterpreters() ([]any, error) {
 	}))
 }
 
+type mqlAwsBedrockAgentCoreCodeInterpreterInternal struct {
+	lazyTags
+	fetchLock sync.Mutex
+	fetched   atomic.Bool
+	detail    *bedrockagentcorecontrol.GetCodeInterpreterOutput
+}
+
 func (a *mqlAwsBedrockAgentCoreCodeInterpreter) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCodeInterpreter) fetchDetail() (*bedrockagentcorecontrol.GetCodeInterpreterOutput, error) {
+	if a.fetched.Load() {
+		return a.detail, nil
+	}
+	a.fetchLock.Lock()
+	defer a.fetchLock.Unlock()
+	if a.fetched.Load() {
+		return a.detail, nil
+	}
+	if a.Id.Error != nil {
+		return nil, a.Id.Error
+	}
+	if a.Region.Error != nil {
+		return nil, a.Region.Error
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgentCoreControl(a.Region.Data)
+	codeInterpreterId := a.Id.Data
+	detail, err := svc.GetCodeInterpreter(context.Background(), &bedrockagentcorecontrol.GetCodeInterpreterInput{
+		CodeInterpreterId: &codeInterpreterId,
+	})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:GetCodeInterpreter"))
+		}
+		return nil, err
+	}
+	a.detail = detail
+	a.fetched.Store(true)
+	return a.detail, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreCodeInterpreter) filesystemConfigurations() ([]any, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil {
+		return []any{}, nil
+	}
+	return newAgentCoreFilesystemConfigurations(a.MqlRuntime, a.Arn.Data, detail.FilesystemConfigurations)
 }
 
 // --- Identity: OAuth2 credential providers ---
@@ -778,8 +1651,8 @@ func initAwsBedrockAgentCoreWorkloadIdentity(runtime *plugin.Runtime, args map[s
 		}
 	}
 	if args["name"] == nil {
-		if idx := strings.LastIndex(arnVal, "/"); idx >= 0 && idx < len(arnVal)-1 {
-			args["name"] = llx.StringData(arnVal[idx+1:])
+		if _, name, ok := strings.CutLast(arnVal, "/"); ok && name != "" {
+			args["name"] = llx.StringData(name)
 		}
 	}
 	return args, nil, nil
@@ -787,4 +1660,107 @@ func initAwsBedrockAgentCoreWorkloadIdentity(runtime *plugin.Runtime, args map[s
 
 func (a *mqlAwsBedrockAgentCoreWorkloadIdentity) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+type mqlAwsBedrockAgentCoreRuntimeEndpointInternal struct {
+	lazyTags
+	agentCorePolicyCache
+}
+
+type mqlAwsBedrockAgentCoreOauth2CredentialProviderInternal struct {
+	lazyTags
+}
+
+type mqlAwsBedrockAgentCoreApiKeyCredentialProviderInternal struct {
+	lazyTags
+}
+
+type mqlAwsBedrockAgentCoreWorkloadIdentityInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsBedrockAgentCoreGateway) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		arn := a.GetArn()
+		if arn.Error != nil {
+			return nil, arn.Error
+		}
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreCapacityProvider) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntime) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreRuntimeEndpoint) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreMemory) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreBrowser) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreCodeInterpreter) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreOauth2CredentialProvider) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreApiKeyCredentialProvider) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgentCoreWorkloadIdentity) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return agentCoreTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+// agentCoreTags reads the tags of an AgentCore control-plane resource. The Get*
+// responses declare a Tags member that the service leaves empty, so tags come
+// from ListTagsForResource.
+func agentCoreTags(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
+	if resourceArn == "" {
+		return nil, errTagsUnreadable
+	}
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgentCoreControl(region)
+	resp, err := svc.ListTagsForResource(context.Background(), &bedrockagentcorecontrol.ListTagsForResourceInput{ResourceArn: &resourceArn})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("bedrock-agentcore:ListTagsForResource"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return toInterfaceMap(resp.Tags), nil
 }

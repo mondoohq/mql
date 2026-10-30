@@ -4,15 +4,21 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/activedirectory/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/activedirectory/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "activedirectory",
-	ID:              "go.mondoo.com/mql/v13/providers/activedirectory",
-	Version:         "13.1.3",
+	Name: "activedirectory",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "activedirectory",
+	ID:      "go.mondoo.com/mql/providers/activedirectory",
+	Version: "14.0.7",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.ConnectionType},
 	Platforms:       provider.Platforms,
 	Connectors: []plugin.Connector{{

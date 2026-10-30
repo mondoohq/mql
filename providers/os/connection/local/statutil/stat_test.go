@@ -4,17 +4,19 @@
 package statutil
 
 import (
+	"bytes"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 func TestLinuxStatCmd(t *testing.T) {
@@ -31,7 +33,7 @@ func TestLinuxStatCmd(t *testing.T) {
 	assert.Equal(t, int64(4317), fi.Size())
 	assert.Equal(t, false, fi.IsDir())
 	assert.Equal(t, os.FileMode(0x180), fi.Mode())
-	assert.Equal(t, time.Unix(1590420240, 0), fi.ModTime())
+	assert.Equal(t, time.Unix(1590418792, 0), fi.ModTime())
 	require.NoError(t, err)
 	mode := fi.Mode()
 	assert.Zero(t, mode&fs.ModeSetuid)
@@ -58,7 +60,7 @@ func TestOpenbsdStatCmd(t *testing.T) {
 	assert.Equal(t, int64(2259), fi.Size())
 	assert.Equal(t, false, fi.IsDir())
 	assert.Equal(t, "-rw-r--r--", fi.Mode().String())
-	assert.Equal(t, time.Unix(1592996018, 0), fi.ModTime())
+	assert.Equal(t, time.Unix(1591446696, 0), fi.ModTime())
 	assert.Equal(t, int64(0), fi.Sys().(*shared.FileInfo).Uid)
 	assert.Equal(t, int64(0), fi.Sys().(*shared.FileInfo).Gid)
 	assert.Equal(t, "sshd_config", fi.Name())
@@ -129,4 +131,99 @@ func TestToFileMode(t *testing.T) {
 		assert.False(t, (m&fs.ModeSticky) > 0)
 		assert.Equal(t, fs.FileMode(0o755), (m & 0o777))
 	})
+}
+
+// fixedStatRunner answers uname -s with a fixed OS and every other command
+// (the stat script) with a fixed line of stat output.
+type fixedStatRunner struct {
+	uname string
+	stat  string
+}
+
+func (r fixedStatRunner) RunCommand(command string) (*shared.Command, error) {
+	out := r.stat
+	if strings.HasSuffix(command, "uname -s") {
+		out = r.uname
+	}
+	return &shared.Command{Command: command, Stdout: bytes.NewBufferString(out), Stderr: &bytes.Buffer{}}, nil
+}
+
+func TestStatNameIsNotShellQuoted(t *testing.T) {
+	// The command quotes a path with a space or quote in it. The name of the
+	// returned FileInfo is the plain base name, otherwise a directory listing
+	// built from Stat reports entries that do not exist.
+	tests := []struct {
+		uname string
+		stat  string
+	}{
+		// Ubuntu 24.04, `stat -L -c` on a directory named " lead skill"
+		{"Linux", "0.4096.41ed.1000.1000.1790912768.1790911470.?\n"},
+		{"FreeBSD", "0:512:40755:1000:1000:1790912768:1790911470\n"},
+	}
+	for _, tc := range tests {
+		for _, name := range []string{"/home/ubuntu/.claude/skills/ lead skill", "/srv/it's here"} {
+			fi, err := New(fixedStatRunner{uname: tc.uname, stat: tc.stat}).Stat(name)
+			require.NoError(t, err, tc.uname)
+			assert.Equal(t, filepath.Base(name), fi.Name(), tc.uname)
+		}
+	}
+}
+
+// dirStatRunner answers uname and the batch stat of a directory with what
+// alpine:3.22 prints for /t holding a file with a space, a file starting with
+// a dash, a link, a dangling link and a subdirectory ("gone" was asked for
+// and vanished).
+type dirStatRunner struct {
+	uname    string
+	commands []string
+}
+
+func (r *dirStatRunner) RunCommand(command string) (*shared.Command, error) {
+	r.commands = append(r.commands, command)
+	out := ""
+	switch {
+	case command == "uname -s":
+		out = r.uname + "\n"
+	case strings.HasPrefix(command, linuxStatDirScript):
+		out = "0.0.81a4.0.0.1792025285.1792025285.C/a b\n" +
+			"0.0.81a4.0.0.1792025285.1792025285.C/-dash\n" +
+			"1.0.81a4.0.0.1792025285.1792025285.C/lnk\n" +
+			"1.7.a1ff.0.0.1792025285.1792025285.C/dangling\n" +
+			"0.4096.41ed.1000.1000.1792025285.1792025285.C/sub\n"
+	}
+	return &shared.Command{Command: command, Stdout: bytes.NewBufferString(out), Stderr: &bytes.Buffer{}}, nil
+}
+
+func TestStatDir(t *testing.T) {
+	r := &dirStatRunner{uname: "Linux"}
+	infos, ok := New(r).StatDir("/t", []string{"a b", "-dash", "lnk", "dangling", "sub", "gone"})
+	require.True(t, ok)
+	assert.Len(t, infos, 5, "gone is left out")
+
+	assert.Equal(t, "a b", infos["a b"].Name())
+	assert.Equal(t, os.FileMode(0o644), infos["a b"].Mode())
+	assert.Equal(t, os.FileMode(0o644)|fs.ModeSymlink, infos["lnk"].Mode(), "a link reports its target's mode")
+	assert.True(t, infos["dangling"].Mode()&fs.ModeSymlink != 0)
+	assert.True(t, infos["sub"].IsDir())
+	assert.Equal(t, int64(1000), infos["sub"].Sys().(*shared.FileInfo).Uid)
+
+	// one command for the directory, after the dialect is known
+	require.Len(t, r.commands, 2)
+	assert.Contains(t, r.commands[1], `_ /t 'a b' -dash lnk dangling sub gone`)
+}
+
+// Only the Linux stat format can be batched; elsewhere each entry is stat'ed.
+func TestStatDirOnlyOnLinux(t *testing.T) {
+	_, ok := New(&dirStatRunner{uname: "FreeBSD"}).StatDir("/t", []string{"a"})
+	assert.False(t, ok)
+	_, ok = New(&dirStatRunner{uname: "AIX"}).StatDir("/t", []string{"a"})
+	assert.False(t, ok)
+}
+
+func TestToFileModeFileTypes(t *testing.T) {
+	// %f of GNU stat for a FIFO, a socket, a symlink and a regular file, 0600
+	assert.Equal(t, fs.ModeNamedPipe, toFileMode(0x1180).Type())
+	assert.Equal(t, fs.ModeSocket, toFileMode(0xc180).Type())
+	assert.Equal(t, fs.ModeSymlink, toFileMode(0xa180).Type())
+	assert.True(t, toFileMode(0x8180).IsRegular())
 }

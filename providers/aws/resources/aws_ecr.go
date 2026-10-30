@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
@@ -18,13 +19,12 @@ import (
 	ecrpublic_types "github.com/aws/aws-sdk-go-v2/service/ecrpublic/types"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/aws/connection"
 
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/types"
 )
 
 // ecrLifecyclePolicyDoc represents the parsed JSON lifecycle policy document.
@@ -80,9 +80,47 @@ func (a *mqlAwsEcr) replicationConfiguration() (any, error) {
 		return nil, err
 	}
 	if resp.ReplicationConfiguration == nil {
+		a.ReplicationConfiguration.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	return convert.JsonToDict(resp.ReplicationConfiguration)
+	return ecrReplicationConfigurationToDict(resp.ReplicationConfiguration), nil
+}
+
+// ecrReplicationConfigurationToDict renders the registry replication settings
+// with the key names the schema documents. The SDK struct carries no json
+// tags, so a reflective conversion emits Go field names (Rules, Destinations,
+// RegistryId) and every query written against the documented lowercase keys
+// resolves to null.
+func ecrReplicationConfigurationToDict(cfg *ecrtypes.ReplicationConfiguration) map[string]any {
+	if cfg == nil {
+		return nil
+	}
+
+	rules := make([]any, 0, len(cfg.Rules))
+	for _, rule := range cfg.Rules {
+		destinations := make([]any, 0, len(rule.Destinations))
+		for _, d := range rule.Destinations {
+			destinations = append(destinations, map[string]any{
+				"region":     convert.ToValue(d.Region),
+				"registryId": convert.ToValue(d.RegistryId),
+			})
+		}
+
+		filters := make([]any, 0, len(rule.RepositoryFilters))
+		for _, f := range rule.RepositoryFilters {
+			filters = append(filters, map[string]any{
+				"filter":     convert.ToValue(f.Filter),
+				"filterType": string(f.FilterType),
+			})
+		}
+
+		rules = append(rules, map[string]any{
+			"destinations":      destinations,
+			"repositoryFilters": filters,
+		})
+	}
+
+	return map[string]any{"rules": rules}
 }
 
 func (a *mqlAwsEcrRepository) id() (string, error) {
@@ -144,79 +182,129 @@ func (a *mqlAwsEcr) privateRepositories() ([]any, error) {
 		return []any{}, nil
 	}
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(a.getPrivateRepositories(conn), 5)
-	poolOfJobs.Run()
+	return perRegion(conn, "ecr", func(ctx context.Context, region string) ([]any, error) {
+		svc := conn.Ecr(region)
+		res := []any{}
+		repos := []ecrtypes.Repository{}
 
-	// check for errors
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	// get all the results
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
+		// AWS caps repositoryNames at ECRDescribeRepositoriesNameLimit per request, so
+		// a larger filter is split into batches and each batch is described separately.
+		// 0 batches means all repositories should be described.
+		batches := conn.Filters.Ecr.PrivateRepositoryNameBatches()
+		if len(batches) == 0 {
+			batches = [][]string{{}}
+		}
 
-	return res, nil
+		for _, batch := range batches {
+			req := &ecr.DescribeRepositoriesInput{}
+			if len(batch) > 0 {
+				req.RepositoryNames = batch
+			}
+
+			paginator := ecr.NewDescribeRepositoriesPaginator(svc, req)
+			for paginator.HasMorePages() {
+				repoResp, err := paginator.NextPage(ctx, withEcrDescribeRetries)
+				if err != nil {
+					return nil, err
+				}
+				repos = append(repos, repoResp.Repositories...)
+			}
+		}
+
+		repos, tagsByArn := ecrRepositoriesMatchingTags(ctx, conn.Filters.General, repos,
+			func(r ecrtypes.Repository) string { return convert.ToValue(r.RepositoryArn) },
+			func(ctx context.Context, repoArn string) (map[string]string, error) {
+				return ecrPrivateRepositoryTags(ctx, svc, repoArn)
+			})
+		for _, r := range repos {
+			mqlRepoResource, err := buildEcrPrivateRepositoryResource(a.MqlRuntime, region, r, tagsByArn[convert.ToValue(r.RepositoryArn)])
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlRepoResource)
+		}
+
+		return res, nil
+	})
 }
 
-func (a *mqlAwsEcr) getPrivateRepositories(conn *connection.AwsConnection) []*jobpool.Job {
-	tasks := make([]*jobpool.Job, 0)
-	ctx := context.Background()
-
-	regions, err := conn.Regions()
-	if err != nil {
-		return []*jobpool.Job{{Err: err}} // return the error
+// ecrRepositoriesMatchingTags drops the repositories the general tag filter
+// rejects. DescribeRepositories returns no tags and ECR has no batch tags
+// endpoint, so each repository's tags are read concurrently, and only when a
+// tag filter is set.
+//
+// The returned map holds the tag sets that were actually read, keyed by ARN, so
+// the caller can seed them onto the resource. A repository whose tag read failed
+// is absent from it: its tags evaluate as empty for filtering (an include filter
+// drops it, an exclude filter keeps it), and its tags field stays unset so the
+// accessor reports the failure itself instead of "no tags".
+func ecrRepositoriesMatchingTags[R any](
+	ctx context.Context,
+	filters connection.GeneralDiscoveryFilters,
+	repos []R,
+	arnOf func(R) string,
+	fetch func(context.Context, string) (map[string]string, error),
+) ([]R, map[string]map[string]string) {
+	if !filters.HasTags() {
+		return repos, nil
 	}
-	for ri := range regions {
-		region := regions[ri]
-		f := func() (jobpool.JobResult, error) {
-			svc := conn.Ecr(region)
-			res := []any{}
 
-			// AWS caps repositoryNames at ECRDescribeRepositoriesNameLimit per request, so
-			// a larger filter is split into batches and each batch is described separately.
-			// 0 batches means all repositories should be described.
-			batches := conn.Filters.Ecr.PrivateRepositoryNameBatches()
-			if len(batches) == 0 {
-				batches = [][]string{{}}
-			}
+	arns := make([]string, 0, len(repos))
+	for _, r := range repos {
+		arns = append(arns, arnOf(r))
+	}
+	tagsByArn := fetchTagsConcurrently(ctx, arns, fetch)
 
-			for _, batch := range batches {
-				req := &ecr.DescribeRepositoriesInput{}
-				if len(batch) > 0 {
-					req.RepositoryNames = batch
-				}
-
-				paginator := ecr.NewDescribeRepositoriesPaginator(svc, req)
-				for paginator.HasMorePages() {
-					repoResp, err := paginator.NextPage(ctx, withEcrDescribeRetries)
-					if err != nil {
-						if Is400AccessDeniedError(err) {
-							log.Warn().Str("region", region).Msg("error accessing region for AWS API")
-							return res, nil
-						}
-						return nil, err
-					}
-					for _, r := range repoResp.Repositories {
-						mqlRepoResource, err := buildEcrPrivateRepositoryResource(a.MqlRuntime, region, r)
-						if err != nil {
-							return nil, err
-						}
-						res = append(res, mqlRepoResource)
-					}
-				}
-			}
-
-			return jobpool.JobResult(res), nil
+	kept := make([]R, 0, len(repos))
+	for _, r := range repos {
+		repoArn := arnOf(r)
+		if filters.IsFilteredOutByTags(tagsByArn[repoArn]) {
+			log.Debug().Str("repository", repoArn).Msg("excluding ecr repository due to tag filters")
+			continue
 		}
-		tasks = append(tasks, jobpool.NewJob(f))
+		kept = append(kept, r)
 	}
-	return tasks
+	return kept, tagsByArn
+}
+
+// ecrPrivateRepositoryTags reads a private repository's tags. Every error is
+// returned, including AccessDenied, so a refused read is never mistaken for an
+// empty tag set.
+func ecrPrivateRepositoryTags(ctx context.Context, svc *ecr.Client, repoArn string) (map[string]string, error) {
+	resp, err := svc.ListTagsForResource(ctx, &ecr.ListTagsForResourceInput{ResourceArn: &repoArn})
+	if err != nil {
+		return nil, err
+	}
+	tags := make(map[string]string, len(resp.Tags))
+	for _, t := range resp.Tags {
+		if t.Key != nil && t.Value != nil {
+			tags[*t.Key] = *t.Value
+		}
+	}
+	return tags, nil
+}
+
+// ecrPublicRepositoryTags reads a public repository's tags, returning every
+// error like ecrPrivateRepositoryTags.
+func ecrPublicRepositoryTags(ctx context.Context, svc *ecrpublic.Client, repoArn string) (map[string]string, error) {
+	resp, err := svc.ListTagsForResource(ctx, &ecrpublic.ListTagsForResourceInput{ResourceArn: &repoArn})
+	if err != nil {
+		return nil, err
+	}
+	tags := make(map[string]string, len(resp.Tags))
+	for _, t := range resp.Tags {
+		if t.Key != nil && t.Value != nil {
+			tags[*t.Key] = *t.Value
+		}
+	}
+	return tags, nil
 }
 
 func (a *mqlAwsEcrRepository) scanningFrequency() (string, error) {
 	if a.Public.Data {
+		// ECR Public exposes no scanning configuration, so the frequency is
+		// unknown. An empty string is not one of the documented values.
+		a.ScanningFrequency.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 
@@ -232,6 +320,9 @@ func (a *mqlAwsEcrRepository) scanningFrequency() (string, error) {
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
+			// The null state above is the answer; this empty string is only
+			// the zero value Go requires and the runtime discards it.
+			a.ScanningFrequency.State = plugin.StateIsSet | plugin.StateIsNull
 			return "", nil
 		}
 		return "", err
@@ -242,6 +333,9 @@ func (a *mqlAwsEcrRepository) scanningFrequency() (string, error) {
 		return string(resp.ScanningConfigurations[0].ScanFrequency), nil
 	}
 
+	// Nothing came back for the repository, so the frequency is unknown rather
+	// than the empty string, which is outside the documented value set.
+	a.ScanningFrequency.State = plugin.StateIsSet | plugin.StateIsNull
 	return "", nil
 }
 
@@ -271,8 +365,14 @@ func (a *mqlAwsEcrRepository) images() ([]any, error) {
 					log.Debug().Str("repository", name).Strs("tags", image.ImageTags).Msg("skipping ecr public image due to tag filters")
 					continue
 				}
+				imageArn := ecrImageArn(ImageInfo{Public: true, Region: region, RegistryId: convert.ToValue(image.RegistryId), RepoName: name, Digest: convert.ToValue(image.ImageDigest)})
 				mqlImage, err := CreateResource(a.MqlRuntime, ResourceAwsEcrImage,
 					map[string]*llx.RawData{
+						// The public ARN names the ecr-public service and carries no
+						// region, so it cannot collide with a same-named private repo --
+						// which matters because the cachePublic write below would
+						// otherwise flip the private image to "NOT_SCANNED".
+						"__id":              llx.StringData(imageArn),
 						"digest":            llx.StringDataPtr(image.ImageDigest),
 						"mediaType":         llx.StringDataPtr(image.ImageManifestMediaType),
 						"artifactMediaType": llx.StringDataPtr(image.ArtifactMediaType),
@@ -280,8 +380,14 @@ func (a *mqlAwsEcrRepository) images() ([]any, error) {
 						"registryId":        llx.StringDataPtr(image.RegistryId),
 						"repoName":          llx.StringData(name),
 						"region":            llx.StringData(region),
-						"arn":               llx.StringData(ecrImageArn(ImageInfo{Region: region, RegistryId: convert.ToValue(image.RegistryId), RepoName: name, Digest: convert.ToValue(image.ImageDigest)})),
+						"arn":               llx.StringData(imageArn),
 						"uri":               llx.StringData(uri),
+						"pushedAt":          llx.TimeDataPtr(image.ImagePushedAt),
+						"sizeInBytes":       llx.IntDataPtr(image.ImageSizeInBytes),
+						// ECR Public reports no pull time at all. Leaving the field
+						// unset makes the runtime report a provider bug, so state the
+						// absence explicitly.
+						"lastRecordedPullTime": llx.NilData,
 					})
 				if err != nil {
 					return nil, err
@@ -310,9 +416,14 @@ func (a *mqlAwsEcrRepository) images() ([]any, error) {
 				log.Debug().Str("repository", name).Strs("tags", image.ImageTags).Msg("skipping ecr private image due to tag filters")
 				continue
 			}
+			imageArn := ecrImageArn(ImageInfo{Region: region, RegistryId: convert.ToValue(image.RegistryId), RepoName: name, Digest: convert.ToValue(image.ImageDigest)})
 			mqlImage, err := CreateResource(a.MqlRuntime, ResourceAwsEcrImage,
 				map[string]*llx.RawData{
-					"arn":                  llx.StringData(ecrImageArn(ImageInfo{Region: region, RegistryId: convert.ToValue(image.RegistryId), RepoName: name, Digest: convert.ToValue(image.ImageDigest)})),
+					// region-qualified via the ARN: cross-region replication puts the
+					// same registryId/repoName/digest in several regions, which the
+					// id() fallback cannot tell apart.
+					"__id":                 llx.StringData(imageArn),
+					"arn":                  llx.StringData(imageArn),
 					"digest":               llx.StringDataPtr(image.ImageDigest),
 					"lastRecordedPullTime": llx.TimeDataPtr(image.LastRecordedPullTime),
 					"mediaType":            llx.StringDataPtr(image.ImageManifestMediaType),
@@ -366,41 +477,99 @@ func newMqlEcrLifecyclePolicyRule(runtime *plugin.Runtime, repoArn string, rule 
 	return resource.(*mqlAwsEcrLifecyclePolicyRule), nil
 }
 
-func (a *mqlAwsEcrRepository) policy() (any, error) {
-	if a.Public.Data {
-		a.Policy.State = plugin.StateIsNull | plugin.StateIsSet
-		return nil, nil
-	}
+// ecrPolicyOutcome is what a failed GetRepositoryPolicy call means.
+type ecrPolicyOutcome int
 
+const (
+	// ecrPolicyOutcomeFailed is an error worth surfacing to the caller.
+	ecrPolicyOutcomeFailed ecrPolicyOutcome = iota
+	// ecrPolicyOutcomeUnreadable is a denial: the repository may well have a
+	// policy, we were simply not allowed to look.
+	ecrPolicyOutcomeUnreadable
+	// ecrPolicyOutcomeAbsent is a successful read of a repository that carries
+	// no policy at all.
+	ecrPolicyOutcomeAbsent
+)
+
+// classifyEcrPolicyError separates the two failures that both leave the policy
+// field null. Only the absent case is a measurement, so only it may let
+// isPublic report false; conflating them is how a scan role missing
+// GetRepositoryPolicy reports a world-pullable repository as private.
+//
+// err must be non-nil: the caller establishes that the call failed before
+// asking what kind of failure it was. There is no outcome that describes a
+// successful read, so a nil error has no meaningful classification here.
+func classifyEcrPolicyError(err error, public bool) ecrPolicyOutcome {
+	if Is400AccessDeniedError(err) {
+		return ecrPolicyOutcomeUnreadable
+	}
+	if public {
+		var notFoundErr *ecrpublic_types.RepositoryPolicyNotFoundException
+		if errors.As(err, &notFoundErr) {
+			return ecrPolicyOutcomeAbsent
+		}
+		return ecrPolicyOutcomeFailed
+	}
+	var notFoundErr *ecrtypes.RepositoryPolicyNotFoundException
+	if errors.As(err, &notFoundErr) {
+		return ecrPolicyOutcomeAbsent
+	}
+	return ecrPolicyOutcomeFailed
+}
+
+func (a *mqlAwsEcrRepository) policy() (any, error) {
 	name := a.Name.Data
-	region := a.Region.Data
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.Ecr(region)
 	ctx := context.Background()
 
-	resp, err := svc.GetRepositoryPolicy(ctx, &ecr.GetRepositoryPolicyInput{
-		RepositoryName: &name,
-	})
-	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.Policy.State = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
+	var policyText *string
+	if a.Public.Data {
+		// ECR Public repositories carry their own resource policy, and it is the
+		// only thing that says whether the world can pull from them. Reading it
+		// from the private API is impossible, so it has to come from ecrpublic.
+		// A distinct variable name keeps the permissions extractor, which maps
+		// one client variable per function, from folding this into the private
+		// ecr client assigned below.
+		publicSvc := conn.EcrPublic("us-east-1") // only supported for us-east-1
+		resp, err := publicSvc.GetRepositoryPolicy(ctx, &ecrpublic.GetRepositoryPolicyInput{
+			RegistryId:     aws.String(conn.AccountId()),
+			RepositoryName: &name,
+		})
+		if err != nil {
+			switch classifyEcrPolicyError(err, true) {
+			case ecrPolicyOutcomeUnreadable:
+				return a.markPolicyUnreadable()
+			case ecrPolicyOutcomeAbsent:
+				return a.markPolicyAbsent()
+			default:
+				return nil, err
+			}
 		}
-		var notFoundErr *ecrtypes.RepositoryPolicyNotFoundException
-		if errors.As(err, &notFoundErr) {
-			a.Policy.State = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
+		policyText = resp.PolicyText
+	} else {
+		svc := conn.Ecr(a.Region.Data)
+		resp, err := svc.GetRepositoryPolicy(ctx, &ecr.GetRepositoryPolicyInput{
+			RepositoryName: &name,
+		})
+		if err != nil {
+			switch classifyEcrPolicyError(err, false) {
+			case ecrPolicyOutcomeUnreadable:
+				return a.markPolicyUnreadable()
+			case ecrPolicyOutcomeAbsent:
+				return a.markPolicyAbsent()
+			default:
+				return nil, err
+			}
 		}
-		return nil, err
+		policyText = resp.PolicyText
 	}
 
-	if resp.PolicyText == nil {
-		a.Policy.State = plugin.StateIsNull | plugin.StateIsSet
-		return nil, nil
+	if policyText == nil {
+		return a.markPolicyAbsent()
 	}
 
 	var policyDoc any
-	if jsonErr := json.Unmarshal([]byte(*resp.PolicyText), &policyDoc); jsonErr != nil {
+	if jsonErr := json.Unmarshal([]byte(*policyText), &policyDoc); jsonErr != nil {
 		return nil, jsonErr
 	}
 	return policyDoc, nil
@@ -460,7 +629,7 @@ func (a *mqlAwsEcrRepository) lifecyclePolicy() (*mqlAwsEcrLifecyclePolicy, erro
 		map[string]*llx.RawData{
 			"__id":            llx.StringData(policyId),
 			"id":              llx.StringData(policyId),
-			"lastEvaluatedAt": llx.TimeDataPtr(resp.LastEvaluatedAt),
+			"lastEvaluatedAt": llx.TimeDataPtr(ecrEvaluationTime(resp.LastEvaluatedAt)),
 			"rules":           llx.ArrayData(rules, types.Resource("aws.ecr.lifecyclePolicy.rule")),
 		})
 	if err != nil {
@@ -474,10 +643,37 @@ type ImageInfo struct {
 	RepoName   string
 	Digest     string
 	RegistryId string
+	// Public marks an image in the ECR Public registry, which is addressed
+	// through the ecr-public service and has no region component.
+	Public bool
 }
 
 func ecrImageArn(i ImageInfo) string {
+	if i.Public {
+		return fmt.Sprintf("arn:aws:ecr-public::%s:image/%s/%s", i.RegistryId, i.RepoName, i.Digest)
+	}
 	return fmt.Sprintf("arn:aws:ecr:%s:%s:image/%s/%s", i.Region, i.RegistryId, i.RepoName, i.Digest)
+}
+
+// ecrRepositoryArn builds the ARN of an ECR repository. ECR Public repositories
+// live in the ecr-public service and carry no region, which is the shape
+// initAwsEcrRepository parses to pick the registry it queries.
+func ecrRepositoryArn(public bool, region, registryId, repoName string) string {
+	if public {
+		return fmt.Sprintf("arn:aws:ecr-public::%s:repository/%s", registryId, repoName)
+	}
+	return fmt.Sprintf("arn:aws:ecr:%s:%s:repository/%s", region, registryId, repoName)
+}
+
+// ecrEvaluationTime reports a never-evaluated timestamp as absent. ECR fills
+// lastEvaluatedAt with the Unix epoch for a lifecycle policy it has not
+// evaluated yet; forwarding that verbatim renders as a date in 1969 and makes
+// a `lastEvaluatedAt == null` check false.
+func ecrEvaluationTime(t *time.Time) *time.Time {
+	if t == nil || t.IsZero() || t.Unix() == 0 {
+		return nil
+	}
+	return t
 }
 
 func EcrImageName(i ImageInfo) string {
@@ -490,7 +686,7 @@ func (a *mqlAwsEcrImage) repository() (*mqlAwsEcrRepository, error) {
 		a.Repository.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-	arnVal := fmt.Sprintf("arn:aws:ecr:%s:%s:repository/%s", a.Region.Data, a.RegistryId.Data, repoName)
+	arnVal := ecrRepositoryArn(a.cachePublic, a.Region.Data, a.RegistryId.Data, repoName)
 	res, err := NewResource(a.MqlRuntime, "aws.ecr.repository",
 		map[string]*llx.RawData{"arn": llx.StringData(arnVal)})
 	if err != nil {
@@ -508,9 +704,8 @@ func initAwsEcrImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformEcrImage); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -545,8 +740,10 @@ func (a *mqlAwsEcr) publicRepositories() ([]any, error) {
 		return []any{}, nil
 	}
 
+	ctx := context.Background()
 	svc := conn.EcrPublic("us-east-1") // only supported for us-east-1
 	res := []any{}
+	repos := []ecrpublic_types.Repository{}
 
 	// AWS caps repositoryNames at ECRDescribeRepositoriesNameLimit per request, so
 	// a larger filter is split into batches and each batch is described separately.
@@ -568,25 +765,34 @@ func (a *mqlAwsEcr) publicRepositories() ([]any, error) {
 
 		paginator := ecrpublic.NewDescribeRepositoriesPaginator(svc, req)
 		for paginator.HasMorePages() {
-			repoResp, err := paginator.NextPage(context.TODO(), withEcrPublicDescribeRetries)
+			repoResp, err := paginator.NextPage(ctx, withEcrPublicDescribeRetries)
 			if err != nil {
 				return nil, err
 			}
-
-			for _, r := range repoResp.Repositories {
-				mqlRepoResource, err := buildEcrPublicRepositoryResource(a.MqlRuntime, r)
-				if err != nil {
-					return nil, err
-				}
-				res = append(res, mqlRepoResource)
-			}
+			repos = append(repos, repoResp.Repositories...)
 		}
+	}
+
+	repos, tagsByArn := ecrRepositoriesMatchingTags(ctx, conn.Filters.General, repos,
+		func(r ecrpublic_types.Repository) string { return convert.ToValue(r.RepositoryArn) },
+		func(ctx context.Context, repoArn string) (map[string]string, error) {
+			return ecrPublicRepositoryTags(ctx, svc, repoArn)
+		})
+	for _, r := range repos {
+		mqlRepoResource, err := buildEcrPublicRepositoryResource(a.MqlRuntime, r, tagsByArn[convert.ToValue(r.RepositoryArn)])
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlRepoResource)
 	}
 
 	return res, nil
 }
 
-func buildEcrPrivateRepositoryResource(runtime *plugin.Runtime, region string, r ecrtypes.Repository) (*mqlAwsEcrRepository, error) {
+// buildEcrPrivateRepositoryResource creates the repository resource. tags is the
+// repository's tag set when the lister already read it, nil otherwise; only a
+// set that was read is seeded, so an unread one stays with the tags accessor.
+func buildEcrPrivateRepositoryResource(runtime *plugin.Runtime, region string, r ecrtypes.Repository, tags map[string]string) (*mqlAwsEcrRepository, error) {
 	imageScanOnPush := false
 	if r.ImageScanningConfiguration != nil {
 		imageScanOnPush = r.ImageScanningConfiguration.ScanOnPush
@@ -597,19 +803,22 @@ func buildEcrPrivateRepositoryResource(runtime *plugin.Runtime, region string, r
 		encryptionType = string(r.EncryptionConfiguration.EncryptionType)
 		kmsKeyArn = r.EncryptionConfiguration.KmsKey
 	}
-	mqlRepoResource, err := CreateResource(runtime, ResourceAwsEcrRepository,
-		map[string]*llx.RawData{
-			"arn":                llx.StringDataPtr(r.RepositoryArn),
-			"name":               llx.StringDataPtr(r.RepositoryName),
-			"uri":                llx.StringDataPtr(r.RepositoryUri),
-			"registryId":         llx.StringDataPtr(r.RegistryId),
-			"public":             llx.BoolData(false),
-			"region":             llx.StringData(region),
-			"imageScanOnPush":    llx.BoolData(imageScanOnPush),
-			"imageTagMutability": llx.StringData(string(r.ImageTagMutability)),
-			"encryptionType":     llx.StringData(encryptionType),
-			"createdAt":          llx.TimeDataPtr(r.CreatedAt),
-		})
+	args := map[string]*llx.RawData{
+		"arn":                llx.StringDataPtr(r.RepositoryArn),
+		"name":               llx.StringDataPtr(r.RepositoryName),
+		"uri":                llx.StringDataPtr(r.RepositoryUri),
+		"registryId":         llx.StringDataPtr(r.RegistryId),
+		"public":             llx.BoolData(false),
+		"region":             llx.StringData(region),
+		"imageScanOnPush":    llx.BoolData(imageScanOnPush),
+		"imageTagMutability": llx.StringData(string(r.ImageTagMutability)),
+		"encryptionType":     llx.StringData(encryptionType),
+		"createdAt":          llx.TimeDataPtr(r.CreatedAt),
+	}
+	if tags != nil {
+		args["tags"] = llx.MapData(stringMapToAny(tags), types.String)
+	}
+	mqlRepoResource, err := CreateResource(runtime, ResourceAwsEcrRepository, args)
 	if err != nil {
 		return nil, err
 	}
@@ -618,23 +827,31 @@ func buildEcrPrivateRepositoryResource(runtime *plugin.Runtime, region string, r
 	return res, nil
 }
 
-func buildEcrPublicRepositoryResource(runtime *plugin.Runtime, r ecrpublic_types.Repository) (*mqlAwsEcrRepository, error) {
-	mqlRepoResource, err := CreateResource(runtime, ResourceAwsEcrRepository,
-		map[string]*llx.RawData{
-			"arn":        llx.StringDataPtr(r.RepositoryArn),
-			"name":       llx.StringDataPtr(r.RepositoryName),
-			"uri":        llx.StringDataPtr(r.RepositoryUri),
-			"registryId": llx.StringDataPtr(r.RegistryId),
-			"public":     llx.BoolData(true),
-			"region":     llx.StringData("us-east-1"),
-			// Public ECR does not support scan-on-push, uses immutable tags,
-			// and always uses AES256 encryption. These are platform-enforced
-			// defaults (not returned by the public ECR DescribeRepositories API).
-			"imageScanOnPush":    llx.BoolData(false),
-			"imageTagMutability": llx.StringData("IMMUTABLE"),
-			"encryptionType":     llx.StringData("AES256"),
-			"createdAt":          llx.TimeDataPtr(r.CreatedAt),
-		})
+// buildEcrPublicRepositoryResource creates the public repository resource,
+// seeding tags like buildEcrPrivateRepositoryResource.
+func buildEcrPublicRepositoryResource(runtime *plugin.Runtime, r ecrpublic_types.Repository, tags map[string]string) (*mqlAwsEcrRepository, error) {
+	args := map[string]*llx.RawData{
+		"arn":        llx.StringDataPtr(r.RepositoryArn),
+		"name":       llx.StringDataPtr(r.RepositoryName),
+		"uri":        llx.StringDataPtr(r.RepositoryUri),
+		"registryId": llx.StringDataPtr(r.RegistryId),
+		"public":     llx.BoolData(true),
+		"region":     llx.StringData("us-east-1"),
+		// None of these three are returned by the public ECR API --
+		// ecrpublic's Repository carries only CreatedAt, RegistryId,
+		// RepositoryArn, RepositoryName and RepositoryUri. Nothing was
+		// read, so nothing is asserted: a fabricated value reads in a
+		// report exactly like a measured one, whichever way it happens to
+		// fall. Report them as unknown instead.
+		"imageScanOnPush":    llx.NilData,
+		"imageTagMutability": llx.NilData,
+		"encryptionType":     llx.NilData,
+		"createdAt":          llx.TimeDataPtr(r.CreatedAt),
+	}
+	if tags != nil {
+		args["tags"] = llx.MapData(stringMapToAny(tags), types.String)
+	}
+	mqlRepoResource, err := CreateResource(runtime, ResourceAwsEcrRepository, args)
 	if err != nil {
 		return nil, err
 	}
@@ -646,6 +863,27 @@ type mqlAwsEcrRepositoryInternal struct {
 	catalogData    *ecrpublic_types.RepositoryCatalogData
 	catalogLock    sync.Mutex
 	cacheKmsKeyArn *string
+	// policyUnreadable separates a policy that could not be read from one that
+	// was read and found absent. Both leave the policy field null, but only the
+	// first must stop policyStatements and isPublic from reporting that the
+	// repository grants nothing.
+	policyUnreadable bool
+}
+
+// markPolicyUnreadable records a repository policy the scan was not allowed to
+// read. Nothing is known about what it grants, so downstream fields report null
+// rather than an empty statement list.
+func (a *mqlAwsEcrRepository) markPolicyUnreadable() (any, error) {
+	a.policyUnreadable = true
+	a.Policy.State = plugin.StateIsNull | plugin.StateIsSet
+	return nil, nil
+}
+
+// markPolicyAbsent records a repository that genuinely carries no policy. The
+// read succeeded, so isPublic can honestly report false.
+func (a *mqlAwsEcrRepository) markPolicyAbsent() (any, error) {
+	a.Policy.State = plugin.StateIsNull | plugin.StateIsSet
+	return nil, nil
 }
 
 func (a *mqlAwsEcrRepository) kmsKey() (*mqlAwsKmsKey, error) {
@@ -739,30 +977,25 @@ func (a *mqlAwsEcrRepository) architectures() ([]any, error) {
 }
 
 func (a *mqlAwsEcrRepository) tags() (map[string]any, error) {
-	if a.Public.Data {
-		return nil, nil
-	}
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.Ecr(a.Region.Data)
 	ctx := context.Background()
-	arnVal := a.Arn.Data
 
-	resp, err := svc.ListTagsForResource(ctx, &ecr.ListTagsForResourceInput{
-		ResourceArn: &arnVal,
-	})
+	var tags map[string]string
+	var err error
+	if a.Public.Data {
+		// ECR Public repositories are tagged like any other resource, and
+		// managedBy and cloudformationStack are derived from those tags.
+		tags, err = ecrPublicRepositoryTags(ctx, conn.EcrPublic("us-east-1"), a.Arn.Data) // only supported for us-east-1
+	} else {
+		tags, err = ecrPrivateRepositoryTags(ctx, conn.Ecr(a.Region.Data), a.Arn.Data)
+	}
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return nil, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
-	tags := make(map[string]any)
-	for _, t := range resp.Tags {
-		if t.Key != nil && t.Value != nil {
-			tags[*t.Key] = *t.Value
-		}
-	}
-	return tags, nil
+	return stringMapToAny(tags), nil
 }
 
 // ==================== ECR Image Scan Findings ====================
@@ -900,6 +1133,9 @@ func (a *mqlAwsEcrImageScanFinding) id() (string, error) {
 
 // ==================== ECR Registry Scanning Configuration ====================
 
+// scanningConfiguration is the registry scanning configuration of the
+// connection's region. The configuration is set per region; see
+// aws.ecr.registry.scanningConfiguration for every enabled region.
 func (a *mqlAwsEcr) scanningConfiguration() (*mqlAwsEcrScanningConfiguration, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	svc := conn.Ecr("")
@@ -913,10 +1149,25 @@ func (a *mqlAwsEcr) scanningConfiguration() (*mqlAwsEcrScanningConfiguration, er
 		}
 		return nil, err
 	}
-	if resp.ScanningConfiguration == nil {
+	res, err := newMqlEcrScanningConfiguration(a.MqlRuntime, conn.Region(), resp)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
 		a.ScanningConfiguration.State = plugin.StateIsNull | plugin.StateIsSet
+	}
+	return res, nil
+}
+
+// newMqlEcrScanningConfiguration creates the scanning configuration of the
+// registry in one region. It returns nil when the response carries no
+// configuration.
+func newMqlEcrScanningConfiguration(runtime *plugin.Runtime, region string, resp *ecr.GetRegistryScanningConfigurationOutput) (*mqlAwsEcrScanningConfiguration, error) {
+	if resp == nil || resp.ScanningConfiguration == nil {
 		return nil, nil
 	}
+	registryID := convert.ToValue(resp.RegistryId)
+	id := "aws.ecr.scanningConfiguration/" + region + "/" + registryID
 
 	rules := make([]any, 0, len(resp.ScanningConfiguration.Rules))
 	for i, rule := range resp.ScanningConfiguration.Rules {
@@ -928,9 +1179,9 @@ func (a *mqlAwsEcr) scanningConfiguration() (*mqlAwsEcrScanningConfiguration, er
 			})
 		}
 
-		mqlRule, err := CreateResource(a.MqlRuntime, "aws.ecr.scanningConfiguration.rule",
+		mqlRule, err := CreateResource(runtime, ResourceAwsEcrScanningConfigurationRule,
 			map[string]*llx.RawData{
-				"__id":              llx.StringData(fmt.Sprintf("aws.ecr.scanningConfiguration.rule/%d", i)),
+				"__id":              llx.StringData(fmt.Sprintf("%s/rule/%d", id, i)),
 				"scanFrequency":     llx.StringData(string(rule.ScanFrequency)),
 				"repositoryFilters": llx.ArrayData(filters, types.Dict),
 			})
@@ -940,11 +1191,13 @@ func (a *mqlAwsEcr) scanningConfiguration() (*mqlAwsEcrScanningConfiguration, er
 		rules = append(rules, mqlRule)
 	}
 
-	mqlConfig, err := CreateResource(a.MqlRuntime, "aws.ecr.scanningConfiguration",
+	mqlConfig, err := CreateResource(runtime, ResourceAwsEcrScanningConfiguration,
 		map[string]*llx.RawData{
-			"__id":     llx.StringData("aws.ecr.scanningConfiguration"),
-			"scanType": llx.StringData(string(resp.ScanningConfiguration.ScanType)),
-			"rules":    llx.ArrayData(rules, types.Resource("aws.ecr.scanningConfiguration.rule")),
+			"__id":       llx.StringData(id),
+			"region":     llx.StringData(region),
+			"registryId": llx.StringData(registryID),
+			"scanType":   llx.StringData(string(resp.ScanningConfiguration.ScanType)),
+			"rules":      llx.ArrayData(rules, types.Resource(ResourceAwsEcrScanningConfigurationRule)),
 		})
 	if err != nil {
 		return nil, err
@@ -953,7 +1206,7 @@ func (a *mqlAwsEcr) scanningConfiguration() (*mqlAwsEcrScanningConfiguration, er
 }
 
 func (a *mqlAwsEcrScanningConfiguration) id() (string, error) {
-	return "aws.ecr.scanningConfiguration", nil
+	return a.__id, nil
 }
 
 func (a *mqlAwsEcrScanningConfigurationRule) id() (string, error) {
@@ -966,14 +1219,17 @@ func initAwsEcrRepository(runtime *plugin.Runtime, args map[string]*llx.RawData)
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformEcrRepository); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
 	if args["arn"] == nil && args["name"] == nil {
 		return nil, nil, errors.New("arn or name required to fetch ecr repository")
+	}
+
+	if cached := cachedArgByArn(runtime, ResourceAwsEcrRepository, args); cached != nil {
+		return args, cached, nil
 	}
 
 	// When an ARN is supplied, the registry kind (private vs public), region,
@@ -999,7 +1255,7 @@ func initAwsEcrRepository(runtime *plugin.Runtime, args map[string]*llx.RawData)
 						return nil, nil, err
 					}
 				} else if len(resp.Repositories) > 0 {
-					r, err := buildEcrPublicRepositoryResource(runtime, resp.Repositories[0])
+					r, err := buildEcrPublicRepositoryResource(runtime, resp.Repositories[0], nil)
 					if err != nil {
 						return nil, nil, err
 					}
@@ -1017,7 +1273,7 @@ func initAwsEcrRepository(runtime *plugin.Runtime, args map[string]*llx.RawData)
 						return nil, nil, err
 					}
 				} else if len(resp.Repositories) > 0 {
-					r, err := buildEcrPrivateRepositoryResource(runtime, parsed.Region, resp.Repositories[0])
+					r, err := buildEcrPrivateRepositoryResource(runtime, parsed.Region, resp.Repositories[0], nil)
 					if err != nil {
 						return nil, nil, err
 					}

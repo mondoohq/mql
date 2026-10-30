@@ -6,17 +6,19 @@ package resources
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/directoryservice"
 	dstypes "github.com/aws/aws-sdk-go-v2/service/directoryservice/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsDirectoryservice) id() (string, error) {
@@ -38,6 +40,49 @@ func (a *mqlAwsDirectoryservice) directories() ([]any, error) {
 		}
 	}
 	return res, nil
+}
+
+// initAwsDirectoryserviceDirectory resolves a single Directory Service
+// directory. When invoked for a discovered asset
+// (aws-directoryservice-directory platform), no args are passed, so the
+// directory id is derived from the synthetic directory ARN carried by the
+// connection's asset identifier and used to select the matching directory
+// from the parent collection.
+func initAwsDirectoryserviceDirectory(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	if len(args) == 0 {
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformDirectoryserviceDirectory); assetArn != "" {
+			if parsed, err := arn.Parse(assetArn); err == nil {
+				args["directoryId"] = llx.StringData(strings.TrimPrefix(parsed.Resource, "directory/"))
+			}
+		}
+	}
+	if args["directoryId"] == nil {
+		return args, nil, fmt.Errorf("directoryId required to fetch directory service directory")
+	}
+
+	obj, err := CreateResource(runtime, "aws.directoryservice", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, nil, err
+	}
+	dirs := obj.(*mqlAwsDirectoryservice).GetDirectories()
+	if dirs.Error != nil {
+		return nil, nil, dirs.Error
+	}
+
+	wantId := args["directoryId"].Value.(string)
+	for _, r := range dirs.Data {
+		d := r.(*mqlAwsDirectoryserviceDirectory)
+		if d.DirectoryId.Data == wantId {
+			return args, d, nil
+		}
+	}
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.directoryservice.directory with id %q not found", wantId)
 }
 
 func (a *mqlAwsDirectoryservice) getDirectories(conn *connection.AwsConnection) []*jobpool.Job {
@@ -132,6 +177,19 @@ func (a *mqlAwsDirectoryserviceDirectory) id() (string, error) {
 	return "aws.directoryservice.directory/" + a.Region.Data + "/" + a.DirectoryId.Data, nil
 }
 
+// directoryServiceDirectoryArn synthesizes the canonical Directory Service
+// directory ARN. The DescribeDirectories API does not return an ARN, so it is
+// built from the region, account, and directory id. Keep this in sync with the
+// discovered asset's platform id (see discovery.go).
+func directoryServiceDirectoryArn(region, accountID, directoryID string) string {
+	return fmt.Sprintf("arn:aws:ds:%s:%s:directory/%s", region, accountID, directoryID)
+}
+
+func (a *mqlAwsDirectoryserviceDirectory) arn() (string, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return directoryServiceDirectoryArn(a.Region.Data, conn.AccountId(), a.DirectoryId.Data), nil
+}
+
 func (a *mqlAwsDirectoryserviceDirectory) tags() (map[string]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	svc := conn.DirectoryService(a.Region.Data)
@@ -195,14 +253,14 @@ func (a *mqlAwsDirectoryserviceDirectory) vpcSettings() (*mqlAwsDirectoryservice
 	resource, err := CreateResource(a.MqlRuntime, "aws.directoryservice.vpcSettings",
 		map[string]*llx.RawData{
 			"__id":              llx.StringData("aws.directoryservice.vpcSettings/" + region + "/" + dirId),
-			"vpcId":             llx.StringDataPtr(vs.VpcId),
-			"securityGroupId":   llx.StringDataPtr(vs.SecurityGroupId),
-			"subnetIds":         llx.ArrayData(toInterfaceArr(vs.SubnetIds), types.String),
 			"availabilityZones": llx.ArrayData(toInterfaceArr(vs.AvailabilityZones), types.String),
 		})
 	if err != nil {
 		return nil, err
 	}
+	resource.(*mqlAwsDirectoryserviceVpcSettings).cacheVpcId = convert.ToValue(vs.VpcId)
+	resource.(*mqlAwsDirectoryserviceVpcSettings).cacheSecurityGroupId = convert.ToValue(vs.SecurityGroupId)
+	resource.(*mqlAwsDirectoryserviceVpcSettings).cacheSubnetIds = toInterfaceArr(vs.SubnetIds)
 	cast := resource.(*mqlAwsDirectoryserviceVpcSettings)
 	cast.cacheRegion = region
 	return cast, nil
@@ -213,11 +271,14 @@ func (a *mqlAwsDirectoryserviceVpcSettings) id() (string, error) {
 }
 
 type mqlAwsDirectoryserviceVpcSettingsInternal struct {
-	cacheRegion string
+	cacheVpcId           string
+	cacheSecurityGroupId string
+	cacheSubnetIds       []any
+	cacheRegion          string
 }
 
 func (a *mqlAwsDirectoryserviceVpcSettings) vpc() (*mqlAwsVpc, error) {
-	vpcId := a.VpcId.Data
+	vpcId := a.cacheVpcId
 	if vpcId == "" {
 		a.Vpc.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -232,7 +293,7 @@ func (a *mqlAwsDirectoryserviceVpcSettings) vpc() (*mqlAwsVpc, error) {
 }
 
 func (a *mqlAwsDirectoryserviceVpcSettings) securityGroup() (*mqlAwsEc2Securitygroup, error) {
-	sgId := a.SecurityGroupId.Data
+	sgId := a.cacheSecurityGroupId
 	if sgId == "" {
 		a.SecurityGroup.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -247,7 +308,7 @@ func (a *mqlAwsDirectoryserviceVpcSettings) securityGroup() (*mqlAwsEc2Securityg
 }
 
 func (a *mqlAwsDirectoryserviceVpcSettings) subnets() ([]any, error) {
-	subnetIds := a.SubnetIds.Data
+	subnetIds := a.cacheSubnetIds
 	if len(subnetIds) == 0 {
 		return nil, nil
 	}
@@ -280,9 +341,6 @@ func (a *mqlAwsDirectoryserviceDirectory) connectSettings() (*mqlAwsDirectoryser
 	resource, err := CreateResource(a.MqlRuntime, "aws.directoryservice.connectSettings",
 		map[string]*llx.RawData{
 			"__id":              llx.StringData("aws.directoryservice.connectSettings/" + region + "/" + dirId),
-			"vpcId":             llx.StringDataPtr(cs.VpcId),
-			"securityGroupId":   llx.StringDataPtr(cs.SecurityGroupId),
-			"subnetIds":         llx.ArrayData(toInterfaceArr(cs.SubnetIds), types.String),
 			"availabilityZones": llx.ArrayData(toInterfaceArr(cs.AvailabilityZones), types.String),
 			"connectIps":        llx.ArrayData(toInterfaceArr(cs.ConnectIps), types.String),
 			"customerUserName":  llx.StringDataPtr(cs.CustomerUserName),
@@ -290,6 +348,9 @@ func (a *mqlAwsDirectoryserviceDirectory) connectSettings() (*mqlAwsDirectoryser
 	if err != nil {
 		return nil, err
 	}
+	resource.(*mqlAwsDirectoryserviceConnectSettings).cacheVpcId = convert.ToValue(cs.VpcId)
+	resource.(*mqlAwsDirectoryserviceConnectSettings).cacheSecurityGroupId = convert.ToValue(cs.SecurityGroupId)
+	resource.(*mqlAwsDirectoryserviceConnectSettings).cacheSubnetIds = toInterfaceArr(cs.SubnetIds)
 	csCast := resource.(*mqlAwsDirectoryserviceConnectSettings)
 	csCast.cacheRegion = region
 	return csCast, nil
@@ -300,11 +361,14 @@ func (a *mqlAwsDirectoryserviceConnectSettings) id() (string, error) {
 }
 
 type mqlAwsDirectoryserviceConnectSettingsInternal struct {
-	cacheRegion string
+	cacheVpcId           string
+	cacheSecurityGroupId string
+	cacheSubnetIds       []any
+	cacheRegion          string
 }
 
 func (a *mqlAwsDirectoryserviceConnectSettings) vpc() (*mqlAwsVpc, error) {
-	vpcId := a.VpcId.Data
+	vpcId := a.cacheVpcId
 	if vpcId == "" {
 		a.Vpc.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -319,7 +383,7 @@ func (a *mqlAwsDirectoryserviceConnectSettings) vpc() (*mqlAwsVpc, error) {
 }
 
 func (a *mqlAwsDirectoryserviceConnectSettings) securityGroup() (*mqlAwsEc2Securitygroup, error) {
-	sgId := a.SecurityGroupId.Data
+	sgId := a.cacheSecurityGroupId
 	if sgId == "" {
 		a.SecurityGroup.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -334,7 +398,7 @@ func (a *mqlAwsDirectoryserviceConnectSettings) securityGroup() (*mqlAwsEc2Secur
 }
 
 func (a *mqlAwsDirectoryserviceConnectSettings) subnets() ([]any, error) {
-	subnetIds := a.SubnetIds.Data
+	subnetIds := a.cacheSubnetIds
 	if len(subnetIds) == 0 {
 		return nil, nil
 	}

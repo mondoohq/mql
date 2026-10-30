@@ -1,13 +1,17 @@
 # IPinfo Provider
 
-```shell
-mql shell ipinfo
-```
+## Authentication
 
 For authentication, you can use the `IPINFO_TOKEN` environment variable.
 
 ```shell
 export IPINFO_TOKEN="<token>"
+```
+
+## Usage
+
+```shell
+mql shell ipinfo
 ```
 
 ## Examples

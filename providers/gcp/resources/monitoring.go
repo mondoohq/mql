@@ -8,17 +8,17 @@ import (
 	"errors"
 	"fmt"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 
-	kms "cloud.google.com/go/kms/apiv1"
 	monitoring "cloud.google.com/go/monitoring/apiv3/v2"
 	monitoringpb "cloud.google.com/go/monitoring/apiv3/v2/monitoringpb"
 	dashboard "cloud.google.com/go/monitoring/dashboard/apiv1"
 	"cloud.google.com/go/monitoring/dashboard/apiv1/dashboardpb"
-	"go.mondoo.com/mql/v13/llx"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
 	"google.golang.org/api/iterator"
 	monitoringv3 "google.golang.org/api/monitoring/v3"
 	"google.golang.org/api/option"
@@ -73,6 +73,10 @@ func initGcpProjectMonitoringService(runtime *plugin.Runtime, args map[string]*l
 	return args, nil, nil
 }
 
+type mqlGcpProjectMonitoringServiceInternal struct {
+	serviceGate
+}
+
 func (g *mqlGcpProject) monitoring() (*mqlGcpProjectMonitoringService, error) {
 	if g.Id.Error != nil {
 		return nil, g.Id.Error
@@ -85,7 +89,24 @@ func (g *mqlGcpProject) monitoring() (*mqlGcpProjectMonitoringService, error) {
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlGcpProjectMonitoringService), nil
+
+	serviceEnabled, err := g.isServiceEnabled(service_monitoring)
+	if err != nil {
+		return nil, err
+	}
+
+	svc := res.(*mqlGcpProjectMonitoringService)
+	svc.recordEnabled(serviceEnabled)
+	if !serviceEnabled {
+		log.Debug().Str("service", service_monitoring).Msg("gcp service is not enabled, skipping")
+	}
+
+	return svc, nil
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectMonitoringService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_monitoring)
 }
 
 func (g *mqlGcpProjectMonitoringServiceAlertPolicy) id() (string, error) {
@@ -134,6 +155,14 @@ func (g *mqlGcpProjectMonitoringServiceAlertPolicy) notificationChannels() ([]an
 }
 
 func (g *mqlGcpProjectMonitoringService) alertPolicies() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -141,7 +170,7 @@ func (g *mqlGcpProjectMonitoringService) alertPolicies() ([]any, error) {
 
 	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
 
-	creds, err := conn.Credentials(kms.DefaultAuthScopes()...)
+	creds, err := conn.Credentials(monitoring.DefaultAuthScopes()...)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +228,7 @@ func (g *mqlGcpProjectMonitoringService) alertPolicies() ([]any, error) {
 			if matchedLog := c.GetConditionMatchedLog(); matchedLog != nil {
 				mqlMatchedLog = map[string]any{
 					"filter":          matchedLog.Filter,
-					"labelExtractors": matchedLog.LabelExtractors,
+					"labelExtractors": convert.MapToInterfaceMap(matchedLog.LabelExtractors),
 				}
 			}
 
@@ -225,7 +254,7 @@ func (g *mqlGcpProjectMonitoringService) alertPolicies() ([]any, error) {
 		var mqlValidity any
 		if p.Validity != nil {
 			mqlValidity = map[string]any{
-				"code":    p.Validity.Code,
+				"code":    int64(p.Validity.Code),
 				"message": p.Validity.Message,
 			}
 		}
@@ -256,7 +285,7 @@ func (g *mqlGcpProjectMonitoringService) alertPolicies() ([]any, error) {
 			"labels":                  llx.MapData(convert.MapToInterfaceMap(p.UserLabels), types.String),
 			"conditions":              llx.ArrayData(mqlConditions, types.Dict),
 			"combiner":                llx.StringData(p.Combiner.String()),
-			"enabled":                 llx.BoolData(p.Enabled.Value),
+			"enabled":                 llx.BoolData(p.Enabled.GetValue()),
 			"validity":                llx.DictData(mqlValidity),
 			"notificationChannelUrls": llx.ArrayData(convert.SliceAnyToInterface(p.NotificationChannels), types.String),
 			"created":                 mutationRecordTime(p.CreationRecord),
@@ -282,6 +311,14 @@ func (g *mqlGcpProjectMonitoringServiceUptimeCheckConfig) id() (string, error) {
 }
 
 func (g *mqlGcpProjectMonitoringService) uptimeCheckConfigs() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -375,6 +412,14 @@ func (g *mqlGcpProjectMonitoringServiceNotificationChannel) id() (string, error)
 }
 
 func (g *mqlGcpProjectMonitoringService) notificationChannels() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -434,6 +479,14 @@ func (g *mqlGcpProjectMonitoringServiceGroup) id() (string, error) {
 }
 
 func (g *mqlGcpProjectMonitoringService) groups() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -481,6 +534,14 @@ func (g *mqlGcpProjectMonitoringService) groups() ([]any, error) {
 }
 
 func (g *mqlGcpProjectMonitoringService) dashboards() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -535,6 +596,7 @@ func (g *mqlGcpProjectMonitoringService) dashboards() ([]any, error) {
 			"displayName": llx.StringData(db.DisplayName),
 			"etag":        llx.StringData(db.Etag),
 			"layout":      llx.DictData(layout),
+			"labels":      llx.MapData(convert.MapToInterfaceMap(db.GetLabels()), types.String),
 		})
 		if err != nil {
 			return nil, err
@@ -556,6 +618,14 @@ func (g *mqlGcpProjectMonitoringServiceDashboard) id() (string, error) {
 }
 
 func (g *mqlGcpProjectMonitoringService) services() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -671,8 +741,11 @@ func (g *mqlGcpProjectMonitoringServiceService) slos() ([]any, error) {
 		}
 
 		var rollingPeriod, calendarPeriod string
-		if rp, ok := slo.Period.(*monitoringpb.ServiceLevelObjective_RollingPeriod); ok && rp.RollingPeriod != nil {
-			rollingPeriod = durationpb.New(rp.RollingPeriod.AsDuration()).String()
+		if rp, ok := slo.Period.(*monitoringpb.ServiceLevelObjective_RollingPeriod); ok {
+			// durationToString, not (*durationpb.Duration).String(): the latter
+			// is the generated proto stringer and renders protobuf TEXT
+			// ("seconds:2592000"). The .lr documents this field as "86400s".
+			rollingPeriod = durationToString(rp.RollingPeriod)
 		}
 		if cp, ok := slo.Period.(*monitoringpb.ServiceLevelObjective_CalendarPeriod); ok {
 			calendarPeriod = cp.CalendarPeriod.String()

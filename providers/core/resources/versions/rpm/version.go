@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//     https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,6 +20,7 @@ import (
 	"errors"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -187,7 +188,7 @@ func (p Parser) Compare(a, b string) (int, error) {
 //
 // Lifted from github.com/cavaliercoder/go-rpm.
 // For the original C implementation, see:
-// https://github.com/rpm-software-management/rpm/blob/master/lib/rpmvercmp.c#L16
+// https://github.com/rpm-software-management/rpm/blob/master/rpmio/rpmvercmp.cc
 func rpmvercmp(strA, strB string) int {
 	// shortcut for equality
 	if strA == strB {
@@ -200,7 +201,7 @@ func rpmvercmp(strA, strB string) int {
 	segs := int(math.Min(float64(len(segsa)), float64(len(segsb))))
 
 	// compare each segment
-	for i := 0; i < segs; i++ {
+	for i := range segs {
 		a := segsa[i]
 		b := segsb[i]
 
@@ -282,10 +283,5 @@ func validSymbol(r rune) bool {
 }
 
 func containsRune(s []rune, e rune) bool {
-	for _, a := range s {
-		if a == e {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s, e)
 }

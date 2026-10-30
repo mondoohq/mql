@@ -157,6 +157,8 @@ bicep.template.resource.location 13.0.0
 bicep.template.resource.manifest 13.0.0
 bicep.template.resource.name 13.0.0
 bicep.template.resource.properties 13.0.0
+bicep.template.resource.resources 13.4.13
+bicep.template.resource.tags 13.4.13
 bicep.template.resource.type 13.0.0
 bicep.template.resources 13.0.0
 bicep.template.schema 13.0.0
@@ -164,6 +166,7 @@ bicep.template.variable 13.1.2
 bicep.template.variable.name 13.1.2
 bicep.template.variable.value 13.1.2
 bicep.template.variables 13.0.0
+bicep.templates 13.4.13
 bicep.type 13.1.2
 bicep.type.decorators 13.1.2
 bicep.type.definition 13.1.2

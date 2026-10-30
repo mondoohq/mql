@@ -1,0 +1,10 @@
+{
+  "authenticatedUser": {
+    "id": "4d000000-0000-4000-8000-000000000001",
+    "providerDisplayName": "scan service principal",
+    "isActive": true
+  },
+  "instanceId": "5e000000-0000-4000-8000-000000000001",
+  "deploymentId": "6f000000-0000-4000-8000-000000000001",
+  "deploymentType": "hosted"
+}

@@ -4,7 +4,8 @@
 package local
 
 import (
-	"bytes"
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"runtime"
@@ -15,11 +16,12 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/connection/ssh/cat"
-	"go.mondoo.com/mql/v13/providers/os/registry"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/ssh/cat"
+	"go.mondoo.com/mql/providers/os/registry"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 type LocalConnection struct {
@@ -79,9 +81,30 @@ func NewConnection(id uint32, conf *inventory.Config, asset *inventory.Asset) *L
 		res.shell = []string{"powershell", "-c"}
 	} else {
 		res.shell = []string{"sh", "-c"}
+		err := res.resolveElevation(func(cmd string) (*shared.Command, error) {
+			return (&CommandRunner{Shell: res.shell}).Exec(cmd, []string{})
+		})
+		if err != nil {
+			log.Warn().Err(err).Msg("privilege elevation probe failed; commands fall back to sudo")
+		}
 	}
 
 	return &res
+}
+
+// resolveElevation picks sudo or doas when elevation is requested without a
+// configured executable. NewConnection cannot fail, so when neither is
+// installed the error is logged and the executable stays empty, which
+// BuildSudoCommand treats as sudo.
+func (p *LocalConnection) resolveElevation(run func(string) (*shared.Command, error)) error {
+	if p.Sudo == nil || !p.Sudo.Active {
+		return nil
+	}
+	if err := shared.ResolveElevation(p.Sudo, run); err != nil {
+		return err
+	}
+	log.Debug().Str("executable", p.Sudo.Executable).Msg("activated privilege elevation for local connection")
+	return nil
 }
 
 func (p *LocalConnection) Name() string {
@@ -105,6 +128,10 @@ func (p *LocalConnection) Capabilities() shared.Capabilities {
 }
 
 func (p *LocalConnection) RunCommand(command string) (*shared.Command, error) {
+	return p.RunCommandContext(context.Background(), command)
+}
+
+func (p *LocalConnection) RunCommandContext(ctx context.Context, command string) (*shared.Command, error) {
 	if p.Sudo != nil {
 		command = shared.BuildSudoCommand(p.Sudo, command)
 	}
@@ -112,7 +139,10 @@ func (p *LocalConnection) RunCommand(command string) (*shared.Command, error) {
 	c := &CommandRunner{Shell: p.shell}
 	args := []string{}
 
-	res, err := c.Exec(command, args)
+	res, err := c.ExecContext(ctx, command, args)
+	if err == nil {
+		powershell.DecodeStderr(res)
+	}
 	return res, err
 }
 
@@ -199,12 +229,29 @@ type CommandRunner struct {
 }
 
 func (c *CommandRunner) Exec(usercmd string, args []string) (*shared.Command, error) {
+	return c.ExecContext(context.Background(), usercmd, args)
+}
+
+func (c *CommandRunner) ExecContext(parent context.Context, usercmd string, args []string) (*shared.Command, error) {
+	ctx, cancel, err := shared.CommandContext(parent)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
 	c.Stats.Start = time.Now()
 
 	var cmd string
 	cmdArgs := []string{}
 
-	if len(c.Shell) > 0 {
+	// When the default shell is PowerShell and the command is already a
+	// self-contained PowerShell invocation (as produced by powershell.Encode /
+	// powershell.Wrap), run it directly. Otherwise it would be nested inside a
+	// second `powershell -c "..."`, spawning a redundant powershell.exe that
+	// endpoint protection flags as an encoded-command / LOLBIN-chain attack.
+	if argv, ok := unnestPowershell(c.Shell, usercmd); ok {
+		cmd = argv[0]
+		cmdArgs = append(cmdArgs, argv[1:]...)
+	} else if len(c.Shell) > 0 {
 		shellCommand, shellArgs := c.Shell[0], c.Shell[1:]
 		cmd = shellCommand
 		cmdArgs = append(cmdArgs, shellArgs...)
@@ -216,20 +263,46 @@ func (c *CommandRunner) Exec(usercmd string, args []string) (*shared.Command, er
 
 	// this only stores the user command, not the shell
 	c.Command.Command = usercmd + " " + strings.Join(args, " ")
-	c.cmdExecutor = exec.Command(cmd, cmdArgs...)
+	c.cmdExecutor = exec.CommandContext(ctx, cmd, cmdArgs...)
+	// A command's descendants may keep inherited output pipes open after its
+	// main process exits. Bound that drain as well as the process itself.
+	c.cmdExecutor.WaitDelay = time.Second
+	process, err := newCommandProcess(c.cmdExecutor)
+	if err != nil {
+		return nil, err
+	}
+	defer process.close()
 
-	var stdoutBuffer bytes.Buffer
-	var stderrBuffer bytes.Buffer
-
-	// create buffered stream
-	c.Stdout = &stdoutBuffer
-	c.Stderr = &stderrBuffer
+	output, err := shared.NewCommandOutput(cancel)
+	if err != nil {
+		return nil, err
+	}
+	c.Stdout = output.Stdout
+	c.Stderr = output.Stderr
 
 	c.cmdExecutor.Stdout = c.Stdout
 	c.cmdExecutor.Stderr = c.Stderr
 
-	err := c.cmdExecutor.Run()
+	err = c.cmdExecutor.Start()
+	if err == nil {
+		if err = process.started(); err != nil {
+			_ = c.cmdExecutor.Process.Kill()
+			_ = c.cmdExecutor.Wait()
+		} else {
+			err = c.cmdExecutor.Wait()
+		}
+	}
 	c.Stats.Duration = time.Since(c.Stats.Start)
+
+	if err := output.Error(); err != nil {
+		return &c.Command, err
+	}
+	if ctx.Err() != nil {
+		return &c.Command, ctx.Err()
+	}
+	if errors.Is(err, exec.ErrWaitDelay) {
+		return &c.Command, err
+	}
 
 	// command completed successfully, great :-)
 	if err == nil {
@@ -246,4 +319,21 @@ func (c *CommandRunner) Exec(usercmd string, args []string) (*shared.Command, er
 
 	// all other errors are real errors and not expected
 	return &c.Command, err
+}
+
+// unnestPowershell returns the argv to run usercmd directly, without wrapping
+// it in the shell, when both the shell and the command are PowerShell. This
+// avoids spawning powershell.exe inside powershell.exe. It only fires for the
+// PowerShell shell (Windows local default) so unix `sh -c` behavior and plain
+// commands (e.g. `hostname`) are untouched.
+func unnestPowershell(shell []string, usercmd string) ([]string, bool) {
+	if len(shell) == 0 {
+		return nil, false
+	}
+	switch strings.ToLower(shell[0]) {
+	case "powershell", "powershell.exe", "pwsh", "pwsh.exe":
+		return powershell.SplitInvocation(usercmd)
+	default:
+		return nil, false
+	}
 }

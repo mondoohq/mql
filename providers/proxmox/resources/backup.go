@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/proxmox/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/proxmox/connection"
 )
 
 type mqlProxmoxBackupJobInternal struct {
@@ -37,23 +37,23 @@ func (r *mqlProxmox) backupJobs() ([]any, error) {
 	for i, j := range jobs {
 		res, err := CreateResource(r.MqlRuntime, "proxmox.backup.job", map[string]*llx.RawData{
 			"id":               llx.StringData(j.ID),
-			"enabled":          llx.BoolData(j.Enabled != 0),
+			"enabled":          llx.BoolData(j.IsEnabled()),
 			"schedule":         llx.StringData(j.Schedule),
 			"storage":          llx.StringData(j.Storage),
 			"mode":             llx.StringData(j.Mode),
 			"comment":          llx.StringData(j.Comment),
 			"vmids":            llx.StringData(j.VMID),
 			"pool":             llx.StringData(j.Pool),
-			"all":              llx.BoolData(j.All != 0),
+			"all":              llx.BoolData(j.All.Bool()),
 			"exclude":          llx.StringData(j.Exclude),
 			"compress":         llx.StringData(j.Compress),
 			"mailto":           llx.StringData(j.Mailto),
 			"notificationMode": llx.StringData(j.NotificationMode),
 			"node":             llx.StringData(j.Node),
-			"prune":            llx.StringData(j.Prune),
-			"fleecing":         llx.StringData(j.Fleecing),
+			"prune":            llx.StringData(string(j.Prune)),
+			"fleecing":         llx.StringData(string(j.Fleecing)),
 			"notesTemplate":    llx.StringData(j.NotesTemplate),
-			"protected":        llx.BoolData(j.Protected != 0),
+			"protected":        llx.BoolData(j.Protected.Bool()),
 			"nextRun":          llx.IntData(j.NextRun),
 		})
 		if err != nil {
@@ -108,6 +108,28 @@ func parseBackupVMIDs(raw string) []int64 {
 	return out
 }
 
+// backupSelection is the guest selection of one backup job, applied the way
+// vzdump applies it: `all` takes every guest except those in `exclude`, an
+// explicit `vmid` list takes exactly those guests, and a `node` restriction
+// means the job only runs on that node, so only guests placed there are
+// backed up.
+type backupSelection struct {
+	all     bool
+	node    string
+	want    map[int64]bool
+	exclude map[int64]bool
+}
+
+func (s backupSelection) selects(vmid int64, node string) bool {
+	if s.node != "" && node != s.node {
+		return false
+	}
+	if s.all {
+		return !s.exclude[vmid]
+	}
+	return s.want[vmid]
+}
+
 // resolveBackupTargets walks the cluster inventory once and returns the
 // VMs and containers selected by the job. `all` selects everything; a
 // non-empty `vmids` list selects only the matching guests. Results
@@ -128,18 +150,19 @@ func (r *mqlProxmoxBackupJob) resolveBackupTargetsUncached() (vms, containers []
 		// can branch on `pool != ""` separately.
 		return nil, nil, nil
 	}
-	wantSet := make(map[int64]struct{}, len(wanted))
+	sel := backupSelection{all: all, node: r.Node.Data, want: map[int64]bool{}, exclude: map[int64]bool{}}
 	for _, id := range wanted {
-		wantSet[id] = struct{}{}
+		sel.want[id] = true
+	}
+	for _, id := range parseBackupVMIDs(r.Exclude.Data) {
+		sel.exclude[id] = true
 	}
 
 	allVMs, vmErr := conn.GetAllVMs()
 	if vmErr == nil {
 		for _, vm := range allVMs {
-			if !all {
-				if _, ok := wantSet[int64(vm.VMID)]; !ok {
-					continue
-				}
+			if !sel.selects(int64(vm.VMID), vm.Node) {
+				continue
 			}
 			ref, err := NewResource(r.MqlRuntime, "proxmox.vm", map[string]*llx.RawData{
 				"id": llx.IntData(int64(vm.VMID)),
@@ -153,10 +176,8 @@ func (r *mqlProxmoxBackupJob) resolveBackupTargetsUncached() (vms, containers []
 	allCT, ctErr := conn.GetAllContainers()
 	if ctErr == nil {
 		for _, ct := range allCT {
-			if !all {
-				if _, ok := wantSet[int64(ct.VMID)]; !ok {
-					continue
-				}
+			if !sel.selects(int64(ct.VMID), ct.Node) {
+				continue
 			}
 			ref, err := NewResource(r.MqlRuntime, "proxmox.container", map[string]*llx.RawData{
 				"id": llx.IntData(int64(ct.VMID)),

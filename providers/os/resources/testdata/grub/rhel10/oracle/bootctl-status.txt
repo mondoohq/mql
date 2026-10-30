@@ -1,0 +1,30 @@
+systemd-boot not installed in ESP.
+System:
+      Firmware: n/a (n/a)
+ Firmware Arch: x64
+   Secure Boot: disabled (unknown)
+  TPM2 Support: no
+  Measured UKI: no
+  Boot into FW: supported
+
+Random Seed:
+ System Token: not set
+       Exists: no
+
+Available Boot Loaders on ESP:
+          ESP: /boot/efi (/dev/disk/by-partuuid/1b98ac8b-8b46-4906-86f9-3915e9952578)
+         File: ├─/EFI/BOOT/BOOTX64.EFI
+               └─/EFI/BOOT/fbx64.efi
+
+Boot Loaders Listed in EFI Variables:
+        Title: redhat
+           ID: 0x0002
+       Status: active, boot-order
+    Partition: /dev/disk/by-partuuid/1b98ac8b-8b46-4906-86f9-3915e9952578
+         File: └─/EFI/redhat/shimx64.efi
+
+Boot Loader Entries:
+        $BOOT: /boot/efi (/dev/disk/by-partuuid/1b98ac8b-8b46-4906-86f9-3915e9952578)
+        token: rhel
+
+0 entries, no entry could be determined as default.

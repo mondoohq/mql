@@ -10,7 +10,16 @@ import (
 	"strings"
 )
 
-const QUERY_OPTIONAL_FEATURES = "Get-WindowsOptionalFeature -Online -FeatureName * | Select-Object -Property FeatureName,DisplayName,Description,State | ConvertTo-Json"
+// QUERY_OPTIONAL_FEATURES lists every optional feature with its state. Without
+// -FeatureName, DISM answers from the feature list alone; the display name and
+// description are not part of that list, they require a per-feature image query
+// (see QUERY_OPTIONAL_FEATURE_DETAILS).
+const QUERY_OPTIONAL_FEATURES = "Get-WindowsOptionalFeature -Online | Select-Object -Property FeatureName,State | ConvertTo-Json"
+
+// QUERY_OPTIONAL_FEATURE_DETAILS is the expensive form: -FeatureName makes DISM
+// look up detailed information for every feature it matches, which is why it is
+// only used to back the lazily loaded display name and description fields.
+const QUERY_OPTIONAL_FEATURE_DETAILS = "Get-WindowsOptionalFeature -Online -FeatureName * | Select-Object -Property FeatureName,DisplayName,Description,State | ConvertTo-Json"
 
 // OptionalFeatureQuery builds a PowerShell command that retrieves a single
 // optional feature by name, which is much cheaper than enumerating the whole

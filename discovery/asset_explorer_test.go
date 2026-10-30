@@ -8,21 +8,24 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/cli/config"
-	inventory "go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/cli/config"
+	"go.mondoo.com/mql/providers"
+	inventory "go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // TestMergeConnectionFeatures verifies that connection features are the union of
 // the local cli/config.Features global and caller-supplied (server-activated)
-// features — so a feature present only on the context (e.g. TerraformResolveVars
-// from GetScanParameters) still reaches the provider connection.
+// features — so a feature present only on the context (e.g. one activated
+// upstream and returned by GetScanParameters) still reaches the provider
+// connection.
 func TestMergeConnectionFeatures(t *testing.T) {
 	saved := config.Features
 	t.Cleanup(func() { config.Features = saved })
 	config.Features = []byte{7, 9} // local config features
 
 	t.Run("adds server features on top of local ones", func(t *testing.T) {
-		got := mergeConnectionFeatures([]byte{17}) // TerraformResolveVars from server
+		got := mergeConnectionFeatures([]byte{17}) // server-activated feature
 		assert.ElementsMatch(t, []byte{7, 9, 17}, got)
 	})
 
@@ -38,8 +41,17 @@ func TestMergeConnectionFeatures(t *testing.T) {
 }
 
 func newTestExplorer(assets ...*TrackedAsset) *AssetExplorer {
+	seen := make(map[string]struct{})
+	for _, a := range assets {
+		if a.Asset != nil {
+			for _, id := range a.Asset.PlatformIds {
+				seen[id] = struct{}{}
+			}
+		}
+	}
 	return &AssetExplorer{
-		allAssets: assets,
+		allAssets:       assets,
+		seenPlatformIDs: seen,
 	}
 }
 
@@ -81,17 +93,29 @@ func TestAssetExplorerConnected(t *testing.T) {
 
 func TestAssetExplorerCloseAsset(t *testing.T) {
 	t.Run("close connected asset", func(t *testing.T) {
-		asset := &TrackedAsset{
-			Asset: &inventory.Asset{Name: "root"},
+		child := &TrackedAsset{
+			Asset: &inventory.Asset{Name: "child"},
+			State: AssetDiscovered,
+		}
+		parent := &TrackedAsset{
+			Asset: &inventory.Asset{Name: "parent"},
 			State: AssetConnected,
+		}
+		asset := &TrackedAsset{
+			Asset:    &inventory.Asset{Name: "root"},
+			State:    AssetConnected,
+			Parent:   parent,
+			Children: []*TrackedAsset{child},
 			// Runtime is nil in tests since we don't have a real provider
 		}
-		e := newTestExplorer(asset)
+		e := newTestExplorer(asset, parent, child)
 
 		err := e.CloseAsset(asset)
 		require.NoError(t, err)
 		assert.Equal(t, AssetClosed, asset.State)
 		assert.Nil(t, asset.Runtime)
+		assert.Nil(t, asset.Children, "Children should be nil'd to break reference chains")
+		assert.Nil(t, asset.Parent, "Parent should be nil'd to break reference chains")
 	})
 
 	t.Run("close discovered asset fails", func(t *testing.T) {
@@ -203,9 +227,14 @@ func TestAssetExplorerDedup(t *testing.T) {
 	})
 
 	t.Run("existing asset that is subset of new gets evicted", func(t *testing.T) {
+		child := &TrackedAsset{
+			Asset: &inventory.Asset{Name: "leaf"},
+			State: AssetDiscovered,
+		}
 		existing := &TrackedAsset{
-			Asset: &inventory.Asset{Name: "small", PlatformIds: []string{"id/1"}},
-			State: AssetConnected,
+			Asset:    &inventory.Asset{Name: "small", PlatformIds: []string{"id/1"}},
+			State:    AssetConnected,
+			Children: []*TrackedAsset{child},
 		}
 		newAsset := &TrackedAsset{
 			Asset: &inventory.Asset{Name: "big", PlatformIds: []string{"id/1", "id/2"}},
@@ -216,6 +245,8 @@ func TestAssetExplorerDedup(t *testing.T) {
 		e.dedup(newAsset)
 
 		assert.Equal(t, AssetClosed, existing.State)
+		assert.Nil(t, existing.Children, "evicted asset Children should be nil'd")
+		assert.Nil(t, existing.Parent, "evicted asset Parent should be nil'd")
 		assert.Equal(t, AssetConnected, newAsset.State)
 	})
 
@@ -249,6 +280,20 @@ func TestAssetExplorerDedup(t *testing.T) {
 	})
 }
 
+func TestAssetExplorerHasPlatformID(t *testing.T) {
+	a := &TrackedAsset{
+		Asset: &inventory.Asset{Name: "a", PlatformIds: []string{"id/1", "id/2"}},
+		State: AssetConnected,
+	}
+	e := newTestExplorer(a)
+
+	assert.True(t, e.hasPlatformID([]string{"id/1"}))
+	assert.True(t, e.hasPlatformID([]string{"id/2"}))
+	assert.True(t, e.hasPlatformID([]string{"id/3", "id/1"}))
+	assert.False(t, e.hasPlatformID([]string{"id/3"}))
+	assert.False(t, e.hasPlatformID(nil))
+}
+
 func TestAssetExplorerErrors(t *testing.T) {
 	e := newTestExplorer()
 	e.errors = []*AssetWithError{
@@ -279,4 +324,52 @@ func TestTrackedAssetParentChain(t *testing.T) {
 	e := newTestExplorer(root, mid, leaf)
 	foundRoot := e.findRootAsset(leaf)
 	assert.Equal(t, "root", foundRoot.Name)
+}
+
+// gatewayWithChildren is a connected asset whose connection reported children,
+// as a repository-discovering provider does.
+func gatewayWithChildren(children ...*inventory.Asset) *TrackedAsset {
+	return &TrackedAsset{
+		Asset: &inventory.Asset{Name: "gateway"},
+		State: AssetConnected,
+		Runtime: &providers.Runtime{
+			Provider: &providers.ConnectedProvider{
+				Connection: &plugin.ConnectRes{
+					Inventory: &inventory.Inventory{Spec: &inventory.InventorySpec{Assets: children}},
+				},
+			},
+		},
+	}
+}
+
+// A provider presets Name and PlatformIds on the children it discovers. The
+// explorer must track those very assets, with their presets intact, and treat a
+// repeated preset id as a duplicate.
+func TestAssetExplorerDiscoverChildrenHonorsPresetIdentity(t *testing.T) {
+	const (
+		idA = "//platformid.api.mondoo.app/runtime/terraform/domain/dev.azure.com/org/fabrikam-fixture-org/project/scan-test/repo/ado-scan-test-iac"
+		idB = "//platformid.api.mondoo.app/runtime/terraform/domain/dev.azure.com/org/fabrikam-other-fixture-org/project/scan-test/repo/ado-scan-test-iac"
+	)
+	childA := &inventory.Asset{Name: "scan-test/ado-scan-test-iac", PlatformIds: []string{idA}}
+	childB := &inventory.Asset{Name: "scan-test/ado-scan-test-iac", PlatformIds: []string{idB}}
+	again := &inventory.Asset{Name: "scan-test/ado-scan-test-iac", PlatformIds: []string{idA}}
+
+	gateway := gatewayWithChildren(childA, childB, again)
+	e := newTestExplorer(gateway)
+
+	e.discoverChildren(gateway)
+
+	require.Len(t, gateway.Children, 2, "two organizations, one repository name: two assets; the repeated id is dropped")
+	assert.Same(t, childA, gateway.Children[0].Asset, "the preset asset itself is tracked, not a copy")
+	assert.Same(t, childB, gateway.Children[1].Asset)
+	assert.Equal(t, []string{idA}, gateway.Children[0].Asset.PlatformIds)
+	assert.Equal(t, []string{idB}, gateway.Children[1].Asset.PlatformIds)
+	assert.Equal(t, "scan-test/ado-scan-test-iac", gateway.Children[0].Asset.Name)
+	for _, child := range gateway.Children {
+		assert.Equal(t, AssetDiscovered, child.State)
+		assert.Same(t, gateway, child.Parent)
+	}
+	assert.True(t, e.hasPlatformID([]string{idA}), "preset ids feed the dedup index")
+	assert.True(t, e.hasPlatformID([]string{idB}))
+	assert.Len(t, e.allAssets, 3, "the gateway and its two children")
 }

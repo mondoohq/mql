@@ -120,12 +120,12 @@ func ParseSANExtension(der cryptobyte.String) (dnsNames, emailAddresses []string
 // the list of labels in reverse order, e.g. ["com", "example", "foo"].
 func domainToReverseLabels(domain string) (reverseLabels []string, ok bool) {
 	for len(domain) > 0 {
-		if i := strings.LastIndexByte(domain, '.'); i == -1 {
+		if before, after, ok := strings.CutLast(domain, "."); !ok {
 			reverseLabels = append(reverseLabels, domain)
 			domain = ""
 		} else {
-			reverseLabels = append(reverseLabels, domain[i+1:])
-			domain = domain[:i]
+			reverseLabels = append(reverseLabels, after)
+			domain = before
 		}
 	}
 

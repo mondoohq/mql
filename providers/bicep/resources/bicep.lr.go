@@ -8,9 +8,9 @@ package resources
 import (
 	"errors"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // The MQL type names exposed as public consts for ease of reference.
@@ -203,6 +203,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"bicep.template": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBicep).GetTemplate()).ToDataRes(types.Resource("bicep.template"))
+	},
+	"bicep.templates": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBicep).GetTemplates()).ToDataRes(types.Array(types.Resource("bicep.template")))
 	},
 	"bicep.file.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBicepFile).GetPath()).ToDataRes(types.String)
@@ -660,6 +663,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"bicep.template.resource.properties": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBicepTemplateResource).GetProperties()).ToDataRes(types.Dict)
 	},
+	"bicep.template.resource.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBicepTemplateResource).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
 	"bicep.template.resource.dependsOn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBicepTemplateResource).GetDependsOn()).ToDataRes(types.Array(types.String))
 	},
@@ -680,6 +686,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"bicep.template.resource.linkedTemplate": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBicepTemplateResource).GetLinkedTemplate()).ToDataRes(types.Resource("bicep.template"))
+	},
+	"bicep.template.resource.resources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBicepTemplateResource).GetResources()).ToDataRes(types.Array(types.Resource("bicep.template.resource")))
 	},
 	"bicep.template.resource.manifest": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBicepTemplateResource).GetManifest()).ToDataRes(types.Dict)
@@ -723,6 +732,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"bicep.template": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlBicep).Template, ok = plugin.RawToTValue[*mqlBicepTemplate](v.Value, v.Error)
+		return
+	},
+	"bicep.templates": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBicep).Templates, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"bicep.file.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1405,6 +1418,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlBicepTemplateResource).Properties, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"bicep.template.resource.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBicepTemplateResource).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 	"bicep.template.resource.dependsOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlBicepTemplateResource).DependsOn, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -1431,6 +1448,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"bicep.template.resource.linkedTemplate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlBicepTemplateResource).LinkedTemplate, ok = plugin.RawToTValue[*mqlBicepTemplate](v.Value, v.Error)
+		return
+	},
+	"bicep.template.resource.resources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBicepTemplateResource).Resources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"bicep.template.resource.manifest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1486,6 +1507,7 @@ type mqlBicep struct {
 	Resources  plugin.TValue[[]any]
 	ParamFiles plugin.TValue[[]any]
 	Template   plugin.TValue[*mqlBicepTemplate]
+	Templates  plugin.TValue[[]any]
 }
 
 // createBicep creates a new instance of this resource
@@ -1586,6 +1608,22 @@ func (c *mqlBicep) GetTemplate() *plugin.TValue[*mqlBicepTemplate] {
 		}
 
 		return c.template()
+	})
+}
+
+func (c *mqlBicep) GetTemplates() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Templates, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("bicep", c.__id, "templates")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.templates()
 	})
 }
 
@@ -3517,6 +3555,7 @@ type mqlBicepTemplateResource struct {
 	Name           plugin.TValue[string]
 	Location       plugin.TValue[string]
 	Properties     plugin.TValue[any]
+	Tags           plugin.TValue[map[string]any]
 	DependsOn      plugin.TValue[[]any]
 	Condition      plugin.TValue[string]
 	CopyName       plugin.TValue[string]
@@ -3524,6 +3563,7 @@ type mqlBicepTemplateResource struct {
 	CopyMode       plugin.TValue[string]
 	CopyBatchSize  plugin.TValue[int64]
 	LinkedTemplate plugin.TValue[*mqlBicepTemplate]
+	Resources      plugin.TValue[[]any]
 	Manifest       plugin.TValue[any]
 }
 
@@ -3579,6 +3619,10 @@ func (c *mqlBicepTemplateResource) GetProperties() *plugin.TValue[any] {
 	return &c.Properties
 }
 
+func (c *mqlBicepTemplateResource) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
+}
+
 func (c *mqlBicepTemplateResource) GetDependsOn() *plugin.TValue[[]any] {
 	return &c.DependsOn
 }
@@ -3616,6 +3660,22 @@ func (c *mqlBicepTemplateResource) GetLinkedTemplate() *plugin.TValue[*mqlBicepT
 		}
 
 		return c.linkedTemplate()
+	})
+}
+
+func (c *mqlBicepTemplateResource) GetResources() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Resources, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("bicep.template.resource", c.__id, "resources")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.resources()
 	})
 }
 

@@ -7,19 +7,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/identitystore"
 	"github.com/aws/aws-sdk-go-v2/service/ssoadmin"
 	ssotypes "github.com/aws/aws-sdk-go-v2/service/ssoadmin/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsIdentitycenter) id() (string, error) {
@@ -143,9 +145,13 @@ func (a *mqlAwsIdentitycenterInstance) permissionSets() ([]any, error) {
 
 type mqlAwsIdentitycenterPermissionSetInternal struct {
 	cacheInstanceArn string
-	fetched          bool
+	fetched          atomic.Bool
 	lock             sync.Mutex
 	descResp         *ssoadmin.DescribePermissionSetOutput
+
+	managedPoliciesOnce sync.Once
+	managedPoliciesList []ssotypes.AttachedManagedPolicy
+	managedPoliciesErr  error
 }
 
 func (a *mqlAwsIdentitycenterPermissionSet) id() (string, error) {
@@ -153,12 +159,12 @@ func (a *mqlAwsIdentitycenterPermissionSet) id() (string, error) {
 }
 
 func (a *mqlAwsIdentitycenterPermissionSet) fetchDetail() (*ssoadmin.DescribePermissionSetOutput, error) {
-	if a.fetched {
+	if a.fetched.Load() {
 		return a.descResp, nil
 	}
 	a.lock.Lock()
 	defer a.lock.Unlock()
-	if a.fetched {
+	if a.fetched.Load() {
 		return a.descResp, nil
 	}
 
@@ -175,8 +181,11 @@ func (a *mqlAwsIdentitycenterPermissionSet) fetchDetail() (*ssoadmin.DescribePer
 	if err != nil {
 		return nil, err
 	}
-	a.fetched = true
+	// Publish the value before the flag: a reader on the lock-free fast path
+	// that observes fetched==true must never see a nil descResp, or the
+	// accessors below nil-deref and kill the scan.
 	a.descResp = resp
+	a.fetched.Store(true)
 	return resp, nil
 }
 
@@ -184,6 +193,9 @@ func (a *mqlAwsIdentitycenterPermissionSet) name() (string, error) {
 	resp, err := a.fetchDetail()
 	if err != nil {
 		return "", err
+	}
+	if resp == nil || resp.PermissionSet == nil {
+		return "", nil
 	}
 	return convert.ToValue(resp.PermissionSet.Name), nil
 }
@@ -193,6 +205,9 @@ func (a *mqlAwsIdentitycenterPermissionSet) description() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if resp == nil || resp.PermissionSet == nil {
+		return "", nil
+	}
 	return convert.ToValue(resp.PermissionSet.Description), nil
 }
 
@@ -200,6 +215,9 @@ func (a *mqlAwsIdentitycenterPermissionSet) sessionDuration() (string, error) {
 	resp, err := a.fetchDetail()
 	if err != nil {
 		return "", err
+	}
+	if resp == nil || resp.PermissionSet == nil {
+		return "", nil
 	}
 	return convert.ToValue(resp.PermissionSet.SessionDuration), nil
 }
@@ -209,6 +227,9 @@ func (a *mqlAwsIdentitycenterPermissionSet) relayState() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if resp == nil || resp.PermissionSet == nil {
+		return "", nil
+	}
 	return convert.ToValue(resp.PermissionSet.RelayState), nil
 }
 
@@ -216,6 +237,9 @@ func (a *mqlAwsIdentitycenterPermissionSet) createdAt() (*time.Time, error) {
 	resp, err := a.fetchDetail()
 	if err != nil {
 		return nil, err
+	}
+	if resp == nil || resp.PermissionSet == nil {
+		return nil, nil
 	}
 	return resp.PermissionSet.CreatedDate, nil
 }
@@ -240,30 +264,67 @@ func (a *mqlAwsIdentitycenterPermissionSet) inlinePolicy() (string, error) {
 	return *resp.InlinePolicy, nil
 }
 
-func (a *mqlAwsIdentitycenterPermissionSet) managedPolicies() ([]any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.SsoAdmin("")
-	ctx := context.Background()
+// listManagedPolicies walks the AWS managed policies attached to the permission
+// set once and hands the same list to both the deprecated dict field and the
+// policy references, rather than paginating the same API twice.
+func (a *mqlAwsIdentitycenterPermissionSet) listManagedPolicies() ([]ssotypes.AttachedManagedPolicy, error) {
+	a.managedPoliciesOnce.Do(func() {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.SsoAdmin("")
+		ctx := context.Background()
 
-	instanceArn := a.cacheInstanceArn
-	psArn := a.Arn.Data
-	res := []any{}
+		instanceArn := a.cacheInstanceArn
+		psArn := a.Arn.Data
 
-	paginator := ssoadmin.NewListManagedPoliciesInPermissionSetPaginator(svc, &ssoadmin.ListManagedPoliciesInPermissionSetInput{
-		InstanceArn:      &instanceArn,
-		PermissionSetArn: &psArn,
+		paginator := ssoadmin.NewListManagedPoliciesInPermissionSetPaginator(svc, &ssoadmin.ListManagedPoliciesInPermissionSetInput{
+			InstanceArn:      &instanceArn,
+			PermissionSetArn: &psArn,
+		})
+		for paginator.HasMorePages() {
+			page, err := paginator.NextPage(ctx)
+			if err != nil {
+				a.managedPoliciesErr = err
+				return
+			}
+			a.managedPoliciesList = append(a.managedPoliciesList, page.AttachedManagedPolicies...)
+		}
 	})
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
+	return a.managedPoliciesList, a.managedPoliciesErr
+}
+
+func (a *mqlAwsIdentitycenterPermissionSet) managedPolicies() ([]any, error) {
+	policies, err := a.listManagedPolicies()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for _, mp := range policies {
+		res = append(res, map[string]any{
+			"arn":  convert.ToValue(mp.Arn),
+			"name": convert.ToValue(mp.Name),
+		})
+	}
+	return res, nil
+}
+
+func (a *mqlAwsIdentitycenterPermissionSet) awsManagedPolicies() ([]any, error) {
+	policies, err := a.listManagedPolicies()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for _, mp := range policies {
+		arnVal := convert.ToValue(mp.Arn)
+		if arnVal == "" {
+			continue
+		}
+		mqlPolicy, err := NewResource(a.MqlRuntime, "aws.iam.policy", map[string]*llx.RawData{
+			"arn": llx.StringData(arnVal),
+		})
 		if err != nil {
 			return nil, err
 		}
-		for _, mp := range page.AttachedManagedPolicies {
-			res = append(res, map[string]any{
-				"arn":  convert.ToValue(mp.Arn),
-				"name": convert.ToValue(mp.Name),
-			})
-		}
+		res = append(res, mqlPolicy)
 	}
 	return res, nil
 }
@@ -285,9 +346,7 @@ func (a *mqlAwsIdentitycenterPermissionSet) tags() (map[string]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		for k, v := range ssoTagsToMap(page.Tags) {
-			tags[k] = v
-		}
+		maps.Copy(tags, ssoTagsToMap(page.Tags))
 	}
 	return tags, nil
 }
@@ -348,12 +407,11 @@ func (a *mqlAwsIdentitycenterInstance) accountAssignments() ([]any, error) {
 
 						mqlAssignment, err := CreateResource(a.MqlRuntime, "aws.identitycenter.accountAssignment",
 							map[string]*llx.RawData{
-								"__id":             llx.StringData(assignId),
-								"id":               llx.StringData(assignId),
-								"accountId":        llx.StringDataPtr(assignment.AccountId),
-								"permissionSetArn": llx.StringDataPtr(assignment.PermissionSetArn),
-								"principalType":    llx.StringData(string(assignment.PrincipalType)),
-								"principalId":      llx.StringDataPtr(assignment.PrincipalId),
+								"__id":          llx.StringData(assignId),
+								"id":            llx.StringData(assignId),
+								"accountId":     llx.StringDataPtr(assignment.AccountId),
+								"principalType": llx.StringData(string(assignment.PrincipalType)),
+								"principalId":   llx.StringDataPtr(assignment.PrincipalId),
 							})
 						if err != nil {
 							return nil, err
@@ -375,13 +433,7 @@ func (a *mqlAwsIdentitycenterAccountAssignment) id() (string, error) {
 }
 
 func ssoTagsToMap(tags []ssotypes.Tag) map[string]any {
-	tagsMap := make(map[string]any)
-	for _, tag := range tags {
-		if tag.Key != nil && tag.Value != nil {
-			tagsMap[*tag.Key] = *tag.Value
-		}
-	}
-	return tagsMap
+	return tagsToMap(tags, func(t ssotypes.Tag) *string { return t.Key }, func(t ssotypes.Tag) *string { return t.Value })
 }
 
 // Permission set customer managed policies
@@ -654,6 +706,7 @@ func (a *mqlAwsIdentitycenterInstance) applications() ([]any, error) {
 }
 
 type mqlAwsIdentitycenterApplicationInternal struct {
+	lazyTags
 	cacheInstance *mqlAwsIdentitycenterInstance
 }
 
@@ -667,4 +720,53 @@ func (a *mqlAwsIdentitycenterApplication) instance() (*mqlAwsIdentitycenterInsta
 	}
 	a.Instance.State = plugin.StateIsNull | plugin.StateIsSet
 	return nil, nil
+}
+
+// identitycenterTagsForArn reads the tags of an Identity Center resource.
+// instanceArn names the instance the resource belongs to and is left empty when
+// the resource is the instance itself.
+func identitycenterTagsForArn(runtime *plugin.Runtime, instanceArn, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.SsoAdmin("")
+
+	input := &ssoadmin.ListTagsForResourceInput{ResourceArn: &resourceArn}
+	if instanceArn != "" {
+		input.InstanceArn = &instanceArn
+	}
+	tags := map[string]any{}
+	paginator := ssoadmin.NewListTagsForResourcePaginator(svc, input)
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(context.Background())
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("sso:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		maps.Copy(tags, ssoTagsToMap(page.Tags))
+	}
+	return tags, nil
+}
+
+type mqlAwsIdentitycenterInstanceInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsIdentitycenterInstance) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return identitycenterTagsForArn(a.MqlRuntime, "", a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsIdentitycenterApplication) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		instanceArn := ""
+		if a.cacheInstance != nil {
+			instanceArn = a.cacheInstance.Arn.Data
+		}
+		return identitycenterTagsForArn(a.MqlRuntime, instanceArn, a.Arn.Data)
+	})
 }

@@ -1,0 +1,232 @@
+#########
+# WARNING WARNING WARNING
+# WARNING WARNING WARNING
+# WARNING WARNING WARNING
+# WARNING WARNING WARNING
+# WARNING WARNING WARNING
+# This file was generated dynamically from
+# non-split config (/etc/exim4/exim4.conf.localmacros
+# and /etc/exim4/exim4.conf.template).
+# The config files are supplemented with package installation/configuration
+# settings managed by debconf. This data is stored in
+# /etc/exim4/update-exim4.conf.conf
+# Any changes you make here will be lost.
+# See /usr/share/doc/exim4-base/README.Debian.gz and update-exim4.conf(8)
+# for instructions of customization.
+# WARNING WARNING WARNING
+# WARNING WARNING WARNING
+# WARNING WARNING WARNING
+# WARNING WARNING WARNING
+# WARNING WARNING WARNING
+#########
+MAIN_LOCAL_INTERFACES = <; 0.0.0.0 ; ::0
+
+exim_path = /usr/sbin/exim4
+
+.ifndef CONFDIR
+CONFDIR = /etc/exim4
+.endif
+
+UPEX4CmacrosUPEX4C = 1
+##############################################
+# the following macro definitions were created
+# dynamically by /usr/sbin/update-exim4.conf
+.ifndef MAIN_LOCAL_INTERFACES
+MAIN_LOCAL_INTERFACES=<; 127.0.0.1 ; ::1
+.endif
+.ifndef MAIN_PACKAGE_VERSION
+MAIN_PACKAGE_VERSION=4.96-15+deb12u10
+.endif
+.ifndef MAIN_LOCAL_DOMAINS
+MAIN_LOCAL_DOMAINS=@:localhost:mail.example.test
+.endif
+.ifndef MAIN_RELAY_TO_DOMAINS
+MAIN_RELAY_TO_DOMAINS=
+.endif
+.ifndef ETC_MAILNAME
+ETC_MAILNAME=mail.example.test
+.endif
+.ifndef LOCAL_DELIVERY
+LOCAL_DELIVERY=mail_spool
+.endif
+.ifndef MAIN_RELAY_NETS
+MAIN_RELAY_NETS=: 127.0.0.1 : ::::1
+.endif
+.ifndef DCreadhost
+DCreadhost=
+.endif
+.ifndef DCsmarthost
+DCsmarthost=
+.endif
+.ifndef DC_eximconfig_configtype
+DC_eximconfig_configtype=local
+.endif
+.ifndef DCconfig_local
+DCconfig_local=1
+.endif
+##############################################
+
+
+domainlist local_domains = MAIN_LOCAL_DOMAINS
+
+domainlist relay_to_domains = MAIN_RELAY_TO_DOMAINS
+
+hostlist relay_from_hosts = MAIN_RELAY_NETS
+
+.ifndef MAIN_PRIMARY_HOSTNAME_AS_QUALIFY_DOMAIN
+.ifndef MAIN_QUALIFY_DOMAIN
+qualify_domain = ETC_MAILNAME
+.else
+qualify_domain = MAIN_QUALIFY_DOMAIN
+.endif
+.endif
+
+.ifdef MAIN_LOCAL_INTERFACES
+local_interfaces = MAIN_LOCAL_INTERFACES
+.endif
+
+.ifndef LOCAL_DELIVERY
+LOCAL_DELIVERY=mail_spool
+.endif
+
+gecos_pattern = ^([^,:]*)
+gecos_name = $1
+
+.ifndef MAIN_LOG_SELECTOR
+MAIN_LOG_SELECTOR = +smtp_protocol_error +smtp_syntax_error +tls_certificate_verified +tls_peerdn
+.endif
+
+.ifndef MAIN_ACL_CHECK_MAIL
+MAIN_ACL_CHECK_MAIL = acl_check_mail
+.endif
+acl_smtp_mail = MAIN_ACL_CHECK_MAIL
+
+.ifndef MAIN_ACL_CHECK_RCPT
+MAIN_ACL_CHECK_RCPT = acl_check_rcpt
+.endif
+acl_smtp_rcpt = MAIN_ACL_CHECK_RCPT
+
+.ifndef MAIN_ACL_CHECK_DATA
+MAIN_ACL_CHECK_DATA = acl_check_data
+.endif
+acl_smtp_data = MAIN_ACL_CHECK_DATA
+
+.ifdef MESSAGE_SIZE_LIMIT
+message_size_limit = MESSAGE_SIZE_LIMIT
+.endif
+
+.ifdef MAIN_ALLOW_DOMAIN_LITERALS
+allow_domain_literals
+.endif
+
+.ifndef DC_minimaldns
+.ifndef MAIN_HOST_LOOKUP
+MAIN_HOST_LOOKUP = *
+.endif
+host_lookup = MAIN_HOST_LOOKUP
+.endif
+
+dns_dnssec_ok = 1
+
+.ifdef MAIN_HARDCODE_PRIMARY_HOSTNAME
+primary_hostname = MAIN_HARDCODE_PRIMARY_HOSTNAME
+.endif
+
+prdr_enable = true
+
+.ifdef MAIN_SMTP_ACCEPT_MAX_NOMAIL_HOSTS
+smtp_accept_max_nonmail_hosts = MAIN_SMTP_ACCEPT_MAX_NOMAIL_HOSTS
+.endif
+
+.ifndef MAIN_FORCE_SENDER
+local_from_check = false
+local_sender_retain = true
+untrusted_set_sender = *
+.endif
+
+.ifndef MAIN_IGNORE_BOUNCE_ERRORS_AFTER
+MAIN_IGNORE_BOUNCE_ERRORS_AFTER = 2d
+.endif
+ignore_bounce_errors_after = MAIN_IGNORE_BOUNCE_ERRORS_AFTER
+
+.ifndef MAIN_TIMEOUT_FROZEN_AFTER
+MAIN_TIMEOUT_FROZEN_AFTER = 7d
+.endif
+timeout_frozen_after = MAIN_TIMEOUT_FROZEN_AFTER
+
+.ifndef MAIN_FREEZE_TELL
+MAIN_FREEZE_TELL = postmaster
+.endif
+freeze_tell = MAIN_FREEZE_TELL
+
+.ifndef SPOOLDIR
+SPOOLDIR = /var/spool/exim4
+.endif
+spool_directory = SPOOLDIR
+
+.ifndef MAIN_TRUSTED_USERS
+MAIN_TRUSTED_USERS = uucp
+.endif
+trusted_users = MAIN_TRUSTED_USERS
+.ifdef MAIN_TRUSTED_GROUPS
+trusted_groups = MAIN_TRUSTED_GROUPS
+.endif
+
+.ifdef MAIN_KEEP_ENVIRONMENT
+keep_environment = MAIN_KEEP_ENVIRONMENT
+.else
+keep_environment =
+.endif
+.ifdef MAIN_ADD_ENVIRONMENT
+add_environment = MAIN_ADD_ENVIRONMENT
+.endif
+
+.ifdef _OPT_MAIN_SMTPUTF8_ADVERTISE_HOSTS
+.ifndef MAIN_SMTPUTF8_ADVERTISE_HOSTS
+MAIN_SMTPUTF8_ADVERTISE_HOSTS =
+.endif
+smtputf8_advertise_hosts = MAIN_SMTPUTF8_ADVERTISE_HOSTS
+.endif
+
+.ifdef MAIN_TLS_ENABLE
+.ifndef MAIN_TLS_ADVERTISE_HOSTS
+MAIN_TLS_ADVERTISE_HOSTS = *
+.endif
+tls_advertise_hosts = MAIN_TLS_ADVERTISE_HOSTS
+
+.ifdef MAIN_TLS_CERTKEY
+tls_certificate = MAIN_TLS_CERTKEY
+.else
+.ifndef MAIN_TLS_CERTIFICATE
+MAIN_TLS_CERTIFICATE = CONFDIR/exim.crt
+.endif
+tls_certificate = MAIN_TLS_CERTIFICATE
+
+.ifndef MAIN_TLS_PRIVATEKEY
+MAIN_TLS_PRIVATEKEY = CONFDIR/exim.key
+.endif
+tls_privatekey = MAIN_TLS_PRIVATEKEY
+.endif
+
+.ifndef MAIN_TLS_VERIFY_CERTIFICATES
+MAIN_TLS_VERIFY_CERTIFICATES = ${if exists{/etc/ssl/certs/ca-certificates.crt}\
+                                    {/etc/ssl/certs/ca-certificates.crt}\
+				    {/dev/null}}
+.endif
+tls_verify_certificates = MAIN_TLS_VERIFY_CERTIFICATES
+
+.ifdef MAIN_TLS_VERIFY_HOSTS
+tls_verify_hosts = MAIN_TLS_VERIFY_HOSTS
+.endif
+
+.ifdef MAIN_TLS_TRY_VERIFY_HOSTS
+tls_try_verify_hosts = MAIN_TLS_TRY_VERIFY_HOSTS
+.endif
+
+.else
+.endif
+
+.ifdef MAIN_LOG_SELECTOR
+log_selector = MAIN_LOG_SELECTOR
+.endif
+

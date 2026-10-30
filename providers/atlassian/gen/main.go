@@ -4,8 +4,8 @@
 package main
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin/gen"
-	"go.mondoo.com/mql/v13/providers/atlassian/config"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin/gen"
+	"go.mondoo.com/mql/providers/atlassian/config"
 )
 
 func main() {

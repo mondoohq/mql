@@ -1,0 +1,187 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/bitwarden"
+option go_package = "go.mondoo.com/mql/providers/bitwarden/resources"
+option root = "bitwarden"
+
+// Bitwarden organization
+//
+// The root resource for a Bitwarden Teams or Enterprise organization,
+// reached through an organization API key. It exposes governance state
+// only: the organization's own settings, its security policies, its
+// members, and the collections and groups used to structure vault
+// access. Vault item contents, folders, and Send payloads are never
+// read by this provider; the Bitwarden Public API this provider talks
+// to has no endpoint for them.
+bitwarden @maturity("experimental") @root {
+  // Security policies configured for the organization
+  policies() []bitwarden.policy
+  // Members of the organization
+  members() []bitwarden.member
+  // Collections used to group and share vault items
+  collections() []bitwarden.collection
+  // Groups used to assign collection access to multiple members at once
+  groups() []bitwarden.group
+}
+
+// Bitwarden organization security policy
+//
+// A single organization-wide security policy as exposed by the
+// Bitwarden Public API. The `policyType` field selects which control
+// this policy enforces, for example `masterPassword`,
+// `twoFactorAuthentication`, `requireSso`, `singleOrg`,
+// `organizationDataOwnership` (personal-vault-ownership restriction),
+// `sendOptions`, `passwordGenerator`, or `disablePersonalVaultExport`.
+// The `enabled` field is the on/off switch; `data` carries the
+// policy-specific configuration, whose shape depends on `policyType`:
+// `masterPassword` carries `minComplexity`, `minLength`, `requireUpper`,
+// `requireLower`, `requireNumbers`, and `requireSpecial`; `sendOptions`
+// carries `disableHideEmail`; `resetPassword` carries
+// `autoEnrollEnabled`; other types carry an empty object.
+bitwarden.policy @defaults("policyType enabled") @maturity("experimental") {
+  // Policy UUID
+  id string
+  // Policy type
+  //
+  // One of masterPassword, twoFactorAuthentication, passwordGenerator,
+  // singleOrg, requireSso, organizationDataOwnership (the current name
+  // for what the Bitwarden UI still labels personal ownership),
+  // disableSend, sendOptions, resetPassword, maximumVaultTimeout,
+  // disablePersonalVaultExport, activateAutofill, automaticAppLogIn,
+  // freeFamiliesSponsorshipPolicy, removeUnlockWithPin,
+  // restrictedItemTypesPolicy, uriMatchDefaults, autotypeDefaultSetting,
+  // automaticUserConfirmation, blockClaimedDomainAccountCreation,
+  // organizationUserNotification, sendControls, or fillAssist.
+  policyType string
+  // Whether the policy is enabled
+  enabled bool
+  // Policy-specific configuration, shaped by policyType
+  data dict
+}
+
+// Bitwarden organization member
+//
+// A user's membership in the organization: their role, invitation
+// status, and security posture. The `email` field is the member's
+// invited or confirmed email address and is the natural selection key,
+// for example `bitwarden.members.where(email == "user@example.com")`.
+bitwarden.member @defaults("email role status") @maturity("experimental") {
+  // Member UUID
+  id string
+  // Underlying Bitwarden user ID, null until the invitation is accepted
+  userId string
+  // Display name
+  name string
+  // Email address
+  email string
+  // Organization role
+  //
+  // One of owner, admin, user, manager, or custom.
+  role string
+  // Invitation and confirmation status
+  //
+  // One of invited, accepted, confirmed, staged, or revoked. Only
+  // confirmed members have completed enrollment and hold working
+  // access to shared collections; invited and accepted members are
+  // mid-onboarding.
+  status string
+  // Whether the member has two-factor authentication enabled
+  twoFactorEnabled bool
+  // Whether the member is enrolled in admin password reset
+  resetPasswordEnrolled bool
+  // External identifier from a directory sync (SCIM) integration
+  externalId string
+  // Collections the member has explicit access to
+  collections() []bitwarden.collection
+  // Groups the member belongs to
+  groups() []bitwarden.group
+  // Per-collection permission grants held by this member
+  collectionAccess() []bitwarden.collectionMemberAccess
+}
+
+// Bitwarden collection
+//
+// A named grouping of vault items shared with specific members and
+// groups. Only the sharing structure is exposed here (which groups and
+// members can reach the collection, and with what permissions); the
+// items inside a collection are not.
+bitwarden.collection @defaults("name") @maturity("experimental") {
+  // Collection UUID
+  id string
+  // Collection name
+  name string
+  // External identifier from a directory sync (SCIM) integration
+  externalId string
+  // Groups granted access to this collection
+  groups() []bitwarden.group
+  // Members granted explicit access to this collection
+  members() []bitwarden.member
+  // Per-member permission grants on this collection
+  memberAccess() []bitwarden.collectionMemberAccess
+  // Per-group permission grants on this collection
+  groupAccess() []bitwarden.collectionGroupAccess
+}
+
+// Bitwarden group
+//
+// A named set of members used to assign collection access in bulk, as
+// an alternative to granting each member individually. The `name`
+// field is the natural selection key, for example
+// `bitwarden.groups.where(name == "Engineering")`.
+bitwarden.group @defaults("name") @maturity("experimental") {
+  // Group UUID
+  id string
+  // Group name
+  name string
+  // External identifier from a directory sync (SCIM) integration
+  externalId string
+  // Members belonging to this group
+  members() []bitwarden.member
+  // Collections this group has access to
+  collections() []bitwarden.collection
+  // Per-collection permission grants held by this group
+  collectionAccess() []bitwarden.collectionGroupAccess
+}
+
+// Bitwarden collection permission grant for a member
+//
+// The permission a single member holds on a single collection: the
+// readOnly, hidePasswords, and manage flags the organization API records
+// for that member-to-collection grant, with typed references to both the
+// collection and the member. Use it to audit who can manage a collection,
+// or which members can read a sensitive collection's item passwords.
+private bitwarden.collectionMemberAccess @defaults("readOnly hidePasswords manage") @maturity("experimental") {
+  // Collection the grant applies to
+  collection() bitwarden.collection
+  // Member the grant is for
+  member() bitwarden.member
+  // Whether the member has read-only access and cannot edit items
+  readOnly bool
+  // Whether item passwords are hidden from the member
+  hidePasswords bool
+  // Whether the member can manage access to the collection
+  manage bool
+}
+
+// Bitwarden collection permission grant for a group
+//
+// The permission a single group holds on a single collection: the
+// readOnly, hidePasswords, and manage flags the organization API records
+// for that group-to-collection grant, with typed references to both the
+// collection and the group. Every member of the group inherits this
+// permission on the collection.
+private bitwarden.collectionGroupAccess @defaults("readOnly hidePasswords manage") @maturity("experimental") {
+  // Collection the grant applies to
+  collection() bitwarden.collection
+  // Group the grant is for
+  group() bitwarden.group
+  // Whether the group has read-only access and cannot edit items
+  readOnly bool
+  // Whether item passwords are hidden from the group's members
+  hidePasswords bool
+  // Whether the group can manage access to the collection
+  manage bool
+}

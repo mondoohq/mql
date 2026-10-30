@@ -7,9 +7,9 @@ import (
 	"context"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/google-workspace/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/google-workspace/connection"
 	directory "google.golang.org/api/admin/directory/v1"
 	reports "google.golang.org/api/admin/reports/v1"
 	"google.golang.org/api/calendar/v3"
@@ -60,12 +60,15 @@ type mqlGoogleworkspaceInternal struct {
 
 func (g *mqlGoogleworkspace) userByEmail(email string) (*mqlGoogleworkspaceUser, error) {
 	g.usersByEmailOnce.Do(func() {
-		if g.Users.Error != nil {
-			g.usersByEmailErr = g.Users.Error
+		// Go through GetUsers() so the lazily-computed users field is resolved
+		// even when the caller never touched googleworkspace.users directly.
+		users := g.GetUsers()
+		if users.Error != nil {
+			g.usersByEmailErr = users.Error
 			return
 		}
-		m := make(map[string]*mqlGoogleworkspaceUser, len(g.Users.Data))
-		for _, u := range g.Users.Data {
+		m := make(map[string]*mqlGoogleworkspaceUser, len(users.Data))
+		for _, u := range users.Data {
 			user := u.(*mqlGoogleworkspaceUser)
 			if user.PrimaryEmail.Error != nil {
 				g.usersByEmailErr = user.PrimaryEmail.Error

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 )
 
 func NewOrganizationPlatformID(id string) string {
@@ -127,6 +127,12 @@ func GetTitleForPlatformName(name string) string {
 		return "GCP Memorystore for Memcached Instance"
 	case "gcp-vertexai-job":
 		return "GCP Vertex AI Custom Job"
+	case "gcp-vertexai-endpoint":
+		return "GCP Vertex AI Endpoint"
+	case "gcp-vertexai-pipelinejob":
+		return "GCP Vertex AI Pipeline Job"
+	case "gcp-vertexai-notebookruntimetemplate":
+		return "GCP Vertex AI Notebook Runtime Template"
 	case "gcp-secretmanager-secret":
 		return "GCP Secret Manager Secret"
 	case "gcp-compute-instance":
@@ -159,6 +165,10 @@ func GetTitleForPlatformName(name string) string {
 		return "GCP API Key"
 	case "gcp-iam-service-account":
 		return "GCP IAM Service Account"
+	case "gcp-modelarmor-template":
+		return "GCP Model Armor Template"
+	case "gcp-datastream-connectionprofile":
+		return "GCP Datastream Connection Profile"
 	}
 	return "Google Cloud Platform"
 }
@@ -245,8 +255,8 @@ func ResourceTechnologyUrl(service, project, region, objectType, name string) []
 		}
 	case "vertexai":
 		switch objectType {
-		case "job":
-			return []string{"gcp", project, "vertexai", region, "job"}
+		case "job", "endpoint", "pipelinejob", "notebookruntimetemplate":
+			return []string{"gcp", project, "vertexai", region, objectType}
 		default:
 			return []string{"gcp", project, "vertexai", region, "other"}
 		}
@@ -333,6 +343,20 @@ func ResourceTechnologyUrl(service, project, region, objectType, name string) []
 			return []string{"gcp", project, "iam", region, "service-account"}
 		default:
 			return []string{"gcp", project, "iam", region, "other"}
+		}
+	case "modelarmor":
+		switch objectType {
+		case "template":
+			return []string{"gcp", project, "modelarmor", region, "template"}
+		default:
+			return []string{"gcp", project, "modelarmor", region, "other"}
+		}
+	case "datastream":
+		switch objectType {
+		case "connectionprofile":
+			return []string{"gcp", project, "datastream", region, "connectionprofile"}
+		default:
+			return []string{"gcp", project, "datastream", region, "other"}
 		}
 	default:
 		return []string{"gcp", project, "other"}

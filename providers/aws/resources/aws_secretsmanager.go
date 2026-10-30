@@ -6,21 +6,21 @@ package resources
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	secretstypes "github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsSecretsmanager) id() (string, error) {
@@ -55,8 +55,8 @@ func initAwsSecretsmanagerSecret(runtime *plugin.Runtime, args map[string]*llx.R
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformSecretsmanagerSecret); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -65,9 +65,17 @@ func initAwsSecretsmanagerSecret(runtime *plugin.Runtime, args map[string]*llx.R
 	}
 
 	arnVal := args["arn"].Value.(string)
+
+	if cached := cachedByArn(runtime, ResourceAwsSecretsmanagerSecret, arnVal); cached != nil {
+		return args, cached, nil
+	}
+
 	region, err := GetRegionFromArn(arnVal)
 	if err != nil {
-		return args, nil, nil
+		// Returning (args, nil, nil) here would let the runtime create a
+		// resource whose fields are all unset, which surfaces as malformed
+		// nil data when those fields are queried.
+		return nil, nil, err
 	}
 
 	conn := runtime.Connection.(*connection.AwsConnection)
@@ -80,6 +88,7 @@ func initAwsSecretsmanagerSecret(runtime *plugin.Runtime, args map[string]*llx.R
 	}
 
 	args["arn"] = llx.StringDataPtr(resp.ARN)
+	args["region"] = llx.StringData(region)
 	args["createdAt"] = llx.TimeDataPtr(resp.CreatedDate)
 	args["description"] = llx.StringDataPtr(resp.Description)
 	args["lastAccessedDate"] = llx.TimeDataPtr(resp.LastAccessedDate)
@@ -173,12 +182,12 @@ func buildSecretReplicaRegions(runtime *plugin.Runtime, arn string, replicas []s
 				"region":           llx.StringDataPtr(replica.Region),
 				"status":           llx.StringData(string(replica.Status)),
 				"statusMessage":    llx.StringDataPtr(replica.StatusMessage),
-				"kmsKeyId":         llx.StringDataPtr(replica.KmsKeyId),
 				"lastAccessedDate": llx.TimeDataPtr(replica.LastAccessedDate),
 			})
 		if err != nil {
 			return nil, err
 		}
+		mqlReplica.(*mqlAwsSecretsmanagerSecretReplicaRegion).cacheKmsKeyId = convert.ToValue(replica.KmsKeyId)
 		res = append(res, mqlReplica)
 	}
 	return res, nil
@@ -202,7 +211,12 @@ func (a *mqlAwsSecretsmanager) getSecrets(conn *connection.AwsConnection) []*job
 
 			res := []any{}
 
-			params := &secretsmanager.ListSecretsInput{}
+			// Secrets scheduled for deletion are excluded by default, but during
+			// the recovery window they still exist and still hold live
+			// credentials -- and aws.secretsmanager.secret(arn:) resolves them,
+			// so the collection and the single lookup disagreed. This is also
+			// what makes the deletedAt field reachable from the collection.
+			params := &secretsmanager.ListSecretsInput{IncludePlannedDeletion: aws.Bool(true)}
 			paginator := secretsmanager.NewListSecretsPaginator(svc, params)
 			for paginator.HasMorePages() {
 				secrets, err := paginator.NextPage(ctx)
@@ -214,8 +228,17 @@ func (a *mqlAwsSecretsmanager) getSecrets(conn *connection.AwsConnection) []*job
 					return nil, err
 				}
 				for _, secret := range secrets.SecretList {
+					// ListSecrets already carries the tags, so the discovery tag
+					// filter costs nothing extra here.
+					if conn.Filters.General.HasTags() &&
+						conn.Filters.General.IsFilteredOutByTags(secretTagsToStringMap(secret.Tags)) {
+						log.Debug().Str("secret", convert.ToValue(secret.ARN)).
+							Msg("excluding secret due to filters")
+						continue
+					}
 					args := map[string]*llx.RawData{
 						"arn":              llx.StringDataPtr(secret.ARN),
+						"region":           llx.StringData(region),
 						"createdAt":        llx.TimeDataPtr(secret.CreatedDate),
 						"description":      llx.StringDataPtr(secret.Description),
 						"lastAccessedDate": llx.TimeDataPtr(secret.LastAccessedDate),
@@ -428,14 +451,9 @@ func (a *mqlAwsSecretsmanagerSecretVersion) kmsKeys() ([]any, error) {
 		if keyID == "DefaultEncryptionKey" {
 			continue
 		}
-		// KmsKeyIds may already be full ARNs or bare key ids; build an ARN from
-		// the version's region + account only when it isn't one already.
-		arnStr := keyID
-		if !strings.HasPrefix(keyID, "arn:") {
-			arnStr = fmt.Sprintf(kmsKeyArnPattern, a.region, a.accountID, keyID)
-		}
+		// KmsKeyIds may be full ARNs, bare key ids, or aliases.
 		mqlKey, err := NewResource(a.MqlRuntime, ResourceAwsKmsKey,
-			map[string]*llx.RawData{"arn": llx.StringData(arnStr)})
+			kmsKeyRefArgs(a.region, a.accountID, keyID))
 		if err != nil {
 			return nil, err
 		}
@@ -451,7 +469,7 @@ func (a *mqlAwsSecretsmanagerSecret) deletedAt() (*time.Time, error) {
 }
 
 func (a *mqlAwsSecretsmanagerSecretReplicaRegion) kmsKey() (*mqlAwsKmsKey, error) {
-	kmsKeyId := a.KmsKeyId.Data
+	kmsKeyId := a.cacheKmsKeyId
 	if kmsKeyId == "" {
 		a.KmsKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -471,14 +489,15 @@ func (a *mqlAwsSecretsmanagerSecretReplicaRegion) kmsKey() (*mqlAwsKmsKey, error
 }
 
 func secretTagsToMap(tags []secretstypes.Tag) map[string]any {
-	tagsMap := make(map[string]any)
+	return tagsToMap(tags, func(t secretstypes.Tag) *string { return t.Key }, func(t secretstypes.Tag) *string { return t.Value })
+}
 
-	if len(tags) > 0 {
-		for i := range tags {
-			tag := tags[i]
-			tagsMap[convert.ToValue(tag.Key)] = convert.ToValue(tag.Value)
-		}
-	}
+// secretTagsToStringMap is secretTagsToMap in the shape the discovery filters
+// evaluate against.
+func secretTagsToStringMap(tags []secretstypes.Tag) map[string]string {
+	return tagsToStringMap(tags, func(t secretstypes.Tag) *string { return t.Key }, func(t secretstypes.Tag) *string { return t.Value })
+}
 
-	return tagsMap
+type mqlAwsSecretsmanagerSecretReplicaRegionInternal struct {
+	cacheKmsKeyId string
 }

@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
 )
 
 type ProvidersConf struct {
@@ -82,7 +82,7 @@ func (b *Builtin) UnmarshalJSON(data []byte) error {
 	var name string
 	if err := json.Unmarshal(data, &name); err == nil {
 		b.Name = name
-		b.GoPackage = "go.mondoo.com/mql/v13/providers/" + name
+		b.GoPackage = "go.mondoo.com/mql/providers/" + name
 
 		return nil
 	}

@@ -4,6 +4,7 @@
 package java
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -55,4 +56,19 @@ func TestNewCpes(t *testing.T) {
 	assert.NotEmpty(t, cpes)
 	assert.Contains(t, cpes[0], "commons-lang3")
 	assert.Contains(t, cpes[0], "3.12.0")
+}
+
+// A dynamic version or a range names a set of releases rather than one, so it
+// is not recorded as a version at all: a purl carrying "1.+" matches no release
+// while reading downstream as a definite claim about what is installed.
+//
+// Shared by every Java manifest reader, so the rule is pinned once here rather
+// than once per extractor, where two copies would drift.
+func TestConcreteVersion(t *testing.T) {
+	for _, in := range []string{"1.2.3", " 1.2.3 ", "4.12.0", "2.0.0-SNAPSHOT"} {
+		assert.Equal(t, strings.TrimSpace(in), ConcreteVersion(in), "concrete: %q", in)
+	}
+	for _, in := range []string{"1.+", "[1.0, 2.0[", "(1.0, 2.0)", "latest.release", "latest.integration", ""} {
+		assert.Empty(t, ConcreteVersion(in), "names a set, not a release: %q", in)
+	}
 }

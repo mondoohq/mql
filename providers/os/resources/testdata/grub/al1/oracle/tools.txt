@@ -1,0 +1,8 @@
+grubby: absent
+update-grub: absent
+grub2-mkconfig: absent
+grub-mkconfig: absent
+bootctl: absent
+kernel-install: absent
+grub-install: absent
+grub package: grub-0.97-94.32.amzn1.x86_64

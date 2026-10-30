@@ -207,3 +207,25 @@ func TestEnvVarSeparation(t *testing.T) {
 		assert.Equal(t, "MONDOO_AUTO_UPDATE_ENGINE", EnvAutoUpdateEngine)
 	})
 }
+
+func TestConfigRegisterVersion(t *testing.T) {
+	var registered []string
+	orig := updateRegisteredVersionFunc
+	updateRegisteredVersionFunc = func(version string) error {
+		registered = append(registered, version)
+		return nil
+	}
+	t.Cleanup(func() { updateRegisteredVersionFunc = orig })
+
+	t.Run("registers by default", func(t *testing.T) {
+		registered = nil
+		Config{BinaryName: "cnspec"}.registerVersion("14.8.0")
+		assert.Equal(t, []string{"14.8.0"}, registered)
+	})
+
+	t.Run("skips when SkipRegisteredVersion is set", func(t *testing.T) {
+		registered = nil
+		Config{BinaryName: "example", SkipRegisteredVersion: true}.registerVersion("1.2.3")
+		assert.Empty(t, registered)
+	})
+}

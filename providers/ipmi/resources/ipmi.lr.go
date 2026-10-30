@@ -7,16 +7,23 @@ package resources
 
 import (
 	"errors"
+	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceIpmi        string = "ipmi"
-	ResourceIpmiChassis string = "ipmi.chassis"
+	ResourceIpmi          string = "ipmi"
+	ResourceIpmiChassis   string = "ipmi.chassis"
+	ResourceIpmiChannel   string = "ipmi.channel"
+	ResourceIpmiUser      string = "ipmi.user"
+	ResourceIpmiLanConfig string = "ipmi.lanConfig"
+	ResourceIpmiSolConfig string = "ipmi.solConfig"
+	ResourceIpmiSel       string = "ipmi.sel"
+	ResourceIpmiWatchdog  string = "ipmi.watchdog"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -30,6 +37,30 @@ func init() {
 		"ipmi.chassis": {
 			// to override args, implement: initIpmiChassis(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createIpmiChassis,
+		},
+		"ipmi.channel": {
+			// to override args, implement: initIpmiChannel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIpmiChannel,
+		},
+		"ipmi.user": {
+			// to override args, implement: initIpmiUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIpmiUser,
+		},
+		"ipmi.lanConfig": {
+			// to override args, implement: initIpmiLanConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIpmiLanConfig,
+		},
+		"ipmi.solConfig": {
+			// to override args, implement: initIpmiSolConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIpmiSolConfig,
+		},
+		"ipmi.sel": {
+			// to override args, implement: initIpmiSel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIpmiSel,
+		},
+		"ipmi.watchdog": {
+			// to override args, implement: initIpmiWatchdog(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createIpmiWatchdog,
 		},
 	}
 }
@@ -108,11 +139,203 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ipmi.guid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIpmi).GetGuid()).ToDataRes(types.String)
 	},
+	"ipmi.channels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmi).GetChannels()).ToDataRes(types.Array(types.Resource("ipmi.channel")))
+	},
+	"ipmi.users": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmi).GetUsers()).ToDataRes(types.Array(types.Resource("ipmi.user")))
+	},
 	"ipmi.chassis.status": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIpmiChassis).GetStatus()).ToDataRes(types.Dict)
 	},
 	"ipmi.chassis.systemBootOptions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIpmiChassis).GetSystemBootOptions()).ToDataRes(types.Dict)
+	},
+	"ipmi.channel.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetId()).ToDataRes(types.Int)
+	},
+	"ipmi.channel.mediumType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetMediumType()).ToDataRes(types.String)
+	},
+	"ipmi.channel.protocolType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetProtocolType()).ToDataRes(types.String)
+	},
+	"ipmi.channel.sessionSupport": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetSessionSupport()).ToDataRes(types.String)
+	},
+	"ipmi.channel.activeSessionCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetActiveSessionCount()).ToDataRes(types.Int)
+	},
+	"ipmi.channel.accessMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetAccessMode()).ToDataRes(types.String)
+	},
+	"ipmi.channel.privilegeLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetPrivilegeLimit()).ToDataRes(types.String)
+	},
+	"ipmi.channel.alertingEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetAlertingEnabled()).ToDataRes(types.Bool)
+	},
+	"ipmi.channel.nonVolatileAccessMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetNonVolatileAccessMode()).ToDataRes(types.String)
+	},
+	"ipmi.channel.nonVolatilePrivilegeLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetNonVolatilePrivilegeLimit()).ToDataRes(types.String)
+	},
+	"ipmi.channel.authTypes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetAuthTypes()).ToDataRes(types.Array(types.String))
+	},
+	"ipmi.channel.anonymousLoginEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetAnonymousLoginEnabled()).ToDataRes(types.Bool)
+	},
+	"ipmi.channel.nullUsernamesEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetNullUsernamesEnabled()).ToDataRes(types.Bool)
+	},
+	"ipmi.channel.nonNullUsernamesEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetNonNullUsernamesEnabled()).ToDataRes(types.Bool)
+	},
+	"ipmi.channel.perMessageAuthenticationEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetPerMessageAuthenticationEnabled()).ToDataRes(types.Bool)
+	},
+	"ipmi.channel.userLevelAuthenticationEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetUserLevelAuthenticationEnabled()).ToDataRes(types.Bool)
+	},
+	"ipmi.channel.kgConfigured": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetKgConfigured()).ToDataRes(types.Bool)
+	},
+	"ipmi.channel.supportsIpmi15": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetSupportsIpmi15()).ToDataRes(types.Bool)
+	},
+	"ipmi.channel.supportsIpmi20": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiChannel).GetSupportsIpmi20()).ToDataRes(types.Bool)
+	},
+	"ipmi.user.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiUser).GetId()).ToDataRes(types.Int)
+	},
+	"ipmi.user.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiUser).GetName()).ToDataRes(types.String)
+	},
+	"ipmi.user.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiUser).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"ipmi.user.privilegeLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiUser).GetPrivilegeLimit()).ToDataRes(types.String)
+	},
+	"ipmi.user.linkAuthenticationEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiUser).GetLinkAuthenticationEnabled()).ToDataRes(types.Bool)
+	},
+	"ipmi.user.ipmiMessagingEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiUser).GetIpmiMessagingEnabled()).ToDataRes(types.Bool)
+	},
+	"ipmi.user.callbackOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiUser).GetCallbackOnly()).ToDataRes(types.Bool)
+	},
+	"ipmi.user.fixedName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiUser).GetFixedName()).ToDataRes(types.Bool)
+	},
+	"ipmi.lanConfig.authTypeEnables": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiLanConfig).GetAuthTypeEnables()).ToDataRes(types.Map(types.String, types.Array(types.String)))
+	},
+	"ipmi.lanConfig.cipherSuites": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiLanConfig).GetCipherSuites()).ToDataRes(types.Array(types.Int))
+	},
+	"ipmi.lanConfig.cipherSuitePrivilegeLevels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiLanConfig).GetCipherSuitePrivilegeLevels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"ipmi.lanConfig.cipherZeroEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiLanConfig).GetCipherZeroEnabled()).ToDataRes(types.Bool)
+	},
+	"ipmi.lanConfig.badPasswordThreshold": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiLanConfig).GetBadPasswordThreshold()).ToDataRes(types.Int)
+	},
+	"ipmi.lanConfig.attemptCountResetIntervalSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiLanConfig).GetAttemptCountResetIntervalSeconds()).ToDataRes(types.Int)
+	},
+	"ipmi.lanConfig.userLockoutIntervalSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiLanConfig).GetUserLockoutIntervalSeconds()).ToDataRes(types.Int)
+	},
+	"ipmi.lanConfig.invalidPasswordEventEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiLanConfig).GetInvalidPasswordEventEnabled()).ToDataRes(types.Bool)
+	},
+	"ipmi.lanConfig.vlanEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiLanConfig).GetVlanEnabled()).ToDataRes(types.Bool)
+	},
+	"ipmi.lanConfig.vlanId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiLanConfig).GetVlanId()).ToDataRes(types.Int)
+	},
+	"ipmi.solConfig.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiSolConfig).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"ipmi.solConfig.forceEncryption": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiSolConfig).GetForceEncryption()).ToDataRes(types.Bool)
+	},
+	"ipmi.solConfig.forceAuthentication": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiSolConfig).GetForceAuthentication()).ToDataRes(types.Bool)
+	},
+	"ipmi.solConfig.privilegeLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiSolConfig).GetPrivilegeLevel()).ToDataRes(types.String)
+	},
+	"ipmi.solConfig.payloadPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiSolConfig).GetPayloadPort()).ToDataRes(types.Int)
+	},
+	"ipmi.sel.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiSel).GetVersion()).ToDataRes(types.String)
+	},
+	"ipmi.sel.entryCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiSel).GetEntryCount()).ToDataRes(types.Int)
+	},
+	"ipmi.sel.freeSpaceBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiSel).GetFreeSpaceBytes()).ToDataRes(types.Int)
+	},
+	"ipmi.sel.lastAddTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiSel).GetLastAddTime()).ToDataRes(types.Time)
+	},
+	"ipmi.sel.lastEraseTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiSel).GetLastEraseTime()).ToDataRes(types.Time)
+	},
+	"ipmi.sel.overflow": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiSel).GetOverflow()).ToDataRes(types.Bool)
+	},
+	"ipmi.sel.loggingEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiSel).GetLoggingEnabled()).ToDataRes(types.Bool)
+	},
+	"ipmi.sel.supportsDelete": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiSel).GetSupportsDelete()).ToDataRes(types.Bool)
+	},
+	"ipmi.sel.supportsPartialAdd": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiSel).GetSupportsPartialAdd()).ToDataRes(types.Bool)
+	},
+	"ipmi.sel.supportsReserve": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiSel).GetSupportsReserve()).ToDataRes(types.Bool)
+	},
+	"ipmi.sel.supportsGetAllocationInfo": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiSel).GetSupportsGetAllocationInfo()).ToDataRes(types.Bool)
+	},
+	"ipmi.watchdog.running": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiWatchdog).GetRunning()).ToDataRes(types.Bool)
+	},
+	"ipmi.watchdog.dontLog": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiWatchdog).GetDontLog()).ToDataRes(types.Bool)
+	},
+	"ipmi.watchdog.timerUse": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiWatchdog).GetTimerUse()).ToDataRes(types.String)
+	},
+	"ipmi.watchdog.timeoutAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiWatchdog).GetTimeoutAction()).ToDataRes(types.String)
+	},
+	"ipmi.watchdog.preTimeoutInterrupt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiWatchdog).GetPreTimeoutInterrupt()).ToDataRes(types.String)
+	},
+	"ipmi.watchdog.preTimeoutIntervalSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiWatchdog).GetPreTimeoutIntervalSeconds()).ToDataRes(types.Int)
+	},
+	"ipmi.watchdog.expiredTimerUses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiWatchdog).GetExpiredTimerUses()).ToDataRes(types.Array(types.String))
+	},
+	"ipmi.watchdog.initialCountdownSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiWatchdog).GetInitialCountdownSeconds()).ToDataRes(types.Float)
+	},
+	"ipmi.watchdog.presentCountdownSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIpmiWatchdog).GetPresentCountdownSeconds()).ToDataRes(types.Float)
 	},
 }
 
@@ -138,6 +361,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIpmi).Guid, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"ipmi.channels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmi).Channels, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ipmi.users": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmi).Users, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"ipmi.chassis.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIpmiChassis).__id, ok = v.Value.(string)
 		return
@@ -148,6 +379,278 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ipmi.chassis.systemBootOptions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIpmiChassis).SystemBootOptions, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).__id, ok = v.Value.(string)
+		return
+	},
+	"ipmi.channel.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.mediumType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).MediumType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.protocolType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).ProtocolType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.sessionSupport": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).SessionSupport, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.activeSessionCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).ActiveSessionCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.accessMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).AccessMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.privilegeLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).PrivilegeLimit, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.alertingEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).AlertingEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.nonVolatileAccessMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).NonVolatileAccessMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.nonVolatilePrivilegeLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).NonVolatilePrivilegeLimit, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.authTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).AuthTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.anonymousLoginEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).AnonymousLoginEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.nullUsernamesEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).NullUsernamesEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.nonNullUsernamesEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).NonNullUsernamesEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.perMessageAuthenticationEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).PerMessageAuthenticationEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.userLevelAuthenticationEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).UserLevelAuthenticationEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.kgConfigured": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).KgConfigured, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.supportsIpmi15": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).SupportsIpmi15, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.channel.supportsIpmi20": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiChannel).SupportsIpmi20, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.user.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiUser).__id, ok = v.Value.(string)
+		return
+	},
+	"ipmi.user.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiUser).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ipmi.user.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiUser).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ipmi.user.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiUser).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.user.privilegeLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiUser).PrivilegeLimit, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ipmi.user.linkAuthenticationEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiUser).LinkAuthenticationEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.user.ipmiMessagingEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiUser).IpmiMessagingEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.user.callbackOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiUser).CallbackOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.user.fixedName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiUser).FixedName, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.lanConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiLanConfig).__id, ok = v.Value.(string)
+		return
+	},
+	"ipmi.lanConfig.authTypeEnables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiLanConfig).AuthTypeEnables, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"ipmi.lanConfig.cipherSuites": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiLanConfig).CipherSuites, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ipmi.lanConfig.cipherSuitePrivilegeLevels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiLanConfig).CipherSuitePrivilegeLevels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"ipmi.lanConfig.cipherZeroEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiLanConfig).CipherZeroEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.lanConfig.badPasswordThreshold": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiLanConfig).BadPasswordThreshold, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ipmi.lanConfig.attemptCountResetIntervalSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiLanConfig).AttemptCountResetIntervalSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ipmi.lanConfig.userLockoutIntervalSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiLanConfig).UserLockoutIntervalSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ipmi.lanConfig.invalidPasswordEventEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiLanConfig).InvalidPasswordEventEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.lanConfig.vlanEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiLanConfig).VlanEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.lanConfig.vlanId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiLanConfig).VlanId, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ipmi.solConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSolConfig).__id, ok = v.Value.(string)
+		return
+	},
+	"ipmi.solConfig.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSolConfig).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.solConfig.forceEncryption": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSolConfig).ForceEncryption, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.solConfig.forceAuthentication": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSolConfig).ForceAuthentication, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.solConfig.privilegeLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSolConfig).PrivilegeLevel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ipmi.solConfig.payloadPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSolConfig).PayloadPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ipmi.sel.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSel).__id, ok = v.Value.(string)
+		return
+	},
+	"ipmi.sel.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSel).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ipmi.sel.entryCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSel).EntryCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ipmi.sel.freeSpaceBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSel).FreeSpaceBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ipmi.sel.lastAddTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSel).LastAddTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ipmi.sel.lastEraseTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSel).LastEraseTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"ipmi.sel.overflow": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSel).Overflow, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.sel.loggingEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSel).LoggingEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.sel.supportsDelete": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSel).SupportsDelete, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.sel.supportsPartialAdd": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSel).SupportsPartialAdd, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.sel.supportsReserve": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSel).SupportsReserve, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.sel.supportsGetAllocationInfo": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiSel).SupportsGetAllocationInfo, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.watchdog.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiWatchdog).__id, ok = v.Value.(string)
+		return
+	},
+	"ipmi.watchdog.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiWatchdog).Running, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.watchdog.dontLog": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiWatchdog).DontLog, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ipmi.watchdog.timerUse": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiWatchdog).TimerUse, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ipmi.watchdog.timeoutAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiWatchdog).TimeoutAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ipmi.watchdog.preTimeoutInterrupt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiWatchdog).PreTimeoutInterrupt, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ipmi.watchdog.preTimeoutIntervalSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiWatchdog).PreTimeoutIntervalSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ipmi.watchdog.expiredTimerUses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiWatchdog).ExpiredTimerUses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ipmi.watchdog.initialCountdownSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiWatchdog).InitialCountdownSeconds, ok = plugin.RawToTValue[float64](v.Value, v.Error)
+		return
+	},
+	"ipmi.watchdog.presentCountdownSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIpmiWatchdog).PresentCountdownSeconds, ok = plugin.RawToTValue[float64](v.Value, v.Error)
 		return
 	},
 }
@@ -181,6 +684,8 @@ type mqlIpmi struct {
 	// optional: if you define mqlIpmiInternal it will be used here
 	DeviceID plugin.TValue[any]
 	Guid     plugin.TValue[string]
+	Channels plugin.TValue[[]any]
+	Users    plugin.TValue[[]any]
 }
 
 // createIpmi creates a new instance of this resource
@@ -229,6 +734,38 @@ func (c *mqlIpmi) GetDeviceID() *plugin.TValue[any] {
 func (c *mqlIpmi) GetGuid() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Guid, func() (string, error) {
 		return c.guid()
+	})
+}
+
+func (c *mqlIpmi) GetChannels() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Channels, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ipmi", c.__id, "channels")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.channels()
+	})
+}
+
+func (c *mqlIpmi) GetUsers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Users, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ipmi", c.__id, "users")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.users()
 	})
 }
 
@@ -287,5 +824,639 @@ func (c *mqlIpmiChassis) GetStatus() *plugin.TValue[any] {
 func (c *mqlIpmiChassis) GetSystemBootOptions() *plugin.TValue[any] {
 	return plugin.GetOrCompute[any](&c.SystemBootOptions, func() (any, error) {
 		return c.systemBootOptions()
+	})
+}
+
+// mqlIpmiChannel for the ipmi.channel resource
+type mqlIpmiChannel struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIpmiChannelInternal it will be used here
+	Id                              plugin.TValue[int64]
+	MediumType                      plugin.TValue[string]
+	ProtocolType                    plugin.TValue[string]
+	SessionSupport                  plugin.TValue[string]
+	ActiveSessionCount              plugin.TValue[int64]
+	AccessMode                      plugin.TValue[string]
+	PrivilegeLimit                  plugin.TValue[string]
+	AlertingEnabled                 plugin.TValue[bool]
+	NonVolatileAccessMode           plugin.TValue[string]
+	NonVolatilePrivilegeLimit       plugin.TValue[string]
+	AuthTypes                       plugin.TValue[[]any]
+	AnonymousLoginEnabled           plugin.TValue[bool]
+	NullUsernamesEnabled            plugin.TValue[bool]
+	NonNullUsernamesEnabled         plugin.TValue[bool]
+	PerMessageAuthenticationEnabled plugin.TValue[bool]
+	UserLevelAuthenticationEnabled  plugin.TValue[bool]
+	KgConfigured                    plugin.TValue[bool]
+	SupportsIpmi15                  plugin.TValue[bool]
+	SupportsIpmi20                  plugin.TValue[bool]
+}
+
+// createIpmiChannel creates a new instance of this resource
+func createIpmiChannel(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIpmiChannel{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ipmi.channel", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIpmiChannel) MqlName() string {
+	return "ipmi.channel"
+}
+
+func (c *mqlIpmiChannel) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIpmiChannel) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlIpmiChannel) GetMediumType() *plugin.TValue[string] {
+	return &c.MediumType
+}
+
+func (c *mqlIpmiChannel) GetProtocolType() *plugin.TValue[string] {
+	return &c.ProtocolType
+}
+
+func (c *mqlIpmiChannel) GetSessionSupport() *plugin.TValue[string] {
+	return &c.SessionSupport
+}
+
+func (c *mqlIpmiChannel) GetActiveSessionCount() *plugin.TValue[int64] {
+	return &c.ActiveSessionCount
+}
+
+func (c *mqlIpmiChannel) GetAccessMode() *plugin.TValue[string] {
+	return &c.AccessMode
+}
+
+func (c *mqlIpmiChannel) GetPrivilegeLimit() *plugin.TValue[string] {
+	return &c.PrivilegeLimit
+}
+
+func (c *mqlIpmiChannel) GetAlertingEnabled() *plugin.TValue[bool] {
+	return &c.AlertingEnabled
+}
+
+func (c *mqlIpmiChannel) GetNonVolatileAccessMode() *plugin.TValue[string] {
+	return &c.NonVolatileAccessMode
+}
+
+func (c *mqlIpmiChannel) GetNonVolatilePrivilegeLimit() *plugin.TValue[string] {
+	return &c.NonVolatilePrivilegeLimit
+}
+
+func (c *mqlIpmiChannel) GetAuthTypes() *plugin.TValue[[]any] {
+	return &c.AuthTypes
+}
+
+func (c *mqlIpmiChannel) GetAnonymousLoginEnabled() *plugin.TValue[bool] {
+	return &c.AnonymousLoginEnabled
+}
+
+func (c *mqlIpmiChannel) GetNullUsernamesEnabled() *plugin.TValue[bool] {
+	return &c.NullUsernamesEnabled
+}
+
+func (c *mqlIpmiChannel) GetNonNullUsernamesEnabled() *plugin.TValue[bool] {
+	return &c.NonNullUsernamesEnabled
+}
+
+func (c *mqlIpmiChannel) GetPerMessageAuthenticationEnabled() *plugin.TValue[bool] {
+	return &c.PerMessageAuthenticationEnabled
+}
+
+func (c *mqlIpmiChannel) GetUserLevelAuthenticationEnabled() *plugin.TValue[bool] {
+	return &c.UserLevelAuthenticationEnabled
+}
+
+func (c *mqlIpmiChannel) GetKgConfigured() *plugin.TValue[bool] {
+	return &c.KgConfigured
+}
+
+func (c *mqlIpmiChannel) GetSupportsIpmi15() *plugin.TValue[bool] {
+	return &c.SupportsIpmi15
+}
+
+func (c *mqlIpmiChannel) GetSupportsIpmi20() *plugin.TValue[bool] {
+	return &c.SupportsIpmi20
+}
+
+// mqlIpmiUser for the ipmi.user resource
+type mqlIpmiUser struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIpmiUserInternal it will be used here
+	Id                        plugin.TValue[int64]
+	Name                      plugin.TValue[string]
+	Enabled                   plugin.TValue[bool]
+	PrivilegeLimit            plugin.TValue[string]
+	LinkAuthenticationEnabled plugin.TValue[bool]
+	IpmiMessagingEnabled      plugin.TValue[bool]
+	CallbackOnly              plugin.TValue[bool]
+	FixedName                 plugin.TValue[bool]
+}
+
+// createIpmiUser creates a new instance of this resource
+func createIpmiUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIpmiUser{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ipmi.user", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIpmiUser) MqlName() string {
+	return "ipmi.user"
+}
+
+func (c *mqlIpmiUser) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIpmiUser) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlIpmiUser) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlIpmiUser) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlIpmiUser) GetPrivilegeLimit() *plugin.TValue[string] {
+	return &c.PrivilegeLimit
+}
+
+func (c *mqlIpmiUser) GetLinkAuthenticationEnabled() *plugin.TValue[bool] {
+	return &c.LinkAuthenticationEnabled
+}
+
+func (c *mqlIpmiUser) GetIpmiMessagingEnabled() *plugin.TValue[bool] {
+	return &c.IpmiMessagingEnabled
+}
+
+func (c *mqlIpmiUser) GetCallbackOnly() *plugin.TValue[bool] {
+	return &c.CallbackOnly
+}
+
+func (c *mqlIpmiUser) GetFixedName() *plugin.TValue[bool] {
+	return &c.FixedName
+}
+
+// mqlIpmiLanConfig for the ipmi.lanConfig resource
+type mqlIpmiLanConfig struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIpmiLanConfigInternal
+	AuthTypeEnables                  plugin.TValue[map[string]any]
+	CipherSuites                     plugin.TValue[[]any]
+	CipherSuitePrivilegeLevels       plugin.TValue[map[string]any]
+	CipherZeroEnabled                plugin.TValue[bool]
+	BadPasswordThreshold             plugin.TValue[int64]
+	AttemptCountResetIntervalSeconds plugin.TValue[int64]
+	UserLockoutIntervalSeconds       plugin.TValue[int64]
+	InvalidPasswordEventEnabled      plugin.TValue[bool]
+	VlanEnabled                      plugin.TValue[bool]
+	VlanId                           plugin.TValue[int64]
+}
+
+// createIpmiLanConfig creates a new instance of this resource
+func createIpmiLanConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIpmiLanConfig{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ipmi.lanConfig", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIpmiLanConfig) MqlName() string {
+	return "ipmi.lanConfig"
+}
+
+func (c *mqlIpmiLanConfig) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIpmiLanConfig) GetAuthTypeEnables() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.AuthTypeEnables, func() (map[string]any, error) {
+		return c.authTypeEnables()
+	})
+}
+
+func (c *mqlIpmiLanConfig) GetCipherSuites() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CipherSuites, func() ([]any, error) {
+		return c.cipherSuites()
+	})
+}
+
+func (c *mqlIpmiLanConfig) GetCipherSuitePrivilegeLevels() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.CipherSuitePrivilegeLevels, func() (map[string]any, error) {
+		return c.cipherSuitePrivilegeLevels()
+	})
+}
+
+func (c *mqlIpmiLanConfig) GetCipherZeroEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CipherZeroEnabled, func() (bool, error) {
+		return c.cipherZeroEnabled()
+	})
+}
+
+func (c *mqlIpmiLanConfig) GetBadPasswordThreshold() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.BadPasswordThreshold, func() (int64, error) {
+		return c.badPasswordThreshold()
+	})
+}
+
+func (c *mqlIpmiLanConfig) GetAttemptCountResetIntervalSeconds() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.AttemptCountResetIntervalSeconds, func() (int64, error) {
+		return c.attemptCountResetIntervalSeconds()
+	})
+}
+
+func (c *mqlIpmiLanConfig) GetUserLockoutIntervalSeconds() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.UserLockoutIntervalSeconds, func() (int64, error) {
+		return c.userLockoutIntervalSeconds()
+	})
+}
+
+func (c *mqlIpmiLanConfig) GetInvalidPasswordEventEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.InvalidPasswordEventEnabled, func() (bool, error) {
+		return c.invalidPasswordEventEnabled()
+	})
+}
+
+func (c *mqlIpmiLanConfig) GetVlanEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.VlanEnabled, func() (bool, error) {
+		return c.vlanEnabled()
+	})
+}
+
+func (c *mqlIpmiLanConfig) GetVlanId() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.VlanId, func() (int64, error) {
+		return c.vlanId()
+	})
+}
+
+// mqlIpmiSolConfig for the ipmi.solConfig resource
+type mqlIpmiSolConfig struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIpmiSolConfigInternal
+	Enabled             plugin.TValue[bool]
+	ForceEncryption     plugin.TValue[bool]
+	ForceAuthentication plugin.TValue[bool]
+	PrivilegeLevel      plugin.TValue[string]
+	PayloadPort         plugin.TValue[int64]
+}
+
+// createIpmiSolConfig creates a new instance of this resource
+func createIpmiSolConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIpmiSolConfig{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ipmi.solConfig", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIpmiSolConfig) MqlName() string {
+	return "ipmi.solConfig"
+}
+
+func (c *mqlIpmiSolConfig) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIpmiSolConfig) GetEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Enabled, func() (bool, error) {
+		return c.enabled()
+	})
+}
+
+func (c *mqlIpmiSolConfig) GetForceEncryption() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ForceEncryption, func() (bool, error) {
+		return c.forceEncryption()
+	})
+}
+
+func (c *mqlIpmiSolConfig) GetForceAuthentication() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ForceAuthentication, func() (bool, error) {
+		return c.forceAuthentication()
+	})
+}
+
+func (c *mqlIpmiSolConfig) GetPrivilegeLevel() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.PrivilegeLevel, func() (string, error) {
+		return c.privilegeLevel()
+	})
+}
+
+func (c *mqlIpmiSolConfig) GetPayloadPort() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.PayloadPort, func() (int64, error) {
+		return c.payloadPort()
+	})
+}
+
+// mqlIpmiSel for the ipmi.sel resource
+type mqlIpmiSel struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIpmiSelInternal
+	Version                   plugin.TValue[string]
+	EntryCount                plugin.TValue[int64]
+	FreeSpaceBytes            plugin.TValue[int64]
+	LastAddTime               plugin.TValue[*time.Time]
+	LastEraseTime             plugin.TValue[*time.Time]
+	Overflow                  plugin.TValue[bool]
+	LoggingEnabled            plugin.TValue[bool]
+	SupportsDelete            plugin.TValue[bool]
+	SupportsPartialAdd        plugin.TValue[bool]
+	SupportsReserve           plugin.TValue[bool]
+	SupportsGetAllocationInfo plugin.TValue[bool]
+}
+
+// createIpmiSel creates a new instance of this resource
+func createIpmiSel(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIpmiSel{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ipmi.sel", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIpmiSel) MqlName() string {
+	return "ipmi.sel"
+}
+
+func (c *mqlIpmiSel) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIpmiSel) GetVersion() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Version, func() (string, error) {
+		return c.version()
+	})
+}
+
+func (c *mqlIpmiSel) GetEntryCount() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.EntryCount, func() (int64, error) {
+		return c.entryCount()
+	})
+}
+
+func (c *mqlIpmiSel) GetFreeSpaceBytes() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.FreeSpaceBytes, func() (int64, error) {
+		return c.freeSpaceBytes()
+	})
+}
+
+func (c *mqlIpmiSel) GetLastAddTime() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastAddTime, func() (*time.Time, error) {
+		return c.lastAddTime()
+	})
+}
+
+func (c *mqlIpmiSel) GetLastEraseTime() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastEraseTime, func() (*time.Time, error) {
+		return c.lastEraseTime()
+	})
+}
+
+func (c *mqlIpmiSel) GetOverflow() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Overflow, func() (bool, error) {
+		return c.overflow()
+	})
+}
+
+func (c *mqlIpmiSel) GetLoggingEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.LoggingEnabled, func() (bool, error) {
+		return c.loggingEnabled()
+	})
+}
+
+func (c *mqlIpmiSel) GetSupportsDelete() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SupportsDelete, func() (bool, error) {
+		return c.supportsDelete()
+	})
+}
+
+func (c *mqlIpmiSel) GetSupportsPartialAdd() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SupportsPartialAdd, func() (bool, error) {
+		return c.supportsPartialAdd()
+	})
+}
+
+func (c *mqlIpmiSel) GetSupportsReserve() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SupportsReserve, func() (bool, error) {
+		return c.supportsReserve()
+	})
+}
+
+func (c *mqlIpmiSel) GetSupportsGetAllocationInfo() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SupportsGetAllocationInfo, func() (bool, error) {
+		return c.supportsGetAllocationInfo()
+	})
+}
+
+// mqlIpmiWatchdog for the ipmi.watchdog resource
+type mqlIpmiWatchdog struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlIpmiWatchdogInternal
+	Running                   plugin.TValue[bool]
+	DontLog                   plugin.TValue[bool]
+	TimerUse                  plugin.TValue[string]
+	TimeoutAction             plugin.TValue[string]
+	PreTimeoutInterrupt       plugin.TValue[string]
+	PreTimeoutIntervalSeconds plugin.TValue[int64]
+	ExpiredTimerUses          plugin.TValue[[]any]
+	InitialCountdownSeconds   plugin.TValue[float64]
+	PresentCountdownSeconds   plugin.TValue[float64]
+}
+
+// createIpmiWatchdog creates a new instance of this resource
+func createIpmiWatchdog(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIpmiWatchdog{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ipmi.watchdog", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIpmiWatchdog) MqlName() string {
+	return "ipmi.watchdog"
+}
+
+func (c *mqlIpmiWatchdog) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIpmiWatchdog) GetRunning() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Running, func() (bool, error) {
+		return c.running()
+	})
+}
+
+func (c *mqlIpmiWatchdog) GetDontLog() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.DontLog, func() (bool, error) {
+		return c.dontLog()
+	})
+}
+
+func (c *mqlIpmiWatchdog) GetTimerUse() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.TimerUse, func() (string, error) {
+		return c.timerUse()
+	})
+}
+
+func (c *mqlIpmiWatchdog) GetTimeoutAction() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.TimeoutAction, func() (string, error) {
+		return c.timeoutAction()
+	})
+}
+
+func (c *mqlIpmiWatchdog) GetPreTimeoutInterrupt() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.PreTimeoutInterrupt, func() (string, error) {
+		return c.preTimeoutInterrupt()
+	})
+}
+
+func (c *mqlIpmiWatchdog) GetPreTimeoutIntervalSeconds() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.PreTimeoutIntervalSeconds, func() (int64, error) {
+		return c.preTimeoutIntervalSeconds()
+	})
+}
+
+func (c *mqlIpmiWatchdog) GetExpiredTimerUses() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExpiredTimerUses, func() ([]any, error) {
+		return c.expiredTimerUses()
+	})
+}
+
+func (c *mqlIpmiWatchdog) GetInitialCountdownSeconds() *plugin.TValue[float64] {
+	return plugin.GetOrCompute[float64](&c.InitialCountdownSeconds, func() (float64, error) {
+		return c.initialCountdownSeconds()
+	})
+}
+
+func (c *mqlIpmiWatchdog) GetPresentCountdownSeconds() *plugin.TValue[float64] {
+	return plugin.GetOrCompute[float64](&c.PresentCountdownSeconds, func() (float64, error) {
+		return c.presentCountdownSeconds()
 	})
 }

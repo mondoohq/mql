@@ -5,12 +5,15 @@ package connection
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
+	"fmt"
 	"maps"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -25,11 +28,12 @@ import (
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/logger/zerologadapter"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/logger/zerologadapter"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/utils/iox"
 )
 
 type AwsConnection struct {
@@ -42,14 +46,42 @@ type AwsConnection struct {
 	awsConfigOptions []func(*config.LoadOptions) error
 	PlatformOverride string
 	Filters          DiscoveryFilters
+	// gaps records service/region pairs this scan could not read. See
+	// coverage.go for why an unreadable region must not look like an empty one.
+	gaps coverageGaps
 
 	opts awsConnectionOptions
 }
 
+// awsConnectionOptions carries everything that distinguishes one AWS
+// connection from another. Every field must be exported: hashstructure skips
+// unexported fields, so an unexported field contributes nothing to Hash() and
+// two connections for different accounts would collide.
 type awsConnectionOptions struct {
-	scope   string
-	profile string
-	options map[string]string
+	Scope   string
+	Profile string
+	Options map[string]string
+	// CredentialFingerprint distinguishes connections whose options are
+	// identical but whose credentials resolve to different accounts.
+	CredentialFingerprint string
+}
+
+// credentialFingerprint derives a stable, non-reversible identifier for a set
+// of credentials so that two connections using different credentials hash
+// differently. The secret is hashed, never retained.
+func credentialFingerprint(creds []*vault.Credential) string {
+	if len(creds) == 0 {
+		return ""
+	}
+	h := sha256.New()
+	for _, cred := range creds {
+		if cred == nil {
+			continue
+		}
+		fmt.Fprintf(h, "%s\x00%d\x00%s\x00", cred.SecretId, cred.Type, cred.User)
+		h.Write(cred.Secret)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func NewMockConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) *AwsConnection {
@@ -57,6 +89,15 @@ func NewMockConnection(id uint32, asset *inventory.Asset, conf *inventory.Config
 		Connection: plugin.NewConnection(id, asset),
 		asset:      asset,
 	}
+}
+
+// NewTestConnection builds a connection around a caller-supplied aws.Config.
+// It exists so that tests can hand the SDK clients a config carrying
+// APIOptions middleware and exercise a lister end to end without network or
+// credentials; cfg is unexported, so there is no other way to reach it from
+// outside this package.
+func NewTestConnection(cfg aws.Config) *AwsConnection {
+	return &AwsConnection{cfg: cfg}
 }
 
 func NewAwsConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*AwsConnection, error) {
@@ -97,9 +138,10 @@ func NewAwsConnection(id uint32, asset *inventory.Asset, conf *inventory.Config)
 	c.Conf = conf
 	c.asset = asset
 	c.cfg = cfg
-	c.opts.profile = asset.Options["profile"]
-	c.opts.scope = asset.Options["scope"]
-	c.opts.options = asset.Options
+	c.opts.Profile = asset.Options["profile"]
+	c.opts.Scope = asset.Options["scope"]
+	c.opts.Options = asset.Options
+	c.opts.CredentialFingerprint = credentialFingerprint(conf.GetCredentials())
 	c.Filters = DiscoveryFiltersFromOpts(conf.Discover.GetFilter())
 	return c, nil
 }
@@ -273,15 +315,15 @@ func (p *AwsConnection) UpdateAsset(asset *inventory.Asset) {
 }
 
 func (p *AwsConnection) Profile() string {
-	return p.opts.profile
+	return p.opts.Profile
 }
 
 func (p *AwsConnection) Scope() string {
-	return p.opts.scope
+	return p.opts.Scope
 }
 
 func (p *AwsConnection) ConnectionOptions() map[string]string {
-	return p.opts.options
+	return p.opts.Options
 }
 
 func (p *AwsConnection) RunCommand(command string) (*shared.Command, error) {
@@ -330,27 +372,53 @@ func CheckIam(cfg aws.Config) (*sts.GetCallerIdentityOutput, error) {
 	}
 }
 
-func (h *AwsConnection) Regions() ([]string, error) {
-	// check cache for regions list, return if exists
-	c, ok := h.clientcache.Load("_regions")
-	if ok {
-		log.Debug().Msg("use regions from cache")
-		return c.Data.([]string), nil
+// normalizeRegionFilter trims and de-duplicates the regions filter.
+//
+// The filter is split on commas without trimming, so `regions=us-east-1, us-west-2`
+// yields " us-west-2" with a leading space, and a trailing comma yields "". An
+// empty entry is worse than useless: the client treats an empty region as "use
+// the configured one", so it silently scans the default region a second time.
+func normalizeRegionFilter(regions []string) []string {
+	out := make([]string, 0, len(regions))
+	seen := make(map[string]struct{}, len(regions))
+	for _, region := range regions {
+		region = strings.TrimSpace(region)
+		if region == "" {
+			continue
+		}
+		if _, dup := seen[region]; dup {
+			continue
+		}
+		seen[region] = struct{}{}
+		out = append(out, region)
 	}
+	return out
+}
 
-	// include filters have precedence over exclude filters. in any normal situation they should be mutually exclusive.
-	regionLimits := h.Filters.General.Regions
-	if len(regionLimits) > 0 {
-		log.Debug().Interface("regions", regionLimits).Msg("using region limits")
-		// cache the regions as part of the provider instance
-		h.clientcache.Store("_regions", &CacheEntry{Data: regionLimits})
-		return regionLimits, nil
+// unknownRegions reports which requested regions the account does not have
+// enabled, preserving the order they were given in.
+func unknownRegions(requested, enabled []string) []string {
+	have := make(map[string]struct{}, len(enabled))
+	for _, region := range enabled {
+		have[region] = struct{}{}
 	}
-	// if no cache, get regions using ec2 client (using the ssm list global regions does not give the same list)
-	log.Debug().Msg("no region cache or region limits found. fetching regions")
-	regions := []string{}
+	unknown := []string{}
+	for _, region := range requested {
+		if _, ok := have[region]; !ok {
+			unknown = append(unknown, region)
+		}
+	}
+	return unknown
+}
+
+// discoverEnabledRegions lists the regions this account has enabled.
+//
+// allowFallback controls whether a failed DescribeRegions escalates to the
+// slower routes (Account list-regions, then the public regional table plus a
+// per-region access probe). They are worth it when the answer decides the whole
+// scan's scope, and not worth it when the caller has already named its regions.
+func (h *AwsConnection) discoverEnabledRegions(ctx context.Context, allowFallback bool) ([]string, error) {
 	svc := h.Ec2(h.cfg.Region)
-	ctx := context.Background()
 
 	// DescribeRegions works to get the list of enabled regions for the account ( each account of organization)
 	// but this does not mean the respective service endpoint is available in that region. They will timeout instead of failing fast
@@ -359,22 +427,70 @@ func (h *AwsConnection) Regions() ([]string, error) {
 	res, err := svc.DescribeRegions(ctx, &ec2.DescribeRegionsInput{})
 	if err != nil {
 		log.Warn().Err(err).Msg("unable to describe regions")
+		if !allowFallback {
+			return nil, err
+		}
 		// when we can't use `DescribeRegions` we will fallback to:
 		// 1. Account list-regions
 		// 2. Public regional table + region access verification
 		enabledRegions, fallbackErr := h.fallbackGetEnabledRegions(ctx)
 		if fallbackErr != nil {
 			log.Warn().Err(fallbackErr).Msg("unable to list regions from fallback options")
-			return regions, err
+			return nil, err
 		}
-		regions = enabledRegions
-	} else {
-		for _, region := range res.Regions {
-			if region.RegionName == nil {
-				continue
-			}
-			regions = append(regions, *region.RegionName)
+		return enabledRegions, nil
+	}
+
+	regions := []string{}
+	for _, region := range res.Regions {
+		if region.RegionName == nil {
+			continue
 		}
+		regions = append(regions, *region.RegionName)
+	}
+	return regions, nil
+}
+
+func (h *AwsConnection) Regions() ([]string, error) {
+	// check cache for regions list, return if exists
+	c, ok := h.clientcache.Load("_regions")
+	if ok {
+		log.Debug().Msg("use regions from cache")
+		return c.Data.([]string), nil
+	}
+
+	ctx := context.Background()
+
+	// include filters have precedence over exclude filters. in any normal situation they should be mutually exclusive.
+	if regionLimits := normalizeRegionFilter(h.Filters.General.Regions); len(regionLimits) > 0 {
+		// A region name that the account does not have enabled resolves to no
+		// endpoint at all, and every lister then classifies the resulting DNS
+		// miss as "this service is absent here". Left unchecked, a typo makes the
+		// whole scan report zero resources and exit successfully. Skip the
+		// expensive fallback here: it costs a probe per region, and the caller
+		// has already told us which regions it wants.
+		enabled, err := h.discoverEnabledRegions(ctx, false)
+		if err != nil {
+			// Degrading to a no-op is the safe direction - refusing to scan
+			// because we could not read the region list would be worse. Say
+			// plainly that the filter was taken as given, so this is not mistaken
+			// for a filter that passed the check.
+			log.Warn().Err(err).Strs("regions", regionLimits).
+				Msg("could not list the account's enabled regions, accepting the regions filter unchecked; a misspelled region will report no resources")
+		} else if unknown := unknownRegions(regionLimits, enabled); len(unknown) > 0 {
+			return nil, fmt.Errorf("regions filter names %d region(s) this account does not have enabled: %s",
+				len(unknown), strings.Join(unknown, ", "))
+		}
+		log.Debug().Strs("regions", regionLimits).Msg("using region limits")
+		// cache the regions as part of the provider instance
+		h.clientcache.Store("_regions", &CacheEntry{Data: regionLimits})
+		return regionLimits, nil
+	}
+	// if no cache, get regions using ec2 client (using the ssm list global regions does not give the same list)
+	log.Debug().Msg("no region cache or region limits found. fetching regions")
+	regions, err := h.discoverEnabledRegions(ctx, true)
+	if err != nil {
+		return []string{}, err
 	}
 
 	// ensure excluded regions are discarded
@@ -419,7 +535,7 @@ func (h *AwsConnection) fallbackGetEnabledRegions(ctx context.Context) (regions 
 	log.Warn().Err(err).Msg("unable to list account regions")
 
 	// 2. Public regional table + region access verification
-	regionsFromTable, err := getRegionsFromRegionalTable()
+	regionsFromTable, err := fetchRegionsFromRegionalTable(ctx, regionalTableHTTPClient, "https://api.regional-table.region-services.aws.a2z.com/index.json")
 	if err != nil {
 		return
 	}
@@ -467,13 +583,26 @@ type regionalTable struct {
 //
 // NOTE: if we need to validate that we have access to that region or, that the region is
 // enabled, we can improve this function to do STS identity calls for all regions.
-func getRegionsFromRegionalTable() (regions []string, err error) {
-	resp, err := http.Get("https://api.regional-table.region-services.aws.a2z.com/index.json")
+var regionalTableHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
+func getRegionsFromRegionalTable() ([]string, error) {
+	return fetchRegionsFromRegionalTable(context.Background(), regionalTableHTTPClient, "https://api.regional-table.region-services.aws.a2z.com/index.json")
+}
+
+func fetchRegionsFromRegionalTable(ctx context.Context, client *http.Client, endpoint string) (regions []string, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("regional table returned HTTP %d", resp.StatusCode)
+	}
+	body, err := iox.ReadAllLimit(resp.Body, 16<<20)
 	if err != nil {
 		return
 	}

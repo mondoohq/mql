@@ -5,18 +5,59 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/resources/snmpd"
+	"github.com/spf13/afero"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/snmpd"
+	"go.mondoo.com/mql/types"
 )
 
 const (
-	defaultSnmpdConfig = "/etc/snmp/snmpd.conf"
-	snmpdDropInDirName = "snmpd.conf.d"
+	defaultSnmpdConfig   = "/etc/snmp/snmpd.conf"
+	snmpdLocalConfigName = "snmpd.local.conf"
 )
+
+// snmpdPersistentConfigCandidates are the persistent snmpd.conf locations,
+// probed in order. snmpd reads the one in its persistent directory after its
+// configuration directory; it holds the users createUser defined and any
+// directives written at runtime. Debian and Ubuntu use /var/lib/snmp, Red Hat
+// /var/lib/net-snmp, and upstream builds (FreeBSD) /var/net-snmp.
+var snmpdPersistentConfigCandidates = []string{
+	"/var/lib/snmp/snmpd.conf",
+	"/var/lib/net-snmp/snmpd.conf",
+	"/var/net-snmp/snmpd.conf",
+}
+
+// snmpdConfigCandidates are the snmpd.conf locations probed in order. The
+// net-snmp package on FreeBSD searches /usr/local/etc/snmp and then
+// /usr/local/share/snmp (`net-snmp-config --snmpconfpath`), and its rc.d
+// script defaults to /usr/local/share/snmp/snmpd.conf.
+var snmpdConfigCandidates = []string{
+	defaultSnmpdConfig,
+	"/usr/local/etc/snmp/snmpd.conf",
+	"/usr/local/share/snmp/snmpd.conf",
+}
+
+// snmpdConfigPath returns the first candidate that exists on fs, or the
+// default path when none does.
+func snmpdConfigPath(fs afero.Fs) string {
+	if fs == nil {
+		return defaultSnmpdConfig
+	}
+	for _, p := range snmpdConfigCandidates {
+		if fi, err := fs.Stat(p); err == nil && !fi.IsDir() {
+			return p
+		}
+	}
+	return defaultSnmpdConfig
+}
 
 func initSnmpdConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if x, ok := args["path"]; ok {
@@ -48,8 +89,12 @@ func (s *mqlSnmpdConfig) id() (string, error) {
 }
 
 func (s *mqlSnmpdConfig) file() (*mqlFile, error) {
+	var fs afero.Fs
+	if conn, ok := s.MqlRuntime.Connection.(shared.Connection); ok {
+		fs = conn.FileSystem()
+	}
 	f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(defaultSnmpdConfig),
+		"path": llx.StringData(snmpdConfigPath(fs)),
 	})
 	if err != nil {
 		return nil, err
@@ -73,6 +118,10 @@ func (s *mqlSnmpdConfig) files(file *mqlFile) ([]any, error) {
 		return nil, errors.New("no base snmpd config file to read")
 	}
 
+	if err := snmpdExplicitConfigExists(file); err != nil {
+		return nil, err
+	}
+
 	visited := map[string]bool{}
 	res := []any{}
 
@@ -80,14 +129,58 @@ func (s *mqlSnmpdConfig) files(file *mqlFile) ([]any, error) {
 		return nil, err
 	}
 
-	// snmpd reads a snmpd.conf.d drop-in directory alongside the main config.
-	// We include it implicitly so audits don't have to know the on-disk layout.
-	dropInDir := filepath.Join(filepath.Dir(file.Path.Data), snmpdDropInDirName)
-	if err := s.collectDir(dropInDir, false, visited, &res); err != nil {
+	// After snmpd.conf, snmpd reads snmpd.local.conf from the same directory
+	// and then its persistent snmpd.conf. A snmpd.conf.d directory is read
+	// only through an includeDir directive, which collectFile follows.
+	if _, err := s.collectIfExists(filepath.Join(filepath.Dir(file.Path.Data), snmpdLocalConfigName), visited, &res); err != nil {
 		return nil, err
+	}
+	for _, p := range snmpdPersistentConfigCandidates {
+		found, err := s.collectIfExists(p, visited, &res)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			break
+		}
 	}
 
 	return res, nil
+}
+
+// snmpdExplicitConfigExists returns an error when snmpd.config(path) names a
+// file that does not exist, the way nginx.conf, haproxy.config and bind9
+// report a missing explicit path. Only a missing default location means snmpd
+// is not configured on the host, which reads as no directives.
+func snmpdExplicitConfigExists(file *mqlFile) error {
+	if slices.Contains(snmpdConfigCandidates, file.Path.Data) {
+		return nil
+	}
+	exists := file.GetExists()
+	if exists.Error != nil {
+		return exists.Error
+	}
+	if !exists.Data {
+		return fmt.Errorf("could not read %q: no such file", file.Path.Data)
+	}
+	return nil
+}
+
+// collectIfExists collects the file at path when it exists and reports
+// whether it did.
+func (s *mqlSnmpdConfig) collectIfExists(path string, visited map[string]bool, res *[]any) (bool, error) {
+	f, err := s.fileResource(path)
+	if err != nil {
+		return false, err
+	}
+	exists := f.GetExists()
+	if exists.Error != nil {
+		return false, exists.Error
+	}
+	if !exists.Data {
+		return false, nil
+	}
+	return true, s.collectFile(f, visited, res)
 }
 
 // collectFile appends a file and recursively resolves its includeFile and
@@ -125,7 +218,7 @@ func (s *mqlSnmpdConfig) collectFile(file *mqlFile, visited map[string]bool, res
 			}
 		case "includedir":
 			// includeDir only reads files ending in .conf.
-			if err := s.collectDir(resolveSnmpdPath(d.Args[0], base), true, visited, res); err != nil {
+			if err := s.collectDir(resolveSnmpdPath(d.Args[0], base), visited, res); err != nil {
 				return err
 			}
 		}
@@ -134,10 +227,10 @@ func (s *mqlSnmpdConfig) collectFile(file *mqlFile, visited map[string]bool, res
 	return nil
 }
 
-// collectDir appends the files in dir (sorted) and resolves their includes.
-// When onlyConf is set, only files ending in .conf are read, matching snmpd's
-// includeDir behavior. A missing directory is not an error.
-func (s *mqlSnmpdConfig) collectDir(dir string, onlyConf bool, visited map[string]bool, res *[]any) error {
+// collectDir appends the files in dir (sorted) that end in .conf, matching
+// snmpd's includeDir behavior, and resolves their includes. A missing
+// directory is not an error.
+func (s *mqlSnmpdConfig) collectDir(dir string, visited map[string]bool, res *[]any) error {
 	d, err := s.fileResource(dir)
 	if err != nil {
 		return err
@@ -157,7 +250,7 @@ func (s *mqlSnmpdConfig) collectDir(dir string, onlyConf bool, visited map[strin
 
 	for i := range files {
 		f := files[i].(*mqlFile)
-		if onlyConf && !strings.HasSuffix(f.Path.Data, ".conf") {
+		if !strings.HasSuffix(f.Path.Data, ".conf") {
 			continue
 		}
 		if err := s.collectFile(f, visited, res); err != nil {
@@ -211,39 +304,79 @@ func (s *mqlSnmpdConfig) content(files []any) (string, error) {
 	return strings.Join(parts, "\n"), nil
 }
 
-// firstArgsByKeyword collects the first argument of every directive whose
-// keyword matches one of the given keywords (compared case-insensitively).
-// This is the community string for ro/rwcommunity and the user name for
-// ro/rwuser, dropping any trailing source or OID-restriction arguments.
-func firstArgsByKeyword(content string, keywords ...string) []any {
-	set := make(map[string]struct{}, len(keywords))
-	for _, k := range keywords {
-		set[k] = struct{}{}
-	}
-
-	res := []any{}
-	for _, d := range snmpd.Parse(content) {
-		if _, ok := set[strings.ToLower(d.Keyword)]; ok && len(d.Args) > 0 {
-			res = append(res, d.Args[0])
-		}
-	}
-	return res
-}
-
 func (s *mqlSnmpdConfig) roCommunities(content string) ([]any, error) {
-	return firstArgsByKeyword(content, "rocommunity", "rocommunity6"), nil
+	ro, _ := snmpd.Communities(content)
+	return convert.SliceAnyToInterface(ro), nil
 }
 
 func (s *mqlSnmpdConfig) rwCommunities(content string) ([]any, error) {
-	return firstArgsByKeyword(content, "rwcommunity", "rwcommunity6"), nil
+	_, rw := snmpd.Communities(content)
+	return convert.SliceAnyToInterface(rw), nil
 }
 
 func (s *mqlSnmpdConfig) roUsers(content string) ([]any, error) {
-	return firstArgsByKeyword(content, "rouser"), nil
+	return convert.SliceAnyToInterface(snmpd.UserNames(content, "rouser")), nil
 }
 
 func (s *mqlSnmpdConfig) rwUsers(content string) ([]any, error) {
-	return firstArgsByKeyword(content, "rwuser"), nil
+	return convert.SliceAnyToInterface(snmpd.UserNames(content, "rwuser")), nil
+}
+
+// users parses the VACM user directives file by file, so each entry keeps the
+// file and line it was declared on.
+func (s *mqlSnmpdConfig) users(files []any) ([]any, error) {
+	res := []any{}
+	for i := range files {
+		file := files[i].(*mqlFile)
+
+		content, err := snmpdFileContent(file)
+		if err != nil {
+			return nil, err
+		}
+		if content == "" {
+			continue
+		}
+
+		for _, u := range snmpd.Users(content) {
+			ctx, err := CreateResource(s.MqlRuntime, "file.context", map[string]*llx.RawData{
+				"file":  llx.ResourceData(file, "file"),
+				"range": llx.RangeData(llx.NewRange().AddLine(uint32(u.Line))),
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			accessTypes := make([]any, 0, len(u.AccessTypes))
+			for _, t := range u.AccessTypes {
+				accessTypes = append(accessTypes, t)
+			}
+
+			obj, err := CreateResource(s.MqlRuntime, "snmpd.config.user", map[string]*llx.RawData{
+				// A user can be declared more than once and in several files,
+				// so the file and line keep each declaration distinct.
+				"__id":          llx.StringData(fmt.Sprintf("snmpd.config.user/%s/%d", file.Path.Data, u.Line)),
+				"directive":     llx.StringData(u.Directive),
+				"name":          llx.StringData(u.Name),
+				"access":        llx.StringData(u.Access),
+				"accessTypes":   llx.ArrayData(accessTypes, types.String),
+				"securityLevel": llx.StringData(u.SecurityLevel),
+				"securityModel": llx.StringData(u.SecurityModel),
+				"oid":           llx.StringData(u.OID),
+				"view":          llx.StringData(u.View),
+				"contextName":   llx.StringData(u.ContextName),
+				"context":       llx.ResourceData(ctx, "file.context"),
+			})
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, obj)
+		}
+	}
+	return res, nil
+}
+
+func (s *mqlSnmpdConfigUser) context() (*mqlFileContext, error) {
+	return nil, errors.New("context was not provided for snmpd.config.user")
 }
 
 func (s *mqlSnmpdConfig) agentAddresses(content string) ([]any, error) {
@@ -253,7 +386,7 @@ func (s *mqlSnmpdConfig) agentAddresses(content string) ([]any, error) {
 			continue
 		}
 		// agentAddress takes a comma-separated list of transport specifiers.
-		for _, part := range strings.Split(strings.Join(d.Args, " "), ",") {
+		for part := range strings.SplitSeq(strings.Join(d.Args, " "), ",") {
 			if p := strings.TrimSpace(part); p != "" {
 				res = append(res, p)
 			}

@@ -1,0 +1,45 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "arch",
+  "documentNamespace": "",
+  "creationInfo": {
+    "creators": [
+      "Tool: cnquery"
+    ],
+    "created": "2026-08-25T09:00:00Z"
+  },
+  "packages": [
+    {
+      "name": "bash",
+      "SPDXID": "SPDXRef-Package-alpm-bash",
+      "versionInfo": "5.2.037-2",
+      "downloadLocation": "",
+      "filesAnalyzed": false,
+      "licenseDeclared": "5.2.037-2",
+      "externalRefs": [
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:alpm/arch/bash@5.2.037-2?arch=x86_64&distro=arch"
+        }
+      ]
+    },
+    {
+      "name": "openssl",
+      "SPDXID": "SPDXRef-Package-alpm-openssl",
+      "versionInfo": "3.5.0-1",
+      "downloadLocation": "",
+      "filesAnalyzed": false,
+      "licenseDeclared": "3.5.0-1",
+      "externalRefs": [
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:alpm/arch/openssl@3.5.0-1?arch=x86_64&distro=arch"
+        }
+      ]
+    }
+  ]
+}

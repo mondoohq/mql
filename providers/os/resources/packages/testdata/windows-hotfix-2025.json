@@ -1,0 +1,35 @@
+[
+  {
+    "Status": null,
+    "Description": "Update",
+    "HotFixId": "KB5120708",
+    "Caption": "http://support.microsoft.com/?kbid=5120708",
+    "InstalledOn": {
+      "value": "/Date(1786492800000)/",
+      "DateTime": "Wednesday, August 12, 2026 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Security Update",
+    "HotFixId": "KB5120233",
+    "Caption": "https://support.microsoft.com/help/5120233",
+    "InstalledOn": {
+      "value": "/Date(1786492800000)/",
+      "DateTime": "Wednesday, August 12, 2026 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Security Update",
+    "HotFixId": "KB5120232",
+    "Caption": "",
+    "InstalledOn": {
+      "value": "/Date(1786492800000)/",
+      "DateTime": "Wednesday, August 12, 2026 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  }
+]

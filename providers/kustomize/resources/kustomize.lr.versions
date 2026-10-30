@@ -15,6 +15,7 @@ kustomize.image.digest 13.0.0
 kustomize.image.name 13.0.0
 kustomize.image.newName 13.0.0
 kustomize.image.newTag 13.0.0
+kustomize.image.tagSuffix 13.1.16
 kustomize.kustomization 13.0.0
 kustomize.kustomization.apiVersion 13.0.0
 kustomize.kustomization.commonAnnotations 13.0.0
@@ -50,6 +51,7 @@ kustomize.patch.targetName 13.0.0
 kustomize.patch.targetNamespace 13.0.0
 kustomize.patch.targetVersion 13.0.0
 kustomize.replacement 13.0.0
+kustomize.replacement.path 13.1.16
 kustomize.replacement.sourceKind 13.0.0
 kustomize.replacement.sourceName 13.0.0
 kustomize.replacement.sourcePath 13.0.0

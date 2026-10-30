@@ -6,9 +6,10 @@ package resources
 import (
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/windows"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/windows"
 )
 
 func (r *mqlWindowsSmartScreen) id() (string, error) {
@@ -49,12 +50,15 @@ func (s *mqlWindowsSmartScreen) get() (*windows.SmartScreenSettings, error) {
 	return s.settings, s.err
 }
 
+// Every field reads null when its policy value is absent, which means Windows
+// applies its own default rather than a policy turning the surface off.
+
 func (s *mqlWindowsSmartScreen) explorerEnabled() (bool, error) {
 	v, err := s.get()
 	if err != nil {
 		return false, err
 	}
-	return v.ExplorerEnabled(), nil
+	return resolveNullableBool(&s.ExplorerEnabled, v.ExplorerEnabled())
 }
 
 func (s *mqlWindowsSmartScreen) explorerLevel() (string, error) {
@@ -62,7 +66,11 @@ func (s *mqlWindowsSmartScreen) explorerLevel() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return v.ShellSmartScreenLevel, nil
+	if v.ShellSmartScreenLevel == nil {
+		s.ExplorerLevel = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+		return "", nil
+	}
+	return *v.ShellSmartScreenLevel, nil
 }
 
 func (s *mqlWindowsSmartScreen) edgeEnabled() (bool, error) {
@@ -70,7 +78,7 @@ func (s *mqlWindowsSmartScreen) edgeEnabled() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return v.EdgeEnabled(), nil
+	return resolveNullableBool(&s.EdgeEnabled, v.EdgeEnabled())
 }
 
 func (s *mqlWindowsSmartScreen) edgePuaEnabled() (bool, error) {
@@ -78,7 +86,7 @@ func (s *mqlWindowsSmartScreen) edgePuaEnabled() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return v.EdgePuaEnabled(), nil
+	return resolveNullableBool(&s.EdgePuaEnabled, v.EdgePuaEnabled())
 }
 
 func (s *mqlWindowsSmartScreen) edgePreventOverride() (bool, error) {
@@ -86,7 +94,7 @@ func (s *mqlWindowsSmartScreen) edgePreventOverride() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return v.EdgePreventOverrideEnabled(), nil
+	return resolveNullableBool(&s.EdgePreventOverride, v.EdgePreventOverrideEnabled())
 }
 
 func (s *mqlWindowsSmartScreen) edgePreventOverrideForFiles() (bool, error) {
@@ -94,7 +102,7 @@ func (s *mqlWindowsSmartScreen) edgePreventOverrideForFiles() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return v.EdgePreventOverrideForFilesEnabled(), nil
+	return resolveNullableBool(&s.EdgePreventOverrideForFiles, v.EdgePreventOverrideForFilesEnabled())
 }
 
 func (s *mqlWindowsSmartScreen) storeAppsEnabled() (bool, error) {
@@ -102,5 +110,5 @@ func (s *mqlWindowsSmartScreen) storeAppsEnabled() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return v.StoreAppsEnabled(), nil
+	return resolveNullableBool(&s.StoreAppsEnabled, v.StoreAppsEnabled())
 }

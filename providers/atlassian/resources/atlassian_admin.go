@@ -9,11 +9,12 @@ import (
 	"net/url"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/atlassian/connection/admin"
-	"go.mondoo.com/mql/v13/types"
+	model "github.com/ctreminiom/go-atlassian/v2/pkg/infra/models"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/atlassian/connection/admin"
+	"go.mondoo.com/mql/types"
 )
 
 // extractAtlassianCursor parses the `cursor` query parameter out of a page's
@@ -64,7 +65,7 @@ func initAtlassianAdminOrganization(runtime *plugin.Runtime, args map[string]*ll
 	}
 
 	// We should only ever receive one organization that is scoped to the api key
-	// https://community.atlassian.com/t5/Atlassian-Access-questions/Can-we-access-multiple-organisations-using-one-API-Token/qaq-p/1541337
+	// https://community.atlassian.com/forums/discussion/1541337/can-we-access-multiple-organisations-using-one-api-token
 	if len(organization.Data) == 0 {
 		return nil, nil, errors.New("no organization found for this API key")
 	}
@@ -308,4 +309,176 @@ func (a *mqlAtlassianAdminOrganizationManagedUser) apiTokens() ([]any, error) {
 
 func (a *mqlAtlassianAdminOrganizationManagedUserApiToken) id() (string, error) {
 	return "atlassian.admin.organization.managedUser.apiToken/" + a.Id.Data, nil
+}
+
+// maxAdminEventPages bounds the organization audit-event walk. The admin API
+// retains events for a bounded window but a busy organization can still produce
+// a very large number of pages, and a server that keeps handing back a fresh
+// cursor would otherwise page forever.
+const maxAdminEventPages = 200
+
+// mqlAtlassianAdminOrganizationEventInternal carries what the event needs to
+// resolve its actor without a per-event API call: the account ID recorded on
+// the event, and the organization resource the event was listed from, whose
+// managedUsers list the runtime memoizes after the first read.
+type mqlAtlassianAdminOrganizationEventInternal struct {
+	actorID string
+	org     *mqlAtlassianAdminOrganization
+}
+
+// nilIfEmpty returns nil for an empty string so an absent API value surfaces as
+// a null field rather than an invented "".
+func nilIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// eventObjects flattens the context/container object lists of an audit event.
+// Each object keeps its id, its type, and the API's own link to it.
+func eventObjects(objects []*model.OrganizationEventObjectModel) []any {
+	res := make([]any, 0, len(objects))
+	for _, o := range objects {
+		if o == nil {
+			continue
+		}
+		link := o.Links.Self
+		if link == "" {
+			link = o.Links.Alt
+		}
+		res = append(res, map[string]any{
+			"id":   o.ID,
+			"type": o.Type,
+			"link": link,
+		})
+	}
+	return res
+}
+
+func (a *mqlAtlassianAdminOrganization) events() ([]any, error) {
+	conn, ok := a.MqlRuntime.Connection.(*admin.AdminConnection)
+	if !ok {
+		return nil, errors.New("Current connection does not allow admin access")
+	}
+	client := conn.Client()
+	orgID := a.Id.Data
+
+	res := []any{}
+	err := walkAdminEvents(
+		func(cursor string) (*model.OrganizationEventPageScheme, error) {
+			page, _, err := client.Organization.Events(context.Background(), orgID, nil, cursor)
+			return page, err
+		},
+		func(event *model.OrganizationEventModelScheme) error {
+			attrs := event.Attributes
+			if attrs == nil {
+				// Without attributes there is no action, actor or timestamp to
+				// report; an id alone would be an empty row, so skip it.
+				return nil
+			}
+
+			var actorID, actorName string
+			if attrs.Actor != nil {
+				actorID = attrs.Actor.ID
+				actorName = attrs.Actor.Name
+			}
+			var ip, geo string
+			if attrs.Location != nil {
+				ip = attrs.Location.IP
+				geo = attrs.Location.Geo
+			}
+
+			mqlEvent, err := CreateResource(a.MqlRuntime, "atlassian.admin.organization.event",
+				map[string]*llx.RawData{
+					"__id":      llx.StringData("atlassian.admin.organization.event/" + orgID + "/" + event.ID),
+					"id":        llx.StringData(event.ID),
+					"type":      llx.StringData(event.Type),
+					"action":    llx.StringData(attrs.Action),
+					"createdAt": llx.TimeDataPtr(parseAtlassianTime(attrs.Time)),
+					"actorName": llx.StringDataPtr(nilIfEmpty(actorName)),
+					"context":   llx.ArrayData(eventObjects(attrs.Context), types.Dict),
+					"container": llx.ArrayData(eventObjects(attrs.Container), types.Dict),
+					"ip":        llx.StringDataPtr(nilIfEmpty(ip)),
+					"location":  llx.StringDataPtr(nilIfEmpty(geo)),
+				})
+			if err != nil {
+				return err
+			}
+			e := mqlEvent.(*mqlAtlassianAdminOrganizationEvent)
+			e.actorID = actorID
+			e.org = a
+			res = append(res, mqlEvent)
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// walkAdminEvents pages the organization audit log, handing each event to
+// visit. Paging stops at the last page, at an empty or repeated cursor, and at
+// maxAdminEventPages. The repeated-cursor guard matters because a server that
+// keeps echoing the cursor it was given would otherwise re-read the same page
+// until the bound is reached, multiplying every event on it.
+func walkAdminEvents(
+	fetch func(cursor string) (*model.OrganizationEventPageScheme, error),
+	visit func(event *model.OrganizationEventModelScheme) error,
+) error {
+	cursor := ""
+	for range maxAdminEventPages {
+		events, err := fetch(cursor)
+		if err != nil {
+			return err
+		}
+		if events == nil {
+			return nil
+		}
+		for _, event := range events.Data {
+			if event == nil {
+				continue
+			}
+			if err := visit(event); err != nil {
+				return err
+			}
+		}
+		if events.Links == nil {
+			return nil
+		}
+		next := extractAtlassianCursor(events.Links.Next)
+		if next == "" || next == cursor {
+			return nil
+		}
+		cursor = next
+	}
+	return nil
+}
+
+// actor resolves the acting account against the organization's managed
+// accounts. The managed-user list is read through the parent organization
+// resource so the runtime memoizes it: resolving actors for a page of events
+// costs one list call, not one call per event.
+func (a *mqlAtlassianAdminOrganizationEvent) actor() (*mqlAtlassianAdminOrganizationManagedUser, error) {
+	if a.actorID == "" || a.org == nil {
+		a.Actor.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	users := a.org.GetManagedUsers()
+	if users.Error != nil {
+		return nil, users.Error
+	}
+	for _, raw := range users.Data {
+		user, ok := raw.(*mqlAtlassianAdminOrganizationManagedUser)
+		if !ok {
+			continue
+		}
+		if user.Id.Data == a.actorID {
+			return user, nil
+		}
+	}
+	// Atlassian system processes and accounts outside this organization appear
+	// as actors but are not managed accounts, so there is nothing to point at.
+	a.Actor.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
 }

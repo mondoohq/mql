@@ -1,16 +1,19 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/cnquery/v9/providers/atlassian"
-option go_package = "go.mondoo.com/mql/v13/providers/atlassian/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/atlassian"
+option go_package = "go.mondoo.com/mql/providers/atlassian/resources"
+option root = "atlassian.admin.organization"
 
 // Atlassian SCIM (System for Cross-domain Identity Management) directory
 //
-// Entry point for the SCIM provisioning surface — the source of record for
-// users and groups synced into Atlassian Cloud from an external IdP. Use it
-// to inventory provisioned identities and detect orphans, drift between the
-// IdP and Atlassian, or unexpected group membership.
-atlassian.scim {
+// The SCIM provisioning surface: the source of record for users and groups
+// synced into Atlassian Cloud from an external identity provider. Inventory
+// the provisioned identities and their group membership to detect orphaned
+// accounts, drift between the IdP and Atlassian, or unexpected access.
+atlassian.scim @root {
   // Provisioned SCIM users
   users() []atlassian.scim.user
   // Provisioned SCIM groups
@@ -19,9 +22,11 @@ atlassian.scim {
 
 // Atlassian SCIM provisioned user
 //
-// Examine the SCIM identifier, login name, display name, organization
-// membership, and job title for a user provisioned through the SCIM
-// directory.
+// User account provisioned into Atlassian Cloud through SCIM, carrying the
+// SCIM identifier, login name, display name, organization membership, and
+// job title. Audit these to reconcile provisioned identities against the
+// external identity provider and spot accounts that should have been
+// deprovisioned.
 atlassian.scim.user @defaults("displayName") {
   // SCIM user ID
   id string
@@ -33,27 +38,51 @@ atlassian.scim.user @defaults("displayName") {
   organization string
   // Job title
   title string
+  // Whether the account is active. False for deprovisioned or disabled users.
+  active bool
+  // Identifier for this user in the external identity provider
+  //
+  // The join key back to the identity provider's own directory record, which
+  // is what lets a provisioned Atlassian account be matched to the upstream
+  // identity it came from. Null when the provisioning system sent no value.
+  externalId string
+  // Time the SCIM record was created. Null when the directory reported none.
+  created time
+  // Time the SCIM record was last modified
+  //
+  // Advances whenever the identity provider pushes a change for this user. A
+  // directory whose timestamps have all stopped advancing is the signature of
+  // a provisioning pipeline that is no longer running, which leaves
+  // deactivations made upstream unreflected in Atlassian. Null when the
+  // directory reported no value.
+  lastModified time
+  // Groups the user is a member of
+  groups() []atlassian.scim.group
 }
 
 // Atlassian SCIM provisioned group
 //
-// Examine the SCIM group ID and name for a group provisioned through the
-// SCIM directory.
+// Group provisioned into Atlassian Cloud through SCIM, carrying the SCIM
+// group ID and its display name. Audit these to confirm that group-based
+// access mirrors the external identity provider and that no unexpected
+// groups have been synced.
 atlassian.scim.group @defaults("name") {
   // SCIM group ID
   id string
   // Group name
   name string
+  // Users who are members of the group
+  members() []atlassian.scim.user
 }
 
 // Atlassian Admin organization
 //
-// Top-level entry point for Atlassian Admin. Examine the org's identity and
-// type, the security and data-residency policies it enforces, the verified
-// domains it owns, and the users it manages — the surface auditors check
-// for org-wide identity controls (IP allowlists, data residency, verified
-// domains, managed accounts) and access reviews.
-atlassian.admin.organization @defaults("name") {
+// Organization that anchors Atlassian Admin: its identity and type, the
+// security and data-residency policies it enforces, the verified domains it
+// owns, and the accounts it manages. This is the surface auditors check for
+// org-wide identity controls such as IP allowlists, data residency,
+// verified domains, and managed-account access reviews.
+atlassian.admin.organization @defaults("name") @root {
   // Organization ID
   id string
   // Organization name
@@ -66,15 +95,64 @@ atlassian.admin.organization @defaults("name") {
   domains() []atlassian.admin.organization.domain
   // Users managed by this organization
   managedUsers() []atlassian.admin.organization.managedUser
+  // Organization audit events across every product under the organization
+  events() []atlassian.admin.organization.event
+}
+
+// Atlassian Admin organization audit event
+//
+// Single entry in the organization audit log, which spans every product
+// under the organization rather than one product's own log. Carries the
+// action performed, the time it happened, the account that performed it,
+// the objects it was performed on, the products or sites it applied to, and
+// the source address and location it came from. Organization-level actions
+// such as an admin grant, a product-access change, or a policy edit are
+// recorded only here.
+private atlassian.admin.organization.event @defaults("action createdAt actorName") {
+  // Event ID
+  id string
+  // Object type reported by the API (always "event")
+  type string
+  // Action performed
+  //
+  // A dotted identifier for the audited operation, for example
+  // `user_added_to_group`, `admin_permission_granted`, or
+  // `organization_policy_updated`. The set is open and grows as Atlassian
+  // adds auditable operations.
+  action string
+  // Time the event occurred. Null when the API reported no timestamp.
+  createdAt time
+  // Display name recorded for the acting account at the time of the event
+  actorName string
+  // Account that performed the action
+  //
+  // Resolved against the organization's managed accounts. Null when the
+  // event recorded no actor, or when the actor is not a managed account of
+  // this organization, such as an Atlassian system process.
+  actor() atlassian.admin.organization.managedUser
+  // Objects the action was performed on
+  //
+  // Each entry has `id`, `type`, and `link`. The `type` distinguishes what
+  // was acted on, for example a user, a group, a site, or a product.
+  context []dict
+  // Products or sites the action applied to
+  //
+  // Each entry has `id`, `type`, and `link`.
+  container []dict
+  // Source address the action originated from. Null when not recorded.
+  ip string
+  // Geographic location recorded for the source address. Null when not recorded.
+  location string
 }
 
 // Atlassian Admin managed user
 //
-// Examine a user managed by an Atlassian organization: account type
-// (atlassian / customer / app), email, status (active / inactive / closed),
-// last-active timestamp, per-product access, the parent organization, and
-// any outstanding API tokens — the granularity needed for managed-account
-// access reviews, dormant-account cleanup, and stale-token cleanup.
+// User managed by an Atlassian organization, including account type
+// (atlassian, customer, or app), email, status (active, inactive, or
+// closed), last-active timestamp, per-product access, the parent
+// organization, and any outstanding API tokens. This is the granularity
+// needed for managed-account access reviews, dormant-account cleanup, and
+// stale-token cleanup.
 atlassian.admin.organization.managedUser @defaults("name") {
   // User ID
   id string
@@ -89,6 +167,10 @@ atlassian.admin.organization.managedUser @defaults("name") {
   // Last activity timestamp
   lastActive time
   // Product access permissions
+  //
+  // Each entry has `Name` (the product the user can access, e.g., jira or
+  // confluence) and `LastActive` (the timestamp the user was last active in
+  // that product, or null if never recorded).
   productAccess []dict
   // ID of the parent Atlassian organization that manages this user
   organizationId string
@@ -98,10 +180,10 @@ atlassian.admin.organization.managedUser @defaults("name") {
 
 // API token issued to a managed Atlassian account
 //
-// Examine an outstanding API token issued to a managed user: its identity,
-// the label set at creation, the creation timestamp, and the last access
-// timestamp. Use this to find dormant or unrotated tokens that should be
-// revoked as part of a credential-hygiene audit.
+// Outstanding API token issued to a managed user: its identity, the label
+// set at creation, the creation timestamp, and the last access timestamp.
+// Use this to find dormant or unrotated tokens that should be revoked as
+// part of a credential-hygiene audit.
 private atlassian.admin.organization.managedUser.apiToken @defaults("label createdAt lastAccess") {
   // Token ID
   id string
@@ -115,12 +197,12 @@ private atlassian.admin.organization.managedUser.apiToken @defaults("label creat
 
 // Atlassian Admin organization policy
 //
-// Examine an organization-level policy (e.g., IP allowlist, data residency,
-// two-step verification, mobile-app management) — its identity, type,
-// enabled / disabled status, lifecycle timestamps, and the resources
-// (workspaces / managed accounts) the policy applies to. Used to verify
-// the policies an organization is supposed to enforce are present, enabled,
-// and scoped to the right resources.
+// Organization-level policy such as an IP allowlist, data residency,
+// two-step verification, or mobile-app management, including its identity,
+// type, enabled or disabled status, lifecycle timestamps, and the resources
+// (workspaces or managed accounts) the policy applies to. Used to verify
+// that the policies an organization is supposed to enforce are present,
+// enabled, and scoped to the right resources.
 atlassian.admin.organization.policy @defaults("name policyType status") {
   // Policy ID
   id string
@@ -146,9 +228,9 @@ atlassian.admin.organization.policy @defaults("name policyType status") {
 
 // Atlassian Admin verified domain
 //
-// Examine a verified email domain attached to an Atlassian organization —
-// its name and verification type — used to scope which user accounts the
-// organization controls.
+// Verified email domain attached to an Atlassian organization, with its
+// name and verification type. Scopes which user accounts the organization
+// controls.
 atlassian.admin.organization.domain @defaults("name") {
   // Domain ID
   id string
@@ -160,12 +242,12 @@ atlassian.admin.organization.domain @defaults("name") {
 
 // Atlassian Jira instance
 //
-// Top-level entry point for a Jira Cloud / Server / Data Center instance.
-// Examine deployment metadata via serverInfos, all users / groups /
-// projects / issues, and the recent audit-log records — the surface
-// auditors check for least-privilege project permissions, dormant users,
-// and suspicious admin activity.
-atlassian.jira {
+// Root of a Jira Cloud, Server, or Data Center instance. Deployment
+// metadata is available via serverInfos, along with all users, groups,
+// projects, and issues, and the recent audit-log records. This is the
+// surface auditors check for least-privilege project permissions, dormant
+// users, and suspicious admin activity.
+atlassian.jira @root {
   // All Jira users
   users() []atlassian.jira.user
   // All Jira projects
@@ -186,14 +268,16 @@ atlassian.jira {
   filters() []atlassian.jira.filter
   // Dashboards defined on the Jira instance
   dashboards() []atlassian.jira.dashboard
+  // Application roles defined on the Jira instance
+  applicationRoles() []atlassian.jira.applicationRole
 }
 
 // Jira saved filter
 //
-// Examine a saved JQL filter: its identity, the JQL it runs, the owning
+// Saved JQL filter with its identity, the JQL it runs, the owning
 // account, the view URL, the favourite count, the share-permission entries,
 // and any email subscriptions attached to it. Filters are a common
-// data-disclosure surface — a filter shared with `loggedin` or `global`
+// data-disclosure surface: a filter shared with `loggedin` or `global`
 // effectively exposes its results to every authenticated user, and
 // subscriptions email those results to whoever the owner enumerated.
 atlassian.jira.filter @defaults("name owner.name") {
@@ -227,7 +311,7 @@ atlassian.jira.filter @defaults("name owner.name") {
 
 // Jira dashboard
 //
-// Examine a Jira dashboard: identity, owning account, the popularity
+// Jira dashboard with its identity, owning account, the popularity
 // counter, the view URL, and the share-permission and edit-permission
 // entries. Dashboards aggregate gadgets that query Jira data, so a
 // dashboard shared with `loggedin` or `global` can expose summarized data
@@ -258,9 +342,9 @@ atlassian.jira.dashboard @defaults("name owner.name") {
 
 // Jira audit log record
 //
-// Examine an entry from Jira's audit log: the audited action and category,
+// Entry from Jira's audit log: the audited action and category,
 // event source, the principal who triggered it, the originating IP, the
-// target object, and any recorded property changes — the input for
+// target object, and any recorded property changes. This is the input for
 // detecting privileged-action sequences and authentication anomalies.
 atlassian.jira.auditRecord @defaults("summary createdAt") {
   // Audit record ID
@@ -289,13 +373,13 @@ atlassian.jira.auditRecord @defaults("summary createdAt") {
 
 // Jira issue (ticket)
 //
-// Examine the full state of a single issue: identity (key, summary,
+// Full state of a single issue: identity (key, summary,
 // description), workflow state and resolution, parent project, type,
 // priority, labels, the lifecycle timestamps (created, updated, resolved,
-// due), the typed creator / assignee / reporter user references, the
+// due), the creator, assignee, and reporter user references, the
 // components and fix versions it belongs to, the issue-security level
-// applied to it, and the watcher / vote counters and comment list — the
-// inputs auditors use to look for stale, mis-secured, or
+// applied to it, and the watcher and vote counters and comment list. These
+// are the inputs auditors use to look for stale, mis-secured, or
 // inappropriately-disclosed tickets.
 atlassian.jira.issue @defaults("key summary status") {
   // Issue ID
@@ -355,14 +439,20 @@ atlassian.jira.issue @defaults("key summary status") {
 
 // Jira server information
 //
-// Examine deployment metadata for the connected Jira instance: base URL,
-// build number, server title, and deployment type (Cloud / Server / Data
-// Center) — useful for version-driven branching in policies.
+// Deployment metadata for the connected Jira instance: base URL,
+// build number, server title, and deployment type (Cloud, Server, or Data
+// Center). Useful for version-driven branching in policies.
 atlassian.jira.serverInfo @defaults("serverTitle") {
   // Jira instance base URL
   baseUrl string
   // Build number
   buildNumber int
+  // Version string (e.g., 9.12.0). Empty on some Cloud deployments.
+  version string
+  // Build date. Null when the instance does not report one.
+  buildDate time
+  // Current server time. Useful for detecting clock drift.
+  serverTime time
   // Server display title
   serverTitle string
   // Deployment type (Cloud, Server, Data Center)
@@ -371,8 +461,8 @@ atlassian.jira.serverInfo @defaults("serverTitle") {
 
 // Jira user account
 //
-// Examine an Atlassian account as it appears in Jira: account ID, display
-// name, account type (atlassian / app / customer), avatar, email, active
+// Atlassian account as it appears in Jira: account ID, display
+// name, account type (atlassian, app, customer, or unknown), avatar, email, active
 // status, timezone, locale, group memberships, and the application roles
 // the user is granted (e.g., jira-software-users).
 atlassian.jira.user @defaults("name active") {
@@ -380,7 +470,7 @@ atlassian.jira.user @defaults("name active") {
   id string
   // Display name
   name string
-  // Account type (atlassian, app, customer)
+  // Account type (atlassian, app, customer, unknown)
   type string
   // Avatar URL
   picture string
@@ -400,7 +490,7 @@ atlassian.jira.user @defaults("name active") {
 
 // Jira application role
 //
-// Examine an application-role assignment: its key (e.g., jira-software,
+// Application-role assignment with its key (e.g., jira-software,
 // jira-servicedesk) and display name. Application roles control which
 // Atlassian products a user is licensed to access.
 atlassian.jira.applicationRole @defaults("name") {
@@ -408,20 +498,48 @@ atlassian.jira.applicationRole @defaults("name") {
   id string
   // Role display name
   name string
+  // Groups whose members hold this application role
+  groups() []string
+  // Groups a newly invited user is added to when granted this role
+  //
+  // Membership of any of these groups carries the product licence, and with
+  // it a login, without a separate grant. A broad or externally-synced group
+  // listed here hands product access to everyone it contains.
+  defaultGroups() []string
+  // Whether this role is selected by default when a new user is invited
+  //
+  // When true, an invite grants this product unless the inviting admin
+  // deselects it.
+  selectedByDefault() bool
+  // Whether the role is defined on this instance
+  defined() bool
+  // Number of licensed seats. Reported as -1 on plans with unlimited seats.
+  numberOfSeats() int
+  // Number of licensed seats not yet consumed
+  remainingSeats() int
+  // Number of accounts currently holding this role
+  userCount() int
+  // Whether the plan grants this role unlimited seats
+  hasUnlimitedSeats() bool
+  // Whether this is a platform role rather than a single-product role
+  platform() bool
 }
 
 // Jira project
 //
-// Examine a project's identity (id, key, name, UUID, URL, email), its
-// project-type key (software / service_desk / business), privacy / archived
-// / deleted state, custom properties, the project lead, the typed
+// Project identity (id, key, name, UUID, URL, email), its
+// project-type key (software, service_desk, business, or
+// product_discovery), privacy,
+// archived, and deleted state, custom properties, the project lead, the
 // permission scheme attached to it, and the components and versions defined
-// on the project — the unit of access control for project-level audits.
+// on the project. The unit of access control for project-level audits.
 atlassian.jira.project @defaults("name projectTypeKey") {
   // Project ID
   id string
   // Project display name
   name string
+  // Project description
+  description string
   // Project UUID
   uuid string
   // Project key (e.g., PROJ)
@@ -454,8 +572,8 @@ atlassian.jira.project @defaults("name projectTypeKey") {
 
 // Jira project component
 //
-// Examine a component defined on a Jira project: identity, description, the
-// default assignee strategy, and the typed lead and assignee users.
+// Component defined on a Jira project: identity, description, the
+// default assignee strategy, and the lead and assignee users.
 // Components categorize issues within a project and can drive default
 // assignment, so they appear in audits that verify ownership of issue
 // categories.
@@ -478,8 +596,8 @@ private atlassian.jira.project.component @defaults("name") {
 
 // Jira project version
 //
-// Examine a version defined on a Jira project: identity, name, description,
-// release / archived flags, the release date, and whether the unreleased
+// Version defined on a Jira project: identity, name, description,
+// release and archived flags, the release date, and whether the unreleased
 // version is overdue. Versions drive fix-version tracking and release
 // reports.
 private atlassian.jira.project.version @defaults("name released") {
@@ -503,7 +621,7 @@ private atlassian.jira.project.version @defaults("name released") {
 
 // Jira permission scheme
 //
-// Examine a permission scheme: identity, description, and the list of
+// Permission scheme with its identity, description, and the list of
 // permission grants it contains. Use it to verify that schemes attached to
 // projects only grant the permissions they should.
 atlassian.jira.permissionScheme @defaults("name") {
@@ -519,7 +637,7 @@ atlassian.jira.permissionScheme @defaults("name") {
 
 // Individual permission grant within a Jira permission scheme
 //
-// Examine the permission key being granted (e.g., CREATE_ISSUES,
+// Permission key being granted (e.g., CREATE_ISSUES,
 // ADMINISTER_PROJECTS), the holder type (user, group, projectRole,
 // applicationRole, anyone), and the holder parameter that selects who
 // receives it. The unit of grant-level project-permission audits.
@@ -536,7 +654,7 @@ atlassian.jira.permissionScheme.grant @defaults("permission holderType") {
 
 // Jira project custom property
 //
-// Examine the key of a custom property attached to a project — used by
+// Key of a custom property attached to a project. Used by
 // Jira apps and integrations to attach scoped configuration to a project.
 atlassian.jira.project.property @defaults("id") {
   // Property key
@@ -545,13 +663,13 @@ atlassian.jira.project.property @defaults("id") {
 
 // Jira project role
 //
-// Examine a role on a Jira project and the actors (users and groups)
+// Role on a Jira project and the actors (users and groups)
 // assigned to it. Project roles are the unit of project-level RBAC:
 // permission scheme grants name a role (`Administrators`, `Developers`,
 // ...) and the role determines who can take which action on that
 // project. `actors` lists every assignment with its `type` (`atlassian-user-role-actor`
 // or `atlassian-group-role-actor`), `name`, `displayName`, and
-// `accountId` (for users) — the input audits use to verify least
+// `accountId` (for users). This is the input audits use to verify least
 // privilege at the project level.
 private atlassian.jira.project.role @defaults("projectKey name") {
   // Composite identifier (projectKey/roleId)
@@ -580,7 +698,7 @@ private atlassian.jira.project.role @defaults("projectKey name") {
 
 // Jira custom field
 //
-// Examine a custom field defined on the Jira instance. Each field has an
+// Custom field defined on the Jira instance. Each field has an
 // `id` (`customfield_10001`-style key used in JQL and the REST API), a
 // `name` shown in the UI, the `schemaType` and `schemaCustom` that
 // determine its data shape and editor (e.g., `com.atlassian.jira.plugin.system.customfieldtypes:textarea`),
@@ -623,11 +741,17 @@ private atlassian.jira.customField @defaults("id name schemaType") {
   screensCount int
   // Number of contexts this field is configured in
   contextsCount int
+  // Last-used tracking for the field
+  //
+  // Dict with `type` (TRACKED, NOT_TRACKED, or NO_INFORMATION) and `value`
+  // (the last-used date, present only when type is TRACKED). Use it to find
+  // dormant custom fields that may still hold stale sensitive data.
+  lastUsed dict
 }
 
 // Jira workflow
 //
-// Examine a workflow defined on the Jira instance — the state machine
+// Workflow defined on the Jira instance, the state machine
 // that issues move through. `name` and `id` (the entity ID) identify the
 // workflow; `isDefault` flags Jira's built-in default workflow.
 // `statuses` lists every status the workflow uses (initial state through
@@ -652,30 +776,37 @@ private atlassian.jira.workflow @defaults("name isDefault") {
   // origin status names; empty for global transitions), `to` (destination
   // status name), and the rule lists `conditions`, `validators`,
   // `actions` (post-functions), and `triggers`. Use for change-management
-  // audits — e.g., asserting that a transition into `Done` requires a
+  // audits. For example, asserting that a transition into `Done` requires a
   // specific validator or approver condition.
   transitions []dict
 }
 
 // Jira user group
 //
-// Examine a user group used by Jira permission schemes and application
-// roles — its identity and name. Group membership drives most of Jira's
+// User group used by Jira permission schemes and application
+// roles, with its identity and name. Group membership drives most of Jira's
 // access control.
 atlassian.jira.group @defaults("name") {
   // Group ID
   id string
   // Group name
   name string
+  // Accounts that are members of this group
+  //
+  // Includes deactivated accounts, so a group named in a permission grant or
+  // an application role can be enumerated in full. Group membership reports
+  // each account's type, email address, active state and time zone, but not
+  // its avatar or locale, which stay null on accounts reached this way.
+  members() []atlassian.jira.user
 }
 
 // Atlassian Confluence instance
 //
-// Top-level entry point for a Confluence Cloud / Server / Data Center
-// instance. Examine all users and all spaces — the surface auditors use
-// to find unprotected content (anonymous- or unlicensed-accessible spaces),
+// Confluence Cloud, Server, or Data Center instance, the entry point for
+// auditing all users and all spaces. Surfaces the data auditors use to find
+// unprotected content (anonymous- or unlicensed-accessible spaces),
 // inappropriate space-level permissions, and page-level restrictions.
-atlassian.confluence {
+atlassian.confluence @root {
   // All Confluence users
   users() []atlassian.confluence.user
   // All Confluence spaces
@@ -684,8 +815,8 @@ atlassian.confluence {
 
 // Confluence user account
 //
-// Examine an Atlassian account as it appears in Confluence: account ID,
-// display name, and account type (atlassian / app / customer).
+// Atlassian account as it appears in Confluence, covering the account ID,
+// display name, and account type (atlassian, app, or customer).
 atlassian.confluence.user @defaults("name") {
   // Atlassian account ID
   id string
@@ -697,7 +828,7 @@ atlassian.confluence.user @defaults("name") {
 
 // Confluence user group
 //
-// Examine a Confluence group. Note: the `id` field may be either the group key
+// Confluence group. The `id` field may be either the group key
 // or the display name depending on the source API. Space permissions expose
 // the group key as `subjectKey`, while page restrictions only expose the
 // display name. As a result, the same group surfaced via both code paths will
@@ -712,12 +843,11 @@ private atlassian.confluence.group @defaults("id name") {
 
 // Confluence space
 //
-// Examine a single Confluence space: identity (key, name, id), type
-// (global / personal), status (current / archived), whether anonymous or
-// unlicensed users have any access, the raw permission entries, the typed
-// users and groups they reference, the homepage, the creator and creation
-// timestamp, and the pages within the space — everything needed for
-// space-level access reviews.
+// Confluence space and its access posture: the space type (global or
+// personal), status (current or archived), whether anonymous or unlicensed
+// users have any access, the raw permission entries and the users and groups
+// they reference, the homepage, the creator, the creation timestamp, and the
+// pages within the space. Everything needed for space-level access reviews.
 atlassian.confluence.space @defaults("name key type") {
   // Numeric space ID
   id int
@@ -733,11 +863,17 @@ atlassian.confluence.space @defaults("name key type") {
   anonymousAccess bool
   // Whether unlicensed users (e.g., JSM customers) have any access to this space
   unlicensedAccess bool
-  // Permission entries for this space (operation, targetType, subjectType, subjectKey)
+  // Permission entries for this space
+  //
+  // Each entry is a dict with keys `operation` (the granted operation, e.g.
+  // read or administer), `targetType` (the object the operation applies to,
+  // e.g. space or page), `subjectType` (one of user, group, or anonymous),
+  // and `subjectKey` (the user account ID or group ID, empty for anonymous
+  // entries).
   permissions []dict
-  // Distinct users referenced by space permissions (typed)
+  // Distinct users referenced by space permissions
   permissionUsers() []atlassian.confluence.user
-  // Distinct groups referenced by space permissions (typed)
+  // Distinct groups referenced by space permissions
   permissionGroups() []atlassian.confluence.group
   // Homepage of the space. Null when no homepage is set.
   homepage atlassian.confluence.page
@@ -747,16 +883,18 @@ atlassian.confluence.space @defaults("name key type") {
   createdAt time
   // Pages in this space (top-level Get; lazy)
   pages() []atlassian.confluence.page
+  // Blog posts in this space
+  blogposts() []atlassian.confluence.blogpost
 }
 
 // Confluence page (content with type=page)
 //
-// Examine a single page: identity, status (current / trashed / draft), the
-// space it lives in, the current version number, the creator and last
-// update timestamps, the typed creator user, the typed parent page (when
-// the page is nested), the labels applied to it, whether any explicit read
-// or update restrictions are applied, and the per-operation restriction
-// set with its users and groups — the unit of page-level access reviews.
+// Confluence page (content with type page) and its access posture: status
+// (current, trashed, or draft), the space it lives in, the current version
+// number, the creator and last-update timestamps, the parent page when the
+// page is nested, the labels applied to it, whether any explicit read or
+// update restrictions are applied, and the per-operation restriction set
+// with its users and groups. The unit of page-level access reviews.
 atlassian.confluence.page @defaults("title status") {
   // Content ID
   id string
@@ -776,21 +914,112 @@ atlassian.confluence.page @defaults("title status") {
   updatedAt() time
   // User who created the page. Null when the API does not return creator details.
   createdBy() atlassian.confluence.user
+  // User who made the current version. Null when the API does not return editor details.
+  updatedBy() atlassian.confluence.user
+  // Message recorded with the current version. Empty when none was set.
+  versionMessage() string
+  // Whether the current version was flagged as a minor edit
+  minorEdit() bool
   // Direct parent page. Null for top-level pages or when no ancestors are returned.
   parent() atlassian.confluence.page
+  // Content IDs of the full ancestor chain, root first, direct parent last
+  ancestorIds() []string
+  // Nesting depth. 0 for a top-level page, 1 for its children, and so on.
+  depth() int
+  // Absolute URL of the page in the Confluence web UI. Empty when unavailable.
+  webUrl() string
   // Labels applied to the page (label name only, without prefix)
   labels() []string
   // Whether this page has any explicit read or update restrictions applied
   hasRestrictions() bool
   // Per-operation restrictions on this page (read/update; users + groups)
   restrictions() []atlassian.confluence.page.restriction
+  // Files attached to this page
+  attachments() []atlassian.confluence.attachment
+}
+
+// Confluence blog post (content with type=blogpost)
+//
+// Confluence blog post and its access posture: status (current, trashed, or
+// draft), the space it lives in, the current version number, the creator and
+// last-editor accounts, the version metadata, whether any explicit read or
+// update restrictions are applied, and the files attached to it. Blog posts
+// are a full content type parallel to pages, with the same restriction and
+// data-disclosure surface, so they belong in the same content access reviews.
+atlassian.confluence.blogpost @defaults("title status") {
+  // Content ID
+  id string
+  // Blog post title
+  title string
+  // Content status (current, trashed, draft)
+  status string
+  // Confluence content type. Always "blogpost" (kept for symmetry with page).
+  type string
+  // Key of the space the blog post lives in
+  spaceKey string
+  // Current version number (1 for the first publish, increments per edit)
+  version int
+  // Creation timestamp (UTC). Null when the API does not return a creation date.
+  createdAt time
+  // Last update timestamp (UTC). Null when the API does not return an update timestamp.
+  updatedAt time
+  // User who created the blog post. Null when the API does not return creator details.
+  createdBy atlassian.confluence.user
+  // User who made the current version. Null when the API does not return editor details.
+  updatedBy atlassian.confluence.user
+  // Message recorded with the current version. Empty when none was set.
+  versionMessage string
+  // Whether the current version was flagged as a minor edit
+  minorEdit bool
+  // Absolute URL of the blog post in the Confluence web UI. Empty when unavailable.
+  webUrl string
+  // Labels applied to the blog post (label name only, without prefix)
+  labels []string
+  // Whether this blog post has any explicit read or update restrictions applied
+  hasRestrictions() bool
+  // Per-operation restrictions on this blog post (read/update; users + groups)
+  restrictions() []atlassian.confluence.page.restriction
+  // Files attached to this blog post
+  attachments() []atlassian.confluence.attachment
+}
+
+// Confluence attachment
+//
+// File attached to a Confluence page or blog post, carrying the title, media
+// type, size, upload version and uploader, and the web and download links.
+// Attachments are a data-exfiltration surface: inventory them to find files
+// (credentials, exports, PII) that should not be stored in the wiki, and to
+// review what is downloadable from a given piece of content.
+atlassian.confluence.attachment @defaults("title mediaType fileSize") {
+  // Content ID of the attachment
+  id string
+  // Attachment title (file name)
+  title string
+  // Content status (current, trashed)
+  status string
+  // MIME media type (e.g. application/pdf, image/png)
+  mediaType string
+  // File size in bytes
+  fileSize int
+  // Comment recorded with the attachment. Empty when none was set.
+  comment string
+  // Current version number of the attachment
+  version int
+  // Upload timestamp of the current version (UTC). Null when unavailable.
+  createdAt time
+  // User who uploaded the current version. Null when the API does not return uploader details.
+  createdBy atlassian.confluence.user
+  // Absolute URL to download the attachment. Empty when unavailable.
+  downloadLink string
+  // Absolute URL of the attachment in the Confluence web UI. Empty when unavailable.
+  webUrl string
 }
 
 // Per-operation restriction on a Confluence page
 //
-// Examine which Atlassian accounts and groups hold read or update access on
-// a page that has explicit restrictions configured, both as raw IDs / names
-// and as typed user / group references.
+// Atlassian accounts and groups that hold read or update access on a page
+// with explicit restrictions configured, available both as raw account IDs
+// and group names and as resolved user and group references.
 atlassian.confluence.page.restriction @defaults("operation") {
   // Identifier of the restriction, unique per (page, operation) pair
   id string
@@ -800,9 +1029,9 @@ atlassian.confluence.page.restriction @defaults("operation") {
   userIds []string
   // Group names with this operation restriction
   groupNames []string
-  // Users with this operation restriction (typed)
+  // Users with this operation restriction
   users() []atlassian.confluence.user
-  // Groups with this operation restriction (typed)
+  // Groups with this operation restriction
   //
   // Identified by display name only — see atlassian.confluence.group.id
   // for cache-key caveats.

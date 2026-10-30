@@ -1,0 +1,121 @@
+2026-06-24 21:42:18|radd   |25976a0ade8d42f4851a6336357556e2|dir:/repos/SUSE%3A/SLFO%3A/Products%3A/SLES%3A/16.0%3A/PubClouds/images|
+2026-06-24 21:42:18|radd   |b1104d1e0524408f8837d78915fb24e1|dir:/repos/SUSE%3A/SLFO%3A/Products%3A/PublicCloud%3A/Toolchain%3A/2025%3A/PUBLISH/containers_16.0|
+2026-06-24 21:42:18|radd   |9b6d536d751041ccbf39d2a9a68d4999|dir:/repos/SUSE%3A/SLFO%3A/Products%3A/SLES%3A/16.0%3A/PubClouds/standard|
+2026-06-24 21:42:18|radd   |2b8e1b099c2249cfaabed5513e4e9223|dir:/repos/SUSE%3A/SLFO%3A/Products%3A/SLES%3A/16.0/standard|
+2026-06-24 21:42:18|radd   |1472716989044590b88b5949399931f1|dir:/repos/SUSE%3A/SLFO%3A/Products/ports|
+2026-06-24 21:42:18|radd   |85b0ae8613454947a2b656d40155a3c0|dir:/repos/SUSE%3A/SLFO%3A/1.2/standard|
+2026-06-24 21:42:18|command|root@localhost|'zypper' '--non-interactive' '--gpg-auto-import-keys' '--pkg-cache-dir' '/usr/src/packages/KIWI-oem/build/image-root/var/cache/kiwi/packages' '--reposd-dir' '/usr/src/packages/KIWI-oem/build/image-root/var/cache/kiwi/zypper/repos' '--solv-cache-dir' '/usr/src/packages/KIWI-oem/build/image-root/var/cache/kiwi/zypper/solv' '--cache-dir' '/usr/src/packages/KIWI-oem/build/image-root/var/cache/kiwi/zypper' '--raw-cache-dir' '/usr/src/packages/KIWI-oem/build/image-root/var/cache/kiwi/zypper/raw' '--config' '/usr/src/packages/KIWI-oem/build/image-root/kiwi_zypper.config' '--root' '/usr/src/packages/KIWI-oem/build/image-root' 'install' '--download' 'in-advance' '--auto-agree-with-licenses' '--no-recommends' '--' 'filesystem' 'zypper'|
+# 2026-06-24 21:42:18 boost-license1_86_0.rpm installed ok
+# Additional rpm output:
+2026-06-24 21:42:18|install|boost-license1_86_0|1.86.0-160000.2.2|noarch||85b0ae8613454947a2b656d40155a3c0|33a8f1031b42e7dd4ebf083dfc33354eb960860ba71239aa5a712da871463bbd|
+2026-06-24 21:42:18|install|compat-usrmerge-tools|84.87-160000.2.2|x86_64||85b0ae8613454947a2b656d40155a3c0|2d360d9be33ae96c281ba156358c089b497fca0d7bfdf9345b8978a0de002f6f|
+2026-06-24 21:42:19|install|crypto-policies|20250714.cd6043a-160000.2.1|noarch||85b0ae8613454947a2b656d40155a3c0|9a5e3ae9ba578b8dc998a7c7ca4263b3f5f2ebabdb34f4d88437e44a94f9cbec|
+2026-10-02 14:21:32|command|root@localhost|'zypper' '--non-interactive' 'install' '--no-recommends' 'dmidecode' 'usbutils' 'pciutils' 'mokutil' 'curl' 'python3'|
+2026-10-02 14:21:32|install|curl|8.14.1-160000.9.1|x86_64|root@localhost|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|ce0a6d4e45f322d6c2e7dd4f8eb34037ba499e82b32ca3e8b9e9206ad57934d1c80b6938cf9f87e49087508a8abc77953c9ba3179145574210bd771be2b9a2b0|
+2026-10-02 14:21:33|install|dmidecode|3.7-160000.2.1|x86_64|root@localhost|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|e32d52ac03553a5a4daf7c3fa19d2e10af85c0e82b0975d6689c5176185b1586a98452ee9b97b6c7fb67330324d7dd6b63eb7cfecef910a2fcafd9ef0ff3958c|
+2026-10-02 14:21:33|install|libpython3_13-1_0|3.13.14-160000.2.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|9a106f34e6c5d48d7ce9f4eba24edb7819e262e2ab0db8d62ce6dd7db74de78e292da32da72e2178689b9fa93bd3b8d4b046e37554271950f70acfdbe4ed6ab9|
+2026-10-02 14:21:35|install|python313-base|3.13.14-160000.2.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|9be134950fbc81ca178a223c26244e9d752943186f86efecef68b55efe5255a8c60d650037930d2b1237ff25e8e485255027d5f3cf17f112c1f6bae6025f91ed|
+2026-10-02 14:21:35|install|python313|3.13.14-160000.2.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|01d70d19830441d0aa762f4137b1042a0cda591ac14af4cfaaf594cba76a319cf01750adce2a8c1a37dc2aeda0221f9dc8bbdf2eaf7a55f3d508cfcaec0b6e7f|
+2026-10-02 14:21:35|install|python3-base|3.13.14-160000.1.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|ac717e3b988d7d329dafe3116a5d275e11578b207add11d8dc9deb07486bc8b0158dc936654ba92b86c2273707fef06660d0fff11563c9687bc6450a3a28f73d|
+2026-10-02 14:21:35|install|python3|3.13.14-160000.1.1|x86_64|root@localhost|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|faccd9aee01b2521629e74ee571eae951d9b5d710bdf1f5c664435b7a89f0cd16881277c39a5fd4c102e659f8624de85fce2aa8b4fa6db46e340d60e5f72385d|
+2026-10-02 14:21:35|install|usbutils|015-160000.2.2|x86_64|root@localhost|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|6d163aebda155d4e9870f4329962c7343e0c7e17b994507301f9c285fa6f7b061737c1da9444b2714cbc557c1cbb303ae9cd1e7ff000436d6bb8f98a6571ca1e|
+2026-10-02 14:21:37|patch  |SUSE-SLES-16.0-1359|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|important|security|needed|applied|
+2026-10-02 14:21:37|patch  |SUSE-SLES-16.0-1435|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|recommended|needed|applied|
+2026-10-02 14:21:37|patch  |SUSE-SLES-16.0-1465|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|important|security|needed|applied|
+2026-10-02 14:21:37|patch  |SUSE-SLES-16.0-1683|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|recommended|needed|applied|
+2026-10-02 14:21:37|radd   |wazuh|https://packages.wazuh.com/4.x/yum/|
+2026-10-02 14:21:38|command|root@localhost|'zypper' '--non-interactive' '--gpg-auto-import-keys' 'install' '--no-recommends' 'wazuh-agent'|
+2026-10-02 14:22:04|install|wazuh-agent|4.14.8-1|x86_64|root@localhost|wazuh|b4195adae68eefa70da9395f324201ed642c5db178a2ec8c968e61fe9c127d8f|
+2026-10-02 14:22:16|command|root@localhost|'zypper' '--non-interactive' 'install' '--no-recommends' 'sssd' 'sssd-ad' 'samba-client'|
+2026-10-02 14:22:16|install|adcli|0.9.3.1-160000.1.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|c0294a8192e8379b1e6e4e86c42282cd17f8a51563dbfc4b9b3b516e45a4f8d36c44c20f9a33c6a346e107dc29ad38088ff31b79de4836a81e27d5066edf80a4|
+2026-10-02 14:22:16|install|libarchive13|3.8.1-160000.4.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|922c0218156de1dd273ef78a0ac49f62449e00f3769c527603e4c46a957a07e9704c57c8d5e60e976afeab27f8dfda86832123aebe22331867d5b738c0975890|
+2026-10-02 14:22:16|install|libavahi-common3|0.8-160000.6.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|d18148a3efd559c54969130c7d86f89017fb971ea5e39596906a762cd26d772ddd6098eb4d0d70c362a28f55396c8e2c9bcf3126be640edf1e9af44f558a3c93|
+2026-10-02 14:22:16|install|libbasicobjects0|0.1.1-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|990060250a4df125b762c32587d13e0a72a14e97467012e9e6cf8c4bf87a55c7f3d8e2190f08a6c68badbbfbe997c486f3fca44b80875836137c1a8428f04cc2|
+2026-10-02 14:22:16|install|libcollection4|0.7.0-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|a26032cbd920c1d4e20e8a139554ac4c7c8d040593d680021a3c00a6ad4a7dfc131560d1da5782f1891911ed2b728b39ced4b08dd7c2d28ec390a6233e0b3a7a|
+2026-10-02 14:22:16|install|libdhash1|0.5.0-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|c6d46fcf085dc54ca559d9912ca80d35b00d62f236c83f4175b53b165afde18186e1d85883b8b80d18656fd14e523b8142cc0b904af872363fa7a32e9da4352b|
+2026-10-02 14:22:16|install|liblmdb-0_9_30|0.9.30-160000.3.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|4a923ef3a7073356b676f0fd8310346cf56bb20e8b6ffe6ea65e443a59f51cedefe45d64d32845d3533081fdde4e095677455d04b9ae4fdb2d89aa28e92eddc9|
+2026-10-02 14:22:16|install|libpath_utils1|0.2.1-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|76231d025dad1173bf65da622d8a5bb695e0513617102c2a4a11ec7d2fa39530a1f8cd3ded9ab2d666bcf676816b6fba01b1a3ee85f489589b169f9e4f4cc2f6|
+2026-10-02 14:22:16|install|libref_array1|0.1.5-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|1bc73495fba986f15a0115b295dac4a66dae47b501bad006f2036dc4445ce18b3df504d5b7d725193ce1fcef5b72b0b6c90595413e7108eb60d911990e98be45|
+2026-10-02 14:22:17|install|libsss_certmap0|2.10.2-160000.5.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|92cc78cb65b246188b27e802b6de0833ee346f492d0c39d57111b60b44757bbe92de01cf55ba01442f4ba2937674a73b408805f55afd8a4d508d1af6175015a6|
+2026-10-02 14:22:17|install|libtdb1|1.4.13-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|551ebbfa5e2724092c1a9f3e34ac8ee7d2651d928ad20b9c027f4d85eb54a5c996e466cb2028358f11fea1340cc9b41d74d5e29ee6a52801b0a8fc439c4857ac|
+2026-10-02 14:22:17|install|libtevent0|0.16.2-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|fc5eb31154e54923820845afe274be3267134f1ac59a314b50b6f34424d5a4a59b3a1baf6a68b4b6b7bacd4c23e1dfff913f8ba151040dab484abd15af840972|
+2026-10-02 14:22:17|install|libavahi-client3|0.8-160000.6.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|4f699b7a1f8695d36e8afd81c3ac601498362c31be2b38c3fcaf51053fedf78d813aff48bbafd92855a5089596a819e1c9281c98b9afd76079f777a828e00737|
+2026-10-02 14:22:17|install|libini_config5|1.3.1-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|92d1824b63d5c2a283bd2c0e1366c0fe58cb552a707bf848ec86eeb63710d9d52aa7a0ce3383d8449807175f5548ab0c7dbf8fdb3d1d968bfd7dbdedad36021e|
+2026-10-02 14:22:17|install|libldb2|4.22.11+git.560.f0322ab554-160000.1.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|843b1349da1f2b922219e0158e93060b9f611d19fc2cd00a433afcc12de4bdbb8cd4b2b4f169c337e378791e7a3d0f3743c6d0d413b761417a80a1e553a167fe|
+2026-10-02 14:22:17|install|sssd-ldap|2.10.2-160000.5.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|c1d3c7628b8897a149f50457e2d25e0eb0c3a8edecb33ef6cb8e8299e0630b83a8ec2161e36e0a570f960cb3b0d1cef59b848d3fd93f3b8d837c518da4313797|
+2026-10-02 14:22:18|install|sssd|2.10.2-160000.5.1|x86_64|root@localhost|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|5c17911a67869960710514ae7e9877c0186815277c5bb05957526128213f78d6c97d432bae7ae5e626a7ee3d720762af3c80dab8a07be8cd2388bb58ac178615|
+2026-10-02 14:22:18|install|sssd-krb5-common|2.10.2-160000.5.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|593a22f4abcb44aafb54095347c0bec7053ea4f9184679f62cabacd729f82b79a35291af05e4d4b626f7f390a86e94380c3c752186f760f3516299f310015210|
+2026-10-02 14:22:18|install|samba-client-libs|4.22.11+git.560.f0322ab554-160000.1.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|0da07f98b257ce157391bd6c40da74557b2dc4571adea492d6e4dfa0e85a0b12b547a70fc56982ef951e8c805af03df87be7d57e5bdcfe827abd407d6be232e0|
+2026-10-02 14:22:18|install|sssd-ad|2.10.2-160000.5.1|x86_64|root@localhost|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|ef933b82ea062dcb2f1694e90dfc8d1ebf24068317b2a336940f3370dd5dccc9f7dd26e26c8af9fbeda3e10f8e3997b92c5adef138dbb78c76d85303fcb037fb|
+2026-10-02 14:22:18|install|samba-client|4.22.11+git.560.f0322ab554-160000.1.1|x86_64|root@localhost|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|58ecc6c40dcdc2820248a480445d9fe4b2d3cb15486a37e7ec9e5275459d41e4dddd71c3f176585e348eaa1fbce3ffe70e18aa262aa5ce2f4931f7f5725a3fe8|
+2026-10-02 14:22:21|patch  |SUSE-SLES-16.0-1026|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|security|not-needed|applied|
+2026-10-02 14:22:21|patch  |SUSE-SLES-16.0-1226|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|recommended|not-needed|applied|
+2026-10-02 14:22:21|patch  |SUSE-SLES-16.0-127|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|security|not-needed|applied|
+2026-10-02 14:22:21|patch  |SUSE-SLES-16.0-1328|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|security|not-needed|applied|
+2026-10-02 14:22:21|patch  |SUSE-SLES-16.0-1386|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|important|security|not-needed|applied|
+2026-10-02 14:22:21|patch  |SUSE-SLES-16.0-1439|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|critical|security|not-needed|applied|
+2026-10-02 14:22:21|patch  |SUSE-SLES-16.0-1490|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|security|not-needed|applied|
+2026-10-02 14:22:21|patch  |SUSE-SLES-16.0-157|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|important|recommended|not-needed|applied|
+2026-10-02 14:22:21|patch  |SUSE-SLES-16.0-1604|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|recommended|not-needed|applied|
+2026-10-02 14:22:21|patch  |SUSE-SLES-16.0-193|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|security|not-needed|applied|
+2026-10-02 14:22:21|patch  |SUSE-SLES-16.0-22|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|critical|security|not-needed|applied|
+2026-10-02 14:22:21|patch  |SUSE-SLES-16.0-220|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|important|recommended|not-needed|applied|
+2026-10-02 14:22:21|patch  |SUSE-SLES-16.0-799|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|important|security|not-needed|applied|
+2026-10-02 14:22:21|patch  |SUSE-SLES-16.0-890|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|critical|security|not-needed|applied|
+2026-10-02 14:22:21|patch  |SUSE-SLES-16.0-94|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|recommended|not-needed|applied|
+2026-10-02 14:22:24|command|root@localhost|'zypper' '--non-interactive' 'install' '--no-recommends' 'openvswitch'|
+2026-10-02 14:22:24|install|libatomic1|16.2.0+git9497-160000.2.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|3daa066135513e408d81273f9f6a9b71552687854e69f6cd3929a53f4c25f79fea6484e012208b99583804e936ef02cfc9d29111fe2abb50d000260dcd016008|
+2026-10-02 14:22:24|install|libfdt1|1.7.2-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|b6b6dea317b46317e71e52bcee6aa275b7a0d88486969008d1939be882d2394d2a344bda9b42cbcf71b8ca0f87daaa15554fc9e8dd0b7ac8b1a5732fbbc9319f|
+2026-10-02 14:22:24|install|libprotobuf-c1|1.5.1-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|e84a0454de5ee9b2e9fce76e79b8a80a2099e946d2558b2428ee5140757e6a1477a9cbeb36ac96479c6d8f32b3e0eb1c97fa83179966cd6f58eacba5d6c5c40e|
+2026-10-02 14:22:24|install|libsodium26|1.0.22-160000.1.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|4b3a7b8892fea6e8692c1fbbf574121f446326b8ac9fce3e0e82a9e3669c52cd78c3267cd8a05ecd5e9bf4391d6bf94be7bfef3719786be9e8e3f36844f0ac68|
+2026-10-02 14:22:25|install|python313-Pygments|2.19.1-160000.3.1|noarch||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|a0d0608df8f0ed639120b5f2ea7babddbe3d303c30a5e188810f4d3d4cfab5ad4a489b974dd17fa68f39800182bf73bf0bd5f3c6b32fc571f21b587ae75bc5e9|
+2026-10-02 14:22:25|install|python313-click|8.2.1-160000.3.1|noarch||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|d590121998ac38dbb6fc80a67c23d798e5d7d321ea241e4e7192d507be7863a1a07ee6027c6a408a7a31c30c906ffcf716c572012ab476883e5876cb659fab4a|
+2026-10-02 14:22:25|install|python313-mdurl|0.1.2-160000.2.2|noarch||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|76e4fffe1d58ddec324effc3199808478f85cb84b002c96ac573c536573ad0d666e49039bac72ff775a15eee44c904c1268484598adf47c54a08bda08b6d6963|
+2026-10-02 14:22:25|install|python313-netaddr|1.3.0-160000.2.2|noarch||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|06c5409fda1f96b32561c1438663c73671b344d652dd1f6afd03039c82e42d5a32316921152f2825976844e64580a519e0afe9c5c015364f375b047b1a9c8e03|
+2026-10-02 14:22:25|install|python313-pyparsing|3.2.3-160000.2.2|noarch||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|f4b4755d7fd648fb62daf8a10823e49d6a97e2bf3a83d444c49d51d1537264906613641c7d7edc0be32b4f1df8be9bb70021bc8a7ad6e29e1ab679932b10f36a|
+2026-10-02 14:22:26|install|python313-sortedcontainers|2.4.0-160000.2.2|noarch||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|8a5b3f8113e31e04059724edfd4406e924638521da4398f7ad7c4e67d8261b3abd44a44b7e1401df35aefc4c84fbd45f87d45c507036e2c92cf0a320820dc3c1|
+2026-10-02 14:22:26|install|rdma-core|56.1-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|9ae864bc396284927681fa9e1f5a3970c6c9347b9dc9c2621a210a57fd2ac99dad0dbd2c167fa9c7f81ebc7b1119aabca5b9a5ab46af2c64302167c08ba48d98|
+2026-10-02 14:22:26|install|libunbound8|1.25.2-160000.1.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|06e6cef3f734ae0d92db9dab348cddf1abd26490879aa6b17de477e3cbc4e970990c0ff3ba9e0addc435e7b71a1eb3b68efcf3c0f66a9d884294322705235be7|
+2026-10-02 14:22:26|install|unbound-anchor|1.25.2-160000.1.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|e77cdf7cd539cd1f402f9969c45f2dffa3767b4f8335bec73de9ce29b326d863c342e429eb58eb8555872b5b13c62c1c8091b35417a58b380e58ba23f8f407dc|
+2026-10-02 14:22:26|install|python313-markdown-it-py|3.0.0-160000.2.2|noarch||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|7b7e8d80cc15e80af57908524747d970985c21e147599e4367b264853e2ceb69bc122b497259091a533f858981c38e03973a6550d5e52de4db5d2c651332605f|
+2026-10-02 14:22:26|install|libibverbs1|56.1-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|6fe0a25718f0970cf801e2da1223a8b86fb93fa6a0ef5b7511e7a900e568dce930bb73bfaae828a36e6c035283de560f4bc1a550db9521501ed54ada312bf019|
+2026-10-02 14:22:26|install|libmlx5-1|56.1-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|7e43d4dae1980899bc77a7274c5049a3df977ec3936fed97ec5fcb3c6cd2b4a5c8a940111085b6693a22f70a55eb3751d87b715345c08d4e2f1dc70cb41fa356|
+2026-10-02 14:22:27|install|python313-rich|14.0.0-160000.2.2|noarch||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|563af43195031b92e51dec90bdc134948f84f0e7b0cdc87adf356c31215a73d22d491dba5f410cd1bdf354aa20d5b231b840e7ab8a16186b14b5e7ed3ca4c408|
+2026-10-02 14:22:27|install|libmlx4-1|56.1-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|56233284067294a1d6ca19c15866c4eccc509e2b7e99fe3ea911bd410024ca2a8491c88da71831be3719d3e7f217497300df27b4da05f6669c12a89a598c0332|
+2026-10-02 14:22:27|install|libmana1|56.1-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|d44e06e395514bca501c9cce1a6233fde2eeda9fbc55f2b4ae1bc505ae0fc44f11f91da5282c15831374aba2a095a613d1664ec88c564c3dbeaea2e0e6d361be|
+2026-10-02 14:22:27|install|libhns1|56.1-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|72850a35cafbd6f6a5909d18cb0efbdf225da4bba75fa2940a368afe84ebe7dbefa79fc077b9ca18b928d9bc731021fac58c9f89693afa12e917261e2d976577|
+2026-10-02 14:22:27|install|libefa1|56.1-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|a5bbb335cf5ff59b8adced775f3915be90b86897edd384acd441cfa2dcb6d512d34ed7b613da2b639ae3b1816373ffabf40e7503804d79d683fc0916bab3b4fb|
+2026-10-02 14:22:27|install|libibverbs|56.1-160000.2.2|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|f3413c71e882ed954f2d14359ca630ce8a7dc9869e0b9bb880b8a928fd49d938a48edea7a667de630b66959076f7a32fff3dc80d6aeece88de7efc8ade3ac79c|
+2026-10-02 14:22:28|install|libdpdk-25|24.11.7-160000.1.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|62c7298d97c3dfd8d507ed55438fc08a2ee13f5f493c23e0af3345be6dec0ff5fac9bfb9158cbb5f2302ed30497a95f960dd9276d05b847e6bb09cf2b5ccb03f|
+2026-10-02 14:22:28|install|dpdk|24.11.7-160000.1.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|2db51f7983ba8c4555ef0692377c2238c37105e927a8526559189e1bb209aea90a589a9c09ec90ae6f0dc15533e95c749df8d53e27c0b4c24d5e30d651958163|
+2026-10-02 14:22:28|install|libopenvswitch-3_5-0|3.5.4-160000.4.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|5392eb73c516a7d56cb675e0ba4c83b6e0da5879a103a139cc8e37d7889c2253adb500bb14fa444d0c17ed4b29e946c4997735e0097b26365b710c45a0036407|
+2026-10-02 14:22:28|install|python3-openvswitch|3.5.4-160000.4.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|f0c9dcb1e292034dc8c3c3332495eb12b97f68f13cb3f0e68af16235f66fa026fbb4579605768a28bc77ba1a14a2d58f61500c778d5d3a219071ca101ed4d773|
+2026-10-02 14:22:29|install|openvswitch|3.5.4-160000.4.1|x86_64|root@localhost|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|3459d4d1a04042e4a5857ac771af22e07f03061e0bf56cc0d16fdc217dbd5606bca1c41ba94a7f5421c543d8ee5bcfeb738fc067581bd84651dcdf8908a1e5d2|
+2026-10-02 14:22:30|patch  |SUSE-SLES-16.0-1012|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|recommended|not-needed|applied|
+2026-10-02 14:22:30|patch  |SUSE-SLES-16.0-1029|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|security|not-needed|applied|
+2026-10-02 14:22:30|patch  |SUSE-SLES-16.0-1180|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|recommended|not-needed|applied|
+2026-10-02 14:22:30|patch  |SUSE-SLES-16.0-142|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|recommended|not-needed|applied|
+2026-10-02 14:22:30|patch  |SUSE-SLES-16.0-1446|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|important|security|not-needed|applied|
+2026-10-02 14:22:30|patch  |SUSE-SLES-16.0-1687|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|recommended|not-needed|applied|
+2026-10-02 14:22:30|patch  |SUSE-SLES-16.0-224|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|security|not-needed|applied|
+2026-10-02 14:22:30|patch  |SUSE-SLES-16.0-233|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|security|not-needed|applied|
+2026-10-02 14:22:30|patch  |SUSE-SLES-16.0-413|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|security|not-needed|applied|
+2026-10-02 14:22:30|patch  |SUSE-SLES-16.0-649|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|security|not-needed|applied|
+2026-10-02 14:22:30|patch  |SUSE-SLES-16.0-911|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|low|security|not-needed|applied|
+2026-10-02 14:22:30|patch  |SUSE-SLES-16.0-937|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|important|security|not-needed|applied|
+2026-10-02 14:22:30|patch  |SUSE-SLES-16.0-948|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|important|security|not-needed|applied|
+2026-10-02 14:56:13|command|root@localhost|'zypper' '-n' '--no-refresh' 'in' '--oldpackage' '--no-recommends' 'kernel-default-6.12.0-160000.38.1'|
+2026-10-02 14:56:41|install|kernel-default|6.12.0-160000.38.1|x86_64|root@localhost|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|fe81276a1edb6051700bbac1e79623d4430f2e8378e50c13fc2cdcab6e9a97fe7334499473f659dd92752fb07679a7672a0c27072c2fb0cde489a3f560ad6e02|
+2026-10-02 14:56:41|install|ucode-intel|20260812-160000.1.1|x86_64||SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|d8563919f080fd605353d6db2bf4be55dfa65cae0162892910f311d1c98c346836d5562e5e88f8645b1451f839aafd18ea1a8a5e11dc2f4946c5034f2f4a500a|
+2026-10-02 14:56:53|patch  |SUSE-SLES-16.0-1295|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|important|security|needed|applied|
+2026-10-02 14:56:53|patch  |SUSE-SLES-16.0-1452|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|important|security|needed|applied|
+2026-10-02 14:56:53|patch  |SUSE-SLES-16.0-1584|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|important|security|not-needed|applied|
+2026-10-02 14:56:53|patch  |SUSE-SLES-16.0-1738|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|important|security|needed|applied|
+2026-10-02 14:56:53|patch  |SUSE-SLES-16.0-415|1|noarch|SUSE_Linux_Enterprise_Server_x86_64:SLE-Product-SLES-16.0|moderate|security|not-needed|applied|
+2026-10-02 14:56:58|command|root@localhost|'zypper' '-n' 'rm' '--clean-deps' 'kernel-default-6.12.0-160000.38.1'|
+2026-10-02 14:57:00|remove |kernel-default|6.12.0-160000.38.1|x86_64|root@localhost|
+/var/log/zypp/:
+total 352
+drwxr-x---. 1 root root     14 Jun  8 12:54 .
+drwxr-xr-x. 1 root root    514 Oct  2 14:22 ..
+-rw-r--r--. 1 root root 357537 Oct  2 14:57 history

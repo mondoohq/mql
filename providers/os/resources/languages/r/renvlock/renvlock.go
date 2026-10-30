@@ -8,9 +8,9 @@ import (
 	"io"
 	"slices"
 
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	rlang "go.mondoo.com/mql/v13/providers/os/resources/languages/r"
-	"go.mondoo.com/mql/v13/sbom"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	rlang "go.mondoo.com/mql/providers/os/resources/languages/r"
+	"go.mondoo.com/mql/sbom"
 )
 
 // renvLockfile represents the structure of an renv.lock file.

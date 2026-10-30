@@ -6,7 +6,7 @@ package updates
 import (
 	"errors"
 
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 type OperatingSystemUpdate struct {
@@ -33,7 +33,7 @@ func ResolveSystemUpdateManager(conn shared.Connection) (OperatingSystemUpdateMa
 
 	// TODO: use OS family and select package manager
 	switch pf.Name {
-	case "opensuse", "sles", "opensuse-leap", "opensuse-tumbleweed": // suse family
+	case "opensuse", "sles", "opensuse-leap", "opensuse-tumbleweed", "opensuse-microos", "suse-microos": // suse family
 		um = &SuseUpdateManager{conn: conn}
 	case "windows":
 		um = &WindowsUpdateManager{conn: conn}

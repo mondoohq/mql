@@ -4,11 +4,12 @@
 package sshd
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/utils/sortx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/utils/sortx"
 )
 
 type MatchBlock struct {
@@ -47,25 +48,28 @@ var isMultiParam = map[string]bool{
 	"HostKey":       true,
 }
 
+// Flatten returns the global configuration: the parameters set outside any
+// Match block, which is what `sshd -T` reports without a connection spec.
+// A value set only inside a Match block applies to the connections that
+// block matches and must not appear here, or a policy such as
+// `params["PermitRootLogin"] == "no"` passes on a server whose global
+// setting still permits root logins. Match blocks are available on their own.
+//
+// The criteria of all Match blocks are joined under the informational
+// "Match" key.
 func (m MatchBlocks) Flatten() map[string]any {
 	if len(m) == 0 {
 		return nil
 	}
-	if len(m) == 1 {
-		return m[0].Params
-	}
 
-	// We are using the first block as a starting point for the size.
-	// We can't just add the sizes of params across all blocks, because keys
-	// may be used across multiple blocks. It is likely that the size will
-	// have to grow, but it's the floor and a good starting point.
-	res := make(map[string]any, len(m[0].Params))
+	res := map[string]any{}
 	matchConditions := []string{}
 	for i := range m {
 		cur := m[i]
 
 		if cur.Criteria != "" {
 			matchConditions = append(matchConditions, cur.Criteria)
+			continue
 		}
 
 		for k, v := range cur.Params {
@@ -100,9 +104,7 @@ func mergeIncludedBlocks(matchConditions map[string]*MatchBlock, blocks MatchBlo
 				existing.Params = map[string]any{}
 			}
 			for k, v := range block.Params {
-				if _, ok := existing.Params[k]; !ok {
-					existing.Params[k] = v
-				}
+				setParam(existing.Params, k, v.(string))
 			}
 			continue
 		}
@@ -124,9 +126,7 @@ func mergeIncludedBlocks(matchConditions map[string]*MatchBlock, blocks MatchBlo
 		}
 
 		for k, v := range block.Params {
-			if _, ok := existing.Params[k]; !ok {
-				existing.Params[k] = v
-			}
+			setParam(existing.Params, k, v.(string))
 		}
 	}
 }
@@ -217,6 +217,14 @@ func ParseBlocks(filePath string, content string) (MatchBlocks, error) {
 	return res, nil
 }
 
+// isRefusal reports whether err is a classified refusal (forbidden). Such an
+// error is never skipped like a missing or malformed include: sshd reads
+// every included file, so leaving one out reports a configuration the server
+// does not run, and a denylist check over it passes vacuously.
+func isRefusal(err error) bool {
+	return errors.Is(err, llx.ErrForbidden)
+}
+
 // ParseBlocksWithGlob parses SSH config files, expanding glob patterns in Include directives.
 // It expands globs and calls ParseBlocksWithGlobRecursive for each matched file individually,
 func ParseBlocksWithGlob(rootPath string, fileContent fileContentFunc, globExpand globExpandFunc) (MatchBlocks, error) {
@@ -246,7 +254,7 @@ func ParseBlocksWithGlob(rootPath string, fileContent fileContentFunc, globExpan
 	for i, path := range paths {
 		content, err := fileContent(path)
 		if err != nil {
-			if i == 0 && (len(paths) == 1 || path == rootPath) {
+			if isRefusal(err) || (i == 0 && (len(paths) == 1 || path == rootPath)) {
 				return nil, err
 			}
 			log.Warn().Err(err).Str("path", path).Msg("unable to read file")
@@ -255,6 +263,9 @@ func ParseBlocksWithGlob(rootPath string, fileContent fileContentFunc, globExpan
 
 		blocks, err := ParseBlocksWithGlobRecursive(path, content, fileContent, globExpand)
 		if err != nil {
+			if isRefusal(err) {
+				return nil, err
+			}
 			log.Warn().Err(err).Str("path", path).Msg("unable to parse file")
 			continue
 		}
@@ -266,6 +277,37 @@ func ParseBlocksWithGlob(rootPath string, fileContent fileContentFunc, globExpan
 }
 
 // ParseBlocksWithGlobRecursive parses a single file and recursively handles Include directives.
+// splitIncludeArgs splits an Include directive's arguments into paths.
+//
+// sshd_config permits a path to be quoted, which is how a path containing
+// spaces is written, and some distributions quote unconditionally. Flatcar
+// ships exactly one effective line:
+//
+//	Include "/etc/ssh/sshd_config.d/*.conf"
+//
+// Splitting on spaces alone left the quote characters inside the pattern, so
+// the glob matched nothing, the miss was swallowed by a log.Warn, and the
+// entire included configuration was dropped without any error reaching the
+// caller. sshd.config.ciphers then returned an empty list, which makes a
+// "no weak ciphers" denylist pass vacuously.
+//
+// Quote-aware splitting also fixes the case quoting exists for: a path that
+// contains a space is now one argument rather than two broken ones.
+//
+// The split follows OpenSSH's argv_split rather than POSIX shell rules: a
+// backslash only escapes a quote, another backslash, or an unquoted space, and
+// is kept literally before anything else. That is what keeps a Windows path
+// such as `Include C:\ProgramData\ssh\extra.conf` intact.
+func splitIncludeArgs(args string) []string {
+	if fields, ok := argvSplit(args); ok {
+		return fields
+	}
+
+	// Unbalanced quoting is malformed sshd_config. Fall back to the plain
+	// split rather than dropping the directive entirely.
+	return strings.Split(args, " ")
+}
+
 func ParseBlocksWithGlobRecursive(filePath string, content string, fileContent fileContentFunc, globExpand globExpandFunc) (MatchBlocks, error) {
 	curBlock := &MatchBlock{
 		Criteria: "",
@@ -298,13 +340,15 @@ func ParseBlocksWithGlobRecursive(filePath string, content string, fileContent f
 		}
 
 		if key == "Include" {
-			// FIXME: parse multi-keys properly
-			includePaths := strings.Split(l.args, " ")
+			includePaths := splitIncludeArgs(l.args)
 
 			for _, includePath := range includePaths {
 				// Expand glob pattern if present
 				expandedPaths, err := globExpand(includePath)
 				if err != nil {
+					if isRefusal(err) {
+						return nil, err
+					}
 					log.Warn().Err(err).Str("path", includePath).Msg("unable to expand Include directive")
 					continue
 				}
@@ -313,12 +357,18 @@ func ParseBlocksWithGlobRecursive(filePath string, content string, fileContent f
 				for _, expandedPath := range expandedPaths {
 					subContent, err := fileContent(expandedPath)
 					if err != nil {
+						if isRefusal(err) {
+							return nil, err
+						}
 						log.Warn().Err(err).Str("path", expandedPath).Msg("unable to read included file")
 						continue
 					}
 
 					subBlocks, err := ParseBlocksWithGlobRecursive(expandedPath, subContent, fileContent, globExpand)
 					if err != nil {
+						if isRefusal(err) {
+							return nil, err
+						}
 						log.Warn().Err(err).Str("path", expandedPath).Msg("unable to parse included file")
 						continue
 					}
@@ -462,4 +512,51 @@ var SSH_Keywords = map[string]string{
 	"x11forwarding":                   "X11Forwarding",
 	"x11uselocalhost":                 "X11UseLocalhost",
 	"xauthlocation":                   "XAuthLocation",
+}
+
+// argvSplit is a port of argv_split from OpenSSH misc.c, which sshd uses to
+// tokenize every configuration line. It reports false for an unterminated
+// quote, which sshd rejects as an invalid format.
+func argvSplit(s string) ([]string, bool) {
+	var args []string
+	r := []rune(s)
+	for i := 0; i < len(r); i++ {
+		if r[i] == ' ' || r[i] == '\t' {
+			continue
+		}
+		var quote rune
+		var arg strings.Builder
+		for ; i < len(r); i++ {
+			c := r[i]
+			switch {
+			case c == '\\':
+				if i+1 < len(r) {
+					next := r[i+1]
+					if next == '\'' || next == '"' || next == '\\' || (quote == 0 && next == ' ') {
+						i++
+						c = next
+					}
+				}
+				arg.WriteRune(c)
+				continue
+			case quote == 0 && (c == ' ' || c == '\t'):
+				// unquoted whitespace ends the token
+			case quote == 0 && (c == '"' || c == '\''):
+				quote = c
+				continue
+			case quote != 0 && c == quote:
+				quote = 0
+				continue
+			default:
+				arg.WriteRune(c)
+				continue
+			}
+			break
+		}
+		if quote != 0 {
+			return nil, false
+		}
+		args = append(args, arg.String())
+	}
+	return args, true
 }

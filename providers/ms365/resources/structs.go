@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 )
 
 type AssignedPlan struct {
@@ -141,6 +141,14 @@ func newUnifiedRolePermissions(p []models.UnifiedRolePermissionable) []UnifiedRo
 	return res
 }
 
+// rolePermissionSource is the part of a unified role permission both the v1
+// and the beta SDK model, so one conversion serves every RBAC provider.
+type rolePermissionSource interface {
+	GetAllowedResourceActions() []string
+	GetCondition() *string
+	GetExcludedResourceActions() []string
+}
+
 func newPrivacyProfile(p models.PrivacyProfileable) PrivacyProfileable {
 	return PrivacyProfileable{
 		ContactEmail: convert.ToValue(p.GetContactEmail()),
@@ -148,7 +156,7 @@ func newPrivacyProfile(p models.PrivacyProfileable) PrivacyProfileable {
 	}
 }
 
-func newUnifiedRolePermission(p models.UnifiedRolePermissionable) UnifiedRolePermission {
+func newUnifiedRolePermission(p rolePermissionSource) UnifiedRolePermission {
 	return UnifiedRolePermission{
 		AllowedResourceActions:  p.GetAllowedResourceActions(),
 		Condition:               convert.ToValue(p.GetCondition()),
@@ -208,9 +216,7 @@ func newDirectoryPrincipal(p models.DirectoryObjectable) *DirectoryObject {
 		return nil
 	}
 	return &DirectoryObject{
-		Entity: Entity{
-			Id: p.GetId(),
-		},
+		Id:              p.GetId(),
 		DeletedDateTime: p.GetDeletedDateTime(),
 	}
 }
@@ -235,6 +241,14 @@ func directoryObjectDisplayName(additionalData map[string]any) string {
 	return ""
 }
 
+// displayNamer matches every concrete directory type the Graph discriminator
+// produces that carries a typed displayName -- user, group, servicePrincipal,
+// device and so on. Matching on the accessor rather than enumerating the types
+// keeps this working when a principal turns out to be a kind we did not list.
+type displayNamer interface {
+	GetDisplayName() *string
+}
+
 // directoryPrincipalInfo derives the short principal type (e.g. "user",
 // "group", "servicePrincipal") and display name for a directory principal,
 // such as the assignee on a role assignment. Both values are best-effort and
@@ -246,7 +260,20 @@ func directoryPrincipalInfo(p models.DirectoryObjectable) (principalType string,
 	if t := normalizeOwnerType(p.GetOdataType()); t != nil {
 		principalType = *t
 	}
-	principalName = directoryObjectDisplayName(p.GetAdditionalData())
+	// An $expand-ed principal is deserialized through the discriminator, which
+	// builds a concrete type (*models.User, *models.Group, ...) where
+	// displayName is a typed property and so never reaches AdditionalData --
+	// leaving the bag empty and the name blank. Read the typed accessor first
+	// and keep the bag as the fallback for a bare DirectoryObject, which has no
+	// typed displayName at all.
+	if named, ok := p.(displayNamer); ok {
+		if n := named.GetDisplayName(); n != nil {
+			principalName = *n
+		}
+	}
+	if principalName == "" {
+		principalName = directoryObjectDisplayName(p.GetAdditionalData())
+	}
 	return principalType, principalName
 }
 
@@ -326,6 +353,9 @@ type AuthorizationPolicy struct {
 func newAuthorizationPolicys(policies []models.AuthorizationPolicyable) []*AuthorizationPolicy {
 	res := []*AuthorizationPolicy{}
 	for i := range policies {
+		if policies[i] == nil {
+			continue
+		}
 		res = append(res, newAuthorizationPolicy(policies[i]))
 	}
 	return res
@@ -336,18 +366,23 @@ func newAuthorizationPolicy(p models.AuthorizationPolicyable) *AuthorizationPoli
 		return nil
 	}
 
-	var roleId string
+	var roleId *string
 	if p.GetGuestUserRoleId() != nil {
-		roleId = p.GetGuestUserRoleId().String()
+		s := p.GetGuestUserRoleId().String()
+		roleId = &s
 	}
 	return &AuthorizationPolicy{
-		AllowedToSignUpEmailBasedSubscriptions:    p.GetAllowedToSignUpEmailBasedSubscriptions(),
-		AllowedToUseSSPR:                          p.GetAllowedToUseSSPR(),
+		Id:                                     p.GetId(),
+		DeletedDateTime:                        p.GetDeletedDateTime(),
+		DisplayName:                            p.GetDisplayName(),
+		Description:                            p.GetDescription(),
+		AllowedToSignUpEmailBasedSubscriptions: p.GetAllowedToSignUpEmailBasedSubscriptions(),
+		AllowedToUseSSPR:                       p.GetAllowedToUseSSPR(),
 		AllowEmailVerifiedUsersToJoinOrganization: p.GetAllowEmailVerifiedUsersToJoinOrganization(),
-		AllowInvitesFrom:                          newAllowInvitesFrom(p.GetAllowInvitesFrom()),
-		BlockMsolPowerShell:                       p.GetBlockMsolPowerShell(),
-		DefaultUserRolePermissions:                newDefaultUserRolePermissions(p.GetDefaultUserRolePermissions()),
-		GuestUserRoleId:                           &roleId,
+		AllowInvitesFrom:           newAllowInvitesFrom(p.GetAllowInvitesFrom()),
+		BlockMsolPowerShell:        p.GetBlockMsolPowerShell(),
+		DefaultUserRolePermissions: newDefaultUserRolePermissions(p.GetDefaultUserRolePermissions()),
+		GuestUserRoleId:            roleId,
 	}
 }
 
@@ -425,11 +460,9 @@ func newIdentitySecurityDefaultsEnforcementPolicy(p models.IdentitySecurityDefau
 		return nil
 	}
 	return &IdentitySecurityDefaultsEnforcementPolicy{
-		PolicyBase: PolicyBase{
-			Description: p.GetDescription(),
-			DisplayName: p.GetDisplayName(),
-		},
-		IsEnabled: p.GetIsEnabled(),
+		Description: p.GetDescription(),
+		DisplayName: p.GetDisplayName(),
+		IsEnabled:   p.GetIsEnabled(),
 	}
 }
 
@@ -523,9 +556,7 @@ func newUserSettings(p models.UserSettingsable) *UserSettings {
 		return nil
 	}
 	return &UserSettings{
-		Entity: Entity{
-			Id: p.GetId(),
-		},
+		Id: p.GetId(),
 		ContributionToContentDiscoveryAsOrganizationDisabled: p.GetContributionToContentDiscoveryAsOrganizationDisabled(),
 		ContributionToContentDiscoveryDisabled:               p.GetContributionToContentDiscoveryDisabled(),
 	}
@@ -555,9 +586,7 @@ func newDeviceCompliancePolicyAssignment(p models.DeviceCompliancePolicyAssignme
 	}
 
 	return &DeviceCompliancePolicyAssignment{
-		Entity: Entity{
-			Id: p.GetId(),
-		},
+		Id: p.GetId(),
 	}
 }
 
@@ -568,8 +597,6 @@ func newDeviceCompliancePolicyAssignments(entries []models.DeviceCompliancePolic
 	}
 	return res
 }
-
-type PermissionType int
 
 type PermissionGrantConditionSet struct {
 	Entity
@@ -586,7 +613,7 @@ type PermissionGrantConditionSet struct {
 	// The list of id values for the specific permissions to match with, or a list with the single value all to match with any permission. The id of delegated permissions can be found in the oauth2PermissionScopes property of the API's **servicePrincipal** object. The id of application permissions can be found in the appRoles property of the API's **servicePrincipal** object. The id of resource-specific application permissions can be found in the resourceSpecificApplicationPermissions property of the API's **servicePrincipal** object. Default is the single value all.
 	Permissions []string `json:"permissions"`
 	// The permission type of the permission being granted. Possible values: application for application permissions (e.g. app roles), or delegated for delegated permissions. The value delegatedUserConsentable indicates delegated permissions which have not been configured by the API publisher to require admin consent—this value may be used in built-in permission grant policies, but cannot be used in custom permission grant policies. Required.
-	PermissionType *PermissionType `json:"permissionType"`
+	PermissionType *string `json:"permissionType"`
 	// The appId of the resource application (e.g. the API) for which a permission is being granted, or any to match with any resource application or API. Default is any.
 	ResourceApplication *string `json:"resourceApplication"`
 }
@@ -595,22 +622,21 @@ func newPermissionGrantConditionSet(p models.PermissionGrantConditionSetable) Pe
 	if p == nil {
 		return PermissionGrantConditionSet{}
 	}
-	var t PermissionType
+	var permissionType *string
 	if pt := p.GetPermissionType(); pt != nil {
-		t = PermissionType(*pt)
+		s := pt.String()
+		permissionType = &s
 	}
 
 	return PermissionGrantConditionSet{
-		Entity: Entity{
-			Id: p.GetId(),
-		},
-		ClientApplicationIds:                        p.GetClientApplicationIds(),
-		ClientApplicationPublisherIds:               p.GetClientApplicationPublisherIds(),
+		Id:                            p.GetId(),
+		ClientApplicationIds:          p.GetClientApplicationIds(),
+		ClientApplicationPublisherIds: p.GetClientApplicationPublisherIds(),
 		ClientApplicationsFromVerifiedPublisherOnly: p.GetClientApplicationsFromVerifiedPublisherOnly(),
 		ClientApplicationTenantIds:                  p.GetClientApplicationTenantIds(),
 		PermissionClassification:                    p.GetPermissionClassification(),
 		Permissions:                                 p.GetPermissions(),
-		PermissionType:                              &t,
+		PermissionType:                              permissionType,
 		ResourceApplication:                         p.GetResourceApplication(),
 	}
 }
@@ -618,6 +644,9 @@ func newPermissionGrantConditionSet(p models.PermissionGrantConditionSetable) Pe
 func newPermissionGrantConditionSets(set []models.PermissionGrantConditionSetable) []PermissionGrantConditionSet {
 	res := []PermissionGrantConditionSet{}
 	for i := range set {
+		if set[i] == nil {
+			continue
+		}
 		res = append(res, newPermissionGrantConditionSet(set[i]))
 	}
 	return res
@@ -636,24 +665,21 @@ func newPermissionGrantPolicy(p models.PermissionGrantPolicyable) *PermissionGra
 		return nil
 	}
 	return &PermissionGrantPolicy{
-		PolicyBase: PolicyBase{
-			DirectoryObject: DirectoryObject{
-				Entity: Entity{
-					Id: p.GetId(),
-				},
-				DeletedDateTime: p.GetDeletedDateTime(),
-			},
-			DisplayName: p.GetDisplayName(),
-			Description: p.GetDescription(),
-		},
-		Excludes: newPermissionGrantConditionSets(p.GetExcludes()),
-		Includes: newPermissionGrantConditionSets(p.GetIncludes()),
+		Id:              p.GetId(),
+		DeletedDateTime: p.GetDeletedDateTime(),
+		DisplayName:     p.GetDisplayName(),
+		Description:     p.GetDescription(),
+		Excludes:        newPermissionGrantConditionSets(p.GetExcludes()),
+		Includes:        newPermissionGrantConditionSets(p.GetIncludes()),
 	}
 }
 
 func newPermissionGrantPolicies(policies []models.PermissionGrantPolicyable) []*PermissionGrantPolicy {
 	res := []*PermissionGrantPolicy{}
 	for i := range policies {
+		if policies[i] == nil {
+			continue
+		}
 		res = append(res, newPermissionGrantPolicy(policies[i]))
 	}
 	return res
@@ -712,9 +738,7 @@ func newAdminConsentRequestPolicy(p models.AdminConsentRequestPolicyable) *Admin
 	}
 
 	return &AdminConsentRequestPolicy{
-		Entity: Entity{
-			Id: p.GetId(),
-		},
+		Id:                    p.GetId(),
 		IsEnabled:             p.GetIsEnabled(),
 		NotifyReviewers:       p.GetNotifyReviewers(),
 		RemindersEnabled:      p.GetRemindersEnabled(),
@@ -1050,6 +1074,9 @@ type VerifiedPublisher struct {
 }
 
 func newVerifiedPublisher(p models.VerifiedPublisherable) VerifiedPublisher {
+	if p == nil {
+		return VerifiedPublisher{}
+	}
 	return VerifiedPublisher{
 		DisplayName:         p.GetDisplayName(),
 		VerifiedPublisherId: p.GetVerifiedPublisherId(),

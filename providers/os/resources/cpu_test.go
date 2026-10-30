@@ -8,8 +8,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 func TestGetCpuInfoLinuxX64(t *testing.T) {
@@ -23,6 +24,53 @@ func TestGetCpuInfoLinuxX64(t *testing.T) {
 	assert.Equal(t, "Intel(R) Core(TM) i7-6700K CPU @ 4.00GHz", info.Model)
 	assert.Equal(t, int64(2), info.ProcessorCount)
 	assert.Equal(t, int64(2), info.Cores)
+	// no cpufreq in the fixture, and "cpu MHz" is the current speed, not the maximum
+	assert.Equal(t, int64(0), info.MaxClockSpeed)
+}
+
+func TestGetCpuInfoLinuxMaxClockSpeed(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+		Files: map[string]*mock.MockFileData{
+			"/proc/cpuinfo": {
+				Content: "processor\t: 0\n" +
+					"vendor_id\t: GenuineIntel\n" +
+					"model name\t: Intel(R) Core(TM) i7-6700K CPU @ 4.00GHz\n" +
+					"cpu MHz\t\t: 800.000\n" +
+					"physical id\t: 0\n" +
+					"core id\t\t: 0\n" +
+					"cpu cores\t: 1\n",
+			},
+			"/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq": {
+				Content: "4200000\n",
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	info, err := getCpuInfoLinux(conn)
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(4200), info.MaxClockSpeed)
+}
+
+func TestGetCpuInfoWindows(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			powershell.Encode(cpuWindowsScript): {
+				Stdout: `{"Name":"Intel(R) Core(TM) i7-8700 CPU @ 3.20GHz  ","Manufacturer":"GenuineIntel","NumberOfCores":6,"ProcessorCount":1,"MaxClockSpeed":3192}`,
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	info, err := getCpuInfoWindows(conn)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Intel", info.Manufacturer)
+	assert.Equal(t, "Intel(R) Core(TM) i7-8700 CPU @ 3.20GHz", info.Model)
+	assert.Equal(t, int64(1), info.ProcessorCount)
+	assert.Equal(t, int64(6), info.Cores)
+	assert.Equal(t, int64(3192), info.MaxClockSpeed)
 }
 
 func TestGetCpuInfoMacosAppleSilicon(t *testing.T) {
@@ -131,6 +179,7 @@ func TestGetCpuInfoAIX(t *testing.T) {
 	assert.Equal(t, int64(1), info.ProcessorCount)
 	// 12 physical cores from lsdev, not 48 logical from prtconf
 	assert.Equal(t, int64(12), info.Cores)
+	assert.Equal(t, int64(3800), info.MaxClockSpeed)
 }
 
 func TestGetCpuInfoSolaris(t *testing.T) {
@@ -155,6 +204,135 @@ func TestGetCpuInfoSolaris(t *testing.T) {
 	assert.Equal(t, "Intel(r) Xeon(r) CPU E5-2670 0 @ 2.60GHz", info.Model)
 	assert.Equal(t, int64(2), info.ProcessorCount)
 	assert.Equal(t, int64(8), info.Cores)
+}
+
+// Verbatim psrinfo -pv from a 2 OCPU Oracle Solaris 11.4.86 instance. Note the
+// nested "The core has ..." lines, which must not be mistaken for the model.
+func TestGetCpuInfoSolaris114TwoCore(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"psrinfo -pv": {
+				Stdout: "The physical processor has 2 cores and 4 virtual processors (0-3)\n" +
+					"  The core has 2 virtual processors (0-1)\n" +
+					"  The core has 2 virtual processors (2-3)\n" +
+					"    x86 (AuthenticAMD A10F11 family 25 model 17 step 1 clock 2600 MHz)\n" +
+					"      AMD EPYC 9J14 96-Core Processor\n",
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	info, err := getCpuInfoSolaris(conn)
+	require.NoError(t, err)
+
+	assert.Equal(t, "AMD", info.Manufacturer)
+	assert.Equal(t, "AMD EPYC 9J14 96-Core Processor", info.Model)
+	assert.Equal(t, int64(1), info.ProcessorCount)
+	assert.Equal(t, int64(2), info.Cores)
+	assert.Equal(t, int64(2600), info.MaxClockSpeed)
+}
+
+// Verbatim psrinfo -pv from a 1 OCPU Oracle Solaris 11.4.86 instance. psrinfo
+// prints no core count at all for a single-core socket, which used to be read
+// as zero cores.
+func TestGetCpuInfoSolaris114SingleCore(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"psrinfo -pv": {
+				Stdout: "The physical processor has 2 virtual processors (0-1)\n" +
+					"  x86 (AuthenticAMD A10F11 family 25 model 17 step 1 clock 2600 MHz)\n" +
+					"\tAMD EPYC 9J14 96-Core Processor\n",
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	info, err := getCpuInfoSolaris(conn)
+	require.NoError(t, err)
+
+	assert.Equal(t, "AMD", info.Manufacturer)
+	assert.Equal(t, "AMD EPYC 9J14 96-Core Processor", info.Model)
+	assert.Equal(t, int64(1), info.ProcessorCount)
+	assert.Equal(t, int64(1), info.Cores)
+}
+
+// psrinfo uses the singular "core" for a single-core socket that reports one.
+func TestGetCpuInfoSolarisSingularCoreWording(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"psrinfo -pv": {
+				Stdout: "The physical processor has 1 core and 2 virtual processors (0 1)\n" +
+					"  x86 (GenuineIntel 50654 family 6 model 85 step 4 clock 2000 MHz)\n" +
+					"        Intel(r) Xeon(r) Gold 6138 CPU @ 2.00GHz\n",
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	info, err := getCpuInfoSolaris(conn)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Intel", info.Manufacturer)
+	assert.Equal(t, int64(1), info.ProcessorCount)
+	assert.Equal(t, int64(1), info.Cores)
+}
+
+// Mixed singular and plural sockets have to add up.
+func TestGetCpuInfoSolarisMixedSockets(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"psrinfo -pv": {
+				Stdout: "The physical processor has 1 core and 2 virtual processors (0 1)\n" +
+					"  x86 (GenuineIntel 50654 family 6 model 85 step 4 clock 2000 MHz)\n" +
+					"        Intel(r) Xeon(r) Gold 6138 CPU @ 2.00GHz\n" +
+					"The physical processor has 4 cores and 8 virtual processors (2-9)\n" +
+					"  x86 (GenuineIntel 50654 family 6 model 85 step 4 clock 2000 MHz)\n" +
+					"        Intel(r) Xeon(r) Gold 6138 CPU @ 2.00GHz\n",
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	info, err := getCpuInfoSolaris(conn)
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(2), info.ProcessorCount)
+	assert.Equal(t, int64(5), info.Cores)
+	assert.Equal(t, int64(2000), info.MaxClockSpeed)
+}
+
+// SPARC puts the clock inside the chip line rather than an x86 line.
+func TestGetCpuInfoSolarisSparcClock(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"psrinfo -pv": {
+				Stdout: "The physical processor has 16 cores and 128 virtual processors (0-127)\n" +
+					"  The core has 8 virtual processors (0-7)\n" +
+					"    SPARC-T5 (chipid 0, clock 3600 MHz)\n",
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	info, err := getCpuInfoSolaris(conn)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3600), info.MaxClockSpeed)
+	assert.Equal(t, int64(16), info.Cores)
+}
+
+func TestGetCpuInfoSolarisCommandFailure(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"psrinfo -pv": {
+				Stderr:     "bash: psrinfo: command not found",
+				ExitStatus: 127,
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	_, err = getCpuInfoSolaris(conn)
+	require.Error(t, err, "a failing psrinfo must not report a zero-core cpu")
 }
 
 func TestGetCpuInfoLinuxArmWithLscpu(t *testing.T) {

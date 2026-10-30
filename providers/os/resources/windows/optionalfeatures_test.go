@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// the detailed form (-FeatureName *) carries display name and description
 func TestWindowsOptionalFeatures(t *testing.T) {
 	r, err := os.Open("./testdata/optionalfeatures.json")
 	require.NoError(t, err)
@@ -24,6 +25,34 @@ func TestWindowsOptionalFeatures(t *testing.T) {
 	assert.True(t, items[9].Enabled)
 	assert.Equal(t, int64(2), items[9].State)
 	assert.Equal(t, "Adds or Removes Windows PowerShell 2.0 Engine", items[9].Description)
+}
+
+// The plain listing has no display name or description — that is the whole point
+// of it — but it still carries the state every check keys on.
+func TestWindowsOptionalFeatures_Listing(t *testing.T) {
+	input := `[
+    {
+        "FeatureName": "SMB1Protocol",
+        "State": 2
+    },
+    {
+        "FeatureName": "TelnetClient",
+        "State": 0
+    }
+]`
+
+	items, err := ParseWindowsOptionalFeatures(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, items, 2)
+
+	assert.Equal(t, "SMB1Protocol", items[0].Name)
+	assert.Equal(t, int64(2), items[0].State)
+	assert.True(t, items[0].Enabled)
+	assert.Empty(t, items[0].DisplayName)
+	assert.Empty(t, items[0].Description)
+
+	assert.Equal(t, "TelnetClient", items[1].Name)
+	assert.False(t, items[1].Enabled)
 }
 
 // a single-feature lookup makes ConvertTo-Json emit a bare object, not an array
@@ -60,4 +89,16 @@ func TestOptionalFeatureQuery(t *testing.T) {
 	assert.Equal(t,
 		"Get-WindowsOptionalFeature -Online -FeatureName 'O''Brien' | Select-Object -Property FeatureName,DisplayName,Description,State | ConvertTo-Json",
 		OptionalFeatureQuery("O'Brien"))
+}
+
+// The enumeration must not ask for a feature name: -FeatureName makes DISM look
+// up detailed information for every feature it matches, which is what makes the
+// call cost tens of seconds on a Windows client.
+func TestOptionalFeatureQueries(t *testing.T) {
+	assert.NotContains(t, QUERY_OPTIONAL_FEATURES, "-FeatureName")
+	assert.NotContains(t, QUERY_OPTIONAL_FEATURES, "Description")
+	assert.Contains(t, QUERY_OPTIONAL_FEATURES, "FeatureName,State")
+
+	assert.Contains(t, QUERY_OPTIONAL_FEATURE_DETAILS, "-FeatureName *")
+	assert.Contains(t, QUERY_OPTIONAL_FEATURE_DETAILS, "FeatureName,DisplayName,Description,State")
 }

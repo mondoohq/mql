@@ -11,7 +11,7 @@ import (
 	"strings"
 	"text/template"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
 )
 
 // LrVersions maps an LR path (resource or resource.field) to its min_provider_version.

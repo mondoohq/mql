@@ -7,10 +7,10 @@ import (
 	"errors"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/resources"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -168,6 +168,7 @@ func (k *mqlK8sStatefulset) revisionHistoryLimit() (int64, error) {
 		return 0, err
 	}
 	if s.Spec.RevisionHistoryLimit == nil {
+		k.RevisionHistoryLimit.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return int64(*s.Spec.RevisionHistoryLimit), nil
@@ -270,6 +271,7 @@ func (k *mqlK8sStatefulset) collisionCount() (int64, error) {
 		return 0, err
 	}
 	if s.Status.CollisionCount == nil {
+		k.CollisionCount.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return int64(*s.Status.CollisionCount), nil

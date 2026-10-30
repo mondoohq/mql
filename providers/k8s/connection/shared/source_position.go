@@ -28,11 +28,18 @@ func ObjectID(kind, namespace, name string) string {
 	return kind + ":" + namespace + ":" + name
 }
 
+// NamespaceResolver returns the namespace an object of the given apiVersion and
+// kind, written with the given metadata.namespace, is placed in.
+type NamespaceResolver func(apiVersion, kind, namespace string) string
+
 // BuildManifestPositionIndex parses a (possibly multi-document) manifest and
 // returns a map from object identity to its source position. `kind: *List`
 // wrapper documents are expanded to their items, each of which carries its own
 // kind/metadata. Documents without an identifiable kind and name are skipped.
-func BuildManifestPositionIndex(content []byte, path string) map[string]SourcePosition {
+// resolveNamespace, when not nil, maps the namespace written in a document to
+// the one the object is identified by, so that an object that names no
+// namespace is found under the namespace it was defaulted to.
+func BuildManifestPositionIndex(content []byte, path string, resolveNamespace NamespaceResolver) map[string]SourcePosition {
 	index := map[string]SourcePosition{}
 	if len(content) == 0 {
 		return index
@@ -50,14 +57,14 @@ func BuildManifestPositionIndex(content []byte, path string) map[string]SourcePo
 		if doc.Kind == yaml.DocumentNode && len(doc.Content) > 0 {
 			root = doc.Content[0]
 		}
-		addNodePositions(root, path, index)
+		addNodePositions(root, path, resolveNamespace, index)
 	}
 	return index
 }
 
 // addNodePositions records the position of a single resource mapping, or
 // recurses into the items of a List wrapper.
-func addNodePositions(root *yaml.Node, path string, index map[string]SourcePosition) {
+func addNodePositions(root *yaml.Node, path string, resolveNamespace NamespaceResolver, index map[string]SourcePosition) {
 	if root == nil || root.Kind != yaml.MappingNode {
 		return
 	}
@@ -66,7 +73,7 @@ func addNodePositions(root *yaml.Node, path string, index map[string]SourcePosit
 	if strings.HasSuffix(kind, "List") {
 		if items := mappingValueNode(root, "items"); items != nil && items.Kind == yaml.SequenceNode {
 			for _, item := range items.Content {
-				addNodePositions(item, path, index)
+				addNodePositions(item, path, resolveNamespace, index)
 			}
 			return
 		}
@@ -81,6 +88,9 @@ func addNodePositions(root *yaml.Node, path string, index map[string]SourcePosit
 		return
 	}
 	namespace := mappingScalar(meta, "namespace")
+	if resolveNamespace != nil {
+		namespace = resolveNamespace(mappingScalar(root, "apiVersion"), kind, namespace)
+	}
 
 	index[ObjectID(kind, namespace, name)] = SourcePosition{
 		Path:      path,

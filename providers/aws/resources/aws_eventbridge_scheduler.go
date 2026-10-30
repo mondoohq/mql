@@ -13,12 +13,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/scheduler"
 	scheduler_types "github.com/aws/aws-sdk-go-v2/service/scheduler/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsEventbridge) schedules() ([]any, error) {
@@ -338,13 +338,13 @@ func (a *mqlAwsEventbridgeSchedule) target() (*mqlAwsEventbridgeScheduleTarget, 
 	res, err := CreateResource(a.MqlRuntime, "aws.eventbridge.schedule.target", map[string]*llx.RawData{
 		"__id":       llx.StringData(a.Arn.Data + "/target"),
 		"arn":        llx.StringData(tgtArn),
-		"roleArn":    llx.StringData(roleArn),
 		"input":      llx.StringData(input),
 		"targetType": llx.StringData(tgtType),
 	})
 	if err != nil {
 		return nil, err
 	}
+	res.(*mqlAwsEventbridgeScheduleTarget).cacheRoleArn = roleArn
 	mqlTgt := res.(*mqlAwsEventbridgeScheduleTarget)
 	mqlTgt.cacheScheduleArn = a.Arn.Data
 	mqlTgt.cacheRegion = a.cacheRegion
@@ -430,6 +430,7 @@ func (a *mqlAwsEventbridgeSchedule) tags() (map[string]any, error) {
 // ---------- target sub-resource accessors ----------
 
 type mqlAwsEventbridgeScheduleTargetInternal struct {
+	cacheRoleArn     string
 	cacheScheduleArn string
 	cacheRegion      string
 	cacheTarget      *scheduler_types.Target
@@ -483,8 +484,6 @@ func (a *mqlAwsEventbridgeScheduleTarget) ecsParameters() (*mqlAwsEventbridgeSch
 		"platformVersion":          llx.StringDataPtr(p.PlatformVersion),
 		"propagateTags":            llx.StringData(string(p.PropagateTags)),
 		"referenceId":              llx.StringDataPtr(p.ReferenceId),
-		"subnetIds":                llx.ArrayData(subnetIds, types.String),
-		"securityGroupIds":         llx.ArrayData(sgIds, types.String),
 		"assignPublicIp":           llx.StringData(assignPublicIp),
 		"capacityProviderStrategy": llx.ArrayData(cps, types.Dict),
 		"placementConstraints":     llx.ArrayData(pc, types.Dict),
@@ -781,7 +780,7 @@ func (a *mqlAwsEventbridgeSchedule) iamRole() (*mqlAwsIamRole, error) {
 }
 
 func (a *mqlAwsEventbridgeScheduleTarget) iamRole() (*mqlAwsIamRole, error) {
-	roleArn := a.RoleArn.Data
+	roleArn := a.cacheRoleArn
 	if roleArn == "" {
 		a.IamRole.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil

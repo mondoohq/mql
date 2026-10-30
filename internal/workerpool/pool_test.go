@@ -11,7 +11,7 @@ import (
 	"math/rand"
 
 	"github.com/stretchr/testify/assert"
-	"go.mondoo.com/mql/v13/internal/workerpool"
+	"go.mondoo.com/mql/internal/workerpool"
 )
 
 func TestPoolSubmitAndRetrieveResult(t *testing.T) {
@@ -211,7 +211,7 @@ func TestPoolWithManyTasks(t *testing.T) {
 		return random, nil
 	}
 
-	for i := 0; i < requestCount; i++ {
+	for range requestCount {
 		pool.Submit(task)
 	}
 

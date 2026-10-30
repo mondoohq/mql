@@ -7,8 +7,8 @@ import (
 	"strconv"
 
 	"github.com/vmware/govmomi/vim25/types"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 type mqlVsphereVmCdromInternal struct {
@@ -268,4 +268,173 @@ func (n *mqlVsphereVmNetworkAdapter) portGroup() (*mqlVsphereVswitchPortgroup, e
 	}
 	n.PortGroup.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
+}
+
+// vmPortDevice is the connection posture of a removable or legacy virtual
+// device (serial port, parallel port, USB controller, floppy drive). The
+// connection booleans are nil when the device carries no Connectable info.
+type vmPortDevice struct {
+	key                int32
+	label              string
+	connected          *bool
+	connectedAtPowerOn *bool
+	allowGuestControl  *bool
+	backingType        string
+	// USB controllers only
+	controllerType     string
+	autoConnectDevices *bool
+}
+
+func newVmPortDevice(d *types.VirtualDevice) vmPortDevice {
+	out := vmPortDevice{key: d.Key}
+	if d.DeviceInfo != nil {
+		out.label = d.DeviceInfo.GetDescription().Label
+	}
+	if c := d.Connectable; c != nil {
+		connected, startConnected, allowGuestControl := c.Connected, c.StartConnected, c.AllowGuestControl
+		out.connected = &connected
+		out.connectedAtPowerOn = &startConnected
+		out.allowGuestControl = &allowGuestControl
+	}
+	return out
+}
+
+func vmSerialPorts(devices []types.BaseVirtualDevice) []vmPortDevice {
+	out := []vmPortDevice{}
+	for _, dev := range devices {
+		port, ok := dev.(*types.VirtualSerialPort)
+		if !ok || port == nil {
+			continue
+		}
+		d := newVmPortDevice(&port.VirtualDevice)
+		switch port.Backing.(type) {
+		case *types.VirtualSerialPortFileBackingInfo:
+			d.backingType = "file"
+		case *types.VirtualSerialPortPipeBackingInfo:
+			d.backingType = "pipe"
+		case *types.VirtualSerialPortDeviceBackingInfo:
+			d.backingType = "device"
+		case *types.VirtualSerialPortURIBackingInfo:
+			d.backingType = "uri"
+		case *types.VirtualSerialPortThinPrintBackingInfo:
+			d.backingType = "thinPrint"
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+func vmParallelPorts(devices []types.BaseVirtualDevice) []vmPortDevice {
+	out := []vmPortDevice{}
+	for _, dev := range devices {
+		port, ok := dev.(*types.VirtualParallelPort)
+		if !ok || port == nil {
+			continue
+		}
+		d := newVmPortDevice(&port.VirtualDevice)
+		switch port.Backing.(type) {
+		case *types.VirtualParallelPortFileBackingInfo:
+			d.backingType = "file"
+		case *types.VirtualParallelPortDeviceBackingInfo:
+			d.backingType = "device"
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+func vmUsbControllers(devices []types.BaseVirtualDevice) []vmPortDevice {
+	out := []vmPortDevice{}
+	for _, dev := range devices {
+		var d vmPortDevice
+		switch c := dev.(type) {
+		case *types.VirtualUSBController:
+			if c == nil {
+				continue
+			}
+			d = newVmPortDevice(&c.VirtualDevice)
+			d.controllerType = "usb2"
+			d.autoConnectDevices = c.AutoConnectDevices
+		case *types.VirtualUSBXHCIController:
+			if c == nil {
+				continue
+			}
+			d = newVmPortDevice(&c.VirtualDevice)
+			d.controllerType = "usb3"
+			d.autoConnectDevices = c.AutoConnectDevices
+		default:
+			continue
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+func vmFloppies(devices []types.BaseVirtualDevice) []vmPortDevice {
+	out := []vmPortDevice{}
+	for _, dev := range devices {
+		floppy, ok := dev.(*types.VirtualFloppy)
+		if !ok || floppy == nil {
+			continue
+		}
+		d := newVmPortDevice(&floppy.VirtualDevice)
+		switch floppy.Backing.(type) {
+		case *types.VirtualFloppyImageBackingInfo:
+			d.backingType = "image"
+		case *types.VirtualFloppyDeviceBackingInfo:
+			d.backingType = "device"
+		case *types.VirtualFloppyRemoteDeviceBackingInfo:
+			d.backingType = "remoteDevice"
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+func (v *mqlVsphereVm) configDevices() []types.BaseVirtualDevice {
+	if v.vm == nil || v.vm.Config == nil {
+		return nil
+	}
+	return v.vm.Config.Hardware.Device
+}
+
+func (v *mqlVsphereVm) createPortDevices(resource, kind string, devices []vmPortDevice) ([]any, error) {
+	out := make([]any, 0, len(devices))
+	for _, d := range devices {
+		args := map[string]*llx.RawData{
+			"__id":               llx.StringData(v.Moid.Data + "/" + kind + "/" + strconv.Itoa(int(d.key))),
+			"key":                llx.IntData(int64(d.key)),
+			"label":              llx.StringData(d.label),
+			"connected":          llx.BoolDataPtr(d.connected),
+			"connectedAtPowerOn": llx.BoolDataPtr(d.connectedAtPowerOn),
+			"allowGuestControl":  llx.BoolDataPtr(d.allowGuestControl),
+			"backingType":        llx.StringData(d.backingType),
+		}
+		if resource == "vsphere.vm.usbController" {
+			args["controllerType"] = llx.StringData(d.controllerType)
+			args["autoConnectDevices"] = llx.BoolDataPtr(d.autoConnectDevices)
+		}
+		res, err := CreateResource(v.MqlRuntime, resource, args)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+func (v *mqlVsphereVm) serialPorts() ([]any, error) {
+	return v.createPortDevices("vsphere.vm.serialPort", "serialPort", vmSerialPorts(v.configDevices()))
+}
+
+func (v *mqlVsphereVm) parallelPorts() ([]any, error) {
+	return v.createPortDevices("vsphere.vm.parallelPort", "parallelPort", vmParallelPorts(v.configDevices()))
+}
+
+func (v *mqlVsphereVm) usbControllers() ([]any, error) {
+	return v.createPortDevices("vsphere.vm.usbController", "usbController", vmUsbControllers(v.configDevices()))
+}
+
+func (v *mqlVsphereVm) floppies() ([]any, error) {
+	return v.createPortDevices("vsphere.vm.floppy", "floppy", vmFloppies(v.configDevices()))
 }

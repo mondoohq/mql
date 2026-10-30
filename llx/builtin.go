@@ -8,8 +8,8 @@ import (
 	"fmt"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/types"
 )
 
 type chunkHandlerV2 struct {
@@ -348,6 +348,7 @@ func init() {
 			string("lines"):     {f: stringLinesV2, Label: "lines"},
 			string("split"):     {f: stringSplitV2, Label: "split"},
 			string("trim"):      {f: stringTrimV2, Label: "trim"},
+			string("json"):      {f: stringJsonV2, Label: "json"},
 		},
 		types.StringSlice: {
 			// TODO: implement the remaining calls for this type
@@ -456,6 +457,13 @@ func init() {
 			string("unix"):    {f: timeUnixV2, Label: "unix"},
 			string("inRange"): {f: timeInRange, Label: "inRange"},
 		},
+		types.AssetLike: {
+			string("==" + types.Nil):   {f: assetCmpNilV2, Label: "=="},
+			string("!=" + types.Nil):   {f: assetNotNilV2, Label: "!="},
+			string("==" + types.Empty): {f: assetCmpNilV2, Label: "=="},
+			string("!=" + types.Empty): {f: assetNotNilV2, Label: "!="},
+			AssetRootChunkID:           {f: runAssetRoot, Label: AssetRootChunkID},
+		},
 		types.Dict: {
 			string("==" + types.Nil):                 {f: dictCmpNilV2, Label: "=="},
 			string("!=" + types.Nil):                 {f: dictNotNilV2, Label: "!="},
@@ -551,6 +559,7 @@ func init() {
 			"lines":                           {f: dictLinesV2, Label: "lines"},
 			"split":                           {f: dictSplitV2, Label: "split"},
 			"trim":                            {f: dictTrimV2, Label: "trim"},
+			"json":                            {f: dictJsonV2, Label: "json"},
 			"keys":                            {f: dictKeysV2, Label: "keys"},
 			"values":                          {f: dictValuesV2, Label: "values"},
 			"where":                           {f: dictWhere, Label: "where"},
@@ -577,9 +586,6 @@ func init() {
 			"in":           {f: dictIn, Label: "in"},
 			"notIn":        {f: dictNotIn, Label: "notIn"},
 			string("find"): {f: dictFindV2, Label: "find"},
-			// NOTE: the following functions are internal ONLY!
-			// We have not yet decided if and how these may be exposed to users
-			"notEmpty": {f: dictNotEmptyV2},
 		},
 		types.Version: {
 			string("==" + types.Nil):     {f: stringCmpNilV2, Label: "=="},
@@ -599,6 +605,7 @@ func init() {
 			string("<=" + types.String):  {f: versionLTEversion, Label: "<="},
 			string(">=" + types.String):  {f: versionGTEversion, Label: ">="},
 			"epoch":                      {f: versionEpoch},
+			"stripEpoch":                 {f: versionStripEpoch},
 			"inRange":                    {f: versionInRange, Label: "inRange"},
 		},
 		types.IP: {
@@ -777,8 +784,10 @@ func init() {
 				return e.runBlock(bind, chunk.Function.Args[0], chunk.Function.Args[1:], ref)
 			}},
 			// TODO: [#32] unique builtin fields that need a long-term support in LR
-			string(types.Resource("parse") + ".date"):     {f: resourceDateV2},
-			string(types.Resource("parse") + ".duration"): {f: resourceDuration},
+			string(types.Resource("parse") + ".date"):               {f: resourceDateV2},
+			string(types.Resource("parse") + ".duration"):           {f: resourceDuration},
+			string(types.Resource("file.permissions") + ".atMost"):  {f: filePermissionsAtMost},
+			string(types.Resource("file.permissions") + ".atLeast"): {f: filePermissionsAtLeast},
 		},
 	}
 
@@ -830,7 +839,19 @@ func runResourceFunction(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint
 		return nil, 0, fmt.Errorf("cannot cast resource to resource type: %+v", bind.Value)
 	}
 
-	resource := e.ctx.runtime.Schema().Lookup(rr.MqlName())
+	// A resource reached by resolving into another asset names the runtime that
+	// answers it (ADR 031). That redirect is the whole of cross-asset routing:
+	// everything below is unchanged, because the schema lookup, the watcher and
+	// the field read all just go to a different runtime.
+	rt := e.ctx.runtime
+	var foreign Runtime
+	if bound, ok := bind.Value.(RuntimeBoundResource); ok {
+		if boundRuntime := bound.MqlRuntime(); boundRuntime != nil {
+			rt, foreign = boundRuntime, boundRuntime
+		}
+	}
+
+	resource := rt.Schema().Lookup(rr.MqlName())
 	if resource == nil {
 		return nil, 0, fmt.Errorf("cannot retrieve resource definition for resource %q", rr.MqlName())
 	}
@@ -839,21 +860,59 @@ func runResourceFunction(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint
 	wid := e.watcherUID(ref)
 	// log.Debug().Str("wid", wid).Msg("exec> add watcher id ")
 	e.watcherIds.Store(wid)
+	if foreign != nil {
+		// Unregistering walks watcherIds against the executor's own runtime, so
+		// a watcher placed on another one has to say where it went or it is
+		// never taken down.
+		e.foreignWatchers.Store(wid, foreign)
+	}
 
 	// watch this field in the resource
-	err := e.ctx.runtime.WatchAndUpdate(rr, chunk.Id, wid, func(fieldData any, fieldError error) {
-		data := &RawData{
-			Type:  types.Type(resource.Fields[chunk.Id].Type),
-			Value: fieldData,
-			Error: fieldError,
+	err := rt.WatchAndUpdate(rr, chunk.Id, wid, func(fieldData any, fieldError error) {
+		// A partial field arrives as the error, the way a provider returns it
+		// (ADR 046 §8): the value stands and the gaps ride beside it.
+		coverageGaps, _ := CoverageGapsOf(fieldError)
+		if coverageGaps != nil {
+			fieldError = nil
 		}
+
+		// A field can be missing from the schema when the compiled bundle and
+		// the loaded provider disagree (e.g. the provider was updated at runtime
+		// independently of the bundle version). Fall back to Unset rather than
+		// crash, but log it so the schema mismatch stays observable.
+		fieldType := types.Unset
+		if field := resource.Fields[chunk.Id]; field != nil {
+			fieldType = types.Type(field.Type)
+		} else {
+			log.Warn().Str("resource", rr.MqlName()).Str("field", chunk.Id).Msg("exec> field missing from schema in WatchAndUpdate callback")
+		}
+		// The field's value arrives here rather than as a return, so an optional
+		// link has to tag its null on this path too.
+		//
+		// Note this tags a field that *resolved* and simply holds null, not one
+		// that failed to resolve - a resource field always resolves, unlike a map
+		// key, which can be absent (that case is caught in mapGetIndex /
+		// dictGetIndex). Tagging both is the point rather than an oversight: an
+		// optional link marks its null whatever the cause, which is what lets a
+		// single `?` cover an absent key and a present-but-null value in the same
+		// position. See ADR 043 §1. An error is left alone - shortCircuitNull
+		// returns res untouched when res.Error is set - so a genuine field
+		// failure still propagates as an error.
+		// A resource answered by a foreign runtime lives in that asset's tree,
+		// so the next chunk in the chain has to keep asking the same runtime.
+		data := shortCircuitNull(chunk, &RawData{
+			Type:         fieldType,
+			Value:        bindResourceValues(fieldData, foreign),
+			Error:        fieldError,
+			CoverageGaps: coverageGaps,
+		})
 		e.cache.Store(ref, &stepCache{
 			Result: data,
 		})
 
 		codeID, ok := e.callbackPoints[ref]
 		if ok {
-			e.callback(&RawResult{Data: data, CodeID: codeID})
+			e.callback(&RawResult{Data: e.resultWithCoverageGaps(ref, data), CodeID: codeID})
 		}
 
 		if fieldError != nil {
@@ -863,6 +922,23 @@ func runResourceFunction(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint
 		e.triggerChain(ref, data)
 	})
 	if err != nil {
+		// A field this reader has never heard of, in a bundle that already told
+		// us it was compiled against a newer provider, is not a broken query -
+		// it is a field this build was never going to have. Drop that one field
+		// and let the rest of the query run, rather than failing all of it for
+		// the sake of a value no version of this binary could produce.
+		//
+		// The evidence matters. Without a skew policy the same missing field is
+		// a typo or a compiler defect, and degrading it would bury a real bug.
+		if data, degraded := e.degradeUnavailableField(resource, chunk, err); degraded {
+			e.cache.Store(ref, &stepCache{Result: data})
+			if codeID, ok := e.callbackPoints[ref]; ok {
+				e.callback(&RawResult{Data: data, CodeID: codeID})
+			}
+			e.triggerChain(ref, data)
+			return nil, 0, nil
+		}
+
 		if _, ok := err.(resources.NotReadyError); !ok {
 			fieldType := types.Unset
 			if field := resource.Fields[chunk.Id]; field != nil {
@@ -883,8 +959,59 @@ func runResourceFunction(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint
 	return nil, 0, err
 }
 
+// degradeUnavailableField decides whether a failed field read is version skew
+// that may be dropped, and builds the value that stands in for it.
+//
+// The stand-in keeps the field's declared type even though the reader's schema
+// has no definition to take it from: the compiler baked the writer's type into
+// the chunk, so the bytecode still knows what the field was meant to be. That
+// matters because an untyped null is what produces "a primitive with no type
+// information, coercing to null" downstream - a value that names neither the
+// field it came from nor why it is missing.
+func (e *blockExecutor) degradeUnavailableField(resource *resources.ResourceInfo, chunk *Chunk, err error) (*RawData, bool) {
+	var notFound *ErrFieldNotFound
+	if !errors.As(err, &notFound) {
+		return nil, false
+	}
+
+	reason := e.ctx.skew.Reason(resource.Provider)
+	if reason == "" {
+		return nil, false
+	}
+
+	typ := types.Type(chunk.Function.GetType())
+	if typ == "" {
+		typ = types.Unset
+	}
+
+	log.Debug().
+		Str("resource", notFound.Resource).
+		Str("field", notFound.Field).
+		Str("reason", reason).
+		Msg("exec> dropping a field this provider version does not have")
+
+	return &RawData{
+		Type: typ,
+		Error: &errFieldUnavailable{
+			resource: notFound.Resource,
+			field:    notFound.Field,
+			reason:   reason,
+		},
+	}, true
+}
+
 // BuiltinFunction provides the handler for this type's function
 func BuiltinFunctionV2(typ types.Type, name string) (*chunkHandlerV2, error) {
+	// $translate is bound to whatever the original chunk was bound to, which can
+	// be any type at all, so it is answered before the per-type tables rather
+	// than registered into every one of them.
+	if name == TranslateChunkID {
+		// Built here rather than held in a package var: the handler reaches
+		// runBlock, which reaches back into this function, and Go rejects that
+		// as an initialization cycle at package scope.
+		return &chunkHandlerV2{f: runTranslate, Label: TranslateChunkID}, nil
+	}
+
 	underlying := typ.Underlying()
 	h, ok := BuiltinFunctionsV2[underlying]
 	if !ok {
@@ -897,9 +1024,126 @@ func BuiltinFunctionV2(typ types.Type, name string) (*chunkHandlerV2, error) {
 	return &fh, nil
 }
 
+// ErrStrict identifies every error that exists only because strict mode is on
+// (ADR 043). Match it with errors.Is to tell "this chain would have resolved in
+// non-strict mode" apart from a genuine failure - enough to attach a "did you
+// mean `?`" hint, or to report the two classes separately.
+//
+// It is never returned on its own; the concrete errors carry the detail.
+var ErrStrict = errors.New("strict mode")
+
+// errNullBinding reports a link that could not resolve because the value it
+// reads from is null. Only produced under strict mode; see ADR 043.
+type errNullBinding struct {
+	field string
+}
+
+func (e *errNullBinding) Error() string {
+	return "cannot access \"" + e.field + "\", the value it reads from is null"
+}
+
+func (e *errNullBinding) Is(target error) bool { return target == ErrStrict }
+
+// resolveNullBinding applies the strict-mode rule for a link whose binding came
+// back null, before the link's handler ever runs.
+//
+// It returns (result, true) when the caller should stop and use that result, and
+// (nil, false) when the link should proceed to its handler as usual.
+func (e *blockExecutor) resolveNullBinding(bind *RawData, chunk *Chunk) (*RawData, bool) {
+	if bind.Value != nil || bind.Error != nil {
+		return nil, false
+	}
+
+	f := chunk.Function
+	if f == nil || f.Nullability == Function_NULLABILITY_UNSPECIFIED {
+		// Non-strict, or an operator: fall through to the handler, which keeps
+		// its own long-standing answer for a null receiver. This is also what
+		// leaves `== null`, `!= empty` and the boolean operators working, since
+		// the compiler never marks them (ADR 043 §2).
+		return nil, false
+	}
+
+	// The chunk's declared output type, so a short-circuited null still types
+	// correctly for whatever consumes it next.
+	//
+	// The fallback is defensive, not a real case: every function chunk the
+	// compiler emits sets Function.Type, and one that does not is a hand-built
+	// chunk. It also cannot mistype what a consumer sees, because a
+	// short-circuited null is re-stamped with its own output type by each link
+	// it passes through - the only type ever observed is that of the last link
+	// in the chain, and that link came from the compiler like the rest. Falling
+	// back to the binding's type keeps the value typed rather than empty.
+	typ := types.Type(f.Type)
+	if typ == "" {
+		typ = bind.Type
+	}
+
+	// A walk towards a dotted key is mid-lookup, not null, so the next key
+	// lookup has to run for the path to resolve (see dictWalk). Only a key
+	// lookup continues one; anything else reading through this null is reading
+	// through a null, and a `?` upstream ends the walk rather than widening its
+	// guard. Sits below the non-strict return, so a default compile never
+	// reaches it.
+	if bind.dictPath != nil && !bind.ShortCircuited &&
+		(chunk.Id == "[]" || chunk.Id == "[]?") {
+		return nil, false
+	}
+
+	// A required link errors - unless the null reaching it was produced by an
+	// upstream `?`, which passes through every downstream link untouched. That
+	// pass-through is the short circuit: `a?.b.c` yields null when `a` is null
+	// without ever running `.b` or `.c`, while `a?.b.c` with `a` set and `b` null
+	// still errors at `.c`, the same as optional chaining in JavaScript.
+	if f.Nullability == Function_NULLABILITY_REQUIRED && !bind.ShortCircuited {
+		return &RawData{Type: typ, Error: &errNullBinding{field: linkName(chunk)}}, true
+	}
+
+	return &RawData{Type: typ, ShortCircuited: true}, true
+}
+
+// linkName is what a diagnostic should call this link. A key lookup is spelled
+// `[]` in the bytecode whether the author wrote `m["k"]` or the bare-word `m.k`,
+// so naming the chunk would report `[]` instead of the key the user typed.
+func linkName(chunk *Chunk) string {
+	if chunk.Id != "[]" && chunk.Id != "[]?" {
+		return chunk.Id
+	}
+	if args := chunk.Function.GetArgs(); len(args) == 1 && types.Type(args[0].Type) == types.String {
+		return string(args[0].Value)
+	}
+	return chunk.Id
+}
+
+// shortCircuitNull tags a null that an optional link produced, so that every
+// downstream link passes it through instead of erroring on it.
+//
+// It returns a copy rather than mutating, because handlers hand back shared
+// package-level values (NilData, BoolTrue, ...) and tagging one in place would
+// corrupt it for every other caller in the process.
+func shortCircuitNull(chunk *Chunk, res *RawData) *RawData {
+	if res == nil || res.Value != nil || res.Error != nil || res.ShortCircuited {
+		return res
+	}
+	if chunk.Function.GetNullability() != Function_NULLABILITY_OPTIONAL {
+		return res
+	}
+	return &RawData{Type: res.Type, CoverageGaps: res.CoverageGaps, ShortCircuited: true}
+}
+
 // this is called for objects that call a function
 func (e *blockExecutor) runBoundFunction(bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
 	log.Trace().Uint64("ref", ref).Str("id", chunk.Id).Msg("exec> run bound function")
+
+	// Strict mode decides what a null binding means before dispatch, so every
+	// link answers to one rule instead of the ~100 independent nil branches the
+	// handlers carry. Those branches still run in non-strict mode, unchanged.
+	if res, handled := e.resolveNullBinding(bind, chunk); handled {
+		e.cache.Store(ref, &stepCache{Result: res})
+		if res.Error != nil {
+			return nil, 0, res.Error
+		}
+		return res, 0, nil
+	}
 
 	// check if the resource defines the function to allow providers to override
 	// builtin functions like `length` or any other function
@@ -916,6 +1160,7 @@ func (e *blockExecutor) runBoundFunction(bind *RawData, chunk *Chunk, ref uint64
 	if err == nil {
 		res, dref, err := fh.f(e, bind, chunk, ref)
 		if res != nil {
+			res = shortCircuitNull(chunk, res)
 			e.cache.Store(ref, &stepCache{Result: res})
 		}
 		if err != nil {

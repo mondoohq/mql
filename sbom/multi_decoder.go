@@ -5,8 +5,29 @@ package sbom
 
 import (
 	"errors"
+	"fmt"
 	"io"
 )
+
+// ErrUnknownFormat is returned for a document no decoder recognizes.
+var ErrUnknownFormat = errors.New("not a supported SBOM format: CycloneDX (JSON, XML), SPDX 2 (JSON, tag-value), SPDX 3.0.1 (JSON-LD) or Mondoo JSON")
+
+// RecognizedFormatError reports a document a decoder recognized as its format
+// but could not read. A MultiDecoder stops at it rather than trying the
+// remaining decoders, whose errors would only say the document is not their
+// format.
+type RecognizedFormatError struct {
+	Format string
+	Err    error
+}
+
+func (e *RecognizedFormatError) Error() string {
+	return fmt.Sprintf("unable to read %s document: %v", e.Format, e.Err)
+}
+
+func (e *RecognizedFormatError) Unwrap() error {
+	return e.Err
+}
 
 type MultiDecoder struct {
 	decoders []Decoder
@@ -18,6 +39,7 @@ func DefaultMultiDecoder() MultiDecoder {
 		NewCycloneDX(FormatCycloneDxXML),
 		NewSPDX(FormatSpdxTagValue),
 		NewSPDX(FormatSpdxJSON),
+		NewSPDX3(),
 		New(FormatJson),
 	)
 }
@@ -41,7 +63,10 @@ func (m MultiDecoder) Parse(r io.ReadSeeker) (*Sbom, error) {
 		if err == nil {
 			return s, nil
 		}
+		if _, ok := errors.AsType[*RecognizedFormatError](err); ok {
+			return nil, err
+		}
 		decoderErr = err
 	}
-	return nil, decoderErr
+	return nil, fmt.Errorf("%w (last decoder: %v)", ErrUnknownFormat, decoderErr)
 }

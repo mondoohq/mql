@@ -8,7 +8,7 @@ import (
 	"sort"
 	"testing"
 
-	"go.mondoo.com/mql/v13/providers/nutanix/connection"
+	"go.mondoo.com/mql/providers/nutanix/connection"
 )
 
 func TestHandleTargets(t *testing.T) {

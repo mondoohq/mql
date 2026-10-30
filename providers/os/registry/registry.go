@@ -12,11 +12,14 @@ const (
 	Default  = "DEFAULT"
 	Sam      = "SAM"
 
-	SoftwareRegPath = "Windows\\System32\\config\\SOFTWARE"
-	SystemRegPath   = "Windows\\System32\\config\\SYSTEM"
-	SecurityRegPath = "Windows\\System32\\config\\SECURITY"
-	DefaultRegPath  = "Windows\\System32\\config\\DEFAULT"
-	SamRegPath      = "Windows\\System32\\config\\SAM"
+	// The paths use forward slashes: they are handed to the connection's
+	// filesystem (afero), where a POSIX scanner treats a backslash as part of a
+	// file name. Windows accepts both separators.
+	SoftwareRegPath = "Windows/System32/config/SOFTWARE"
+	SystemRegPath   = "Windows/System32/config/SYSTEM"
+	SecurityRegPath = "Windows/System32/config/SECURITY"
+	DefaultRegPath  = "Windows/System32/config/DEFAULT"
+	SamRegPath      = "Windows/System32/config/SAM"
 )
 
 var KnownRegistryFiles = map[string]string{

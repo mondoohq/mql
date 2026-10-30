@@ -1,0 +1,6 @@
+[Unit]
+Description=Admin timer
+[Timer]
+OnCalendar=daily
+[Install]
+WantedBy=timers.target

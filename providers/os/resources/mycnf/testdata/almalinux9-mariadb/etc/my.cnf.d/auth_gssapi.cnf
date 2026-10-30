@@ -1,0 +1,2 @@
+[mariadb]
+#plugin-load-add=auth_gssapi.so

@@ -4,6 +4,9 @@ metadata:
   name: secctx
   namespace: default
 spec:
+  # hostUsers: false is required by the API server before it accepts
+  # procMount: Unmasked, so the fixture stays a manifest a cluster would take.
+  hostUsers: false
   containers:
   - name: app
     image: nginx:1.25
@@ -19,5 +22,12 @@ spec:
         drop: ["ALL"]
       seccompProfile:
         type: RuntimeDefault
+      appArmorProfile:
+        type: Localhost
+        localhostProfile: mql-verify-profile
+      procMount: Unmasked
+      seLinuxOptions:
+        type: spc_t
+        level: s0:c1,c2
   - name: bare
     image: busybox:1.36

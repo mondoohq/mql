@@ -55,6 +55,7 @@ const (
 	byteFunction
 	byteStringSlice
 	byteRange
+	byteAsset
 )
 
 // NoType type is one whose type information is not available at all
@@ -116,6 +117,10 @@ const (
 	// or lines and columns combined. We use a special type for a very
 	// efficient storage and transmission structure.
 	Range = Type(rune(byteRange))
+
+	// AssetLike is the underlying type of all asset references. A bare
+	// AssetLike carries no root, i.e. nothing can be chained off it.
+	AssetLike = Type(rune(byteAsset))
 )
 
 // All returns a list of all types available
@@ -141,6 +146,7 @@ func All() []Type {
 		MapLike,
 		ResourceLike,
 		FunctionLike,
+		AssetLike,
 	}
 }
 
@@ -185,6 +191,28 @@ func (typ Type) IsResource() bool {
 	return typ[0] == byteResource
 }
 
+// Asset is a native value pointing at another asset by the resource that anchors
+// it in the current asset's resource tree. Its payload is an llx.AssetValue
+// holding the anchor `(resourceType, resourceId)`. See ADR 030.
+//
+// It is parameterized by the resource type that is the root of the referenced
+// asset's tree, which is what makes chaining off it type-check: `asset<mcp>`
+// resolves `.tools` against the `mcp` schema. The root is a *name*, referenced
+// without the referenced schema being present (a forward reference), so a
+// provider can declare `running asset<mcp>` without depending on the provider
+// that defines `mcp`. See ADR 031.
+func Asset(root string) Type {
+	return AssetLike + Type(root)
+}
+
+// IsAsset checks if this type is a native asset reference
+func (typ Type) IsAsset() bool {
+	if typ.NotSet() {
+		return false
+	}
+	return typ[0] == byteAsset
+}
+
 // ContainsResource checks if this or any child type has a resource
 func (typ Type) ContainsResource() bool {
 	for {
@@ -202,11 +230,11 @@ func (typ Type) ContainsResource() bool {
 
 // Function for creating a function type signature
 func Function(required rune, args []Type) Type {
-	var sig string
+	var sig strings.Builder
 	for _, arg := range args {
-		sig += string(arg) + "\x00"
+		sig.WriteString(string(arg) + "\x00")
 	}
-	return FunctionLike + Type(required) + Type(sig)
+	return FunctionLike + Type(required) + Type(sig.String())
 }
 
 // IsFunction checks if this type is a map
@@ -242,6 +270,32 @@ func Enforce(left, right Type) (Type, bool) {
 	return right, len(left) == len(right)
 }
 
+// CoalesceArrays returns whichever of two array types carries a usable element
+// type. An empty array literal has none: `[]` compiles to []unset. Without this,
+// `[] + ["a"]` would keep the left type and yield an []unset result that fails
+// to compile downstream, while `["a"] + []` works, making operand order matter.
+//
+// Only a genuinely unknown element type is replaced. Mismatched but known types
+// keep the left one, preserving the existing behavior of `["a"] + [1]`.
+// Non-array types are returned unchanged, so arithmetic on scalars is unaffected.
+func CoalesceArrays(left, right Type) Type {
+	if left.IsArray() && right.IsArray() && arrayElemUnset(left) && !arrayElemUnset(right) {
+		return right
+	}
+	return left
+}
+
+// arrayElemUnset reports whether an array type lacks a usable element type,
+// either because it carries none at all (bare ArrayLike) or because the element
+// type is unset/null. Only call this on array types.
+func arrayElemUnset(typ Type) bool {
+	if len(typ) < 2 {
+		return true
+	}
+	child := typ.Child()
+	return child == Unset || child == Nil
+}
+
 // Child returns the child type of arrays and maps
 func (typ Type) Child() Type {
 	switch typ[0] {
@@ -270,6 +324,16 @@ func (typ Type) ResourceName() string {
 		return string(typ[1:])
 	}
 	panic("cannot determine type name of " + typ.Label())
+}
+
+// AssetRootName returns the name of the resource that roots the referenced
+// asset's tree, or an empty string for a bare asset reference that declares no
+// root. Has to be an asset type, otherwise this call panics.
+func (typ Type) AssetRootName() string {
+	if typ[0] == byteAsset {
+		return string(typ[1:])
+	}
+	panic("cannot determine asset root of " + typ.Label())
 }
 
 var labels = map[byte]string{
@@ -316,6 +380,12 @@ func init() {
 			return string(s)
 		},
 		byteFunction: func(f Type) string { return "func()" },
+		byteAsset: func(s Type) string {
+			if s == "" {
+				return "asset"
+			}
+			return "asset<" + string(s) + ">"
+		},
 	}
 }
 
@@ -396,4 +466,34 @@ var Equal = map[Type]func(any, any) bool{
 		}
 		return left.(int32) == right.(int32)
 	},
+}
+
+// ResourceOf returns the resource a type names, descending through the
+// containers a field may wrap it in (a list of resources, a map of them). It
+// returns "" for every type that names no resource.
+//
+// Unlike ResourceName it never panics: callers walk types that arrive from
+// bytecode and from provider schemas, where an unexpected shape is a reason to
+// skip the value rather than to crash the query.
+func ResourceOf(typ Type) string {
+	for range 8 {
+		if typ.NotSet() {
+			return ""
+		}
+		if typ.IsResource() {
+			return typ.ResourceName()
+		}
+		switch typ.Underlying() {
+		case ArrayLike:
+			typ = typ[1:]
+		case MapLike:
+			if len(typ) < 2 {
+				return ""
+			}
+			typ = typ[2:]
+		default:
+			return ""
+		}
+	}
+	return ""
 }

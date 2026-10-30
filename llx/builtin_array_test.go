@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/types"
 )
 
 // A null array receiver (e.g. a missing map key resolving to a typed null
@@ -78,4 +78,93 @@ func TestArrayHelpers_EmptyNotNil(t *testing.T) {
 		require.NotNil(t, res)
 		require.Equal(t, []any{}, res)
 	})
+}
+
+func TestDuplicateFieldIndices(t *testing.T) {
+	ints := func(vals ...any) []*RawData {
+		res := make([]*RawData, len(vals))
+		for i, v := range vals {
+			if err, ok := v.(error); ok {
+				res[i] = &RawData{Error: err}
+				continue
+			}
+			res[i] = &RawData{Type: types.Int, Value: v}
+		}
+		return res
+	}
+	eq := types.Equal[types.Int]
+
+	cases := []struct {
+		name string
+		in   []*RawData
+		want []int
+	}{
+		{"none", ints(int64(1), int64(2), int64(3)), []int{}},
+		{"one group", ints(int64(1), int64(2), int64(1)), []int{0, 2}},
+		// every group is reported, not only the first one found
+		{"two groups", ints(int64(0), int64(0), int64(5), int64(7), int64(7)), []int{0, 1, 3, 4}},
+		{"interleaved, three of a kind", ints(int64(0), int64(9), int64(0), int64(9), int64(5), int64(9)), []int{0, 1, 2, 3, 5}},
+		// a field that failed has no value to compare
+		{"errors are left out", ints(errors.New("x"), int64(1), errors.New("y"), int64(1)), []int{1, 3}},
+		{"nulls are equal", ints(nil, int64(1), nil), []int{0, 2}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			require.Equal(t, c.want, duplicateFieldIndices(c.in, eq))
+		})
+	}
+}
+
+func TestRawValuesEqual(t *testing.T) {
+	v4 := ParseIP("192.0.2.1")
+	// The same address held in its 16-byte form, as net.ParseIP returns it.
+	v4in16 := v4
+	v4in16.IP = v4.To16()
+	require.Len(t, v4in16.IP, 16)
+
+	withPrefix := ParseIP("192.0.2.1/25")
+	shared := map[string]any{"a": int64(1)}
+
+	cases := []struct {
+		name string
+		a, b any
+		want bool
+	}{
+		{"same ip", v4, ParseIP("192.0.2.1"), true},
+		{"ip in 4 and 16 byte form", v4, v4in16, true},
+		{"different ip", v4, ParseIP("192.0.2.2"), false},
+		{"same ip, different prefix length", v4, withPrefix, false},
+		{"ip and string", v4, "192.0.2.1", false},
+		{"ip and nil", v4, nil, false},
+		{"nil and ip", nil, v4, false},
+		{"nil and nil", nil, nil, true},
+		{"equal dicts", map[string]any{"a": int64(1)}, map[string]any{"a": int64(1)}, true},
+		{"same dict", shared, shared, true},
+		{"different dicts", map[string]any{"a": int64(1)}, map[string]any{"a": int64(2)}, false},
+		{"equal nested arrays", []any{int64(1), "x"}, []any{int64(1), "x"}, true},
+		{"different nested arrays", []any{int64(1)}, []any{int64(2)}, false},
+		{"equal strings", "x", "x", true},
+		{"int and float", int64(1), float64(1), false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			require.NotPanics(t, func() {
+				require.Equal(t, c.want, rawValuesEqual(c.a, c.b))
+			})
+		})
+	}
+}
+
+func TestTarrayCmpTarray_IP(t *testing.T) {
+	ips := func(s ...string) *RawData {
+		arr := make([]any, len(s))
+		for i := range s {
+			arr[i] = ParseIP(s[i])
+		}
+		return ArrayData(arr, types.IP)
+	}
+	left := ips("192.0.2.1", "2001:db8::1")
+	require.True(t, cmpArrays(left, ips("192.0.2.1", "2001:db8::1"), tArrayCmp(left, left)))
+	require.False(t, cmpArrays(left, ips("2001:db8::1", "192.0.2.1"), tArrayCmp(left, left)))
+	require.False(t, cmpArrays(left, ips("192.0.2.1"), tArrayCmp(left, left)))
 }

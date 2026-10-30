@@ -13,12 +13,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudhsmv2"
 	cloudhsmv2_types "github.com/aws/aws-sdk-go-v2/service/cloudhsmv2/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsCloudhsm) id() (string, error) {
@@ -26,18 +26,7 @@ func (a *mqlAwsCloudhsm) id() (string, error) {
 }
 
 func cloudHsmTagsToMap(tags []cloudhsmv2_types.Tag) map[string]any {
-	res := map[string]any{}
-	for _, t := range tags {
-		if t.Key == nil {
-			continue
-		}
-		val := ""
-		if t.Value != nil {
-			val = *t.Value
-		}
-		res[*t.Key] = val
-	}
-	return res
+	return tagsToMap(tags, func(t cloudhsmv2_types.Tag) *string { return t.Key }, func(t cloudhsmv2_types.Tag) *string { return t.Value })
 }
 
 // ---- aws.cloudhsm.cluster ----
@@ -178,6 +167,13 @@ type mqlAwsCloudhsmClusterInternal struct {
 	cacheHsms            []cloudhsmv2_types.Hsm
 }
 
+const cloudhsmClusterArnPattern = "arn:aws:cloudhsm:%s:%s:cluster/%s"
+
+func (a *mqlAwsCloudhsmCluster) arn() (string, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return fmt.Sprintf(cloudhsmClusterArnPattern, a.Region.Data, conn.AccountId(), a.ClusterId.Data), nil
+}
+
 func (a *mqlAwsCloudhsmCluster) vpc() (*mqlAwsVpc, error) {
 	if a.cacheVpcId == nil || *a.cacheVpcId == "" {
 		a.Vpc.State = plugin.StateIsSet | plugin.StateIsNull
@@ -271,12 +267,12 @@ func newMqlAwsCloudhsmHsm(runtime *plugin.Runtime, region string, accountID stri
 			"stateMessage":     llx.StringData(convert.ToValue(hsm.StateMessage)),
 			"availabilityZone": llx.StringData(convert.ToValue(hsm.AvailabilityZone)),
 			"hsmType":          llx.StringData(convert.ToValue(hsm.HsmType)),
-			"eniId":            llx.StringData(convert.ToValue(hsm.EniId)),
 			"eniIp":            llx.StringData(convert.ToValue(hsm.EniIp)),
 		})
 	if err != nil {
 		return nil, err
 	}
+	resource.(*mqlAwsCloudhsmHsm).cacheEniId = convert.ToValue(hsm.EniId)
 
 	mqlHsm := resource.(*mqlAwsCloudhsmHsm)
 	mqlHsm.region = region
@@ -286,6 +282,7 @@ func newMqlAwsCloudhsmHsm(runtime *plugin.Runtime, region string, accountID stri
 }
 
 type mqlAwsCloudhsmHsmInternal struct {
+	cacheEniId    string
 	region        string
 	accountID     string
 	cacheSubnetId *string
@@ -306,7 +303,7 @@ func (a *mqlAwsCloudhsmHsm) subnet() (*mqlAwsVpcSubnet, error) {
 }
 
 func (a *mqlAwsCloudhsmHsm) networkInterface() (*mqlAwsEc2Networkinterface, error) {
-	eniId := a.EniId.Data
+	eniId := a.cacheEniId
 	if eniId == "" {
 		a.NetworkInterface.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil

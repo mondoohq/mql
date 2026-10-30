@@ -7,18 +7,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/route53resolver"
 	resolvertypes "github.com/aws/aws-sdk-go-v2/service/route53resolver/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // aws.route53.resolver
@@ -39,6 +40,7 @@ func (a *mqlAwsRoute53) resolver() (*mqlAwsRoute53Resolver, error) {
 // ----- Resolver endpoints -----
 
 type mqlAwsRoute53ResolverEndpointInternal struct {
+	lazyTags
 	securityGroupIdHandler
 	region    string
 	accountID string
@@ -75,7 +77,6 @@ func (a *mqlAwsRoute53Resolver) endpointTasks(conn *connection.AwsConnection) []
 	accountID := conn.AccountId()
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			log.Debug().Str("region", region).Msg("route53resolver>endpoints>list")
 			svc := conn.Route53Resolver(region)
@@ -91,7 +92,6 @@ func (a *mqlAwsRoute53Resolver) endpointTasks(conn *connection.AwsConnection) []
 					return nil, err
 				}
 				for _, endpoint := range page.ResolverEndpoints {
-					endpoint := endpoint
 					mqlEndpoint, err := newMqlAwsRoute53ResolverEndpoint(a.MqlRuntime, region, accountID, &endpoint)
 					if err != nil {
 						return nil, err
@@ -199,6 +199,7 @@ func (a *mqlAwsRoute53ResolverEndpoint) ipAddresses() ([]any, error) {
 // ----- Resolver rules -----
 
 type mqlAwsRoute53ResolverRuleInternal struct {
+	lazyTags
 	region string
 }
 
@@ -232,7 +233,6 @@ func (a *mqlAwsRoute53Resolver) ruleTasks(conn *connection.AwsConnection) []*job
 	}
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			log.Debug().Str("region", region).Msg("route53resolver>rules>list")
 			svc := conn.Route53Resolver(region)
@@ -248,7 +248,6 @@ func (a *mqlAwsRoute53Resolver) ruleTasks(conn *connection.AwsConnection) []*job
 					return nil, err
 				}
 				for _, rule := range page.ResolverRules {
-					rule := rule
 					mqlRule, err := newMqlAwsRoute53ResolverRule(a.MqlRuntime, region, &rule)
 					if err != nil {
 						return nil, err
@@ -351,7 +350,6 @@ func (a *mqlAwsRoute53Resolver) ruleAssociationTasks(conn *connection.AwsConnect
 	}
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			log.Debug().Str("region", region).Msg("route53resolver>ruleAssociations>list")
 			svc := conn.Route53Resolver(region)
@@ -374,13 +372,13 @@ func (a *mqlAwsRoute53Resolver) ruleAssociationTasks(conn *connection.AwsConnect
 						"name":           llx.StringData(convert.ToValue(assoc.Name)),
 						"region":         llx.StringData(region),
 						"resolverRuleId": llx.StringData(convert.ToValue(assoc.ResolverRuleId)),
-						"vpcId":          llx.StringData(convert.ToValue(assoc.VPCId)),
 						"status":         llx.StringData(string(assoc.Status)),
 						"statusMessage":  llx.StringData(convert.ToValue(assoc.StatusMessage)),
 					})
 					if err != nil {
 						return nil, err
 					}
+					resource.(*mqlAwsRoute53ResolverRuleAssociation).cacheVpcId = convert.ToValue(assoc.VPCId)
 					res = append(res, resource)
 				}
 			}
@@ -407,7 +405,7 @@ func (a *mqlAwsRoute53ResolverRuleAssociation) resolverRule() (*mqlAwsRoute53Res
 }
 
 func (a *mqlAwsRoute53ResolverRuleAssociation) vpc() (*mqlAwsVpc, error) {
-	vpcId := a.VpcId.Data
+	vpcId := a.cacheVpcId
 	if vpcId == "" {
 		a.Vpc.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
@@ -453,7 +451,6 @@ func (a *mqlAwsRoute53Resolver) queryLogConfigTasks(conn *connection.AwsConnecti
 	}
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			log.Debug().Str("region", region).Msg("route53resolver>queryLogConfigs>list")
 			svc := conn.Route53Resolver(region)
@@ -587,7 +584,6 @@ func (a *mqlAwsRoute53Resolver) queryLogConfigAssociationTasks(conn *connection.
 	}
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			log.Debug().Str("region", region).Msg("route53resolver>queryLogConfigAssociations>list")
 			svc := conn.Route53Resolver(region)
@@ -661,6 +657,7 @@ func (a *mqlAwsRoute53ResolverQueryLogConfigAssociation) vpc() (*mqlAwsVpc, erro
 // ----- DNS Firewall rule groups -----
 
 type mqlAwsRoute53ResolverFirewallRuleGroupInternal struct {
+	lazyTags
 	region string
 }
 
@@ -694,7 +691,6 @@ func (a *mqlAwsRoute53Resolver) firewallRuleGroupTasks(conn *connection.AwsConne
 	}
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			log.Debug().Str("region", region).Msg("route53resolver>firewallRuleGroups>list")
 			svc := conn.Route53Resolver(region)
@@ -710,7 +706,6 @@ func (a *mqlAwsRoute53Resolver) firewallRuleGroupTasks(conn *connection.AwsConne
 					return nil, err
 				}
 				for _, meta := range page.FirewallRuleGroups {
-					meta := meta
 					mqlGroup, err := fetchAndCreateFirewallRuleGroup(a.MqlRuntime, conn, region, &meta)
 					if err != nil {
 						return nil, err
@@ -799,51 +794,6 @@ func newMqlAwsRoute53ResolverFirewallRuleGroup(runtime *plugin.Runtime, region s
 	mqlGroup := resource.(*mqlAwsRoute53ResolverFirewallRuleGroup)
 	mqlGroup.region = region
 	return mqlGroup, nil
-}
-
-func (a *mqlAwsRoute53ResolverFirewallRuleGroup) rules() ([]any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.Route53Resolver(a.region)
-	ctx := context.Background()
-	id := a.Id.Data
-
-	res := []any{}
-	paginator := route53resolver.NewListFirewallRulesPaginator(svc, &route53resolver.ListFirewallRulesInput{
-		FirewallRuleGroupId: &id,
-	})
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
-		}
-		for _, rule := range page.FirewallRules {
-			entry := map[string]any{
-				"name":                            convert.ToValue(rule.Name),
-				"action":                          string(rule.Action),
-				"blockResponse":                   string(rule.BlockResponse),
-				"blockOverrideDomain":             convert.ToValue(rule.BlockOverrideDomain),
-				"blockOverrideDnsType":            string(rule.BlockOverrideDnsType),
-				"firewallDomainListId":            convert.ToValue(rule.FirewallDomainListId),
-				"firewallRuleGroupId":             convert.ToValue(rule.FirewallRuleGroupId),
-				"firewallDomainRedirectionAction": string(rule.FirewallDomainRedirectionAction),
-				"qtype":                           convert.ToValue(rule.Qtype),
-				"creationTime":                    convert.ToValue(rule.CreationTime),
-				"modificationTime":                convert.ToValue(rule.ModificationTime),
-				"creatorRequestId":                convert.ToValue(rule.CreatorRequestId),
-			}
-			if rule.Priority != nil {
-				entry["priority"] = int64(*rule.Priority)
-			}
-			if rule.BlockOverrideTtl != nil {
-				entry["blockOverrideTtl"] = int64(*rule.BlockOverrideTtl)
-			}
-			res = append(res, entry)
-		}
-	}
-	return res, nil
 }
 
 type mqlAwsRoute53ResolverFirewallRuleInternal struct {
@@ -986,7 +936,6 @@ func (a *mqlAwsRoute53Resolver) firewallRuleGroupAssociationTasks(conn *connecti
 	}
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			log.Debug().Str("region", region).Msg("route53resolver>firewallRuleGroupAssociations>list")
 			svc := conn.Route53Resolver(region)
@@ -1014,7 +963,6 @@ func (a *mqlAwsRoute53Resolver) firewallRuleGroupAssociationTasks(conn *connecti
 						"name":                llx.StringData(convert.ToValue(assoc.Name)),
 						"region":              llx.StringData(region),
 						"firewallRuleGroupId": llx.StringData(convert.ToValue(assoc.FirewallRuleGroupId)),
-						"vpcId":               llx.StringData(convert.ToValue(assoc.VpcId)),
 						"priority":            llx.IntData(priority),
 						"mutationProtection":  llx.StringData(string(assoc.MutationProtection)),
 						"managedOwnerName":    llx.StringData(convert.ToValue(assoc.ManagedOwnerName)),
@@ -1027,6 +975,7 @@ func (a *mqlAwsRoute53Resolver) firewallRuleGroupAssociationTasks(conn *connecti
 					if err != nil {
 						return nil, err
 					}
+					resource.(*mqlAwsRoute53ResolverFirewallRuleGroupAssociation).cacheVpcId = convert.ToValue(assoc.VpcId)
 					res = append(res, resource)
 				}
 			}
@@ -1053,7 +1002,7 @@ func (a *mqlAwsRoute53ResolverFirewallRuleGroupAssociation) firewallRuleGroup() 
 }
 
 func (a *mqlAwsRoute53ResolverFirewallRuleGroupAssociation) vpc() (*mqlAwsVpc, error) {
-	vpcId := a.VpcId.Data
+	vpcId := a.cacheVpcId
 	if vpcId == "" {
 		a.Vpc.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
@@ -1099,7 +1048,6 @@ func (a *mqlAwsRoute53Resolver) firewallDomainListTasks(conn *connection.AwsConn
 	}
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			log.Debug().Str("region", region).Msg("route53resolver>firewallDomainLists>list")
 			svc := conn.Route53Resolver(region)
@@ -1115,7 +1063,6 @@ func (a *mqlAwsRoute53Resolver) firewallDomainListTasks(conn *connection.AwsConn
 					return nil, err
 				}
 				for _, meta := range page.FirewallDomainLists {
-					meta := meta
 					mqlList, err := fetchAndCreateFirewallDomainList(a.MqlRuntime, conn, region, &meta)
 					if err != nil {
 						return nil, err
@@ -1260,7 +1207,6 @@ func (a *mqlAwsRoute53Resolver) firewallConfigTasks(conn *connection.AwsConnecti
 	}
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			log.Debug().Str("region", region).Msg("route53resolver>firewallConfigs>list")
 			svc := conn.Route53Resolver(region)
@@ -1426,4 +1372,84 @@ func initAwsRoute53ResolverFirewallRuleGroup(runtime *plugin.Runtime, args map[s
 		}
 	}
 	return nil, nil, fmt.Errorf("aws route53 resolver firewall rule group not found: %s", idVal)
+}
+
+type mqlAwsRoute53ResolverRuleAssociationInternal struct {
+	cacheVpcId string
+}
+
+type mqlAwsRoute53ResolverFirewallRuleGroupAssociationInternal struct {
+	lazyTags
+	cacheVpcId string
+}
+
+type mqlAwsRoute53ResolverQueryLogConfigInternal struct {
+	lazyTags
+}
+
+type mqlAwsRoute53ResolverFirewallDomainListInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsRoute53ResolverEndpoint) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return route53ResolverTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsRoute53ResolverRule) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return route53ResolverTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsRoute53ResolverQueryLogConfig) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return route53ResolverTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsRoute53ResolverFirewallRuleGroup) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return route53ResolverTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsRoute53ResolverFirewallRuleGroupAssociation) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return route53ResolverTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsRoute53ResolverFirewallDomainList) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return route53ResolverTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+// route53ResolverTags lists the tags on a Route 53 Resolver resource by ARN,
+// following NextToken until every page is read.
+func route53ResolverTags(runtime *plugin.Runtime, region string, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Route53Resolver(region)
+	tags := map[string]any{}
+	paginator := route53resolver.NewListTagsForResourcePaginator(svc, &route53resolver.ListTagsForResourceInput{
+		ResourceArn: &resourceArn,
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(context.Background())
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("route53resolver:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		maps.Copy(tags, tagsToMap(page.Tags,
+			func(t resolvertypes.Tag) *string { return t.Key },
+			func(t resolvertypes.Tag) *string { return t.Value }))
+	}
+	return tags, nil
 }

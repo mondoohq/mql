@@ -4,19 +4,26 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/providers/aws/connection/awsec2ebsconn"
-	"go.mondoo.com/mql/v13/providers/aws/provider"
-	"go.mondoo.com/mql/v13/providers/aws/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/providers/aws/connection/awsec2ebsconn"
+	"go.mondoo.com/mql/providers/aws/provider"
+	"go.mondoo.com/mql/providers/aws/resources"
 )
 
 var Config = plugin.Provider{
-	Name:            "aws",
-	ID:              "go.mondoo.com/cnquery/v9/providers/aws",
-	Version:         "13.42.0",
+	Name:    "aws",
+	ID:      "go.mondoo.com/mql/providers/aws",
+	Version: "14.6.0",
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.DefaultConnectionType, string(awsec2ebsconn.EBSConnectionType)},
+	// Throttling is per service and per region, and an organization scan spreads
+	// its calls over separate accounts, so the limits are rarely the binding
+	// constraint before the CPU cap is.
+	DefaultParallelism: 8,
 	Connectors: []plugin.Connector{
 		{
 			Name:  "aws",
@@ -101,11 +108,21 @@ Notes:
 				resources.DiscoverySagemakerNotebookInstances,
 				resources.DiscoverySagemakerProcessingJobs,
 				resources.DiscoverySagemakerTrainingJobs,
+				resources.DiscoverySagemakerDomains,
+				resources.DiscoverySagemakerModels,
 				resources.DiscoverySecretsManagerSecrets,
 				resources.DiscoverySecurityGroups,
 				resources.DiscoverySSMInstances,
 				resources.DiscoverySSMInstanceAPI,
 				resources.DiscoveryTransferServers,
+				resources.DiscoveryAPIGatewayV2APIs,
+				resources.DiscoveryAthenaWorkgroups,
+				resources.DiscoveryAppStreamFleets,
+				resources.DiscoveryBatchJobDefinitions,
+				resources.DiscoveryDirectoryServiceDirectories,
+				resources.DiscoveryDocumentDBInstances,
+				resources.DiscoverySnsTopics,
+				resources.DiscoverySqsQueues,
 				resources.DiscoveryVPCs,
 			},
 			Flags: []plugin.Flag{
@@ -149,7 +166,7 @@ Notes:
 					Long:    "filters",
 					Type:    plugin.FlagType_KeyValue,
 					Default: "",
-					Desc:    "Filter options, e.g., --filters regions=us-east-2,us-east-1 --filters ec2:instance-ids=i-093439483935 --filters tag:Environment=production --filters tag:Team=platform --filters exclude:tag:Environment=dev",
+					Desc:    "Filter options, e.g., --filters regions=us-east-2,us-east-1 --filters ec2:instance-ids=i-093439483935 --filters s3:bucket-names=my-bucket --filters tag:Environment=production --filters tag:Team=platform --filters exclude:tag:Environment=dev",
 				},
 			},
 		},
@@ -190,6 +207,11 @@ Notes:
 						"codebuild":  nil,
 						"cognito":    nil,
 						"transfer":   nil,
+						"athena":     nil,
+						"appstream":  nil,
+						"batch":      nil,
+						"ds":         nil,
+						"documentdb": nil,
 						"other":      nil,
 					},
 				},

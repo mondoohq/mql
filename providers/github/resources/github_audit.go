@@ -6,12 +6,12 @@ package resources
 import (
 	"strings"
 
-	"github.com/google/go-github/v88/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/github/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/github/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (g *mqlGithubAuditLogEntry) id() (string, error) {
@@ -20,6 +20,10 @@ func (g *mqlGithubAuditLogEntry) id() (string, error) {
 	}
 	return "github.auditLogEntry/" + g.DocumentId.Data, nil
 }
+
+// maxAuditLogPages bounds how much of the audit log a single query pulls into
+// memory: paginationPerPage entries per page, so 100 pages is 10,000 entries.
+const maxAuditLogPages = 100
 
 // auditLog returns the audit log entries for an organization.
 // Note: This requires GitHub Enterprise Cloud.
@@ -32,11 +36,21 @@ func (g *mqlGithubOrganization) auditLog() ([]any, error) {
 	orgLogin := g.Login.Data
 
 	opts := &github.GetAuditLogOptions{
-		ListCursorOptions: github.ListCursorOptions{PerPage: paginationPerPage},
+		PerPage: paginationPerPage,
 	}
 
 	var allEntries []*github.AuditEntry
-	for {
+	for page := 0; ; page++ {
+		if page >= maxAuditLogPages {
+			// The audit log of a busy organization is effectively unbounded and
+			// is read entirely into memory here. Stop at a fixed number of
+			// pages and say so, rather than growing until the scan runs out of
+			// memory.
+			log.Warn().
+				Int("entries", len(allEntries)).
+				Msg("stopped reading the organization audit log at the page limit; the result is truncated")
+			break
+		}
 		entries, resp, err := conn.Client().Organizations.GetAuditLog(conn.Context(), orgLogin, opts)
 		if err != nil {
 			// Audit log is only available for GitHub Enterprise Cloud

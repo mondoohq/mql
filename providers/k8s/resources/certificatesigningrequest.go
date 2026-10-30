@@ -7,10 +7,10 @@ import (
 	"errors"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/types"
 	certificatesv1 "k8s.io/api/certificates/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -28,11 +28,6 @@ func (k *mqlK8s) certificateSigningRequests() ([]any, error) {
 		csr, ok := resource.(*certificatesv1.CertificateSigningRequest)
 		if !ok {
 			return nil, errors.New("not a k8s certificatesigningrequest")
-		}
-
-		var expirationSeconds int64
-		if csr.Spec.ExpirationSeconds != nil {
-			expirationSeconds = int64(*csr.Spec.ExpirationSeconds)
 		}
 
 		usages := make([]any, len(csr.Spec.Usages))
@@ -54,7 +49,7 @@ func (k *mqlK8s) certificateSigningRequests() ([]any, error) {
 			"created":           llx.TimeData(ts.Time),
 			"request":           llx.StringData(string(csr.Spec.Request)),
 			"signerName":        llx.StringData(csr.Spec.SignerName),
-			"expirationSeconds": llx.IntData(expirationSeconds),
+			"expirationSeconds": llx.IntDataPtr(csr.Spec.ExpirationSeconds),
 			"usages":            llx.ArrayData(usages, types.String),
 			"username":          llx.StringData(csr.Spec.Username),
 			"requesterUid":      llx.StringData(csr.Spec.UID),

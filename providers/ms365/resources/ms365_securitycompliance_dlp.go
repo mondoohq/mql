@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/types"
 )
 
 // dlpPolicies returns the Data Loss Prevention compliance policies as typed
@@ -22,6 +22,12 @@ func (r *mqlMs365ExchangeonlineSecurityAndCompliance) dlpPolicies() ([]any, erro
 	report, err := r.getSecurityAndComplianceReport()
 	if err != nil {
 		return nil, err
+	}
+	// a cmdlet that failed leaves its section null; reporting that as an
+	// empty list would claim the tenant has none
+	if report == nil || report.DlpCompliancePolicy == nil {
+		r.DlpPolicies.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return convertDlpCompliancePolicies(r.MqlRuntime, report.DlpCompliancePolicy)
 }
@@ -76,6 +82,25 @@ func dlpString(m map[string]any, key string) string {
 		return v
 	}
 	return ""
+}
+
+// dlpBoolPtr is dlpBool for a field where an absent value has to stay null.
+// dlpBool cannot distinguish "the policy reports false" from "the property was
+// not in the response", and for a field an audit reads as a decision the
+// tenant made, inventing false is worse than reporting nothing.
+func dlpBoolPtr(m map[string]any, key string) *bool {
+	switch v := m[key].(type) {
+	case bool:
+		return &v
+	case string:
+		// some PowerShell JSON serializers emit booleans as "True"/"False"
+		b := strings.EqualFold(v, "true")
+		if !b && !strings.EqualFold(v, "false") {
+			return nil
+		}
+		return &b
+	}
+	return nil
 }
 
 func dlpBool(m map[string]any, key string) bool {

@@ -12,11 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 
 	"google.golang.org/api/cloudresourcemanager/v3"
 	"google.golang.org/api/compute/v1"
@@ -33,13 +33,22 @@ func (g *mqlGcpProjects) id() (string, error) {
 }
 
 type mqlGcpProjectInternal struct {
-	// serviceEnabled services
-	enabledServices     map[string]struct{}
+	// enabled services, shared by the enabledServices field and isServiceEnabled
+	enabledServiceList  []any
+	enabledServiceNames map[string]struct{}
 	enabledServicesOnce sync.Once
 	enabledServicesErr  error
 	iamPolicyOnce       sync.Once
 	iamPolicyCache      *cloudresourcemanager.Policy
 	iamPolicyErr        error
+	// computeLocations caches the project's regions and zones. Both the
+	// recommendations and the insights listers need the full location set, and
+	// each listing is two paginated Compute API calls, so the result is resolved
+	// once per project rather than once per caller.
+	computeLocationsOnce sync.Once
+	computeRegions       []string
+	computeZones         []string
+	computeLocationsErr  error
 }
 
 func initGcpProject(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -67,8 +76,34 @@ func initGcpProject(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 		return nil, nil, err
 	}
 
-	projectId := fmt.Sprintf("projects/%s", conn.ResourceID())
-	project, err := svc.Projects.Get(projectId).Do()
+	// Resolve the project the caller asked for, not the one the connection
+	// happens to point at. NewResource runs this init before consulting the
+	// resource cache, so ignoring args["id"] would silently redirect every
+	// typed project reference (projectRefById, sharedVpcHost, folder
+	// managementProjectRef, ...) to the connection's own project -- and on an
+	// organization- or folder-scoped connection ResourceID() is not a project
+	// id at all. initGcpFolder resolves its id the same way.
+	projectRef := conn.ResourceID()
+	if raw := args["id"]; raw != nil {
+		if v, ok := raw.Value.(string); ok && v != "" {
+			projectRef = v
+		}
+	}
+	if projectRef == "" {
+		return nil, nil, errors.New("gcp.project requires a project id")
+	}
+
+	// NewResource consults the resource cache only after this init returns, so
+	// without this check every typed project reference re-fetches a record the
+	// runtime is already holding and the result is then discarded. gcp.project
+	// is referenced from a dozen files (iam, logging, apikeys, cloud functions,
+	// filestore, shared VPC, the service gate, discovery), which on one measured
+	// scan meant 452 identical Projects.Get calls, half of all HTTP traffic.
+	if cached := cachedResource(runtime, ResourceGcpProject, projectRef); cached != nil {
+		return args, cached, nil
+	}
+
+	project, err := svc.Projects.Get(fmt.Sprintf("projects/%s", projectRef)).Do()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -511,13 +546,18 @@ func (g *mqlGcpProjects) list() ([]any, error) {
 		return nil, folders.Error
 	}
 
+	// Project.Parent is always a prefixed reference ("folders/876",
+	// "organizations/123"), while gcp.folder stores the bare id ("876"), so both
+	// sides have to be normalized to the "folders/{id}" resource name before
+	// they are compared. Without this, only the direct children of parentId
+	// match and every project nested in a subfolder is silently dropped.
 	foldersMap := map[string]struct{}{parentId: {}}
 	for _, f := range folders.Data {
 		id := f.(*mqlGcpFolder).GetId()
 		if id.Error != nil {
 			return nil, id.Error
 		}
-		foldersMap[id.Data] = struct{}{}
+		foldersMap[folderResourceName(id.Data)] = struct{}{}
 	}
 
 	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
@@ -568,25 +608,36 @@ func projectToMql(runtime *plugin.Runtime, p *cloudresourcemanager.Project) (*mq
 	return res.(*mqlGcpProject), nil
 }
 
-func (g *mqlGcpProject) getEnabledServices() (map[string]struct{}, error) {
+// loadEnabledServices lists the project's enabled services once. The
+// enabledServices field and every isServiceEnabled gate read the same listing,
+// so a scan pays for one filtered ListServices call per project.
+func (g *mqlGcpProject) loadEnabledServices() ([]any, error) {
 	g.enabledServicesOnce.Do(func() {
-		services := make(map[string]struct{})
-		enabledServices, err := g.fetchServices("state:ENABLED")
+		list, err := g.fetchServices("state:ENABLED")
 		if err != nil {
 			g.enabledServicesErr = err
 			return
 		}
 
-		for i := range enabledServices {
-			srv := enabledServices[i].(*mqlGcpService)
-			services[srv.Name.Data] = struct{}{}
+		names := make(map[string]struct{}, len(list))
+		for i := range list {
+			srv := list[i].(*mqlGcpService)
+			names[srv.Name.Data] = struct{}{}
 		}
-		// publish the fully-built map only after population so concurrent
+		// publish the fully-built values only after population so concurrent
 		// readers never observe a partially-filled map
-		g.enabledServices = services
+		g.enabledServiceList = list
+		g.enabledServiceNames = names
 	})
 
-	return g.enabledServices, g.enabledServicesErr
+	return g.enabledServiceList, g.enabledServicesErr
+}
+
+func (g *mqlGcpProject) getEnabledServices() (map[string]struct{}, error) {
+	if _, err := g.loadEnabledServices(); err != nil {
+		return nil, err
+	}
+	return g.enabledServiceNames, nil
 }
 
 // isServiceEnabled is an internal helper function to check if a service is serviceEnabled

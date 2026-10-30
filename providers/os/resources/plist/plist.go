@@ -107,6 +107,6 @@ func (d Data) GetList(path ...string) ([]any, bool) {
 	}
 	key := path[len(path)-1]
 
-	res, converted := val[key].([]interface{})
+	res, converted := val[key].([]any)
 	return res, converted
 }

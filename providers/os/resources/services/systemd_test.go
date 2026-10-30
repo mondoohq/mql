@@ -4,15 +4,20 @@
 package services
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/mountedfs"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/mountedfs"
 )
 
 func TestParseServiceSystemDUnitFiles(t *testing.T) {
@@ -92,95 +97,78 @@ func TestParseServiceSystemDUnitFilesPhoton(t *testing.T) {
 	assert.Equal(t, false, m[30].Masked, "service is not masked")
 }
 
+// Every service reads with the flags systemctl derives from its unit-file
+// state, the state systemd 252 reports for the same tree (the
+// .list-unit-files.txt next to each fixture). An alias reports the state of
+// the unit it names, as the systemctl path does.
 func TestSystemdFS(t *testing.T) {
-	s := SystemdFSServiceManager{
-		Fs: mountedfs.NewMountedFs("testdata/systemd"),
+	if runtime.GOOS == "windows" {
+		// the fixtures rely on symlinks with absolute Unix targets, which a
+		// Windows checkout turns into plain files.
+		t.Skip("the fixtures need Unix symlinks")
+	}
+	for _, fixture := range []string{"systemd", "systemd-debian12-container", "systemd-states"} {
+		t.Run(fixture, func(t *testing.T) {
+			s := SystemdFSServiceManager{Fs: mountedfs.NewMountedFs(filepath.Join("testdata", fixture))}
+			services, err := s.List()
+			require.NoError(t, err)
+			byName := map[string]*Service{}
+			for _, svc := range services {
+				byName[svc.Name] = svc
+			}
+
+			states := readListUnitFiles(t, filepath.Join("testdata", fixture+".list-unit-files.txt"))
+			units, err := readSystemdUnitFiles(s.Fs, ".service")
+			require.NoError(t, err)
+			targets := map[string]string{}
+			for _, u := range units {
+				targets[u.Name] = u.Target
+			}
+			listed := 0
+			for unit, state := range states {
+				name, ok := strings.CutSuffix(unit, ".service")
+				if !ok {
+					continue
+				}
+				listed++
+				require.Contains(t, byName, name)
+				svc := byName[name]
+				if state == "alias" {
+					state = states[targets[unit]]
+				}
+				var enabled, masked, static bool
+				applyUnitFileState(&enabled, &masked, &static, state)
+				assert.Equal(t, "systemd", svc.Type, name)
+				assert.True(t, svc.Installed, name)
+				assert.Equal(t, enabled, svc.Enabled, name)
+				assert.Equal(t, masked, svc.Masked, name)
+				assert.Equal(t, static, svc.Static, name)
+			}
+			// nothing but the unit files and enabled instances: a unit that
+			// is only named by another one's Wants= is not a service here
+			instances := 0
+			for _, svc := range services {
+				if isSystemdInstanceUnit(svc.Name + ".service") {
+					instances++
+				}
+			}
+			assert.Equal(t, listed+instances, len(services))
+		})
 	}
 
-	services, err := s.List()
+	s := SystemdFSServiceManager{Fs: mountedfs.NewMountedFs("testdata/systemd")}
+	masked, err := s.Get("masked")
 	require.NoError(t, err)
-	servicesMap := map[string]*Service{}
-	for _, svc := range services {
-		servicesMap[svc.Name] = svc
-	}
-
-	assert.NotContains(t, servicesMap, "default")
-	assert.NotContains(t, servicesMap, "default.target")
-	assert.NotContains(t, servicesMap, "not-enabled")
-	assert.Contains(t, servicesMap, "aliased")
-	assert.Equal(t, &Service{
-		Name:        "aliased",
-		Type:        "service",
-		Description: "Aliased Service",
-		State:       ServiceUnknown,
-		Installed:   true,
-		Enabled:     true,
-		Static:      true,
-	}, servicesMap["aliased"])
-	assert.Contains(t, servicesMap, "aliased-wants")
-	assert.Contains(t, servicesMap, "aliased-requires")
-	assert.Contains(t, servicesMap, "aliased-missing")
-	assert.Equal(t, &Service{
-		Name:      "aliased-missing",
-		Type:      "service",
-		State:     ServiceUnknown,
-		Installed: false,
-		Enabled:   false,
-	}, servicesMap["aliased-missing"])
-	assert.Contains(t, servicesMap, "intermediate-dep-want")
-	assert.Contains(t, servicesMap, "intermediate-dep-require")
-	assert.Contains(t, servicesMap, "masked")
-	assert.Equal(t, &Service{
-		Name:      "masked",
-		Type:      "service",
-		State:     ServiceUnknown,
-		Installed: true,
-		Enabled:   true,
-		Masked:    true,
-	}, servicesMap["masked"])
-	assert.Contains(t, servicesMap, "implicit-socket")
-	assert.Equal(t, &Service{
-		Name:        "implicit-socket",
-		Type:        "service",
-		Description: "Implicit Socket Service",
-		State:       ServiceUnknown,
-		Installed:   true,
-		Enabled:     true,
-		Static:      true,
-	}, servicesMap["implicit-socket"])
-	assert.Contains(t, servicesMap, "explicit-socket-service")
-	assert.Equal(t, &Service{
-		Name:        "explicit-socket-service",
-		Type:        "service",
-		Description: "Explicit Socket Service",
-		State:       ServiceUnknown,
-		Installed:   true,
-		Enabled:     true,
-		Static:      true,
-	}, servicesMap["explicit-socket-service"])
-
-	// Relative path symlink
-	assert.Contains(t, servicesMap, "display-manager")
-	assert.Equal(t, &Service{
-		Name:      "display-manager",
-		Type:      "service",
-		State:     ServiceUnknown,
-		Installed: false,
-		Enabled:   false,
-		Masked:    false,
-	}, servicesMap["display-manager"])
-
-	// Absolute path symlink
-	assert.Contains(t, servicesMap, "sshd")
-	assert.Equal(t, &Service{
-		Name:        "sshd",
-		Description: "OpenBSD Secure Shell server",
-		Type:        "service",
-		State:       ServiceUnknown,
-		Installed:   true,
-		Enabled:     true,
-		Masked:      false,
-	}, servicesMap["sshd"])
+	assert.Equal(t, &Service{Name: "masked", Description: "masked.service", State: ServiceUnknown, Type: "systemd",
+		Installed: true, Masked: true}, masked)
+	_, err = s.Get("aliased-missing")
+	assert.ErrorIs(t, err, ErrServiceNotFound, "named by Wants= but not on disk")
+	// a unit file linked from outside the search path is read through the
+	// link
+	sshd, err := s.Get("sshd")
+	require.NoError(t, err)
+	assert.Equal(t, "OpenBSD Secure Shell server", sshd.Description)
+	assert.Equal(t, "/tmp/sshd.service", sshd.Path)
 }
 
 type recordingConnection struct {
@@ -262,7 +250,7 @@ func TestParseServiceSystemDShowNotFoundIsNotEnabled(t *testing.T) {
 }
 
 func TestSystemDServiceManagerGetUsesTargetedShow(t *testing.T) {
-	const showCmd = "systemctl show --property=Id,LoadState,ActiveState,UnitFileState,Description dbus.service"
+	const showCmd = "systemctl show --property=Id,Names,LoadState,ActiveState,UnitFileState,Description dbus.service"
 
 	mockConn, err := mock.New(0, &inventory.Asset{
 		Platform: &inventory.Platform{
@@ -304,7 +292,7 @@ func TestSystemDServiceManagerGetUsesTargetedShow(t *testing.T) {
 }
 
 func TestSystemDServiceManagerGetReturnsNotFound(t *testing.T) {
-	const showCmd = "systemctl show --property=Id,LoadState,ActiveState,UnitFileState,Description missing.service"
+	const showCmd = "systemctl show --property=Id,Names,LoadState,ActiveState,UnitFileState,Description missing.service"
 
 	mockConn, err := mock.New(0, &inventory.Asset{
 		Platform: &inventory.Platform{
@@ -427,6 +415,7 @@ func TestParseServiceSystemDShowMergedRecords(t *testing.T) {
 func TestSystemDServiceManagerListUsesListUnits(t *testing.T) {
 	const listFilesCmd = "systemctl list-unit-files --type service --all"
 	const listUnitsCmd = "systemctl list-units --type service --all"
+	const showGammaCmd = "systemctl show --property=Id,Names,LoadState,ActiveState,UnitFileState,Description gamma.service"
 
 	mockConn, err := mock.New(0, &inventory.Asset{
 		Platform: &inventory.Platform{
@@ -435,6 +424,17 @@ func TestSystemDServiceManagerListUsesListUnits(t *testing.T) {
 		},
 	}, mock.WithData(&mock.TomlData{
 		Commands: map[string]*mock.Command{
+			showGammaCmd: {
+				Stdout: strings.Join([]string{
+					"Id=gamma.service",
+					"Names=gamma.service",
+					"Description=Gamma Service",
+					"LoadState=loaded",
+					"ActiveState=inactive",
+					"UnitFileState=disabled",
+					"",
+				}, "\n"),
+			},
 			listFilesCmd: {
 				Stdout: strings.Join([]string{
 					"UNIT FILE STATE PRESET",
@@ -470,8 +470,10 @@ func TestSystemDServiceManagerListUsesListUnits(t *testing.T) {
 	services, err := mgr.List()
 	require.NoError(t, err)
 	require.Len(t, services, 4)
-	// Exactly 2 commands: list-unit-files + list-units
-	assert.Equal(t, []string{listFilesCmd, listUnitsCmd}, conn.commands)
+	// list-unit-files + list-units, then one show for the unit file that is
+	// not loaded (gamma); the template is never shown; the release decides
+	// whether SysV init scripts need listing
+	assert.Equal(t, []string{listFilesCmd, listUnitsCmd, showGammaCmd, "systemctl --version"}, conn.commands)
 
 	servicesMap := map[string]*Service{}
 	for _, service := range services {
@@ -488,12 +490,193 @@ func TestSystemDServiceManagerListUsesListUnits(t *testing.T) {
 	assert.False(t, servicesMap["beta"].Running)
 	assert.True(t, servicesMap["beta"].Static)
 
-	// gamma: only in list-unit-files (not loaded), Running stays false
+	// gamma: only in list-unit-files (not loaded), Running stays false and
+	// the description comes from systemctl show
 	assert.False(t, servicesMap["gamma"].Running)
 	assert.False(t, servicesMap["gamma"].Enabled)
-	assert.Equal(t, "", servicesMap["gamma"].Description)
+	assert.Equal(t, "Gamma Service", servicesMap["gamma"].Description)
 
 	// template@: only in list-unit-files, correctly not running
 	assert.False(t, servicesMap["template@"].Running)
 	assert.True(t, servicesMap["template@"].Static)
+}
+
+// failingReader stands in for a stdout pipe that breaks mid-read.
+type failingReader struct{ err error }
+
+func (f failingReader) Read([]byte) (int, error) { return 0, f.err }
+
+// TestParseServiceSystemDUnitFilesErrorKinds pins the distinction List() relies
+// on: an unusable listing means systemd is not the running init and the caller
+// should read the units off disk, while a broken stdout is an IO fault that has
+// to surface. Both used to arrive as an undifferentiated error, so a failed read
+// degraded into a filesystem listing that looked like a real answer.
+func TestParseServiceSystemDUnitFilesErrorKinds(t *testing.T) {
+	t.Run("empty output is a systemctl no-output error", func(t *testing.T) {
+		_, err := ParseServiceSystemDUnitFiles(strings.NewReader(""))
+		require.Error(t, err)
+		assert.ErrorIs(t, err, errSystemctlNoOutput)
+	})
+
+	t.Run("read failure is not a systemctl no-output error", func(t *testing.T) {
+		readErr := errors.New("connection reset by peer")
+		_, err := ParseServiceSystemDUnitFiles(failingReader{err: readErr})
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, errSystemctlNoOutput,
+			"a broken stdout must not be mistaken for systemd being absent")
+		assert.ErrorIs(t, err, readErr, "the underlying read error stays inspectable")
+	})
+}
+
+// `systemctl list-units --type service --all` on Rocky Linux 9 (systemd 252)
+// while g04-slow.service has a queued start job, which adds a JOB column.
+func TestParseSystemdListUnitsJobColumn(t *testing.T) {
+	data, err := os.ReadFile("testdata/rocky9-list-units-job-column.txt")
+	require.NoError(t, err)
+
+	services, err := ParseSystemdListUnits(strings.NewReader(string(data)))
+	require.NoError(t, err)
+
+	require.Contains(t, services, "g04-slow")
+	assert.Equal(t, "g04 slow start job", services["g04-slow"].Description)
+	assert.False(t, services["g04-slow"].Running)
+	// rows without a job, and failed rows marked with "●", keep their whole
+	// description
+	assert.Equal(t, "g04 denylist unit", services["g04-deny"].Description)
+	assert.Equal(t, "g04 failing unit", services["g04-fail"].Description)
+	assert.Equal(t, "dnf makecache", services["dnf-makecache"].Description)
+}
+
+func TestSystemdListUnitsJobColumn(t *testing.T) {
+	assert.Equal(t, -1, systemdListUnitsJobColumn("  UNIT          LOAD   ACTIVE SUB     DESCRIPTION\n  a.service     loaded active running start job\n"))
+	assert.Equal(t, -1, systemdListUnitsJobColumn(""))
+	assert.Equal(t, 48, systemdListUnitsJobColumn("  UNIT                LOAD   ACTIVE     SUB     JOB   DESCRIPTION\n"))
+}
+
+// unitFilesConn is a mock connection whose file system is a unit tree.
+type unitFilesConn struct {
+	*mock.Connection
+	fs afero.Fs
+}
+
+func (c *unitFilesConn) FileSystem() afero.Fs { return c.fs }
+
+const systemdNotBooted = "System has not been booted with systemd as init system (PID 1). Can't operate.\nFailed to connect to bus: Host is down\n"
+
+// A debian:12 container with openssh-server, cron, nginx and systemd 252
+// installed, where systemd is not PID 1. systemctl show needs the bus and
+// prints nothing; list-unit-files reads the unit files and works.
+func TestSystemDServiceManagerGetWithoutRunningSystemd(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("testdata needs Unix symlinks")
+	}
+	unitFiles, err := os.ReadFile("testdata/systemctl-list-unit-files-debian12-container.txt")
+	require.NoError(t, err)
+
+	show := func(unit string) string {
+		return "systemctl show --property=Id,Names,LoadState,ActiveState,UnitFileState,Description " + unit
+	}
+	mockConn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "debian", Version: "12", Family: []string{"debian", "linux"}},
+	}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			show("ssh.service"):                              {Stderr: systemdNotBooted, ExitStatus: 1},
+			show("sudo.service"):                             {Stderr: systemdNotBooted, ExitStatus: 1},
+			show("missing.service"):                          {Stderr: systemdNotBooted, ExitStatus: 1},
+			"systemctl list-unit-files --type service --all": {Stdout: string(unitFiles)},
+			"systemctl list-units --type service --all":      {Stderr: systemdNotBooted, ExitStatus: 1},
+		},
+	}))
+	require.NoError(t, err)
+	// the unit files of the same container
+	mgr := &SystemDServiceManager{conn: &unitFilesConn{Connection: mockConn, fs: mountedfs.NewMountedFs("testdata/systemd-debian12-container")}}
+
+	ssh, err := mgr.Get("ssh")
+	require.NoError(t, err)
+	assert.True(t, ssh.Installed)
+	assert.True(t, ssh.Enabled)
+	assert.False(t, ssh.Running)
+
+	sudo, err := mgr.Get("sudo")
+	require.NoError(t, err)
+	assert.True(t, sudo.Masked)
+
+	_, err = mgr.Get("missing")
+	require.ErrorIs(t, err, ErrServiceNotFound)
+
+	// systemctl show cannot answer without systemd, so the descriptions
+	// come from the unit files
+	assert.Equal(t, "OpenBSD Secure Shell server", ssh.Description)
+	sshd, err := mgr.Get("sshd")
+	require.NoError(t, err)
+	assert.True(t, sshd.Enabled)
+}
+
+// The unit tree of the same container before systemd was installed: no
+// default.target, so walking from it found nothing, and every service read
+// as not installed.
+func TestSystemdFSWithoutDefaultTarget(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("testdata needs Unix symlinks")
+	}
+	s := SystemdFSServiceManager{Fs: mountedfs.NewMountedFs("testdata/systemd-debian12-container")}
+
+	services, err := s.List()
+	require.NoError(t, err)
+	byName := map[string]*Service{}
+	for _, svc := range services {
+		byName[svc.Name] = svc
+	}
+
+	// enabled: linked from multi-user.target.wants
+	for _, name := range []string{"ssh", "cron", "nginx", "rsyslog", "e2scrub_reap"} {
+		require.Contains(t, byName, name)
+		assert.True(t, byName[name].Installed, name)
+		assert.True(t, byName[name].Enabled, name)
+		assert.False(t, byName[name].Static, name)
+	}
+	// static: no [Install] section, not linked anywhere
+	for _, name := range []string{"apt-daily", "pam_namespace", "logrotate", "fstrim"} {
+		require.Contains(t, byName, name)
+		assert.True(t, byName[name].Installed, name)
+		assert.False(t, byName[name].Enabled, name)
+		assert.True(t, byName[name].Static, name)
+	}
+	require.Contains(t, byName, "sudo")
+	assert.True(t, byName["sudo"].Masked)
+	assert.False(t, byName["sudo"].Enabled)
+
+	// an alias is listed with the state of the unit it names, as systemctl
+	// lists it
+	require.Contains(t, byName, "sshd")
+	assert.True(t, byName["sshd"].Enabled)
+	assert.Equal(t, byName["ssh"].Description, byName["sshd"].Description)
+	require.Contains(t, byName, "syslog")
+	assert.True(t, byName["syslog"].Enabled)
+
+	ssh, err := s.Get("ssh")
+	require.NoError(t, err)
+	assert.True(t, ssh.Enabled)
+}
+
+// ssh.service orders itself After=auditd.service and rsyslog.service is also
+// reached as syslog.service. Each is one service, and rsyslog stays enabled
+// whichever copy the walk saw first.
+func TestSystemdFSAliasIsOneService(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("testdata needs Unix symlinks")
+	}
+	s := SystemdFSServiceManager{Fs: mountedfs.NewMountedFs("testdata/systemd-debian12-container")}
+	for range 20 {
+		services, err := s.List()
+		require.NoError(t, err)
+		var rsyslog []*Service
+		for _, svc := range services {
+			if svc.Name == "rsyslog" {
+				rsyslog = append(rsyslog, svc)
+			}
+		}
+		require.Len(t, rsyslog, 1)
+		assert.True(t, rsyslog[0].Enabled)
+	}
 }

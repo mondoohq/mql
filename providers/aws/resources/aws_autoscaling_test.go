@@ -10,6 +10,8 @@ import (
 	autoscalingtypes "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
+	"time"
 )
 
 func TestAutoscalingGroupServiceLinkedRole(t *testing.T) {
@@ -90,5 +92,40 @@ func TestPopulateAutoscalingGroupInternals(t *testing.T) {
 		g := &mqlAwsAutoscalingGroup{}
 		populateAutoscalingGroupInternals(g, autoscalingtypes.AutoScalingGroup{}, region, accountID)
 		assert.Empty(t, g.cacheSubnetIds)
+	})
+}
+
+func TestAutoscalingAccountSettingArgs(t *testing.T) {
+	// Measured: aws autoscaling describe-account-settings, us-east-1, 2026-10-23.
+	// The setting has enforcement type none, so the enforcement values are absent.
+	t.Run("setting without enforcement", func(t *testing.T) {
+		args := autoscalingAccountSettingArgs("us-east-1", autoscalingtypes.AccountSetting{
+			Name:            aws.String("launchBeforeTerminate"),
+			Value:           aws.String("disabled"),
+			EnforcementType: aws.String("none"),
+		})
+		assert.Equal(t, "us-east-1/launchBeforeTerminate", args["__id"].Value)
+		assert.Equal(t, "launchBeforeTerminate", args["name"].Value)
+		assert.Equal(t, "disabled", args["value"].Value)
+		assert.Equal(t, "none", args["enforcementType"].Value)
+		assert.Same(t, llx.NilData, args["enforcementDate"])
+		assert.Same(t, llx.NilData, args["defaultValue"])
+		assert.Same(t, llx.NilData, args["enforcedValue"])
+	})
+	// Synthetic: a phased-in setting with hard enforcement; no target showed this.
+	t.Run("setting with enforcement", func(t *testing.T) {
+		when := time.Date(2027, 3, 1, 0, 0, 0, 0, time.UTC)
+		args := autoscalingAccountSettingArgs("eu-west-1", autoscalingtypes.AccountSetting{
+			Name:            aws.String("exampleSetting"),
+			Value:           aws.String("enabled"),
+			EnforcementType: aws.String("hard"),
+			EnforcementDate: &when,
+			DefaultValue:    aws.String("disabled"),
+			EnforcedValue:   aws.String("enabled"),
+		})
+		assert.Equal(t, "eu-west-1/exampleSetting", args["__id"].Value)
+		assert.Equal(t, &when, args["enforcementDate"].Value)
+		assert.Equal(t, "disabled", args["defaultValue"].Value)
+		assert.Equal(t, "enabled", args["enforcedValue"].Value)
 	})
 }

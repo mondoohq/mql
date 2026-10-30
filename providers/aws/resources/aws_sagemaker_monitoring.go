@@ -13,12 +13,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sagemaker"
 	sagemakerTypes "github.com/aws/aws-sdk-go-v2/service/sagemaker/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // ---- Endpoint Configs ----
@@ -89,7 +89,7 @@ func (a *mqlAwsSagemaker) getEndpointConfigs(conn *connection.AwsConnection) []*
 					ec := mqlRes.(*mqlAwsSagemakerEndpointConfig)
 					if eagerTags != nil {
 						ec.cacheTags = eagerTags
-						ec.tagsFetched = true
+						ec.tagsFetched.Store(true)
 					}
 					res = append(res, mqlRes)
 				}
@@ -168,6 +168,7 @@ func (a *mqlAwsSagemakerEndpointConfig) dataCaptureConfig() (*mqlAwsSagemakerEnd
 
 	mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerEndpointConfigDataCaptureConfig,
 		map[string]*llx.RawData{
+			"__id":                      llx.StringData(a.Arn.Data + "/dataCaptureConfig"),
 			"enableCapture":             llx.BoolDataPtr(dcc.EnableCapture),
 			"initialSamplingPercentage": llx.IntData(samplingPct),
 			"destinationS3Uri":          llx.StringDataPtr(dcc.DestinationS3Uri),
@@ -211,6 +212,60 @@ func (a *mqlAwsSagemakerEndpointConfig) asyncInferenceConfig() (any, error) {
 	return convert.JsonToDict(resp.AsyncInferenceConfig)
 }
 
+func (a *mqlAwsSagemakerEndpointConfig) enableNetworkIsolation() (bool, error) {
+	resp, err := a.fetchDetails()
+	if err != nil {
+		return false, err
+	}
+	if resp.EnableNetworkIsolation == nil {
+		return false, nil
+	}
+	return *resp.EnableNetworkIsolation, nil
+}
+
+func (a *mqlAwsSagemakerEndpointConfig) iamRole() (*mqlAwsIamRole, error) {
+	resp, err := a.fetchDetails()
+	if err != nil {
+		return nil, err
+	}
+	return sagemakerIamRole(a.MqlRuntime, &a.IamRole, resp.ExecutionRoleArn)
+}
+
+func (a *mqlAwsSagemakerEndpointConfig) vpc() (*mqlAwsVpc, error) {
+	resp, err := a.fetchDetails()
+	if err != nil {
+		return nil, err
+	}
+	var subnetIds []string
+	if resp.VpcConfig != nil {
+		subnetIds = resp.VpcConfig.Subnets
+	}
+	return sagemakerResolveVpc(a.MqlRuntime, a.Region.Data, subnetIds, &a.Vpc)
+}
+
+func (a *mqlAwsSagemakerEndpointConfig) securityGroups() ([]any, error) {
+	resp, err := a.fetchDetails()
+	if err != nil {
+		return nil, err
+	}
+	if resp.VpcConfig == nil {
+		return nil, nil
+	}
+	return sagemakerSecurityGroups(a.MqlRuntime, a.Region.Data, resp.VpcConfig.SecurityGroupIds)
+}
+
+func (a *mqlAwsSagemakerEndpointConfig) asyncOutputKmsKey() (*mqlAwsKmsKey, error) {
+	resp, err := a.fetchDetails()
+	if err != nil {
+		return nil, err
+	}
+	var keyId *string
+	if resp.AsyncInferenceConfig != nil && resp.AsyncInferenceConfig.OutputConfig != nil {
+		keyId = resp.AsyncInferenceConfig.OutputConfig.KmsKeyId
+	}
+	return sagemakerKmsKey(a.MqlRuntime, &a.AsyncOutputKmsKey, keyId)
+}
+
 // ---- Endpoint Config Production Variant ----
 
 type mqlAwsSagemakerEndpointConfigProductionVariantInternal struct {
@@ -242,6 +297,7 @@ func (a *mqlAwsSagemakerEndpointConfigProductionVariant) serverlessConfig() (*mq
 	}
 	mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerEndpointConfigServerlessConfig,
 		map[string]*llx.RawData{
+			"__id":                   llx.StringData(a.cacheParentArn + "/productionVariant/" + a.VariantName.Data + "/serverlessConfig"),
 			"memorySizeInMB":         llx.IntData(memSize),
 			"maxConcurrency":         llx.IntData(maxConc),
 			"provisionedConcurrency": llx.IntData(provConc),
@@ -290,6 +346,7 @@ func sagemakerBuildEndpointConfigProductionVariants(runtime *plugin.Runtime, par
 
 		mqlPV, err := CreateResource(runtime, ResourceAwsSagemakerEndpointConfigProductionVariant,
 			map[string]*llx.RawData{
+				"__id":                              llx.StringData(parentArn + "/productionVariant/" + convert.ToValue(v.VariantName)),
 				"variantName":                       llx.StringDataPtr(v.VariantName),
 				"modelName":                         llx.StringDataPtr(v.ModelName),
 				"instanceType":                      llx.StringData(string(v.InstanceType)),
@@ -425,7 +482,7 @@ func (a *mqlAwsSagemaker) getMonitoringSchedules(conn *connection.AwsConnection)
 					ms := mqlRes.(*mqlAwsSagemakerMonitoringSchedule)
 					if eagerTags != nil {
 						ms.cacheTags = eagerTags
-						ms.tagsFetched = true
+						ms.tagsFetched.Store(true)
 					}
 					res = append(res, mqlRes)
 				}
@@ -487,6 +544,7 @@ func (a *mqlAwsSagemakerMonitoringSchedule) scheduleConfig() (*mqlAwsSagemakerMo
 	sc := resp.MonitoringScheduleConfig.ScheduleConfig
 	mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerMonitoringScheduleScheduleConfig,
 		map[string]*llx.RawData{
+			"__id":                  llx.StringData(a.Arn.Data + "/scheduleConfig"),
 			"scheduleExpression":    llx.StringDataPtr(sc.ScheduleExpression),
 			"dataAnalysisStartTime": llx.StringDataPtr(sc.DataAnalysisStartTime),
 			"dataAnalysisEndTime":   llx.StringDataPtr(sc.DataAnalysisEndTime),
@@ -628,6 +686,7 @@ func sagemakerBuildMonitoringJobSubResources(runtime *plugin.Runtime, details mo
 		}
 		mqlRes, err := CreateResource(runtime, ResourceAwsSagemakerMonitoringJobDefinitionAppSpecification,
 			map[string]*llx.RawData{
+				"__id":                            llx.StringData(parentArn + "/appSpecification"),
 				"imageUri":                        llx.StringDataPtr(spec.ImageUri),
 				"containerEntrypoint":             llx.ArrayData(entrypoint, types.String),
 				"containerArguments":              llx.ArrayData(args, types.String),
@@ -649,6 +708,7 @@ func sagemakerBuildMonitoringJobSubResources(runtime *plugin.Runtime, details mo
 		batchDict, _ := convert.JsonToDict(details.JobInput.BatchTransformInput)
 		mqlRes, err := CreateResource(runtime, ResourceAwsSagemakerMonitoringJobDefinitionJobInput,
 			map[string]*llx.RawData{
+				"__id":                llx.StringData(parentArn + "/jobInput"),
 				"endpointInput":       llx.DictData(endpointDict),
 				"batchTransformInput": llx.DictData(batchDict),
 			})
@@ -669,7 +729,9 @@ func sagemakerBuildMonitoringJobSubResources(runtime *plugin.Runtime, details mo
 			outputs = details.OutputConfig.MonitoringOutputs
 		}
 		mqlRes, err := CreateResource(runtime, ResourceAwsSagemakerMonitoringJobDefinitionJobOutputConfig,
-			map[string]*llx.RawData{})
+			map[string]*llx.RawData{
+				"__id": llx.StringData(parentArn + "/jobOutputConfig"),
+			})
 		if err != nil {
 			return nil, err
 		}
@@ -698,6 +760,7 @@ func sagemakerBuildMonitoringJobSubResources(runtime *plugin.Runtime, details mo
 		}
 		mqlRes, err := CreateResource(runtime, ResourceAwsSagemakerMonitoringJobDefinitionJobResources,
 			map[string]*llx.RawData{
+				"__id":           llx.StringData(parentArn + "/jobResources"),
 				"instanceType":   llx.StringData(instanceType),
 				"instanceCount":  llx.IntData(instanceCount),
 				"volumeSizeInGB": llx.IntData(volumeSize),
@@ -727,6 +790,7 @@ func sagemakerBuildMonitoringJobSubResources(runtime *plugin.Runtime, details mo
 		}
 		mqlRes, err := CreateResource(runtime, ResourceAwsSagemakerMonitoringJobDefinitionNetworkConfig,
 			map[string]*llx.RawData{
+				"__id":                                  llx.StringData(parentArn + "/networkConfig"),
 				"enableInterContainerTrafficEncryption": llx.BoolData(enableEncrypt),
 				"enableNetworkIsolation":                llx.BoolData(enableIsolation),
 			})
@@ -785,6 +849,7 @@ func (a *mqlAwsSagemakerMonitoringJobDefinitionJobOutputConfig) monitoringOutput
 		s3Out := output.S3Output
 		mqlRes, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerMonitoringJobDefinitionMonitoringOutput,
 			map[string]*llx.RawData{
+				"__id":         llx.StringData(fmt.Sprintf("%s/monitoringOutput/%d", a.cacheParentArn, i)),
 				"s3Uri":        llx.StringDataPtr(s3Out.S3Uri),
 				"localPath":    llx.StringDataPtr(s3Out.LocalPath),
 				"s3UploadMode": llx.StringData(string(s3Out.S3UploadMode)),
@@ -970,11 +1035,17 @@ func (a *mqlAwsSagemaker) monitoringJobDefinitions() ([]any, error) {
 }
 
 type mqlAwsSagemakerMonitoringJobDefinitionInternal struct {
+	sagemakerTagsCache
 	source monitoringJobDefinitionSource
 }
 
 func (a *mqlAwsSagemakerMonitoringJobDefinition) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsSagemakerMonitoringJobDefinition) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return a.fetchTags(conn, a.Region.Data, a.Arn.Data)
 }
 
 // jobDefinitionSource returns the per-kind resource backing this entry. The
@@ -1074,6 +1145,7 @@ func (a *mqlAwsSagemaker) getDataQualityJobDefinitions(conn *connection.AwsConne
 }
 
 type mqlAwsSagemakerDataQualityJobDefinitionInternal struct {
+	sagemakerTagsCache
 	fetched   bool
 	fetchLock sync.Mutex
 	cacheSub  *monitoringJobSubResources
@@ -1081,6 +1153,11 @@ type mqlAwsSagemakerDataQualityJobDefinitionInternal struct {
 
 func (a *mqlAwsSagemakerDataQualityJobDefinition) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsSagemakerDataQualityJobDefinition) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return a.fetchTags(conn, a.Region.Data, a.Arn.Data)
 }
 
 func (a *mqlAwsSagemakerDataQualityJobDefinition) fetchDetails() (*monitoringJobSubResources, error) {
@@ -1286,6 +1363,7 @@ func (a *mqlAwsSagemaker) getModelQualityJobDefinitions(conn *connection.AwsConn
 }
 
 type mqlAwsSagemakerModelQualityJobDefinitionInternal struct {
+	sagemakerTagsCache
 	fetched   bool
 	fetchLock sync.Mutex
 	cacheSub  *monitoringJobSubResources
@@ -1293,6 +1371,11 @@ type mqlAwsSagemakerModelQualityJobDefinitionInternal struct {
 
 func (a *mqlAwsSagemakerModelQualityJobDefinition) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsSagemakerModelQualityJobDefinition) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return a.fetchTags(conn, a.Region.Data, a.Arn.Data)
 }
 
 func (a *mqlAwsSagemakerModelQualityJobDefinition) fetchDetails() (*monitoringJobSubResources, error) {
@@ -1498,6 +1581,7 @@ func (a *mqlAwsSagemaker) getModelBiasJobDefinitions(conn *connection.AwsConnect
 }
 
 type mqlAwsSagemakerModelBiasJobDefinitionInternal struct {
+	sagemakerTagsCache
 	fetched   bool
 	fetchLock sync.Mutex
 	cacheSub  *monitoringJobSubResources
@@ -1505,6 +1589,11 @@ type mqlAwsSagemakerModelBiasJobDefinitionInternal struct {
 
 func (a *mqlAwsSagemakerModelBiasJobDefinition) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsSagemakerModelBiasJobDefinition) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return a.fetchTags(conn, a.Region.Data, a.Arn.Data)
 }
 
 func (a *mqlAwsSagemakerModelBiasJobDefinition) fetchDetails() (*monitoringJobSubResources, error) {
@@ -1706,6 +1795,7 @@ func (a *mqlAwsSagemaker) getModelExplainabilityJobDefinitions(conn *connection.
 }
 
 type mqlAwsSagemakerModelExplainabilityJobDefinitionInternal struct {
+	sagemakerTagsCache
 	fetched   bool
 	fetchLock sync.Mutex
 	cacheSub  *monitoringJobSubResources
@@ -1713,6 +1803,11 @@ type mqlAwsSagemakerModelExplainabilityJobDefinitionInternal struct {
 
 func (a *mqlAwsSagemakerModelExplainabilityJobDefinition) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsSagemakerModelExplainabilityJobDefinition) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return a.fetchTags(conn, a.Region.Data, a.Arn.Data)
 }
 
 func (a *mqlAwsSagemakerModelExplainabilityJobDefinition) fetchDetails() (*monitoringJobSubResources, error) {

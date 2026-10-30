@@ -1,15 +1,20 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/huggingface"
-option go_package = "go.mondoo.com/mql/v13/providers/huggingface/resources"
+option go_package = "go.mondoo.com/mql/providers/huggingface/resources"
+option root = "huggingface"
 
 // Hugging Face
 //
-// Use the `huggingface` resource to examine your Hugging Face account,
-// including models, datasets, spaces, webhooks, inference endpoints,
-// and organization memberships accessible through the configured API token.
-huggingface @defaults("user.name") {
+// Hugging Face account reachable through the configured API token, and
+// the entry point for auditing everything that token can access: the
+// authenticated user, organization memberships, models, datasets,
+// Spaces, webhooks, and inference endpoints. Query it to inventory
+// hosted AI assets and to understand the reach of the credential in use.
+huggingface @defaults("user.name") @root {
   // Authenticated user
   user() huggingface.user
   // Organizations the authenticated user belongs to
@@ -28,13 +33,17 @@ huggingface @defaults("user.name") {
 
 // Hugging Face user account
 //
-// Examine properties of a Hugging Face user, including organization
-// memberships, pro status, and the permissions of the API token
-// used to authenticate.
+// Account identity behind the configured API token: the login
+// name, display name, and whether the account carries a Pro
+// subscription. The accessToken field exposes the role and
+// fine-grained permission scopes of the token used to authenticate,
+// which govern what the account can read and write across models,
+// datasets, and spaces.
 huggingface.user @defaults("name") {
   id string
   name string
   fullname string
+  // Account type reported by the whoami API (user)
   type string
   isPro bool
   avatarUrl string
@@ -44,8 +53,11 @@ huggingface.user @defaults("name") {
 
 // Hugging Face organization
 //
-// Examine a Hugging Face organization including enterprise status,
-// billing capability, and the authenticated user's role within it.
+// Team or company account on the Hugging Face Hub, exposing its
+// enterprise status via isEnterprise, billing capability via canPay,
+// and the authenticated user's role within it via roleInOrg. Useful
+// for confirming that model and dataset repositories are owned by a
+// governed enterprise organization rather than an unmanaged account.
 huggingface.organization @defaults("name") {
   id string
   name string
@@ -60,8 +72,12 @@ huggingface.organization @defaults("name") {
 
 // Hugging Face access token
 //
-// Examine the API access token used for authentication, including
-// its display name, role, and fine-grained permission scopes.
+// API access token presented for authentication against the Hugging Face
+// Hub. The token's role and fine-grained permission scopes determine which
+// repositories and organization resources it can reach, making it a central
+// subject for least-privilege audits. The role field distinguishes a broad
+// read or write token from a fineGrained token whose access is constrained
+// to specific entities through scopedPermissions.
 huggingface.accessToken @defaults("displayName role") {
   displayName string
   // Token role
@@ -69,6 +85,7 @@ huggingface.accessToken @defaults("displayName role") {
   // One of read, write, or fineGrained.
   role string
   createdAt time
+  // Whether the token can download from gated (access-restricted) repositories
   canReadGatedRepos bool
   // Global permissions granted to the token
   globalPermissions []string
@@ -78,12 +95,13 @@ huggingface.accessToken @defaults("displayName role") {
 
 // Scoped permission grant on a Hugging Face access token
 //
-// Examine a single scoped permission entry that grants specific
-// permissions to an entity (user or organization). The `entityName`
+// Single scoped permission entry that grants a fine-grained token specific
+// capabilities on one entity (a user or organization). The `entityName`
 // field identifies the target, and `permissions` lists the granted
 // capabilities such as `repo.content.read` or `org.read`.
 private huggingface.accessToken.scope @defaults("entityName") {
   entityId string
+  // Type of the target entity, such as user or org
   entityType string
   entityName string
   permissions []string
@@ -91,10 +109,10 @@ private huggingface.accessToken.scope @defaults("entityName") {
 
 // Hugging Face model repository
 //
-// Examine a model hosted on the Hugging Face Hub, including its
-// visibility, access gating, license, pipeline tag, library,
-// and download/like counts. Use `cardData` and `config` for deep
-// metadata needed by AI Bill of Materials (AIBOM) generation.
+// Model hosted on the Hugging Face Hub, covering its visibility,
+// access gating, license, pipeline tag, library, and download/like
+// counts. `cardData` and `config` expose the deep metadata needed
+// for AI Bill of Materials (AIBOM) generation.
 huggingface.model @defaults("id author") {
   // Full model ID (e.g., "meta-llama/Llama-3.1-8B")
   id string
@@ -120,6 +138,13 @@ huggingface.model @defaults("id author") {
   lastModified time
   // Whether the model requires access approval
   gated bool
+  // How access to the model is granted
+  //
+  // One of false when the model is ungated, auto when any account that accepts
+  // the terms is admitted straight away, or manual when a repository owner
+  // reviews each request. Null when the Hub did not report the setting, which
+  // is not the same as ungated.
+  gatedMode string
   disabled bool
   license() string
   // Parsed YAML frontmatter from the model card (datasets, language, metrics, base_model, etc.)
@@ -128,29 +153,61 @@ huggingface.model @defaults("id author") {
   modelCard() string
   // Parsed config.json (architecture, model_type, hidden_size, vocab_size, etc.)
   config() dict
-  // File listing in the model repository
+  // Repository file listing
+  //
+  // Each entry describes one file in the model repository with a
+  // single `rfilename` key holding the file path relative to the
+  // repository root.
   siblings() []dict
+  // Malware and unsafe-serialization scan of the model files
+  securityStatus() huggingface.repositoryScan
 }
 
 // Hugging Face dataset repository
 //
-// Examine a dataset hosted on the Hugging Face Hub, including its
-// visibility, description, and download/like counts.
+// Dataset hosted on the Hugging Face Hub, covering its visibility
+// (public or private), owning author, descriptive tags, and community
+// signals such as download and like counts. Query it to audit which
+// datasets an organization exposes and whether any that should be
+// restricted are marked public.
 huggingface.dataset @defaults("id") {
   id string
   name string
   description string
   tags []string
   author string
+  // Downloads recorded in the last 30 days
   downloads int
+  // Downloads recorded since the dataset was created
+  downloadsAllTime int
   likes int
   private bool
+  // Whether the dataset requires access approval
+  gated bool
+  // How access to the dataset is granted
+  //
+  // One of false when the dataset is ungated, auto when any account that
+  // accepts the terms is admitted straight away, or manual when a repository
+  // owner reviews each request. Null when the Hub did not report the setting,
+  // which is not the same as ungated.
+  gatedMode string
+  // Whether the dataset has been disabled by the Hub
+  disabled bool
+  createdAt time
+  lastModified time
+  // Git SHA of the current revision
+  sha string
+  // Malware and unsafe-serialization scan of the dataset files
+  securityStatus() huggingface.repositoryScan
 }
 
 // Hugging Face Space application
 //
-// Examine a Hugging Face Space (hosted app) including its visibility,
-// description, tags, and like count.
+// Hosted app (a Space) published to the Hugging Face Hub, covering its
+// visibility, description, tags, author, and popularity. Audit these to
+// surface which apps an organization exposes and whether any that should
+// stay internal are public. The `private` field reports whether the Space
+// is restricted to its owner or openly accessible.
 huggingface.space @defaults("id") {
   id string
   name string
@@ -159,26 +216,167 @@ huggingface.space @defaults("id") {
   author string
   likes int
   private bool
+  // Stack that runs the Space
+  //
+  // One of gradio, streamlit, docker, or static. A docker Space runs an image
+  // the author controls, so it is not limited to the hosted app frameworks.
+  sdk string
+  // Region the Space runs in
+  //
+  // For example us or eu. A Space pinned to eu keeps its data and traffic in
+  // the European Union.
+  region string
+  // Host label the Space is served from under hf.space
+  subdomain string
+  // Whether the Space has been disabled by the Hub
+  disabled bool
+  createdAt time
+  lastModified time
+  // Git SHA of the current revision
+  sha string
+  // Execution state of the container serving the Space
+  runtime() huggingface.space.runtimeStatus
+  // Malware and unsafe-serialization scan of the Space files
+  securityStatus() huggingface.repositoryScan
+}
+
+// Runtime state of a Hugging Face Space
+//
+// Execution state of the container serving a Space: the lifecycle stage, the
+// hardware it runs on and the hardware it was configured with, the replica
+// counts, the idle timeout after which it sleeps, whether developer mode is
+// on, and the domains it answers on. A Space with devMode enabled accepts SSH
+// into the running container, so leaving it on for a Space that serves real
+// traffic hands out a shell on the workload.
+private huggingface.space.runtimeStatus @defaults("stage currentHardware") {
+  // Lifecycle stage of the Space container
+  //
+  // Stages seen from the Hub include RUNNING, RUNNING_BUILDING,
+  // RUNNING_APP_STARTING, APP_STARTING, BUILDING, SLEEPING, PAUSED,
+  // RUNTIME_ERROR, BUILD_ERROR, CONFIG_ERROR, and NO_APP_FILE. The Hub adds
+  // stages as the platform changes, so treat the list as open.
+  stage string
+  // Hardware flavor the Space is running on
+  //
+  // For example cpu-basic, cpu-upgrade, zero-a10g, or l40sx1. Null while the
+  // Space is not running, which is not the same as running on the free tier.
+  currentHardware string
+  // Hardware flavor the Space is configured to use
+  //
+  // Null when no flavor has been requested.
+  requestedHardware string
+  // Replicas currently serving the Space
+  //
+  // Null while the Space is not running.
+  currentReplicas int
+  // Replicas the Space is configured to run
+  //
+  // Null when the Space scales automatically and no fixed count is set; see
+  // autoscaling.
+  requestedReplicas int
+  // Whether the Space scales its replica count automatically
+  autoscaling bool
+  // Idle seconds after which the Space sleeps
+  //
+  // Null on a Space that never sleeps. Zero would mean it sleeps immediately,
+  // so the two are kept apart.
+  gcTimeout int
+  // Whether developer mode is enabled
+  //
+  // Developer mode opens SSH access into the running container. Null when the
+  // Hub did not report the setting, which is not the same as off.
+  devMode bool
+  // Domains the Space answers on
+  domains []huggingface.space.domain
+}
+
+// Domain a Hugging Face Space answers on
+//
+// One hostname bound to a Space together with the provisioning stage of that
+// binding. Every Space has a generated hf.space domain; further entries are
+// custom domains the owner attached.
+private huggingface.space.domain @defaults("domain stage") {
+  // Fully qualified domain name
+  domain string
+  // Provisioning stage of the domain
+  //
+  // For example READY when the domain serves traffic, or EXPIRED_CHALLENGE
+  // when its certificate validation lapsed and was never renewed.
+  stage string
+}
+
+// Security scan of a Hugging Face repository
+//
+// Verdict of the Hub's automated scan over the files in a model, dataset, or
+// Space repository, combining antivirus detection with analysis of the imports
+// a pickle-serialized file would execute. The scansDone field reports whether
+// the scan finished: a newly created or recently updated repository reports
+// false with an empty filesWithIssues, so a check that reads only
+// filesWithIssues passes on a repository nothing has looked at yet. Assert
+// scansDone alongside the file list.
+private huggingface.repositoryScan @defaults("scansDone") {
+  // Whether the Hub has finished scanning the repository
+  //
+  // False while a scan is outstanding. An empty filesWithIssues is evidence of
+  // a clean repository only when this is true.
+  scansDone bool
+  // Files the scan reported a finding on
+  //
+  // Empty when the repository is clean, and also empty while scansDone is
+  // false. Clean files are not listed.
+  filesWithIssues []huggingface.repositoryScan.file
+}
+
+// File flagged by a repository security scan
+//
+// One file the Hub's scan reported a finding on, located by path within the
+// repository and graded by level.
+private huggingface.repositoryScan.file @defaults("path level") {
+  // Path of the file relative to the repository root
+  path string
+  // Severity the scan assigned to the finding
+  //
+  // Levels the Hub reports on a flagged file are caution, suspicious, and
+  // unsafe. An unsafe verdict on a pickle-serialized file means loading the
+  // repository executes the code that file carries, so a model marked unsafe
+  // runs attacker-chosen code the moment it is loaded. Clean, queued, and
+  // unscanned files are not listed at all.
+  level string
 }
 
 // Hugging Face webhook
 //
-// Examine a configured webhook including its target URL, watched
-// repositories, event domains, and enabled/disabled state.
+// Configured webhook that delivers HTTP callbacks to an external
+// endpoint when watched repositories or discussions change. Auditing
+// webhooks surfaces where repository events are sent, whether a
+// webhook is currently disabled, and which repositories or namespaces
+// it monitors.
 huggingface.webhook @defaults("id webhookUrl") {
   id string
   // Target URL that receives webhook events
   webhookUrl string
+  // Event domains this webhook subscribes to
+  //
+  // Each entry is one of "repo" (repository lifecycle events such as
+  // new commits or config changes) or "discussion" (discussion and
+  // pull request activity).
   domains []string
   disabled bool
-  // Watched entities that trigger this webhook
+  // Repositories and namespaces this webhook watches
+  //
+  // Each entry has a `type` (one of "dataset", "model", "space",
+  // "org", or "user") and a `name` (the repository ID or namespace,
+  // for example "openai/whisper").
   watched []dict
 }
 
 // Hugging Face inference endpoint
 //
-// Examine a deployed inference endpoint including the model it serves,
-// the ML framework, its operational status, and the endpoint URL.
+// Managed deployment that serves a Hugging Face model behind a
+// dedicated URL. Reports the model it hosts, the ML framework it runs
+// on, its operational status, and the reachable endpoint URL, so you
+// can audit which models are exposed, whether a deployment is healthy
+// or scaled to zero, and where inference traffic is served from.
 huggingface.inferenceEndpoint @defaults("name status") {
   id string
   name string

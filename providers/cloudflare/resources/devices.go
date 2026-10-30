@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"time"
 
-	cloudflare "github.com/cloudflare/cloudflare-go/v6"
-	"github.com/cloudflare/cloudflare-go/v6/zero_trust"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/cloudflare/connection"
+	cloudflare "github.com/cloudflare/cloudflare-go/v7"
+	"github.com/cloudflare/cloudflare-go/v7/zero_trust"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/cloudflare/connection"
 )
 
 func (c *mqlCloudflareOneDevice) id() (string, error) {
@@ -21,7 +21,7 @@ func (c *mqlCloudflareOneDevice) id() (string, error) {
 }
 
 // teamsDevice is the response shape of the legacy WARP device inventory endpoint
-// (`/accounts/{id}/devices`). cloudflare-go v6 marks its typed device list as
+// (`/accounts/{id}/devices`). cloudflare-go marks its typed device list as
 // deprecated in favor of newer, differently-shaped endpoints, so we read the
 // legacy endpoint via the client's generic Get to preserve the MQL schema.
 type teamsDevice struct {
@@ -49,7 +49,7 @@ func (c *mqlCloudflareOne) devices() ([]any, error) {
 
 	records, err := cfGetPaged[teamsDevice](conn, fmt.Sprintf("accounts/%s/devices", c.AccountID))
 	if err != nil {
-		return nil, err
+		return degradedList(err)
 	}
 
 	var result []any
@@ -70,10 +70,10 @@ func (c *mqlCloudflareOne) devices() ([]any, error) {
 			"osDistroRevision": llx.StringData(rec.OSDistroRevision),
 			"version":          llx.StringData(rec.Version),
 			"deleted":          llx.BoolData(rec.Deleted),
-			"created":          llx.TimeData(parseRFC3339(rec.Created)),
-			"updated":          llx.TimeData(parseRFC3339(rec.Updated)),
-			"lastSeen":         llx.TimeData(parseRFC3339(rec.LastSeen)),
-			"revokedAt":        llx.TimeData(parseRFC3339(rec.RevokedAt)),
+			"created":          timeOrNil(parseRFC3339(rec.Created)),
+			"updated":          timeOrNil(parseRFC3339(rec.Updated)),
+			"lastSeen":         timeOrNil(parseRFC3339(rec.LastSeen)),
+			"revokedAt":        timeOrNil(parseRFC3339(rec.RevokedAt)),
 		})
 		if err != nil {
 			return nil, err
@@ -117,7 +117,7 @@ func (c *mqlCloudflareOne) devicePostureRules() ([]any, error) {
 		result = append(result, res)
 	}
 	if err := iter.Err(); err != nil {
-		return nil, err
+		return degradedList(err)
 	}
 
 	return result, nil
@@ -153,7 +153,7 @@ func (c *mqlCloudflareOne) devicePostureIntegrations() ([]any, error) {
 		result = append(result, res)
 	}
 	if err := iter.Err(); err != nil {
-		return nil, err
+		return degradedList(err)
 	}
 
 	return result, nil

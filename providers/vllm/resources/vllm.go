@@ -11,14 +11,22 @@ import (
 	"sync"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/vllm/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/vllm/connection"
 )
 
 type mqlVllmEndpointInternal struct {
 	once sync.Once
 	obs  connection.EndpointObservation
+}
+
+// mqlVllmModelInternal carries the permission array from the /v1/models
+// response that produced the model, so reading vllm.model.permissions does not
+// re-list the models.
+type mqlVllmModelInternal struct {
+	once            sync.Once
+	permissionCards []connection.ModelPermission
 }
 
 func (r *mqlVllm) id() (string, error) {
@@ -42,12 +50,11 @@ func (r *mqlVllm) endpoints() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	specs := connection.DefaultEndpointSpecs()
-	res := make([]any, 0, len(specs))
 	observations, err := conn.EndpointObservations(context.Background())
 	if err != nil {
 		return nil, err
 	}
+	res := make([]any, 0, len(observations))
 	for _, obs := range observations {
 		endpoint, err := CreateResource(r.MqlRuntime, "vllm.endpoint", map[string]*llx.RawData{
 			"path":   llx.StringData(obs.Spec.Path),
@@ -111,16 +118,37 @@ func (r *mqlVllm) models() ([]any, error) {
 			"root":        llx.StringData(c.Root),
 			"parent":      llx.StringData(c.Parent),
 			"maxModelLen": llx.IntData(c.MaxModelLen),
-			"created":     llx.TimeData(time.Unix(c.Created, 0)),
+			"created":     llx.TimeDataPtr(modelCreatedTime(c.Created)),
 			"ownedBy":     llx.StringData(c.OwnedBy),
 		})
 		if err != nil {
 			return nil, err
 		}
+		if m, ok := mqlModel.(*mqlVllmModel); ok {
+			primed := c.Permission
+			m.once.Do(func() {
+				m.permissionCards = primed
+			})
+		}
 		res = append(res, mqlModel)
 	}
 
 	return res, nil
+}
+
+func (m *mqlVllmModel) permissions() ([]any, error) {
+	return modelPermissionResources(m.MqlRuntime, m.Id.Data, m.permissionCards)
+}
+
+// modelCreatedTime converts a vLLM model card's Unix creation timestamp into a
+// time pointer, returning nil when the server did not report one (a zero value)
+// so the field resolves to null instead of the Unix epoch.
+func modelCreatedTime(unix int64) *time.Time {
+	if unix <= 0 {
+		return nil
+	}
+	t := time.Unix(unix, 0)
+	return &t
 }
 
 func (r *mqlVllmModel) id() (string, error) {
@@ -164,13 +192,17 @@ func (s *mqlVllmServer) version() (string, error) {
 	return version, nil
 }
 
+// docsExposed answers across every interactive documentation route, not just
+// /docs. A proxy that blocks /docs and forwards /redoc publishes the same API
+// surface, and reading /docs alone reported that server as not exposed.
 func (s *mqlVllmServer) docsExposed() (bool, error) {
-	accessible, known, err := endpointAnonymousAccessibleKnown(s.MqlRuntime, http.MethodGet, "/docs")
+	observations, err := allEndpointObservations(s.MqlRuntime)
 	if err != nil {
 		return false, err
 	}
+	accessible, known := connection.AnyAnonymousAccessible(observations, connection.DocumentationPaths...)
 	if !known {
-		s.DocsExposed.State = plugin.StateIsSet | plugin.StateIsNull
+		return nullBool(&s.DocsExposed)
 	}
 	return accessible, nil
 }
@@ -275,6 +307,70 @@ func (s *mqlVllmServer) usesTls() (bool, error) {
 	return conn.UsesTLS(), nil
 }
 
+func (s *mqlVllmServer) anonymousInferenceAllowed() (bool, error) {
+	observations, err := allEndpointObservations(s.MqlRuntime)
+	if err != nil {
+		return false, err
+	}
+	allowed, known := connection.AnyAnonymousAccessible(observations, connection.AnonymousInferencePaths...)
+	if !known {
+		return nullBool(&s.AnonymousInferenceAllowed)
+	}
+	return allowed, nil
+}
+
+func (s *mqlVllmServer) apiKeyRequired() (bool, error) {
+	observations, err := allEndpointObservations(s.MqlRuntime)
+	if err != nil {
+		return false, err
+	}
+	required, known := connection.AnyRequiresAuth(observations, connection.AnonymousInferencePaths...)
+	if !known {
+		return nullBool(&s.ApiKeyRequired)
+	}
+	return required, nil
+}
+
+func (s *mqlVllmServer) runtimeLoraUpdatingEnabled() (bool, error) {
+	observations, err := allEndpointObservations(s.MqlRuntime)
+	if err != nil {
+		return false, err
+	}
+	present, known := connection.AnyRoutePresent(observations, connection.LoRAAdapterPaths...)
+	if !known {
+		return nullBool(&s.RuntimeLoraUpdatingEnabled)
+	}
+	return present, nil
+}
+
+// weightUpdateRoutesExposed reports whether a stranger can reach a route that
+// replaces the served weights. The routes are state-changing, so presence is
+// read from a rejected-method answer: a 405 means the request passed whatever
+// authentication layer exists and reached the router, which is the exposure.
+func (s *mqlVllmServer) weightUpdateRoutesExposed() (bool, error) {
+	observations, err := allEndpointObservations(s.MqlRuntime)
+	if err != nil {
+		return false, err
+	}
+	accessible, known := connection.AnyAnonymousAccessible(observations, connection.WeightUpdatePaths...)
+	if !known {
+		return nullBool(&s.WeightUpdateRoutesExposed)
+	}
+	return accessible, nil
+}
+
+func (s *mqlVllmServer) storedResponsesExposed() (bool, error) {
+	conn, err := vllmConnection(s.MqlRuntime)
+	if err != nil {
+		return false, err
+	}
+	obs, err := conn.StoredResponses(context.Background())
+	if err != nil || !obs.Known {
+		return nullBool(&s.StoredResponsesExposed)
+	}
+	return obs.Readable, nil
+}
+
 func initVllmEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if _, ok := args["path"]; !ok {
 		return nil, nil, errors.New("vllm.endpoint requires path")
@@ -283,7 +379,12 @@ func initVllmEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (ma
 		args["method"] = llx.StringData(http.MethodGet)
 	}
 	if method, ok := args["method"]; ok {
-		args["method"] = llx.StringData(strings.ToUpper(method.Value.(string)))
+		raw, isString := method.Value.(string)
+		if !isString || raw == "" {
+			args["method"] = llx.StringData(http.MethodGet)
+		} else {
+			args["method"] = llx.StringData(strings.ToUpper(raw))
+		}
 	}
 	return args, nil, nil
 }
@@ -428,6 +529,54 @@ func (m *mqlVllmMetrics) loadTrackingVisible() (bool, error) {
 	return accessible, nil
 }
 
+func (m *mqlVllmMetrics) exposedModelNames() ([]any, error) {
+	snapshot := metricsSnapshot(m.MqlRuntime)
+	if snapshot == nil || !snapshot.Fetched {
+		return stringListField(&m.ExposedModelNames, nil)
+	}
+	return stringListField(&m.ExposedModelNames, snapshot.ModelNames)
+}
+
+func (m *mqlVllmMetrics) exposedLoraAdapters() ([]any, error) {
+	snapshot := metricsSnapshot(m.MqlRuntime)
+	if snapshot == nil || !snapshot.Fetched {
+		return stringListField(&m.ExposedLoraAdapters, nil)
+	}
+	return stringListField(&m.ExposedLoraAdapters, snapshot.LoraAdapters)
+}
+
+func (m *mqlVllmMetrics) cacheConfigExposed() (bool, error) {
+	snapshot := metricsSnapshot(m.MqlRuntime)
+	if snapshot == nil || !snapshot.Fetched {
+		return nullBool(&m.CacheConfigExposed)
+	}
+	return snapshot.CacheConfigExposed, nil
+}
+
+func (m *mqlVllmMetrics) exposedCacheConfig() (map[string]any, error) {
+	snapshot := metricsSnapshot(m.MqlRuntime)
+	if snapshot == nil || !snapshot.Fetched {
+		return stringMapField(&m.ExposedCacheConfig, nil)
+	}
+	return stringMapField(&m.ExposedCacheConfig, snapshot.CacheConfig)
+}
+
+// metricsSnapshot reads the anonymous Prometheus scrape, or nil when the
+// endpoint could not be scraped. A failed scrape means the labels were never
+// observed, so callers render null rather than an empty list that would read
+// as "nothing is disclosed".
+func metricsSnapshot(runtime *plugin.Runtime) *connection.MetricsSnapshot {
+	conn, err := vllmConnection(runtime)
+	if err != nil {
+		return nil
+	}
+	snapshot, err := conn.MetricsSnapshot(context.Background())
+	if err != nil {
+		return nil
+	}
+	return snapshot
+}
+
 func vllmConnection(runtime *plugin.Runtime) (*connection.VllmConnection, error) {
 	conn, ok := runtime.Connection.(*connection.VllmConnection)
 	if !ok {
@@ -446,29 +595,20 @@ func endpointAnonymousAccessibleKnown(runtime *plugin.Runtime, method string, pa
 }
 
 func categoryAnonymousAccessibleKnown(runtime *plugin.Runtime, category string) (bool, bool, error) {
+	observations, err := allEndpointObservations(runtime)
+	if err != nil {
+		return false, false, err
+	}
+	accessible, known := connection.CategoryAnonymousAccessible(observations, category)
+	return accessible, known, nil
+}
+
+func allEndpointObservations(runtime *plugin.Runtime) ([]connection.EndpointObservation, error) {
 	conn, err := vllmConnection(runtime)
 	if err != nil {
-		return false, false, err
+		return nil, err
 	}
-	observations, err := conn.EndpointObservations(context.Background())
-	if err != nil {
-		return false, false, err
-	}
-	knownCount := 0
-	for _, obs := range observations {
-		if obs.Spec.Category != category {
-			continue
-		}
-		accessible, known := connection.ObservationAnonymousAccessible(obs)
-		if !known {
-			continue
-		}
-		knownCount++
-		if accessible {
-			return true, true, nil
-		}
-	}
-	return false, knownCount > 0, nil
+	return conn.EndpointObservations(context.Background())
 }
 
 func endpointObservation(runtime *plugin.Runtime, method string, path string) (connection.EndpointObservation, error) {

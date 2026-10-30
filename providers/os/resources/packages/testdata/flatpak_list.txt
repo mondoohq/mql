@@ -1,5 +1,1 @@
-com.spotify.Client	1.2.31.564	flathub	x86_64
-org.mozilla.firefox	131.0	flathub	x86_64
-org.gimp.GIMP	2.10.38	flathub	x86_64
-org.libreoffice.LibreOffice	24.8.2	flathub	x86_64
-com.visualstudio.code	1.94.0	flathub	x86_64
+org.mozilla.firefox	154.0.1	stable	aarch64	flathub	c84b98e041e5	system

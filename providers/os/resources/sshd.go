@@ -8,18 +8,22 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
 
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/sshd"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/sshd"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlSshdConfigInternal struct {
@@ -53,7 +57,30 @@ func initSshdConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 
 const defaultSshdConfig = "/etc/ssh/sshd_config"
 
+// On Windows, OpenSSH Server reads %ProgramData%\ssh\sshd_config and
+// resolves relative Include paths against %ProgramData%\ssh. Win32-OpenSSH
+// compiles SSHDIR as "__PROGRAMDATA__\\ssh" and substitutes the token with
+// the ProgramData folder at runtime, so the same token may also appear as a
+// path prefix inside the configuration itself.
+// https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh-server-configuration
+const (
+	windowsProgramData            = `C:\ProgramData`
+	windowsSshdDir                = windowsProgramData + `\ssh`
+	windowsDefaultSshdConfig      = windowsSshdDir + `\sshd_config`
+	windowsProgramDataPlaceholder = "__PROGRAMDATA__"
+)
+
 const sshdEffectiveConfigCommand = "sshd -T"
+
+// defaultSshdPidFile is where sshd writes its pid unless PidFile says
+// otherwise.
+const defaultSshdPidFile = "/var/run/sshd.pid"
+
+var sshdPidRegex = regexp.MustCompile(`^[0-9]+$`)
+
+// Solaris and illumos install sshd in /usr/lib/ssh, which is on no user's
+// PATH, not even root's.
+const solarisSshdEffectiveConfigCommand = "/usr/lib/ssh/sshd -T"
 
 func (s *mqlSshdConfig) id() (string, error) {
 	file := s.GetFile()
@@ -64,9 +91,36 @@ func (s *mqlSshdConfig) id() (string, error) {
 	return file.Data.Path.Data, nil
 }
 
+// isWindows reports whether the connected asset is a Windows system, where
+// sshd uses a different configuration directory and commands run under cmd.exe
+// (WinRM) or PowerShell (local) rather than a POSIX shell.
+func (s *mqlSshdConfig) isWindows() bool {
+	conn, ok := s.MqlRuntime.Connection.(shared.Connection)
+	if !ok || conn.Asset() == nil || conn.Asset().Platform == nil {
+		return false
+	}
+	return conn.Asset().Platform.IsFamily(inventory.FAMILY_WINDOWS)
+}
+
+func (s *mqlSshdConfig) isSolaris() bool {
+	conn, ok := s.MqlRuntime.Connection.(shared.Connection)
+	if !ok || conn.Asset() == nil || conn.Asset().Platform == nil {
+		return false
+	}
+	return conn.Asset().Platform.Name == "solaris"
+}
+
 func (s *mqlSshdConfig) file() (*mqlFile, error) {
+	path := defaultSshdConfig
+	if s.isWindows() {
+		path = windowsDefaultSshdConfig
+	} else if conn, ok := s.MqlRuntime.Connection.(shared.Connection); ok {
+		// Vendor defaults such as /usr/etc/ssh exist only on Linux.
+		path = resolveVendorConfigPath(conn.FileSystem(), defaultSshdConfig)
+	}
+
 	f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(defaultSshdConfig),
+		"path": llx.StringData(path),
 	})
 	if err != nil {
 		return nil, err
@@ -111,6 +165,93 @@ func matchBlocks2Resources(m sshd.MatchBlocks, runtime *plugin.Runtime, ownerID 
 var reGlob = regexp.MustCompile(`.*\*.*`)
 
 func (s *mqlSshdConfig) expandGlob(glob string) ([]string, error) {
+	conn := s.MqlRuntime.Connection.(shared.Connection)
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+	if s.isWindows() {
+		return expandWindowsSshdGlob(afs, glob)
+	}
+	return expandSshdGlob(afs, glob)
+}
+
+// expandWindowsSshdGlob expands an sshd_config Include pattern the way
+// Win32-OpenSSH does. A pattern is absolute when it starts with a slash, a
+// backslash, a drive letter, or the __PROGRAMDATA__ token; anything else is
+// resolved from %ProgramData%\ssh. Win32-OpenSSH converts the pattern to
+// forward slashes before globbing, so both separators are accepted here.
+// The returned paths use backslashes.
+func expandWindowsSshdGlob(afs *afero.Afero, glob string) ([]string, error) {
+	if len(glob) >= len(windowsProgramDataPlaceholder) && strings.EqualFold(glob[:len(windowsProgramDataPlaceholder)], windowsProgramDataPlaceholder) {
+		glob = windowsProgramData + glob[len(windowsProgramDataPlaceholder):]
+	}
+	glob = strings.ReplaceAll(glob, `\`, "/")
+	if !isWindowsAbsPath(glob) {
+		glob = strings.ReplaceAll(windowsSshdDir, `\`, "/") + "/" + glob
+	}
+
+	var paths []string
+	if !reGlob.MatchString(glob) {
+		paths = []string{glob}
+	} else {
+		segments := strings.Split(glob, "/")
+		// The first segment is the root: a drive ("C:") or empty for a
+		// root-relative path ("/foo").
+		paths = []string{segments[0] + "/"}
+		for _, segment := range segments[1:] {
+			if segment == "" {
+				continue
+			}
+			if !reGlob.MatchString(segment) {
+				for i := range paths {
+					paths[i] = pathpkg.Join(paths[i], segment)
+				}
+				continue
+			}
+
+			var nuPaths []string
+			for _, dir := range paths {
+				files, err := afs.ReadDir(dir)
+				if err != nil {
+					if os.IsNotExist(err) {
+						continue
+					}
+					return nil, err
+				}
+				for _, file := range files {
+					name := file.Name()
+					// Win32-OpenSSH uses the OpenBSD glob, which compares
+					// names case-sensitively even on NTFS.
+					match, err := filepath.Match(segment, name)
+					if err != nil {
+						return nil, err
+					}
+					if match {
+						nuPaths = append(nuPaths, pathpkg.Join(dir, name))
+					}
+				}
+			}
+			paths = nuPaths
+		}
+	}
+
+	for i := range paths {
+		paths[i] = strings.ReplaceAll(paths[i], "/", `\`)
+	}
+	return paths, nil
+}
+
+// isWindowsAbsPath mirrors Win32-OpenSSH's is_absolute_path for a pattern
+// already converted to forward slashes: "/abc" or "c:/abc".
+func isWindowsAbsPath(p string) bool {
+	if strings.HasPrefix(p, "/") {
+		return true
+	}
+	return len(p) >= 2 && p[1] == ':' && ((p[0] >= 'a' && p[0] <= 'z') || (p[0] >= 'A' && p[0] <= 'Z'))
+}
+
+// expandSshdGlob expands an sshd_config Include glob against afs. Relative
+// patterns are resolved from /etc/ssh, matching sshd_config(5):
+// https://man7.org/linux/man-pages/man5/sshd_config.5.html
+func expandSshdGlob(afs *afero.Afero, glob string) ([]string, error) {
 	if !reGlob.MatchString(glob) {
 		if !filepath.IsAbs(glob) {
 			glob = filepath.Join("/etc/ssh", glob)
@@ -121,17 +262,21 @@ func (s *mqlSshdConfig) expandGlob(glob string) ([]string, error) {
 	var paths []string
 	segments := strings.Split(glob, "/")
 	if segments[0] == "" {
+		// Absolute pattern: the leading segment is the empty string before the
+		// root "/", so start at root and consume the remaining segments.
 		paths = []string{"/"}
+		segments = segments[1:]
 	} else {
-		// https://man7.org/linux/man-pages/man5/sshd_config.5.html
-		// Relative files are always expanded from `/ssh`
+		// Relative pattern: sshd expands it from /etc/ssh. Every segment is a
+		// real path component here, so all of them must be consumed below.
 		paths = []string{"/etc/ssh"}
 	}
 
-	conn := s.MqlRuntime.Connection.(shared.Connection)
-	afs := &afero.Afero{Fs: conn.FileSystem()}
+	for _, segment := range segments {
+		if segment == "" {
+			continue
+		}
 
-	for _, segment := range segments[1:] {
 		if !reGlob.MatchString(segment) {
 			for i := range paths {
 				paths[i] = filepath.Join(paths[i], segment)
@@ -195,7 +340,7 @@ func (s *mqlSshdConfig) parse(file *mqlFile) error {
 
 		fileContent, err := fileRequiredContent(file)
 		if err != nil {
-			return "", err
+			return "", sshdIncludeReadError(path, err)
 		}
 
 		return fileContent + "\n", nil
@@ -203,7 +348,11 @@ func (s *mqlSshdConfig) parse(file *mqlFile) error {
 
 	// Function to expand glob patterns
 	globExpand := func(glob string) ([]string, error) {
-		return s.expandGlob(glob)
+		paths, err := s.expandGlob(glob)
+		if err != nil {
+			return nil, sshdIncludeReadError(glob, err)
+		}
+		return paths, nil
 	}
 
 	matchBlocks, err := sshd.ParseBlocksWithGlob(file.Path.Data, fileContent, globExpand)
@@ -232,6 +381,25 @@ func (s *mqlSshdConfig) parse(file *mqlFile) error {
 	}
 
 	return err
+}
+
+// sshdIncludeReadError classifies a configuration file or Include directory
+// that cannot be read for lack of permission as forbidden, which the parser
+// returns instead of skipping the include. Debian 11 and later include
+// /etc/ssh/sshd_config.d/*.conf, where a 0600 drop-in is unreadable to a
+// non-root scan. v13 skipped such an include and reported the rest of the
+// configuration as if it were complete.
+// The path is added unless the error is a *fs.PathError for it already; an
+// SSH transfer's "permission denied" names no file.
+func sshdIncludeReadError(path string, err error) error {
+	if !errors.Is(err, os.ErrPermission) || !plugin.StructuredErrors() {
+		return err
+	}
+	var pathErr *fs.PathError
+	if !errors.As(err, &pathErr) || pathErr.Path != path {
+		err = fmt.Errorf("%s: %w", path, err)
+	}
+	return llx.Forbidden(err)
 }
 
 func (s *mqlSshdConfig) files(file *mqlFile) ([]any, error) {
@@ -321,6 +489,13 @@ func (s *mqlSshdConfig) effectiveParams() (map[string]string, error) {
 
 	conn, ok := s.MqlRuntime.Connection.(shared.Connection)
 	if !ok || !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		// The effective settings are what `sshd -T` answers, which an image
+		// or a mounted disk cannot run. An empty list read as "sshd accepts
+		// no ciphers", and a check against weak ciphers passed on it.
+		if plugin.StructuredErrors() {
+			s.effectiveParamsErr = llx.NotApplicable(errors.New("the effective sshd configuration needs a running system, and this connection cannot run commands"))
+			return nil, s.effectiveParamsErr
+		}
 		s.effectiveParamsCache = map[string]string{}
 		return s.effectiveParamsCache, nil
 	}
@@ -331,26 +506,169 @@ func (s *mqlSshdConfig) effectiveParams() (map[string]string, error) {
 		return nil, err
 	}
 
+	params, err := runEffectiveSshdConfig(conn, command)
+	if err != nil {
+		s.effectiveParamsErr = err
+		return nil, err
+	}
+
+	// Options on the running daemon's command line override sshd_config.
+	// RHEL 8 passes the system crypto policy that way, so ask sshd -T again
+	// with the same options to report what the daemon accepts.
+	if opts := s.daemonOptions(conn, params); len(opts) > 0 {
+		params, err = runEffectiveSshdConfig(conn, sshdCommandWithOptions(command, opts))
+		if err != nil {
+			s.effectiveParamsErr = err
+			return nil, err
+		}
+	}
+
+	s.effectiveParamsCache = params
+	return s.effectiveParamsCache, nil
+}
+
+// sshdCommandWithOptions appends each option as a shell-quoted -o argument.
+func sshdCommandWithOptions(command string, opts []string) string {
+	var sb strings.Builder
+	sb.WriteString(command)
+	for _, opt := range opts {
+		sb.WriteString(" -o ")
+		sb.WriteString(shared.ShellEscape(opt))
+	}
+	return sb.String()
+}
+
+// sshdTestConnectionSpec is the connection passed to sshd -T -C when sshd
+// refuses to run -T without one. The effective* fields only report
+// Ciphers, MACs and KexAlgorithms, which a Match block cannot set, so the
+// connection chosen here does not change any reported value.
+const sshdTestConnectionSpec = "user=root,host=localhost,addr=127.0.0.1,laddr=127.0.0.1,lport=22"
+
+// needsSshdConnectionSpec reports whether sshd -T failed only because the
+// configuration has a Match block and no -C connection was given. OpenSSH
+// 7.9 (Debian 10) exits 255 with, for example:
+//
+//	'Match User' in configuration but 'user' not in connection test specification.
+//
+// Other releases run -T without a connection and skip such Match blocks.
+func needsSshdConnectionSpec(stderr string) bool {
+	return strings.Contains(stderr, "not in connection test specification")
+}
+
+func runEffectiveSshdConfig(conn shared.Connection, command string) (map[string]string, error) {
+	stdout, stderr, exit, err := runSshdCommand(conn, command)
+	if err != nil {
+		return nil, err
+	}
+	if exit != 0 && needsSshdConnectionSpec(stderr) {
+		command += " -C " + sshdTestConnectionSpec
+		stdout, stderr, exit, err = runSshdCommand(conn, command)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if exit != 0 {
+		return nil, fmt.Errorf("%s failed (exit %d): %s", command, exit, strings.TrimSpace(stderr))
+	}
+	params := parseEffectiveSshdConfig(stdout)
+	if len(params) == 0 {
+		// A working sshd -T always prints the full configuration, so empty
+		// output means sshd did not run. On Windows 10 22H2 the inbox
+		// sshd.exe fails to load (STATUS_ENTRYPOINT_NOT_FOUND) and cmd.exe
+		// still reports exit 0 with no output. Returning an empty map here
+		// would report no ciphers, MACs or key exchanges at all.
+		if msg := strings.TrimSpace(stderr); msg != "" {
+			return nil, fmt.Errorf("%s printed no configuration: %s", command, msg)
+		}
+		return nil, fmt.Errorf("%s printed no configuration", command)
+	}
+	return params, nil
+}
+
+func runSshdCommand(conn shared.Connection, command string) (string, string, int, error) {
 	cmd, err := conn.RunCommand(command)
 	if err != nil {
-		s.effectiveParamsErr = err
-		return nil, err
+		return "", "", 0, err
+	}
+	var stderr []byte
+	if cmd.Stderr != nil {
+		stderr, _ = io.ReadAll(cmd.Stderr)
 	}
 	if cmd.ExitStatus != 0 {
-		stderr, _ := io.ReadAll(cmd.Stderr)
-		err := fmt.Errorf("%s failed (exit %d): %s", command, cmd.ExitStatus, strings.TrimSpace(string(stderr)))
-		s.effectiveParamsErr = err
-		return nil, err
+		return "", string(stderr), cmd.ExitStatus, nil
 	}
-
 	stdout, err := io.ReadAll(cmd.Stdout)
 	if err != nil {
-		s.effectiveParamsErr = err
-		return nil, err
+		return "", "", 0, err
+	}
+	return string(stdout), string(stderr), 0, nil
+}
+
+// daemonOptions returns the -o options of the running sshd when it reads the
+// configuration file this resource describes. It finds the daemon through
+// the PidFile sshd -T reported and reads its command line from /proc, so it
+// only applies to Linux. No running daemon, or one that cannot be read,
+// leaves the sshd_config view as it is.
+func (s *mqlSshdConfig) daemonOptions(conn shared.Connection, params map[string]string) []string {
+	if s.isWindows() || s.isSolaris() {
+		return nil
+	}
+	asset := conn.Asset()
+	if asset == nil || asset.Platform == nil || !asset.Platform.IsFamily(inventory.FAMILY_LINUX) {
+		return nil
 	}
 
-	s.effectiveParamsCache = parseEffectiveSshdConfig(string(stdout))
-	return s.effectiveParamsCache, nil
+	configPath := defaultSshdConfig
+	if file := s.GetFile(); file.Error == nil && file.Data != nil && file.Data.Path.Data != "" {
+		configPath = file.Data.Path.Data
+	}
+
+	pidFile := params["pidfile"]
+	if pidFile == "" {
+		pidFile = defaultSshdPidFile
+	}
+	if strings.EqualFold(pidFile, "none") {
+		return nil
+	}
+
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+	rawPid, err := afs.ReadFile(pidFile)
+	if err != nil {
+		log.Debug().Err(err).Str("pidfile", pidFile).Msg("sshd> cannot read the running daemon's pid file")
+		return nil
+	}
+	pid := strings.TrimSpace(string(rawPid))
+	if !sshdPidRegex.MatchString(pid) {
+		return nil
+	}
+
+	// read through a command: /proc files report a size of 0 and some
+	// file transfer backends cannot stat them
+	cmd, err := conn.RunCommand("cat /proc/" + pid + "/cmdline")
+	if err != nil {
+		log.Debug().Err(err).Str("pid", pid).Msg("sshd> cannot read the running daemon's command line")
+		return nil
+	}
+	if cmd.ExitStatus != 0 {
+		return nil
+	}
+	cmdline, err := io.ReadAll(cmd.Stdout)
+	if err != nil {
+		log.Debug().Err(err).Str("pid", pid).Msg("sshd> cannot read the running daemon's command line")
+		return nil
+	}
+	daemon, ok := sshd.ParseDaemonCommandLine(cmdline)
+	if !ok {
+		return nil
+	}
+	daemonConfig := daemon.ConfigFile
+	if daemonConfig == "" {
+		daemonConfig = defaultSshdConfig
+	}
+	if pathpkg.Clean(daemonConfig) != pathpkg.Clean(configPath) {
+		return nil
+	}
+	return daemon.Options
 }
 
 func (s *mqlSshdConfig) effectiveConfigCommand() (string, error) {
@@ -358,10 +676,34 @@ func (s *mqlSshdConfig) effectiveConfigCommand() (string, error) {
 	if file.Error != nil {
 		return "", file.Error
 	}
-	if file.Data == nil || file.Data.Path.Data == "" || file.Data.Path.Data == defaultSshdConfig {
-		return sshdEffectiveConfigCommand, nil
+	command := sshdEffectiveConfigCommand
+	if s.isSolaris() {
+		command = solarisSshdEffectiveConfigCommand
 	}
-	return sshdEffectiveConfigCommand + " -f " + shared.ShellEscape(file.Data.Path.Data), nil
+	if file.Data == nil || file.Data.Path.Data == "" {
+		return command, nil
+	}
+	path := file.Data.Path.Data
+	if s.isWindows() {
+		// sshd.exe defaults to %ProgramData%\ssh\sshd_config, the same file
+		// this resource reads, so -f is only needed for a custom path.
+		// WinRM runs commands under cmd.exe and a local scan under
+		// PowerShell. Both strip double quotes, cmd.exe does not strip single
+		// quotes, and a Windows path cannot contain a double quote.
+		if strings.EqualFold(path, windowsDefaultSshdConfig) {
+			return command, nil
+		}
+		// Inside double quotes cmd.exe still expands %VAR% and PowerShell
+		// expands $var, $(...) and backtick escapes; & | < > stay literal.
+		if strings.ContainsAny(path, "\"%$`") {
+			return "", fmt.Errorf("cannot run sshd -T for %q: the path contains a character the Windows shell would expand", path)
+		}
+		return command + ` -f "` + path + `"`, nil
+	}
+	if path == defaultSshdConfig {
+		return command, nil
+	}
+	return command + " -f " + shared.ShellEscape(path), nil
 }
 
 func effectiveConfigEntrySlice(params map[string]string, key string) ([]any, error) {

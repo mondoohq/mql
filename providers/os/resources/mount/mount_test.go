@@ -10,9 +10,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
-	"go.mondoo.com/mql/v13/providers/os/resources/mount"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/resources/mount"
 )
 
 func TestMountLinuxParser(t *testing.T) {
@@ -52,8 +52,12 @@ func TestMountMacosParser(t *testing.T) {
 	require.NoError(t, err)
 
 	entries := mount.ParseUnixMountCmd(f.Stdout)
-	// NOTE: we do not handle `map auto_home` yet
-	assert.Equal(t, 4, len(entries))
+	assert.Equal(t, 5, len(entries))
+
+	home := findMountpoint(entries, "/System/Volumes/Data/home")
+	require.NotNil(t, home)
+	assert.Equal(t, "map auto_home", home.Device)
+	assert.Equal(t, "autofs", home.FSType)
 
 	expected := &mount.MountPoint{
 		Device:     "/dev/disk1s5",
@@ -189,4 +193,83 @@ func TestFstab(t *testing.T) {
 	}
 
 	assert.Equal(t, expected, entries)
+}
+
+// Captured from `mount -v` on Oracle Solaris 11.4.86 with a nosuid,noexec
+// tmpfs on /mnt/tmp and a read-only lofs on /mnt/ro.
+func TestMountSolarisParser(t *testing.T) {
+	mock, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "solaris", Family: []string{"unix"}},
+	}, mock.WithPath("./testdata/solaris114.toml"))
+	require.NoError(t, err)
+
+	f, err := mock.RunCommand("mount -v")
+	require.NoError(t, err)
+
+	entries := mount.ParseSolarisMountCmd(f.Stdout)
+	require.Equal(t, 30, len(entries))
+
+	root := findMountpoint(entries, "/")
+	require.NotNil(t, root)
+	assert.Equal(t, "rpool/ROOT/11.4.86.201.2", root.Device)
+	assert.Equal(t, "zfs", root.FSType)
+	assert.Equal(t, map[string]string{
+		"rw": "", "setuid": "", "devices": "", "rstchown": "", "dev": "3610002",
+	}, root.Options)
+
+	tmp := findMountpoint(entries, "/mnt/tmp")
+	require.NotNil(t, tmp)
+	assert.Equal(t, "swap", tmp.Device)
+	assert.Equal(t, "tmpfs", tmp.FSType)
+	assert.Contains(t, tmp.Options, "nosetuid")
+	assert.Contains(t, tmp.Options, "noexec")
+	assert.Contains(t, tmp.Options, "nodevices")
+	assert.Equal(t, "10m", tmp.Options["size"])
+
+	ro := findMountpoint(entries, "/mnt/ro")
+	require.NotNil(t, ro)
+	assert.Equal(t, "lofs", ro.FSType)
+	assert.Contains(t, ro.Options, "ro")
+	assert.NotContains(t, ro.Options, "rw")
+	assert.NotContains(t, ro.Options, "read-only")
+
+	// the epoch-dated root and the dated rest both parse
+	assert.NotNil(t, findMountpoint(entries, "/var/share"))
+}
+
+// testdata/aix73.toml is `mount` on AIX 7.3 TL4 with a JFS2 filesystem on a
+// second volume group and an NFS export mounted over loopback.
+func TestMountAixParser(t *testing.T) {
+	mock, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "aix", Family: []string{"unix", "os"}},
+	}, mock.WithPath("./testdata/aix73.toml"))
+	require.NoError(t, err)
+
+	f, err := mock.RunCommand("mount")
+	require.NoError(t, err)
+
+	entries := mount.ParseAixMountCmd(f.Stdout)
+	require.Equal(t, 14, len(entries))
+
+	root := findMountpoint(entries, "/")
+	require.NotNil(t, root)
+	assert.Equal(t, "/dev/hd4", root.Device)
+	assert.Equal(t, "jfs2", root.FSType)
+	assert.Equal(t, map[string]string{"rw": "", "log": "/dev/hd8"}, root.Options)
+
+	// a mount point long enough to push the later columns out of alignment
+	livedump := findMountpoint(entries, "/var/adm/ras/livedump")
+	require.NotNil(t, livedump)
+	assert.Equal(t, "/dev/livedump", livedump.Device)
+	assert.Equal(t, "jfs2", livedump.FSType)
+
+	nfs := findMountpoint(entries, "/mnt/nfsmql")
+	require.NotNil(t, nfs)
+	assert.Equal(t, "localhost:/export/mqlro", nfs.Device)
+	assert.Equal(t, "nfs3", nfs.FSType)
+	assert.Equal(t, map[string]string{"ro": "", "soft": ""}, nfs.Options)
+
+	procfs := findMountpoint(entries, "/proc")
+	require.NotNil(t, procfs)
+	assert.Equal(t, "procfs", procfs.FSType)
 }

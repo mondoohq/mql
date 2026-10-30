@@ -12,6 +12,9 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// Compiled once: applied to every value the crawler classifies.
+var sshKeyPattern = regexp.MustCompile(`(?:^|[:\s])(?:ssh-(?:rsa|dss|ed25519)|ecdsa-sha2-nistp(?:256|384|521)|ssh-ecdsa)\s+[A-Za-z0-9+/=]`)
+
 const maxDepth = 50
 
 // recursive is the interface passed to `Crawl` to fetch all metadata from an instance
@@ -187,8 +190,6 @@ func detectMultilineString(data string) bool {
 	if len(data) > 50 {
 		prefix = data[:50]
 	}
-
-	sshKeyPattern := regexp.MustCompile(`(?:^|[:\s])(?:ssh-(?:rsa|dss|ed25519)|ecdsa-sha2-nistp(?:256|384|521)|ssh-ecdsa)\s+[A-Za-z0-9+/=]`)
 
 	switch {
 	case strings.Contains(prefix, "#!/bin/bash"):

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/go-github/v88/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -76,7 +76,8 @@ func TestListRunnersRaw(t *testing.T) {
 	require.Len(t, got, 3)
 	assert.Len(t, hits, 2, "expected pagination to fetch 2 pages")
 
-	// ephemeral / architecture come from fields go-github v85 doesn't expose.
+	// architecture is read from the raw payload because go-github does not
+	// expose it on its Runner struct.
 	require.NotNil(t, got[0].Ephemeral)
 	assert.True(t, *got[0].Ephemeral)
 	require.NotNil(t, got[0].Architecture)

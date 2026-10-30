@@ -1,0 +1,5 @@
+Active Internet connections (including servers)
+PCB/ADDR         Proto Recv-Q Send-Q  Local Address      Foreign Address    (state)
+f1000e00003b3bb8 tcp4       0      0  *.22               *.*                LISTEN
+f1000e00003b4bb8 tcp4       0      0  10.10.20.15.22     10.10.30.9.51544   ESTABLISHED
+f1000e00003b5bb8 udp4       0      0  *.123              *.*

@@ -59,8 +59,8 @@ var defaultOpts = profilerOpts{
 func parseProf(profVal string) (profilerOpts, error) {
 	opts := defaultOpts
 
-	sOpts := strings.Split(profVal, ",")
-	for _, sOpt := range sOpts {
+	sOpts := strings.SplitSeq(profVal, ",")
+	for sOpt := range sOpts {
 		keyval := strings.SplitN(sOpt, "=", 2)
 		key := ""
 		val := ""

@@ -1,0 +1,22 @@
+[
+ {
+  "accept-proto-version": "all",
+  "accept-pseudowire-type": "all",
+  "allow-fast-path": "false",
+  "authentication": "pap,chap,mschap1,mschap2",
+  "caller-id-type": "ip-address",
+  "default-profile": "default-encryption",
+  "enabled": "true",
+  "ipsec-secret": "",
+  "keepalive-timeout": "30",
+  "l2tpv3-circuit-id": "",
+  "l2tpv3-cookie-length": "0",
+  "l2tpv3-digest-hash": "md5",
+  "max-mru": "1450",
+  "max-mtu": "1450",
+  "max-sessions": "unlimited",
+  "mrru": "disabled",
+  "one-session-per-host": "false",
+  "use-ipsec": "no"
+ }
+]

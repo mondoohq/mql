@@ -1,0 +1,3 @@
+/tmp$ d OwnerMode+X
+!/tmp/\\.(ICE|Test|X11|XIM|font)-unix$ d
+

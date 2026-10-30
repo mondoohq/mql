@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/deploymenttheory/go-api-sdk-jamfpro/sdk/jamfpro"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/jamf/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/jamf/connection"
 )
 
 // parseJamfTime parses a Jamf Pro API date string (ISO 8601 / RFC 3339).
@@ -45,7 +45,7 @@ var inventorySections = []string{
 // default while keeping per-request payload size manageable.
 const inventoryPageSize = 500
 
-func (r *mqlJamf) computerInventory() ([]interface{}, error) {
+func (r *mqlJamf) computerInventory() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.JamfConnection)
 	client := conn.Client
 
@@ -61,7 +61,7 @@ func (r *mqlJamf) computerInventory() ([]interface{}, error) {
 		return nil, err
 	}
 
-	res := make([]interface{}, 0, len(inventory.Results))
+	res := make([]any, 0, len(inventory.Results))
 	for _, c := range inventory.Results {
 		conn.CacheLocalUserAccounts(c.ID, c.LocalUserAccounts)
 
@@ -109,7 +109,7 @@ func (c *mqlJamfComputer) id() (string, error) {
 	return "jamf.computer/" + c.Id.Data, nil
 }
 
-func (c *mqlJamfComputer) localUserAccounts() ([]interface{}, error) {
+func (c *mqlJamfComputer) localUserAccounts() ([]any, error) {
 	conn := c.MqlRuntime.Connection.(*connection.JamfConnection)
 
 	if cached, ok := conn.GetCachedLocalUserAccounts(c.Id.Data); ok {
@@ -127,8 +127,8 @@ func (c *mqlJamfComputer) localUserAccounts() ([]interface{}, error) {
 	return createLocalUserAccountResources(c.MqlRuntime, c.Id.Data, inventory.LocalUserAccounts)
 }
 
-func createLocalUserAccountResources(runtime *plugin.Runtime, computerID string, accounts []jamfpro.ComputerInventorySubsetLocalUserAccount) ([]interface{}, error) {
-	var res []interface{}
+func createLocalUserAccountResources(runtime *plugin.Runtime, computerID string, accounts []jamfpro.ComputerInventorySubsetLocalUserAccount) ([]any, error) {
+	var res []any
 	for _, user := range accounts {
 		item, err := CreateResource(runtime, "jamf.localUserAccount", map[string]*llx.RawData{
 			"__id":                         llx.StringData("jamf.localUserAccount/" + computerID + "/" + user.UID + "/" + user.Username),

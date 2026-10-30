@@ -6,11 +6,14 @@ package plugin
 import (
 	"bytes"
 	"context"
+	"errors"
 	"runtime/debug"
+	"time"
 	"unicode/utf8"
 
 	plugin "github.com/hashicorp/go-plugin"
 	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"
@@ -32,8 +35,19 @@ type GRPCClient struct {
 	client ProviderPluginClient
 }
 
+// Heartbeat sends one beat to the provider. The requested interval doubles as
+// the call deadline: a beat that cannot be delivered within the window the
+// provider is holding us to is worthless, and blocking on it forever would stop
+// the beat stream entirely — which is precisely what makes the provider's
+// watchdog reap a healthy process.
 func (m *GRPCClient) Heartbeat(req *HeartbeatReq) (*HeartbeatRes, error) {
-	return m.client.Heartbeat(context.Background(), req)
+	if req.Interval == 0 {
+		return m.client.Heartbeat(context.Background(), req)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(req.Interval))
+	defer cancel()
+	return m.client.Heartbeat(ctx, req)
 }
 
 func (m *GRPCClient) ParseCLI(req *ParseCLIReq) (*ParseCLIRes, error) {
@@ -63,7 +77,8 @@ func (m *GRPCClient) connect(req *ConnectReq, callback ProviderCallback) {
 
 func (m *GRPCClient) Connect(req *ConnectReq, callback ProviderCallback) (*ConnectRes, error) {
 	m.connect(req, callback)
-	return m.client.Connect(context.Background(), req)
+	res, err := m.client.Connect(context.Background(), req)
+	return res, connectErrorFromStatus(err)
 }
 
 func (m *GRPCClient) Disconnect(req *DisconnectReq) (*DisconnectRes, error) {
@@ -72,7 +87,8 @@ func (m *GRPCClient) Disconnect(req *DisconnectReq) (*DisconnectRes, error) {
 
 func (m *GRPCClient) MockConnect(req *ConnectReq, callback ProviderCallback) (*ConnectRes, error) {
 	m.connect(req, callback)
-	return m.client.MockConnect(context.Background(), req)
+	res, err := m.client.MockConnect(context.Background(), req)
+	return res, connectErrorFromStatus(err)
 }
 
 func (m *GRPCClient) Shutdown(req *ShutdownReq) (*ShutdownRes, error) {
@@ -80,11 +96,27 @@ func (m *GRPCClient) Shutdown(req *ShutdownReq) (*ShutdownRes, error) {
 }
 
 func (m *GRPCClient) GetData(req *DataReq) (*DataRes, error) {
-	return m.client.GetData(context.Background(), req)
+	return m.GetDataContext(context.Background(), req)
+}
+
+func (m *GRPCClient) GetDataContext(ctx context.Context, req *DataReq) (*DataRes, error) {
+	return m.client.GetData(ctx, req)
 }
 
 func (m *GRPCClient) StoreData(req *StoreReq) (*StoreRes, error) {
-	return m.client.StoreData(context.Background(), req)
+	return m.StoreDataContext(context.Background(), req)
+}
+
+func (m *GRPCClient) StoreDataContext(ctx context.Context, req *StoreReq) (*StoreRes, error) {
+	return m.client.StoreData(ctx, req)
+}
+
+func (m *GRPCClient) Translations(req *TranslationsReq) (*TranslationsRes, error) {
+	return m.client.Translations(context.Background(), req)
+}
+
+func (m *GRPCClient) ResolveAsset(req *ResolveAssetReq) (*ResolveAssetRes, error) {
+	return m.client.ResolveAsset(context.Background(), req)
 }
 
 // recoverPanic converts a panic into a gRPC Internal error. The full stack
@@ -107,17 +139,49 @@ type GRPCServer struct {
 	UnimplementedProviderPluginServer
 }
 
+// requestTracker is implemented by every provider service that embeds
+// *plugin.Service. It lets us tell the heartbeat watchdog that the parent
+// process is alive because it is, right now, waiting on us.
+type requestTracker interface {
+	TrackRequest() func()
+}
+
+// trackRequest marks a request as in flight and returns the function that marks
+// it as done. Heartbeat and Shutdown are deliberately not tracked: the former is
+// the liveness signal itself, the latter means we are going away anyway.
+func (m *GRPCServer) trackRequest() func() {
+	if t, ok := m.Impl.(requestTracker); ok {
+		return t.TrackRequest()
+	}
+	return func() {}
+}
+
 func (m *GRPCServer) Heartbeat(ctx context.Context, req *HeartbeatReq) (*HeartbeatRes, error) {
 	return m.Impl.Heartbeat(req)
 }
 
+func (m *GRPCServer) Translations(ctx context.Context, req *TranslationsReq) (resp *TranslationsRes, err error) {
+	defer recoverPanic("Translations", &err)
+	defer m.trackRequest()()
+	return m.Impl.Translations(req)
+}
+
+func (m *GRPCServer) ResolveAsset(ctx context.Context, req *ResolveAssetReq) (resp *ResolveAssetRes, err error) {
+	defer recoverPanic("ResolveAsset", &err)
+	defer m.trackRequest()()
+	return m.Impl.ResolveAsset(req)
+}
+
 func (m *GRPCServer) ParseCLI(ctx context.Context, req *ParseCLIReq) (resp *ParseCLIRes, err error) {
+	defer m.trackRequest()()
 	defer recoverPanic("ParseCLI", &err)
 	return m.Impl.ParseCLI(req)
 }
 
 func (m *GRPCServer) Connect(ctx context.Context, req *ConnectReq) (resp *ConnectRes, err error) {
+	defer m.trackRequest()()
 	defer recoverPanic("Connect", &err)
+	ReadFeatures(req.Features)
 	conn, err := m.broker.Dial(req.CallbackServer)
 	if err != nil {
 		return nil, err
@@ -127,16 +191,26 @@ func (m *GRPCServer) Connect(ctx context.Context, req *ConnectReq) (resp *Connec
 	// when the plugin caller decides to kill the process.
 
 	a := &GRPCProviderCallbackClient{NewProviderCallbackClient(conn)}
-	return m.Impl.Connect(req, a)
+	res, err := m.Impl.Connect(req, a)
+	if err != nil {
+		// Normalize here rather than trusting every provider to wrap in a fixed
+		// order: this runs in the provider process, so errors.Is sees the
+		// sentinel the provider actually wrapped (ADR 045).
+		return nil, normalizeConnectError(err)
+	}
+	return res, nil
 }
 
 func (m *GRPCServer) Disconnect(ctx context.Context, req *DisconnectReq) (resp *DisconnectRes, err error) {
+	defer m.trackRequest()()
 	defer recoverPanic("Disconnect", &err)
 	return m.Impl.Disconnect(req)
 }
 
 func (m *GRPCServer) MockConnect(ctx context.Context, req *ConnectReq) (resp *ConnectRes, err error) {
+	defer m.trackRequest()()
 	defer recoverPanic("MockConnect", &err)
+	ReadFeatures(req.Features)
 	conn, err := m.broker.Dial(req.CallbackServer)
 	if err != nil {
 		return nil, err
@@ -146,7 +220,14 @@ func (m *GRPCServer) MockConnect(ctx context.Context, req *ConnectReq) (resp *Co
 	// when the plugin caller decides to kill the process.
 
 	a := &GRPCProviderCallbackClient{NewProviderCallbackClient(conn)}
-	return m.Impl.MockConnect(req, a)
+	res, err := m.Impl.MockConnect(req, a)
+	if err != nil {
+		// Normalize here rather than trusting every provider to wrap in a fixed
+		// order: this runs in the provider process, so errors.Is sees the
+		// sentinel the provider actually wrapped (ADR 045).
+		return nil, normalizeConnectError(err)
+	}
+	return res, nil
 }
 
 func (m *GRPCServer) Shutdown(ctx context.Context, req *ShutdownReq) (resp *ShutdownRes, err error) {
@@ -155,8 +236,9 @@ func (m *GRPCServer) Shutdown(ctx context.Context, req *ShutdownReq) (resp *Shut
 }
 
 func (m *GRPCServer) GetData(ctx context.Context, req *DataReq) (resp *DataRes, err error) {
+	defer m.trackRequest()()
 	defer recoverPanic("GetData", &err)
-	resp, err = m.Impl.GetData(req)
+	resp, err = GetDataContext(ctx, m.Impl, req)
 	if err != nil {
 		return nil, err
 	}
@@ -165,8 +247,9 @@ func (m *GRPCServer) GetData(ctx context.Context, req *DataReq) (resp *DataRes, 
 }
 
 func (m *GRPCServer) StoreData(ctx context.Context, req *StoreReq) (resp *StoreRes, err error) {
+	defer m.trackRequest()()
 	defer recoverPanic("StoreData", &err)
-	return m.Impl.StoreData(req)
+	return StoreDataContext(ctx, m.Impl, req)
 }
 
 // GRPCClient is an implementation of ProviderCallback that talks over RPC.
@@ -245,4 +328,17 @@ func sanitizeUtf8(s string) string {
 		i += size
 	}
 	return buf.String()
+}
+
+// normalizeConnectError puts a Connect outcome the caller has to recognize, a
+// no-match (ADR 045) or a classified failure (ADR 046), into its wire form, and
+// leaves every other error exactly as the provider wrote it.
+func normalizeConnectError(err error) error {
+	if errors.Is(err, ErrNoMatch) {
+		return NoMatchStatus(err)
+	}
+	if detail := llx.ErrorDetailOf(err); detail != nil {
+		return classifiedStatus(err, detail)
+	}
+	return err
 }

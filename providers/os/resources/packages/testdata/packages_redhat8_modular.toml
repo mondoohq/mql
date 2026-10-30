@@ -1,5 +1,5 @@
-[commands."command -v rpm"]
-stdout="/usr/bin/rpm"
+[commands."rpm --version"]
+stdout="RPM version 4.16.1.3"
 
 [commands."rpm -E '%{_dbpath}'"]
 stdout="/var/lib/rpm"

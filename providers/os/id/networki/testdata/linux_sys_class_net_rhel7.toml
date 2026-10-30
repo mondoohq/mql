@@ -1,0 +1,61 @@
+# /sys/class/net on a RHEL 7 host scanned as a non-root user, whose PATH lacks
+# /usr/sbin so `ip` isn't found and the sysfs walk answers. Values end in a
+# newline, as sysfs writes them. eth0 has promiscuous mode turned on (`ip link
+# set eth0 promisc on`), g01-int0 is an OVS internal port, also promiscuous,
+# and lo and g01-int0 report operstate "unknown".
+
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "3.10.0-1160.119.1.el7.x86_64"
+
+[files."/sys/class/net"]
+stat.isdir = true
+
+[files."/sys/class/net/lo"]
+stat.isdir = true
+[files."/sys/class/net/lo/address"]
+content = "00:00:00:00:00:00\n"
+[files."/sys/class/net/lo/operstate"]
+content = "unknown\n"
+[files."/sys/class/net/lo/mtu"]
+content = "65536\n"
+[files."/sys/class/net/lo/flags"]
+content = "0x9\n"
+
+[files."/sys/class/net/eth0"]
+stat.isdir = true
+[files."/sys/class/net/eth0/address"]
+content = "06:ff:f7:a1:08:59\n"
+[files."/sys/class/net/eth0/operstate"]
+content = "up\n"
+[files."/sys/class/net/eth0/mtu"]
+content = "9001\n"
+[files."/sys/class/net/eth0/flags"]
+content = "0x1103\n"
+
+[files."/sys/class/net/g01-int0"]
+stat.isdir = true
+[files."/sys/class/net/g01-int0/address"]
+content = "4e:af:42:a6:79:b0\n"
+[files."/sys/class/net/g01-int0/operstate"]
+content = "unknown\n"
+[files."/sys/class/net/g01-int0/mtu"]
+content = "1400\n"
+[files."/sys/class/net/g01-int0/flags"]
+content = "0x1103\n"
+
+[files."/sys/class/net/ovs-system"]
+stat.isdir = true
+[files."/sys/class/net/ovs-system/address"]
+content = "92:99:da:69:9f:3b\n"
+[files."/sys/class/net/ovs-system/operstate"]
+content = "down\n"
+[files."/sys/class/net/ovs-system/mtu"]
+content = "1500\n"
+[files."/sys/class/net/ovs-system/flags"]
+content = "0x1102\n"

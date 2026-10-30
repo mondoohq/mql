@@ -76,7 +76,7 @@ func DecodeSID(raw []byte) (string, error) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "S-%d-%d", revision, identifierAuthority)
 
-	for i := 0; i < subAuthorityCount; i++ {
+	for i := range subAuthorityCount {
 		offset := 8 + 4*i
 		subAuth := binary.LittleEndian.Uint32(raw[offset : offset+4])
 		fmt.Fprintf(&b, "-%d", subAuth)

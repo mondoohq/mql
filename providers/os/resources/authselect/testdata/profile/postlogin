@@ -1,0 +1,5 @@
+session     optional      pam_umask.so silent
+session     optional      pam_echo.so first  {continue if "with-more"}
+session     optional      pam_lastlog.so showfailed
+session     optional      pam_echo.so before {stop if "with-early-stop"} after
+session     optional      pam_echo.so last

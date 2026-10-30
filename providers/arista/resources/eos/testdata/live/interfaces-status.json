@@ -1,0 +1,49 @@
+{
+ "interfaceStatuses": {
+  "Ethernet1": {
+   "autoNegotiateActive": false,
+   "autoNegotigateActive": false,
+   "bandwidth": 0,
+   "description": "MGMT-DHCP-DO-NOT-ACL",
+   "duplex": "duplexFull",
+   "interfaceDamped": false,
+   "interfaceType": "10/100/1000",
+   "lineProtocolStatus": "up",
+   "linkStatus": "connected",
+   "vlanInformation": {
+    "interfaceForwardingModel": "routed",
+    "interfaceMode": "routed"
+   }
+  },
+  "Port-Channel1": {
+   "autoNegotiateActive": false,
+   "autoNegotigateActive": false,
+   "bandwidth": 0,
+   "description": "MLAG to Server1",
+   "duplex": "duplexFull",
+   "interfaceDamped": false,
+   "interfaceType": "N/A",
+   "lineProtocolStatus": "lowerLayerDown",
+   "linkStatus": "notconnect",
+   "vlanInformation": {
+    "interfaceForwardingModel": "routed",
+    "interfaceMode": "routed"
+   }
+  },
+  "Port-Channel1000": {
+   "autoNegotiateActive": false,
+   "autoNegotigateActive": false,
+   "bandwidth": 0,
+   "description": "MLAG Peer Link",
+   "duplex": "duplexFull",
+   "interfaceDamped": false,
+   "interfaceType": "N/A",
+   "lineProtocolStatus": "lowerLayerDown",
+   "linkStatus": "notconnect",
+   "vlanInformation": {
+    "interfaceForwardingModel": "routed",
+    "interfaceMode": "routed"
+   }
+  }
+ }
+}

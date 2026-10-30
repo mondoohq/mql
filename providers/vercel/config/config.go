@@ -1,0 +1,62 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package config
+
+import (
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/vercel/connection"
+	"go.mondoo.com/mql/providers/vercel/provider"
+)
+
+var Config = plugin.Provider{
+	Name: "vercel",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	// A connection reports the concrete kind through ConnectRes.Root.
+	Root:    "vercel",
+	ID:      "go.mondoo.com/mql/providers/vercel",
+	Version: "14.0.7",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
+	ConnectionTypes: []string{provider.DefaultConnectionType},
+	Platforms:       connection.Platforms,
+	Connectors: []plugin.Connector{
+		{
+			Name:  "vercel",
+			Use:   "vercel",
+			Short: "a Vercel account",
+			Long: `Use the vercel provider to query configuration and security posture of your Vercel teams and projects.
+
+Examples:
+  cnspec shell vercel --token <access_token>
+  cnspec scan vercel --token <access_token>
+  cnspec scan vercel --token <access_token> --team <team_slug_or_id>
+
+Notes:
+  If you set the VERCEL_TOKEN environment variable, you can omit the token flag.
+`,
+			Discovery: []string{
+				connection.DiscoveryAll,
+				connection.DiscoveryAuto,
+				connection.DiscoveryTeams,
+				connection.DiscoveryProjects,
+			},
+			Flags: []plugin.Flag{
+				{
+					Long:    "token",
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Vercel API token for authentication",
+				},
+				{
+					Long:    "team",
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Scope discovery to a single Vercel team (slug or ID)",
+				},
+			},
+		},
+	},
+}

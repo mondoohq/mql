@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
 )
 
 type ExtensibleSchema interface {
@@ -31,7 +31,8 @@ type extensibleSchema struct {
 func newExtensibleSchema() extensibleSchema {
 	return extensibleSchema{
 		roAggregate: resources.Schema{
-			Resources: map[string]*resources.ResourceInfo{},
+			Resources:        map[string]*resources.ResourceInfo{},
+			ProviderVersions: map[string]string{},
 		},
 		loaded:         map[string]resources.ResourcesSchema{},
 		prioritization: []string{BuiltinCoreID},
@@ -82,11 +83,36 @@ func (x *extensibleSchema) AllDependencies() map[string]*resources.ProviderInfo 
 	return x.roAggregate.Dependencies
 }
 
+func (x *extensibleSchema) AllProviderVersions() map[string]string {
+	x.sync.Lock()
+	defer x.sync.Unlock()
+
+	if x.lastRefreshed < LastProviderInstall {
+		x.unsafeLoadAll()
+		x.unsafeRefresh()
+	}
+
+	return x.roAggregate.ProviderVersions
+}
+
+func (x *extensibleSchema) AllProviderRoots() map[string]string {
+	x.sync.Lock()
+	defer x.sync.Unlock()
+
+	if x.lastRefreshed < LastProviderInstall {
+		x.unsafeLoadAll()
+		x.unsafeRefresh()
+	}
+
+	return x.roAggregate.ProviderRoots
+}
+
 func (x *extensibleSchema) Close() {
 	x.sync.Lock()
 	x.loaded = map[string]resources.ResourcesSchema{}
 	x.roAggregate = resources.Schema{
-		Resources: map[string]*resources.ResourceInfo{},
+		Resources:        map[string]*resources.ResourceInfo{},
+		ProviderVersions: map[string]string{},
 	}
 	x.sync.Unlock()
 }
@@ -192,8 +218,10 @@ func (x *extensibleSchema) unsafeAdd(name string, schema resources.ResourcesSche
 
 func (x *extensibleSchema) unsafeRefresh() {
 	res := resources.Schema{
-		Resources:    map[string]*resources.ResourceInfo{},
-		Dependencies: map[string]*resources.ProviderInfo{},
+		Resources:        map[string]*resources.ResourceInfo{},
+		Dependencies:     map[string]*resources.ProviderInfo{},
+		ProviderVersions: map[string]string{},
+		ProviderRoots:    map[string]string{},
 	}
 
 	for _, schema := range x.loaded {
@@ -203,7 +231,11 @@ func (x *extensibleSchema) unsafeRefresh() {
 	// Note: This object is read-only and thus must be re-created to
 	// prevent concurrency issues with access outside this struct
 	x.roAggregate = resources.Schema{
-		Resources:    res.Resources,
-		Dependencies: res.Dependencies,
+		Resources:        res.Resources,
+		Dependencies:     res.Dependencies,
+		ProviderVersions: res.ProviderVersions,
+		// Each provider's declared asset root, so a compile that reads the
+		// aggregate can tell what hangs off an asset's tree (ADR 031).
+		ProviderRoots: res.ProviderRoots,
 	}
 }

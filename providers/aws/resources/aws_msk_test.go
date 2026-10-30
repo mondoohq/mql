@@ -11,7 +11,7 @@ import (
 	kafka_types "github.com/aws/aws-sdk-go-v2/service/kafka/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // ===== null-state tests =====
@@ -377,7 +377,6 @@ func TestMskReplicatorIsCrossAccount(t *testing.T) {
 func buildReplicatorWithClusters(arns ...string) *mqlAwsMskReplicator {
 	clusters := make([]kafka_types.KafkaClusterDescription, 0, len(arns))
 	for _, a := range arns {
-		a := a
 		clusters = append(clusters, kafka_types.KafkaClusterDescription{
 			AmazonMskCluster: &kafka_types.AmazonMskCluster{MskClusterArn: &a},
 		})

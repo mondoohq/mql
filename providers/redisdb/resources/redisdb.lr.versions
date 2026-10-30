@@ -1,0 +1,47 @@
+# Copyright Mondoo, Inc. 2024, 2026
+# SPDX-License-Identifier: BUSL-1.1
+
+redisdb 13.0.0
+redisdb.acl.selector 13.0.3
+redisdb.acl.selector.channelPatterns 13.0.3
+redisdb.acl.selector.commandRules 13.0.3
+redisdb.acl.selector.keyPatterns 13.0.3
+redisdb.acl.user 13.0.0
+redisdb.acl.user.channelPatterns 13.0.0
+redisdb.acl.user.commandRules 13.0.0
+redisdb.acl.user.enabled 13.0.0
+redisdb.acl.user.isDefault 13.0.0
+redisdb.acl.user.keyPatterns 13.0.0
+redisdb.acl.user.name 13.0.0
+redisdb.acl.user.nopass 13.0.0
+redisdb.acl.user.passwordCount 13.0.0
+redisdb.acl.user.selectors 13.0.3
+redisdb.config 13.0.0
+redisdb.config.appendFsync 13.0.0
+redisdb.config.appendOnly 13.0.0
+redisdb.config.dbFilename 13.0.0
+redisdb.config.dir 13.0.0
+redisdb.config.logfile 13.0.0
+redisdb.config.maxmemory 13.0.0
+redisdb.config.maxmemoryPolicy 13.0.0
+redisdb.config.rdbEnabled 13.0.0
+redisdb.config.save 13.0.0
+redisdb.instance 13.0.0
+redisdb.instance.aclFile 13.0.0
+redisdb.instance.aclPubsubDefault 13.0.3
+redisdb.instance.bind 13.0.0
+redisdb.instance.bindsAllInterfaces 13.0.0
+redisdb.instance.config 13.0.0
+redisdb.instance.isValkey 13.0.0
+redisdb.instance.mode 13.0.0
+redisdb.instance.os 13.0.0
+redisdb.instance.port 13.0.0
+redisdb.instance.protectedMode 13.0.0
+redisdb.instance.requirepassSet 13.0.0
+redisdb.instance.runId 13.0.0
+redisdb.instance.tlsAuthClients 13.0.0
+redisdb.instance.tlsEnabled 13.0.0
+redisdb.instance.tlsPort 13.0.0
+redisdb.instance.users 13.0.0
+redisdb.instance.valkeyVersion 13.0.0
+redisdb.instance.version 13.0.0

@@ -1,25 +1,28 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/cnquery/v9/providers/google-workspace"
-option go_package = "go.mondoo.com/mql/v13/providers/google-workspace/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/google-workspace"
+option go_package = "go.mondoo.com/mql/providers/google-workspace/resources"
+option root = "googleworkspace"
 
 // Google Workspace organization
 //
-// Examine a Google Workspace customer organization: the organizational-
-// unit hierarchy, every user account and the user's tokens / OAuth
-// scopes, the groups (with members and security settings), the
-// registered domains and their verification state, the admin roles
-// and their privileges, the third-party OAuth-connected apps with
-// aggregated scopes, the user calendars together with their ACL
-// rules, the managed endpoints (Chrome OS, Android, iOS, Windows,
-// macOS, Linux) reported through Google endpoint management and
-// endpoint verification, and the admin-configured policy settings
-// resolved across the organization through the Cloud Identity Policy
-// API — the surface auditors use for identity hygiene, sharing
-// reviews, 2-step-verification enforcement checks, device-compliance
-// audits, and domain-wide security-posture review.
-googleworkspace {
+// Root of a Google Workspace customer organization: the organizational-
+// unit hierarchy, every user account with its tokens and OAuth scopes,
+// the groups (with members and security settings), the registered
+// domains and their verification state, the admin roles and their
+// privileges, the third-party OAuth-connected apps with aggregated
+// scopes, the user calendars together with their ACL rules, the managed
+// endpoints (Chrome OS, Android, iOS, Windows, macOS, Linux) reported
+// through Google endpoint management and endpoint verification, and the
+// admin-configured policy settings resolved across the organization
+// through the Cloud Identity Policy API. This is the surface auditors
+// use for identity hygiene, sharing reviews, 2-step-verification
+// enforcement checks, device-compliance audits, and domain-wide
+// security-posture review.
+googleworkspace @root {
   // Organizational units in the account hierarchy
   orgUnits() []googleworkspace.orgUnit
   // All user accounts
@@ -61,6 +64,12 @@ googleworkspace {
 }
 
 // Google Workspace calendar
+//
+// Calendar in the organization's Calendar service, covering its
+// visibility settings, time zone, location, and the effective access
+// role the authenticated user holds on it. The acl field lists the
+// sharing rules that govern who can read or write the calendar, which
+// is where over-broad or public calendar sharing shows up.
 private googleworkspace.calendar @defaults("summary") {
   // Identifier of the calendar
   id string
@@ -70,7 +79,7 @@ private googleworkspace.calendar @defaults("summary") {
   summaryOverride string
   // Whether the calendar is the primary calendar for the authenticated user
   primary bool
-  // The effective access role for the authenticated user (freeBusyReader, reader, writer, owner)
+  // The effective access role for the authenticated user (freeBusyReader, reader, writerWithoutPrivateAccess, writer, owner)
   accessRole string
   // Description of the calendar
   description string
@@ -89,10 +98,17 @@ private googleworkspace.calendar @defaults("summary") {
 }
 
 // Google Workspace calendar ACL rule
+//
+// Access-control entry on a calendar that pairs a principal with the
+// level of access it grants. Reviewing these rules surfaces calendars
+// shared with an entire domain or made public, and principals that
+// hold writer or owner access they should not have. The role field
+// carries the granted access level and scope identifies who it
+// applies to.
 private googleworkspace.calendar.aclRule @defaults("role") {
   // Identifier of the ACL rule
   id string
-  // The role assigned to the scope. Possible values are none, freeBusyReader, reader, writer, owner
+  // The role assigned to the scope. Possible values are none, freeBusyReader, reader, writerWithoutPrivateAccess, writer, owner
   role string
   // The extent to which calendar access is granted by this ACL rule
   scope googleworkspace.calendar.aclRule.scope
@@ -107,6 +123,14 @@ private googleworkspace.calendar.aclRule.scope @defaults("type") {
 }
 
 // Google Workspace organizational unit
+//
+// Organizational unit in the directory hierarchy, the boundary at which
+// service settings and administrative policies are applied to the users
+// it contains. Auditing org units matters because a setting inherited
+// or overridden at an org unit governs every account beneath it. Units
+// are identified by their path: `orgUnitPath` gives the full path from
+// the root (for example `/Sales/West`), while `parentOrgUnitPath` locates
+// the unit within the hierarchy.
 private googleworkspace.orgUnit @defaults("name") {
   // The unique ID of the organizational unit
   id string
@@ -121,6 +145,13 @@ private googleworkspace.orgUnit @defaults("name") {
 }
 
 // Google Workspace domain
+//
+// Domain name registered to a Google Workspace customer, including whether it
+// is the account's primary domain and whether ownership has been verified.
+// Unverified domains cannot reliably send or receive mail for the organization
+// and often indicate incomplete or abandoned setup, so reviewing verified and
+// isPrimary across the account confirms that only intended, verified domains
+// are attached to the tenant.
 private googleworkspace.domain @defaults("domainName") {
   // The domain name of the customer
   domainName string
@@ -133,6 +164,13 @@ private googleworkspace.domain @defaults("domainName") {
 }
 
 // Google Workspace user accounts
+//
+// User accounts in the Google Workspace directory, exposing identity
+// attributes, suspension and archival state, administrator flags, 2-step
+// verification enrollment, account-recovery channels, linked POSIX and SSH
+// credentials, and org-defined custom schema fields. A central surface for
+// account-security audits: admin privilege, MFA enrollment, dormant or
+// suspended accounts, and recovery-channel configuration.
 private googleworkspace.user @defaults("primaryEmail") {
   // The unique ID for the user
   id string
@@ -224,7 +262,7 @@ private googleworkspace.user @defaults("primaryEmail") {
   addresses []googleworkspace.user.address
   // Custom org-defined schema fields keyed by schema name
   //
-  // Each value is a dict of `{field_name: field_value}`. Workspace admins use this to attach org-specific attributes (e.g. cost center, badge number, clearance) — audits that care about those attributes need this surface. Kept as `dict` because the inner schema varies per organization.
+  // Each value is a dict of `{field_name: field_value}`. Workspace admins use this to attach org-specific attributes (e.g. cost center, badge number, clearance). Audits that care about those attributes need this surface. The inner schema varies per organization, so values stay as a dict.
   customSchemas dict
   // Retrieves latest report for the user
   usageReport() googleworkspace.report.usage
@@ -232,19 +270,19 @@ private googleworkspace.user @defaults("primaryEmail") {
   tokens() []googleworkspace.token
   // Whether the user has a recovery email or recovery phone configured
   //
-  // Convenience predicate over `recoveryEmail` / `recoveryPhone` — true when
+  // Convenience predicate over `recoveryEmail` / `recoveryPhone`, true when
   // either account-recovery channel is set. Recovery channels are an account-
   // takeover surface, so audits frequently assert their presence (or absence).
   hasRecoveryConfigured() bool
   // Whether the user has any SSH public keys registered
   //
-  // Convenience predicate over `sshPublicKeys` — true when at least one key
+  // Convenience predicate over `sshPublicKeys`, true when at least one key
   // is registered. High-signal for audits scoping which identities can SSH
   // into GCE / POSIX-linked hosts.
   hasSshKeys() bool
   // Admin roles assigned to the user
   //
-  // Resolves the user's admin role assignments to their role definitions —
+  // Resolves the user's admin role assignments to their role definitions:
   // the effective administrative privilege the user holds, including
   // delegated admin roles that the `isAdmin` super-admin flag does not cover.
   adminRoles() []googleworkspace.role
@@ -268,7 +306,9 @@ private googleworkspace.user.email @defaults("address type primary") {
 private googleworkspace.user.phone @defaults("value type primary") {
   // Phone number (free-form; consumers should not assume E.164)
   value string
-  // Phone type (work, home, mobile, main, pager, callback, fax variants, custom)
+  // Phone type
+  //
+  // One of assistant, callback, car, company_main, custom, grand_central, home, home_fax, isdn, main, mobile, other, other_fax, pager, radio, telex, tty_tdd, work, work_fax, work_mobile, or work_pager.
   type string
   // Custom type label (populated when `type` is `custom`)
   customType string
@@ -278,9 +318,10 @@ private googleworkspace.user.phone @defaults("value type primary") {
 
 // External identifier attached to a Google Workspace user
 //
-// Examine a single entry from the user's external-ID list — the employee
-// IDs, network IDs, account IDs, and organization-defined identifiers HR
-// and identity-management systems hang off the workspace identity.
+// Single external identifier on the workspace identity: the employee IDs,
+// network IDs, account IDs, and organization-defined identifiers that HR
+// and identity-management systems hang off the account. The `type` field
+// classifies the identifier and `value` carries it.
 private googleworkspace.user.externalId @defaults("value type") {
   // External ID value
   value string
@@ -294,10 +335,10 @@ private googleworkspace.user.externalId @defaults("value type") {
 
 // Postal address attached to a Google Workspace user
 //
-// Examine a single entry from the user's address list — used for
-// data-residency, jurisdiction, and contact-information audits.
-// `sourceIsStructured` reports whether the address was supplied as
-// individual fields (true) or as the free-form `formatted` string (false).
+// Single postal address on the workspace identity, used for data-residency,
+// jurisdiction, and contact-information audits. `sourceIsStructured` reports
+// whether the address was supplied as individual fields (true) or as the
+// free-form `formatted` string (false).
 private googleworkspace.user.address @defaults("formatted type primary") {
   // Formatted single-line address
   formatted string
@@ -329,10 +370,10 @@ private googleworkspace.user.address @defaults("formatted type primary") {
 
 // Organization a Google Workspace user belongs to
 //
-// Examine a single entry from the user's organization list — the employer,
+// Single organization membership on the workspace identity: the employer,
 // department, title, location, cost center, and full-time-equivalent fraction
-// reported against the workspace identity. The `primary` entry is the one
-// that drives the user's display in the directory.
+// reported against the account. The `primary` entry is the one that drives
+// the user's display in the directory.
 private googleworkspace.user.organization @defaults("name title department primary") {
   // Organization name (typically the employer)
   name string
@@ -364,10 +405,10 @@ private googleworkspace.user.organization @defaults("name title department prima
 
 // POSIX account linked to a Google Workspace user
 //
-// Examine a single entry from the user's POSIX-account list — the Linux /
-// UNIX-style username, uid, gid, home directory, and shell associated with
-// the workspace identity. Used by Linux SSO integrations (sssd, ldap) and
-// any audit that ties Google identities to OS-level accounts.
+// Single POSIX account on the workspace identity: the Linux/UNIX-style
+// username, uid, gid, home directory, and shell associated with the account.
+// Used by Linux SSO integrations (sssd, ldap) and any audit that ties Google
+// identities to OS-level accounts.
 private googleworkspace.user.posixAccount @defaults("username uid systemId primary") {
   // POSIX username
   username string
@@ -391,8 +432,8 @@ private googleworkspace.user.posixAccount @defaults("username uid systemId prima
 
 // SSH public key registered against a Google Workspace user
 //
-// Examine a single SSH public key — high-signal for audits asking which
-// workspace identities can SSH into GCE / POSIX-linked hosts. `key` is the
+// Single SSH public key on the workspace identity, high-signal for audits
+// asking which identities can SSH into GCE / POSIX-linked hosts. `key` is the
 // raw public key blob (OpenSSH or RFC 4716 format). `expirationTimeUsec`
 // is the key's expiration timestamp in microseconds since the Unix epoch
 // (empty for non-expiring keys). `fingerprint` is Google's SHA-256
@@ -406,9 +447,16 @@ private googleworkspace.user.sshPublicKey @defaults("fingerprint expirationTimeU
   fingerprint string
 }
 
-// Google Workspace token
+// OAuth token granted by a user to a third-party application
+//
+// A single OAuth authorization that a user has issued to a third-party
+// application through their Google Workspace account. Reviewing tokens
+// surfaces which external applications can act on a user's behalf and
+// what data they can reach, since the granted scopes define the access.
+// The clientId and displayText identify the application, and scopes
+// lists the permissions the user consented to.
 private googleworkspace.token @defaults("displayText") {
-  // Whether the application is registered with Google
+  // Whether the application has an anonymous Client ID (true when the application is not registered with Google)
   anonymous bool
   // The Client ID of the application
   clientId string
@@ -416,13 +464,22 @@ private googleworkspace.token @defaults("displayText") {
   displayText string
   // Whether the token is issued to an installed application
   nativeApp bool
-  // A list of granted authorization scopes the application
+  // Authorization scopes the user granted to the application
   scopes []string
   // The unique ID of the user that issued the token
   userKey string
 }
 
-// Google Workspace third-party connected apps
+// Google Workspace third-party connected app
+//
+// A third-party OAuth application that users in the domain have granted
+// access to, aggregated from the tokens they issued. Connected apps are
+// central to OAuth-access reviews: each one shows the authorization scopes
+// it holds across the organization through scopes, which users granted it
+// through users, and the individual grants through tokens. Use it to spot
+// over-privileged or unsanctioned applications with access to Workspace
+// data. Apps are grouped by clientId, the OAuth client identifier shared
+// by all of a given application's tokens.
 private googleworkspace.connectedApp @defaults("name clientId") {
   // The unique ID of the application
   clientId string
@@ -437,6 +494,15 @@ private googleworkspace.connectedApp @defaults("name clientId") {
 }
 
 // Google Workspace group
+//
+// Distribution list or membership group in a Google Workspace account, used
+// for email delivery, shared-resource access, and permission grants. Group
+// membership reviews rely on directMembersCount and the members collection to
+// enumerate who belongs; aliases and nonEditableAliases reveal alternate
+// addresses; adminCreated distinguishes administrator-managed groups from
+// user-created ones. Sharing and moderation posture (who can join, post, and
+// view membership, whether external members are allowed) lives in
+// groupSettings.
 private googleworkspace.group @defaults("email") {
   // The unique ID of a group
   id string
@@ -456,50 +522,68 @@ private googleworkspace.group @defaults("email") {
   adminCreated bool
   // Retrieve members of the group
   members() []googleworkspace.member
-  // Group settings as a raw dict
-  //
-  // Deprecated in favor of groupSettings, which exposes the same Groups
-  // Settings API data as typed, queryable fields.
-  settings() @maturity("deprecated") dict
   // Group security settings
+  //
+  // Membership restrictions from the Cloud Identity Groups API. The
+  // `memberRestriction` key holds a `query` (a CEL expression limiting which
+  // member types may belong, for example `member.type == 1 || member.type == 3`
+  // for users or groups only) and an `evaluation` object reporting the
+  // restriction's current state. The `name` key is the resource path
+  // `groups/{group_id}/securitySettings`.
   securitySettings() dict
   // Typed group settings from the Groups Settings API
   //
-  // Examine sharing and moderation controls used by group-access audits —
-  // who can join, post, and view membership, whether external members and
-  // web posting are allowed, and the moderation levels.
+  // Sharing and moderation controls used by group-access audits: who can
+  // join, post, and view membership, whether external members and web
+  // posting are allowed, and the moderation levels.
   groupSettings() googleworkspace.group.settingsConfig
 }
 
 // Google Workspace group settings
 //
-// Examine the sharing, membership, and moderation controls configured on a
-// group through the Groups Settings API — the surface group-access reviews
-// rely on. `whoCanJoin`, `whoCanPostMessage`, and `whoCanViewMembership`
-// report the access posture; `allowExternalMembers` and `allowWebPosting`
-// flag external exposure; the `*ModerationLevel` fields report content and
-// spam handling. Boolean-valued API fields (returned as `"true"`/`"false"`
-// strings by Google) are exposed as typed bools.
+// Sharing, membership, and moderation controls configured on a group through
+// the Groups Settings API, the surface group-access reviews rely on.
+// `whoCanJoin`, `whoCanPostMessage`, and `whoCanViewMembership` report the
+// access posture; `allowExternalMembers` and `allowWebPosting` flag external
+// exposure; the `*ModerationLevel` fields report content and spam handling.
+// Boolean-valued API fields (returned as `"true"`/`"false"` strings by
+// Google) are exposed as booleans.
 private googleworkspace.group.settingsConfig @defaults("whoCanJoin whoCanPostMessage allowExternalMembers") {
   // Who can join the group
   //
   // One of ANYONE_CAN_JOIN, ALL_IN_DOMAIN_CAN_JOIN, INVITED_CAN_JOIN, or CAN_REQUEST_TO_JOIN.
   whoCanJoin string
   // Who can view the group's membership list
+  //
+  // One of ALL_IN_DOMAIN_CAN_VIEW, ALL_MEMBERS_CAN_VIEW, or ALL_MANAGERS_CAN_VIEW.
   whoCanViewMembership string
-  // Who can view the group
+  // Who can view the group's messages
+  //
+  // One of ANYONE_CAN_VIEW, ALL_IN_DOMAIN_CAN_VIEW, ALL_MEMBERS_CAN_VIEW, or ALL_MANAGERS_CAN_VIEW.
   whoCanViewGroup string
   // Who can post messages to the group
+  //
+  // One of NONE_CAN_POST, ALL_MANAGERS_CAN_POST, ALL_MEMBERS_CAN_POST, ALL_OWNERS_CAN_POST, ALL_IN_DOMAIN_CAN_POST, or ANYONE_CAN_POST.
   whoCanPostMessage string
   // Who can contact the group owner
+  //
+  // One of ALL_IN_DOMAIN_CAN_CONTACT, ALL_MANAGERS_CAN_CONTACT, ALL_MEMBERS_CAN_CONTACT, ALL_OWNERS_CAN_CONTACT, or ANYONE_CAN_CONTACT.
   whoCanContactOwner string
   // Who can moderate members (approve, ban, remove)
+  //
+  // One of ALL_MEMBERS, OWNERS_AND_MANAGERS, OWNERS_ONLY, or NONE.
   whoCanModerateMembers string
   // Who can moderate content (approve, reject, remove messages)
+  //
+  // One of ALL_MEMBERS, OWNERS_AND_MANAGERS, OWNERS_ONLY, or NONE.
   whoCanModerateContent string
   // Who can discover the group
+  //
+  // One of ANYONE_CAN_DISCOVER, ALL_IN_DOMAIN_CAN_DISCOVER, or ALL_MEMBERS_CAN_DISCOVER.
   whoCanDiscoverGroup string
   // Who can leave the group
+  //
+  // One of ALL_MANAGERS_CAN_LEAVE, ALL_MEMBERS_CAN_LEAVE, or NONE_CAN_LEAVE.
   whoCanLeaveGroup string
   // Whether members external to the organization can join the group
   allowExternalMembers bool
@@ -526,6 +610,12 @@ private googleworkspace.group.settingsConfig @defaults("whoCanJoin whoCanPostMes
 }
 
 // Google Workspace group member
+//
+// Membership record linking an account to a Google Workspace group,
+// carrying the member's email, role (MEMBER, MANAGER, or OWNER), and
+// type (USER, GROUP, EXTERNAL, or CUSTOMER). Use it to audit group
+// composition, ownership, and the presence of external or non-user
+// members.
 private googleworkspace.member @defaults("email") {
   // The unique ID of the group member
   id string
@@ -535,15 +625,32 @@ private googleworkspace.member @defaults("email") {
   role string
   // Status of member
   status string
-  // The type of group member
+  // Membership type
+  //
+  // One of USER, GROUP, EXTERNAL, or CUSTOMER. Only members whose type
+  // is USER resolve to a directory user account through the user field.
   type string
   // The delivery settings for the member (ALL_MAIL, DAILY, DIGEST, DISABLED, NONE)
   deliverySettings string
   // Linked user account
+  //
+  // The directory user account backing this membership. Resolves only
+  // when type is USER, and is null for GROUP, EXTERNAL, and CUSTOMER
+  // memberships.
   user() googleworkspace.user
 }
 
-// Google Workspace role
+// Google Workspace admin role
+//
+// Definition of an administrative role in a Google Workspace account,
+// describing the set of privileges the role grants rather than who holds
+// it. `isSystemRole` marks the built-in roles Google provides and
+// `isSuperAdminRole` flags the role that carries full account control, so
+// this is the surface for reviewing which roles confer elevated
+// administrative access. Privileges are available both as a raw
+// `privileges` dict list and as typed `rolePrivileges` entries, and the
+// grants that bind a role to a user or group are exposed through
+// `assignments`.
 private googleworkspace.role @defaults("name") {
   // ID of the role
   id int
@@ -555,7 +662,12 @@ private googleworkspace.role @defaults("name") {
   isSystemRole bool
   // Whether the role is a super admin role
   isSuperAdminRole bool
-  // The set of privileges
+  // Privileges granted by the role
+  //
+  // Each entry is a dict with `privilegeName` (the admin API privilege
+  // string, for example `USERS_READ`) and `serviceId` (the obfuscated ID
+  // of the service the privilege scopes to). See `rolePrivileges` for the
+  // same data as typed entries.
   privileges []dict
   // The set of privileges as typed entries with `privilegeName` and `serviceId`
   rolePrivileges []googleworkspace.role.privilege
@@ -565,15 +677,15 @@ private googleworkspace.role @defaults("name") {
 
 // Google Workspace admin role assignment
 //
-// Examine a single assignment of an admin role to a user or group — the
-// binding that actually grants administrative privilege, as opposed to the
+// Single assignment of an admin role to a user or group, the binding that
+// actually grants administrative privilege, as opposed to the
 // `googleworkspace.role` definition that only describes a privilege set.
 // `assignedTo` is the unique ID of the assignee and `assigneeType` reports
-// whether it is a user or a group; `user()` resolves the assignee to a typed
-// `googleworkspace.user` when it is a user, and `role()` resolves the assigned
+// whether it is a user or a group; `user` resolves the assignee to a
+// `googleworkspace.user` when it is a user, and `role` resolves the assigned
 // role. `scopeType` and `orgUnitId` report whether the grant is customer-wide
 // or scoped to an organizational unit. This is the surface for "who holds
-// super admin" and least-privilege reviews — for example
+// super admin" and least-privilege reviews, for example
 // `googleworkspace.roleAssignments.where(assigneeType == "user")`.
 private googleworkspace.role.assignment @defaults("assignedTo assigneeType scopeType") {
   // The unique ID of the role assignment
@@ -595,8 +707,13 @@ private googleworkspace.role.assignment @defaults("assignedTo assigneeType scope
   // The condition associated with this role assignment (empty when unconditional)
   //
   // When set, the role only takes effect when the accessed resource meets the
-  // condition — currently used to scope grants to or away from security groups.
+  // condition, currently used to scope grants to or away from security groups.
   condition string
+  // Time the role assignment expires
+  //
+  // Null for a standing assignment that does not expire. Set on a time-bound
+  // grant, which stops granting the role at this time.
+  expiresAt time
   // The user the role is assigned to (null when the assignee is a group)
   user() googleworkspace.user
   // The assigned role
@@ -605,7 +722,7 @@ private googleworkspace.role.assignment @defaults("assignedTo assigneeType scope
 
 // Google Workspace role privilege
 //
-// Examine a single privilege granted by a Workspace admin role. The
+// Single privilege granted by a Workspace admin role. The
 // `privilegeName` is the admin API privilege string (for example
 // `USERS_READ` or `MANAGE_DOMAIN_SETTINGS`); `serviceId` is the obfuscated
 // ID of the service the privilege scopes to.
@@ -618,9 +735,9 @@ private googleworkspace.role.privilege @defaults("privilegeName serviceId") {
 
 // Google Workspace apps reports
 private googleworkspace.report.apps {
-  // Retrieves a report for the settings of the Google Workspace app Drive
+  // Drive audit activity events for the customer
   drive() []googleworkspace.report.activity
-  // Retrieves a report for the Google Workspace Admin settings
+  // Admin console audit activity events for the customer
   admin() []googleworkspace.report.activity
 }
 
@@ -629,8 +746,43 @@ private googleworkspace.report.activity {
   id int
   ipAddress string
   ownerDomain string
+  // Actor who performed the activity
+  //
+  // Keys: `callerType` (type of actor, for example USER, APPLICATION, or KEY),
+  // `email` (primary email of the actor, absent when none is associated),
+  // `profileId` (unique Google Workspace profile ID of the actor), `key`
+  // (present only when `callerType` is KEY, the OAuth consumer key or robot
+  // account identifier), `applicationInfo` (details of the application when
+  // an app performed the action), and `agentAttributionInfo` (present when an
+  // AI agent was the actor, carrying `agentId`, `agentName`, `agentType`, and
+  // an `agentOwner` object whose `email` names the account answerable for the
+  // agent). See `isAgenticAction` for the hoisted agent flag.
   actor dict
+  // Events recorded within the activity
+  //
+  // Each entry has `name` (the specific event name, for example CREATE_USER),
+  // `type` (the Google Workspace service or feature category the event belongs
+  // to), `parameters` (a list of name/value pairs describing the event),
+  // `resourceIds` (resource IDs associated with the event), and `status` (event
+  // status, absent for events that do not report one).
   events []dict
+  // Whether an AI agent performed the activity
+  //
+  // True when the action was taken by an agent rather than directly by the
+  // named user, which separates agent-driven changes from human ones when
+  // reviewing an audit trail. The agent's identity and the account answerable
+  // for it are in the `actor` dict under `agentAttributionInfo`.
+  isAgenticAction bool
+  // Identifier of the device the actor used
+  //
+  // Empty for activities the API does not attribute to a device. This is a
+  // Reports API device identifier and does not necessarily match the Cloud
+  // Identity device id on `googleworkspace.endpoint`.
+  deviceId string
+  // Type of device the actor used
+  deviceType string
+  // Operating system version reported by the actor's device
+  deviceOsVersion string
 }
 
 // Google Workspace user usage reports
@@ -652,21 +804,21 @@ private googleworkspace.report.usage {
   userEmail string
   // Date of the report
   date time
-  // Parameter value pairs
+  // Raw usage metric parameters
+  //
+  // Each entry has `name` (the metric name, for example accounts:is_disabled or
+  // gmail:num_emails_sent) and one of `boolValue`, `intValue`, `stringValue`, or
+  // `datetimeValue` carrying the reading. The common security and quota metrics
+  // are also promoted to the typed fields on this resource (isDisabled,
+  // is2svEnrolled, usedQuotaInMb, and so on).
   parameters []dict
-  // Account Settings as a raw dict
+  // Per-application usage counters for the account
   //
-  // Deprecated in favor of the typed isDisabled, isSuperAdmin, is2svEnrolled,
-  // is2svEnforced, passwordStrength, passwordLengthCompliance, and quota
-  // fields on this resource.
-  account() @maturity("deprecated") dict
-  // Security Settings as a raw dict
-  //
-  // Deprecated in favor of the typed is2svEnrolled, is2svEnforced,
-  // isLessSecureAppsAccessAllowed, numAuthorizedApps, and numSecurityKeys
-  // fields on this resource.
-  security() @maturity("deprecated") dict
-  // App Usage
+  // Keys include `gmailUsedQuotaInMb`, `driveUsedQuotaInMb`,
+  // `gPlusPhotosUsedQuotaInMb`, and `usedQuotaInMb` for storage; `numEmailSent`,
+  // `numEmailsReceived`, and `numEmailsExchanged` for Gmail volume;
+  // `numOwnedItemsEdited` and `numOwnedItemsViewed` for Docs activity; and the
+  // timestamps `lastImapTime`, `lastWebmailTime`, and `driveLastActiveUsageTime`.
   appUsage() dict
   // Whether the account is disabled
   isDisabled bool
@@ -696,22 +848,22 @@ private googleworkspace.report.usage {
 
 // Managed endpoint device
 //
-// Examine a single device enrolled in Google endpoint management or reported
-// through endpoint verification — Chrome OS, Android, iOS, Windows, macOS,
-// Linux, and Google Sync clients all surface through the same record. Fields
-// cover platform identity (`deviceType`, `manufacturer`, `model`, `osVersion`),
-// hardware identifiers (`serialNumber`, `imei`, `meid`, `wifiMacAddresses`),
-// posture signals (`compromisedState`, `encryptionState`, `enabledDeveloperOptions`,
+// Device enrolled in Google endpoint management or reported through endpoint
+// verification. Chrome OS, Googlebook, Android, iOS, Windows, macOS, Linux, and
+// Google Sync clients all surface through the same record. Fields cover platform
+// identity (`deviceType`, `manufacturer`, `model`, `osVersion`), hardware
+// identifiers (`serialNumber`, `imei`, `meid`, `wifiMacAddresses`), posture
+// signals (`compromisedState`, `encryptionState`, `enabledDeveloperOptions`,
 // `enabledUsbDebugging`), enrollment status (`managementState`, `ownerType`),
 // and the set of users registered on the device through `users`. The `id`
-// field is the stable Cloud Identity device id and selects the record — for
+// field is the stable Cloud Identity device id and selects the record, for
 // example `googleworkspace.endpoints.where(deviceType == "WINDOWS" && encryptionState != "ENCRYPTED")`.
 private googleworkspace.endpoint @defaults("deviceType model serialNumber managementState") {
   // Stable Cloud Identity device identifier
   id string
   // Full resource name in the format devices/{device}
   name string
-  // Platform of the device. Possible values: ANDROID, IOS, GOOGLE_SYNC, WINDOWS, MAC_OS, LINUX, CHROME_OS, DEVICE_TYPE_UNSPECIFIED
+  // Platform of the device. Possible values: ANDROID, IOS, GOOGLE_SYNC, WINDOWS, MAC_OS, LINUX, CHROME_OS, GOOGLEBOOK, DEVICE_TYPE_UNSPECIFIED
   deviceType string
   // Ownership of the device. Possible values: COMPANY, BYOD, DEVICE_OWNERSHIP_UNSPECIFIED
   ownerType string
@@ -767,9 +919,26 @@ private googleworkspace.endpoint @defaults("deviceType model serialNumber manage
   createTime time
   // Most recent time the device synced with Google
   lastSyncTime time
-  // Android-only signals (work-profile, owner-profile, unknown-sources). Null on non-Android platforms
+  // Android-only device signals
+  //
+  // Null on non-Android platforms. Keys: `ctsProfileMatch` (device passes
+  // Android CTS compliance), `enabledUnknownSources` (installs from unknown
+  // sources allowed), `hasPotentiallyHarmfulApps`, `ownerProfileAccount` (on an
+  // owner/primary profile), `ownershipPrivilege` (one of
+  // OWNERSHIP_PRIVILEGE_UNSPECIFIED, DEVICE_ADMINISTRATOR, PROFILE_OWNER,
+  // DEVICE_OWNER), `supportsWorkProfile`, `verifiedBoot` (Android verified boot
+  // status is GREEN), and `verifyAppsEnabled` (Google Play Protect Verify Apps
+  // is enabled).
   androidAttributes dict
-  // Endpoint Verification signals — certificate inventory, browser inventory, and additional signals (hotfixes, AV, firewall, secure boot)
+  // Endpoint Verification signals
+  //
+  // Keys: `additionalSignals` (device signals including hotfixes, av_installed,
+  // av_enabled, windows_domain_name, is_os_native_firewall_enabled, and
+  // is_secure_boot_enabled), `browserAttributes` (per-browser-profile
+  // inventory), and `certificateAttributes` (certificate inventory). The
+  // `antivirusInstalled`, `antivirusEnabled`, `osFirewallEnabled`,
+  // `secureBootEnabled`, and `windowsDomainName` fields decode individual
+  // values out of `additionalSignals`.
   endpointVerificationAttributes dict
   // Whether antivirus software is installed (parsed from `endpointVerificationAttributes.additionalSignals.av_installed`)
   //
@@ -795,9 +964,9 @@ private googleworkspace.endpoint @defaults("deviceType model serialNumber manage
 
 // Registered user of a managed endpoint
 //
-// Examine a single user's binding to a device — the per-user management state,
-// password presence, and sync history reported by Google endpoint management.
-// One device may have multiple `googleworkspace.endpoint.user` rows on BYOD
+// User's binding to a device: the per-user management state, password
+// presence, and sync history reported by Google endpoint management. One
+// device may have multiple `googleworkspace.endpoint.user` rows on BYOD
 // hardware.
 private googleworkspace.endpoint.user @defaults("userEmail managementState") {
   // Full resource name in the format devices/{device}/deviceUsers/{deviceUser}
@@ -824,19 +993,19 @@ private googleworkspace.endpoint.user @defaults("userEmail managementState") {
 
 // Google Workspace admin policy setting
 //
-// Examine a single policy setting resolved by the Cloud Identity Policy API —
-// the admin-configured settings that govern security posture across the
+// Single policy setting resolved by the Cloud Identity Policy API, one of the
+// admin-configured settings that govern security posture across the
 // organization (2-step-verification enforcement, password strength and
 // length, session length, less-secure-app access, service on/off status,
 // and third-party app access), surfaced without navigating the Admin
-// Console. Each row is one resolved setting for one scope: `settingType`
+// Console. Each row is one resolved setting for one scope. `settingType`
 // names the setting (for example `settings/security.password` or
 // `settings/security.session_controls`), `value` carries the setting's
 // configured value as a dict (the schema varies per setting type), and
 // `orgUnit` / `group` report the organizational unit or group the setting
 // resolves to (empty when the policy applies customer-wide). `type`
 // distinguishes admin-configured policies (`ADMIN`) from Google's
-// system defaults (`SYSTEM`). Select by setting type — for example
+// system defaults (`SYSTEM`). Select by setting type, for example
 // `googleworkspace.policies.where(settingType == "settings/security.session_controls")`.
 // Requires a super-admin-impersonating service account with the
 // `cloud-identity.policies.readonly` scope.
@@ -855,8 +1024,8 @@ private googleworkspace.policy @defaults("settingType type orgUnit") {
   group string
   // The CEL query that defines which entities the policy applies to
   //
-  // Empty for customer-wide policies. The `orgUnit` and `group` fields are
-  // decoded helpers extracted from this query.
+  // Empty for customer-wide policies. The `orgUnit` and `group` fields report
+  // the resolved scope separately from this CEL expression.
   query string
   // The configured value of the setting
   //
@@ -869,21 +1038,23 @@ private googleworkspace.policy @defaults("settingType type orgUnit") {
 
 // Chrome OS device
 //
-// Examine a single Chrome OS device enrolled in the organization through the
+// Single Chrome OS device enrolled in the organization, retrieved from the
 // Admin SDK Directory API. Complements `googleworkspace.endpoint` with the
 // ChromeOS-specific posture signals auditors need: `bootMode` distinguishes
 // Verified Boot from developer mode, `autoUpdateExpiration` reports when the
-// device stops receiving Chrome OS security updates (AUE), `osVersion` /
-// `platformVersion` / `firmwareVersion` capture patch level, and `status`
+// device stops receiving Chrome OS security updates (AUE), `osVersion`,
+// `platformVersion`, and `firmwareVersion` capture patch level, and `status`
 // reports the enrollment lifecycle. The `id` field is the device's stable
-// directory ID and selects the record — for example
+// directory ID and selects the record, for example
 // `googleworkspace.chromeOsDevices.where(bootMode != "Verified")`.
 private googleworkspace.chromeOsDevice @defaults("serialNumber model osVersion status") {
   // Stable directory device identifier
   id string
   // Serial number of the device
   serialNumber string
-  // Status of the device. Possible values: ACTIVE, DEPROVISIONED, DISABLED, INACTIVE, RETURN_APPROVED, RETURN_REQUESTED, SHIPPED, UNKNOWN
+  // Status of the device
+  //
+  // One of ACTIVE, DEPROVISIONED, DISABLED, INACTIVE, RETURN_APPROVED, RETURN_REQUESTED, SHIPPED, UNKNOWN, DELINQUENT, PRE_PROVISIONED, or RETURN_ARRIVED.
   status string
   // Model name of the device
   model string
@@ -898,7 +1069,9 @@ private googleworkspace.chromeOsDevice @defaults("serialNumber model osVersion s
   // `Verified` indicates Verified Boot is active; `Dev` indicates developer
   // mode, which disables OS verification and is a hardening concern.
   bootMode string
-  // Reported compliance of the OS version against the configured policy
+  // Device policy compliance status of the OS version
+  //
+  // One of complianceUnspecified, compliant, pending, or notCompliant.
   osVersionCompliance string
   // The full path of the organizational unit the device is in
   orgUnitPath string
@@ -914,7 +1087,12 @@ private googleworkspace.chromeOsDevice @defaults("serialNumber model osVersion s
   notes string
   // The reason the device was deprovisioned (empty unless deprovisioned)
   deprovisionReason string
-  // The licensing model of the device
+  // Device license type
+  //
+  // One of deviceLicenseTypeUnspecified, enterprise, enterpriseUpgrade,
+  // educationUpgrade, education, kioskUpgrade, enterpriseUpgradePerpetual,
+  // enterpriseUpgradeFixedTerm, educationUpgradePerpetual, or
+  // educationUpgradeFixedTerm.
   deviceLicenseType string
   // Most recent time the device synced device-policy settings
   lastSync time
@@ -928,14 +1106,14 @@ private googleworkspace.chromeOsDevice @defaults("serialNumber model osVersion s
 
 // Mobile device
 //
-// Examine a single mobile device (Android, iOS, or Google Sync) managed by
+// Single mobile device (Android, iOS, or Google Sync) managed by
 // the organization through the Admin SDK Directory API. Carries the device
 // posture signals mobile-hardening audits rely on: `deviceCompromisedStatus`
 // (root / jailbreak), `encryptionStatus`, `devicePasswordStatus`,
 // `developerOptionsStatus`, `adbStatus` (USB debugging), and
 // `unknownSourcesStatus` (sideloading). `type` reports the platform, `status`
 // the management lifecycle, and `securityPatchLevel` the patch timestamp. The
-// `id` field is the device's stable resource ID and selects the record — for
+// `id` field is the device's stable resource ID and selects the record, for
 // example `googleworkspace.mobileDevices.where(deviceCompromisedStatus == "Compromised")`.
 private googleworkspace.mobileDevice @defaults("model type status deviceCompromisedStatus") {
   // Stable resource identifier of the device

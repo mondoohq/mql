@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The password attributes carry obvious placeholders rather than anything
+     credential-shaped. The parser only has to see the attribute and hand back
+     its value verbatim, so the value itself is free to say what it is. -->
+<tomcat-users xmlns="http://tomcat.apache.org/xml" version="1.0">
+  <role rolename="manager-script"/>
+  <user username="svc-deploy" password="DIGEST-PLACEHOLDER-NOT-A-CREDENTIAL" roles="manager-script, manager-gui"/>
+  <user username="observer" password="PLACEHOLDER-NOT-A-CREDENTIAL" roles=""/>
+</tomcat-users>

@@ -10,11 +10,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/shield"
 	shieldtypes "github.com/aws/aws-sdk-go-v2/service/shield/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsShield) id() (string, error) {
@@ -48,8 +47,7 @@ func (a *mqlAwsShield) subscription() (*mqlAwsShieldSubscription, error) {
 			a.Subscription.State = plugin.StateIsNull | plugin.StateIsSet
 			return nil, nil
 		}
-		var notFoundErr *shieldtypes.ResourceNotFoundException
-		if errors.As(err, &notFoundErr) {
+		if _, ok := errors.AsType[*shieldtypes.ResourceNotFoundException](err); ok {
 			a.Subscription.State = plugin.StateIsNull | plugin.StateIsSet
 			return nil, nil
 		}
@@ -57,11 +55,6 @@ func (a *mqlAwsShield) subscription() (*mqlAwsShieldSubscription, error) {
 	}
 
 	sub := resp.Subscription
-	limits, err := convert.JsonToDictSlice(sub.Limits)
-	if err != nil {
-		log.Warn().Err(err).Msg("failed to convert shield subscription limits")
-	}
-
 	// Per-resource-type protection limits, keyed by resource type. The SDK
 	// returns these inside SubscriptionLimits.ProtectionLimits as a slice of
 	// {Type, Max} entries — flatten into a map for direct key-based queries.
@@ -90,11 +83,8 @@ func (a *mqlAwsShield) subscription() (*mqlAwsShieldSubscription, error) {
 			"arn":                         llx.StringDataPtr(sub.SubscriptionArn),
 			"startTime":                   llx.TimeDataPtr(sub.StartTime),
 			"endTime":                     llx.TimeDataPtr(sub.EndTime),
-			"timeCommitmentInDays":        llx.IntData(sub.TimeCommitmentInSeconds / 86400),
 			"lengthInSeconds":             llx.IntData(sub.TimeCommitmentInSeconds),
-			"autoRenew":                   llx.StringData(string(sub.AutoRenew)),
 			"autoRenewEnabled":            llx.BoolData(sub.AutoRenew == shieldtypes.AutoRenewEnabled),
-			"limits":                      llx.ArrayData(limits, "dict"),
 			"protectedResourceTypeLimits": llx.MapData(protectedResourceTypeLimits, types.Int),
 			"maxProtectionGroups":         llx.IntData(maxProtectionGroups),
 			"maxArbitraryPatternMembers":  llx.IntData(maxArbitraryPatternMembers),
@@ -123,22 +113,15 @@ func (a *mqlAwsShield) protections() ([]any, error) {
 			if Is400AccessDeniedError(err) {
 				return res, nil
 			}
-			var notFoundErr *shieldtypes.ResourceNotFoundException
-			if errors.As(err, &notFoundErr) {
+			if _, ok := errors.AsType[*shieldtypes.ResourceNotFoundException](err); ok {
 				return res, nil
 			}
 			return nil, err
 		}
 		for _, p := range page.Protections {
-			var appLayerConfig any
 			appLayerEnabled := false
 			appLayerAction := ""
 			if cfg := p.ApplicationLayerAutomaticResponseConfiguration; cfg != nil {
-				var convErr error
-				appLayerConfig, convErr = convert.JsonToDict(cfg)
-				if convErr != nil {
-					log.Warn().Err(convErr).Msg("failed to convert application layer automatic response configuration")
-				}
 				appLayerEnabled = cfg.Status == shieldtypes.ApplicationLayerAutomaticResponseStatusEnabled
 				if cfg.Action != nil {
 					switch {
@@ -156,9 +139,8 @@ func (a *mqlAwsShield) protections() ([]any, error) {
 					"name":           llx.StringDataPtr(p.Name),
 					"resourceArn":    llx.StringDataPtr(p.ResourceArn),
 					"healthCheckIds": llx.ArrayData(llx.TArr2Raw(p.HealthCheckIds), "string"),
-					"applicationLayerAutomaticResponseConfiguration": llx.DictData(appLayerConfig),
-					"applicationLayerAutomaticResponseEnabled":       llx.BoolData(appLayerEnabled),
-					"applicationLayerAutomaticResponseAction":        llx.StringData(appLayerAction),
+					"applicationLayerAutomaticResponseEnabled": llx.BoolData(appLayerEnabled),
+					"applicationLayerAutomaticResponseAction":  llx.StringData(appLayerAction),
 				})
 			if err != nil {
 				return nil, err
@@ -186,8 +168,7 @@ func (a *mqlAwsShield) protectionGroups() ([]any, error) {
 			if Is400AccessDeniedError(err) {
 				return res, nil
 			}
-			var notFoundErr *shieldtypes.ResourceNotFoundException
-			if errors.As(err, &notFoundErr) {
+			if _, ok := errors.AsType[*shieldtypes.ResourceNotFoundException](err); ok {
 				return res, nil
 			}
 			return nil, err
@@ -232,8 +213,7 @@ func (a *mqlAwsShield) drtAccess() (*mqlAwsShieldDrtAccess, error) {
 			a.DrtAccess.State = plugin.StateIsNull | plugin.StateIsSet
 			return nil, nil
 		}
-		var notFoundErr *shieldtypes.ResourceNotFoundException
-		if errors.As(err, &notFoundErr) {
+		if _, ok := errors.AsType[*shieldtypes.ResourceNotFoundException](err); ok {
 			a.DrtAccess.State = plugin.StateIsNull | plugin.StateIsSet
 			return nil, nil
 		}
@@ -283,8 +263,7 @@ func (a *mqlAwsShield) emergencyContacts() ([]any, error) {
 		if Is400AccessDeniedError(err) {
 			return []any{}, nil
 		}
-		var notFoundErr *shieldtypes.ResourceNotFoundException
-		if errors.As(err, &notFoundErr) {
+		if _, ok := errors.AsType[*shieldtypes.ResourceNotFoundException](err); ok {
 			return []any{}, nil
 		}
 		return nil, err
@@ -308,4 +287,44 @@ func (a *mqlAwsShield) emergencyContacts() ([]any, error) {
 
 func (a *mqlAwsShieldEmergencyContact) id() (string, error) {
 	return "aws.shield.emergencyContact/" + a.EmailAddress.Data, nil
+}
+
+// shieldTagsForArn reads the tags of a Shield protection or protection group.
+// Shield is a global service served from us-east-1.
+func shieldTagsForArn(runtime *plugin.Runtime, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Shield("us-east-1")
+	resp, err := svc.ListTagsForResource(context.Background(), &shield.ListTagsForResourceInput{ResourceARN: &resourceArn})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("shield:ListTagsForResource"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return tagsToMap(resp.Tags,
+		func(t shieldtypes.Tag) *string { return t.Key },
+		func(t shieldtypes.Tag) *string { return t.Value }), nil
+}
+
+type mqlAwsShieldProtectionInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsShieldProtection) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return shieldTagsForArn(a.MqlRuntime, a.Arn.Data)
+	})
+}
+
+type mqlAwsShieldProtectionGroupInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsShieldProtectionGroup) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return shieldTagsForArn(a.MqlRuntime, a.Arn.Data)
+	})
 }

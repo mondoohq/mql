@@ -100,7 +100,10 @@ spec:
 status:
   loadBalancer:
     ingress:
-      - ip: 203.0.113.10
+      # A genuinely public address: the classifier treats the TEST-NET
+      # documentation ranges as non-public, so exposure fixtures must use a
+      # real global-unicast IP to produce internetExposed=true.
+      - ip: 8.8.4.4
 ---
 # Selectorless service — selects no pods.
 apiVersion: v1
@@ -185,6 +188,90 @@ spec:
     - backendRefs:
         - name: web-svc
           port: 80
+---
+# Deployment backing web-1/web-2 — must inherit the exposures that route to
+# its pods (the public web-svc, the ingress, and the gateway).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: prod
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27
+---
+# Bare ReplicaSet with the same selector — the exposure fold must work at the
+# ReplicaSet level too.
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: web-rs
+  namespace: prod
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27
+---
+# DaemonSet backing other-1, which no service selects — must report no
+# exposures.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: other-ds
+  namespace: prod
+spec:
+  selector:
+    matchLabels:
+      app: other
+  template:
+    metadata:
+      labels:
+        app: other
+    spec:
+      containers:
+        - name: other
+          image: busybox
+---
+# StatefulSet in staging with the same labels as the exposed prod pods — the
+# prod service must not leak exposure across namespaces.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web-staging-sts
+  namespace: staging
+spec:
+  replicas: 1
+  serviceName: headless
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27
 ---
 # Secret mounted by web-1 — used, not orphaned.
 apiVersion: v1

@@ -10,11 +10,11 @@ import (
 
 	securitymodels "github.com/microsoftgraph/msgraph-sdk-go/models/security"
 	"github.com/microsoftgraph/msgraph-sdk-go/security"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // enumStringPtr renders a Microsoft Graph enum pointer as its string value,
@@ -98,11 +98,11 @@ func newMqlSecurityAlert(runtime *plugin.Runtime, alert securitymodels.Alertable
 		"systemTags":            llx.ArrayData(convert.SliceAnyToInterface(alert.GetSystemTags()), types.String),
 		"tenantId":              llx.StringDataPtr(alert.GetTenantId()),
 		"alertWebUrl":           llx.StringDataPtr(alert.GetAlertWebUrl()),
-		"createdDateTime":       llx.TimeDataPtr(alert.GetCreatedDateTime()),
-		"lastUpdateDateTime":    llx.TimeDataPtr(alert.GetLastUpdateDateTime()),
-		"firstActivityDateTime": llx.TimeDataPtr(alert.GetFirstActivityDateTime()),
-		"lastActivityDateTime":  llx.TimeDataPtr(alert.GetLastActivityDateTime()),
-		"resolvedDateTime":      llx.TimeDataPtr(alert.GetResolvedDateTime()),
+		"createdDateTime":       graphTimeData(alert.GetCreatedDateTime()),
+		"lastUpdateDateTime":    graphTimeData(alert.GetLastUpdateDateTime()),
+		"firstActivityDateTime": graphTimeData(alert.GetFirstActivityDateTime()),
+		"lastActivityDateTime":  graphTimeData(alert.GetLastActivityDateTime()),
+		"resolvedDateTime":      graphTimeData(alert.GetResolvedDateTime()),
 		"comments":              llx.ArrayData(newAlertComments(alert.GetComments()), types.Dict),
 	})
 	if err != nil {
@@ -177,8 +177,8 @@ func newMqlSecurityIncident(runtime *plugin.Runtime, incident securitymodels.Inc
 		"customTags":         llx.ArrayData(convert.SliceAnyToInterface(incident.GetCustomTags()), types.String),
 		"systemTags":         llx.ArrayData(convert.SliceAnyToInterface(incident.GetSystemTags()), types.String),
 		"incidentWebUrl":     llx.StringDataPtr(incident.GetIncidentWebUrl()),
-		"createdDateTime":    llx.TimeDataPtr(incident.GetCreatedDateTime()),
-		"lastUpdateDateTime": llx.TimeDataPtr(incident.GetLastUpdateDateTime()),
+		"createdDateTime":    graphTimeData(incident.GetCreatedDateTime()),
+		"lastUpdateDateTime": graphTimeData(incident.GetLastUpdateDateTime()),
 		"comments":           llx.ArrayData(newAlertComments(incident.GetComments()), types.Dict),
 	})
 	if err != nil {

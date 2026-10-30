@@ -18,9 +18,9 @@ import (
 	vmmclient "github.com/nutanix/ntnx-api-golang-clients/vmm-go-client/v4/client"
 	volapi "github.com/nutanix/ntnx-api-golang-clients/volumes-go-client/v4/api"
 	volclient "github.com/nutanix/ntnx-api-golang-clients/volumes-go-client/v4/client"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 )
 
 const defaultPort = 9440
@@ -85,11 +85,20 @@ func NewNutanixConnection(id uint32, asset *inventory.Asset, conf *inventory.Con
 
 	var password string
 	for _, cred := range conf.Credentials {
-		if cred.Type == vault.CredentialType_password {
+		switch cred.Type {
+		case vault.CredentialType_password:
 			if cred.User != "" {
 				user = cred.User
 			}
 			password = string(cred.Secret)
+		case vault.CredentialType_bearer:
+			if apiKey == "" {
+				if len(cred.Secret) > 0 {
+					apiKey = string(cred.Secret)
+				} else {
+					apiKey = cred.Password
+				}
+			}
 		}
 	}
 

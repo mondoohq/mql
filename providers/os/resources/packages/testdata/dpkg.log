@@ -1,0 +1,9 @@
+2026-05-01 09:14:11 startup archives unpack
+2026-05-01 09:14:12 install curl:amd64 <none> 8.5.0-2ubuntu10.6
+2026-05-01 09:14:12 status unpacked curl:amd64 8.5.0-2ubuntu10.6
+2026-05-01 09:14:13 status installed curl:amd64 8.5.0-2ubuntu10.6
+2026-05-04 03:22:07 upgrade libpam-modules:amd64 1.5.3-5ubuntu5 1.5.3-5ubuntu5.5
+2026-05-04 03:22:08 status installed libpam-modules:amd64 1.5.3-5ubuntu5.5
+2026-05-09 14:17:19 remove telnet:amd64 0.17-44build1 <none>
+2026-05-09 14:17:20 status not-installed telnet:amd64 <none>
+2026-05-09 14:17:21 trigproc man-db:amd64 2.12.0-4build2 <none>

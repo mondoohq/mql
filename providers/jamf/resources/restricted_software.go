@@ -6,21 +6,24 @@ package resources
 import (
 	"strconv"
 	"sync"
+	"sync/atomic"
 
 	"github.com/deploymenttheory/go-api-sdk-jamfpro/sdk/jamfpro"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/jamf/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/jamf/connection"
 )
 
 // mqlJamfRestrictedSoftwareInternal caches the detail record. The list API
 // returns only id and name, so the remaining fields are fetched once, on
-// first access, via GetRestrictedSoftwareByID.
+// first access, via GetRestrictedSoftwareByID. detail is an atomic pointer so
+// the lock-free fast path in fetchDetail can read it without racing the write
+// under lock.
 type mqlJamfRestrictedSoftwareInternal struct {
-	detail *jamfpro.ResourceRestrictedSoftware
+	detail atomic.Pointer[jamfpro.ResourceRestrictedSoftware]
 	lock   sync.Mutex
 }
 
-func (r *mqlJamf) restrictedSoftware() ([]interface{}, error) {
+func (r *mqlJamf) restrictedSoftware() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.JamfConnection)
 	client := conn.Client
 
@@ -29,7 +32,7 @@ func (r *mqlJamf) restrictedSoftware() ([]interface{}, error) {
 		return nil, err
 	}
 
-	var res []interface{}
+	var res []any
 	for _, item := range list.RestrictedSoftware {
 		mqlItem, err := CreateResource(r.MqlRuntime, "jamf.restrictedSoftware", map[string]*llx.RawData{
 			"id":   llx.StringData(strconv.Itoa(item.ID)),
@@ -49,14 +52,14 @@ func (r *mqlJamfRestrictedSoftware) id() (string, error) {
 }
 
 func (r *mqlJamfRestrictedSoftware) fetchDetail() (*jamfpro.ResourceRestrictedSoftware, error) {
-	if r.detail != nil {
-		return r.detail, nil
+	if d := r.detail.Load(); d != nil {
+		return d, nil
 	}
 
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	if r.detail != nil {
-		return r.detail, nil
+	if d := r.detail.Load(); d != nil {
+		return d, nil
 	}
 
 	conn := r.MqlRuntime.Connection.(*connection.JamfConnection)
@@ -64,7 +67,7 @@ func (r *mqlJamfRestrictedSoftware) fetchDetail() (*jamfpro.ResourceRestrictedSo
 	if err != nil {
 		return nil, err
 	}
-	r.detail = detail
+	r.detail.Store(detail)
 	return detail, nil
 }
 
@@ -135,7 +138,7 @@ func (r *mqlJamfRestrictedSoftware) allComputers() (bool, error) {
 	return detail.Scope.AllComputers, nil
 }
 
-func (r *mqlJamfRestrictedSoftware) scope() (interface{}, error) {
+func (r *mqlJamfRestrictedSoftware) scope() (any, error) {
 	detail, err := r.fetchDetail()
 	if err != nil {
 		return nil, err
@@ -145,13 +148,13 @@ func (r *mqlJamfRestrictedSoftware) scope() (interface{}, error) {
 		return int64(e.ID), e.Name
 	}
 	scope := detail.Scope
-	return map[string]interface{}{
+	return map[string]any{
 		"allComputers":   scope.AllComputers,
 		"computers":      jamfScopeEntities(scope.Computers, entity),
 		"computerGroups": jamfScopeEntities(scope.ComputerGroups, entity),
 		"buildings":      jamfScopeEntities(scope.Buildings, entity),
 		"departments":    jamfScopeEntities(scope.Departments, entity),
-		"exclusions": map[string]interface{}{
+		"exclusions": map[string]any{
 			"computers":      jamfScopeEntities(scope.Exclusions.Computers, entity),
 			"computerGroups": jamfScopeEntities(scope.Exclusions.ComputerGroups, entity),
 			"buildings":      jamfScopeEntities(scope.Exclusions.Buildings, entity),

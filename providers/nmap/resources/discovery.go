@@ -6,11 +6,11 @@ package resources
 import (
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/nmap/connection"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/nmap/connection"
+	"go.mondoo.com/mql/utils/stringx"
 )
 
 func Discover(runtime *plugin.Runtime, opts map[string]string) (*inventory.Inventory, error) {
@@ -30,7 +30,7 @@ func Discover(runtime *plugin.Runtime, opts map[string]string) (*inventory.Inven
 	if !ok || networkValue == "" {
 		return nil, nil
 	}
-	networks := strings.Split(networkValue, ",")
+	networks := splitNetworks(networkValue)
 	assetList := []*inventory.Asset{}
 
 	for i := range networks {
@@ -72,6 +72,21 @@ func Discover(runtime *plugin.Runtime, opts map[string]string) (*inventory.Inven
 		Assets: assetList,
 	}}
 	return in, nil
+}
+
+// splitNetworks parses the comma-separated "networks" discovery option into
+// individual scan targets, trimming surrounding whitespace and dropping empty
+// entries so a value like "10.0.0.0/24, 10.0.1.0/24" does not yield a target
+// with a leading space (which nmap rejects).
+func splitNetworks(value string) []string {
+	parts := strings.Split(value, ",")
+	networks := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			networks = append(networks, trimmed)
+		}
+	}
+	return networks
 }
 
 func handleTargets(targets []string) []string {

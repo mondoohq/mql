@@ -6,16 +6,18 @@ package resources
 import (
 	"context"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 
 	abstractions "github.com/microsoft/kiota-abstractions-go"
+	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
+	"github.com/microsoftgraph/msgraph-sdk-go/directoryobjects"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/rolemanagement"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 var roledefinitionsSelectFields = []string{
@@ -184,12 +186,37 @@ func (m *mqlMicrosoftRolemanagementRoleassignment) id() (string, error) {
 	return m.Id.Data, nil
 }
 
+type mqlMicrosoftRolemanagementRoleassignmentInternal struct {
+	cacheRoleDefinitionID string
+	// rbacProvider is the unified RBAC provider the assignment was read from;
+	// empty for the directory provider.
+	rbacProvider string
+}
+
+// mqlMicrosoftRolemanagementRoledefinitionInternal records which unified RBAC
+// provider a role definition was read from, so its assignments are listed from
+// the same provider.
+type mqlMicrosoftRolemanagementRoledefinitionInternal struct {
+	// rbacProvider is empty for the directory provider.
+	rbacProvider string
+}
+
 // roleDefinition resolves the role definition this assignment grants.
 func (m *mqlMicrosoftRolemanagementRoleassignment) roleDefinition() (*mqlMicrosoftRolemanagementRoledefinition, error) {
-	id := m.RoleDefinitionId.Data
+	id := m.cacheRoleDefinitionID
 	if id == "" {
 		m.RoleDefinition.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
+	}
+	if m.rbacProvider == rbacProviderExchange {
+		def, err := exchangeRoleDefinitionByID(m.MqlRuntime, id)
+		if err != nil {
+			return nil, err
+		}
+		if def == nil {
+			m.RoleDefinition.State = plugin.StateIsSet | plugin.StateIsNull
+		}
+		return def, nil
 	}
 	res, err := NewResource(m.MqlRuntime, "microsoft.rolemanagement.roledefinition", map[string]*llx.RawData{
 		"id": llx.StringData(id),
@@ -211,32 +238,24 @@ func (a *mqlMicrosoftRolemanagement) roleDefinitions() (*mqlMicrosoftRoles, erro
 }
 
 func (a *mqlMicrosoftRolemanagementRoledefinition) assignments() ([]any, error) {
+	if a.rbacProvider == rbacProviderExchange {
+		return exchangeRoleAssignmentsForDefinition(a.MqlRuntime, a.Id.Data)
+	}
 	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
 	graphClient, err := conn.GraphClient()
 	if err != nil {
 		return nil, err
 	}
-	roleDefinitionId := a.Id.Data
-	filter := "roleDefinitionId eq '" + roleDefinitionId + "'"
-	requestConfig := &rolemanagement.DirectoryRoleAssignmentsRequestBuilderGetRequestConfiguration{
-		QueryParameters: &rolemanagement.DirectoryRoleAssignmentsRequestBuilderGetQueryParameters{
-			Filter: &filter,
-			Expand: []string{"principal"},
-		},
-	}
-	ctx := context.Background()
-	resp, err := graphClient.RoleManagement().Directory().RoleAssignments().Get(ctx, requestConfig)
-	if err != nil {
-		return nil, transformError(err)
-	}
-	roleAssignments, err := iterate[models.UnifiedRoleAssignmentable](ctx, resp, graphClient.GetAdapter(), models.CreateUnifiedRoleAssignmentCollectionResponseFromDiscriminatorValue)
+
+	rows, err := fetchRoleDefinitionAssignments(context.Background(), graphClient, a.Id.Data)
 	if err != nil {
 		return nil, err
 	}
 
 	res := []any{}
-	for _, roleAssignment := range roleAssignments {
-		directoryPrincipal := roleAssignment.GetPrincipal()
+	for _, row := range rows {
+		roleAssignment := row.assignment
+		directoryPrincipal := row.principal
 		principal, err := convert.JsonToDict(newDirectoryPrincipal(directoryPrincipal))
 		if err != nil {
 			return nil, err
@@ -245,16 +264,182 @@ func (a *mqlMicrosoftRolemanagementRoledefinition) assignments() ([]any, error) 
 		mqlResource, err := CreateResource(a.MqlRuntime, "microsoft.rolemanagement.roleassignment",
 			map[string]*llx.RawData{
 				"id":               llx.StringDataPtr(roleAssignment.GetId()),
-				"roleDefinitionId": llx.StringDataPtr(roleAssignment.GetRoleDefinitionId()),
 				"principalId":      llx.StringDataPtr(roleAssignment.GetPrincipalId()),
 				"principalType":    llx.StringData(principalType),
 				"principalName":    llx.StringData(principalName),
 				"principal":        llx.DictData(principal),
+				"directoryScopeId": llx.StringDataPtr(roleAssignment.GetDirectoryScopeId()),
+				"appScopeId":       llx.StringDataPtr(roleAssignment.GetAppScopeId()),
+				"condition":        llx.StringDataPtr(roleAssignment.GetCondition()),
 			})
 		if err != nil {
 			return nil, err
 		}
-		res = append(res, mqlResource)
+		mqlRoleAssignment := mqlResource.(*mqlMicrosoftRolemanagementRoleassignment)
+		if roleDefinitionID := roleAssignment.GetRoleDefinitionId(); roleDefinitionID != nil {
+			mqlRoleAssignment.cacheRoleDefinitionID = *roleDefinitionID
+		}
+		res = append(res, mqlRoleAssignment)
 	}
 	return res, nil
+}
+
+// roleAssignmentRow is one role assignment with its principal, which is nil
+// when the principal no longer exists in the directory.
+type roleAssignmentRow struct {
+	assignment models.UnifiedRoleAssignmentable
+	principal  models.DirectoryObjectable
+}
+
+// fetchRoleDefinitionAssignments lists the assignments of one role definition
+// with their principals.
+//
+// The list is requested with $expand=principal. Graph fails that whole request
+// with Request_ResourceNotFound when a single assignment points at a deleted
+// principal, so a not-found answer is ambiguous: it can mean one dangling
+// assignment hides every live one. The request is repeated without $expand to
+// tell the cases apart, and the principals are then read in bulk; a principal
+// that is gone is left nil. Only when that second request is also not found
+// does the role have no assignments to list: several built-in definitions are
+// templates a tenant never instantiates, and roleDefinitions returns them all
+// the same.
+func fetchRoleDefinitionAssignments(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, roleDefinitionId string) ([]roleAssignmentRow, error) {
+	filter := "roleDefinitionId eq '" + roleDefinitionId + "'"
+	list := func(expand []string) ([]models.UnifiedRoleAssignmentable, error) {
+		resp, err := graphClient.RoleManagement().Directory().RoleAssignments().Get(ctx, &rolemanagement.DirectoryRoleAssignmentsRequestBuilderGetRequestConfiguration{
+			QueryParameters: &rolemanagement.DirectoryRoleAssignmentsRequestBuilderGetQueryParameters{
+				Filter: &filter,
+				Expand: expand,
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		return iterate[models.UnifiedRoleAssignmentable](ctx, resp, graphClient.GetAdapter(), models.CreateUnifiedRoleAssignmentCollectionResponseFromDiscriminatorValue)
+	}
+
+	assignments, err := list([]string{"principal"})
+	if err == nil {
+		rows := make([]roleAssignmentRow, 0, len(assignments))
+		for _, assignment := range assignments {
+			rows = append(rows, roleAssignmentRow{assignment: assignment, principal: assignment.GetPrincipal()})
+		}
+		return rows, nil
+	}
+	if !isResourceNotFound(err) {
+		return nil, transformError(err)
+	}
+
+	assignments, err = list(nil)
+	if err != nil {
+		if isResourceNotFound(err) {
+			log.Debug().
+				Str("roleDefinitionId", roleDefinitionId).
+				Msg("ms365> role definition has no assignable directory role; reporting no assignments")
+			return []roleAssignmentRow{}, nil
+		}
+		return nil, transformError(err)
+	}
+
+	log.Debug().
+		Str("roleDefinitionId", roleDefinitionId).
+		Msg("ms365> role assignments reference a deleted principal; resolving principals separately")
+
+	principalIds := []string{}
+	for _, assignment := range assignments {
+		if id := assignment.GetPrincipalId(); id != nil && *id != "" {
+			principalIds = append(principalIds, *id)
+		}
+	}
+	principals, err := fetchDirectoryObjectsByIds(ctx, graphClient, principalIds)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]roleAssignmentRow, 0, len(assignments))
+	for _, assignment := range assignments {
+		row := roleAssignmentRow{assignment: assignment}
+		if id := assignment.GetPrincipalId(); id != nil {
+			row.principal = principals[*id]
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+// directoryObjectsByIdsBatchSize is the most ids directoryObjects/getByIds
+// accepts in one request.
+const directoryObjectsByIdsBatchSize = 1000
+
+// fetchDirectoryObjectsByIds reads directory objects by id, keyed by id. An id
+// that no longer exists is simply absent from the result.
+func fetchDirectoryObjectsByIds(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, ids []string) (map[string]models.DirectoryObjectable, error) {
+	res := map[string]models.DirectoryObjectable{}
+	for start := 0; start < len(ids); start += directoryObjectsByIdsBatchSize {
+		end := min(start+directoryObjectsByIdsBatchSize, len(ids))
+		body := directoryobjects.NewGetByIdsPostRequestBody()
+		body.SetIds(ids[start:end])
+		resp, err := graphClient.DirectoryObjects().GetByIds().PostAsGetByIdsPostResponse(ctx, body, nil)
+		if err != nil {
+			return nil, transformError(err)
+		}
+		for _, obj := range resp.GetValue() {
+			if obj == nil || obj.GetId() == nil {
+				continue
+			}
+			res[*obj.GetId()] = obj
+		}
+	}
+	return res, nil
+}
+
+// assignedPrincipal resolves the assignment's principal as resource when its
+// directory type is principalType, and reports false otherwise.
+func (m *mqlMicrosoftRolemanagementRoleassignment) assignedPrincipal(principalType string, resource string) (plugin.Resource, bool, error) {
+	if m.PrincipalType.Data != principalType || m.PrincipalId.Data == "" {
+		return nil, false, nil
+	}
+	res, err := NewResource(m.MqlRuntime, resource, map[string]*llx.RawData{
+		"id": llx.StringData(m.PrincipalId.Data),
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return res, true, nil
+}
+
+func (m *mqlMicrosoftRolemanagementRoleassignment) user() (*mqlMicrosoftUser, error) {
+	res, ok, err := m.assignedPrincipal("user", ResourceMicrosoftUser)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		m.User.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res.(*mqlMicrosoftUser), nil
+}
+
+func (m *mqlMicrosoftRolemanagementRoleassignment) group() (*mqlMicrosoftGroup, error) {
+	res, ok, err := m.assignedPrincipal("group", ResourceMicrosoftGroup)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		m.Group.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res.(*mqlMicrosoftGroup), nil
+}
+
+func (m *mqlMicrosoftRolemanagementRoleassignment) servicePrincipal() (*mqlMicrosoftServiceprincipal, error) {
+	res, ok, err := m.assignedPrincipal("servicePrincipal", ResourceMicrosoftServiceprincipal)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		m.ServicePrincipal.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res.(*mqlMicrosoftServiceprincipal), nil
 }

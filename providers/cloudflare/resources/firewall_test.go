@@ -12,30 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFirewallRules(t *testing.T) {
-	env := setupTestEnv(t)
-	zone := createTestZone(t, env)
-
-	env.Mux.HandleFunc(fmt.Sprintf("/zones/%s/firewall/rules", testZoneID), func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodGet, r.Method)
-		jsonResponse(w, loadFixture("firewall_rules"))
-	})
-
-	result, err := zone.firewallRules()
-	require.NoError(t, err)
-	require.Len(t, result, 1)
-
-	rule := result[0].(*mqlCloudflareZoneFirewallRule)
-	assert.Equal(t, "fw-rule-1", rule.Id.Data)
-	assert.Equal(t, "Block bad bots", rule.Description.Data)
-	assert.Equal(t, "block", rule.Action.Data)
-	assert.False(t, rule.Paused.Data)
-	assert.Equal(t, "(cf.client.bot)", rule.FilterExpression.Data)
-	assert.Len(t, rule.Products.Data, 2)
-	assert.False(t, rule.CreatedAt.Data.IsZero())
-	assert.False(t, rule.UpdatedAt.Data.IsZero())
-}
-
 func TestRulesets(t *testing.T) {
 	env := setupTestEnv(t)
 	zone := createTestZone(t, env)

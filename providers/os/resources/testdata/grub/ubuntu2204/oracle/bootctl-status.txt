@@ -1,0 +1,41 @@
+systemd-boot not installed in ESP.
+System:
+     Firmware: n/a (n/a)
+  Secure Boot: disabled
+   Setup Mode: setup
+ TPM2 Support: no
+ Boot into FW: supported
+
+Current Boot Loader:
+      Product: n/a
+     Features: ✗ Boot counting
+               ✗ Menu timeout control
+               ✗ One-shot menu timeout control
+               ✗ Default entry control
+               ✗ One-shot entry control
+               ✗ Support for XBOOTLDR partition
+               ✗ Support for passing random seed to OS
+               ✗ Boot loader sets ESP information
+          ESP: n/a
+         File: └─n/a
+
+Random Seed:
+ Passed to OS: no
+ System Token: not set
+       Exists: no
+
+Available Boot Loaders on ESP:
+          ESP: /boot/efi (/dev/disk/by-partuuid/84ebd237-bc9b-448d-a451-5258bd6f6b99)
+         File: └─/EFI/BOOT/BOOTX64.EFI
+
+Boot Loaders Listed in EFI Variables:
+        Title: ubuntu
+           ID: 0x0002
+       Status: active, boot-order
+    Partition: /dev/disk/by-partuuid/84ebd237-bc9b-448d-a451-5258bd6f6b99
+         File: └─/EFI/ubuntu/shimx64.efi
+
+Boot Loader Entries:
+        $BOOT: /boot/efi (/dev/disk/by-partuuid/84ebd237-bc9b-448d-a451-5258bd6f6b99)
+
+0 entries, no entry could be determined as default.

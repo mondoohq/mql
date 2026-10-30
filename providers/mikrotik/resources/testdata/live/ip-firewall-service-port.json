@@ -1,0 +1,69 @@
+[
+ {
+  ".id": "*1",
+  "disabled": "false",
+  "invalid": "false",
+  "name": "ftp",
+  "ports": "21"
+ },
+ {
+  ".id": "*2",
+  "disabled": "false",
+  "invalid": "false",
+  "name": "tftp",
+  "ports": "69"
+ },
+ {
+  ".id": "*3",
+  "disabled": "true",
+  "invalid": "true",
+  "name": "irc",
+  "ports": "6667"
+ },
+ {
+  ".id": "*4",
+  "disabled": "false",
+  "invalid": "false",
+  "name": "h323"
+ },
+ {
+  ".id": "*5",
+  "disabled": "false",
+  "invalid": "false",
+  "name": "sip",
+  "ports": "5060,5061",
+  "sip-direct-media": "true",
+  "sip-timeout": "1h"
+ },
+ {
+  ".id": "*6",
+  "disabled": "false",
+  "invalid": "false",
+  "name": "pptp"
+ },
+ {
+  ".id": "*7",
+  "disabled": "true",
+  "invalid": "true",
+  "name": "rtsp",
+  "ports": "554"
+ },
+ {
+  ".id": "*8",
+  "disabled": "false",
+  "invalid": "false",
+  "name": "udplite"
+ },
+ {
+  ".id": "*9",
+  "disabled": "false",
+  "invalid": "false",
+  "name": "dccp"
+ },
+ {
+  ".id": "*A",
+  "disabled": "false",
+  "invalid": "false",
+  "name": "sctp"
+ }
+]

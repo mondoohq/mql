@@ -1,0 +1,176 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/elasticsearch"
+option go_package = "go.mondoo.com/mql/providers/elasticsearch/resources"
+option root = "elasticsearch"
+
+// Elasticsearch cluster
+//
+// Root of the Elasticsearch provider. The connected cluster and everything
+// queryable through it (security posture, users, roles, role mappings, and API
+// keys) is reached from elasticsearch.cluster.
+elasticsearch @root {
+}
+
+// Elasticsearch cluster
+//
+// The connected cluster: its name, version, health, and node counts, plus the
+// security posture, users, roles, role mappings, and API keys reached from
+// here. Populated from the cluster info, health, and security APIs. Health and
+// the security posture need the monitor cluster privilege; users, roles, role
+// mappings, and API keys need read_security.
+elasticsearch.cluster @defaults("name version healthStatus") {
+  // Cluster name
+  name string
+  // Cluster UUID
+  uuid string
+  // Server version, for example "8.15.3"
+  version string
+  // Product distribution serving the cluster, for example "elasticsearch"
+  distribution string
+  // Build flavor, for example "default"
+  buildFlavor string
+  // Lucene version backing the cluster
+  luceneVersion string
+  // Cluster health status: "green", "yellow", or "red"
+  healthStatus string
+  // Total number of nodes in the cluster
+  nodeCount int
+  // Number of data nodes in the cluster
+  dataNodeCount int
+  // Security posture of the cluster
+  security() elasticsearch.security
+  // Users defined in the native realm
+  users() []elasticsearch.user
+  // Roles defined on the cluster
+  roles() []elasticsearch.role
+  // Role mappings that assign roles to users and groups
+  roleMappings() []elasticsearch.roleMapping
+  // API keys defined on the cluster
+  apiKeys() []elasticsearch.apiKey
+}
+
+// Elasticsearch security posture
+//
+// Cluster-wide security settings: whether the security features are enabled,
+// whether anonymous access is allowed, whether the HTTP and transport layers
+// use TLS, and whether audit logging is on. Read from the security usage API.
+elasticsearch.security @defaults("enabled httpTlsEnabled anonymousAccessEnabled") {
+  // Whether the security features are enabled
+  //
+  // When false, the cluster performs no authentication or authorization and
+  // any client that can reach it has full access.
+  enabled bool
+  // Whether the security features are available under the current license
+  available bool
+  // Whether anonymous access is enabled
+  //
+  // When true, unauthenticated requests are served as an anonymous user.
+  anonymousAccessEnabled bool
+  // Whether the HTTP (REST) layer uses TLS
+  httpTlsEnabled bool
+  // Whether the transport (node-to-node) layer uses TLS
+  transportTlsEnabled bool
+  // Whether audit logging is enabled
+  auditLoggingEnabled bool
+}
+
+// Elasticsearch user
+//
+// A user in the native realm, its assigned roles, and whether it is enabled.
+// Built-in users such as elastic and kibana_system are marked with isReserved.
+// The name field selects the user, for example
+// elasticsearch.cluster.users.where(name == "elastic").
+elasticsearch.user @defaults("name enabled isReserved") {
+  // User name
+  name string
+  // Roles assigned to the user
+  roles []string
+  // Full name, when set
+  fullName string
+  // Email address, when set
+  email string
+  // Whether the user is enabled
+  enabled bool
+  // Whether this is a built-in, reserved user
+  isReserved bool
+}
+
+// Elasticsearch role
+//
+// A role and the privileges it grants: cluster privileges, per-index
+// privileges, application privileges, and run-as targets. Built-in roles such
+// as superuser are marked with isReserved. The name field selects the role, for
+// example elasticsearch.cluster.roles.where(name == "superuser").
+elasticsearch.role @defaults("name isReserved") {
+  // Role name
+  name string
+  // Whether this is a built-in, reserved role
+  isReserved bool
+  // Cluster-level privileges granted, for example "monitor" or "all"
+  clusterPrivileges []string
+  // Names of the applications the role grants privileges on
+  applicationNames []string
+  // Users this role may run requests as
+  runAs []string
+  // Per-index privilege grants
+  indexPrivileges() []elasticsearch.role.indexPrivilege
+}
+
+// Elasticsearch index privilege
+//
+// A single per-index privilege grant of a role: the index patterns it applies
+// to, the privileges granted, and whether field- or document-level security
+// narrows access. For example the privileges "read" on the index pattern
+// "logs-*".
+elasticsearch.role.indexPrivilege @defaults("names privileges") {
+  // Index name patterns the grant applies to
+  names []string
+  // Privileges granted on the matching indices, for example "read" or "all"
+  privileges []string
+  // Whether field-level security restricts which fields are readable
+  hasFieldSecurity bool
+  // Whether document-level security restricts which documents are readable
+  hasDocumentSecurity bool
+  // Whether the grant extends to restricted (internal) indices
+  allowRestrictedIndices bool
+}
+
+// Elasticsearch role mapping
+//
+// A rule that assigns roles to users and groups based on their realm
+// attributes. The name field selects the mapping, for example
+// elasticsearch.cluster.roleMappings.where(name == "admins").
+elasticsearch.roleMapping @defaults("name enabled") {
+  // Role mapping name
+  name string
+  // Whether the mapping is enabled
+  enabled bool
+  // Roles assigned by the mapping
+  roles []string
+}
+
+// Elasticsearch API key
+//
+// An API key and its lifetime: its owner, when it was created, when it
+// expires, and whether it has been invalidated. A key with no expiration never
+// expires, a posture concern. The id field selects the key.
+elasticsearch.apiKey @defaults("name username neverExpires") {
+  // API key identifier
+  id string
+  // API key name
+  name string
+  // User that owns the key
+  username string
+  // Time the key was created
+  creation time
+  // Time the key expires, or null when it never expires
+  expiration time
+  // Whether the key never expires
+  neverExpires bool
+  // Whether the key has been invalidated
+  invalidated bool
+}

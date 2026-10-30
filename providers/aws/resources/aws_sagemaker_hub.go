@@ -6,16 +6,17 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/service/sagemaker"
 	smtypes "github.com/aws/aws-sdk-go-v2/service/sagemaker/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 // Content types to enumerate when listing everything inside a hub.
@@ -52,14 +53,10 @@ func initAwsSagemakerHub(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 		}
 	}
 
-	_, region, _, name := parseSagemakerArn(arnVal)
-	if args["name"] == nil && name != "" {
-		args["name"] = llx.StringData(name)
-	}
-	if args["region"] == nil && region != "" {
-		args["region"] = llx.StringData(region)
-	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.sagemaker.hub with arn %q not found", arnVal)
 }
 
 // ---- Hubs ----
@@ -134,7 +131,7 @@ func (a *mqlAwsSagemaker) getHubs(conn *connection.AwsConnection) []*jobpool.Job
 					m := mqlHub.(*mqlAwsSagemakerHub)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlHub)
 				}
@@ -277,7 +274,7 @@ func (a *mqlAwsSagemakerHub) contents() ([]any, error) {
 				m := mqlContent.(*mqlAwsSagemakerHubContent)
 				if eagerTags != nil {
 					m.cacheTags = eagerTags
-					m.tagsFetched = true
+					m.tagsFetched.Store(true)
 				}
 				res = append(res, mqlContent)
 			}

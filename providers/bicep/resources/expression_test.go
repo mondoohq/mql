@@ -12,6 +12,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestNormalizeIndex(t *testing.T) {
+	// A single quoted literal is unquoted so foo['bar'] == foo.bar.
+	assert.Equal(t, "bar", normalizeIndex("'bar'"))
+	assert.Equal(t, "bar", normalizeIndex(`"bar"`))
+	assert.Equal(t, "", normalizeIndex("''"))
+	// Numeric and bare indices pass through.
+	assert.Equal(t, "0", normalizeIndex("0"))
+	assert.Equal(t, "foo", normalizeIndex("foo"))
+	// A concatenation that merely starts and ends with a quote is NOT a single
+	// literal and must be left intact (the regression this guards).
+	assert.Equal(t, "'a' + suffix + 'b'", normalizeIndex("'a' + suffix + 'b'"))
+	// Two adjacent literals are likewise not a single literal.
+	assert.Equal(t, "'a''b'", normalizeIndex("'a''b'"))
+}
+
 func TestParseExpressionLiteral(t *testing.T) {
 	tests := []struct {
 		name string

@@ -7,7 +7,7 @@ package proto
 import (
 	fmt "fmt"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
-	inventory "go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+	inventory "go.mondoo.com/mql/providers-sdk/v1/inventory"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	io "io"
@@ -49,6 +49,16 @@ func (m *RunQueryConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Strict {
+		i--
+		if m.Strict {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x78
 	}
 	if m.Exit_1OnFailure {
 		i--
@@ -314,6 +324,9 @@ func (m *RunQueryConfig) SizeVT() (n int) {
 		n += 2
 	}
 	if m.Exit_1OnFailure {
+		n += 2
+	}
+	if m.Strict {
 		n += 2
 	}
 	n += len(m.unknownFields)
@@ -750,6 +763,26 @@ func (m *RunQueryConfig) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Exit_1OnFailure = bool(v != 0)
+		case 15:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Strict", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Strict = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

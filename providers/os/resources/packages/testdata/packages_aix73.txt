@@ -1,0 +1,11 @@
+#Fileset:Level:PTF Id:State:Type:Description:EFIX Locked
+/usr/lib/objrepos:bos.adt.base:7.3.4.1::COMMITTED:I:Base Application Development Toolkit :
+/usr/lib/objrepos:bos.rte:7.3.4.2::COMMITTED:I:Base Operating System Runtime:
+/usr/lib/objrepos:bos.rte.security:7.3.4.2::COMMITTED:I:Base Security Function:
+/usr/lib/objrepos:openssh.base.server:9.9.3015.2001::COMMITTED:I:Open Secure Shell Server:
+/etc/objrepos:X11.apps.msmit:7.3.4.1::COMMITTED:I:AIXwindows msmit Application :
+/etc/objrepos:bos.adt.base:7.3.4.1::COMMITTED:I:Base Application Development Toolkit :
+/etc/objrepos:bos.rte:7.3.4.2::COMMITTED:I:Base Operating System Runtime:
+/etc/objrepos:bos.rte.security:7.3.4.2::COMMITTED:I:Base Security Function:
+/etc/objrepos:openssh.base.server:9.9.3015.2001::COMMITTED:I:Open Secure Shell Server:
+/usr/share/lib/objrepos:bos.terminfo.ibm.data:7.3.0.0::COMMITTED:I:IBM Terminal Definitions :

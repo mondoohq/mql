@@ -6,25 +6,45 @@ package resources
 import (
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // --- security-group source classification ---
 
 // includesPublicSource reports whether the rule's source reaches the public
-// internet: a public remote CIDR, or an unscoped rule (no remote IP prefix and
-// no remote group) which Neutron treats as any source. Direction-agnostic, so
-// it also classifies egress destinations.
+// internet: a public remote CIDR, a remote address group holding a public
+// range, or an unscoped rule (no remote IP prefix, group, or address group)
+// which Neutron treats as any source. Direction-agnostic, so it also classifies
+// egress destinations.
 func (r *mqlOpenstackSecurityGroupRule) includesPublicSource() (bool, error) {
-	prefix := r.RemoteIpPrefix.Data
-	if prefix == "" {
-		// A rule with no IP prefix is "any source" only when it is also not
-		// scoped to a remote security group or remote address group.
-		return r.cacheRemoteGroupID == "" && r.cacheRemoteAddressGroupID == "", nil
+	if prefix := r.RemoteIpPrefix.Data; prefix != "" {
+		return cidrIsPublic(prefix), nil
 	}
-	return cidrIsPublic(prefix), nil
+
+	// An address group carries the addresses in its own right, so the rule is
+	// only as public as the group's members.
+	if r.cacheRemoteAddressGroupID != "" {
+		group := r.GetRemoteAddressGroup()
+		if group.Error != nil {
+			return false, group.Error
+		}
+		if group.Data == nil {
+			// The group could not be resolved (no address-groups extension, or
+			// it is not readable), so there is nothing to judge it on.
+			return false, nil
+		}
+		public := group.Data.GetContainsPublicAddress()
+		if public.Error != nil {
+			return false, public.Error
+		}
+		return public.Data, nil
+	}
+
+	// A rule scoped to a remote security group reaches only that group's
+	// members; one scoped to nothing at all matches any source.
+	return r.cacheRemoteGroupID == "", nil
 }
 
 // allowsPublicIngress reports whether any ingress rule in the security group

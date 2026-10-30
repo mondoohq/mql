@@ -11,7 +11,9 @@ import (
 )
 
 // strPtr returns a pointer to s. Test helper to avoid `&"x"` boilerplate.
-func strPtr(s string) *string { return &s }
+//
+//go:fix inline
+func strPtr(s string) *string { return new(s) }
 
 func TestPolicyHasIpAllowList(t *testing.T) {
 	t.Run("nil policy", func(t *testing.T) {
@@ -276,8 +278,8 @@ func TestAccessPolicyToDict(t *testing.T) {
 	t.Run("policy with IP entries flattens AddressRange", func(t *testing.T) {
 		p := &logic.FlowAccessControlConfigurationPolicy{
 			AllowedCallerIPAddresses: []*logic.IPAddressRange{
-				{AddressRange: strPtr("10.0.0.0/8")},
-				{AddressRange: strPtr("192.168.0.0/16")},
+				{AddressRange: new("10.0.0.0/8")},
+				{AddressRange: new("192.168.0.0/16")},
 			},
 		}
 		out, err := accessPolicyToDict(p)

@@ -4,16 +4,22 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/claude/connection"
-	"go.mondoo.com/mql/v13/providers/claude/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/claude/connection"
+	"go.mondoo.com/mql/providers/claude/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "claude",
-	ID:              "go.mondoo.com/mql/providers/claude",
-	Version:         "13.0.6",
+	Name: "claude",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "claude",
+	ID:      "go.mondoo.com/mql/providers/claude",
+	Version: "14.2.0",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       connection.Platforms,
 	Connectors: []plugin.Connector{
@@ -21,6 +27,20 @@ var Config = plugin.Provider{
 			Name:  "claude",
 			Use:   "claude",
 			Short: "a Claude AI platform account",
+			Long: `Use the claude provider to query organization, workspace, API key, and service account
+configuration in a Claude AI platform account.
+
+Examples:
+  cnspec shell claude --token <API-KEY>
+  cnspec scan claude --admin-token <ADMIN-API-KEY> --discover organization
+  cnspec scan claude --admin-token <ADMIN-API-KEY> --discover workspaces
+
+Notes:
+  If you set the ANTHROPIC_API_KEY environment variable, you can omit the token flag.
+
+  Organization and workspace resources require an Admin API key. Supply it with
+  --admin-token or by setting the ANTHROPIC_ADMIN_API_KEY environment variable.
+`,
 			Discovery: []string{
 				connection.DiscoveryAll,
 				connection.DiscoveryAuto,

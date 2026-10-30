@@ -7,6 +7,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
 func TestParsePacmanOwner(t *testing.T) {
@@ -115,5 +118,60 @@ func TestSafeBinaryName(t *testing.T) {
 	// anything with a slash, whitespace, or shell metacharacter is rejected
 	for _, bad := range []string{"", "a/b", "a b", "$(rm -rf /)", "a;b", "a`b`", "a|b", "a&b", "a\nb"} {
 		assert.False(t, safeBinaryName.MatchString(bad), bad)
+	}
+}
+
+func TestLocateBinary(t *testing.T) {
+	onDisk := func(paths ...string) func(string) bool {
+		set := map[string]bool{}
+		for _, p := range paths {
+			set[p] = true
+		}
+		return func(p string) bool { return set[p] }
+	}
+	notOnPath := func(string) string { return "" }
+
+	// sudo on RHEL-family hosts runs with secure_path=/sbin:/bin:/usr/sbin:/usr/bin,
+	// so `command -v claude` finds nothing for an npm -g install in /usr/local/bin.
+	assert.Equal(t, "/usr/local/bin/claude",
+		locateBinary("claude", notOnPath, onDisk("/usr/local/bin/claude")))
+	assert.Equal(t, "/usr/local/bin/ollama",
+		locateBinary("ollama", notOnPath, onDisk("/usr/local/bin/ollama", "/usr/bin/ollama")))
+
+	// the scan's PATH wins when it resolves the binary
+	onPath := func(name string) string { return "/home/alice/.local/bin/" + name }
+	assert.Equal(t, "/home/alice/.local/bin/claude",
+		locateBinary("claude", onPath, onDisk("/usr/local/bin/claude")))
+
+	// a builtin or alias (no leading slash) is not a binary
+	alias := func(string) string { return "claude" }
+	assert.Equal(t, "/usr/bin/claude", locateBinary("claude", alias, onDisk("/usr/bin/claude")))
+
+	// absent everywhere, and names that are not plain binary names
+	assert.Equal(t, "", locateBinary("codex", notOnPath, onDisk()))
+	assert.Equal(t, "", locateBinary("../codex", notOnPath, func(string) bool { return true }))
+}
+
+func TestFindBinarySkipsUnixLookupOnWindows(t *testing.T) {
+	for _, platform := range []string{"windows", "linux"} {
+		t.Run(platform, func(t *testing.T) {
+			const command = "command -v 'ollama'"
+			base, err := mock.New(0, &inventory.Asset{Platform: &inventory.Platform{
+				Name: platform, Family: []string{platform},
+			}}, mock.WithData(&mock.TomlData{Commands: map[string]*mock.Command{
+				command: {Stdout: "/usr/bin/ollama\n"},
+			}}))
+			require.NoError(t, err)
+			conn := &countingConnection{Connection: base}
+
+			got := FindBinary(conn, "ollama")
+			if platform == "windows" {
+				assert.Empty(t, got)
+				assert.Zero(t, conn.count(command), "Windows cannot use the POSIX ownership lookup")
+			} else {
+				assert.Equal(t, "/usr/bin/ollama", got)
+				assert.Equal(t, 1, conn.count(command))
+			}
+		})
 	}
 }

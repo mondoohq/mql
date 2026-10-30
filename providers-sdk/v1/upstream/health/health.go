@@ -17,7 +17,7 @@ type Status struct {
 		Status    string `json:"status,omitempty"`
 		Timestamp string `json:"timestamp,omitempty"`
 		Version   string `json:"version,omitempty"`
-	} `json:"api,omitempty"`
+	} `json:"api"`
 	Features []string `json:"features,omitempty"`
 	Warnings []string `json:"warnings,omitempty"`
 }

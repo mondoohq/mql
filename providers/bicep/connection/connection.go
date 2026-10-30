@@ -6,16 +6,21 @@ package connection
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
-var _ plugin.Connection = (*BicepConnection)(nil)
+var (
+	_ plugin.Connection = (*BicepConnection)(nil)
+	_ plugin.Closer     = (*BicepConnection)(nil)
+)
 
 type BicepConnection struct {
 	plugin.Connection
@@ -24,7 +29,8 @@ type BicepConnection struct {
 	path            string
 	bicepFiles      []*BicepFile
 	bicepParamFiles []*BicepParamFile
-	armTemplate     *ARMTemplate
+	armTemplates    []*ARMTemplateFile
+	closer          func()
 }
 
 // BicepFile holds a Bicep source file path and its raw content.
@@ -39,14 +45,70 @@ type BicepParamFile struct {
 	Content string
 }
 
+// ARMTemplateFile pairs a parsed ARM template with the path it was read from.
+// A scanned directory can hold several templates, and each needs its own path
+// to build a stable, non-colliding resource id.
+type ARMTemplateFile struct {
+	Path     string
+	Template *ARMTemplate
+}
+
 // ARMTemplate holds a parsed ARM template JSON.
+//
+// Resources is kept raw because ARM has two encodings for it: the classic
+// array, and the object keyed by symbolic name that `bicep build` emits for
+// any template declaring "languageVersion": "2.0". ResourceList decodes both.
 type ARMTemplate struct {
-	Schema         string                     `json:"$schema"`
-	ContentVersion string                     `json:"contentVersion"`
-	Parameters     map[string]json.RawMessage `json:"parameters"`
-	Variables      map[string]json.RawMessage `json:"variables"`
-	Resources      []json.RawMessage          `json:"resources"`
-	Outputs        map[string]json.RawMessage `json:"outputs"`
+	Schema          string                     `json:"$schema"`
+	ContentVersion  string                     `json:"contentVersion"`
+	LanguageVersion string                     `json:"languageVersion"`
+	Parameters      map[string]json.RawMessage `json:"parameters"`
+	Variables       map[string]json.RawMessage `json:"variables"`
+	Resources       json.RawMessage            `json:"resources"`
+	Outputs         map[string]json.RawMessage `json:"outputs"`
+}
+
+// ARMResource is one entry of a template's `resources`. SymbolicName is the
+// object key for a symbolic-name (languageVersion 2.0) template and empty for
+// the classic array form, where a resource has no name of its own in the
+// template beyond its position.
+type ARMResource struct {
+	SymbolicName string
+	Raw          json.RawMessage
+}
+
+// ResourceList decodes `resources` in whichever of the two ARM encodings the
+// template uses. Object-form entries are returned in key-sorted order so the
+// materialized resource list is deterministic.
+func (t *ARMTemplate) ResourceList() []ARMResource {
+	if len(t.Resources) == 0 {
+		return nil
+	}
+
+	var arr []json.RawMessage
+	if err := json.Unmarshal(t.Resources, &arr); err == nil {
+		out := make([]ARMResource, 0, len(arr))
+		for _, raw := range arr {
+			out = append(out, ARMResource{Raw: raw})
+		}
+		return out
+	}
+
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(t.Resources, &obj); err != nil {
+		log.Warn().Err(err).Msg("ARM template `resources` is neither an array nor a symbolic-name object")
+		return nil
+	}
+	names := make([]string, 0, len(obj))
+	for name := range obj {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]ARMResource, 0, len(names))
+	for _, name := range names {
+		out = append(out, ARMResource{SymbolicName: name, Raw: obj[name]})
+	}
+	return out
 }
 
 func NewBicepConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*BicepConnection, error) {
@@ -60,8 +122,36 @@ func NewBicepConnection(id uint32, asset *inventory.Asset, conf *inventory.Confi
 		asset:      asset,
 	}
 
+	// If a git clone is performed below, clean up the temporary directory on any
+	// error path. Close() is a no-op when nothing was cloned, and the guard is
+	// disarmed once the connection is returned and takes ownership of cleanup.
+	cleanup := true
+	defer func() {
+		if cleanup {
+			conn.Close()
+		}
+	}()
+
 	cc := asset.Connections[0]
 	bicepPath := cc.Options["path"]
+	// When discovered from a git repository (e.g. by the GitHub provider) the
+	// asset carries the repo URL instead of a local path. Clone the repo and
+	// scan the resulting directory for Bicep/ARM files.
+	if bicepPath == "" {
+		if _, ok := cc.Options["http-url"]; ok {
+			clonePath, closer, err := plugin.NewGitClone(asset)
+			if err != nil {
+				return nil, err
+			}
+			conn.closer = closer
+			bicepPath = clonePath
+			// Intentionally do NOT overwrite cc.Options["path"]: the detector
+			// reads it to derive a platform ID, and a non-deterministic temp
+			// clone path would produce a different ID on every scan. The
+			// detector's git-discovered branch (ssh-url) handles naming for
+			// this path.
+		}
+	}
 	conn.path = bicepPath
 
 	fi, err := os.Stat(bicepPath)
@@ -80,10 +170,10 @@ func NewBicepConnection(id uint32, asset *inventory.Asset, conf *inventory.Confi
 			return nil, err
 		}
 		conn.bicepParamFiles = paramFiles
-		// Check for ARM template JSON in the directory
-		conn.armTemplate = findARMTemplate(bicepPath)
-		if len(files) == 0 && len(paramFiles) == 0 && conn.armTemplate == nil {
-			return nil, errors.New("no .bicep, .bicepparam, or ARM template JSON files found at " + bicepPath)
+		// Check for ARM template JSON anywhere in the directory tree
+		conn.armTemplates = findARMTemplates(bicepPath)
+		if len(files) == 0 && len(paramFiles) == 0 && len(conn.armTemplates) == 0 {
+			return nil, fmt.Errorf("no .bicep, .bicepparam, or ARM template JSON files found at %s: %w", bicepPath, plugin.ErrNoMatch)
 		}
 	} else if strings.HasSuffix(bicepPath, ".json") {
 		// Direct ARM template JSON
@@ -91,7 +181,7 @@ func NewBicepConnection(id uint32, asset *inventory.Asset, conf *inventory.Confi
 		if err != nil {
 			return nil, err
 		}
-		conn.armTemplate = tmpl
+		conn.armTemplates = []*ARMTemplateFile{{Path: bicepPath, Template: tmpl}}
 	} else if strings.HasSuffix(bicepPath, ".bicepparam") {
 		// Single .bicepparam parameter file
 		content, err := os.ReadFile(bicepPath)
@@ -108,7 +198,15 @@ func NewBicepConnection(id uint32, asset *inventory.Asset, conf *inventory.Confi
 		conn.bicepFiles = []*BicepFile{{Path: bicepPath, Content: string(content)}}
 	}
 
+	cleanup = false
 	return conn, nil
+}
+
+// Close cleans up any temporary directory created by a git clone.
+func (c *BicepConnection) Close() {
+	if c.closer != nil {
+		c.closer()
+	}
 }
 
 func (c *BicepConnection) Name() string {
@@ -127,8 +225,29 @@ func (c *BicepConnection) BicepParamFiles() []*BicepParamFile {
 	return c.bicepParamFiles
 }
 
+// ARMTemplate returns the first discovered ARM template, or nil when the scan
+// found none. It stays the right answer for a direct `bicep <file>.json`
+// connection; use ARMTemplates to reach every template in a scanned tree.
 func (c *BicepConnection) ARMTemplate() *ARMTemplate {
-	return c.armTemplate
+	if len(c.armTemplates) == 0 {
+		return nil
+	}
+	return c.armTemplates[0].Template
+}
+
+// ARMTemplatePath returns the path the first discovered ARM template was read
+// from, or "" when the scan found none.
+func (c *BicepConnection) ARMTemplatePath() string {
+	if len(c.armTemplates) == 0 {
+		return ""
+	}
+	return c.armTemplates[0].Path
+}
+
+// ARMTemplates returns every ARM template the scan discovered, each with the
+// path it came from, in path-sorted order.
+func (c *BicepConnection) ARMTemplates() []*ARMTemplateFile {
+	return c.armTemplates
 }
 
 func (c *BicepConnection) Path() string {
@@ -140,7 +259,14 @@ func loadBicepFiles(dir string) ([]*BicepFile, error) {
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			// An unreadable entry must not abort the whole scan; skip it the
+			// same way an unreadable file is skipped below. info is nil on an
+			// error, so fall back to SkipDir only when we can tell it's a dir.
+			log.Warn().Err(err).Str("path", path).Msg("skipping unreadable path")
+			if info != nil && info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		if info.IsDir() {
 			return nil
@@ -167,7 +293,14 @@ func loadBicepParamFiles(dir string) ([]*BicepParamFile, error) {
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			// An unreadable entry must not abort the whole scan; skip it the
+			// same way an unreadable file is skipped below. info is nil on an
+			// error, so fall back to SkipDir only when we can tell it's a dir.
+			log.Warn().Err(err).Str("path", path).Msg("skipping unreadable path")
+			if info != nil && info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		if info.IsDir() {
 			return nil
@@ -189,29 +322,45 @@ func loadBicepParamFiles(dir string) ([]*BicepParamFile, error) {
 	return files, nil
 }
 
-func findARMTemplate(dir string) *ARMTemplate {
-	// Look for common ARM template filenames
-	candidates := []string{
-		"azuredeploy.json",
-		"mainTemplate.json",
-		"template.json",
-		"main.json",
-	}
-	for _, name := range candidates {
-		path := filepath.Join(dir, name)
+// findARMTemplates walks the tree for JSON files that parse as ARM deployment
+// templates. Discovery is recursive and name-agnostic to match how `.bicep`
+// and `.bicepparam` files are already found: an `infra/azuredeploy.json` or an
+// `arm/storage.prod.json` is just as much a template as a root `main.json`.
+// Every match is kept, each carrying its own path.
+func findARMTemplates(dir string) []*ARMTemplateFile {
+	var out []*ARMTemplateFile
+
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			log.Warn().Err(err).Str("path", path).Msg("skipping unreadable path")
+			if info != nil && info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(path, ".json") {
+			return nil
+		}
 		tmpl, err := loadARMTemplate(path)
-		if err == nil {
-			return tmpl
+		if err != nil {
+			// Most JSON in a repo is not an ARM template (package.json,
+			// settings, fixtures), so a failed schema check is unremarkable
+			// and logged at debug. Only a read error is worth a warning.
+			log.Debug().Err(err).Str("path", path).Msg("json file is not an ARM deployment template")
+			return nil
 		}
-		// A missing candidate is expected; a present-but-malformed template
-		// (invalid JSON or failing the deploymentTemplate check) is not — log
-		// it so a broken azuredeploy.json isn't silently indistinguishable
-		// from "no template here".
-		if !os.IsNotExist(err) {
-			log.Warn().Err(err).Str("path", path).Msg("failed to load ARM template candidate")
-		}
+		out = append(out, &ARMTemplateFile{Path: path, Template: tmpl})
+		return nil
+	})
+	if err != nil {
+		log.Warn().Err(err).Str("dir", dir).Msg("failed to walk directory for ARM templates")
 	}
-	return nil
+
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
 }
 
 func loadARMTemplate(path string) (*ARMTemplate, error) {

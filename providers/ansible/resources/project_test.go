@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/ansible/connection"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/ansible/connection"
 )
 
 func newProjectRuntime(t *testing.T) *plugin.Runtime {
@@ -87,6 +87,31 @@ func TestProjectRolesAndDependencies(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, deps, 1)
 	assert.Equal(t, "common", deps[0].(*mqlAnsibleRole).Name.Data)
+}
+
+// A bare ansible.role (Internal .role unset) is what a top-level `ansible.role`
+// query or a recording replay produces. Its accessors must degrade to
+// empty/null rather than panic on the nil dereference, matching the sibling
+// ansible.play / ansible.task accessors.
+func TestRoleAccessorsNilRole(t *testing.T) {
+	rt := newProjectRuntime(t)
+	role := &mqlAnsibleRole{MqlRuntime: rt}
+
+	tasks, err := role.tasks()
+	require.NoError(t, err)
+	assert.Empty(t, tasks)
+
+	handlers, err := role.handlers()
+	require.NoError(t, err)
+	assert.Empty(t, handlers)
+
+	meta, err := role.meta()
+	require.NoError(t, err)
+	assert.Nil(t, meta)
+
+	deps, err := role.dependencies()
+	require.NoError(t, err)
+	assert.Empty(t, deps)
 }
 
 func TestProjectPlayRoleApplications(t *testing.T) {

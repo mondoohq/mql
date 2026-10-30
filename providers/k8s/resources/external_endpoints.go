@@ -4,7 +4,9 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
+	"slices"
+
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	discoveryv1 "k8s.io/api/discovery/v1"
 )
 
@@ -61,10 +63,8 @@ func (k *mqlK8sService) routesToPublicEndpoint() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	for _, addr := range addrs {
-		if addressIsPublicNodeAddress(addr) {
-			return true, nil
-		}
+	if slices.ContainsFunc(addrs, addressIsPublicNodeAddress) {
+		return true, nil
 	}
 	return false, nil
 }

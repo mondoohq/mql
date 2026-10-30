@@ -1,0 +1,42 @@
+[
+ {
+  ".id": "*4",
+  "arp": "enabled",
+  "arp-timeout": "auto",
+  "disabled": "false",
+  "hw-offloaded": "false",
+  "interface": "br-lab",
+  "l2mtu": "65531",
+  "loop-protect": "default",
+  "loop-protect-disable-time": "5m",
+  "loop-protect-send-interval": "5s",
+  "loop-protect-status": "off",
+  "mac-address": "3E:5A:6B:EB:D8:79",
+  "mtu": "1500",
+  "mvrp": "false",
+  "name": "vlan10",
+  "running": "true",
+  "use-service-tag": "false",
+  "vlan-id": "10"
+ },
+ {
+  ".id": "*5",
+  "arp": "enabled",
+  "arp-timeout": "auto",
+  "disabled": "false",
+  "hw-offloaded": "false",
+  "interface": "br-lab",
+  "l2mtu": "65531",
+  "loop-protect": "default",
+  "loop-protect-disable-time": "5m",
+  "loop-protect-send-interval": "5s",
+  "loop-protect-status": "off",
+  "mac-address": "3E:5A:6B:EB:D8:79",
+  "mtu": "1500",
+  "mvrp": "false",
+  "name": "vlan20",
+  "running": "true",
+  "use-service-tag": "false",
+  "vlan-id": "20"
+ }
+]

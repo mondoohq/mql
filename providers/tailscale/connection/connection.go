@@ -8,13 +8,14 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	tsclient "github.com/tailscale/tailscale-client-go/v2"
+	tsclient "tailscale.com/client/tailscale/v2"
 )
 
 const (
@@ -48,12 +49,19 @@ const (
 	TAILSCALE_BASE_URL_VAR            = "TAILSCALE_BASE_URL"
 )
 
+// defaultTailnetPlaceholder is the fallback tailnet label used when the user
+// did not name a tailnet and we could not derive it from the API.
+const defaultTailnetPlaceholder = "default"
+
 type TailscaleConnection struct {
 	plugin.Connection
 	Conf  *inventory.Config
 	asset *inventory.Asset
 
 	client *tsclient.Client
+
+	tailnetOnce sync.Once
+	tailnet     string
 }
 
 func NewTailscaleConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*TailscaleConnection, error) {
@@ -85,18 +93,20 @@ func NewTailscaleConnection(id uint32, asset *inventory.Asset, conf *inventory.C
 				TAILSCALE_OAUTH_CLIENT_SECRET_VAR,
 			)
 		}
-		conn.client.HTTP = tsclient.OAuthConfig{
+		// Scopes are deliberately left empty. Tailscale scopes access per
+		// resource (policy_file:read, auth_keys, webhooks:read, dns:read,
+		// log_streaming:read, feature_settings:read, devices:routes:read, ...),
+		// and a client-credentials token is narrowed to whatever scopes the
+		// token request names. Requesting a fixed subset here would cap every
+		// OAuth user at that subset no matter what their client was granted,
+		// while requesting the full set would break clients that were granted
+		// less. Omitting the scope parameter issues a token carrying exactly
+		// the scopes the OAuth client itself holds, so the grant made in the
+		// Tailscale admin console is what decides access.
+		conn.client.Auth = &tsclient.OAuth{
 			ClientID:     clientID,
 			ClientSecret: clientSecret,
-			Scopes: []string{
-				// Used in resources/tailscale.go `devices()`
-				// Used in resources/device.go `initTailscaleDevice()`
-				"devices:core:read",
-				// Used in resources/tailscale.go `users()`
-				// Used in resources/user.go `initTailscaleUser()`
-				"users:read",
-			},
-		}.HTTPClient()
+		}
 		log.Info().Str("method", "OAuth").Msg("tailscale> authentication configured")
 
 	case TokenAuthMethod:
@@ -146,12 +156,67 @@ func (t *TailscaleConnection) Verify() error {
 	//
 	// API specifications https://tailscale.com/api
 	_, err := t.client.Devices().Get(context.Background(), "m0nd00")
-	if err != nil {
-		if strings.Contains(err.Error(), "401") {
-			return errors.New("invalid authentication provided, verify the provided credentials, use --help for more details")
-		}
+	if err == nil {
+		return nil
 	}
+
+	switch APIStatusCode(err) {
+	case 401:
+		return errors.New("invalid authentication provided, verify the provided credentials, use --help for more details")
+	case 403:
+		// The credential is valid but cannot read devices. For an OAuth client
+		// that means the devices:core:read scope was never granted, which we
+		// report now rather than letting every device query fail later.
+		return errors.New("the provided credentials are not authorized to read devices. " +
+			"When using an OAuth client, grant it the scopes for the resources you intend to query " +
+			"(at minimum devices:core:read), then try again")
+	}
+
+	// Any other failure (a 404 for the probe device, a transient network error)
+	// is not evidence of bad credentials, so we let the scan proceed.
 	return nil
+}
+
+// ResolveTailnet returns the tailnet this connection targets.
+//
+// When the user named a tailnet we use it verbatim. Otherwise the client talks
+// to the default tailnet of the credential ("-"), and Tailscale offers no
+// endpoint that names it directly. We recover it from the tailnet's own users,
+// so that two tailnets scanned without an explicit name do not collapse onto a
+// single asset identity. Shared users belong to the tailnet they were shared
+// from, not this one, so they are skipped.
+//
+// The lookup runs at most once per connection and falls back to a placeholder
+// when it cannot be performed, which keeps a credential without users:read
+// working exactly as it did before.
+func (t *TailscaleConnection) ResolveTailnet() string {
+	t.tailnetOnce.Do(func() {
+		if value, set := GetTailnet(t.Conf); set {
+			t.tailnet = value
+			return
+		}
+
+		t.tailnet = defaultTailnetPlaceholder
+
+		users, err := t.client.Users().List(context.Background(), nil, nil)
+		if err != nil {
+			log.Debug().Err(err).
+				Msg("tailscale> unable to resolve the tailnet, falling back to the default identifier")
+			return
+		}
+
+		for i := range users {
+			if users[i].Type == tsclient.UserTypeShared {
+				continue
+			}
+			if users[i].TailnetID != "" {
+				t.tailnet = users[i].TailnetID
+				log.Debug().Str("tailnet", t.tailnet).Msg("tailscale> resolved tailnet")
+				return
+			}
+		}
+	})
+	return t.tailnet
 }
 
 func (t *TailscaleConnection) Asset() *inventory.Asset {
@@ -173,17 +238,7 @@ func (t *TailscaleConnection) PlatformInfo() (*inventory.Platform, error) {
 }
 
 func (t *TailscaleConnection) Identifier() string {
-	tailnet, set := GetTailnet(t.Conf)
-	if !set {
-		// When no tailnet was specified, we will be using the default tailnet of the
-		// authentication method being used to make API calls. Tailscale recommend this
-		// option for most users. (https://tailscale.com/api)
-		//
-		// NOTE that today, we cannot make an API call to get the actual tailnet
-		tailnet = "default"
-	}
-
-	return PlatformIdTailscaleTailnet + tailnet
+	return PlatformIdTailscaleTailnet + t.ResolveTailnet()
 }
 
 func NewTailscaleDeviceIdentifier(deviceId string) string {
@@ -195,6 +250,32 @@ func NewTailscaleDevicePlatform(deviceId string) *inventory.Platform {
 	}
 	PlatformByName("tailscale-device").Apply(p)
 	return p
+}
+
+// DeviceIdFromAsset returns the Tailscale device id carried by the asset's
+// platform ids, or an empty string when the asset is not a discovered device.
+// Resources use it so that a bare `tailscale.device` resolves to the device the
+// asset represents instead of requiring an explicit id argument.
+func DeviceIdFromAsset(asset *inventory.Asset) string {
+	return platformIdSuffix(asset, PlatformIdTailscaleDevice)
+}
+
+// UserIdFromAsset returns the Tailscale user id carried by the asset's platform
+// ids, or an empty string when the asset is not a discovered user.
+func UserIdFromAsset(asset *inventory.Asset) string {
+	return platformIdSuffix(asset, PlatformIdTailscaleUser)
+}
+
+func platformIdSuffix(asset *inventory.Asset, prefix string) string {
+	if asset == nil {
+		return ""
+	}
+	for _, platformId := range asset.PlatformIds {
+		if suffix, found := strings.CutPrefix(platformId, prefix); found && suffix != "" {
+			return suffix
+		}
+	}
+	return ""
 }
 
 func NewTailscaleUserIdentifier(userId string) string {

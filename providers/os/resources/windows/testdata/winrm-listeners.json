@@ -1,0 +1,10 @@
+[
+    {
+        "Address":  "*",
+        "Transport":  "HTTP",
+        "Port":  "5985",
+        "Hostname":  "",
+        "Enabled":  "true",
+        "CertificateThumbprint":  ""
+    }
+]

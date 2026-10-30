@@ -1,0 +1,25 @@
+# A Linux host with SSSD serving local users only, and a standalone Samba file
+# server. Neither is an Active Directory membership.
+
+[files."/etc/sssd/sssd.conf"]
+content = """
+[sssd]
+domains = local
+services = nss, pam
+
+[domain/local]
+id_provider = files
+"""
+
+[files."/etc/samba/smb.conf"]
+content = """
+[global]
+   workgroup = WORKGROUP
+   server string = %h server (Samba, Ubuntu)
+   server role = standalone server
+   map to guest = bad user
+
+[share]
+   path = /srv/share
+   read only = no
+"""

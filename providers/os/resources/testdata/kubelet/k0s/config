@@ -1,0 +1,56 @@
+apiVersion: kubelet.config.k8s.io/v1beta1
+authentication:
+  anonymous: {}
+  webhook:
+    cacheTTL: 0s
+  x509:
+    clientCAFile: /run/k0s/kubelet/ca.crt
+authorization:
+  webhook:
+    cacheAuthorizedTTL: 0s
+    cacheUnauthorizedTTL: 0s
+clusterDNS:
+- 10.96.0.10
+clusterDomain: cluster.local
+containerRuntimeEndpoint: unix:///run/k0s/containerd.sock
+cpuManagerReconcilePeriod: 0s
+crashLoopBackOff: {}
+eventRecordQPS: 0
+evictionPressureTransitionPeriod: 0s
+failSwapOn: false
+fileCheckFrequency: 0s
+httpCheckFrequency: 0s
+imageMaximumGCAge: 0s
+imageMinimumGCAge: 0s
+kind: KubeletConfiguration
+kubeReservedCgroup: system.slice
+kubeletCgroups: /system.slice/containerd.service
+logging:
+  flushFrequency: 0
+  options:
+    json:
+      infoBufferSize: "0"
+    text:
+      infoBufferSize: "0"
+  verbosity: 0
+memorySwap: {}
+nodeStatusReportFrequency: 0s
+nodeStatusUpdateFrequency: 0s
+resolvConf: /run/systemd/resolve/resolv.conf
+rotateCertificates: true
+runtimeRequestTimeout: 0s
+serverTLSBootstrap: true
+shutdownGracePeriod: 0s
+shutdownGracePeriodCriticalPods: 0s
+streamingConnectionIdleTimeout: 0s
+syncFrequency: 0s
+tlsCipherSuites:
+- TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+- TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+- TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+- TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+- TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+- TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+tlsMinVersion: VersionTLS12
+volumePluginDir: /usr/libexec/k0s/kubelet-plugins/volume/exec
+volumeStatsAggPeriod: 0s

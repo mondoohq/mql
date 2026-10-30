@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,12 +23,12 @@ import (
 	"github.com/aws/smithy-go"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // imdsSupport returns a human-readable IMDS support value. The AWS API only
@@ -76,8 +77,13 @@ func initAwsEc2Eip(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[s
 
 	if len(address.Addresses) > 0 {
 		add := address.Addresses[0]
-		attached := add.AllocationId != nil
+		// AssociationId, not AllocationId: AllocationId is the allocation handle
+		// present on every VPC Elastic IP whether or not it is associated (it was
+		// only absent for EC2-Classic, retired in 2022), so keying on it made
+		// `attached` unconditionally true and `where(attached == false)` empty.
+		attached := add.AssociationId != nil
 		args["publicIp"] = llx.StringDataPtr(add.PublicIp)
+		args["allocationId"] = llx.StringDataPtr(add.AllocationId)
 		args["attached"] = llx.BoolData(attached) // this is false if allocationId is null and true otherwise
 		args["networkInterfaceId"] = llx.StringDataPtr(add.NetworkInterfaceId)
 		args["networkInterfaceOwnerId"] = llx.StringDataPtr(add.NetworkInterfaceOwnerId)
@@ -93,7 +99,10 @@ func initAwsEc2Eip(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[s
 		res.(*mqlAwsEc2Eip).eipCache = add
 		return nil, res, nil
 	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.ec2.eip with publicIp %q not found", p)
 }
 
 func (a *mqlAwsEc2Eip) id() (string, error) {
@@ -192,9 +201,14 @@ func (a *mqlAwsEc2) getEIPs(conn *connection.AwsConnection) []*jobpool.Job {
 					continue
 				}
 
-				attached := add.AllocationId != nil
+				// AssociationId, not AllocationId: AllocationId is the allocation handle
+				// present on every VPC Elastic IP whether or not it is associated (it was
+				// only absent for EC2-Classic, retired in 2022), so keying on it made
+				// `attached` unconditionally true and `where(attached == false)` empty.
+				attached := add.AssociationId != nil
 				args := map[string]*llx.RawData{
 					"publicIp":                llx.StringDataPtr(add.PublicIp),
+					"allocationId":            llx.StringDataPtr(add.AllocationId),
 					"attached":                llx.BoolData(attached), // this is false if allocationId is null and true otherwise
 					"networkInterfaceId":      llx.StringDataPtr(add.NetworkInterfaceId),
 					"networkInterfaceOwnerId": llx.StringDataPtr(add.NetworkInterfaceOwnerId),
@@ -274,33 +288,7 @@ func (a *mqlAwsEc2) getNetworkACLs(conn *connection.AwsConnection) []*jobpool.Jo
 						log.Debug().Interface("acl", acl.NetworkAclId).Msg("excluding network acl due to filters")
 						continue
 					}
-					assoc := []any{}
-					for _, association := range acl.Associations {
-						mqlNetworkAclAssoc, err := CreateResource(a.MqlRuntime, ResourceAwsEc2NetworkaclAssociation,
-							map[string]*llx.RawData{
-								"__id":          llx.StringData("aws.ec2.networkacl.association/" + convert.ToValue(association.NetworkAclAssociationId)),
-								"associationId": llx.StringDataPtr(association.NetworkAclAssociationId),
-								"networkAclId":  llx.StringDataPtr(association.NetworkAclId),
-								"subnetId":      llx.StringDataPtr(association.SubnetId),
-							})
-						if err == nil {
-							assocRes := mqlNetworkAclAssoc.(*mqlAwsEc2NetworkaclAssociation)
-							assocRes.cacheSubnetId = association.SubnetId
-							assocRes.region = region
-							assocRes.accountID = conn.AccountId()
-							assoc = append(assoc, mqlNetworkAclAssoc)
-						}
-					}
-
-					mqlNetworkAcl, err := CreateResource(a.MqlRuntime, ResourceAwsEc2Networkacl,
-						map[string]*llx.RawData{
-							"arn":          llx.StringData(fmt.Sprintf(networkAclArnPattern, region, conn.AccountId(), convert.ToValue(acl.NetworkAclId))),
-							"id":           llx.StringDataPtr(acl.NetworkAclId),
-							"region":       llx.StringData(region),
-							"isDefault":    llx.BoolDataPtr(acl.IsDefault),
-							"tags":         llx.MapData(toInterfaceMap(ec2TagsToMap(acl.Tags)), types.String),
-							"associations": llx.ArrayData(assoc, types.Type(ResourceAwsEc2NetworkaclAssociation)),
-						})
+					mqlNetworkAcl, err := buildNetworkAclResource(a.MqlRuntime, region, conn.AccountId(), acl)
 					if err != nil {
 						return nil, err
 					}
@@ -331,6 +319,50 @@ func (a *mqlAwsEc2NetworkaclEntry) isPublic() (bool, error) {
 	return cidrEntryIsPublic(a.CidrBlock.Data, a.Ipv6CidrBlock.Data), nil
 }
 
+// networkAclRegionAndId returns the region and the ID of a network ACL's ARN.
+func networkAclRegionAndId(arnVal string) (string, string, bool) {
+	parsed, err := arn.Parse(arnVal)
+	if err != nil || parsed.Region == "" || !strings.HasPrefix(parsed.Resource, "network-acl/") {
+		return "", "", false
+	}
+	return parsed.Region, strings.TrimPrefix(parsed.Resource, "network-acl/"), true
+}
+
+// buildNetworkAclResource makes the aws.ec2.networkacl resource of a network
+// ACL that DescribeNetworkAcls returned.
+func buildNetworkAclResource(runtime *plugin.Runtime, region, accountId string, acl ec2types.NetworkAcl) (*mqlAwsEc2Networkacl, error) {
+	assoc := []any{}
+	for _, association := range acl.Associations {
+		mqlNetworkAclAssoc, err := CreateResource(runtime, ResourceAwsEc2NetworkaclAssociation,
+			map[string]*llx.RawData{
+				"__id":          llx.StringData("aws.ec2.networkacl.association/" + convert.ToValue(association.NetworkAclAssociationId)),
+				"associationId": llx.StringDataPtr(association.NetworkAclAssociationId),
+				"networkAclId":  llx.StringDataPtr(association.NetworkAclId),
+			})
+		if err == nil {
+			assocRes := mqlNetworkAclAssoc.(*mqlAwsEc2NetworkaclAssociation)
+			assocRes.cacheSubnetId = association.SubnetId
+			assocRes.region = region
+			assocRes.accountID = accountId
+			assoc = append(assoc, mqlNetworkAclAssoc)
+		}
+	}
+
+	mqlNetworkAcl, err := CreateResource(runtime, ResourceAwsEc2Networkacl,
+		map[string]*llx.RawData{
+			"arn":          llx.StringData(fmt.Sprintf(networkAclArnPattern, region, accountId, convert.ToValue(acl.NetworkAclId))),
+			"id":           llx.StringDataPtr(acl.NetworkAclId),
+			"region":       llx.StringData(region),
+			"isDefault":    llx.BoolDataPtr(acl.IsDefault),
+			"tags":         llx.MapData(toInterfaceMap(ec2TagsToMap(acl.Tags)), types.String),
+			"associations": llx.ArrayData(assoc, types.Type(ResourceAwsEc2NetworkaclAssociation)),
+		})
+	if err != nil {
+		return nil, err
+	}
+	return mqlNetworkAcl.(*mqlAwsEc2Networkacl), nil
+}
+
 func initAwsEc2Networkacl(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 2 {
 		return args, nil, nil
@@ -338,6 +370,27 @@ func initAwsEc2Networkacl(runtime *plugin.Runtime, args map[string]*llx.RawData)
 
 	if args["arn"] == nil && args["id"] == nil {
 		return nil, nil, errors.New("arn or id required to fetch aws network acl")
+	}
+
+	// With the region and the ID in the ARN, describe that one network ACL.
+	// It need not carry the discovery's tag filters: a subnet's or a VPC's
+	// network ACL is found through the subnet or the VPC, which do.
+	if args["arn"] != nil {
+		if region, aclId, ok := networkAclRegionAndId(args["arn"].Value.(string)); ok {
+			conn := runtime.Connection.(*connection.AwsConnection)
+			resp, err := conn.Ec2(region).DescribeNetworkAcls(context.Background(), &ec2.DescribeNetworkAclsInput{NetworkAclIds: []string{aclId}})
+			if err != nil {
+				return nil, nil, err
+			}
+			if len(resp.NetworkAcls) == 0 {
+				return nil, nil, errors.New("network acl not found")
+			}
+			acl, err := buildNetworkAclResource(runtime, region, conn.AccountId(), resp.NetworkAcls[0])
+			if err != nil {
+				return nil, nil, err
+			}
+			return args, acl, nil
+		}
 	}
 
 	// load all network acls
@@ -455,6 +508,9 @@ func (a *mqlAwsEc2Networkacl) entries() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Back-reference so an entry can compare itself against its siblings,
+		// which is what shadowing depends on.
+		mqlAclEntry.(*mqlAwsEc2NetworkaclEntry).parentAcl = a
 		res = append(res, mqlAclEntry)
 	}
 
@@ -602,9 +658,14 @@ func (a *mqlAwsEc2Securitygroup) ipPermissions() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		permissionID := a.groupId + "-" + strconv.Itoa(p)
+		peers, err := buildSecurityGroupPeers(a.MqlRuntime, permissionID, a.region, accountId, permission.UserIdGroupPairs)
+		if err != nil {
+			return nil, err
+		}
 		mqlSecurityGroupIpPermission, err := CreateResource(a.MqlRuntime, ResourceAwsEc2SecuritygroupIppermission,
 			map[string]*llx.RawData{
-				"id":               llx.StringData(a.groupId + "-" + strconv.Itoa(p)),
+				"id":               llx.StringData(permissionID),
 				"fromPort":         llx.IntDataDefault(permission.FromPort, -1),
 				"toPort":           llx.IntDataDefault(permission.ToPort, -1),
 				"ipProtocol":       llx.StringDataPtr(permission.IpProtocol),
@@ -614,6 +675,7 @@ func (a *mqlAwsEc2Securitygroup) ipPermissions() ([]any, error) {
 				"ipv6RangeDetails": llx.ArrayData(ipv6RangeDetails, types.Any),
 				"prefixListIds":    llx.ArrayData(prefixListIds, types.Any),
 				"userIdGroupPairs": llx.ArrayData(userIdGroupPairs, types.Any),
+				"peers":            llx.ArrayData(peers, types.Resource("aws.ec2.securitygroup.ippermission.peer")),
 			})
 		if err != nil {
 			return nil, err
@@ -644,9 +706,14 @@ func (a *mqlAwsEc2Securitygroup) ipPermissionsEgress() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		permissionID := a.groupId + "-" + strconv.Itoa(p) + "-egress"
+		peers, err := buildSecurityGroupPeers(a.MqlRuntime, permissionID, a.region, accountId, permission.UserIdGroupPairs)
+		if err != nil {
+			return nil, err
+		}
 		mqlSecurityGroupIpPermission, err := CreateResource(a.MqlRuntime, ResourceAwsEc2SecuritygroupIppermission,
 			map[string]*llx.RawData{
-				"id":               llx.StringData(a.groupId + "-" + strconv.Itoa(p) + "-egress"),
+				"id":               llx.StringData(permissionID),
 				"fromPort":         llx.IntDataDefault(permission.FromPort, -1),
 				"toPort":           llx.IntDataDefault(permission.ToPort, -1),
 				"ipProtocol":       llx.StringDataPtr(permission.IpProtocol),
@@ -656,6 +723,7 @@ func (a *mqlAwsEc2Securitygroup) ipPermissionsEgress() ([]any, error) {
 				"ipv6RangeDetails": llx.ArrayData(ipv6RangeDetails, types.Any),
 				"prefixListIds":    llx.ArrayData(prefixListIds, types.Any),
 				"userIdGroupPairs": llx.ArrayData(userIdGroupPairs, types.Any),
+				"peers":            llx.ArrayData(peers, types.Resource("aws.ec2.securitygroup.ippermission.peer")),
 			})
 		if err != nil {
 			return nil, err
@@ -790,8 +858,14 @@ func initAwsEc2Keypair(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 		if errors.As(err, &ae) {
 			if ae.ErrorCode() == "InvalidKeyPair.NotFound" {
 				log.Warn().Msgf("key %s does not exist in %s region", n, r)
-				args["fingerprint"] = llx.StringData("")
-				args["type"] = llx.StringData("")
+				// A deleted keypair is a legitimate empty state, but it still
+				// needs a unique cache key: id() falls back to arn, which this
+				// path leaves empty, so every deleted keypair in the account
+				// aliased to whichever one resolved first. Unknown attributes
+				// are null rather than "" so they read as unknown, not empty.
+				args["__id"] = llx.StringData("aws.ec2.keypair/" + r + "/" + n)
+				args["fingerprint"] = llx.NilData
+				args["type"] = llx.NilData
 				args["tags"] = llx.MapData(map[string]any{}, types.String)
 				args["arn"] = llx.StringData("")
 				args["createdAt"] = llx.NilData
@@ -814,8 +888,10 @@ func initAwsEc2Keypair(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 
 		return args, nil, nil
 	}
-	args["fingerprint"] = llx.StringData("")
-	args["type"] = llx.StringData("")
+	// Same as the InvalidKeyPair.NotFound path above: unique key, null unknowns.
+	args["__id"] = llx.StringData("aws.ec2.keypair/" + r + "/" + n)
+	args["fingerprint"] = llx.NilData
+	args["type"] = llx.NilData
 	args["tags"] = llx.MapData(map[string]any{}, types.String)
 	args["arn"] = llx.StringData("")
 	args["createdAt"] = llx.NilData
@@ -841,11 +917,11 @@ func (a *mqlAwsEc2) images() ([]any, error) {
 }
 
 // createBlockDeviceMappings converts the AWS BlockDeviceMapping slice to MQL resources
-func createBlockDeviceMappings(runtime *plugin.Runtime, imageArn string, mappings []ec2types.BlockDeviceMapping) ([]any, error) {
+func createBlockDeviceMappings(runtime *plugin.Runtime, imageKey string, mappings []ec2types.BlockDeviceMapping) ([]any, error) {
 	result := make([]any, 0, len(mappings))
 	for _, mapping := range mappings {
 		deviceName := convert.ToValue(mapping.DeviceName)
-		mappingID := fmt.Sprintf("%s/device/%s", imageArn, deviceName)
+		mappingID := fmt.Sprintf("%s/device/%s", imageKey, deviceName)
 
 		args := map[string]*llx.RawData{
 			"__id":        llx.StringData(mappingID),
@@ -864,7 +940,6 @@ func createBlockDeviceMappings(runtime *plugin.Runtime, imageArn string, mapping
 					"snapshotId":          llx.StringDataPtr(mapping.Ebs.SnapshotId),
 					"volumeSize":          llx.IntDataDefault(mapping.Ebs.VolumeSize, 0),
 					"volumeType":          llx.StringData(string(mapping.Ebs.VolumeType)),
-					"kmsKeyId":            llx.StringDataPtr(mapping.Ebs.KmsKeyId),
 					"iops":                llx.IntDataDefault(mapping.Ebs.Iops, 0),
 					"throughput":          llx.IntDataDefault(mapping.Ebs.Throughput, 0),
 					"deleteOnTermination": llx.BoolDataPtr(mapping.Ebs.DeleteOnTermination),
@@ -872,6 +947,7 @@ func createBlockDeviceMappings(runtime *plugin.Runtime, imageArn string, mapping
 			if err != nil {
 				return nil, err
 			}
+			mqlEbs.(*mqlAwsEc2ImageEbsBlockDevice).cacheKmsKeyId = convert.ToValue(mapping.Ebs.KmsKeyId)
 			args["ebs"] = llx.ResourceData(mqlEbs, mqlEbs.MqlName())
 		} else {
 			args["ebs"] = llx.NilData
@@ -887,13 +963,13 @@ func createBlockDeviceMappings(runtime *plugin.Runtime, imageArn string, mapping
 }
 
 // createImageWatermarks converts the AWS ImageWatermark slice to MQL resources
-func createImageWatermarks(runtime *plugin.Runtime, imageArn string, watermarks []ec2types.ImageWatermark) ([]any, error) {
+func createImageWatermarks(runtime *plugin.Runtime, imageKey string, watermarks []ec2types.ImageWatermark) ([]any, error) {
 	result := make([]any, 0, len(watermarks))
 	for _, watermark := range watermarks {
 		watermarkKey := convert.ToValue(watermark.WatermarkKey)
 		mqlWatermark, err := CreateResource(runtime, ResourceAwsEc2ImageWatermark,
 			map[string]*llx.RawData{
-				"__id":                 llx.StringData(fmt.Sprintf("%s/watermark/%s", imageArn, watermarkKey)),
+				"__id":                 llx.StringData(fmt.Sprintf("%s/watermark/%s", imageKey, watermarkKey)),
 				"watermarkKey":         llx.StringDataPtr(watermark.WatermarkKey),
 				"createdAt":            llx.TimeDataPtr(watermark.WatermarkCreationTime),
 				"sourceImageId":        llx.StringDataPtr(watermark.SourceImageId),
@@ -939,20 +1015,20 @@ func (a *mqlAwsEc2) getImagesJob(conn *connection.AwsConnection) []*jobpool.Job 
 				}
 
 				for _, image := range images.Images {
+					imageKey := region + "/" + convert.ToValue(image.ImageId)
 					if conn.Filters.General.MatchesExcludeTags(ec2TagsToMap(image.Tags)) {
 						log.Debug().Interface("image", image.ImageId).Msg("excluding image due to filters")
 						continue
 					}
 
 					// Create block device mapping MQL resources
-					imageArn := fmt.Sprintf(imageArnPattern, region, conn.AccountId(), convert.ToValue(image.ImageId))
-					blockDeviceMappings, err := createBlockDeviceMappings(a.MqlRuntime, imageArn, image.BlockDeviceMappings)
+					blockDeviceMappings, err := createBlockDeviceMappings(a.MqlRuntime, imageKey, image.BlockDeviceMappings)
 					if err != nil {
 						return nil, err
 					}
 
 					// Create watermark MQL resources
-					watermarks, err := createImageWatermarks(a.MqlRuntime, imageArn, image.ImageWatermarks)
+					watermarks, err := createImageWatermarks(a.MqlRuntime, imageKey, image.ImageWatermarks)
 					if err != nil {
 						return nil, err
 					}
@@ -996,7 +1072,6 @@ func (a *mqlAwsEc2) getImagesJob(conn *connection.AwsConnection) []*jobpool.Job 
 					}
 					mqlImage, err := CreateResource(a.MqlRuntime, ResourceAwsEc2Image,
 						map[string]*llx.RawData{
-							"arn":                      llx.StringData(imageArn),
 							"id":                       llx.StringDataPtr(image.ImageId),
 							"name":                     llx.StringDataPtr(image.Name),
 							"architecture":             llx.StringData(string(image.Architecture)),
@@ -1303,6 +1378,36 @@ func (a *mqlAwsEc2) getInstances(conn *connection.AwsConnection) []*jobpool.Job 
 	return tasks
 }
 
+// stateTransitionReasonTime pulls the timestamp out of a StateTransitionReason
+// such as "User initiated (2026-04-05 20:44:17 GMT)".
+var stateTransitionReasonTime = regexp.MustCompile(`.*\((\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}) GMT\)`)
+
+// parseStateTransitionTime reads the transition timestamp out of an instance's
+// StateTransitionReason, or reports nil when there is none.
+//
+// A running instance has an empty StateTransitionReason - the API documents it as
+// "This might be an empty string" - so there is no timestamp to report and the
+// field has to be null. It used to be a zero time.Time handed to llx.TimeData,
+// which is a non-nil pointer, so every running instance carried a value that
+// compared as older than any real date.
+func parseStateTransitionTime(reason string) *time.Time {
+	match := stateTransitionReasonTime.FindStringSubmatch(reason)
+	if len(match) != 2 {
+		return nil
+	}
+	t, err := time.Parse(time.DateTime, match[1])
+	if err != nil {
+		// The reason named a transition but the timestamp did not parse. Keep the
+		// existing sentinel rather than null: something did happen, and we know
+		// it was in the past.
+		log.Error().Str("reason", reason).Err(err).
+			Msg("cannot parse state transition time for ec2 instance")
+		past := llx.NeverPastTime
+		return &past
+	}
+	return &t
+}
+
 func (a *mqlAwsEc2) gatherInstanceInfo(instances []ec2types.Instance, regionVal string) ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	res := []any{}
@@ -1314,14 +1419,16 @@ func (a *mqlAwsEc2) gatherInstanceInfo(instances []ec2types.Instance, regionVal 
 			}
 			mqlInstanceDevice, err := CreateResource(a.MqlRuntime, ResourceAwsEc2InstanceDevice,
 				map[string]*llx.RawData{
+					"__id": llx.StringData(instanceDeviceCacheKey(regionVal,
+						convert.ToValue(instance.InstanceId), convert.ToValue(device.DeviceName))),
 					"deleteOnTermination": llx.BoolData(convert.ToValue(device.Ebs.DeleteOnTermination)),
 					"status":              llx.StringData(string(device.Ebs.Status)),
-					"volumeId":            llx.StringData(convert.ToValue(device.Ebs.VolumeId)),
 					"deviceName":          llx.StringData(convert.ToValue(device.DeviceName)),
 				})
 			if err != nil {
 				return nil, err
 			}
+			mqlInstanceDevice.(*mqlAwsEc2InstanceDevice).cacheVolumeId = convert.ToValue(device.Ebs.VolumeId)
 			mqlInstanceDevice.(*mqlAwsEc2InstanceDevice).region = regionVal
 			mqlDevices = append(mqlDevices, mqlInstanceDevice)
 		}
@@ -1330,17 +1437,12 @@ func (a *mqlAwsEc2) gatherInstanceInfo(instances []ec2types.Instance, regionVal 
 		if err != nil {
 			return nil, err
 		}
-
-		var stateTransitionTime time.Time
-		reg := regexp.MustCompile(`.*\((\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}) GMT\)`)
-		timeString := reg.FindStringSubmatch(convert.ToValue(instance.StateTransitionReason))
-		if len(timeString) == 2 {
-			stateTransitionTime, err = time.Parse(time.DateTime, timeString[1])
-			if err != nil {
-				log.Error().Err(err).Msg("cannot parse state transition time for ec2 instance")
-				stateTransitionTime = llx.NeverPastTime
-			}
+		mqlStateReason, err := newMqlEc2StateReason(a.MqlRuntime, convert.ToValue(instance.InstanceId), instance.StateReason)
+		if err != nil {
+			return nil, err
 		}
+
+		stateTransitionTime := parseStateTransitionTime(convert.ToValue(instance.StateTransitionReason))
 		var detailedMonitoring string
 		if instance.Monitoring != nil {
 			detailedMonitoring = string(instance.Monitoring.State)
@@ -1361,7 +1463,6 @@ func (a *mqlAwsEc2) gatherInstanceInfo(instances []ec2types.Instance, regionVal 
 			"instanceId":         llx.StringDataPtr(instance.InstanceId),
 			"instanceLifecycle":  llx.StringData(string(instance.InstanceLifecycle)),
 			"instanceType":       llx.StringData(string(instance.InstanceType)),
-			"launchTime":         llx.TimeDataPtr(instance.LaunchTime),
 			"launchedAt":         llx.TimeDataPtr(instance.LaunchTime),
 			"platformDetails":    llx.StringDataPtr(instance.PlatformDetails),
 			"privateDnsName":     llx.StringDataPtr(instance.PrivateDnsName),
@@ -1373,9 +1474,10 @@ func (a *mqlAwsEc2) gatherInstanceInfo(instances []ec2types.Instance, regionVal 
 			"rootDeviceType":     llx.StringData(string(instance.RootDeviceType)),
 			"state":              llx.StringData(stateName),
 			"stateReason":        llx.MapData(stateReason, types.Any),
+			"stateChangeReason":  mqlStateReason,
 			// "iamInstanceProfile":    llx.MapData(iamInstanceProfile, types.Any),
 			"stateTransitionReason": llx.StringDataPtr(instance.StateTransitionReason),
-			"stateTransitionTime":   llx.TimeData(stateTransitionTime),
+			"stateTransitionTime":   llx.TimeDataPtr(stateTransitionTime),
 			"tags":                  llx.MapData(toInterfaceMap(ec2TagsToMap(instance.Tags)), types.String),
 			"tpmSupport":            llx.StringDataPtr(instance.TpmSupport),
 			"bootMode":              llx.StringData(bootMode(string(instance.BootMode))),
@@ -1461,17 +1563,17 @@ func (a *mqlAwsEc2) gatherInstanceInfo(instances []ec2types.Instance, regionVal 
 			args["imdsv2Required"] = llx.BoolData(false)
 		}
 		// add vpc if there is one
+		var vpcArn string
 		if instance.VpcId != nil {
-			arn := fmt.Sprintf(vpcArnPattern, regionVal, conn.AccountId(), convert.ToValue(instance.VpcId))
-			args["vpcArn"] = llx.StringData(arn)
-		} else {
-			args["vpcArn"] = llx.NilData
+			vpcArn = fmt.Sprintf(vpcArnPattern, regionVal, conn.AccountId(), convert.ToValue(instance.VpcId))
 		}
 
 		mqlEc2Instance, err := CreateResource(a.MqlRuntime, ResourceAwsEc2Instance, args)
 		if err != nil {
 			return nil, err
 		}
+		mqlEc2Instance.(*mqlAwsEc2Instance).cacheLaunchTime = instance.LaunchTime
+		mqlEc2Instance.(*mqlAwsEc2Instance).cacheVpcArn = vpcArn
 		mqlEc2Instance.(*mqlAwsEc2Instance).instanceCache = instance
 		res = append(res, mqlEc2Instance)
 	}
@@ -1479,15 +1581,16 @@ func (a *mqlAwsEc2) gatherInstanceInfo(instances []ec2types.Instance, regionVal 
 }
 
 type mqlAwsEc2InstanceInternal struct {
-	instanceCache ec2types.Instance
+	cacheLaunchTime *time.Time
+	cacheVpcArn     string
+	instanceCache   ec2types.Instance
 }
 
 func (i *mqlAwsEc2Instance) networkInterfaces() ([]any, error) {
 	conn := i.MqlRuntime.Connection.(*connection.AwsConnection)
 	svc := conn.Ec2(i.Region.Data)
 	ctx := context.Background()
-	filters := conn.Filters.General.ToServerSideEc2Filters()
-	filters = append(filters, ec2types.Filter{Name: aws.String("attachment.instance-id"), Values: []string{i.InstanceId.Data}})
+	filters := []ec2types.Filter{{Name: aws.String("attachment.instance-id"), Values: []string{i.InstanceId.Data}}}
 	params := &ec2.DescribeNetworkInterfacesInput{Filters: filters}
 	res := []any{}
 	paginator := ec2.NewDescribeNetworkInterfacesPaginator(svc, params)
@@ -1497,10 +1600,6 @@ func (i *mqlAwsEc2Instance) networkInterfaces() ([]any, error) {
 			return nil, err
 		}
 		for _, networkingInterface := range nis.NetworkInterfaces {
-			if conn.Filters.General.MatchesExcludeTags(ec2TagsToMap(networkingInterface.TagSet)) {
-				log.Debug().Interface("networkInterface", networkingInterface.NetworkInterfaceId).Msg("excluding network interface due to filters")
-				continue
-			}
 			_, mqlEni, err := buildNetworkInterfaceResource(i.MqlRuntime, i.Region.Data, networkingInterface)
 			if err != nil {
 				return nil, err
@@ -1509,6 +1608,50 @@ func (i *mqlAwsEc2Instance) networkInterfaces() ([]any, error) {
 		}
 	}
 	return res, nil
+}
+
+// instanceTypeHypervisorCache memoizes the mapping from EC2 instance type to its
+// hypervisor (nitro or xen). DescribeInstanceTypes is the only API that reports
+// it, and the value is an immutable, region-independent property of the instance
+// type, so we cache it process-wide to avoid an API call per instance (many
+// instances share a type).
+var instanceTypeHypervisorCache sync.Map // map[string]string
+
+func (i *mqlAwsEc2Instance) instanceTypeHypervisor() (string, error) {
+	instanceType := i.InstanceType.Data
+	if instanceType == "" {
+		return "", nil
+	}
+	if v, ok := instanceTypeHypervisorCache.Load(instanceType); ok {
+		return v.(string), nil
+	}
+
+	conn := i.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Ec2(i.Region.Data)
+	resp, err := svc.DescribeInstanceTypes(context.Background(), &ec2.DescribeInstanceTypesInput{
+		InstanceTypes: []ec2types.InstanceType{ec2types.InstanceType(instanceType)},
+	})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			// Don't mask the missing permission behind an empty "not Nitro"
+			// answer; surface it so it can be granted.
+			log.Warn().Str("instanceType", instanceType).Str("instance", i.InstanceId.Data).
+				Msg("no permission for ec2:DescribeInstanceTypes; cannot determine instance-type hypervisor")
+			return "", nil
+		}
+		return "", err
+	}
+
+	// A running instance's type always exists in its own region, so an empty
+	// result is unexpected. Don't cache it, or we'd poison the process-wide
+	// cache for regions where the type does exist.
+	if len(resp.InstanceTypes) == 0 {
+		return "", nil
+	}
+
+	hypervisor := string(resp.InstanceTypes[0].Hypervisor)
+	instanceTypeHypervisorCache.Store(instanceType, hypervisor)
+	return hypervisor, nil
 }
 
 type mqlAwsEc2NetworkinterfaceInternal struct {
@@ -1523,6 +1666,14 @@ func initAwsEc2Networkinterface(runtime *plugin.Runtime, args map[string]*llx.Ra
 		return args, nil, nil
 	}
 
+	// A reference already materialized by an earlier referrer or by the
+	// list that built it. NewResource consults the cache only after this
+	// init returns, so without this the same target is fetched once per
+	// referring resource and the result discarded.
+	if cached := cachedArgByArn(runtime, ResourceAwsEc2Networkinterface, args); cached != nil {
+		return args, cached, nil
+	}
+
 	if args["id"] == nil {
 		return nil, nil, errors.New("id required to fetch aws network interface")
 	}
@@ -1534,6 +1685,17 @@ func initAwsEc2Networkinterface(runtime *plugin.Runtime, args map[string]*llx.Ra
 	}
 
 	conn := runtime.Connection.(*connection.AwsConnection)
+	// With the id and a region in hand the ARN is derivable, so check before
+	// paying for a lookup -- and before the region fan-out below, which costs
+	// one call per region for a single interface. Callers that pass an id
+	// rather than an ARN miss the check above, which is the case this catches.
+	if region != "" {
+		if cached := cachedByArn(runtime, ResourceAwsEc2Networkinterface,
+			fmt.Sprintf(networkInterfaceArnPattern, region, conn.AccountId(), eniId)); cached != nil {
+			return args, cached, nil
+		}
+	}
+
 	if region == "" {
 		// Region is required for a targeted DescribeNetworkInterfaces lookup, but
 		// it's not encoded in the ENI id itself. Fan out across regions in
@@ -1652,6 +1814,15 @@ func buildNetworkInterfaceResource(runtime *plugin.Runtime, region string, eni e
 	return nil, mqlEni, nil
 }
 
+func (i *mqlAwsEc2Networkinterface) arn() (string, error) {
+	account := i.OwnerId.Data
+	if account == "" {
+		conn := i.MqlRuntime.Connection.(*connection.AwsConnection)
+		account = conn.AccountId()
+	}
+	return fmt.Sprintf(networkInterfaceArnPattern, i.Region.Data, account, i.Id.Data), nil
+}
+
 func (i *mqlAwsEc2Networkinterface) elasticIp() (*mqlAwsEc2Eip, error) {
 	if i.cacheElasticIp == nil || *i.cacheElasticIp == "" {
 		i.ElasticIp.State = plugin.StateIsNull | plugin.StateIsSet
@@ -1754,10 +1925,11 @@ func (i *mqlAwsEc2Instance) securityGroups() ([]any, error) {
 
 func (i *mqlAwsEc2Instance) image() (*mqlAwsEc2Image, error) {
 	if i.instanceCache.ImageId != nil {
-		conn := i.MqlRuntime.Connection.(*connection.AwsConnection)
-
 		mqlImage, err := NewResource(i.MqlRuntime, ResourceAwsEc2Image,
-			map[string]*llx.RawData{"arn": llx.StringData(fmt.Sprintf(imageArnPattern, i.Region.Data, conn.AccountId(), convert.ToValue(i.instanceCache.ImageId)))})
+			map[string]*llx.RawData{
+				"id":     llx.StringDataPtr(i.instanceCache.ImageId),
+				"region": llx.StringData(i.Region.Data),
+			})
 		if err == nil {
 			return mqlImage.(*mqlAwsEc2Image), nil
 		}
@@ -1782,7 +1954,7 @@ func (i *mqlAwsEc2Instance) keypair() (*mqlAwsEc2Keypair, error) {
 }
 
 func (i *mqlAwsEc2Image) id() (string, error) {
-	return i.Arn.Data, nil
+	return i.Region.Data + "/" + i.Id.Data, nil
 }
 
 func (i *mqlAwsEc2Image) launchPermissions() ([]any, error) {
@@ -1801,22 +1973,22 @@ func (i *mqlAwsEc2Image) launchPermissions() ([]any, error) {
 		return nil, err
 	}
 
-	imageArn := i.Arn.Data
+	imageKey := i.Region.Data + "/" + i.Id.Data
 	permissions := make([]any, 0, len(result.LaunchPermissions))
 	for _, perm := range result.LaunchPermissions {
 		// Build unique ID based on which field is set
 		var permId string
 		switch {
 		case perm.UserId != nil:
-			permId = fmt.Sprintf("%s/user/%s", imageArn, *perm.UserId)
+			permId = fmt.Sprintf("%s/user/%s", imageKey, *perm.UserId)
 		case perm.Group != "":
-			permId = fmt.Sprintf("%s/group/%s", imageArn, string(perm.Group))
+			permId = fmt.Sprintf("%s/group/%s", imageKey, string(perm.Group))
 		case perm.OrganizationArn != nil:
-			permId = fmt.Sprintf("%s/org/%s", imageArn, *perm.OrganizationArn)
+			permId = fmt.Sprintf("%s/org/%s", imageKey, *perm.OrganizationArn)
 		case perm.OrganizationalUnitArn != nil:
-			permId = fmt.Sprintf("%s/ou/%s", imageArn, *perm.OrganizationalUnitArn)
+			permId = fmt.Sprintf("%s/ou/%s", imageKey, *perm.OrganizationalUnitArn)
 		default:
-			permId = fmt.Sprintf("%s/unknown", imageArn)
+			permId = fmt.Sprintf("%s/unknown", imageKey)
 		}
 
 		mqlPermission, err := CreateResource(i.MqlRuntime, ResourceAwsEc2ImageLaunchPermission,
@@ -1837,13 +2009,13 @@ func (i *mqlAwsEc2Image) launchPermissions() ([]any, error) {
 }
 
 func (a *mqlAwsEc2ImageEbsBlockDevice) kmsKey() (*mqlAwsKmsKey, error) {
-	if a.KmsKeyId.Data == "" {
+	if a.cacheKmsKeyId == "" {
 		a.KmsKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
 	mqlKey, err := NewResource(a.MqlRuntime, ResourceAwsKmsKey,
 		map[string]*llx.RawData{
-			"arn": llx.StringData(a.KmsKeyId.Data),
+			"arn": llx.StringData(a.cacheKmsKeyId),
 		})
 	if err != nil {
 		return nil, err
@@ -1875,14 +2047,15 @@ func (i *mqlAwsEc2Image) sourceImage() (*mqlAwsEc2Image, error) {
 		i.SourceImage.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-	conn := i.MqlRuntime.Connection.(*connection.AwsConnection)
 	region := i.SourceImageRegion.Data
 	if region == "" {
 		region = i.Region.Data
 	}
-	arn := fmt.Sprintf(imageArnPattern, region, conn.AccountId(), i.SourceImageId.Data)
 	mqlImage, err := NewResource(i.MqlRuntime, ResourceAwsEc2Image,
-		map[string]*llx.RawData{"arn": llx.StringData(arn)})
+		map[string]*llx.RawData{
+			"id":     llx.StringData(i.SourceImageId.Data),
+			"region": llx.StringData(region),
+		})
 	if err != nil {
 		i.SourceImage.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -1915,23 +2088,21 @@ func initAwsEc2Image(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 		return args, nil, nil
 	}
 
-	if args["arn"] == nil {
-		return nil, nil, errors.New("arn required to fetch aws ec2 image")
+	if args["id"] == nil || args["region"] == nil {
+		return nil, nil, errors.New("id and region required to fetch aws ec2 image")
 	}
 
-	arnVal := args["arn"].Value.(string)
-	arn, err := arn.Parse(arnVal)
-	if err != nil {
-		return nil, nil, err
+	imageId, _ := args["id"].Value.(string)
+	region, _ := args["region"].Value.(string)
+	if imageId == "" || region == "" {
+		return nil, nil, errors.New("id and region required to fetch aws ec2 image")
 	}
-	resource := strings.Split(arn.Resource, "/")
 	conn := runtime.Connection.(*connection.AwsConnection)
-	svc := conn.Ec2(arn.Region)
+	svc := conn.Ec2(region)
 	ctx := context.Background()
-	images, err := svc.DescribeImages(ctx, &ec2.DescribeImagesInput{ImageIds: []string{resource[1]}})
+	images, err := svc.DescribeImages(ctx, &ec2.DescribeImagesInput{ImageIds: []string{imageId}})
 	if err != nil {
-		args["arn"] = llx.StringData(arnVal)
-		args["id"] = llx.StringData(resource[1])
+		args["id"] = llx.StringData(imageId)
 		args["name"] = llx.StringData("not found")
 		args["architecture"] = llx.NilData
 		args["ownerId"] = llx.NilData
@@ -1947,7 +2118,7 @@ func initAwsEc2Image(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 		args["virtualizationType"] = llx.NilData
 		args["blockDeviceMappings"] = llx.NilData
 		args["tags"] = llx.NilData
-		args["region"] = llx.StringData(arn.Region)
+		args["region"] = llx.StringData(region)
 		args["description"] = llx.NilData
 		args["imageType"] = llx.NilData
 		args["freeTierEligible"] = llx.NilData
@@ -1967,21 +2138,21 @@ func initAwsEc2Image(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 
 	if len(images.Images) > 0 {
 		image := images.Images[0]
+		imageKey := region + "/" + imageId
 
 		// Create block device mapping MQL resources
-		blockDeviceMappings, err := createBlockDeviceMappings(runtime, arnVal, image.BlockDeviceMappings)
+		blockDeviceMappings, err := createBlockDeviceMappings(runtime, imageKey, image.BlockDeviceMappings)
 		if err != nil {
 			return nil, nil, err
 		}
 
 		// Create watermark MQL resources
-		watermarks, err := createImageWatermarks(runtime, arnVal, image.ImageWatermarks)
+		watermarks, err := createImageWatermarks(runtime, imageKey, image.ImageWatermarks)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		args["arn"] = llx.StringData(arnVal)
-		args["id"] = llx.StringData(resource[1])
+		args["id"] = llx.StringData(imageId)
 		args["name"] = llx.StringDataPtr(image.Name)
 		args["architecture"] = llx.StringData(string(image.Architecture))
 		args["ownerId"] = llx.StringDataPtr(image.OwnerId)
@@ -1995,7 +2166,7 @@ func initAwsEc2Image(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 		args["virtualizationType"] = llx.StringData(string(image.VirtualizationType))
 		args["blockDeviceMappings"] = llx.ArrayData(blockDeviceMappings, types.Resource(ResourceAwsEc2ImageBlockDeviceMapping))
 		args["tags"] = llx.MapData(toInterfaceMap(ec2TagsToMap(image.Tags)), types.String)
-		args["region"] = llx.StringData(arn.Region)
+		args["region"] = llx.StringData(region)
 		args["description"] = llx.StringDataPtr(image.Description)
 		args["imageType"] = llx.StringData(string(image.ImageType))
 		args["freeTierEligible"] = llx.BoolDataPtr(image.FreeTierEligible)
@@ -2081,10 +2252,17 @@ func initAwsEc2Securitygroup(runtime *plugin.Runtime, args map[string]*llx.RawDa
 		return args, nil, nil
 	}
 
+	// Already materialized by an earlier reference or by the list that
+	// built it: NewResource consults the cache only after this init
+	// returns, so without this the same target is fetched once per
+	// referring resource and the result thrown away.
+	if cached := cachedArgByArn(runtime, ResourceAwsEc2Securitygroup, args); cached != nil {
+		return args, cached, nil
+	}
+
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformSecurityGroup); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -2113,6 +2291,17 @@ func initAwsEc2Securitygroup(runtime *plugin.Runtime, args map[string]*llx.RawDa
 
 	if region != "" && groupId != "" {
 		conn := runtime.Connection.(*connection.AwsConnection)
+
+		// Check again now that the ARN can be derived. The check above only
+		// fires for a caller that passed one, and the callers that pass an id
+		// instead are the hot path: a policy scan over 160 assets spent 2,862
+		// DescribeSecurityGroups calls on 102 distinct groups, 40% of all its
+		// API traffic, because every reference re-derived the same group.
+		if cached := cachedByArn(runtime, ResourceAwsEc2Securitygroup,
+			NewSecurityGroupArn(region, conn.AccountId(), groupId)); cached != nil {
+			return args, cached, nil
+		}
+
 		svc := conn.Ec2(region)
 		resp, err := svc.DescribeSecurityGroups(context.Background(), &ec2.DescribeSecurityGroupsInput{
 			GroupIds: []string{groupId},
@@ -2213,6 +2402,35 @@ func (a *mqlAwsEc2SecuritygroupIppermission) includesPublicSource() (bool, error
 	return false, nil
 }
 
+// tcpUdpPorts returns the TCP and UDP ports the rule admits, with ok false for
+// a protocol that carries no ports.
+func (a *mqlAwsEc2SecuritygroupIppermission) tcpUdpPorts() (portRange, bool) {
+	return securityGroupRulePorts(a.IpProtocol.Data, a.FromPort.Data, a.ToPort.Data)
+}
+
+func (a *mqlAwsEc2SecuritygroupIppermission) allPorts() (bool, error) {
+	r, ok := a.tcpUdpPorts()
+	return ok && r.from == 0 && r.to == maxPort, nil
+}
+
+func (a *mqlAwsEc2SecuritygroupIppermission) portRangeStart() (int64, error) {
+	r, ok := a.tcpUdpPorts()
+	if !ok {
+		a.PortRangeStart.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return r.from, nil
+}
+
+func (a *mqlAwsEc2SecuritygroupIppermission) portRangeEnd() (int64, error) {
+	r, ok := a.tcpUdpPorts()
+	if !ok {
+		a.PortRangeEnd.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return r.to, nil
+}
+
 // anyStringEquals reports whether any element of the slice equals target.
 func anyStringEquals(list []any, target string) bool {
 	for _, item := range list {
@@ -2224,15 +2442,29 @@ func anyStringEquals(list []any, target string) bool {
 }
 
 type mqlAwsEc2InstanceDeviceInternal struct {
-	region string
+	cacheVolumeId string
+	region        string
 }
 
+// instanceDeviceCacheKey identifies one block device mapping.
+//
+// A device is identified by the instance it is attached to and its name in that
+// instance. The volume id is not usable here: it lives on the Internal struct,
+// which is only populated after the generated constructor has already computed
+// the cache key from it.
+func instanceDeviceCacheKey(region, instanceID, deviceName string) string {
+	return region + "/" + instanceID + "/" + deviceName
+}
+
+// id is a fallback only. gatherInstanceInfo passes an explicit "__id", which
+// wins, because cacheVolumeId is still empty while the generated constructor
+// runs and every device would otherwise share one cache entry.
 func (a *mqlAwsEc2InstanceDevice) id() (string, error) {
-	return a.VolumeId.Data, nil
+	return a.cacheVolumeId, nil
 }
 
 func (a *mqlAwsEc2InstanceDevice) volume() (*mqlAwsEc2Volume, error) {
-	volumeID := a.VolumeId.Data
+	volumeID := a.cacheVolumeId
 	if volumeID == "" {
 		a.Volume.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -2252,18 +2484,20 @@ func (a *mqlAwsEc2Instance) id() (string, error) {
 }
 
 func (a *mqlAwsEc2Instance) vpc() (*mqlAwsVpc, error) {
-	vpcArn := a.VpcArn
-	if vpcArn.State == plugin.StateIsNull {
-		return nil, errors.New("ec2 instance has no vpc associated with it")
-	} else if vpcArn.Error != nil {
-		return nil, vpcArn.Error
-	} else {
-		res, err := NewResource(a.MqlRuntime, "aws.vpc", map[string]*llx.RawData{"arn": llx.StringData(vpcArn.Data)})
-		if err != nil {
-			return nil, err
-		}
-		return res.(*mqlAwsVpc), nil
+	// Instances without a VPC (terminated instances drop VpcId) have no ARN to
+	// resolve; treat that as a null field rather than falling through with an
+	// empty arn, which would trigger an account-wide VPC scan that ends in a
+	// misleading "vpc does not exist" error.
+	vpcArn := a.cacheVpcArn
+	if vpcArn == "" {
+		a.Vpc.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
+	res, err := NewResource(a.MqlRuntime, "aws.vpc", map[string]*llx.RawData{"arn": llx.StringData(vpcArn)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsVpc), nil
 }
 
 func (a *mqlAwsEc2Instance) ssm() (any, error) {
@@ -2451,9 +2685,17 @@ func initAwsEc2Volume(runtime *plugin.Runtime, args map[string]*llx.RawData) (ma
 		return args, nil, nil
 	}
 
+	// A reference already materialized by an earlier referrer or by the
+	// list that built it. NewResource consults the cache only after this
+	// init returns, so without this the same target is fetched once per
+	// referring resource and the result discarded.
+	if cached := cachedArgByArn(runtime, ResourceAwsEc2Volume, args); cached != nil {
+		return args, cached, nil
+	}
+
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformEbsVolume); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -2523,7 +2765,7 @@ func buildVolumeResource(runtime *plugin.Runtime, region, accountID string, vol 
 			"tags":               llx.MapData(toInterfaceMap(ec2TagsToMap(vol.Tags)), types.String),
 			"throughput":         llx.IntDataDefault(vol.Throughput, 0),
 			"volumeType":         llx.StringData(string(vol.VolumeType)),
-			"sseType":            llx.StringData(string(vol.SseType)),
+			"sseType":            llx.StringData(deriveVolumeSseType(vol)),
 			"fastRestored":       llx.BoolDataPtr(vol.FastRestored),
 			"snapshotId":         llx.StringDataPtr(vol.SnapshotId),
 		})
@@ -2601,8 +2843,8 @@ func initAwsEc2Instance(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 
 	log.Debug().Msg("init an ec2 instance")
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformEc2Instance); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -2610,6 +2852,10 @@ func initAwsEc2Instance(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 		return nil, nil, errors.New("arn required to fetch ec2 instance")
 	}
 	arnVal := args["arn"].Value.(string)
+
+	if cached := cachedByArn(runtime, ResourceAwsEc2Instance, arnVal); cached != nil {
+		return args, cached, nil
+	}
 
 	// Parse the ARN to extract region + instance id and target a single
 	// DescribeInstances call. Fall back to the cross-region list path only
@@ -2700,9 +2946,17 @@ func initAwsEc2Snapshot(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 		return args, nil, nil
 	}
 
+	// A reference already materialized by an earlier referrer or by the
+	// list that built it. NewResource consults the cache only after this
+	// init returns, so without this the same target is fetched once per
+	// referring resource and the result discarded.
+	if cached := cachedArgByArn(runtime, ResourceAwsEc2Snapshot, args); cached != nil {
+		return args, cached, nil
+	}
+
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformEbsSnapshot); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -2901,6 +3155,39 @@ func (a *mqlAwsEc2) getSnapshots(conn *connection.AwsConnection) []*jobpool.Job 
 
 type mqlAwsEc2SnapshotInternal struct {
 	cacheKmsKeyId *string
+	snapshotLock  snapshotLockState
+
+	cvpOnce   sync.Once
+	cvp       []ec2types.CreateVolumePermission
+	cvpErr    error
+	cvpDenied bool
+}
+
+// fetchCreateVolumePermissions reads the snapshot's createVolumePermission
+// attribute once. Four fields answer from it (the deprecated dict, the two
+// typed lists, and isPublic), and without memoizing, a query touching more
+// than one of them repeats DescribeSnapshotAttribute per field per snapshot.
+func (a *mqlAwsEc2Snapshot) fetchCreateVolumePermissions() ([]ec2types.CreateVolumePermission, bool, error) {
+	a.cvpOnce.Do(func() {
+		id := a.Id.Data
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Ec2(a.Region.Data)
+		attribute, err := svc.DescribeSnapshotAttribute(context.Background(), &ec2.DescribeSnapshotAttributeInput{
+			SnapshotId: &id,
+			Attribute:  ec2types.SnapshotAttributeNameCreateVolumePermission,
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				log.Debug().Str("snapshot", id).Msg("access denied when retrieving snapshot volume permissions")
+				a.cvpDenied = true
+				return
+			}
+			a.cvpErr = err
+			return
+		}
+		a.cvp = attribute.CreateVolumePermissions
+	})
+	return a.cvp, a.cvpDenied, a.cvpErr
 }
 
 // sourceVolume resolves the volume the snapshot was created from when it is
@@ -2940,40 +3227,72 @@ func (a *mqlAwsEc2Snapshot) kmsKey() (*mqlAwsKmsKey, error) {
 }
 
 func (a *mqlAwsEc2Snapshot) isPublic() (bool, error) {
-	perms, err := a.createVolumePermission()
+	perms, denied, err := a.fetchCreateVolumePermissions()
 	if err != nil {
 		return false, err
 	}
+	if denied {
+		// Reading false out of a denied call would assert the snapshot is
+		// definitively not public when its permissions were never read.
+		a.IsPublic.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
 	for _, p := range perms {
-		permMap, ok := p.(map[string]any)
-		if !ok {
-			continue
-		}
-		if group, ok := permMap["Group"].(string); ok && group == "all" {
+		if p.Group == ec2types.PermissionGroupAll {
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
-func (a *mqlAwsEc2Snapshot) createVolumePermission() ([]any, error) {
-	id := a.Id.Data
-	region := a.Region.Data
-	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-
-	svc := conn.Ec2(region)
-	ctx := context.Background()
-
-	attribute, err := svc.DescribeSnapshotAttribute(ctx, &ec2.DescribeSnapshotAttributeInput{SnapshotId: &id, Attribute: ec2types.SnapshotAttributeNameCreateVolumePermission})
+func (a *mqlAwsEc2Snapshot) createVolumePermissionUserIds() ([]any, error) {
+	perms, denied, err := a.fetchCreateVolumePermissions()
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Debug().Str("snapshot", id).Msg("access denied when retrieving snapshot volume permissions")
-			return nil, nil
-		}
 		return nil, err
 	}
+	if denied {
+		// Reading "no accounts" out of a denied call would report the snapshot
+		// as unshared when it may not be.
+		a.CreateVolumePermissionUserIds.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res := []any{}
+	for _, p := range perms {
+		if p.UserId != nil && *p.UserId != "" {
+			res = append(res, *p.UserId)
+		}
+	}
+	return res, nil
+}
 
-	return convert.JsonToDictSlice(attribute.CreateVolumePermissions)
+func (a *mqlAwsEc2Snapshot) createVolumePermissionGroups() ([]any, error) {
+	perms, denied, err := a.fetchCreateVolumePermissions()
+	if err != nil {
+		return nil, err
+	}
+	if denied {
+		a.CreateVolumePermissionGroups.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res := []any{}
+	for _, p := range perms {
+		if p.Group != "" {
+			res = append(res, string(p.Group))
+		}
+	}
+	return res, nil
+}
+
+func (a *mqlAwsEc2Snapshot) createVolumePermission() ([]any, error) {
+	perms, denied, err := a.fetchCreateVolumePermissions()
+	if err != nil {
+		return nil, err
+	}
+	if denied {
+		a.CreateVolumePermission.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return convert.JsonToDictSlice(perms)
 }
 
 func (a *mqlAwsEc2) internetGateways() ([]any, error) {
@@ -3022,18 +3341,7 @@ func (a *mqlAwsEc2) getInternetGateways(conn *connection.AwsConnection) []*jobpo
 						log.Debug().Interface("igw", gateway.InternetGatewayId).Msg("excluding internet gateway due to filters")
 						continue
 					}
-					jsonAttachments, err := convert.JsonToDictSlice(gateway.Attachments)
-					if err != nil {
-						return nil, err
-					}
-					mqlInternetGw, err := CreateResource(a.MqlRuntime, ResourceAwsEc2Internetgateway,
-						map[string]*llx.RawData{
-							"arn":         llx.StringData(fmt.Sprintf(internetGwArnPattern, region, conn.AccountId(), convert.ToValue(gateway.InternetGatewayId))),
-							"id":          llx.StringData(convert.ToValue(gateway.InternetGatewayId)),
-							"region":      llx.StringData(region),
-							"attachments": llx.ArrayData(jsonAttachments, types.Any),
-							"tags":        llx.MapData(toInterfaceMap(ec2TagsToMap(gateway.Tags)), types.String),
-						})
+					mqlInternetGw, err := newMqlAwsEc2Internetgateway(a.MqlRuntime, region, conn, gateway)
 					if err != nil {
 						return nil, err
 					}
@@ -3051,8 +3359,200 @@ func (a *mqlAwsEc2Internetgateway) id() (string, error) {
 	return a.Arn.Data, nil
 }
 
+// newMqlAwsEc2Internetgateway builds an aws.ec2.internetgateway resource from an
+// SDK InternetGateway. Shared by the account-level list and the by-id init so
+// both paths produce an identically shaped resource.
+func newMqlAwsEc2Internetgateway(runtime *plugin.Runtime, region string, conn *connection.AwsConnection, gateway ec2types.InternetGateway) (plugin.Resource, error) {
+	jsonAttachments, err := convert.JsonToDictSlice(gateway.Attachments)
+	if err != nil {
+		return nil, err
+	}
+	return CreateResource(runtime, ResourceAwsEc2Internetgateway,
+		map[string]*llx.RawData{
+			"arn":         llx.StringData(fmt.Sprintf(internetGwArnPattern, region, conn.AccountId(), convert.ToValue(gateway.InternetGatewayId))),
+			"id":          llx.StringData(convert.ToValue(gateway.InternetGatewayId)),
+			"region":      llx.StringData(region),
+			"attachments": llx.ArrayData(jsonAttachments, types.Any),
+			"tags":        llx.MapData(toInterfaceMap(ec2TagsToMap(gateway.Tags)), types.String),
+		})
+}
+
+func initAwsEc2Internetgateway(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	if args["arn"] == nil && args["id"] == nil {
+		return args, nil, nil
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	var igwID, region string
+	if args["id"] != nil {
+		igwID, _ = args["id"].Value.(string)
+	}
+	if args["region"] != nil {
+		region, _ = args["region"].Value.(string)
+	}
+	if args["arn"] != nil {
+		if parsed, err := arn.Parse(args["arn"].Value.(string)); err == nil {
+			region = parsed.Region
+			parts := strings.Split(parsed.Resource, "/")
+			if len(parts) == 2 {
+				igwID = parts[1]
+			}
+		}
+	}
+	// Without both id and region a targeted lookup is not possible; hand back a
+	// bare resource.
+	if igwID == "" || region == "" {
+		return args, nil, nil
+	}
+
+	// Reuse the internet gateway already materialized by aws.ec2.internetGateways()
+	// (routes commonly share one gateway) before spending a DescribeInternetGateways call.
+	cacheID := ResourceAwsEc2Internetgateway + "\x00" + fmt.Sprintf(internetGwArnPattern, region, conn.AccountId(), igwID)
+	if cached, ok := runtime.Resources.Get(cacheID); ok {
+		return args, cached, nil
+	}
+
+	svc := conn.Ec2(region)
+	resp, err := svc.DescribeInternetGateways(context.Background(), &ec2.DescribeInternetGatewaysInput{
+		InternetGatewayIds: []string{igwID},
+	})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return nil, nil, fmt.Errorf("access denied fetching aws.ec2.internetGateway with id %q in region %s", igwID, region)
+		}
+		return nil, nil, err
+	}
+	if len(resp.InternetGateways) == 0 {
+		return nil, nil, fmt.Errorf("aws.ec2.internetGateway with id %q not found", igwID)
+	}
+	res, err := newMqlAwsEc2Internetgateway(runtime, region, conn, resp.InternetGateways[0])
+	if err != nil {
+		return nil, nil, err
+	}
+	return args, res, nil
+}
+
 func (a *mqlAwsEc2Transitgateway) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+// newMqlAwsEc2Transitgateway builds an aws.ec2.transitgateway from an SDK
+// TransitGateway, flattening its Options block. Shared by the account-level list
+// and the by-id init.
+func newMqlAwsEc2Transitgateway(runtime *plugin.Runtime, region string, tgw ec2types.TransitGateway) (plugin.Resource, error) {
+	tgwArn := convert.ToValue(tgw.TransitGatewayArn)
+	if tgwArn == "" {
+		tgwArn = fmt.Sprintf(transitGatewayArnPattern, region, convert.ToValue(tgw.OwnerId), convert.ToValue(tgw.TransitGatewayId))
+	}
+
+	// Flatten Options
+	var amazonSideAsn int64
+	var autoAcceptSharedAttachments, defaultRouteTableAssociation, defaultRouteTablePropagation bool
+	var dnsSupport, multicastSupport, vpnEcmpSupport bool
+	var transitGatewayCidrBlocks []string
+	var associationDefaultRouteTableId, propagationDefaultRouteTableId string
+	if opts := tgw.Options; opts != nil {
+		if opts.AmazonSideAsn != nil {
+			amazonSideAsn = *opts.AmazonSideAsn
+		}
+		autoAcceptSharedAttachments = string(opts.AutoAcceptSharedAttachments) == "enable"
+		defaultRouteTableAssociation = string(opts.DefaultRouteTableAssociation) == "enable"
+		defaultRouteTablePropagation = string(opts.DefaultRouteTablePropagation) == "enable"
+		dnsSupport = string(opts.DnsSupport) == "enable"
+		multicastSupport = string(opts.MulticastSupport) == "enable"
+		vpnEcmpSupport = string(opts.VpnEcmpSupport) == "enable"
+		transitGatewayCidrBlocks = opts.TransitGatewayCidrBlocks
+		associationDefaultRouteTableId = convert.ToValue(opts.AssociationDefaultRouteTableId)
+		propagationDefaultRouteTableId = convert.ToValue(opts.PropagationDefaultRouteTableId)
+	}
+
+	mqlTgw, err := CreateResource(runtime, ResourceAwsEc2Transitgateway,
+		map[string]*llx.RawData{
+			"__id":                           llx.StringData(tgwArn),
+			"arn":                            llx.StringData(tgwArn),
+			"id":                             llx.StringData(convert.ToValue(tgw.TransitGatewayId)),
+			"ownerId":                        llx.StringData(convert.ToValue(tgw.OwnerId)),
+			"state":                          llx.StringData(string(tgw.State)),
+			"description":                    llx.StringData(convert.ToValue(tgw.Description)),
+			"region":                         llx.StringData(region),
+			"createdAt":                      llx.TimeDataPtr(tgw.CreationTime),
+			"tags":                           llx.MapData(toInterfaceMap(ec2TagsToMap(tgw.Tags)), types.String),
+			"amazonSideAsn":                  llx.IntData(amazonSideAsn),
+			"autoAcceptSharedAttachments":    llx.BoolData(autoAcceptSharedAttachments),
+			"defaultRouteTableAssociation":   llx.BoolData(defaultRouteTableAssociation),
+			"defaultRouteTablePropagation":   llx.BoolData(defaultRouteTablePropagation),
+			"dnsSupport":                     llx.BoolData(dnsSupport),
+			"multicastSupport":               llx.BoolData(multicastSupport),
+			"vpnEcmpSupport":                 llx.BoolData(vpnEcmpSupport),
+			"transitGatewayCidrBlocks":       llx.ArrayData(convert.SliceAnyToInterface(transitGatewayCidrBlocks), types.String),
+			"associationDefaultRouteTableId": llx.StringData(associationDefaultRouteTableId),
+			"propagationDefaultRouteTableId": llx.StringData(propagationDefaultRouteTableId),
+		})
+	if err != nil {
+		return nil, err
+	}
+	mqlTgw.(*mqlAwsEc2Transitgateway).region = region
+	return mqlTgw, nil
+}
+
+func initAwsEc2Transitgateway(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	if args["arn"] == nil && args["id"] == nil {
+		return args, nil, nil
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	var tgwID, region string
+	if args["id"] != nil {
+		tgwID, _ = args["id"].Value.(string)
+	}
+	if args["region"] != nil {
+		region, _ = args["region"].Value.(string)
+	}
+	if args["arn"] != nil {
+		if parsed, err := arn.Parse(args["arn"].Value.(string)); err == nil {
+			region = parsed.Region
+			parts := strings.Split(parsed.Resource, "/")
+			if len(parts) == 2 {
+				tgwID = parts[1]
+			}
+		}
+	}
+	if tgwID == "" || region == "" {
+		return args, nil, nil
+	}
+
+	// Reuse a transit gateway already listed before spending an API call. The
+	// cache key uses the caller's account; a cross-account shared gateway misses
+	// here and is fetched below (still correct).
+	cacheID := ResourceAwsEc2Transitgateway + "\x00" + fmt.Sprintf(transitGatewayArnPattern, region, conn.AccountId(), tgwID)
+	if cached, ok := runtime.Resources.Get(cacheID); ok {
+		return args, cached, nil
+	}
+
+	svc := conn.Ec2(region)
+	resp, err := svc.DescribeTransitGateways(context.Background(), &ec2.DescribeTransitGatewaysInput{
+		TransitGatewayIds: []string{tgwID},
+	})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return nil, nil, fmt.Errorf("access denied fetching aws.ec2.transitGateway with id %q in region %s", tgwID, region)
+		}
+		return nil, nil, err
+	}
+	if len(resp.TransitGateways) == 0 {
+		return nil, nil, fmt.Errorf("aws.ec2.transitGateway with id %q not found", tgwID)
+	}
+	res, err := newMqlAwsEc2Transitgateway(runtime, region, resp.TransitGateways[0])
+	if err != nil {
+		return nil, nil, err
+	}
+	return args, res, nil
 }
 
 func (a *mqlAwsEc2) transitGateways() ([]any, error) {
@@ -3098,59 +3598,10 @@ func (a *mqlAwsEc2) getTransitGateways(conn *connection.AwsConnection) []*jobpoo
 						log.Debug().Interface("tgw", tgw.TransitGatewayId).Msg("excluding transit gateway due to filters")
 						continue
 					}
-
-					tgwArn := convert.ToValue(tgw.TransitGatewayArn)
-					if tgwArn == "" {
-						tgwArn = fmt.Sprintf(transitGatewayArnPattern, region, convert.ToValue(tgw.OwnerId), convert.ToValue(tgw.TransitGatewayId))
-					}
-
-					// Flatten Options
-					var amazonSideAsn int64
-					var autoAcceptSharedAttachments, defaultRouteTableAssociation, defaultRouteTablePropagation bool
-					var dnsSupport, multicastSupport, vpnEcmpSupport bool
-					var transitGatewayCidrBlocks []string
-					var associationDefaultRouteTableId, propagationDefaultRouteTableId string
-					if opts := tgw.Options; opts != nil {
-						if opts.AmazonSideAsn != nil {
-							amazonSideAsn = *opts.AmazonSideAsn
-						}
-						autoAcceptSharedAttachments = string(opts.AutoAcceptSharedAttachments) == "enable"
-						defaultRouteTableAssociation = string(opts.DefaultRouteTableAssociation) == "enable"
-						defaultRouteTablePropagation = string(opts.DefaultRouteTablePropagation) == "enable"
-						dnsSupport = string(opts.DnsSupport) == "enable"
-						multicastSupport = string(opts.MulticastSupport) == "enable"
-						vpnEcmpSupport = string(opts.VpnEcmpSupport) == "enable"
-						transitGatewayCidrBlocks = opts.TransitGatewayCidrBlocks
-						associationDefaultRouteTableId = convert.ToValue(opts.AssociationDefaultRouteTableId)
-						propagationDefaultRouteTableId = convert.ToValue(opts.PropagationDefaultRouteTableId)
-					}
-
-					mqlTgw, err := CreateResource(a.MqlRuntime, ResourceAwsEc2Transitgateway,
-						map[string]*llx.RawData{
-							"__id":                           llx.StringData(tgwArn),
-							"arn":                            llx.StringData(tgwArn),
-							"id":                             llx.StringData(convert.ToValue(tgw.TransitGatewayId)),
-							"ownerId":                        llx.StringData(convert.ToValue(tgw.OwnerId)),
-							"state":                          llx.StringData(string(tgw.State)),
-							"description":                    llx.StringData(convert.ToValue(tgw.Description)),
-							"region":                         llx.StringData(region),
-							"createdAt":                      llx.TimeDataPtr(tgw.CreationTime),
-							"tags":                           llx.MapData(toInterfaceMap(ec2TagsToMap(tgw.Tags)), types.String),
-							"amazonSideAsn":                  llx.IntData(amazonSideAsn),
-							"autoAcceptSharedAttachments":    llx.BoolData(autoAcceptSharedAttachments),
-							"defaultRouteTableAssociation":   llx.BoolData(defaultRouteTableAssociation),
-							"defaultRouteTablePropagation":   llx.BoolData(defaultRouteTablePropagation),
-							"dnsSupport":                     llx.BoolData(dnsSupport),
-							"multicastSupport":               llx.BoolData(multicastSupport),
-							"vpnEcmpSupport":                 llx.BoolData(vpnEcmpSupport),
-							"transitGatewayCidrBlocks":       llx.ArrayData(convert.SliceAnyToInterface(transitGatewayCidrBlocks), types.String),
-							"associationDefaultRouteTableId": llx.StringData(associationDefaultRouteTableId),
-							"propagationDefaultRouteTableId": llx.StringData(propagationDefaultRouteTableId),
-						})
+					mqlTgw, err := newMqlAwsEc2Transitgateway(a.MqlRuntime, region, tgw)
 					if err != nil {
 						return nil, err
 					}
-					mqlTgw.(*mqlAwsEc2Transitgateway).region = region
 					res = append(res, mqlTgw)
 				}
 			}
@@ -3171,8 +3622,18 @@ func (a *mqlAwsEc2TransitgatewayAttachment) id() (string, error) {
 	return a.Id.Data, nil
 }
 
+func (a *mqlAwsEc2TransitgatewayAttachment) arn() (string, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return fmt.Sprintf(tgwAttachmentArnPattern, a.Region.Data, conn.AccountId(), a.Id.Data), nil
+}
+
 func (a *mqlAwsEc2TransitgatewayRouteTable) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+func (a *mqlAwsEc2TransitgatewayRouteTable) arn() (string, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return fmt.Sprintf(tgwRouteTableArnPattern, a.Region.Data, conn.AccountId(), a.Id.Data), nil
 }
 
 func (a *mqlAwsEc2Transitgateway) attachments() ([]any, error) {
@@ -3198,17 +3659,7 @@ func (a *mqlAwsEc2Transitgateway) attachments() ([]any, error) {
 			if conn.Filters.General.MatchesExcludeTags(ec2TagsToMap(att.Tags)) {
 				continue
 			}
-			mqlAtt, err := CreateResource(a.MqlRuntime, ResourceAwsEc2TransitgatewayAttachment,
-				map[string]*llx.RawData{
-					"id":               llx.StringData(convert.ToValue(att.TransitGatewayAttachmentId)),
-					"transitGatewayId": llx.StringData(convert.ToValue(att.TransitGatewayId)),
-					"resourceId":       llx.StringData(convert.ToValue(att.ResourceId)),
-					"resourceType":     llx.StringData(string(att.ResourceType)),
-					"state":            llx.StringData(string(att.State)),
-					"createdAt":        llx.TimeDataPtr(att.CreationTime),
-					"tags":             llx.MapData(toInterfaceMap(ec2TagsToMap(att.Tags)), types.String),
-					"region":           llx.StringData(a.region),
-				})
+			mqlAtt, err := newMqlAwsEc2TransitgatewayAttachment(a.MqlRuntime, a.region, att)
 			if err != nil {
 				return nil, err
 			}
@@ -3265,8 +3716,35 @@ func (a *mqlAwsEc2Vpnconnection) id() (string, error) {
 	return a.Arn.Data, nil
 }
 
+// id is a fallback only. A telemetry entry carries nothing but its outside IP,
+// which is empty while the tunnel is provisioning and is not scoped to a
+// connection, so the creator passes a connection-scoped, indexed __id instead.
 func (a *mqlAwsEc2Vgwtelemetry) id() (string, error) {
 	return a.OutsideIpAddress.Data, nil
+}
+
+// listValuesToStrings extracts the Value field from AWS SDK "...ListValue"
+// structs into a []any of strings, guarding nil pointers.
+func listValuesToStrings[T any](values []T, get func(T) *string) []any {
+	result := []any{}
+	for i := range values {
+		if v := get(values[i]); v != nil {
+			result = append(result, *v)
+		}
+	}
+	return result
+}
+
+// dhGroupNumbersToInts extracts the *int32 Value field from AWS SDK DH-group
+// "...ListValue" structs into a []any of int64, guarding nil pointers.
+func dhGroupNumbersToInts[T any](values []T, get func(T) *int32) []any {
+	result := []any{}
+	for i := range values {
+		if v := get(values[i]); v != nil {
+			result = append(result, int64(*v))
+		}
+	}
+	return result
 }
 
 // VPN connection enhancement (#3)
@@ -3280,10 +3758,19 @@ type mqlAwsEc2VpnconnectionInternal struct {
 }
 
 func newMqlVpnConnection(runtime *plugin.Runtime, region string, accountID string, vpnConn ec2types.VpnConnection) (*mqlAwsEc2Vpnconnection, error) {
+	connID := convert.ToValue(vpnConn.VpnConnectionId)
+
 	mqlVgwT := []any{}
-	for _, vgwT := range vpnConn.VgwTelemetry {
+	for i, vgwT := range vpnConn.VgwTelemetry {
 		mqlVgwTelemetry, err := CreateResource(runtime, ResourceAwsEc2Vgwtelemetry,
 			map[string]*llx.RawData{
+				// Scoped to the connection and indexed, for the same reason the
+				// tunnel options below are: the outside IP is the only thing
+				// distinguishing one telemetry entry from another, and it is
+				// empty while a tunnel is still provisioning - so both tunnels
+				// of a new connection keyed identically, and every connection
+				// in that state shared one row across the whole account.
+				"__id":             llx.StringData(fmt.Sprintf("%s/vgwTelemetry/%d/%s", connID, i, convert.ToValue(vgwT.OutsideIpAddress))),
 				"outsideIpAddress": llx.StringData(convert.ToValue(vgwT.OutsideIpAddress)),
 				"status":           llx.StringData(string(vgwT.Status)),
 				"statusMessage":    llx.StringData(convert.ToValue(vgwT.StatusMessage)),
@@ -3296,6 +3783,7 @@ func newMqlVpnConnection(runtime *plugin.Runtime, region string, accountID strin
 
 	var staticRoutesOnly, enableAcceleration bool
 	var localIpv4, remoteIpv4, localIpv6, remoteIpv6, outsideIpType, tunnelIpVersion string
+	mqlTunnelOpts := []any{}
 	if opts := vpnConn.Options; opts != nil {
 		staticRoutesOnly = convert.ToValue(opts.StaticRoutesOnly)
 		enableAcceleration = convert.ToValue(opts.EnableAcceleration)
@@ -3305,6 +3793,28 @@ func newMqlVpnConnection(runtime *plugin.Runtime, region string, accountID strin
 		remoteIpv6 = convert.ToValue(opts.RemoteIpv6NetworkCidr)
 		outsideIpType = convert.ToValue(opts.OutsideIpAddressType)
 		tunnelIpVersion = string(opts.TunnelInsideIpVersion)
+
+		for i, tun := range opts.TunnelOptions {
+			outsideIP := convert.ToValue(tun.OutsideIpAddress)
+			mqlTunnelOpt, err := CreateResource(runtime, ResourceAwsEc2VpnconnectionTunnelOption,
+				map[string]*llx.RawData{
+					// index disambiguates tunnels whose outside IP is still empty during provisioning
+					"__id":                       llx.StringData(fmt.Sprintf("%s/tunnelOption/%d/%s", connID, i, outsideIP)),
+					"outsideIpAddress":           llx.StringData(outsideIP),
+					"tunnelInsideCidr":           llx.StringData(convert.ToValue(tun.TunnelInsideCidr)),
+					"ikeVersions":                llx.ArrayData(listValuesToStrings(tun.IkeVersions, func(v ec2types.IKEVersionsListValue) *string { return v.Value }), types.String),
+					"phase1EncryptionAlgorithms": llx.ArrayData(listValuesToStrings(tun.Phase1EncryptionAlgorithms, func(v ec2types.Phase1EncryptionAlgorithmsListValue) *string { return v.Value }), types.String),
+					"phase2EncryptionAlgorithms": llx.ArrayData(listValuesToStrings(tun.Phase2EncryptionAlgorithms, func(v ec2types.Phase2EncryptionAlgorithmsListValue) *string { return v.Value }), types.String),
+					"phase1IntegrityAlgorithms":  llx.ArrayData(listValuesToStrings(tun.Phase1IntegrityAlgorithms, func(v ec2types.Phase1IntegrityAlgorithmsListValue) *string { return v.Value }), types.String),
+					"phase2IntegrityAlgorithms":  llx.ArrayData(listValuesToStrings(tun.Phase2IntegrityAlgorithms, func(v ec2types.Phase2IntegrityAlgorithmsListValue) *string { return v.Value }), types.String),
+					"phase1DHGroupNumbers":       llx.ArrayData(dhGroupNumbersToInts(tun.Phase1DHGroupNumbers, func(v ec2types.Phase1DHGroupNumbersListValue) *int32 { return v.Value }), types.Int),
+					"phase2DHGroupNumbers":       llx.ArrayData(dhGroupNumbersToInts(tun.Phase2DHGroupNumbers, func(v ec2types.Phase2DHGroupNumbersListValue) *int32 { return v.Value }), types.Int),
+				})
+			if err != nil {
+				return nil, err
+			}
+			mqlTunnelOpts = append(mqlTunnelOpts, mqlTunnelOpt)
+		}
 	}
 
 	mqlVpnConn, err := CreateResource(runtime, ResourceAwsEc2Vpnconnection,
@@ -3325,6 +3835,7 @@ func newMqlVpnConnection(runtime *plugin.Runtime, region string, accountID strin
 			"tunnelInsideIpVersion": llx.StringData(tunnelIpVersion),
 			"tags":                  llx.MapData(toInterfaceMap(ec2TagsToMap(vpnConn.Tags)), types.String),
 			"vgwTelemetry":          llx.ArrayData(mqlVgwT, types.Resource(ResourceAwsEc2Vgwtelemetry)),
+			"tunnelOptions":         llx.ArrayData(mqlTunnelOpts, types.Resource(ResourceAwsEc2VpnconnectionTunnelOption)),
 		})
 	if err != nil {
 		return nil, err
@@ -3395,7 +3906,7 @@ func (a *mqlAwsEc2CustomerGateway) id() (string, error) {
 }
 
 func (a *mqlAwsEc2CustomerGateway) certificate() (*mqlAwsAcmCertificate, error) {
-	arnVal := a.CertificateArn.Data
+	arnVal := a.cacheCertificateArn
 	if arnVal == "" {
 		a.Certificate.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -3504,13 +4015,13 @@ func (a *mqlAwsEc2) getCustomerGateways(conn *connection.AwsConnection) []*jobpo
 						"bgpAsn":         llx.StringData(convert.ToValue(cgw.BgpAsn)),
 						"bgpAsnExtended": llx.StringDataPtr(cgw.BgpAsnExtended),
 						"ipAddress":      llx.StringData(convert.ToValue(cgw.IpAddress)),
-						"certificateArn": llx.StringData(convert.ToValue(cgw.CertificateArn)),
 						"deviceName":     llx.StringData(convert.ToValue(cgw.DeviceName)),
 						"tags":           llx.MapData(toInterfaceMap(ec2TagsToMap(cgw.Tags)), types.String),
 					})
 				if err != nil {
 					return nil, err
 				}
+				mqlCgw.(*mqlAwsEc2CustomerGateway).cacheCertificateArn = convert.ToValue(cgw.CertificateArn)
 				res = append(res, mqlCgw)
 			}
 			return jobpool.JobResult(res), nil
@@ -3524,6 +4035,79 @@ func (a *mqlAwsEc2) getCustomerGateways(conn *connection.AwsConnection) []*jobpo
 
 func (a *mqlAwsEc2EgressOnlyInternetGateway) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+// newMqlAwsEc2EgressOnlyInternetGateway builds an aws.ec2.egressOnlyInternetGateway
+// from an SDK EgressOnlyInternetGateway. Shared by the account-level list and the
+// by-id init.
+func newMqlAwsEc2EgressOnlyInternetGateway(runtime *plugin.Runtime, region string, conn *connection.AwsConnection, eigw ec2types.EgressOnlyInternetGateway) (plugin.Resource, error) {
+	attachments, err := convert.JsonToDictSlice(eigw.Attachments)
+	if err != nil {
+		return nil, err
+	}
+	return CreateResource(runtime, ResourceAwsEc2EgressOnlyInternetGateway,
+		map[string]*llx.RawData{
+			"id":          llx.StringData(convert.ToValue(eigw.EgressOnlyInternetGatewayId)),
+			"arn":         llx.StringData(fmt.Sprintf(egressOnlyIgwArnPattern, region, conn.AccountId(), convert.ToValue(eigw.EgressOnlyInternetGatewayId))),
+			"region":      llx.StringData(region),
+			"attachments": llx.ArrayData(attachments, types.Any),
+			"tags":        llx.MapData(toInterfaceMap(ec2TagsToMap(eigw.Tags)), types.String),
+		})
+}
+
+func initAwsEc2EgressOnlyInternetGateway(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	if args["arn"] == nil && args["id"] == nil {
+		return args, nil, nil
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	var eigwID, region string
+	if args["id"] != nil {
+		eigwID, _ = args["id"].Value.(string)
+	}
+	if args["region"] != nil {
+		region, _ = args["region"].Value.(string)
+	}
+	if args["arn"] != nil {
+		if parsed, err := arn.Parse(args["arn"].Value.(string)); err == nil {
+			region = parsed.Region
+			parts := strings.Split(parsed.Resource, "/")
+			if len(parts) == 2 {
+				eigwID = parts[1]
+			}
+		}
+	}
+	if eigwID == "" || region == "" {
+		return args, nil, nil
+	}
+
+	// Reuse an egress-only gateway already listed before spending an API call.
+	cacheID := ResourceAwsEc2EgressOnlyInternetGateway + "\x00" + fmt.Sprintf(egressOnlyIgwArnPattern, region, conn.AccountId(), eigwID)
+	if cached, ok := runtime.Resources.Get(cacheID); ok {
+		return args, cached, nil
+	}
+
+	svc := conn.Ec2(region)
+	resp, err := svc.DescribeEgressOnlyInternetGateways(context.Background(), &ec2.DescribeEgressOnlyInternetGatewaysInput{
+		EgressOnlyInternetGatewayIds: []string{eigwID},
+	})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			return nil, nil, fmt.Errorf("access denied fetching aws.ec2.egressOnlyInternetGateway with id %q in region %s", eigwID, region)
+		}
+		return nil, nil, err
+	}
+	if len(resp.EgressOnlyInternetGateways) == 0 {
+		return nil, nil, fmt.Errorf("aws.ec2.egressOnlyInternetGateway with id %q not found", eigwID)
+	}
+	res, err := newMqlAwsEc2EgressOnlyInternetGateway(runtime, region, conn, resp.EgressOnlyInternetGateways[0])
+	if err != nil {
+		return nil, nil, err
+	}
+	return args, res, nil
 }
 
 func (a *mqlAwsEc2) egressOnlyInternetGateways() ([]any, error) {
@@ -3568,15 +4152,7 @@ func (a *mqlAwsEc2) getEgressOnlyIGWs(conn *connection.AwsConnection) []*jobpool
 					if conn.Filters.General.MatchesExcludeTags(ec2TagsToMap(eigw.Tags)) {
 						continue
 					}
-					attachments, _ := convert.JsonToDictSlice(eigw.Attachments)
-					mqlEigw, err := CreateResource(a.MqlRuntime, ResourceAwsEc2EgressOnlyInternetGateway,
-						map[string]*llx.RawData{
-							"id":          llx.StringData(convert.ToValue(eigw.EgressOnlyInternetGatewayId)),
-							"arn":         llx.StringData(fmt.Sprintf(egressOnlyIgwArnPattern, region, conn.AccountId(), convert.ToValue(eigw.EgressOnlyInternetGatewayId))),
-							"region":      llx.StringData(region),
-							"attachments": llx.ArrayData(attachments, types.Any),
-							"tags":        llx.MapData(toInterfaceMap(ec2TagsToMap(eigw.Tags)), types.String),
-						})
+					mqlEigw, err := newMqlAwsEc2EgressOnlyInternetGateway(a.MqlRuntime, region, conn, eigw)
 					if err != nil {
 						return nil, err
 					}
@@ -3659,13 +4235,7 @@ func shouldExcludeInstance(instance ec2types.Instance, filters connection.Discov
 
 // tags in AWS are guaranteed to have a unique key, so we can convert the slice to a map for easier processing
 func ec2TagsToMap(tags []ec2types.Tag) map[string]string {
-	result := make(map[string]string)
-	for _, tag := range tags {
-		if tag.Key != nil && tag.Value != nil {
-			result[*tag.Key] = *tag.Value
-		}
-	}
-	return result
+	return tagsToStringMap(tags, func(t ec2types.Tag) *string { return t.Key }, func(t ec2types.Tag) *string { return t.Value })
 }
 
 const launchTemplateArnPattern = "arn:aws:ec2:%s:%s:launch-template/%s"
@@ -3699,7 +4269,7 @@ func (a *mqlAwsEc2) getLaunchTemplates(conn *connection.AwsConnection) []*jobpoo
 			ctx := context.Background()
 			res := []any{}
 
-			paginator := ec2.NewDescribeLaunchTemplatesPaginator(svc, &ec2.DescribeLaunchTemplatesInput{})
+			paginator := ec2.NewDescribeLaunchTemplatesPaginator(svc, describeLaunchTemplatesInput(conn.Filters.General))
 			for paginator.HasMorePages() {
 				page, err := paginator.NextPage(ctx)
 				if err != nil {
@@ -3710,6 +4280,10 @@ func (a *mqlAwsEc2) getLaunchTemplates(conn *connection.AwsConnection) []*jobpoo
 					return nil, err
 				}
 				for _, lt := range page.LaunchTemplates {
+					if conn.Filters.General.MatchesExcludeTags(ec2TagsToMap(lt.Tags)) {
+						log.Debug().Interface("launchtemplate", lt.LaunchTemplateId).Msg("excluding launch template due to filters")
+						continue
+					}
 					mqlLtRes, err := buildLaunchTemplateResource(a.MqlRuntime, region, conn.AccountId(), lt)
 					if err != nil {
 						return nil, err
@@ -3722,6 +4296,12 @@ func (a *mqlAwsEc2) getLaunchTemplates(conn *connection.AwsConnection) []*jobpoo
 		tasks = append(tasks, jobpool.NewJob(f))
 	}
 	return tasks
+}
+
+// describeLaunchTemplatesInput lists only the launch templates that carry the
+// discovery's tag filters, as the other EC2 lists do.
+func describeLaunchTemplatesInput(f connection.GeneralDiscoveryFilters) *ec2.DescribeLaunchTemplatesInput {
+	return &ec2.DescribeLaunchTemplatesInput{Filters: f.ToServerSideEc2Filters()}
 }
 
 type mqlAwsEc2LaunchtemplateInternal struct {
@@ -3777,13 +4357,17 @@ func initAwsEc2Launchtemplate(runtime *plugin.Runtime, args map[string]*llx.RawD
 	svc := conn.Ec2(region)
 	resp, err := svc.DescribeLaunchTemplates(context.Background(), input)
 	if err != nil {
+		// Falling through with `args, nil, nil` built a husk: args holds only
+		// region plus id/name, arn is never set, so id() returned "" and every
+		// unresolvable launch template shared the empty cache key while its
+		// other fields stayed unset (not null).
 		if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-			return args, nil, nil
+			return nil, nil, errors.Wrap(err, "could not access aws ec2 launch template")
 		}
 		return nil, nil, err
 	}
 	if len(resp.LaunchTemplates) == 0 {
-		return args, nil, nil
+		return nil, nil, errors.New("aws ec2 launch template does not exist")
 	}
 	mqlLt, err := buildLaunchTemplateResource(runtime, region, conn.AccountId(), resp.LaunchTemplates[0])
 	if err != nil {
@@ -3847,6 +4431,45 @@ func (a *mqlAwsEc2Launchtemplate) metadataOptions() (any, error) {
 	return convert.JsonToDict(data.MetadataOptions)
 }
 
+func (a *mqlAwsEc2Launchtemplate) instanceMetadata() (*mqlAwsEc2LaunchtemplateInstanceMetadataOptions, error) {
+	opts, err := a.launchTemplateMetadataOptions()
+	if err != nil {
+		return nil, err
+	}
+	if opts == nil {
+		a.InstanceMetadata.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	hopLimit := llx.NilData
+	if opts.HttpPutResponseHopLimit != nil {
+		hopLimit = llx.IntData(int64(*opts.HttpPutResponseHopLimit))
+	}
+	res, err := CreateResource(a.MqlRuntime, "aws.ec2.launchtemplate.instanceMetadataOptions", map[string]*llx.RawData{
+		"__id":                    llx.StringData(a.Arn.Data + "/metadataOptions"),
+		"httpTokens":              llx.StringData(string(opts.HttpTokens)),
+		"httpEndpoint":            llx.StringData(string(opts.HttpEndpoint)),
+		"httpPutResponseHopLimit": hopLimit,
+		"httpProtocolIpv6":        llx.StringData(string(opts.HttpProtocolIpv6)),
+		"instanceMetadataTags":    llx.StringData(string(opts.InstanceMetadataTags)),
+		"state":                   llx.StringData(string(opts.State)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsEc2LaunchtemplateInstanceMetadataOptions), nil
+}
+
+func (a *mqlAwsEc2Launchtemplate) launchTemplateMetadataOptions() (*ec2types.LaunchTemplateInstanceMetadataOptions, error) {
+	data, err := a.fetchLaunchTemplateData()
+	if err != nil {
+		return nil, err
+	}
+	if data == nil {
+		return nil, nil
+	}
+	return data.MetadataOptions, nil
+}
+
 func (a *mqlAwsEc2Launchtemplate) securityGroupIds() ([]any, error) {
 	data, err := a.fetchLaunchTemplateData()
 	if err != nil {
@@ -3905,12 +4528,13 @@ func (a *mqlAwsEc2Launchtemplate) imageId() (string, error) {
 // a single server-side EC2 filter and returns them as typed
 // aws.ec2.networkinterface resources. It backs the security-group and subnet
 // backreferences, which both reduce to "which ENIs reference me".
+// Like the other lookups under one parent, it does not take the discovery tag
+// filters (see vpcFilter).
 func networkInterfacesByFilter(runtime *plugin.Runtime, region, filterName, filterValue string) ([]any, error) {
 	conn := runtime.Connection.(*connection.AwsConnection)
 	svc := conn.Ec2(region)
 	ctx := context.Background()
-	filters := conn.Filters.General.ToServerSideEc2Filters()
-	filters = append(filters, ec2types.Filter{Name: aws.String(filterName), Values: []string{filterValue}})
+	filters := []ec2types.Filter{{Name: aws.String(filterName), Values: []string{filterValue}}}
 	params := &ec2.DescribeNetworkInterfacesInput{Filters: filters}
 	res := []any{}
 	paginator := ec2.NewDescribeNetworkInterfacesPaginator(svc, params)
@@ -3924,10 +4548,6 @@ func networkInterfacesByFilter(runtime *plugin.Runtime, region, filterName, filt
 			return nil, err
 		}
 		for _, ni := range nis.NetworkInterfaces {
-			if conn.Filters.General.MatchesExcludeTags(ec2TagsToMap(ni.TagSet)) {
-				log.Debug().Interface("networkInterface", ni.NetworkInterfaceId).Msg("excluding network interface due to filters")
-				continue
-			}
 			_, mqlEni, err := buildNetworkInterfaceResource(runtime, region, ni)
 			if err != nil {
 				return nil, err
@@ -4177,34 +4797,90 @@ func (i *mqlAwsEc2Instance) exposure() (*mqlAwsEc2InstanceExposure, error) {
 	return res.(*mqlAwsEc2InstanceExposure), nil
 }
 
-// naclIngressRule is the minimal shape of a network ACL inbound rule needed to
-// decide public reachability.
+// naclIngressRule is the shape of a network ACL inbound rule needed to decide
+// public reachability. Protocol, source range, and port range are all part of
+// that decision: network ACLs are evaluated per packet, so a rule only shadows a
+// higher-numbered rule for the traffic it actually matches.
 type naclIngressRule struct {
 	ruleNumber int
 	allow      bool
-	public     bool // source is 0.0.0.0/0 or ::/0
+	public     bool   // source is 0.0.0.0/0 or ::/0
+	protocol   string // "-1" means all protocols
+	// cidr is the rule's source range. An empty value means the source was not
+	// recorded and the rule is treated as matching any source.
+	cidr     string
+	fromPort int64
+	toPort   int64
+	// allPorts is true when the rule carries no port range, which for a network
+	// ACL means every port for the protocol.
+	allPorts bool
+}
+
+// ports returns the rule's port span.
+func (r naclIngressRule) ports() portRange {
+	if r.allPorts {
+		return portRange{all: true}
+	}
+	return newPortRange(r.fromPort, r.toPort)
+}
+
+// covers reports whether r matches every packet that other matches, i.e.
+// whether a lower-numbered r fully shadows other.
+//
+// The source range is part of this: an IPv4 and an IPv6 rule never match the
+// same packet, so a deny on 0.0.0.0/0 does not shadow an allow on ::/0.
+func (r naclIngressRule) covers(other naclIngressRule) bool {
+	if !protocolCovers(r.protocol, other.protocol) {
+		return false
+	}
+	if !cidrCovers(r.cidr, other.cidr) {
+		return false
+	}
+	return r.ports().covers(other.ports())
 }
 
 // naclAllowsPublicIngress reports whether a network ACL permits inbound traffic
-// from the internet. Network ACL rules are evaluated in ascending rule-number
-// order and the first match wins, so the lowest-numbered rule whose source is
-// public decides the outcome. When no rule matches a public source the implicit
-// final deny blocks the traffic.
+// from the internet.
+//
+// Network ACL rules are evaluated in ascending rule-number order and the first
+// rule matching a given packet wins. The decision is therefore per
+// (protocol, port), not global: a public ALLOW is only blocked when some
+// lower-numbered public DENY covers its entire protocol and port range.
+//
+// The previous implementation compared rule numbers alone, so the very common
+// layout of a narrow deny in front of a broad allow --
+//
+//	rule  90 DENY  0.0.0.0/0 tcp/3389
+//	rule 100 ALLOW 0.0.0.0/0 all
+//
+// -- was read as "denied", and an instance reachable on every other port
+// reported internetReachable == false.
 func naclAllowsPublicIngress(rules []naclIngressRule) bool {
-	found := false
-	bestNum := 0
-	allow := false
-	for _, r := range rules {
-		if !r.public {
+	ordered := make([]naclIngressRule, len(rules))
+	copy(ordered, rules)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].ruleNumber < ordered[j].ruleNumber
+	})
+
+	for i, allow := range ordered {
+		if !allow.public || !allow.allow {
 			continue
 		}
-		if !found || r.ruleNumber < bestNum {
-			found = true
-			bestNum = r.ruleNumber
-			allow = r.allow
+		shadowed := false
+		for _, deny := range ordered[:i] {
+			if !deny.public || deny.allow {
+				continue
+			}
+			if deny.covers(allow) {
+				shadowed = true
+				break
+			}
+		}
+		if !shadowed {
+			return true
 		}
 	}
-	return found && allow
+	return false
 }
 
 // networkAclAllowsPublicIngress evaluates a network ACL's inbound rules for
@@ -4220,11 +4896,7 @@ func networkAclAllowsPublicIngress(nacl *mqlAwsEc2Networkacl) (bool, error) {
 		if !ok || entry.Egress.Data {
 			continue
 		}
-		rules = append(rules, naclIngressRule{
-			ruleNumber: int(entry.RuleNumber.Data),
-			allow:      strings.EqualFold(entry.RuleAction.Data, "allow"),
-			public:     cidrEntryIsPublic(entry.CidrBlock.Data, entry.Ipv6CidrBlock.Data),
-		})
+		rules = append(rules, naclEntryRule(entry))
 	}
 	return naclAllowsPublicIngress(rules), nil
 }
@@ -4440,4 +5112,46 @@ func (a *mqlAwsEc2Snapshot) sharedExternally() (bool, error) {
 		return false, accounts.Error
 	}
 	return len(accounts.Data) > 0, nil
+}
+
+type mqlAwsEc2ImageEbsBlockDeviceInternal struct {
+	cacheKmsKeyId string
+}
+
+type mqlAwsEc2CustomerGatewayInternal struct {
+	cacheCertificateArn string
+}
+
+// deriveVolumeSseType returns the volume's SSE type, deriving it for
+// regions/accounts where DescribeVolumes omits SseType: an encrypted volume
+// always has a KMS key (sse-kms), an unencrypted one has no SSE at all.
+// Without this, encryption-type checks can never pass where the field is
+// missing from the API response.
+func deriveVolumeSseType(vol ec2types.Volume) string {
+	if sse := string(vol.SseType); sse != "" {
+		return sse
+	}
+	if convert.ToValue(vol.Encrypted) {
+		return "sse-kms"
+	}
+	return "none"
+}
+
+// newMqlEc2StateReason builds the reason an instance entered its current
+// state. A nil StateReason means EC2 reports no reason, which is the usual
+// case for an instance that has always been running, so the reference reads
+// null rather than as an empty code.
+func newMqlEc2StateReason(runtime *plugin.Runtime, ownerID string, sr *ec2types.StateReason) (*llx.RawData, error) {
+	if sr == nil {
+		return llx.NilData, nil
+	}
+	res, err := CreateResource(runtime, "aws.ec2.stateReason", map[string]*llx.RawData{
+		"__id":    llx.StringData(ownerID + "/stateReason"),
+		"code":    llx.StringData(convert.ToValue(sr.Code)),
+		"message": llx.StringData(convert.ToValue(sr.Message)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return llx.ResourceData(res, "aws.ec2.stateReason"), nil
 }

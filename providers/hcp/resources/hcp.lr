@@ -1,0 +1,276 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/hcp"
+option go_package = "go.mondoo.com/mql/providers/hcp/resources"
+option root = "hcp"
+
+// HashiCorp Cloud Platform
+//
+// Root of a HashiCorp Cloud Platform (HCP) account reached through a service
+// principal. Exposes the organization the connection is rooted at, its
+// projects, and the product resources provisioned beneath each project:
+// Vault, Consul, and Boundary clusters, the Packer registry, and Waypoint
+// applications. This is the control-plane view of an HCP estate; cluster
+// internal configuration (Vault mounts, Consul ACLs) lives behind each
+// cluster's own API and is not exposed here.
+hcp @root {
+  // Organization the connection is rooted at
+  organization() hcp.organization
+  // Projects in the organization
+  projects() []hcp.project
+}
+
+// HCP organization
+//
+// Top-level tenant of an HCP account. Groups projects and their product
+// clusters, and carries the organization state and creation time. Select a
+// specific organization from the root with an organization id, for example
+// `hcp.organization`.
+hcp.organization @defaults("id name state") {
+  // Unique organization id
+  id string
+  // Human-readable organization name
+  name string
+  // Lifecycle state, one of ACTIVE, PENDING, SUSPENDED, or PENDING_DELETE
+  state string
+  // Time the organization was created
+  createdAt time
+  // Principal id of the organization owner
+  ownerId string
+  // Projects in the organization
+  projects() []hcp.project
+  // Service principals scoped to the organization
+  servicePrincipals() []hcp.iam.servicePrincipal
+}
+
+// HCP project
+//
+// Isolation and grouping boundary inside an organization. Owns the Vault,
+// Consul, and Boundary clusters, the Packer registry, and Waypoint
+// applications provisioned within it. The `id` field selects a project, for
+// example `hcp.projects.where(id == "...")`.
+hcp.project @defaults("id name state") {
+  // Unique project id
+  id string
+  // Human-readable project name
+  name string
+  // Free-form project description
+  description string
+  // Lifecycle state, one of ACTIVE, PENDING, DELETING, or DELETED
+  state string
+  // Time the project was created
+  createdAt time
+  // Vault clusters provisioned in the project
+  vaultClusters() []hcp.vault.cluster
+  // Consul clusters provisioned in the project
+  consulClusters() []hcp.consul.cluster
+  // Boundary clusters provisioned in the project
+  boundaryClusters() []hcp.boundary.cluster
+  // Packer registry for the project
+  packerRegistry() hcp.packer.registry
+  // Waypoint applications in the project
+  waypointApplications() []hcp.waypoint.application
+  // Service principals scoped to the project
+  servicePrincipals() []hcp.iam.servicePrincipal
+}
+
+// HCP Vault Dedicated cluster
+//
+// Control-plane view of a managed Vault cluster: the running Vault version,
+// service tier, cloud provider and region, and whether the cluster is
+// reachable over a public endpoint. Cluster-internal configuration (secret
+// engines, auth methods, policies) is served by the cluster's own Vault API
+// and is not exposed here. The `id` field is the cluster id.
+hcp.vault.cluster @defaults("id vaultVersion state publicEndpoint") {
+  // Unique cluster id
+  id string
+  // Lifecycle state, for example RUNNING, PENDING, or UPDATING
+  state string
+  // Running Vault version, for example 1.15.6
+  vaultVersion string
+  // Service tier, for example dev, standard_small, or plus_medium
+  tier string
+  // Cloud provider hosting the cluster, one of aws or azure
+  cloudProvider string
+  // Cloud provider region hosting the cluster
+  region string
+  // Whether the cluster exposes a public (internet-reachable) endpoint
+  publicEndpoint bool
+  // CIDR ranges allowed to reach the cluster, empty when unrestricted
+  ipAllowlist []string
+  // Audit-log streaming configuration, null when audit-log export is disabled
+  auditLogExport dict
+  // Public URL of the cluster's Vault API, empty when private-only
+  vaultPublicEndpointUrl string
+  // Private URL of the cluster's Vault API
+  vaultPrivateEndpointUrl string
+  // Time the cluster was created
+  createdAt time
+  // Project the cluster belongs to
+  project() hcp.project
+}
+
+// HCP Consul Dedicated cluster
+//
+// Control-plane view of a managed Consul cluster: the running Consul version,
+// service tier, cloud provider and region, and public-endpoint exposure.
+// Cluster-internal configuration (ACL tokens, intentions, mesh config) is
+// served by the cluster's own Consul API and is not exposed here. The `id`
+// field is the cluster id.
+hcp.consul.cluster @defaults("id consulVersion state publicEndpoint") {
+  // Unique cluster id
+  id string
+  // Lifecycle state, for example RUNNING, PENDING, or UPDATING
+  state string
+  // Running Consul version, for example 1.17.1
+  consulVersion string
+  // Service tier, for example development, standard, or plus
+  tier string
+  // Cloud provider hosting the cluster, one of aws or azure
+  cloudProvider string
+  // Cloud provider region hosting the cluster
+  region string
+  // Whether the cluster exposes a public (internet-reachable) endpoint
+  publicEndpoint bool
+  // CIDR ranges allowed to reach the cluster, empty when unrestricted
+  ipAllowlist []string
+  // External URL of the cluster's Consul UI and API
+  consulExternalEndpointUrl string
+  // Time the cluster was created
+  createdAt time
+  // Project the cluster belongs to
+  project() hcp.project
+}
+
+// HCP Boundary cluster
+//
+// Managed Boundary cluster used for identity-based access to infrastructure.
+// Exposes the cluster's Boundary version, service tier, and the URL admins
+// and users connect to. Target, host-catalog, and grant configuration is
+// served by the cluster's own Boundary API and is not exposed here. The `id`
+// field is the cluster id.
+hcp.boundary.cluster @defaults("id version state") {
+  // Unique cluster id
+  id string
+  // Lifecycle state, for example RUNNING, PENDING, or CREATING
+  state string
+  // Running Boundary version, for example 0.15.0
+  version string
+  // Service tier, for example Standard or Plus
+  tier string
+  // URL admins and users connect to
+  clusterUrl string
+  // Time the cluster was created
+  createdAt time
+  // Project the cluster belongs to
+  project() hcp.project
+}
+
+// HCP Packer registry
+//
+// Per-project registry that tracks machine-image build metadata. Groups the
+// image buckets that record which versions were built, from what source, and
+// which channels they are assigned to, supporting image provenance and
+// currency audits. One registry exists per project.
+hcp.packer.registry @defaults("id featureTier activated") {
+  // Unique registry id
+  id string
+  // Whether the registry is activated and accepting image metadata
+  activated bool
+  // Billing and feature tier, one of STANDARD or PLUS
+  featureTier string
+  // Time the registry was created
+  createdAt time
+  // Time the registry was last updated
+  updatedAt time
+  // Image buckets in the registry
+  buckets() []hcp.packer.bucket
+  // Project the registry belongs to
+  project() hcp.project
+}
+
+// HCP Packer image bucket
+//
+// Named collection of image versions produced by a single build pipeline. The
+// `name` field selects a bucket within its registry. Records the platforms the
+// images target, the total version count, and the most recent version, so
+// audits can flag stale or unrevoked images. Channel assignments describe
+// which version each named channel currently resolves to.
+hcp.packer.bucket @defaults("name latestVersion platforms") {
+  // Bucket name (slug), unique within the registry
+  name string
+  // Number of image versions tracked in the bucket
+  versionCount int
+  // Fingerprint of the most recent version, empty when the bucket has none
+  latestVersion string
+  // Platforms the bucket's images target, for example aws and azure
+  platforms []string
+  // Time the bucket was created
+  createdAt time
+  // Time the bucket was last updated
+  updatedAt time
+  // Channel assignments as name to version-fingerprint pairs
+  channels() map[string]string
+}
+
+// HCP Waypoint application
+//
+// Deployed instance of a Waypoint application template within a project.
+// Exposes the application name and the template it was created from,
+// describing what internal-developer-platform workloads exist and which
+// golden-path template produced them. The `id` field is the application id.
+hcp.waypoint.application @defaults("id name templateName") @maturity("preview") {
+  // Unique application id
+  id string
+  // Application name
+  name string
+  // Name of the template the application was created from
+  templateName string
+  // Id of the template the application was created from
+  templateId string
+  // Id of the Terraform Cloud workspace backing the application
+  tfcWorkspaceId string
+  // Project the application belongs to
+  project() hcp.project
+}
+
+// HCP IAM service principal
+//
+// Machine identity used to authenticate to HCP APIs, scoped either to the
+// organization or to a single project. Exposes the principal's name, creation
+// time, and the access keys issued to it, so audits can flag over-broad
+// organization-level principals and long-lived unrotated keys. The `id` field
+// is the principal id.
+hcp.iam.servicePrincipal @defaults("name resourceName createdAt") {
+  // Unique principal id
+  id string
+  // Human-readable principal name
+  name string
+  // Fully-qualified resource name of the principal
+  resourceName string
+  // Time the service principal was created
+  createdAt time
+  // Project the principal is scoped to, null for organization-level principals
+  project() hcp.project
+  // Access keys issued to the service principal
+  keys() []hcp.iam.servicePrincipal.key
+}
+
+// HCP IAM service principal key
+//
+// Long-lived client credential (client id and secret) issued to a service
+// principal. The creation time drives key-rotation audits and the state
+// reports whether the key is active. The `clientId` field identifies the key.
+hcp.iam.servicePrincipal.key @defaults("clientId state createdAt") {
+  // OAuth client id of the key
+  clientId string
+  // Fully-qualified resource name of the key
+  resourceName string
+  // Key state, for example ACTIVE
+  state string
+  // Time the key was created
+  createdAt time
+}

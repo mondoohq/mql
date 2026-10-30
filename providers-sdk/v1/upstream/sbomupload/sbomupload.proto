@@ -1,0 +1,45 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+// Client-facing definition for the Mondoo Platform SBOM upload RPC
+// (Sbom.BulkUploadSbom). It mirrors the server-side wire contract
+// (go.mondoo.com/mondoo). Uploading an SBOM stores it and lets the platform
+// enrich it into vulnerabilities automatically; the client computes no VEX.
+//
+// This is the canonical home for the client stub; clients (cnspec) import it.
+syntax = "proto3";
+
+package mql.sbomupload.v1;
+
+import "sbom/mql_sbom.proto";
+
+// The go_package path exceeds 80 chars; it is fixed and cannot be shortened.
+// protolint:disable:next MAX_LINE_LENGTH
+option go_package = "go.mondoo.com/mql/providers-sdk/v1/upstream/sbomupload";
+
+// Service to handle SBOM data.
+service Sbom {
+  // BulkUploadSbom uploads a list of SBOMs for a space. Each SBOM carries its
+  // source and asset identification; expect one SBOM per asset. The platform
+  // stores and enriches them automatically.
+  rpc BulkUploadSbom(BulkUploadSbomRequest) returns (BulkUploadSbomResponse) {}
+}
+
+message BulkUploadSbomRequest {
+  // The space MRN to upload the SBOMs to.
+  string space_mrn = 1;
+  // The SBOMs to upload; each carries source and asset identification.
+  repeated mondoo.sbom.v1.Sbom sboms = 2;
+  // Whether to create assets in the backend when they are not found.
+  bool create_assets = 3;
+  // Optional asset MRN to attach the SBOM to; if set, the asset is looked up by
+  // MRN instead of by platform IDs.
+  string asset_mrn = 4;
+}
+
+message BulkUploadSbomResponse {
+  // Number of SBOMs stored.
+  int32 count = 1;
+  // The asset MRNs that were uploaded.
+  repeated string asset_mrns = 2;
+}

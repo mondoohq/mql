@@ -1,18 +1,21 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/mql/v13/providers/jamf"
-option go_package = "go.mondoo.com/mql/v13/providers/jamf/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/jamf"
+option go_package = "go.mondoo.com/mql/providers/jamf/resources"
+option root = "jamf"
 
 // Jamf Pro
 //
-// Use this resource to query a Jamf Pro instance — the computer inventory
-// (hardware, OS, security posture, enrollment state, local user accounts),
-// the software package catalog, SSO configuration, smart and static
-// computer groups, and the Jamf user directory. The Jamf Pro server
-// version is also available via `version`. Sub-resources are populated
-// from the Jamf Pro API and respect the credentials used to connect.
-jamf {
+// Jamf Pro instance for managing Apple devices. The computer inventory
+// exposes hardware, OS, security posture, enrollment state, and local
+// user accounts; alongside it sit the software package catalog, SSO
+// configuration, smart and static computer groups, policies, scripts,
+// restricted software definitions, and the Jamf user directory. The
+// Jamf Pro server version is available via `version`.
+jamf @root {
   // Retrieve a list of all computers in the Jamf Pro inventory
   computerInventory() []jamf.computer
 
@@ -26,7 +29,7 @@ jamf {
   sso() jamf.ssoSettings
 
   // Retrieve the Jamf Pro version string
-  version() string
+  version() @maturity("deprecated") @replaced_by("asset.version") string
 
   // Retrieve a list of all user accounts configured in Jamf Pro
   users() []jamf.user
@@ -46,7 +49,7 @@ jamf {
 
 // Jamf Pro user lookup by username
 //
-// Examine a single Jamf user identified by username — full name, email,
+// Single Jamf user identified by username, covering full name, email,
 // phone, position, and whether a custom photo is enabled. The `name`
 // field selects the user, for example
 // `jamf.userByName(name: "jsmith") { email position }`. Use `jamf.users`
@@ -78,6 +81,14 @@ jamf.userByName @defaults("name email fullName") {
 }
 
 // Jamf smart or static computer group
+//
+// A computer group used to scope policies, configuration profiles, and
+// restricted software in Jamf Pro. Smart groups populate automatically
+// from membership criteria, while static groups hold a manually assigned
+// set of computers. The `smartGroup` field distinguishes the two, which
+// matters when auditing how a control is targeted (criteria-driven versus
+// hand-picked). Groups are the primary scoping unit referenced by policy
+// and restricted-software scopes.
 private jamf.computerGroup @defaults("name smartGroup") {
   // Group ID
   id int
@@ -89,7 +100,16 @@ private jamf.computerGroup @defaults("name smartGroup") {
   smartGroup bool
 }
 
-// Jamf Pro Computer Inventory record
+// Jamf Pro computer inventory record
+//
+// Managed Apple computer enrolled in Jamf Pro, covering hardware identity
+// (make, model, modelIdentifier, serialNumber, processor, and memory), the
+// installed operating system and build, network addresses, and enrollment
+// and inventory timestamps. Security posture is exposed through fields such
+// as fileVault2Status, firewallEnabled, activationLockEnabled, and
+// enrolledViaAutomatedDeviceEnrollment, making it the primary record for
+// auditing disk encryption, firewall, and enrollment state across a fleet.
+// The localUserAccounts field lists the local accounts present on the device.
 private jamf.computer @defaults("name platform") {
   // Computer ID
   id string
@@ -187,7 +207,15 @@ private jamf.computer @defaults("name platform") {
   localUserAccounts() []jamf.localUserAccount
 }
 
-// Local user account information for Jamf-managed computers
+// Local user account on a Jamf-managed computer
+//
+// A single local macOS account on a managed computer, covering its
+// identity (uid, username, fullName), privilege level (admin), disk
+// encryption enrollment (fileVault2Enabled), and the local password
+// policy applied to it (passwordMaxAge, passwordMinLength,
+// passwordMinComplexCharacters). Use it to audit for unexpected admin
+// accounts, users left out of FileVault, and weak local password
+// requirements across the fleet.
 private jamf.localUserAccount @defaults("username") {
   // System UID of the user
   uid string
@@ -300,6 +328,13 @@ private jamf.ssoSettings @defaults("ssoEnabled configurationType") {
 }
 
 // Jamf Pro user summary
+//
+// User account known to Jamf Pro, as returned when listing every user
+// with `jamf.users`. Each entry carries the account's numeric `id` and
+// its `name` (username), enough to inventory the user population or feed
+// a lookup. For the full record (email, full name, phone, position, and
+// custom-photo state) select a single user by name with
+// `jamf.userByName(name: "jsmith")`.
 private jamf.user @defaults("name") {
   // User ID
   id int
@@ -309,6 +344,15 @@ private jamf.user @defaults("name") {
 }
 
 // Jamf Pro package definition
+//
+// Software package uploaded to Jamf Pro for deployment through policies,
+// covering installer metadata, content integrity, and installation
+// behavior. The `id` field selects a single package, for example
+// `jamf.package(id: "42")`. The `sha256` hash lets you verify package
+// integrity, and fields such as `rebootRequired`, `fillUserTemplate`,
+// and `osRequirements` describe how and where the payload installs.
+// Auditing packages surfaces unsigned or unexpected software staged for
+// distribution across managed devices.
 private jamf.package @defaults("name fileName") {
   // Package ID
   id string
@@ -415,9 +459,9 @@ private jamf.package @defaults("name fileName") {
 
 // Jamf Pro script
 //
-// Examine a script available for deployment through Jamf Pro policies. The
-// `id` field selects a single script — for example `jamf.script(id: "12")`.
-// Each script exposes its shell `scriptContents`, the execution `priority`
+// Script available for deployment through Jamf Pro policies. The
+// `id` field selects a single script, for example `jamf.script(id: "12")`.
+// Each script exposes its shell contents, the execution priority
 // (Before, After, or At Reboot), operating system requirements, and the
 // labeled runtime parameters that policies pass in.
 private jamf.script @defaults("name priority") {
@@ -459,12 +503,12 @@ private jamf.script @defaults("name priority") {
 
 // Jamf Pro restricted software definition
 //
-// Examine a restricted software rule that blocks or frustrates a macOS
-// process across scoped computers. The `id` field selects a single rule —
-// for example `jamf.restrictedSoftware(id: "3")`. Each rule names the
-// `processName` it matches and the enforcement actions taken when the process
-// runs — `killProcess`, `deleteExecutable`, and whether the user is notified.
-// The `scope` field reports which computers the rule applies to.
+// Restricted software rule that blocks or frustrates a macOS process across
+// scoped computers. The `id` field selects a single rule, for example
+// `jamf.restrictedSoftware(id: "3")`. Each rule names the `processName` it
+// matches and the enforcement actions taken when the process runs
+// (`killProcess`, `deleteExecutable`, and whether the user is notified). The
+// `scope` field reports which computers the rule applies to.
 private jamf.restrictedSoftware @defaults("name processName killProcess") {
   // Restricted software ID
   id string
@@ -498,20 +542,24 @@ private jamf.restrictedSoftware @defaults("name processName killProcess") {
 
   // Computers, groups, buildings, and departments the rule targets
   //
-  // Reports the scope and exclusion entities by id and name under the
-  // `computers`, `computerGroups`, `buildings`, `departments`, and
-  // `exclusions` keys.
+  // The `allComputers` key is true when the rule targets every computer.
+  // The `computers`, `computerGroups`, `buildings`, and `departments` keys
+  // each list the targeted entities by id and name. The `exclusions` key
+  // holds the same structure for excluded `computers`, `computerGroups`,
+  // `buildings`, `departments`, and `users`.
   scope() dict
 }
 
 // Jamf Pro policy
 //
-// Examine a policy that runs scripts, installs packages, and performs
+// Automated action that runs scripts, installs packages, and performs
 // maintenance on scoped computers in Jamf Pro. The `id` field selects a
-// single policy — for example `jamf.policy(id: "42")`. Each policy reports
-// what triggers it (`frequency`, check-in, login, enrollment, startup), the
-// `packages` it installs and `scripts` it runs, any `filesProcesses` command
-// it executes, its Self Service presentation, and the computers in `scope`.
+// single policy, for example `jamf.policy(id: "42")`. Each policy reports
+// what triggers it (frequency, check-in, login, enrollment, startup), the
+// packages it installs and scripts it runs, any files/processes command
+// it executes, its Self Service presentation, and the computers in scope.
+// Auditing policies surfaces unsanctioned software installs, arbitrary
+// shell commands, and overly broad targeting across the fleet.
 private jamf.policy @defaults("name enabled frequency") {
   // Policy ID
   id string
@@ -590,16 +638,22 @@ private jamf.policy @defaults("name enabled frequency") {
 
   // Computers, groups, and other entities the policy targets
   //
-  // Reports the scope targets, scope limitations, and exclusions by id and
-  // name under the `computers`, `computerGroups`, `buildings`,
-  // `departments`, `limitations`, and `exclusions` keys.
+  // The `allComputers` and `allJssUsers` booleans indicate fleet-wide
+  // targeting. Targets are listed by id and name under `computers`,
+  // `computerGroups`, `buildings`, and `departments`. The `limitations`
+  // key narrows the target set with `users`, `userGroups`, and
+  // `networkSegments`, and the `exclusions` key removes entities using
+  // `computers`, `computerGroups`, `buildings`, `departments`, `users`,
+  // `userGroups`, and `networkSegments`.
   scope() dict
 
   // Files and processes the policy acts on
   //
-  // Includes the search-by-path and process-search settings and the shell
-  // command the policy runs (`runCommand`), along with the related delete and
-  // kill flags.
+  // The `searchByPath` and `searchForProcess` keys hold the file path and
+  // process name to look for. The `deleteFile`, `locateFile`,
+  // `updateLocateDatabase`, `spotlightSearch`, and `killProcess` booleans
+  // select the actions taken, and `runCommand` holds the shell command the
+  // policy executes.
   filesProcesses() dict
 
   // Packages the policy installs, caches, or removes
@@ -611,13 +665,13 @@ private jamf.policy @defaults("name enabled frequency") {
 
 // Package action within a Jamf Pro policy
 //
-// Examine a single package entry on a policy: the `action` taken (Install,
-// Cache, or Uninstall) and the install options. The `package` field resolves
-// to the full package definition.
+// Single package entry on a policy: the `action` taken (Install, Cache,
+// Install Cached, or Uninstall) and the install options. The `package` field resolves to the
+// full package definition, letting you audit what software a policy deploys.
 private jamf.policy.package @defaults("action") {
   // Action taken for the package
   //
-  // One of Install, Cache, or Uninstall.
+  // One of Install, Cache, Install Cached, or Uninstall.
   action string
 
   // Whether the package fills the user template
@@ -635,9 +689,10 @@ private jamf.policy.package @defaults("action") {
 
 // Script action within a Jamf Pro policy
 //
-// Examine a single script entry on a policy: its execution `priority` and the
-// runtime `parameters` the policy passes. The `script` field resolves to the
-// full script definition.
+// Single script entry on a policy: its execution `priority` and the runtime
+// `parameters` the policy passes. The `script` field resolves to the full
+// script definition, letting you audit the code a policy runs on scoped
+// computers.
 private jamf.policy.script @defaults("priority") {
   // Stage at which the script runs
   //

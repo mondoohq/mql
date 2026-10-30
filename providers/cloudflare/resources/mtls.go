@@ -4,11 +4,12 @@ package resources
 
 import (
 	"context"
+	"errors"
 
-	cloudflare "github.com/cloudflare/cloudflare-go/v6"
-	"github.com/cloudflare/cloudflare-go/v6/mtls_certificates"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/cloudflare/connection"
+	cloudflare "github.com/cloudflare/cloudflare-go/v7"
+	"github.com/cloudflare/cloudflare-go/v7/mtls_certificates"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/cloudflare/connection"
 )
 
 func (c *mqlCloudflareMtlsCertificate) id() (string, error) {
@@ -24,6 +25,9 @@ func (c *mqlCloudflareZone) mtlsCertificates() ([]any, error) {
 	acc := c.GetAccount()
 	if acc.Error != nil {
 		return nil, acc.Error
+	}
+	if acc.Data == nil {
+		return nil, errors.New("cloudflare zone has no associated account")
 	}
 	accountID := acc.Data.GetId().Data
 
@@ -43,7 +47,7 @@ func (c *mqlCloudflareZone) mtlsCertificates() ([]any, error) {
 			"ca":           llx.BoolData(rec.CA),
 			"uploadedOn":   llx.TimeData(rec.UploadedOn),
 			"expiresAt":    llx.TimeData(rec.ExpiresOn),
-			// cloudflare-go v6's mTLS certificate response no longer exposes a
+			// cloudflare-go's mTLS certificate response no longer exposes a
 			// separate "updated" timestamp, so this field is always null.
 			"updatedAt": llx.NilData,
 		})

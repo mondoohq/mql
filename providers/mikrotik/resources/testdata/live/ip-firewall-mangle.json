@@ -1,0 +1,13 @@
+[
+ {
+  ".id": "*1",
+  "action": "mark-connection",
+  "bytes": "162346",
+  "chain": "prerouting",
+  "dynamic": "false",
+  "invalid": "false",
+  "new-connection-mark": "lab",
+  "packets": "1225",
+  "passthrough": "true"
+ }
+]

@@ -1,0 +1,2 @@
+[commands."uname -m"]
+stdout = "x86_64"

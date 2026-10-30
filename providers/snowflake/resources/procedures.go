@@ -7,9 +7,9 @@ import (
 	"context"
 
 	"github.com/Snowflake-Labs/terraform-provider-snowflake/pkg/sdk"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/snowflake/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/snowflake/connection"
 )
 
 func (r *mqlSnowflakeAccount) procedures() ([]any, error) {
@@ -36,7 +36,10 @@ func (r *mqlSnowflakeAccount) procedures() ([]any, error) {
 
 func newMqlSnowflakeProcedure(runtime *plugin.Runtime, procedure sdk.Procedure) (*mqlSnowflakeProcedure, error) {
 	r, err := CreateResource(runtime, "snowflake.procedure", map[string]*llx.RawData{
-		"__id":                 llx.StringData(procedure.ID().FullyQualifiedName()),
+		// Build __id from raw fields, not procedure.ID(): the SDK's ID() panics
+		// (nil deref in TableDataType.ToLegacyDataTypeSql) for a procedure whose
+		// signature involves a TABLE type. ArgumentsRaw disambiguates overloads.
+		"__id":                 llx.StringData(procedure.CatalogName + "." + procedure.SchemaName + "." + procedure.Name + "/" + procedure.ArgumentsRaw),
 		"name":                 llx.StringData(procedure.Name),
 		"description":          llx.StringData(procedure.Description),
 		"schemaName":           llx.StringData(procedure.SchemaName),

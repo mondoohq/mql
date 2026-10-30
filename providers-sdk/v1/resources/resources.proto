@@ -4,7 +4,7 @@
 syntax = "proto3";
 
 package mondoo.resources;
-option go_package = "go.mondoo.com/mql/v13/providers-sdk/v1/resources";
+option go_package = "go.mondoo.com/mql/providers-sdk/v1/resources";
 
 // BASIC DATATYPES
 
@@ -25,6 +25,27 @@ message Schema {
   // Resources can depend on resources from another provider,
   // this is the list of of providers the schema depends on.
   map<string, ProviderInfo> dependencies = 4;
+
+  // Version of each provider that contributed to this schema, keyed by
+  // provider id (the same string `ResourceInfo.provider` carries) and valued
+  // with that provider's semver. Read it through Schema.ProviderVersion, which
+  // also matches a legacy id against a current one.
+  //
+  // For a schema loaded from a single provider this holds one entry; the
+  // aggregate schema accumulates one entry per loaded provider. It is the
+  // *writer schema identity* of ADR 040: `min_provider_version` on a resource
+  // or field says which release introduced it, and this says which release the
+  // reader actually has, so the two together decide whether a name that failed
+  // to resolve is a typo or a version gap.
+  map<string, string> provider_versions = 5;
+
+  // The root resource each provider declares for the assets it connects (ADR
+  // 031), keyed the same way provider_versions is. A compile with a live
+  // connection learns the *concrete* root from the connection; this is what a
+  // compile with no connection has - a policy bundle, a lint, an editor - and
+  // it is what tells such a compile whether a name is reachable from the
+  // asset's tree at all.
+  map<string, string> provider_roots = 6;
 }
 
 message ProviderInfo {
@@ -48,6 +69,10 @@ message Init {
 }
 
 message ResourceInfo {
+  // 25 = min_mondoo_version, removed in v14 (use min_provider_version)
+  reserved 25;
+  reserved "min_mondoo_version";
+
   // Canonical resource id. When a ResourceInfo is reached via an alias entry
   // in Schema.resources, `id` is the original (aliased-to) resource name, not
   // the alias key. Consumers that need the lookup key should use the map key
@@ -74,13 +99,35 @@ message ResourceInfo {
 
   string maturity = 32;
 
-  // DEPRECATED: remove in v14, not used anymore as of v13.
-  // We now use min_provider_version to show what providers we require.
-  string min_mondoo_version = 25 [deprecated = true];
-  // ^^
+  // Whether this resource is reachable without an asset root (ADR 031).
+  // Everything else is expected to hang off the root of the asset it
+  // describes; a handful of resources genuinely do not - `time`, `regex`,
+  // `asset` - and say so with `@global` in their schema. Unmarked and
+  // non-rooted is what the compiler notes on a bundle as reaching outside the
+  // asset's tree.
+  bool global = 33;
+
+  // Whether this resource is an asset root (ADR 031): a type a connection can
+  // expose as the thing a query is bounded by. Roots form a family - a
+  // universal base, the platform variants that embed it, and the union a
+  // disconnected compile targets - and knowing which resources are roots is
+  // what lets the compiler narrow a query to the ones that can run it.
+  bool root = 34;
+
+  // Where this resource moved to, when it is deprecated in favor of another
+  // one (ADR 040). Holds the full schema path of the replacement, e.g.
+  // `os.base`; what a user is shown is rendered from that against the root
+  // their query is compiled with. A pointer only: it changes nothing about
+  // how this resource resolves, and every migration that has to transform
+  // rather than redirect is a lens in Go, not this field.
+  string replaced_by = 35;
 }
 
 message Field {
+  // 23 = min_mondoo_version, removed in v14 (use min_provider_version)
+  reserved 23;
+  reserved "min_mondoo_version";
+
   string name = 1;
   string type = 2;
   bool is_mandatory = 3;
@@ -90,10 +137,6 @@ message Field {
   bool is_private = 22;
   string min_provider_version = 30;
   string provider = 27;
-
-  // DEPRECATED: remove in v14, not used anymore as of v13.
-  // We now use min_provider_version to show what providers we require.
-  string min_mondoo_version = 23 [deprecated = true];
   bool is_implicit_resource = 24;
   bool is_embedded = 25;
   string maturity = 26;
@@ -103,4 +146,9 @@ message Field {
   // removed in the future once binding resources are mandatory for all
   // executions.
   repeated Field others = 29;
+
+  // Where this field moved to, when it is deprecated in favor of another one
+  // (ADR 040). Holds the full schema path of the replacement, e.g.
+  // `os.base.hostname`. See ResourceInfo.replaced_by.
+  string replaced_by = 31;
 }

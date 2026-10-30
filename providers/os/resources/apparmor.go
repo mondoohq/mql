@@ -14,9 +14,10 @@ import (
 	"sync"
 
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	processmgr "go.mondoo.com/mql/v13/providers/os/resources/processes"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	processmgr "go.mondoo.com/mql/providers/os/resources/processes"
 )
 
 type mqlApparmorInternal struct {
@@ -26,6 +27,16 @@ type mqlApparmorInternal struct {
 }
 
 const apparmorProfilesPath = "/sys/kernel/security/apparmor/profiles"
+
+// errApparmorNotPresent reports that this host does not have AppArmor, as
+// distinct from having it and refusing to describe it.
+//
+// The two must not collapse into one answer. A host without AppArmor confines
+// nothing and can say so, which is what lets a policy ask about AppArmor on a
+// fleet that also runs SELinux or neither. A profile list that exists and
+// cannot be read is unknown, and reporting zero profiles for it would pass an
+// audit for unconfined or complain-mode ones.
+var errApparmorNotPresent = errors.New("AppArmor is not present on this system")
 
 var apparmorJSONCommands = []string{
 	"apparmor_status --json",
@@ -41,6 +52,10 @@ type apparmorStatus struct {
 	Version   string                        `json:"version"`
 	Profiles  map[string]string             `json:"profiles"`
 	Processes map[string][]apparmorProcInfo `json:"processes"`
+
+	// versionKnown is false when the status was read from the kernel rather
+	// than from aa-status, which is the only source of a status version.
+	versionKnown bool
 }
 
 type apparmorProcInfo struct {
@@ -63,6 +78,13 @@ func (a *mqlApparmor) fetchStatus() (*apparmorStatus, error) {
 	if err != nil {
 		status, kernelErr := a.fetchStatusFromKernel()
 		if kernelErr != nil {
+			// Neither the userspace tools nor the kernel interfaces answered,
+			// and the kernel is what decides whether AppArmor is here at all.
+			// Keep the sentinel rather than wrapping it into a generic
+			// failure, so the accessors can report absence instead of it.
+			if errors.Is(kernelErr, errApparmorNotPresent) {
+				return nil, kernelErr
+			}
 			return nil, fmt.Errorf("could not retrieve apparmor status via json or kernel interfaces: %w; fallback failed: %v", err, kernelErr)
 		}
 		a.status = status
@@ -102,13 +124,21 @@ func (a *mqlApparmor) fetchStatusFromJSON() (*apparmorStatus, error) {
 			continue
 		}
 
-		var status apparmorStatus
-		if err := json.Unmarshal([]byte(cmd.Stdout.Data), &status); err != nil {
+		status, err := parseApparmorStatusJSON(cmd.Stdout.Data)
+		if err != nil {
 			attempts = append(attempts, command+": "+err.Error())
 			continue
 		}
 
-		return &status, nil
+		if status.hasLegacyProcesses() {
+			procs, err := a.listProcesses()
+			if err != nil {
+				return nil, err
+			}
+			status.resolveLegacyProcesses(procs)
+		}
+
+		return status, nil
 	}
 
 	if len(attempts) == 0 {
@@ -117,42 +147,182 @@ func (a *mqlApparmor) fetchStatusFromJSON() (*apparmorStatus, error) {
 	return nil, errors.New(strings.Join(attempts, "; "))
 }
 
+// parseApparmorStatusJSON decodes the output of aa-status --json.
+//
+// AppArmor 3.0.8 (Debian 12) writes no comma between the process lists of two
+// modes once confined processes exist in more than one of them, for example
+// `...}]"/usr/local/bin/sweepc": [...`. That output is repaired rather than
+// discarded: falling back to the kernel listing loses the status version.
+func parseApparmorStatusJSON(data string) (*apparmorStatus, error) {
+	var status apparmorStatus
+	err := json.Unmarshal([]byte(data), &status)
+	if err != nil {
+		if repairErr := json.Unmarshal([]byte(repairApparmorStatusJSON(data)), &status); repairErr != nil {
+			return nil, err
+		}
+	}
+	status.versionKnown = true
+	return &status, nil
+}
+
+// repairApparmorStatusJSON inserts the comma AppArmor 3.0.8 leaves out
+// between a closing bracket or brace and the next object key. Text inside
+// strings is left untouched.
+func repairApparmorStatusJSON(data string) string {
+	var b strings.Builder
+	b.Grow(len(data) + 8)
+	inString := false
+	escaped := false
+	// valueEnded is true when the last non-space character outside a string
+	// closed an array or object.
+	valueEnded := false
+	for i := 0; i < len(data); i++ {
+		c := data[i]
+		if inString {
+			b.WriteByte(c)
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inString = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			if valueEnded {
+				b.WriteByte(',')
+			}
+			inString = true
+			valueEnded = false
+		case ']', '}':
+			valueEnded = true
+		case ' ', '\t', '\n', '\r':
+		default:
+			valueEnded = false
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+// hasLegacyProcesses reports whether the process list uses the shape of
+// AppArmor 2.12 and older, which keys each list by profile name and does not
+// name the profile in its entries. The status version does not tell the two
+// shapes apart: AppArmor 2.13 reports version 1 with the newer shape.
+func (s *apparmorStatus) hasLegacyProcesses() bool {
+	for _, procs := range s.Processes {
+		for _, p := range procs {
+			if p.Profile == "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// resolveLegacyProcesses rekeys a legacy process list by executable, taking
+// the profile from the old key and the executable from the running process.
+// A process that exited since aa-status ran is dropped.
+func (s *apparmorStatus) resolveLegacyProcesses(procs []*processmgr.OSProcess) {
+	byPid := make(map[string]*processmgr.OSProcess, len(procs))
+	for _, proc := range procs {
+		byPid[strconv.FormatInt(proc.Pid, 10)] = proc
+	}
+
+	resolved := map[string][]apparmorProcInfo{}
+	for key, entries := range s.Processes {
+		for _, p := range entries {
+			if p.Profile != "" {
+				resolved[key] = append(resolved[key], p)
+				continue
+			}
+			proc, ok := byPid[p.PID]
+			if !ok {
+				continue
+			}
+			executable := apparmorProcessExecutable(proc)
+			resolved[executable] = append(resolved[executable], apparmorProcInfo{
+				Profile: key,
+				PID:     p.PID,
+				Status:  p.Status,
+			})
+		}
+	}
+	s.Processes = resolved
+}
+
+func (a *mqlApparmor) listProcesses() ([]*processmgr.OSProcess, error) {
+	conn, ok := a.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		return nil, errors.New("connection does not support process listing")
+	}
+	processManager, err := processmgr.ResolveManager(conn)
+	if err != nil {
+		return nil, err
+	}
+	return processManager.List()
+}
+
 func (a *mqlApparmor) fetchStatusFromKernel() (*apparmorStatus, error) {
 	conn, ok := a.MqlRuntime.Connection.(shared.Connection)
 	if !ok {
 		return nil, errors.New("connection does not support filesystem access")
 	}
 
-	processManager, err := processmgr.ResolveManager(conn)
+	// securityfs is what decides whether this host has AppArmor, and it is
+	// checked before anything else is read. Listing processes used to come
+	// first, which meant a host where the process list could not be read --
+	// and every host without a `ps`, including a scanned image -- failed the
+	// whole resource with a message about processes, rather than reporting the
+	// plain fact that there is no AppArmor here.
+	//
+	// A container is the one place this can understate: with securityfs
+	// unmounted inside it, a host profile confining the container is not
+	// visible and AppArmor reads as absent. selinux answers the same way
+	// without /sys/fs/selinux.
+	profilesAvailable, err := afero.Exists(conn.FileSystem(), apparmorProfilesPath)
 	if err != nil {
 		return nil, err
 	}
+	if !profilesAvailable {
+		return nil, errApparmorNotPresent
+	}
 
-	procs, err := processManager.List()
+	// The list exists but we could not read it. securityfs enforces
+	// CAP_MAC_ADMIN regardless of the mode bits, so an unprivileged scan gets
+	// EACCES on a world-readable path. Reporting zero profiles there states as
+	// fact something that was never read, and an audit for unconfined or
+	// complain-mode profiles would pass on it.
+	profiles, profilesErr := readApparmorProfilesFromFS(conn.FileSystem())
+	if profilesErr != nil {
+		return nil, fmt.Errorf("apparmor profiles at %s could not be read: %w", apparmorProfilesPath, profilesErr)
+	}
+
+	// AppArmor is here, so the confined processes are part of the answer and a
+	// failure to enumerate them is a failure to report.
+	procs, err := a.listProcesses()
 	if err != nil {
 		return nil, err
 	}
 
 	status := &apparmorStatus{
-		Profiles:  readApparmorProfilesFromFS(conn.FileSystem()),
+		Profiles:  profiles,
 		Processes: readApparmorProcessesFromFS(conn.FileSystem(), procs),
-	}
-
-	profilesAvailable, err := afero.Exists(conn.FileSystem(), apparmorProfilesPath)
-	if err != nil {
-		return nil, err
-	}
-	if !profilesAvailable && len(status.Processes) == 0 {
-		return nil, errors.New("AppArmor kernel interfaces unavailable")
 	}
 
 	return status, nil
 }
 
-func readApparmorProfilesFromFS(fs afero.Fs) map[string]string {
+// readApparmorProfilesFromFS reads the kernel's loaded-profile list. The error
+// is returned rather than swallowed: on a host where the path exists but cannot
+// be opened, an empty map is not the same answer as "no profiles are loaded".
+func readApparmorProfilesFromFS(fs afero.Fs) (map[string]string, error) {
 	f, err := fs.Open(apparmorProfilesPath)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer f.Close()
 
@@ -164,14 +334,17 @@ func readApparmorProfilesFromFS(fs afero.Fs) map[string]string {
 			profiles[name] = mode
 		}
 	}
-	return profiles
+	return profiles, nil
 }
 
 func readApparmorProcessesFromFS(fs afero.Fs, procs []*processmgr.OSProcess) map[string][]apparmorProcInfo {
 	processes := map[string][]apparmorProcInfo{}
 	for _, proc := range procs {
 		profile, status, ok := readApparmorCurrentForProcess(fs, proc.Pid)
-		if !ok {
+		// A process without a profile is not confined, and aa-status does
+		// not list it either. A process whose profile is in unconfined mode
+		// carries a "<profile> (unconfined)" label and is kept.
+		if !ok || (profile == "unconfined" && status == "unconfined") {
 			continue
 		}
 
@@ -257,10 +430,35 @@ func parseApparmorModeLine(line string) (name string, mode string, ok bool) {
 	return name, mode, true
 }
 
+// installed reports whether this host has AppArmor, the way selinux.installed
+// reports it for SELinux. It is the field a policy gates on: the ones below
+// describe a host that has AppArmor, and answer for absence rather than
+// failing so that gate can be evaluated at all.
+func (a *mqlApparmor) installed() (bool, error) {
+	if _, err := a.fetchStatus(); err != nil {
+		if errors.Is(err, errApparmorNotPresent) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 func (a *mqlApparmor) version() (string, error) {
 	status, err := a.fetchStatus()
 	if err != nil {
+		// A host without AppArmor has no version, which is not the same as an
+		// empty one, so the field resolves to null.
+		if errors.Is(err, errApparmorNotPresent) {
+			a.Version.State = plugin.StateIsSet | plugin.StateIsNull
+			return "", nil
+		}
 		return "", err
+	}
+	// The kernel listing has no status version.
+	if !status.versionKnown {
+		a.Version.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
 	}
 	return status.Version, nil
 }
@@ -268,6 +466,11 @@ func (a *mqlApparmor) version() (string, error) {
 func (a *mqlApparmor) profiles() ([]any, error) {
 	status, err := a.fetchStatus()
 	if err != nil {
+		// A host without AppArmor loads no profiles. That is a measured zero
+		// rather than an unread list, so it is an empty list and not null.
+		if errors.Is(err, errApparmorNotPresent) {
+			return []any{}, nil
+		}
 		return nil, err
 	}
 
@@ -288,6 +491,10 @@ func (a *mqlApparmor) profiles() ([]any, error) {
 func (a *mqlApparmor) processes() ([]any, error) {
 	status, err := a.fetchStatus()
 	if err != nil {
+		// Likewise: a host without AppArmor confines no process.
+		if errors.Is(err, errApparmorNotPresent) {
+			return []any{}, nil
+		}
 		return nil, err
 	}
 

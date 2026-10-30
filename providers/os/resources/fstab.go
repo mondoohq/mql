@@ -3,15 +3,14 @@
 package resources
 
 import (
-	"bufio"
 	"errors"
-	"io"
-	"strconv"
+	"io/fs"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/fstab"
 )
 
 func initFstab(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -35,24 +34,38 @@ func initFstab(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[strin
 	return args, nil, nil
 }
 
+// id keys the resource on the file it reads. Without it every fstab shares
+// the empty cache key, so `fstab("/a")` and `fstab("/b")` resolve to whichever
+// one was built first.
+func (f *mqlFstab) id() (string, error) {
+	return "fstab:" + f.Path.Data, nil
+}
+
 func (f *mqlFstab) entries() ([]any, error) {
 	conn, ok := f.MqlRuntime.Connection.(shared.Connection)
 	if !ok {
 		return nil, errors.New("wrong connection type")
 	}
 
-	fs := conn.FileSystem()
-	if fs == nil {
+	afs := conn.FileSystem()
+	if afs == nil {
 		return nil, errors.New("filesystem not available")
 	}
 
-	fstabFile, err := fs.Open(f.GetPath().Data)
+	fstabFile, err := afs.Open(f.GetPath().Data)
 	if err != nil {
+		// No fstab means no static mounts: most container images, distroless
+		// images, and macOS ship without one. The connection's virtual
+		// filesystem may not return *os.PathError, so match the wrapped
+		// sentinel rather than using os.IsNotExist.
+		if errors.Is(err, fs.ErrNotExist) {
+			return []any{}, nil
+		}
 		return nil, err
 	}
 	defer fstabFile.Close()
 
-	entries, err := ParseFstab(fstabFile)
+	entries, err := fstab.Parse(fstabFile)
 	if err != nil {
 		return nil, err
 	}
@@ -76,66 +89,11 @@ func (f *mqlFstab) entries() ([]any, error) {
 	return resources, nil
 }
 
-type FstabEntry struct {
-	Device     string
-	Mountpoint string
-	Fstype     string
-	Options    []string
-	Dump       *int
-	Fsck       *int
-}
-
-func ParseFstab(file io.Reader) ([]FstabEntry, error) {
-	scanner := bufio.NewScanner(file)
-	scanner.Split(bufio.ScanLines)
-
-	var entries []FstabEntry
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		// Skip comments and empty lines, including indented comments and
-		// whitespace-only lines (both are valid in /etc/fstab).
-		if line == "" || line[0] == '#' {
-			continue
-		}
-
-		record := strings.Fields(line)
-		if len(record) < 4 {
-			return nil, errors.New("invalid fstab entry")
-		}
-
-		var dump *int
-		if len(record) >= 5 {
-			_dump, err := strconv.Atoi(record[4])
-			if err != nil {
-				return nil, err
-			}
-			dump = &_dump
-		}
-
-		var fsck *int
-		if len(record) >= 6 {
-			_fsck, err := strconv.Atoi(record[5])
-			if err != nil {
-				return nil, err
-			}
-			fsck = &_fsck
-		}
-
-		entry := FstabEntry{
-			Device:     record[0],
-			Mountpoint: record[1],
-			Fstype:     record[2],
-			Options:    strings.Split(record[3], ","),
-			Dump:       dump,
-			Fsck:       fsck,
-		}
-
-		entries = append(entries, entry)
-	}
-
-	return entries, nil
-}
-
 func (e *mqlFstabEntry) id() (string, error) {
-	return e.Device.Data, nil
+	// The device alone is not unique: "tmpfs /tmp" and "tmpfs /dev/shm" are both
+	// ordinary fstab rows, as are two swap devices that both mount at "none".
+	// Sharing an __id makes the runtime serve the first entry for every
+	// collision, so the later rows vanish from the list entirely. A mount point
+	// appears at most once, so device plus mount point is unique.
+	return e.Device.Data + " " + e.Mountpoint.Data, nil
 }

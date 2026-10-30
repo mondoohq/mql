@@ -7,14 +7,18 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	together "github.com/togethercomputer/together-go"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/together/connection"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/togethercomputer/together-go/packages/respjson"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/together/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func togetherConn(runtime *plugin.Runtime) *connection.TogetherConnection {
@@ -25,44 +29,148 @@ func (r *mqlTogether) id() (string, error) {
 	return "together", nil
 }
 
-func (r *mqlTogether) organization() (string, error) {
-	conn := togetherConn(r.MqlRuntime)
-	return conn.Project(), nil
+// mqlTogetherInternal memoizes the /whoami response. Seven identity fields are
+// backed by it and a query that reads more than one of them must not cost more
+// than one call.
+//
+// The memo latches on success only. sync.Once would also cache a failure, so a
+// single transient 429 or DNS blip would lock out every identity field for the
+// rest of the scan with no retry path.
+type mqlTogetherInternal struct {
+	whoamiLock   sync.Mutex
+	whoamiLoaded atomic.Bool
+	whoami       *accountIdentity
 }
 
-func (r *mqlTogether) models() ([]interface{}, error) {
-	conn := togetherConn(r.MqlRuntime)
-	client := conn.Client()
+// accountIdentity is the account the API key authenticates as. GET /v3/whoami
+// answers with one of several credential variants (project key, organization
+// key, user session), each carrying a subset of these values; a value the
+// variant does not carry stays empty.
+type accountIdentity struct {
+	APIKeyID         string
+	OrganizationID   string
+	OrganizationName string
+	ProjectID        string
+	ProjectName      string
+	UserID           string
+}
 
-	models, err := client.Models.List(context.Background(), together.ModelListParams{})
+func identityFromWhoami(who *together.WhoamiResponseUnion) *accountIdentity {
+	return &accountIdentity{
+		APIKeyID:         who.APIKey.ID,
+		OrganizationID:   who.Organization.ID,
+		OrganizationName: who.Organization.Name,
+		ProjectID:        who.Project.ID,
+		ProjectName:      who.Project.Name,
+		UserID:           who.User.ID,
+	}
+}
+
+// identity returns the account identity the API key actually authenticates as,
+// as reported by GET /v3/whoami. It is fetched once per resource and reused.
+func (r *mqlTogether) identity() (*accountIdentity, error) {
+	if r.whoamiLoaded.Load() {
+		return r.whoami, nil
+	}
+
+	r.whoamiLock.Lock()
+	defer r.whoamiLock.Unlock()
+	if r.whoamiLoaded.Load() {
+		return r.whoami, nil
+	}
+
+	conn := togetherConn(r.MqlRuntime)
+	who, err := conn.Client().Whoami(context.Background())
 	if err != nil {
 		return nil, err
 	}
-	if models == nil {
-		return []interface{}{}, nil
+	if who == nil {
+		return nil, errors.New("together: /whoami returned no account identity")
 	}
 
-	res := make([]interface{}, 0, len(*models))
-	for _, m := range *models {
-		var created *time.Time
-		if m.Created > 0 {
-			t := time.Unix(m.Created, 0)
-			created = &t
-		}
+	r.whoami = identityFromWhoami(who)
+	r.whoamiLoaded.Store(true)
+	return r.whoami, nil
+}
 
-		mqlModel, err := CreateResource(r.MqlRuntime, "together.model", map[string]*llx.RawData{
-			"__id":          llx.StringData(m.ID),
-			"id":            llx.StringData(m.ID),
-			"displayName":   llx.StringData(m.DisplayName),
-			"type":          llx.StringData(string(m.Type)),
-			"organization":  llx.StringData(m.Organization),
-			"license":       llx.StringData(m.License),
-			"contextLength": llx.IntData(m.ContextLength),
-			"link":          llx.StringData(m.Link),
-			"created":       llx.TimeDataPtr(created),
-			"pricingInput":  llx.FloatData(m.Pricing.Input),
-			"pricingOutput": llx.FloatData(m.Pricing.Output),
-		})
+// organization reports the organization the API key belongs to. It is read
+// back from /whoami: the value must describe the account the token resolves
+// to on the server, never a value the caller supplied on the command line.
+func (r *mqlTogether) organization() (string, error) {
+	who, err := r.identity()
+	if err != nil {
+		return "", err
+	}
+	if who.OrganizationName != "" {
+		return who.OrganizationName, nil
+	}
+	return who.OrganizationID, nil
+}
+
+func (r *mqlTogether) organizationId() (string, error) {
+	who, err := r.identity()
+	if err != nil {
+		return "", err
+	}
+	return who.OrganizationID, nil
+}
+
+func (r *mqlTogether) organizationName() (string, error) {
+	who, err := r.identity()
+	if err != nil {
+		return "", err
+	}
+	return who.OrganizationName, nil
+}
+
+func (r *mqlTogether) projectId() (string, error) {
+	who, err := r.identity()
+	if err != nil {
+		return "", err
+	}
+	return who.ProjectID, nil
+}
+
+func (r *mqlTogether) projectName() (string, error) {
+	who, err := r.identity()
+	if err != nil {
+		return "", err
+	}
+	return who.ProjectName, nil
+}
+
+func (r *mqlTogether) apiKeyId() (string, error) {
+	who, err := r.identity()
+	if err != nil {
+		return "", err
+	}
+	return who.APIKeyID, nil
+}
+
+func (r *mqlTogether) userId() (string, error) {
+	who, err := r.identity()
+	if err != nil {
+		return "", err
+	}
+	return who.UserID, nil
+}
+
+func (r *mqlTogether) models() ([]any, error) {
+	conn := togetherConn(r.MqlRuntime)
+	client := conn.Client()
+
+	// The v1 model list this resource was built on is gone from together-go
+	// v0.13. Models.List now lists a project's own custom models, so the
+	// catalog of Together-hosted models comes from the supported-model list.
+	models, err := collectPages(client.Models.ListSupported(context.Background(), together.ModelListSupportedParams{}))
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]any, 0, len(models))
+	for _, m := range models {
+		args := supportedModelArgs(m)
+		mqlModel, err := CreateResource(r.MqlRuntime, "together.model", args)
 		if err != nil {
 			return nil, err
 		}
@@ -72,22 +180,67 @@ func (r *mqlTogether) models() ([]interface{}, error) {
 	return res, nil
 }
 
-func (r *mqlTogether) fineTunes() ([]interface{}, error) {
+// supportedModelArgs maps a supported-model catalog entry onto together.model.
+// The model is keyed by its inference name (the Hugging Face style
+// `org/model` identifier), which is what the field has always reported and
+// what family, parameterSize and quantization parse.
+func supportedModelArgs(m together.SupportedModel) map[string]*llx.RawData {
+	args := map[string]*llx.RawData{
+		"__id":          llx.StringData(m.Name),
+		"id":            llx.StringData(m.Name),
+		"displayName":   llx.StringData(m.DisplayName),
+		"type":          llx.StringData(m.DisplayType),
+		"organization":  llx.StringData(m.Publisher),
+		"license":       llx.NilData,
+		"contextLength": llx.IntDataPtr(parseContextLength(m.ContextLength)),
+		"link":          llx.NilData,
+		"created":       llx.TimeDataPtr(timeOrNil(m.CreatedAt)),
+		"pricingInput":  llx.NilData,
+		"pricingOutput": llx.NilData,
+	}
+	if m.Pricing.JSON.Input.Valid() {
+		args["pricingInput"] = llx.FloatData(m.Pricing.Input)
+	}
+	if m.Pricing.JSON.Output.Valid() {
+		args["pricingOutput"] = llx.FloatData(m.Pricing.Output)
+	}
+	if m.Description != "" {
+		args["description"] = llx.StringData(m.Description)
+	}
+	return args
+}
+
+// parseContextLength reads the catalog's context length, which the API
+// serializes as a decimal string. An absent or unreadable value is nil, not 0:
+// a zero-token context window is not something a model has.
+func parseContextLength(s string) *int64 {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || n <= 0 {
+		return nil
+	}
+	return &n
+}
+
+func (r *mqlTogether) fineTunes() ([]any, error) {
 	conn := togetherConn(r.MqlRuntime)
 	client := conn.Client()
 
 	resp, err := client.FineTuning.List(context.Background())
 	if isAccessDenied(err) {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	if resp == nil {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 
-	res := make([]interface{}, 0, len(resp.Data))
+	res := make([]any, 0, len(resp.Data))
 	for _, j := range resp.Data {
 		mqlJob, err := CreateResource(r.MqlRuntime, "together.fineTune", map[string]*llx.RawData{
 			"__id":            llx.StringData(j.ID),
@@ -114,35 +267,38 @@ func (r *mqlTogether) fineTunes() ([]interface{}, error) {
 	return res, nil
 }
 
-func (r *mqlTogether) endpoints() ([]interface{}, error) {
+func (r *mqlTogether) endpoints() ([]any, error) {
 	conn := togetherConn(r.MqlRuntime)
 	client := conn.Client()
 
-	resp, err := client.Endpoints.List(context.Background(), together.EndpointListParams{})
+	project, err := r.scopedProjectID()
+	if err != nil {
+		return nil, err
+	}
+	if project == "" {
+		return nil, errors.New("together: endpoints are listed per project, and the API key resolves to no project; set --project")
+	}
+
+	endpoints, err := collectPages(client.Endpoints.List(context.Background(), together.EndpointListParams{
+		ProjectID: together.Opt(project),
+	}))
 	if isAccessDenied(err) {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil {
-		return []interface{}{}, nil
-	}
 
-	res := make([]interface{}, 0, len(resp.Data))
-	for _, e := range resp.Data {
-		mqlEndpoint, err := CreateResource(r.MqlRuntime, "together.endpoint", map[string]*llx.RawData{
-			"__id":      llx.StringData(e.ID),
-			"id":        llx.StringData(e.ID),
-			"name":      llx.StringData(e.Name),
-			"model":     llx.StringData(e.Model),
-			"state":     llx.StringData(e.State),
-			"owner":     llx.StringData(e.Owner),
-			"type":      llx.StringData(e.Type),
-			"createdAt": llx.TimeData(e.CreatedAt),
-		})
+	res := make([]any, 0, len(endpoints))
+	for _, e := range endpoints {
+		mqlEndpoint, err := CreateResource(r.MqlRuntime, "together.endpoint", endpointArgs(e))
 		if err != nil {
 			return nil, err
+		}
+		ep := mqlEndpoint.(*mqlTogetherEndpoint)
+		ep.cacheProjectID = e.ProjectID
+		if ep.cacheProjectID == "" {
+			ep.cacheProjectID = project
 		}
 		res = append(res, mqlEndpoint)
 	}
@@ -150,22 +306,22 @@ func (r *mqlTogether) endpoints() ([]interface{}, error) {
 	return res, nil
 }
 
-func (r *mqlTogether) files() ([]interface{}, error) {
+func (r *mqlTogether) files() ([]any, error) {
 	conn := togetherConn(r.MqlRuntime)
 	client := conn.Client()
 
 	resp, err := client.Files.List(context.Background())
 	if isAccessDenied(err) {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	if resp == nil {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 
-	res := make([]interface{}, 0, len(resp.Data))
+	res := make([]any, 0, len(resp.Data))
 	for _, f := range resp.Data {
 		var createdAt *time.Time
 		if f.CreatedAt > 0 {
@@ -174,14 +330,15 @@ func (r *mqlTogether) files() ([]interface{}, error) {
 		}
 
 		mqlFile, err := CreateResource(r.MqlRuntime, "together.file", map[string]*llx.RawData{
-			"__id":      llx.StringData(f.ID),
-			"id":        llx.StringData(f.ID),
-			"filename":  llx.StringData(f.Filename),
-			"purpose":   llx.StringData(string(f.Purpose)),
-			"fileType":  llx.StringData(string(f.FileType)),
-			"bytes":     llx.IntData(f.Bytes),
-			"processed": llx.BoolData(f.Processed),
-			"createdAt": llx.TimeDataPtr(createdAt),
+			"__id":             llx.StringData(f.ID),
+			"id":               llx.StringData(f.ID),
+			"filename":         llx.StringData(f.Filename),
+			"purpose":          llx.StringData(string(f.Purpose)),
+			"fileType":         llx.StringData(string(f.FileType)),
+			"bytes":            llx.IntData(f.Bytes),
+			"processed":        llx.BoolDataPtr(fileProcessed(f)),
+			"processingStatus": llx.StringDataPtr(reportedString(string(f.ProcessingStatus), f.JSON.ProcessingStatus)),
+			"createdAt":        llx.TimeDataPtr(createdAt),
 		})
 		if err != nil {
 			return nil, err
@@ -192,71 +349,249 @@ func (r *mqlTogether) files() ([]interface{}, error) {
 	return res, nil
 }
 
-func (r *mqlTogether) clusters() ([]interface{}, error) {
+// fileProcessed reports whether the file validation pipeline has finished
+// with the file. together-go v0.13 replaced the old Processed flag with a
+// processing status, so the flag is derived from it: only COMPLETED counts as
+// processed. A file that reports no status has no answer, which is null.
+func fileProcessed(f together.FileResponse) *bool {
+	if !f.JSON.ProcessingStatus.Valid() || f.ProcessingStatus == "" {
+		return nil
+	}
+	done := f.ProcessingStatus == together.FileResponseProcessingStatusCompleted
+	return &done
+}
+
+func (r *mqlTogether) clusters() ([]any, error) {
 	conn := togetherConn(r.MqlRuntime)
 	client := conn.Client()
 
-	resp, err := client.Beta.Clusters.List(context.Background(), together.BetaClusterListParams{})
+	resp, err := client.Clusters.List(context.Background(), together.ClusterListParams{})
 	if isAccessDenied(err) {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	if resp == nil {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 
-	res := make([]interface{}, 0, len(resp.Clusters))
+	res := make([]any, 0, len(resp.Clusters))
 	for _, c := range resp.Clusters {
+		nodes, err := clusterNodeResources(r.MqlRuntime, c)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg := c.ClusterConfig
+		oidc := c.OidcConfig
+
 		mqlCluster, err := CreateResource(r.MqlRuntime, "together.cluster", map[string]*llx.RawData{
-			"__id":                 llx.StringData(c.ClusterID),
-			"id":                   llx.StringData(c.ClusterID),
-			"name":                 llx.StringData(c.ClusterName),
-			"clusterType":          llx.StringData(string(c.ClusterType)),
-			"gpuType":              llx.StringData(string(c.GPUType)),
-			"numGpus":              llx.IntData(c.NumGPUs),
-			"region":               llx.StringData(c.Region),
-			"status":               llx.StringData(string(c.Status)),
-			"billingType":          llx.StringData(string(c.BillingType)),
-			"projectId":            llx.StringData(c.ProjectID),
-			"cudaVersion":          llx.StringData(c.CudaVersion),
-			"nvidiaDriverVersion":  llx.StringData(c.NvidiaDriverVersion),
-			"numCpuWorkers":        llx.IntData(c.NumCPUWorkers),
-			"oidcIssuer":           llx.StringData(c.OidcConfig.IssuerURL),
-			"oidcClientId":         llx.StringData(c.OidcConfig.ClientID),
-			"createdAt":            llx.TimeData(c.CreatedAt),
-			"reservationStartTime": llx.TimeData(c.ReservationStartTime),
-			"reservationEndTime":   llx.TimeData(c.ReservationEndTime),
+			"__id":                       llx.StringData(c.ClusterID),
+			"id":                         llx.StringData(c.ClusterID),
+			"name":                       llx.StringData(c.ClusterName),
+			"clusterType":                llx.StringData(string(c.ClusterType)),
+			"gpuType":                    llx.StringData(string(c.GPUType)),
+			"numGpus":                    llx.IntData(c.NumGPUs),
+			"region":                     llx.StringData(c.Region),
+			"status":                     llx.StringData(string(c.Status)),
+			"billingType":                llx.StringData(string(c.BillingType)),
+			"projectId":                  llx.StringData(c.ProjectID),
+			"cudaVersion":                llx.StringData(c.CudaVersion),
+			"nvidiaDriverVersion":        llx.StringData(c.NvidiaDriverVersion),
+			"numCpuWorkers":              llx.IntData(c.NumCPUWorkers),
+			"oidcIssuer":                 llx.StringData(oidc.IssuerURL),
+			"oidcClientId":               llx.StringData(oidc.ClientID),
+			"oidcGroupClaim":             llx.StringDataPtr(reportedString(oidc.GroupClaim, oidc.JSON.GroupClaim)),
+			"oidcGroupPrefix":            llx.StringDataPtr(reportedString(oidc.GroupPrefix, oidc.JSON.GroupPrefix)),
+			"oidcUsernameClaim":          llx.StringDataPtr(reportedString(oidc.UsernameClaim, oidc.JSON.UsernameClaim)),
+			"oidcUsernamePrefix":         llx.StringDataPtr(reportedString(oidc.UsernamePrefix, oidc.JSON.UsernamePrefix)),
+			"kubernetesDashboardEnabled": llx.BoolDataPtr(reportedBool(cfg.KubernetesDashboardEnabled, cfg.JSON.KubernetesDashboardEnabled)),
+			"jumphostEnabled":            llx.BoolDataPtr(reportedBool(cfg.JumphostEnabled, cfg.JSON.JumphostEnabled)),
+			"sshCaEnabled":               llx.BoolDataPtr(reportedBool(cfg.SSHCaEnabled, cfg.JSON.SSHCaEnabled)),
+			"loadBalancer":               llx.StringDataPtr(reportedString(cfg.LoadBalancer, cfg.JSON.LoadBalancer)),
+			"ingressEnabled":             llx.BoolDataPtr(reportedBool(cfg.Ingress.Enabled, cfg.Ingress.JSON.Enabled)),
+			"nodes":                      llx.ArrayData(nodes, types.Resource("together.cluster.node")),
+			"createdAt":                  llx.TimeDataPtr(timeOrNil(c.CreatedAt)),
+			"reservationStartTime":       llx.TimeDataPtr(timeOrNil(c.ReservationStartTime)),
+			"reservationEndTime":         llx.TimeDataPtr(timeOrNil(c.ReservationEndTime)),
 		})
 		if err != nil {
 			return nil, err
 		}
-		cluster := mqlCluster.(*mqlTogetherCluster)
-		cluster.clusterId = c.ClusterID
-		cluster.projectId = c.ProjectID
 		res = append(res, mqlCluster)
 	}
 
 	return res, nil
 }
 
-func (r *mqlTogether) secrets() ([]interface{}, error) {
+// reportedBool carries a boolean through to the schema only when the API
+// actually reported it. A control the response says nothing about reaches the
+// schema as null, where an equality check on it fails, rather than as a false
+// that reads like a measured "not enabled".
+func reportedBool(value bool, field respjson.Field) *bool {
+	if !field.Valid() {
+		return nil
+	}
+	return &value
+}
+
+// reportedString is reportedBool for strings.
+func reportedString(value string, field respjson.Field) *string {
+	if !field.Valid() {
+		return nil
+	}
+	return &value
+}
+
+// Roles a node plays in a cluster. The list response keeps GPU workers and
+// control plane nodes in separate collections and names neither in the record
+// itself, so the role is set from the collection the node came out of.
+const (
+	clusterNodeRoleGPUWorker    = "GPU_WORKER"
+	clusterNodeRoleControlPlane = "CONTROL_PLANE"
+)
+
+// clusterNodeRecord is the union of what a cluster's two kinds of node record
+// report. A value the record does not carry stays nil and reaches the schema as
+// null, so a control plane node reports no GPU count rather than a zero that
+// reads as a measured one.
+type clusterNodeRecord struct {
+	id                     string
+	hostname               string
+	role                   string
+	status                 string
+	publicIPv4             string
+	networks               []string
+	memoryGib              float64
+	numCPUCores            int64
+	numGPUs                *int64
+	instanceID             *string
+	autoRemediationEnabled *bool
+	markedForDeletion      *bool
+}
+
+func gpuWorkerNodeRecord(n together.ClusterGPUWorkerNode) clusterNodeRecord {
+	numGPUs := n.NumGPUs
+	return clusterNodeRecord{
+		id:                     n.NodeID,
+		hostname:               n.HostName,
+		role:                   clusterNodeRoleGPUWorker,
+		status:                 n.Status,
+		publicIPv4:             n.PublicIpv4,
+		networks:               n.Networks,
+		memoryGib:              n.MemoryGib,
+		numCPUCores:            n.NumCPUCores,
+		numGPUs:                &numGPUs,
+		instanceID:             reportedString(n.InstanceID, n.JSON.InstanceID),
+		autoRemediationEnabled: reportedBool(n.AutoRemediationEnabled, n.JSON.AutoRemediationEnabled),
+		markedForDeletion:      reportedBool(n.MarkedForDeletion, n.JSON.MarkedForDeletion),
+	}
+}
+
+func controlPlaneNodeRecord(n together.ClusterControlPlaneNode) clusterNodeRecord {
+	rec := clusterNodeRecord{
+		id:          n.NodeID,
+		hostname:    n.HostName,
+		role:        clusterNodeRoleControlPlane,
+		status:      n.Status,
+		publicIPv4:  n.PublicIpv4,
+		memoryGib:   n.MemoryGib,
+		numCPUCores: n.NumCPUCores,
+	}
+	// A control plane node reports one network, where a GPU worker reports a
+	// list. Both reach the same field.
+	if n.Network != "" {
+		rec.networks = []string{n.Network}
+	}
+	return rec
+}
+
+// clusterNodeID keys a node inside its cluster. A node repeats along three
+// dimensions, the cluster it belongs to, the part it plays in that cluster, and
+// its own identifier, so all three go into the key: two nodes sharing a key
+// would be reported as one, carrying the first one's values.
+//
+// The node identifier is required by the API and the hostname is the fallback
+// for a response that omits it anyway. The index is the last resort, and is
+// there so that nodes with neither stay separate instead of collapsing onto one
+// another.
+func clusterNodeID(clusterID string, rec clusterNodeRecord, index int) string {
+	key := rec.id
+	if key == "" {
+		key = rec.hostname
+	}
+	if key == "" {
+		key = "index-" + strconv.Itoa(index)
+	}
+	return clusterID + "/" + rec.role + "/" + key
+}
+
+// clusterNodeResources builds the node resources of one cluster. Everything it
+// reads is already in the cluster list response, so a cluster's nodes cost no
+// additional API call.
+func clusterNodeResources(runtime *plugin.Runtime, c together.Cluster) ([]any, error) {
+	records := make([]clusterNodeRecord, 0, len(c.GPUWorkerNodes)+len(c.ControlPlaneNodes))
+	for _, n := range c.GPUWorkerNodes {
+		records = append(records, gpuWorkerNodeRecord(n))
+	}
+	for _, n := range c.ControlPlaneNodes {
+		records = append(records, controlPlaneNodeRecord(n))
+	}
+
+	res := make([]any, 0, len(records))
+	for i, rec := range records {
+		networks := make([]any, 0, len(rec.networks))
+		for _, network := range rec.networks {
+			networks = append(networks, network)
+		}
+
+		mqlNode, err := CreateResource(runtime, "together.cluster.node", map[string]*llx.RawData{
+			"__id":                   llx.StringData(clusterNodeID(c.ClusterID, rec, i)),
+			"id":                     llx.StringData(rec.id),
+			"hostname":               llx.StringData(rec.hostname),
+			"role":                   llx.StringData(rec.role),
+			"status":                 llx.StringData(rec.status),
+			"publicIpv4":             llx.StringData(rec.publicIPv4),
+			"networks":               llx.ArrayData(networks, types.String),
+			"memoryGib":              llx.FloatData(rec.memoryGib),
+			"numCpuCores":            llx.IntData(rec.numCPUCores),
+			"numGpus":                llx.IntDataPtr(rec.numGPUs),
+			"instanceId":             llx.StringDataPtr(rec.instanceID),
+			"autoRemediationEnabled": llx.BoolDataPtr(rec.autoRemediationEnabled),
+			"markedForDeletion":      llx.BoolDataPtr(rec.markedForDeletion),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlNode)
+	}
+
+	return res, nil
+}
+
+// isPublic reports whether the node answers on a public address. The list
+// response carries a public IPv4 only for a node that has one.
+func (r *mqlTogetherClusterNode) isPublic() (bool, error) {
+	return r.PublicIpv4.Data != "", nil
+}
+
+func (r *mqlTogether) secrets() ([]any, error) {
 	conn := togetherConn(r.MqlRuntime)
 	client := conn.Client()
 
 	resp, err := client.Beta.Jig.Secrets.List(context.Background())
 	if isAccessDenied(err) {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	if resp == nil {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 
-	res := make([]interface{}, 0, len(resp.Data))
+	res := make([]any, 0, len(resp.Data))
 	for _, s := range resp.Data {
 		createdAt := parseTimeStr(s.CreatedAt)
 		updatedAt := parseTimeStr(s.UpdatedAt)
@@ -280,35 +615,62 @@ func (r *mqlTogether) secrets() ([]interface{}, error) {
 	return res, nil
 }
 
-type mqlTogetherClusterInternal struct {
-	clusterId string
-	projectId string
+// scopedProjectID reports the project a project-scoped list call has to be
+// filtered to. The --project option wins when the operator set one, since a key
+// with access to several projects has to be able to ask for a single one.
+// Otherwise the project the API key itself resolves to is used, taken from the
+// /whoami response the root resource already holds.
+//
+// An empty return value sends the list call out unfiltered, so a failed
+// identity lookup is reported rather than swallowed: reporting objects from
+// projects the scan was never pointed at is worse than reporting nothing.
+func (r *mqlTogether) scopedProjectID() (string, error) {
+	if project := togetherConn(r.MqlRuntime).Project(); project != "" {
+		return project, nil
+	}
+	return r.projectId()
 }
 
-func (r *mqlTogetherCluster) storageVolumes() ([]interface{}, error) {
+func (r *mqlTogether) clusterStorageVolumes() ([]any, error) {
 	conn := togetherConn(r.MqlRuntime)
-	client := conn.Client()
 
-	params := together.BetaClusterStorageListParams{}
-	if r.projectId != "" {
-		params.ProjectID = together.Opt(r.projectId)
+	project, err := r.scopedProjectID()
+	if err != nil {
+		return nil, err
 	}
 
-	resp, err := client.Beta.Clusters.Storage.List(context.Background(), params)
+	return listClusterStorageVolumes(r.MqlRuntime, conn.Client(), project)
+}
+
+// listClusterStorageVolumes lists project-scoped cluster storage volumes. The
+// list endpoint accepts only a project filter and the returned volumes carry no
+// cluster reference, so they belong to the account's project and are shared
+// across its clusters.
+//
+// project is empty only for a key that resolves to no project at all. Such an
+// account has nothing to filter by, and every volume the key can see is its
+// own.
+func listClusterStorageVolumes(runtime *plugin.Runtime, client *together.Client, project string) ([]any, error) {
+	params := together.ClusterStorageListParams{}
+	if project != "" {
+		params.ProjectID = together.Opt(project)
+	}
+
+	resp, err := client.Clusters.Storage.List(context.Background(), params)
 	if isAccessDenied(err) {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	if resp == nil {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 
-	res := make([]interface{}, 0, len(resp.Volumes))
+	res := make([]any, 0, len(resp.Volumes))
 	for _, v := range resp.Volumes {
-		mqlVol, err := CreateResource(r.MqlRuntime, "together.clusterStorageVolume", map[string]*llx.RawData{
-			"__id":       llx.StringData(r.clusterId + "/" + v.VolumeID),
+		mqlVol, err := CreateResource(runtime, "together.clusterStorageVolume", map[string]*llx.RawData{
+			"__id":       llx.StringData(v.VolumeID),
 			"volumeId":   llx.StringData(v.VolumeID),
 			"volumeName": llx.StringData(v.VolumeName),
 			"sizeTib":    llx.IntData(v.SizeTib),
@@ -323,24 +685,24 @@ func (r *mqlTogetherCluster) storageVolumes() ([]interface{}, error) {
 	return res, nil
 }
 
-func (r *mqlTogether) deployments() ([]interface{}, error) {
+func (r *mqlTogether) deployments() ([]any, error) {
 	conn := togetherConn(r.MqlRuntime)
 	client := conn.Client()
 
 	resp, err := client.Beta.Jig.List(context.Background())
 	if isAccessDenied(err) {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	if resp == nil {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 
-	res := make([]interface{}, 0, len(resp.Data))
+	res := make([]any, 0, len(resp.Data))
 	for _, d := range resp.Data {
-		envVarNames := make([]interface{}, 0, len(d.EnvironmentVariables))
+		envVarNames := make([]any, 0, len(d.EnvironmentVariables))
 		for _, ev := range d.EnvironmentVariables {
 			envVarNames = append(envVarNames, ev.Name)
 		}
@@ -364,8 +726,8 @@ func (r *mqlTogether) deployments() ([]interface{}, error) {
 			"minReplicas":              llx.IntData(d.MinReplicas),
 			"maxReplicas":              llx.IntData(d.MaxReplicas),
 			"environmentVariableNames": llx.ArrayData(envVarNames, types.String),
-			"createdAt":                llx.TimeData(d.CreatedAt),
-			"updatedAt":                llx.TimeData(d.UpdatedAt),
+			"createdAt":                llx.TimeDataPtr(timeOrNil(d.CreatedAt)),
+			"updatedAt":                llx.TimeDataPtr(timeOrNil(d.UpdatedAt)),
 		})
 		if err != nil {
 			return nil, err
@@ -376,22 +738,22 @@ func (r *mqlTogether) deployments() ([]interface{}, error) {
 	return res, nil
 }
 
-func (r *mqlTogether) batches() ([]interface{}, error) {
+func (r *mqlTogether) batches() ([]any, error) {
 	conn := togetherConn(r.MqlRuntime)
 	client := conn.Client()
 
 	resp, err := client.Batches.List(context.Background())
 	if isAccessDenied(err) {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	if resp == nil {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 
-	res := make([]interface{}, 0, len(*resp))
+	res := make([]any, 0, len(*resp))
 	for _, b := range *resp {
 		mqlBatch, err := CreateResource(r.MqlRuntime, "together.batch", map[string]*llx.RawData{
 			"__id":          llx.StringData(b.ID),
@@ -405,9 +767,9 @@ func (r *mqlTogether) batches() ([]interface{}, error) {
 			"progress":      llx.FloatData(b.Progress),
 			"fileSizeBytes": llx.IntData(b.FileSizeBytes),
 			"userId":        llx.StringData(b.UserID),
-			"createdAt":     llx.TimeData(b.CreatedAt),
-			"completedAt":   llx.TimeData(b.CompletedAt),
-			"jobDeadline":   llx.TimeData(b.JobDeadline),
+			"createdAt":     llx.TimeDataPtr(timeOrNil(b.CreatedAt)),
+			"completedAt":   llx.TimeDataPtr(timeOrNil(b.CompletedAt)),
+			"jobDeadline":   llx.TimeDataPtr(timeOrNil(b.JobDeadline)),
 		})
 		if err != nil {
 			return nil, err
@@ -418,22 +780,22 @@ func (r *mqlTogether) batches() ([]interface{}, error) {
 	return res, nil
 }
 
-func (r *mqlTogether) evals() ([]interface{}, error) {
+func (r *mqlTogether) evals() ([]any, error) {
 	conn := togetherConn(r.MqlRuntime)
 	client := conn.Client()
 
 	resp, err := client.Evals.List(context.Background(), together.EvalListParams{})
 	if isAccessDenied(err) {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	if resp == nil {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 
-	res := make([]interface{}, 0, len(*resp))
+	res := make([]any, 0, len(*resp))
 	for _, e := range *resp {
 		mqlEval, err := CreateResource(r.MqlRuntime, "together.eval", map[string]*llx.RawData{
 			"__id":       llx.StringData(e.WorkflowID),
@@ -441,8 +803,8 @@ func (r *mqlTogether) evals() ([]interface{}, error) {
 			"type":       llx.StringData(string(e.Type)),
 			"status":     llx.StringData(string(e.Status)),
 			"ownerId":    llx.StringData(e.OwnerID),
-			"createdAt":  llx.TimeData(e.CreatedAt),
-			"updatedAt":  llx.TimeData(e.UpdatedAt),
+			"createdAt":  llx.TimeDataPtr(timeOrNil(e.CreatedAt)),
+			"updatedAt":  llx.TimeDataPtr(timeOrNil(e.UpdatedAt)),
 		})
 		if err != nil {
 			return nil, err
@@ -453,27 +815,27 @@ func (r *mqlTogether) evals() ([]interface{}, error) {
 	return res, nil
 }
 
-func (r *mqlTogether) volumes() ([]interface{}, error) {
+func (r *mqlTogether) volumes() ([]any, error) {
 	conn := togetherConn(r.MqlRuntime)
 	client := conn.Client()
 
 	resp, err := client.Beta.Jig.Volumes.List(context.Background())
 	if isAccessDenied(err) {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	if resp == nil {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 
-	res := make([]interface{}, 0, len(resp.Data))
+	res := make([]any, 0, len(resp.Data))
 	for _, v := range resp.Data {
 		createdAt := parseTimeStr(v.CreatedAt)
 		updatedAt := parseTimeStr(v.UpdatedAt)
 
-		mountedBy := make([]interface{}, 0, len(v.MountedBy))
+		mountedBy := make([]any, 0, len(v.MountedBy))
 		for _, m := range v.MountedBy {
 			mountedBy = append(mountedBy, m)
 		}
@@ -524,8 +886,8 @@ var knownFamilies = map[string]string{
 }
 
 func modelName(id string) string {
-	if idx := strings.Index(id, "/"); idx >= 0 {
-		return id[idx+1:]
+	if _, after, ok := strings.Cut(id, "/"); ok {
+		return after
 	}
 	return id
 }
@@ -533,7 +895,7 @@ func modelName(id string) string {
 func (r *mqlTogetherModel) family() (string, error) {
 	name := modelName(r.Id.Data)
 	name = strings.TrimPrefix(name, "Meta-")
-	token := strings.SplitN(name, "-", 2)[0]
+	token, _, _ := strings.Cut(name, "-")
 
 	// Check known families first (handles digit-containing names like GPT4o)
 	for prefix, family := range knownFamilies {
@@ -625,6 +987,18 @@ func (r *mqlTogetherVolume) id() (string, error) {
 	return r.Id.Data, nil
 }
 
+// timeOrNil maps a zero time.Time to nil so absent SDK timestamps render as
+// null instead of the year-1 zero value. The Together SDK returns optional
+// timestamps as zero-valued time.Time (not pointers), so a job that has not
+// completed or a cluster with no reservation window would otherwise surface
+// 0001-01-01T00:00:00Z.
+func timeOrNil(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
+}
+
 func parseTimeStr(s string) *time.Time {
 	if s == "" {
 		return nil
@@ -646,11 +1020,27 @@ func isAccessDenied(err error) bool {
 	if err == nil {
 		return false
 	}
-	var apierr *together.Error
-	if errors.As(err, &apierr) {
+	if apierr, ok := errors.AsType[*together.Error](err); ok {
 		return apierr.StatusCode == 403 || apierr.StatusCode == 401
 	}
 	return false
+}
+
+// classifyRefusal wraps a 401 or 403 from the API in the matching error kind
+// and returns any other error unchanged. Use it on list calls that have no
+// earlier empty-list behavior to preserve.
+func classifyRefusal(err error) error {
+	var apierr *together.Error
+	if !errors.As(err, &apierr) {
+		return err
+	}
+	switch apierr.StatusCode {
+	case 401:
+		return llx.Unauthenticated(err)
+	case 403:
+		return llx.Forbidden(err)
+	}
+	return err
 }
 
 var _ = plugin.StateIsNull

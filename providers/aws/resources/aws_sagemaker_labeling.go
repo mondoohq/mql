@@ -6,16 +6,17 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/service/sagemaker"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 // ---- Init functions for cross-referenced labeling resources ----
@@ -45,14 +46,10 @@ func initAwsSagemakerWorkforce(runtime *plugin.Runtime, args map[string]*llx.Raw
 		}
 	}
 
-	_, region, _, name := parseSagemakerArn(arnVal)
-	if args["name"] == nil && name != "" {
-		args["name"] = llx.StringData(name)
-	}
-	if args["region"] == nil && region != "" {
-		args["region"] = llx.StringData(region)
-	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.sagemaker.workforce with arn %q not found", arnVal)
 }
 
 func initAwsSagemakerWorkteam(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -80,14 +77,10 @@ func initAwsSagemakerWorkteam(runtime *plugin.Runtime, args map[string]*llx.RawD
 		}
 	}
 
-	_, region, _, name := parseSagemakerArn(arnVal)
-	if args["name"] == nil && name != "" {
-		args["name"] = llx.StringData(name)
-	}
-	if args["region"] == nil && region != "" {
-		args["region"] = llx.StringData(region)
-	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.sagemaker.workteam with arn %q not found", arnVal)
 }
 
 func initAwsSagemakerHumanTaskUi(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -115,14 +108,10 @@ func initAwsSagemakerHumanTaskUi(runtime *plugin.Runtime, args map[string]*llx.R
 		}
 	}
 
-	_, region, _, name := parseSagemakerArn(arnVal)
-	if args["name"] == nil && name != "" {
-		args["name"] = llx.StringData(name)
-	}
-	if args["region"] == nil && region != "" {
-		args["region"] = llx.StringData(region)
-	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.sagemaker.humanTaskUi with arn %q not found", arnVal)
 }
 
 // ---- Labeling Jobs ----
@@ -216,7 +205,7 @@ func (a *mqlAwsSagemaker) getLabelingJobs(conn *connection.AwsConnection) []*job
 					m := mqlJob.(*mqlAwsSagemakerLabelingJob)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlJob)
 				}
@@ -476,6 +465,7 @@ func (a *mqlAwsSagemaker) getWorkforces(conn *connection.AwsConnection) []*jobpo
 }
 
 type mqlAwsSagemakerWorkforceInternal struct {
+	sagemakerTagsCache
 	securityGroupIdHandler
 	configsLoaded        bool
 	cacheCognitoConfig   any
@@ -487,6 +477,11 @@ type mqlAwsSagemakerWorkforceInternal struct {
 
 func (a *mqlAwsSagemakerWorkforce) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsSagemakerWorkforce) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return a.fetchTags(conn, a.Region.Data, a.Arn.Data)
 }
 
 func (a *mqlAwsSagemakerWorkforce) cognitoConfig() (any, error) {
@@ -615,7 +610,7 @@ func (a *mqlAwsSagemaker) getWorkteams(conn *connection.AwsConnection) []*jobpoo
 					}
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlWt)
 				}
@@ -745,7 +740,7 @@ func (a *mqlAwsSagemaker) getHumanTaskUis(conn *connection.AwsConnection) []*job
 					m := mqlHt.(*mqlAwsSagemakerHumanTaskUi)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlHt)
 				}
@@ -892,7 +887,7 @@ func (a *mqlAwsSagemaker) getFlowDefinitions(conn *connection.AwsConnection) []*
 					m := mqlFd.(*mqlAwsSagemakerFlowDefinition)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlFd)
 				}

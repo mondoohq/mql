@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/registry"
@@ -157,18 +158,49 @@ func fetchProvenanceHTTP(chartURL, username, password string) []byte {
 	return prov
 }
 
+// repoChartVersion is one published version of a chart in a repository
+// index.yaml: its version string and the archive URL(s) that serve it.
+type repoChartVersion struct {
+	Version string   `yaml:"version"`
+	URLs    []string `yaml:"urls"`
+}
+
 // repoIndex is the subset of a Helm repository index.yaml we need to map a
 // chart name + version to a downloadable archive URL.
 type repoIndex struct {
-	Entries map[string][]struct {
-		Version string   `yaml:"version"`
-		URLs    []string `yaml:"urls"`
-	} `yaml:"entries"`
+	Entries map[string][]repoChartVersion `yaml:"entries"`
+}
+
+// latestChartVersion returns the highest-semver entry for a chart. `helm repo
+// index` writes entries newest-first, but not every index producer sorts, so
+// we pick by semver rather than trusting file order. Entries whose version
+// isn't valid semver are ignored for ranking; if none parse, the first listed
+// entry is returned so a non-semver repository still resolves to something.
+func latestChartVersion(versions []repoChartVersion) repoChartVersion {
+	if len(versions) == 0 {
+		return repoChartVersion{}
+	}
+	best := versions[0]
+	var bestVer *semver.Version
+	if v, err := semver.NewVersion(best.Version); err == nil {
+		bestVer = v
+	}
+	for _, cur := range versions[1:] {
+		cv, err := semver.NewVersion(cur.Version)
+		if err != nil {
+			continue
+		}
+		if bestVer == nil || cv.GreaterThan(bestVer) {
+			best = cur
+			bestVer = cv
+		}
+	}
+	return best
 }
 
 // resolveChartInRepo downloads <repoURL>/index.yaml and resolves a chart
 // name (and optional version) to a concrete archive URL. With no version it
-// picks the first entry, which Helm publishes newest-first.
+// picks the highest-semver entry.
 func resolveChartInRepo(repoURL, chartName, version, username, password string) (string, error) {
 	indexURL := strings.TrimSuffix(repoURL, "/") + "/index.yaml"
 	data, err := httpGetBytes(indexURL, username, password)
@@ -186,7 +218,7 @@ func resolveChartInRepo(repoURL, chartName, version, username, password string) 
 		return "", fmt.Errorf("chart %q not found in repository %q", chartName, repoURL)
 	}
 
-	chosen := versions[0]
+	chosen := latestChartVersion(versions)
 	if version != "" {
 		found := false
 		for _, v := range versions {
@@ -263,8 +295,8 @@ func httpGetBytes(rawURL, username, password string) ([]byte, error) {
 // lastPathSegment returns the final path segment of a registry reference,
 // where a tag (":") or digest ("@") would appear.
 func lastPathSegment(ref string) string {
-	if i := strings.LastIndex(ref, "/"); i != -1 {
-		return ref[i+1:]
+	if _, after, ok := strings.CutLast(ref, "/"); ok {
+		return after
 	}
 	return ref
 }

@@ -11,15 +11,15 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 
 	functions "cloud.google.com/go/functions/apiv1"
 	"cloud.google.com/go/functions/apiv1/functionspb"
 	iampb "cloud.google.com/go/iam/apiv1/iampb"
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
@@ -123,6 +123,31 @@ func (g *mqlGcpProject) cloudFunctions() ([]any, error) {
 			secretVolumes = append(secretVolumes, vol)
 		}
 
+		envBindings := make([]cloudFunctionSecretBinding, 0, len(f.SecretEnvironmentVariables))
+		for _, v := range f.SecretEnvironmentVariables {
+			envBindings = append(envBindings, cloudFunctionSecretBinding{
+				key: v.Key, projectID: v.ProjectId, secret: v.Secret, version: v.Version,
+			})
+		}
+		volumeBindings := make([]cloudFunctionSecretBinding, 0, len(f.SecretVolumes))
+		for _, v := range f.SecretVolumes {
+			paths := make(map[string]string, len(v.Versions))
+			for _, vv := range v.Versions {
+				paths[vv.Version] = vv.Path
+			}
+			volumeBindings = append(volumeBindings, cloudFunctionSecretBinding{
+				mountPath: v.MountPath, projectID: v.ProjectId, secret: v.Secret, versionPaths: paths,
+			})
+		}
+		boundSecretEnvVars, err := newMqlFunctionSecretEnvVars(g.MqlRuntime, f.Name, envBindings)
+		if err != nil {
+			return nil, err
+		}
+		boundSecretVolumes, err := newMqlFunctionSecretVolumes(g.MqlRuntime, f.Name, volumeBindings)
+		if err != nil {
+			return nil, err
+		}
+
 		var sourceUploadUrl, sourceArchiveUrl string
 		var sourceRepository map[string]any
 		switch f.SourceCode.(type) {
@@ -174,15 +199,14 @@ func (g *mqlGcpProject) cloudFunctions() ([]any, error) {
 			"status":              llx.StringData(f.Status.String()),
 			"entryPoint":          llx.StringData(f.EntryPoint),
 			"runtime":             llx.StringData(f.Runtime),
-			"timeout":             llx.TimeData(llx.DurationToTime(int64(f.Timeout.Seconds))),
+			"timeout":             llx.TimeData(llx.DurationToTime(f.GetTimeout().GetSeconds())),
 			"availableMemoryMb":   llx.IntData(int64(f.AvailableMemoryMb)),
 			"serviceAccountEmail": llx.StringData(f.ServiceAccountEmail),
-			"updated":             llx.TimeData(f.UpdateTime.AsTime()),
+			"updated":             llx.TimeDataPtr(timestampAsTimePtr(f.UpdateTime)),
 			"versionId":           llx.IntData(f.VersionId),
 			"labels":              llx.MapData(convert.MapToInterfaceMap(f.Labels), types.String),
 			"envVars":             llx.MapData(convert.MapToInterfaceMap(f.EnvironmentVariables), types.String),
 			"buildEnvVars":        llx.MapData(convert.MapToInterfaceMap(f.BuildEnvironmentVariables), types.String),
-			"network":             llx.StringData(f.Network),
 			"maxInstances":        llx.IntData(int64(f.MaxInstances)),
 			"minInstances":        llx.IntData(int64(f.MinInstances)),
 			"vpcConnector":        llx.StringData(f.VpcConnector),
@@ -194,12 +218,16 @@ func (g *mqlGcpProject) cloudFunctions() ([]any, error) {
 			"buildName":           llx.StringData(f.BuildName),
 			"secretEnvVars":       llx.MapData(secretEnvVars, types.Dict),
 			"secretVolumes":       llx.ArrayData(secretVolumes, types.Dict),
-			"dockerRepository":    llx.StringData(f.DockerRepository),
+			"boundSecretEnvVars":  llx.ArrayData(boundSecretEnvVars, types.Resource("gcp.project.cloudFunction.secretEnvVar")),
+			"boundSecretVolumes":  llx.ArrayData(boundSecretVolumes, types.Resource("gcp.project.cloudFunction.secretVolume")),
 			"dockerRegistry":      llx.StringData(f.DockerRegistry.String()),
 		})
 		if err != nil {
 			return nil, err
 		}
+		mqlRef := mqlCloudFuncs.(*mqlGcpProjectCloudFunction)
+		mqlRef.cacheNetwork = f.Network
+		mqlRef.cacheDockerRepository = f.DockerRepository
 		mqlFunc := mqlCloudFuncs.(*mqlGcpProjectCloudFunction)
 		mqlFunc.cacheKmsKeyName = f.KmsKeyName
 		mqlFunc.cacheBuildServiceAccount = f.BuildServiceAccount
@@ -213,6 +241,8 @@ type mqlGcpProjectCloudFunctionInternal struct {
 	cacheKmsKeyName           string
 	cacheBuildServiceAccount  string
 	cacheEventTriggerResource string
+	cacheDockerRepository     string
+	cacheNetwork              string
 }
 
 func (g *mqlGcpProjectCloudFunction) managedBy() (string, error) {
@@ -220,10 +250,7 @@ func (g *mqlGcpProjectCloudFunction) managedBy() (string, error) {
 }
 
 func (g *mqlGcpProjectCloudFunction) dockerRepositoryRef() (*mqlGcpProjectArtifactRegistryServiceRepository, error) {
-	if g.DockerRepository.Error != nil {
-		return nil, g.DockerRepository.Error
-	}
-	project, location, repo := artifactRegistryRepoFromPath(g.DockerRepository.Data)
+	project, location, repo := artifactRegistryRepoFromPath(g.cacheDockerRepository)
 	ref, err := resolveArtifactRegistryRepoRef(g.MqlRuntime, project, location, repo)
 	if err != nil {
 		return nil, err
@@ -380,10 +407,7 @@ func (g *mqlGcpProjectCloudFunction) buildServiceAccount() (*mqlGcpProjectIamSer
 }
 
 func (g *mqlGcpProjectCloudFunction) networkRef() (*mqlGcpProjectComputeServiceNetwork, error) {
-	if g.Network.Error != nil {
-		return nil, g.Network.Error
-	}
-	n, err := getNetworkByUrl(g.Network.Data, g.MqlRuntime)
+	n, err := getNetworkByUrl(g.cacheNetwork, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -402,7 +426,13 @@ func (g *mqlGcpProjectCloudFunction) id() (string, error) {
 		return "", g.Name.Error
 	}
 	name := g.Name.Data
-	return fmt.Sprintf("%s/%s", projectId, name), nil
+	if g.Location.Error != nil {
+		return "", g.Location.Error
+	}
+	// Cloud Functions v1 names are unique within a location, not within a
+	// project, and this resource's own init matches on name + location. Without
+	// the location a function deployed to two regions collapses onto one row.
+	return fmt.Sprintf("%s/%s/%s", projectId, g.Location.Data, name), nil
 }
 
 func initGcpProjectCloudFunction(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -423,7 +453,19 @@ func initGcpProjectCloudFunction(runtime *plugin.Runtime, args map[string]*llx.R
 		}
 	}
 
-	obj, err := CreateResource(runtime, "gcp.project", map[string]*llx.RawData{
+	// Guard before building the parent: CreateResource hands args["projectId"]
+	// to the generated setter, which dereferences it, so nil panics the provider.
+	if args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.cloudFunction requires a \"projectId\" argument")
+	}
+
+	// NewResource, not CreateResource: CreateResource would cache a gcp.project
+	// carrying nothing but an id, and initGcpProject returns whatever is already
+	// cached -- so that husk would win for every later caller, and its name,
+	// state, parentId, labels, createTime and number are computed fields
+	// implemented as placeholders that only ever return "not implemented".
+	// servicegate.go spells out the same reasoning for the enablement lookup.
+	obj, err := NewResource(runtime, "gcp.project", map[string]*llx.RawData{
 		"id": args["projectId"],
 	})
 	if err != nil {
@@ -435,10 +477,14 @@ func initGcpProjectCloudFunction(runtime *plugin.Runtime, args map[string]*llx.R
 		return nil, nil, funcs.Error
 	}
 
-	nameVal := args["name"].Value.(string)
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New("gcp.project.cloudFunction requires a \"name\" argument")
+	}
+	nameVal, _ := nameRaw.Value.(string)
 	locationVal := ""
 	if args["location"] != nil {
-		locationVal = args["location"].Value.(string)
+		locationVal, _ = args["location"].Value.(string)
 	}
 	for _, f := range funcs.Data {
 		fn := f.(*mqlGcpProjectCloudFunction)

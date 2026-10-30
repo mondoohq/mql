@@ -4,6 +4,7 @@
 package logrotate
 
 import (
+	"maps"
 	"strings"
 )
 
@@ -93,8 +94,8 @@ func ParseContent(filePath string, content string) (globalConfig map[string]stri
 		}
 
 		// Check for block opening: paths followed by { on the same line
-		if strings.HasSuffix(trimmed, "{") {
-			pathsPart := strings.TrimSuffix(trimmed, "{")
+		if before, ok := strings.CutSuffix(trimmed, "{"); ok {
+			pathsPart := before
 			pathsPart = strings.TrimSpace(pathsPart)
 			if pathsPart != "" {
 				blockPaths = splitPaths(pathsPart)
@@ -112,6 +113,14 @@ func ParseContent(filePath string, content string) (globalConfig map[string]stri
 
 		// Skip tabooext directives
 		if strings.HasPrefix(trimmed, "tabooext ") || strings.HasPrefix(trimmed, "tabooext\t") {
+			continue
+		}
+
+		// A path line belonging to a lone-brace block ("paths" on one line,
+		// "{" on the next) is claimed by the brace handler on a later
+		// iteration. Without this it is also recorded here, leaving the log
+		// path in globalConfig as a directive nobody wrote.
+		if nextSignificantIsLoneBrace(lines, i) {
 			continue
 		}
 
@@ -162,6 +171,20 @@ func splitPaths(s string) []string {
 	return paths
 }
 
+// nextSignificantIsLoneBrace reports whether the next line that is neither
+// blank nor a comment is a lone "{", which makes the current line the path
+// list of the block that brace opens.
+func nextSignificantIsLoneBrace(lines []string, idx int) bool {
+	for j := idx + 1; j < len(lines); j++ {
+		trimmed := strings.TrimSpace(lines[j])
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		return trimmed == "{"
+	}
+	return false
+}
+
 // findPathsBackward scans backward from a lone "{" to find the log path(s).
 func findPathsBackward(lines []string, braceIdx int) ([]string, int) {
 	for j := braceIdx - 1; j >= 0; j-- {
@@ -186,8 +209,6 @@ func isScriptDirective(line string) bool {
 
 func copyMap(m map[string]string) map[string]string {
 	cp := make(map[string]string, len(m))
-	for k, v := range m {
-		cp[k] = v
-	}
+	maps.Copy(cp, m)
 	return cp
 }

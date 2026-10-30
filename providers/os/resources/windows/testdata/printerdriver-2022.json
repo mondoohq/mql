@@ -1,0 +1,54 @@
+[
+  {
+    "Name": "Microsoft XPS Document Writer v4",
+    "PrinterEnvironment": "Windows x64",
+    "Manufacturer": "Microsoft",
+    "DriverVersion": 2814751100633089,
+    "MajorVersion": 4,
+    "HardwareID": "{0f4130dd-19c7-7ab6-99a1-980f03b2ee4e}",
+    "InfPath": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms001.inf_amd64_8bc7809b71930efc\\prnms001.inf",
+    "ConfigFile": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms003.inf_amd64_5686958786b4064a\\Amd64\\PrintConfig.dll",
+    "DataFile": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms001.inf_amd64_8bc7809b71930efc\\MXDW.gpd",
+    "DriverPath": null,
+    "PrintProcessor": "winprint"
+  },
+  {
+    "Name": "Microsoft Print To PDF",
+    "PrinterEnvironment": "Windows x64",
+    "Manufacturer": "Microsoft",
+    "DriverVersion": 2814751100633089,
+    "MajorVersion": 4,
+    "HardwareID": "{084f01fa-e634-4d77-83ee-074817c03581}",
+    "InfPath": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms009.inf_amd64_6dc3549941ff1a57\\prnms009.inf",
+    "ConfigFile": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms003.inf_amd64_5686958786b4064a\\Amd64\\PrintConfig.dll",
+    "DataFile": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms009.inf_amd64_6dc3549941ff1a57\\MPDW-PDC.xml",
+    "DriverPath": null,
+    "PrintProcessor": "winprint"
+  },
+  {
+    "Name": "Microsoft enhanced Point and Print compatibility driver",
+    "PrinterEnvironment": "Windows x64",
+    "Manufacturer": "Microsoft",
+    "DriverVersion": 2814751100638587,
+    "MajorVersion": 3,
+    "HardwareID": "microsoftmicrosoft_musd",
+    "InfPath": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms003.inf_amd64_5686958786b4064a\\prnms003.inf",
+    "ConfigFile": "C:\\Windows\\system32\\spool\\DRIVERS\\x64\\3\\PrintConfig.dll",
+    "DataFile": "C:\\Windows\\system32\\spool\\DRIVERS\\x64\\3\\unishare.gpd",
+    "DriverPath": null,
+    "PrintProcessor": "winprint"
+  },
+  {
+    "Name": "Microsoft enhanced Point and Print compatibility driver",
+    "PrinterEnvironment": "Windows NT x86",
+    "Manufacturer": "Microsoft",
+    "DriverVersion": 2814751100638587,
+    "MajorVersion": 3,
+    "HardwareID": "microsoftmicrosoft_musd",
+    "InfPath": "C:\\Windows\\System32\\DriverStore\\FileRepository\\prnms003.inf_x86_b88fa572192a071b\\prnms003.inf",
+    "ConfigFile": "C:\\Windows\\system32\\spool\\DRIVERS\\W32X86\\3\\PrintConfig.dll",
+    "DataFile": "C:\\Windows\\system32\\spool\\DRIVERS\\W32X86\\3\\unishare.gpd",
+    "DriverPath": null,
+    "PrintProcessor": "winprint"
+  }
+]

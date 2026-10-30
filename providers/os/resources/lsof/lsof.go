@@ -114,7 +114,7 @@ type FileDescriptor struct {
 }
 
 // n127.0.0.1:3000->127.0.0.1:54335
-var networkNameRegexp = regexp.MustCompile(`(.*):(.*)->(.*):(.*)`)
+// or, for IPv6, n[fe80::1]:8080->[fe80::2]:9090
 
 // local and remote Internet addresses of a network file
 func (f *FileDescriptor) NetworkFile() (string, int64, string, int64, error) {
@@ -126,39 +126,56 @@ func (f *FileDescriptor) NetworkFile() (string, int64, string, int64, error) {
 	}
 
 	if strings.Contains(f.Name, "->") {
-		matches := networkNameRegexp.FindStringSubmatch(f.Name)
-		if len(matches) != 5 {
+		// An established connection is "<local>-><remote>". Splitting on
+		// "->" and parsing each endpoint with net.SplitHostPort correctly
+		// handles bracketed IPv6 addresses (e.g. "[fe80::1]:8080"), whose
+		// embedded colons would otherwise confuse a naive host:port split.
+		local, remote, ok := strings.Cut(f.Name, "->")
+		if !ok {
 			return "", 0, "", 0, errors.New("network name not supported: " + f.Name)
 		}
 
-		localPort, err := strconv.Atoi(matches[2])
+		localHost, localPort, err := splitHostPort(local)
 		if err != nil {
 			return "", 0, "", 0, errors.New("network name not supported: " + f.Name)
 		}
 
-		remotePort, err := strconv.Atoi(matches[4])
+		remoteHost, remotePort, err := splitHostPort(remote)
 		if err != nil {
 			return "", 0, "", 0, errors.New("network name not supported: " + f.Name)
 		}
 
-		return matches[1], int64(localPort), matches[3], int64(remotePort), nil
+		return localHost, localPort, remoteHost, remotePort, nil
 	}
 
 	// loop-back address [::1]:17223 or *:56863
-	host, port, err := net.SplitHostPort(f.Name)
+	host, localPort, err := splitHostPort(f.Name)
 	if err != nil {
 		return "", 0, "", 0, errors.Wrapf(err, "network name not supported: %s", f.Name)
 	}
 
-	localPort := 0
-	if port != "*" {
-		localPort, err = strconv.Atoi(port)
-		if err != nil {
-			return "", 0, "", 0, errors.New("network name not supported: " + f.Name)
-		}
+	return host, localPort, "", 0, nil
+}
+
+// splitHostPort separates a single "host:port" endpoint into its host and
+// numeric port. It relies on net.SplitHostPort so bracketed IPv6 literals
+// like "[fe80::1]:8080" are parsed correctly. A "*" port (wildcard) maps to 0.
+func splitHostPort(endpoint string) (string, int64, error) {
+	host, port, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		return "", 0, err
 	}
 
-	return host, int64(localPort), "", 0, nil
+	if port == "*" {
+		return host, 0, nil
+	}
+
+	p, err := strconv.Atoi(port)
+	if err != nil {
+		return "", 0, err
+	}
+
+	return host, int64(p), nil
 }
 
 // maps lsof state to tcp states

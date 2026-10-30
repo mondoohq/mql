@@ -1,0 +1,10 @@
+{
+  "LogName": "Security",
+  "IsEnabled": true,
+  "MaximumSizeInBytes": 20971520,
+  "IsClassicLog": true,
+  "LogFilePath": "%SystemRoot%\\System32\\Winevt\\Logs\\Security.evtx",
+  "SystemRoot": "C:\\Windows",
+  "RecordCount": 2445,
+  "LogMode": "Circular"
+}

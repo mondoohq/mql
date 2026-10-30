@@ -6,13 +6,11 @@
 package windows
 
 import (
-	wmi "github.com/StackExchange/wmi"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/wmiquery"
 	"golang.org/x/sys/windows/registry"
 )
-
-const esuLicenseQuery = "SELECT LicenseStatus FROM SoftwareLicensingProduct WHERE Name LIKE '%ESU%' AND LicenseStatus = 1"
 
 func GetWindowsESUStatus(conn shared.Connection) (*WindowsESUStatus, error) {
 	log.Debug().Msg("checking Windows 10 ESU status")
@@ -35,16 +33,15 @@ func GetWindowsESUStatus(conn shared.Connection) (*WindowsESUStatus, error) {
 			log.Debug().Err(err).Msg("could not open ESU registry key, subscription ESU may not be configured")
 		}
 
-		// Check MAK-activated ESU via WMI
-		type softwareLicensingProduct struct {
-			LicenseStatus *int
+		// Check MAK-activated ESU via WMI. A failed WMI query (or a panic in
+		// WMI) must not read as "no ESU license": fall back to PowerShell,
+		// which reports both values.
+		products, err := wmiquery.Query(esuLicenseQuery, "LicenseStatus")
+		if err != nil {
+			log.Debug().Err(err).Msg("could not query WMI for ESU license status, falling back to PowerShell")
+			return powershellGetWindowsESUStatus(conn)
 		}
-		var products []softwareLicensingProduct
-		if err := wmi.Query(esuLicenseQuery, &products); err != nil {
-			log.Debug().Err(err).Msg("could not query WMI for ESU license status")
-		} else {
-			status.LicenseActivated = len(products) > 0
-		}
+		status.LicenseActivated = len(products) > 0
 
 		return status, nil
 	}

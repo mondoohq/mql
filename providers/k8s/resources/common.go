@@ -10,9 +10,9 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/k8s/connection/shared"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -82,6 +82,23 @@ func k8sResourceToMql(r *plugin.Runtime, kind string, fn resourceConvertFn) ([]a
 	}
 
 	return resp, nil
+}
+
+// k8sOptionalResourceToMql maps a kind the cluster does not have to serve.
+//
+// A cluster that predates the API, a feature gate that is off, or an RBAC rule
+// that hides the kind yields an empty list rather than failing the query. Any
+// other error is returned unchanged.
+func k8sOptionalResourceToMql(r *plugin.Runtime, kind string, fn resourceConvertFn) ([]any, error) {
+	resources, err := k8sResourceToMql(r, kind, fn)
+	if err != nil {
+		if optionalResourceUnavailable(err) {
+			log.Debug().Err(err).Str("kind", kind).Msg("skipping optional Kubernetes resource")
+			return []any{}, nil
+		}
+		return nil, err
+	}
+	return resources, nil
 }
 
 func getNameAndNamespace(runtime *plugin.Runtime) (string, string, error) {
@@ -421,6 +438,68 @@ func k8sManagedFields(runtime *plugin.Runtime, obj any) ([]any, error) {
 			return nil, err
 		}
 		out = append(out, r)
+	}
+	return out, nil
+}
+
+// namespacedByName indexes an already-fetched k8s root collection by
+// namespace and name so callers can resolve a reference without a per-item
+// NewResource lookup. NewResource runs the target's init before the runtime
+// cache is consulted, so resolving one parent per child would turn a single
+// list into one lookup per reference.
+func namespacedByName[T K8sNamespacedObject](
+	runtime *plugin.Runtime, all func(k *mqlK8s) *plugin.TValue[[]any],
+) (map[string]T, error) {
+	o, err := CreateResource(runtime, "k8s", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	items := all(o.(*mqlK8s))
+	if items.Error != nil {
+		return nil, items.Error
+	}
+	out := make(map[string]T, len(items.Data))
+	for i := range items.Data {
+		item, ok := items.Data[i].(T)
+		if !ok {
+			continue
+		}
+		out[item.GetNamespace().Data+"/"+item.GetName().Data] = item
+	}
+	return out, nil
+}
+
+// resolveNamespaced returns the modeled resources named by refs in the given
+// namespace, in the order the references appear. A reference whose object is
+// gone (or that the scan had no permission to read) is skipped rather than
+// failing the accessor, and duplicate references resolve once.
+func resolveNamespaced[T K8sNamespacedObject](
+	runtime *plugin.Runtime, namespace string, refs []string, all func(k *mqlK8s) *plugin.TValue[[]any],
+) ([]any, error) {
+	out := []any{}
+	if len(refs) == 0 {
+		return out, nil
+	}
+	index, err := namespacedByName[T](runtime, all)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]struct{}, len(refs))
+	for _, name := range refs {
+		if name == "" {
+			continue
+		}
+		key := namespace + "/" + name
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		item, ok := index[key]
+		if !ok {
+			log.Debug().Str("namespace", namespace).Str("name", name).Msg("referenced Kubernetes object not found")
+			continue
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }

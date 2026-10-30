@@ -6,32 +6,16 @@ package resources
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
-	"google.golang.org/api/googleapi"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	notebooksv1 "google.golang.org/api/notebooks/v1"
 	notebooksv2 "google.golang.org/api/notebooks/v2"
 	"google.golang.org/api/option"
 )
-
-// isNotebooksSkippable returns true for REST errors that indicate the Notebooks
-// API is not enabled or the caller lacks permission.
-func isNotebooksSkippable(err error) bool {
-	gerr, ok := err.(*googleapi.Error)
-	if !ok {
-		return false
-	}
-	if gerr.Code == 403 || gerr.Code == 404 {
-		return true
-	}
-	msg := strings.ToLower(gerr.Message)
-	return strings.Contains(msg, "not enabled") || strings.Contains(msg, "has not been used")
-}
 
 func newWorkbenchService(conn *connection.GcpConnection) (*notebooksv2.Service, error) {
 	client, err := conn.Client(notebooksv2.CloudPlatformScope)
@@ -149,7 +133,7 @@ func (g *mqlGcpProjectWorkbenchService) instances() ([]any, error) {
 		}
 		return nil
 	}); err != nil {
-		if isNotebooksSkippable(err) {
+		if isSkippable(err) {
 			log.Debug().Str("project", projectId).Msg("vertex ai workbench api is not enabled, skipping")
 			return []any{}, nil
 		}
@@ -200,7 +184,7 @@ func (g *mqlGcpProjectNotebooksService) instances() ([]any, error) {
 		}
 		return nil
 	}); err != nil {
-		if isNotebooksSkippable(err) {
+		if isSkippable(err) {
 			log.Debug().Str("project", projectId).Msg("notebooks api is not enabled, skipping")
 			return []any{}, nil
 		}

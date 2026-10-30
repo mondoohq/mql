@@ -1,0 +1,24 @@
+{
+  "version": "4",
+  "specifiers": {
+    "npm:chalk@5": "npm:chalk@5.3.0",
+    "jsr:@std/assert@1": "jsr:@std/assert@1.0.0"
+  },
+  "npm": {
+    "chalk@5.3.0": {
+      "integrity": "sha512-5M53BsOqcReBM10CEzSaGC4lddbxUMy9v+iLQ8GPQl2d27nb8yuN8GHr8JhtKZe3H3AIIBvsdZDfCqO8lqGa6Q=="
+    },
+    "chalk@5.3.0_supports-color@9.0.0": {
+      "integrity": "sha512-5M53BsOqcReBM10CEzSaGC4lddbxUMy9v+iLQ8GPQl2d27nb8yuN8GHr8JhtKZe3H3AIIBvsdZDfCqO8lqGa6Q=="
+    },
+    "@babel/core@7.24.0": {
+      "integrity": "sha512-Rio0a2gu0RVFZzEH3u2fw1Ngq/agvFJzS3gqdU7CnklUNZUt6p3h1xMP5wVkH46vSF5u+rdV46JWApfYJTMRSg=="
+    }
+  },
+  "jsr": {
+    "@std/assert@1.0.0": {
+      "integrity": "sha512-Rio0a2gu0RVFZzEH3u2fw1Ngq/agvFJzS3gqdU7CnklUNZUt6p3h1xMP5wVkH46vSF5u+rdV46JWApfYJTMRSg=="
+    }
+  },
+  "remote": {}
+}

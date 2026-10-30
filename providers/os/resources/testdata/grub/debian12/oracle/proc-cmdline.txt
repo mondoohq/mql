@@ -1,0 +1,1 @@
+BOOT_IMAGE=/boot/vmlinuz-6.1.0-53-cloud-amd64 root=PARTUUID=8345f4e4-b614-44da-9f49-14074ca75764 ro console=tty0 console=ttyS0,115200 earlyprintk=ttyS0,115200 consoleblank=0

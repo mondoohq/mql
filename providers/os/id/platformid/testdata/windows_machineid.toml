@@ -1,0 +1,2 @@
+[commands."powershell -c \"Get-WmiObject -Query 'SELECT UUID FROM Win32_ComputerSystemProduct' | Select-Object -ExpandProperty UUID\""]
+stdout = "03ED6348-E1A9-4DE1-AA28-0CFEDB954237\r\n"

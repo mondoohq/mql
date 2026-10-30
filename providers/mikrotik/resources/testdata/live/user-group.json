@@ -1,0 +1,32 @@
+[
+ {
+  ".id": "*1",
+  "name": "read",
+  "policy": "local,telnet,ssh,reboot,read,test,winbox,password,web,sniff,sensitive,api,romon,rest-api,!ftp,!write,!policy",
+  "skin": "default"
+ },
+ {
+  ".id": "*2",
+  "name": "write",
+  "policy": "local,telnet,ssh,reboot,read,write,test,winbox,password,web,sniff,sensitive,api,romon,rest-api,!ftp,!policy",
+  "skin": "default"
+ },
+ {
+  ".id": "*3",
+  "name": "full",
+  "policy": "local,telnet,ssh,ftp,reboot,read,write,policy,test,winbox,password,web,sniff,sensitive,api,romon,rest-api",
+  "skin": "default"
+ },
+ {
+  ".id": "*4",
+  "name": "lab-readonly",
+  "policy": "read,test,winbox,api,!local,!telnet,!ssh,!ftp,!reboot,!write,!policy,!password,!web,!sniff,!sensitive,!romon,!rest-api",
+  "skin": "default"
+ },
+ {
+  ".id": "*5",
+  "name": "lab-sensitive",
+  "policy": "read,write,test,sensitive,api,!local,!telnet,!ssh,!ftp,!reboot,!policy,!winbox,!password,!web,!sniff,!romon,!rest-api",
+  "skin": "default"
+ }
+]

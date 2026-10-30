@@ -5,6 +5,7 @@ package nfs
 
 import (
 	"io"
+	"slices"
 	"strings"
 )
 
@@ -96,12 +97,7 @@ func splitBSDLine(line string) (paths, options, hosts []string) {
 }
 
 func bsdReadOnly(options []string) bool {
-	for _, o := range options {
-		if o == "-ro" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(options, "-ro")
 }
 
 func bsdNoRootSquash(options []string) bool {

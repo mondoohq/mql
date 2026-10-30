@@ -10,15 +10,15 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream/gql"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream/mvd"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream/mvd/cvss"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream/gql"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream/mvd"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream/mvd/cvss"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 // TODO: generalize this kind of function
@@ -119,7 +119,7 @@ func getAdvisoryReport(runtime *plugin.Runtime) (*mvd.VulnReport, error) {
 	}
 
 	// get new gql client
-	mondooClient, err := gql.NewClient(&mcc.UpstreamConfig, mcc.HttpClient)
+	mondooClient, err := gql.NewClient(&mcc.UpstreamConfig, mcc.HttpClient, gql.WithProvider("os"))
 	if err != nil {
 		return nil, err
 	}

@@ -7,11 +7,11 @@ import (
 	"context"
 	"fmt"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/appengine/v1"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
@@ -213,18 +213,19 @@ func (g *mqlGcpProjectAppEngineServiceService) versions() ([]any, error) {
 			}
 
 			mqlVersion, err := CreateResource(g.MqlRuntime, "gcp.project.appEngineService.version", map[string]*llx.RawData{
-				"projectId":          llx.StringData(projectId),
-				"serviceId":          llx.StringData(serviceId),
-				"id":                 llx.StringData(v.Id),
-				"name":               llx.StringData(v.Name),
-				"servingStatus":      llx.StringData(v.ServingStatus),
-				"runtime":            llx.StringData(v.Runtime),
-				"env":                llx.StringData(v.Env),
-				"createTime":         llx.TimeDataPtr(parseTime(v.CreateTime)),
-				"runtimeApiVersion":  llx.StringData(v.RuntimeApiVersion),
-				"vpcAccessConnector": llx.DictData(vpcConnector),
-				"handlers":           llx.ArrayData(handlers, types.Dict),
-				"inboundServices":    llx.ArrayData(convert.SliceAnyToInterface(v.InboundServices), types.String),
+				"projectId":                llx.StringData(projectId),
+				"serviceId":                llx.StringData(serviceId),
+				"id":                       llx.StringData(v.Id),
+				"name":                     llx.StringData(v.Name),
+				"servingStatus":            llx.StringData(v.ServingStatus),
+				"runtime":                  llx.StringData(v.Runtime),
+				"env":                      llx.StringData(v.Env),
+				"createTime":               llx.TimeDataPtr(parseTime(v.CreateTime)),
+				"runtimeApiVersion":        llx.StringData(v.RuntimeApiVersion),
+				"vpcAccessConnector":       llx.DictData(vpcConnector),
+				"handlers":                 llx.ArrayData(handlers, types.Dict),
+				"inboundServices":          llx.ArrayData(convert.SliceAnyToInterface(v.InboundServices), types.String),
+				"appEngineBundledServices": llx.ArrayData(convert.SliceAnyToInterface(v.AppEngineBundledServices), types.String),
 			})
 			if err != nil {
 				return err

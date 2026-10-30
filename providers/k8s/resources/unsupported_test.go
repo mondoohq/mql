@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/manifest"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared"
-	sharedres "go.mondoo.com/mql/v13/providers/k8s/connection/shared/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/k8s/connection/manifest"
+	"go.mondoo.com/mql/providers/k8s/connection/shared"
+	sharedres "go.mondoo.com/mql/providers/k8s/connection/shared/resources"
 )
 
 func TestManifestFile_OutdatedApi(t *testing.T) {

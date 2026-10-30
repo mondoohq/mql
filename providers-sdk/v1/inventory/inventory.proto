@@ -7,7 +7,7 @@ package cnquery.providers.v1;
 import "providers-sdk/v1/upstream/upstream.proto";
 import "providers-sdk/v1/vault/vault.proto";
 
-option go_package = "go.mondoo.com/mql/v13/providers-sdk/v1/inventory";
+option go_package = "go.mondoo.com/mql/providers-sdk/v1/inventory";
 
 enum State {
   // protolint:disable:next ENUM_FIELD_NAMES_ZERO_VALUE_END_WITH
@@ -73,6 +73,9 @@ message Asset {
   // indicator is this is an inventory object or a CI/CD run
   AssetCategory category = 32;
 
+  // DEPRECATED in v14: flat, provenance-blind list of related assets, consumed
+  // server-side. Superseded by `relationships` (ADR 030), which anchors each
+  // edge to the resource that produced it. Kept for backward compatibility.
   repeated Asset related_assets = 33;
 
   string managed_by = 34;
@@ -83,6 +86,83 @@ message Asset {
   string kind_string = 36;
   string fqdn = 37;
   string trace_id = 38;
+
+  // Resource-anchored relationships to other assets (ADR 030). Each edge
+  // names the counterparty asset and the resource on it that anchors the edge.
+  repeated AssetRelationship relationships = 39;
+
+  // Preview: may still change (cnspec ADR-0006).
+  // The mondoo.yml found at the root this asset was scanned from, as the
+  // provider found it at connect time. Only the provider knows where that
+  // root is, which may be a temporary clone (cnspec ADR-0006).
+  ContextConfig context_config = 40;
+
+  // Preview: may still change.
+  // Facts a discoverer or connection observed about the thing this asset
+  // identifies, as kind-tagged claims. The server uses them to recognise the
+  // same thing across scans and to reuse earlier results.
+  repeated AssetClaim claims = 41;
+}
+
+// Preview: may still change (cnspec ADR-0006).
+// ContextConfig is a config file found at a scanned root. The content is
+// carried unparsed: it is untrusted input, written by anyone who can change
+// the scanned repository, and consumers parse it into their own restricted
+// schema rather than into the client configuration.
+message ContextConfig {
+  // raw file content
+  bytes content = 1;
+  // where the file was found
+  ConfigOrigin origin = 2;
+  // this asset's path relative to the directory holding the config, slash
+  // separated: "." for that directory itself, empty when the asset has no
+  // path below it (a repository asset, for instance)
+  string asset_path = 3;
+}
+
+// Preview: may still change (cnspec ADR-0006).
+// ConfigOrigin names the file a context config was read from, so reports can
+// name the file that governed a result.
+message ConfigOrigin {
+  // provider that found the file, e.g. "terraform" or "github"
+  string provider = 1;
+  // repository the file was read from, e.g. "github.com/org/repo"; empty for
+  // a local directory
+  string repository = 2;
+  // ref the file was read at (branch, tag or commit), where known
+  string ref = 3;
+  // path of the file: relative to the repository root when repository is set,
+  // otherwise the path on the machine that read it
+  string path = 4;
+}
+
+// Preview: may still change.
+// AssetClaim is a set of facts about what an asset is, tagged with a kind that
+// says how to read them. It is kind-generic: the claims map carries the
+// kind's fields as strings (e.g. the digest, ref and arch of a container
+// image), so new kinds do not need a new message.
+message AssetClaim {
+  // what the claims describe, e.g. "container-image"
+  string kind = 1;
+  // the kind's facts, keyed by field name
+  map<string, string> claims = 2;
+  // optional signature over the claims (JWS compact serialization); empty
+  // when the claim is unsigned
+  string signature = 3;
+}
+
+// AssetRelationship is a directed, resource-anchored edge to another asset. An
+// edge has two ends, and the anchor resource is meaningless without the asset
+// that owns it, so the message names both: the counterparty `asset` (a full
+// Asset, like `related_assets`, so identity is unrestricted) and the resource
+// on that asset that anchors the relationship. See ADR 030.
+message AssetRelationship {
+  // the asset at the other end of the edge (e.g. the parent/host that owns the
+  // anchor resource), referenced as an Asset (stub or full)
+  Asset asset = 1;
+  // the anchor resource on `asset`
+  string resource_type = 2;
+  string resource_id = 3;
 }
 
 // AssetUrlBranch defines the hierarchy into which an asset can be placed. It
@@ -117,90 +197,9 @@ message AssetUrlBranch {
   string parent_value = 22;
 }
 
-// FIXME: DEPRECATED, remove in v10.0 (or later) vv
-enum ProviderType {
-  // protolint:disable:next ENUM_FIELD_NAMES_ZERO_VALUE_END_WITH
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  LOCAL_OS = 0;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  DOCKER_ENGINE_IMAGE = 1;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  DOCKER_ENGINE_CONTAINER = 2;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  SSH = 3;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  WINRM = 4;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  AWS_SSM_RUN_COMMAND = 5;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  CONTAINER_REGISTRY = 6;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  TAR = 7;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  MOCK = 8;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  VSPHERE = 9;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  ARISTAEOS = 10;
-  reserved 11;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  AWS = 12;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  GCP = 13;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  AZURE = 14;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  MS365 = 15;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  IPMI = 16;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  VSPHERE_VM = 17;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  FS = 18;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  K8S = 19;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  EQUINIX_METAL = 20;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  DOCKER = 21; // unspecified if this is a container or image
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  GITHUB = 22;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  VAGRANT = 23;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  AWS_EC2_EBS = 24;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  GITLAB = 25;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  TERRAFORM = 26;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  HOST = 27;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  UNKNOWN = 28;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  OKTA = 29;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  GOOGLE_WORKSPACE = 30;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  SLACK = 31;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  VCD = 32;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  OCI = 33;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  OPCUA = 34;
-  // protolint:disable:next ENUM_FIELD_NAMES_PREFIX
-  GCP_COMPUTE_INSTANCE_SNAPSHOT =35;
-}
-
 message Config {
-  reserved 6, 7, 9, 10, 20;
-  // FIXME: DEPRECATED, remove in v10.0 (or later) vv
-  // This is replaced by type. We use a different number here so it doesn't
-  // conflict with the old "backend" while allowing us to load the field from 
-  // yaml.
-  ProviderType backend = 28;
-  // ^^
+  // 28 was the deprecated "backend" field, replaced by "type".
+  reserved 6, 7, 9, 10, 20, 28;
 
   string host = 2;
   // Ports are not int by default, eg. docker://centos:latest parses a string 
@@ -278,7 +277,7 @@ message TypeMeta {
   // represents. Servers may infer this from the endpoint the client submits 
   // requests to. Cannot be updated. In CamelCase.
   // More info:
-  // https://github.com/kubernetes/community/blob/master/contributors/
+  // https://github.com/kubernetes/community/tree/main/contributors/
   // devel/sig-architecture/api-conventions.md#types-kinds
   // +optional
   string kind = 1;
@@ -287,7 +286,7 @@ message TypeMeta {
   // object. Servers should convert recognized schemas to the latest internal 
   // value, and may reject unrecognized values.
   // More info:
-  // https://github.com/kubernetes/community/blob/master/contributors/
+  // https://github.com/kubernetes/community/tree/main/contributors/
   // devel/sig-architecture/api-conventions.md#resources
   // +optional
   // protolint:disable:next FIELD_NAMES_LOWER_SNAKE_CASE
@@ -303,7 +302,9 @@ message ObjectMeta {
   // generation of an appropriate name automatically. Name is primarily intended
   // for creation idempotence and configuration definition.
   // Cannot be updated.
-  // More info: http://kubernetes.io/docs/user-guide/identifiers#names
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // names/#names
   // +optional
   string name = 1;
 
@@ -314,21 +315,27 @@ message ObjectMeta {
   //
   // Must be a DNS_LABEL.
   // Cannot be updated.
-  // More info: http://kubernetes.io/docs/user-guide/namespaces
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // namespaces/
   // +optional
   string namespace = 3;
 
   // Map of string keys and values that can be used to organize and categorize
   // (scope and select) objects. May match selectors of replication controllers
   // and services.
-  // More info: http://kubernetes.io/docs/user-guide/labels
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // labels/
   // +optional
   map<string, string> labels = 11;
 
   // Annotations is an unstructured key value map stored with a resource that \
   // may be set by external tools to store and retrieve arbitrary metadata. They
   // are not queryable and should be preserved when modifying objects.
-  // More info: http://kubernetes.io/docs/user-guide/annotations
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // annotations/
   // +optional
   map<string, string> annotations = 12;
 
@@ -375,16 +382,20 @@ message OwnerReference {
 
   // Kind of the referent.
   // More info:
-  // https://github.com/kubernetes/community/blob/master/contributors/
+  // https://github.com/kubernetes/community/tree/main/contributors/
   // devel/sig-architecture/api-conventions.md#types-kinds
   string kind = 1;
 
   // Name of the referent.
-  // More info: http://kubernetes.io/docs/user-guide/identifiers#names
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // names/#names
   string name = 3;
 
   // UID of the referent.
-  // More info: http://kubernetes.io/docs/user-guide/identifiers#uids
+  // More info:
+  // https://kubernetes.io/docs/concepts/overview/working-with-objects/
+  // names/#uids
   string uid = 4;
 }
 
@@ -392,7 +403,7 @@ message OwnerReference {
 message Inventory {
   // Standard object's metadata.
   // More info:
-  // https://github.com/kubernetes/community/blob/master/contributors/
+  // https://github.com/kubernetes/community/tree/main/contributors/
   // devel/sig-architecture/api-conventions.md#metadata
   ObjectMeta metadata = 1;
 

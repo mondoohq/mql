@@ -4,15 +4,14 @@
 package resources
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 const defaultWindsurfConfigDir = ".codeium/windsurf"
@@ -25,7 +24,7 @@ func (r *mqlWindsurf) id() (string, error) {
 	return "windsurf/" + r.ConfigPath.Data, nil
 }
 
-func (r *mqlWindsurf) rules() ([]interface{}, error) {
+func (r *mqlWindsurf) rules() ([]any, error) {
 	afs := connectionAfs(r.MqlRuntime)
 	memoriesDir := filepath.Join(r.ConfigPath.Data, "memories")
 
@@ -37,7 +36,7 @@ func (r *mqlWindsurf) rules() ([]interface{}, error) {
 		return nil, err
 	}
 
-	var result []interface{}
+	var result []any
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -69,12 +68,13 @@ func (r *mqlWindsurf) rules() ([]interface{}, error) {
 	return result, nil
 }
 
-func (r *mqlWindsurf) mcpServers() ([]interface{}, error) {
+func (r *mqlWindsurf) mcpServers() ([]any, error) {
 	afs := connectionAfs(r.MqlRuntime)
 	configDir := r.ConfigPath.Data
 
 	// Windsurf stores MCP config in mcp_config.json
-	data, err := afs.ReadFile(filepath.Join(configDir, "mcp_config.json"))
+	configFile := filepath.Join(configDir, "mcp_config.json")
+	data, err := afs.ReadFile(configFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -83,24 +83,32 @@ func (r *mqlWindsurf) mcpServers() ([]interface{}, error) {
 	}
 
 	var config windsurfMCPConfig
-	if err := json.Unmarshal(data, &config); err != nil {
+	if err := unmarshalJSONConfig(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse windsurf mcp_config.json: %w", err)
 	}
 
-	var result []interface{}
+	var result []any
 	for name, server := range config.McpServers {
-		argsAny := make([]interface{}, len(server.Args))
-		for i, a := range server.Args {
-			argsAny[i] = a
+		url := server.URL
+		if url == "" {
+			url = server.ServerURL
 		}
 
-		res, err := NewResource(r.MqlRuntime, "windsurf.mcpServer", map[string]*llx.RawData{
+		fields := map[string]*llx.RawData{
 			"__id":    llx.StringData("windsurf.mcpServer/" + name),
 			"name":    llx.StringData(name),
+			"type":    llx.StringData(deriveMcpTransport(server.Type, server.Command, url)),
 			"command": llx.StringData(server.Command),
-			"args":    llx.ArrayData(argsAny, types.String),
+			"args":    mcpArgsData(server.Args),
+			"url":     llx.StringData(redactURL(url)),
 			"hasEnv":  llx.BoolData(len(server.Env) > 0),
-		})
+
+			"hasHeaders":  llx.BoolData(len(server.Headers) > 0),
+			"headerNames": mcpHeaderNamesData(mapKeys(server.Headers)),
+			"source":      llx.StringData(configFile),
+		}
+		setMcpServerShape(fields, server.Command, server.Args, url, mapKeys(server.Env))
+		res, err := NewResource(r.MqlRuntime, "windsurf.mcpServer", fields)
 		if err != nil {
 			return nil, err
 		}
@@ -109,49 +117,9 @@ func (r *mqlWindsurf) mcpServers() ([]interface{}, error) {
 	return result, nil
 }
 
-func (r *mqlWindsurf) skills() ([]interface{}, error) {
-	afs := connectionAfs(r.MqlRuntime)
-	// Windsurf skills live at ~/.codeium/windsurf/skills/
-	skillsDir := filepath.Join(r.ConfigPath.Data, "skills")
-
-	subdirs, err := listSubdirsAfero(afs, skillsDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	var result []interface{}
-	for _, dir := range subdirs {
-		skillPath := filepath.Join(dir.path, "SKILL.md")
-		data, err := afs.ReadFile(skillPath)
-		if err != nil {
-			continue
-		}
-
-		skill := parseSkillMd(dir.name, skillPath, string(data))
-
-		allowedToolsAny := make([]interface{}, len(skill.allowedTools))
-		for i, t := range skill.allowedTools {
-			allowedToolsAny[i] = t
-		}
-
-		res, err := NewResource(r.MqlRuntime, "windsurf.skill", map[string]*llx.RawData{
-			"__id":         llx.StringData("windsurf.skill/" + dir.name),
-			"name":         llx.StringData(skill.name),
-			"description":  llx.StringData(skill.description),
-			"allowedTools": llx.ArrayData(allowedToolsAny, types.String),
-			"argumentHint": llx.StringData(skill.argumentHint),
-			"source":       llx.StringData(skill.source),
-			"content":      llx.StringData(skill.content),
-		})
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, res)
-	}
-	return result, nil
+func (r *mqlWindsurf) skills() ([]any, error) {
+	return agentSkills(r.MqlRuntime, "windsurf.skill", r.ConfigPath.Data, defaultWindsurfConfigDir,
+		filepath.Join(defaultWindsurfConfigDir, "skills"), filepath.Join(r.ConfigPath.Data, "skills"))
 }
 
 // Child resource ID methods
@@ -160,16 +128,42 @@ func (r *mqlWindsurfRule) id() (string, error) {
 	return "windsurf.rule/" + r.Name.Data, nil
 }
 
+func (r *mqlWindsurf) repos() ([]any, error) {
+	folders, err := vscodeWorkspaceFolders(r.MqlRuntime, "Windsurf")
+	if err != nil {
+		return nil, err
+	}
+	return gitReposFromPaths(r.MqlRuntime, "windsurf.repo", folders)
+}
+
+func (r *mqlWindsurfRepo) id() (string, error) {
+	return "windsurf.repo/" + r.Path.Data, nil
+}
+
+func (r *mqlWindsurfMcpServer) running() (*llx.AssetValue, error) {
+	return mcpServerAsset(r), nil
+}
+
+// MqlAsset implements plugin.AssetSource: the asset the `running` anchor stands
+// for, with the connection needed to reach it. See mcpServerAssetFor.
+func (r *mqlWindsurfMcpServer) MqlAsset() (*inventory.Asset, error) {
+	return mcpServerAssetFor(r.MqlRuntime, r)
+}
+
 func (r *mqlWindsurfMcpServer) id() (string, error) {
 	return "windsurf.mcpServer/" + r.Name.Data, nil
 }
 
 func (r *mqlWindsurfSkill) id() (string, error) {
-	return "windsurf.skill/" + r.Name.Data, nil
+	return "windsurf.skill/" + r.Source.Data, nil
 }
 
 func (r *mqlWindsurfSkill) sha256() (string, error) {
 	return contentSHA256(r.Content.Data), nil
+}
+
+func (r *mqlWindsurfSkill) purl() (string, error) {
+	return skillPURL(connectionAfs(r.MqlRuntime), r.Source.Data), nil
 }
 
 // Helper types
@@ -179,7 +173,11 @@ type windsurfMCPConfig struct {
 }
 
 type windsurfMCPServer struct {
-	Command string            `json:"command"`
-	Args    []string          `json:"args"`
-	Env     map[string]string `json:"env"`
+	Type      string            `json:"type"`
+	Command   string            `json:"command"`
+	Args      []string          `json:"args"`
+	URL       string            `json:"url"`
+	ServerURL string            `json:"serverUrl"`
+	Env       map[string]string `json:"env"`
+	Headers   map[string]string `json:"headers"`
 }

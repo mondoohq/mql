@@ -7,8 +7,6 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"fmt"
-	"strings"
 	"time"
 
 	abstractions "github.com/microsoft/kiota-abstractions-go"
@@ -16,12 +14,11 @@ import (
 
 	"github.com/microsoftgraph/msgraph-sdk-go/applications"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
-	"github.com/microsoftgraph/msgraph-sdk-go/serviceprincipals"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlMicrosoft) applications() (*mqlMicrosoftApplications, error) {
@@ -168,31 +165,9 @@ func newMqlMicrosoftApplication(runtime *plugin.Runtime, app models.Applicationa
 		nativeAuthenticationApisEnabled = &val
 	}
 
-	mqlAppRoleList := []any{}
-	appRoles := app.GetAppRoles()
-	for i := range appRoles {
-		appRole := appRoles[i]
-
-		uuid := appRole.GetId()
-		if uuid == nil {
-			log.Debug().Msg("appRole ID is nil")
-			continue
-		}
-
-		mqlAppRoleResource, err := CreateResource(runtime, "microsoft.application.role",
-			map[string]*llx.RawData{
-				"__id":               llx.StringData(uuid.String()),
-				"id":                 llx.StringData(uuid.String()),
-				"name":               llx.StringDataPtr(appRole.GetDisplayName()),
-				"description":        llx.StringDataPtr(appRole.GetDescription()),
-				"value":              llx.StringDataPtr(appRole.GetValue()),
-				"allowedMemberTypes": llx.ArrayData(convert.SliceAnyToInterface(appRole.GetAllowedMemberTypes()), types.String),
-				"isEnabled":          llx.BoolDataPtr(appRole.GetIsEnabled()),
-			})
-		if err != nil {
-			return nil, err
-		}
-		mqlAppRoleList = append(mqlAppRoleList, mqlAppRoleResource)
+	mqlAppRoleList, err := newMqlMicrosoftApplicationRoles(runtime, convert.ToValue(app.GetId()), app.GetAppRoles())
+	if err != nil {
+		return nil, err
 	}
 
 	mqlResource, err := CreateResource(runtime, "microsoft.application",
@@ -201,7 +176,7 @@ func newMqlMicrosoftApplication(runtime *plugin.Runtime, app models.Applicationa
 			"id":                                llx.StringDataPtr(app.GetId()),
 			"appId":                             llx.StringDataPtr(app.GetAppId()),
 			"applicationTemplateId":             llx.StringDataPtr(app.GetApplicationTemplateId()),
-			"createdAt":                         llx.TimeDataPtr(app.GetCreatedDateTime()),
+			"createdAt":                         graphTimeData(app.GetCreatedDateTime()),
 			"disabledByMicrosoftStatus":         llx.StringDataPtr(app.GetDisabledByMicrosoftStatus()),
 			"groupMembershipClaims":             llx.StringDataPtr(app.GetGroupMembershipClaims()),
 			"name":                              llx.StringDataPtr(app.GetDisplayName()),
@@ -289,9 +264,7 @@ func fetchApplicationIdByName(runtime *plugin.Runtime, name string) (*string, er
 		return nil, err
 	}
 
-	// OData escapes embedded single quotes by doubling them, not URL-escaping;
-	// the SDK handles URL encoding of the final filter string.
-	filter := fmt.Sprintf("displayName eq '%s'", strings.ReplaceAll(name, "'", "''"))
+	filter := odataEqFilter("displayName", name)
 	ctx := context.Background()
 	resp, err := graphClient.Applications().Get(ctx, &applications.ApplicationsRequestBuilderGetRequestConfiguration{
 		QueryParameters: &applications.ApplicationsRequestBuilderGetQueryParameters{
@@ -351,31 +324,45 @@ func (a *mqlMicrosoftApplication) hasExpiredCredentials() (bool, error) {
 }
 
 func (a *mqlMicrosoftApplication) servicePrincipal() (*mqlMicrosoftServiceprincipal, error) {
-	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
-	graphClient, err := conn.GraphClient()
+	// Resolve from the tenant's service principal list rather than running one
+	// filtered Graph query per application. microsoft.serviceprincipals is a
+	// single paginated call and is memoized on the microsoft resource, so the
+	// whole set costs one fetch however many applications ask.
+	//
+	// Measured on a 72-application tenant: reading servicePrincipal for every
+	// application took 123s through the per-application filter and 4s to list
+	// the applications alone. Graph throttles on request volume, so the cost
+	// grows faster than linearly on a tenant with thousands of registrations.
+	msResource, err := CreateResource(a.MqlRuntime, "microsoft", map[string]*llx.RawData{})
 	if err != nil {
 		return nil, err
 	}
-
-	ctx := context.Background()
-	filter := fmt.Sprintf("appId eq '%s'", a.GetAppId().Data)
-	resp, err := graphClient.ServicePrincipals().Get(ctx, &serviceprincipals.ServicePrincipalsRequestBuilderGetRequestConfiguration{
-		QueryParameters: &serviceprincipals.ServicePrincipalsRequestBuilderGetQueryParameters{
-			Filter: &filter,
-		},
-	})
-	if err != nil {
-		return nil, err
+	principals := msResource.(*mqlMicrosoft).GetServiceprincipals()
+	if principals.Error != nil {
+		return nil, principals.Error
 	}
 
-	servicePrincipals := resp.GetValue()
-	if len(servicePrincipals) == 0 {
-		return nil, errors.New("service principal not found")
+	wantAppId := a.GetAppId().Data
+	if wantAppId != "" {
+		for i := range principals.Data {
+			sp, ok := principals.Data[i].(*mqlMicrosoftServiceprincipal)
+			if !ok {
+				continue
+			}
+			if sp.AppId.Data == wantAppId {
+				return sp, nil
+			}
+		}
 	}
-	if len(servicePrincipals) > 1 {
-		return nil, errors.New("multiple service principals found")
-	}
-	return newMqlMicrosoftServicePrincipal(a.MqlRuntime, servicePrincipals[0])
+
+	// Not every application registration has a service principal in this
+	// tenant -- a multi-tenant app nobody has consented to has none -- so this
+	// is a legitimate empty state rather than a failure. The field has to be
+	// marked set-and-null before returning nil: without it the runtime does not
+	// know the field was resolved, and the query fails for an application whose
+	// only problem is that it is exactly what it claims to be.
+	a.ServicePrincipal.State = plugin.StateIsNull | plugin.StateIsSet
+	return nil, nil
 }
 
 func (a *mqlMicrosoftApplication) owners() ([]any, error) {
@@ -409,45 +396,57 @@ func (a *mqlMicrosoftApplication) owners() ([]any, error) {
 		return nil, err
 	}
 
-	res := []any{}
-	for _, owner := range owners {
-		ownerId := owner.GetId()
-		if ownerId == nil {
-			continue
-		}
+	return newMqlOwnerUsers(mqlMicrosoftResource, userOwners(owners))
+}
 
+// newMqlOwnerUsers turns the user owners of an application or service
+// principal into microsoft.user resources, reusing a user that is already
+// indexed.
+func newMqlOwnerUsers(ms *mqlMicrosoft, users []models.Userable) ([]any, error) {
+	res := []any{}
+	for _, user := range users {
 		// if the user is already indexed, we can reuse it
-		userResource, ok := mqlMicrosoftResource.userById(*ownerId)
-		if ok {
+		if userResource, ok := ms.userById(*user.GetId()); ok {
 			res = append(res, userResource)
 			continue
 		}
 
-		// When the owner is a user, build the resource from the data
-		// already on the response — avoids a second Graph round-trip via
-		// initMicrosoftUser when callers read common user fields.
-		if user, ok := owner.(models.Userable); ok {
-			newUser, err := newMqlMicrosoftUser(a.MqlRuntime, user)
-			if err != nil {
-				return nil, err
-			}
-			mqlMicrosoftResource.indexUser(newUser)
-			res = append(res, newUser)
-			continue
-		}
-
-		// non-user owners (groups, service principals) fall back to the
-		// lazy reference so the framework can resolve them on demand.
-		newUserResource, err := a.MqlRuntime.NewResource(a.MqlRuntime, "microsoft.user", map[string]*llx.RawData{
-			"id": llx.StringDataPtr(ownerId),
-		})
+		// Build the resource from the data already on the response, which
+		// avoids a second Graph round-trip via initMicrosoftUser when callers
+		// read common user fields.
+		newUser, err := newMqlMicrosoftUser(ms.MqlRuntime, user)
 		if err != nil {
 			return nil, err
 		}
-		mqlMicrosoftResource.indexUser(newUserResource.(*mqlMicrosoftUser))
-		res = append(res, newUserResource)
+		ms.indexUser(newUser)
+		res = append(res, newUser)
 	}
 	return res, nil
+}
+
+// userOwners returns the owners that are users. An application can also be
+// owned by a service principal, which is common for apps created by
+// automation. Such an owner is not a microsoft.user: resolving its id as one
+// asks Graph for /users/{id}, which fails with not found and would fail the
+// whole owners list, so it is skipped.
+func userOwners(owners []models.DirectoryObjectable) []models.Userable {
+	res := make([]models.Userable, 0, len(owners))
+	for _, owner := range owners {
+		if owner == nil || owner.GetId() == nil {
+			continue
+		}
+		user, ok := owner.(models.Userable)
+		if !ok {
+			odataType := ""
+			if t := owner.GetOdataType(); t != nil {
+				odataType = *t
+			}
+			log.Debug().Str("owner", *owner.GetId()).Str("type", odataType).Msg("skipping application owner that is not a user")
+			continue
+		}
+		res = append(res, user)
+	}
+	return res
 }
 
 // newMqlMicrosoftKeyCredential creates a new mqlMicrosoftKeyCredential resource
@@ -466,9 +465,9 @@ func newMqlMicrosoftKeyCredential(runtime *plugin.Runtime, app models.KeyCredent
 			"usage":         llx.StringDataPtr(app.GetUsage()),
 			"thumbprint":    llx.StringData(base64.StdEncoding.EncodeToString(app.GetCustomKeyIdentifier())),
 			"type":          llx.StringDataPtr(app.GetTypeEscaped()),
-			"expires":       llx.TimeDataPtr(endDate),
+			"expires":       graphTimeData(endDate),
 			"expired":       llx.BoolData(expired),
-			"startDateTime": llx.TimeDataPtr(app.GetStartDateTime()),
+			"startDateTime": graphTimeData(app.GetStartDateTime()),
 		})
 	if err != nil {
 		return nil, err
@@ -490,12 +489,113 @@ func newMqlMicrosoftPasswordCredential(runtime *plugin.Runtime, app models.Passw
 			"keyId":         llx.StringData(app.GetKeyId().String()),
 			"description":   llx.StringDataPtr(app.GetDisplayName()),
 			"hint":          llx.StringDataPtr(app.GetHint()),
-			"expires":       llx.TimeDataPtr(endDate),
+			"expires":       graphTimeData(endDate),
 			"expired":       llx.BoolData(expired),
-			"startDateTime": llx.TimeDataPtr(app.GetStartDateTime()),
+			"startDateTime": graphTimeData(app.GetStartDateTime()),
 		})
 	if err != nil {
 		return nil, err
 	}
 	return mqlResource.(*mqlMicrosoftPasswordCredential), nil
+}
+
+// https://learn.microsoft.com/en-us/graph/api/federatedidentitycredential-list?view=graph-rest-1.0
+func (a *mqlMicrosoftApplication) federatedIdentityCredentials() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	resp, err := graphClient.Applications().ByApplicationId(a.Id.Data).FederatedIdentityCredentials().Get(ctx, nil)
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All")
+	}
+	creds, err := iterate[models.FederatedIdentityCredentialable](ctx, resp, graphClient.GetAdapter(), models.CreateFederatedIdentityCredentialCollectionResponseFromDiscriminatorValue)
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All")
+	}
+	return newMqlFederatedIdentityCredentials(a.MqlRuntime, a.Id.Data, creds)
+}
+
+// newMqlFederatedIdentityCredentials builds the federated identity credentials
+// of one application or service principal. A credential's id is only unique
+// within its parent, so the parent's object id is part of the resource id.
+func newMqlFederatedIdentityCredentials(runtime *plugin.Runtime, parentId string, creds []models.FederatedIdentityCredentialable) ([]any, error) {
+	res := []any{}
+	for _, cred := range creds {
+		if cred == nil || cred.GetId() == nil {
+			continue
+		}
+		audiences := []any{}
+		for _, aud := range cred.GetAudiences() {
+			audiences = append(audiences, aud)
+		}
+		mqlCred, err := CreateResource(runtime, "microsoft.application.federatedIdentityCredential", map[string]*llx.RawData{
+			"__id":        llx.StringData(parentId + "/federatedIdentityCredentials/" + *cred.GetId()),
+			"id":          llx.StringDataPtr(cred.GetId()),
+			"name":        llx.StringDataPtr(cred.GetName()),
+			"issuer":      llx.StringDataPtr(cred.GetIssuer()),
+			"subject":     llx.StringDataPtr(cred.GetSubject()),
+			"audiences":   llx.ArrayData(audiences, types.String),
+			"description": llx.StringDataPtr(cred.GetDescription()),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlCred)
+	}
+	return res, nil
+}
+
+// https://learn.microsoft.com/en-us/graph/api/resources/appmanagementpolicy?view=graph-rest-1.0
+func (a *mqlMicrosoftApplication) appManagementPolicies() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	resp, err := graphClient.Applications().ByApplicationId(a.Id.Data).AppManagementPolicies().Get(ctx, nil)
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All", "Policy.Read.All")
+	}
+	policies, err := iterate[models.AppManagementPolicyable](ctx, resp, graphClient.GetAdapter(), models.CreateAppManagementPolicyCollectionResponseFromDiscriminatorValue)
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All", "Policy.Read.All")
+	}
+	return newMqlAppManagementPolicies(a.MqlRuntime, policies)
+}
+
+// newMqlMicrosoftApplicationRoles creates the app roles published by an
+// application or service principal. Microsoft reuses appRole UUIDs across
+// different resource service principals with different text, so the resource
+// is keyed on the parent's object ID; the public id stays the role UUID.
+func newMqlMicrosoftApplicationRoles(runtime *plugin.Runtime, parentID string, appRoles []models.AppRoleable) ([]any, error) {
+	list := []any{}
+	for _, appRole := range appRoles {
+		uuid := appRole.GetId()
+		if uuid == nil {
+			log.Debug().Msg("appRole ID is nil")
+			continue
+		}
+
+		mqlAppRoleResource, err := CreateResource(runtime, "microsoft.application.role",
+			map[string]*llx.RawData{
+				"__id":               llx.StringData(parentID + "/appRoles/" + uuid.String()),
+				"id":                 llx.StringData(uuid.String()),
+				"name":               llx.StringDataPtr(appRole.GetDisplayName()),
+				"description":        llx.StringDataPtr(appRole.GetDescription()),
+				"value":              llx.StringDataPtr(appRole.GetValue()),
+				"allowedMemberTypes": llx.ArrayData(convert.SliceAnyToInterface(appRole.GetAllowedMemberTypes()), types.String),
+				"isEnabled":          llx.BoolDataPtr(appRole.GetIsEnabled()),
+			})
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, mqlAppRoleResource)
+	}
+	return list, nil
 }

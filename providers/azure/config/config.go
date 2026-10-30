@@ -4,22 +4,26 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/azure/connection/azureinstancesnapshot"
-	"go.mondoo.com/mql/v13/providers/azure/provider"
-	"go.mondoo.com/mql/v13/providers/azure/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/azure/connection/azureinstancesnapshot"
+	"go.mondoo.com/mql/providers/azure/provider"
+	"go.mondoo.com/mql/providers/azure/resources"
 )
 
 var Config = plugin.Provider{
 	Name:      "azure",
-	ID:        "go.mondoo.com/cnquery/v9/providers/azure",
-	Version:   "13.25.0",
+	ID:        "go.mondoo.com/mql/providers/azure",
+	Version:   "14.6.0",
 	Platforms: resources.Platforms,
 	ConnectionTypes: []string{
 		provider.ConnectionType,
 		string(azureinstancesnapshot.SnapshotConnectionType),
 	},
+	// Lower than the other clouds: ARM read throttling is scoped to the
+	// subscription, so it bites hardest in the common case where several assets
+	// share one.
+	DefaultParallelism: 6,
 	Connectors: []plugin.Connector{
 		{
 			Name:  "azure",
@@ -43,9 +47,7 @@ Examples run in the Azure CLI:
 				resources.DiscoveryInstances,
 				resources.DiscoveryInstancesApi,
 				resources.DiscoverySqlServers,
-				resources.DiscoveryPostgresServers,
 				resources.DiscoveryPostgresFlexibleServers,
-				resources.DiscoveryMySqlServers,
 				resources.DiscoveryMySqlFlexibleServers,
 				resources.DiscoveryAksClusters,
 				resources.DiscoveryAppServiceApps,
@@ -54,9 +56,12 @@ Examples run in the Azure CLI:
 				resources.DiscoveryStorageAccounts,
 				resources.DiscoveryStorageContainers,
 				resources.DiscoveryKeyVaults,
+				resources.DiscoveryManagedHsms,
+				resources.DiscoveryIotHubs,
 				resources.DiscoverySecurityGroups,
 				resources.DiscoveryCosmosDb,
 				resources.DiscoveryVirtualNetworks,
+				resources.DiscoveryCognitiveServices,
 			},
 			Flags: []plugin.Flag{
 				{
@@ -114,6 +119,18 @@ Examples run in the Azure CLI:
 					Default: "",
 					Desc:    "Path to a file containing an OIDC token to exchange via Azure workload identity federation",
 				},
+				{
+					Long:    "auth-method",
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Comma-separated sign-in methods to use when no client secret or certificate is given: cli, env, workload-identity, managed-identity (default: try all, in that order)",
+				},
+				{
+					Long:    "filters",
+					Type:    plugin.FlagType_KeyValue,
+					Default: "",
+					Desc:    "Filter options, e.g., --filters subscriptions=<id1>,<id2> --filters subscriptions-exclude=<id3> --filters tag:<key>=<value1>,<value2> --filters exclude:tag:<key>=<value> --filters propagate-subscription-tags=true --filters subscription-tag:<key>=<value>",
+				},
 			},
 		},
 	},
@@ -155,8 +172,9 @@ Examples run in the Azure CLI:
 										"other":           nil,
 									},
 								},
-								"keyvault": nil,
-								"cosmosdb": nil,
+								"keyvault":          nil,
+								"cosmosdb":          nil,
+								"cognitiveservices": nil,
 							},
 						},
 					},

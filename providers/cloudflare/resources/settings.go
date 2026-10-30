@@ -6,13 +6,15 @@ import (
 	"context"
 	"fmt"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/cloudflare/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/cloudflare/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // zoneSetting is the shape of a single entry returned by the bulk zone-settings
-// endpoint (`/zones/{id}/settings`). cloudflare-go v6 only exposes a typed
+// endpoint (`/zones/{id}/settings`). cloudflare-go only exposes a typed
 // per-setting Get, so we read the full set in one call via the client's generic
 // Get and pick out the settings we surface.
 type zoneSetting struct {
@@ -47,6 +49,40 @@ func extractSettingInt(settings []zoneSetting, id string) int64 {
 		return int64(v)
 	}
 	return 0
+}
+
+// extractSettingStrList pulls a zone setting whose value is a JSON array of
+// strings, such as the `ciphers` allowlist. An absent setting and one set to an
+// empty array both yield an empty slice: Cloudflare represents "use the plan
+// default set" as an empty array, so the two mean the same thing here.
+func extractSettingStrList(settings []zoneSetting, id string) []string {
+	raw, ok := extractSettingValue(settings, id).([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if str, ok := v.(string); ok {
+			out = append(out, str)
+		}
+	}
+	return out
+}
+
+// extractSettingNestedBool pulls a boolean out of a zone setting whose value is
+// an object, such as `nel` with its `{enabled: bool}` shape. It returns nil when
+// the setting is absent from the response or does not carry the key, so a
+// setting that was never reported is not reported as switched off.
+func extractSettingNestedBool(settings []zoneSetting, id, key string) *bool {
+	m, ok := extractSettingValue(settings, id).(map[string]any)
+	if !ok {
+		return nil
+	}
+	b, ok := m[key].(bool)
+	if !ok {
+		return nil
+	}
+	return &b
 }
 
 // extractHSTS pulls HSTS subfields from the `security_header` zone setting.
@@ -87,6 +123,13 @@ func (c *mqlCloudflareZone) settings() (*mqlCloudflareZoneSettings, error) {
 	}
 	uri := fmt.Sprintf("zones/%s/settings", c.Id.Data)
 	if err := conn.Cf.Get(context.Background(), uri, nil, &env); err != nil {
+		// A token that can read the zone but not its settings (403), or a plan
+		// without this endpoint (404), degrades to null rather than failing the
+		// whole zone traversal — matching botManagement() below.
+		if isUnavailable(err) {
+			c.Settings.State = plugin.StateIsNull | plugin.StateIsSet
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -119,6 +162,11 @@ func (c *mqlCloudflareZone) settings() (*mqlCloudflareZoneSettings, error) {
 		"hstsIncludeSubdomains":   llx.BoolData(hstsIncludeSubdomains),
 		"hstsPreload":             llx.BoolData(hstsPreload),
 		"hstsNoSniff":             llx.BoolData(hstsNoSniff),
+
+		"ciphers":           llx.ArrayData(convert.SliceAnyToInterface(extractSettingStrList(settings, "ciphers")), types.String),
+		"developmentMode":   llx.StringData(extractSettingStr(settings, "development_mode")),
+		"nelEnabled":        llx.BoolDataPtr(extractSettingNestedBool(settings, "nel", "enabled")),
+		"replaceInsecureJs": llx.StringData(extractSettingStr(settings, "replace_insecure_js")),
 	})
 	if err != nil {
 		return nil, err
@@ -128,7 +176,7 @@ func (c *mqlCloudflareZone) settings() (*mqlCloudflareZoneSettings, error) {
 }
 
 // botManagementSettings mirrors the zone bot-management response. cloudflare-go
-// v6 models this endpoint as a polymorphic union (each bot-management plan is a
+// models this endpoint as a polymorphic union (each bot-management plan is a
 // separate variant), so decoding into a single typed struct only populates one
 // variant's fields. We read the endpoint via the client's generic Get and decode
 // the full payload to keep every field the MQL schema exposes.

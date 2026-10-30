@@ -8,17 +8,29 @@ import (
 	"fmt"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/resources/windows"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/windows"
 )
 
-// fetchAuditpolEntries runs `auditpol /get /category:* /r` and parses its CSV
-// output. Shared by the windows.auditPolicy and (deprecated) auditpol
-// resources so both replay the same command.
+// fetchAuditpolEntries reads the audit policy of every subcategory. Shared by
+// the windows.auditPolicy and (deprecated) auditpol resources so both replay
+// the same command. A local scan on Windows with MONDOO_WINDOWS_NATIVE set
+// reads it through the audit policy API; every other scan, and a native read
+// that fails, runs windows.AuditpolScript. Both give the same entries.
 func fetchAuditpolEntries(runtime *plugin.Runtime) ([]windows.AuditpolEntry, error) {
+	if conn, ok := runtime.Connection.(shared.Connection); ok && shared.WindowsNative(conn) {
+		entries, err := windows.NativeAuditPolicy()
+		if err == nil {
+			return entries, nil
+		}
+		log.Debug().Err(err).Msg("could not read the audit policy natively, falling back to auditpol")
+	}
+
 	o, err := CreateResource(runtime, "powershell", map[string]*llx.RawData{
-		"script": llx.StringData("[Console]::OutputEncoding = [Text.Encoding]::UTF8;auditpol /get /category:* /r"),
+		"script": llx.StringData(windows.AuditpolScript),
 	})
 	if err != nil {
 		return nil, err
@@ -33,7 +45,24 @@ func fetchAuditpolEntries(runtime *plugin.Runtime) ([]windows.AuditpolEntry, err
 		return nil, fmt.Errorf("could not run auditpol: %s", strings.TrimSpace(cmd.Stderr.Data))
 	}
 
-	return windows.ParseAuditpol(strings.NewReader(out.Data))
+	entries, err := windows.ParseAuditpol(strings.NewReader(out.Data))
+	if err != nil {
+		return nil, err
+	}
+	// Every Windows release lists its subcategories; none means auditpol
+	// printed something else, such as an error, and the policy is unknown,
+	// not empty.
+	if len(entries) == 0 {
+		detail := strings.TrimSpace(out.Data)
+		if detail == "" {
+			detail = strings.TrimSpace(cmd.Stderr.Data)
+		}
+		if len(detail) > 200 {
+			detail = detail[:200]
+		}
+		return nil, fmt.Errorf("could not read the audit policy: auditpol reported no subcategories: %s", detail)
+	}
+	return entries, nil
 }
 
 func (p *mqlWindowsAuditPolicy) list() ([]any, error) {
@@ -45,19 +74,27 @@ func (p *mqlWindowsAuditPolicy) list() ([]any, error) {
 	subcategories := make([]any, len(entries))
 	for i := range entries {
 		entry := entries[i]
-		known, _ := windows.LookupAuditpolSubcategory(entry.SubcategoryGUID)
+		known, ok := windows.LookupAuditpolSubcategory(entry.SubcategoryGUID)
 		name := known.Name
 		if name == "" {
 			name = entry.Subcategory
 		}
-		flags := auditpolInclusionAudits(entry.InclusionSetting)
+		// a GUID the table does not carry has no known category; report null
+		// rather than an empty string, which would read as a real category and
+		// silently drop the subcategory out of every category filter
+		category := llx.NilData
+		if ok {
+			category = llx.StringData(known.Category)
+		}
+		success, failure, setting := auditpolFlagData(entry.Flags)
 		o, err := CreateResource(p.MqlRuntime, "windows.auditPolicy.subcategory", map[string]*llx.RawData{
 			"name":             llx.StringData(name),
 			"guid":             llx.StringData(entry.SubcategoryGUID),
-			"category":         llx.StringData(known.Category),
+			"category":         category,
 			"localizedName":    llx.StringData(entry.Subcategory),
-			"success":          llx.BoolData(flags.success),
-			"failure":          llx.BoolData(flags.failure),
+			"success":          success,
+			"failure":          failure,
+			"setting":          setting,
 			"inclusionSetting": llx.StringData(entry.InclusionSetting),
 			"exclusionSetting": llx.StringData(entry.ExclusionSetting),
 		})
@@ -126,6 +163,7 @@ func initWindowsAuditPolicySubcategory(runtime *plugin.Runtime, args map[string]
 	res.Guid.State = plugin.StateIsSet | plugin.StateIsNull
 	res.Category.State = plugin.StateIsSet | plugin.StateIsNull
 	res.LocalizedName.State = plugin.StateIsSet | plugin.StateIsNull
+	res.Setting.State = plugin.StateIsSet | plugin.StateIsNull
 	res.InclusionSetting.State = plugin.StateIsSet | plugin.StateIsNull
 	res.ExclusionSetting.State = plugin.StateIsSet | plugin.StateIsNull
 	res.__id, _ = res.id()

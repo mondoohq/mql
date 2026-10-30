@@ -1,0 +1,44 @@
+[
+ {
+  ".id": "*0",
+  "addresses": "::/0",
+  "authentication-password": "",
+  "authentication-protocol": "MD5",
+  "default": "true",
+  "disabled": "false",
+  "encryption-password": "",
+  "encryption-protocol": "DES",
+  "name": "public",
+  "read-access": "true",
+  "security": "none",
+  "write-access": "false"
+ },
+ {
+  ".id": "*1",
+  "addresses": "0.0.0.0/0",
+  "authentication-password": "",
+  "authentication-protocol": "MD5",
+  "default": "false",
+  "disabled": "false",
+  "encryption-password": "",
+  "encryption-protocol": "DES",
+  "name": "labpublic",
+  "read-access": "true",
+  "security": "none",
+  "write-access": "false"
+ },
+ {
+  ".id": "*2",
+  "addresses": "0.0.0.0/0",
+  "authentication-password": "REDACTED",
+  "authentication-protocol": "SHA1",
+  "default": "false",
+  "disabled": "false",
+  "encryption-password": "REDACTED",
+  "encryption-protocol": "AES",
+  "name": "labv3",
+  "read-access": "true",
+  "security": "private",
+  "write-access": "false"
+ }
+]

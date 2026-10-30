@@ -11,10 +11,10 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory/ansibleinventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory/domainlist"
-	"go.mondoo.com/mql/v13/utils/piped"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory/ansibleinventory"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory/domainlist"
+	"go.mondoo.com/mql/utils/piped"
 )
 
 func renderTemplate(data []byte) ([]byte, error) {

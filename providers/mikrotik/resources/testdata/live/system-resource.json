@@ -1,0 +1,21 @@
+[
+ {
+  "architecture-name": "x86_64",
+  "board-name": "CHR Amazon EC2 t3.small",
+  "build-time": "2026-07-03 09:08:08",
+  "cpu": "Intel(R)",
+  "cpu-count": "2",
+  "cpu-frequency": "2500",
+  "cpu-load": "1",
+  "factory-software": "7.1",
+  "free-hdd-space": "8479199232",
+  "free-memory": "1836228608",
+  "platform": "MikroTik",
+  "total-hdd-space": "8500187136",
+  "total-memory": "2113929216",
+  "uptime": "12m4s",
+  "version": "7.23.2 (stable)",
+  "write-sect-since-reboot": "90248",
+  "write-sect-total": "90248"
+ }
+]

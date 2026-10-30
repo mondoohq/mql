@@ -5,11 +5,13 @@ package resources
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/digitalocean/godo"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/digitalocean/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/digitalocean/connection"
 )
 
 // --- BYOIP prefixes ---
@@ -32,35 +34,25 @@ func byoipPrefixArgs(p *godo.BYOIPPrefix) map[string]*llx.RawData {
 	}
 }
 
-func (r *mqlDigitalocean) byoipPrefixes() ([]interface{}, error) {
+func (r *mqlDigitalocean) byoipPrefixes() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var all []interface{}
-	opt := &godo.ListOptions{PerPage: 200}
-	for {
-		prefixes, resp, err := client.BYOIPPrefixes.List(context.Background(), opt)
+	prefixes, err := paginate(context.Background(), client.BYOIPPrefixes.List)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(prefixes))
+	for _, p := range prefixes {
+		if p == nil {
+			continue
+		}
+		res, err := CreateResource(r.MqlRuntime, "digitalocean.byoipPrefix", byoipPrefixArgs(p))
 		if err != nil {
 			return nil, err
 		}
-		for _, p := range prefixes {
-			if p == nil {
-				continue
-			}
-			res, err := CreateResource(r.MqlRuntime, "digitalocean.byoipPrefix", byoipPrefixArgs(p))
-			if err != nil {
-				return nil, err
-			}
-			all = append(all, res)
-		}
-		if resp == nil || resp.Links == nil || resp.Links.IsLastPage() {
-			break
-		}
-		page, err := resp.Links.CurrentPage()
-		if err != nil {
-			return nil, err
-		}
-		opt.Page = page + 1
+		all = append(all, res)
 	}
 	return all, nil
 }
@@ -71,12 +63,17 @@ func initDigitaloceanByoipPrefix(runtime *plugin.Runtime, args map[string]*llx.R
 	}
 	uuid := stringArg(args, "uuid")
 	if uuid == "" {
-		return args, nil, nil
+		return nil, nil, errors.New("digitalocean.byoipPrefix requires a uuid")
 	}
 	conn := runtime.Connection.(*connection.DigitaloceanConnection)
 	p, _, err := conn.Client().BYOIPPrefixes.Get(context.Background(), uuid)
 	if err != nil {
 		return nil, nil, err
+	}
+	// godo returns the decoded root's field directly, so a 200 whose body
+	// carries no prefix yields a nil object with a nil error.
+	if p == nil {
+		return nil, nil, fmt.Errorf("digitalocean.byoipPrefix with uuid %q not found", uuid)
 	}
 	return byoipPrefixArgs(p), nil, nil
 }
@@ -85,11 +82,11 @@ func (r *mqlDigitaloceanByoipPrefix) project() (*mqlDigitaloceanProject, error) 
 	return projectRef(r.MqlRuntime, r.ProjectId.Data, &r.Project)
 }
 
-func (r *mqlDigitaloceanByoipPrefix) resources() ([]interface{}, error) {
+func (r *mqlDigitaloceanByoipPrefix) resources() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var all []interface{}
+	var all []any
 	opt := &godo.ListOptions{PerPage: 200}
 	for {
 		resources, resp, err := client.BYOIPPrefixes.GetResources(context.Background(), r.Uuid.Data, opt)
@@ -136,15 +133,15 @@ func (r *mqlDigitaloceanPartnerAttachment) id() (string, error) {
 // partnerAttachmentArgs maps a godo Partner Attachment to its MQL fields.
 // The BGP auth key is deliberately omitted — it is a shared secret.
 func partnerAttachmentArgs(p *godo.PartnerAttachment) map[string]*llx.RawData {
-	vpcIds := make([]interface{}, len(p.VPCIDs))
+	vpcIds := make([]any, len(p.VPCIDs))
 	for i, v := range p.VPCIDs {
 		vpcIds[i] = v
 	}
-	children := make([]interface{}, len(p.Children))
+	children := make([]any, len(p.Children))
 	for i, c := range p.Children {
 		children[i] = c
 	}
-	bgp := map[string]interface{}{
+	bgp := map[string]any{
 		"localAsn":      int64(p.BGP.LocalASN),
 		"localRouterIp": p.BGP.LocalRouterIP,
 		"peerAsn":       int64(p.BGP.PeerASN),
@@ -166,35 +163,25 @@ func partnerAttachmentArgs(p *godo.PartnerAttachment) map[string]*llx.RawData {
 	}
 }
 
-func (r *mqlDigitalocean) partnerAttachments() ([]interface{}, error) {
+func (r *mqlDigitalocean) partnerAttachments() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var all []interface{}
-	opt := &godo.ListOptions{PerPage: 200}
-	for {
-		attachments, resp, err := client.PartnerAttachment.List(context.Background(), opt)
+	attachments, err := paginate(context.Background(), client.PartnerAttachment.List)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(attachments))
+	for _, p := range attachments {
+		if p == nil {
+			continue
+		}
+		res, err := CreateResource(r.MqlRuntime, "digitalocean.partnerAttachment", partnerAttachmentArgs(p))
 		if err != nil {
 			return nil, err
 		}
-		for _, p := range attachments {
-			if p == nil {
-				continue
-			}
-			res, err := CreateResource(r.MqlRuntime, "digitalocean.partnerAttachment", partnerAttachmentArgs(p))
-			if err != nil {
-				return nil, err
-			}
-			all = append(all, res)
-		}
-		if resp == nil || resp.Links == nil || resp.Links.IsLastPage() {
-			break
-		}
-		page, err := resp.Links.CurrentPage()
-		if err != nil {
-			return nil, err
-		}
-		opt.Page = page + 1
+		all = append(all, res)
 	}
 	return all, nil
 }
@@ -205,17 +192,22 @@ func initDigitaloceanPartnerAttachment(runtime *plugin.Runtime, args map[string]
 	}
 	id := stringArg(args, "id")
 	if id == "" {
-		return args, nil, nil
+		return nil, nil, errors.New("digitalocean.partnerAttachment requires an id")
 	}
 	conn := runtime.Connection.(*connection.DigitaloceanConnection)
 	p, _, err := conn.Client().PartnerAttachment.Get(context.Background(), id)
 	if err != nil {
 		return nil, nil, err
 	}
+	// godo returns the decoded root's field directly, so a 200 whose body
+	// carries no attachment yields a nil object with a nil error.
+	if p == nil {
+		return nil, nil, fmt.Errorf("digitalocean.partnerAttachment with id %q not found", id)
+	}
 	return partnerAttachmentArgs(p), nil, nil
 }
 
-func (r *mqlDigitaloceanPartnerAttachment) vpcs() ([]interface{}, error) {
+func (r *mqlDigitaloceanPartnerAttachment) vpcs() ([]any, error) {
 	uuids := make([]string, 0, len(r.VpcIds.Data))
 	for _, v := range r.VpcIds.Data {
 		if s, ok := v.(string); ok {

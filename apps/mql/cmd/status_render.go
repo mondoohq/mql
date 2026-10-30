@@ -5,14 +5,17 @@ package cmd
 
 import (
 	"fmt"
+	"go.mondoo.com/mql/cli/config"
+	"net/url"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/muesli/termenv"
-	"go.mondoo.com/mql/v13/cli/theme"
-	"go.mondoo.com/mql/v13/cli/theme/colors"
-	"go.mondoo.com/mql/v13/providers/core/resources/versions/semver"
+	"go.mondoo.com/mql/cli/theme"
+	"go.mondoo.com/mql/cli/theme/colors"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream/health"
+	"go.mondoo.com/mql/providers/core/resources/versions/semver"
 )
 
 // RenderOptions controls how RenderCli formats the status screen. Color is
@@ -162,11 +165,34 @@ func (s Status) renderMql(b *strings.Builder, st styler) {
 		st.row(b, "Config", st.dim("defaults — no config file loaded"))
 	}
 	st.row(b, "Updates", s.Client.UpdatesURL)
+
+	// Always shown, dimmed when it is the default -- the same shape as the
+	// Config row above, which reports "no config file loaded" rather than
+	// disappearing.
+	//
+	// Hiding the stable case makes an absent row ambiguous, and the ambiguity
+	// lands in exactly the conversation this is for: a missing Channel could
+	// mean the machine is on stable, or that it is running a binary old enough
+	// not to report a channel at all. Those need different answers.
+	switch s.Client.UpdateChannel {
+	case config.ChannelPreview:
+		st.row(b, "Channel", st.value(config.ChannelPreview)+"  "+st.dim("· pre-releases"))
+	default:
+		st.row(b, "Channel", st.dim(config.ChannelStable+" — the default"))
+	}
 }
 
 func (s Status) renderPlatform(b *strings.Builder, st styler) {
 	st.section(b, "Mondoo Platform")
 	st.row(b, "Endpoint", s.Upstream.API.Endpoint)
+	switch {
+	case s.Client.Proxy != "":
+		st.row(b, "Proxy", st.value(s.Client.Proxy)+"  "+st.dim("("+s.Client.ProxySource+")"))
+	case s.Client.ProxyNote != "":
+		st.row(b, "Proxy", st.dim("none — direct connection")+"  "+st.warn("⚠ "+s.Client.ProxyNote))
+	default:
+		st.row(b, "Proxy", st.dim("none — direct connection"))
+	}
 
 	statusStr := st.bad(s.Upstream.API.Status)
 	if s.Upstream.API.Status == "SERVING" {
@@ -191,6 +217,13 @@ func (s Status) renderPlatform(b *strings.Builder, st styler) {
 	}
 	st.row(b, "Status", statusStr+"   "+st.dim("API v"+s.Upstream.API.Version)+" "+sync)
 	st.row(b, "Time", s.Upstream.API.Timestamp)
+
+	// The upload endpoint is a separate host from the API above; the row is
+	// omitted entirely when no ingest endpoint could be derived, so a
+	// self-hosted deployment doesn't get a check it can't pass.
+	if s.Ingest != nil {
+		st.row(b, "Ingest", ingestRowValue(st, *s.Ingest))
+	}
 
 	if s.Client.Registered {
 		st.row(b, "Client", st.value(s.Client.Mrn))
@@ -226,7 +259,13 @@ func (s Status) renderHealth(b *strings.Builder, st styler) {
 
 	if s.platformHealthy() {
 		body := "reachable " + st.dim("·") + " " + st.value("SERVING")
-		st.summaryRow(b, st.ok("●"), "Platform", body, st.ok("✓ healthy"))
+		// A SERVING API with a blocked upload host is not a healthy platform
+		// from a scan's point of view: every scan runs and then fails to report.
+		if s.ingestBlocked() {
+			st.summaryRow(b, st.warn("●"), "Platform", body, st.warn("⚠ ingest unreachable"))
+		} else {
+			st.summaryRow(b, st.ok("●"), "Platform", body, st.ok("✓ healthy"))
+		}
 	} else {
 		status := s.Upstream.API.Status
 		if status == "" {
@@ -258,6 +297,46 @@ func (st styler) summaryRow(b *strings.Builder, dot, label, body, trailing strin
 }
 
 func (s Status) platformHealthy() bool { return s.Upstream.API.Status == "SERVING" }
+
+// ingestBlocked reports whether the ingest probe ran and the endpoint did not
+// answer. A nil Ingest means the check was skipped, which is not a failure.
+func (s Status) ingestBlocked() bool {
+	return s.Ingest != nil && !s.Ingest.Reachable
+}
+
+// ingestRowValue formats the ingest endpoint row. The HTTP status is
+// deliberately not shown on the success path: the endpoint answers an
+// unauthenticated probe with 404 by design, and printing "404" next to a green
+// check reads as a defect rather than as the proof of reachability it is.
+func ingestRowValue(st styler, ingest health.IngestStatus) string {
+	if ingest.Reachable {
+		return ingest.Endpoint + "   " + st.ok("✓ reachable") + " " +
+			st.dim("· "+strconv.FormatInt(ingest.LatencyMs, 10)+"ms")
+	}
+
+	row := ingest.Endpoint + "   " + st.bad("✗ unreachable")
+	if ingest.Reason != "" {
+		row += " " + st.dim("· "+ingest.Reason)
+	}
+	return row
+}
+
+// ingestHostPort renders the ingest endpoint as the host:port pair an egress
+// rule is written against, falling back to the raw endpoint if it cannot be
+// parsed.
+func ingestHostPort(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Hostname() == "" {
+		return endpoint
+	}
+	if port := u.Port(); port != "" {
+		return u.Hostname() + ":" + port
+	}
+	if u.Scheme == "http" {
+		return u.Hostname() + ":80"
+	}
+	return u.Hostname() + ":443"
+}
 
 // clientAPINewer reports whether the client's API version is strictly newer
 // than the server's. Both are major-version strings (e.g. "13"); if either
@@ -424,7 +503,7 @@ func (s Status) renderFooter(b *strings.Builder, st styler) {
 	// registered at all, and remediated by re-registering with a fresh token.
 	authFailed := s.Client.Registered && s.Client.PingPongError != nil
 	hasError := !s.Client.Registered || s.Client.PingPongError != nil
-	actionable := hasError || s.updateAvailable() || s.outdatedCount() > 0
+	actionable := hasError || s.ingestBlocked() || s.updateAvailable() || s.outdatedCount() > 0
 
 	b.WriteString("\n")
 	switch {
@@ -444,6 +523,13 @@ func (s Status) renderFooter(b *strings.Builder, st styler) {
 	}
 	if authFailed {
 		st.footerStep(b, st.binary+" login --token <token>", "re-register with a fresh token from Mondoo Platform")
+	}
+	// No command fixes a blocked upload host, so the step names the egress rule
+	// to open instead. Kept above the update hints: a client that cannot upload
+	// is reporting nothing at all, which outranks being a version behind.
+	if s.ingestBlocked() {
+		st.footerStep(b, "allow egress to "+ingestHostPort(s.Ingest.Endpoint),
+			"scan results are uploaded to this endpoint")
 	}
 	if s.updateAvailable() {
 		st.footerStep(b, "visit "+s.Client.UpdatesURL, "upgrade "+s.Client.Version+" → "+s.Client.LatestVersion)

@@ -287,7 +287,7 @@ func TestResolveLDAPTransport(t *testing.T) {
 func TestNewKerberosClientRejectsNetBIOSUser(t *testing.T) {
 	// DOMAIN\user is valid for simple bind but not Kerberos; it must be
 	// rejected with guidance rather than failing obscurely at the KDC.
-	_, _, _, _, err := newKerberosClient(`CORP\admin`, "secret", "dc01.corp.local", map[string]string{})
+	_, _, _, _, err := newKerberosClient(`CORP\admin`, "secret", "dc01.corp.local", map[string]string{}, nil)
 	if err == nil {
 		t.Fatal("expected an error for NetBIOS DOMAIN\\user with --kerberos")
 	}
@@ -301,30 +301,48 @@ func TestEnrichKerberosBindError(t *testing.T) {
 		name         string
 		err          error
 		krb5conf     string
+		overTLS      bool
 		wantContains string
 	}{
 		{
-			name:         "ldap signing requirement",
+			name:         "ldap signing requirement over plaintext",
 			err:          errors.New("LDAP Result Code 49 ... 80090308: LdapErr ... data 57"),
 			krb5conf:     "/etc/krb5.conf",
+			overTLS:      false,
 			wantContains: "LDAP signing",
+		},
+		{
+			name:         "channel binding rejected over TLS",
+			err:          errors.New("LDAP Result Code 49 ... 80090346: LdapErr ... data 80090346"),
+			krb5conf:     "/etc/krb5.conf",
+			overTLS:      true,
+			wantContains: "channel binding token",
+		},
+		{
+			name:         "channel binding requires TLS over plaintext",
+			err:          errors.New("LDAP Result Code 49 ... 80090346: LdapErr ... data 80090346"),
+			krb5conf:     "/etc/krb5.conf",
+			overTLS:      false,
+			wantContains: "channel binding",
 		},
 		{
 			name:         "auto-generated config cannot find KDC -> multi-forest hint",
 			err:          errors.New("no KDC SRV records found for realm FORESTA.EXAMPLE"),
 			krb5conf:     "auto-generated (default_realm=FORESTA.EXAMPLE, dc_realm=CORP.LOCAL, kdc=dc01.corp.local)",
+			overTLS:      true,
 			wantContains: "--krb5conf",
 		},
 		{
 			name:         "generic failure is passed through with context",
 			err:          errors.New("some other failure"),
 			krb5conf:     "/etc/krb5.conf",
+			overTLS:      true,
 			wantContains: "GSSAPI bind to ldap/dc01.corp.local failed",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := enrichKerberosBindError(tt.err, "ldap/dc01.corp.local", tt.krb5conf)
+			got := enrichKerberosBindError(tt.err, "ldap/dc01.corp.local", tt.krb5conf, tt.overTLS)
 			if got == nil || !strings.Contains(got.Error(), tt.wantContains) {
 				t.Errorf("enrichKerberosBindError = %v, want it to contain %q", got, tt.wantContains)
 			}

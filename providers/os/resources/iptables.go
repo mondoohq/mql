@@ -8,15 +8,18 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/rs/zerolog/log"
+	"github.com/spf13/afero"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/types"
 )
 
 // Stat represents a structured statistic entry.
@@ -276,14 +279,11 @@ func fetchAllTables(runtime *plugin.Runtime, conn shared.Connection, binary stri
 		}
 		if cmd.ExitStatus != 0 {
 			stderr, _ := io.ReadAll(cmd.Stderr)
-			errMsg := strings.TrimSpace(string(stderr))
-			// Table may not exist on this kernel (e.g., raw or mangle not loaded)
-			if strings.Contains(errMsg, "does not exist") ||
-				strings.Contains(errMsg, "No such file or directory") ||
-				strings.Contains(errMsg, "can't initialize") {
+			if absent, err := classifyIptablesTableError(binary, tableName, string(stderr)); absent {
 				continue
+			} else {
+				return nil, err
 			}
-			return nil, fmt.Errorf("%s -t %s failed: %s", binary, tableName, errMsg)
 		}
 
 		chains, err := parseAllChains(runtime, string(data), tableName, ver, ipv6)
@@ -305,6 +305,28 @@ func fetchAllTables(runtime *plugin.Runtime, conn shared.Connection, binary stri
 		tables = append(tables, tableRes)
 	}
 	return tables, nil
+}
+
+// classifyIptablesTableError decides what a failed `<binary> -t <table> -L`
+// means. It returns absent=true when the table does not exist on this kernel
+// (raw or mangle not loaded), which callers skip. Any other failure is an
+// error. A permission refusal is reported as forbidden: iptables 1.6 words it
+// "can't initialize iptables table `filter': Permission denied (you must be
+// root)", which shares its prefix with the table-missing message, so the
+// refusal has to be checked first or a non-root scan reads as no tables.
+func classifyIptablesTableError(binary, tableName, stderr string) (bool, error) {
+	errMsg := strings.TrimSpace(stderr)
+	err := fmt.Errorf("%s -t %s failed: %s", binary, tableName, errMsg)
+	lower := strings.ToLower(errMsg)
+	if strings.Contains(lower, "permission denied") || strings.Contains(lower, "you must be root") {
+		return false, llx.Forbidden(err)
+	}
+	if strings.Contains(errMsg, "does not exist") ||
+		strings.Contains(errMsg, "No such file or directory") ||
+		strings.Contains(errMsg, "can't initialize") {
+		return true, nil
+	}
+	return false, err
 }
 
 // parseAllChains parses the full output of `iptables -t <table> -L` which
@@ -361,7 +383,7 @@ func splitChainBlocks(output string) []string {
 	var blocks []string
 	var current []string
 
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		if strings.HasPrefix(line, "Chain ") && len(current) > 0 {
 			blocks = append(blocks, strings.Join(current, "\n"))
 			current = nil
@@ -418,6 +440,13 @@ func loadSavedDump(conn shared.Connection, binary string) (*SavedDump, bool, err
 	dump, err := ParseIptablesSave(string(stdout))
 	if err != nil {
 		return nil, false, err
+	}
+	// iptables-save 1.6 (Ubuntu 16.04) run without root cannot read
+	// /proc/net/ip_tables_names, yet exits 0 with no output. Every kernel
+	// with iptables loaded lists at least one table, so an empty dump is not
+	// trusted: fall back to `-L`, which reports the refusal.
+	if len(dump.Tables) == 0 {
+		return nil, false, nil
 	}
 	return dump, true, nil
 }
@@ -532,6 +561,47 @@ func entriesFromSavedChain(runtime *plugin.Runtime, ch *SavedChain, chainID stri
 		entries = append(entries, entry)
 	}
 	return entries, nil
+}
+
+// firewallBinaryDirs are the directories iptables, ip6tables, and nft are
+// installed into. Distributions put them in sbin, but merged-/usr systems and
+// source builds also reach bin and /usr/local.
+var firewallBinaryDirs = []string{
+	"/usr/sbin",
+	"/sbin",
+	"/usr/bin",
+	"/bin",
+	"/usr/local/sbin",
+	"/usr/local/bin",
+}
+
+// binaryInstalled reports whether the named binary is on the asset. The known
+// directories are probed on the filesystem first, so the answer holds on an
+// image or a mounted filesystem where nothing runs. A symlink counts without
+// being followed: Debian points iptables at /etc/alternatives, which an
+// absolute link on a mounted filesystem would resolve against the scanning
+// host. Where commands run, `command -v` finds an install anywhere on $PATH.
+func binaryInstalled(conn shared.Connection, name string) bool {
+	fs := conn.FileSystem()
+	for _, dir := range firewallBinaryDirs {
+		p := dir + "/" + name
+		var err error
+		if lfs, ok := fs.(afero.Lstater); ok {
+			_, _, err = lfs.LstatIfPossible(p)
+		} else {
+			_, err = fs.Stat(p)
+		}
+		if err == nil {
+			return true
+		}
+		if !os.IsNotExist(err) {
+			log.Debug().Err(err).Str("path", p).Msg("os> cannot check firewall binary path")
+		}
+	}
+	if conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return lookupViaCommand(conn, name) != ""
+	}
+	return false
 }
 
 // --- iptables (IPv4) ---
@@ -658,6 +728,10 @@ func (i *mqlIptables) forwardPolicy() (string, error) {
 	return i.forwardCache.policy, i.forwardCache.err
 }
 
+func (i *mqlIptables) installed() (bool, error) {
+	return binaryInstalled(i.MqlRuntime.Connection.(shared.Connection), "iptables"), nil
+}
+
 func (i *mqlIptables) tables() ([]any, error) {
 	if _, _, err := i.loadDump(); err != nil {
 		return nil, err
@@ -670,6 +744,10 @@ func (i *mqlIptables) tables() ([]any, error) {
 }
 
 // --- ip6tables (IPv6) ---
+
+func (i *mqlIp6tables) installed() (bool, error) {
+	return binaryInstalled(i.MqlRuntime.Connection.(shared.Connection), "ip6tables"), nil
+}
 
 func (i *mqlIp6tables) loadDump() (*SavedDump, bool, error) {
 	i.saveCache.once.Do(func() {

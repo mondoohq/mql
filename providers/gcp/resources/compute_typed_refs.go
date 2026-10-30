@@ -3,18 +3,14 @@
 
 package resources
 
-import "go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+import "go.mondoo.com/mql/providers-sdk/v1/plugin"
 
-// region/zone typed accessors. The matching `regionUrl`/`zoneUrl` string
-// fields remain populated for now and are marked @maturity("deprecated") in
-// the .lr schema. New audits should use the typed accessors so they can
-// traverse the region or zone resource directly.
+// region/zone typed accessors. The raw self-link URLs are held on each
+// resource's Internal struct (cacheRegionUrl/cacheZoneUrl) so the accessor can
+// resolve the region or zone resource without exposing the URL as a field.
 
 func (g *mqlGcpProjectComputeServiceAddress) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -25,10 +21,7 @@ func (g *mqlGcpProjectComputeServiceAddress) region() (*mqlGcpProjectComputeServ
 }
 
 func (g *mqlGcpProjectComputeServiceForwardingRule) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -39,10 +32,7 @@ func (g *mqlGcpProjectComputeServiceForwardingRule) region() (*mqlGcpProjectComp
 }
 
 func (g *mqlGcpProjectComputeServiceBackendService) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -53,10 +43,7 @@ func (g *mqlGcpProjectComputeServiceBackendService) region() (*mqlGcpProjectComp
 }
 
 func (g *mqlGcpProjectComputeServiceSecurityPolicy) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -67,10 +54,7 @@ func (g *mqlGcpProjectComputeServiceSecurityPolicy) region() (*mqlGcpProjectComp
 }
 
 func (g *mqlGcpProjectComputeServiceSslPolicy) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -81,10 +65,7 @@ func (g *mqlGcpProjectComputeServiceSslPolicy) region() (*mqlGcpProjectComputeSe
 }
 
 func (g *mqlGcpProjectComputeServiceSslCertificate) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -95,10 +76,7 @@ func (g *mqlGcpProjectComputeServiceSslCertificate) region() (*mqlGcpProjectComp
 }
 
 func (g *mqlGcpProjectComputeServiceVpnGateway) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -109,10 +87,7 @@ func (g *mqlGcpProjectComputeServiceVpnGateway) region() (*mqlGcpProjectComputeS
 }
 
 func (g *mqlGcpProjectComputeServiceVpnTunnel) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -123,10 +98,7 @@ func (g *mqlGcpProjectComputeServiceVpnTunnel) region() (*mqlGcpProjectComputeSe
 }
 
 func (g *mqlGcpProjectComputeServiceInstanceGroup) zone() (*mqlGcpProjectComputeServiceZone, error) {
-	if g.ZoneUrl.Error != nil {
-		return nil, g.ZoneUrl.Error
-	}
-	z, err := getZoneByUrl(g.ZoneUrl.Data, g.MqlRuntime)
+	z, err := getZoneByUrl(g.cacheZoneUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -137,10 +109,7 @@ func (g *mqlGcpProjectComputeServiceInstanceGroup) zone() (*mqlGcpProjectCompute
 }
 
 func (g *mqlGcpProjectComputeServiceInstanceGroupManager) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -151,10 +120,7 @@ func (g *mqlGcpProjectComputeServiceInstanceGroupManager) region() (*mqlGcpProje
 }
 
 func (g *mqlGcpProjectComputeServiceInstanceGroupManager) zone() (*mqlGcpProjectComputeServiceZone, error) {
-	if g.ZoneUrl.Error != nil {
-		return nil, g.ZoneUrl.Error
-	}
-	z, err := getZoneByUrl(g.ZoneUrl.Data, g.MqlRuntime)
+	z, err := getZoneByUrl(g.cacheZoneUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -165,10 +131,7 @@ func (g *mqlGcpProjectComputeServiceInstanceGroupManager) zone() (*mqlGcpProject
 }
 
 func (g *mqlGcpProjectComputeServiceFirewallPolicy) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -179,10 +142,7 @@ func (g *mqlGcpProjectComputeServiceFirewallPolicy) region() (*mqlGcpProjectComp
 }
 
 func (g *mqlGcpProjectComputeServiceHealthCheck) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -193,10 +153,7 @@ func (g *mqlGcpProjectComputeServiceHealthCheck) region() (*mqlGcpProjectCompute
 }
 
 func (g *mqlGcpProjectComputeServiceUrlMap) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -207,10 +164,7 @@ func (g *mqlGcpProjectComputeServiceUrlMap) region() (*mqlGcpProjectComputeServi
 }
 
 func (g *mqlGcpProjectComputeServiceTargetHttpProxy) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -221,10 +175,7 @@ func (g *mqlGcpProjectComputeServiceTargetHttpProxy) region() (*mqlGcpProjectCom
 }
 
 func (g *mqlGcpProjectComputeServiceTargetHttpsProxy) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -235,10 +186,7 @@ func (g *mqlGcpProjectComputeServiceTargetHttpsProxy) region() (*mqlGcpProjectCo
 }
 
 func (g *mqlGcpProjectComputeServiceServiceAttachment) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -249,10 +197,7 @@ func (g *mqlGcpProjectComputeServiceServiceAttachment) region() (*mqlGcpProjectC
 }
 
 func (g *mqlGcpProjectComputeServiceNetworkEndpointGroup) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -263,10 +208,7 @@ func (g *mqlGcpProjectComputeServiceNetworkEndpointGroup) region() (*mqlGcpProje
 }
 
 func (g *mqlGcpProjectComputeServiceNetworkEndpointGroup) zone() (*mqlGcpProjectComputeServiceZone, error) {
-	if g.ZoneUrl.Error != nil {
-		return nil, g.ZoneUrl.Error
-	}
-	z, err := getZoneByUrl(g.ZoneUrl.Data, g.MqlRuntime)
+	z, err := getZoneByUrl(g.cacheZoneUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -277,10 +219,7 @@ func (g *mqlGcpProjectComputeServiceNetworkEndpointGroup) zone() (*mqlGcpProject
 }
 
 func (g *mqlGcpProjectComputeServiceInterconnectAttachment) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -291,10 +230,7 @@ func (g *mqlGcpProjectComputeServiceInterconnectAttachment) region() (*mqlGcpPro
 }
 
 func (g *mqlGcpProjectComputeServiceTargetTcpProxy) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -305,10 +241,7 @@ func (g *mqlGcpProjectComputeServiceTargetTcpProxy) region() (*mqlGcpProjectComp
 }
 
 func (g *mqlGcpProjectComputeServicePacketMirroring) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -319,10 +252,7 @@ func (g *mqlGcpProjectComputeServicePacketMirroring) region() (*mqlGcpProjectCom
 }
 
 func (g *mqlGcpProjectComputeServiceTargetPool) region() (*mqlGcpProjectComputeServiceRegion, error) {
-	if g.RegionUrl.Error != nil {
-		return nil, g.RegionUrl.Error
-	}
-	r, err := getRegionByUrl(g.RegionUrl.Data, g.MqlRuntime)
+	r, err := getRegionByUrl(g.cacheRegionUrl, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}

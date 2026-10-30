@@ -10,12 +10,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/acm"
 	acmtypes "github.com/aws/aws-sdk-go-v2/service/acm/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsAcm) id() (string, error) {
@@ -54,7 +54,15 @@ func (a *mqlAwsAcm) getCertificates(conn *connection.AwsConnection) []*jobpool.J
 			ctx := context.Background()
 			res := []any{}
 
-			params := &acm.ListCertificatesInput{}
+			// Without an explicit KeyTypes filter ACM applies its default, which
+			// "returns only RSA_1024 and RSA_2048 certificates that have at least
+			// one domain" -- silently hiding every EC_* and RSA_3072/4096
+			// certificate. That drops the modern, AWS-recommended key types while
+			// leaving the weak ones visible, so the resource looks populated and
+			// an expiry or weak-key audit passes over an incomplete set.
+			params := &acm.ListCertificatesInput{
+				Includes: &acmtypes.Filters{KeyTypes: acmtypes.KeyAlgorithm("").Values()},
+			}
 			paginator := acm.NewListCertificatesPaginator(svc, params)
 			for paginator.HasMorePages() {
 				certs, err := paginator.NextPage(ctx)
@@ -140,17 +148,70 @@ func initAwsAcmCertificate(runtime *plugin.Runtime, args map[string]*llx.RawData
 		return nil, nil, err
 	}
 	args["domainValidationOptions"] = llx.ArrayData(domainValidationOptions, types.Dict)
-	return args, nil, nil
+
+	cert := certDetails.Certificate
+	args["subjectAlternativeNames"] = llx.ArrayData(convert.SliceAnyToInterface(cert.SubjectAlternativeNames), types.String)
+
+	keyUsages := make([]any, 0, len(cert.KeyUsages))
+	for _, ku := range cert.KeyUsages {
+		keyUsages = append(keyUsages, string(ku.Name))
+	}
+	args["keyUsages"] = llx.ArrayData(keyUsages, types.String)
+
+	extKeyUsages := make([]any, 0, len(cert.ExtendedKeyUsages))
+	for _, eku := range cert.ExtendedKeyUsages {
+		extKeyUsages = append(extKeyUsages, map[string]any{
+			"name": string(eku.Name),
+			"oid":  convert.ToValue(eku.OID),
+		})
+	}
+	args["extendedKeyUsages"] = llx.ArrayData(extKeyUsages, types.Dict)
+
+	exportable := false
+	if cert.Options != nil {
+		exportable = cert.Options.Export == acmtypes.CertificateExportEnabled
+	}
+	args["exportable"] = llx.BoolData(exportable)
+
+	renewalSummary, err := convert.JsonToDict(cert.RenewalSummary)
+	if err != nil {
+		return nil, nil, err
+	}
+	args["renewalSummary"] = llx.DictData(renewalSummary)
+
+	args["failureReason"] = llx.StringData(string(cert.FailureReason))
+	args["revocationReason"] = llx.StringData(string(cert.RevocationReason))
+	args["revokedAt"] = llx.TimeDataPtr(cert.RevokedAt)
+	args["awsManagedBy"] = llx.StringData(string(cert.ManagedBy))
+
+	res, err := CreateResource(runtime, "aws.acm.certificate", args)
+	if err != nil {
+		return nil, nil, err
+	}
+	mqlCert := res.(*mqlAwsAcmCertificate)
+	mqlCert.cacheCertificateAuthorityArn = cert.CertificateAuthorityArn
+	return args, mqlCert, nil
+}
+
+type mqlAwsAcmCertificateInternal struct {
+	cacheCertificateAuthorityArn *string
+}
+
+func (a *mqlAwsAcmCertificate) certificateAuthority() (*mqlAwsPrivatecaCertificateAuthority, error) {
+	if a.cacheCertificateAuthorityArn == nil || *a.cacheCertificateAuthorityArn == "" {
+		a.CertificateAuthority.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	mqlCA, err := NewResource(a.MqlRuntime, "aws.privateca.certificateAuthority",
+		map[string]*llx.RawData{"arn": llx.StringDataPtr(a.cacheCertificateAuthorityArn)})
+	if err != nil {
+		return nil, err
+	}
+	return mqlCA.(*mqlAwsPrivatecaCertificateAuthority), nil
 }
 
 func CertTagsToMapTags(tags []acmtypes.Tag) map[string]any {
-	mapTags := make(map[string]any)
-	for i := range tags {
-		if tags[i].Key != nil && tags[i].Value != nil {
-			mapTags[*tags[i].Key] = *tags[i].Value
-		}
-	}
-	return mapTags
+	return tagsToMap(tags, func(t acmtypes.Tag) *string { return t.Key }, func(t acmtypes.Tag) *string { return t.Value })
 }
 
 func (a *mqlAwsAcmCertificate) certificate() (plugin.Resource, error) {

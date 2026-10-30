@@ -1,0 +1,17 @@
+{
+  "count": 3,
+  "value": [
+    {
+      "name": "refs/heads/main",
+      "objectId": "3c000000-0000-4000-8000-000000000321"
+    },
+    {
+      "name": "refs/heads/release/1.0",
+      "objectId": "3c000000-0000-4000-8000-000000000331"
+    },
+    {
+      "name": "refs/tags/v1.0",
+      "objectId": "3c000000-0000-4000-8000-000000000341"
+    }
+  ]
+}

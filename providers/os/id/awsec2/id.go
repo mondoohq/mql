@@ -10,6 +10,9 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+// Compiled once: applied to each platform id being parsed.
+var awsec2 = regexp.MustCompile(`^\/\/platformid.api.mondoo.app\/runtime\/aws\/ec2\/v1\/accounts\/(.*)\/regions\/(.*)\/instances\/(.*)$`)
+
 // aws://ec2/v1/accounts/{account}/regions/{region}/instances/{instanceid}
 func MondooInstanceID(account string, region string, instanceid string) string {
 	return "//platformid.api.mondoo.app/runtime/aws/ec2/v1/accounts/" + account + "/regions/" + region + "/instances/" + instanceid
@@ -113,7 +116,6 @@ func IsValidMondooAccountId(path string) bool {
 
 func ParseEc2PlatformID(uri string) *MondooInstanceId {
 	// aws://ec2/v1/accounts/{account}/regions/{region}/instances/{instanceid}
-	awsec2 := regexp.MustCompile(`^\/\/platformid.api.mondoo.app\/runtime\/aws\/ec2\/v1\/accounts\/(.*)\/regions\/(.*)\/instances\/(.*)$`)
 	m := awsec2.FindStringSubmatch(uri)
 	if len(m) == 0 {
 		return nil

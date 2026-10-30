@@ -1,0 +1,6 @@
+grubby: absent
+update-grub: /usr/sbin/update-grub
+grub2-mkconfig: absent
+grub-mkconfig: /usr/sbin/grub-mkconfig
+bootctl: /usr/bin/bootctl
+kernel-install: /usr/bin/kernel-install

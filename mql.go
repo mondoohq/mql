@@ -44,11 +44,27 @@ var DisableMaxLimit string
 <patch> ::= <numeric identifier>
 */
 
+// The version an unstamped build reports: the current line, plus `rolling` as
+// build metadata. Keep the line current - it is the version every floor check
+// sees for a build the release flow did not stamp.
+//
+// The marker belongs after `+`, not after `-`. Rolling means the continuously
+// updated latest of a line, so a rolling build is part of its line and never
+// something that precedes it. Build metadata is ignored when versions are
+// ordered, which is that reading; the `-` slot instead sorted every source
+// build behind the release it was built from, so a locally built core failed
+// the `core >= 13.0.0` floor its own tree declares.
+const (
+	// major.minor.patch on its own, which is what GetCoreVersion answers with.
+	devCoreVersion = "14.0.0"
+	devVersion     = "v" + devCoreVersion + "+rolling"
+)
+
 // GetVersion returns the version of the build
 // valid semver version including build version (e.g. 4.10.0+4900), where 4900 is a forward rolling int
 func GetVersion() string {
 	if Version == "" {
-		return "v13.0.0-rolling"
+		return devVersion
 	}
 	return Version
 }
@@ -59,9 +75,17 @@ type Release struct {
 	Version string `json:"version"`
 }
 
-var mqlLatestReleaseUrl = "https://releases.mondoo.com/mql/latest.json?ignoreCache=1"
+// mqlLatestReleaseUrl is the manifest the version check reads. It is the install
+// service's route, the same one the self-update reads, so the version reported
+// here is the version that would be installed.
+//
+// It cannot be built with selfupdate.ReleaseURL: cli/selfupdate imports this
+// package, so reaching the other way would be a cycle. The bucket's
+// "?ignoreCache=1" is dropped -- the install service does not know that
+// parameter, and carrying it implies a freshness guarantee it never gave.
+var mqlLatestReleaseUrl = "https://install.mondoo.com/package/mql/latest.json"
 
-// GetLatestReleaseName fetches the name of the latest release from releases.mondoo.com
+// GetLatestReleaseName fetches the name of the latest release from releaseUrl
 func GetLatestReleaseName(releaseUrl string, client *http.Client) (string, error) {
 	return GetLatestReleaseNameContext(context.Background(), releaseUrl, client)
 }
@@ -97,7 +121,7 @@ func GetLatestReleaseNameContext(ctx context.Context, releaseUrl string, client 
 	return release.Version, nil
 }
 
-// GetLatestVersion returns the latest version available on releases.mondoo.com
+// GetLatestVersion returns the latest version the install service publishes
 func GetLatestVersion(client *http.Client) (string, error) {
 	releaseName, err := GetLatestReleaseName(mqlLatestReleaseUrl, client)
 	if err != nil {
@@ -106,20 +130,18 @@ func GetLatestVersion(client *http.Client) (string, error) {
 	return releaseName, nil
 }
 
-var coreSemverRegex = regexp.MustCompile(`^(\d+.\d+.\d+)`)
+// The `v` is optional because both spellings reach here: the release flow stamps
+// what `git describe` returns (`v13.53.4`), while a plain semver string has no
+// prefix. The core is the capture group, so the prefix is dropped rather than
+// returned as part of the answer.
+var coreSemverRegex = regexp.MustCompile(`^v?(\d+\.\d+\.\d+)`)
 
 // GetCoreVersion returns the semver core (i.e. major.minor.patch)
 func GetCoreVersion() string {
-	v := Version
-
-	if v != "" {
-		v = coreSemverRegex.FindString(v)
+	if m := coreSemverRegex.FindStringSubmatch(Version); m != nil {
+		return m[1]
 	}
-
-	if v == "" {
-		return "v13.0.0-rolling"
-	}
-	return v
+	return devCoreVersion
 }
 
 // GetBuild returns the git sha of the build

@@ -7,7 +7,7 @@ package recording
 import (
 	fmt "fmt"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
-	llx "go.mondoo.com/mql/v13/llx"
+	llx "go.mondoo.com/mql/llx"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	io "io"

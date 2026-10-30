@@ -5,16 +5,17 @@ package resources
 
 import (
 	"encoding/json"
+	"maps"
 	"strconv"
 	"strings"
 
-	"github.com/google/go-github/v88/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/github/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/github/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (g *mqlGithubEnvironment) id() (string, error) {
@@ -45,27 +46,28 @@ func (g *mqlGithubDeploymentStatus) id() (string, error) {
 	return "github.deploymentStatus/" + strconv.FormatInt(g.Id.Data, 10), nil
 }
 
+// creatorData wraps an optional user resource for a CreateResource argument.
+// Passing a nil *mqlGithubUser straight to llx.ResourceData stores a typed nil,
+// which the runtime records as set-but-not-null and then dereferences when it
+// serializes the field. NilData records a proper null instead.
+func creatorData(user *mqlGithubUser) *llx.RawData {
+	if user == nil {
+		return llx.NilData
+	}
+	return llx.ResourceData(user, "github.user")
+}
+
 // environments returns the deployment environments for a repository.
 func (g *mqlGithubRepository) environments() ([]any, error) {
 	conn := g.MqlRuntime.Connection.(*connection.GithubConnection)
 
-	if g.Name.Error != nil {
-		return nil, g.Name.Error
+	ownerLogin, repoName, err := repoOwnerAndName(g)
+	if err != nil {
+		return nil, err
 	}
-	repoName := g.Name.Data
-
-	if g.Owner.Error != nil {
-		return nil, g.Owner.Error
-	}
-	owner := g.Owner.Data
-
-	if owner.Login.Error != nil {
-		return nil, owner.Login.Error
-	}
-	ownerLogin := owner.Login.Data
 
 	opts := &github.EnvironmentListOptions{
-		ListOptions: github.ListOptions{PerPage: paginationPerPage},
+		PerPage: paginationPerPage,
 	}
 
 	var allEnvironments []*github.Environment
@@ -120,9 +122,7 @@ func environmentsToMql(runtime *plugin.Runtime, ownerLogin, repoName string, rep
 					if reviewerData, err := json.Marshal(reviewer.Reviewer); err == nil {
 						var reviewerMap map[string]any
 						if json.Unmarshal(reviewerData, &reviewerMap) == nil {
-							for k, v := range reviewerMap {
-								reviewerDict[k] = v
-							}
+							maps.Copy(reviewerDict, reviewerMap)
 						}
 					}
 				}
@@ -178,23 +178,13 @@ type mqlGithubEnvironmentInternal struct {
 func (g *mqlGithubRepository) deployments() ([]any, error) {
 	conn := g.MqlRuntime.Connection.(*connection.GithubConnection)
 
-	if g.Name.Error != nil {
-		return nil, g.Name.Error
+	ownerLogin, repoName, err := repoOwnerAndName(g)
+	if err != nil {
+		return nil, err
 	}
-	repoName := g.Name.Data
-
-	if g.Owner.Error != nil {
-		return nil, g.Owner.Error
-	}
-	owner := g.Owner.Data
-
-	if owner.Login.Error != nil {
-		return nil, owner.Login.Error
-	}
-	ownerLogin := owner.Login.Data
 
 	opts := &github.DeploymentsListOptions{
-		ListOptions: github.ListOptions{PerPage: paginationPerPage},
+		PerPage: paginationPerPage,
 	}
 
 	var allDeployments []*github.Deployment
@@ -259,7 +249,7 @@ func deploymentsToMql(runtime *plugin.Runtime, owner, repo string, deployments [
 			"task":        llx.StringDataPtr(d.Task),
 			"environment": llx.StringDataPtr(d.Environment),
 			"description": llx.StringDataPtr(d.Description),
-			"creator":     llx.ResourceData(creator, "github.user"),
+			"creator":     creatorData(creator),
 			"createdAt":   llx.TimeDataPtr(githubTimestamp(d.CreatedAt)),
 			"updatedAt":   llx.TimeDataPtr(githubTimestamp(d.UpdatedAt)),
 			"payload":     llx.MapData(payload, types.Any),
@@ -341,7 +331,7 @@ func (g *mqlGithubDeployment) latestStatus() (*mqlGithubDeploymentStatus, error)
 		"state":          llx.StringDataPtr(status.State),
 		"description":    llx.StringDataPtr(status.Description),
 		"environment":    llx.StringDataPtr(status.Environment),
-		"creator":        llx.ResourceData(creator, "github.user"),
+		"creator":        creatorData(creator),
 		"createdAt":      llx.TimeDataPtr(githubTimestamp(status.CreatedAt)),
 		"updatedAt":      llx.TimeDataPtr(githubTimestamp(status.UpdatedAt)),
 		"targetUrl":      llx.StringDataPtr(status.TargetURL),

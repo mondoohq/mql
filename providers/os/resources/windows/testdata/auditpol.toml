@@ -16,6 +16,7 @@ Test,System,Other Logon/Logoff Events,{0CCE921C-69AE-11D9-BED3-505054503030},No 
 Test,System,Network Policy Server,{0CCE9243-69AE-11D9-BED3-505054503030},Success and Failure,
 Test,System,User / Device Claims,{0CCE9247-69AE-11D9-BED3-505054503030},No Auditing,
 Test,System,Group Membership,{0CCE9249-69AE-11D9-BED3-505054503030},No Auditing,
+Test,System,Access Rights,{0CCE924B-69AE-11D9-BED3-505054503030},No Auditing,
 Test,System,File System,{0CCE921D-69AE-11D9-BED3-505054503030},No Auditing,
 Test,System,Registry,{0CCE921E-69AE-11D9-BED3-505054503030},No Auditing,
 Test,System,Kernel Object,{0CCE921F-69AE-11D9-BED3-505054503030},No Auditing,

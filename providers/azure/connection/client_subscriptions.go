@@ -12,11 +12,6 @@ import (
 	subscriptions "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions/v2"
 )
 
-type SubscriptionsFilter struct {
-	Exclude []string
-	Include []string
-}
-
 type subscriptionsClient struct {
 	token         azcore.TokenCredential
 	clientOptions policy.ClientOptions
@@ -27,6 +22,23 @@ func NewSubscriptionsClient(token azcore.TokenCredential, clientOptions policy.C
 		token:         token,
 		clientOptions: clientOptions,
 	}
+}
+
+// GetSubscription reads a single subscription by id. Staged discovery uses it
+// when it is already scoped to one subscription and needs a field the
+// connection options do not carry, such as the subscription's tags.
+func (client *subscriptionsClient) GetSubscription(subscriptionID string) (subscriptions.Subscription, error) {
+	subscriptionsC, err := subscriptions.NewClient(client.token, &arm.ClientOptions{
+		ClientOptions: client.clientOptions,
+	})
+	if err != nil {
+		return subscriptions.Subscription{}, err
+	}
+	resp, err := subscriptionsC.Get(context.Background(), subscriptionID, &subscriptions.ClientGetOptions{})
+	if err != nil {
+		return subscriptions.Subscription{}, err
+	}
+	return resp.Subscription, nil
 }
 
 func (client *subscriptionsClient) GetSubscriptions(filter SubscriptionsFilter) ([]subscriptions.Subscription, error) {
@@ -45,36 +57,17 @@ func (client *subscriptionsClient) GetSubscriptions(filter SubscriptionsFilter) 
 			return nil, err
 		}
 		for _, s := range page.Value {
-			if !skipSub(s, filter) {
+			// This is the entry point for every Azure scan, so a nil element
+			// here panics before a single asset exists. It also makes the
+			// downstream *sub.SubscriptionID derefs in discovery safe by
+			// construction rather than by luck.
+			if s == nil || s.SubscriptionID == nil {
+				continue
+			}
+			if !filter.IsFilteredOut(*s.SubscriptionID) {
 				subs = append(subs, *s)
 			}
 		}
 	}
 	return subs, nil
-}
-
-func skipSub(sub *subscriptions.Subscription, filter SubscriptionsFilter) bool {
-	// anything explicitly specified in the list of includes means accept only from that list
-	if len(filter.Include) > 0 {
-		for _, s := range filter.Include {
-			if s == *sub.SubscriptionID {
-				return false
-			}
-		}
-		// didn't find it, so it must be skipped
-		return true
-	}
-
-	// if nothing explicitly meant to be included, then check whether
-	// it should be excluded
-	if len(filter.Exclude) > 0 {
-		for _, s := range filter.Exclude {
-			if s == *sub.SubscriptionID {
-				return true
-			}
-		}
-
-		return false
-	}
-	return false
 }

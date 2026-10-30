@@ -4,7 +4,7 @@
 package device
 
 import (
-	"go.mondoo.com/mql/v13/providers/os/connection/snapshot"
+	"go.mondoo.com/mql/providers/os/connection/snapshot"
 )
 
 type DeviceManager interface {

@@ -10,16 +10,16 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/testutils"
-	"go.mondoo.com/mql/v13/providers/github"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/testutils"
+	"go.mondoo.com/mql/providers/github"
 )
 
 var x = testutils.InitTester(GithubProvider(), github.Registry)
 
 func GithubProvider() *github.GithubConnection {
 	p, err := github.NewGithubConnection(&inventory.Config{
-		Backend: "github",
+		Type: "github",
 		Options: map[string]string{
 			"owner":      "mondoohq",
 			"repository": "ranger-rpc",

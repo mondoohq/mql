@@ -1,4 +1,4 @@
-[commands."DEBIAN_FRONTEND=noninteractive apt-get upgrade --dry-run"]
+[commands."DEBIAN_FRONTEND=noninteractive apt-get -o Dir::Log::Planner=/dev/null upgrade --dry-run"]
 stdout = """Reading package lists... Done
 Building dependency tree
 Reading state information... Done

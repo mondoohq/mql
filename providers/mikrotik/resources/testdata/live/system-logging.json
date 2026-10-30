@@ -1,0 +1,57 @@
+[
+ {
+  ".id": "*1",
+  "action": "memory",
+  "default": "true",
+  "disabled": "false",
+  "invalid": "false",
+  "managed": "false",
+  "prefix": "",
+  "regex": "",
+  "topics": "info"
+ },
+ {
+  ".id": "*2",
+  "action": "memory",
+  "default": "true",
+  "disabled": "false",
+  "invalid": "false",
+  "managed": "false",
+  "prefix": "",
+  "regex": "",
+  "topics": "error"
+ },
+ {
+  ".id": "*3",
+  "action": "memory",
+  "default": "true",
+  "disabled": "false",
+  "invalid": "false",
+  "managed": "false",
+  "prefix": "",
+  "regex": "",
+  "topics": "warning"
+ },
+ {
+  ".id": "*4",
+  "action": "echo",
+  "default": "true",
+  "disabled": "false",
+  "invalid": "false",
+  "managed": "false",
+  "prefix": "",
+  "regex": "",
+  "topics": "critical"
+ },
+ {
+  ".id": "*5",
+  "action": "labremote",
+  "default": "false",
+  "disabled": "false",
+  "invalid": "false",
+  "managed": "false",
+  "prefix": "",
+  "regex": "",
+  "topics": "info"
+ }
+]

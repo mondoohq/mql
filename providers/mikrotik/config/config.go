@@ -4,15 +4,21 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/mikrotik/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/mikrotik/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "mikrotik",
-	ID:              "go.mondoo.com/mql/providers/mikrotik",
-	Version:         "13.0.2",
+	Name: "mikrotik",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "mikrotik",
+	ID:      "go.mondoo.com/mql/providers/mikrotik",
+	Version: "14.0.7",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       provider.Platforms,
 	Connectors: []plugin.Connector{

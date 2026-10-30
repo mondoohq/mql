@@ -2,10 +2,20 @@ name: "Build & Release Providers"
 
 on:
   push:
-    branches: ["main"]
-    paths: ["providers/**"]
+    branches: ["v13", "main"]
+    # Only a change to a provider's config, where its Version lives, can be a
+    # release. Any providers/** change used to start a run, and with runners
+    # slow to arrive every feature merge queued the same pending builds again
+    # (22 of 30 runs had nothing to release). Scoping still builds only
+    # providers whose version differs from the published one, so a release
+    # that was lost is picked up by the next bump, or by a manual run.
+    paths: ["providers/*/config/config.go"]
   workflow_dispatch:
     inputs:
+      providers:
+        description: "Only consider these providers (space or comma separated). Empty considers all."
+        type: string
+        required: false
       build_all:
         description: "Force build all providers"
         type: boolean
@@ -13,6 +23,11 @@ on:
         default: false
       skip_publish:
         description: "Skip publishing"
+        type: boolean
+        required: false
+        default: false
+      allow_major_promotion:
+        description: "Allow publishing a new major to the stable channel"
         type: boolean
         required: false
         default: false
@@ -26,12 +41,31 @@ on:
         type: number
         required: false
 
+# One release per branch at a time. Scoping builds every provider whose version
+# differs from the published one, so while a release is pending every later
+# merge schedules the same builds again; without this, runs queued behind
+# unavailable runners pile up (13 runs x 9 providers on 2026-09-30) and would
+# all publish the same versions at once when runners return.
+#
+# A new run replaces the one waiting behind the current release, and its own
+# scoping sees every version still unpublished, so nothing is dropped. A run
+# that has started is never cancelled: a publish must not stop halfway.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
 env:
   BUCKET: releases-us.mondoo.io
-  SKIP_PROVIDERS: "core"
+  # Builtin providers ship inside the binary, not through the registry. They
+  # have no main.go to build and their version is mql.GetVersion() rather than
+  # a quoted literal, so the version check below reads an empty string, never
+  # matches the published one, and would try to build them on every push.
+  SKIP_PROVIDERS: "core iac"
+  # C07QZDJFF89 == #release-coordination
+  SLACK_BOT_CHANNEL_ID: "C07QZDJFF89"
 
 jobs:
   scoping:
@@ -41,9 +75,17 @@ jobs:
     outputs:
       providers: ${{ steps.providers.outputs.providers }}
       build_list: ${{ steps.providers.outputs.build_list }}
+      # Consumed only by `notify`. `blocked` is set on the major-promotion
+      # refusal and survives the step's own `exit 1`: a step's outputs are
+      # read from the file regardless of its exit code, which is what lets
+      # the refusal reach Slack instead of dying in a collapsed log.
+      blocked: ${{ steps.providers.outputs.blocked }}
+      promotions: ${{ steps.providers.outputs.promotions }}
+      # `<provider> <version>` per line, so `notify` can name what it released.
+      versions: ${{ steps.providers.outputs.versions }}
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -52,8 +94,38 @@ jobs:
 
       - name: Detect providers
         id: providers
+        env:
+          ALLOW_MAJOR_PROMOTION: ${{ inputs.allow_major_promotion }}
+          ONLY_PROVIDERS: ${{ inputs.providers }}
         run: |
           providers=$(find providers -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+
+          # Restrict the run to named providers. Without this, the first run on a
+          # branch whose versions have all moved builds every provider at once,
+          # which is not something to discover in production. An unknown name is an
+          # error rather than an empty build, so a typo cannot look like "nothing to do".
+          if [ -n "$ONLY_PROVIDERS" ]; then
+            requested=$(echo "$ONLY_PROVIDERS" | tr ',' ' ')
+            selected=""
+            for r in $requested; do
+              found=0
+              for p in $providers; do
+                if [ "$p" = "$r" ]; then
+                  found=1
+                  # Built without a leading space. `echo -n $providers` below is
+                  # unquoted and would trim one, but not depending on that keeps the
+                  # value correct if the line is ever quoted.
+                  selected="${selected:+$selected }$r"
+                fi
+              done
+              if [ "$found" = "0" ]; then
+                echo "::error::requested provider '$r' does not exist under providers/"
+                exit 1
+              fi
+            done
+            providers=$selected
+            echo "=== RESTRICTED TO:$providers ==="
+          fi
           echo "providers=$(echo -n $providers | jq -Rsc 'split(" ")')" >> $GITHUB_OUTPUT
           build=""
           root=$PWD
@@ -69,14 +141,63 @@ jobs:
               continue
             fi
             cd providers/$p
-            REPO_VERSION=$(grep Version: config/config.go | cut -f2 -d\")
-            STATUS_CODE=$(curl -s -o /dev/null -I -w "%{http_code}" https://releases.mondoo.com/providers/${p}/latest.json)
+            # Anchor on the Version field. A bare `grep Version:` also matches the
+            # MinVersion entries in the Requires block. Those exist on main and not
+            # on v13, so REPO_VERSION became a multi-line string that can never equal
+            # DIST_VERSION, and every provider would rebuild on every push.
+            REPO_VERSION=$(grep -m1 -E '^[[:space:]]*Version:' config/config.go | cut -f2 -d\")
+            versions="${versions:+$versions$'\n'}$p $REPO_VERSION"
+
+            # Compare against the pointer for the channel this version belongs to.
+            # A pre-release publishes to preview and never changes latest.json, so
+            # comparing it against latest.json is a second comparison that never
+            # converges: it would republish the same version on every push.
+            case "$REPO_VERSION" in
+              *-*) POINTER="preview.json" ;;
+              *)   POINTER="latest.json" ;;
+            esac
+            STATUS_CODE=$(curl -s -o /dev/null -I -w "%{http_code}" https://releases.mondoo.com/providers/${p}/${POINTER})
             if [ "$STATUS_CODE" -eq "404" ]; then
               DIST_VERSION="unreleased"
             else
-              DIST_VERSION=$(curl -s https://releases.mondoo.com/providers/${p}/latest.json | jq -r .version)
+              DIST_VERSION=$(curl -s https://releases.mondoo.com/providers/${p}/${POINTER} | jq -r .version)
             fi
-            printf "PROVIDER $p:\n  Local version: $REPO_VERSION\n  Remote version: $DIST_VERSION\n"
+            printf "PROVIDER $p:\n  Local version: $REPO_VERSION\n  Remote version: $DIST_VERSION (from $POINTER)\n"
+
+            # Providers share one namespace across release lines, and every
+            # client resolves through providers/latest.json -- whatever is
+            # newest there is what the whole fleet installs. A version carrying
+            # a semver pre-release segment lands on the preview channel and is
+            # invisible to stable clients; a plain one does not.
+            #
+            # So a plain version whose major is ahead of what stable currently
+            # serves would hand every client on the previous major a provider
+            # built for the next one, as a side effect of a routine bump. Refuse
+            # it. Promoting a major is deliberate: re-run with
+            # allow_major_promotion.
+            if [[ "$DIST_VERSION" != "unreleased" ]]; then
+              REPO_MAJOR=${REPO_VERSION%%.*}
+              DIST_MAJOR=${DIST_VERSION%%.*}
+              if [[ "$REPO_VERSION" != *-* && "$REPO_MAJOR" -gt "$DIST_MAJOR" ]]; then
+                if [[ "$ALLOW_MAJOR_PROMOTION" != "true" ]]; then
+                  # Record the refusal for `notify` before failing, so the reason
+                  # reaches the release channel and not just this log. Delimited
+                  # rather than `key=value`: a value carrying a newline would
+                  # otherwise truncate the file and swallow later outputs.
+                  {
+                    echo "blocked<<__MQL_EOF__"
+                    echo "$p $REPO_VERSION would promote major $REPO_MAJOR to stable, where $DIST_VERSION serves every client on major $DIST_MAJOR."
+                    echo "__MQL_EOF__"
+                  } >> $GITHUB_OUTPUT
+                  echo "::error::$p $REPO_VERSION would promote major $REPO_MAJOR to the stable channel, where $DIST_VERSION is serving every client on major $DIST_MAJOR. Give it a pre-release segment (e.g. ${REPO_MAJOR}.0.0-rc.1) to publish it to preview, or re-run with allow_major_promotion to promote it deliberately."
+                  exit 1
+                fi
+                # Deliberate promotion: worth naming in the release message,
+                # because it is the one change a reader must not miss.
+                promotions="${promotions:+$promotions, }$p $DIST_MAJOR to $REPO_MAJOR"
+              fi
+            fi
+
             if [[ $REPO_VERSION != $DIST_VERSION ]]; then
               echo "  Adding $p to build list"
               build="$build $p"
@@ -87,6 +208,14 @@ jobs:
           done
 
           echo "build_list=$(echo -n $build | jq -Rsc 'split(" ")')" >> $GITHUB_OUTPUT
+          {
+            echo "promotions<<__MQL_EOF__"
+            echo "${promotions:-}"
+            echo "__MQL_EOF__"
+            echo "versions<<__MQL_EOF__"
+            echo "${versions:-}"
+            echo "__MQL_EOF__"
+          } >> $GITHUB_OUTPUT
 
           build_all=${{ github.event.inputs.build_all }}
           if [[ $build_all == true ]]; then
@@ -122,7 +251,7 @@ jobs:
         provider: ${{ fromJSON(needs.scoping.outputs.build_list) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -130,9 +259,9 @@ jobs:
         run: cat ".github/env" >> $GITHUB_ENV
 
       - name: Set up Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ">=${{ env.golang-version }}"
+          go-version: "${{ env.golang-version }}"
           check-latest: true
           cache: false
 
@@ -154,7 +283,7 @@ jobs:
       # These packages have been installed on the self-hosted runner using ansible from the private repo
 
       - name: Azure login
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.TSIGN_AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.TSIGN_AZURE_TENANT_ID}}
@@ -206,68 +335,13 @@ jobs:
             gsutil -m cp -c dist/${pkg}_provider.json gs://${BUCKET}/providers/${PROVIDER}/${VERSION}/provider.json
           done
 
-      - name: "Resolve published version"
-        id: published
-        if: ${{ ! inputs.skip_publish && steps.build-providers.outcome == 'success' }}
-        # Version comes from the dist filename (name_version_os_arch); uniq
-        # collapses to one value since the job builds a single provider. Guard
-        # against an empty result so we never post a versionless message.
-        run: |
-          VER=$(ls dist | cut -f1,2 -d_ | uniq | head -1 | cut -f2 -d_)
-          if [ -z "$VER" ]; then echo "::error::Could not resolve published version"; exit 1; fi
-          echo "version=$VER" >> $GITHUB_OUTPUT
-
-      - name: "Notify Slack on provider release"
-        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
-        # Only on a real publish that built successfully.
-        if: ${{ ! inputs.skip_publish && steps.build-providers.outcome == 'success' }}
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
-          # toJSON(format(...)) JSON-encodes the interpolated values so a stray
-          # quote/backslash can never break the payload.
-          payload: |
-            {
-              "channel": "C07QZDJFF89",
-              "text": ${{ toJSON(format('🎉 Provider released: {0} v{1}', matrix.provider, steps.published.outputs.version)) }},
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": ${{ toJSON(format(':tada: *Provider released:* `{0}` v{1}  <{2}/{3}/actions/runs/{4}|View GitHub Action Run>', matrix.provider, steps.published.outputs.version, github.server_url, github.repository, github.run_id)) }}
-                  }
-                }
-              ]
-            }
-
       - name: "Save Artifacts"
         if: ${{ inputs.skip_publish }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.provider }}
           path: dist
 
-      - name: Send Slack notification on failure
-        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
-        if: ${{ always() && steps.build-providers.outcome != 'success' }}
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
-          payload: |
-            {
-              "channel": "C07QZDJFF89",
-              "text": "⚠️ Provider Build failed for ${{ matrix.provider }}",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": ":x: *Provider Build failed for ${{ matrix.provider }}*:  <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View GitHub Action Run>"
-                  }
-                }
-              ]
-            }
 
   provider-index:
     needs: [provider-build, scoping]
@@ -276,7 +350,7 @@ jobs:
     steps:
       - name: Generate token
         id: generate-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: ${{ secrets.MONDOO_MERGEBOT_APP_ID }}
           private-key: ${{ secrets.MONDOO_MERGEBOT_APP_PRIVATE_KEY }}
@@ -305,3 +379,211 @@ jobs:
               "mql_sha": "${{ github.sha }}",
               "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }'
+
+  # Reports the provider release to the release channel.
+  #
+  # One message per run, not one per provider: the notifier used to live inside
+  # the build matrix, so a full release posted 81 separate lines and the summary
+  # had to be reassembled by hand from the channel.
+  #
+  # Nothing depends on this job and the post is continue-on-error: a Slack
+  # outage, a rotated token or a renamed channel must never turn a good release
+  # red. It runs on failure too, because a release that did not happen is the
+  # case most worth announcing -- including the major-promotion refusal, which
+  # otherwise fails the run without saying why anywhere a person will look.
+  notify:
+    name: Report the provider release to Slack
+    if: ${{ always() && ! inputs.skip_publish }}
+    needs: [scoping, provider-build, provider-index]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Reading the run's own jobs is how per-provider outcomes are recovered.
+      # The matrix job is named `${{ matrix.provider }}`, so the job list is
+      # already a provider-to-result mapping and no artifact plumbing is needed.
+      actions: read
+    steps:
+      - name: Compose the message
+        id: meta
+        env:
+          # Through env rather than inline `${{ }}`: an expression is pasted in
+          # before bash parses the script, so a value carrying a quote or `$(…)`
+          # would be read as shell rather than as text.
+          BLOCKED: ${{ needs.scoping.outputs.blocked }}
+          PROMOTIONS: ${{ needs.scoping.outputs.promotions }}
+          BUILD_LIST: ${{ needs.scoping.outputs.build_list }}
+          VERSIONS: ${{ needs.scoping.outputs.versions }}
+          SCOPING: ${{ needs.scoping.result }}
+          BUILD: ${{ needs.provider-build.result }}
+          INDEX: ${{ needs.provider-index.result }}
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # Composed values are pasted into the double-quoted YAML scalars of the
+          # payload below and then rendered as Slack mrkdwn, so escape for both:
+          # backslash and quote so a value cannot terminate the scalar (which
+          # fails the whole step, not just the rendering), then the three
+          # characters Slack reads as markup.
+          esc() {
+            printf '%s' "$1" \
+              | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' \
+                    -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+          }
+
+          # Values reach $GITHUB_OUTPUT through a delimiter rather than
+          # `key=value`: a newline in a value would otherwise truncate the file
+          # and silently swallow every output written after it.
+          emit() { printf '%s<<__MQL_EOF__\n%s\n__MQL_EOF__\n' "$1" "$2" >> "$GITHUB_OUTPUT"; }
+
+          planned=$(printf '%s' "${BUILD_LIST:-[]}" | jq -r 'length' 2>/dev/null || echo 0)
+
+          # Per-provider outcomes from the run's own job list. Anything that is
+          # not a matrix leg (scoping, provider-index, this job) is filtered out
+          # by intersecting with the planned build list.
+          gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs" \
+            --jq '.jobs[] | [.name, (.conclusion // "running")] | @tsv' > jobs.tsv || : > jobs.tsv
+          printf '%s' "${BUILD_LIST:-[]}" | jq -r '.[]' > planned.txt 2>/dev/null || : > planned.txt
+          printf '%s\n' "${VERSIONS:-}" > versions.txt
+
+          # Named with their version, because "1 of 1" alone does not say what
+          # shipped. A provider with no recorded version (a forced build of a
+          # builtin) is named without one.
+          ok=0; bad=0; released=""; released_md=""; failed_md=""
+          while IFS= read -r prov; do
+            [ -n "$prov" ] || continue
+            res=$(awk -F'\t' -v p="$prov" '$1==p{print $2; exit}' jobs.tsv)
+            ver=$(awk -v p="$prov" '$1==p{print $2; exit}' versions.txt)
+            label="$prov${ver:+-$ver}"
+            case "$res" in
+              success|skipped)
+                ok=$((ok+1))
+                released="${released:+$released, }$label"
+                released_md="${released_md:+$released_md\\n}\`$(esc "$label")\`" ;;
+              "") ;;
+              *)
+                bad=$((bad+1))
+                failed_md="${failed_md:+$failed_md\\n}\`$(esc "$label")\`" ;;
+            esac
+          done < planned.txt
+
+          # Past this many, name a count instead: a full release is 80+ providers.
+          max_named=10
+          [ "$ok" -le "$max_named" ] || released_md=$(esc "$ok providers, see the run")
+          [ "$bad" -le "$max_named" ] || failed_md=$(esc "$bad providers, see the run")
+
+          # Before the trigger was narrowed to config.go, most runs touched
+          # provider code without bumping a version, so the "nothing to
+          # release" branch fired on 22 of 30 consecutive runs. A channel
+          # that is mostly no-ops trains people to stop reading it, which
+          # costs exactly the messages this job exists to deliver. Each
+          # branch decides whether it is worth interrupting for.
+          post=true
+
+          if [ -n "${BLOCKED:-}" ]; then
+            header=":no_entry: Provider release blocked"
+            mention="<!here> "
+            detail="$(esc "$BLOCKED")  _To proceed: re-run with *allow_major_promotion*, or give the version a pre-release segment (e.g. 14.0.0-rc.1) to publish it to preview._"
+          elif [ "$SCOPING" != "success" ]; then
+            header=":x: Provider release failed during scoping"
+            mention="<!here> "
+            detail="Scoping did not complete, so nothing was built."
+          elif [ "$planned" = "0" ]; then
+            # Nothing to release and nothing broke: the run is a no-op and the
+            # Actions tab already records it. Stay quiet.
+            post=false
+            header=":white_check_mark: No provider changes to release"
+            mention=""
+            detail="Every provider version already matches what the channel serves."
+          elif [ "$bad" -gt 0 ]; then
+            header=":x: Providers released - $ok of $planned, $bad failed"
+            mention="<!here> "
+            detail="*Failed:*\n$failed_md"
+            if [ -n "$released_md" ]; then
+              detail="$detail\n*Released:*\n$released_md"
+            fi
+          else
+            header=":rocket: Providers released - $ok of $planned"
+            mention=""
+            detail=":package: *stable* - this is what a default install gets"
+            if [ -n "$released_md" ]; then
+              detail="*Released:*\n$released_md\n$detail"
+            fi
+          fi
+
+          if [ -n "${PROMOTIONS:-}" ]; then
+            detail="$detail  :warning: *Major promotion:* $(esc "$PROMOTIONS")"
+          fi
+
+          # `skipped` is not `failed`: provider-index is skipped by design on a
+          # no-publish run, and reporting that red would train everyone to
+          # ignore the colour.
+          status() {
+            case "$1" in
+              success) echo ":white_check_mark: Done" ;;
+              skipped) echo ":double_vertical_bar: Skipped" ;;
+              "")      echo ":grey_question: Not run" ;;
+              *)       echo ":x: $1" ;;
+            esac
+          }
+
+          emit post "$post"
+          emit header "$header"
+          # The notification preview shows only `text`, so name the providers
+          # there too, not just in the blocks.
+          if [ "$ok" -le "$max_named" ]; then
+            emit text "$(esc "$header")${released:+ ($(esc "$released"))}"
+          else
+            emit text "$(esc "$header")"
+          fi
+          emit mention "$mention"
+          emit detail "$detail"
+          emit build_status "$(status "$BUILD")"
+          emit index_status "$(status "$INDEX")"
+          emit counts "$ok of $planned"
+
+      - name: Post to Slack
+        # A no-op run composes a message but does not send it, so the branch
+        # stays covered by the compose step's tests either way.
+        if: ${{ steps.meta.outputs.post == 'true' }}
+        continue-on-error: true
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.postMessage
+          # The action's default, `errors: false`, discards a Slack API error
+          # without logging it, so a rejected post reads as a green step.
+          # `true` fails the step with Slack's error as an annotation;
+          # continue-on-error above still keeps the job and the run green.
+          errors: true
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: "${{ env.SLACK_BOT_CHANNEL_ID }}"
+            text: "${{ steps.meta.outputs.mention }}${{ steps.meta.outputs.text }}"
+            blocks:
+              - type: "header"
+                text:
+                  type: "plain_text"
+                  text: "${{ steps.meta.outputs.header }}"
+                  emoji: true
+              - type: "section"
+                text:
+                  type: "mrkdwn"
+                  text: "${{ steps.meta.outputs.detail }}"
+              - type: "section"
+                fields:
+                  - type: "mrkdwn"
+                    text: "*Repository:*\n`${{ github.repository }}`"
+                  - type: "mrkdwn"
+                    text: "*Providers:*\n${{ steps.meta.outputs.counts }}"
+                  - type: "mrkdwn"
+                    text: "*Triggered by:*\n${{ github.actor }}"
+                  - type: "mrkdwn"
+                    text: "*Workflow run:*\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|Open run>"
+              - type: "section"
+                fields:
+                  - type: "mrkdwn"
+                    text: "*Build:*\n${{ steps.meta.outputs.build_status }}"
+                  - type: "mrkdwn"
+                    text: "*Index:*\n${{ steps.meta.outputs.index_status }}"

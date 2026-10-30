@@ -4,11 +4,11 @@
 package users
 
 import (
-	"encoding/json"
 	"io"
 
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 type WindowsSID struct {
@@ -180,8 +180,7 @@ func ParseWindowsLocalUsers(r io.Reader) ([]WindowsLocalUser, error) {
 		return nil, err
 	}
 
-	var localUsers []WindowsLocalUser
-	err = json.Unmarshal(data, &localUsers)
+	localUsers, err := powershell.UnmarshalList[WindowsLocalUser](data)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +206,33 @@ func (s *WindowsUserManager) User(id string) (*User, error) {
 }
 
 func (s *WindowsUserManager) List() ([]*User, error) {
-	c, err := s.conn.RunCommand(powershell.Encode(getLocalUsersScript))
+	if shared.WindowsNative(s.conn) {
+		native, err := nativeWindowsLocalUsers()
+		if err == nil {
+			res := []*User{}
+			for i := range native {
+				res = append(res, winToUser(native[i]))
+			}
+			return res, nil
+		}
+		log.Debug().Err(err).Msg("native Windows users failed, falling back to PowerShell")
+	}
+	// getLocalUsersScript is 5,294 characters, about 14,000 once Encode has
+	// widened it to UTF-16 and base64 encoded it, well past MaxCommandLength.
+	// Over WinRM the command is routed through cmd.exe and rejected before
+	// PowerShell ever runs, so the caller got a non-zero exit with empty stdout
+	// and users.list failed with "unexpected end of JSON input". Staging writes
+	// the script to the target and runs it with -File, so the command line
+	// carries a path rather than the whole program; see powershell.Stage.
+	staged, err := powershell.Stage(s.conn, "users", getLocalUsersScript)
+	if err != nil {
+		return nil, err
+	}
+	// On the error path too: a scan that dies between the write and the run
+	// would otherwise leave the file behind.
+	defer staged.Remove()
+
+	c, err := s.conn.RunCommand(staged.Command)
 	if err != nil {
 		return nil, err
 	}

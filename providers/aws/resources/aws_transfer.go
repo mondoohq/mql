@@ -14,11 +14,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/transfer"
 	transfertypes "github.com/aws/aws-sdk-go-v2/service/transfer/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 func (a *mqlAwsTransfer) id() (string, error) {
@@ -108,8 +108,8 @@ func initAwsTransferServer(runtime *plugin.Runtime, args map[string]*llx.RawData
 	// During a discovered-asset scan the resource is queried with no args; recover
 	// the server's region and id from the ARN carried on the asset.
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformTransferServer); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 	if args["arn"] == nil {
@@ -117,6 +117,11 @@ func initAwsTransferServer(runtime *plugin.Runtime, args map[string]*llx.RawData
 	}
 
 	arnVal := args["arn"].Value.(string)
+
+	if cached := cachedByArn(runtime, ResourceAwsTransferServer, arnVal); cached != nil {
+		return args, cached, nil
+	}
+
 	parsed, err := arn.Parse(arnVal)
 	if err != nil {
 		return nil, nil, err
@@ -241,6 +246,47 @@ func (a *mqlAwsTransferServer) protocols() ([]any, error) {
 	return protocols, nil
 }
 
+func (a *mqlAwsTransferServer) sftpPorts() ([]any, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	var details *transfertypes.ProtocolDetails
+	if resp.Server != nil {
+		details = resp.Server.ProtocolDetails
+	}
+	ports := transferSftpPorts(details)
+	if ports == nil {
+		a.SftpPorts.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return ports, nil
+}
+
+// transferSftpPorts renders the server's SFTP port list, or nil when the
+// server reports none.
+func transferSftpPorts(details *transfertypes.ProtocolDetails) []any {
+	if details == nil || len(details.SftpPorts) == 0 {
+		return nil
+	}
+	res := make([]any, 0, len(details.SftpPorts))
+	for _, p := range details.SftpPorts {
+		var port any
+		if p.SftpPort != nil {
+			port = int64(*p.SftpPort)
+		}
+		var mode any
+		if p.CommunicationMode != "" {
+			mode = string(p.CommunicationMode)
+		}
+		res = append(res, map[string]any{
+			"port":              port,
+			"communicationMode": mode,
+		})
+	}
+	return res
+}
+
 func (a *mqlAwsTransferServer) ipAddressType() (string, error) {
 	resp, err := a.fetchDetail()
 	if err != nil {
@@ -302,11 +348,7 @@ func (a *mqlAwsTransferServer) structuredLogDestinations() ([]any, error) {
 }
 
 func transferTagsToMap(tags []transfertypes.Tag) map[string]any {
-	out := make(map[string]any, len(tags))
-	for _, t := range tags {
-		out[convert.ToValue(t.Key)] = convert.ToValue(t.Value)
-	}
-	return out
+	return tagsToMap(tags, func(t transfertypes.Tag) *string { return t.Key }, func(t transfertypes.Tag) *string { return t.Value })
 }
 
 // Connectors
@@ -406,6 +448,9 @@ func (a *mqlAwsTransferConnector) fetchDetail() (*transfer.DescribeConnectorOutp
 	})
 	if err != nil {
 		return nil, err
+	}
+	if resp == nil || resp.Connector == nil {
+		return nil, errors.New("DescribeConnector returned no connector for " + connectorId)
 	}
 	a.fetched = true
 	a.descResp = resp
@@ -732,6 +777,43 @@ func (a *mqlAwsTransferWorkflow) onExceptionSteps() ([]any, error) {
 		return nil, err
 	}
 	return convert.JsonToDictSlice(resp.Workflow.OnExceptionSteps)
+}
+
+func (a *mqlAwsTransferWorkflow) structuredLogGroups() ([]any, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	if resp.Workflow == nil {
+		return res, nil
+	}
+	for _, dest := range resp.Workflow.StructuredLogDestinations {
+		logGroupArn := transferLogGroupArn(dest)
+		if logGroupArn == "" {
+			continue
+		}
+		lg, err := NewResource(a.MqlRuntime, ResourceAwsCloudwatchLoggroup, map[string]*llx.RawData{
+			"arn": llx.StringData(logGroupArn),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, lg)
+	}
+	return res, nil
+}
+
+// transferLogGroupArn normalizes a Transfer Family structured log destination
+// to the form CloudWatch Logs reports for a log group ARN (with the trailing
+// ":*"), so the reference resolves to the cached log group. Empty input stays
+// empty.
+func transferLogGroupArn(dest string) string {
+	dest = strings.TrimSpace(dest)
+	if dest == "" {
+		return ""
+	}
+	return strings.TrimSuffix(dest, ":*") + ":*"
 }
 
 func (a *mqlAwsTransferWorkflow) tags() (map[string]any, error) {

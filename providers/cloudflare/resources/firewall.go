@@ -4,92 +4,13 @@ package resources
 
 import (
 	"context"
-	"fmt"
-	"time"
 
-	cloudflare "github.com/cloudflare/cloudflare-go/v6"
-	"github.com/cloudflare/cloudflare-go/v6/page_rules"
-	"github.com/cloudflare/cloudflare-go/v6/rulesets"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/cloudflare/connection"
-	"go.mondoo.com/mql/v13/types"
+	cloudflare "github.com/cloudflare/cloudflare-go/v7"
+	"github.com/cloudflare/cloudflare-go/v7/page_rules"
+	"github.com/cloudflare/cloudflare-go/v7/rulesets"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/cloudflare/connection"
 )
-
-func (c *mqlCloudflareZoneFirewallRule) id() (string, error) {
-	if c.Id.Error != nil {
-		return "", c.Id.Error
-	}
-	return c.Id.Data, nil
-}
-
-// firewallRule is the response shape of the legacy zone firewall-rules endpoint
-// (`/zones/{id}/firewall/rules`). cloudflare-go v6 marks its typed
-// firewall.RuleService as deprecated and its typed response drops the
-// created/modified timestamps we expose, so we read the endpoint via the
-// client's generic Get and decode the full payload ourselves to preserve the
-// MQL schema.
-type firewallRule struct {
-	ID          string `json:"id"`
-	Description string `json:"description"`
-	Action      string `json:"action"`
-	Ref         string `json:"ref"`
-	Paused      bool   `json:"paused"`
-	Filter      struct {
-		Expression string `json:"expression"`
-	} `json:"filter"`
-	Products   []string  `json:"products"`
-	CreatedOn  time.Time `json:"created_on"`
-	ModifiedOn time.Time `json:"modified_on"`
-}
-
-func (c *mqlCloudflareZone) firewallRules() ([]any, error) {
-	conn := c.MqlRuntime.Connection.(*connection.CloudflareConnection)
-
-	var result []any
-	page := 1
-	for {
-		var env struct {
-			Result     []firewallRule `json:"result"`
-			ResultInfo struct {
-				Page       int `json:"page"`
-				TotalPages int `json:"total_pages"`
-			} `json:"result_info"`
-		}
-		uri := fmt.Sprintf("zones/%s/firewall/rules?page=%d&per_page=100", c.Id.Data, page)
-		if err := conn.Cf.Get(context.TODO(), uri, nil, &env); err != nil {
-			return nil, err
-		}
-
-		for i := range env.Result {
-			rec := env.Result[i]
-
-			res, err := NewResource(c.MqlRuntime, "cloudflare.zone.firewallRule", map[string]*llx.RawData{
-				"id":               llx.StringData(rec.ID),
-				"description":      llx.StringData(rec.Description),
-				"action":           llx.StringData(rec.Action),
-				"ref":              llx.StringData(rec.Ref),
-				"paused":           llx.BoolData(rec.Paused),
-				"filterExpression": llx.StringData(rec.Filter.Expression),
-				"products":         llx.ArrayData(convert.SliceAnyToInterface(rec.Products), types.String),
-				"createdAt":        llx.TimeData(rec.CreatedOn),
-				"updatedAt":        llx.TimeData(rec.ModifiedOn),
-			})
-			if err != nil {
-				return nil, err
-			}
-
-			result = append(result, res)
-		}
-
-		if env.ResultInfo.TotalPages == 0 || env.ResultInfo.Page >= env.ResultInfo.TotalPages {
-			break
-		}
-		page++
-	}
-
-	return result, nil
-}
 
 func (c *mqlCloudflareZoneRuleset) id() (string, error) {
 	if c.Id.Error != nil {

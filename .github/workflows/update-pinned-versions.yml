@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   update-versions:
-    uses: mondoohq/actions/.github/workflows/update-pinned-versions.yml@b41754752763419780430abef5e35842ba2bec66 # main
+    uses: mondoohq/actions/.github/workflows/update-pinned-versions.yml@c38cfdf99da709760f58ff35aa5608688657f2f7 # main
     permissions:
       contents: write
       pull-requests: write

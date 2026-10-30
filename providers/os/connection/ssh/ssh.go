@@ -4,14 +4,16 @@
 package ssh
 
 import (
-	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	awsconf "github.com/aws/aws-sdk-go-v2/config"
@@ -21,17 +23,18 @@ import (
 	rawsftp "github.com/pkg/sftp"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/connection/ssh/awsinstanceconnect"
-	"go.mondoo.com/mql/v13/providers/os/connection/ssh/awsssmsession"
-	"go.mondoo.com/mql/v13/providers/os/connection/ssh/cat"
-	"go.mondoo.com/mql/v13/providers/os/connection/ssh/scp"
-	"go.mondoo.com/mql/v13/providers/os/connection/ssh/sftp"
-	"go.mondoo.com/mql/v13/providers/os/connection/ssh/signers"
-	"go.mondoo.com/mql/v13/utils/multierr"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/ssh/awsinstanceconnect"
+	"go.mondoo.com/mql/providers/os/connection/ssh/awsssmsession"
+	"go.mondoo.com/mql/providers/os/connection/ssh/cat"
+	"go.mondoo.com/mql/providers/os/connection/ssh/scp"
+	"go.mondoo.com/mql/providers/os/connection/ssh/sftp"
+	"go.mondoo.com/mql/providers/os/connection/ssh/signers"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
+	"go.mondoo.com/mql/utils/multierr"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
@@ -53,6 +56,23 @@ type Connection struct {
 	UseScpFilesystem bool
 	HostKey          ssh.PublicKey
 	SSHClient        *ssh.Client
+	closersMu        sync.Mutex
+	closers          []io.Closer
+
+	// the shell the server runs commands in, detected once (windows_shell.go)
+	shellOnce     sync.Once
+	shell         remoteShell
+	shellDetected atomic.Bool
+	// slots limits the commands that run at once on Windows (command_slots.go)
+	slotsOnce sync.Once
+	slots     chan struct{}
+	// persistent PowerShell sessions (windows_session.go)
+	sessionsOnce sync.Once
+	sessionPool  *psSessionPool
+	// openSession replaces openPSSession in tests
+	openSession func() (*psSession, error)
+	// rawRunner replaces runRawCommand in tests
+	rawRunner func(command string) (*shared.Command, error)
 }
 
 func NewConnection(id uint32, conf *inventory.Config, asset *inventory.Asset) (*Connection, error) {
@@ -95,12 +115,18 @@ func NewConnection(id uint32, conf *inventory.Config, asset *inventory.Asset) (*
 	if conf.Sudo != nil && conf.Sudo.Active {
 		// the id command may not be available, eg. if ssh is used with windows
 		out, _ := res.RunCommand("id -u")
-		stdout, _ := io.ReadAll(out.Stdout)
+		var stdout []byte
+		if out != nil {
+			stdout, _ = io.ReadAll(out.Stdout)
+		}
 		// just check for the explicit positive case, otherwise just activate sudo
 		// we check sudo in VerifyConnection
-		if string(stdout) != "0" {
-			// configure sudo
-			log.Debug().Msg("activated sudo for ssh connection")
+		if strings.TrimSpace(string(stdout)) != "0" {
+			if err := shared.ResolveElevation(conf.Sudo, res.runRawCommand); err != nil {
+				res.Close()
+				return nil, err
+			}
+			log.Debug().Str("executable", conf.Sudo.Executable).Msg("activated privilege elevation for ssh connection")
 			res.Sudo = conf.Sudo
 		} else {
 			log.Debug().Msg("deactivated sudo for ssh connection since user is root")
@@ -139,51 +165,117 @@ func (p *Connection) Capabilities() shared.Capabilities {
 }
 
 func (c *Connection) RunCommand(command string) (*shared.Command, error) {
-	if c.Sudo != nil && c.Sudo.Active {
+	return c.RunCommandContext(context.Background(), command)
+}
+
+func (c *Connection) RunCommandContext(parent context.Context, command string) (*shared.Command, error) {
+	ctx, cancel, err := shared.CommandContext(parent)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	sudo := c.Sudo != nil && c.Sudo.Active
+	if sudo {
 		command = shared.BuildSudoCommand(c.Sudo, command)
 	}
-	return c.runRawCommand(command)
+	// Every path takes a slot. A sudo command does not start with
+	// powershell, so it never probes the shell; it is limited once another
+	// command has found the target to be Windows.
+	release, err := c.acquireCommandSlotContext(ctx, command)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	if !sudo {
+		if res, ok, err := c.runInSessionContext(ctx, command); ok {
+			if err == nil {
+				powershell.DecodeStderr(res)
+			}
+			return res, err
+		}
+		if res, ok, err := c.runPowershellDirectContext(ctx, command); ok {
+			if err == nil {
+				powershell.DecodeStderr(res)
+			}
+			return res, err
+		}
+	}
+	res, err := c.runRawContext(ctx, command)
+	if err == nil {
+		powershell.DecodeStderr(res)
+	}
+	return res, err
 }
 
 func (c *Connection) runRawCommand(command string) (*shared.Command, error) {
+	return c.runRawCommandContext(context.Background(), command)
+}
+
+func (c *Connection) runRawCommandContext(parent context.Context, command string) (*shared.Command, error) {
+	// Raw probes and connection verification also enter with Background, so
+	// this guard is required even when RunCommandContext already bounded it.
+	ctx, cancel, err := shared.CommandContext(parent)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
 	log.Debug().Str("command", command).Str("provider", "ssh").Msg("run command")
 
 	if c.SSHClient == nil {
 		return nil, errors.New("SSH session not established")
 	}
 
+	output, err := shared.NewCommandOutput(cancel)
+	if err != nil {
+		return nil, err
+	}
 	res := shared.Command{
 		Command: command,
 		Stats: shared.PerfStats{
 			Start: time.Now(),
 		},
-		Stdout: &bytes.Buffer{},
-		Stderr: &bytes.Buffer{},
+		Stdout: output.Stdout,
+		Stderr: output.Stderr,
 	}
 	defer func() {
 		res.Stats.Duration = time.Since(res.Stats.Start)
 	}()
 
-	session, err := c.SSHClient.NewSession()
-	if err != nil {
-		log.Debug().Msg("could not open new session, try to re-establish connection")
-
+	session, err := c.newSessionContext(ctx)
+	if err != nil && ctx.Err() == nil {
+		// Preserve reconnection without giving it a fresh command budget.
+		_ = c.SSHClient.Close()
 		c.Close()
-		if err = c.Connect(); err != nil {
-			return nil, multierr.Wrap(err, "failed to open SSH session (reconnect failed)")
-		}
-
-		session, err = c.SSHClient.NewSession()
-		if err != nil {
+		if err = c.ConnectContext(ctx); err != nil {
 			return nil, err
 		}
+		session, err = c.newSessionContext(ctx)
 	}
-	defer session.Close()
+	if err != nil {
+		return nil, err
+	}
+	defer c.closeSession(session)
 
 	// start ssh call
 	session.Stdout = res.Stdout
 	session.Stderr = res.Stderr
-	err = session.Run(res.Command)
+	done := make(chan error, 1)
+	go func() { done <- session.Run(res.Command) }()
+	select {
+	case err = <-done:
+	case <-ctx.Done():
+		c.closeSession(session)
+		if err := output.Error(); err != nil {
+			return nil, err
+		}
+		return nil, ctx.Err()
+	}
+	if err := output.Error(); err != nil {
+		return &res, err
+	}
+	if ctx.Err() != nil {
+		return &res, ctx.Err()
+	}
 	if err == nil {
 		return &res, nil
 	}
@@ -198,6 +290,60 @@ func (c *Connection) runRawCommand(command string) (*shared.Command, error) {
 
 	// all other errors are real errors and not expected
 	return &res, err
+}
+
+// newSessionContext also bounds waiting for the server to acknowledge a new
+// SSH channel. Closing the transport is required when no channel exists yet.
+func (c *Connection) newSessionContext(ctx context.Context) (*ssh.Session, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	client := c.SSHClient
+	if client == nil {
+		return nil, errors.New("SSH session not established")
+	}
+	type result struct {
+		session *ssh.Session
+		err     error
+	}
+	done := make(chan result, 1)
+	go func() {
+		session, err := client.NewSession()
+		if ctx.Err() != nil && session != nil {
+			_ = session.Close()
+		}
+		done <- result{session, err}
+	}()
+	select {
+	case result := <-done:
+		if ctx.Err() != nil {
+			c.closeSession(result.session)
+			return nil, ctx.Err()
+		}
+		return result.session, result.err
+	case <-ctx.Done():
+		_ = client.Close()
+		return nil, ctx.Err()
+	}
+}
+
+// A stalled peer can also stop reading channel-close messages. Escalate to
+// closing the transport rather than letting cancellation itself block.
+// Session.Close sends a channel-close message without waiting for a remote
+// reply; this grace bounds a blocked local transport write, not a network RTT.
+func (c *Connection) closeSession(session *ssh.Session) {
+	if session == nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() { _ = session.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		if c.SSHClient != nil {
+			_ = c.SSHClient.Close()
+		}
+	}
 }
 
 func (c *Connection) FileSystem() afero.Fs {
@@ -328,8 +474,21 @@ func (c *Connection) extractOwnership(stat os.FileInfo) (uid, gid int64) {
 }
 
 func (c *Connection) Close() {
+	// waits for a first command that is creating the pool; after this, none
+	// is created
+	c.sessionsOnce.Do(func() {})
+	if c.sessionPool != nil {
+		c.sessionPool.closeAll()
+	}
 	if c.SSHClient != nil {
 		c.SSHClient.Close()
+	}
+	c.closersMu.Lock()
+	closers := c.closers
+	c.closers = nil
+	c.closersMu.Unlock()
+	for _, closer := range closers {
+		_ = closer.Close()
 	}
 }
 
@@ -340,13 +499,13 @@ func (c *Connection) setDefaultSettings() {
 		c.conf.Port = 22
 	}
 
-	// we need to check if an executable was provided, otherwise fallback to use sudo
-	if c.conf.Sudo != nil && c.conf.Sudo.Active && c.conf.Sudo.Executable == "" {
-		c.conf.Sudo.Executable = "sudo"
-	}
 }
 
 func (c *Connection) Connect() error {
+	return c.ConnectContext(context.Background())
+}
+
+func (c *Connection) ConnectContext(ctx context.Context) error {
 	cc := c.conf
 
 	c.setDefaultSettings()
@@ -389,8 +548,11 @@ func (c *Connection) Connect() error {
 	}
 
 	// establish connection
-	conn, _, err := establishClientConnection(cc, hostkeyCallback)
+	conn, closers, err := establishClientConnectionContext(ctx, cc, hostkeyCallback)
 	if err != nil {
+		for _, closer := range closers {
+			_ = closer.Close()
+		}
 		log.Debug().Err(err).Str("provider", "ssh").Str("host", cc.Host).Int32("port", cc.Port).Bool("insecure", cc.Insecure).Msg("could not establish ssh session")
 		if strings.ContainsAny(cc.Host, "[]") {
 			log.Info().Str("host", cc.Host).Int32("port", cc.Port).Msg("ensure proper []s when combining IPv6 with port numbers")
@@ -398,6 +560,9 @@ func (c *Connection) Connect() error {
 		return err
 	}
 	c.SSHClient = conn
+	c.closersMu.Lock()
+	c.closers = append(c.closers, closers...)
+	c.closersMu.Unlock()
 	c.HostKey = hostkey
 	c.serverVersion = string(conn.ServerVersion())
 	log.Debug().Str("provider", "ssh").Str("host", cc.Host).Int32("port", cc.Port).Str("server", c.serverVersion).Msg("ssh session established")
@@ -406,6 +571,12 @@ func (c *Connection) Connect() error {
 
 func (c *Connection) PlatformID() (string, error) {
 	return PlatformIdentifier(c.HostKey), nil
+}
+
+// ServerVersion returns the identification string the SSH server sent, such
+// as "SSH-2.0-OpenSSH_for_Windows_9.5".
+func (c *Connection) ServerVersion() string {
+	return c.serverVersion
 }
 
 func PlatformIdentifier(publicKey ssh.PublicKey) string {
@@ -503,7 +674,7 @@ func knownHostsCallback() (ssh.HostKeyCallback, error) {
 	// load default host keys
 	files := []string{
 		filepath.Join(home, ".ssh", "known_hosts"),
-		// see https://cloud.google.com/compute/docs/instances/connecting-to-instance
+		// see https://docs.cloud.google.com/compute/docs/connect/standard-ssh
 		// NOTE: content in that file is structured by compute.instanceid key
 		// TODO: we need to keep the instance information during the resolve step
 		filepath.Join(home, ".ssh", "google_compute_known_hosts"),
@@ -522,10 +693,16 @@ func knownHostsCallback() (ssh.HostKeyCallback, error) {
 	return knownhosts.New(existentKnownHosts...)
 }
 
-func establishClientConnection(pCfg *inventory.Config, hostKeyCallback ssh.HostKeyCallback) (*ssh.Client, []io.Closer, error) {
-	authMethods, closer, err := prepareConnection(pCfg)
+func establishClientConnectionContext(parent context.Context, pCfg *inventory.Config, hostKeyCallback ssh.HostKeyCallback) (*ssh.Client, []io.Closer, error) {
+	timeout, err := sshConnectTimeout(pCfg.Options)
 	if err != nil {
 		return nil, nil, err
+	}
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	defer cancel()
+	authMethods, closer, err := prepareConnectionContext(ctx, pCfg)
+	if err != nil {
+		return nil, closer, err
 	}
 
 	if len(authMethods) == 0 {
@@ -547,7 +724,10 @@ func establishClientConnection(pCfg *inventory.Config, hostKeyCallback ssh.HostK
 		HostKeyCallback: hostKeyCallback,
 	}
 
-	supportsHybrid, err := serverSupportsHybridKEX(addr)
+	supportsHybrid, err := serverSupportsHybridKEXContext(ctx, addr)
+	if ctx.Err() != nil {
+		return nil, closer, fmt.Errorf("SSH banner probe: %w", ctx.Err())
+	}
 	if err == nil && supportsHybrid {
 		// force the Key Exchange Algorithm to a compatible one
 		sshClientConfig.Config = ssh.Config{
@@ -565,18 +745,88 @@ func establishClientConnection(pCfg *inventory.Config, hostKeyCallback ssh.HostK
 		Str("user", user).
 		Bool("hybrid_key_exchange", supportsHybrid).
 		Msg("connect to remote ssh")
-	conn, err := ssh.Dial("tcp", addr, sshClientConfig)
+	conn, err := dialSSHContext(ctx, addr, sshClientConfig)
 	return conn, closer, err
+}
+
+const defaultSSHConnectTimeout = 30 * time.Second
+
+// sshConnectTimeout bounds the banner probe, TCP dial, SSH handshake and
+// authentication together. A zero duration would disable the protection.
+func sshConnectTimeout(options map[string]string) (time.Duration, error) {
+	value := strings.TrimSpace(options["ssh_connect_timeout"])
+	if value == "" {
+		value = strings.TrimSpace(os.Getenv("MONDOO_SSH_CONNECT_TIMEOUT"))
+	}
+	if value == "" {
+		return defaultSSHConnectTimeout, nil
+	}
+	timeout, err := time.ParseDuration(value)
+	if err != nil || timeout <= 0 {
+		return 0, fmt.Errorf("invalid SSH connect timeout %q: expected a positive duration", value)
+	}
+	return timeout, nil
+}
+
+// dialSSHContext keeps a deadline on the socket until authentication finishes.
+// ssh.ClientConfig.Timeout covers only TCP dialing, not the SSH handshake.
+func dialSSHContext(ctx context.Context, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		if err := conn.SetDeadline(deadline); err != nil {
+			conn.Close()
+			return nil, err
+		}
+	}
+	cancelled := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		conn.Close()
+		close(cancelled)
+	})
+	client, channels, requests, err := ssh.NewClientConn(conn, addr, config)
+	if !stop() {
+		<-cancelled
+		conn.Close()
+		return nil, ctx.Err()
+	}
+	if err != nil {
+		conn.Close()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, err
+	}
+	// The startup budget must not become an expiry for a healthy connection.
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		client.Close()
+		return nil, err
+	}
+	return ssh.NewClient(client, channels, requests), nil
 }
 
 // Detects if the remote server offers hybrid PQ KEX algorithms
 func serverSupportsHybridKEX(addr string) (bool, error) {
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	return serverSupportsHybridKEXContext(context.Background(), addr)
+}
+
+func serverSupportsHybridKEXContext(parent context.Context, addr string) (bool, error) {
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
 	if err != nil {
 		log.Debug().Err(err).Msg("fail to verify KEX algorithms")
 		return false, err
 	}
 	defer conn.Close()
+	deadline, _ := ctx.Deadline()
+	if err := conn.SetDeadline(deadline); err != nil {
+		return false, err
+	}
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 
 	// Read the server's version string
 	var buf [256]byte
@@ -596,9 +846,7 @@ func serverSupportsHybridKEX(addr string) (bool, error) {
 	return false, nil
 }
 
-// prepareConnection determines the auth methods required for a ssh connection and also prepares any other
-// pre-conditions for the connection like tunnelling the connection via AWS SSM session
-func prepareConnection(conf *inventory.Config) ([]ssh.AuthMethod, []io.Closer, error) {
+func prepareConnectionContext(ctx context.Context, conf *inventory.Config) ([]ssh.AuthMethod, []io.Closer, error) {
 	auths := []ssh.AuthMethod{}
 	closer := []io.Closer{}
 
@@ -607,7 +855,7 @@ func prepareConnection(conf *inventory.Config) ([]ssh.AuthMethod, []io.Closer, e
 
 	// if no credential was provided, fallback to ssh-agent and ssh-config
 	if len(conf.Credentials) == 0 {
-		sshSigners = append(sshSigners, signers.GetSignersFromSSHAgent()...)
+		sshSigners = append(sshSigners, signers.GetSignersFromSSHAgentContext(ctx)...)
 	}
 
 	// use key auth, only load if the key was not found in ssh agent
@@ -646,14 +894,14 @@ func prepareConnection(conf *inventory.Config) ([]ssh.AuthMethod, []io.Closer, e
 			}
 		case vault.CredentialType_ssh_agent:
 			log.Debug().Msg("enabled ssh agent authentication")
-			sshSigners = append(sshSigners, signers.GetSignersFromSSHAgent()...)
+			sshSigners = append(sshSigners, signers.GetSignersFromSSHAgentContext(ctx)...)
 		case vault.CredentialType_aws_ec2_ssm_session:
 			// when the user establishes the ssm session we do the following
 			// 1. start websocket connection and start the session-manager-plugin to map the websocket to a local port
 			// 2. create new ssh key via instance connect so that we do not rely on any pre-existing ssh key
-			err := awsssmsession.CheckPlugin()
+			err := awsssmsession.CheckPluginContext(ctx)
 			if err != nil {
-				return nil, nil, errors.New("Local AWS Session Manager plugin is missing. See https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html for information on the AWS Session Manager plugin and installation instructions")
+				return nil, closer, errors.New("Local AWS Session Manager plugin is missing. See https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html for information on the AWS Session Manager plugin and installation instructions")
 			}
 
 			loadOpts := []func(*awsconf.LoadOptions) error{}
@@ -667,9 +915,9 @@ func prepareConnection(conf *inventory.Config) ([]ssh.AuthMethod, []io.Closer, e
 			}
 			log.Debug().Str("profile", conf.Options["profile"]).Str("region", conf.Options["region"]).Msg("using aws creds")
 
-			cfg, err := awsconf.LoadDefaultConfig(context.Background(), loadOpts...)
+			cfg, err := awsconf.LoadDefaultConfig(ctx, loadOpts...)
 			if err != nil {
-				return nil, nil, err
+				return nil, closer, err
 			}
 
 			// we use ec2 instance connect api to create credentials for an aws instance
@@ -678,15 +926,15 @@ func prepareConnection(conf *inventory.Config) ([]ssh.AuthMethod, []io.Closer, e
 			if id, ok := conf.Options["instance"]; ok {
 				host = id
 			}
-			creds, err := eic.GenerateCredentials(host, credential.User)
+			creds, err := eic.GenerateCredentialsContext(ctx, host, credential.User)
 			if err != nil {
-				return nil, nil, err
+				return nil, closer, err
 			}
 
 			// we use ssm session manager to connect to instance via websockets
 			sManager, err := awsssmsession.NewAwsSsmSessionManager(cfg, profile)
 			if err != nil {
-				return nil, nil, err
+				return nil, closer, err
 			}
 
 			// prepare websocket connection and bind it to a free local port
@@ -696,11 +944,11 @@ func prepareConnection(conf *inventory.Config) ([]ssh.AuthMethod, []io.Closer, e
 			conf.Host = creds.InstanceId
 			localPort, err := awsssmsession.GetAvailablePort()
 			if err != nil {
-				return nil, nil, errors.New("could not find an available port to start the ssm proxy")
+				return nil, closer, errors.New("could not find an available port to start the ssm proxy")
 			}
-			ssmConn, err := sManager.Dial(conf, strconv.Itoa(localPort), remotePort)
+			ssmConn, err := sManager.DialContext(ctx, conf, strconv.Itoa(localPort), remotePort)
 			if err != nil {
-				return nil, nil, err
+				return nil, closer, err
 			}
 
 			// update endpoint information for ssh to connect via local ssm proxy
@@ -716,7 +964,7 @@ func prepareConnection(conf *inventory.Config) ([]ssh.AuthMethod, []io.Closer, e
 			// use the generated ssh credentials for authentication
 			priv, err := signers.GetSignerFromPrivateKeyWithPassphrase(creds.KeyPair.PrivateKey, creds.KeyPair.Passphrase)
 			if err != nil {
-				return nil, nil, multierr.Wrap(err, "could not read generated private key")
+				return nil, closer, multierr.Wrap(err, "could not read generated private key")
 			}
 			sshSigners = append(sshSigners, priv)
 			closer = append(closer, ssmConn)
@@ -730,9 +978,9 @@ func prepareConnection(conf *inventory.Config) ([]ssh.AuthMethod, []io.Closer, e
 			if conf.Options != nil && conf.Options["profile"] != "" {
 				loadOpts = append(loadOpts, awsconf.WithSharedConfigProfile(conf.Options["profile"]))
 			}
-			cfg, err := awsconf.LoadDefaultConfig(context.Background(), loadOpts...)
+			cfg, err := awsconf.LoadDefaultConfig(ctx, loadOpts...)
 			if err != nil {
-				return nil, nil, err
+				return nil, closer, err
 			}
 			log.Debug().Msg("generating instance connect credentials")
 			eic := awsinstanceconnect.New(cfg)
@@ -740,21 +988,21 @@ func prepareConnection(conf *inventory.Config) ([]ssh.AuthMethod, []io.Closer, e
 			if id, ok := conf.Options["instance"]; ok {
 				host = id
 			}
-			creds, err := eic.GenerateCredentials(host, credential.User)
+			creds, err := eic.GenerateCredentialsContext(ctx, host, credential.User)
 			if err != nil {
-				return nil, nil, err
+				return nil, closer, err
 			}
 
 			priv, err := signers.GetSignerFromPrivateKeyWithPassphrase(creds.KeyPair.PrivateKey, creds.KeyPair.Passphrase)
 			if err != nil {
-				return nil, nil, multierr.Wrap(err, "could not read generated private key")
+				return nil, closer, multierr.Wrap(err, "could not read generated private key")
 			}
 			sshSigners = append(sshSigners, priv)
 
 			// NOTE: this creates a side-effect where the host is overwritten
 			conf.Host = creds.PublicIpAddress
 		default:
-			return nil, nil, errors.New("unsupported authentication mechanism for ssh: " + credential.Type.String())
+			return nil, closer, errors.New("unsupported authentication mechanism for ssh: " + credential.Type.String())
 		}
 	}
 
@@ -772,6 +1020,8 @@ func (c *Connection) verify() error {
 		// Wrap sudo command, to see proper error messages. We set /dev/null to disable stdin
 		command := "sh -c '" + shared.BuildSudoCommand(c.Sudo, "echo 'hi'") + " < /dev/null'"
 		out, err = c.runRawCommand(command)
+	} else if c.isWindowsSSHServer() {
+		out, err = c.verifyWindows()
 	} else {
 		out, err = c.runRawCommand("echo 'hi'")
 	}
@@ -786,14 +1036,29 @@ func (c *Connection) verify() error {
 	stderr, _ := io.ReadAll(out.Stderr)
 	errMsg := string(stderr)
 
-	// sample messages are:
-	// sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper
-	// sudo: a password is required
+	return verifyError(c.Sudo, errMsg)
+}
+
+// verifyError turns the stderr of a failed verify() command into an error.
+//
+// sample messages are:
+// sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper
+// sudo: a password is required
+// doas: a tty is required
+// doas: Authentication required
+func verifyError(sudo *inventory.Sudo, errMsg string) error {
+	executable := shared.ElevationSudo
+	if sudo != nil && sudo.Executable != "" {
+		executable = sudo.Executable
+	}
+
 	switch {
 	case strings.Contains(errMsg, "not found"):
-		return errors.New("sudo command is missing on target")
-	case strings.Contains(errMsg, "a password is required"):
-		return errors.New("could not establish connection: sudo password is not supported yet, configure password-less sudo")
+		return errors.New(executable + " command is missing on target")
+	case strings.Contains(errMsg, "a password is required"),
+		strings.Contains(errMsg, "a tty is required"),
+		strings.Contains(errMsg, "Authentication required"):
+		return errors.New("could not establish connection: " + executable + " password is not supported yet, configure password-less " + executable)
 	default:
 		return errors.New("could not establish connection: " + errMsg)
 	}

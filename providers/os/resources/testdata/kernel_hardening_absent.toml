@@ -1,0 +1,13 @@
+# A target that carries no /proc and no /sys: a container image, an extracted
+# root filesystem, or any scan of a disk rather than a running kernel. None of
+# the three kernel-hardening files exist here, so nothing about ASLR, lockdown
+# or taint was measured.
+#
+# /etc/os-release is present only so the fixture describes a real root
+# filesystem rather than an empty one.
+
+[files."/etc/os-release"]
+path = "/etc/os-release"
+content = """PRETTY_NAME="Debian GNU/Linux 13 (trixie)"
+ID=debian
+"""

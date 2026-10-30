@@ -1,19 +1,23 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/portainer"
-option go_package = "go.mondoo.com/mql/v13/providers/portainer/resources"
+option go_package = "go.mondoo.com/mql/providers/portainer/resources"
+option root = "portainer"
 
 // Portainer instance
 //
-// Use the Portainer instance as the entry point for auditing a Portainer
-// container-management control plane. Examine the server version and
-// instance-wide security settings, enumerate the user accounts and teams that
-// make up its RBAC model, and list the environments (Docker hosts, Swarm or
-// Kubernetes clusters, and Edge agents) that the instance manages.
-portainer {
+// Portainer container-management control plane at the root of an audit. The
+// server version and instance-wide security settings describe the control
+// plane itself, the user accounts and teams make up its RBAC model, and the
+// environments (Docker hosts, Swarm or Kubernetes clusters, and Edge agents)
+// are the hosts it manages. The registries, stacks, webhooks, and Edge jobs
+// are the paths by which code reaches those hosts.
+portainer @root {
   // Portainer server version
-  version() string
+  version() @maturity("deprecated") @replaced_by("asset.version") string
   // Unique Portainer instance identifier
   instanceId() string
   // Instance-wide authentication and container-security settings
@@ -32,25 +36,37 @@ portainer {
   edgeGroups() []portainer.edgeGroup
   // Edge stacks defined on the instance
   edgeStacks() []portainer.edgeStack
+  // Edge jobs scheduled on the instance
+  edgeJobs() []portainer.edgeJob
+  // Container registries configured on the instance
+  registries() []portainer.registry
+  // Stacks deployed through the instance
+  stacks() []portainer.stack
+  // Webhooks defined on the instance
+  webhooks() []portainer.webhook
+  // Role definitions the instance offers for environment access policies
+  roles() []portainer.role
+  // Team memberships defined on the instance
+  teamMemberships() []portainer.teamMembership
   // Licenses applied to the instance
   licenses() []portainer.license
 }
 
 // Portainer security settings
 //
-// Examine the instance-wide authentication and container-security posture.
+// Instance-wide authentication and container-security posture.
 // `authenticationMethod` reports whether logins are handled internally or
 // delegated to LDAP or OAuth, and `requiredPasswordLength` is the minimum
 // password length enforced for internal authentication. The
 // `allow*ForRegularUsers` flags govern what non-administrator users are
-// permitted to do when deploying workloads — running privileged containers,
+// permitted to do when deploying workloads (running privileged containers,
 // bind-mounting host paths, mapping host devices, sharing host namespaces,
-// adding Linux capabilities, managing stacks, and browsing volumes — and a
+// adding Linux capabilities, managing stacks, and browsing volumes), and a
 // permissive value on any of them is a privilege-escalation path that the
 // container runtime alone cannot reveal. The `disableKube*` flags and edge
 // trust settings round out the instance hardening picture.
 portainer.settings @defaults("authenticationMethod requiredPasswordLength") {
-  // Active authentication method: internal, ldap, or oauth
+  // Active authentication method: internal, ldap, oauth, or unknown
   authenticationMethod string
   // Minimum password length enforced for internal authentication
   requiredPasswordLength int
@@ -80,8 +96,6 @@ portainer.settings @defaults("authenticationMethod requiredPasswordLength") {
   disableKubeShell bool
   // Whether kubeconfig download is disabled
   disableKubeconfigDownload bool
-  // Whether host-management features are enabled
-  enableHostManagementFeatures bool
   // Whether syncing of built-in Kubernetes roles is disabled
   disableKubeRolesSync bool
   // Custom kubectl shell image used for the Kubernetes web console
@@ -110,17 +124,17 @@ portainer.settings @defaults("authenticationMethod requiredPasswordLength") {
 
 // Portainer user account
 //
-// Examine a single Portainer user account. The `role` field reports whether
-// the account is a site `administrator` or a `standard` user — a key RBAC
-// audit, since administrators can reach every managed environment. Select a
-// user by its numeric `id`, for example `portainer.users.where(role ==
-// "administrator")`, and traverse `teams` to see which teams it belongs to.
+// User account that authenticates to the Portainer server. The `role` field
+// reports whether the account is a site `administrator` or a `standard` user,
+// a key RBAC audit since administrators can reach every managed environment.
+// Select a user by its numeric `id`, for example `portainer.users.where(role
+// == "administrator")`, and traverse `teams` to see which teams it belongs to.
 portainer.user @defaults("username role") {
   // Numeric user identifier
   id int
   // Login name
   username string
-  // Account role: administrator or standard
+  // Account role: administrator, standard, or unknown
   role string
   // Whether server-side caching is enabled for this user
   useCache bool
@@ -130,14 +144,68 @@ portainer.user @defaults("username role") {
   tokenIssueAt time
   // Teams this user belongs to
   teams() []portainer.team
+  // Team memberships held by this user
+  //
+  // The membership carries the role the user holds inside each team, which
+  // teams alone does not report.
+  memberships() []portainer.teamMembership
+  // API keys issued for this account
+  apiKeys() []portainer.apiKey
+  // Instance-wide authorizations granted to this account
+  //
+  // The names of the authorizations the server computes for the account across
+  // the instance, for example PortainerUserCreate. Null on instances that do
+  // not compute authorizations, which is not the same as an account holding
+  // none.
+  authorizations []string
+  // Effective authorizations this account holds on each environment
+  environmentAuthorizations() []portainer.user.environmentAuthorization
+}
+
+// Portainer API key
+//
+// Bearer credential issued for a Portainer account. An API key carries the
+// full authority of the account it belongs to and does not expire, so a key
+// on an administrator account is a standing administrator credential.
+// `lastUsed` is null for a key that has never authenticated a request, and
+// `dateCreated` together with it is how a forgotten key is found. The key
+// material and its stored digest are never reported; `prefix` is the short
+// identifier Portainer itself displays.
+private portainer.apiKey @defaults("description prefix lastUsed") {
+  // Numeric API key identifier
+  id int
+  // Description recorded when the key was created
+  description string
+  // Short identifier of the key, as displayed by Portainer
+  prefix string
+  // Time the key was created (null if unset)
+  dateCreated time
+  // Time the key last authenticated a request (null if never used)
+  lastUsed time
+  // Account the key was issued for
+  user() portainer.user
+}
+
+// Effective authorizations a Portainer account holds on one environment
+//
+// The authorization set the server itself computed for one account on one
+// environment, rather than the access policies it was derived from. Reading
+// it answers what an account may actually do on a host without replaying the
+// team, group, and role grants that produced it.
+private portainer.user.environmentAuthorization @defaults("authorizations") {
+  // Environment the authorizations apply to
+  environment() portainer.environment
+  // Names of the granted authorizations, for example DockerContainerCreate
+  authorizations []string
 }
 
 // Portainer team
 //
-// Examine a Portainer team and its membership. Teams group standard users so
-// that environment access policies can be granted in bulk. Select a team by
-// its numeric `id` and traverse `members` to enumerate the users that belong
-// to it.
+// Team and its membership within a Portainer instance. Teams group standard
+// users so that environment access policies can be granted in bulk rather than
+// user by user, so a team's roster is what determines who inherits those
+// grants. Select a team by its numeric `id` and read `members` to enumerate
+// the users that belong to it.
 portainer.team @defaults("name") {
   // Numeric team identifier
   id int
@@ -145,13 +213,65 @@ portainer.team @defaults("name") {
   name string
   // Users that are members of this team
   members() []portainer.user
+  // Membership roles keyed by username, with leader or member as the value
+  //
+  // Team leaders may manage the team's roster and see the team in listings
+  // that plain members do not, so the split matters when auditing who can
+  // widen a team's inherited environment access.
+  memberRoles() dict
+  // Memberships that make up the team roster
+  memberships() []portainer.teamMembership
+}
+
+// Portainer team membership
+//
+// One user's place in one team, and the role held there. A membership joins
+// the user and the team as resources, so a query for every team leader on the
+// instance reads `portainer.teamMemberships.where(role == "leader")` and
+// traverses to the account and team from there. Team leaders may change a
+// team's roster, which decides who inherits the environment access granted to
+// that team.
+portainer.teamMembership @defaults("role") {
+  // Numeric membership identifier
+  id int
+  // Role held within the team: leader, member, or unknown
+  role string
+  // Team the membership is in
+  team() portainer.team
+  // Account the membership belongs to
+  user() portainer.user
+}
+
+// Portainer role definition
+//
+// Role that an environment or environment group access policy grants. The
+// numeric role ids in those policies are resolved against these definitions,
+// and `authorizations` is the set of operations the role actually permits.
+// Role definitions are customizable, so a role named readonly_user may carry
+// write authorizations, which only reading the definition reveals. Instances
+// that do not expose customizable roles report none.
+portainer.role @defaults("name priority") {
+  // Numeric role identifier
+  id int
+  // Role name, for example environment_administrator
+  name string
+  // Role description
+  description string
+  // Ordering priority of the role
+  priority int
+  // Names of the authorizations the role grants
+  //
+  // Each entry is an operation the role permits, for example
+  // DockerContainerCreate or PortainerEndpointUpdate. Only granted
+  // authorizations are listed.
+  authorizations []string
 }
 
 // Portainer environment
 //
-// Examine an environment (endpoint) managed by Portainer — a Docker host, a
-// Docker Swarm or Kubernetes cluster, or an Edge agent. The `type` field
-// reports which of these it is and `status` whether it is currently reachable.
+// Environment (endpoint) managed by Portainer: a Docker host, a Docker Swarm
+// or Kubernetes cluster, or an Edge agent. The `type` field reports which of
+// these it is and `status` whether it is currently reachable.
 // `teamAccessPolicies` and `userAccessPolicies` capture the per-environment
 // RBAC grants (keyed by team and user id), which together with the instance
 // `settings` describe who can deploy workloads where. Select an environment by
@@ -161,9 +281,9 @@ portainer.environment @defaults("name type status") {
   id int
   // Environment name
   name string
-  // Environment type: docker, agent-docker, azure-aci, edge-agent-docker, kubernetes, agent-kubernetes, or edge-agent-kubernetes
+  // Environment type: docker, agent-docker, azure-aci, edge-agent-docker, kubernetes, agent-kubernetes, edge-agent-kubernetes, or unknown
   type string
-  // Connection status: up, down, or unknown
+  // Connection status: up, down, provisioning, error, or unknown
   status string
   // API endpoint URL of the environment
   url string
@@ -171,6 +291,12 @@ portainer.environment @defaults("name type status") {
   publicUrl string
   // Whether the connection to the environment uses TLS
   tlsEnabled bool
+  // Whether verification of the environment's TLS certificate is skipped
+  //
+  // True when Portainer is configured to accept the environment's server
+  // certificate without validating it, which leaves the control-plane
+  // connection open to interception. Only meaningful when tlsEnabled is true.
+  tlsSkipVerify bool
   // Container engine in use, for example docker or podman
   containerEngine string
   // Tags assigned to the environment
@@ -179,6 +305,18 @@ portainer.environment @defaults("name type status") {
   teamAccessPolicies dict
   // User access policies keyed by user id, with the granted role id as the value
   userAccessPolicies dict
+  // Team access roles keyed by team id, with the granted role name as the value
+  //
+  // The same grants as teamAccessPolicies with the role id resolved to its
+  // name: environment_administrator, helpdesk_user, standard_user,
+  // readonly_user, or operator_user. An unrecognized role id maps to unknown.
+  teamAccessRoles dict
+  // User access roles keyed by user id, with the granted role name as the value
+  //
+  // The same grants as userAccessPolicies with the role id resolved to its
+  // name: environment_administrator, helpdesk_user, standard_user,
+  // readonly_user, or operator_user. An unrecognized role id maps to unknown.
+  userAccessRoles dict
   // Environment group (endpoint group) this environment belongs to
   group() portainer.environmentGroup
   // Edge agent identifier, for Edge environments
@@ -189,15 +327,35 @@ portainer.environment @defaults("name type status") {
   userTrusted bool
   // Whether GPU management is enabled for the environment
   gpuManagementEnabled bool
-  // Per-environment container-security overrides keyed by setting name
+  // Per-environment container-security overrides
+  //
+  // Boolean flags, keyed by setting name, that relax container privileges for
+  // non-admin (regular) users. Keys: allowBindMountsForRegularUsers,
+  // allowContainerCapabilitiesForRegularUsers,
+  // allowDeviceMappingForRegularUsers, allowHostNamespaceForRegularUsers,
+  // allowPrivilegedModeForRegularUsers, allowStackManagementForRegularUsers,
+  // allowSysctlSettingForRegularUsers, allowVolumeBrowserForRegularUsers, and
+  // enableHostManagementFeatures. Any flag set to true widens the container
+  // attack surface available to unprivileged users on this environment.
   securitySettings dict
+  // Whether the environment's agent authenticates back with mutual TLS
+  //
+  // tlsEnabled and tlsSkipVerify describe how Portainer reaches the
+  // environment; this reports whether the agent proves its own identity on
+  // the return path. Null on instances that report no mutual TLS state.
+  mtlsEnabled bool
+  // Whether the server reports the environment's mutual TLS material as usable
+  //
+  // Null on instances that report no mutual TLS state.
+  mtlsOk bool
 }
 
 // Portainer tag
 //
-// Examine a tag defined on the Portainer instance. Tags label environments and
-// environment groups so that Edge groups can target them dynamically. Select a
-// tag by its numeric `id` or `name`.
+// Label applied to environments and environment groups on the Portainer
+// instance so that Edge groups can target them dynamically. Auditing tags
+// reveals how environments are grouped for policy and deployment targeting.
+// Select a tag by its numeric `id` or `name`.
 portainer.tag @defaults("name") {
   // Numeric tag identifier
   id int
@@ -207,10 +365,11 @@ portainer.tag @defaults("name") {
 
 // Portainer environment group
 //
-// Examine an environment group (endpoint group) that bundles environments so
-// access policies and tags can be managed together. `teamAccessPolicies` and
-// `userAccessPolicies` capture the per-group RBAC grants (keyed by team and
-// user id). Select a group by its numeric `id`.
+// Environment group (endpoint group) that bundles environments so access
+// policies and tags can be managed together. `teamAccessPolicies` and
+// `userAccessPolicies` capture the per-group RBAC grants, letting you audit
+// which teams and users hold access to every environment in the group. Select
+// a group by its numeric `id`.
 portainer.environmentGroup @defaults("name") {
   // Numeric environment group identifier
   id int
@@ -224,13 +383,26 @@ portainer.environmentGroup @defaults("name") {
   teamAccessPolicies dict
   // User access policies keyed by user id, with the granted role id as the value
   userAccessPolicies dict
+  // Team access roles keyed by team id, with the granted role name as the value
+  //
+  // The same grants as teamAccessPolicies with the role id resolved to its
+  // name: environment_administrator, helpdesk_user, standard_user,
+  // readonly_user, or operator_user. An unrecognized role id maps to unknown.
+  teamAccessRoles dict
+  // User access roles keyed by user id, with the granted role name as the value
+  //
+  // The same grants as userAccessPolicies with the role id resolved to its
+  // name: environment_administrator, helpdesk_user, standard_user,
+  // readonly_user, or operator_user. An unrecognized role id maps to unknown.
+  userAccessRoles dict
 }
 
 // Portainer edge group
 //
-// Examine an Edge group used to target Edge environments and Edge stacks. When
-// `dynamic` is true membership is derived from tag matches; otherwise it is the
-// static set of `endpoints`. Select an Edge group by its numeric `id`.
+// Edge group used to target Edge environments and Edge stacks. When `dynamic` is
+// true, membership is derived from tag matches; otherwise it is a static set of
+// explicitly assigned environments. Select an Edge group by its numeric `id`,
+// for example `portainer.edgeGroup(id: 3)`.
 portainer.edgeGroup @defaults("name") {
   // Numeric Edge group identifier
   id int
@@ -246,29 +418,238 @@ portainer.edgeGroup @defaults("name") {
 
 // Portainer edge stack
 //
-// Examine an Edge stack — a workload definition deployed to Edge environments
-// through one or more Edge groups. Select an Edge stack by its numeric `id`.
+// Workload definition deployed to Edge environments through one or more Edge
+// groups. Select an Edge stack by its numeric `id`, for example
+// `portainer.edgeStack(id: 3)`. The deploymentType field distinguishes
+// compose from Kubernetes stacks, and numDeployments reports how many
+// environments the stack currently runs on.
 portainer.edgeStack @defaults("name") {
   // Numeric Edge stack identifier
   id int
   // Edge stack name
   name string
-  // Deployment type: compose or kubernetes
+  // Deployment type: compose, kubernetes, or unknown
   deploymentType string
   // Edge groups the stack targets
   edgeGroups() []portainer.edgeGroup
   // Number of environments the stack is deployed to
   numDeployments int
-  // Stack file version
+  // Stack revision, incremented on each update
   version int
   // Time the Edge stack was created (null if unset)
   creationDate time
 }
 
+// Portainer container registry
+//
+// Registry Portainer pulls images from, and the credentials it holds for it.
+// `authenticationEnabled` reports whether Portainer stores a credential for
+// the registry at all, and `accesses` reports which teams and users were
+// granted the use of that credential on each environment. A registry whose
+// access grants reach standard users hands them the credential's pull rights
+// on every host they can deploy to. The stored password, access token, and
+// any cloud secret key are never reported. Select a registry by its numeric
+// `id`, for example `portainer.registries.where(name == "internal")`.
+portainer.registry @defaults("name type url") {
+  // Numeric registry identifier
+  id int
+  // Registry name
+  name string
+  // Registry type: quay, azure, custom, gitlab, proget, dockerhub, ecr, or unknown
+  type string
+  // URL or address of the registry
+  url string
+  // Base URL, used by registries that serve the API under a prefix
+  baseUrl string
+  // Whether Portainer stores a credential and authenticates to the registry
+  authenticationEnabled bool
+  // Username or access key id Portainer authenticates with
+  //
+  // Empty when no credential is stored. The matching password or secret key
+  // is never reported.
+  username string
+  // Per-environment grants of this registry
+  accesses() []portainer.registry.access
+}
+
+// Grant of a Portainer registry on one environment
+//
+// Which teams and users may use one registry on one environment, and in which
+// Kubernetes namespaces. The grants carry the registry's stored credential
+// with them, so a grant to a team of standard users gives that team the
+// registry's pull rights on the environment.
+private portainer.registry.access @defaults("teamAccessRoles userAccessRoles") {
+  // Environment the grant applies to
+  environment() portainer.environment
+  // Kubernetes namespaces the registry may be used from
+  namespaces []string
+  // Team access policies keyed by team id, with the granted role id as the value
+  teamAccessPolicies dict
+  // User access policies keyed by user id, with the granted role id as the value
+  userAccessPolicies dict
+  // Team access roles keyed by team id, with the granted role name as the value
+  //
+  // The same grants as teamAccessPolicies with the role id resolved to its
+  // name: environment_administrator, helpdesk_user, standard_user,
+  // readonly_user, or operator_user. An unrecognized role id maps to unknown.
+  teamAccessRoles dict
+  // User access roles keyed by user id, with the granted role name as the value
+  //
+  // The same grants as userAccessPolicies with the role id resolved to its
+  // name: environment_administrator, helpdesk_user, standard_user,
+  // readonly_user, or operator_user. An unrecognized role id maps to unknown.
+  userAccessRoles dict
+}
+
+// Portainer stack
+//
+// Workload definition Portainer deploys onto one environment, the route most
+// workloads take to reach a managed host. `webhookEnabled` reports whether the
+// stack can be redeployed by an unauthenticated POST to a token URL, and the
+// `autoUpdate*` fields whether Portainer redeploys it on a schedule or on a
+// Git change. Combined with a `gitUrl` on a repository the operator does not
+// control, either is a path by which code the operator did not review reaches
+// the host. The webhook token, and any Git credential stored with the stack,
+// are never reported. Select a stack by its numeric `id`, for example
+// `portainer.stacks.where(name == "web")`.
+portainer.stack @defaults("name type status") {
+  // Numeric stack identifier
+  id int
+  // Stack name
+  name string
+  // Stack type: swarm, compose, kubernetes, or unknown
+  type string
+  // Deployment status: active, inactive, or unknown
+  status string
+  // Environment the stack is deployed to
+  environment() portainer.environment
+  // Path to the stack file within the project, for example docker-compose.yml
+  entryPoint string
+  // Kubernetes namespace the stack is deployed into, for Kubernetes stacks
+  namespace string
+  // Whether the stack was deployed from an application template
+  fromAppTemplate bool
+  // Login name that created the stack
+  createdBy string
+  // Account that created the stack
+  createdByUser() portainer.user
+  // Time the stack was created (null if unset)
+  creationDate time
+  // Login name that last updated the stack
+  updatedBy string
+  // Time the stack was last updated (null if never updated)
+  updateDate time
+  // Whether a redeploy webhook is registered for the stack
+  //
+  // True when the stack can be redeployed by a POST to a token URL that
+  // carries no other authentication. The token itself is never reported.
+  webhookEnabled bool
+  // Whether Portainer redeploys the stack automatically
+  //
+  // True when GitOps auto-update is configured, on an interval or on a
+  // webhook. False when the stack is only deployed on request.
+  autoUpdateEnabled bool
+  // Interval at which the stack is redeployed, for example "5m"
+  //
+  // Null when auto-update is not configured or is webhook-driven rather than
+  // scheduled.
+  autoUpdateInterval string
+  // Whether auto-update is driven by a webhook rather than an interval
+  //
+  // Null when auto-update is not configured. The webhook token is never
+  // reported.
+  autoUpdateWebhook bool
+  // Whether each auto-update pulls the image again
+  //
+  // Null when auto-update is not configured. True means a mutable image tag
+  // is re-resolved on every redeploy, so the running image can change without
+  // the stack definition changing.
+  autoUpdateForcePullImage bool
+  // Whether each auto-update redeploys even when the repository is unchanged
+  //
+  // Null when auto-update is not configured.
+  autoUpdateForceUpdate bool
+  // URL of the Git repository the stack is deployed from
+  //
+  // Null for a stack that is not backed by a repository.
+  gitUrl string
+  // Git reference the stack is deployed from, for example refs/heads/main
+  //
+  // Null for a stack that is not backed by a repository.
+  gitReferenceName string
+  // Path to the stack file within the repository
+  //
+  // Null for a stack that is not backed by a repository.
+  gitConfigFilePath string
+  // Whether verification of the Git server's TLS certificate is skipped
+  //
+  // Null for a stack that is not backed by a repository.
+  gitTlsSkipVerify bool
+  // Whether a Git credential is stored for the repository
+  //
+  // Null for a stack that is not backed by a repository. The credential
+  // itself is never reported.
+  gitAuthenticationConfigured bool
+  // Whether the stack has been detached from its Git repository
+  isDetachedFromGit bool
+}
+
+// Portainer webhook
+//
+// Redeploy trigger registered against a service or container on one
+// environment. Invoking a webhook is a POST to a URL containing a token and
+// carries no other authentication, so anyone who obtains the URL can force the
+// target to be redeployed; when the target runs a mutable image tag, that
+// redeploy pulls whatever the tag points at now. The token is never reported.
+// Select a webhook by its numeric `id`.
+portainer.webhook @defaults("type resourceId") {
+  // Numeric webhook identifier
+  id int
+  // Webhook type: service, container, or unknown
+  type string
+  // Identifier of the service or container the webhook redeploys
+  resourceId string
+  // Environment the webhook deploys to
+  environment() portainer.environment
+  // Registry the redeploy pulls the image from (null if none is set)
+  registry() portainer.registry
+}
+
+// Portainer Edge job
+//
+// Script Portainer runs on Edge hosts on a schedule. The script executes with
+// the Edge agent's own privileges on every targeted host, so `cronExpression`
+// together with the targeted `edgeGroups` and `environments` describes a
+// recurring remote-execution path into the fleet. Select an Edge job by its
+// numeric `id`.
+portainer.edgeJob @defaults("name cronExpression recurring") {
+  // Numeric Edge job identifier
+  id int
+  // Edge job name
+  name string
+  // Cron expression the job runs on
+  cronExpression string
+  // Whether the job runs repeatedly rather than once
+  recurring bool
+  // Path of the script the job executes on each host
+  scriptPath string
+  // Job revision, incremented on each update
+  version int
+  // Time the Edge job was created (null if unset)
+  created time
+  // Edge groups the job targets
+  edgeGroups() []portainer.edgeGroup
+  // Environments the job targets directly
+  environments() []portainer.environment
+}
+
 // Portainer license
 //
-// Examine a license applied to the Portainer instance — the edition, seat
-// count, and expiry that govern which enterprise features are available.
+// License applied to the Portainer instance, covering the company it is
+// issued to, the number of licensed nodes, and the creation and expiry
+// times that govern which enterprise features remain available. Audit
+// this to confirm a valid, unexpired license backs the deployment and to
+// track how many nodes the entitlement permits.
 portainer.license @defaults("company expiresAt") {
   // License identifier
   id string

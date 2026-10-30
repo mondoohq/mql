@@ -9,14 +9,14 @@ import (
 	"os"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers/shodan/connection"
-	"go.mondoo.com/mql/v13/providers/shodan/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers/shodan/connection"
+	"go.mondoo.com/mql/providers/shodan/resources"
 )
 
 const (
@@ -72,12 +72,12 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 	name := ""
 	if len(req.Args) > 0 {
 		switch req.Args[0] {
-		case "host":
+		case "host", "domain":
+			if len(req.Args) < 2 {
+				return nil, errors.New("the Shodan " + req.Args[0] + " sub-command requires a target, for example `shodan " + req.Args[0] + " example.com`")
+			}
 			conf.Host = req.Args[1]
-			conf.Options["search"] = "host"
-		case "domain":
-			conf.Host = req.Args[1]
-			conf.Options["search"] = "domain"
+			conf.Options["search"] = req.Args[0]
 		default:
 			return nil, errors.New("invalid Shodan sub-command, supported are: host or domain")
 		}
@@ -181,7 +181,16 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 
 func (s *Service) detect(asset *inventory.Asset, conn *connection.ShodanConnection) error {
 	asset.Id = conn.Conf.Type
-	asset.Name = conn.Conf.Host
+	// Only name an asset that has no name: a caller who passed --asset-name (or
+	// named the asset in an inventory file) has already named it, and detection
+	// must not take that back. The account-level asset has no host to be named
+	// after, so it gets a readable default instead of "".
+	if asset.Name == "" {
+		asset.Name = conn.Conf.Host
+	}
+	if asset.Name == "" {
+		asset.Name = "Shodan"
+	}
 
 	platform, err := conn.PlatformInfo()
 	if err != nil {

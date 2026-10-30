@@ -15,11 +15,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/managedservices/armmanagedservices"
 	"github.com/rs/zerolog/log"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlAzureSubscriptionLighthouseServiceRegistrationDefinitionInternal struct {
@@ -221,7 +221,13 @@ func (a *mqlAzureSubscriptionLighthouseServiceRegistrationDefinitionAuthorizatio
 	}
 	wantGuid := lastPathSegment(a.RoleDefinitionId.Data)
 
+	// __id has to be explicit here. A Lighthouse assignment can name a managed
+	// customer subscription other than the connected one, and azure.subscription
+	// derives its cache key from the `id` field these args do not carry -- so
+	// without it the delegated role resolves against whichever subscription
+	// happened to populate the shared empty key first.
 	r, err := CreateResource(a.MqlRuntime, "azure.subscription", map[string]*llx.RawData{
+		"__id":           llx.StringData("/subscriptions/" + a.cacheSubId),
 		"subscriptionId": llx.StringData(a.cacheSubId),
 	})
 	if err != nil {
@@ -337,6 +343,7 @@ func (a *mqlAzureSubscriptionLighthouseServiceRegistrationAssignment) registrati
 	}
 
 	r, err := CreateResource(a.MqlRuntime, "azure.subscription", map[string]*llx.RawData{
+		"__id":           llx.StringData("/subscriptions/" + subId),
 		"subscriptionId": llx.StringData(subId),
 	})
 	if err != nil {
@@ -363,19 +370,19 @@ func (a *mqlAzureSubscriptionLighthouseServiceRegistrationAssignment) registrati
 }
 
 func lastPathSegment(s string) string {
-	idx := strings.LastIndex(s, "/")
-	if idx == -1 {
+	_, after, ok := strings.CutLast(s, "/")
+	if !ok {
 		return s
 	}
-	return s[idx+1:]
+	return after
 }
 
 // assignmentScope returns the delegated scope an assignment applies to by
 // trimming the Microsoft.ManagedServices resource-provider suffix from the
 // assignment's resource ID.
 func assignmentScope(assignmentId string) string {
-	if idx := strings.Index(assignmentId, "/providers/Microsoft.ManagedServices"); idx != -1 {
-		return assignmentId[:idx]
+	if before, _, ok := strings.Cut(assignmentId, "/providers/Microsoft.ManagedServices"); ok {
+		return before
 	}
 	return assignmentId
 }

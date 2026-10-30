@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"go.mondoo.com/mql/v13"
+	"go.mondoo.com/mql"
 )
 
 // versionCmd represents the version command

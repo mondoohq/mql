@@ -7,13 +7,13 @@ import (
 	"context"
 	"errors"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/snowflake/connection"
-	"go.mondoo.com/mql/v13/providers/snowflake/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/snowflake/connection"
+	"go.mondoo.com/mql/providers/snowflake/resources"
 )
 
 const (
@@ -47,6 +47,32 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 		user = string(x.Value)
 	}
 
+	flagSet := func(name string) bool {
+		x, ok := flags[name]
+		return ok && len(x.Value) != 0
+	}
+	askPass := false
+	if x, ok := flags["ask-pass"]; ok {
+		if b, ok := x.RawData().Value.(bool); ok {
+			askPass = b
+		}
+	}
+
+	// A programmatic access token is a complete authentication method on its own;
+	// combining it with a password is ambiguous, so reject that up front.
+	if flagSet("token") && (flagSet("password") || askPass) {
+		return nil, errors.New("cannot combine --token with --password or --ask-pass; choose one authentication method")
+	}
+
+	if x, ok := flags["token"]; ok && len(x.Value) != 0 {
+		// A programmatic access token (PAT) authenticates as a bearer token.
+		conf.Credentials = append(conf.Credentials, &vault.Credential{
+			Type:   vault.CredentialType_bearer,
+			User:   user,
+			Secret: x.Value,
+		})
+	}
+
 	if x, ok := flags["password"]; ok && len(x.Value) != 0 {
 		conf.Credentials = append(conf.Credentials, vault.NewPasswordCredential(user, string(x.Value)))
 	}
@@ -70,6 +96,17 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 	if x, ok := flags["role"]; ok && len(x.Value) != 0 {
 		conf.Options["role"] = string(x.Value)
 	}
+
+	// discovery flags
+	discoverTargets := []string{}
+	if x, ok := flags["discover"]; ok && len(x.Array) != 0 {
+		for i := range x.Array {
+			discoverTargets = append(discoverTargets, string(x.Array[i].Value))
+		}
+	} else {
+		discoverTargets = []string{connection.DiscoveryAuto}
+	}
+	conf.Discover = &inventory.Discovery{Targets: discoverTargets}
 
 	asset := inventory.Asset{
 		Connections: []*inventory.Config{conf},
@@ -95,11 +132,19 @@ func (s *Service) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 		}
 	}
 
+	inv, err := s.discover(conn)
+	if err != nil {
+		return nil, err
+	}
+
 	return &plugin.ConnectRes{
 		Id:        conn.ID(),
 		Name:      conn.Name(),
 		Asset:     req.Asset,
-		Inventory: nil,
+		Inventory: inv,
+		// Which kind this asset actually is; the static Root can only name one
+		// for a provider serving several (ADR 031).
+		Root: assetRoot(req.Asset.GetPlatform()),
 	}, nil
 }
 
@@ -149,22 +194,26 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 }
 
 func (s *Service) detect(asset *inventory.Asset, conn *connection.SnowflakeConnection) error {
-	asset.Id = conn.Conf.Type
-	asset.Name = conn.Conf.Host
-
-	asset.Platform = &inventory.Platform{
-		Name:   "snowflake",
-		Family: []string{"snowflake"},
-		Kind:   "api",
-		Title:  "Snowflake",
-	}
-
-	current, err := conn.Client().ContextFunctions.CurrentSessionDetails(context.Background())
+	account, err := conn.Account()
 	if err != nil {
 		return err
 	}
 
-	asset.PlatformIds = []string{"//platformid.api.mondoo.app/runtime/snowflake/account/" + current.Account}
+	// A database-scoped connection is a single-database asset discovered under
+	// the account; otherwise the asset is the account itself.
+	if conn.IsDatabaseScoped() {
+		db := conn.Database()
+		asset.Id = connection.NewSnowflakeDatabaseIdentifier(account, db)
+		asset.Name = db
+		asset.Platform = connection.NewSnowflakeDatabasePlatform(account, db)
+		asset.PlatformIds = []string{connection.NewSnowflakeDatabaseIdentifier(account, db)}
+		return nil
+	}
+
+	asset.Id = conn.Conf.Type
+	asset.Name = conn.Conf.Host
+	asset.Platform = connection.NewSnowflakeAccountPlatform(account)
+	asset.PlatformIds = []string{connection.NewSnowflakeAccountIdentifier(account)}
 	return nil
 }
 

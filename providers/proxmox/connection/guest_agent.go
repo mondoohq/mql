@@ -127,9 +127,15 @@ func (c *PveConnection) GetUpdates(node string, vmid int, osInfo *OsInfo) ([]Upd
 }
 
 func (c *PveConnection) getAptUpdates(node string, vmid int) ([]UpdateInfo, error) {
-	result, err := c.QGAExec(node, vmid, []string{"sh", "-c", "apt list --installed 2>/dev/null"})
+	// `apt list --upgradable` is the only apt mode that reports pending
+	// upgrades; `--installed` lists every installed package with no upgrade
+	// annotation, so it can never surface an actual update.
+	result, err := c.QGAExec(node, vmid, []string{"sh", "-c", "apt list --upgradable 2>/dev/null"})
 	if err != nil {
-		return nil, fmt.Errorf("apt list --installed failed: %w", err)
+		if errors.Is(err, ErrQGANotRunning) {
+			return []UpdateInfo{}, nil
+		}
+		return nil, fmt.Errorf("apt list --upgradable failed: %w", err)
 	}
 	return ParseAptOutput(result.Stdout), nil
 }
@@ -140,6 +146,9 @@ func (c *PveConnection) getDnfUpdates(node string, vmid int) ([]UpdateInfo, erro
 	// returning a Go error — so any non-nil err is a real failure.
 	result, err := c.QGAExec(node, vmid, []string{"dnf", "check-update", "--quiet"})
 	if err != nil {
+		if errors.Is(err, ErrQGANotRunning) {
+			return []UpdateInfo{}, nil
+		}
 		return nil, fmt.Errorf("dnf check-update failed: %w", err)
 	}
 	return ParseDnfOutput(result.Stdout), nil
@@ -199,31 +208,32 @@ func ParseWindowsHotfixes(raw string) []UpdateInfo {
 	return updates
 }
 
-// ParseAptOutput parses "apt list --installed 2>/dev/null".
+// ParseAptOutput parses "apt list --upgradable 2>/dev/null". Each line has the
+// shape `pkg/repo,repo new-version arch [upgradable from: installed-version]`,
+// so every reported package is a pending upgrade — the version column is the
+// candidate (new) version and the bracket carries the currently-installed one.
 func ParseAptOutput(raw string) []UpdateInfo {
 	var updates []UpdateInfo
-	for _, line := range strings.Split(raw, "\n") {
-		if line == "" || strings.HasPrefix(line, "Listing") {
+	for line := range strings.SplitSeq(raw, "\n") {
+		line = strings.TrimSpace(line)
+		// Only "... [upgradable from: X]" lines are real upgrades; this also
+		// skips the "Listing..." header and any stray output.
+		const marker = "upgradable from: "
+		idx := strings.Index(line, marker)
+		if idx < 0 {
 			continue
 		}
 		parts := strings.Fields(line)
-		if len(parts) < 4 {
+		if len(parts) < 2 {
 			continue
 		}
-		pkgName := strings.SplitN(parts[0], "/", 2)[0]
-		installedVersion := parts[1]
-
-		upgradable := strings.Contains(line, "upgradable to:")
-		newVersion := ""
-		if upgradable {
-			idx := strings.Index(line, "upgradable to: ")
-			if idx >= 0 {
-				newVersion = strings.Trim(line[idx+len("upgradable to: "):], "]")
-			}
-		}
+		repoField := parts[0]
+		pkgName, _, _ := strings.Cut(repoField, "/")
+		newVersion := parts[1]
+		installedVersion := strings.Trim(line[idx+len(marker):], "]")
 
 		severity := "enhancement"
-		if strings.Contains(parts[0], "security") {
+		if strings.Contains(repoField, "security") {
 			severity = "security"
 		}
 
@@ -231,7 +241,7 @@ func ParseAptOutput(raw string) []UpdateInfo {
 			Name:             pkgName,
 			InstalledVersion: installedVersion,
 			NewVersion:       newVersion,
-			Upgradable:       upgradable,
+			Upgradable:       true,
 			Severity:         severity,
 		})
 	}
@@ -242,7 +252,7 @@ func ParseAptOutput(raw string) []UpdateInfo {
 func ParseDnfOutput(raw string) []UpdateInfo {
 	var updates []UpdateInfo
 	obsoleting := false
-	for _, line := range strings.Split(raw, "\n") {
+	for line := range strings.SplitSeq(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "Obsoleting") {
 			obsoleting = true

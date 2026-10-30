@@ -67,6 +67,62 @@ func TestSymlinkVarsEscapeSkipped(t *testing.T) {
 	}
 }
 
+// isINIInventory must not mistake a YAML inventory that opens with a `---`
+// document marker for an INI file — doing so parsed the whole inventory as
+// garbage INI host lines.
+func TestIsINIInventoryClassification(t *testing.T) {
+	assert.True(t, isINIInventory([]byte("[web]\nhost1\n")), "bracket section is INI")
+	assert.True(t, isINIInventory([]byte("host1\nhost2\n")), "bare host lines are INI")
+	assert.False(t, isINIInventory([]byte("all:\n  hosts:\n    web1:\n")), "key mapping is YAML")
+	assert.False(t, isINIInventory([]byte("---\nall:\n  hosts:\n    web1:\n")), "leading --- is YAML")
+	assert.False(t, isINIInventory([]byte("# comment\n---\nall:\n")), "comment then --- is YAML")
+}
+
+// A YAML inventory that opens with a `---` document marker must be parsed as
+// YAML, not misclassified as INI (which produced bogus "---"/"all:" hosts).
+func TestInventoryYAMLWithDocumentMarker(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, "inventory.yml"),
+		[]byte("---\nweb:\n  hosts:\n    web1:\n    web2:\n"),
+		0o600,
+	))
+
+	inv, err := loadInventory(root)
+	require.NoError(t, err)
+	require.NotNil(t, inv)
+
+	groups := map[string]*InventoryGroup{}
+	for _, g := range inv.Groups {
+		groups[g.Name] = g
+	}
+	require.Contains(t, groups, "web")
+	assert.ElementsMatch(t, []string{"web1", "web2"}, groups["web"].Hosts)
+	assert.NotContains(t, groups, "---", "the document marker must not become a group")
+}
+
+// A role whose file fails to decode (e.g. duplicate mapping keys, which yaml.v3
+// rejects but Ansible tolerates) must be skipped rather than aborting the whole
+// project load, matching loadPlaybooks.
+func TestLoadRolesSkipsUnparseableRole(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "roles", "good"), 0o755))
+	badDefaults := filepath.Join(root, "roles", "bad", "defaults")
+	require.NoError(t, os.MkdirAll(badDefaults, 0o755))
+	// Duplicate mapping key -> yaml.v3 returns a decode error.
+	require.NoError(t, os.WriteFile(filepath.Join(badDefaults, "main.yml"), []byte("foo: 1\nfoo: 2\n"), 0o600))
+
+	roles, err := loadRoles(filepath.Join(root, "roles"))
+	require.NoError(t, err, "one unparseable role must not fail the whole load")
+
+	names := make([]string, 0, len(roles))
+	for _, r := range roles {
+		names = append(names, r.Name)
+	}
+	assert.Contains(t, names, "good")
+	assert.NotContains(t, names, "bad")
+}
+
 // A YAML inventory written with `hosts:` as a list (each element a bare
 // hostname, which Ansible accepts) must be honored, not silently dropped by a
 // map-only type assertion.

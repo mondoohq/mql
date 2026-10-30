@@ -5,7 +5,6 @@ package services
 
 import (
 	"fmt"
-	"os"
 	"path"
 	"strings"
 
@@ -21,39 +20,45 @@ type SystemdFSSocketManager struct {
 }
 
 func (m *SystemdFSSocketManager) List() ([]*SystemdSocket, error) {
-	enabledSet := buildEnabledSet(m.Fs)
-	seen := map[string]bool{}
+	units, err := readSystemdUnitFiles(m.Fs, ".socket")
+	if err != nil {
+		return nil, err
+	}
+	byName := make(map[string]*systemdUnitFile, len(units))
+	for _, u := range units {
+		byName[u.Name] = u
+	}
 	var sockets []*SystemdSocket
-
-	for _, searchPath := range systemdUnitSearchPath {
-		entries, err := afero.ReadDir(m.Fs, searchPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, err
+	for _, u := range units {
+		if isSystemdInstanceUnit(u.Name) {
+			continue
 		}
-
-		for _, entry := range entries {
-			if !strings.HasSuffix(entry.Name(), ".socket") {
+		name := normalizeSystemdSocketName(u.Name)
+		if u.State == "alias" {
+			// an alias reads as the unit it names, under its own name
+			target, ok := byName[u.Target]
+			if !ok {
 				continue
 			}
-			name := normalizeSystemdSocketName(entry.Name())
-			if seen[name] {
-				continue
-			}
-			seen[name] = true
-
-			unitPath := path.Join(searchPath, entry.Name())
-			socket, err := m.readSocketUnit(name, unitPath)
+			u = &systemdUnitFile{Name: u.Name, State: target.State, Path: target.Path, Description: target.Description}
+		}
+		socket := &SystemdSocket{Name: name, Installed: true, Description: u.Description}
+		if u.State != "masked" {
+			read, err := m.readSocketUnit(name, u.Path)
 			if err != nil {
 				continue
 			}
-			socket.Enabled = enabledSet[entry.Name()]
-			sockets = append(sockets, socket)
+			socket = read
+			if socket.Description == "" && !isSystemdTemplateUnit(u.Name) {
+				socket.Description = u.Description
+			}
 		}
+		// the unit-file state as systemctl reports it: a unit without an
+		// [Install] section is static even when something links it, and a
+		// link a package ships under /usr/lib does not enable it
+		applyUnitFileState(&socket.Enabled, &socket.Masked, &socket.Static, u.State)
+		sockets = append(sockets, socket)
 	}
-
 	return sockets, nil
 }
 

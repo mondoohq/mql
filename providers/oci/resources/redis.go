@@ -8,14 +8,12 @@ import (
 	"errors"
 	"time"
 
-	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/redis"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/oci/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/oci/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (o *mqlOciRedis) id() (string, error) {
@@ -25,68 +23,36 @@ func (o *mqlOciRedis) id() (string, error) {
 func (o *mqlOciRedis) clusters() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	regions := oci.GetRegions()
-	if regions.Error != nil {
-		return nil, regions.Error
-	}
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci redis cluster with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getClusters(conn, regions.Data), 5)
-	poolOfJobs.Run()
-
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-
-	return res, nil
-}
-
-func (o *mqlOciRedis) getClusters(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci redis cluster with region %s", regionResource.Id.Data)
-
-			svc, err := conn.RedisClusterClient(regionResource.Id.Data)
+			svc, err := conn.RedisClusterClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			clusters := []redis.RedisClusterSummary{}
-			var page *string
-			for {
+			clusters, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]redis.RedisClusterSummary, *string, error) {
 				response, err := svc.ListRedisClusters(ctx, redis.ListRedisClustersRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
-
-				clusters = append(clusters, response.Items...)
-
-				if response.OpcNextPage == nil {
-					break
-				}
-				page = response.OpcNextPage
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				return nil, err
 			}
 
 			res := make([]any, 0, len(clusters))
 			for i := range clusters {
 				c := clusters[i]
+
+				if conn.Filters.IsFilteredOutByTags(c.FreeformTags, c.DefinedTags) {
+					continue
+				}
 
 				var created, updated *time.Time
 				if c.TimeCreated != nil {
@@ -101,21 +67,12 @@ func (o *mqlOciRedis) getClusters(conn *connection.OciConnection, regions []any)
 					nodeMemory = float64(*c.NodeMemoryInGBs)
 				}
 
-				freeformTags := make(map[string]interface{}, len(c.FreeformTags))
-				for k, v := range c.FreeformTags {
-					freeformTags[k] = v
-				}
-				definedTags := make(map[string]interface{}, len(c.DefinedTags))
-				for k, v := range c.DefinedTags {
-					definedTags[k] = v
-				}
-
-				mqlCluster, err := CreateResource(o.MqlRuntime, "oci.redis.cluster", map[string]*llx.RawData{
+				mqlCluster, err := createOciResourceInCompartment(o.MqlRuntime, "oci.redis.cluster", stringValue(c.CompartmentId), map[string]*llx.RawData{
 					"id":                         llx.StringDataPtr(c.Id),
 					"name":                       llx.StringDataPtr(c.DisplayName),
-					"compartmentID":              llx.StringDataPtr(c.CompartmentId),
 					"softwareVersion":            llx.StringData(string(c.SoftwareVersion)),
 					"clusterMode":                llx.StringData(string(c.ClusterMode)),
+					"clusterRole":                llx.StringDataPtr(redisClusterRole(c.ClusterRole)),
 					"nodeCount":                  llx.IntDataPtr(c.NodeCount),
 					"nodeMemoryInGBs":            llx.FloatData(nodeMemory),
 					"shardCount":                 llx.IntDataPtr(c.ShardCount),
@@ -128,31 +85,42 @@ func (o *mqlOciRedis) getClusters(conn *connection.OciConnection, regions []any)
 					"state":                      llx.StringData(string(c.LifecycleState)),
 					"created":                    llx.TimeDataPtr(created),
 					"timeUpdated":                llx.TimeDataPtr(updated),
-					"freeformTags":               llx.MapData(freeformTags, types.String),
-					"definedTags":                llx.MapData(definedTags, types.Any),
+					"freeformTags":               llx.MapData(strMapToAny(c.FreeformTags), types.String),
+					"definedTags":                llx.MapData(definedTagsToAny(c.DefinedTags), types.Any),
 					"systemTags":                 llx.MapData(definedTagsToAny(c.SystemTags), types.Dict),
 				})
 				if err != nil {
 					return nil, err
 				}
 				mqlClusterTyped := mqlCluster.(*mqlOciRedisCluster)
-				mqlClusterTyped.cacheSubnetId = stringValue(c.SubnetId)
-				mqlClusterTyped.cacheNsgIds = c.NsgIds
-				mqlClusterTyped.cacheRegion = regionResource.Id.Data
+				mqlClusterTyped.cacheSubnetID = stringValue(c.SubnetId)
+				mqlClusterTyped.cacheNsgIDs = c.NsgIds
+				mqlClusterTyped.cacheRegion = region
+				mqlClusterTyped.cachePrimaryClusterID = stringValue(c.PrimaryClusterId)
 				res = append(res, mqlClusterTyped)
 			}
 
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 type mqlOciRedisClusterInternal struct {
-	cacheSubnetId string
-	cacheNsgIds   []string
-	cacheRegion   string
+	ociCompartmentRef
+	cacheSubnetID         string
+	cacheNsgIDs           []string
+	cacheRegion           string
+	cachePrimaryClusterID string
+}
+
+// redisClusterRole maps the cross-region replication role to a nullable
+// string. Clusters created before the role was reported come back with an
+// empty role, which has to read as null rather than as a fourth role value.
+func redisClusterRole(role redis.RedisClusterClusterRoleEnum) *string {
+	if role == "" {
+		return nil
+	}
+	s := string(role)
+	return &s
 }
 
 func initOciRedisCluster(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -191,20 +159,34 @@ func initOciRedisCluster(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 		}
 	}
 
-	return args, nil, nil
+	return nil, nil, errors.New("oci.redis.cluster not found: " + idVal)
 }
 
 func (o *mqlOciRedisCluster) id() (string, error) {
 	return "oci.redis.cluster/" + o.Id.Data, nil
 }
 
+func (o *mqlOciRedisCluster) primaryCluster() (*mqlOciRedisCluster, error) {
+	if o.cachePrimaryClusterID == "" {
+		o.PrimaryCluster.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	mqlCluster, err := NewResource(o.MqlRuntime, "oci.redis.cluster", map[string]*llx.RawData{
+		"id": llx.StringData(o.cachePrimaryClusterID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mqlCluster.(*mqlOciRedisCluster), nil
+}
+
 func (o *mqlOciRedisCluster) subnet() (*mqlOciNetworkSubnet, error) {
-	if o.cacheSubnetId == "" {
+	if o.cacheSubnetID == "" {
 		o.Subnet.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	mqlSubnet, err := NewResource(o.MqlRuntime, "oci.network.subnet", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheSubnetId),
+		"id": llx.StringData(o.cacheSubnetID),
 	})
 	if err != nil {
 		return nil, err
@@ -213,16 +195,19 @@ func (o *mqlOciRedisCluster) subnet() (*mqlOciNetworkSubnet, error) {
 }
 
 func (o *mqlOciRedisCluster) networkSecurityGroups() ([]any, error) {
-	if len(o.cacheNsgIds) == 0 {
+	if len(o.cacheNsgIDs) == 0 {
 		return []any{}, nil
 	}
-	res := make([]any, 0, len(o.cacheNsgIds))
-	for _, nsgId := range o.cacheNsgIds {
+	res := make([]any, 0, len(o.cacheNsgIDs))
+	for _, nsgId := range o.cacheNsgIDs {
 		mqlNsg, err := NewResource(o.MqlRuntime, "oci.network.networkSecurityGroup", map[string]*llx.RawData{
 			"id": llx.StringData(nsgId),
 		})
 		if err != nil {
-			return nil, err
+			// Skip an element we cannot resolve rather than failing the whole
+			// list and losing the ones that did resolve.
+			log.Debug().Err(err).Str("nsg", nsgId).Msg("skipping unresolvable oci reference")
+			continue
 		}
 		res = append(res, mqlNsg)
 	}

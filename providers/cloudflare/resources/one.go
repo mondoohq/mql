@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/cloudflare/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/cloudflare/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlCloudflareOneInternal struct {
@@ -20,7 +20,7 @@ type mqlCloudflareOneInternal struct {
 }
 
 // The Cloudflare Access (Zero Trust) list endpoints are modeled as polymorphic
-// unions in cloudflare-go v6 (apps and identity providers vary by type). To keep
+// unions in cloudflare-go (apps and identity providers vary by type). To keep
 // the existing MQL schema stable we read these endpoints via the client's
 // generic Get and decode them into the flat shapes below.
 type (
@@ -99,8 +99,19 @@ type (
 		SessionDuration                *string    `json:"session_duration"`
 		WarpAuthSessionDuration        *string    `json:"warp_auth_session_duration"`
 		AllowAuthenticateViaWarp       *bool      `json:"allow_authenticate_via_warp"`
+		WarpAuthNonBrowser401          *bool      `json:"warp_auth_non_browser_401"`
+		StrictServiceTokenAuth         *bool      `json:"strict_service_token_auth"`
 		CreatedAt                      *time.Time `json:"created_at"`
 		UpdatedAt                      *time.Time `json:"updated_at"`
+		// ServiceTokenInactivity is nil when the organization does not report
+		// the setting, so its fields read as null rather than as disabled.
+		ServiceTokenInactivity *accessServiceTokenInactivity `json:"service_token_inactivity"`
+	}
+
+	accessServiceTokenInactivity struct {
+		Enabled                 *bool   `json:"enabled"`
+		Action                  *string `json:"action"`
+		InactivityThresholdDays *int64  `json:"inactivity_threshold_days"`
 	}
 
 	accessIdp struct {
@@ -135,24 +146,40 @@ func isSAMLIdpType(t string) bool {
 	return false
 }
 
-func (c *mqlCloudflareZone) one() (*mqlCloudflareOne, error) {
-	res, err := CreateResource(c.MqlRuntime, "cloudflare.one", map[string]*llx.RawData{
-		"__id": llx.StringData("cloudflare.one@" + c.Id.Data),
+func newOne(runtime *plugin.Runtime, accountID, zoneID string) (*mqlCloudflareOne, error) {
+	// Cloudflare One is account-scoped; the __id keys on the account. A
+	// zone-scoped access is retained for backward compatibility and keys on
+	// the zone so its zone-pathed apps/identityProviders stay distinct.
+	key := "account@" + accountID
+	if zoneID != "" {
+		key = "zone@" + zoneID
+	}
+	res, err := CreateResource(runtime, "cloudflare.one", map[string]*llx.RawData{
+		"__id": llx.StringData("cloudflare.one@" + key),
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	one := res.(*mqlCloudflareOne)
-	one.ZoneID = c.Id.Data
-
-	acc := c.GetAccount()
-	if acc.Error != nil {
-		return nil, acc.Error
-	}
-	one.AccountID = acc.Data.GetId().Data
+	one.AccountID = accountID
+	one.ZoneID = zoneID
 
 	return one, nil
+}
+
+// accessScope returns the API path prefix for Access endpoints that exist at
+// both account and zone scope (apps, identity providers). A zone-scoped One
+// keeps querying the zone; an account-scoped One queries the account.
+func (c *mqlCloudflareOne) accessScope() string {
+	if c.ZoneID != "" {
+		return "zones/" + c.ZoneID
+	}
+	return "accounts/" + c.AccountID
+}
+
+func (c *mqlCloudflareAccount) one() (*mqlCloudflareOne, error) {
+	return newOne(c.MqlRuntime, c.Id.Data, "")
 }
 
 type mqlCloudflareOneAppInternal struct {
@@ -179,9 +206,21 @@ func accessRules(in []any) []any {
 
 // newAccessPolicyResource builds an access policy resource, including its
 // include/require/exclude condition rules. Shared by the account accessPolicies()
-// listing and the per-application policies() accessor.
-func newAccessPolicyResource(runtime *plugin.Runtime, p accessPolicy) (plugin.Resource, error) {
+// listing and the per-application policies() accessor. fallbackKey supplies a
+// unique cache key for inline app-attached policies, which historically arrive
+// with an empty id — without it, every such policy would collide on the empty
+// __id and alias to the first one. A policy with a real id keys on that id, so
+// the same reusable policy dedups across the two access paths regardless of
+// which path built it. An inline policy (empty id) keys on fallbackKey and is
+// intentionally per-app: it has no id to dedup on and only ever exists inline,
+// so it never needs to match an account-level entry.
+func newAccessPolicyResource(runtime *plugin.Runtime, fallbackKey string, p accessPolicy) (plugin.Resource, error) {
+	idKey := p.ID
+	if idKey == "" {
+		idKey = fallbackKey
+	}
 	return NewResource(runtime, "cloudflare.one.accessPolicy", map[string]*llx.RawData{
+		"__id":       llx.StringData("cloudflare.one.accessPolicy@" + idKey),
 		"id":         llx.StringData(p.ID),
 		"name":       llx.StringData(p.Name),
 		"decision":   llx.StringData(p.Decision),
@@ -197,7 +236,13 @@ func newAccessPolicyResource(runtime *plugin.Runtime, p accessPolicy) (plugin.Re
 func (c *mqlCloudflareOneApp) policies() ([]any, error) {
 	result := make([]any, 0, len(c.appPolicies))
 	for i := range c.appPolicies {
-		res, err := newAccessPolicyResource(c.MqlRuntime, c.appPolicies[i])
+		p := c.appPolicies[i]
+		// Content-derived fallback for inline policies without an id: name +
+		// decision + precedence is stable across list reordering (precedence is
+		// unique per app), unlike the loop index, which would shift the __id if
+		// the API returned the policies in a different order on a later scan.
+		fallback := fmt.Sprintf("%s/policy/%s/%s/%d", c.Id.Data, p.Name, p.Decision, p.Precedence)
+		res, err := newAccessPolicyResource(c.MqlRuntime, fallback, p)
 		if err != nil {
 			return nil, err
 		}
@@ -209,9 +254,9 @@ func (c *mqlCloudflareOneApp) policies() ([]any, error) {
 func (c *mqlCloudflareOne) apps() ([]any, error) {
 	conn := c.MqlRuntime.Connection.(*connection.CloudflareConnection)
 
-	records, err := cfGetPaged[accessApp](conn, fmt.Sprintf("zones/%s/access/apps", c.ZoneID))
+	records, err := cfGetPaged[accessApp](conn, fmt.Sprintf("%s/access/apps", c.accessScope()))
 	if err != nil {
-		return nil, err
+		return degradedList(err)
 	}
 
 	var result []any
@@ -292,12 +337,12 @@ func (c *mqlCloudflareOne) accessPolicies() ([]any, error) {
 
 	records, err := cfGetPaged[accessPolicy](conn, fmt.Sprintf("accounts/%s/access/policies", c.AccountID))
 	if err != nil {
-		return nil, err
+		return degradedList(err)
 	}
 
 	var result []any
 	for i := range records {
-		res, err := newAccessPolicyResource(c.MqlRuntime, records[i])
+		res, err := newAccessPolicyResource(c.MqlRuntime, records[i].ID, records[i])
 		if err != nil {
 			return nil, err
 		}
@@ -320,7 +365,7 @@ func (c *mqlCloudflareOne) accessGroups() ([]any, error) {
 
 	records, err := cfGetPaged[accessGroup](conn, fmt.Sprintf("accounts/%s/access/groups", c.AccountID))
 	if err != nil {
-		return nil, err
+		return degradedList(err)
 	}
 
 	var result []any
@@ -355,7 +400,7 @@ func (c *mqlCloudflareOne) serviceTokens() ([]any, error) {
 
 	records, err := cfGetPaged[accessServiceToken](conn, fmt.Sprintf("accounts/%s/access/service_tokens", c.AccountID))
 	if err != nil {
-		return nil, err
+		return degradedList(err)
 	}
 
 	var result []any
@@ -382,6 +427,15 @@ func (c *mqlCloudflareOne) serviceTokens() ([]any, error) {
 	return result, nil
 }
 
+// serviceTokenInactivity returns the organization's service-token inactivity
+// settings, or an all-nil value when the organization does not report them.
+func (o accessOrganization) serviceTokenInactivity() accessServiceTokenInactivity {
+	if o.ServiceTokenInactivity == nil {
+		return accessServiceTokenInactivity{}
+	}
+	return *o.ServiceTokenInactivity
+}
+
 func (c *mqlCloudflareOne) organization() (*mqlCloudflareOneOrganization, error) {
 	conn := c.MqlRuntime.Connection.(*connection.CloudflareConnection)
 
@@ -397,19 +451,25 @@ func (c *mqlCloudflareOne) organization() (*mqlCloudflareOneOrganization, error)
 		return nil, err
 	}
 	org := env.Result
+	inactivity := org.serviceTokenInactivity()
 
 	res, err := NewResource(c.MqlRuntime, "cloudflare.one.organization", map[string]*llx.RawData{
-		"__id":                           llx.StringData("cloudflare.one.organization@" + c.AccountID),
-		"name":                           llx.StringData(org.Name),
-		"authDomain":                     llx.StringData(org.AuthDomain),
-		"isUiReadOnly":                   llx.BoolDataPtr(org.IsUIReadOnly),
-		"userSeatExpirationInactiveTime": llx.StringData(org.UserSeatExpirationInactiveTime),
-		"autoRedirectToIdentity":         llx.BoolDataPtr(org.AutoRedirectToIdentity),
-		"sessionDuration":                llx.StringDataPtr(org.SessionDuration),
-		"warpAuthSessionDuration":        llx.StringDataPtr(org.WarpAuthSessionDuration),
-		"allowAuthenticateViaWarp":       llx.BoolDataPtr(org.AllowAuthenticateViaWarp),
-		"createdAt":                      llx.TimeDataPtr(org.CreatedAt),
-		"updatedAt":                      llx.TimeDataPtr(org.UpdatedAt),
+		"__id":                                llx.StringData("cloudflare.one.organization@" + c.AccountID),
+		"name":                                llx.StringData(org.Name),
+		"authDomain":                          llx.StringData(org.AuthDomain),
+		"isUiReadOnly":                        llx.BoolDataPtr(org.IsUIReadOnly),
+		"userSeatExpirationInactiveTime":      llx.StringData(org.UserSeatExpirationInactiveTime),
+		"autoRedirectToIdentity":              llx.BoolDataPtr(org.AutoRedirectToIdentity),
+		"sessionDuration":                     llx.StringDataPtr(org.SessionDuration),
+		"warpAuthSessionDuration":             llx.StringDataPtr(org.WarpAuthSessionDuration),
+		"allowAuthenticateViaWarp":            llx.BoolDataPtr(org.AllowAuthenticateViaWarp),
+		"warpAuthNonBrowser401":               llx.BoolDataPtr(org.WarpAuthNonBrowser401),
+		"createdAt":                           llx.TimeDataPtr(org.CreatedAt),
+		"updatedAt":                           llx.TimeDataPtr(org.UpdatedAt),
+		"serviceTokenInactivityEnabled":       llx.BoolDataPtr(inactivity.Enabled),
+		"serviceTokenInactivityAction":        llx.StringDataPtr(inactivity.Action),
+		"serviceTokenInactivityThresholdDays": llx.IntDataPtr(inactivity.InactivityThresholdDays),
+		"strictServiceTokenAuth":              llx.BoolDataPtr(org.StrictServiceTokenAuth),
 	})
 	if err != nil {
 		return nil, err
@@ -428,9 +488,9 @@ func (c *mqlCloudflareOneIdp) id() (string, error) {
 func (c *mqlCloudflareOne) identityProviders() ([]any, error) {
 	conn := c.MqlRuntime.Connection.(*connection.CloudflareConnection)
 
-	records, err := cfGetPaged[accessIdp](conn, fmt.Sprintf("zones/%s/access/identity_providers", c.ZoneID))
+	records, err := cfGetPaged[accessIdp](conn, fmt.Sprintf("%s/access/identity_providers", c.accessScope()))
 	if err != nil {
-		return nil, err
+		return degradedList(err)
 	}
 
 	var result []any

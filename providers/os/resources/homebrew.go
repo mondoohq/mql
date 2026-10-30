@@ -5,9 +5,10 @@ package resources
 
 import (
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/packages"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/packages"
+	"go.mondoo.com/mql/types"
 )
 
 func (r *mqlHomebrewPackages) id() (string, error) {
@@ -38,10 +39,11 @@ func (r *mqlHomebrewPackages) list() ([]any, error) {
 			"path":                  llx.StringData(pkg.Path),
 			"type":                  llx.StringData(pkg.Type),
 			"appName":               llx.StringData(pkg.AppName),
+			"appPaths":              llx.ArrayData(llx.TArr2Raw(pkg.AppPaths), types.String),
 			"autoUpdates":           llx.BoolData(pkg.AutoUpdates),
 			"installedOnRequest":    llx.BoolData(pkg.InstalledOnRequest),
 			"installedAsDependency": llx.BoolData(pkg.InstalledAsDependency),
-			"outdated":              llx.BoolData(pkg.Outdated),
+			"outdated":              brewOutdated(pkg),
 			"pinned":                llx.BoolData(pkg.Pinned),
 			"tap":                   llx.StringData(pkg.Tap),
 			"prefix":                llx.StringData(pkg.Prefix),
@@ -58,4 +60,13 @@ func (r *mqlHomebrewPackages) list() ([]any, error) {
 func (r *mqlHomebrewPackage) id() (string, error) {
 	// __id is always set via CreateResource; this is a required fallback for the generated code.
 	return "homebrew.package/" + r.Type.Data + "/" + r.Name.Data + "@" + r.Version.Data, nil
+}
+
+// brewOutdated is null when the listing could not tell whether a newer
+// version exists, rather than a false that reads as up to date.
+func brewOutdated(pkg packages.HomebrewPackage) *llx.RawData {
+	if pkg.OutdatedUnknown {
+		return llx.NilData
+	}
+	return llx.BoolData(pkg.Outdated)
 }

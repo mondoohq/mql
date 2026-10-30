@@ -4,10 +4,11 @@
 package requirements
 
 import (
-	"bufio"
 	"io"
 	"regexp"
 	"strings"
+
+	"go.mondoo.com/mql/utils/iox"
 )
 
 // firstWordRegexp is just trying to catch everything leading up the >, >=, = in a requires.txt
@@ -31,8 +32,7 @@ var firstWordRegexp = regexp.MustCompile(`^[a-zA-Z0-9\._-]*`)
 // and returns a list of package names (without versions). This is the legacy
 // API used internally for egg-info requires.txt files where only names matter.
 func ParseRequiresTxtDependencies(r io.Reader) ([]string, error) {
-	fileScanner := bufio.NewScanner(r)
-	fileScanner.Split(bufio.ScanLines)
+	fileScanner := iox.NewLineScanner(r)
 
 	dependencies := []string{}
 	for fileScanner.Scan() {
@@ -47,6 +47,9 @@ func ParseRequiresTxtDependencies(r io.Reader) ([]string, error) {
 			continue
 		}
 		dependencies = append(dependencies, matched)
+	}
+	if err := fileScanner.Err(); err != nil {
+		return nil, err
 	}
 
 	return dependencies, nil
@@ -74,7 +77,7 @@ var requirementLineRegexp = regexp.MustCompile(
 // requirements with names and pinned versions. It handles comments, line
 // continuations, editable installs, and extras.
 func ParseRequirementsTxt(r io.Reader) ([]Requirement, error) {
-	scanner := bufio.NewScanner(r)
+	scanner := iox.NewLineScanner(r)
 	var reqs []Requirement
 	var continuation string
 
@@ -92,8 +95,8 @@ func ParseRequirementsTxt(r io.Reader) ([]Requirement, error) {
 			line = continuation + line
 			continuation = ""
 		}
-		if strings.HasSuffix(line, "\\") {
-			continuation = strings.TrimSuffix(line, "\\")
+		if before, ok := strings.CutSuffix(line, "\\"); ok {
+			continuation = before
 			continue
 		}
 
@@ -127,7 +130,7 @@ func ParseRequirementsTxt(r io.Reader) ([]Requirement, error) {
 
 		// Parse extras
 		if extras != "" {
-			for _, e := range strings.Split(extras, ",") {
+			for e := range strings.SplitSeq(extras, ",") {
 				e = strings.TrimSpace(e)
 				if e != "" {
 					req.Extras = append(req.Extras, e)
@@ -158,8 +161,8 @@ func parsePinnedVersion(constraint string) string {
 	}
 
 	for _, op := range []string{"===", "=="} {
-		if strings.HasPrefix(constraint, op) {
-			v := strings.TrimSpace(strings.TrimPrefix(constraint, op))
+		if after, ok := strings.CutPrefix(constraint, op); ok {
+			v := strings.TrimSpace(after)
 			if v != "" {
 				return v
 			}

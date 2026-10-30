@@ -1,0 +1,58 @@
+# SUSE's rsyslog layout (SLES 15 SP7, Leap 15.6, SLES 16.0, Leap 16.0):
+# rsyslog.conf, rsyslog.d/remote.conf and the *.frule files ship 0600, a
+# site fragment is 0644. remote.conf carries the forwarding an admin adds
+# (192.0.2.97 is the sweep's non-compliant fixture).
+
+[files."/etc/rsyslog.conf"]
+path = "/etc/rsyslog.conf"
+content = """$ModLoad imuxsock.so
+$FileOwner root
+$FileGroup root
+$FileCreateMode 0640
+$IncludeConfig /etc/rsyslog.d/*.conf
+$IncludeConfig /etc/rsyslog.d/*.frule
+*.*;mail.none;news.none			-/var/log/messages
+"""
+[files."/etc/rsyslog.conf".stat]
+mode = 384
+
+[files."/etc/rsyslog.d"]
+path = "/etc/rsyslog.d"
+[files."/etc/rsyslog.d".stat]
+isdir = true
+
+[files."/etc/rsyslog.d/30-g04.conf"]
+path = "/etc/rsyslog.d/30-g04.conf"
+content = """local5.*                                          /var/log/g04/local5.log
+"""
+[files."/etc/rsyslog.d/30-g04.conf".stat]
+mode = 420
+
+[files."/etc/rsyslog.d/remote.conf"]
+path = "/etc/rsyslog.d/remote.conf"
+content = """*.* @@192.0.2.97:514
+"""
+[files."/etc/rsyslog.d/remote.conf".stat]
+mode = 384
+
+[files."/etc/rsyslog.d/firewall.frule"]
+path = "/etc/rsyslog.d/firewall.frule"
+content = """:msg, contains, "IN=" -/var/log/firewall
+"""
+[files."/etc/rsyslog.d/firewall.frule".stat]
+mode = 384
+
+# include expansion; listing rsyslog.d works for a non-root scan (0755)
+[commands."find -L \"/etc/rsyslog.d\" -xdev -type f -perm -0 -maxdepth 1"]
+stdout = """/etc/rsyslog.d/30-g04.conf
+/etc/rsyslog.d/remote.conf
+/etc/rsyslog.d/firewall.frule
+"""
+
+# `<conf>.d` auto-discovery, used only when rsyslog.conf names no include
+# (which is what a scan that cannot read rsyslog.conf saw)
+[commands."find -L \"/etc/rsyslog.d\" -xdev -type f -perm -0"]
+stdout = """/etc/rsyslog.d/30-g04.conf
+/etc/rsyslog.d/remote.conf
+/etc/rsyslog.d/firewall.frule
+"""

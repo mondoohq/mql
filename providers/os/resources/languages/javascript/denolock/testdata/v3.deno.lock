@@ -1,0 +1,12 @@
+{
+  "version": "3",
+  "packages": {
+    "specifiers": { "npm:cowsay@1.5.0": "npm:cowsay@1.5.0" },
+    "npm": {
+      "cowsay@1.5.0": { "integrity": "sha512-Rio0a2gu0RVFZzEH3u2fw1Ngq/agvFJzS3gqdU7CnklUNZUt6p3h1xMP5wVkH46vSF5u+rdV46JWApfYJTMRSg==" }
+    }
+  },
+  "remote": {
+    "https://deno.land/std@0.200.0/version.ts": "abc123"
+  }
+}

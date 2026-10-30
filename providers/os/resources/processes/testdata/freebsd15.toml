@@ -1,0 +1,62 @@
+# ps output captured on a FreeBSD 15.1 EC2 instance. The "/bin/sh - /dev/stdin daily"
+# process mimics how periodic(8) runs (a "#!/bin/sh -" script).
+[commands."ps axo pid,pcpu,pmem,vsz,rss,tty,stat,time,uid,command"]
+stdout = '''
+  PID  %CPU %MEM   VSZ   RSS TTY   STAT      TIME  UID COMMAND
+    0   1.5  0.1     0  2128 -      DLs   0:03.02    0 [kernel]
+    1   0.0  0.0 12712  1232 -      ILs   0:00.02    0 /sbin/init
+    2   0.0  0.0     0    32 -       WL   0:00.68    0 [clock]
+    3   0.0  0.0     0    48 -       DL   0:00.00    0 [crypto]
+    4   0.0  0.0     0    48 -       DL   0:00.00    0 [cam]
+    5   0.0  0.0     0    16 -       DL   0:00.00    0 [busdma]
+    6   0.0  0.0     0    16 -       DL   0:00.34    0 [rand_harvestq]
+    7   0.0  0.0     0    48 -       DL   0:00.52    0 [pagedaemon]
+    8   0.0  0.0     0    16 -       DL   0:00.00    0 [vmdaemon]
+    9   0.0  0.0     0    64 -       DL   0:00.39    0 [bufdaemon]
+   10   0.0  0.0     0    16 -       DL   0:00.13    0 [audit]
+   11 189.6  0.0     0    32 -      RNL 165:59.26    0 [idle]
+   12   0.0  0.0     0   144 -       WL   0:01.85    0 [intr]
+   13   0.0  0.0     0    48 -       DL   0:00.01    0 [geom]
+   14   0.0  0.0     0    16 -       DL   0:00.02    0 [vnlru]
+   15   0.0  0.0     0    16 -       DL   0:00.17    0 [syncer]
+  418   0.0  0.1 14536  2712 -       Is   0:00.00    0 dhclient: system.syslog (dhclient)
+  421   0.0  0.1 14536  2896 -       Is   0:00.01    0 dhclient: ena0 [priv] (dhclient)
+  482   0.0  0.1 14540  2924 -      ICs   0:00.00   65 dhclient: ena0 (dhclient)
+  877   0.0  0.1 15804  4204 -       Ss   0:00.02    0 /sbin/devd
+  899   0.0  0.1 14392  2692 -      ICs   0:00.00    0 /usr/sbin/rtsold -M /usr/local/libexec/rtsold-M -a
+  903   0.0  0.1 14388  2660 -       Is   0:00.00    0 rtsold: rtsold.llflags (rtsold)
+  904   0.0  0.1 14388  2660 -       Is   0:00.00    0 rtsold: rtsold.script (rtsold)
+  906   0.0  0.1 14388  2660 -       Is   0:00.00    0 rtsold: rtsold.sendmsg (rtsold)
+  907   0.0  0.1 14388  2668 -       Is   0:00.00    0 rtsold: system.syslog (rtsold)
+ 1198   0.0  0.1 14448  2976 -      SCs   0:00.55    0 /usr/sbin/syslogd -s
+ 1201   0.0  0.1 14448  2884 -        I   0:00.00    0 syslogd: syslogd.casper (syslogd)
+ 1202   0.0  0.1 14448  2792 -       Is   0:00.00    0 syslogd: system.net (syslogd)
+ 1339   0.0  0.1 22212  5740 -       Ss   0:00.34  123 /usr/sbin/ntpd -p /var/db/ntp/ntpd.pid -c /etc/ntp.conf -f /var/db/ntp/ntpd.drift
+ 1385   0.0  0.1 14300  2708 -       Is   0:00.21    0 /usr/sbin/cron -s
+ 1436   0.2  0.2 25268  9688 -       Ss   0:01.64    0 sshd: /usr/sbin/sshd [listener] 0 of 10-100 startups (sshd)
+ 4034   0.0  0.3 24948 11328 -       Is   0:00.00    0 nginx: master process /usr/local/sbin/nginx
+ 4035   0.0  0.3 24948 11796 -        I   0:00.00   80 nginx: worker process (nginx)
+ 4116   0.0  0.1 14244  2796 -       Is   0:00.00    0 /usr/sbin/auditd
+ 6071   0.0  0.0     0   704 -       DL   0:00.15    0 [zfskern]
+40970   0.0  0.0     0    16 -       DL   0:00.00    0 [aiod1]
+40971   0.0  0.0     0    16 -       DL   0:00.00    0 [aiod2]
+40972   0.0  0.0     0    16 -       DL   0:00.00    0 [aiod3]
+40973   0.0  0.0     0    16 -       DL   0:00.00    0 [aiod4]
+43816   0.2  0.4 25792 14932 -       Ss   0:00.02    0 sshd-session: ec2-user [priv] (sshd-session)
+43818   0.1  0.4 25792 15236 -        S   0:00.00 1002 sshd-session: ec2-user@notty (sshd-session)
+43820   0.1  0.1 14764  3504 -       Ss   0:00.00 1002 sh -c echo "sleep 3" | /bin/sh - /dev/stdin daily & sleep 1; ps axo pid,pcpu,pmem,vsz,rss,tty,stat,time,uid,command; wait
+43822   0.1  0.1 14764  3508 -        S   0:00.00 1002 /bin/sh - /dev/stdin daily
+43824   0.1  0.1 14084  2668 -       SC   0:00.00 1002 sleep 3
+43825   0.0  0.4 25792 15084 -       Ss   0:00.02    0 sshd-session: ec2-user [priv] (sshd-session)
+43827   0.0  0.4 28352 16380 -        S   0:00.08 1002 sshd-session: ec2-user@notty (sshd-session)
+43851   0.0  0.1 14844  3656 -        R   0:00.00 1002 ps axo pid,pcpu,pmem,vsz,rss,tty,stat,time,uid,command
+ 1470   0.0  0.1 14224  2456 ttyu0  Is+   0:00.00    0 /usr/libexec/getty 3wire ttyu0
+ 1462   0.0  0.1 14224  2464 ttyv0  Is+   0:00.00    0 /usr/libexec/getty Pc ttyv0
+ 1463   0.0  0.1 14224  2472 ttyv1  Is+   0:00.00    0 /usr/libexec/getty Pc ttyv1
+ 1464   0.0  0.1 14224  2472 ttyv2  Is+   0:00.00    0 /usr/libexec/getty Pc ttyv2
+ 1465   0.0  0.1 14224  2464 ttyv3  Is+   0:00.00    0 /usr/libexec/getty Pc ttyv3
+ 1466   0.0  0.1 14224  2464 ttyv4  Is+   0:00.00    0 /usr/libexec/getty Pc ttyv4
+ 1467   0.0  0.1 14224  2464 ttyv5  Is+   0:00.00    0 /usr/libexec/getty Pc ttyv5
+ 1468   0.0  0.1 14224  2468 ttyv6  Is+   0:00.00    0 /usr/libexec/getty Pc ttyv6
+ 1469   0.0  0.1 14224  2456 ttyv7  Is+   0:00.00    0 /usr/libexec/getty Pc ttyv7
+'''

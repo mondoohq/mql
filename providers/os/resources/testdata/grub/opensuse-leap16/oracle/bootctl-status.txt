@@ -1,0 +1,26 @@
+systemd-boot not installed in ESP.
+System:
+      Firmware: n/a (n/a)
+ Firmware Arch: x64
+   Secure Boot: disabled (unknown)
+  TPM2 Support: no
+  Measured UKI: no
+  Boot into FW: supported
+
+Random Seed:
+ System Token: not set
+       Exists: no
+
+Available Boot Loaders on ESP:
+          ESP: /boot/efi (/dev/disk/by-partuuid/bdd43dc3-e54a-40b6-b339-dd2cb637192e)
+         File: ├─/EFI/BOOT/MokManager.efi
+               ├─/EFI/BOOT/grub.efi
+               └─/EFI/BOOT/bootx64.efi
+
+No boot loaders listed in EFI Variables.
+
+Boot Loader Entries:
+        $BOOT: /boot/efi (/dev/disk/by-partuuid/bdd43dc3-e54a-40b6-b339-dd2cb637192e)
+        token: opensuse-leap
+
+0 entries, no entry could be determined as default.

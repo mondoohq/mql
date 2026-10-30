@@ -28,7 +28,7 @@ type Pool[R any] struct {
 	resultsCh chan Result[R]
 
 	// The total number of requests sent.
-	requestsSent int64
+	requestsSent atomic.Int64
 
 	// Number of workers to spawn.
 	workerCount int
@@ -82,7 +82,7 @@ func (p *Pool[R]) Start() {
 func (p *Pool[R]) Submit(t Task[R]) {
 	if t != nil {
 		p.queueCh <- t
-		atomic.AddInt64(&p.requestsSent, 1)
+		p.requestsSent.Add(1)
 	}
 }
 
@@ -127,7 +127,7 @@ func (p *Pool[R]) Wait() {
 
 // PendingRequests returns the number of pending requests.
 func (p *Pool[R]) PendingRequests() int64 {
-	return atomic.LoadInt64(&p.requestsSent) - p.RequestsRead()
+	return p.requestsSent.Load() - p.RequestsRead()
 }
 
 // Processing return true if tasks are being processed.

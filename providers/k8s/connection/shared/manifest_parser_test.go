@@ -4,6 +4,7 @@
 package shared
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -103,4 +104,23 @@ func keysOf(m map[string]v1.Namespace) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+func TestRepositoryPath(t *testing.T) {
+	root := filepath.Join("tmp", "mql-git-clone123")
+	cases := []struct {
+		name, path, want string
+	}{
+		{"a file in the root", filepath.Join(root, "deployment.yaml"), "deployment.yaml"},
+		{"a nested file", filepath.Join(root, "scenarios", "hunger-check", "deployment.yaml"), "scenarios/hunger-check/deployment.yaml"},
+		{"a dotted name is not the parent", filepath.Join(root, "..config.yaml"), "..config.yaml"},
+		{"the root itself", root, root},
+		{"the parent of the root", "tmp", "tmp"},
+		{"a file outside the root", filepath.Join("tmp", "other", "a.yaml"), filepath.Join("tmp", "other", "a.yaml")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, RepositoryPath(root, tc.path))
+		})
+	}
 }

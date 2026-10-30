@@ -1,0 +1,38 @@
+# OpenWrt SNAPSHOT r36641 (openwrt/rootfs, x86_64) switched from opkg to apk;
+# two entries of its /lib/apk/db/installed, file lists removed
+[files."/lib/apk/db/installed"]
+content = """
+C:Q1NSxMJDGVXLHsdXRPkiS9Pk3fw1c=
+P:apk-mbedtls
+V:3.0.5-r4
+A:x86_64
+S:123661
+I:232023
+T:apk package manager (mbedtls)
+U:https://gitlab.alpinelinux.org/alpine/apk-tools.git
+L:GPL-2.0-only
+o:feeds/base/system/apk
+m:Paul Spooren <mail@aparcar.org>
+k:100
+D:libc libmbedtls21 wget-any zlib
+p:apk=3.0.5-r4 apk-mbedtls-any
+g:openwrt:section=base
+f:S
+
+C:Q1lPga1mynYexl4KqSGzoYlxMGu2Q=
+P:attendedsysupgrade-common
+V:10
+A:noarch
+S:1345
+I:604
+T:Common files needed for the attendedsysupgrade tool. Manages dependencies and brings settings used by clients. UCI options include defining the URL of a compatible upgrade server, requesting an image even if there’s no new release but new package upgrades are available, offering advanced options like editing packages before a request and displaying additional information, and instructing the client to automatically search for upgrades.
+U:
+L:GPL-2.0
+o:feeds/packages/feeds/packages/utils/attendedsysupgrade-common
+m:Paul Spooren <mail@aparcar.org>
+D:libc rpcd rpcd-mod-rpcsys
+p:attendedsysupgrade-common-any
+g:openwrt:section=utils
+f:S
+
+"""

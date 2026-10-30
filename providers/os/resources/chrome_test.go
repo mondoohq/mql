@@ -341,27 +341,6 @@ func TestDiscoverChromeProfiles(t *testing.T) {
 	assert.NotContains(t, profiles, "Crashpad")
 }
 
-func TestIsValidUserHome(t *testing.T) {
-	tests := []struct {
-		homeDir  string
-		platform string
-		valid    bool
-	}{
-		{"/home/user", "linux", true},
-		{"/root", "linux", true},
-		{"/var/lib/nobody", "linux", false},
-		{"/Users/chris", "darwin", true},
-		{"/Users/Shared", "darwin", false},
-		{"", "linux", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.homeDir+"_"+tt.platform, func(t *testing.T) {
-			assert.Equal(t, tt.valid, isValidUserHome(tt.homeDir, tt.platform))
-		})
-	}
-}
-
 func TestResolveChromei18n(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	afs := &afero.Afero{Fs: fs}
@@ -386,4 +365,96 @@ func TestResolveChromei18n(t *testing.T) {
 	// Not an i18n string
 	result = resolveChromei18n(afs, extDir, "en", "Regular Name")
 	assert.Equal(t, "", result)
+}
+
+// The two files below mirror a Google Chrome profile on Ubuntu 24.04: on
+// Linux the extension entries live in Preferences, and Secure Preferences
+// holds only the protection MAC.
+const (
+	linuxChromePreferences = `{"extensions":{"settings":{
+"eimadpbcbfnmbkopoojfekhnkhdbieeh":{"from_webstore":true,"first_install_time":"13435385453500940","disable_reasons":[],"path":"eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.133_0","location":7,
+ "manifest":{"name":"Dark Reader","version":"4.9.133","manifest_version":3,"permissions":["alarms","fontSettings","scripting","storage"],"host_permissions":["*://*/*"]}},
+"mhjfbmdgcfjbbpaeojofohoefgiehjai":{"from_webstore":false,"first_install_time":"13435385452102160","disable_reasons":[],"path":"/opt/google/chrome/resources/pdf","location":5,
+ "manifest":{"name":"Chrome PDF Viewer","version":"1","manifest_version":2}}}}}`
+	linuxChromeSecurePreferences = `{"protection":{"super_mac":"33F663353631B144EA660B5F809D89BA41CAF954EE5776BE5004BB589CA96BE1"}}`
+)
+
+func TestLoadChromeExtensionSettingsLinuxLayout(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	profile := "/home/ubuntu/.config/google-chrome/Default"
+	require.NoError(t, afs.WriteFile(profile+"/Preferences", []byte(linuxChromePreferences), 0o600))
+	require.NoError(t, afs.WriteFile(profile+"/Secure Preferences", []byte(linuxChromeSecurePreferences), 0o600))
+
+	settings, ok := loadChromeExtensionSettings(afs, profile)
+	require.True(t, ok)
+	require.Contains(t, settings, "eimadpbcbfnmbkopoojfekhnkhdbieeh")
+	assert.Equal(t, "Dark Reader", settings["eimadpbcbfnmbkopoojfekhnkhdbieeh"].Manifest.Name)
+	assert.Len(t, settings, 2)
+}
+
+func TestLoadChromeExtensionSettingsSecureWins(t *testing.T) {
+	// Windows/macOS layout: Secure Preferences carries the authoritative entry,
+	// Preferences may hold a stale or partial copy of the same extension.
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	profile := "/p/Default"
+	require.NoError(t, afs.WriteFile(profile+"/Preferences", []byte(`{"extensions":{"settings":{
+"a":{"path":"a/1.0_0","manifest":{"name":"Old","version":"1.0"}},
+"b":{"path":"b/2.0_0","manifest":{"name":"Only in Preferences","version":"2.0"}}}}}`), 0o600))
+	require.NoError(t, afs.WriteFile(profile+"/Secure Preferences", []byte(`{"extensions":{"settings":{
+"a":{"path":"a/1.1_0","manifest":{"name":"New","version":"1.1"}},
+"b":{"active_permissions":{}}}}}`), 0o600))
+
+	settings, ok := loadChromeExtensionSettings(afs, profile)
+	require.True(t, ok)
+	assert.Equal(t, "New", settings["a"].Manifest.Name)
+	// A Secure Preferences entry without a manifest must not erase the
+	// Preferences entry that has one.
+	assert.Equal(t, "Only in Preferences", settings["b"].Manifest.Name)
+}
+
+func TestLoadChromeExtensionSettingsNoFiles(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	_, ok := loadChromeExtensionSettings(afs, "/p/Default")
+	assert.False(t, ok)
+}
+
+func TestResolveExtensionDirAbsolutePaths(t *testing.T) {
+	profile := "/home/ubuntu/.config/google-chrome/Default"
+	assert.Equal(t, "/opt/google/chrome/resources/pdf",
+		resolveExtensionDir(profile, "/opt/google/chrome/resources/pdf", "mhjfbmdgcfjbbpaeojofohoefgiehjai"))
+	assert.Equal(t, `C:\Users\alice\unpacked-ext`,
+		resolveExtensionDir(profile, `C:\Users\alice\unpacked-ext`, "x"))
+	assert.Equal(t, profile+"/Extensions/eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.133_0",
+		resolveExtensionDir(profile, "eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.133_0", "eimadpbcbfnmbkopoojfekhnkhdbieeh"))
+}
+
+func TestLoadChromeExtensionSettingsUnpackedReadsManifestFromDisk(t *testing.T) {
+	// Chromium 154 on RHEL 9 started with --load-extension=/home/alice/unpacked-ext:
+	// Chrome keeps no manifest copy in Preferences for unpacked (4) and
+	// command-line (8) extensions, only the absolute directory they load from.
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	profile := "/home/alice/.config/chromium/Default"
+	require.NoError(t, afs.WriteFile(profile+"/Preferences", []byte(`{"extensions":{"settings":{
+"hjbnjdnllbljlfnolgdgckpkkfkeadep":{"from_webstore":false,"first_install_time":"13435385453500940","disable_reasons":[],"location":8,"path":"/home/alice/unpacked-ext"},
+"mhjfbmdgcfjbbpaeojofohoefgiehjai":{"location":5,"path":"/usr/lib64/chromium-browser/resources/pdf","manifest":{"name":"Chromium PDF Viewer","version":"1","manifest_version":2}},
+"gone":{"location":4,"path":"/home/alice/deleted-ext"},
+"internal":{"location":1,"path":"internal/1.0_0"}}}}`), 0o600))
+	require.NoError(t, afs.WriteFile("/home/alice/unpacked-ext/manifest.json", []byte(`{"manifest_version": 3, "name": "Unpacked Test", "version": "0.0.1", "description": "local unpacked extension",
+ "permissions": ["storage"], "content_scripts": [{"matches": ["<all_urls>"], "js": ["cs.js"]}]}`), 0o644))
+	// A manifest beside an internal (web store) entry must not be read: its
+	// path is relative to the profile's Extensions directory.
+	require.NoError(t, afs.WriteFile("internal/1.0_0/manifest.json", []byte(`{"name":"wrong","version":"9"}`), 0o644))
+
+	settings, ok := loadChromeExtensionSettings(afs, profile)
+	require.True(t, ok)
+	unpacked := settings["hjbnjdnllbljlfnolgdgckpkkfkeadep"]
+	assert.Equal(t, "Unpacked Test", unpacked.Manifest.Name)
+	assert.Equal(t, "0.0.1", unpacked.Manifest.Version)
+	assert.Equal(t, 3, unpacked.Manifest.ManifestVersion)
+	require.Len(t, unpacked.Manifest.ContentScripts, 1)
+	assert.Equal(t, []string{"cs.js"}, unpacked.Manifest.ContentScripts[0].Js)
+	assert.Equal(t, "Chromium PDF Viewer", settings["mhjfbmdgcfjbbpaeojofohoefgiehjai"].Manifest.Name)
+	// The directory is gone: nothing to read, the entry stays without identity.
+	assert.False(t, settings["gone"].Manifest.hasIdentity())
+	assert.False(t, settings["internal"].Manifest.hasIdentity())
 }

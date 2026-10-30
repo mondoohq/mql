@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/digitalocean/godo"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/digitalocean/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/digitalocean/connection"
 )
 
 type mqlDigitaloceanDatabaseInternal struct {
@@ -18,6 +18,12 @@ type mqlDigitaloceanDatabaseInternal struct {
 	backupsErr    error
 	backupsLock   sync.Mutex
 	backupsDone   bool
+
+	// The engine configuration feeds engineConfig and every per-engine
+	// setting, so it is read at most once per cluster.
+	engineConfigOnce  sync.Once
+	engineConfigValue *engineConfig
+	engineConfigErr   error
 }
 
 func (r *mqlDigitaloceanDatabaseBackup) id() (string, error) {
@@ -68,12 +74,12 @@ func (r *mqlDigitaloceanDatabase) fetchBackups() ([]godo.DatabaseBackup, error) 
 	return all, nil
 }
 
-func (r *mqlDigitaloceanDatabase) backups() ([]interface{}, error) {
+func (r *mqlDigitaloceanDatabase) backups() ([]any, error) {
 	backups, err := r.fetchBackups()
 	if err != nil {
 		return nil, err
 	}
-	all := make([]interface{}, 0, len(backups))
+	all := make([]any, 0, len(backups))
 	for i := range backups {
 		b := backups[i]
 		res, err := CreateResource(r.MqlRuntime, "digitalocean.database.backup", map[string]*llx.RawData{

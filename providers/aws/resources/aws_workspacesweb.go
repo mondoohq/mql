@@ -6,17 +6,18 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/workspacesweb"
 	workspaceswebtypes "github.com/aws/aws-sdk-go-v2/service/workspacesweb/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 // isWorkspacesWebRegionError checks if the error indicates the WorkSpaces Web
@@ -99,29 +100,29 @@ func (a *mqlAwsWorkspacesweb) getPortals(conn *connection.AwsConnection) []*jobp
 func newMqlAwsWorkspaceswebPortal(runtime *plugin.Runtime, region string, portal workspaceswebtypes.PortalSummary) (*mqlAwsWorkspaceswebPortal, error) {
 	res, err := CreateResource(runtime, "aws.workspacesweb.portal",
 		map[string]*llx.RawData{
-			"__id":                         llx.StringDataPtr(portal.PortalArn),
-			"portalArn":                    llx.StringDataPtr(portal.PortalArn),
-			"displayName":                  llx.StringDataPtr(portal.DisplayName),
-			"portalEndpoint":               llx.StringDataPtr(portal.PortalEndpoint),
-			"portalStatus":                 llx.StringData(string(portal.PortalStatus)),
-			"authenticationType":           llx.StringData(string(portal.AuthenticationType)),
-			"browserType":                  llx.StringData(string(portal.BrowserType)),
-			"instanceType":                 llx.StringData(string(portal.InstanceType)),
-			"rendererType":                 llx.StringData(string(portal.RendererType)),
-			"browserSettingsArn":           llx.StringDataPtr(portal.BrowserSettingsArn),
-			"networkSettingsArn":           llx.StringDataPtr(portal.NetworkSettingsArn),
-			"userSettingsArn":              llx.StringDataPtr(portal.UserSettingsArn),
-			"trustStoreArn":                llx.StringDataPtr(portal.TrustStoreArn),
-			"ipAccessSettingsArn":          llx.StringDataPtr(portal.IpAccessSettingsArn),
-			"userAccessLoggingSettingsArn": llx.StringDataPtr(portal.UserAccessLoggingSettingsArn),
-			"dataProtectionSettingsArn":    llx.StringDataPtr(portal.DataProtectionSettingsArn),
-			"maxConcurrentSessions":        llx.IntDataDefault(portal.MaxConcurrentSessions, 0),
-			"creationDate":                 llx.TimeDataPtr(portal.CreationDate),
-			"region":                       llx.StringData(region),
+			"__id":                      llx.StringDataPtr(portal.PortalArn),
+			"portalArn":                 llx.StringDataPtr(portal.PortalArn),
+			"displayName":               llx.StringDataPtr(portal.DisplayName),
+			"portalEndpoint":            llx.StringDataPtr(portal.PortalEndpoint),
+			"portalStatus":              llx.StringData(string(portal.PortalStatus)),
+			"authenticationType":        llx.StringData(string(portal.AuthenticationType)),
+			"browserType":               llx.StringData(string(portal.BrowserType)),
+			"instanceType":              llx.StringData(string(portal.InstanceType)),
+			"rendererType":              llx.StringData(string(portal.RendererType)),
+			"browserSettingsArn":        llx.StringDataPtr(portal.BrowserSettingsArn),
+			"networkSettingsArn":        llx.StringDataPtr(portal.NetworkSettingsArn),
+			"dataProtectionSettingsArn": llx.StringDataPtr(portal.DataProtectionSettingsArn),
+			"maxConcurrentSessions":     llx.IntDataDefault(portal.MaxConcurrentSessions, 0),
+			"creationDate":              llx.TimeDataPtr(portal.CreationDate),
+			"region":                    llx.StringData(region),
 		})
 	if err != nil {
 		return nil, err
 	}
+	res.(*mqlAwsWorkspaceswebPortal).cacheUserSettingsArn = convert.ToValue(portal.UserSettingsArn)
+	res.(*mqlAwsWorkspaceswebPortal).cacheTrustStoreArn = convert.ToValue(portal.TrustStoreArn)
+	res.(*mqlAwsWorkspaceswebPortal).cacheIpAccessSettingsArn = convert.ToValue(portal.IpAccessSettingsArn)
+	res.(*mqlAwsWorkspaceswebPortal).cacheUserAccessLoggingSettingsArn = convert.ToValue(portal.UserAccessLoggingSettingsArn)
 	return res.(*mqlAwsWorkspaceswebPortal), nil
 }
 
@@ -130,12 +131,16 @@ func (a *mqlAwsWorkspaceswebPortal) id() (string, error) {
 }
 
 type mqlAwsWorkspaceswebPortalInternal struct {
-	detailFetched           bool
-	detailLock              sync.Mutex
-	cacheCustomerManagedKey string
-	cachePortalCustomDomain string
-	cacheStatusReason       string
-	cacheSessionLoggerArn   string
+	cacheUserSettingsArn              string
+	cacheTrustStoreArn                string
+	cacheIpAccessSettingsArn          string
+	cacheUserAccessLoggingSettingsArn string
+	detailFetched                     bool
+	detailLock                        sync.Mutex
+	cacheCustomerManagedKey           string
+	cachePortalCustomDomain           string
+	cacheStatusReason                 string
+	cacheSessionLoggerArn             string
 }
 
 // fetchDetail calls GetPortal once to populate fields that ListPortals doesn't
@@ -202,7 +207,7 @@ func (a *mqlAwsWorkspaceswebPortal) sessionLoggerArn() (string, error) {
 }
 
 func (a *mqlAwsWorkspaceswebPortal) userAccessLoggingSetting() (*mqlAwsWorkspaceswebUserAccessLoggingSetting, error) {
-	arnVal := a.UserAccessLoggingSettingsArn.Data
+	arnVal := a.cacheUserAccessLoggingSettingsArn
 	if arnVal == "" {
 		a.UserAccessLoggingSetting.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -285,12 +290,12 @@ func newMqlAwsWorkspaceswebUserAccessLoggingSetting(runtime *plugin.Runtime, reg
 		map[string]*llx.RawData{
 			"__id":                         llx.StringDataPtr(setting.UserAccessLoggingSettingsArn),
 			"userAccessLoggingSettingsArn": llx.StringDataPtr(setting.UserAccessLoggingSettingsArn),
-			"kinesisStreamArn":             llx.StringDataPtr(setting.KinesisStreamArn),
 			"region":                       llx.StringData(region),
 		})
 	if err != nil {
 		return nil, err
 	}
+	res.(*mqlAwsWorkspaceswebUserAccessLoggingSetting).cacheKinesisStreamArn = convert.ToValue(setting.KinesisStreamArn)
 	return res.(*mqlAwsWorkspaceswebUserAccessLoggingSetting), nil
 }
 
@@ -299,7 +304,7 @@ func (a *mqlAwsWorkspaceswebUserAccessLoggingSetting) id() (string, error) {
 }
 
 func (a *mqlAwsWorkspaceswebUserAccessLoggingSetting) kinesisStream() (*mqlAwsKinesisStream, error) {
-	arnVal := a.KinesisStreamArn.Data
+	arnVal := a.cacheKinesisStreamArn
 	if arnVal == "" {
 		a.KinesisStream.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -817,7 +822,7 @@ func (a *mqlAwsWorkspaceswebUserSetting) associatedPortals() ([]any, error) {
 // these resources doesn't surface portal associations.)
 
 func (a *mqlAwsWorkspaceswebPortal) ipAccessSettings() (*mqlAwsWorkspaceswebIpAccessSetting, error) {
-	arnVal := a.IpAccessSettingsArn.Data
+	arnVal := a.cacheIpAccessSettingsArn
 	if arnVal == "" {
 		a.IpAccessSettings.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -839,7 +844,7 @@ func (a *mqlAwsWorkspaceswebPortal) ipAccessSettings() (*mqlAwsWorkspaceswebIpAc
 }
 
 func (a *mqlAwsWorkspaceswebPortal) trustStore() (*mqlAwsWorkspaceswebTrustStore, error) {
-	arnVal := a.TrustStoreArn.Data
+	arnVal := a.cacheTrustStoreArn
 	if arnVal == "" {
 		a.TrustStore.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -861,7 +866,7 @@ func (a *mqlAwsWorkspaceswebPortal) trustStore() (*mqlAwsWorkspaceswebTrustStore
 }
 
 func (a *mqlAwsWorkspaceswebPortal) userSettings() (*mqlAwsWorkspaceswebUserSetting, error) {
-	arnVal := a.UserSettingsArn.Data
+	arnVal := a.cacheUserSettingsArn
 	if arnVal == "" {
 		a.UserSettings.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -926,8 +931,7 @@ func initAwsWorkspaceswebUserAccessLoggingSetting(runtime *plugin.Runtime, args 
 	wsweb := obj.(*mqlAwsWorkspacesweb)
 	rawSettings := wsweb.GetUserAccessLoggingSettings()
 	if rawSettings.Error != nil {
-		args["__id"] = llx.StringData(arnVal)
-		return args, nil, nil
+		return nil, nil, rawSettings.Error
 	}
 	for _, s := range rawSettings.Data {
 		setting := s.(*mqlAwsWorkspaceswebUserAccessLoggingSetting)
@@ -935,8 +939,10 @@ func initAwsWorkspaceswebUserAccessLoggingSetting(runtime *plugin.Runtime, args 
 			return nil, setting, nil
 		}
 	}
-	args["__id"] = llx.StringData(arnVal)
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.workspacesweb.userAccessLoggingSetting with arn %q not found", arnVal)
 }
 
 // associatedPortalsFromArns returns typed aws.workspacesweb.portal references
@@ -984,9 +990,7 @@ func initAwsWorkspaceswebPortal(runtime *plugin.Runtime, args map[string]*llx.Ra
 	wsweb := obj.(*mqlAwsWorkspacesweb)
 	rawPortals := wsweb.GetPortals()
 	if rawPortals.Error != nil {
-		// portals could not be listed — return bare resource
-		args["__id"] = llx.StringData(arnVal)
-		return args, nil, nil
+		return nil, nil, rawPortals.Error
 	}
 	for _, p := range rawPortals.Data {
 		portal := p.(*mqlAwsWorkspaceswebPortal)
@@ -994,7 +998,12 @@ func initAwsWorkspaceswebPortal(runtime *plugin.Runtime, args map[string]*llx.Ra
 			return nil, portal, nil
 		}
 	}
-	// no match — return bare resource so the ARN is still queryable
-	args["__id"] = llx.StringData(arnVal)
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.workspacesweb.portal with arn %q not found", arnVal)
+}
+
+type mqlAwsWorkspaceswebUserAccessLoggingSettingInternal struct {
+	cacheKinesisStreamArn string
 }

@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 type mqlHetznerServerTypeInternal struct {
@@ -49,8 +49,19 @@ func newMqlHetznerServerType(runtime *plugin.Runtime, t *hcloud.ServerType) (*mq
 		"disk":         llx.IntData(int64(t.Disk)),
 		"storageType":  llx.StringData(string(t.StorageType)),
 		"cpuType":      llx.StringData(string(t.CPUType)),
+		"category":     llx.StringData(t.Category),
 		"architecture": llx.StringData(string(t.Architecture)),
 		"deprecated":   llx.BoolData(t.IsDeprecated()),
+		// hcloud marks ServerType.DeprecatableResource as phasing out in
+		// favour of the per-location schedule, which locations() already
+		// carries. The type-wide schedule is kept because the shipped
+		// `deprecated` bool reads from the same struct and says only that a
+		// type is going away, never by when.
+		"deprecation": llx.DictData(deprecationDict(t.Deprecation)),
+		// Deprecated in the SDK and reports 0 after 2024-08-05, when Hetzner
+		// moved the traffic allowance into per-location pricing. Carried so
+		// the inventory matches what the API returns.
+		"includedTraffic": llx.IntData(t.IncludedTraffic),
 	})
 	if err != nil {
 		return nil, err
@@ -74,8 +85,16 @@ func (m *mqlHetznerServerType) locations() ([]any, error) {
 
 // --- serverType.location sub-resource ---
 
+// mqlHetznerServerTypeLocationInternal holds the server type and location the
+// availability entry joins, which the serverType and location accessors
+// resolve.
+type mqlHetznerServerTypeLocationInternal struct {
+	cacheServerTypeID int64
+	cacheLocationID   int64
+}
+
 func (r *mqlHetznerServerTypeLocation) id() (string, error) {
-	return fmt.Sprintf("hetzner.serverType.location/%d/%d", r.ServerTypeId.Data, r.LocationId.Data), nil
+	return fmt.Sprintf("hetzner.serverType.location/%d/%d", r.cacheServerTypeID, r.cacheLocationID), nil
 }
 
 func newMqlHetznerServerTypeLocation(runtime *plugin.Runtime, serverTypeID int64, stl hcloud.ServerTypeLocation) (*mqlHetznerServerTypeLocation, error) {
@@ -83,32 +102,43 @@ func newMqlHetznerServerTypeLocation(runtime *plugin.Runtime, serverTypeID int64
 	if stl.Location != nil {
 		locationID = stl.Location.ID
 	}
-	dep := map[string]any{}
-	if stl.Deprecation != nil {
-		dep["announced"] = stl.Deprecation.Announced
-		dep["unavailableAfter"] = stl.Deprecation.UnavailableAfter
-	}
+	dep := deprecationDict(stl.Deprecation)
 	res, err := CreateResource(runtime, "hetzner.serverType.location", map[string]*llx.RawData{
-		"__id":         llx.StringData(fmt.Sprintf("hetzner.serverType.location/%d/%d", serverTypeID, locationID)),
-		"serverTypeId": llx.IntData(serverTypeID),
-		"locationId":   llx.IntData(locationID),
-		"available":    llx.BoolData(stl.Available),
-		"recommended":  llx.BoolData(stl.Recommended),
-		"deprecation":  llx.DictData(dep),
+		"__id":        llx.StringData(fmt.Sprintf("hetzner.serverType.location/%d/%d", serverTypeID, locationID)),
+		"available":   llx.BoolData(stl.Available),
+		"recommended": llx.BoolData(stl.Recommended),
+		"deprecation": llx.DictData(dep),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlHetznerServerTypeLocation), nil
+	m := res.(*mqlHetznerServerTypeLocation)
+	m.cacheServerTypeID = serverTypeID
+	m.cacheLocationID = locationID
+	return m, nil
+}
+
+func (m *mqlHetznerServerTypeLocation) serverType() (*mqlHetznerServerType, error) {
+	if m.cacheServerTypeID == 0 {
+		m.ServerType.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	ref, err := NewResource(m.MqlRuntime, "hetzner.serverType", map[string]*llx.RawData{
+		"id": llx.IntData(m.cacheServerTypeID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ref.(*mqlHetznerServerType), nil
 }
 
 func (m *mqlHetznerServerTypeLocation) location() (*mqlHetznerLocation, error) {
-	if m.LocationId.Data == 0 {
+	if m.cacheLocationID == 0 {
 		m.Location.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	ref, err := NewResource(m.MqlRuntime, "hetzner.location", map[string]*llx.RawData{
-		"id": llx.IntData(m.LocationId.Data),
+		"id": llx.IntData(m.cacheLocationID),
 	})
 	if err != nil {
 		return nil, err
@@ -117,9 +147,9 @@ func (m *mqlHetznerServerTypeLocation) location() (*mqlHetznerLocation, error) {
 }
 
 func initHetznerServerType(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "serverType")
+	if err != nil {
+		return nil, nil, err
 	}
 	t, _, err := conn(runtime).Client().ServerType.GetByID(ctx(), id)
 	if err != nil {

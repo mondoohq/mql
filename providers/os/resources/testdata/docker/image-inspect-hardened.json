@@ -1,0 +1,70 @@
+[
+    {
+        "Id": "sha256:27cbcef83548d58e65ab31cdbfe1897402af3b47b1ab8eb9368255238ab8b749",
+        "RepoTags": [
+            "mqlimg-hardened:1"
+        ],
+        "RepoDigests": [
+            "mqlimg-hardened@sha256:27cbcef83548d58e65ab31cdbfe1897402af3b47b1ab8eb9368255238ab8b749"
+        ],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-10-08T01:54:55.521910876Z",
+        "Author": "Example Maintainer <maint@example.com>",
+        "Config": {
+            "User": "1000:1000",
+            "ExposedPorts": {
+                "8080/tcp": {},
+                "8443/tcp": {}
+            },
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            ],
+            "Entrypoint": [
+                "/bin/sh",
+                "-c"
+            ],
+            "Cmd": [
+                "sleep 3600"
+            ],
+            "WorkingDir": "/srv",
+            "Labels": {
+                "org.opencontainers.image.source": "https://example.com/app"
+            },
+            "ArgsEscaped": true,
+            "Healthcheck": {
+                "Test": [
+                    "CMD-SHELL",
+                    "wget -q -O- http://localhost:8080/ || exit 1"
+                ],
+                "Interval": 15000000000
+            }
+        },
+        "Architecture": "arm64",
+        "Os": "linux",
+        "Size": 13376202,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:9fd9b3248f2fb670edfab1393d1d1e8cd828eb9c65de376b2fcc23268a45d500",
+                "sha256:81d575f2c2ee1bb78ee09df949d01ab9f03dac6ee04b5a6084e1408ba3e12a7d",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-10-08T01:54:55.589279917Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "digest": "sha256:27cbcef83548d58e65ab31cdbfe1897402af3b47b1ab8eb9368255238ab8b749",
+            "size": 855
+        },
+        "Identity": {
+            "Build": [
+                {
+                    "Ref": "kw2mtqvek8l0j1rv4rwx7y3wg",
+                    "CreatedAt": "2026-10-08T01:54:55.606318417Z"
+                }
+            ]
+        }
+    }
+]

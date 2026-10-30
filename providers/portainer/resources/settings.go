@@ -4,9 +4,11 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/portainer/connection"
+	"errors"
+
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/portainer/connection"
 )
 
 // initPortainerSettings populates the resource when it is queried directly as
@@ -38,6 +40,9 @@ func (r *mqlPortainer) settings() (*mqlPortainerSettings, error) {
 	if err != nil {
 		return nil, err
 	}
+	if settings == nil {
+		return nil, errors.New("Portainer returned no settings")
+	}
 
 	var requiredPasswordLength int64
 	if settings.InternalAuthSettings != nil {
@@ -61,7 +66,6 @@ func (r *mqlPortainer) settings() (*mqlPortainerSettings, error) {
 		"allowVolumeBrowserForRegularUsers":         llx.BoolData(settings.AllowVolumeBrowserForRegularUsers),
 		"disableKubeShell":                          llx.BoolData(settings.DisableKubeShell),
 		"disableKubeconfigDownload":                 llx.BoolData(settings.DisableKubeconfigDownload),
-		"enableHostManagementFeatures":              llx.BoolData(settings.EnableHostManagementFeatures),
 		"disableKubeRolesSync":                      llx.BoolData(settings.DisableKubeRolesSync),
 		"kubectlShellImage":                         llx.StringData(settings.KubectlShellImage),
 		"kubeconfigExpiry":                          llx.StringData(settings.KubeconfigExpiry),

@@ -6,11 +6,12 @@
 package connection
 
 import (
+	"crypto/x509"
 	"errors"
 
 	"github.com/go-ldap/ldap/v3"
 )
 
-func newImplicitKerberosClient() (ldap.GSSAPIClient, func() error, error) {
+func newImplicitKerberosClient(_ *x509.Certificate) (ldap.GSSAPIClient, func() error, error) {
 	return nil, nil, errors.New("--kerberos requires either --keytab, --ccache, or both --user and --password (Windows current-session authentication is only available on Windows)")
 }

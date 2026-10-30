@@ -5,10 +5,8 @@ package sdk
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -16,7 +14,7 @@ import (
 // ApiToken represents an Okta API token. Okta's golang SDK does not (yet) expose
 // the /api/v1/api-tokens endpoint, so we model the response shape ourselves.
 //
-// Reference: https://developer.okta.com/docs/reference/api/api-token/
+// Reference: https://developer.okta.com/docs/api/openapi/okta-management/management/tags/apitoken
 type ApiToken struct {
 	Id          string     `json:"id,omitempty"`
 	Name        string     `json:"name,omitempty"`
@@ -28,51 +26,47 @@ type ApiToken struct {
 	TokenWindow string     `json:"tokenWindow,omitempty"`
 }
 
-// ListApiTokens fetches all API tokens for the org. The endpoint requires Super Admin
-// privileges. We use raw HTTP because the Okta golang SDK v2 does not include this resource.
+// ListApiTokens fetches all API tokens for the org. The endpoint requires Super
+// Admin privileges. We issue it ourselves because the Okta golang SDK does not
+// include this resource.
 //
-// Pagination follows Okta's `Link: <url>; rel="next"` response header convention until
-// no `next` link is returned.
-func ListApiTokens(ctx context.Context, host, token string) ([]*ApiToken, error) {
-	client := http.Client{}
+// Pagination follows Okta's `Link: <url>; rel="next"` response header convention
+// until no `next` link is returned.
+func (m *ApiExtension) ListApiTokens(ctx context.Context, limit int) ([]*ApiToken, error) {
+	params := url.Values{}
+	if limit > 0 {
+		params.Set("limit", strconv.Itoa(limit))
+	}
+	nextURL := m.urlWithParams("/api/v1/api-tokens", params)
+
 	result := []*ApiToken{}
-	nextURL := fmt.Sprintf("https://%s/api/v1/api-tokens?limit=200", host)
-
-	for nextURL != "" {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, nextURL, nil)
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", fmt.Sprintf("SSWS %s", token))
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, err
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			return nil, fmt.Errorf("failed to fetch API tokens from %s: %s", nextURL, resp.Status)
-		}
-
-		raw, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			return nil, err
-		}
-
+	for i := 0; i < maxPages && nextURL != ""; i++ {
 		page := []*ApiToken{}
-		if err := json.Unmarshal(raw, &page); err != nil {
+		resp, err := m.get(ctx, nextURL, &page)
+		if err != nil {
 			return nil, err
 		}
 		result = append(result, page...)
-
-		nextURL = nextLinkURL(resp.Header.Values("Link"))
+		if resp == nil {
+			break
+		}
+		nextURL = nextPageURL(nextURL, resp.Header.Values("Link"))
 	}
 
 	return result, nil
+}
+
+// nextPageURL returns the URL of the page after the one just fetched, or an
+// empty string when the walk is over. A `next` link pointing back at the URL
+// that produced it is treated as the end: following it would re-fetch the same
+// page until the page cap and report every record it holds that many times
+// over, which reads as a real collection rather than as a failure.
+func nextPageURL(current string, headers []string) string {
+	next := nextLinkURL(headers)
+	if next == current {
+		return ""
+	}
+	return next
 }
 
 // nextLinkURL parses RFC 5988 `Link` headers and returns the URL whose rel is `next`,

@@ -1,0 +1,327 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/cockroachdb"
+option go_package = "go.mondoo.com/mql/providers/cockroachdb/resources"
+option root = "cockroachdb"
+
+// CockroachDB cluster
+//
+// Root of the CockroachDB provider. The connected cluster and everything
+// queryable through it (cluster settings, host-based authentication rules,
+// roles, databases, nodes, and backup schedules) is reached from
+// cockroachdb.cluster.
+cockroachdb @root {
+}
+
+// CockroachDB cluster
+//
+// The connected cluster: its id and version, whether it runs in insecure mode,
+// its cluster settings and host-based authentication rules, and the roles,
+// databases, nodes, and backup schedules reached from here. Read over SQL from
+// crdb_internal, system tables, and SHOW statements. Several of them need the
+// admin role; a read the connecting user is not permitted is an error, never
+// an empty answer.
+cockroachdb.cluster @defaults("id version") {
+  // Cluster ID, a UUID
+  id string
+  // CockroachDB release the connected node runs, for example "25.4.17"
+  version string
+  // Full build description from version(), including platform and build time
+  buildInfo string
+  // Active cluster version, for example "25.4"
+  //
+  // The version cluster setting: the feature level every node has agreed on.
+  // It trails version during a rolling upgrade until the upgrade is finalized.
+  clusterVersion string
+  // Organization name, from the cluster.organization setting
+  organization string
+  // Whether the cluster runs in insecure mode
+  //
+  // True when the connected node was started with --insecure: it accepts SQL
+  // clients without TLS or authentication and serves the DB Console over plain
+  // HTTP. Read from the SQL URL the node reports in
+  // crdb_internal.node_runtime_info, which carries sslmode=disable only in
+  // insecure mode. Reading it needs the VIEWCLUSTERMETADATA privilege.
+  insecure() bool
+  // Cluster settings
+  settings() []cockroachdb.setting
+  // Host-based authentication rules, in the order CockroachDB evaluates them
+  //
+  // Parsed from the server.host_based_authentication.configuration setting. An
+  // empty list means the setting is unset and CockroachDB applies its built-in
+  // defaults: root authenticates with a client certificate, every other user
+  // with a certificate or a password.
+  hbaRules() []cockroachdb.hbaRule
+  // Roles and users
+  roles() []cockroachdb.role
+  // Databases
+  //
+  // CockroachDB lists only the databases the connecting user has a privilege
+  // on, and only their tables and grants the user may see, without an error
+  // for the rest. Connect as a member of the admin role to read them all.
+  databases() []cockroachdb.database
+  // Nodes in the cluster
+  nodes() []cockroachdb.node
+  // Backup schedules
+  backupSchedules() []cockroachdb.backupSchedule
+}
+
+// CockroachDB cluster setting
+//
+// One cluster setting from crdb_internal.cluster_settings: its value, type,
+// default, and whether it was changed. The name field selects the setting, for
+// example cockroachdb.cluster.settings.where(name == "security.ocsp.mode").
+// The value of a sensitive setting reads "<redacted>" for a user without the
+// MODIFYCLUSTERSETTING or VIEWCLUSTERSETTING privilege.
+cockroachdb.setting @defaults("name value") {
+  // Setting name, for example "server.auth_log.sql_connections.enabled"
+  name string
+  // Current value
+  value string
+  // Default value
+  defaultValue string
+  // Value type: "bool", "int", "float", "string", "enum", "duration", "byteSize", "version", or another type code CockroachDB reports
+  type string
+  // Where the value comes from: "default", "override" (set with SET CLUSTER SETTING), or "external-override"
+  origin string
+  // Whether the setting has its default value
+  //
+  // True when origin is "default", meaning no one set the setting.
+  isDefault bool
+  // Whether the setting is documented and supported for use
+  //
+  // CockroachDB's public setting class: settings outside it are internal and
+  // may change without notice.
+  isDocumented bool
+  // Whether the setting holds sensitive data
+  isSensitive bool
+  // Setting description
+  description string
+}
+
+// CockroachDB host-based authentication rule
+//
+// One rule of the server.host_based_authentication.configuration setting. The
+// first rule matching a connection's type, database, user, and address decides
+// how it authenticates; method "reject" refuses it.
+cockroachdb.hbaRule @defaults("connectionType users address method") {
+  // Position of the rule in the configuration, starting at 1
+  position int
+  // Connection type: "local", "host", "hostssl", or "hostnossl"
+  connectionType string
+  // Databases the rule applies to; "all" matches every database
+  databases []string
+  // Users the rule applies to; "all" matches every user
+  users []string
+  // Client address the rule applies to: a CIDR range, a hostname, or "all"; empty for local connections
+  address string
+  // Authentication method, for example "cert", "password", "cert-password", "cert-scram-sha-256", "scram-sha-256", "trust", "reject", "gss", or "ldap"
+  method string
+  // Method options, as name=value pairs
+  options map[string]string
+  // The rule as written in the configuration
+  line string
+}
+
+// CockroachDB role
+//
+// A role or user and its login and privilege attributes: whether it can log
+// in, whether it is an administrator, how its password is stored, the roles it
+// is a member of, and its default session variables. CockroachDB treats users
+// and roles alike; a user is a role that can log in. The name field selects
+// the role, for example cockroachdb.cluster.roles.where(name == "root"). The
+// list, login, administrator, and membership fields come from pg_catalog and
+// need no privilege.
+cockroachdb.role @defaults("name canLogin isAdmin") {
+  // Role name
+  name string
+  // Whether the role can log in
+  //
+  // False when the role has the NOLOGIN option.
+  canLogin bool
+  // Whether the role has administrator rights
+  //
+  // True for the admin role, the internal node user, and every role that is a
+  // member of admin, directly or through another role, such as root.
+  isAdmin bool
+  // Role options, as SHOW USERS reports them, for example "CREATEDB", "NOLOGIN", "CONTROLJOB", or "VALID UNTIL=2030-01-01 00:00:00+00"
+  //
+  // SHOW USERS reads system.users, which needs the admin role.
+  options() []string
+  // Time after which the role's password stops being valid, from the VALID UNTIL option
+  validUntil time
+  // Roles this role is a direct member of
+  memberOf() []cockroachdb.role
+  // Whether the role has a password
+  //
+  // Read from system.users, which needs the admin role. The password hash
+  // itself is never exposed.
+  hasPassword() bool
+  // How the role's password is stored: "scram-sha-256", "crdb-bcrypt", or empty when the role has no password
+  //
+  // Read from the prefix of the stored hash in system.users, which needs the
+  // admin role. A password keeps the format it was set with; changing
+  // server.user_login.password_encryption affects only passwords set later.
+  passwordHashMethod() string
+  // Default session variables for the role in every database
+  //
+  // Set with ALTER ROLE ... SET, for example idle_in_session_timeout. A value
+  // set for this role takes precedence over one set with ALTER ROLE ALL.
+  // Defaults that apply only in one database are not included. Read from
+  // system.database_role_settings, which needs the admin role.
+  defaultSessionVariables() map[string]string
+}
+
+// CockroachDB database
+//
+// A database and its owner, multi-region configuration, privileges, and
+// tables. The name field selects the database, for example
+// cockroachdb.cluster.databases.where(name == "defaultdb").
+cockroachdb.database @defaults("name") {
+  // Database name
+  name string
+  // Role that owns the database
+  owner() cockroachdb.role
+  // Primary region of a multi-region database; empty for a single-region database
+  primaryRegion string
+  // Regions of a multi-region database
+  regions []string
+  // Survival goal of a multi-region database: "zone" or "region"; empty for a single-region database
+  survivalGoal string
+  // Privileges granted on the database
+  grants() []cockroachdb.grant
+  // Tables in the database
+  tables() []cockroachdb.table
+}
+
+// CockroachDB table
+//
+// A table in a database, with its schema, owner, and privileges.
+cockroachdb.table @defaults("database schema name") {
+  // Table name
+  name string
+  // Schema the table belongs to, for example "public"
+  schema string
+  // Database the table belongs to
+  database string
+  // Role that owns the table
+  owner() cockroachdb.role
+  // Privileges granted on the table
+  grants() []cockroachdb.grant
+}
+
+// CockroachDB privilege grant
+//
+// One privilege held by a grantee on a database or table, for example SELECT
+// granted to a role. The grantee "public" stands for every role.
+cockroachdb.grant @defaults("grantee privilege") {
+  // Role or pseudo-role the privilege is granted to, for example "app" or "public"
+  grantee string
+  // Role the privilege is granted to; null for the "public" pseudo-role
+  role() cockroachdb.role
+  // Privilege, for example "SELECT", "CONNECT", or "ALL"
+  privilege string
+  // Whether the grantee may grant the privilege to other roles
+  isGrantable bool
+}
+
+// CockroachDB node
+//
+// A node of the cluster: its addresses, release, locality, liveness, the
+// command line it was started with, its certificates, and its stores. The id
+// field selects the node.
+cockroachdb.node @defaults("id address version isLive") {
+  // Node ID
+  id int
+  // Address the node advertises to other nodes
+  address string
+  // Address the node serves SQL clients on
+  sqlAddress string
+  // CockroachDB release the node runs, for example "25.4.17"
+  version string
+  // Cluster version the node runs at, for example "25.4"
+  serverVersion string
+  // Locality the node was started with, for example "region=us-east1,zone=us-east1-b"
+  locality string
+  // Whether the node is live
+  isLive bool
+  // Time the node was started
+  startedAt time
+  // Command line the node was started with
+  //
+  // The arguments of the cockroach process, for example "--certs-dir=/certs",
+  // "--insecure", or "--enterprise-encryption=path=...". They name paths and
+  // options, never key material.
+  args() []string
+  // Certificates the node loaded
+  //
+  // Read from the node's security.certificate.expiration metrics. Only
+  // certificate types the node has loaded are listed. Client certificates
+  // are not: CockroachDB reports their expiry per SQL user.
+  certificates() []cockroachdb.certificate
+  // Stores of the node
+  stores() []cockroachdb.store
+}
+
+// CockroachDB node certificate
+//
+// One certificate a node loaded and when it expires.
+cockroachdb.certificate @defaults("type expiresAt") {
+  // Certificate type: "ca", "node", "client-ca", "node-client", "ui", "ui-ca", "client-tenant", or "ca-client-tenant"
+  type string
+  // Time the certificate expires
+  expiresAt time
+}
+
+// CockroachDB store
+//
+// A store of a node: where it keeps its data, its capacity, and whether it is
+// encrypted at rest.
+cockroachdb.store @defaults("id path encrypted") {
+  // Store ID
+  id int
+  // Data directory of the store
+  path string
+  // Whether the store is encrypted at rest
+  //
+  // True when the node was started with --enterprise-encryption for this
+  // store.
+  encrypted bool
+  // Capacity of the store, in bytes
+  capacity int
+  // Available space of the store, in bytes
+  available int
+  // Space used by the store, in bytes
+  used int
+}
+
+// CockroachDB backup schedule
+//
+// A scheduled backup: its recurrence, status, owner, and whether the backups
+// it writes are encrypted. The label field selects the schedule, for example
+// cockroachdb.cluster.backupSchedules.where(label == "nightly").
+cockroachdb.backupSchedule @defaults("label recurrence encrypted") {
+  // Schedule ID
+  id string
+  // Schedule label
+  label string
+  // Schedule status: "ACTIVE" or "PAUSED"
+  status string
+  // Recurrence, as a crontab expression, for example "@daily"
+  recurrence string
+  // Role that owns the schedule
+  owner() cockroachdb.role
+  // BACKUP statement the schedule runs, with secrets such as passphrases redacted
+  statement string
+  // Whether the backups are encrypted
+  //
+  // True when the statement sets encryption_passphrase or kms.
+  encrypted bool
+  // Time of the next scheduled run
+  nextRun time
+  // Time the schedule was created
+  createdAt time
+}

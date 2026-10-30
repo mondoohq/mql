@@ -14,7 +14,7 @@ import (
 
 	"github.com/google/go-cmdtest"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/test"
+	"go.mondoo.com/mql/test"
 )
 
 var once sync.Once
@@ -73,6 +73,15 @@ func TestMain(m *testing.M) {
 	os.Unsetenv("GOCOVERDIR")
 
 	ret := m.Run()
+
+	// setup() copies the full os provider dist (~100MB) into testDir; without
+	// this the directory is left behind in /tmp on every test run.
+	if testDir != "" {
+		if err := os.RemoveAll(testDir); err != nil {
+			log.Printf("removing test directory %s: %v", testDir, err)
+		}
+	}
+
 	os.Exit(ret)
 }
 

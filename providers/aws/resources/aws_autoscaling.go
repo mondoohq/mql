@@ -13,12 +13,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/autoscaling"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsAutoscaling) id() (string, error) {
@@ -121,7 +121,10 @@ func initAwsAutoscalingGroup(runtime *plugin.Runtime, args map[string]*llx.RawDa
 		populateAutoscalingGroupInternals(mqlGroup.(*mqlAwsAutoscalingGroup), group, region, conn.AccountId())
 		return args, mqlGroup, nil
 	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.autoscaling.group with name %q not found", name)
 }
 
 // autoscalingGroupArgs builds the lr-field arg map from an SDK AutoScalingGroup.
@@ -197,6 +200,11 @@ func autoscalingGroupArgs(runtime *plugin.Runtime, group ec2types.AutoScalingGro
 		launchTemplateVersion = convert.ToValue(group.LaunchTemplate.Version)
 	}
 
+	operatorPrincipal := ""
+	if group.Operator != nil {
+		operatorPrincipal = convert.ToValue(group.Operator.Principal)
+	}
+
 	return map[string]*llx.RawData{
 		"arn":                              llx.StringData(groupArn),
 		"availabilityZones":                llx.ArrayData(availabilityZones, types.String),
@@ -226,6 +234,7 @@ func autoscalingGroupArgs(runtime *plugin.Runtime, group ec2types.AutoScalingGro
 		"mixedInstancesPolicy":             llx.DictData(mixedInstancesPolicy),
 		"name":                             llx.StringDataPtr(group.AutoScalingGroupName),
 		"newInstancesProtectedFromScaleIn": llx.BoolDataPtr(group.NewInstancesProtectedFromScaleIn),
+		"operatorPrincipal":                llx.StringData(operatorPrincipal),
 		"placementGroup":                   llx.StringDataPtr(group.PlacementGroup),
 		"predictedCapacity":                llx.IntDataDefault(group.PredictedCapacity, 0),
 		"region":                           llx.StringData(region),
@@ -312,16 +321,7 @@ func (a *mqlAwsAutoscaling) getGroups(conn *connection.AwsConnection) []*jobpool
 }
 
 func autoscalingTagsToMap(tags []ec2types.TagDescription) map[string]any {
-	tagsMap := make(map[string]any)
-
-	if len(tags) > 0 {
-		for i := range tags {
-			tag := tags[i]
-			tagsMap[convert.ToValue(tag.Key)] = convert.ToValue(tag.Value)
-		}
-	}
-
-	return tagsMap
+	return tagsToMap(tags, func(t ec2types.TagDescription) *string { return t.Key }, func(t ec2types.TagDescription) *string { return t.Value })
 }
 
 func createTagSpecifications(runtime *plugin.Runtime, tags []ec2types.TagDescription, groupArn string) ([]any, error) {
@@ -416,4 +416,83 @@ func (a *mqlAwsAutoscalingGroup) subnets() ([]any, error) {
 		res = append(res, mqlSubnet)
 	}
 	return res, nil
+}
+
+func (a *mqlAwsAutoscaling) accountSettings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+
+	res := []any{}
+	poolOfJobs := jobpool.CreatePool(a.getAccountSettings(conn), 5)
+	poolOfJobs.Run()
+	if poolOfJobs.HasErrors() {
+		return nil, poolOfJobs.GetErrors()
+	}
+	for i := range poolOfJobs.Jobs {
+		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
+	}
+	return res, nil
+}
+
+func (a *mqlAwsAutoscaling) getAccountSettings(conn *connection.AwsConnection) []*jobpool.Job {
+	tasks := make([]*jobpool.Job, 0)
+	regions, err := conn.Regions()
+	if err != nil {
+		return []*jobpool.Job{{Err: err}}
+	}
+
+	for _, region := range regions {
+		f := func() (jobpool.JobResult, error) {
+			svc := conn.Autoscaling(region)
+			ctx := context.Background()
+			res := []any{}
+
+			var nextToken *string
+			for {
+				resp, err := svc.DescribeAccountSettings(ctx, &autoscaling.DescribeAccountSettingsInput{NextToken: nextToken})
+				if err != nil {
+					if Is400AccessDeniedError(err) {
+						log.Warn().Str("region", region).Msg("error accessing region for EC2 Auto Scaling account settings")
+						return res, nil
+					}
+					return nil, err
+				}
+				for _, setting := range resp.Settings {
+					mqlSetting, err := CreateResource(a.MqlRuntime, ResourceAwsAutoscalingAccountSetting,
+						autoscalingAccountSettingArgs(region, setting))
+					if err != nil {
+						return nil, err
+					}
+					res = append(res, mqlSetting)
+				}
+				if resp.NextToken == nil || *resp.NextToken == "" {
+					break
+				}
+				if nextToken != nil && *nextToken == *resp.NextToken {
+					// A cursor that does not advance would loop forever.
+					break
+				}
+				nextToken = resp.NextToken
+			}
+			return jobpool.JobResult(res), nil
+		}
+		tasks = append(tasks, jobpool.NewJob(f))
+	}
+	return tasks
+}
+
+// autoscalingAccountSettingArgs maps one account setting. The enforcement
+// values are only returned for settings with a hard or flexible enforcement
+// type, so they stay null otherwise.
+func autoscalingAccountSettingArgs(region string, setting ec2types.AccountSetting) map[string]*llx.RawData {
+	name := convert.ToValue(setting.Name)
+	return map[string]*llx.RawData{
+		"__id":            llx.StringData(region + "/" + name),
+		"name":            llx.StringData(name),
+		"value":           llx.StringDataPtr(setting.Value),
+		"region":          llx.StringData(region),
+		"enforcementType": llx.StringDataPtr(setting.EnforcementType),
+		"enforcementDate": llx.TimeDataPtr(setting.EnforcementDate),
+		"defaultValue":    llx.StringDataPtr(setting.DefaultValue),
+		"enforcedValue":   llx.StringDataPtr(setting.EnforcedValue),
+	}
 }

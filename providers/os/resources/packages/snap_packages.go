@@ -13,11 +13,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/package-url/packageurl-go"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/purl"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/purl"
 	"gopkg.in/yaml.v3"
 )
 
@@ -26,8 +26,7 @@ const (
 )
 
 type SnapPkgManager struct {
-	conn     shared.Connection
-	platform *inventory.Platform
+	conn shared.Connection
 }
 
 type snapListEntry struct {
@@ -98,7 +97,7 @@ func (spm *SnapPkgManager) listFromCLI() ([]Package, error) {
 			continue
 		}
 
-		pkg, err := spm.parseSnapManifest(manifest)
+		pkg, err := spm.parseSnapManifest(manifest, entry.rev)
 		manifest.Close()
 		if err != nil {
 			log.Debug().Err(err).Str("path", manifestPath).Msg("mql[snap]> could not parse snap manifest from cli revision")
@@ -172,7 +171,7 @@ func (spm *SnapPkgManager) listFromFS() ([]Package, error) {
 		currentManifestPath := path.Join(snapDir, name, "current", "meta", "snap.yaml")
 		manifest, err := afs.Open(currentManifestPath)
 		if err == nil {
-			pkg, err := spm.parseSnapManifest(manifest)
+			pkg, err := spm.parseSnapManifest(manifest, currentSnapRevision(afs, path.Join(snapDir, name, "current")))
 			manifest.Close()
 			if err != nil {
 				log.Debug().Err(err).Str("path", currentManifestPath).Msg("mql[snap]> could not parse current snap manifest")
@@ -222,7 +221,7 @@ func (spm *SnapPkgManager) listFromFS() ([]Package, error) {
 				continue
 			}
 
-			pkg, err := spm.parseSnapManifest(manifest)
+			pkg, err := spm.parseSnapManifest(manifest, strconv.Itoa(revision))
 			manifest.Close()
 			if err != nil {
 				log.Debug().Err(err).Str("path", manifestPath).Msg("mql[snap]> could not parse snap manifest from revision fallback")
@@ -237,8 +236,103 @@ func (spm *SnapPkgManager) listFromFS() ([]Package, error) {
 	return pkgList, nil
 }
 
+// snapRefreshListCmd asks snapd which installed snaps the store has a newer
+// revision of. snapd contacts the store for it; no root is needed.
+const snapRefreshListCmd = "LC_ALL=C snap refresh --list"
+
+// Available reports the snaps `snap refresh --list` would refresh.
+//
+// A host without the snap command has no update check, as before. A snap
+// command that cannot answer, because snapd is down or the store is out of
+// reach, is a failed check: nothing is known about the snaps' updates, which
+// is not the same as all of them being current.
 func (spm *SnapPkgManager) Available() (map[string]PackageUpdate, error) {
-	return nil, nil
+	if !spm.conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return nil, nil
+	}
+
+	cmd, err := spm.conn.RunCommand(snapRefreshListCmd)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s: %w", ErrUpdateCheckFailed, snapRefreshListCmd, err)
+	}
+	if cmd.ExitStatus == 127 {
+		return nil, nil
+	}
+	if cmd.ExitStatus != 0 {
+		return nil, fmt.Errorf("%w: %s exited with status %d%s", ErrUpdateCheckFailed, snapRefreshListCmd, cmd.ExitStatus, aptStderr(cmd))
+	}
+	if cmd.Stdout == nil {
+		return map[string]PackageUpdate{}, nil
+	}
+	updates, err := ParseSnapRefreshList(cmd.Stdout)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrUpdateCheckFailed, err)
+	}
+
+	// An update is matched to the installed package by name and
+	// architecture. snap does not print the architecture, so it comes from
+	// the installed snap's manifest, as it does for List.
+	afs := &afero.Afero{Fs: spm.conn.FileSystem()}
+	for name, u := range updates {
+		u.Arch = spm.installedArch(afs, name)
+		updates[name] = u
+	}
+	return updates, nil
+}
+
+// installedArch returns the architecture the current revision of a snap
+// declares, "" when its manifest cannot be read.
+func (spm *SnapPkgManager) installedArch(afs *afero.Afero, name string) string {
+	manifestPath := path.Join("/snap", name, "current", "meta", "snap.yaml")
+	f, err := afs.Open(manifestPath)
+	if err != nil {
+		log.Debug().Err(err).Str("path", manifestPath).Msg("mql[snap]> could not open snap manifest for update")
+		return ""
+	}
+	defer f.Close()
+	pkg, err := spm.parseSnapManifest(f, "")
+	if err != nil {
+		log.Debug().Err(err).Str("path", manifestPath).Msg("mql[snap]> could not parse snap manifest for update")
+		return ""
+	}
+	return pkg.Arch
+}
+
+// ParseSnapRefreshList reads the table `snap refresh --list` prints:
+//
+//	Name              Version         Rev    Size  Publisher    Notes
+//	core20            20260901        2922   66MB  canonical**  base
+//	snapd             2.77.1          28254  46MB  canonical**  snapd
+//
+// Version is the version a refresh would install. With nothing to refresh,
+// snap prints "All snaps up to date." on stderr and nothing on stdout.
+func ParseSnapRefreshList(input io.Reader) (map[string]PackageUpdate, error) {
+	res := map[string]PackageUpdate{}
+	scanner := bufio.NewScanner(input)
+	header := true
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) == 0 {
+			continue
+		}
+		if header {
+			header = false
+			if fields[0] == "Name" && len(fields) > 1 && fields[1] == "Version" {
+				continue
+			}
+		}
+		if len(fields) < 2 {
+			continue
+		}
+		res[fields[0]] = PackageUpdate{
+			Name:      fields[0],
+			Available: fields[1],
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 func (spm *SnapPkgManager) Files(name string, version string, arch string) ([]FileRecord, error) {
@@ -254,8 +348,42 @@ type SnapManifest struct {
 	Architectures []string `yaml:"architectures"`
 }
 
-// parseSnapManifest parses a snap manifest file and returns a package
-func (spm *SnapPkgManager) parseSnapManifest(manifest io.Reader) (Package, error) {
+// currentSnapRevision returns the revision the "current" symlink of a snap
+// points at, "" when it is not a symlink to a numeric revision directory.
+func currentSnapRevision(afs *afero.Afero, currentPath string) string {
+	lr, ok := afs.Fs.(afero.LinkReader)
+	if !ok {
+		return ""
+	}
+	target, err := lr.ReadlinkIfPossible(currentPath)
+	if err != nil {
+		return ""
+	}
+	rev := path.Base(target)
+	if _, err := strconv.Atoi(rev); err != nil {
+		return ""
+	}
+	return rev
+}
+
+// newSnapPurl builds the purl of a snap. Snap is distribution-independent: the
+// same name, version and revision are the same bits on every host, so the purl
+// carries neither the scanning host's distro as namespace nor as qualifier.
+// The revision qualifier is omitted when it is unknown.
+func newSnapPurl(name, version, arch, revision string) string {
+	qualifiers := packageurl.Qualifiers{}
+	if arch != "" {
+		qualifiers = append(qualifiers, packageurl.Qualifier{Key: "arch", Value: arch})
+	}
+	if revision != "" {
+		qualifiers = append(qualifiers, packageurl.Qualifier{Key: "revision", Value: revision})
+	}
+	return packageurl.NewPackageURL(string(purl.TypeSnap), "", name, version, qualifiers, "").String()
+}
+
+// parseSnapManifest parses a snap manifest file and returns a package. The
+// revision is not part of the manifest; "" when unknown.
+func (spm *SnapPkgManager) parseSnapManifest(manifest io.Reader, revision string) (Package, error) {
 	manifestBytes, err := io.ReadAll(manifest)
 	if err != nil {
 		return Package{}, err
@@ -277,12 +405,6 @@ func (spm *SnapPkgManager) parseSnapManifest(manifest io.Reader) (Package, error
 		Format:      SnapPkgFormat,
 		Description: snapManifest.Description,
 		Arch:        arch,
-		PUrl: purl.NewPackageURL(
-			spm.platform,
-			purl.TypeSnap,
-			snapManifest.Name,
-			snapManifest.Version,
-			purl.WithArch(arch),
-		).String(),
+		PUrl:        newSnapPurl(snapManifest.Name, snapManifest.Version, arch, revision),
 	}, nil
 }

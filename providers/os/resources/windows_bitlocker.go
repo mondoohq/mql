@@ -4,15 +4,18 @@
 package resources
 
 import (
+	"errors"
 	"strings"
 	"sync"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/registry"
-	"go.mondoo.com/mql/v13/providers/os/resources/windows"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/registry"
+	"go.mondoo.com/mql/providers/os/resources/windows"
+	"go.mondoo.com/mql/types"
 	"go.mondoo.com/ranger-rpc/codes"
 	"go.mondoo.com/ranger-rpc/status"
 )
@@ -29,10 +32,48 @@ const (
 	fveRDVPrefix = "RDV"
 )
 
-func (s *mqlWindowsBitlocker) volumes() ([]any, error) {
-	conn := s.MqlRuntime.Connection.(shared.Connection)
+// mqlWindowsBitlockerInternal memoizes the single Win32_EncryptableVolume
+// read. Both `available` and `volumes` are backed by it, so asking whether
+// BitLocker can be read and then reading it costs one PowerShell process
+// rather than two.
+type mqlWindowsBitlockerInternal struct {
+	lock          sync.Mutex
+	fetched       bool
+	cachedVolumes []windows.BitLockerVolumeStatus
+	err           error
+}
 
-	volumes, err := windows.GetBitLockerVolumes(conn)
+// read returns the volume statuses, running the collection at most once. The
+// error is memoized alongside the data so a host that cannot answer reports
+// the same failure to both fields.
+func (s *mqlWindowsBitlocker) read() ([]windows.BitLockerVolumeStatus, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if s.fetched {
+		return s.cachedVolumes, s.err
+	}
+	s.fetched = true
+
+	conn, ok := s.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		s.err = errors.New("windows.bitlocker is not supported on this connection")
+		return nil, s.err
+	}
+	s.cachedVolumes, s.err = windows.GetBitLockerVolumes(conn)
+	return s.cachedVolumes, s.err
+}
+
+// available reports whether the BitLocker WMI provider could be read. It is
+// the one field on this resource that never fails: it exists so a policy can
+// ask "is BitLocker present here" without triggering the very error it is
+// trying to avoid, which it could not do if the question itself could error.
+func (s *mqlWindowsBitlocker) available() (bool, error) {
+	_, err := s.read()
+	return err == nil, nil
+}
+
+func (s *mqlWindowsBitlocker) volumes() ([]any, error) {
+	volumes, err := s.read()
 	if err != nil {
 		return nil, err
 	}
@@ -41,31 +82,105 @@ func (s *mqlWindowsBitlocker) volumes() ([]any, error) {
 	for i := range volumes {
 		v := volumes[i]
 
-		cs, _ := convert.JsonToDict(v.ConversionStatus)
-		em, _ := convert.JsonToDict(v.EncryptionMethod)
-		version, _ := convert.JsonToDict(v.Version)
-		ps, _ := convert.JsonToDict(v.ProtectionStatus)
-
-		volume, err := CreateResource(s.MqlRuntime, "windows.bitlocker.volume", map[string]*llx.RawData{
-			"deviceID":           llx.StringData(v.DeviceID),
-			"driveLetter":        llx.StringData(v.DriveLetter),
-			"conversionStatus":   llx.DictData(cs),
-			"encryptionMethod":   llx.DictData(em),
-			"lockStatus":         llx.IntData(v.LockStatus),
-			"persistentVolumeID": llx.StringData(v.PersistentVolumeID),
-			"protectionStatus":   llx.DictData(ps),
-			"version":            llx.DictData(version),
-		})
+		o, err := CreateResource(s.MqlRuntime, "windows.bitlocker.volume", bitlockerVolumeArgs(&v))
 		if err != nil {
 			return nil, err
 		}
+
+		// Seed the key protectors the collection script already returned for
+		// this volume. They ride along on the single PowerShell run that read
+		// the volume itself rather than costing one more per volume.
+		volume := o.(*mqlWindowsBitlockerVolume)
+		volume.keyProtectorsSeeded = true
+		volume.cachedKeyProtectors = v.KeyProtectors
+		volume.keyProtectorErr = v.KeyProtectorError
+
 		res = append(res, volume)
 	}
 	return res, nil
 }
 
+// bitlockerVolumeArgs builds the windows.bitlocker.volume fields for one
+// volume. A field whose Win32_EncryptableVolume method failed carries that
+// failure instead of a value: on a locked volume GetConversionStatus answers
+// FVE_E_LOCKED_VOLUME with zeroed percentages, and reporting those would read
+// as "0 % encrypted" on a volume that is fully encrypted.
+func bitlockerVolumeArgs(v *windows.BitLockerVolumeStatus) map[string]*llx.RawData {
+	em, _ := convert.JsonToDict(v.EncryptionMethod)
+	ps, _ := convert.JsonToDict(v.ProtectionStatus)
+
+	args := map[string]*llx.RawData{
+		"deviceID":           llx.StringData(v.DeviceID),
+		"driveLetter":        llx.StringData(v.DriveLetter),
+		"encryptionMethod":   llx.DictData(em),
+		"persistentVolumeID": llx.StringData(v.PersistentVolumeID),
+		"protectionStatus":   llx.DictData(ps),
+	}
+
+	if v.ConversionStatusError != nil {
+		args["conversionStatus"] = &llx.RawData{Type: types.Dict, Error: v.ConversionStatusError}
+	} else {
+		cs, _ := convert.JsonToDict(v.ConversionStatus)
+		args["conversionStatus"] = llx.DictData(cs)
+	}
+
+	if v.VersionError != nil {
+		args["version"] = &llx.RawData{Type: types.Dict, Error: v.VersionError}
+	} else {
+		version, _ := convert.JsonToDict(v.Version)
+		args["version"] = llx.DictData(version)
+	}
+
+	if v.LockStatusError != nil {
+		args["lockStatus"] = &llx.RawData{Type: types.Int, Error: v.LockStatusError}
+	} else {
+		args["lockStatus"] = llx.IntData(v.LockStatus)
+	}
+	return args
+}
+
 func (s *mqlWindowsBitlockerVolume) id() (string, error) {
 	return "bitlocker.volume/" + s.DeviceID.Data, nil
+}
+
+// mqlWindowsBitlockerVolumeInternal carries the key protectors that
+// windows.bitlocker.volumes already read for this volume, along with the
+// reason they could not be read when that is what happened.
+type mqlWindowsBitlockerVolumeInternal struct {
+	keyProtectorsSeeded bool
+	cachedKeyProtectors []windows.BitLockerKeyProtector
+	keyProtectorErr     error
+}
+
+func (s *mqlWindowsBitlockerVolume) keyProtectors() ([]any, error) {
+	// A volume that was never populated by the lister has no protector data
+	// at all. Reporting that instead of an empty list keeps a future code path
+	// that creates a volume some other way from silently claiming the volume
+	// has no key protectors.
+	if !s.keyProtectorsSeeded {
+		return nil, errors.New("bitlocker key protectors are only available on volumes read from windows.bitlocker.volumes")
+	}
+	if s.keyProtectorErr != nil {
+		return nil, s.keyProtectorErr
+	}
+
+	res := make([]any, 0, len(s.cachedKeyProtectors))
+	for i := range s.cachedKeyProtectors {
+		kp := s.cachedKeyProtectors[i]
+		o, err := CreateResource(s.MqlRuntime, "windows.bitlocker.volume.keyProtector", map[string]*llx.RawData{
+			// The protector ID is unique within a volume, not across the host,
+			// so the cache key has to carry the volume as well.
+			"__id":                 llx.StringData("bitlocker.volume/" + s.DeviceID.Data + "/keyProtector/" + kp.ID),
+			"keyProtectorId":       llx.StringData(kp.ID),
+			"keyProtectorType":     llx.StringData(kp.Type.Text),
+			"keyProtectorTypeCode": llx.IntData(kp.Type.Code),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, o)
+	}
+	return res, nil
 }
 
 func (p *mqlWindowsBitlockerPolicy) id() (string, error) {
@@ -250,4 +365,41 @@ func (p *mqlWindowsBitlockerPolicy) fixedDataDrives() (*mqlWindowsBitlockerPolic
 
 func (p *mqlWindowsBitlockerPolicy) removableDataDrives() (*mqlWindowsBitlockerPolicyDriveSettings, error) {
 	return p.driveSettings(fveRDVPrefix)
+}
+
+// windows.bitlocker.policy is reachable by a dotted path that is also its own
+// registered resource name: the field `policy` on `windows.bitlocker` and the
+// resource `windows.bitlocker.policy` occupy the same path. The compiler
+// resolves the longest matching resource name before it considers a field, so
+// `windows.bitlocker.policy.useAdvancedStartup` instantiates the resource
+// directly and the parent's policy() accessor never runs. The five global FVE
+// values are plain schema fields that only that accessor populates, so every
+// one stays unset, reports "provider returned no data and no error", and then
+// converts as a primitive carrying no type information.
+//
+// The result reads null, which is worse than an error: `null && null`
+// evaluates to true in MQL, so a check written in the dotted form passes on a
+// host that was never hardened.
+//
+// The per-drive-type sub-resources were never affected, because they are
+// computed accessors that read the FVE key themselves, and neither was the
+// block form `windows.bitlocker { policy { ... } }`, which binds the field
+// rather than resolving a resource name.
+func initWindowsBitlockerPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if _, ok := args["__id"]; ok {
+		return args, nil, nil
+	}
+
+	parent, err := CreateResource(runtime, "windows.bitlocker", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, nil, err
+	}
+	v := parent.(*mqlWindowsBitlocker).GetPolicy()
+	if v.Error != nil {
+		return nil, nil, v.Error
+	}
+	if v.Data == nil {
+		return nil, nil, errors.New("could not read the BitLocker policy of this host")
+	}
+	return args, v.Data, nil
 }

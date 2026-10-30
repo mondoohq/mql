@@ -6,8 +6,8 @@ package resources
 import (
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // azureSystemData builds the typed azure.subscription.systemData resource from
@@ -71,27 +71,27 @@ func (a *mqlAzureSubscriptionResource) systemMetadata() (*mqlAzureSubscriptionSy
 }
 
 func (a *mqlAzureSubscriptionComputeServiceVm) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
-	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.GetSystemData().Data, &a.SystemMetadata)
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 func (a *mqlAzureSubscriptionComputeServiceDisk) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
-	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.GetSystemData().Data, &a.SystemMetadata)
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 func (a *mqlAzureSubscriptionComputeServiceSnapshot) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
-	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.GetSystemData().Data, &a.SystemMetadata)
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 func (a *mqlAzureSubscriptionComputeServiceVmScaleSet) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
-	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.GetSystemData().Data, &a.SystemMetadata)
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 func (a *mqlAzureSubscriptionComputeServiceHybridMachine) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
-	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.GetSystemData().Data, &a.SystemMetadata)
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 func (a *mqlAzureSubscriptionComputeServiceHybridMachineExtension) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
-	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.GetSystemData().Data, &a.SystemMetadata)
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 func (a *mqlAzureSubscriptionStorageServiceAccount) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {

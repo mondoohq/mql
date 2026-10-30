@@ -9,7 +9,7 @@ import (
 	fmt "fmt"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	timestamppb "github.com/planetscale/vtprotobuf/types/known/timestamppb"
-	cvss "go.mondoo.com/mql/v13/providers-sdk/v1/upstream/mvd/cvss"
+	cvss "go.mondoo.com/mql/providers-sdk/v1/upstream/mvd/cvss"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb1 "google.golang.org/protobuf/types/known/timestamppb"

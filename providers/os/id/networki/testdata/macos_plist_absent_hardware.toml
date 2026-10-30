@@ -1,0 +1,78 @@
+# A macOS host whose NetworkInterfaces.plist remembers an interface that is
+# not attached. Shape taken from a real
+# /Library/Preferences/SystemConfiguration/NetworkInterfaces.plist, trimmed to
+# the keys the detector reads plus enough context to stay recognizable.
+#
+# en0 is present and ifconfig reports it. en7 is a USB or Thunderbolt adapter
+# the machine has seen before and that is not plugged in now: the plist keeps
+# it forever, ifconfig does not mention it, and it must not be reported as an
+# interface of this host.
+
+[commands."uname -s"]
+stdout = "Darwin"
+
+[commands."uname -m"]
+stdout = "arm64"
+
+[commands."uname -r"]
+stdout = "25.6.0"
+
+[commands."/usr/bin/sw_vers"]
+stdout = """
+ProductName:		macOS
+ProductVersion:		26.6.2
+BuildVersion:		25G95
+"""
+
+[commands."ifconfig"]
+stdout = """
+lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
+	inet 127.0.0.1 netmask 0xff000000
+	inet6 ::1 prefixlen 128
+en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
+	ether 80:a9:97:40:12:53
+	inet 172.16.1.119 netmask 0xffffff00 broadcast 172.16.1.255
+	status: active
+"""
+
+[commands."netstat -rn"]
+stdout = """
+Routing tables
+
+Internet:
+Destination        Gateway            Flags               Netif Expire
+default            172.16.1.1         UGScg                 en0
+"""
+
+[files."/Library/Preferences/SystemConfiguration/NetworkInterfaces.plist"]
+content = """
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Interfaces</key>
+	<array>
+		<dict>
+			<key>Active</key>
+			<true/>
+			<key>BSD Name</key>
+			<string>en0</string>
+			<key>IOInterfaceType</key>
+			<integer>6</integer>
+			<key>SCNetworkInterfaceType</key>
+			<string>IEEE80211</string>
+		</dict>
+		<dict>
+			<key>Active</key>
+			<false/>
+			<key>BSD Name</key>
+			<string>en7</string>
+			<key>IOInterfaceType</key>
+			<integer>6</integer>
+			<key>SCNetworkInterfaceType</key>
+			<string>Ethernet</string>
+		</dict>
+	</array>
+</dict>
+</plist>
+"""

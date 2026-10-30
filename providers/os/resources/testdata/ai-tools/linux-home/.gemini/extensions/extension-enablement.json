@@ -1,0 +1,7 @@
+{
+  "gemini-cli-security": {
+    "overrides": [
+      "!/root/*"
+    ]
+  }
+}

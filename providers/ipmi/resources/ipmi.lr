@@ -1,30 +1,380 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/cnquery/v9/providers/ipmi"
-option go_package = "go.mondoo.com/mql/v13/providers/ipmi/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/ipmi"
+option go_package = "go.mondoo.com/mql/providers/ipmi/resources"
+option root = "ipmi"
 
 // Intelligent Platform Management Interface (IPMI)
 //
-// Top-level entry point for an IPMI BMC connection. Examine the management
-// controller's device ID (firmware revision, IPMI version, manufacturer,
-// product ID) and its globally unique GUID — the identity an audit needs
-// to confirm out-of-band management firmware before checking chassis state.
-ipmi {
-  // The hardware & firmware device ID
+// Baseboard management controller (BMC) reachable over the IPMI protocol,
+// the out-of-band interface for managing a server independently of its
+// operating system. The deviceID field reports the controller's firmware
+// revision, IPMI version, manufacturer, and product identity, and guid
+// returns its globally unique identifier, together confirming which
+// management firmware answers before an audit inspects chassis state.
+ipmi @root {
+  // Hardware and firmware device ID of the management controller
+  //
+  // Dict returned by the Get Device ID command. Keys: `deviceID`,
+  // `deviceRevision`, `providesDeviceSDRs`, `deviceAvailable`,
+  // `firmwareRevision`, `ipmiVersion`, `manufacturerID`, `manufacturerName`,
+  // `productID`, `productName`, and `additionalDeviceSupport` (a nested dict
+  // of booleans `sensorDevice`, `sdrRepositoryDevice`, `selDevice`,
+  // `fruInventoryDevice`, `ipmbEventReciever`, `ipmbEventGenerator`,
+  // `bridge`, and `chassisDevice`).
   deviceID() dict
   // GUID (Globally Unique ID) for management controller
   guid() string
+  // Communication channels the management controller exposes
+  //
+  // One entry per channel the controller implements, covering the LAN
+  // channel that carries IPMI across the network as well as the local
+  // system interface. Each entry reports the access mode that decides
+  // whether the channel answers at all, the privilege ceiling every session
+  // on it is held to, and the authentication capabilities the controller
+  // advertises before a session exists.
+  channels() []ipmi.channel
+  // Accounts configured on the management controller
+  //
+  // The account slots of the controller for the channel the current session
+  // runs over, with the username, enabled state, privilege limit and
+  // messaging flags of each slot.
+  users() []ipmi.user
 }
 
 // IPMI system chassis
 //
-// Examine the high-level chassis status (power state, fault flags, intrusion
-// detection, drive / cooling fault, last power event) and the configured
-// system boot options for a server reachable via IPMI.
+// Chassis-level power and physical state of a server reachable through its
+// IPMI baseboard management controller. The status field reports whether main
+// power is on, power fault and overload flags, chassis intrusion, front-panel
+// lockout, and drive or cooling-fan faults, so an audit can confirm a host is
+// powered and healthy out of band. The systemBootOptions field exposes the
+// configured boot device and the BIOS boot-flag overrides.
 ipmi.chassis {
-  // High-level status of the system chassis and main power subsystem
+  // Chassis power and fault status
+  //
+  // Current state of the chassis and its main power subsystem. Keys:
+  // `systemPower` (main power on), the fault booleans `powerOverload`,
+  // `powerInterlock`, `mainPowerFault`, and `powerControlFault`,
+  // `powerRestorePolicy` (behavior after a power loss, one of always-off,
+  // previous, always-on, or unknown), `lastPowerEvent` (an object with the
+  // booleans ac-failed, overload, interlock, fault, and command), and the
+  // booleans `chassisIntrusion`, `frontPanelLockout`, `driveFault`, and
+  // `coolingFanFault`.
   status() dict
-  // System boot options
+  // System boot device and BIOS boot-flag overrides
+  //
+  // Configured boot options. Keys: `parameterVersion`,
+  // `parameterValidUnlocked`, and `bootFlags`, an object holding the boot-flag
+  // overrides. Within `bootFlags`: `bootDeviceSelector` (device forced for the
+  // next boot, one of none, pxe, disk, safe, diag, cdrom, bios, rfloppy,
+  // rprimary, rcdrom, rdisk, floppy, or unknown), `biosVerbosity` (default, quiet,
+  // verbose, or reserved), `consoleRedirection` (bios, skip, redirected, or
+  // reserved), `biosMuxControlOverride` (recommended, force-bmc, force-system,
+  // or reserved), and the boolean overrides `biosFlagsValid`,
+  // `applyToNextBootOnly`, `legacyBootType`, `cmosClear`, `lockKeyboard`,
+  // `screenBlank`, `lockOutResetButton`, `lockOutPowerButton`,
+  // `lockOutSleepButton`, `userPasswordBypass`, `forceProgressEventTrap`, and
+  // `biosSharedModeOverride`.
   systemBootOptions() dict
+}
+
+// IPMI communication channel
+//
+// One communication channel of the baseboard management controller. The
+// mediumType field says whether the channel carries IPMI over 802.3 LAN, a
+// serial connection or the local system interface, and accessMode says
+// whether the channel is disabled, reachable only before the host boots,
+// always available, or shared with a serial connection. The privilegeLimit
+// field is the ceiling every session on the channel is held to regardless of
+// the account used, and the remaining fields report the capabilities the
+// controller advertises before any session exists: which authentication
+// types it accepts for administrator sessions, and whether a login with no
+// username, or with no username and no password, is accepted at all.
+private ipmi.channel @defaults("id mediumType accessMode privilegeLimit") {
+  // Channel number, 0 to 15
+  id int
+  // Physical or logical medium the channel runs over
+  //
+  // One of ipmb, icmb-v1.0, icmb-v0.9, 802.3-lan, serial-modem, other-lan,
+  // pci-smbus, smbus-v1.x, smbus-v2.0, usb-1.x, usb-2.x, system-interface,
+  // oem, or reserved.
+  mediumType string
+  // Message protocol carried on the channel
+  //
+  // One of ipmb-1.0, icmb-1.0, ipmi-smbus, kcs, smic, bt-10, bt-15, tmode,
+  // oem, or reserved.
+  protocolType string
+  // Session model of the channel
+  //
+  // One of session-less, single-session, multi-session, or session-based.
+  sessionSupport string
+  // Number of sessions currently active on the channel
+  activeSessionCount int
+  // Active access mode of the channel
+  //
+  // The setting currently in effect, one of disabled, pre-boot-only,
+  // always-available, shared, or reserved. A LAN channel answers requests
+  // from the network only while this is always-available or shared.
+  accessMode string
+  // Highest privilege any session on the channel may reach
+  //
+  // The active ceiling, one of unspecified, callback, user, operator,
+  // administrator, oem, no-access, or reserved. An account with a higher
+  // privilege limit is still held to this value on this channel.
+  privilegeLimit string
+  // Whether the channel may send platform event alerts
+  alertingEnabled bool
+  // Access mode persisted across a controller restart
+  //
+  // The stored counterpart of accessMode. A channel that is disabled now but
+  // stored as always-available becomes reachable again after a reset.
+  nonVolatileAccessMode string
+  // Privilege ceiling persisted across a controller restart
+  //
+  // The stored counterpart of privilegeLimit.
+  nonVolatilePrivilegeLimit string
+  // Authentication types accepted for administrator sessions
+  //
+  // Any of none, md2, md5, password, and oem. An entry of none means the
+  // controller will accept a session that carries no authentication at all;
+  // md2 and md5 are the legacy IPMI 1.5 algorithms.
+  authTypes []string
+  // Whether a session with no username and no password is accepted
+  //
+  // True when the controller has an enabled account whose username and
+  // password are both null, which grants access without any credential.
+  anonymousLoginEnabled bool
+  // Whether an account with no username is enabled
+  //
+  // True when the controller has an enabled account with a null username and
+  // a non-null password.
+  nullUsernamesEnabled bool
+  // Whether an account with a username is enabled
+  nonNullUsernamesEnabled bool
+  // Whether each message in a session is authenticated
+  //
+  // False means the controller accepts an authentication type of none for
+  // packets sent after the session has been established, so only the opening
+  // exchange is protected.
+  perMessageAuthenticationEnabled bool
+  // Whether user-level commands are authenticated
+  //
+  // False means the controller accepts an authentication type of none for
+  // commands issued at user privilege.
+  userLevelAuthenticationEnabled bool
+  // Whether the RMCP+ key-generation key is set to a value other than the default
+  //
+  // False means the key is left at the all-zero default, so the second key of
+  // the two-key login adds nothing.
+  kgConfigured bool
+  // Whether the channel accepts IPMI v1.5 connections
+  supportsIpmi15 bool
+  // Whether the channel accepts IPMI v2.0 connections
+  supportsIpmi20 bool
+}
+
+// IPMI management controller account
+//
+// One account slot of the baseboard management controller, as it applies to
+// the channel the current session runs over. The name is empty when the slot
+// has no username set, which combined with a privilegeLimit above callback
+// is an account reachable without naming a user. The privilegeLimit,
+// linkAuthenticationEnabled, ipmiMessagingEnabled and callbackOnly fields
+// are per channel, so the same slot may carry different access on another
+// channel.
+private ipmi.user @defaults("id name privilegeLimit enabled") {
+  // Slot number of the account, starting at 1
+  id int
+  // Username configured in the slot
+  //
+  // An empty string is a slot with no username set. Slot 1 is permanently
+  // reserved for the null user and is normally empty.
+  name string
+  // Whether the account is enabled
+  //
+  // Null when the controller does not report the state, which is the answer
+  // from implementations older than IPMI 2.0 errata 3.
+  enabled bool
+  // Highest privilege the account may reach on this channel
+  //
+  // One of unspecified, callback, user, operator, administrator, oem,
+  // no-access, or reserved.
+  privilegeLimit string
+  // Whether the account may authenticate a link on this channel
+  linkAuthenticationEnabled bool
+  // Whether the account may send IPMI messages on this channel
+  //
+  // False leaves the account able to authenticate but unable to issue
+  // commands over the channel.
+  ipmiMessagingEnabled bool
+  // Whether the account is restricted to callback connections
+  callbackOnly bool
+  // Whether the slot carries a name the controller will not let you change
+  fixedName bool
+}
+
+// IPMI over LAN configuration
+//
+// The network-facing configuration of the channel the current session runs
+// over. The authTypeEnables field reports, per privilege level, which
+// authentication types the controller will accept, so a level that lists
+// none accepts unauthenticated sessions at that privilege. The cipher suite
+// fields cover RMCP+ negotiation, where cipherZeroEnabled is the case in
+// which authentication is negotiated and then not performed. The
+// badPasswordThreshold, userLockoutIntervalSeconds and
+// attemptCountResetIntervalSeconds fields are the only bound IPMI places on
+// repeated password guessing. The SNMP community string parameter is
+// credential material and is not read.
+ipmi.lanConfig @defaults("cipherZeroEnabled badPasswordThreshold") {
+  // Authentication types accepted, by privilege level
+  //
+  // Keys are callback, user, operator, administrator, and oem. Each value
+  // lists any of none, md2, md5, password, and oem. An entry of none at a
+  // level means a session may reach that level without authenticating.
+  authTypeEnables() map[string][]string
+  // RMCP+ cipher suite identifiers the channel offers
+  cipherSuites() []int
+  // Highest privilege reachable with each cipher suite
+  //
+  // Keys are cipher suite identifiers, values are one of unspecified,
+  // callback, user, operator, administrator, oem, no-access, or reserved. A
+  // value of unspecified means the suite is not in use.
+  cipherSuitePrivilegeLevels() map[string]string
+  // Whether cipher suite 0 can be used to open a session
+  //
+  // Cipher suite 0 negotiates authentication and then performs none, so any
+  // password is accepted for a session at the privilege the suite is
+  // configured for. Null when the controller did not report both the cipher
+  // suite list and their privilege levels.
+  cipherZeroEnabled() bool
+  // Failed password attempts before the account is disabled
+  //
+  // Zero means no threshold is applied and password guessing is unbounded.
+  badPasswordThreshold() int
+  // Seconds after which the failed attempt counter is cleared
+  //
+  // Zero means the counter is kept for as long as the controller stays
+  // powered.
+  attemptCountResetIntervalSeconds() int
+  // Seconds an account stays disabled after crossing the threshold
+  //
+  // Zero means an account disabled by the threshold stays disabled until it
+  // is re-enabled by hand.
+  userLockoutIntervalSeconds() int
+  // Whether crossing the threshold records an event
+  invalidPasswordEventEnabled() bool
+  // Whether the channel is tagged onto a VLAN
+  vlanEnabled() bool
+  // 802.1q VLAN identifier configured on the channel
+  vlanId() int
+}
+
+// Serial-over-LAN configuration
+//
+// The Serial-over-LAN settings of the channel the current session runs over.
+// Serial-over-LAN delivers the host serial console across the network, so
+// everything typed at a root prompt travels over it. The forceEncryption
+// field decides whether that traffic is encrypted, forceAuthentication
+// whether it is authenticated, and privilegeLevel the privilege a session
+// must hold to open the console.
+ipmi.solConfig @defaults("enabled forceEncryption privilegeLevel") {
+  // Whether the Serial-over-LAN payload is enabled on the channel
+  enabled() bool
+  // Whether the console payload must be encrypted
+  //
+  // False sends the host serial console across the network in cleartext.
+  forceEncryption() bool
+  // Whether the console payload must be authenticated
+  forceAuthentication() bool
+  // Privilege a session needs to open the console
+  //
+  // One of unspecified, callback, user, operator, administrator, oem,
+  // no-access, or reserved.
+  privilegeLevel() string
+  // UDP port the console payload is carried on
+  payloadPort() int
+}
+
+// IPMI system event log
+//
+// State of the system event log of the baseboard management controller, the
+// record a server keeps of chassis intrusions, power events, sensor
+// threshold crossings and failed authentications. The loggingEnabled field
+// says whether the controller is writing to the log at all, entryCount how
+// many records it currently holds, and lastAddTime when a record was last
+// written, so an empty or stalled log on a long-running server is visible.
+ipmi.sel @defaults("entryCount loggingEnabled lastAddTime") {
+  // System event log version reported by the controller
+  version() string
+  // Number of entries currently in the log
+  entryCount() int
+  // Bytes still free in the log
+  freeSpaceBytes() int
+  // When an entry was last added
+  //
+  // Null when the controller reports the timestamp as unset, which is the
+  // answer for a log that has never been written to.
+  lastAddTime() time
+  // When the log was last erased
+  //
+  // Null when the controller reports the timestamp as unset.
+  lastEraseTime() time
+  // Whether events have been dropped because the log is full
+  overflow() bool
+  // Whether the controller is recording events in the log
+  //
+  // False means events are generated but not written, so intrusions and
+  // failed authentications leave no record.
+  loggingEnabled() bool
+  // Whether the controller supports erasing the log
+  supportsDelete() bool
+  // Whether the controller supports adding partial entries
+  supportsPartialAdd() bool
+  // Whether the controller supports reserving the log
+  supportsReserve() bool
+  // Whether the controller reports log allocation information
+  supportsGetAllocationInfo() bool
+}
+
+// IPMI watchdog timer
+//
+// The watchdog timer of the baseboard management controller, which resets or
+// powers off the host when software stops petting it. The timeoutAction
+// field says what happens on expiry and dontLog whether that action is kept
+// out of the system event log, which is how a forced reboot disappears from
+// the audit trail.
+ipmi.watchdog @defaults("running timerUse timeoutAction dontLog") {
+  // Whether the timer is currently counting down
+  running() bool
+  // Whether expiry of the timer is kept out of the system event log
+  //
+  // True suppresses the event, so a watchdog-triggered reset leaves no
+  // record behind.
+  dontLog() bool
+  // Software the timer is currently allocated to
+  //
+  // One of bios-frb2, bios-post, os-load, sms-os, oem, or reserved.
+  timerUse() string
+  // What the controller does when the timer expires
+  //
+  // One of none, hard-reset, power-down, power-cycle, or reserved.
+  timeoutAction() string
+  // Interrupt raised before the timer expires
+  //
+  // One of none, smi, nmi, messaging, or reserved.
+  preTimeoutInterrupt() string
+  // Seconds before expiry at which the pre-timeout interrupt is raised
+  preTimeoutIntervalSeconds() int
+  // Timer uses whose expiry the controller still has recorded
+  //
+  // Any of bios-frb2, bios-post, os-load, sms-os, and oem.
+  expiredTimerUses() []string
+  // Countdown the timer was loaded with, in seconds
+  initialCountdownSeconds() float
+  // Countdown remaining, in seconds
+  presentCountdownSeconds() float
 }

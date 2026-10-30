@@ -18,11 +18,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/helm/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/helm/connection"
+	"go.mondoo.com/mql/types"
 	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chartutil"
@@ -434,6 +434,13 @@ func (c *mqlHelmChart) fetchResources() ([]any, error) {
 			if err != nil {
 				continue
 			}
+			// Wire each resource back to this chart so helm.resource.template
+			// resolves to the real, materialized helm.template (never a husk).
+			for _, r := range resources {
+				if res, ok := r.(*mqlHelmResource); ok {
+					res.ownerChart = c
+				}
+			}
 			c.cachedResources = append(c.cachedResources, resources...)
 		}
 	})
@@ -709,9 +716,9 @@ func parseOciRef(repository, version string) ociRef {
 	rest := strings.TrimPrefix(strings.TrimSpace(repository), "oci://")
 
 	// A digest pin (@sha256:...) takes precedence over a :tag suffix.
-	if at := strings.LastIndex(rest, "@"); at != -1 {
-		ref.digest = rest[at+1:]
-		rest = rest[:at]
+	if before, after, ok := strings.CutLast(rest, "@"); ok {
+		ref.digest = after
+		rest = before
 	}
 
 	// Split host from path. Everything before the first "/" is the
@@ -724,9 +731,9 @@ func parseOciRef(repository, version string) ociRef {
 		// was found, and only if the colon isn't part of a host:port —
 		// which lives in the registry segment, already split off).
 		if ref.digest == "" {
-			if colon := strings.LastIndex(repoPath, ":"); colon != -1 {
-				ref.tag = repoPath[colon+1:]
-				repoPath = repoPath[:colon]
+			if before, after, ok := strings.CutLast(repoPath, ":"); ok {
+				ref.tag = after
+				repoPath = before
 			}
 		}
 		ref.repository = repoPath

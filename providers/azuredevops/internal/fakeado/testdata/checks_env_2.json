@@ -1,0 +1,22 @@
+{
+  "count": 1,
+  "value": [
+    {
+      "id": 21,
+      "version": 1,
+      "type": { "id": "8C6F20A7-A545-4486-9777-F762FAFE0D4D", "name": "Approval" },
+      "resource": { "type": "environment", "id": "2", "name": "staging" },
+      "timeout": 43200,
+      "settings": {
+        "approvers": [
+          { "displayName": "[legacy-apps]\\Release Approvers", "id": "6c000000-0000-4000-8000-000000000021" }
+        ],
+        "executionOrder": "anyOrder",
+        "minRequiredApprovers": 2,
+        "instructions": "Check the change record",
+        "blockedApprovers": [],
+        "requesterCannotBeApprover": true
+      }
+    }
+  ]
+}

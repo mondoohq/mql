@@ -8,19 +8,20 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/cockroachdb/errors"
-	"github.com/google/go-github/v88/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/logger/zerologadapter"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/logger/zerologadapter"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 	"golang.org/x/oauth2"
 )
 
@@ -35,11 +36,36 @@ const (
 	OPTION_ENTERPRISE_URL          = "enterprise-url"
 )
 
+// enterpriseVersionHeader is the response header a GitHub Enterprise Server
+// installation stamps on every API response. GitHub.com and GitHub Enterprise
+// Cloud do not send it, which is what makes its presence a reliable way to
+// tell a self-hosted installation apart from the hosted product.
+const enterpriseVersionHeader = "X-GitHub-Enterprise-Version"
+
+// githubRequestTimeout bounds a single HTTP attempt end-to-end (dial, TLS,
+// headers, body). Without it a connection that stops responding blocks the
+// calling goroutine indefinitely — and scans execute assets with
+// parallelism=1, so one stuck call silently wedges the entire scan until
+// something external kills the process. GitHub API responses are bounded
+// JSON documents; even large tree listings finish in seconds.
+const githubRequestTimeout = 5 * time.Minute
+
 type GithubConnection struct {
 	plugin.Connection
 	asset  *inventory.Asset
 	client *github.Client
 	ctx    context.Context
+
+	// Base URL the connection was pointed at, empty for GitHub.com and GitHub
+	// Enterprise Cloud.
+	enterpriseURL string
+
+	// The installed release cannot change under a running scan, so it is read
+	// once and shared: both github.metadata and every organization's feature
+	// availability ask for it.
+	enterpriseVersionOnce sync.Once
+	enterpriseVersion     string
+	enterpriseVersionErr  error
 
 	// Used to avoid verifying a client with the same options more than once
 	OptionsHash uint64
@@ -129,12 +155,46 @@ func NewGithubConnection(id uint32, asset *inventory.Asset) (*GithubConnection, 
 	}
 
 	return &GithubConnection{
-		Connection:  plugin.NewConnection(id, asset),
-		asset:       asset,
-		client:      client,
-		ctx:         ctx,
-		OptionsHash: hash,
+		Connection:    plugin.NewConnection(id, asset),
+		asset:         asset,
+		client:        client,
+		ctx:           ctx,
+		enterpriseURL: connectionOpts.EnterpriseURL,
+		OptionsHash:   hash,
 	}, nil
+}
+
+// EnterpriseVersion reports the release a GitHub Enterprise Server
+// installation runs, read from the version header the installation stamps on
+// its API responses. It is empty on GitHub.com and on GitHub Enterprise Cloud,
+// neither of which sends the header, and on an installation configured to
+// withhold it.
+func (c *GithubConnection) EnterpriseVersion() (string, error) {
+	c.enterpriseVersionOnce.Do(func() {
+		// Zen is the cheapest endpoint that answers on both GitHub.com and a
+		// GitHub Enterprise Server installation. Only its headers matter here.
+		_, resp, err := c.client.Meta.Zen(c.ctx)
+		if err != nil {
+			c.enterpriseVersionErr = err
+			return
+		}
+		if resp == nil || resp.Response == nil {
+			return
+		}
+		c.enterpriseVersion = resp.Header.Get(enterpriseVersionHeader)
+	})
+	return c.enterpriseVersion, c.enterpriseVersionErr
+}
+
+// IsEnterpriseServer reports whether the target is a GitHub Enterprise Server
+// installation. The version header is authoritative; the configured base URL
+// is the fallback for an installation that withholds it.
+func (c *GithubConnection) IsEnterpriseServer() (bool, error) {
+	version, err := c.EnterpriseVersion()
+	if err != nil {
+		return false, err
+	}
+	return version != "" || c.enterpriseURL != "", nil
 }
 
 func (c *GithubConnection) Name() string {
@@ -223,7 +283,12 @@ func newGithubRetryableClient(httpClient *http.Client) *http.Client {
 	retryClient.Logger = zerologadapter.New(log.Logger)
 
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		// A fresh client, not http.DefaultClient: the timeout below must not
+		// leak onto the shared default client.
+		httpClient = &http.Client{}
+	}
+	if httpClient.Timeout == 0 {
+		httpClient.Timeout = githubRequestTimeout
 	}
 	retryClient.HTTPClient = httpClient
 
@@ -260,7 +325,7 @@ func newGithubRetryableClient(httpClient *http.Client) *http.Client {
 				if err != nil {                                                      // Must be impossible to hit errors here, but just in case
 					return time.Second * 8
 				}
-				return time.Second * time.Duration(sec)
+				return rateLimitWait(time.Second*time.Duration(sec), attemptNum)
 			}
 			// Primary and Secondary rate limit
 			if resp.Header.Get("x-ratelimit-remaining") == "0" {
@@ -269,7 +334,7 @@ func newGithubRetryableClient(httpClient *http.Client) *http.Client {
 					return time.Second * 8
 				}
 				tm := time.Unix(unix, 0)
-				return tm.Sub(time.Now().UTC()) // time.Until might not use UTC, depending on the server configuration
+				return rateLimitWait(tm.Sub(time.Now().UTC()), attemptNum) // time.Until might not use UTC, depending on the server configuration
 			}
 		}
 
@@ -278,4 +343,12 @@ func newGithubRetryableClient(httpClient *http.Client) *http.Client {
 	}
 
 	return retryClient.StandardClient()
+}
+
+// rateLimitWait logs a rate-limit wait at warn level before it is slept: at
+// the default log level these sleeps are otherwise invisible, and a scan
+// waiting out a quota reset looks exactly like a hang.
+func rateLimitWait(wait time.Duration, attemptNum int) time.Duration {
+	log.Warn().Dur("wait", wait).Int("attempt", attemptNum).Msg("github API rate limited, waiting before retry")
+	return wait
 }

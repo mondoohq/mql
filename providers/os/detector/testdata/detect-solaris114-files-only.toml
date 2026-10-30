@@ -1,0 +1,23 @@
+# The same Oracle Solaris 11.4.86 files as detect-solaris114.toml, without
+# command execution, as a disk snapshot or image scan sees them.
+[files."/etc/os-release"]
+content = """
+NAME="Oracle Solaris"
+PRETTY_NAME="Oracle Solaris 11.4"
+CPE_NAME="cpe:/o:oracle:solaris:11:4"
+ID=solaris
+VERSION=11.4
+VERSION_ID=11.4
+BUILD_ID=11.4.86.0.1.201.2
+HOME_URL="https://www.oracle.com/solaris/"
+SUPPORT_URL="https://support.oracle.com/"
+VARIANT_ID=sru
+VARIANT="Support Update"
+"""
+
+[files."/etc/release"]
+content = """
+                             Oracle Solaris 11.4 X86
+             Copyright (c) 1983, 2025, Oracle and/or its affiliates.
+                            Assembled 07 October 2025
+"""

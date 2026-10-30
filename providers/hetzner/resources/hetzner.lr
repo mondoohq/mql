@@ -1,25 +1,25 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/hetzner"
-option go_package = "go.mondoo.com/mql/v13/providers/hetzner/resources"
+option go_package = "go.mondoo.com/mql/providers/hetzner/resources"
+option root = "hetzner"
 
 // Hetzner Cloud project
 //
-// Use the Hetzner Cloud namespace as the project-scoped entry point
-// for the Hetzner provider. Iterate `servers()` for cloud VMs (with
-// the matching `serverTypes()` and `images()`), `volumes()` for block
-// storage, `networks()` for project networks (Hetzner's VPC),
-// `floatingIps()` and `primaryIps()` for routable IPv4/IPv6,
-// `loadBalancers()` plus `loadBalancerTypes()` for the managed L4/L7
-// load balancers, `firewalls()` for stateful firewall rule sets,
-// `sshKeys()` for project SSH keys, `certificates()` for managed TLS
-// certs, `placementGroups()` for spread/anti-affinity placement,
-// `isos()` for boot ISOs, `locations()`/`datacenters()` for the
-// regional and AZ-style topology, `storageBoxes()` plus
-// `storageBoxTypes()` for managed backup/file storage, and `zones()`
-// for managed DNS zones and their records.
-hetzner {
+// Project-scoped root of the Hetzner Cloud provider, exposing the
+// compute, networking, storage, and DNS resources reachable with the
+// project's API token. Cloud servers and their server types and
+// images, block storage volumes, project networks (Hetzner's VPC),
+// routable floating and primary IPv4/IPv6 addresses, managed load
+// balancers, stateful firewall rule sets, managed TLS certificates,
+// SSH keys, spread/anti-affinity placement groups, boot ISOs, the
+// regional and datacenter topology, managed Storage Boxes, and
+// managed DNS zones with their records are all queryable here,
+// providing a full inventory of a single Hetzner Cloud project.
+hetzner @root {
   // Cloud servers (virtual machines)
   servers() []hetzner.server
   // Server types (VM sizes)
@@ -51,7 +51,13 @@ hetzner {
   // Locations (Hetzner regions)
   locations() []hetzner.location
   // Datacenters within locations
-  datacenters() []hetzner.datacenter
+  //
+  // Deprecated in favor of locations, and of serverType.locations for
+  // where a given server type can be provisioned. Hetzner withdrew the
+  // datacenters API after 2026-10-01, so this reports null from that
+  // date on: the endpoint answers that the functionality was removed,
+  // which establishes nothing about what the project holds.
+  datacenters() @maturity("deprecated") []hetzner.datacenter
   // Storage Boxes (managed backup/file storage)
   storageBoxes() []hetzner.storageBox
   // Storage Box types (storage tiers)
@@ -61,6 +67,15 @@ hetzner {
 }
 
 // Hetzner Cloud server (virtual machine)
+//
+// Cloud virtual machine along with its full runtime and networking posture:
+// public IPv4 and IPv6 addresses and their abuse-block state, attached
+// firewalls and their application status, private network attachments,
+// floating IPs, load balancers, backup window, and delete/rebuild
+// protection. The `exposure` field summarizes internet reachability by
+// combining the public IP with firewall ingress, which makes this the
+// resource to audit for unintentionally exposed hosts. Select a single
+// server by its numeric id, for example `hetzner.server(id: 42)`.
 private hetzner.server @defaults("id name status") {
   init(id? int)
   // Server ID
@@ -75,9 +90,7 @@ private hetzner.server @defaults("id name status") {
   primaryDiskSize int
   // Server type (VM size)
   serverType() hetzner.serverType
-  // Datacenter the server runs in
-  datacenter() hetzner.datacenter
-  // Location of the datacenter
+  // Location the server runs in
   location() hetzner.location
   // Image the server was created from (nullable)
   image() hetzner.image
@@ -103,6 +116,13 @@ private hetzner.server @defaults("id name status") {
   publicIpv6Blocked bool
   // Reverse DNS (PTR) records for addresses in the public IPv6 network (each dict: ip, dnsPtr)
   publicIpv6DnsPtr []dict
+  // DNS records in the project's zones that resolve to this server
+  //
+  // The A and AAAA records whose value is the server's public IPv4 address or
+  // falls inside its public IPv6 network. Pairs with `exposure` to name the
+  // hostnames that reach an internet-reachable server. Records published in
+  // zones outside the project are not visible here.
+  dnsRecords() []hetzner.zone.rrset.record
   // Firewalls applied to the server
   firewalls() []hetzner.firewall
   // Firewalls applied to the server, with per-binding application status (applied, pending)
@@ -113,6 +133,8 @@ private hetzner.server @defaults("id name status") {
   loadBalancers() []hetzner.loadBalancer
   // Backup window (e.g., "22-02"); empty if backups disabled
   backupWindow string
+  // Whether automated backups are enabled (a backup window is set)
+  backupsEnabled bool
   // Whether rescue mode is enabled
   rescueEnabled bool
   // Whether the server is locked (Hetzner-side lock)
@@ -129,16 +151,25 @@ private hetzner.server @defaults("id name status") {
   iso() hetzner.iso
   // User-defined labels for organizing the resource
   labels map[string]string
-  // Resource protection (delete, rebuild)
+  // Resource protection settings
+  //
+  // Dict with two boolean keys: `delete` (the server cannot be deleted
+  // while true) and `rebuild` (the server cannot be rebuilt while true).
   protection dict
+  // Operations Hetzner recorded against this server
+  //
+  // The server's action history: reset_password, enable_rescue,
+  // request_console, attach_iso, rebuild, change_protection, and every other
+  // operation the API ran on it, each with a status and a finish time.
+  // Hetzner Cloud keeps no separate audit trail, so this is the only record
+  // that ties a privileged operation to a specific host.
+  actions() []hetzner.action
 }
 
 // Hetzner Cloud server private network attachment
 private hetzner.server.privateNet @defaults("ip macAddress") {
-  // Parent server ID (composite key with networkId)
-  serverId int
-  // Attached network ID (composite key)
-  networkId int
+  // Server the network is attached to
+  server() hetzner.server
   // Hetzner Cloud network attached to the server
   network() hetzner.network
   // IP address on the network
@@ -151,10 +182,8 @@ private hetzner.server.privateNet @defaults("ip macAddress") {
 
 // Hetzner Cloud server firewall binding
 private hetzner.server.firewallBinding @defaults("status") {
-  // Parent server ID (composite key with firewallId)
-  serverId int
-  // Bound firewall ID (composite key)
-  firewallId int
+  // Server the firewall is bound to
+  server() hetzner.server
   // Hetzner Cloud firewall bound to the server
   firewall() hetzner.firewall
   // Application status (applied, pending)
@@ -175,18 +204,65 @@ private hetzner.network.exposure @defaults("internetReachable hasPublicIp") {
   hasPublicIp bool
   // Whether inbound traffic from any address is admitted
   //
-  // For a server, a firewall inbound rule open to the internet or no firewall
-  // attached at all; for a load balancer, an enabled public network with at
-  // least one forwarding service.
+  // For a server, a firewall inbound rule open to the internet, or no firewall
+  // enforcing rules at all. Only bindings whose status is applied count as
+  // enforcing, so a server whose firewalls are all still pending admits
+  // ingress. For a load balancer, an enabled public network with at least one
+  // forwarding service.
   firewallAllowsIngress bool
   // Ingress rules or services that admit traffic from any address
   //
-  // For a server, firewall inbound rules whose source is 0.0.0.0/0 or ::/0; for
-  // a load balancer, the forwarding services reachable on the public network.
+  // For a server, the firewall inbound rules whose source is 0.0.0.0/0 or ::/0,
+  // each with keys direction, protocol, sourceIps, destinationIps, and optional
+  // port and description. For a load balancer, the public forwarding services,
+  // each with keys protocol, listenPort, and destinationPort.
   openIngressRules []dict
 }
 
+// Hetzner Cloud action
+//
+// One operation Hetzner recorded against a project resource, such as
+// reset_password, enable_rescue, request_console, attach_iso, rebuild,
+// change_protection, or set_rules. Hetzner Cloud keeps no separate audit
+// log, so the action history attached to a resource is the only record of
+// what was done to it and when. Reports the `command` that ran, its
+// `status` (running, success, error), the start and finish times, and the
+// error code and message a failed operation reported.
+private hetzner.action @defaults("id command status finished") {
+  // Action ID
+  id int
+  // Command that ran (reset_password, enable_rescue, attach_iso, set_rules, ...)
+  command string
+  // Status (running, success, error)
+  status string
+  // Completion percentage, 100 once the action has finished
+  progress int
+  // Time the action started
+  started time
+  // Time the action finished; null while the action is still running
+  finished time
+  // Error code a failed action reported; empty when the action did not fail
+  errorCode string
+  // Error message a failed action reported; empty when the action did not fail
+  errorMessage string
+  // Resources the action ran against
+  //
+  // Each entry is a dict with `id` and `type`. The type is one of server,
+  // image, iso, floating_ip, volume, network, certificate, load_balancer,
+  // firewall, placement_group, primary_ip, zone, storage_box,
+  // storage_box_snapshot, or storage_box_subaccount. An operation that joins
+  // two resources, such as attaching a volume to a server, names both.
+  resources []dict
+}
+
 // Hetzner Cloud server type (VM size)
+//
+// Hardware profile behind a Hetzner Cloud server: core count, memory,
+// disk, storage type (local or network), CPU type (shared or dedicated),
+// and CPU architecture (x86 or arm). Select a server type by its numeric
+// id, for example `hetzner.serverType(id: 22)`. The `deprecated` flag,
+// `deprecation` schedule and `locations` report where the type can still be
+// provisioned and by when Hetzner will have withdrawn it.
 private hetzner.serverType @defaults("id name cores memory") {
   init(id? int)
   // Server type ID
@@ -205,31 +281,62 @@ private hetzner.serverType @defaults("id name cores memory") {
   storageType string
   // CPU type (shared, dedicated)
   cpuType string
+  // Server type category (shared-vcpu, dedicated-vcpu)
+  //
+  // Whether the physical CPU behind the server is shared with other tenants
+  // or reserved for this one. A CPU tenancy isolation assertion reads this
+  // rather than pattern-matching the type slug.
+  category string
   // Architecture (x86, arm)
   architecture string
   // Whether the server type is deprecated
   deprecated bool
+  // Deprecation schedule
+  //
+  // Empty when the server type is not deprecated. When present it carries
+  // `announced` (timestamp the deprecation was announced) and
+  // `unavailableAfter` (timestamp after which new servers of this type can no
+  // longer be created), which is what tells a fleet on a retiring type how
+  // long it has. The per-location schedule under locations reports the same
+  // facts where they differ by location.
+  deprecation dict
+  // Included monthly traffic in bytes
+  //
+  // Reports 0 for every server type after 2024-08-05, when Hetzner moved the
+  // included traffic allowance into per-location pricing and stopped
+  // publishing it on the type itself. Carried for inventory completeness.
+  includedTraffic int
   // Per-location availability and deprecation info
   locations() []hetzner.serverType.location
 }
 
 // Hetzner Cloud server type availability in a single location
 private hetzner.serverType.location @defaults("available recommended") {
-  // Parent server type ID (composite key with locationId)
-  serverTypeId int
-  // Location ID (composite key)
-  locationId int
+  // Server type offered in this location
+  serverType() hetzner.serverType
   // Hetzner location where the server type is offered
   location() hetzner.location
   // Whether new servers of this type can be created in this location
   available bool
   // Whether Hetzner recommends this server type in this location
   recommended bool
-  // Deprecation info {announced, unavailableAfter}; empty if not deprecated
+  // Deprecation schedule
+  //
+  // Present only when the server type is deprecated in this location. Keys:
+  // `announced` (timestamp the deprecation was announced) and
+  // `unavailableAfter` (timestamp after which new servers of this type can
+  // no longer be created). Empty when the type is not deprecated here.
   deprecation dict
 }
 
 // Hetzner Cloud image (system image, snapshot, backup, or app)
+//
+// A bootable disk image usable when creating servers: a Hetzner-provided
+// system image, a user-created snapshot, an automated backup, or an app
+// image. The `type` field distinguishes these categories. Select an image
+// by its numeric id, for example `hetzner.image(id: 12345)`. Useful for
+// auditing which images exist, their OS and architecture, deletion
+// protection, and whether an image is deprecated or bound to a server.
 private hetzner.image @defaults("id name type") {
   init(id? int)
   // Image ID
@@ -256,10 +363,25 @@ private hetzner.image @defaults("id name type") {
   architecture string
   // Whether rapid deploy is supported
   rapidDeploy bool
-  // Resource protection (delete)
+  // Resource protection
+  //
+  // Deletion protection state as `delete` (bool). When true, the image
+  // cannot be deleted until protection is disabled.
   protection dict
-  // Deprecation timestamp (nullable)
-  deprecated time
+  // Deprecation announcement timestamp
+  //
+  // Deprecated in favor of hetzner.image.deprecation, which reports the same
+  // announcement alongside the date the image stops being available. Null when
+  // the image is not deprecated.
+  deprecated @maturity("deprecated") time
+  // Deprecation schedule
+  //
+  // Empty when the image is not deprecated. When present it carries
+  // `announced` (timestamp the deprecation was announced) and
+  // `unavailableAfter` (timestamp after which the image can no longer be used
+  // to create servers), which is what tells a fleet booting from a retiring
+  // image how long it has to migrate.
+  deprecation dict
   // Deletion timestamp (nullable)
   deleted time
   // User-defined labels for organizing the resource
@@ -268,9 +390,23 @@ private hetzner.image @defaults("id name type") {
   boundServer() hetzner.server
   // Server the image was created from (nullable, for snapshots/backups)
   createdFrom() hetzner.server
+  // Operations Hetzner recorded against this image
+  //
+  // The image's action history, covering the snapshot or backup creation that
+  // produced it along with change_protection, each with a status and a finish
+  // time.
+  actions() []hetzner.action
 }
 
 // Hetzner Cloud SSH key
+//
+// SSH public key registered on a Hetzner Cloud project and available to
+// inject into new servers at creation time, granting whoever holds the
+// matching private key root-level access. Auditing these keys shows which
+// credentials can be provisioned onto infrastructure, and the algorithm
+// and bits fields let you flag weak or deprecated key types (for example
+// short RSA keys or ssh-dss). Select a single key by its numeric id, for
+// example hetzner.sshKey(id: 12345).
 private hetzner.sshKey @defaults("id name fingerprint") {
   init(id? int)
   // SSH key ID
@@ -281,6 +417,18 @@ private hetzner.sshKey @defaults("id name fingerprint") {
   fingerprint string
   // Public key content
   publicKey string
+  // Key algorithm parsed from the public key
+  //
+  // The key type as it appears in the public key, for example
+  // ssh-ed25519, ssh-rsa, ecdsa-sha2-nistp256, or ssh-dss. Empty when
+  // the public key cannot be parsed.
+  algorithm string
+  // Key size in bits parsed from the public key
+  //
+  // The modulus size for RSA/DSA keys or the curve size for ECDSA keys.
+  // Ed25519 keys report 256. 0 when the public key cannot be parsed or
+  // the size cannot be determined.
+  bits int
   // Creation timestamp
   created time
   // User-defined labels for organizing the resource
@@ -288,6 +436,13 @@ private hetzner.sshKey @defaults("id name fingerprint") {
 }
 
 // Hetzner Cloud block storage volume
+//
+// A network-attached block storage volume in a Hetzner Cloud project,
+// selected by its numeric `id`, for example `hetzner.volume(id: 12345)`.
+// Reports capacity, attachment state, filesystem format, deletion
+// protection, and the server the volume is currently mounted on, so
+// audits can flag unattached volumes, oversized allocations, or volumes
+// left without deletion protection.
 private hetzner.volume @defaults("id name size") {
   init(id? int)
   // Volume ID
@@ -308,13 +463,31 @@ private hetzner.volume @defaults("id name size") {
   server() hetzner.server
   // Filesystem format (ext4, xfs, "")
   format string
-  // Resource protection (delete)
+  // Volume protection settings
+  //
+  // The `delete` key (bool) is true when the volume is protected from
+  // deletion.
   protection dict
   // User-defined labels for organizing the resource
   labels map[string]string
+  // Operations Hetzner recorded against this volume
+  //
+  // The volume's action history: attach_volume, detach_volume, resize_volume,
+  // and change_protection, each with a status and a finish time. Shows every
+  // server the volume has been mounted on over its lifetime.
+  actions() []hetzner.action
 }
 
 // Hetzner Cloud network (VPC)
+//
+// Private network spanning one or more subnets that Hetzner Cloud servers and
+// load balancers attach to for internal traffic. Select a network by its
+// numeric id, for example hetzner.network(id: 4711). The ipRange field holds the
+// overall CIDR, subnets carves it into per-zone ranges, and staticRoutes lists
+// the next-hop entries with the gateway resolved to a server. Inspect servers and
+// loadBalancers to see what is attached, members for each attachment's IP,
+// subnet, and status, and exposeRoutesToVswitch to check whether the network's
+// routes are advertised to a connected vSwitch.
 private hetzner.network @defaults("id name ipRange") {
   init(id? int)
   // Network ID
@@ -325,23 +498,115 @@ private hetzner.network @defaults("id name ipRange") {
   ipRange string
   // Creation timestamp
   created time
-  // Subnets [{type, ipRange, networkZone, gateway}]
+  // Subnets carved out of the network's IP range
+  //
+  // Each subnet is a dict with `type` (cloud, server, or vswitch), `ipRange`,
+  // `networkZone`, `gateway`, and `vswitchId`. A `vswitchId` other than 0
+  // attaches the subnet to a Hetzner vSwitch, extending the network to
+  // dedicated servers and other networks outside this project.
   subnets []dict
-  // Routes [{destination, gateway}]
-  routes []dict
+  // Static routes as raw dicts
+  //
+  // Deprecated in favor of staticRoutes, which carries the same destination
+  // and gateway plus the server holding the gateway address. Each entry is a
+  // dict with `destination` and `gateway`.
+  routes @maturity("deprecated") @replaced_by("hetzner.network.staticRoutes") []dict
+  // Static routes with the gateway resolved to a server
+  //
+  // The network's next-hop entries. A route to 0.0.0.0/0 whose gateway is one
+  // server's private address makes that host the egress path for every other
+  // server on the network, so the route names the server carrying the traffic
+  // rather than leaving a bare address.
+  staticRoutes() []hetzner.network.route
   // Servers attached to this network
   servers() []hetzner.server
   // Load balancers attached to this network
   loadBalancers() []hetzner.loadBalancer
+  // Servers and load balancers attached to this network, with their attachment state
+  //
+  // Each member reports its private IP, alias IPs, the subnet it sits in, and
+  // the attachment `status`. A member in status `error` may run with an
+  // outdated network configuration and may be unreachable on the network. For
+  // example, `hetzner.networks.all(members.all(status == "ok"))`.
+  members() []hetzner.network.member
   // Whether routes are exposed to vSwitch
   exposeRoutesToVswitch bool
   // Resource protection (delete)
   protection dict
   // User-defined labels for organizing the resource
   labels map[string]string
+  // Operations Hetzner recorded against this network
+  //
+  // The network's action history: add_subnet, delete_subnet, add_route,
+  // delete_route, and change_protection, each with a status and a finish
+  // time. A route or subnet that widened the network's reach is traceable
+  // only here.
+  actions() []hetzner.action
+}
+
+// Static route in a Hetzner Cloud network
+//
+// One next-hop entry in a project network, pairing a destination CIDR with the
+// gateway address traffic for that destination is sent to. Hetzner's NAT
+// gateway pattern is a route to 0.0.0.0/0 whose gateway is one server's
+// private address, which quietly makes that host the egress path for every
+// other server on the network. The `gatewayServer` field resolves the gateway
+// address against the private network attachments and alias IPs of the
+// project's servers, naming the host that carries the traffic.
+private hetzner.network.route @defaults("destination gateway") {
+  // Network the route belongs to
+  network() hetzner.network
+  // Destination CIDR the route matches
+  destination string
+  // Gateway address traffic for the destination is sent to
+  gateway string
+  // Server holding the gateway address
+  //
+  // The project server whose attachment to this network holds the gateway
+  // address, either as the interface address or as an alias IP. Null when no
+  // server in the project holds it, which is what a gateway pointing at a
+  // vSwitch or at hardware outside the project looks like.
+  gatewayServer() hetzner.server
+}
+
+// Resource attached to a Hetzner Cloud network
+//
+// A server or load balancer attached to a project network, with its private
+// IP, alias IPs, the subnet it sits in, and the state of the attachment. The
+// `server` or `loadBalancer` field resolves the attached resource according
+// to `type`.
+private hetzner.network.member @defaults("type ip status") {
+  // Network the resource is attached to
+  network() hetzner.network
+  // Member type (server or load_balancer)
+  type string
+  // Private IP address on the network
+  ip string
+  // Alias IPs on the network
+  aliasIps []string
+  // Subnet the member's IP belongs to, in CIDR notation
+  subnet string
+  // Attachment status (ok, attaching, detaching, updating, error)
+  //
+  // `error` means the last operation on the attachment failed: the member's
+  // network configuration may be out of date and it may be unreachable within
+  // the network.
+  status string
+  // Attached server; null when the member is not a server
+  server() hetzner.server
+  // Attached load balancer; null when the member is not a load balancer
+  loadBalancer() hetzner.loadBalancer
 }
 
 // Hetzner Cloud floating IP
+//
+// A floating IPv4 or IPv6 address that can be reassigned between servers,
+// making it the building block for failover and high-availability setups.
+// Select one by its numeric identifier, for example
+// `hetzner.floatingIp(id: 12345)`. The `server` reference resolves the
+// server the IP is currently routed to (null when unassigned), `blocked`
+// flags an address the provider has administratively suspended, and
+// `dnsPtr` exposes the reverse DNS records configured for it.
 private hetzner.floatingIp @defaults("id ip type") {
   init(id? int)
   // Floating IP ID
@@ -368,9 +633,23 @@ private hetzner.floatingIp @defaults("id ip type") {
   labels map[string]string
   // Creation timestamp
   created time
+  // Operations Hetzner recorded against this floating IP
+  //
+  // The address's action history: assign_floating_ip, unassign_floating_ip,
+  // change_dns_ptr, and change_protection, each with a status and a finish
+  // time. Shows every server that has held this public address.
+  actions() []hetzner.action
 }
 
-// Hetzner Cloud primary IP (replaces non-floating server IPs)
+// Hetzner Cloud primary IP
+//
+// A standalone IPv4 or IPv6 address that a server holds independently
+// of its lifecycle, so the address survives when the server is deleted
+// or replaced. Reports the address and `type`, whether it is currently
+// `blocked`, the `autoDelete` behavior that removes it alongside its
+// assignee, the reverse DNS records, delete protection, and the server
+// it is assigned to. Select a primary IP by its numeric id, for example
+// `hetzner.primaryIp(id: 12345)`.
 private hetzner.primaryIp @defaults("id ip type") {
   init(id? int)
   // Primary IP ID
@@ -389,8 +668,6 @@ private hetzner.primaryIp @defaults("id ip type") {
   autoDelete bool
   // Whether the IP is blocked
   blocked bool
-  // Datacenter the IP belongs to
-  datacenter() hetzner.datacenter
   // Location the IP belongs to
   location() hetzner.location
   // Server the IP is assigned to (nullable)
@@ -403,25 +680,40 @@ private hetzner.primaryIp @defaults("id ip type") {
   labels map[string]string
   // Creation timestamp
   created time
+  // Operations Hetzner recorded against this primary IP
+  //
+  // The address's action history: assign_primary_ip, unassign_primary_ip,
+  // change_dns_ptr, and change_protection, each with a status and a finish
+  // time. Shows every server that has held this public address.
+  actions() []hetzner.action
 }
 
 // Hetzner Cloud load balancer
 //
-// A managed L4/L7 load balancer. Surfaces the routing `algorithm`, the
-// public network configuration, the `services()` it exposes (listen and
-// destination ports, health checks, the HTTP redirect flag, and attached
-// `certificates`), the backend `targets()`, the `privateNet`
-// attachments, the traffic counters, resource protection, applied
-// `labels`, and the creation timestamp. Select a load balancer by id
-// with `hetzner.loadBalancer(id: 123)`.
+// Managed L4/L7 load balancer that distributes incoming traffic across
+// backend servers and IP targets. The public network configuration and
+// the forwarding services it exposes govern its internet reachability
+// and TLS termination, making it a central resource for auditing
+// exposure, health checking, and PROXY protocol use. The routing
+// algorithm is one of round_robin or least_connections. Select a load
+// balancer by id with `hetzner.loadBalancer(id: 123)`.
 hetzner.loadBalancer @defaults("id name") {
   init(id? int)
   // Load balancer ID
   id int
   // Name
   name string
-  // Public network configuration {enabled, ipv4, ipv6}
+  // Public network configuration
+  //
+  // Dict with keys enabled (whether the load balancer has a public
+  // interface), and ipv4 and ipv6 (the assigned public addresses). When
+  // enabled is false the load balancer is reachable only over attached
+  // private networks.
   publicNet dict
+  // Reverse DNS (PTR) record for the public IPv4 address; empty when unset or the load balancer has no public interface
+  publicIpv4DnsPtr string
+  // Reverse DNS (PTR) record for the public IPv6 address; empty when unset or the load balancer has no public interface
+  publicIpv6DnsPtr string
   // Private network attachments
   privateNet() []hetzner.loadBalancer.privateNet
   // Location
@@ -432,8 +724,22 @@ hetzner.loadBalancer @defaults("id name") {
   algorithm string
   // Forwarding services
   services() []hetzner.loadBalancer.service
+  // TLS certificates the load balancer terminates with
+  //
+  // The deduplicated union of the certificates attached to every forwarding
+  // service, which is the whole set the load balancer serves. Where services
+  // carries them per listener, this is the set to check for expiry,
+  // self-signed bodies, and weak keys in a single pass.
+  certificates() []hetzner.certificate
   // Targets behind the load balancer
   targets() []hetzner.loadBalancer.target
+  // Backend servers behind the load balancer
+  //
+  // The servers the load balancer forwards to, combining the direct
+  // server targets with the servers currently matched by any
+  // label_selector targets, deduplicated. The reverse of the load
+  // balancers listed on each server.
+  servers() []hetzner.server
   // Internet-exposure breakdown (public network combined with forwarding services)
   exposure() hetzner.network.exposure
   // Resource protection (delete)
@@ -448,14 +754,19 @@ hetzner.loadBalancer @defaults("id name") {
   outgoingTraffic int
   // Ingoing traffic for the current period (bytes)
   ingoingTraffic int
+  // Operations Hetzner recorded against this load balancer
+  //
+  // The load balancer's action history: add_service, delete_service,
+  // add_target, attach_to_network, enable_public_interface, and the rest,
+  // each with a status and a finish time. Changes to what the load balancer
+  // listens on and forwards to are recorded nowhere else.
+  actions() []hetzner.action
 }
 
 // Hetzner Cloud load balancer private network attachment
 private hetzner.loadBalancer.privateNet @defaults("ip") {
-  // Parent load balancer ID (composite key with networkId)
-  loadBalancerId int
-  // Attached network ID (composite key)
-  networkId int
+  // Load balancer the network is attached to
+  loadBalancer() hetzner.loadBalancer
   // Hetzner Cloud network attached to the load balancer
   network() hetzner.network
   // IP address on the network
@@ -464,8 +775,8 @@ private hetzner.loadBalancer.privateNet @defaults("ip") {
 
 // Load balancer service definition
 private hetzner.loadBalancer.service @defaults("protocol listenPort") {
-  // Parent load balancer ID
-  loadBalancerId int
+  // Load balancer the service forwards for
+  loadBalancer() hetzner.loadBalancer
   // Protocol (tcp, http, https)
   protocol string
   // Listen port
@@ -475,8 +786,18 @@ private hetzner.loadBalancer.service @defaults("protocol listenPort") {
   // Whether PROXY protocol is enabled
   proxyProtocol bool
   // Health check configuration
+  //
+  // Dict with keys protocol (tcp or http), port, interval and timeout in
+  // seconds, and retries. For http checks it also carries an http key
+  // holding {domain, path, response, statusCodes, tls}.
   healthCheck dict
-  // HTTP-specific options (sticky sessions, redirect_http, certificates)
+  // Session persistence and HTTP redirect options
+  //
+  // Dict with keys cookieName, cookieLifetime (seconds), redirectHttp
+  // (whether plain HTTP is redirected to HTTPS), stickySessions, and
+  // timeoutIdle (seconds an idle connection is held open before the load
+  // balancer closes it). TLS certificates are exposed separately through
+  // certificates.
   http dict
   // TLS certificates attached to this service
   certificates() []hetzner.certificate
@@ -484,11 +805,18 @@ private hetzner.loadBalancer.service @defaults("protocol listenPort") {
 
 // Load balancer target
 private hetzner.loadBalancer.target @defaults("type") {
-  // Parent load balancer ID
-  loadBalancerId int
+  // Load balancer the target sits behind
+  loadBalancer() hetzner.loadBalancer
   // Target type (server, label_selector, ip)
   type string
-  // Health status of the target [{listenPort, status}]
+  // Health status of the target per listen port
+  //
+  // Each entry carries listenPort, status (healthy, unhealthy, or unknown),
+  // detail, and httpStatusCode. detail gives the reason a health check failed;
+  // known values are unspecified, layer4_no_connection, layer4_timeout,
+  // layer7_timeout, unexpected_http_status, and unexpected_http_content.
+  // httpStatusCode is the status code an HTTP health check received. Both are
+  // null when the API reports no value, for example on a healthy target.
   healthStatus []dict
   // Whether to route traffic to the target's private IP
   usePrivateIp bool
@@ -496,11 +824,25 @@ private hetzner.loadBalancer.target @defaults("type") {
   server() hetzner.server
   // Label selector (only for type=label_selector)
   labelSelector string
+  // Servers resolved from the target's label selector
+  //
+  // The servers a label_selector target currently forwards to. Where
+  // labelSelector holds the selector expression, this lists the servers
+  // it actually matches. Empty for server and ip targets.
+  labelSelectorTargets() []hetzner.server
   // IP address (only for type=ip)
   ip string
 }
 
 // Hetzner Cloud load balancer type
+//
+// A load balancer size class such as lb11, lb21, or lb31, defining the
+// capacity limits a load balancer of that class is subject to: the
+// maximum concurrent connections, services, targets, and assigned TLS
+// certificates. Use it to confirm a load balancer is provisioned on a
+// class that fits its expected traffic, or to spot classes that are
+// scheduled for retirement through the `deprecation` schedule. Select a
+// type by id with `hetzner.loadBalancerType(id: 1)`.
 private hetzner.loadBalancerType @defaults("id name") {
   init(id? int)
   // Load balancer type ID
@@ -517,16 +859,22 @@ private hetzner.loadBalancerType @defaults("id name") {
   maxTargets int
   // Maximum assigned certificates
   maxAssignedCertificates int
-  // Deprecation timestamp (nullable)
-  deprecated time
+  // Deprecation schedule
+  //
+  // Empty when the load balancer type is not deprecated. When present it
+  // carries `announced` (timestamp the deprecation was announced) and
+  // `unavailableAfter` (timestamp after which load balancers of this type
+  // can no longer be created).
+  deprecation dict
 }
 
 // Hetzner Cloud firewall
 //
 // A stateful, project-level firewall rule set applied to servers
-// directly or by label selector. Surfaces the firewall `rules` (each
-// with direction, protocol, port, and the `sourceIps`/`destinationIps`
-// CIDRs), the `servers()` the firewall is directly applied to, the
+// directly or by label selector. Surfaces the `inboundRules` and
+// `outboundRules` (each with direction, protocol, port range, the
+// `sourceIps`/`destinationIps` CIDRs, and whether it opens the port to the
+// internet), the `servers` the firewall is directly applied to, the
 // `labelSelectors` it targets, applied `labels`, and the creation
 // timestamp. Select a firewall by id with `hetzner.firewall(id: 123)`.
 hetzner.firewall @defaults("id name") {
@@ -537,8 +885,35 @@ hetzner.firewall @defaults("id name") {
   name string
   // Creation timestamp
   created time
-  // Firewall rules [{direction, protocol, port, sourceIps, destinationIps, description}]
-  rules []dict
+  // Firewall rules
+  //
+  // Deprecated in favor of inboundRules and outboundRules, which carry the
+  // same rules with the port range parsed and the open-to-internet verdict
+  // computed. Each rule is a dict with `direction` (in or out), `protocol`
+  // (tcp, udp, icmp, esp, or gre), `sourceIps` and `destinationIps` (lists of
+  // CIDR blocks the rule matches), and optional `port` and `description`.
+  rules @maturity("deprecated") []dict
+  // Inbound rules
+  //
+  // The rules with direction `in`, in the order the firewall holds them. Each
+  // rule admits traffic from its `sourceIps` on its protocol and port range.
+  // For example, `hetzner.firewalls.all(inboundRules.none(openToInternet &&
+  // portStart <= 22 && portEnd >= 22))` asserts that no firewall opens SSH to
+  // the internet.
+  inboundRules() []hetzner.firewall.rule
+  // Outbound rules
+  //
+  // The rules with direction `out`, in the order the firewall holds them. An
+  // empty list means the firewall places no restriction on outbound traffic
+  // (see egressRestricted).
+  outboundRules() []hetzner.firewall.rule
+  // Whether the rule set restricts outbound traffic
+  //
+  // Hetzner firewalls permit all outbound traffic unless the rule set holds
+  // at least one rule with direction `out`, in which case only traffic
+  // matching those rules is allowed. False therefore means the firewall
+  // places no restriction on connections the server opens itself.
+  egressRestricted() bool
   // Servers the firewall is directly applied to (type=server entries)
   servers() []hetzner.server
   // Label selectors the firewall is applied to (type=label_selector entries)
@@ -552,9 +927,65 @@ hetzner.firewall @defaults("id name") {
   labelSelectorTargets() []hetzner.server
   // User-defined labels for organizing the resource
   labels map[string]string
+  // Operations Hetzner recorded against this firewall
+  //
+  // The firewall's action history: set_rules, apply_to_resources, and
+  // remove_from_resources, each with a status and a finish time. A rule set
+  // that widened shortly before an exposure finding is traceable only here.
+  actions() []hetzner.action
+}
+
+// Hetzner Cloud firewall rule
+//
+// One rule of a Hetzner Cloud firewall: its direction, protocol, port range,
+// and the source or destination CIDR blocks it matches. `portStart` and
+// `portEnd` bound the port range, so a rule written as a range such as
+// `20-30` is still caught by a check for port 22. `openToInternet` flags an
+// inbound rule that admits traffic from any address.
+private hetzner.firewall.rule @defaults("direction protocol port openToInternet") {
+  // Firewall the rule belongs to
+  firewall() hetzner.firewall
+  // Direction (in or out)
+  direction string
+  // Protocol (tcp, udp, icmp, esp, or gre)
+  protocol string
+  // Port or port range as configured
+  //
+  // A single port (`443`), a range (`1024-5000`), or `any`. Null for
+  // protocols without ports (icmp, esp, gre).
+  port string
+  // First port the rule matches
+  //
+  // 1 when the port is `any`. Null for protocols without ports.
+  portStart int
+  // Last port the rule matches
+  //
+  // 65535 when the port is `any`, equal to portStart for a single port. Null
+  // for protocols without ports.
+  portEnd int
+  // Source CIDR blocks an inbound rule admits traffic from
+  sourceIps []string
+  // Destination CIDR blocks an outbound rule admits traffic to
+  destinationIps []string
+  // Rule description; null when none is set
+  description string
+  // Whether the rule admits inbound traffic from any address
+  //
+  // True for an inbound rule whose `sourceIps` contains 0.0.0.0/0 or ::/0.
+  // Always false for outbound rules.
+  openToInternet bool
 }
 
 // Hetzner Cloud TLS certificate
+//
+// A TLS certificate stored in a Hetzner Cloud project, either uploaded by
+// you or issued and renewed automatically by Hetzner as a managed
+// certificate. Select one by its numeric id, for example
+// `hetzner.certificate(id: 12345)`. Fields parsed from the certificate
+// body (keyAlgorithm, keyBits, signatureAlgorithm, notValidAfter,
+// selfSigned, isCa) support auditing key strength, expiry, and trust,
+// while servers and loadBalancers reveal which resources terminate TLS
+// with it.
 private hetzner.certificate @defaults("id name type") {
   init(id? int)
   // Certificate ID
@@ -567,13 +998,49 @@ private hetzner.certificate @defaults("id name type") {
   fingerprint string
   // PEM-encoded certificate body
   certificate string
+  // Public key algorithm parsed from the certificate (RSA, ECDSA, Ed25519, DSA)
+  //
+  // Empty when the certificate body cannot be parsed.
+  keyAlgorithm string
+  // Public key size in bits parsed from the certificate
+  //
+  // The RSA/DSA modulus size or the ECDSA curve size. Ed25519 keys report
+  // 256, and ML-DSA keys the size of the encoded public key (10496, 15616 or
+  // 20736 for ML-DSA-44, -65 or -87). 0 when the certificate body cannot be
+  // parsed or the size cannot be determined.
+  keyBits int
+  // Certificate signature algorithm parsed from the certificate
+  //
+  // For example SHA256-RSA, SHA384-ECDSA, or the legacy SHA1-RSA and
+  // MD5-RSA. Empty when the certificate body cannot be parsed.
+  signatureAlgorithm string
+  // Distinguished name of the issuer parsed from the certificate
+  issuer string
+  // Distinguished name of the subject parsed from the certificate
+  subject string
+  // Certificate serial number parsed from the certificate, in decimal
+  serialNumber string
+  // Whether the certificate is a certificate authority (the basic-constraints CA flag)
+  isCa bool
+  // Whether the certificate is self-signed
+  //
+  // True when the issuer equals the subject and the signature verifies
+  // against the certificate's own public key. The signature check
+  // distinguishes a genuinely self-signed certificate from a cross-signed
+  // one that shares issuer and subject names but is signed by another key.
+  selfSigned bool
   // Validity start
   notValidBefore time
   // Validity end
   notValidAfter time
   // DNS names covered by the certificate
   domainNames []string
-  // Status of managed certificates {issuance, renewal, error}
+  // Issuance and renewal status of a managed certificate
+  //
+  // Populated for managed certificates only (empty for uploaded ones).
+  // Keys: `issuance` and `renewal`, each one of pending, completed,
+  // failed, scheduled, or unavailable, plus `error` (a human-readable
+  // message) present only when issuance or renewal has failed.
   status dict
   // Creation timestamp
   created time
@@ -583,9 +1050,23 @@ private hetzner.certificate @defaults("id name type") {
   loadBalancers() []hetzner.loadBalancer
   // User-defined labels for organizing the resource
   labels map[string]string
+  // Operations Hetzner recorded against this certificate
+  //
+  // The certificate's action history, covering the issuance and renewal
+  // operations Hetzner runs for a managed certificate, each with a status and
+  // a finish time. A renewal that failed and never recovered shows up here
+  // before the certificate expires.
+  actions() []hetzner.action
 }
 
 // Hetzner Cloud placement group
+//
+// Group of Cloud Servers scheduled onto distinct physical hosts so that a
+// single hardware failure cannot take down every member at once. Query by
+// numeric id, for example `hetzner.placementGroup(id: 12345)`, to review
+// which servers share a group and confirm that fault-tolerant workloads
+// are spread across hardware. The `type` field reports the placement
+// strategy (currently only spread) and `servers` lists the group members.
 private hetzner.placementGroup @defaults("id name type") {
   init(id? int)
   // Placement group ID
@@ -603,6 +1084,13 @@ private hetzner.placementGroup @defaults("id name type") {
 }
 
 // Hetzner Cloud ISO image
+//
+// Bootable ISO image that can be attached to a server for installation
+// or recovery, covering both Hetzner-provided public images and images
+// uploaded to the project. The `type` field distinguishes public from
+// private ISOs, and `deprecation` flags images scheduled for removal so
+// audits can catch servers relying on soon-to-be-unavailable media.
+// Select a single image by its ID, for example `hetzner.iso(id: 12345)`.
 private hetzner.iso @defaults("id name type") {
   init(id? int)
   // ISO ID
@@ -613,22 +1101,45 @@ private hetzner.iso @defaults("id name type") {
   description string
   // Type (public, private)
   type string
-  // Deprecation info {announced, unavailableAfter}
+  // Deprecation schedule
+  //
+  // Empty when the image is not deprecated. When present it carries
+  // `announced` (timestamp the deprecation was announced) and
+  // `unavailableAfter` (timestamp after which the image can no longer
+  // be attached).
   deprecation dict
   // Architecture (x86, arm)
   architecture string
+  // Servers with this ISO attached
+  //
+  // The project servers currently booting from this image. A server with an
+  // ISO attached can boot outside its installed operating system, which
+  // bypasses every control that lives on the disk.
+  servers() []hetzner.server
 }
 
-// Hetzner Cloud location (region)
+// Hetzner Cloud location
+//
+// A geographic location (region) where Hetzner Cloud resources can run,
+// such as `fsn1` (Falkenstein), `nbg1` (Nuremberg), `hel1` (Helsinki),
+// `ash` (Ashburn), or `hil` (Hillsboro). Select a location by its numeric
+// `id`, for example `hetzner.location(id: 1)`. Beyond the human-readable
+// `city`, `country`, and geographic coordinates, the `networkZone` groups
+// locations that can share private networks (eu-central, us-east, us-west,
+// ap-southeast),
+// which matters when planning cross-region connectivity and data residency.
+// The servers, volumes, loadBalancers, primaryIps, floatingIps and
+// storageBoxes fields list what the project actually holds here, which is what
+// a residency assertion has to cover.
 private hetzner.location @defaults("id name city") {
   init(id? int)
   // Location ID
   id int
-  // Slug name (fsn1, nbg1, hel1, ash, hil)
+  // Slug name (fsn1, nbg1, hel1, ash, hil, sin)
   name string
   // Description
   description string
-  // Country code (DE, FI, US)
+  // Country code (DE, FI, US, SG)
   country string
   // City
   city string
@@ -636,12 +1147,40 @@ private hetzner.location @defaults("id name city") {
   latitude float
   // Longitude
   longitude float
-  // Network zone (eu-central, us-east, us-west)
+  // Network zone (eu-central, us-east, us-west, ap-southeast)
   networkZone string
+  // Servers running in this location
+  servers() []hetzner.server
+  // Block storage volumes in this location
+  volumes() []hetzner.volume
+  // Load balancers in this location
+  loadBalancers() []hetzner.loadBalancer
+  // Primary IPs in this location
+  primaryIps() []hetzner.primaryIp
+  // Floating IPs homed in this location
+  //
+  // The addresses whose home location is this one. A floating IP can be
+  // routed to a server elsewhere, so the home location is where the address
+  // itself lives rather than where its traffic currently lands.
+  floatingIps() []hetzner.floatingIp
+  // Storage Boxes in this location
+  storageBoxes() []hetzner.storageBox
 }
 
 // Hetzner Cloud datacenter
-private hetzner.datacenter @defaults("id name") {
+//
+// Deprecated in favor of hetzner.location, and of
+// hetzner.serverType.locations for where a given server type can be
+// provisioned. Hetzner withdrew the datacenters API after 2026-10-01
+// and requests to it now report that the functionality was removed, so
+// nothing here can be read from that date on.
+//
+// A single datacenter within a Hetzner location, identified by a slug
+// such as fsn1-dc14. Select one by its numeric id, for example
+// hetzner.datacenter(id: 4). Reports the location it belongs to, the
+// server types it supports, which of those are currently available for
+// new servers, and which are open for migration.
+private hetzner.datacenter @defaults("id name") @maturity("deprecated") {
   init(id? int)
   // Datacenter ID
   id int
@@ -652,14 +1191,33 @@ private hetzner.datacenter @defaults("id name") {
   // Location of the datacenter
   location() hetzner.location
   // Server types supported in this datacenter
-  supportedServerTypes() []hetzner.serverType
+  //
+  // Deprecated in favor of serverType.locations, whose available field
+  // carries the same fact per location. Hetzner stopped returning the
+  // datacenter server-type lists after 2026-10-01.
+  supportedServerTypes() @maturity("deprecated") []hetzner.serverType
   // Server types currently available for new servers in this datacenter
-  availableServerTypes() []hetzner.serverType
+  //
+  // Deprecated in favor of serverType.locations, whose available and
+  // recommended fields carry the same facts per location.
+  availableServerTypes() @maturity("deprecated") []hetzner.serverType
   // Server types available for migration into this datacenter
-  serverTypesAvailableForMigration() []hetzner.serverType
+  //
+  // Deprecated in favor of serverType.locations. Hetzner stopped
+  // returning the datacenter server-type lists after 2026-10-01.
+  serverTypesAvailableForMigration() @maturity("deprecated") []hetzner.serverType
 }
 
 // Hetzner Cloud Storage Box (managed backup/file storage)
+//
+// Managed backup and file-storage volume with its own login credentials
+// and network access controls. The enabled access protocols
+// (sambaEnabled, sshEnabled, webdavEnabled, zfsEnabled), whether the box is
+// reachableExternally beyond the Hetzner network, the automated snapshotPlan,
+// and delete protection together describe its exposure and data-retention
+// posture. Subaccounts carry independent credentials and access scopes, and
+// snapshots capture point-in-time copies. Select a Storage Box by id, for
+// example `hetzner.storageBox(id: 42)`.
 private hetzner.storageBox @defaults("id name status") {
   init(id? int)
   // Storage Box ID
@@ -706,9 +1264,25 @@ private hetzner.storageBox @defaults("id name status") {
   subaccounts() []hetzner.storageBox.subaccount
   // Snapshots of the Storage Box
   snapshots() []hetzner.storageBox.snapshot
+  // Operations Hetzner recorded against this Storage Box
+  //
+  // The Storage Box's action history: update_access_settings, reset_password,
+  // enable_snapshot_plan, rollback_snapshot, and the rest, each with a status
+  // and a finish time. A protocol switched on or a password reset is
+  // traceable only here.
+  actions() []hetzner.action
 }
 
 // Hetzner Cloud Storage Box type (storage tier)
+//
+// Storage tier available for Hetzner Cloud Storage Boxes, defining the
+// included capacity and the limits that apply to boxes of this tier: how
+// many manual snapshots, automatic snapshots, and subaccounts are
+// permitted. Select a type by `id` (for example
+// hetzner.storageBoxType(id: 42)) to inspect its `size`, its snapshot and
+// subaccount limits, and whether the tier has been deprecated. Useful for
+// confirming which tier a Storage Box runs on and what capacity and
+// snapshot headroom that tier provides.
 private hetzner.storageBoxType @defaults("id name size") {
   init(id? int)
   // Storage Box type ID
@@ -730,11 +1304,18 @@ private hetzner.storageBoxType @defaults("id name size") {
 }
 
 // Hetzner Cloud Storage Box subaccount
+//
+// Independent set of credentials scoped to a subdirectory of a Storage Box,
+// with its own access controls. The homeDirectory limits which files the
+// subaccount can reach, readonly blocks writes, and the per-protocol toggles
+// (sambaEnabled, sshEnabled, webdavEnabled) together with reachableExternally
+// govern how and from where the credentials can be used. Audit these to catch
+// over-broad or externally reachable access grants.
 private hetzner.storageBox.subaccount @defaults("id username") {
   // Subaccount ID
   id int
-  // Parent Storage Box ID
-  storageBoxId int
+  // Storage Box the subaccount grants access to
+  storageBox() hetzner.storageBox
   // Subaccount name
   name string
   // Login username
@@ -762,11 +1343,17 @@ private hetzner.storageBox.subaccount @defaults("id username") {
 }
 
 // Hetzner Cloud Storage Box snapshot
+//
+// Point-in-time copy of a Storage Box used for backup and recovery. The
+// isAutomatic flag distinguishes snapshots created by the automated snapshot
+// plan from manual ones, while size and sizeFilesystem report the space the
+// snapshot occupies and the filesystem size captured at that moment. Review
+// these to verify backup coverage and retention.
 private hetzner.storageBox.snapshot @defaults("id name created") {
   // Snapshot ID
   id int
-  // Parent Storage Box ID
-  storageBoxId int
+  // Storage Box the snapshot was taken from
+  storageBox() hetzner.storageBox
   // Snapshot name
   name string
   // Description
@@ -784,6 +1371,16 @@ private hetzner.storageBox.snapshot @defaults("id name created") {
 }
 
 // Hetzner Cloud DNS zone
+//
+// DNS zone hosted on Hetzner's authoritative nameservers, covering a single
+// domain and all of its resource records. Auditing a zone reveals whether
+// the domain is correctly delegated to Hetzner, who registers it, how many
+// records it holds, and whether delete protection is in place. Zones are
+// listed through `hetzner.zones` or selected by numeric `id`. Comparing
+// `assignedNameservers` (what Hetzner expects) against `delegatedNameservers`
+// (what the domain currently points at), together with `delegationStatus`,
+// surfaces broken or lame delegations, and `rrsets` exposes the individual
+// record sets published in the zone.
 private hetzner.zone @defaults("id name mode status") {
   init(id? int)
   // Zone ID
@@ -800,7 +1397,13 @@ private hetzner.zone @defaults("id name mode status") {
   recordCount int
   // Registrar managing the domain (hetzner, other, unknown)
   registrar string
-  // Primary nameservers for secondary zones [{address, port, tsigAlgorithm}]
+  // Primary nameservers a secondary zone transfers from
+  //
+  // Each entry is a dict with `address`, `port`, `tsigAlgorithm`, and
+  // `tsigConfigured`. When `tsigConfigured` is false, the zone transfer from
+  // that primary is not authenticated with a TSIG key. The key itself is a
+  // shared secret and is never exposed as queryable data. Empty for primary
+  // zones, which serve their own data rather than transferring it.
   primaryNameservers []dict
   // Nameservers assigned by Hetzner for this zone
   assignedNameservers []string
@@ -812,20 +1415,38 @@ private hetzner.zone @defaults("id name mode status") {
   delegationLastCheck time
   // Resource records grouped by name and type
   rrsets() []hetzner.zone.rrset
+  // Zone file the nameservers serve, in BIND format
+  //
+  // The authoritative export of the zone in RFC 1034/1035 format, generated by
+  // Hetzner from what its nameservers publish. Comparing it against rrsets
+  // catches drift between the modelled record sets and what is actually
+  // served, and a regex sweep over it surfaces stray domain-verification TXT
+  // records and wildcard entries.
+  zonefile() string
   // Resource protection (delete)
   protection dict
   // User-defined labels for organizing the resource
   labels map[string]string
   // Creation timestamp
   created time
+  // Operations Hetzner recorded against this zone
+  //
+  // The zone's action history: change_protection, import_zonefile, and the
+  // rest, each with a status and a finish time. A bulk record replacement
+  // that moved where the domain resolves is recorded nowhere else.
+  actions() []hetzner.action
 }
 
 // Hetzner Cloud DNS resource record set
+//
+// Group of DNS records sharing one name and type within a zone, such as every
+// A record for `www` or the MX records at the domain apex. The `id` combines
+// the record name and type, and `records` holds the individual values with
+// their optional comments. Use it to inventory the DNS data published for a
+// domain and to confirm change protection on sensitive record sets.
 private hetzner.zone.rrset @defaults("name type") {
   // Record set ID (name/type)
   id string
-  // Parent zone ID
-  zoneId int
   // Zone the record set belongs to
   zone() hetzner.zone
   // Record name relative to the zone (e.g., "@", "www")
@@ -834,10 +1455,42 @@ private hetzner.zone.rrset @defaults("name type") {
   type string
   // TTL in seconds (0 when the record falls back to the zone default)
   ttl int
-  // Records in the set [{value, comment}]
-  records []dict
+  // Values in the record set and the project resources they point at
+  entries() []hetzner.zone.rrset.record
   // Resource protection (change)
   protection dict
   // User-defined labels for organizing the resource
   labels map[string]string
+}
+
+// DNS record within a record set
+//
+// Single value inside a record set together with the project resources it
+// points at. For address records the value is matched against every public
+// IPv4 and IPv6 address the project holds, which surfaces names that still
+// resolve to an address the project no longer owns. Record types that carry
+// no address report null for the target fields.
+private hetzner.zone.rrset.record @defaults("value targetsProjectResource") {
+  // Record value, an IPv4 or IPv6 address for A and AAAA records
+  value string
+  // Free-form comment stored alongside the record
+  comment string
+  // Record set the value belongs to
+  rrset() hetzner.zone.rrset
+  // Whether the value matches a public address the project holds
+  //
+  // Null on record types that carry no address. False on an A or AAAA record
+  // means no server, primary IP, floating IP, or load balancer in the project
+  // holds the address. A record can legitimately point outside the project, at
+  // a dedicated Robot server or an external host, so false marks a candidate
+  // for review rather than a finding.
+  targetsProjectResource() bool
+  // Servers holding the address
+  servers() []hetzner.server
+  // Primary IPs holding the address
+  primaryIps() []hetzner.primaryIp
+  // Floating IPs holding the address
+  floatingIps() []hetzner.floatingIp
+  // Load balancers holding the address
+  loadBalancers() []hetzner.loadBalancer
 }

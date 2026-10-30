@@ -17,8 +17,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 var rootCmd = &cobra.Command{
@@ -71,9 +71,29 @@ func goGen(configs []*plugin.Provider) ([]byte, error) {
 		var conns strings.Builder
 		for j := range conf.Connectors {
 			conn := conf.Connectors[j]
-			fmt.Fprintf(&conns, connectorTemplate, conn.Name, conn.Use, conn.Short)
+			// Aliases are emitted only when there are any, so the ~90 connectors
+			// without them don't each carry a `[]string(nil)`. They have to be
+			// emitted at all because DefaultProviders is what resolves a
+			// connector name before the provider binary exists: dropping them
+			// meant `mql shell tofu` (or `ad`, `fs`, `kubernetes`, `m365`,
+			// `googleworkspace`) could not find a provider to install.
+			var aliases string
+			if len(conn.Aliases) > 0 {
+				aliases = fmt.Sprintf("\n\t\t\t\t\tAliases: %#v,", conn.Aliases)
+			}
+			fmt.Fprintf(&conns, connectorTemplate, conn.Name, conn.Use, conn.Short, aliases)
 		}
-		fmt.Fprintf(&body, providerTemplate, conf.Name, conf.Name, conf.ID, conf.ConnectionTypes, conns.String())
+		// Targets are emitted only when there are any, for the same reason as
+		// Aliases above, and they have to be emitted for the same reason too:
+		// DefaultProviders is what resolves a --discover value before the
+		// provider binary exists, so dropping them means
+		// `mql shell iac ./repo --discover k8s` on a clean machine cannot find
+		// a provider to install (ADR 045).
+		var targets string
+		if len(conf.Targets) > 0 {
+			targets = fmt.Sprintf("\n\t\t\tTargets: %#v,", conf.Targets)
+		}
+		fmt.Fprintf(&body, providerTemplate, conf.Name, conf.Name, conf.ID, conf.ConnectionTypes, targets, conns.String())
 	}
 
 	res := fmt.Sprintf(template, body.String())
@@ -87,7 +107,7 @@ const template = `// Copyright Mondoo, Inc. 2024, 2026
 
 package providers
 
-import "go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+import "go.mondoo.com/mql/providers-sdk/v1/plugin"
 
 // DefaultProviders are useful when working in air-gapped environments
 // to tell users what providers are used for common connections, when there
@@ -102,7 +122,7 @@ const providerTemplate = `
 		Provider: &plugin.Provider{
 			Name:            %#v,
 			ID:              %#v,
-			ConnectionTypes: %#v,
+			ConnectionTypes: %#v,%s
 			Connectors: []plugin.Connector{
 				%s
 			},
@@ -114,7 +134,7 @@ const connectorTemplate = `
 				{
 					Name:  %#v,
 					Use:   %#v,
-					Short: %#v,
+					Short: %#v,%s
 				},
 `
 

@@ -67,6 +67,12 @@ nobody                   -2
 root                     0
 """
 
+[commands."dscl . -list /Users AuthenticationAuthority"]
+stdout = """_www                     ;DisabledUser;
+nobody                   ;DisabledUser;;ShadowHash;HASHLIST:<SALTED-SHA512-PBKDF2>
+daemon                   ;ShadowHash;HASHLIST:<SALTED-SHA512-PBKDF2,SRP-RFC5054-4096-SHA512-PBKDF2> ;SecureToken;
+"""
+
 [commands."uname -s"]
 stdout = "Darwin"
 

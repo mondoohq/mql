@@ -1,17 +1,22 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/cnquery/providers/ipinfo"
-option go_package = "go.mondoo.com/mql/v13/providers/ipinfo/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/ipinfo"
+option go_package = "go.mondoo.com/mql/providers/ipinfo/resources"
+option root = "ipinfo"
 
 // IP information from the ipinfo.io service
 //
-// Top-level entry point for IP lookups. Given an IP (or your own public
-// IP if none is supplied), examine the resolved hostname, geographic
-// location (city, region, country, EU flag, geocode coordinates, postal,
-// timezone), the owning organization (ASN + name), and whether the address
-// is in a special-use bogon range.
-ipinfo @defaults("returned_ip hostname city") {
+// Geolocation and network-ownership details for an IP address, resolved
+// through ipinfo.io. When no IP is supplied the lookup targets the caller's
+// own public IP. The result covers the resolved hostname, geographic
+// location (city, region, country, EU flag, geocode coordinates, postal
+// code, timezone), the owning organization (ASN plus name), and whether
+// the address falls in a special-use bogon range. Supply an IP to look one
+// up, for example ipinfo(ip: "8.8.8.8").
+ipinfo @defaults("returned_ip hostname city") @root {
   init(ip ip)
   // The IP address that was requested (empty if querying for your public IP)
   requested_ip ip

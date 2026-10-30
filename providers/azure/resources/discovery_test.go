@@ -4,13 +4,18 @@
 package resources
 
 import (
+	"bytes"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
+	subscriptions "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions/v2"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestAllResolvedResources(t *testing.T) {
@@ -18,9 +23,7 @@ func TestAllResolvedResources(t *testing.T) {
 		DiscoverySubscriptions,
 		DiscoveryInstancesApi,
 		DiscoverySqlServers,
-		DiscoveryPostgresServers,
 		DiscoveryPostgresFlexibleServers,
-		DiscoveryMySqlServers,
 		DiscoveryMySqlFlexibleServers,
 		DiscoveryAksClusters,
 		DiscoveryAppServiceApps,
@@ -28,6 +31,8 @@ func TestAllResolvedResources(t *testing.T) {
 		DiscoveryBatchAccounts,
 		DiscoveryStorageAccounts,
 		DiscoveryKeyVaults,
+		DiscoveryManagedHsms,
+		DiscoveryIotHubs,
 		DiscoverySecurityGroups,
 		DiscoveryCosmosDb,
 		DiscoveryVirtualNetworks,
@@ -39,6 +44,7 @@ func TestAllResolvedResources(t *testing.T) {
 		DiscoveryApplicationGateways,
 		DiscoveryFirewalls,
 		DiscoveryContainerApps,
+		DiscoveryCognitiveServices,
 		DiscoveryStorageContainers,
 	}
 	require.ElementsMatch(t, expected, All)
@@ -47,11 +53,8 @@ func TestAllResolvedResources(t *testing.T) {
 func TestAutoResolvedResources(t *testing.T) {
 	expected := []string{
 		DiscoverySubscriptions,
-		DiscoveryInstancesApi,
 		DiscoverySqlServers,
-		DiscoveryPostgresServers,
 		DiscoveryPostgresFlexibleServers,
-		DiscoveryMySqlServers,
 		DiscoveryMySqlFlexibleServers,
 		DiscoveryAksClusters,
 		DiscoveryAppServiceApps,
@@ -59,6 +62,8 @@ func TestAutoResolvedResources(t *testing.T) {
 		DiscoveryBatchAccounts,
 		DiscoveryStorageAccounts,
 		DiscoveryKeyVaults,
+		DiscoveryManagedHsms,
+		DiscoveryIotHubs,
 		DiscoverySecurityGroups,
 		DiscoveryCosmosDb,
 		DiscoveryVirtualNetworks,
@@ -70,8 +75,10 @@ func TestAutoResolvedResources(t *testing.T) {
 		DiscoveryApplicationGateways,
 		DiscoveryFirewalls,
 		DiscoveryContainerApps,
+		DiscoveryCognitiveServices,
 	}
 	require.ElementsMatch(t, expected, Auto)
+	require.NotContains(t, Auto, DiscoveryInstancesApi, "virtual machines are opt-in, not part of auto")
 }
 
 func TestGetDiscoveryTargets(t *testing.T) {
@@ -102,13 +109,13 @@ func TestGetDiscoveryTargets(t *testing.T) {
 		},
 		{
 			name:    "auto with extras",
-			targets: []string{"auto", "postgres-servers", "keyvaults-vaults"},
-			want:    append(slices.Clone(Auto), DiscoveryPostgresServers, DiscoveryKeyVaults),
+			targets: []string{"auto", "cosmosdb", "keyvaults-vaults"},
+			want:    append(slices.Clone(Auto), DiscoveryCosmosDb, DiscoveryKeyVaults),
 		},
 		{
 			name:    "explicit targets",
-			targets: []string{"postgres-servers", "keyvaults-vaults", "instances"},
-			want:    []string{DiscoveryPostgresServers, DiscoveryKeyVaults, DiscoveryInstances},
+			targets: []string{"cosmosdb", "keyvaults-vaults", "instances"},
+			want:    []string{DiscoveryCosmosDb, DiscoveryKeyVaults, DiscoveryInstances},
 		},
 	}
 
@@ -262,4 +269,229 @@ func TestGetInstancesLabels_PropertiesError(t *testing.T) {
 	}
 	_, err := getInstancesLabels(vm)
 	require.Error(t, err)
+}
+
+func TestPropagateSubscriptionTagsToAssets(t *testing.T) {
+	t.Run("fills missing keys", func(t *testing.T) {
+		assets := []*inventory.Asset{{Labels: map[string]string{"a": "1"}}}
+		propagateSubscriptionTagsToAssets(assets, map[string]string{"b": "2"})
+		require.Equal(t, map[string]string{"a": "1", "b": "2"}, assets[0].Labels)
+	})
+
+	t.Run("asset label wins on collision", func(t *testing.T) {
+		assets := []*inventory.Asset{{Labels: map[string]string{"env": "dev"}}}
+		propagateSubscriptionTagsToAssets(assets, map[string]string{"env": "prod"})
+		require.Equal(t, "dev", assets[0].Labels["env"])
+	})
+
+	t.Run("nil asset labels are initialized", func(t *testing.T) {
+		assets := []*inventory.Asset{{}}
+		propagateSubscriptionTagsToAssets(assets, map[string]string{"b": "2"})
+		require.Equal(t, map[string]string{"b": "2"}, assets[0].Labels)
+	})
+
+	t.Run("empty tags is a no-op", func(t *testing.T) {
+		assets := []*inventory.Asset{{Labels: map[string]string{"a": "1"}}}
+		propagateSubscriptionTagsToAssets(assets, nil)
+		require.Equal(t, map[string]string{"a": "1"}, assets[0].Labels)
+	})
+
+	t.Run("nil asset in slice is skipped", func(t *testing.T) {
+		assets := []*inventory.Asset{nil, {Labels: map[string]string{}}}
+		require.NotPanics(t, func() {
+			propagateSubscriptionTagsToAssets(assets, map[string]string{"b": "2"})
+		})
+		require.Equal(t, map[string]string{"b": "2"}, assets[1].Labels)
+	})
+}
+
+func TestAssetsForSubscription(t *testing.T) {
+	assets := []*inventory.Asset{
+		{Name: "a", Labels: map[string]string{SubscriptionLabel: "sub-1"}},
+		{Name: "b", Labels: map[string]string{SubscriptionLabel: "sub-2"}},
+		{Name: "c", Labels: map[string]string{SubscriptionLabel: "sub-1"}},
+		nil,
+		{Name: "d", Labels: nil},
+	}
+	got := assetsForSubscription(assets, "sub-1")
+	require.Len(t, got, 2)
+	require.Equal(t, "a", got[0].Name)
+	require.Equal(t, "c", got[1].Name)
+}
+
+func TestSubToAsset_SetsSubscriptionLabel(t *testing.T) {
+	asset := subToAsset(subWithConfig{
+		sub: subscriptions.Subscription{
+			SubscriptionID: new("sub-1"),
+			DisplayName:    new("My Sub"),
+			TenantID:       new("tenant-1"),
+		},
+		conf: &inventory.Config{},
+	})
+	require.Equal(t, "sub-1", asset.Labels[SubscriptionLabel])
+}
+
+func TestApplySubscriptionTags_Override(t *testing.T) {
+	subs := []subWithConfig{
+		{sub: subscriptions.Subscription{SubscriptionID: new("sub-1")}},
+		{sub: subscriptions.Subscription{SubscriptionID: new("sub-2")}},
+	}
+	assets := []*inventory.Asset{
+		{Name: "vm1", Labels: map[string]string{SubscriptionLabel: "sub-1"}},
+		{Name: "vm2", Labels: map[string]string{SubscriptionLabel: "sub-2", "env": "dev"}},
+		{Name: "orphan", Labels: map[string]string{SubscriptionLabel: "sub-3"}},
+	}
+
+	// override wins over each subscription's own tags
+	applySubscriptionTags(map[string]string{"env": "prod"}, subs, assets)
+
+	require.Equal(t, "prod", assets[0].Labels["env"]) // filled from the override
+	require.Equal(t, "dev", assets[1].Labels["env"])  // asset value wins on collision
+	require.NotContains(t, assets[2].Labels, "env")   // sub-3 not in subs list — untouched
+}
+
+func TestApplySubscriptionTags_FromListedSubscription(t *testing.T) {
+	// no override: tags come straight from the subscription records the list
+	// pager already returned, so no extra per-subscription API call is made.
+	subs := []subWithConfig{
+		{sub: subscriptions.Subscription{
+			SubscriptionID: new("sub-1"),
+			Tags:           map[string]*string{"owner": new("alice"), "env": new("prod")},
+		}},
+		{sub: subscriptions.Subscription{SubscriptionID: new("sub-2")}}, // no tags
+	}
+	assets := []*inventory.Asset{
+		{Name: "vm1", Labels: map[string]string{SubscriptionLabel: "sub-1"}},
+		{Name: "vm2", Labels: map[string]string{SubscriptionLabel: "sub-1", "env": "dev"}},
+		{Name: "vm3", Labels: map[string]string{SubscriptionLabel: "sub-2"}},
+	}
+
+	applySubscriptionTags(nil, subs, assets)
+
+	require.Equal(t, "alice", assets[0].Labels["owner"]) // filled from subscription tag
+	require.Equal(t, "prod", assets[0].Labels["env"])    // filled from subscription tag
+	require.Equal(t, "dev", assets[1].Labels["env"])     // asset value wins on collision
+	require.Equal(t, "alice", assets[1].Labels["owner"]) // still filled
+	require.NotContains(t, assets[2].Labels, "owner")    // sub-2 has no tags
+}
+
+// getDiscoveryTargets used to strip "auto" out of the caller's own slice:
+// slices.DeleteFunc edits the backing array in place, leaving
+// config.Discover.Targets holding [""]. That was invisible while the targets
+// were read once per scan. Staged discovery reads them at the tenant level and
+// then clones the same config for every subscription, so every subscription
+// inherited [""] , matched no target, and discovered nothing -- a tenant scan
+// found its subscriptions and not a single resource beneath them.
+func TestGetDiscoveryTargetsDoesNotMutateConfig(t *testing.T) {
+	tests := [][]string{
+		{DiscoveryAuto},
+		{DiscoveryAuto, DiscoveryInstancesApi},
+		{DiscoveryAll},
+		{DiscoveryKeyVaults},
+		{},
+	}
+
+	for _, targets := range tests {
+		t.Run(strings.Join(targets, ","), func(t *testing.T) {
+			cfg := &inventory.Config{Discover: &inventory.Discovery{Targets: slices.Clone(targets)}}
+
+			first := getDiscoveryTargets(cfg)
+			require.Equal(t, targets, cfg.Discover.Targets,
+				"the caller's config must come back untouched")
+
+			// The second read is what a subscription's stage-2 connection does
+			// after stage 1 cloned this config for it.
+			second := getDiscoveryTargets(cfg)
+			require.Equal(t, first, second, "repeated reads must agree")
+		})
+	}
+}
+
+// The clone stage 1 hands each subscription has to resolve to the same targets
+// the tenant did, or stage 2 discovers nothing.
+func TestGetDiscoveryTargetsSurvivesCloning(t *testing.T) {
+	root := &inventory.Config{Discover: &inventory.Discovery{Targets: []string{DiscoveryAuto}}}
+	rootTargets := getDiscoveryTargets(root)
+
+	child := root.Clone()
+	require.Equal(t, rootTargets, getDiscoveryTargets(child),
+		"a subscription must resolve the same targets as the tenant it came from")
+	require.Contains(t, getDiscoveryTargets(child), DiscoveryKeyVaults,
+		"auto must still expand to the API resource targets after cloning")
+}
+
+// The retired Single Server targets are still accepted so an existing inventory
+// keeps parsing, but nothing discovers them any more. A target that matches no
+// resource is indistinguishable from a successful scan of an empty estate, so
+// the warning is the only signal the user gets -- assert it actually fires.
+func TestRetiredDiscoveryTargetsWarn(t *testing.T) {
+	cases := []struct {
+		name        string
+		targets     []string
+		wantWarn    bool
+		wantMatches []string
+	}{
+		{
+			name:        "retired mysql target warns and names its replacement",
+			targets:     []string{"mysql-servers"},
+			wantWarn:    true,
+			wantMatches: []string{"mysql-servers", DiscoveryMySqlFlexibleServers},
+		},
+		{
+			name:        "retired postgres target warns and names its replacement",
+			targets:     []string{"postgres-servers"},
+			wantWarn:    true,
+			wantMatches: []string{"postgres-servers", DiscoveryPostgresFlexibleServers},
+		},
+		{
+			name:     "current targets stay quiet",
+			targets:  []string{DiscoveryMySqlFlexibleServers, DiscoveryPostgresFlexibleServers, DiscoveryKeyVaults},
+			wantWarn: false,
+		},
+		{
+			name:     "auto stays quiet",
+			targets:  []string{DiscoveryAuto},
+			wantWarn: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			original := log.Logger
+			log.Logger = zerolog.New(&buf)
+			defer func() { log.Logger = original }()
+
+			getDiscoveryTargets(&inventory.Config{
+				Discover: &inventory.Discovery{Targets: tc.targets},
+			})
+
+			out := buf.String()
+			if !tc.wantWarn {
+				require.NotContains(t, out, "retired")
+				return
+			}
+			require.Contains(t, out, "retired")
+			for _, want := range tc.wantMatches {
+				require.Contains(t, out, want)
+			}
+		})
+	}
+}
+
+// The retired targets must be gone from the lists that drive an unqualified
+// scan, or "auto" keeps asking ARM for resource types that cannot exist.
+func TestRetiredTargetsAreNotDiscovered(t *testing.T) {
+	for retired := range retiredDiscoveryTargets {
+		require.NotContains(t, AllAPIResources, retired)
+		require.NotContains(t, Auto, retired)
+		require.NotContains(t, All, retired)
+		for _, spec := range genericDiscoverySpecs {
+			require.NotEqual(t, retired, spec.discoveryTarget)
+		}
+	}
+	for _, spec := range genericDiscoverySpecs {
+		require.NotEqual(t, "Microsoft.DBforMySQL/servers", spec.armType)
+		require.NotEqual(t, "Microsoft.DBforPostgreSQL/servers", spec.armType)
+	}
 }

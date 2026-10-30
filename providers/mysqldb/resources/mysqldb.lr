@@ -1,0 +1,273 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/mysqldb"
+option go_package = "go.mondoo.com/mql/providers/mysqldb/resources"
+option root = "mysqldb"
+
+// MySQL
+//
+// Root namespace for all MySQL, MariaDB, and Percona server resources. Query
+// `mysqldb.instance` for the connected server: its configuration variables,
+// users, privileges, schemas, routines, plugins, components, and replication
+// state.
+mysqldb @root {}
+
+// MySQL server
+//
+// A single MySQL, MariaDB, or Percona server, reported by `flavor`. Exposes
+// version metadata and, through `variables`, every global configuration
+// parameter (the source for most hardening checks). The most security-relevant
+// settings are surfaced directly (`ssl`, `requireSecureTransport`,
+// `tlsVersion`, `sqlMode`, `secureFilePriv`, `localInfile`, `bindAddress`).
+// Principals and objects are reachable through `users`, `schemas`, `plugins`,
+// `components`, and `replicationChannels`.
+mysqldb.instance @defaults("version flavor") {
+  // Full server version, for example 8.0.40
+  version @maturity("deprecated") @replaced_by("asset.version") string
+  // Server version comment (distribution string)
+  versionComment string
+  // Detected flavor: mysql, mariadb, or percona
+  flavor string
+  // Server UUID, or empty when the server does not expose one
+  serverUuid string
+  // Whether the server accepts TLS connections
+  //
+  // Read from have_ssl where the server has it, otherwise (MySQL 8.4 and
+  // later) from performance_schema.tls_channel_status for the mysql_main
+  // channel.
+  ssl bool
+  // Whether the server requires encrypted connections (require_secure_transport)
+  requireSecureTransport bool
+  // Accepted TLS protocol versions (tls_version)
+  tlsVersion string
+  // Value of the sql_mode variable
+  sqlMode string
+  // Value of the secure_file_priv variable
+  secureFilePriv string
+  // Whether local_infile is enabled
+  localInfile bool
+  // Address the server binds to (bind_address)
+  bindAddress string
+  // Global configuration variables (SHOW GLOBAL VARIABLES)
+  variables() []mysqldb.variable
+  // Accounts defined on the server
+  users() []mysqldb.user
+  // Schemas (databases) on the server
+  schemas() []mysqldb.schema
+  // Installed plugins (information_schema.PLUGINS)
+  plugins() []mysqldb.plugin
+  // Installed server components
+  components() []mysqldb.component
+  // Replication source connections configured on the server
+  replicationChannels() []mysqldb.replicationChannel
+}
+
+// MySQL account
+//
+// A MySQL account, identified by the `user` name and the `host` it may connect
+// from. Exposes the authentication plugin, credential and lock state
+// (`hasPassword`, `accountLocked`, `passwordExpired`, `passwordLifetime`), TLS
+// requirements (`sslType`), and connection limits. `isAnonymous` and
+// `isWildcardHost` flag the accounts hardening guides call out. `privileges`
+// lists the grants held and `grantedRoles` the roles the account is granted.
+mysqldb.user @defaults("user host") {
+  // Account user name (empty for an anonymous account)
+  user string
+  // Host pattern the account may connect from
+  host string
+  // Authentication plugin, for example caching_sha2_password
+  authPlugin string
+  // Whether the account has a password set
+  hasPassword bool
+  // Whether the account is anonymous (empty user name)
+  isAnonymous bool
+  // Whether the account host is the bare % wildcard
+  //
+  // True only for the host %, which matches every client. Patterns such as
+  // 192.168.% or %.example.com are false; read host to audit them.
+  isWildcardHost bool
+  // Whether the account is locked
+  accountLocked bool
+  // Whether the account password is expired
+  passwordExpired bool
+  // Days before the password must be changed, or -1 when unset (use default)
+  passwordLifetime int
+  // When the password was last changed
+  passwordLastChanged time
+  // TLS requirement for the account: empty, ANY, X509, or SPECIFIED
+  sslType string
+  // Maximum connections per hour for the account, or 0 for no limit
+  //
+  // The MAX_CONNECTIONS_PER_HOUR resource limit. maxUserConnections is the
+  // limit on simultaneous connections.
+  maxConnections int
+  // Maximum simultaneous connections for the account, or 0 for the server default
+  //
+  // The MAX_USER_CONNECTIONS resource limit; 0 applies the server's
+  // max_user_connections.
+  maxUserConnections int
+  // Whether the account is a role
+  //
+  // Read from mysql.user is_role on MariaDB, where a role has an empty host.
+  // Null on MySQL and Percona, where a role is an ordinary account that is
+  // normally locked and has no password.
+  isRole bool
+  // Roles granted to this account
+  grantedRoles() []mysqldb.user
+  // Privileges held by this account
+  privileges() []mysqldb.privilege
+}
+
+// MySQL privilege grant
+//
+// A single privilege granted to an account. `scope` is the level it applies at
+// (GLOBAL, SCHEMA, TABLE, COLUMN, ROUTINE, or PROXY); `schema`, `table`,
+// `column`, `routine`, and `proxiedAccount` name the object where relevant, and
+// `isGrantable` reports whether the grantee may grant it onward (GRANT OPTION).
+mysqldb.privilege @defaults("privilegeType scope") {
+  // Account the privilege is granted to, as user@host
+  grantee string
+  // Scope: GLOBAL, SCHEMA, TABLE, COLUMN, ROUTINE, or PROXY
+  scope string
+  // Schema the privilege applies to, when scoped below GLOBAL
+  schema string
+  // Table the privilege applies to, when scoped to TABLE
+  table string
+  // Privilege type, for example SUPER, FILE, GRANT OPTION, or SELECT
+  privilegeType string
+  // Whether the grantee may grant the privilege to others
+  isGrantable bool
+  // Column the privilege applies to, when scope is COLUMN
+  column string
+  // Stored routine the privilege applies to, when scope is ROUTINE
+  routine string
+  // Type of the routine, PROCEDURE or FUNCTION, when scope is ROUTINE
+  routineType string
+  // Account the grantee may proxy as, when scope is PROXY
+  //
+  // Formatted as 'user'@'host'. The host may be a pattern, and ''@'' stands
+  // for any account.
+  proxiedAccount string
+}
+
+// MySQL schema
+//
+// A schema (database) on the server, selected by `name`. Exposes the default
+// character set and collation, the privileges granted on it, and the routines
+// and tables it contains.
+mysqldb.schema @defaults("name") {
+  // Schema name
+  name string
+  // Default character set
+  defaultCharacterSet string
+  // Default collation
+  defaultCollation string
+  // Privileges granted at this schema
+  privileges() []mysqldb.privilege
+  // Stored procedures and functions in the schema
+  routines() []mysqldb.routine
+  // Tables and views in the schema
+  tables() []mysqldb.table
+}
+
+// MySQL stored routine
+//
+// A stored procedure or function (information_schema.ROUTINES). `securityType`
+// reports whether the routine runs as its `definer` (DEFINER) or the caller
+// (INVOKER); a DEFINER routine owned by a privileged account is a
+// privilege-escalation surface.
+mysqldb.routine @defaults("schema name type") {
+  // Routine name
+  name string
+  // Schema the routine belongs to
+  schema string
+  // Routine type: PROCEDURE or FUNCTION
+  type string
+  // Account the routine executes as, when securityType is DEFINER (user@host)
+  definer string
+  // Security context the routine runs in: DEFINER or INVOKER
+  securityType string
+  // Whether the routine is declared deterministic
+  isDeterministic bool
+}
+
+// MySQL configuration variable
+//
+// A global configuration variable, selected by `name`, for example
+// `mysqldb.instance.variables.where(name == "local_infile")`.
+mysqldb.variable @defaults("name value") {
+  // Variable name
+  name string
+  // Current value
+  value string
+}
+
+// MySQL plugin
+//
+// An installed plugin (information_schema.PLUGINS), for example an
+// authentication, audit, or connection-control plugin. `status` reports
+// whether it is active.
+mysqldb.plugin @defaults("name status") {
+  // Plugin name
+  name string
+  // Load status, for example ACTIVE or DISABLED
+  status string
+  // Plugin type, for example AUTHENTICATION or AUDIT
+  type string
+  // Shared library the plugin is loaded from, or empty when built in
+  library string
+  // Plugin license
+  license string
+}
+
+// MySQL component
+//
+// An installed server component, for example component_validate_password or a
+// keyring component. Lists the components in mysql.component and the active
+// keyring component loaded through the server manifest. Components are the
+// modern replacement for several plugins.
+mysqldb.component @defaults("name") {
+  // Component name
+  name string
+  // Component URN, for example file://component_validate_password
+  urn string
+}
+
+// MySQL table
+//
+// A table or view in a schema (information_schema.TABLES). Exposes the storage
+// engine and row format, whether the tablespace is encrypted, and the
+// privileges granted on the table.
+mysqldb.table @defaults("schema name") {
+  // Table name
+  name string
+  // Schema the table belongs to
+  schema string
+  // Storage engine, for example InnoDB
+  engine string
+  // Row format, for example Dynamic
+  rowFormat string
+  // Whether the table's tablespace is encrypted
+  encrypted bool
+  // Privileges granted on the table
+  privileges() []mysqldb.privilege
+}
+
+// MySQL replication channel
+//
+// A replication source connection (performance_schema.replication_connection_configuration).
+// `sslAllowed` and `sslVerifyServerCert` report whether the channel secures and
+// verifies its connection to the source.
+mysqldb.replicationChannel @defaults("channel") {
+  // Replication channel name
+  channel string
+  // Host of the replication source
+  sourceHost string
+  // Whether TLS is allowed for the channel
+  sslAllowed bool
+  // Whether the channel verifies the source server certificate
+  sslVerifyServerCert bool
+}

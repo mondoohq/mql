@@ -7,13 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"strconv"
 	"strings"
 
 	"github.com/kballard/go-shellquote"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/types"
 )
 
 // containerInfo represents the parsed JSON output from ctr containers info
@@ -25,6 +27,8 @@ type containerInfo struct {
 	} `json:"Runtime"`
 	Snapshotter string            `json:"Snapshotter"`
 	Labels      map[string]string `json:"Labels"`
+	SandboxID   string            `json:"SandboxID"`
+	Spec        json.RawMessage   `json:"Spec"`
 }
 
 // taskData holds information about a containerd task
@@ -86,20 +90,154 @@ func parseContainerInfo(jsonData []byte) (*containerInfo, error) {
 	return &info, nil
 }
 
-func (p *mqlContainerd) containers() ([]any, error) {
-	// Get all namespaces using ctr CLI
-	o, err := CreateResource(p.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData(shellquote.Join("ctr", "namespaces", "list", "-q")),
+// ctrBinaries are the containerd CLIs to try, in order. SUSE packages ctr as
+// containerd-ctr in /usr/sbin, which is not on a non-root PATH. Docker 18.09
+// and older bundle their own CLI as docker-containerd-ctr. A tarball or static
+// bundle install puts ctr in /usr/local/bin, which RHEL's sudo secure_path
+// leaves off root's PATH. The Kubernetes distributions that run their own
+// containerd ship ctr on no PATH: RKE2 in /var/lib/rancher/rke2/bin,
+// Canonical Kubernetes and MicroK8s in their snaps, and k0s only as a
+// subcommand of the k0s binary. K3s links ctr onto PATH.
+var ctrBinaries = [][]string{
+	{"ctr"},
+	{"containerd-ctr"},
+	{"/usr/sbin/containerd-ctr"},
+	{"docker-containerd-ctr"},
+	{"/var/lib/rancher/rke2/bin/ctr"},
+	{"/snap/k8s/current/bin/ctr"},
+	{"/snap/microk8s/current/bin/ctr"},
+	{"k0s", "ctr"},
+	{"/usr/local/bin/ctr"},
+}
+
+const (
+	// containerdSocket is where a standalone containerd listens by default.
+	// Canonical Kubernetes uses it too.
+	containerdSocket = "/run/containerd/containerd.sock"
+	// dockerContainerdSocket is where dockerd's own containerd listens. dockerd
+	// starts one when no containerd serves containerdSocket (SUSE's
+	// containerd.service conflicts with docker.service, and Docker 18.09 and
+	// older always bundle one).
+	dockerContainerdSocket = "/run/docker/containerd/containerd.sock"
+	// rke2ContainerdSocket is where the containerd that RKE2 and K3s run
+	// listens.
+	rke2ContainerdSocket = "/run/k3s/containerd/containerd.sock"
+	// microk8sContainerdSocket is where MicroK8s's containerd listens.
+	microk8sContainerdSocket = "/var/snap/microk8s/common/run/containerd.sock"
+	// k0sContainerdSocket is where k0s's containerd listens.
+	k0sContainerdSocket = "/run/k0s/containerd.sock"
+)
+
+// otherContainerdSockets are the sockets of containerds that do not serve
+// containerdSocket, in order of preference.
+var otherContainerdSockets = []string{
+	dockerContainerdSocket,
+	rke2ContainerdSocket,
+	microk8sContainerdSocket,
+	k0sContainerdSocket,
+}
+
+// containerdAddressArgs returns the ctr arguments that select the containerd
+// socket. The default socket wins whenever it may exist, since dockerd adopts
+// a running containerd's socket. Only when it is missing does ctr need
+// --address, for the first other socket that is there (or hidden from this
+// user, whom ctr will then report as refused).
+func containerdAddressArgs(stat func(path string) error) []string {
+	if err := stat(containerdSocket); !errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	for _, socket := range otherContainerdSockets {
+		if err := stat(socket); !errors.Is(err, fs.ErrNotExist) {
+			return []string{"--address", socket}
+		}
+	}
+	return nil
+}
+
+// ctrCLIs returns the containerd command lines to try, in order.
+func ctrCLIs(addressArgs []string) [][]string {
+	clis := make([][]string, 0, len(ctrBinaries))
+	for _, bin := range ctrBinaries {
+		clis = append(clis, append(append([]string{}, bin...), addressArgs...))
+	}
+	return clis
+}
+
+// ctrCommand builds the command line that runs ctr with the given arguments.
+func ctrCommand(cli []string, args ...string) string {
+	return shellquote.Join(append(append([]string{}, cli...), args...)...)
+}
+
+// containerdTaskState returns the status and pid of a container from its task.
+// A container without a task was created but never started. A stopped task
+// keeps the pid of its exited process, which is no process anymore.
+func containerdTaskState(task taskData, ok bool) (string, int64) {
+	if !ok {
+		return "created", 0
+	}
+	status := strings.ToLower(task.status)
+	switch status {
+	case "running", "paused", "pausing":
+		return status, task.pid
+	default:
+		return status, 0
+	}
+}
+
+// listContainerdNamespaces lists the containerd namespaces with the first ctr
+// CLI that is installed, and returns that CLI for every later call.
+func (p *mqlContainerd) listContainerdNamespaces() ([]string, []string, error) {
+	conn := p.MqlRuntime.Connection.(shared.Connection)
+	addressArgs := containerdAddressArgs(func(path string) error {
+		_, err := conn.FileSystem().Stat(path)
+		return err
 	})
+	var firstErr error
+	for _, cli := range ctrCLIs(addressArgs) {
+		o, err := CreateResource(p.MqlRuntime, "command", map[string]*llx.RawData{
+			"command": llx.StringData(ctrCommand(cli, "namespaces", "list", "-q")),
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		cmd := o.(*mqlCommand)
+		exit := cmd.GetExitcode()
+		if exit.Error != nil {
+			return nil, nil, exit.Error
+		}
+		if exit.Data == 0 {
+			return cli, parseNamespaceList(cmd.Stdout.Data), nil
+		}
+		listErr := errors.New("failed to list namespaces: " + cmd.Stderr.Data)
+		if !isCtrNotInstalled(cli[0], exit.Data, cmd.Stderr.Data) {
+			return nil, nil, listErr
+		}
+		if firstErr == nil {
+			firstErr = listErr
+		}
+	}
+	return nil, nil, firstErr
+}
+
+// isCtrNotInstalled reports whether a ctr call failed because the binary is
+// missing, rather than because containerd refused or is down. Shells exit with
+// 127 for a command they cannot find, but sudo exits with 1 and says so on
+// stderr as "sudo: <bin>: " followed by "command not found" in the remote's
+// language.
+func isCtrNotInstalled(bin string, exitCode int64, stderr string) bool {
+	if exitCode == 127 {
+		return true
+	}
+	return strings.HasPrefix(strings.TrimSpace(stderr), "sudo: "+bin+": ") ||
+		strings.Contains(stderr, bin+": command not found") ||
+		strings.Contains(stderr, bin+": not found")
+}
+
+func (p *mqlContainerd) containers() ([]any, error) {
+	ctr, namespaces, err := p.listContainerdNamespaces()
 	if err != nil {
 		return nil, err
 	}
-	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("failed to list namespaces: " + cmd.Stderr.Data)
-	}
-
-	namespaces := parseNamespaceList(cmd.Stdout.Data)
 	var containers []any
 
 	for _, ns := range namespaces {
@@ -109,7 +247,7 @@ func (p *mqlContainerd) containers() ([]any, error) {
 
 		// List containers in namespace
 		o, err := CreateResource(p.MqlRuntime, "command", map[string]*llx.RawData{
-			"command": llx.StringData(shellquote.Join("ctr", "-n", ns, "containers", "list", "-q")),
+			"command": llx.StringData(ctrCommand(ctr, "-n", ns, "containers", "list", "-q")),
 		})
 		if err != nil {
 			log.Debug().Str("namespace", ns).Err(err).Msg("skipping namespace, failed to create command")
@@ -127,7 +265,7 @@ func (p *mqlContainerd) containers() ([]any, error) {
 		var taskInfo map[string]taskData
 
 		o, err = CreateResource(p.MqlRuntime, "command", map[string]*llx.RawData{
-			"command": llx.StringData(shellquote.Join("ctr", "-n", ns, "tasks", "list")),
+			"command": llx.StringData(ctrCommand(ctr, "-n", ns, "tasks", "list")),
 		})
 		if err == nil {
 			cmd := o.(*mqlCommand)
@@ -136,6 +274,13 @@ func (p *mqlContainerd) containers() ([]any, error) {
 			}
 		}
 
+		type listed struct {
+			id   string
+			info *containerInfo
+			spec *ociSpec
+		}
+		var infos []listed
+		specs := map[string]*ociSpec{}
 		for _, containerID := range containerIDs {
 			if containerID == "" {
 				continue
@@ -143,7 +288,7 @@ func (p *mqlContainerd) containers() ([]any, error) {
 
 			// Get container info as JSON
 			o, err := CreateResource(p.MqlRuntime, "command", map[string]*llx.RawData{
-				"command": llx.StringData(shellquote.Join("ctr", "-n", ns, "containers", "info", containerID)),
+				"command": llx.StringData(ctrCommand(ctr, "-n", ns, "containers", "info", containerID)),
 			})
 			if err != nil {
 				log.Debug().Str("namespace", ns).Str("container", containerID).Err(err).Msg("skipping container, failed to create command")
@@ -161,6 +306,18 @@ func (p *mqlContainerd) containers() ([]any, error) {
 				log.Debug().Str("namespace", ns).Str("container", containerID).Err(err).Msg("skipping container, failed to parse info")
 				continue
 			}
+			spec, err := parseOCISpec(info.Spec)
+			if err != nil {
+				// the container is still listed, without the fields its spec gives
+				log.Debug().Str("namespace", ns).Str("container", containerID).Err(err).Msg("cannot parse the container's spec")
+			}
+			specs[containerID] = spec
+			infos = append(infos, listed{id: containerID, info: info, spec: spec})
+		}
+
+		for _, l := range infos {
+			info := l.info
+			containerID := l.id
 
 			// Convert labels to map[string]any
 			labels := make(map[string]any)
@@ -168,13 +325,8 @@ func (p *mqlContainerd) containers() ([]any, error) {
 				labels[k] = v
 			}
 
-			// Get task info - default to "created" if no task exists
-			status := "created"
-			var pid int64
-			if task, ok := taskInfo[containerID]; ok {
-				status = strings.ToLower(task.status)
-				pid = task.pid
-			}
+			task, ok := taskInfo[containerID]
+			status, pid := containerdTaskState(task, ok)
 
 			// Create resource with unique ID combining namespace and container ID
 			resourceID := fmt.Sprintf("%s/%s", ns, containerID)
@@ -194,7 +346,17 @@ func (p *mqlContainerd) containers() ([]any, error) {
 				return nil, err
 			}
 
-			containers = append(containers, containerRes.(*mqlContainerdContainer))
+			c := containerRes.(*mqlContainerdContainer)
+			c.spec = l.spec
+			c.infoSandboxID = info.SandboxID
+			if l.spec != nil {
+				sandboxID := l.spec.Annotations[criSandboxIDAnnotation]
+				if sandboxID == "" {
+					sandboxID = info.SandboxID
+				}
+				c.sandbox = specs[sandboxID]
+			}
+			containers = append(containers, c)
 		}
 	}
 

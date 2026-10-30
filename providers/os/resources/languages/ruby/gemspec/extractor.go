@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/ruby"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/ruby"
 )
 
 var (
@@ -25,6 +25,16 @@ var (
 	namePattern = regexp.MustCompile(`\.name\s*=\s*["']([^"']+)["']`)
 	// spec.version = "1.0.0" or spec.version = '1.0.0'
 	versionPattern = regexp.MustCompile(`\.version\s*=\s*["']([^"']+)["']`)
+	// spec.license = "Apache-2.0" — the singular form. A gemspec may state its
+	// license either way, and the two are the same field: RubyGems' `license=`
+	// is a one-element `licenses=`.
+	licensePattern = regexp.MustCompile(`\.license\s*=\s*["']([^"']*)["']`)
+	// spec.licenses = ["MIT", "Apache-2.0"] — the plural form, a list. Matching
+	// is line-scoped like every other pattern here, so a list broken across
+	// source lines is not read; gemspecs write this one on a single line.
+	licensesPattern = regexp.MustCompile(`\.licenses\s*=\s*\[([^\]]*)\]`)
+	// the quoted members of that list
+	quotedStringPattern = regexp.MustCompile(`["']([^"']*)["']`)
 	// spec.add_dependency "foo", "~> 1.0"
 	// spec.add_runtime_dependency "foo", "~> 1.0"
 	// spec.add_development_dependency "foo", "~> 1.0"
@@ -60,12 +70,35 @@ func parseGemspec(r io.Reader) (*gemSpec, error) {
 	for scanner.Scan() {
 		line := scanner.Text()
 
+		// A commented-out line states nothing. Reading one is how a gemspec
+		// that commented its license out while changing it gets reported under
+		// the old one, and a wrong license is worse than none: a consumer
+		// cannot tell it from a license the gem actually declares. The same
+		// applies to a commented-out name or version.
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+
 		if m := namePattern.FindStringSubmatch(line); len(m) > 1 {
 			spec.Name = m[1]
 		}
 
 		if m := versionPattern.FindStringSubmatch(line); len(m) > 1 {
 			spec.Version = m[1]
+		}
+
+		// Both license forms write the same field, so the last one the file
+		// states wins — which is what Ruby does when a gemspec sets both.
+		if m := licensePattern.FindStringSubmatch(line); len(m) > 1 {
+			spec.Licenses = []string{m[1]}
+		}
+
+		if m := licensesPattern.FindStringSubmatch(line); len(m) > 1 {
+			var licenses []string
+			for _, q := range quotedStringPattern.FindAllStringSubmatch(m[1], -1) {
+				licenses = append(licenses, q[1])
+			}
+			spec.Licenses = licenses
 		}
 
 		if m := depPattern.FindStringSubmatch(line); len(m) > 2 {
@@ -98,8 +131,11 @@ func (s *gemSpec) Root() *languages.Package {
 	}
 
 	return &languages.Package{
-		Name:         s.Name,
-		Version:      s.Version,
+		Name:    s.Name,
+		Version: s.Version,
+		// A gemspec listing several licenses offers a choice among them, which
+		// is SPDX's OR. Values are passed through as the gemspec wrote them.
+		License:      languages.LicenseExpression(s.Licenses),
 		Purl:         ruby.NewPackageUrl(s.Name, s.Version),
 		Cpes:         ruby.NewCpes(s.Name, s.Version),
 		EvidenceList: ruby.NewEvidenceList(s.evidence),
@@ -161,8 +197,8 @@ func isVersionConstraint(v string) bool {
 
 // extractPinnedVersion extracts the version from an exact pin constraint "= X.Y.Z".
 func extractPinnedVersion(v string) string {
-	if strings.HasPrefix(v, "= ") {
-		return strings.TrimPrefix(v, "= ")
+	if after, ok := strings.CutPrefix(v, "= "); ok {
+		return after
 	}
 	return v
 }

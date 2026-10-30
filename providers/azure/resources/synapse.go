@@ -13,18 +13,25 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/synapse/armsynapse"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlAzureSubscriptionSynapseServiceWorkspaceInternal struct {
 	cacheDefaultStorageId           string
 	cacheCmkKeyURI                  string
 	cacheUserAssignedIdentityIds    []string
+	cacheComputeSubnetId            *string
 	cachePrivateEndpointConnections []*armsynapse.PrivateEndpointConnection
+}
+
+// computeSubnet resolves the subnet the workspace's managed Spark compute
+// attaches to. Null when the workspace uses the Microsoft-managed network.
+func (a *mqlAzureSubscriptionSynapseServiceWorkspace) computeSubnet() (*mqlAzureSubscriptionNetworkServiceSubnet, error) {
+	return resolveDelegatedSubnet(a.MqlRuntime, a.cacheComputeSubnetId, &a.ComputeSubnet)
 }
 
 func (a *mqlAzureSubscriptionSynapseServiceWorkspace) privateEndpointConnections() ([]any, error) {
@@ -69,7 +76,7 @@ func (a *mqlAzureSubscriptionSynapseService) workspaces() ([]any, error) {
 			var respErr *azcore.ResponseError
 			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
 				log.Warn().Err(err).Msg("could not list synapse workspaces due to access denied")
-				return res, nil
+				return keepTagMatches(a.MqlRuntime, res), nil
 			}
 			return nil, err
 		}
@@ -95,6 +102,10 @@ func (a *mqlAzureSubscriptionSynapseService) workspaces() ([]any, error) {
 			var provisioningState string
 			var trustedServiceBypassEnabled *bool
 			var azureADOnlyAuthentication *bool
+			var preventDataExfiltration *bool
+			var computeSubnetId, purviewResourceId *string
+			var gitRepositoryType, gitAccountName, gitRepositoryName, gitCollaborationBranch *string
+			allowedAadTenantIds := []any{}
 			var defaultStorageFilesystem string
 			var defaultStorageId string
 			var cmkKeyURI string
@@ -134,11 +145,35 @@ func (a *mqlAzureSubscriptionSynapseService) workspaces() ([]any, error) {
 				}
 				trustedServiceBypassEnabled = ws.Properties.TrustedServiceBypassEnabled
 				azureADOnlyAuthentication = ws.Properties.AzureADOnlyAuthentication
+
+				// Both stay null on a workspace without a managed virtual
+				// network, where exfiltration protection does not apply. A
+				// false here would read as "protection deliberately off".
+				if mvns := ws.Properties.ManagedVirtualNetworkSettings; mvns != nil {
+					preventDataExfiltration = mvns.PreventDataExfiltration
+					allowedAadTenantIds = strPtrsToAny(mvns.AllowedAADTenantIDsForLinking)
+				}
+				if vnp := ws.Properties.VirtualNetworkProfile; vnp != nil {
+					computeSubnetId = vnp.ComputeSubnetID
+				}
+				if wrc := ws.Properties.WorkspaceRepositoryConfiguration; wrc != nil {
+					gitRepositoryType = wrc.Type
+					gitAccountName = wrc.AccountName
+					gitRepositoryName = wrc.RepositoryName
+					gitCollaborationBranch = wrc.CollaborationBranch
+				}
+				if pc := ws.Properties.PurviewConfiguration; pc != nil {
+					purviewResourceId = pc.PurviewResourceID
+				}
 			}
 
-			var userAssignedIdentityIds []string
-			if ws.Identity != nil {
-				userAssignedIdentityIds = sortedUserAssignedIdentityIDs(ws.Identity.UserAssignedIdentities)
+			wsIdentity := orZero(ws.Identity)
+			userAssignedIdentityIds := sortedUserAssignedIdentityIDs(wsIdentity.UserAssignedIdentities)
+
+			resourceIdentity, err := resourceIdentityData(a.MqlRuntime, convert.ToValue(ws.ID), userAssignedIdentityIds,
+				identityType(wsIdentity.Type), identityPrincipalId(wsIdentity.PrincipalID), identityTenantId(wsIdentity.TenantID))
+			if err != nil {
+				return nil, err
 			}
 
 			mqlWorkspace, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionSynapseServiceWorkspace,
@@ -151,6 +186,7 @@ func (a *mqlAzureSubscriptionSynapseService) workspaces() ([]any, error) {
 					"type":                        llx.StringDataPtr(ws.Type),
 					"properties":                  llx.DictData(properties),
 					"identity":                    llx.DictData(identity),
+					"resourceIdentity":            resourceIdentity,
 					"managedVirtualNetwork":       llx.StringData(managedVirtualNetwork),
 					"publicNetworkAccess":         llx.StringData(publicNetworkAccess),
 					"encryption":                  llx.DictData(encryption),
@@ -160,11 +196,20 @@ func (a *mqlAzureSubscriptionSynapseService) workspaces() ([]any, error) {
 					"trustedServiceBypassEnabled": llx.BoolDataPtr(trustedServiceBypassEnabled),
 					"azureADOnlyAuthentication":   llx.BoolDataPtr(azureADOnlyAuthentication),
 					"defaultStorageFilesystem":    llx.StringData(defaultStorageFilesystem),
+
+					"preventDataExfiltration":       llx.BoolDataPtr(preventDataExfiltration),
+					"allowedAadTenantIdsForLinking": llx.ArrayData(allowedAadTenantIds, types.String),
+					"gitRepositoryType":             llx.StringDataPtr(gitRepositoryType),
+					"gitAccountName":                llx.StringDataPtr(gitAccountName),
+					"gitRepositoryName":             llx.StringDataPtr(gitRepositoryName),
+					"gitCollaborationBranch":        llx.StringDataPtr(gitCollaborationBranch),
+					"purviewResourceId":             llx.StringDataPtr(purviewResourceId),
 				})
 			if err != nil {
 				return nil, err
 			}
 			workspaceRes := mqlWorkspace.(*mqlAzureSubscriptionSynapseServiceWorkspace)
+			workspaceRes.cacheComputeSubnetId = computeSubnetId
 			workspaceRes.cacheDefaultStorageId = defaultStorageId
 			workspaceRes.cacheCmkKeyURI = cmkKeyURI
 			workspaceRes.cacheUserAssignedIdentityIds = userAssignedIdentityIds
@@ -174,7 +219,7 @@ func (a *mqlAzureSubscriptionSynapseService) workspaces() ([]any, error) {
 			res = append(res, workspaceRes)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func (a *mqlAzureSubscriptionSynapseServiceWorkspace) id() (string, error) {
@@ -236,7 +281,7 @@ func initAzureSubscriptionSynapseServiceWorkspace(runtime *plugin.Runtime, args 
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
+		if ids := getAssetIdentifier(runtime); ids != nil && ids.id != "" {
 			args["id"] = llx.StringData(ids.id)
 		}
 	}
@@ -268,6 +313,10 @@ func initAzureSubscriptionSynapseServiceWorkspace(runtime *plugin.Runtime, args 
 		if ws.Id.Data == id {
 			return args, ws, nil
 		}
+	}
+
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionSynapseServiceWorkspace, id); filtered != nil {
+		return args, filtered, nil
 	}
 
 	return nil, nil, errors.New("azure synapse workspace does not exist")

@@ -10,7 +10,34 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers/os/resources/languages"
 )
+
+func TestScopeOf(t *testing.T) {
+	// strictly dev-only
+	assert.Equal(t, languages.PackageScopeDev, scopeOf(packageLockPackage{Dev: true}))
+	// plain production
+	assert.Equal(t, languages.PackageScopeProd, scopeOf(packageLockPackage{}))
+	// devOptional can appear in the prod tree → prod, even when dev is also set
+	assert.Equal(t, languages.PackageScopeProd, scopeOf(packageLockPackage{Dev: true, DevOptional: true}))
+	assert.Equal(t, languages.PackageScopeProd, scopeOf(packageLockPackage{DevOptional: true}))
+}
+
+func TestResolveDepPurlDepthCapped(t *testing.T) {
+	pkgs := map[string]packageLockPackage{"node_modules/target": {Version: "1.0.0"}}
+	idx := map[string]string{"node_modules/target": "pkg:npm/target@1.0.0"}
+
+	// Within the cap, a dep that only resolves at the root still resolves.
+	assert.Equal(t, "pkg:npm/target@1.0.0", resolveDepPurl(pkgs, idx, "node_modules/a", "target"))
+
+	// A pathologically deep path (beyond the cap) short-circuits to "" rather than
+	// walking unbounded — the DoS guard.
+	deep := "node_modules/a"
+	for range maxNodeModulesDepth + 5 {
+		deep += "/node_modules/a"
+	}
+	assert.Equal(t, "", resolveDepPurl(pkgs, idx, deep, "target"))
+}
 
 func TestPackageLock(t *testing.T) {
 	tests := []struct {
@@ -76,6 +103,7 @@ func TestPackageLock(t *testing.T) {
 						Version:   "7.10.4",
 						Resolved:  "https://registry.npmjs.org/@babel/code-frame/-/code-frame-7.10.4.tgz",
 						Integrity: "sha512-vG6SvB6oYEhvgisZNFRmRCUkLz11c7rp+tbNTynGqc6mS1d5ATd/sGyV6W0KZZnXRKMTzZDRgQT3Ou9jhpAfUg==",
+						Dev:       true,
 						Dependencies: map[string]string{
 							"@babel/highlight": "^7.10.4",
 						},

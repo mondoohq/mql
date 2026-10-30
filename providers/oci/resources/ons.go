@@ -6,15 +6,15 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
-	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/ons"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/oci/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/oci/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (o *mqlOciOns) id() (string, error) {
@@ -24,74 +24,21 @@ func (o *mqlOciOns) id() (string, error) {
 func (o *mqlOciOns) topics() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	// Notification topics are created next to the alarms and connectors that
+	// publish to them, which puts them in child compartments. ListTopics has no
+	// subtree option, so a root-only sweep reported no topics and broke the alarm
+	// and Connector Hub destination references that point at them.
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getTopics(conn, list.Data), 5)
-	poolOfJobs.Run()
-
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-
-	return res, nil
-}
-
-func (o *mqlOciOns) getTopicsForRegion(ctx context.Context, client *ons.NotificationControlPlaneClient, compartmentID string) ([]ons.NotificationTopicSummary, error) {
-	topics := []ons.NotificationTopicSummary{}
-	var page *string
-	for {
-		request := ons.ListTopicsRequest{
-			CompartmentId: common.String(compartmentID),
-			Page:          page,
-		}
-
-		response, err := client.ListTopics(ctx, request)
-		if err != nil {
-			return nil, err
-		}
-
-		topics = append(topics, response.Items...)
-
-		if response.OpcNextPage == nil {
-			break
-		}
-
-		page = response.OpcNextPage
-	}
-
-	return topics, nil
-}
-
-func (o *mqlOciOns) getTopics(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci with region %s", regionResource.Id.Data)
-
-			svc, err := conn.NotificationControlPlaneClient(regionResource.Id.Data)
+			svc, err := conn.NotificationControlPlaneClient(region)
 			if err != nil {
 				return nil, err
 			}
 
 			var res []any
-			topics, err := o.getTopicsForRegion(ctx, svc, conn.TenantID())
+			topics, err := o.getTopicsForRegion(ctx, svc, compartmentID)
 			if err != nil {
 				return nil, err
 			}
@@ -104,33 +51,52 @@ func (o *mqlOciOns) getTopics(conn *connection.OciConnection, regions []any) []*
 					created = &topic.TimeCreated.Time
 				}
 
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.ons.topic", map[string]*llx.RawData{
-					"id":            llx.StringDataPtr(topic.TopicId),
-					"name":          llx.StringDataPtr(topic.Name),
-					"description":   llx.StringDataPtr(topic.Description),
-					"compartmentID": llx.StringDataPtr(topic.CompartmentId),
-					"state":         llx.StringData(string(topic.LifecycleState)),
-					"created":       llx.TimeDataPtr(created),
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.ons.topic", stringValue(topic.CompartmentId), map[string]*llx.RawData{
+					"id":           llx.StringDataPtr(topic.TopicId),
+					"name":         llx.StringDataPtr(topic.Name),
+					"description":  llx.StringDataPtr(topic.Description),
+					"state":        llx.StringData(string(topic.LifecycleState)),
+					"created":      llx.TimeDataPtr(created),
+					"freeformTags": llx.MapData(strMapToAny(topic.FreeformTags), types.String),
+					"definedTags":  llx.MapData(definedTagsToAny(topic.DefinedTags), types.Any),
 				})
 				if err != nil {
 					return nil, err
 				}
 
 				mqlTopic := mqlInstance.(*mqlOciOnsTopic)
-				mqlTopic.region = regionResource.Id.Data
+				mqlTopic.cacheRegion = region
 
 				res = append(res, mqlInstance)
 			}
 
-			return jobpool.JobResult(res), nil
+			return res, nil
+		})
+}
+
+func (o *mqlOciOns) getTopicsForRegion(ctx context.Context, client *ons.NotificationControlPlaneClient, compartmentID string) ([]ons.NotificationTopicSummary, error) {
+	topics, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]ons.NotificationTopicSummary, *string, error) {
+		request := ons.ListTopicsRequest{
+			CompartmentId: new(compartmentID),
+			Page:          page,
 		}
-		tasks = append(tasks, jobpool.NewJob(f))
+
+		response, err := client.ListTopics(ctx, request)
+		if err != nil {
+			return nil, nil, err
+		}
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return tasks
+
+	return topics, nil
 }
 
 type mqlOciOnsTopicInternal struct {
-	region string
+	ociCompartmentRef
+	cacheRegion string
 }
 
 func initOciOnsTopic(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -138,10 +104,10 @@ func initOciOnsTopic(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 		return args, nil, nil
 	}
 
-	if args["id"] == nil {
+	idVal := ociArgString(args, "id")
+	if idVal == "" {
 		return nil, nil, errors.New("id required to fetch oci.ons.topic")
 	}
-	idVal := args["id"].Value.(string)
 
 	obj, err := CreateResource(runtime, "oci.ons", nil)
 	if err != nil {
@@ -161,8 +127,17 @@ func initOciOnsTopic(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 		}
 	}
 
-	return nil, nil, errors.New("oci.ons.topic not found: " + idVal)
+	return nil, nil, fmt.Errorf("%w: %s", errOciOnsTopicNotFound, idVal)
 }
+
+// errOciOnsTopicNotFound marks a topic OCID that is not in the listing, which
+// normally means the topic was deleted while something that points at it - a
+// Connector Hub target, a monitoring alarm destination - outlived it.
+//
+// It is a sentinel rather than a bare errors.New so callers holding a single
+// such reference can tell "the referent is gone" (answer null) apart from "the
+// lookup itself failed" (answer with the error). See ociReferentGone.
+var errOciOnsTopicNotFound = errors.New("oci.ons.topic not found")
 
 func (o *mqlOciOnsTopic) id() (string, error) {
 	return "oci.ons.topic/" + o.Id.Data, nil
@@ -171,7 +146,7 @@ func (o *mqlOciOnsTopic) id() (string, error) {
 func (o *mqlOciOnsTopic) subscriptions() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	client, err := conn.NotificationDataPlaneClient(o.region)
+	client, err := conn.NotificationDataPlaneClient(o.cacheRegion)
 	if err != nil {
 		return nil, err
 	}
@@ -179,27 +154,28 @@ func (o *mqlOciOnsTopic) subscriptions() ([]any, error) {
 	topicId := o.Id.Data
 	ctx := context.Background()
 
-	subs := []ons.SubscriptionSummary{}
-	var page *string
-	for {
+	// Subscriptions are listed in the topic's compartment, not the tenancy
+	// root, which held none for a topic created in a child compartment.
+	compartmentID := o.cacheCompartmentID
+	if compartmentID == "" {
+		compartmentID = conn.TenantID()
+	}
+
+	subs, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]ons.SubscriptionSummary, *string, error) {
 		request := ons.ListSubscriptionsRequest{
-			CompartmentId: common.String(conn.TenantID()),
-			TopicId:       common.String(topicId),
+			CompartmentId: new(compartmentID),
+			TopicId:       new(topicId),
 			Page:          page,
 		}
 
 		response, err := client.ListSubscriptions(ctx, request)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-
-		subs = append(subs, response.Items...)
-
-		if response.OpcNextPage == nil {
-			break
-		}
-
-		page = response.OpcNextPage
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	res := make([]any, 0, len(subs))
@@ -213,16 +189,18 @@ func (o *mqlOciOnsTopic) subscriptions() ([]any, error) {
 		}
 
 		mqlInstance, err := CreateResource(o.MqlRuntime, "oci.ons.subscription", map[string]*llx.RawData{
-			"id":       llx.StringDataPtr(sub.Id),
-			"protocol": llx.StringDataPtr(sub.Protocol),
-			"endpoint": llx.StringDataPtr(sub.Endpoint),
-			"state":    llx.StringData(string(sub.LifecycleState)),
-			"created":  llx.TimeDataPtr(created),
+			"id":           llx.StringDataPtr(sub.Id),
+			"protocol":     llx.StringDataPtr(sub.Protocol),
+			"endpoint":     llx.StringDataPtr(sub.Endpoint),
+			"state":        llx.StringData(string(sub.LifecycleState)),
+			"created":      llx.TimeDataPtr(created),
+			"freeformTags": llx.MapData(strMapToAny(sub.FreeformTags), types.String),
+			"definedTags":  llx.MapData(definedTagsToAny(sub.DefinedTags), types.Any),
 		})
 		if err != nil {
 			return nil, err
 		}
-		mqlInstance.(*mqlOciOnsSubscription).cacheTopicId = stringValue(sub.TopicId)
+		mqlInstance.(*mqlOciOnsSubscription).cacheTopicID = stringValue(sub.TopicId)
 		res = append(res, mqlInstance)
 	}
 
@@ -230,7 +208,7 @@ func (o *mqlOciOnsTopic) subscriptions() ([]any, error) {
 }
 
 type mqlOciOnsSubscriptionInternal struct {
-	cacheTopicId string
+	cacheTopicID string
 }
 
 func (o *mqlOciOnsSubscription) id() (string, error) {
@@ -238,12 +216,12 @@ func (o *mqlOciOnsSubscription) id() (string, error) {
 }
 
 func (o *mqlOciOnsSubscription) topic() (*mqlOciOnsTopic, error) {
-	if o.cacheTopicId == "" {
+	if o.cacheTopicID == "" {
 		o.Topic.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	mqlTopic, err := NewResource(o.MqlRuntime, "oci.ons.topic", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheTopicId),
+		"id": llx.StringData(o.cacheTopicID),
 	})
 	if err != nil {
 		return nil, err

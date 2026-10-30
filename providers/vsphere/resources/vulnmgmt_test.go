@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestVulnmgmtSoftFailsWhenReportUnavailable(t *testing.T) {
@@ -39,4 +39,30 @@ func TestVulnmgmtSoftFailsWhenReportUnavailable(t *testing.T) {
 	assert.True(t, lastAssessment.IsNull())
 
 	assert.True(t, v.warnedUnavailable)
+}
+
+func TestVulnPackageID(t *testing.T) {
+	// Every vuln.package must produce a distinct, stable __id from its name and
+	// version. Without this id() method they would all share the empty cache
+	// key and collapse onto the first package (see the id() doc comment).
+	pkg := func(name, version string) *mqlVulnPackage {
+		return &mqlVulnPackage{
+			Name:    plugin.TValue[string]{Data: name, State: plugin.StateIsSet},
+			Version: plugin.TValue[string]{Data: version, State: plugin.StateIsSet},
+		}
+	}
+
+	id, err := pkg("openssl", "1.1.1k").id()
+	require.NoError(t, err)
+	assert.Equal(t, "openssl-1.1.1k", id)
+
+	// distinct packages must not collide
+	other, err := pkg("glibc", "2.34").id()
+	require.NoError(t, err)
+	assert.NotEqual(t, id, other)
+
+	// same name, different version stays distinct
+	v1, _ := pkg("kernel", "5.10.1").id()
+	v2, _ := pkg("kernel", "5.10.2").id()
+	assert.NotEqual(t, v1, v2)
 }

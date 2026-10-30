@@ -4,15 +4,16 @@
 package resources
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/utils/syncx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 // testAwsRuntime creates a runtime with an AwsConnection whose asset has
@@ -24,6 +25,9 @@ func testAwsRuntime(assetName string, platformIds []string, vpcs []*mqlAwsVpc) *
 		Name:        assetName,
 		PlatformIds: platformIds,
 		Connections: []*inventory.Config{{}},
+		// the asset under test is a VPC; getAssetIdentifier only adopts an
+		// asset's ARN when its platform matches the resource asking
+		Platform: &inventory.Platform{Name: connection.PlatformVpc},
 	}
 
 	conn := &connection.AwsConnection{
@@ -141,14 +145,68 @@ func TestInitAwsVpc(t *testing.T) {
 	})
 
 	t.Run("returns error when asset has no valid ARN in platform IDs", func(t *testing.T) {
-		// getAssetIdentifier returns a non-nil result with an empty arn
-		// when the asset has no "arn:aws:" platform ID. The empty-string
-		// arn won't match any VPC.
+		// getAssetIdentifier returns "" when the asset has no valid
+		// "arn:aws:" platform ID, so no arn arg is injected and the init
+		// errors out before any lookup.
 		runtime := testAwsRuntime("some-vpc", []string{"not-an-arn"}, []*mqlAwsVpc{testVpc})
 
 		args := map[string]*llx.RawData{}
 		_, _, err := initAwsVpc(runtime, args)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "vpc does not exist")
+		assert.Contains(t, err.Error(), "arn or id required")
+	})
+}
+
+func TestAwsVpcSubnetVpc(t *testing.T) {
+	const (
+		vpcId    = "vpc-0abc123def456"
+		subnetId = "subnet-0abc123def456"
+		region   = "us-east-1"
+	)
+
+	t.Run("reports null when the subnet carries no VPC id", func(t *testing.T) {
+		runtime := testAwsRuntime("irrelevant", nil, nil)
+		subnet := &mqlAwsVpcSubnet{
+			MqlRuntime: runtime,
+			Id:         plugin.TValue[string]{Data: subnetId, State: plugin.StateIsSet},
+			Region:     plugin.TValue[string]{Data: region, State: plugin.StateIsSet},
+		}
+
+		vpc, err := subnet.vpc()
+		require.NoError(t, err)
+		assert.Nil(t, vpc)
+		// Without the explicit null state the runtime never learns the field
+		// was resolved, and re-fetches it forever.
+		assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, subnet.Vpc.State)
+	})
+
+	t.Run("resolves the containing VPC without an API call", func(t *testing.T) {
+		runtime := testAwsRuntime("irrelevant", nil, nil)
+		conn := runtime.Connection.(*connection.AwsConnection)
+
+		// The ARN a listed VPC is cached under. Resolving through the cache is
+		// the whole point: an ARN composed any other way misses and falls
+		// through to DescribeVpcs, which this runtime has no client for.
+		vpcArn := fmt.Sprintf(vpcArnPattern, region, conn.AccountId(), vpcId)
+		cachedVpc := &mqlAwsVpc{
+			MqlRuntime: runtime,
+			Id:         plugin.TValue[string]{Data: vpcId, State: plugin.StateIsSet},
+			Arn:        plugin.TValue[string]{Data: vpcArn, State: plugin.StateIsSet},
+			Region:     plugin.TValue[string]{Data: region, State: plugin.StateIsSet},
+		}
+		runtime.Resources.Set(ResourceAwsVpc+"\x00"+vpcArn, cachedVpc)
+
+		subnet := &mqlAwsVpcSubnet{
+			MqlRuntime: runtime,
+			Id:         plugin.TValue[string]{Data: subnetId, State: plugin.StateIsSet},
+			Region:     plugin.TValue[string]{Data: region, State: plugin.StateIsSet},
+		}
+		subnet.cacheVpcId = vpcId
+
+		vpc, err := subnet.vpc()
+		require.NoError(t, err)
+		require.NotNil(t, vpc)
+		assert.Equal(t, vpcId, vpc.Id.Data)
+		assert.Same(t, cachedVpc, vpc)
 	})
 }

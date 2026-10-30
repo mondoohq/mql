@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -16,12 +17,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/docdbelastic"
 	docdbelastic_types "github.com/aws/aws-sdk-go-v2/service/docdbelastic/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 const (
@@ -195,6 +196,7 @@ func newMqlAwsDocumentdbCluster(runtime *plugin.Runtime, region, accountID strin
 			"subnetGroup":                  llx.StringDataPtr(cluster.DBSubnetGroup),
 			"clusterResourceId":            llx.StringDataPtr(cluster.DbClusterResourceId),
 			"deletionProtection":           llx.BoolDataPtr(cluster.DeletionProtection),
+			"copyTagsToSnapshot":           llx.BoolDataPtr(cluster.CopyTagsToSnapshot),
 			"earliestRestorableTime":       llx.TimeDataPtr(cluster.EarliestRestorableTime),
 			"latestRestorableTime":         llx.TimeDataPtr(cluster.LatestRestorableTime),
 			"enabledCloudwatchLogsExports": llx.ArrayData(convert.SliceAnyToInterface(cluster.EnabledCloudwatchLogsExports), types.String),
@@ -259,8 +261,8 @@ func initAwsDocumentdbCluster(runtime *plugin.Runtime, args map[string]*llx.RawD
 		return args, nil, nil
 	}
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformDocumentdbCluster); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 	if args["arn"] == nil {
@@ -281,7 +283,10 @@ func initAwsDocumentdbCluster(runtime *plugin.Runtime, args map[string]*llx.RawD
 			return args, c, nil
 		}
 	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.documentdb.cluster with arn %q not found", arnVal)
 }
 
 func (a *mqlAwsDocumentdbCluster) kmsKey() (*mqlAwsKmsKey, error) {
@@ -636,7 +641,6 @@ func (a *mqlAwsDocumentdb) getDbInstances(conn *connection.AwsConnection) []*job
 }
 
 func newMqlAwsDocumentdbInstance(runtime *plugin.Runtime, region, accountID string, instance docdb_types.DBInstance) (*mqlAwsDocumentdbInstance, error) {
-	endpoint, _ := convert.JsonToDict(instance.Endpoint)
 	endpointAddress := ""
 	endpointHostedZone := ""
 	endpointPort := int64(0)
@@ -688,7 +692,6 @@ func newMqlAwsDocumentdbInstance(runtime *plugin.Runtime, region, accountID stri
 			"backupRetentionPeriod":            llx.IntDataPtr(instance.BackupRetentionPeriod),
 			"instanceClass":                    llx.StringDataPtr(instance.DBInstanceClass),
 			"enabledCloudwatchLogsExports":     llx.ArrayData(convert.SliceAnyToInterface(instance.EnabledCloudwatchLogsExports), types.String),
-			"endpoint":                         llx.MapData(endpoint, types.Any),
 			"endpointAddress":                  llx.StringData(endpointAddress),
 			"endpointPort":                     llx.IntData(endpointPort),
 			"endpointHostedZoneId":             llx.StringData(endpointHostedZone),
@@ -733,8 +736,8 @@ func initAwsDocumentdbInstance(runtime *plugin.Runtime, args map[string]*llx.Raw
 		return args, nil, nil
 	}
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformDocumentdbInstance); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 	if args["arn"] == nil {
@@ -755,7 +758,10 @@ func initAwsDocumentdbInstance(runtime *plugin.Runtime, args map[string]*llx.Raw
 			return args, i, nil
 		}
 	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.documentdb.instance with arn %q not found", arnVal)
 }
 
 func docdbInstancePendingModifiedValues(p *docdb_types.PendingModifiedValues) map[string]any {
@@ -998,6 +1004,7 @@ func newMqlAwsDocumentdbSnapshot(runtime *plugin.Runtime, region, accountID stri
 }
 
 type mqlAwsDocumentdbSnapshotInternal struct {
+	lazyTags
 	region                 string
 	accountID              string
 	cacheKmsKeyId          *string
@@ -1133,6 +1140,11 @@ func (a *mqlAwsDocumentdb) getClusterParameterGroups(conn *connection.AwsConnect
 					return nil, err
 				}
 				for _, pg := range page.DBClusterParameterGroups {
+					// The docdb client shares the RDS API and returns the cluster
+					// parameter groups of every engine; keep DocumentDB's own.
+					if !isDocdbParameterGroupFamily(pg.DBParameterGroupFamily) {
+						continue
+					}
 					mqlPg, err := newMqlAwsDocumentdbClusterParameterGroup(a.MqlRuntime, region, pg)
 					if err != nil {
 						return nil, err
@@ -1145,6 +1157,13 @@ func (a *mqlAwsDocumentdb) getClusterParameterGroups(conn *connection.AwsConnect
 		tasks = append(tasks, jobpool.NewJob(f))
 	}
 	return tasks
+}
+
+// isDocdbParameterGroupFamily reports whether a parameter group family belongs
+// to DocumentDB ("docdb3.6", "docdb5.0", ...), as opposed to Aurora, RDS or
+// Neptune, which the shared API also returns.
+func isDocdbParameterGroupFamily(family *string) bool {
+	return family != nil && strings.HasPrefix(*family, docdbEngine)
 }
 
 func newMqlAwsDocumentdbClusterParameterGroup(runtime *plugin.Runtime, region string, pg docdb_types.DBClusterParameterGroup) (*mqlAwsDocumentdbClusterParameterGroup, error) {
@@ -1184,7 +1203,10 @@ func initAwsDocumentdbClusterParameterGroup(runtime *plugin.Runtime, args map[st
 			return args, pg, nil
 		}
 	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.documentdb.clusterParameterGroup with arn %q not found", arnVal)
 }
 
 func (a *mqlAwsDocumentdbClusterParameterGroup) parameters() ([]any, error) {
@@ -1273,6 +1295,11 @@ func (a *mqlAwsDocumentdb) fetchGlobalClusters() ([]docdb_types.GlobalCluster, e
 					if gc.GlobalClusterArn == nil || seen[*gc.GlobalClusterArn] {
 						continue
 					}
+					// Like clusters and parameter groups, the shared API also
+					// returns Aurora global clusters.
+					if gc.Engine == nil || *gc.Engine != docdbEngine {
+						continue
+					}
 					seen[*gc.GlobalClusterArn] = true
 					out = append(out, gc)
 				}
@@ -1295,6 +1322,7 @@ func newMqlAwsDocumentdbGlobalCluster(runtime *plugin.Runtime, gc docdb_types.Gl
 		"databaseName":            llx.StringDataPtr(gc.DatabaseName),
 		"storageEncrypted":        llx.BoolDataPtr(gc.StorageEncrypted),
 		"globalClusterResourceId": llx.StringDataPtr(gc.GlobalClusterResourceId),
+		"tags":                    llx.MapData(tagsToMap(gc.TagList, func(t docdb_types.Tag) *string { return t.Key }, func(t docdb_types.Tag) *string { return t.Value }), types.String),
 	})
 	if err != nil {
 		return nil, err
@@ -1326,7 +1354,10 @@ func initAwsDocumentdbGlobalCluster(runtime *plugin.Runtime, args map[string]*ll
 			return args, gc, nil
 		}
 	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.documentdb.globalCluster with arn %q not found", arnVal)
 }
 
 type mqlAwsDocumentdbGlobalClusterInternal struct {
@@ -1623,7 +1654,10 @@ func initAwsDocumentdbElasticCluster(runtime *plugin.Runtime, args map[string]*l
 			return args, c, nil
 		}
 	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.documentdb.elasticCluster with arn %q not found", arnVal)
 }
 
 type mqlAwsDocumentdbElasticClusterInternal struct {
@@ -1862,4 +1896,46 @@ func (a *mqlAwsDocumentdbElasticSnapshot) tags() (map[string]any, error) {
 		tags[k] = v
 	}
 	return tags, nil
+}
+
+type mqlAwsDocumentdbClusterParameterGroupInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsDocumentdbSnapshot) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.DocumentDB(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &docdb.ListTagsForResourceInput{ResourceName: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("rds:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.TagList, func(t docdb_types.Tag) *string { return t.Key }, func(t docdb_types.Tag) *string { return t.Value }), nil
+	})
+}
+
+func (a *mqlAwsDocumentdbClusterParameterGroup) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.DocumentDB(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &docdb.ListTagsForResourceInput{ResourceName: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("rds:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.TagList, func(t docdb_types.Tag) *string { return t.Key }, func(t docdb_types.Tag) *string { return t.Value }), nil
+	})
 }

@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"net"
 	"time"
 )
@@ -103,6 +104,23 @@ func Fetch(hostport string) ([]*x509.Certificate, error) {
 	}
 
 	return gatherPeerCertificates(host, port, "", true)
+}
+
+// SerialToHumanString prints a certificate serial number as colon-separated
+// hex. big.Int.Bytes drops the sign and yields nothing for zero, so a negative
+// serial would print as a different, positive one and a zero serial as empty.
+// The sign is kept as a leading "-" and zero prints as "00", as OpenSSL does.
+func SerialToHumanString(n *big.Int) string {
+	if n == nil {
+		return ""
+	}
+	switch n.Sign() {
+	case 0:
+		return "00"
+	case -1:
+		return "-" + HexEncodeToHumanString(n.Bytes())
+	}
+	return HexEncodeToHumanString(n.Bytes())
 }
 
 func HexEncodeToHumanString(b []byte) string {

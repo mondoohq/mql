@@ -6,8 +6,10 @@ package resources
 import (
 	"testing"
 
+	kjson "github.com/microsoft/kiota-serialization-json-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Guards against the inverted nil-check the function used to carry —
@@ -47,7 +49,7 @@ func TestDirectoryPrincipalInfo(t *testing.T) {
 
 	t.Run("user with display name", func(t *testing.T) {
 		p := models.NewDirectoryObject()
-		p.SetOdataType(ptr("#microsoft.graph.user"))
+		p.SetOdataType(new("#microsoft.graph.user"))
 		p.SetAdditionalData(map[string]any{"displayName": "Alice Admin"})
 		pt, pn := directoryPrincipalInfo(p)
 		assert.Equal(t, "user", pt)
@@ -56,7 +58,7 @@ func TestDirectoryPrincipalInfo(t *testing.T) {
 
 	t.Run("group without display name", func(t *testing.T) {
 		p := models.NewDirectoryObject()
-		p.SetOdataType(ptr("#microsoft.graph.group"))
+		p.SetOdataType(new("#microsoft.graph.group"))
 		pt, pn := directoryPrincipalInfo(p)
 		assert.Equal(t, "group", pt)
 		assert.Empty(t, pn)
@@ -68,4 +70,75 @@ func TestDirectoryPrincipalInfo(t *testing.T) {
 		assert.Empty(t, pt)
 		assert.Empty(t, pn)
 	})
+
+	t.Run("typed principal reads its typed displayName", func(t *testing.T) {
+		u := models.NewUser()
+		u.SetOdataType(new("#microsoft.graph.user"))
+		u.SetDisplayName(new("Alice Admin"))
+		pt, pn := directoryPrincipalInfo(u)
+		assert.Equal(t, "user", pt)
+		assert.Equal(t, "Alice Admin", pn)
+	})
+}
+
+// The role-assignment request uses $expand=principal, so the SDK deserializes
+// the principal through CreateDirectoryObjectFromDiscriminatorValue and builds
+// a concrete *models.User whose displayName is a TYPED property. It therefore
+// never lands in AdditionalData.
+//
+// A fixture built with models.NewDirectoryObject() + SetAdditionalData is a
+// shape production never produces, so a test using one passes while the real
+// path returns "". Decode the actual payload instead.
+func TestDirectoryPrincipalInfoFromExpandedPrincipal(t *testing.T) {
+	const payload = `{
+	  "id": "ra-1",
+	  "principalId": "u-1",
+	  "principal": {
+	    "@odata.type": "#microsoft.graph.user",
+	    "id": "u-1",
+	    "displayName": "Alice Admin",
+	    "userPrincipalName": "alice@contoso.com"
+	  }
+	}`
+
+	node, err := kjson.NewJsonParseNode([]byte(payload))
+	require.NoError(t, err)
+	parsed, err := node.GetObjectValue(models.CreateUnifiedRoleAssignmentFromDiscriminatorValue)
+	require.NoError(t, err)
+
+	principal := parsed.(models.UnifiedRoleAssignmentable).GetPrincipal()
+	require.NotNil(t, principal)
+	assert.IsType(t, &models.User{}, principal, "the discriminator builds a concrete type")
+	assert.Empty(t, principal.GetAdditionalData(),
+		"displayName is typed on *models.User, so AdditionalData is empty -- this is why the bag read failed")
+
+	pt, pn := directoryPrincipalInfo(principal)
+	assert.Equal(t, "user", pt)
+	assert.Equal(t, "Alice Admin", pn)
+}
+
+// A group principal resolves the same way, through the shared accessor rather
+// than a per-type branch.
+func TestDirectoryPrincipalInfoFromExpandedGroup(t *testing.T) {
+	const payload = `{"@odata.type":"#microsoft.graph.group","id":"g-1","displayName":"Global Admins"}`
+
+	node, err := kjson.NewJsonParseNode([]byte(payload))
+	require.NoError(t, err)
+	parsed, err := node.GetObjectValue(models.CreateDirectoryObjectFromDiscriminatorValue)
+	require.NoError(t, err)
+
+	pt, pn := directoryPrincipalInfo(parsed.(models.DirectoryObjectable))
+	assert.Equal(t, "group", pt)
+	assert.Equal(t, "Global Admins", pn)
+}
+
+// A bare DirectoryObject has no typed displayName, so the AdditionalData
+// fallback must still work.
+func TestDirectoryPrincipalInfoFallsBackToAdditionalData(t *testing.T) {
+	p := models.NewDirectoryObject()
+	p.SetOdataType(new("#microsoft.graph.user"))
+	p.SetAdditionalData(map[string]any{"displayName": "Bare Object"})
+	pt, pn := directoryPrincipalInfo(p)
+	assert.Equal(t, "user", pt)
+	assert.Equal(t, "Bare Object", pn)
 }

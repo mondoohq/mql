@@ -7,12 +7,12 @@ import (
 	"context"
 	"errors"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers/claude/connection"
-	"go.mondoo.com/mql/v13/providers/claude/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers/claude/connection"
+	"go.mondoo.com/mql/providers/claude/resources"
 )
 
 const (
@@ -140,30 +140,42 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 }
 
 func (s *Service) detect(asset *inventory.Asset, conn *connection.ClaudeConnection) error {
-	orgID := conn.OrgID()
-	orgName := conn.OrgName()
-	workspaceID := conn.Conf.Options[connection.WorkspaceIDOption]
+	name, platform, platformIDs := claudeAssetIdentity(
+		conn.OrgID(),
+		conn.OrgName(),
+		conn.Conf.Options[connection.WorkspaceIDOption],
+		conn.Host(),
+	)
+	asset.Name = name
+	asset.Platform = platform
+	asset.PlatformIds = platformIDs
+	return nil
+}
 
-	if workspaceID != "" && workspaceID != "default" {
-		asset.Name = "Claude Workspace " + workspaceID
-		asset.Platform = connection.NewClaudeWorkspacePlatform(orgID, workspaceID)
-		asset.PlatformIds = []string{connection.NewClaudeWorkspaceIdentifier(workspaceID)}
-	} else if orgID != "" {
+// claudeAssetIdentity picks the asset name, platform, and platform IDs from the
+// scoping information available on the connection. A concrete workspace wins
+// over the organization, which in turn wins over the bare API host. A
+// workspace-id of "default" is treated as "no workspace" and falls through to
+// the organization.
+func claudeAssetIdentity(orgID, orgName, workspaceID, host string) (string, *inventory.Platform, []string) {
+	switch {
+	case workspaceID != "" && workspaceID != "default":
+		return "Claude Workspace " + workspaceID,
+			connection.NewClaudeWorkspacePlatform(orgID, workspaceID),
+			[]string{connection.NewClaudeWorkspaceIdentifier(workspaceID)}
+	case orgID != "":
 		name := "Claude Organization"
 		if orgName != "" {
 			name = "Claude Organization " + orgName
 		}
-		asset.Name = name
-		asset.Platform = connection.NewClaudeOrgPlatform(orgID)
-		asset.PlatformIds = []string{connection.NewClaudeOrgIdentifier(orgID)}
-	} else {
-		host := conn.Host()
-		asset.Name = "Claude (" + host + ")"
-		asset.Platform = connection.NewClaudeAPIPlatform(host)
-		asset.PlatformIds = []string{"//platformid.api.mondoo.app/runtime/claude/host/" + host}
+		return name,
+			connection.NewClaudeOrgPlatform(orgID),
+			[]string{connection.NewClaudeOrgIdentifier(orgID)}
+	default:
+		return "Claude (" + host + ")",
+			connection.NewClaudeAPIPlatform(host),
+			[]string{"//platformid.api.mondoo.app/runtime/claude/host/" + host}
 	}
-
-	return nil
 }
 
 func (s *Service) MockConnect(req *plugin.ConnectReq, callback plugin.ProviderCallback) (*plugin.ConnectRes, error) {

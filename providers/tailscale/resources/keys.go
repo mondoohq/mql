@@ -8,11 +8,11 @@ import (
 	"errors"
 	"time"
 
-	tsclient "github.com/tailscale/tailscale-client-go/v2"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/tailscale/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/tailscale/connection"
+	"go.mondoo.com/mql/types"
+	tsclient "tailscale.com/client/tailscale/v2"
 )
 
 func (r *mqlTailscaleAuthKey) id() (string, error) {
@@ -20,14 +20,31 @@ func (r *mqlTailscaleAuthKey) id() (string, error) {
 }
 
 // timeIsSet reports whether a Tailscale timestamp represents a real value.
-// Tailscale encodes "unset" timestamps as the zero time (Unix epoch 0 /
-// 0001-01-01), which the resource carries as a nil or zero-valued *time.Time.
+// Tailscale encodes "unset" timestamps as the Go zero time (0001-01-01), which
+// the resource carries as a nil or zero-valued *time.Time. A genuine Unix epoch
+// 0 is a real instant in Go terms and is therefore reported as set.
 func timeIsSet(t *time.Time) bool {
 	return t != nil && !t.IsZero()
 }
 
+// optionalTimeValue reports a Tailscale timestamp for MQL, returning nil when
+// the API left it unset.
+//
+// Tailscale spells an absent timestamp as the Go zero instant rather than as
+// JSON null, and several of the timestamps it returns carry meaning when
+// absent: `expires` is unset on a key that never expires, and `revoked` is
+// unset on a key that has not been revoked. Passing the zero instant through
+// would date those keys to the year 1, so a query comparing the timestamp
+// against the current time would read "never expires" as "expired long ago".
+func optionalTimeValue(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
+}
+
 // hasExpiration reports whether the key has an expiration set. A key with no
-// expiration carries the zero time in `expires`.
+// expiration carries no value in `expires`.
 func (r *mqlTailscaleAuthKey) hasExpiration() (bool, error) {
 	if r.Expires.Error != nil {
 		return false, r.Expires.Error
@@ -36,7 +53,7 @@ func (r *mqlTailscaleAuthKey) hasExpiration() (bool, error) {
 }
 
 // isRevoked reports whether the key has been revoked. A key that has not been
-// revoked carries the zero time in `revoked`.
+// revoked carries no value in `revoked`.
 func (r *mqlTailscaleAuthKey) isRevoked() (bool, error) {
 	if r.Revoked.Error != nil {
 		return false, r.Revoked.Error
@@ -44,14 +61,30 @@ func (r *mqlTailscaleAuthKey) isRevoked() (bool, error) {
 	return timeIsSet(r.Revoked.Data), nil
 }
 
+// isExpired reports whether the key is past its expiration time.
+//
+// A key with no expiration never expires, so it reports false. That reads like
+// the safe answer and is not one: a key that never expires is the longest-lived
+// credential the tailnet can hold. `hasExpiration` is what separates it from a
+// key that is merely still inside its window.
+func (r *mqlTailscaleAuthKey) isExpired() (bool, error) {
+	if r.Expires.Error != nil {
+		return false, r.Expires.Error
+	}
+	if !timeIsSet(r.Expires.Data) {
+		return false, nil
+	}
+	return r.Expires.Data.Before(time.Now()), nil
+}
+
 func initTailscaleAuthKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := args["id"]
-	if !ok {
-		return nil, nil, errors.New("missing required argument 'id'")
+	id, err := requiredStringArg(args, "id")
+	if err != nil {
+		return nil, nil, err
 	}
 
 	conn := runtime.Connection.(*connection.TailscaleConnection)
-	key, err := conn.Client().Keys().Get(context.Background(), id.Value.(string))
+	key, err := conn.Client().Keys().Get(context.Background(), id)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -73,18 +106,44 @@ func createTailscaleAuthKeyResource(runtime *plugin.Runtime, key *tsclient.Key) 
 	for _, t := range caps.Tags {
 		tags = append(tags, t)
 	}
+	scopes := make([]any, 0, len(key.Scopes))
+	for _, s := range key.Scopes {
+		scopes = append(scopes, s)
+	}
+	claimRules := make(map[string]any, len(key.CustomClaimRules))
+	for k, v := range key.CustomClaimRules {
+		claimRules[k] = v
+	}
+
+	// An OAuth client or federated identity carries its ACL tags on the key
+	// itself, while a pre-auth key carries them under the device-create
+	// capability. Only one of the two is ever populated.
+	if len(key.Tags) > 0 {
+		tags = tags[:0]
+		for _, t := range key.Tags {
+			tags = append(tags, t)
+		}
+	}
+
 	return CreateResource(runtime, "tailscale.authKey", map[string]*llx.RawData{
-		"id":            llx.StringData(key.ID),
-		"description":   llx.StringData(key.Description),
-		"userId":        llx.StringData(key.UserID),
-		"created":       llx.TimeData(key.Created),
-		"expires":       llx.TimeData(key.Expires),
-		"revoked":       llx.TimeData(key.Revoked),
-		"invalid":       llx.BoolData(key.Invalid),
-		"reusable":      llx.BoolData(caps.Reusable),
-		"ephemeral":     llx.BoolData(caps.Ephemeral),
-		"preauthorized": llx.BoolData(caps.Preauthorized),
-		"tags":          llx.ArrayData(tags, types.String),
+		"id":               llx.StringData(key.ID),
+		"keyType":          llx.StringData(key.KeyType),
+		"description":      llx.StringData(key.Description),
+		"userId":           llx.StringData(key.UserID),
+		"scopes":           llx.ArrayData(scopes, types.String),
+		"audience":         llx.StringData(key.Audience),
+		"issuer":           llx.StringData(key.Issuer),
+		"subject":          llx.StringData(key.Subject),
+		"customClaimRules": llx.MapData(claimRules, types.String),
+		"created":          llx.TimeDataPtr(optionalTimeValue(key.Created)),
+		"updated":          llx.TimeDataPtr(optionalTimeValue(key.Updated)),
+		"expires":          llx.TimeDataPtr(optionalTimeValue(key.Expires)),
+		"revoked":          llx.TimeDataPtr(optionalTimeValue(key.Revoked)),
+		"invalid":          llx.BoolData(key.Invalid),
+		"reusable":         llx.BoolData(caps.Reusable),
+		"ephemeral":        llx.BoolData(caps.Ephemeral),
+		"preauthorized":    llx.BoolData(caps.Preauthorized),
+		"tags":             llx.ArrayData(tags, types.String),
 	})
 }
 

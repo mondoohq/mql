@@ -7,10 +7,10 @@ import (
 	"context"
 
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // appProtectionPolicies returns Intune app protection (MAM) policies for iOS
@@ -87,8 +87,8 @@ func newMqlAppProtectionPolicy(runtime *plugin.Runtime, p models.TargetedManaged
 			"displayName":                             llx.StringDataPtr(p.GetDisplayName()),
 			"description":                             llx.StringDataPtr(p.GetDescription()),
 			"platformType":                            llx.StringData(platform),
-			"createdDateTime":                         llx.TimeDataPtr(p.GetCreatedDateTime()),
-			"lastModifiedDateTime":                    llx.TimeDataPtr(p.GetLastModifiedDateTime()),
+			"createdDateTime":                         graphTimeData(p.GetCreatedDateTime()),
+			"lastModifiedDateTime":                    graphTimeData(p.GetLastModifiedDateTime()),
 			"version":                                 llx.StringDataPtr(p.GetVersion()),
 			"isAssigned":                              llx.BoolDataPtr(p.GetIsAssigned()),
 			"pinRequired":                             llx.BoolDataPtr(p.GetPinRequired()),

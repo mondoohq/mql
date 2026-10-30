@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/cloudflare/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/cloudflare/connection"
 )
 
 // streamVideo mirrors the Stream video list entry. We decode it via the
@@ -55,14 +55,6 @@ func (c *mqlCloudflareStreamsVideo) id() (string, error) {
 	return v.Data, nil
 }
 
-func (c *mqlCloudflareZone) liveInputs() ([]any, error) {
-	accountID, err := c.zoneAccountID()
-	if err != nil {
-		return nil, err
-	}
-	return fetchLiveInputs(c.MqlRuntime, accountID)
-}
-
 func (c *mqlCloudflareAccount) liveInputs() ([]any, error) {
 	return fetchLiveInputs(c.MqlRuntime, c.Id.Data)
 }
@@ -79,7 +71,10 @@ func fetchLiveInputs(runtime *plugin.Runtime, accountID string) ([]any, error) {
 	}
 	uri := fmt.Sprintf("accounts/%s/stream/live_inputs", accountID)
 	if err := conn.Cf.Get(context.TODO(), uri, nil, &env); err != nil {
-		return nil, err
+		// Stream is a gated add-on; an account without it returns 403
+		// ("Cloudflare Stream not enabled"). Degrade to empty like the
+		// other add-on-gated list accessors rather than failing the query.
+		return degradedList(err)
 	}
 
 	var res []any
@@ -102,14 +97,6 @@ func fetchLiveInputs(runtime *plugin.Runtime, accountID string) ([]any, error) {
 	return res, nil
 }
 
-func (c *mqlCloudflareZone) videos() ([]any, error) {
-	accountID, err := c.zoneAccountID()
-	if err != nil {
-		return nil, err
-	}
-	return fetchVideos(c.MqlRuntime, accountID)
-}
-
 func (c *mqlCloudflareAccount) videos() ([]any, error) {
 	return fetchVideos(c.MqlRuntime, c.Id.Data)
 }
@@ -122,7 +109,10 @@ func fetchVideos(runtime *plugin.Runtime, accountID string) ([]any, error) {
 	}
 	uri := fmt.Sprintf("accounts/%s/stream", accountID)
 	if err := conn.Cf.Get(context.TODO(), uri, nil, &env); err != nil {
-		return nil, err
+		// Stream is a gated add-on; an account without it returns 403
+		// ("Cloudflare Stream not enabled"). Degrade to empty like the
+		// other add-on-gated list accessors rather than failing the query.
+		return degradedList(err)
 	}
 
 	var result []any

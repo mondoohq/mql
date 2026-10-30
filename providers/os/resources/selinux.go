@@ -5,14 +5,15 @@ package resources
 
 import (
 	"bufio"
+	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 type mqlSelinuxInternal struct {
@@ -33,9 +34,24 @@ func (s *mqlSelinuxBoolean) id() (string, error) {
 	return "selinux.boolean:" + s.Name.Data, nil
 }
 
+// id keys a module on its name and priority: semodule --list-modules=full
+// lists a module once per priority it is installed at (400 sweeppol and
+// 300 sweeppol), and only the highest is active. A module listed without a
+// priority keeps the bare name, which no listed priority can collide with.
 func (s *mqlSelinuxModule) id() (string, error) {
-	return "selinux.module:" + s.Name.Data, nil
+	if !s.Priority.IsSet() || s.Priority.IsNull() {
+		return "selinux.module:" + s.Name.Data, nil
+	}
+	return fmt.Sprintf("selinux.module:%s:%d", s.Name.Data, s.Priority.Data), nil
 }
+
+// getenforceCmd runs getenforce from /usr/sbin, where libselinux installs it
+// on every distribution, before searching PATH. A non-root PATH on Debian has
+// no sbin directory, and getenforce needs no privileges.
+const getenforceCmd = "/usr/sbin/getenforce 2>/dev/null || getenforce"
+
+// selinuxfsPath is where the kernel exposes SELinux while it is enabled.
+const selinuxfsPath = "/sys/fs/selinux"
 
 // fetchGetenforce runs getenforce once and caches the result.
 // Uses double-checked locking (same pattern as apparmor.fetchStatus):
@@ -58,7 +74,7 @@ func (s *mqlSelinux) fetchGetenforce() (available bool, mode string, err error) 
 	}
 
 	o, err := CreateResource(s.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("getenforce"),
+		"command": llx.StringData(getenforceCmd),
 	})
 	if err != nil {
 		s.getenforced = true
@@ -95,6 +111,16 @@ func (s *mqlSelinux) installed() (bool, error) {
 }
 
 func (s *mqlSelinux) mode() (string, error) {
+	conn, ok := s.MqlRuntime.Connection.(shared.Connection)
+	if !ok || !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		// A disk or image scan has no running kernel, so the configured
+		// mode is the only answer.
+		if err := s.parseConfig(); err != nil {
+			return "", err
+		}
+		return s.cfgMode, nil
+	}
+
 	avail, mode, err := s.fetchGetenforce()
 	if err != nil {
 		return "", err
@@ -102,24 +128,42 @@ func (s *mqlSelinux) mode() (string, error) {
 	if avail {
 		return mode, nil
 	}
-	// Fall back to /sys/fs/selinux/enforce (available on live systems without
-	// getenforce in $PATH): contains "1" for enforcing, "0" for permissive.
-	if conn, ok := s.MqlRuntime.Connection.(shared.Connection); ok {
-		data, err := afero.ReadFile(conn.FileSystem(), "/sys/fs/selinux/enforce")
-		if err == nil {
-			switch strings.TrimSpace(string(data)) {
-			case "1":
-				return "enforcing", nil
-			case "0":
-				return "permissive", nil
-			}
-		}
-	}
-	// Fall back to configured mode from /etc/selinux/config (disk scans)
-	if err := s.parseConfig(); err != nil {
+
+	// Without getenforce, the kernel's selinuxfs answers. The configured mode
+	// does not: SELINUX=permissive in /etc/selinux/config on a host booted
+	// with SELinux disabled is not what the kernel enforces.
+	fs := conn.FileSystem()
+	present, err := afero.DirExists(fs, selinuxfsPath)
+	if err != nil {
 		return "", err
 	}
-	return s.cfgMode, nil
+	var enforce []byte
+	if present {
+		enforce, err = afero.ReadFile(fs, selinuxfsPath+"/enforce")
+		if err != nil {
+			return "", fmt.Errorf("could not read SELinux mode from %s/enforce: %w", selinuxfsPath, err)
+		}
+	}
+	return selinuxRuntimeMode(present, enforce)
+}
+
+// selinuxRuntimeMode reports the mode a live kernel enforces from selinuxfs:
+// its enforce file holds "1" for enforcing and "0" for permissive, and the
+// file system is not there while SELinux is disabled. That includes a host
+// without SELinux at all, which getenforce also reports as disabled: an empty
+// mode there would pass a `mode != "disabled"` check on a kernel that
+// enforces nothing. `installed` is what tells the two hosts apart.
+func selinuxRuntimeMode(selinuxfsPresent bool, enforce []byte) (string, error) {
+	if !selinuxfsPresent {
+		return "disabled", nil
+	}
+	switch strings.TrimSpace(string(enforce)) {
+	case "1":
+		return "enforcing", nil
+	case "0":
+		return "permissive", nil
+	}
+	return "", fmt.Errorf("unexpected SELinux enforce value %q", strings.TrimSpace(string(enforce)))
 }
 
 // parseConfig reads /etc/selinux/config and extracts SELINUX= and SELINUXTYPE= values.
@@ -163,9 +207,8 @@ func (s *mqlSelinux) parseConfig() error {
 
 // ParseSelinuxConfig extracts SELINUX and SELINUXTYPE from /etc/selinux/config content.
 func ParseSelinuxConfig(content string) (mode string, policyType string) {
-	scanner := bufio.NewScanner(strings.NewReader(content))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	for raw := range strings.Lines(content) {
+		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -294,65 +337,70 @@ func readSelinuxBooleansFromFS(fs afero.Fs) []SELinuxBool {
 		if err != nil {
 			continue
 		}
-		val := strings.TrimSpace(string(data))
 		bools = append(bools, SELinuxBool{
 			Name:  entry.Name(),
-			Value: val == "1",
+			Value: selinuxBooleanFileValue(data),
 		})
 	}
 	return bools
 }
 
-// SELinuxModule represents a parsed semodule entry.
-type SELinuxModule struct {
-	Name     string
-	Status   string
-	Priority int
+// selinuxBooleanFileValue reads a /sys/fs/selinux/booleans/<name> file, which
+// holds the current and the pending value ("1 1", "0 0", or "0 1" while a
+// change is pending). The first is what the kernel enforces.
+func selinuxBooleanFileValue(data []byte) bool {
+	current, _, _ := strings.Cut(strings.TrimSpace(string(data)), " ")
+	return current == "1"
 }
 
-// ParseSemodule parses the output of "semodule -l" (format: "name" or "priority name status").
+// SELinuxModule represents a parsed semodule entry.
+type SELinuxModule struct {
+	Name   string
+	Status string
+	// Priority is nil when the listing does not show it (semodule -l).
+	Priority *int
+}
+
+// semoduleListCmd lists every module with its priority and whether it is
+// disabled. semodule -l omits disabled modules and priorities since
+// policycoreutils 2.4 (RHEL 7 prints the module version instead), so it is
+// only the fallback for a semodule that predates --list-modules=full.
+const semoduleListCmd = "semodule --list-modules=full 2>/dev/null || semodule -l"
+
+// ParseSemodule parses semodule module listings:
+//
+//	400 sweeppol          pp
+//	100 zosremote         pp  disabled
+//
+// from `semodule --list-modules=full` (priority, name, language, and
+// "disabled" for a disabled module), and from `semodule -l` either the bare
+// name, or the name and version followed by "Disabled" on older releases.
 func ParseSemodule(output string) []SELinuxModule {
 	var modules []SELinuxModule
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) == 0 {
 			continue
 		}
 
-		fields := strings.Fields(line)
-		switch len(fields) {
-		case 1:
-			// Simple format: just module name (older semodule versions)
-			modules = append(modules, SELinuxModule{
-				Name:   fields[0],
-				Status: "enabled",
-			})
-		case 2:
-			// "priority name" or "name status"
-			if priority, err := strconv.Atoi(fields[0]); err == nil {
-				modules = append(modules, SELinuxModule{
-					Name:     fields[1],
-					Priority: priority,
-					Status:   "enabled",
-				})
-			} else {
-				modules = append(modules, SELinuxModule{
-					Name:   fields[0],
-					Status: fields[1],
-				})
-			}
-		default:
-			// "priority name status" or more fields
-			if len(fields) >= 3 {
-				priority, _ := strconv.Atoi(fields[0])
-				modules = append(modules, SELinuxModule{
-					Name:     fields[1],
-					Priority: priority,
-					Status:   fields[2],
-				})
+		var m SELinuxModule
+		rest := fields[1:]
+		if priority, err := strconv.Atoi(fields[0]); err == nil && len(fields) >= 2 {
+			m.Priority = &priority
+			m.Name = fields[1]
+			rest = fields[2:]
+		} else {
+			m.Name = fields[0]
+		}
+
+		m.Status = "enabled"
+		for _, f := range rest {
+			if strings.EqualFold(f, "disabled") {
+				m.Status = "disabled"
 			}
 		}
+		modules = append(modules, m)
 	}
 	return modules
 }
@@ -364,7 +412,7 @@ func (s *mqlSelinux) modules() ([]any, error) {
 	}
 
 	o, err := CreateResource(s.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("semodule -l"),
+		"command": llx.StringData(semoduleListCmd),
 	})
 	if err != nil {
 		return nil, err
@@ -380,7 +428,7 @@ func (s *mqlSelinux) modules() ([]any, error) {
 		r, err := CreateResource(s.MqlRuntime, "selinux.module", map[string]*llx.RawData{
 			"name":     llx.StringData(m.Name),
 			"status":   llx.StringData(m.Status),
-			"priority": llx.IntData(int64(m.Priority)),
+			"priority": llx.IntDataPtr(m.Priority),
 		})
 		if err != nil {
 			return nil, err

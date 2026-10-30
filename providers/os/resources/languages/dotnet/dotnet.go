@@ -6,12 +6,12 @@ package dotnet
 import (
 	"github.com/package-url/packageurl-go"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/os/resources/cpe"
-	"go.mondoo.com/mql/v13/sbom"
+	"go.mondoo.com/mql/providers/os/resources/cpe"
+	"go.mondoo.com/mql/sbom"
 )
 
 // NewPackageUrl creates a NuGet package URL.
-// See https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#nuget
+// See https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/nuget-definition.md
 func NewPackageUrl(name string, version string) string {
 	return packageurl.NewPackageURL(
 		packageurl.TypeNuget,

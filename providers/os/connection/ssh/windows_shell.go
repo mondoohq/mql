@@ -1,0 +1,264 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package ssh
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/binary"
+	"io"
+	"strings"
+	"unicode/utf16"
+
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
+)
+
+// remoteShell is the shell the SSH server runs a command in. OpenSSH on
+// Windows hands every exec request to its DefaultShell as `<shell> -c
+// "<command>"` (cmd.exe with /c), so the command is parsed by that shell
+// before anything it starts runs.
+type remoteShell int
+
+const (
+	// shellUnknown: not detected yet, or the probe failed.
+	shellUnknown remoteShell = iota
+	// shellPosix is sh, bash and the like: every Unix target.
+	shellPosix
+	// shellCmd is cmd.exe, the default DefaultShell of OpenSSH on Windows.
+	shellCmd
+	// shellWindowsPowerShell is powershell.exe (Windows PowerShell 5.1), the
+	// DefaultShell most Windows SSH setups configure.
+	shellWindowsPowerShell
+	// shellPwsh is PowerShell 7 (pwsh), on Windows or elsewhere.
+	shellPwsh
+)
+
+func (s remoteShell) String() string {
+	switch s {
+	case shellPosix:
+		return "posix"
+	case shellCmd:
+		return "cmd"
+	case shellWindowsPowerShell:
+		return "powershell"
+	case shellPwsh:
+		return "pwsh"
+	default:
+		return "unknown"
+	}
+}
+
+// isWindows reports whether the shell only exists on Windows.
+func (s remoteShell) isWindows() bool {
+	return s == shellCmd || s == shellWindowsPowerShell
+}
+
+// shellProbe tells the shells apart in one command, without a double quote
+// that the Windows command line around it would end on:
+//
+//	cmd.exe:            Windows_NT;$PSVersionTable.PSEdition
+//	Windows PowerShell: %OS% and Desktop, on two lines
+//	pwsh:               %OS% and Core, on two lines
+//	sh:                 %OS%, and an error on stderr for the second part
+const shellProbe = "echo %OS%;$PSVersionTable.PSEdition"
+
+// parseShellProbe reads the stdout of shellProbe.
+func parseShellProbe(stdout string) remoteShell {
+	if strings.Contains(stdout, "Windows_NT") {
+		return shellCmd
+	}
+	// the last line that is not empty is what the second part printed
+	var last string
+	for line := range strings.SplitSeq(stdout, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			last = line
+		}
+	}
+	switch last {
+	case "Desktop":
+		return shellWindowsPowerShell
+	case "Core":
+		return shellPwsh
+	case "%OS%":
+		return shellPosix
+	default:
+		return shellUnknown
+	}
+}
+
+// remoteShell detects the SSH server's shell once per connection. On an
+// OpenSSH for Windows server the connection check already ran the probe
+// (verify). Anywhere else it runs on the first PowerShell command only, so a
+// Unix target, which never gets one, never pays for it.
+func (c *Connection) remoteShell() remoteShell {
+	shell, _ := c.remoteShellContext(context.Background())
+	return shell
+}
+
+func (c *Connection) remoteShellContext(ctx context.Context) (remoteShell, error) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		c.shellOnce.Do(func() {
+			res, err := c.runRawContext(ctx, shellProbe)
+			c.detectShell(res, err)
+		})
+	}()
+	select {
+	case <-done:
+		return c.shell, nil
+	case <-ctx.Done():
+		return shellUnknown, ctx.Err()
+	}
+}
+
+// detectShell reads the result of shellProbe. Call it inside shellOnce.
+func (c *Connection) detectShell(res *shared.Command, err error) {
+	if err != nil || res == nil {
+		log.Debug().Err(err).Msg("ssh> could not detect the remote shell")
+		return
+	}
+	var stdout []byte
+	if res.Stdout != nil {
+		stdout, _ = io.ReadAll(res.Stdout)
+	}
+	c.shell = parseShellProbe(string(stdout))
+	c.shellDetected.Store(true)
+	log.Debug().Str("shell", c.shell.String()).Msg("ssh> detected the remote shell")
+}
+
+// isWindowsSSHServer reports whether the SSH server is the OpenSSH that
+// ships with Windows, which announces itself as OpenSSH_for_Windows.
+func (c *Connection) isWindowsSSHServer() bool {
+	return strings.Contains(c.serverVersion, "OpenSSH_for_Windows")
+}
+
+// verifyWindows is the connection check on an OpenSSH for Windows server: the
+// shell probe, which every Windows shell runs, so the check also detects the
+// shell. The first PowerShell command would otherwise start another process
+// just for the probe.
+func (c *Connection) verifyWindows() (*shared.Command, error) {
+	var res *shared.Command
+	var err error
+	ran := false
+	c.shellOnce.Do(func() {
+		ran = true
+		res, err = c.runRaw(shellProbe)
+		// detectShell reads stdout; verify needs only the exit status and
+		// stderr
+		c.detectShell(res, err)
+	})
+	if !ran {
+		// the shell is known already, so the check is a plain one
+		return c.runRaw("echo 'hi'")
+	}
+	return res, err
+}
+
+// runRaw runs a command exactly as given. Tests replace it.
+func (c *Connection) runRaw(command string) (*shared.Command, error) {
+	return c.runRawContext(context.Background(), command)
+}
+
+func (c *Connection) runRawContext(ctx context.Context, command string) (*shared.Command, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if c.rawRunner != nil {
+		return c.rawRunner(command)
+	}
+	return c.runRawCommandContext(ctx, command)
+}
+
+// directPowershell turns a command built by powershell.Encode into one that
+// the SSH server's own powershell.exe runs, instead of starting a second
+// powershell.exe inside it. Every PowerShell command over SSH to a Windows
+// host whose DefaultShell is PowerShell otherwise costs two processes.
+//
+// The script travels encoded as before: the server's shell receives it as
+// `-c "<command>"`, so the command may hold no double quote. Base64 in single
+// quotes holds none.
+//
+// The wrapper keeps what `powershell.exe -EncodedCommand` does with the
+// script, measured on Windows Server 2022 and 2025:
+//
+//   - The exit code: `exit N` exits with N, and otherwise the process exits 1
+//     when the script's last statement failed. Invoke-Expression alone would
+//     exit 0 there, so the script ends with that check.
+//   - Warning, verbose and debug records go to stderr, prefixed like the
+//     console prints them. A shell started with -c writes them to stdout,
+//     where they would end up in the output a resource parses.
+//   - Output formatting, errors on stderr, the code page and the working
+//     directory are the same.
+//
+// The one difference is the exit code of a script that ends with `exit N`:
+// it arrives as N, where the double invocation turned every non-zero code of
+// the inner process into 1. N is what a local scan gets.
+//
+// Only the Encode form is rewritten. It pins the script to Windows
+// PowerShell, which the caller checks is the server's shell; the Wrap form's
+// script is not encoded and is left as it is.
+func directPowershell(command string) (string, bool) {
+	argv, ok := powershell.SplitInvocation(command)
+	if !ok || len(argv) != 4 || argv[2] != "-EncodedCommand" {
+		return "", false
+	}
+	switch strings.ToLower(argv[0]) {
+	case "powershell", "powershell.exe":
+	default:
+		return "", false
+	}
+	script, err := base64.StdEncoding.DecodeString(argv[3])
+	if err != nil || len(script)%2 != 0 {
+		return "", false
+	}
+	// both halves are UTF-16LE, so the bytes join into one script
+	encoded := base64.StdEncoding.EncodeToString(append(script, directExitCheckUTF16...))
+	return "Invoke-Expression ([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('" + encoded + "')))" +
+		directStreams, true
+}
+
+const (
+	// directExitCheck ends the script: -EncodedCommand exits 1 when the last
+	// statement failed.
+	directExitCheck = "\nif (-not $?) { exit 1 }"
+
+	// directStreams sends warning (3), verbose (4) and debug (5) records to
+	// stderr, as -EncodedCommand does. Errors (2) are left alone: the console
+	// host already writes them to stderr, as it does for -EncodedCommand.
+	directStreams = " 3>&1 4>&1 5>&1 | ForEach-Object { if ($_ -is [Management.Automation.InformationalRecord]) " +
+		"{ [Console]::Error.WriteLine(($_.GetType().Name -replace 'Record$','').ToUpper() + ': ' + $_.Message) } else { $_ } }"
+)
+
+// directExitCheckUTF16 is directExitCheck as UTF-16LE, the encoding of the
+// script it is appended to.
+var directExitCheckUTF16 = func() []byte {
+	b := make([]byte, 0, 2*len(directExitCheck))
+	for _, u := range utf16.Encode([]rune(directExitCheck)) {
+		b = binary.LittleEndian.AppendUint16(b, u)
+	}
+	return b
+}()
+
+func (c *Connection) runPowershellDirectContext(ctx context.Context, command string) (*shared.Command, bool, error) {
+	direct, ok := directPowershell(command)
+	if !ok {
+		return nil, false, nil
+	}
+	shell, err := c.remoteShellContext(ctx)
+	if err != nil {
+		return nil, true, err
+	}
+	if shell != shellWindowsPowerShell {
+		return nil, false, nil
+	}
+	res, err := c.runRawContext(ctx, direct)
+	if res != nil {
+		// the command is what the caller asked for, not how it traveled
+		res.Command = command
+	}
+	return res, true, err
+}

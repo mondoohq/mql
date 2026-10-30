@@ -1,0 +1,2 @@
+/boot/grub/grub.cfg: no-blscfg
+/boot/efi/EFI/debian/grub.cfg: no-blscfg

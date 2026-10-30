@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/mqlr/lrcore"
+	"go.mondoo.com/mql/providers-sdk/v1/mqlr/lrcore"
 )
 
 func TestSanitizeComments(t *testing.T) {

@@ -1,0 +1,38 @@
+# A Mac bound to Active Directory with dsconfigad. opendirectoryd keeps one
+# property list per binding. The key names follow the Active Directory plugin
+# configuration (top-level trust keys, and the binding's domain and forest
+# under "module options" > "ActiveDirectory"); the values are made up.
+
+[files."/Library/Preferences/OpenDirectory/Configurations/Active Directory"]
+stat.isdir = true
+
+[files."/Library/Preferences/OpenDirectory/Configurations/Active Directory/CORP.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>module options</key>
+	<dict>
+		<key>ActiveDirectory</key>
+		<dict>
+			<key>allow multi-domain</key>
+			<true/>
+			<key>cache last user logon</key>
+			<true/>
+			<key>domain</key>
+			<string>corp.example.com</string>
+			<key>forest</key>
+			<string>example.com</string>
+			<key>trust domain</key>
+			<string>corp.example.com</string>
+		</dict>
+	</dict>
+	<key>node name</key>
+	<string>/Active Directory/CORP</string>
+	<key>trustaccount</key>
+	<string>mac-01$</string>
+	<key>trustkerberosprincipal</key>
+	<string>mac-01$@CORP.EXAMPLE.COM</string>
+</dict>
+</plist>
+"""

@@ -8,42 +8,32 @@ import (
 	"time"
 
 	"github.com/digitalocean/godo"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/digitalocean/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/digitalocean/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // ----- Anthropic API keys -----
 
-func (r *mqlDigitaloceanGradientai) anthropicApiKeys() ([]interface{}, error) {
+func (r *mqlDigitaloceanGradientai) anthropicApiKeys() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var all []interface{}
-	opt := &godo.ListOptions{PerPage: 200}
-	for {
-		keys, resp, err := client.GradientAI.ListAnthropicAPIKeys(context.Background(), opt)
+	keys, err := paginate(context.Background(), client.AgentPlatform.ListAnthropicAPIKeys)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(keys))
+	for _, k := range keys {
+		res, err := newMqlGradientaiAnthropicApiKey(r.MqlRuntime, k)
 		if err != nil {
 			return nil, err
 		}
-		for _, k := range keys {
-			res, err := newMqlGradientaiAnthropicApiKey(r.MqlRuntime, k)
-			if err != nil {
-				return nil, err
-			}
-			if res != nil {
-				all = append(all, res)
-			}
+		if res != nil {
+			all = append(all, res)
 		}
-		if resp == nil || resp.Links == nil || resp.Links.IsLastPage() {
-			break
-		}
-		page, err := resp.Links.CurrentPage()
-		if err != nil {
-			return nil, err
-		}
-		opt.Page = page + 1
 	}
 	return all, nil
 }
@@ -67,68 +57,50 @@ func newMqlGradientaiAnthropicApiKey(runtime *plugin.Runtime, k *godo.AnthropicA
 	return res.(*mqlDigitaloceanGradientaiAnthropicApiKey), nil
 }
 
-func (r *mqlDigitaloceanGradientaiAnthropicApiKey) agents() ([]interface{}, error) {
+func (r *mqlDigitaloceanGradientaiAnthropicApiKey) agents() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var all []interface{}
-	opt := &godo.ListOptions{PerPage: 200}
-	for {
-		agents, resp, err := client.GradientAI.ListAgentsByAnthropicAPIKey(context.Background(), r.Uuid.Data, opt)
+	agents, err := paginate(context.Background(), func(c context.Context, o *godo.ListOptions) ([]*godo.Agent, *godo.Response, error) {
+		return client.AgentPlatform.ListAgentsByAnthropicAPIKey(c, r.Uuid.Data, o)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(agents))
+	for _, a := range agents {
+		res, err := newMqlGradientaiAgent(r.MqlRuntime, a)
 		if err != nil {
 			return nil, err
 		}
-		for _, a := range agents {
-			res, err := newMqlGradientaiAgent(r.MqlRuntime, a)
-			if err != nil {
-				return nil, err
-			}
-			if res != nil {
-				all = append(all, res)
-			}
+		if res != nil {
+			all = append(all, res)
 		}
-		if resp == nil || resp.Links == nil || resp.Links.IsLastPage() {
-			break
-		}
-		page, err := resp.Links.CurrentPage()
-		if err != nil {
-			return nil, err
-		}
-		opt.Page = page + 1
 	}
 	return all, nil
 }
 
 // ----- OpenAI API keys -----
 
-func (r *mqlDigitaloceanGradientai) openaiApiKeys() ([]interface{}, error) {
+func (r *mqlDigitaloceanGradientai) openaiApiKeys() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var all []interface{}
-	opt := &godo.ListOptions{PerPage: 200}
-	for {
-		keys, resp, err := client.GradientAI.ListOpenAIAPIKeys(context.Background(), opt)
+	keys, err := paginate(context.Background(), client.AgentPlatform.ListOpenAIAPIKeys)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(keys))
+	for _, k := range keys {
+		res, err := newMqlGradientaiOpenaiApiKey(r.MqlRuntime, k)
 		if err != nil {
 			return nil, err
 		}
-		for _, k := range keys {
-			res, err := newMqlGradientaiOpenaiApiKey(r.MqlRuntime, k)
-			if err != nil {
-				return nil, err
-			}
-			if res != nil {
-				all = append(all, res)
-			}
+		if res != nil {
+			all = append(all, res)
 		}
-		if resp == nil || resp.Links == nil || resp.Links.IsLastPage() {
-			break
-		}
-		page, err := resp.Links.CurrentPage()
-		if err != nil {
-			return nil, err
-		}
-		opt.Page = page + 1
 	}
 	return all, nil
 }
@@ -158,8 +130,8 @@ type mqlDigitaloceanGradientaiOpenaiApiKeyInternal struct {
 	cachedModels []*godo.Model
 }
 
-func (r *mqlDigitaloceanGradientaiOpenaiApiKey) models() ([]interface{}, error) {
-	out := make([]interface{}, 0, len(r.cachedModels))
+func (r *mqlDigitaloceanGradientaiOpenaiApiKey) models() ([]any, error) {
+	out := make([]any, 0, len(r.cachedModels))
 	for _, m := range r.cachedModels {
 		res, err := newMqlGradientaiModel(r.MqlRuntime, m)
 		if err != nil {
@@ -172,46 +144,38 @@ func (r *mqlDigitaloceanGradientaiOpenaiApiKey) models() ([]interface{}, error) 
 	return out, nil
 }
 
-func (r *mqlDigitaloceanGradientaiOpenaiApiKey) agents() ([]interface{}, error) {
+func (r *mqlDigitaloceanGradientaiOpenaiApiKey) agents() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var all []interface{}
-	opt := &godo.ListOptions{PerPage: 200}
-	for {
-		agents, resp, err := client.GradientAI.ListAgentsByOpenAIAPIKey(context.Background(), r.Uuid.Data, opt)
+	agents, err := paginate(context.Background(), func(c context.Context, o *godo.ListOptions) ([]*godo.Agent, *godo.Response, error) {
+		return client.AgentPlatform.ListAgentsByOpenAIAPIKey(c, r.Uuid.Data, o)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(agents))
+	for _, a := range agents {
+		res, err := newMqlGradientaiAgent(r.MqlRuntime, a)
 		if err != nil {
 			return nil, err
 		}
-		for _, a := range agents {
-			res, err := newMqlGradientaiAgent(r.MqlRuntime, a)
-			if err != nil {
-				return nil, err
-			}
-			if res != nil {
-				all = append(all, res)
-			}
+		if res != nil {
+			all = append(all, res)
 		}
-		if resp == nil || resp.Links == nil || resp.Links.IsLastPage() {
-			break
-		}
-		page, err := resp.Links.CurrentPage()
-		if err != nil {
-			return nil, err
-		}
-		opt.Page = page + 1
 	}
 	return all, nil
 }
 
 // ----- Dedicated inference endpoints -----
 
-func (r *mqlDigitaloceanGradientai) dedicatedInferenceEndpoints() ([]interface{}, error) {
+func (r *mqlDigitaloceanGradientai) dedicatedInferenceEndpoints() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var all []interface{}
-	opt := &godo.DedicatedInferenceListOptions{ListOptions: godo.ListOptions{PerPage: 200}}
+	var all []any
+	opt := &godo.DedicatedInferenceListOptions{PerPage: 200}
 	for {
 		endpoints, resp, err := client.DedicatedInference.List(context.Background(), opt)
 		if err != nil {
@@ -219,7 +183,7 @@ func (r *mqlDigitaloceanGradientai) dedicatedInferenceEndpoints() ([]interface{}
 		}
 		for i := range endpoints {
 			e := endpoints[i]
-			modelIDs := make([]interface{}, len(e.ProviderModelID))
+			modelIDs := make([]any, len(e.ProviderModelID))
 			for j, m := range e.ProviderModelID {
 				modelIDs[j] = m
 			}
@@ -233,7 +197,6 @@ func (r *mqlDigitaloceanGradientai) dedicatedInferenceEndpoints() ([]interface{}
 				"name":                llx.StringData(e.Name),
 				"region":              llx.StringData(e.Region),
 				"status":              llx.StringData(e.Status),
-				"vpcUuid":             llx.StringData(e.VPCUUID),
 				"providerModelIds":    llx.ArrayData(modelIDs, types.String),
 				"publicEndpointFqdn":  llx.StringData(publicFQDN),
 				"privateEndpointFqdn": llx.StringData(privateFQDN),
@@ -243,6 +206,9 @@ func (r *mqlDigitaloceanGradientai) dedicatedInferenceEndpoints() ([]interface{}
 			if err != nil {
 				return nil, err
 			}
+			// Cache the VPC UUID so the typed vpc() accessor can resolve it
+			// without a refetch.
+			res.(*mqlDigitaloceanGradientaiDedicatedInferenceEndpoint).cacheVPCUUID = e.VPCUUID
 			all = append(all, res)
 		}
 		if resp == nil || resp.Links == nil || resp.Links.IsLastPage() {
@@ -257,16 +223,27 @@ func (r *mqlDigitaloceanGradientai) dedicatedInferenceEndpoints() ([]interface{}
 	return all, nil
 }
 
-func (r *mqlDigitaloceanGradientaiDedicatedInferenceEndpoint) vpc() (*mqlDigitaloceanVpc, error) {
-	return resolveVpcRef(r.MqlRuntime, &r.Vpc, r.VpcUuid.Data)
+// mqlDigitaloceanGradientaiDedicatedInferenceEndpointInternal caches the UUID
+// of the VPC the endpoint runs in so the typed vpc() accessor can resolve it
+// without a refetch.
+type mqlDigitaloceanGradientaiDedicatedInferenceEndpointInternal struct {
+	cacheVPCUUID string
 }
 
-func (r *mqlDigitaloceanGradientaiDedicatedInferenceEndpoint) accelerators() ([]interface{}, error) {
+func (r *mqlDigitaloceanGradientaiDedicatedInferenceEndpoint) id() (string, error) {
+	return "digitalocean.gradientai.dedicatedInferenceEndpoint/" + r.Id.Data, nil
+}
+
+func (r *mqlDigitaloceanGradientaiDedicatedInferenceEndpoint) vpc() (*mqlDigitaloceanVpc, error) {
+	return resolveVpcRef(r.MqlRuntime, &r.Vpc, r.cacheVPCUUID)
+}
+
+func (r *mqlDigitaloceanGradientaiDedicatedInferenceEndpoint) accelerators() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var out []interface{}
-	opt := &godo.DedicatedInferenceListAcceleratorsOptions{ListOptions: godo.ListOptions{PerPage: 200}}
+	var out []any
+	opt := &godo.DedicatedInferenceListAcceleratorsOptions{PerPage: 200}
 	for {
 		accelerators, resp, err := client.DedicatedInference.ListAccelerators(context.Background(), r.Id.Data, opt)
 		if err != nil {
@@ -299,51 +276,43 @@ func (r *mqlDigitaloceanGradientaiDedicatedInferenceEndpoint) accelerators() ([]
 	return out, nil
 }
 
-func (r *mqlDigitaloceanGradientaiDedicatedInferenceEndpoint) tokens() ([]interface{}, error) {
+func (r *mqlDigitaloceanGradientaiDedicatedInferenceEndpoint) tokens() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var all []interface{}
-	opt := &godo.ListOptions{PerPage: 200}
-	for {
-		tokens, resp, err := client.DedicatedInference.ListTokens(context.Background(), r.Id.Data, opt)
+	tokens, err := paginate(context.Background(), func(c context.Context, o *godo.ListOptions) ([]godo.DedicatedInferenceToken, *godo.Response, error) {
+		return client.DedicatedInference.ListTokens(c, r.Id.Data, o)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(tokens))
+	for i := range tokens {
+		t := tokens[i]
+		// The token Value is a secret and is deliberately not surfaced.
+		res, err := CreateResource(r.MqlRuntime, "digitalocean.gradientai.dedicatedInferenceEndpoint.token", map[string]*llx.RawData{
+			"__id":      llx.StringData(r.Id.Data + "/" + t.ID),
+			"id":        llx.StringData(t.ID),
+			"name":      llx.StringData(t.Name),
+			"isManaged": llx.BoolData(t.IsManaged),
+			"createdAt": llx.TimeData(t.CreatedAt),
+		})
 		if err != nil {
 			return nil, err
 		}
-		for i := range tokens {
-			t := tokens[i]
-			// The token Value is a secret and is deliberately not surfaced.
-			res, err := CreateResource(r.MqlRuntime, "digitalocean.gradientai.dedicatedInferenceEndpoint.token", map[string]*llx.RawData{
-				"__id":      llx.StringData(r.Id.Data + "/" + t.ID),
-				"id":        llx.StringData(t.ID),
-				"name":      llx.StringData(t.Name),
-				"isManaged": llx.BoolData(t.IsManaged),
-				"createdAt": llx.TimeData(t.CreatedAt),
-			})
-			if err != nil {
-				return nil, err
-			}
-			all = append(all, res)
-		}
-		if resp == nil || resp.Links == nil || resp.Links.IsLastPage() {
-			break
-		}
-		page, err := resp.Links.CurrentPage()
-		if err != nil {
-			return nil, err
-		}
-		opt.Page = page + 1
+		all = append(all, res)
 	}
 	return all, nil
 }
 
 // ----- Batch inference jobs -----
 
-func (r *mqlDigitaloceanGradientai) batchJobs() ([]interface{}, error) {
+func (r *mqlDigitaloceanGradientai) batchJobs() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var all []interface{}
+	var all []any
 	// Batch jobs use cursor pagination: advance `After` with the response's
 	// EndCursor until HasNextPage is false.
 	opts := &godo.ListBatchesOptions{Limit: 200}
@@ -357,9 +326,9 @@ func (r *mqlDigitaloceanGradientai) batchJobs() ([]interface{}, error) {
 		}
 		for i := range resp.Edges {
 			b := resp.Edges[i].Node
-			counts := map[string]interface{}{}
+			counts := map[string]any{}
 			if b.RequestCounts != nil {
-				counts = map[string]interface{}{
+				counts = map[string]any{
 					"total":     int64(b.RequestCounts.Total),
 					"completed": int64(b.RequestCounts.Completed),
 					"failed":    int64(b.RequestCounts.Failed),

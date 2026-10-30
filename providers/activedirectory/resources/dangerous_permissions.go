@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-ldap/ldap/v3"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/activedirectory/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/activedirectory/connection"
 )
 
 // Extended-right GUIDs for DCSync detection (ACCESS_ALLOWED_OBJECT_ACE type 5).
@@ -223,7 +223,7 @@ type dangerousPermFinding struct {
 	accessMask   uint32
 }
 
-func (a *mqlActivedirectory) dangerousPermissions() ([]interface{}, error) {
+func (a *mqlActivedirectory) dangerousPermissions() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.ActiveDirectoryConnection)
 
 	targets, err := discoverCriticalTargets(conn)
@@ -244,7 +244,7 @@ func (a *mqlActivedirectory) dangerousPermissions() ([]interface{}, error) {
 	}
 	log.Debug().Int("totalFindings", len(allFindings)).Int("targets", len(targets)).Msg("dangerous permission scan complete")
 
-	res := make([]interface{}, 0, len(allFindings))
+	res := make([]any, 0, len(allFindings))
 	for _, f := range allFindings {
 		resource, err := CreateResource(a.MqlRuntime, "activedirectory.dangerousPermission",
 			map[string]*llx.RawData{

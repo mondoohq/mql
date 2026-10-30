@@ -1,0 +1,6 @@
+# The weaviate dependency (github.com/weaviate/weaviate) uses a constant that
+# assumes a 64-bit int (math.MaxInt64) and fails to compile on 32-bit targets:
+#   entities/vectorindex/common/config.go:67: constant 9223372036854775807 overflows int
+# Weaviate Cloud has no 32-bit clients, so skip those targets for this provider.
+linux 386
+linux arm 7

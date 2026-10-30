@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -192,6 +193,54 @@ func TestParseFirewalldRichRule(t *testing.T) {
 				action:         "drop",
 			},
 		},
+		// The rules below are as firewall-cmd --list-all-zones printed them on
+		// RHEL 7 (firewalld 0.6.3) and RHEL 9 (1.3.4).
+		{
+			name:  "accept followed by a limit option",
+			input: `rule family="ipv4" source address="198.51.100.200" accept limit value="2/m"`,
+			expected: parsedRichRule{
+				family: "ipv4",
+				source: "198.51.100.200",
+				action: "accept",
+			},
+		},
+		{
+			name:  "reject followed by a type option",
+			input: `rule family="ipv4" source address="203.0.113.0/24" reject type="icmp-host-prohibited"`,
+			expected: parsedRichRule{
+				family: "ipv4",
+				source: "203.0.113.0/24",
+				action: "reject",
+			},
+		},
+		{
+			name:  "log prefix with a trailing space and a limit",
+			input: `rule family="ipv4" source address="198.51.100.0/24" service name="ftp" log prefix="ftp " level="info" limit value="1/m" accept`,
+			expected: parsedRichRule{
+				family: "ipv4",
+				source: "198.51.100.0/24",
+				action: "accept",
+			},
+		},
+		{
+			name:  "firewalld 0.6 prints an inverted destination in lower case",
+			input: `rule family="ipv4" destination not address="192.0.2.1" service name="dns" log prefix="dnsx" level="warning" drop`,
+			expected: parsedRichRule{
+				family:              "ipv4",
+				destination:         "192.0.2.1",
+				destinationInverted: true,
+				action:              "drop",
+			},
+		},
+		{
+			name:  "action keyword inside a quoted value",
+			input: `rule family="ipv4" source address="10.0.0.0/8" log prefix=" drop " level="info"`,
+			expected: parsedRichRule{
+				family: "ipv4",
+				source: "10.0.0.0/8",
+				action: "log",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -207,4 +256,113 @@ func TestSplitNonEmpty(t *testing.T) {
 	assert.Equal(t, []string{"ssh"}, splitNonEmpty("ssh"))
 	assert.Equal(t, []string{"ssh", "http", "https"}, splitNonEmpty("ssh http https"))
 	assert.Equal(t, []string{"a", "b"}, splitNonEmpty("  a   b  "))
+}
+
+// firewall-cmd exits non-zero both when the firewall is stopped and when polkit
+// refuses to answer an unprivileged caller. Only the second must be treated as
+// "we could not determine"; conflating them reports a running firewall as off.
+func TestIsFirewalldAuthzError(t *testing.T) {
+	authz := []string{
+		// verbatim from an unprivileged `firewall-cmd --state` on CentOS Stream 9
+		"Authorization failed.\n    Make sure polkit agent is running or run the application as superuser.",
+		"Authorization failed.",
+		"Error: NOT_AUTHORIZED",
+		"Failed to query polkit authority",
+		"dbus.exceptions.DBusException: Permission denied",
+		"Access denied",
+		// case must not matter
+		"AUTHORIZATION FAILED",
+	}
+	for _, s := range authz {
+		t.Run("authz/"+s[:min(len(s), 28)], func(t *testing.T) {
+			assert.True(t, isFirewalldAuthzError(s), "should be recognised as an authorization failure")
+		})
+	}
+
+	notAuthz := []string{
+		// what firewall-cmd prints when the daemon really is stopped
+		"firewall-cmd: error: Failed to connect to bus: No such file or directory",
+		"FirewallD is not running",
+		"Error: COMMAND_FAILED",
+		"command not found",
+		"",
+	}
+	for _, s := range notAuthz {
+		name := s
+		if name == "" {
+			name = "empty"
+		}
+		t.Run("stopped/"+name[:min(len(name), 28)], func(t *testing.T) {
+			assert.False(t, isFirewalldAuthzError(s),
+				"a genuinely stopped firewall must still report as not running")
+		})
+	}
+}
+
+func TestParseFirewalldZonesForwardPorts(t *testing.T) {
+	read := func(name string) []parsedZone {
+		data, err := os.ReadFile("testdata/firewalld/" + name)
+		require.NoError(t, err)
+		zones := parseFirewalldZones(string(data))
+		require.NotEmpty(t, zones)
+		return zones
+	}
+	public := func(zones []parsedZone) parsedZone {
+		for _, z := range zones {
+			if z.name == "public" {
+				return z
+			}
+		}
+		t.Fatal("no public zone")
+		return parsedZone{}
+	}
+
+	t.Run("firewalld 1.3 lists forward ports below the key", func(t *testing.T) {
+		z := public(read("list-all-zones-1.3.4.txt"))
+		assert.Equal(t, []string{"port=2022:proto=tcp:toport=22:toaddr="}, z.forwardPorts)
+		// the block must end at the next key
+		assert.Equal(t, []string{"1234/udp"}, z.sourcePorts)
+		assert.Equal(t, []string{"timestamp-request"}, z.icmpBlocks)
+		assert.Len(t, z.richRules, 9)
+	})
+
+	t.Run("firewalld 0.6 lists forward ports on the key line", func(t *testing.T) {
+		z := public(read("list-all-zones-0.6.3.txt"))
+		assert.Equal(t, []string{"port=2022:proto=tcp:toport=22:toaddr="}, z.forwardPorts)
+		assert.Equal(t, []string{"1234/udp"}, z.sourcePorts)
+		assert.Len(t, z.richRules, 9)
+	})
+
+	t.Run("zone without forward ports", func(t *testing.T) {
+		for _, z := range read("list-all-zones-1.3.4.txt") {
+			if z.name == "dmz" {
+				assert.Empty(t, z.forwardPorts)
+				return
+			}
+		}
+		t.Fatal("no dmz zone")
+	})
+}
+
+func TestIsFirewalldFailedState(t *testing.T) {
+	// firewall-cmd --state on AlmaLinux 10 with firewalld 2.4.3 in the FAILED
+	// state: empty stdout, "failed" on stderr, exit code 251
+	assert.True(t, isFirewalldFailedState("failed\n"))
+	assert.False(t, isFirewalldFailedState("not running\n"))
+	assert.False(t, isFirewalldFailedState("Waiting on dbus connection...\nnot running\n"))
+	assert.False(t, isFirewalldFailedState(""))
+	// firewall-cmd colors its warnings when it writes to a terminal
+	assert.True(t, isFirewalldFailedState("\x1b[91mfailed\x1b[00m\n"))
+	// firewalld 0.4.4 (Debian 9) has no FAILED state
+	assert.False(t, isFirewalldFailedState("\x1b[91mnot running\x1b[00m\n"))
+}
+
+// firewalld 0.4.4 (Debian 9) whose ruleset failed to apply: --state prints
+// "not running" and exits 252, while --get-default-zone answers "public". A
+// stopped daemon makes --get-default-zone exit 252 as well.
+func TestFirewalldDefaultZoneAnswered(t *testing.T) {
+	assert.True(t, firewalldDefaultZoneAnswered(0, "public\n"))
+	assert.False(t, firewalldDefaultZoneAnswered(firewalldNotRunningExit, "\x1b[91mFirewallD is not running\x1b[00m\n"))
+	assert.False(t, firewalldDefaultZoneAnswered(firewalldNotRunningExit, "FirewallD is not running\n"))
+	assert.False(t, firewalldDefaultZoneAnswered(0, "\n"))
 }

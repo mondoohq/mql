@@ -1,0 +1,67 @@
+{
+ "vrfs": {
+  "default": {
+   "allRoutesProgrammedHardware": true,
+   "allRoutesProgrammedKernel": true,
+   "defaultRouteState": "reachable",
+   "routes": {
+    "0.0.0.0/0": {
+     "directlyConnected": false,
+     "hardwareProgrammed": true,
+     "kernelProgrammed": true,
+     "metric": 0,
+     "preference": 254,
+     "routeAction": "forward",
+     "routeLeaked": false,
+     "routeType": "dhcp",
+     "vias": [
+      {
+       "interface": "Ethernet1",
+       "nexthopAddr": "10.99.0.1"
+      }
+     ]
+    },
+    "10.0.0.1/32": {
+     "directlyConnected": true,
+     "hardwareProgrammed": true,
+     "kernelProgrammed": true,
+     "routeAction": "forward",
+     "routeLeaked": false,
+     "routeType": "connected",
+     "vias": [
+      {
+       "interface": "Loopback0"
+      }
+     ]
+    },
+    "10.0.0.2/32": {
+     "directlyConnected": true,
+     "hardwareProgrammed": true,
+     "kernelProgrammed": true,
+     "routeAction": "forward",
+     "routeLeaked": false,
+     "routeType": "connected",
+     "vias": [
+      {
+       "interface": "Loopback1"
+      }
+     ]
+    },
+    "10.99.0.0/24": {
+     "directlyConnected": true,
+     "hardwareProgrammed": true,
+     "kernelProgrammed": true,
+     "routeAction": "forward",
+     "routeLeaked": false,
+     "routeType": "connected",
+     "vias": [
+      {
+       "interface": "Ethernet1"
+      }
+     ]
+    }
+   },
+   "routingDisabled": false
+  }
+ }
+}

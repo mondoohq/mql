@@ -1,0 +1,7 @@
+index=0
+kernel="/boot/vmlinuz-6.12.0-55.95.1.el10_0.x86_64"
+args="console=tty0 console=ttyS0,115200n8 nvme_core.io_timeout=4294967295 crashkernel=2G-64G:256M,64G-:512M $tuned_params"
+root="UUID=4b680ae0-ee3e-40b1-b370-b440476cfa8c"
+initrd="/boot/initramfs-6.12.0-55.95.1.el10_0.x86_64.img $tuned_initrd"
+title="Red Hat Enterprise Linux (6.12.0-55.95.1.el10_0.x86_64) 10.0 (Coughlan)"
+id="ffffffffffffffffffffffffffffffff-6.12.0-55.95.1.el10_0.x86_64"

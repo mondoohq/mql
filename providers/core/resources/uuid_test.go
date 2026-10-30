@@ -6,7 +6,7 @@ package resources_test
 import (
 	"testing"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/testutils"
+	"go.mondoo.com/mql/providers-sdk/v1/testutils"
 )
 
 func TestUUID(t *testing.T) {

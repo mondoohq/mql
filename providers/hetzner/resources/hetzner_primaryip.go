@@ -7,14 +7,13 @@ import (
 	"fmt"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 type mqlHetznerPrimaryIpInternal struct {
-	cacheDatacenter *hcloud.Datacenter
-	cacheLocation   *hcloud.Location
-	cacheServerID   int64
+	cacheLocation *hcloud.Location
+	cacheServerID int64
 }
 
 func (r *mqlHetznerPrimaryIp) id() (string, error) {
@@ -22,10 +21,7 @@ func (r *mqlHetznerPrimaryIp) id() (string, error) {
 }
 
 func (h *mqlHetzner) primaryIps() ([]any, error) {
-	c := conn(h.MqlRuntime)
-	items, err := paginate(func(opts hcloud.ListOpts) ([]*hcloud.PrimaryIP, *hcloud.Response, error) {
-		return c.Client().PrimaryIP.List(ctx(), hcloud.PrimaryIPListOpts{ListOpts: opts})
-	})
+	items, err := h.allPrimaryIPs()
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +60,6 @@ func newMqlHetznerPrimaryIp(runtime *plugin.Runtime, p *hcloud.PrimaryIP) (*mqlH
 		return nil, err
 	}
 	m := res.(*mqlHetznerPrimaryIp)
-	m.cacheDatacenter = p.Datacenter
 	m.cacheLocation = p.Location
 	if p.AssigneeType == "server" {
 		m.cacheServerID = p.AssigneeID
@@ -73,9 +68,9 @@ func newMqlHetznerPrimaryIp(runtime *plugin.Runtime, p *hcloud.PrimaryIP) (*mqlH
 }
 
 func initHetznerPrimaryIp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "primaryIp")
+	if err != nil {
+		return nil, nil, err
 	}
 	p, _, err := conn(runtime).Client().PrimaryIP.GetByID(ctx(), id)
 	if err != nil {
@@ -88,18 +83,8 @@ func initHetznerPrimaryIp(runtime *plugin.Runtime, args map[string]*llx.RawData)
 	return args, res, err
 }
 
-func (m *mqlHetznerPrimaryIp) datacenter() (*mqlHetznerDatacenter, error) {
-	return resolveTypedResource(&m.Datacenter, m.cacheDatacenter, func(dc *hcloud.Datacenter) (*mqlHetznerDatacenter, error) {
-		return newMqlHetznerDatacenter(m.MqlRuntime, dc)
-	})
-}
-
 func (m *mqlHetznerPrimaryIp) location() (*mqlHetznerLocation, error) {
-	loc := m.cacheLocation
-	if loc == nil && m.cacheDatacenter != nil {
-		loc = m.cacheDatacenter.Location
-	}
-	return resolveTypedResource(&m.Location, loc, func(l *hcloud.Location) (*mqlHetznerLocation, error) {
+	return resolveTypedResource(&m.Location, m.cacheLocation, func(l *hcloud.Location) (*mqlHetznerLocation, error) {
 		return newMqlHetznerLocation(m.MqlRuntime, l)
 	})
 }

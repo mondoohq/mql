@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"syscall"
@@ -17,15 +18,17 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/cli/components"
-	"go.mondoo.com/mql/v13/cli/config"
-	cli_errors "go.mondoo.com/mql/v13/cli/errors"
-	"go.mondoo.com/mql/v13/providers"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/sysinfo"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream/health"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/cli/components"
+	"go.mondoo.com/mql/cli/config"
+	cli_errors "go.mondoo.com/mql/cli/errors"
+	cliproviders "go.mondoo.com/mql/cli/providers"
+	"go.mondoo.com/mql/cli/selfupdate"
+	"go.mondoo.com/mql/providers"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/sysinfo"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream/health"
 	"go.mondoo.com/ranger-rpc"
 	"sigs.k8s.io/yaml"
 )
@@ -185,6 +188,27 @@ func checkStatus(ctx context.Context) (Status, error) {
 		return s, cli_errors.NewCommandError(errors.Wrap(err, "failed to set up Mondoo API client"), 1)
 	}
 
+	// Report the proxy the platform calls below go through. Resolving it here
+	// also runs the operating system's setup script, if any, before the checks
+	// start, so the result is cached by the time they need it.
+	if proxy, source, err := opts.EffectiveProxy(opts.UpstreamApiEndpoint()); err != nil {
+		log.Warn().Err(err).Msg("could not determine the proxy for Mondoo Platform")
+	} else if proxy != nil {
+		s.Client.Proxy = proxy.Redacted()
+		s.Client.ProxySource = string(source)
+	} else {
+		// Resolving the proxy above ran the probe of a system proxy, so a
+		// failed verdict for the API endpoint is on record by now.
+		s.Client.ProxyNote = config.ProxyFallbackNote(opts.UpstreamApiEndpoint())
+	}
+
+	// Probe the ingest endpoint alongside the checks below rather than in
+	// series. Uploads go to a different host than the API on a different static
+	// IP, so a firewall can allow the API and blackhole ingest — and a
+	// blackholed host answers nothing until the probe's own deadline, which
+	// would otherwise eat a third of this command's shared budget.
+	ingest := probeIngestEndpoint(ctx, httpClient, opts.UpstreamIngestEndpoint())
+
 	sysInfo, err := sysinfo.Get()
 	if err == nil {
 		s.Client.Platform = sysInfo.Platform
@@ -203,12 +227,15 @@ func checkStatus(ctx context.Context) (Status, error) {
 	if opts.UpdatesURL != "" {
 		s.Client.UpdatesURL = opts.UpdatesURL
 	} else {
-		s.Client.UpdatesURL = providers.DefaultUpdatesURL
+		s.Client.UpdatesURL = selfupdate.DefaultUpdatesURL
 	}
 
-	// Fetch latest version using the configured updates URL
-	releaseURL := s.Client.UpdatesURL + "/mql/latest.json?ignoreCache=1"
-	latestVersion, err := mql.GetLatestReleaseNameContext(ctx, releaseURL, httpClient)
+	// Read the same manifests the self-update reads, in the same order, so status
+	// cannot report a version the updater would not install -- including when
+	// updates_url names a mirror laid out as the release bucket rather than as
+	// the install service.
+	latestVersion, err := selfupdate.LatestVersion(ctx,
+		selfupdate.ReleaseURLs(opts.UpdatesURL, "mql", config.GetUpdateChannel()))
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to get latest version")
 	}
@@ -247,18 +274,18 @@ func checkStatus(ctx context.Context) (Status, error) {
 		}
 	}
 
-	// Determine the providers URL:
-	// 1. If providers_url is explicitly set, use it (deprecated)
-	// 2. Otherwise, if updates_url is set, use updates_url + "/providers"
-	// 3. Otherwise, use the default
-	if opts.ProvidersURL != "" {
-		updatesURL := strings.TrimSuffix(opts.ProvidersURL, "/providers")
-		log.Warn().Msgf("providers_url is deprecated, please use updates_url: %s", updatesURL)
-		s.Client.ProvidersURL = opts.ProvidersURL
-	} else if opts.UpdatesURL != "" {
-		s.Client.ProvidersURL = opts.UpdatesURL + "/providers"
-	} else {
-		s.Client.ProvidersURL = providers.DefaultProviderRegistryURL
+	// The release track updates and providers resolve through. Shown even when
+	// it is the default, so a support conversation can establish in one command
+	// whether a machine is on pre-releases.
+	s.Client.UpdateChannel = config.GetUpdateChannel()
+
+	// Report the registry that is actually in effect, resolved by the same code
+	// that sets it. Recomputing the precedence here is how this row came to claim
+	// Mondoo's bucket while providers were being downloaded from a configured
+	// mirror.
+	s.Client.ProvidersURL = cliproviders.RegistryURL()
+	if s.Client.ProvidersURL == "" {
+		s.Client.ProvidersURL = providers.DefaultProviderRegistryURL //nolint:staticcheck // still the effective default when no registry URL is configured
 	}
 
 	// gather installed providers and their version drift up front, so rendering
@@ -269,12 +296,42 @@ func checkStatus(ctx context.Context) (Status, error) {
 	}
 	s.Client.Providers = providersList
 
+	if ingest != nil {
+		ingestStatus := <-ingest
+		s.Ingest = &ingestStatus
+	}
+
 	return s, nil
+}
+
+// probeIngestEndpoint starts the ingest reachability probe in the background and
+// returns the channel its single result arrives on, or nil when there is no
+// endpoint to probe (see config.IngestEndpointFor: a self-hosted or otherwise
+// non-hosted API endpoint derives none, and the check is skipped rather than
+// reported as failing).
+//
+// The channel is buffered so the probe never blocks on a receiver: if
+// checkStatus returns early, the goroutine parks its result and exits, and ctx
+// — the command's overall deadline — bounds the request either way.
+func probeIngestEndpoint(ctx context.Context, httpClient *http.Client, endpoint string) <-chan health.IngestStatus {
+	if endpoint == "" {
+		return nil
+	}
+
+	results := make(chan health.IngestStatus, 1)
+	go func() {
+		results <- health.CheckIngestReachable(ctx, httpClient, endpoint)
+	}()
+	return results
 }
 
 type Status struct {
 	Client   ClientStatus  `json:"client"`
 	Upstream health.Status `json:"upstream"`
+	// Ingest is the reachability probe of the endpoint scan uploads are routed
+	// through. nil when the check did not run: no ingest endpoint could be
+	// derived from the configured API endpoint.
+	Ingest *health.IngestStatus `json:"ingest,omitempty"`
 }
 
 type ClientStatus struct {
@@ -293,9 +350,21 @@ type ClientStatus struct {
 	Registered     bool                `json:"registered,omitempty"`
 	PingPongError  error               `json:"pingPongError,omitempty"`
 	UpdatesURL     string              `json:"updatesUrl,omitempty"`
+	UpdateChannel  string              `json:"updateChannel,omitempty"`
 	ProvidersURL   string              `json:"providersUrl,omitempty"`
 	ConfigFile     string              `json:"configFile,omitempty"`
-	Providers      []ProviderStatus    `json:"-"`
+	// Proxy is the proxy that platform traffic to the API endpoint goes
+	// through, with credentials redacted, and ProxySource says where it came
+	// from (api_proxy, environment, system). Both are empty for a direct
+	// connection. A proxied Windows machine that cannot reach the platform
+	// is diagnosed from these two fields.
+	Proxy       string `json:"proxy,omitempty"`
+	ProxySource string `json:"proxySource,omitempty"`
+	// ProxyNote explains a direct connection on a machine whose operating
+	// system names a proxy that failed the probe, for example "system proxy
+	// http://proxy:3128 not usable: proxy answered CONNECT with 407".
+	ProxyNote string           `json:"proxyNote,omitempty"`
+	Providers []ProviderStatus `json:"-"`
 }
 
 // ProviderStatus captures the installed and latest available version of a

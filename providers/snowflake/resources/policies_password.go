@@ -5,11 +5,13 @@ package resources
 
 import (
 	"context"
+	"strconv"
+	"strings"
 
 	"github.com/Snowflake-Labs/terraform-provider-snowflake/pkg/sdk"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/snowflake/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/snowflake/connection"
 )
 
 func (r *mqlSnowflakeAccount) passwordPolicies() ([]any, error) {
@@ -17,10 +19,9 @@ func (r *mqlSnowflakeAccount) passwordPolicies() ([]any, error) {
 	client := conn.Client()
 	ctx := context.Background()
 
-	passwordPolicies, err := client.PasswordPolicies.Show(ctx, &sdk.ShowPasswordPolicyOptions{
-		In: &sdk.In{
-			Account: sdk.Bool(true),
-		},
+	passwordPolicies, err := client.PasswordPolicies.Show(ctx, &sdk.ShowPasswordPolicyRequest{
+		In: &sdk.ExtendedIn{
+			Account: new(true)},
 	})
 	if err != nil {
 		return nil, err
@@ -45,7 +46,6 @@ func newMqlSnowflakePasswordPolicy(runtime *plugin.Runtime, passwordPolicy sdk.P
 		"databaseName": llx.StringData(passwordPolicy.DatabaseName),
 		"schemaName":   llx.StringData(passwordPolicy.SchemaName),
 		"kind":         llx.StringData(passwordPolicy.Kind),
-		"owner":        llx.StringData(passwordPolicy.Owner),
 		"comment":      llx.StringData(passwordPolicy.Comment),
 		"createdAt":    llx.TimeData(passwordPolicy.CreatedOn),
 	})
@@ -53,7 +53,16 @@ func newMqlSnowflakePasswordPolicy(runtime *plugin.Runtime, passwordPolicy sdk.P
 		return nil, err
 	}
 	mqlResource := r.(*mqlSnowflakePasswordPolicy)
+	mqlResource.cacheOwner = passwordPolicy.Owner
 	return mqlResource, nil
+}
+
+// mqlSnowflakePasswordPolicyInternal holds the owning role name that the owner
+// reference resolves, and the memoized outcome of the policy's own
+// POLICY_REFERENCES lookup.
+type mqlSnowflakePasswordPolicyInternal struct {
+	cacheOwner string
+	refsMemo   policyReferenceMemo
 }
 
 func (r *mqlSnowflakePasswordPolicy) gatherPasswordPolicyDetails() error {
@@ -61,67 +70,51 @@ func (r *mqlSnowflakePasswordPolicy) gatherPasswordPolicyDetails() error {
 	client := conn.Client()
 	ctx := context.Background()
 
-	passwordPolicy, err := client.PasswordPolicies.Describe(ctx, sdk.NewSchemaObjectIdentifier(r.DatabaseName.Data, r.SchemaName.Data, r.Name.Data))
+	properties, err := client.PasswordPolicies.Describe(ctx, sdk.NewSchemaObjectIdentifier(r.DatabaseName.Data, r.SchemaName.Data, r.Name.Data))
 	if err != nil {
 		return err
 	}
+	values := passwordPolicyIntProperties(properties)
 
-	r.PasswordMinLength = plugin.TValue[int64]{Data: 0, Error: nil, State: plugin.StateIsSet | plugin.StateIsNull}
-	if passwordPolicy.PasswordMinLength != nil && passwordPolicy.PasswordMinLength.Value != nil {
-		r.PasswordMinLength = plugin.TValue[int64]{Data: int64(*passwordPolicy.PasswordMinLength.Value), Error: nil, State: plugin.StateIsSet}
-	}
-
-	r.PasswordMinLength = plugin.TValue[int64]{Data: 0, Error: nil, State: plugin.StateIsSet | plugin.StateIsNull}
-	if passwordPolicy.PasswordMinLength != nil && passwordPolicy.PasswordMinLength.Value != nil {
-		r.PasswordMinLength = plugin.TValue[int64]{Data: int64(*passwordPolicy.PasswordMinLength.Value), Error: nil, State: plugin.StateIsSet}
-	}
-
-	r.PasswordMinUpperCaseChars = plugin.TValue[int64]{Data: 0, Error: nil, State: plugin.StateIsSet | plugin.StateIsNull}
-	if passwordPolicy.PasswordMinUpperCaseChars != nil && passwordPolicy.PasswordMinUpperCaseChars.Value != nil {
-		r.PasswordMinUpperCaseChars = plugin.TValue[int64]{Data: int64(*passwordPolicy.PasswordMinUpperCaseChars.Value), Error: nil, State: plugin.StateIsSet}
-	}
-
-	r.PasswordMinLowerCaseChars = plugin.TValue[int64]{Data: 0, Error: nil, State: plugin.StateIsSet | plugin.StateIsNull}
-	if passwordPolicy.PasswordMinLowerCaseChars != nil && passwordPolicy.PasswordMinLowerCaseChars.Value != nil {
-		r.PasswordMinLowerCaseChars = plugin.TValue[int64]{Data: int64(*passwordPolicy.PasswordMinLowerCaseChars.Value), Error: nil, State: plugin.StateIsSet}
-	}
-
-	r.PasswordMinNumericChars = plugin.TValue[int64]{Data: 0, Error: nil, State: plugin.StateIsSet | plugin.StateIsNull}
-	if passwordPolicy.PasswordMinNumericChars != nil && passwordPolicy.PasswordMinNumericChars.Value != nil {
-		r.PasswordMinNumericChars = plugin.TValue[int64]{Data: int64(*passwordPolicy.PasswordMinNumericChars.Value), Error: nil, State: plugin.StateIsSet}
-	}
-
-	r.PasswordMinSpecialChars = plugin.TValue[int64]{Data: 0, Error: nil, State: plugin.StateIsSet | plugin.StateIsNull}
-	if passwordPolicy.PasswordMinSpecialChars != nil && passwordPolicy.PasswordMinSpecialChars.Value != nil {
-		r.PasswordMinSpecialChars = plugin.TValue[int64]{Data: int64(*passwordPolicy.PasswordMinSpecialChars.Value), Error: nil, State: plugin.StateIsSet}
-	}
-
-	r.PasswordMinAgeDays = plugin.TValue[int64]{Data: 0, Error: nil, State: plugin.StateIsSet | plugin.StateIsNull}
-	if passwordPolicy.PasswordMinAgeDays != nil && passwordPolicy.PasswordMinAgeDays.Value != nil {
-		r.PasswordMinAgeDays = plugin.TValue[int64]{Data: int64(*passwordPolicy.PasswordMinAgeDays.Value), Error: nil, State: plugin.StateIsSet}
-	}
-
-	r.PasswordMaxAgeDays = plugin.TValue[int64]{Data: 0, Error: nil, State: plugin.StateIsSet | plugin.StateIsNull}
-	if passwordPolicy.PasswordMaxAgeDays != nil && passwordPolicy.PasswordMaxAgeDays.Value != nil {
-		r.PasswordMaxAgeDays = plugin.TValue[int64]{Data: int64(*passwordPolicy.PasswordMaxAgeDays.Value), Error: nil, State: plugin.StateIsSet}
-	}
-
-	r.PasswordMaxRetries = plugin.TValue[int64]{Data: 0, Error: nil, State: plugin.StateIsSet | plugin.StateIsNull}
-	if passwordPolicy.PasswordMaxRetries != nil && passwordPolicy.PasswordMaxRetries.Value != nil {
-		r.PasswordMaxRetries = plugin.TValue[int64]{Data: int64(*passwordPolicy.PasswordMaxRetries.Value), Error: nil, State: plugin.StateIsSet}
-	}
-
-	r.PasswordLockoutTimeMins = plugin.TValue[int64]{Data: 0, Error: nil, State: plugin.StateIsSet | plugin.StateIsNull}
-	if passwordPolicy.PasswordLockoutTimeMins != nil && passwordPolicy.PasswordLockoutTimeMins.Value != nil {
-		r.PasswordLockoutTimeMins = plugin.TValue[int64]{Data: int64(*passwordPolicy.PasswordLockoutTimeMins.Value), Error: nil, State: plugin.StateIsSet}
-	}
-
-	r.PasswordHistory = plugin.TValue[int64]{Data: 0, Error: nil, State: plugin.StateIsSet | plugin.StateIsNull}
-	if passwordPolicy.PasswordHistory != nil && passwordPolicy.PasswordHistory.Value != nil {
-		r.PasswordHistory = plugin.TValue[int64]{Data: int64(*passwordPolicy.PasswordHistory.Value), Error: nil, State: plugin.StateIsSet}
-	}
+	r.PasswordMinLength = passwordPolicyIntValue(values, "PASSWORD_MIN_LENGTH")
+	r.PasswordMaxLength = passwordPolicyIntValue(values, "PASSWORD_MAX_LENGTH")
+	r.PasswordMinUpperCaseChars = passwordPolicyIntValue(values, "PASSWORD_MIN_UPPER_CASE_CHARS")
+	r.PasswordMinLowerCaseChars = passwordPolicyIntValue(values, "PASSWORD_MIN_LOWER_CASE_CHARS")
+	r.PasswordMinNumericChars = passwordPolicyIntValue(values, "PASSWORD_MIN_NUMERIC_CHARS")
+	r.PasswordMinSpecialChars = passwordPolicyIntValue(values, "PASSWORD_MIN_SPECIAL_CHARS")
+	r.PasswordMinAgeDays = passwordPolicyIntValue(values, "PASSWORD_MIN_AGE_DAYS")
+	r.PasswordMaxAgeDays = passwordPolicyIntValue(values, "PASSWORD_MAX_AGE_DAYS")
+	r.PasswordMaxRetries = passwordPolicyIntValue(values, "PASSWORD_MAX_RETRIES")
+	r.PasswordLockoutTimeMins = passwordPolicyIntValue(values, "PASSWORD_LOCKOUT_TIME_MINS")
+	r.PasswordHistory = passwordPolicyIntValue(values, "PASSWORD_HISTORY")
 
 	return nil
+}
+
+// passwordPolicyIntProperties collects the integer-valued rows of DESCRIBE
+// PASSWORD POLICY, keyed by property name. A row whose value does not parse as
+// an integer (such as NAME, OWNER, or COMMENT) is left out.
+func passwordPolicyIntProperties(properties []sdk.PasswordPolicyProperty) map[string]int64 {
+	values := make(map[string]int64, len(properties))
+	for _, prop := range properties {
+		v, err := strconv.ParseInt(strings.TrimSpace(prop.Value), 10, 64)
+		if err != nil {
+			continue
+		}
+		values[prop.Property] = v
+	}
+	return values
+}
+
+// passwordPolicyIntValue returns the named property as a set field, or a null
+// field when DESCRIBE did not report it, so a missing setting does not read as
+// zero.
+func passwordPolicyIntValue(values map[string]int64, property string) plugin.TValue[int64] {
+	v, ok := values[property]
+	if !ok {
+		return plugin.TValue[int64]{State: plugin.StateIsSet | plugin.StateIsNull}
+	}
+	return plugin.TValue[int64]{Data: v, State: plugin.StateIsSet}
 }
 
 func (r *mqlSnowflakePasswordPolicy) passwordMinLength() (int64, error) {
@@ -166,4 +159,8 @@ func (r *mqlSnowflakePasswordPolicy) passwordLockoutTimeMins() (int64, error) {
 
 func (r *mqlSnowflakePasswordPolicy) passwordHistory() (int64, error) {
 	return 0, r.gatherPasswordPolicyDetails()
+}
+
+func (r *mqlSnowflakePasswordPolicy) ownerRole() (*mqlSnowflakeRole, error) {
+	return resolveOwnerRole(r.MqlRuntime, r.cacheOwner, &r.OwnerRole)
 }

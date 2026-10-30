@@ -9,9 +9,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/mqlc"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/testutils"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/mqlc"
+	"go.mondoo.com/mql/providers-sdk/v1/testutils"
 )
 
 // Core Language constructs
@@ -268,7 +268,7 @@ func TestOperations_Equality(t *testing.T) {
 
 	simpleTests := []testutils.SimpleTest{}
 
-	for i := 0; i < len(vals); i++ {
+	for i := range vals {
 		for j := i; j < len(vals); j++ {
 			a := vals[i]
 			b := vals[j]
@@ -778,6 +778,28 @@ func TestArray(t *testing.T) {
 			Code:        "[3,1,3,4,2] - [3,4,5]",
 			Expectation: []any{int64(1), int64(2)},
 		},
+		// Regression: removing an empty array must keep the left operand's
+		// items, whether the empty array is a literal or computed.
+		{
+			Code:        "[1,2,3] - []",
+			Expectation: []any{int64(1), int64(2), int64(3)},
+		},
+		{
+			Code:        "x = ['a','b']; x - []",
+			Expectation: []any{"a", "b"},
+		},
+		{
+			Code:        "[1,2,3] - [1].where(_ > 5)",
+			Expectation: []any{int64(1), int64(2), int64(3)},
+		},
+		{
+			Code:        "(['a','b'] - []).containsNone(['a'])",
+			ResultIndex: 1, Expectation: false,
+		},
+		{
+			Code:        "[] - [1]",
+			Expectation: []any{},
+		},
 		// Regression: array-valued builtins must return empty, not null, when no
 		// items remain, so downstream concatenation does not fail with
 		// "cannot add arrays to null".
@@ -792,6 +814,53 @@ func TestArray(t *testing.T) {
 		{
 			Code:        "[].flat + [9]",
 			Expectation: []any{int64(9)},
+		},
+		// Regression: concatenating an empty array literal must not drop the
+		// other operand's items, and must work on either side of the operator.
+		{
+			Code:        "[1,2,3] + []",
+			Expectation: []any{int64(1), int64(2), int64(3)},
+		},
+		{
+			Code:        "[] + [1,2,3]",
+			Expectation: []any{int64(1), int64(2), int64(3)},
+		},
+		{
+			Code:        "[1] + [] + [2]",
+			Expectation: []any{int64(1), int64(2)},
+		},
+		{
+			Code:        "[] + [1] + [2]",
+			Expectation: []any{int64(1), int64(2)},
+		},
+		{
+			Code:        "[] + []",
+			Expectation: []any{},
+		},
+		// The result of a concat with an empty operand must keep a usable element
+		// type, so downstream calls needing a concrete type still compile.
+		// Previously `[] + [...]` yielded an []unset array, which failed to
+		// compile with "expected string, got: unset". This mirrors the shape used
+		// by CIS policies that build a path list from several sources, any of
+		// which may come back empty.
+		{
+			Code:        "paths = [] + ['a','bb']\npaths.map(_.length)",
+			Expectation: []any{int64(1), int64(2)},
+		},
+		{
+			Code:        "paths = [] + ['/etc/hosts']\npaths.any(_ == '/etc/hosts')",
+			ResultIndex: 1, Expectation: true,
+		},
+		// A null array contributes no items, just like an empty one. It must not
+		// discard the other operand's items (which used to yield null and quietly
+		// evaluate a policy against nothing) or fail the query outright.
+		{
+			Code:        "paths = ['a'] + file('/not/there').content.lines\npaths",
+			Expectation: []any{"a"},
+		},
+		{
+			Code:        "paths = file('/not/there').content.lines + ['a']\npaths",
+			Expectation: []any{"a"},
 		},
 	})
 
@@ -853,7 +922,7 @@ func testSample(t *testing.T, mqlData string, sampleLen int, isMap bool) {
 		samples := make([][samplesCnt]any, samplesCnt)
 		ref := [samplesCnt]any{}
 
-		for i := 0; i < samplesCnt; i++ {
+		for i := range samplesCnt {
 			mql := mqlData + ".sample(" + strconv.Itoa(sampleLen) + ")"
 			if isMap {
 				mql += ".keys"
@@ -1070,6 +1139,59 @@ func TestVersion(t *testing.T) {
 		})
 	})
 
+	// An epoch'd package against an upstream bound. The comparison keeps Debian's
+	// rule (a missing epoch is 0), so the plain form is false; stripEpoch is how a
+	// query says it means the upstream release. Versions are the openssh-server
+	// packages from #11109.
+	t.Run("stripEpoch", func(t *testing.T) {
+		x.TestSimple(t, []testutils.SimpleTest{
+			{
+				Code:        "version('1:8.2p1-4ubuntu0.13').stripEpoch",
+				ResultIndex: 0, Expectation: "8.2p1-4ubuntu0.13",
+			},
+			{
+				Code:        "version('5!1.2.3').stripEpoch",
+				ResultIndex: 0, Expectation: "1.2.3",
+			},
+			{
+				Code:        "version('1.2.3').stripEpoch",
+				ResultIndex: 0, Expectation: "1.2.3",
+			},
+			{
+				Code:        "version('1632431095:1.2.2-r7').stripEpoch",
+				ResultIndex: 0, Expectation: "1632431095:1.2.2-r7",
+			},
+			{
+				Code:        "version('').stripEpoch",
+				ResultIndex: 0, Expectation: "",
+			},
+			{
+				Code:        "version('1:8.2p1-4ubuntu0.13') < version('8.5')",
+				ResultIndex: 2, Expectation: false,
+			},
+			{
+				Code:        "version('1:8.2p1-4ubuntu0.13').stripEpoch < version('8.5')",
+				ResultIndex: 2, Expectation: true,
+			},
+			{
+				Code:        "version('1:8.4p1-5+deb11u7').stripEpoch < semver('8.5')",
+				ResultIndex: 2, Expectation: true,
+			},
+			{
+				Code:        "version('1:9.2p1-2+deb12u10').stripEpoch < version('8.5')",
+				ResultIndex: 2, Expectation: false,
+			},
+			{
+				Code:        "version('1:8.2p1-4ubuntu0.13').stripEpoch.inRange('8.0', '8.4')",
+				ResultIndex: 0, Expectation: true,
+			},
+			{
+				Code:        "version('').stripEpoch < version('8.5')",
+				ResultIndex: 2, Expectation: true,
+			},
+		})
+	})
+
 	t.Run("python epochs", func(t *testing.T) {
 		x.TestSimple(t, []testutils.SimpleTest{
 			{
@@ -1152,6 +1274,22 @@ func TestVersion(t *testing.T) {
 		})
 	})
 
+	t.Run("version type set to debian", func(t *testing.T) {
+		x.TestSimple(t, []testutils.SimpleTest{
+			{Code: "version('1:1.2.3', type: 'debian')", ResultIndex: 0, Expectation: "1:1.2.3"},
+			// A real deb version whose upstream part is not semantic. This used to be
+			// rejected, because the parser underneath only knew semver.
+			{Code: "version('1.1.1k-12.el8', type: 'debian')", ResultIndex: 0, Expectation: "1.1.1k-12.el8"},
+			{Code: "version('4.18.0-425.13.1.el8_7', type: 'debian')", ResultIndex: 0, Expectation: "4.18.0-425.13.1.el8_7"},
+		})
+		x.TestSimpleErrors(t, []testutils.SimpleTest{
+			{
+				Code:        "version('latest', type: 'debian')",
+				ResultIndex: 1, Expectation: "version 'latest' is not a debian version",
+			},
+		})
+	})
+
 	t.Run("version inRange", func(t *testing.T) {
 		x.TestSimple(t, []testutils.SimpleTest{
 			{Code: "version('1.2.3').inRange('>= 1.0.0', '< 2.0.0')", ResultIndex: 0, Expectation: true},
@@ -1163,11 +1301,40 @@ func TestVersion(t *testing.T) {
 			{Code: "version('1.2.3').inRange('1.0.0', '1.2.3')", ResultIndex: 0, Expectation: true},
 			{Code: "version('1.2.3').inRange('1.2.3', '2.0.0')", ResultIndex: 0, Expectation: true},
 			{Code: "version('1.2.3').inRange('1.2.3', '1.2.3')", ResultIndex: 0, Expectation: true},
+
+			// Shapes that used to be an error because the comparator underneath was
+			// semver-only. An epoch outranks everything after it, so 1:1.2.3 is above
+			// the 2.0.0 ceiling; a four-component version is an ordinary version.
+			{Code: "version('1:1.2.3').inRange('>= 1.0.0', '< 2.0.0')", ResultIndex: 0, Expectation: false},
+			{Code: "version('1:1.2.3').inRange('>= 1.0.0', '< 2:1.0.0')", ResultIndex: 0, Expectation: true},
+			{Code: "version('1.2.3.4.5').inRange('>= 1.0.0', '< 2.0.0')", ResultIndex: 0, Expectation: true},
+			{Code: "version('126.0.6478.126').inRange('>= 100.0.0.0', '< 127.0.0.0')", ResultIndex: 0, Expectation: true},
+			{Code: "version('1.1.1k').inRange('>= 1.1.1f', '<= 1.1.1w')", ResultIndex: 0, Expectation: true},
+
+			// Range shorthands. inRange always takes two bounds, so a shorthand fills
+			// the lower one and still narrows the range on its own.
+			{Code: "version('1.9.0').inRange('^1.2.3', '< 3.0.0')", ResultIndex: 0, Expectation: true},
+			{Code: "version('2.0.0').inRange('^1.2.3', '< 3.0.0')", ResultIndex: 0, Expectation: false},
+			{Code: "version('1.2.9').inRange('~1.2.3', '< 3.0.0')", ResultIndex: 0, Expectation: true},
+			{Code: "version('1.3.0').inRange('~1.2.3', '< 3.0.0')", ResultIndex: 0, Expectation: false},
 		})
 
 		x.TestSimpleErrors(t, []testutils.SimpleTest{
-			{Code: "version('1:1.2.3').inRange('>= 1.0.0', '< 2.0.0')", ResultIndex: 0, Expectation: "inRange is only supported on comparable versions (epoch doesn't work yet)"},
-			{Code: "version('1.2.3.4.5').inRange('>= 1.0.0', '< 2.0.0')", ResultIndex: 0, Expectation: "inRange is only supported on comparable versions (semver or similar)"},
+			{Code: "version('latest').inRange('>= 1.0.0', '< 2.0.0')", ResultIndex: 0, Expectation: "inRange is only supported on comparable versions (semver or similar)"},
+		})
+	})
+
+	t.Run("package versions order the way the packager does", func(t *testing.T) {
+		x.TestSimple(t, []testutils.SimpleTest{
+			// A distro revision is a LATER build of its release, where a semver
+			// prerelease precedes it. Both are "X-suffix vs X".
+			{Code: "version('1.2.3') < version('1.2.3-1ubuntu1')", ResultIndex: 2, Expectation: true},
+			{Code: "version('1.0.0-rc1') < version('1.0.0')", ResultIndex: 2, Expectation: true},
+			{Code: "version('1.2.3-r4') < version('1.2.3-r10')", ResultIndex: 2, Expectation: true},
+			{Code: "version('4.18.0-425.3.1.el8_7') < version('4.18.0-425.13.1.el8_7')", ResultIndex: 2, Expectation: true},
+			{Code: "version('1.1.1f') < version('1.1.1k')", ResultIndex: 2, Expectation: true},
+			{Code: "version('9.1.0.0') < version('16.1.2.2')", ResultIndex: 2, Expectation: true},
+			{Code: "version('1.0~rc1') < version('1.0')", ResultIndex: 2, Expectation: true},
 		})
 	})
 }
@@ -1182,6 +1349,42 @@ func TestIP(t *testing.T) {
 			{Code: "ip('128.2.3.4').prefixLength", Expectation: int64(16)},
 			{Code: "ip('192.2.3.4').prefixLength", Expectation: int64(24)},
 			{Code: "ip(2885681153) == ip('172.0.0.1')", Expectation: true, ResultIndex: 2},
+		})
+	})
+
+	// net.IP is a byte slice, so an ip value cannot be compared with ==. These
+	// array operators used to panic the whole scan with "comparing
+	// uncomparable type llx.RawIP".
+	t.Run("ip arrays", func(t *testing.T) {
+		x.TestSimple(t, []testutils.SimpleTest{
+			{Code: "[ip('192.0.2.1'), ip('2001:db8::1')] == [ip('192.0.2.1'), ip('2001:db8::1')]", Expectation: true},
+			{Code: "[ip('192.0.2.1'), ip('2001:db8::1')] != [ip('192.0.2.1'), ip('2001:db8::1')]", Expectation: false},
+			{Code: "[ip('192.0.2.1')] == [ip('192.0.2.2')]", Expectation: false},
+			{Code: "[ip('192.0.2.1')] != [ip('192.0.2.2')]", Expectation: true},
+			// same address, different prefix length: ip == ip says these differ
+			{Code: "[ip('192.0.2.1/24')] == [ip('192.0.2.1/25')]", Expectation: false},
+			{Code: "[ip('192.0.2.1'), ip('192.0.2.2')] == [ip('192.0.2.2'), ip('192.0.2.1')]", Expectation: false},
+			{Code: "[ip('192.0.2.1'), ip('192.0.2.2'), ip('192.0.2.3')] - [ip('192.0.2.2')]", Expectation: []any{llx.ParseIP("192.0.2.1"), llx.ParseIP("192.0.2.3")}},
+			{Code: "[ip('192.0.2.1'), ip('192.0.2.2')].containsAll([ip('192.0.2.2')])", ResultIndex: 1, Expectation: true},
+			{Code: "[ip('192.0.2.1'), ip('192.0.2.2')].containsAll([ip('192.0.2.9')])", ResultIndex: 1, Expectation: false},
+			{Code: "[ip('192.0.2.1'), ip('192.0.2.2')].containsNone([ip('192.0.2.9')])", ResultIndex: 1, Expectation: true},
+			{Code: "[ip('192.0.2.1'), ip('192.0.2.2')].containsNone([ip('192.0.2.2')])", ResultIndex: 1, Expectation: false},
+		})
+	})
+
+	// Dicts and nested arrays hold maps and slices, which the == operator
+	// cannot compare either.
+	t.Run("arrays of uncomparable elements", func(t *testing.T) {
+		x.TestSimple(t, []testutils.SimpleTest{
+			{Code: "[{a: 1}] == [{a: 1}]", Expectation: true},
+			{Code: "[{a: 1}] == [{a: 2}]", Expectation: false},
+			{Code: "[[1, 2]] == [[1, 2]]", Expectation: true},
+			{Code: "[[1, 2]] != [[2, 1]]", Expectation: true},
+			{Code: "[{a: 1}, {a: 2}] - [{a: 1}]", Expectation: []any{map[string]any{"a": int64(2)}}},
+			{Code: "[{a: 1}, {a: 2}].containsAll([{a: 1}])", ResultIndex: 1, Expectation: true},
+			{Code: "[{a: 1}, {a: 2}].containsNone([{a: 1}])", ResultIndex: 1, Expectation: false},
+			{Code: "[[1], [2]].containsAll([[3]])", ResultIndex: 1, Expectation: false},
+			{Code: "[[1], [2]].containsNone([[3]])", ResultIndex: 1, Expectation: true},
 		})
 	})
 
@@ -1384,7 +1587,10 @@ func TestResource_Default(t *testing.T) {
 	require.NotEmpty(t, res)
 	vals := res[0].Data.Value.(map[string]any)
 	require.NotNil(t, vals)
-	require.Equal(t, llx.StringData("v13.0.0-rolling"), vals["J4anmJ+mXJX380Qslh563U7Bs5d6fiD2ghVxV9knAU0iy/P+IVNZsDhBbCmbpJch3Tm0NliAMiaY47lmw887Jw=="])
+	// An unstamped test binary reports mql.GetVersion's dev version, where
+	// `rolling` is build metadata rather than a `-` suffix, so that a build of
+	// a line is not ordered behind that line's release.
+	require.Equal(t, llx.StringData("v14.0.0+rolling"), vals["J4anmJ+mXJX380Qslh563U7Bs5d6fiD2ghVxV9knAU0iy/P+IVNZsDhBbCmbpJch3Tm0NliAMiaY47lmw887Jw=="])
 }
 
 func TestBrokenQueryExecution(t *testing.T) {

@@ -1,0 +1,12 @@
+
+g03-a-very-long-package-name-that-exceeds-the-check-update-column-width.x86_64
+                                        2.0-1        g03repo                    
+g03-archchg.noarch                      2.0-1        g03repo                    
+g03-epoch.x86_64                        3:2.0-1      g03repo                    
+g03-multi.i686                          2.0-1        g03repo                    
+g03-multi.x86_64                        2.0-1        g03repo                    
+g03-weird.x86_64                        2.0-1        g03repo                    
+rh-amazon-rhui-client.noarch            4.0.20-1.el7 rhui-client-config-server-7
+Obsoleting Packages
+g03-new.x86_64                          2.0-1        g03repo                    
+    g03-old.x86_64                      1.0-1        installed                  

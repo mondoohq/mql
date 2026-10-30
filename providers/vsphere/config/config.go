@@ -4,17 +4,22 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/vsphere/connection"
-	"go.mondoo.com/mql/v13/providers/vsphere/provider"
-	"go.mondoo.com/mql/v13/providers/vsphere/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/vsphere/connection"
+	"go.mondoo.com/mql/providers/vsphere/provider"
+	"go.mondoo.com/mql/providers/vsphere/resources"
 )
 
 var Config = plugin.Provider{
-	Name:            "vsphere",
-	ID:              "go.mondoo.com/cnquery/v9/providers/vsphere",
-	Version:         "13.7.0",
+	Name: "vsphere",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "vsphere",
+	ID:      "go.mondoo.com/mql/providers/vsphere",
+	Version: "14.0.8",
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.ConnectionType},
 	Platforms:       connection.Platforms,
 	Connectors: []plugin.Connector{

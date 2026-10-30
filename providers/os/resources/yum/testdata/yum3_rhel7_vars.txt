@@ -1,0 +1,2 @@
+Loaded plugins: amazon-id, product-id, versionlock
+{"g03var": "g03value", "basearch": "x86_64", "arch": "ia32e", "uuid": "00000000-0000-0000-0000-000000000000", "releasever": "7Server"}

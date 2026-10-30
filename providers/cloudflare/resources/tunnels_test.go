@@ -16,11 +16,11 @@ import (
 
 func TestTunnels(t *testing.T) {
 	env := setupTestEnv(t)
-	zone := createTestZone(t, env)
+	acc := createTestAccount(t, env)
 
 	env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/cfd_tunnel", testAccountID), func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
-		// cloudflare-go v6 keeps fetching pages until result is empty.
+		// cloudflare-go keeps fetching pages until result is empty.
 		if page := r.URL.Query().Get("page"); page != "" && page != "1" {
 			jsonResponse(w, `{"result":[],"success":true,"errors":[],"messages":[]}`)
 			return
@@ -34,7 +34,7 @@ func TestTunnels(t *testing.T) {
 		jsonResponse(w, loadFixture("tunnel_connections"))
 	})
 
-	result, err := zone.tunnels()
+	result, err := acc.tunnels()
 	require.NoError(t, err)
 	require.Len(t, result, 2)
 
@@ -52,7 +52,11 @@ func TestTunnels(t *testing.T) {
 	assert.Equal(t, "conn-1234", conn.Id.Data)
 	assert.Equal(t, "DFW", conn.ColoName.Data)
 	assert.Equal(t, "198.51.100.1", conn.OriginIp.Data)
-	assert.False(t, conn.IsPendingReconnect.Data)
+	// Cloudflare removed is_pending_reconnect from the API. The field must
+	// read null, never false, which would assert the connection is actively
+	// serving traffic.
+	assert.True(t, conn.IsPendingReconnect.IsNull(), "isPendingReconnect must be null")
+	assert.True(t, conn.IsPendingReconnect.IsSet(), "isPendingReconnect must be resolved, not left unset")
 	assert.False(t, conn.OpenedAt.Data.IsZero())
 
 	// Second tunnel has no connections
@@ -64,7 +68,7 @@ func TestTunnels(t *testing.T) {
 
 func TestTunnelRoutes(t *testing.T) {
 	env := setupTestEnv(t)
-	zone := createTestZone(t, env)
+	acc := createTestAccount(t, env)
 
 	env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/teamnet/routes", testAccountID), func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
@@ -75,7 +79,7 @@ func TestTunnelRoutes(t *testing.T) {
 		jsonResponse(w, loadFixture("tunnel_routes"))
 	})
 
-	result, err := zone.tunnelRoutes()
+	result, err := acc.tunnelRoutes()
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 
@@ -88,14 +92,14 @@ func TestTunnelRoutes(t *testing.T) {
 
 func TestTunnelVirtualNetworks(t *testing.T) {
 	env := setupTestEnv(t)
-	zone := createTestZone(t, env)
+	acc := createTestAccount(t, env)
 
 	env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/teamnet/virtual_networks", testAccountID), func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
 		jsonResponse(w, loadFixture("tunnel_virtual_networks"))
 	})
 
-	result, err := zone.tunnelVirtualNetworks()
+	result, err := acc.tunnelVirtualNetworks()
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 
@@ -112,7 +116,7 @@ func TestTunnelVirtualNetworks(t *testing.T) {
 // The previous __id `tunnelRoute@<network>@<tunnelId>` collided in this case.
 func TestTunnelRoutesVnetIDInCacheKey(t *testing.T) {
 	env := setupTestEnv(t)
-	zone := createTestZone(t, env)
+	acc := createTestAccount(t, env)
 
 	env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/teamnet/routes", testAccountID), func(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, `{
@@ -124,7 +128,7 @@ func TestTunnelRoutesVnetIDInCacheKey(t *testing.T) {
 		}`)
 	})
 
-	result, err := zone.tunnelRoutes()
+	result, err := acc.tunnelRoutes()
 	require.NoError(t, err)
 	require.Len(t, result, 2, "routes with distinct virtual_network_id must not collapse into one")
 
@@ -144,13 +148,13 @@ func TestTunnelRoutesVnetIDInCacheKey(t *testing.T) {
 // three pages and bumped page numbers monotonically.
 func TestTunnelRoutesPagination(t *testing.T) {
 	env := setupTestEnv(t)
-	zone := createTestZone(t, env)
+	acc := createTestAccount(t, env)
 
 	const perPage = 50
-	var calls int32
+	var calls atomic.Int32
 
 	env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/teamnet/routes", testAccountID), func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&calls, 1)
+		calls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		if page == 0 {
@@ -170,8 +174,114 @@ func TestTunnelRoutesPagination(t *testing.T) {
 		fmt.Fprint(w, `]}`)
 	})
 
-	result, err := zone.tunnelRoutes()
+	result, err := acc.tunnelRoutes()
 	require.NoError(t, err)
 	require.Equal(t, perPage*2+7, len(result), "all three pages must be consumed")
-	require.Equal(t, int32(3), atomic.LoadInt32(&calls), "exactly three calls (page=1,2,3)")
+	require.Equal(t, int32(3), calls.Load(), "exactly three calls (page=1,2,3)")
+}
+
+// tunnelsForConfigTest returns the two tunnels from the standard fixture, with
+// their account binding set, so the configuration accessor can be exercised.
+func tunnelsForConfigTest(t *testing.T, env *testEnv) []any {
+	t.Helper()
+	acc := createTestAccount(t, env)
+
+	env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/cfd_tunnel", testAccountID), func(w http.ResponseWriter, r *http.Request) {
+		if page := r.URL.Query().Get("page"); page != "" && page != "1" {
+			jsonResponse(w, `{"result":[],"success":true,"errors":[],"messages":[]}`)
+			return
+		}
+		jsonResponse(w, loadFixture("tunnels"))
+	})
+	env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/cfd_tunnel/{tunnelID}/connections", testAccountID), func(w http.ResponseWriter, r *http.Request) {
+		jsonResponse(w, loadFixture("tunnel_connections"))
+	})
+
+	tunnels, err := acc.tunnels()
+	require.NoError(t, err)
+	require.Len(t, tunnels, 2)
+	return tunnels
+}
+
+func TestTunnelConfiguration(t *testing.T) {
+	env := setupTestEnv(t)
+	tunnels := tunnelsForConfigTest(t, env)
+
+	env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/cfd_tunnel/{tunnelID}/configurations", testAccountID), func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		jsonResponse(w, loadFixture("tunnel_configuration"))
+	})
+
+	tunnel := tunnels[0].(*mqlCloudflareTunnel)
+	cfg, err := tunnel.configuration()
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+
+	assert.Equal(t, "cloudflare", cfg.Source.Data)
+	assert.Equal(t, int64(7), cfg.Version.Data)
+	assert.False(t, cfg.OriginNoTlsVerify.Data)
+	assert.True(t, cfg.OriginHttp2.Data)
+	assert.True(t, cfg.WarpRoutingEnabled.Data, "warp-routing is dropped by the SDK's typed config struct")
+
+	require.Len(t, cfg.Ingress.Data, 3)
+
+	// A rule that turns off origin certificate validation: the leg from the
+	// connector to the service is encrypted but unauthenticated.
+	admin := cfg.Ingress.Data[0].(*mqlCloudflareTunnelIngressRule)
+	assert.Equal(t, "blog.example.com", admin.Hostname.Data)
+	assert.Equal(t, "/admin", admin.Path.Data)
+	assert.Equal(t, "https://10.0.0.5:8443", admin.Service.Data)
+	assert.True(t, admin.NoTlsVerify.Data)
+	assert.Equal(t, "blog.internal", admin.HttpHostHeader.Data)
+	assert.False(t, admin.AccessRequired.Data)
+
+	// A rule that does not mention noTLSVerify inherits the tunnel default, so
+	// it must read null rather than a confident false.
+	ssh := cfg.Ingress.Data[1].(*mqlCloudflareTunnelIngressRule)
+	assert.Equal(t, "ssh://10.0.0.6:22", ssh.Service.Data)
+	assert.True(t, ssh.NoTlsVerify.IsNull(), "an inherited setting must not read as an explicit false")
+	assert.True(t, ssh.Http2Origin.IsNull())
+	assert.True(t, ssh.AccessRequired.IsNull())
+	assert.Equal(t, "/etc/cloudflared/origin-ca.pem", ssh.CaPool.Data)
+
+	// The catch-all that ends every ingress list.
+	catchAll := cfg.Ingress.Data[2].(*mqlCloudflareTunnelIngressRule)
+	assert.Equal(t, "", catchAll.Hostname.Data)
+	assert.Equal(t, "http_status:404", catchAll.Service.Data)
+}
+
+func TestTunnelConfiguration_locallyManagedIsNull(t *testing.T) {
+	env := setupTestEnv(t)
+	tunnels := tunnelsForConfigTest(t, env)
+
+	env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/cfd_tunnel/{tunnelID}/configurations", testAccountID), func(w http.ResponseWriter, r *http.Request) {
+		jsonResponse(w, loadFixture("tunnel_configuration_local"))
+	})
+
+	tunnel := tunnels[0].(*mqlCloudflareTunnel)
+	cfg, err := tunnel.configuration()
+	require.NoError(t, err)
+	assert.Nil(t, cfg, "a locally managed tunnel has no readable ingress, which is not the same as publishing nothing")
+	assert.True(t, tunnel.Configuration.IsNull())
+}
+
+func TestTunnelConfiguration_warpConnectorIsNullWithoutACall(t *testing.T) {
+	env := setupTestEnv(t)
+	tunnels := tunnelsForConfigTest(t, env)
+
+	called := false
+	env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/cfd_tunnel/{tunnelID}/configurations", testAccountID), func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		jsonResponse(w, loadFixture("tunnel_configuration"))
+	})
+
+	// The second tunnel in the fixture is a warp_connector, which has no ingress.
+	warp := tunnels[1].(*mqlCloudflareTunnel)
+	require.Equal(t, "warp_connector", warp.TunnelType.Data)
+
+	cfg, err := warp.configuration()
+	require.NoError(t, err)
+	assert.Nil(t, cfg)
+	assert.True(t, warp.Configuration.IsNull())
+	assert.False(t, called, "a WARP connector has no configurations endpoint to call")
 }

@@ -1,0 +1,40 @@
+{
+  "log-level": "debug",
+  "log-driver": "local",
+  "log-opts": {
+    "max-size": "5m"
+  },
+  "selinux-enabled": true,
+  "registry-mirrors": [
+    "https://mirror.example.com"
+  ],
+  "hosts": [
+    "unix:///var/run/docker.sock",
+    "tcp://0.0.0.0:2375"
+  ],
+  "icc": false,
+  "userns-remap": "default",
+  "live-restore": true,
+  "no-new-privileges": true,
+  "insecure-registries": [
+    "10.20.0.0/16",
+    "myreg.example.com:5000"
+  ],
+  "default-ulimits": {
+    "nofile": {
+      "Name": "nofile",
+      "Soft": 2048,
+      "Hard": 4096
+    }
+  },
+  "seccomp-profile": "unconfined",
+  "userland-proxy": false,
+  "runtimes": {
+    "crun": {
+      "path": "/usr/libexec/crio/crun"
+    }
+  },
+  "features": {
+    "buildkit": false
+  }
+}

@@ -23,10 +23,50 @@ func TestBarbicanRefIsContainer(t *testing.T) {
 		{"secret ref", "https://barbican.example/v1/secrets/abc", false},
 		{"order ref", "https://barbican.example/v1/orders/abc", false},
 		{"container in path segment", "https://example/v1/containers/uuid", true},
+		{"malformed ref", "not-a-barbican-ref", false},
+		{"bare uuid", "8a2f0e3c-1d4b-4f2a-9c11-0b7c2e5d6f31", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, barbicanRefIsContainer(tt.ref))
+		})
+	}
+}
+
+func TestBarbicanRefIsSecret(t *testing.T) {
+	tests := []struct {
+		name string
+		ref  string
+		want bool
+	}{
+		{"empty", "", false},
+		{"secret ref", "https://barbican.example/v1/secrets/abc", true},
+		{"container ref", "https://barbican.example/v1/containers/abc", false},
+		{"order ref", "https://barbican.example/v1/orders/abc", false},
+		{"malformed ref", "not-a-barbican-ref", false},
+		{"bare uuid", "8a2f0e3c-1d4b-4f2a-9c11-0b7c2e5d6f31", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, barbicanRefIsSecret(tt.ref))
+		})
+	}
+}
+
+// A ref resolves to at most one of the two Barbican resource kinds; a ref that
+// matches neither shape stays unresolved rather than being guessed at.
+func TestBarbicanRefKindsAreExclusive(t *testing.T) {
+	refs := []string{
+		"",
+		"https://barbican.example/v1/secrets/abc",
+		"https://barbican.example/v1/containers/abc",
+		"https://barbican.example/v1/orders/abc",
+		"not-a-barbican-ref",
+		"https://barbican.example/v1/secrets/",
+	}
+	for _, ref := range refs {
+		t.Run(ref, func(t *testing.T) {
+			assert.False(t, barbicanRefIsSecret(ref) && barbicanRefIsContainer(ref))
 		})
 	}
 }

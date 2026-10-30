@@ -8,10 +8,11 @@ import (
 	"errors"
 	"io"
 	"strconv"
-	"sync"
+	"time"
 
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
+	"go.mondoo.com/mql/providers/os/resources/wmiquery"
 )
 
 const smbiosWindowsScript = `
@@ -114,7 +115,9 @@ func (t *smbiosChassisTypes) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-type smbiosSystem struct{}
+type smbiosSystem struct {
+	SystemFamily string `json:"SystemFamily"`
+}
 
 type smbiosSystemProduct struct {
 	Vendor            string `json:"Vendor"`
@@ -129,8 +132,6 @@ type smbiosSystemProduct struct {
 // https://learn.microsoft.com/en-us/windows-hardware/drivers/bringup/smbios
 type WindowsSmbiosManager struct {
 	provider shared.Connection
-	smInfo   *SmBiosInfo
-	lock     sync.Mutex
 }
 
 func (s *WindowsSmbiosManager) Name() string {
@@ -138,30 +139,14 @@ func (s *WindowsSmbiosManager) Name() string {
 }
 
 func (s *WindowsSmbiosManager) Info() (*SmBiosInfo, error) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	if s.smInfo != nil {
-		return s.smInfo, nil
-	}
-
-	c, err := s.provider.RunCommand(powershell.Encode(smbiosWindowsScript))
+	winBios, err := fetchWindowsSmbios(s.provider)
 	if err != nil {
 		return nil, err
 	}
+	return winBios.toSmBiosInfo(), nil
+}
 
-	if c.ExitStatus != 0 {
-		stderr, err := io.ReadAll(c.Stderr)
-		if err != nil {
-			return nil, err
-		}
-		return nil, errors.New("failed to retrieve smbios info: " + string(stderr))
-	}
-
-	winBios, err := ParseWindowsSmbiosInfo(c.Stdout)
-	if err != nil {
-		return nil, err
-	}
-
+func (winBios smbiosWindows) toSmBiosInfo() *SmBiosInfo {
 	if len(winBios.Chassis) == 0 {
 		winBios.Chassis = append(winBios.Chassis, smbiosChassis{})
 	}
@@ -170,14 +155,16 @@ func (s *WindowsSmbiosManager) Info() (*SmBiosInfo, error) {
 		BIOS: BiosInfo{
 			Vendor:      winBios.Bios.Manufacturer,
 			Version:     winBios.Bios.SMBIOSBIOSVersion,
-			ReleaseDate: winBios.Bios.ReleaseDate,
+			ReleaseDate: windowsBiosReleaseDate(winBios.Bios.ReleaseDate),
 		},
 		SysInfo: SysInfo{
-			Vendor:  winBios.SystemProduct.Vendor,
-			Model:   winBios.SystemProduct.Name,
-			Version: winBios.SystemProduct.Version,
-			SKU:     winBios.SystemProduct.SKUNumber,
-			UUID:    winBios.SystemProduct.UUID,
+			Vendor:       winBios.SystemProduct.Vendor,
+			Model:        winBios.SystemProduct.Name,
+			Version:      winBios.SystemProduct.Version,
+			SerialNumber: winBios.SystemProduct.IdentifyingNumber,
+			Family:       winBios.System.SystemFamily,
+			SKU:          winBios.SystemProduct.SKUNumber,
+			UUID:         winBios.SystemProduct.UUID,
 		},
 		BaseBoardInfo: BaseBoardInfo{
 			Vendor:       winBios.BaseBoard.Manufacturer,
@@ -190,12 +177,36 @@ func (s *WindowsSmbiosManager) Info() (*SmBiosInfo, error) {
 			Model:        toString(winBios.Chassis[0].Model),
 			Version:      winBios.Chassis[0].Version,
 			SerialNumber: winBios.Chassis[0].SerialNumber,
+			AssetTag:     winBios.Chassis[0].SMBIOSAssetTag,
 			Type:         winBios.Chassis[0].GetChassisTypes().Value()[0],
 		},
 	}
-	s.smInfo = &smInfo
 
-	return &smInfo, nil
+	return &smInfo
+}
+
+// formatBiosReleaseDate is the one shape machine.bios.releaseDate takes on
+// Windows, whichever way the date was read.
+func formatBiosReleaseDate(t time.Time) string {
+	return t.UTC().Format(time.RFC3339)
+}
+
+// windowsBiosReleaseDate normalizes the ReleaseDate PowerShell sends.
+// Windows PowerShell's ConvertTo-Json writes a CIM DateTime as /Date(ms)/;
+// a raw WMI object carries the CIM_DATETIME string, PowerShell 7 ISO 8601.
+// Anything else is kept as is.
+func windowsBiosReleaseDate(raw string) string {
+	if t := powershell.PSJsonTimestamp(raw); t != nil {
+		return formatBiosReleaseDate(*t)
+	}
+	if t, ok := wmiquery.ParseCIMDatetime(raw); ok {
+		return formatBiosReleaseDate(t)
+	}
+	// PowerShell 7 writes ISO 8601
+	if t, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return formatBiosReleaseDate(t)
+	}
+	return raw
 }
 
 func toString(i *string) string {
@@ -203,6 +214,26 @@ func toString(i *string) string {
 		return ""
 	}
 	return *i
+}
+
+// remote path, and fallback for the local native path
+func fetchWindowsSmbiosPowershell(conn shared.Connection) (smbiosWindows, error) {
+	var winBios smbiosWindows
+
+	c, err := conn.RunCommand(powershell.Encode(smbiosWindowsScript))
+	if err != nil {
+		return winBios, err
+	}
+
+	if c.ExitStatus != 0 {
+		stderr, err := io.ReadAll(c.Stderr)
+		if err != nil {
+			return winBios, err
+		}
+		return winBios, errors.New("failed to retrieve smbios info: " + string(stderr))
+	}
+
+	return ParseWindowsSmbiosInfo(c.Stdout)
 }
 
 func ParseWindowsSmbiosInfo(r io.Reader) (smbiosWindows, error) {

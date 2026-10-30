@@ -49,18 +49,32 @@ func swapBinaryInPlace(stagedBinaryPath string) (string, error) {
 	return swapBinaryInPlaceFrom(stagedBinaryPath, originalPath)
 }
 
+// resolvePathForCompare normalizes a path for identity comparison: absolute,
+// with symlinks resolved. Each step is best-effort, so a path that cannot be
+// resolved (it may not exist yet) degrades to the closest form available
+// rather than failing.
+func resolvePathForCompare(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return resolved
+	}
+	return abs
+}
+
 // swapBinaryInPlaceFrom is the testable core of swapBinaryInPlace. It takes
-// the resolved original path explicitly instead of calling os.Executable().
+// the original path explicitly instead of calling os.Executable().
 func swapBinaryInPlaceFrom(stagedBinaryPath, originalPath string) (string, error) {
-	// If already running from the same path, no swap needed.
-	stagedAbs, err := filepath.Abs(stagedBinaryPath)
-	if err == nil {
-		if resolved, err2 := filepath.EvalSymlinks(stagedAbs); err2 == nil {
-			stagedAbs = resolved
-		}
-		if stagedAbs == originalPath {
-			return originalPath, nil
-		}
+	// If already running from the same path, no swap needed. Both sides are
+	// resolved the same way: comparing a symlink-resolved staged path against an
+	// unresolved original would miss the match and fall through to renaming the
+	// binary out of the way, then failing to copy it back from a path that no
+	// longer exists. That is exactly what happens where TMPDIR is itself a
+	// symlink, as it is on macOS (/var/folders -> /private/var/folders).
+	if resolvePathForCompare(stagedBinaryPath) == resolvePathForCompare(originalPath) {
+		return originalPath, nil
 	}
 
 	oldPath := originalPath + ".old"

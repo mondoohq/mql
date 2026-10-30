@@ -70,10 +70,8 @@ func TestSecurityHubEnabledStandardsUsesCache(t *testing.T) {
 	}
 
 	hub := &mqlAwsSecurityhubHub{
-		mqlAwsSecurityhubHubInternal: mqlAwsSecurityhubHubInternal{
-			standardsFetched: true,
-			standards:        cached,
-		},
+		standardsFetched: true,
+		standards:        cached,
 	}
 
 	// Cache hit path: returns the pre-populated slice without touching the
@@ -84,58 +82,26 @@ func TestSecurityHubEnabledStandardsUsesCache(t *testing.T) {
 	assert.Equal(t, cached, got)
 }
 
-// TestSecurityHubEnabledStandardsToDicts asserts that enabledStandards
-// converts the cached standards into the dict shape expected by MQL,
-// preserving the keys callers query by.
-func TestSecurityHubEnabledStandardsToDicts(t *testing.T) {
-	hub := &mqlAwsSecurityhubHub{
-		mqlAwsSecurityhubHubInternal: mqlAwsSecurityhubHubInternal{
-			standardsFetched: true,
-			standards: []types.StandardsSubscription{
-				{
-					StandardsArn:             aws.String("arn:aws:securityhub:::ruleset/cis"),
-					StandardsSubscriptionArn: aws.String("arn:aws:securityhub:us-east-1:123:subscription/cis"),
-					StandardsStatus:          types.StandardsStatusReady,
-				},
-			},
-		},
-	}
-
-	out, err := hub.enabledStandards()
-	assert.NoError(t, err)
-	assert.Len(t, out, 1)
-
-	row, ok := out[0].(map[string]any)
-	assert.True(t, ok, "expected dict, got %T", out[0])
-	assert.Equal(t, "arn:aws:securityhub:::ruleset/cis", row["StandardsArn"])
-	assert.Equal(t, "arn:aws:securityhub:us-east-1:123:subscription/cis", row["StandardsSubscriptionArn"])
-	assert.Equal(t, string(types.StandardsStatusReady), row["StandardsStatus"])
-}
-
 // TestSecurityHubStandardsCacheConcurrentHits exercises the double-check
 // pattern: many concurrent callers on a cache-populated hub all read the
 // same slice with no data race (meaningful under `go test -race`).
 func TestSecurityHubStandardsCacheConcurrentHits(t *testing.T) {
 	hub := &mqlAwsSecurityhubHub{
-		mqlAwsSecurityhubHubInternal: mqlAwsSecurityhubHubInternal{
-			standardsFetched: true,
-			standards: []types.StandardsSubscription{
-				{StandardsArn: aws.String("arn:aws:securityhub:::ruleset/x")},
-			},
+		standardsFetched: true,
+		standards: []types.StandardsSubscription{
+			{StandardsArn: aws.String("arn:aws:securityhub:::ruleset/x")},
 		},
 	}
 
 	var wg sync.WaitGroup
 	var got int64
-	for i := 0; i < 50; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 50 {
+		wg.Go(func() {
 			standards, err := hub.getEnabledStandards()
 			if err == nil && len(standards) == 1 {
 				atomic.AddInt64(&got, 1)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	assert.Equal(t, int64(50), got)

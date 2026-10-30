@@ -6,7 +6,9 @@ package resources
 import (
 	"testing"
 
+	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // job()/contact() resolve from the bulk user list response (userSelectFields)
@@ -24,4 +26,46 @@ func TestUserSelectFieldsCoverJobContactFields(t *testing.T) {
 			"userJobContactFields[%q] is not in userSelectFields; job()/contact() "+
 				"would fall back to an N+1 per-user Get (or lose this field)", f)
 	}
+}
+
+// authMethods.registrationDetails comes from the tenant-wide registration
+// report. Reaching it must not list the methods of every user: CIS
+// isMfaCapable walks all members that way. The runtime here has no
+// connection, so a per-user fetch would fail the test.
+func TestUserAuthMethodsRegistrationDetailsSkipsMethodListing(t *testing.T) {
+	runtime, ms := licenseTestEnv(t, nil, nil, nil)
+	details := models.NewUserRegistrationDetails()
+	id, capable := "alice", true
+	details.SetId(&id)
+	details.SetIsMfaCapable(&capable)
+	ms.regOnce.Do(func() {
+		ms.regDetails = map[string]userRegistrationDetail{id: newUserRegistrationDetail(details)}
+	})
+
+	authMethods, err := testUser(t, runtime, id).authMethods()
+	require.NoError(t, err)
+	reg, err := authMethods.registrationDetails()
+	require.NoError(t, err)
+	assert.True(t, reg.IsMfaCapable.Data)
+	assert.Nil(t, ms.userBatches.authMethods.loaded, "the per-user method listing ran")
+
+	// the method fields still read the per-user listing
+	phone := models.NewPhoneAuthenticationMethod()
+	phoneID, number := "p1", "+1 555 0100"
+	phone.SetId(&phoneID)
+	phone.SetPhoneNumber(&number)
+	ms.userBatches.authMethods.data = map[string]any{id: buildUserAuthentication(id, []models.AuthenticationMethodable{phone})}
+	ms.userBatches.authMethods.errs = map[string]error{}
+	ms.userBatches.authMethods.loaded = map[string]bool{id: true}
+
+	count, err := authMethods.count()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), count)
+	phones, err := authMethods.phoneMethods()
+	require.NoError(t, err)
+	require.Len(t, phones, 1)
+	assert.Equal(t, number, phones[0].(map[string]any)["phoneNumber"])
+	emails, err := authMethods.emailMethods()
+	require.NoError(t, err)
+	assert.Empty(t, emails)
 }

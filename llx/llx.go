@@ -6,7 +6,10 @@ package llx
 //go:generate protoc --plugin=protoc-gen-go=../scripts/protoc/protoc-gen-go --plugin=protoc-gen-rangerrpc=../scripts/protoc/protoc-gen-rangerrpc --plugin=protoc-gen-go-vtproto=../scripts/protoc/protoc-gen-go-vtproto --proto_path=. --go_out=. --go_opt=paths=source_relative --rangerrpc_out=. --go-vtproto_out=. --go-vtproto_opt=paths=source_relative --go-vtproto_opt=features=marshal+unmarshal+size llx.proto
 
 import (
+	"context"
 	"errors"
+	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -14,10 +17,10 @@ import (
 
 	uuid "github.com/gofrs/uuid"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/multierr"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/multierr"
 )
 
 // ResultCallback function type
@@ -54,10 +57,8 @@ func (c *Calls) Store(k uint64, v uint64) bool {
 	if !ok {
 		calls = []uint64{}
 	} else {
-		for k := range calls {
-			if calls[k] == v {
-				return true
-			}
+		if slices.Contains(calls, v) {
+			return true
 		}
 	}
 
@@ -116,18 +117,36 @@ type blockExecutor struct {
 	parent         *blockExecutor
 	ctx            *MQLExecutorV2
 	watcherIds     *types.StringSet
+	// foreignWatchers maps a watcher id to the runtime it was placed on, for
+	// the few that are not on the executor's own runtime. Cross-asset
+	// resolution (ADR 031) reads a field from another asset's runtime, and
+	// unregister has to take that watcher down where it was put.
+	foreignWatchers sync.Map
+	// blockCoverageGaps maps a ref to the coverage gaps its block calls
+	// reported (ADR 046 §8): the gaps of a `{ … }` over a list are in the
+	// results of each block run, not in the list itself.
+	blockCoverageGaps sync.Map
 }
 
 // MQLExecutorV2 is the runtime of MQL codestructure
 type MQLExecutorV2 struct {
 	id      string
 	runtime Runtime
+	runCtx  context.Context
 	code    *CodeV2
 	props   map[string]*Primitive
+	// skew excuses fields this build was never going to have, because the
+	// bundle declared it needs a newer provider than the one loaded. Nil when
+	// the reader satisfies everything the bundle asked for, which is the normal
+	// case. See SkewPolicy.
+	skew *SkewPolicy
 
 	lock           sync.Mutex
 	blockExecutors []*blockExecutor
 	unregistered   bool
+
+	blockPointsLock sync.RWMutex
+	blockPoints     map[uint64]*blockPoints
 }
 
 func (c *blockExecutor) watcherUID(ref uint64) string {
@@ -150,7 +169,17 @@ func errorResultMsg(msg string, codeID string) *RawResult {
 
 // NewExecutor will create a code runner from code, running in a runtime, calling
 // callback whenever we get a result
+// NewExecutorV2 runs code with no tolerance for version skew: any field the
+// reader's schema lacks fails the query. Use NewExecutorV2WithSkew when the
+// bundle's provenance says the reader is behind.
 func NewExecutorV2(code *CodeV2, runtime Runtime, props map[string]*Primitive, callback ResultCallback) (*MQLExecutorV2, error) {
+	return NewExecutorV2WithSkew(code, runtime, props, callback, nil)
+}
+
+// NewExecutorV2WithSkew is NewExecutorV2 with a policy naming the providers the
+// reader is behind on. Fields belonging to those providers that the reader does
+// not have degrade to an unavailable value instead of failing the whole query.
+func NewExecutorV2WithSkew(code *CodeV2, runtime Runtime, props map[string]*Primitive, callback ResultCallback, skew *SkewPolicy) (*MQLExecutorV2, error) {
 	if runtime == nil {
 		return nil, errors.New("cannot exec MQL without a runtime")
 	}
@@ -164,7 +193,9 @@ func NewExecutorV2(code *CodeV2, runtime Runtime, props map[string]*Primitive, c
 		runtime:        runtime,
 		code:           code,
 		props:          props,
+		skew:           skew,
 		blockExecutors: []*blockExecutor{},
+		blockPoints:    map[uint64]*blockPoints{},
 	}
 
 	exec, err := res._newBlockExecutor(1<<32, callback, nil)
@@ -184,13 +215,16 @@ func (c *MQLExecutorV2) _newBlockExecutor(blockRef uint64, callback ResultCallba
 		return nil, errors.New("cannot find block " + strconv.FormatUint(blockRef, 10))
 	}
 
-	callbackPoints := map[uint64]string{}
+	points, err := c.pointsForBlock(blockRef, block)
+	if err != nil {
+		return nil, err
+	}
 
 	res := &blockExecutor{
 		id:             uuid.Must(uuid.NewV4()).String() + "/" + strconv.FormatUint(blockRef>>32, 10),
 		blockRef:       blockRef,
 		callback:       callback,
-		callbackPoints: callbackPoints,
+		callbackPoints: points.callbackPoints,
 		cache:          newCache(),
 		stepTracker:    newCache(),
 		calls: &Calls{
@@ -201,7 +235,39 @@ func (c *MQLExecutorV2) _newBlockExecutor(blockRef uint64, callback ResultCallba
 		ctx:         c,
 		parent:      parent,
 		watcherIds:  &types.StringSet{},
-		entrypoints: map[uint64]struct{}{},
+		entrypoints: points.entrypoints,
+	}
+
+	return res, nil
+}
+
+// blockPoints holds the entrypoint and callback lookup tables of one block.
+// Both derive from the block and from the code checksums, which never change
+// while the executor runs. Both are read-only after this constructor returns.
+type blockPoints struct {
+	entrypoints    map[uint64]struct{}
+	callbackPoints map[uint64]string
+}
+
+// pointsForBlock returns the lookup tables of a block. An array or map block
+// runs one block executor per element, so a query over a large array asked for
+// the same two tables thousands of times. The tables are equal for every
+// executor of the same block, so they are built once and shared.
+// The lock only covers the map lookup and the map write. The tables are built
+// outside it. Two executors that reach a block at the same time may both build
+// the tables, and the first result stored wins. The tables are equal either
+// way, because they derive from the same immutable code.
+func (c *MQLExecutorV2) pointsForBlock(blockRef uint64, block *Block) (*blockPoints, error) {
+	c.blockPointsLock.RLock()
+	points, ok := c.blockPoints[blockRef]
+	c.blockPointsLock.RUnlock()
+	if ok {
+		return points, nil
+	}
+
+	points = &blockPoints{
+		entrypoints:    make(map[uint64]struct{}, len(block.Entrypoints)),
+		callbackPoints: make(map[uint64]string, len(block.Entrypoints)+len(block.Datapoints)),
 	}
 
 	for _, ref := range block.Entrypoints {
@@ -212,8 +278,8 @@ func (c *MQLExecutorV2) _newBlockExecutor(blockRef uint64, callback ResultCallba
 		if ref < 1 {
 			return nil, errors.New("llx.executor> cannot execute with invalid ref number in entrypoint")
 		}
-		res.entrypoints[ref] = struct{}{}
-		res.callbackPoints[ref] = id
+		points.entrypoints[ref] = struct{}{}
+		points.callbackPoints[ref] = id
 	}
 
 	for _, ref := range block.Datapoints {
@@ -224,14 +290,21 @@ func (c *MQLExecutorV2) _newBlockExecutor(blockRef uint64, callback ResultCallba
 		if ref < 1 {
 			return nil, errors.New("llx.executor> cannot execute with invalid ref number in datapoint")
 		}
-		res.callbackPoints[ref] = id
+		points.callbackPoints[ref] = id
 	}
 
-	if len(res.callbackPoints) == 0 {
+	if len(points.callbackPoints) == 0 {
 		panic("no callback points")
 	}
 
-	return res, nil
+	c.blockPointsLock.Lock()
+	defer c.blockPointsLock.Unlock()
+
+	if existing, ok := c.blockPoints[blockRef]; ok {
+		return existing, nil
+	}
+	c.blockPoints[blockRef] = points
+	return points, nil
 }
 
 // NoRun returns error for all callbacks and don't run code
@@ -279,13 +352,24 @@ func (c *MQLExecutorV2) Unregister() error {
 
 // Run a given set of code. Only returns an error if the couldn't be started.
 func (c *MQLExecutorV2) Run() error {
+	return c.RunWithContext(context.Background())
+}
+
+// RunWithContext stops scheduling further VM steps when the query is cancelled.
+// Provider operations also need a context-bound Runtime to interrupt their I/O.
+func (c *MQLExecutorV2) RunWithContext(ctx context.Context) error {
 	if len(c.blockExecutors) == 0 {
 		return errors.New("cannot find initial block executor for running this code")
 	}
+	c.runCtx = ctx
 
 	core := c.blockExecutors[0]
 	core.run()
-	return nil
+	return ctx.Err()
+}
+
+func (c *MQLExecutorV2) cancelled() bool {
+	return c.runCtx != nil && c.runCtx.Err() != nil
 }
 
 func (b *blockExecutor) newBlockExecutor(blockRef uint64, callback ResultCallback) (*blockExecutor, error) {
@@ -296,7 +380,11 @@ func (e *blockExecutor) unregister() []error {
 	var errs []error
 
 	e.watcherIds.Range(func(key string) bool {
-		if err := e.ctx.runtime.Unregister(key); err != nil {
+		runtime := e.ctx.runtime
+		if foreign, ok := e.foreignWatchers.Load(key); ok {
+			runtime = foreign.(Runtime)
+		}
+		if err := runtime.Unregister(key); err != nil {
 			log.Error().Err(err).Msg("exec> unregister error")
 			errs = append(errs, err)
 		}
@@ -324,13 +412,16 @@ func (b *blockExecutor) mustLookup(ref uint64) *RawData {
 // run code with a runtime and return results
 func (b *blockExecutor) run() {
 	defer logger.FuncDur(time.Now(), "llx.blockExecutor.run")
+	if b.ctx.cancelled() {
+		return
+	}
 
 	for ref, codeID := range b.callbackPoints {
 		if !b.isInMyBlock(ref) {
 			v := b.mustLookup(ref)
 			b.callback(&RawResult{
 				CodeID: codeID,
-				Data:   v,
+				Data:   b.resultWithCoverageGaps(ref, v),
 			})
 		}
 	}
@@ -348,6 +439,9 @@ func (b *blockExecutor) run() {
 	sort.Slice(refs, func(i, j int) bool { return refs[i] > refs[j] })
 
 	for _, ref := range refs {
+		if b.ctx.cancelled() {
+			return
+		}
 		// if this entrypoint is already connected, don't add it again
 		if _, ok := b.stepTracker.Load(ref); ok {
 			continue
@@ -384,6 +478,7 @@ type arrayBlockCallResults struct {
 	waiting              []int
 	unfinishedBlockCalls int
 	onComplete           func([]arrayBlockCallResult, []error)
+	coverageGaps         []*Error
 	entrypoints          map[string]struct{}
 	datapoints           map[string]struct{}
 }
@@ -396,13 +491,9 @@ type arrayBlockCallResult struct {
 func (a arrayBlockCallResult) toRawData() *RawData {
 	v := make(map[string]any, len(a.entrypoints)+len(a.datapoints))
 
-	for checksum, res := range a.entrypoints {
-		v[checksum] = res
-	}
+	maps.Copy(v, a.entrypoints)
 
-	for checksum, res := range a.datapoints {
-		v[checksum] = res
-	}
+	maps.Copy(v, a.datapoints)
 
 	v["__t"] = &RawData{
 		Type:  types.Bool,
@@ -489,6 +580,7 @@ func (a *arrayBlockCallResults) update(i int, res *RawResult) {
 	if res.Data.Error != nil {
 		a.errors = append(a.errors, res.Data.Error)
 	}
+	a.coverageGaps = UnionCoverageGaps(a.coverageGaps, res.Data.CoverageGaps)
 
 	if a.unfinishedBlockCalls == 0 {
 		a.onComplete(a.results, a.errors)
@@ -546,10 +638,21 @@ func newArrayBlockCallResultsV2(expectedBlockCalls int, code *CodeV2, blockRef u
 	}, true
 }
 
-func (c *blockExecutor) runFunctionBlocks(argList [][]*RawData, blockRef uint64,
+// runFunctionBlocks runs the block at blockRef once per entry in argList, on
+// behalf of the chunk at ref, and calls onComplete when all runs finished.
+func (c *blockExecutor) runFunctionBlocks(argList [][]*RawData, blockRef uint64, ref uint64,
 	onComplete func([]arrayBlockCallResult, []error),
 ) error {
-	callResults, shouldRun := newArrayBlockCallResultsV2(len(argList), c.ctx.code, blockRef, onComplete)
+	var callResults *arrayBlockCallResults
+	// Record what the block runs could not read before the result is stored
+	// and delivered, so its delivery picks the gaps up.
+	complete := func(results []arrayBlockCallResult, errs []error) {
+		if callResults != nil && len(callResults.coverageGaps) != 0 {
+			c.blockCoverageGaps.Store(ref, callResults.coverageGaps)
+		}
+		onComplete(results, errs)
+	}
+	callResults, shouldRun := newArrayBlockCallResultsV2(len(argList), c.ctx.code, blockRef, complete)
 	if !shouldRun {
 		return nil
 	}
@@ -621,7 +724,7 @@ func (b *blockExecutor) runBlock(bind *RawData, functionRef *Primitive, args []*
 		fargs = append(fargs, a)
 	}
 
-	err := b.runFunctionBlocks([][]*RawData{fargs}, fref, func(results []arrayBlockCallResult, errs []error) {
+	err := b.runFunctionBlocks([][]*RawData{fargs}, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		var err multierr.Errors
 		err.Add(errs...)
 
@@ -693,17 +796,27 @@ func pargs2argmap(b *blockExecutor, ref uint64, args []*Primitive) (map[string]*
 
 func (b *blockExecutor) createResource(name string, binding uint64, f *Function, ref uint64) (*RawData, uint64, error) {
 	runtime := b.ctx.runtime
-	// if binding != 0 {
-	// // This happens with aliases, like:
-	// // > os.unix.sshd.config.file.path
-	// // TODO: Re-connect cross-provider resource calls in this part
-	// res, dref, err := b.resolveRef(binding, ref)
-	// if dref != 0 || err != nil {
-	// 	return res, dref, err
-	// }
-	// mqlResource := res.Value.(resourceInterface).MqlResource()
-	// // runtime = mqlResource.MqlRuntime
-	// }
+
+	// A resource created off a binding belongs to whatever that binding belongs
+	// to. That matters once a chain has crossed into another asset (ADR 031):
+	// `container.running.file("/etc/os-release")` builds a `file` resource, and
+	// building it here would read the file on the host that owns the query
+	// rather than on the asset the chain reached. The field-read path routes on
+	// the same rule; this is the resource-construction half of it.
+	var foreign Runtime
+	if binding != 0 {
+		res, dref, err := b.resolveRef(binding, ref)
+		if dref != 0 || err != nil {
+			return res, dref, err
+		}
+		if res != nil {
+			if bound, ok := res.Value.(RuntimeBoundResource); ok {
+				if boundRuntime := bound.MqlRuntime(); boundRuntime != nil {
+					runtime, foreign = boundRuntime, boundRuntime
+				}
+			}
+		}
+	}
 
 	args, rref, err := pargs2argmap(b, ref, f.Args)
 	if err != nil || rref != 0 {
@@ -712,6 +825,15 @@ func (b *blockExecutor) createResource(name string, binding uint64, f *Function,
 
 	resource, err := runtime.CreateResource(name, args)
 	if err != nil {
+		// A resource this build has never heard of, in a bundle that already
+		// told us it was compiled against a newer provider, degrades exactly
+		// like a missing field does. Handling only the field case would make
+		// the behaviour depend on how far into a chain the gap falls.
+		if data, degraded := b.degradeUnavailableResource(name, err); degraded {
+			b.cache.Store(ref, &stepCache{Result: data, IsStatic: true})
+			return data, 0, nil
+		}
+
 		// in case it's not something that requires later loading, store the error
 		// so that consecutive steps can retrieve it cached
 		if _, ok := err.(resources.NotReadyError); !ok {
@@ -731,8 +853,10 @@ func (b *blockExecutor) createResource(name string, binding uint64, f *Function,
 
 	res := stepCache{
 		Result: &RawData{
-			Type:  types.Resource(name),
-			Value: resource,
+			Type: types.Resource(name),
+			// Whatever is chained off this resource has to keep asking the
+			// runtime that built it.
+			Value: BindResource(resource, foreign),
 		},
 		IsStatic: true,
 	}
@@ -865,6 +989,9 @@ func (e *blockExecutor) runChain(start uint64) {
 	var remaining []uint64
 
 	for nextRef != 0 {
+		if e.ctx.cancelled() {
+			return
+		}
 		curRef = nextRef
 		e.stepTracker.Store(curRef, nil)
 		// log.Trace().Uint64("ref", curRef).Msg("exec> run chain")
@@ -897,7 +1024,7 @@ func (e *blockExecutor) runChain(start uint64) {
 		// if this is a result for a callback (entry- or datapoint) send it
 		if res != nil {
 			if codeID, ok := e.callbackPoints[curRef]; ok {
-				e.callback(&RawResult{Data: res, CodeID: codeID})
+				e.callback(&RawResult{Data: e.resultWithCoverageGaps(curRef, e.markTranslated(curRef, res)), CodeID: codeID})
 			}
 		} else if err != nil {
 			if codeID, ok := e.callbackPoints[curRef]; ok {
@@ -946,7 +1073,7 @@ func (e *blockExecutor) triggerChain(ref uint64, data *RawData) {
 	// before we do anything else, we may have to provide the value from
 	// this callback point
 	if codeID, ok := e.callbackPoints[ref]; ok {
-		e.callback(&RawResult{Data: data, CodeID: codeID})
+		e.callback(&RawResult{Data: e.resultWithCoverageGaps(ref, e.markTranslated(ref, data)), CodeID: codeID})
 	}
 
 	nxt, ok := e.calls.Load(ref)
@@ -968,7 +1095,7 @@ func (e *blockExecutor) triggerChain(ref uint64, data *RawData) {
 	}
 
 	log.Trace().Uint64("ref", ref).Msgf("exec> trigger callback")
-	e.callback(&RawResult{Data: res.Result, CodeID: codeID})
+	e.callback(&RawResult{Data: e.resultWithCoverageGaps(ref, e.markTranslated(ref, res.Result)), CodeID: codeID})
 }
 
 func (e *blockExecutor) triggerChainError(ref uint64, err error) {

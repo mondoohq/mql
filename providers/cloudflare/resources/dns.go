@@ -6,17 +6,17 @@ import (
 	"fmt"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/cloudflare/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/cloudflare/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlCloudflareDnsInternal struct {
 	ZoneID string
 }
 
-// dnsRecord mirrors a zone DNS record. cloudflare-go v6 models the record list
+// dnsRecord mirrors a zone DNS record. cloudflare-go models the record list
 // as a polymorphic union (and exposes tags as an untyped value), so we decode
 // the endpoint via the client's generic Get to keep the existing MQL schema.
 type dnsRecord struct {
@@ -60,7 +60,7 @@ func (c *mqlCloudflareDns) records() ([]any, error) {
 
 	records, err := cfGetPaged[dnsRecord](conn, fmt.Sprintf("zones/%s/dns_records", c.ZoneID))
 	if err != nil {
-		return nil, err
+		return degradedList(err)
 	}
 
 	var result []any
@@ -80,8 +80,8 @@ func (c *mqlCloudflareDns) records() ([]any, error) {
 			"ttl":      llx.IntData(rec.TTL),
 			"priority": llx.IntData(int64(rec.Priority)),
 
-			"createdOn":  llx.TimeData(rec.CreatedOn),
-			"modifiedOn": llx.TimeData(rec.ModifiedOn),
+			"createdOn":  timeOrNil(rec.CreatedOn),
+			"modifiedOn": timeOrNil(rec.ModifiedOn),
 		})
 		if err != nil {
 			return nil, err

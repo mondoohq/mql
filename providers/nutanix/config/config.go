@@ -4,16 +4,22 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/nutanix/connection"
-	"go.mondoo.com/mql/v13/providers/nutanix/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/nutanix/connection"
+	"go.mondoo.com/mql/providers/nutanix/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "nutanix",
-	ID:              "go.mondoo.com/mql/v13/providers/nutanix",
-	Version:         "13.2.0",
+	Name: "nutanix",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "nutanix",
+	ID:      "go.mondoo.com/mql/providers/nutanix",
+	Version: "14.0.7",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       connection.Platforms,
 	Connectors: []plugin.Connector{

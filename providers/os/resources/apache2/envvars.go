@@ -14,7 +14,7 @@ import (
 // startup.
 func ParseEnvvars(content string) map[string]string {
 	vars := map[string]string{}
-	for _, raw := range strings.Split(content, "\n") {
+	for raw := range strings.SplitSeq(content, "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" || line[0] == '#' {
 			continue
@@ -183,4 +183,22 @@ func isEnvNameStart(c byte) bool {
 
 func isEnvNameChar(c byte) bool {
 	return isEnvNameStart(c) || (c >= '0' && c <= '9')
+}
+
+// stripInlineComment removes a shell # comment that isn't inside double
+// quotes. It applies to the shell-syntax envvars file only; Apache's own
+// configuration has no inline comments.
+func stripInlineComment(line string) string {
+	inQuote := false
+	for i, c := range line {
+		switch c {
+		case '"':
+			inQuote = !inQuote
+		case '#':
+			if !inQuote {
+				return strings.TrimSpace(line[:i])
+			}
+		}
+	}
+	return line
 }

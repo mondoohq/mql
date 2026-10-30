@@ -4,11 +4,13 @@
 package resources
 
 import (
-	"github.com/google/go-github/v88/github"
+	"fmt"
+
+	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/github/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/github/connection"
 )
 
 const (
@@ -269,7 +271,7 @@ func (g *mqlGithubEnvironment) secrets() ([]any, error) {
 	opts := &github.ListOptions{PerPage: paginationPerPage}
 	var all []*github.Secret
 	for {
-		page, resp, err := conn.Client().Actions.ListEnvSecrets(conn.Context(), int(repoID), envName, opts)
+		page, resp, err := conn.Client().Actions.ListEnvSecrets(conn.Context(), owner, repo, envName, opts)
 		if err != nil {
 			return handleActionsListErr(err, "environment secrets")
 		}
@@ -432,14 +434,33 @@ func (g *mqlGithubActionsVariable) selectedRepositories() ([]any, error) {
 	return reposToMql(g.MqlRuntime, all)
 }
 
+// repoOwner returns the repository's owner resource. The owner is legitimately
+// null on fork entries and on repositories built from a partial API response
+// (see newMqlGithubRepository and reposToMql), so callers must never
+// dereference g.Owner.Data without going through this helper — doing so panics
+// the whole GetData call.
+func repoOwner(g *mqlGithubRepository) (*mqlGithubUser, error) {
+	if g.Owner.Error != nil {
+		return nil, g.Owner.Error
+	}
+	if g.Owner.Data == nil {
+		name := ""
+		if g.Name.Error == nil {
+			name = g.Name.Data
+		}
+		return nil, fmt.Errorf("repository %q has no owner information available", name)
+	}
+	return g.Owner.Data, nil
+}
+
 func repoOwnerAndName(g *mqlGithubRepository) (string, string, error) {
 	if g.Name.Error != nil {
 		return "", "", g.Name.Error
 	}
-	if g.Owner.Error != nil {
-		return "", "", g.Owner.Error
+	owner, err := repoOwner(g)
+	if err != nil {
+		return "", "", err
 	}
-	owner := g.Owner.Data
 	if owner.Login.Error != nil {
 		return "", "", owner.Login.Error
 	}

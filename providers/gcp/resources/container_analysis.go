@@ -12,18 +12,17 @@ import (
 
 	containeranalysis "cloud.google.com/go/containeranalysis/apiv1"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	grafeaspb "google.golang.org/genproto/googleapis/grafeas/v1"
 )
 
 type mqlGcpProjectContainerAnalysisServiceInternal struct {
-	serviceEnabled bool
-	serviceChecked bool
+	serviceGate
 }
 
 func (g *mqlGcpProject) containerAnalysis() (*mqlGcpProjectContainerAnalysisService, error) {
@@ -45,8 +44,7 @@ func (g *mqlGcpProject) containerAnalysis() (*mqlGcpProjectContainerAnalysisServ
 	}
 
 	svc := res.(*mqlGcpProjectContainerAnalysisService)
-	svc.serviceEnabled = serviceEnabled
-	svc.serviceChecked = true
+	svc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_containeranalysis).Msg("gcp service is not enabled, skipping")
 	}
@@ -54,32 +52,9 @@ func (g *mqlGcpProject) containerAnalysis() (*mqlGcpProjectContainerAnalysisServ
 	return svc, nil
 }
 
-// isEnabled reports whether the Container Analysis API is enabled for the
-// project. When the service is reached through gcp.project.containerAnalysis the
-// flag is set by that accessor, but a direct query of
-// gcp.project.containerAnalysisService is built through the init function, which
-// cannot set it. Resolve it lazily here so the direct-query path doesn't
-// silently return empty occurrences/notes.
+// isEnabled reports whether the API is enabled on this project.
 func (g *mqlGcpProjectContainerAnalysisService) isEnabled() (bool, error) {
-	if g.serviceChecked {
-		return g.serviceEnabled, nil
-	}
-	if g.ProjectId.Error != nil {
-		return false, g.ProjectId.Error
-	}
-	proj, err := CreateResource(g.MqlRuntime, "gcp.project", map[string]*llx.RawData{
-		"id": llx.StringData(g.ProjectId.Data),
-	})
-	if err != nil {
-		return false, err
-	}
-	enabled, err := proj.(*mqlGcpProject).isServiceEnabled(service_containeranalysis)
-	if err != nil {
-		return false, err
-	}
-	g.serviceEnabled = enabled
-	g.serviceChecked = true
-	return enabled, nil
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_containeranalysis)
 }
 
 func initGcpProjectContainerAnalysisService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -154,9 +129,9 @@ func (g *mqlGcpProjectContainerAnalysisService) notes() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list Container Analysis notes")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -241,15 +216,10 @@ func (g *mqlGcpProjectContainerAnalysisService) occurrences() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list Container Analysis occurrences")
-				return nil, nil
+				break
 			}
-			return nil, err
-		}
-
-		vulnerability, err := protoToDict(occ.GetVulnerability())
-		if err != nil {
 			return nil, err
 		}
 
@@ -282,11 +252,6 @@ func (g *mqlGcpProjectContainerAnalysisService) occurrences() ([]any, error) {
 			}
 		}
 
-		build, err := protoToDict(occ.GetBuild())
-		if err != nil {
-			return nil, err
-		}
-
 		image, err := protoToDict(occ.GetImage())
 		if err != nil {
 			return nil, err
@@ -303,11 +268,6 @@ func (g *mqlGcpProjectContainerAnalysisService) occurrences() ([]any, error) {
 		}
 
 		discovery, err := protoToDict(occ.GetDiscovery())
-		if err != nil {
-			return nil, err
-		}
-
-		attestation, err := protoToDict(occ.GetAttestation())
 		if err != nil {
 			return nil, err
 		}
@@ -366,7 +326,6 @@ func (g *mqlGcpProjectContainerAnalysisService) occurrences() ([]any, error) {
 			"noteName":                       llx.StringData(occ.NoteName),
 			"kind":                           llx.StringData(occ.Kind.String()),
 			"remediation":                    llx.StringData(occ.Remediation),
-			"vulnerability":                  llx.DictData(vulnerability),
 			"vulnerabilitySeverity":          llx.StringData(vulnSeverity),
 			"vulnerabilityEffectiveSeverity": llx.StringData(vulnEffectiveSeverity),
 			"vulnerabilityCvssScore":         llx.FloatData(vulnCvssScore),
@@ -374,7 +333,6 @@ func (g *mqlGcpProjectContainerAnalysisService) occurrences() ([]any, error) {
 			"vulnerabilityShortDescription":  llx.StringData(vulnShortDescription),
 			"vulnerabilityLongDescription":   llx.StringData(vulnLongDescription),
 			"vulnerabilityPackageIssues":     llx.ArrayData(vulnPackageIssues, types.Dict),
-			"build":                          llx.DictData(build),
 			"buildProvenanceId":              llx.StringData(buildProvenanceID),
 			"buildCreator":                   llx.StringData(buildCreator),
 			"buildCreateTime":                llx.TimeDataPtr(buildCreateTime),
@@ -389,7 +347,6 @@ func (g *mqlGcpProjectContainerAnalysisService) occurrences() ([]any, error) {
 			"packageInfo":                    llx.DictData(packageInfo),
 			"deployment":                     llx.DictData(deployment),
 			"discovery":                      llx.DictData(discovery),
-			"attestation":                    llx.DictData(attestation),
 			"attestationSerializedPayload":   llx.StringData(attestationSerializedPayload),
 			"attestationSignatures":          llx.ArrayData(attestationSignatures, types.Dict),
 			"created":                        llx.TimeDataPtr(timestampAsTimePtr(occ.CreateTime)),

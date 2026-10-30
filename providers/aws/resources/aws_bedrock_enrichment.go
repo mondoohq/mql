@@ -8,14 +8,15 @@ import (
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/service/bedrock"
+	bedrocktypes "github.com/aws/aws-sdk-go-v2/service/bedrock/types"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockagent"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // --- Inference profiles ---
@@ -32,49 +33,52 @@ func (a *mqlAwsBedrock) getInferenceProfiles(conn *connection.AwsConnection) []*
 		return []*jobpool.Job{{Err: err}}
 	}
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			svc := conn.Bedrock(region)
 			ctx := context.Background()
 			res := []any{}
-			paginator := bedrock.NewListInferenceProfilesPaginator(svc, &bedrock.ListInferenceProfilesInput{})
-			for paginator.HasMorePages() {
-				page, err := paginator.NextPage(ctx)
-				if err != nil {
-					if Is400AccessDeniedError(err) {
-						log.Warn().Str("region", region).Msg("error accessing region for AWS API")
-						return res, nil
-					}
-					if IsServiceNotAvailableInRegionError(err) {
-						log.Debug().Str("region", region).Msg("bedrock is not available in region")
-						return res, nil
-					}
-					return nil, err
-				}
-				for _, ip := range page.InferenceProfileSummaries {
-					modelArns := make([]any, 0, len(ip.Models))
-					for _, m := range ip.Models {
-						if m.ModelArn != nil {
-							modelArns = append(modelArns, *m.ModelArn)
-						}
-					}
-					mqlIP, err := CreateResource(a.MqlRuntime, "aws.bedrock.inferenceProfile", map[string]*llx.RawData{
-						"__id":        llx.StringDataPtr(ip.InferenceProfileArn),
-						"arn":         llx.StringDataPtr(ip.InferenceProfileArn),
-						"id":          llx.StringDataPtr(ip.InferenceProfileId),
-						"name":        llx.StringDataPtr(ip.InferenceProfileName),
-						"region":      llx.StringData(region),
-						"status":      llx.StringData(string(ip.Status)),
-						"type":        llx.StringData(string(ip.Type)),
-						"description": llx.StringDataPtr(ip.Description),
-						"modelArns":   llx.ArrayData(modelArns, types.String),
-						"createdAt":   llx.TimeDataPtr(ip.CreatedAt),
-						"updatedAt":   llx.TimeDataPtr(ip.UpdatedAt),
-					})
+			// Without a type filter the API returns only SYSTEM_DEFINED
+			// profiles, which hid every application profile users create.
+			for _, profileType := range bedrocktypes.InferenceProfileType("").Values() {
+				paginator := bedrock.NewListInferenceProfilesPaginator(svc, &bedrock.ListInferenceProfilesInput{TypeEquals: profileType})
+				for paginator.HasMorePages() {
+					page, err := paginator.NextPage(ctx)
 					if err != nil {
+						if Is400AccessDeniedError(err) {
+							log.Warn().Str("region", region).Msg("error accessing region for AWS API")
+							return res, nil
+						}
+						if IsServiceNotAvailableInRegionError(err) {
+							log.Debug().Str("region", region).Msg("bedrock is not available in region")
+							return res, nil
+						}
 						return nil, err
 					}
-					res = append(res, mqlIP)
+					for _, ip := range page.InferenceProfileSummaries {
+						modelArns := make([]any, 0, len(ip.Models))
+						for _, m := range ip.Models {
+							if m.ModelArn != nil {
+								modelArns = append(modelArns, *m.ModelArn)
+							}
+						}
+						mqlIP, err := CreateResource(a.MqlRuntime, "aws.bedrock.inferenceProfile", map[string]*llx.RawData{
+							"__id":        llx.StringDataPtr(ip.InferenceProfileArn),
+							"arn":         llx.StringDataPtr(ip.InferenceProfileArn),
+							"id":          llx.StringDataPtr(ip.InferenceProfileId),
+							"name":        llx.StringDataPtr(ip.InferenceProfileName),
+							"region":      llx.StringData(region),
+							"status":      llx.StringData(string(ip.Status)),
+							"type":        llx.StringData(string(ip.Type)),
+							"description": llx.StringDataPtr(ip.Description),
+							"modelArns":   llx.ArrayData(modelArns, types.String),
+							"createdAt":   llx.TimeDataPtr(ip.CreatedAt),
+							"updatedAt":   llx.TimeDataPtr(ip.UpdatedAt),
+						})
+						if err != nil {
+							return nil, err
+						}
+						res = append(res, mqlIP)
+					}
 				}
 			}
 			return jobpool.JobResult(res), nil
@@ -122,7 +126,6 @@ func (a *mqlAwsBedrock) getImportedModels(conn *connection.AwsConnection) []*job
 		return []*jobpool.Job{{Err: err}}
 	}
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			svc := conn.Bedrock(region)
 			ctx := context.Background()
@@ -167,6 +170,7 @@ func (a *mqlAwsBedrock) getImportedModels(conn *connection.AwsConnection) []*job
 }
 
 type mqlAwsBedrockImportedModelInternal struct {
+	lazyTags
 	cacheRegion string
 	fetchLock   sync.Mutex
 	fetched     bool
@@ -230,7 +234,6 @@ func (a *mqlAwsBedrock) getPrompts(conn *connection.AwsConnection) []*jobpool.Jo
 		return []*jobpool.Job{{Err: err}}
 	}
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			svc := conn.BedrockAgent(region)
 			ctx := context.Background()
@@ -342,4 +345,63 @@ func bedrockCollectRegionJobs(poolOfJobs *jobpool.Pool) ([]any, error) {
 		}
 	}
 	return res, nil
+}
+
+type mqlAwsBedrockInferenceProfileInternal struct {
+	lazyTags
+}
+
+type mqlAwsBedrockPromptInternal struct {
+	lazyTags
+}
+
+type mqlAwsBedrockAgentAliasInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsBedrockImportedModel) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return bedrockTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockInferenceProfile) tags() (map[string]any, error) {
+	// System-defined profiles are owned by AWS and cannot carry tags; the tag
+	// call rejects their ARN as invalid, so answer without making it.
+	if a.Type.Data == "SYSTEM_DEFINED" {
+		return map[string]any{}, nil
+	}
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return bedrockTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockPrompt) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return bedrockAgentTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+// The alias listing carries no ARN, so the alias is read once to learn it.
+func (a *mqlAwsBedrockAgentAlias) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.BedrockAgent(a.Region.Data)
+		agentId := a.AgentId.Data
+		aliasId := a.Id.Data
+		resp, err := svc.GetAgentAlias(context.Background(), &bedrockagent.GetAgentAliasInput{AgentId: &agentId, AgentAliasId: &aliasId})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("bedrock:GetAgentAlias"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		if resp.AgentAlias == nil {
+			return nil, errTagsUnreadable
+		}
+		return bedrockAgentTags(a.MqlRuntime, a.Region.Data, convert.ToValue(resp.AgentAlias.AgentAliasArn))
+	})
 }

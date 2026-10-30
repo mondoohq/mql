@@ -12,12 +12,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	apigwv2types "github.com/aws/aws-sdk-go-v2/service/apigatewayv2/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsApigatewayv2) id() (string, error) {
@@ -47,7 +47,6 @@ func (a *mqlAwsApigatewayv2) getApis(conn *connection.AwsConnection) []*jobpool.
 		return []*jobpool.Job{{Err: err}}
 	}
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			res := []any{}
 			svc := conn.Apigatewayv2(region)
@@ -150,8 +149,14 @@ func initAwsApigatewayv2Api(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	if len(args) > 2 {
 		return args, nil, nil
 	}
-	if args["apiId"] == nil {
-		return args, nil, errors.New("apiId required to fetch aws.apigatewayv2.api")
+	// Resolve a discovered asset (aws-apigatewayv2-api platform) by its ARN.
+	if len(args) == 0 {
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformApigatewayv2Api); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
+		}
+	}
+	if args["apiId"] == nil && args["arn"] == nil {
+		return args, nil, errors.New("apiId or arn required to fetch aws.apigatewayv2.api")
 	}
 
 	obj, err := CreateResource(runtime, "aws.apigatewayv2", map[string]*llx.RawData{})
@@ -163,14 +168,26 @@ func initAwsApigatewayv2Api(runtime *plugin.Runtime, args map[string]*llx.RawDat
 		return nil, nil, apis.Error
 	}
 
-	want := args["apiId"].Value.(string)
+	var wantApiId, wantArn string
+	if args["apiId"] != nil {
+		wantApiId = args["apiId"].Value.(string)
+	}
+	if args["arn"] != nil {
+		wantArn = args["arn"].Value.(string)
+	}
 	for _, r := range apis.Data {
 		api := r.(*mqlAwsApigatewayv2Api)
-		if api.ApiId.Data == want {
+		if (wantApiId != "" && api.ApiId.Data == wantApiId) || (wantArn != "" && api.Arn.Data == wantArn) {
 			return args, api, nil
 		}
 	}
-	return nil, nil, fmt.Errorf("aws.apigatewayv2.api with apiId %q not found", want)
+	if wantApiId != "" {
+		return nil, nil, fmt.Errorf("aws.apigatewayv2.api with apiId %q not found", wantApiId)
+	}
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.apigatewayv2.api with arn %q not found", wantArn)
 }
 
 // ---------- aws.apigatewayv2.stage ----------
@@ -225,8 +242,24 @@ func newMqlAwsApigatewayv2Stage(runtime *plugin.Runtime, region, apiId string, s
 	if s.StageName != nil {
 		stageName = *s.StageName
 	}
+
+	stageId := apigatewayv2StageId(region, apiId, stageName)
+	defaultRoute, err := newMqlApigatewayv2RouteSettings(runtime, stageId, s.DefaultRouteSettings)
+	if err != nil {
+		return nil, err
+	}
+
+	mqlAccessLog := llx.NilData
+	if s.AccessLogSettings != nil {
+		mqlAccessLog, err = newMqlApigatewayAccessLog(runtime, "aws.apigatewayv2.stage.accessLogConfiguration", stageId,
+			convert.ToValue(s.AccessLogSettings.DestinationArn), convert.ToValue(s.AccessLogSettings.Format))
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	res, err := CreateResource(runtime, "aws.apigatewayv2.stage", map[string]*llx.RawData{
-		"__id":                        llx.StringData(apigatewayv2StageId(region, apiId, stageName)),
+		"__id":                        llx.StringData(stageId),
 		"stageName":                   llx.StringData(stageName),
 		"apiId":                       llx.StringData(apiId),
 		"region":                      llx.StringData(region),
@@ -238,6 +271,8 @@ func newMqlAwsApigatewayv2Stage(runtime *plugin.Runtime, region, apiId string, s
 		"defaultRouteSettings":        llx.DictData(defaultRouteSettings),
 		"routeSettings":               llx.DictData(routeSettings),
 		"accessLogSettings":           llx.DictData(accessLog),
+		"defaultRoute":                defaultRoute,
+		"accessLog":                   mqlAccessLog,
 		"apiGatewayManaged":           llx.BoolDataPtr(s.ApiGatewayManaged),
 		"lastDeploymentStatusMessage": llx.StringDataPtr(s.LastDeploymentStatusMessage),
 		"tags":                        llx.MapData(stringMapToAny(s.Tags), types.String),
@@ -248,6 +283,40 @@ func newMqlAwsApigatewayv2Stage(runtime *plugin.Runtime, region, apiId string, s
 		return nil, err
 	}
 	return res.(*mqlAwsApigatewayv2Stage), nil
+}
+
+func (a *mqlAwsApigatewayv2StageAccessLogConfiguration) logGroup() (*mqlAwsCloudwatchLoggroup, error) {
+	return resolveAccessLogGroup(a.MqlRuntime, a.DestinationArn.Data, &a.LogGroup.State)
+}
+
+// newMqlApigatewayv2RouteSettings builds the stage-wide default route
+// settings. Nil settings mean the stage sets no defaults at all, which is
+// reported as null rather than as logging off with a zero throttling limit,
+// since a zero limit would read as "throttled to nothing".
+func newMqlApigatewayv2RouteSettings(runtime *plugin.Runtime, stageId string, rs *apigwv2types.RouteSettings) (*llx.RawData, error) {
+	if rs == nil {
+		return llx.NilData, nil
+	}
+	burstLimit := llx.NilData
+	if rs.ThrottlingBurstLimit != nil {
+		burstLimit = llx.IntData(int64(*rs.ThrottlingBurstLimit))
+	}
+	rateLimit := llx.NilData
+	if rs.ThrottlingRateLimit != nil {
+		rateLimit = llx.FloatData(*rs.ThrottlingRateLimit)
+	}
+	res, err := CreateResource(runtime, "aws.apigatewayv2.routeSettings", map[string]*llx.RawData{
+		"__id":                   llx.StringData(stageId + "/defaultRouteSettings"),
+		"dataTraceEnabled":       llx.BoolData(convert.ToValue(rs.DataTraceEnabled)),
+		"detailedMetricsEnabled": llx.BoolData(convert.ToValue(rs.DetailedMetricsEnabled)),
+		"loggingLevel":           llx.StringData(string(rs.LoggingLevel)),
+		"throttlingBurstLimit":   burstLimit,
+		"throttlingRateLimit":    rateLimit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return llx.ResourceData(res, "aws.apigatewayv2.routeSettings"), nil
 }
 
 func apigatewayv2StageId(region, apiId, stageName string) string {
@@ -453,7 +522,6 @@ func (a *mqlAwsApigatewayv2) getDomainNames(conn *connection.AwsConnection) []*j
 		return []*jobpool.Job{{Err: err}}
 	}
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			res := []any{}
 			svc := conn.Apigatewayv2(region)

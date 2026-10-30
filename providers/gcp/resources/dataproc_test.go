@@ -126,3 +126,15 @@ func TestNodePoolTargetToMql(t *testing.T) {
 		assert.Len(t, result.NodePoolConfig.Config.Accelerators, 1)
 	})
 }
+
+func TestDataprocResourceNameFromUri(t *testing.T) {
+	cases := map[string]string{
+		"https://dataproc.googleapis.com/v1/projects/p/regions/r/autoscalingPolicies/ap": "projects/p/regions/r/autoscalingPolicies/ap",
+		"projects/p/regions/r/autoscalingPolicies/ap":                                    "projects/p/regions/r/autoscalingPolicies/ap",
+		"just-a-name": "just-a-name",
+		"":            "",
+	}
+	for in, want := range cases {
+		assert.Equal(t, want, dataprocResourceNameFromUri(in), "dataprocResourceNameFromUri(%q)", in)
+	}
+}

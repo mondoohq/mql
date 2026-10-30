@@ -1,0 +1,27 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "6.1.0-42-amd64"
+
+[files."/etc/os-release"]
+content = """
+PRETTY_NAME="eLxr 12 (aria)"
+NAME="eLxr"
+VARIANT="Edge Edition"
+VARIANT_ID=edge
+VERSION_ID="12"
+VERSION="12 (aria)"
+VERSION_CODENAME=aria
+ID=elxr
+ID_LIKE=debian
+HOME_URL="https://elxr.org"
+SUPPORT_URL="https://elxr.org"
+BUG_REPORT_URL="https://gitlab.com/groups/elxr/-/issues"
+"""
+
+[files."/etc/debian_version"]
+content = "12.13"

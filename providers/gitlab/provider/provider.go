@@ -9,14 +9,14 @@ import (
 	"os"
 	"strconv"
 
-	gitlab "gitlab.com/gitlab-org/api/client-go"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/gitlab/connection"
-	"go.mondoo.com/mql/v13/providers/gitlab/resources"
+	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/gitlab/connection"
+	"go.mondoo.com/mql/providers/gitlab/resources"
 )
 
 const (
@@ -30,8 +30,13 @@ const (
 	DiscoveryGroup   = "groups"
 	DiscoveryProject = "projects"
 	// -- chained git discovery options --
-	DiscoveryTerraform    = "terraform"
-	DiscoveryK8sManifests = "k8s-manifests"
+	DiscoveryTerraform      = "terraform"
+	DiscoveryK8sManifests   = "k8s-manifests"
+	DiscoveryCloudformation = "cloudformation"
+	DiscoveryDockerfiles    = "dockerfiles"
+	DiscoveryBicep          = "bicep"
+	DiscoveryHelm           = "helm"
+	DiscoveryKustomize      = "kustomize"
 )
 
 type Service struct {
@@ -133,6 +138,9 @@ func (s *Service) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 		Name:      conn.Name(),
 		Asset:     req.Asset,
 		Inventory: inventory,
+		// Which kind this asset actually is; the static Root can only name one
+		// for a provider serving several (ADR 031).
+		Root: assetRoot(req.Asset.GetPlatform()),
 	}, nil
 }
 
@@ -221,7 +229,19 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.GitLabConnecti
 		if err != nil {
 			return err
 		}
-		s.detectAsProject(asset, conn.GroupID(), conn.GroupName(), project) // TODO fix 0
+		// Resolve the owning group rather than reading it off the CLI options:
+		// ParseCLI never sets group-id, so conn.GroupID() fell back to 0 and
+		// produced platform id ".../group/0/project/<id>". Discovery stamps the
+		// real group id, so the same project scanned both ways split into two
+		// assets with separate history. Prefer the project's own namespace,
+		// which is also correct for a project reached outside its group.
+		groupID, groupFullPath := conn.GroupID(), conn.GroupName()
+		if project.Namespace != nil && project.Namespace.ID > 0 {
+			groupID, groupFullPath = project.Namespace.ID, project.Namespace.FullPath
+		} else if group, gerr := conn.Group(); gerr == nil && group != nil {
+			groupID, groupFullPath = group.ID, group.FullPath
+		}
+		s.detectAsProject(asset, groupID, groupFullPath, project)
 	} else {
 		group, err := conn.Group()
 		if err != nil {

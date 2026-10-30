@@ -6,6 +6,7 @@ package eos
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/aristanetworks/goeapi"
 	"github.com/aristanetworks/goeapi/module"
@@ -19,8 +20,54 @@ type Eos struct {
 	node *goeapi.Node
 }
 
-func (eos *Eos) RunningConfig() string {
-	return eos.node.RunningConfig()
+// RunningConfig returns the device's running-config, with every default
+// rendered explicitly.
+//
+// It deliberately does not use the eAPI client's own RunningConfig(), which
+// returns a bare string and discards the error: a permission gap or a timeout
+// there yields "", and an empty running-config parses cleanly into "no TACACS
+// servers, no syslog collectors, no ACL bindings, dot1x disabled" — a
+// confident pass for every hardening check, with nothing to attribute it to.
+func (eos *Eos) RunningConfig() (string, error) {
+	return configText(eos.node, goeapi.RunningConfig, "all")
+}
+
+// RunningConfigPlain returns the running-config rendered the way the
+// startup-config is, with defaults left implicit.
+//
+// RunningConfig asks for `all`, which expands every default-valued setting so
+// the parsers see the device's effective state. That is the right input for
+// parsing and the wrong input for drift comparison: the startup-config never
+// carries those defaults, so comparing the two renderings reports drift on a
+// device that was just saved.
+func (eos *Eos) RunningConfigPlain() (string, error) {
+	return configText(eos.node, goeapi.RunningConfig, "")
+}
+
+// configText fetches a configuration as text and fails loudly rather than
+// returning a partial or empty result. An EOS device never renders an empty
+// configuration, so an empty body is a failed read, not a bare device.
+func configText(node *goeapi.Node, config, params string) (string, error) {
+	res, err := node.GetConfig(config, params, "text")
+	if err != nil {
+		return "", fmt.Errorf("could not read %s: %w", config, err)
+	}
+	return configTextFromResponse(res, config)
+}
+
+// configTextFromResponse extracts the configuration body from a successful
+// response, rejecting the two shapes that would otherwise become an empty
+// string: a response carrying no text output, and one carrying an empty body.
+func configTextFromResponse(res map[string]any, config string) (string, error) {
+	out, ok := res["output"].(string)
+	if !ok {
+		return "", fmt.Errorf("could not read %s: response carried no text output", config)
+	}
+	out = strings.TrimSpace(out)
+	if out == "" {
+		return "", fmt.Errorf("could not read %s: device returned an empty configuration", config)
+	}
+	return out, nil
 }
 
 func (eos *Eos) SystemConfig() map[string]string {
@@ -424,12 +471,6 @@ func (eos *Eos) ShowIPRoute() (*showIPRoute, error) {
 func (eos *Eos) MlagConfig() *module.MlagConfig {
 	mlagModule := module.Mlag(eos.node)
 	return mlagModule.Get()
-}
-
-// AclConfigs returns all standard IP ACLs using the goeapi module
-func (eos *Eos) AclConfigs() map[string]*module.AclConfig {
-	aclModule := module.Acl(eos.node)
-	return aclModule.GetAll()
 }
 
 // showEnvironmentPower represents the response from "show system environment power"

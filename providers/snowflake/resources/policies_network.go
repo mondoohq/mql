@@ -6,14 +6,13 @@ package resources
 import (
 	"context"
 	"encoding/json"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"strings"
-	"time"
 
 	"github.com/Snowflake-Labs/terraform-provider-snowflake/pkg/sdk"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/snowflake/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/snowflake/connection"
 )
 
 func (r *mqlSnowflakeAccount) networkPolicies() ([]any, error) {
@@ -47,12 +46,7 @@ type mqlSnowflakeNetworkPolicyInternal struct {
 }
 
 func newMqlSnowflakeNetworkPolicy(runtime *plugin.Runtime, networkPolicy sdk.NetworkPolicy) (*mqlSnowflakeNetworkPolicy, error) {
-	var createdAt *llx.RawData
-	createdAt = llx.NilData
-	t, err := time.Parse(networkPolicy.CreatedOn, time.RFC3339)
-	if err == nil {
-		createdAt = llx.TimeData(t)
-	}
+	createdAt := snowflakeTime(networkPolicy.CreatedOn)
 
 	r, err := CreateResource(runtime, "snowflake.networkPolicy", map[string]*llx.RawData{
 		"__id":                         llx.StringData(networkPolicy.Name),

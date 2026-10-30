@@ -7,18 +7,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 
 	kms "cloud.google.com/go/kms/apiv1"
 	"cloud.google.com/go/kms/apiv1/kmspb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/genproto/googleapis/cloud/location"
@@ -69,6 +70,14 @@ func initGcpProjectKmsServiceKeyring(runtime *plugin.Runtime, args map[string]*l
 		}
 	}
 
+	// The keyring is matched by (name, location, projectId); without all three we
+	// can't do the lookup. This has to run before the parent kmsService is built:
+	// a missing projectId reaches CreateResource as a nil *llx.RawData and the
+	// generated setter dereferences it, panicking before any later guard runs.
+	if args["name"] == nil || args["location"] == nil || args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.kmsService.keyring requires name, location, and projectId")
+	}
+
 	// Create the parent KMS service and find the specific keyring
 	obj, err := CreateResource(runtime, "gcp.project.kmsService", map[string]*llx.RawData{
 		"projectId": args["projectId"],
@@ -107,7 +116,7 @@ func initGcpProjectKmsServiceKeyring(runtime *plugin.Runtime, args map[string]*l
 }
 
 type mqlGcpProjectKmsServiceInternal struct {
-	serviceEnabled bool
+	serviceGate
 }
 
 func (g *mqlGcpProject) kms() (*mqlGcpProjectKmsService, error) {
@@ -129,7 +138,7 @@ func (g *mqlGcpProject) kms() (*mqlGcpProjectKmsService, error) {
 	}
 
 	svc := res.(*mqlGcpProjectKmsService)
-	svc.serviceEnabled = serviceEnabled
+	svc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_kms).Msg("gcp service is not enabled, skipping")
 	}
@@ -159,16 +168,31 @@ func (g *mqlGcpProjectKmsServiceKeyringCryptokey) managedBy() (string, error) {
 	return managedByFromLabels(g.GetLabels())
 }
 
+// cryptoKeyPath trims a key version suffix from a crypto key resource name.
+// Compute reports the key that encrypts a disk, image, snapshot or machine
+// image as the version that was used
+// (".../cryptoKeys/<key>/cryptoKeyVersions/<n>"), which GetCryptoKey rejects.
+func cryptoKeyPath(name string) string {
+	if before, _, ok := strings.Cut(name, "/cryptoKeyVersions/"); ok {
+		return before
+	}
+	return name
+}
+
 func initGcpProjectKmsServiceKeyringCryptokey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 2 {
 		return args, nil, nil
 	}
 
 	resourcePathRaw, ok := args["resourcePath"]
-	if !ok || resourcePathRaw.Value == nil || resourcePathRaw.Value.(string) == "" {
-		return args, nil, nil
+	if !ok || resourcePathRaw == nil {
+		return nil, nil, errors.New(`gcp.project.kmsService.keyring.cryptokey requires a "resourcePath" argument`)
 	}
-	resourcePath := resourcePathRaw.Value.(string)
+	resourcePath, ok := resourcePathRaw.Value.(string)
+	if !ok || resourcePath == "" {
+		return nil, nil, errors.New(`gcp.project.kmsService.keyring.cryptokey requires a non-empty "resourcePath" argument`)
+	}
+	resourcePath = cryptoKeyPath(resourcePath)
 
 	conn, ok := runtime.Connection.(*connection.GcpConnection)
 	if !ok {
@@ -239,8 +263,8 @@ func initGcpProjectKmsServiceKeyringCryptokey(runtime *plugin.Runtime, args map[
 	args["primary"] = llx.ResourceData(mqlPrimary, "gcp.project.kmsService.keyring.cryptokey.version")
 	args["primaryState"] = llx.StringData(primaryState)
 	args["purpose"] = llx.StringData(k.Purpose.String())
-	args["created"] = llx.TimeData(k.CreateTime.AsTime())
-	args["nextRotation"] = llx.TimeData(k.NextRotationTime.AsTime())
+	args["created"] = llx.TimeDataPtr(timestampAsTimePtr(k.CreateTime))
+	args["nextRotation"] = llx.TimeDataPtr(timestampAsTimePtr(k.NextRotationTime))
 	args["rotationPeriod"] = llx.TimeDataPtr(mqlRotationPeriod)
 	args["versionTemplate"] = llx.DictData(versionTemplate)
 	args["labels"] = llx.MapData(convert.MapToInterfaceMap(k.Labels), types.String)
@@ -275,6 +299,54 @@ func (g *mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOp
 	return fmt.Sprintf("%s/externalProtectionLevelOptions", name), nil
 }
 
+type mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOptionsInternal struct {
+	cacheEkmConnectionBackendOverride string
+}
+
+// ekmConnectionBackendOverride resolves the version's EKM connection override
+// (projects/*/locations/*/ekmConnections/*) against the owning project's EKM
+// connection list.
+func (g *mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOptions) ekmConnectionBackendOverride() (*mqlGcpProjectKmsServiceEkmConnection, error) {
+	path := g.cacheEkmConnectionBackendOverride
+	if path == "" {
+		g.EkmConnectionBackendOverride.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	projectId := parseProjectFromPath(path)
+	if projectId == "" {
+		return nil, fmt.Errorf("invalid EKM connection resource name %q", path)
+	}
+	svc, err := NewResource(g.MqlRuntime, "gcp.project.kmsService", map[string]*llx.RawData{
+		"projectId": llx.StringData(projectId),
+	})
+	if err != nil {
+		return nil, err
+	}
+	conns := svc.(*mqlGcpProjectKmsService).GetEkmConnections()
+	if conns.Error != nil {
+		return nil, conns.Error
+	}
+	if ec := ekmConnectionByResourcePath(conns.Data, path); ec != nil {
+		return ec, nil
+	}
+	return nil, fmt.Errorf("gcp.project.kmsService.ekmConnection %q not found", path)
+}
+
+// ekmConnectionByResourcePath returns the EKM connection whose full resource
+// path equals path, or nil when none matches.
+func ekmConnectionByResourcePath(conns []any, path string) *mqlGcpProjectKmsServiceEkmConnection {
+	for _, c := range conns {
+		ec, ok := c.(*mqlGcpProjectKmsServiceEkmConnection)
+		if !ok {
+			continue
+		}
+		if ec.ResourcePath.Data == path {
+			return ec
+		}
+	}
+	return nil
+}
+
 func (g *mqlGcpProjectKmsServiceKeyringCryptokeyVersionAttestationCertificatechains) id() (string, error) {
 	if g.CryptoKeyVersionName.Error != nil {
 		return "", g.CryptoKeyVersionName.Error
@@ -284,7 +356,11 @@ func (g *mqlGcpProjectKmsServiceKeyringCryptokeyVersionAttestationCertificatecha
 }
 
 func (g *mqlGcpProjectKmsService) locations() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -325,7 +401,11 @@ func (g *mqlGcpProjectKmsService) locations() ([]any, error) {
 }
 
 func (g *mqlGcpProjectKmsService) keyrings() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -482,8 +562,8 @@ func (g *mqlGcpProjectKmsServiceKeyring) cryptokeys() ([]any, error) {
 			"primary":                       llx.ResourceData(mqlPrimary, "gcp.project.kmsService.keyring.cryptokey.version"),
 			"primaryState":                  llx.StringData(primaryState),
 			"purpose":                       llx.StringData(k.Purpose.String()),
-			"created":                       llx.TimeData(k.CreateTime.AsTime()),
-			"nextRotation":                  llx.TimeData(k.NextRotationTime.AsTime()),
+			"created":                       llx.TimeDataPtr(timestampAsTimePtr(k.CreateTime)),
+			"nextRotation":                  llx.TimeDataPtr(timestampAsTimePtr(k.NextRotationTime)),
 			"rotationPeriod":                llx.TimeDataPtr(mqlRotationPeriod),
 			"versionTemplate":               llx.DictData(versionTemplate),
 			"labels":                        llx.MapData(convert.MapToInterfaceMap(k.Labels), types.String),
@@ -664,9 +744,9 @@ func cryptoKeyVersionToMql(runtime *plugin.Runtime, v *kmspb.CryptoKeyVersion) (
 	if v.Attestation != nil {
 		mqlAttestationCertChains, err := CreateResource(runtime, "gcp.project.kmsService.keyring.cryptokey.version.attestation.certificatechains", map[string]*llx.RawData{
 			"cryptoKeyVersionName": llx.StringData(v.Name),
-			"caviumCerts":          llx.ArrayData(convert.SliceAnyToInterface(v.Attestation.CertChains.CaviumCerts), types.String),
-			"googleCardCerts":      llx.ArrayData(convert.SliceAnyToInterface(v.Attestation.CertChains.GoogleCardCerts), types.String),
-			"googlePartitionCerts": llx.ArrayData(convert.SliceAnyToInterface(v.Attestation.CertChains.GooglePartitionCerts), types.String),
+			"caviumCerts":          llx.ArrayData(convert.SliceAnyToInterface(v.Attestation.GetCertChains().GetCaviumCerts()), types.String),
+			"googleCardCerts":      llx.ArrayData(convert.SliceAnyToInterface(v.Attestation.GetCertChains().GetGoogleCardCerts()), types.String),
+			"googlePartitionCerts": llx.ArrayData(convert.SliceAnyToInterface(v.Attestation.GetCertChains().GetGooglePartitionCerts()), types.String),
 		})
 		if err != nil {
 			return nil, err
@@ -693,23 +773,28 @@ func cryptoKeyVersionToMql(runtime *plugin.Runtime, v *kmspb.CryptoKeyVersion) (
 		if err != nil {
 			return nil, err
 		}
+		mqlExtProtOpts.(*mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOptions).cacheEkmConnectionBackendOverride = v.ExternalProtectionLevelOptions.EkmConnectionBackendOverride
 	}
 	return CreateResource(runtime, "gcp.project.kmsService.keyring.cryptokey.version", map[string]*llx.RawData{
-		"resourcePath":                   llx.StringData(v.Name),
-		"name":                           llx.StringData(parseResourceName(v.Name)),
-		"state":                          llx.StringData(v.State.String()),
-		"protectionLevel":                llx.StringData(v.ProtectionLevel.String()),
-		"algorithm":                      llx.StringData(v.Algorithm.String()),
-		"attestation":                    llx.ResourceData(mqlAttestation, "gcp.project.kmsService.keyring.cryptokey.version.attestation"),
-		"created":                        llx.TimeDataPtr(timestampAsTimePtr(v.CreateTime)),
-		"generated":                      llx.TimeDataPtr(timestampAsTimePtr(v.GenerateTime)),
-		"destroyed":                      llx.TimeDataPtr(timestampAsTimePtr(v.DestroyTime)),
-		"destroyEventTime":               llx.TimeDataPtr(timestampAsTimePtr(v.DestroyEventTime)),
-		"importJob":                      llx.StringData(v.ImportJob),
-		"importTime":                     llx.TimeDataPtr(timestampAsTimePtr(v.ImportTime)),
-		"importFailureReason":            llx.StringData(v.ImportFailureReason),
-		"externalProtectionLevelOptions": llx.ResourceData(mqlExtProtOpts, "gcp.project.kmsService.keyring.cryptokey.version.externalProtectionLevelOptions"),
-		"reimportEligible":               llx.BoolData(v.ReimportEligible),
+		"resourcePath":                     llx.StringData(v.Name),
+		"name":                             llx.StringData(parseResourceName(v.Name)),
+		"state":                            llx.StringData(v.State.String()),
+		"protectionLevel":                  llx.StringData(v.ProtectionLevel.String()),
+		"algorithm":                        llx.StringData(v.Algorithm.String()),
+		"attestation":                      llx.ResourceData(mqlAttestation, "gcp.project.kmsService.keyring.cryptokey.version.attestation"),
+		"created":                          llx.TimeDataPtr(timestampAsTimePtr(v.CreateTime)),
+		"generated":                        llx.TimeDataPtr(timestampAsTimePtr(v.GenerateTime)),
+		"destroyed":                        llx.TimeDataPtr(timestampAsTimePtr(v.DestroyTime)),
+		"destroyEventTime":                 llx.TimeDataPtr(timestampAsTimePtr(v.DestroyEventTime)),
+		"importJob":                        llx.StringData(v.ImportJob),
+		"importTime":                       llx.TimeDataPtr(timestampAsTimePtr(v.ImportTime)),
+		"importFailureReason":              llx.StringData(v.ImportFailureReason),
+		"generationFailureReason":          llx.StringData(v.GenerationFailureReason),
+		"externalDestructionFailureReason": llx.StringData(v.ExternalDestructionFailureReason),
+		"externalProtectionLevelOptions":   llx.ResourceData(mqlExtProtOpts, "gcp.project.kmsService.keyring.cryptokey.version.externalProtectionLevelOptions"),
+		"reimportEligible":                 llx.BoolData(v.ReimportEligible),
+		"trustedWrappingEnabled":           llx.BoolData(v.TrustedWrappingEnabled),
+		"hsmTrusted":                       llx.BoolData(v.HsmTrusted),
 	})
 }
 
@@ -718,7 +803,11 @@ func (g *mqlGcpProjectKmsServiceRetiredResource) id() (string, error) {
 }
 
 func (g *mqlGcpProjectKmsService) retiredResources() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -784,7 +873,11 @@ func (g *mqlGcpProjectKmsServiceEkmConnection) id() (string, error) {
 }
 
 func (g *mqlGcpProjectKmsService) ekmConnections() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -933,4 +1026,9 @@ func (g *mqlGcpProjectKmsServiceKeyring) importJobs() ([]any, error) {
 		res = append(res, mqlIj)
 	}
 	return res, nil
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectKmsService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_kms)
 }

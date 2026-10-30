@@ -8,21 +8,21 @@ import (
 
 	"github.com/package-url/packageurl-go"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/os/resources/cpe"
-	"go.mondoo.com/mql/v13/sbom"
+	"go.mondoo.com/mql/providers/os/resources/cpe"
+	"go.mondoo.com/mql/sbom"
 )
 
 // NewPackageUrl creates a Go module package URL for a given module path and version.
-// See https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#golang
+// See https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/golang-definition.md
 func NewPackageUrl(modulePath string, version string) string {
 	// Split module path into namespace and name.
 	// e.g., "github.com/pkg/errors" -> namespace="github.com/pkg", name="errors"
 	namespace := ""
 	name := modulePath
 
-	if idx := strings.LastIndex(modulePath, "/"); idx != -1 {
-		namespace = modulePath[:idx]
-		name = modulePath[idx+1:]
+	if before, after, ok := strings.CutLast(modulePath, "/"); ok {
+		namespace = before
+		name = after
 	}
 
 	return packageurl.NewPackageURL(

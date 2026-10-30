@@ -7,12 +7,12 @@ import (
 	"context"
 	"errors"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers/openai/connection"
-	"go.mondoo.com/mql/v13/providers/openai/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers/openai/connection"
+	"go.mondoo.com/mql/providers/openai/resources"
 )
 
 const (
@@ -42,6 +42,10 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 
 	if token, ok := flags["token"]; ok {
 		conf.Options[connection.TokenOption] = string(token.Value)
+	}
+
+	if adminToken, ok := flags["admin-token"]; ok {
+		conf.Options[connection.AdminTokenOption] = string(adminToken.Value)
 	}
 
 	if org, ok := flags["organization"]; ok {

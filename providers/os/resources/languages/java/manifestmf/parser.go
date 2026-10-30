@@ -21,4 +21,5 @@ const (
 	headerBundleVersion         = "Bundle-Version"
 	headerBundleName            = "Bundle-Name"
 	headerBundleVendor          = "Bundle-Vendor"
+	headerBundleLicense         = "Bundle-License"
 )

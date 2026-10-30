@@ -9,8 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func ptrInt64(v int64) *int64 { return &v }
-
 func TestUnixFilesCmdGeneration(t *testing.T) {
 	tests := []struct {
 		From        string
@@ -21,6 +19,7 @@ func TestUnixFilesCmdGeneration(t *testing.T) {
 		Search      string
 		Depth       *int64
 		HasGNUFind  bool
+		NoMaxDepth  bool
 		ExpectedCmd string
 	}{
 		{
@@ -32,7 +31,7 @@ func TestUnixFilesCmdGeneration(t *testing.T) {
 			// -maxdepth must be decimal: depth 12 stays 12, not octal 14.
 			From:        "/etc",
 			FileType:    "file",
-			Depth:       ptrInt64(12),
+			Depth:       new(int64(12)),
 			ExpectedCmd: "find -L \"/etc\" -xdev -type f -perm -0 -maxdepth 12",
 		},
 		{
@@ -47,7 +46,7 @@ func TestUnixFilesCmdGeneration(t *testing.T) {
 			From:        "/home/user",
 			FileType:    "file",
 			Search:      ".*",
-			Depth:       ptrInt64(1),
+			Depth:       new(int64(1)),
 			ExpectedCmd: "find -L \"/home/user\" -xdev -type f -perm -0 -name '.*' -maxdepth 1",
 		},
 		{
@@ -72,6 +71,13 @@ func TestUnixFilesCmdGeneration(t *testing.T) {
 			ExpectedCmd: "find -L \"/etc\" -xdev -type f -regex '.*\\.conf$' -perm -0",
 		},
 		{
+			// directory searches don't need symlink resolution: no -L.
+			From:        "/",
+			FileType:    "directory",
+			Permission:  0o002,
+			ExpectedCmd: "find -L \"/\" -xdev -type d -perm -2",
+		},
+		{
 			// BSD/macOS: -H follows only command-line symlinks so -type l
 			// still works, unlike -L which resolves all links.
 			From:        "/home/user",
@@ -86,10 +92,59 @@ func TestUnixFilesCmdGeneration(t *testing.T) {
 			HasGNUFind:  true,
 			ExpectedCmd: "find -L \"/home/user\" -xdev -xtype l -perm -0",
 		},
+		{
+			// GNU find resolves symlinks with -L so authselect's symlinked
+			// /etc/pam.d/system-auth is a "file" (mql#8467), and prunes on
+			// -xtype l so it never walks into a symlinked directory.
+			From:        "/etc/pam.d",
+			FileType:    "file",
+			HasGNUFind:  true,
+			ExpectedCmd: "find -L \"/etc/pam.d\" -xdev \\( -path '/etc/pam.d' -o -xtype l -prune -o -true \\) -type f -perm -0 -print",
+		},
+		{
+			// -perm tests the target under -L. Without it, every symlinked
+			// directory (/bin, /lib on merged-usr) matched -perm -2, because a
+			// symlink's own mode is 0777.
+			From:        "/",
+			FileType:    "directory",
+			Permission:  0o002,
+			HasGNUFind:  true,
+			ExpectedCmd: "find -L \"/\" -xdev \\( -path '/' -o -xtype l -prune -o -true \\) -type d -perm -2 -print",
+		},
+		{
+			From:        "/etc",
+			HasGNUFind:  true,
+			Search:      "*.conf",
+			Depth:       new(int64(1)),
+			ExpectedCmd: "find -L \"/etc\" -xdev \\( -path '/etc' -o -xtype l -prune -o -true \\) -perm -0 -name '*.conf' -maxdepth 1 -print",
+		},
+		{
+			// AIX find has no -maxdepth ("find: bad option -maxdepth") and
+			// printed nothing; pruning below the depth is POSIX.
+			From:        "/etc",
+			Search:      "passwd",
+			Depth:       new(int64(1)),
+			NoMaxDepth:  true,
+			ExpectedCmd: "find -L \"/etc\" -xdev -path '/etc/?*/?*' -prune -o -perm -0 -name 'passwd' -print",
+		},
+		{
+			From:        "/",
+			FileType:    "directory",
+			Depth:       new(int64(0)),
+			NoMaxDepth:  true,
+			ExpectedCmd: "find -L \"/\" -xdev -path '/?*' -prune -o -type d -perm -0 -print",
+		},
+		{
+			// glob characters in the start path match themselves
+			From:        "/opt/a*b/",
+			Depth:       new(int64(2)),
+			NoMaxDepth:  true,
+			ExpectedCmd: "find -L \"/opt/a*b/\" -xdev -path '/opt/a\\*b/?*/?*/?*' -prune -o -perm -0 -print",
+		},
 	}
 
 	for _, tt := range tests {
-		cmd := BuildFilesFindCmd(tt.From, tt.Xdev, tt.FileType, tt.Regex, tt.Permission, tt.Search, tt.Depth, tt.HasGNUFind)
+		cmd := BuildFilesFindCmd(tt.From, tt.Xdev, tt.FileType, tt.Regex, tt.Permission, tt.Search, tt.Depth, FindFlavor{GNU: tt.HasGNUFind, NoMaxDepth: tt.NoMaxDepth})
 		assert.Equal(t, tt.ExpectedCmd, cmd)
 	}
 }

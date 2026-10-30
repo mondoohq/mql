@@ -1,0 +1,253 @@
+{
+    "Port":  [
+                 {
+                     "InstanceID":  "NETDIS-LLMNR-In-UDP",
+                     "Protocol":  "UDP",
+                     "LocalPort":  "5355",
+                     "RemotePort":  "Any",
+                     "IcmpType":  "Any"
+                 },
+                 {
+                     "InstanceID":  "RRAS-GRE-In",
+                     "Protocol":  "47",
+                     "LocalPort":  "Any",
+                     "RemotePort":  "Any",
+                     "IcmpType":  "Any"
+                 },
+                 {
+                     "InstanceID":  "CoreNet-ICMP6-RS-Out",
+                     "Protocol":  "ICMPv6",
+                     "LocalPort":  "RPC",
+                     "RemotePort":  "Any",
+                     "IcmpType":  "133"
+                 },
+                 {
+                     "InstanceID":  "WINRM-HTTP-In-TCP",
+                     "Protocol":  "TCP",
+                     "LocalPort":  "5985",
+                     "RemotePort":  "Any",
+                     "IcmpType":  "Any"
+                 },
+                 {
+                     "InstanceID":  "CoreNet-IGMP-Out",
+                     "Protocol":  "2",
+                     "LocalPort":  "Any",
+                     "RemotePort":  "Any",
+                     "IcmpType":  "Any"
+                 },
+                 {
+                     "InstanceID":  "CoreNet-DHCP-Out",
+                     "Protocol":  "UDP",
+                     "LocalPort":  "68",
+                     "RemotePort":  "67",
+                     "IcmpType":  "Any"
+                 },
+                 {
+                     "InstanceID":  "RemoteDesktop-UserMode-In-TCP",
+                     "Protocol":  "TCP",
+                     "LocalPort":  "3389",
+                     "RemotePort":  "Any",
+                     "IcmpType":  "Any"
+                 },
+                 {
+                     "InstanceID":  "FPS-ICMP4-ERQ-In",
+                     "Protocol":  "ICMPv4",
+                     "LocalPort":  "RPC",
+                     "RemotePort":  "Any",
+                     "IcmpType":  "8"
+                 }
+             ],
+    "Address":  [
+                    {
+                        "InstanceID":  "NETDIS-LLMNR-In-UDP",
+                        "LocalAddress":  "Any",
+                        "RemoteAddress":  "LocalSubnet"
+                    },
+                    {
+                        "InstanceID":  "RRAS-GRE-In",
+                        "LocalAddress":  "Any",
+                        "RemoteAddress":  "Any"
+                    },
+                    {
+                        "InstanceID":  "CoreNet-ICMP6-RS-Out",
+                        "LocalAddress":  "Any",
+                        "RemoteAddress":  {
+                                              "value":  [
+                                                            "LocalSubnet6",
+                                                            "ff02::2",
+                                                            "fe80::/64"
+                                                        ],
+                                              "Count":  3
+                                          }
+                    },
+                    {
+                        "InstanceID":  "WINRM-HTTP-In-TCP",
+                        "LocalAddress":  "Any",
+                        "RemoteAddress":  "Any"
+                    },
+                    {
+                        "InstanceID":  "CoreNet-IGMP-Out",
+                        "LocalAddress":  "Any",
+                        "RemoteAddress":  "Any"
+                    },
+                    {
+                        "InstanceID":  "CoreNet-DHCP-Out",
+                        "LocalAddress":  "Any",
+                        "RemoteAddress":  "Any"
+                    },
+                    {
+                        "InstanceID":  "RemoteDesktop-UserMode-In-TCP",
+                        "LocalAddress":  "Any",
+                        "RemoteAddress":  "Any"
+                    },
+                    {
+                        "InstanceID":  "FPS-ICMP4-ERQ-In",
+                        "LocalAddress":  "Any",
+                        "RemoteAddress":  "Any"
+                    }
+                ],
+    "Application":  [
+                        {
+                            "InstanceID":  "NETDIS-LLMNR-In-UDP",
+                            "Program":  "%SystemRoot%\\system32\\svchost.exe"
+                        },
+                        {
+                            "InstanceID":  "RRAS-GRE-In",
+                            "Program":  "System"
+                        },
+                        {
+                            "InstanceID":  "CoreNet-ICMP6-RS-Out",
+                            "Program":  "System"
+                        },
+                        {
+                            "InstanceID":  "WINRM-HTTP-In-TCP",
+                            "Program":  "System"
+                        },
+                        {
+                            "InstanceID":  "CoreNet-IGMP-Out",
+                            "Program":  "System"
+                        },
+                        {
+                            "InstanceID":  "CoreNet-DHCP-Out",
+                            "Program":  "%SystemRoot%\\system32\\svchost.exe"
+                        },
+                        {
+                            "InstanceID":  "RemoteDesktop-UserMode-In-TCP",
+                            "Program":  "%SystemRoot%\\system32\\svchost.exe"
+                        },
+                        {
+                            "InstanceID":  "FPS-ICMP4-ERQ-In",
+                            "Program":  "System"
+                        }
+                    ],
+    "Service":  [
+                    {
+                        "InstanceID":  "NETDIS-LLMNR-In-UDP",
+                        "Service":  "dnscache"
+                    },
+                    {
+                        "InstanceID":  "RRAS-GRE-In",
+                        "Service":  "Any"
+                    },
+                    {
+                        "InstanceID":  "CoreNet-ICMP6-RS-Out",
+                        "Service":  "Any"
+                    },
+                    {
+                        "InstanceID":  "WINRM-HTTP-In-TCP",
+                        "Service":  "Any"
+                    },
+                    {
+                        "InstanceID":  "CoreNet-IGMP-Out",
+                        "Service":  "Any"
+                    },
+                    {
+                        "InstanceID":  "CoreNet-DHCP-Out",
+                        "Service":  "dhcp"
+                    },
+                    {
+                        "InstanceID":  "RemoteDesktop-UserMode-In-TCP",
+                        "Service":  "termservice"
+                    },
+                    {
+                        "InstanceID":  "FPS-ICMP4-ERQ-In",
+                        "Service":  "Any"
+                    }
+                ],
+    "InterfaceType":  [
+                          {
+                              "InstanceID":  "NETDIS-LLMNR-In-UDP",
+                              "InterfaceType":  "Any"
+                          },
+                          {
+                              "InstanceID":  "RRAS-GRE-In",
+                              "InterfaceType":  "Any"
+                          },
+                          {
+                              "InstanceID":  "CoreNet-ICMP6-RS-Out",
+                              "InterfaceType":  "Any"
+                          },
+                          {
+                              "InstanceID":  "WINRM-HTTP-In-TCP",
+                              "InterfaceType":  "Any"
+                          },
+                          {
+                              "InstanceID":  "CoreNet-IGMP-Out",
+                              "InterfaceType":  "Any"
+                          },
+                          {
+                              "InstanceID":  "CoreNet-DHCP-Out",
+                              "InterfaceType":  "Any"
+                          },
+                          {
+                              "InstanceID":  "RemoteDesktop-UserMode-In-TCP",
+                              "InterfaceType":  "Any"
+                          },
+                          {
+                              "InstanceID":  "FPS-ICMP4-ERQ-In",
+                              "InterfaceType":  "Any"
+                          }
+                      ],
+    "Security":  [
+                     {
+                         "InstanceID":  "NETDIS-LLMNR-In-UDP",
+                         "RemoteUser":  "Any",
+                         "RemoteMachine":  "Any"
+                     },
+                     {
+                         "InstanceID":  "RRAS-GRE-In",
+                         "RemoteUser":  "Any",
+                         "RemoteMachine":  "Any"
+                     },
+                     {
+                         "InstanceID":  "CoreNet-ICMP6-RS-Out",
+                         "RemoteUser":  "Any",
+                         "RemoteMachine":  "Any"
+                     },
+                     {
+                         "InstanceID":  "WINRM-HTTP-In-TCP",
+                         "RemoteUser":  "Any",
+                         "RemoteMachine":  "Any"
+                     },
+                     {
+                         "InstanceID":  "CoreNet-IGMP-Out",
+                         "RemoteUser":  "Any",
+                         "RemoteMachine":  "Any"
+                     },
+                     {
+                         "InstanceID":  "CoreNet-DHCP-Out",
+                         "RemoteUser":  "Any",
+                         "RemoteMachine":  "Any"
+                     },
+                     {
+                         "InstanceID":  "RemoteDesktop-UserMode-In-TCP",
+                         "RemoteUser":  "Any",
+                         "RemoteMachine":  "Any"
+                     },
+                     {
+                         "InstanceID":  "FPS-ICMP4-ERQ-In",
+                         "RemoteUser":  "Any",
+                         "RemoteMachine":  "Any"
+                     }
+                 ]
+}

@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func newTestService(path string) (*Service, *plugin.ConnectRes) {
@@ -108,7 +108,7 @@ func TestConnect(t *testing.T) {
 			},
 		}, nil)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "no kustomization.yaml found")
+		assert.Contains(t, err.Error(), "no kustomization file found")
 	})
 
 	t.Run("nil request", func(t *testing.T) {
@@ -354,6 +354,28 @@ func TestMultiOverlayDirectory(t *testing.T) {
 	require.Len(t, kustsResp.Data.Array, 2)
 }
 
+// The canonical Kustomize layout puts overlays two levels below the root
+// (base/ next to overlays/<env>/). A one-level scan found only base/ and
+// silently dropped every overlay; the recursive scan discovers all three.
+func TestNestedOverlayDirectory(t *testing.T) {
+	srv, resp := newTestService("../testdata/nested-overlays")
+
+	kustResp := getData(t, srv, resp.Id, "kustomize", "", "")
+	kustID := string(kustResp.Data.Value)
+
+	kustsResp := getData(t, srv, resp.Id, "kustomize", kustID, "kustomizations")
+	require.Len(t, kustsResp.Data.Array, 3, "base plus both nested overlays should be discovered")
+
+	namespaces := map[string]bool{}
+	for _, k := range kustsResp.Data.Array {
+		kID := string(k.Value)
+		nsResp := getData(t, srv, resp.Id, "kustomize.kustomization", kID, "namespace")
+		namespaces[string(nsResp.Data.Value)] = true
+	}
+	assert.True(t, namespaces["dev"], "dev overlay should be present")
+	assert.True(t, namespaces["prod"], "prod overlay should be present")
+}
+
 func TestStagingOverlay(t *testing.T) {
 	// Point directly at the staging overlay which references ../base
 	srv, resp := newTestService("../testdata/multi-overlay/staging")
@@ -416,7 +438,7 @@ func TestConnect_MalformedKustomizationSurfaces(t *testing.T) {
 		},
 	}, nil)
 	require.Error(t, err)
-	assert.NotContains(t, err.Error(), "no kustomization.yaml found",
+	assert.NotContains(t, err.Error(), "no kustomization file found",
 		"a parse error must not be reported as 'no kustomization found'")
 }
 
@@ -454,33 +476,23 @@ func TestInitKustomizeKustomization_SelectorWorks(t *testing.T) {
 	assert.Equal(t, "staging", string(nsResp.Data.Value))
 }
 
-// A selector for a path the connection didn't load returns a bare resource
-// (matching the project's "bare resource is a valid empty state" rule);
-// computed field accessors then surface a clear error instead of panicking.
-func TestInitKustomizeKustomization_UnknownPathFieldsErrorCleanly(t *testing.T) {
+// A selector for a path the connection didn't load used to fall through to
+// `args, nil, nil`. The runtime then built the resource from the `path` arg
+// alone, leaving every other field UNSET — not null, unset — which surfaces
+// client-side as "llx: encountered a primitive with no type information,
+// coercing to null" with nothing pointing at the cause. The miss is now
+// reported where it happens, the way the sibling kustomize.image init does.
+func TestInitKustomizeKustomization_UnknownPathIsNotFound(t *testing.T) {
 	srv, resp := newTestService("../testdata/basic")
 
-	createResp, err := srv.GetData(&plugin.DataReq{
+	_, err := srv.GetData(&plugin.DataReq{
 		Connection: resp.Id,
 		Resource:   "kustomize.kustomization",
 		Args: map[string]*llx.Primitive{
 			"path": llx.StringPrimitive("/does/not/exist"),
 		},
 	})
-	require.NoError(t, err)
-	require.Empty(t, createResp.Error)
-	kID := string(createResp.Data.Value)
-	require.NotEmpty(t, kID)
-
-	// Computed accessor that depends on Internal state should error
-	// (with a friendly message), not panic.
-	resp2, err := srv.GetData(&plugin.DataReq{
-		Connection: resp.Id,
-		Resource:   "kustomize.kustomization",
-		ResourceId: kID,
-		Field:      "patches",
-	})
-	require.NoError(t, err, "transport call must not fail")
-	assert.NotEmpty(t, resp2.Error, "unknown path should surface as a field error")
-	assert.Contains(t, resp2.Error, "no kustomization loaded")
+	require.Error(t, err, "an unresolvable path must not produce a husk resource")
+	assert.Contains(t, err.Error(), "no kustomization loaded for path")
+	assert.Contains(t, err.Error(), "/does/not/exist")
 }

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/digitalocean/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/digitalocean/connection"
 )
 
 // mqlDigitaloceanInternal holds parent-resource caches that let
@@ -56,6 +56,10 @@ type mqlDigitaloceanInternal struct {
 
 	snapshotIndexOnce sync.Once
 	snapshotIndex     map[string]*mqlDigitaloceanSnapshot
+	// snapshotsBySource groups the same snapshots by the resource they were
+	// taken from, keyed "<resourceType>/<resourceId>", so a volume or droplet
+	// can list its own snapshots without a per-resource API call.
+	snapshotsBySource map[string][]any
 	snapshotIndexErr  error
 
 	imageIndexOnce sync.Once
@@ -66,6 +70,59 @@ type mqlDigitaloceanInternal struct {
 	firewallByDroplet map[int64][]*mqlDigitaloceanFirewall
 	firewallByTag     map[string][]*mqlDigitaloceanFirewall
 	firewallIndexErr  error
+
+	partnerAttachmentIndexOnce sync.Once
+	partnerAttachmentIndex     map[string]*mqlDigitaloceanPartnerAttachment
+	partnerAttachmentIndexErr  error
+
+	sizeIndexOnce sync.Once
+	sizeIndex     map[string]*mqlDigitaloceanSize
+	sizeIndexErr  error
+
+	// backupPolicyIndex maps droplet id to its automated-backup schedule.
+	// Droplets without a policy are absent from the map rather than
+	// present with a zero value, so callers can tell "no policy" from
+	// "policy with zero retention". See digitalocean_droplet_backup.go.
+	backupPolicyIndexOnce sync.Once
+	backupPolicyIndex     map[int64]dropletBackupPolicy
+	backupPolicyIndexErr  error
+
+	// spacesBucketIndex maps bucket name to bucket so a Spaces key grant
+	// resolves through the account's bucket listing instead of one lookup
+	// per grant.
+	spacesBucketIndexOnce sync.Once
+	spacesBucketIndex     map[string]*mqlDigitaloceanSpacesBucket
+	spacesBucketIndexErr  error
+
+	// databaseByNameIndex maps cluster name to cluster. App Platform names
+	// an OpenSearch log destination by cluster name rather than by id, so
+	// that edge cannot go through databaseIndex.
+	databaseByNameIndexOnce sync.Once
+	databaseByNameIndex     map[string]*mqlDigitaloceanDatabase
+	databaseByNameIndexErr  error
+}
+
+// partnerAttachmentByID resolves a partner attachment by its ID from the
+// account-wide list, caching the index. Partner attachments reference
+// their parent and children by UUID, which matches the attachment ID.
+func (r *mqlDigitalocean) partnerAttachmentByID(id string) (*mqlDigitaloceanPartnerAttachment, error) {
+	r.partnerAttachmentIndexOnce.Do(func() {
+		attachments := r.GetPartnerAttachments()
+		if attachments.Error != nil {
+			r.partnerAttachmentIndexErr = attachments.Error
+			return
+		}
+		idx := make(map[string]*mqlDigitaloceanPartnerAttachment, len(attachments.Data))
+		for _, a := range attachments.Data {
+			ma := a.(*mqlDigitaloceanPartnerAttachment)
+			idx[ma.Id.Data] = ma
+		}
+		r.partnerAttachmentIndex = idx
+	})
+	if r.partnerAttachmentIndexErr != nil {
+		return nil, r.partnerAttachmentIndexErr
+	}
+	return r.partnerAttachmentIndex[id], nil
 }
 
 func parentDigitalocean(runtime *plugin.Runtime) (*mqlDigitalocean, error) {
@@ -302,21 +359,8 @@ func (r *mqlDigitalocean) snapshotsByIDs(ids []string) ([]any, error) {
 	if len(ids) == 0 {
 		return []any{}, nil
 	}
-	r.snapshotIndexOnce.Do(func() {
-		snapshots := r.GetSnapshots()
-		if snapshots.Error != nil {
-			r.snapshotIndexErr = snapshots.Error
-			return
-		}
-		idx := make(map[string]*mqlDigitaloceanSnapshot, len(snapshots.Data))
-		for _, s := range snapshots.Data {
-			ms := s.(*mqlDigitaloceanSnapshot)
-			idx[ms.Id.Data] = ms
-		}
-		r.snapshotIndex = idx
-	})
-	if r.snapshotIndexErr != nil {
-		return nil, r.snapshotIndexErr
+	if err := r.ensureSnapshotIndex(); err != nil {
+		return nil, err
 	}
 	out := make([]any, 0, len(ids))
 	for _, id := range ids {
@@ -324,6 +368,46 @@ func (r *mqlDigitalocean) snapshotsByIDs(ids []string) ([]any, error) {
 			out = append(out, s)
 		}
 	}
+	return out, nil
+}
+
+// ensureSnapshotIndex fetches the account-wide snapshot list once and indexes
+// it both by snapshot id and by the resource each snapshot was taken from.
+func (r *mqlDigitalocean) ensureSnapshotIndex() error {
+	r.snapshotIndexOnce.Do(func() {
+		snapshots := r.GetSnapshots()
+		if snapshots.Error != nil {
+			r.snapshotIndexErr = snapshots.Error
+			return
+		}
+		idx := make(map[string]*mqlDigitaloceanSnapshot, len(snapshots.Data))
+		bySource := make(map[string][]any, len(snapshots.Data))
+		for _, s := range snapshots.Data {
+			ms := s.(*mqlDigitaloceanSnapshot)
+			idx[ms.Id.Data] = ms
+			key := ms.ResourceType.Data + "/" + ms.ResourceId.Data
+			bySource[key] = append(bySource[key], ms)
+		}
+		r.snapshotIndex = idx
+		r.snapshotsBySource = bySource
+	})
+	return r.snapshotIndexErr
+}
+
+// snapshotsForSource returns the snapshots taken from one resource, read out
+// of the account-wide snapshot list. Going through the shared index keeps
+// this to a single API call for the whole account: the per-resource endpoints
+// would cost one call per volume.
+func (r *mqlDigitalocean) snapshotsForSource(resourceType, resourceID string) ([]any, error) {
+	if resourceID == "" {
+		return []any{}, nil
+	}
+	if err := r.ensureSnapshotIndex(); err != nil {
+		return nil, err
+	}
+	found := r.snapshotsBySource[resourceType+"/"+resourceID]
+	out := make([]any, len(found))
+	copy(out, found)
 	return out, nil
 }
 
@@ -394,7 +478,7 @@ func (r *mqlDigitalocean) firewallsCovering(dropletID int64, dropletTags []any) 
 		byTag := map[string][]*mqlDigitaloceanFirewall{}
 		for _, f := range fws.Data {
 			fw := f.(*mqlDigitaloceanFirewall)
-			for _, id := range fw.DropletIds.Data {
+			for _, id := range fw.cacheDropletIDs {
 				if i, ok := id.(int64); ok {
 					byDroplet[i] = append(byDroplet[i], fw)
 				}
@@ -507,7 +591,7 @@ func dropletRef(runtime *plugin.Runtime, dropletID int64, target *plugin.TValue[
 // --- Droplet typed refs / computed fields ---
 
 func (r *mqlDigitaloceanDroplet) vpc() (*mqlDigitaloceanVpc, error) {
-	return resolveVpcRef(r.MqlRuntime, &r.Vpc, r.VpcUuid.Data)
+	return resolveVpcRef(r.MqlRuntime, &r.Vpc, r.cacheVPCUUID)
 }
 
 // baseImage resolves the droplet's image to a typed digitalocean.image. The
@@ -558,7 +642,7 @@ func (r *mqlDigitaloceanFirewall) droplets() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	direct, err := parent.dropletByIDs(r.DropletIds.Data)
+	direct, err := parent.dropletByIDs(r.cacheDropletIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -647,7 +731,7 @@ func (r *mqlDigitaloceanDatabase) sqlMode() (string, error) {
 // --- LoadBalancer typed refs ---
 
 func (r *mqlDigitaloceanLoadBalancer) vpc() (*mqlDigitaloceanVpc, error) {
-	return resolveVpcRef(r.MqlRuntime, &r.Vpc, r.VpcUuid.Data)
+	return resolveVpcRef(r.MqlRuntime, &r.Vpc, r.cacheVPCUUID)
 }
 
 func (r *mqlDigitaloceanLoadBalancer) droplets() ([]any, error) {
@@ -655,7 +739,7 @@ func (r *mqlDigitaloceanLoadBalancer) droplets() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parent.dropletByIDs(r.DropletIds.Data)
+	return parent.dropletByIDs(r.cacheDropletIDs)
 }
 
 // --- Volume typed refs ---
@@ -665,11 +749,11 @@ func (r *mqlDigitaloceanVolume) droplets() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parent.dropletByIDs(r.DropletIds.Data)
+	return parent.dropletByIDs(r.cacheDropletIDs)
 }
 
 // --- Kubernetes typed refs ---
 
 func (r *mqlDigitaloceanKubernetesCluster) vpc() (*mqlDigitaloceanVpc, error) {
-	return resolveVpcRef(r.MqlRuntime, &r.Vpc, r.VpcUuid.Data)
+	return resolveVpcRef(r.MqlRuntime, &r.Vpc, r.cacheVPCUUID)
 }

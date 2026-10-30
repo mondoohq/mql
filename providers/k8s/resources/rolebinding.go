@@ -7,10 +7,10 @@ import (
 	"errors"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/types"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -189,11 +189,12 @@ func (k *mqlK8sRbacRolebinding) referencedRules() ([]rbacv1.PolicyRule, error) {
 }
 
 func (k *mqlK8sRbacRolebinding) grantsClusterAdmin() (bool, error) {
-	rules, err := k.referencedRules()
-	if err != nil {
-		return false, err
-	}
-	return rbacGrantsClusterAdmin(rules), nil
+	// A RoleBinding grants inside its own namespace, whatever the referenced
+	// role allows, so it can never confer cluster-admin. Binding a wildcard
+	// ClusterRole through a RoleBinding is namespace admin — read
+	// hasWildcardRule() for that. Reporting true here fired the cluster-admin
+	// alarm on every namespace admin in the cluster.
+	return false, nil
 }
 
 func (k *mqlK8sRbacRolebinding) hasWildcardRule() (bool, error) {

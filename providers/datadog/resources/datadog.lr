@@ -1,22 +1,43 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/datadog"
-option go_package = "go.mondoo.com/mql/v13/providers/datadog/resources"
+option go_package = "go.mondoo.com/mql/providers/datadog/resources"
+option root = "datadog"
 
 // Datadog
 //
-// Use the Datadog namespace to access users, roles, monitors, dashboards,
-// synthetics tests, SLOs, log indexes, security rules, downtimes, API keys,
-// application keys, AWS integrations, teams, sensitive data scanner groups,
-// security filters and suppressions, service accounts, logs archives, RUM
-// applications, and synthetics global variables and private locations across
-// the organization.
-datadog {
+// Organization-wide Datadog configuration and inventory. Covers users, roles,
+// permissions, monitors, dashboards, synthetics tests, SLOs, log indexes,
+// security rules, downtimes, API keys, application keys, AWS integrations,
+// teams, sensitive data scanner groups, security filters and suppressions,
+// service accounts, logs archives, RUM applications, and synthetics global
+// variables and private locations. The org field carries the single sign-on
+// and sharing settings that govern how the organization is accessed, and the
+// organization IP allowlist is exposed through ipAllowlistEnabled and
+// ipAllowlistEntries. Identity provider attribute mappings, log processing
+// pipelines, log forwarding destinations and log restriction queries cover how
+// privilege is granted at login and where log data is read and sent.
+// identityProviders lists the login methods available to members,
+// oauthClients the third-party applications holding standing access, and
+// orgConnections the other Datadog organizations this one shares data with.
+// The integration fields cover the standing credentials Datadog holds
+// against outside providers, spanning AWS, Google Cloud, Azure, Okta,
+// Cloudflare, Fastly, Confluent Cloud, Snowflake and Databricks. workflows
+// lists the Workflow Automation workflows and the identities they run as, and
+// securityInboxRules the rules that decide which security findings reach the
+// Security Inbox.
+datadog @root {
+  // Organization the credentials authenticate against
+  org() datadog.organization
   // Datadog users in the organization
   users() []datadog.user
   // Roles defined for permissioning
   roles() []datadog.role
+  // Permissions that can be granted to a role
+  permissions() []datadog.permission
   // Alerting monitors
   monitors() []datadog.monitor
   // Dashboards in the organization
@@ -36,11 +57,31 @@ datadog {
   // Application keys used by users for HTTP API calls
   applicationKeys() []datadog.applicationKey
   // IP allowlist entries
+  //
+  // One entry per allowed source. Each is a dict with `cidrBlock` (the
+  // permitted IP range in CIDR notation), `note` (free-form label), and
+  // `createdAt` and `modifiedAt` timestamps.
   ipAllowlistEntries() []dict
   // Whether the IP allowlist is enabled
   ipAllowlistEnabled() bool
   // Configured AWS integrations (Datadog AWS account links)
   integrationAwsAccounts() []datadog.integration.aws
+  // Configured Google Cloud integrations
+  integrationGcpAccounts() []datadog.integration.gcp
+  // Configured Azure integrations
+  integrationAzureAccounts() []datadog.integration.azure
+  // Configured Okta integrations
+  integrationOktaAccounts() []datadog.integration.okta
+  // Configured Cloudflare integrations
+  integrationCloudflareAccounts() []datadog.integration.cloudflare
+  // Configured Fastly integrations
+  integrationFastlyAccounts() []datadog.integration.fastly
+  // Configured Confluent Cloud integrations
+  integrationConfluentAccounts() []datadog.integration.confluent
+  // Configured Snowflake integrations
+  integrationSnowflakeAccounts() []datadog.integration.snowflake
+  // Configured Databricks integrations
+  integrationDatabricksAccounts() []datadog.integration.databricks
   // Datadog teams (groups of users)
   teams() []datadog.team
   // Sensitive Data Scanner groups (PII redaction rule containers)
@@ -59,14 +100,580 @@ datadog {
   syntheticsGlobalVariables() []datadog.syntheticsGlobalVariable
   // Private locations that run synthetics tests inside customer networks
   syntheticsPrivateLocations() []datadog.syntheticsPrivateLocation
+  // Mappings from identity provider attributes to roles and teams
+  authnMappings() []datadog.authnMapping
+  // Log processing pipelines
+  logsPipelines() []datadog.logsPipeline
+  // Destinations logs are forwarded to outside Datadog
+  logsCustomDestinations() []datadog.logsCustomDestination
+  // Queries that restrict which logs a role can read
+  logsRestrictionQueries() []datadog.logsRestrictionQuery
+  // Third-party OAuth clients the organization has authorized
+  oauthClients() []datadog.oauthClient
+  // Identity providers users can authenticate through
+  identityProviders() []datadog.identityProvider
+  // Connections that share data with other Datadog organizations
+  orgConnections() []datadog.orgConnection
+  // Execution policies governing what Datadog may run on Agent hosts
+  executionPolicies() []datadog.executionPolicy
+  // Workflow Automation workflows, published and unpublished
+  workflows() []datadog.workflow
+  // Rules that decide which security findings reach the Security Inbox
+  //
+  // Covers both the rules Datadog manages, where isDefault is true, and the
+  // rules the organization created.
+  securityInboxRules() []datadog.securityInboxRule
+}
+
+// Datadog Workflow Automation workflow
+//
+// Workflow that chains actions against Datadog and connected systems, run on
+// a trigger or by hand. runAsUserMode records which identity a run acts as:
+// the workflow owner, a service account, or the person who started the run.
+// A workflow that runs as its owner or as a service account lets anyone who
+// can trigger it act with that identity's permissions, so owner and runAsUser
+// together name whose access a run borrows. sensitivePrivileges marks
+// workflows allowed to run actions governed by execution policies, which is
+// where remote actions on Agent hosts are permitted. published separates
+// workflows whose automatic triggers fire from drafts that only run by hand.
+// The `id` selects a workflow, for example
+// datadog.workflows.where(id == "c9b7f1f0-0000-0000-0000-000000000000").
+datadog.workflow @defaults("name published runAsUserMode") {
+  // Identifier of the workflow
+  id string
+  // Name of the workflow
+  name string
+  // Description of the workflow
+  description string
+  // Whether the workflow is published
+  //
+  // Automatic triggers such as schedules fire only for a published workflow.
+  // An unpublished workflow runs only when started by hand.
+  published bool
+  // Tags applied to the workflow
+  tags []string
+  // Whether the workflow may run actions that require sensitive privileges
+  //
+  // Only the workflow owner can change this. It allows the workflow to run
+  // actions that execution policies govern.
+  sensitivePrivileges bool
+  // Identity a run of the workflow acts as
+  //
+  // One of owner, service_account, or initiator. Datadog may add further
+  // modes.
+  runAsUserMode string
+  // When the workflow was created
+  createdAt time
+  // When the workflow was last updated
+  updatedAt time
+  // User that owns the workflow
+  //
+  // Null when the workflow reports no owner, or the owning account has been
+  // removed from the organization.
+  owner() datadog.user
+  // User that created the workflow
+  //
+  // Null when the workflow reports no creator, or the creating account has
+  // been removed from the organization.
+  createdBy() datadog.user
+  // User or service account a run of the workflow acts as
+  //
+  // Null when the workflow reports no run-as identity, or the account has been
+  // removed from the organization.
+  runAsUser() datadog.user
+}
+
+// Datadog Security Inbox rule
+//
+// Rule that decides which security findings are surfaced in the Security
+// Inbox. Each rule matches findings by findingTypes and an optional search
+// query, and enabled records whether it is in effect. isDefault separates the
+// rules Datadog manages, whose name, scope and description are fixed and whose
+// only setting is enabled, from the rules the organization created. A
+// disabled default rule stops a whole class of findings, such as secrets or
+// attack paths, from reaching the inbox, so
+// datadog.securityInboxRules.where(isDefault).all(enabled) checks that none
+// has been switched off. createdBy and modifiedBy name the users who wrote
+// and last changed a rule. The `id` selects a rule, for example
+// datadog.securityInboxRules.where(id == "secret_default_rule").
+datadog.securityInboxRule @defaults("name isDefault enabled") {
+  // Identifier of the rule
+  //
+  // A UUID for a rule the organization created, and a fixed name such as
+  // secret_default_rule for a rule Datadog manages.
+  id string
+  // Name of the rule
+  name string
+  // Whether Datadog manages the rule
+  isDefault bool
+  // Whether the rule is enabled
+  enabled bool
+  // Description attached to the rule's action
+  description string
+  // Security finding types the rule applies to
+  //
+  // Values include api_security, attack_path,
+  // host_and_container_vulnerability, iac_misconfiguration, identity_risk,
+  // library_vulnerability, misconfiguration, runtime_code_vulnerability,
+  // secret, static_code_vulnerability, and workload_activity. Datadog may add
+  // further types.
+  findingTypes []string
+  // Search query further narrowing the findings the rule matches
+  //
+  // Null when the rule matches every finding of its findingTypes.
+  query string
+  // When the rule was created
+  createdAt time
+  // When the rule was last modified
+  modifiedAt time
+  // User that created the rule
+  //
+  // Null when Datadog created the rule, or the creating account has been
+  // removed from the organization.
+  createdBy() datadog.user
+  // User that last modified the rule
+  //
+  // Null when Datadog last modified the rule, or the modifying account has
+  // been removed from the organization.
+  modifiedBy() datadog.user
+}
+
+// Datadog Execution Policy
+//
+// Rule governing whether Datadog may run a given action on the hosts an Agent
+// tag selects. Each policy pairs an effect, allow or deny, with an action
+// pattern naming the integration and the fully qualified actions it covers,
+// and with the targets the policy applies to. A policy whose effect is allow
+// and whose integration is INTEGRATION_REMOTE_ACTION grants remote shell
+// access to every host its targets reach, which makes those policies the ones
+// worth reading first. The scope narrows where the policy applies, naming
+// Kubernetes namespaces, script names, or remote shell paths together with
+// the access granted on them, and a scopeType of none means the policy
+// carries no restriction at all. The version, createdBy and updatedBy fields
+// record who last changed the policy and how many times it has been changed.
+// The `id` selects a policy, for example
+// datadog.executionPolicies.where(id == "1c9e5b46-0000-0000-0000-000000000000").
+datadog.executionPolicy @defaults("name effect integration") {
+  // Identifier of the execution policy
+  id string
+  // Name of the execution policy
+  name string
+  // Whether the policy allows or denies the actions it matches
+  //
+  // One of allow or deny. Datadog may add further effects, so a value outside
+  // that pair should not be read as either.
+  effect string
+  // Integration the action pattern applies to
+  //
+  // One of INTEGRATION_KUBERNETES, INTEGRATION_SCRIPT, or
+  // INTEGRATION_REMOTE_ACTION. Datadog may add further integrations.
+  integration string
+  // Fully qualified action names the policy matches
+  //
+  // A single entry of `*` matches every action of the integration. Names are
+  // otherwise prefixed with the action namespace of the integration, for
+  // example com.datadoghq.script.* for the Script integration.
+  actionFqns []string
+  // Where the policy applies
+  scope datadog.executionPolicy.scopeRestriction
+  // Hosts the policy applies to, selected by Agent tags
+  targets []datadog.executionPolicy.target
+  // Version of the policy, incremented on every update
+  version int
+  // Time the policy was created
+  createdAt time
+  // Time the policy was last updated
+  updatedAt time
+  // User that created the policy
+  createdBy() datadog.user
+  // User that last updated the policy
+  updatedBy() datadog.user
+}
+
+// Scope restriction of a Datadog execution policy
+//
+// Narrowing that decides which objects a policy reaches once its targets have
+// selected the hosts. At most one member is populated and scopeType says
+// which: kubernetes fills kubernetesNamespaces, scripts fills scriptNames,
+// and remoteActionRshell fills remoteShellRules. A scopeType of none means
+// the policy carries no restriction and applies wherever its targets match,
+// which is the widest reading available. A scopeType of unknown means Datadog
+// returned a restriction this provider cannot read as a single member, either
+// because the kind is not modeled here or because more than one member came
+// back at once, so the member lists may describe only part of what the policy
+// restricts and an empty list must not be read as an absence of restriction.
+private datadog.executionPolicy.scopeRestriction @defaults("scopeType") {
+  // Which member of the restriction carries the values
+  //
+  // One of kubernetes, scripts, remoteActionRshell, none when the policy
+  // carries no restriction, or unknown when Datadog returned a restriction
+  // this provider cannot read as a single member.
+  scopeType string
+  // Kubernetes namespaces the policy is restricted to
+  kubernetesNamespaces []string
+  // Script names the policy is restricted to
+  scriptNames []string
+  // Remote shell paths the policy is restricted to, with the access granted on each
+  remoteShellRules []datadog.executionPolicy.remoteShellRule
+}
+
+// Remote shell rule of a Datadog execution policy
+//
+// One set of file system paths together with the level of remote shell access
+// granted over them. An access of read_write permits writing through the
+// remote shell, so a read_write rule over a broad path is the strongest grant
+// a policy can carry.
+private datadog.executionPolicy.remoteShellRule @defaults("access") {
+  // Level of remote shell access granted over the target paths
+  //
+  // One of read_only or read_write. Datadog may add further levels, so a
+  // value outside that pair should not be read as read_only.
+  access string
+  // File system paths the rule applies to
+  targetPaths []string
+}
+
+// Target of a Datadog execution policy
+//
+// Agent tags identifying the hosts a policy applies to. A target naming a
+// broad tag such as env:prod reaches every host reporting it, so the tags are
+// what decide how wide an allow policy actually is. The name field carries
+// the label given to the target and is null when none was set.
+private datadog.executionPolicy.target @defaults("name") {
+  // Label given to the target
+  name string
+  // Agent tags identifying the hosts the policy applies to
+  agentTags []string
+}
+
+// Datadog Restriction Policy
+//
+// Access control list attached to one Datadog resource, overriding the
+// organization-wide role permissions for that resource alone. A dashboard or
+// monitor with no restriction policy is governed purely by role permissions;
+// one with a policy is reachable only by the principals the policy names. The
+// `id` is the Datadog resource identifier the policy protects, in the form
+// type:identifier, for example dashboard:abc-def-ghi or monitor:12345. The
+// bindings hold the grants themselves, so an empty bindings list means the
+// policy exists but grants nothing beyond the resource owner.
+datadog.restrictionPolicy @defaults("id") {
+  // Resource the policy protects
+  //
+  // The Datadog resource identifier the policy applies to, in the form
+  // type:identifier, for example dashboard:abc-def-ghi, monitor:12345,
+  // slo:abc123, or security-rule:def456.
+  id string
+  // Access grants
+  //
+  // Each binding is a dict with `relation` (the access level granted, such as
+  // viewer or editor) and `principals` (the list of identities holding it).
+  // A principal is written as type:identifier, for example role:abc-123,
+  // team:def-456, user:ghi-789, or org:jkl-012 to grant the whole
+  // organization.
+  bindings []dict
+}
+
+// Datadog Shared Dashboard
+//
+// Public or invite-only share of a dashboard, exposing its telemetry outside
+// the Datadog organization through a generated URL. A share with `shareType`
+// open serves the dashboard to anyone holding the link and needs no Datadog
+// account, so it is the strongest exposure signal on a dashboard; invite
+// shares restrict access to the addresses in `invitees`. The `token` selects
+// the share and forms the tail of `publicUrl`. Use `status` to tell live
+// shares from paused ones, `expiration` to find shares that never lapse, and
+// `embeddableDomains` to see which sites may frame the dashboard.
+datadog.sharedDashboard @defaults("token shareType status") {
+  // Share token
+  token string
+  // Dashboard being shared
+  dashboard() datadog.dashboard
+  // Dashboard title
+  title string
+  // Public URL serving the shared dashboard
+  publicUrl string
+  // Share type
+  //
+  // One of open, when anyone with the link may view the dashboard without a
+  // Datadog account; invite, when access is limited to the addresses in
+  // invitees; embed, when the dashboard is framed by the sites in
+  // embeddableDomains; or secure-embed, when an embedded dashboard also
+  // requires a signed token.
+  shareType string
+  // Share status
+  //
+  // One of active or paused. A paused share keeps its URL but stops serving
+  // the dashboard.
+  status string
+  // Domains permitted to embed the dashboard
+  embeddableDomains []string
+  // Addresses invited to an invite-only share
+  invitees []string
+  // Expiration
+  //
+  // Null when the share never expires, which leaves the URL live
+  // indefinitely.
+  expiration time
+  // Last time the shared dashboard was viewed
+  lastAccessed time
+  // Created at
+  createdAt time
+  // Whether the account that created the share has been disabled
+  //
+  // A share created by a disabled account keeps serving the dashboard, so it
+  // outlives the access of the person who published it.
+  sharerDisabled bool
+  // User that created the share
+  //
+  // Null when the sharing account has been removed from the organization.
+  sharer() datadog.user
+}
+
+// Datadog Identity Provider Attribute Mapping
+//
+// Rule granting a role or team to everyone whose identity provider assertion
+// carries a given attribute, so it is where privilege is actually decided for
+// a single sign-on organization. A mapping matches when the assertion contains
+// `attributeKey` with the value `attributeValue`, and grants the `role` or
+// `team` it points at. Auditing these shows which external directory groups
+// confer administrative access, which is invisible from the role assignments
+// alone because the grants are applied at login.
+datadog.authnMapping @defaults("id attributeKey attributeValue") {
+  // Mapping ID
+  id string
+  // Identity provider attribute the mapping matches on
+  attributeKey string
+  // Attribute value the mapping matches on
+  attributeValue string
+  // Created at
+  createdAt time
+  // Modified at
+  modifiedAt time
+  // Role granted by the mapping
+  //
+  // Null when the mapping grants a team instead.
+  role() datadog.role
+  // Team granted by the mapping
+  //
+  // Null when the mapping grants a role instead.
+  team() datadog.team
+}
+
+// Datadog Log Processing Pipeline
+//
+// Pipeline that parses, enriches and rewrites log events as they are
+// ingested, ahead of indexing. Pipelines are where log content is reshaped, so
+// auditing them shows which log sources are processed at all and whether the
+// processing that redacts or remaps sensitive fields is switched on. The
+// `filterQuery` selects which events enter the pipeline, `isEnabled` reports
+// whether it runs, and `isReadOnly` distinguishes the integration pipelines
+// Datadog ships from those the organization authored.
+datadog.logsPipeline @defaults("id name isEnabled") {
+  // Pipeline ID
+  id string
+  // Pipeline name
+  name string
+  // Pipeline type
+  type string
+  // Whether the pipeline is enabled
+  isEnabled bool
+  // Whether the pipeline is read only
+  //
+  // True for the integration pipelines Datadog ships, which cannot be edited.
+  isReadOnly bool
+  // Query selecting which log events enter the pipeline
+  filterQuery string
+  // Tags
+  tags []string
+}
+
+// Datadog Log Forwarding Destination
+//
+// External system that Datadog copies matching log events to, so it is an
+// egress path for whatever the `query` selects. Auditing these shows where log
+// data leaves Datadog and how the connection is authenticated: the
+// `destinationType` names the receiving system, `endpoint` is the address it
+// is sent to, and `enabled` reports whether forwarding is live. The
+// `forwardTags` flag together with `forwardTagsRestrictionList` controls
+// whether host and service tags travel with the events.
+datadog.logsCustomDestination @defaults("id name destinationType enabled") {
+  // Destination ID
+  id string
+  // Destination name
+  name string
+  // Whether forwarding is enabled
+  enabled bool
+  // Query selecting which log events are forwarded
+  //
+  // Empty when every ingested log is forwarded.
+  query string
+  // Destination type
+  //
+  // One of http, splunk_hec, elasticsearch, or microsoft_sentinel. Empty when
+  // Datadog reports a destination type this provider does not yet recognize.
+  destinationType string
+  // Address log events are sent to
+  //
+  // The HTTP, Splunk or Elasticsearch endpoint URL. For a Microsoft Sentinel
+  // destination this is the data collection endpoint.
+  endpoint string
+  // Authentication method used to reach the destination
+  //
+  // One of basic or custom_header for an HTTP destination, and empty for
+  // destination types that authenticate another way.
+  authType string
+  // Elasticsearch index events are written to
+  //
+  // Empty for destination types other than elasticsearch.
+  indexName string
+  // Whether tags are forwarded alongside the log events
+  forwardTags bool
+  // Tag keys forwarded when the restriction list is in use
+  forwardTagsRestrictionList []string
+  // How the tag restriction list is applied
+  //
+  // One of ALLOW_LIST or BLOCK_LIST.
+  forwardTagsRestrictionListType string
+}
+
+// Datadog Log Restriction Query
+//
+// Query limiting which log events the roles it is attached to may read, so it
+// is the mechanism that keeps one team from reading another team's logs. A
+// role with no restriction query reads every log its permissions allow; a role
+// with one reads only events matching `restrictionQuery`. The `roleCount` and
+// `userCount` fields report how far the restriction reaches, and `roles`
+// resolves the roles it is bound to.
+datadog.logsRestrictionQuery @defaults("id restrictionQuery") {
+  // Restriction query ID
+  id string
+  // Query limiting which log events may be read
+  restrictionQuery string
+  // Number of roles the restriction is attached to
+  roleCount int
+  // Number of users covered by the restriction
+  userCount int
+  // Email address of the account that last modified the restriction
+  lastModifierEmail string
+  // Name of the account that last modified the restriction
+  lastModifierName string
+  // Created at
+  createdAt time
+  // Modified at
+  modifiedAt time
+  // Roles the restriction is attached to
+  roles() []datadog.role
+}
+
+// Datadog Organization
+//
+// Datadog organization the supplied credentials authenticate against, and the
+// account-wide settings that govern how people reach it. The single sign-on
+// fields describe whether SAML is configured and how strictly it is enforced:
+// samlEnabled reports whether SAML login is turned on, samlStrictModeEnabled
+// reports whether username and password login is refused once SAML is active,
+// and samlIdpInitiatedLoginEnabled reports whether the identity provider may
+// start a session on its own. The samlAutocreateUsersEnabled and
+// samlAutocreateUsersDomains fields expose which email domains are granted an
+// account automatically on first login, and samlAutocreateAccessRole is the
+// role those accounts receive. Beyond SAML, privateWidgetShare reports whether
+// individual dashboard widgets can be shared outside the organization, and
+// domainAllowlistEnabled together with domainAllowlistDomains restrict which
+// email domains may be invited at all.
+datadog.organization @defaults("publicId name samlEnabled") {
+  // Organization public ID
+  publicId string
+  // Organization name
+  name string
+  // Organization description
+  description string
+  // Whether the organization is on a trial plan
+  trial bool
+  // Created at
+  createdAt time
+  // Whether SAML single sign-on is enabled
+  samlEnabled bool
+  // Whether SAML can be enabled for this organization
+  //
+  // False until an identity provider metadata file has been uploaded, so it
+  // distinguishes an organization that has declined single sign-on from one
+  // that cannot yet turn it on.
+  samlCanBeEnabled bool
+  // Whether SAML strict mode is enabled
+  //
+  // Strict mode refuses username and password logins once SAML is active, so
+  // an organization with samlEnabled true and this false still permits a
+  // direct login that bypasses the identity provider.
+  samlStrictModeEnabled bool
+  // Whether identity provider initiated login is enabled
+  samlIdpInitiatedLoginEnabled bool
+  // Whether identity provider metadata has been uploaded
+  samlIdpMetadataUploaded bool
+  // Identity provider endpoint URL
+  samlIdpEndpoint string
+  // SAML login URL
+  samlLoginUrl string
+  // Whether users are created automatically on first SAML login
+  samlAutocreateUsersEnabled bool
+  // Email domains whose users are created automatically on first SAML login
+  samlAutocreateUsersDomains []string
+  // Role granted to automatically created users
+  //
+  // One of st (Standard), adm (Administrator), or ro (Read Only). Empty when
+  // automatic user creation is off.
+  samlAutocreateAccessRole string
+  // Whether individual dashboard widgets can be shared outside the organization
+  privateWidgetShare bool
+  // Whether the email domain allowlist is enforced
+  domainAllowlistEnabled() bool
+  // Email domains that may be invited to the organization
+  domainAllowlistDomains() []string
+}
+
+// Datadog Permission
+//
+// Individual capability that a role can grant, such as reading dashboards or
+// managing API keys. Permissions are the leaves of the role-based access
+// control model, so listing the permissions attached to a role shows exactly
+// what its members can do rather than what the role is called. The name field
+// is the stable identifier used in policy (for example org_management or
+// logs_read_data), while displayName and groupName carry the wording shown in
+// the Datadog roles interface. The restricted field marks permissions that
+// cannot be granted through the API and are reserved to built-in roles.
+datadog.permission @defaults("name groupName") {
+  // Permission ID
+  id string
+  // Permission name
+  //
+  // The stable identifier referenced by scoped application keys and role
+  // definitions, for example org_management, user_access_manage, or
+  // logs_read_data.
+  name string
+  // Display name shown in the Datadog interface
+  displayName string
+  // Description of what the permission grants
+  description string
+  // Group the permission belongs to
+  groupName string
+  // Display type
+  //
+  // How the permission is presented in the roles interface. One of read,
+  // write, or other.
+  displayType string
+  // Whether the permission is restricted to built-in roles
+  restricted bool
+  // Created at
+  createdAt time
 }
 
 // Datadog User
 //
-// Examine a Datadog user account within the organization. Includes the
-// user's `id`, `email`, `name`, `handle`, and `status` (Active, Pending,
-// Disabled), as well as flags for `serviceAccount`, `verified`, and
-// `disabled` state, plus `createdAt` timestamp and `icon` URL.
+// User account belonging to the Datadog organization, covering both
+// human members and service accounts. Use it to audit who has access,
+// spot dormant or unverified accounts, and confirm disabled users have
+// been deactivated. The status field reports Active, Pending, or
+// Disabled, and serviceAccount distinguishes machine identities from
+// people.
 datadog.user @defaults("id email status") {
   // User ID
   id string
@@ -90,13 +697,21 @@ datadog.user @defaults("id email status") {
   createdAt time
   // Icon URL
   icon string
+  // Roles assigned to the user
+  roles() []datadog.role
+  // Teams the user belongs to
+  teams() []datadog.team
 }
 
 // Datadog Role
 //
-// Examine a Datadog RBAC role used to control access and permissions within
-// the organization. Exposes `id`, `name`, `userCount` (number of users
-// assigned to the role), and `createdAt` / `modifiedAt` timestamps.
+// Role-based access control (RBAC) role governing what members can see and do
+// within the organization. Roles bundle permissions and are assigned to users,
+// so auditing them shows how administrative and read/write access is scoped.
+// The `userCount` field reports how many members hold the role, which helps
+// flag over-provisioned or unused roles. The permissions field expands the
+// role into the individual capabilities it grants, and users lists the members
+// who hold it, so the two together answer who can perform a given action.
 datadog.role @defaults("id name") {
   // Role ID
   id string
@@ -108,16 +723,20 @@ datadog.role @defaults("id name") {
   createdAt time
   // Modified at
   modifiedAt time
+  // Permissions granted by the role
+  permissions() []datadog.permission
+  // Users that hold the role
+  users() []datadog.user
 }
 
 // Datadog Monitor
 //
-// Examine a Datadog alerting monitor that watches a metric, log, or service
-// check and fires notifications when thresholds are breached. Includes `id`,
-// `name`, `type` (metric alert, service check, log alert, etc.), `query`,
-// `message` (notification text), `overallState` (Alert, Warn, No Data, OK),
-// `priority` (1–5), `tags`, `creator` email, `notifyNoData` flag, `created`
-// and `modified` timestamps, and raw `options` dict.
+// Alerting monitor that watches a metric, log, or service check and fires
+// notifications when a threshold is breached. The `type` field distinguishes
+// what is watched (metric alert, service check, log alert, and so on), and
+// `overallState` reports the live evaluation result (Alert, Warn, No Data, or
+// OK). Auditing monitors surfaces alerting coverage gaps, no-data handling,
+// and how notifications are routed.
 datadog.monitor @defaults("id name type") {
   // Monitor ID
   id int
@@ -129,7 +748,7 @@ datadog.monitor @defaults("id name type") {
   query string
   // Message (notification text)
   message string
-  // Overall state (Alert, Warn, No Data, OK)
+  // Overall state (Alert, Warn, No Data, OK, Ignored, Skipped, Unknown)
   overallState string
   // Tags
   tags []string
@@ -139,20 +758,35 @@ datadog.monitor @defaults("id name type") {
   created time
   // Modified at
   modified time
-  // Creator email
-  creator string
+  // User that created the monitor
+  //
+  // Null when the creator no longer has an account in the organization.
+  createdBy() datadog.user
+  // Access control list attached to this monitor
+  //
+  // Null when no restriction policy is set, in which case access follows the
+  // organization-wide role permissions.
+  restrictionPolicy() datadog.restrictionPolicy
   // Whether the monitor notifies when data is missing
   notifyNoData bool
-  // Options
+  // Alert behavior options
+  //
+  // Keys: `renotifyInterval` (minutes between re-notifications while the
+  // monitor stays in alert), `timeoutH` (hours before a triggered alert
+  // auto-resolves), `evaluationDelay` (seconds the evaluation is held back
+  // to allow late-arriving data), and `notifyAudit` (bool, whether changes
+  // to the monitor are announced to its notification targets).
   options dict
 }
 
 // Datadog Dashboard
 //
-// Examine a Datadog visualization dashboard. Exposes `id`, `title`,
-// `description`, `layoutType` (ordered or free), `url` path,
-// `authorHandle`, `isReadOnly` flag, and `createdAt` / `modifiedAt`
-// timestamps. Useful for auditing dashboard ownership and access controls.
+// Visualization dashboard in a Datadog organization, showing metrics,
+// logs, traces, and other telemetry on a shared canvas. The layoutType
+// distinguishes free-form canvases (`free`) from auto-arranged grids
+// (`ordered`). Query these to audit dashboard ownership through the
+// authorHandle, spot dashboards left editable versus locked read-only,
+// and track when dashboards were created or last modified.
 datadog.dashboard @defaults("id title") {
   // Dashboard ID
   id string
@@ -168,26 +802,39 @@ datadog.dashboard @defaults("id title") {
   createdAt time
   // Modified at
   modifiedAt time
-  // Author handle
-  authorHandle string
+  // User that authored the dashboard
+  //
+  // Null when the author no longer has an account in the organization.
+  author() datadog.user
   // Is read only
   isReadOnly bool
+  // Access control list attached to this dashboard
+  //
+  // Null when no restriction policy is set, in which case access follows the
+  // organization-wide role permissions.
+  restrictionPolicy() datadog.restrictionPolicy
+  // Shares exposing this dashboard outside the organization
+  //
+  // Empty when the dashboard has never been shared.
+  sharedDashboards() []datadog.sharedDashboard
 }
 
 // Datadog Synthetics Test
 //
-// Examine a Datadog Synthetics test that continuously verifies application
-// availability and performance. Includes `publicId`, `name`, `type` (api
-// or browser), `subtype` (http, ssl, dns, websocket, tcp, udp, icmp, grpc,
-// multi), `status` (live or paused), `message` (notification text), `tags`,
-// `locations`, `monitorId`, `creator` email, and raw `config` and `options`
-// dicts for detailed request and assertion configuration.
+// Datadog Synthetics test that continuously verifies application availability
+// and performance by probing endpoints or driving browser flows from managed
+// or private locations. The `type` distinguishes lightweight `api` checks from
+// full `browser` tests, while `subtype` selects the protocol being probed. Query
+// `status` and `message` to see whether a test is live and how it alerts, and use
+// `monitorId` to pivot to the backing monitor. Auditing tests confirms that
+// critical user journeys and public endpoints are monitored for uptime and
+// regressions.
 datadog.syntheticsTest @defaults("publicId name type") {
   // Public ID
   publicId string
   // Test name
   name string
-  // Test type (api, browser)
+  // Test type (api, browser, mobile, network)
   type string
   // Subtype (http, ssl, dns, websocket, tcp, udp, icmp, grpc, multi)
   subtype string
@@ -201,21 +848,33 @@ datadog.syntheticsTest @defaults("publicId name type") {
   locations []string
   // Monitor ID
   monitorId int
-  // Creator email
-  creator string
-  // Config
+  // User that created the test
+  //
+  // Null when the creator no longer has an account in the organization.
+  createdBy() datadog.user
+  // Request configuration
+  //
+  // Request under test. Keys: `method` (HTTP method, for example GET or POST)
+  // and `url` (the endpoint the test probes).
   config dict
-  // Options
+  // Execution options
+  //
+  // Scheduling and failure-handling settings. Keys: `tickEvery` (run interval
+  // in seconds), `followRedirects` (whether HTTP redirects are followed), and
+  // `minFailureDuration` (seconds a failure must persist before the test is
+  // marked failing).
   options dict
 }
 
 // Datadog Service Level Objective
 //
-// Examine a Datadog SLO that tracks service reliability over time. Includes
-// `id`, `name`, `type` (metric, monitor, or time_slice), `description`,
-// `tags`, `targetThreshold` and `warningThreshold` percentages (e.g., 99.9),
-// `timeframe` (7d, 30d, 90d), `creator` email, `createdAt` / `modifiedAt`
-// timestamps, and `monitorIds` for monitor-based SLOs.
+// Service Level Objective that tracks a reliability or performance target for
+// a service over a rolling window, letting you audit which services have SLOs
+// defined and how strict their commitments are. The `type` field distinguishes
+// metric, monitor, and time_slice SLOs; monitor-based SLOs reference their
+// underlying monitors through `monitorIds`. The `targetThreshold` and
+// `warningThreshold` percentages together with `timeframe` capture the
+// reliability budget being promised.
 datadog.slo @defaults("id name type") {
   // SLO ID
   id string
@@ -231,25 +890,34 @@ datadog.slo @defaults("id name type") {
   targetThreshold float
   // Warning threshold (percentage)
   warningThreshold float
-  // Timeframe (7d, 30d, 90d)
+  // Timeframe (7d, 30d, 90d, custom)
   timeframe string
-  // Creator email
-  creator string
+  // User that created the SLO
+  //
+  // Null when the creator no longer has an account in the organization.
+  createdBy() datadog.user
   // Created at
   createdAt time
   // Modified at
   modifiedAt time
   // Monitor IDs (for monitor-based SLOs)
   monitorIds []int
+  // Access control list attached to this SLO
+  //
+  // Null when no restriction policy is set, in which case access follows the
+  // organization-wide role permissions.
+  restrictionPolicy() datadog.restrictionPolicy
 }
 
 // Datadog Log Index
 //
-// Examine a Datadog log index that partitions and retains ingested log data.
-// Includes `name`, `filter` query that routes logs into this index,
-// `numRetentionDays`, `dailyLimit` and `dailyLimitWarningThresholdPercentage`
-// for cost control, `isRateLimited` flag, `numFlexLogsRetentionDays` for
-// flex retention, and `exclusionFilters` dicts that sample or drop matching logs.
+// Datadog log index that partitions and retains ingested log data. Log
+// indexes control which logs are stored, how long they are kept, and how
+// much is billed, so auditing them surfaces short retention windows,
+// missing daily limits that expose cost overruns, and exclusion filters
+// that silently sample or drop security-relevant logs. Each index is
+// identified by its `name`, and `filter` holds the query that routes logs
+// into it.
 datadog.logIndex @defaults("name") {
   // Index name
   name string
@@ -265,25 +933,35 @@ datadog.logIndex @defaults("name") {
   isRateLimited bool
   // Number of flex logs retention days
   numFlexLogsRetentionDays int
-  // Exclusion filters
+  // Exclusion filters that sample or drop matching logs
+  //
+  // Each entry has `name` (the exclusion filter name), `isEnabled` (whether
+  // the filter is active), `query` (the log query selecting which logs to
+  // exclude), and `sampleRate` (fraction of matching logs retained, where
+  // 0.0 drops all matches and 1.0 keeps them all).
   exclusionFilters []dict
 }
 
 // Datadog Security Monitoring Rule
 //
-// Examine a Datadog Cloud SIEM detection rule that identifies threats and
-// policy violations in logs and cloud activity. Includes `id`, `name`,
-// `type`, `message` (triage guidance), `isEnabled`, `hasExtendedTitle`,
-// `tags`, `isDefault` (built-in rule), `isDeleted`, `createdAt` /
-// `updatedAt` timestamps, `cases` (severity and condition dicts), `filters`
-// dicts, and raw `options` dict containing rule-specific parameters such as
-// detection method, evaluation window, and keep-alive settings.
+// Datadog Cloud SIEM detection rule that identifies threats and policy
+// violations across logs and cloud activity. A rule defines the query
+// conditions that generate security signals, the severity assigned to each
+// match, and the detection method used to evaluate incoming data, so it is
+// the core control governing what a Cloud SIEM deployment detects. Use
+// isEnabled to tell which rules are active, isDefault to separate built-in
+// rules from custom ones, and message for the triage guidance shown on a
+// generated signal.
 datadog.securityRule @defaults("id name type") {
   // Rule ID
   id string
   // Rule name
   name string
   // Rule type
+  //
+  // One of log_detection, infrastructure_configuration, workload_security,
+  // cloud_configuration, application_security, api_security, or
+  // workload_activity.
   type string
   // Message
   message string
@@ -301,22 +979,44 @@ datadog.securityRule @defaults("id name type") {
   createdAt time
   // Updated at
   updatedAt time
-  // Cases (severity, condition)
+  // Signal cases
+  //
+  // Each case is a dict with `name` (case label), `status` (the severity
+  // assigned when the case matches: info, low, medium, high, or critical),
+  // and `condition` (the boolean expression over the rule's queries that
+  // triggers this case).
   cases []dict
-  // Filters
+  // Rule filters
+  //
+  // Each filter is a dict with `query` (the log or event query the filter
+  // matches) and `action`, one of require (only evaluate events matching
+  // the query) or suppress (exclude matching events from detection).
   filters []dict
-  // Options
+  // Detection options
+  //
+  // Rule-specific evaluation parameters. Keys: `detectionMethod` (one of
+  // threshold, new_value, anomaly_detection, impossible_travel, hardcoded,
+  // third_party, anomaly_threshold, or sequence_detection),
+  // `evaluationWindow` (seconds of data evaluated per query), `keepAlive`
+  // (seconds a signal stays open on repeated matches), and
+  // `maxSignalDuration` (seconds before a signal is force-closed).
   options dict
+  // Access control list attached to this rule
+  //
+  // Null when no restriction policy is set, in which case access follows the
+  // organization-wide role permissions.
+  restrictionPolicy() datadog.restrictionPolicy
 }
 
 // Datadog Downtime
 //
-// Examine a Datadog scheduled downtime that silences monitor alerts during
-// planned maintenance or incidents. Includes `id`, `status` (active,
-// disabled, ended, or scheduled), `displayTimezone`, `message`,
-// `muteFirstRecoveryNotification`, `notifyEndStates`, `notifyEndTypes`,
-// `monitorIdentifier` dict (tag or ID), `schedule` dict, `scope`,
-// and `createdAt` / `modifiedAt` / `canceledAt` timestamps.
+// Datadog scheduled downtime that silences monitor alerts during planned
+// maintenance or incidents, so on-call teams are not paged for expected
+// disruption. Query these to audit which monitors are muted, over what
+// scope, and on what schedule. The `status` field distinguishes active,
+// scheduled, ended, and canceled downtimes, and `monitorIdentifier`
+// selects whether the downtime targets a single monitor or a set of
+// monitor tags.
 datadog.downtime @defaults("id status") {
   // Downtime ID
   id string
@@ -326,15 +1026,28 @@ datadog.downtime @defaults("id status") {
   message string
   // Mute first recovery notification
   muteFirstRecoveryNotification bool
-  // Notify end states
+  // Monitor states that trigger an end-of-downtime notification
+  //
+  // Each value is one of `alert`, `warn`, or `no data`.
   notifyEndStates []string
-  // Notify end types
+  // Downtime end events that trigger a notification
+  //
+  // Each value is one of `canceled` or `expired`.
   notifyEndTypes []string
-  // Status (active, disabled, ended, scheduled)
+  // Current downtime status
+  //
+  // One of `active`, `scheduled`, `ended`, or `canceled`.
   status string
-  // Monitor identifier (tag or ID)
+  // Monitor targeted by the downtime
+  //
+  // One of two shapes: `monitorId` (number) when the downtime targets a
+  // single monitor, or `monitorTags` (list of strings) when it targets
+  // every monitor matching those tags.
   monitorIdentifier dict
-  // Schedule
+  // Downtime schedule window
+  //
+  // Keys: `timezone` (timezone of a recurring schedule), and for a
+  // one-time downtime `start` and `end` (RFC 3339 timestamps).
   schedule dict
   // Scope
   scope string
@@ -348,10 +1061,14 @@ datadog.downtime @defaults("id status") {
 
 // Datadog API Key
 //
-// Examine a Datadog API key that authorizes agents and integrations to send
-// data to Datadog. Exposes `id`, `name`, `last4` (last four characters for
-// identification), and `createdAt` / `modifiedAt` timestamps. Useful for
-// auditing key age and detecting stale or unrotated credentials.
+// Credential that authorizes Datadog agents and integrations to submit
+// metrics, traces, logs, and events to the organization. The `last4` field
+// exposes only the final four characters so a key can be identified without
+// revealing the secret. The `createdAt` and `modifiedAt` timestamps let you
+// audit key age and flag stale or unrotated credentials, and `lastUsedAt`
+// separates keys that are still submitting data from abandoned ones that
+// should be revoked. The `createdBy` and `modifiedBy` fields attribute a key
+// to the accounts that issued and last changed it.
 datadog.apiKey @defaults("id name") {
   // API key ID
   id string
@@ -363,14 +1080,46 @@ datadog.apiKey @defaults("id name") {
   modifiedAt time
   // Last four characters
   last4 string
+  // Last used at
+  //
+  // Null when the key has never been used to submit data, which together with
+  // an old createdAt identifies a credential that can be revoked.
+  lastUsedAt time
+  // Key category
+  category string
+  // Whether the key may read remote configuration
+  //
+  // Remote configuration lets an agent authenticated with this key pull
+  // configuration changes from Datadog, so a key with it enabled carries more
+  // than submit-only access.
+  remoteConfigReadEnabled bool
+  // Whether the key may enroll a Private Action Runner
+  //
+  // A Private Action Runner executes Workflow Automation and App Builder
+  // actions inside a private network, so a key allowed to enroll one can stand
+  // up a runner that acts on internal systems.
+  privateActionRunnerEnrollEnabled bool
+  // User that created the key
+  //
+  // Null when the creating account has been removed from the organization.
+  createdBy() datadog.user
+  // User that last modified the key
+  //
+  // Null when the key has not been modified since creation, or the modifying
+  // account has been removed from the organization.
+  modifiedBy() datadog.user
 }
 
 // Datadog Application Key
 //
-// Examine a Datadog application key that a user presents alongside an API
-// key to make authenticated HTTP API calls. Includes `id`, `name`, `last4`
-// (last four characters), `createdAt` timestamp, and `scopes` (a null value
-// means full access; otherwise lists the granted permission scopes).
+// Application key that a user presents alongside an API key to make
+// authenticated Datadog HTTP API calls. Auditing these surfaces which keys
+// exist, who owns them, and how broad their access is: the `scopes` field
+// is empty when the key has full account access, and otherwise lists the
+// specific permission scopes granted to it. A key with no scopes inherits
+// every permission its `owner` holds, so pairing the two shows the effective
+// reach of the credential, and `lastUsedAt` separates live keys from dormant
+// ones.
 datadog.applicationKey @defaults("id name") {
   // Application key ID
   id string
@@ -380,17 +1129,28 @@ datadog.applicationKey @defaults("id name") {
   createdAt time
   // Last four characters
   last4 string
-  // Scopes (null means full access)
+  // Scopes (empty means full access)
   scopes []string
+  // Last used at
+  //
+  // Null when the key has never been used, which together with an old
+  // createdAt identifies a credential that can be revoked.
+  lastUsedAt time
+  // User that owns the key
+  //
+  // An unscoped key acts with every permission this user holds. Null when the
+  // owning account has been removed from the organization.
+  owner() datadog.user
 }
 
 // Datadog AWS Integration Account
 //
-// Examine a Datadog AWS account integration that links an AWS account to
-// Datadog for metrics, resource, and log collection. Includes `accountId`,
-// `roleName` (IAM role used for delegation), `metricsEnabled`,
-// `resourceCollectionEnabled`, `logsEnabled`, `filterTags`, `hostTags`,
-// `accountTags`, and `excludedRegions`.
+// AWS account linked to Datadog for metrics, resource, and log
+// collection. The roleName is the IAM role Datadog assumes to read from
+// the account, so auditing it exposes the delegation trust that grants
+// Datadog access. The metricsEnabled, resourceCollectionEnabled, and
+// logsEnabled flags show which data streams are active, while
+// includedRegions and filterTags narrow what Datadog ingests.
 datadog.integration.aws @defaults("accountId") {
   // AWS account ID
   accountId string
@@ -409,14 +1169,26 @@ datadog.integration.aws @defaults("accountId") {
   // Account tags
   accountTags []string
   // Excluded regions
+  //
+  // Always empty. The Datadog v2 AWS integration API expresses region
+  // selection as includedRegions (an allowlist) rather than an exclusion
+  // list. Retained for backward compatibility with the earlier schema.
   excludedRegions []string
+  // Included regions
+  //
+  // Explicit allowlist of AWS regions Datadog collects data from. Empty
+  // when the account is configured to collect from all regions.
+  includedRegions []string
 }
 
 // Datadog Team
 //
-// Examine a Datadog team that groups users for ownership, on-call, and
-// access-control purposes. Exposes `id`, `name`, `handle` (URL slug),
-// `description`, `userCount`, and `createdAt` / `modifiedAt` timestamps.
+// Group of Datadog users organized for ownership, on-call rotation, and
+// access control. Teams tie people to the resources they are responsible
+// for, so auditing them shows who owns what and how membership is scoped.
+// The `handle` is the team's URL slug, `userCount` reports how many members
+// belong to the team, and `members` resolves those members to their user
+// accounts.
 datadog.team @defaults("id name") {
   // Team ID
   id string
@@ -432,14 +1204,17 @@ datadog.team @defaults("id name") {
   createdAt time
   // Modified at
   modifiedAt time
+  // Users that belong to the team
+  members() []datadog.user
 }
 
 // Datadog Sensitive Data Scanner Group
 //
-// Examine a Datadog Sensitive Data Scanner group that contains PII redaction
-// rules for log and APM data. Includes `id`, `name`, `description`,
-// `isEnabled` flag, `productList` (logs, apm) indicating which data sources
-// the group applies to, and `filter` query that scopes which data is scanned.
+// Sensitive Data Scanner group that bundles PII detection and redaction
+// rules applied to Datadog log and APM data. Auditing a group confirms
+// whether redaction is active (`isEnabled`), which data sources it covers
+// (`productList`, with values such as logs and apm), and how the `filter`
+// query scopes the subset of data that gets scanned for sensitive values.
 datadog.sensitiveDataScannerGroup @defaults("id name") {
   // Group ID
   id string
@@ -449,7 +1224,7 @@ datadog.sensitiveDataScannerGroup @defaults("id name") {
   description string
   // Whether the group is enabled
   isEnabled bool
-  // Product list (logs, apm)
+  // Product list (logs, rum, events, apm)
   productList []string
   // Filter query
   filter string
@@ -457,10 +1232,10 @@ datadog.sensitiveDataScannerGroup @defaults("id name") {
 
 // Datadog Security Monitoring Filter
 //
-// Examine a Datadog security monitoring filter that excludes matching logs
-// from detection rule evaluation. Includes `id`, `name`, `query` (the
-// log filter expression), `isEnabled` flag, `filteredDataType`, and
-// `version` for optimistic-locking on updates.
+// Security monitoring filter that excludes matching data from detection
+// rule evaluation, scoping which logs Cloud SIEM analyzes. Query it to
+// audit whether each filter is enabled and what `query` expression it
+// applies, since an overly broad filter can hide activity from detection.
 datadog.securityFilter @defaults("id name") {
   // Filter ID
   id string
@@ -470,7 +1245,9 @@ datadog.securityFilter @defaults("id name") {
   query string
   // Whether the filter is enabled
   isEnabled bool
-  // Filtered data type
+  // Category of data the filter applies to
+  //
+  // Currently only `logs`.
   filteredDataType string
   // Version
   version int
@@ -478,11 +1255,12 @@ datadog.securityFilter @defaults("id name") {
 
 // Datadog Security Monitoring Suppression
 //
-// Examine a Datadog security monitoring suppression rule that silences
-// specific signals without affecting log ingestion or rule evaluation.
-// Includes `id`, `name`, `description`, `enabled` flag, `ruleQuery`
-// (which rules to suppress), `suppressionQuery` (additional log-level
-// filter), `dataExclusionQuery`, and `expirationDate`.
+// Suppression rule that silences matching security signals without
+// affecting log ingestion or the underlying detection rules. Audit
+// these to see which detections are being muted, how broadly, and
+// whether the suppression is still active. The `enabled` flag and
+// `expirationDate` reveal whether a suppression is live or lapsed,
+// while the query fields define its scope.
 datadog.securitySuppression @defaults("id name") {
   // Suppression ID
   id string
@@ -493,10 +1271,23 @@ datadog.securitySuppression @defaults("id name") {
   // Whether the suppression is enabled
   enabled bool
   // Rule query
+  //
+  // Query that selects which detection rules the suppression applies
+  // to. Signals from rules matching this query are candidates for
+  // suppression.
   ruleQuery string
+
   // Suppression query
+  //
+  // Query evaluated against a signal's attributes. Signals from the
+  // selected rules that also match this query are suppressed, so a
+  // broad query silences more signals.
   suppressionQuery string
+
   // Data exclusion query
+  //
+  // Query that excludes matching events from the detection pipeline
+  // entirely, so no signal is generated for them in the first place.
   dataExclusionQuery string
   // Expiration date
   expirationDate time
@@ -504,10 +1295,12 @@ datadog.securitySuppression @defaults("id name") {
 
 // Datadog Service Account
 //
-// Examine a Datadog service account, a non-human identity used for
-// programmatic API access. Exposes `id`, `email`, `name`, `handle`,
-// `status`, `disabled` flag, and `createdAt` timestamp. Service accounts
-// can own application keys independently of individual users.
+// Non-human identity used for programmatic API access, separate from any
+// individual user login. Service accounts can own application keys
+// independently of people, so auditing which ones exist, whether they are
+// disabled, and their status surfaces long-lived automation credentials
+// that outlast staff changes. Use handle and email to attribute a service
+// account to its owning team or integration.
 datadog.serviceAccount @defaults("id email") {
   // Service account ID
   id string
@@ -527,13 +1320,12 @@ datadog.serviceAccount @defaults("id email") {
 
 // Datadog Logs Archive
 //
-// Examine a Datadog logs archive that ships retained logs to long-term cloud
-// storage. Includes `id`, `name`, `query` filter that selects which logs are
-// archived, `state` (UNKNOWN, WORKING, FAILING, WORKING_AUTH_LEGACY),
-// `includeTags` (whether tags are preserved during rehydration),
-// `rehydrationMaxScanSizeInGb`, `rehydrationTags`, `destinationType`
-// (s3, gcs, or azure), and `destination` dict with provider-specific
-// bucket or container configuration.
+// Datadog logs archive that ships retained logs to long-term cloud storage
+// in Amazon S3, Google Cloud Storage, or Azure Blob Storage. The query
+// filter selects which logs land in the archive, and destinationType
+// (s3, gcs, or azure) determines which keys populate the destination
+// configuration. Useful for auditing where log data is retained, whether
+// archives are healthy, and the rehydration limits applied to them.
 datadog.logsArchive @defaults("id name") {
   // Archive ID
   id string
@@ -543,7 +1335,7 @@ datadog.logsArchive @defaults("id name") {
   query string
   // State (UNKNOWN, WORKING, FAILING, WORKING_AUTH_LEGACY)
   state string
-  // Whether rehydration is included
+  // Whether tags from the original logs are preserved in the archive
   includeTags bool
   // Rehydration max scan size in GB
   rehydrationMaxScanSizeInGb int
@@ -551,23 +1343,28 @@ datadog.logsArchive @defaults("id name") {
   rehydrationTags []string
   // Destination type (s3, gcs, azure)
   destinationType string
-  // Destination details
+  // Cloud storage destination configuration
+  //
+  // Keys vary by destinationType. For s3 and gcs: bucket and path. For
+  // azure: container, storageAccount, and path.
   destination dict
 }
 
 // Datadog RUM Application
 //
-// Examine a Datadog Real User Monitoring (RUM) application that collects
-// browser or mobile telemetry. Includes `id`, `name`, `type` (browser, ios,
-// android, react-native, flutter, roku, unity, kotlin-multiplatform),
-// `clientToken` for SDK initialization, `orgId`, `isActive` flag, and
-// `createdAt` / `updatedAt` timestamps.
+// Real User Monitoring (RUM) application that collects browser or mobile
+// telemetry from end users. The `type` field records the platform (one of
+// browser, ios, android, react-native, flutter, roku, electron, unity, or
+// kotlin-multiplatform), and `clientToken` is the credential embedded in the
+// client SDK to send RUM events, so auditing which applications exist and
+// whether each is active helps confirm that only sanctioned properties emit
+// user telemetry.
 datadog.rumApplication @defaults("id name") {
   // Application ID
   id string
   // Application name
   name string
-  // Application type (browser, ios, android, react-native, flutter, roku, unity, kotlin-multiplatform)
+  // Application type (browser, ios, android, react-native, flutter, roku, electron, unity, kotlin-multiplatform)
   type string
   // Client token
   clientToken string
@@ -583,11 +1380,14 @@ datadog.rumApplication @defaults("id name") {
 
 // Datadog Synthetics Global Variable
 //
-// Examine a Datadog Synthetics global variable that can be shared and
-// referenced across multiple synthetics tests. Includes `id`, `name`,
-// `description`, `tags`, `isTotp` flag (Time-based One-Time Password /
-// MFA variable), `isFido` flag, and `parseTestPublicId` (the source
-// test that generates the variable's value).
+// Reusable value that can be shared and referenced across multiple
+// Datadog Synthetics tests, letting one definition supply data such as
+// credentials, hostnames, or tokens to many tests. The `isTotp` and
+// `isFido` flags mark variables that carry multi-factor authentication
+// material (Time-based One-Time Password and FIDO), which is worth
+// auditing since those variables hold sensitive secrets. When the value
+// is derived from another test, `parseTestPublicId` identifies that
+// source test.
 datadog.syntheticsGlobalVariable @defaults("id name") {
   // Variable ID
   id string
@@ -605,13 +1405,14 @@ datadog.syntheticsGlobalVariable @defaults("id name") {
   parseTestPublicId string
 }
 
-// Datadog Synthetics Private Location
+// Datadog Synthetics private location
 //
-// Examine a Datadog Synthetics private location that runs synthetics tests
-// from within a customer-managed network, enabling testing of internal
-// endpoints unreachable from Datadog's public infrastructure. Includes
-// `id`, `name`, `description`, `tags`, and `metadata` dict containing
-// region, OS, and runtime details.
+// A Synthetics private location: a customer-managed worker that runs
+// synthetics tests from inside a private network, so internal endpoints
+// unreachable from Datadog's public infrastructure can still be monitored.
+// Auditing these tells you which internal surfaces are under test and,
+// through `metadata`, which roles are permitted to attach tests to the
+// location.
 datadog.syntheticsPrivateLocation @defaults("id name") {
   // Location ID
   id string
@@ -621,6 +1422,338 @@ datadog.syntheticsPrivateLocation @defaults("id name") {
   description() string
   // Tags applied to the private location
   tags() []string
-  // Metadata for the private location (region, OS, runtime details)
+  // Private-location metadata
+  //
+  // Dict with a single `restrictedRoles` key: the list of role IDs
+  // allowed to use this private location. Empty when the location is
+  // not restricted to specific roles.
   metadata() dict
+}
+
+// Third-party OAuth client authorized against the organization
+//
+// An OAuth2 application that members of the organization have granted
+// standing access to Datadog data. Each client is listed once for the whole
+// organization, with `userCount` reporting how many people have authorized
+// it and `lastExercised` when its access was most recently used. `disabled`
+// records an organization-wide revocation, which blocks the client for
+// everyone regardless of individual consent. The authorizations hold the
+// per-person grants, including the scopes each member handed over, so a
+// client with a large `userCount` and broad scopes is worth reviewing even
+// when nobody remembers approving it. Clients that stop appearing in
+// `lastExercised` for long periods are candidates for revocation.
+datadog.oauthClient @defaults("clientId userCount disabled") {
+  // Identifier of the authorization record
+  id string
+  // Identifier of the OAuth2 client the organization authorized
+  clientId string
+  // Whether the organization has revoked this client for all members
+  disabled bool
+  // Number of members who have authorized this client
+  userCount int
+  // When the client last used its authorization
+  lastExercised time
+  // Individual grants members have made to this client
+  authorizations() []datadog.oauthClient.authorization
+}
+
+// Grant a member made to a third-party OAuth client
+//
+// One person's authorization of an OAuth2 application, holding the scopes
+// they consented to and the times the grant was created, changed and last
+// used. `disabled` reflects a revocation by the member themselves, while
+// `orgDisabled` reflects an organization-wide revocation of the client; a
+// grant is only live when both are false. The scopes are the actual
+// permissions the application can exercise on that member's behalf, which is
+// what makes this the level to audit rather than the client as a whole. The
+// user field identifies whose access is delegated.
+datadog.oauthClient.authorization @defaults("id disabled scopes") {
+  // Identifier of the authorization
+  id string
+  // Scopes the member granted to the client
+  scopes []string
+  // Whether the member has revoked this grant
+  disabled bool
+  // Whether the organization has revoked the client for all members
+  orgDisabled bool
+  // When the grant was created
+  createdAt time
+  // When the grant was last modified
+  modifiedAt time
+  // When the client last used this grant
+  lastExercised time
+  // Member who granted the access
+  user() datadog.user
+}
+
+// Identity provider members can authenticate through
+//
+// A login method configured for the organization, reported one row per
+// provider with `authenticationMethod` naming the mechanism and `enabled`
+// recording whether members can currently use it. This is the view that
+// shows what remains available alongside single sign-on, so an organization
+// that has rolled out SAML but left another method enabled is visible here
+// rather than in the SAML settings on the org resource.
+datadog.identityProvider @defaults("id authenticationMethod enabled") {
+  // Identifier of the identity provider
+  id string
+  // Mechanism members authenticate with
+  authenticationMethod string
+  // Whether members can currently authenticate through this provider
+  enabled bool
+}
+
+// Connection sharing data with another Datadog organization
+//
+// A link between this organization and another one, letting telemetry cross
+// an organizational boundary. `sourceOrgId` and `sourceOrgName` name the
+// organization data flows out of, `sinkOrgId` and `sinkOrgName` the one it
+// flows into, so comparing them against the organization publicId shows
+// which direction a given connection runs. `connectionTypes` lists the kinds
+// of data covered by the link, and createdBy identifies who established it.
+datadog.orgConnection @defaults("id connectionTypes") {
+  // Identifier of the connection
+  id string
+  // Kinds of data the connection covers
+  connectionTypes []string
+  // When the connection was created
+  createdAt time
+  // Identifier of the organization data flows out of
+  sourceOrgId string
+  // Name of the organization data flows out of
+  sourceOrgName string
+  // Identifier of the organization data flows into
+  sinkOrgId string
+  // Name of the organization data flows into
+  sinkOrgName string
+  // Member who created the connection
+  createdBy() datadog.user
+}
+
+// Google Cloud integration
+//
+// A Google Cloud service account Datadog impersonates to collect from a set
+// of projects, established through workload identity federation rather than
+// an exported key. `clientEmail` names the service account, and
+// `accessibleProjects` reports the projects it can currently reach, which is
+// the blast radius of the grant. `isCspmEnabled`,
+// `isSecurityCommandCenterEnabled`, `resourceCollectionEnabled` and
+// `isResourceChangeCollectionEnabled` record how much of the environment is
+// pulled in beyond metrics. `hostFilters`, `cloudRunRevisionFilters` and
+// `regionFilterConfigs` narrow what is collected.
+datadog.integration.gcp @defaults("clientEmail isCspmEnabled") {
+  // Identifier of the service account entry
+  id string
+  // Service account Datadog authenticates as
+  clientEmail string
+  // Projects the service account can currently reach
+  accessibleProjects []string
+  // Whether cloud security posture management is enabled
+  isCspmEnabled bool
+  // Whether Security Command Center findings are collected
+  isSecurityCommandCenterEnabled bool
+  // Whether resource collection is enabled
+  resourceCollectionEnabled bool
+  // Whether resource change collection is enabled
+  isResourceChangeCollectionEnabled bool
+  // Whether per-project quota is used for API calls
+  isPerProjectQuotaEnabled bool
+  // Whether the global location is included in collection
+  isGlobalLocationEnabled bool
+  // Whether organization and folder resources are collected
+  //
+  // When enabled, Datadog scans the organization and folder level resources
+  // of the organization the service account belongs to, beyond the projects
+  // listed in accessibleProjects.
+  isOrgFolderResourceCollectionEnabled bool
+  // Whether hosts are muted while they are shutting down
+  automute bool
+  // Tags limiting which hosts are collected
+  hostFilters []string
+  // Tags limiting which Cloud Run revisions are collected
+  cloudRunRevisionFilters []string
+  // Regions collection is restricted to
+  regionFilterConfigs []string
+  // Tags applied to every metric from this account
+  accountTags []string
+}
+
+// Azure integration
+//
+// An Azure app registration Datadog authenticates with to collect from a
+// tenant. `tenantName` and `clientId` identify the tenant and the
+// application, and `secretlessAuthEnabled` records whether the link uses
+// workload identity federation instead of a client secret. `cspmEnabled`
+// and `resourceCollectionEnabled` show how far beyond metrics the collection
+// reaches. `errors` carries problems Datadog reported for the integration,
+// which is where a revoked or expired credential shows up. The client secret
+// itself is never exposed.
+datadog.integration.azure @defaults("tenantName clientId cspmEnabled") {
+  // Azure tenant the integration collects from
+  tenantName string
+  // Application (client) ID Datadog authenticates as
+  clientId string
+  // Whether the integration authenticates without a client secret
+  secretlessAuthEnabled bool
+  // Whether cloud security posture management is enabled
+  cspmEnabled bool
+  // Whether resource collection is enabled
+  resourceCollectionEnabled bool
+  // Whether metric collection is enabled
+  metricsEnabled bool
+  // Whether custom metrics are collected
+  customMetricsEnabled bool
+  // Whether usage metrics are collected
+  usageMetricsEnabled bool
+  // Whether hosts are muted while they are shutting down
+  automute bool
+  // Tags limiting which hosts are collected
+  hostFilters string
+  // Tags limiting which App Service Plans are collected
+  appServicePlanFilters string
+  // Tags limiting which Container Apps are collected
+  containerAppFilters string
+  // Problems Datadog reported for this integration
+  errors []string
+}
+
+// Okta integration
+//
+// An Okta organization Datadog collects logs and events from. `domain`
+// names the Okta org and `authMethod` records whether the link uses an API
+// token or OAuth client credentials, which determines what can be rotated
+// and how the access is scoped. The API token and client secret backing the
+// integration are never exposed.
+datadog.integration.okta @defaults("name domain authMethod") {
+  // Identifier of the Okta account entry
+  id string
+  // Name given to the integration
+  name string
+  // Okta organization the integration collects from
+  domain string
+  // Credential type the integration authenticates with
+  //
+  // Either an API token or OAuth client credentials.
+  authMethod string
+  // Client ID used when authenticating with OAuth client credentials
+  clientId string
+}
+
+// Cloudflare integration
+//
+// A Cloudflare account Datadog holds an API token for. `zones` lists the
+// zones the token is scoped to and `resources` the Cloudflare products
+// collected, so an integration with no zone restriction reaches everything
+// the token can see. The token itself is never exposed.
+datadog.integration.cloudflare @defaults("name") {
+  // Identifier of the Cloudflare account entry
+  id string
+  // Name given to the integration
+  name string
+  // Address associated with the Cloudflare account
+  email string
+  // Cloudflare products collected
+  resources []string
+  // Zones the integration is scoped to
+  zones []string
+}
+
+// Fastly integration
+//
+// A Fastly account Datadog holds an API key for, along with the services
+// collected under it. Each entry in `services` is a dict with `id` (the
+// Fastly service identifier) and `tags` (the tags applied to it). The API
+// key itself is never exposed.
+datadog.integration.fastly @defaults("name") {
+  // Identifier of the Fastly account entry
+  id string
+  // Name given to the integration
+  name string
+  // Fastly services collected under this account
+  //
+  // Each entry is a dict with `id`, the Fastly service identifier, and
+  // `tags`, the list of tags applied to that service.
+  services []dict
+}
+
+// Confluent Cloud integration
+//
+// A Confluent Cloud account Datadog holds an API key for, along with the
+// clusters and connectors collected under it. Each entry in `resources` is
+// a dict with `id` (the Confluent resource identifier), `resourceType` (the
+// kind of resource, such as kafka or connector), `enableCustomMetrics` and
+// `tags`. The API key and secret are never exposed.
+datadog.integration.confluent @defaults("id") {
+  // Identifier of the Confluent account entry
+  id string
+  // Tags applied to every metric from this account
+  tags []string
+  // Confluent resources collected under this account
+  //
+  // Each entry is a dict with `id` (the Confluent resource identifier),
+  // `resourceType` (the kind of resource, such as kafka or connector),
+  // `enableCustomMetrics` (whether custom metrics are collected for it),
+  // and `tags`.
+  resources []dict
+}
+
+// Snowflake integration
+//
+// A Snowflake account Datadog connects to with key pair authentication.
+// `accountIdentifier` names the Snowflake account and `username` the Snowflake
+// user Datadog signs in as, whose grants bound what Datadog can read.
+// `dataflows` records which collections are switched on, such as
+// snowflake-security-logs and snowflake-query-history-logs. The private key
+// is never exposed.
+datadog.integration.snowflake @defaults("name accountIdentifier username") {
+  // Identifier of the Snowflake account entry
+  id string
+  // Name given to the integration
+  name string
+  // Snowflake account identifier the integration connects to
+  accountIdentifier string
+  // Snowflake user Datadog authenticates as
+  username string
+  // Credential type the integration authenticates with
+  //
+  // snowflake_private_key for key pair authentication. Null when Datadog
+  // reports no authentication. Datadog may add further types.
+  authType string
+  // Collections configured for the account, keyed by name
+  //
+  // Each value records whether that collection is enabled. A collection
+  // Datadog reports without an enabled state is left out.
+  dataflows map[string]bool
+}
+
+// Databricks integration
+//
+// A Databricks workspace Datadog connects to. `workspaceUrl` names the
+// workspace and `authType` records whether the link uses a personal access
+// token, OAuth for a service principal, or a Private Action Runner, which
+// determines what can be rotated and where the credential lives. `clientId`
+// names the service principal for OAuth. `dataflows` records which
+// collections are switched on. The token and client secret are never
+// exposed.
+datadog.integration.databricks @defaults("name workspaceUrl authType") {
+  // Identifier of the Databricks account entry
+  id string
+  // Name given to the integration
+  name string
+  // URL of the Databricks workspace
+  workspaceUrl string
+  // Credential type the integration authenticates with
+  //
+  // One of bearer_token, databricks_oauth, or private_action_runner. Null when
+  // Datadog reports no authentication. Datadog may add further types.
+  authType string
+  // Client ID of the service principal used with OAuth
+  //
+  // Null unless authType is databricks_oauth.
+  clientId string
+  // Collections configured for the workspace, keyed by name
+  //
+  // Each value records whether that collection is enabled. A collection
+  // Datadog reports without an enabled state is left out.
+  dataflows map[string]bool
 }

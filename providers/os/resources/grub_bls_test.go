@@ -1,0 +1,306 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package resources
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/spf13/afero"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestParseGrubEnv(t *testing.T) {
+	// A GRUB environment block is exactly 1024 bytes, padded to the end with
+	// '#' after the last value.
+	env := "# GRUB Environment Block\n" +
+		"saved_entry=ffff-5.14.0\n" +
+		"kernelopts=root=UUID=1234 ro audit=1 crashkernel=auto\n" +
+		strings.Repeat("#", 200)
+
+	vars, err := ParseGrubEnv(strings.NewReader(env))
+	require.NoError(t, err)
+
+	assert.Equal(t, "root=UUID=1234 ro audit=1 crashkernel=auto", vars["kernelopts"])
+	assert.Equal(t, "ffff-5.14.0", vars["saved_entry"])
+	assert.NotContains(t, vars, "#")
+	assert.Len(t, vars, 2)
+}
+
+func TestParseBLSEntry(t *testing.T) {
+	t.Run("options referencing kernelopts", func(t *testing.T) {
+		entry, err := ParseBLSEntry(strings.NewReader(
+			"title Red Hat Enterprise Linux (4.18.0) 8.10 (Ootpa)\n" +
+				"version 4.18.0-553.el8_10.x86_64\n" +
+				"linux /boot/vmlinuz-4.18.0\n" +
+				"initrd /boot/initramfs-4.18.0.img $tuned_initrd\n" +
+				"options $kernelopts $tuned_params\n" +
+				"grub_class rhel\n"))
+		require.NoError(t, err)
+
+		assert.Equal(t, "Red Hat Enterprise Linux (4.18.0) 8.10 (Ootpa)", entry.Title)
+		assert.Equal(t, "4.18.0-553.el8_10.x86_64", entry.Version)
+		assert.Equal(t, "/boot/vmlinuz-4.18.0", entry.Kernel)
+		assert.Equal(t, "$kernelopts $tuned_params", entry.Cmdline)
+		assert.Equal(t, []string{"rhel"}, entry.Classes)
+	})
+
+	t.Run("several options lines make one command line", func(t *testing.T) {
+		entry, err := ParseBLSEntry(strings.NewReader(
+			"title Linux\nlinux /vmlinuz\noptions root=UUID=1234 ro\noptions audit=1\n"))
+		require.NoError(t, err)
+		assert.Equal(t, "root=UUID=1234 ro audit=1", entry.Cmdline)
+	})
+
+	t.Run("tab separated keys", func(t *testing.T) {
+		entry, err := ParseBLSEntry(strings.NewReader("title\tLinux\noptions\taudit=1\n"))
+		require.NoError(t, err)
+		assert.Equal(t, "Linux", entry.Title)
+		assert.Equal(t, "audit=1", entry.Cmdline)
+	})
+}
+
+func TestParseCmdline(t *testing.T) {
+	t.Run("splits parameters from flags", func(t *testing.T) {
+		params, flags := ParseCmdline("root=UUID=1234 ro quiet audit=1 console=ttyS0,115200n8")
+		assert.Equal(t, map[string]string{
+			"root":    "UUID=1234",
+			"audit":   "1",
+			"console": "ttyS0,115200n8",
+		}, params)
+		assert.Equal(t, []string{"ro", "quiet"}, flags)
+	})
+
+	t.Run("last occurrence wins, as the kernel reads it", func(t *testing.T) {
+		params, _ := ParseCmdline("audit=1 audit=0")
+		assert.Equal(t, "0", params["audit"])
+
+		params, _ = ParseCmdline("audit=0 audit=1")
+		assert.Equal(t, "1", params["audit"])
+	})
+
+	t.Run("a value is not matched by a similar name", func(t *testing.T) {
+		params, _ := ParseCmdline("noaudit=1 audit=10 intel_iommu=off")
+		assert.Equal(t, "10", params["audit"])
+		assert.Equal(t, "1", params["noaudit"])
+		assert.NotContains(t, params, "iommu")
+	})
+
+	t.Run("an unresolved variable is not a flag", func(t *testing.T) {
+		params, flags := ParseCmdline("root=UUID=1234 $tuned_params ro")
+		assert.Equal(t, []string{"ro"}, flags)
+		assert.Len(t, params, 1)
+	})
+}
+
+func TestExpandGrubVars(t *testing.T) {
+	vars := map[string]string{"kernelopts": "root=UUID=1234 ro audit=1"}
+
+	assert.Equal(t, "root=UUID=1234 ro audit=1",
+		expandVars("$kernelopts", vars))
+	assert.Equal(t, "root=UUID=1234 ro audit=1 quiet",
+		expandVars("${kernelopts} quiet", vars))
+
+	// grubby leaves a variable it cannot resolve as written, and so does this.
+	assert.Equal(t, "root=UUID=1234 ro audit=1 $tuned_params",
+		expandVars("$kernelopts $tuned_params", vars))
+	assert.Equal(t, "$kernelopts", expandVars("$kernelopts", map[string]string{}))
+}
+
+func TestIsGrubCfgStub(t *testing.T) {
+	// What a distribution installs on the EFI system partition beside the real
+	// configuration under /boot.
+	stub := []byte("\nsearch --no-floppy --set prefix --file /grub2/grub.cfg\n" +
+		"set prefix=($prefix)/grub2\nconfigfile $prefix/grub.cfg\n")
+	assert.True(t, isGrubCfgStub(stub))
+
+	assert.False(t, isGrubCfgStub([]byte("menuentry 'Linux' {\n  linux /vmlinuz ro\n}\n")))
+	assert.False(t, isGrubCfgStub([]byte("insmod blscfg\nblscfg\n")))
+
+	// A configuration that chains elsewhere but also declares its own entries
+	// is not a stub.
+	assert.False(t, isGrubCfgStub([]byte("configfile $prefix/other.cfg\nmenuentry 'Linux' {\n  linux /vmlinuz\n}\n")))
+}
+
+func TestClassifyEntry(t *testing.T) {
+	// The markers each distribution actually writes, taken from the collected
+	// fixtures under testdata/grub.
+	tests := []struct {
+		name  string
+		entry BootEntry
+		want  string
+	}{
+		{
+			name:  "debian recovery flag",
+			entry: BootEntry{Title: "Debian, with Linux 7.0 (recovery mode)", Kernel: "/boot/vmlinuz", Flags: []string{"ro", "single"}},
+			want:  BootEntryRecovery,
+		},
+		{
+			name:  "ubuntu recovery flag",
+			entry: BootEntry{Title: "Ubuntu, with Linux 7.0", Kernel: "/vmlinuz", Flags: []string{"ro", "recovery", "nomodeset"}},
+			want:  BootEntryRecovery,
+		},
+		{
+			name:  "red hat rescue entry named in its version",
+			entry: BootEntry{Title: "Red Hat Enterprise Linux (0-rescue-ffff) 8.10", Version: "0-rescue-ffff", Kernel: "/boot/vmlinuz-0-rescue-ffff"},
+			want:  BootEntryRecovery,
+		},
+		{
+			name:  "proxmox memory test by class",
+			entry: BootEntry{Title: "Memory test (memtest86+x64.efi)", Kernel: "/boot/memtest86+x64.efi", Classes: []string{"memtest"}},
+			want:  BootEntryMemtest,
+		},
+		{
+			name:  "memory test by image name alone",
+			entry: BootEntry{Title: "Memory test", Kernel: "/boot/memtest86+x64.bin"},
+			want:  BootEntryMemtest,
+		},
+		{
+			name:  "firmware settings entry boots no kernel",
+			entry: BootEntry{Title: "UEFI Firmware Settings"},
+			want:  BootEntryOther,
+		},
+		{
+			name:  "submenu",
+			entry: BootEntry{Title: "Advanced options", IsSubmenu: true},
+			want:  BootEntrySubmenu,
+		},
+		{
+			name:  "normal entry",
+			entry: BootEntry{Title: "Ubuntu", Kernel: "/vmlinuz", Flags: []string{"ro", "quiet"}},
+			want:  BootEntryNormal,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, classifyEntry(&tt.entry))
+		})
+	}
+}
+
+func TestLoadGrubEntriesNoBootloader(t *testing.T) {
+	// A host with nothing to read must yield no entries at all, so that the
+	// resource reports null rather than an empty list that every assertion
+	// made over the entries would satisfy.
+	entries, err := LoadGrubEntries(afero.NewMemMapFs(), "", nil)
+	require.NoError(t, err)
+	assert.Empty(t, entries)
+}
+
+func TestLoadGrubEntriesExpandsKernelopts(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/boot/grub2/grub.cfg",
+		[]byte("insmod blscfg\nblscfg\n"), 0o600))
+	require.NoError(t, afero.WriteFile(fs, "/boot/grub2/grubenv",
+		[]byte("# GRUB Environment Block\nkernelopts=root=UUID=1234 ro audit=1\n"+strings.Repeat("#", 100)), 0o600))
+	require.NoError(t, afero.WriteFile(fs, "/boot/loader/entries/ffff-4.18.0.conf",
+		[]byte("title Linux\nlinux /boot/vmlinuz-4.18.0\noptions $kernelopts\n"), 0o600))
+
+	content, err := afero.ReadFile(fs, "/boot/grub2/grub.cfg")
+	require.NoError(t, err)
+
+	entries, err := LoadGrubEntries(fs, "/boot/grub2/grub.cfg", content)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	assert.Equal(t, "1", entries[0].Parameters["audit"])
+	assert.Equal(t, "UUID=1234", entries[0].Parameters["root"])
+	assert.Equal(t, "/boot/loader/entries/ffff-4.18.0.conf", entries[0].Source)
+	assert.Equal(t, BootEntryNormal, entries[0].Kind)
+}
+
+func TestLoadGrubEntriesPrefersEntriesOverStaleGrubCfg(t *testing.T) {
+	// A grub.cfg that calls blscfg does not boot its own menu entries, so a
+	// leftover linux line in it must not be reported as a boot entry.
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/boot/grub2/grub.cfg",
+		[]byte("menuentry 'Stale' {\n  linux /vmlinuz-old root=UUID=old\n}\nblscfg\n"), 0o600))
+	require.NoError(t, afero.WriteFile(fs, "/boot/loader/entries/ffff-6.1.conf",
+		[]byte("title Current\nlinux /boot/vmlinuz-6.1\noptions root=UUID=new ro audit=1\n"), 0o600))
+
+	content, err := afero.ReadFile(fs, "/boot/grub2/grub.cfg")
+	require.NoError(t, err)
+
+	entries, err := LoadGrubEntries(fs, "/boot/grub2/grub.cfg", content)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "Current", entries[0].Title)
+	assert.Equal(t, "UUID=new", entries[0].Parameters["root"])
+}
+
+func TestFindGrubCfgSkipsStub(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/boot/efi/EFI/redhat/grub.cfg",
+		[]byte("search --no-floppy --set prefix --file /grub2/grub.cfg\nconfigfile $prefix/grub.cfg\n"), 0o600))
+	require.NoError(t, afero.WriteFile(fs, "/boot/grub2/grub.cfg",
+		[]byte("menuentry 'Linux' {\n  linux /vmlinuz ro\n}\n"), 0o600))
+
+	assert.Equal(t, "/boot/grub2/grub.cfg", findGrubCfg(fs, grubCfgPaths))
+
+	// With only the stub readable it is still better than reporting nothing.
+	stubOnly := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(stubOnly, "/boot/efi/EFI/redhat/grub.cfg",
+		[]byte("configfile $prefix/grub.cfg\n"), 0o600))
+	assert.Equal(t, "/boot/efi/EFI/redhat/grub.cfg", findGrubCfg(stubOnly, grubCfgPaths))
+}
+
+func TestParseGrubCfgVars(t *testing.T) {
+	t.Run("the kernelopts fallback grub2-mkconfig writes", func(t *testing.T) {
+		// Verbatim from a grub.cfg that grub2-mkconfig generated, comment
+		// included, because the comment is what states why the line is there.
+		cfg := []byte(`# The kernelopts variable should be defined in the grubenv file. But to ensure that menu
+# entries populated from BootLoaderSpec files that use this variable work correctly even
+# without a grubenv file, define a fallback kernelopts variable if this has not been set.
+if [ -z "${kernelopts}" ]; then
+  set kernelopts="root=/dev/vda2 ro rhgb quiet audit=1 "
+fi
+`)
+
+		vars := parseGrubCfgVars(cfg)
+		assert.Equal(t, "root=/dev/vda2 ro rhgb quiet audit=1 ", vars["kernelopts"])
+	})
+
+	t.Run("a commented assignment is not one", func(t *testing.T) {
+		vars := parseGrubCfgVars([]byte("#  set kernelopts=\"audit=0\"\n"))
+		assert.NotContains(t, vars, "kernelopts")
+	})
+
+	t.Run("later assignments win, as GRUB executes them in order", func(t *testing.T) {
+		vars := parseGrubCfgVars([]byte("set kernelopts=\"audit=0\"\nset kernelopts=\"audit=1\"\n"))
+		assert.Equal(t, "audit=1", vars["kernelopts"])
+	})
+
+	t.Run("unquoted and single-quoted values", func(t *testing.T) {
+		vars := parseGrubCfgVars([]byte("set default=saved\nset pager='1'\n"))
+		assert.Equal(t, "saved", vars["default"])
+		assert.Equal(t, "1", vars["pager"])
+	})
+
+	t.Run("a grub.cfg that assigns nothing", func(t *testing.T) {
+		assert.Empty(t, parseGrubCfgVars([]byte("menuentry 'Fedora' {\n  linux /vmlinuz\n}\n")))
+	})
+}
+
+func TestGrubEnvWinsOverTheCfgFallback(t *testing.T) {
+	// GRUB loads the environment block before it reaches the fallback, and the
+	// fallback is guarded by a test for the variable being unset, so a
+	// grubenv that defines kernelopts is what the host boots with.
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/boot/grub2", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/boot/grub2/grubenv",
+		[]byte("# GRUB Environment Block\nkernelopts=root=UUID=env ro audit=1\n"+strings.Repeat("#", 200)), 0o644))
+	require.NoError(t, fs.MkdirAll(blsEntriesDir, 0o755))
+	require.NoError(t, afero.WriteFile(fs, blsEntriesDir+"/fedora.conf",
+		[]byte("title Fedora\nlinux /vmlinuz-6.19.0\noptions $kernelopts\n"), 0o644))
+
+	cfg := []byte("blscfg\nif [ -z \"${kernelopts}\" ]; then\n  set kernelopts=\"root=UUID=cfg ro audit=0\"\nfi\n")
+
+	entries, err := LoadGrubEntries(fs, "/boot/grub2/grub.cfg", cfg)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "root=UUID=env ro audit=1", entries[0].Cmdline)
+	assert.Equal(t, "1", entries[0].Parameters["audit"])
+}

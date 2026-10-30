@@ -1,0 +1,5 @@
+[Unit]
+Description=Getty on %I
+[Install]
+WantedBy=getty.target
+DefaultInstance=tty1

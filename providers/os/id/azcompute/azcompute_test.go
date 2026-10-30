@@ -6,13 +6,17 @@ package azcompute
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
-	"go.mondoo.com/mql/v13/providers/os/detector"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/local"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/detector"
 )
 
 func TestCommandProviderLinux(t *testing.T) {
@@ -21,7 +25,7 @@ func TestCommandProviderLinux(t *testing.T) {
 	platform, ok := detector.DetectOS(conn)
 	require.True(t, ok)
 
-	metadata := commandInstanceMetadata{conn, platform}
+	metadata := commandInstanceMetadata{conn: conn, platform: platform}
 	ident, err := metadata.Identify()
 
 	assert.Nil(t, err)
@@ -44,7 +48,7 @@ func TestCommandProviderWindows(t *testing.T) {
 	platform, ok := detector.DetectOS(conn)
 	require.True(t, ok)
 
-	metadata := commandInstanceMetadata{conn, platform}
+	metadata := commandInstanceMetadata{conn: conn, platform: platform}
 	ident, err := metadata.Identify()
 
 	assert.Nil(t, err)
@@ -67,7 +71,7 @@ func TestCommandProviderLinuxNoLoadbalancerInformation(t *testing.T) {
 	platform, ok := detector.DetectOS(conn)
 	require.True(t, ok)
 
-	metadata := commandInstanceMetadata{conn, platform}
+	metadata := commandInstanceMetadata{conn: conn, platform: platform}
 	ident, err := metadata.Identify()
 
 	assert.Nil(t, err)
@@ -254,4 +258,46 @@ func expectedRawMetadataLoadbalancer() string {
     }
   }
 `
+}
+
+func TestLocalHTTPMetadata(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "true", r.Header.Get("Metadata"))
+		if strings.Contains(r.URL.Path, "/metadata/instance") {
+			_, _ = w.Write([]byte(`{"compute":{"resourceId":"/subscriptions/sub-123/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm","subscriptionId":"sub-123","tags":""}}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	conn := local.NewConnection(0, &inventory.Config{}, &inventory.Asset{})
+	require.Equal(t, "local", string(conn.Type()))
+
+	md := commandInstanceMetadata{
+		conn:        conn,
+		platform:    &inventory.Platform{Name: "windows", Family: []string{"windows"}},
+		imdsBaseURL: srv.URL,
+	}
+	ident, err := md.Identify()
+	require.NoError(t, err)
+	assert.Equal(t, "//platformid.api.mondoo.app/runtime/azure/subscriptions/sub-123/resourcegroups/rg/providers/microsoft.compute/virtualmachines/vm", ident.InstanceID)
+	assert.Equal(t, "//platformid.api.mondoo.app/runtime/azure/subscriptions/sub-123", ident.AccountID)
+}
+
+func TestLocalHTTPMetadataErrorStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("boom"))
+	}))
+	defer srv.Close()
+
+	md := commandInstanceMetadata{
+		conn:        local.NewConnection(0, &inventory.Config{}, &inventory.Asset{}),
+		platform:    &inventory.Platform{Name: "windows", Family: []string{"windows"}},
+		imdsBaseURL: srv.URL,
+	}
+	_, err := md.Identify()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "HTTP 500")
 }

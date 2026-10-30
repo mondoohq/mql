@@ -1,0 +1,32 @@
+{
+  "default": [{ "type": "reject" }],
+  "transports": {
+    "docker": {
+      "registry.example.com/platform": [
+        {
+          "type": "signedBy",
+          "keyType": "GPGKeys",
+          "keyPath": "/etc/pki/containers/platform.gpg",
+          "signedIdentity": { "type": "matchRepoDigestOrExact" }
+        }
+      ],
+      "ghcr.io/example": [
+        {
+          "type": "sigstoreSigned",
+          "fulcio": {
+            "caPath": "/etc/pki/containers/fulcio.pem",
+            "oidcIssuer": "https://token.actions.githubusercontent.com",
+            "subjectEmail": "release@example.com"
+          },
+          "rekorPublicKeyPath": "/etc/pki/containers/rekor.pub",
+          "signedIdentity": { "type": "matchRepository" }
+        }
+      ],
+      "registry.k8s.io": [
+        { "type": "sigstoreSigned", "keyData": "aW5saW5lIHB1YmxpYyBrZXkK" }
+      ],
+      "quay.io/legacy": [{ "type": "insecureAcceptAnything" }]
+    },
+    "docker-daemon": { "": [{ "type": "insecureAcceptAnything" }] }
+  }
+}

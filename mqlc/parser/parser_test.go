@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/logger"
+	"go.mondoo.com/mql/logger"
 )
 
 func init() {
@@ -33,10 +33,6 @@ func TestParser_Lex(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, tests[i].typ, res[0].Type)
 	}
-}
-
-func sPtr(s string) *string {
-	return &s
 }
 
 func vBool(b bool) *Value {
@@ -129,7 +125,7 @@ func TestParser_ParseValues(t *testing.T) {
 		{"'h\\i'", &Expression{Operand: &Operand{Value: vString("h\\i")}}},
 		{"\"hi\"", &Expression{Operand: &Operand{Value: vString("hi")}}},
 		{"\"h\\ni\"", &Expression{Operand: &Operand{Value: vString("h\ni")}}},
-		{"\"h\\i\"", &Expression{Operand: &Operand{Value: vString("hi")}}},
+		{"\"h\\\\i\"", &Expression{Operand: &Operand{Value: vString("h\\i")}}},
 		{"/hi/", &Expression{Operand: &Operand{Value: vRegex("hi")}}},
 		{"[]", &Expression{Operand: &Operand{Value: &Value{Array: []*Expression{}}}}},
 		{"[1]", &Expression{Operand: &Operand{Value: &Value{Array: []*Expression{
@@ -161,9 +157,11 @@ func TestParser_ParseValues(t *testing.T) {
 			Value: vIdent("name"),
 			Calls: []*Call{callIdent("last")},
 		}}},
+		// the `?` guards `name`, the link to its left; see TestParser_OptionalChaining
 		{"name?.last", &Expression{Operand: &Operand{
-			Value: vIdent("name"),
-			Calls: []*Call{callConditionalIdent("last")},
+			Value:              vIdent("name"),
+			ValueIsConditional: true,
+			Calls:              []*Call{callIdent("last")},
 		}}},
 		{"name[1]", &Expression{Operand: &Operand{
 			Value: vIdent("name"),
@@ -320,7 +318,7 @@ func TestParser_Comments(t *testing.T) {
 				Calls: []*Call{
 					{
 						Comments: "2\n3\n",
-						Ident:    sPtr("config"),
+						Ident:    new("config"),
 					},
 				},
 			}},
@@ -362,4 +360,202 @@ func TestParser_Multiline(t *testing.T) {
 			{Operand: &Operand{Value: vInt(2)}},
 		}},
 	})
+}
+
+// TestParser_OptionalChaining pins every position a `?` can occupy. The mark
+// always attaches to the link on its left - the last call, or the root value if
+// there is no call yet - so `?.b`, `?["k"]`, `? { … }` and a trailing `b?` all
+// go through one rule.
+func TestParser_OptionalChaining(t *testing.T) {
+	runParserTests(t, []parserTest{
+		// The mark guards `a`, the link to its left, not `b`.
+		{"a?.b", &Expression{Operand: &Operand{
+			Value:              vIdent("a"),
+			ValueIsConditional: true,
+			Calls:              []*Call{callIdent("b")},
+		}}},
+		// `?` is not sticky: only the marked link is optional, so a null `b` in
+		// `a?.b.c` still errors in strict mode (as it does in JavaScript).
+		{"a?.b.c", &Expression{Operand: &Operand{
+			Value:              vIdent("a"),
+			ValueIsConditional: true,
+			Calls:              []*Call{callIdent("b"), callIdent("c")},
+		}}},
+		{"a?.b?.c", &Expression{Operand: &Operand{
+			Value:              vIdent("a"),
+			ValueIsConditional: true,
+			Calls:              []*Call{callConditionalIdent("b"), callIdent("c")},
+		}}},
+		{"a.b?.c", &Expression{Operand: &Operand{
+			Value: vIdent("a"),
+			Calls: []*Call{callConditionalIdent("b"), callIdent("c")},
+		}}},
+
+		// bracket accessors
+		{"a?['k']", &Expression{Operand: &Operand{
+			Value:              vIdent("a"),
+			ValueIsConditional: true,
+			Calls: []*Call{{
+				Accessor: &Expression{Operand: &Operand{Value: vString("k")}},
+			}},
+		}}},
+		{"a['k']?.c", &Expression{Operand: &Operand{
+			Value: vIdent("a"),
+			Calls: []*Call{
+				{
+					Accessor:      &Expression{Operand: &Operand{Value: vString("k")}},
+					IsConditional: true,
+				},
+				callIdent("c"),
+			},
+		}}},
+
+		// blocks
+		{"a? { b }", &Expression{Operand: &Operand{
+			Value:              vIdent("a"),
+			ValueIsConditional: true,
+			Block: []*Expression{
+				{Operand: &Operand{Value: vIdent("b")}},
+			},
+		}}},
+		{"a { b }", &Expression{Operand: &Operand{
+			Value: vIdent("a"),
+			Block: []*Expression{
+				{Operand: &Operand{Value: vIdent("b")}},
+			},
+		}}},
+
+		// trailing `?`, the only way to mark a terminal lookup optional
+		{"a.b?", &Expression{Operand: &Operand{
+			Value: vIdent("a"),
+			Calls: []*Call{callConditionalIdent("b")},
+		}}},
+		{"a?", &Expression{Operand: &Operand{
+			Value:              vIdent("a"),
+			ValueIsConditional: true,
+		}}},
+	})
+}
+
+// TestParser_OptionalChaining_trailingWithOperator is separate because the
+// expression carries an operation, which runParserTests' single-operand shape
+// cannot express. A trailing `?` used to be swallowed silently here.
+func TestParser_OptionalChaining_trailingWithOperator(t *testing.T) {
+	res, err := Parse(`a.b? == "no"`)
+	require.NoError(t, err)
+	require.Len(t, res.Expressions, 1)
+
+	op := res.Expressions[0].Operand
+	require.NotNil(t, op)
+	require.Len(t, op.Calls, 1)
+	assert.True(t, op.Calls[0].IsConditional, "trailing `?` must survive an operator following it")
+	require.Len(t, res.Expressions[0].Operations, 1)
+	assert.Equal(t, OpEqual, res.Expressions[0].Operations[0].Operator)
+}
+
+// TestParser_StringEscapes pins the escape handling of string literals. Before
+// the lexer learned about escape pairs, `"[^"]*"` ended the literal at the
+// backslash in `\"`, so `"a\"b"` lexed as the string `a\` followed by the
+// identifier `b` and an unterminated quote. The failure surfaced far from its
+// cause ("cannot find resource for identifier 'b'", or a truncated string with
+// no error at all), so every case below is asserted by value.
+func TestParser_StringEscapes(t *testing.T) {
+	tests := []struct {
+		code string
+		res  string
+	}{
+		// the bug: a double quote inside a double-quoted string
+		{`"a\"b"`, `a"b`},
+		{`"\""`, `"`},
+		{`"he said \"hi\""`, `he said "hi"`},
+		// both quote styles in one literal, previously unrepresentable
+		{`"he said \"hi\" to 'me'"`, `he said "hi" to 'me'`},
+		// inline JSON, the shape that found this
+		{`"{\"a\": 1}"`, `{"a": 1}`},
+
+		// escapes that already worked and must keep their values
+		{`"a\nb"`, "a\nb"},
+		{`"a\tb"`, "a\tb"},
+		{`"a\\b"`, `a\b`},
+		{`"\\"`, `\`},
+		{`"tab\there"`, "tab\there"},
+		{`"a\rb"`, "a\rb"},
+		{`"a\vb"`, "a\vb"},
+		{`"a\bb"`, "a\bb"},
+		{`"a\fb"`, "a\fb"},
+		{`"a\0b"`, "a\x00b"},
+		// a quote of the other style may be escaped or not
+		{`"a\'b"`, `a'b`},
+		{`"a'b"`, `a'b`},
+		// JSON escapes the forward slash, so we accept it
+		{`"a\/b"`, `a/b`},
+		{`""`, ``},
+
+		// single-quoted strings are raw, backslash included, so a Windows or
+		// registry path survives verbatim even when it ends in a separator
+		{`'h\ni'`, `h\ni`},
+		{`'h\i'`, `h\i`},
+		{`'a\\b'`, `a\\b`},
+		{`'HKEY\Providers\'`, `HKEY\Providers\`},
+		{`'C:\path\'`, `C:\path\`},
+		{`''`, ``},
+	}
+
+	for i := range tests {
+		test := tests[i]
+		t.Run(test.code, func(t *testing.T) {
+			res, err := Parse(test.code)
+			require.NoError(t, err)
+			require.Len(t, res.Expressions, 1, "the literal must consume the whole source")
+
+			op := res.Expressions[0].Operand
+			require.NotNil(t, op)
+			require.Empty(t, op.Calls, "a bare literal must not pick up trailing calls")
+			require.NotNil(t, op.Value.String, "must parse as a string, not another value type")
+			assert.Equal(t, test.res, *op.Value.String)
+		})
+	}
+}
+
+// TestParser_StringEscapes_invalid rejects a double-quoted literal carrying an
+// escape sequence we do not define. It used to collapse to its second character,
+// so `"C:\Users\dom"` silently became `C:Usersdom` and `"\d+"` became `d+`: a
+// wrong value with no error anywhere. Single-quoted strings are raw and keep
+// taking any backslash.
+func TestParser_StringEscapes_invalid(t *testing.T) {
+	for _, code := range []string{`"C:\Users"`, `"\d+"`, `"a\qb"`, `"\x41"`, `"\u00e9"`, `{"a\zb": 1}`} {
+		t.Run(code, func(t *testing.T) {
+			_, err := Parse(code)
+			require.Error(t, err, "an invalid escape sequence must not parse")
+			assert.Contains(t, err.Error(), "invalid escape sequence")
+		})
+	}
+}
+
+// TestParser_StringEscapes_unterminated rejects a double-quoted literal whose
+// closing quote is consumed by a trailing backslash. `"a\"` used to lex as the
+// string `a\`; now the backslash escapes the closing quote and the literal is
+// unterminated, which is a deliberate tightening. Single-quoted literals are
+// raw, so `'a\'` still closes and keeps its backslash.
+func TestParser_StringEscapes_unterminated(t *testing.T) {
+	for _, code := range []string{`"a\"`, `"\"`} {
+		t.Run(code, func(t *testing.T) {
+			_, err := Parse(code)
+			assert.Error(t, err, "an unterminated string literal must not parse")
+		})
+	}
+}
+
+// TestParser_LexStringEscapes checks that an escaped quote stays inside one
+// String token instead of splitting the source into three.
+func TestParser_LexStringEscapes(t *testing.T) {
+	for _, code := range []string{`"a\"b"`, `"a\\"`} {
+		t.Run(code, func(t *testing.T) {
+			res, err := Lex(code)
+			require.NoError(t, err)
+			require.Len(t, res, 1, "the whole literal must be a single token")
+			assert.Equal(t, String, res[0].Type)
+			assert.Equal(t, code, res[0].Value)
+		})
+	}
 }

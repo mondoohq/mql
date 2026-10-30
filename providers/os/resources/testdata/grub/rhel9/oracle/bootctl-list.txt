@@ -1,0 +1,11 @@
+/boot/loader/entries/ffffffffffffffffffffffffffffffff-5.14.0-570.132.1.el9_6.x86_64.conf:7: Unknown line 'grub_users', ignoring.
+/boot/loader/entries/ffffffffffffffffffffffffffffffff-5.14.0-570.132.1.el9_6.x86_64.conf:8: Unknown line 'grub_arg', ignoring.
+/boot/loader/entries/ffffffffffffffffffffffffffffffff-5.14.0-570.132.1.el9_6.x86_64.conf:9: Unknown line 'grub_class', ignoring.
+         type: Boot Loader Specification Type #1 (.conf)
+        title: Red Hat Enterprise Linux (5.14.0-570.132.1.el9_6.x86_64) 9.6 (Plow) (default) (not reported/new)
+           id: ffffffffffffffffffffffffffffffff-5.14.0-570.132.1.el9_6.x86_64.conf
+       source: /boot/loader/entries/ffffffffffffffffffffffffffffffff-5.14.0-570.132.1.el9_6.x86_64.conf
+      version: 5.14.0-570.132.1.el9_6.x86_64
+        linux: /vmlinuz-5.14.0-570.132.1.el9_6.x86_64
+       initrd: /initramfs-5.14.0-570.132.1.el9_6.x86_64.img $tuned_initrd (No such file or directory)
+      options: root=UUID=5da98801-61e5-49f2-9ca0-1463d179610a console=tty0 console=ttyS0,115200n8 net.ifnames=0 nvme_core.io_timeout=4294967295 crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M $tuned_params

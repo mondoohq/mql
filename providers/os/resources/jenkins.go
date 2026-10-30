@@ -8,11 +8,11 @@ import (
 	"sync"
 
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/jenkins"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/languages/jenkins"
+	"go.mondoo.com/mql/types"
 )
 
 // defaultJenkinsPluginPaths are searched for Jenkins plugin files.
@@ -106,13 +106,13 @@ func (r *mqlJenkinsPackages) gatherData() error {
 		}
 
 		mqlPkg, err := CreateResource(r.MqlRuntime, "jenkins.package", map[string]*llx.RawData{
-			"__id":         llx.StringData("jenkins.package/" + p.Name + "@" + p.Version),
+			"__id":         llx.StringData(jenkinsPackageID(p)),
 			"name":         llx.StringData(p.Name),
 			"version":      llx.StringData(p.Version),
 			"purl":         llx.StringData(jenkins.NewPackageUrl(p.Name, p.Version)),
 			"longName":     llx.StringData(p.LongName),
 			"url":          llx.StringData(p.Url),
-			"dependencies": llx.ArrayData(deps, "string"),
+			"dependencies": llx.ArrayData(deps, types.String),
 			"files":        llx.ArrayData(mqlFiles, types.Resource("pkgFileInfo")),
 		})
 		if err != nil {
@@ -145,4 +145,12 @@ func (r *mqlJenkinsPackages) list() ([]any, error) {
 
 func (r *mqlJenkinsPackages) files() ([]any, error) {
 	return nil, r.gatherData()
+}
+
+// jenkinsPackageID is the cache key of one jenkins.package. Two plugin
+// directories can hold the same plugin at the same version, so the plugin file
+// is part of the key; without it, a scan of the second directory returned the
+// first directory's resource and its files.
+func jenkinsPackageID(p jenkins.JenkinsPlugin) string {
+	return "jenkins.package/" + p.Name + "@" + p.Version + ":" + p.FilePath
 }

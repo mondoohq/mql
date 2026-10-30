@@ -12,12 +12,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/pipes"
 	pipes_types "github.com/aws/aws-sdk-go-v2/service/pipes/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsEventbridge) pipes() ([]any, error) {
@@ -286,9 +286,22 @@ func pipeResolveArn(runtime *plugin.Runtime, arnVal string) (plugin.Resource, er
 	case strings.HasPrefix(arnVal, "arn:aws:logs:") && strings.Contains(arnVal, ":log-group:"):
 		return NewResource(runtime, "aws.cloudwatch.loggroup", map[string]*llx.RawData{"arn": llx.StringData(arnVal)})
 	case strings.HasPrefix(arnVal, "arn:aws:events:") && strings.Contains(arnVal, ":event-bus/"):
-		return NewResource(runtime, "aws.eventbridge.eventBus", map[string]*llx.RawData{"arn": llx.StringData(arnVal)})
+		// aws.eventbridge.eventBus has neither an id() method nor an init, so
+		// without an explicit "__id" every bus reached this way lands on the
+		// empty cache key and each pipe reports the first pipe's bus. The ARN is
+		// the key the collection path stores under, so this also resolves to the
+		// fully populated bus instead of one carrying nothing but its ARN.
+		return NewResource(runtime, "aws.eventbridge.eventBus", map[string]*llx.RawData{
+			"__id": llx.StringData(arnVal),
+			"arn":  llx.StringData(arnVal),
+		})
 	case strings.HasPrefix(arnVal, "arn:aws:batch:") && strings.Contains(arnVal, ":job-queue/"):
-		return NewResource(runtime, "aws.batch.jobQueue", map[string]*llx.RawData{"arn": llx.StringData(arnVal)})
+		// Same for aws.batch.jobQueue. aws.batch.job.jobQueue() already keys on
+		// the ARN for exactly this reason.
+		return NewResource(runtime, "aws.batch.jobQueue", map[string]*llx.RawData{
+			"__id": llx.StringData(arnVal),
+			"arn":  llx.StringData(arnVal),
+		})
 	case strings.HasPrefix(arnVal, "arn:aws:redshift:"):
 		return NewResource(runtime, "aws.redshift.cluster", map[string]*llx.RawData{"arn": llx.StringData(arnVal)})
 	case strings.HasPrefix(arnVal, "arn:aws:ecs:") && strings.Contains(arnVal, ":task-definition/"):

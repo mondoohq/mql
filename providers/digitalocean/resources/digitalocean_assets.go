@@ -6,11 +6,15 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
+	"sync"
 
 	"github.com/digitalocean/godo"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/digitalocean/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/digitalocean/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // This file holds the shared resource arg-builders and the singular
@@ -24,12 +28,12 @@ import (
 
 // databaseArgs maps a managed database cluster to its MQL fields.
 func databaseArgs(db *godo.Database) map[string]*llx.RawData {
-	tags := make([]interface{}, len(db.Tags))
+	tags := make([]any, len(db.Tags))
 	for i, t := range db.Tags {
 		tags[i] = t
 	}
 
-	mw := map[string]interface{}{}
+	mw := map[string]any{}
 	if db.MaintenanceWindow != nil {
 		mw["day"] = db.MaintenanceWindow.Day
 		mw["hour"] = db.MaintenanceWindow.Hour
@@ -49,12 +53,32 @@ func databaseArgs(db *godo.Database) map[string]*llx.RawData {
 	}
 	privConnHost := ""
 	privConnPort := int64(0)
+	// A cluster with no private endpoint has no TLS setting to report, so
+	// the flag stays null instead of claiming the VPC endpoint accepts
+	// plaintext.
+	var privConnSslEnabled *bool
 	if db.PrivateConnection != nil {
 		privConnHost = db.PrivateConnection.Host
 		privConnPort = int64(db.PrivateConnection.Port)
+		ssl := db.PrivateConnection.SSL
+		privConnSslEnabled = &ssl
 	}
 
-	dbNames := make([]interface{}, len(db.DBNames))
+	// OpenSearch clusters publish a Dashboards endpoint beside the API
+	// endpoint. Its URI embeds the admin password like the others, so only
+	// host, port and TLS are read. A cluster without one reports no TLS
+	// setting rather than a plaintext endpoint.
+	dashHost := ""
+	dashPort := int64(0)
+	var dashSslEnabled *bool
+	if db.UIConnection != nil {
+		dashHost = db.UIConnection.Host
+		dashPort = int64(db.UIConnection.Port)
+		ssl := db.UIConnection.SSL
+		dashSslEnabled = &ssl
+	}
+
+	dbNames := make([]any, len(db.DBNames))
 	for i, n := range db.DBNames {
 		dbNames[i] = n
 	}
@@ -86,14 +110,14 @@ func databaseArgs(db *godo.Database) map[string]*llx.RawData {
 		}
 	}
 
-	var serviceCnames []interface{}
+	var serviceCnames []any
 	if db.DOSettings != nil {
 		serviceCnames = toStringSlice(db.DOSettings.ServiceCnames)
 	}
 
-	metricsEndpoints := make([]interface{}, len(db.MetricsEndpoints))
+	metricsEndpoints := make([]any, len(db.MetricsEndpoints))
 	for i, ep := range db.MetricsEndpoints {
-		metricsEndpoints[i] = map[string]interface{}{
+		metricsEndpoints[i] = map[string]any{
 			"host": ep.Host,
 			"port": float64(ep.Port),
 		}
@@ -120,6 +144,7 @@ func databaseArgs(db *godo.Database) map[string]*llx.RawData {
 		"connectionSslEnabled":             llx.BoolData(connSslEnabled),
 		"privateConnectionHost":            llx.StringData(privConnHost),
 		"privateConnectionPort":            llx.IntData(privConnPort),
+		"privateConnectionSslEnabled":      llx.BoolDataPtr(privConnSslEnabled),
 		"storageAutoscaleEnabled":          llx.BoolData(storageAutoscaleEnabled),
 		"storageAutoscaleThresholdPercent": llx.IntDataPtr(storageThreshold),
 		"storageAutoscaleIncrementGib":     llx.IntDataPtr(storageIncrement),
@@ -129,6 +154,9 @@ func databaseArgs(db *godo.Database) map[string]*llx.RawData {
 		"standbyConnectionPort":            llx.IntData(standbyPort),
 		"standbyPrivateConnectionHost":     llx.StringData(standbyPrivHost),
 		"standbyPrivateConnectionPort":     llx.IntData(standbyPrivPort),
+		"dashboardConnectionHost":          llx.StringData(dashHost),
+		"dashboardConnectionPort":          llx.IntData(dashPort),
+		"dashboardConnectionSslEnabled":    llx.BoolDataPtr(dashSslEnabled),
 	}
 }
 
@@ -148,61 +176,84 @@ func initDigitaloceanDatabase(runtime *plugin.Runtime, args map[string]*llx.RawD
 	if err != nil {
 		return nil, nil, err
 	}
+	// godo returns the decoded root's field directly, so a 200 whose body
+	// carries no database yields a nil object with a nil error.
+	if db == nil {
+		return nil, nil, fmt.Errorf("digitalocean.database with id %q not found", id)
+	}
 	return databaseArgs(db), nil, nil
 }
 
 // firewallArgs maps a cloud firewall to its MQL fields.
-func firewallArgs(fw *godo.Firewall) map[string]*llx.RawData {
-	inbound := make([]interface{}, len(fw.InboundRules))
-	for i, rule := range fw.InboundRules {
-		m := map[string]interface{}{
-			"protocol": rule.Protocol,
-			"ports":    rule.PortRange,
-		}
-		if rule.Sources != nil {
-			m["sourceAddresses"] = toStringSlice(rule.Sources.Addresses)
-			m["sourceDropletIds"] = toIntSlice(rule.Sources.DropletIDs)
-			m["sourceLoadBalancerUids"] = toStringSlice(rule.Sources.LoadBalancerUIDs)
-			m["sourceKubernetesIds"] = toStringSlice(rule.Sources.KubernetesIDs)
-			m["sourceTags"] = toStringSlice(rule.Sources.Tags)
-		}
-		inbound[i] = m
-	}
-	outbound := make([]interface{}, len(fw.OutboundRules))
-	for i, rule := range fw.OutboundRules {
-		m := map[string]interface{}{
-			"protocol": rule.Protocol,
-			"ports":    rule.PortRange,
-		}
-		if rule.Destinations != nil {
-			m["destinationAddresses"] = toStringSlice(rule.Destinations.Addresses)
-			m["destinationDropletIds"] = toIntSlice(rule.Destinations.DropletIDs)
-			m["destinationLoadBalancerUids"] = toStringSlice(rule.Destinations.LoadBalancerUIDs)
-			m["destinationKubernetesIds"] = toStringSlice(rule.Destinations.KubernetesIDs)
-			m["destinationTags"] = toStringSlice(rule.Destinations.Tags)
-		}
-		outbound[i] = m
-	}
-
-	dropletIds := make([]interface{}, len(fw.DropletIDs))
-	for i, id := range fw.DropletIDs {
-		dropletIds[i] = int64(id)
-	}
-	tags := make([]interface{}, len(fw.Tags))
+//
+// It takes the runtime because a firewall's pending changes are modeled as
+// resources rather than raw values. Building them here keeps the lister and
+// initDigitaloceanFirewall on a single path, so the field cannot end up
+// populated when a firewall is reached one way and empty when it is reached
+// the other.
+func firewallArgs(runtime *plugin.Runtime, fw *godo.Firewall) (map[string]*llx.RawData, error) {
+	tags := make([]any, len(fw.Tags))
 	for i, t := range fw.Tags {
 		tags[i] = t
 	}
 
-	return map[string]*llx.RawData{
-		"id":            llx.StringData(fw.ID),
-		"name":          llx.StringData(fw.Name),
-		"status":        llx.StringData(fw.Status),
-		"createdAt":     llx.TimeDataPtr(parseDoTime(fw.Created)),
-		"inboundRules":  llx.ArrayData(inbound, "\x13"),
-		"outboundRules": llx.ArrayData(outbound, "\x13"),
-		"dropletIds":    llx.ArrayData(dropletIds, "\x05"),
-		"tags":          llx.ArrayData(tags, "\x02"),
+	pending, err := firewallPendingChanges(runtime, fw)
+	if err != nil {
+		return nil, err
 	}
+
+	return map[string]*llx.RawData{
+		"id":             llx.StringData(fw.ID),
+		"name":           llx.StringData(fw.Name),
+		"status":         llx.StringData(fw.Status),
+		"createdAt":      llx.TimeDataPtr(parseDoTime(fw.Created)),
+		"tags":           llx.ArrayData(tags, "\x02"),
+		"pendingChanges": llx.ArrayData(pending, types.Resource("digitalocean.firewall.pendingChange")),
+	}, nil
+}
+
+// newMqlFirewall builds a firewall resource, caching the raw rule set and
+// protected droplet IDs for the typed ingressRules(), egressRules(), and
+// droplets() accessors.
+func newMqlFirewall(runtime *plugin.Runtime, fw *godo.Firewall) (*mqlDigitaloceanFirewall, error) {
+	args, err := firewallArgs(runtime, fw)
+	if err != nil {
+		return nil, err
+	}
+	res, err := CreateResource(runtime, "digitalocean.firewall", args)
+	if err != nil {
+		return nil, err
+	}
+	mqlFirewall := res.(*mqlDigitaloceanFirewall)
+	mqlFirewall.cacheInboundRules = fw.InboundRules
+	mqlFirewall.cacheOutboundRules = fw.OutboundRules
+	mqlFirewall.cacheDropletIDs = toIntSlice(fw.DropletIDs)
+	return mqlFirewall, nil
+}
+
+// firewallPendingChanges builds the per-droplet changes a firewall has not
+// finished applying. The droplet id is kept on the resource rather than
+// exposed as a field: it is the cache key's distinguishing part and resolves
+// to a droplet through the typed accessor.
+func firewallPendingChanges(runtime *plugin.Runtime, fw *godo.Firewall) ([]any, error) {
+	changes := make([]any, 0, len(fw.PendingChanges))
+	for _, pc := range fw.PendingChanges {
+		id, err := resourceID("digitalocean.firewall.pendingChange", fw.ID, strconv.Itoa(pc.DropletID))
+		if err != nil {
+			return nil, err
+		}
+		res, err := CreateResource(runtime, "digitalocean.firewall.pendingChange", map[string]*llx.RawData{
+			"__id":     llx.StringData(id),
+			"removing": llx.BoolData(pc.Removing),
+			"status":   llx.StringData(pc.Status),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res.(*mqlDigitaloceanFirewallPendingChange).cacheDropletID = int64(pc.DropletID)
+		changes = append(changes, res)
+	}
+	return changes, nil
 }
 
 func initDigitaloceanFirewall(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -221,33 +272,28 @@ func initDigitaloceanFirewall(runtime *plugin.Runtime, args map[string]*llx.RawD
 	if err != nil {
 		return nil, nil, err
 	}
-	return firewallArgs(fw), nil, nil
+	// godo returns the decoded root's field directly, so a 200 whose body
+	// carries no firewall yields a nil object with a nil error. Building the
+	// resource from it dereferences nil and panics the provider, which takes
+	// down the whole scan rather than this one resource.
+	if fw == nil {
+		return nil, nil, fmt.Errorf("digitalocean.firewall with id %q not found", id)
+	}
+	res, err := newMqlFirewall(runtime, fw)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, res, nil
 }
 
 // loadBalancerArgs maps a load balancer to its MQL fields.
 func loadBalancerArgs(lb *godo.LoadBalancer) map[string]*llx.RawData {
-	dropletIds := make([]interface{}, len(lb.DropletIDs))
-	for i, id := range lb.DropletIDs {
-		dropletIds[i] = int64(id)
-	}
-	tags := make([]interface{}, len(lb.Tags))
+	tags := make([]any, len(lb.Tags))
 	for i, t := range lb.Tags {
 		tags[i] = t
 	}
 
-	fwdRules := make([]interface{}, len(lb.ForwardingRules))
-	for i, rule := range lb.ForwardingRules {
-		fwdRules[i] = map[string]interface{}{
-			"entryProtocol":  rule.EntryProtocol,
-			"entryPort":      float64(rule.EntryPort),
-			"targetProtocol": rule.TargetProtocol,
-			"targetPort":     float64(rule.TargetPort),
-			"certificateId":  rule.CertificateID,
-			"tlsPassthrough": rule.TlsPassthrough,
-		}
-	}
-
-	hc := map[string]interface{}{}
+	hc := map[string]any{}
 	if lb.HealthCheck != nil {
 		hc["protocol"] = lb.HealthCheck.Protocol
 		hc["port"] = float64(lb.HealthCheck.Port)
@@ -258,7 +304,7 @@ func loadBalancerArgs(lb *godo.LoadBalancer) map[string]*llx.RawData {
 		hc["healthyThreshold"] = float64(lb.HealthCheck.HealthyThreshold)
 	}
 
-	ss := map[string]interface{}{}
+	ss := map[string]any{}
 	if lb.StickySessions != nil {
 		ss["type"] = lb.StickySessions.Type
 		ss["cookieName"] = lb.StickySessions.CookieName
@@ -270,15 +316,15 @@ func loadBalancerArgs(lb *godo.LoadBalancer) map[string]*llx.RawData {
 		lbRegion = lb.Region.Slug
 	}
 
-	var firewallAllow, firewallDeny []interface{}
+	var firewallAllow, firewallDeny []any
 	if lb.Firewall != nil {
 		firewallAllow = toStringSlice(lb.Firewall.Allow)
 		firewallDeny = toStringSlice(lb.Firewall.Deny)
 	}
 
-	domains := make([]interface{}, len(lb.Domains))
+	domains := make([]any, len(lb.Domains))
 	for i, d := range lb.Domains {
-		domains[i] = map[string]interface{}{
+		domains[i] = map[string]any{
 			"name":          d.Name,
 			"isManaged":     d.IsManaged,
 			"certificateId": d.CertificateID,
@@ -286,9 +332,9 @@ func loadBalancerArgs(lb *godo.LoadBalancer) map[string]*llx.RawData {
 		}
 	}
 
-	var glb map[string]interface{}
+	var glb map[string]any
 	if lb.GLBSettings != nil {
-		glb = map[string]interface{}{
+		glb = map[string]any{
 			"targetProtocol": lb.GLBSettings.TargetProtocol,
 			"targetPort":     float64(lb.GLBSettings.TargetPort),
 		}
@@ -314,10 +360,7 @@ func loadBalancerArgs(lb *godo.LoadBalancer) map[string]*llx.RawData {
 		"redirectHttpToHttps":          llx.BoolData(lb.RedirectHttpToHttps),
 		"enableProxyProtocol":          llx.BoolData(lb.EnableProxyProtocol),
 		"enableBackendKeepalive":       llx.BoolData(lb.EnableBackendKeepalive),
-		"vpcUuid":                      llx.StringData(lb.VPCUUID),
-		"dropletIds":                   llx.ArrayData(dropletIds, "\x05"),
 		"tags":                         llx.ArrayData(tags, "\x02"),
-		"forwardingRules":              llx.ArrayData(fwdRules, "\x13"),
 		"healthCheck":                  llx.DictData(hc),
 		"stickySessions":               llx.DictData(ss),
 		"disableLetsEncryptDnsRecords": llx.BoolDataPtr(lb.DisableLetsEncryptDNSRecords),
@@ -353,17 +396,42 @@ func initDigitaloceanLoadBalancer(runtime *plugin.Runtime, args map[string]*llx.
 	if err != nil {
 		return nil, nil, err
 	}
-	return loadBalancerArgs(lb), nil, nil
+	// A nil object alongside a nil error, as above: report it as not found
+	// rather than dereferencing it in the arg builder.
+	if lb == nil {
+		return nil, nil, fmt.Errorf("digitalocean.loadBalancer with id %q not found", id)
+	}
+	res, err := newMqlLoadBalancer(runtime, lb)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, res, nil
+}
+
+// newMqlLoadBalancer builds a load balancer resource, caching the VPC UUID,
+// attached droplet IDs, and regional target IDs for the typed vpc(),
+// droplets(), and targetLoadBalancers() accessors.
+func newMqlLoadBalancer(runtime *plugin.Runtime, lb *godo.LoadBalancer) (*mqlDigitaloceanLoadBalancer, error) {
+	res, err := CreateResource(runtime, "digitalocean.loadBalancer", loadBalancerArgs(lb))
+	if err != nil {
+		return nil, err
+	}
+	mqlLB := res.(*mqlDigitaloceanLoadBalancer)
+	mqlLB.cacheVPCUUID = lb.VPCUUID
+	mqlLB.cacheDropletIDs = toIntSlice(lb.DropletIDs)
+	mqlLB.cacheTargetLoadBalancerIDs = lb.TargetLoadBalancerIDs
+	mqlLB.cacheForwardingRules = lb.ForwardingRules
+	return mqlLB, nil
 }
 
 // kubernetesClusterArgs maps a DOKS cluster to its MQL fields.
 func kubernetesClusterArgs(c *godo.KubernetesCluster) map[string]*llx.RawData {
-	tags := make([]interface{}, len(c.Tags))
+	tags := make([]any, len(c.Tags))
 	for i, t := range c.Tags {
 		tags[i] = t
 	}
 
-	mp := map[string]interface{}{}
+	mp := map[string]any{}
 	if c.MaintenancePolicy != nil {
 		mp["startTime"] = c.MaintenancePolicy.StartTime
 		mp["day"] = float64(c.MaintenancePolicy.Day)
@@ -387,14 +455,17 @@ func kubernetesClusterArgs(c *godo.KubernetesCluster) map[string]*llx.RawData {
 	}
 
 	var cpFirewallEnabled *bool
-	var cpFirewallAllowed []interface{}
+	var cpFirewallAllowed []any
 	if c.ControlPlaneFirewall != nil {
 		cpFirewallEnabled = c.ControlPlaneFirewall.Enabled
 		cpFirewallAllowed = toStringSlice(c.ControlPlaneFirewall.AllowedAddresses)
 	}
 
 	var routingAgentEnabled, amdGpuEnabled, amdGpuMetricsEnabled *bool
-	var nvidiaGpuEnabled, rdmaEnabled, corednsAutoscalerEnabled *bool
+	var nvidiaGpuEnabled, rdmaEnabled, corednsAutoscalerEnabled, p2pOciRegistryEnabled *bool
+	if c.P2pOciRegistryPlugin != nil {
+		p2pOciRegistryEnabled = c.P2pOciRegistryPlugin.Enabled
+	}
 	if c.RoutingAgent != nil {
 		routingAgentEnabled = c.RoutingAgent.Enabled
 	}
@@ -414,6 +485,20 @@ func kubernetesClusterArgs(c *godo.KubernetesCluster) map[string]*llx.RawData {
 		corednsAutoscalerEnabled = c.CorednsAutoscaler.Enabled
 	}
 
+	autoscaler := map[string]any{}
+	if c.ClusterAutoscalerConfiguration != nil {
+		ca := c.ClusterAutoscalerConfiguration
+		if ca.ScaleDownUtilizationThreshold != nil {
+			autoscaler["scaleDownUtilizationThreshold"] = *ca.ScaleDownUtilizationThreshold
+		}
+		if ca.ScaleDownUnneededTime != nil {
+			autoscaler["scaleDownUnneededTime"] = *ca.ScaleDownUnneededTime
+		}
+		if len(ca.Expanders) > 0 {
+			autoscaler["expanders"] = toStringSlice(ca.Expanders)
+		}
+	}
+
 	return map[string]*llx.RawData{
 		"id":                                   llx.StringData(c.ID),
 		"name":                                 llx.StringData(c.Name),
@@ -424,7 +509,6 @@ func kubernetesClusterArgs(c *godo.KubernetesCluster) map[string]*llx.RawData {
 		"updatedAt":                            llx.TimeData(c.UpdatedAt),
 		"clusterSubnet":                        llx.StringData(c.ClusterSubnet),
 		"serviceSubnet":                        llx.StringData(c.ServiceSubnet),
-		"vpcUuid":                              llx.StringData(c.VPCUUID),
 		"autoUpgrade":                          llx.BoolData(c.AutoUpgrade),
 		"surgeUpgrade":                         llx.BoolData(c.SurgeUpgrade),
 		"ha":                                   llx.BoolData(c.HA),
@@ -446,7 +530,33 @@ func kubernetesClusterArgs(c *godo.KubernetesCluster) map[string]*llx.RawData {
 		"nvidiaGpuDevicePluginEnabled":             llx.BoolDataPtr(nvidiaGpuEnabled),
 		"rdmaSharedDevicePluginEnabled":            llx.BoolDataPtr(rdmaEnabled),
 		"corednsAutoscalerEnabled":                 llx.BoolDataPtr(corednsAutoscalerEnabled),
+		"p2pOciRegistryEnabled":                    llx.BoolDataPtr(p2pOciRegistryEnabled),
+		"workerSubnetUuid":                         llx.StringData(c.WorkerSubnetUUID),
+		"isolatedWorkers":                          llx.BoolData(c.IsolatedWorkers),
+		"clusterAutoscaler":                        llx.DictData(autoscaler),
 	}
+}
+
+// availableUpgradeVersions lists the Kubernetes versions the cluster can
+// currently upgrade to. An empty list means the cluster is already on the
+// newest version DigitalOcean offers for it.
+func (r *mqlDigitaloceanKubernetesCluster) availableUpgradeVersions() ([]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
+	upgrades, _, err := conn.Client().Kubernetes.GetUpgrades(context.Background(), r.Id.Data)
+	if err != nil {
+		if isDoNotFound(err) {
+			return []any{}, nil
+		}
+		return nil, err
+	}
+	out := make([]any, 0, len(upgrades))
+	for _, u := range upgrades {
+		if u == nil {
+			continue
+		}
+		out = append(out, u.Slug)
+	}
+	return out, nil
 }
 
 func initDigitaloceanKubernetesCluster(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -465,7 +575,46 @@ func initDigitaloceanKubernetesCluster(runtime *plugin.Runtime, args map[string]
 	if err != nil {
 		return nil, nil, err
 	}
-	return kubernetesClusterArgs(c), nil, nil
+	// A nil object alongside a nil error, as above.
+	if c == nil {
+		return nil, nil, fmt.Errorf("digitalocean.kubernetes.cluster with id %q not found", id)
+	}
+	res, err := newMqlKubernetesCluster(runtime, c)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, res, nil
+}
+
+// mqlDigitaloceanKubernetesClusterInternal caches the UUID of the VPC the
+// cluster is attached to so the typed vpc() accessor can resolve it without
+// a refetch.
+type mqlDigitaloceanKubernetesClusterInternal struct {
+	cacheVPCUUID string
+
+	// The kubeconfig identity costs its own API call and feeds two fields,
+	// so it is fetched at most once per cluster.
+	clusterUserOnce  sync.Once
+	clusterUserValue *godo.KubernetesClusterUser
+	clusterUserErr   error
+
+	// The most recent clusterlint run feeds lintCompletedAt and
+	// lintDiagnostics, so it is read at most once per cluster.
+	clusterlintOnce  sync.Once
+	clusterlintValue *clusterlintResults
+	clusterlintErr   error
+}
+
+// newMqlKubernetesCluster builds a DOKS cluster resource, caching the VPC
+// UUID for the typed vpc() accessor.
+func newMqlKubernetesCluster(runtime *plugin.Runtime, c *godo.KubernetesCluster) (*mqlDigitaloceanKubernetesCluster, error) {
+	res, err := CreateResource(runtime, "digitalocean.kubernetes.cluster", kubernetesClusterArgs(c))
+	if err != nil {
+		return nil, err
+	}
+	mqlCluster := res.(*mqlDigitaloceanKubernetesCluster)
+	mqlCluster.cacheVPCUUID = c.VPCUUID
+	return mqlCluster, nil
 }
 
 // stringArg returns the string value of args[key], or "" when absent.

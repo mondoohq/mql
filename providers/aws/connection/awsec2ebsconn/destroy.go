@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/rs/zerolog/log"
-	awsec2ebstypes "go.mondoo.com/mql/v13/providers/aws/connection/awsec2ebsconn/types"
+	awsec2ebstypes "go.mondoo.com/mql/providers/aws/connection/awsec2ebsconn/types"
 )
 
 func (c *AwsEbsConnection) DetachVolumeFromInstance(ctx context.Context, volume *awsec2ebstypes.VolumeInfo) error {

@@ -6,13 +6,13 @@ import (
 	"context"
 	"fmt"
 
-	cloudflare "github.com/cloudflare/cloudflare-go/v6"
-	"github.com/cloudflare/cloudflare-go/v6/custom_certificates"
-	"github.com/cloudflare/cloudflare-go/v6/origin_ca_certificates"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/cloudflare/connection"
-	"go.mondoo.com/mql/v13/types"
+	cloudflare "github.com/cloudflare/cloudflare-go/v7"
+	"github.com/cloudflare/cloudflare-go/v7/custom_certificates"
+	"github.com/cloudflare/cloudflare-go/v7/origin_ca_certificates"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/cloudflare/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (c *mqlCloudflareZoneCustomCertificate) id() (string, error) {
@@ -46,9 +46,9 @@ func (c *mqlCloudflareZone) customCertificates() ([]any, error) {
 			"signature":    llx.StringData(cert.Signature),
 			"status":       llx.StringData(string(cert.Status)),
 			"bundleMethod": llx.StringData(string(cert.BundleMethod)),
-			"expiresAt":    llx.TimeData(cert.ExpiresOn),
-			"uploadedAt":   llx.TimeData(cert.UploadedOn),
-			"modifiedAt":   llx.TimeData(cert.ModifiedOn),
+			"expiresAt":    timeOrNil(cert.ExpiresOn),
+			"uploadedAt":   timeOrNil(cert.UploadedOn),
+			"modifiedAt":   timeOrNil(cert.ModifiedOn),
 			"priority":     llx.IntData(int64(cert.Priority)),
 		})
 		if err != nil {
@@ -66,7 +66,7 @@ func (c *mqlCloudflareZone) customCertificates() ([]any, error) {
 
 // certificatePack mirrors a zone SSL certificate-pack list entry. We read the
 // endpoint via the client's generic Get with `status=all` so pending/expired
-// packs are included (matching the v0 behavior); the cloudflare-go v6 typed
+// packs are included (matching the v0 behavior); the cloudflare-go typed
 // list does not expose that filter.
 type certificatePack struct {
 	ID                   string   `json:"id"`
@@ -83,7 +83,7 @@ func (c *mqlCloudflareZone) certificatePacks() ([]any, error) {
 
 	packs, err := cfGetPaged[certificatePack](conn, fmt.Sprintf("zones/%s/ssl/certificate_packs?status=all", c.Id.Data))
 	if err != nil {
-		return nil, err
+		return degradedList(err)
 	}
 
 	var result []any
@@ -132,7 +132,7 @@ func (c *mqlCloudflareZone) originCACertificates() ([]any, error) {
 			"requestType":     llx.StringData(string(cert.RequestType)),
 			"requestValidity": llx.IntData(int64(cert.RequestedValidity)),
 			"expiresAt":       timeOrNil(parseRFC3339(cert.ExpiresOn)),
-			// cloudflare-go v6's origin CA certificate list response no longer
+			// cloudflare-go's origin CA certificate list response no longer
 			// exposes a revocation timestamp, so this field is always null.
 			"revokedAt": llx.NilData,
 		})

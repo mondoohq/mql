@@ -1,0 +1,17 @@
+auth        required      pam_env.so
+auth        required      pam_faillock.so preauth silent
+auth        sufficient    pam_fprintd.so
+auth        sufficient    pam_unix.so nullok try_first_pass
+auth        sufficient    pam_unix.so sha512 shadow
+auth        required      pam_faillock.so authfail
+auth        optional      pam_echo.so none
+auth        optional      pam_echo.so right
+auth        optional      pam_echo.so double
+# comment kept
+
+account     required      pam_faillock.so
+account     required      pam_unix.so
+password    requisite     pam_pwhistory.so remember=24 use_authtok
+session     optional      pam_echo.so
+
+

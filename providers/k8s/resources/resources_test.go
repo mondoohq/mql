@@ -11,13 +11,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/manifest"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared"
-	sharedres "go.mondoo.com/mql/v13/providers/k8s/connection/shared/resources"
-	"go.mondoo.com/mql/v13/utils/syncx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/k8s/connection/manifest"
+	"go.mondoo.com/mql/providers/k8s/connection/shared"
+	sharedres "go.mondoo.com/mql/providers/k8s/connection/shared/resources"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 type K8sObjectKindTest struct {

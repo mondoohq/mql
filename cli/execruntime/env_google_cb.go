@@ -7,7 +7,7 @@ const GOOGLE_CLOUD_BUILD = "google-cb"
 
 // seems like google does not set default environment variables,
 // therefore users need to set them themselves, see
-// https://cloud.google.com/build/docs/configuring-builds/substitute-variable-values#using_default_substitutions
+// https://docs.cloud.google.com/build/docs/configuring-builds/substitute-variable-values#using_default_substitutions
 //
 // steps:
 // # Uses the ubuntu build step:

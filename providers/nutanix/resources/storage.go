@@ -8,10 +8,10 @@ import (
 
 	clustermgmtconfig "github.com/nutanix/ntnx-api-golang-clients/clustermgmt-go-client/v4/models/clustermgmt/v4/config"
 	volconfig "github.com/nutanix/ntnx-api-golang-clients/volumes-go-client/v4/models/volumes/v4/config"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/nutanix/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/nutanix/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // ---------------------------------------------------------------------------
@@ -47,6 +47,13 @@ func listStorageContainers(conn *connection.NutanixConnection) ([]clustermgmtcon
 }
 
 func newMqlStorageContainer(runtime *plugin.Runtime, c *clustermgmtconfig.StorageContainer) (*mqlNutanixStorageContainer, error) {
+	// ExtId is the container's stable identity and becomes the resource __id.
+	// The API can return a container without one (e.g. system/partially
+	// provisioned containers); such a container cannot be cached or
+	// cross-referenced, so skip it rather than fail the whole listing.
+	if c.ExtId == nil {
+		return nil, nil
+	}
 	onDiskDedup := ""
 	if c.OnDiskDedup != nil {
 		onDiskDedup = c.OnDiskDedup.GetName()
@@ -85,7 +92,6 @@ func newMqlStorageContainer(runtime *plugin.Runtime, c *clustermgmtconfig.Storag
 		"nfsWhitelistAddresses":                llx.ArrayData(nfsWhitelist, types.String),
 		"isNfsWhitelistInherited":              llx.BoolData(derefBool(c.IsNfsWhitelistInherited)),
 		// The v4.0 API does not report whether a container is shared across clusters.
-		"isShared":           llx.BoolDataPtr(nil),
 		"isInternal":         llx.BoolData(derefBool(c.IsInternal)),
 		"isMarkedForRemoval": llx.BoolData(derefBool(c.IsMarkedForRemoval)),
 		"storagePoolId":      llx.StringDataPtr(c.StoragePoolExtId),
@@ -99,6 +105,9 @@ func newMqlStorageContainer(runtime *plugin.Runtime, c *clustermgmtconfig.Storag
 	}
 	if c.OwnerExtId != nil {
 		mqlContainer.cacheOwnerId = *c.OwnerExtId
+	}
+	if c.AffinityHostExtId != nil {
+		mqlContainer.cacheAffinityHostId = *c.AffinityHostExtId
 	}
 	return mqlContainer, nil
 }
@@ -118,6 +127,9 @@ func storageContainersForCluster(runtime *plugin.Runtime, conn *connection.Nutan
 		if err != nil {
 			return nil, err
 		}
+		if mqlContainer == nil {
+			continue
+		}
 		res = append(res, mqlContainer)
 	}
 	return res, nil
@@ -134,8 +146,9 @@ func (a *mqlNutanixCluster) storageContainers() ([]any, error) {
 }
 
 type mqlNutanixStorageContainerInternal struct {
-	cacheClusterId string
-	cacheOwnerId   string
+	cacheClusterId      string
+	cacheOwnerId        string
+	cacheAffinityHostId string
 }
 
 func (a *mqlNutanixStorageContainer) owner() (*mqlNutanixIamUser, error) {
@@ -168,6 +181,21 @@ func (a *mqlNutanixStorageContainer) cluster() (*mqlNutanixCluster, error) {
 	return res, nil
 }
 
+func (a *mqlNutanixStorageContainer) affinityHost() (*mqlNutanixHost, error) {
+	if a.cacheAffinityHostId == "" || a.cacheClusterId == "" {
+		a.AffinityHost.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := hostByID(a.MqlRuntime, a.cacheClusterId, a.cacheAffinityHostId)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		a.AffinityHost.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return res, nil
+}
+
 // ---------------------------------------------------------------------------
 // volume groups
 // ---------------------------------------------------------------------------
@@ -195,6 +223,9 @@ func (a *mqlNutanix) volumeGroups() ([]any, error) {
 		}
 		for i := range items {
 			vg := items[i]
+			if vg.ExtId == nil {
+				continue
+			}
 			sharingStatus := ""
 			if vg.SharingStatus != nil {
 				sharingStatus = vg.SharingStatus.GetName()

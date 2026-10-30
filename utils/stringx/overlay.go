@@ -24,7 +24,7 @@ func Overlay(base string, layers ...string) string {
 		row := []rune(baseLayer[i])
 
 		// iterate over each character
-		for pos := 0; pos < len(row); pos++ {
+		for pos := range row {
 			winning := row[pos]
 
 			// iterate over all layers that we want to merge in

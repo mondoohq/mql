@@ -4,9 +4,15 @@
 package resources
 
 import (
+	"errors"
+	"os"
+	"strings"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 )
 
 func TestParseUfwKeyValue(t *testing.T) {
@@ -243,4 +249,263 @@ ports=8080/tcp
 	assert.Len(t, apps, 1)
 	assert.Equal(t, "MyApp", apps[0].name)
 	assert.Equal(t, "8080/tcp", apps[0].ports)
+}
+
+// Tuples captured from /etc/ufw/user.rules on Ubuntu 16.04 through 26.04
+// after `ufw allow in on ens5 to any port 8080 proto tcp comment 'web alt'`
+// and `ufw route allow in on ens5 out on lo to any port 80 proto tcp`.
+func TestParseUfwTuplesCommentAndRoute(t *testing.T) {
+	rules := parseUfwTuples(`### tuple ### allow tcp 8080 0.0.0.0/0 any 0.0.0.0/0 in_ens5 comment=77656220616c74
+### tuple ### route:allow tcp 80 0.0.0.0/0 any 0.0.0.0/0 in_ens5!out_lo
+### tuple ### route:deny_log tcp 3306 ::/0 any ::/0 out_lo
+### tuple ### allow tcp 22 0.0.0.0/0 any 0.0.0.0/0 OpenSSH - in comment=73736820696e
+`)
+	require.Len(t, rules, 4)
+
+	assert.Equal(t, "ALLOW", rules[0].action)
+	assert.Equal(t, "IN", rules[0].direction)
+	assert.Equal(t, "ens5", rules[0].iface)
+	assert.Equal(t, "8080", rules[0].port)
+
+	assert.Equal(t, "ALLOW", rules[1].action)
+	assert.Equal(t, "FWD", rules[1].direction)
+	assert.Equal(t, "ens5", rules[1].iface)
+	assert.Equal(t, "80", rules[1].port)
+
+	assert.Equal(t, "DENY", rules[2].action)
+	assert.Equal(t, "FWD", rules[2].direction)
+	assert.Equal(t, "lo", rules[2].iface)
+
+	assert.Equal(t, "ALLOW", rules[3].action)
+	assert.Equal(t, "IN", rules[3].direction)
+	assert.Empty(t, rules[3].iface)
+}
+
+func TestReadUfwState(t *testing.T) {
+	enabledConf := "# /etc/ufw/ufw.conf\nENABLED=yes\nLOGLEVEL=low\n"
+	defaults := "DEFAULT_INPUT_POLICY=\"DROP\"\nDEFAULT_OUTPUT_POLICY=\"ACCEPT\"\nDEFAULT_FORWARD_POLICY=\"DROP\"\n"
+
+	newFs := func(files map[string]string) afero.Afero {
+		afs := afero.Afero{Fs: afero.NewMemMapFs()}
+		for p, c := range files {
+			require.NoError(t, afs.WriteFile(p, []byte(c), 0o644))
+		}
+		return afs
+	}
+
+	t.Run("installed and enabled", func(t *testing.T) {
+		st, err := readUfwState(newFs(map[string]string{
+			ufwConfPath: enabledConf, ufwDefaultsPath: defaults, "/usr/sbin/ufw": "#!/usr/bin/python3\n",
+		}))
+		require.NoError(t, err)
+		assert.Equal(t, "active", st.status)
+		assert.Equal(t, "deny", st.defIncoming)
+		assert.Equal(t, "low", st.logging)
+	})
+
+	t.Run("removed but not purged", func(t *testing.T) {
+		// dpkg -r ufw keeps the conffiles, ENABLED=yes included, and deletes the command.
+		st, err := readUfwState(newFs(map[string]string{
+			ufwConfPath: enabledConf, ufwDefaultsPath: defaults,
+		}))
+		require.NoError(t, err)
+		assert.Equal(t, "not installed", st.status)
+		assert.Empty(t, st.defIncoming)
+	})
+
+	t.Run("purged", func(t *testing.T) {
+		st, err := readUfwState(newFs(map[string]string{}))
+		require.NoError(t, err)
+		assert.Equal(t, "not installed", st.status)
+	})
+
+	t.Run("upstream tarball in /usr/local", func(t *testing.T) {
+		// `python3 setup.py install` of ufw 0.36.2 on Amazon Linux 2023
+		st, err := readUfwState(newFs(map[string]string{
+			ufwConfPath: enabledConf, ufwDefaultsPath: defaults,
+			"/usr/local/sbin/ufw": "#!/usr/bin/python3\n", "/lib/ufw/ufw-init": "#!/bin/sh\n",
+		}))
+		require.NoError(t, err)
+		assert.Equal(t, "active", st.status)
+		assert.Equal(t, "/usr/local/sbin/ufw", st.binary)
+		assert.Equal(t, "deny", st.defIncoming)
+		assert.Equal(t, "low", st.logging)
+	})
+
+	t.Run("ufw-init without a known command", func(t *testing.T) {
+		// a tarball installed with another prefix keeps ufw-init in /lib/ufw
+		for _, initScript := range []string{"/lib/ufw/ufw-init", "/usr/libexec/ufw/ufw-init"} {
+			st, err := readUfwState(newFs(map[string]string{
+				ufwConfPath: enabledConf, ufwDefaultsPath: defaults, initScript: "#!/bin/sh\n",
+			}))
+			require.NoError(t, err)
+			assert.Equal(t, "active", st.status, initScript)
+			assert.Empty(t, st.binary, initScript)
+			assert.Equal(t, "deny", st.defIncoming, initScript)
+		}
+	})
+}
+
+func TestReadUfwRules(t *testing.T) {
+	rpmV4, err := os.ReadFile("testdata/ufw/rhel9/user.rules")
+	require.NoError(t, err)
+	rpmV6, err := os.ReadFile("testdata/ufw/rhel9/user6.rules")
+	require.NoError(t, err)
+
+	newFs := func(files map[string][]byte) afero.Afero {
+		afs := afero.Afero{Fs: afero.NewMemMapFs()}
+		for p, c := range files {
+			require.NoError(t, afs.WriteFile(p, c, 0o600))
+		}
+		return afs
+	}
+
+	t.Run("fedora and epel keep user rules in /var/lib/ufw", func(t *testing.T) {
+		// captured on RHEL 9 with ufw 0.35 from EPEL; `ufw status numbered` lists 22 rules
+		rules, err := readUfwRules(newFs(map[string][]byte{
+			"/var/lib/ufw/user.rules":  rpmV4,
+			"/var/lib/ufw/user6.rules": rpmV6,
+		}))
+		require.NoError(t, err)
+		require.Len(t, rules, 22)
+		assert.Equal(t, int64(4), rules[3].number)
+		assert.Equal(t, "DENY", rules[3].action)
+		assert.Equal(t, "23", rules[3].port)
+		assert.False(t, rules[3].ipv6)
+		assert.Equal(t, int64(22), rules[21].number)
+		assert.Equal(t, "7070", rules[21].port)
+		assert.True(t, rules[21].ipv6)
+	})
+
+	t.Run("debian and ubuntu keep user rules in /etc/ufw", func(t *testing.T) {
+		rules, err := readUfwRules(newFs(map[string][]byte{
+			"/etc/ufw/user.rules": []byte("### tuple ### deny tcp 23 0.0.0.0/0 any 0.0.0.0/0 in\n"),
+		}))
+		require.NoError(t, err)
+		require.Len(t, rules, 1)
+		assert.Equal(t, "23", rules[0].port)
+		assert.False(t, rules[0].ipv6)
+	})
+
+	t.Run("no rules files", func(t *testing.T) {
+		rules, err := readUfwRules(newFs(nil))
+		require.NoError(t, err)
+		assert.Empty(t, rules)
+	})
+}
+
+func TestParseUfwStatus(t *testing.T) {
+	t.Run("active", func(t *testing.T) {
+		st, err := parseUfwStatus(0, "Status: active\nLogging: on (medium)\n", "")
+		require.NoError(t, err)
+		assert.Equal(t, "active", st)
+	})
+
+	t.Run("inactive with ENABLED=yes in ufw.conf", func(t *testing.T) {
+		// the Fedora and EPEL packages ship ENABLED=yes; ufw reports what is loaded
+		st, err := parseUfwStatus(0, "Status: inactive\n", "")
+		require.NoError(t, err)
+		assert.Equal(t, "inactive", st)
+	})
+
+	t.Run("non-root is refused", func(t *testing.T) {
+		_, err := parseUfwStatus(1, "", "ERROR: You need to be root to run this script\n")
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, llx.ErrForbidden))
+	})
+
+	t.Run("other failure is not a refusal", func(t *testing.T) {
+		_, err := parseUfwStatus(1, "", "ERROR: problem running iptables: modprobe failed\n")
+		require.Error(t, err)
+		assert.False(t, errors.Is(err, llx.ErrForbidden))
+	})
+
+	t.Run("unrecognized output", func(t *testing.T) {
+		_, err := parseUfwStatus(0, "Status: Aktiv\n", "")
+		require.Error(t, err)
+	})
+}
+
+func TestUfwStatusWithoutUfw(t *testing.T) {
+	refused := llx.Forbidden(errors.New("cannot determine whether ufw is active: ERROR: You need to be root to run this script"))
+	unit := func(stdout string, exit int64) func() (string, int64, error) {
+		return func() (string, int64, error) { return stdout, exit, nil }
+	}
+
+	t.Run("ENABLED=no reads inactive", func(t *testing.T) {
+		// `ufw disable` writes ENABLED=no and unloads the chains
+		st, err := ufwStatusWithoutUfw("inactive", refused, unit("active\n", 0))
+		require.NoError(t, err)
+		assert.Equal(t, "inactive", st)
+	})
+
+	t.Run("ENABLED=yes with the unit started reads active", func(t *testing.T) {
+		st, err := ufwStatusWithoutUfw("active", refused, unit("active\n", 0))
+		require.NoError(t, err)
+		assert.Equal(t, "active", st)
+	})
+
+	t.Run("ENABLED=yes with the unit stopped is not active", func(t *testing.T) {
+		// `systemctl stop ufw` unloads the chains and keeps ENABLED=yes; the
+		// Fedora and EPEL packages ship ENABLED=yes on a unit never started.
+		// `ufw enable` loads the chains without starting the unit, so an
+		// inactive unit does not prove the firewall is inactive either.
+		_, err := ufwStatusWithoutUfw("active", refused, unit("inactive\n", 3))
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, llx.ErrForbidden))
+	})
+
+	t.Run("ENABLED=yes with a failed unit is not active", func(t *testing.T) {
+		_, err := ufwStatusWithoutUfw("active", refused, unit("failed\n", 3))
+		require.Error(t, err)
+	})
+
+	t.Run("ENABLED=yes without systemd is not active", func(t *testing.T) {
+		_, err := ufwStatusWithoutUfw("active", refused, unit("", 127))
+		require.Error(t, err)
+	})
+
+	t.Run("systemctl cannot run", func(t *testing.T) {
+		_, err := ufwStatusWithoutUfw("active", refused, func() (string, int64, error) {
+			return "", 0, errors.New("command failed")
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("unreadable ufw output is not a refusal", func(t *testing.T) {
+		// "Status: Inaktiv" under LANGUAGE=de on Ubuntu with ufw stopped
+		_, perr := parseUfwStatus(0, "Status: Inaktiv\n", "")
+		require.Error(t, perr)
+		_, err := ufwStatusWithoutUfw("active", perr, unit("active\n", 0))
+		require.Error(t, err)
+	})
+}
+
+func TestUfwStatusFromUnit(t *testing.T) {
+	// ufw-init is installed and the ufw command is not in ufwBinaryPaths, so
+	// ufw cannot be asked; that is not a refusal
+	noCommand := errors.New("cannot determine whether ufw is active: no ufw command")
+	unit := func(stdout string, exit int64) func() (string, int64, error) {
+		return func() (string, int64, error) { return stdout, exit, nil }
+	}
+
+	st, err := ufwStatusFromUnit("inactive", noCommand, unit("inactive\n", 3))
+	require.NoError(t, err)
+	assert.Equal(t, "inactive", st)
+
+	st, err = ufwStatusFromUnit("active", noCommand, unit("active\n", 0))
+	require.NoError(t, err)
+	assert.Equal(t, "active", st)
+
+	_, err = ufwStatusFromUnit("active", noCommand, unit("inactive\n", 3))
+	require.ErrorIs(t, err, noCommand)
+}
+
+func TestUfwStatusCommandIgnoresLanguage(t *testing.T) {
+	// gettext reads LANGUAGE before LC_ALL; with LANGUAGE=de ufw prints
+	// "Status: Inaktiv", which parseUfwStatus cannot read
+	cmd := ufwStatusCommand("/usr/sbin/ufw")
+	assert.True(t, strings.HasPrefix(cmd, "env LANGUAGE= "), cmd)
+	assert.Contains(t, cmd, " LC_ALL=C ")
+	assert.True(t, strings.HasSuffix(cmd, " /usr/sbin/ufw status"), cmd)
 }

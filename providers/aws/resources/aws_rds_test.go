@@ -5,7 +5,10 @@ package resources
 
 import (
 	"testing"
+	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	rds_types "github.com/aws/aws-sdk-go-v2/service/rds/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -174,4 +177,67 @@ func TestRdsDbInstanceAssociatedRoleIamRole(t *testing.T) {
 		assert.True(t, r.IamRole.IsNull())
 		assert.True(t, r.IamRole.IsSet())
 	})
+}
+
+func TestNewMqlAwsRdsRecommendation(t *testing.T) {
+	runtime := testRuntime()
+	createdAt := time.Date(2026, time.August, 5, 12, 0, 0, 0, time.UTC)
+	updatedAt := createdAt.Add(time.Hour)
+
+	recommendation := rds_types.DBRecommendation{
+		RecommendationId:   aws.String("rec-123"),
+		TypeId:             aws.String("engine-version-upgrade"),
+		Severity:           aws.String("high"),
+		Status:             aws.String("active"),
+		CreatedTime:        &createdAt,
+		UpdatedTime:        &updatedAt,
+		Detection:          aws.String("The instance is not running the latest minor engine version"),
+		Recommendation:     aws.String("Upgrade to the latest minor engine version"),
+		Description:        aws.String("The latest minor version includes security fixes"),
+		Reason:             aws.String("A newer minor engine version is available"),
+		Impact:             aws.String("Data security is at risk"),
+		Category:           aws.String("security"),
+		Source:             aws.String("RDS"),
+		TypeDetection:      aws.String("Database resources are not running the latest minor version"),
+		TypeRecommendation: aws.String("Upgrade database resources to the latest minor version"),
+		AdditionalInfo:     aws.String("Minor upgrades are backward-compatible"),
+		Links: []rds_types.DocLink{{
+			Text: aws.String("Upgrade documentation"),
+			Url:  aws.String("https://docs.aws.amazon.com/rds/"),
+		}},
+		RecommendedActions: []rds_types.RecommendedAction{{
+			ActionId:    aws.String("action-123"),
+			Title:       aws.String("Upgrade the instance"),
+			Description: aws.String("Modify the DB instance engine version"),
+			Operation:   aws.String("ModifyDBInstance"),
+			Parameters: []rds_types.RecommendedActionParameter{{
+				Key:   aws.String("EngineVersion"),
+				Value: aws.String("16.4"),
+			}},
+			ApplyModes: []string{"immediately", "next-maintenance-window"},
+			Status:     aws.String("ready"),
+			ContextAttributes: []rds_types.ContextAttribute{{
+				Key:   aws.String("CurrentEngineVersion"),
+				Value: aws.String("16.3"),
+			}},
+		}},
+	}
+
+	got, err := newMqlAwsRdsRecommendation(runtime, "arn:aws:rds:us-east-1:123456789012:db:test", 0, recommendation)
+	require.NoError(t, err)
+
+	assert.Equal(t, "rec-123", got.Id.Data)
+	assert.Equal(t, "security", got.Category.Data)
+	assert.Equal(t, "high", got.Severity.Data)
+	assert.Equal(t, "active", got.Status.Data)
+	assert.Equal(t, createdAt, *got.CreatedAt.Data)
+	require.Len(t, got.Links.Data, 1)
+	assert.Equal(t, "https://docs.aws.amazon.com/rds/", got.Links.Data[0].(map[string]any)["url"])
+
+	require.Len(t, got.Actions.Data, 1)
+	action := got.Actions.Data[0].(*mqlAwsRdsRecommendationAction)
+	assert.Equal(t, "ModifyDBInstance", action.Operation.Data)
+	assert.Equal(t, "16.4", action.Parameters.Data["EngineVersion"])
+	assert.Equal(t, "16.3", action.ContextAttributes.Data["CurrentEngineVersion"])
+	assert.Equal(t, []any{"immediately", "next-maintenance-window"}, action.ApplyModes.Data)
 }

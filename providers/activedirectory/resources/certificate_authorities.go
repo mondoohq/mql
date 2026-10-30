@@ -11,12 +11,12 @@ import (
 
 	"github.com/go-ldap/ldap/v3"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/activedirectory/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/activedirectory/connection"
+	"go.mondoo.com/mql/types"
 )
 
-func (a *mqlActivedirectory) certificateAuthorities() ([]interface{}, error) {
+func (a *mqlActivedirectory) certificateAuthorities() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.ActiveDirectoryConnection)
 	baseDN := fmt.Sprintf("CN=Enrollment Services,CN=Public Key Services,CN=Services,%s", conn.ConfigDN())
 
@@ -45,12 +45,12 @@ func (a *mqlActivedirectory) certificateAuthorities() ([]interface{}, error) {
 	if err != nil {
 		if ldap.IsErrorWithCode(err, ldap.LDAPResultNoSuchObject) {
 			log.Warn().Msg("ADCS Enrollment Services container not found, ADCS may not be installed")
-			return []interface{}{}, nil
+			return []any{}, nil
 		}
 		return nil, fmt.Errorf("failed to query certificate authorities: %w", err)
 	}
 
-	res := make([]interface{}, 0, len(entries))
+	res := make([]any, 0, len(entries))
 	for _, entry := range entries {
 		name := connection.GetStringAttr(entry, "cn")
 		dn := connection.GetStringAttr(entry, "distinguishedName")
@@ -77,7 +77,7 @@ func (a *mqlActivedirectory) certificateAuthorities() ([]interface{}, error) {
 
 		// Template names are CN values, not full DNs.
 		templates := connection.GetStringSliceAttr(entry, "certificateTemplates")
-		templatesRaw := make([]interface{}, len(templates))
+		templatesRaw := make([]any, len(templates))
 		for i, v := range templates {
 			templatesRaw[i] = v
 		}
@@ -118,7 +118,7 @@ func (a *mqlActivedirectory) certificateAuthorities() ([]interface{}, error) {
 				}
 			}
 		}
-		dangerousCAPermsRaw := make([]interface{}, len(dangerousCAPerms))
+		dangerousCAPermsRaw := make([]any, len(dangerousCAPerms))
 		for i, v := range dangerousCAPerms {
 			dangerousCAPermsRaw[i] = v
 		}
@@ -131,8 +131,8 @@ func (a *mqlActivedirectory) certificateAuthorities() ([]interface{}, error) {
 		hasHTTPEnrollment := false
 		for _, srv := range enrollmentServers {
 			// Each value may contain newline-delimited fields; extract URL lines.
-			lines := strings.Split(srv, "\n")
-			for _, line := range lines {
+			lines := strings.SplitSeq(srv, "\n")
+			for line := range lines {
 				trimmed := strings.TrimSpace(line)
 				lower := strings.ToLower(trimmed)
 				if strings.HasPrefix(lower, "http://") {
@@ -143,7 +143,7 @@ func (a *mqlActivedirectory) certificateAuthorities() ([]interface{}, error) {
 				}
 			}
 		}
-		httpEndpointsRaw := make([]interface{}, len(httpEndpoints))
+		httpEndpointsRaw := make([]any, len(httpEndpoints))
 		for i, v := range httpEndpoints {
 			httpEndpointsRaw[i] = v
 		}

@@ -30,11 +30,17 @@ func TestParseV5(t *testing.T) {
 	require.NotNil(t, express)
 	assert.Equal(t, "4.18.2", express.Version)
 	assert.Equal(t, "pkg:npm/express@4.18.2", express.Purl)
+	// dependency edges resolve to the depended-on packages' purls
+	assert.Equal(t, []string{"pkg:npm/accepts@1.3.8", "pkg:npm/body-parser@1.20.1"}, express.DependsOn)
+	// a prod (non-dev) package
+	assert.Equal(t, "prod", express.Scope)
 
 	typesNode := pkgs.Find("@types/node")
 	require.NotNil(t, typesNode)
 	assert.Equal(t, "20.10.0", typesNode.Version)
 	assert.Equal(t, "pkg:npm/%40types/node@20.10.0", typesNode.Purl)
+	// dev: true in the lockfile → dev scope
+	assert.Equal(t, "dev", typesNode.Scope)
 }
 
 func TestParseV9(t *testing.T) {

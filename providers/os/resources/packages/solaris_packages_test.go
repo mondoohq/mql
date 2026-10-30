@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
 func TestFmriParser(t *testing.T) {
@@ -68,6 +68,16 @@ func TestFmriParser(t *testing.T) {
 	assert.Equal(t, "solaris", sp.Publisher)
 	assert.Equal(t, "1.8.0.311.11", sp.Version)
 	assert.Equal(t, "", sp.Branch)
+
+	// A publisher prefix may contain periods and hyphens. Verbatim from
+	// `pkg list -Hv` on Solaris 11.4.86 with a local repository added as
+	// publisher my-pub.test.
+	sp, err = ParseSolarisFmri("pkg://my-pub.test/site/hello@1.2.3-0.1:20260929T210609Z")
+	require.NoError(t, err)
+	assert.Equal(t, "my-pub.test", sp.Publisher)
+	assert.Equal(t, "site/hello", sp.Name)
+	assert.Equal(t, "1.2.3", sp.Version)
+	assert.Equal(t, "0.1", sp.Branch)
 }
 
 func TestSolarisPackageParser(t *testing.T) {
@@ -150,4 +160,22 @@ func TestSolaris114Manager(t *testing.T) {
 		Format:  SolarisPkgFormat,
 	}
 	assert.Contains(t, pkgList, p, "pkg detected")
+}
+
+// A failing or unavailable `pkg` must surface an error. Reporting an empty list
+// would read as "this system has no packages installed".
+func TestSolarisPkgManagerCommandFailure(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"pkg list -Hv": {
+				Stderr:     "bash: pkg: command not found",
+				ExitStatus: 127,
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	pkgs, err := (&SolarisPkgManager{conn: conn}).List()
+	require.Error(t, err)
+	assert.Empty(t, pkgs)
 }

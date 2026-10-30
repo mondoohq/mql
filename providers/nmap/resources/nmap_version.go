@@ -6,10 +6,11 @@ package resources
 import (
 	"bufio"
 	"context"
+	"errors"
 	"github.com/Ullaakut/nmap/v3"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/types"
 	"io"
 	"strings"
 	"time"
@@ -34,7 +35,11 @@ func parseNmapVersionOutput(r io.Reader) nmapVersion {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "Nmap version") {
-			version.Version = strings.TrimSpace(strings.Split(line, " ")[2])
+			// "Nmap version 7.95 ( https://nmap.org )" -> the third field is the version
+			fields := strings.Fields(line)
+			if len(fields) >= 3 {
+				version.Version = fields[2]
+			}
 			continue
 		}
 		m := strings.Split(line, ":")
@@ -65,10 +70,10 @@ func (r *mqlNmap) version() (*mqlNmapVersionInformation, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	// retrieve nmap version
+	// retrieve nmap version. We let the SDK resolve the nmap binary from PATH
+	// (as the scan resources do) rather than hardcoding an install path.
 	scanner, err := nmap.NewScanner(
 		ctx,
-		nmap.WithBinaryPath("/opt/homebrew/bin/nmap"),
 		// we can ignore the deprecation warning since the -V flag is not supported by the nmap library
 		nmap.WithCustomArguments("-V"),
 	)
@@ -76,9 +81,14 @@ func (r *mqlNmap) version() (*mqlNmapVersionInformation, error) {
 		return nil, err
 	}
 
-	// NOTE: -V does not return xml output so run does not parse the output
-	// Therefore we cannot trust the err return value
+	// NOTE: -V does not return xml output, so Run cannot parse it and returns a
+	// non-nil error we intentionally ignore. But Run also returns a nil result
+	// when the nmap process fails to start (e.g. the binary is missing), so we
+	// must guard against a nil result before reading it to avoid a panic.
 	results, _, _ := scanner.Run()
+	if results == nil {
+		return nil, errors.New("unable to run nmap to determine its version")
+	}
 
 	info := parseNmapVersionOutput(results.ToReader())
 

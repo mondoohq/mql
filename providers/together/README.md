@@ -38,33 +38,10 @@ The project ID appears in the Together AI dashboard URL when you select a projec
 For self-hosted or proxy setups:
 
 ```bash
-mql shell together --token <api-key> --base-url https://my-proxy.example.com/v1
+mql shell together --token <api-key> --base-url https://my-proxy.example.com
 ```
 
-## Resources
-
-| Resource | Description |
-|---|---|
-| `together.models` | Available models in the Together AI catalog |
-| `together.endpoints` | Dedicated and serverless endpoint deployments |
-| `together.fineTunes` | Fine-tuning jobs |
-| `together.deployments` | Container deployments (Jig) with GPU allocation |
-| `together.files` | Uploaded files for fine-tuning, eval, or batch |
-| `together.clusters` | GPU compute clusters |
-| `together.cluster.storageVolumes` | Persistent storage attached to clusters |
-| `together.secrets` | Managed secrets for deployments |
-| `together.batches` | Batch inference jobs |
-| `together.evals` | Evaluation jobs |
-| `together.volumes` | Persistent volumes for deployments |
-
-### Enterprise-Only Resources
-
-The following resources require an enterprise Together AI account. On non-enterprise accounts, they return empty lists:
-
-- `together.deployments`
-- `together.clusters` (and `cluster.storageVolumes`)
-- `together.secrets`
-- `together.volumes`
+The base URL is the API root: the provider calls versioned paths below it (`v1/files`, `v2/projects/...`, `v3/whoami`). A base URL ending in `/v1` is accepted and cut back to the root.
 
 ## Examples
 
@@ -195,3 +172,28 @@ mql> together.volumes { name type currentVersion mountedBy }
 ```bash
 mql> together { models.length endpoints.length fineTunes.length deployments.length batches.length files.length }
 ```
+
+## Resources
+
+| Resource | Description |
+|---|---|
+| `together.models` | Available models in the Together AI catalog |
+| `together.endpoints` | Dedicated and serverless endpoint deployments |
+| `together.fineTunes` | Fine-tuning jobs |
+| `together.deployments` | Container deployments (Jig) with GPU allocation |
+| `together.files` | Uploaded files for fine-tuning, eval, or batch |
+| `together.clusters` | GPU compute clusters |
+| `together.cluster.storageVolumes` | Persistent storage attached to clusters |
+| `together.secrets` | Managed secrets for deployments |
+| `together.batches` | Batch inference jobs |
+| `together.evals` | Evaluation jobs |
+| `together.volumes` | Persistent volumes for deployments |
+
+### Enterprise-Only Resources
+
+The following resources require an enterprise Together AI account. On non-enterprise accounts, they return empty lists:
+
+- `together.deployments`
+- `together.clusters` (and `cluster.storageVolumes`)
+- `together.secrets`
+- `together.volumes`

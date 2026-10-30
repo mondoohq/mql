@@ -7,12 +7,15 @@ import (
 	"fmt"
 
 	vmmcontent "github.com/nutanix/ntnx-api-golang-clients/vmm-go-client/v4/models/vmm/v4/content"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/nutanix/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/nutanix/connection"
 )
 
 func newMqlImage(runtime *plugin.Runtime, img *vmmcontent.Image) (*mqlNutanixImage, error) {
+	if img.ExtId == nil {
+		return nil, nil
+	}
 	imageType := ""
 	if img.Type != nil {
 		imageType = img.Type.GetName()
@@ -30,7 +33,50 @@ func newMqlImage(runtime *plugin.Runtime, img *vmmcontent.Image) (*mqlNutanixIma
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlNutanixImage), nil
+	mqlImage := res.(*mqlNutanixImage)
+	mqlImage.cacheClusterIds = img.ClusterLocationExtIds
+	if img.OwnerExtId != nil {
+		mqlImage.cacheOwnerId = *img.OwnerExtId
+	}
+	return mqlImage, nil
+}
+
+type mqlNutanixImageInternal struct {
+	cacheClusterIds []string
+	cacheOwnerId    string
+}
+
+func (a *mqlNutanixImage) clusters() ([]any, error) {
+	res := []any{}
+	for _, clusterID := range a.cacheClusterIds {
+		if clusterID == "" {
+			continue
+		}
+		cluster, err := clusterByID(a.MqlRuntime, clusterID)
+		if err != nil {
+			return nil, err
+		}
+		if cluster == nil {
+			continue
+		}
+		res = append(res, cluster)
+	}
+	return res, nil
+}
+
+func (a *mqlNutanixImage) owner() (*mqlNutanixIamUser, error) {
+	if a.cacheOwnerId == "" {
+		a.Owner.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := userByID(a.MqlRuntime, a.cacheOwnerId)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		a.Owner.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return res, nil
 }
 
 func listImages(conn *connection.NutanixConnection) ([]vmmcontent.Image, error) {
@@ -72,6 +118,9 @@ func (a *mqlNutanix) images() ([]any, error) {
 		mqlImg, err := newMqlImage(a.MqlRuntime, &imgs[i])
 		if err != nil {
 			return nil, err
+		}
+		if mqlImg == nil {
+			continue
 		}
 		res = append(res, mqlImg)
 	}

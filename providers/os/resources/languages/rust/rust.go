@@ -6,12 +6,12 @@ package rust
 import (
 	"github.com/package-url/packageurl-go"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/os/resources/cpe"
-	"go.mondoo.com/mql/v13/sbom"
+	"go.mondoo.com/mql/providers/os/resources/cpe"
+	"go.mondoo.com/mql/sbom"
 )
 
 // NewPackageUrl creates a Cargo package URL for a given crate name and version.
-// See https://github.com/package-url/purl-spec/blob/master/PURL-TYPES.rst#cargo
+// See https://github.com/package-url/purl-spec/blob/main/docs/types/definitions/cargo-definition.md
 func NewPackageUrl(name string, version string) string {
 	return packageurl.NewPackageURL(
 		packageurl.TypeCargo,

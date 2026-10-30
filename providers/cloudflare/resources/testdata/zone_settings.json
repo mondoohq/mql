@@ -28,6 +28,15 @@
       },
       "modified_on": "2026-04-01T00:00:00Z",
       "editable": true
-    }
+    },
+    {
+      "id": "ciphers",
+      "value": ["ECDHE-ECDSA-AES128-GCM-SHA256", "AES128-SHA"],
+      "modified_on": "2026-04-01T00:00:00Z",
+      "editable": true
+    },
+    { "id": "development_mode", "value": "on", "time_remaining": 3600, "modified_on": "2026-04-01T00:00:00Z", "editable": true },
+    { "id": "nel", "value": { "enabled": true }, "modified_on": "2026-04-01T00:00:00Z", "editable": true },
+    { "id": "replace_insecure_js", "value": "off", "modified_on": "2026-04-01T00:00:00Z", "editable": true }
   ]
 }

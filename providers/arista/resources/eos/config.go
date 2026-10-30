@@ -45,6 +45,14 @@ func ParseConfig(in io.Reader) map[string]any {
 		if indent > 0 {
 			level = indent / 3
 		}
+		// An ascent only ever pushes one stack entry, so a line that is
+		// indented more than one level deeper than the previous line (e.g. an
+		// indented banner or comment block that isn't real config nesting)
+		// would later be popped by more than was pushed, underflowing the
+		// stack. Clamp to one level deeper to keep the stack balanced.
+		if level > lastDepth+1 {
+			level = lastDepth + 1
+		}
 
 		if level > lastDepth {
 			// add level to stack
@@ -76,6 +84,46 @@ func ParseConfig(in io.Reader) map[string]any {
 	return stack[0]
 }
 
+// EachTopLevelBlock invokes fn once per top-level configuration block,
+// passing the unindented header line and the indented body beneath it.
+// Standalone top-level lines are reported with an empty body.
+//
+// This is the counterpart to GetSection for callers that do not know the
+// section headers in advance, such as the ACL parser, which has to discover
+// every `ip access-list <name>` block on the device.
+func EachTopLevelBlock(runningConfig string, fn func(header, body string)) {
+	scanner := bufio.NewScanner(strings.NewReader(runningConfig))
+
+	header := ""
+	var body strings.Builder
+	flush := func() {
+		if header != "" {
+			fn(header, body.String())
+		}
+		header = ""
+		body.Reset()
+	}
+
+	for scanner.Scan() {
+		raw := scanner.Text()
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "!") || line == "end" {
+			continue
+		}
+
+		if CountLeadingSpace(raw) == 0 {
+			flush()
+			header = line
+			continue
+		}
+		if header != "" {
+			body.WriteString(line)
+			body.WriteByte('\n')
+		}
+	}
+	flush()
+}
+
 func GetSection(in io.Reader, section string) string {
 	keyStack := []string{}
 	keyStack = append(keyStack, "")
@@ -97,6 +145,13 @@ func GetSection(in io.Reader, section string) string {
 		level := 0
 		if indent > 0 {
 			level = indent / 3
+		}
+		// An ascent only ever pushes one key, so clamp a multi-level indent
+		// jump (e.g. an indented banner line) to one level deeper. Without
+		// this a later dedent pops more than was pushed and slices keyStack
+		// to a negative length, panicking the whole query.
+		if level > lastDepth+1 {
+			level = lastDepth + 1
 		}
 
 		if level > lastDepth {

@@ -6,17 +6,19 @@ package resources
 import (
 	"context"
 	"fmt"
-	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/apigateway/v1"
-	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 )
+
+type mqlGcpProjectApiGatewayServiceApiConfigInternal struct {
+	cacheGatewayServiceAccount string
+}
 
 func newApiGatewayService(conn *connection.GcpConnection) (*apigateway.Service, error) {
 	client, err := conn.Client(apigateway.CloudPlatformScope)
@@ -24,21 +26,6 @@ func newApiGatewayService(conn *connection.GcpConnection) (*apigateway.Service, 
 		return nil, err
 	}
 	return apigateway.NewService(context.Background(), option.WithHTTPClient(client))
-}
-
-// apiGatewayServiceDisabled reports whether an error indicates the API Gateway
-// service is not enabled or the caller lacks permission, in which case the
-// list call should degrade gracefully to an empty result.
-func apiGatewayServiceDisabled(err error) bool {
-	if gerr, ok := err.(*googleapi.Error); ok {
-		if gerr.Code == 403 || gerr.Code == 404 {
-			return true
-		}
-		if strings.Contains(gerr.Message, "not enabled") || strings.Contains(gerr.Message, "has not been used") {
-			return true
-		}
-	}
-	return false
 }
 
 func (g *mqlGcpProject) apiGateway() (*mqlGcpProjectApiGatewayService, error) {
@@ -96,7 +83,7 @@ func (g *mqlGcpProjectApiGatewayService) apis() ([]any, error) {
 		}
 		return nil
 	}); err != nil {
-		if apiGatewayServiceDisabled(err) {
+		if isSkippable(err) {
 			return []any{}, nil
 		}
 		return nil, err
@@ -142,7 +129,7 @@ func (g *mqlGcpProjectApiGatewayService) gateways() ([]any, error) {
 		}
 		return nil
 	}); err != nil {
-		if apiGatewayServiceDisabled(err) {
+		if isSkippable(err) {
 			return []any{}, nil
 		}
 		return nil, err
@@ -183,25 +170,26 @@ func (g *mqlGcpProjectApiGatewayServiceApi) configs() ([]any, error) {
 			}
 
 			mqlConfig, err := CreateResource(g.MqlRuntime, "gcp.project.apiGatewayService.apiConfig", map[string]*llx.RawData{
-				"projectId":             llx.StringData(projectId),
-				"name":                  llx.StringData(c.Name),
-				"displayName":           llx.StringData(c.DisplayName),
-				"state":                 llx.StringData(c.State),
-				"serviceConfigId":       llx.StringData(c.ServiceConfigId),
-				"gatewayServiceAccount": llx.StringData(c.GatewayServiceAccount),
-				"createTime":            llx.TimeDataPtr(parseTime(c.CreateTime)),
-				"updateTime":            llx.TimeDataPtr(parseTime(c.UpdateTime)),
-				"labels":                llx.MapData(convert.MapToInterfaceMap(c.Labels), types.String),
-				"openapiDocuments":      llx.ArrayData(openapiDocuments, types.Dict),
+				"projectId":        llx.StringData(projectId),
+				"name":             llx.StringData(c.Name),
+				"displayName":      llx.StringData(c.DisplayName),
+				"state":            llx.StringData(c.State),
+				"serviceConfigId":  llx.StringData(c.ServiceConfigId),
+				"createTime":       llx.TimeDataPtr(parseTime(c.CreateTime)),
+				"updateTime":       llx.TimeDataPtr(parseTime(c.UpdateTime)),
+				"labels":           llx.MapData(convert.MapToInterfaceMap(c.Labels), types.String),
+				"openapiDocuments": llx.ArrayData(openapiDocuments, types.Dict),
 			})
 			if err != nil {
 				return err
 			}
+			mqlRef := mqlConfig.(*mqlGcpProjectApiGatewayServiceApiConfig)
+			mqlRef.cacheGatewayServiceAccount = c.GatewayServiceAccount
 			res = append(res, mqlConfig)
 		}
 		return nil
 	}); err != nil {
-		if apiGatewayServiceDisabled(err) {
+		if isSkippable(err) {
 			return []any{}, nil
 		}
 		return nil, err
@@ -211,10 +199,7 @@ func (g *mqlGcpProjectApiGatewayServiceApi) configs() ([]any, error) {
 }
 
 func (g *mqlGcpProjectApiGatewayServiceApiConfig) serviceAccount() (*mqlGcpProjectIamServiceServiceAccount, error) {
-	if g.GatewayServiceAccount.Error != nil {
-		return nil, g.GatewayServiceAccount.Error
-	}
-	sa, err := resolveServiceAccountRef(g.MqlRuntime, g.GatewayServiceAccount.Data, g.ProjectId.Data)
+	sa, err := resolveServiceAccountRef(g.MqlRuntime, g.cacheGatewayServiceAccount, g.ProjectId.Data)
 	if err != nil {
 		return nil, err
 	}

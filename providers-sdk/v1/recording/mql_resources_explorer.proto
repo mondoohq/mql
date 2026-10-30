@@ -6,7 +6,7 @@ syntax = "proto3";
 package mql.providers.v1.recording;
 import "llx/llx.proto";
 
-option go_package = "go.mondoo.com/mql/v13/providers-sdk/v1/recording";
+option go_package = "go.mondoo.com/mql/providers-sdk/v1/recording";
 
 service ResourcesExplorer {
   rpc GetResourcesData(EntityResourcesReq) returns (EntityResourcesRes) {}

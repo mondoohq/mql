@@ -12,8 +12,8 @@ import (
 	"github.com/package-url/packageurl-go"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/sbom"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/sbom"
 	"gopkg.in/yaml.v3"
 )
 
@@ -96,8 +96,8 @@ func ParseCondaMeta(afs *afero.Afero, condaMetaDir string) (languages.Packages, 
 
 // condaEnvironment represents a conda environment.yml file.
 type condaEnvironment struct {
-	Name         string        `yaml:"name"`
-	Dependencies []interface{} `yaml:"dependencies"`
+	Name         string `yaml:"name"`
+	Dependencies []any  `yaml:"dependencies"`
 }
 
 // ParseEnvironmentYml parses a conda environment.yml file.
@@ -178,8 +178,8 @@ func normalizeChannel(channel string) string {
 		"https://conda.anaconda.org/",
 		"http://repo.anaconda.com/",
 	} {
-		if strings.HasPrefix(channel, prefix) {
-			return strings.TrimPrefix(channel, prefix)
+		if after, ok := strings.CutPrefix(channel, prefix); ok {
+			return after
 		}
 	}
 	return channel

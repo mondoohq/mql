@@ -10,6 +10,35 @@ type Ini struct {
 	Fields map[string]any
 }
 
+// unquotedHashIndex returns the offset of the first "#" that starts a comment,
+// or -1 when the line carries none.
+//
+// A "#" inside a quoted value is part of the value in every ini dialect, so
+// cutting the line there truncated values such as
+//
+//	proxy_password = "p@ss#word"
+//
+// down to an unterminated `"p@ss`. Inline comments on unquoted values are
+// still honoured, which is what the callers of this parser have always relied
+// on.
+func unquotedHashIndex(line string) int {
+	var quote byte
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		case c == '#':
+			return i
+		}
+	}
+	return -1
+}
+
 // ParseIni parses the raw text contents of an ini-style file
 func ParseIni(raw string, delimiter string) *Ini {
 	res := Ini{
@@ -23,7 +52,7 @@ func ParseIni(raw string, delimiter string) *Ini {
 	for i := range lines {
 		line := lines[i]
 		line = strings.TrimSpace(line)
-		if idx := strings.Index(line, "#"); idx >= 0 {
+		if idx := unquotedHashIndex(line); idx >= 0 {
 			line = line[0:idx]
 		}
 

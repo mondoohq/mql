@@ -15,7 +15,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 type CommandRunner interface {
@@ -60,6 +60,8 @@ type statHelper struct {
 	commandRunner CommandRunner
 	detected      bool
 	statParser    statParser
+	// isLinux is set when the target's stat prints the Linux format
+	isLinux bool
 }
 
 var bsdunix = map[string]bool{
@@ -71,34 +73,42 @@ var bsdunix = map[string]bool{
 }
 
 func (s *statHelper) Stat(name string) (os.FileInfo, error) {
-	// detect stat version
-	if !s.detected {
-		cmd, err := s.commandRunner.RunCommand("uname -s")
-		if err != nil {
-			log.Debug().Err(err).Str("file", name).Msg("could not detect platform for file stat")
-			return nil, err
-		}
+	if err := s.detect(); err != nil {
+		log.Debug().Err(err).Str("file", name).Msg("could not detect platform for file stat")
+		return nil, err
+	}
+	return s.statParser(name)
+}
 
-		data, err := io.ReadAll(cmd.Stdout)
-		if err != nil {
-			return nil, err
-		}
-
-		// only switch to unix if we properly detected it, otherwise fallback to linux
-		val := strings.ToLower(strings.TrimSpace(string(data)))
-
-		isUnix, ok := bsdunix[val]
-		if ok && isUnix {
-			s.statParser = s.unix
-		} else if val == "aix" {
-			s.statParser = s.aix
-		} else {
-			s.statParser = s.linux
-		}
-		s.detected = true
+// detect picks the stat dialect of the target, once.
+func (s *statHelper) detect() error {
+	if s.detected {
+		return nil
+	}
+	cmd, err := s.commandRunner.RunCommand("uname -s")
+	if err != nil {
+		return err
 	}
 
-	return s.statParser(name)
+	data, err := io.ReadAll(cmd.Stdout)
+	if err != nil {
+		return err
+	}
+
+	// only switch to unix if we properly detected it, otherwise fallback to linux
+	val := strings.ToLower(strings.TrimSpace(string(data)))
+
+	isUnix, ok := bsdunix[val]
+	if ok && isUnix {
+		s.statParser = s.unix
+	} else if val == "aix" {
+		s.statParser = s.aix
+	} else {
+		s.statParser = s.linux
+		s.isLinux = true
+	}
+	s.detected = true
+	return nil
 }
 
 func (s *statHelper) linux(name string) (os.FileInfo, error) {
@@ -120,10 +130,16 @@ func (s *statHelper) linux(name string) (os.FileInfo, error) {
 		return nil, err
 	}
 
+	return parseLinuxStat(name, string(data))
+}
+
+// parseLinuxStat parses what linuxStatScript prints for name.
+func parseLinuxStat(name string, data string) (os.FileInfo, error) {
+	path := shared.ShellEscape(name)
 	// Output format: SL.size.mode.uid.gid.atime.mtime.selinux
 	// where SL is 1 (symlink) or 0 (not a symlink).
 	// Take only the first line in case stderr leaked into the output.
-	output := strings.TrimSpace(string(data))
+	output := strings.TrimSpace(data)
 	if output == "" {
 		return nil, os.ErrNotExist
 	}
@@ -161,7 +177,8 @@ func (s *statHelper) linux(name string) (os.FileInfo, error) {
 		return nil, errors.Wrap(err, "could not stat "+name)
 	}
 
-	mtime, err := strconv.ParseInt(statsData[5], 10, 64)
+	// statsData[5] is the access time (%X), statsData[6] the modification time (%Y)
+	mtime, err := strconv.ParseInt(statsData[6], 10, 64)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not stat "+name)
 	}
@@ -172,7 +189,7 @@ func (s *statHelper) linux(name string) (os.FileInfo, error) {
 	}
 
 	return &shared.FileInfo{
-		FName:    filepath.Base(path),
+		FName:    filepath.Base(name),
 		FSize:    int64(size),
 		FMode:    mapMode,
 		FIsDir:   mapMode.IsDir(),
@@ -180,6 +197,65 @@ func (s *statHelper) linux(name string) (os.FileInfo, error) {
 		Uid:      uid,
 		Gid:      gid,
 	}, nil
+}
+
+// linuxStatDirScript stats the entries of a directory in one command, the way
+// linuxStatScript stats one path: $1 is the directory, the rest are entry
+// names. Each entry is printed as "<stat fields>/<name>", and one that is gone
+// is left out.
+const linuxStatDirScript = `sh -c '` +
+	`cd "$1" 2>/dev/null || exit 2; shift; ` +
+	`for f do ` +
+	`SL=0; test -L "./$f" && SL=1; ` +
+	`test -e "./$f" -o $SL -eq 1 || continue; ` +
+	`r=$(stat -L "./$f" -c "$SL.%s.%f.%u.%g.%X.%Y.%C" 2>/dev/null); ` +
+	`[ -n "$r" ] || r=$(stat "./$f" -c "$SL.%s.%f.%u.%g.%X.%Y.%C" 2>/dev/null); ` +
+	`[ -n "$r" ] && printf "%s/%s\n" "$r" "$f"; ` +
+	`done' _ `
+
+// statDirChunk bounds how many names one command stats.
+const statDirChunk = 500
+
+// StatDir stats the named entries of dir with one command per chunk of
+// entries, instead of a command per entry, where the target's stat prints the
+// Linux format. ok is false where it does not, or when the command fails, and
+// the caller stats each entry itself. An entry missing from the result could
+// not be stat'ed in the batch.
+func (s *statHelper) StatDir(dir string, names []string) (map[string]os.FileInfo, bool) {
+	if s.detect() != nil || !s.isLinux {
+		return nil, false
+	}
+	res := make(map[string]os.FileInfo, len(names))
+	for start := 0; start < len(names); start += statDirChunk {
+		end := min(start+statDirChunk, len(names))
+		var cmd strings.Builder
+		cmd.WriteString(linuxStatDirScript)
+		cmd.WriteString(shared.ShellEscape(dir))
+		for _, name := range names[start:end] {
+			cmd.WriteByte(' ')
+			cmd.WriteString(shared.ShellEscape(name))
+		}
+		out, err := s.commandRunner.RunCommand(cmd.String())
+		if err != nil || out == nil || out.ExitStatus != 0 {
+			return nil, false
+		}
+		data, err := io.ReadAll(out.Stdout)
+		if err != nil {
+			return nil, false
+		}
+		for line := range strings.SplitSeq(string(data), "\n") {
+			fields, name, ok := strings.Cut(line, "/")
+			if !ok || name == "" {
+				continue
+			}
+			fi, err := parseLinuxStat(filepath.Join(dir, name), fields)
+			if err != nil {
+				continue
+			}
+			res[name] = fi
+		}
+	}
+	return res, true
 }
 
 func (s *statHelper) unix(name string) (os.FileInfo, error) {
@@ -195,7 +271,8 @@ func (s *statHelper) unix(name string) (os.FileInfo, error) {
 		return nil, err
 	}
 
-	statsData := strings.Split(string(data), ":")
+	// Output format: SL:size:mode:uid:gid:atime:mtime
+	statsData := strings.Split(strings.TrimSpace(string(data)), ":")
 	if len(statsData) != 7 {
 		return nil, os.ErrNotExist
 	}
@@ -228,13 +305,14 @@ func (s *statHelper) unix(name string) (os.FileInfo, error) {
 		mode |= fs.ModeSymlink
 	}
 
-	mtime, err := strconv.ParseInt(statsData[5], 10, 64)
+	// statsData[5] is the access time (%a), statsData[6] the modification time (%m)
+	mtime, err := strconv.ParseInt(statsData[6], 10, 64)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not stat "+name)
 	}
 
 	return &shared.FileInfo{
-		FName:    filepath.Base(path),
+		FName:    filepath.Base(name),
 		FSize:    int64(size),
 		FMode:    mode,
 		FIsDir:   mode.IsDir(),
@@ -319,7 +397,7 @@ func (s *statHelper) aix(name string) (os.FileInfo, error) {
 	}
 
 	return &shared.FileInfo{
-		FName:    filepath.Base(path),
+		FName:    filepath.Base(name),
 		FSize:    int64(size),
 		FMode:    mode,
 		FIsDir:   mode.IsDir(),
@@ -334,7 +412,7 @@ const (
 	S_IFBLK = 0o60000
 	S_IFCHR = 0o20000
 	S_IFDIR = 0o40000
-	S_IFIFO = 10000
+	S_IFIFO = 0o10000
 	S_ISUID = 0o4000
 	S_ISGID = 0o2000
 	S_ISVTX = 0o1000

@@ -1,42 +1,77 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-package resources_test
+package resources
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
-func TestResource_Processes(t *testing.T) {
-	t.Run("list processes", func(t *testing.T) {
-		res := x.TestQuery(t, "processes.list")
-		assert.NotEmpty(t, res)
-	})
+func newMacosProcessRuntime(t *testing.T) *plugin.Runtime {
+	t.Helper()
 
-	t.Run("test a specific process entry", func(t *testing.T) {
-		res := x.TestQuery(t, "processes.list[0].pid")
-		assert.NotEmpty(t, res)
-		assert.Empty(t, res[0].Result().Error)
-		assert.Equal(t, int64(1), res[0].Data.Value)
-	})
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:   "macos",
+			Family: []string{"unix", "darwin"},
+		},
+	}, mock.WithPath("./processes/testdata/osx.toml"))
+	require.NoError(t, err)
 
-	t.Run("test a specific process entry with filter v1", func(t *testing.T) {
-		res := x.TestQuery(t, "processes{ pid command }.list[0]")
-		assert.NotEmpty(t, res)
-		assert.Empty(t, res[0].Result().Error)
+	return &plugin.Runtime{
+		Connection: conn,
+		Resources:  &syncx.Map[plugin.Resource]{},
+	}
+}
 
-		m, ok := res[0].Data.Value.(map[string]any)
-		if !ok {
-			t.Error("failed to retrieve correct type of result")
-			t.FailNow()
-		}
+// TestProcessWithoutPidDoesNotPanic covers mondoohq/mql#10355: querying the
+// bare `process` resource creates it without a pid, so gatherProcessInfo looks
+// up pid 0. macOS `ps` starts at pid 1, so that lookup misses and the process
+// manager used to hand back (nil, nil), which the accessors dereferenced.
+func TestProcessWithoutPidDoesNotPanic(t *testing.T) {
+	proc := &mqlProcess{MqlRuntime: newMacosProcessRuntime(t)}
 
-		assert.Equal(t, types.Block, res[0].Data.Type)
-		assert.Equal(t, llx.StringData("/sbin/init"), m["inW9aIPV3zVln3ROYYeru57EdXnE2cK452ZDPxvPs9HFaftOPsef3usY0JSS/J+EWStj+thfd7AH5XdflLF81Q=="])
-		assert.Equal(t, llx.IntData(1), m["vGNOj/UnoXRncBiEGYvtT8Xml8xKuzl85lo7SkIdwF7X3tQLa/Tnv0M0UEA8pZdsQmfGkhHh3FFH3PiDFBEMwA=="])
-	})
+	state := proc.GetState()
+	require.Error(t, state.Error, "a process that cannot be resolved must report an error")
+	assert.Empty(t, state.Data)
+
+	executable := proc.GetExecutable()
+	require.Error(t, executable.Error)
+	assert.Empty(t, executable.Data)
+
+	command := proc.GetCommand()
+	require.Error(t, command.Error)
+	assert.Empty(t, command.Data)
+
+	// Every field failed for the same reason, so they must say the same thing.
+	// The memoized error used to surface only from the second accessor onwards,
+	// which reported one cause as two unrelated-looking errors.
+	assert.Equal(t, state.Error.Error(), executable.Error.Error())
+	assert.Equal(t, state.Error.Error(), command.Error.Error())
+	assert.Contains(t, state.Error.Error(), "process 0 does not exist")
+}
+
+// TestProcessWithKnownPidResolves proves the not-found path did not cost us the
+// happy path: a pid that is present in `ps` still populates every field.
+func TestProcessWithKnownPidResolves(t *testing.T) {
+	proc := &mqlProcess{MqlRuntime: newMacosProcessRuntime(t)}
+	proc.Pid = plugin.TValue[int64]{Data: 1, State: plugin.StateIsSet}
+
+	executable := proc.GetExecutable()
+	require.NoError(t, executable.Error)
+	assert.Equal(t, "launchd", executable.Data)
+
+	command := proc.GetCommand()
+	require.NoError(t, command.Error)
+	assert.Equal(t, "/sbin/launchd", command.Data)
+
+	state := proc.GetState()
+	require.NoError(t, state.Error)
 }

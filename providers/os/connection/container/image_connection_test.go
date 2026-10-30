@@ -4,6 +4,10 @@
 package container_test
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -12,15 +16,17 @@ import (
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/random"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/container"
-	"go.mondoo.com/mql/v13/providers/os/connection/container/image"
-	"go.mondoo.com/mql/v13/providers/os/connection/tar"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/container"
+	"go.mondoo.com/mql/providers/os/connection/container/image"
+	"go.mondoo.com/mql/providers/os/connection/tar"
 )
 
 const (
@@ -53,7 +59,23 @@ func cacheImageToTar(source string, filename string) error {
 		return err
 	}
 
-	return tarball.WriteToFile(filename, tag, img)
+	// Download to a temporary file and only move it into place once it is
+	// complete. Writing straight to filename means an interrupted pull (a
+	// truncated layer, a killed run) leaves a partial tar behind, and the
+	// os.Stat check above then treats that corrupt file as a valid cache on
+	// every subsequent run. The failure that produces is "unexpected EOF" from
+	// whatever later tries to read the tar, which points nowhere near the
+	// download that actually failed.
+	//
+	// The temporary file deliberately sits next to its destination rather than
+	// in os.TempDir(): a same-directory rename is atomic and cannot land
+	// cross-volume, which is what would make os.Rename fail on Windows.
+	tmp := filename + ".partial"
+	if err := tarball.WriteToFile(tmp, tag, img); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, filename)
 }
 
 func cacheAlpine() error {
@@ -269,13 +291,14 @@ func TestImageConnections(t *testing.T) {
 				fSearch := fs.(*tar.FS)
 				switch test.testfile {
 				case "/etc/alpine-release":
-					infos, err := fSearch.Find("/", regexp.MustCompile(`alpine-release`), "file", nil, nil)
+					infos, err := fSearch.Find("/", regexp.MustCompile(`/etc/alpine-release`), "file", nil, nil)
 					require.NoError(t, err)
 					assert.Equal(t, 1, len(infos))
 				case "/etc/centos-release":
-					infos, err := fSearch.Find("/", regexp.MustCompile(`centos-release`), "file", nil, nil)
+					// the regex matches the whole path, as find -regex does
+					infos, err := fSearch.Find("/", regexp.MustCompile(`/etc/centos-release`), "file", nil, nil)
 					require.NoError(t, err)
-					assert.Equal(t, 6, len(infos))
+					assert.Equal(t, []string{"/etc/centos-release"}, infos)
 				}
 			})
 		})
@@ -292,7 +315,10 @@ func TestTarSymlinkFile(t *testing.T) {
 			tar.OPTION_FILE: alpineContainerPath,
 		},
 	}, &inventory.Asset{})
-	assert.Equal(t, nil, err, "should create tar without error")
+	// require, not assert: c is dereferenced immediately below, so continuing
+	// past a failure here segfaults the whole package rather than failing this
+	// one test.
+	require.NoError(t, err, "should create tar without error")
 
 	f, err := c.FileSystem().Open("/bin/cat")
 	assert.Nil(t, err)
@@ -324,7 +350,10 @@ func TestTarRelativeSymlinkFileCentos(t *testing.T) {
 			tar.OPTION_FILE: centosContainerPath,
 		},
 	}, &inventory.Asset{})
-	assert.Equal(t, nil, err, "should create tar without error")
+	// require, not assert: c is dereferenced immediately below, so continuing
+	// past a failure here segfaults the whole package rather than failing this
+	// one test.
+	require.NoError(t, err, "should create tar without error")
 
 	f, err := c.FileSystem().Open("/etc/redhat-release")
 	require.NoError(t, err)
@@ -343,4 +372,105 @@ func TestTarRelativeSymlinkFileCentos(t *testing.T) {
 		assert.Equal(t, nil, err, "should execute without error")
 		assert.Equal(t, 37, len(content), "should read the full content")
 	}
+}
+
+// failingManifestImage is an image whose raw manifest cannot be read.
+type failingManifestImage struct {
+	v1.Image
+}
+
+func (failingManifestImage) RawManifest() ([]byte, error) {
+	return nil, errors.New("manifest unavailable")
+}
+
+// oversizedManifestImage is an image whose raw manifest is larger than the claim cap.
+type oversizedManifestImage struct {
+	v1.Image
+	size int
+}
+
+func (i oversizedManifestImage) RawManifest() ([]byte, error) {
+	return make([]byte, i.size), nil
+}
+
+func TestAttachResolvedImageClaim(t *testing.T) {
+	t.Run("keeps the discovery claim and adds the resolved one with a matching manifest", func(t *testing.T) {
+		img, err := random.Image(64, 1)
+		require.NoError(t, err)
+		digest, err := img.Digest()
+		require.NoError(t, err)
+
+		// the discovery lane saw the index, so its digest differs from the
+		// resolved platform image's digest
+		indexDigest := "sha256:" + hex.EncodeToString(make([]byte, 32))
+		require.NotEqual(t, indexDigest, digest.String())
+		asset := &inventory.Asset{}
+		asset.AddClaim(inventory.NewContainerImageClaim(indexDigest, "example.com/app:1", ""))
+
+		container.AttachResolvedImageClaim(asset, img, "example.com/app:1", "arm64")
+
+		require.Len(t, asset.Claims, 2)
+		discovery, resolved := asset.Claims[0], asset.Claims[1]
+		assert.Equal(t, indexDigest, discovery.Claims[inventory.AssetClaimDigest])
+
+		assert.Equal(t, inventory.AssetClaimKindContainerImage, resolved.Kind)
+		assert.Equal(t, digest.String(), resolved.Claims[inventory.AssetClaimDigest])
+		assert.Equal(t, "example.com/app:1", resolved.Claims[inventory.AssetClaimRef])
+		assert.Equal(t, "arm64", resolved.Claims[inventory.AssetClaimArch])
+
+		manifest, err := base64.StdEncoding.DecodeString(resolved.Claims[inventory.AssetClaimManifest])
+		require.NoError(t, err)
+		sum := sha256.Sum256(manifest)
+		assert.Equal(t, resolved.Claims[inventory.AssetClaimDigest], "sha256:"+hex.EncodeToString(sum[:]))
+	})
+
+	t.Run("empty arch is left out", func(t *testing.T) {
+		img, err := random.Image(64, 1)
+		require.NoError(t, err)
+		asset := &inventory.Asset{}
+		container.AttachResolvedImageClaim(asset, img, "example.com/app:1", "")
+		require.Len(t, asset.Claims, 1)
+		assert.NotContains(t, asset.Claims[0].Claims, inventory.AssetClaimArch)
+	})
+
+	t.Run("attaching twice does not duplicate", func(t *testing.T) {
+		img, err := random.Image(64, 1)
+		require.NoError(t, err)
+		asset := &inventory.Asset{}
+		container.AttachResolvedImageClaim(asset, img, "example.com/app:1", "amd64")
+		container.AttachResolvedImageClaim(asset, img, "example.com/app:1", "amd64")
+		assert.Len(t, asset.Claims, 1)
+	})
+
+	t.Run("an oversized manifest keeps the claim but omits the manifest key", func(t *testing.T) {
+		img, err := random.Image(64, 1)
+		require.NoError(t, err)
+		digest, err := img.Digest()
+		require.NoError(t, err)
+		asset := &inventory.Asset{}
+		container.AttachResolvedImageClaim(asset, oversizedManifestImage{Image: img, size: 256*1024 + 1}, "example.com/app:1", "amd64")
+		require.Len(t, asset.Claims, 1)
+		claims := asset.Claims[0].Claims
+		assert.Equal(t, digest.String(), claims[inventory.AssetClaimDigest])
+		assert.Equal(t, "example.com/app:1", claims[inventory.AssetClaimRef])
+		assert.Equal(t, "amd64", claims[inventory.AssetClaimArch])
+		assert.NotContains(t, claims, inventory.AssetClaimManifest)
+	})
+
+	t.Run("a manifest exactly at the cap is attached", func(t *testing.T) {
+		img, err := random.Image(64, 1)
+		require.NoError(t, err)
+		asset := &inventory.Asset{}
+		container.AttachResolvedImageClaim(asset, oversizedManifestImage{Image: img, size: 256 * 1024}, "example.com/app:1", "amd64")
+		require.Len(t, asset.Claims, 1)
+		assert.Contains(t, asset.Claims[0].Claims, inventory.AssetClaimManifest)
+	})
+
+	t.Run("an unreadable manifest skips the claim", func(t *testing.T) {
+		img, err := random.Image(64, 1)
+		require.NoError(t, err)
+		asset := &inventory.Asset{}
+		container.AttachResolvedImageClaim(asset, failingManifestImage{Image: img}, "example.com/app:1", "amd64")
+		assert.Empty(t, asset.Claims)
+	})
 }

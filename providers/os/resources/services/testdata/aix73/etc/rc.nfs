@@ -1,0 +1,26 @@
+# start lines of /etc/rc.nfs on AIX 7.3 TL4 SP2
+# 1) if srcmstr is running, use it to start the daemon
+# 3) if the config info can not be found, attempt to start the daemon
+else					#if srcmstr not running, start manually
+#	start ypserv /usr/lib/netsvc/yp/ypserv
+#	start ypbind /usr/lib/netsvc/yp/ypbind
+#	start keyserv /usr/sbin/keyserv
+#	start ypupdated /usr/lib/netsvc/yp/rpc.ypupdated
+	start biod /usr/sbin/biod
+#     start gssd /usr/sbin/gssd
+	[ -z "$nfsrgyd_pid" ] && start nfsrgyd /usr/sbin/nfsrgyd
+	start nfsd /usr/sbin/nfsd
+	start rpc.mountd /usr/sbin/rpc.mountd
+# start up status monitor and locking daemon if present
+	# Do not start rpc.statd if TCP/IP is not configured
+		    start rpc.statd /usr/sbin/rpc.statd -d $STATD_DEBUG_LEVEL -t $STATD_MAX_THREADS
+		    start rpc.statd /usr/sbin/rpc.statd -d $STATD_DEBUG_LEVEL
+		    start rpc.statd /usr/sbin/rpc.statd -t $STATD_MAX_THREADS
+		    start rpc.statd /usr/sbin/rpc.statd
+	    start rpc.lockd /usr/sbin/rpc.lockd -d $LOCKD_DEBUG_LEVEL
+		start rpc.lockd /usr/sbin/rpc.lockd
+#Uncomment the following lines to start up the NIS 
+#	start rpc.yppasswdd /usr/lib/netsvc/yp/rpc.yppasswdd /etc/passwd -m
+#	start nis_cachemgr /usr/sbin/nis_cachemgr
+#	start rpc.nisd /usr/sbin/rpc.nisd
+#	start rpc.nispasswdd /usr/sbin/rpc.nispasswdd

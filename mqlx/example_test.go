@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"go.mondoo.com/mql/v13/mqlx"
+	"go.mondoo.com/mql/mqlx"
 )
 
 // Evaluate MQL as a pure expression engine: no providers, no asset, no

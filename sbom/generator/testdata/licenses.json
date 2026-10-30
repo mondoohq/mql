@@ -1,0 +1,85 @@
+{
+    "assets": {
+        "//explorer.api.mondoo.com/assets/licensed": {
+            "mrn": "//explorer.api.mondoo.com/assets/licensed",
+            "name": "licensed:latest",
+            "trace_id": "trace-licensed"
+        }
+    },
+    "data": {
+        "//explorer.api.mondoo.com/assets/licensed": {
+            "values": {
+                "//local.cnquery.io/run/local-execution/queries/mondoo-sbom-asset": {
+                    "content": {
+                        "asset": {
+                            "version": "3.19.0",
+                            "arch": "aarch64",
+                            "platform": "alpine",
+                            "ids": [
+                                "//platformid.api.mondoo.app/runtime/docker/images/licensed"
+                            ],
+                            "name": "licensed:latest"
+                        }
+                    }
+                },
+                "//local.cnquery.io/run/local-execution/queries/mondoo-sbom-packages": {
+                    "content": {
+                        "packages.list": [
+                            {
+                                "name": "busybox",
+                                "version": "1.36.1-r15",
+                                "format": "apk",
+                                "purl": "pkg:apk/alpine/busybox@1.36.1-r15",
+                                "license": "GPL-2.0-only"
+                            }
+                        ]
+                    }
+                },
+                "//local.cnquery.io/run/local-execution/queries/mondoo-sbom-python-packages": {
+                    "content": {
+                        "python.packages": [
+                            {
+                                "name": "dual-licensed",
+                                "version": "1.0.0",
+                                "purl": "pkg:pypi/dual-licensed@1.0.0",
+                                "license": "MIT OR Apache-2.0"
+                            },
+                            {
+                                "name": "undeclared",
+                                "version": "2.0.0",
+                                "purl": "pkg:pypi/undeclared@2.0.0"
+                            }
+                        ]
+                    }
+                },
+                "//local.cnquery.io/run/local-execution/queries/mondoo-sbom-npm-packages": {
+                    "content": {
+                        "npm.packages.list": [
+                            {
+                                "name": "freetext",
+                                "version": "3.0.0",
+                                "purl": "pkg:npm/freetext@3.0.0",
+                                "license": "see the LICENSE file"
+                            }
+                        ]
+                    }
+                },
+                "//local.cnquery.io/run/local-execution/queries/mondoo-sbom-githubactions-packages": {
+                    "content": {
+                        "githubactions.packages.list": [
+                            {
+                                "name": "actions/checkout",
+                                "version": "4.2.2",
+                                "purl": "pkg:githubactions/actions/checkout@4.2.2",
+                                "license": "MIT",
+                                "cpes.map": [
+                                    "cpe:2.3:a:actions:checkout:4.2.2:*:*:*:*:*:*:*"
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }
+}

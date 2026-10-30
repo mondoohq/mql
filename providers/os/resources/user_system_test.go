@@ -1,0 +1,241 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package resources
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/resources/logindefs"
+)
+
+func TestParseUIDRange(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    uidRange
+	}{
+		{name: "debian stock", content: "UID_MIN\t\t\t 1000\nUID_MAX\t\t\t60000\n#SYS_UID_MIN\t\t  101\n", want: uidRange{1000, 60000}},
+		{name: "custom values", content: "UID_MIN 5000\nUID_MAX 2000000\n", want: uidRange{5000, 2000000}},
+		{name: "hex like strtoul base 0", content: "UID_MIN 0x1F4\n", want: uidRange{500, 60000}},
+		{name: "octal like strtoul base 0", content: "UID_MIN 0764\n", want: uidRange{500, 60000}},
+		{name: "trailing comment", content: "UID_MIN 2000 # site policy\n", want: uidRange{2000, 60000}},
+		{name: "absent", content: "PASS_MAX_DAYS 90\n", want: uidRange{1000, 60000}},
+		{name: "commented out", content: "# UID_MIN 500\n#UID_MAX 500\n", want: uidRange{1000, 60000}},
+		{name: "garbage", content: "UID_MIN lots\nUID_MAX many\n", want: uidRange{1000, 60000}},
+		{name: "negative", content: "UID_MIN -5\n", want: uidRange{1000, 60000}},
+		{name: "empty file", content: "", want: uidRange{1000, 60000}},
+		{name: "SYS_UID_MAX does not stand in for UID_MIN", content: "SYS_UID_MAX 499\n", want: uidRange{1000, 60000}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseUIDRange(logindefs.Parse(strings.NewReader(tc.content)))
+			assert.Equal(t, tc.want, got)
+		})
+	}
+	assert.Equal(t, uidRange{1000, 60000}, parseUIDRange(nil), "no login.defs")
+}
+
+func TestIsLinuxSystemUID(t *testing.T) {
+	std := uidRange{min: 1000, max: 60000}
+	system := map[int64]string{
+		0:     "root",
+		1:     "daemon",
+		999:   "last below UID_MIN",
+		64055: "Debian static allocation (libvirt-qemu)",
+		64757: "Debian static allocation (wsdd)",
+		61184: "systemd DynamicUser",
+		65534: "nobody",
+		60514: "above the homed range",
+	}
+	for uid, why := range system {
+		assert.True(t, isLinuxSystemUID(uid, std), "%d %s", uid, why)
+	}
+	regular := map[int64]string{
+		1000:    "UID_MIN itself",
+		1001:    "",
+		60000:   "UID_MAX itself",
+		60001:   "systemd-homed first",
+		60513:   "systemd-homed last",
+		65536:   "container range",
+		1000000: "directory-service range",
+	}
+	for uid, why := range regular {
+		assert.False(t, isLinuxSystemUID(uid, std), "%d %s", uid, why)
+	}
+
+	assert.True(t, isLinuxSystemUID(4999, uidRange{5000, 60000}), "a raised UID_MIN widens the low range")
+	assert.False(t, isLinuxSystemUID(600, uidRange{500, 60000}), "a lowered UID_MIN narrows it")
+	assert.False(t, isLinuxSystemUID(64055, uidRange{1000, 65000}), "a raised UID_MAX makes 64055 a regular uid")
+	assert.True(t, isLinuxSystemUID(65534, uidRange{1000, 65000}), "nobody stays above a raised UID_MAX")
+}
+
+func TestParsePwConfUIDRange(t *testing.T) {
+	def := uidRange{1000, 32000}
+	cases := []struct {
+		name    string
+		content string
+		want    uidRange
+	}{
+		{name: "absent file", content: "", want: def},
+		{name: "written by pw useradd -D", content: "# pw.conf\n#\nminuid = 2000\nmaxuid = 50000\nmingid = 2000\n", want: uidRange{2000, 50000}},
+		{name: "keyword and value without =", content: "minuid\t5000\n", want: uidRange{5000, 32000}},
+		{name: "= without spaces", content: "maxuid=60000\n", want: uidRange{1000, 60000}},
+		{name: "leading whitespace", content: "   minuid 3000\n", want: uidRange{3000, 32000}},
+		{name: "quoted", content: "minuid = \"4000\"\nmaxuid = '40000'\n", want: uidRange{4000, 40000}},
+		{name: "comma-separated tail", content: "minuid = 4000,5000\n", want: uidRange{4000, 32000}},
+		{name: "later line wins", content: "minuid 2000\nminuid 3000\n", want: uidRange{3000, 32000}},
+		{name: "commented out", content: "#minuid = 5\n  # maxuid = 10\n", want: def},
+		{name: "gid keys do not set uids", content: "mingid 5000\nmaxgid 6000\n", want: def},
+		{name: "decimal only", content: "minuid 0x10\n", want: def},
+		{name: "unparsable value ignored", content: "minuid lots\nmaxuid 40000\n", want: uidRange{1000, 40000}},
+		{name: "negative ignored", content: "minuid -5\n", want: def},
+		{name: "keyword without value", content: "minuid\n", want: def},
+		{name: "min not below max falls back", content: "minuid 5000\nmaxuid 5000\n", want: def},
+		{name: "min above default max falls back", content: "minuid 40000\n", want: def},
+		{name: "CRLF line endings", content: "minuid = 2500\r\n", want: uidRange{2500, 32000}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, parsePwConfUIDRange(tc.content))
+		})
+	}
+}
+
+// Accounts from /etc/passwd on the FreeBSD 13.5, 14.5 and 15.1 hosts (none
+// has /etc/pw.conf, so pw uses 1000 and 32000).
+func TestIsFreeBSDSystemUID(t *testing.T) {
+	std := uidRange{min: 1000, max: 32000}
+	system := map[int64]string{
+		0:     "root",
+		1:     "daemon",
+		64:    "_pflogd",
+		80:    "www",
+		999:   "last below minuid",
+		32001: "first above maxuid",
+		65534: "nobody",
+		65535: "top of the 16-bit space",
+	}
+	for uid, why := range system {
+		assert.True(t, isFreeBSDSystemUID(uid, std), "%d %s", uid, why)
+	}
+	regular := map[int64]string{
+		1000:   "minuid itself",
+		1002:   "ec2-user",
+		4243:   "mqltest",
+		32000:  "maxuid itself",
+		65536:  "past the 16-bit space",
+		200000: "directory-service range",
+	}
+	for uid, why := range regular {
+		assert.False(t, isFreeBSDSystemUID(uid, std), "%d %s", uid, why)
+	}
+	assert.True(t, isFreeBSDSystemUID(1500, uidRange{2000, 32000}), "a raised minuid widens the low range")
+	assert.False(t, isFreeBSDSystemUID(40000, uidRange{1000, 50000}), "a raised maxuid narrows the high range")
+}
+
+func TestIsDarwinSystemUID(t *testing.T) {
+	assert.True(t, isDarwinSystemUID(0), "root")
+	assert.True(t, isDarwinSystemUID(-2), "nobody")
+	assert.True(t, isDarwinSystemUID(499))
+	assert.False(t, isDarwinSystemUID(500))
+	assert.False(t, isDarwinSystemUID(501), "first user")
+}
+
+func TestIsWindowsSystemSID(t *testing.T) {
+	users := map[string]string{
+		"S-1-5-21-3623811015-3361044348-30300820-500":          "Administrator",
+		"S-1-5-21-3623811015-3361044348-30300820-501":          "Guest",
+		"S-1-5-21-3623811015-3361044348-30300820-1001":         "local or domain user",
+		"S-1-12-1-1530987534-1288187437-4004063895-2401714744": "Entra ID user",
+		"s-1-5-21-3623811015-3361044348-30300820-1001":         "lowercase prefix",
+	}
+	for sid, desc := range users {
+		system, ok := isWindowsSystemSID(sid)
+		assert.True(t, ok, desc)
+		assert.False(t, system, desc)
+	}
+
+	system := map[string]string{
+		"S-1-5-18": "LocalSystem",
+		"S-1-5-19": "LocalService",
+		"S-1-5-20": "NetworkService",
+		"S-1-5-21-3623811015-3361044348-30300820-502":                    "krbtgt",
+		"S-1-5-21-3623811015-3361044348-30300820-503":                    "DefaultAccount",
+		"S-1-5-21-3623811015-3361044348-30300820-504":                    "WDAGUtilityAccount",
+		"S-1-5-21-3623811015-3361044348-30300820":                        "domain SID without RID",
+		"S-1-5-21-3623811015-3361044348-30300820-1001-7":                 "extra sub-authority",
+		"S-1-12-1-1530987534-1288187437-4004063895":                      "Entra SID missing a sub-authority",
+		"S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464": "service SID",
+		"S-1-5-82-3006700770-424185619-1745488364-794895919-4004696415":  "IIS app pool identity",
+		"S-1-5-90-0-1": "window manager",
+		"S-1-5-96-0-1": "font driver host",
+	}
+	for sid, desc := range system {
+		got, ok := isWindowsSystemSID(sid)
+		assert.True(t, ok, desc)
+		assert.True(t, got, desc)
+	}
+
+	for _, sid := range []string{"", "Administrator", "S-1", "S-2-5-18", "S-1-5-21-abc-1-2-1001", "S-1-5--18"} {
+		_, ok := isWindowsSystemSID(sid)
+		assert.False(t, ok, sid)
+	}
+}
+
+func TestIsLoginShell(t *testing.T) {
+	notLogin := []string{
+		"/sbin/nologin",
+		"/usr/sbin/nologin",
+		"/usr/bin/nologin",
+		"/bin/false",
+		"/usr/bin/false",
+		"/bin/true",
+		"/usr/bin/true",
+		"//usr/sbin//nologin",
+	}
+	for _, s := range notLogin {
+		assert.False(t, isLoginShell(s), s)
+	}
+
+	login := []string{
+		"",
+		"/bin/sh",
+		"/bin/bash",
+		"/usr/bin/zsh",
+		"/bin/ash",
+		"/bin/sync",
+		"/sbin/shutdown",
+		"/usr/bin/passwd",
+		"/home/alice/nologin",
+		"/tmp/false",
+		"nologin",
+		"/usr/local/bin/nologin",
+		"/usr/sbin/nologin-wrapper",
+	}
+	for _, s := range login {
+		assert.True(t, isLoginShell(s), s)
+	}
+}
+
+func TestSystemAccountRuleFor(t *testing.T) {
+	assert.Equal(t, systemAccountRuleLinux, systemAccountRuleFor(&inventory.Platform{Family: []string{"debian", "linux", "unix", "os"}}))
+	assert.Equal(t, systemAccountRuleDarwin, systemAccountRuleFor(&inventory.Platform{Family: []string{"darwin", "bsd", "unix", "os"}}))
+	assert.Equal(t, systemAccountRuleWindows, systemAccountRuleFor(&inventory.Platform{Family: []string{"windows", "os"}}))
+	assert.Equal(t, systemAccountRuleFreeBSD, systemAccountRuleFor(&inventory.Platform{Name: "freebsd", Family: []string{"bsd", "unix", "os"}}))
+	assert.Equal(t, systemAccountRuleUnknown, systemAccountRuleFor(&inventory.Platform{Name: "openbsd", Family: []string{"bsd", "unix", "os"}}))
+	assert.Equal(t, systemAccountRuleUnknown, systemAccountRuleFor(&inventory.Platform{Name: "netbsd", Family: []string{"bsd", "unix", "os"}}))
+	assert.Equal(t, systemAccountRuleUnknown, systemAccountRuleFor(&inventory.Platform{Name: "dragonflybsd", Family: []string{"bsd", "unix", "os"}}))
+	assert.Equal(t, systemAccountRuleUnknown, systemAccountRuleFor(&inventory.Platform{Family: []string{"unix", "os"}}), "solaris")
+	assert.Equal(t, systemAccountRuleUnknown, systemAccountRuleFor(nil))
+}
+
+func TestLoginShellApplies(t *testing.T) {
+	assert.True(t, loginShellApplies(&inventory.Platform{Family: []string{"redhat", "linux", "unix", "os"}}))
+	assert.True(t, loginShellApplies(&inventory.Platform{Family: []string{"darwin", "bsd", "unix", "os"}}))
+	assert.False(t, loginShellApplies(&inventory.Platform{Family: []string{"windows", "os"}}))
+	assert.False(t, loginShellApplies(nil))
+}

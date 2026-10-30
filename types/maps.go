@@ -3,6 +3,8 @@
 
 package types
 
+import "maps"
+
 import "sync"
 
 // StringSet is a map that contains unique strings
@@ -123,8 +125,6 @@ func MapValuesToSlice[K comparable, V any](m map[K]V) []V {
 // mergeMaps merges 2 maps. If there are duplicate keys the values from m2 will override
 // the values from m1.
 func MergeMaps[K comparable, V any](m1 map[K]V, m2 map[K]V) map[K]V {
-	for k, v := range m2 {
-		m1[k] = v
-	}
+	maps.Copy(m1, m2)
 	return m1
 }

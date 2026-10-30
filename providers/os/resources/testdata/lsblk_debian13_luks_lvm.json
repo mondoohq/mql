@@ -1,0 +1,178 @@
+{
+   "blockdevices": [
+      {
+         "name": "loop0",
+         "fstype": "crypto_LUKS",
+         "fsver": "2",
+         "label": null,
+         "uuid": "feccce84-5f1e-4156-89fa-158221539a6e",
+         "fsavail": null,
+         "fsuse%": null,
+         "mountpoints": [],
+         "type": "loop",
+         "kname": "loop0",
+         "children": [
+            {
+               "name": "mqltest-lsblk-7q3k-crypt",
+               "fstype": "LVM2_member",
+               "fsver": "LVM2 001",
+               "label": null,
+               "uuid": "cQsLGc-e6U2-Uxe2-aqdn-XSXO-MH8W-Sui2Fz",
+               "fsavail": null,
+               "fsuse%": null,
+               "mountpoints": [],
+               "type": "crypt",
+               "kname": "dm-0",
+               "children": [
+                  {
+                     "name": "mqltest--lsblk--7q3k--vg-enc",
+                     "fstype": "ext4",
+                     "fsver": "1.0",
+                     "label": null,
+                     "uuid": "0be37e0a-4856-4700-b693-0d1fa204658d",
+                     "fsavail": "60.4M",
+                     "fsuse%": "0%",
+                     "mountpoints": [
+                         "/mnt/mqltest-lsblk-7q3k-enc"
+                     ],
+                     "type": "lvm",
+                     "kname": "dm-2"
+                  }
+               ]
+            }
+         ]
+      },{
+         "name": "loop1",
+         "fstype": "LVM2_member",
+         "fsver": "LVM2 001",
+         "label": null,
+         "uuid": "i7pbNY-B68I-s0Bq-aXSR-wFu1-3z4B-eOElm3",
+         "fsavail": null,
+         "fsuse%": null,
+         "mountpoints": [],
+         "type": "loop",
+         "kname": "loop1",
+         "children": [
+            {
+               "name": "mqltest--lsblk--7q3k--mix-both",
+               "fstype": "ext4",
+               "fsver": "1.0",
+               "label": null,
+               "uuid": "628f606a-356f-4765-8282-71e2007099a2",
+               "fsavail": "140.1M",
+               "fsuse%": "0%",
+               "mountpoints": [
+                   "/mnt/mqltest-lsblk-7q3k-mix"
+               ],
+               "type": "lvm",
+               "kname": "dm-3"
+            }
+         ]
+      },{
+         "name": "loop2",
+         "fstype": "crypto_LUKS",
+         "fsver": "2",
+         "label": null,
+         "uuid": "d6145f9d-2f48-4295-abe8-853b6998ccd9",
+         "fsavail": null,
+         "fsuse%": null,
+         "mountpoints": [],
+         "type": "loop",
+         "kname": "loop2",
+         "children": [
+            {
+               "name": "mqltest-lsblk-7q3k-crypt2",
+               "fstype": "LVM2_member",
+               "fsver": "LVM2 001",
+               "label": null,
+               "uuid": "InrQ0t-cWJP-eLoT-NyeL-XrPV-lDIx-fwrhtj",
+               "fsavail": null,
+               "fsuse%": null,
+               "mountpoints": [],
+               "type": "crypt",
+               "kname": "dm-1",
+               "children": [
+                  {
+                     "name": "mqltest--lsblk--7q3k--mix-both",
+                     "fstype": "ext4",
+                     "fsver": "1.0",
+                     "label": null,
+                     "uuid": "628f606a-356f-4765-8282-71e2007099a2",
+                     "fsavail": "140.1M",
+                     "fsuse%": "0%",
+                     "mountpoints": [
+                         "/mnt/mqltest-lsblk-7q3k-mix"
+                     ],
+                     "type": "lvm",
+                     "kname": "dm-3"
+                  }
+               ]
+            }
+         ]
+      },{
+         "name": "loop3",
+         "fstype": "ext4",
+         "fsver": "1.0",
+         "label": "mqlplain7q3k",
+         "uuid": "38470e21-9308-4475-8872-2e3efaeac53e",
+         "fsavail": "77.7M",
+         "fsuse%": "0%",
+         "mountpoints": [
+             "/mnt/mqltest-lsblk-7q3k-plain"
+         ],
+         "type": "loop",
+         "kname": "loop3"
+      },{
+         "name": "nvme0n1",
+         "fstype": null,
+         "fsver": null,
+         "label": null,
+         "uuid": null,
+         "fsavail": null,
+         "fsuse%": null,
+         "mountpoints": [],
+         "type": "disk",
+         "kname": "nvme0n1",
+         "children": [
+            {
+               "name": "nvme0n1p1",
+               "fstype": "vfat",
+               "fsver": "FAT32",
+               "label": null,
+               "uuid": "1156-949B",
+               "fsavail": "510.8M",
+               "fsuse%": "0%",
+               "mountpoints": [
+                   "/boot/efi"
+               ],
+               "type": "part",
+               "kname": "nvme0n1p1"
+            },{
+               "name": "nvme0n1p2",
+               "fstype": "ext4",
+               "fsver": "1.0",
+               "label": null,
+               "uuid": "ff414a42-090b-4727-81fe-6f3ae30fca5b",
+               "fsavail": "221.7G",
+               "fsuse%": "46%",
+               "mountpoints": [
+                   "/"
+               ],
+               "type": "part",
+               "kname": "nvme0n1p2"
+            },{
+               "name": "nvme0n1p3",
+               "fstype": "swap",
+               "fsver": "1",
+               "label": null,
+               "uuid": "664de12f-5f1b-4c5e-ae7e-44c87fa6eca4",
+               "fsavail": null,
+               "fsuse%": null,
+               "mountpoints": [],
+               "type": "part",
+               "kname": "nvme0n1p3"
+            }
+         ]
+      }
+   ]
+}

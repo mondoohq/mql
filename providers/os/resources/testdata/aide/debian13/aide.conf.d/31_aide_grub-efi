@@ -1,0 +1,13 @@
+@@if defined AMD64_FIRMWARE_EFI
+ /boot/grub/grubenv$ f VarFile
+# FAT filesystems change synthesized inodes on every mount
+# this can be solved more elegantly after aide 0.19
+# there is also #1053443 against systemd
+# this shuld be replaced now by 98_aide_vfat
+# /boot/efi/EFI(/(BOOT|debian))?$ d Full-i
+# /boot/efi/EFI/debian/BOOTX64.CSV$ f Full-i
+# /boot/efi/EFI/debian/grub\\.cfg$ f Full-i
+# /boot/efi/EFI/debian/(fbx64|grubx64|mmx64|shimx64)\\.efi$ f Full-i
+# /boot/efi/EFI/BOOT$ d Full-i
+# /boot/efi/EFI/BOOT/BOOTX64\\.EFI$ f Full-i
+@@endif

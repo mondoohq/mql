@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vmware/govmomi"
-	"go.mondoo.com/mql/v13/providers/vsphere/connection/vsimulator"
+	"go.mondoo.com/mql/providers/vsphere/connection/vsimulator"
 )
 
 func newClient(host string, user string, password string) (*Client, error) {

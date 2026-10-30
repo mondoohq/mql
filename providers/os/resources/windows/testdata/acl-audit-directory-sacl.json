@@ -1,0 +1,15 @@
+{
+  "Path": "C:\\mql-sysmgmt-acl",
+  "Audit": [
+    {
+      "Identity": "Everyone",
+      "Sid": "S-1-1-0",
+      "AuditFlags": "Success, Failure",
+      "Rights": "Modify",
+      "Mask": 197055,
+      "Inherited": false,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "None"
+    }
+  ]
+}

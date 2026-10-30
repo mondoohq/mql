@@ -16,11 +16,11 @@ import (
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/aws/aws-sdk-go-v2/service/route53domains"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // aws.route53
@@ -173,14 +173,14 @@ func (a *mqlAwsRoute53) queryLoggingConfigs() ([]any, error) {
 		for _, qlc := range page.QueryLoggingConfigs {
 			mqlQlc, err := CreateResource(a.MqlRuntime, "aws.route53.queryLoggingConfig",
 				map[string]*llx.RawData{
-					"__id":                      llx.StringData(convert.ToValue(qlc.Id)),
-					"id":                        llx.StringData(convert.ToValue(qlc.Id)),
-					"hostedZoneId":              llx.StringData(convert.ToValue(qlc.HostedZoneId)),
-					"cloudWatchLogsLogGroupArn": llx.StringData(convert.ToValue(qlc.CloudWatchLogsLogGroupArn)),
+					"__id":         llx.StringData(convert.ToValue(qlc.Id)),
+					"id":           llx.StringData(convert.ToValue(qlc.Id)),
+					"hostedZoneId": llx.StringData(convert.ToValue(qlc.HostedZoneId)),
 				})
 			if err != nil {
 				return nil, err
 			}
+			mqlQlc.(*mqlAwsRoute53QueryLoggingConfig).cacheCloudWatchLogsLogGroupArn = convert.ToValue(qlc.CloudWatchLogsLogGroupArn)
 			res = append(res, mqlQlc)
 		}
 	}
@@ -196,9 +196,8 @@ func initAwsRoute53HostedZone(runtime *plugin.Runtime, args map[string]*llx.RawD
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformRoute53Hostedzone); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -417,14 +416,14 @@ func (a *mqlAwsRoute53HostedZone) queryLoggingConfig() (*mqlAwsRoute53QueryLoggi
 		qlc := listResp.QueryLoggingConfigs[0]
 		mqlQlc, err := CreateResource(a.MqlRuntime, "aws.route53.queryLoggingConfig",
 			map[string]*llx.RawData{
-				"__id":                      llx.StringData(convert.ToValue(qlc.Id)),
-				"id":                        llx.StringData(convert.ToValue(qlc.Id)),
-				"hostedZoneId":              llx.StringData(convert.ToValue(qlc.HostedZoneId)),
-				"cloudWatchLogsLogGroupArn": llx.StringData(convert.ToValue(qlc.CloudWatchLogsLogGroupArn)),
+				"__id":         llx.StringData(convert.ToValue(qlc.Id)),
+				"id":           llx.StringData(convert.ToValue(qlc.Id)),
+				"hostedZoneId": llx.StringData(convert.ToValue(qlc.HostedZoneId)),
 			})
 		if err != nil {
 			return nil, err
 		}
+		mqlQlc.(*mqlAwsRoute53QueryLoggingConfig).cacheCloudWatchLogsLogGroupArn = convert.ToValue(qlc.CloudWatchLogsLogGroupArn)
 		return mqlQlc.(*mqlAwsRoute53QueryLoggingConfig), nil
 	}
 
@@ -454,7 +453,6 @@ func (a *mqlAwsRoute53HostedZone) keySigningKeys() ([]any, error) {
 			map[string]*llx.RawData{
 				"__id":                     llx.StringData(fmt.Sprintf("%s/%s", hostedZoneId, convert.ToValue(ksk.Name))),
 				"name":                     llx.StringData(convert.ToValue(ksk.Name)),
-				"kmsArn":                   llx.StringData(convert.ToValue(ksk.KmsArn)),
 				"hostedZoneId":             llx.StringData(hostedZoneId),
 				"flag":                     llx.IntData(int64(ksk.Flag)),
 				"signingAlgorithmMnemonic": llx.StringData(convert.ToValue(ksk.SigningAlgorithmMnemonic)),
@@ -474,6 +472,7 @@ func (a *mqlAwsRoute53HostedZone) keySigningKeys() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		mqlKsk.(*mqlAwsRoute53KeySigningKey).cacheKmsArn = convert.ToValue(ksk.KmsArn)
 		res = append(res, mqlKsk)
 	}
 	return res, nil
@@ -482,6 +481,7 @@ func (a *mqlAwsRoute53HostedZone) keySigningKeys() ([]any, error) {
 // aws.route53.record
 
 type mqlAwsRoute53RecordInternal struct {
+	cacheHostedZoneId         string
 	resourceRecordsCache      []any
 	aliasTargetCache          map[string]any
 	geoLocationCache          map[string]any
@@ -490,11 +490,11 @@ type mqlAwsRoute53RecordInternal struct {
 }
 
 func (a *mqlAwsRoute53Record) id() (string, error) {
-	return fmt.Sprintf("%s//%s//%s//%s", a.HostedZoneId.Data, a.Name.Data, a.Type.Data, a.SetIdentifier.Data), nil
+	return fmt.Sprintf("%s//%s//%s//%s", a.cacheHostedZoneId, a.Name.Data, a.Type.Data, a.SetIdentifier.Data), nil
 }
 
 func (a *mqlAwsRoute53Record) hostedZone() (*mqlAwsRoute53HostedZone, error) {
-	zoneId := a.HostedZoneId.Data
+	zoneId := a.cacheHostedZoneId
 	if zoneId == "" {
 		a.HostedZone.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -648,7 +648,7 @@ func (a *mqlAwsRoute53QueryLoggingConfig) id() (string, error) {
 }
 
 func (a *mqlAwsRoute53QueryLoggingConfig) logGroup() (*mqlAwsCloudwatchLoggroup, error) {
-	arnVal := a.CloudWatchLogsLogGroupArn.Data
+	arnVal := a.cacheCloudWatchLogsLogGroupArn
 	if arnVal == "" {
 		a.LogGroup.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -692,7 +692,7 @@ func (a *mqlAwsRoute53KeySigningKey) hostedZone() (*mqlAwsRoute53HostedZone, err
 }
 
 func (a *mqlAwsRoute53KeySigningKey) kmsKey() (*mqlAwsKmsKey, error) {
-	kmsArn := a.KmsArn.Data
+	kmsArn := a.cacheKmsArn
 	if kmsArn == "" {
 		a.KmsKey.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
@@ -924,7 +924,6 @@ func newMqlAwsRoute53Record(runtime *plugin.Runtime, hostedZoneId string, rrs ro
 	resource, err := CreateResource(runtime, "aws.route53.record",
 		map[string]*llx.RawData{
 			"__id":                      llx.StringData(fmt.Sprintf("%s//%s//%s//%s", hostedZoneId, convert.ToValue(rrs.Name), string(rrs.Type), setIdentifier)),
-			"hostedZoneId":              llx.StringData(hostedZoneId),
 			"name":                      llx.StringData(convert.ToValue(rrs.Name)),
 			"type":                      llx.StringData(string(rrs.Type)),
 			"ttl":                       llx.IntData(ttl),
@@ -943,6 +942,7 @@ func newMqlAwsRoute53Record(runtime *plugin.Runtime, hostedZoneId string, rrs ro
 	if err != nil {
 		return nil, err
 	}
+	resource.(*mqlAwsRoute53Record).cacheHostedZoneId = hostedZoneId
 
 	mqlRecord := resource.(*mqlAwsRoute53Record)
 	mqlRecord.resourceRecordsCache = resourceRecords
@@ -1151,4 +1151,12 @@ func healthCheckIdToArn(healthCheckId *string) string {
 		return ""
 	}
 	return fmt.Sprintf("arn:aws:route53:::healthcheck/%s", convert.ToValue(healthCheckId))
+}
+
+type mqlAwsRoute53QueryLoggingConfigInternal struct {
+	cacheCloudWatchLogsLogGroupArn string
+}
+
+type mqlAwsRoute53KeySigningKeyInternal struct {
+	cacheKmsArn string
 }

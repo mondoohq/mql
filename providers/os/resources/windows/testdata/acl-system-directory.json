@@ -1,0 +1,140 @@
+{
+  "Path": "C:\\Windows\\System32\\dns",
+  "Owner": "NT AUTHORITY\\SYSTEM",
+  "Group": "NT AUTHORITY\\SYSTEM",
+  "Sddl": "O:SYG:SYD:AI(A;ID;FA;;;S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464)(A;CIIOID;GA;;;S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464)(A;ID;FA;;;SY)(A;OICIIOID;GA;;;SY)(A;ID;FA;;;BA)(A;OICIIOID;GA;;;BA)(A;ID;0x1200a9;;;BU)(A;OICIIOID;GXGR;;;BU)(A;OICIIOID;GA;;;CO)(A;ID;0x1200a9;;;AC)(A;OICIIOID;GXGR;;;AC)(A;ID;0x1200a9;;;S-1-15-2-2)(A;OICIIOID;GXGR;;;S-1-15-2-2)",
+  "Protected": false,
+  "OwnerSid": "S-1-5-18",
+  "Access": [
+    {
+      "Identity": "NT SERVICE\\TrustedInstaller",
+      "Sid": "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",
+      "Type": "Allow",
+      "Rights": "FullControl",
+      "Mask": 2032127,
+      "Inherited": true,
+      "InheritanceFlags": "None",
+      "PropagationFlags": "None"
+    },
+    {
+      "Identity": "NT SERVICE\\TrustedInstaller",
+      "Sid": "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464",
+      "Type": "Allow",
+      "Rights": "268435456",
+      "Mask": 268435456,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit",
+      "PropagationFlags": "InheritOnly"
+    },
+    {
+      "Identity": "NT AUTHORITY\\SYSTEM",
+      "Sid": "S-1-5-18",
+      "Type": "Allow",
+      "Rights": "FullControl",
+      "Mask": 2032127,
+      "Inherited": true,
+      "InheritanceFlags": "None",
+      "PropagationFlags": "None"
+    },
+    {
+      "Identity": "NT AUTHORITY\\SYSTEM",
+      "Sid": "S-1-5-18",
+      "Type": "Allow",
+      "Rights": "268435456",
+      "Mask": 268435456,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "InheritOnly"
+    },
+    {
+      "Identity": "BUILTIN\\Administrators",
+      "Sid": "S-1-5-32-544",
+      "Type": "Allow",
+      "Rights": "FullControl",
+      "Mask": 2032127,
+      "Inherited": true,
+      "InheritanceFlags": "None",
+      "PropagationFlags": "None"
+    },
+    {
+      "Identity": "BUILTIN\\Administrators",
+      "Sid": "S-1-5-32-544",
+      "Type": "Allow",
+      "Rights": "268435456",
+      "Mask": 268435456,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "InheritOnly"
+    },
+    {
+      "Identity": "BUILTIN\\Users",
+      "Sid": "S-1-5-32-545",
+      "Type": "Allow",
+      "Rights": "ReadAndExecute, Synchronize",
+      "Mask": 1179817,
+      "Inherited": true,
+      "InheritanceFlags": "None",
+      "PropagationFlags": "None"
+    },
+    {
+      "Identity": "BUILTIN\\Users",
+      "Sid": "S-1-5-32-545",
+      "Type": "Allow",
+      "Rights": "-1610612736",
+      "Mask": 2684354560,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "InheritOnly"
+    },
+    {
+      "Identity": "CREATOR OWNER",
+      "Sid": "S-1-3-0",
+      "Type": "Allow",
+      "Rights": "268435456",
+      "Mask": 268435456,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "InheritOnly"
+    },
+    {
+      "Identity": "APPLICATION PACKAGE AUTHORITY\\ALL APPLICATION PACKAGES",
+      "Sid": "",
+      "Type": "Allow",
+      "Rights": "ReadAndExecute, Synchronize",
+      "Mask": 1179817,
+      "Inherited": true,
+      "InheritanceFlags": "None",
+      "PropagationFlags": "None"
+    },
+    {
+      "Identity": "APPLICATION PACKAGE AUTHORITY\\ALL APPLICATION PACKAGES",
+      "Sid": "",
+      "Type": "Allow",
+      "Rights": "-1610612736",
+      "Mask": 2684354560,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "InheritOnly"
+    },
+    {
+      "Identity": "APPLICATION PACKAGE AUTHORITY\\ALL RESTRICTED APPLICATION PACKAGES",
+      "Sid": "",
+      "Type": "Allow",
+      "Rights": "ReadAndExecute, Synchronize",
+      "Mask": 1179817,
+      "Inherited": true,
+      "InheritanceFlags": "None",
+      "PropagationFlags": "None"
+    },
+    {
+      "Identity": "APPLICATION PACKAGE AUTHORITY\\ALL RESTRICTED APPLICATION PACKAGES",
+      "Sid": "",
+      "Type": "Allow",
+      "Rights": "-1610612736",
+      "Mask": 2684354560,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "InheritOnly"
+    }
+  ]
+}

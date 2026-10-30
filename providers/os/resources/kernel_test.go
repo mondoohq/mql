@@ -1,45 +1,1705 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-package resources_test
+package resources
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
-func TestResource_KernelParameters(t *testing.T) {
-	t.Run("kernel parameters", func(t *testing.T) {
-		res := x.TestQuery(t, "kernel.parameters")
-		assert.NotEmpty(t, res)
-	})
+func TestDebianImageKernelName(t *testing.T) {
+	tests := []struct {
+		pkg      string
+		wantName string
+		wantOK   bool
+		why      string
+	}{
+		// Real image packages, as installed on the live hosts these cases came from.
+		{"linux-image-6.17.0-1019-aws", "6.17.0-1019-aws", true, "ubuntu 24.04"},
+		{"linux-image-5.4.0-1156-aws", "5.4.0-1156-aws", true, "ubuntu 18.04"},
+		{"linux-image-5.10.0-46-cloud-amd64", "5.10.0-46-cloud-amd64", true, "debian 11"},
+		{"linux-image-6.12.101+deb13-cloud-amd64", "6.12.101+deb13-cloud-amd64", true, "debian 13"},
 
-	t.Run("test a specific kernel parameters", func(t *testing.T) {
-		res := x.TestQuery(t, `kernel.parameters["net.ipv4.ip_forward"]`)
-		assert.NotEmpty(t, res)
+		// The metapackages. These are the regression: each one used to be
+		// reported as an installed kernel named after the flavour.
+		{"linux-image-aws", "", false, "ubuntu metapackage"},
+		{"linux-image-cloud-amd64", "", false, "debian metapackage"},
+		{"linux-image-amd64", "", false, "debian generic metapackage"},
+		{"linux-image-generic", "", false, "ubuntu generic metapackage"},
+		{"linux-image-virtual", "", false, "ubuntu virtual metapackage"},
 
-		assert.Equal(t, "1", res[0].Data.Value)
-	})
+		// Bare name, no release and no trailing dash.
+		{"linux-image", "", false, "bare metapackage"},
+
+		// Unsigned builds: ubuntu puts the marker in front of the release,
+		// debian appends it, so only ubuntu needs the prefix stripped.
+		{"linux-image-unsigned-6.17.0-1019-aws", "6.17.0-1019-aws", true, "ubuntu unsigned"},
+		{"linux-image-5.10.0-46-cloud-amd64-unsigned", "5.10.0-46-cloud-amd64-unsigned", true, "debian unsigned"},
+
+		// Neighbours that share the prefix but hold no kernel.
+		{"linux-image-extra-virtual", "", false, "extra metapackage"},
+		{"linux-headers-6.17.0-1019-aws", "", false, "headers, not an image"},
+		{"linux-modules-6.17.0-1019-aws", "", false, "modules, not an image"},
+		{"", "", false, "empty"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.pkg, func(t *testing.T) {
+			name, ok := debianImageKernelName(tc.pkg)
+			assert.Equal(t, tc.wantOK, ok, tc.why)
+			assert.Equal(t, tc.wantName, name, tc.why)
+		})
+	}
 }
 
-func TestResource_KernelModules(t *testing.T) {
-	t.Run("kernel modules", func(t *testing.T) {
-		res := x.TestQuery(t, "kernel.modules")
-		assert.NotEmpty(t, res)
-	})
+// The running kernel must still be matched after the metapackage is dropped.
+func TestDebianImageKernelNameMatchesRunning(t *testing.T) {
+	running := "6.12.101+deb13-cloud-amd64"
 
-	t.Run("grab a kernel module", func(t *testing.T) {
-		res := x.TestQuery(t, "kernel.modules[0].name")
-		assert.NotEmpty(t, res)
-		assert.Empty(t, res[0].Result().Error)
-		assert.Equal(t, "xfrm_user", res[0].Data.Value)
-	})
+	name, ok := debianImageKernelName("linux-image-" + running)
+	assert.True(t, ok)
+	assert.Equal(t, running, name, "the versioned image is the running kernel")
 
-	t.Run("grab a kernel module by name", func(t *testing.T) {
-		res := x.TestQuery(t, "kernel.module('xfrm_user').size")
-		assert.NotEmpty(t, res)
-		assert.Empty(t, res[0].Result().Error)
-		assert.Equal(t, "36864", res[0].Data.Value)
-	})
+	// The metapackage carries the same version string in dpkg, which is exactly
+	// why it looked like a second kernel. It must not be considered at all.
+	_, ok = debianImageKernelName("linux-image-cloud-amd64")
+	assert.False(t, ok, "the metapackage is never a kernel, matching or not")
+}
+
+// TestParseModprobeConfig locks down the modprobe.d parser used by the
+// kernel.module {blacklisted, installBypass, disabled} accessors. The
+// shapes here are taken from CIS Linux benchmarks (cramfs, usb-storage,
+// freevxfs, jffs2, hfs) and from the in-the-wild quirks the parser has
+// to tolerate — `exec /bin/false`, leading whitespace, comments mid-line,
+// and unrelated directives (alias, options, softdep) that must be ignored
+// without poisoning a sibling module's rule.
+//
+// Rules are keyed on the normalized module name, so a config written with
+// dashes (which is what CIS remediations tell admins to write) is found by
+// a query spelling the module with underscores, and the other way round.
+func TestParseModprobeConfig(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    map[string]modprobeRule
+	}{
+		{
+			name:    "simple blacklist",
+			content: "blacklist cramfs\n",
+			want: map[string]modprobeRule{
+				"cramfs": {blacklisted: true},
+			},
+		},
+		{
+			name:    "install short-circuit to /bin/true",
+			content: "install usb-storage /bin/true\n",
+			want: map[string]modprobeRule{
+				"usb_storage": {installBypass: true},
+			},
+		},
+		{
+			name:    "install short-circuit to /bin/false",
+			content: "install usb-storage /bin/false\n",
+			want: map[string]modprobeRule{
+				"usb_storage": {installBypass: true},
+			},
+		},
+		{
+			name:    "install short-circuit to /usr/bin/true",
+			content: "install usb-storage /usr/bin/true\n",
+			want: map[string]modprobeRule{
+				"usb_storage": {installBypass: true},
+			},
+		},
+		{
+			name:    "install short-circuit to /usr/bin/false",
+			content: "install usb-storage /usr/bin/false\n",
+			want: map[string]modprobeRule{
+				"usb_storage": {installBypass: true},
+			},
+		},
+		{
+			name:    "install via exec wrapper to /bin/false",
+			content: "install usb-storage exec /bin/false\n",
+			want: map[string]modprobeRule{
+				"usb_storage": {installBypass: true},
+			},
+		},
+		{
+			name:    "install via exec wrapper to /usr/bin/false",
+			content: "install usb-storage exec /usr/bin/false\n",
+			want: map[string]modprobeRule{
+				"usb_storage": {installBypass: true},
+			},
+		},
+		{
+			name:    "install to real modprobe is not a bypass",
+			content: "install usb-storage /sbin/modprobe usb-storage-real\n",
+			want:    map[string]modprobeRule{},
+		},
+		{
+			name: "comments and blank lines are ignored",
+			content: `# CIS Linux Benchmark 1.1.1.1
+# Disable mounting of cramfs
+blacklist cramfs
+
+# Disable mounting of freevxfs
+
+blacklist freevxfs   # trailing comment
+`,
+			want: map[string]modprobeRule{
+				"cramfs":   {blacklisted: true},
+				"freevxfs": {blacklisted: true},
+			},
+		},
+		{
+			name: "multiple modules combine across lines",
+			content: `blacklist cramfs
+install usb-storage /bin/false
+blacklist freevxfs
+install jffs2 /bin/true
+`,
+			want: map[string]modprobeRule{
+				"cramfs":      {blacklisted: true},
+				"usb_storage": {installBypass: true},
+				"freevxfs":    {blacklisted: true},
+				"jffs2":       {installBypass: true},
+			},
+		},
+		{
+			name: "same module blacklisted and install-bypassed unions both flags",
+			content: `blacklist usb-storage
+install usb-storage /bin/false
+`,
+			want: map[string]modprobeRule{
+				"usb_storage": {blacklisted: true, installBypass: true},
+			},
+		},
+		{
+			name:    "leading whitespace, tabs, and mixed indentation tolerated",
+			content: "  blacklist cramfs\n\tinstall usb-storage\t/bin/false\n  \t blacklist  freevxfs \n",
+			want: map[string]modprobeRule{
+				"cramfs":      {blacklisted: true},
+				"usb_storage": {installBypass: true},
+				"freevxfs":    {blacklisted: true},
+			},
+		},
+		{
+			name: "alias / options / softdep / remove are ignored",
+			content: `alias net-pf-10 ipv6
+options ipv6 disable=1
+softdep nf_conntrack pre: nf_defrag_ipv4
+remove fuse /sbin/modprobe -r fuse
+blacklist cramfs
+`,
+			want: map[string]modprobeRule{
+				"cramfs": {blacklisted: true},
+			},
+		},
+		{
+			name:    "blacklist without a module name is dropped",
+			content: "blacklist\n",
+			want:    map[string]modprobeRule{},
+		},
+		{
+			name:    "install without a command is dropped",
+			content: "install usb-storage\n",
+			want:    map[string]modprobeRule{},
+		},
+		{
+			name:    "empty content yields empty map",
+			content: "",
+			want:    map[string]modprobeRule{},
+		},
+		{
+			// CIS 1.1.1.9 remediation writes the dashed spelling, while
+			// lsmod and /proc/modules report firewire_core.
+			name:    "dashed blacklist is keyed on the underscore name",
+			content: "blacklist firewire-core\n",
+			want: map[string]modprobeRule{
+				"firewire_core": {blacklisted: true},
+			},
+		},
+		{
+			name:    "dashed install bypass is keyed on the underscore name",
+			content: "install firewire-core /bin/false\n",
+			want: map[string]modprobeRule{
+				"firewire_core": {installBypass: true},
+			},
+		},
+		{
+			// The same module written both ways across files is one rule,
+			// not two half-populated ones.
+			name: "dashed and underscore spellings merge into one rule",
+			content: `blacklist firewire-core
+install firewire_core /bin/false
+`,
+			want: map[string]modprobeRule{
+				"firewire_core": {blacklisted: true, installBypass: true},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseModprobeConfig(tc.content)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// TestStripModprobeComment guards the modprobe-flavoured comment stripper
+// against drift toward rsyslog's quote-aware shape — modprobe has no
+// string literals, so `#` always introduces a comment.
+func TestStripModprobeComment(t *testing.T) {
+	cases := []struct {
+		in  string
+		out string
+	}{
+		{"blacklist cramfs", "blacklist cramfs"},
+		{"blacklist cramfs # comment", "blacklist cramfs "},
+		{"# entire line is a comment", ""},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			assert.Equal(t, tc.out, stripModprobeComment(tc.in))
+		})
+	}
+}
+
+// TestRpmKernelMatchesRunning is the unit-level reproducer for
+// customer-issues #178: AL2023's `kernel` rpm carries epoch 1, so
+// pkg.Version is "1:6.1.170-210.320.amzn2023" while /proc/version returns
+// "6.1.170-210.320.amzn2023.x86_64". A naive `pkgVersion+"."+arch ==
+// runningKernelVersion` check fails for every installed kernel image, and
+// the entire kernel.installed list comes back with running:false.
+func TestRpmKernelMatchesRunning(t *testing.T) {
+	cases := []struct {
+		name           string
+		pkgVersion     string
+		pkgArch        string
+		runningKernel  string
+		expectedResult bool
+	}{
+		{
+			name:           "AL2023 epoch-1 kernel matches running",
+			pkgVersion:     "1:6.1.170-210.320.amzn2023",
+			pkgArch:        "x86_64",
+			runningKernel:  "6.1.170-210.320.amzn2023.x86_64",
+			expectedResult: true,
+		},
+		{
+			name:           "AL2023 epoch-1 kernel at older ABI does not match running",
+			pkgVersion:     "1:6.1.166-197.305.amzn2023",
+			pkgArch:        "x86_64",
+			runningKernel:  "6.1.170-210.320.amzn2023.x86_64",
+			expectedResult: false,
+		},
+		{
+			name:           "RHEL legacy kernel with no epoch still matches",
+			pkgVersion:     "3.10.0-1160.11.1.el7",
+			pkgArch:        "x86_64",
+			runningKernel:  "3.10.0-1160.11.1.el7.x86_64",
+			expectedResult: true,
+		},
+		{
+			name:           "Oracle UEK kernel with epoch matches running",
+			pkgVersion:     "1:6.12.0-105.51.5.el9uek",
+			pkgArch:        "x86_64",
+			runningKernel:  "6.12.0-105.51.5.el9uek.x86_64",
+			expectedResult: true,
+		},
+		{
+			name:           "different architectures never match",
+			pkgVersion:     "1:6.1.170-210.320.amzn2023",
+			pkgArch:        "aarch64",
+			runningKernel:  "6.1.170-210.320.amzn2023.x86_64",
+			expectedResult: false,
+		},
+		{
+			name:           "running-kernel string is empty (kernel.info unavailable)",
+			pkgVersion:     "1:6.1.170-210.320.amzn2023",
+			pkgArch:        "x86_64",
+			runningKernel:  "",
+			expectedResult: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := rpmKernelMatchesRunning(tc.pkgVersion, tc.pkgArch, tc.runningKernel)
+			assert.Equal(t, tc.expectedResult, got)
+		})
+	}
+}
+
+func TestStripRPMEpoch(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		out  string
+	}{
+		{"no epoch", "6.1.170-210.320.amzn2023", "6.1.170-210.320.amzn2023"},
+		{"epoch 1", "1:6.1.170-210.320.amzn2023", "6.1.170-210.320.amzn2023"},
+		{"epoch 10 (multi-digit)", "10:6.1.170", "6.1.170"},
+		{"empty", "", ""},
+		{"bare colon", ":6.1.170", "6.1.170"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.out, stripRPMEpoch(tc.in))
+		})
+	}
+}
+
+// TestPhotonKernelMatchesRunning locks down the Photon comparison shape
+// (version + flavor-suffix-from-name == runningKernelVersion) and proves
+// the shared stripRPMEpoch primitive keeps the comparison working should
+// Photon ever ship a kernel rpm with an Epoch declared.
+func TestPhotonKernelMatchesRunning(t *testing.T) {
+	cases := []struct {
+		name           string
+		pkgVersion     string
+		pkgName        string
+		runningKernel  string
+		expectedResult bool
+	}{
+		{
+			name:           "bare linux package matches running",
+			pkgVersion:     "4.19.97-1.ph3",
+			pkgName:        "linux",
+			runningKernel:  "4.19.97-1.ph3",
+			expectedResult: true,
+		},
+		{
+			name:           "linux-esx flavor matches running with -esx suffix",
+			pkgVersion:     "4.19.97-1.ph3",
+			pkgName:        "linux-esx",
+			runningKernel:  "4.19.97-1.ph3-esx",
+			expectedResult: true,
+		},
+		{
+			name:           "older inactive kernel does not match",
+			pkgVersion:     "4.19.90-1.ph3",
+			pkgName:        "linux",
+			runningKernel:  "4.19.97-1.ph3",
+			expectedResult: false,
+		},
+		{
+			name:           "wrong flavor does not match",
+			pkgVersion:     "4.19.97-1.ph3",
+			pkgName:        "linux-rt",
+			runningKernel:  "4.19.97-1.ph3-esx",
+			expectedResult: false,
+		},
+		{
+			name:           "hypothetical epoch-1 photon kernel still matches running",
+			pkgVersion:     "1:4.19.97-1.ph3",
+			pkgName:        "linux-esx",
+			runningKernel:  "4.19.97-1.ph3-esx",
+			expectedResult: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := photonKernelMatchesRunning(tc.pkgVersion, tc.pkgName, tc.runningKernel)
+			assert.Equal(t, tc.expectedResult, got)
+		})
+	}
+}
+
+// TestSuseKernelMatchesRunning locks down the SUSE comparison shape:
+// running ends with the package's -flavor suffix AND the trimmed running
+// version is a prefix of the package version (accounting for the extra
+// dpkg-release segment on pkg.Version). stripRPMEpoch is in the path so
+// the comparison still works if a SUSE kernel rpm ever declares an Epoch.
+func TestSuseKernelMatchesRunning(t *testing.T) {
+	cases := []struct {
+		name           string
+		pkgVersion     string
+		pkgName        string
+		runningKernel  string
+		expectedResult bool
+	}{
+		{
+			name:           "kernel-default matches running with extra release segment",
+			pkgVersion:     "4.12.14-122.23.1",
+			pkgName:        "kernel-default",
+			runningKernel:  "4.12.14-122.23-default",
+			expectedResult: true,
+		},
+		{
+			name:           "kernel-default at older version does not match",
+			pkgVersion:     "4.12.14-122.20.1",
+			pkgName:        "kernel-default",
+			runningKernel:  "4.12.14-122.23-default",
+			expectedResult: false,
+		},
+		{
+			name:           "kernel-rt does not match a -default running kernel",
+			pkgVersion:     "4.12.14-122.23.1",
+			pkgName:        "kernel-rt",
+			runningKernel:  "4.12.14-122.23-default",
+			expectedResult: false,
+		},
+		{
+			name:           "hypothetical epoch-1 SUSE kernel still matches running",
+			pkgVersion:     "1:4.12.14-122.23.1",
+			pkgName:        "kernel-default",
+			runningKernel:  "4.12.14-122.23-default",
+			expectedResult: true,
+		},
+		{
+			name:           "empty running-kernel string never matches",
+			pkgVersion:     "4.12.14-122.23.1",
+			pkgName:        "kernel-default",
+			runningKernel:  "",
+			expectedResult: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := suseKernelMatchesRunning(tc.pkgVersion, tc.pkgName, tc.runningKernel)
+			assert.Equal(t, tc.expectedResult, got)
+		})
+	}
+}
+
+// TestModuleNameFromPath locks down the extraction of a bare module name
+// from the path entries found in modules.dep and modules.builtin. The tricky
+// parts are the compression suffixes that modern kernels apply to .ko files
+// (.xz / .zst / .gz) and the dash↔underscore normalization the kernel applies
+// to module names.
+func TestModuleNameFromPath(t *testing.T) {
+	cases := []struct {
+		in  string
+		out string
+	}{
+		{"kernel/net/netfilter/nf_conntrack.ko", "nf_conntrack"},
+		{"kernel/fs/cramfs/cramfs.ko.xz", "cramfs"},
+		{"kernel/fs/squashfs/squashfs.ko.zst", "squashfs"},
+		{"kernel/drivers/usb/storage/usb-storage.ko.gz", "usb_storage"},
+		// leading/trailing whitespace (modules.dep keeps the colon on the LHS,
+		// which the caller strips, but tabs around builtin entries appear too)
+		{"\tkernel/fs/ext4/ext4.ko\t", "ext4"},
+		{"snd-hda-intel.ko", "snd_hda_intel"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			assert.Equal(t, tc.out, moduleNameFromPath(tc.in))
+		})
+	}
+}
+
+// TestNormalizeModuleName confirms dashes collapse to underscores so a lookup
+// by either spelling resolves the same module (the kernel treats them as
+// equivalent and lsmod always reports underscores).
+func TestNormalizeModuleName(t *testing.T) {
+	assert.Equal(t, "usb_storage", normalizeModuleName("usb-storage"))
+	assert.Equal(t, "usb_storage", normalizeModuleName("usb_storage"))
+	assert.Equal(t, "nf_conntrack", normalizeModuleName("nf_conntrack"))
+	assert.Equal(t, "", normalizeModuleName(""))
+}
+
+// TestParseModulesDep locks down the modules.dep parser behind
+// kernel.module.onDisk. Real Debian/Ubuntu indexes compress modules
+// (.ko.zst / .ko.xz), list each loadable module as the left-hand side of a
+// "module: deps" line, and may carry hundreds of dependency paths on the
+// right that must NOT be treated as separately installed modules unless they
+// appear as their own left-hand entry.
+func TestParseModulesDep(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		present []string // expected onDisk
+		absent  []string // expected NOT onDisk
+	}{
+		{
+			name:    "single module, no deps, trailing colon",
+			content: "kernel/fs/overlayfs/overlay.ko.zst:",
+			present: []string{"overlay"},
+		},
+		{
+			name: "module with deps records only the left-hand side",
+			content: "kernel/net/netfilter/nf_conntrack.ko: " +
+				"kernel/net/netfilter/nf_defrag_ipv4.ko kernel/lib/libcrc32c.ko",
+			present: []string{"nf_conntrack"},
+			// deps on the RHS are not independently installed unless they
+			// also appear as their own left-hand entry.
+			absent: []string{"nf_defrag_ipv4", "libcrc32c"},
+		},
+		{
+			name: "dep that also has its own line is present",
+			content: "kernel/net/netfilter/nf_conntrack.ko: kernel/lib/libcrc32c.ko\n" +
+				"kernel/lib/libcrc32c.ko:",
+			present: []string{"nf_conntrack", "libcrc32c"},
+		},
+		{
+			name: "all compression suffixes and dash normalization",
+			content: "kernel/fs/cramfs/cramfs.ko.xz:\n" +
+				"kernel/fs/squashfs/squashfs.ko.zst:\n" +
+				"kernel/drivers/usb/storage/usb-storage.ko.gz:\n" +
+				"kernel/sound/pci/hda/snd-hda-intel.ko:",
+			present: []string{"cramfs", "squashfs", "usb_storage", "snd_hda_intel"},
+		},
+		{
+			name:    "blank lines, whitespace-only lines, and a trailing newline are ignored",
+			content: "\n  \n\t\nkernel/fs/jffs2/jffs2.ko:\n\n",
+			present: []string{"jffs2"},
+		},
+		{
+			name:    "duplicate module across lines is idempotent",
+			content: "kernel/fs/hfs/hfs.ko:\nkernel/fs/hfs/hfs.ko: kernel/dep.ko",
+			present: []string{"hfs"},
+		},
+		{
+			name:    "empty content yields no modules",
+			content: "",
+			absent:  []string{"anything"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseModulesDep(tc.content)
+			for _, name := range tc.present {
+				assert.True(t, got[name], "expected %q to be on disk", name)
+			}
+			for _, name := range tc.absent {
+				assert.False(t, got[name], "expected %q NOT to be on disk", name)
+			}
+		})
+	}
+}
+
+// TestParseModulesBuiltin locks down the modules.builtin parser behind
+// kernel.module.builtIn. Each non-blank line is one module path; the file
+// uses the ".ko" suffix on modern kernels but historically listed bare paths
+// without an extension, and dash/underscore normalization applies the same
+// way as modules.dep.
+func TestParseModulesBuiltin(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		present []string
+		absent  []string
+	}{
+		{
+			name:    "modern .ko-suffixed entries",
+			content: "kernel/fs/ext4/ext4.ko\nkernel/net/ipv4/tcp_cubic.ko",
+			present: []string{"ext4", "tcp_cubic"},
+		},
+		{
+			name:    "legacy entries without a .ko extension",
+			content: "kernel/fs/ext4/ext4\nkernel/drivers/char/random",
+			present: []string{"ext4", "random"},
+		},
+		{
+			name:    "dash normalization",
+			content: "kernel/drivers/usb/storage/usb-storage.ko",
+			present: []string{"usb_storage"},
+		},
+		{
+			name:    "blank lines and trailing newline ignored",
+			content: "\nkernel/fs/ext4/ext4.ko\n  \n",
+			present: []string{"ext4"},
+		},
+		{
+			name:    "empty content yields no modules",
+			content: "",
+			absent:  []string{"ext4"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseModulesBuiltin(tc.content)
+			for _, name := range tc.present {
+				assert.True(t, got[name], "expected %q to be builtin", name)
+			}
+			for _, name := range tc.absent {
+				assert.False(t, got[name], "expected %q NOT to be builtin", name)
+			}
+		})
+	}
+}
+
+// TestArchKernelMatchesRunning is the unit-level reproducer for the Arch
+// half of the silent-empty bug. Read off a live Arch host: pacman reports
+// `linux 7.1.9.arch1-2` while uname reports `7.1.8-arch1-3`. The two
+// spellings disagree on the separator in front of the arch patch level, so
+// a naive string equality reports running:false for every kernel including
+// the one that is actually booted.
+func TestArchKernelMatchesRunning(t *testing.T) {
+	cases := []struct {
+		name           string
+		pkgVersion     string
+		pkgName        string
+		runningKernel  string
+		expectedResult bool
+	}{
+		{
+			name:           "live Arch host: newer kernel installed, older still running",
+			pkgVersion:     "7.1.9.arch1-2",
+			pkgName:        "linux",
+			runningKernel:  "7.1.8-arch1-3",
+			expectedResult: false,
+		},
+		{
+			name:           "booted kernel matches across the dot/dash separator",
+			pkgVersion:     "7.1.8.arch1-3",
+			pkgName:        "linux",
+			runningKernel:  "7.1.8-arch1-3",
+			expectedResult: true,
+		},
+		{
+			name:           "linux-lts carries its flavor as a release suffix",
+			pkgVersion:     "6.6.67-1",
+			pkgName:        "linux-lts",
+			runningKernel:  "6.6.67-1-lts",
+			expectedResult: true,
+		},
+		{
+			name:           "linux-zen matches with both a patch marker and a flavor suffix",
+			pkgVersion:     "6.12.4.zen1-1",
+			pkgName:        "linux-zen",
+			runningKernel:  "6.12.4-zen1-1-zen",
+			expectedResult: true,
+		},
+		{
+			name:           "linux-hardened matches with both a patch marker and a flavor suffix",
+			pkgVersion:     "6.12.4.hardened1-1",
+			pkgName:        "linux-hardened",
+			runningKernel:  "6.12.4-hardened1-1-hardened",
+			expectedResult: true,
+		},
+		{
+			name:           "mainline linux does not claim a running lts kernel",
+			pkgVersion:     "6.6.67-1",
+			pkgName:        "linux",
+			runningKernel:  "6.6.67-1-lts",
+			expectedResult: false,
+		},
+		{
+			name:           "lts does not claim a running mainline kernel",
+			pkgVersion:     "7.1.8.arch1-3",
+			pkgName:        "linux-lts",
+			runningKernel:  "7.1.8-arch1-3",
+			expectedResult: false,
+		},
+		{
+			name:           "older lts build does not match the running one",
+			pkgVersion:     "6.6.60-1",
+			pkgName:        "linux-lts",
+			runningKernel:  "6.6.67-1-lts",
+			expectedResult: false,
+		},
+		{
+			name:           "running-kernel string is empty (kernel.info unavailable)",
+			pkgVersion:     "7.1.9.arch1-2",
+			pkgName:        "linux",
+			runningKernel:  "",
+			expectedResult: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := archKernelMatchesRunning(tc.pkgVersion, tc.pkgName, tc.runningKernel)
+			assert.Equal(t, tc.expectedResult, got)
+		})
+	}
+}
+
+func TestAlpineKernelMatchesRunning(t *testing.T) {
+	cases := []struct {
+		name           string
+		pkgVersion     string
+		pkgName        string
+		runningKernel  string
+		expectedResult bool
+	}{
+		{"lts package against the lts kernel it installs", "6.6.142-r0", "linux-lts", "6.6.142-0-lts", true},
+		{"virt package against the virt kernel it installs", "6.6.142-r0", "linux-virt", "6.6.142-0-virt", true},
+		{"same version, other flavor running", "6.6.142-r0", "linux-virt", "6.6.142-0-lts", false},
+		{"an older lts still running after an upgrade", "6.6.142-r0", "linux-lts", "6.6.139-0-lts", false},
+		{"apk revision must match the uname revision", "6.6.142-r1", "linux-lts", "6.6.142-0-lts", false},
+		{"a two-digit revision", "6.6.142-r12", "linux-lts", "6.6.142-12-lts", true},
+		{"edge flavor", "6.12.4-r0", "linux-edge", "6.12.4-0-edge", true},
+		{"a container reports the host kernel", "6.6.142-r0", "linux-lts", "7.0.12-linuxkit", false},
+		{"no revision in the package version", "6.6.142", "linux-lts", "6.6.142-0-lts", false},
+		{"running-kernel string is empty (kernel.info unavailable)", "6.6.142-r0", "linux-lts", "", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := alpineKernelMatchesRunning(tc.pkgVersion, tc.pkgName, tc.runningKernel)
+			assert.Equal(t, tc.expectedResult, got)
+		})
+	}
+}
+
+// TestDpkgStatusIsInstalled locks down the dpkg status gate behind the
+// debian branch of kernel.installed. The case that motivated it was found
+// on Linux Mint: a kernel removed but not purged keeps its
+// linux-image-<release> entry in /var/lib/dpkg/status with the state
+// "config-files" and no files on disk, and was being reported as installed.
+func TestDpkgStatusIsInstalled(t *testing.T) {
+	cases := []struct {
+		status    string
+		installed bool
+		why       string
+	}{
+		{"install ok installed", true, "the ordinary installed package"},
+		{"deinstall ok config-files", false, "removed but not purged: the files are gone"},
+		{"purge ok config-files", false, "queued for purge, files already gone"},
+		{"hold ok installed", true, "a held package is still installed"},
+		{"install ok half-installed", false, "an interrupted install is not bootable"},
+		{"install ok unpacked", false, "unpacked but never configured"},
+		{"deinstall ok not-installed", false, "explicitly not installed"},
+		{"", true, "no status at all: distroless status.d stanzas omit the field, so unknown rather than removed"},
+		{"install ok", true, "not a full triple: unknown rather than removed"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.status, func(t *testing.T) {
+			assert.Equal(t, tc.installed, dpkgStatusIsInstalled(tc.status), tc.why)
+		})
+	}
+}
+
+// TestKernelFilters covers each per-family filter end to end: which
+// packages it accepts as kernels, what it names them, and whether it marks
+// the running one. The redhat / oraclelinux / photon / suse / debian rows
+// are regression coverage that the extraction of these closures into pure
+// functions did not change what they report.
+func TestKernelFilters(t *testing.T) {
+	cases := []struct {
+		name          string
+		filter        kernelFilter
+		pkg           kernelPackage
+		runningKernel string
+		wantOK        bool
+		want          KernelVersion
+	}{
+		// --- arch (new) ---
+		{
+			name:          "arch: installed mainline kernel, older one running",
+			filter:        archKernelVersion,
+			pkg:           kernelPackage{Name: "linux", Version: "7.1.9.arch1-2"},
+			runningKernel: "7.1.8-arch1-3",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux", Version: "7.1.9.arch1-2", Running: false},
+		},
+		{
+			name:          "arch: the booted kernel is marked running",
+			filter:        archKernelVersion,
+			pkg:           kernelPackage{Name: "linux", Version: "7.1.8.arch1-3"},
+			runningKernel: "7.1.8-arch1-3",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux", Version: "7.1.8.arch1-3", Running: true},
+		},
+		{
+			name:          "arch: linux-headers is not a kernel",
+			filter:        archKernelVersion,
+			pkg:           kernelPackage{Name: "linux-headers", Version: "7.1.9.arch1-2"},
+			runningKernel: "7.1.8-arch1-3",
+			wantOK:        false,
+		},
+		{
+			name:          "arch: linux-lts-headers is not a kernel",
+			filter:        archKernelVersion,
+			pkg:           kernelPackage{Name: "linux-lts-headers", Version: "6.6.67-1"},
+			runningKernel: "6.6.67-1-lts",
+			wantOK:        false,
+		},
+		{
+			name:          "arch: linux-api-headers is not a kernel",
+			filter:        archKernelVersion,
+			pkg:           kernelPackage{Name: "linux-api-headers", Version: "6.10-1"},
+			runningKernel: "7.1.8-arch1-3",
+			wantOK:        false,
+		},
+		{
+			name:          "arch: linux-firmware is not a kernel",
+			filter:        archKernelVersion,
+			pkg:           kernelPackage{Name: "linux-firmware", Version: "20241210.20e46d0f-1"},
+			runningKernel: "7.1.8-arch1-3",
+			wantOK:        false,
+		},
+		{
+			name:          "arch: an unrelated package is not a kernel",
+			filter:        archKernelVersion,
+			pkg:           kernelPackage{Name: "bash", Version: "5.2.037-1"},
+			runningKernel: "7.1.8-arch1-3",
+			wantOK:        false,
+		},
+		{
+			name:          "arch: linux-lts is a kernel and is marked running",
+			filter:        archKernelVersion,
+			pkg:           kernelPackage{Name: "linux-lts", Version: "6.6.67-1"},
+			runningKernel: "6.6.67-1-lts",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux-lts", Version: "6.6.67-1", Running: true},
+		},
+
+		// --- alpine ---
+		// Shaped on alpine:3.20 (aarch64) with linux-lts and linux-virt installed:
+		// both at 6.6.142-r0, modules in /lib/modules/6.6.142-0-lts and
+		// /lib/modules/6.6.142-0-virt.
+		{
+			name:          "alpine: the booted lts kernel is marked running",
+			filter:        alpineKernelVersion,
+			pkg:           kernelPackage{Name: "linux-lts", Version: "6.6.142-r0"},
+			runningKernel: "6.6.142-0-lts",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux-lts", Version: "6.6.142-r0", Running: true},
+		},
+		{
+			name:          "alpine: another installed flavor at the same version is not running",
+			filter:        alpineKernelVersion,
+			pkg:           kernelPackage{Name: "linux-virt", Version: "6.6.142-r0"},
+			runningKernel: "6.6.142-0-lts",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux-virt", Version: "6.6.142-r0", Running: false},
+		},
+		{
+			// In a container uname reports the host kernel, so no installed
+			// package is the running one. That is the true answer, not a miss.
+			name:          "alpine: in a container the host kernel runs, not an installed one",
+			filter:        alpineKernelVersion,
+			pkg:           kernelPackage{Name: "linux-lts", Version: "6.6.142-r0"},
+			runningKernel: "7.0.12-linuxkit",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux-lts", Version: "6.6.142-r0", Running: false},
+		},
+		{
+			name:          "alpine: linux-lts-dev is not a kernel",
+			filter:        alpineKernelVersion,
+			pkg:           kernelPackage{Name: "linux-lts-dev", Version: "6.6.142-r0"},
+			runningKernel: "6.6.142-0-lts",
+			wantOK:        false,
+		},
+		{
+			name:          "alpine: linux-firmware-none is not a kernel",
+			filter:        alpineKernelVersion,
+			pkg:           kernelPackage{Name: "linux-firmware-none", Version: "20240811-r0"},
+			runningKernel: "6.6.142-0-lts",
+			wantOK:        false,
+		},
+		{
+			name:          "alpine: linux-headers is not a kernel",
+			filter:        alpineKernelVersion,
+			pkg:           kernelPackage{Name: "linux-headers", Version: "6.6-r0"},
+			runningKernel: "6.6.142-0-lts",
+			wantOK:        false,
+		},
+
+		// --- debian (status gate is new, naming is regression) ---
+		{
+			name:          "debian: install ok installed is accepted and marked running",
+			filter:        debianKernelVersion,
+			pkg:           kernelPackage{Name: "linux-image-4.19.0-13-cloud-amd64", Version: "4.19.160-2", Status: "install ok installed"},
+			runningKernel: "4.19.0-13-cloud-amd64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "4.19.0-13-cloud-amd64", Version: "4.19.160-2", Running: true},
+		},
+		{
+			name:          "debian: an older installed image is accepted but not running",
+			filter:        debianKernelVersion,
+			pkg:           kernelPackage{Name: "linux-image-4.19.0-12-cloud-amd64", Version: "4.19.152-1", Status: "install ok installed"},
+			runningKernel: "4.19.0-13-cloud-amd64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "4.19.0-12-cloud-amd64", Version: "4.19.152-1", Running: false},
+		},
+		{
+			name:          "debian: deinstall ok config-files is rejected",
+			filter:        debianKernelVersion,
+			pkg:           kernelPackage{Name: "linux-image-5.15.0-91-generic", Version: "5.15.0-91.101", Status: "deinstall ok config-files"},
+			runningKernel: "5.15.0-94-generic",
+			wantOK:        false,
+		},
+		{
+			name:          "debian: a removed image is rejected even when it names the running kernel",
+			filter:        debianKernelVersion,
+			pkg:           kernelPackage{Name: "linux-image-5.15.0-94-generic", Version: "5.15.0-94.104", Status: "purge ok config-files"},
+			runningKernel: "5.15.0-94-generic",
+			wantOK:        false,
+		},
+		{
+			name:          "debian: a held image is still installed",
+			filter:        debianKernelVersion,
+			pkg:           kernelPackage{Name: "linux-image-5.15.0-94-generic", Version: "5.15.0-94.104", Status: "hold ok installed"},
+			runningKernel: "5.15.0-94-generic",
+			wantOK:        true,
+			want:          KernelVersion{Name: "5.15.0-94-generic", Version: "5.15.0-94.104", Running: true},
+		},
+		{
+			name:          "debian: an image with no status is kept (distroless status.d omits it)",
+			filter:        debianKernelVersion,
+			pkg:           kernelPackage{Name: "linux-image-4.19.0-13-cloud-amd64", Version: "4.19.160-2", Status: ""},
+			runningKernel: "4.19.0-13-cloud-amd64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "4.19.0-13-cloud-amd64", Version: "4.19.160-2", Running: true},
+		},
+		{
+			name:          "debian: the metapackage carries no kernel",
+			filter:        debianKernelVersion,
+			pkg:           kernelPackage{Name: "linux-image-cloud-amd64", Version: "4.19+105+deb10u8", Status: "install ok installed"},
+			runningKernel: "4.19.0-13-cloud-amd64",
+			wantOK:        false,
+		},
+		{
+			name:          "debian: an unrelated package is not a kernel",
+			filter:        debianKernelVersion,
+			pkg:           kernelPackage{Name: "linux-headers-4.19.0-13-cloud-amd64", Version: "4.19.160-2", Status: "install ok installed"},
+			runningKernel: "4.19.0-13-cloud-amd64",
+			wantOK:        false,
+		},
+
+		// --- redhat (regression) ---
+		{
+			name:          "redhat: kernel package matches running via arch suffix",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel", Version: "3.10.0-1160.11.1.el7", Arch: "x86_64"},
+			runningKernel: "3.10.0-1160.11.1.el7.x86_64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel", Version: "3.10.0-1160.11.1.el7", Running: true},
+		},
+		{
+			name:          "redhat: an older kernel is listed but not running",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel", Version: "3.10.0-1127.el7", Arch: "x86_64"},
+			runningKernel: "3.10.0-1160.11.1.el7.x86_64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel", Version: "3.10.0-1127.el7", Running: false},
+		},
+		{
+			name:          "redhat: kernel-devel is not a kernel",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-devel", Version: "3.10.0-1160.11.1.el7", Arch: "x86_64"},
+			runningKernel: "3.10.0-1160.11.1.el7.x86_64",
+			wantOK:        false,
+		},
+		{
+			name:          "redhat: amazonlinux epoch is stripped before matching",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel", Version: "1:6.1.170-210.320.amzn2023", Arch: "x86_64"},
+			runningKernel: "6.1.170-210.320.amzn2023.x86_64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel", Version: "1:6.1.170-210.320.amzn2023", Running: true},
+		},
+
+		{
+			// Amazon Linux 2023 names the kernel for its series, epoch 1
+			name:          "redhat: amazonlinux kernel6.12",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel6.12", Version: "1:6.12.110-135.202.amzn2023", Arch: "x86_64"},
+			runningKernel: "6.12.110-135.202.amzn2023.x86_64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel6.12", Version: "1:6.12.110-135.202.amzn2023", Running: true},
+		},
+		{
+			name:          "redhat: amazonlinux 2027 kernel7.2",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel7.2", Version: "1:7.2.4-4.107.amzn2027", Arch: "x86_64"},
+			runningKernel: "7.2.4-4.107.amzn2027.x86_64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel7.2", Version: "1:7.2.4-4.107.amzn2027", Running: true},
+		},
+		{
+			name:          "redhat: amazonlinux kernel6.12-tools is not a kernel",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel6.12-tools", Version: "6.12.110-135.202.amzn2023", Arch: "x86_64"},
+			runningKernel: "6.12.110-135.202.amzn2023.x86_64",
+			wantOK:        false,
+		},
+		{
+			name:          "redhat: kernel-srpm-macros is not a kernel",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-srpm-macros", Version: "1.0-14.amzn2023.0.3", Arch: "noarch"},
+			runningKernel: "6.12.110-135.202.amzn2023.x86_64",
+			wantOK:        false,
+		},
+		{
+			name:          "redhat: kernel-core without the kernel metapackage (Fedora Cloud 44)",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-core", Version: "7.2.8-200.fc44", Arch: "x86_64"},
+			runningKernel: "7.2.8-200.fc44.x86_64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-core", Version: "7.2.8-200.fc44", Running: true},
+		},
+		{
+			name:          "redhat: kernel-modules-core is not a kernel",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-modules-core", Version: "7.2.8-200.fc44", Arch: "x86_64"},
+			runningKernel: "7.2.8-200.fc44.x86_64",
+			wantOK:        false,
+		},
+
+		// --- oraclelinux (regression) ---
+		{
+			name:          "oraclelinux: the UEK kernel is recognised",
+			filter:        oracleKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-uek", Version: "1:6.12.0-105.51.5.el9uek", Arch: "x86_64"},
+			runningKernel: "6.12.0-105.51.5.el9uek.x86_64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-uek", Version: "1:6.12.0-105.51.5.el9uek", Running: true},
+		},
+		{
+			name:          "oraclelinux: the stock kernel is listed but not running under UEK",
+			filter:        oracleKernelVersion,
+			pkg:           kernelPackage{Name: "kernel", Version: "5.14.0-427.el9", Arch: "x86_64"},
+			runningKernel: "6.12.0-105.51.5.el9uek.x86_64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel", Version: "5.14.0-427.el9", Running: false},
+		},
+		{
+			name:          "oraclelinux: kernel-uek-devel is not a kernel",
+			filter:        oracleKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-uek-devel", Version: "1:6.12.0-105.51.5.el9uek", Arch: "x86_64"},
+			runningKernel: "6.12.0-105.51.5.el9uek.x86_64",
+			wantOK:        false,
+		},
+
+		// --- photon (regression) ---
+		{
+			name:          "photon: the esx flavor is recognised and marked running",
+			filter:        photonKernelVersion,
+			pkg:           kernelPackage{Name: "linux-esx", Version: "4.19.97-1.ph3"},
+			runningKernel: "4.19.97-1.ph3-esx",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux-esx", Version: "4.19.97-1.ph3-esx", Running: true},
+		},
+		{
+			name:          "photon: the bare linux package is recognised",
+			filter:        photonKernelVersion,
+			pkg:           kernelPackage{Name: "linux", Version: "4.19.97-1.ph3"},
+			runningKernel: "4.19.97-1.ph3",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux", Version: "4.19.97-1.ph3", Running: true},
+		},
+		{
+			name:          "photon: a non-linux package is skipped",
+			filter:        photonKernelVersion,
+			pkg:           kernelPackage{Name: "bash", Version: "5.0-1.ph3"},
+			runningKernel: "4.19.97-1.ph3",
+			wantOK:        false,
+		},
+
+		// --- suse (regression) ---
+		{
+			name:          "suse: kernel-default is recognised and marked running",
+			filter:        suseKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-default", Version: "4.12.14-122.23.1"},
+			runningKernel: "4.12.14-122.23-default",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-default", Version: "4.12.14-122.23.1-default", Running: true},
+		},
+		{
+			name:          "suse: an older kernel-default is listed but not running",
+			filter:        suseKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-default", Version: "4.12.14-122.20.1"},
+			runningKernel: "4.12.14-122.23-default",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-default", Version: "4.12.14-122.20.1-default", Running: false},
+		},
+		{
+			name:          "suse: the bare kernel name without a dash is skipped",
+			filter:        suseKernelVersion,
+			pkg:           kernelPackage{Name: "kernel", Version: "4.12.14-122.23.1"},
+			runningKernel: "4.12.14-122.23-default",
+			wantOK:        false,
+		},
+
+		// --- azure linux / cbl-mariner ---
+		// Azure Linux 3.0 VM: uname -r 6.6.150.1-1.azl3 with kernel,
+		// kernel-hwe and kernel-mshv installed.
+		{
+			name:          "azurelinux: the booted kernel is marked running",
+			filter:        azureLinuxKernelVersion,
+			pkg:           kernelPackage{Name: "kernel", Version: "6.6.150.1-1.azl3", Arch: "x86_64"},
+			runningKernel: "6.6.150.1-1.azl3",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel", Version: "6.6.150.1-1.azl3", Running: true},
+		},
+		{
+			name:          "azurelinux: kernel-hwe is a kernel, not running",
+			filter:        azureLinuxKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-hwe", Version: "6.18.43.1-2.azl3", Arch: "x86_64"},
+			runningKernel: "6.6.150.1-1.azl3",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-hwe", Version: "6.18.43.1-2.azl3", Running: false},
+		},
+		{
+			name:          "azurelinux: kernel-mshv is a kernel",
+			filter:        azureLinuxKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-mshv", Version: "6.6.137.mshv2-2.azl3", Arch: "x86_64"},
+			runningKernel: "6.6.137.mshv2-2.azl3",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-mshv", Version: "6.6.137.mshv2-2.azl3", Running: true},
+		},
+		{
+			name:          "azurelinux: kernel-uvm is a utility VM guest kernel, not the host's",
+			filter:        azureLinuxKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-uvm", Version: "6.6.137.mshv1-1.azl3", Arch: "x86_64"},
+			runningKernel: "6.6.150.1-1.azl3",
+			wantOK:        false,
+		},
+		{
+			name:          "azurelinux: kernel-headers is not a kernel",
+			filter:        azureLinuxKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-headers", Version: "6.6.150.1-1.azl3", Arch: "noarch"},
+			runningKernel: "6.6.150.1-1.azl3",
+			wantOK:        false,
+		},
+		{
+			// CBL-Mariner 2.0 container after `tdnf install kernel`:
+			// /lib/modules/5.15.202.1-1.cm2
+			name:          "mariner: the running release has no arch suffix",
+			filter:        azureLinuxKernelVersion,
+			pkg:           kernelPackage{Name: "kernel", Version: "5.15.202.1-1.cm2", Arch: "x86_64"},
+			runningKernel: "5.15.202.1-1.cm2",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel", Version: "5.15.202.1-1.cm2", Running: true},
+		},
+
+		// --- mageia ---
+		// Mageia 9 container after installing kernel-desktop, kernel-server
+		// and kernel-linus: /lib/modules holds 6.6.141-desktop-1.mga9,
+		// 6.6.141-server-1.mga9 and 6.6.141-1.mga9.
+		{
+			name:          "mageia: kernel-desktop is marked running",
+			filter:        mageiaKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-desktop", Version: "6.6.141-1.mga9", Arch: "x86_64"},
+			runningKernel: "6.6.141-desktop-1.mga9",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-desktop", Version: "6.6.141-1.mga9", Running: true},
+		},
+		{
+			name:          "mageia: kernel-server of the same version is not the desktop kernel",
+			filter:        mageiaKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-server", Version: "6.6.141-1.mga9", Arch: "x86_64"},
+			runningKernel: "6.6.141-desktop-1.mga9",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-server", Version: "6.6.141-1.mga9", Running: false},
+		},
+		{
+			name:          "mageia: kernel-linus carries no flavor in the running release",
+			filter:        mageiaKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-linus", Version: "6.6.141-1.mga9", Arch: "x86_64"},
+			runningKernel: "6.6.141-1.mga9",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-linus", Version: "6.6.141-1.mga9", Running: true},
+		},
+		{
+			name:          "mageia: the -latest metapackage is not a kernel",
+			filter:        mageiaKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-desktop-latest", Version: "6.6.141-1.mga9", Arch: "x86_64"},
+			runningKernel: "6.6.141-desktop-1.mga9",
+			wantOK:        false,
+		},
+		{
+			name:          "mageia: kernel-firmware is not a kernel",
+			filter:        mageiaKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-firmware", Version: "20250509-1.mga9", Arch: "noarch"},
+			runningKernel: "6.6.141-desktop-1.mga9",
+			wantOK:        false,
+		},
+
+		// --- void ---
+		// void-glibc container after `xbps-install linux linux-lts`:
+		// /usr/lib/modules holds 6.12.112_1 and 6.18.55_1.
+		{
+			name:          "void: the series package of the running kernel is marked running",
+			filter:        voidKernelVersion,
+			pkg:           kernelPackage{Name: "linux6.12", Version: "6.12.112_1"},
+			runningKernel: "6.12.112_1",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux6.12", Version: "6.12.112_1", Running: true},
+		},
+		{
+			name:          "void: another series is a kernel, not running",
+			filter:        voidKernelVersion,
+			pkg:           kernelPackage{Name: "linux6.18", Version: "6.18.55_1"},
+			runningKernel: "6.12.112_1",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux6.18", Version: "6.18.55_1", Running: false},
+		},
+		{
+			name:          "void: the linux metapackage is not a kernel",
+			filter:        voidKernelVersion,
+			pkg:           kernelPackage{Name: "linux", Version: "6.18_1"},
+			runningKernel: "6.18.55_1",
+			wantOK:        false,
+		},
+		{
+			name:          "void: the linux-lts metapackage is not a kernel",
+			filter:        voidKernelVersion,
+			pkg:           kernelPackage{Name: "linux-lts", Version: "6.12_1"},
+			runningKernel: "6.12.112_1",
+			wantOK:        false,
+		},
+		{
+			name:          "void: a series headers package is not a kernel",
+			filter:        voidKernelVersion,
+			pkg:           kernelPackage{Name: "linux6.12-headers", Version: "6.12.112_1"},
+			runningKernel: "6.12.112_1",
+			wantOK:        false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := tc.filter(tc.pkg, tc.runningKernel)
+			assert.Equal(t, tc.wantOK, ok)
+			if tc.wantOK {
+				assert.Equal(t, tc.want, got)
+			}
+		})
+	}
+}
+
+// TestKernelFilterForPlatform locks down the dispatch. The rows that matter
+// are the ones returning false: before this changed, a platform with no
+// filter fell through a no-op closure and kernel.installed answered with an
+// empty list and no error, which reads as "no kernels installed" on a host
+// that is demonstrably running one.
+func TestKernelFilterForPlatform(t *testing.T) {
+	cases := []struct {
+		name      string
+		platform  *inventory.Platform
+		supported bool
+	}{
+		{
+			name:      "arch linux is now supported",
+			platform:  &inventory.Platform{Name: "arch", Family: []string{"arch", "linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "manjaro rides the arch family",
+			platform:  &inventory.Platform{Name: "manjaro", Family: []string{"arch", "linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "debian",
+			platform:  &inventory.Platform{Name: "debian", Family: []string{"debian", "linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "ubuntu rides the debian family",
+			platform:  &inventory.Platform{Name: "ubuntu", Family: []string{"ubuntu", "debian", "linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "oraclelinux",
+			platform:  &inventory.Platform{Name: "oraclelinux", Family: []string{"redhat", "linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "redhat",
+			platform:  &inventory.Platform{Name: "redhat", Family: []string{"redhat", "linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "amazonlinux",
+			platform:  &inventory.Platform{Name: "amazonlinux", Family: []string{"linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "photon",
+			platform:  &inventory.Platform{Name: "photon", Family: []string{"linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "suse",
+			platform:  &inventory.Platform{Name: "sles", Family: []string{"suse", "linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "alpine",
+			platform:  &inventory.Platform{Name: "alpine", Family: []string{"linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "openeuler rides the euler family",
+			platform:  &inventory.Platform{Name: "openeuler", Family: []string{"euler", "linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "azurelinux",
+			platform:  &inventory.Platform{Name: "azurelinux", Family: []string{"linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "mariner",
+			platform:  &inventory.Platform{Name: "mariner", Family: []string{"linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "mageia",
+			platform:  &inventory.Platform{Name: "mageia", Family: []string{"linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "gentoo has no kernel-package filter and must not answer with an empty list",
+			platform:  &inventory.Platform{Name: "gentoo", Family: []string{"linux", "unix", "os"}},
+			supported: false,
+		},
+		{
+			name:      "macos is not linux",
+			platform:  &inventory.Platform{Name: "macos", Family: []string{"darwin", "bsd", "unix", "os"}},
+			supported: false,
+		},
+		{
+			name:      "a nil platform is not supported and does not panic",
+			platform:  nil,
+			supported: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			filter, ok := kernelFilterForPlatform(tc.platform)
+			assert.Equal(t, tc.supported, ok)
+			if tc.supported {
+				assert.NotNil(t, filter)
+			} else {
+				assert.Nil(t, filter)
+			}
+		})
+	}
+}
+
+// TestKernelFilterForPlatformPicksTheRightFilter runs the dispatched filter
+// over a kernel package and running release captured from each platform, so
+// a platform routed to a filter that reads its packages wrongly (no kernel
+// found, or none marked running) fails here and not only on a live host.
+func TestKernelFilterForPlatformPicksTheRightFilter(t *testing.T) {
+	cases := []struct {
+		name          string
+		platform      *inventory.Platform
+		pkg           kernelPackage
+		runningKernel string
+	}{
+		{
+			// openEuler 24.03 container after `dnf install kernel`:
+			// /lib/modules/6.6.0-145.0.13.139.oe2403.x86_64
+			name:          "openeuler",
+			platform:      &inventory.Platform{Name: "openeuler", Family: []string{"euler", "linux", "unix", "os"}},
+			pkg:           kernelPackage{Name: "kernel", Version: "6.6.0-145.0.13.139.oe2403", Arch: "x86_64"},
+			runningKernel: "6.6.0-145.0.13.139.oe2403.x86_64",
+		},
+		{
+			// Azure Linux 3.0 VM, uname -r
+			name:          "azurelinux",
+			platform:      &inventory.Platform{Name: "azurelinux", Family: []string{"linux", "unix", "os"}},
+			pkg:           kernelPackage{Name: "kernel", Version: "6.6.150.1-1.azl3", Arch: "x86_64"},
+			runningKernel: "6.6.150.1-1.azl3",
+		},
+		{
+			// CBL-Mariner 2.0 container after `tdnf install kernel`
+			name:          "mariner",
+			platform:      &inventory.Platform{Name: "mariner", Family: []string{"linux", "unix", "os"}},
+			pkg:           kernelPackage{Name: "kernel", Version: "5.15.202.1-1.cm2", Arch: "x86_64"},
+			runningKernel: "5.15.202.1-1.cm2",
+		},
+		{
+			// Mageia 9 container after `dnf install kernel-desktop-latest`
+			name:          "mageia",
+			platform:      &inventory.Platform{Name: "mageia", Family: []string{"linux", "unix", "os"}},
+			pkg:           kernelPackage{Name: "kernel-desktop", Version: "6.6.141-1.mga9", Arch: "x86_64"},
+			runningKernel: "6.6.141-desktop-1.mga9",
+		},
+		{
+			// void-glibc container after `xbps-install linux`
+			name:          "void",
+			platform:      &inventory.Platform{Name: "void", Family: []string{"linux", "unix", "os"}},
+			pkg:           kernelPackage{Name: "linux6.18", Version: "6.18.55_1"},
+			runningKernel: "6.18.55_1",
+		},
+		{
+			// Rocky Linux 9 EC2 instance: pinned so the redhat path is unchanged
+			name:          "rocky",
+			platform:      &inventory.Platform{Name: "rocky", Family: []string{"redhat", "linux", "unix", "os"}},
+			pkg:           kernelPackage{Name: "kernel", Version: "5.14.0-687.15.1.el9_8", Arch: "x86_64"},
+			runningKernel: "5.14.0-687.15.1.el9_8.x86_64",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			filter, ok := kernelFilterForPlatform(tc.platform)
+			require.True(t, ok)
+			got, ok := filter(tc.pkg, tc.runningKernel)
+			require.True(t, ok, "the platform's kernel package must be recognised")
+			assert.Equal(t, KernelVersion{Name: tc.pkg.Name, Version: tc.pkg.Version, Running: true}, got)
+		})
+	}
+}
+
+// TestPlatformLabel confirms the unsupported-platform error always names
+// something: the platform name when there is one, the family when the name
+// is empty, so the message never trails off.
+func TestPlatformLabel(t *testing.T) {
+	assert.Equal(t, "arch", platformLabel(&inventory.Platform{Name: "arch", Family: []string{"arch", "linux"}}))
+	assert.Equal(t, "linux/unix", platformLabel(&inventory.Platform{Family: []string{"linux", "unix"}}))
+	assert.Equal(t, "unknown", platformLabel(&inventory.Platform{}))
+	assert.Equal(t, "unknown", platformLabel(nil))
+}
+
+// kernelFilterForPlatform returns false for two very different situations, and
+// kernelInstalledFilter is what tells them apart. Pin the distinction so the
+// non-Linux contract cannot be widened into an error by accident: an SBOM run
+// on macOS has always recorded an empty list here, and changing that is a
+// separate decision about a platform where a package-managed kernel image is
+// not a thing that exists.
+func TestKernelInstalledFilterSeparatesUnsupportedFromNotLinux(t *testing.T) {
+	cases := []struct {
+		name     string
+		platform *inventory.Platform
+		// exactly one of these holds
+		wantFilter bool
+		wantErr    bool
+	}{
+		{
+			name:       "a supported linux gets a filter",
+			platform:   &inventory.Platform{Name: "debian", Family: []string{"debian", "linux", "unix", "os"}},
+			wantFilter: true,
+		},
+		{
+			name:     "a linux with no filter is an error, not an empty answer",
+			platform: &inventory.Platform{Name: "gentoo", Family: []string{"linux", "unix", "os"}},
+			wantErr:  true,
+		},
+		{
+			name:     "macos keeps answering with an empty list",
+			platform: &inventory.Platform{Name: "macos", Family: []string{"darwin", "bsd", "unix", "os"}},
+		},
+		{
+			name:     "freebsd likewise",
+			platform: &inventory.Platform{Name: "freebsd", Family: []string{"bsd", "unix", "os"}},
+		},
+		{
+			name:     "aix likewise",
+			platform: &inventory.Platform{Name: "aix", Family: []string{"unix", "os"}},
+		},
+		{
+			name:     "a nil platform does not panic and is not an error",
+			platform: nil,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			filter, err := kernelInstalledFilter(tc.platform)
+
+			if tc.wantErr {
+				require.Error(t, err, "a linux host is running a kernel it got from a package manager")
+				assert.Contains(t, err.Error(), tc.platform.Name, "the error must name the platform")
+				assert.Nil(t, filter)
+				return
+			}
+
+			require.NoError(t, err)
+			if tc.wantFilter {
+				assert.NotNil(t, filter)
+			} else {
+				assert.Nil(t, filter, "a nil filter with a nil error is how installed() knows to answer []")
+			}
+		})
+	}
+}
+
+func TestSuseKernelName(t *testing.T) {
+	tests := []struct {
+		pkg      string
+		wantName string
+		wantOK   bool
+		why      string
+	}{
+		// Bootable kernels, as named in the openSUSE Leap 16.0 and SLE 16 repos.
+		{"kernel-default", "kernel-default", true, "the stock flavor"},
+		{"kernel-azure", "kernel-azure", true, "cloud flavor"},
+		{"kernel-rt", "kernel-rt", true, "realtime flavor"},
+		{"kernel-kvmsmall", "kernel-kvmsmall", true, "virtualization flavor"},
+		{"kernel-default-base", "kernel-default-base", true, "stripped kernel MicroOS boots"},
+		{"kernel-64kb", "kernel-64kb", true, "flavor not in any list still resolves"},
+		{"kernel-longterm", "kernel-longterm", true, "flavor not in any list still resolves"},
+
+		// Subpackages that carry no kernel. These are what a stock SUSE host
+		// actually has installed alongside the kernel, and listing them invents
+		// installed kernels.
+		{"kernel-firmware-network", "", false, "firmware, installed on stock hosts"},
+		{"kernel-firmware-all", "", false, "firmware meta package"},
+		{"kernel-macros", "", false, "rpm macros, version tracks a newer kernel"},
+		{"kernel-devel", "", false, "headers"},
+		{"kernel-devel-azure", "", false, "per-flavor headers"},
+		{"kernel-source", "", false, "sources"},
+		{"kernel-source-vanilla", "", false, "sources"},
+		{"kernel-syms", "", false, "module symbols"},
+		{"kernel-syms-azure", "", false, "per-flavor module symbols"},
+		{"kernel-docs", "", false, "documentation"},
+		{"kernel-docs-html", "", false, "documentation"},
+		{"kernel-install-tools", "", false, "tooling"},
+		{"kernel-obs-build", "", false, "build service helper"},
+		{"kernel-obs-qa", "", false, "build service helper"},
+		{"kernel-default-devel", "", false, "per-flavor headers"},
+		{"kernel-default-extra", "", false, "extra modules, not a kernel"},
+		{"kernel-default-optional", "", false, "optional modules, not a kernel"},
+		{"kernel-azure-vdso", "", false, "vdso build"},
+		{"kernel-livepatch-6_12_0-160000_37-default", "", false, "livepatch"},
+
+		// Not a kernel package at all.
+		{"kernel", "", false, "no flavor suffix, not used by SUSE"},
+		{"kernel-", "", false, "empty flavor"},
+		{"kernel-base", "", false, "-base with no flavor in front"},
+		{"linux-image-6.12.0-default", "", false, "debian naming"},
+		{"bash", "", false, "unrelated package"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.pkg, func(t *testing.T) {
+			name, ok := suseKernelName(test.pkg)
+			assert.Equal(t, test.wantOK, ok, test.why)
+			assert.Equal(t, test.wantName, name, test.why)
+		})
+	}
+}
+
+// The live openSUSE Leap 16.0 host this came from ran 6.12.0-160000.35-default
+// with kernel-default 6.12.0-160000.35.1 installed, plus kernel-macros at the
+// higher 6.12.0-160000.37.1 and kernel-firmware-network at 20250717-160000.1.2.
+// Only the first is a kernel, and only it is running.
+func TestSuseKernelNameWithRunningMatch(t *testing.T) {
+	running := "6.12.0-160000.35-default"
+
+	tests := []struct {
+		pkg         string
+		version     string
+		wantKernel  bool
+		wantRunning bool
+	}{
+		{"kernel-default", "6.12.0-160000.35.1", true, true},
+		{"kernel-macros", "6.12.0-160000.37.1", false, false},
+		{"kernel-firmware-network", "20250717-160000.1.2", false, false},
+		{"kernel-default", "6.12.0-160000.37.1", true, false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.pkg+"@"+test.version, func(t *testing.T) {
+			name, ok := suseKernelName(test.pkg)
+			assert.Equal(t, test.wantKernel, ok)
+			if !ok {
+				return
+			}
+			assert.Equal(t, test.wantRunning, suseKernelMatchesRunning(test.version, name, running))
+		})
+	}
+}
+
+// TestLookupModprobeRule covers the query side of the dash/underscore
+// equivalence: whichever spelling the admin wrote in modprobe.d, a
+// `kernel.module("...")` query written with the other spelling must find
+// the rule. Dropping the normalization from the lookup makes the first two
+// subtests report an unrestricted module on a hardened host.
+func TestLookupModprobeRule(t *testing.T) {
+	rules := map[string]modprobeRule{
+		"firewire_core": {blacklisted: true, installBypass: true},
+		"usb_storage":   {blacklisted: true},
+	}
+
+	cases := []struct {
+		name string
+		want modprobeRule
+	}{
+		{"firewire-core", modprobeRule{blacklisted: true, installBypass: true}},
+		{"firewire_core", modprobeRule{blacklisted: true, installBypass: true}},
+		{"usb-storage", modprobeRule{blacklisted: true}},
+		{"cramfs", modprobeRule{}},
+		{"", modprobeRule{}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, lookupModprobeRule(rules, tc.name))
+		})
+	}
+}
+
+// /proc/modules lists usb_storage; a policy written as
+// kernel.module("usb-storage") must find it.
+func TestKernelLoadedModuleNormalizesName(t *testing.T) {
+	loaded := func(name string) *mqlKernelModule {
+		return &mqlKernelModule{Name: plugin.TValue[string]{Data: name, State: plugin.StateIsSet}}
+	}
+	usbStorage := loaded("usb_storage")
+	k := &mqlKernel{}
+	require.NoError(t, k.refreshCache([]any{usbStorage, loaded("nf_conntrack")}))
+
+	for _, name := range []string{"usb_storage", "usb-storage"} {
+		got, ok := k.loadedModule(name)
+		require.Truef(t, ok, "%s not found", name)
+		assert.Same(t, usbStorage, got)
+	}
+
+	_, ok := k.loadedModule("cramfs")
+	assert.False(t, ok)
+}
+
+// rpm -qa 'kernel*' on the RHEL 8 sweep host after a kernel upgrade lists
+// kernel and kernel-core for both builds; Fedora Cloud 44 only has
+// kernel-core.
+func TestDropKernelCoreShadowedByKernel(t *testing.T) {
+	rhel8 := []KernelVersion{
+		{Name: "kernel", Version: "4.18.0-553.158.1.el8_10", Running: true},
+		{Name: "kernel", Version: "4.18.0-553.170.1.el8_10"},
+		{Name: "kernel-core", Version: "4.18.0-553.158.1.el8_10", Running: true},
+		{Name: "kernel-core", Version: "4.18.0-553.170.1.el8_10"},
+	}
+	assert.Equal(t, []KernelVersion{
+		{Name: "kernel", Version: "4.18.0-553.158.1.el8_10", Running: true},
+		{Name: "kernel", Version: "4.18.0-553.170.1.el8_10"},
+	}, dropKernelCoreShadowedByKernel(rhel8))
+
+	fedora := []KernelVersion{
+		{Name: "kernel-core", Version: "7.2.8-200.fc44", Running: true},
+		{Name: "kernel-core", Version: "7.2.8-999.200.fc44"},
+	}
+	assert.Equal(t, fedora, dropKernelCoreShadowedByKernel(fedora))
+
+	got := dropKernelCoreShadowedByKernel(nil)
+	assert.NotNil(t, got)
+	assert.Empty(t, got)
+}
+
+// An image or a disk snapshot runs no kernel. installed lists its kernels as
+// not running instead of failing on the missing kernel.info.
+func TestKernelInstalledRunningVersionWithoutCommands(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{Platform: &inventory.Platform{Name: "debian", Family: []string{"debian", "linux", "unix"}}})
+	require.NoError(t, err)
+
+	k := &mqlKernel{MqlRuntime: &plugin.Runtime{Connection: &noCommandConnection{Connection: conn}}}
+	version, err := k.installedRunningVersion(&noCommandConnection{Connection: conn})
+	require.NoError(t, err)
+	assert.Equal(t, "", version)
+
+	// a running system that cannot tell its kernel is still an error
+	k = &mqlKernel{MqlRuntime: &plugin.Runtime{Connection: conn}}
+	k.Info = plugin.TValue[any]{State: plugin.StateIsSet, Error: errors.New("uname failed")}
+	_, err = k.installedRunningVersion(conn)
+	assert.Error(t, err)
+
+	// with the kernel known, a matching package is the running one
+	kv, ok := debianKernelVersion(kernelPackage{Name: "linux-image-6.1.0-41-arm64", Version: "6.1.158-1", Status: "install ok installed"}, "")
+	require.True(t, ok)
+	assert.False(t, kv.Running)
 }

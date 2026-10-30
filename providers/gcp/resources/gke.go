@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 
 	container "cloud.google.com/go/container/apiv1"
 	"cloud.google.com/go/container/apiv1/containerpb"
@@ -22,8 +22,30 @@ import (
 	"google.golang.org/api/option"
 )
 
+// initGcpProjectGkeService fills in the project the service belongs to when the
+// resource is reached by its own type name (gcp.project.gkeService.clusters)
+// rather than through the gcp.project.gke() accessor. Without it the resource
+// is built with an empty projectId, and the serviceEnabled gate then asks
+// Service Usage about "projects/", which fails the whole query with an
+// InvalidArgument rather than returning clusters. Every sibling service
+// resource carries the same init.
+func initGcpProjectGkeService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 0 {
+		return args, nil, nil
+	}
+
+	conn, ok := runtime.Connection.(*connection.GcpConnection)
+	if !ok {
+		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
+	}
+
+	args["projectId"] = llx.StringData(conn.ResourceID())
+
+	return args, nil, nil
+}
+
 type mqlGcpProjectGkeServiceInternal struct {
-	serviceEnabled bool
+	serviceGate
 }
 
 func (g *mqlGcpProjectGkeService) id() (string, error) {
@@ -53,7 +75,7 @@ func (g *mqlGcpProject) gke() (*mqlGcpProjectGkeService, error) {
 	}
 
 	gkeService := res.(*mqlGcpProjectGkeService)
-	gkeService.serviceEnabled = serviceEnabled
+	gkeService.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_gke).Msg("gcp service is not enabled, skipping")
 	}
@@ -85,8 +107,14 @@ func initGcpProjectGkeServiceCluster(runtime *plugin.Runtime, args map[string]*l
 		}
 	}
 
+	// Guard before building the parent: a missing projectId would nil-deref
+	// (and blow the type assertion) rather than return an error.
+	if args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.gkeService.cluster requires a \"projectId\" argument")
+	}
+
 	obj, err := CreateResource(runtime, "gcp.project.gkeService", map[string]*llx.RawData{
-		"projectId": llx.StringData(args["projectId"].Value.(string)),
+		"projectId": args["projectId"],
 	})
 	if err != nil {
 		return nil, nil, err
@@ -95,6 +123,19 @@ func initGcpProjectGkeServiceCluster(runtime *plugin.Runtime, args map[string]*l
 	clusters := gkeSvc.GetClusters()
 	if clusters.Error != nil {
 		return nil, nil, clusters.Error
+	}
+
+	// args["name"] on an absent key is a nil *llx.RawData; dereferencing it
+	// panics the provider and kills the whole scan. `location` narrows the
+	// match when supplied but is optional, so a two-arg lookup still resolves.
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New("gcp.project.gkeService.cluster requires a \"name\" argument")
+	}
+	nameVal, _ := nameRaw.Value.(string)
+	locationVal := ""
+	if args["location"] != nil {
+		locationVal, _ = args["location"].Value.(string)
 	}
 
 	for _, c := range clusters.Data {
@@ -112,7 +153,8 @@ func initGcpProjectGkeServiceCluster(runtime *plugin.Runtime, args map[string]*l
 			return nil, nil, location.Error
 		}
 
-		if name.Data == args["name"].Value && projectId.Data == args["projectId"].Value && location.Data == args["location"].Value {
+		if name.Data == nameVal && projectId.Data == args["projectId"].Value &&
+			(locationVal == "" || location.Data == locationVal) {
 			return args, cluster, nil
 		}
 	}
@@ -231,6 +273,9 @@ func (g *mqlGcpProjectGkeServiceClusterNetworkConfig) id() (string, error) {
 
 type mqlGcpProjectGkeServiceClusterInternal struct {
 	cacheDatabaseEncryptionKeyName string
+	cacheLoggingService            string
+	cacheMonitoringService         string
+	cacheNetworkPolicyConfig       any
 }
 
 func (g *mqlGcpProjectGkeServiceCluster) databaseEncryptionKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
@@ -258,11 +303,13 @@ func (g *mqlGcpProjectGkeServiceClusterNodepoolConfig) bootDiskKmsKeyRef() (*mql
 	return newKmsCryptoKeyRef(g.MqlRuntime, &g.BootDiskKmsKeyRef, keyName.Data)
 }
 
+// gkeNetworkPolicyCacheKey scopes a cluster's network policy to that cluster.
+func gkeNetworkPolicyCacheKey(clusterId string) string {
+	return clusterId + "/networkPolicy"
+}
+
 func (g *mqlGcpProjectGkeServiceCluster) networkPolicy() (*mqlGcpProjectGkeServiceClusterNetworkPolicy, error) {
-	if g.NetworkPolicyConfig.Error != nil {
-		return nil, g.NetworkPolicyConfig.Error
-	}
-	npConfig := g.NetworkPolicyConfig.Data
+	npConfig := g.cacheNetworkPolicyConfig
 	if npConfig == nil {
 		g.NetworkPolicy.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -282,8 +329,15 @@ func (g *mqlGcpProjectGkeServiceCluster) networkPolicy() (*mqlGcpProjectGkeServi
 	}
 	clusterId := g.Id.Data
 
+	// The cache key has to be passed explicitly. This resource declares no
+	// id() method, so without an "__id" argument every cluster's network
+	// policy is stored under the same empty key, and CreateResource returns
+	// the first resource stored under a key -- so a cluster with network
+	// policy switched off reports the enabled neighbour's answer.
+	key := gkeNetworkPolicyCacheKey(clusterId)
 	res, err := CreateResource(g.MqlRuntime, "gcp.project.gkeService.cluster.networkPolicy", map[string]*llx.RawData{
-		"id":       llx.StringData(clusterId + "/networkPolicy"),
+		"__id":     llx.StringData(key),
+		"id":       llx.StringData(key),
 		"enabled":  llx.BoolData(enabled),
 		"provider": llx.StringData(provider),
 	})
@@ -295,7 +349,11 @@ func (g *mqlGcpProjectGkeServiceCluster) networkPolicy() (*mqlGcpProjectGkeServi
 
 func (g *mqlGcpProjectGkeService) clusters() ([]any, error) {
 	// when the service is not enabled, we return nil
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -365,106 +423,8 @@ func (g *mqlGcpProjectGkeService) clusters() ([]any, error) {
 
 		var addonsConfig plugin.Resource
 		if c.AddonsConfig != nil {
-			var httpLoadBalancing map[string]any
-			if c.AddonsConfig.HttpLoadBalancing != nil {
-				httpLoadBalancing = map[string]any{
-					"disabled": c.AddonsConfig.HttpLoadBalancing.Disabled,
-				}
-			}
-
-			var horizontalPodAutoscaling map[string]any
-			if c.AddonsConfig.HorizontalPodAutoscaling != nil {
-				horizontalPodAutoscaling = map[string]any{
-					"disabled": c.AddonsConfig.HorizontalPodAutoscaling.Disabled,
-				}
-			}
-
-			var kubernetesDashboard map[string]any
-			if c.AddonsConfig.KubernetesDashboard != nil {
-				kubernetesDashboard = map[string]any{
-					"disabled": c.AddonsConfig.KubernetesDashboard.Disabled,
-				}
-			}
-
-			var networkPolicyConfig map[string]any
-			if c.AddonsConfig.NetworkPolicyConfig != nil {
-				networkPolicyConfig = map[string]any{
-					"disabled": c.AddonsConfig.NetworkPolicyConfig.Disabled,
-				}
-			}
-
-			var cloudRunConfig map[string]any
-			if c.AddonsConfig.CloudRunConfig != nil {
-				cloudRunConfig = map[string]any{
-					"disabled":         c.AddonsConfig.CloudRunConfig.Disabled,
-					"loadBalancerType": c.AddonsConfig.CloudRunConfig.LoadBalancerType.String(),
-				}
-			}
-
-			var dnsCacheConfig map[string]any
-			if c.AddonsConfig.DnsCacheConfig != nil {
-				dnsCacheConfig = map[string]any{
-					"enabled": c.AddonsConfig.DnsCacheConfig.Enabled,
-				}
-			}
-
-			var configConnectorConfig map[string]any
-			if c.AddonsConfig.ConfigConnectorConfig != nil {
-				configConnectorConfig = map[string]any{
-					"enabled": c.AddonsConfig.ConfigConnectorConfig.Enabled,
-				}
-			}
-
-			var gcePersistentDiskCsiDriverConfig map[string]any
-			if c.AddonsConfig.GcePersistentDiskCsiDriverConfig != nil {
-				gcePersistentDiskCsiDriverConfig = map[string]any{
-					"enabled": c.AddonsConfig.GcePersistentDiskCsiDriverConfig.Enabled,
-				}
-			}
-
-			var gcpFilestoreCsiDriverConfig map[string]any
-			if c.AddonsConfig.GcpFilestoreCsiDriverConfig != nil {
-				gcpFilestoreCsiDriverConfig = map[string]any{
-					"enabled": c.AddonsConfig.GcpFilestoreCsiDriverConfig.Enabled,
-				}
-			}
-
-			var gkeBackupAgentConfig map[string]any
-			if c.AddonsConfig.GkeBackupAgentConfig != nil {
-				gkeBackupAgentConfig = map[string]any{
-					"enabled": c.AddonsConfig.GkeBackupAgentConfig.Enabled,
-				}
-			}
-
-			var gcsFuseCsiDriverConfig map[string]any
-			if c.AddonsConfig.GcsFuseCsiDriverConfig != nil {
-				gcsFuseCsiDriverConfig = map[string]any{
-					"enabled": c.AddonsConfig.GcsFuseCsiDriverConfig.Enabled,
-				}
-			}
-
-			var statefulHaConfig map[string]any
-			if c.AddonsConfig.StatefulHaConfig != nil {
-				statefulHaConfig = map[string]any{
-					"enabled": c.AddonsConfig.StatefulHaConfig.Enabled,
-				}
-			}
-
-			addonsConfig, err = CreateResource(g.MqlRuntime, "gcp.project.gkeService.cluster.addonsConfig", map[string]*llx.RawData{
-				"id":                               llx.StringData(fmt.Sprintf("gcp.project.gkeService.cluster/%s/addonsConfig", c.Id)),
-				"httpLoadBalancing":                llx.DictData(httpLoadBalancing),
-				"horizontalPodAutoscaling":         llx.DictData(horizontalPodAutoscaling),
-				"kubernetesDashboard":              llx.DictData(kubernetesDashboard),
-				"networkPolicyConfig":              llx.DictData(networkPolicyConfig),
-				"cloudRunConfig":                   llx.DictData(cloudRunConfig),
-				"dnsCacheConfig":                   llx.DictData(dnsCacheConfig),
-				"configConnectorConfig":            llx.DictData(configConnectorConfig),
-				"gcePersistentDiskCsiDriverConfig": llx.DictData(gcePersistentDiskCsiDriverConfig),
-				"gcpFilestoreCsiDriverConfig":      llx.DictData(gcpFilestoreCsiDriverConfig),
-				"gkeBackupAgentConfig":             llx.DictData(gkeBackupAgentConfig),
-				"gcsFuseCsiDriverConfig":           llx.DictData(gcsFuseCsiDriverConfig),
-				"statefulHaConfig":                 llx.DictData(statefulHaConfig),
-			})
+			addonsConfig, err = newMqlGkeAddonsConfig(g.MqlRuntime,
+				fmt.Sprintf("gcp.project.gkeService.cluster/%s/addonsConfig", c.Id), c.AddonsConfig)
 			if err != nil {
 				return nil, err
 			}
@@ -544,20 +504,9 @@ func (g *mqlGcpProjectGkeService) clusters() ([]any, error) {
 			}
 		}
 
-		var binAuth map[string]any
-		var binaryAuthorizationEnabled bool
 		var binaryAuthorizationEvaluationMode string
 		if c.BinaryAuthorization != nil {
-			binAuth = map[string]any{
-				"enabled":        c.BinaryAuthorization.Enabled,
-				"evaluationMode": c.BinaryAuthorization.EvaluationMode.String(),
-			}
-			// CIS interpretation: Binary Auth is "enabled" when evaluationMode is anything
-			// other than DISABLED. The legacy boolean Enabled field is also honored.
-			mode := c.BinaryAuthorization.EvaluationMode
-			binaryAuthorizationEnabled = c.BinaryAuthorization.Enabled ||
-				(mode != containerpb.BinaryAuthorization_EVALUATION_MODE_UNSPECIFIED && mode != containerpb.BinaryAuthorization_DISABLED)
-			binaryAuthorizationEvaluationMode = mode.String()
+			binaryAuthorizationEvaluationMode = c.BinaryAuthorization.EvaluationMode.String()
 		}
 
 		var legacyAbac map[string]any
@@ -585,37 +534,27 @@ func (g *mqlGcpProjectGkeService) clusters() ([]any, error) {
 			// Username is the deprecated HTTP basic-auth field; a non-empty value
 			// means basic auth is enabled (read solely for the audit signal).
 			basicAuthEnabled = c.MasterAuth.Username != ""
+			// Password and ClientKey are deliberately not published. They are
+			// the control-plane basic-auth password and the client private
+			// key; the audit signals they would serve are already carried by
+			// basicAuthEnabled and clientCertificateEnabled above.
 			masterAuth = map[string]any{
 				"username":                c.MasterAuth.Username,
-				"password":                c.MasterAuth.Password,
 				"clientCertificateConfig": clientCertCfg,
 				"clusterCaCertificate":    c.MasterAuth.ClusterCaCertificate,
 				"clientCertificate":       c.MasterAuth.ClientCertificate,
-				"clientKey":               c.MasterAuth.ClientKey,
 			}
 		}
 
-		var masterAuthorizedNetworksCfg map[string]any
-		var masterAuthorizedNetworksEnabled bool
 		// Derived: the CIDR allowlist and enablement read from the modern
 		// ControlPlaneEndpointsConfig when present, otherwise the legacy
 		// MasterAuthorizedNetworksConfig.
 		var masterAuthorizedNetworksCidrs []any
 		var masterAuthorizedNetworksAllowed bool
 		if c.MasterAuthorizedNetworksConfig != nil {
-			masterAuthorizedNetworksEnabled = c.MasterAuthorizedNetworksConfig.Enabled
 			masterAuthorizedNetworksAllowed = c.MasterAuthorizedNetworksConfig.Enabled
-			cidrBlocks := make([]any, 0, len(c.MasterAuthorizedNetworksConfig.CidrBlocks))
 			for _, cidrBlock := range c.MasterAuthorizedNetworksConfig.CidrBlocks {
-				cidrBlocks = append(cidrBlocks, map[string]any{
-					"displayName": cidrBlock.DisplayName,
-					"cidrBlock":   cidrBlock.CidrBlock,
-				})
 				masterAuthorizedNetworksCidrs = append(masterAuthorizedNetworksCidrs, cidrBlock.CidrBlock)
-			}
-			masterAuthorizedNetworksCfg = map[string]any{
-				"enabled":    c.MasterAuthorizedNetworksConfig.Enabled,
-				"cidrBlocks": cidrBlocks,
 			}
 		}
 
@@ -654,13 +593,9 @@ func (g *mqlGcpProjectGkeService) clusters() ([]any, error) {
 		}
 
 		var privateClusterCfg map[string]any
-		var privateNodesEnabled, privateEndpointEnabled, masterGlobalAccessEnabled bool
 		if c.PrivateClusterConfig != nil {
-			privateNodesEnabled = c.PrivateClusterConfig.EnablePrivateNodes
-			privateEndpointEnabled = c.PrivateClusterConfig.EnablePrivateEndpoint
 			var masterGlobalAccessCfg map[string]any
 			if c.PrivateClusterConfig.MasterGlobalAccessConfig != nil {
-				masterGlobalAccessEnabled = c.PrivateClusterConfig.MasterGlobalAccessConfig.Enabled
 				masterGlobalAccessCfg = map[string]any{
 					"enabled": c.PrivateClusterConfig.MasterGlobalAccessConfig.Enabled,
 				}
@@ -677,17 +612,8 @@ func (g *mqlGcpProjectGkeService) clusters() ([]any, error) {
 			}
 		}
 
-		var databaseEncryption map[string]any
-		var databaseEncryptionState string
-		var databaseEncryptionKeyName string
-		if c.DatabaseEncryption != nil {
-			databaseEncryptionState = c.DatabaseEncryption.State.String()
-			databaseEncryptionKeyName = c.DatabaseEncryption.KeyName
-			databaseEncryption = map[string]any{
-				"state":   databaseEncryptionState,
-				"keyName": databaseEncryptionKeyName,
-			}
-		}
+		dbEnc := newGkeDatabaseEncryption(c.DatabaseEncryption)
+		databaseEncryptionKeyName := dbEnc.keyName
 
 		var shieldedNodesConfig map[string]any
 		var shieldedNodesEnabled bool
@@ -800,6 +726,12 @@ func (g *mqlGcpProjectGkeService) clusters() ([]any, error) {
 			return nil, err
 		}
 
+		controlPlaneEndpoints, err := newMqlGkeControlPlaneEndpoints(g.MqlRuntime,
+			fmt.Sprintf("gcp.project.gkeService.cluster/%s", c.Id), c.ControlPlaneEndpointsConfig)
+		if err != nil {
+			return nil, err
+		}
+
 		loggingConfig, err := protoToDict(c.LoggingConfig)
 		if err != nil {
 			return nil, err
@@ -847,9 +779,49 @@ func (g *mqlGcpProjectGkeService) clusters() ([]any, error) {
 			}
 		}
 
-		notificationConfig, err := buildGKENotificationConfig(g.MqlRuntime, c.Name, c.NotificationConfig)
+		// Key on the cluster's server-assigned unique Id, not its name: cluster
+		// names are unique only within a project+location, so two clusters named
+		// "prod" in different projects would share one notificationConfig cache
+		// entry. Every other cluster sub-resource in this file uses c.Id.
+		notificationConfig, err := buildGKENotificationConfig(g.MqlRuntime, c.Id, c.NotificationConfig)
 		if err != nil {
 			return nil, err
+		}
+
+		var authenticatorGroupsEnabled bool
+		authenticatorGroupsSecurityGroup := ""
+		if c.AuthenticatorGroupsConfig != nil {
+			authenticatorGroupsEnabled = c.AuthenticatorGroupsConfig.Enabled
+			authenticatorGroupsSecurityGroup = c.AuthenticatorGroupsConfig.SecurityGroup
+		}
+
+		compliancePostureMode := ""
+		complianceStandards := []any{}
+		if c.CompliancePostureConfig != nil {
+			compliancePostureMode = c.CompliancePostureConfig.GetMode().String()
+			for _, s := range c.CompliancePostureConfig.ComplianceStandards {
+				if std := s.GetStandard(); std != "" {
+					complianceStandards = append(complianceStandards, std)
+				}
+			}
+		}
+
+		nodePoolAutoConfig, err := protoToDict(c.GetNodePoolAutoConfig())
+		if err != nil {
+			return nil, err
+		}
+
+		// Only a cluster with a ClusterAutoscaling block has ever been
+		// configured for node auto-provisioning. Leave the field null on the
+		// rest, so a check on the auto-provisioned node defaults cannot match a
+		// cluster that never creates such nodes.
+		nodeAutoprovisioningData := llx.NilData
+		if ca := c.GetAutoscaling(); ca != nil {
+			mqlNap, err := newMqlNodeAutoprovisioning(g.MqlRuntime, projectId, c.Id, ca)
+			if err != nil {
+				return nil, err
+			}
+			nodeAutoprovisioningData = llx.ResourceData(mqlNap, "gcp.project.gkeService.cluster.nodeAutoprovisioningConfig")
 		}
 
 		clusterArgs := map[string]*llx.RawData{
@@ -857,8 +829,6 @@ func (g *mqlGcpProjectGkeService) clusters() ([]any, error) {
 			"id":                                       llx.StringData(c.Id),
 			"name":                                     llx.StringData(c.Name),
 			"description":                              llx.StringData(c.Description),
-			"loggingService":                           llx.StringData(c.LoggingService),
-			"monitoringService":                        llx.StringData(c.MonitoringService),
 			"network":                                  llx.StringData(c.Network),
 			"clusterIpv4Cidr":                          llx.StringData(c.ClusterIpv4Cidr),
 			"subnetwork":                               llx.StringData(c.Subnetwork),
@@ -884,33 +854,30 @@ func (g *mqlGcpProjectGkeService) clusters() ([]any, error) {
 			"workloadIdentityEnabled":                  llx.BoolData(workloadIdentityEnabled),
 			"ipAllocationPolicy":                       llx.ResourceData(ipAllocPolicy, "gcp.project.gkeService.cluster.ipAllocationPolicy"),
 			"networkConfig":                            llx.ResourceData(networkConfig, "gcp.project.gkeService.cluster.networkConfig"),
-			"binaryAuthorization":                      llx.DictData(binAuth),
-			"binaryAuthorizationEnabled":               llx.BoolData(binaryAuthorizationEnabled),
 			"binaryAuthorizationEvaluationMode":        llx.StringData(binaryAuthorizationEvaluationMode),
 			"legacyAbac":                               llx.DictData(legacyAbac),
 			"legacyAbacEnabled":                        llx.BoolData(legacyAbacEnabled),
 			"masterAuth":                               llx.DictData(masterAuth),
 			"clientCertificateEnabled":                 llx.BoolData(clientCertificateEnabled),
 			"basicAuthEnabled":                         llx.BoolData(basicAuthEnabled),
-			"masterAuthorizedNetworksConfig":           llx.DictData(masterAuthorizedNetworksCfg),
-			"masterAuthorizedNetworksEnabled":          llx.BoolData(masterAuthorizedNetworksEnabled),
 			"privateClusterConfig":                     llx.DictData(privateClusterCfg),
-			"privateNodesEnabled":                      llx.BoolData(privateNodesEnabled),
-			"privateEndpointEnabled":                   llx.BoolData(privateEndpointEnabled),
-			"masterGlobalAccessEnabled":                llx.BoolData(masterGlobalAccessEnabled),
-			"databaseEncryption":                       llx.DictData(databaseEncryption),
-			"databaseEncryptionState":                  llx.StringData(databaseEncryptionState),
+			"databaseEncryption":                       llx.DictData(dbEnc.dict),
+			"databaseEncryptionState":                  llx.StringData(dbEnc.state),
+			"databaseEncryptionCurrentState":           llx.StringData(dbEnc.currentState),
 			"shieldedNodesConfig":                      llx.DictData(shieldedNodesConfig),
 			"shieldedNodesEnabled":                     llx.BoolData(shieldedNodesEnabled),
 			"costManagementConfig":                     llx.DictData(costManagementConfig),
 			"confidentialNodesConfig":                  llx.DictData(confidentialNodesConfig),
 			"confidentialNodesEnabled":                 llx.BoolData(confidentialNodesEnabled),
 			"identityServiceConfig":                    llx.DictData(identityServiceConfig),
-			"networkPolicyConfig":                      llx.DictData(networkPolicyConfig),
 			"releaseChannel":                           llx.StringData(strings.ToLower(c.ReleaseChannel.GetChannel().String())),
 			"enableTpu":                                llx.BoolData(c.EnableTpu),
 			"currentNodeCount":                         llx.IntData(int64(c.CurrentNodeCount)),
 			"securityPostureConfig":                    llx.ResourceData(secPostureConfig, "gcp.project.gkeService.cluster.securityPostureConfig"),
+			"authenticatorGroupsEnabled":               llx.BoolData(authenticatorGroupsEnabled),
+			"authenticatorGroupsSecurityGroup":         llx.StringData(authenticatorGroupsSecurityGroup),
+			"compliancePostureMode":                    llx.StringData(compliancePostureMode),
+			"complianceStandards":                      llx.ArrayData(complianceStandards, types.String),
 			"maintenancePolicy":                        llx.ResourceData(maintenancePolicy, "gcp.project.gkeService.cluster.maintenancePolicy"),
 			"etag":                                     llx.StringData(c.Etag),
 			"initialNodeCount":                         llx.IntData(int64(c.InitialNodeCount)),
@@ -918,8 +885,20 @@ func (g *mqlGcpProjectGkeService) clusters() ([]any, error) {
 			"nodeIpv4CidrSize":                         llx.IntData(int64(c.NodeIpv4CidrSize)),
 			"tpuIpv4CidrBlock":                         llx.StringData(c.TpuIpv4CidrBlock),
 			"enabledK8sBetaApis":                       llx.ArrayData(enabledK8sBetaApis, types.String),
+			"enterpriseClusterTier":                    llx.StringData(c.GetEnterpriseConfig().GetClusterTier().String()),
+			"enterpriseDesiredTier":                    llx.StringData(c.GetEnterpriseConfig().GetDesiredTier().String()),
+			"autoUpgradePatchMode":                     llx.StringData(c.GetGkeAutoUpgradeConfig().GetPatchMode().String()),
+			"secretSyncEnabled":                        llx.BoolData(c.GetSecretSyncConfig().GetEnabled()),
+			"secretSyncRotationEnabled":                llx.BoolData(c.GetSecretSyncConfig().GetRotationConfig().GetEnabled()),
+			"secretSyncRotationIntervalSeconds":        llx.IntData(c.GetSecretSyncConfig().GetRotationConfig().GetRotationInterval().GetSeconds()),
+			"podAutoscalingHpaProfile":                 llx.StringData(c.GetPodAutoscaling().GetHpaProfile().String()),
+			"currentNodeVersion":                       llx.StringData(c.GetCurrentNodeVersion()),
+			"statusMessage":                            llx.StringData(c.GetStatusMessage()),
+			"nodePoolAutoConfig":                       llx.DictData(nodePoolAutoConfig),
+			"nodeAutoprovisioning":                     nodeAutoprovisioningData,
 			"meshCertificates":                         llx.DictData(meshCertificates),
 			"controlPlaneEndpointsConfig":              llx.DictData(controlPlaneEndpointsConfig),
+			"controlPlaneEndpoints":                    controlPlaneEndpoints,
 			"controlPlanePublicEndpointEnabled":        llx.BoolData(controlPlanePublicEndpointEnabled),
 			"masterAuthorizedNetworksCidrs":            llx.ArrayData(masterAuthorizedNetworksCidrs, types.String),
 			"masterAuthorizedNetworksAllowed":          llx.BoolData(masterAuthorizedNetworksAllowed),
@@ -948,6 +927,9 @@ func (g *mqlGcpProjectGkeService) clusters() ([]any, error) {
 		}
 		mqlC := mqlCluster.(*mqlGcpProjectGkeServiceCluster)
 		mqlC.cacheDatabaseEncryptionKeyName = databaseEncryptionKeyName
+		mqlC.cacheLoggingService = c.LoggingService
+		mqlC.cacheMonitoringService = c.MonitoringService
+		mqlC.cacheNetworkPolicyConfig = networkPolicyConfig
 		if notificationConfig == nil {
 			mqlC.NotificationConfig.State = plugin.StateIsNull | plugin.StateIsSet
 		}
@@ -967,6 +949,12 @@ func (g *mqlGcpProjectGkeServiceClusterNodepoolConfig) serviceAccount() (*mqlGcp
 		return nil, g.ServiceAccountEmail.Error
 	}
 	email := g.ServiceAccountEmail.Data
+	if email == "" {
+		// No SA on the node pool config means it falls back to the project
+		// default; resolve to null rather than a husk keyed on an empty email.
+		g.ServiceAccount.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
 
 	res, err := NewResource(g.MqlRuntime, "gcp.project.iamService.serviceAccount", map[string]*llx.RawData{
 		"projectId": llx.StringData(projectId),
@@ -1352,17 +1340,24 @@ func (g *mqlGcpProjectGkeServiceClusterNetworkConfig) network() (*mqlGcpProjectC
 		return nil, g.NetworkPath.Error
 	}
 	networkPath := g.NetworkPath.Data
+	if networkPath == "" {
+		g.Network.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
 
-	// Format is projects/project-1/global/networks/net-1
-	params := strings.Split(networkPath, "/")
-	res, err := CreateResource(g.MqlRuntime, "gcp.project.computeService.network", map[string]*llx.RawData{
-		"name":      llx.StringData(params[len(params)-1]),
-		"projectId": llx.StringData(params[1]),
-	})
+	// Format is projects/project-1/global/networks/net-1. getNetworkByUrl uses
+	// NewResource so the network's init runs and every field is populated (a
+	// plain CreateResource here would leave a husk with only name/projectId set),
+	// and it length-guards the path instead of blindly indexing.
+	net, err := getNetworkByUrl(networkPath, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlGcpProjectComputeServiceNetwork), nil
+	if net == nil {
+		g.Network.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return net, nil
 }
 
 func (g *mqlGcpProjectGkeServiceClusterNetworkConfig) subnetwork() (*mqlGcpProjectComputeServiceSubnetwork, error) {
@@ -1371,18 +1366,24 @@ func (g *mqlGcpProjectGkeServiceClusterNetworkConfig) subnetwork() (*mqlGcpProje
 	}
 	subnetPath := g.SubnetworkPath.Data
 
-	// Format is projects/project-1/regions/us-central1/subnetworks/subnet-1
-	params := strings.Split(subnetPath, "/")
-	regionUrl := strings.SplitN(subnetPath, "/subnetworks", 2)
-	res, err := NewResource(g.MqlRuntime, "gcp.project.computeService.subnetwork", map[string]*llx.RawData{
-		"name":      llx.StringData(params[len(params)-1]),
-		"projectId": llx.StringData(params[1]),
-		"regionUrl": llx.StringData(regionUrl[0]),
-	})
+	// NetworkConfig.Subnetwork is not a required field: it is empty for
+	// routes-based clusters on a legacy (subnet-less) network. Blindly indexing
+	// the split path panics there, and a panic in a provider accessor is
+	// unrecoverable because the executor runs blocks in goroutines. Delegate to
+	// getSubnetworkByUrl, which length-guards the path, and degrade to null.
+	if subnetPath == "" {
+		g.Subnetwork.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	subnet, err := getSubnetworkByUrl(subnetPath, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlGcpProjectComputeServiceSubnetwork), nil
+	if subnet == nil {
+		g.Subnetwork.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return subnet, nil
 }
 
 func (g *mqlGcpProjectGkeServiceClusterMaintenancePolicy) id() (string, error) {
@@ -1432,33 +1433,23 @@ type mqlGcpProjectGkeServiceClusterNotificationConfigInternal struct {
 }
 
 func (g *mqlGcpProjectGkeServiceClusterNotificationConfig) topic() (*mqlGcpProjectPubsubServiceTopic, error) {
-	topicName := g.cacheTopic
-	if topicName == "" {
-		g.Topic.State = plugin.StateIsNull | plugin.StateIsSet
-		return nil, nil
-	}
-	res, err := NewResource(g.MqlRuntime, "gcp.project.pubsubService.topic", map[string]*llx.RawData{
-		"name": llx.StringData(topicName),
-	})
+	ref, err := resolvePubsubTopicRef(g.MqlRuntime, g.cacheTopic, "")
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlGcpProjectPubsubServiceTopic), nil
+	if ref == nil {
+		g.Topic.State = plugin.StateIsNull | plugin.StateIsSet
+	}
+	return ref, nil
 }
 
 func (g *mqlGcpProjectGkeServiceCluster) loggingEnabled() (bool, error) {
-	if g.LoggingService.Error != nil {
-		return false, g.LoggingService.Error
-	}
-	v := strings.ToLower(g.LoggingService.Data)
+	v := strings.ToLower(g.cacheLoggingService)
 	return v != "" && v != "none", nil
 }
 
 func (g *mqlGcpProjectGkeServiceCluster) monitoringEnabled() (bool, error) {
-	if g.MonitoringService.Error != nil {
-		return false, g.MonitoringService.Error
-	}
-	v := strings.ToLower(g.MonitoringService.Data)
+	v := strings.ToLower(g.cacheMonitoringService)
 	return v != "" && v != "none", nil
 }
 
@@ -1504,4 +1495,105 @@ func (g *mqlGcpProjectGkeServiceClusterNodepoolConfig) hasFullCloudPlatformScope
 // config reports both as false (the secure default).
 func gkeRbacInsecureBindings(cfg *containerpb.RBACBindingConfig) (systemUnauthenticated, systemAuthenticated bool) {
 	return cfg.GetEnableInsecureBindingSystemUnauthenticated(), cfg.GetEnableInsecureBindingSystemAuthenticated()
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectGkeService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_gke)
+}
+
+type mqlGcpProjectGkeServiceClusterNodeAutoprovisioningConfigInternal struct {
+	cacheServiceAccount string
+	cacheProjectId      string
+}
+
+// newMqlNodeAutoprovisioning maps a cluster's node auto-provisioning settings
+// and the defaults applied to the nodes it creates.
+//
+// The defaults block is optional even when auto-provisioning is configured. A
+// missing block leaves the shielded and kubelet booleans false, which is the
+// safe reading: it must not report protections the API never claimed.
+func newMqlNodeAutoprovisioning(runtime *plugin.Runtime, projectId, clusterId string, ca *containerpb.ClusterAutoscaling) (plugin.Resource, error) {
+	resourceLimits := make([]any, 0, len(ca.GetResourceLimits()))
+	for _, rl := range ca.GetResourceLimits() {
+		if rl == nil {
+			continue
+		}
+		resourceLimits = append(resourceLimits, map[string]any{
+			"resourceType": rl.GetResourceType(),
+			"minimum":      rl.GetMinimum(),
+			"maximum":      rl.GetMaximum(),
+		})
+	}
+
+	defaults := ca.GetAutoprovisioningNodePoolDefaults()
+	args := map[string]*llx.RawData{
+		"__id":                               llx.StringData(fmt.Sprintf("%s/%s/nodeAutoprovisioning", projectId, clusterId)),
+		"enabled":                            llx.BoolData(ca.GetEnableNodeAutoprovisioning()),
+		"autoscalingProfile":                 llx.StringData(ca.GetAutoscalingProfile().String()),
+		"autoprovisioningLocations":          llx.ArrayData(convert.SliceAnyToInterface(ca.GetAutoprovisioningLocations()), types.String),
+		"resourceLimits":                     llx.ArrayData(resourceLimits, types.Dict),
+		"oauthScopes":                        llx.ArrayData(convert.SliceAnyToInterface(defaults.GetOauthScopes()), types.String),
+		"shieldedSecureBootEnabled":          llx.BoolData(defaults.GetShieldedInstanceConfig().GetEnableSecureBoot()),
+		"shieldedIntegrityMonitoringEnabled": llx.BoolData(defaults.GetShieldedInstanceConfig().GetEnableIntegrityMonitoring()),
+		"bootDiskKmsKey":                     llx.StringData(defaults.GetBootDiskKmsKey()),
+		"diskType":                           llx.StringData(defaults.GetDiskType()),
+		"diskSizeGb":                         llx.IntData(int64(defaults.GetDiskSizeGb())),
+		"imageType":                          llx.StringData(defaults.GetImageType()),
+		"minCpuPlatform":                     llx.StringData(defaults.GetMinCpuPlatform()),
+		"insecureKubeletReadonlyPortEnabled": llx.BoolData(defaults.GetInsecureKubeletReadonlyPortEnabled()),
+	}
+
+	res, err := CreateResource(runtime, "gcp.project.gkeService.cluster.nodeAutoprovisioningConfig", args)
+	if err != nil {
+		return nil, err
+	}
+	nap := res.(*mqlGcpProjectGkeServiceClusterNodeAutoprovisioningConfig)
+	nap.cacheServiceAccount = defaults.GetServiceAccount()
+	nap.cacheProjectId = projectId
+	return res, nil
+}
+
+func (g *mqlGcpProjectGkeServiceClusterNodeAutoprovisioningConfig) serviceAccount() (*mqlGcpProjectIamServiceServiceAccount, error) {
+	// GKE reports a bare email here rather than a full resource path, so the
+	// cluster's project is supplied as the fallback.
+	sa, err := resolveServiceAccountRef(g.MqlRuntime, g.cacheServiceAccount, g.cacheProjectId)
+	if err != nil {
+		return nil, err
+	}
+	if sa == nil {
+		g.ServiceAccount.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return sa, nil
+}
+
+// gkeDatabaseEncryption is the etcd (application-layer Secrets) encryption
+// configuration of a GKE cluster.
+type gkeDatabaseEncryption struct {
+	dict         map[string]any
+	state        string
+	currentState string
+	keyName      string
+}
+
+// newGkeDatabaseEncryption reads the etcd encryption configuration of a
+// cluster. `state` is the requested state, `currentState` the one GKE reports
+// as in effect. All fields are empty when the cluster reports none.
+func newGkeDatabaseEncryption(de *containerpb.DatabaseEncryption) gkeDatabaseEncryption {
+	if de == nil {
+		return gkeDatabaseEncryption{}
+	}
+	res := gkeDatabaseEncryption{
+		state:   de.State.String(),
+		keyName: de.KeyName,
+	}
+	if de.CurrentState != nil {
+		res.currentState = de.GetCurrentState().String()
+	}
+	res.dict = map[string]any{
+		"state":        res.state,
+		"keyName":      res.keyName,
+		"currentState": res.currentState,
+	}
+	return res
 }

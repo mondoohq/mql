@@ -6,14 +6,18 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/crontab"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/crontab"
 )
 
 // System crontab paths (with user field)
@@ -21,16 +25,24 @@ var systemCrontabPaths = []string{
 	"/etc/crontab",
 }
 
-// System cron.d directory (with user field)
+// System cron.d directories (with user field)
 var systemCronDirs = []string{
 	"/etc/cron.d",
+	"/usr/local/etc/cron.d", // FreeBSD, crontabs installed by packages
 }
 
 // User crontab directories (without user field, filename is the user)
+//
+// SUSE keeps per-user crontabs one level below the RHEL location, in
+// /var/spool/cron/tabs. Both are listed: the /var/spool/cron walk skips
+// the tabs subdirectory (only regular files count as a user's crontab),
+// so a SLES host contributes each crontab exactly once.
 var userCrontabDirs = []string{
 	"/var/spool/cron/crontabs", // Debian/Ubuntu
+	"/var/spool/cron/tabs",     // SLES/openSUSE
 	"/var/spool/cron",          // RHEL/CentOS/Fedora
 	"/usr/lib/cron/tabs",       // macOS
+	"/var/cron/tabs",           // FreeBSD, OpenBSD, NetBSD
 }
 
 func (c *mqlCrontab) id() (string, error) {
@@ -52,11 +64,23 @@ func (c *mqlCrontab) entries() ([]any, error) {
 	var allEntries []any
 	var allFiles []any
 
+	flavor := cronFlavorOf(conn.Asset())
+
 	// Parse system crontabs (/etc/crontab)
+	systemLabels := cronSELinuxTypes(conn, flavor, systemCrontabPaths)
 	for _, path := range systemCrontabPaths {
-		entries, fileRes, err := c.parseCrontabFile(afs, path, true, "")
+		if cronRefusesFile(conn, path, flavor) {
+			continue
+		}
+		if t, ok := systemLabels[path]; ok && cronieSELinuxRefuses(t) {
+			continue
+		}
+		entries, fileRes, err := c.parseCrontabFile(afs, path, true, "", flavor)
 		if err != nil {
-			continue // Skip files that don't exist or can't be read
+			if refusal := cronReadRefusal(path, err); refusal != nil {
+				return nil, refusal
+			}
+			continue // Skip files that don't exist
 		}
 		allEntries = append(allEntries, entries...)
 		if fileRes != nil {
@@ -66,22 +90,39 @@ func (c *mqlCrontab) entries() ([]any, error) {
 
 	// Parse system cron.d directory
 	for _, dir := range systemCronDirs {
-		entries, files, err := c.parseCronDir(afs, dir, true)
+		entries, files, err := c.parseCronDir(conn, afs, dir, true, flavor)
 		if err != nil {
+			// a file in the directory the scan may not read
+			if errors.Is(err, llx.ErrForbidden) {
+				return nil, err
+			}
+			if refusal := cronReadRefusal(dir, err); refusal != nil {
+				return nil, refusal
+			}
 			continue
 		}
 		allEntries = append(allEntries, entries...)
 		allFiles = append(allFiles, files...)
 	}
 
-	// Parse user crontabs
-	for _, dir := range userCrontabDirs {
-		entries, files, err := c.parseUserCrontabDir(afs, dir)
+	// Parse user crontabs. The filename is the user, so the entries carry
+	// that name as their default user.
+	userFiles, err := collectUserCrontabFiles(afs, userCrontabDirs)
+	if err != nil {
+		return nil, err
+	}
+	for _, uc := range userFiles {
+		entries, fileRes, err := c.parseCrontabFile(afs, uc.path, false, uc.user, flavor)
 		if err != nil {
+			if refusal := cronReadRefusal(uc.path, err); refusal != nil {
+				return nil, refusal
+			}
 			continue
 		}
 		allEntries = append(allEntries, entries...)
-		allFiles = append(allFiles, files...)
+		if fileRes != nil {
+			allFiles = append(allFiles, fileRes)
+		}
 	}
 
 	// Store files for the files() method
@@ -99,15 +140,37 @@ func (c *mqlCrontab) files() ([]any, error) {
 	return c.Files.Data, nil
 }
 
+// cronReadRefusal turns a crontab or cron directory the scan may not read
+// into an error. Before structured errors (ADR 046 §9) such a file was
+// skipped, which on SUSE (/etc/crontab is 0600) reported a non-root scan's
+// system crontab as having no entries; that behaviour stays without the flag.
+func cronReadRefusal(path string, err error) error {
+	if !plugin.StructuredErrors() || !errors.Is(err, os.ErrPermission) {
+		return nil
+	}
+	return llx.Forbidden(fmt.Errorf("cannot read %s: %w", path, err))
+}
+
 // parseCrontabFile parses a single crontab file
-func (c *mqlCrontab) parseCrontabFile(afs *afero.Afero, path string, hasUserField bool, defaultUser string) ([]any, plugin.Resource, error) {
-	f, err := afs.Open(path)
+func (c *mqlCrontab) parseCrontabFile(afs *afero.Afero, path string, hasUserField bool, defaultUser string, flavor cronFlavor) ([]any, plugin.Resource, error) {
+	data, err := afs.ReadFile(path)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer f.Close()
+	content, ok := cronFileContent(string(data), flavor)
+	if !ok {
+		// the daemon ignores the whole file
+		return nil, nil, nil
+	}
+	f := strings.NewReader(content)
 
-	entries, err := crontab.ParseCrontab(f, hasUserField)
+	var entries []crontab.Entry
+	if flavor == cronFlavorCronie {
+		// a system crontab or root's own may use cronie's "-" (no syslog) prefix
+		entries, err = crontab.ParseCronieCrontab(f, hasUserField, hasUserField || defaultUser == "root")
+	} else {
+		entries, err = crontab.ParseCrontab(f, hasUserField)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -147,49 +210,126 @@ func (c *mqlCrontab) parseCrontabFile(afs *afero.Afero, path string, hasUserFiel
 	return resources, fileRes, nil
 }
 
-// parseCronDir parses all files in a cron directory (like /etc/cron.d)
-func (c *mqlCrontab) parseCronDir(afs *afero.Afero, dir string, hasUserField bool) ([]any, []any, error) {
-	files, err := afs.ReadDir(dir)
-	if err != nil {
-		return nil, nil, err
+// cronFlavor is the cron implementation whose rules decide which files in
+// /etc/cron.d it runs.
+type cronFlavor int
+
+const (
+	// cronFlavorDefault skips dotfiles and common backup and package-manager
+	// leftovers, for platforms whose cron is not one of the two below.
+	cronFlavorDefault cronFlavor = iota
+	// cronFlavorDebian is Debian's cron, which runs a cron.d file only when
+	// its name follows the run-parts convention.
+	cronFlavorDebian
+	// cronFlavorCronie is cronie (RHEL, Fedora, SUSE, Amazon Linux), which runs
+	// every file except a few it names.
+	cronFlavorCronie
+)
+
+func cronFlavorOf(asset *inventory.Asset) cronFlavor {
+	if asset == nil || asset.Platform == nil {
+		return cronFlavorDefault
 	}
+	switch {
+	case asset.Platform.IsFamily("debian"):
+		return cronFlavorDebian
+	case asset.Platform.IsFamily("redhat"), asset.Platform.IsFamily("suse"),
+		// Amazon Linux is not in the redhat family, but its cron is cronie
+		asset.Platform.Name == "amazonlinux":
+		return cronFlavorCronie
+	default:
+		return cronFlavorDefault
+	}
+}
 
-	var allEntries []any
-	var allFiles []any
+// reDebianCronDName is the run-parts naming Debian's cron requires of a
+// cron.d file; any other name (with a dot, a tilde, ...) is ignored.
+var reDebianCronDName = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
-	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
-		// Skip files starting with . or ending with common backup suffixes
-		name := file.Name()
-		if strings.HasPrefix(name, ".") ||
+// cronDFileIsSkipped reports whether the cron daemon ignores the cron.d file
+// with this name.
+//
+// The rules differ by implementation, and applying the wrong one hides a job
+// that runs. cronie (not_a_crontab in its database.c) skips only names that
+// start with '.' or '#', end in '~', or end in .rpmsave, .rpmorig or .rpmnew:
+// it runs x.bak, x.dpkg-old, x.swp and x.dotted. Debian's cron runs only
+// names made of letters, digits, '_' and '-'.
+func cronDFileIsSkipped(name string, flavor cronFlavor) bool {
+	switch flavor {
+	case cronFlavorDebian:
+		return !reDebianCronDName.MatchString(name)
+	case cronFlavorCronie:
+		return strings.HasPrefix(name, ".") ||
+			strings.HasPrefix(name, "#") ||
+			strings.HasSuffix(name, "~") ||
+			strings.HasSuffix(name, ".rpmsave") ||
+			strings.HasSuffix(name, ".rpmorig") ||
+			strings.HasSuffix(name, ".rpmnew")
+	default:
+		return strings.HasPrefix(name, ".") ||
 			strings.HasSuffix(name, "~") ||
 			strings.HasSuffix(name, ".bak") ||
 			strings.HasSuffix(name, ".dpkg-old") ||
 			strings.HasSuffix(name, ".dpkg-new") ||
 			strings.HasSuffix(name, ".dpkg-dist") ||
 			strings.HasSuffix(name, ".rpmsave") ||
-			strings.HasSuffix(name, ".rpmnew") {
-			continue
-		}
-
-		path := filepath.Join(dir, name)
-		entries, fileRes, err := c.parseCrontabFile(afs, path, hasUserField, "")
-		if err != nil {
-			continue
-		}
-		allEntries = append(allEntries, entries...)
-		if fileRes != nil {
-			allFiles = append(allFiles, fileRes)
-		}
+			strings.HasSuffix(name, ".rpmnew")
 	}
-
-	return allEntries, allFiles, nil
 }
 
-// parseUserCrontabDir parses user crontabs where filename is the username
-func (c *mqlCrontab) parseUserCrontabDir(afs *afero.Afero, dir string) ([]any, []any, error) {
+// cronRefusesFile reports whether the cron daemon refuses to load the system
+// crontab (/etc/crontab or a cron.d file) at path because of its owner or
+// mode. A file that cannot be stat'ed is left to the parser.
+func cronRefusesFile(conn shared.Connection, path string, flavor cronFlavor) bool {
+	var refuses func(shared.FileInfoDetails) bool
+	switch flavor {
+	case cronFlavorDebian:
+		refuses = debianCronRefuses
+	case cronFlavorCronie:
+		refuses = cronieRefuses
+	default:
+		return false
+	}
+	info, err := conn.FileInfo(path)
+	if err != nil {
+		return false
+	}
+	return refuses(info)
+}
+
+// cronieRefuses applies cronie's checks on a system crontab (process_crontab
+// in its database.c): it logs "BAD FILE MODE" and skips the file unless
+// (mode & 07533) == 0400, so the owner must be able to read it and nobody may
+// execute it, group and others may not write it, and no setuid, setgid or
+// sticky bit is set. A 0755 file is refused as much as a 0664 one. It logs
+// "WRONG FILE OWNER" when root does not own it. The file is opened following
+// symlinks, so a symlink is judged by its target. An owner of -1 means the
+// connection could not tell, and does not count as wrong.
+//
+// crond -p turns the mode check off; neither SUSE's nor RHEL's cron unit
+// passes it.
+func cronieRefuses(info shared.FileInfoDetails) bool {
+	if info.Mode.UnixMode()&0o7533 != 0o400 {
+		return true
+	}
+	return info.Uid > 0
+}
+
+// debianCronRefuses applies Debian cron's checks on a system crontab: it logs
+// "INSECURE MODE (group/other writable)" and skips the file when its mode has
+// any of the 022 bits, and "WRONG FILE OWNER" when root does not own it. For a
+// symlink the checks apply to the file it points to. An owner of -1 means the
+// connection could not tell, and does not count as wrong.
+func debianCronRefuses(info shared.FileInfoDetails) bool {
+	if info.Mode.Perm()&0o022 != 0 {
+		return true
+	}
+	// Uid 0 is root and -1 is unknown; neither is a wrong owner
+	return info.Uid > 0
+}
+
+// parseCronDir parses all files in a cron directory (like /etc/cron.d)
+func (c *mqlCrontab) parseCronDir(conn shared.Connection, afs *afero.Afero, dir string, hasUserField bool, flavor cronFlavor) ([]any, []any, error) {
 	files, err := afs.ReadDir(dir)
 	if err != nil {
 		return nil, nil, err
@@ -198,25 +338,33 @@ func (c *mqlCrontab) parseUserCrontabDir(afs *afero.Afero, dir string) ([]any, [
 	var allEntries []any
 	var allFiles []any
 
+	paths := []string{}
 	for _, file := range files {
 		if file.IsDir() {
 			continue
 		}
-		// Skip hidden files and common backup files
 		name := file.Name()
-		if strings.HasPrefix(name, ".") ||
-			strings.HasSuffix(name, "~") ||
-			strings.HasSuffix(name, ".bak") {
+		if cronDFileIsSkipped(name, flavor) {
 			continue
 		}
 
-		// The filename is the username for user crontabs
-		username := name
 		path := filepath.Join(dir, name)
+		if cronRefusesFile(conn, path, flavor) {
+			continue
+		}
+		paths = append(paths, path)
+	}
 
-		// User crontabs don't have the user field - the filename is the user
-		entries, fileRes, err := c.parseCrontabFile(afs, path, false, username)
+	labels := cronSELinuxTypes(conn, flavor, paths)
+	for _, path := range paths {
+		if t, ok := labels[path]; ok && cronieSELinuxRefuses(t) {
+			continue
+		}
+		entries, fileRes, err := c.parseCrontabFile(afs, path, hasUserField, "", flavor)
 		if err != nil {
+			if refusal := cronReadRefusal(path, err); refusal != nil {
+				return nil, nil, refusal
+			}
 			continue
 		}
 		allEntries = append(allEntries, entries...)
@@ -228,10 +376,158 @@ func (c *mqlCrontab) parseUserCrontabDir(afs *afero.Afero, dir string) ([]any, [
 	return allEntries, allFiles, nil
 }
 
+// cronFileContent returns the part of a crontab the cron daemon reads, and
+// false when it ignores the whole file. A file whose last line has no newline
+// is ignored by Debian's cron ("Missing newline before EOF, this crontab file
+// will be ignored"), while cronie skips only that last line ("missing newline
+// before EOF"). Other crons are taken as they read.
+func cronFileContent(content string, flavor cronFlavor) (string, bool) {
+	if content == "" || strings.HasSuffix(content, "\n") {
+		return content, true
+	}
+	switch flavor {
+	case cronFlavorDebian:
+		return "", false
+	case cronFlavorCronie:
+		if i := strings.LastIndexByte(content, '\n'); i >= 0 {
+			return content[:i+1], true
+		}
+		return "", true
+	default:
+		return content, true
+	}
+}
+
+// cronieSELinuxEntrypointTypes are the file types RHEL 9's targeted policy
+// lets cronie's system_cronjob_t domain enter (`sesearch -A -s
+// system_cronjob_t -c file -p entrypoint`). cifs_t and nfs_t depend on the
+// cron_system_cronjob_use_shares boolean and are taken as allowed.
+var cronieSELinuxEntrypointTypes = map[string]bool{
+	"system_cron_spool_t": true,
+	"anacron_exec_t":      true,
+	"bin_t":               true,
+	"shell_exec_t":        true,
+	"usr_t":               true,
+	"cifs_t":              true,
+	"nfs_t":               true,
+}
+
+// cronieSELinuxRefuses reports whether cronie, with SELinux enforcing,
+// refuses a system crontab of this file type: it logs "Unauthorized SELinux
+// context=... file_context=..." and runs nothing from it.
+func cronieSELinuxRefuses(fileType string) bool {
+	return !cronieSELinuxEntrypointTypes[fileType]
+}
+
+// cronSELinuxTypes returns the SELinux type of each system crontab cronie
+// would load, when cronie checks it: on a host with SELinux enforcing (in
+// permissive mode cronie only logs). The label is the one of the file a
+// symlink points to, which is what cronie opens. A path whose label cannot be
+// read is left out, and the file is reported as before; nil means no check
+// applies.
+func cronSELinuxTypes(conn shared.Connection, flavor cronFlavor, paths []string) map[string]string {
+	if flavor != cronFlavorCronie || len(paths) == 0 || !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return nil
+	}
+	enforce, err := afero.ReadFile(conn.FileSystem(), "/sys/fs/selinux/enforce")
+	if err != nil || strings.TrimSpace(string(enforce)) != "1" {
+		return nil
+	}
+	args := make([]string, 0, len(paths))
+	for _, p := range paths {
+		args = append(args, shared.ShellEscape(p))
+	}
+	cmd, err := conn.RunCommand("stat -L -c '%C\t%n' -- " + strings.Join(args, " "))
+	if err != nil || cmd.Stdout == nil {
+		return nil
+	}
+	// stat exits 1 when one path fails and still prints the others
+	out, err := io.ReadAll(cmd.Stdout)
+	if err != nil {
+		return nil
+	}
+	return parseCronSELinuxTypes(string(out))
+}
+
+// parseCronSELinuxTypes reads `stat -L -c '%C\t%n'` output into the type
+// field of each file's context. A file without a context ("?") is left out.
+func parseCronSELinuxTypes(out string) map[string]string {
+	types := map[string]string{}
+	for line := range strings.SplitSeq(out, "\n") {
+		context, name, ok := strings.Cut(line, "\t")
+		if !ok {
+			continue
+		}
+		parts := strings.Split(strings.TrimSpace(context), ":")
+		if len(parts) < 3 || parts[2] == "" {
+			continue
+		}
+		types[name] = parts[2]
+	}
+	return types
+}
+
+// userCrontabFile is one per-user crontab found in a spool directory: the
+// user it belongs to (the file name) and the path to read it from.
+type userCrontabFile struct {
+	user string
+	path string
+}
+
+// collectUserCrontabFiles walks the given spool directories and returns the
+// per-user crontabs they hold, in directory order. Missing directories are a
+// normal state (every distro ships only its own layout) and are skipped.
+//
+// Only regular files are user crontabs. Subdirectories are skipped, which is
+// what keeps SUSE's /var/spool/cron/tabs from being reported as a user named
+// "tabs" when the RHEL path /var/spool/cron above it is walked.
+//
+// A spool directory that exists but cannot be listed (RHEL's /var/spool/cron
+// is 0700, so any scan that is not root) is an error: skipping it reported the
+// host's user crontabs as none.
+func collectUserCrontabFiles(afs *afero.Afero, dirs []string) ([]userCrontabFile, error) {
+	var out []userCrontabFile
+
+	for _, dir := range dirs {
+		files, err := afs.ReadDir(dir)
+		if err != nil {
+			// v13 skipped a spool directory it could not list
+			if errors.Is(err, os.ErrPermission) && plugin.StructuredErrors() {
+				return nil, llx.Forbidden(fmt.Errorf("cannot list user crontabs in %s: %w", dir, err))
+			}
+			continue
+		}
+
+		for _, file := range files {
+			if file.IsDir() {
+				continue
+			}
+			// Skip hidden files and common backup files
+			name := file.Name()
+			if strings.HasPrefix(name, ".") ||
+				strings.HasSuffix(name, "~") ||
+				strings.HasSuffix(name, ".bak") {
+				continue
+			}
+
+			// The filename is the username for user crontabs
+			out = append(out, userCrontabFile{
+				user: name,
+				path: filepath.Join(dir, name),
+			})
+		}
+	}
+
+	return out, nil
+}
+
 func (e *mqlCrontabEntry) id() (string, error) {
 	file := e.GetFile()
 	if file.Error != nil {
 		return "", file.Error
+	}
+	if file.Data == nil {
+		return "", errors.New("cannot determine crontab entry ID (missing file)")
 	}
 
 	path := file.Data.GetPath()

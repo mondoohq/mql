@@ -9,10 +9,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/testutils"
-	"go.mondoo.com/mql/v13/utils/sortx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/providers-sdk/v1/testutils"
+	"go.mondoo.com/mql/utils/sortx"
 )
 
 var x = testutils.InitTester(testutils.LinuxMock())
@@ -88,7 +88,7 @@ func TestPrinter(t *testing.T) {
 			"if ( mondoo.version != null ) { mondoo.build }",
 			"", // ignore
 			[]string{
-				"mondoo.version: \"v13.0.0-rolling\"",
+				"mondoo.version: \"v14.0.0+rolling\"",
 				"if: {\n" +
 					"  mondoo.build: \"development\"\n" +
 					"}",
@@ -133,14 +133,14 @@ func TestPrinter(t *testing.T) {
 			"mondoo { version }",
 			"-> block 1\n   entrypoints: [<1,2>]\n   1: mondoo \n   2: {} bind: <1,1> type:block (=> <2,0>)\n-> block 2\n   entrypoints: [<2,2>]\n   1: context\n   2: version bind: <2,1> type:string\n",
 			[]string{
-				"mondoo: {\n  version: \"v13.0.0-rolling\"\n}",
+				"mondoo: {\n  version: \"v14.0.0+rolling\"\n}",
 			},
 		},
 		{
 			"mondoo { _.version }",
 			"-> block 1\n   entrypoints: [<1,2>]\n   1: mondoo \n   2: {} bind: <1,1> type:block (=> <2,0>)\n-> block 2\n   entrypoints: [<2,2>]\n   1: context\n   2: version bind: <2,1> type:string\n",
 			[]string{
-				"mondoo: {\n  version: \"v13.0.0-rolling\"\n}",
+				"mondoo: {\n  version: \"v14.0.0+rolling\"\n}",
 			},
 		},
 		{
@@ -152,14 +152,14 @@ func TestPrinter(t *testing.T) {
 		},
 		{
 			"a = 3\n if(true) {\n a == 3 \n}",
-			"-> block 1\n   entrypoints: [<1,2>]\n   1: 3\n   2: if bind: <0,0> type:block (true, => <2,0>, [\n     0: ref<1,1>\n   ])\n-> block 2\n   entrypoints: [<2,2>]\n   1: ref<1,1>\n   2: ==\x05 bind: <2,1> type:bool (3)\n",
+			"-> block 1\n   entrypoints: [<1,2>]\n   1: 3\n   2: if bind: <0,0> type:block (true, => <2,0>, [\n     0: ref<1,1>\n   ])\n-> block 2\n   entrypoints: [<2,2>] datapoints: [<2,1>]\n   1: ref<1,1>\n   2: ==\x05 bind: <2,1> type:bool (3)\n",
 			[]string{"if: {\n  a == 3: true\n}"},
 		},
 		{
 			"mondoo",
 			"", // ignore
 			[]string{
-				"mondoo: version=\"v13.0.0-rolling\"",
+				"mondoo: version=\"v14.0.0+rolling\"",
 			},
 		},
 		{
@@ -234,7 +234,7 @@ func TestPrinter_Assessment(t *testing.T) {
 				"  [failed] mondoo.build == 1",
 				"    expected: == 1",
 				"    actual:   \"development\"",
-				"  [ok] value: \"v13.0.0-rolling\"",
+				"  [ok] value: \"v14.0.0+rolling\"",
 				"",
 			}, "\n"),
 		},
@@ -265,6 +265,15 @@ func TestPrinter_Assessment(t *testing.T) {
 			}, "\n"),
 		},
 		{
+			// same at the top level: the label carries the statement, and there
+			// is nothing measured to put around the operator
+			"mondoo.build == 1 || mondoo.version == 1",
+			strings.Join([]string{
+				"[failed] mondoo.build == 1 || <ref>",
+				"",
+			}, "\n"),
+		},
+		{
 			"sshd.config { params['test'] }",
 			strings.Join([]string{
 				"sshd.config: {",
@@ -273,13 +282,13 @@ func TestPrinter_Assessment(t *testing.T) {
 			}, "\n"),
 		},
 		{
-			"mondoo.build == 1;mondoo.version =='v13.0.0-rolling';",
+			"mondoo.build == 1;mondoo.version =='v14.0.0+rolling';",
 			strings.Join([]string{
-				"[failed] mondoo.build == 1;mondoo.version =='v13.0.0-rolling';",
+				"[failed] mondoo.build == 1;mondoo.version =='v14.0.0+rolling';",
 				"  [failed] mondoo.build == 1",
 				"    expected: == 1",
 				"    actual:   \"development\"",
-				"  [ok] value: \"v13.0.0-rolling\"",
+				"  [ok] value: \"v14.0.0+rolling\"",
 				"",
 			}, "\n"),
 		},
@@ -302,8 +311,8 @@ func TestPrinter_Assessment(t *testing.T) {
 			strings.Join([]string{
 				"[failed] [].none()",
 				"  actual:   [",
-				"    0: user name=\"christopher\" gid=1000 uid=1001 ",
-				"    1: user name=\"chris\" gid=1000 uid=1000 ",
+				"    0: user name=\"chris\" gid=1000 uid=1000 ",
+				"    1: user name=\"christopher\" gid=1000 uid=1001 ",
 				"  ]",
 				"",
 			}, "\n"),
@@ -336,16 +345,24 @@ func TestPrinter_Assessment(t *testing.T) {
 				"[failed] users.all()",
 				"  actual:   [",
 				"    0: user gid=0 name=\"root\" uid=0 {",
-				"      enabled: false",
+				"      [failed] enabled",
+				"        expected: == true",
+				"        actual:   false",
 				"    }",
 				"    1: user gid=1 name=\"bin\" uid=1 {",
-				"      enabled: false",
+				"      [failed] enabled",
+				"        expected: == true",
+				"        actual:   false",
 				"    }",
 				"    2: user gid=1000 name=\"chris\" uid=1000 {",
-				"      enabled: false",
+				"      [failed] enabled",
+				"        expected: == true",
+				"        actual:   false",
 				"    }",
 				"    3: user gid=1000 name=\"christopher\" uid=1001 {",
-				"      enabled: false",
+				"      [failed] enabled",
+				"        expected: == true",
+				"        actual:   false",
 				"    }",
 				"  ]",
 				"",
@@ -557,7 +574,29 @@ func TestPrinter_Blocks(t *testing.T) {
 					"    x == \"a\": true",
 					"  }",
 					"  1: {",
-					"    x == \"a\": false",
+					"    [failed] x == \"a\"",
+					"      expected: == \"a\"",
+					"      actual:   \"b\"",
+					"  }",
+					"]",
+				}, "\n"),
+			},
+		},
+		{
+			// A combinator reports only its own value. Its operands are whole
+			// statements, and the right one may never have run, so there is no
+			// pair of values to put on either side of the operator. Reporting
+			// them used to cost the short circuit its guarantee (issue 10723).
+			"['a', 'b'] { x=_ \n x == 'a' || x == 'c' }",
+			"", // ignore
+			[]string{
+				strings.Join([]string{
+					"[",
+					"  0: {",
+					"    x == \"a\" || <ref>: true",
+					"  }",
+					"  1: {",
+					"    [failed] x == \"a\" || <ref>",
 					"  }",
 					"]",
 				}, "\n"),
@@ -572,7 +611,7 @@ func TestPrinter_Buggy(t *testing.T) {
 			"mondoo",
 			"", // ignore
 			[]string{
-				"mondoo: version=\"v13.0.0-rolling\"",
+				"mondoo: version=\"v14.0.0+rolling\"",
 			},
 		},
 	})

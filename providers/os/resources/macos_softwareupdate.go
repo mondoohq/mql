@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/resources/plist"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/resources/plist"
 )
 
 // /Library/Managed Preferences/ takes precedence over /Library/Preferences/
@@ -34,6 +34,7 @@ type mqlMacosSoftwareupdateInternal struct {
 
 type softwareupdateSettings struct {
 	autoCheckEnabled         bool
+	autoCheckKeyPresent      bool
 	autoDownloadEnabled      bool
 	autoInstallMacOSUpdates  bool
 	installSystemDataFiles   bool
@@ -108,6 +109,7 @@ func (s *mqlMacosSoftwareupdate) readSoftwareUpdatePlist() (softwareupdateSettin
 func parseSoftwareUpdateSettings(d map[string]any) softwareupdateSettings {
 	return softwareupdateSettings{
 		autoCheckEnabled:         boolFromPlist(d, "AutomaticCheckEnabled"),
+		autoCheckKeyPresent:      keyPresentInPlist(d, "AutomaticCheckEnabled"),
 		autoDownloadEnabled:      boolFromPlist(d, "AutomaticDownload"),
 		autoInstallMacOSUpdates:  boolFromPlist(d, "AutomaticallyInstallMacOSUpdates"),
 		installSystemDataFiles:   boolFromPlist(d, "ConfigDataInstall"),
@@ -116,9 +118,63 @@ func parseSoftwareUpdateSettings(d map[string]any) softwareupdateSettings {
 	}
 }
 
+// autoCheckEnabled reports whether macOS checks for updates on its own.
+//
+// The preference key is only written once someone changes the setting, and its
+// absence does not mean "off" -- automatic checking is on by default, so a Mac
+// that has never been touched reads as compliant while the plist says nothing.
+// When the key is missing, ask softwareupdate what the schedule actually is
+// rather than inferring a value from the silence.
 func (s *mqlMacosSoftwareupdate) autoCheckEnabled() (bool, error) {
 	v, err := s.fetchSettings()
-	return v.autoCheckEnabled, err
+	if err != nil {
+		return false, err
+	}
+	if v.autoCheckKeyPresent {
+		return v.autoCheckEnabled, nil
+	}
+	return s.scheduleEnabled()
+}
+
+// errUpdateScheduleUnavailable reports that neither source could answer.
+var errUpdateScheduleUnavailable = errors.New(
+	"cannot determine the software update schedule: AutomaticCheckEnabled is unset and `softwareupdate --schedule` did not return a readable answer")
+
+// scheduleEnabled parses `softwareupdate --schedule`, which prints
+// "Automatic checking for updates is turned on" or "... turned off".
+func (s *mqlMacosSoftwareupdate) scheduleEnabled() (bool, error) {
+	res, err := NewResource(s.MqlRuntime, "command", map[string]*llx.RawData{
+		"command": llx.StringData("softwareupdate --schedule"),
+	})
+	if err != nil {
+		return false, err
+	}
+	cmd := res.(*mqlCommand)
+	if exit := cmd.GetExitcode(); exit.Data != 0 {
+		return false, errUpdateScheduleUnavailable
+	}
+	v, ok := parseSoftwareUpdateSchedule(cmd.GetStdout().Data)
+	if !ok {
+		return false, errUpdateScheduleUnavailable
+	}
+	return v, nil
+}
+
+// parseSoftwareUpdateSchedule reads the `softwareupdate --schedule` sentence.
+// Anything it does not recognise returns ok=false, so an unreadable schedule
+// surfaces as an error and never as a confident "automatic checking is off".
+func parseSoftwareUpdateSchedule(stdout string) (bool, bool) {
+	l := strings.ToLower(stdout)
+	if !strings.Contains(l, "automatic checking") {
+		return false, false
+	}
+	switch {
+	case strings.Contains(l, "turned on"), strings.Contains(l, "is on"):
+		return true, true
+	case strings.Contains(l, "turned off"), strings.Contains(l, "is off"):
+		return false, true
+	}
+	return false, false
 }
 
 func (s *mqlMacosSoftwareupdate) autoDownloadEnabled() (bool, error) {
@@ -273,8 +329,8 @@ func parseSoftwareUpdateList(stdout string) []parsedSoftwareUpdate {
 	var out []parsedSoftwareUpdate
 	var current *parsedSoftwareUpdate
 
-	lines := strings.Split(stdout, "\n")
-	for _, raw := range lines {
+	lines := strings.SplitSeq(stdout, "\n")
+	for raw := range lines {
 		trimmed := strings.TrimSpace(raw)
 		if trimmed == "" {
 			continue
@@ -308,7 +364,7 @@ func parseSoftwareUpdateList(stdout string) []parsedSoftwareUpdate {
 // the in-progress entry. Unknown keys (some macOS versions add `Build`
 // or extra annotations) are quietly ignored.
 func applySoftwareUpdateMetadata(line string, u *parsedSoftwareUpdate) {
-	for _, field := range strings.Split(line, ", ") {
+	for field := range strings.SplitSeq(line, ", ") {
 		field = strings.TrimRight(field, ",")
 		field = strings.TrimSpace(field)
 		if field == "" {
@@ -370,6 +426,23 @@ func parseSoftwareUpdateSize(raw string) int64 {
 // =============================================================================
 // shared plist helpers
 // =============================================================================
+
+// keyPresentInPlist reports whether the key carries a value the caller can
+// read. A missing key is not the same as a false one: several SoftwareUpdate
+// preferences default to on and are only written once someone changes them, so
+// the caller has to tell "nobody set this" apart from "somebody set it off".
+//
+// A key present with a nil value counts as absent, because it answers the
+// question no better than a missing key does: boolFromPlist has no case for
+// nil and would hand back false, which is the wrong-by-default reading this
+// helper exists to prevent. Reporting it as absent routes the caller to the
+// live `softwareupdate --schedule` lookup instead. Note this is about a nil
+// decoded value, not a written `<false/>`, which is a real answer and is
+// reported as present.
+func keyPresentInPlist(d map[string]any, key string) bool {
+	v, ok := d[key]
+	return ok && v != nil
+}
 
 // boolFromPlist coerces a plist key to bool. Through the plist.Decode
 // helper, real plist booleans arrive as `bool`; integer 0/1 fallbacks

@@ -1,0 +1,2 @@
+REF                           TYPE                                    DIGEST                                                                  SIZE    PLATFORMS                                                                                              LABELS 
+docker.io/library/alpine:3.22 application/vnd.oci.image.index.v1+json sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8 3.9 MiB linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64/v8,linux/ppc64le,linux/riscv64,linux/s390x -      

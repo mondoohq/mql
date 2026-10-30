@@ -1,0 +1,21 @@
+Active Internet connections (including servers)
+Proto Recv-Q Send-Q  Local Address          Foreign Address        (state)
+tcp4       0      0  *.22                   *.*                    LISTEN
+tcp        0      0  *.23                   *.*                    LISTEN
+tcp4       0      0  127.0.0.1.199          *.*                    LISTEN
+tcp6       0      0  ::1.25                 *.*                    LISTEN
+tcp4       0      0  10.10.20.15.22         10.10.30.9.51544       ESTABLISHED
+tcp4       0      0  10.10.20.15.23         192.0.2.44.44012       ESTABLISHED
+tcp4       0      0  10.10.20.15.32790      10.10.20.40.1521       ESTABLISHED
+tcp4       0      0  10.10.20.15.32791      10.10.20.41.1521       TIME_WAIT
+tcp4       0      0  10.10.20.15.32792      10.10.20.41.1521       CLOSE_WAIT
+tcp6       0      0  2001:db8::15.443       2001:db8::99.51900     ESTABLISHED
+udp4       0      0  *.123                  *.*
+udp4       0      0  127.0.0.1.123          *.*
+udp6       0      0  ::1.123                *.*
+udp4       0      0  *.*                    *.*
+
+Active UNIX domain sockets
+SADR/PCB          Type      Recv-Q Send-Q    Inode     Conn      Refs      Nextref   Addr
+f1000a0000000000  dgram          0      0    f1000b00        0         0         0   /dev/log
+f1000a0000000001  stream         0      0    f1000b01        0         0         0   /tmp/.s.PGSQL.5432

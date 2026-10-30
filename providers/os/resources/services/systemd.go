@@ -5,29 +5,31 @@ package services
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
-	"os"
-	"path"
-	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
 
-	"github.com/coreos/go-systemd/unit"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 var (
 	SYSTEMD_LIST_UNITS_REGEX = regexp.MustCompile(`(?m)^(?:[^\S\n]{2}|●[^\S\n]|)(\S+)(?:[^\S\n])+(\S+)(?:[^\S\n])+(\S+)(?:[^\S\n])+(\S+)(?:[^\S\n])+(.+)$`)
-	serviceNameRegex         = regexp.MustCompile(`(.*)\.(service|target|socket)$`)
-	errIgnored               = errors.New("ignored")
 )
 
 const (
 	systemdShowProperties = "Id,LoadState,ActiveState,UnitFileState,Description"
+	// systemdServiceShowProperties adds Names, which lists every name a unit
+	// answers to (sshd.service and ssh.service, syslog.service and
+	// rsyslog.service). Id only ever carries the canonical one, so a record
+	// keyed by Id alone cannot be found again under the alias it was asked for.
+	systemdServiceShowProperties = "Id,Names,LoadState,ActiveState,UnitFileState,Description"
 )
 
 func ResolveSystemdServiceManager(conn shared.Connection) OSServiceManager {
@@ -40,22 +42,61 @@ func ResolveSystemdServiceManager(conn shared.Connection) OSServiceManager {
 // Newer linux systems use systemd as service manager
 type SystemDServiceManager struct {
 	conn shared.Connection
+
+	versionOnce sync.Once
+	version     int
+
+	answeringOnce sync.Once
+	answering     bool
+}
+
+// systemdVersion is the release of the systemd on the host, or 0 when
+// systemctl --version does not say.
+func (s *SystemDServiceManager) systemdVersion() int {
+	s.versionOnce.Do(func() {
+		cmd, err := s.conn.RunCommand("systemctl --version")
+		if err != nil || cmd.ExitStatus != 0 {
+			return
+		}
+		out, err := io.ReadAll(cmd.Stdout)
+		if err != nil {
+			return
+		}
+		s.version = parseSystemctlVersion(string(out))
+	})
+	return s.version
+}
+
+// systemdAnswering reports whether systemctl reaches a running systemd. It
+// is asked once, and only after a batch failed.
+func (s *SystemDServiceManager) systemdAnswering() bool {
+	s.answeringOnce.Do(func() {
+		s.answering = systemdAnswering(s.conn)
+	})
+	return s.answering
 }
 
 func (s *SystemDServiceManager) Name() string {
 	return "systemd Service Manager"
 }
 
+// errSystemctlNoOutput reports that systemctl ran but produced nothing this
+// parser recognizes as a unit-file listing. It is the one failure that means
+// "systemd is not the running init here", which is what makes reading the units
+// off disk the right answer. A read failure on stdout is an IO fault and says
+// nothing about the target, so it is deliberately not covered by this sentinel.
+var errSystemctlNoOutput = errors.New("unexpected output from systemctl list-unit-files")
+
 func ParseServiceSystemDUnitFiles(input io.Reader) ([]*Service, error) {
 	var services []*Service
 	content, err := io.ReadAll(input)
 	if err != nil {
-		return nil, fmt.Errorf("error executing systemctl list-unit-files: %v", err)
+		return nil, fmt.Errorf("error executing systemctl list-unit-files: %w", err)
 	}
 
 	lines := strings.Split(string(content), "\n")
 	if len(lines) < 2 {
-		return nil, fmt.Errorf("unexpected output from systemctl list-unit-files %v", content)
+		return nil, fmt.Errorf("%w: %q", errSystemctlNoOutput, content)
 	}
 
 	for _, line := range lines[1 : len(lines)-1] {
@@ -91,6 +132,7 @@ func ParseSystemdListUnits(input io.Reader) (map[string]*Service, error) {
 	}
 
 	services := map[string]*Service{}
+	jobCol := systemdListUnitsJobColumn(string(content))
 	matches := SYSTEMD_LIST_UNITS_REGEX.FindAllStringSubmatch(string(content), -1)
 	for _, match := range matches {
 		unitName := match[1]
@@ -101,7 +143,7 @@ func ParseSystemdListUnits(input io.Reader) (map[string]*Service, error) {
 		name := normalizeSystemdServiceName(unitName)
 		services[name] = &Service{
 			Name:        name,
-			Description: strings.TrimSpace(match[5]),
+			Description: systemdListUnitsDescription(match, jobCol),
 			Running:     match[3] == "active",
 			Installed:   match[2] != "not-found",
 			Type:        "systemd",
@@ -123,6 +165,72 @@ func applySystemdUnitFileState(service *Service, unitFileState string) {
 	service.Enabled = unitFileState == "enabled" || unitFileState == "enabled-runtime"
 	service.Masked = strings.HasPrefix(unitFileState, "masked")
 	service.Static = unitFileState == "static"
+	// systemd 237 (Ubuntu 18.04) reports an enabled instance of a template
+	// as "indirect", the template's own state, while is-enabled answers for
+	// the instance
+	service.needsIsEnabled = unitFileState == "bad" || unitFileState == "generated" ||
+		(unitFileState == "indirect" && isSystemdInstanceName(service.Name))
+}
+
+// resolveWithIsEnabled asks `systemctl is-enabled` about each service whose
+// unit-file state systemctl reported as "bad" or "generated". Neither says
+// whether the service starts at boot. systemd 219 (RHEL 7) reports every SysV
+// init script as "bad", and Debian's systemd (232 to 257) reports one as
+// "generated" (systemd-sysv-generator wrote its unit), so a service enabled
+// with chkconfig or update-rc.d read enabled=false. is-enabled hands a SysV
+// service to chkconfig or systemd-sysv-install, which answer from the runlevel
+// links. A unit is asked on its own because systemd 219 prints the SysV answers
+// before the native ones, out of argument order. Where is-enabled has no
+// better answer (a unit from another generator prints "generated" again), the
+// state stays as systemctl reported it.
+func (s *SystemDServiceManager) resolveWithIsEnabled(services []*Service) {
+	for _, service := range services {
+		if !service.needsIsEnabled {
+			continue
+		}
+		service.needsIsEnabled = false
+
+		unit := ensureSystemdServiceUnit(service.Name)
+		cmd, err := s.conn.RunCommand(buildSystemdIsEnabledCommand(unit))
+		if err != nil {
+			log.Debug().Err(err).Str("unit", unit).Msg("mql[services]> could not run systemctl is-enabled")
+			continue
+		}
+		// is-enabled exits non-zero for a disabled unit, so the exit status
+		// does not tell an answer from a failure; the printed state does
+		state := parseSystemdIsEnabled(cmd.Stdout)
+		if state == "" || state == "bad" || state == "generated" || state == "indirect" {
+			continue
+		}
+		applySystemdUnitFileState(service, state)
+	}
+}
+
+func buildSystemdIsEnabledCommand(unit string) string {
+	return "systemctl is-enabled -- " + shared.ShellEscape(unit)
+}
+
+// systemdIsEnabledStates are the answers `systemctl is-enabled` prints.
+var systemdIsEnabledStates = map[string]struct{}{
+	"enabled": {}, "enabled-runtime": {}, "linked": {}, "linked-runtime": {},
+	"alias": {}, "masked": {}, "masked-runtime": {}, "static": {}, "indirect": {},
+	"disabled": {}, "generated": {}, "transient": {}, "bad": {},
+}
+
+// parseSystemdIsEnabled returns the state `systemctl is-enabled` printed for a
+// single unit, or "" when it printed none. The SysV redirect notice goes to
+// stderr, so the state is the last line on stdout.
+func parseSystemdIsEnabled(input io.Reader) string {
+	content, err := io.ReadAll(input)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+	state := strings.TrimSpace(lines[len(lines)-1])
+	if _, ok := systemdIsEnabledStates[state]; !ok {
+		return ""
+	}
+	return state
 }
 
 func normalizeSystemdServiceName(unit string) string {
@@ -138,7 +246,15 @@ func ensureSystemdServiceUnit(name string) string {
 }
 
 func buildSystemdShowCommand(units []string) string {
-	args := []string{"systemctl", "show", "--property=" + systemdShowProperties}
+	return buildSystemdShowCommandWith(systemdShowProperties, units)
+}
+
+func buildSystemdServiceShowCommand(units []string) string {
+	return buildSystemdShowCommandWith(systemdServiceShowProperties, units)
+}
+
+func buildSystemdShowCommandWith(properties string, units []string) string {
+	args := []string{"systemctl", "show", "--property=" + properties}
 	args = append(args, units...)
 
 	escaped := make([]string, len(args))
@@ -149,6 +265,12 @@ func buildSystemdShowCommand(units []string) string {
 	return strings.Join(escaped, " ")
 }
 
+// ParseServiceSystemDShow parses "systemctl show" output into services keyed
+// by normalized unit name. Each record is keyed by its Id and, when the Names
+// property was requested, by every alias in Names as well, all pointing at the
+// same Service, whose Name is the canonical Id. That lets a caller find the
+// record for the name it asked about (sshd) although systemctl answers with
+// the canonical unit (ssh.service).
 func ParseServiceSystemDShow(input io.Reader) (map[string]*Service, error) {
 	services := map[string]*Service{}
 	record := map[string]string{}
@@ -163,6 +285,14 @@ func ParseServiceSystemDShow(input io.Reader) (map[string]*Service, error) {
 			return err
 		}
 		services[service.Name] = service
+		for _, alias := range strings.Fields(record["Names"]) {
+			name := normalizeSystemdServiceName(alias)
+			// a canonical record always wins over an alias claim on its name
+			if existing, ok := services[name]; ok && existing.Name == name {
+				continue
+			}
+			services[name] = service
+		}
 		record = map[string]string{}
 		return nil
 	}
@@ -219,17 +349,73 @@ func parseSystemDShowRecord(record map[string]string) (*Service, error) {
 		Type:        "systemd",
 	}
 	applySystemdUnitFileState(service, record["UnitFileState"])
+	// systemd 229 and 237 report a masked unit as LoadState=masked with
+	// UnitFileState=bad, so the unit-file state alone misses it.
+	if service.Installed && record["LoadState"] == "masked" {
+		service.Masked = true
+	}
 
 	return service, nil
 }
 
 func (s *SystemDServiceManager) showUnits(units []string) (map[string]*Service, error) {
-	cmd, err := s.conn.RunCommand(buildSystemdShowCommand(units))
+	services, err := s.showRecords(units)
 	if err != nil {
 		return nil, err
 	}
+	shown := make([]*Service, 0, len(services))
+	for _, service := range services {
+		shown = append(shown, service)
+	}
+	s.resolveWithIsEnabled(shown)
+	return services, nil
+}
 
-	return ParseServiceSystemDShow(cmd.Stdout)
+// showRecords asks systemctl show about units. A batch systemctl fails as a
+// whole is split until the unit that fails it is on its own, so one unit
+// cannot take the state of every other unit in the batch with it (see
+// bisectSystemdShow). A single unit is read from whatever systemctl printed,
+// whatever its exit status, which reads a unit systemd does not know as not
+// found.
+func (s *SystemDServiceManager) showRecords(units []string) (map[string]*Service, error) {
+	if len(units) == 1 {
+		cmd, err := s.conn.RunCommand(buildSystemdServiceShowCommand(units))
+		if err != nil {
+			return nil, err
+		}
+		return ParseServiceSystemDShow(cmd.Stdout)
+	}
+
+	services := map[string]*Service{}
+	err := bisectSystemdShow(units,
+		func(batch []string) (map[string]*Service, error) {
+			cmd, err := s.conn.RunCommand(buildSystemdServiceShowCommand(batch))
+			if err != nil {
+				return nil, err
+			}
+			if cmd.ExitStatus != 0 {
+				return nil, systemctlError("systemctl show", cmd)
+			}
+			return ParseServiceSystemDShow(cmd.Stdout)
+		},
+		func(shown map[string]*Service) {
+			for name, service := range shown {
+				// a canonical record always wins over an alias claim on its name
+				if existing, ok := services[name]; ok && existing.Name == name {
+					continue
+				}
+				services[name] = service
+			}
+		},
+		func(unit string, err error) {
+			log.Debug().Err(err).Str("unit", unit).Msg("mql[services]> systemctl show failed for this unit")
+		},
+		s.systemdAnswering,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return services, nil
 }
 
 func (s *SystemDServiceManager) Get(name string) (*Service, error) {
@@ -238,12 +424,45 @@ func (s *SystemDServiceManager) Get(name string) (*Service, error) {
 		return nil, err
 	}
 
-	service, ok := services[NormalizeServiceLookupName(name)]
+	lookupName := NormalizeServiceLookupName(name)
+	service, ok := services[lookupName]
+	if !ok && len(services) == 0 {
+		// systemd answers show with a record for any name, a not-found one
+		// included. No record at all means it did not answer: systemctl is
+		// installed but systemd is not the running init, as in a container.
+		// List reads the unit files without it.
+		return getServiceFromList(name, s.List)
+	}
 	if !ok || !service.Installed {
 		return nil, serviceNotFound(name)
 	}
 
+	// Asked by an alias, the record carries the canonical unit's state; it is
+	// reported under the name that was asked for, the same name the alias row
+	// in List has.
+	if service.Name != lookupName {
+		aliased := *service
+		aliased.Name = lookupName
+		return &aliased, nil
+	}
 	return service, nil
+}
+
+// systemctlNotBooted reports whether systemctl refused because systemd is not
+// the running init, as in a container started without it.
+func systemctlNotBooted(cmd *shared.Command) bool {
+	if cmd == nil || cmd.ExitStatus == 0 || cmd.Stderr == nil {
+		return false
+	}
+	stderr, err := io.ReadAll(cmd.Stderr)
+	if err != nil {
+		return false
+	}
+	cmd.Stderr = bytes.NewBuffer(stderr)
+	// systemd 220 and later say so; 219 (RHEL 7, Amazon Linux 2) only
+	// fails to reach the bus
+	return bytes.Contains(stderr, []byte("has not been booted with systemd")) ||
+		bytes.Contains(stderr, []byte("Failed to get D-Bus connection"))
 }
 
 // List returns a slice of Service structs representing the state of all services.
@@ -260,13 +479,37 @@ func (s *SystemDServiceManager) List() ([]*Service, error) {
 
 	services, err := ParseServiceSystemDUnitFiles(cmdList.Stdout)
 	if err != nil {
-		return nil, err
+		// Being able to run a command does not mean systemd is the running
+		// init. A container built from a systemd distro carries the unit files
+		// without ever starting systemd, so systemctl produces nothing usable
+		// there. Read the units off disk instead of reporting the failure as
+		// the service list.
+		//
+		// Only an unusable listing means that. Failing to read stdout is an IO
+		// fault, and answering it with a filesystem listing would present a
+		// plausible service list built from a read that never completed.
+		if !errors.Is(err, errSystemctlNoOutput) {
+			return nil, err
+		}
+		log.Debug().Err(err).Msg("systemctl did not answer, reading systemd units from disk instead")
+		return (&SystemdFSServiceManager{Fs: s.conn.FileSystem()}).List()
 	}
 
 	// Step 2: Get running state from list-units (provides Running/Description)
 	cmdUnits, err := s.conn.RunCommand("systemctl list-units --type service --all")
 	if err != nil {
 		return nil, err
+	}
+	// list-unit-files reads the unit files, list-units asks the running
+	// systemd. In a container that has systemctl but was not booted with
+	// systemd only the first answers, and so does nothing that reads the
+	// rest of the state: enabled template instances (getty@tty1) went
+	// missing and every description read empty. Nothing runs there, and the
+	// unit files on disk say the rest.
+	if systemctlNotBooted(cmdUnits) {
+		log.Debug().Err(systemctlError("systemctl list-units", cmdUnits)).
+			Msg("systemd is not running, reading systemd units from disk instead")
+		return (&SystemdFSServiceManager{Fs: s.conn.FileSystem()}).List()
 	}
 
 	unitStates, err := ParseSystemdListUnits(cmdUnits.Stdout)
@@ -277,7 +520,10 @@ func (s *SystemDServiceManager) List() ([]*Service, error) {
 	// Step 3: Merge - update services from step 1 with running state from step 2.
 	// Services in list-unit-files but not in list-units are unloaded/templates;
 	// Running=false is correct for them (already the default).
+	known := make(map[string]struct{}, len(services))
 	for _, service := range services {
+		known[service.Name] = struct{}{}
+
 		unitState, ok := unitStates[service.Name]
 		if !ok {
 			continue
@@ -289,7 +535,163 @@ func (s *SystemDServiceManager) List() ([]*Service, error) {
 		}
 	}
 
+	// Step 4: list-units reports a unit only under its canonical name, so an
+	// alias row (sshd, syslog, dbus-org.freedesktop.login1) and a unit file
+	// that is not loaded found no state above. Ask systemctl about those.
+	s.resolveUnloadedUnits(services, unitStates)
+
+	// Step 5: Add loaded units that have no unit file of their own. An
+	// instantiated template unit (getty@tty1) is only ever reported by
+	// list-units -- list-unit-files carries the template (getty@) instead --
+	// so without this the running instance is invisible and the template
+	// reads running=false while an instance of it is up.
+	//
+	// systemd before 220 (RHEL 7) lists no SysV service in list-unit-files,
+	// and list-units only the ones that are loaded, so a SysV service that is
+	// neither running nor enabled was missing. Its init script names it.
+	var sysvUnits []string
+	if version := s.systemdVersion(); version > 0 && version < systemdListsSysVUnitFilesSince {
+		sysvUnits = sysvInitScriptUnits(s.conn.FileSystem())
+	}
+	services = append(services, s.instanceUnits(unitStates, known, sysvUnits)...)
+	s.resolveWithIsEnabled(services)
 	return services, nil
+}
+
+// resolveUnloadedUnits fills in the state of unit-file rows that list-units did
+// not report. An alias row takes all of its state from the unit it points at:
+// list-unit-files reports it as "alias" on systemd 245 and later and as the
+// target's state before that, and neither tells whether the service runs. A
+// unit that is merely not loaded gets its description, which list-unit-files
+// does not carry. Templates are left out: "systemctl show" on name@.service
+// yields no record, and a template is never running itself.
+//
+// A failed call leaves the rows as list-unit-files reported them.
+func (s *SystemDServiceManager) resolveUnloadedUnits(services []*Service, unitStates map[string]*Service) {
+	rows := make([]*Service, 0, len(services))
+	units := make([]string, 0, len(services))
+	for _, service := range services {
+		if _, ok := unitStates[service.Name]; ok {
+			continue
+		}
+		unit := ensureSystemdServiceUnit(service.Name)
+		if isSystemdTemplateUnit(unit) {
+			continue
+		}
+		rows = append(rows, service)
+		units = append(units, unit)
+	}
+	if len(units) == 0 {
+		return
+	}
+
+	shown, err := s.showUnits(units)
+	if err != nil {
+		log.Debug().Err(err).Msg("mql[services]> could not read unloaded and aliased units through systemctl show")
+		return
+	}
+
+	for _, row := range rows {
+		record, ok := shown[row.Name]
+		if !ok {
+			continue
+		}
+		if record.Name != row.Name {
+			name := row.Name
+			*row = *record
+			row.Name = name
+			continue
+		}
+		// a unit file whose link is severed, or a unit whose package was
+		// removed, still has a list-unit-files row, but systemd cannot load
+		// it: it is not installed, and its leftover state says nothing
+		if !record.Installed {
+			row.Installed = false
+			row.Enabled, row.Masked, row.Static = false, false, false
+			row.needsIsEnabled = false
+		}
+		if row.Description == "" {
+			row.Description = record.Description
+		}
+	}
+}
+
+// instanceUnits builds services for loaded units that list-unit-files did not
+// report. Their unit-file state is read with a batched "systemctl show" over
+// the instances themselves: that call is unreliable for *template* units
+// (name@.service yields no record), which is why List does not use it for the
+// full set, but concrete instances return a record each. An instance's
+// enablement cannot be inherited from its template -- nut-driver@ can be
+// "indirect" while nut-driver@apc is "enabled" -- so it has to be asked for.
+//
+// extraUnits are further units neither listing named (SysV services on systemd
+// before 220); one that systemd cannot load is not reported.
+func (s *SystemDServiceManager) instanceUnits(unitStates map[string]*Service, known map[string]struct{}, extraUnits []string) []*Service {
+	names := make([]string, 0, len(unitStates))
+	extra := map[string]bool{}
+	for _, unit := range extraUnits {
+		name := normalizeSystemdServiceName(unit)
+		if _, ok := known[name]; ok {
+			continue
+		}
+		if _, ok := unitStates[name]; ok {
+			continue
+		}
+		extra[name] = true
+		names = append(names, name)
+	}
+	for name, state := range unitStates {
+		if _, ok := known[name]; ok {
+			continue
+		}
+		// list-units --all also names units that do not exist, because some
+		// other unit references them in After=/Conflicts=. They load as
+		// not-found and are not services on this host.
+		if !state.Installed {
+			continue
+		}
+		names = append(names, name)
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	sort.Strings(names)
+
+	units := make([]string, len(names))
+	for i, name := range names {
+		units[i] = ensureSystemdServiceUnit(name)
+	}
+
+	// A failure here costs the unit-file state, not the unit: report the
+	// service with what list-units already told us rather than dropping it.
+	shown := map[string]*Service{}
+	if parsed, err := s.showUnits(units); err == nil {
+		shown = parsed
+	}
+
+	instances := make([]*Service, 0, len(names))
+	for _, name := range names {
+		if service, ok := shown[name]; ok {
+			if extra[name] && !service.Installed {
+				continue
+			}
+			instances = append(instances, service)
+			continue
+		}
+		state, ok := unitStates[name]
+		if !ok {
+			continue
+		}
+		instances = append(instances, &Service{
+			Name:        name,
+			Description: state.Description,
+			Running:     state.Running,
+			Installed:   state.Installed,
+			Type:        "systemd",
+		})
+	}
+
+	return instances
 }
 
 type SystemdFSServiceManager struct {
@@ -298,336 +700,76 @@ type SystemdFSServiceManager struct {
 
 // systemdUnitSearchPath is the order in which systemd looks up unit files
 // We ignore anything in /run as fs scans should not represent a running system
-// https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Unit%20File%20Load%20Path
+// https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html#Unit%20File%20Load%20Path
+//
+// /lib/systemd/system is the last entry because it is the same directory as
+// /usr/lib/systemd/system wherever /lib is a symlink into /usr, which is every
+// distro that has completed the /usr merge. On the ones that have not --
+// Debian 11 and older, Ubuntu 18.04 and older -- /lib is a real directory and
+// is where every unit file actually lives, with /usr/lib/systemd/system empty
+// or absent. Leaving it out reported those hosts as running no units at all.
 var systemdUnitSearchPath = []string{
 	"/etc/systemd/system.control",
 	"/etc/systemd/system",
 	"/usr/local/lib/systemd/system",
 	"/usr/lib/systemd/system",
-}
-
-type unitInfo struct {
-	// name is the name of the unit without the type extension
-	name string
-	// uType is the type extension, for example service, target, etc
-	uType string
-	// description is the description that is provided in the unit section
-	description string
-	// deps is a list of all name.type values found in the Wants and Requires
-	// fields of the Unit section
-	deps []string
-	// Orderings is a list of all name.type values found in the Before and
-	// After fields of the Unit section
-	orderings []string
-	// masked is set to true of a unit is symlinked to /dev/null
-	masked bool
-	// missing is set to true if we have a dependency on a unit, but that
-	// unit was not found in the search path
-	missing bool
-	// isDep is true of this unit is found in the dependency tree starting
-	// from the default.target
-	isDep bool
-	// hasInstall is true if the unit file has an [Install] section
-	hasInstall bool
-	// service is only set for socket units. It contains an optional name.target.
-	// If not provided, socketname.service is activated for the socket
-	service string
-}
-
-type stackEntry struct {
-	unit     string
-	critical bool
-}
-type stack []stackEntry
-
-func (s *stack) push(v stackEntry) {
-	*s = append(*s, v)
-}
-
-func (s *stack) pop() stackEntry {
-	n := len(*s) - 1
-	v := (*s)[n]
-	*s = (*s)[:n]
-	return v
-}
-
-func (s *stack) len() int {
-	return len(*s)
+	"/lib/systemd/system",
 }
 
 func (s *SystemdFSServiceManager) Name() string {
 	return "systemd FS Service Manager"
 }
 
+// List reports every service unit file the way `systemctl list-unit-files`
+// does, read from disk: enabled, static, masked and disabled as systemd
+// decides them from the unit files and the enablement links, an alias with
+// the state of the unit it names, and the enabled instances of templates.
+//
+// It used to walk the dependency graph from default.target and call a unit
+// enabled when the walk reached it. That differed from systemctl wherever the
+// two notions part: a unit without an [Install] section that something pulls
+// in (dbus.service) read as enabled where systemctl reports it static, a
+// template enabled for its default instance (getty@.service) read as
+// disabled, and its enabled instance (getty@tty1) as not installed.
 func (s *SystemdFSServiceManager) List() ([]*Service, error) {
-	enabledUnits, err := s.traverse()
+	units, err := readSystemdUnitFiles(s.Fs, ".service")
 	if err != nil {
 		return nil, err
 	}
-	services := make([]*Service, 0, len(enabledUnits))
-	for _, v := range enabledUnits {
-		if v.uType != "service" {
-			continue
+	byName := make(map[string]*systemdUnitFile, len(units))
+	for _, u := range units {
+		byName[u.Name] = u
+	}
+
+	services := make([]*Service, 0, len(units))
+	for _, u := range units {
+		svc := &Service{
+			Name:      strings.TrimSuffix(u.Name, ".service"),
+			Type:      "systemd",
+			State:     ServiceUnknown,
+			Installed: true,
 		}
-		services = append(services, &Service{
-			Name:        v.name,
-			Type:        v.uType,
-			Description: v.description,
-			State:       ServiceUnknown,
-			Installed:   !v.missing,
-			Enabled:     !v.missing && v.isDep,
-			Masked:      v.masked,
-			Static:      !v.missing && !v.masked && !v.hasInstall,
-		})
+		// an alias row takes all of its state from the unit it names, as
+		// the systemctl path reports it
+		state := u
+		if u.State == "alias" {
+			target, ok := byName[u.Target]
+			if !ok {
+				// a link to a unit that is not there: systemd cannot load it
+				svc.Installed = false
+				services = append(services, svc)
+				continue
+			}
+			state = target
+		}
+		svc.Description = state.Description
+		svc.Path = state.Path
+		applyUnitFileState(&svc.Enabled, &svc.Masked, &svc.Static, state.State)
+		services = append(services, svc)
 	}
 	return services, nil
 }
 
 func (s *SystemdFSServiceManager) Get(name string) (*Service, error) {
 	return getServiceFromList(name, s.List)
-}
-
-// traverse traverses the root target and finds units. This implementation is
-// incomplete. It only looks at targets, services, and sockets, so at least
-// mounts and timers are missing. Also, handling of templates is probably not
-// fully correct. The implicit and default dependencies for types are also
-// not accounted for
-func (s *SystemdFSServiceManager) traverse() (map[string]*unitInfo, error) {
-	loadedUnits := map[string]*unitInfo{}
-	stack := new(stack)
-	stack.push(stackEntry{
-		critical: true,
-		unit:     "default.target",
-	})
-	for stack.len() > 0 {
-		u := stack.pop()
-		if l, ok := loadedUnits[u.unit]; ok {
-			if !l.isDep && u.critical {
-				// We need to revisit all the already loaded units
-				// and mark them as a dependency
-				l.isDep = true
-				for _, v := range l.deps {
-					stack.push(stackEntry{
-						unit:     v,
-						critical: true,
-					})
-				}
-			}
-			continue
-		}
-		uInfo, err := s.findUnit(u.unit)
-		if err != nil {
-			if errors.Is(err, errIgnored) {
-				continue
-			}
-			return nil, err
-		}
-		for _, d := range uInfo.deps {
-			stack.push(stackEntry{
-				unit:     d,
-				critical: u.critical,
-			})
-		}
-		for _, d := range uInfo.orderings {
-			stack.push(stackEntry{
-				unit:     d,
-				critical: false,
-			})
-		}
-		if uInfo.uType == "socket" {
-			d := uInfo.service
-			if d == "" {
-				d = fmt.Sprintf("%s.service", uInfo.name)
-			}
-			stack.push(stackEntry{
-				unit:     d,
-				critical: u.critical,
-			})
-		}
-		uInfo.isDep = uInfo.isDep || u.critical
-		loadedUnits[u.unit] = uInfo
-	}
-	return loadedUnits, nil
-}
-
-func (s *SystemdFSServiceManager) findUnit(unitName string) (*unitInfo, error) {
-	name, uType, ok := unitNameAndType(unitName)
-	if !ok {
-		return nil, errIgnored
-	}
-	uInfo := unitInfo{
-		name:  name,
-		uType: uType,
-	}
-
-	for _, p := range systemdUnitSearchPath {
-		var err error
-		var fsInfo fs.FileInfo
-
-		uName := unitName
-		unitPath := path.Join(p, unitName)
-
-		// We try to lstat if we can. We want to know if the file is
-		// a symlink because symlinks are aliases
-		if lstater, ok := s.Fs.(afero.Lstater); ok {
-			fsInfo, _, err = lstater.LstatIfPossible(unitPath)
-		} else {
-			fsInfo, err = s.Fs.Stat(unitPath)
-		}
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, err
-		}
-
-		findNames := []string{uName}
-		if fsInfo.Mode()&fs.ModeSymlink != 0 {
-			// If its a symlink, we need to get the real name
-			// TODO: check if this needs to be done recursively
-			if lr, ok := s.Fs.(afero.LinkReader); ok {
-				linkPath, err := lr.ReadlinkIfPossible(unitPath)
-				if err != nil {
-					return nil, err
-				}
-				if linkPath == "/dev/null" {
-					uInfo.masked = true
-					return &uInfo, nil
-				} else {
-					linkedName := path.Base(linkPath)
-					name, uType, ok := unitNameAndType(linkedName)
-					// The rules for aliasing only allow same type to same
-					// type. So foo.service -> bar.service, but not
-					// foo.service -> bar.socket
-					if !ok || (uInfo.uType != uType) {
-						return nil, fmt.Errorf("invalid unit %s", linkedName)
-					}
-					uInfo.name = name
-					findNames = append(findNames, linkedName)
-				}
-			}
-		}
-
-		if err := s.readUnit(unitPath, &uInfo); err != nil {
-			return nil, err
-		}
-
-		// We need to search for deps from directories based on both the
-		// real name and aliased name
-		for _, n := range findNames {
-			dirDeps, err := s.findDeps(n)
-			if err != nil {
-				return nil, err
-			}
-			uInfo.deps = append(uInfo.deps, dirDeps...)
-		}
-
-		return &uInfo, nil
-	}
-
-	uInfo.missing = true
-	return &uInfo, nil
-}
-
-// readUnit reads the unit file:
-// deps are pulled from the Wants and Requires keys of the Unit section
-// description is pulled from the Description key of the Unit section
-// orderings are pulled from the Before and After keys of the Unit section
-func (s *SystemdFSServiceManager) readUnit(unitPath string, uInfo *unitInfo) error {
-	// First resolve the symlink in case the unitPath is actually a symlink.
-	if lr, ok := s.Fs.(afero.LinkReader); ok {
-		linkPath, err := lr.ReadlinkIfPossible(unitPath)
-		if err == nil {
-			// If the linkPath is not absolute, use the directory of unitPath and append the
-			// filename.
-			if !filepath.IsAbs(linkPath) {
-				directory := filepath.Dir(unitPath)
-				linkPath = filepath.Join(directory, linkPath)
-			}
-			unitPath = linkPath
-		}
-	}
-
-	f, err := s.Fs.Open(unitPath)
-	if err != nil {
-		return err
-	}
-	opts, err := unit.Deserialize(f)
-	if err != nil {
-		return err
-	}
-
-	for _, o := range opts {
-		if o.Section == "Unit" && (o.Name == "Wants" || o.Name == "Requires") {
-			deps := strings.Fields(o.Value)
-			for _, d := range deps {
-				if serviceNameRegex.MatchString(d) {
-					uInfo.deps = append(uInfo.deps, d)
-				}
-			}
-		} else if o.Section == "Unit" && o.Name == "Description" {
-			uInfo.description = o.Value
-		} else if o.Section == "Unit" && (o.Name == "Before" || o.Name == "After") {
-			orderings := strings.Fields(o.Value)
-			for _, d := range orderings {
-				if serviceNameRegex.MatchString(d) {
-					uInfo.orderings = append(uInfo.orderings, d)
-				}
-			}
-		} else if o.Section == "Socket" && o.Name == "Service" {
-			uInfo.service = o.Value
-		} else if o.Section == "Install" {
-			uInfo.hasInstall = true
-		}
-	}
-
-	return nil
-}
-
-// findDeps looks up the dependencies for the given unit name (foo.service)
-// by looking up all the links in the foo.service.wants and foo.service.requires
-// directories
-func (s *SystemdFSServiceManager) findDeps(unitName string) ([]string, error) {
-	deps := []string{}
-	for _, searchPath := range systemdUnitSearchPath {
-		paths := []string{
-			path.Join(searchPath, fmt.Sprintf("%s.wants", unitName)),
-			path.Join(searchPath, fmt.Sprintf("%s.requires", unitName)),
-		}
-
-		for _, p := range paths {
-			_, err := s.Fs.Stat(p)
-			if err != nil {
-				if os.IsNotExist(err) {
-					continue
-				}
-				return nil, err
-			}
-			unitLinks, err := afero.ReadDir(s.Fs, p)
-			if err != nil {
-				return nil, err
-			}
-			for _, unitLink := range unitLinks {
-				if serviceNameRegex.MatchString(unitLink.Name()) {
-					deps = append(deps, unitLink.Name())
-				}
-			}
-		}
-	}
-
-	return deps, nil
-}
-
-func unitNameAndType(n string) (name string, uType string, ok bool) {
-	matches := serviceNameRegex.FindStringSubmatch(n)
-	if len(matches) > 1 {
-		name = matches[1]
-	}
-	if len(matches) > 2 {
-		uType = matches[2]
-	}
-	if len(matches) == 3 {
-		ok = true
-	}
-	return
 }

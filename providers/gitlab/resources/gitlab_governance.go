@@ -11,11 +11,13 @@ import (
 	"sync"
 	"time"
 
-	gitlab "gitlab.com/gitlab-org/api/client-go"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/gitlab/connection"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/rs/zerolog/log"
+
+	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/gitlab/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // -----------------------------------------------------------------------------
@@ -26,20 +28,13 @@ func (r *mqlGitlabProjectApprovalRule) id() (string, error) {
 	return "gitlab.project.approvalRule/" + strconv.FormatInt(r.Id.Data, 10), nil
 }
 
-func (r *mqlGitlabProjectCodeowners) id() (string, error) {
-	return "gitlab.project.codeowners/" + r.Path.Data, nil
-}
-
-func (r *mqlGitlabProjectCodeownersRule) id() (string, error) {
-	return "gitlab.project.codeowners.rule/" +
-		strconv.FormatInt(r.LineNumber.Data, 10) + "/" +
-		r.Pattern.Data, nil
-}
-
 // -----------------------------------------------------------------------------
 // Runner — fetch full details on demand via GetRunnerDetails. Stored in an
 // Internal struct so a single API call satisfies every detail accessor.
 // -----------------------------------------------------------------------------
+
+// gitlabRunnerScopeWarn logs once per session when runner details are denied.
+var gitlabRunnerScopeWarn sync.Once
 
 type mqlGitlabProjectRunnerInternal struct {
 	detailsOnce sync.Once
@@ -50,7 +45,20 @@ type mqlGitlabProjectRunnerInternal struct {
 func (r *mqlGitlabProjectRunner) loadDetails() (*gitlab.RunnerDetails, error) {
 	r.detailsOnce.Do(func() {
 		conn := r.MqlRuntime.Connection.(*connection.GitLabConnection)
-		details, _, err := conn.Client().Runners.GetRunnerDetails(int(r.Id.Data))
+		details, resp, err := conn.Client().Runners.GetRunnerDetails(int(r.Id.Data))
+		// ListProjectRunners includes instance-wide shared runners, but
+		// GET /runners/:id requires admin (or ownership) for those. Degrading
+		// keeps `runners { runUntagged }` usable on a project-scoped token;
+		// the accessors already return explicit false/zero when details are
+		// absent, so a miss fails an assertion rather than passing it.
+		if err != nil && resp != nil && (resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode == 404) {
+			gitlabRunnerScopeWarn.Do(func() {
+				log.Warn().Int("status", resp.StatusCode).
+					Msg("gitlab token cannot read /runners/:id; runner detail fields will report zero values")
+			})
+			r.details, r.detailsErr = nil, nil
+			return
+		}
 		r.details = details
 		r.detailsErr = err
 	})
@@ -153,25 +161,30 @@ var codeownersCandidatePaths = []string{"CODEOWNERS", ".gitlab/CODEOWNERS", "doc
 func (p *mqlGitlabProject) codeowners() (*mqlGitlabProjectCodeowners, error) {
 	conn := p.MqlRuntime.Connection.(*connection.GitLabConnection)
 	projectID := int(p.Id.Data)
-	defaultBranch := p.DefaultBranch.Data
-	if defaultBranch == "" {
-		// fall back to "main" — most modern GitLab projects use it;
-		// when this still 404s we surface a present=false resource.
-		defaultBranch = "main"
+
+	// GetRawFileOptions.Ref is optional and GitLab defaults it to the project
+	// HEAD, so an unknown default branch means "let the server pick" rather
+	// than guessing "main". Guessing produced a confident present=false for
+	// any project still on master whose resource reached us without the
+	// defaultBranch field populated.
+	opts := &gitlab.GetRawFileOptions{}
+	if defaultBranch := p.DefaultBranch.Data; defaultBranch != "" {
+		opts.Ref = gitlab.Ptr(defaultBranch)
 	}
 
 	var content []byte
 	var foundPath string
 	for _, path := range codeownersCandidatePaths {
-		body, resp, err := conn.Client().RepositoryFiles.GetRawFile(projectID, path, &gitlab.GetRawFileOptions{
-			Ref: gitlab.Ptr(defaultBranch),
-		})
+		body, resp, err := conn.Client().RepositoryFiles.GetRawFile(projectID, path, opts)
 		if err == nil {
 			content = body
 			foundPath = path
 			break
 		}
-		if resp != nil && resp.StatusCode == 404 {
+		// 403 means the token cannot read this repository at all; keep
+		// probing the remaining candidates and fall through to present=false
+		// rather than failing the whole resource graph mid-group-scan.
+		if resp != nil && (resp.StatusCode == 404 || resp.StatusCode == 403) {
 			continue
 		}
 		return nil, err
@@ -185,6 +198,9 @@ func (p *mqlGitlabProject) codeowners() (*mqlGitlabProjectCodeowners, error) {
 			owners = append(owners, o)
 		}
 		mqlRule, err := CreateResource(p.MqlRuntime, "gitlab.project.codeowners.rule", map[string]*llx.RawData{
+			// lineNumber+pattern repeats across projects — "1/*" is the most
+			// common first line there is — so the project has to be in the key.
+			"__id":              llx.StringData(projectScopedID("gitlab.project.codeowners.rule", p.Id.Data, strconv.Itoa(rule.LineNumber), rule.Pattern)),
 			"lineNumber":        llx.IntData(int64(rule.LineNumber)),
 			"section":           llx.StringData(rule.Section),
 			"optional":          llx.BoolData(rule.Optional),
@@ -200,6 +216,10 @@ func (p *mqlGitlabProject) codeowners() (*mqlGitlabProjectCodeowners, error) {
 	}
 
 	res, err := CreateResource(p.MqlRuntime, "gitlab.project.codeowners", map[string]*llx.RawData{
+		// The path is one of three fixed candidates (or ""), so keying on it
+		// gave the whole runtime four possible cache entries — every project
+		// in a group scan shared one CODEOWNERS resource.
+		"__id":    llx.StringData(projectScopedID("gitlab.project.codeowners", p.Id.Data)),
 		"present": llx.BoolData(foundPath != ""),
 		"path":    llx.StringData(foundPath),
 		"content": llx.StringData(string(content)),
@@ -224,9 +244,17 @@ type codeownersRule struct {
 }
 
 // sectionHeader matches `[Section]`, `[Section][2]`, `^[Section]`,
-// `^[Section][2]`. The first group captures the optional `^`, the
-// second the section name, the third the optional approval count.
-var sectionHeader = regexp.MustCompile(`^(\^?)\[([^\]]+)\](?:\[(\d+)\])?\s*$`)
+// `^[Section][2]`, and each of those followed by default owners
+// (`[Section] @team`). The first group captures the optional `^`, the second
+// the section name, the third the optional approval count, and the fourth any
+// trailing default owners.
+//
+// The trailing-owners form is documented GitLab syntax. Requiring the line to
+// end at the brackets made `[Database] @dba-team` fall through to the rule
+// branch, which both emitted a phantom rule whose pattern was the literal
+// "[Database]" and left the section state pointing at the *previous* section —
+// so every rule after it reported the wrong required/optional flag.
+var sectionHeader = regexp.MustCompile(`^(\^?)\[([^\]]+)\](?:\[(\d+)\])?(?:\s+(.*))?$`)
 
 // parseCodeowners turns the raw CODEOWNERS text into a slice of
 // rules. Comments (lines starting with #) and blank lines are
@@ -251,6 +279,7 @@ func parseCodeowners(content string) []codeownersRule {
 	}
 	var rules []codeownersRule
 	var currentSection string
+	var currentDefaultOwners []string
 	currentRequired := true
 	currentOptional := false
 	currentApprovals := 0
@@ -271,14 +300,18 @@ func parseCodeowners(content string) []codeownersRule {
 					currentApprovals = n
 				}
 			}
+			currentDefaultOwners = strings.Fields(m[4])
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) < 1 {
-			continue
-		}
 		pattern := fields[0]
 		owners := fields[1:]
+		// A pattern with no owners of its own inherits the section's default
+		// owners; without this the path reads as unowned even though the
+		// section header assigns it a team.
+		if len(owners) == 0 {
+			owners = currentDefaultOwners
+		}
 		rules = append(rules, codeownersRule{
 			LineNumber:        lineNum + 1,
 			Section:           currentSection,
@@ -291,11 +324,6 @@ func parseCodeowners(content string) []codeownersRule {
 	}
 	return rules
 }
-
-// Compile-time guards: panics with a clear stack if the generated
-// resource ever loses these fields (e.g. via a .lr rename) instead
-// of producing an opaque nil-deref later.
-var _ = plugin.StateIsSet
 
 // -----------------------------------------------------------------------------
 // Vulnerabilities — surfaced from GitLab's security report scanners (SAST,
@@ -487,11 +515,11 @@ func parseGIDInt(gid string) int64 {
 	if gid == "" {
 		return 0
 	}
-	idx := strings.LastIndex(gid, "/")
-	if idx < 0 || idx >= len(gid)-1 {
+	_, after, ok := strings.CutLast(gid, "/")
+	if !ok || after == "" {
 		return 0
 	}
-	n, _ := strconv.ParseInt(gid[idx+1:], 10, 64)
+	n, _ := strconv.ParseInt(after, 10, 64)
 	return n
 }
 
@@ -515,18 +543,30 @@ func fetchVulnerabilities(conn *connection.GitLabConnection, scope, fullPath str
 				return nil, err
 			}
 			errs = resp.Errors
-			if resp.Data.Project != nil {
-				page = resp.Data.Project.Vulnerabilities
+			// GraphQL answers HTTP 200 with data.project = null (and often no
+			// errors array) when the path doesn't resolve or isn't visible to
+			// this token. Treating that as "no vulnerabilities" reported a
+			// clean bill of health for a project we never actually read.
+			if resp.Data.Project == nil {
+				if isVulnerabilitiesUnavailable(errs) {
+					return nil, nil
+				}
+				return nil, fmt.Errorf("gitlab project %q not found or not visible to this token", fullPath)
 			}
+			page = resp.Data.Project.Vulnerabilities
 		case "group":
 			var resp gqlGroupVulnResponse
 			if _, err := conn.Client().GraphQL.Do(gitlab.GraphQLQuery{Query: query}, &resp); err != nil {
 				return nil, err
 			}
 			errs = resp.Errors
-			if resp.Data.Group != nil {
-				page = resp.Data.Group.Vulnerabilities
+			if resp.Data.Group == nil {
+				if isVulnerabilitiesUnavailable(errs) {
+					return nil, nil
+				}
+				return nil, fmt.Errorf("gitlab group %q not found or not visible to this token", fullPath)
 			}
+			page = resp.Data.Group.Vulnerabilities
 		default:
 			return nil, fmt.Errorf("unsupported scope %q", scope)
 		}

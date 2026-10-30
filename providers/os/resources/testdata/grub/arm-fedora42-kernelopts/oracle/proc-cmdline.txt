@@ -1,0 +1,1 @@
+BOOT_IMAGE=(hd0,gpt2)/vmlinuz-6.19.14-108.fc42.aarch64 root=/dev/vda2 ro rhgb quiet audit=1

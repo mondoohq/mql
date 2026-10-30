@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Context privileged="true" crossContext="false" logEffectiveWebXml="true">
+    <WatchedResource>WEB-INF/web.xml</WatchedResource>
+    <Resources allowLinking="true" />
+    <Valve className="org.apache.catalina.valves.AccessLogValve"
+           directory="${catalina.base}/logs"
+           prefix="context_access_log" suffix=".txt"
+           pattern="%h %l %u %t &quot;%r&quot; %s %b" />
+</Context>

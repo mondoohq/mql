@@ -1,0 +1,14 @@
+[
+  {
+    "CategoryID": 42,
+    "DidThreatExecute": false,
+    "IsActive": false,
+    "Resources": null,
+    "RollupStatus": 1,
+    "SchemaVersion": "1.0.0.0",
+    "SeverityID": 5,
+    "ThreatID": 2147519003,
+    "ThreatName": "Virus:DOS/EICAR_Test_File",
+    "TypeID": 0
+  }
+]

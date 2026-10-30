@@ -1,0 +1,43 @@
+{
+  "count": 5,
+  "value": [
+    {
+      "objectId": "3c000000-0000-4000-8000-000000000389",
+      "gitObjectType": "tree",
+      "commitId": "3c000000-0000-4000-8000-000000000325",
+      "path": "/",
+      "isFolder": true,
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000005/items?path=%2F"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-0000000001f5",
+      "gitObjectType": "tree",
+      "commitId": "3c000000-0000-4000-8000-000000000325",
+      "path": "/infra",
+      "isFolder": true,
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000005/items?path=%2Finfra"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-0000000001f6",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000325",
+      "path": "/infra/main.tf",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000005/items?path=%2Finfra%2Fmain.tf"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-0000000001f7",
+      "gitObjectType": "tree",
+      "commitId": "3c000000-0000-4000-8000-000000000325",
+      "path": "/.azure",
+      "isFolder": true,
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000005/items?path=%2F.azure"
+    },
+    {
+      "objectId": "3c000000-0000-4000-8000-0000000001f8",
+      "gitObjectType": "blob",
+      "commitId": "3c000000-0000-4000-8000-000000000325",
+      "path": "/.azure/ci.yml",
+      "url": "https://dev.azure.com/mondoo-ado-scan-test/_apis/git/repositories/2b000000-0000-4000-8000-000000000005/items?path=%2F.azure%2Fci.yml"
+    }
+  ]
+}

@@ -5,17 +5,48 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	scheduler "cloud.google.com/go/scheduler/apiv1"
 	"cloud.google.com/go/scheduler/apiv1/schedulerpb"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/gcp/connection"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
+
+// initGcpProjectCloudSchedulerService fills in the project the service belongs to when the
+// resource is reached by its own type name rather than through the
+// gcp.project accessor. Without it the resource is built with an empty
+// projectId, and the serviceEnabled gate then asks Service Usage about
+// "projects/", which fails the whole query with an InvalidArgument.
+func initGcpProjectCloudSchedulerService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 0 {
+		return args, nil, nil
+	}
+
+	conn, ok := runtime.Connection.(*connection.GcpConnection)
+	if !ok {
+		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
+	}
+
+	args["projectId"] = llx.StringData(conn.ResourceID())
+
+	return args, nil, nil
+}
+
+type mqlGcpProjectCloudSchedulerServiceInternal struct {
+	serviceGate
+}
+
+type mqlGcpProjectCloudSchedulerServiceJobInternal struct {
+	cacheOauthServiceAccountEmail string
+	cacheOidcServiceAccountEmail  string
+}
 
 func (g *mqlGcpProject) cloudScheduler() (*mqlGcpProjectCloudSchedulerService, error) {
 	if g.Id.Error != nil {
@@ -27,7 +58,19 @@ func (g *mqlGcpProject) cloudScheduler() (*mqlGcpProjectCloudSchedulerService, e
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlGcpProjectCloudSchedulerService), nil
+
+	serviceEnabled, err := g.isServiceEnabled(service_cloudscheduler)
+	if err != nil {
+		return nil, err
+	}
+	schedulerService := res.(*mqlGcpProjectCloudSchedulerService)
+	schedulerService.recordEnabled(serviceEnabled)
+	return schedulerService, nil
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectCloudSchedulerService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_cloudscheduler)
 }
 
 func (g *mqlGcpProjectCloudSchedulerService) id() (string, error) {
@@ -42,6 +85,21 @@ func (g *mqlGcpProjectCloudSchedulerService) jobs() ([]any, error) {
 		return nil, g.ProjectId.Error
 	}
 	projectId := g.ProjectId.Data
+
+	// A project that never turned Cloud Scheduler on answers ListJobs with
+	// PermissionDenied "API has not been used in project ... or it is disabled",
+	// which failed the field outright. Not having enabled a service is the
+	// ordinary state of most projects, and the answer it deserves is "no jobs",
+	// not an error, so the gate every other service resource uses applies here
+	// too.
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		log.Debug().Str("service", service_cloudscheduler).Msg("gcp service is not enabled, skipping")
+		return []any{}, nil
+	}
 
 	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
 	creds, err := conn.Credentials(scheduler.DefaultAuthScopes()...)
@@ -108,18 +166,16 @@ func (g *mqlGcpProjectCloudSchedulerService) jobs() ([]any, error) {
 		}
 
 		jobArgs := map[string]*llx.RawData{
-			"projectId":                llx.StringData(projectId),
-			"name":                     llx.StringData(job.Name),
-			"schedule":                 llx.StringData(job.Schedule),
-			"timeZone":                 llx.StringData(job.TimeZone),
-			"state":                    llx.StringData(job.State.String()),
-			"description":              llx.StringData(job.Description),
-			"lastAttemptTime":          llx.TimeDataPtr(lastAttemptTime),
-			"scheduleTime":             llx.TimeDataPtr(scheduleTime),
-			"userUpdateTime":           llx.TimeDataPtr(userUpdateTime),
-			"targetType":               llx.StringData(targetType),
-			"oidcServiceAccountEmail":  llx.StringData(oidcServiceAccountEmail),
-			"oauthServiceAccountEmail": llx.StringData(oauthServiceAccountEmail),
+			"projectId":       llx.StringData(projectId),
+			"name":            llx.StringData(job.Name),
+			"schedule":        llx.StringData(job.Schedule),
+			"timeZone":        llx.StringData(job.TimeZone),
+			"state":           llx.StringData(job.State.String()),
+			"description":     llx.StringData(job.Description),
+			"lastAttemptTime": llx.TimeDataPtr(lastAttemptTime),
+			"scheduleTime":    llx.TimeDataPtr(scheduleTime),
+			"userUpdateTime":  llx.TimeDataPtr(userUpdateTime),
+			"targetType":      llx.StringData(targetType),
 		}
 		if retryConfig != nil {
 			jobArgs["retryConfig"] = llx.ResourceData(retryConfig, "gcp.retryConfig")
@@ -128,8 +184,11 @@ func (g *mqlGcpProjectCloudSchedulerService) jobs() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		mqlJ := mqlJob.(*mqlGcpProjectCloudSchedulerServiceJob)
+		mqlJ.cacheOidcServiceAccountEmail = oidcServiceAccountEmail
+		mqlJ.cacheOauthServiceAccountEmail = oauthServiceAccountEmail
 		if retryConfig == nil {
-			mqlJob.(*mqlGcpProjectCloudSchedulerServiceJob).RetryConfig.State = plugin.StateIsNull | plugin.StateIsSet
+			mqlJ.RetryConfig.State = plugin.StateIsNull | plugin.StateIsSet
 		}
 		res = append(res, mqlJob)
 	}
@@ -138,10 +197,7 @@ func (g *mqlGcpProjectCloudSchedulerService) jobs() ([]any, error) {
 }
 
 func (g *mqlGcpProjectCloudSchedulerServiceJob) oidcServiceAccount() (*mqlGcpProjectIamServiceServiceAccount, error) {
-	if g.OidcServiceAccountEmail.Error != nil {
-		return nil, g.OidcServiceAccountEmail.Error
-	}
-	sa, err := resolveServiceAccountRef(g.MqlRuntime, g.OidcServiceAccountEmail.Data, g.ProjectId.Data)
+	sa, err := resolveServiceAccountRef(g.MqlRuntime, g.cacheOidcServiceAccountEmail, g.ProjectId.Data)
 	if err != nil {
 		return nil, err
 	}
@@ -152,10 +208,7 @@ func (g *mqlGcpProjectCloudSchedulerServiceJob) oidcServiceAccount() (*mqlGcpPro
 }
 
 func (g *mqlGcpProjectCloudSchedulerServiceJob) oauthServiceAccount() (*mqlGcpProjectIamServiceServiceAccount, error) {
-	if g.OauthServiceAccountEmail.Error != nil {
-		return nil, g.OauthServiceAccountEmail.Error
-	}
-	sa, err := resolveServiceAccountRef(g.MqlRuntime, g.OauthServiceAccountEmail.Data, g.ProjectId.Data)
+	sa, err := resolveServiceAccountRef(g.MqlRuntime, g.cacheOauthServiceAccountEmail, g.ProjectId.Data)
 	if err != nil {
 		return nil, err
 	}

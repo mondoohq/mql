@@ -1,31 +1,39 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/mql/v13/providers/ansible"
-option go_package = "go.mondoo.com/mql/v13/providers/ansible/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/ansible"
+option go_package = "go.mondoo.com/mql/providers/ansible/resources"
+option root = "ansible"
 
 // Ansible playbook
 //
 // Entry point for static analysis of an Ansible playbook file. Exposes the
 // list of plays so audits can inspect what each play targets, what privileges
-// it escalates to, and which tasks and handlers it runs — without executing
+// it escalates to, and which tasks and handlers it runs, without executing
 // the playbook against any inventory.
-ansible {
+ansible @root {
   // Plays defined in the playbook
   plays() []ansible.play
 }
 
 // Ansible play within a playbook
 //
-// Examine which hosts a play targets, which user it connects as, whether it
-// uses become / sudo (and to which user via which method), the fact-gathering
-// policy, the failure-handling strategy (max_fail_percentage, any_errors_fatal,
-// ignore_unreachable), and the variables, roles, tasks, and handlers it
-// declares.
+// Single play from a playbook: the hosts it targets, the user it connects as,
+// whether it escalates privileges with become (and to which user via which
+// method), the fact-gathering policy, and the failure-handling behavior
+// (max_fail_percentage, any_errors_fatal, ignore_unreachable). The variables,
+// roles, tasks, and handlers it declares are all queryable for auditing what
+// the play changes on its targets.
 ansible.play @defaults("name") {
   // Play name displayed during execution
   name string
   // Target hosts or host groups
+  //
+  // The `hosts:` pattern selecting which inventory hosts the play runs against.
+  // A single string (for example `"webservers"`, `"all"`, or an intersection
+  // like `"webservers:&staging"`), or a list of such patterns.
   hosts dict
   // User for the connection
   remoteUser string
@@ -43,7 +51,11 @@ ansible.play @defaults("name") {
   // play at once. Can be an integer (for example `3`), a percentage string
   // (for example `"30%"`), or a list mixing both for rolling batches.
   serial dict
-  // Strategy
+  // Play execution strategy
+  //
+  // The `strategy:` plugin controlling how hosts progress through tasks. One of
+  // `linear` (the default, every host finishes a task before the next begins),
+  // `free` (each host runs ahead independently), `host_pinned`, or `debug`.
   strategy string
   // Max percentage of failed hosts before aborting
   maxFailPercentage int
@@ -51,7 +63,11 @@ ansible.play @defaults("name") {
   ignoreUnreachable bool
   // Whether any task failure aborts the play
   anyErrorsFatal bool
-  // Whether to gather facts about remote hosts
+  // Fact-gathering policy for the play
+  //
+  // The `gather_facts:` value controlling whether facts are collected from the
+  // play's hosts before tasks run. Commonly `"true"` or `"false"`, or `"smart"`
+  // to gather only for hosts not already cached.
   gatherFacts string
   // Play-level variables
   vars map[string]dict
@@ -69,6 +85,11 @@ ansible.play @defaults("name") {
   // Files of variables loaded into the play via vars_files
   varsFiles []string
   // Variables prompted for interactively at runtime via vars_prompt
+  //
+  // One entry per prompted variable. Each carries `name` (the variable to set)
+  // and `prompt` (the text shown), plus optional `default`, `private` (hide
+  // input), `confirm` (ask twice), `encrypt` (a hashing scheme such as
+  // sha512_crypt), and `salt_size`.
   varsPrompt []dict
   // Environment variables applied to every task in the play
   environment map[string]dict
@@ -86,19 +107,25 @@ ansible.play @defaults("name") {
 
 // Ansible task within a play or block
 //
-// Examine the module action and arguments, conditional execution (when /
-// failed_when / changed_when), task-level variables, registered output, the
-// handlers it notifies, any imported / included playbooks or task files, and
-// nested block / rescue tasks for error handling.
+// Single unit of work in an Ansible play or block, describing the module
+// action and arguments, conditional execution (when, failed_when,
+// changed_when), task-level variables, registered output, the handlers it
+// notifies, any imported or included playbooks or task files, and nested
+// block or rescue tasks for error handling.
 ansible.task @defaults("name"){
   // Task name displayed during execution
   name string
   // Module and arguments to execute
+  //
+  // The raw action mapping as written in the task, keyed by the module name
+  // (for example `ansible.builtin.copy`) with its arguments as the value,
+  // plus any `args:` block. The `module` and `moduleArgs` fields expose the
+  // module key and its argument mapping separately.
   action dict
   // Module the task invokes
   //
-  // The action key as written in the source — for example
-  // `ansible.builtin.copy` or `command` — so tasks can be selected by module
+  // The action key as written in the source (for example
+  // `ansible.builtin.copy` or `command`) so tasks can be selected by module
   // without knowing the exact key in `action`. Empty for pure control-flow
   // tasks such as blocks or includes.
   module() string
@@ -196,12 +223,19 @@ ansible.task @defaults("name"){
 
 // Ansible handler triggered by task notifications
 //
-// Examine the name a task references via `notify` and the module action the
-// handler runs once at the end of a play when notified.
+// Handler task that runs once at the end of a play, and only when a task
+// notifies it by `name` through a `notify` keyword. Handlers commonly perform
+// side effects such as restarting a service after a configuration change. The
+// `action` field carries the module the handler runs and its arguments.
 ansible.handler @defaults("name"){
   // Handler name (referenced in notify)
   name string
-  // Module and arguments to execute
+  // Module and arguments the handler runs
+  //
+  // Mapping keyed by the module name as written in the handler, for example
+  // `service` or `ansible.builtin.service`, whose value is that module's
+  // argument mapping. Any other inline handler keys (such as `listen`) appear
+  // as sibling keys in the same mapping.
   action dict
 }
 
@@ -243,9 +277,10 @@ ansible.project @defaults("path") {
 
 // Ansible playbook file
 //
-// Examine a single playbook file within a project. The `path` selects the file
-// and `plays` exposes the plays it defines — for example
-// `ansible.project.playbooks.where(path == /site.yml/).first.plays`.
+// Single playbook file within a project, describing the ordered plays that map
+// hosts to the tasks and roles run against them. The `path` field selects the
+// file, for example `ansible.project.playbooks.where(path == /site.yml/).first`,
+// and `plays` exposes the plays it defines.
 ansible.playbook @defaults("path") {
   // Absolute path of the playbook file
   path string
@@ -255,11 +290,11 @@ ansible.playbook @defaults("path") {
 
 // Ansible role
 //
-// Examine a reusable role defined under the project's roles/ directory: the
-// tasks and handlers it runs, the default and role-scoped variables it sets,
-// its meta information (galaxy_info, minimum Ansible version), the roles it
-// depends on, and the templates and files it ships. The `name` selects the
-// role — for example `ansible.project.roles.where(name == "nginx").first`.
+// Reusable role defined under the project's roles/ directory: the tasks and
+// handlers it runs, the default and role-scoped variables it sets, its meta
+// information (galaxy_info, minimum Ansible version), the roles it depends on,
+// and the templates and files it ships. The `name` selects the role, for
+// example `ansible.project.roles.where(name == "nginx").first`.
 ansible.role @defaults("name") {
   // Role name (its directory name under roles/)
   name string
@@ -295,10 +330,10 @@ ansible.role @defaults("name") {
 
 // Ansible role metadata
 //
-// Examine the meta/main.yml of a role: the minimum Ansible version it declares,
+// Contents of a role's meta/main.yml: the minimum Ansible version it declares,
 // the galaxy_info block describing authorship and platform support, and the
 // names of the roles it depends on.
-ansible.role.meta @defaults("minAnsibleVersion") {
+private ansible.role.meta @defaults("minAnsibleVersion") {
   // Minimum Ansible version the role supports
   minAnsibleVersion string
   // Galaxy metadata block (author, description, license, platforms)
@@ -309,7 +344,7 @@ ansible.role.meta @defaults("minAnsibleVersion") {
 
 // Ansible inventory
 //
-// Examine the project's static inventory: the groups and hosts it defines and
+// Static inventory the project defines: the groups and hosts it declares and
 // the variables that apply to each, merged from inventory files and the
 // group_vars/ and host_vars/ directories. Dynamic inventory plugins are not
 // evaluated.
@@ -322,9 +357,9 @@ ansible.inventory {
 
 // Group of hosts in an Ansible inventory
 //
-// Examine a named inventory group: its member hosts, child groups, and the
-// variables applied to the group (from `[group:vars]` sections, YAML `vars`,
-// or group_vars/). The `name` selects the group — for example
+// Named inventory group: its member hosts, child groups, and the variables
+// applied to the group (from `[group:vars]` sections, YAML `vars`, or
+// group_vars/). The `name` selects the group, for example
 // `ansible.inventory.groups.where(name == "webservers").first`.
 ansible.inventory.group @defaults("name") {
   // Group name
@@ -339,9 +374,9 @@ ansible.inventory.group @defaults("name") {
 
 // Host in an Ansible inventory
 //
-// Examine a single inventory host: the groups it belongs to and the variables
-// applied to it (from inline inventory variables or host_vars/). The `name`
-// selects the host — for example
+// Single inventory host: the groups it belongs to and the variables applied
+// to it (from inline inventory variables or host_vars/). The `name` selects
+// the host, for example
 // `ansible.inventory.hosts.where(name == "web1.example.com").first`.
 ansible.inventory.host @defaults("name") {
   // Host name as it appears in the inventory
@@ -354,9 +389,10 @@ ansible.inventory.host @defaults("name") {
 
 // Ansible Galaxy requirements
 //
-// Examine the external roles and collections a project pulls in through its
-// requirements.yml — the supply chain of third-party Ansible content, with the
-// source and pinned version of each dependency.
+// External roles and collections a project pulls in through its
+// requirements.yml, the supply chain of third-party Ansible content. Each
+// dependency records its source and the pinned version, exposed through the
+// `roles` and `collections` fields for traversal into each entry.
 ansible.galaxy.requirements @defaults("path") {
   // Absolute path of the requirements file
   path string
@@ -368,9 +404,10 @@ ansible.galaxy.requirements @defaults("path") {
 
 // Ansible Galaxy role requirement
 //
-// Examine a single external role dependency declared in requirements.yml. The
-// `name` selects the entry; `src`, `version`, and `scm` describe where the role
-// is fetched from and which revision is pinned.
+// Single external role dependency declared in requirements.yml. The `name`
+// selects the entry, for example `ansible.galaxy.role(name:
+// "geerlingguy.nginx")`. The `src`, `version`, and `scm` fields describe where
+// the role is fetched from and which revision is pinned.
 ansible.galaxy.role @defaults("name") {
   // Role name
   name string
@@ -384,9 +421,10 @@ ansible.galaxy.role @defaults("name") {
 
 // Ansible Galaxy collection requirement
 //
-// Examine a single external collection dependency declared in requirements.yml.
-// The `name` selects the entry; `version`, `source`, and `type` describe which
-// revision is pinned and where the collection is fetched from.
+// Single external collection dependency declared in requirements.yml. The
+// `name` selects the entry, for example `ansible.galaxy.collection(name:
+// "community.general")`. The `version`, `source`, and `type` fields describe
+// which revision is pinned and where the collection is fetched from.
 ansible.galaxy.collection @defaults("name") {
   // Collection name
   name string
@@ -400,14 +438,18 @@ ansible.galaxy.collection @defaults("name") {
 
 // Ansible configuration file
 //
-// Examine the project's ansible.cfg. The full file is available as `sections`,
-// and the security-relevant settings are surfaced directly with Ansible's
-// documented defaults applied: whether SSH host-key checking is enabled and
-// whether privilege escalation is on by default.
+// Settings parsed from the project's ansible.cfg. The full file is available
+// as `sections`, and the security-relevant settings are surfaced directly with
+// Ansible's documented defaults applied: whether SSH host-key checking is
+// enabled and whether privilege escalation is on by default.
 ansible.config @defaults("path") {
   // Absolute path of the ansible.cfg file
   path string
-  // All configuration sections and their key/value pairs
+  // Configuration sections and their key/value pairs
+  //
+  // Keyed by INI section name from ansible.cfg (for example `defaults` or
+  // `privilege_escalation`). Each value is a dict of that section's settings,
+  // with the values kept as strings.
   sections map[string]dict
   // Whether SSH host-key checking is enabled (defaults to true when unset)
   hostKeyChecking bool
@@ -419,7 +461,7 @@ ansible.config @defaults("path") {
 
 // Ansible vault encryption usage
 //
-// Examine where the project relies on Ansible Vault: fully encrypted files and
+// Places where the project relies on Ansible Vault: fully encrypted files and
 // individual variables encrypted inline with a `!vault` tag. Contents are never
 // decrypted during static analysis, so each entry reports only its location and
 // the metadata carried in the vault header.
@@ -432,7 +474,7 @@ ansible.vault {
 
 // Vault-encrypted file
 //
-// Examine a single fully vault-encrypted file. The `path` selects the file;
+// Fully vault-encrypted file. The `path` selects the file;
 // `format`, `cipher`, and `vaultId` come from the `$ANSIBLE_VAULT` header. The
 // file's plaintext is not available because static analysis has no vault
 // password.
@@ -449,7 +491,7 @@ ansible.vault.file @defaults("path") {
 
 // Inline vault-encrypted variable
 //
-// Examine a single variable encrypted in place with a `!vault` tag inside an
+// Single variable encrypted in place with a `!vault` tag inside an
 // otherwise-plaintext file. The `key` is the variable's key path within the
 // file and `file` is the file that contains it.
 ansible.vault.variable @defaults("key") {
@@ -461,10 +503,10 @@ ansible.vault.variable @defaults("key") {
 
 // Role applied by a play
 //
-// Examine how a play applies a role: the role name, the conditional (`when`)
-// and tags that gate the application, the variables passed to the role at the
-// call site, and the resolved role itself for traversal into its tasks and
-// dependencies.
+// Application of a role by a play, with its call-site directives: the role
+// name, the conditional (`when`) and tags that gate the application, the
+// variables passed to the role, and the resolved role itself for traversal
+// into its tasks and dependencies.
 ansible.play.roleApplication @defaults("name") {
   // Name of the applied role
   name string
@@ -483,10 +525,12 @@ ansible.play.roleApplication @defaults("name") {
 
 // Collection vendored in the project
 //
-// Examine a collection installed under collections/ansible_collections/. The
-// `name` is the fully qualified `namespace.name` and selects the collection;
-// `version` and `path` describe which revision is installed and where.
-// Comparing these against the project's requirements reveals dependency drift.
+// Collection installed under collections/ansible_collections/, part of the
+// project's dependency supply chain. The `name` is the fully qualified
+// `namespace.name` and selects the collection, for example
+// `ansible.collection(name: "community.general")`; `version` and `path` describe
+// which revision is installed and where. Comparing these against the project's
+// requirements reveals dependency drift.
 ansible.collection @defaults("name") {
   // Fully qualified collection name (namespace.name)
   name string
@@ -500,14 +544,20 @@ ansible.collection @defaults("name") {
 
 // Custom module or plugin in the project
 //
-// Examine custom code shipped inside the project — modules, module utilities,
-// and plugins (filter, lookup, action, callback, and so on). This is code that
-// executes during a run, so it forms part of the project's supply chain. The
-// `name` is the file name without extension and `type` is the plugin type.
+// Custom code shipped inside the project: modules, module utilities, and
+// plugins (filter, lookup, action, callback, and so on). This code executes
+// during a run, so it forms part of the project's supply chain and is worth
+// auditing for untrusted or unexpected extensions. The `name` field is the
+// file name without extension and `type` identifies the plugin kind.
 ansible.plugin @defaults("name type") {
   // Plugin file name without extension
   name string
-  // Plugin type (for example module, filter, lookup, action, callback)
+  // Plugin kind
+  //
+  // Derived from the plugin's directory. One of module, module_utils, filter,
+  // lookup, action, callback, strategy, inventory, vars, connection, test, or
+  // cache. Plugins under the collection-style plugins/<type>/ layout take the
+  // type from that subdirectory name.
   type string
   // Absolute path of the plugin file
   path string
@@ -515,8 +565,8 @@ ansible.plugin @defaults("name type") {
 
 // Ansible collection manifest
 //
-// Examine the project's own galaxy.yml, present when the project is itself an
-// Ansible collection. Reports the collection's namespace, name, and version.
+// Project's own galaxy.yml, present when the project is itself an Ansible
+// collection. Reports the collection's namespace, name, and version.
 ansible.galaxy.manifest @defaults("name") {
   // Absolute path of the galaxy.yml file
   path string

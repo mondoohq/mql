@@ -9,11 +9,11 @@ import (
 
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/oauth2permissiongrants"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // oauth2PermissionGrants lists every delegated permission grant consented
@@ -58,7 +58,7 @@ func (a *mqlMicrosoft) oauth2PermissionGrants() ([]any, error) {
 
 		scopes := []any{}
 		if grant.GetScope() != nil {
-			for _, scope := range strings.Fields(*grant.GetScope()) {
+			for scope := range strings.FieldsSeq(*grant.GetScope()) {
 				scopes = append(scopes, scope)
 			}
 		}

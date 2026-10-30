@@ -5,17 +5,21 @@ package resources
 
 import (
 	"encoding/hex"
+	"errors"
+	"io"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func (p *mqlOpenpgpEntities) list(content string) ([]any, error) {
-	entries, err := openpgp.ReadArmoredKeyRing(strings.NewReader(content))
+	entries, err := readKeyRing(content)
 	if err != nil {
 		return nil, err
 	}
@@ -44,6 +48,68 @@ func (p *mqlOpenpgpEntities) list(content string) ([]any, error) {
 		c := mqlCert.(*mqlOpenpgpEntity)
 		c._identities = entity.Identities
 		res = append(res, c)
+	}
+	return res, nil
+}
+
+const armorBegin = "-----BEGIN PGP "
+
+// readKeyRing reads every key of an OpenPGP keyring. Armored content can hold
+// several key blocks one after another (vendor release key files often carry
+// two keys), and each one is read. Blocks other than keys, such as a detached
+// signature, are skipped. Content without armor is read as a binary keyring,
+// the format gpg --export and gpg --dearmor write.
+func readKeyRing(content string) (openpgp.EntityList, error) {
+	if !strings.Contains(content, armorBegin) {
+		// Every binary OpenPGP packet starts with a tag byte whose high bit
+		// is set; anything else is neither armored nor binary key data.
+		if content == "" || content[0]&0x80 == 0 {
+			return nil, errors.New("no armored or binary OpenPGP key data found")
+		}
+		return openpgp.ReadKeyRing(strings.NewReader(content))
+	}
+
+	var res openpgp.EntityList
+	var skipped []string
+	rest := content
+	for {
+		start := strings.Index(rest, armorBegin)
+		if start < 0 {
+			break
+		}
+		// armor.Decode buffers its reader, so each block is decoded from
+		// its own slice of the content.
+		segment := rest[start:]
+		rest = ""
+		if next := strings.Index(segment[len(armorBegin):], armorBegin); next >= 0 {
+			rest = segment[len(armorBegin)+next:]
+			segment = segment[:len(armorBegin)+next]
+		}
+
+		block, err := armor.Decode(strings.NewReader(segment))
+		if err == io.EOF {
+			// the marker text without a complete armor header line
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if block.Type != openpgp.PublicKeyType && block.Type != openpgp.PrivateKeyType {
+			skipped = append(skipped, block.Type)
+			continue
+		}
+		entities, err := openpgp.ReadKeyRing(block.Body)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, entities...)
+	}
+
+	if len(res) == 0 {
+		if len(skipped) > 0 {
+			return nil, errors.New("expected public or private key block, got: " + strings.Join(skipped, ", "))
+		}
+		return nil, errors.New("no armored OpenPGP data found")
 	}
 	return res, nil
 }
@@ -142,7 +208,10 @@ type mqlOpenpgpIdentityInternal struct {
 }
 
 func (r *mqlOpenpgpIdentity) id() (string, error) {
-	return "openpgp.identity/" + r.Fingerprint.Data + "/" + r.Name.Data, nil
+	// Use the full UserId (name + comment + email), not just the name: a key can
+	// carry several user IDs that share a name but differ by email/comment, and
+	// keying on Name alone collides so the resource cache drops all but the first.
+	return "openpgp.identity/" + r.Fingerprint.Data + "/" + r.Id.Data, nil
 }
 
 func (r *mqlOpenpgpIdentity) signatures() ([]any, error) {
@@ -203,7 +272,7 @@ func (r *mqlOpenpgpIdentity) signatures() ([]any, error) {
 			ts := llx.DurationToTime(diff)
 			keyExpirationTime = llx.TimeData(ts)
 		} else {
-			expirationTime = llx.NilData
+			keyExpirationTime = llx.NilData
 		}
 
 		o, err := CreateResource(r.MqlRuntime, "openpgp.signature", map[string]*llx.RawData{
@@ -230,5 +299,14 @@ func (r *mqlOpenpgpIdentity) signatures() ([]any, error) {
 }
 
 func (r *mqlOpenpgpSignature) id() (string, error) {
-	return "openpgp.identity/" + r.Fingerprint.Data + "/" + r.IdentityName.Data + "/" + r.Hash.Data, nil
+	// An identity carries several signatures (self-cert, revocation, third-party
+	// certifications) that commonly share the same hash algorithm, so the hash
+	// alone does not disambiguate them. Add the signature type and creation time
+	// so distinct signatures don't collide and get dropped by the resource cache.
+	created := ""
+	if r.CreationTime.Data != nil {
+		created = strconv.FormatInt(r.CreationTime.Data.Unix(), 10)
+	}
+	return "openpgp.signature/" + r.Fingerprint.Data + "/" + r.IdentityName.Data +
+		"/" + r.Hash.Data + "/" + r.SignatureType.Data + "/" + created, nil
 }

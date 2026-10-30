@@ -5,15 +5,24 @@ package resources
 
 import (
 	"context"
+	"fmt"
 	"net/netip"
 	"strings"
 
+	"github.com/rs/zerolog/log"
 	"github.com/shadowscatcher/shodan/search"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/shodan/connection"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/shodan/connection"
+	"go.mondoo.com/mql/utils/stringx"
 )
+
+// maxCIDRHosts caps how many addresses a single CIDR may expand to during
+// discovery. Each address costs one Shodan host lookup (and its query credit),
+// so we refuse to enumerate a range larger than a /16 rather than exhausting
+// memory and API credits. This also rejects IPv6 CIDRs, whose ranges are
+// astronomically large.
+const maxCIDRHosts = 1 << 16 // 65536, a /16 worth of IPv4 addresses
 
 func Discover(runtime *plugin.Runtime, opts map[string]string) (*inventory.Inventory, error) {
 	conn := runtime.Connection.(*connection.ShodanConnection)
@@ -89,7 +98,9 @@ func resolveNetworks(networks []string) []netip.Addr {
 		// check if network is a CIDR range
 		if strings.Contains(network, "/") {
 			ips, err := cidrIPs(network)
-			if err == nil {
+			if err != nil {
+				log.Warn().Err(err).Str("network", network).Msg("skipping network during Shodan discovery")
+			} else {
 				addresses = append(addresses, ips...)
 			}
 		} else {
@@ -108,6 +119,17 @@ func cidrIPs(cidr string) ([]netip.Addr, error) {
 	prefix, err := netip.ParsePrefix(cidr)
 	if err != nil {
 		return nil, err
+	}
+	// Mask to the network address so enumeration covers the whole range even
+	// when the caller passed a host address (e.g. "10.0.0.5/24").
+	prefix = prefix.Masked()
+
+	// hostBits is the number of variable bits in the range; 2^hostBits is the
+	// range size. Reject anything larger than maxCIDRHosts before enumerating,
+	// which also rejects any non-trivial IPv6 CIDR (128-bit addresses).
+	hostBits := prefix.Addr().BitLen() - prefix.Bits()
+	if hostBits > 16 {
+		return nil, fmt.Errorf("CIDR range %q is too large to enumerate (limit is %d addresses)", cidr, maxCIDRHosts)
 	}
 
 	var ips []netip.Addr

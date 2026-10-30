@@ -1,0 +1,57 @@
+[
+  {
+    "Status": null,
+    "Description": "Update",
+    "HotFixId": "KB5120705",
+    "Caption": "http://support.microsoft.com/?kbid=5120705",
+    "InstalledOn": {
+      "value": "/Date(1786492800000)/",
+      "DateTime": "Wednesday, August 12, 2026 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Security Update",
+    "HotFixId": "KB5012170",
+    "Caption": "https://support.microsoft.com/help/5012170",
+    "InstalledOn": {
+      "value": "/Date(1660089600000)/",
+      "DateTime": "Wednesday, August 10, 2022 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Security Update",
+    "HotFixId": "KB5120242",
+    "Caption": "https://support.microsoft.com/help/5120242",
+    "InstalledOn": {
+      "value": "/Date(1786492800000)/",
+      "DateTime": "Wednesday, August 12, 2026 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Security Update",
+    "HotFixId": "KB5120241",
+    "Caption": "",
+    "InstalledOn": {
+      "value": "/Date(1786492800000)/",
+      "DateTime": "Wednesday, August 12, 2026 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Security Update",
+    "HotFixId": "KB5120222",
+    "Caption": "https://support.microsoft.com/help/5120222",
+    "InstalledOn": {
+      "value": "/Date(1784073600000)/",
+      "DateTime": "Wednesday, July 15, 2026 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  }
+]

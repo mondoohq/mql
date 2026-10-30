@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/types"
 )
 
 // firewallRuleOpenToInternet reports whether a Hetzner firewall rule dict is an
@@ -29,10 +29,41 @@ func firewallRuleOpenToInternet(rule map[string]any) bool {
 	return false
 }
 
+// firewallBindingRules pairs a firewall binding's application status with the
+// rule dicts of the firewall it binds, the two inputs the ingress decision
+// needs.
+type firewallBindingRules struct {
+	status string
+	rules  []any
+}
+
+// serverFirewallIngress reports whether a server's firewall bindings admit
+// traffic from any address, along with the inbound rules that do so.
+//
+// Only a binding whose status is applied enforces its rules; a pending binding
+// has not taken effect yet. A server with no enforcing binding therefore admits
+// ingress, which covers both the no-firewall case and the case where every
+// attached firewall is still pending.
+func serverFirewallIngress(bindings []firewallBindingRules) (bool, []any) {
+	openRules := []any{}
+	enforcing := 0
+	for _, b := range bindings {
+		if b.status != string(hcloud.FirewallStatusApplied) {
+			continue
+		}
+		enforcing++
+		for _, r := range b.rules {
+			rule, ok := r.(map[string]any)
+			if ok && firewallRuleOpenToInternet(rule) {
+				openRules = append(openRules, rule)
+			}
+		}
+	}
+	return enforcing == 0 || len(openRules) > 0, openRules
+}
+
 // exposure breaks down whether the server is reachable from the internet: a
-// public IP combined with firewall ingress that admits any address. A server
-// with no firewall attached is open, so an empty firewall set counts as
-// admitting ingress.
+// public IP combined with firewall ingress that admits any address.
 func (s *mqlHetznerServer) exposure() (*mqlHetznerNetworkExposure, error) {
 	id := s.GetId()
 	if id.Error != nil {
@@ -49,29 +80,37 @@ func (s *mqlHetznerServer) exposure() (*mqlHetznerNetworkExposure, error) {
 	}
 	hasPublicIp := ipv4.Data != "" || ipv6.Data != ""
 
-	firewalls := s.GetFirewalls()
-	if firewalls.Error != nil {
-		return nil, firewalls.Error
+	bindings := s.GetFirewallBindings()
+	if bindings.Error != nil {
+		return nil, bindings.Error
 	}
-	openRules := []any{}
-	for _, f := range firewalls.Data {
-		fw, ok := f.(*mqlHetznerFirewall)
+	collected := make([]firewallBindingRules, 0, len(bindings.Data))
+	for _, b := range bindings.Data {
+		binding, ok := b.(*mqlHetznerServerFirewallBinding)
 		if !ok {
 			continue
 		}
-		rules := fw.GetRules()
-		if rules.Error != nil {
-			return nil, rules.Error
+		status := binding.GetStatus()
+		if status.Error != nil {
+			return nil, status.Error
 		}
-		for _, r := range rules.Data {
-			rule, ok := r.(map[string]any)
-			if ok && firewallRuleOpenToInternet(rule) {
-				openRules = append(openRules, rule)
+		entry := firewallBindingRules{status: status.Data}
+
+		fw := binding.GetFirewall()
+		if fw.Error != nil {
+			return nil, fw.Error
+		}
+		if fw.Data != nil {
+			rules := fw.Data.GetRules()
+			if rules.Error != nil {
+				return nil, rules.Error
 			}
+			entry.rules = rules.Data
 		}
+		collected = append(collected, entry)
 	}
 
-	firewallAllowsIngress := len(firewalls.Data) == 0 || len(openRules) > 0
+	firewallAllowsIngress, openRules := serverFirewallIngress(collected)
 	internetReachable := hasPublicIp && firewallAllowsIngress
 
 	res, err := CreateResource(s.MqlRuntime, "hetzner.network.exposure", map[string]*llx.RawData{

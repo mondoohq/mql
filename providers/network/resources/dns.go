@@ -7,21 +7,19 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"net"
-	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/miekg/dns"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/network/connection"
-	"go.mondoo.com/mql/v13/providers/network/resources/dnsshake"
-	"go.mondoo.com/mql/v13/providers/network/resources/domain"
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/sortx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/network/connection"
+	"go.mondoo.com/mql/providers/network/resources/dnsshake"
+	"go.mondoo.com/mql/providers/network/resources/domain"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/sortx"
 )
 
 func (d *mqlDomainName) id() (string, error) {
@@ -76,7 +74,64 @@ func initDns(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]
 	return args, nil, nil
 }
 
+// zone reports the apex of the zone that contains the domain, as a dns resource
+// for that name.
+//
+// The records that describe a zone as a whole (DNSKEY, NS, SOA) exist at its
+// apex and nowhere else inside it, so a question about how a zone is signed, or
+// how many nameservers serve it, has an answer at this name and no answer at
+// any other name the zone contains. Reading those fields through here answers
+// for the containing zone; comparing fqdn against the returned fqdn tells an
+// apex from a name that merely sits inside a zone.
+//
+// The zone is null rather than an error when the name belongs to no zone, which
+// covers an unregistered domain and a scan target given as an IP address (see
+// params for the empty-fqdn substitution). A failed query is still an error: a
+// resolver outage must not read as a name that has no zone.
+func (d *mqlDns) zone(fqdn string) (*mqlDns, error) {
+	if fqdn == "" {
+		d.Zone.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	dnsShaker, err := dnsshake.New(fqdn)
+	if err != nil {
+		return nil, err
+	}
+
+	zone, err := dnsShaker.Zone()
+	if err != nil {
+		return nil, err
+	}
+	if zone == "" {
+		d.Zone.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	// An apex is its own zone. NewResource consults the runtime cache, so this
+	// resolves back to the receiver rather than building a second resource for
+	// the same name, and the record sweep behind it is shared either way.
+	res, err := NewResource(d.MqlRuntime, "dns", map[string]*llx.RawData{
+		"fqdn": llx.StringData(zone),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return res.(*mqlDns), nil
+}
+
 func (d *mqlDns) params(fqdn string) (any, error) {
+	// initDns substitutes an empty fqdn when the scan target is an IP address
+	// rather than a hostname. Querying an empty name resolves the DNS ROOT ZONE,
+	// so every derived field described "." instead of the asset: scanning an IP
+	// reported DNSSEC as enabled, NS redundancy as satisfied and no wildcards
+	// present, none of which had anything to do with the target. Return no data
+	// instead, so those checks report nothing rather than something wrong.
+	if fqdn == "" {
+		return nil, nil
+	}
+
 	dnsShaker, err := dnsshake.New(fqdn)
 	if err != nil {
 		return nil, err
@@ -90,9 +145,68 @@ func (d *mqlDns) params(fqdn string) (any, error) {
 	return convert.JsonToDict(records)
 }
 
+// authoritativeParams resolves the same records as params, but against the
+// nameservers authoritative for the zone instead of a caching resolver.
+//
+// The answers are identical except for the TTL, which is the point: a caching
+// resolver reports the time left on its cached entry, so a record configured
+// with a TTL of 300 answers 300, then 208, then 144 as that entry ages. Any
+// check asserting on a TTL has to read it from here, or it flaps purely on when
+// the scan happened to run.
+func (d *mqlDns) authoritativeParams(fqdn string) (any, error) {
+	if fqdn == "" {
+		return nil, nil
+	}
+
+	dnsShaker, err := dnsshake.New(fqdn)
+	if err != nil {
+		return nil, err
+	}
+
+	records, err := dnsShaker.QueryAuthoritative()
+	if err != nil {
+		return nil, err
+	}
+
+	return convert.JsonToDict(records)
+}
+
+// dictTTL reads a DNS record's TTL out of a record map produced by
+// convert.JsonToDict (json.Marshal then Unmarshal of a dnsshake.DnsRecord).
+// The map key is therefore the json tag "ttl" (not the Go field name "TTL"),
+// and every JSON number decodes to float64, not int64. Reading "TTL" or
+// asserting .(int64) is why the TTL was silently dropped (and would panic if
+// the key were fixed without the type). Returns (0, false) when absent.
+func dictTTL(m map[string]any) (int64, bool) {
+	v, ok := m["ttl"].(float64)
+	if !ok {
+		return 0, false
+	}
+	return int64(v), true
+}
+
 func (d *mqlDns) records(params any) ([]any, error) {
+	return d.recordsFromParams(params)
+}
+
+// authoritativeRecords parses the same shape as records, from answers the
+// authoritative nameservers gave rather than a caching resolver. The records
+// are the same; their TTLs are the configured values.
+func (d *mqlDns) authoritativeRecords(authoritativeParams any) ([]any, error) {
+	return d.recordsFromParams(authoritativeParams)
+}
+
+func (d *mqlDns) recordsFromParams(params any) ([]any, error) {
 	// NOTE: mql does not cache the results of GetRecords since it has an input argument
 	// Iterations over map keys are not deterministic and therefore we need to sort the keys
+
+	// params is nil when there is no name to query, which is the case for an
+	// asset scanned by IP address. Report no data rather than an error: the
+	// query genuinely has no answer, and surfacing "incorrect structure of
+	// params received" there is misleading, since nothing is malformed.
+	if params == nil {
+		return nil, nil
+	}
 
 	paramsM, ok := params.(map[string]any)
 	if !ok {
@@ -101,10 +215,22 @@ func (d *mqlDns) records(params any) ([]any, error) {
 
 	// convert responses to dns types
 	resultMap := make(map[string]*mqlDnsRecord)
-	for k := range paramsM {
+	var gaps []error
+	for _, k := range sortx.Keys(paramsM) {
 		r, ok := paramsM[k].(map[string]any)
 		if !ok {
 			return nil, errors.New("incorrect structure of params entries received")
+		}
+
+		// A type whose lookup failed is missing from the list, not absent from
+		// the name: the list is partial, with that type as its gap (ADR 046 §8).
+		// Without the gap, a name whose TXT answer could not be fetched read as
+		// a name without TXT records.
+		if msg, _ := r["errorMessage"].(string); msg != "" {
+			gaps = append(gaps, llx.Unavailable(
+				errors.New("cannot read the "+k+" records of "+d.Fqdn.Data+": "+msg),
+				llx.WithScope(llx.ErrorScope_ERROR_SCOPE_PARTITION, k)))
+			continue
 		}
 
 		// filter by successful dns records
@@ -113,10 +239,10 @@ func (d *mqlDns) records(params any) ([]any, error) {
 		}
 
 		var ttl *llx.RawData
-		if r["TTL"] == nil {
-			ttl = llx.NilData
+		if v, ok := dictTTL(r); ok {
+			ttl = llx.IntData(v)
 		} else {
-			ttl = llx.IntData(r["TTL"].(int64))
+			ttl = llx.NilData
 		}
 		o, err := CreateResource(d.MqlRuntime, "dns.record", map[string]*llx.RawData{
 			"name":  llx.StringData(r["name"].(string)),
@@ -139,7 +265,7 @@ func (d *mqlDns) records(params any) ([]any, error) {
 		res = append(res, resultMap[keys[i]])
 	}
 
-	return res, nil
+	return res, llx.Partial(gaps...)
 }
 
 func (d *mqlDnsRecord) id() (string, error) {
@@ -176,8 +302,8 @@ func (d *mqlDns) mx(params any) ([]any, error) {
 		t = r["type"].(string)
 	}
 
-	if r["TTL"] != nil {
-		ttl = r["TTL"].(int64)
+	if v, ok := dictTTL(r); ok {
+		ttl = v
 	}
 
 	if r["rData"] != nil {
@@ -229,6 +355,9 @@ func (d *mqlDns) dkim(params any) ([]any, error) {
 	}
 
 	r := record.(map[string]any)
+	if err := d.txtLookupFailed(r); err != nil {
+		return nil, err
+	}
 
 	var name string
 	var rdata []any
@@ -296,85 +425,6 @@ func (d *mqlDnsDkimRecord) valid() (bool, error) {
 	return ok, nil
 }
 
-func (d *mqlDns) dnssec(params any) (*mqlDnsDnssecConfig, error) {
-	keys := []any{}
-	algoSet := map[int64]struct{}{}
-
-	if paramsM, ok := params.(map[string]any); ok {
-		if record, ok := paramsM["DNSKEY"].(map[string]any); ok && record["rCode"] == dns.RcodeToString[dns.RcodeSuccess] {
-			var name, class string
-			var ttl int64
-			var rdata []any
-			if record["name"] != nil {
-				name = record["name"].(string)
-			}
-			if record["class"] != nil {
-				class = record["class"].(string)
-			}
-			if record["TTL"] != nil {
-				ttl = record["TTL"].(int64)
-			}
-			if record["rData"] != nil {
-				rdata = record["rData"].([]any)
-			}
-
-			for j := range rdata {
-				entry, ok := rdata[j].(string)
-				if !ok {
-					continue
-				}
-
-				// reuse the dns package to parse the DNSKEY rdata into its fields
-				s := name + "\t" + strconv.FormatInt(ttl, 10) + "\t" + class + "\tDNSKEY\t" + entry
-				rr, err := dns.NewRR(s)
-				if err != nil {
-					return nil, err
-				}
-				key, ok := rr.(*dns.DNSKEY)
-				if !ok {
-					continue
-				}
-
-				// the SEP flag (least-significant bit of the flags field)
-				// marks a key-signing key; flags 257 is a KSK, 256 a ZSK
-				keySigningKey := key.Flags&1 == 1
-				keyResource, err := CreateResource(d.MqlRuntime, "dns.dnssecKey", map[string]*llx.RawData{
-					"__id":          llx.StringData(fmt.Sprintf("dns.dnssecKey/%d/%d/%s", key.Algorithm, key.Flags, key.PublicKey)),
-					"flags":         llx.IntData(int64(key.Flags)),
-					"protocol":      llx.IntData(int64(key.Protocol)),
-					"algorithm":     llx.IntData(int64(key.Algorithm)),
-					"publicKey":     llx.StringData(key.PublicKey),
-					"keySigningKey": llx.BoolData(keySigningKey),
-				})
-				if err != nil {
-					return nil, err
-				}
-				keys = append(keys, keyResource)
-				algoSet[int64(key.Algorithm)] = struct{}{}
-			}
-		}
-	}
-
-	algorithms := make([]any, 0, len(algoSet))
-	for a := range algoSet {
-		algorithms = append(algorithms, a)
-	}
-	slices.SortFunc(algorithms, func(a, b any) int {
-		return int(a.(int64) - b.(int64))
-	})
-
-	res, err := CreateResource(d.MqlRuntime, "dns.dnssecConfig", map[string]*llx.RawData{
-		"__id":       llx.StringData("dns.dnssecConfig/" + d.Fqdn.Data),
-		"enabled":    llx.BoolData(len(keys) > 0),
-		"keys":       llx.ArrayData(keys, types.Resource("dns.dnssecKey")),
-		"algorithms": llx.ArrayData(algorithms, types.Int),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlDnsDnssecConfig), nil
-}
-
 // parseSPF extracts the version, ordered mechanisms, and the qualifier of the
 // operative `all` mechanism from an SPF TXT record. SPF mechanisms are
 // evaluated left to right and `all` always matches, so the first `all` term is
@@ -402,6 +452,22 @@ func parseSPF(txt string) (version string, mechanisms []string, allQualifier str
 	return version, mechanisms, allQualifier
 }
 
+// txtLookupFailed returns the failure of a TXT lookup, from its record in the
+// params, as an Unavailable error when structured errors are on (ADR 046 §9).
+// A lookup that failed is not a name without SPF or DKIM, but in v13 both read
+// as an empty list, so a resolver that could not deliver a large TXT set failed
+// every "SPF is set" check. Off, or for a lookup that succeeded, it returns nil.
+func (d *mqlDns) txtLookupFailed(record map[string]any) error {
+	if record == nil || !plugin.StructuredErrors() {
+		return nil
+	}
+	msg, _ := record["errorMessage"].(string)
+	if msg == "" {
+		return nil
+	}
+	return llx.Unavailable(errors.New("cannot read the TXT records of " + d.Fqdn.Data + ": " + msg))
+}
+
 func (d *mqlDns) spf(params any) ([]any, error) {
 	entries := []any{}
 
@@ -410,6 +476,9 @@ func (d *mqlDns) spf(params any) ([]any, error) {
 		return entries, nil
 	}
 	record, ok := paramsM["TXT"].(map[string]any)
+	if err := d.txtLookupFailed(record); err != nil {
+		return nil, err
+	}
 	if !ok || record["rCode"] != dns.RcodeToString[dns.RcodeSuccess] {
 		return entries, nil
 	}
@@ -445,7 +514,7 @@ func (d *mqlDns) spf(params any) ([]any, error) {
 // parseDMARC splits a DMARC TXT record into its lowercased tag map.
 func parseDMARC(txt string) map[string]string {
 	tags := map[string]string{}
-	for _, part := range strings.Split(txt, ";") {
+	for part := range strings.SplitSeq(txt, ";") {
 		kv := strings.SplitN(part, "=", 2)
 		if len(kv) != 2 {
 			continue
@@ -460,7 +529,7 @@ func dmarcUris(raw string) []any {
 	if raw == "" {
 		return uris
 	}
-	for _, u := range strings.Split(raw, ",") {
+	for u := range strings.SplitSeq(raw, ",") {
 		if u = strings.TrimSpace(u); u != "" {
 			uris = append(uris, u)
 		}
@@ -523,6 +592,24 @@ func (d *mqlDns) dmarc() (*mqlDnsDmarcRecord, error) {
 	return res.(*mqlDnsDmarcRecord), nil
 }
 
+// addressesFromRecords extracts the resolved IPv4 (A) and IPv6 (AAAA) addresses
+// from a targeted dnsshake query result, skipping unsuccessful lookups.
+func addressesFromRecords(records map[string]dnsshake.DnsRecord) []string {
+	addrs := []string{}
+	for _, key := range []string{"A", "AAAA"} {
+		entry, ok := records[key]
+		if !ok || entry.RCode != dns.RcodeToString[dns.RcodeSuccess] {
+			continue
+		}
+		for _, s := range entry.RData {
+			if s != "" {
+				addrs = append(addrs, s)
+			}
+		}
+	}
+	return addrs
+}
+
 // addressesFromParams extracts the resolved IPv4 (A) and IPv6 (AAAA) addresses
 // from a dns params dict.
 func addressesFromParams(params any) ([]string, error) {
@@ -550,12 +637,53 @@ func addressesFromParams(params any) ([]string, error) {
 	return addrs, nil
 }
 
+// reverse is deprecated in favor of reverseRecords.
+//
+// It derives its addresses from params, and params calls dnsshake.Query() with
+// no arguments, which fans out to every entry in the type table — 81 record
+// types, issued as parallel goroutines. That is affordable once for the scanned
+// asset, where every other field reuses the same result, but not when a policy
+// instantiates dns() per element of a list: a check iterating five mail
+// exchangers cost roughly 405 concurrent queries, enough for resolvers to
+// rate-limit and for PTR lookups to come back empty intermittently, which is
+// indistinguishable from a genuinely missing PTR record.
+//
+// Kept as-is so existing policies keep working unchanged; use reverseRecords,
+// which resolves the same addresses with two targeted queries.
 func (d *mqlDns) reverse(params any) ([]any, error) {
 	addrs, err := addressesFromParams(params)
 	if err != nil {
 		return nil, err
 	}
+	return d.ptrRecordsFor(addrs)
+}
 
+// reverseRecords resolves the fqdn's own addresses and looks up the PTR for each.
+//
+// Queries A and AAAA directly rather than deriving them from params, so it stays
+// affordable to instantiate per element of a list. See reverse for what that
+// costs and why it matters.
+func (d *mqlDns) reverseRecords(fqdn string) ([]any, error) {
+	if fqdn == "" {
+		return nil, nil
+	}
+
+	shaker, err := dnsshake.New(fqdn)
+	if err != nil {
+		return nil, err
+	}
+
+	addrRecords, err := shaker.Query("A", "AAAA")
+	if err != nil {
+		return nil, err
+	}
+
+	return d.ptrRecordsFor(addressesFromRecords(addrRecords))
+}
+
+// ptrRecordsFor looks up the PTR record for each address and returns them as
+// dns.record resources, sorted for deterministic output.
+func (d *mqlDns) ptrRecordsFor(addrs []string) ([]any, error) {
 	resultMap := make(map[string]*mqlDnsRecord)
 	for _, addr := range addrs {
 		// dns.ReverseAddr builds the in-addr.arpa (IPv4) or ip6.arpa (IPv6)

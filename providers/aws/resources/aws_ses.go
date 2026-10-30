@@ -12,29 +12,67 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
 	sesv2_types "github.com/aws/aws-sdk-go-v2/service/sesv2/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
+
+type mqlAwsSesInternal struct {
+	accountOnce sync.Once
+	account     *sesv2.GetAccountOutput
+	accountErr  error
+}
 
 func (a *mqlAwsSes) id() (string, error) {
 	return "aws.ses", nil
 }
 
-func sesTagsToMap(tags []sesv2_types.Tag) map[string]any {
-	res := map[string]any{}
-	for _, t := range tags {
-		if t.Key == nil {
-			continue
+// getAccount fetches account-level SES settings once. The pricing plan is
+// account-global, so a single GetAccount call against the connection's default
+// region serves every pricing field. Access-denied leaves the cached result
+// nil so the pricing fields resolve to an empty string rather than erroring.
+func (a *mqlAwsSes) getAccount() (*sesv2.GetAccountOutput, error) {
+	a.accountOnce.Do(func() {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Sesv2(conn.Region())
+		out, err := svc.GetAccount(context.Background(), &sesv2.GetAccountInput{})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return
+			}
+			a.accountErr = err
+			return
 		}
-		val := ""
-		if t.Value != nil {
-			val = *t.Value
-		}
-		res[*t.Key] = val
+		a.account = out
+	})
+	return a.account, a.accountErr
+}
+
+func (a *mqlAwsSes) pricingPlan() (string, error) {
+	acct, err := a.getAccount()
+	if err != nil {
+		return "", err
 	}
-	return res
+	if acct == nil || acct.PricingAttributes == nil {
+		return "", nil
+	}
+	return string(acct.PricingAttributes.CurrentPlan), nil
+}
+
+func (a *mqlAwsSes) nextPricingPlan() (string, error) {
+	acct, err := a.getAccount()
+	if err != nil {
+		return "", err
+	}
+	if acct == nil || acct.PricingAttributes == nil {
+		return "", nil
+	}
+	return string(acct.PricingAttributes.NextPlan), nil
+}
+
+func sesTagsToMap(tags []sesv2_types.Tag) map[string]any {
+	return tagsToMap(tags, func(t sesv2_types.Tag) *string { return t.Key }, func(t sesv2_types.Tag) *string { return t.Value })
 }
 
 // ---- aws.ses.identity ----
@@ -142,6 +180,13 @@ type mqlAwsSesIdentityInternal struct {
 	cacheName string
 	fetched   bool
 	lock      sync.Mutex
+
+	// Certificates come from a separate API call, so they get their own
+	// guard: an identity queried only for its DKIM settings should not pay
+	// for a certificate listing, and vice versa.
+	certificatesFetched bool
+	certificatesLock    sync.Mutex
+	cachedCertificates  []any
 }
 
 // markIdentityDetailsNull marks every lazily fetched field as resolved-but-null
@@ -349,8 +394,11 @@ func initAwsSesIdentity(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	if args["arn"] == nil {
 		return nil, nil, errors.New("arn required to fetch aws ses identity that is not in the identities list")
 	}
-	args["__id"] = args["arn"]
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	arnStr, _ := args["arn"].Value.(string)
+	return nil, nil, fmt.Errorf("aws.ses.identity with arn %q not found", arnStr)
 }
 
 // ---- aws.ses.configurationSet ----
@@ -637,6 +685,9 @@ func initAwsSesConfigurationSet(runtime *plugin.Runtime, args map[string]*llx.Ra
 	if args["arn"] == nil {
 		return nil, nil, errors.New("arn required to fetch aws ses configuration set that is not in the configuration sets list")
 	}
-	args["__id"] = args["arn"]
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	arnStr, _ := args["arn"].Value.(string)
+	return nil, nil, fmt.Errorf("aws.ses.configurationSet with arn %q not found", arnStr)
 }

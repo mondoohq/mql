@@ -1,27 +1,35 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/digitalocean"
-option go_package = "go.mondoo.com/mql/v13/providers/digitalocean/resources"
+option go_package = "go.mondoo.com/mql/providers/digitalocean/resources"
+option root = "digitalocean"
 
 // DigitalOcean account
 //
-// Use the DigitalOcean namespace as the account-wide entry point for
-// the DigitalOcean provider. Iterate `droplets()` for VMs,
-// `firewalls()` for cloud-firewall rule sets, `databases()` for
-// managed databases, `volumes()` for block storage, `images()` for
-// the account's own images, `snapshots()` for droplet and volume
-// snapshots, `domains()` for DigitalOcean-managed DNS,
-// `loadBalancers()` for L4/L7 LBs, `vpcs()` and `vpcPeerings()` for
-// the network plane, `kubernetesClusters()` for DOKS, `apps()` for App
-// Platform deployments, `functionNamespaces()` for serverless
-// Functions, `cdnEndpoints()` for the CDN, `registryRepositories()`
-// for the container registry, `projects()` for the project grouping,
-// `sshKeys()`, `certificates()`, `reservedIPs()`, `tags()`,
-// `spacesKeys()`, `alertPolicies()`, and `uptimeChecks()`.
-digitalocean {
+// Account-wide entry point for the DigitalOcean provider, grouping
+// every queryable resource in the authenticated account: compute
+// (droplets, autoscale pools, Kubernetes clusters, App Platform apps,
+// serverless Functions), storage (block volumes, images, snapshots,
+// Spaces buckets, container registry), networking (VPCs, VPC peerings
+// and NAT gateways, load balancers, firewalls, reserved IPs, domains,
+// CDN endpoints), managed databases, monitoring alert policies and
+// uptime checks, projects and tags for grouping, and account billing.
+// Start here to enumerate an account's full inventory or to scope an
+// audit to one class of resource.
+digitalocean @root {
   // Droplets (virtual machines)
   droplets() []digitalocean.droplet
+  // MicroDroplets (container instances that pause when idle)
+  microDroplets() []digitalocean.microDroplet
+  // MicroDroplet checkpoints (saved memory and disk state) held by the team
+  microDropletCheckpoints() []digitalocean.microDroplet.checkpoint
+  // Hosted agent configs (saved agent definitions) held by the team
+  hostedAgentConfigs() []digitalocean.hostedAgentConfig
+  // Hosted agent triggers (webhook and cron automations) held by the team
+  hostedAgentTriggers() []digitalocean.hostedAgentTrigger
   // Firewalls
   firewalls() []digitalocean.firewall
   // Managed databases
@@ -42,6 +50,8 @@ digitalocean {
   images() []digitalocean.image
   // Droplet and volume snapshots
   snapshots() []digitalocean.snapshot
+  // Droplet size catalog (hardware tiers)
+  sizes() []digitalocean.size
   // Functions namespaces
   functionNamespaces() []digitalocean.function.namespace
   // Load balancers
@@ -66,6 +76,10 @@ digitalocean {
   sshKeys() []digitalocean.sshKey
   // TLS certificates
   certificates() []digitalocean.certificate
+  // Container registry attached to the account
+  registry() digitalocean.registry
+  // Container registries attached to the account
+  registries() []digitalocean.registry
   // Container registry repositories
   registryRepositories() []digitalocean.registry.repository
   // Reserved IPs
@@ -82,7 +96,10 @@ digitalocean {
   tags() []digitalocean.tag
   // Spaces access keys
   spacesKeys() []digitalocean.spacesKey
-  // Spaces (S3-compatible object storage) buckets — requires Spaces credentials (DIGITALOCEAN_SPACES_KEY / _SECRET)
+  // Spaces (S3-compatible object storage) buckets
+  //
+  // Requires Spaces credentials (DIGITALOCEAN_SPACES_KEY /
+  // DIGITALOCEAN_SPACES_SECRET) to be configured.
   spacesBuckets() []digitalocean.spacesBucket
   // Bring-your-own-IP prefixes advertised into the account
   byoipPrefixes() []digitalocean.byoipPrefix
@@ -92,15 +109,24 @@ digitalocean {
   secrets() []digitalocean.secret
   // Account billing balance and month-to-date usage
   billing() digitalocean.billing
+  // Teams belonging to the organization the token is scoped to
+  //
+  // Null when the token carries no organization context, since that
+  // establishes only that the teams cannot be read, not that there are
+  // none. An empty list means the organization was read and has no teams.
+  teams() []digitalocean.team
 }
 
 // DigitalOcean account
 //
-// Examine the DigitalOcean account the provider is authenticated
-// against. Surfaces the account UUID, primary email and email
-// verification status, account `status` (active, warning, locked) and
-// status message, and the per-resource limits the account is
-// permitted (`dropletLimit`, `floatingIpLimit`, `volumeLimit`).
+// Identity and standing of the DigitalOcean account the provider is
+// authenticated against. The `status` field (active, warning, locked)
+// and `statusMessage` reveal whether the account is in good standing
+// or restricted, `emailVerified` flags an unverified primary email,
+// and the per-resource limits (`dropletLimit`, `floatingIpLimit`,
+// `volumeLimit`) cap what the account may provision. When the API
+// token is scoped to a team, `teamUuid` and `teamName` identify the
+// owning team.
 digitalocean.account @defaults("email status") {
   // Account email
   email string
@@ -126,14 +152,14 @@ digitalocean.account @defaults("email status") {
 
 // DigitalOcean Droplet
 //
-// Examine a DigitalOcean Droplet — the provider's cloud VM offering.
-// Surfaces the droplet `id`, region and size slug, allocated memory,
-// vCPUs and disk, the public/private IPv4 and public IPv6 addresses,
-// the `baseImage()` the droplet runs, applied tags, attached `vpc()`,
-// the enabled features list (e.g., monitoring, backups), backup and
-// monitoring flags, the `locked` flag, the firewalls covering the
-// droplet (resolved by id or tag), and the `missingFirewall()`
-// predicate that flags droplets with no attached firewall.
+// Cloud virtual machine in a DigitalOcean account, covering its
+// compute shape (memory, vCPUs, disk, region and size slug), its
+// network addresses (public and private IPv4, public IPv6), and the
+// base image and kernel it boots. Security posture is queryable
+// through the firewalls covering the droplet (resolved by direct ID
+// or matching tag), the missingFirewall predicate that flags droplets
+// with no firewall attached, and the exposure breakdown that combines
+// a public IP with firewall ingress to gauge internet reachability.
 digitalocean.droplet @defaults("id name status") {
   // Droplet ID
   id int
@@ -149,6 +175,16 @@ digitalocean.droplet @defaults("id name status") {
   region string
   // Size slug (DigitalOcean droplet size identifier, e.g., s-1vcpu-1gb)
   size string
+  // Hardware tier the droplet runs on, resolved from the size slug
+  dropletSize() digitalocean.size
+  // GPU partition mode
+  //
+  // Partition layout the GPU is split into on a GPU droplet, either
+  // PARTITION_MODE_SPX_NPS1 or PARTITION_MODE_DPX_NPS2. Empty on droplets
+  // that do not partition their GPU and on non-GPU droplets. The partition
+  // modes a hardware tier offers are listed in `supportedPartitionModes`
+  // on the size returned by `dropletSize`.
+  gpuPartitionMode string
   // Status (new, active, off, archive)
   status string
   // Whether the droplet is locked while an action is in progress
@@ -163,10 +199,6 @@ digitalocean.droplet @defaults("id name status") {
   publicIpv6 string
   // Tags applied to the droplet
   tags []string
-  // VPC UUID
-  //
-  // Deprecated in favor of `vpc()`.
-  vpcUuid @maturity("deprecated") string
   // VPC the droplet is attached to
   vpc() digitalocean.vpc
   // Features (e.g., monitoring, backups)
@@ -175,15 +207,11 @@ digitalocean.droplet @defaults("id name status") {
   backupsEnabled bool
   // Monitoring enabled
   monitoringEnabled bool
-  // Raw image details dict (id, name, distribution, slug)
-  //
-  // Deprecated in favor of `baseImage`.
-  image @maturity("deprecated") dict
   // Base image the droplet runs
   baseImage() digitalocean.image
   // Firewalls covering this droplet (by id or matching tag)
   firewalls() []digitalocean.firewall
-  // True when no firewall is attached to the droplet (by id or tag); does not check inbound rule restrictiveness — for that, query `firewalls`
+  // True when no firewall is attached to the droplet (by id or tag); does not check inbound rule restrictiveness. For that, query `firewalls`
   missingFirewall() bool
   // Internet-exposure breakdown (public IP combined with firewall ingress)
   exposure() digitalocean.network.exposure
@@ -195,23 +223,251 @@ digitalocean.droplet @defaults("id name status") {
   nextBackupWindowStart time
   // End of the next scheduled automated-backup window; null when backups are disabled
   nextBackupWindowEnd time
+  // Automated-backup plan
+  //
+  // Cadence the backup schedule runs on, either "daily" or "weekly". Null
+  // when the droplet has no backup policy, which is always the case while
+  // `backupsEnabled` is false.
+  backupPlan() string
+  // Day of the week the backup window opens
+  //
+  // One of SUN, MON, TUE, WED, THU, FRI, or SAT. Null on droplets running
+  // the daily plan, and null when the droplet has no backup policy.
+  backupWeekday() string
+  // Hour of the day, in UTC, at which the backup window opens; null when the droplet has no backup policy
+  backupHour() int
+  // Length of the backup window in hours; null when the droplet has no backup policy
+  backupWindowLengthHours() int
+  // Retention period for automated backups, in days
+  //
+  // How long a backup image is kept before DigitalOcean deletes it. Short
+  // retention caps how far back a restore can reach after data loss or a
+  // compromise that goes undetected. Null when the droplet has no backup
+  // policy.
+  backupRetentionPeriodDays() int
   // Automated backup images retained for this droplet
   backups() []digitalocean.image
   // Snapshots taken of this droplet
   snapshots() []digitalocean.snapshot
 }
 
+// DigitalOcean MicroDroplet
+//
+// Container instance that runs a single image and pauses itself when no
+// traffic arrives. The `networking` mode decides whether the instance
+// answers on an address reachable from the internet or only from inside
+// a VPC, and `isPublic` reduces that to the predicate an exposure audit
+// asks for. Also queryable are the `image` it runs, the `endpoint` and
+// `urls` it serves on, the `ports` it exposes, the allocated `vcpus`,
+// `memoryMib`, and `diskGb`, the lifecycle `state` and any
+// `failureReason`, the `tags` applied to it, and the
+// auto-pause and auto-resume settings that decide whether it keeps
+// running while unused. MicroDroplets are not covered by cloud
+// firewalls, so `networking` is the only ingress control there is.
+// Select one by id with `digitalocean.microDroplet(id: "...")`.
+digitalocean.microDroplet @defaults("id name region state networking") {
+  // MicroDroplet ID
+  id string
+  // MicroDroplet name
+  name string
+  // Region slug the instance runs in
+  region string
+  // Lifecycle state
+  //
+  // One of creating, running, pausing, paused, resuming, terminating,
+  // terminated, failed, or unknown.
+  state string
+  // Size slug describing the allocated hardware
+  //
+  // Deprecated in favor of vcpus, memoryMib, and diskGb. Always null: the
+  // API no longer reports a size slug.
+  size @maturity("deprecated") string
+  // Number of virtual CPUs allocated to the instance; null when the API reports no size
+  vcpus int
+  // Memory allocated to the instance, in mebibytes; null when the API reports no size
+  memoryMib int
+  // Disk capacity allocated to the instance, in gigabytes; null when the API reports no size
+  diskGb int
+  // Container ports the instance exposes
+  ports []int
+  // Ingress URLs attached to the instance
+  //
+  // Each entry is a dict with keys: hostname, port (the instance port
+  // the URL routes to), default (whether it is the instance's primary
+  // URL), and status (PENDING or ACTIVE).
+  urls []dict
+  // HTTP protocol the instance serves on its URLs, http or http2
+  httpProtocol string
+  // Tags applied to the instance
+  tags []string
+  // Reason the instance failed, as reported by the API; empty when none is reported
+  failureReason string
+  // Network placement of the instance
+  //
+  // Either public, meaning the instance answers on an address reachable
+  // from the internet, or vpc, meaning it answers only inside the VPC.
+  // Reported as unknown when the API names no mode.
+  networking string
+  // Container image the instance runs
+  image string
+  // Address the instance serves traffic on
+  //
+  // Reachable from the internet when `networking` is public, and private
+  // to the VPC otherwise.
+  endpoint string
+  // Whether the instance is reachable from the internet
+  //
+  // True unless the instance is placed in a VPC. A mode the API does not
+  // name counts as reachable, so an instance whose placement cannot be
+  // established is reported as exposed rather than passing silently.
+  isPublic() bool
+  // Whether the instance pauses itself after a period without traffic
+  autoPauseEnabled bool
+  // Idle period after which the instance pauses itself; empty when auto-pause is not configured
+  autoPauseIdleTimeout string
+  // Whether an incoming request resumes a paused instance
+  autoResumeEnabled bool
+  // Time the resource was created
+  createdAt time
+  // Checkpoints captured from this instance
+  checkpoints() []digitalocean.microDroplet.checkpoint
+}
+
+// MicroDroplet checkpoint
+//
+// Saved copy of a MicroDroplet's memory and disk state, from which a new
+// instance can be started. A checkpoint holds whatever the instance had in
+// memory when it was taken, including any credentials or data the
+// workload had loaded, and it stays in the account after the instance it
+// was taken from is deleted. `microDroplet` resolves the source instance
+// and is null when that instance is no longer listed, which makes an
+// orphaned checkpoint the query
+// `digitalocean.microDropletCheckpoints.where(microDroplet == null)`.
+// `microDropletName` keeps the source instance's name for that case. Also
+// queryable are the `status`, `region`, the captured `memoryBytes` and
+// `diskBytes`, and the `vcpus`, `memoryMib`, and `diskGb` a restore
+// starts with.
+private digitalocean.microDroplet.checkpoint @defaults("id name status microDropletName") {
+  // Checkpoint ID
+  id string
+  // Checkpoint name
+  name string
+  // Region slug the checkpoint is stored in
+  region string
+  // Checkpoint status
+  //
+  // One of CHECKPOINT_UNKNOWN, CHECKPOINT_CREATING, CHECKPOINT_AVAILABLE,
+  // CHECKPOINT_FAILED, CHECKPOINT_DELETED, or CHECKPOINT_DELETING.
+  status string
+  // MicroDroplet the checkpoint was captured from; null when that instance is no longer listed
+  microDroplet() digitalocean.microDroplet
+  // Name of the MicroDroplet the checkpoint was captured from, kept after that instance is deleted
+  microDropletName string
+  // Size of the captured memory state, in bytes
+  memoryBytes int
+  // Size of the captured disk state, in bytes
+  diskBytes int
+  // Number of virtual CPUs an instance restored from the checkpoint starts with; null when the checkpoint records no size
+  vcpus int
+  // Memory an instance restored from the checkpoint starts with, in mebibytes; null when the checkpoint records no size
+  memoryMib int
+  // Disk capacity an instance restored from the checkpoint starts with, in gigabytes; null when the checkpoint records no size
+  diskGb int
+  // Time the checkpoint was created
+  createdAt time
+}
+
+// Hosted agent config
+//
+// Saved, immutable definition of a hosted coding agent that sessions are
+// started from. Identifies the config by `id` and `name`, records who
+// created it in `createdBy`, the agent spec version it was written
+// against in `agentSpecSchemaVersion`, and a `contentHash` of its
+// manifest that changes whenever the definition does. `credentials` lists
+// the credential slots the agent is given (secret values are never
+// returned), which answers which agents hold a stored secret or an OAuth
+// grant for a given provider.
+private digitalocean.hostedAgentConfig @defaults("id name createdBy") {
+  // Config ID
+  id string
+  // Config name
+  name string
+  // Agent spec schema version the manifest was written against
+  agentSpecSchemaVersion string
+  // Hash of the config manifest
+  contentHash string
+  // Principal that created the config
+  createdBy string
+  // Time the config was created
+  createdAt time
+  // Time the config was last updated
+  updatedAt time
+  // Credential slots the agent is given
+  //
+  // Each entry is a dict with keys: name (the slot name), source (where
+  // the credential comes from, such as tenantSecret or oauth), and
+  // provider (the external service it authenticates to, when set). Secret
+  // values are never returned.
+  credentials() []dict
+}
+
+// Hosted agent trigger
+//
+// Webhook or cron automation that starts a hosted agent run. `kind` is
+// webhook or cron and `status` is active or paused. Webhook triggers name
+// the `webhookProvider` whose signature scheme authenticates deliveries;
+// cron triggers carry a `cronExpression`, `cronTimezone`, and
+// `nextRunAt`. `sessionMode` decides whether each firing starts a fresh
+// session or reuses a bound one, `agentKind` names the agent runtime that
+// runs, and the output fields report where run output is delivered.
+private digitalocean.hostedAgentTrigger @defaults("id name kind status") {
+  // Trigger ID
+  id string
+  // Trigger name
+  name string
+  // How the trigger fires, webhook or cron
+  kind string
+  // Trigger status, active or paused
+  status string
+  // Whether each firing starts a fresh session or reuses a bound session, fresh or reuse
+  sessionMode string
+  // Agent runtime the trigger runs, such as AGENT_KIND_CLAUDE_CODE or AGENT_KIND_CUSTOM
+  agentKind string
+  // Webhook provider whose signature scheme authenticates deliveries
+  //
+  // One of github, gitlab, or custom. Empty for cron triggers.
+  webhookProvider string
+  // Cron expression the trigger fires on; empty for webhook triggers
+  cronExpression string
+  // Time zone the cron expression is evaluated in; empty for webhook triggers
+  cronTimezone string
+  // Next scheduled firing; null for webhook triggers
+  nextRunAt time
+  // Where run output is delivered
+  //
+  // One of none, email, or slack.
+  outputMode string
+  // Whether an email destination is configured for run output
+  outputEmailConfigured bool
+  // Whether a Slack destination is configured for run output
+  outputSlackConfigured bool
+  // Time the trigger was created
+  createdAt time
+  // Time the trigger was last updated
+  updatedAt time
+}
+
 // DigitalOcean firewall
 //
-// Examine a DigitalOcean cloud-firewall rule set. Surfaces the firewall
-// status (waiting, succeeded, failed), the `ingressRules` and
-// `egressRules` controlling incoming and outgoing traffic — each rule
-// exposing protocol, ports, the `openToInternet` predicate that flags
-// rules reachable from any address (0.0.0.0/0 or ::/0), and typed
-// references to the droplets, load balancers, and Kubernetes clusters
-// it targets. Also surfaces the tags used to select protected droplets
-// and the resolved `droplets()` covered by the firewall (by direct ID
-// or matching tag).
+// Cloud-firewall rule set governing traffic to and from a group of
+// droplets. The `status` field reports provisioning progress (waiting,
+// succeeded, failed). The `ingressRules` and `egressRules` control
+// incoming and outgoing traffic, each rule exposing protocol, ports, and
+// the `openToInternet` predicate that flags rules reachable from any
+// address (0.0.0.0/0 or ::/0), plus references to the droplets, load
+// balancers, and Kubernetes clusters it targets. The `tags` select
+// protected droplets by tag, and `droplets` resolves the full set
+// covered by the firewall (by direct ID or matching tag).
 digitalocean.firewall @defaults("id name status") {
   // Firewall ID
   id string
@@ -221,38 +477,49 @@ digitalocean.firewall @defaults("id name status") {
   status string
   // Time the resource was created
   createdAt time
-  // Rules controlling incoming traffic to protected droplets
-  //
-  // Deprecated in favor of `ingressRules`.
-  inboundRules @maturity("deprecated") []dict
-  // Rules controlling outgoing traffic from protected droplets
-  //
-  // Deprecated in favor of `egressRules`.
-  outboundRules @maturity("deprecated") []dict
   // Ingress rules controlling incoming traffic to protected droplets
   ingressRules() []digitalocean.firewall.ingressRule
   // Egress rules controlling outgoing traffic from protected droplets
   egressRules() []digitalocean.firewall.egressRule
-  // Droplet IDs protected by this firewall
-  //
-  // Deprecated in favor of `droplets()`.
-  dropletIds @maturity("deprecated") []int
   // Droplets covered by this firewall (by direct ID or matching tag)
   droplets() []digitalocean.droplet
   // Tags used to target droplets
   tags []string
+  // Droplets the firewall has not finished applying to
+  pendingChanges []digitalocean.firewall.pendingChange
+}
+
+// Pending change to a DigitalOcean cloud firewall
+//
+// One droplet the firewall has not finished applying to. A firewall
+// reports its own `status` as succeeded once the rule set is accepted,
+// while individual droplets are still being added or removed, so a rule
+// set can read as active before it governs traffic on every droplet it
+// targets. Each entry names the affected `droplet`, reports whether the
+// droplet is being taken out of the firewall rather than added through
+// `removing`, and tracks how far the change has progressed in `status`.
+// A non-empty list means the firewall is not yet the whole story for the
+// droplets it covers.
+private digitalocean.firewall.pendingChange @defaults("status removing") {
+  // Droplet the change applies to
+  droplet() digitalocean.droplet
+  // Whether the droplet is being removed from the firewall rather than added
+  removing bool
+  // Progress of the change (waiting, in-progress, succeeded, failed)
+  status string
 }
 
 // Ingress rule of a DigitalOcean cloud firewall
 //
-// Examine a single ingress (inbound) rule controlling traffic that reaches
-// the droplets a firewall protects. `protocol` is tcp, udp, or icmp and
+// Single ingress (inbound) rule controlling traffic that reaches the
+// droplets a firewall protects. `protocol` is tcp, udp, or icmp and
 // `ports` is the affected port or range (a single port like "3306", a
-// range like "8000-9000", or "0"/"all" for every port). `openToInternet`
-// is true when the rule admits traffic from any address — that is, when
-// `sourceAddresses` contains 0.0.0.0/0 or ::/0 — which makes auditing
+// range like "8000-9000", or "0"/"all" for every port). `action` is
+// allow or deny. `openToInternet` is true when the rule admits traffic
+// from any address, that is, when it is an allow rule and
+// `sourceAddresses` contains 0.0.0.0/0 or ::/0, which makes auditing
 // publicly reachable ports a single predicate. The source is otherwise
-// described by `sourceAddresses` (CIDRs), `sourceTags`, and the typed
+// described by `sourceAddresses` (CIDRs), `sourceTags`, and the
 // `sourceDroplets`, `sourceLoadBalancers`, and `sourceKubernetesClusters`
 // the rule trusts.
 private digitalocean.firewall.ingressRule @defaults("protocol ports openToInternet") {
@@ -263,7 +530,15 @@ private digitalocean.firewall.ingressRule @defaults("protocol ports openToIntern
   // A single port ("3306"), a range ("8000-9000"), or "0"/"all" for
   // every port.
   ports string
-  // Whether the rule admits traffic from any address (0.0.0.0/0 or ::/0)
+  // Action the rule takes on matching traffic
+  //
+  // Either allow or deny. Rules the API returns without an action are
+  // allow rules, the API default, and are reported as allow.
+  action string
+  // Whether the rule admits traffic from any address
+  //
+  // True for an allow rule whose source addresses include 0.0.0.0/0 or
+  // ::/0. A deny rule over those ranges blocks traffic and is not open.
   openToInternet bool
   // Source address CIDRs trusted by this rule
   sourceAddresses []string
@@ -280,7 +555,7 @@ private digitalocean.firewall.ingressRule @defaults("protocol ports openToIntern
 // Network internet-exposure breakdown
 //
 // Explains whether a resource is reachable from the internet: whether it has a
-// public IP and whether its firewall admits inbound traffic from any address —
+// public IP and whether its firewall admits inbound traffic from any address,
 // including the case where no firewall restricts ingress at all, which leaves
 // it fully open. Shared by droplets and internet-facing load balancers.
 private digitalocean.network.exposure @defaults("internetReachable hasPublicIp") {
@@ -288,7 +563,7 @@ private digitalocean.network.exposure @defaults("internetReachable hasPublicIp")
   internetReachable bool
   // Whether the resource has a public IPv4 or IPv6 address
   hasPublicIp bool
-  // Whether inbound traffic from any address is admitted — a firewall ingress rule open to the internet, or no firewall restricting ingress at all
+  // Whether inbound traffic from any address is admitted: a firewall ingress rule open to the internet, or no firewall restricting ingress at all
   firewallAllowsIngress bool
   // Droplet firewall ingress rules that admit traffic from any address; empty for resources that do not use cloud-firewall ingress rules
   openIngressRules []digitalocean.firewall.ingressRule
@@ -296,14 +571,15 @@ private digitalocean.network.exposure @defaults("internetReachable hasPublicIp")
 
 // Egress rule of a DigitalOcean cloud firewall
 //
-// Examine a single egress (outbound) rule controlling traffic that leaves
-// the droplets a firewall protects. `protocol` is tcp, udp, or icmp and
+// Single egress (outbound) rule controlling traffic that leaves the
+// droplets a firewall protects. `protocol` is tcp, udp, or icmp and
 // `ports` is the affected port or range (a single port like "3306", a
-// range like "8000-9000", or "0"/"all" for every port). `openToInternet`
-// is true when the rule permits traffic to any address — that is, when
+// range like "8000-9000", or "0"/"all" for every port). `action` is
+// allow or deny. `openToInternet` is true when the rule permits traffic
+// to any address, that is, when it is an allow rule and
 // `destinationAddresses` contains 0.0.0.0/0 or ::/0. The destination is
 // otherwise described by `destinationAddresses` (CIDRs), `destinationTags`,
-// and the typed `destinationDroplets`, `destinationLoadBalancers`, and
+// and the `destinationDroplets`, `destinationLoadBalancers`, and
 // `destinationKubernetesClusters` the rule allows.
 private digitalocean.firewall.egressRule @defaults("protocol ports openToInternet") {
   // Network protocol (tcp, udp, or icmp)
@@ -313,7 +589,15 @@ private digitalocean.firewall.egressRule @defaults("protocol ports openToInterne
   // A single port ("3306"), a range ("8000-9000"), or "0"/"all" for
   // every port.
   ports string
-  // Whether the rule permits traffic to any address (0.0.0.0/0 or ::/0)
+  // Action the rule takes on matching traffic
+  //
+  // Either allow or deny. Rules the API returns without an action are
+  // allow rules, the API default, and are reported as allow.
+  action string
+  // Whether the rule permits traffic to any address
+  //
+  // True for an allow rule whose destination addresses include 0.0.0.0/0
+  // or ::/0. A deny rule over those ranges blocks traffic and is not open.
   openToInternet bool
   // Destination address CIDRs allowed by this rule
   destinationAddresses []string
@@ -329,24 +613,22 @@ private digitalocean.firewall.egressRule @defaults("protocol ports openToInterne
 
 // DigitalOcean managed database cluster
 //
-// Examine a DigitalOcean managed database. Surfaces the engine (pg,
-// mysql, redis, mongodb, kafka, opensearch) and version, the cluster
-// size and node count, region, status, the allocated `storageSizeMib`
-// and the logical `dbNames` hosted on the cluster, the owning
-// `projectId`, the `privateNetworkUuid` and resolved `vpc()`, the
-// public and private connection host and port, the `firewallRules()`
-// controlling trusted sources, the `evictionPolicy()` (Redis/Valkey),
-// the maintenance window, the typed children `users()`, `replicas()`,
-// and `pools()`, the rolling list of automated `backups()` plus the
-// derived `latestBackupAt` / `backupCount`, and the
-// `caCertificate()` clients use to verify the cluster's TLS
-// endpoint.
+// Managed relational, key-value, document, or streaming database
+// cluster; the `engine` field distinguishes PostgreSQL, MySQL, Redis,
+// Valkey, MongoDB, Kafka, and OpenSearch. Reports the cluster's size, node
+// count, region, and lifecycle status alongside its network exposure
+// (public and private connection endpoints, the attached VPC, and the
+// trusted-source firewall rules), its TLS material, and its backup,
+// user, replica, and connection-pool children. Audit a cluster to
+// confirm it is not reachable from the public internet, that its
+// connections enforce TLS, and that automated backups are current.
+// Select a cluster by id with `digitalocean.database(id: "...")`.
 digitalocean.database @defaults("id name engine") {
   // Database cluster ID
   id string
   // Database cluster name
   name string
-  // Database engine (pg, mysql, redis, mongodb, kafka, opensearch)
+  // Database engine (pg, mysql, redis, valkey, mongodb, kafka, opensearch)
   engine string
   // Database engine version
   version string
@@ -366,13 +648,22 @@ digitalocean.database @defaults("id name engine") {
   createdAt time
   // ID of the project the cluster belongs to
   projectId string
+  // Project the cluster belongs to
+  project() digitalocean.project
   // Private network UUID
   privateNetworkUuid string
   // VPC the cluster is attached to (resolved from privateNetworkUuid)
   vpc() digitalocean.vpc
   // Tags
   tags []string
-  // Firewall rules (trusted sources)
+  // Trusted-source firewall rules controlling which clients may reach the cluster
+  //
+  // Each entry is a dict with keys: uuid (the rule's identifier), type
+  // (the trusted-source kind, one of ip_addr, droplet, k8s, tag, or app),
+  // value (the source identifier, a CIDR when type is ip_addr or the
+  // resource UUID/tag name otherwise), and createdAt (RFC 3339
+  // timestamp). See `internetReachable` for whether these rules leave the
+  // public endpoint open to every address.
   firewallRules() []dict
   // Whether the cluster is reachable from the internet
   //
@@ -388,6 +679,11 @@ digitalocean.database @defaults("id name engine") {
   privateConnectionHost string
   // Private connection port (reachable within the VPC)
   privateConnectionPort int
+  // Whether the cluster's private endpoint enforces TLS/SSL
+  //
+  // Null when the cluster publishes no private endpoint, so an absent VPC
+  // endpoint stays distinguishable from one that accepts plaintext.
+  privateConnectionSslEnabled bool
   // Key eviction policy for Redis/Valkey clusters
   //
   // One of noeviction, allkeys_lru, allkeys_random, volatile_lru, volatile_random, volatile_ttl. Empty for other engines.
@@ -398,7 +694,12 @@ digitalocean.database @defaults("id name engine") {
   // (for example STRICT_TRANS_TABLES, NO_ZERO_DATE). Empty for non-MySQL
   // engines. Fetched on demand from the cluster's SQL-mode endpoint.
   sqlMode() string
-  // Maintenance window configuration (day, hour, pending status)
+  // Maintenance window during which the cluster applies updates
+  //
+  // Dict with keys: day (weekday name the window opens, for example
+  // "monday"), hour (window start time formatted as "HH:MM:SS"), and
+  // pending (bool, true when maintenance updates are waiting to be applied
+  // in the next window).
   maintenanceWindow dict
   // Database users
   users() []digitalocean.database.user
@@ -432,11 +733,155 @@ digitalocean.database @defaults("id name engine") {
   standbyPrivateConnectionHost string
   // Standby (failover) private connection port reachable within the VPC; zero when the cluster has no standby node
   standbyPrivateConnectionPort int
+  // Destinations the cluster ships its service logs to
+  logsinks() []digitalocean.database.logsink
+  // Public host of the OpenSearch Dashboards endpoint; empty when the cluster publishes no dashboards endpoint
+  dashboardConnectionHost string
+  // Public port of the OpenSearch Dashboards endpoint; zero when the cluster publishes no dashboards endpoint
+  dashboardConnectionPort int
+  // Whether the OpenSearch Dashboards endpoint enforces TLS/SSL; null when the cluster publishes no dashboards endpoint
+  dashboardConnectionSslEnabled bool
+  // Engine configuration settings applied to the cluster
+  //
+  // The advanced settings DigitalOcean exposes for the cluster's engine,
+  // keyed by the API setting name (for example `redis_ssl`,
+  // `enable_security_audit`, `sql_require_primary_key`, or
+  // `log_min_duration_statement`). Only settings the operator or the
+  // platform has set are present. Null for engines without a
+  // configuration endpoint. Setting names that look like credentials
+  // are never included.
+  engineConfig() dict
+  // Whether clients must connect over TLS (Redis and Valkey only)
+  //
+  // False means the cluster also accepts plaintext connections, which
+  // send the AUTH password and every key in the clear. Null for other
+  // engines and when the setting is not reported.
+  sslRequired() bool
+  // Default Pub/Sub channel permission for new ACL users (Redis and Valkey only)
+  //
+  // Either allchannels, which lets every new user publish and subscribe
+  // to any channel, or resetchannels, which grants no channels until they
+  // are granted explicitly. Null for other engines and when the setting
+  // is not reported.
+  aclChannelsDefault() string
+  // Whether the OpenSearch security audit log is enabled (OpenSearch only)
+  //
+  // The audit log records authentication events and access to indices.
+  // Null for other engines and when the setting is not reported.
+  securityAuditEnabled() bool
+  // Whether index deletion must name each index explicitly (OpenSearch only)
+  //
+  // False lets a single request delete indices through wildcards or
+  // `_all`. Null for other engines and when the setting is not reported.
+  destructiveActionsRequireName() bool
+  // Remote hosts the cluster may reindex data from (OpenSearch only)
+  //
+  // Each entry is a host:port pattern. Any host on this list can be read
+  // into the cluster through the reindex API. Null for other engines and
+  // when the setting is not reported.
+  reindexRemoteAllowlist() []string
+  // Whether producers can create topics implicitly (Kafka only)
+  //
+  // True lets any client with produce or consume rights create a topic
+  // by naming it, bypassing review of the topic's retention and
+  // replication settings. Null for other engines and when the setting is
+  // not reported.
+  autoCreateTopicsEnabled() bool
+  // Whether the slow query log is enabled (MySQL only)
+  //
+  // Null for other engines and when the setting is not reported.
+  slowQueryLogEnabled() bool
+  // Whether every table must have a primary key (MySQL only)
+  //
+  // Null for other engines and when the setting is not reported.
+  requirePrimaryKey() bool
+  // Topics hosted on the cluster (Kafka only)
+  //
+  // Empty for other engines.
+  topics() []digitalocean.database.topic
+}
+
+// Topic on a DigitalOcean managed Kafka cluster
+//
+// One topic hosted on a Kafka cluster, selected by `name`. Reports the
+// `replicationFactor` and `minInsyncReplicas` that decide how many node
+// failures a write survives, `underReplicatedPartitions` counting the
+// partitions whose in-sync replicas have fallen below the replication
+// factor, and the `retentionMs`, `retentionBytes`, and `cleanupPolicy`
+// that decide how long records are kept. The topic names match the
+// `topic` entries in each user's `kafkaAcls`.
+private digitalocean.database.topic @defaults("name state replicationFactor") {
+  // ID of the parent database cluster
+  databaseId string
+  // Parent database cluster
+  database() digitalocean.database
+  // Topic name
+  name string
+  // Topic state (active, configuring, deleting, or unknown)
+  state string
+  // Number of nodes each partition is replicated to
+  replicationFactor int
+  // Number of partitions in the topic
+  partitionCount() int
+  // Number of partitions with fewer in-sync replicas than the replication factor
+  underReplicatedPartitions() int
+  // Minimum number of in-sync replicas that must acknowledge a write; null when not reported
+  minInsyncReplicas() int
+  // Time records are kept before deletion, in milliseconds
+  //
+  // -1 keeps records forever. Null when not reported.
+  retentionMs() int
+  // Maximum size a partition grows to before old records are deleted, in bytes
+  //
+  // -1 sets no size limit. Null when not reported.
+  retentionBytes() int
+  // How old records are removed (delete, compact, or compact_delete); null when not reported
+  cleanupPolicy() string
+}
+
+// Log sink on a DigitalOcean managed database cluster
+//
+// One destination a managed database forwards its service logs to. The
+// `type` names the protocol (rsyslog, elasticsearch, opensearch, or
+// datadog) and `name` is the operator-chosen label. Transport is
+// described by `server` and `port` for a syslog sink or `url` for a
+// search-cluster sink, with `tlsEnabled` reporting whether the delivery
+// is encrypted. An empty `logsinks` list on a production cluster means
+// its logs live only inside the retention window DigitalOcean keeps, so
+// nothing survives for later investigation. The certificate and key
+// material configured on a sink is deliberately not exposed.
+private digitalocean.database.logsink @defaults("name type tlsEnabled") {
+  // ID of the parent database cluster
+  databaseId string
+  // Parent database cluster
+  database() digitalocean.database
+  // Sink ID
+  sinkId string
+  // Operator-chosen name for the sink
+  name string
+  // Sink protocol (rsyslog, elasticsearch, opensearch, or datadog)
+  type string
+  // Hostname or address of a syslog sink; empty on search-cluster sinks
+  server string
+  // Port of a syslog sink; null on search-cluster sinks
+  port int
+  // Endpoint URL of a search-cluster sink; empty on syslog sinks
+  //
+  // A password embedded in the URL is removed.
+  url string
+  // Whether log delivery to this sink is encrypted with TLS
+  tlsEnabled bool
+  // Message format a syslog sink receives (rfc5424, rfc3164, or custom)
+  format string
+  // Index name prefix a search-cluster sink writes under
+  indexPrefix string
+  // Days a search-cluster sink keeps an index before removing it; null when unset
+  indexRetentionDays int
 }
 
 // DigitalOcean database automated backup
 //
-// Examine a single automated backup retained for the parent cluster.
+// Single automated backup retained for a managed database cluster.
 // Surfaces the `createdAt` time and the on-disk `sizeGigabytes`. Use
 // these to verify that backups are being taken on the expected
 // cadence (no large gap in `createdAt`) and that backup size growth
@@ -453,6 +898,11 @@ private digitalocean.database.backup @defaults("databaseId createdAt sizeGigabyt
 }
 
 // DigitalOcean database user
+//
+// A user account on a managed database cluster. Surfaces the `name` and
+// the `role` (primary or normal) granted on the cluster. Use this to
+// audit which accounts exist on a cluster and which hold the primary
+// role.
 private digitalocean.database.user @defaults("name role") {
   // ID of the parent database cluster
   databaseId string
@@ -462,9 +912,36 @@ private digitalocean.database.user @defaults("name role") {
   name string
   // Role (primary, normal)
   role string
+  // Authentication plugin the user authenticates with
+  //
+  // MySQL only, one of caching_sha2_password or mysql_native_password.
+  // Empty on every other engine.
+  authPlugin string
+  // Kafka topic permissions granted to the user
+  //
+  // Each entry: id, topic (the topic or topic pattern the grant covers),
+  // permission (the access it grants on that topic). A user may hold more
+  // than one grant on the same topic. Empty on every other engine.
+  kafkaAcls []dict
+  // OpenSearch index permissions granted to the user
+  //
+  // Each entry: index (the index or index pattern the grant covers),
+  // permission (the access it grants on that index). Empty on every other
+  // engine.
+  opensearchAcls []dict
+  // MongoDB databases the user's role applies to; empty on every other engine
+  mongoDatabases []string
+  // Role the user holds on its MongoDB databases; empty on every other engine
+  mongoRole string
 }
 
 // DigitalOcean database replica
+//
+// A read-only replica of a managed database cluster. Surfaces the
+// replica `name`, its `region` and `size` slug, lifecycle `status`, the
+// applied `tags`, and the creation time. Use this to confirm replicas
+// exist for read scaling or cross-region redundancy and that they are
+// online.
 private digitalocean.database.replica @defaults("name status") {
   // ID of the parent database cluster
   databaseId string
@@ -485,6 +962,11 @@ private digitalocean.database.replica @defaults("name status") {
 }
 
 // DigitalOcean database connection pool
+//
+// A connection pool fronting a managed database cluster. Surfaces the
+// pool `name`, the logical `database` it connects to, the `user` it
+// authenticates as, the pool `size`, and the connection `mode`
+// (transaction, session, or statement).
 private digitalocean.database.pool @defaults("name mode") {
   // ID of the parent database cluster
   databaseId string
@@ -500,17 +982,34 @@ private digitalocean.database.pool @defaults("name mode") {
   size int
   // Connection mode (transaction, session, statement)
   mode string
+  // Whether the pool's public endpoint enforces TLS/SSL
+  //
+  // The pooler terminates its own connections, so a pool can accept
+  // plaintext in front of a cluster whose direct endpoint requires TLS.
+  // Null when the pool publishes no public endpoint.
+  sslEnabled bool
+  // Hostname of the pool's public endpoint; null when the pool publishes no public endpoint
+  host string
+  // Port of the pool's public endpoint; null when the pool publishes no public endpoint
+  port int
+  // Whether the pool's private endpoint enforces TLS/SSL
+  //
+  // Null when the pool publishes no private endpoint.
+  privateSslEnabled bool
+  // Hostname of the pool's private endpoint reachable within the VPC; null when the pool publishes no private endpoint
+  privateHost string
+  // Port of the pool's private endpoint reachable within the VPC; null when the pool publishes no private endpoint
+  privatePort int
 }
 
 // DigitalOcean managed vector database
 //
-// Examine a managed vector database cluster (Weaviate). Surfaces the
-// cluster `id`, `name`, `region`, `size` slug, lifecycle `status`, and
-// the owning account (`ownerUuid`). Advanced engine settings are
-// flattened from the cluster config: `weaviateVersion`,
-// `enableAutoSchema`, and `defaultQuantization`. `httpEndpoint` and
-// `grpcEndpoint` give the connection addresses. Iterate `backups()` to
-// audit retained snapshots. Select a cluster by id with
+// Managed vector database cluster (Weaviate) used for embedding storage
+// and similarity search. Reports the region, size slug, lifecycle
+// status, owning account, and the engine configuration (Weaviate
+// version, automatic schema creation, and default quantization mode),
+// along with the HTTP and gRPC connection endpoints and the retained
+// backups. Select a cluster by id with
 // `digitalocean.vectorDatabase(id: "...")`.
 digitalocean.vectorDatabase @defaults("id name region status") {
   // Vector database cluster ID
@@ -547,9 +1046,10 @@ digitalocean.vectorDatabase @defaults("id name region status") {
 
 // DigitalOcean vector database backup
 //
-// Examine a single backup retained for the parent vector database
-// cluster. Use `status` and the `startedAt`/`completedAt` timestamps to
-// verify backups complete and are taken on the expected cadence.
+// Single retained snapshot of a managed vector database cluster. The
+// `status` together with the `startedAt` and `completedAt` timestamps
+// confirm that backups complete and are taken on the expected cadence,
+// supporting recovery-readiness audits.
 private digitalocean.vectorDatabase.backup @defaults("backupId status startedAt") {
   // ID of the parent vector database cluster
   vectorDatabaseId string
@@ -567,10 +1067,12 @@ private digitalocean.vectorDatabase.backup @defaults("backupId status startedAt"
 
 // DigitalOcean DNS domain
 //
-// Examine a DigitalOcean-managed DNS domain. Surfaces the zone TTL,
-// the raw `zoneFile` contents as DigitalOcean serves them, and the
-// `records()` defined under the domain (A, AAAA, CNAME, MX, TXT, NS,
-// SRV, CAA).
+// DNS zone that DigitalOcean serves for a registered domain name.
+// The zone TTL, the raw `zoneFile` contents as DigitalOcean serves
+// them, and the individual `records` defined under the domain (A,
+// AAAA, CNAME, MX, TXT, NS, SOA, SRV, CAA) are queryable, which supports
+// auditing zone contents for dangling references or unexpected
+// entries.
 digitalocean.domain @defaults("name") {
   // Domain name
   name string
@@ -583,12 +1085,21 @@ digitalocean.domain @defaults("name") {
 }
 
 // DigitalOcean DNS record
+//
+// A single DNS record within a DigitalOcean-managed domain. Surfaces
+// the record `type` (A, AAAA, CNAME, MX, TXT, NS, SOA, SRV, CAA), the record
+// `name` (subdomain), the `data` it resolves to, the `ttl`, and the
+// `priority`, `port`, and `weight` used by MX and SRV records. CAA
+// records carry their property in `tag` and the issuer-critical bit in
+// `flags`, which together decide which certificate authorities may issue
+// for the domain. Use this to audit zone contents (for example, dangling
+// CNAMEs, unexpected records, or a domain that constrains no issuer).
 private digitalocean.domain.record @defaults("type name data") {
   // Name of the parent domain
   domainName string
   // Record ID
   id int
-  // Record type (A, AAAA, CNAME, MX, TXT, NS, SRV, CAA)
+  // Record type (A, AAAA, CNAME, MX, TXT, NS, SOA, SRV, CAA)
   type string
   // Record name (subdomain)
   name string
@@ -602,14 +1113,30 @@ private digitalocean.domain.record @defaults("type name data") {
   port int
   // Weight (SRV)
   weight int
+  // Certificate-authority property the record sets (CAA)
+  //
+  // One of issue (authorities allowed to issue certificates for the
+  // domain), issuewild (authorities allowed to issue wildcard
+  // certificates), or iodef (where to report a policy violation). Read it
+  // alongside `data`, which holds the authority or reporting URL the
+  // property applies to. Empty on every record type other than CAA.
+  tag string
+  // Flags byte of a CAA record
+  //
+  // Bit 0 is the issuer-critical flag: when set (value 128), a
+  // certificate authority that does not understand the property in `tag`
+  // must refuse to issue. Zero on every record type other than CAA.
+  flags int
 }
 
 // DigitalOcean block storage volume
 //
-// Examine a DigitalOcean block-storage volume. Surfaces the volume
-// size in GB, region, description, filesystem type and label, applied
-// tags, and the resolved `droplets()` the volume is currently attached
-// to.
+// Block-storage volume that can be attached to Droplets for durable,
+// resizable disk capacity independent of the Droplet lifecycle. The
+// size in GB, region, filesystem type and label, and applied tags
+// describe the volume, while `droplets` resolves the Droplets it is
+// currently attached to, useful for auditing where persistent data
+// lives and whether volumes are orphaned or shared.
 digitalocean.volume @defaults("id name sizeGigabytes") {
   // Volume ID
   id string
@@ -629,24 +1156,26 @@ digitalocean.volume @defaults("id name sizeGigabytes") {
   createdAt time
   // Tags
   tags []string
-  // Droplet IDs attached to this volume
-  //
-  // Deprecated in favor of `droplets()`.
-  dropletIds @maturity("deprecated") []int
   // Droplets this volume is attached to
   droplets() []digitalocean.droplet
+  // Snapshots taken of this volume
+  //
+  // Point-in-time copies of the volume. An empty list on a volume holding
+  // persistent data means nothing can be restored from before the current
+  // state.
+  snapshots() []digitalocean.snapshot
 }
 
 // DigitalOcean load balancer
 //
-// Examine a DigitalOcean load balancer. Surfaces the public IP, region
-// and lifecycle status, the routing algorithm
-// (round_robin or least_connections), the
-// `forwardingRules` list, the `healthCheck` configuration, sticky
-// session settings, the `redirectHttpToHttps`,
-// `enableProxyProtocol`, `enableBackendKeepalive`, and
-// `disableLetsEncryptDnsRecords` flags, the resolved `vpc()`, and the
-// `droplets()` currently attached as backends.
+// Load balancer distributing incoming traffic across attached Droplets or,
+// for a global load balancer, across regional load balancers. Reports the
+// public IPv4 and IPv6 addresses, region, lifecycle status, and routing
+// algorithm, alongside the forwardingRules, healthCheck, and stickySessions
+// settings that govern how connections are accepted and dispatched. The
+// firewallAllow and firewallDeny lists together with exposure describe what
+// the load balancer accepts from the internet, making it a key checkpoint
+// when auditing the public attack surface of a DigitalOcean deployment.
 digitalocean.loadBalancer @defaults("id name status") {
   // Load balancer ID
   id string
@@ -668,25 +1197,31 @@ digitalocean.loadBalancer @defaults("id name status") {
   enableProxyProtocol bool
   // Enable backend keepalive
   enableBackendKeepalive bool
-  // VPC UUID
-  //
-  // Deprecated in favor of `vpc()`.
-  vpcUuid @maturity("deprecated") string
   // VPC the load balancer is attached to
   vpc() digitalocean.vpc
-  // Droplet IDs attached to the load balancer
-  //
-  // Deprecated in favor of `droplets()`.
-  dropletIds @maturity("deprecated") []int
   // Droplets attached to this load balancer
   droplets() []digitalocean.droplet
   // Tags
   tags []string
-  // Forwarding rules
-  forwardingRules []dict
+  // Listeners the load balancer accepts connections on
+  //
+  // One entry per forwarding rule, carrying the protocol and port traffic
+  // arrives on, the protocol and port it is forwarded to, and the
+  // certificate the listener presents. Reaching the certificate makes the
+  // full TLS posture queryable in one place: a plaintext listener, a
+  // certificate about to expire, or a rule that passes TLS straight
+  // through to the backend.
+  listeners() []digitalocean.loadBalancer.listener
   // Health check configuration
+  //
+  // Probe used to decide whether a backend is healthy. Dict with keys
+  // protocol, port, path, checkIntervalSeconds, responseTimeoutSeconds,
+  // unhealthyThreshold, and healthyThreshold.
   healthCheck dict
   // Sticky sessions configuration
+  //
+  // Session-affinity settings. Dict with keys type (none or cookies),
+  // cookieName, and cookieTtlSeconds.
   stickySessions dict
   // Disable automatic Let's Encrypt DNS records
   disableLetsEncryptDnsRecords bool
@@ -724,14 +1259,40 @@ digitalocean.loadBalancer @defaults("id name status") {
   exposure() digitalocean.network.exposure
 }
 
+// DigitalOcean load balancer listener
+//
+// A single forwarding rule on a load balancer: the protocol and port
+// connections arrive on, the protocol and port they are forwarded to on
+// the backend, and the certificate the listener presents. A listener on
+// http or tcp carries no certificate and moves traffic in the clear,
+// while tlsPassthrough hands the encrypted connection to the backend
+// untouched, so the load balancer presents no certificate of its own.
+private digitalocean.loadBalancer.listener @defaults("entryProtocol entryPort targetProtocol targetPort") {
+  // ID of the load balancer the listener belongs to
+  loadBalancerId string
+  // Protocol connections arrive on (http, https, http2, http3, tcp, udp)
+  entryProtocol string
+  // Port connections arrive on
+  entryPort int
+  // Protocol traffic is forwarded to the backend with (http, https, http2, tcp, udp)
+  targetProtocol string
+  // Port traffic is forwarded to on the backend
+  targetPort int
+  // Whether the encrypted connection is handed to the backend untouched, leaving the load balancer without a certificate of its own
+  tlsPassthrough bool
+  // Certificate the listener presents; null when it terminates no TLS
+  certificate() digitalocean.certificate
+}
+
 // DigitalOcean VPC
 //
-// Examine a DigitalOcean Virtual Private Cloud. Surfaces the VPC's
-// description, IP range (CIDR), region slug, the `default` flag
-// (whether it is the region's default VPC), and the creation
-// timestamp. Droplets, databases, load balancers, and Kubernetes
-// clusters can be filtered or correlated by the VPC they are attached
-// to.
+// DigitalOcean Virtual Private Cloud, a private network that isolates
+// Droplets, databases, load balancers, and Kubernetes clusters within a
+// single region so they communicate over private addresses instead of
+// the public internet. The `ipRange` field gives the network's CIDR and
+// the `default` flag marks the region's default VPC, letting you audit
+// network segmentation and confirm resources sit on the intended
+// private network.
 digitalocean.vpc @defaults("id name region") {
   // VPC ID
   id string
@@ -747,15 +1308,73 @@ digitalocean.vpc @defaults("id name region") {
   createdAt time
   // Whether this is the default VPC
   default bool
+  // Uniform resource name (URN) identifying the VPC across DigitalOcean APIs
+  urn string
+  // Resources placed inside the VPC
+  members() []digitalocean.vpc.member
+  // Routes directing traffic out of the VPC
+  routes() []digitalocean.vpc.route
+}
+
+// Resource placed inside a DigitalOcean VPC
+//
+// One droplet, load balancer, database cluster, or other resource that
+// holds an address inside the VPC. The `urn` names the resource and
+// carries its kind, so the membership list is what proves an isolated
+// network contains only its intended workloads and nothing that was
+// attached to it later.
+private digitalocean.vpc.member @defaults("name urn") {
+  // ID of the VPC the resource is placed in
+  vpcId string
+  // Uniform resource name (URN) identifying the member across DigitalOcean APIs
+  urn string
+  // Kind of resource the URN names (e.g., "droplet", "load_balancer", "dbaas")
+  resourceType string
+  // Member name
+  name string
+  // Time the resource joined the VPC; null when the API reports no join time
+  createdAt time
+}
+
+// DigitalOcean VPC route
+//
+// Static or dynamic route attached to a VPC, directing traffic for a
+// destination range at one or more resources inside the network. Read
+// `destinationCidr` together with `targetUrns` to see where traffic for a
+// range actually leaves the VPC, which is what decides whether a subnet
+// egresses through an inspected appliance or straight out. The
+// `modifiable` field separates routes DigitalOcean creates and manages
+// from routes an operator added, and `type` reports whether the route was
+// configured statically or learned dynamically.
+private digitalocean.vpc.route @defaults("destinationCidr type targetUrns") {
+  // Route ID
+  id string
+  // How the route was configured
+  //
+  // One of STATIC for a route an operator configured, or DYNAMIC for a
+  // route the network learned.
+  type string
+  // Destination IP range (CIDR) the route matches
+  destinationCidr string
+  // Uniform resource names (URNs) of the resources traffic is directed to
+  targetUrns []string
+  // Whether the route can be changed
+  //
+  // False for routes DigitalOcean creates and manages itself, which an
+  // operator cannot edit or remove.
+  modifiable bool
+  // Time the route was created; null when the API reports no creation time
+  createdAt time
 }
 
 // DigitalOcean VPC peering
 //
-// Examine a peering between two DigitalOcean VPCs. Surfaces the
-// `vpcIds` participating in the peering, the peering status, and the
-// creation timestamp. The peering allows resources in distinct VPCs
-// to reach each other over the private network without traversing the
-// public internet.
+// Private network connection between two DigitalOcean VPCs. A peering
+// lets resources in the connected VPCs reach each other over the private
+// network without traversing the public internet, so it defines a trust
+// boundary between otherwise isolated networks that is worth auditing.
+// The `vpcIds` field identifies the two VPCs participating and `status`
+// reports where the peering sits in its lifecycle.
 digitalocean.vpcPeering @defaults("id name status") {
   // Peering ID
   id string
@@ -765,7 +1384,12 @@ digitalocean.vpcPeering @defaults("id name status") {
   vpcIds []string
   // VPCs connected by this peering
   vpcs() []digitalocean.vpc
-  // Status
+  // Peering lifecycle state
+  //
+  // One of PENDING (the peering is being established), PROVISIONING (the
+  // peering is being provisioned), ACTIVE (traffic
+  // flows between the peered VPCs), or DELETING (the peering is being
+  // torn down).
   status string
   // Time the resource was created
   createdAt time
@@ -773,12 +1397,14 @@ digitalocean.vpcPeering @defaults("id name status") {
 
 // DigitalOcean Kubernetes cluster
 //
-// Examine a DOKS (DigitalOcean Kubernetes Service) cluster. Surfaces
-// the Kubernetes version, region, lifecycle status, the cluster and
-// service subnet CIDRs, the resolved `vpc()`, the auto-upgrade,
-// surge-upgrade, and HA control plane flags, the SSO posture
-// (`ssoEnabled`, `ssoRequired`, `ssoIssuerUrl`, `ssoClientId`), the
-// maintenance policy, and applied tags.
+// DOKS (DigitalOcean Kubernetes Service) managed cluster. Reports the
+// Kubernetes version and upgrade posture, the region and lifecycle
+// status, the pod and service network CIDRs, the attached vpc, the
+// single sign-on configuration, the control-plane firewall and enabled
+// add-ons, and the node pools that supply worker capacity. Audit it to
+// confirm clusters run supported versions, keep API-server access
+// restricted, and enforce the intended authentication and upgrade
+// policies.
 digitalocean.kubernetes.cluster @defaults("id name version") {
   // Cluster ID
   id string
@@ -788,7 +1414,7 @@ digitalocean.kubernetes.cluster @defaults("id name version") {
   version string
   // Region slug
   region string
-  // Status (running, provisioning, degraded, error, deleted, upgrading)
+  // Status (running, provisioning, degraded, error, deleted, upgrading, invalid, deleting)
   status string
   // Time the resource was created
   createdAt time
@@ -798,10 +1424,6 @@ digitalocean.kubernetes.cluster @defaults("id name version") {
   clusterSubnet string
   // Service subnet
   serviceSubnet string
-  // VPC UUID
-  //
-  // Deprecated in favor of `vpc()`.
-  vpcUuid @maturity("deprecated") string
   // VPC the cluster is attached to
   vpc() digitalocean.vpc
   // Auto-upgrade enabled
@@ -820,7 +1442,11 @@ digitalocean.kubernetes.cluster @defaults("id name version") {
   ssoClientId string
   // Tags
   tags []string
-  // Maintenance policy
+  // Weekly maintenance window
+  //
+  // Keys: startTime (24-hour HH:MM start of the window), day (day of
+  // week the window runs), duration (length of the window). Empty when
+  // no maintenance policy is configured.
   maintenancePolicy dict
   // Public IPv4 address of the cluster's API server
   ipv4 string
@@ -846,11 +1472,94 @@ digitalocean.kubernetes.cluster @defaults("id name version") {
   rdmaSharedDevicePluginEnabled bool
   // Whether the CoreDNS cluster-proportional autoscaler add-on is enabled; null when unset
   corednsAutoscalerEnabled bool
+  // Whether the peer-to-peer OCI registry add-on is enabled; null when unset
+  p2pOciRegistryEnabled bool
+  // UUID of the VPC subnet the cluster's worker nodes are placed in
+  workerSubnetUuid string
+  // Whether worker nodes are cut off from the public internet
+  //
+  // When enabled the worker nodes hold no public addresses and egress
+  // through the VPC, so a workload on them is unreachable from the
+  // internet regardless of any firewall attached to the pool.
+  isolatedWorkers bool
+  // Username the DigitalOcean-issued kubeconfig authenticates as
+  //
+  // The RBAC subject in-cluster authorization is evaluated against for
+  // anyone holding the platform-issued credential, so it is the identity
+  // a RoleBinding or ClusterRoleBinding has to name. Null when the
+  // cluster user cannot be read.
+  kubeconfigUsername() string
+  // Groups the DigitalOcean-issued kubeconfig identity belongs to
+  //
+  // Group bindings are the usual route to cluster-admin, so these decide
+  // what the platform credential can do inside the cluster. Null when the
+  // cluster user cannot be read, as distinct from an empty list, which
+  // means the identity was read and belongs to no groups.
+  kubeconfigGroups() []string
+  // Cluster autoscaler tuning
+  //
+  // Keys: scaleDownUtilizationThreshold (fraction), scaleDownUnneededTime (duration string), expanders (list). Empty when the cluster uses platform defaults.
+  clusterAutoscaler dict
+  // Kubernetes versions this cluster can currently upgrade to; empty when the cluster is already on the newest available version
+  availableUpgradeVersions() []string
   // Node pools
   nodePools() []digitalocean.kubernetes.nodePool
+  // Internet reachability of the cluster's API server
+  //
+  // Managed Kubernetes control planes are published on a public endpoint,
+  // so the API server is reachable from any address unless the
+  // control-plane firewall is enabled and its allowed source addresses
+  // exclude the whole internet. hasPublicIp reflects the published
+  // endpoint, and firewallAllowsIngress is true when the firewall is off
+  // or admits 0.0.0.0/0 or ::/0. openIngressRules stays empty because the
+  // control-plane firewall is a source address list rather than a set of
+  // cloud-firewall rules.
+  exposure() digitalocean.network.exposure
+  // Time the most recent clusterlint run completed; null when the cluster has never been linted
+  lintCompletedAt() time
+  // Diagnostics reported by the most recent clusterlint run
+  //
+  // Clusterlint is DigitalOcean's best-practice checker for workloads
+  // running on the cluster, covering security (privileged containers,
+  // containers running as root, host path mounts), reliability, and
+  // upgrade blockers. The results are those of the last stored run,
+  // which may predate the workloads now on the cluster; compare with
+  // `lintCompletedAt`. Null when the cluster has never been linted.
+  lintDiagnostics() []digitalocean.kubernetes.lintDiagnostic
+}
+
+// Clusterlint diagnostic on a DigitalOcean Kubernetes cluster
+//
+// One finding from the most recent clusterlint run on a DOKS cluster.
+// `checkName` names the clusterlint check (for example
+// `privileged-containers` or `run-as-non-root`), `severity` is one of
+// error, warning, or suggestion, and `objectKind`, `objectNamespace`, and
+// `objectName` identify the Kubernetes object the finding is about.
+private digitalocean.kubernetes.lintDiagnostic @defaults("checkName severity objectKind objectName") {
+  // ID of the cluster the diagnostic was reported on
+  clusterId string
+  // Clusterlint check that produced the diagnostic
+  checkName string
+  // Severity (error, warning, or suggestion)
+  severity string
+  // Description of the problem and how to fix it
+  message string
+  // Kind of the Kubernetes object the diagnostic is about
+  objectKind string
+  // Name of the Kubernetes object the diagnostic is about
+  objectName string
+  // Namespace of the Kubernetes object; empty for cluster-scoped objects
+  objectNamespace string
+  // Objects that own the reported object, each written as "<kind>/<name>"
+  owners []string
 }
 
 // DigitalOcean Kubernetes node pool
+//
+// Pool of worker nodes within a DOKS cluster, sharing one droplet size,
+// autoscaling configuration, and set of Kubernetes labels and taints.
+// Audit pools to confirm node sizing, autoscaling bounds, and the
+// scheduling constraints applied to workloads that land on them.
 private digitalocean.kubernetes.nodePool @defaults("id name size") {
   // Node pool ID
   id string
@@ -862,6 +1571,8 @@ private digitalocean.kubernetes.nodePool @defaults("id name size") {
   name string
   // Droplet size slug
   size string
+  // Hardware tier the pool's worker nodes run on, resolved from the size slug
+  dropletSize() digitalocean.size
   // Number of nodes
   count int
   // Auto-scale enabled
@@ -882,11 +1593,11 @@ private digitalocean.kubernetes.nodePool @defaults("id name size") {
 
 // DigitalOcean Kubernetes node
 //
-// Examine a single worker node in a DOKS node pool. Surfaces the node
-// name, lifecycle status and the status detail message, the backing
-// droplet the node runs on, and the creation and update timestamps. Use
-// the status to spot nodes stuck provisioning or draining, and follow
-// `droplet` to inspect the node's size, networking, and firewall posture.
+// Single worker node in a DOKS node pool. Reports the node name,
+// lifecycle status and status detail message, the backing droplet the
+// node runs on, and its creation and update timestamps. Use the status
+// to spot nodes stuck provisioning or draining, and inspect the droplet
+// for the node's size, networking, and firewall posture.
 private digitalocean.kubernetes.node @defaults("id name status") {
   // Node ID
   id string
@@ -906,11 +1617,12 @@ private digitalocean.kubernetes.node @defaults("id name status") {
 
 // DigitalOcean project
 //
-// Examine a DigitalOcean project — the resource grouping used to
-// organize droplets, databases, load balancers, and other resources.
-// Surfaces the project description, declared `purpose` and
-// `environment` (Development, Staging, Production), the `isDefault`
-// flag, and creation/update timestamps.
+// Resource grouping used to organize droplets, databases, load
+// balancers, and other resources under a shared purpose and
+// environment. The declared `environment` (Development, Staging,
+// Production) and the `isDefault` flag help audit which resources fall
+// under production controls versus development sandboxes, and
+// `ownerUuid` identifies the account that owns the grouping.
 digitalocean.project @defaults("id name environment") {
   // Project ID
   id string
@@ -928,13 +1640,42 @@ digitalocean.project @defaults("id name environment") {
   updatedAt time
   // Whether this is the default project
   isDefault bool
+  // UUID of the account that owns the project
+  ownerUuid string
+  // Resources assigned to the project
+  resources() []digitalocean.project.resource
+}
+
+// Resource assigned to a DigitalOcean project
+//
+// A single resource that has been placed in a project, which is how
+// DigitalOcean groups an account's infrastructure for ownership and
+// billing. The urn field carries the resource's uniform resource name
+// (for example do:droplet:123 or do:kubernetes:a1b2c3), resourceType
+// names the kind of resource that URN points at, and assignedAt records
+// when it joined the project. Listing these tells you what actually sits
+// in a given project, including anything left behind in the default one.
+private digitalocean.project.resource @defaults("urn resourceType") {
+  // Uniform resource name identifying the assigned resource
+  urn string
+  // ID of the project the resource is assigned to
+  projectId string
+  // Kind of resource the URN points at (e.g. droplet, kubernetes, dbaas, loadbalancer, space)
+  resourceType string
+  // Time the resource was assigned to the project
+  assignedAt time
+  // Assignment status reported by the platform
+  status string
 }
 
 // DigitalOcean SSH key
 //
-// Examine an SSH key registered to the DigitalOcean account. Surfaces
-// the key name, fingerprint, and the full `publicKey` content as
-// stored by DigitalOcean.
+// SSH public key registered to the DigitalOcean account and eligible
+// to be injected into new Droplets at creation time. Auditing these
+// keys shows which credentials can gain initial root access to fleet
+// instances. The `publicKey` field holds the full stored key material,
+// while `algorithm` and `bits` are parsed from it to flag weak or
+// legacy key types (for example ssh-dss or short RSA moduli).
 digitalocean.sshKey @defaults("id name") {
   // SSH key ID
   id int
@@ -944,15 +1685,29 @@ digitalocean.sshKey @defaults("id name") {
   fingerprint string
   // Public key content
   publicKey string
+  // Key algorithm parsed from the public key
+  //
+  // The key type as it appears in the public key, for example
+  // ssh-ed25519, ssh-rsa, ecdsa-sha2-nistp256, or ssh-dss. Empty when
+  // the public key cannot be parsed.
+  algorithm string
+  // Key size in bits parsed from the public key
+  //
+  // The modulus size for RSA/DSA keys or the curve size for ECDSA keys.
+  // Ed25519 keys report 256. 0 when the public key cannot be parsed or
+  // the size cannot be determined.
+  bits int
 }
 
 // DigitalOcean TLS certificate
 //
-// Examine a TLS certificate held by DigitalOcean for use with load
-// balancers, CDN endpoints, or App Platform. Surfaces the certificate
-// type (custom or lets_encrypt), the issuance state (pending,
-// verified, error), the SHA-1 fingerprint, the DNS names covered, and
-// the `notAfter` expiration timestamp.
+// TLS certificate held by DigitalOcean for use with load balancers,
+// CDN endpoints, or App Platform. Audit these to confirm certificates
+// are `verified` rather than stuck in `pending` or `error`, to catch
+// approaching expirations via `notAfter`, and to see which DNS names
+// each certificate covers. The `type` field distinguishes
+// operator-supplied certificates from DigitalOcean-managed Let's
+// Encrypt certificates.
 digitalocean.certificate @defaults("id name state") {
   // Certificate ID
   id string
@@ -974,17 +1729,19 @@ digitalocean.certificate @defaults("id name state") {
 
 // DigitalOcean container registry
 //
-// Examine the DigitalOcean Container Registry attached to the
-// account. Surfaces the registry name, region slug, subscription
-// tier, current storage usage in bytes, and creation timestamp.
-// Repositories hosted in the registry are reachable via
-// `repositories`; garbage collection history via
-// `garbageCollections`.
+// Private container image registry attached to the account, covering
+// its region, subscription tier, and current storage usage. Query it
+// to audit where images are stored, which tier caps storage and
+// bandwidth, and whether garbage collection is keeping stale layers in
+// check. The `repositories` field lists the hosted repositories and
+// `garbageCollections` returns the GC run history, most recent first.
 digitalocean.registry @defaults("name region") {
   // Registry name
   name string
   // Storage usage in bytes
   storageUsageBytes int
+  // Time storageUsageBytes was last recomputed (DigitalOcean updates it asynchronously); null when never computed
+  storageUsageBytesUpdatedAt time
   // Region slug
   region string
   // Time the resource was created
@@ -1021,10 +1778,10 @@ private digitalocean.registry.repository @defaults("name tagCount") {
 
 // Tag in a DigitalOcean container registry repository
 //
-// Examine a single tag of a repository — what manifest it points to
-// and when it was last pushed. Use this to audit tag drift (e.g.,
-// floating `:latest`), tag age, or to correlate running images with
-// their underlying digests.
+// Single published tag of a repository, recording the manifest digest
+// it resolves to and when it was last pushed. Useful for auditing tag
+// drift (a floating `:latest`), tag age, or correlating running images
+// with the underlying digests they were built from.
 private digitalocean.registry.repository.tag @defaults("repository tag updatedAt") {
   // Registry name (parent)
   registryName string
@@ -1044,9 +1801,11 @@ private digitalocean.registry.repository.tag @defaults("repository tag updatedAt
 
 // Manifest in a DigitalOcean container registry repository
 //
-// Examine a single manifest by digest. Enables audits like "no
-// untagged manifests older than N days" or "every running image is
-// pinned to a digest that still exists in the registry".
+// Single image manifest identified by its content digest, including the
+// tags that currently point at it (empty when untagged) and the layer
+// blobs it references. Supports audits like "no untagged manifests
+// older than N days" or "every running image is pinned to a digest that
+// still exists in the registry".
 private digitalocean.registry.repository.manifest @defaults("repository digest updatedAt") {
   // Registry name (parent)
   registryName string
@@ -1070,10 +1829,11 @@ private digitalocean.registry.repository.manifest @defaults("repository digest u
 
 // Garbage collection run for a DigitalOcean container registry
 //
-// Examine a single GC run — when it ran, what type, how much it
-// removed. Enables audits like "registry GC has run within the last
-// 30 days" so stale untagged manifests (and any vulnerable layers
-// they pin) don't accumulate indefinitely.
+// Single garbage collection run, recording when it ran, what type of
+// cleanup it performed, and how many blobs and bytes it removed.
+// Supports audits like "registry GC has run within the last 30 days"
+// so stale untagged manifests (and any vulnerable layers they pin)
+// don't accumulate indefinitely.
 private digitalocean.registry.garbageCollection @defaults("uuid status createdAt") {
   // UUID identifying this garbage collection run
   uuid string
@@ -1081,7 +1841,7 @@ private digitalocean.registry.garbageCollection @defaults("uuid status createdAt
   registryName string
   // Status
   //
-  // One of: requested, waiting, running, cancelling, cancelled, succeeded, failed.
+  // One of: requested, waiting, running, cancelling, cancelled, succeeded, failed, "waiting for write JWTs to expire", "scanning manifests", "deleting unreferenced blobs".
   status string
   // Garbage collection type
   //
@@ -1099,11 +1859,12 @@ private digitalocean.registry.garbageCollection @defaults("uuid status createdAt
 
 // DigitalOcean reserved IP
 //
-// Examine a reserved IP — DigitalOcean's static public IPv4 that can
-// be reassigned between droplets. Surfaces the IP address, region
-// slug, owning project, the `locked` flag (in-flight assignment
-// state), and the `dropletId` the IP is currently routed to (zero
-// when unassigned).
+// Static public IPv4 address that can be reassigned between droplets
+// without releasing it back to the shared pool. The `locked` flag
+// reports whether an assignment is in flight, and `dropletId` names
+// the droplet the IP currently routes to (zero when unassigned), so
+// you can audit which public addresses are attached where and which
+// are sitting idle.
 digitalocean.reservedIp @defaults("ip region") {
   // IP address
   ip string
@@ -1123,11 +1884,12 @@ digitalocean.reservedIp @defaults("ip region") {
 
 // DigitalOcean App Platform application
 //
-// Examine an App Platform application — DigitalOcean's managed PaaS
-// for containers and static sites. Surfaces the app's live URL, the
-// `activeDeploymentStatus`, the full `spec` describing services,
-// jobs, workers, static sites, ingresses, environment variables, and
-// linked databases, and creation/update timestamps.
+// Managed platform-as-a-service application on DigitalOcean, running
+// containers, static sites, jobs, workers, and functions. The `liveUrl`
+// and `liveDomain` report where the app is served, `activeDeploymentStatus`
+// its current rollout state, and `spec` the component layout. Query the
+// deployment history, active deployment, configured alerts, and running
+// instances to audit what an app runs and how it is exposed.
 digitalocean.app @defaults("id name") {
   // App ID
   id string
@@ -1137,11 +1899,15 @@ digitalocean.app @defaults("id name") {
   liveUrl string
   // Time the resource was created
   createdAt time
-  // Updated at
+  // Time the resource was last updated
   updatedAt time
   // Active deployment status
   activeDeploymentStatus string
-  // App spec
+  // App component layout
+  //
+  // Keys: name (the app name), and services, workers, jobs,
+  // staticSites, functions, each a list of that component type's
+  // names in the app spec.
   spec dict
   // Region slug the app runs in
   region string
@@ -1157,17 +1923,339 @@ digitalocean.app @defaults("id name") {
   project() digitalocean.project
   // ID of the currently active deployment; empty when the app has never deployed
   activeDeploymentId string
-  // Custom domains attached to the app (each dict: id, name, phase, certificateExpiresAt)
+  // Custom domains attached to the app
+  //
+  // Each entry: id, name, phase, certificateExpiresAt, and
+  // minimumTlsVersion, the lowest TLS version the domain will negotiate
+  // (empty when the app leaves it at the App Platform default).
   domains []dict
+  // Deployment history for the app, most recent first
+  deployments() []digitalocean.app.deployment
+  // Currently active deployment, resolved from activeDeploymentId; null when the app has never deployed
+  activeDeployment() digitalocean.app.deployment
+  // Alerts configured for the app and its components
+  alerts() []digitalocean.app.alert
+  // Ephemeral compute instances of the current deployment
+  //
+  // Each entry: componentName, componentType (UNKNOWN, SERVICE, WORKER, JOB), instanceName, instanceAlias.
+  instances() []dict
+  // Whether the app serves traffic to the internet
+  //
+  // True when the app has a live URL or a default ingress hostname and its
+  // spec declares at least one component that App Platform routes publicly:
+  // a service, a static site, or a functions component. An app built only
+  // from workers and jobs runs without a public route.
+  isPublic() bool
+  // Whether enhanced threat control is enabled
+  //
+  // Layer 7 denial-of-service protection that answers suspicious API
+  // requests with 403 Forbidden.
+  enhancedThreatControlEnabled bool
+  // Name of the response header the ingress sets, or of the request header it strips; empty when no secure header is configured
+  secureHeaderKey string
+  // Value the ingress sets the secure header to; empty when the header is stripped rather than set
+  secureHeaderValue string
+  // Whether the secure header is stripped from incoming requests instead of set on responses
+  secureHeaderRemoved bool
+  // CORS policies configured on the app's ingress routes
+  //
+  // Each entry: path (the route the policy applies to), allowOrigins,
+  // allowMethods, allowHeaders, exposeHeaders, maxAge, allowCredentials.
+  // Each allowOrigins entry is written as "<kind>:<value>" where kind is
+  // exact, prefix, or regex, because the kind decides how broadly the
+  // origin matches. A policy that allows credentials alongside a
+  // permissive origin lets any site read authenticated responses.
+  corsPolicies []dict
+  // Environment variables defined for the app and its components
+  //
+  // Each entry: component (empty for variables shared by the whole app),
+  // key, scope, and type. A type of SECRET means the value is encrypted at
+  // rest, GENERAL means it is stored in plain text. Values are never
+  // exposed, so this reports where a credential is held rather than what
+  // it is.
+  envVars []dict
+  // VPC the app's components run inside; null on an app with no VPC attachment
+  vpc() digitalocean.vpc
+  // Private addresses the app holds inside its VPC
+  //
+  // Addresses allocated to the app's components within the attached VPC.
+  // These are the sources a VPC-internal firewall rule has to admit for
+  // the app to reach a database or another private service. Empty on an
+  // app with no VPC attachment.
+  vpcEgressIps []string
+  // Fixed public addresses the app egresses from
+  //
+  // Dedicated egress addresses, available on higher App Platform tiers,
+  // that give an app a stable public source address for outbound traffic.
+  // Without them an app egresses from a shared pool, so a downstream
+  // allowlist cannot be narrowed to this app alone.
+  dedicatedIps() []digitalocean.app.dedicatedIp
+  // Base hostname the app's default ingress is published under
+  liveUrlBase string
+  // Cloud-native-buildpack stack the app builds against
+  //
+  // Version of the underlying build stack, which decides the set of
+  // buildpacks available to the app. Empty on an app deployed from a
+  // container image rather than built from source.
+  buildpackStackId string
+  // Buildpacks the app builds with
+  buildpacks() []digitalocean.app.buildpack
+  // Deployment the app is pinned to, overriding automatic promotion; null when not pinned
+  pinnedDeployment() digitalocean.app.deployment
+  // Deployment currently rolling out; null when no deployment is in flight
+  inProgressDeployment() digitalocean.app.deployment
+  // Third-party services the app forwards its logs to
+  logDestinations() []digitalocean.app.logDestination
+  // Services, workers, jobs, static sites, and functions the app is built from
+  components() []digitalocean.app.component
+}
+
+// Component of an App Platform application
+//
+// One service, worker, job, static site, or functions component declared
+// in an app spec, selected by `name`. Reports where the component's code
+// comes from: a Git repository (`repository` and `branch`) or a container
+// image (`imageRegistryType`, `imageRegistry`, `repository`, `imageTag`,
+// and `imageDigest`), and whether `deployOnPush` ships every new commit
+// or image push straight to production. An image referenced by tag
+// rather than digest runs whatever the tag points to at deploy time.
+// `registryCredentialsConfigured` reports whether pull credentials are
+// set for a private registry; the credentials themselves are never
+// exposed. Also reports sizing, autoscaling bounds, the HTTP and internal
+// ports, and the public `routes` the ingress sends to the component.
+// Database components are not included.
+private digitalocean.app.component @defaults("name type sourceType") {
+  // ID of the app the component belongs to
+  appId string
+  // Component name
+  name string
+  // Component type (service, worker, job, static_site, or functions)
+  type string
+  // Where the component's code comes from
+  //
+  // One of github, gitlab, bitbucket, git, or image. Empty when the spec
+  // declares no source.
+  sourceType string
+  // Source repository
+  //
+  // The owner/name repository for github, gitlab, and bitbucket sources,
+  // the clone URL for a git source, or the image repository for an image
+  // source. Credentials embedded in a clone URL are removed.
+  repository string
+  // Branch the component builds from; empty for image sources
+  branch string
+  // Whether a new commit or image push is deployed automatically
+  deployOnPush bool
+  // Registry type of an image source (DOCR, DOCKER_HUB, or GHCR); empty for Git sources
+  imageRegistryType string
+  // Registry name or account of an image source; empty for Git sources and DOCR
+  imageRegistry string
+  // Image tag the component deploys; empty when the image is referenced by digest or the source is Git
+  imageTag string
+  // Image digest the component deploys; empty when the image is referenced by tag or the source is Git
+  imageDigest string
+  // Whether pull credentials are configured for the image registry
+  registryCredentialsConfigured bool
+  // Instance size slug; empty for static sites and functions
+  instanceSizeSlug string
+  // Fixed number of instances; zero when the component autoscales or has no instances
+  instanceCount int
+  // Minimum number of instances when autoscaling; null when the component does not autoscale
+  autoscalingMinInstances int
+  // Maximum number of instances when autoscaling; null when the component does not autoscale
+  autoscalingMaxInstances int
+  // Port the service listens on for HTTP traffic; null for components other than services and when the platform default applies
+  httpPort int
+  // Ports the service exposes only to other components of the app
+  internalPorts []int
+  // Public path prefixes the ingress routes to the component
+  routes []string
+}
+
+// Log-forwarding destination of an App Platform application
+//
+// One third-party service a component of an app ships its logs to.
+// Application logs routinely carry tokens, session identifiers, and
+// personal data, so `tlsInsecure` matters: it disables certificate
+// verification on the delivery connection, which leaves the log stream
+// open to interception. The `provider` field names the managed service
+// the logs go to, `endpoint` the address for a self-hosted destination,
+// and `headerKeys` the names of the headers attached to each delivery.
+// Header values are withheld because they carry the destination's API
+// token.
+private digitalocean.app.logDestination @defaults("name provider tlsInsecure") {
+  // ID of the app the destination is declared on
+  appId string
+  // Name of the component that ships to the destination
+  component string
+  // Operator-chosen label for the destination
+  name string
+  // Managed service the logs are shipped to
+  //
+  // One of "papertrail", "datadog", "logtail", "opensearch", or
+  // "custom" when the destination is a self-hosted endpoint.
+  provider string
+  // Address logs are delivered to for a self-hosted destination; empty for a managed service
+  //
+  // A password embedded in the address is removed.
+  endpoint string
+  // Whether certificate verification is disabled on the delivery connection
+  //
+  // True means the log stream is shipped without verifying the receiving
+  // service's certificate, so anything able to intercept the connection
+  // can read or alter it.
+  tlsInsecure bool
+  // Names of the headers attached to each delivery
+  //
+  // Header values are withheld because they routinely carry the
+  // destination's API token.
+  headerKeys []string
+  // Endpoint of the OpenSearch cluster logs are shipped to; empty for other destinations
+  opensearchEndpoint string
+  // Index or data stream logs are written to in the OpenSearch cluster; empty for other destinations
+  opensearchIndexName string
+  // Name of the managed database cluster backing the OpenSearch destination; empty when the destination is self-hosted
+  opensearchClusterName string
+  // Managed database cluster backing the OpenSearch destination; null when the destination is self-hosted
+  opensearchCluster() digitalocean.database
+}
+
+// Dedicated egress address of an App Platform application
+//
+// One fixed public address an app sends outbound traffic from. The `ip`
+// is what a downstream allowlist has to admit, and `status` reports
+// whether the address is assigned and usable yet.
+private digitalocean.app.dedicatedIp @defaults("ip status") {
+  // Address ID
+  id string
+  // Public IPv4 address
+  ip string
+  // Assignment status of the address (UNKNOWN, ASSIGNING, ASSIGNED, or REMOVED)
+  status string
+}
+
+// Buildpack used by an App Platform application
+//
+// One cloud-native buildpack that compiles a source-built component. The
+// `id` names the buildpack, `version` is the full semantic version it
+// resolved to, and `majorVersion` is the line the app is pinned to.
+// `latest` reports whether that line is the newest available, which is
+// the signal that a component builds on a stack that no longer receives
+// updates.
+private digitalocean.app.buildpack @defaults("name version latest") {
+  // Buildpack ID
+  id string
+  // Human-readable buildpack name
+  name string
+  // Full semantic version the buildpack resolved to
+  version string
+  // Major version line the buildpack is pinned to
+  majorVersion int
+  // Whether the pinned major version line is the newest available
+  latest bool
+  // Link to the buildpack's documentation
+  docsLink string
+}
+
+// DigitalOcean App Platform deployment
+//
+// Single deployment of an App Platform application. The `cause` records
+// what triggered it (a manual action, a git push, or a container-image
+// push), `phase` its lifecycle state, `tierSlug` the tier it ran on,
+// `previousDeploymentId` the deployment it replaced, and `loadBalancerId`
+// the load balancer serving it. The component-name lists (services,
+// workers, jobs, staticSites, functions) record what the deployment ran,
+// and the progress-step counts report how the build and deploy stages
+// resolved. Audit change cadence, spot failed or superseded rollouts, and
+// correlate a running app with the exact revision it serves.
+private digitalocean.app.deployment @defaults("id phase cause") {
+  // Deployment ID
+  id string
+  // ID of the parent app
+  appId string
+  // What triggered the deployment (e.g., a manual action, a git push, an image push)
+  cause string
+  // Lifecycle phase (UNKNOWN, PENDING_BUILD, BUILDING, PENDING_DEPLOY, DEPLOYING, ACTIVE, SUPERSEDED, ERROR, CANCELED)
+  phase string
+  // App tier slug active for this deployment
+  tierSlug string
+  // ID of the deployment this one replaced; empty for the first deployment
+  previousDeploymentId string
+  // Deployment this one replaced; null for the first deployment
+  previousDeployment() digitalocean.app.deployment
+  // ID of the load balancer serving this deployment; empty when none
+  loadBalancerId string
+  // Load balancer serving this deployment; null when the deployment has no dedicated load balancer
+  loadBalancer() digitalocean.loadBalancer
+  // Names of the service components in this deployment
+  services []string
+  // Names of the worker components in this deployment
+  workers []string
+  // Names of the job components in this deployment
+  jobs []string
+  // Names of the static-site components in this deployment
+  staticSites []string
+  // Names of the functions components in this deployment
+  functions []string
+  // Number of build/deploy steps that completed successfully
+  progressSuccessSteps int
+  // Number of build/deploy steps that errored
+  progressErrorSteps int
+  // Total number of build/deploy steps
+  progressTotalSteps int
+  // Time the deployment was created
+  createdAt time
+  // Time the deployment was last updated
+  updatedAt time
+  // Time the deployment's phase last changed
+  phaseLastUpdatedAt time
+}
+
+// DigitalOcean App Platform alert
+//
+// Single alert configured on an App Platform application or one of its
+// components. `rule` identifies the metric or event the alert fires on
+// (for example CPU_UTILIZATION or DEPLOYMENT_FAILED), with `operator`,
+// `value`, and `window` describing the threshold for metric alerts.
+// `componentName` is empty for app-level alerts, `disabled` reports
+// whether the alert is currently off, `phase` its configuration state,
+// and `emails` and `slackWebhookCount` the notification destinations.
+// Use this to confirm that failure and resource-pressure alerting is
+// actually enabled on production apps.
+private digitalocean.app.alert @defaults("id rule phase") {
+  // Alert ID
+  id string
+  // ID of the parent app
+  appId string
+  // Component the alert applies to; empty for app-level alerts
+  componentName string
+  // Metric or event the alert fires on (e.g., CPU_UTILIZATION, RESTART_COUNT, DEPLOYMENT_FAILED)
+  rule string
+  // Whether the alert is disabled
+  disabled bool
+  // Comparison operator (GREATER_THAN, LESS_THAN); empty for event alerts
+  operator string
+  // Threshold value; meaningful only for metric alerts
+  value float
+  // Evaluation window (e.g., FIVE_MINUTES, TEN_MINUTES, ONE_HOUR); empty for event alerts
+  window string
+  // Configuration phase (UNKNOWN, PENDING, CONFIGURING, ACTIVE, ERROR)
+  phase string
+  // Email destinations notified when the alert triggers
+  emails []string
+  // Number of Slack webhook destinations configured for the alert
+  slackWebhookCount int
 }
 
 // DigitalOcean alert policy
 //
-// Examine a DigitalOcean monitoring alert policy. Surfaces the alert
-// `type` (e.g., `v1/insights/droplet/cpu`), the
-// `compare` operator and `value` threshold, the evaluation `window`,
-// the `enabled` flag, the entities and tags the alert applies to, and
-// the email and Slack notification targets.
+// Monitoring alert policy that fires when a metric crosses a threshold
+// or an event occurs on the resources it watches. Use it to audit which
+// conditions raise alerts, whether alerting is active (`enabled`), and
+// where notifications are delivered. The `type` field (for example
+// `v1/insights/droplet/cpu`) selects the metric or event being watched.
+// The monitored resources resolve to `droplets`, `databases`,
+// `loadBalancers`, and `kubernetesClusters` from the raw `entities` IDs.
 digitalocean.alertPolicy @defaults("uuid type enabled") {
   // Alert policy UUID
   uuid string
@@ -1185,19 +2273,33 @@ digitalocean.alertPolicy @defaults("uuid type enabled") {
   enabled bool
   // Entity IDs being monitored
   entities []string
+  // Droplets monitored by this policy, resolved from entity IDs; empty for policies that target non-droplet entities
+  droplets() []digitalocean.droplet
+  // Managed databases monitored by this policy, resolved from entity IDs; empty for policies that target other entity types
+  databases() []digitalocean.database
+  // Load balancers monitored by this policy, resolved from entity IDs; empty for policies that target other entity types
+  loadBalancers() []digitalocean.loadBalancer
+  // Kubernetes clusters monitored by this policy, resolved from entity IDs; empty for policies that target other entity types
+  kubernetesClusters() []digitalocean.kubernetes.cluster
   // Tags
   tags []string
   // Email notification targets
   alertEmails []string
   // Slack notification targets
+  //
+  // One entry per configured Slack destination. Each dict has a
+  // `channel` (the Slack channel name). The incoming webhook URL is
+  // withheld because anyone holding it can post to the channel.
   alertSlack []dict
 }
 
 // DigitalOcean uptime check
 //
-// Examine a DigitalOcean uptime check. Surfaces the check `type`
-// (ping, http, https), the `target` URL or IP being probed, the list
-// of monitoring `regions` running the check, and the `enabled` flag.
+// Endpoint availability monitor that probes a target URL or IP from
+// one or more DigitalOcean regions. Use it to confirm that public
+// endpoints are being watched, that monitoring runs from the intended
+// regions, and that a check has not been left disabled. The `type`
+// field records the probe protocol (ping, http, or https).
 digitalocean.uptimeCheck @defaults("id name type") {
   // Check ID
   id string
@@ -1215,10 +2317,12 @@ digitalocean.uptimeCheck @defaults("id name type") {
 
 // DigitalOcean CDN endpoint
 //
-// Examine a DigitalOcean CDN endpoint fronting a Spaces bucket.
-// Surfaces the origin Spaces endpoint, the public CDN endpoint URL,
-// the cache TTL, the bound TLS certificate ID, the custom domain when
-// configured, and the creation timestamp.
+// Content delivery network endpoint that fronts a Spaces bucket, caching
+// its objects at edge locations for faster public delivery. Useful for
+// auditing how bucket content is exposed: the origin Spaces endpoint it
+// serves, the public CDN URL, cache time-to-live, any custom domain, and
+// the TLS certificate securing that domain (the `certificate` accessor
+// resolves the bound certificate, or is null when none is configured).
 digitalocean.cdn @defaults("id origin") {
   // CDN ID
   id string
@@ -1238,12 +2342,43 @@ digitalocean.cdn @defaults("id origin") {
   createdAt time
 }
 
+// DigitalOcean organization team
+//
+// Team within a DigitalOcean organization, which is the boundary
+// resources and access are divided along. The `memberCount` field
+// reports how many people the team carries, `status` distinguishes a
+// team that has joined the organization from one still pending, and
+// `joinedOrganizationAt` dates the join. Teams are only visible to a
+// token scoped to an organization; a token scoped to a plain account
+// reports none. The DigitalOcean API exposes no per-member listing, so
+// individual members and the roles they hold are not queryable.
+digitalocean.team @defaults("name status memberCount") {
+  // Unique identifier for the team
+  id int
+  // Universal unique identifier for the team
+  uuid string
+  // Human-readable name for the team
+  name string
+  // Email address associated with the team
+  email string
+  // Number of members on the team
+  memberCount int
+  // Team's membership status within the organization
+  //
+  // Either "joined" for a team that is part of the organization, or
+  // "pending" for one that has been invited and has not accepted.
+  status string
+  // Time the team joined the organization
+  joinedOrganizationAt time
+}
+
 // DigitalOcean tag
 //
-// Examine a DigitalOcean tag — the cross-resource label used to group
-// droplets, volumes, load balancers, databases, and reserved IPs.
-// Surfaces the tag name and the total count of resources currently
-// labelled with the tag.
+// Cross-resource label used to group droplets, volumes, load balancers,
+// databases, and reserved IPs. Auditing tags helps confirm that assets
+// are consistently labelled for cost allocation, access control, and
+// automation. The `resourceCount` field reports how many resources are
+// currently labelled with the tag.
 digitalocean.tag @defaults("name") {
   // Tag name
   name string
@@ -1253,99 +2388,209 @@ digitalocean.tag @defaults("name") {
 
 // DigitalOcean Spaces access key
 //
-// Examine an access key for DigitalOcean Spaces — the S3-compatible
-// object storage. Surfaces the key name, access key ID, the
-// `grants` list (per-bucket permission bindings), and the creation
-// timestamp. The matching secret is only returned at creation time
-// and is not exposed here.
+// Access key for DigitalOcean Spaces, the S3-compatible object
+// storage service. The `grants` list holds the per-bucket permission
+// bindings that scope what the key can do, making this the place to
+// audit whether a key is over-privileged (full access rather than
+// read-only, or unscoped to a single bucket). The matching secret is
+// only returned at creation time and is not exposed here.
 digitalocean.spacesKey @defaults("name accessKey") {
   // Key name
   name string
   // Access key ID
   accessKey string
-  // Grants (bucket permissions)
-  grants []dict
+  // Per-bucket permission bindings
+  //
+  // Deprecated in favor of bucketGrants, which resolves each grant's
+  // bucket to the bucket resource. Each entry is a dict with `bucket`
+  // (the Spaces bucket the grant applies to; empty scopes the key to all
+  // buckets) and `permission` (one of "read", "readwrite", or
+  // "fullaccess").
+  grants @maturity("deprecated") []dict
+  // Per-bucket permission bindings, with each grant resolved to its bucket
+  bucketGrants() []digitalocean.spacesKey.grant
   // Time the resource was created
   createdAt time
 }
 
 // DigitalOcean Spaces bucket
 //
-// Examine a Spaces bucket — DigitalOcean's S3-compatible object
-// storage. Auditing requires Spaces credentials supplied via
-// `DIGITALOCEAN_SPACES_KEY` and `DIGITALOCEAN_SPACES_SECRET`
-// environment variables (an optional `DIGITALOCEAN_SPACES_REGION`
-// scopes the listing to one region; otherwise the provider iterates
-// the known Spaces regions). Surfaces the bucket `region` and
-// `createdAt`, the resolved access posture
-// (`publicAccessBlocked`, `publicReadAcl`, `publicWriteAcl`,
-// `authenticatedReadAcl`), the encryption settings
-// (`encryptionEnabled`, `encryptionAlgorithm`, `encryptionKmsKeyId`),
-// `versioningStatus` ("Enabled", "Suspended", or empty), the raw
-// `policy` document (nil when unset), `corsRules`, and the
-// `lifecycleRules` list. Use this to catch public buckets, missing
-// at-rest encryption, missing versioning, and overly permissive
-// CORS / lifecycle policies.
-digitalocean.spacesBucket @defaults("name region publicAccessBlocked encryptionEnabled versioningStatus") {
+// Object storage bucket in DigitalOcean Spaces, the S3-compatible
+// storage service. The resolved access posture (anonymous and
+// authenticated-read ACLs and the bucket policy, combined by
+// `isPublic`), at-rest encryption settings, versioning state, CORS
+// rules, and lifecycle rules make this the place to catch publicly
+// readable or writable buckets, unencrypted data, missing versioning,
+// and overly permissive CORS or lifecycle configuration. Spaces
+// implements a subset of S3, so controls S3 offers but Spaces does not
+// read as null rather than as a setting that is switched off; see
+// `publicAccessBlocked`. Auditing requires
+// Spaces credentials supplied via the `DIGITALOCEAN_SPACES_KEY` and
+// `DIGITALOCEAN_SPACES_SECRET` environment variables; an optional
+// `DIGITALOCEAN_SPACES_REGION` scopes the listing to one region,
+// otherwise the provider iterates the known Spaces regions.
+// Permission binding on a DigitalOcean Spaces access key
+//
+// One grant on a Spaces access key, pairing the bucket it applies to
+// with the level of access it confers. The `bucket` field resolves to
+// the bucket resource, so a query can walk from a key straight to the
+// access posture of what it can reach and find a read-write grant
+// pointing at an anonymously readable bucket. A grant whose bucket name
+// is empty scopes the key to every bucket in the account, and `bucket`
+// is null on such a grant because it names no single bucket.
+private digitalocean.spacesKey.grant @defaults("bucketName permission") {
+  // Access key ID of the key the grant belongs to
+  accessKey string
+  // Name of the bucket the grant applies to; empty when the grant covers every bucket in the account
+  bucketName string
+  // Level of access the grant confers
+  //
+  // One of "read", "readwrite", or "fullaccess".
+  permission string
+  // Whether the grant covers every bucket in the account rather than one named bucket
+  allBuckets bool
+  // Bucket the grant applies to
+  //
+  // Null when the grant covers every bucket rather than one named bucket,
+  // and null when no bucket by that name is present in the account.
+  // Reading it needs the Spaces credentials the bucket listing needs.
+  bucket() digitalocean.spacesBucket
+}
+
+digitalocean.spacesBucket @defaults("name region encryptionEnabled versioningStatus") {
   // Bucket name (globally unique within DigitalOcean Spaces)
   name string
   // Spaces region the bucket lives in (e.g., "nyc3", "sfo3", "ams3", "sgp1", "fra1", "syd1", "tor1", "blr1")
   region string
   // Time the bucket was created
   createdAt time
-  // Whether the bucket-level Public Access Block is fully in effect (all four block flags on)
+  // Whether the bucket-level public-access block is fully in effect
   //
-  // True when `BlockPublicAcls`, `BlockPublicPolicy`, `IgnorePublicAcls`, and `RestrictPublicBuckets` are all set on the bucket's `PublicAccessBlock` configuration. DigitalOcean's S3-compatible API exposes this at the bucket level only — there is no account-wide toggle. False can mean either an explicit weakening or no configuration at all.
+  // True when all four block-public-access controls are set on the
+  // bucket. Null on DigitalOcean, because Spaces does not implement the
+  // block-public-access API and answers that the operation is not
+  // supported, so there is no setting to read; a null here reports that
+  // the control does not exist rather than that it is switched off.
+  // Determine whether a bucket is reachable anonymously with `isPublic`
+  // and `hasWildcardPolicy`, which read the bucket ACL and policy
+  // directly.
   publicAccessBlocked bool
-  // Whether the bucket ACL grants READ to the AllUsers group (anonymous read)
+  // Whether the bucket ACL grants READ to the AllUsers group
+  //
+  // Anonymous read. Null when the bucket ACL could not be read, either
+  // because the credentials are not allowed to read it or because the
+  // service does not implement the call, so an unread ACL is not
+  // mistaken for one that grants nothing.
   publicReadAcl bool
-  // Whether the bucket ACL grants WRITE to the AllUsers group (anonymous write — should always be false)
+  // Whether the bucket ACL grants WRITE to the AllUsers group
+  //
+  // Anonymous write, which should always be false. Null when the bucket
+  // ACL could not be read.
   publicWriteAcl bool
-  // Whether the bucket ACL grants READ to the AuthenticatedUsers group (any DO/AWS-compatible account can list)
+  // Whether the bucket ACL grants READ to the AuthenticatedUsers group
+  //
+  // That group covers every account on the platform rather than only this
+  // one, so such a grant lets any DigitalOcean or S3-compatible account
+  // list the bucket. Null when the bucket ACL could not be read.
   authenticatedReadAcl bool
-  // Raw ACL grants (each entry: granteeType, granteeUri, granteeDisplayName, permission)
+  // Raw ACL grants
+  //
+  // Each entry: granteeType, granteeUri, granteeDisplayName, permission.
+  // Null when the bucket ACL could not be read, as distinct from an empty
+  // list, which means the ACL was read and carries no grants.
   aclGrants []dict
   // Whether server-side encryption is configured on the bucket
+  //
+  // False when the service answered that nothing is configured, which is a
+  // real answer. Null when the encryption configuration could not be read
+  // at all, so an unread bucket is not reported as unencrypted.
   encryptionEnabled bool
-  // Default encryption algorithm ("AES256" or "aws:kms"); empty when encryption is not configured
+  // Default encryption algorithm
+  //
+  // Either "AES256" or "aws:kms". Empty when encryption is not configured,
+  // and null when the encryption configuration could not be read.
   encryptionAlgorithm string
   // KMS key id used for default encryption when `encryptionAlgorithm` is "aws:kms"
+  //
+  // Null when the encryption configuration could not be read.
   encryptionKmsKeyId string
-  // Versioning state ("Enabled", "Suspended"); empty when versioning has never been configured
+  // Versioning state
+  //
+  // Either "Enabled" or "Suspended", and empty when versioning has never
+  // been configured. Null when the versioning configuration could not be
+  // read, so an unread bucket is not reported as unversioned.
   versioningStatus string
   // Whether MFA delete is required for permanent version deletion
+  //
+  // Null when the versioning configuration could not be read.
   mfaDeleteEnabled bool
-  // Bucket policy JSON document; nil when no policy is set
+  // Bucket policy JSON document
+  //
+  // Null when no policy is set, and also when the policy could not be
+  // read. Use `hasWildcardPolicy`, which reports null in the second case
+  // rather than answering as though the policy were absent.
   policy dict
   // CORS rules configured on the bucket
   //
-  // Each entry: allowedHeaders, allowedMethods, allowedOrigins, exposeHeaders, maxAgeSeconds, id.
+  // Each entry: allowedHeaders, allowedMethods, allowedOrigins,
+  // exposeHeaders, maxAgeSeconds, id. Null when the CORS configuration
+  // could not be read, as distinct from an empty list, which means it was
+  // read and no rules are set.
   corsRules []dict
   // Lifecycle rules configured on the bucket
   //
-  // Each entry: id, status, prefix, expirationDays, noncurrentVersionExpirationDays, abortIncompleteMultipartUploadDays.
+  // Each entry: id, status, prefix, expirationDays,
+  // noncurrentVersionExpirationDays, abortIncompleteMultipartUploadDays.
+  // Null when the lifecycle configuration could not be read, as distinct
+  // from an empty list.
   lifecycleRules []dict
+  // Whether the bucket's contents are reachable by anyone on the internet
+  //
+  // True when an ACL grant targets the all-users or authenticated-users
+  // group, or the bucket policy allows the wildcard principal, and public
+  // access is not blocked. The authenticated-users group covers every
+  // account on the platform rather than only this one, so it counts as
+  // public. Spaces has no block-public-access control to override those
+  // grants, so on DigitalOcean the verdict rests on the ACL and the
+  // policy alone.
+  //
+  // A grant that was read and is public settles the verdict as true
+  // whatever else could not be read. When nothing read says public but
+  // the ACL or the policy could not be read, the verdict is null rather
+  // than false, because clearing the bucket would rest on an answer
+  // nobody gave.
+  isPublic() bool
+  // Whether the bucket policy allows the wildcard principal
+  //
+  // True when any Allow statement in the bucket policy names "*" as its
+  // principal, which grants the action to every requester. This describes
+  // the policy alone; isPublic combines it with the ACL grants to say
+  // whether the bucket is actually reachable. Null when the policy could
+  // not be read, which is not the same as a bucket that has no policy.
+  hasWildcardPolicy() bool
 }
 
 // DigitalOcean image
 //
-// Examine a DigitalOcean image — the bootable disk template a droplet
-// is created from. Surfaces the image `type` (distribution,
-// application, snapshot, backup, custom, admin), the `distribution`
-// and `slug`, the `public` flag (whether the image is shared with
-// every DigitalOcean account or kept private to this one), the
-// `regions` the image is available in, the minimum disk size and
-// on-disk size, the processing `status` and any `errorMessage`,
-// applied tags, and the creation timestamp. Select an image by its
-// numeric `id`. The `images` collection lists the account's own
-// images — custom uploads, snapshots, and backups — while a droplet's
-// `baseImage` may also reference a public DigitalOcean catalog image.
+// Bootable disk template a droplet is created from. The `type` field
+// distinguishes base, distribution, application, snapshot, backup,
+// custom, and admin images, and the `public` flag reports whether the image is
+// shared with every DigitalOcean account or kept private to this one,
+// which matters when auditing where droplets boot from. Also queryable
+// are the `distribution` and `slug`, the `regions` the image is
+// available in, minimum and on-disk sizes, the processing `status` and
+// any `errorMessage`, applied tags, and the creation timestamp. Select
+// an image by its numeric `id`, for example
+// `digitalocean.image(id: 123456789)`. The `images` collection lists
+// the account's own images (custom uploads, snapshots, and backups),
+// while a droplet's `baseImage` may reference a public DigitalOcean
+// catalog image.
 digitalocean.image @defaults("id name distribution") {
   // Image ID
   id int
   // Image name
   name string
-  // Image type (distribution, application, snapshot, backup, custom, admin)
+  // Image type (base, distribution, application, snapshot, backup, custom, admin)
   type string
   // Operating system distribution
   distribution string
@@ -1373,12 +2618,12 @@ digitalocean.image @defaults("id name distribution") {
 
 // DigitalOcean snapshot
 //
-// Examine a DigitalOcean snapshot — a point-in-time copy of a droplet
-// or a block-storage volume. Surfaces the `resourceType` (droplet or
-// volume) and the `resourceId` of the source, the `regions` the
-// snapshot is replicated to, the minimum disk size and on-disk size,
-// applied tags, and the creation timestamp. Select a snapshot by its
-// `id`.
+// Point-in-time copy of a droplet or a block-storage volume. The
+// `resourceType` field records the source kind (droplet or volume) and
+// determines which source reference is populated: `droplet` for a
+// droplet snapshot, `volume` for a volume snapshot. Auditing snapshots
+// helps track backup coverage, snapshot sprawl, and which regions
+// copies are replicated to. Select a snapshot by its `id`.
 digitalocean.snapshot @defaults("id name resourceType") {
   // Snapshot ID
   id string
@@ -1388,6 +2633,10 @@ digitalocean.snapshot @defaults("id name resourceType") {
   resourceId string
   // Type of the source resource (droplet, volume)
   resourceType string
+  // Source droplet the snapshot was taken from; null unless resourceType is "droplet"
+  droplet() digitalocean.droplet
+  // Source block-storage volume the snapshot was taken from; null unless resourceType is "volume"
+  volume() digitalocean.volume
   // Region slugs the snapshot is replicated to
   regions []string
   // Minimum disk size a droplet must have to use this snapshot, in gigabytes
@@ -1400,14 +2649,59 @@ digitalocean.snapshot @defaults("id name resourceType") {
   createdAt time
 }
 
+// DigitalOcean Droplet size
+//
+// Hardware tier a Droplet or Kubernetes worker node runs on, selected
+// by its `slug` (for example `s-1vcpu-1gb` or `g-2vcpu-8gb`). Surfaces
+// the allocated `memory`, `vcpus` and `disk`, the `priceMonthly` and
+// `priceHourly` in US dollars, the included outbound `transfer`
+// allowance, `gpuInfo` for GPU tiers, the `regions` where the size can
+// currently be provisioned, and the `available` flag reporting whether
+// it can be provisioned at all. Select a single size by slug, for
+// example `digitalocean.size(slug: "s-1vcpu-1gb")`.
+digitalocean.size @defaults("slug vcpus memory priceMonthly") {
+  // Size slug, for example s-1vcpu-1gb
+  slug string
+  // Memory allocated to the size, in megabytes
+  memory int
+  // Number of virtual CPUs allocated to the size
+  vcpus int
+  // Disk capacity allocated to the size, in gigabytes
+  disk int
+  // Monthly price in US dollars
+  priceMonthly float
+  // Hourly price in US dollars
+  priceHourly float
+  // Included outbound transfer allowance, in terabytes
+  transfer float
+  // Whether the size can currently be provisioned
+  available bool
+  // Region slugs where the size is offered
+  regions []string
+  // Human-readable description of the size
+  description string
+  // GPU details for GPU sizes
+  //
+  // Null on non-GPU sizes. On GPU sizes the dict carries `count`
+  // (number of GPUs), `model` (GPU model name), a nested `vram`
+  // dict with `amount` and `unit` describing the video memory per GPU,
+  // and `supportedPartitionModes` listing the GPU partition modes the
+  // size offers. DigitalOcean returns `supportedPartitionModes` only to
+  // callers with access to GPU partitioning, so it is absent for
+  // accounts without the feature.
+  gpuInfo dict
+}
+
 // DigitalOcean Functions namespace
 //
-// Examine a DigitalOcean Functions namespace — the deployment unit
-// that groups serverless functions and their schedules. Surfaces the
-// namespace `label`, the API host serving the functions, the region,
-// the internal namespace identifier, and the `triggers()` that invoke
-// functions on a schedule.
-digitalocean.function.namespace @defaults("uuid label region") {
+// Deployment unit that groups serverless functions and their schedules
+// in a region. Each namespace has a human-readable `label`, an API host
+// that serves its functions, and an internal `namespace` identifier used
+// in API paths. The functions deployed here, the scheduled triggers that
+// invoke them, and the access keys issued for the namespace API are all
+// queryable, making this the entry point for inventorying serverless
+// workloads and auditing the credentials that reach them.
+digitalocean.function.namespace @defaults("namespace label region") {
   // Namespace UUID
   uuid string
   // Internal namespace identifier used in API paths
@@ -1424,9 +2718,89 @@ digitalocean.function.namespace @defaults("uuid label region") {
   updatedAt time
   // Scheduled triggers in the namespace
   triggers() []digitalocean.function.trigger
+  // Functions (actions) deployed in the namespace
+  functions() []digitalocean.function.action
+  // Access keys issued for the namespace's Functions API (secret values are never exposed)
+  accessKeys() []digitalocean.function.accessKey
+}
+
+// DigitalOcean Functions access key
+//
+// An access key issued for a Functions namespace's API. The secret value
+// is never exposed; only metadata is surfaced: the key id and name, the
+// creation and last-used times, and the expiry. Use `lastUsedAt` and
+// `expiresAt` to audit for stale or never-expiring namespace credentials.
+private digitalocean.function.accessKey @defaults("name lastUsedAt") {
+  // UUID of the parent namespace
+  namespaceUuid string
+  // Access key ID
+  id string
+  // Key name
+  name string
+  // Time the key was created
+  createdAt time
+  // Time the key was last updated
+  updatedAt time
+  // Time the key was last used; null when the key has never been used
+  lastUsedAt time
+  // Time the key expires; null when the key does not expire
+  expiresAt time
+}
+
+// DigitalOcean Functions action
+//
+// Single function (action) deployed in a Functions namespace, covering
+// the action `name` and the `package` it belongs to, the `runtime` it
+// executes on, the resource limits (`timeoutMs`, `memoryMb`, `logSizeMb`,
+// `concurrency`), and its security posture: `webExported` flags an action
+// published as a raw public HTTP endpoint, and `requiresApiKey` reports
+// whether such a web action still demands authentication. Query it to
+// audit for unauthenticated web functions and to inventory the serverless
+// code running in an account.
+private digitalocean.function.action @defaults("name runtime updatedAt") {
+  // UUID of the parent namespace
+  namespaceUuid string
+  // Action name
+  name string
+  // Package the action belongs to; empty for actions at the namespace root
+  package string
+  // Version assigned to the action by the platform
+  version string
+  // Runtime the action executes on (e.g., nodejs:18, python:3.11, go:1.21)
+  runtime string
+  // Whether the action is published as a public web endpoint
+  webExported bool
+  // Whether an invoker must present an API key; meaningful only when webExported is true
+  requiresApiKey bool
+  // Execution timeout, in milliseconds
+  timeoutMs int
+  // Memory limit, in megabytes
+  memoryMb int
+  // Log size limit, in megabytes
+  logSizeMb int
+  // Number of concurrent activations allowed
+  concurrency int
+  // Time the action was last updated
+  updatedAt time
+  // Web endpoint the action is published on; empty when the action is not web-exported
+  webUrl string
+  // Whether anyone on the internet can invoke the action
+  //
+  // True when the action is web-exported and does not require an API key,
+  // which leaves the webUrl endpoint open to unauthenticated callers. A
+  // web-exported action that requires a key is still published, but only
+  // answers callers holding that key.
+  isPublic() bool
 }
 
 // DigitalOcean Functions trigger
+//
+// Trigger that invokes a function in a namespace, exposing the trigger
+// `name`, its `type` (for example SCHEDULED), the `function` it invokes,
+// and whether it is `enabled`. For scheduled triggers, `cron` is the
+// schedule expression and `lastRunAt` and `nextRunAt` report the firing
+// history. Query it to confirm that expected schedules are enabled and
+// firing.
 private digitalocean.function.trigger @defaults("name function enabled") {
   // Internal identifier of the parent namespace
   namespace string
@@ -1452,16 +2826,17 @@ private digitalocean.function.trigger @defaults("name function enabled") {
 
 // DigitalOcean VPC NAT gateway
 //
-// Examine a VPC NAT gateway — the managed appliance that provides
-// outbound internet connectivity for resources in one or more VPCs.
-// Surfaces the gateway `type` (e.g., PUBLIC), lifecycle `state`,
-// `region`, and `size`. `vpcs()` resolves the attached VPCs;
-// `ingressVpcs` lists each attachment's gateway IP and whether it is the
-// default route. `egressPublicGatewayIps` are the public addresses that
-// traffic egresses from — useful for allowlisting downstream. The
-// `udpTimeoutSeconds`, `icmpTimeoutSeconds`, and `tcpTimeoutSeconds`
-// fields expose the connection-tracking timeouts. Select a gateway by id
-// with `digitalocean.vpcNatGateway(id: "...")`.
+// Managed appliance that provides outbound internet connectivity for
+// resources in one or more VPCs, letting them reach the internet without
+// each holding a public address. The `type` field gives the gateway
+// class (e.g., PUBLIC), alongside lifecycle `state`, `region`, and
+// `size`. The `ingressVpcs` field lists each VPC attachment's gateway IP
+// and whether it is the default route, and `egressPublicGatewayIps` are
+// the public addresses outbound traffic egresses from, which downstream
+// systems can allowlist. The `udpTimeoutSeconds`, `icmpTimeoutSeconds`,
+// and `tcpTimeoutSeconds` fields expose the connection-tracking
+// timeouts. Select a gateway by id with
+// `digitalocean.vpcNatGateway(id: "...")`.
 digitalocean.vpcNatGateway @defaults("id name region state") {
   // NAT gateway ID
   id string
@@ -1501,12 +2876,13 @@ digitalocean.vpcNatGateway @defaults("id name region state") {
 
 // DigitalOcean managed NFS share
 //
-// Examine a managed Network File System share. Surfaces the share
-// `name`, allocated `sizeGib`, `region`, lifecycle `status` (CREATING,
-// ACTIVE, FAILED, DELETED), `performanceTier`, and the `host` and
-// `mountPath` clients use to mount it. `vpcs()` resolves the VPCs the
-// share is reachable from. Select a share by id with
-// `digitalocean.nfs(id: "...")`.
+// Managed Network File System share that clients mount over the
+// network. The lifecycle `status` (CREATING, ACTIVE, INACTIVE, FAILED,
+// DELETED) reports whether the share is usable, while `host` and `mountPath`
+// give the mount target. `vpcs` resolves the VPCs the share is
+// reachable from, and `accessPoints` lists the exports that govern
+// client access. Select a share by id with `digitalocean.nfs(id:
+// "...")`.
 digitalocean.nfs @defaults("id name region status") {
   // NFS share ID
   id string
@@ -1516,7 +2892,7 @@ digitalocean.nfs @defaults("id name region status") {
   sizeGib int
   // Region slug
   region string
-  // Lifecycle status (CREATING, ACTIVE, FAILED, DELETED)
+  // Lifecycle status (CREATING, ACTIVE, INACTIVE, FAILED, DELETED)
   status string
   // Performance tier
   performanceTier string
@@ -1530,7 +2906,38 @@ digitalocean.nfs @defaults("id name region status") {
   vpcs() []digitalocean.vpc
   // Access points that export the share to clients
   accessPoints() []digitalocean.nfs.accessPoint
+  // Snapshots taken of the share
+  //
+  // Point-in-time copies of the share's contents. An empty list means the
+  // data on the share has no restore point behind it.
+  snapshots() []digitalocean.nfs.snapshot
   // Time the share was created
+  createdAt time
+}
+
+// Snapshot of a DigitalOcean NFS share
+//
+// Point-in-time copy of an NFS share's contents, taken so the share can
+// be restored to that moment. The `status` reports whether the copy has
+// finished and is usable, `sizeGibibytes` is how much it holds, and
+// `createdAt` is what dates a restore point. Select the parent share
+// through `share`.
+private digitalocean.nfs.snapshot @defaults("name status sizeGibibytes createdAt") {
+  // Snapshot ID
+  id string
+  // Snapshot name
+  name string
+  // Region slug the snapshot is stored in
+  region string
+  // Size of the snapshot in gibibytes
+  sizeGibibytes int
+  // Lifecycle status of the snapshot (UNKNOWN, CREATING, AVAILABLE, ACTIVE, DELETING, ERROR, FAILED, or DELETED)
+  status string
+  // ID of the share the snapshot was taken from
+  shareId string
+  // Share the snapshot was taken from
+  share() digitalocean.nfs
+  // Time the snapshot was created
   createdAt time
 }
 
@@ -1599,16 +3006,20 @@ digitalocean.secret @defaults("name region version") {
   updatedAt time
   // Time deletion was requested; null when the secret is not pending deletion
   deleteRequestedAt time
-  // Version history, each with the version number and create/update timestamps
+  // Version history
+  //
+  // One entry per stored version of the secret, ordered by the API. Each
+  // entry has `version` (the version number), `createdAt`, and `updatedAt`
+  // timestamps. The secret value itself is never included.
   versions() []dict
 }
 
 // DigitalOcean reserved IPv6 address
 //
-// Examine a reserved IPv6 address — a static, account-owned IPv6 that
-// can be assigned to a droplet. Surfaces the `ip`, the `region` it is
-// reserved in, the `reservedAt` time, and the `dropletId` it is assigned
-// to (0 when unassigned). Select by address with
+// Static, account-owned IPv6 address that can be assigned to a droplet.
+// Useful for auditing which reserved addresses exist, the `region` they
+// are held in, and whether each is attached to a droplet or sitting idle
+// (`dropletId` is 0 when unassigned). Select by address with
 // `digitalocean.reservedIpV6(ip: "...")`.
 digitalocean.reservedIpV6 @defaults("ip region") {
   // IPv6 address
@@ -1625,14 +3036,17 @@ digitalocean.reservedIpV6 @defaults("ip region") {
 
 // DigitalOcean droplet autoscale pool
 //
-// Examine a droplet autoscale pool — a group that automatically scales
-// droplet count to meet CPU/memory targets. The scaling policy is
-// flattened from the pool config: `minInstances`, `maxInstances`,
-// `targetCpuUtilization`, `targetMemoryUtilization`, `cooldownMinutes`,
-// and `targetNumberInstances`. `currentCpuUtilization` and
-// `currentMemoryUtilization` report live load. `dropletTemplate`
-// captures the droplet spec new members are created from. Select a pool
-// by id with `digitalocean.dropletAutoscalePool(id: "...")`.
+// Group of droplets whose count automatically scales to meet CPU and
+// memory targets, useful for confirming that elastic capacity stays
+// within governed bounds. The scaling policy is flattened onto the pool:
+// `minInstances` and `maxInstances` bound dynamic scaling,
+// `targetCpuUtilization` and `targetMemoryUtilization` set the fractions
+// that trigger it, `cooldownMinutes` throttles successive actions, and
+// `targetNumberInstances` pins a fixed count for static scaling.
+// `currentCpuUtilization` and `currentMemoryUtilization` report live
+// load, while `dropletTemplate` captures the spec new members are
+// created from. Select a pool by id with
+// `digitalocean.dropletAutoscalePool(id: "...")`.
 digitalocean.dropletAutoscalePool @defaults("id name status") {
   // Autoscale pool ID
   id string
@@ -1676,14 +3090,13 @@ digitalocean.dropletAutoscalePool @defaults("id name status") {
 
 // DigitalOcean GenAI (GradientAI) platform
 //
-// Use the GradientAI namespace as the entry point for DigitalOcean's
-// GenAI platform. Iterate `agents()` for deployed AI agents, `models()`
-// for the available foundation-model catalog, `customModels()` for
-// account-uploaded models, `knowledgeBases()` for RAG knowledge bases,
-// `indexingJobs()` for knowledge-base indexing runs,
-// `anthropicApiKeys()` and `openaiApiKeys()` for registered external
-// provider keys, `dedicatedInferenceEndpoints()` for dedicated GPU
-// inference, and `batchJobs()` for batch inference jobs.
+// Entry point for DigitalOcean's GenAI platform. `agents` lists
+// deployed AI agents, `models` the available foundation-model catalog,
+// `customModels` account-uploaded models, `knowledgeBases` the RAG
+// knowledge bases, `indexingJobs` knowledge-base indexing runs,
+// `anthropicApiKeys` and `openaiApiKeys` the registered external
+// provider keys, `dedicatedInferenceEndpoints` dedicated GPU inference,
+// and `batchJobs` batch inference jobs.
 digitalocean.gradientai {
   // GenAI agents
   agents() []digitalocean.gradientai.agent
@@ -1707,18 +3120,19 @@ digitalocean.gradientai {
 
 // DigitalOcean GradientAI agent
 //
-// Examine a deployed GenAI agent. Surfaces the `instruction` (system
-// prompt), generation parameters (`temperature`, `topP`, `maxTokens`,
-// `k`, `retrievalMethod`), and the security-relevant posture: whether
-// the agent is publicly exposed (`deploymentVisibility`), whether
-// prompts and responses are logged (`conversationLogsEnabled`), whether
-// citations are provided, and the attached `guardrails()`. Reach the
-// backing `model()`, the RAG `knowledgeBases()`, the `project()` and
-// `vpc()` it runs in, the external `anthropicApiKey()`/`openaiApiKey()`
-// it uses, and the agent routing graph through `childAgents()` and
-// `parentAgents()`. Select an agent by uuid with
+// Deployed GenAI agent. Surfaces the `instruction` (system prompt),
+// generation parameters (`temperature`, `topP`, `maxTokens`, `k`,
+// `retrievalMethod`), and the security-relevant posture: whether the
+// agent is publicly exposed (`deploymentVisibility`), whether prompts
+// and responses are logged (`conversationLogsEnabled`), whether
+// citations are provided, and the attached `guardrails`. Reach the
+// backing `model`, the RAG `knowledgeBases`, the `project` and `vpc` it
+// runs in, the external `anthropicApiKey`/`openaiApiKey` it uses, and
+// the agent routing graph through `childAgents` and `parentAgents`.
+// Select an agent by uuid with
 // `digitalocean.gradientai.agent(uuid: "...")`.
-private digitalocean.gradientai.agent @defaults("uuid name region") {
+digitalocean.gradientai.agent @defaults("uuid name region") {
+  init(uuid? string)
   // Agent UUID
   uuid string
   // Name
@@ -1757,8 +3171,6 @@ private digitalocean.gradientai.agent @defaults("uuid name region") {
   versionHash string
   // ID of the project the agent belongs to
   projectId string
-  // UUID of the VPC the agent runs in
-  vpcUuid string
   // Public IPs the agent egresses from
   vpcEgressIps []string
   // Tags applied to the agent
@@ -1776,7 +3188,10 @@ private digitalocean.gradientai.agent @defaults("uuid name region") {
   deploymentUrl string
   // Deployment UUID
   deploymentUuid string
-  // Chatbot widget configuration (name, colors, starting message, logo)
+  // Chatbot widget configuration
+  //
+  // Keys: `name`, `primaryColor`, `secondaryColor`, `startingMessage`,
+  // and `logo`.
   chatbot dict
   // Time the agent was created
   createdAt time
@@ -1806,13 +3221,20 @@ private digitalocean.gradientai.agent @defaults("uuid name region") {
   versions() []digitalocean.gradientai.agent.version
   // API keys issued for the agent (secret values are never exposed)
   apiKeys() []digitalocean.gradientai.agent.apiKey
+  // Whether the agent's deployment answers anyone on the internet
+  //
+  // True when deploymentVisibility marks the deployment public, which
+  // publishes deploymentUrl as an endpoint anyone can send prompts to
+  // without credentials. A private deployment is reachable only with an
+  // agent API key.
+  isPublic() bool
 }
 
 // DigitalOcean GradientAI agent guardrail
 //
-// Examine a content guardrail attached to an agent. Use `type` and
-// `isAttached`/`isDefault` to confirm which guardrails are actively
-// enforced, and `defaultResponse` for the canned reply returned on a
+// Content guardrail attached to an agent. `type` and
+// `isAttached`/`isDefault` confirm which guardrails are actively
+// enforced, and `defaultResponse` is the canned reply returned on a
 // guardrail trip.
 private digitalocean.gradientai.agent.guardrail @defaults("uuid name type") {
   // Guardrail UUID
@@ -1841,10 +3263,9 @@ private digitalocean.gradientai.agent.guardrail @defaults("uuid name type") {
 
 // DigitalOcean GradientAI agent function
 //
-// Examine a tool / function-calling definition attached to an agent.
-// Surfaces the backing serverless function (`faasName`,
-// `faasNamespace`) and its `url`. The function's API key is never
-// exposed.
+// Tool / function-calling definition attached to an agent. Surfaces
+// the backing serverless function (`faasName`, `faasNamespace`) and its
+// `url`. The function's API key is never exposed.
 private digitalocean.gradientai.agent.function @defaults("uuid name") {
   // Function UUID
   uuid string
@@ -1868,10 +3289,10 @@ private digitalocean.gradientai.agent.function @defaults("uuid name") {
 
 // DigitalOcean GradientAI agent version
 //
-// Examine a single version in an agent's history. `currentlyApplied`
-// marks the live version and `canRollback` indicates whether the agent
-// can be reverted to it. The instruction, model, and generation
-// parameters captured at version time are also surfaced.
+// Single version in an agent's history. `currentlyApplied` marks the
+// live version and `canRollback` indicates whether the agent can be
+// reverted to it. The instruction, model, and generation parameters
+// captured at version time are also surfaced.
 private digitalocean.gradientai.agent.version @defaults("id name versionHash") {
   // Version ID
   id string
@@ -1915,8 +3336,8 @@ private digitalocean.gradientai.agent.version @defaults("id name versionHash") {
 
 // DigitalOcean GradientAI agent API key
 //
-// Examine an API key issued for an agent. The secret value is never
-// exposed; only metadata (`name`, `createdBy`, timestamps) is surfaced.
+// API key issued for an agent. The secret value is never exposed; only
+// metadata (`name`, `createdBy`, timestamps) is surfaced.
 private digitalocean.gradientai.agent.apiKey @defaults("uuid name") {
   // API key UUID
   uuid string
@@ -1934,8 +3355,8 @@ private digitalocean.gradientai.agent.apiKey @defaults("uuid name") {
 
 // DigitalOcean GradientAI model
 //
-// Examine a foundation model available on the GradientAI platform.
-// Surfaces the `provider`, model `type`, whether it is foundational,
+// Foundation model available on the GradientAI platform. Surfaces the
+// `provider`, model `type`, whether it is foundational,
 // `modelAvailability`, declared `capabilities` and `usecases`, the
 // `contextWindow`, `parameterCount`, supported `modalities`, and
 // `pricing`. Select a model by uuid with
@@ -1970,8 +3391,14 @@ private digitalocean.gradientai.model @defaults("uuid name provider") {
   // Declared use cases
   usecases []string
   // Supported input/output modalities
+  //
+  // Keys: `input` and `output`, each a list of modality names.
   modalities dict
-  // Pricing breakdown (per-million tokens, per image, per second, etc.)
+  // Pricing breakdown
+  //
+  // Keys: `inputPricePerMillion`, `outputPricePerMillion`,
+  // `pricePerImage`, `pricePerSecond`, `textInputPricePerMillion`, and
+  // `textOutputPricePerMillion`.
   pricing dict
   // Semantic version (major, minor, patch)
   version dict
@@ -1987,10 +3414,10 @@ private digitalocean.gradientai.model @defaults("uuid name provider") {
 
 // DigitalOcean GradientAI custom model
 //
-// Examine an account-uploaded custom model. Surfaces the `status`,
-// `architecture`, `sourceType`, total size and file count, declared
-// modalities, context length, monthly cost estimate, and the
-// `activeDeployments` currently serving it.
+// Account-uploaded custom model. Surfaces the `status`, `architecture`,
+// `sourceType`, total size and file count, declared modalities, context
+// length, monthly cost estimate, and the `activeDeployments` currently
+// serving it.
 private digitalocean.gradientai.customModel @defaults("uuid name status") {
   // Custom model UUID
   uuid string
@@ -2045,13 +3472,12 @@ private digitalocean.gradientai.customModel @defaults("uuid name status") {
 
 // DigitalOcean GradientAI knowledge base
 //
-// Examine a RAG knowledge base. `isPublic` flags publicly readable
-// knowledge bases. Reach the `embeddingModel()` used to vectorize
-// content, the backing `database()` (a managed pgvector cluster), and
-// the `project()` it belongs to. Iterate `dataSources()` for the
-// configured sources and inspect `lastIndexingJob` for the most recent
-// indexing run. Select by uuid with
-// `digitalocean.gradientai.knowledgeBase(uuid: "...")`.
+// RAG knowledge base. `isPublic` flags publicly readable knowledge
+// bases. Reach the `embeddingModel` used to vectorize content, the
+// backing `database` (a managed pgvector cluster), and the `project` it
+// belongs to. `dataSources` lists the configured sources, and
+// `lastIndexingJob` reports the most recent indexing run. Select by
+// uuid with `digitalocean.gradientai.knowledgeBase(uuid: "...")`.
 private digitalocean.gradientai.knowledgeBase @defaults("uuid name region") {
   // Knowledge base UUID
   uuid string
@@ -2069,7 +3495,12 @@ private digitalocean.gradientai.knowledgeBase @defaults("uuid name region") {
   projectId string
   // Tags
   tags []string
-  // Summary of the most recent indexing job (status, phase, counts, timestamps)
+  // Summary of the most recent indexing job
+  //
+  // Keys: `uuid`, `knowledgeBaseUuid`, `phase`, `status`, `tokens`,
+  // `completedDatasources`, `totalDatasources`, `totalItemsIndexed`,
+  // `totalItemsFailed`, `totalItemsSkipped`, `startedAt`, and
+  // `finishedAt`.
   lastIndexingJob dict
   // Time the knowledge base was added to an agent, if applicable
   addedToAgentAt time
@@ -2091,10 +3522,10 @@ private digitalocean.gradientai.knowledgeBase @defaults("uuid name region") {
 
 // DigitalOcean GradientAI knowledge base data source
 //
-// Examine a single data source feeding a knowledge base. `type`
-// identifies the source kind; the matching `webCrawler`, `spaces`, or
-// `fileUpload` dict carries its detail, and `lastIndexingJob` reports
-// the most recent indexing run for the source.
+// Single data source feeding a knowledge base. `type` identifies the
+// source kind; the matching `webCrawler`, `spaces`, or `fileUpload`
+// dict carries its detail, and `lastIndexingJob` reports the most
+// recent indexing run for the source.
 private digitalocean.gradientai.knowledgeBase.dataSource @defaults("uuid type") {
   // Data source UUID
   uuid string
@@ -2107,6 +3538,11 @@ private digitalocean.gradientai.knowledgeBase.dataSource @defaults("uuid type") 
   // File-upload source detail (originalFileName, size, storedObjectKey)
   fileUpload dict
   // Summary of the most recent indexing job for the source
+  //
+  // Keys: `uuid`, `knowledgeBaseUuid`, `phase`, `status`, `tokens`,
+  // `completedDatasources`, `totalDatasources`, `totalItemsIndexed`,
+  // `totalItemsFailed`, `totalItemsSkipped`, `startedAt`, and
+  // `finishedAt`.
   lastIndexingJob dict
   // Time the data source was created
   createdAt time
@@ -2116,10 +3552,10 @@ private digitalocean.gradientai.knowledgeBase.dataSource @defaults("uuid type") 
 
 // DigitalOcean GradientAI indexing job
 //
-// Examine a knowledge-base indexing run. Surfaces the `phase` and
-// `status`, the tokens processed, datasource progress
+// Knowledge-base indexing run. Surfaces the `phase` and `status`, the
+// tokens processed, datasource progress
 // (`completedDatasources`/`totalDatasources`), and item counts. Reach
-// the `knowledgeBase()` being indexed.
+// the `knowledgeBase` being indexed.
 private digitalocean.gradientai.indexingJob @defaults("uuid status phase") {
   // Indexing job UUID
   uuid string
@@ -2157,9 +3593,8 @@ private digitalocean.gradientai.indexingJob @defaults("uuid status phase") {
 
 // DigitalOcean GradientAI Anthropic API key
 //
-// Examine a registered Anthropic API key. The secret value is never
-// exposed; only metadata is surfaced. Reach the `agents()` that use the
-// key.
+// Registered Anthropic API key. The secret value is never exposed;
+// only metadata is surfaced. Reach the `agents` that use the key.
 private digitalocean.gradientai.anthropicApiKey @defaults("uuid name") {
   // API key UUID
   uuid string
@@ -2179,9 +3614,9 @@ private digitalocean.gradientai.anthropicApiKey @defaults("uuid name") {
 
 // DigitalOcean GradientAI OpenAI API key
 //
-// Examine a registered OpenAI API key. The secret value is never
-// exposed; only metadata is surfaced. Reach the `models()` enabled by
-// the key and the `agents()` that use it.
+// Registered OpenAI API key. The secret value is never exposed; only
+// metadata is surfaced. Reach the `models` enabled by the key and the
+// `agents` that use it.
 private digitalocean.gradientai.openaiApiKey @defaults("uuid name") {
   // API key UUID
   uuid string
@@ -2203,11 +3638,11 @@ private digitalocean.gradientai.openaiApiKey @defaults("uuid name") {
 
 // DigitalOcean GradientAI dedicated inference endpoint
 //
-// Examine a dedicated GPU inference endpoint. Surfaces the lifecycle
-// `status`, the `region`, the public and private endpoint FQDNs, and
-// the `providerModelIds` served. Reach the `vpc()` it runs in, and
-// iterate `accelerators()` and `tokens()` (token secret values are
-// never exposed). Select by id with
+// Dedicated GPU inference endpoint. Surfaces the lifecycle `status`,
+// the `region`, the public and private endpoint FQDNs, and the
+// `providerModelIds` served. Reach the `vpc` it runs in, and iterate
+// `accelerators` and `tokens` (token secret values are never exposed).
+// Select by id with
 // `digitalocean.gradientai.dedicatedInferenceEndpoint(id: "...")`.
 private digitalocean.gradientai.dedicatedInferenceEndpoint @defaults("id name region status") {
   // Endpoint ID
@@ -2218,8 +3653,6 @@ private digitalocean.gradientai.dedicatedInferenceEndpoint @defaults("id name re
   region string
   // Lifecycle status
   status string
-  // UUID of the VPC the endpoint runs in
-  vpcUuid string
   // Model IDs served by the endpoint
   providerModelIds []string
   // Public endpoint FQDN
@@ -2240,7 +3673,7 @@ private digitalocean.gradientai.dedicatedInferenceEndpoint @defaults("id name re
 
 // DigitalOcean GradientAI dedicated inference accelerator
 //
-// Examine a GPU accelerator backing a dedicated inference endpoint.
+// GPU accelerator backing a dedicated inference endpoint.
 private digitalocean.gradientai.dedicatedInferenceEndpoint.accelerator @defaults("id name status") {
   // Accelerator ID
   id string
@@ -2256,9 +3689,9 @@ private digitalocean.gradientai.dedicatedInferenceEndpoint.accelerator @defaults
 
 // DigitalOcean GradientAI dedicated inference token
 //
-// Examine an access token issued for a dedicated inference endpoint. The
-// token's secret value is never exposed; `isManaged` indicates whether
-// the token is platform-managed.
+// Access token issued for a dedicated inference endpoint. The token's
+// secret value is never exposed; `isManaged` indicates whether the
+// token is platform-managed.
 private digitalocean.gradientai.dedicatedInferenceEndpoint.token @defaults("id name") {
   // Token ID
   id string
@@ -2272,10 +3705,10 @@ private digitalocean.gradientai.dedicatedInferenceEndpoint.token @defaults("id n
 
 // DigitalOcean GradientAI batch inference job
 //
-// Examine a batch inference job. Surfaces the `provider`, the input
-// `fileId`, the `completionWindow`, lifecycle `status`, whether a
-// result is available, and the `requestCounts` (total, completed,
-// failed). Select by batch id with
+// Batch inference job. Surfaces the `provider`, the input `fileId`, the
+// `completionWindow`, lifecycle `status`, whether a result is
+// available, and the `requestCounts` (total, completed, failed). Select
+// by batch id with
 // `digitalocean.gradientai.batchJob(batchId: "...")`.
 private digitalocean.gradientai.batchJob @defaults("batchId provider status") {
   // Batch job ID
@@ -2306,10 +3739,10 @@ private digitalocean.gradientai.batchJob @defaults("batchId provider status") {
 
 // DigitalOcean security scan
 //
-// Examine a DigitalOcean managed security scan of the account's
-// resources. Surfaces the scan `status` and creation time, and iterates
-// `findings()` for the issues the scan detected. Select a scan by id
-// with `digitalocean.securityScan(id: "...")`, or use
+// Managed security scan of the account's resources. The scan `status`
+// and creation time summarize the run, and `findings` enumerate the
+// issues the scan detected. Select a scan by id with
+// `digitalocean.securityScan(id: "...")`, or use
 // `digitalocean.latestSecurityScan` for the most recent run.
 private digitalocean.securityScan @defaults("id status createdAt") {
   // Scan ID
@@ -2324,10 +3757,10 @@ private digitalocean.securityScan @defaults("id status createdAt") {
 
 // DigitalOcean security scan finding
 //
-// Examine a single finding from a security scan. `severity` and
-// `businessImpact` classify the issue, `details` and `technicalDetails`
-// describe it, `mitigationSteps` lists the remediation guidance, and
-// `affectedResources()` enumerates the resources the finding applies to
+// Single finding from a security scan. `severity` and `businessImpact`
+// classify the issue, `details` and `technicalDetails` describe it,
+// `mitigationSteps` lists the remediation guidance, and
+// `affectedResources` enumerate the resources the finding applies to
 // (`affectedResourcesCount` is the total).
 private digitalocean.securityScan.finding @defaults("name severity") {
   // UUID of the rule that produced the finding
@@ -2354,13 +3787,13 @@ private digitalocean.securityScan.finding @defaults("name severity") {
 
 // DigitalOcean bring-your-own-IP prefix
 //
-// Examine a customer-owned IP prefix advertised into the account
-// (BYOIP). Surfaces the `prefix` CIDR, advertisement `status`, the
-// `advertised` and `locked` flags, the `region` slug, any
-// `failureReason` from validation, the owning `project()`, and the
-// `resources()` the prefix's addresses are currently assigned to.
-// Customer-controlled address space is a real ownership and
-// attack-surface concern, so knowing which prefixes route into the
+// Customer-owned IP prefix advertised into the account (BYOIP). The
+// prefix CIDR, advertisement status, advertised and locked flags,
+// region slug, and any failureReason from validation describe whether
+// and where the address space routes. project resolves the owning
+// project and resources lists the addresses the prefix is currently
+// assigned to. Customer-controlled address space is a real ownership
+// and attack-surface concern, so knowing which prefixes route into the
 // account matters for security. Select a prefix by its uuid with
 // `digitalocean.byoipPrefix(uuid: "...")`.
 digitalocean.byoipPrefix @defaults("prefix status region") {
@@ -2388,6 +3821,14 @@ digitalocean.byoipPrefix @defaults("prefix status region") {
 }
 
 // DigitalOcean BYOIP prefix resource assignment
+//
+// Single assignment of a bring-your-own-IP address to a resource in
+// the account. The assigned byoip address, the resource URN it routes
+// to (for example `do:droplet:123`), the region, and the assignedAt
+// time record exactly what each advertised address reaches. Customer-
+// owned address space routing to a specific droplet is an ownership
+// and attack-surface concern worth inventorying. When the assignment
+// targets a droplet, droplet resolves it.
 private digitalocean.byoipPrefix.resource @defaults("resource region") {
   // Assignment ID
   id int
@@ -2397,6 +3838,8 @@ private digitalocean.byoipPrefix.resource @defaults("resource region") {
   byoip string
   // URN of the resource the address is assigned to (e.g., do:droplet:123)
   resource string
+  // Droplet the address is assigned to; null unless the resource URN is a droplet
+  droplet() digitalocean.droplet
   // Region slug
   region string
   // Time the address was assigned
@@ -2405,15 +3848,15 @@ private digitalocean.byoipPrefix.resource @defaults("resource region") {
 
 // DigitalOcean Partner Attachment (Partner Network Connect)
 //
-// Examine a Partner Network Connect attachment — a private circuit
-// (via a Network-as-a-Service provider such as Megaport) that bridges
-// an external network into the account's VPCs. Surfaces the connection
+// Partner Network Connect attachment: a private circuit, provisioned
+// through a Network-as-a-Service provider such as Megaport, that bridges
+// an external network into the account's VPCs. Reports the connection
 // `state`, `connectionBandwidthInMbps`, `region`, `naasProvider`,
-// `redundancyZone`, the BGP peering configuration, the parent/child
-// relationships, and the typed `vpcs()` the attachment is connected to.
-// A private link bridging an external network into your VPCs is a
-// network-trust boundary worth inventorying. Select an attachment by id
-// with `digitalocean.partnerAttachment(id: "...")`.
+// `redundancyZone`, the `bgp` peering configuration, the parent/child
+// relationships, and the `vpcs` the attachment connects. A private link
+// bridging an external network into your VPCs is a network-trust
+// boundary worth inventorying. Select an attachment by id with
+// `digitalocean.partnerAttachment(id: "...")`.
 digitalocean.partnerAttachment @defaults("id name state") {
   init(id? string)
   // Attachment ID
@@ -2442,22 +3885,33 @@ digitalocean.partnerAttachment @defaults("id name state") {
   bgp dict
   // UUID of the parent attachment, if this is a child
   parentUuid string
+  // Parent attachment, when this attachment is a child; null otherwise
+  parentAttachment() digitalocean.partnerAttachment
   // UUIDs of child attachments, if any
   children []string
+  // Child attachments connected beneath this one
+  childAttachments() []digitalocean.partnerAttachment
+  // CIDRs the remote side advertises into the attached VPCs
+  //
+  // The prefixes traffic leaving the VPCs is routed over. A prefix wider
+  // than what the peering was agreed to carry pulls traffic the VPC would
+  // otherwise have kept inside DigitalOcean across the partner link.
+  routes() []string
   // Time the resource was created
   createdAt time
 }
 
 // DigitalOcean account billing balance
 //
-// Examine the account's billing balance: the `accountBalance` carried
-// over, the `monthToDateUsage` accrued so far this billing period, the
-// resulting `monthToDateBalance`, and the time the figures were
-// `generatedAt`. A sudden jump in month-to-date usage is a common early
-// signal of compromised resources (for example, crypto-mining
-// droplets), so this is useful for spend-anomaly auditing. Amounts are
-// USD strings as returned by the API to preserve exact formatting.
-digitalocean.billing @defaults("monthToDateBalance monthToDateUsage") {
+// Account billing balance covering the balance carried over
+// (accountBalance), the usage accrued so far this billing period
+// (monthToDateUsage), the resulting monthToDateBalance, and the time the
+// figures were generatedAt. A sudden jump in month-to-date usage is a
+// common early signal of compromised resources (for example,
+// crypto-mining droplets), so this is useful for spend-anomaly auditing.
+// Amounts are USD strings as returned by the API to preserve exact
+// formatting.
+private digitalocean.billing @defaults("monthToDateBalance monthToDateUsage") {
   // Total balance carried over at the start of the period (USD)
   accountBalance string
   // Usage accrued so far this billing period (USD)

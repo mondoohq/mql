@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "fs": {
+      "tools": [
+        "*"
+      ],
+      "type": "local",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/tmp"
+      ],
+      "env": {
+        "FS_TOKEN": "<redacted>"
+      }
+    },
+    "remote": {
+      "tools": [
+        "*"
+      ],
+      "type": "http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer <redacted>"
+      }
+    }
+  }
+}

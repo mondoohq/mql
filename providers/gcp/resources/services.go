@@ -7,15 +7,19 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	serviceusage "cloud.google.com/go/serviceusage/apiv1"
 	"cloud.google.com/go/serviceusage/apiv1/serviceusagepb"
+	"github.com/googleapis/gax-go/v2"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/gcp/connection"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -39,6 +43,7 @@ const (
 	service_cloudfunctions      = "cloudfunctions.googleapis.com"
 	service_logging             = "logging.googleapis.com"
 	service_kms                 = "cloudkms.googleapis.com"
+	service_kmsinventory        = "kmsinventory.googleapis.com"
 	service_sqladmin            = "sqladmin.googleapis.com"
 	service_storage             = "storage.googleapis.com"
 	service_iam                 = "iam.googleapis.com"
@@ -58,8 +63,19 @@ const (
 	service_networksecurity     = "networksecurity.googleapis.com"
 	service_dataplex            = "dataplex.googleapis.com"
 	service_workflows           = "workflows.googleapis.com"
+	service_cloudscheduler      = "cloudscheduler.googleapis.com"
 	service_clouddomains        = "domains.googleapis.com"
 	service_cloudasset          = "cloudasset.googleapis.com"
+	service_pam                 = "privilegedaccessmanager.googleapis.com"
+	service_networkconnectivity = "networkconnectivity.googleapis.com"
+	service_networkmanagement   = "networkmanagement.googleapis.com"
+	service_memcache            = "memcache.googleapis.com"
+	service_monitoring          = "monitoring.googleapis.com"
+	service_aiplatform          = "aiplatform.googleapis.com"
+	service_datastream          = "datastream.googleapis.com"
+	service_memorystore         = "memorystore.googleapis.com"
+	service_documentai          = "documentai.googleapis.com"
+	service_firebaserules       = "firebaserules.googleapis.com"
 )
 
 func serviceName(name string) string {
@@ -69,6 +85,37 @@ func serviceName(name string) string {
 
 func (g *mqlGcpProject) services() ([]any, error) {
 	return g.fetchServices("")
+}
+
+func (g *mqlGcpProject) enabledServices() ([]any, error) {
+	return g.loadEnabledServices()
+}
+
+// serviceUsageMaxRetries bounds how often a Service Usage call is retried after
+// a quota rejection.
+const serviceUsageMaxRetries = 5
+
+// serviceUsageQuotaRetryer retries Service Usage calls rejected with
+// ResourceExhausted. The list quota is counted per minute, so the backoff grows
+// to reach the next window, and the attempts are bounded so a project that is
+// over quota for good still answers with the error.
+type serviceUsageQuotaRetryer struct {
+	backoff  gax.Backoff
+	attempts int
+}
+
+func newServiceUsageQuotaRetryer() gax.Retryer {
+	return &serviceUsageQuotaRetryer{
+		backoff: gax.Backoff{Initial: 5 * time.Second, Max: 60 * time.Second, Multiplier: 2},
+	}
+}
+
+func (r *serviceUsageQuotaRetryer) Retry(err error) (time.Duration, bool) {
+	if status.Code(err) != codes.ResourceExhausted || r.attempts >= serviceUsageMaxRetries {
+		return 0, false
+	}
+	r.attempts++
+	return r.backoff.Pause(), true
 }
 
 // fetches the gcp services with a filter, e.g. "state:ENABLED"
@@ -91,18 +138,13 @@ func (g *mqlGcpProject) fetchServices(filter string) ([]any, error) {
 		log.Info().Err(err).Msg("could not create client")
 		return nil, err
 	}
-
-	// projects/123/services/serviceusage.googleapis.com
-	//service, err := c.GetService(ctx, &serviceusagepb.GetServiceRequest{
-	//	Name: name,
-	//})
-	//service.Config.Title
+	defer c.Close()
 
 	it := c.ListServices(ctx, &serviceusagepb.ListServicesRequest{
 		Parent:   `projects/` + projectId,
 		Filter:   filter,
 		PageSize: 200,
-	})
+	}, gax.WithRetry(newServiceUsageQuotaRetryer))
 
 	res := []any{}
 	for {
@@ -155,25 +197,30 @@ func initGcpService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 
 	nameRaw := args["name"]
 	if nameRaw == nil {
-		return args, nil, nil
+		return nil, nil, errors.New(`gcp.service requires a "name" argument`)
 	}
-	name := nameRaw.Value.(string)
+	name, ok := nameRaw.Value.(string)
+	if !ok || name == "" {
+		return nil, nil, errors.New(`gcp.service requires a non-empty "name" argument`)
+	}
 
 	conn, ok := runtime.Connection.(*connection.GcpConnection)
 	if !ok {
 		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
 	}
+	// Check the arguments before building credentials, so an unusable one is
+	// reported as itself rather than as whatever the credential lookup says.
+	projectId := conn.ResourceID()
+	if projectIdRaw := args["projectId"]; projectIdRaw != nil {
+		projectId, ok = projectIdRaw.Value.(string)
+		if !ok || projectId == "" {
+			return nil, nil, errors.New(`gcp.service requires a non-empty "projectId" argument`)
+		}
+	}
+
 	credentials, err := conn.Credentials(serviceusage.DefaultAuthScopes()...)
 	if err != nil {
 		return nil, nil, err
-	}
-
-	var projectId string
-	projectIdRaw := args["projectId"]
-	if projectIdRaw != nil {
-		projectId = projectIdRaw.Value.(string)
-	} else {
-		projectId = conn.ResourceID()
 	}
 
 	ctx := context.Background()
@@ -181,11 +228,12 @@ func initGcpService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 	if err != nil {
 		return nil, nil, err
 	}
+	defer c.Close()
 
 	// name is constructed `projects/123/services/serviceusage.googleapis.com`
 	item, err := c.GetService(context.Background(), &serviceusagepb.GetServiceRequest{
 		Name: `projects/` + projectId + "/services/" + name,
-	})
+	}, gax.WithRetry(newServiceUsageQuotaRetryer))
 	if err != nil {
 		return nil, nil, err
 	}

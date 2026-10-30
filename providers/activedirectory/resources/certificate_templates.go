@@ -11,9 +11,9 @@ import (
 
 	"github.com/go-ldap/ldap/v3"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/activedirectory/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/activedirectory/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // Authentication and enrollment EKU OIDs.
@@ -42,7 +42,7 @@ const (
 // published on at least one enrollment service (CA). The result is cached
 // on the connection.
 func getPublishedTemplates(conn *connection.ActiveDirectoryConnection) (map[string]bool, error) {
-	raw, err := conn.CachedFetch("publishedTemplates", func() (interface{}, error) {
+	raw, err := conn.CachedFetch("publishedTemplates", func() (any, error) {
 		searchBase := "CN=Enrollment Services,CN=Public Key Services,CN=Services," + conn.ConfigDN()
 
 		entries, err := connection.PagedSearch(conn.LDAPConn(), ldap.NewSearchRequest(
@@ -78,7 +78,7 @@ func getPublishedTemplates(conn *connection.ActiveDirectoryConnection) (map[stri
 // enterprise OID objects that have msDS-OIDToGroupLink set (ESC13 prerequisite).
 // Returns a map of OID string -> linked group DN. Cached on the connection.
 func resolveOIDGroupLinks(conn *connection.ActiveDirectoryConnection) (map[string]string, error) {
-	raw, err := conn.CachedFetch("oidGroupLinks", func() (interface{}, error) {
+	raw, err := conn.CachedFetch("oidGroupLinks", func() (any, error) {
 		baseDN := fmt.Sprintf("CN=OID,CN=Public Key Services,CN=Services,%s", conn.ConfigDN())
 
 		entries, err := connection.PagedSearch(conn.LDAPConn(), ldap.NewSearchRequest(
@@ -112,7 +112,7 @@ func resolveOIDGroupLinks(conn *connection.ActiveDirectoryConnection) (map[strin
 	return raw.(map[string]string), nil
 }
 
-func (a *mqlActivedirectory) certificateTemplates() ([]interface{}, error) {
+func (a *mqlActivedirectory) certificateTemplates() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.ActiveDirectoryConnection)
 	searchBase := "CN=Certificate Templates,CN=Public Key Services,CN=Services," + conn.ConfigDN()
 
@@ -148,7 +148,7 @@ func (a *mqlActivedirectory) certificateTemplates() ([]interface{}, error) {
 	if err != nil {
 		if ldap.IsErrorWithCode(err, ldap.LDAPResultNoSuchObject) {
 			log.Warn().Msg("ADCS Certificate Templates container not found, ADCS may not be installed")
-			return []interface{}{}, nil
+			return []any{}, nil
 		}
 		return nil, fmt.Errorf("querying certificate templates: %w", err)
 	}
@@ -168,7 +168,7 @@ func (a *mqlActivedirectory) certificateTemplates() ([]interface{}, error) {
 		return nil, err
 	}
 
-	res := make([]interface{}, 0, len(entries))
+	res := make([]any, 0, len(entries))
 
 	for _, entry := range entries {
 		cn := connection.GetStringAttr(entry, "cn")
@@ -208,12 +208,12 @@ func (a *mqlActivedirectory) certificateTemplates() ([]interface{}, error) {
 		renewalPeriod := parseADDuration(entry.GetRawAttributeValue("pKIOverlapPeriod"))
 
 		// EKU list for resource field.
-		ekusRaw := make([]interface{}, len(ekus))
+		ekusRaw := make([]any, len(ekus))
 		for i, v := range ekus {
 			ekusRaw[i] = v
 		}
 
-		enrollPermsRaw := make([]interface{}, len(enrollPerms))
+		enrollPermsRaw := make([]any, len(enrollPerms))
 		for i, v := range enrollPerms {
 			enrollPermsRaw[i] = v
 		}
@@ -244,7 +244,7 @@ func (a *mqlActivedirectory) certificateTemplates() ([]interface{}, error) {
 				}
 			}
 		}
-		certPoliciesRaw := make([]interface{}, len(certPolicies))
+		certPoliciesRaw := make([]any, len(certPolicies))
 		for i, v := range certPolicies {
 			certPoliciesRaw[i] = v
 		}

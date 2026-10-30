@@ -34,3 +34,26 @@ func TestInstalledJsonExtractor(t *testing.T) {
 	require.NotNil(t, p)
 	assert.Equal(t, "v6.4.1", p.Version)
 }
+
+// TestInstalledJsonLicense pins that the license installed.json states reaches
+// the package. Same defect as composer.lock: the parser read the field and the
+// extractor dropped it.
+func TestInstalledJsonLicense(t *testing.T) {
+	f, err := os.Open("./testdata/simple.installed.json")
+	require.NoError(t, err)
+	defer f.Close()
+
+	info, err := (&Extractor{}).Parse(f, "path/to/installed.json")
+	require.NoError(t, err)
+
+	transitive := info.Transitive()
+	for name, want := range map[string]string{
+		"monolog/monolog": "MIT",
+		"symfony/console": "MIT",
+		"psr/log":         "MIT",
+	} {
+		p := transitive.Find(name)
+		require.NotNil(t, p, name)
+		assert.Equal(t, want, p.License, name)
+	}
+}

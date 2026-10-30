@@ -10,8 +10,8 @@ import (
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/utils/syncx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 func testRuntime() *plugin.Runtime {
@@ -93,7 +93,7 @@ func TestNewMqlAwsRoute53Record(t *testing.T) {
 		assert.Equal(t, "example.com.", record.Name.Data)
 		assert.Equal(t, "A", record.Type.Data)
 		assert.Equal(t, int64(300), record.Ttl.Data)
-		assert.Equal(t, "/hostedzone/Z123", record.HostedZoneId.Data)
+		assert.Equal(t, "/hostedzone/Z123", record.cacheHostedZoneId)
 		assert.False(t, record.IsAlias.Data)
 		assert.Empty(t, record.AliasTargetDnsName.Data)
 		assert.Equal(t, []any{"192.0.2.1", "192.0.2.2"}, record.resourceRecordsCache)
@@ -401,4 +401,86 @@ func TestNewMqlAwsRoute53HealthCheck(t *testing.T) {
 		assert.Empty(t, mqlHc.regionsCache)
 		assert.Empty(t, mqlHc.childHealthChecksCache)
 	})
+}
+
+func TestNormalizeAliasDNSName(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"my-alb-123.us-east-1.elb.amazonaws.com.", "my-alb-123.us-east-1.elb.amazonaws.com"},
+		{"dualstack.my-alb-123.us-east-1.elb.amazonaws.com.", "my-alb-123.us-east-1.elb.amazonaws.com"},
+		{"MY-ALB-123.US-EAST-1.ELB.AMAZONAWS.COM", "my-alb-123.us-east-1.elb.amazonaws.com"},
+		{"d111111abcdef8.cloudfront.net", "d111111abcdef8.cloudfront.net"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.want, normalizeAliasDNSName(c.in), "normalizeAliasDNSName(%q)", c.in)
+	}
+}
+
+// TestRecordAliasTargetNullState covers the branches of the alias-target
+// resolvers that return before any resource enumeration: an empty alias target,
+// and a CloudFront resolver short-circuiting when the alias hosted zone is not
+// the fixed CloudFront zone. These are the branches reachable without a live
+// connection.
+func TestRecordAliasTargetNullState(t *testing.T) {
+	t.Run("aliasLoadBalancer is null when alias target DNS name is empty", func(t *testing.T) {
+		record := &mqlAwsRoute53Record{}
+		result, err := record.aliasLoadBalancer()
+		require.NoError(t, err)
+		require.Nil(t, result)
+		assert.True(t, record.AliasLoadBalancer.IsNull())
+		assert.True(t, record.AliasLoadBalancer.IsSet())
+	})
+
+	t.Run("aliasCloudFrontDistribution is null when alias hosted zone is not CloudFront", func(t *testing.T) {
+		record := &mqlAwsRoute53Record{}
+		record.AliasTargetHostedZoneId = plugin.TValue[string]{Data: "Z35SXDOTRQ7X7K", State: plugin.StateIsSet}
+		record.AliasTargetDnsName = plugin.TValue[string]{Data: "dualstack.my-alb.us-east-1.elb.amazonaws.com", State: plugin.StateIsSet}
+		result, err := record.aliasCloudFrontDistribution()
+		require.NoError(t, err)
+		require.Nil(t, result)
+		assert.True(t, record.AliasCloudFrontDistribution.IsNull())
+		assert.True(t, record.AliasCloudFrontDistribution.IsSet())
+	})
+
+	t.Run("aliasCloudFrontDistribution is null when CloudFront zone but no DNS name", func(t *testing.T) {
+		record := &mqlAwsRoute53Record{}
+		record.AliasTargetHostedZoneId = plugin.TValue[string]{Data: cloudFrontAliasHostedZoneID, State: plugin.StateIsSet}
+		result, err := record.aliasCloudFrontDistribution()
+		require.NoError(t, err)
+		require.Nil(t, result)
+		assert.True(t, record.AliasCloudFrontDistribution.IsNull())
+		assert.True(t, record.AliasCloudFrontDistribution.IsSet())
+	})
+}
+
+func lbWithDNSName(dnsName string) *mqlAwsElbLoadbalancer {
+	lb := &mqlAwsElbLoadbalancer{}
+	lb.DnsName = plugin.TValue[string]{Data: dnsName, State: plugin.StateIsSet}
+	return lb
+}
+
+// TestBuildLoadBalancerDNSIndex verifies the alias-target DNS index that backs
+// aws.route53.record.aliasLoadBalancer(): it must key every load balancer by its
+// normalized DNS name and include classic load balancers, not just v2 ones (a
+// Route 53 alias record can point at either).
+func TestBuildLoadBalancerDNSIndex(t *testing.T) {
+	v2 := lbWithDNSName("my-alb-123.us-east-1.elb.amazonaws.com")
+	classic := lbWithDNSName("my-classic-elb-456.us-east-1.elb.amazonaws.com")
+	blank := lbWithDNSName("")
+
+	idx, err := buildLoadBalancerDNSIndex([]any{v2, blank}, []any{classic})
+	require.NoError(t, err)
+
+	// A v2 load balancer alias target (Route 53 prepends "dualstack." and a
+	// trailing dot) resolves through the normalized key.
+	assert.Same(t, v2, idx[normalizeAliasDNSName("dualstack.my-alb-123.us-east-1.elb.amazonaws.com.")])
+	// The classic load balancer is indexed too — the regression this guards.
+	assert.Same(t, classic, idx[normalizeAliasDNSName("my-classic-elb-456.us-east-1.elb.amazonaws.com")])
+	// Load balancers with no DNS name are skipped rather than keyed under "".
+	_, hasBlank := idx[""]
+	assert.False(t, hasBlank)
+	assert.Len(t, idx, 2)
 }

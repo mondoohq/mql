@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/digitalocean/godo"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/digitalocean/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/digitalocean/connection"
 )
 
 // --- Images ---
@@ -19,11 +19,11 @@ import (
 // newMqlDigitaloceanImage builds a digitalocean.image resource from a godo image.
 // It is shared by the images() collection and the droplet baseImage() accessor.
 func newMqlDigitaloceanImage(runtime *plugin.Runtime, img godo.Image) (*mqlDigitaloceanImage, error) {
-	regions := make([]interface{}, len(img.Regions))
+	regions := make([]any, len(img.Regions))
 	for i, rg := range img.Regions {
 		regions[i] = rg
 	}
-	tags := make([]interface{}, len(img.Tags))
+	tags := make([]any, len(img.Tags))
 	for i, t := range img.Tags {
 		tags[i] = t
 	}
@@ -53,32 +53,22 @@ func newMqlDigitaloceanImage(runtime *plugin.Runtime, img godo.Image) (*mqlDigit
 // snapshots saved as images, and backups. ListUser is used instead of List so
 // the result excludes the hundreds of public DigitalOcean catalog images
 // (distributions and 1-Click applications), which are not account resources.
-func (r *mqlDigitalocean) images() ([]interface{}, error) {
+func (r *mqlDigitalocean) images() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var all []interface{}
-	opt := &godo.ListOptions{PerPage: 200}
-	for {
-		images, resp, err := client.Images.ListUser(context.Background(), opt)
+	images, err := paginate(context.Background(), client.Images.ListUser)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(images))
+	for _, img := range images {
+		res, err := newMqlDigitaloceanImage(r.MqlRuntime, img)
 		if err != nil {
 			return nil, err
 		}
-		for _, img := range images {
-			res, err := newMqlDigitaloceanImage(r.MqlRuntime, img)
-			if err != nil {
-				return nil, err
-			}
-			all = append(all, res)
-		}
-		if resp.Links == nil || resp.Links.IsLastPage() {
-			break
-		}
-		page, err := resp.Links.CurrentPage()
-		if err != nil {
-			return nil, err
-		}
-		opt.Page = page + 1
+		all = append(all, res)
 	}
 	return all, nil
 }
@@ -89,50 +79,40 @@ func (r *mqlDigitaloceanImage) id() (string, error) {
 
 // --- Snapshots ---
 
-func (r *mqlDigitalocean) snapshots() ([]interface{}, error) {
+func (r *mqlDigitalocean) snapshots() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var all []interface{}
-	opt := &godo.ListOptions{PerPage: 200}
-	for {
-		snapshots, resp, err := client.Snapshots.List(context.Background(), opt)
+	snapshots, err := paginate(context.Background(), client.Snapshots.List)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(snapshots))
+	for _, s := range snapshots {
+		regions := make([]any, len(s.Regions))
+		for i, rg := range s.Regions {
+			regions[i] = rg
+		}
+		tags := make([]any, len(s.Tags))
+		for i, t := range s.Tags {
+			tags[i] = t
+		}
+		res, err := CreateResource(r.MqlRuntime, "digitalocean.snapshot", map[string]*llx.RawData{
+			"id":            llx.StringData(s.ID),
+			"name":          llx.StringData(s.Name),
+			"resourceId":    llx.StringData(s.ResourceID),
+			"resourceType":  llx.StringData(s.ResourceType),
+			"regions":       llx.ArrayData(regions, "\x02"),
+			"minDiskSize":   llx.IntData(int64(s.MinDiskSize)),
+			"sizeGigabytes": llx.FloatData(s.SizeGigaBytes),
+			"tags":          llx.ArrayData(tags, "\x02"),
+			"createdAt":     llx.TimeDataPtr(parseDoTime(s.Created)),
+		})
 		if err != nil {
 			return nil, err
 		}
-		for _, s := range snapshots {
-			regions := make([]interface{}, len(s.Regions))
-			for i, rg := range s.Regions {
-				regions[i] = rg
-			}
-			tags := make([]interface{}, len(s.Tags))
-			for i, t := range s.Tags {
-				tags[i] = t
-			}
-			res, err := CreateResource(r.MqlRuntime, "digitalocean.snapshot", map[string]*llx.RawData{
-				"id":            llx.StringData(s.ID),
-				"name":          llx.StringData(s.Name),
-				"resourceId":    llx.StringData(s.ResourceID),
-				"resourceType":  llx.StringData(s.ResourceType),
-				"regions":       llx.ArrayData(regions, "\x02"),
-				"minDiskSize":   llx.IntData(int64(s.MinDiskSize)),
-				"sizeGigabytes": llx.FloatData(s.SizeGigaBytes),
-				"tags":          llx.ArrayData(tags, "\x02"),
-				"createdAt":     llx.TimeDataPtr(parseDoTime(s.Created)),
-			})
-			if err != nil {
-				return nil, err
-			}
-			all = append(all, res)
-		}
-		if resp.Links == nil || resp.Links.IsLastPage() {
-			break
-		}
-		page, err := resp.Links.CurrentPage()
-		if err != nil {
-			return nil, err
-		}
-		opt.Page = page + 1
+		all = append(all, res)
 	}
 	return all, nil
 }
@@ -143,7 +123,7 @@ func (r *mqlDigitaloceanSnapshot) id() (string, error) {
 
 // --- Functions ---
 
-func (r *mqlDigitalocean) functionNamespaces() ([]interface{}, error) {
+func (r *mqlDigitalocean) functionNamespaces() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
@@ -152,7 +132,7 @@ func (r *mqlDigitalocean) functionNamespaces() ([]interface{}, error) {
 		return nil, err
 	}
 
-	var all []interface{}
+	var all []any
 	for _, ns := range namespaces {
 		res, err := CreateResource(r.MqlRuntime, "digitalocean.function.namespace", map[string]*llx.RawData{
 			"uuid":      llx.StringData(ns.UUID),
@@ -175,7 +155,7 @@ func (r *mqlDigitaloceanFunctionNamespace) id() (string, error) {
 	return "digitalocean.function.namespace/" + r.Uuid.Data, nil
 }
 
-func (r *mqlDigitaloceanFunctionNamespace) triggers() ([]interface{}, error) {
+func (r *mqlDigitaloceanFunctionNamespace) triggers() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
@@ -184,7 +164,7 @@ func (r *mqlDigitaloceanFunctionNamespace) triggers() ([]interface{}, error) {
 		return nil, err
 	}
 
-	var all []interface{}
+	var all []any
 	for _, t := range triggers {
 		cron := ""
 		if t.ScheduledDetails != nil {

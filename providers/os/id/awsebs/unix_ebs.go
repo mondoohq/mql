@@ -11,7 +11,13 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers/os/id/hostname"
+	"go.mondoo.com/mql/providers/os/id/hostname"
+)
+
+// Compiled once: applied to every line of the metadata and lsblk output.
+var (
+	ipv4PublicRE = regexp.MustCompile(`meta-data/network/interfaces/macs/([0-9a-f:]+)/ipv4-associations/([0-9.]+)`)
+	ipRegex      = regexp.MustCompile(`\|\s+(\w+)\s+\|\s+True\s+\|\s+([^\s]+)\s+\|\s+([^\s]+)\s+\|[^\|]+\|\s+([^\s]+)\s+\|`)
 )
 
 func (m *ebsMetadata) unixMetadata() (any, error) {
@@ -67,8 +73,7 @@ func (m *ebsMetadata) getUnixNetworkInterfaces() (any, bool) {
 		//
 		// 'http://169.254.169.254:80/2021-03-23/meta-data/network/interfaces/macs/0a:ff:ed:34:f3:6d/ipv4-associations/54.146.163.122'
 		//
-		ipv4PublicRE := regexp.MustCompile(`meta-data/network/interfaces/macs/([0-9a-f:]+)/ipv4-associations/([0-9.]+)`)
-		for _, line := range strings.Split(string(cloudInitLog), "\n") {
+		for line := range strings.SplitSeq(string(cloudInitLog), "\n") {
 			if matches := ipv4PublicRE.FindStringSubmatch(line); len(matches) == 3 {
 				// check if we have already detected that MAC address
 				if md, exist := macs[matches[1]]; !exist {
@@ -117,8 +122,7 @@ func (m *ebsMetadata) getUnixNetworkInterfaces() (any, bool) {
 		// ci-info: |   2   |    local    |    ::   |    enX0   |   U   |
 		// ci-info: |   3   |  multicast  |    ::   |    enX0   |   U   |
 		// ci-info: +-------+-------------+---------+-----------+-------+
-		ipRegex := regexp.MustCompile(`\|\s+(\w+)\s+\|\s+True\s+\|\s+([^\s]+)\s+\|\s+([^\s]+)\s+\|[^\|]+\|\s+([^\s]+)\s+\|`)
-		for _, line := range strings.Split(string(cloudInitOutputLog), "\n") {
+		for line := range strings.SplitSeq(string(cloudInitOutputLog), "\n") {
 			matches := ipRegex.FindStringSubmatch(line)
 			if len(matches) == 5 {
 				// match[3] is the mask, we don't use it at the moment

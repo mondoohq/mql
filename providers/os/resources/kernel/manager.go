@@ -4,17 +4,23 @@
 package kernel
 
 import (
+	"bufio"
+	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
-const sysctlPath = "/proc/sys/"
+const (
+	sysctlPath      = "/proc/sys/"
+	procModulesPath = "/proc/modules"
+)
 
 type KernelInfo struct {
 	Version   string            `json:"version"`
@@ -27,6 +33,13 @@ type KernelModule struct {
 	Name   string
 	Size   string // int64
 	UsedBy string // int
+	// File is the kernel file the module is part of, where the platform
+	// reports it: on FreeBSD the .ko file ("zfs.ko"), or "kernel" for a
+	// module compiled into the kernel.
+	File string
+	// BuiltIn is true for a module compiled into the kernel, where the
+	// platform's module list says so (FreeBSD).
+	BuiltIn bool
 }
 
 type OSKernelManager interface {
@@ -41,8 +54,10 @@ func ResolveManager(conn shared.Connection) (OSKernelManager, error) {
 
 	platform := conn.Asset().Platform
 
-	// check darwin before unix since darwin is also a unix
-	if platform.IsFamily("darwin") {
+	// check darwin before unix since darwin is also a unix.
+	if platform.Name == "solaris" {
+		kmm = &SolarisKernelManager{conn: conn}
+	} else if platform.IsFamily("darwin") {
 		kmm = &OSXKernelManager{conn: conn}
 	} else if platform.IsFamily("linux") {
 		kmm = &LinuxKernelManager{conn: conn}
@@ -101,63 +116,228 @@ func (s *LinuxKernelManager) Info() (KernelInfo, error) {
 }
 
 func (s *LinuxKernelManager) Parameters() (map[string]string, error) {
+	params, _, err := s.ParametersWithDenied()
+	return params, err
+}
+
+// ParametersWithDenied returns the kernel parameters that could be read, and
+// the names of the ones that exist but could not be read for lack of
+// permission. A scan that is not root can't read a few of them, such as
+// kernel.usermodehelper.bset and fs.protected_hardlinks, which are mode 0600.
+func (s *LinuxKernelManager) ParametersWithDenied() (map[string]string, []string, error) {
 	if s.conn.Capabilities().Has(shared.Capability_RunCommand) {
 		cmd, err := s.conn.RunCommand("/sbin/sysctl -a")
 		// in case of err, the command is not there and we fallback to /proc/sys walking
 		if err == nil && cmd.ExitStatus == 0 {
 			log.Debug().Msg("using sysctl to read kernel parameters")
-			return ParseSysctl(cmd.Stdout, "=")
+			params, err := ParseSysctl(cmd.Stdout, "=")
+			if err != nil {
+				return nil, nil, err
+			}
+			return params, ParseSysctlDenied(cmd.Stderr), nil
+		}
+	}
+
+	// Minimal images have no sysctl (procps is not installed). Reading
+	// /proc/sys file by file costs a round trip per parameter, ~1900 of them,
+	// which over the docker-container transport took a minute and a half per
+	// read of kernel.parameters. One shell command reads them all.
+	if s.conn.Capabilities().Has(shared.Capability_RunCommand) {
+		cmd, err := s.conn.RunCommand(procSysDumpCommand)
+		if err == nil && cmd.ExitStatus == 0 {
+			log.Debug().Msg("using one shell command to read /proc/sys")
+			if params, denied, err := parseProcSysDump(cmd.Stdout); err == nil && len(params)+len(denied) > 0 {
+				return params, denied, nil
+			}
 		}
 	}
 
 	log.Debug().Msg("using /proc/sys walking to read kernel parameters")
-	fs := s.conn.FileSystem()
+	return walkProcSysDenied(s.conn.FileSystem())
+}
+
+// procSysDumpCommand prints every parameter under /proc/sys that the walk in
+// walkProcSysDenied reads, in one command: "V<path>\0<value>\0" for each one
+// it can read and "D<path>\0\0" for each one it is denied. Only files with the
+// owner's read bit set are parameters; the write-only knobs (vm/drop_caches)
+// are not, though root can open them. POSIX sh and find, so it runs on
+// BusyBox as well.
+const procSysDumpCommand = `sh -c 'cd /proc/sys 2>/dev/null || exit 3; ` +
+	`find . -type f -perm -0400 2>/dev/null | while IFS= read -r f; do ` +
+	`if [ -r "$f" ]; then v=$(cat "$f" 2>/dev/null) && printf "V%s\0%s\0" "$f" "$v"; ` +
+	`else printf "D%s\0\0" "$f"; fi; done'`
+
+// parseProcSysDump reads the output of procSysDumpCommand into parameter
+// values, keyed and trimmed as walkProcSysDenied keys and trims them, and the
+// names of the parameters that could not be read.
+func parseProcSysDump(r io.Reader) (map[string]string, []string, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, nil, err
+	}
+	params := map[string]string{}
+	var denied []string
+	if len(data) == 0 {
+		return params, denied, nil
+	}
+	// every entry ends in a NUL, so a complete dump ends in one: anything
+	// else is not the dump (an error message) or was cut short
+	fields := strings.Split(string(data), "\x00")
+	if fields[len(fields)-1] != "" || len(fields)%2 != 1 {
+		return nil, nil, fmt.Errorf("incomplete /proc/sys dump")
+	}
+	fields = fields[:len(fields)-1]
+	for i := 0; i+1 < len(fields); i += 2 {
+		entry, value := fields[i], fields[i+1]
+		if len(entry) < 3 || !strings.HasPrefix(entry[1:], "./") {
+			return nil, nil, fmt.Errorf("unexpected /proc/sys entry %q", entry)
+		}
+		name := procSysName(sysctlPath + entry[3:])
+		switch entry[0] {
+		case 'V':
+			params[name] = strings.TrimSpace(value)
+		case 'D':
+			denied = append(denied, name)
+		default:
+			return nil, nil, fmt.Errorf("unexpected /proc/sys entry %q", entry)
+		}
+	}
+	return params, denied, nil
+}
+
+var sysctlDeniedRegex = regexp.MustCompile(`^sysctl: permission denied on key '(.+)'$`)
+
+// ParseSysctlDenied returns the parameters procps `sysctl -a` reports on
+// stderr as "permission denied on key". sysctl still exits 0.
+func ParseSysctlDenied(r io.Reader) []string {
+	if r == nil {
+		return nil
+	}
+	var res []string
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		if m := sysctlDeniedRegex.FindStringSubmatch(strings.TrimSpace(scanner.Text())); m != nil {
+			res = append(res, m[1])
+		}
+	}
+	return res
+}
+
+// walkProcSys reads every readable knob under /proc/sys.
+func walkProcSys(fs afero.Fs) (map[string]string, error) {
+	params, _, err := walkProcSysDenied(fs)
+	return params, err
+}
+
+// walkProcSysDenied reads every readable knob under /proc/sys.
+//
+// Plenty of them are not readable: some are mode 0600 and owned by root
+// (kernel.usermodehelper/bset among them), and some are write-only by design
+// (kernel.kexec_load_disabled, the drop_caches knobs). A scan that is not root
+// hits the first of those a few entries into the walk. Reporting that as the
+// result of the walk cost the caller every parameter, so kernel.parameters was
+// empty for any non-root scan; skip the ones we cannot read and return the
+// rest.
+//
+// The parameters it could not open for lack of permission are returned as
+// denied.
+func walkProcSysDenied(fs afero.Fs) (map[string]string, []string, error) {
 	fsUtil := afero.Afero{Fs: fs}
 	kernelParameters := make(map[string]string)
+	var denied []string
+
 	err := fsUtil.Walk(sysctlPath, func(path string, f os.FileInfo, err error) error {
-		if f != nil && !f.IsDir() {
-			stat, err := s.conn.FileSystem().Stat(path)
-			if err != nil {
-				log.Error().Err(err)
-				return nil
-			}
-			details := shared.FileModeDetails{
-				FileMode: stat.Mode(),
-			}
-			if !details.UserReadable() {
-				return nil
-			}
-
-			f, err := s.conn.FileSystem().Open(path)
-			if err != nil {
-				log.Error().Err(err)
-				return err
-			}
-
-			content, err := io.ReadAll(f)
-			if err != nil {
-				log.Error().Err(err).Msg("cannot read content")
-				return nil
-			}
-			// remove leading sysctl path
-			k := strings.ReplaceAll(path, sysctlPath, "")
-			k = strings.ReplaceAll(k, "/", ".")
-			kernelParameters[k] = strings.TrimSpace(string(content))
+		if err != nil {
+			// Walk could not even stat this entry. Skipping the directory here
+			// would drop everything after it, so keep going.
+			log.Debug().Err(err).Str("path", path).Msg("mql[kernel]> skipping unreadable sysctl entry")
+			return nil
 		}
+		if f == nil || f.IsDir() {
+			return nil
+		}
+
+		// A handful of knobs are write-only by design -- vm/drop_caches,
+		// vm/compact_memory and net/ipv4/route/flush are the whole set on a
+		// stock kernel. Root can open and read those anyway, so the mode is
+		// what keeps them out of a map of parameter values. The walk already
+		// stat'd this entry, so use what it handed us rather than paying
+		// another syscall per file across ~1000 of them, which on an SSH
+		// connection is ~1000 round trips.
+		details := shared.FileModeDetails{FileMode: f.Mode()}
+		if !details.UserReadable() {
+			return nil
+		}
+
+		file, err := fs.Open(path)
+		if err != nil {
+			log.Debug().Err(err).Str("path", path).Msg("mql[kernel]> could not open sysctl parameter")
+			if os.IsPermission(err) {
+				denied = append(denied, procSysName(path))
+			}
+			return nil
+		}
+		defer file.Close()
+
+		content, err := io.ReadAll(file)
+		if err != nil {
+			log.Debug().Err(err).Str("path", path).Msg("mql[kernel]> could not read sysctl parameter")
+			return nil
+		}
+
+		kernelParameters[procSysName(path)] = strings.TrimSpace(string(content))
 		return nil
 	})
+	if err != nil {
+		return nil, nil, err
+	}
 
-	return kernelParameters, err
+	return kernelParameters, denied, nil
+}
+
+// procSysName turns a path under /proc/sys into a parameter name.
+func procSysName(path string) string {
+	// remove leading sysctl path
+	k := strings.ReplaceAll(path, sysctlPath, "")
+	return strings.ReplaceAll(k, "/", ".")
 }
 
 func (s *LinuxKernelManager) Modules() ([]*KernelModule, error) {
-	// TODO: use proc in future
-	cmd, err := s.conn.RunCommand("/sbin/lsmod")
+	if s.conn.Capabilities().Has(shared.Capability_RunCommand) {
+		cmd, err := s.conn.RunCommand("/sbin/lsmod")
+		// lsmod does not live in /sbin on every distro: Container-Optimized OS
+		// ships it as /bin/lsmod and has an empty /sbin, so the command exits
+		// 127 with no output. Nothing checked the exit status, so an empty
+		// parse was reported as "no modules loaded" rather than as a failure,
+		// and a policy asserting a module is absent passed without ever
+		// reading the module list.
+		//
+		// Each way of missing is logged separately: a command that could not be
+		// run at all and one that ran and failed are different problems on the
+		// target, and from the fallback alone they look identical.
+		switch {
+		case err != nil:
+			log.Debug().Err(err).Msg("could not run /sbin/lsmod, falling back to /proc/modules")
+		case cmd.ExitStatus != 0:
+			log.Debug().Int("exit", cmd.ExitStatus).
+				Msg("/sbin/lsmod exited non-zero, falling back to /proc/modules")
+		default:
+			log.Debug().Msg("using lsmod to read kernel modules")
+			return ParseLsmod(cmd.Stdout), nil
+		}
+	}
+
+	// /proc/modules is the kernel's own interface, so it needs no binary on
+	// PATH and works for a filesystem-only scan that cannot run commands at
+	// all. Parameters() already falls back the same way onto /proc/sys.
+	log.Debug().Msg("using /proc/modules to read kernel modules")
+	f, err := s.conn.FileSystem().Open(procModulesPath)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not read kernel modules")
 	}
+	defer f.Close()
 
-	return ParseLsmod(cmd.Stdout), nil
+	return ParseLinuxProcModules(f), nil
 }
 
 type OSXKernelManager struct {
@@ -227,16 +407,33 @@ func (s *BsdKernelManager) Info() (KernelInfo, error) {
 }
 
 func (s *BsdKernelManager) Parameters() (map[string]string, error) {
-	cmd, err := s.conn.RunCommand("sysctl -a")
+	command, sep := bsdSysctlCommand(s.conn.Asset().Platform.Name)
+	cmd, err := s.conn.RunCommand(command)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not read kernel parameters")
 	}
 
-	platform := s.conn.Asset().Platform
-	if platform.Name == "openbsd" {
-		return ParseSysctl(cmd.Stdout, "=")
-	} else {
-		return ParseSysctl(cmd.Stdout, ":")
+	return ParseSysctl(cmd.Stdout, sep)
+}
+
+// bsdSysctlCommand returns the command that lists every sysctl on a BSD
+// platform and the separator it prints between name and value.
+//
+// FreeBSD prints `name: value` by default, and `-e` switches the separator to
+// `=`, which appears far less often than a colon in the continuation lines of
+// multi-line values like the kernel message buffer. OpenBSD prints
+// `name=value` and NetBSD `name = value`. NetBSD keeps sysctl in /sbin, which
+// is not on an unprivileged user's PATH.
+func bsdSysctlCommand(platform string) (string, string) {
+	switch platform {
+	case "freebsd":
+		return "sysctl -ae", "="
+	case "openbsd":
+		return "sysctl -a", "="
+	case "netbsd":
+		return "/sbin/sysctl -a", "="
+	default:
+		return "sysctl -a", ":"
 	}
 }
 
@@ -245,14 +442,22 @@ func (s *BsdKernelManager) Modules() ([]*KernelModule, error) {
 	if platform.Name == "openbsd" {
 		// openbsd does not support kernel modules, so we return an empty list
 		return []*KernelModule{}, nil
-	} else {
-		// NOTE: kldstat is supported on freebsd variants so failures are possible
-		cmd, err := s.conn.RunCommand("kldstat")
-		if err != nil {
-			return nil, errors.Wrap(err, "could not read kernel modules")
-		}
-		return ParseKldstat(cmd.Stdout), nil
 	}
+
+	// `kldstat -v` lists the modules inside every loaded file, including the
+	// ones compiled into the kernel, by the names `kldstat -m` and kldload
+	// know them.
+	cmd, err := s.conn.RunCommand("kldstat -v")
+	if err == nil && cmd.ExitStatus == 0 {
+		return ParseKldstatVerbose(cmd.Stdout), nil
+	}
+
+	// NOTE: kldstat is supported on freebsd variants so failures are possible
+	cmd, err = s.conn.RunCommand("kldstat")
+	if err != nil {
+		return nil, errors.Wrap(err, "could not read kernel modules")
+	}
+	return ParseKldstat(cmd.Stdout), nil
 }
 
 type AixKernelManager struct {
@@ -280,7 +485,11 @@ func (s *AixKernelManager) Info() (KernelInfo, error) {
 }
 
 func (s *AixKernelManager) Parameters() (map[string]string, error) {
-	return map[string]string{}, nil
+	cmd, err := s.conn.RunCommand(AixTunablesCommand)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not read kernel parameters")
+	}
+	return ParseAixTunables(cmd.Stdout)
 }
 
 func (s *AixKernelManager) Modules() ([]*KernelModule, error) {

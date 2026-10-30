@@ -18,11 +18,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kafka"
 	kafka_types "github.com/aws/aws-sdk-go-v2/service/kafka/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsMsk) id() (string, error) {
@@ -445,8 +445,8 @@ func initAwsMskCluster(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 		return args, nil, nil
 	}
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil && ids.arn != "" {
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformMskCluster); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 	if args["arn"] == nil {
@@ -521,8 +521,7 @@ func (a *mqlAwsMskCluster) fetchPolicy() (*kafka.GetClusterPolicyOutput, error) 
 		svc := conn.Kafka(a.region)
 		out, err := svc.GetClusterPolicy(context.Background(), &kafka.GetClusterPolicyInput{ClusterArn: &a.Arn.Data})
 		if err != nil {
-			var notFound *kafka_types.NotFoundException
-			if errors.As(err, &notFound) {
+			if _, ok := errors.AsType[*kafka_types.NotFoundException](err); ok {
 				a.policyErr = nil
 				return
 			}
@@ -1895,9 +1894,7 @@ func (a *mqlAwsMskCluster) serverlessConfig() (*mqlAwsMskClusterServerlessConfig
 		}
 		vcRes, err := CreateResource(a.MqlRuntime, "aws.msk.cluster.serverlessConfig.vpcConfig",
 			map[string]*llx.RawData{
-				"__id":             llx.StringData(a.Arn.Data + "/serverless/vpc/" + idHash),
-				"subnetIds":        llx.ArrayData(subnetIds, types.String),
-				"securityGroupIds": llx.ArrayData(sgIds, types.String),
+				"__id": llx.StringData(a.Arn.Data + "/serverless/vpc/" + idHash),
 			})
 		if err != nil {
 			return nil, err
@@ -2250,8 +2247,6 @@ func (a *mqlAwsMskReplicator) kafkaClusters() ([]any, error) {
 				"__id":                        llx.StringData(a.Arn.Data + "/cluster/" + alias),
 				"amazonMskClusterArn":         llx.StringData(mskArn),
 				"kafkaClusterAlias":           llx.StringData(alias),
-				"subnetIds":                   llx.ArrayData(subnetIds, types.String),
-				"securityGroupIds":            llx.ArrayData(sgIds, types.String),
 				"apacheKafkaBootstrapBrokers": llx.StringData(bootstrapBrokers),
 				"authenticationType":          llx.StringData(authType),
 				"saslScramMechanism":          llx.StringData(saslMechanism),
@@ -2350,10 +2345,10 @@ func (a *mqlAwsMskReplicator) replicationInfoList() ([]any, error) {
 		}
 		var srcArn, tgtArn *string
 		if v, ok := aliasToArn[srcAlias]; ok {
-			srcArn = stringPtr(v)
+			srcArn = new(v)
 		}
 		if v, ok := aliasToArn[tgtAlias]; ok {
-			tgtArn = stringPtr(v)
+			tgtArn = new(v)
 		}
 
 		resource, err := CreateResource(a.MqlRuntime, "aws.msk.replicator.replicationInfo",
@@ -2541,8 +2536,9 @@ func (a *mqlAwsMskReplicator) isCrossAccount() (bool, error) {
 	return len(accounts) > 1, nil
 }
 
+//go:fix inline
 func stringPtr(s string) *string {
-	return &s
+	return new(s)
 }
 
 func (a *mqlAwsMskReplicator) logDelivery() (*mqlAwsMskReplicatorLogDelivery, error) {

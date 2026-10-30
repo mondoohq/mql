@@ -1,0 +1,116 @@
+zonename: mqlzexcl
+description: 
+zonepath: /system/zones/mqlzexcl
+brand: solaris
+autoboot: true
+autoshutdown: shutdown
+bootargs: -m verbose
+file-mac-profile: fixed-configuration
+pool: 
+limitpriv: default,proc_priocntl,dtrace_user
+scheduling-class: FSS
+ip-type: exclusive
+hostid: 1a2b3c4d
+tenant: 
+fs-allowed: hsfs,pcfs
+[max-lwps: 2000]
+[max-processes: 1000]
+fs:
+	dir: /data
+	special: /export/mqlshare
+	raw: 
+	type: lofs
+	options: [ro,nodevices]
+anet:
+	linkname: net0
+	lower-link: auto
+	allowed-address: 10.0.5.20/24
+	configure-allowed-address: true
+	defrouter: 10.0.5.1
+	allowed-dhcp-cids: 
+	link-protection: mac-nospoof,ip-nospoof
+	mac-address: auto
+	auto-mac-address: 
+	mac-prefix: 
+	mac-slot: 
+	vlan-id: 
+	priority: 
+	rxrings: 
+	txrings: 
+	mtu: 
+	maxbw: 
+	bwshare: 
+	rxfanout: 
+	vsi-typeid: 
+	vsi-vers: 
+	vsi-mgrid: 
+	etsbw-lcl: 
+	cos: 
+	pkey: 
+	linkmode: 
+	evs: 
+	vport: 
+	ring-group: auto
+	autopush: 
+anet:
+	linkname: net1
+	lower-link: auto
+	allowed-address: 
+	configure-allowed-address: true
+	defrouter: 
+	allowed-dhcp-cids: 
+	link-protection: mac-nospoof
+	mac-address: auto
+	auto-mac-address: 
+	mac-prefix: 
+	mac-slot: 
+	vlan-id: 42
+	priority: 
+	rxrings: 
+	txrings: 
+	mtu: 
+	maxbw: 
+	bwshare: 
+	rxfanout: 
+	vsi-typeid: 
+	vsi-vers: 
+	vsi-mgrid: 
+	etsbw-lcl: 
+	cos: 
+	pkey: 
+	linkmode: 
+	evs: 
+	vport: 
+	ring-group: auto
+	autopush: 
+device:
+	match: /dev/zvol/rdsk/rpool/swap
+	storage: 
+	create-size: 
+	allow-partition: 
+	allow-raw-io: true
+	removable: 
+capped-cpu:
+	[ncpus: 1.50]
+capped-memory:
+	physical: 1G
+	[swap: 2G]
+	[locked: 512M]
+dataset:
+	name: rpool/mqlzdata
+	alias: mqlzdata
+rctl:
+	name: zone.max-swap
+	value: (priv=privileged,limit=2147483648,action=deny)
+rctl:
+	name: zone.max-locked-memory
+	value: (priv=privileged,limit=536870912,action=deny)
+rctl:
+	name: zone.cpu-cap
+	value: (priv=privileged,limit=150,action=deny)
+rctl:
+	name: zone.max-lwps
+	value: (priv=privileged,limit=2000,action=deny)
+rctl:
+	name: zone.max-processes
+	value: (priv=privileged,limit=1000,action=deny)

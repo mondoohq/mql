@@ -137,7 +137,7 @@ LOOP:
 }
 
 func consumeWhitespace(s []rune) []rune {
-	for i := 0; i < len(s); i++ {
+	for i := range s {
 		switch s[i] {
 		case ' ', '\t', '\r', '\n':
 		default:

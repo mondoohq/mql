@@ -25,6 +25,36 @@ func (b *Package) Hash() (string, error) {
 	return fmt.Sprintf("%016x", hash), nil
 }
 
+// Package scope values for Package.Scope. Empty means the source does not
+// distinguish dev from prod.
+const (
+	PackageScopeProd = "prod" // production / runtime dependency
+	PackageScopeDev  = "dev"  // development / test-only dependency (e.g. an npm devDependency or its closure)
+)
+
+// BomRefFor returns a stable, document-internal identifier for a component: its
+// purl when present, else a synthesized "type/name@version" fallback. Unlike a
+// per-render UUID this is deterministic, so the same component gets the same ref
+// across renders (reproducible CycloneDX/SPDX output) and dependency-graph edges
+// (Sbom.dependencies) can reference it. If Package.BomRef is already set (e.g.
+// carried from a lockfile), it is used as-is.
+func BomRefFor(p *Package) string {
+	if p.BomRef != "" {
+		return p.BomRef
+	}
+	if p.Purl != "" {
+		return p.Purl
+	}
+	ref := p.Name
+	if p.Type != "" {
+		ref = p.Type + "/" + p.Name
+	}
+	if p.Version != "" {
+		ref += "@" + p.Version
+	}
+	return ref
+}
+
 // SortFn is a helper function for slices.SortFunc to sort a slice of Package
 // by name and version. Use it like this: slices.SortFunc(packages, sbom.SortFn)
 func SortFn(a, b *Package) int {

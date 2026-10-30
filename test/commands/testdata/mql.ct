@@ -14,6 +14,7 @@ Available Commands:
   completion    Generate the autocompletion script for the specified shell
   discover      Discover assets
   help          Help about any command
+  inventory     Work with inventory files
   login         Register with Mondoo Platform
   logout        Log out from Mondoo Platform
   providers     Providers add connectivity to all assets
@@ -25,10 +26,11 @@ Available Commands:
 
 Flags:
       --api-proxy string   Set the proxy for communications with Mondoo Platform API
-      --auto-update        Enable automatic provider installation and update (default true)
+      --auto-update        Enable automatic updates of mql and its providers; overrides auto_update in the config file (default true)
       --config string      Set config file path (default $HOME/.config/mondoo/mondoo.yml)
   -h, --help               help for mql
       --log-level string   Set the log level: error, warn, info, debug, trace (default "info")
+      --strict             Require every link in an MQL chain to resolve; mark optional links with a question mark
   -v, --verbose            Enable verbose output
 
 Use "mql [command] --help" for more information about a command.

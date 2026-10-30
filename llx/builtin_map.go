@@ -7,15 +7,218 @@ import (
 	"errors"
 	"math/rand"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/types"
 )
 
 // mapFunctions are all the handlers for builtin array methods
 var mapFunctions map[string]chunkHandlerV2 //nolint:unused
+
+// errMissingKey reports a key lookup that named something the map does not
+// contain. Only produced under strict mode; see ADR 043.
+type errMissingKey struct {
+	key string
+}
+
+func (e *errMissingKey) Error() string {
+	return "cannot find key \"" + e.key + "\""
+}
+
+func (e *errMissingKey) Is(target error) bool { return target == ErrStrict }
+
+// missingKey applies the strict-mode rule for a key that is not in the map.
+//
+// Absence is the one failure a map lookup has that a field access does not: a
+// field is declared and always resolves, while naming a key is a claim that may
+// simply be false. Under strict mode that claim is checked, which is what turns
+// a mistyped `params.PermitRootLogn == "no"` into an error instead of a silent
+// false. A key that is present but holds null does not come through here - that
+// is a resolved value, and only dereferencing it errors.
+func missingKey(chunk *Chunk, key string, typ types.Type) (*RawData, uint64, error) {
+	switch chunk.Function.GetNullability() {
+	case Function_NULLABILITY_REQUIRED:
+		return nil, 0, &errMissingKey{key: key}
+	case Function_NULLABILITY_OPTIONAL:
+		return &RawData{Type: typ, ShortCircuited: true}, 0, nil
+	default:
+		return &RawData{Type: typ}, 0, nil
+	}
+}
+
+// dictPathState is an in-progress walk towards a key that contains dots.
+type dictPathState struct {
+	root     map[string]any // container the walk is anchored at
+	segments []string       // segments taken since
+	anchor   *Chunk         // chunk that reports the absence if the walk ends empty
+}
+
+// maxDictPathProbes bounds one walk. The search is exponential in the worst
+// case - keys "a", "a.a", "a.a.a" keep every prefix alive as a branch - and the
+// documents walked are files read off the scanned host.
+const maxDictPathProbes = 4096
+
+// dictWalk reaches a key that itself contains dots.
+//
+// MQL compiles `params.a.b.c` into one lookup per segment, so a managed
+// preferences plist - which keys its settings by preference domain - sends the
+// chain walking a "com" that does not exist, and every profile-managed CIS
+// macOS check read null. A lookup that misses therefore anchors a walk, and
+// each later link retries the whole path from that anchor.
+//
+// It runs here rather than folding the path in mqlc because whether
+// "com.apple.MCX" is one key or three is a fact about the document, not about
+// the query; folding also mis-compiles a chain that leaves a dict for a map, a
+// resource or a scalar. The bytecode is unchanged as a result, which cuts both
+// ways: no checksum moves, but neither does anything announce that the same
+// query id now answers differently.
+//
+// handled is false when there is nothing to walk and the caller does what it
+// always did. A walk anchors where it first missed, not at the document root,
+// so `{"com": {...}, "com.apple.x": 1}` still reads null for
+// `params.com.apple.x` - as it does today.
+func dictWalk(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64, key string, typ types.Type) (*RawData, error, bool) {
+	// Whether another key lookup is waiting to read this one. It decides all of:
+	// whether a path is worth walking, whether a resolved value carries the walk
+	// on, and whether an empty walk is over.
+	continues := chainContinues(e, ref)
+
+	if bind.dictPath == nil && !continues {
+		return nil, nil, false
+	}
+
+	here, _ := bind.Value.(map[string]any)
+
+	root, taken, anchor := here, []string(nil), chunk
+	if bind.dictPath != nil {
+		root, taken, anchor = bind.dictPath.root, bind.dictPath.segments, bind.dictPath.anchor
+	}
+
+	segments := make([]string, len(taken), len(taken)+1)
+	copy(segments, taken)
+	segments = append(segments, key)
+
+	// The plain key wins wherever it is present, which keeps `params["a.b"]`
+	// meaning the key spelled "a.b".
+	if here != nil {
+		if v, ok := here[key]; ok {
+			return dictWalkValue(v, root, segments, anchor, continues, typ), nil, true
+		}
+	}
+
+	probes := maxDictPathProbes
+	v, found, reached := resolveDictPath(root, segments, &probes)
+	switch {
+	case found:
+		return dictWalkValue(v, root, segments, anchor, continues, typ), nil, true
+	case continues:
+		return &RawData{Type: typ, dictPath: &dictPathState{root: root, segments: segments, anchor: anchor}}, nil, true
+	}
+
+	// Nothing answered and nothing follows, so the key is absent and says so as
+	// it always did - reported against the chunk the walk started on, since a
+	// `?` on the last link must not excuse a key missing at the first. Named for
+	// the first segment no prefix reached, so a typo in the leaf of a domain
+	// that did resolve is blamed on the leaf.
+	name := segments[0]
+	if reached > 0 && reached < len(segments) {
+		name = segments[reached]
+	}
+	res, _, err := missingKey(anchor, name, typ)
+	return res, err, true
+}
+
+// dictWalkValue wraps a resolved value, carrying the walk on only while another
+// lookup is waiting to read it. A value that kept its anchor would answer by how
+// it was reached: `params.a.b` in a block or a variable would go on resolving
+// siblings of the document root that `params["a.b"]` does not hold and its own
+// `keys` does not list. A key resolving to null holds a value, so reading
+// through it stays a null dereference (ADR 043) and ends the walk too.
+func dictWalkValue(v any, root map[string]any, segments []string, anchor *Chunk, continues bool, typ types.Type) *RawData {
+	res := &RawData{Type: typ, Value: v}
+	if v != nil && continues {
+		res.dictPath = &dictPathState{root: root, segments: segments, anchor: anchor}
+	}
+	return res
+}
+
+// chainContinues reports whether the next chunk is another key lookup reading
+// from this one - the only thing a partly-walked path needs to know, and
+// something the compiled code already holds.
+//
+// Asking the document instead, by scanning its keys for one continuing the
+// path, costs O(keys) per missed lookup (315us on a 50k-key document against
+// 50ns for the miss) and, bounded to contain that, stops being deterministic:
+// Go randomizes map iteration, so a partial scan answers from a different draw
+// each run. Non-consecutive chunks fall through to false, which is what this
+// answered before.
+func chainContinues(e *blockExecutor, ref uint64) bool {
+	if e == nil || e.block == nil {
+		return false
+	}
+
+	// Refs count from one, so masking the block off indexes the next chunk.
+	idx := int(ref & 0xFFFFFFFF)
+	if idx <= 0 || idx >= len(e.block.Chunks) {
+		return false
+	}
+
+	next := e.block.Chunks[idx]
+	if next.Id != "[]" && next.Id != "[]?" {
+		return false
+	}
+	f := next.Function
+	return f != nil && f.Binding == ref &&
+		len(f.Args) == 1 && types.Type(f.Args[0].Type) == types.String
+}
+
+// resolveDictPath walks segments through nested maps, shortest prefix first so
+// that undotted documents resolve exactly as they always did.
+//
+// Backtracking is load-bearing: a managed plist holds "com.apple.MCX" beside
+// "com.apple.MCX.FileVault2", so "com.apple.MCX.FileVault2.Enable" matches the
+// shorter domain, finds no "FileVault2", and must come back for the longer one.
+// The third return is how far the deepest prefix reached, for the diagnostic.
+func resolveDictPath(container map[string]any, segments []string, probes *int) (any, bool, int) {
+	deepest := 0
+
+	for i := 1; i <= len(segments); i++ {
+		if *probes <= 0 {
+			return nil, false, deepest
+		}
+		*probes--
+
+		v, present := container[strings.Join(segments[:i], ".")]
+		if !present {
+			continue
+		}
+		if i == len(segments) {
+			return v, true, i
+		}
+
+		child, ok := v.(map[string]any)
+		if !ok {
+			// A leaf with segments left is a dead end for this split, not an
+			// answer; a longer prefix may still carry the rest.
+			if i > deepest {
+				deepest = i
+			}
+			continue
+		}
+		cv, ok, d := resolveDictPath(child, segments[i:], probes)
+		if ok {
+			return cv, true, i + d
+		}
+		if i+d > deepest {
+			deepest = i + d
+		}
+	}
+
+	return nil, false, deepest
+}
 
 func mapGetIndex(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
 	args := chunk.Function.Args
@@ -29,7 +232,7 @@ func mapGetIndex(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*Ra
 	// ^^ TODO
 
 	childType := bind.Type.Child()
-	if bind.Value == nil {
+	if bind.Value == nil && bind.dictPath == nil {
 		// Propagate null through map access chains instead of erroring.
 		return &RawData{Type: childType}, 0, nil
 	}
@@ -54,13 +257,29 @@ func mapGetIndex(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*Ra
 		return nil, 0, errors.New("Called [] with wrong type " + t.Label())
 	}
 
+	// See dictGetIndex: a walk already under way reads through its own nulls.
+	if bind.dictPath != nil {
+		if res, err, handled := dictWalk(e, bind, chunk, ref, key, childType); handled {
+			return res, 0, err
+		}
+	}
+
 	m, ok := bind.Value.(map[string]any)
 	if !ok {
 		return nil, 0, errors.New("failed to typecast " + bind.Type.Label() + " into map")
 	}
+	v, present := m[key]
+	if !present {
+		// `macos.userPreferences` is keyed by preference domain, so every one of
+		// its keys is dotted; a chain over it has to be able to walk.
+		if res, err, handled := dictWalk(e, bind, chunk, ref, key, childType); handled {
+			return res, 0, err
+		}
+		return missingKey(chunk, key, childType)
+	}
 	return &RawData{
 		Type:  childType,
-		Value: m[key],
+		Value: v,
 	}, 0, nil
 }
 
@@ -170,7 +389,7 @@ func _mapWhereV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64, inve
 		i++
 	}
 
-	err = e.runFunctionBlocks(argsList, fref, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argsList, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		resMap := map[string]any{}
 		for i, res := range results {
 			if res.isTruthy() == !invert {
@@ -371,6 +590,17 @@ func dictGetIndex(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 		return nil, 0, errors.New("Called [] with " + strconv.Itoa(len(args)) + " arguments, only 1 supported.")
 	}
 
+	// A walk already under way is consulted before the type switch, because its
+	// intermediate segments have no value to switch on - they are the nulls that
+	// the missing "com" and "com.apple" produce on the way to
+	// "com.apple.security.firewall". A chain that is not walking never gets
+	// here, so the ordinary lookup below is untouched.
+	if bind.dictPath != nil && types.Type(args[0].Type) == types.String {
+		if res, err, handled := dictWalk(e, bind, chunk, ref, string(args[0].Value), bind.Type); handled {
+			return res, 0, err
+		}
+	}
+
 	if bind.Value == nil {
 		// Propagate null through dict access chains instead of erroring.
 		// This enables expressions like dict['a']['b'] to evaluate to null
@@ -407,8 +637,18 @@ func dictGetIndex(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 		}
 		// ^^ TODO
 
+		key := string(args[0].Value)
+		v, present := x[key]
+		if !present {
+			// Only now, once the key has genuinely missed, is it worth asking
+			// whether a dotted key spells the path this chain is walking.
+			if res, err, handled := dictWalk(e, bind, chunk, ref, key, bind.Type); handled {
+				return res, 0, err
+			}
+			return missingKey(chunk, key, bind.Type)
+		}
 		return &RawData{
-			Value: x[string(args[0].Value)],
+			Value: v,
 			Type:  bind.Type,
 		}, 0, nil
 
@@ -567,24 +807,6 @@ func dictNotEmpty(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 	}
 }
 
-// Deprecated: replace with calls to the empty type
-func dictNotEmptyV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	if bind.Value == nil {
-		return BoolFalse, 0, nil
-	}
-
-	switch x := bind.Value.(type) {
-	case string:
-		return BoolData(len(x) != 0), 0, nil
-	case []any:
-		return BoolData(len(x) != 0), 0, nil
-	case map[string]any:
-		return BoolData(len(x) != 0), 0, nil
-	default:
-		return nil, 0, errors.New("dict value does not support field `notEmpty`")
-	}
-}
-
 func dictBlockCallV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
 	switch bind.Value.(type) {
 	case []any:
@@ -648,6 +870,23 @@ func dictTrimV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*Raw
 	return stringTrimV2(e, bind, chunk, ref)
 }
 
+func dictJsonV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
+	// Unlike the other string-ish dict builtins this returns null for a null
+	// bind rather than erroring. The values it is aimed at are optional
+	// resource attributes, and an absent one has to stay null so the
+	// surrounding `== empty` guard can see it.
+	if bind.Value == nil {
+		return &RawData{Type: types.Dict}, 0, nil
+	}
+
+	_, ok := bind.Value.(string)
+	if !ok {
+		return nil, 0, errors.New("dict value does not support field `json`")
+	}
+
+	return stringJsonV2(e, bind, chunk, ref)
+}
+
 func dictKeysV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
 	if bind.Value == nil {
 		return &RawData{
@@ -705,6 +944,23 @@ func dictValuesV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 // This means that we do not treat these operations the same we would for equality.
 // This is why the operations need a bit of special handling, which is done
 // inside this function.
+//
+// Only a block that is exactly `_ == x` (x a string, dict or []string) gets the
+// substring search and returns a string. Any other block treats the string as
+// a one-element list and returns a list, so the block's shape picks the result:
+//
+//	"All".where(_ == "All").length              ==>  3  (string)
+//	"All".where(_ == "All" || _ == "x").length  ==>  1  (list)
+//	"hello".contains(_ == "ll" || _ == "zz")    ==>  false (whole value)
+//
+// The quantifiers any, all, none and one always treat the string as a
+// one-element list, whatever the block's shape: they ask whether an entry
+// matches, and a string dict is the single-entry form of a list (as in JSON
+// documents that allow `"a"` for `["a"]`):
+//
+//	"kms:Decrypt".any(_ == "kms:Decrypt")  ==>  true
+//	"kms:Decrypt".any(_ == "kms")          ==>  false (no substring match)
+//	"kms:Decrypt".none(_ == "kms:Decrypt") ==>  false
 func _stringWhere(e *blockExecutor, src string, chunk *Chunk, ref uint64, inverted bool) (*RawData, uint64, error) {
 	arg1 := chunk.Function.Args[1]
 	fref, ok := arg1.RefV2()
@@ -722,6 +978,19 @@ func _stringWhere(e *blockExecutor, src string, chunk *Chunk, ref uint64, invert
 		return BoolFalse, 0, nil
 	}
 
+	// The substring search only applies when the whole block is one `_ == x`.
+	// In any larger expression (`_ == "a" || _ == "b"`) each `==` would return
+	// the matched substring instead of a bool, and the boolean operators panic
+	// on it. Evaluate those against the string as a single dict value instead.
+	//
+	// A quantifier (any, all, none, one) compares entries, never substrings, so
+	// it always evaluates the string as a one-element list. Without this, the
+	// substring result reached `$any` as a string, which has no `$any`, so
+	// `"a".any(_ == "a")` failed and `"a".none(_ == "a")` passed.
+	if !isStringSliceSearch(e.ctx.code, funBlock, fref) || feedsQuantifier(e.ctx.code, ref) {
+		return _dictArrayWhere(e, []any{src}, chunk, ref, inverted)
+	}
+
 	var found *RawResult
 	_ = e.runFunctionBlock([]*RawData{
 		{Type: types.Nil, Value: nil},
@@ -731,6 +1000,41 @@ func _stringWhere(e *blockExecutor, src string, chunk *Chunk, ref uint64, invert
 	})
 
 	return found.Data, 0, nil
+}
+
+// isStringSliceSearch reports whether a where block is exactly `_ == x` with an
+// x that stringslice can search for, i.e. its only entrypoint is a stringslice
+// builtin bound to the block's `_` argument.
+func isStringSliceSearch(code *CodeV2, block *Block, fref uint64) bool {
+	if len(block.Entrypoints) != 1 {
+		return false
+	}
+	c := code.Chunk(block.Entrypoints[0])
+	if c.Function == nil || c.Function.Binding != fref|2 {
+		return false
+	}
+	_, err := BuiltinFunctionV2(types.StringSlice, c.Id)
+	return err == nil
+}
+
+// feedsQuantifier reports whether the where chunk at ref is the filter of a
+// quantifier: dict any, none, one and having compile to `where` and all to
+// `$whereNot`, each followed by a `$any`, `$all`, `$none` or `$one` chunk bound
+// to the filter's result. contains and a plain where are not quantifiers.
+func feedsQuantifier(code *CodeV2, ref uint64) bool {
+	block := code.Block(ref)
+	// chunk refs are 1-based, so the chunks after ref start at index uint32(ref)
+	for i := int(uint32(ref)); i < len(block.Chunks); i++ {
+		c := block.Chunks[i]
+		if c.Function == nil || c.Function.Binding != ref {
+			continue
+		}
+		switch c.Id {
+		case "$any", "$all", "$none", "$one":
+			return true
+		}
+	}
+	return false
 }
 
 // requires at least 1 entry in the list!
@@ -760,7 +1064,7 @@ func _dictArrayWhere(e *blockExecutor, list []any, chunk *Chunk, ref uint64, inv
 		}
 	}
 
-	err = e.runFunctionBlocks(argsList, fref, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argsList, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		resList := []any{}
 		for i, res := range results {
 			if res.isTruthy() == !invert {
@@ -855,7 +1159,7 @@ func _dictWhere(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64, inver
 		i++
 	}
 
-	err = e.runFunctionBlocks(argsList, fref, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argsList, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		resMap := map[string]any{}
 		for i, res := range results {
 			if res.isTruthy() == !invert {
@@ -942,7 +1246,7 @@ func filterList(e *blockExecutor, list []any, chunk *Chunk, ref uint64, invert b
 	}
 
 	var res []any
-	err = e.runFunctionBlocks(argsList, fref, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argsList, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		resList := []any{}
 		for i, res := range results {
 			if res.isTruthy() == !invert {
@@ -1267,13 +1571,7 @@ func dictDifferenceV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64)
 	res := make([]any, 0)
 	var skip bool
 	for i := range org {
-		skip = false
-		for j := range filters {
-			if org[i] == filters[j] {
-				skip = true
-				break
-			}
-		}
+		skip = slices.Contains(filters, org[i])
 
 		if !skip {
 			res = append(res, org[i])
@@ -1368,13 +1666,7 @@ func dictContainsNone(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64)
 	res := make([]any, 0)
 	var skip bool
 	for i := range org {
-		skip = true
-		for j := range filters {
-			if org[i] == filters[j] {
-				skip = false
-				break
-			}
-		}
+		skip = !slices.Contains(filters, org[i])
 
 		if !skip {
 			res = append(res, org[i])

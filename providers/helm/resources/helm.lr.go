@@ -9,9 +9,9 @@ import (
 	"errors"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // The MQL type names exposed as public consts for ease of reference.
@@ -56,7 +56,7 @@ func init() {
 			Create: createHelmMaintainer,
 		},
 		"helm.template": {
-			// to override args, implement: initHelmTemplate(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initHelmTemplate,
 			Create: createHelmTemplate,
 		},
 		"helm.directive": {
@@ -68,7 +68,7 @@ func init() {
 			Create: createHelmResource,
 		},
 		"helm.file": {
-			// to override args, implement: initHelmFile(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initHelmFile,
 			Create: createHelmFile,
 		},
 		"helm.chart.dependencyLock": {

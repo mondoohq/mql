@@ -4,10 +4,13 @@
 package resources
 
 import (
-	"github.com/stackitcloud/stackit-sdk-go/services/iaas"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"strconv"
+	"sync"
+	"sync/atomic"
+
+	iaas "github.com/stackitcloud/stackit-sdk-go/services/iaas/v2api"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // ------------------------- servers -------------------------
@@ -20,10 +23,10 @@ func (r *mqlStackit) servers() ([]any, error) {
 	}
 	// Details(true) so the response includes nics, security groups, and volumes;
 	// without it the API returns servers with those fields empty.
-	resp, err := client.ListServers(bgctx(), c.ProjectID(), c.Region()).Details(true).Execute()
+	resp, err := client.DefaultAPI.ListServers(bgctx(), c.ProjectID(), c.Region()).Details(true).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -37,6 +40,76 @@ func (r *mqlStackit) servers() ([]any, error) {
 		out = append(out, res)
 	}
 	return out, nil
+}
+
+// mqlStackitServerInternal caches data the server GET returns inline that is no
+// longer exposed as schema fields: the service-account mail addresses that
+// serviceAccounts() resolves into typed references, and the per-interface
+// summaries that securityGroups() and exposure() read. Keeping the summaries
+// here avoids a ListServerNICs call per server just to answer those two.
+type mqlStackitServerInternal struct {
+	cacheServiceAccountMails []string
+	cacheNics                []any
+	// cacheBootVolumeID is the volume the server boots from, resolved by
+	// bootVolume(). Empty when the server boots straight from an image.
+	cacheBootVolumeID string
+}
+
+// bootVolume resolves the volume that holds the server's root disk, so a
+// check can ask about the OS disk specifically (its encryption key, its
+// image, whether it is a clone) rather than about the undifferentiated set
+// in volumes. Null when the server boots straight from an image, or when
+// the volume no longer exists.
+func (r *mqlStackitServer) bootVolume() (*mqlStackitVolume, error) {
+	return refByKey(r.MqlRuntime, "stackit.volume", "id", r.cacheBootVolumeID, &r.BootVolume)
+}
+
+// serverAgentProvisioned reports whether the STACKIT server agent is
+// provisioned on the server, or nil when the API says nothing about it.
+//
+// The agent is the precondition for the Server Backup and Server Update
+// services: without it neither collects anything, so an empty backups() or
+// updates() describes the server rather than the backup configuration. The
+// API omits the setting when provisioning follows the boot image's own
+// default, and that outcome is not readable from the server object. Nil there
+// keeps "the agent is off" apart from "we cannot tell" instead of folding
+// both into a false the API never reported.
+func serverAgentProvisioned(s *iaas.Server) *bool {
+	if s == nil {
+		return nil
+	}
+	agent, ok := s.GetAgentOk()
+	if !ok || agent == nil {
+		return nil
+	}
+	provisioned, ok := agent.GetProvisionedOk()
+	if !ok {
+		return nil
+	}
+	return provisioned
+}
+
+// serverBootVolumeDeleteOnTermination reports whether the boot volume is
+// deleted along with the server, or nil when the server has no boot volume or
+// the API reports no setting for it.
+//
+// A server booted straight from an image carries no boot volume at all and the
+// question does not apply to it. Both that case and an unreported setting
+// yield nil rather than false, so a server whose disk retention is unknown
+// does not read as one that keeps its disk.
+func serverBootVolumeDeleteOnTermination(s *iaas.Server) *bool {
+	if s == nil {
+		return nil
+	}
+	boot, ok := s.GetBootVolumeOk()
+	if !ok || boot == nil {
+		return nil
+	}
+	deleteOnTermination, ok := boot.GetDeleteOnTerminationOk()
+	if !ok {
+		return nil
+	}
+	return deleteOnTermination
 }
 
 func buildServer(runtime *plugin.Runtime, s *iaas.Server) (plugin.Resource, error) {
@@ -69,28 +142,39 @@ func buildServer(runtime *plugin.Runtime, s *iaas.Server) (plugin.Resource, erro
 	updatedAt, ok3 := s.GetUpdatedAtOk()
 
 	args := map[string]*llx.RawData{
-		"id":                  llx.StringData(s.GetId()),
-		"name":                llx.StringData(s.GetName()),
-		"status":              llx.StringData(s.GetStatus()),
-		"powerStatus":         llx.StringData(s.GetPowerStatus()),
-		"machineType":         llx.StringData(s.GetMachineType()),
-		"availabilityZone":    llx.StringData(s.GetAvailabilityZone()),
-		"createdAt":           llx.TimeDataPtr(timeOrNil(createdAt, ok1)),
-		"launchedAt":          llx.TimeDataPtr(timeOrNil(launchedAt, ok2)),
-		"updatedAt":           llx.TimeDataPtr(timeOrNil(updatedAt, ok3)),
-		"errorMessage":        llx.StringData(s.GetErrorMessage()),
-		"configDrive":         llx.BoolData(s.GetConfigDrive()),
-		"keypairName":         llx.StringData(s.GetKeypairName()),
-		"imageId":             llx.StringData(s.GetImageId()),
-		"volumeIds":           strSliceData(s.GetVolumes()),
-		"securityGroupIds":    strSliceData(s.GetSecurityGroups()),
-		"serviceAccountMails": strSliceData(s.GetServiceAccountMails()),
-		"nics":                llx.ArrayData(nics, types.Dict),
-		"userData":            llx.StringData(string(s.GetUserData())),
-		"labels":              labelData(s.GetLabels()),
-		"metadata":            metadataData(s.GetMetadata()),
+		"id":               llx.StringData(s.GetId()),
+		"name":             llx.StringData(s.GetName()),
+		"status":           llx.StringData(s.GetStatus()),
+		"powerStatus":      llx.StringData(s.GetPowerStatus()),
+		"machineType":      llx.StringData(s.GetMachineType()),
+		"availabilityZone": llx.StringData(s.GetAvailabilityZone()),
+		"createdAt":        llx.TimeDataPtr(timeOrNil(createdAt, ok1)),
+		"launchedAt":       llx.TimeDataPtr(timeOrNil(launchedAt, ok2)),
+		"updatedAt":        llx.TimeDataPtr(timeOrNil(updatedAt, ok3)),
+		"errorMessage":     llx.StringData(s.GetErrorMessage()),
+		"configDrive":      llx.BoolData(s.GetConfigDrive()),
+		"keypairName":      llx.StringData(s.GetKeypairName()),
+		"imageId":          llx.StringData(s.GetImageId()),
+		"volumeIds":        strSliceData(s.GetVolumes()),
+		"securityGroupIds": strSliceData(s.GetSecurityGroups()),
+		"agentProvisioned": llx.BoolDataPtr(serverAgentProvisioned(s)),
+		"bootVolumeDeleteOnTermination": llx.BoolDataPtr(
+			serverBootVolumeDeleteOnTermination(s)),
+		"userData": llx.StringData(string(s.GetUserData())),
+		"labels":   labelData(s.GetLabels()),
+		"metadata": metadataData(s.GetMetadata()),
 	}
-	return CreateResource(runtime, "stackit.server", args)
+	res, err := CreateResource(runtime, "stackit.server", args)
+	if err != nil {
+		return nil, err
+	}
+	mqlServer := res.(*mqlStackitServer)
+	if boot, ok := s.GetBootVolumeOk(); ok && boot != nil {
+		mqlServer.cacheBootVolumeID = boot.GetId()
+	}
+	mqlServer.cacheServiceAccountMails = s.GetServiceAccountMails()
+	mqlServer.cacheNics = nics
+	return res, nil
 }
 
 func (r *mqlStackitServer) id() (string, error) {
@@ -110,7 +194,7 @@ func initStackitServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	if err != nil {
 		return nil, nil, err
 	}
-	s, err := client.GetServer(bgctx(), c.ProjectID(), c.Region(), id).Details(true).Execute()
+	s, err := client.DefaultAPI.GetServer(bgctx(), c.ProjectID(), c.Region(), id).Details(true).Execute()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -122,47 +206,21 @@ func initStackitServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 }
 
 func (r *mqlStackitServer) image() (*mqlStackitImage, error) {
-	if r.ImageId.Data == "" {
-		return markNull[mqlStackitImage](&r.Image)
-	}
-	res, err := NewResource(r.MqlRuntime, "stackit.image", map[string]*llx.RawData{
-		"id": llx.StringData(r.ImageId.Data),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlStackitImage), nil
+	return refByKey(r.MqlRuntime, "stackit.image", "id", r.ImageId.Data, &r.Image)
 }
 
 func (r *mqlStackitServer) keyPair() (*mqlStackitKeyPair, error) {
-	if r.KeypairName.Data == "" {
-		return markNull[mqlStackitKeyPair](&r.KeyPair)
-	}
-	res, err := NewResource(r.MqlRuntime, "stackit.keyPair", map[string]*llx.RawData{
-		"name": llx.StringData(r.KeypairName.Data),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlStackitKeyPair), nil
+	return refByKey(r.MqlRuntime, "stackit.keyPair", "name", r.KeypairName.Data, &r.KeyPair)
 }
 
 func (r *mqlStackitServer) volumes() ([]any, error) {
-	out := make([]any, 0, len(r.VolumeIds.Data))
+	ids := make([]string, 0, len(r.VolumeIds.Data))
 	for _, raw := range r.VolumeIds.Data {
-		id, ok := raw.(string)
-		if !ok || id == "" {
-			continue
+		if id, ok := raw.(string); ok {
+			ids = append(ids, id)
 		}
-		v, err := NewResource(r.MqlRuntime, "stackit.volume", map[string]*llx.RawData{
-			"id": llx.StringData(id),
-		})
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, v)
 	}
-	return out, nil
+	return volumeRefs(r.MqlRuntime, ids)
 }
 
 func (r *mqlStackitServer) securityGroups() ([]any, error) {
@@ -186,21 +244,18 @@ func (r *mqlStackitServer) securityGroups() ([]any, error) {
 			add(id)
 		}
 	}
-	nics := r.GetNics()
-	if nics.Error == nil {
-		for _, raw := range nics.Data {
-			nic, ok := raw.(map[string]any)
-			if !ok {
-				continue
-			}
-			sgs, ok := nic["securityGroups"].([]any)
-			if !ok {
-				continue
-			}
-			for _, s := range sgs {
-				if id, ok := s.(string); ok {
-					add(id)
-				}
+	for _, raw := range r.cacheNics {
+		nic, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		sgs, ok := nic["securityGroups"].([]any)
+		if !ok {
+			continue
+		}
+		for _, s := range sgs {
+			if id, ok := s.(string); ok {
+				add(id)
 			}
 		}
 	}
@@ -218,6 +273,25 @@ func (r *mqlStackitServer) securityGroups() ([]any, error) {
 	return out, nil
 }
 
+// serviceAccounts resolves the service accounts attached to the server from
+// the mail addresses carried on the server object.
+func (r *mqlStackitServer) serviceAccounts() ([]any, error) {
+	out := make([]any, 0, len(r.cacheServiceAccountMails))
+	for _, mail := range r.cacheServiceAccountMails {
+		if mail == "" {
+			continue
+		}
+		sa, err := NewResource(r.MqlRuntime, "stackit.serviceAccount", map[string]*llx.RawData{
+			"email": llx.StringData(mail),
+		})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, sa)
+	}
+	return out, nil
+}
+
 // ------------------------- volumes -------------------------
 
 func (r *mqlStackit) volumes() ([]any, error) {
@@ -226,10 +300,10 @@ func (r *mqlStackit) volumes() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.ListVolumesExecute(bgctx(), c.ProjectID(), c.Region())
+	resp, err := client.DefaultAPI.ListVolumes(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -245,57 +319,150 @@ func (r *mqlStackit) volumes() ([]any, error) {
 	return out, nil
 }
 
+// classifyVolumeSource maps a volume's source type onto the correct
+// typed-reference field. VolumeSource.Type is one of image, volume, snapshot,
+// or backup. Snapshots and backups are distinct STACKIT resources, so their
+// UUIDs must not be conflated: a backup UUID surfaced as sourceSnapshotId would
+// resolve against the snapshot API and 404. A "volume" source is a clone of
+// another volume; an unknown type yields all-empty IDs.
+func classifyVolumeSource(sourceType, sourceID string) (imageID, snapshotID, backupID, volumeID string) {
+	switch sourceType {
+	case "image":
+		imageID = sourceID
+	case "snapshot":
+		snapshotID = sourceID
+	case "backup":
+		backupID = sourceID
+	case "volume":
+		volumeID = sourceID
+	}
+	return
+}
+
+type mqlStackitVolumeInternal struct {
+	// cacheSourceVolumeID is the volume this one was cloned from, resolved by
+	// sourceVolume(). Held internally rather than as a raw id field.
+	cacheSourceVolumeID string
+	// cacheEncryption is the customer-managed-key reference the volume
+	// carries, resolved by the encryptionKey* accessors.
+	cacheEncryption volumeEncryption
+}
+
+// volumeEncryption is the customer-managed key-encryption-key reference on a
+// volume: which KMS key and version wrap the data-encryption key, the ring
+// that holds the key, the project that owns it (empty when the API leaves it
+// out, meaning the volume's own project), and the service account the
+// platform uses to unwrap with it.
+type volumeEncryption struct {
+	keyID          string
+	keyVersion     int64
+	keyRingID      string
+	projectID      string
+	serviceAccount string
+}
+
+// volumeEncryptionOf extracts the key-encryption-key reference from a volume.
+// The whole block is absent on a platform-managed volume, and every field
+// reads empty then.
+func volumeEncryptionOf(v *iaas.Volume) volumeEncryption {
+	var enc volumeEncryption
+	if v == nil {
+		return enc
+	}
+	ep, ok := v.GetEncryptionParametersOk()
+	if !ok || ep == nil {
+		return enc
+	}
+	enc.keyID = ep.GetKekKeyId()
+	enc.keyVersion = ep.GetKekKeyVersion()
+	enc.keyRingID = ep.GetKekKeyringId()
+	enc.serviceAccount = ep.GetServiceAccount()
+	if p, ok := ep.GetKekProjectIdOk(); ok && p != nil {
+		enc.projectID = *p
+	}
+	return enc
+}
+
+// crossProject reports whether the key lives in a project other than the
+// one this connection reads, in which case neither the ring nor the service
+// account can be resolved here.
+func (e volumeEncryption) crossProject(ownProjectID string) bool {
+	return e.projectID != "" && e.projectID != ownProjectID
+}
+
 func buildVolume(runtime *plugin.Runtime, v *iaas.Volume) (plugin.Resource, error) {
-	var (
-		imageID    string
-		snapshotID string
-	)
+	var imageID, snapshotID, backupID, sourceVolumeID string
 	if src, ok := v.GetSourceOk(); ok {
-		switch src.GetType() {
-		case "image":
-			imageID = src.GetId()
-		case "snapshot", "backup":
-			snapshotID = src.GetId()
-		}
+		imageID, snapshotID, backupID, sourceVolumeID = classifyVolumeSource(src.GetType(), src.GetId())
 	}
 	serverID := v.GetServerId()
-
-	var (
-		kekKeyID      string
-		kekKeyVersion int64
-	)
-	if ep, ok := v.GetEncryptionParametersOk(); ok {
-		kekKeyID = ep.GetKekKeyId()
-		kekKeyVersion = ep.GetKekKeyVersion()
-	}
+	enc := volumeEncryptionOf(v)
+	kekKeyID := enc.keyID
+	kekKeyVersion := enc.keyVersion
 
 	createdAt, ok1 := v.GetCreatedAtOk()
 	updatedAt, ok2 := v.GetUpdatedAtOk()
 
 	args := map[string]*llx.RawData{
-		"id":                   llx.StringData(v.GetId()),
-		"name":                 llx.StringData(v.GetName()),
-		"description":          llx.StringData(v.GetDescription()),
-		"size":                 llx.IntData(int64(v.GetSize())),
-		"status":               llx.StringData(v.GetStatus()),
-		"availabilityZone":     llx.StringData(v.GetAvailabilityZone()),
-		"performanceClass":     llx.StringData(v.GetPerformanceClass()),
-		"bootable":             llx.BoolData(v.GetBootable()),
-		"imageId":              llx.StringData(imageID),
-		"sourceSnapshotId":     llx.StringData(snapshotID),
-		"serverId":             llx.StringData(serverID),
-		"encrypted":            llx.BoolData(v.GetEncrypted()),
-		"encryptionKeyId":      llx.StringData(kekKeyID),
-		"encryptionKeyVersion": llx.IntData(kekKeyVersion),
-		"createdAt":            llx.TimeDataPtr(timeOrNil(createdAt, ok1)),
-		"updatedAt":            llx.TimeDataPtr(timeOrNil(updatedAt, ok2)),
-		"labels":               labelData(v.GetLabels()),
+		"id":                     llx.StringData(v.GetId()),
+		"name":                   llx.StringData(v.GetName()),
+		"description":            llx.StringData(v.GetDescription()),
+		"size":                   llx.IntData(int64(v.GetSize())),
+		"status":                 llx.StringData(v.GetStatus()),
+		"availabilityZone":       llx.StringData(v.GetAvailabilityZone()),
+		"performanceClass":       llx.StringData(v.GetPerformanceClass()),
+		"bootable":               llx.BoolData(v.GetBootable()),
+		"imageId":                llx.StringData(imageID),
+		"sourceSnapshotId":       llx.StringData(snapshotID),
+		"sourceBackupId":         llx.StringData(backupID),
+		"serverId":               llx.StringData(serverID),
+		"encrypted":              llx.BoolData(v.GetEncrypted()),
+		"encryptionKeyId":        llx.StringData(kekKeyID),
+		"encryptionKeyVersion":   llx.IntData(kekKeyVersion),
+		"createdAt":              llx.TimeDataPtr(timeOrNil(createdAt, ok1)),
+		"updatedAt":              llx.TimeDataPtr(timeOrNil(updatedAt, ok2)),
+		"labels":                 labelData(v.GetLabels()),
+		"encryptionKeyProjectId": llx.StringData(enc.projectID),
 	}
-	return CreateResource(runtime, "stackit.volume", args)
+	res, err := CreateResource(runtime, "stackit.volume", args)
+	if err != nil {
+		return nil, err
+	}
+	mqlVolume := res.(*mqlStackitVolume)
+	mqlVolume.cacheSourceVolumeID = sourceVolumeID
+	mqlVolume.cacheEncryption = enc
+	return res, nil
+}
+
+// encryptionKeyRing resolves the key ring that holds the volume's
+// key-encryption key. Null for a platform-managed volume, and null when the
+// key lives in another project, whose rings this connection cannot read.
+func (r *mqlStackitVolume) encryptionKeyRing() (*mqlStackitKmsKeyRing, error) {
+	enc := r.cacheEncryption
+	if enc.crossProject(conn(r.MqlRuntime).ProjectID()) {
+		return markNull[mqlStackitKmsKeyRing](&r.EncryptionKeyRing)
+	}
+	return kmsKeyRingRef(r.MqlRuntime, enc.keyRingID, &r.EncryptionKeyRing)
+}
+
+// encryptionKeyServiceAccount resolves the service account the platform uses
+// to unwrap the volume's data-encryption key with the customer-managed key.
+// Null for a platform-managed volume, and null when the key and its service
+// account belong to another project.
+func (r *mqlStackitVolume) encryptionKeyServiceAccount() (*mqlStackitServiceAccount, error) {
+	enc := r.cacheEncryption
+	if enc.crossProject(conn(r.MqlRuntime).ProjectID()) {
+		return markNull[mqlStackitServiceAccount](&r.EncryptionKeyServiceAccount)
+	}
+	return serviceAccountRef(r.MqlRuntime, enc.serviceAccount, &r.EncryptionKeyServiceAccount)
 }
 
 func (r *mqlStackitVolume) id() (string, error) {
 	return "stackit.volume/" + r.Id.Data, nil
+}
+
+func (r *mqlStackitVolume) sourceVolume() (*mqlStackitVolume, error) {
+	return refByKey(r.MqlRuntime, "stackit.volume", "id", r.cacheSourceVolumeID, &r.SourceVolume)
 }
 
 func initStackitVolume(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -308,7 +475,7 @@ func initStackitVolume(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	if err != nil {
 		return nil, nil, err
 	}
-	v, err := client.GetVolumeExecute(bgctx(), c.ProjectID(), c.Region(), id)
+	v, err := client.DefaultAPI.GetVolume(bgctx(), c.ProjectID(), c.Region(), id).Execute()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -320,29 +487,58 @@ func initStackitVolume(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 }
 
 func (r *mqlStackitVolume) image() (*mqlStackitImage, error) {
-	if r.ImageId.Data == "" {
-		return markNull[mqlStackitImage](&r.Image)
-	}
-	res, err := NewResource(r.MqlRuntime, "stackit.image", map[string]*llx.RawData{
-		"id": llx.StringData(r.ImageId.Data),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlStackitImage), nil
+	return refByKey(r.MqlRuntime, "stackit.image", "id", r.ImageId.Data, &r.Image)
 }
 
 func (r *mqlStackitVolume) server() (*mqlStackitServer, error) {
-	if r.ServerId.Data == "" {
-		return markNull[mqlStackitServer](&r.Server)
+	return refByKey(r.MqlRuntime, "stackit.server", "id", r.ServerId.Data, &r.Server)
+}
+
+func (r *mqlStackitVolume) sourceSnapshot() (*mqlStackitSnapshot, error) {
+	return refByKey(r.MqlRuntime, "stackit.snapshot", "id", r.SourceSnapshotId.Data, &r.SourceSnapshot)
+}
+
+func (r *mqlStackitVolume) sourceBackup() (*mqlStackitBackup, error) {
+	return refByKey(r.MqlRuntime, "stackit.backup", "id", r.SourceBackupId.Data, &r.SourceBackup)
+}
+
+// encryptionKey resolves the customer-managed key that wraps the volume's
+// data-encryption key. Null for a platform-managed volume, and null when the
+// key lives in another project. The volume names the ring that holds the
+// key, so the lookup reads that one ring instead of walking every ring.
+func (r *mqlStackitVolume) encryptionKey() (*mqlStackitKmsKey, error) {
+	enc := r.cacheEncryption
+	if enc.crossProject(conn(r.MqlRuntime).ProjectID()) {
+		return markNull[mqlStackitKmsKey](&r.EncryptionKey)
 	}
-	res, err := NewResource(r.MqlRuntime, "stackit.server", map[string]*llx.RawData{
-		"id": llx.StringData(r.ServerId.Data),
-	})
-	if err != nil {
-		return nil, err
+	return kmsKeyInRingRef(r.MqlRuntime, enc.keyRingID, r.EncryptionKeyId.Data, &r.EncryptionKey)
+}
+
+// encryptionKeyVersionRef resolves the exact generation of key material the
+// volume is pinned to, so a check can read that version's state rather than the
+// key's newest one. Version numbers start at 1, so 0 means nothing is pinned.
+func (r *mqlStackitVolume) encryptionKeyVersionRef() (*mqlStackitKmsKeyVersion, error) {
+	field := &r.EncryptionKeyVersionRef
+	number := r.EncryptionKeyVersion.Data
+	if number == 0 {
+		return markNull[mqlStackitKmsKeyVersion](field)
 	}
-	return res.(*mqlStackitServer), nil
+	key := r.GetEncryptionKey()
+	if key.Error != nil {
+		return nil, key.Error
+	}
+	if key.Data == nil {
+		return markNull[mqlStackitKmsKeyVersion](field)
+	}
+	versions := key.Data.GetVersions()
+	if versions.Error != nil {
+		return nil, versions.Error
+	}
+	v := findKmsKeyVersion(versions.Data, number)
+	if v == nil {
+		return markNull[mqlStackitKmsKeyVersion](field)
+	}
+	return v, nil
 }
 
 // ------------------------- snapshots -------------------------
@@ -353,10 +549,10 @@ func (r *mqlStackit) snapshots() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.ListSnapshotsInProjectExecute(bgctx(), c.ProjectID(), c.Region())
+	resp, err := client.DefaultAPI.ListSnapshotsInProject(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -376,14 +572,15 @@ func buildSnapshot(runtime *plugin.Runtime, s *iaas.Snapshot) (plugin.Resource, 
 	createdAt, ok1 := s.GetCreatedAtOk()
 	updatedAt, ok2 := s.GetUpdatedAtOk()
 	args := map[string]*llx.RawData{
-		"id":        llx.StringData(s.GetId()),
-		"name":      llx.StringData(s.GetName()),
-		"status":    llx.StringData(s.GetStatus()),
-		"size":      llx.IntData(int64(s.GetSize())),
-		"volumeId":  llx.StringData(s.GetVolumeId()),
-		"createdAt": llx.TimeDataPtr(timeOrNil(createdAt, ok1)),
-		"updatedAt": llx.TimeDataPtr(timeOrNil(updatedAt, ok2)),
-		"labels":    labelData(s.GetLabels()),
+		"id":               llx.StringData(s.GetId()),
+		"name":             llx.StringData(s.GetName()),
+		"status":           llx.StringData(s.GetStatus()),
+		"size":             llx.IntData(int64(s.GetSize())),
+		"availabilityZone": llx.StringData(s.GetAvailabilityZone()),
+		"volumeId":         llx.StringData(s.GetVolumeId()),
+		"createdAt":        llx.TimeDataPtr(timeOrNil(createdAt, ok1)),
+		"updatedAt":        llx.TimeDataPtr(timeOrNil(updatedAt, ok2)),
+		"labels":           labelData(s.GetLabels()),
 	}
 	return CreateResource(runtime, "stackit.snapshot", args)
 }
@@ -402,7 +599,7 @@ func initStackitSnapshot(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 	if err != nil {
 		return nil, nil, err
 	}
-	s, err := client.GetSnapshotExecute(bgctx(), c.ProjectID(), c.Region(), id)
+	s, err := client.DefaultAPI.GetSnapshot(bgctx(), c.ProjectID(), c.Region(), id).Execute()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -414,16 +611,7 @@ func initStackitSnapshot(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 }
 
 func (r *mqlStackitSnapshot) volume() (*mqlStackitVolume, error) {
-	if r.VolumeId.Data == "" {
-		return markNull[mqlStackitVolume](&r.Volume)
-	}
-	res, err := NewResource(r.MqlRuntime, "stackit.volume", map[string]*llx.RawData{
-		"id": llx.StringData(r.VolumeId.Data),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlStackitVolume), nil
+	return refByKey(r.MqlRuntime, "stackit.volume", "id", r.VolumeId.Data, &r.Volume)
 }
 
 // ------------------------- images -------------------------
@@ -434,10 +622,10 @@ func (r *mqlStackit) images() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.ListImagesExecute(bgctx(), c.ProjectID(), c.Region())
+	resp, err := client.DefaultAPI.ListImages(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -465,17 +653,17 @@ func buildImage(runtime *plugin.Runtime, img *iaas.Image) (plugin.Resource, erro
 	if cfg, ok := img.GetConfigOk(); ok {
 		config = map[string]any{
 			"bootMenu":               cfg.GetBootMenu(),
-			"cdromBus":               ptrStr(cfg.GetCdromBus()),
-			"diskBus":                ptrStr(cfg.GetDiskBus()),
-			"nicModel":               ptrStr(cfg.GetNicModel()),
+			"cdromBus":               cfg.GetCdromBus(),
+			"diskBus":                cfg.GetDiskBus(),
+			"nicModel":               cfg.GetNicModel(),
 			"operatingSystem":        cfg.GetOperatingSystem(),
-			"operatingSystemDistro":  ptrStr(cfg.GetOperatingSystemDistro()),
-			"operatingSystemVersion": ptrStr(cfg.GetOperatingSystemVersion()),
-			"rescueBus":              ptrStr(cfg.GetRescueBus()),
-			"rescueDevice":           ptrStr(cfg.GetRescueDevice()),
+			"operatingSystemDistro":  cfg.GetOperatingSystemDistro(),
+			"operatingSystemVersion": cfg.GetOperatingSystemVersion(),
+			"rescueBus":              cfg.GetRescueBus(),
+			"rescueDevice":           cfg.GetRescueDevice(),
 			"secureBoot":             cfg.GetSecureBoot(),
 			"uefi":                   cfg.GetUefi(),
-			"videoModel":             ptrStr(cfg.GetVideoModel()),
+			"videoModel":             cfg.GetVideoModel(),
 			"virtioScsi":             cfg.GetVirtioScsi(),
 		}
 	}
@@ -505,6 +693,67 @@ func (r *mqlStackitImage) id() (string, error) {
 	return "stackit.image/" + r.Id.Data, nil
 }
 
+// mqlStackitImageInternal caches the image's share record so the two sharing
+// fields share one API call.
+type mqlStackitImageInternal struct {
+	shareFetched atomic.Bool
+	share        *iaas.ImageShare
+	shareLock    sync.Mutex
+}
+
+// fetchShare loads the image's share record. An image that has never been
+// shared has no share record at all and the API answers 404, which is a
+// legitimate "not shared" rather than an error.
+func (r *mqlStackitImage) fetchShare() (*iaas.ImageShare, error) {
+	if r.shareFetched.Load() {
+		return r.share, nil
+	}
+	r.shareLock.Lock()
+	defer r.shareLock.Unlock()
+	if r.shareFetched.Load() {
+		return r.share, nil
+	}
+	c := conn(r.MqlRuntime)
+	client, err := c.IaaS()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.DefaultAPI.GetImageShare(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
+	if err != nil {
+		if isNotFound(err) {
+			r.shareFetched.Store(true)
+			return nil, nil
+		}
+		if isAccessDenied(err) {
+			if !plugin.StructuredErrors() {
+				r.shareFetched.Store(true)
+				return nil, nil
+			}
+			return nil, refusal(err)
+		}
+		return nil, err
+	}
+	r.share = resp
+	r.shareFetched.Store(true)
+	return r.share, nil
+}
+
+func (r *mqlStackitImage) sharedWithProjects() ([]any, error) {
+	s, err := r.fetchShare()
+	if err != nil || s == nil {
+		return []any{}, err
+	}
+	return strSlice(s.GetProjects()), nil
+}
+
+func (r *mqlStackitImage) sharedWithOrganization() (bool, error) {
+	s, err := r.fetchShare()
+	if err != nil || s == nil {
+		return false, err
+	}
+	return s.GetParentOrganization(), nil
+}
+
 func initStackitImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	id, ok := idArg(args, "id")
 	if !ok {
@@ -515,7 +764,7 @@ func initStackitImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (ma
 	if err != nil {
 		return nil, nil, err
 	}
-	img, err := client.GetImageExecute(bgctx(), c.ProjectID(), c.Region(), id)
+	img, err := client.DefaultAPI.GetImage(bgctx(), c.ProjectID(), c.Region(), id).Execute()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -534,10 +783,10 @@ func (r *mqlStackit) networks() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.ListNetworksExecute(bgctx(), c.ProjectID(), c.Region())
+	resp, err := client.DefaultAPI.ListNetworks(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -559,21 +808,23 @@ func buildNetwork(runtime *plugin.Runtime, n *iaas.Network) (plugin.Resource, er
 		ipv4Nameserv   []string
 		ipv4Prefixes   []string
 		ipv4PrefixSing string
+		ipv4PublicIp   string
 		ipv6Gateway    string
 		ipv6Nameserv   []string
 		ipv6Prefixes   []string
 		ipv6PrefixSing string
 	)
 	if ipv4 := n.GetIpv4(); !iaasNetworkIPv4Empty(ipv4) {
-		ipv4Gateway = ptrStr(ipv4.GetGateway())
+		ipv4Gateway = ipv4.GetGateway()
 		ipv4Nameserv = ipv4.GetNameservers()
 		ipv4Prefixes = ipv4.GetPrefixes()
+		ipv4PublicIp = ipv4.GetPublicIp()
 		if len(ipv4Prefixes) > 0 {
 			ipv4PrefixSing = ipv4Prefixes[0]
 		}
 	}
 	if ipv6 := n.GetIpv6(); !iaasNetworkIPv6Empty(ipv6) {
-		ipv6Gateway = ptrStr(ipv6.GetGateway())
+		ipv6Gateway = ipv6.GetGateway()
 		ipv6Nameserv = ipv6.GetNameservers()
 		ipv6Prefixes = ipv6.GetPrefixes()
 		if len(ipv6Prefixes) > 0 {
@@ -582,16 +833,20 @@ func buildNetwork(runtime *plugin.Runtime, n *iaas.Network) (plugin.Resource, er
 	}
 
 	createdAt, okCreated := n.GetCreatedAtOk()
+	updatedAt, okUpdated := n.GetUpdatedAtOk()
 
 	args := map[string]*llx.RawData{
 		"id":              llx.StringData(n.GetId()),
 		"name":            llx.StringData(n.GetName()),
 		"routed":          llx.BoolData(n.GetRouted()),
+		"dhcp":            llx.BoolData(n.GetDhcp()),
 		"createdAt":       llx.TimeDataPtr(timeOrNil(createdAt, okCreated)),
+		"updatedAt":       llx.TimeDataPtr(timeOrNil(updatedAt, okUpdated)),
 		"ipv4Prefix":      llx.StringData(ipv4PrefixSing),
 		"ipv4Gateway":     llx.StringData(ipv4Gateway),
 		"ipv4Nameservers": strSliceData(ipv4Nameserv),
 		"ipv4Prefixes":    strSliceData(ipv4Prefixes),
+		"ipv4PublicIp":    llx.StringData(ipv4PublicIp),
 		"ipv6Prefix":      llx.StringData(ipv6PrefixSing),
 		"ipv6Gateway":     llx.StringData(ipv6Gateway),
 		"ipv6Nameservers": strSliceData(ipv6Nameserv),
@@ -599,7 +854,61 @@ func buildNetwork(runtime *plugin.Runtime, n *iaas.Network) (plugin.Resource, er
 		"state":           llx.StringData(n.GetStatus()),
 		"labels":          labelData(n.GetLabels()),
 	}
-	return CreateResource(runtime, "stackit.network", args)
+	res, err := CreateResource(runtime, "stackit.network", args)
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlStackitNetwork).cacheRoutingTableId = n.GetRoutingTableId()
+	return res, nil
+}
+
+// mqlStackitNetworkInternal carries the routing table ID off the network
+// payload. The table itself lives on a network area, so resolving it needs a
+// separate walk that only runs when a query asks for it.
+type mqlStackitNetworkInternal struct {
+	cacheRoutingTableId string
+}
+
+func (r *mqlStackitNetwork) routingTable() (*mqlStackitRoutingTable, error) {
+	if r.cacheRoutingTableId == "" {
+		return markNull[mqlStackitRoutingTable](&r.RoutingTable)
+	}
+	tables, err := conn(r.MqlRuntime).NetworkAreaRoutingTables(bgctx())
+	if err != nil {
+		return nil, err
+	}
+	table, ok := tables[r.cacheRoutingTableId]
+	if !ok {
+		// The network names a table on an area this credential cannot read, so
+		// report no table rather than inventing an empty one.
+		return markNull[mqlStackitRoutingTable](&r.RoutingTable)
+	}
+	return buildRoutingTable(r.MqlRuntime, &table)
+}
+
+func buildRoutingTable(runtime *plugin.Runtime, t *iaas.RoutingTable) (*mqlStackitRoutingTable, error) {
+	createdAt, okCreated := t.GetCreatedAtOk()
+	updatedAt, okUpdated := t.GetUpdatedAtOk()
+
+	res, err := CreateResource(runtime, "stackit.routingTable", map[string]*llx.RawData{
+		"id":            llx.StringData(t.GetId()),
+		"name":          llx.StringData(t.GetName()),
+		"description":   llx.StringData(t.GetDescription()),
+		"isDefault":     llx.BoolData(t.GetDefault()),
+		"dynamicRoutes": llx.BoolData(t.GetDynamicRoutes()),
+		"systemRoutes":  llx.BoolData(t.GetSystemRoutes()),
+		"createdAt":     llx.TimeDataPtr(timeOrNil(createdAt, okCreated)),
+		"updatedAt":     llx.TimeDataPtr(timeOrNil(updatedAt, okUpdated)),
+		"labels":        labelData(t.GetLabels()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlStackitRoutingTable), nil
+}
+
+func (r *mqlStackitRoutingTable) id() (string, error) {
+	return "stackit.routingTable/" + r.Id.Data, nil
 }
 
 func (r *mqlStackitNetwork) id() (string, error) {
@@ -616,7 +925,7 @@ func initStackitNetwork(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	if err != nil {
 		return nil, nil, err
 	}
-	n, err := client.GetNetworkExecute(bgctx(), c.ProjectID(), c.Region(), id)
+	n, err := client.DefaultAPI.GetNetwork(bgctx(), c.ProjectID(), c.Region(), id).Execute()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -631,11 +940,11 @@ func initStackitNetwork(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 // always return a (possibly zero-value) struct, so check the inner pointers
 // for "set"-ness instead.
 func iaasNetworkIPv4Empty(v iaas.NetworkIPv4) bool {
-	return v.Gateway == nil && v.Nameservers == nil && v.Prefixes == nil && v.PublicIp == nil
+	return !v.Gateway.IsSet() && v.Nameservers == nil && v.Prefixes == nil && v.PublicIp == nil
 }
 
 func iaasNetworkIPv6Empty(v iaas.NetworkIPv6) bool {
-	return v.Gateway == nil && v.Nameservers == nil && v.Prefixes == nil
+	return !v.Gateway.IsSet() && v.Nameservers == nil && v.Prefixes == nil
 }
 
 // ------------------------- public IPs -------------------------
@@ -646,10 +955,10 @@ func (r *mqlStackit) publicIps() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.ListPublicIPsExecute(bgctx(), c.ProjectID(), c.Region())
+	resp, err := client.DefaultAPI.ListPublicIPs(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -669,7 +978,7 @@ func buildPublicIp(runtime *plugin.Runtime, ip *iaas.PublicIp) (plugin.Resource,
 	args := map[string]*llx.RawData{
 		"id":                 llx.StringData(ip.GetId()),
 		"ip":                 llx.StringData(ip.GetIp()),
-		"networkInterfaceId": llx.StringData(ptrStr(ip.GetNetworkInterface())),
+		"networkInterfaceId": llx.StringData(ip.GetNetworkInterface()),
 		"labels":             labelData(ip.GetLabels()),
 	}
 	return CreateResource(runtime, "stackit.publicIp", args)
@@ -689,7 +998,7 @@ func initStackitPublicIp(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 	if err != nil {
 		return nil, nil, err
 	}
-	ip, err := client.GetPublicIPExecute(bgctx(), c.ProjectID(), c.Region(), id)
+	ip, err := client.DefaultAPI.GetPublicIP(bgctx(), c.ProjectID(), c.Region(), id).Execute()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -708,10 +1017,10 @@ func (r *mqlStackit) securityGroups() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.ListSecurityGroupsExecute(bgctx(), c.ProjectID(), c.Region())
+	resp, err := client.DefaultAPI.ListSecurityGroups(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -727,6 +1036,16 @@ func (r *mqlStackit) securityGroups() ([]any, error) {
 	return out, nil
 }
 
+type mqlStackitSecurityGroupInternal struct {
+	// cacheRules holds the rules the group response carried inline, so that
+	// rules() does not spend a ListSecurityGroupRules call per group. The
+	// exposure walk reads every group's rules for every server, so that call
+	// multiplied. cacheRulesSet distinguishes "the API sent an empty rule
+	// list" (nothing to fetch) from "the API omitted the field" (fetch).
+	cacheRules    []iaas.SecurityGroupRule
+	cacheRulesSet bool
+}
+
 func buildSecurityGroup(runtime *plugin.Runtime, sg *iaas.SecurityGroup) (plugin.Resource, error) {
 	createdAt, ok1 := sg.GetCreatedAtOk()
 	updatedAt, ok2 := sg.GetUpdatedAtOk()
@@ -739,7 +1058,16 @@ func buildSecurityGroup(runtime *plugin.Runtime, sg *iaas.SecurityGroup) (plugin
 		"updatedAt":   llx.TimeDataPtr(timeOrNil(updatedAt, ok2)),
 		"labels":      labelData(sg.GetLabels()),
 	}
-	return CreateResource(runtime, "stackit.securityGroup", args)
+	res, err := CreateResource(runtime, "stackit.securityGroup", args)
+	if err != nil {
+		return nil, err
+	}
+	if rules, ok := sg.GetRulesOk(); ok {
+		mqlSg := res.(*mqlStackitSecurityGroup)
+		mqlSg.cacheRules = rules
+		mqlSg.cacheRulesSet = true
+	}
+	return res, nil
 }
 
 func (r *mqlStackitSecurityGroup) id() (string, error) {
@@ -756,7 +1084,7 @@ func initStackitSecurityGroup(runtime *plugin.Runtime, args map[string]*llx.RawD
 	if err != nil {
 		return nil, nil, err
 	}
-	sg, err := client.GetSecurityGroupExecute(bgctx(), c.ProjectID(), c.Region(), id)
+	sg, err := client.DefaultAPI.GetSecurityGroup(bgctx(), c.ProjectID(), c.Region(), id).Execute()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -768,62 +1096,88 @@ func initStackitSecurityGroup(runtime *plugin.Runtime, args map[string]*llx.RawD
 }
 
 func (r *mqlStackitSecurityGroup) rules() ([]any, error) {
-	c := conn(r.MqlRuntime)
-	client, err := c.IaaS()
-	if err != nil {
-		return nil, err
-	}
-	resp, err := client.ListSecurityGroupRulesExecute(bgctx(), c.ProjectID(), c.Region(), r.Id.Data)
-	if err != nil {
-		if isAccessDenied(err) {
-			return []any{}, nil
+	items := r.cacheRules
+	if !r.cacheRulesSet {
+		c := conn(r.MqlRuntime)
+		client, err := c.IaaS()
+		if err != nil {
+			return nil, err
 		}
-		return nil, err
+		resp, err := client.DefaultAPI.ListSecurityGroupRules(bgctx(), c.ProjectID(), c.Region(), r.Id.Data).Execute()
+		if err != nil {
+			if isAccessDenied(err) {
+				return deniedList(err)
+			}
+			return nil, err
+		}
+		items, _ = resp.GetItemsOk()
 	}
-	items, _ := resp.GetItemsOk()
 	out := make([]any, 0, len(items))
 	for i := range items {
-		rule := items[i]
-
-		var icmpType, icmpCode int64
-		if icmp, ok := rule.GetIcmpParametersOk(); ok {
-			icmpType = int64(icmp.GetType())
-			icmpCode = int64(icmp.GetCode())
-		}
-		var portMin, portMax int64
-		if pr, ok := rule.GetPortRangeOk(); ok {
-			portMin = int64(pr.GetMin())
-			portMax = int64(pr.GetMax())
-		}
-		var protocol string
-		if p, ok := rule.GetProtocolOk(); ok {
-			protocol = p.GetName()
-		}
-
-		createdAt, okCreated := rule.GetCreatedAtOk()
-
-		args := map[string]*llx.RawData{
-			"id":                    llx.StringData(rule.GetId()),
-			"securityGroupId":       llx.StringData(r.Id.Data),
-			"direction":             llx.StringData(rule.GetDirection()),
-			"ethertype":             llx.StringData(rule.GetEthertype()),
-			"protocol":              llx.StringData(protocol),
-			"description":           llx.StringData(rule.GetDescription()),
-			"icmpType":              llx.IntData(icmpType),
-			"icmpCode":              llx.IntData(icmpCode),
-			"portRangeMin":          llx.IntData(portMin),
-			"portRangeMax":          llx.IntData(portMax),
-			"ipRange":               llx.StringData(rule.GetIpRange()),
-			"remoteSecurityGroupId": llx.StringData(rule.GetRemoteSecurityGroupId()),
-			"createdAt":             llx.TimeDataPtr(timeOrNil(createdAt, okCreated)),
-		}
-		res, err := CreateResource(r.MqlRuntime, "stackit.securityGroup.rule", args)
+		res, err := CreateResource(r.MqlRuntime, "stackit.securityGroup.rule", securityGroupRuleArgs(r.Id.Data, &items[i]))
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, res)
 	}
 	return out, nil
+}
+
+// securityGroupRuleArgs maps one SDK rule onto the stackit.securityGroup.rule
+// fields. It serves both the rules the group response carries inline and the
+// ones ListSecurityGroupRules returns, which share the SecurityGroupRule model.
+func securityGroupRuleArgs(securityGroupID string, rule *iaas.SecurityGroupRule) map[string]*llx.RawData {
+	// icmpType/icmpCode are nullable in the schema: leave them nil (MQL null)
+	// for non-ICMP rules rather than emitting 0, which is a valid ICMP type.
+	var icmpType, icmpCode *int64
+	if icmp, ok := rule.GetIcmpParametersOk(); ok {
+		t := icmp.GetType()
+		code := icmp.GetCode()
+		icmpType = &t
+		icmpCode = &code
+	}
+	var portMin, portMax int64
+	if pr, ok := rule.GetPortRangeOk(); ok {
+		portMin = int64(pr.GetMin())
+		portMax = int64(pr.GetMax())
+	}
+	var protocol string
+	if p, ok := rule.GetProtocolOk(); ok {
+		n, okNum := p.GetNumberOk()
+		protocol = protocolLabel(p.GetName(), derefInt64(n), okNum && n != nil)
+	}
+
+	createdAt, okCreated := rule.GetCreatedAtOk()
+
+	return map[string]*llx.RawData{
+		"id":                    llx.StringData(rule.GetId()),
+		"securityGroupId":       llx.StringData(securityGroupID),
+		"direction":             llx.StringData(rule.GetDirection()),
+		"ethertype":             llx.StringData(rule.GetEthertype()),
+		"protocol":              llx.StringData(protocol),
+		"description":           llx.StringData(rule.GetDescription()),
+		"icmpType":              llx.IntDataPtr(icmpType),
+		"icmpCode":              llx.IntDataPtr(icmpCode),
+		"portRangeMin":          llx.IntData(portMin),
+		"portRangeMax":          llx.IntData(portMax),
+		"ipRange":               llx.StringData(rule.GetIpRange()),
+		"remoteSecurityGroupId": llx.StringData(rule.GetRemoteSecurityGroupId()),
+		"createdAt":             llx.TimeDataPtr(timeOrNil(createdAt, okCreated)),
+	}
+}
+
+// protocolLabel renders a security-group rule protocol as its name, falling
+// back to the numeric protocol id when the API returns only a number (for
+// example GRE as 47), or "" when neither is set. The API populates exactly one
+// of the two, so a numeric-only protocol would otherwise render empty.
+func protocolLabel(name string, number int64, hasNumber bool) string {
+	if name != "" {
+		return name
+	}
+	if hasNumber {
+		return strconv.FormatInt(number, 10)
+	}
+	return ""
 }
 
 func (r *mqlStackitSecurityGroupRule) id() (string, error) {
@@ -838,10 +1192,10 @@ func (r *mqlStackit) keyPairs() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.ListKeyPairsExecute(bgctx())
+	resp, err := client.DefaultAPI.ListKeyPairs(bgctx()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -889,7 +1243,7 @@ func initStackitKeyPair(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	if err != nil {
 		return nil, nil, err
 	}
-	kp, err := client.GetKeyPairExecute(bgctx(), name)
+	kp, err := client.DefaultAPI.GetKeyPair(bgctx(), name).Execute()
 	if err != nil {
 		return nil, nil, err
 	}

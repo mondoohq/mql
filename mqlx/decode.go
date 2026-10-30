@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
 )
 
 // decode unmarshals a normalized query value into target. It is hand-rolled

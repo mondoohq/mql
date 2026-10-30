@@ -8,18 +8,21 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/k8s/connection/shared"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/distro"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/resources"
 	admissionv1 "k8s.io/api/admission/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -34,8 +37,13 @@ type Connection struct {
 	d                  *resources.Discovery
 	config             *rest.Config
 	namespace          string
+	nsFilter           shared.NamespaceFilter
 	clientset          *kubernetes.Clientset
 	currentClusterName string
+	// kubeconfig is what the kubeconfig says about the cluster, nil in the
+	// cluster
+	kubeconfig *distro.Kubeconfig
+	inCluster  bool
 }
 
 func NewConnection(id uint32, asset *inventory.Asset, discoveryCache *resources.DiscoveryCache) (shared.Connection, error) {
@@ -58,7 +66,15 @@ func NewConnection(id uint32, asset *inventory.Asset, discoveryCache *resources.
 		}
 	}
 
-	config, err := buildConfigFromFlags("", kubeconfigPath, "")
+	// The requested context selects which cluster in the kubeconfig to talk to.
+	// Without it every scan targets whatever current-context happens to be, while
+	// still being reported under the requested name.
+	contextName := ""
+	if len(asset.Connections) > 0 {
+		contextName = asset.Connections[0].Options[shared.OPTION_CONTEXT]
+	}
+
+	config, inCluster, err := buildConfigFromFlags("", kubeconfigPath, contextName)
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +82,14 @@ func NewConnection(id uint32, asset *inventory.Asset, discoveryCache *resources.
 	kubeConfig, err := (&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfigPath}).Load()
 	if err != nil {
 		return nil, err
+	}
+
+	// read the kubeconfig's cluster entry and credential plugin for the
+	// distribution detection before the helpers below replace the plugin
+	var kubeconfig *distro.Kubeconfig
+	if !inCluster {
+		kubelogin, _ := strconv.ParseBool(asset.Connections[0].Options[shared.OPTION_KUBELOGIN])
+		kubeconfig = kubeconfigInfo(kubeConfig, contextName, config, kubelogin)
 	}
 
 	err = attemptKubeloginAuthFlow(asset, config)
@@ -101,7 +125,11 @@ func NewConnection(id uint32, asset *inventory.Asset, discoveryCache *resources.
 	}
 
 	currentClusterName := ""
-	if ctx, ok := kubeConfig.Contexts[kubeConfig.CurrentContext]; ok {
+	selectedContext := kubeConfig.CurrentContext
+	if contextName != "" {
+		selectedContext = contextName
+	}
+	if ctx, ok := kubeConfig.Contexts[selectedContext]; ok {
 		currentClusterName = ctx.Cluster
 	} else {
 		// right now we use the name of the first node to identify the cluster
@@ -121,8 +149,24 @@ func NewConnection(id uint32, asset *inventory.Asset, discoveryCache *resources.
 		d:                  d,
 		config:             config,
 		clientset:          clientset,
-		namespace:          asset.Connections[0].Options[shared.OPTION_NAMESPACE],
 		currentClusterName: currentClusterName,
+		kubeconfig:         kubeconfig,
+		inCluster:          inCluster,
+	}
+
+	// --namespaces accepts a comma-separated list of globs, and
+	// --namespaces-exclude removes namespaces. Only a filter naming exactly one
+	// namespace can be pushed down to the API server as a scoped list request;
+	// anything else has to list across namespaces and filter the result.
+	res.nsFilter, err = shared.NewNamespaceFilter(
+		asset.Connections[0].Options[shared.OPTION_NAMESPACE],
+		asset.Connections[0].Options[shared.OPTION_NAMESPACE_EXCLUDE],
+	)
+	if err != nil {
+		return nil, err
+	}
+	if ns, ok := res.nsFilter.SingleNamespace(); ok {
+		res.namespace = ns
 	}
 
 	return &res, nil
@@ -130,16 +174,21 @@ func NewConnection(id uint32, asset *inventory.Asset, discoveryCache *resources.
 
 // buildConfigFromFlags we rebuild clientcmd.BuildConfigFromFlags to make sure we do not log warnings for every
 // scan.
-func buildConfigFromFlags(masterUrl, kubeconfigPath string, context string) (*rest.Config, error) {
-	if kubeconfigPath == "" && masterUrl == "" {
+// It also reports whether the config is the in-cluster one.
+func buildConfigFromFlags(masterUrl, kubeconfigPath string, context string) (*rest.Config, bool, error) {
+	// An in-cluster config has no contexts to choose from, so falling back to it
+	// would quietly ignore the requested one. Let the kubeconfig loader run and
+	// report that the context is missing instead.
+	if kubeconfigPath == "" && masterUrl == "" && context == "" {
 		kubeconfig, err := rest.InClusterConfig()
 		if err == nil {
-			return kubeconfig, nil
+			return kubeconfig, true, nil
 		}
 	}
-	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+	config, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfigPath},
 		&clientcmd.ConfigOverrides{ClusterInfo: clientcmdapi.Cluster{Server: masterUrl}, CurrentContext: context}).ClientConfig()
+	return config, false, err
 }
 
 func (c *Connection) Runtime() string {
@@ -212,7 +261,9 @@ func (c *Connection) SupportedResourceTypes() (*resources.ApiResourceIndex, erro
 
 func (c *Connection) Platform() *inventory.Platform {
 	v := c.ServerVersion()
+	d := c.Distro()
 	return &inventory.Platform{
+		Metadata:              d.PlatformMetadata(),
 		Name:                  "k8s-cluster",
 		Build:                 v.BuildDate,
 		Version:               v.GitVersion,
@@ -293,6 +344,28 @@ func (c *Connection) resources(kind string, name string, namespace string) (*sha
 		return nil, err
 	}
 
+	// A multi-namespace or glob filter cannot be pushed into the list request,
+	// so it is applied here. Cluster-scoped kinds have no namespace to match and
+	// stay in scope, and a filter naming exactly one namespace was already
+	// pushed down to the API server, so re-checking it would be redundant.
+	if resType.Resource.Namespaced && !c.nsFilter.IsEmpty() && c.namespace == "" {
+		filtered := make([]runtime.Object, 0, len(objs))
+		for i := range objs {
+			obj, err := meta.Accessor(objs[i])
+			if err != nil {
+				// dropping it silently would look identical to the filter
+				// simply not matching, which is the bug this block fixes
+				log.Warn().Err(err).Str("kind", kind).
+					Msg("skipping object: cannot read metadata to match the namespace filter")
+				continue
+			}
+			if c.nsFilter.Matches(obj.GetNamespace()) {
+				filtered = append(filtered, objs[i])
+			}
+		}
+		objs = filtered
+	}
+
 	return &shared.ResourceResult{
 		Name:         name,
 		Kind:         kind,
@@ -344,7 +417,7 @@ func (c *Connection) Namespace(name string) (*v1.Namespace, error) {
 	if err != nil {
 		return nil, err
 	}
-	// needed because of https://github.com/kubernetes/client-go/issues/861
+	// needed because of https://web.archive.org/web/20201009041002/https://github.com/kubernetes/client-go/issues/861
 	ns.SetGroupVersionKind(v1.SchemeGroupVersion.WithKind("Namespace"))
 	return ns, err
 }
@@ -355,7 +428,7 @@ func (c *Connection) Namespaces() ([]v1.Namespace, error) {
 	if err != nil {
 		return nil, err
 	}
-	// needed because of https://github.com/kubernetes/client-go/issues/861
+	// needed because of https://web.archive.org/web/20201009041002/https://github.com/kubernetes/client-go/issues/861
 	for i := range list.Items {
 		list.Items[i].SetGroupVersionKind(v1.SchemeGroupVersion.WithKind("Namespace"))
 	}

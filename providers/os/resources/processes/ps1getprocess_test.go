@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers/os/resources/processes"
+	"go.mondoo.com/mql/providers/os/resources/processes"
 )
 
 func TestWindows2019ServiceParser(t *testing.T) {

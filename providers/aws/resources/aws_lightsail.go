@@ -12,12 +12,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/lightsail"
 	lightsail_types "github.com/aws/aws-sdk-go-v2/service/lightsail/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsLightsail) id() (string, error) {
@@ -167,31 +167,6 @@ func (a *mqlAwsLightsailInstance) ramSizeInGb() (float64, error) {
 		return 0, nil
 	}
 	return float64(*a.cacheHardware.RamSizeInGb), nil
-}
-
-func (a *mqlAwsLightsailInstance) firewallRules() ([]any, error) {
-	if a.cacheNetworking == nil {
-		return []any{}, nil
-	}
-	res := make([]any, 0, len(a.cacheNetworking.Ports))
-	for _, p := range a.cacheNetworking.Ports {
-		rule := map[string]any{
-			"fromPort":   int64(p.FromPort),
-			"toPort":     int64(p.ToPort),
-			"protocol":   string(p.Protocol),
-			"accessType": string(p.AccessType),
-			"cidrs":      stringsToInterface(p.Cidrs),
-			"ipv6Cidrs":  stringsToInterface(p.Ipv6Cidrs),
-		}
-		if p.AccessFrom != nil {
-			rule["accessFrom"] = *p.AccessFrom
-		}
-		if p.CommonName != nil {
-			rule["commonName"] = *p.CommonName
-		}
-		res = append(res, rule)
-	}
-	return res, nil
 }
 
 func (a *mqlAwsLightsailInstance) inboundRules() ([]any, error) {
@@ -876,17 +851,7 @@ func (a *mqlAwsLightsailDisk) attachedTo() (*mqlAwsLightsailInstance, error) {
 }
 
 func lightsailTagsToMap(tags []lightsail_types.Tag) map[string]any {
-	result := make(map[string]any)
-	for _, t := range tags {
-		if t.Key != nil {
-			val := ""
-			if t.Value != nil {
-				val = *t.Value
-			}
-			result[*t.Key] = val
-		}
-	}
-	return result
+	return tagsToMap(tags, func(t lightsail_types.Tag) *string { return t.Key }, func(t lightsail_types.Tag) *string { return t.Value })
 }
 
 func (a *mqlAwsLightsailDistribution) id() (string, error) {

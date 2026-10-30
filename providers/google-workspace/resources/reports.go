@@ -4,19 +4,21 @@
 package resources
 
 import (
+	"encoding/json"
 	"errors"
+	"hash/fnv"
 	"strconv"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/google-workspace/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/google-workspace/connection"
+	"go.mondoo.com/mql/types"
 	reports "google.golang.org/api/admin/reports/v1"
 )
 
-// https://developers.google.com/admin-sdk/reports/reference/rest/v1/activities/list#ApplicationName
+// https://developers.google.com/workspace/admin/reports/reference/rest/v1/activities/list#ApplicationName
 const (
 	appAccessTransparency = "access_transparency"
 	appAdmin              = "admin"
@@ -138,17 +140,64 @@ func newMqlGoogleWorkspaceReportActivity(runtime *plugin.Runtime, entry *reports
 	}
 
 	var uniqueQualifier int64
+	var activityID string
 	if entry.Id != nil {
 		uniqueQualifier = entry.Id.UniqueQualifier
+		// The cache key must include the application name and event time:
+		// uniqueQualifier is only a tiebreaker for events sharing a time (and is
+		// absent for most events), so keying on it alone aliases distinct
+		// activities. The public `id` field keeps the bare uniqueQualifier.
+		activityID = reportActivityID(entry.Id.ApplicationName, entry.Id.Time, uniqueQualifier)
+	} else {
+		// No id from the API (malformed/partial event): fall back to a content
+		// hash so nil-id activities get distinct, stable keys instead of all
+		// aliasing to a single cache entry.
+		activityID = "googleworkspace.report.activity/nil/" + hashActivity(entry)
+	}
+
+	var deviceId, deviceType, deviceOsVersion string
+	if entry.UserDeviceInfo != nil {
+		deviceId = entry.UserDeviceInfo.DeviceId
+		deviceType = entry.UserDeviceInfo.DeviceType
+		deviceOsVersion = entry.UserDeviceInfo.DeviceOsVersion
 	}
 
 	return CreateResource(runtime, "googleworkspace.report.activity", map[string]*llx.RawData{
-		"id":          llx.IntData(uniqueQualifier),
-		"ipAddress":   llx.StringData(entry.IpAddress),
-		"ownerDomain": llx.StringData(entry.OwnerDomain),
-		"actor":       llx.MapData(actor, types.Any),
-		"events":      llx.ArrayData(events, types.Any),
+		"__id":            llx.StringData(activityID),
+		"id":              llx.IntData(uniqueQualifier),
+		"ipAddress":       llx.StringData(entry.IpAddress),
+		"ownerDomain":     llx.StringData(entry.OwnerDomain),
+		"actor":           llx.MapData(actor, types.Any),
+		"events":          llx.ArrayData(events, types.Any),
+		"isAgenticAction": llx.BoolData(entry.IsAgenticAction),
+		"deviceId":        llx.StringData(deviceId),
+		"deviceType":      llx.StringData(deviceType),
+		"deviceOsVersion": llx.StringData(deviceOsVersion),
 	})
+}
+
+// reportActivityID builds a stable, unique cache key for a report activity from
+// the application name, event time, and unique qualifier that together identify
+// it in the Reports API.
+func reportActivityID(appName, eventTime string, uniqueQualifier int64) string {
+	return "googleworkspace.report.activity/" + appName + "/" + eventTime + "/" + strconv.FormatInt(uniqueQualifier, 10)
+}
+
+// hashActivity produces a stable 64-bit content hash of an activity, used as a
+// cache-key discriminator for the rare event that arrives without an id. It is
+// deterministic (same content -> same key across scans) so two distinct
+// nil-id activities don't alias each other.
+func hashActivity(entry *reports.Activity) string {
+	h := fnv.New64a()
+	if data, err := json.Marshal(entry); err == nil {
+		h.Write(data)
+	} else {
+		// json.Marshal of this plain struct effectively never fails, but if it
+		// ever did we still hash the stable scalar fields so distinct events get
+		// distinct keys instead of all collapsing onto one empty discriminator.
+		h.Write([]byte(entry.Etag + "\x00" + entry.IpAddress + "\x00" + entry.OwnerDomain))
+	}
+	return strconv.FormatUint(h.Sum64(), 16)
 }
 
 func (g *mqlGoogleworkspaceReportUsers) id() (string, error) {
@@ -254,16 +303,6 @@ func newMqlGoogleWorkspaceUsageReport(runtime *plugin.Runtime, entry *reports.Us
 
 	r := parseUserReports(entry.Parameters)
 
-	accountUsage, err := convert.JsonToDict(r.Account)
-	if err != nil {
-		return nil, err
-	}
-
-	securityUsage, err := convert.JsonToDict(r.Security)
-	if err != nil {
-		return nil, err
-	}
-
 	appUsage, err := convert.JsonToDict(r.AppUsage)
 	if err != nil {
 		return nil, err
@@ -286,8 +325,6 @@ func newMqlGoogleWorkspaceUsageReport(runtime *plugin.Runtime, entry *reports.Us
 		"userEmail":  llx.StringData(userEmail),
 		"date":       llx.TimeDataPtr(date),
 		"parameters": llx.ArrayData(parameters, types.Any),
-		"account":    llx.MapData(accountUsage, types.Any),
-		"security":   llx.MapData(securityUsage, types.Any),
 		"appUsage":   llx.MapData(appUsage, types.Any),
 		// Typed promotions of the account/security dicts (already parsed into
 		// r above) so audits can assert on them directly.
@@ -453,16 +490,6 @@ func parseUserReports(params []*reports.UsageReportParameters) *userReport {
 	}
 
 	return r
-}
-
-func (g *mqlGoogleworkspaceReportUsage) account() (any, error) {
-	// is auto-computed during creation time
-	return nil, errors.New("not implemented")
-}
-
-func (g *mqlGoogleworkspaceReportUsage) security() (any, error) {
-	// is auto-computed during creation time
-	return nil, errors.New("not implemented")
 }
 
 func (g *mqlGoogleworkspaceReportUsage) appUsage() (any, error) {

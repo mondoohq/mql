@@ -1,0 +1,1 @@
+BOOT_IMAGE=(hd0,gpt2)/vmlinuz-4.18.0-553.137.1.el8_10.x86_64 root=UUID=bbf5722a-3cae-4f2b-ad38-138c7acf823c ro console=ttyS0,115200n8 no_timer_check net.ifnames=0 nvme_core.io_timeout=4294967295 nvme_core.max_retries=10 crashkernel=auto

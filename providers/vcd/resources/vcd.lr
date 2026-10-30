@@ -1,16 +1,19 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/cnquery/v9/providers/vcd"
-option go_package = "go.mondoo.com/mql/v13/providers/vcd/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/vcd"
+option go_package = "go.mondoo.com/mql/providers/vcd/resources"
+option root = "vcd"
 
 // VMware Cloud Director
 //
-// Use the VCD namespace to access organizations, provider VDCs, network pools,
-// external networks, and vCenter server instances connected to this VMware Cloud
-// Director deployment. Navigate into `vcd.organization` for tenant-level resources
-// including VMs, VDCs, roles, and LDAP configuration.
-vcd {
+// Top-level namespace for a VMware Cloud Director deployment, exposing its
+// organizations, provider virtual data centers, network pools, external networks,
+// and the connected vCenter server instances. Navigate into `vcd.organization`
+// for tenant-level resources including VMs, VDCs, roles, and LDAP configuration.
+vcd @root {
   // VMware Cloud Director organization resources
   organizations() []vcd.organization
   // VMware Cloud Director provider VDC
@@ -25,10 +28,11 @@ vcd {
 
 // VMware Cloud Director Organization
 //
-// Examine a VCD organization including its identity, status, and tenant resources.
-// Key fields include `id`, `name`, `fullName`, `isEnabled`, and `description`.
-// Computed fields surface `vms`, `vdcs`, `vdcGroups`, `roles`, `rights`, `settings`,
-// and the `ldapConfiguration` for directory-service integration.
+// Tenant unit in VMware Cloud Director that isolates users, policies, and
+// virtual resources from other organizations. Auditing an organization
+// surfaces whether it is enabled, the virtual data centers and VDC groups
+// it can consume, the roles and rights that govern tenant access, and the
+// LDAP directory integration used to authenticate its users.
 vcd.organization @defaults("name") {
   // Organization ID
   id string
@@ -51,6 +55,13 @@ vcd.organization @defaults("name") {
   // Organization roles
   roles() []vcd.role
   // Organization settings
+  //
+  // Nested configuration for the organization, keyed by OrgGeneralSettings
+  // (catalog-publishing, lease, and quota defaults), OrgVAppLeaseSettings,
+  // OrgVAppTemplateSettings, OrgLdapSettings (directory integration, also
+  // surfaced through ldapConfiguration), and OrgPasswordPolicySettings
+  // (account-lockout policy). Also carries HREF and Type identifying the
+  // settings entity.
   settings() dict
   // Organization LDAP configuration
   ldapConfiguration() vcd.organization.ldapSettings
@@ -58,15 +69,20 @@ vcd.organization @defaults("name") {
 
 // VMware Cloud Director Organization LDAP Settings
 //
-// Examine the LDAP directory-service configuration attached to a VCD organization.
-// Fields include `orgLdapMode` (the connection mode), `hostname`, `username`, `realm`,
-// and `customUsersOu` for the organizational-unit attribute used when provisioning users.
+// Directory-service configuration that determines how an organization
+// authenticates its users. The orgLdapMode field selects whether the
+// organization uses no LDAP, the shared system LDAP service, or its own
+// custom LDAP server, and the remaining fields carry the custom server
+// host, bind account, and realm when a custom directory is in use.
 vcd.organization.ldapSettings {
   // URI of the entity
   id string
   // LDAP attribute-value pair to use for the OU (organizational unit)
   customUsersOu string
-  // Whether the organization is connected to an LDAP service
+  // LDAP connection mode
+  //
+  // One of NONE (no LDAP), SYSTEM (the shared system LDAP service), or
+  // CUSTOM (an LDAP server configured for this organization).
   orgLdapMode string
   // Hostname of the LDAP server
   hostname string
@@ -78,13 +94,14 @@ vcd.organization.ldapSettings {
 
 // VMware Cloud Director Provider VDC
 //
-// Examine a provider virtual datacenter and its capacity allocation. Fields cover
-// operational state (`status`, `isEnabled`, `isBusy`, `isDeleted`), CPU allocation
-// (`cpuAllocationMhz`, `cpuLimitMhz`, `cpuUsedMhz`, `cpuOverheadMhz`), memory
-// allocation (`memoryAllocationMB`, `memoryLimitMB`, `memoryUsedMB`, `memoryOverheadMB`),
-// storage allocation (`storageAllocationMB`, `storageLimitMB`, `storageUsedMB`,
-// `storageOverheadMB`), and counts of datastores, storage profiles, and VDCs.
-// The `metadata` field exposes key-value pairs attached to the provider VDC.
+// Provider virtual datacenter that pools compute, memory, and storage from the
+// underlying vSphere resources and makes that capacity available to organization
+// VDCs. Reports operational state (enabled, busy, deleted), the CPU, memory, and
+// storage allocation, limit, usage, and overhead figures that reveal how much of
+// the pool is committed, and counts of the backing datastores, storage profiles,
+// and consuming VDCs. Useful for capacity planning and for confirming that a
+// provider VDC is enabled and not oversubscribed. The metadata field exposes the
+// user-defined key-value pairs attached to the provider VDC.
 private vcd.vdcProvider @defaults("name") {
   // Name of the provider VDC
   name string
@@ -132,9 +149,12 @@ private vcd.vdcProvider @defaults("name") {
 
 // VMware Cloud Director Network Pool
 //
-// Examine a network pool used to back organization VDC networks. Fields include
-// `name`, `isBusy`, and `networkPoolType` (0 = VLAN-backed, 1 = vNI-backed,
-// 2 = portgroup-backed).
+// Pool of network resources used to back the organization VDC networks that
+// tenants create on demand. The isolation technology behind the pool is given
+// by `networkPoolType` (0 = VLAN-backed, 1 = vNI-backed, 2 = portgroup-backed),
+// which determines how much segmentation and scale the backing infrastructure
+// can provide. `isBusy` indicates whether the pool is currently in use by a
+// provisioning operation.
 vcd.networkPool {
   // Network pool name
   name string
@@ -146,9 +166,11 @@ vcd.networkPool {
 
 // VMware Cloud Director External Network
 //
-// Examine an external network that bridges the VCD deployment to an upstream network.
-// Fields include `name`, `urn`, `description`, and `configuration` (a dict with
-// gateway, netmask, and IP-range details).
+// External network that bridges a VMware Cloud Director deployment to an
+// upstream provider network, carrying traffic in and out of the organization
+// virtual data centers. Auditing it surfaces the gateway, netmask, and static
+// IP ranges that define the network boundary, which is useful for confirming
+// address allocation and reviewing upstream connectivity.
 private vcd.externalNetwork @defaults("name") {
   // Unique name for the network
   name string
@@ -156,21 +178,25 @@ private vcd.externalNetwork @defaults("name") {
 	urn() string
   // Network description
   description() string
-  // External network configuration
+  // Network configuration
+  //
+  // Dict describing the network boundary. Keys include `fenceMode`,
+  // `backwardCompatibilityMode`, `retainNetInfoAcrossDeployments`, and
+  // `ipScopes`, where each `ipScope` carries `gateway`, `netmask`, `dns1`,
+  // `dns2`, `dnsSuffix`, `isEnabled`, and `ipRanges` of static-pool
+  // start and end addresses.
   configuration() dict
 }
 
 // VMware Cloud Director Virtual Machine
 //
-// Examine a standalone VM running inside a VCD organization VDC. Identity fields
-// include `id`, `name`, `containerName`, `containerID`, `ownerId`, and `ownerName`.
-// Hardware fields cover `numberOfCpus`, `memoryMB`, `hardwareVersion`,
-// `totalStorageAllocatedMb`, and `storageProfileName`. Runtime state is reflected
-// in `status`, `isDeployed`, `isBusy`, `isDeleted`, `isExpired`,
-// `isInMaintenanceMode`, `isComputePolicyCompliant`, and `encrypted`.
-// Network access is via `networkName` and `ipAddress`. Guest details include
-// `guestOs`, `vmToolsStatus`, `gcStatus`, `hostName`, `catalogName`,
-// and `isPublished`.
+// Standalone VM running inside an organization virtual data center (VDC),
+// covering its identity, allocated hardware, runtime state, network access,
+// and guest details. Use it to audit VM inventory and posture: whether a VM
+// is encrypted, compliant with its compute policy, deployed or in maintenance
+// mode, and whether it is exposed through a published catalog. Guest tooling
+// state (vmToolsStatus, gcStatus) and the assigned storage profile support
+// operational and hardening checks across the VDC.
 private vcd.vm @defaults("name") {
   // ID for the standalone VM in the VDC
   id string
@@ -232,10 +258,10 @@ private vcd.vm @defaults("name") {
 
 // VMware vCenter Server Instance
 //
-// Examine a vCenter server registered with VMware Cloud Director. Fields include
-// `name`, `uuid`, `vcVersion`, `userName`, `vsmIP`, `listenerState`, `status`,
-// `isEnabled`, `isBusy`, and `isSupported`. Use these to audit vCenter connectivity
-// and version compliance for VCD-attached compute infrastructure.
+// vCenter server registered with VMware Cloud Director, backing the compute
+// infrastructure that VCD provisions against. Audit its connectivity,
+// enablement, support status, and software version to confirm the underlying
+// vCenter is healthy and version compliant for VCD-attached hosts.
 vcd.serverInstance {
   // Name of vCenter server
   name string
@@ -261,10 +287,13 @@ vcd.serverInstance {
 
 // VMware Cloud Director Right
 //
-// Examine a granular permission right available in the VCD RBAC system. Fields
-// include `id`, `name`, `description`, `category`, `bundleKey`, `serviceNamespace`,
-// and `rightType`. Rights are assigned to roles and govern what actions tenants
-// may perform within an organization.
+// Granular permission right in the VCD role-based access control system. Rights
+// are the atomic units of authorization: each one governs a single action a user
+// may take, and rights are grouped into roles that get assigned to users and
+// groups within an organization. Auditing the rights available and how they are
+// bundled into roles helps confirm that tenants cannot perform privileged
+// operations outside their intended scope. The `category` and `serviceNamespace`
+// fields group rights by the feature area they control.
 vcd.right {
   // Right ID
   id string
@@ -284,9 +313,11 @@ vcd.right {
 
 // VMware Cloud Director Role
 //
-// Examine a role defined within a VCD organization. Fields include `id`, `name`,
-// and `description`. Roles collect rights and are assigned to users or groups to
-// control access within the organization.
+// Role defined within a VCD organization. A role bundles a set of rights and is
+// assigned to users or groups to govern what they can do inside the
+// organization, so reviewing roles is central to auditing least-privilege and
+// separation-of-duties. The `name` field selects a role, for example
+// `vcd.role(name: "Organization Administrator")`.
 vcd.role @defaults("name") {
   // ID of the role
   id string
@@ -298,11 +329,13 @@ vcd.role @defaults("name") {
 
 // VMware Cloud Director Organization VDC
 //
-// Examine a virtual datacenter provisioned within a VCD organization. Fields
-// include `id`, `name`, `status` (-1 = error, 0 = creating, 1 = ready),
-// `description`, `allocationModel`, `isEnabled`, `vmQuota`, `nicQuota`,
-// `networkQuota`, and `usedNetworkCount`. Use these to audit VDC capacity
-// limits, provisioning state, and network usage.
+// Virtual datacenter provisioned within a VCD organization, the resource-pool
+// abstraction that grants a tenant compute, memory, storage, and networking.
+// Audit `isEnabled` to confirm the VDC is active and `status`
+// (-1 = error, 0 = creating, 1 = ready) to catch provisioning failures.
+// The `vmQuota`, `nicQuota`, and `networkQuota` limits, weighed against
+// `usedNetworkCount`, reveal capacity headroom, while `allocationModel`
+// reports how compute is committed to the VDC.
 vcd.vdc {
   // ID of the VDC
   id string
@@ -312,7 +345,10 @@ vcd.vdc {
   status int
   // Optional description
   description string
-  // Used allocation model
+  // Allocation model
+  //
+  // How compute and memory are committed to the VDC. One of AllocationVApp
+  // (pay-as-you-go), AllocationPool, ReservationPool, or Flex.
   allocationModel string
   // Maximum number of virtual NICs allowed (0=unlimited)
   nicQuota int
@@ -328,11 +364,13 @@ vcd.vdc {
 
 // VMware Cloud Director VDC Group
 //
-// Examine an NSX-T-backed VDC group that spans multiple organization VDCs.
-// Fields include `name`, `description`, `status`, `type` (LOCAL or UNIVERSAL),
-// `localEgress`, `universalNetworkingEnabled`, and `dfwEnabled`. Use these to
-// audit distributed-firewall enablement and cross-VDC network topology for
-// NSX-T universal routing deployments.
+// NSX-T-backed grouping of organization virtual data centers that share network
+// and distributed-firewall policy. VDC groups let an organization apply a single
+// distributed firewall and cross-VDC routing configuration across several VDCs,
+// so they are a key control point for auditing east-west segmentation. The
+// `type` field distinguishes a LOCAL group (VDCs in one site) from a UNIVERSAL
+// group (VDCs spanning sites with universal networking), and `dfwEnabled`
+// reports whether the distributed firewall is active for the group.
 vcd.vdcGroup {
   // Name of VDC group
   name string

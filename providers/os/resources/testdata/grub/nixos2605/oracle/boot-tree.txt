@@ -1,0 +1,8 @@
+drwx------       4096 /boot
+drwx------       4096 /boot/grub
+drwxr-xr-x       4096 /boot/grub/fonts
+-rw-r--r--       2770 /boot/grub/grub.cfg
+-rw-r--r--       1024 /boot/grub/grubenv
+drwxr-xr-x      12288 /boot/grub/i386-pc
+drwxr-xr-x       4096 /boot/grub/locale
+-rw-r--r--        133 /boot/grub/state

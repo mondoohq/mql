@@ -1,0 +1,681 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/auth0"
+option go_package = "go.mondoo.com/mql/providers/auth0/resources"
+option root = "auth0"
+
+// Auth0 tenant
+//
+// Namespace for the identity resources reachable through an Auth0 tenant's
+// Management API: applications, identity connections, users, roles, actions,
+// and log streams. Query auth0.tenant for tenant-wide session and flag
+// settings, and auth0.attackProtection for the brute-force, suspicious-IP,
+// and breached-password defenses that apply across the whole tenant.
+auth0 @maturity("experimental") @root {
+  // Applications (OAuth/OIDC clients) registered in the tenant
+  clients() []auth0.client
+  // Identity connections (database, social, and enterprise) available to applications
+  connections() []auth0.connection
+  // Users held in the tenant's database connections
+  users() []auth0.user
+  // Administrative and application roles defined in the tenant
+  roles() []auth0.role
+  // Actions that run custom logic during authentication and other flows
+  actions() []auth0.action
+  // Log streams that export tenant events to external destinations
+  logStreams() []auth0.logStream
+  // APIs (resource servers) applications request access tokens for
+  resourceServers() []auth0.resourceServer
+  // Machine-to-machine grants authorizing applications to call APIs
+  clientGrants() []auth0.clientGrant
+  // Organizations used for B2B multi-tenancy
+  organizations() []auth0.organization
+}
+
+// Auth0 tenant settings
+//
+// Tenant-wide configuration that applies across every application and
+// connection in the Auth0 tenant. `sessionLifetime` and `idleSessionLifetime`
+// bound how long an authenticated session and an idle session may last before
+// re-authentication is required, `allowedLogoutUrls` is the allowlist
+// end-user logout redirects are validated against, and `flags` carries the
+// full set of tenant feature flags returned by the API.
+auth0.tenant @defaults("friendlyName") @maturity("experimental") {
+  // Tenant display name
+  friendlyName string
+  // Support contact email shown to end users
+  supportEmail string
+  // Support URL shown to end users
+  supportUrl string
+  // URL of the tenant logo
+  pictureUrl string
+  // Logout redirect URLs allowed for this tenant
+  //
+  // End-user logout redirects (`returnTo` on the logout endpoint) that are
+  // not scoped to a specific application must match an entry in this list.
+  allowedLogoutUrls []string
+  // Authenticated session lifetime in hours
+  sessionLifetime float
+  // Idle session lifetime in hours before re-authentication is required
+  idleSessionLifetime float
+  // Default audience for API authorization requests that omit one
+  defaultAudience string
+  // Default directory (database connection) used for username/password logins
+  defaultDirectory string
+  // Locales enabled for Universal Login
+  enabledLocales []string
+  // Tenant feature flags
+  //
+  // Raw flag payload as returned by the API, keyed by flag name (for example
+  // enableApisSection, changePwdFlowV1, disableClickjackProtectionHeaders).
+  flags dict
+  // Whether the end user is prompted before an OIDC logout completes
+  //
+  // When false, OIDC RP-initiated logout skips the confirmation prompt.
+  oidcLogoutPromptEnabled bool
+  // Anonymous session lifetime in minutes
+  //
+  // How long an anonymous (not yet authenticated) session stays valid. Null
+  // when anonymous sessions are not enabled for the tenant.
+  anonymousSessionLifetime int
+  // Whether anonymous session requests set the auth0_anon cookie
+  //
+  // Null when anonymous sessions are not enabled for the tenant.
+  anonymousSessionCookieEnabled bool
+}
+
+// Auth0 application
+//
+// OAuth 2.0/OIDC client (an "Application" in the Auth0 dashboard) registered
+// in the tenant, identified by its `id` (the Auth0 `client_id`). Covers the
+// settings that govern how the application authenticates and what it is
+// permitted to do: `grantTypes` lists the OAuth grants it may use,
+// `tokenEndpointAuthMethod` and the refresh-token fields describe its
+// credential and token-rotation posture, and `callbacks`/`allowedOrigins`/
+// `webOrigins` bound where it may redirect users and make cross-origin
+// calls from. A public client with `implicit` in `grantTypes`, a wildcard
+// callback URL, or refresh tokens that never rotate are common findings.
+auth0.client @defaults("name appType") @maturity("experimental") {
+  // Client ID (Auth0's identifier for the application)
+  id string
+  // Application name
+  name string
+  // Application description
+  description string
+  // Application type
+  //
+  // One of native, spa (single-page app), regular_web, non_interactive
+  // (machine-to-machine), resource_server, express_configuration,
+  // sso_integration, oag, or a third-party SSO integration type (rms, box,
+  // cloudbees, concur, dropbox, mscrm, echosign, egnyte, newrelic, office365,
+  // salesforce, sentry, sharepoint, slack, springcm, zendesk, or zoom).
+  appType string
+  // Whether this application is a "first party" application
+  isFirstParty bool
+  // Whether the application uses the OIDC-conformant pipeline
+  oidcConformant bool
+  // Allowed callback (redirect) URLs after authentication
+  callbacks []string
+  // Allowed URLs to redirect to after logout
+  allowedLogoutUrls []string
+  // Allowed origins for cross-origin (CORS) authentication requests
+  allowedOrigins []string
+  // Allowed origins for web-message (silent authentication) responses
+  webOrigins []string
+  // OAuth 2.0 grant types the application is permitted to use
+  //
+  // Common values: authorization_code, implicit, refresh_token,
+  // client_credentials, password, and the device and passwordless variants.
+  // implicit is legacy; client_credentials should be reserved for
+  // non_interactive applications.
+  grantTypes []string
+  // How the application authenticates to the token endpoint
+  //
+  // One of none (public client, e.g. SPA or native), client_secret_post,
+  // or client_secret_basic.
+  tokenEndpointAuthMethod string
+  // Whether refresh tokens rotate on use
+  //
+  // One of rotating (a new refresh token is issued and the previous one
+  // invalidated on each use) or non-rotating (the same refresh token is
+  // reused until it expires). Rotating is the hardened setting.
+  refreshTokenRotationType string
+  // Refresh token expiration behavior
+  //
+  // One of expiring (tokens have an absolute and inactivity lifetime) or
+  // non-expiring (tokens never expire on their own).
+  refreshTokenExpirationType string
+  // Grace period in seconds a rotated-out refresh token remains usable
+  refreshTokenLeeway int
+  // Absolute refresh token lifetime in seconds, when expiring
+  refreshTokenLifetime int
+  // Inactivity lifetime in seconds before an unused refresh token expires
+  refreshTokenIdleLifetime int
+  // Whether single sign-on is disabled for this application
+  ssoDisabled bool
+  // Whether cross-origin authentication is enabled for this application
+  crossOriginAuth bool
+  // URI Auth0 redirects to in order to initiate a login for this application
+  initiateLoginUri string
+  // Signing algorithm and lifetime for ID tokens
+  //
+  // Keys: alg (RS256 or HS256, where HS256 shares a symmetric secret) and
+  // lifetimeInSeconds.
+  jwtConfiguration dict
+  // Free-form metadata attached to the application
+  clientMetadata map[string]string
+  // Advanced client-authentication methods configured
+  //
+  // Any of private_key_jwt, tls_client_auth (CA-based mutual TLS), and
+  // self_signed_tls_client_auth (self-signed mutual TLS). Empty when the
+  // application authenticates with a client secret or is a public client. See
+  // tokenEndpointAuthMethod for the client-secret posture.
+  authenticationMethods []string
+  // Identity connections this application is enabled on
+  enabledConnections() []auth0.connection
+  // Whether this application may create anonymous sessions
+  //
+  // Null when anonymous sessions are not enabled for the tenant.
+  anonymousSessionsEnabled bool
+  // Self-service organization (My Organization) settings for this application
+  //
+  // Governs what organization administrators can do through the My
+  // Organization API when using this application, including whether they can
+  // grant permissions they do not hold themselves (enforcePermissionCeiling)
+  // or assign permissions to themselves (enforceSelfAssignmentRestriction).
+  // Null when the feature is not configured for the application.
+  myOrganization auth0.client.myOrganizationConfiguration
+}
+
+// Self-service organization settings for an Auth0 application
+private auth0.client.myOrganizationConfiguration @defaults("enforcePermissionCeiling enforceSelfAssignmentRestriction") {
+  // Whether organization admins can only assign permissions they hold themselves
+  enforcePermissionCeiling bool
+  // Whether organization admins are prevented from assigning permissions to themselves
+  enforceSelfAssignmentRestriction bool
+  // Connection strategies allowed when creating organization connections
+  //
+  // For example okta or samlp.
+  allowedStrategies []string
+  // How deleting an organization connection is handled
+  //
+  // One of allow (connections can always be deleted) or allow_if_empty
+  // (connections can be deleted only when no users are linked to them).
+  connectionDeletionBehavior string
+  // Application used as the landing page for invitations
+  invitationLandingClient() auth0.client
+}
+
+// Auth0 identity connection
+//
+// Identity source available to applications in the tenant: a database
+// connection (username/password, stored and verified by Auth0), a social
+// connection (Google, GitHub, and so on), or an enterprise connection
+// (SAML, OIDC, Active Directory/LDAP, Azure AD). The `strategy` field
+// selects the connection kind. For database connections, `passwordPolicy`
+// and the `passwordHistory*`/`passwordDictionaryEnabled` fields describe
+// the credential strength Auth0 enforces at signup and password reset, and
+// `mfaActive` reports whether multi-factor authentication is required for
+// logins through this connection. `enabledClients` resolves the
+// applications permitted to authenticate against it.
+auth0.connection @defaults("name strategy") @maturity("experimental") {
+  // Connection ID
+  id string
+  // Connection name
+  name string
+  // Connection strategy
+  //
+  // Identifies the connection kind, for example auth0 (database), google-oauth2,
+  // github, samlp, oidc, waad (Azure AD), or ad (Active Directory/LDAP).
+  strategy string
+  // Whether this is the tenant's default (domain) connection
+  isDomainConnection bool
+  // Whether new-user signup is disabled on this connection
+  disableSignup bool
+  // Whether login on this connection requires a username in addition to email
+  requiresUsername bool
+  // Password strength policy for a database connection
+  //
+  // One of none, low, fair, good, or excellent. Empty for non-database
+  // (social or enterprise) connections.
+  passwordPolicy string
+  // Whether Auth0 rejects passwords found in a breach-credential dictionary
+  passwordDictionaryEnabled bool
+  // Whether Auth0 rejects passwords that reuse a user's recent password history
+  passwordHistoryEnabled bool
+  // Number of previous passwords checked when password history is enabled
+  passwordHistorySize int
+  // Whether Auth0 rejects passwords containing the user's personal information
+  passwordNoPersonalInfo bool
+  // Whether multi-factor authentication is active for logins through this connection
+  mfaActive bool
+  // Whether MFA enrollment settings are returned during authentication
+  mfaReturnEnrollSettings bool
+  // Legacy per-connection brute-force protection flag
+  //
+  // Deprecated in favor of the tenant-wide brute-force protection exposed
+  // through auth0.attackProtection, which supersedes this per-connection
+  // setting for database connections.
+  bruteForceProtection @maturity("deprecated") bool
+  // Raw options payload for this connection
+  //
+  // Strategy-specific settings (SAML certs, AD/LDAP binds, social app keys)
+  // not promoted to a typed field.
+  options dict
+  // Applications enabled on this connection
+  enabledClients() []auth0.client
+}
+
+// Auth0 user
+//
+// Individual account held in one of the tenant's database connections and
+// selected by its `id` (the Auth0 `user_id`, for example
+// `auth0|507f1f77bcf86cd799439011`). The lifecycle fields (`blocked`,
+// `lastLogin`, `loginsCount`) surface dormant or locked-out accounts,
+// `multifactor` lists which MFA factor types the user has enrolled, and
+// `identities` shows every linked social or enterprise account merged into
+// this profile. `roles` resolves the administrative and application roles
+// granted to the user.
+auth0.user @defaults("email") @maturity("experimental") {
+  init(id string)
+  // User ID
+  id string
+  // Primary email address
+  email string
+  // Whether the primary email address has been verified
+  emailVerified bool
+  // Full name
+  name string
+  // Username, for connections that require one
+  username string
+  // Phone number, for passwordless/SMS connections
+  phoneNumber string
+  // Whether the phone number has been verified
+  phoneVerified bool
+  // Whether the account is blocked
+  blocked bool
+  // Timestamp when the account was created
+  createdAt time
+  // Timestamp when the account was last updated
+  updatedAt time
+  // Timestamp of the user's last login
+  lastLogin time
+  // IP address of the user's last login
+  lastIp string
+  // Total number of successful logins
+  loginsCount int
+  // MFA factor types enrolled
+  //
+  // For example guardian, sms, or email. Empty means no MFA factor enrolled.
+  multifactor []string
+  // Linked identities merged into this profile
+  //
+  // Each entry is a dict with keys connection, provider, userId, isSocial,
+  // and profileData.
+  identities []dict
+  // Application-controlled metadata not editable by the user
+  appMetadata dict
+  // User-editable profile metadata
+  userMetadata dict
+  // Roles assigned to the user
+  roles() []auth0.role
+}
+
+// Auth0 role
+//
+// Named collection of permissions that can be assigned to users or, through
+// an application's client-credentials grant, to machine clients. Select a
+// role by its `name`. The `permissions` field lists the resource-server
+// scopes the role grants, and `users` lists the accounts currently holding
+// it, letting you audit membership in high-privilege roles directly.
+auth0.role @defaults("name") @maturity("experimental") {
+  // Role ID
+  id string
+  // Role name
+  name string
+  // Role description
+  description string
+  // Permissions granted by the role
+  //
+  // One entry per permission, each a dict with keys permissionName,
+  // resourceServerIdentifier, resourceServerName, and description.
+  permissions() []dict
+  // Users currently assigned this role
+  users() []auth0.user
+}
+
+// Auth0 action
+//
+// Piece of custom Node.js logic that Auth0 runs during an authentication or
+// management flow, such as login, machine-to-machine token issuance, or
+// user registration. Select an action by its `name`. `supportedTriggers`
+// identifies which flow(s) the action can bind to, `status` and `deployed`
+// report whether the current version is live, and `code` is the action's
+// source, useful for spotting hardcoded secrets or unreviewed logic
+// running inline in the authentication path. `secrets` lists the names of
+// configured secrets without exposing their values.
+auth0.action @defaults("name status") @maturity("experimental") {
+  // Action ID
+  id string
+  // Action name
+  name string
+  // Runtime the action executes in, for example node18 or node22
+  runtime string
+  // Trigger(s) the action is bound to
+  //
+  // Each entry is a dict with keys id (post-login, credentials-exchange,
+  // pre-user-registration, and so on) and version.
+  supportedTriggers []dict
+  // Deployment status of the action's current version
+  //
+  // One of pending, building, packaged, built, retrying, or failed.
+  status string
+  // Whether the current version of the action is deployed to its trigger(s)
+  deployed bool
+  // Action source code
+  code string
+  // npm package dependencies declared by the action
+  //
+  // Each entry is a dict with keys name, version, and registryUrl.
+  dependencies []dict
+  // Names of secrets configured for the action
+  //
+  // Each entry is a dict with the secret name. Values are never returned by
+  // the API.
+  secrets []dict
+  // Timestamp when the action was created
+  createdAt time
+  // Timestamp when the action was last updated
+  updatedAt time
+}
+
+// Auth0 log stream
+//
+// Connection that exports tenant log events to an external destination such
+// as AWS EventBridge, Datadog, Splunk, or a generic HTTP endpoint. Select a
+// stream by its `name`. `type` identifies the destination kind, `sink`
+// carries the destination-specific configuration (endpoint URLs, region,
+// API keys are redacted), and `status` reports whether delivery is active,
+// paused, or has been suspended by Auth0 after repeated failures. An
+// absent or non-active stream means tenant authentication events are not
+// being shipped to a SIEM or audit pipeline.
+auth0.logStream @defaults("name type status") @maturity("experimental") {
+  // Log stream ID
+  id string
+  // Log stream name
+  name string
+  // Destination type
+  //
+  // For example http, eventbridge, eventgrid, datadog, splunk, sumo,
+  // mixpanel, or segment.
+  type string
+  // Delivery status
+  //
+  // One of active, paused, or suspended (Auth0 disabled the stream after
+  // repeated delivery failures).
+  status string
+  // Destination-specific configuration
+  //
+  // Shape depends on type: http (httpEndpoint, httpContentFormat), datadog
+  // (datadogRegion, key redacted), splunk (splunkDomain, splunkPort), or
+  // eventbridge (awsAccountId, awsRegion).
+  sink dict
+  // Event categories streamed
+  //
+  // For example login or failed_login. Empty means all categories.
+  filters []dict
+}
+
+// Auth0 attack protection
+//
+// Tenant-wide defenses against credential attacks: brute-force login
+// attempts, suspicious traffic from a small number of IPs hitting many
+// accounts, and logins with passwords known to be exposed in third-party
+// breaches. Each defense is flattened onto this resource with a
+// disambiguating prefix (`bruteForce*`, `suspiciousIpThrottling*`,
+// `breachedPasswordDetection*`) since all three are singleton
+// configuration blocks scoped to the tenant, not independently addressable
+// records. A tenant with `breachedPasswordDetectionEnabled` false, or
+// `bruteForceEnabled` false, accepts logins Auth0 would otherwise have
+// blocked or flagged.
+auth0.attackProtection @defaults("bruteForceEnabled breachedPasswordDetectionEnabled") @maturity("experimental") {
+  // Whether brute-force protection is enabled
+  bruteForceEnabled bool
+  // Brute-force lockout mode
+  //
+  // One of count_per_identifier_and_ip (username+IP pair, the default) or
+  // count_per_identifier (username alone).
+  bruteForceMode string
+  // Number of failed attempts before a lockout is triggered
+  bruteForceMaxAttempts int
+  // IP addresses exempted from brute-force lockout
+  bruteForceAllowlist []string
+  // Whether suspicious-IP throttling is enabled
+  suspiciousIpThrottlingEnabled bool
+  // IP addresses exempted from suspicious-IP throttling
+  suspiciousIpThrottlingAllowlist []string
+  // Maximum sign-in attempts allowed per interval before throttling on the pre-login stage
+  suspiciousIpThrottlingPreLoginMaxAttempts int
+  // Maximum sign-up attempts allowed per interval before throttling on the pre-registration stage
+  suspiciousIpThrottlingPreRegistrationMaxAttempts int
+  // Whether breached-password detection is enabled
+  breachedPasswordDetectionEnabled bool
+  // Breached-password detection method
+  //
+  // One of standard (checks at login/signup) or enhanced (also checks
+  // continuously against new breaches).
+  breachedPasswordDetectionMethod string
+  // Actions ("shields") on detection
+  //
+  // Any of block, user_notification, and admin_notification.
+  breachedPasswordDetectionShields []string
+  // How often admin notification digest emails are sent
+  //
+  // One of immediately, daily, weekly, or monthly.
+  breachedPasswordDetectionAdminNotificationFrequency []string
+}
+
+// Auth0 multi-factor authentication policy
+//
+// Tenant-wide multi-factor authentication (MFA) configuration: the enrollment
+// `policy` that decides when users are challenged for a second factor, and
+// which authentication factors are enabled for the tenant. `policy` is one of
+// never (MFA off), all-applications (every login requires MFA), or
+// confidence-score (adaptive MFA that challenges only risky logins). The
+// per-factor flags (otpEnabled, webAuthnPlatformEnabled, webAuthnRoamingEnabled,
+// pushEnabled, duoEnabled, phoneEnabled, emailEnabled, recoveryCodeEnabled)
+// report which factor types end users may enroll, and the
+// webAuthn*UserVerification fields report how strictly the WebAuthn factors
+// verify the user. A tenant with `policy` never, or one that offers only the
+// phishable phoneEnabled/emailEnabled factors, is a common finding.
+auth0.guardian @defaults("policy") @maturity("experimental") {
+  // MFA enrollment policy
+  //
+  // One of never (MFA is not required), all-applications (MFA required for
+  // every login), or confidence-score (adaptive MFA that challenges only
+  // logins Auth0 scores as risky).
+  policy string
+  // Whether one-time password (authenticator app) MFA is enabled
+  otpEnabled bool
+  // Whether WebAuthn with device biometrics (platform authenticator) MFA is enabled
+  webAuthnPlatformEnabled bool
+  // Whether WebAuthn with a security key (roaming authenticator) MFA is enabled
+  webAuthnRoamingEnabled bool
+  // Whether Auth0 Guardian push-notification MFA is enabled
+  pushEnabled bool
+  // Whether Cisco Duo MFA is enabled
+  duoEnabled bool
+  // Whether phone (SMS or voice) MFA is enabled
+  phoneEnabled bool
+  // Whether email one-time code MFA is enabled
+  emailEnabled bool
+  // Whether recovery codes are enabled as an MFA fallback
+  recoveryCodeEnabled bool
+  // User-verification requirement for the platform WebAuthn factor
+  //
+  // One of required, preferred, or discouraged. Empty when the platform
+  // WebAuthn factor is not configured.
+  webAuthnPlatformUserVerification string
+  // User-verification requirement for the roaming WebAuthn factor
+  //
+  // One of required, preferred, or discouraged. Empty when the roaming
+  // WebAuthn factor is not configured.
+  webAuthnRoamingUserVerification string
+}
+
+// Auth0 API
+//
+// API (resource server) registered in the tenant that applications request
+// access tokens for, selected by its `identifier` (the API audience, for
+// example https://api.example.com). `signingAlgorithm` is the algorithm used
+// to sign issued access tokens (RS256 uses asymmetric keys, HS256 a shared
+// symmetric secret), `tokenLifetime` bounds how long an access token stays
+// valid, and `enforcePolicies` reports whether role-based access control
+// (RBAC) gates the scopes a token may carry. `allowOfflineAccess` controls
+// whether refresh tokens may be issued for the API, `scopes` lists the
+// permissions the API defines, and the proofOfPossession fields report whether
+// sender-constrained tokens are required. An API with enforcePolicies off,
+// HS256 signing, or an unusually long tokenLifetime is a common finding.
+auth0.resourceServer @defaults("name identifier") @maturity("experimental") {
+  init(id string)
+  // Resource server ID
+  id string
+  // Resource server name
+  name string
+  // API identifier (audience)
+  //
+  // The unique audience value applications request access tokens for, for
+  // example https://api.example.com. This is the API's stable selection key.
+  identifier string
+  // Algorithm used to sign issued access tokens
+  //
+  // One of RS256 (asymmetric, the hardened default) or HS256 (a shared
+  // symmetric secret). PS256 is available as an add-on.
+  signingAlgorithm string
+  // Access token lifetime in seconds
+  tokenLifetime int
+  // Access token lifetime in seconds for browser-based flows
+  tokenLifetimeForWeb int
+  // Access token dialect
+  //
+  // One of access_token, rfc9068_profile, access_token_authz, or
+  // rfc9068_profile_authz. The authz dialects embed RBAC permission claims.
+  tokenDialect string
+  // Whether role-based access control (RBAC) policies are enforced
+  enforcePolicies bool
+  // Whether refresh tokens (offline access) may be issued for this API
+  allowOfflineAccess bool
+  // Whether consent is skipped for verifiable first-party applications
+  skipConsentForVerifiableFirstPartyClients bool
+  // Whether this is an Auth0 system-managed resource server
+  isSystem bool
+  // Scopes (permissions) defined by the API
+  //
+  // Keyed by scope value (for example read:users), with the scope description
+  // as the value.
+  scopes map[string]string
+  // Proof-of-possession mechanism required for access tokens
+  //
+  // One of mtls or dpop. Empty when proof-of-possession is not required.
+  proofOfPossessionMechanism string
+  // Whether proof-of-possession is required for access tokens
+  proofOfPossessionRequired bool
+  // Which client types must use proof-of-possession
+  //
+  // One of all_clients or public_clients. Empty when proof-of-possession is
+  // not required.
+  proofOfPossessionRequiredFor string
+  // Access token lifetime in seconds for anonymous sessions
+  //
+  // Null when anonymous sessions are not enabled for the tenant.
+  tokenLifetimeForAnonymousAccessTokens int
+  // Authorization policy for user-initiated flows
+  //
+  // One of allow_all (any application may obtain user access tokens),
+  // deny_all, or require_client_grant (only applications with a user client
+  // grant for this API). Null when no policy is configured.
+  userPolicy string
+  // Authorization policy for client-initiated (machine-to-machine) flows
+  //
+  // One of deny_all or require_client_grant (only applications with a client
+  // grant for this API). Null when no policy is configured.
+  clientPolicy string
+  // Authorization policy for anonymous-user flows
+  //
+  // One of deny_all or require_client_grant (only applications with an
+  // anonymous_user client grant for this API). Auth0 treats an unset policy as
+  // deny_all. Null when the feature is not enabled for the tenant.
+  anonymousUserPolicy string
+  // Custom claims added to access tokens issued for this API
+  //
+  // Keyed by claim name, with the expression that resolves the claim value.
+  // Null when the feature is not enabled for the tenant.
+  accessTokenCustomClaims map[string]string
+}
+
+// Auth0 client grant
+//
+// Machine-to-machine authorization that permits an application to obtain
+// access tokens for an API through the client-credentials grant. `client`
+// resolves the application the grant is issued to, `audience` is the API
+// identifier the grant targets (resolvable through resourceServer), and
+// `scopes` lists the permissions the application is granted, unless
+// allowAllScopes is set, in which case every scope the API defines is granted.
+// `organizationUsage` and `allowAnyOrganization` govern whether the grant may
+// be used in an organization context. An overly broad set of scopes on a
+// machine-to-machine grant is a common finding.
+auth0.clientGrant @defaults("audience") @maturity("experimental") {
+  // Client grant ID
+  id string
+  // Application the grant authorizes
+  client() auth0.client
+  // API identifier (audience) the grant targets
+  //
+  // Matches the identifier of an auth0.resourceServer. Use resourceServer to
+  // resolve the API.
+  audience string
+  // API the grant targets
+  resourceServer() auth0.resourceServer
+  // Permissions (scopes) granted to the application
+  scopes []string
+  // Whether every scope defined by the API is granted
+  allowAllScopes bool
+  // Whether the grant may be used with any organization
+  allowAnyOrganization bool
+  // Whether organizations may be used with the client-credentials exchange
+  //
+  // One of deny, allow, or require. Defaults to deny.
+  organizationUsage string
+  // Subject type for the grant
+  //
+  // One of client, user, or anonymous_user. Defaults to client.
+  subjectType string
+}
+
+// Auth0 organization
+//
+// Organization used for B2B multi-tenancy, grouping members and the identity
+// connections they authenticate through, selected by its `name`. `connections`
+// resolves the identity connections enabled for the organization, `members`
+// resolves the users who belong to it, and `metadata` carries the custom
+// key/value pairs attached to the organization. `displayName` and
+// `brandingLogoUrl` cover how the organization is presented on its login page.
+auth0.organization @defaults("name displayName") @maturity("experimental") {
+  // Organization ID
+  id string
+  // Organization name (unique handle)
+  name string
+  // Human-readable display name
+  displayName string
+  // URL of the logo shown on the organization's login page
+  brandingLogoUrl string
+  // Custom metadata attached to the organization
+  metadata map[string]string
+  // Identity connections enabled for the organization
+  connections() []auth0.connection
+  // Users who are members of the organization
+  members() []auth0.user
+}

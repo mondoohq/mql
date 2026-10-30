@@ -1,0 +1,14 @@
+[commands."uname -s"]
+stdout = "AIX"
+
+[commands."uname -rvp"]
+stdout = "2 7 powerpc"
+
+[commands."oslevel -s"]
+stdout = "7200-05-02-2114"
+
+[commands."uname -M"]
+stdout = "IBM,9009-42A"
+
+[commands."lsattr -El proc0 -a type -F value"]
+stdout = "PowerPC_POWER9"

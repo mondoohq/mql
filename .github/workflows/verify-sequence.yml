@@ -1,0 +1,44 @@
+name: Verify Sequences
+
+on:
+  pull_request:
+    paths:
+      - "docs/adr/*.md"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  verify-sequence:
+    name: Verify Sequences
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Generate token
+        id: generate-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.MONDOO_MERGEBOT_APP_ID }}
+          private-key: ${{ secrets.MONDOO_MERGEBOT_APP_PRIVATE_KEY }}
+          owner: mondoohq
+          repositories: verify-sequence
+
+      - name: Checkout verify-sequence action
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mondoohq/verify-sequence
+          ref: 9dca90c3101e79fad4a43c96e99ffc055ba518dc # v0.0.2
+          token: ${{ steps.generate-token.outputs.token }}
+          path: .github/actions/verify-sequence
+
+      - name: Check ADR sequence
+        uses: ./.github/actions/verify-sequence
+        with:
+          patterns: |
+            docs/adr/*.md
+          mode: diff

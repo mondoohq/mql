@@ -164,3 +164,61 @@ func TestParseCodeowners(t *testing.T) {
 		assert.Equal(t, 0, rules[1].ApprovalsRequired)
 	})
 }
+
+func TestParseCodeownersSectionsWithDefaultOwners(t *testing.T) {
+	// GitLab lets a section header carry default owners, which apply to every
+	// pattern in the section that does not name its own. Rejecting that form
+	// turned the header into a rule whose pattern was the literal "[Database]"
+	// and, worse, left the section state pointing at the *previous* section —
+	// so a required section was reported as optional for the rest of the file.
+	t.Run("required section with default owners", func(t *testing.T) {
+		rules := parseCodeowners("[Database] @dba-team\ndb/schema.rb\ndb/migrate/ @migrations\n")
+		require.Len(t, rules, 2, "the header must not become a rule")
+
+		assert.Equal(t, "db/schema.rb", rules[0].Pattern)
+		assert.Equal(t, "Database", rules[0].Section)
+		assert.True(t, rules[0].Required)
+		assert.False(t, rules[0].Optional)
+		assert.Equal(t, []string{"@dba-team"}, rules[0].Owners,
+			"a pattern with no owners inherits the section defaults")
+
+		assert.Equal(t, "db/migrate/", rules[1].Pattern)
+		assert.Equal(t, []string{"@migrations"}, rules[1].Owners,
+			"an explicit owner list wins over the section defaults")
+	})
+
+	t.Run("optional section with approvals and default owners", func(t *testing.T) {
+		rules := parseCodeowners("^[Review][2] @a @b\nsrc/\n")
+		require.Len(t, rules, 1)
+		assert.Equal(t, "Review", rules[0].Section)
+		assert.True(t, rules[0].Optional)
+		assert.False(t, rules[0].Required)
+		assert.Equal(t, 2, rules[0].ApprovalsRequired)
+		assert.Equal(t, []string{"@a", "@b"}, rules[0].Owners)
+	})
+
+	t.Run("section state advances past a default-owner header", func(t *testing.T) {
+		rules := parseCodeowners("^[Optional]\nexperiments/ @lab\n[Database] @dba\ndb/schema.rb\n")
+		require.Len(t, rules, 2)
+
+		assert.Equal(t, "Optional", rules[0].Section)
+		assert.True(t, rules[0].Optional)
+
+		assert.Equal(t, "Database", rules[1].Section)
+		assert.True(t, rules[1].Required, "the required section must not inherit optional")
+		assert.False(t, rules[1].Optional)
+	})
+
+	t.Run("bare headers still parse", func(t *testing.T) {
+		rules := parseCodeowners("[Docs]\nREADME.md @docs\n")
+		require.Len(t, rules, 1)
+		assert.Equal(t, "Docs", rules[0].Section)
+		assert.Equal(t, []string{"@docs"}, rules[0].Owners)
+	})
+
+	t.Run("pattern with no owners and no section defaults", func(t *testing.T) {
+		rules := parseCodeowners("docs/\n")
+		require.Len(t, rules, 1)
+		assert.Empty(t, rules[0].Owners, "an unowned path must stay unowned")
+	})
+}

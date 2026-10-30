@@ -13,8 +13,8 @@ import (
 	"strings"
 	"text/template"
 
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/multierr"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/multierr"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -34,6 +34,8 @@ func Go(packageName string, ast *LR, collector *Collector, licenseHeaderTpl *tem
 		o.providerName = "provider"
 	}
 
+	o.checkOwnerFilledResourcesArePrivate(ast.Resources)
+
 	o.goCreateResource(ast.Resources)
 	o.goGetData(ast.Resources)
 	o.goSetData(ast.Resources)
@@ -42,14 +44,14 @@ func Go(packageName string, ast *LR, collector *Collector, licenseHeaderTpl *tem
 		o.goResource(ast.Resources[i])
 	}
 
-	imports := ""
+	var imports strings.Builder
 	for packName := range o.packsInUse {
 		importPath, ok := ast.packPaths[packName]
 		if !ok {
 			return "", errors.New("cannot find import path for pack: " + packName)
 		}
 
-		imports += "\n\t" + strconv.Quote(importPath)
+		imports.WriteString("\n\t" + strconv.Quote(importPath))
 	}
 
 	coreImports := ""
@@ -62,7 +64,7 @@ func Go(packageName string, ast *LR, collector *Collector, licenseHeaderTpl *tem
 		return "", err
 	}
 
-	header := fmt.Sprintf(goHeader, licenseHeader, coreImports, imports)
+	header := fmt.Sprintf(goHeader, licenseHeader, coreImports, imports.String())
 	return header + o.data, o.errors.Deduplicate()
 }
 
@@ -122,9 +124,9 @@ package resources
 import (
 	"errors"%s
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"%s
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"%s
 )
 `
 
@@ -545,11 +547,11 @@ func (b *goBuilder) importName(symbol string) (string, bool) {
 }
 
 func indent(s string, depth int) string { //nolint:unused
-	space := ""
-	for i := 0; i < depth; i++ {
-		space += "\t"
+	var space strings.Builder
+	for range depth {
+		space.WriteString("\t")
 	}
-	return space + strings.ReplaceAll(s, "\n", "\n"+space)
+	return space.String() + strings.ReplaceAll(s, "\n", "\n"+space.String())
 }
 
 func (r *Resource) constTypeName(b *goBuilder) string {
@@ -570,6 +572,80 @@ func (r *Resource) interfaceName(b *goBuilder) string {
 	return resource2goname(r.ID, b)
 }
 
+// checkOwnerFilledResourcesArePrivate rejects a public resource that only its
+// owner's accessor can populate. A dotted path resolves to the longest matching
+// resource name, so while it is public `owner.name.field` builds a bare instance
+// that skips the accessor and reads null for every field. Marking it private
+// makes the compiler use the accessor instead; see mqlc.prefersFieldOverResource.
+func (b *goBuilder) checkOwnerFilledResourcesArePrivate(all []*Resource) {
+	byID := make(map[string]*Resource, len(all))
+	for _, r := range all {
+		byID[r.ID] = r
+	}
+
+	for _, r := range all {
+		if r.IsPrivate || !b.onlyOwnerCanFill(r) {
+			continue
+		}
+
+		ownerID, field, found := strings.CutLast(r.ID, ".")
+		if !found {
+			continue
+		}
+		owner, ok := byID[ownerID]
+		if !ok {
+			continue
+		}
+		if !b.declaresAccessorFor(owner, field, r.ID) {
+			continue
+		}
+
+		b.errors.Add(fmt.Errorf(
+			"resource %s is public, but only the `%s` accessor on %s can fill it. "+
+				"A path like `%s.<field>` therefore compiles to a bare %s and every field reads null. Mark the resource `private`",
+			r.ID, field, owner.ID, r.ID, r.ID))
+	}
+}
+
+// onlyOwnerCanFill reports whether a resource has no way to populate itself:
+// every field is data-only and there is no init to build it from args.
+func (b *goBuilder) onlyOwnerCanFill(r *Resource) bool {
+	if r.Body == nil || r.ListType != nil {
+		return false
+	}
+	if len(r.GetInitFields()) > 0 || b.collector.HasInit(r.interfaceName(b)) {
+		return false
+	}
+
+	fields := 0
+	for _, f := range r.Body.Fields {
+		if f.BasicField == nil || f.BasicField.ID == "" {
+			continue
+		}
+		if !f.BasicField.isStatic() {
+			return false
+		}
+		fields++
+	}
+	return fields > 0
+}
+
+// declaresAccessorFor reports whether owner declares `name` as an accessor for
+// resourceID. Only fields spelled out in the .lr count: the singular accessors lr
+// synthesizes for every `x.y` resource reach nothing.
+func (b *goBuilder) declaresAccessorFor(owner *Resource, name string, resourceID string) bool {
+	if owner.Body == nil {
+		return false
+	}
+	for _, f := range owner.Body.Fields {
+		if f.BasicField == nil || f.BasicField.ID != name {
+			continue
+		}
+		return f.BasicField.Type.Type(b.ast) == types.Resource(resourceID)
+	}
+	return false
+}
+
 var caser = cases.Title(language.English, cases.NoLower)
 
 func resource2goname(s string, b *goBuilder) string {
@@ -588,6 +664,15 @@ func resource2goname(s string, b *goBuilder) string {
 		}
 	}
 	if name == "" {
+		// A dotted name that is not a known pack is normally just a local
+		// resource (`os.unix.sshd`). If it is not local either, the first
+		// segment was meant as a pack qualifier and the import is missing --
+		// which otherwise passes silently and emits types.Resource("core.cpe")
+		// for a resource actually called `cpe`.
+		if pack[0] != s && !b.ast.hasLocalResource(s) {
+			b.errors.Add(errors.New("cannot find resource " + s +
+				"; if " + pack[0] + " is another provider, add `import " + pack[0] + "`"))
+		}
 		name = caser.String(string(
 			reMethodName.ReplaceAllFunc([]byte(s), capitalizeDot),
 		))
@@ -665,6 +750,8 @@ func (t *SimpleType) typeItems(ast *LR) types.Type {
 		return types.IP
 	case "range":
 		return types.Range
+	case "asset":
+		return types.Asset(t.Root)
 	case "any":
 		return types.Any
 	default:
@@ -737,6 +824,8 @@ func (t *SimpleType) mondooTypeItems(b *goBuilder) string {
 		return "types.Time"
 	case "range":
 		return "types.Range"
+	case "asset":
+		return "types.Asset(\"" + t.Root + "\")"
 	case "dict":
 		return "types.Dict"
 	case "version":
@@ -749,11 +838,17 @@ func (t *SimpleType) mondooTypeItems(b *goBuilder) string {
 		if name, ok := b.importName(t.Type); ok {
 			return "types.Resource(\"" + name + "\")"
 		}
+		// A dotted name that is not a known pack is normally a local resource
+		// (`os.unix.sshd`). If it is not local either, the leading segment was
+		// meant as a pack qualifier and the import is missing. Without this the
+		// qualifier silently becomes part of the name, emitting
+		// types.Resource("core.cpe") for a resource actually called `cpe`.
+		if pack, _, dotted := strings.Cut(t.Type, "."); dotted && !b.ast.hasLocalResource(t.Type) {
+			b.errors.Add(errors.New("cannot find resource " + t.Type +
+				"; if " + pack + " is another provider, add `import " + pack + "`"))
+		}
 		return "types.Resource(\"" + t.Type + "\")"
 	}
-
-	// TODO: check that this type if a proper resource
-	// panic("Cannot convert type '" + t.Type + "' to mondoo type")
 }
 
 func (t *Type) containsResource(b *goBuilder) bool {
@@ -809,6 +904,7 @@ var primitiveTypes = map[string]string{
 	"dict":    "any",
 	"version": "string",
 	"ip":      "llx.RawIP",
+	"asset":   "*llx.AssetValue",
 	"any":     "any",
 }
 
@@ -843,6 +939,7 @@ var primitiveZeros = map[string]string{
 	"dict":    "nil",
 	"version": "\"\"",
 	"ip":      "nil",
+	"asset":   "nil",
 	"any":     "nil",
 }
 

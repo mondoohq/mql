@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -15,12 +16,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider"
 	cognitoidentityprovidertypes "github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsCognito) id() (string, error) {
@@ -79,7 +80,7 @@ func (a *mqlAwsCognito) getUserPools(conn *connection.AwsConnection) []*jobpool.
 				}
 
 				for _, pool := range resp.UserPools {
-					poolArn := "arn:aws:cognito-idp:" + region + ":" + conn.AccountId() + ":userpool/" + convert.ToValue(pool.Id)
+					poolArn := cognitoUserPoolArn(region, conn.AccountId(), convert.ToValue(pool.Id))
 
 					mqlPool, err := CreateResource(a.MqlRuntime, "aws.cognito.userPool",
 						map[string]*llx.RawData{
@@ -110,6 +111,13 @@ func (a *mqlAwsCognito) getUserPools(conn *connection.AwsConnection) []*jobpool.
 	return tasks
 }
 
+// cognitoUserPoolArn builds a user pool's ARN, which is also its __id. The
+// listing path and the reference resolver share it so both agree on the cache
+// key.
+func cognitoUserPoolArn(region, accountID, userPoolId string) string {
+	return "arn:aws:cognito-idp:" + region + ":" + accountID + ":userpool/" + userPoolId
+}
+
 func initAwsCognitoUserPool(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 2 {
 		return args, nil, nil
@@ -118,8 +126,8 @@ func initAwsCognitoUserPool(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	// During a discovered-asset scan the resource is queried with no args; recover
 	// the pool's region and id from the ARN carried on the asset.
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformCognitoUserpool); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 	if args["arn"] == nil {
@@ -127,6 +135,14 @@ func initAwsCognitoUserPool(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	}
 
 	arnVal := args["arn"].Value.(string)
+
+	// The already-built pool carries the same fields this init would set; the
+	// DescribeUserPool the init primes below is then paid once, by whichever
+	// computed field asks for it, instead of once per query.
+	if cached := cachedByArn(runtime, ResourceAwsCognitoUserPool, arnVal); cached != nil {
+		return args, cached, nil
+	}
+
 	parsed, err := arn.Parse(arnVal)
 	if err != nil {
 		return nil, nil, err
@@ -214,6 +230,43 @@ func (a *mqlAwsCognitoUserPool) fetchDescribeUserPool() (*cognitoidentityprovide
 	return resp, nil
 }
 
+func (a *mqlAwsCognitoUserPool) acrConfiguration() (map[string]any, error) {
+	resp, err := a.fetchDescribeUserPool()
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.UserPool == nil || resp.UserPool.AcrConfiguration == nil {
+		a.AcrConfiguration.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return cognitoAcrConfigurationToMap(resp.UserPool.AcrConfiguration), nil
+}
+
+// cognitoAcrConfigurationToMap flattens a user pool's ACR configuration into
+// level -> ACR value. A nil configuration stays nil so the field reads null.
+func cognitoAcrConfigurationToMap(cfg map[string]cognitoidentityprovidertypes.AcrLevelConfigType) map[string]any {
+	if cfg == nil {
+		return nil
+	}
+	res := make(map[string]any, len(cfg))
+	for level, c := range cfg {
+		if c.AcrValue == nil {
+			continue
+		}
+		res[level] = *c.AcrValue
+	}
+	return res
+}
+
+// cognitoAcrMappingData converts an identity provider's ACR mapping, keeping
+// an unset mapping null instead of an empty map.
+func cognitoAcrMappingData(m map[string]string) *llx.RawData {
+	if m == nil {
+		return llx.NilData
+	}
+	return llx.MapData(convert.MapToInterfaceMap(m), types.String)
+}
+
 func (a *mqlAwsCognitoUserPool) deletionProtection() (bool, error) {
 	resp, err := a.fetchDescribeUserPool()
 	if err != nil || resp == nil || resp.UserPool == nil {
@@ -245,6 +298,32 @@ func (a *mqlAwsCognitoUserPool) passwordPolicy() (any, error) {
 		return nil, err
 	}
 	return convert.JsonToDict(resp.UserPool.Policies.PasswordPolicy)
+}
+
+func (a *mqlAwsCognitoUserPool) passwordRequirements() (*mqlAwsCognitoUserPoolPasswordRequirements, error) {
+	resp, err := a.fetchDescribeUserPool()
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.UserPool == nil || resp.UserPool.Policies == nil || resp.UserPool.Policies.PasswordPolicy == nil {
+		a.PasswordRequirements.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	pp := resp.UserPool.Policies.PasswordPolicy
+	res, err := CreateResource(a.MqlRuntime, "aws.cognito.userPool.passwordRequirements", map[string]*llx.RawData{
+		"__id":                          llx.StringData(a.Arn.Data + "/passwordPolicy"),
+		"minimumLength":                 llx.IntDataDefault(pp.MinimumLength, 0),
+		"passwordHistorySize":           llx.IntDataDefault(pp.PasswordHistorySize, 0),
+		"requireLowercase":              llx.BoolData(pp.RequireLowercase),
+		"requireNumbers":                llx.BoolData(pp.RequireNumbers),
+		"requireSymbols":                llx.BoolData(pp.RequireSymbols),
+		"requireUppercase":              llx.BoolData(pp.RequireUppercase),
+		"temporaryPasswordValidityDays": llx.IntData(int64(pp.TemporaryPasswordValidityDays)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsCognitoUserPoolPasswordRequirements), nil
 }
 
 func (a *mqlAwsCognitoUserPool) advancedSecurityMode() (string, error) {
@@ -293,6 +372,49 @@ func (a *mqlAwsCognitoUserPool) usernameConfiguration() (any, error) {
 		return nil, err
 	}
 	return convert.JsonToDict(resp.UserPool.UsernameConfiguration)
+}
+
+func (a *mqlAwsCognitoUserPool) deviceRemembering() (*mqlAwsCognitoDeviceConfiguration, error) {
+	resp, err := a.fetchDescribeUserPool()
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.UserPool == nil || resp.UserPool.DeviceConfiguration == nil {
+		// A user pool with device remembering deactivated returns no device
+		// configuration at all, which is not the same as one that remembers
+		// devices with both settings off.
+		a.DeviceRemembering.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	dc := resp.UserPool.DeviceConfiguration
+	res, err := CreateResource(a.MqlRuntime, "aws.cognito.deviceConfiguration", map[string]*llx.RawData{
+		"__id":                             llx.StringData(a.Arn.Data + "/deviceConfiguration"),
+		"challengeRequiredOnNewDevice":     llx.BoolData(dc.ChallengeRequiredOnNewDevice),
+		"deviceOnlyRememberedOnUserPrompt": llx.BoolData(dc.DeviceOnlyRememberedOnUserPrompt),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsCognitoDeviceConfiguration), nil
+}
+
+func (a *mqlAwsCognitoUserPool) usernamePolicy() (*mqlAwsCognitoUsernameConfiguration, error) {
+	resp, err := a.fetchDescribeUserPool()
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.UserPool == nil || resp.UserPool.UsernameConfiguration == nil {
+		a.UsernamePolicy.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := CreateResource(a.MqlRuntime, "aws.cognito.usernameConfiguration", map[string]*llx.RawData{
+		"__id":          llx.StringData(a.Arn.Data + "/usernameConfiguration"),
+		"caseSensitive": llx.BoolData(aws.ToBool(resp.UserPool.UsernameConfiguration.CaseSensitive)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsCognitoUsernameConfiguration), nil
 }
 
 func (a *mqlAwsCognitoUserPool) schema() ([]any, error) {
@@ -469,6 +591,13 @@ type mqlAwsCognitoIdentityPoolInternal struct {
 	descCache *cognitoidentity.DescribeIdentityPoolOutput
 	descDone  bool
 	descLock  sync.Mutex
+}
+
+const cognitoIdentityPoolArnPattern = "arn:aws:cognito-identity:%s:%s:identitypool/%s"
+
+func (a *mqlAwsCognitoIdentityPool) arn() (string, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return fmt.Sprintf(cognitoIdentityPoolArnPattern, a.Region.Data, conn.AccountId(), a.Id.Data), nil
 }
 
 func (a *mqlAwsCognitoIdentityPool) describe() (*cognitoidentity.DescribeIdentityPoolOutput, error) {
@@ -674,10 +803,22 @@ func (a *mqlAwsCognitoUserPool) clients() ([]any, error) {
 
 func newMqlAwsCognitoUserPoolClient(runtime *plugin.Runtime, region string, c *cognitoidentityprovidertypes.UserPoolClientType) (plugin.Resource, error) {
 	tokenUnits := map[string]any{}
+	mqlTokenUnits := llx.NilData
 	if c.TokenValidityUnits != nil {
 		tokenUnits["accessToken"] = string(c.TokenValidityUnits.AccessToken)
 		tokenUnits["idToken"] = string(c.TokenValidityUnits.IdToken)
 		tokenUnits["refreshToken"] = string(c.TokenValidityUnits.RefreshToken)
+
+		res, err := CreateResource(runtime, "aws.cognito.tokenValidityUnits", map[string]*llx.RawData{
+			"__id":         llx.StringData(aws.ToString(c.UserPoolId) + "/" + aws.ToString(c.ClientId) + "/tokenValidityUnits"),
+			"accessToken":  llx.StringData(string(c.TokenValidityUnits.AccessToken)),
+			"idToken":      llx.StringData(string(c.TokenValidityUnits.IdToken)),
+			"refreshToken": llx.StringData(string(c.TokenValidityUnits.RefreshToken)),
+		})
+		if err != nil {
+			return nil, err
+		}
+		mqlTokenUnits = llx.ResourceData(res, "aws.cognito.tokenValidityUnits")
 	}
 
 	authFlows := make([]any, 0, len(c.ExplicitAuthFlows))
@@ -703,6 +844,7 @@ func newMqlAwsCognitoUserPoolClient(runtime *plugin.Runtime, region string, c *c
 		"accessTokenValidity":             llx.IntData(int64(aws.ToInt32(c.AccessTokenValidity))),
 		"idTokenValidity":                 llx.IntData(int64(aws.ToInt32(c.IdTokenValidity))),
 		"tokenValidityUnits":              llx.DictData(tokenUnits),
+		"validityUnits":                   mqlTokenUnits,
 		"explicitAuthFlows":               llx.ArrayData(authFlows, types.String),
 		"supportedIdentityProviders":      llx.ArrayData(stringsToAnyArray(c.SupportedIdentityProviders), types.String),
 		"callbackURLs":                    llx.ArrayData(stringsToAnyArray(c.CallbackURLs), types.String),
@@ -735,18 +877,19 @@ func (a *mqlAwsCognitoUserPoolClient) id() (string, error) {
 	return a.UserPoolId.Data + "/" + a.ClientId.Data, nil
 }
 
-// resolveCognitoUserPool returns the lazy user-pool reference for a
-// sub-resource keyed by region+userPoolId. The user pool list creates
-// each pool with `__id = ARN`, so the NewResource call must pass the
-// same ARN — without it the lookup misses the cache and there's no init
-// to backfill the rest of the user-pool fields.
+// resolveCognitoUserPool returns the user-pool reference for a sub-resource
+// keyed by region+userPoolId.
+//
+// It passes the ARN and nothing else. That is the one argument
+// initAwsCognitoUserPool accepts, and the ARN is also the pool's __id, so a
+// pool the listing path already built is served from the cache and one reached
+// on its own is fetched and fully populated by the init.
 func resolveCognitoUserPool(runtime *plugin.Runtime, region, userPoolId string) (*mqlAwsCognitoUserPool, error) {
 	conn := runtime.Connection.(*connection.AwsConnection)
-	poolArn := "arn:aws:cognito-idp:" + region + ":" + conn.AccountId() + ":userpool/" + userPoolId
+	poolArn := cognitoUserPoolArn(region, conn.AccountId(), userPoolId)
 	mqlPool, err := NewResource(runtime, "aws.cognito.userPool",
 		map[string]*llx.RawData{
-			"__id": llx.StringData(poolArn),
-			"id":   llx.StringData(userPoolId),
+			"arn": llx.StringData(poolArn),
 		})
 	if err != nil {
 		return nil, err
@@ -882,6 +1025,7 @@ func newMqlAwsCognitoUserPoolIdentityProvider(runtime *plugin.Runtime, region st
 		"attributeMapping": llx.MapData(convert.MapToInterfaceMap(p.AttributeMapping), types.String),
 		"idpIdentifiers":   llx.ArrayData(stringsToAnyArray(p.IdpIdentifiers), types.String),
 		"providerDetails":  llx.MapData(convert.MapToInterfaceMap(p.ProviderDetails), types.String),
+		"acrMapping":       cognitoAcrMappingData(p.AcrMapping),
 		"createdAt":        llx.TimeDataPtr(p.CreationDate),
 		"updatedAt":        llx.TimeDataPtr(p.LastModifiedDate),
 	})

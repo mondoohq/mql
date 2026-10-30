@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,10 +14,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 const defaultClaudeCodeConfigDir = ".claude"
@@ -31,6 +33,21 @@ type mqlClaudeCodeInternal struct {
 	backupOnce  sync.Once
 	backupState *claudeBackupState
 	backupErr   error
+
+	pluginsOnce   sync.Once
+	pluginRecords []claudePluginRecord
+	pluginsErr    error
+
+	policyOnce sync.Once
+	policy     *claudePolicy
+	policyErr  error
+}
+
+// mqlClaudeCodeProjectInternal caches the per-project model usage read from
+// the parent's backup state at creation time, so project.models() need not
+// reload it.
+type mqlClaudeCodeProjectInternal struct {
+	modelUsage map[string]claudeModelUsage
 }
 
 func (r *mqlClaudeCode) id() (string, error) {
@@ -95,19 +112,19 @@ func (r *mqlClaudeCode) organizationId() (string, error) {
 	return acct.OrganizationUuid, nil
 }
 
-func (r *mqlClaudeCode) settings() (interface{}, error) {
-	var settings map[string]interface{}
+func (r *mqlClaudeCode) settings() (any, error) {
+	var settings map[string]any
 	err := readJSONFileAfero(r.afs(), r.configDir(), "settings.json", &settings)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return map[string]interface{}{}, nil
+			return map[string]any{}, nil
 		}
 		return nil, err
 	}
-	return settings, nil
+	return redactSettings(settings), nil
 }
 
-func (r *mqlClaudeCode) enabledPlugins() ([]interface{}, error) {
+func (r *mqlClaudeCode) enabledPlugins() ([]any, error) {
 	var settings struct {
 		EnabledPlugins map[string]bool `json:"enabledPlugins"`
 	}
@@ -118,7 +135,7 @@ func (r *mqlClaudeCode) enabledPlugins() ([]interface{}, error) {
 		}
 		return nil, err
 	}
-	var result []interface{}
+	var result []any
 	for name, enabled := range settings.EnabledPlugins {
 		if enabled {
 			result = append(result, name)
@@ -130,108 +147,41 @@ func (r *mqlClaudeCode) enabledPlugins() ([]interface{}, error) {
 	return result, nil
 }
 
-func (r *mqlClaudeCode) plugins() ([]interface{}, error) {
-	afs := r.afs()
-
-	var installedPlugins struct {
-		Version int                               `json:"version"`
-		Plugins map[string][]installedPluginEntry `json:"plugins"`
-	}
-	err := readJSONFileAfero(afs, r.configDir(), "plugins/installed_plugins.json", &installedPlugins)
+func (r *mqlClaudeCode) skills() ([]any, error) {
+	dirs, err := resolvePerUserDirs(r.MqlRuntime, r.configDir(), defaultClaudeCodeConfigDir,
+		filepath.Join(defaultClaudeCodeConfigDir, "skills"), filepath.Join(r.configDir(), "skills"))
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
 
-	var settings struct {
-		EnabledPlugins map[string]bool `json:"enabledPlugins"`
-	}
-	_ = readJSONFileAfero(afs, r.configDir(), "settings.json", &settings)
-
-	var result []interface{}
-	for name, entries := range installedPlugins.Plugins {
-		for _, entry := range entries {
-			enabled := false
-			if settings.EnabledPlugins != nil {
-				enabled = settings.EnabledPlugins[name]
-			}
-
-			pluginID := "claude.code.plugin/" + name + "/" + entry.Scope
-			res, err := NewResource(r.MqlRuntime, "claude.code.plugin", map[string]*llx.RawData{
-				"__id":         llx.StringData(pluginID),
-				"name":         llx.StringData(name),
-				"version":      llx.StringData(entry.Version),
-				"scope":        llx.StringData(entry.Scope),
-				"installPath":  llx.StringData(entry.InstallPath),
-				"installedAt":  llx.StringData(entry.InstalledAt),
-				"lastUpdated":  llx.StringData(entry.LastUpdated),
-				"gitCommitSha": llx.StringData(entry.GitCommitSha),
-				"enabled":      llx.BoolData(enabled),
-			})
-			if err != nil {
-				return nil, err
-			}
-			result = append(result, res)
-		}
-	}
-	return result, nil
-}
-
-func (r *mqlClaudeCode) skills() ([]interface{}, error) {
-	afs := r.afs()
-	skillsDir := filepath.Join(r.configDir(), "skills")
-
-	subdirs, err := listSubdirsAfero(afs, skillsDir)
+	// Skills of enabled plugins are available to Claude Code as well.
+	records, err := r.enabledPluginRecords()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
-
-	var result []interface{}
-	for _, dir := range subdirs {
-		skillPath := filepath.Join(dir.path, "SKILL.md")
-		data, err := afs.ReadFile(skillPath)
-		if err != nil {
-			continue
-		}
-
-		skill := parseSkillMd(dir.name, skillPath, string(data))
-
-		allowedToolsAny := make([]interface{}, len(skill.allowedTools))
-		for i, t := range skill.allowedTools {
-			allowedToolsAny[i] = t
-		}
-
-		res, err := NewResource(r.MqlRuntime, "claude.code.skill", map[string]*llx.RawData{
-			"__id":         llx.StringData("claude.code.skill/" + dir.name),
-			"name":         llx.StringData(skill.name),
-			"description":  llx.StringData(skill.description),
-			"allowedTools": llx.ArrayData(allowedToolsAny, types.String),
-			"argumentHint": llx.StringData(skill.argumentHint),
-			"source":       llx.StringData(skill.source),
-			"content":      llx.StringData(skill.content),
-		})
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, res)
+	afs := r.afs()
+	for _, rec := range records {
+		dirs = append(dirs, readAgentPlugin(afs, rec.entry.InstallPath, claudePluginRootVar).skillsDirs...)
 	}
-	return result, nil
+	return readSkillsFromDirs(r.MqlRuntime, dirs, "claude.code.skill")
 }
 
-func (r *mqlClaudeCode) projects() ([]interface{}, error) {
+func (r *mqlClaudeCode) projects() ([]any, error) {
 	afs := r.afs()
 	state, err := r.loadBackupState()
 	if err != nil {
+		// A missing backup is expected on hosts without Claude Code history;
+		// report no projects rather than failing the query. Real read failures
+		// (permission denied, corrupt JSON, I/O) still surface.
+		if errors.Is(err, os.ErrNotExist) {
+			log.Debug().Err(err).Msg("no claude backup state for projects")
+			return nil, nil
+		}
 		return nil, err
 	}
 
 	projectsDir := filepath.Join(r.configDir(), "projects")
-	var result []interface{}
+	var result []any
 	for projectPath, dirName := range state.projectDirMap() {
 		memoryDir := filepath.Join(projectsDir, dirName, "memory")
 		hasMemory := dirHasFilesAfero(afs, memoryDir)
@@ -244,44 +194,169 @@ func (r *mqlClaudeCode) projects() ([]interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
+		res.(*mqlClaudeCodeProject).modelUsage = state.Projects[projectPath].LastModelUsage
 		result = append(result, res)
 	}
 	return result, nil
 }
 
-func (r *mqlClaudeCode) mcpServers() ([]interface{}, error) {
-	var cache map[string]struct {
-		Timestamp int64 `json:"timestamp"`
-	}
-	err := readJSONFileAfero(r.afs(), r.configDir(), "mcp-needs-auth-cache.json", &cache)
+func (r *mqlClaudeCode) repos() ([]any, error) {
+	state, err := r.loadBackupState()
 	if err != nil {
-		if os.IsNotExist(err) {
+		// A missing backup is expected on hosts without Claude Code history;
+		// report no repos rather than failing the query. Real read failures
+		// (permission denied, corrupt JSON, I/O) still surface.
+		if errors.Is(err, os.ErrNotExist) {
+			log.Debug().Err(err).Msg("no claude backup state for repos")
 			return nil, nil
 		}
 		return nil, err
 	}
 
-	var result []interface{}
-	for name, entry := range cache {
+	paths := make([]string, 0, len(state.Projects))
+	for projectPath := range state.Projects {
+		paths = append(paths, projectPath)
+	}
+	return gitReposFromPaths(r.MqlRuntime, "claude.code.repo", paths)
+}
+
+func (r *mqlClaudeCode) mcpServers() ([]any, error) {
+	// The needs-auth cache records which servers require authentication and
+	// when that was last verified. Presence in this file means needsAuth.
+	var authCache map[string]struct {
+		Timestamp int64 `json:"timestamp"`
+	}
+	if err := readJSONFileAfero(r.afs(), r.configDir(), "mcp-needs-auth-cache.json", &authCache); err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	// The full server definitions (command/args/url/env) live in
+	// .claude.json, captured in the backup state we already load, and in each
+	// project's .mcp.json. A missing or unreadable backup is not fatal: we
+	// still surface whatever the needs-auth cache knows about, just without
+	// the connection details.
+	var servers []claudeScopedMcpServer
+	if state, err := r.loadBackupState(); err != nil {
+		// A missing backup is expected on hosts without Claude Code history;
+		// log at debug so a real failure (corrupt JSON, permission denied)
+		// is still discoverable without warning-spamming every scan.
+		log.Debug().Err(err).Msg("could not load claude backup state for MCP server details")
+	} else if state != nil {
+		servers = claudeMcpServers(r.afs(), state)
+	}
+	authNames := make([]string, 0, len(authCache))
+	for name := range authCache {
+		authNames = append(authNames, name)
+	}
+	servers = withAuthCacheOnlyServers(servers, authNames)
+
+	var result []any
+	for _, scoped := range servers {
+		name, srv := scoped.name, scoped.entry
+		needsAuth := false
 		lastChecked := ""
-		if entry.Timestamp > 0 {
-			lastChecked = time.UnixMilli(entry.Timestamp).UTC().Format(time.RFC3339)
+		if entry, ok := authCache[name]; ok {
+			needsAuth = true
+			if entry.Timestamp > 0 {
+				lastChecked = time.UnixMilli(entry.Timestamp).UTC().Format(time.RFC3339)
+			}
 		}
 
-		// Presence in mcp-needs-auth-cache.json means the server requires
-		// authentication; servers that don't need auth are not listed.
-		res, err := NewResource(r.MqlRuntime, "claude.code.mcpServer", map[string]*llx.RawData{
-			"__id":        llx.StringData("claude.code.mcpServer/" + name),
+		source := scoped.source
+		if source == "" {
+			source = filepath.Join(r.configDir(), "mcp-needs-auth-cache.json")
+		}
+		fields := map[string]*llx.RawData{
+			"__id":        llx.StringData(claudeMcpServerID(scoped.project, name)),
 			"name":        llx.StringData(name),
-			"needsAuth":   llx.BoolData(true),
+			"project":     llx.StringData(scoped.project),
+			"type":        llx.StringData(deriveMcpTransport(srv.Type, srv.Command, srv.URL)),
+			"command":     llx.StringData(srv.Command),
+			"args":        mcpArgsData(srv.Args),
+			"url":         llx.StringData(redactURL(srv.URL)),
+			"hasEnv":      llx.BoolData(len(srv.Env) > 0),
+			"hasHeaders":  llx.BoolData(len(srv.Headers) > 0),
+			"needsAuth":   llx.BoolData(needsAuth),
 			"lastChecked": llx.StringData(lastChecked),
-		})
+			"plugin":      llx.StringData(""),
+
+			"headerNames": mcpHeaderNamesData(mapKeys(srv.Headers)),
+			"source":      llx.StringData(source),
+		}
+		setMcpServerShape(fields, srv.Command, srv.Args, srv.URL, mapKeys(srv.Env))
+		res, err := NewResource(r.MqlRuntime, "claude.code.mcpServer", fields)
 		if err != nil {
 			return nil, err
 		}
 		result = append(result, res)
 	}
+
+	// Servers declared by enabled plugins. A plugin installed at several scopes
+	// is reported once per project it applies to.
+	records, err := r.enabledPluginRecords()
+	if err != nil {
+		return nil, err
+	}
+	afs := r.afs()
+	seen := map[string]struct{}{}
+	for _, rec := range records {
+		key := rec.name + "\x00" + rec.entry.ProjectPath
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		for _, s := range readAgentPlugin(afs, rec.entry.InstallPath, claudePluginRootVar).mcpServers {
+			res, err := claudePluginMcpServerResource(r.MqlRuntime, rec.name, rec.entry.ProjectPath, s)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, res)
+		}
+	}
 	return result, nil
+}
+
+func (r *mqlClaudeCode) model() (string, error) {
+	var settings struct {
+		Model string `json:"model"`
+	}
+	err := readJSONFileAfero(r.afs(), r.configDir(), "settings.json", &settings)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return settings.Model, nil
+}
+
+func (r *mqlClaudeCode) models() ([]any, error) {
+	state, err := r.loadBackupState()
+	if err != nil {
+		// A missing backup is expected on hosts without Claude Code history;
+		// report no usage rather than failing the query. Real read failures
+		// (permission denied, corrupt JSON, I/O) still surface.
+		if errors.Is(err, os.ErrNotExist) {
+			log.Debug().Err(err).Msg("no claude backup state for model usage")
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// Sum each model's usage across every recorded project.
+	totals := map[string]claudeModelUsage{}
+	for _, project := range state.Projects {
+		for name, usage := range project.LastModelUsage {
+			agg := totals[name]
+			agg.add(usage)
+			totals[name] = agg
+		}
+	}
+	return claudeModelUsageResources(r.MqlRuntime, "", totals)
+}
+
+func (p *mqlClaudeCodeProject) models() ([]any, error) {
+	return claudeModelUsageResources(p.MqlRuntime, p.Path.Data+"/", p.modelUsage)
 }
 
 // Helper types and functions
@@ -302,11 +377,181 @@ type installedPluginEntry struct {
 	InstalledAt  string `json:"installedAt"`
 	LastUpdated  string `json:"lastUpdated"`
 	GitCommitSha string `json:"gitCommitSha"`
+	ProjectPath  string `json:"projectPath"`
 }
 
 type claudeBackupState struct {
-	OAuthAccount *oauthAccount          `json:"oauthAccount"`
-	Projects     map[string]interface{} `json:"projects"`
+	OAuthAccount *oauthAccount                   `json:"oauthAccount"`
+	Projects     map[string]claudeProjectEntry   `json:"projects"`
+	McpServers   map[string]claudeMcpServerEntry `json:"mcpServers"`
+
+	// path is the file the state was read from.
+	path string
+}
+
+// claudeProjectEntry is the per-project record inside .claude.json. We only
+// read the model usage history; the rest of the (large) project object is
+// ignored.
+type claudeProjectEntry struct {
+	LastModelUsage map[string]claudeModelUsage `json:"lastModelUsage"`
+	// McpServers are the servers configured for this project only (Claude
+	// Code's "local" scope), kept in .claude.json rather than the repository.
+	McpServers map[string]claudeMcpServerEntry `json:"mcpServers"`
+}
+
+// claudeModelUsage is the cumulative usage of a single model, as recorded
+// per project in .claude.json under lastModelUsage.
+type claudeModelUsage struct {
+	InputTokens              int64   `json:"inputTokens"`
+	OutputTokens             int64   `json:"outputTokens"`
+	CacheReadInputTokens     int64   `json:"cacheReadInputTokens"`
+	CacheCreationInputTokens int64   `json:"cacheCreationInputTokens"`
+	WebSearchRequests        int64   `json:"webSearchRequests"`
+	CostUSD                  float64 `json:"costUSD"`
+}
+
+func (u *claudeModelUsage) add(o claudeModelUsage) {
+	u.InputTokens += o.InputTokens
+	u.OutputTokens += o.OutputTokens
+	u.CacheReadInputTokens += o.CacheReadInputTokens
+	u.CacheCreationInputTokens += o.CacheCreationInputTokens
+	u.WebSearchRequests += o.WebSearchRequests
+	u.CostUSD += o.CostUSD
+}
+
+// claudeModelUsageResources turns a per-model usage map into claude.code.modelUsage
+// resources, sorted by model name. idPrefix disambiguates the cache key between
+// the host-wide aggregate ("") and a per-project breakdown ("<projectPath>/").
+func claudeModelUsageResources(runtime *plugin.Runtime, idPrefix string, usage map[string]claudeModelUsage) ([]any, error) {
+	names := make([]string, 0, len(usage))
+	for name := range usage {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	result := make([]any, 0, len(names))
+	for _, name := range names {
+		u := usage[name]
+		res, err := CreateResource(runtime, "claude.code.modelUsage", map[string]*llx.RawData{
+			"__id":                     llx.StringData("claude.code.modelUsage/" + idPrefix + name),
+			"name":                     llx.StringData(name),
+			"inputTokens":              llx.IntData(u.InputTokens),
+			"outputTokens":             llx.IntData(u.OutputTokens),
+			"cacheReadInputTokens":     llx.IntData(u.CacheReadInputTokens),
+			"cacheCreationInputTokens": llx.IntData(u.CacheCreationInputTokens),
+			"webSearchRequests":        llx.IntData(u.WebSearchRequests),
+			"cost":                     llx.FloatData(u.CostUSD),
+		})
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, res)
+	}
+	return result, nil
+}
+
+// claudeMcpServerEntry is a single MCP server definition as stored in
+// .claude.json. Stdio servers carry command/args/env; http and sse servers
+// carry a url. `type` is optional and inferred from the shape when absent.
+type claudeMcpServerEntry struct {
+	Type    string            `json:"type"`
+	Command string            `json:"command"`
+	Args    []string          `json:"args"`
+	URL     string            `json:"url"`
+	Env     map[string]string `json:"env"`
+	Headers map[string]string `json:"headers"`
+}
+
+// claudeScopedMcpServer is one MCP server together with the project it is
+// scoped to; project is empty for a user-scope server.
+type claudeScopedMcpServer struct {
+	project string
+	name    string
+	entry   claudeMcpServerEntry
+	// source is the file the server's definition was read from.
+	source string
+}
+
+// claudeMcpServers returns every MCP server Claude Code is configured with,
+// across its three scopes:
+//   - user: the top-level `mcpServers` in .claude.json, project empty;
+//   - local: `projects[<path>].mcpServers` in .claude.json;
+//   - project: the `.mcp.json` checked into each project's root.
+//
+// A local and a project server with the same name in the same project are one
+// server as far as Claude Code is concerned (local takes precedence), so it is
+// reported once, with the local definition. A project whose .mcp.json is
+// missing or does not parse contributes nothing from that file. The result is
+// sorted by project, then name, so ids and output are stable.
+func claudeMcpServers(afs *afero.Afero, state *claudeBackupState) []claudeScopedMcpServer {
+	var out []claudeScopedMcpServer
+	for name, srv := range state.McpServers {
+		out = append(out, claudeScopedMcpServer{name: name, entry: srv, source: state.path})
+	}
+	for projectPath, project := range state.Projects {
+		scoped := map[string]claudeScopedMcpServer{}
+		var repo struct {
+			McpServers map[string]claudeMcpServerEntry `json:"mcpServers"`
+		}
+		repoFile := filepath.Join(projectPath, ".mcp.json")
+		if data, err := afs.ReadFile(repoFile); err == nil {
+			if err := unmarshalJSONConfig(data, &repo); err != nil {
+				log.Debug().Err(err).Str("project", projectPath).Msg("could not parse claude project .mcp.json")
+			}
+		}
+		for name, srv := range repo.McpServers {
+			scoped[name] = claudeScopedMcpServer{project: projectPath, name: name, entry: srv, source: repoFile}
+		}
+		for name, srv := range project.McpServers {
+			scoped[name] = claudeScopedMcpServer{project: projectPath, name: name, entry: srv, source: state.path}
+		}
+		for _, srv := range scoped {
+			out = append(out, srv)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].project != out[j].project {
+			return out[i].project < out[j].project
+		}
+		return out[i].name < out[j].name
+	})
+	return out
+}
+
+// withAuthCacheOnlyServers appends a user-scope entry, without connection
+// details, for every needs-auth cache name that no scope defines, so a server
+// Claude Code only remembers from its auth cache is still reported. The cache is
+// keyed by server name alone, so a name any scope already defines (user, local
+// or project) is that server, not another one: adding it again would report a
+// project-scoped server twice, once under a phantom user scope. Added names are
+// sorted, so output and ids stay stable across runs.
+func withAuthCacheOnlyServers(servers []claudeScopedMcpServer, authNames []string) []claudeScopedMcpServer {
+	known := make(map[string]struct{}, len(servers))
+	for _, srv := range servers {
+		known[srv.name] = struct{}{}
+	}
+	var added []string
+	for _, name := range authNames {
+		if _, ok := known[name]; !ok {
+			known[name] = struct{}{}
+			added = append(added, name)
+		}
+	}
+	sort.Strings(added)
+	for _, name := range added {
+		servers = append(servers, claudeScopedMcpServer{name: name})
+	}
+	return servers
+}
+
+// claudeMcpServerID is the resource id of a Claude Code MCP server. A user-scope
+// server keeps the historical "claude.code.mcpServer/<name>" id; a project-scoped
+// one includes the project path, so the same name in two projects stays distinct.
+func claudeMcpServerID(project, name string) string {
+	if project == "" {
+		return "claude.code.mcpServer/" + name
+	}
+	return "claude.code.mcpServer/" + project + "/" + name
 }
 
 // projectDirMap returns a map from original project path to encoded directory name.
@@ -330,28 +575,64 @@ func pathToProjectDir(path string) string {
 
 func (r *mqlClaudeCode) loadBackupState() (*claudeBackupState, error) {
 	r.backupOnce.Do(func() {
-		afs := r.afs()
-		dir := r.configDir()
-
-		backupFile, err := findLatestBackupAfero(afs, dir)
-		if err != nil {
-			r.backupErr = err
-			return
-		}
-		var state claudeBackupState
-		if err := readJSONFileAfero(afs, dir, filepath.Join("backups", backupFile), &state); err != nil {
-			r.backupErr = err
-			return
-		}
-		r.backupState = &state
+		r.backupState, r.backupErr = readClaudeState(r.afs(), r.configDir())
 	})
 
 	return r.backupState, r.backupErr
 }
 
+// claudeStateFiles returns the locations of Claude Code's live global state
+// file for a config directory, in lookup order. With CLAUDE_CONFIG_DIR set,
+// Claude Code keeps .claude.json inside that directory; in the default layout
+// the config directory is ~/.claude and the state file is ~/.claude.json next
+// to it.
+func claudeStateFiles(configDir string) []string {
+	files := []string{filepath.Join(configDir, ".claude.json")}
+	if filepath.Base(configDir) == defaultClaudeCodeConfigDir {
+		files = append(files, filepath.Join(filepath.Dir(configDir), ".claude.json"))
+	}
+	return files
+}
+
+// readClaudeState reads Claude Code's global state (.claude.json). The live
+// file is authoritative: Claude Code snapshots it into backups/ before a
+// write, so the newest backup lags the live file by one change. The newest
+// backup is only the fallback for when no live file exists.
+func readClaudeState(afs *afero.Afero, configDir string) (*claudeBackupState, error) {
+	for _, path := range claudeStateFiles(configDir) {
+		var state claudeBackupState
+		err := readJSONFileAfero(afs, "", path, &state)
+		if err == nil {
+			state.path = path
+			return &state, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+	}
+
+	backupFile, err := findLatestBackupAfero(afs, configDir)
+	if err != nil {
+		return nil, err
+	}
+	var state claudeBackupState
+	if err := readJSONFileAfero(afs, configDir, filepath.Join("backups", backupFile), &state); err != nil {
+		return nil, err
+	}
+	state.path = filepath.Join(configDir, "backups", backupFile)
+	return &state, nil
+}
+
 func (r *mqlClaudeCode) loadOAuthAccount() (*oauthAccount, error) {
 	state, err := r.loadBackupState()
 	if err != nil {
+		// A missing backup is expected on hosts without Claude Code history;
+		// surface empty account fields rather than failing the query. Real read
+		// failures (permission denied, corrupt JSON, I/O) still surface.
+		if errors.Is(err, os.ErrNotExist) {
+			log.Debug().Err(err).Msg("no claude backup state for account details")
+			return &oauthAccount{}, nil
+		}
 		return nil, err
 	}
 	if state.OAuthAccount == nil {
@@ -386,23 +667,26 @@ func findLatestBackupAfero(afs *afero.Afero, configDir string) (string, error) {
 	}
 
 	if latestBackup == "" {
-		return "", fmt.Errorf("no backup files found in %s", backupsDir)
+		// A backups dir with no backup files is the same benign "no history"
+		// case as a missing dir; wrap os.ErrNotExist so callers can suppress it
+		// while still surfacing real read failures (permission denied, I/O).
+		return "", fmt.Errorf("no backup files found in %s: %w", backupsDir, os.ErrNotExist)
 	}
 	return latestBackup, nil
 }
 
 // Stub ID methods for child resources (they use __id set during creation)
 
-func (r *mqlClaudeCodePlugin) id() (string, error) {
-	return "claude.code.plugin/" + r.Name.Data + "/" + r.Scope.Data, nil
-}
-
 func (r *mqlClaudeCodeSkill) id() (string, error) {
-	return "claude.code.skill/" + r.Name.Data, nil
+	return "claude.code.skill/" + r.Source.Data, nil
 }
 
 func (r *mqlClaudeCodeSkill) sha256() (string, error) {
 	return contentSHA256(r.Content.Data), nil
+}
+
+func (r *mqlClaudeCodeSkill) purl() (string, error) {
+	return skillPURL(connectionAfs(r.MqlRuntime), r.Source.Data), nil
 }
 
 func (r *mqlClaudeCodeProject) id() (string, error) {
@@ -410,5 +694,22 @@ func (r *mqlClaudeCodeProject) id() (string, error) {
 }
 
 func (r *mqlClaudeCodeMcpServer) id() (string, error) {
-	return "claude.code.mcpServer/" + r.Name.Data, nil
+	if r.Plugin.Data != "" {
+		return claudeMcpServerID(r.Project.Data, "plugin:"+r.Plugin.Data+":"+r.Name.Data), nil
+	}
+	return claudeMcpServerID(r.Project.Data, r.Name.Data), nil
+}
+
+func (r *mqlClaudeCodeRepo) id() (string, error) {
+	return "claude.code.repo/" + r.Path.Data, nil
+}
+
+func (r *mqlClaudeCodeMcpServer) running() (*llx.AssetValue, error) {
+	return mcpServerAsset(r), nil
+}
+
+// MqlAsset implements plugin.AssetSource: the asset the `running` anchor stands
+// for, with the connection needed to reach it. See mcpServerAssetFor.
+func (r *mqlClaudeCodeMcpServer) MqlAsset() (*inventory.Asset, error) {
+	return mcpServerAssetFor(r.MqlRuntime, r)
 }

@@ -1,0 +1,5 @@
+# FreeBSD 14.5-RELEASE amd64 (EC2), where kern.elf64.aslr.enable is 1. The
+# host has no /proc/sys/kernel/randomize_va_space.
+
+[commands."sysctl -n kern.elf64.aslr.enable 2>/dev/null || sysctl -n kern.elf32.aslr.enable"]
+stdout = "1\n"

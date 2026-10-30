@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"io/fs"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -190,4 +191,184 @@ func TestParseContainerIDListWithEmptyLines(t *testing.T) {
 
 	// Empty lines should be filtered out
 	assert.Equal(t, []string{"container1", "container2"}, containerIDs)
+}
+
+func TestCtrCommand(t *testing.T) {
+	clis := ctrCLIs(nil)
+	assert.Equal(t, "ctr -n g08ns tasks list", ctrCommand(clis[0], "-n", "g08ns", "tasks", "list"))
+	// SUSE's containerd-ctr package, on root's PATH and off a non-root one
+	assert.Equal(t, []string{"containerd-ctr"}, clis[1])
+	assert.Equal(t, []string{"/usr/sbin/containerd-ctr"}, clis[2])
+
+	// Debian 10's docker.io 18.09 bundles containerd as docker-containerd, which
+	// does not listen on the containerd default socket
+	clis = ctrCLIs([]string{"--address", dockerContainerdSocket})
+	assert.Equal(t,
+		"docker-containerd-ctr --address /run/docker/containerd/containerd.sock -n g08ns containers info c-run",
+		ctrCommand(clis[3], "-n", "g08ns", "containers", "info", "c-run"))
+	// building a command line leaves the CLI untouched for the next call
+	assert.Equal(t, []string{"docker-containerd-ctr", "--address", "/run/docker/containerd/containerd.sock"}, clis[3])
+
+	// RKE2's ctr is on no PATH and its containerd listens under /run/k3s
+	clis = ctrCLIs([]string{"--address", rke2ContainerdSocket})
+	assert.Equal(t,
+		"/var/lib/rancher/rke2/bin/ctr --address /run/k3s/containerd/containerd.sock namespaces list -q",
+		ctrCommand(clis[4], "namespaces", "list", "-q"))
+
+	// Canonical Kubernetes's ctr is in its snap; its containerd serves the
+	// default socket
+	clis = ctrCLIs(nil)
+	assert.Equal(t, "/snap/k8s/current/bin/ctr namespaces list -q", ctrCommand(clis[5], "namespaces", "list", "-q"))
+
+	// MicroK8s's ctr is in its snap, its socket in the snap's data
+	clis = ctrCLIs([]string{"--address", microk8sContainerdSocket})
+	assert.Equal(t,
+		"/snap/microk8s/current/bin/ctr --address /var/snap/microk8s/common/run/containerd.sock namespaces list -q",
+		ctrCommand(clis[6], "namespaces", "list", "-q"))
+
+	// k0s has ctr only as a subcommand
+	clis = ctrCLIs([]string{"--address", k0sContainerdSocket})
+	assert.Equal(t, "k0s ctr --address /run/k0s/containerd.sock namespaces list -q",
+		ctrCommand(clis[7], "namespaces", "list", "-q"))
+	// building a command line leaves the multi-word CLI untouched
+	assert.Equal(t, []string{"k0s", "ctr", "--address", "/run/k0s/containerd.sock"}, clis[7])
+	assert.Equal(t, []string{"k0s", "ctr"}, ctrBinaries[7], "the shared CLI list is not modified")
+}
+
+func TestContainerdAddressArgs(t *testing.T) {
+	statFrom := func(results map[string]error) func(string) error {
+		return func(path string) error {
+			if err, ok := results[path]; ok {
+				return err
+			}
+			return fs.ErrNotExist
+		}
+	}
+	dockerAddress := []string{"--address", "/run/docker/containerd/containerd.sock"}
+
+	// Ubuntu/Debian/RHEL: a standalone containerd serves the default socket,
+	// whether or not dockerd also runs (it then uses that containerd)
+	assert.Nil(t, containerdAddressArgs(statFrom(map[string]error{
+		containerdSocket: nil,
+	})))
+	assert.Nil(t, containerdAddressArgs(statFrom(map[string]error{
+		containerdSocket:       nil,
+		dockerContainerdSocket: nil,
+	})))
+	// the default socket exists but its directory refuses this user: ctr
+	// reports that refusal
+	assert.Nil(t, containerdAddressArgs(statFrom(map[string]error{
+		containerdSocket: fs.ErrPermission,
+	})))
+
+	// SLES and Leap with docker: containerd.service conflicts with
+	// docker.service, so dockerd runs its own containerd
+	assert.Equal(t, dockerAddress, containerdAddressArgs(statFrom(map[string]error{
+		dockerContainerdSocket: nil,
+	})))
+	// the same host as ec2-user: /run/containerd is 0711 so the missing default
+	// socket shows, while /run/docker is 0700 and refuses the stat
+	assert.Equal(t, dockerAddress, containerdAddressArgs(statFrom(map[string]error{
+		dockerContainerdSocket: fs.ErrPermission,
+	})))
+
+	// RKE2 (a Harvester v1.8.2 node): only RKE2's containerd runs, under
+	// /run/k3s, and /run/containerd does not exist
+	assert.Equal(t, []string{"--address", "/run/k3s/containerd/containerd.sock"},
+		containerdAddressArgs(statFrom(map[string]error{
+			containerdSocket:       fs.ErrNotExist,
+			dockerContainerdSocket: fs.ErrNotExist,
+			rke2ContainerdSocket:   nil,
+		})))
+	// MicroK8s: /run/containerd holds runc state but no socket
+	assert.Equal(t, []string{"--address", "/var/snap/microk8s/common/run/containerd.sock"},
+		containerdAddressArgs(statFrom(map[string]error{
+			containerdSocket:         fs.ErrNotExist,
+			microk8sContainerdSocket: nil,
+		})))
+	// k0s
+	assert.Equal(t, []string{"--address", "/run/k0s/containerd.sock"},
+		containerdAddressArgs(statFrom(map[string]error{
+			containerdSocket:    fs.ErrNotExist,
+			k0sContainerdSocket: nil,
+		})))
+	// a standalone containerd next to RKE2 keeps the default socket
+	assert.Nil(t, containerdAddressArgs(statFrom(map[string]error{
+		containerdSocket:     nil,
+		rke2ContainerdSocket: nil,
+	})))
+
+	// no containerd runs at all: ctr reports the default socket
+	assert.Nil(t, containerdAddressArgs(statFrom(nil)))
+}
+
+func TestContainerdTaskState(t *testing.T) {
+	// captured from "docker-containerd-ctr -n g08ns tasks list" on Debian 10
+	// (docker.io 18.09), before and after "ctr tasks pause c-run"
+	running := parseTaskList("TASK         PID      STATUS    \n" +
+		"c-run        12308    RUNNING\n" +
+		"c-stopped    12374    STOPPED\n")
+	paused := parseTaskList("TASK         PID      STATUS    \n" +
+		"c-run        12308    PAUSED\n" +
+		"c-stopped    12374    STOPPED\n")
+
+	task, ok := running["c-run"]
+	status, pid := containerdTaskState(task, ok)
+	assert.Equal(t, "running", status)
+	assert.Equal(t, int64(12308), pid)
+
+	task, ok = running["c-stopped"]
+	status, pid = containerdTaskState(task, ok)
+	assert.Equal(t, "stopped", status)
+	assert.Equal(t, int64(0), pid, "a stopped task's process has exited")
+
+	task, ok = paused["c-run"]
+	status, pid = containerdTaskState(task, ok)
+	assert.Equal(t, "paused", status)
+	assert.Equal(t, int64(12308), pid, "a paused task's process still exists")
+
+	// c-created has a container but no task
+	task, ok = running["c-created"]
+	status, pid = containerdTaskState(task, ok)
+	assert.Equal(t, "created", status)
+	assert.Equal(t, int64(0), pid)
+}
+
+func TestIsCtrNotInstalled(t *testing.T) {
+	// "ctr namespaces list -q" on Debian 10 (docker.io 18.09 only), locally and
+	// over SSH with sudo
+	assert.True(t, isCtrNotInstalled("ctr", 127, "sh: 1: ctr: not found\n"))
+	assert.True(t, isCtrNotInstalled("ctr", 1, "sudo: ctr: command not found\n"))
+	// SLES 16 and Leap 16 without ctr, and the absolute containerd-ctr path on a
+	// SLES 15 host without the containerd-ctr package, locally and with sudo
+	assert.True(t, isCtrNotInstalled("ctr", 127, "sh: line 1: ctr: command not found\n"))
+	assert.True(t, isCtrNotInstalled("/usr/sbin/containerd-ctr", 127, "sh: /usr/sbin/containerd-ctr: No such file or directory\n"))
+	assert.True(t, isCtrNotInstalled("/usr/sbin/containerd-ctr", 1, "sudo: /usr/sbin/containerd-ctr: command not found\n"))
+
+	// containerd is installed but refuses a non-root user (Debian 12)
+	assert.False(t, isCtrNotInstalled("ctr", 1, `ctr: failed to dial "/run/containerd/containerd.sock": connection error: desc = "transport: error while dialing: dial unix /run/containerd/containerd.sock: connect: permission denied"`+"\n"))
+	// the bundled containerd refuses a non-root user (Debian 10)
+	assert.False(t, isCtrNotInstalled("docker-containerd-ctr", 1, `ctr: failed to dial "/run/docker/containerd/containerd.sock": context deadline exceeded`+"\n"))
+
+	// sudo's "not found" in the remote's language (de_DE.UTF-8, RHEL 9)
+	assert.True(t, isCtrNotInstalled("docker-containerd-ctr", 1, "sudo: docker-containerd-ctr: Befehl nicht gefunden\n"))
+	assert.True(t, isCtrNotInstalled("containerd-ctr", 1, "sudo: containerd-ctr: commande introuvable\n"))
+	// sudo has no separate message for a binary it may not execute: with mode
+	// 0644 it says the same "command not found" (sudo 1.8.27 on Debian 10 and
+	// 1.9.5 on RHEL 9), which the English check already treated as missing
+	assert.True(t, isCtrNotInstalled("/usr/local/bin/ctr", 1, "sudo: /usr/local/bin/ctr: command not found\n"))
+	// sudo refusing to run anything is not a missing binary
+	assert.False(t, isCtrNotInstalled("ctr", 1, "sudo: sorry, you must have a tty to run sudo\n"))
+	assert.False(t, isCtrNotInstalled("ctr", 1, "sudo: a password is required\n"))
+}
+
+// A tarball or static-bundle containerd puts ctr in /usr/local/bin, which
+// RHEL's sudo secure_path leaves off root's PATH.
+func TestCtrCLIsIncludeUsrLocalBin(t *testing.T) {
+	var bins []string
+	for _, cli := range ctrCLIs(nil) {
+		bins = append(bins, cli[0])
+	}
+	assert.Contains(t, bins, "/usr/local/bin/ctr")
+	assert.Equal(t, "ctr", bins[0], "the PATH lookup stays first")
 }

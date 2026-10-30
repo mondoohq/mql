@@ -8,13 +8,30 @@ import (
 	"fmt"
 
 	"github.com/openai/openai-go/v3"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
+
+// mapFile builds the resource args for an openai.file. Both the collection path
+// and the single-object init share it so the two paths cannot diverge.
+func mapFile(f openai.FileObject) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":      llx.StringData(f.ID),
+		"id":        llx.StringData(f.ID),
+		"filename":  llx.StringData(f.Filename),
+		"bytes":     llx.IntData(f.Bytes),
+		"createdAt": llx.TimeDataPtr(unixToNullableTime(f.CreatedAt)),
+		"purpose":   llx.StringData(string(f.Purpose)),
+		"status":    llx.StringData(string(f.Status)),
+	}
+}
 
 func (r *mqlOpenai) files() ([]any, error) {
 	conn := openaiConn(r.MqlRuntime)
-	client := conn.Client()
+	client, err := dataPlaneClient(conn, "openai.files")
+	if err != nil {
+		return nil, err
+	}
 	if client == nil {
 		return []any{}, nil
 	}
@@ -24,16 +41,7 @@ func (r *mqlOpenai) files() ([]any, error) {
 	var res []any
 	for iter.Next() {
 		f := iter.Current()
-		created := unixToTime(f.CreatedAt)
-		mqlFile, err := CreateResource(r.MqlRuntime, "openai.file", map[string]*llx.RawData{
-			"__id":      llx.StringData(f.ID),
-			"id":        llx.StringData(f.ID),
-			"filename":  llx.StringData(f.Filename),
-			"bytes":     llx.IntData(f.Bytes),
-			"createdAt": llx.TimeData(created),
-			"purpose":   llx.StringData(string(f.Purpose)),
-			"status":    llx.StringData(string(f.Status)),
-		})
+		mqlFile, err := CreateResource(r.MqlRuntime, "openai.file", mapFile(f))
 		if err != nil {
 			return nil, err
 		}
@@ -63,26 +71,58 @@ func initOpenaiFile(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 	}
 
 	conn := openaiConn(runtime)
-	client := conn.Client()
+	client, err := dataPlaneClient(conn, "openai.file")
+	if err != nil {
+		return nil, nil, err
+	}
 	if client == nil {
 		return nil, nil, fmt.Errorf("cannot fetch file %s: no project API key configured", fileID)
 	}
 	f, err := client.Files.Get(context.Background(), fileID)
 	if err != nil {
-		if isAccessDenied(err) {
-			return args, nil, nil
-		}
+		// Returning (args, nil, nil) here would let the runtime build a husk
+		// resource from just the id, leaving every other field unset and
+		// surfacing as "primitive with no type information" on access. Report
+		// the failure instead.
 		return nil, nil, fmt.Errorf("failed to get file %s: %w", fileID, err)
 	}
 
-	created := unixToTime(f.CreatedAt)
-	args["__id"] = llx.StringData(f.ID)
-	args["id"] = llx.StringData(f.ID)
-	args["filename"] = llx.StringData(f.Filename)
-	args["bytes"] = llx.IntData(f.Bytes)
-	args["createdAt"] = llx.TimeData(created)
-	args["purpose"] = llx.StringData(string(f.Purpose))
-	args["status"] = llx.StringData(string(f.Status))
+	return mapFile(*f), nil, nil
+}
 
-	return args, nil, nil
+// openaiFileList returns the account file collection through the openai
+// resource so the underlying list call is made once per scan.
+func openaiFileList(runtime *plugin.Runtime) ([]any, error) {
+	obj, err := CreateResource(runtime, "openai", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	files := obj.(*mqlOpenai).GetFiles()
+	if files.Error != nil {
+		return nil, files.Error
+	}
+	return files.Data, nil
+}
+
+// resolveFile finds the uploaded file with the given id in the account file
+// list. Resolving through the cached list keeps a reference from costing a get
+// per referring object. A reference outlives the upload it names (a batch
+// keeps its input file id after the file is deleted), so a miss is reported as
+// (nil, nil) for the caller to null rather than as an error that would take
+// the referring collection down with it.
+func resolveFile(runtime *plugin.Runtime, fileID string) (*mqlOpenaiFile, error) {
+	files, err := openaiFileList(runtime)
+	if err != nil {
+		return nil, err
+	}
+	for i := range files {
+		f, ok := files[i].(*mqlOpenaiFile)
+		if !ok {
+			continue
+		}
+		if f.Id.Data == fileID {
+			return f, nil
+		}
+	}
+	return nil, nil
 }

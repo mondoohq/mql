@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -23,13 +23,11 @@ import (
 
 func TestServiceNetworkExposureArgsLoadBalancerPublic(t *testing.T) {
 	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "web",
-			Namespace: "prod",
-			Annotations: map[string]string{
-				"network.mondoo.com/classification": "internet-facing",
-				"mondoo.com/owner":                  "team-edge",
-			},
+		Name:      "web",
+		Namespace: "prod",
+		Annotations: map[string]string{
+			"network.mondoo.com/classification": "internet-facing",
+			"mondoo.com/owner":                  "team-edge",
 		},
 		Spec: corev1.ServiceSpec{
 			Type:                     corev1.ServiceTypeLoadBalancer,
@@ -68,7 +66,7 @@ func TestServiceNetworkExposureArgsLoadBalancerPublic(t *testing.T) {
 
 func TestServiceNetworkExposureArgsNodePortPublicNode(t *testing.T) {
 	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "prod"},
+		Name: "api", Namespace: "prod",
 		Spec: corev1.ServiceSpec{
 			Type: corev1.ServiceTypeNodePort,
 			Ports: []corev1.ServicePort{{
@@ -90,7 +88,7 @@ func TestServiceNetworkExposureArgsNodePortPublicNode(t *testing.T) {
 
 func TestServiceNetworkExposureArgsNodePortPublicExternalIP(t *testing.T) {
 	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "prod"},
+		Name: "api", Namespace: "prod",
 		Spec: corev1.ServiceSpec{
 			Type:        corev1.ServiceTypeNodePort,
 			ExternalIPs: []string{"8.8.8.8"},
@@ -121,7 +119,7 @@ func TestAddressIsPublicNodeAddressRejectsPrivateExternalIP(t *testing.T) {
 
 func TestServiceNetworkExposureArgsPrivateLoadBalancer(t *testing.T) {
 	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: "db", Namespace: "prod"},
+		Name: "db", Namespace: "prod",
 		Spec: corev1.ServiceSpec{
 			Type: corev1.ServiceTypeLoadBalancer,
 			Ports: []corev1.ServicePort{{
@@ -146,7 +144,7 @@ func TestServiceNetworkExposureArgsPrivateLoadBalancer(t *testing.T) {
 
 func TestServiceNetworkExposureArgsRestrictedLoadBalancerSourceRange(t *testing.T) {
 	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: "admin", Namespace: "prod"},
+		Name: "admin", Namespace: "prod",
 		Spec: corev1.ServiceSpec{
 			Type:                     corev1.ServiceTypeLoadBalancer,
 			LoadBalancerSourceRanges: []string{"10.0.0.0/8"},
@@ -172,7 +170,7 @@ func TestServiceNetworkExposureArgsRestrictedLoadBalancerSourceRange(t *testing.
 
 func TestIngressNetworkExposureArgsPublicHostname(t *testing.T) {
 	ing := &networkingv1.Ingress{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+		Name: "web", Namespace: "prod",
 		Spec: networkingv1.IngressSpec{
 			TLS: []networkingv1.IngressTLS{{Hosts: []string{"web.example.com"}}},
 		},
@@ -194,7 +192,7 @@ func TestIngressNetworkExposureArgsPublicHostname(t *testing.T) {
 
 func TestIngressNetworkExposureArgsConfiguredHostWithoutStatus(t *testing.T) {
 	ing := &networkingv1.Ingress{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "prod"},
+		Name: "web", Namespace: "prod",
 		Spec: networkingv1.IngressSpec{
 			Rules: []networkingv1.IngressRule{{Host: "web.example.com"}},
 		},
@@ -213,7 +211,7 @@ func TestIngressNetworkExposureArgsConfiguredHostWithoutStatus(t *testing.T) {
 func TestGatewayNetworkExposureArgs(t *testing.T) {
 	hostname := gatewayv1.Hostname("gw.example.com")
 	gw := &gatewayv1.Gateway{
-		ObjectMeta: metav1.ObjectMeta{Name: "edge", Namespace: "prod"},
+		Name: "edge", Namespace: "prod",
 		Spec: gatewayv1.GatewaySpec{
 			Listeners: []gatewayv1.Listener{{
 				Name:     "https",
@@ -421,7 +419,7 @@ func TestGatewayRouteNetworkExposureArgsUsesOnlyAcceptedParentAddresses(t *testi
 
 func TestNetworkPolicyCoverageArgsDoesNotTreatAllowAllEgressAsDefaultDeny(t *testing.T) {
 	policy := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "allow-egress", Namespace: "prod"},
+		Name: "allow-egress", Namespace: "prod",
 		Spec: networkingv1.NetworkPolicySpec{
 			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "api"}},
 			Egress:      []networkingv1.NetworkPolicyEgressRule{{}},
@@ -445,7 +443,7 @@ func TestNetworkPolicyCoverageArgsDoesNotTreatAllowAllEgressAsDefaultDeny(t *tes
 
 func TestNetworkPolicyCoverageArgsDefaultDenyEgress(t *testing.T) {
 	policy := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "deny-egress", Namespace: "prod"},
+		Name: "deny-egress", Namespace: "prod",
 		Spec: networkingv1.NetworkPolicySpec{
 			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "api"}},
 			PolicyTypes: []networkingv1.PolicyType{
@@ -467,7 +465,7 @@ func TestNetworkPolicyCoverageArgsDefaultDenyEgress(t *testing.T) {
 
 func TestNetworkPolicyCoverageArgsIngressOnlyGap(t *testing.T) {
 	policy := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "ingress-only", Namespace: "prod"},
+		Name: "ingress-only", Namespace: "prod",
 		Spec: networkingv1.NetworkPolicySpec{
 			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
 		},
@@ -487,7 +485,7 @@ func TestNetworkPolicyCoverageArgsIngressOnlyGap(t *testing.T) {
 func TestNetworkPolicyCoverageArgsFromPoliciesAggregatesSameSelector(t *testing.T) {
 	selector := metav1.LabelSelector{MatchLabels: map[string]string{"app": "api"}}
 	ingressPolicy := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "deny-ingress", Namespace: "prod"},
+		Name: "deny-ingress", Namespace: "prod",
 		Spec: networkingv1.NetworkPolicySpec{
 			PodSelector: selector,
 			PolicyTypes: []networkingv1.PolicyType{
@@ -496,7 +494,7 @@ func TestNetworkPolicyCoverageArgsFromPoliciesAggregatesSameSelector(t *testing.
 		},
 	}
 	egressPolicy := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "deny-egress", Namespace: "prod"},
+		Name: "deny-egress", Namespace: "prod",
 		Spec: networkingv1.NetworkPolicySpec{
 			PodSelector: selector,
 			PolicyTypes: []networkingv1.PolicyType{
@@ -506,8 +504,8 @@ func TestNetworkPolicyCoverageArgsFromPoliciesAggregatesSameSelector(t *testing.
 	}
 
 	args, err := networkPolicyCoverageArgsFromPolicies([]any{
-		&mqlK8sNetworkpolicy{mqlK8sNetworkpolicyInternal: mqlK8sNetworkpolicyInternal{obj: ingressPolicy}},
-		&mqlK8sNetworkpolicy{mqlK8sNetworkpolicyInternal: mqlK8sNetworkpolicyInternal{obj: egressPolicy}},
+		&mqlK8sNetworkpolicy{obj: ingressPolicy},
+		&mqlK8sNetworkpolicy{obj: egressPolicy},
 	})
 	require.NoError(t, err)
 	require.Len(t, args, 1)
@@ -525,7 +523,7 @@ func TestNetworkPolicyCoverageArgsFromPoliciesAggregatesSameSelector(t *testing.
 
 func TestNetworkPolicyCoverageArgsFromPoliciesFoldsBroaderDefaultDenyEgress(t *testing.T) {
 	namespaceDefaultDeny := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "deny-egress", Namespace: "prod"},
+		Name: "deny-egress", Namespace: "prod",
 		Spec: networkingv1.NetworkPolicySpec{
 			PolicyTypes: []networkingv1.PolicyType{
 				networkingv1.PolicyTypeEgress,
@@ -533,7 +531,7 @@ func TestNetworkPolicyCoverageArgsFromPoliciesFoldsBroaderDefaultDenyEgress(t *t
 		},
 	}
 	workloadIngress := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "api-ingress", Namespace: "prod"},
+		Name: "api-ingress", Namespace: "prod",
 		Spec: networkingv1.NetworkPolicySpec{
 			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "api"}},
 			PolicyTypes: []networkingv1.PolicyType{
@@ -543,8 +541,8 @@ func TestNetworkPolicyCoverageArgsFromPoliciesFoldsBroaderDefaultDenyEgress(t *t
 	}
 
 	args, err := networkPolicyCoverageArgsFromPolicies([]any{
-		&mqlK8sNetworkpolicy{mqlK8sNetworkpolicyInternal: mqlK8sNetworkpolicyInternal{obj: namespaceDefaultDeny}},
-		&mqlK8sNetworkpolicy{mqlK8sNetworkpolicyInternal: mqlK8sNetworkpolicyInternal{obj: workloadIngress}},
+		&mqlK8sNetworkpolicy{obj: namespaceDefaultDeny},
+		&mqlK8sNetworkpolicy{obj: workloadIngress},
 	})
 	require.NoError(t, err)
 	require.Len(t, args, 2)
@@ -563,7 +561,7 @@ func TestNetworkPolicyCoverageArgsFromPoliciesFoldsBroaderDefaultDenyEgress(t *t
 
 func TestNetworkPolicyCoverageArgsFromPoliciesPreservesNarrowAllowAllEgress(t *testing.T) {
 	namespaceDefaultDeny := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "deny-egress", Namespace: "prod"},
+		Name: "deny-egress", Namespace: "prod",
 		Spec: networkingv1.NetworkPolicySpec{
 			PolicyTypes: []networkingv1.PolicyType{
 				networkingv1.PolicyTypeEgress,
@@ -571,7 +569,7 @@ func TestNetworkPolicyCoverageArgsFromPoliciesPreservesNarrowAllowAllEgress(t *t
 		},
 	}
 	workloadAllowAll := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "api-allow-all-egress", Namespace: "prod"},
+		Name: "api-allow-all-egress", Namespace: "prod",
 		Spec: networkingv1.NetworkPolicySpec{
 			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "api"}},
 			PolicyTypes: []networkingv1.PolicyType{
@@ -582,8 +580,8 @@ func TestNetworkPolicyCoverageArgsFromPoliciesPreservesNarrowAllowAllEgress(t *t
 	}
 
 	args, err := networkPolicyCoverageArgsFromPolicies([]any{
-		&mqlK8sNetworkpolicy{mqlK8sNetworkpolicyInternal: mqlK8sNetworkpolicyInternal{obj: namespaceDefaultDeny}},
-		&mqlK8sNetworkpolicy{mqlK8sNetworkpolicyInternal: mqlK8sNetworkpolicyInternal{obj: workloadAllowAll}},
+		&mqlK8sNetworkpolicy{obj: namespaceDefaultDeny},
+		&mqlK8sNetworkpolicy{obj: workloadAllowAll},
 	})
 	require.NoError(t, err)
 	require.Len(t, args, 2)
@@ -596,21 +594,19 @@ func TestNetworkPolicyCoverageArgsFromPoliciesPreservesNarrowAllowAllEgress(t *t
 
 func TestPrimaryInterfaceCoverageArgsForPodCoveredByDefaultDenyPolicy(t *testing.T) {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "api"},
-		},
+		Name:      "api-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "api"},
 	}
 	defaultDenyEgress := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "deny-egress", Namespace: "prod"},
+		Name: "deny-egress", Namespace: "prod",
 		Spec: networkingv1.NetworkPolicySpec{
 			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "api"}},
 			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
 		},
 	}
 	policyCoverage, err := networkPolicyCoverageArgsFromPolicies([]any{
-		&mqlK8sNetworkpolicy{mqlK8sNetworkpolicyInternal: mqlK8sNetworkpolicyInternal{obj: defaultDenyEgress}},
+		&mqlK8sNetworkpolicy{obj: defaultDenyEgress},
 	})
 	require.NoError(t, err)
 
@@ -625,20 +621,18 @@ func TestPrimaryInterfaceCoverageArgsForPodCoveredByDefaultDenyPolicy(t *testing
 
 func TestPrimaryInterfaceCoverageArgsForPodDoesNotHideAllowAllPolicy(t *testing.T) {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "api"},
-		},
+		Name:      "api-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "api"},
 	}
 	namespaceDefaultDeny := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "deny-egress", Namespace: "prod"},
+		Name: "deny-egress", Namespace: "prod",
 		Spec: networkingv1.NetworkPolicySpec{
 			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
 		},
 	}
 	workloadAllowAll := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "api-allow-all-egress", Namespace: "prod"},
+		Name: "api-allow-all-egress", Namespace: "prod",
 		Spec: networkingv1.NetworkPolicySpec{
 			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "api"}},
 			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
@@ -646,8 +640,8 @@ func TestPrimaryInterfaceCoverageArgsForPodDoesNotHideAllowAllPolicy(t *testing.
 		},
 	}
 	policyCoverage, err := networkPolicyCoverageArgsFromPolicies([]any{
-		&mqlK8sNetworkpolicy{mqlK8sNetworkpolicyInternal: mqlK8sNetworkpolicyInternal{obj: namespaceDefaultDeny}},
-		&mqlK8sNetworkpolicy{mqlK8sNetworkpolicyInternal: mqlK8sNetworkpolicyInternal{obj: workloadAllowAll}},
+		&mqlK8sNetworkpolicy{obj: namespaceDefaultDeny},
+		&mqlK8sNetworkpolicy{obj: workloadAllowAll},
 	})
 	require.NoError(t, err)
 
@@ -663,11 +657,9 @@ func TestPrimaryInterfaceCoverageArgsForPodDoesNotHideAllowAllPolicy(t *testing.
 
 func TestPrimaryInterfaceCoverageArgsForPodReportsUncoveredPod(t *testing.T) {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "api"},
-		},
+		Name:      "api-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "api"},
 	}
 
 	args := primaryInterfaceCoverageArgsForPod(pod, nil)
@@ -683,11 +675,9 @@ func TestPrimaryInterfaceCoverageArgsForPodReportsUncoveredPod(t *testing.T) {
 
 func TestPrimaryInterfaceCoverageArgsForPodAppliesAdminNetworkPolicySubject(t *testing.T) {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "api"},
-		},
+		Name:      "api-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "api"},
 	}
 	policy := newUnstructured("policy.networking.k8s.io/v1alpha1", "AdminNetworkPolicy", "", "cluster-guardrails", map[string]any{
 		"subject": map[string]any{
@@ -712,11 +702,9 @@ func TestPrimaryInterfaceCoverageArgsForPodAppliesAdminNetworkPolicySubject(t *t
 
 func TestPrimaryInterfaceCoverageArgsForPodRejectsMismatchedAdminNetworkPolicySubject(t *testing.T) {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "api"},
-		},
+		Name:      "api-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "api"},
 	}
 	policy := newUnstructured("policy.networking.k8s.io/v1alpha1", "AdminNetworkPolicy", "", "cluster-guardrails", map[string]any{
 		"subject": map[string]any{
@@ -738,11 +726,9 @@ func TestPrimaryInterfaceCoverageArgsForPodRejectsMismatchedAdminNetworkPolicySu
 
 func TestPrimaryInterfaceCoverageArgsForPodAppliesBaselineAdminNetworkPolicySubject(t *testing.T) {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "api"},
-		},
+		Name:      "api-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "api"},
 	}
 	policy := newUnstructured("policy.networking.k8s.io/v1alpha1", "BaselineAdminNetworkPolicy", "", "default", map[string]any{
 		"subject": map[string]any{
@@ -1017,13 +1003,11 @@ func TestMultiNetworkPolicyCoverageArgsDefaultDenyWhenDirectionHasNoAllowAllRule
 
 func TestSecondaryInterfaceCoverageArgsForPodUncoveredStringAnnotation(t *testing.T) {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "api"},
-			Annotations: map[string]string{
-				multusNetworksAnnotation: "macvlan1@net1, other/net2",
-			},
+		Name:      "api-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "api"},
+		Annotations: map[string]string{
+			multusNetworksAnnotation: "macvlan1@net1, other/net2",
 		},
 	}
 
@@ -1046,13 +1030,11 @@ func TestSecondaryInterfaceCoverageArgsForPodUncoveredStringAnnotation(t *testin
 
 func TestSecondaryInterfaceCoverageArgsForPodCoveredByMatchingMultiNetworkPolicy(t *testing.T) {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "db-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "db"},
-			Annotations: map[string]string{
-				multusNetworksAnnotation: `[{"name":"macvlan1","namespace":"prod","interface":"net1"}]`,
-			},
+		Name:      "db-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "db"},
+		Annotations: map[string]string{
+			multusNetworksAnnotation: `[{"name":"macvlan1","namespace":"prod","interface":"net1"}]`,
 		},
 	}
 	policy := newUnstructured("k8s.cni.cncf.io/v1beta1", "MultiNetworkPolicy", "prod", "allow-db", map[string]any{
@@ -1074,13 +1056,11 @@ func TestSecondaryInterfaceCoverageArgsForPodCoveredByMatchingMultiNetworkPolicy
 
 func TestSecondaryInterfaceCoverageArgsForPodCombinesSplitMultiNetworkPolicies(t *testing.T) {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "db-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "db"},
-			Annotations: map[string]string{
-				multusNetworksAnnotation: "prod/macvlan1",
-			},
+		Name:      "db-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "db"},
+		Annotations: map[string]string{
+			multusNetworksAnnotation: "prod/macvlan1",
 		},
 	}
 	ingressPolicy := newUnstructured("k8s.cni.cncf.io/v1beta1", "MultiNetworkPolicy", "prod", "allow-db-ingress", map[string]any{
@@ -1109,13 +1089,11 @@ func TestSecondaryInterfaceCoverageArgsForPodCombinesSplitMultiNetworkPolicies(t
 
 func TestSecondaryInterfaceCoverageArgsForPodDoesNotHideAllowAllPolicy(t *testing.T) {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "db-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "db"},
-			Annotations: map[string]string{
-				multusNetworksAnnotation: "prod/macvlan1",
-			},
+		Name:      "db-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "db"},
+		Annotations: map[string]string{
+			multusNetworksAnnotation: "prod/macvlan1",
 		},
 	}
 	defaultDeny := newUnstructured("k8s.cni.cncf.io/v1beta1", "MultiNetworkPolicy", "prod", "deny-db", map[string]any{
@@ -1147,13 +1125,11 @@ func TestSecondaryInterfaceCoverageArgsForPodDoesNotHideAllowAllPolicy(t *testin
 
 func TestSecondaryInterfaceCoverageArgsForPodDoesNotMatchPolicyForSameNameDifferentNamespace(t *testing.T) {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "db-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "db"},
-			Annotations: map[string]string{
-				multusNetworksAnnotation: "prod/macvlan1",
-			},
+		Name:      "db-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "db"},
+		Annotations: map[string]string{
+			multusNetworksAnnotation: "prod/macvlan1",
 		},
 	}
 	policy := newUnstructured("k8s.cni.cncf.io/v1beta1", "MultiNetworkPolicy", "prod", "allow-db", map[string]any{
@@ -1175,13 +1151,11 @@ func TestSecondaryInterfaceCoverageArgsForPodDoesNotMatchPolicyForSameNameDiffer
 
 func TestSecondaryInterfaceCoverageArgsForPodSelectorMismatchRemainsUncovered(t *testing.T) {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "api"},
-			Annotations: map[string]string{
-				multusNetworksAnnotation: "prod/macvlan1",
-			},
+		Name:      "api-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "api"},
+		Annotations: map[string]string{
+			multusNetworksAnnotation: "prod/macvlan1",
 		},
 	}
 	policy := newUnstructured("k8s.cni.cncf.io/v1beta1", "MultiNetworkPolicy", "prod", "allow-db", map[string]any{
@@ -1265,15 +1239,13 @@ func TestSelectorMatchLabelsPreservesEmptyValues(t *testing.T) {
 
 func TestSecondaryInterfaceAttachmentsFromNetworkStatusIgnoreDefaultInterface(t *testing.T) {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-0",
-			Namespace: "prod",
-			Annotations: map[string]string{
-				multusNetworkStatusAnnotation: `[
+		Name:      "api-0",
+		Namespace: "prod",
+		Annotations: map[string]string{
+			multusNetworkStatusAnnotation: `[
 					{"name":"kindnet","interface":"eth0","default":true},
 					{"name":"prod/macvlan1","interface":"net1","ips":["10.10.0.10"]}
 				]`,
-			},
 		},
 	}
 
@@ -1287,15 +1259,13 @@ func TestSecondaryInterfaceAttachmentsFromNetworkStatusIgnoreDefaultInterface(t 
 
 func TestSecondaryInterfaceAttachmentsDedupeSelectionAnnotationAndNetworkStatus(t *testing.T) {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-0",
-			Namespace: "prod",
-			Annotations: map[string]string{
-				multusNetworksAnnotation: "prod/macvlan1",
-				multusNetworkStatusAnnotation: `[
+		Name:      "api-0",
+		Namespace: "prod",
+		Annotations: map[string]string{
+			multusNetworksAnnotation: "prod/macvlan1",
+			multusNetworkStatusAnnotation: `[
 					{"name":"prod/macvlan1","interface":"net1","ips":["10.10.0.10"]}
 				]`,
-			},
 		},
 	}
 
@@ -1430,11 +1400,9 @@ func TestCalicoEmptyTypedPolicyIsDefaultDeny(t *testing.T) {
 
 func TestPrimaryInterfaceCoverageArgsForPodAppliesCalicoAllSelector(t *testing.T) {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "api"},
-		},
+		Name:      "api-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "api"},
 	}
 	policy := newUnstructured("crd.projectcalico.org/v1", "NetworkPolicy", "prod", "default-deny", map[string]any{
 		"selector": "all()",
@@ -1458,18 +1426,14 @@ func TestPrimaryInterfaceCoverageArgsForPodAppliesCalicoSelectorToMatchingPodOnl
 	})
 	policyCoverage := networkPolicyCoverageArgsFromUnstructured(policy)
 	matchingPod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "api", "tier": "frontend", "team": "core"},
-		},
+		Name:      "api-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "api", "tier": "frontend", "team": "core"},
 	}
 	otherPod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "worker-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "worker", "tier": "frontend", "team": "core"},
-		},
+		Name:      "worker-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "worker", "tier": "frontend", "team": "core"},
 	}
 
 	matchingArgs := primaryInterfaceCoverageArgsForPod(matchingPod, policyCoverage)
@@ -1490,18 +1454,14 @@ func TestPrimaryInterfaceCoverageArgsForPodAppliesCalicoUnaryPrecedence(t *testi
 	})
 	policyCoverage := networkPolicyCoverageArgsFromUnstructured(policy)
 	matchingPod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "api"},
-		},
+		Name:      "api-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "api"},
 	}
 	teamPod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-1",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "api", "team": "core"},
-		},
+		Name:      "api-1",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "api", "team": "core"},
 	}
 
 	matchingArgs := primaryInterfaceCoverageArgsForPod(matchingPod, policyCoverage)
@@ -1523,11 +1483,9 @@ func TestPrimaryInterfaceCoverageArgsForPodAppliesCalicoNamespaceSelector(t *tes
 	})
 	policyCoverage := networkPolicyCoverageArgsFromUnstructured(policy)
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "api"},
-		},
+		Name:      "api-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "api"},
 	}
 
 	coreArgs := primaryInterfaceCoverageArgsForPodWithNamespaceLabels(pod, policyCoverage, map[string]map[string]string{
@@ -1553,28 +1511,24 @@ func TestPrimaryInterfaceCoverageArgsForPodAppliesCalicoServiceAccountSelector(t
 	})
 	policyCoverage := networkPolicyCoverageArgsFromUnstructured(policy)
 	apiPod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "api"},
-		},
-		Spec: corev1.PodSpec{ServiceAccountName: "api"},
+		Name:      "api-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "api"},
+		Spec:      corev1.PodSpec{ServiceAccountName: "api"},
 	}
 	workerPod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "worker-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "worker"},
-		},
-		Spec: corev1.PodSpec{ServiceAccountName: "worker"},
+		Name:      "worker-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "worker"},
+		Spec:      corev1.PodSpec{ServiceAccountName: "worker"},
 	}
 	serviceAccountLabels := serviceAccountLabelsByPodKey([]any{
-		&mqlK8sServiceaccount{mqlK8sServiceaccountInternal: mqlK8sServiceaccountInternal{obj: &corev1.ServiceAccount{
-			ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "prod", Labels: map[string]string{"role": "api"}},
-		}}},
-		&mqlK8sServiceaccount{mqlK8sServiceaccountInternal: mqlK8sServiceaccountInternal{obj: &corev1.ServiceAccount{
-			ObjectMeta: metav1.ObjectMeta{Name: "worker", Namespace: "prod", Labels: map[string]string{"role": "worker"}},
-		}}},
+		&mqlK8sServiceaccount{obj: &corev1.ServiceAccount{
+			Name: "api", Namespace: "prod", Labels: map[string]string{"role": "api"},
+		}},
+		&mqlK8sServiceaccount{obj: &corev1.ServiceAccount{
+			Name: "worker", Namespace: "prod", Labels: map[string]string{"role": "worker"},
+		}},
 	})
 
 	apiArgs := primaryInterfaceCoverageArgsForPodWithSelectorContext(apiPod, policyCoverage, nil, serviceAccountLabels)
@@ -1606,11 +1560,9 @@ func TestPrimaryInterfaceCoverageArgsForPodKeepsDefaultDenyWithScopedCalicoPolic
 	})
 	policyCoverage := append(networkPolicyCoverageArgsFromUnstructured(defaultDeny), networkPolicyCoverageArgsFromUnstructured(scopedDeny)...)
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "api-0",
-			Namespace: "prod",
-			Labels:    map[string]string{"app": "api"},
-		},
+		Name:      "api-0",
+		Namespace: "prod",
+		Labels:    map[string]string{"app": "api"},
 	}
 
 	args := primaryInterfaceCoverageArgsForPod(pod, policyCoverage)
@@ -1900,4 +1852,176 @@ func coverageArgsWithPolicyRef(t *testing.T, args []map[string]*llx.RawData, wan
 	}
 	require.Failf(t, "coverage policyRef not found", "wanted policyRef %q", want)
 	return nil
+}
+
+func TestClassifyAddressInternalCloudLoadBalancerHostname(t *testing.T) {
+	// AWS names an internal ALB/CLB with an internal- prefix and never applies it
+	// to an internet-facing one, so the prefix is a safe negative signal.
+	assert.Equal(t, "internalHostname",
+		classifyAddress("internal-bba-prod-ptp-2120307359.eu-central-1.elb.amazonaws.com"))
+	// An internet-facing load balancer of the same shape stays internet-reachable.
+	assert.Equal(t, "hostname",
+		classifyAddress("bba-prod-ptp-2120307359.eu-central-1.elb.amazonaws.com"))
+	// NLB DNS layout puts the region after .elb.; the prefix rule still applies.
+	assert.Equal(t, "internalHostname",
+		classifyAddress("internal-sftpgo-sftp-e4600cc5.elb.eu-central-1.amazonaws.com"))
+	// The prefix alone must not be enough outside AWS load balancer domains.
+	assert.Equal(t, "hostname", classifyAddress("internal-tools.example.com"))
+}
+
+func TestServiceNetworkExposureArgsInternalSchemeAnnotation(t *testing.T) {
+	// An internal NLB's DNS name is indistinguishable from an internet-facing one,
+	// so only the declared scheme reveals that it is VPC-only.
+	svc := &corev1.Service{
+		Name:        "sftpgo-sftp",
+		Namespace:   "sftpgo",
+		Annotations: map[string]string{"service.beta.kubernetes.io/aws-load-balancer-scheme": "internal"},
+		Spec: corev1.ServiceSpec{
+			Type:  corev1.ServiceTypeLoadBalancer,
+			Ports: []corev1.ServicePort{{Port: 22, Protocol: corev1.ProtocolTCP}},
+		},
+		Status: corev1.ServiceStatus{
+			LoadBalancer: corev1.LoadBalancerStatus{
+				Ingress: []corev1.LoadBalancerIngress{{
+					Hostname: "sftpgo-sftp-e4600cc5a973d130.elb.eu-central-1.amazonaws.com",
+				}},
+			},
+		},
+	}
+
+	args := serviceNetworkExposureArgs(svc, nil)
+	require.Len(t, args, 1)
+
+	assert.Equal(t, false, args[0]["internetExposed"].Value)
+	assert.Equal(t, "internalLoadBalancerScheme", args[0]["exposureReason"].Value)
+}
+
+func TestServiceNetworkExposureArgsInternetFacingSchemeStaysExposed(t *testing.T) {
+	// Guard against the annotation check over-reaching: an explicitly
+	// internet-facing scheme must remain flagged.
+	svc := &corev1.Service{
+		Name:        "sftpgo-sftp",
+		Namespace:   "sftpgo",
+		Annotations: map[string]string{"service.beta.kubernetes.io/aws-load-balancer-scheme": "internet-facing"},
+		Spec: corev1.ServiceSpec{
+			Type:  corev1.ServiceTypeLoadBalancer,
+			Ports: []corev1.ServicePort{{Port: 22, Protocol: corev1.ProtocolTCP}},
+		},
+		Status: corev1.ServiceStatus{
+			LoadBalancer: corev1.LoadBalancerStatus{
+				Ingress: []corev1.LoadBalancerIngress{{
+					Hostname: "sftpgo-sftp-e4600cc5a973d130.elb.eu-central-1.amazonaws.com",
+				}},
+			},
+		},
+	}
+
+	args := serviceNetworkExposureArgs(svc, nil)
+	require.Len(t, args, 1)
+
+	assert.Equal(t, true, args[0]["internetExposed"].Value)
+	assert.Equal(t, "publicLoadBalancerAddress", args[0]["exposureReason"].Value)
+}
+
+func TestIngressNetworkExposureArgsInternalSchemeAnnotation(t *testing.T) {
+	// The published address is an internal ALB and the rule host is an ordinary
+	// public-looking name; the declared scheme must keep this off the exposed list.
+	ing := &networkingv1.Ingress{
+		Name:        "bba-prod-ptp",
+		Namespace:   "bba-prod-ptp",
+		Annotations: map[string]string{"alb.ingress.kubernetes.io/scheme": "internal"},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{{Host: "plan.example.com"}},
+		},
+		Status: networkingv1.IngressStatus{
+			LoadBalancer: networkingv1.IngressLoadBalancerStatus{
+				Ingress: []networkingv1.IngressLoadBalancerIngress{{
+					Hostname: "internal-bba-prod-ptp-2120307359.eu-central-1.elb.amazonaws.com",
+				}},
+			},
+		},
+	}
+
+	args := ingressNetworkExposureArgs(ing)
+	require.Len(t, args, 1)
+
+	assert.Equal(t, false, args[0]["internetExposed"].Value)
+	assert.Equal(t, "internalLoadBalancerScheme", args[0]["exposureReason"].Value)
+}
+
+func TestIngressNetworkExposureArgsUnannotatedInternalAlbNotExposed(t *testing.T) {
+	// The AWS Load Balancer Controller defaults to an internal scheme, so an
+	// unannotated Ingress on an internal- ALB must be classified from its address.
+	// The rule host is a public-looking name on purpose: an Ingress essentially
+	// always defines one, and it must not override the published internal address.
+	ing := &networkingv1.Ingress{
+		Name: "atp-prod-ptp", Namespace: "atp-prod-ptp",
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{{Host: "plan.atp.example.com"}},
+		},
+		Status: networkingv1.IngressStatus{
+			LoadBalancer: networkingv1.IngressLoadBalancerStatus{
+				Ingress: []networkingv1.IngressLoadBalancerIngress{{
+					Hostname: "internal-atp-prod-ptp-1954117370.eu-central-1.elb.amazonaws.com",
+				}},
+			},
+		},
+	}
+
+	args := ingressNetworkExposureArgs(ing)
+	require.Len(t, args, 1)
+
+	assert.Equal(t, false, args[0]["internetExposed"].Value)
+	assert.Equal(t, "privateIngressAddress", args[0]["exposureReason"].Value)
+	// The reported address set still unions both, so the evidence stays complete.
+	assert.Equal(t, []any{
+		"internal-atp-prod-ptp-1954117370.eu-central-1.elb.amazonaws.com",
+		"plan.atp.example.com",
+	}, args[0]["addresses"].Value)
+}
+
+func TestIngressNetworkExposureArgsPublicAlbWithRuleHostStaysExposed(t *testing.T) {
+	// Mirror of the test above: a genuinely internet-facing ALB must remain flagged
+	// once reachability is read from the published address instead of the rule host.
+	ing := &networkingv1.Ingress{
+		Name: "nbe-prod-public", Namespace: "nbe-prod-ptp",
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{{Host: "plan.nbe.example.com"}},
+		},
+		Status: networkingv1.IngressStatus{
+			LoadBalancer: networkingv1.IngressLoadBalancerStatus{
+				Ingress: []networkingv1.IngressLoadBalancerIngress{{
+					Hostname: "nbe-prod-public-795082853.eu-central-1.elb.amazonaws.com",
+				}},
+			},
+		},
+	}
+
+	args := ingressNetworkExposureArgs(ing)
+	require.Len(t, args, 1)
+
+	assert.Equal(t, true, args[0]["internetExposed"].Value)
+	assert.Equal(t, "publicIngressAddress", args[0]["exposureReason"].Value)
+}
+
+func TestIngressNetworkExposureArgsPrivateIpWithPublicRuleHost(t *testing.T) {
+	// Not AWS-specific: an Ingress published on a private IP is internal, however
+	// public its rule hostnames look.
+	ing := &networkingv1.Ingress{
+		Name: "onprem", Namespace: "prod",
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{{Host: "app.example.com"}},
+		},
+		Status: networkingv1.IngressStatus{
+			LoadBalancer: networkingv1.IngressLoadBalancerStatus{
+				Ingress: []networkingv1.IngressLoadBalancerIngress{{IP: "10.0.0.5"}},
+			},
+		},
+	}
+
+	args := ingressNetworkExposureArgs(ing)
+	require.Len(t, args, 1)
+
+	assert.Equal(t, false, args[0]["internetExposed"].Value)
+	assert.Equal(t, "privateIngressAddress", args[0]["exposureReason"].Value)
 }

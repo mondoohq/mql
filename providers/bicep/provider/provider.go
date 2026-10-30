@@ -13,12 +13,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers/bicep/connection"
-	"go.mondoo.com/mql/v13/providers/bicep/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers/bicep/connection"
+	"go.mondoo.com/mql/providers/bicep/resources"
+	"go.mondoo.com/mql/utils/urlx"
 )
 
 const (
@@ -137,6 +138,21 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.BicepConnectio
 	}
 	PlatformByName("bicep").Apply(asset.Platform)
 
+	// When discovered from a git repository (e.g. by the GitHub provider) prefer
+	// the repo (org/repo) for the name and platform ID. The local path is a
+	// temporary clone directory whose hash would change on every scan.
+	if url, ok := asset.Connections[0].Options["ssh-url"]; ok {
+		domain, org, repo, err := urlx.ParseGitSshUrl(url)
+		if err == nil {
+			platformID := "//platformid.api.mondoo.app/runtime/bicep/domain/" + domain + "/org/" + org + "/repo/" + repo
+			asset.Id = platformID
+			asset.Connections[0].PlatformId = platformID
+			asset.PlatformIds = []string{platformID}
+			asset.Name = "Bicep file " + org + "/" + repo
+			return nil
+		}
+	}
+
 	projectPath, ok := asset.Connections[0].Options["path"]
 	if ok {
 		absPath, _ := filepath.Abs(projectPath)
@@ -146,7 +162,7 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.BicepConnectio
 		platformID := "//platformid.api.mondoo.app/runtime/bicep/hash/" + hash
 		asset.Connections[0].PlatformId = platformID
 		asset.PlatformIds = []string{platformID}
-		asset.Name = "Bicep Static Analysis " + parseNameFromPath(projectPath)
+		asset.Name = "Bicep file " + parseNameFromPath(projectPath)
 		return nil
 	}
 
@@ -178,7 +194,7 @@ func parseNameFromPath(file string) string {
 
 	// When the user passed a bare "." (current directory) the loop above
 	// hands back "." via path.Base, which makes the asset name read
-	// "Bicep Static Analysis .". Resolve to the absolute path so the
+	// "Bicep file .". Resolve to the absolute path so the
 	// recursion picks up the actual directory basename instead.
 	if name == "." {
 		abspath, err := filepath.Abs(file)

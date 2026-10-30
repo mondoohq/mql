@@ -9,9 +9,9 @@ import (
 
 	"github.com/go-ldap/ldap/v3"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/activedirectory/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/activedirectory/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // parseADGeneralizedTime parses an Active Directory generalized time string
@@ -31,7 +31,7 @@ func (a *mqlActivedirectoryComputer) id() (string, error) {
 	return a.DistinguishedName.Data, nil
 }
 
-func (a *mqlActivedirectory) computers() ([]interface{}, error) {
+func (a *mqlActivedirectory) computers() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.ActiveDirectoryConnection)
 	baseDN := conn.BaseDN()
 
@@ -68,7 +68,7 @@ func (a *mqlActivedirectory) computers() ([]interface{}, error) {
 	}
 
 	now := time.Now().UTC()
-	res := make([]interface{}, 0, len(result))
+	res := make([]any, 0, len(result))
 
 	for _, entry := range result {
 		samAccountName := connection.GetStringAttr(entry, "sAMAccountName")
@@ -123,17 +123,25 @@ func (a *mqlActivedirectory) computers() ([]interface{}, error) {
 		// Constrained delegation
 		delegateTargets := connection.GetStringSliceAttr(entry, "msDS-AllowedToDelegateTo")
 		constrainedDelegation := len(delegateTargets) > 0
-		delegateTargetsRaw := make([]interface{}, len(delegateTargets))
+		delegateTargetsRaw := make([]any, len(delegateTargets))
 		for i, v := range delegateTargets {
 			delegateTargetsRaw[i] = v
 		}
 
-		// Resource-Based Constrained Delegation (RBCD)
-		rbcd := len(entry.GetRawAttributeValue("msDS-AllowedToActOnBehalfOfOtherIdentity")) > 0
+		// Resource-Based Constrained Delegation (RBCD). The attribute is a
+		// security descriptor; the principals named in its DACL are the
+		// accounts that can impersonate onto this host.
+		rbcdRaw := entry.GetRawAttributeValue("msDS-AllowedToActOnBehalfOfOtherIdentity")
+		rbcd := len(rbcdRaw) > 0
+		rbcdPrincipals := rbcdPrincipalSIDs(rbcdRaw)
+		rbcdPrincipalsRaw := make([]any, len(rbcdPrincipals))
+		for i, v := range rbcdPrincipals {
+			rbcdPrincipalsRaw[i] = v
+		}
 
 		// Service principal names
 		spns := connection.GetStringSliceAttr(entry, "servicePrincipalName")
-		spnsRaw := make([]interface{}, len(spns))
+		spnsRaw := make([]any, len(spns))
 		for i, v := range spns {
 			spnsRaw[i] = v
 		}
@@ -174,6 +182,7 @@ func (a *mqlActivedirectory) computers() ([]interface{}, error) {
 				"constrainedDelegation":        llx.BoolData(constrainedDelegation),
 				"constrainedDelegationTargets": llx.ArrayData(delegateTargetsRaw, types.String),
 				"rbcd":                         llx.BoolData(rbcd),
+				"rbcdPrincipals":               llx.ArrayData(rbcdPrincipalsRaw, types.String),
 				"servicePrincipalNames":        llx.ArrayData(spnsRaw, types.String),
 				"lapsEnabled":                  llx.BoolData(lapsEnabled),
 				"lapsExpirationTime":           llx.TimeData(lapsExpirationTime),

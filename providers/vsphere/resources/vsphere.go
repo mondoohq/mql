@@ -17,12 +17,12 @@ import (
 	"github.com/vmware/govmomi/vapi/appliance/logging"
 	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25/mo"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/vsphere/connection"
-	"go.mondoo.com/mql/v13/providers/vsphere/resources/resourceclient"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/vsphere/connection"
+	"go.mondoo.com/mql/providers/vsphere/resources/resourceclient"
+	"go.mondoo.com/mql/types"
 )
 
 func getClientInstance(conn *connection.VsphereConnection) *resourceclient.Client {
@@ -71,6 +71,14 @@ func (v *mqlVsphere) advancedSettings() (map[string]any, error) {
 func (v *mqlVsphere) ssoLockoutPolicy() (*mqlVsphereSsoLockoutPolicy, error) {
 	conn := v.MqlRuntime.Connection.(*connection.VsphereConnection)
 	ctx := context.Background()
+
+	// SSO is a vCenter-only service; on a direct ESXi connection there is no
+	// SSO admin endpoint, so degrade to null rather than failing every policy
+	// that touches this field on a mixed fleet.
+	if !conn.Client().IsVC() {
+		v.SsoLockoutPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
 
 	admin, err := conn.SsoAdminClient(ctx)
 	if err != nil {
@@ -196,9 +204,15 @@ func (v *mqlVsphere) roles() ([]any, error) {
 	mqlRoles := make([]any, len(rolesList))
 	for i, r := range rolesList {
 		var label, summary string
-		if d := r.Info.GetDescription(); d != nil {
-			label = d.Label
-			summary = d.Summary
+		// r.Info is a BaseDescription interface with no omitempty tag; an
+		// absent element decodes to a nil interface, and calling a method on
+		// it would panic (and crash the whole scan, since blocks run in
+		// goroutines). Guard the interface before dereferencing it.
+		if r.Info != nil {
+			if d := r.Info.GetDescription(); d != nil {
+				label = d.Label
+				summary = d.Summary
+			}
 		}
 		mqlRole, err := CreateResource(v.MqlRuntime, "vsphere.role", map[string]*llx.RawData{
 			"roleId":     llx.IntData(int64(r.RoleId)),
@@ -314,6 +328,12 @@ func (v *mqlVsphere) folders() ([]any, error) {
 func (v *mqlVsphere) identitySources() ([]any, error) {
 	conn := v.MqlRuntime.Connection.(*connection.VsphereConnection)
 	ctx := context.Background()
+
+	// Identity sources live in vCenter SSO; a direct ESXi connection has none,
+	// so return an empty list rather than erroring the query on a mixed fleet.
+	if !conn.Client().IsVC() {
+		return []any{}, nil
+	}
 
 	admin, err := conn.SsoAdminClient(ctx)
 	if err != nil {

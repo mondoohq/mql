@@ -1,0 +1,574 @@
+{
+  "@context": "https://spdx.org/rdf/3.0.1/spdx-context.jsonld",
+  "@graph": [
+    {
+      "creationInfo": "_:creationinfo",
+      "name": "protobom-v0.6.2",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#tool-1",
+      "type": "Tool"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "name": "cnquery",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#tool-2",
+      "type": "Tool"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "name": "protobom",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#agent-3",
+      "type": "SoftwareAgent"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:apk/alpine/alpine-baselayout@1695795276%3A3.4.3-r2?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1695795276"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:alpine-baselayout:alpine-baselayout:1695795276:aarch64:*:*:*:*:*:*"
+        }
+      ],
+      "name": "alpine-baselayout",
+      "software_packageUrl": "pkg:apk/alpine/alpine-baselayout@1695795276%3A3.4.3-r2?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1695795276",
+      "software_packageVersion": "1695795276:3.4.3-r2",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-alpine-baselayout-51c13aa44c921e81",
+      "type": "software_Package"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "simplelicensing_licenseExpression": "1695795276:3.4.3-r2",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-4",
+      "type": "simplelicensing_LicenseExpression"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-alpine-baselayout-51c13aa44c921e81",
+      "relationshipType": "hasDeclaredLicense",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#relationship-5",
+      "to": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-4"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:apk/alpine/alpine-baselayout-data@1695795276%3A3.4.3-r2?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1695795276"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:alpine-baselayout-data:alpine-baselayout-data:1695795276:aarch64:*:*:*:*:*:*"
+        }
+      ],
+      "name": "alpine-baselayout-data",
+      "software_packageUrl": "pkg:apk/alpine/alpine-baselayout-data@1695795276%3A3.4.3-r2?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1695795276",
+      "software_packageVersion": "1695795276:3.4.3-r2",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-alpine-baselayout-data-23e95330a4e89b91",
+      "type": "software_Package"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-alpine-baselayout-data-23e95330a4e89b91",
+      "relationshipType": "hasDeclaredLicense",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#relationship-6",
+      "to": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-4"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:apk/alpine/alpine-keys@1634579657%3A2.4-r1?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1634579657"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:alpine-keys:alpine-keys:1634579657:aarch64:*:*:*:*:*:*"
+        }
+      ],
+      "name": "alpine-keys",
+      "software_packageUrl": "pkg:apk/alpine/alpine-keys@1634579657%3A2.4-r1?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1634579657",
+      "software_packageVersion": "1634579657:2.4-r1",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-alpine-keys-abf0590fe473c116",
+      "type": "software_Package"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "simplelicensing_licenseExpression": "1634579657:2.4-r1",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-7",
+      "type": "simplelicensing_LicenseExpression"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-alpine-keys-abf0590fe473c116",
+      "relationshipType": "hasDeclaredLicense",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#relationship-8",
+      "to": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-7"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:apk/alpine/apk-tools@1684120357%3A2.14.0-r5?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1684120357"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:apk-tools:apk-tools:1684120357:aarch64:*:*:*:*:*:*"
+        }
+      ],
+      "name": "apk-tools",
+      "software_packageUrl": "pkg:apk/alpine/apk-tools@1684120357%3A2.14.0-r5?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1684120357",
+      "software_packageVersion": "1684120357:2.14.0-r5",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-apk-tools-dc32b5b7683510fd",
+      "type": "software_Package"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "simplelicensing_licenseExpression": "1684120357:2.14.0-r5",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-9",
+      "type": "simplelicensing_LicenseExpression"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-apk-tools-dc32b5b7683510fd",
+      "relationshipType": "hasDeclaredLicense",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#relationship-10",
+      "to": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-9"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:apk/alpine/busybox@1699383189%3A1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1699383189"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:busybox:busybox:1699383189:aarch64:*:*:*:*:*:*"
+        }
+      ],
+      "name": "busybox",
+      "software_packageUrl": "pkg:apk/alpine/busybox@1699383189%3A1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1699383189",
+      "software_packageVersion": "1699383189:1.36.1-r15",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-busybox-af4a95feb3b5bc85",
+      "type": "software_Package"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "simplelicensing_licenseExpression": "1699383189:1.36.1-r15",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-11",
+      "type": "simplelicensing_LicenseExpression"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-busybox-af4a95feb3b5bc85",
+      "relationshipType": "hasDeclaredLicense",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#relationship-12",
+      "to": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-11"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:apk/alpine/busybox-binsh@1699383189%3A1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1699383189"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:busybox-binsh:busybox-binsh:1699383189:aarch64:*:*:*:*:*:*"
+        }
+      ],
+      "name": "busybox-binsh",
+      "software_packageUrl": "pkg:apk/alpine/busybox-binsh@1699383189%3A1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1699383189",
+      "software_packageVersion": "1699383189:1.36.1-r15",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-busybox-binsh-0df62299083009c6",
+      "type": "software_Package"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-busybox-binsh-0df62299083009c6",
+      "relationshipType": "hasDeclaredLicense",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#relationship-13",
+      "to": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-11"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:apk/alpine/ca-certificates-bundle@1683374901%3A20230506-r0?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1683374901"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:ca-certificates-bundle:ca-certificates-bundle:1683374901:aarch64:*:*:*:*:*:*"
+        }
+      ],
+      "name": "ca-certificates-bundle",
+      "software_packageUrl": "pkg:apk/alpine/ca-certificates-bundle@1683374901%3A20230506-r0?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1683374901",
+      "software_packageVersion": "1683374901:20230506-r0",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-ca-certificates-bundle-97bb56312d34deda",
+      "type": "software_Package"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "simplelicensing_licenseExpression": "1683374901:20230506-r0",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-14",
+      "type": "simplelicensing_LicenseExpression"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-ca-certificates-bundle-97bb56312d34deda",
+      "relationshipType": "hasDeclaredLicense",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#relationship-15",
+      "to": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-14"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:apk/alpine/libc-utils@1682166293%3A0.7.2-r5?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1682166293"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:libc-utils:libc-utils:1682166293:aarch64:*:*:*:*:*:*"
+        }
+      ],
+      "name": "libc-utils",
+      "software_packageUrl": "pkg:apk/alpine/libc-utils@1682166293%3A0.7.2-r5?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1682166293",
+      "software_packageVersion": "1682166293:0.7.2-r5",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-libc-utils-b77d26c23f820e39",
+      "type": "software_Package"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "simplelicensing_licenseExpression": "1682166293:0.7.2-r5",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-16",
+      "type": "simplelicensing_LicenseExpression"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-libc-utils-b77d26c23f820e39",
+      "relationshipType": "hasDeclaredLicense",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#relationship-17",
+      "to": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-16"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:apk/alpine/libcrypto3@1706233893%3A3.1.4-r5?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1706233893"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:libcrypto3:libcrypto3:1706233893:aarch64:*:*:*:*:*:*"
+        }
+      ],
+      "name": "libcrypto3",
+      "software_packageUrl": "pkg:apk/alpine/libcrypto3@1706233893%3A3.1.4-r5?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1706233893",
+      "software_packageVersion": "1706233893:3.1.4-r5",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-libcrypto3-47fc06b67af1d981",
+      "type": "software_Package"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "simplelicensing_licenseExpression": "1706233893:3.1.4-r5",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-18",
+      "type": "simplelicensing_LicenseExpression"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-libcrypto3-47fc06b67af1d981",
+      "relationshipType": "hasDeclaredLicense",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#relationship-19",
+      "to": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-18"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:apk/alpine/libssl3@1706233893%3A3.1.4-r5?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1706233893"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:libssl3:libssl3:1706233893:aarch64:*:*:*:*:*:*"
+        }
+      ],
+      "name": "libssl3",
+      "software_packageUrl": "pkg:apk/alpine/libssl3@1706233893%3A3.1.4-r5?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1706233893",
+      "software_packageVersion": "1706233893:3.1.4-r5",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-libssl3-d8236d72fa711797",
+      "type": "software_Package"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-libssl3-d8236d72fa711797",
+      "relationshipType": "hasDeclaredLicense",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#relationship-20",
+      "to": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-18"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:apk/alpine/musl@1699271358%3A1.2.4_git20230717-r4?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1699271358"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:musl:musl:1699271358:aarch64:*:*:*:*:*:*"
+        }
+      ],
+      "name": "musl",
+      "software_packageUrl": "pkg:apk/alpine/musl@1699271358%3A1.2.4_git20230717-r4?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1699271358",
+      "software_packageVersion": "1699271358:1.2.4_git20230717-r4",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-musl-47223a96149c11dd",
+      "type": "software_Package"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "simplelicensing_licenseExpression": "1699271358:1.2.4_git20230717-r4",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-21",
+      "type": "simplelicensing_LicenseExpression"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-musl-47223a96149c11dd",
+      "relationshipType": "hasDeclaredLicense",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#relationship-22",
+      "to": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-21"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:apk/alpine/musl-utils@1699271358%3A1.2.4_git20230717-r4?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1699271358"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:musl-utils:musl-utils:1699271358:aarch64:*:*:*:*:*:*"
+        }
+      ],
+      "name": "musl-utils",
+      "software_packageUrl": "pkg:apk/alpine/musl-utils@1699271358%3A1.2.4_git20230717-r4?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1699271358",
+      "software_packageVersion": "1699271358:1.2.4_git20230717-r4",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-musl-utils-346266ddea0224da",
+      "type": "software_Package"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-musl-utils-346266ddea0224da",
+      "relationshipType": "hasDeclaredLicense",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#relationship-23",
+      "to": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-21"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:apk/alpine/scanelf@1687178519%3A1.3.7-r2?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1687178519"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:scanelf:scanelf:1687178519:aarch64:*:*:*:*:*:*"
+        }
+      ],
+      "name": "scanelf",
+      "software_packageUrl": "pkg:apk/alpine/scanelf@1687178519%3A1.3.7-r2?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1687178519",
+      "software_packageVersion": "1687178519:1.3.7-r2",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-scanelf-be5032dcede8446c",
+      "type": "software_Package"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "simplelicensing_licenseExpression": "1687178519:1.3.7-r2",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-24",
+      "type": "simplelicensing_LicenseExpression"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-scanelf-be5032dcede8446c",
+      "relationshipType": "hasDeclaredLicense",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#relationship-25",
+      "to": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-24"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:apk/alpine/ssl_client@1699383189%3A1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1699383189"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:ssl_client:ssl_client:1699383189:aarch64:*:*:*:*:*:*"
+        }
+      ],
+      "name": "ssl_client",
+      "software_packageUrl": "pkg:apk/alpine/ssl_client@1699383189%3A1.36.1-r15?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1699383189",
+      "software_packageVersion": "1699383189:1.36.1-r15",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-ssl_client-dcf16a36736423ce",
+      "type": "software_Package"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-ssl_client-dcf16a36736423ce",
+      "relationshipType": "hasDeclaredLicense",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#relationship-26",
+      "to": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-11"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "externalIdentifier": [
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "packageUrl",
+          "identifier": "pkg:apk/alpine/zlib@1706012658%3A1.3.1-r0?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1706012658"
+        },
+        {
+          "type": "ExternalIdentifier",
+          "externalIdentifierType": "cpe23",
+          "identifier": "cpe:2.3:a:zlib:zlib:1706012658:aarch64:*:*:*:*:*:*"
+        }
+      ],
+      "name": "zlib",
+      "software_packageUrl": "pkg:apk/alpine/zlib@1706012658%3A1.3.1-r0?arch=aarch64\u0026distro=alpine-3.19.1\u0026epoch=1706012658",
+      "software_packageVersion": "1706012658:1.3.1-r0",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-zlib-0b75dfc93a706cf0",
+      "type": "software_Package"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "simplelicensing_licenseExpression": "1706012658:1.3.1-r0",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-27",
+      "type": "simplelicensing_LicenseExpression"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#Package-apk-zlib-0b75dfc93a706cf0",
+      "relationshipType": "hasDeclaredLicense",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#relationship-28",
+      "to": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#license-27"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#sbom-29",
+      "type": "software_Sbom"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "profileConformance": [
+        "core",
+        "software",
+        "simpleLicensing"
+      ],
+      "rootElement": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#sbom-29"
+      ],
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26",
+      "type": "SpdxDocument"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "from": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26",
+      "relationshipType": "describes",
+      "spdxId": "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#relationship-30",
+      "to": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#sbom-29"
+      ],
+      "type": "Relationship"
+    },
+    {
+      "@id": "_:creationinfo",
+      "created": "2024-05-12T09:02:22Z",
+      "createdBy": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#agent-3"
+      ],
+      "createdUsing": [
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#tool-1",
+        "https://spdx.org/spdxdocs/protobom-a4b44224-88e8-4dfd-82ef-32476a4a0e26#tool-2"
+      ],
+      "specVersion": "3.0.1",
+      "type": "CreationInfo"
+    }
+  ]
+}

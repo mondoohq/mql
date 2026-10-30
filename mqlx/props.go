@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/types"
 )
 
 // ToPrimitive converts a Go value into an MQL primitive. Supported types:

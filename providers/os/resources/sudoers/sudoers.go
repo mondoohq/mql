@@ -5,6 +5,7 @@ package sudoers
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -18,8 +19,10 @@ var (
 	// IncludedirRegex matches @includedir and #includedir directives (sudo 1.9.1+)
 	IncludedirRegex = regexp.MustCompile(`^[@#]includedir\s+(.+)$`)
 	// TagRegex matches sudo tags (NOPASSWD, SETENV, etc.)
-	TagRegex = regexp.MustCompile(`\b(NOPASSWD|PASSWD|NOEXEC|EXEC|SETENV|NOSETENV|LOG_INPUT|NOLOG_INPUT|LOG_OUTPUT|NOLOG_OUTPUT|MAIL|NOMAIL|FOLLOW|NOFOLLOW|INTERCEPT|NOINTERCEPT)\s*:\s*`)
+	TagRegex = regexp.MustCompile(`\b(` + tagNames + `)\s*:\s*`)
 )
+
+const tagNames = `NOPASSWD|PASSWD|NOEXEC|EXEC|SETENV|NOSETENV|LOG_INPUT|NOLOG_INPUT|LOG_OUTPUT|NOLOG_OUTPUT|MAIL|NOMAIL|FOLLOW|NOFOLLOW|INTERCEPT|NOINTERCEPT`
 
 // UserSpec represents a user specification entry in sudoers
 type UserSpec struct {
@@ -33,10 +36,14 @@ type UserSpec struct {
 	Commands    []string
 }
 
-// Default represents a Defaults entry in sudoers
+// Default represents one setting of a Defaults line in sudoers. A line that
+// sets several parameters (`Defaults env_reset, timestamp_timeout=15`) yields
+// one Default per parameter; they share File, LineNumber and Raw, and Index is
+// the setting's position in the line's list.
 type Default struct {
 	File       string
 	LineNumber int
+	Index      int
 	Raw        string
 	Scope      string
 	Target     string
@@ -83,9 +90,9 @@ func ParseUserSpecs(filePath string, content string) []UserSpec {
 			continuedLine = ""
 		}
 
-		// Skip empty lines and comments
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
+		// Skip empty lines and comments, including one after an entry
+		line = StripComment(line)
+		if line == "" {
 			continue
 		}
 
@@ -143,9 +150,9 @@ func ParseDefaults(filePath string, content string) []Default {
 			continuedLine = ""
 		}
 
-		// Skip empty lines and comments
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
+		// Skip empty lines and comments, including one after an entry
+		line = StripComment(line)
+		if line == "" {
 			continue
 		}
 
@@ -154,20 +161,22 @@ func ParseDefaults(filePath string, content string) []Default {
 			continue
 		}
 
-		// Parse the Defaults line
-		scope, target, parameter, value, operation, negated := ParseDefaultsLine(line)
-
-		defaults = append(defaults, Default{
-			File:       filePath,
-			LineNumber: actualLineNum,
-			Raw:        line,
-			Scope:      scope,
-			Target:     target,
-			Parameter:  parameter,
-			Value:      value,
-			Operation:  operation,
-			Negated:    negated,
-		})
+		// One Defaults line sets every item of its comma-separated list
+		scope, target, settings := ParseDefaultsEntries(line)
+		for i, setting := range settings {
+			defaults = append(defaults, Default{
+				File:       filePath,
+				LineNumber: actualLineNum,
+				Index:      i,
+				Raw:        line,
+				Scope:      scope,
+				Target:     target,
+				Parameter:  setting.Parameter,
+				Value:      setting.Value,
+				Operation:  setting.Operation,
+				Negated:    setting.Negated,
+			})
+		}
 	}
 
 	return defaults
@@ -201,9 +210,9 @@ func ParseAliases(filePath string, content string) []Alias {
 			continuedLine = ""
 		}
 
-		// Skip empty lines and comments
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
+		// Skip empty lines and comments, including one after an entry
+		line = StripComment(line)
+		if line == "" {
 			continue
 		}
 
@@ -235,11 +244,46 @@ func ParseAliases(filePath string, content string) []Alias {
 	return aliases
 }
 
-// ParseDefaultsLine parses a Defaults line and extracts its components
+// DefaultSetting is one item of a Defaults line's parameter list.
+type DefaultSetting struct {
+	Parameter string
+	Value     string
+	// Operation is "=", "+=", "-=", or "" for a flag.
+	Operation string
+	Negated   bool
+}
+
+// ParseDefaultsLine parses a Defaults line and returns the components of its
+// first setting. Use ParseDefaultsEntries to read every setting of the line.
 // Returns: scope, target, parameter, value, operation, negated
 func ParseDefaultsLine(line string) (string, string, string, string, string, bool) {
-	// Strip "Defaults" prefix
-	line = strings.TrimSpace(strings.TrimPrefix(line, "Defaults"))
+	scope, target, settings := ParseDefaultsEntries(line)
+	if len(settings) == 0 {
+		return scope, target, "", "", "", false
+	}
+	first := settings[0]
+	return scope, target, first.Parameter, first.Value, first.Operation, first.Negated
+}
+
+// ParseDefaultsEntries parses a Defaults line as sudoers(5) defines it:
+//
+//	Default_Entry ::= Default_Type Parameter_List
+//	Default_Type  ::= 'Defaults' | 'Defaults' '@' Host_List |
+//	                  'Defaults' ':' User_List | 'Defaults' '!' Cmnd_List |
+//	                  'Defaults' '>' Runas_List
+//	Parameter_List ::= Parameter | Parameter ',' Parameter_List
+//	Parameter     ::= Parameter '=' Value | Parameter '+=' Value |
+//	                  Parameter '-=' Value | '!'* Parameter
+//
+// It returns the scope (global, user, host, command or runas), the scope's
+// target list as written ("alice,bob"), and one DefaultSetting per item of
+// the parameter list. Commas inside a double-quoted value or escaped with a
+// backslash belong to the value.
+func ParseDefaultsEntries(line string) (string, string, []DefaultSetting) {
+	// Strip "Defaults" prefix. A scope specifier follows it directly
+	// ("Defaults!/usr/bin/su"); after whitespace, "!" negates a global
+	// parameter ("Defaults !authenticate").
+	line = strings.TrimPrefix(line, "Defaults")
 
 	scope := "global"
 	target := ""
@@ -249,80 +293,147 @@ func ParseDefaultsLine(line string) (string, string, string, string, string, boo
 		switch line[0] {
 		case ':': // User-specific
 			scope = "user"
-			parts := strings.SplitN(line[1:], " ", 2)
-			target = parts[0]
-			if len(parts) > 1 {
-				line = parts[1]
-			} else {
-				line = ""
-			}
 		case '@': // Host-specific
 			scope = "host"
-			parts := strings.SplitN(line[1:], " ", 2)
-			target = parts[0]
-			if len(parts) > 1 {
-				line = parts[1]
-			} else {
-				line = ""
-			}
 		case '>': // Runas-specific
 			scope = "runas"
-			parts := strings.SplitN(line[1:], " ", 2)
-			target = parts[0]
-			if len(parts) > 1 {
-				line = parts[1]
-			} else {
-				line = ""
-			}
 		case '!': // Command-specific
 			scope = "command"
-			parts := strings.SplitN(line[1:], " ", 2)
-			target = parts[0]
-			if len(parts) > 1 {
-				line = parts[1]
-			} else {
-				line = ""
-			}
+		}
+		if scope != "global" {
+			target, line = splitDefaultsTarget(line[1:])
 		}
 	}
 
-	line = strings.TrimSpace(line)
+	var settings []DefaultSetting
+	for _, item := range splitDefaultsList(line) {
+		if setting, ok := parseDefaultSetting(item); ok {
+			settings = append(settings, setting)
+		}
+	}
+	return scope, target, settings
+}
 
-	// Check for negation
-	negated := false
-	if strings.HasPrefix(line, "!") {
-		negated = true
-		line = strings.TrimPrefix(line, "!")
+// splitDefaultsTarget splits the target list of a scoped Defaults line from
+// its parameter list. The list ends at the first whitespace that is not next
+// to a comma, so "alice, bob !lecture" has the target "alice,bob".
+func splitDefaultsTarget(s string) (string, string) {
+	var items []string
+	rest := s
+	for {
+		item, after := splitOnWhitespace(rest)
+		after = strings.TrimLeft(after, " \t")
+		// "alice ,bob": the comma starts the remainder
+		for strings.HasPrefix(after, ",") {
+			item += ","
+			after = strings.TrimLeft(after[1:], " \t")
+		}
+		items = append(items, item)
+		rest = after
+		if !strings.HasSuffix(item, ",") || rest == "" {
+			break
+		}
+	}
+	return strings.Join(items, ""), rest
+}
+
+// splitDefaultsList splits a Defaults parameter list on the commas that
+// separate its items. A comma inside double quotes or escaped with a
+// backslash is part of a value.
+func splitDefaultsList(s string) []string {
+	var items []string
+	var cur strings.Builder
+	inQuote := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '\\' && i+1 < len(s):
+			cur.WriteByte(c)
+			cur.WriteByte(s[i+1])
+			i++
+		case c == '"':
+			inQuote = !inQuote
+			cur.WriteByte(c)
+		case c == ',' && !inQuote:
+			items = append(items, cur.String())
+			cur.Reset()
+		default:
+			cur.WriteByte(c)
+		}
+	}
+	items = append(items, cur.String())
+
+	res := items[:0]
+	for _, item := range items {
+		if item = strings.TrimSpace(item); item != "" {
+			res = append(res, item)
+		}
+	}
+	return res
+}
+
+// parseDefaultSetting parses one item of a Defaults parameter list:
+// `flag`, `!flag`, `name=value`, `name+=value` or `name-=value`, with
+// optional whitespace around the operator.
+func parseDefaultSetting(item string) (DefaultSetting, bool) {
+	var res DefaultSetting
+
+	// sudo accepts repeated negation; each '!' toggles it
+	for strings.HasPrefix(item, "!") {
+		res.Negated = !res.Negated
+		item = strings.TrimLeft(item[1:], " \t")
 	}
 
-	// Parse parameter[operator]value
-	parameter := ""
-	value := ""
-	operation := ""
-
-	// Check for operators: =, +=, -=
-	if idx := strings.Index(line, "+="); idx != -1 {
-		parameter = strings.TrimSpace(line[:idx])
-		value = strings.TrimSpace(line[idx+2:])
-		operation = "+="
-	} else if idx := strings.Index(line, "-="); idx != -1 {
-		parameter = strings.TrimSpace(line[:idx])
-		value = strings.TrimSpace(line[idx+2:])
-		operation = "-="
-	} else if idx := strings.Index(line, "="); idx != -1 {
-		parameter = strings.TrimSpace(line[:idx])
-		value = strings.TrimSpace(line[idx+1:])
-		operation = "="
+	// The parameter name ends at the operator. Names are letters, digits and
+	// underscores, so the first '=' (with an optional '+' or '-' before it)
+	// is the operator, and an '=' in the value stays in the value.
+	if idx := strings.IndexByte(item, '='); idx != -1 {
+		name := item[:idx]
+		res.Operation = "="
+		if strings.HasSuffix(name, "+") {
+			res.Operation = "+="
+			name = name[:len(name)-1]
+		} else if strings.HasSuffix(name, "-") {
+			res.Operation = "-="
+			name = name[:len(name)-1]
+		}
+		res.Parameter = strings.TrimSpace(name)
+		res.Value = unquoteDefaultValue(strings.TrimSpace(item[idx+1:]))
 	} else {
-		// No operator, just a parameter (boolean flag)
-		parameter = strings.TrimSpace(line)
-		operation = ""
+		res.Parameter = strings.TrimSpace(item)
 	}
 
-	// Remove quotes from value if present
-	value = strings.Trim(value, "\"")
+	return res, res.Parameter != ""
+}
 
-	return scope, target, parameter, value, operation, negated
+// unquoteDefaultValue removes the double quotes around a value and the
+// backslashes that escape a character in it ("a\,b" is "a,b").
+func unquoteDefaultValue(v string) string {
+	if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+		v = v[1 : len(v)-1]
+	}
+	if !strings.Contains(v, "\\") {
+		return v
+	}
+	var b strings.Builder
+	for i := 0; i < len(v); i++ {
+		if v[i] == '\\' && i+1 < len(v) {
+			i++
+		}
+		b.WriteByte(v[i])
+	}
+	return b.String()
+}
+
+// splitOnWhitespace splits s at the first space or tab and returns the leading
+// token plus the remainder with its leading whitespace removed. Sudoers accepts
+// either separator between a scoped Defaults target and its parameter.
+func splitOnWhitespace(s string) (string, string) {
+	idx := strings.IndexAny(s, " \t")
+	if idx == -1 {
+		return s, ""
+	}
+	return s[:idx], strings.TrimLeft(s[idx:], " \t")
 }
 
 // parsedLine represents a parsed line from a sudoers file (internal use)
@@ -338,8 +449,9 @@ type parsedLine struct {
 
 // parseLine parses a single line from a sudoers file
 func parseLine(line string) *parsedLine {
-	// Filter out comments
-	if strings.HasPrefix(line, "#") {
+	// Filter out comments; #1000 is a numeric uid, not a comment
+	line = StripComment(line)
+	if line == "" {
 		return nil
 	}
 
@@ -375,56 +487,27 @@ func parseLine(line string) *parsedLine {
 		entryType: "user_spec",
 	}
 
-	// First, extract runas specification from the line before splitting
-	// This is important because the host can be followed directly by =(...)
-	runasStart := strings.Index(line, "=(")
-	var remaining string
-	var beforeRunas string
-
-	if runasStart != -1 {
-		runasEnd := strings.Index(line[runasStart:], ")")
-		if runasEnd != -1 {
-			runasEnd += runasStart
-			runasSpec := line[runasStart+2 : runasEnd]
-
-			// Parse runas users and groups
-			if strings.Contains(runasSpec, ":") {
-				runasParts := strings.SplitN(runasSpec, ":", 2)
-				result.runasUsers = splitAndTrim(runasParts[0], ",")
-				result.runasGroups = splitAndTrim(runasParts[1], ",")
-			} else {
-				result.runasUsers = splitAndTrim(runasSpec, ",")
-			}
-
-			// Split line into parts: before runas, and after runas
-			beforeRunas = strings.TrimSpace(line[:runasStart])
-			remaining = strings.TrimSpace(line[runasEnd+1:])
-		}
-	} else {
-		// No runas specification. The first `=` separates the "user host"
-		// portion from the command spec, and whitespace around it is optional
-		// (e.g. `root ALL=ALL` or `bob ALL=/bin/ls`). Splitting on whitespace
-		// alone misreads (or drops) these specs, so split on `=` here and
-		// reuse the shared user/host logic below — analogous to how the runas
-		// branch splits around `=(...)`.
-		eq := strings.Index(line, "=")
-		if eq == -1 {
-			return nil
-		}
-		beforeRunas = strings.TrimSpace(line[:eq])
-		remaining = strings.TrimSpace(line[eq+1:])
+	// The first `=` separates the "user host" portion from the command
+	// specification. Whitespace around it is optional, so both
+	// `bob ALL=(root) /bin/ls` and `bob ALL = (root) /bin/ls` are valid; the
+	// user and host lists never contain an `=`.
+	eq := strings.Index(line, "=")
+	if eq == -1 {
+		return nil
 	}
+	userHost := strings.TrimSpace(line[:eq])
+	remaining := strings.TrimSpace(line[eq+1:])
 
-	// For lines with runas, split beforeRunas to get user and host
-	tokens := smartSplit(beforeRunas)
+	// Split the "user host" portion into the user and host lists
+	tokens := smartSplit(userHost)
 	if len(tokens) < 2 {
 		return nil
 	}
 
 	// Find the boundary between user list and host list
 	var userEndIndex int
-	for i := len(tokens) - 1; i >= 0; i-- {
-		token := strings.TrimSpace(tokens[i])
+	for i, token := range slices.Backward(tokens) {
+		token := strings.TrimSpace(token)
 		if strings.HasSuffix(token, ",") {
 			continue
 		}
@@ -459,26 +542,114 @@ func parseLine(line string) *parsedLine {
 	return result
 }
 
-// extractTagsAndCommands extracts tags and commands from a sudoers line
-func extractTagsAndCommands(result *parsedLine, remaining string) {
-	for {
-		match := TagRegex.FindStringIndex(remaining)
-		if match == nil {
-			break
-		}
-		tag := strings.TrimSpace(remaining[match[0]:match[1]])
-		tag = strings.TrimSuffix(tag, ":")
-		result.tags = append(result.tags, strings.TrimSpace(tag))
-		remaining = remaining[match[1]:]
-	}
+// tagPrefixRegex matches one tag at the start of a command spec.
+var tagPrefixRegex = regexp.MustCompile(`^(` + tagNames + `)\s*:\s*`)
 
-	// Remaining part is the command specification
-	if remaining != "" {
-		result.commands = SplitCommands(remaining)
+// extractTagsAndCommands parses the comma-separated Cmnd_Spec list after the
+// `=` of a user specification. Each item may start with its own runas spec
+// and tags, which apply to that command and the ones after it:
+//
+//	(ALL:ALL) NOPASSWD: /bin/date, PASSWD: /bin/hostname, (operator) /bin/ls
+//
+// The list is split on unquoted commas first, so a tag or runas spec in a
+// later item never swallows the commands before it. Runas users, groups and
+// tags from all items are collected in order of appearance, without
+// duplicates.
+func extractTagsAndCommands(result *parsedLine, remaining string) {
+	for _, item := range splitCmndSpecs(remaining) {
+		for {
+			item = strings.TrimSpace(item)
+			if strings.HasPrefix(item, "(") {
+				end := strings.Index(item, ")")
+				if end == -1 {
+					break
+				}
+				users, groups := parseRunasSpec(item[1:end])
+				if result.runasUsers == nil {
+					result.runasUsers = users
+					result.runasGroups = groups
+				} else {
+					result.runasUsers = appendUnique(result.runasUsers, users...)
+					result.runasGroups = appendUnique(result.runasGroups, groups...)
+				}
+				item = item[end+1:]
+				continue
+			}
+			m := tagPrefixRegex.FindStringSubmatchIndex(item)
+			if m == nil {
+				break
+			}
+			result.tags = appendUnique(result.tags, item[m[2]:m[3]])
+			item = item[m[1]:]
+		}
+		if item != "" {
+			result.commands = append(result.commands, item)
+		}
 	}
 }
 
-// smartSplit splits a string by whitespace but respects quoted strings
+// parseRunasSpec parses the inside of a `(users:groups)` runas spec. Without a
+// colon only users are given and groups stay nil.
+func parseRunasSpec(spec string) ([]string, []string) {
+	if users, groups, ok := strings.Cut(spec, ":"); ok {
+		return splitAndTrim(users, ","), splitAndTrim(groups, ",")
+	}
+	return splitAndTrim(spec, ","), nil
+}
+
+func appendUnique(list []string, items ...string) []string {
+	for _, item := range items {
+		if !slices.Contains(list, item) {
+			list = append(list, item)
+		}
+	}
+	return list
+}
+
+// splitCmndSpecs splits a Cmnd_Spec list on commas that are not quoted,
+// escaped, or inside a leading runas spec such as `(root, daemon)`.
+func splitCmndSpecs(s string) []string {
+	var items []string
+	var current strings.Builder
+	inQuote := false
+	inRunas := false
+	escaped := false
+
+	for _, ch := range s {
+		if escaped {
+			current.WriteRune(ch)
+			escaped = false
+			continue
+		}
+
+		switch {
+		case ch == '\\':
+			escaped = true
+		case ch == '"':
+			inQuote = !inQuote
+		case ch == '(' && !inQuote && strings.TrimSpace(current.String()) == "":
+			inRunas = true
+		case ch == ')' && inRunas:
+			inRunas = false
+		case ch == ',' && !inQuote && !inRunas:
+			if item := strings.TrimSpace(current.String()); item != "" {
+				items = append(items, item)
+			}
+			current.Reset()
+			continue
+		}
+		current.WriteRune(ch)
+	}
+
+	if item := strings.TrimSpace(current.String()); item != "" {
+		items = append(items, item)
+	}
+	return items
+}
+
+// smartSplit splits a string on runs of spaces or tabs but respects quoted
+// strings. Distribution-shipped sudoers files separate the user, host and
+// command fields with tabs, so splitting on spaces alone drops every rule.
 func smartSplit(s string) []string {
 	var parts []string
 	var current strings.Builder
@@ -504,7 +675,7 @@ func smartSplit(s string) []string {
 			continue
 		}
 
-		if ch == ' ' && !inQuote {
+		if (ch == ' ' || ch == '\t') && !inQuote {
 			if current.Len() > 0 {
 				parts = append(parts, current.String())
 				current.Reset()

@@ -8,12 +8,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"path"
 	"strings"
 	"text/scanner"
 	"unicode/utf8"
 
 	"github.com/alecthomas/participle"
 	"github.com/alecthomas/participle/lexer"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/types"
 )
 
 // Int number type
@@ -70,17 +74,65 @@ type Alias struct {
 	Type       SimpleType `'=' @@`
 }
 
+// Import is a single `import` statement. Three forms are accepted (ADR 042):
+//
+//	import network                                          // by name
+//	import nw1 from "go.mondoo.com/mql/providers/network"    // aliased, by provider ID
+//	import "../../network/resources/network.lr"              // legacy, by path
+//
+// The name form is canonical. The peer is found by name under the providers
+// root, so the import no longer has to spell out a filesystem path that only
+// ever got reduced back to that name. The aliased form binds a different local
+// namespace, for the day two peers share a name; the provider ID it names is
+// cross-checked against the peer's own `option provider`.
+//
+// nolint: govet
+type Import struct {
+	Path string `"import" ( @String`
+	Name string `          | @Ident`
+	From string `            [ "from" @(String | Char) ] )`
+}
+
+// PackName is the namespace this import binds inside the importing file, i.e.
+// the `network` in `[]network.certificate`.
+func (i *Import) PackName() string {
+	if i.Name != "" {
+		return i.Name
+	}
+	return strings.TrimSuffix(path.Base(i.Path), ".lr")
+}
+
+// PeerName is the provider this import resolves to. It differs from PackName
+// only in the aliased form, where the local namespace is the alias and the peer
+// is the last segment of the declared provider ID.
+func (i *Import) PeerName() string {
+	if i.From != "" {
+		return path.Base(i.From)
+	}
+	return i.PackName()
+}
+
 // LR are MQL resources parsed into an AST
 // nolint: govet
 type LR struct {
 	Comments  []CommentToken `{ @@ }`
-	Imports   []string       `{ "import" @String }`
+	Imports   []*Import      `{ @@ }`
 	Options   Map            `{ "option" @(Ident '=' String) }`
 	Aliases   []Alias        `{ "alias" @@ }`
 	Resources []*Resource    `{ @@ }`
 	imports   map[string]map[string]struct{}
-	packPaths map[string]string
-	aliases   map[string]*Resource
+	// importedMembers maps a peer provider's resource id to the members it
+	// exposes, embeds expanded. It is what lets a `@replaced_by` point at
+	// another provider's resource - `asset.version` on any rooted provider -
+	// and still be checked rather than taken on trust.
+	importedMembers map[string]map[string]struct{}
+	packPaths       map[string]string
+	// packProviders maps an import's pack name to the provider ID that import
+	// declares via `option provider`. This is the peer's *runtime* identity and
+	// is what Schema.Dependencies must record; packPaths holds its Go package
+	// path, which is a build-time concern and not interchangeable.
+	packProviders map[string]string
+	aliases       map[string]*Resource
 }
 
 // Resource in LR
@@ -93,6 +145,9 @@ type Resource struct {
 	Defaults    string         ` ( '@' "defaults" '(' @String ')' )? `
 	Context     string         ` ( '@' "context" '(' @String ')' )? `
 	Maturity    string         ` ( '@' "maturity" '(' @String ')' )? `
+	ReplacedBy  string         ` ( '@' "replaced_by" '(' @String ')' )? `
+	IsGlobal    bool           ` ( '@' @"global" )? `
+	IsRoot      bool           ` ( '@' @"root" )? `
 	ListType    *SimplListType `[ '{' [ @@ ]`
 	Body        *ResourceDef   `@@ '}' ]`
 	title       string
@@ -144,6 +199,12 @@ type MapType struct {
 // nolint: govet
 type SimpleType struct {
 	Type string `@Ident { @'.' @Ident }`
+	// Root is the type parameter of an `asset<root>` type: the resource that
+	// roots the referenced asset's tree, i.e. what may be chained off the
+	// value. It is a forward reference, so the named resource does not have to
+	// exist in this schema (or in any schema present at build time). Only
+	// `asset` accepts it; see validateTypeParameters. See ADR 031.
+	Root string `[ '<' @Ident { @'.' @Ident } '>' ]`
 }
 
 // ResourceDef carrying the definition of the resource
@@ -181,6 +242,7 @@ type BasicField struct {
 	ID         string     `@Ident?`
 	Args       *FieldArgs `[ '(' @@ ')' ]`
 	Maturity   string     ` ( '@' "maturity" '(' @String ')' )? `
+	ReplacedBy string     ` ( '@' "replaced_by" '(' @String ')' )? `
 	Type       Type       `[ @@ ]`
 	isEmbedded bool
 }
@@ -276,12 +338,72 @@ func extractTitleAndDescription(raw []CommentToken) (string, string) {
 	if len(rest) > 0 && rest[0].Text == "" {
 		rest = rest[1:]
 	}
-	parts := make([]string, len(rest))
+	lines := make([]string, len(rest))
 	for i, c := range rest {
-		parts[i] = c.Text
+		lines[i] = c.Text
 	}
-	desc := strings.Join(parts, " ")
-	return title, desc
+	return title, reflowDescription(lines)
+}
+
+// reflowDescription joins description comment lines into markdown. Lines
+// wrapped to fit the source are prose and join with a space, since renderers
+// may show a bare newline as a line break. Blank lines stay paragraph breaks,
+// and markdown block lines (table rows, list items, headings, fenced code)
+// keep their own line.
+func reflowDescription(lines []string) string {
+	var sb strings.Builder
+	inFence := false
+	prevBlock, prevItem := false, false
+	for i, line := range lines {
+		fence := strings.HasPrefix(line, "```")
+		item := !inFence && isMarkdownListItem(line, i == 0 || lines[i-1] == "" || prevItem)
+		block := inFence || fence || item || isMarkdownTableOrHeading(line)
+		switch {
+		case i == 0:
+		case inFence || fence:
+			sb.WriteString("\n")
+		case line == "" || lines[i-1] == "":
+			sb.WriteString("\n")
+		case block || (prevBlock && !prevItem):
+			sb.WriteString("\n")
+		default:
+			// Prose, including the wrapped continuation of a list item.
+			sb.WriteString(" ")
+		}
+		sb.WriteString(line)
+		if fence {
+			inFence = !inFence
+		}
+		prevBlock = block
+		// A list item's wrapped continuation lines still belong to it.
+		prevItem = item || (prevItem && line != "" && !block)
+	}
+	return sb.String()
+}
+
+// isMarkdownTableOrHeading reports whether a line is a table row or a heading,
+// which keep their own line.
+func isMarkdownTableOrHeading(line string) bool {
+	return strings.HasPrefix(line, "|") ||
+		(strings.HasPrefix(line, "#") && strings.HasPrefix(strings.TrimLeft(line, "#"), " "))
+}
+
+// isMarkdownListItem reports whether a line is a bullet or numbered list item.
+// As in CommonMark, a numbered item only interrupts prose when numbered 1, so
+// a sentence wrapped before "256. 0 when" stays prose. inList is set after a
+// blank line or another list item, where any number starts an item.
+func isMarkdownListItem(line string, inList bool) bool {
+	if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") || strings.HasPrefix(line, "+ ") {
+		return true
+	}
+	digits := 0
+	for digits < len(line) && line[digits] >= '0' && line[digits] <= '9' {
+		digits++
+	}
+	if digits == 0 || !strings.HasPrefix(line[digits:], ". ") {
+		return false
+	}
+	return inList || line[:digits] == "1"
 }
 
 // MaxTitleLength caps the rune count of a doc-comment title line. Titles
@@ -447,7 +569,7 @@ func Parse(input string) (*LR, error) {
 			field := &BasicField{
 				ID:   "list",
 				Args: args,
-				Type: Type{ListType: &ListType{Type: Type{SimpleType: &SimpleType{t}}}},
+				Type: Type{ListType: &ListType{Type: Type{SimpleType: &SimpleType{Type: t}}}},
 			}
 
 			resource.Body.Fields = append(resource.Body.Fields, &Field{BasicField: field})
@@ -494,7 +616,7 @@ func Parse(input string) (*LR, error) {
 				Comments: f.Comments,
 				BasicField: &BasicField{
 					ID:         name,
-					Type:       Type{SimpleType: &SimpleType{f.Embeddable.Type}},
+					Type:       Type{SimpleType: &SimpleType{Type: f.Embeddable.Type}},
 					Args:       &FieldArgs{},
 					isEmbedded: true,
 				},
@@ -511,17 +633,418 @@ func Parse(input string) (*LR, error) {
 				BasicField: &BasicField{
 					ID:         CONTEXT_FIELD,
 					Args:       &FieldArgs{},
-					Type:       Type{SimpleType: &SimpleType{resource.Context}},
+					Type:       Type{SimpleType: &SimpleType{Type: resource.Context}},
 					isEmbedded: false,
 				},
 			})
 		}
 	}
 
+	validationErrs = append(validationErrs, res.validateTypeParameters()...)
+	validationErrs = append(validationErrs, res.validateAliases()...)
+	validationErrs = append(validationErrs, res.validateEmbedAmbiguity()...)
+	validationErrs = append(validationErrs, res.validateRootMembers()...)
+	validationErrs = append(validationErrs, res.validateFieldShadowing()...)
+
 	if len(validationErrs) > 0 {
 		return res, errors.Join(append([]error{err}, validationErrs...)...)
 	}
 	return res, err
+}
+
+// validateTypeParameters rejects a `<root>` parameter on any type but `asset`.
+// The grammar accepts it anywhere a type appears, because participle has no way
+// to make the group conditional on the type name; without this check
+// `name<mcp> string` would parse and then silently drop the parameter.
+func (lr *LR) validateTypeParameters() []error {
+	var errs []error
+
+	var check func(context string, t *Type)
+	check = func(context string, t *Type) {
+		if t == nil {
+			return
+		}
+		switch {
+		case t.SimpleType != nil:
+			if t.SimpleType.Root != "" && t.SimpleType.Type != "asset" {
+				errs = append(errs, errors.New(context+": only `asset` takes a type parameter, got `"+
+					t.SimpleType.Type+"<"+t.SimpleType.Root+">`"))
+			}
+		case t.ListType != nil:
+			// a list of assets is legal: []asset<mcp>
+			check(context, &t.ListType.Type)
+		case t.MapType != nil:
+			if t.MapType.Key.Root != "" {
+				errs = append(errs, errors.New(context+": map keys take no type parameter"))
+			}
+			check(context, &t.MapType.Value)
+		}
+	}
+
+	for _, resource := range lr.Resources {
+		if resource.Body == nil {
+			continue
+		}
+		for _, field := range resource.Body.Fields {
+			if field.BasicField == nil {
+				continue
+			}
+			t := field.BasicField.Type
+			check("resource "+resource.ID+", field "+field.BasicField.ID, &t)
+		}
+	}
+	return errs
+}
+
+// validateAliases rejects an alias name that would silently replace something.
+//
+// Both the AST's alias map (`resolve.go`) and the schema's resource map
+// (`schema.go`) are keyed by the alias name and assigned without a presence
+// check, so a repeated name overwrites the earlier entry and a name that
+// collides with a declared resource overwrites the resource. Neither says
+// anything at build time, and the result is a resource that resolves to
+// something other than what the schema reads like. That matters most where
+// aliases are generated in bulk, e.g. attaching a provider's surface to its
+// asset roots (ADR 031).
+func (lr *LR) validateAliases() []error {
+	var errs []error
+
+	declared := map[string]bool{}
+	for _, r := range lr.Resources {
+		if r != nil {
+			declared[r.ID] = true
+		}
+	}
+
+	seen := map[string]bool{}
+	for _, a := range lr.Aliases {
+		name := a.Definition.Type
+		if seen[name] {
+			errs = append(errs, errors.New("alias "+name+" is declared more than once; "+
+				"the later one silently replaces the earlier"))
+			continue
+		}
+		seen[name] = true
+
+		if declared[name] {
+			errs = append(errs, errors.New("alias "+name+" has the same name as a resource; "+
+				"the alias silently replaces it"))
+		}
+	}
+	return errs
+}
+
+// typeName is the declared type of a field as written, with a list unwrapped so
+// `[]x.y` and `x.y` both report `x.y`. Map and anonymous types report "".
+func (t *Type) typeName() string {
+	switch {
+	case t == nil:
+		return ""
+	case t.SimpleType != nil:
+		return t.SimpleType.Type
+	case t.ListType != nil:
+		return t.ListType.Type.typeName()
+	default:
+		return ""
+	}
+}
+
+// validateFieldShadowing rejects a resource or alias whose name occupies the
+// path of a field declared on its parent, which makes that field unreachable.
+//
+// mqlc resolves a dotted path by taking the longest matching resource name, and
+// that match wins unconditionally over a field on a shorter one
+// (compileResource). So declaring `x.y.z` as a resource while `x.y` declares a
+// field `z` means `x.y.z` builds the bare resource and the field read never
+// happens. There is no resolution rule that could serve both readings: whichever
+// one wins, the other is unreachable by that path. The ambiguity is created in
+// the schema, so the schema is where it has to be refused.
+//
+// Nothing downstream reports it. The field survives into the schema intact
+// (buildResourceChain only synthesizes an implicit field when none is declared),
+// the path compiles, and a comparison against the bare resource runs and
+// answers. A policy author gets a confident wrong verdict with no signal at
+// author time, lint time or scan time. For a deprecated field it is worse still:
+// `@replaced_by` promises the old path keeps working until removal, and naming
+// the replacement after the path it replaces revokes that promise in the same
+// release that made it.
+//
+// The one shape that is not a collision is a field whose own type IS what the
+// name denotes - `ssh() vsphere.host.ssh` beside `private vsphere.host.ssh`.
+// Both readings mean the same thing, so nothing is unreachable, and for a
+// private target mqlc.prefersFieldOverResource routes the path through the
+// accessor so the fields are actually filled. That is the dominant idiom in the
+// tree (~490 uses) and stays allowed; goBuilder.checkOwnerFilledResourcesArePrivate
+// is what keeps the public half of it honest.
+//
+// Aliases count. `alias x.y.z = t` puts `x.y.z` into the same resource map a
+// declaration would, so it shadows a field `z` on `x.y` exactly as a resource
+// does. validateAliases only compares an alias against other aliases and
+// against resources, so nothing else would catch it, and the day someone adds
+// an alias next to a field of that name the defect this check exists for comes
+// straight back.
+//
+// Scope is one file, which is what Parse sees. A field and a resource
+// contributed to the same path by two different providers slip through; that
+// needs the merged schema, and no provider can be pointed at as the one at
+// fault.
+func (lr *LR) validateFieldShadowing() []error {
+	// What each name in the resource namespace denotes. A resource denotes
+	// itself; an alias denotes the resource it points at. Both land in the
+	// schema's resource map (see Alias), so both win a dotted path over a field
+	// of the same name, and both have to be checked.
+	type declaredName struct {
+		kind    string // "resource" or "alias", for the message
+		denotes string // the resource the name resolves to
+	}
+	declared := map[string]declaredName{}
+	for _, r := range lr.Resources {
+		if r != nil {
+			declared[r.ID] = declaredName{kind: "resource", denotes: r.ID}
+		}
+	}
+	for _, a := range lr.Aliases {
+		name := a.Definition.Type
+		if _, ok := declared[name]; ok {
+			continue // validateAliases reports this one; do not double-report
+		}
+		declared[name] = declaredName{kind: "alias", denotes: a.Type.Type}
+	}
+
+	var errs []error
+	for _, r := range lr.Resources {
+		if r == nil || r.Body == nil {
+			continue
+		}
+		for _, f := range r.Body.Fields {
+			if f.BasicField == nil {
+				continue
+			}
+			path := r.ID + "." + f.BasicField.ID
+			target, ok := declared[path]
+			if !ok {
+				continue
+			}
+			// The accessor shape: the field's own type is what the name
+			// denotes, so both readings mean the same thing and nothing becomes
+			// unreachable. An alias is written by its target, the field may
+			// name either.
+			typeName := f.BasicField.Type.typeName()
+			if typeName == path || typeName == target.denotes {
+				continue
+			}
+
+			remedy := "Declare one or the other: drop the field if the resource " +
+				"supersedes it, or name the resource after the accessor that returns it"
+			if target.kind == "alias" {
+				remedy = "Rename the alias, or drop the field it hides"
+			}
+			msg := target.kind + " " + path + " has the same name as the field " +
+				f.BasicField.ID + " on " + r.ID + "; a dotted path resolves to the " +
+				"longest matching resource, so the " + target.kind + " wins " + path +
+				" and the field cannot be read through its own path. " + remedy
+			if f.BasicField.Maturity == resources.MaturityDeprecated {
+				msg += ". The field is deprecated, so this also revokes the " +
+					"deprecation window @replaced_by promises"
+			}
+			errs = append(errs, errors.New(msg))
+		}
+	}
+
+	return errs
+}
+
+// reservedIdentifiers are the language constructs the compiler answers itself. A
+// query is a block on the asset root (ADR 031 point 7) and these are resolved
+// without ever consulting it, so a root member carrying one of these names could
+// not be read.
+//
+// This only constrains members of a root; any other resource may use these
+// names freely, because nothing binds them implicitly.
+var reservedIdentifiers = map[string]struct{}{
+	"props": {}, "if": {}, "else": {}, "expect": {}, "switch": {}, "return": {},
+	"_": {},
+}
+
+// conversionIdentifiers are the type conversions - `version("1.2.3")`,
+// `string(x)`. They are NOT reserved against a root member, because the
+// compiler already tells them apart by arity: compileTypeConversion returns
+// errNotConversion when there are no arguments, and mqlc then "tosses this fish
+// back in the sea" and resolves the name as a member of the root. So a device
+// with a `version` field answers `mql run arista -c version` with the device's
+// version, which is the whole point of having a root - the root is the position
+// everything is relative to.
+//
+// A member that *takes arguments* is the real conflict: the conversion is tried
+// first and wins on any call with arguments, leaving that member unreachable.
+var conversionIdentifiers = map[string]struct{}{
+	"bool": {}, "int": {}, "float": {}, "string": {}, "regex": {},
+	"dict": {}, "ip": {}, "semver": {}, "version": {},
+}
+
+// validateRootMembers checks the resource named by `option root`, which is what
+// every bare identifier resolves against once the root is the namespace.
+//
+// Two ways a member breaks that: it shadows the language (see
+// reservedIdentifiers), or it shadows a *different* global resource. The second
+// is what keeps the v14 and v15 namespace precedences agreeing - a member that
+// is an alias of the resource of the same name is the normal case and is fine;
+// one that means something else under a taken name would change meaning when the
+// precedence flips. See ADR 031 point 3.
+func (lr *LR) validateRootMembers() []error {
+	root, ok := lr.Options["root"]
+	if !ok || root == "" {
+		return nil
+	}
+
+	byID := map[string]*Resource{}
+	for _, r := range lr.Resources {
+		if r != nil {
+			byID[r.ID] = r
+		}
+	}
+	if _, ok := byID[root]; !ok {
+		// The root may be declared by a resource this file does not define; the
+		// members are then not knowable here.
+		return nil
+	}
+
+	aliased := map[string]string{}
+	for _, a := range lr.Aliases {
+		aliased[a.Definition.Type] = a.Type.Type
+	}
+
+	var errs []error
+	for name, member := range lr.exposedMembers(byID, root, 0) {
+		typ := member.typ
+		if _, reserved := reservedIdentifiers[name]; reserved {
+			errs = append(errs, errors.New("root "+root+" has a member named "+name+
+				", which the compiler answers itself; a bare identifier would never reach it"))
+			continue
+		}
+		// A conversion is only a conversion when it is called with arguments, so
+		// a plain `version` member reads fine off the root. One that takes
+		// arguments does not: the conversion is tried first and wins on any
+		// call that has them.
+		if _, conversion := conversionIdentifiers[name]; conversion && member.hasArgs {
+			errs = append(errs, errors.New("root "+root+" has a member "+name+
+				" that takes arguments, but "+name+"(...) is a type conversion; the conversion wins and the member could not be called"))
+			continue
+		}
+
+		other, exists := byID[name]
+		if !exists {
+			continue
+		}
+		// An alias of the resource of the same name is the same thing reached
+		// two ways, which is the point of attaching a surface to a root.
+		if aliased[root+"."+name] == name {
+			continue
+		}
+		if typ != types.Resource(other.ID) {
+			errs = append(errs, errors.New("root "+root+" has a member "+name+" of type "+
+				typ.Label()+", but "+name+" is also a resource; a bare `"+name+
+				"` would mean different things depending on the namespace"))
+		}
+	}
+	return errs
+}
+
+// validateEmbedAmbiguity rejects a resource whose embeds expose the same member
+// under conflicting types.
+//
+// Embedded members are reachable directly on the embedding resource
+// (`docker.container.hostname` reads through `os.linux` → `os.unix` → `os.base`),
+// so two embeds that both carry a `foo` leave the lookup with two answers. One
+// type is fine - the same member reached two ways is still that member - but two
+// types is a schema that cannot be compiled against, and it surfaces as a
+// confusing type error in whatever query first touches it rather than here.
+//
+// This is what bounds composing asset roots from mixins (ADR 031): a union root
+// may embed several family roots only while their members agree.
+func (lr *LR) validateEmbedAmbiguity() []error {
+	byID := map[string]*Resource{}
+	for _, r := range lr.Resources {
+		if r != nil {
+			byID[r.ID] = r
+		}
+	}
+
+	var errs []error
+	for _, r := range lr.Resources {
+		if r == nil || r.Body == nil {
+			continue
+		}
+
+		// Parse rewrites every `embed X` into a BasicField carrying isEmbedded,
+		// so that - not f.Embeddable - is what an embed looks like by the time
+		// validation runs.
+		var embeds []string
+		for _, f := range r.Body.Fields {
+			if f.BasicField != nil && f.BasicField.isEmbedded && f.BasicField.Type.SimpleType != nil {
+				embeds = append(embeds, f.BasicField.Type.SimpleType.Type)
+			}
+		}
+		if len(embeds) < 2 {
+			continue
+		}
+
+		// name -> type, plus which embed contributed it
+		types := map[string]types.Type{}
+		origin := map[string]string{}
+		for _, e := range embeds {
+			for name, member := range lr.exposedMembers(byID, e, 0) {
+				typ := member.typ
+				prev, ok := types[name]
+				if ok && prev != typ {
+					errs = append(errs, errors.New("resource "+r.ID+" embeds both "+origin[name]+
+						" and "+e+", which expose "+name+" with different types ("+
+						prev.Label()+" and "+typ.Label()+")"))
+					continue
+				}
+				types[name] = typ
+				origin[name] = e
+			}
+		}
+	}
+	return errs
+}
+
+// exposedMembers returns the members a resource offers by name, following its
+// own embeds. An embed of a resource this schema does not define (an imported
+// one) contributes nothing, because its members are not knowable here.
+// exposedMember is one member a root offers, and whether reading it takes
+// arguments. Arity is what decides whether a type conversion of the same name
+// shadows it, so it has to travel with the type.
+type exposedMember struct {
+	typ     types.Type
+	hasArgs bool
+}
+
+func (lr *LR) exposedMembers(byID map[string]*Resource, id string, depth int) map[string]exposedMember {
+	res := map[string]exposedMember{}
+	if depth > 10 {
+		return res
+	}
+	r, ok := byID[id]
+	if !ok || r.Body == nil {
+		return res
+	}
+
+	for _, f := range r.Body.Fields {
+		if f.BasicField == nil {
+			continue
+		}
+		if f.BasicField.isEmbedded && f.BasicField.Type.SimpleType != nil {
+			maps.Copy(res, lr.exposedMembers(byID, f.BasicField.Type.SimpleType.Type, depth+1))
+			continue
+		}
+		res[f.BasicField.ID] = exposedMember{
+			typ:     f.BasicField.Type.Type(lr),
+			hasArgs: f.BasicField.Args != nil && len(f.BasicField.Args.List) > 0,
+		}
+	}
+	return res
 }
 
 // returns duplicate resources where duplicate means that one path leads to more than one field

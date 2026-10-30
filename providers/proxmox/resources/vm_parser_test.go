@@ -6,7 +6,7 @@ package resources
 import (
 	"testing"
 
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
 )
 
 func getStr(m map[string]*llx.RawData, key string) string {
@@ -210,6 +210,33 @@ func TestParseContainerMountPoint_ExtraMount(t *testing.T) {
 	}
 	if !getBool(mp, "aclEnabled") {
 		t.Error("expected aclEnabled=true")
+	}
+}
+
+// An additional mount point with no explicit backup= must default to
+// backup=false: PVE excludes mp0..mp254 from vzdump unless backup=1 is set.
+// rootfs is the only mount point backed up by default.
+func TestParseContainerMountPoint_ExtraMountDefaultsNoBackup(t *testing.T) {
+	mp := parseContainerMountPoint("mp0", "local-lvm:subvol-200-disk-1,size=8G,mp=/data")
+	if getBool(mp, "backup") {
+		t.Error("expected backup=false for an additional mount point with no explicit backup flag")
+	}
+
+	// Explicit backup=1 still opts the extra mount into backups.
+	mp = parseContainerMountPoint("mp1", "local-lvm:subvol-200-disk-2,size=8G,mp=/data2,backup=1")
+	if !getBool(mp, "backup") {
+		t.Error("expected backup=true when backup=1 is set explicitly")
+	}
+
+	// rootfs stays backed up by default...
+	mp = parseContainerMountPoint("rootfs", "local-lvm:subvol-200-disk-0,size=8G")
+	if !getBool(mp, "backup") {
+		t.Error("expected backup=true by default for rootfs")
+	}
+	// ...but honors an explicit backup=0.
+	mp = parseContainerMountPoint("rootfs", "local-lvm:subvol-200-disk-0,size=8G,backup=0")
+	if getBool(mp, "backup") {
+		t.Error("expected backup=false when rootfs sets backup=0 explicitly")
 	}
 }
 

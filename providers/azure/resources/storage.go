@@ -7,18 +7,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -32,6 +34,25 @@ type (
 	AzureStorageAccountProperties storage.AccountProperties
 	Kind                          storage.Kind
 )
+
+// storageTurboTier returns whether Turbo Tier is enabled and its target fill
+// percentage. Each value is nil when the account does not report it.
+func storageTurboTier(tt *storage.TurboTier) (*bool, *int64) {
+	if tt == nil {
+		return nil, nil
+	}
+	var enabled *bool
+	if tt.Status != nil {
+		v := *tt.Status == storage.TurboTierStatusEnabled
+		enabled = &v
+	}
+	var target *int64
+	if tt.TargetPercent != nil {
+		v := int64(*tt.TargetPercent)
+		target = &v
+	}
+	return enabled, target
+}
 
 func (a *mqlAzureSubscriptionStorageService) id() (string, error) {
 	return "azure.subscription.storage/" + a.SubscriptionId.Data, nil
@@ -106,6 +127,16 @@ func (a *mqlAzureSubscriptionStorageServiceAccountContainer) id() (string, error
 	return a.Id.Data, nil
 }
 
+type mqlAzureSubscriptionStorageServiceAccountContainerInternal struct {
+	cacheSystemData              any
+	cacheBlobAccessPointName     string
+	cacheBlobAccessPointUniqueID string
+}
+
+func (a *mqlAzureSubscriptionStorageServiceAccountContainer) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
 func (a *mqlAzureSubscriptionStorageServiceAccountDataProtection) id() (string, error) {
 	return a.StorageAccountId.Data + "/dataProtection", nil
 }
@@ -151,6 +182,9 @@ func (a *mqlAzureSubscriptionStorageService) accounts() ([]any, error) {
 			return nil, err
 		}
 		for _, account := range page.Value {
+			if account == nil {
+				continue
+			}
 			acc, err := storageAccountToMql(a.MqlRuntime, account)
 			if err != nil {
 				return nil, err
@@ -159,16 +193,22 @@ func (a *mqlAzureSubscriptionStorageService) accounts() ([]any, error) {
 		}
 	}
 
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func (a *mqlAzureSubscriptionStorageServiceAccount) containers() ([]any, error) {
-	// Data Lake Storage Gen2 (HNS-enabled) accounts don't support the Blob containers API.
-	if a.GetIsHnsEnabled().Data {
-		a.Containers.State = plugin.StateIsNull | plugin.StateIsSet
-		return nil, nil
-	}
-
+	// No hierarchical-namespace guard here. This is the ARM control-plane
+	// BlobContainers client, which Microsoft supports on HNS-enabled accounts;
+	// only four data-plane blob operations are unsupported on Data Lake Storage
+	// Gen2, and none of them is this one. Skipping HNS accounts made every ADLS
+	// Gen2 account report `containers: null`, so publicAccess,
+	// hasImmutabilityPolicy, hasLegalHold and the encryption-scope fields were
+	// invisible for exactly the accounts an anonymous-access audit cares about
+	// -- and under three-valued logic a where() over null matches nothing, so
+	// the check passed rather than failed.
+	//
+	// The pager below already degrades on the one error that genuinely means
+	// "this account does not support the operation".
 	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
 	ctx := context.Background()
 	token := conn.Token()
@@ -195,7 +235,9 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) containers() ([]any, error) 
 		page, err := pager.NextPage(ctx)
 		if err != nil {
 			if isFeatureNotSupportedForAccountError(err) {
-				return nil, nil
+				// Keep whatever earlier pages returned. Discarding them would
+				// report a partial listing as an empty one.
+				return res, nil
 			}
 			return nil, err
 		}
@@ -210,6 +252,9 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) containers() ([]any, error) 
 		g, gctx := errgroup.WithContext(ctx)
 		g.SetLimit(10)
 		for i, container := range page.Value {
+			if container == nil {
+				continue
+			}
 			containerProps := container.Properties
 			needsDetail := containerProps != nil &&
 				((containerProps.HasImmutabilityPolicy != nil && *containerProps.HasImmutabilityPolicy) ||
@@ -231,6 +276,9 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) containers() ([]any, error) 
 		}
 
 		for i, container := range page.Value {
+			if container == nil {
+				continue
+			}
 			containerProps := container.Properties
 			if detailedProps[i] != nil {
 				containerProps = detailedProps[i]
@@ -246,6 +294,7 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) containers() ([]any, error) 
 			var defaultEncryptionScope string
 			var denyEncryptionScopeOverride bool
 			var leaseState, leaseStatus string
+			var leaseDuration *string
 			var deleted *bool
 			var deletedTime, lastModifiedTime *time.Time
 			var remainingRetentionDays *int32
@@ -277,6 +326,7 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) containers() ([]any, error) 
 				if containerProps.LeaseStatus != nil {
 					leaseStatus = string(*containerProps.LeaseStatus)
 				}
+				leaseDuration = stringEnumPtr(containerProps.LeaseDuration)
 				deleted = containerProps.Deleted
 				deletedTime = containerProps.DeletedTime
 				lastModifiedTime = containerProps.LastModifiedTime
@@ -351,12 +401,23 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) containers() ([]any, error) 
 					"lastModifiedTime":                                llx.TimeDataPtr(lastModifiedTime),
 					"leaseState":                                      llx.StringData(leaseState),
 					"leaseStatus":                                     llx.StringData(leaseStatus),
+					"leaseDuration":                                   llx.StringDataPtr(leaseDuration),
 					"deleted":                                         llx.BoolDataPtr(deleted),
 					"deletedTime":                                     llx.TimeDataPtr(deletedTime),
 					"remainingRetentionDays":                          llx.IntDataPtr(remainingRetentionDays),
 				})
 			if err != nil {
 				return nil, err
+			}
+			sysData, err := convert.JsonToDict(container.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlContainer := mqlAzure.(*mqlAzureSubscriptionStorageServiceAccountContainer)
+			mqlContainer.cacheSystemData = sysData
+			if containerProps != nil && containerProps.BlobAccessPointConfiguration != nil {
+				mqlContainer.cacheBlobAccessPointName = convert.ToValue(containerProps.BlobAccessPointConfiguration.BlobAccessPointConfigurationName)
+				mqlContainer.cacheBlobAccessPointUniqueID = convert.ToValue(containerProps.BlobAccessPointConfiguration.BlobAccessPointConfigurationUniqueID)
 			}
 			res = append(res, mqlAzure)
 		}
@@ -372,6 +433,22 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) queueProperties() (*mqlAzure
 	}
 	id := a.Id.Data
 	return toMqlServiceStorageProperties(a.MqlRuntime, props.ServiceProperties, "queue", id)
+}
+
+func (a *mqlAzureSubscriptionStorageServiceAccount) diagnosticSettings() ([]any, error) {
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
+
+func (a *mqlAzureSubscriptionStorageServiceAccount) diagnosticSettingsCategories() ([]any, error) {
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	return getDiagnosticSettingsCategories(a.Id.Data, a.MqlRuntime, conn)
 }
 
 func (a *mqlAzureSubscriptionStorageServiceAccount) tableProperties() (*mqlAzureSubscriptionStorageServiceAccountServiceProperties, error) {
@@ -484,10 +561,22 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) fileProperties() (*mqlAzureS
 		return nil, err
 	}
 
+	// The inner FileServiceProperties pointer is nullable, exactly like the
+	// blob-side one guarded above: an account that never had file-service
+	// settings written returns an empty body. Dereferencing it bare would
+	// panic, and a provider panic is unrecoverable - it kills the whole scan.
+	var fileProps *storage.FileServicePropertiesProperties
+	if properties.FileServiceProperties.FileServiceProperties != nil {
+		fileProps = properties.FileServiceProperties.FileServiceProperties
+	}
+
 	// Build share delete retention policy
 	var shareDeleteRetentionPolicyEnabled bool
 	var shareDeleteRetentionPolicyDays *int32
-	policyFromClient := properties.FileServiceProperties.FileServiceProperties.ShareDeleteRetentionPolicy
+	var policyFromClient *storage.DeleteRetentionPolicy
+	if fileProps != nil {
+		policyFromClient = fileProps.ShareDeleteRetentionPolicy
+	}
 	if policyFromClient != nil {
 		shareDeleteRetentionPolicyEnabled = convert.ToValue(policyFromClient.Enabled)
 		shareDeleteRetentionPolicyDays = policyFromClient.Days
@@ -505,7 +594,10 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) fileProperties() (*mqlAzureS
 
 	// Build protocol settings SMB
 	var smbVersions, smbChannelEncryption, smbAuthenticationMethods, smbKerberosTicketEncryption *string
-	protocolSettingsFromClient := properties.FileServiceProperties.FileServiceProperties.ProtocolSettings
+	var protocolSettingsFromClient *storage.ProtocolSettings
+	if fileProps != nil {
+		protocolSettingsFromClient = fileProps.ProtocolSettings
+	}
 	if protocolSettingsFromClient != nil && protocolSettingsFromClient.Smb != nil {
 		smb := protocolSettingsFromClient.Smb
 		smbVersions = smb.Versions
@@ -768,15 +860,17 @@ func toMqlBlobServiceStorageProperties(runtime *plugin.Runtime, props table.Serv
 		return nil, err
 	}
 
-	settings, err := CreateResource(runtime, ResourceAzureSubscriptionStorageServiceAccountServiceBlobProperties,
-		map[string]*llx.RawData{
-			"id":                  llx.StringData(fmt.Sprintf("%s/%s/properties", parentId, serviceType)),
-			"minuteMetrics":       llx.ResourceData(minuteMetrics, "minuteMetrics"),
-			"hourMetrics":         llx.ResourceData(hourMetrics, "hourMetrics"),
-			"logging":             llx.ResourceData(logging, "logging"),
-			"isVersioningEnabled": llx.BoolData(isVersioningEnabled),
-			"staticWebsite":       llx.ResourceData(staticWebsite, "staticWebsite"),
-		})
+	args := map[string]*llx.RawData{
+		"id":                  llx.StringData(fmt.Sprintf("%s/%s/properties", parentId, serviceType)),
+		"minuteMetrics":       llx.ResourceData(minuteMetrics, "minuteMetrics"),
+		"hourMetrics":         llx.ResourceData(hourMetrics, "hourMetrics"),
+		"logging":             llx.ResourceData(logging, "logging"),
+		"isVersioningEnabled": llx.BoolData(isVersioningEnabled),
+		"staticWebsite":       llx.ResourceData(staticWebsite, "staticWebsite"),
+	}
+	maps.Copy(args, blobServiceDataPlaneSettings(blobProps.BlobServiceProperties).rawData())
+
+	settings, err := CreateResource(runtime, ResourceAzureSubscriptionStorageServiceAccountServiceBlobProperties, args)
 	if err != nil {
 		return nil, err
 	}
@@ -799,6 +893,9 @@ func storageAccountToMql(runtime *plugin.Runtime, account *storage.Account) (*mq
 	var enableHttpsTrafficOnly *bool
 	var allowSharedKeyAccess *bool
 	var allowCrossTenantReplication *bool
+	var allowCrossTenantDelegationSas *bool
+	var sasRequireUserBound *bool
+	var sasRequireUserBoundAction *string
 	var isLocalUserEnabled *bool
 	var isSftpEnabled *bool
 	var isHnsEnabled *bool
@@ -812,6 +909,8 @@ func storageAccountToMql(runtime *plugin.Runtime, account *storage.Account) (*mq
 	var defaultToOAuthAuthentication *bool
 	var enableNfsV3 *bool
 	var largeFileSharesState *string
+	var turboTierEnabled *bool
+	var turboTierTargetPercent *int64
 	var lastGeoFailoverTime *time.Time
 	var allowedCopyScope, sasExpirationPeriod, sasExpirationAction string
 	var requireInfraEnc bool
@@ -828,6 +927,8 @@ func storageAccountToMql(runtime *plugin.Runtime, account *storage.Account) (*mq
 		enableHttpsTrafficOnly = account.Properties.EnableHTTPSTrafficOnly
 		allowSharedKeyAccess = account.Properties.AllowSharedKeyAccess
 		allowCrossTenantReplication = account.Properties.AllowCrossTenantReplication
+		allowCrossTenantDelegationSas = account.Properties.AllowCrossTenantDelegationSas
+		sasRequireUserBound, sasRequireUserBoundAction = sasPolicyUserBoundDelegation(account.Properties.SasPolicy)
 		isLocalUserEnabled = account.Properties.IsLocalUserEnabled
 		isSftpEnabled = account.Properties.IsSftpEnabled
 		isHnsEnabled = account.Properties.IsHnsEnabled
@@ -841,6 +942,7 @@ func storageAccountToMql(runtime *plugin.Runtime, account *storage.Account) (*mq
 		defaultToOAuthAuthentication = account.Properties.DefaultToOAuthAuthentication
 		enableNfsV3 = account.Properties.EnableNfsV3
 		largeFileSharesState = (*string)(account.Properties.LargeFileSharesState)
+		turboTierEnabled, turboTierTargetPercent = storageTurboTier(account.Properties.TurboTier)
 		lastGeoFailoverTime = account.Properties.LastGeoFailoverTime
 		if account.Properties.AllowedCopyScope != nil {
 			allowedCopyScope = string(*account.Properties.AllowedCopyScope)
@@ -937,78 +1039,144 @@ func storageAccountToMql(runtime *plugin.Runtime, account *storage.Account) (*mq
 		}
 	}
 
-	identity, err := convert.JsonToDict(account.Identity)
-	if err != nil {
-		return nil, err
+	// Azure Files identity-based authentication. Absent on an account that has
+	// never configured it, in which case SMB shares authenticate with the
+	// account key alone.
+	var filesDirectoryServiceOptions, filesDefaultSharePermission *string
+	var filesADDomainName, filesADForestName, filesADAccountType *string
+	if account.Properties != nil && account.Properties.AzureFilesIdentityBasedAuthentication != nil {
+		fa := account.Properties.AzureFilesIdentityBasedAuthentication
+		filesDirectoryServiceOptions = stringEnumPtr(fa.DirectoryServiceOptions)
+		filesDefaultSharePermission = stringEnumPtr(fa.DefaultSharePermission)
+		if ad := fa.ActiveDirectoryProperties; ad != nil {
+			filesADDomainName = ad.DomainName
+			filesADForestName = ad.ForestName
+			filesADAccountType = stringEnumPtr(ad.AccountType)
+		}
 	}
-	var accountPrincipalId, accountTenantId *string
-	var userAssignedIdentityIds []string
-	if account.Identity != nil {
-		accountPrincipalId = account.Identity.PrincipalID
-		accountTenantId = account.Identity.TenantID
-		userAssignedIdentityIds = sortedUserAssignedIdentityIDs(account.Identity.UserAssignedIdentities)
+
+	// Per-service shared-key overrides narrow the account-wide setting. A
+	// service missing from the response falls back to allowSharedKeyAccess, so
+	// only services Azure actually reported are published here.
+	sharedKeyAccessByService := map[string]any{}
+	if account.Properties != nil && account.Properties.AllowSharedKeyAccessForServices != nil {
+		svc := account.Properties.AllowSharedKeyAccessForServices
+		for name, prop := range map[string]*storage.ServiceSharedKeyAccessProperties{
+			"blob":  svc.Blob,
+			"file":  svc.File,
+			"queue": svc.Queue,
+			"table": svc.Table,
+		} {
+			if prop != nil && prop.Enabled != nil {
+				if *prop.Enabled {
+					sharedKeyAccessByService[name] = "Enabled"
+				} else {
+					sharedKeyAccessByService[name] = "Disabled"
+				}
+			}
+		}
 	}
+
+	// Null when the key has never been rotated since the account was created,
+	// which is itself the answer a rotation check is looking for.
+	var key1CreationTime, key2CreationTime *time.Time
+	if account.Properties != nil && account.Properties.KeyCreationTime != nil {
+		key1CreationTime = account.Properties.KeyCreationTime.Key1
+		key2CreationTime = account.Properties.KeyCreationTime.Key2
+	}
+
+	var dnsEndpointType *string
+	var enableExtendedGroups *bool
+	if account.Properties != nil {
+		dnsEndpointType = stringEnumPtr(account.Properties.DNSEndpointType)
+		enableExtendedGroups = account.Properties.EnableExtendedGroups
+	}
+
+	accountIdentity := orZero(account.Identity)
+	userAssignedIdentityIds := sortedUserAssignedIdentityIDs(accountIdentity.UserAssignedIdentities)
 
 	sku, err := convert.JsonToDict(account.SKU)
 	if err != nil {
 		return nil, err
 	}
+	accountSku := orZero(account.SKU)
 
 	kind := ""
 	if account.Kind != nil {
 		kind = string(*account.Kind)
 	}
-	res, err := CreateResource(runtime, "azure.subscription.storageService.account",
-		map[string]*llx.RawData{
-			"id":                                 llx.StringDataPtr(account.ID),
-			"name":                               llx.StringDataPtr(account.Name),
-			"location":                           llx.StringDataPtr(account.Location),
-			"tags":                               llx.MapData(convert.PtrMapStrToInterface(account.Tags), types.String),
-			"type":                               llx.StringDataPtr(account.Type),
-			"properties":                         llx.DictData(properties),
-			"identity":                           llx.DictData(identity),
-			"principalId":                        llx.StringDataPtr(accountPrincipalId),
-			"tenantId":                           llx.StringDataPtr(accountTenantId),
-			"sku":                                llx.DictData(sku),
-			"kind":                               llx.StringData(kind),
-			"minimumTlsVersion":                  llx.StringDataPtr(minimumTlsVersion),
-			"allowBlobPublicAccess":              llx.BoolDataPtr(allowBlobPublicAccess),
-			"enableHttpsTrafficOnly":             llx.BoolDataPtr(enableHttpsTrafficOnly),
-			"publicNetworkAccess":                llx.StringDataPtr(publicNetworkAccess),
-			"allowSharedKeyAccess":               llx.BoolDataPtr(allowSharedKeyAccess),
-			"allowCrossTenantReplication":        llx.BoolDataPtr(allowCrossTenantReplication),
-			"isLocalUserEnabled":                 llx.BoolDataPtr(isLocalUserEnabled),
-			"isSftpEnabled":                      llx.BoolDataPtr(isSftpEnabled),
-			"isHnsEnabled":                       llx.BoolDataPtr(isHnsEnabled),
-			"networkRuleDefaultAction":           llx.StringData(networkRuleDefaultAction),
-			"networkRuleBypass":                  llx.StringData(networkRuleBypass),
-			"networkRuleIpRanges":                llx.ArrayData(networkRuleIpRanges, types.String),
-			"networkRuleVirtualNetworkSubnetIds": llx.ArrayData(networkRuleVirtualNetworkSubnetIds, types.String),
-			"provisioningState":                  llx.StringDataPtr(provisioningState),
-			"creationTime":                       llx.TimeDataPtr(creationTime),
-			"accessTier":                         llx.StringDataPtr(accessTier),
-			"primaryLocation":                    llx.StringDataPtr(primaryLocation),
-			"statusOfPrimary":                    llx.StringDataPtr(statusOfPrimary),
-			"secondaryLocation":                  llx.StringDataPtr(secondaryLocation),
-			"statusOfSecondary":                  llx.StringDataPtr(statusOfSecondary),
-			"defaultToOAuthAuthentication":       llx.BoolDataPtr(defaultToOAuthAuthentication),
-			"enableNfsV3":                        llx.BoolDataPtr(enableNfsV3),
-			"largeFileSharesState":               llx.StringDataPtr(largeFileSharesState),
-			"lastGeoFailoverTime":                llx.TimeDataPtr(lastGeoFailoverTime),
-			"allowedCopyScope":                   llx.StringData(allowedCopyScope),
-			"requireInfrastructureEncryption":    llx.BoolData(requireInfraEnc),
-			"serviceKeyTypes":                    llx.MapData(serviceKeyTypes, types.String),
-			"sasExpirationPeriod":                llx.StringData(sasExpirationPeriod),
-			"sasExpirationAction":                llx.StringData(sasExpirationAction),
-			"keyExpirationPeriodInDays":          llx.IntData(keyExpirationPeriodInDays),
-			"immutableStorageEnabled":            llx.BoolData(immutableEnabled),
-			"immutableStoragePolicyPeriodDays":   llx.IntData(immutablePeriodDays),
-			"immutableStoragePolicyAllowProtectedAppendWrites": llx.BoolData(immutableAllowAppend),
-			"immutableStoragePolicyState":                      llx.StringData(immutableState),
-			"routingChoice":                                    llx.StringData(routingChoice),
-			"publishInternetEndpoints":                         llx.BoolData(publishInternetEndpoints),
-			"publishMicrosoftEndpoints":                        llx.BoolData(publishMicrosoftEndpoints),
-		})
+	args := map[string]*llx.RawData{
+		"id":                                   llx.StringDataPtr(account.ID),
+		"name":                                 llx.StringDataPtr(account.Name),
+		"location":                             llx.StringDataPtr(account.Location),
+		"tags":                                 llx.MapData(convert.PtrMapStrToInterface(account.Tags), types.String),
+		"type":                                 llx.StringDataPtr(account.Type),
+		"properties":                           llx.DictData(properties),
+		"principalId":                          llx.StringDataPtr(accountIdentity.PrincipalID),
+		"tenantId":                             llx.StringDataPtr(accountIdentity.TenantID),
+		"sku":                                  llx.DictData(sku),
+		"kind":                                 llx.StringData(kind),
+		"minimumTlsVersion":                    llx.StringDataPtr(minimumTlsVersion),
+		"allowBlobPublicAccess":                llx.BoolDataPtr(allowBlobPublicAccess),
+		"enableHttpsTrafficOnly":               llx.BoolDataPtr(enableHttpsTrafficOnly),
+		"publicNetworkAccess":                  llx.StringDataPtr(publicNetworkAccess),
+		"allowSharedKeyAccess":                 llx.BoolDataPtr(allowSharedKeyAccess),
+		"allowCrossTenantReplication":          llx.BoolDataPtr(allowCrossTenantReplication),
+		"allowCrossTenantDelegationSas":        llx.BoolDataPtr(allowCrossTenantDelegationSas),
+		"isLocalUserEnabled":                   llx.BoolDataPtr(isLocalUserEnabled),
+		"isSftpEnabled":                        llx.BoolDataPtr(isSftpEnabled),
+		"isHnsEnabled":                         llx.BoolDataPtr(isHnsEnabled),
+		"networkRuleDefaultAction":             llx.StringData(networkRuleDefaultAction),
+		"networkRuleBypass":                    llx.StringData(networkRuleBypass),
+		"networkRuleIpRanges":                  llx.ArrayData(networkRuleIpRanges, types.String),
+		"networkRuleVirtualNetworkSubnetIds":   llx.ArrayData(networkRuleVirtualNetworkSubnetIds, types.String),
+		"provisioningState":                    llx.StringDataPtr(provisioningState),
+		"creationTime":                         llx.TimeDataPtr(creationTime),
+		"accessTier":                           llx.StringDataPtr(accessTier),
+		"primaryLocation":                      llx.StringDataPtr(primaryLocation),
+		"statusOfPrimary":                      llx.StringDataPtr(statusOfPrimary),
+		"secondaryLocation":                    llx.StringDataPtr(secondaryLocation),
+		"statusOfSecondary":                    llx.StringDataPtr(statusOfSecondary),
+		"defaultToOAuthAuthentication":         llx.BoolDataPtr(defaultToOAuthAuthentication),
+		"enableNfsV3":                          llx.BoolDataPtr(enableNfsV3),
+		"largeFileSharesState":                 llx.StringDataPtr(largeFileSharesState),
+		"turboTierEnabled":                     llx.BoolDataPtr(turboTierEnabled),
+		"turboTierTargetPercent":               llx.IntDataPtr(turboTierTargetPercent),
+		"lastGeoFailoverTime":                  llx.TimeDataPtr(lastGeoFailoverTime),
+		"allowedCopyScope":                     llx.StringData(allowedCopyScope),
+		"requireInfrastructureEncryption":      llx.BoolData(requireInfraEnc),
+		"serviceKeyTypes":                      llx.MapData(serviceKeyTypes, types.String),
+		"sasExpirationPeriod":                  llx.StringData(sasExpirationPeriod),
+		"sasExpirationAction":                  llx.StringData(sasExpirationAction),
+		"sasRequireUserBoundUserDelegationSas": llx.BoolDataPtr(sasRequireUserBound),
+		"sasRequireUserBoundUserDelegationSasAction":       llx.StringDataPtr(sasRequireUserBoundAction),
+		"keyExpirationPeriodInDays":                        llx.IntData(keyExpirationPeriodInDays),
+		"sharedKeyAccessByService":                         llx.MapData(sharedKeyAccessByService, types.String),
+		"key1CreationTime":                                 llx.TimeDataPtr(key1CreationTime),
+		"key2CreationTime":                                 llx.TimeDataPtr(key2CreationTime),
+		"filesDirectoryServiceOptions":                     llx.StringDataPtr(filesDirectoryServiceOptions),
+		"filesDefaultSharePermission":                      llx.StringDataPtr(filesDefaultSharePermission),
+		"filesActiveDirectoryDomainName":                   llx.StringDataPtr(filesADDomainName),
+		"filesActiveDirectoryForestName":                   llx.StringDataPtr(filesADForestName),
+		"filesActiveDirectoryAccountType":                  llx.StringDataPtr(filesADAccountType),
+		"enableExtendedGroups":                             llx.BoolDataPtr(enableExtendedGroups),
+		"dnsEndpointType":                                  llx.StringDataPtr(dnsEndpointType),
+		"immutableStorageEnabled":                          llx.BoolData(immutableEnabled),
+		"immutableStoragePolicyPeriodDays":                 llx.IntData(immutablePeriodDays),
+		"immutableStoragePolicyAllowProtectedAppendWrites": llx.BoolData(immutableAllowAppend),
+		"immutableStoragePolicyState":                      llx.StringData(immutableState),
+		"routingChoice":                                    llx.StringData(routingChoice),
+		"publishInternetEndpoints":                         llx.BoolData(publishInternetEndpoints),
+		"publishMicrosoftEndpoints":                        llx.BoolData(publishMicrosoftEndpoints),
+	}
+	if err := setSkuData(runtime, args, skuName(accountSku.Name), skuTier(accountSku.Tier)); err != nil {
+		return nil, err
+	}
+	if err := setResourceIdentity(runtime, args, userAssignedIdentityIds,
+		identityType(accountIdentity.Type), identityPrincipalId(accountIdentity.PrincipalID), identityTenantId(accountIdentity.TenantID)); err != nil {
+		return nil, err
+	}
+	res, err := CreateResource(runtime, "azure.subscription.storageService.account", args)
 	if err != nil {
 		return nil, err
 	}
@@ -1064,13 +1232,10 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) encryptionKeySource() (strin
 }
 
 func (a *mqlAzureSubscriptionStorageServiceAccount) encryptionKey() (*mqlAzureSubscriptionKeyVaultServiceKey, error) {
-	if a.cacheEncryptionKeyVaultURI == "" || a.cacheEncryptionKeyName == "" {
+	keyURI := keyVaultKeyURI(a.cacheEncryptionKeyVaultURI, a.cacheEncryptionKeyName, a.cacheEncryptionKeyVersion)
+	if keyURI == "" {
 		a.EncryptionKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
-	}
-	keyURI := a.cacheEncryptionKeyVaultURI + "/keys/" + a.cacheEncryptionKeyName
-	if a.cacheEncryptionKeyVersion != "" {
-		keyURI += "/" + a.cacheEncryptionKeyVersion
 	}
 	return newKeyVaultKeyResource(a.MqlRuntime, keyURI)
 }
@@ -1109,7 +1274,7 @@ func initAzureSubscriptionStorageServiceAccount(runtime *plugin.Runtime, args ma
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
+		if ids := getAssetIdentifier(runtime); ids != nil && ids.id != "" {
 			args["id"] = llx.StringData(ids.id)
 		}
 	}
@@ -1133,12 +1298,19 @@ func initAzureSubscriptionStorageServiceAccount(runtime *plugin.Runtime, args ma
 	if accs.Error != nil {
 		return nil, nil, accs.Error
 	}
-	id := args["id"].Value.(string)
+	id, ok := args["id"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("id must be a non-nil string value")
+	}
 	for _, entry := range accs.Data {
 		storageAcc := entry.(*mqlAzureSubscriptionStorageServiceAccount)
 		if storageAcc.Id.Data == id {
 			return args, storageAcc, nil
 		}
+	}
+
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionStorageServiceAccount, id); filtered != nil {
+		return args, filtered, nil
 	}
 
 	return nil, nil, errors.New("azure storage account does not exist")
@@ -1150,7 +1322,7 @@ func initAzureSubscriptionStorageServiceAccountContainer(runtime *plugin.Runtime
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
+		if ids := getAssetIdentifier(runtime); ids != nil && ids.id != "" {
 			args["id"] = llx.StringData(ids.id)
 		}
 	}
@@ -1174,18 +1346,46 @@ func initAzureSubscriptionStorageServiceAccountContainer(runtime *plugin.Runtime
 	if accs.Error != nil {
 		return nil, nil, accs.Error
 	}
-	id := args["id"].Value.(string)
-	for _, entry := range accs.Data {
-		storageAcc := entry.(*mqlAzureSubscriptionStorageServiceAccount)
+	id, ok := args["id"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("id must be a non-nil string value")
+	}
+	findIn := func(storageAcc *mqlAzureSubscriptionStorageServiceAccount) (plugin.Resource, error) {
 		containers := storageAcc.GetContainers()
 		if containers.Error != nil {
-			return nil, nil, containers.Error
+			return nil, containers.Error
 		}
 		for _, c := range containers.Data {
 			container := c.(*mqlAzureSubscriptionStorageServiceAccountContainer)
 			if container.Id.Data == id {
-				return args, container, nil
+				return container, nil
 			}
+		}
+		return nil, nil
+	}
+	for _, entry := range accs.Data {
+		container, err := findIn(entry.(*mqlAzureSubscriptionStorageServiceAccount))
+		if err != nil {
+			return nil, nil, err
+		}
+		if container != nil {
+			return args, container, nil
+		}
+	}
+
+	// A tag filter may have left the container's account out of the list. Only
+	// the account the container id names is worth listing containers for.
+	for _, r := range tagFilteredOutOfType(runtime, ResourceAzureSubscriptionStorageServiceAccount) {
+		storageAcc := r.(*mqlAzureSubscriptionStorageServiceAccount)
+		if !strings.HasPrefix(strings.ToLower(id), strings.ToLower(storageAcc.Id.Data)+"/") {
+			continue
+		}
+		container, err := findIn(storageAcc)
+		if err != nil {
+			return nil, nil, err
+		}
+		if container != nil {
+			return args, container, nil
 		}
 	}
 
@@ -1196,8 +1396,24 @@ func (a *mqlAzureSubscriptionStorageServiceAccountEncryptionScope) id() (string,
 	return a.Id.Data, nil
 }
 
+type mqlAzureSubscriptionStorageServiceAccountEncryptionScopeInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionStorageServiceAccountEncryptionScope) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
 func (a *mqlAzureSubscriptionStorageServiceAccountManagementPolicy) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+type mqlAzureSubscriptionStorageServiceAccountManagementPolicyInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionStorageServiceAccountManagementPolicy) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 func (a *mqlAzureSubscriptionStorageServiceAccountManagementPolicyRule) id() (string, error) {
@@ -1284,6 +1500,11 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) encryptionScopes() ([]any, e
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(scope.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlScope.(*mqlAzureSubscriptionStorageServiceAccountEncryptionScope).cacheSystemData = sysData
 			res = append(res, mqlScope)
 		}
 	}
@@ -1418,11 +1639,24 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) managementPolicy() (*mqlAzur
 	if err != nil {
 		return nil, err
 	}
+	sysData, err := convert.JsonToDict(policy.SystemData)
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlAzureSubscriptionStorageServiceAccountManagementPolicy).cacheSystemData = sysData
 	return res.(*mqlAzureSubscriptionStorageServiceAccountManagementPolicy), nil
 }
 
 func (a *mqlAzureSubscriptionStorageServiceAccountLocalUser) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+type mqlAzureSubscriptionStorageServiceAccountLocalUserInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionStorageServiceAccountLocalUser) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 // localUsers fetches local SFTP/SSH user accounts on the storage account.
@@ -1475,6 +1709,7 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) localUsers() ([]any, error) 
 			var homeDirectory string
 			var userId, groupId int64
 			var permissionScopes []any
+			permissions := []any{}
 			if p := lu.Properties; p != nil {
 				if p.AllowACLAuthorization != nil {
 					allowAcl = *p.AllowACLAuthorization
@@ -1500,13 +1735,27 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) localUsers() ([]any, error) 
 				if p.GroupID != nil {
 					groupId = int64(*p.GroupID)
 				}
-				for _, ps := range p.PermissionScopes {
+				for i, ps := range p.PermissionScopes {
 					if ps == nil {
 						continue
 					}
 					if d, err := convert.JsonToDict(ps); err == nil {
 						permissionScopes = append(permissionScopes, d)
 					}
+					// A permission scope carries no ARM identifier, so the
+					// position within the user's list is what distinguishes
+					// one row from the next.
+					mqlScope, err := CreateResource(a.MqlRuntime, "azure.subscription.storageService.account.localUser.permissionScope",
+						map[string]*llx.RawData{
+							"__id":         llx.StringData(subResourceCacheID(nil, convert.ToValue(lu.ID), "permissionScopes", strconv.Itoa(i))),
+							"permissions":  llx.StringDataPtr(ps.Permissions),
+							"service":      llx.StringDataPtr(ps.Service),
+							"resourceName": llx.StringDataPtr(ps.ResourceName),
+						})
+					if err != nil {
+						return nil, err
+					}
+					permissions = append(permissions, mqlScope)
 				}
 			}
 
@@ -1522,14 +1771,30 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) localUsers() ([]any, error) 
 					"isNFSv3Enabled":        llx.BoolData(isNFSv3),
 					"homeDirectory":         llx.StringData(homeDirectory),
 					"permissionScopes":      llx.ArrayData(permissionScopes, types.Dict),
+					"permissions":           llx.ArrayData(permissions, types.Resource("azure.subscription.storageService.account.localUser.permissionScope")),
 					"userId":                llx.IntData(userId),
 					"groupId":               llx.IntData(groupId),
 				})
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(lu.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlLu.(*mqlAzureSubscriptionStorageServiceAccountLocalUser).cacheSystemData = sysData
 			res = append(res, mqlLu)
 		}
 	}
 	return res, nil
+}
+
+// sasPolicyUserBoundDelegation returns the user-bound user delegation SAS
+// requirement and its violation action from a SAS policy. Both are nil when
+// the policy is absent or does not set them.
+func sasPolicyUserBoundDelegation(sas *storage.SasPolicy) (*bool, *string) {
+	if sas == nil {
+		return nil, nil
+	}
+	return sas.RequireUserBoundUserDelegationSas, (*string)(sas.RequireUserBoundUserDelegationSasAction)
 }

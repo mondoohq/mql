@@ -1,0 +1,97 @@
+# Ubuntu 24.04 with a tmpfs on a path holding a space (/mnt/sp ace) and two
+# tmpfs mounted on top of each other at /mnt/over (g05over2 hides g05over1).
+[commands."mount"]
+stdout = '''
+/dev/nvme0n1p1 on / type ext4 (rw,relatime,discard,errors=remount-ro,commit=30)
+devtmpfs on /dev type devtmpfs (rw,nosuid,noexec,relatime,size=720524k,nr_inodes=180131,mode=755,inode64)
+proc on /proc type proc (rw,nosuid,nodev,noexec,relatime)
+sysfs on /sys type sysfs (rw,nosuid,nodev,noexec,relatime)
+securityfs on /sys/kernel/security type securityfs (rw,nosuid,nodev,noexec,relatime)
+tmpfs on /dev/shm type tmpfs (rw,nosuid,nodev,inode64)
+devpts on /dev/pts type devpts (rw,nosuid,noexec,relatime,gid=5,mode=620,ptmxmode=000)
+tmpfs on /run type tmpfs (rw,nosuid,nodev,size=390356k,nr_inodes=819200,mode=755,inode64)
+tmpfs on /run/lock type tmpfs (rw,nosuid,nodev,noexec,relatime,size=5120k,inode64)
+cgroup2 on /sys/fs/cgroup type cgroup2 (rw,nosuid,nodev,noexec,relatime,nsdelegate,memory_recursiveprot)
+none on /sys/fs/pstore type pstore (rw,nosuid,nodev,noexec,relatime)
+efivarfs on /sys/firmware/efi/efivars type efivarfs (rw,nosuid,nodev,noexec,relatime)
+bpf on /sys/fs/bpf type bpf (rw,nosuid,nodev,noexec,relatime,mode=700)
+systemd-1 on /proc/sys/fs/binfmt_misc type autofs (rw,relatime,fd=32,pgrp=1,timeout=0,minproto=5,maxproto=5,direct,pipe_ino=1831)
+hugetlbfs on /dev/hugepages type hugetlbfs (rw,nosuid,nodev,relatime,pagesize=2M)
+mqueue on /dev/mqueue type mqueue (rw,nosuid,nodev,noexec,relatime)
+debugfs on /sys/kernel/debug type debugfs (rw,nosuid,nodev,noexec,relatime)
+tracefs on /sys/kernel/tracing type tracefs (rw,nosuid,nodev,noexec,relatime)
+fusectl on /sys/fs/fuse/connections type fusectl (rw,nosuid,nodev,noexec,relatime)
+configfs on /sys/kernel/config type configfs (rw,nosuid,nodev,noexec,relatime)
+/var/lib/snapd/snaps/amazon-ssm-agent_13349.snap on /snap/amazon-ssm-agent/13349 type squashfs (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/core22_2955.snap on /snap/core22/2955 type squashfs (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/var/lib/snapd/snaps/snapd_27738.snap on /snap/snapd/27738 type squashfs (ro,nodev,relatime,errors=continue,threads=single,x-gdu.hide,x-gvfs-hide)
+/dev/nvme0n1p16 on /boot type ext4 (rw,relatime)
+/dev/nvme0n1p15 on /boot/efi type vfat (rw,relatime,fmask=0077,dmask=0077,codepage=437,iocharset=iso8859-1,shortname=mixed,errors=remount-ro)
+binfmt_misc on /proc/sys/fs/binfmt_misc type binfmt_misc (rw,nosuid,nodev,noexec,relatime)
+sunrpc on /run/rpc_pipefs type rpc_pipefs (rw,relatime)
+nfsd on /proc/fs/nfsd type nfsd (rw,relatime)
+/dev/mapper/vg--data-lv--lin on /mnt/lvlin type ext4 (rw,relatime)
+/dev/mapper/vg--data-thinvol on /mnt/thin type ext4 (rw,relatime,stripe=16)
+/dev/md127 on /mnt/md type ext4 (rw,relatime,stripe=256)
+tank on /tank type zfs (rw,relatime,xattr,noacl,casesensitive)
+mpool on /mpool type zfs (rw,relatime,xattr,noacl,casesensitive)
+tank/fs1 on /tank/fs1 type zfs (rw,relatime,xattr,noacl,casesensitive)
+tank/clone1 on /tank/clone1 type zfs (rw,relatime,xattr,noacl,casesensitive)
+tank/secret on /tank/secret type zfs (rw,relatime,xattr,noacl,casesensitive)
+127.0.0.1:/srv/nfs/ro on /mnt/nfs4 type nfs4 (ro,relatime,vers=4.2,rsize=262144,wsize=262144,namlen=255,soft,fatal_neterrors=none,proto=tcp,timeo=600,retrans=2,sec=sys,clientaddr=127.0.0.1,local_lock=none,addr=127.0.0.1)
+g05over1 on /mnt/over type tmpfs (rw,relatime,size=4096k,inode64)
+g05over2 on /mnt/over type tmpfs (rw,relatime,size=6144k,inode64)
+g05ro on /mnt/ro type tmpfs (ro,nosuid,noexec,relatime,size=2048k,inode64)
+g05sp on /mnt/sp ace type tmpfs (rw,relatime,size=8192k,inode64)
+/dev/mapper/g05crypt on /mnt/crypt type ext4 (rw,relatime)
+127.0.0.1:/srv/nfs/rw on /mnt/nfs3 type nfs (rw,relatime,vers=3,rsize=262144,wsize=262144,namlen=255,hard,fatal_neterrors=none,proto=tcp,timeo=600,retrans=2,sec=sys,mountaddr=127.0.0.1,mountvers=3,mountport=51163,mountproto=udp,local_lock=none,addr=127.0.0.1)
+tmpfs on /run/user/1000 type tmpfs (rw,nosuid,nodev,relatime,size=195176k,nr_inodes=48794,mode=700,uid=1000,gid=1000,inode64)
+'''
+
+[files."/proc/mounts"]
+content = '''
+/dev/root / ext4 rw,relatime,discard,errors=remount-ro,commit=30 0 0
+devtmpfs /dev devtmpfs rw,nosuid,noexec,relatime,size=720524k,nr_inodes=180131,mode=755,inode64 0 0
+proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0
+sysfs /sys sysfs rw,nosuid,nodev,noexec,relatime 0 0
+securityfs /sys/kernel/security securityfs rw,nosuid,nodev,noexec,relatime 0 0
+tmpfs /dev/shm tmpfs rw,nosuid,nodev,inode64 0 0
+devpts /dev/pts devpts rw,nosuid,noexec,relatime,gid=5,mode=620,ptmxmode=000 0 0
+tmpfs /run tmpfs rw,nosuid,nodev,size=390356k,nr_inodes=819200,mode=755,inode64 0 0
+tmpfs /run/lock tmpfs rw,nosuid,nodev,noexec,relatime,size=5120k,inode64 0 0
+cgroup2 /sys/fs/cgroup cgroup2 rw,nosuid,nodev,noexec,relatime,nsdelegate,memory_recursiveprot 0 0
+none /sys/fs/pstore pstore rw,nosuid,nodev,noexec,relatime 0 0
+efivarfs /sys/firmware/efi/efivars efivarfs rw,nosuid,nodev,noexec,relatime 0 0
+bpf /sys/fs/bpf bpf rw,nosuid,nodev,noexec,relatime,mode=700 0 0
+systemd-1 /proc/sys/fs/binfmt_misc autofs rw,relatime,fd=32,pgrp=1,timeout=0,minproto=5,maxproto=5,direct,pipe_ino=1831 0 0
+hugetlbfs /dev/hugepages hugetlbfs rw,nosuid,nodev,relatime,pagesize=2M 0 0
+mqueue /dev/mqueue mqueue rw,nosuid,nodev,noexec,relatime 0 0
+debugfs /sys/kernel/debug debugfs rw,nosuid,nodev,noexec,relatime 0 0
+tracefs /sys/kernel/tracing tracefs rw,nosuid,nodev,noexec,relatime 0 0
+fusectl /sys/fs/fuse/connections fusectl rw,nosuid,nodev,noexec,relatime 0 0
+configfs /sys/kernel/config configfs rw,nosuid,nodev,noexec,relatime 0 0
+/dev/loop0 /snap/amazon-ssm-agent/13349 squashfs ro,nodev,relatime,errors=continue,threads=single 0 0
+/dev/loop1 /snap/core22/2955 squashfs ro,nodev,relatime,errors=continue,threads=single 0 0
+/dev/loop2 /snap/snapd/27738 squashfs ro,nodev,relatime,errors=continue,threads=single 0 0
+/dev/nvme0n1p16 /boot ext4 rw,relatime 0 0
+/dev/nvme0n1p15 /boot/efi vfat rw,relatime,fmask=0077,dmask=0077,codepage=437,iocharset=iso8859-1,shortname=mixed,errors=remount-ro 0 0
+binfmt_misc /proc/sys/fs/binfmt_misc binfmt_misc rw,nosuid,nodev,noexec,relatime 0 0
+sunrpc /run/rpc_pipefs rpc_pipefs rw,relatime 0 0
+nfsd /proc/fs/nfsd nfsd rw,relatime 0 0
+/dev/mapper/vg--data-lv--lin /mnt/lvlin ext4 rw,relatime 0 0
+/dev/mapper/vg--data-thinvol /mnt/thin ext4 rw,relatime,stripe=16 0 0
+/dev/md127 /mnt/md ext4 rw,relatime,stripe=256 0 0
+tank /tank zfs rw,relatime,xattr,noacl,casesensitive 0 0
+mpool /mpool zfs rw,relatime,xattr,noacl,casesensitive 0 0
+tank/fs1 /tank/fs1 zfs rw,relatime,xattr,noacl,casesensitive 0 0
+tank/clone1 /tank/clone1 zfs rw,relatime,xattr,noacl,casesensitive 0 0
+tank/secret /tank/secret zfs rw,relatime,xattr,noacl,casesensitive 0 0
+127.0.0.1:/srv/nfs/ro /mnt/nfs4 nfs4 ro,relatime,vers=4.2,rsize=262144,wsize=262144,namlen=255,soft,fatal_neterrors=none,proto=tcp,timeo=600,retrans=2,sec=sys,clientaddr=127.0.0.1,local_lock=none,addr=127.0.0.1 0 0
+g05over1 /mnt/over tmpfs rw,relatime,size=4096k,inode64 0 0
+g05over2 /mnt/over tmpfs rw,relatime,size=6144k,inode64 0 0
+g05ro /mnt/ro tmpfs ro,nosuid,noexec,relatime,size=2048k,inode64 0 0
+g05sp /mnt/sp\040ace tmpfs rw,relatime,size=8192k,inode64 0 0
+/dev/mapper/g05crypt /mnt/crypt ext4 rw,relatime 0 0
+127.0.0.1:/srv/nfs/rw /mnt/nfs3 nfs rw,relatime,vers=3,rsize=262144,wsize=262144,namlen=255,hard,fatal_neterrors=none,proto=tcp,timeo=600,retrans=2,sec=sys,mountaddr=127.0.0.1,mountvers=3,mountport=51163,mountproto=udp,local_lock=none,addr=127.0.0.1 0 0
+tmpfs /run/user/1000 tmpfs rw,nosuid,nodev,relatime,size=195176k,nr_inodes=48794,mode=700,uid=1000,gid=1000,inode64 0 0
+'''

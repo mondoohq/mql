@@ -4,15 +4,21 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/digitalocean/connection"
-	"go.mondoo.com/mql/v13/providers/digitalocean/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/digitalocean/connection"
+	"go.mondoo.com/mql/providers/digitalocean/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "digitalocean",
-	ID:              "go.mondoo.com/mql/providers/digitalocean",
-	Version:         "13.10.1",
+	Name: "digitalocean",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "digitalocean",
+	ID:      "go.mondoo.com/mql/providers/digitalocean",
+	Version: "14.2.7",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       connection.Platforms,
 	Connectors: []plugin.Connector{
@@ -23,8 +29,9 @@ var Config = plugin.Provider{
 			Long: `Use the digitalocean provider to query resources in a DigitalOcean account.
 
 Examples:
-  mql shell digitalocean --token <api-token>
-  mql shell digitalocean
+  cnspec shell digitalocean --token <api-token>
+  cnspec shell digitalocean
+  cnspec scan digitalocean --discover all --filters tags=production
 
 Notes:
   If you set the DIGITALOCEAN_TOKEN environment variable, you can omit the token flag.
@@ -39,6 +46,7 @@ Notes:
 				connection.DiscoveryLoadBalancers,
 				connection.DiscoveryFirewalls,
 				connection.DiscoverySpacesBuckets,
+				connection.DiscoveryGradientaiAgents,
 			},
 			Flags: []plugin.Flag{
 				{
@@ -46,6 +54,12 @@ Notes:
 					Type:    plugin.FlagType_String,
 					Default: "",
 					Desc:    "DigitalOcean personal access token (env: DIGITALOCEAN_TOKEN)",
+				},
+				{
+					Long:    "filters",
+					Type:    plugin.FlagType_KeyValue,
+					Default: "",
+					Desc:    "Filter discovered assets, e.g., --filters regions=nyc1,sfo3 --filters exclude:regions=ams3 --filters tags=production,web --filters exclude:tags=temporary",
 				},
 			},
 		},

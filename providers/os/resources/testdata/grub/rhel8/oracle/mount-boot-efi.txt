@@ -1,0 +1,1 @@
+/dev/nvme0n1p2 /boot/efi vfat   rw,relatime,fmask=0077,dmask=0077,codepage=437,iocharset=ascii,shortname=winnt,errors=remount-ro

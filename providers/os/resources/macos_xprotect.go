@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/plist"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/plist"
 )
 
 // xprotectBundlePaths and mrtBundlePaths list the locations XProtect

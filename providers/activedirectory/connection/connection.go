@@ -5,6 +5,7 @@ package connection
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -22,9 +23,9 @@ import (
 	"github.com/jcmturner/gokrb5/v8/keytab"
 	gosmb "github.com/jfjallid/go-smb/smb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 )
 
 const (
@@ -209,7 +210,7 @@ type ActiveDirectoryConnection struct {
 	domainFunctionalLevel string
 	forestFunctionalLevel string
 	cacheMu               sync.RWMutex
-	cache                 map[string]interface{}
+	cache                 map[string]any
 
 	// SMB probe state. Lazy-initialized on first SMB-backed field access.
 	// sync.Once (not CachedFetch) because failed probes must not retry.
@@ -286,7 +287,7 @@ func NewActiveDirectoryConnection(id uint32, asset *inventory.Asset, conf *inven
 		ldapConn:   ldapConn,
 		dcHost:     dcHost,
 		transport:  transport,
-		cache:      make(map[string]interface{}),
+		cache:      make(map[string]any),
 	}
 
 	// Override baseDN: --base-dn takes precedence, then --domain, then RootDSE auto-detection.
@@ -351,7 +352,7 @@ func newLDAPTLSConfig(serverName string, insecure bool) *tls.Config {
 // Kerberos/GSSAPI or simple bind.
 func bindLDAPConn(conn *ldap.Conn, dcHost, user, password string, opts map[string]string, transport ldapTransport, warnOnPlaintext bool) error {
 	if isTrueOption(opts[OptionKerberos]) {
-		return kerberosGSSAPIBind(conn, dcHost, user, password, opts)
+		return kerberosGSSAPIBind(conn, dcHost, user, password, opts, serverCertFromConn(conn))
 	}
 	if warnOnPlaintext && !transport.usesTLS() {
 		log.Warn().Str("dc", dcHost).Msg("LDAP simple bind over plaintext connection — credentials are transmitted in the clear; use LDAPS (the default transport) or --starttls unless you explicitly opt into --plain-ldap for a lab")
@@ -362,7 +363,18 @@ func bindLDAPConn(conn *ldap.Conn, dcHost, user, password string, opts map[strin
 	return nil
 }
 
-func newKerberosClient(user, password, dcHost string, opts map[string]string) (ldap.GSSAPIClient, func() error, kerberosAuthSource, string, error) {
+// serverCertFromConn returns the DC's leaf TLS certificate for the connection,
+// or nil when the transport is plaintext LDAP. It is used to derive the RFC 5929
+// tls-server-end-point channel binding for Kerberos SASL binds.
+func serverCertFromConn(conn *ldap.Conn) *x509.Certificate {
+	state, ok := conn.TLSConnectionState()
+	if !ok || len(state.PeerCertificates) == 0 {
+		return nil
+	}
+	return state.PeerCertificates[0]
+}
+
+func newKerberosClient(user, password, dcHost string, opts map[string]string, serverCert *x509.Certificate) (ldap.GSSAPIClient, func() error, kerberosAuthSource, string, error) {
 	source, err := selectKerberosAuthSource(user, password, opts)
 	if err != nil {
 		return nil, nil, "", "", err
@@ -371,7 +383,7 @@ func newKerberosClient(user, password, dcHost string, opts map[string]string) (l
 	// The current Windows logon session is sourced via SSPI and needs no
 	// krb5 config of its own.
 	if source == kerberosAuthSourceCurrentSession {
-		gssClient, cleanup, err := newImplicitKerberosClient()
+		gssClient, cleanup, err := newImplicitKerberosClient(serverCert)
 		if err != nil {
 			return nil, nil, "", "", err
 		}
@@ -408,8 +420,8 @@ func newKerberosClient(user, password, dcHost string, opts map[string]string) (l
 			return nil, nil, "", "", fmt.Errorf("kerberos keytab %q: %w", opts[OptionKeytab], err)
 		}
 		krbClient := client.NewWithKeytab(principal, realm, kt, krb5conf, client.DisablePAFXFAST(true))
-		gssClient := &gssapi.Client{Client: krbClient}
-		return gssClient, gssClient.Close, source, krb5confDesc, nil
+		cb := newChannelBindingClient(&gssapi.Client{Client: krbClient}, serverCert)
+		return cb, cb.Close, source, krb5confDesc, nil
 	case kerberosAuthSourceCCache:
 		ccache, err := credentials.LoadCCache(opts[OptionCCache])
 		if err != nil {
@@ -419,13 +431,13 @@ func newKerberosClient(user, password, dcHost string, opts map[string]string) (l
 		if err != nil {
 			return nil, nil, "", "", fmt.Errorf("kerberos ccache client: %w", err)
 		}
-		gssClient := &gssapi.Client{Client: krbClient}
-		return gssClient, gssClient.Close, source, krb5confDesc, nil
+		cb := newChannelBindingClient(&gssapi.Client{Client: krbClient}, serverCert)
+		return cb, cb.Close, source, krb5confDesc, nil
 	case kerberosAuthSourcePassword:
 		principal, realm := splitPrincipal(user)
 		krbClient := client.NewWithPassword(principal, realm, password, krb5conf, client.DisablePAFXFAST(true))
-		gssClient := &gssapi.Client{Client: krbClient}
-		return gssClient, gssClient.Close, source, krb5confDesc, nil
+		cb := newChannelBindingClient(&gssapi.Client{Client: krbClient}, serverCert)
+		return cb, cb.Close, source, krb5confDesc, nil
 	default:
 		return nil, nil, "", "", fmt.Errorf("unsupported Kerberos auth source %q", source)
 	}
@@ -438,11 +450,11 @@ func newKerberosClient(user, password, dcHost string, opts map[string]string) (l
 //  3. --user + --password: password-based Kerberos AS exchange
 //  4. On Windows only, the current logon session when no explicit credential
 //     material is supplied.
-func kerberosGSSAPIBind(conn *ldap.Conn, dcHost, user, password string, opts map[string]string) error {
+func kerberosGSSAPIBind(conn *ldap.Conn, dcHost, user, password string, opts map[string]string, serverCert *x509.Certificate) error {
 	// LDAP service principal: ldap/<dc_hostname>
 	servicePrincipal := "ldap/" + dcHost
 
-	gssClient, cleanup, source, krb5confDesc, err := newKerberosClient(user, password, dcHost, opts)
+	gssClient, cleanup, source, krb5confDesc, err := newKerberosClient(user, password, dcHost, opts, serverCert)
 	if err != nil {
 		return err
 	}
@@ -450,14 +462,15 @@ func kerberosGSSAPIBind(conn *ldap.Conn, dcHost, user, password string, opts map
 
 	authLogger := log.Debug().
 		Str("servicePrincipal", servicePrincipal).
-		Str("credentialSource", string(source))
+		Str("credentialSource", string(source)).
+		Bool("channelBinding", serverCert != nil)
 	if krb5confDesc != "" {
 		authLogger = authLogger.Str("krb5conf", krb5confDesc)
 	}
 	authLogger.Msg("performing GSSAPI/Kerberos bind")
 
 	if err := conn.GSSAPIBind(gssClient, servicePrincipal, ""); err != nil {
-		return enrichKerberosBindError(err, servicePrincipal, krb5confDesc)
+		return enrichKerberosBindError(err, servicePrincipal, krb5confDesc, serverCert != nil)
 	}
 
 	return nil
@@ -468,21 +481,38 @@ func kerberosGSSAPIBind(conn *ldap.Conn, dcHost, user, password string, opts map
 // records, invalid token) are terse and offer no remediation, which is
 // especially unhelpful for the multi-forest case where the right fix is a
 // hand-authored krb5.conf.
-func enrichKerberosBindError(err error, servicePrincipal, krb5confDesc string) error {
+func enrichKerberosBindError(err error, servicePrincipal, krb5confDesc string, overTLS bool) error {
 	msg := err.Error()
 	autoGenerated := strings.HasPrefix(krb5confDesc, "auto-generated")
 
 	switch {
-	// AD error 80090308 (SEC_E_INVALID_TOKEN) with data 57 typically means the
-	// DC requires LDAP signing/sealing for SASL binds but the go-ldap GSSAPI
-	// client does not negotiate SASL security layers (upstream issue:
-	// https://github.com/go-ldap/ldap/issues/552). SSPI-backed current-session
-	// auth changes how we source tickets on Windows, but it does not change
-	// this SASL-layer limitation.
+	// AD error 80090346 (SEC_E_BAD_BINDINGS): the DC enforces LDAP channel
+	// binding and rejected the token. Over plaintext LDAP no binding can be
+	// sent at all; over TLS we send a tls-server-end-point binding, so a
+	// remaining failure points at the DC certificate or a terminating proxy.
+	case strings.Contains(msg, "80090346"):
+		if !overTLS {
+			return fmt.Errorf("GSSAPI bind to %s failed: the domain controller requires LDAP "+
+				"channel binding, which is only possible over TLS — use LDAPS (the default transport) "+
+				"or --starttls: %w", servicePrincipal, err)
+		}
+		return fmt.Errorf("GSSAPI bind to %s failed: the domain controller rejected the channel "+
+			"binding token (ensure --dc is the DC's certificate hostname and the TLS connection "+
+			"terminates at the DC, not a proxy/load balancer): %w", servicePrincipal, err)
+
+	// AD error 80090308 (SEC_E_INVALID_TOKEN) with data 57 means the DC rejected
+	// the AP-REQ itself. A missing mutual-required AP option causes it (set
+	// since go-ldap issue #536 surfaced it; see newAPREQMechToken), and it has
+	// been attributed to LDAP signing enforcement on a non-TLS transport. A
+	// missing or wrong channel binding is 80090346 instead, handled above.
 	case strings.Contains(msg, "80090308"):
-		return fmt.Errorf("GSSAPI bind to %s failed (the domain controller likely requires "+
-			"LDAP signing for SASL binds; use LDAPS (the default transport) or --starttls, or fall back to "+
-			"simple bind with --user/--password without --kerberos): %w", servicePrincipal, err)
+		if !overTLS {
+			return fmt.Errorf("GSSAPI bind to %s failed: the domain controller requires LDAP signing "+
+				"and/or channel binding for SASL binds; use LDAPS (the default transport) or --starttls, or "+
+				"fall back to simple bind with --user/--password without --kerberos: %w", servicePrincipal, err)
+		}
+		return fmt.Errorf("GSSAPI bind to %s failed (the domain controller rejected the SASL bind; "+
+			"try simple bind with --user/--password without --kerberos over LDAPS): %w", servicePrincipal, err)
 
 	// KDC could not be located or reached. With an auto-generated config this
 	// is the expected failure mode for a multi-forest topology whose foreign
@@ -653,8 +683,8 @@ func domainFromHost(host string) string {
 // ("user", "REALM"). If no '@' is present, realm is empty and the
 // gokrb5 client uses the default realm from krb5.conf.
 func splitPrincipal(upn string) (string, string) {
-	if idx := strings.LastIndex(upn, "@"); idx >= 0 {
-		return upn[:idx], upn[idx+1:]
+	if before, after, ok := strings.CutLast(upn, "@"); ok {
+		return before, after
 	}
 	return upn, ""
 }
@@ -989,7 +1019,7 @@ func (c *ActiveDirectoryConnection) ProbeLDAPSigning() (bool, error) {
 
 // CachedFetch returns a cached value for the given key, computing it via fn
 // on first access. Concurrent callers block on the write if the key is absent.
-func (c *ActiveDirectoryConnection) CachedFetch(key string, fn func() (interface{}, error)) (interface{}, error) {
+func (c *ActiveDirectoryConnection) CachedFetch(key string, fn func() (any, error)) (any, error) {
 	c.cacheMu.RLock()
 	if v, ok := c.cache[key]; ok {
 		c.cacheMu.RUnlock()

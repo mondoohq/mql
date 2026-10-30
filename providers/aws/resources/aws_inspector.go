@@ -5,26 +5,32 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/service/inspector2"
 	"github.com/aws/aws-sdk-go-v2/service/inspector2/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	llxtypes "go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	llxtypes "go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsInspector) id() (string, error) {
 	return "aws.inspector", nil
 }
 
+// id identifies one coverage row. Inspector reports a resource once per scan
+// type, so an instance covered by both PACKAGE and NETWORK produces two rows
+// that differ only in scanType - without it they collapsed into one and the
+// second scan type became invisible. The region is part of it too, since
+// resource ids like an ECR repository name are only unique within one.
 func (a *mqlAwsInspectorCoverage) id() (string, error) {
-	return a.AccountId.Data + "/" + a.ResourceId.Data, nil
+	return a.AccountId.Data + "/" + a.Region.Data + "/" + a.ResourceId.Data + "/" + a.ScanType.Data, nil
 }
 
 func (a *mqlAwsInspector) coverages() ([]any, error) {
@@ -87,7 +93,15 @@ func (a *mqlAwsInspector) getCoverage(conn *connection.AwsConnection) []*jobpool
 							"statusReason":  llx.StringData(statusReason),
 							"statusCode":    llx.StringData(statusCode),
 							"scanType":      llx.StringData(string(coverage.ScanType)),
-							"region":        llx.StringData(region),
+							"scanMode":      llx.StringData(string(coverage.ScanMode)),
+							// Inspector can cover resources hosted outside AWS, so the
+							// provider fields identify where the resource actually lives.
+							"provider":          llx.StringData(string(coverage.Provider)),
+							"providerAccountId": llx.StringDataPtr(coverage.ProviderAccountId),
+							"providerOrgId":     llx.StringDataPtr(coverage.ProviderOrgId),
+							"providerPartition": llx.StringDataPtr(coverage.ProviderPartition),
+							"providerRegion":    llx.StringDataPtr(coverage.ProviderRegion),
+							"region":            llx.StringData(region),
 						},
 					)
 					if err != nil {
@@ -112,24 +126,27 @@ type mqlAwsInspectorCoverageInstanceInternal struct {
 	cacheAmiId string
 }
 
+// id is a fallback only. The coverage that owns this instance passes an
+// explicit __id, because an instance is a one-to-one detail of a coverage row
+// and has nothing of its own that identifies it: the previous key concatenated
+// the tag map, which is neither unique (two instances tagged alike collide) nor
+// stable (Go randomizes map iteration, so the same instance could key
+// differently between two runs of the same scan).
 func (a *mqlAwsInspectorCoverageInstance) id() (string, error) {
-	strTags := ""
-	for k, v := range a.Tags.Data {
-		strTags = strTags + k + "/" + v.(string) + "/"
-	}
-	return a.Region.Data + "/" + strTags, nil
+	return a.Region.Data, nil
 }
 
 func (a *mqlAwsInspectorCoverage) ec2Instance() (*mqlAwsInspectorCoverageInstance, error) {
 	if a.cacheCoverage != nil && a.cacheCoverage.ResourceMetadata != nil && a.cacheCoverage.ResourceMetadata.Ec2 != nil {
-		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 		args := map[string]*llx.RawData{
+			"__id":     llx.StringData(a.MqlID() + "/ec2Instance"),
 			"platform": llx.StringData(string(a.cacheCoverage.ResourceMetadata.Ec2.Platform)),
 			"tags":     llx.MapData(toInterfaceMap(a.cacheCoverage.ResourceMetadata.Ec2.Tags), llxtypes.String),
 			"region":   llx.StringData(a.Region.Data),
 		}
 		image, err := NewResource(a.MqlRuntime, "aws.ec2.image", map[string]*llx.RawData{
-			"arn": llx.StringData(fmt.Sprintf(imageArnPattern, a.Region.Data, conn.AccountId(), convert.ToValue(a.cacheCoverage.ResourceMetadata.Ec2.AmiId))),
+			"id":     llx.StringData(convert.ToValue(a.cacheCoverage.ResourceMetadata.Ec2.AmiId)),
+			"region": llx.StringData(a.Region.Data),
 		})
 		if err == nil {
 			args["image"] = llx.ResourceData(image, "aws.ec2.image")
@@ -154,17 +171,17 @@ func listMapConversion(m []string) map[string]any {
 	return newMap
 }
 
+// id is a fallback only, for the same reason as the instance above: the owning
+// coverage passes an explicit __id, and an image tag list is neither a unique
+// nor a stably ordered identity.
 func (a *mqlAwsInspectorCoverageImage) id() (string, error) {
-	tagString := ""
-	for k, v := range a.Tags.Data {
-		tagString = tagString + k + "/" + v.(string) + "/"
-	}
-	return a.Region.Data + "/" + tagString, nil
+	return a.Region.Data, nil
 }
 
 func (a *mqlAwsInspectorCoverage) ecrImage() (*mqlAwsInspectorCoverageImage, error) {
 	if a.cacheCoverage != nil && a.cacheCoverage.ResourceMetadata != nil && a.cacheCoverage.ResourceMetadata.EcrImage != nil {
 		mqlEcr, err := CreateResource(a.MqlRuntime, "aws.inspector.coverage.image", map[string]*llx.RawData{
+			"__id":          llx.StringData(a.MqlID() + "/ecrImage"),
 			"tags":          llx.MapData(listMapConversion(a.cacheCoverage.ResourceMetadata.EcrImage.Tags), llxtypes.String),
 			"imagePulledAt": llx.TimeDataPtr(a.cacheCoverage.ResourceMetadata.EcrImage.ImagePulledAt),
 			"region":        llx.StringData(a.Region.Data),
@@ -184,6 +201,7 @@ func (a *mqlAwsInspectorCoverageRepository) id() (string, error) {
 func (a *mqlAwsInspectorCoverage) ecrRepo() (*mqlAwsInspectorCoverageRepository, error) {
 	if a.cacheCoverage != nil && a.cacheCoverage.ResourceMetadata != nil && a.cacheCoverage.ResourceMetadata.EcrRepository != nil {
 		mqlEcr, err := CreateResource(a.MqlRuntime, "aws.inspector.coverage.repository", map[string]*llx.RawData{
+			"__id":          llx.StringData(a.MqlID() + "/ecrRepo"),
 			"name":          llx.StringDataPtr(a.cacheCoverage.ResourceMetadata.EcrRepository.Name),
 			"scanFrequency": llx.StringData(string(a.cacheCoverage.ResourceMetadata.EcrRepository.ScanFrequency)),
 			"region":        llx.StringData(a.Region.Data),
@@ -209,6 +227,177 @@ func (a *mqlAwsInspectorCoverage) lambda() (*mqlAwsLambdaFunction, error) {
 	}
 	a.Lambda.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
+}
+
+// ============================================================
+// Inspector Account Status & Configuration
+// ============================================================
+
+func (a *mqlAwsInspectorAccountStatus) id() (string, error) {
+	return a.AccountId.Data + "/" + a.Region.Data, nil
+}
+
+func (a *mqlAwsInspectorConfiguration) id() (string, error) {
+	return "aws.inspector.configuration/" + a.Region.Data, nil
+}
+
+func inspectorStateStatus(s *types.State) string {
+	if s == nil {
+		return ""
+	}
+	return string(s.Status)
+}
+
+func (a *mqlAwsInspector) accountStatuses() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	res := []any{}
+	poolOfJobs := jobpool.CreatePool(a.getAccountStatuses(conn), 5)
+	poolOfJobs.Run()
+
+	if poolOfJobs.HasErrors() {
+		return nil, poolOfJobs.GetErrors()
+	}
+	for i := range poolOfJobs.Jobs {
+		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
+	}
+	return res, nil
+}
+
+func (a *mqlAwsInspector) getAccountStatuses(conn *connection.AwsConnection) []*jobpool.Job {
+	tasks := make([]*jobpool.Job, 0)
+	regions, err := conn.Regions()
+	if err != nil {
+		return []*jobpool.Job{{Err: err}}
+	}
+
+	for _, region := range regions {
+		f := func() (jobpool.JobResult, error) {
+			svc := conn.Inspector(region)
+			ctx := context.Background()
+			res := []any{}
+
+			// with no account IDs, BatchGetAccountStatus returns the status of
+			// the requesting account
+			resp, err := svc.BatchGetAccountStatus(ctx, &inspector2.BatchGetAccountStatusInput{})
+			if err != nil {
+				if Is400AccessDeniedError(err) {
+					log.Warn().Str("region", region).Msg("error accessing region for AWS API")
+					return res, nil
+				}
+				return nil, err
+			}
+			for i := range resp.Accounts {
+				acct := resp.Accounts[i]
+				rs := acct.ResourceState
+				if rs == nil {
+					rs = &types.ResourceState{}
+				}
+				// AccountId is a required field on the API response, but fall
+				// back to the connection account so the __id stays unique even
+				// if it ever comes back empty
+				accountID := convert.ToValue(acct.AccountId)
+				if accountID == "" {
+					accountID = conn.AccountId()
+				}
+				mqlStatus, err := CreateResource(a.MqlRuntime, "aws.inspector.accountStatus",
+					map[string]*llx.RawData{
+						"accountId":            llx.StringData(accountID),
+						"status":               llx.StringData(inspectorStateStatus(acct.State)),
+						"ec2Status":            llx.StringData(inspectorStateStatus(rs.Ec2)),
+						"ecrStatus":            llx.StringData(inspectorStateStatus(rs.Ecr)),
+						"lambdaStatus":         llx.StringData(inspectorStateStatus(rs.Lambda)),
+						"lambdaCodeStatus":     llx.StringData(inspectorStateStatus(rs.LambdaCode)),
+						"codeRepositoryStatus": llx.StringData(inspectorStateStatus(rs.CodeRepository)),
+						"region":               llx.StringData(region),
+					})
+				if err != nil {
+					return nil, err
+				}
+				res = append(res, mqlStatus)
+			}
+			return jobpool.JobResult(res), nil
+		}
+		tasks = append(tasks, jobpool.NewJob(f))
+	}
+	return tasks
+}
+
+func (a *mqlAwsInspector) configurations() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	res := []any{}
+	poolOfJobs := jobpool.CreatePool(a.getConfigurations(conn), 5)
+	poolOfJobs.Run()
+
+	if poolOfJobs.HasErrors() {
+		return nil, poolOfJobs.GetErrors()
+	}
+	for i := range poolOfJobs.Jobs {
+		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
+	}
+	return res, nil
+}
+
+func (a *mqlAwsInspector) getConfigurations(conn *connection.AwsConnection) []*jobpool.Job {
+	tasks := make([]*jobpool.Job, 0)
+	regions, err := conn.Regions()
+	if err != nil {
+		return []*jobpool.Job{{Err: err}}
+	}
+
+	for _, region := range regions {
+		f := func() (jobpool.JobResult, error) {
+			svc := conn.Inspector(region)
+			ctx := context.Background()
+			res := []any{}
+
+			resp, err := svc.GetConfiguration(ctx, &inspector2.GetConfigurationInput{})
+			if err != nil {
+				// GetConfiguration returns ResourceNotFoundException ("No
+				// CustomerRecord exists") in regions where Inspector was never
+				// enabled; treat that as no configuration rather than an error
+				if _, ok := errors.AsType[*types.ResourceNotFoundException](err); ok {
+					return res, nil
+				}
+				if Is400AccessDeniedError(err) {
+					log.Warn().Str("region", region).Msg("error accessing region for AWS API")
+					return res, nil
+				}
+				return nil, err
+			}
+
+			args := map[string]*llx.RawData{
+				"region":                    llx.StringData(region),
+				"ecrRescanDuration":         llx.StringData(""),
+				"ecrPullDateRescanDuration": llx.StringData(""),
+				"ecrPullDateRescanMode":     llx.StringData(""),
+				"ecrRescanDurationStatus":   llx.StringData(""),
+				"ecrRescanUpdatedAt":        llx.TimeDataPtr(nil),
+				"ec2ScanMode":               llx.StringData(""),
+				"ec2ScanModeStatus":         llx.StringData(""),
+			}
+			if resp.EcrConfiguration != nil && resp.EcrConfiguration.RescanDurationState != nil {
+				rds := resp.EcrConfiguration.RescanDurationState
+				args["ecrRescanDuration"] = llx.StringData(string(rds.RescanDuration))
+				args["ecrPullDateRescanDuration"] = llx.StringData(string(rds.PullDateRescanDuration))
+				args["ecrPullDateRescanMode"] = llx.StringData(string(rds.PullDateRescanMode))
+				args["ecrRescanDurationStatus"] = llx.StringData(string(rds.Status))
+				args["ecrRescanUpdatedAt"] = llx.TimeDataPtr(rds.UpdatedAt)
+			}
+			if resp.Ec2Configuration != nil && resp.Ec2Configuration.ScanModeState != nil {
+				sms := resp.Ec2Configuration.ScanModeState
+				args["ec2ScanMode"] = llx.StringData(string(sms.ScanMode))
+				args["ec2ScanModeStatus"] = llx.StringData(string(sms.ScanModeStatus))
+			}
+			mqlConfig, err := CreateResource(a.MqlRuntime, "aws.inspector.configuration", args)
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlConfig)
+			return jobpool.JobResult(res), nil
+		}
+		tasks = append(tasks, jobpool.NewJob(f))
+	}
+	return tasks
 }
 
 // ============================================================

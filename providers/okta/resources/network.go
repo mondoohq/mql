@@ -6,22 +6,19 @@ package resources
 import (
 	"context"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/okta/connection"
-	"go.mondoo.com/mql/v13/providers/okta/resources/sdk"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/okta/connection"
+	"go.mondoo.com/mql/providers/okta/resources/sdk"
+	"go.mondoo.com/mql/types"
 )
 
 func (o *mqlOkta) networks() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OktaConnection)
 
 	ctx := context.Background()
-	apiSupplement := &sdk.ApiExtension{
-		Host:  conn.OrganizationID(),
-		Token: conn.Token(),
-	}
+	apiSupplement := conn.ApiExtension()
 
 	zones, err := apiSupplement.ListNetworkZones(ctx, queryLimit)
 	if err != nil {

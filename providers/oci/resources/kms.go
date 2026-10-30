@@ -6,15 +6,15 @@ package resources
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
-	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/keymanagement"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/oci/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/oci/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (o *mqlOciKms) id() (string, error) {
@@ -24,73 +24,22 @@ func (o *mqlOciKms) id() (string, error) {
 func (o *mqlOciKms) vaults() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	// Vaults are almost always created in the compartment of the service they
+	// encrypt, and ListVaults answers for one compartment with no way to recurse.
+	// A root-only listing therefore came back empty, and every typed vault
+	// reference from a database, bucket, or stream pool then had nothing to
+	// resolve against.
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci kms with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getVaults(conn, list.Data), 5)
-	poolOfJobs.Run()
-
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-
-	return res, nil
-}
-
-func (o *mqlOciKms) getVaultsForRegion(ctx context.Context, client *keymanagement.KmsVaultClient, compartmentID string) ([]keymanagement.VaultSummary, error) {
-	entries := []keymanagement.VaultSummary{}
-	var page *string
-	for {
-		request := keymanagement.ListVaultsRequest{
-			CompartmentId: common.String(compartmentID),
-			Page:          page,
-		}
-
-		response, err := client.ListVaults(ctx, request)
-		if err != nil {
-			return nil, err
-		}
-
-		entries = append(entries, response.Items...)
-
-		if response.OpcNextPage == nil {
-			break
-		}
-		page = response.OpcNextPage
-	}
-
-	return entries, nil
-}
-
-func (o *mqlOciKms) getVaults(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci kms with region %s", regionResource.Id.Data)
-
-			svc, err := conn.KmsVaultClient(regionResource.Id.Data)
+			svc, err := conn.KmsVaultClient(region)
 			if err != nil {
 				return nil, err
 			}
 
 			var res []any
-			vaults, err := o.getVaultsForRegion(ctx, svc, conn.TenantID())
+			vaults, err := o.getVaultsForRegion(ctx, svc, compartmentID)
 			if err != nil {
 				return nil, err
 			}
@@ -103,31 +52,53 @@ func (o *mqlOciKms) getVaults(conn *connection.OciConnection, regions []any) []*
 					created = &vault.TimeCreated.Time
 				}
 
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.kms.vault", map[string]*llx.RawData{
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.kms.vault", stringValue(vault.CompartmentId), map[string]*llx.RawData{
 					"id":                 llx.StringDataPtr(vault.Id),
 					"name":               llx.StringDataPtr(vault.DisplayName),
-					"compartmentID":      llx.StringDataPtr(vault.CompartmentId),
 					"vaultType":          llx.StringData(string(vault.VaultType)),
 					"state":              llx.StringData(string(vault.LifecycleState)),
 					"managementEndpoint": llx.StringDataPtr(vault.ManagementEndpoint),
 					"created":            llx.TimeDataPtr(created),
+					"freeformTags":       llx.MapData(strMapToAny(vault.FreeformTags), types.String),
+					"definedTags":        llx.MapData(definedTagsToAny(vault.DefinedTags), types.Any),
 				})
 				if err != nil {
 					return nil, err
 				}
-				mqlInstance.(*mqlOciKmsVault).region = regionResource.Id.Data
+				mqlInstance.(*mqlOciKmsVault).cacheRegion = region
 				res = append(res, mqlInstance)
 			}
 
-			return jobpool.JobResult(res), nil
+			return res, nil
+		})
+}
+
+func (o *mqlOciKms) getVaultsForRegion(ctx context.Context, client *keymanagement.KmsVaultClient, compartmentID string) ([]keymanagement.VaultSummary, error) {
+	entries, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]keymanagement.VaultSummary, *string, error) {
+		request := keymanagement.ListVaultsRequest{
+			CompartmentId: new(compartmentID),
+			Page:          page,
 		}
-		tasks = append(tasks, jobpool.NewJob(f))
+
+		response, err := client.ListVaults(ctx, request)
+		if err != nil {
+			return nil, nil, err
+		}
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return tasks
+
+	return entries, nil
 }
 
 type mqlOciKmsVaultInternal struct {
-	region string
+	ociCompartmentRef
+	cacheRegion string
+
+	// The vault's detail record, read once for the fields the listing lacks.
+	detail ociRetryLazy[*keymanagement.Vault]
 }
 
 func initOciKmsVault(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -135,10 +106,10 @@ func initOciKmsVault(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 		return args, nil, nil
 	}
 
-	if args["id"] == nil {
+	idVal := ociArgString(args, "id")
+	if idVal == "" {
 		return nil, nil, errors.New("id required to fetch oci.kms.vault")
 	}
-	idVal := args["id"].Value.(string)
 
 	obj, err := CreateResource(runtime, "oci.kms", nil)
 	if err != nil {
@@ -179,7 +150,7 @@ func (o *mqlOciKmsVault) keys() ([]any, error) {
 		return nil, err
 	}
 
-	keys, err := o.getKeysForVault(ctx, svc, o.CompartmentID.Data)
+	keys, err := o.getKeysForVault(ctx, svc, o.cacheCompartmentID)
 	if err != nil {
 		return nil, err
 	}
@@ -195,22 +166,23 @@ func (o *mqlOciKmsVault) keys() ([]any, error) {
 
 		algorithm := string(key.Algorithm)
 
-		mqlInstance, err := CreateResource(o.MqlRuntime, "oci.kms.key", map[string]*llx.RawData{
+		mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.kms.key", stringValue(key.CompartmentId), map[string]*llx.RawData{
 			"id":                    llx.StringDataPtr(key.Id),
 			"name":                  llx.StringDataPtr(key.DisplayName),
-			"compartmentID":         llx.StringDataPtr(key.CompartmentId),
-			"vaultId":               llx.StringDataPtr(key.VaultId),
 			"algorithm":             llx.StringData(algorithm),
 			"protectionMode":        llx.StringData(string(key.ProtectionMode)),
 			"state":                 llx.StringData(string(key.LifecycleState)),
 			"isAutoRotationEnabled": llx.BoolDataPtr(key.IsAutoRotationEnabled),
 			"created":               llx.TimeDataPtr(created),
+			"freeformTags":          llx.MapData(strMapToAny(key.FreeformTags), types.String),
+			"definedTags":           llx.MapData(definedTagsToAny(key.DefinedTags), types.Any),
 		})
 		if err != nil {
 			return nil, err
 		}
 		mqlKey := mqlInstance.(*mqlOciKmsKey)
 		mqlKey.cacheManagementEndpoint = managementEndpoint
+		mqlKey.cacheVaultID = stringValue(key.VaultId)
 		res = append(res, mqlKey)
 	}
 
@@ -218,25 +190,20 @@ func (o *mqlOciKmsVault) keys() ([]any, error) {
 }
 
 func (o *mqlOciKmsVault) getKeysForVault(ctx context.Context, client *keymanagement.KmsManagementClient, compartmentID string) ([]keymanagement.KeySummary, error) {
-	entries := []keymanagement.KeySummary{}
-	var page *string
-	for {
+	entries, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]keymanagement.KeySummary, *string, error) {
 		request := keymanagement.ListKeysRequest{
-			CompartmentId: common.String(compartmentID),
+			CompartmentId: new(compartmentID),
 			Page:          page,
 		}
 
 		response, err := client.ListKeys(ctx, request)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-
-		entries = append(entries, response.Items...)
-
-		if response.OpcNextPage == nil {
-			break
-		}
-		page = response.OpcNextPage
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return entries, nil
@@ -247,10 +214,10 @@ func initOciKmsKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[s
 		return args, nil, nil
 	}
 
-	if args["id"] == nil {
+	idVal := ociArgString(args, "id")
+	if idVal == "" {
 		return nil, nil, errors.New("id required to fetch oci.kms.key")
 	}
-	idVal := args["id"].Value.(string)
 
 	obj, err := CreateResource(runtime, "oci.kms", nil)
 	if err != nil {
@@ -281,11 +248,173 @@ func initOciKmsKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[s
 }
 
 type mqlOciKmsKeyInternal struct {
+	ociCompartmentRef
+	cacheVaultID            string
 	cacheManagementEndpoint string
+
+	keyDetailOnce sync.Once
+	keyDetail     *keymanagement.Key
+	keyDetailErr  error
 }
 
 func (o *mqlOciKmsKey) id() (string, error) {
 	return "oci.kms.key/" + o.Id.Data, nil
+}
+
+// getKeyDetail lazily fetches the key record, which carries the shape, the
+// rotation schedule, and the replication state that the ListKeys summary
+// omits. The result is cached, so every field reading from it shares one
+// GetKey call rather than issuing one apiece.
+func (o *mqlOciKmsKey) getKeyDetail() (*keymanagement.Key, error) {
+	o.keyDetailOnce.Do(func() {
+		if o.cacheManagementEndpoint == "" || o.Id.Data == "" {
+			return
+		}
+		conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+		svc, err := conn.KmsManagementClient(o.cacheManagementEndpoint)
+		if err != nil {
+			o.keyDetailErr = err
+			return
+		}
+		resp, err := svc.GetKey(context.Background(), keymanagement.GetKeyRequest{
+			KeyId: new(o.Id.Data),
+		})
+		if err != nil {
+			o.keyDetailErr = err
+			return
+		}
+		key := resp.Key
+		o.keyDetail = &key
+	})
+	return o.keyDetail, o.keyDetailErr
+}
+
+// getKeyShape reports the key's shape from the cached key record.
+func (o *mqlOciKmsKey) getKeyShape() (*keymanagement.KeyShape, error) {
+	key, err := o.getKeyDetail()
+	if err != nil || key == nil {
+		return nil, err
+	}
+	return key.KeyShape, nil
+}
+
+// getKeyRotation reports the key's automatic rotation schedule, or nil when it
+// carries none.
+func (o *mqlOciKmsKey) getKeyRotation() (*keymanagement.AutoKeyRotationDetails, error) {
+	key, err := o.getKeyDetail()
+	if err != nil || key == nil {
+		return nil, err
+	}
+	return key.AutoKeyRotationDetails, nil
+}
+
+func (o *mqlOciKmsKey) length() (int64, error) {
+	shape, err := o.getKeyShape()
+	if err != nil {
+		return 0, err
+	}
+	if shape == nil || shape.Length == nil {
+		return 0, nil
+	}
+	// The SDK reports length in bytes; expose bits for legibility.
+	return int64(*shape.Length) * 8, nil
+}
+
+func (o *mqlOciKmsKey) curveId() (string, error) {
+	shape, err := o.getKeyShape()
+	if err != nil {
+		return "", err
+	}
+	if shape == nil {
+		return "", nil
+	}
+	return string(shape.CurveId), nil
+}
+
+// rotationIntervalInDays reports how often the key rotates automatically.
+//
+// Null when the key carries no schedule: a key that never rotates has no
+// interval, and reporting zero days would read as one rotating constantly.
+func (o *mqlOciKmsKey) rotationIntervalInDays() (int64, error) {
+	rotation, err := o.getKeyRotation()
+	if err != nil {
+		return 0, err
+	}
+	if rotation == nil || rotation.RotationIntervalInDays == nil {
+		o.RotationIntervalInDays.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return int64(*rotation.RotationIntervalInDays), nil
+}
+
+// lastRotationTime reports when automatic rotation last ran, or null when it
+// never has.
+func (o *mqlOciKmsKey) lastRotationTime() (*time.Time, error) {
+	rotation, err := o.getKeyRotation()
+	if err != nil {
+		return nil, err
+	}
+	if rotation == nil || rotation.TimeOfLastRotation == nil {
+		o.LastRotationTime.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	t := rotation.TimeOfLastRotation.Time
+	return &t, nil
+}
+
+// nextRotationTime reports the next estimated automatic rotation, or null when
+// the key carries no schedule.
+func (o *mqlOciKmsKey) nextRotationTime() (*time.Time, error) {
+	rotation, err := o.getKeyRotation()
+	if err != nil {
+		return nil, err
+	}
+	if rotation == nil || rotation.TimeOfNextRotation == nil {
+		o.NextRotationTime.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	t := rotation.TimeOfNextRotation.Time
+	return &t, nil
+}
+
+// lastRotationStatus reports the outcome of the most recent automatic
+// rotation. Empty when rotation has never run for the key.
+func (o *mqlOciKmsKey) lastRotationStatus() (string, error) {
+	rotation, err := o.getKeyRotation()
+	if err != nil {
+		return "", err
+	}
+	if rotation == nil {
+		return "", nil
+	}
+	return string(rotation.LastRotationStatus), nil
+}
+
+// isPrimary reports whether the key lives in the primary vault rather than in
+// a replica of it. Null when the service does not say.
+func (o *mqlOciKmsKey) isPrimary() (bool, error) {
+	key, err := o.getKeyDetail()
+	if err != nil {
+		return false, err
+	}
+	if key == nil || key.IsPrimary == nil {
+		o.IsPrimary.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *key.IsPrimary, nil
+}
+
+// replicationId reports the replication that copied the key across regions.
+// Empty when the key's material has not left the region it was created in.
+func (o *mqlOciKmsKey) replicationId() (string, error) {
+	key, err := o.getKeyDetail()
+	if err != nil {
+		return "", err
+	}
+	if key == nil || key.ReplicaDetails == nil {
+		return "", nil
+	}
+	return stringValue(key.ReplicaDetails.ReplicationId), nil
 }
 
 func (o *mqlOciKmsKey) keyVersions() ([]any, error) {
@@ -301,23 +430,18 @@ func (o *mqlOciKmsKey) keyVersions() ([]any, error) {
 		return nil, err
 	}
 
-	versions := []keymanagement.KeyVersionSummary{}
-	var page *string
-	for {
+	versions, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]keymanagement.KeyVersionSummary, *string, error) {
 		response, err := svc.ListKeyVersions(ctx, keymanagement.ListKeyVersionsRequest{
-			KeyId: common.String(o.Id.Data),
+			KeyId: new(o.Id.Data),
 			Page:  page,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-
-		versions = append(versions, response.Items...)
-
-		if response.OpcNextPage == nil {
-			break
-		}
-		page = response.OpcNextPage
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	res := make([]any, 0, len(versions))
@@ -333,11 +457,9 @@ func (o *mqlOciKmsKey) keyVersions() ([]any, error) {
 			timeOfDeletion = &v.TimeOfDeletion.Time
 		}
 
-		mqlInstance, err := CreateResource(o.MqlRuntime, "oci.kms.keyVersion", map[string]*llx.RawData{
+		mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.kms.keyVersion", stringValue(v.CompartmentId), map[string]*llx.RawData{
 			"id":             llx.StringDataPtr(v.Id),
 			"keyId":          llx.StringDataPtr(v.KeyId),
-			"vaultId":        llx.StringDataPtr(v.VaultId),
-			"compartmentID":  llx.StringDataPtr(v.CompartmentId),
 			"origin":         llx.StringData(string(v.Origin)),
 			"state":          llx.StringData(string(v.LifecycleState)),
 			"isAutoRotated":  llx.BoolDataPtr(v.IsAutoRotated),
@@ -347,6 +469,7 @@ func (o *mqlOciKmsKey) keyVersions() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		mqlInstance.(*mqlOciKmsKeyVersion).cacheVaultID = stringValue(v.VaultId)
 		res = append(res, mqlInstance)
 	}
 

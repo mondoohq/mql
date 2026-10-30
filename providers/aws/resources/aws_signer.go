@@ -8,12 +8,12 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/signer"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsSigner) id() (string, error) {
@@ -48,7 +48,6 @@ func (a *mqlAwsSigner) getSigningProfiles(conn *connection.AwsConnection) []*job
 	}
 
 	for _, region := range regions {
-		region := region
 		f := func() (jobpool.JobResult, error) {
 			svc := conn.Signer(region)
 			ctx := context.Background()
@@ -78,24 +77,24 @@ func (a *mqlAwsSigner) getSigningProfiles(conn *connection.AwsConnection) []*job
 					}
 					mqlProfile, err := CreateResource(a.MqlRuntime, "aws.signer.signingProfile",
 						map[string]*llx.RawData{
-							"__id":                          llx.StringData(convert.ToValue(p.Arn)),
-							"arn":                           llx.StringDataPtr(p.Arn),
-							"profileName":                   llx.StringDataPtr(p.ProfileName),
-							"profileVersion":                llx.StringDataPtr(p.ProfileVersion),
-							"profileVersionArn":             llx.StringDataPtr(p.ProfileVersionArn),
-							"platformId":                    llx.StringDataPtr(p.PlatformId),
-							"platformDisplayName":           llx.StringDataPtr(p.PlatformDisplayName),
-							"status":                        llx.StringData(string(p.Status)),
-							"signingMaterialCertificateArn": llx.StringData(certArn),
-							"signatureValidityType":         llx.StringData(validityType),
-							"signatureValidityValue":        llx.IntData(validityValue),
-							"signingParameters":             llx.MapData(toInterfaceMap(p.SigningParameters), types.String),
-							"region":                        llx.StringData(region),
-							"tags":                          llx.MapData(toInterfaceMap(p.Tags), types.String),
+							"__id":                   llx.StringData(convert.ToValue(p.Arn)),
+							"arn":                    llx.StringDataPtr(p.Arn),
+							"profileName":            llx.StringDataPtr(p.ProfileName),
+							"profileVersion":         llx.StringDataPtr(p.ProfileVersion),
+							"profileVersionArn":      llx.StringDataPtr(p.ProfileVersionArn),
+							"platformId":             llx.StringDataPtr(p.PlatformId),
+							"platformDisplayName":    llx.StringDataPtr(p.PlatformDisplayName),
+							"status":                 llx.StringData(string(p.Status)),
+							"signatureValidityType":  llx.StringData(validityType),
+							"signatureValidityValue": llx.IntData(validityValue),
+							"signingParameters":      llx.MapData(toInterfaceMap(p.SigningParameters), types.String),
+							"region":                 llx.StringData(region),
+							"tags":                   llx.MapData(toInterfaceMap(p.Tags), types.String),
 						})
 					if err != nil {
 						return nil, err
 					}
+					mqlProfile.(*mqlAwsSignerSigningProfile).cacheSigningMaterialCertificateArn = certArn
 					res = append(res, mqlProfile)
 				}
 			}
@@ -107,7 +106,7 @@ func (a *mqlAwsSigner) getSigningProfiles(conn *connection.AwsConnection) []*job
 }
 
 func (a *mqlAwsSignerSigningProfile) signingMaterialCertificate() (*mqlAwsAcmCertificate, error) {
-	arnVal := a.SigningMaterialCertificateArn.Data
+	arnVal := a.cacheSigningMaterialCertificateArn
 	if arnVal == "" {
 		a.SigningMaterialCertificate.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -118,4 +117,8 @@ func (a *mqlAwsSignerSigningProfile) signingMaterialCertificate() (*mqlAwsAcmCer
 		return nil, err
 	}
 	return res.(*mqlAwsAcmCertificate), nil
+}
+
+type mqlAwsSignerSigningProfileInternal struct {
+	cacheSigningMaterialCertificateArn string
 }

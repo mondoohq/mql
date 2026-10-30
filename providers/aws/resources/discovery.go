@@ -6,14 +6,15 @@ package resources
 import (
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/utils/stringx"
 )
 
 // Discovery Flags
@@ -27,53 +28,64 @@ const (
 	DiscoveryAuto = "auto" // account + resources
 
 	// API scan
-	DiscoveryAccounts                   = "accounts"
-	DiscoveryOrg                        = "organization"
-	DiscoveryResources                  = "resources"          // all the resources
-	DiscoveryECSContainersAPI           = "ecs-containers-api" // need dedup story
-	DiscoveryECRImageAPI                = "ecr-image-api"      // need policy + dedup story
-	DiscoveryEC2InstanceAPI             = "ec2-instances-api"  // need policy + dedup story
-	DiscoverySSMInstanceAPI             = "ssm-instances-api"  // need policy + dedup story
-	DiscoveryS3Buckets                  = "s3-buckets"
-	DiscoveryEKSClusters                = "eks-clusters"
-	DiscoveryCloudtrailTrails           = "cloudtrail-trails"
-	DiscoveryRdsDbInstances             = "rds-dbinstances"
-	DiscoveryRdsDbClusters              = "rds-dbclusters"
-	DiscoveryVPCs                       = "vpcs"
-	DiscoverySecurityGroups             = "security-groups"
-	DiscoveryIAMUsers                   = "iam-users"
-	DiscoveryIAMGroups                  = "iam-groups"
-	DiscoveryCloudwatchLoggroups        = "cloudwatch-loggroups"
-	DiscoveryLambdaFunctions            = "lambda-functions"
-	DiscoveryDynamoDBTables             = "dynamodb-tables"
-	DiscoveryDynamoDBGlobalTables       = "dynamodb-global-tables"
-	DiscoveryRedshiftClusters           = "redshift-clusters"
-	DiscoveryVolumes                    = "ec2-volumes"
-	DiscoverySnapshots                  = "ec2-snapshots"
-	DiscoveryEFSFilesystems             = "efs-filesystems"
-	DiscoveryAPIGatewayRestAPIs         = "gateway-restapis"
-	DiscoveryELBLoadBalancers           = "elb-loadbalancers"
-	DiscoveryESDomains                  = "es-domains"
-	DiscoveryOpenSearchDomains          = "opensearch-domains"
-	DiscoveryKMSKeys                    = "kms-keys"
-	DiscoverySagemakerNotebookInstances = "sagemaker-notebookinstances"
-	DiscoverySagemakerProcessingJobs    = "sagemaker-processingjobs"
-	DiscoverySagemakerTrainingJobs      = "sagemaker-trainingjobs"
-	DiscoverySecretsManagerSecrets      = "secretsmanager-secrets"
-	DiscoveryElasticacheClusters        = "elasticache-clusters"
-	DiscoveryCloudfrontDistributions    = "cloudfront-distributions"
-	DiscoveryNeptuneClusters            = "neptune-clusters"
-	DiscoveryEMRClusters                = "emr-clusters"
-	DiscoveryDocumentDBClusters         = "documentdb-clusters"
-	DiscoveryMskClusters                = "msk-clusters"
-	DiscoveryMqBrokers                  = "mq-brokers"
-	DiscoveryEcsTaskDefinitions         = "ecs-taskdefinitions"
-	DiscoveryRoute53HostedZones         = "route53-hostedzones"
-	DiscoveryEcrRepositories            = "ecr-repositories"
-	DiscoveryMemorydbClusters           = "memorydb-clusters"
-	DiscoveryCodebuildProjects          = "codebuild-projects"
-	DiscoveryCognitoUserPools           = "cognito-userpools"
-	DiscoveryTransferServers            = "transfer-servers"
+	DiscoveryAccounts                    = "accounts"
+	DiscoveryOrg                         = "organization"
+	DiscoveryResources                   = "resources"          // all the resources
+	DiscoveryECSContainersAPI            = "ecs-containers-api" // need dedup story
+	DiscoveryECRImageAPI                 = "ecr-image-api"      // need policy + dedup story
+	DiscoveryEC2InstanceAPI              = "ec2-instances-api"  // need policy + dedup story
+	DiscoverySSMInstanceAPI              = "ssm-instances-api"  // need policy + dedup story
+	DiscoveryS3Buckets                   = "s3-buckets"
+	DiscoveryEKSClusters                 = "eks-clusters"
+	DiscoveryCloudtrailTrails            = "cloudtrail-trails"
+	DiscoveryRdsDbInstances              = "rds-dbinstances"
+	DiscoveryRdsDbClusters               = "rds-dbclusters"
+	DiscoveryRdsSnapshots                = "rds-snapshots"
+	DiscoveryVPCs                        = "vpcs"
+	DiscoverySecurityGroups              = "security-groups"
+	DiscoveryIAMUsers                    = "iam-users"
+	DiscoveryIAMGroups                   = "iam-groups"
+	DiscoveryCloudwatchLoggroups         = "cloudwatch-loggroups"
+	DiscoveryLambdaFunctions             = "lambda-functions"
+	DiscoveryDynamoDBTables              = "dynamodb-tables"
+	DiscoveryDynamoDBGlobalTables        = "dynamodb-global-tables"
+	DiscoveryRedshiftClusters            = "redshift-clusters"
+	DiscoveryVolumes                     = "ec2-volumes"
+	DiscoverySnapshots                   = "ec2-snapshots"
+	DiscoveryEFSFilesystems              = "efs-filesystems"
+	DiscoveryAPIGatewayRestAPIs          = "gateway-restapis"
+	DiscoveryELBLoadBalancers            = "elb-loadbalancers"
+	DiscoveryESDomains                   = "es-domains"
+	DiscoveryOpenSearchDomains           = "opensearch-domains"
+	DiscoveryKMSKeys                     = "kms-keys"
+	DiscoverySagemakerNotebookInstances  = "sagemaker-notebookinstances"
+	DiscoverySagemakerProcessingJobs     = "sagemaker-processingjobs"
+	DiscoverySagemakerTrainingJobs       = "sagemaker-trainingjobs"
+	DiscoverySagemakerDomains            = "sagemaker-domains"
+	DiscoverySagemakerModels             = "sagemaker-models"
+	DiscoverySecretsManagerSecrets       = "secretsmanager-secrets"
+	DiscoveryElasticacheClusters         = "elasticache-clusters"
+	DiscoveryCloudfrontDistributions     = "cloudfront-distributions"
+	DiscoveryNeptuneClusters             = "neptune-clusters"
+	DiscoveryEMRClusters                 = "emr-clusters"
+	DiscoveryDocumentDBClusters          = "documentdb-clusters"
+	DiscoveryMskClusters                 = "msk-clusters"
+	DiscoveryMqBrokers                   = "mq-brokers"
+	DiscoveryEcsTaskDefinitions          = "ecs-taskdefinitions"
+	DiscoveryRoute53HostedZones          = "route53-hostedzones"
+	DiscoveryEcrRepositories             = "ecr-repositories"
+	DiscoveryMemorydbClusters            = "memorydb-clusters"
+	DiscoveryCodebuildProjects           = "codebuild-projects"
+	DiscoveryCognitoUserPools            = "cognito-userpools"
+	DiscoveryTransferServers             = "transfer-servers"
+	DiscoveryAPIGatewayV2APIs            = "apigatewayv2-apis"
+	DiscoveryAthenaWorkgroups            = "athena-workgroups"
+	DiscoveryAppStreamFleets             = "appstream-fleets"
+	DiscoveryBatchJobDefinitions         = "batch-jobdefinitions"
+	DiscoveryDirectoryServiceDirectories = "directoryservice-directories"
+	DiscoveryDocumentDBInstances         = "documentdb-instances"
+	DiscoverySnsTopics                   = "sns-topics"
+	DiscoverySqsQueues                   = "sqs-queues"
 )
 
 var AllAPIResources = []string{
@@ -95,6 +107,7 @@ var AllAPIResources = []string{
 	DiscoveryDynamoDBTables,
 	DiscoveryDynamoDBGlobalTables,
 	DiscoveryRedshiftClusters,
+	DiscoveryRdsSnapshots,
 	DiscoveryVolumes,
 	DiscoverySnapshots,
 	DiscoveryEFSFilesystems,
@@ -106,6 +119,8 @@ var AllAPIResources = []string{
 	DiscoverySagemakerNotebookInstances,
 	DiscoverySagemakerProcessingJobs,
 	DiscoverySagemakerTrainingJobs,
+	DiscoverySagemakerDomains,
+	DiscoverySagemakerModels,
 	DiscoverySecretsManagerSecrets,
 	DiscoveryElasticacheClusters,
 	DiscoveryCloudfrontDistributions,
@@ -121,6 +136,14 @@ var AllAPIResources = []string{
 	DiscoveryCodebuildProjects,
 	DiscoveryCognitoUserPools,
 	DiscoveryTransferServers,
+	DiscoveryAPIGatewayV2APIs,
+	DiscoveryAthenaWorkgroups,
+	DiscoveryAppStreamFleets,
+	DiscoveryBatchJobDefinitions,
+	DiscoveryDirectoryServiceDirectories,
+	DiscoveryDocumentDBInstances,
+	DiscoverySnsTopics,
+	DiscoverySqsQueues,
 }
 
 var Auto = append(
@@ -191,6 +214,19 @@ func fetchPrimaryAccountTags(awsAccount *mqlAwsAccount) map[string]string {
 	return mapStringInterfaceToStringString(t.Data)
 }
 
+// discoveryLabels returns a discovered resource's tags as its asset labels. A
+// resource whose tags cannot be read is still discovered, without labels.
+func discoveryLabels(tags *plugin.TValue[map[string]any], arn string) map[string]string {
+	if tags == nil {
+		return map[string]string{}
+	}
+	if tags.Error != nil {
+		log.Debug().Err(tags.Error).Str("arn", arn).Msg("could not read tags for the discovered asset's labels")
+		return map[string]string{}
+	}
+	return mapStringInterfaceToStringString(tags.Data)
+}
+
 func getDiscoveryTargets(config *inventory.Config) []string {
 	targets := config.GetDiscover().GetTargets()
 
@@ -257,6 +293,9 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 
 		for i := range ins.Data {
 			instance := ins.Data[i].(*mqlAwsEc2Instance)
+			if !ec2InstanceIsDiscoverable(instance.State.Data) {
+				continue
+			}
 			assetList = append(assetList, addConnectionInfoToEc2Asset(instance, accountId, conn))
 		}
 	case DiscoverySSMInstances:
@@ -503,7 +542,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			f := fs.Data[i].(*mqlAwsCloudtrailTrail)
 
 			m := mqlObject{
-				name: f.Name.Data, labels: map[string]string{},
+				name: f.Name.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.Name.Data, service: "cloudtrail", objectType: "trail",
@@ -739,7 +778,10 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 				name: f.Name.Data, labels: map[string]string{},
 				awsObject: awsObject{
 					account: accountId, region: "us-east-1", arn: f.Arn.Data,
-					id: f.Name.Data, service: "dynamodb", objectType: "table",
+					// Distinct from the regular table objectType: a global table
+					// and its us-east-1 replica share a name, so both mapped to
+					// the same platform id and merged into one asset.
+					id: f.Name.Data, service: "dynamodb", objectType: "globaltable",
 				},
 			}
 			assetList = append(assetList, MqlObjectToAsset(accountId, m, conn))
@@ -900,6 +942,36 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			}
 			assetList = append(assetList, MqlObjectToAsset(accountId, m, conn))
 		}
+	case DiscoveryRdsSnapshots:
+		res, err := NewResource(runtime, "aws.rds", map[string]*llx.RawData{})
+		if err != nil {
+			return nil, err
+		}
+
+		r := res.(*mqlAwsRds)
+
+		ras := r.GetSnapshots()
+		if ras == nil {
+			return assetList, nil
+		}
+
+		for i := range ras.Data {
+			f := ras.Data[i].(*mqlAwsRdsSnapshot)
+
+			var tags map[string]string
+			tagsResult := f.GetTags()
+			if tagsResult != nil && tagsResult.Data != nil {
+				tags = mapStringInterfaceToStringString(tagsResult.Data)
+			}
+			m := mqlObject{
+				name: f.Id.Data, labels: tags,
+				awsObject: awsObject{
+					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
+					id: f.Id.Data, service: "rds", objectType: "snapshot",
+				},
+			}
+			assetList = append(assetList, MqlObjectToAsset(accountId, m, conn))
+		}
 	case DiscoveryELBLoadBalancers:
 		res, err := NewResource(runtime, "aws.elb", map[string]*llx.RawData{})
 		if err != nil {
@@ -958,6 +1030,14 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 		for i := range ras.Data {
 			f := ras.Data[i].(*mqlAwsEsDomain)
 
+			// The legacy ES ListDomainNames API returns domains of BOTH engine
+			// types. Domains running the OpenSearch engine belong to
+			// DiscoveryOpenSearchDomains (platform aws-opensearch-domain);
+			// claiming them here would shadow that platform for every domain.
+			if strings.HasPrefix(f.ElasticsearchVersion.Data, "OpenSearch") {
+				continue
+			}
+
 			tags := mapStringInterfaceToStringString(f.Tags.Data)
 			m := mqlObject{
 				name: f.Name.Data, labels: tags,
@@ -983,6 +1063,13 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 
 		for i := range ras.Data {
 			f := ras.Data[i].(*mqlAwsOpensearchDomain)
+
+			// The OpenSearch ListDomainNames API also returns legacy
+			// Elasticsearch-engine domains; those are DiscoveryESDomains'
+			// assets (platform aws-es-domain).
+			if strings.HasPrefix(f.EngineVersion.Data, "Elasticsearch") {
+				continue
+			}
 
 			var tags map[string]string
 			tagsResult := f.GetTags()
@@ -1015,7 +1102,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			f := ras.Data[i].(*mqlAwsKmsKey)
 
 			m := mqlObject{
-				name: f.Id.Data, labels: map[string]string{},
+				name: f.Id.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.Id.Data, service: "kms", objectType: "key",
@@ -1101,7 +1188,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			f := clusters.Data[i].(*mqlAwsElasticacheCluster)
 
 			m := mqlObject{
-				name: f.CacheClusterId.Data, labels: map[string]string{},
+				name: f.CacheClusterId.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.CacheClusterId.Data, service: "elasticache", objectType: "cluster",
@@ -1129,7 +1216,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			f := distributions.Data[i].(*mqlAwsCloudfrontDistribution)
 
 			m := mqlObject{
-				name: f.DomainName.Data, labels: map[string]string{},
+				name: f.DomainName.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: "global", arn: f.Arn.Data,
 					id: f.DomainName.Data, service: "cloudfront", objectType: "distribution",
@@ -1158,7 +1245,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 				name = f.Name.Data
 			}
 			m := mqlObject{
-				name: name, labels: map[string]string{},
+				name: name, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.ClusterIdentifier.Data, service: "neptune", objectType: "cluster",
@@ -1188,7 +1275,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 				continue
 			}
 			m := mqlObject{
-				name: f.Name.Data, labels: map[string]string{},
+				name: f.Name.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: region, arn: f.Arn.Data,
 					id: f.Id.Data, service: "emr", objectType: "cluster",
@@ -1213,7 +1300,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			f := cs.Data[i].(*mqlAwsDocumentdbCluster)
 
 			m := mqlObject{
-				name: f.Name.Data, labels: map[string]string{},
+				name: f.Name.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.ClusterIdentifier.Data, service: "documentdb", objectType: "cluster",
@@ -1269,6 +1356,58 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.Name.Data, service: "sagemaker", objectType: "trainingjob",
+				},
+			}
+			assetList = append(assetList, MqlObjectToAsset(accountId, m, conn))
+		}
+	case DiscoverySagemakerDomains:
+		res, err := NewResource(runtime, "aws.sagemaker", map[string]*llx.RawData{})
+		if err != nil {
+			return nil, err
+		}
+
+		sm := res.(*mqlAwsSagemaker)
+
+		domains := sm.GetDomains()
+		if domains == nil {
+			return assetList, nil
+		}
+
+		for i := range domains.Data {
+			f := domains.Data[i].(*mqlAwsSagemakerDomain)
+
+			tags := mapStringInterfaceToStringString(f.GetTags().Data)
+			m := mqlObject{
+				name: f.Name.Data, labels: tags,
+				awsObject: awsObject{
+					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
+					id: f.Name.Data, service: "sagemaker", objectType: "domain",
+				},
+			}
+			assetList = append(assetList, MqlObjectToAsset(accountId, m, conn))
+		}
+	case DiscoverySagemakerModels:
+		res, err := NewResource(runtime, "aws.sagemaker", map[string]*llx.RawData{})
+		if err != nil {
+			return nil, err
+		}
+
+		sm := res.(*mqlAwsSagemaker)
+
+		models := sm.GetModels()
+		if models == nil {
+			return assetList, nil
+		}
+
+		for i := range models.Data {
+			f := models.Data[i].(*mqlAwsSagemakerModel)
+
+			tags := mapStringInterfaceToStringString(f.GetTags().Data)
+			m := mqlObject{
+				name: f.Name.Data, labels: tags,
+				awsObject: awsObject{
+					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
+					id: f.Name.Data, service: "sagemaker", objectType: "model",
 				},
 			}
 			assetList = append(assetList, MqlObjectToAsset(accountId, m, conn))
@@ -1435,7 +1574,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			f := clusters.Data[i].(*mqlAwsMemorydbCluster)
 
 			obj := mqlObject{
-				name: f.Name.Data, labels: map[string]string{},
+				name: f.Name.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.Name.Data, service: "memorydb", objectType: "cluster",
@@ -1486,7 +1625,7 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			f := pools.Data[i].(*mqlAwsCognitoUserPool)
 
 			obj := mqlObject{
-				name: f.Name.Data, labels: map[string]string{},
+				name: f.Name.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.Id.Data, service: "cognito", objectType: "userpool",
@@ -1511,10 +1650,265 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			f := servers.Data[i].(*mqlAwsTransferServer)
 
 			obj := mqlObject{
-				name: f.ServerId.Data, labels: map[string]string{},
+				name: f.ServerId.Data, labels: discoveryLabels(f.GetTags(), f.Arn.Data),
 				awsObject: awsObject{
 					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
 					id: f.ServerId.Data, service: "transfer", objectType: "server",
+				},
+			}
+			assetList = append(assetList, MqlObjectToAsset(accountId, obj, conn))
+		}
+	case DiscoveryAPIGatewayV2APIs:
+		res, err := NewResource(runtime, "aws.apigatewayv2", map[string]*llx.RawData{})
+		if err != nil {
+			return nil, err
+		}
+
+		a := res.(*mqlAwsApigatewayv2)
+
+		apis := a.GetApis()
+		if apis == nil {
+			return assetList, nil
+		}
+		if apis.Error != nil {
+			return nil, apis.Error
+		}
+
+		for i := range apis.Data {
+			f := apis.Data[i].(*mqlAwsApigatewayv2Api)
+
+			tags := mapStringInterfaceToStringString(f.Tags.Data)
+			obj := mqlObject{
+				name: f.Name.Data, labels: tags,
+				awsObject: awsObject{
+					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
+					id: f.ApiId.Data, service: "apigatewayv2", objectType: "api",
+				},
+			}
+			assetList = append(assetList, MqlObjectToAsset(accountId, obj, conn))
+		}
+	case DiscoveryAthenaWorkgroups:
+		res, err := NewResource(runtime, "aws.athena", map[string]*llx.RawData{})
+		if err != nil {
+			return nil, err
+		}
+
+		a := res.(*mqlAwsAthena)
+
+		wgs := a.GetWorkgroups()
+		if wgs == nil {
+			return assetList, nil
+		}
+		if wgs.Error != nil {
+			return nil, wgs.Error
+		}
+
+		for i := range wgs.Data {
+			f := wgs.Data[i].(*mqlAwsAthenaWorkgroup)
+
+			tags := mapStringInterfaceToStringString(f.GetTags().Data)
+			obj := mqlObject{
+				name: f.Name.Data, labels: tags,
+				awsObject: awsObject{
+					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
+					id: f.Name.Data, service: "athena", objectType: "workgroup",
+				},
+			}
+			assetList = append(assetList, MqlObjectToAsset(accountId, obj, conn))
+		}
+	case DiscoveryAppStreamFleets:
+		res, err := NewResource(runtime, "aws.appstream", map[string]*llx.RawData{})
+		if err != nil {
+			return nil, err
+		}
+
+		a := res.(*mqlAwsAppstream)
+
+		fleets := a.GetFleets()
+		if fleets == nil {
+			return assetList, nil
+		}
+		if fleets.Error != nil {
+			return nil, fleets.Error
+		}
+
+		for i := range fleets.Data {
+			f := fleets.Data[i].(*mqlAwsAppstreamFleet)
+
+			tags := mapStringInterfaceToStringString(f.GetTags().Data)
+			obj := mqlObject{
+				name: f.Name.Data, labels: tags,
+				awsObject: awsObject{
+					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
+					id: f.Name.Data, service: "appstream", objectType: "fleet",
+				},
+			}
+			assetList = append(assetList, MqlObjectToAsset(accountId, obj, conn))
+		}
+	case DiscoveryBatchJobDefinitions:
+		res, err := NewResource(runtime, "aws.batch", map[string]*llx.RawData{})
+		if err != nil {
+			return nil, err
+		}
+
+		b := res.(*mqlAwsBatch)
+
+		jds := b.GetJobDefinitions()
+		if jds == nil {
+			return assetList, nil
+		}
+		if jds.Error != nil {
+			return nil, jds.Error
+		}
+
+		for i := range jds.Data {
+			f := jds.Data[i].(*mqlAwsBatchJobDefinition)
+
+			tags := mapStringInterfaceToStringString(f.Tags.Data)
+			obj := mqlObject{
+				name: f.Name.Data, labels: tags,
+				awsObject: awsObject{
+					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
+					id: f.Arn.Data, service: "batch", objectType: "jobdefinition",
+				},
+			}
+			assetList = append(assetList, MqlObjectToAsset(accountId, obj, conn))
+		}
+	case DiscoveryDirectoryServiceDirectories:
+		res, err := NewResource(runtime, "aws.directoryservice", map[string]*llx.RawData{})
+		if err != nil {
+			return nil, err
+		}
+
+		d := res.(*mqlAwsDirectoryservice)
+
+		dirs := d.GetDirectories()
+		if dirs == nil {
+			return assetList, nil
+		}
+		if dirs.Error != nil {
+			return nil, dirs.Error
+		}
+
+		for i := range dirs.Data {
+			f := dirs.Data[i].(*mqlAwsDirectoryserviceDirectory)
+
+			// Directory Service directories have no ARN in the API response;
+			// synthesize the canonical directory ARN for the platform id.
+			dirArn := directoryServiceDirectoryArn(f.Region.Data, accountId, f.DirectoryId.Data)
+			name := f.Name.Data
+			if name == "" {
+				name = f.DirectoryId.Data
+			}
+			tags := mapStringInterfaceToStringString(f.GetTags().Data)
+			obj := mqlObject{
+				name: name, labels: tags,
+				awsObject: awsObject{
+					account: accountId, region: f.Region.Data, arn: dirArn,
+					id: f.DirectoryId.Data, service: "ds", objectType: "directory",
+				},
+			}
+			assetList = append(assetList, MqlObjectToAsset(accountId, obj, conn))
+		}
+	case DiscoveryDocumentDBInstances:
+		res, err := NewResource(runtime, "aws.documentdb", map[string]*llx.RawData{})
+		if err != nil {
+			return nil, err
+		}
+
+		d := res.(*mqlAwsDocumentdb)
+
+		instances := d.GetInstances()
+		if instances == nil {
+			return assetList, nil
+		}
+		if instances.Error != nil {
+			return nil, instances.Error
+		}
+
+		for i := range instances.Data {
+			f := instances.Data[i].(*mqlAwsDocumentdbInstance)
+
+			tags := mapStringInterfaceToStringString(f.GetTags().Data)
+			obj := mqlObject{
+				name: f.Name.Data, labels: tags,
+				awsObject: awsObject{
+					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
+					id: f.Arn.Data, service: "documentdb", objectType: "instance",
+				},
+			}
+			assetList = append(assetList, MqlObjectToAsset(accountId, obj, conn))
+		}
+	case DiscoverySnsTopics:
+		res, err := NewResource(runtime, "aws.sns", map[string]*llx.RawData{})
+		if err != nil {
+			return nil, err
+		}
+
+		s := res.(*mqlAwsSns)
+
+		topics := s.GetTopics()
+		if topics == nil {
+			return assetList, nil
+		}
+		if topics.Error != nil {
+			return nil, topics.Error
+		}
+
+		for i := range topics.Data {
+			f := topics.Data[i].(*mqlAwsSnsTopic)
+
+			// The resource segment of an SNS topic ARN is the bare topic name.
+			topicArn, err := arn.Parse(f.Arn.Data)
+			if err != nil {
+				log.Error().Err(err).Str("arn", f.Arn.Data).Msg("unable to parse sns topic arn")
+				continue
+			}
+
+			tags := mapStringInterfaceToStringString(f.GetTags().Data)
+			obj := mqlObject{
+				name: topicArn.Resource, labels: tags,
+				awsObject: awsObject{
+					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
+					id: f.Arn.Data, service: "sns", objectType: "topic",
+				},
+			}
+			assetList = append(assetList, MqlObjectToAsset(accountId, obj, conn))
+		}
+	case DiscoverySqsQueues:
+		res, err := NewResource(runtime, "aws.sqs", map[string]*llx.RawData{})
+		if err != nil {
+			return nil, err
+		}
+
+		s := res.(*mqlAwsSqs)
+
+		queues := s.GetQueues()
+		if queues == nil {
+			return assetList, nil
+		}
+		if queues.Error != nil {
+			return nil, queues.Error
+		}
+
+		for i := range queues.Data {
+			f := queues.Data[i].(*mqlAwsSqsQueue)
+
+			// Queues are listed by URL only; the ARN comes from the queue
+			// attributes, so skip any queue whose attributes are unreadable
+			// rather than emitting an asset with no platform id.
+			queueArn := f.GetArn()
+			if queueArn.Error != nil {
+				log.Error().Err(queueArn.Error).Str("url", f.Url.Data).Msg("unable to fetch sqs queue arn")
+				continue
+			}
+
+			tags := mapStringInterfaceToStringString(f.GetTags().Data)
+			obj := mqlObject{
+				name: sqsQueueName(f.Url.Data), labels: tags,
+				awsObject: awsObject{
+					account: accountId, region: f.Region.Data, arn: queueArn.Data,
+					id: queueArn.Data, service: "sqs", objectType: "queue",
 				},
 			}
 			assetList = append(assetList, MqlObjectToAsset(accountId, obj, conn))

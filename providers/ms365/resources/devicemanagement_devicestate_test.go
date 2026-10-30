@@ -18,13 +18,13 @@ func TestComplianceSettingStatesToDicts_Empty(t *testing.T) {
 
 func TestComplianceSettingStatesToDicts_FieldMapping(t *testing.T) {
 	s := models.NewDeviceCompliancePolicySettingState()
-	s.SetSetting(ptr("setting.key"))
-	s.SetSettingName(ptr("Setting Name"))
+	s.SetSetting(new("setting.key"))
+	s.SetSettingName(new("Setting Name"))
 	state := models.COMPLIANT_COMPLIANCESTATUS
 	s.SetState(&state)
-	s.SetCurrentValue(ptr("on"))
-	s.SetUserName(ptr("alice"))
-	s.SetUserId(ptr("uid-1"))
+	s.SetCurrentValue(new("on"))
+	s.SetUserName(new("alice"))
+	s.SetUserId(new("uid-1"))
 
 	got, err := complianceSettingStatesToDicts([]models.DeviceCompliancePolicySettingStateable{s})
 	assert.NoError(t, err)
@@ -40,7 +40,7 @@ func TestComplianceSettingStatesToDicts_FieldMapping(t *testing.T) {
 
 func TestComplianceSettingStatesToDicts_OmitsNilFields(t *testing.T) {
 	s := models.NewDeviceCompliancePolicySettingState()
-	s.SetSetting(ptr("only.set"))
+	s.SetSetting(new("only.set"))
 
 	got, err := complianceSettingStatesToDicts([]models.DeviceCompliancePolicySettingStateable{s})
 	assert.NoError(t, err)
@@ -50,13 +50,13 @@ func TestComplianceSettingStatesToDicts_OmitsNilFields(t *testing.T) {
 
 func TestConfigurationSettingStatesToDicts_FieldMapping(t *testing.T) {
 	s := models.NewDeviceConfigurationSettingState()
-	s.SetSetting(ptr("config.key"))
-	s.SetSettingName(ptr("Config Name"))
+	s.SetSetting(new("config.key"))
+	s.SetSettingName(new("Config Name"))
 	state := models.NONCOMPLIANT_COMPLIANCESTATUS
 	s.SetState(&state)
-	s.SetCurrentValue(ptr("off"))
-	s.SetUserName(ptr("bob"))
-	s.SetUserId(ptr("uid-2"))
+	s.SetCurrentValue(new("off"))
+	s.SetUserName(new("bob"))
+	s.SetUserId(new("uid-2"))
 
 	got, err := configurationSettingStatesToDicts([]models.DeviceConfigurationSettingStateable{s})
 	assert.NoError(t, err)

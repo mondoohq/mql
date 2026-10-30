@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
 )
 
 type (
@@ -208,10 +208,7 @@ func (ge *GraphExecutor) Debug() {
 			label = fmt.Sprintf("%squery_id\n%s", label, nodeData.queryID)
 		case DatapointNodeType:
 			shape = "invtriangle"
-			maxLen := 6
-			if len(k) < 6 {
-				maxLen = len(k)
-			}
+			maxLen := min(len(k), 6)
 			label = fmt.Sprintf("%schecksum\n%s...", label, k[:maxLen])
 		case DatapointCollectorNodeType:
 			shape = "cds"

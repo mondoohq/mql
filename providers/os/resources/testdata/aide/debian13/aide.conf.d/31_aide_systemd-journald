@@ -1,0 +1,27 @@
+
+@@if not defined SYSTEMD_JOURNAL
+@@define SYSTEMD_JOURNAL @@{RUN}/log/journal
+@@if exists /var/log/journal
+@@define SYSTEMD_JOURNAL var/log/journal
+@@endif
+@@endif
+/@@{RUN}/log(/journal)?$ d RecreatedDir
+
+!/@@{RUN}/systemd/journal$ d
+!/@@{RUN}/systemd/journal/(dev-log|socket|stdout|syslog)$ s
+!/@@{RUN}/systemd/journal/flushed$ f
+ /@@{RUN}/systemd/journal/(kernel-)?seqnum$ f VarFile
+!/@@{RUN}/systemd/journal/streams$ d
+!/@@{RUN}/systemd/journal/io\\.systemd\\.journal$ s
+!/@@{RUN}/systemd/journal/streams/[[:digit:]]:[[:digit:]]+$ f
+ /@@{SYSTEMD_JOURNAL}?$ d RecreatedDir
+ /@@{SYSTEMD_JOURNAL}/@@{XMACHINEID}$ d RecreatedDir
+# we cannot monitor gid and acls on journald. This is not going
+# to be fixed upstream, see #934284 and
+# https://github.com/systemd/systemd/issues/22729
+ /@@{SYSTEMD_JOURNAL}/@@{XMACHINEID}/(system|user-[[:digit:]]+)\\.journal$ f VarFile-g-acl-xattrs
+!/@@{SYSTEMD_JOURNAL}/@@{XMACHINEID}/(system|user-[[:digit:]]+)\@[[:xdigit:]]{32}-[[:xdigit:]]{16}-[[:xdigit:]]{16}\\.journal$ f
+
+@@if defined SYSTEMD_JOURNAL_EXTRA
+ /@@{SYSTEMD_JOURNAL}/@@{XMACHINEID}/@@{SYSTEMD_JOURNAL_EXTRA}\\.journal$ f VarFile
+@@endif

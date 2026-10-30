@@ -1,0 +1,62 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "5.14.0-570.21.1.el9_6.x86_64"
+
+[files."/etc/redhat-release"]
+content = "Red Hat Enterprise Linux release 9.6 (Plow)"
+
+# /etc/os-release is a symlink to ../usr/lib/os-release on rpm-ostree systems
+[files."/etc/os-release"]
+content = """
+NAME="Red Hat Enterprise Linux CoreOS"
+ID="rhcos"
+ID_LIKE="rhel fedora"
+VERSION="9.6.20250523-0"
+VERSION_ID="9.6.20250523-0"
+VARIANT="CoreOS"
+VARIANT_ID=coreos
+PLATFORM_ID="platform:el9"
+PRETTY_NAME="Red Hat Enterprise Linux CoreOS 9.6.20250523-0"
+ANSI_COLOR="0;31"
+CPE_NAME="cpe:/a:redhat:enterprise_linux:9::coreos"
+HOME_URL="https://www.redhat.com/"
+DOCUMENTATION_URL="https://docs.redhat.com/en/documentation/openshift_container_platform/4.19/"
+BUG_REPORT_URL="https://access.redhat.com/labs/rhir/"
+REDHAT_BUGZILLA_PRODUCT="OpenShift Container Platform"
+REDHAT_BUGZILLA_PRODUCT_VERSION="4.19"
+REDHAT_SUPPORT_PRODUCT="OpenShift Container Platform"
+REDHAT_SUPPORT_PRODUCT_VERSION="4.19"
+OPENSHIFT_VERSION="4.19"
+RHEL_VERSION="9.6"
+OSTREE_VERSION="9.6.20250523-0"
+"""
+
+[files."/usr/lib/os-release"]
+content = """
+NAME="Red Hat Enterprise Linux CoreOS"
+ID="rhcos"
+ID_LIKE="rhel fedora"
+VERSION="9.6.20250523-0"
+VERSION_ID="9.6.20250523-0"
+VARIANT="CoreOS"
+VARIANT_ID=coreos
+PLATFORM_ID="platform:el9"
+PRETTY_NAME="Red Hat Enterprise Linux CoreOS 9.6.20250523-0"
+ANSI_COLOR="0;31"
+CPE_NAME="cpe:/a:redhat:enterprise_linux:9::coreos"
+HOME_URL="https://www.redhat.com/"
+DOCUMENTATION_URL="https://docs.redhat.com/en/documentation/openshift_container_platform/4.19/"
+BUG_REPORT_URL="https://access.redhat.com/labs/rhir/"
+REDHAT_BUGZILLA_PRODUCT="OpenShift Container Platform"
+REDHAT_BUGZILLA_PRODUCT_VERSION="4.19"
+REDHAT_SUPPORT_PRODUCT="OpenShift Container Platform"
+REDHAT_SUPPORT_PRODUCT_VERSION="4.19"
+OPENSHIFT_VERSION="4.19"
+RHEL_VERSION="9.6"
+OSTREE_VERSION="9.6.20250523-0"
+"""

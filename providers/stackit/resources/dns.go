@@ -4,11 +4,12 @@
 package resources
 
 import (
+	"fmt"
 	"time"
 
-	"github.com/stackitcloud/stackit-sdk-go/services/dns"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	dns "github.com/stackitcloud/stackit-sdk-go/services/dns/v1api"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func (r *mqlStackitDns) zones() ([]any, error) {
@@ -20,10 +21,10 @@ func (r *mqlStackitDns) zones() ([]any, error) {
 	out := []any{}
 	const pageSize int32 = 500
 	for page := int32(1); ; page++ {
-		resp, err := client.ListZones(bgctx(), c.ProjectID()).Page(page).PageSize(pageSize).Execute()
+		resp, err := client.DefaultAPI.ListZones(bgctx(), c.ProjectID()).Page(page).PageSize(pageSize).Execute()
 		if err != nil {
 			if isAccessDenied(err) {
-				return []any{}, nil
+				return deniedList(err)
 			}
 			return nil, err
 		}
@@ -111,15 +112,15 @@ func initStackitDnsZone(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	if err != nil {
 		return nil, nil, err
 	}
-	resp, err := client.GetZoneExecute(bgctx(), c.ProjectID(), id)
+	resp, err := client.DefaultAPI.GetZone(bgctx(), c.ProjectID(), id).Execute()
 	if err != nil {
 		return nil, nil, err
 	}
 	z, ok := resp.GetZoneOk()
 	if !ok {
-		return args, nil, nil
+		return nil, nil, fmt.Errorf("stackit.dns.zone with id %q not found", id)
 	}
-	res, err := buildDnsZone(runtime, &z)
+	res, err := buildDnsZone(runtime, z)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -135,10 +136,10 @@ func (r *mqlStackitDnsZone) recordSets() ([]any, error) {
 	out := []any{}
 	const pageSize int32 = 500
 	for page := int32(1); ; page++ {
-		resp, err := client.ListRecordSets(bgctx(), c.ProjectID(), r.Id.Data).Page(page).PageSize(pageSize).Execute()
+		resp, err := client.DefaultAPI.ListRecordSets(bgctx(), c.ProjectID(), r.Id.Data).Page(page).PageSize(pageSize).Execute()
 		if err != nil {
 			if isAccessDenied(err) {
-				return []any{}, nil
+				return deniedList(err)
 			}
 			return nil, err
 		}
@@ -178,4 +179,17 @@ func (r *mqlStackitDnsZone) recordSets() ([]any, error) {
 
 func (r *mqlStackitDnsRecordSet) id() (string, error) {
 	return "stackit.dns.recordSet/" + r.ZoneId.Data + "/" + r.Id.Data, nil
+}
+
+func (r *mqlStackitDnsRecordSet) zone() (*mqlStackitDnsZone, error) {
+	if r.ZoneId.Data == "" {
+		return markNull[mqlStackitDnsZone](&r.Zone)
+	}
+	res, err := NewResource(r.MqlRuntime, "stackit.dns.zone", map[string]*llx.RawData{
+		"id": llx.StringData(r.ZoneId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlStackitDnsZone), nil
 }

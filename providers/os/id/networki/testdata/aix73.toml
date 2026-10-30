@@ -1,0 +1,51 @@
+[commands."ifconfig -a"]
+stdout = """en0: flags=1e084863,81cc0<UP,BROADCAST,NOTRAILERS,RUNNING,SIMPLEX,MULTICAST,GROUPRT,64BIT,CHECKSUM_OFFLOAD(ACTIVE),LARGESEND,CHAIN>
+	inet 192.168.234.35 netmask 0xfffffff8 broadcast 192.168.234.39
+	inet 192.0.2.10 netmask 0xffffffff broadcast 192.0.2.10
+	 tcp_sendspace 262144 tcp_recvspace 262144 rfc1323 1
+en1: flags=1e084863,81cc0<UP,BROADCAST,NOTRAILERS,RUNNING,SIMPLEX,MULTICAST,GROUPRT,64BIT,CHECKSUM_OFFLOAD(ACTIVE),LARGESEND,CHAIN>
+	inet6 fe80::80de:eff:fe65:c1a/64
+	 tcp_sendspace 262144 tcp_recvspace 262144 rfc1323 1
+lo0: flags=e08084b,c0<UP,BROADCAST,LOOPBACK,RUNNING,SIMPLEX,MULTICAST,GROUPRT,64BIT,LARGESEND,CHAIN>
+	inet 127.0.0.1 netmask 0xff000000 broadcast 127.255.255.255
+	inet6 ::1%1/128
+	 tcp_sendspace 131072 tcp_recvspace 131072 rfc1323 1
+"""
+
+[commands."netstat -in"]
+stdout = """Name   Mtu   Network     Address                 Ipkts     Ierrs        Opkts     Oerrs  Coll
+en0    1450  link#2      fa.16.3e.5b.8a.c5             7558     0             7786     0     0
+en0    1450  192.168.234 192.168.234.35               7558     0             7786     0     0
+en0    1450  192.0.2.10  192.0.2.10                   7558     0             7786     0     0
+en1    1500  link#3      82.de.e.65.c.1a               112     0              144     0     0
+en1    1500  fe80::80de:eff:fe65:c1a                   112     0              144     0     0
+lo0    16896 link#1                                    245     0              245     0     0
+lo0    16896 127         127.0.0.1                     245     0              245     0     0
+lo0    16896 ::1%1                                     245     0              245     0     0
+"""
+
+[commands."netstat -rn"]
+stdout = """Routing tables
+Destination        Gateway           Flags   Refs     Use  If   Exp  Groups
+
+Route tree for Protocol Family 2 (Internet):
+default            192.168.234.33    UG       10         0 en0      -      -   
+127/8              127.0.0.1         U        10         0 lo0      -      -   
+192.0.2.10         192.0.2.10        UH        0         0 en0      -      -   =>
+192.0.2.10         127.0.0.1         UGHS      0         0 lo0      -      -   
+192.168.234.32     192.168.234.35    UHSb      0         0 en0      -      -   =>
+192.168.234.32/29  192.168.234.35    U         7         0 en0      -      -   
+192.168.234.35     127.0.0.1         UGHS      0         0 lo0      -      -   
+192.168.234.39     192.168.234.35    UHSb      0         0 en0      -      -   
+198.51.100/24      192.168.234.33    UG        0         0 en0      -      -   
+
+Route tree for Protocol Family 24 (Internet v6):
+::1%1              ::1%1             UH       22         0 lo0      -      -   
+fe80::/64          link#3            UCX       0         0 en1      -      -   
+fe80::68c7:aeff:fed1:af09 6a:c7:ae:d1:af:9  UHXLW     4         0 en1      -      -   
+fe80::80de:eff:fe65:c1a                   UHXLWl    4         0 lo0      -      -   
+ff01::%1/16        ::1               U         0         0 lo0      -      -   
+ff02::/16          fe80::80de:eff:fe65:c1a U         0         0 en1      -      -   
+ff11::%1/16        ::1               U         0         0 lo0      -      -   
+ff12::/16          fe80::80de:eff:fe65:c1a U         0         0 en1      -      -   
+"""

@@ -4,17 +4,24 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/atlassian/connection"
-	"go.mondoo.com/mql/v13/providers/atlassian/connection/confluence"
-	"go.mondoo.com/mql/v13/providers/atlassian/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/atlassian/connection"
+	"go.mondoo.com/mql/providers/atlassian/connection/confluence"
+	"go.mondoo.com/mql/providers/atlassian/provider"
 )
 
 var Config = plugin.Provider{
-	Name:      "atlassian",
-	ID:        "go.mondoo.com/cnquery/v9/providers/atlassian",
-	Version:   "13.3.7",
+	Name: "atlassian",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	// A connection reports the concrete kind through ConnectRes.Root.
+	Root:    "atlassian.admin.organization",
+	ID:      "go.mondoo.com/mql/providers/atlassian",
+	Version: "14.1.7",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	Platforms: connection.Platforms,
 	ConnectionTypes: []string{
 		provider.DefaultConnectionType,

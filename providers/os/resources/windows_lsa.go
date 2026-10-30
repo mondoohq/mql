@@ -4,11 +4,15 @@
 package resources
 
 import (
+	"errors"
+	"slices"
+	"strconv"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/registry"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/registry"
 	"go.mondoo.com/ranger-rpc/codes"
 	"go.mondoo.com/ranger-rpc/status"
 )
@@ -26,6 +30,55 @@ const (
 	lsaWDigestPath        = `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest`
 	lsaNetlogonPath       = `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters`
 	lsaNetlogonPolicyPath = `HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Netlogon\Parameters`
+	// lsaSystemPolicyPath is where the "Configure LSASS to run as a protected
+	// process" group policy writes RunAsPPL. Windows honors the policy value over
+	// the one under the Lsa key, so it is read first (see lsaRunAsPpl).
+	lsaSystemPolicyPath = `HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\System`
+)
+
+// Registry locations of the hardening controls that live outside the Lsa key
+// itself.
+//
+// FipsAlgorithmPolicy is a subkey of Lsa holding a single Enabled DWORD.
+//
+// The Kerberos supported encryption types are written by the "Network
+// security: Configure encryption types allowed for Kerberos" policy to the
+// Policies hive, which is the location Windows honors. The identically named
+// value under Lsa\Kerberos\Parameters is the legacy location: it is still
+// effective up to Windows Server 2022, so it is consulted as a fallback when
+// the policy value is absent, but Windows Server 2025 (build 26100) no longer
+// reads it at all, so on that release and later the fallback is skipped and an
+// absent policy value resolves to null.
+//
+// The two LDAP server settings live under the NTDS service, which is installed
+// only on a domain controller. On a member server or a standalone host the key
+// does not exist at all, which is why an absent value has to resolve to null
+// rather than to 0: the setting does not apply, it is not turned off. The LDAP
+// client signing requirement is a separate service key present on every host.
+const (
+	lsaFipsPath           = `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Lsa\FipsAlgorithmPolicy`
+	lsaKerberosPath       = `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Lsa\Kerberos\Parameters`
+	lsaKerberosPolicyPath = `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters`
+	lsaNtdsPath           = `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\NTDS\Parameters`
+	lsaLdapClientPath     = `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LDAP`
+)
+
+// lsaSamPath is the Security Accounts Manager key. The SAM runs inside the LSA
+// process (lsass.exe), and its password-policy switches such as
+// RelaxMinimumPasswordLengthLimits live here rather than under Lsa.
+const lsaSamPath = `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SAM`
+
+// Bits of the Kerberos SupportedEncryptionTypes bitmask. Only the well-known
+// encryption types are decoded; the remaining high bits are reserved for future
+// encryption types and are deliberately ignored, so a value that sets them
+// (0x7FFFFFF8 is a common hardened setting) still decodes the known bits
+// correctly.
+const (
+	kerberosEtypeDesCbcCrc int64 = 0x1
+	kerberosEtypeDesCbcMd5 int64 = 0x2
+	kerberosEtypeRc4Hmac   int64 = 0x4
+	kerberosEtypeAes128    int64 = 0x8
+	kerberosEtypeAes256    int64 = 0x10
 )
 
 func (r *mqlWindowsLsa) id() (string, error) {
@@ -91,9 +144,32 @@ func regBoolPtr(items map[string]registry.RegistryKeyItem, name string) *bool {
 	return nil
 }
 
+// regEnumBoolPtr decodes a policy DWORD whose values are an enumeration rather
+// than a 0/1 toggle (for example 1 = Enabled, 2 = Disabled), where regBoolPtr's
+// non-zero test would read the disabling value as true. It returns true for
+// trueValue, false for any of falseValues, and nil when the value is absent or
+// holds a value outside both sets, so a value the enumeration does not define
+// never reads as a confident answer.
+func regEnumBoolPtr(items map[string]registry.RegistryKeyItem, name string, trueValue int64, falseValues ...int64) *bool {
+	v := regIntPtr(items, name)
+	if v == nil {
+		return nil
+	}
+	if *v == trueValue {
+		res := true
+		return &res
+	}
+	if slices.Contains(falseValues, *v) {
+		res := false
+		return &res
+	}
+	return nil
+}
+
 // lsaValues holds the extracted top-level Lsa values as nullable pointers.
 // On/off settings are bools; graded settings are int64s.
 type lsaValues struct {
+	CrashOnAuditFail            *int64
 	DisableDomainCreds          *bool
 	EveryoneIncludesAnonymous   *bool
 	ForceGuest                  *bool
@@ -113,6 +189,7 @@ type lsaValues struct {
 // Pure function for unit testing.
 func computeLsa(items map[string]registry.RegistryKeyItem) lsaValues {
 	return lsaValues{
+		CrashOnAuditFail:            regIntPtr(items, "CrashOnAuditFail"),
 		DisableDomainCreds:          regBoolPtr(items, "DisableDomainCreds"),
 		EveryoneIncludesAnonymous:   regBoolPtr(items, "EveryoneIncludesAnonymous"),
 		ForceGuest:                  regBoolPtr(items, "ForceGuest"),
@@ -189,6 +266,18 @@ func computeLsaSecureChannel(netlogon, netlogonPolicy map[string]registry.Regist
 	}
 }
 
+// lsaRunAsPpl returns the effective LSA protection level. A RunAsPPL value set
+// by the "Configure LSASS to run as a protected process" group policy takes
+// precedence over the value under the Lsa key; without the policy value the
+// Lsa key decides. Pure function for unit testing.
+func lsaRunAsPpl(lsa, systemPolicy map[string]registry.RegistryKeyItem) *int64 {
+	if v := regIntPtr(systemPolicy, "RunAsPPL"); v != nil {
+		return v
+	}
+	return regIntPtr(lsa, "RunAsPPL")
+}
+
+func (r *mqlWindowsLsa) crashOnAuditFail() (int64, error)           { return 0, r.populate() }
 func (r *mqlWindowsLsa) disableDomainCreds() (bool, error)          { return false, r.populate() }
 func (r *mqlWindowsLsa) everyoneIncludesAnonymous() (bool, error)   { return false, r.populate() }
 func (r *mqlWindowsLsa) forceGuest() (bool, error)                  { return false, r.populate() }
@@ -212,7 +301,13 @@ func (r *mqlWindowsLsa) populate() error {
 		return err
 	}
 	v := computeLsa(items)
+	systemPolicy, err := r.readLsaKey(lsaSystemPolicyPath)
+	if err != nil {
+		return err
+	}
+	v.RunAsPpl = lsaRunAsPpl(items, systemPolicy)
 
+	r.CrashOnAuditFail = intFieldPtr(v.CrashOnAuditFail)
 	r.DisableDomainCreds = boolFieldPtr(v.DisableDomainCreds)
 	r.EveryoneIncludesAnonymous = boolFieldPtr(v.EveryoneIncludesAnonymous)
 	r.ForceGuest = boolFieldPtr(v.ForceGuest)
@@ -292,6 +387,174 @@ func (r *mqlWindowsLsa) secureChannel() (*mqlWindowsLsaSecureChannel, error) {
 	return o.(*mqlWindowsLsaSecureChannel), nil
 }
 
+// lsaKerberosValues holds the Kerberos encryption-type settings: the raw
+// bitmask plus the decoded well-known bits, all nullable.
+type lsaKerberosValues struct {
+	SupportedEncryptionTypes *int64
+	AllowsDesCbcCrc          *bool
+	AllowsDesCbcMd5          *bool
+	AllowsRc4Hmac            *bool
+	AllowsAes128             *bool
+	AllowsAes256             *bool
+}
+
+// kerberosLegacyEtypeLastBuild is the highest Windows build that still honors
+// the legacy Lsa\Kerberos\Parameters\SupportedEncryptionTypes value. Windows
+// Server 2025 is build 26100 and no longer reads it, so anything from that
+// build on must not fall back to it.
+const kerberosLegacyEtypeLastBuild = 26100
+
+// computeLsaKerberos extracts the Kerberos supported encryption types and
+// decodes the well-known bits. The policy hive wins over the legacy
+// Lsa\Kerberos\Parameters location, matching how Windows resolves the setting.
+//
+// legacyHonored says whether this release still reads the legacy location.
+// When it does not, a value left there by a pre-2025 hardening script is inert:
+// reporting it would describe a configuration Windows is not applying, and
+// would do so in the unsafe direction, since a leftover AES-only mask reads as
+// "RC4 is not allowed" on a host whose built-in default set does allow it.
+//
+// When no location carries an honored value every field stays null: an absent
+// value means Windows uses its built-in default set, which is not the same as a
+// configured mask of 0. Pure function for unit testing.
+func computeLsaKerberos(policy, legacy map[string]registry.RegistryKeyItem, legacyHonored bool) lsaKerberosValues {
+	mask := regIntPtr(policy, "SupportedEncryptionTypes")
+	if mask == nil && legacyHonored {
+		mask = regIntPtr(legacy, "SupportedEncryptionTypes")
+	}
+	if mask == nil {
+		return lsaKerberosValues{}
+	}
+
+	// bit reports whether one encryption type is permitted. Masking a single bit
+	// keeps unknown high bits from leaking into any of the answers.
+	bit := func(b int64) *bool {
+		v := *mask&b != 0
+		return &v
+	}
+
+	return lsaKerberosValues{
+		SupportedEncryptionTypes: mask,
+		AllowsDesCbcCrc:          bit(kerberosEtypeDesCbcCrc),
+		AllowsDesCbcMd5:          bit(kerberosEtypeDesCbcMd5),
+		AllowsRc4Hmac:            bit(kerberosEtypeRc4Hmac),
+		AllowsAes128:             bit(kerberosEtypeAes128),
+		AllowsAes256:             bit(kerberosEtypeAes256),
+	}
+}
+
+// lsaLdapValues holds the LDAP signing and channel-binding requirements as
+// nullable pointers.
+type lsaLdapValues struct {
+	ClientIntegrity       *int64
+	EnforceChannelBinding *int64
+	ServerIntegrity       *int64
+}
+
+// computeLsaLdap extracts the LDAP settings. The two server-side values come
+// from the NTDS service key, which exists only on a domain controller, and the
+// client-side value from the LDAP service key. Pure function for unit testing.
+func computeLsaLdap(ntds, ldapClient map[string]registry.RegistryKeyItem) lsaLdapValues {
+	return lsaLdapValues{
+		ClientIntegrity:       regIntPtr(ldapClient, "LDAPClientIntegrity"),
+		EnforceChannelBinding: regIntPtr(ntds, "LdapEnforceChannelBinding"),
+		ServerIntegrity:       regIntPtr(ntds, "LDAPServerIntegrity"),
+	}
+}
+
+// computeLsaFips extracts the FIPS algorithm policy from the
+// Lsa\FipsAlgorithmPolicy key. Nil when the Enabled value is absent, which is
+// the state of a host that never configured FIPS mode. Pure function for unit
+// testing.
+func computeLsaFips(fips map[string]registry.RegistryKeyItem) *bool {
+	return regBoolPtr(fips, "Enabled")
+}
+
+func (r *mqlWindowsLsa) fipsAlgorithmPolicyEnabled() (bool, error) {
+	items, err := r.readLsaKey(lsaFipsPath)
+	if err != nil {
+		return false, err
+	}
+	r.FipsAlgorithmPolicyEnabled = boolFieldPtr(computeLsaFips(items))
+	return false, nil
+}
+
+// computeLsaSam extracts the RelaxMinimumPasswordLengthLimits switch from the
+// Control\SAM key. Nil when the value is absent, which is the state of a host
+// that never enabled the setting, so the 14-character cap applies. Pure
+// function for unit testing.
+func computeLsaSam(sam map[string]registry.RegistryKeyItem) *bool {
+	return regBoolPtr(sam, "RelaxMinimumPasswordLengthLimits")
+}
+
+func (r *mqlWindowsLsa) relaxMinimumPasswordLengthLimits() (bool, error) {
+	items, err := r.readLsaKey(lsaSamPath)
+	if err != nil {
+		return false, err
+	}
+	r.RelaxMinimumPasswordLengthLimits = boolFieldPtr(computeLsaSam(items))
+	return false, nil
+}
+
+func (r *mqlWindowsLsa) kerberosAllowsAes128() (bool, error)    { return false, r.populateKerberos() }
+func (r *mqlWindowsLsa) kerberosAllowsAes256() (bool, error)    { return false, r.populateKerberos() }
+func (r *mqlWindowsLsa) kerberosAllowsDesCbcCrc() (bool, error) { return false, r.populateKerberos() }
+func (r *mqlWindowsLsa) kerberosAllowsDesCbcMd5() (bool, error) { return false, r.populateKerberos() }
+func (r *mqlWindowsLsa) kerberosAllowsRc4Hmac() (bool, error)   { return false, r.populateKerberos() }
+
+func (r *mqlWindowsLsa) kerberosSupportedEncryptionTypes() (int64, error) {
+	return 0, r.populateKerberos()
+}
+
+// populateKerberos reads the Kerberos encryption-type setting once and fills
+// the raw bitmask together with every decoded field, so a query touching
+// several of them reads the registry a single time and the answers cannot
+// disagree with the mask they came from.
+func (r *mqlWindowsLsa) populateKerberos() error {
+	policy, err := r.readLsaKey(lsaKerberosPolicyPath)
+	if err != nil {
+		return err
+	}
+	legacy, err := r.readLsaKey(lsaKerberosPath)
+	if err != nil {
+		return err
+	}
+	v := computeLsaKerberos(policy, legacy, r.legacyKerberosEtypeHonored())
+
+	r.KerberosSupportedEncryptionTypes = intFieldPtr(v.SupportedEncryptionTypes)
+	r.KerberosAllowsAes128 = boolFieldPtr(v.AllowsAes128)
+	r.KerberosAllowsAes256 = boolFieldPtr(v.AllowsAes256)
+	r.KerberosAllowsDesCbcCrc = boolFieldPtr(v.AllowsDesCbcCrc)
+	r.KerberosAllowsDesCbcMd5 = boolFieldPtr(v.AllowsDesCbcMd5)
+	r.KerberosAllowsRc4Hmac = boolFieldPtr(v.AllowsRc4Hmac)
+	return nil
+}
+
+func (r *mqlWindowsLsa) ldapClientIntegrity() (int64, error)       { return 0, r.populateLdap() }
+func (r *mqlWindowsLsa) ldapEnforceChannelBinding() (int64, error) { return 0, r.populateLdap() }
+func (r *mqlWindowsLsa) ldapServerIntegrity() (int64, error)       { return 0, r.populateLdap() }
+
+// populateLdap reads the NTDS and LDAP service keys once and fills all three
+// LDAP fields. On a host that is not a domain controller the NTDS key is
+// missing, which readLsaKey turns into an empty map, leaving the two
+// server-side fields null.
+func (r *mqlWindowsLsa) populateLdap() error {
+	ntds, err := r.readLsaKey(lsaNtdsPath)
+	if err != nil {
+		return err
+	}
+	ldapClient, err := r.readLsaKey(lsaLdapClientPath)
+	if err != nil {
+		return err
+	}
+	v := computeLsaLdap(ntds, ldapClient)
+
+	r.LdapClientIntegrity = intFieldPtr(v.ClientIntegrity)
+	r.LdapEnforceChannelBinding = intFieldPtr(v.EnforceChannelBinding)
+	r.LdapServerIntegrity = intFieldPtr(v.ServerIntegrity)
+	return nil
+}
+
 // intFieldPtr converts a nullable *int64 into the generated plugin.TValue[int64]
 // field representation, marking the field null when the source pointer is nil.
 func intFieldPtr(v *int64) plugin.TValue[int64] {
@@ -318,4 +581,74 @@ func stringFieldPtr(v *string) plugin.TValue[string] {
 		return plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
 	}
 	return plugin.TValue[string]{Data: *v, State: plugin.StateIsSet}
+}
+
+// initWindowsLsaNtlm resolves a bare windows.lsa.ntlm to the one the parent
+// builds. The resource shares its name with the field path that reaches it, so
+// `windows.lsa.ntlm.useLogonCredential` creates it directly rather than through
+// windows.lsa. Its fields are plain schema fields with no accessor of their own,
+// so without this the dotted form returned null for every field (and logged
+// "provider returned no data and no error for a field") while the block form
+// `windows.lsa { ntlm { useLogonCredential } }` returned the real values.
+func initWindowsLsaNtlm(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	// the parent populates every field through CreateResource, which skips
+	// this init; only a bare creation reaches here
+	if len(args) > 0 {
+		return args, nil, nil
+	}
+
+	o, err := CreateResource(runtime, "windows.lsa", nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	ntlm := o.(*mqlWindowsLsa).GetNtlm()
+	if ntlm.Error != nil {
+		return nil, nil, ntlm.Error
+	}
+	if ntlm.Data == nil {
+		return nil, nil, errors.New("could not read the NTLM settings from windows.lsa")
+	}
+	return nil, ntlm.Data, nil
+}
+
+// initWindowsLsaSecureChannel resolves a bare windows.lsa.secureChannel to the
+// one the parent builds, for the same reason as initWindowsLsaNtlm.
+func initWindowsLsaSecureChannel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 0 {
+		return args, nil, nil
+	}
+
+	o, err := CreateResource(runtime, "windows.lsa", nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	sc := o.(*mqlWindowsLsa).GetSecureChannel()
+	if sc.Error != nil {
+		return nil, nil, sc.Error
+	}
+	if sc.Data == nil {
+		return nil, nil, errors.New("could not read the Netlogon secure-channel settings from windows.lsa")
+	}
+	return nil, sc.Data, nil
+}
+
+// legacyKerberosEtypeHonored reports whether this Windows release still reads
+// Lsa\Kerberos\Parameters\SupportedEncryptionTypes. Windows reports its build
+// as the platform version, so the test is a numeric comparison against the
+// Windows Server 2025 build. An unreadable or unparseable version keeps the
+// fallback, which is the behavior every release up to Windows Server 2022 needs.
+func (r *mqlWindowsLsa) legacyKerberosEtypeHonored() bool {
+	conn, ok := r.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		return true
+	}
+	asset := conn.Asset()
+	if asset == nil || asset.Platform == nil {
+		return true
+	}
+	build, err := strconv.Atoi(asset.Platform.Version)
+	if err != nil {
+		return true
+	}
+	return build < kerberosLegacyEtypeLastBuild
 }

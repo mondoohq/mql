@@ -1,0 +1,23 @@
+  pool: mpool
+ state: ONLINE
+  scan: none requested
+config:
+
+	NAME                     STATE     READ WRITE CKSUM
+	mpool                    ONLINE       0     0     0
+	  mirror-0               ONLINE       0     0     0
+	    /var/lib/g05/z1.img  ONLINE       0     0     0
+	    /var/lib/g05/z2.img  ONLINE       0     0     0
+
+errors: No known data errors
+
+  pool: tank
+ state: ONLINE
+  scan: none requested
+config:
+
+	NAME              STATE     READ WRITE CKSUM
+	tank              ONLINE       0     0     0
+	  /dev/nvme3n1p2  ONLINE       0     0     0
+
+errors: No known data errors

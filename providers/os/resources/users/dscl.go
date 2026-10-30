@@ -7,9 +7,10 @@ import (
 	"io"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 var USER_OSX_DSCL_REGEX = regexp.MustCompile(`(?m)^(\S*)\s*(.*)$`)
@@ -31,6 +32,14 @@ func ParseDsclListResult(input io.Reader) (map[string]string, error) {
 		}
 	}
 	return userMap, nil
+}
+
+// dsclAuthorityEnabled reports whether an AuthenticationAuthority value lets the
+// account log in. dscl omits records without the attribute, which is how macOS
+// disables root, so callers only see accounts that have one. `pwpolicy
+// disableuser` adds a ;DisabledUser; token to lock an account that has one.
+func dsclAuthorityEnabled(authority string) bool {
+	return strings.TrimSpace(authority) != "" && !strings.Contains(authority, ";DisabledUser;")
 }
 
 type OSXUserManager struct {
@@ -63,6 +72,7 @@ func (s *OSXUserManager) User(id string) (*User, error) {
 // dscl . -list /Users NFSHomeDirectory
 // dscl . -list /Users RecordName
 // dscl . -list /Users RealName
+// dscl . -list /Users AuthenticationAuthority
 func (s *OSXUserManager) List() ([]*User, error) {
 	users := make(map[string]*User)
 
@@ -82,10 +92,12 @@ func (s *OSXUserManager) List() ([]*User, error) {
 			log.Error().Err(err).Str("user", k).Msg("could not parse uid")
 		}
 
+		// dscl does not report whether an account is disabled
 		users[k] = &User{
-			ID:   m[k],
-			Name: k,
-			Uid:  uid,
+			ID:             m[k],
+			Name:           k,
+			Uid:            uid,
+			EnabledUnknown: true,
 		}
 	}
 
@@ -157,6 +169,22 @@ func (s *OSXUserManager) List() ([]*User, error) {
 			log.Error().Err(err).Str("user", k).Msg("could not parse gid")
 		}
 		u.Gid = gid
+	}
+
+	// fetch authentication authorities to determine whether the account can log in
+	f, err = s.conn.RunCommand("dscl . -list /Users AuthenticationAuthority")
+	if err != nil {
+		return nil, err
+	}
+
+	m, err = ParseDsclListResult(f.Stdout)
+	if err != nil {
+		return nil, err
+	}
+	for k := range m {
+		if u, ok := users[k]; ok {
+			u.Enabled = dsclAuthorityEnabled(m[k])
+		}
 	}
 
 	// convert map to slice

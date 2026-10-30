@@ -10,14 +10,14 @@ import (
 	"strconv"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/arista/connection"
-	"go.mondoo.com/mql/v13/providers/arista/resources"
-	"go.mondoo.com/mql/v13/providers/arista/resources/eos"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/arista/connection"
+	"go.mondoo.com/mql/providers/arista/resources"
+	"go.mondoo.com/mql/providers/arista/resources/eos"
 )
 
 const (
@@ -166,10 +166,12 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.AristaConnecti
 	asset.Name = conn.Conf.Host
 	version := ""
 	arch := ""
+	model := ""
 	aristaVersion, err := conn.GetVersion()
 	if err == nil {
 		version = aristaVersion.Version
 		arch = aristaVersion.Architecture
+		model = aristaVersion.ModelName
 	}
 
 	platform := &inventory.Platform{
@@ -179,6 +181,15 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.AristaConnecti
 	}
 	if pi, ok := PlatformByName("arista-eos"); ok {
 		pi.Apply(platform)
+	}
+	// Report the chassis model as the platform runtime so the server can scope
+	// EOS advisories to the device's hardware family (models named in a CVE's
+	// affected[].platforms). This is set AFTER Apply, which overwrites Runtime
+	// with the catalog's "arista" marker; the device is still classified as an
+	// Arista EOS asset by its "arista-eos" platform name. Mirrors how the Junos
+	// provider reports its hardware model.
+	if model != "" {
+		platform.Runtime = model
 	}
 	asset.Platform = platform
 

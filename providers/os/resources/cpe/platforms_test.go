@@ -4,8 +4,11 @@
 package cpe
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/facebookincubator/nvdtools/wfn"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPlatformCPE(t *testing.T) {
@@ -51,6 +54,20 @@ func TestPlatformCPE(t *testing.T) {
 			cpe:      "cpe:2.3:o:debian:debian_linux:10.7:*:*:*:*:*:*:*",
 		},
 		{
+			platform: "centos",
+			version:  "7.9",
+			cpe:      "cpe:2.3:o:centos:centos:7.9:*:*:*:*:*:*:*",
+		},
+		// CentOS Stream is its own platform name but keeps the centos:centos
+		// product: that is the CPE_NAME its own os-release declares, and NVD has
+		// no centos_stream product to point at instead. Without an entry of its
+		// own PlatformCPE reports no CPE at all for a Stream host.
+		{
+			platform: "centos-stream",
+			version:  "9",
+			cpe:      "cpe:2.3:o:centos:centos:9:*:*:*:*:*:*:*",
+		},
+		{
 			platform: "macos",
 			version:  "10.14",
 			cpe:      "cpe:2.3:o:apple:mac_os_x:10.14.0:*:*:*:*:*:*:*",
@@ -75,6 +92,29 @@ func TestPlatformCPE(t *testing.T) {
 			version:  "22.04",
 			cpe:      "cpe:2.3:o:canonical:ubuntu_linux:22.04:*:*:*:lts:*:*:*",
 		},
+		// SUSE puts the service pack in the update field (os-release CPE_NAME
+		// cpe:/o:suse:sles:15:sp7); from SLES 16 on the update is the full
+		// version (cpe:/o:suse:sles:16:16.0).
+		{
+			platform: "sles",
+			version:  "15.7",
+			cpe:      "cpe:2.3:o:suse:suse_linux_enterprise_server:15:sp7:*:*:*:*:*:*",
+		},
+		{
+			platform: "sles",
+			version:  "12.5",
+			cpe:      "cpe:2.3:o:suse:suse_linux_enterprise_server:12:sp5:*:*:*:*:*:*",
+		},
+		{
+			platform: "sles",
+			version:  "15",
+			cpe:      "cpe:2.3:o:suse:suse_linux_enterprise_server:15:*:*:*:*:*:*:*",
+		},
+		{
+			platform: "sles",
+			version:  "16.0",
+			cpe:      "cpe:2.3:o:suse:suse_linux_enterprise_server:16:16.0:*:*:*:*:*:*",
+		},
 		{
 			platform: "amazonlinux",
 			version:  "2",
@@ -92,4 +132,30 @@ func TestPlatformCPE(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, test.cpe, cpe, "platform: %s, version: %s", test.platform, test.version)
 	}
+}
+
+func TestOsReleaseCPE(t *testing.T) {
+	got, ok := OsReleaseCPE("cpe:/o:suse:sles:15:sp7")
+	assert.True(t, ok)
+	assert.Equal(t, "cpe:2.3:o:suse:sles:15:sp7:*:*:*:*:*:*", got)
+
+	_, ok = OsReleaseCPE("")
+	assert.False(t, ok)
+	_, ok = OsReleaseCPE("not a cpe")
+	assert.False(t, ok)
+}
+
+// Debian sid's version is "forky/sid". Put into the CPE as is, the "/" made
+// the formatted string invalid; CPE 2.3 quotes it.
+func TestPlatformCPEQuotesTheVersion(t *testing.T) {
+	cpe, ok := PlatformCPE("debian", "forky/sid", false)
+	require.True(t, ok)
+	assert.Equal(t, `cpe:2.3:o:debian:debian_linux:forky\/sid:*:*:*:*:*:*:*`, cpe)
+	attr, err := wfn.UnbindFmtString(cpe)
+	require.NoError(t, err)
+	assert.Equal(t, `forky\/sid`, attr.Version)
+
+	cpe, ok = PlatformCPE("debian", "12.15", false)
+	require.True(t, ok)
+	assert.Equal(t, "cpe:2.3:o:debian:debian_linux:12.15:*:*:*:*:*:*:*", cpe)
 }

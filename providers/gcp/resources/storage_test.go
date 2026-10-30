@@ -4,7 +4,9 @@
 package resources
 
 import (
+	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/api/storage/v1"
@@ -122,31 +124,85 @@ func TestBucketRetentionHelpers(t *testing.T) {
 	})
 }
 
+func TestBucketHardDeletePause(t *testing.T) {
+	t.Run("absent soft-delete policy is not paused", func(t *testing.T) {
+		enabled, effective := bucketHardDeletePause(nil)
+		assert.False(t, enabled)
+		assert.Nil(t, effective)
+	})
+	t.Run("absent pause block is not paused", func(t *testing.T) {
+		enabled, effective := bucketHardDeletePause(&storage.BucketSoftDeletePolicy{RetentionDurationSeconds: 604800})
+		assert.False(t, enabled)
+		assert.Nil(t, effective)
+	})
+	t.Run("enabled pause with effective time", func(t *testing.T) {
+		enabled, effective := bucketHardDeletePause(&storage.BucketSoftDeletePolicy{
+			HardDeletePause: &storage.BucketSoftDeletePolicyHardDeletePause{
+				Enabled:       true,
+				EffectiveTime: "2026-09-01T12:30:00.123Z",
+			},
+		})
+		assert.True(t, enabled)
+		if assert.NotNil(t, effective) {
+			assert.Equal(t, time.Date(2026, 9, 1, 12, 30, 0, 123000000, time.UTC), effective.UTC())
+		}
+	})
+	t.Run("disabled pause keeps its effective time", func(t *testing.T) {
+		enabled, effective := bucketHardDeletePause(&storage.BucketSoftDeletePolicy{
+			HardDeletePause: &storage.BucketSoftDeletePolicyHardDeletePause{
+				Enabled:       false,
+				EffectiveTime: "2026-09-01T12:30:00Z",
+			},
+		})
+		assert.False(t, enabled)
+		if assert.NotNil(t, effective) {
+			assert.Equal(t, time.Date(2026, 9, 1, 12, 30, 0, 0, time.UTC), effective.UTC())
+		}
+	})
+	t.Run("empty or unparseable effective time is nil, not year 1", func(t *testing.T) {
+		for _, ts := range []string{"", "not-a-time"} {
+			enabled, effective := bucketHardDeletePause(&storage.BucketSoftDeletePolicy{
+				HardDeletePause: &storage.BucketSoftDeletePolicyHardDeletePause{Enabled: true, EffectiveTime: ts},
+			})
+			assert.True(t, enabled)
+			assert.Nil(t, effective, ts)
+		}
+	})
+	t.Run("decodes the API JSON shape", func(t *testing.T) {
+		var sdp storage.BucketSoftDeletePolicy
+		err := json.Unmarshal([]byte(`{"retentionDurationSeconds":"604800","hardDeletePause":{"enabled":true,"effectiveTime":"2026-09-01T12:30:00Z"}}`), &sdp)
+		assert.NoError(t, err)
+		enabled, effective := bucketHardDeletePause(&sdp)
+		assert.True(t, enabled)
+		assert.NotNil(t, effective)
+	})
+}
+
 func TestEffectiveTagsToInterface(t *testing.T) {
 	tests := []struct {
 		name string
 		in   map[string]string
-		want map[string]interface{}
+		want map[string]any
 	}{
 		{
 			name: "nil input returns empty map",
 			in:   nil,
-			want: map[string]interface{}{},
+			want: map[string]any{},
 		},
 		{
 			name: "empty input returns empty map",
 			in:   map[string]string{},
-			want: map[string]interface{}{},
+			want: map[string]any{},
 		},
 		{
 			name: "project-scoped tag key",
 			in:   map[string]string{"123456789012/env": "production"},
-			want: map[string]interface{}{"123456789012/env": "production"},
+			want: map[string]any{"123456789012/env": "production"},
 		},
 		{
 			name: "org-scoped tag key is preserved as-is",
 			in:   map[string]string{"815471563813/glz-resource-optout": "true"},
-			want: map[string]interface{}{"815471563813/glz-resource-optout": "true"},
+			want: map[string]any{"815471563813/glz-resource-optout": "true"},
 		},
 		{
 			name: "multiple tags are all converted",
@@ -155,7 +211,7 @@ func TestEffectiveTagsToInterface(t *testing.T) {
 				"815471563813/dtit:sec:infosecclass": "internal",
 				"123456789012/env":                   "production",
 			},
-			want: map[string]interface{}{
+			want: map[string]any{
 				"815471563813/glz-resource-optout":   "true",
 				"815471563813/dtit:sec:infosecclass": "internal",
 				"123456789012/env":                   "production",
@@ -164,7 +220,7 @@ func TestEffectiveTagsToInterface(t *testing.T) {
 		{
 			name: "tag with empty value is preserved",
 			in:   map[string]string{"815471563813/cost-center": ""},
-			want: map[string]interface{}{"815471563813/cost-center": ""},
+			want: map[string]any{"815471563813/cost-center": ""},
 		},
 	}
 
@@ -182,31 +238,31 @@ func TestBucketTagKeyMatching(t *testing.T) {
 	// a suffix match (contains) is needed rather than exact equality.
 	tests := []struct {
 		name       string
-		tags       map[string]interface{}
+		tags       map[string]any
 		searchKey  string
 		wantExists bool
 	}{
 		{
 			name:       "exact match on namespaced key",
-			tags:       map[string]interface{}{"815471563813/glz-resource-optout": "true"},
+			tags:       map[string]any{"815471563813/glz-resource-optout": "true"},
 			searchKey:  "815471563813/glz-resource-optout",
 			wantExists: true,
 		},
 		{
 			name:       "suffix match (MQL regex pattern) finds namespaced key",
-			tags:       map[string]interface{}{"815471563813/glz-resource-optout": "true"},
+			tags:       map[string]any{"815471563813/glz-resource-optout": "true"},
 			searchKey:  "glz-resource-optout",
 			wantExists: true,
 		},
 		{
 			name:       "key not present",
-			tags:       map[string]interface{}{"815471563813/env": "production"},
+			tags:       map[string]any{"815471563813/env": "production"},
 			searchKey:  "glz-resource-optout",
 			wantExists: false,
 		},
 		{
 			name:       "empty tags map",
-			tags:       map[string]interface{}{},
+			tags:       map[string]any{},
 			searchKey:  "glz-resource-optout",
 			wantExists: false,
 		},

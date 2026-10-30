@@ -7,14 +7,14 @@ import (
 	"sync"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/id/aws"
-	"go.mondoo.com/mql/v13/providers/os/id/azure"
-	"go.mondoo.com/mql/v13/providers/os/id/gcp"
-	"go.mondoo.com/mql/v13/providers/os/id/hetzner"
-	"go.mondoo.com/mql/v13/providers/os/id/ibm"
-	"go.mondoo.com/mql/v13/providers/os/id/vmware"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/id/aws"
+	"go.mondoo.com/mql/providers/os/id/azure"
+	"go.mondoo.com/mql/providers/os/id/gcp"
+	"go.mondoo.com/mql/providers/os/id/hetzner"
+	"go.mondoo.com/mql/providers/os/id/ibm"
+	"go.mondoo.com/mql/providers/os/id/vmware"
 )
 
 type (

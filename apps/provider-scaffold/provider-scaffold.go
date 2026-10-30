@@ -56,7 +56,7 @@ func main() {
 		*dir = filepath.Join("providers", *providerID)
 	}
 
-	goPackage := "go.mondoo.com/mql/v13/providers/" + *providerID
+	goPackage := "go.mondoo.com/mql/providers/" + *providerID
 
 	// Overwrite protection: check if directory already has files.
 	if !*force {

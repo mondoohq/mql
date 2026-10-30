@@ -6,18 +6,16 @@ package resources
 import (
 	"context"
 	"errors"
-	"sync"
+	"fmt"
 	"time"
 
-	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/core"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/oci/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/oci/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (o *mqlOciNetwork) id() (string, error) {
@@ -27,66 +25,22 @@ func (o *mqlOciNetwork) id() (string, error) {
 func (o *mqlOciNetwork) vcns() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getVcns(conn), 5)
-	poolOfJobs.Run()
+	// ListVcns takes one compartment and has no subtree flag, so asking only for
+	// the tenancy root returned an empty VCN list for anyone who keeps their
+	// networking in a child compartment. Walking the compartment tree is what
+	// makes the whole network graph, subnets and route tables and gateways
+	// included, hang off something that actually exists.
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci with region %s", region)
 
-	// check for errors
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	// get all the results
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-
-	return res, nil
-}
-
-func (s *mqlOciNetwork) getVcnsForRegion(ctx context.Context, networkClient *core.VirtualNetworkClient, compartmentID string) ([]core.Vcn, error) {
-	vcns := []core.Vcn{}
-	var page *string
-	for {
-		request := core.ListVcnsRequest{
-			CompartmentId: common.String(compartmentID),
-			Page:          page,
-		}
-
-		response, err := networkClient.ListVcns(ctx, request)
-		if err != nil {
-			return nil, err
-		}
-
-		vcns = append(vcns, response.Items...)
-
-		if response.OpcNextPage == nil {
-			break
-		}
-
-		page = response.OpcNextPage
-	}
-
-	return vcns, nil
-}
-
-func (o *mqlOciNetwork) getVcns(conn *connection.OciConnection) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	regions, err := conn.GetRegions(ctx)
-	if err != nil {
-		return []*jobpool.Job{{Err: err}} // return the error
-	}
-	for _, region := range regions {
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci with region %s", *region.RegionKey)
-
-			svc, err := conn.NetworkClient(*region.RegionKey)
+			svc, err := conn.NetworkClient(region)
 			if err != nil {
 				return nil, err
 			}
 
 			var res []any
-			vcns, err := o.getVcnsForRegion(ctx, svc, conn.TenantID())
+			vcns, err := o.getVcnsForRegion(ctx, svc, compartmentID)
 			if err != nil {
 				return nil, err
 			}
@@ -99,31 +53,25 @@ func (o *mqlOciNetwork) getVcns(conn *connection.OciConnection) []*jobpool.Job {
 					created = &vcn.TimeCreated.Time
 				}
 
-				freeformTags := make(map[string]interface{})
-				for k, v := range vcn.FreeformTags {
-					freeformTags[k] = v
-				}
-
-				definedTags := make(map[string]interface{})
-				for k, v := range vcn.DefinedTags {
-					definedTags[k] = v
-				}
-
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.network.vcn", map[string]*llx.RawData{
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.network.vcn", stringValue(vcn.CompartmentId), map[string]*llx.RawData{
 					"id":                    llx.StringDataPtr(vcn.Id),
 					"name":                  llx.StringDataPtr(vcn.DisplayName),
 					"created":               llx.TimeDataPtr(created),
 					"state":                 llx.StringData(string(vcn.LifecycleState)),
-					"compartmentID":         llx.StringDataPtr(vcn.CompartmentId),
-					"cidrBlock":             llx.StringDataPtr(vcn.CidrBlock),
 					"cidrBlocks":            llx.ArrayData(convert.SliceAnyToInterface(vcn.CidrBlocks), types.String),
+					"ipv6CidrBlocks":        llx.ArrayData(convert.SliceAnyToInterface(vcn.Ipv6CidrBlocks), types.String),
+					"byoipv6CidrBlocks":     llx.ArrayData(convert.SliceAnyToInterface(vcn.Byoipv6CidrBlocks), types.String),
+					"ipv6PrivateCidrBlocks": llx.ArrayData(convert.SliceAnyToInterface(vcn.Ipv6PrivateCidrBlocks), types.String),
+					"isZprOnly":             llx.BoolDataPtr(vcn.IsZprOnly),
 					"vcnDomainName":         llx.StringDataPtr(vcn.VcnDomainName),
+					"securityAttributes":    llx.MapData(definedTagsToAny(vcn.SecurityAttributes), types.Dict),
 					"defaultDhcpOptionsId":  llx.StringDataPtr(vcn.DefaultDhcpOptionsId),
 					"defaultRouteTableId":   llx.StringDataPtr(vcn.DefaultRouteTableId),
 					"defaultSecurityListId": llx.StringDataPtr(vcn.DefaultSecurityListId),
 					"dnsLabel":              llx.StringDataPtr(vcn.DnsLabel),
-					"freeformTags":          llx.MapData(freeformTags, types.String),
-					"definedTags":           llx.MapData(definedTags, types.Any),
+					"freeformTags":          llx.MapData(strMapToAny(vcn.FreeformTags), types.String),
+					"definedTags":           llx.MapData(definedTagsToAny(vcn.DefinedTags), types.Any),
+					"systemTags":            llx.MapData(definedTagsToAny(vcn.SystemTags), types.Dict),
 				})
 				if err != nil {
 					return nil, err
@@ -131,11 +79,28 @@ func (o *mqlOciNetwork) getVcns(conn *connection.OciConnection) []*jobpool.Job {
 				res = append(res, mqlInstance)
 			}
 
-			return jobpool.JobResult(res), nil
+			return res, nil
+		})
+}
+
+func (s *mqlOciNetwork) getVcnsForRegion(ctx context.Context, networkClient *core.VirtualNetworkClient, compartmentID string) ([]core.Vcn, error) {
+	vcns, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]core.Vcn, *string, error) {
+		request := core.ListVcnsRequest{
+			CompartmentId: new(compartmentID),
+			Page:          page,
 		}
-		tasks = append(tasks, jobpool.NewJob(f))
+
+		response, err := networkClient.ListVcns(ctx, request)
+		if err != nil {
+			return nil, nil, err
+		}
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return tasks
+
+	return vcns, nil
 }
 
 func initOciNetworkVcn(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -143,10 +108,10 @@ func initOciNetworkVcn(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 		return args, nil, nil
 	}
 
-	if args["id"] == nil {
+	idVal := ociArgString(args, "id")
+	if idVal == "" {
 		return nil, nil, errors.New("id required to fetch oci.network.vcn")
 	}
-	idVal := args["id"].Value.(string)
 
 	obj, err := CreateResource(runtime, "oci.network", nil)
 	if err != nil {
@@ -176,112 +141,32 @@ func (o *mqlOciNetworkVcn) id() (string, error) {
 func (o *mqlOciNetwork) securityLists() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getSecurityLists(conn), 5)
-	poolOfJobs.Run()
+	// Security lists live in the same compartment as the VCN they protect, and
+	// ListSecurityLists cannot search below the compartment it is given. Scanning
+	// only the tenancy root therefore reported a tenancy with no ingress rules
+	// anywhere, which reads as "nothing is exposed" when the truth is that
+	// nothing was looked at.
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci with region %s", region)
 
-	// check for errors
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	// get all the results
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-
-	return res, nil
-}
-
-func (s *mqlOciNetwork) getSecurityListsForRegion(ctx context.Context, networkClient *core.VirtualNetworkClient, compartmentID string) ([]core.SecurityList, error) {
-	securityLists := []core.SecurityList{}
-	var page *string
-	for {
-		request := core.ListSecurityListsRequest{
-			CompartmentId: common.String(compartmentID),
-			Page:          page,
-		}
-
-		response, err := networkClient.ListSecurityLists(ctx, request)
-		if err != nil {
-			return nil, err
-		}
-
-		securityLists = append(securityLists, response.Items...)
-
-		if response.OpcNextPage == nil {
-			break
-		}
-
-		page = response.OpcNextPage
-	}
-
-	return securityLists, nil
-}
-
-// OCI VCN SecurityList egress rule for allowing outbound IP packets
-type egressSecurityRule struct {
-	// Description of egress rule
-	Description string `json:"description,omitempty"`
-	// Indicates if this is a stateless rule
-	Stateless bool `json:"stateless,omitempty"`
-	// Transport protocol, follows http://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
-	Protocol string `json:"protocol,omitempty"`
-	// Range of allowed IP addresses
-	Destination string `json:"destination,omitempty"`
-	// Type of destination
-	DestinationType string `json:"destination_type,omitempty"`
-	// TCP options
-	TcpOptions *core.TcpOptions `json:"tcpOptions,omitempty"`
-	// Udp options
-	UdpOptions *core.UdpOptions `json:"udpOptions,omitempty"`
-	// Icmp options
-	IcmpOptions *core.IcmpOptions `json:"icmpOptions,omitempty"`
-}
-
-// OCI VCN SecurityList Ingress rule for allowing inbound IP packets
-type ingressSecurityRule struct {
-	// Description of ingress rule
-	Description string `json:"description,omitempty"`
-	// Indicates if this is a stateless rule
-	Stateless bool `json:"stateless,omitempty"`
-	// Transport protocol, follows http://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
-	Protocol string `json:"protocol,omitempty"`
-	// Range of allowed IP addresses
-	Source string `json:"source,omitempty"`
-	// Type of source
-	SourceType string `json:"source_type,omitempty"`
-	// TCP options
-	TcpOptions *core.TcpOptions `json:"tcpOptions,omitempty"`
-	// Udp options
-	UdpOptions *core.UdpOptions `json:"udpOptions,omitempty"`
-	// Icmp options
-	IcmpOptions *core.IcmpOptions `json:"icmpOptions,omitempty"`
-}
-
-func (o *mqlOciNetwork) getSecurityLists(conn *connection.OciConnection) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	regions, err := conn.GetRegions(ctx)
-	if err != nil {
-		return []*jobpool.Job{{Err: err}} // return the error
-	}
-	for _, region := range regions {
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci with region %s", *region.RegionKey)
-
-			svc, err := conn.NetworkClient(*region.RegionKey)
+			svc, err := conn.NetworkClient(region)
 			if err != nil {
 				return nil, err
 			}
 
 			var res []any
-			securityLists, err := o.getSecurityListsForRegion(ctx, svc, conn.TenantID())
+			securityLists, err := o.getSecurityListsForRegion(ctx, svc, compartmentID)
 			if err != nil {
 				return nil, err
 			}
 
 			for i := range securityLists {
 				securityList := securityLists[i]
+
+				if conn.Filters.IsFilteredOutByTags(securityList.FreeformTags, securityList.DefinedTags) {
+					continue
+				}
 
 				var created *time.Time
 				if securityList.TimeCreated != nil {
@@ -307,6 +192,15 @@ func (o *mqlOciNetwork) getSecurityLists(conn *connection.OciConnection) []*jobp
 					return nil, err
 				}
 
+				typedEgress := make([]securityRule, 0, len(securityList.EgressSecurityRules))
+				for j := range securityList.EgressSecurityRules {
+					typedEgress = append(typedEgress, securityRuleFromEgress(securityList.EgressSecurityRules[j]))
+				}
+				egressRules, err := newSecurityRules(o.MqlRuntime, stringValue(securityList.Id), typedEgress)
+				if err != nil {
+					return nil, err
+				}
+
 				ingressSecurityRules := []ingressSecurityRule{}
 				for j := range securityList.IngressSecurityRules {
 					rule := securityList.IngressSecurityRules[j]
@@ -326,46 +220,106 @@ func (o *mqlOciNetwork) getSecurityLists(conn *connection.OciConnection) []*jobp
 					return nil, err
 				}
 
-				freeformTags := make(map[string]interface{})
-				for k, v := range securityList.FreeformTags {
-					freeformTags[k] = v
+				typedIngress := make([]securityRule, 0, len(securityList.IngressSecurityRules))
+				for j := range securityList.IngressSecurityRules {
+					typedIngress = append(typedIngress, securityRuleFromIngress(securityList.IngressSecurityRules[j]))
+				}
+				ingressRules, err := newSecurityRules(o.MqlRuntime, stringValue(securityList.Id), typedIngress)
+				if err != nil {
+					return nil, err
 				}
 
-				definedTags := make(map[string]interface{})
-				for k, v := range securityList.DefinedTags {
-					definedTags[k] = v
-				}
-
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.network.securityList", map[string]*llx.RawData{
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.network.securityList", stringValue(securityList.CompartmentId), map[string]*llx.RawData{
 					"id":                   llx.StringDataPtr(securityList.Id),
 					"name":                 llx.StringDataPtr(securityList.DisplayName),
 					"created":              llx.TimeDataPtr(created),
 					"state":                llx.StringData(string(securityList.LifecycleState)),
-					"compartmentID":        llx.StringDataPtr(securityList.CompartmentId),
-					"egressSecurityRules":  llx.DictData(egress),
-					"ingressSecurityRules": llx.DictData(ingress),
-					"vcnId":                llx.StringDataPtr(securityList.VcnId),
-					"freeformTags":         llx.MapData(freeformTags, types.String),
-					"definedTags":          llx.MapData(definedTags, types.Any),
+					"egressSecurityRules":  llx.ArrayData(egress, types.Dict),
+					"ingressSecurityRules": llx.ArrayData(ingress, types.Dict),
+					"egressRules":          llx.ArrayData(egressRules, types.Resource("oci.network.securityRule")),
+					"ingressRules":         llx.ArrayData(ingressRules, types.Resource("oci.network.securityRule")),
+					"freeformTags":         llx.MapData(strMapToAny(securityList.FreeformTags), types.String),
+					"definedTags":          llx.MapData(definedTagsToAny(securityList.DefinedTags), types.Any),
+					"systemTags":           llx.MapData(definedTagsToAny(securityList.SystemTags), types.Dict),
 				})
 				if err != nil {
 					return nil, err
 				}
 				sl := mqlInstance.(*mqlOciNetworkSecurityList)
-				sl.cacheVcnId = stringValue(securityList.VcnId)
-				sl.cacheRegion = stringValue(region.RegionKey)
+				sl.cacheVcnID = stringValue(securityList.VcnId)
+				sl.cacheRegion = region
 				res = append(res, mqlInstance)
 			}
 
-			return jobpool.JobResult(res), nil
+			return res, nil
+		})
+}
+
+func (s *mqlOciNetwork) getSecurityListsForRegion(ctx context.Context, networkClient *core.VirtualNetworkClient, compartmentID string) ([]core.SecurityList, error) {
+	securityLists, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]core.SecurityList, *string, error) {
+		request := core.ListSecurityListsRequest{
+			CompartmentId: new(compartmentID),
+			Page:          page,
 		}
-		tasks = append(tasks, jobpool.NewJob(f))
+
+		response, err := networkClient.ListSecurityLists(ctx, request)
+		if err != nil {
+			return nil, nil, err
+		}
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return tasks
+
+	return securityLists, nil
+}
+
+// OCI VCN SecurityList egress rule for allowing outbound IP packets
+type egressSecurityRule struct {
+	// Description of egress rule
+	Description string `json:"description,omitempty"`
+	// Indicates if this is a stateless rule. No omitempty: a stateful rule
+	// must emit `stateless: false`, not drop the key entirely.
+	Stateless bool `json:"stateless"`
+	// Transport protocol, follows https://www.iana.org/assignments/protocol-numbers
+	Protocol string `json:"protocol,omitempty"`
+	// Range of allowed IP addresses
+	Destination string `json:"destination,omitempty"`
+	// Type of destination
+	DestinationType string `json:"destinationType,omitempty"`
+	// TCP options
+	TcpOptions *core.TcpOptions `json:"tcpOptions,omitempty"`
+	// Udp options
+	UdpOptions *core.UdpOptions `json:"udpOptions,omitempty"`
+	// Icmp options
+	IcmpOptions *core.IcmpOptions `json:"icmpOptions,omitempty"`
+}
+
+// OCI VCN SecurityList Ingress rule for allowing inbound IP packets
+type ingressSecurityRule struct {
+	// Description of ingress rule
+	Description string `json:"description,omitempty"`
+	// Indicates if this is a stateless rule. No omitempty: a stateful rule
+	// must emit `stateless: false`, not drop the key entirely.
+	Stateless bool `json:"stateless"`
+	// Transport protocol, follows https://www.iana.org/assignments/protocol-numbers
+	Protocol string `json:"protocol,omitempty"`
+	// Range of allowed IP addresses
+	Source string `json:"source,omitempty"`
+	// Type of source
+	SourceType string `json:"sourceType,omitempty"`
+	// TCP options
+	TcpOptions *core.TcpOptions `json:"tcpOptions,omitempty"`
+	// Udp options
+	UdpOptions *core.UdpOptions `json:"udpOptions,omitempty"`
+	// Icmp options
+	IcmpOptions *core.IcmpOptions `json:"icmpOptions,omitempty"`
 }
 
 type mqlOciNetworkSecurityListInternal struct {
-	cacheVcnId string
+	ociCompartmentRef
+	cacheVcnID string
 	// cacheRegion is the region key (e.g. "IAD") discovered when the security
 	// list was enumerated. Used by discovery to emit per-region platform IDs
 	// without re-parsing the OCID.
@@ -416,12 +370,12 @@ func (o *mqlOciNetworkSecurityList) id() (string, error) {
 }
 
 func (o *mqlOciNetworkSecurityList) vcn() (*mqlOciNetworkVcn, error) {
-	if o.cacheVcnId == "" {
+	if o.cacheVcnID == "" || !isOcid(o.cacheVcnID) {
 		o.Vcn.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	mqlVcn, err := NewResource(o.MqlRuntime, "oci.network.vcn", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheVcnId),
+		"id": llx.StringData(o.cacheVcnID),
 	})
 	if err != nil {
 		return nil, err
@@ -430,7 +384,7 @@ func (o *mqlOciNetworkSecurityList) vcn() (*mqlOciNetworkVcn, error) {
 }
 
 func (o *mqlOciNetworkSecurityList) compartment() (*mqlOciCompartment, error) {
-	return resolveOciCompartment(o.MqlRuntime, o.CompartmentID.Data, &o.Compartment)
+	return resolveOciCompartment(o.MqlRuntime, o.cacheCompartmentID, &o.Compartment)
 }
 
 func (o *mqlOciNetworkSecurityList) hasStatelessRules() (bool, error) {
@@ -444,20 +398,6 @@ func (o *mqlOciNetworkSecurityList) hasStatelessRules() (bool, error) {
 		return false, o.EgressSecurityRules.Error
 	}
 	return anyRuleStateless(o.EgressSecurityRules.Data, "stateless"), nil
-}
-
-func resolveOciCompartment(runtime *plugin.Runtime, id string, field *plugin.TValue[*mqlOciCompartment]) (*mqlOciCompartment, error) {
-	if id == "" {
-		field.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
-	}
-	res, err := NewResource(runtime, "oci.compartment", map[string]*llx.RawData{
-		"id": llx.StringData(id),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlOciCompartment), nil
 }
 
 func anyRuleStateless(rules []any, key string) bool {
@@ -476,63 +416,32 @@ func anyRuleStateless(rules []any, key string) bool {
 func (o *mqlOciNetwork) subnets() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	// Fanned out over the compartment tree, not just the tenancy root. The core
+	// list APIs have no subtree flag, so listing the root alone reported no
+	// subnets at all for any tenancy that groups its networking into child
+	// compartments - and left every typed reference to a subnet (load balancer
+	// exposure, database placement, stream pool networking) unable to resolve.
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci subnets with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getSubnets(conn, list.Data), 5)
-	poolOfJobs.Run()
-
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-
-	return res, nil
-}
-
-func (o *mqlOciNetwork) getSubnets(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci subnets with region %s", regionResource.Id.Data)
-
-			svc, err := conn.NetworkClient(regionResource.Id.Data)
+			svc, err := conn.NetworkClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			subnets := []core.Subnet{}
-			var page *string
-			for {
+			subnets, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]core.Subnet, *string, error) {
 				response, err := svc.ListSubnets(ctx, core.ListSubnetsRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
-
-				subnets = append(subnets, response.Items...)
-
-				if response.OpcNextPage == nil {
-					break
-				}
-				page = response.OpcNextPage
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				return nil, err
 			}
 
 			var res []any
@@ -544,52 +453,48 @@ func (o *mqlOciNetwork) getSubnets(conn *connection.OciConnection, regions []any
 					created = &subnet.TimeCreated.Time
 				}
 
-				freeformTags := make(map[string]interface{}, len(subnet.FreeformTags))
-				for k, v := range subnet.FreeformTags {
-					freeformTags[k] = v
-				}
-
-				definedTags := make(map[string]interface{}, len(subnet.DefinedTags))
-				for k, v := range subnet.DefinedTags {
-					definedTags[k] = v
-				}
-
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.network.subnet", map[string]*llx.RawData{
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.network.subnet", stringValue(subnet.CompartmentId), map[string]*llx.RawData{
 					"id":                      llx.StringDataPtr(subnet.Id),
 					"name":                    llx.StringDataPtr(subnet.DisplayName),
-					"compartmentID":           llx.StringDataPtr(subnet.CompartmentId),
 					"availabilityDomain":      llx.StringDataPtr(subnet.AvailabilityDomain),
 					"cidrBlock":               llx.StringDataPtr(subnet.CidrBlock),
+					"ipv4CidrBlocks":          llx.ArrayData(convert.SliceAnyToInterface(subnet.Ipv4CidrBlocks), types.String),
+					"ipv6CidrBlock":           llx.StringDataPtr(subnet.Ipv6CidrBlock),
+					"ipv6CidrBlocks":          llx.ArrayData(convert.SliceAnyToInterface(subnet.Ipv6CidrBlocks), types.String),
+					"ipv6VirtualRouterIp":     llx.StringDataPtr(subnet.Ipv6VirtualRouterIp),
+					"virtualRouterIp":         llx.StringDataPtr(subnet.VirtualRouterIp),
+					"virtualRouterMac":        llx.StringDataPtr(subnet.VirtualRouterMac),
 					"state":                   llx.StringData(string(subnet.LifecycleState)),
 					"dnsLabel":                llx.StringDataPtr(subnet.DnsLabel),
 					"subnetDomainName":        llx.StringDataPtr(subnet.SubnetDomainName),
 					"prohibitPublicIpOnVnic":  llx.BoolDataPtr(subnet.ProhibitPublicIpOnVnic),
 					"prohibitInternetIngress": llx.BoolDataPtr(subnet.ProhibitInternetIngress),
 					"created":                 llx.TimeDataPtr(created),
-					"freeformTags":            llx.MapData(freeformTags, types.String),
-					"definedTags":             llx.MapData(definedTags, types.Any),
+					"freeformTags":            llx.MapData(strMapToAny(subnet.FreeformTags), types.String),
+					"definedTags":             llx.MapData(definedTagsToAny(subnet.DefinedTags), types.Any),
+					"systemTags":              llx.MapData(definedTagsToAny(subnet.SystemTags), types.Dict),
 				})
 				if err != nil {
 					return nil, err
 				}
 				mqlSub := mqlInstance.(*mqlOciNetworkSubnet)
-				mqlSub.cacheVcnId = stringValue(subnet.VcnId)
-				mqlSub.cacheRouteTableId = stringValue(subnet.RouteTableId)
-				mqlSub.cacheSecurityListIds = subnet.SecurityListIds
+				mqlSub.cacheVcnID = stringValue(subnet.VcnId)
+				mqlSub.cacheRouteTableID = stringValue(subnet.RouteTableId)
+				mqlSub.cacheDhcpOptionsID = stringValue(subnet.DhcpOptionsId)
+				mqlSub.cacheSecurityListIDs = subnet.SecurityListIds
 				res = append(res, mqlSub)
 			}
 
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 type mqlOciNetworkSubnetInternal struct {
-	cacheVcnId           string
-	cacheRouteTableId    string
-	cacheSecurityListIds []string
+	ociCompartmentRef
+	cacheVcnID           string
+	cacheRouteTableID    string
+	cacheSecurityListIDs []string
+	cacheDhcpOptionsID   string
 }
 
 func initOciNetworkSubnet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -597,10 +502,10 @@ func initOciNetworkSubnet(runtime *plugin.Runtime, args map[string]*llx.RawData)
 		return args, nil, nil
 	}
 
-	if args["id"] == nil {
+	idVal := ociArgString(args, "id")
+	if idVal == "" {
 		return nil, nil, errors.New("id required to fetch oci.network.subnet")
 	}
-	idVal := args["id"].Value.(string)
 
 	obj, err := CreateResource(runtime, "oci.network", nil)
 	if err != nil {
@@ -628,12 +533,12 @@ func (o *mqlOciNetworkSubnet) id() (string, error) {
 }
 
 func (o *mqlOciNetworkSubnet) vcn() (*mqlOciNetworkVcn, error) {
-	if o.cacheVcnId == "" {
+	if o.cacheVcnID == "" || !isOcid(o.cacheVcnID) {
 		o.Vcn.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	mqlVcn, err := NewResource(o.MqlRuntime, "oci.network.vcn", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheVcnId),
+		"id": llx.StringData(o.cacheVcnID),
 	})
 	if err != nil {
 		return nil, err
@@ -644,74 +549,22 @@ func (o *mqlOciNetworkSubnet) vcn() (*mqlOciNetworkVcn, error) {
 func (o *mqlOciNetwork) networkSecurityGroups() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	// Network security groups are attached to VNICs that almost never live in the
+	// tenancy root, and ListNetworkSecurityGroups takes a single compartment with
+	// no way to descend. Enumerating per compartment is what lets an instance's
+	// nsgs resolve at all, instead of coming back empty and making every host
+	// look unprotected.
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci NSGs with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getNetworkSecurityGroups(conn, list.Data), 5)
-	poolOfJobs.Run()
-
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-
-	return res, nil
-}
-
-func (o *mqlOciNetwork) getNSGsForRegion(ctx context.Context, networkClient *core.VirtualNetworkClient, compartmentID string) ([]core.NetworkSecurityGroup, error) {
-	nsgs := []core.NetworkSecurityGroup{}
-	var page *string
-	for {
-		request := core.ListNetworkSecurityGroupsRequest{
-			CompartmentId: common.String(compartmentID),
-			Page:          page,
-		}
-
-		response, err := networkClient.ListNetworkSecurityGroups(ctx, request)
-		if err != nil {
-			return nil, err
-		}
-
-		nsgs = append(nsgs, response.Items...)
-
-		if response.OpcNextPage == nil {
-			break
-		}
-
-		page = response.OpcNextPage
-	}
-
-	return nsgs, nil
-}
-
-func (o *mqlOciNetwork) getNetworkSecurityGroups(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci NSGs with region %s", regionResource.Id.Data)
-
-			svc, err := conn.NetworkClient(regionResource.Id.Data)
+			svc, err := conn.NetworkClient(region)
 			if err != nil {
 				return nil, err
 			}
 
 			var res []any
-			nsgs, err := o.getNSGsForRegion(ctx, svc, conn.TenantID())
+			nsgs, err := o.getNSGsForRegion(ctx, svc, compartmentID)
 			if err != nil {
 				return nil, err
 			}
@@ -724,46 +577,53 @@ func (o *mqlOciNetwork) getNetworkSecurityGroups(conn *connection.OciConnection,
 					created = &nsg.TimeCreated.Time
 				}
 
-				freeformTags := make(map[string]interface{})
-				for k, v := range nsg.FreeformTags {
-					freeformTags[k] = v
-				}
-
-				definedTags := make(map[string]interface{})
-				for k, v := range nsg.DefinedTags {
-					definedTags[k] = v
-				}
-
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.network.networkSecurityGroup", map[string]*llx.RawData{
-					"id":            llx.StringDataPtr(nsg.Id),
-					"name":          llx.StringDataPtr(nsg.DisplayName),
-					"compartmentID": llx.StringDataPtr(nsg.CompartmentId),
-					"state":         llx.StringData(string(nsg.LifecycleState)),
-					"created":       llx.TimeDataPtr(created),
-					"freeformTags":  llx.MapData(freeformTags, types.String),
-					"definedTags":   llx.MapData(definedTags, types.Any),
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.network.networkSecurityGroup", stringValue(nsg.CompartmentId), map[string]*llx.RawData{
+					"id":           llx.StringDataPtr(nsg.Id),
+					"name":         llx.StringDataPtr(nsg.DisplayName),
+					"state":        llx.StringData(string(nsg.LifecycleState)),
+					"created":      llx.TimeDataPtr(created),
+					"freeformTags": llx.MapData(strMapToAny(nsg.FreeformTags), types.String),
+					"definedTags":  llx.MapData(definedTagsToAny(nsg.DefinedTags), types.Any),
+					"systemTags":   llx.MapData(definedTagsToAny(nsg.SystemTags), types.Dict),
 				})
 				if err != nil {
 					return nil, err
 				}
 				mqlNsg := mqlInstance.(*mqlOciNetworkNetworkSecurityGroup)
-				mqlNsg.region = regionResource.Id.Data
-				mqlNsg.cacheVcnId = stringValue(nsg.VcnId)
+				mqlNsg.cacheRegion = region
+				mqlNsg.cacheVcnID = stringValue(nsg.VcnId)
 				res = append(res, mqlInstance)
 			}
 
-			return jobpool.JobResult(res), nil
+			return res, nil
+		})
+}
+
+func (o *mqlOciNetwork) getNSGsForRegion(ctx context.Context, networkClient *core.VirtualNetworkClient, compartmentID string) ([]core.NetworkSecurityGroup, error) {
+	nsgs, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]core.NetworkSecurityGroup, *string, error) {
+		request := core.ListNetworkSecurityGroupsRequest{
+			CompartmentId: new(compartmentID),
+			Page:          page,
 		}
-		tasks = append(tasks, jobpool.NewJob(f))
+
+		response, err := networkClient.ListNetworkSecurityGroups(ctx, request)
+		if err != nil {
+			return nil, nil, err
+		}
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return tasks
+
+	return nsgs, nil
 }
 
 type mqlOciNetworkNetworkSecurityGroupInternal struct {
-	region     string
-	cacheVcnId string
-	fetchLock  sync.Mutex
-	fetched    bool
+	ociCompartmentRef
+	cacheRegion string
+	cacheVcnID  string
+	rules       ociOnce
 }
 
 func (o *mqlOciNetworkNetworkSecurityGroup) id() (string, error) {
@@ -808,7 +668,7 @@ func initOciNetworkNetworkSecurityGroup(runtime *plugin.Runtime, args map[string
 	}
 
 	resp, err := svc.GetNetworkSecurityGroup(context.Background(), core.GetNetworkSecurityGroupRequest{
-		NetworkSecurityGroupId: common.String(id),
+		NetworkSecurityGroupId: new(id),
 	})
 	if err != nil {
 		return nil, nil, err
@@ -820,41 +680,31 @@ func initOciNetworkNetworkSecurityGroup(runtime *plugin.Runtime, args map[string
 		created = &nsg.TimeCreated.Time
 	}
 
-	freeformTags := make(map[string]interface{})
-	for k, v := range nsg.FreeformTags {
-		freeformTags[k] = v
-	}
-
-	definedTags := make(map[string]interface{})
-	for k, v := range nsg.DefinedTags {
-		definedTags[k] = v
-	}
-
-	mqlInstance, err := CreateResource(runtime, "oci.network.networkSecurityGroup", map[string]*llx.RawData{
-		"id":            llx.StringDataPtr(nsg.Id),
-		"name":          llx.StringDataPtr(nsg.DisplayName),
-		"compartmentID": llx.StringDataPtr(nsg.CompartmentId),
-		"state":         llx.StringData(string(nsg.LifecycleState)),
-		"created":       llx.TimeDataPtr(created),
-		"freeformTags":  llx.MapData(freeformTags, types.String),
-		"definedTags":   llx.MapData(definedTags, types.Any),
+	mqlInstance, err := createOciResourceInCompartment(runtime, "oci.network.networkSecurityGroup", stringValue(nsg.CompartmentId), map[string]*llx.RawData{
+		"id":           llx.StringDataPtr(nsg.Id),
+		"name":         llx.StringDataPtr(nsg.DisplayName),
+		"state":        llx.StringData(string(nsg.LifecycleState)),
+		"created":      llx.TimeDataPtr(created),
+		"freeformTags": llx.MapData(strMapToAny(nsg.FreeformTags), types.String),
+		"definedTags":  llx.MapData(definedTagsToAny(nsg.DefinedTags), types.Any),
+		"systemTags":   llx.MapData(definedTagsToAny(nsg.SystemTags), types.Dict),
 	})
 	if err != nil {
 		return nil, nil, err
 	}
 	mqlNsg := mqlInstance.(*mqlOciNetworkNetworkSecurityGroup)
-	mqlNsg.region = region
-	mqlNsg.cacheVcnId = stringValue(nsg.VcnId)
+	mqlNsg.cacheRegion = region
+	mqlNsg.cacheVcnID = stringValue(nsg.VcnId)
 	return args, mqlNsg, nil
 }
 
 func (o *mqlOciNetworkNetworkSecurityGroup) vcn() (*mqlOciNetworkVcn, error) {
-	if o.cacheVcnId == "" {
+	if o.cacheVcnID == "" || !isOcid(o.cacheVcnID) {
 		o.Vcn.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	mqlVcn, err := NewResource(o.MqlRuntime, "oci.network.vcn", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheVcnId),
+		"id": llx.StringData(o.cacheVcnID),
 	})
 	if err != nil {
 		return nil, err
@@ -878,158 +728,164 @@ type nsgSecurityRule struct {
 }
 
 func (o *mqlOciNetworkNetworkSecurityGroup) getRulesForNSG(ctx context.Context, networkClient *core.VirtualNetworkClient, nsgId string) ([]core.SecurityRule, error) {
-	rules := []core.SecurityRule{}
-	var page *string
-	for {
+	rules, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]core.SecurityRule, *string, error) {
 		request := core.ListNetworkSecurityGroupSecurityRulesRequest{
-			NetworkSecurityGroupId: common.String(nsgId),
+			NetworkSecurityGroupId: new(nsgId),
 			Page:                   page,
 		}
 
 		response, err := networkClient.ListNetworkSecurityGroupSecurityRules(ctx, request)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-
-		rules = append(rules, response.Items...)
-
-		if response.OpcNextPage == nil {
-			break
-		}
-
-		page = response.OpcNextPage
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return rules, nil
 }
 
-func (o *mqlOciNetworkNetworkSecurityGroup) fetchSecurityRules() (ingress []any, egress []any, err error) {
-	if o.fetched {
-		return nil, nil, nil
-	}
-	o.fetchLock.Lock()
-	defer o.fetchLock.Unlock()
-	if o.fetched {
-		return nil, nil, nil
-	}
+// fetchSecurityRules populates the four rule fields from one ListNetworkSecurityGroupSecurityRules
+// call. It reports only an error: once it returns nil the fields are set, so
+// callers read them directly rather than taking a copy back out of the fetch.
+func (o *mqlOciNetworkNetworkSecurityGroup) fetchSecurityRules() error {
+	return o.rules.do(func() error {
+		conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+		ctx := context.Background()
 
-	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	ctx := context.Background()
-
-	svc, err := conn.NetworkClient(o.region)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	rules, err := o.getRulesForNSG(ctx, svc, o.Id.Data)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	ingressRules := []nsgSecurityRule{}
-	egressRules := []nsgSecurityRule{}
-
-	for i := range rules {
-		rule := rules[i]
-		r := nsgSecurityRule{
-			Direction:       string(rule.Direction),
-			Protocol:        stringValue(rule.Protocol),
-			Description:     stringValue(rule.Description),
-			Source:          stringValue(rule.Source),
-			SourceType:      string(rule.SourceType),
-			Destination:     stringValue(rule.Destination),
-			DestinationType: string(rule.DestinationType),
-			IsStateless:     boolValue(rule.IsStateless),
-			TcpOptions:      rule.TcpOptions,
-			UdpOptions:      rule.UdpOptions,
-			IcmpOptions:     rule.IcmpOptions,
+		svc, err := conn.NetworkClient(o.cacheRegion)
+		if err != nil {
+			return err
 		}
 
-		if rule.Direction == core.SecurityRuleDirectionIngress {
-			ingressRules = append(ingressRules, r)
-		} else {
-			egressRules = append(egressRules, r)
+		rules, err := o.getRulesForNSG(ctx, svc, o.Id.Data)
+		if err != nil {
+			return err
 		}
+
+		ingressRules := []nsgSecurityRule{}
+		egressRules := []nsgSecurityRule{}
+		typedIngress := []securityRule{}
+		typedEgress := []securityRule{}
+
+		for i := range rules {
+			rule := rules[i]
+			r := nsgSecurityRule{
+				Direction:       string(rule.Direction),
+				Protocol:        stringValue(rule.Protocol),
+				Description:     stringValue(rule.Description),
+				Source:          stringValue(rule.Source),
+				SourceType:      string(rule.SourceType),
+				Destination:     stringValue(rule.Destination),
+				DestinationType: string(rule.DestinationType),
+				IsStateless:     boolValue(rule.IsStateless),
+				TcpOptions:      rule.TcpOptions,
+				UdpOptions:      rule.UdpOptions,
+				IcmpOptions:     rule.IcmpOptions,
+			}
+
+			if rule.Direction == core.SecurityRuleDirectionIngress {
+				ingressRules = append(ingressRules, r)
+				typedIngress = append(typedIngress, securityRuleFromNsg(rule))
+			} else {
+				egressRules = append(egressRules, r)
+				typedEgress = append(typedEgress, securityRuleFromNsg(rule))
+			}
+		}
+
+		ingress, err := convert.JsonToDictSlice(ingressRules)
+		if err != nil {
+			return err
+		}
+
+		egress, err := convert.JsonToDictSlice(egressRules)
+		if err != nil {
+			return err
+		}
+
+		typedIngressRes, err := newSecurityRules(o.MqlRuntime, o.Id.Data, typedIngress)
+		if err != nil {
+			return err
+		}
+
+		typedEgressRes, err := newSecurityRules(o.MqlRuntime, o.Id.Data, typedEgress)
+		if err != nil {
+			return err
+		}
+
+		o.IngressSecurityRules = plugin.TValue[[]any]{Data: ingress, State: plugin.StateIsSet}
+		o.EgressSecurityRules = plugin.TValue[[]any]{Data: egress, State: plugin.StateIsSet}
+		o.IngressRules = plugin.TValue[[]any]{Data: typedIngressRes, State: plugin.StateIsSet}
+		o.EgressRules = plugin.TValue[[]any]{Data: typedEgressRes, State: plugin.StateIsSet}
+		return nil
+	})
+}
+
+func (o *mqlOciNetworkNetworkSecurityGroup) ingressRules() ([]any, error) {
+	if err := o.fetchSecurityRules(); err != nil {
+		return nil, err
 	}
+	return o.IngressRules.Data, nil
+}
 
-	ingress, err = convert.JsonToDictSlice(ingressRules)
-	if err != nil {
-		return nil, nil, err
+func (o *mqlOciNetworkNetworkSecurityGroup) egressRules() ([]any, error) {
+	if err := o.fetchSecurityRules(); err != nil {
+		return nil, err
 	}
-
-	egress, err = convert.JsonToDictSlice(egressRules)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	o.IngressSecurityRules = plugin.TValue[[]any]{Data: ingress, State: plugin.StateIsSet}
-	o.EgressSecurityRules = plugin.TValue[[]any]{Data: egress, State: plugin.StateIsSet}
-	o.fetched = true
-
-	return ingress, egress, nil
+	return o.EgressRules.Data, nil
 }
 
 func (o *mqlOciNetworkNetworkSecurityGroup) ingressSecurityRules() ([]any, error) {
-	_, _, err := o.fetchSecurityRules()
-	if err != nil {
+	if err := o.fetchSecurityRules(); err != nil {
 		return nil, err
 	}
 	return o.IngressSecurityRules.Data, nil
 }
 
 func (o *mqlOciNetworkNetworkSecurityGroup) egressSecurityRules() ([]any, error) {
-	_, _, err := o.fetchSecurityRules()
-	if err != nil {
+	if err := o.fetchSecurityRules(); err != nil {
 		return nil, err
 	}
 	return o.EgressSecurityRules.Data, nil
 }
 
 func (o *mqlOciNetworkNetworkSecurityGroup) compartment() (*mqlOciCompartment, error) {
-	return resolveOciCompartment(o.MqlRuntime, o.CompartmentID.Data, &o.Compartment)
+	return resolveOciCompartment(o.MqlRuntime, o.cacheCompartmentID, &o.Compartment)
 }
 
 func (o *mqlOciNetworkNetworkSecurityGroup) hasStatelessRules() (bool, error) {
-	ingress, egress, err := o.fetchSecurityRules()
-	if err != nil {
+	if err := o.fetchSecurityRules(); err != nil {
 		return false, err
 	}
-	if ingress == nil {
-		ingress = o.IngressSecurityRules.Data
-	}
-	if egress == nil {
-		egress = o.EgressSecurityRules.Data
-	}
-	if anyRuleStateless(ingress, "isStateless") {
+	if anyRuleStateless(o.IngressSecurityRules.Data, "isStateless") {
 		return true, nil
 	}
-	return anyRuleStateless(egress, "isStateless"), nil
+	return anyRuleStateless(o.EgressSecurityRules.Data, "isStateless"), nil
 }
 
 func (o *mqlOciNetworkNetworkSecurityGroup) attachedVnics() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 	ctx := context.Background()
 
-	networkClient, err := conn.NetworkClient(o.region)
+	networkClient, err := conn.NetworkClient(o.cacheRegion)
 	if err != nil {
 		return nil, err
 	}
 
-	var attachments []core.NetworkSecurityGroupVnic
-	var page *string
-	for {
+	attachments, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]core.NetworkSecurityGroupVnic, *string, error) {
 		response, err := networkClient.ListNetworkSecurityGroupVnics(ctx, core.ListNetworkSecurityGroupVnicsRequest{
-			NetworkSecurityGroupId: common.String(o.Id.Data),
+			NetworkSecurityGroupId: new(o.Id.Data),
 			Page:                   page,
 		})
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		attachments = append(attachments, response.Items...)
-		if response.OpcNextPage == nil {
-			break
-		}
-		page = response.OpcNextPage
+		return response.Items, response.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	res := make([]any, 0, len(attachments))
@@ -1059,36 +915,32 @@ func ociVnicToMql(runtime *plugin.Runtime, vnic core.Vnic) (*mqlOciComputeVnic, 
 		created = &vnic.TimeCreated.Time
 	}
 
-	freeformTags := make(map[string]interface{}, len(vnic.FreeformTags))
-	for k, v := range vnic.FreeformTags {
-		freeformTags[k] = v
-	}
-	definedTags := make(map[string]interface{}, len(vnic.DefinedTags))
-	for k, v := range vnic.DefinedTags {
-		definedTags[k] = v
-	}
-
-	res, err := CreateResource(runtime, "oci.compute.vnic", map[string]*llx.RawData{
+	res, err := createOciResourceInCompartment(runtime, "oci.compute.vnic", stringValue(vnic.CompartmentId), map[string]*llx.RawData{
 		"id":                  llx.StringDataPtr(vnic.Id),
 		"name":                llx.StringDataPtr(vnic.DisplayName),
-		"compartmentID":       llx.StringDataPtr(vnic.CompartmentId),
 		"isPrimary":           llx.BoolDataPtr(vnic.IsPrimary),
 		"privateIp":           llx.StringDataPtr(vnic.PrivateIp),
 		"publicIp":            llx.StringDataPtr(vnic.PublicIp),
+		"ipv6Addresses":       llx.ArrayData(stringsToAny(vnic.Ipv6Addresses), types.String),
 		"macAddress":          llx.StringDataPtr(vnic.MacAddress),
 		"hostnameLabel":       llx.StringDataPtr(vnic.HostnameLabel),
-		"nsgIds":              llx.ArrayData(convert.SliceAnyToInterface(vnic.NsgIds), types.String),
 		"skipSourceDestCheck": llx.BoolDataPtr(vnic.SkipSourceDestCheck),
+		"securityAttributes":  llx.MapData(definedTagsToAny(vnic.SecurityAttributes), types.Dict),
 		"state":               llx.StringData(string(vnic.LifecycleState)),
 		"created":             llx.TimeDataPtr(created),
-		"freeformTags":        llx.MapData(freeformTags, types.String),
-		"definedTags":         llx.MapData(definedTags, types.Any),
+		"freeformTags":        llx.MapData(strMapToAny(vnic.FreeformTags), types.String),
+		"definedTags":         llx.MapData(definedTagsToAny(vnic.DefinedTags), types.Any),
+		"systemTags":          llx.MapData(definedTagsToAny(vnic.SystemTags), types.Dict),
 	})
 	if err != nil {
 		return nil, err
 	}
 	mqlVnic := res.(*mqlOciComputeVnic)
-	mqlVnic.cacheSubnetId = stringValue(vnic.SubnetId)
+	mqlVnic.cacheSubnetID = stringValue(vnic.SubnetId)
+	// Per-resource routing: set only when the VNIC overrides its subnet's route
+	// table, and what the exposure verdict routes on when it is.
+	mqlVnic.cacheRouteTableID = stringValue(vnic.RouteTableId)
+	mqlVnic.cacheNsgIDs = convert.SliceAnyToInterface(vnic.NsgIds)
 	return mqlVnic, nil
 }
 
@@ -1097,63 +949,27 @@ func ociVnicToMql(runtime *plugin.Runtime, vnic core.Vnic) (*mqlOciComputeVnic, 
 func (o *mqlOciNetwork) internetGateways() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci internet gateways with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getInternetGateways(conn, list.Data), 5)
-	poolOfJobs.Run()
-
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-
-	return res, nil
-}
-
-func (o *mqlOciNetwork) getInternetGateways(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci internet gateways with region %s", regionResource.Id.Data)
-
-			svc, err := conn.NetworkClient(regionResource.Id.Data)
+			svc, err := conn.NetworkClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			igws := []core.InternetGateway{}
-			var page *string
-			for {
+			igws, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]core.InternetGateway, *string, error) {
 				response, err := svc.ListInternetGateways(ctx, core.ListInternetGatewaysRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
-
-				igws = append(igws, response.Items...)
-
-				if response.OpcNextPage == nil {
-					break
-				}
-				page = response.OpcNextPage
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				return nil, err
 			}
 
 			var res []any
@@ -1165,43 +981,31 @@ func (o *mqlOciNetwork) getInternetGateways(conn *connection.OciConnection, regi
 					created = &igw.TimeCreated.Time
 				}
 
-				freeformTags := make(map[string]interface{}, len(igw.FreeformTags))
-				for k, v := range igw.FreeformTags {
-					freeformTags[k] = v
-				}
-
-				definedTags := make(map[string]interface{}, len(igw.DefinedTags))
-				for k, v := range igw.DefinedTags {
-					definedTags[k] = v
-				}
-
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.network.internetGateway", map[string]*llx.RawData{
-					"id":            llx.StringDataPtr(igw.Id),
-					"name":          llx.StringDataPtr(igw.DisplayName),
-					"compartmentID": llx.StringDataPtr(igw.CompartmentId),
-					"isEnabled":     llx.BoolDataPtr(igw.IsEnabled),
-					"state":         llx.StringData(string(igw.LifecycleState)),
-					"created":       llx.TimeDataPtr(created),
-					"freeformTags":  llx.MapData(freeformTags, types.String),
-					"definedTags":   llx.MapData(definedTags, types.Any),
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.network.internetGateway", stringValue(igw.CompartmentId), map[string]*llx.RawData{
+					"id":           llx.StringDataPtr(igw.Id),
+					"name":         llx.StringDataPtr(igw.DisplayName),
+					"isEnabled":    llx.BoolDataPtr(igw.IsEnabled),
+					"state":        llx.StringData(string(igw.LifecycleState)),
+					"created":      llx.TimeDataPtr(created),
+					"freeformTags": llx.MapData(strMapToAny(igw.FreeformTags), types.String),
+					"definedTags":  llx.MapData(definedTagsToAny(igw.DefinedTags), types.Any),
+					"systemTags":   llx.MapData(definedTagsToAny(igw.SystemTags), types.Dict),
 				})
 				if err != nil {
 					return nil, err
 				}
 				mqlIgw := mqlInstance.(*mqlOciNetworkInternetGateway)
-				mqlIgw.cacheVcnId = stringValue(igw.VcnId)
+				mqlIgw.cacheVcnID = stringValue(igw.VcnId)
 				res = append(res, mqlIgw)
 			}
 
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 type mqlOciNetworkInternetGatewayInternal struct {
-	cacheVcnId string
+	ociCompartmentRef
+	cacheVcnID string
 }
 
 func (o *mqlOciNetworkInternetGateway) id() (string, error) {
@@ -1209,12 +1013,12 @@ func (o *mqlOciNetworkInternetGateway) id() (string, error) {
 }
 
 func (o *mqlOciNetworkInternetGateway) vcn() (*mqlOciNetworkVcn, error) {
-	if o.cacheVcnId == "" {
+	if o.cacheVcnID == "" || !isOcid(o.cacheVcnID) {
 		o.Vcn.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	mqlVcn, err := NewResource(o.MqlRuntime, "oci.network.vcn", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheVcnId),
+		"id": llx.StringData(o.cacheVcnID),
 	})
 	if err != nil {
 		return nil, err
@@ -1227,63 +1031,27 @@ func (o *mqlOciNetworkInternetGateway) vcn() (*mqlOciNetworkVcn, error) {
 func (o *mqlOciNetwork) natGateways() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci NAT gateways with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getNatGateways(conn, list.Data), 5)
-	poolOfJobs.Run()
-
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-
-	return res, nil
-}
-
-func (o *mqlOciNetwork) getNatGateways(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci NAT gateways with region %s", regionResource.Id.Data)
-
-			svc, err := conn.NetworkClient(regionResource.Id.Data)
+			svc, err := conn.NetworkClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			natGws := []core.NatGateway{}
-			var page *string
-			for {
+			natGws, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]core.NatGateway, *string, error) {
 				response, err := svc.ListNatGateways(ctx, core.ListNatGatewaysRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
-
-				natGws = append(natGws, response.Items...)
-
-				if response.OpcNextPage == nil {
-					break
-				}
-				page = response.OpcNextPage
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				return nil, err
 			}
 
 			var res []any
@@ -1295,44 +1063,31 @@ func (o *mqlOciNetwork) getNatGateways(conn *connection.OciConnection, regions [
 					created = &ngw.TimeCreated.Time
 				}
 
-				freeformTags := make(map[string]interface{}, len(ngw.FreeformTags))
-				for k, v := range ngw.FreeformTags {
-					freeformTags[k] = v
-				}
-
-				definedTags := make(map[string]interface{}, len(ngw.DefinedTags))
-				for k, v := range ngw.DefinedTags {
-					definedTags[k] = v
-				}
-
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.network.natGateway", map[string]*llx.RawData{
-					"id":            llx.StringDataPtr(ngw.Id),
-					"name":          llx.StringDataPtr(ngw.DisplayName),
-					"compartmentID": llx.StringDataPtr(ngw.CompartmentId),
-					"blockTraffic":  llx.BoolDataPtr(ngw.BlockTraffic),
-					"natIp":         llx.StringDataPtr(ngw.NatIp),
-					"state":         llx.StringData(string(ngw.LifecycleState)),
-					"created":       llx.TimeDataPtr(created),
-					"freeformTags":  llx.MapData(freeformTags, types.String),
-					"definedTags":   llx.MapData(definedTags, types.Any),
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.network.natGateway", stringValue(ngw.CompartmentId), map[string]*llx.RawData{
+					"id":           llx.StringDataPtr(ngw.Id),
+					"name":         llx.StringDataPtr(ngw.DisplayName),
+					"blockTraffic": llx.BoolDataPtr(ngw.BlockTraffic),
+					"natIp":        llx.StringDataPtr(ngw.NatIp),
+					"state":        llx.StringData(string(ngw.LifecycleState)),
+					"created":      llx.TimeDataPtr(created),
+					"freeformTags": llx.MapData(strMapToAny(ngw.FreeformTags), types.String),
+					"definedTags":  llx.MapData(definedTagsToAny(ngw.DefinedTags), types.Any),
 				})
 				if err != nil {
 					return nil, err
 				}
 				mqlNgw := mqlInstance.(*mqlOciNetworkNatGateway)
-				mqlNgw.cacheVcnId = stringValue(ngw.VcnId)
+				mqlNgw.cacheVcnID = stringValue(ngw.VcnId)
 				res = append(res, mqlNgw)
 			}
 
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 type mqlOciNetworkNatGatewayInternal struct {
-	cacheVcnId string
+	ociCompartmentRef
+	cacheVcnID string
 }
 
 func (o *mqlOciNetworkNatGateway) id() (string, error) {
@@ -1340,12 +1095,12 @@ func (o *mqlOciNetworkNatGateway) id() (string, error) {
 }
 
 func (o *mqlOciNetworkNatGateway) vcn() (*mqlOciNetworkVcn, error) {
-	if o.cacheVcnId == "" {
+	if o.cacheVcnID == "" || !isOcid(o.cacheVcnID) {
 		o.Vcn.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	mqlVcn, err := NewResource(o.MqlRuntime, "oci.network.vcn", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheVcnId),
+		"id": llx.StringData(o.cacheVcnID),
 	})
 	if err != nil {
 		return nil, err
@@ -1372,63 +1127,32 @@ type routeRule struct {
 func (o *mqlOciNetwork) routeTables() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	// A route table is created alongside the VCN it belongs to, so a tenancy that
+	// puts its VCNs in child compartments has no route tables in the root at all.
+	// ListRouteTables offers no subtree search, so the fan-out below is the only
+	// way a subnet's routeTable reference finds its target and egress paths stay
+	// auditable.
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci route tables with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getRouteTables(conn, list.Data), 5)
-	poolOfJobs.Run()
-
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-
-	return res, nil
-}
-
-func (o *mqlOciNetwork) getRouteTables(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci route tables with region %s", regionResource.Id.Data)
-
-			svc, err := conn.NetworkClient(regionResource.Id.Data)
+			svc, err := conn.NetworkClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			rts := []core.RouteTable{}
-			var page *string
-			for {
+			rts, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]core.RouteTable, *string, error) {
 				response, err := svc.ListRouteTables(ctx, core.ListRouteTablesRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
-
-				rts = append(rts, response.Items...)
-
-				if response.OpcNextPage == nil {
-					break
-				}
-				page = response.OpcNextPage
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				return nil, err
 			}
 
 			var res []any
@@ -1456,43 +1180,31 @@ func (o *mqlOciNetwork) getRouteTables(conn *connection.OciConnection, regions [
 					return nil, err
 				}
 
-				freeformTags := make(map[string]interface{}, len(rt.FreeformTags))
-				for k, v := range rt.FreeformTags {
-					freeformTags[k] = v
-				}
-
-				definedTags := make(map[string]interface{}, len(rt.DefinedTags))
-				for k, v := range rt.DefinedTags {
-					definedTags[k] = v
-				}
-
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.network.routeTable", map[string]*llx.RawData{
-					"id":            llx.StringDataPtr(rt.Id),
-					"name":          llx.StringDataPtr(rt.DisplayName),
-					"compartmentID": llx.StringDataPtr(rt.CompartmentId),
-					"routeRules":    llx.DictData(routeRules),
-					"state":         llx.StringData(string(rt.LifecycleState)),
-					"created":       llx.TimeDataPtr(created),
-					"freeformTags":  llx.MapData(freeformTags, types.String),
-					"definedTags":   llx.MapData(definedTags, types.Any),
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.network.routeTable", stringValue(rt.CompartmentId), map[string]*llx.RawData{
+					"id":           llx.StringDataPtr(rt.Id),
+					"name":         llx.StringDataPtr(rt.DisplayName),
+					"routeRules":   llx.ArrayData(routeRules, types.Dict),
+					"state":        llx.StringData(string(rt.LifecycleState)),
+					"created":      llx.TimeDataPtr(created),
+					"freeformTags": llx.MapData(strMapToAny(rt.FreeformTags), types.String),
+					"definedTags":  llx.MapData(definedTagsToAny(rt.DefinedTags), types.Any),
+					"systemTags":   llx.MapData(definedTagsToAny(rt.SystemTags), types.Dict),
 				})
 				if err != nil {
 					return nil, err
 				}
 				mqlRt := mqlInstance.(*mqlOciNetworkRouteTable)
-				mqlRt.cacheVcnId = stringValue(rt.VcnId)
+				mqlRt.cacheVcnID = stringValue(rt.VcnId)
 				res = append(res, mqlRt)
 			}
 
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 type mqlOciNetworkRouteTableInternal struct {
-	cacheVcnId string
+	ociCompartmentRef
+	cacheVcnID string
 }
 
 func initOciNetworkRouteTable(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -1500,10 +1212,10 @@ func initOciNetworkRouteTable(runtime *plugin.Runtime, args map[string]*llx.RawD
 		return args, nil, nil
 	}
 
-	if args["id"] == nil {
+	idVal := ociArgString(args, "id")
+	if idVal == "" {
 		return nil, nil, errors.New("id required to fetch oci.network.routeTable")
 	}
-	idVal := args["id"].Value.(string)
 
 	obj, err := CreateResource(runtime, "oci.network", nil)
 	if err != nil {
@@ -1531,12 +1243,12 @@ func (o *mqlOciNetworkRouteTable) id() (string, error) {
 }
 
 func (o *mqlOciNetworkRouteTable) vcn() (*mqlOciNetworkVcn, error) {
-	if o.cacheVcnId == "" {
+	if o.cacheVcnID == "" || !isOcid(o.cacheVcnID) {
 		o.Vcn.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	mqlVcn, err := NewResource(o.MqlRuntime, "oci.network.vcn", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheVcnId),
+		"id": llx.StringData(o.cacheVcnID),
 	})
 	if err != nil {
 		return nil, err
@@ -1547,12 +1259,12 @@ func (o *mqlOciNetworkRouteTable) vcn() (*mqlOciNetworkVcn, error) {
 // Subnet route table reference
 
 func (o *mqlOciNetworkSubnet) routeTable() (*mqlOciNetworkRouteTable, error) {
-	if o.cacheRouteTableId == "" {
+	if o.cacheRouteTableID == "" || !isOcid(o.cacheRouteTableID) {
 		o.RouteTable.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	mqlRt, err := NewResource(o.MqlRuntime, "oci.network.routeTable", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheRouteTableId),
+		"id": llx.StringData(o.cacheRouteTableID),
 	})
 	if err != nil {
 		return nil, err
@@ -1563,74 +1275,83 @@ func (o *mqlOciNetworkSubnet) routeTable() (*mqlOciNetworkRouteTable, error) {
 func (o *mqlOciNetwork) publicIps() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci public ips with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getPublicIps(conn, list.Data), 5)
-	poolOfJobs.Run()
-
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-
-	return res, nil
-}
-
-func (o *mqlOciNetwork) getPublicIps(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci public ips with region %s", regionResource.Id.Data)
-
-			svc, err := conn.NetworkClient(regionResource.Id.Data)
+			svc, err := conn.NetworkClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			// Region-scoped listing covers reserved public IPs (which persist
-			// unattached) and the ephemeral public IPs held by regional
-			// entities such as NAT gateways. The OCI API requires a separate
-			// call per lifetime at REGION scope.
-			publicIps := []core.PublicIp{}
-			for _, lifetime := range []core.ListPublicIpsLifetimeEnum{
-				core.ListPublicIpsLifetimeReserved,
-				core.ListPublicIpsLifetimeEphemeral,
-			} {
-				var page *string
-				for {
+			// The two lifetimes live at different scopes, and asking at the
+			// wrong one returns nothing rather than an error.
+			//
+			// Reserved public IPs are regional: they persist unattached, so
+			// they answer at REGION scope. Ephemeral public IPs belong to the
+			// availability domain of the resource holding them - which is
+			// every public IP OCI assigns to an instance by default - and
+			// ListPublicIps only returns those when it is given
+			// AVAILABILITY_DOMAIN scope together with the domain to look in.
+			// Asking for EPHEMERAL at REGION scope, as this did, is accepted
+			// and returns an empty list, so instance public IPs were silently
+			// absent from the collection while reserved ones looked fine.
+			publicIps, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]core.PublicIp, *string, error) {
+				response, err := svc.ListPublicIps(ctx, core.ListPublicIpsRequest{
+					Scope:         core.ListPublicIpsScopeRegion,
+					CompartmentId: new(compartmentID),
+					Lifetime:      core.ListPublicIpsLifetimeReserved,
+					Page:          page,
+				})
+				if err != nil {
+					return nil, nil, err
+				}
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			// A failure here fails the collection rather than returning the
+			// reserved IPs alone.
+			//
+			// Continuing would produce a list that is short by exactly the
+			// ephemeral addresses - which is the bug this call was added to
+			// fix, reintroduced with a warning in place of an error. Nothing
+			// downstream can tell a tenancy whose instances have no public IPs
+			// from one whose availability domains could not be listed, and an
+			// authoritative-looking short list is worse than a failure in an
+			// inventory tool; see ociRegionServiceUnavailable, which draws the
+			// same line for throttles and IAM gaps.
+			//
+			// The blast radius is one (region, compartment) job: the join
+			// tolerates a per-compartment denial, and ociRetryLazy does not
+			// cache the failure, so a throttle is retried rather than being
+			// sticky for the rest of the scan.
+			availabilityDomains, err := ociAvailabilityDomains(ctx, conn, region, compartmentID)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"oci.network.publicIps: cannot list availability domains in %s, so ephemeral public IPs "+
+						"cannot be read and the result would omit them: %w", region, err)
+			}
+			for _, availabilityDomain := range availabilityDomains {
+				perDomain, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]core.PublicIp, *string, error) {
 					response, err := svc.ListPublicIps(ctx, core.ListPublicIpsRequest{
-						Scope:         core.ListPublicIpsScopeRegion,
-						CompartmentId: common.String(conn.TenantID()),
-						Lifetime:      lifetime,
-						Page:          page,
+						Scope:              core.ListPublicIpsScopeAvailabilityDomain,
+						AvailabilityDomain: new(availabilityDomain),
+						CompartmentId:      new(compartmentID),
+						Lifetime:           core.ListPublicIpsLifetimeEphemeral,
+						Page:               page,
 					})
 					if err != nil {
-						return nil, err
+						return nil, nil, err
 					}
-
-					publicIps = append(publicIps, response.Items...)
-
-					if response.OpcNextPage == nil {
-						break
-					}
-					page = response.OpcNextPage
+					return response.Items, response.OpcNextPage, nil
+				})
+				if err != nil {
+					return nil, err
 				}
+				publicIps = append(publicIps, perDomain...)
 			}
 
 			var res []any
@@ -1642,11 +1363,10 @@ func (o *mqlOciNetwork) getPublicIps(conn *connection.OciConnection, regions []a
 					created = &publicIp.TimeCreated.Time
 				}
 
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.network.publicIp", map[string]*llx.RawData{
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.network.publicIp", stringValue(publicIp.CompartmentId), map[string]*llx.RawData{
 					"id":                 llx.StringDataPtr(publicIp.Id),
 					"ipAddress":          llx.StringDataPtr(publicIp.IpAddress),
 					"name":               llx.StringDataPtr(publicIp.DisplayName),
-					"compartmentID":      llx.StringDataPtr(publicIp.CompartmentId),
 					"lifetime":           llx.StringData(string(publicIp.Lifetime)),
 					"scope":              llx.StringData(string(publicIp.Scope)),
 					"assignedEntityType": llx.StringData(string(publicIp.AssignedEntityType)),
@@ -1654,6 +1374,8 @@ func (o *mqlOciNetwork) getPublicIps(conn *connection.OciConnection, regions []a
 					"availabilityDomain": llx.StringDataPtr(publicIp.AvailabilityDomain),
 					"state":              llx.StringData(string(publicIp.LifecycleState)),
 					"created":            llx.TimeDataPtr(created),
+					"freeformTags":       llx.MapData(strMapToAny(publicIp.FreeformTags), types.String),
+					"definedTags":        llx.MapData(definedTagsToAny(publicIp.DefinedTags), types.Any),
 				})
 				if err != nil {
 					return nil, err
@@ -1661,13 +1383,55 @@ func (o *mqlOciNetwork) getPublicIps(conn *connection.OciConnection, regions []a
 				res = append(res, mqlInstance)
 			}
 
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 func (o *mqlOciNetworkPublicIp) id() (string, error) {
 	return "oci.network.publicIp/" + o.Id.Data, nil
+}
+
+// initOciNetworkPublicIp resolves a public IP by OCID.
+//
+// Without an init, NewResource falls straight through to Create with only the
+// id it was handed, caching a husk under the real OCID that a later
+// oci.network.publicIps query would then be served. The tenancy's public IP
+// listing is fetched once and shared through the runtime cache, so resolving
+// against it costs one call however many load balancer addresses reference a
+// reserved IP.
+func initOciNetworkPublicIp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+
+	idVal := ociArgString(args, "id")
+	if idVal == "" {
+		return nil, nil, errors.New("id required to fetch oci.network.publicIp")
+	}
+
+	obj, err := CreateResource(runtime, "oci.network", nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	publicIps := obj.(*mqlOciNetwork).GetPublicIps()
+	if publicIps.Error != nil {
+		return nil, nil, publicIps.Error
+	}
+
+	for _, raw := range publicIps.Data {
+		ip, ok := raw.(*mqlOciNetworkPublicIp)
+		if !ok {
+			continue
+		}
+		if ip.Id.Data == idVal {
+			return args, ip, nil
+		}
+	}
+
+	return nil, nil, fmt.Errorf("oci.network.publicIp with id %q not found", idVal)
+}
+
+type mqlOciNetworkPublicIpInternal struct {
+	ociCompartmentRef
 }

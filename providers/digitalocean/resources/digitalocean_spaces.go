@@ -16,16 +16,16 @@ import (
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/digitalocean/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/digitalocean/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // knownSpacesRegions enumerates the DigitalOcean regions that host
 // Spaces. The list grows when DO opens new regions — keep it in sync
-// with https://docs.digitalocean.com/products/platform/availability-matrix/
+// with https://docs.digitalocean.com/platform/regional-availability/
 var knownSpacesRegions = []string{
 	"nyc3", "sfo2", "sfo3", "ams3", "sgp1", "fra1", "syd1", "tor1", "blr1",
 }
@@ -41,6 +41,14 @@ const regionConcurrency = 5
 // lifecycle); running them across multiple buckets in parallel is
 // the main win.
 const bucketConcurrency = 8
+
+// mqlDigitaloceanSpacesBucketInternal carries whether the bucket policy was
+// actually read. The policy field is null both when the bucket has no policy
+// and when the call to fetch it never succeeded, and only the first of those
+// lets hasWildcardPolicy answer false.
+type mqlDigitaloceanSpacesBucketInternal struct {
+	policyRead bool
+}
 
 func (r *mqlDigitaloceanSpacesBucket) id() (string, error) {
 	return "digitalocean.spacesBucket/" + r.Region.Data + "/" + r.Name.Data, nil
@@ -112,12 +120,12 @@ type bucketRef struct {
 	b      s3types.Bucket
 }
 
-func (r *mqlDigitalocean) spacesBuckets() ([]interface{}, error) {
+func (r *mqlDigitalocean) spacesBuckets() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	if _, _, ok := conn.SpacesCredentials(); !ok {
 		// Spaces credentials are optional — return an empty list so
 		// the rest of the provider stays usable without them.
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 
 	regions := []string{conn.SpacesRegion()}
@@ -144,6 +152,12 @@ func listSpacesBucketRefs(conn *connection.DigitaloceanConnection, regions []str
 	)
 	jobs := make([]*jobpool.Job, 0, len(regions))
 	for _, region := range regions {
+		// Filtering here rather than per bucket skips the ListBuckets call for
+		// regions nothing can match. Buckets carry no tags, so an include-tag
+		// filter rules out every region.
+		if skipSpacesBucket(conn.Filters.General, region) {
+			continue
+		}
 		jobs = append(jobs, jobpool.NewJob(func() (jobpool.JobResult, error) {
 			client, err := conn.SpacesClient(region)
 			if err != nil {
@@ -177,8 +191,8 @@ func listSpacesBucketRefs(conn *connection.DigitaloceanConnection, regions []str
 // newSpacesBucket never returns (nil, nil), but the slot stays nil
 // if a future variant ever filters a bucket without erroring, and we
 // don't want nil leaking into the user-facing list.
-func fetchSpacesBucketDetails(r *mqlDigitalocean, refs []bucketRef) ([]interface{}, error) {
-	results := make([]interface{}, len(refs))
+func fetchSpacesBucketDetails(r *mqlDigitalocean, refs []bucketRef) ([]any, error) {
+	results := make([]any, len(refs))
 	jobs := make([]*jobpool.Job, 0, len(refs))
 	for i, ref := range refs {
 		idx, ref := i, ref
@@ -196,7 +210,7 @@ func fetchSpacesBucketDetails(r *mqlDigitalocean, refs []bucketRef) ([]interface
 	if pool.HasErrors() {
 		return nil, pool.GetErrors()
 	}
-	out := make([]interface{}, 0, len(results))
+	out := make([]any, 0, len(results))
 	for _, res := range results {
 		if res != nil {
 			out = append(out, res)
@@ -210,7 +224,7 @@ func fetchSpacesBucketDetails(r *mqlDigitalocean, refs []bucketRef) ([]interface
 // Each call tolerates the "not configured" S3 error codes so an
 // un-customized bucket still produces a resource with sensible nil
 // defaults.
-func newSpacesBucket(runtime *plugin.Runtime, client *s3.Client, region string, b s3types.Bucket) (interface{}, error) {
+func newSpacesBucket(runtime *plugin.Runtime, client *s3.Client, region string, b s3types.Bucket) (any, error) {
 	ctx := context.Background()
 	name := aws.ToString(b.Name)
 
@@ -220,21 +234,39 @@ func newSpacesBucket(runtime *plugin.Runtime, client *s3.Client, region string, 
 		createdAt = &t
 	}
 
-	publicAccessBlocked := false
-	if pab, err := client.GetPublicAccessBlock(ctx, &s3.GetPublicAccessBlockInput{Bucket: aws.String(name)}); err == nil {
-		if cfg := pab.PublicAccessBlockConfiguration; cfg != nil {
-			publicAccessBlocked = aws.ToBool(cfg.BlockPublicAcls) &&
-				aws.ToBool(cfg.BlockPublicPolicy) &&
-				aws.ToBool(cfg.IgnorePublicAcls) &&
-				aws.ToBool(cfg.RestrictPublicBuckets)
-		}
-	} else if !isNoSuchConfiguration(err) {
+	var pabCfg *s3types.PublicAccessBlockConfiguration
+	pab, pabErr := client.GetPublicAccessBlock(ctx, &s3.GetPublicAccessBlockInput{Bucket: aws.String(name)})
+	if pab != nil {
+		pabCfg = pab.PublicAccessBlockConfiguration
+	}
+	publicAccessBlocked, err := publicAccessBlockedValue(pabCfg, pabErr)
+	if err != nil {
 		return nil, err
 	}
 
-	publicReadAcl, publicWriteAcl, authenticatedReadAcl := false, false, false
-	aclGrants := []interface{}{}
+	// Each block below keeps three outcomes apart, the same way
+	// publicAccessBlockedValue already does for the block-public-access call:
+	//
+	//   read succeeded            -> report what it said
+	//   read succeeded, unset     -> report the absence, which is a real answer
+	//   read did not happen       -> report null
+	//
+	// The third case is the one worth being careful about. Spaces implements a
+	// subset of S3 and answers 501 on the calls it does not have, and a token
+	// may simply not be allowed to read a bucket. Letting the zero value stand
+	// there turns "nothing was read" into "nothing is configured": a bucket
+	// whose ACL could not be read would report no public grants, and isPublic
+	// would clear it on the strength of a read that never happened.
+
+	var (
+		publicReadAcl        *bool
+		publicWriteAcl       *bool
+		authenticatedReadAcl *bool
+		aclGrants            []any // nil means the ACL was not read
+	)
 	if acl, err := client.GetBucketAcl(ctx, &s3.GetBucketAclInput{Bucket: aws.String(name)}); err == nil {
+		grants := []any{}
+		publicRead, publicWrite, authenticatedRead := false, false, false
 		for _, g := range acl.Grants {
 			perm := string(g.Permission)
 			grantee := g.Grantee
@@ -244,7 +276,7 @@ func newSpacesBucket(runtime *plugin.Runtime, client *s3.Client, region string, 
 				ty = string(grantee.Type)
 				display = aws.ToString(grantee.DisplayName)
 			}
-			aclGrants = append(aclGrants, map[string]interface{}{
+			grants = append(grants, map[string]any{
 				"granteeType":        ty,
 				"granteeUri":         uri,
 				"granteeDisplayName": display,
@@ -252,123 +284,192 @@ func newSpacesBucket(runtime *plugin.Runtime, client *s3.Client, region string, 
 			})
 			if uri == "http://acs.amazonaws.com/groups/global/AllUsers" {
 				if perm == "READ" || perm == "FULL_CONTROL" {
-					publicReadAcl = true
+					publicRead = true
 				}
 				if perm == "WRITE" || perm == "FULL_CONTROL" {
-					publicWriteAcl = true
+					publicWrite = true
 				}
 			}
 			if uri == "http://acs.amazonaws.com/groups/global/AuthenticatedUsers" {
 				if perm == "READ" || perm == "FULL_CONTROL" {
-					authenticatedReadAcl = true
+					authenticatedRead = true
 				}
 			}
 		}
-	} else if isAccessDenied(err) {
-		log.Warn().Err(err).Str("bucket", name).Msg("digitalocean> ACL access denied; bucket reported with no grants — audit results may be incomplete")
+		aclGrants = grants
+		publicReadAcl, publicWriteAcl, authenticatedReadAcl = &publicRead, &publicWrite, &authenticatedRead
+	} else if isAccessDenied(err) || isUnsupportedOperation(err) {
+		log.Warn().Err(err).Str("bucket", name).
+			Msg("digitalocean> bucket ACL could not be read; its grants and public-ACL flags are reported as null")
 	} else {
 		return nil, err
 	}
 
-	encryptionEnabled := false
-	encryptionAlgorithm := ""
-	encryptionKmsKeyId := ""
+	var (
+		encryptionEnabled   *bool
+		encryptionAlgorithm *string
+		encryptionKmsKeyId  *string
+	)
 	if enc, err := client.GetBucketEncryption(ctx, &s3.GetBucketEncryptionInput{Bucket: aws.String(name)}); err == nil {
+		enabled, algorithm, kmsKeyId := false, "", ""
 		if enc.ServerSideEncryptionConfiguration != nil && len(enc.ServerSideEncryptionConfiguration.Rules) > 0 {
 			rule := enc.ServerSideEncryptionConfiguration.Rules[0]
 			if rule.ApplyServerSideEncryptionByDefault != nil {
-				encryptionEnabled = true
-				encryptionAlgorithm = string(rule.ApplyServerSideEncryptionByDefault.SSEAlgorithm)
-				encryptionKmsKeyId = aws.ToString(rule.ApplyServerSideEncryptionByDefault.KMSMasterKeyID)
+				enabled = true
+				algorithm = string(rule.ApplyServerSideEncryptionByDefault.SSEAlgorithm)
+				kmsKeyId = aws.ToString(rule.ApplyServerSideEncryptionByDefault.KMSMasterKeyID)
 			}
 		}
-	} else if !isNoSuchConfiguration(err) {
+		encryptionEnabled, encryptionAlgorithm, encryptionKmsKeyId = &enabled, &algorithm, &kmsKeyId
+	} else if isNoSuchConfiguration(err) {
+		// The service answered, and the answer is that nothing is configured.
+		// Default encryption really is off.
+		notEncrypted, none := false, ""
+		encryptionEnabled, encryptionAlgorithm, encryptionKmsKeyId = &notEncrypted, &none, &none
+	} else if isUnsupportedOperation(err) {
+		log.Warn().Err(err).Str("bucket", name).
+			Msg("digitalocean> bucket encryption could not be read; it is reported as null")
+	} else {
 		return nil, err
 	}
 
-	versioningStatus := ""
-	mfaDeleteEnabled := false
+	var (
+		versioningStatus *string
+		mfaDeleteEnabled *bool
+	)
 	if v, err := client.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{Bucket: aws.String(name)}); err == nil {
-		versioningStatus = string(v.Status)
-		mfaDeleteEnabled = v.MFADelete == s3types.MFADeleteStatusEnabled
-	} else if !isAccessDenied(err) {
+		status := string(v.Status)
+		mfaDelete := v.MFADelete == s3types.MFADeleteStatusEnabled
+		versioningStatus, mfaDeleteEnabled = &status, &mfaDelete
+	} else if isAccessDenied(err) || isUnsupportedOperation(err) {
+		log.Warn().Err(err).Str("bucket", name).
+			Msg("digitalocean> bucket versioning could not be read; it is reported as null")
+	} else {
 		return nil, err
 	}
 
-	var policyDict interface{}
+	// policyRead separates "this bucket has no policy" from "the policy was
+	// never read". Both leave policy null, but only the first lets
+	// hasWildcardPolicy answer false.
+	var policyDict any
+	policyRead := false
 	if p, err := client.GetBucketPolicy(ctx, &s3.GetBucketPolicyInput{Bucket: aws.String(name)}); err == nil {
+		policyRead = true
 		raw := aws.ToString(p.Policy)
 		if raw != "" {
-			var parsed interface{}
+			var parsed any
 			if jerr := json.Unmarshal([]byte(raw), &parsed); jerr == nil {
 				policyDict = parsed
 			} else {
 				policyDict = raw
 			}
 		}
-	} else if !isNoSuchConfiguration(err) {
+	} else if isNoSuchConfiguration(err) {
+		policyRead = true
+	} else if isUnsupportedOperation(err) {
+		log.Warn().Err(err).Str("bucket", name).
+			Msg("digitalocean> bucket policy could not be read; it is reported as null")
+	} else {
 		return nil, err
 	}
 
-	corsRules := []interface{}{}
+	var corsRules []any // nil means the CORS configuration was not read
 	if c, err := client.GetBucketCors(ctx, &s3.GetBucketCorsInput{Bucket: aws.String(name)}); err == nil {
+		corsRules = []any{}
 		for _, rule := range c.CORSRules {
-			corsRules = append(corsRules, map[string]interface{}{
-				"id":             aws.ToString(rule.ID),
-				"allowedHeaders": rule.AllowedHeaders,
-				"allowedMethods": rule.AllowedMethods,
-				"allowedOrigins": rule.AllowedOrigins,
-				"exposeHeaders":  rule.ExposeHeaders,
-				"maxAgeSeconds":  rule.MaxAgeSeconds,
-			})
+			corsRules = append(corsRules, spacesCorsRuleDict(rule))
 		}
-	} else if !isNoSuchConfiguration(err) {
+	} else if isNoSuchConfiguration(err) {
+		corsRules = []any{}
+	} else if !isUnsupportedOperation(err) {
 		return nil, err
 	}
 
-	lifecycleRules := []interface{}{}
+	var lifecycleRules []any // nil means the lifecycle rules were not read
 	if l, err := client.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{Bucket: aws.String(name)}); err == nil {
+		lifecycleRules = []any{}
 		for _, rule := range l.Rules {
-			entry := map[string]interface{}{
-				"id":     aws.ToString(rule.ID),
-				"status": string(rule.Status),
-			}
-			if f := rule.Filter; f != nil {
-				entry["prefix"] = aws.ToString(f.Prefix)
-			}
-			if rule.Expiration != nil {
-				entry["expirationDays"] = rule.Expiration.Days
-			}
-			if rule.NoncurrentVersionExpiration != nil {
-				entry["noncurrentVersionExpirationDays"] = rule.NoncurrentVersionExpiration.NoncurrentDays
-			}
-			if rule.AbortIncompleteMultipartUpload != nil {
-				entry["abortIncompleteMultipartUploadDays"] = rule.AbortIncompleteMultipartUpload.DaysAfterInitiation
-			}
-			lifecycleRules = append(lifecycleRules, entry)
+			lifecycleRules = append(lifecycleRules, spacesLifecycleRuleDict(rule))
 		}
-	} else if !isNoSuchConfiguration(err) {
+	} else if isNoSuchConfiguration(err) {
+		lifecycleRules = []any{}
+	} else if !isUnsupportedOperation(err) {
 		return nil, err
 	}
 
-	return CreateResource(runtime, "digitalocean.spacesBucket", map[string]*llx.RawData{
+	res, err := CreateResource(runtime, "digitalocean.spacesBucket", map[string]*llx.RawData{
 		"name":                 llx.StringData(name),
 		"region":               llx.StringData(region),
 		"createdAt":            llx.TimeDataPtr(createdAt),
-		"publicAccessBlocked":  llx.BoolData(publicAccessBlocked),
-		"publicReadAcl":        llx.BoolData(publicReadAcl),
-		"publicWriteAcl":       llx.BoolData(publicWriteAcl),
-		"authenticatedReadAcl": llx.BoolData(authenticatedReadAcl),
-		"aclGrants":            llx.ArrayData(aclGrants, types.Dict),
-		"encryptionEnabled":    llx.BoolData(encryptionEnabled),
-		"encryptionAlgorithm":  llx.StringData(encryptionAlgorithm),
-		"encryptionKmsKeyId":   llx.StringData(encryptionKmsKeyId),
-		"versioningStatus":     llx.StringData(versioningStatus),
-		"mfaDeleteEnabled":     llx.BoolData(mfaDeleteEnabled),
+		"publicAccessBlocked":  llx.BoolDataPtr(publicAccessBlocked),
+		"publicReadAcl":        llx.BoolDataPtr(publicReadAcl),
+		"publicWriteAcl":       llx.BoolDataPtr(publicWriteAcl),
+		"authenticatedReadAcl": llx.BoolDataPtr(authenticatedReadAcl),
+		"aclGrants":            dictListData(aclGrants),
+		"encryptionEnabled":    llx.BoolDataPtr(encryptionEnabled),
+		"encryptionAlgorithm":  llx.StringDataPtr(encryptionAlgorithm),
+		"encryptionKmsKeyId":   llx.StringDataPtr(encryptionKmsKeyId),
+		"versioningStatus":     llx.StringDataPtr(versioningStatus),
+		"mfaDeleteEnabled":     llx.BoolDataPtr(mfaDeleteEnabled),
 		"policy":               llx.DictData(policyDict),
-		"corsRules":            llx.ArrayData(corsRules, types.Dict),
-		"lifecycleRules":       llx.ArrayData(lifecycleRules, types.Dict),
+		"corsRules":            dictListData(corsRules),
+		"lifecycleRules":       dictListData(lifecycleRules),
 	})
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlDigitaloceanSpacesBucket).policyRead = policyRead
+	return res, nil
+}
+
+// dictListData renders a dict list that was never read as null rather than as
+// an empty list, so "nothing came back" cannot be mistaken for "there is
+// nothing".
+func dictListData(v []any) *llx.RawData {
+	if v == nil {
+		return llx.NilData
+	}
+	return llx.ArrayData(v, types.Dict)
+}
+
+// spacesCorsRuleDict builds the dict for one CORS rule. dict values must
+// be JSON-native, so the SDK's []string members are widened to []any and
+// the *int32 max-age is dereferenced to int64 (only when the API set it).
+func spacesCorsRuleDict(rule s3types.CORSRule) map[string]any {
+	entry := map[string]any{
+		"id":             aws.ToString(rule.ID),
+		"allowedHeaders": toStringSlice(rule.AllowedHeaders),
+		"allowedMethods": toStringSlice(rule.AllowedMethods),
+		"allowedOrigins": toStringSlice(rule.AllowedOrigins),
+		"exposeHeaders":  toStringSlice(rule.ExposeHeaders),
+	}
+	if rule.MaxAgeSeconds != nil {
+		entry["maxAgeSeconds"] = int64(*rule.MaxAgeSeconds)
+	}
+	return entry
+}
+
+// spacesLifecycleRuleDict builds the dict for one lifecycle rule. The SDK
+// models the day-counts as *int32; dict values must be JSON-native int64,
+// so each is dereferenced only when the API actually set it.
+func spacesLifecycleRuleDict(rule s3types.LifecycleRule) map[string]any {
+	entry := map[string]any{
+		"id":     aws.ToString(rule.ID),
+		"status": string(rule.Status),
+	}
+	if f := rule.Filter; f != nil {
+		entry["prefix"] = aws.ToString(f.Prefix)
+	}
+	if rule.Expiration != nil && rule.Expiration.Days != nil {
+		entry["expirationDays"] = int64(*rule.Expiration.Days)
+	}
+	if rule.NoncurrentVersionExpiration != nil && rule.NoncurrentVersionExpiration.NoncurrentDays != nil {
+		entry["noncurrentVersionExpirationDays"] = int64(*rule.NoncurrentVersionExpiration.NoncurrentDays)
+	}
+	if rule.AbortIncompleteMultipartUpload != nil && rule.AbortIncompleteMultipartUpload.DaysAfterInitiation != nil {
+		entry["abortIncompleteMultipartUploadDays"] = int64(*rule.AbortIncompleteMultipartUpload.DaysAfterInitiation)
+	}
+	return entry
 }
 
 // noSuchConfigurationCodes are the S3 error codes returned for
@@ -391,8 +492,7 @@ func isNoSuchConfiguration(err error) bool {
 	if err == nil {
 		return false
 	}
-	var ae smithy.APIError
-	if errors.As(err, &ae) {
+	if ae, ok := errors.AsType[smithy.APIError](err); ok {
 		for _, code := range noSuchConfigurationCodes {
 			if ae.ErrorCode() == code {
 				return true
@@ -408,12 +508,59 @@ func isNoSuchConfiguration(err error) bool {
 	return false
 }
 
+// publicAccessBlockedValue folds a GetPublicAccessBlock answer into the
+// bucket's publicAccessBlocked field, keeping three outcomes apart.
+//
+// A service that does not implement the call has no such control, so there is
+// nothing to report and the field is null. DigitalOcean Spaces answers this
+// way on every account: reporting false there would state as fact that public
+// access is not blocked, when in truth nothing was ever read and no setting
+// exists to read. A bucket with no configuration, on a service that does
+// implement the call, is a real answer and means nothing is blocked. Any
+// other failure is a failure and must not become a posture claim.
+func publicAccessBlockedValue(cfg *s3types.PublicAccessBlockConfiguration, err error) (*bool, error) {
+	if err != nil {
+		if isUnsupportedOperation(err) {
+			return nil, nil
+		}
+		if !isNoSuchConfiguration(err) {
+			return nil, err
+		}
+		notBlocked := false
+		return &notBlocked, nil
+	}
+	blocked := cfg != nil &&
+		aws.ToBool(cfg.BlockPublicAcls) &&
+		aws.ToBool(cfg.BlockPublicPolicy) &&
+		aws.ToBool(cfg.IgnorePublicAcls) &&
+		aws.ToBool(cfg.RestrictPublicBuckets)
+	return &blocked, nil
+}
+
+// isUnsupportedOperation returns true when the S3 API answers that it does
+// not implement the operation at all. Spaces implements a subset of the S3
+// API, so calls that exist only on AWS (GetPublicAccessBlock, for one) come
+// back 501 NotImplemented on every account. That describes the service
+// rather than the bucket, so the caller keeps its default and carries on
+// instead of failing the whole listing.
+func isUnsupportedOperation(err error) bool {
+	if err == nil {
+		return false
+	}
+	if ae, ok := errors.AsType[smithy.APIError](err); ok {
+		switch ae.ErrorCode() {
+		case "NotImplemented", "MethodNotAllowed":
+			return true
+		}
+	}
+	return strings.Contains(err.Error(), "NotImplemented")
+}
+
 func isAccessDenied(err error) bool {
 	if err == nil {
 		return false
 	}
-	var ae smithy.APIError
-	if errors.As(err, &ae) {
+	if ae, ok := errors.AsType[smithy.APIError](err); ok {
 		return ae.ErrorCode() == "AccessDenied"
 	}
 	return strings.Contains(err.Error(), "AccessDenied")

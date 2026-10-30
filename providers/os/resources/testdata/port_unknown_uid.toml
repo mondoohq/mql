@@ -1,0 +1,8 @@
+# /proc/net/tcp with one socket owned by root and one owned by uid 61234,
+# which has no passwd entry (a systemd DynamicUser service, for example).
+[files."/proc/net/tcp"]
+path = "/proc/net/tcp"
+content = """  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
+   0: 3500007F:0035 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 18881 1 0000000000000000 100 0 0 10 5
+   1: 00000000:223D 00000000:0000 0A 00000000:00000000 00:00000000 00000000 61234        0 18882 1 0000000000000000 100 0 0 10 5
+"""

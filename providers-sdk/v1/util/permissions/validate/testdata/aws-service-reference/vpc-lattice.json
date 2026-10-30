@@ -1,0 +1,9 @@
+{
+  "Name": "vpc-lattice",
+  "Version": "v1.4",
+  "Actions": [{"Name": "GetService"}, {"Name": "ListServices"}],
+  "Operations": [
+    {"Name": "GetService", "AuthorizedActions": [{"Service": "vpc-lattice", "Name": "GetService"}]},
+    {"Name": "ListServices"}
+  ]
+}

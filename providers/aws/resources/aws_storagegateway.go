@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -13,11 +14,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/storagegateway"
 	sgwtypes "github.com/aws/aws-sdk-go-v2/service/storagegateway/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 // ========================
@@ -123,12 +124,6 @@ func (a *mqlAwsStoragegatewayGateway) id() (string, error) {
 func initAwsStoragegatewayGateway(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 2 {
 		return args, nil, nil
-	}
-
-	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
-		}
 	}
 
 	if args["arn"] == nil {
@@ -391,6 +386,7 @@ type sgwFileShareDetail struct {
 	bucketRegion        string
 	auditDestinationArn string
 	role                string
+	tags                map[string]any
 }
 
 type mqlAwsStoragegatewayFileShareInternal struct {
@@ -447,6 +443,7 @@ func (a *mqlAwsStoragegatewayFileShare) fetchDetail() (*sgwFileShareDetail, erro
 				bucketRegion:        convert.ToValue(s.BucketRegion),
 				auditDestinationArn: convert.ToValue(s.AuditDestinationARN),
 				role:                convert.ToValue(s.Role),
+				tags:                tagsToMap(s.Tags, func(t sgwtypes.Tag) *string { return t.Key }, func(t sgwtypes.Tag) *string { return t.Value }),
 			}
 		}
 	case "NFS":
@@ -474,6 +471,7 @@ func (a *mqlAwsStoragegatewayFileShare) fetchDetail() (*sgwFileShareDetail, erro
 				bucketRegion:        convert.ToValue(s.BucketRegion),
 				auditDestinationArn: convert.ToValue(s.AuditDestinationARN),
 				role:                convert.ToValue(s.Role),
+				tags:                tagsToMap(s.Tags, func(t sgwtypes.Tag) *string { return t.Key }, func(t sgwtypes.Tag) *string { return t.Value }),
 			}
 		}
 	}
@@ -617,6 +615,7 @@ type sgwVolumeDetail struct {
 }
 
 type mqlAwsStoragegatewayVolumeInternal struct {
+	lazyTags
 	fetched bool
 	lock    sync.Mutex
 	detail  *sgwVolumeDetail
@@ -746,11 +745,44 @@ func (a *mqlAwsStoragegatewayVolume) kmsKey() (*mqlAwsKmsKey, error) {
 // ========================
 
 func storageGatewayTagsToMap(tags []sgwtypes.Tag) map[string]any {
-	tagsMap := make(map[string]any)
-	for _, tag := range tags {
-		if tag.Key != nil && tag.Value != nil {
-			tagsMap[*tag.Key] = *tag.Value
-		}
+	return tagsToMap(tags, func(t sgwtypes.Tag) *string { return t.Key }, func(t sgwtypes.Tag) *string { return t.Value })
+}
+
+func (a *mqlAwsStoragegatewayFileShare) tags() (map[string]any, error) {
+	d, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
 	}
-	return tagsMap
+	if d == nil {
+		return markTagsUnreadable(&a.Tags)
+	}
+	return d.tags, nil
+}
+
+func (a *mqlAwsStoragegatewayVolume) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.StorageGateway(a.Region.Data)
+		arn := a.Arn.Data
+		tags := map[string]any{}
+		var marker *string
+		for {
+			resp, err := svc.ListTagsForResource(context.Background(), &storagegateway.ListTagsForResourceInput{ResourceARN: &arn, Marker: marker})
+			if err != nil {
+				if Is400AccessDeniedError(err) {
+					if plugin.StructuredErrors() {
+						return nil, llx.Forbidden(err, llx.WithPermissions("storagegateway:ListTagsForResource"))
+					}
+					return nil, errTagsUnreadable
+				}
+				return nil, err
+			}
+			maps.Copy(tags, tagsToMap(resp.Tags, func(t sgwtypes.Tag) *string { return t.Key }, func(t sgwtypes.Tag) *string { return t.Value }))
+			if resp.Marker == nil || *resp.Marker == "" {
+				break
+			}
+			marker = resp.Marker
+		}
+		return tags, nil
+	})
 }

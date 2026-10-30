@@ -8,15 +8,15 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/okta/okta-sdk-golang/v5/okta"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/okta/connection"
+	"github.com/okta/okta-sdk-golang/v6/okta"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/okta/connection"
 )
 
 // mqlOktaAuthenticatorInternal caches the provider and settings sub-objects of
-// the authenticator so the typed accessors can resolve them lazily. v5 returns
+// the authenticator so the typed accessors can resolve them lazily. The SDK returns
 // authenticators as a discriminated union, so we decode the shared fields from
 // the canonical JSON instead of reading SDK structs directly.
 type mqlOktaAuthenticatorInternal struct {

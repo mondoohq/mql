@@ -6,9 +6,9 @@ import (
 	"errors"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/cloudflare/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/cloudflare/connection"
 )
 
 func (c *mqlCloudflareZone) id() (string, error) {
@@ -34,7 +34,7 @@ func initCloudflareZone(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	}
 
 	for _, platformId := range conn.Asset().PlatformIds {
-		if zoneId := strings.TrimPrefix(platformId, connection.PlatformIdCloudflareZone); zoneId != platformId {
+		if zoneId, ok := strings.CutPrefix(platformId, connection.PlatformIdCloudflareZone); ok {
 			zone, ok := runtime.Resources.Get("cloudflare.zone\x00" + zoneId)
 			if !ok {
 				return nil, nil, errors.New("zone not found")
@@ -54,13 +54,6 @@ func (c *mqlCloudflareZoneAccount) id() (string, error) {
 }
 
 func (c *mqlCloudflareZoneOwner) id() (string, error) {
-	if c.Id.Error != nil {
-		return "", c.Id.Error
-	}
-	return c.Id.Data, nil
-}
-
-func (c *mqlCloudflareZonePlan) id() (string, error) {
 	if c.Id.Error != nil {
 		return "", c.Id.Error
 	}

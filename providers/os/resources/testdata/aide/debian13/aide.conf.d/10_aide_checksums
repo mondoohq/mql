@@ -1,0 +1,17 @@
+@@define MD5SUM        ([[:xdigit:]]{32})
+@@define SHA1SUM       ([[:xdigit:]]{40})
+@@define SHA224SUM     ([[:xdigit:]]{56})
+@@define SHA256SUM     ([[:xdigit:]]{64})
+@@define SHA384SUM     ([[:xdigit:]]{96})
+@@define SHA512SUM     ([[:xdigit:]]{128})
+@@define SHA3_224SUM   ([[:xdigit:]]{56})
+@@define SHA3_256SUM   ([[:xdigit:]]{64})
+@@define SHA3_384SUM   ([[:xdigit:]]{96})
+@@define SHA3_512SUM   ([[:xdigit:]]{128})
+@@define BLAKE2BSUM    ([[:xdigit:]]{128})
+@@define BLAKE2SSUM    ([[:xdigit:]]{64})
+@@define RIPEMD160SUM  ([[:xdigit:]]{40})
+@@define WHIRLPOOLSUM  ([[:xdigit:]]{128})
+@@define TIGER192SUM   ([[:xdigit:]]{48})
+
+

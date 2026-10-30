@@ -6,6 +6,7 @@ package connection
 import (
 	"sync"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/accessanalyzer"
 	"github.com/aws/aws-sdk-go-v2/service/account"
 	"github.com/aws/aws-sdk-go-v2/service/acm"
@@ -45,6 +46,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/datasync"
 	"github.com/aws/aws-sdk-go-v2/service/dax"
 	"github.com/aws/aws-sdk-go-v2/service/detective"
+	"github.com/aws/aws-sdk-go-v2/service/directconnect"
 	"github.com/aws/aws-sdk-go-v2/service/directoryservice"
 	"github.com/aws/aws-sdk-go-v2/service/docdb"
 	"github.com/aws/aws-sdk-go-v2/service/docdbelastic"
@@ -67,6 +69,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/firehose"
 	"github.com/aws/aws-sdk-go-v2/service/fms"
 	"github.com/aws/aws-sdk-go-v2/service/fsx"
+	"github.com/aws/aws-sdk-go-v2/service/globalaccelerator"
 	"github.com/aws/aws-sdk-go-v2/service/glue"
 	"github.com/aws/aws-sdk-go-v2/service/guardduty"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -83,16 +86,20 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/macie2"
 	"github.com/aws/aws-sdk-go-v2/service/memorydb"
 	"github.com/aws/aws-sdk-go-v2/service/mq"
+	"github.com/aws/aws-sdk-go-v2/service/mwaa"
 	"github.com/aws/aws-sdk-go-v2/service/neptune"
 	"github.com/aws/aws-sdk-go-v2/service/neptunegraph"
 	"github.com/aws/aws-sdk-go-v2/service/networkfirewall"
 	"github.com/aws/aws-sdk-go-v2/service/opensearch"
+	"github.com/aws/aws-sdk-go-v2/service/opensearchserverless"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
+	"github.com/aws/aws-sdk-go-v2/service/personalize"
 	"github.com/aws/aws-sdk-go-v2/service/pipes"
 	"github.com/aws/aws-sdk-go-v2/service/qbusiness"
 	"github.com/aws/aws-sdk-go-v2/service/ram"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/redshift"
+	"github.com/aws/aws-sdk-go-v2/service/redshiftserverless"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	"github.com/aws/aws-sdk-go-v2/service/route53domains"
 	"github.com/aws/aws-sdk-go-v2/service/route53resolver"
@@ -116,6 +123,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/timestreaminfluxdb"
 	"github.com/aws/aws-sdk-go-v2/service/timestreamwrite"
 	"github.com/aws/aws-sdk-go-v2/service/transfer"
+	"github.com/aws/aws-sdk-go-v2/service/vpclattice"
 	"github.com/aws/aws-sdk-go-v2/service/wafv2"
 	"github.com/aws/aws-sdk-go-v2/service/workdocs"
 	"github.com/aws/aws-sdk-go-v2/service/workspaces"
@@ -149,2522 +157,528 @@ func (c *ClientsCache) Load(key string) (*CacheEntry, bool) {
 // Delete a Cache Entry
 func (c *ClientsCache) Delete(key string) { c.Map.Delete(key) }
 
-func (t *AwsConnection) Organizations(region string) *organizations.Client {
-	// if no region value is sent in, use the configured region
+// newClient returns the cached client stored under cacheKey, or constructs one
+// for the given region and caches it. NewFromConfig builds SDK clients lazily,
+// so this performs no network I/O.
+func newClient[T any, O any](t *AwsConnection, cacheKey, region string, newFromConfig func(aws.Config, ...func(*O)) T) T {
+	if c, ok := t.clientcache.Load(cacheKey); ok {
+		log.Debug().Str("cache_key", cacheKey).Msg("using cached aws client")
+		return c.Data.(T)
+	}
+
+	cfg := t.cfg.Copy()
+	cfg.Region = region
+	entry := &CacheEntry{Data: newFromConfig(cfg)}
+
+	// LoadOrStore closes the check-then-act gap: if another goroutine cached a
+	// client for this key between the Load above and here, we keep theirs and
+	// discard our redundant construction, so every caller sees one instance.
+	actual, _ := t.clientcache.Map.LoadOrStore(cacheKey, entry)
+	return actual.(*CacheEntry).Data.(T)
+}
+
+// regionalClient returns a per-region client for a regional service. An empty
+// region falls back to the connection's configured region.
+func regionalClient[T any, O any](t *AwsConnection, service, region string, newFromConfig func(aws.Config, ...func(*O)) T) T {
 	if len(region) == 0 {
 		region = t.cfg.Region
 	}
-	cacheVal := "_organizations_" + region
+	return newClient(t, "_"+service+"_"+region, region, newFromConfig)
+}
 
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached organizations client")
-		return c.Data.(*organizations.Client)
-	}
+// globalClient returns a client for a global service whose endpoint is pinned
+// to a single region. Its cache key is region-independent.
+func globalClient[T any, O any](t *AwsConnection, service, region string, newFromConfig func(aws.Config, ...func(*O)) T) T {
+	return newClient(t, "_"+service+"_", region, newFromConfig)
+}
 
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := organizations.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+func (t *AwsConnection) Organizations(region string) *organizations.Client {
+	return regionalClient(t, "organizations", region, organizations.NewFromConfig)
 }
 
 func (t *AwsConnection) Ec2(region string) *ec2.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_ec2_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached ec2 client")
-		return c.Data.(*ec2.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := ec2.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "ec2", region, ec2.NewFromConfig)
 }
 
 func (t *AwsConnection) Wafv2(region string) *wafv2.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_wafv2_" + region
+	return regionalClient(t, "wafv2", region, wafv2.NewFromConfig)
+}
 
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached wafv2 client")
-		return c.Data.(*wafv2.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := wafv2.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+func (t *AwsConnection) VpcLattice(region string) *vpclattice.Client {
+	return regionalClient(t, "vpclattice", region, vpclattice.NewFromConfig)
 }
 
 func (t *AwsConnection) Ecs(region string) *ecs.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_ecs_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached ecs client")
-		return c.Data.(*ecs.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := ecs.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "ecs", region, ecs.NewFromConfig)
 }
 
 func (t *AwsConnection) Iam(region string) *iam.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_iam_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached iam client")
-		return c.Data.(*iam.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := iam.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "iam", region, iam.NewFromConfig)
 }
 
 func (t *AwsConnection) Ecr(region string) *ecr.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_ecr_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached ecr client")
-		return c.Data.(*ecr.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := ecr.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "ecr", region, ecr.NewFromConfig)
 }
 
 func (t *AwsConnection) Signer(region string) *signer.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_signer_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached signer client")
-		return c.Data.(*signer.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := signer.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "signer", region, signer.NewFromConfig)
 }
 
 func (t *AwsConnection) EcrPublic(region string) *ecrpublic.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_ecrpublic_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached ecrpublic client")
-		return c.Data.(*ecrpublic.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := ecrpublic.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "ecrpublic", region, ecrpublic.NewFromConfig)
 }
 
 func (t *AwsConnection) S3(region string) *s3.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_s3_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached s3 client")
-		return c.Data.(*s3.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := s3.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "s3", region, s3.NewFromConfig)
 }
 
 func (t *AwsConnection) S3Control(region string) *s3control.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_s3control_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached s3control client")
-		return c.Data.(*s3control.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := s3control.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "s3control", region, s3control.NewFromConfig)
 }
 
 func (t *AwsConnection) CloudHsmV2(region string) *cloudhsmv2.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_cloudhsmv2_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached cloudhsmv2 client")
-		return c.Data.(*cloudhsmv2.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := cloudhsmv2.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "cloudhsmv2", region, cloudhsmv2.NewFromConfig)
 }
 
 func (t *AwsConnection) Cloudtrail(region string) *cloudtrail.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_cloudtrail_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached cloudtrail client")
-		return c.Data.(*cloudtrail.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := cloudtrail.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "cloudtrail", region, cloudtrail.NewFromConfig)
 }
 
 func (t *AwsConnection) Cloudfront(region string) *cloudfront.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_cloudfront_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached cloudfront client")
-		return c.Data.(*cloudfront.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := cloudfront.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "cloudfront", region, cloudfront.NewFromConfig)
 }
 
 func (t *AwsConnection) ConfigService(region string) *configservice.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_config_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached config client")
-		return c.Data.(*configservice.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := configservice.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "config", region, configservice.NewFromConfig)
 }
 
 func (t *AwsConnection) Kms(region string) *kms.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_kms_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached kms client")
-		return c.Data.(*kms.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := kms.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "kms", region, kms.NewFromConfig)
 }
 
 func (t *AwsConnection) CloudwatchLogs(region string) *cloudwatchlogs.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_cloudwatchlogs_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached cloudwatchlogs client")
-		return c.Data.(*cloudwatchlogs.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := cloudwatchlogs.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "cloudwatchlogs", region, cloudwatchlogs.NewFromConfig)
 }
 
 func (t *AwsConnection) Cloudwatch(region string) *cloudwatch.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_cloudwatch_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached cloudwatch client")
-		return c.Data.(*cloudwatch.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := cloudwatch.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "cloudwatch", region, cloudwatch.NewFromConfig)
 }
 
 func (t *AwsConnection) Inspector(region string) *inspector2.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_inspector_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached inspector client")
-		return c.Data.(*inspector2.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := inspector2.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "inspector", region, inspector2.NewFromConfig)
 }
 
 func (t *AwsConnection) Sns(region string) *sns.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_sns_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached sns client")
-		return c.Data.(*sns.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := sns.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "sns", region, sns.NewFromConfig)
 }
 
 func (t *AwsConnection) Sqs(region string) *sqs.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_sqs_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached sqs client")
-		return c.Data.(*sqs.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := sqs.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "sqs", region, sqs.NewFromConfig)
 }
 
 func (t *AwsConnection) Ssm(region string) *ssm.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_ssm_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached ssm client")
-		return c.Data.(*ssm.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := ssm.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "ssm", region, ssm.NewFromConfig)
 }
 
 func (t *AwsConnection) Efs(region string) *efs.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_efs_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached efs client")
-		return c.Data.(*efs.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := efs.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "efs", region, efs.NewFromConfig)
 }
 
 func (t *AwsConnection) EventBridge(region string) *eventbridge.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_eventbridge_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached eventbridge client")
-		return c.Data.(*eventbridge.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := eventbridge.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "eventbridge", region, eventbridge.NewFromConfig)
 }
 
 func (t *AwsConnection) Fsx(region string) *fsx.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_fsx_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached fsx client")
-		return c.Data.(*fsx.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := fsx.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "fsx", region, fsx.NewFromConfig)
 }
 
 func (t *AwsConnection) StorageGateway(region string) *storagegateway.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_storagegateway_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached storagegateway client")
-		return c.Data.(*storagegateway.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := storagegateway.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "storagegateway", region, storagegateway.NewFromConfig)
 }
 
 func (t *AwsConnection) Firehose(region string) *firehose.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_firehose_" + region
+	return regionalClient(t, "firehose", region, firehose.NewFromConfig)
+}
 
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached firehose client")
-		return c.Data.(*firehose.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := firehose.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+func (t *AwsConnection) Personalize(region string) *personalize.Client {
+	return regionalClient(t, "personalize", region, personalize.NewFromConfig)
 }
 
 func (t *AwsConnection) Kinesis(region string) *kinesis.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_kinesis_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached kinesis client")
-		return c.Data.(*kinesis.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := kinesis.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "kinesis", region, kinesis.NewFromConfig)
 }
 
 func (t *AwsConnection) Kinesisvideo(region string) *kinesisvideo.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_kinesisvideo_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached kinesisvideo client")
-		return c.Data.(*kinesisvideo.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := kinesisvideo.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "kinesisvideo", region, kinesisvideo.NewFromConfig)
 }
 
 func (t *AwsConnection) Apigateway(region string) *apigateway.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_apigateway_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached apigateway client")
-		return c.Data.(*apigateway.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := apigateway.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "apigateway", region, apigateway.NewFromConfig)
 }
 
 func (t *AwsConnection) Apigatewayv2(region string) *apigatewayv2.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_apigatewayv2_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached apigatewayv2 client")
-		return c.Data.(*apigatewayv2.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := apigatewayv2.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "apigatewayv2", region, apigatewayv2.NewFromConfig)
 }
 
 func (t *AwsConnection) Appsync(region string) *appsync.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_appsync_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached appsync client")
-		return c.Data.(*appsync.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := appsync.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "appsync", region, appsync.NewFromConfig)
 }
 
 func (t *AwsConnection) AppRunner(region string) *apprunner.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_apprunner_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached apprunner client")
-		return c.Data.(*apprunner.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := apprunner.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "apprunner", region, apprunner.NewFromConfig)
 }
 
 func (t *AwsConnection) Appstream(region string) *appstream.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_appstream_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached appstream client")
-		return c.Data.(*appstream.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := appstream.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "appstream", region, appstream.NewFromConfig)
 }
 
 func (t *AwsConnection) ApplicationAutoscaling(region string) *applicationautoscaling.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_applicationautoscaling_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached applicationautoscaling client")
-		return c.Data.(*applicationautoscaling.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := applicationautoscaling.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "applicationautoscaling", region, applicationautoscaling.NewFromConfig)
 }
 
 func (t *AwsConnection) Lakeformation(region string) *lakeformation.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_lakeformation_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached lakeformation client")
-		return c.Data.(*lakeformation.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := lakeformation.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "lakeformation", region, lakeformation.NewFromConfig)
 }
 
 func (t *AwsConnection) Lambda(region string) *lambda.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_lambda_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached lambda client")
-		return c.Data.(*lambda.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := lambda.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "lambda", region, lambda.NewFromConfig)
 }
 
 func (t *AwsConnection) Macie2(region string) *macie2.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_macie2_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached macie2 client")
-		return c.Data.(*macie2.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := macie2.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "macie2", region, macie2.NewFromConfig)
 }
 
 func (t *AwsConnection) Memorydb(region string) *memorydb.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_memorydb_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached memorydb client")
-		return c.Data.(*memorydb.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := memorydb.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "memorydb", region, memorydb.NewFromConfig)
 }
 
 func (t *AwsConnection) Kafka(region string) *kafka.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_kafka_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached kafka client")
-		return c.Data.(*kafka.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := kafka.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "kafka", region, kafka.NewFromConfig)
 }
 
 func (t *AwsConnection) Mq(region string) *mq.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_mq_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached mq client")
-		return c.Data.(*mq.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := mq.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "mq", region, mq.NewFromConfig)
 }
 
 func (t *AwsConnection) Sesv2(region string) *sesv2.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_sesv2_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached sesv2 client")
-		return c.Data.(*sesv2.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := sesv2.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "sesv2", region, sesv2.NewFromConfig)
 }
 
 func (t *AwsConnection) Dynamodb(region string) *dynamodb.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_dynamodb_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached dynamodb client")
-		return c.Data.(*dynamodb.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := dynamodb.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "dynamodb", region, dynamodb.NewFromConfig)
 }
 
 func (t *AwsConnection) Dax(region string) *dax.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_dax_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached dax client")
-		return c.Data.(*dax.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := dax.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "dax", region, dax.NewFromConfig)
 }
 
 func (t *AwsConnection) Dms(region string) *databasemigrationservice.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_dms_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached dms client")
-		return c.Data.(*databasemigrationservice.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := databasemigrationservice.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "dms", region, databasemigrationservice.NewFromConfig)
 }
 
 func (t *AwsConnection) Rds(region string) *rds.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_rds_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached rds client")
-		return c.Data.(*rds.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := rds.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "rds", region, rds.NewFromConfig)
 }
 
 func (t *AwsConnection) Elasticache(region string) *elasticache.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_elasticache_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached elasticache client")
-		return c.Data.(*elasticache.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := elasticache.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "elasticache", region, elasticache.NewFromConfig)
 }
 
 func (t *AwsConnection) Redshift(region string) *redshift.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_redshift_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached redshift client")
-		return c.Data.(*redshift.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := redshift.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "redshift", region, redshift.NewFromConfig)
 }
 
 func (t *AwsConnection) Route53(region string) *route53.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_route53_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached route53 client")
-		return c.Data.(*route53.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := route53.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "route53", region, route53.NewFromConfig)
 }
 
 func (t *AwsConnection) Neptune(region string) *neptune.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_neptune_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached neptune client")
-		return c.Data.(*neptune.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-
-	// Create a Neptune client from just a session.
-	client := neptune.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "neptune", region, neptune.NewFromConfig)
 }
 
 func (t *AwsConnection) OpenSearch(region string) *opensearch.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_opensearch_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached opensearch client")
-		return c.Data.(*opensearch.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := opensearch.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "opensearch", region, opensearch.NewFromConfig)
 }
 
-// TimestreamLiveAnalytics returns a Timestream client for Live Analytics
 func (t *AwsConnection) TimestreamLiveAnalytics(region string) *timestreamwrite.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_timestream_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached timestreamwrite client")
-		return c.Data.(*timestreamwrite.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-
-	// Create a Neptune client from just a session.
-	client := timestreamwrite.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "timestream", region, timestreamwrite.NewFromConfig)
 }
 
 func (t *AwsConnection) Dsql(region string) *dsql.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_dsql_" + region
+	return regionalClient(t, "dsql", region, dsql.NewFromConfig)
+}
 
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached dsql client")
-		return c.Data.(*dsql.Client)
-	}
+func (t *AwsConnection) OpenSearchServerless(region string) *opensearchserverless.Client {
+	return regionalClient(t, "opensearchserverless", region, opensearchserverless.NewFromConfig)
+}
 
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := dsql.NewFromConfig(cfg)
+func (t *AwsConnection) RedshiftServerless(region string) *redshiftserverless.Client {
+	return regionalClient(t, "redshiftserverless", region, redshiftserverless.NewFromConfig)
+}
 
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+func (t *AwsConnection) Mwaa(region string) *mwaa.Client {
+	return regionalClient(t, "mwaa", region, mwaa.NewFromConfig)
 }
 
 func (t *AwsConnection) NeptuneGraph(region string) *neptunegraph.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_neptunegraph_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached neptune-graph client")
-		return c.Data.(*neptunegraph.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := neptunegraph.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "neptunegraph", region, neptunegraph.NewFromConfig)
 }
 
 func (t *AwsConnection) TimestreamInfluxDB(region string) *timestreaminfluxdb.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_timestream_influxdb_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached timestreaminfluxdb client")
-		return c.Data.(*timestreaminfluxdb.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := timestreaminfluxdb.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "timestream_influxdb", region, timestreaminfluxdb.NewFromConfig)
 }
 
 func (t *AwsConnection) AccessAnalyzer(region string) *accessanalyzer.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_accessanalyzer_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached access analyzer client")
-		return c.Data.(*accessanalyzer.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := accessanalyzer.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "accessanalyzer", region, accessanalyzer.NewFromConfig)
 }
 
 func (t *AwsConnection) Acm(region string) *acm.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_acm_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached acm client")
-		return c.Data.(*acm.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := acm.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "acm", region, acm.NewFromConfig)
 }
 
 func (t *AwsConnection) Athena(region string) *athena.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_athena_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached athena client")
-		return c.Data.(*athena.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := athena.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "athena", region, athena.NewFromConfig)
 }
 
 func (t *AwsConnection) Elb(region string) *elasticloadbalancing.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_elb_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached elb client")
-		return c.Data.(*elasticloadbalancing.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := elasticloadbalancing.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "elb", region, elasticloadbalancing.NewFromConfig)
 }
 
 func (t *AwsConnection) Elbv2(region string) *elasticloadbalancingv2.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_elbv2_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached elbv2 client")
-		return c.Data.(*elasticloadbalancingv2.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := elasticloadbalancingv2.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "elbv2", region, elasticloadbalancingv2.NewFromConfig)
 }
 
 func (t *AwsConnection) Es(region string) *elasticsearchservice.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_es_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached es client")
-		return c.Data.(*elasticsearchservice.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := elasticsearchservice.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "es", region, elasticsearchservice.NewFromConfig)
 }
 
 func (t *AwsConnection) Sagemaker(region string) *sagemaker.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_sagemaker_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached sagemaker client")
-		return c.Data.(*sagemaker.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := sagemaker.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "sagemaker", region, sagemaker.NewFromConfig)
 }
 
 func (t *AwsConnection) Autoscaling(region string) *autoscaling.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_autoscaling_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached autoscaling client")
-		return c.Data.(*autoscaling.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := autoscaling.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "autoscaling", region, autoscaling.NewFromConfig)
 }
 
 func (t *AwsConnection) Backup(region string) *backup.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_backup_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached backup client")
-		return c.Data.(*backup.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := backup.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "backup", region, backup.NewFromConfig)
 }
 
 func (t *AwsConnection) Drs(region string) *drs.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_drs_" + region
+	return regionalClient(t, "drs", region, drs.NewFromConfig)
+}
 
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached drs client")
-		return c.Data.(*drs.Client)
-	}
+func (t *AwsConnection) DirectConnect(region string) *directconnect.Client {
+	return regionalClient(t, "directconnect", region, directconnect.NewFromConfig)
+}
 
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := drs.NewFromConfig(cfg)
+// globalAcceleratorControlPlaneRegion is the only region the Global Accelerator
+// control plane answers in, regardless of where the accelerator sends traffic.
+const globalAcceleratorControlPlaneRegion = "us-west-2"
 
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+// GlobalAccelerator returns a Global Accelerator client. The service is global
+// but its control plane only answers in us-west-2, so the region is pinned here
+// rather than taken from the caller.
+func (t *AwsConnection) GlobalAccelerator() *globalaccelerator.Client {
+	return regionalClient(t, "globalaccelerator", globalAcceleratorControlPlaneRegion, globalaccelerator.NewFromConfig)
 }
 
 func (t *AwsConnection) DirectoryService(region string) *directoryservice.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_directoryservice_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached directoryservice client")
-		return c.Data.(*directoryservice.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := directoryservice.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "directoryservice", region, directoryservice.NewFromConfig)
 }
 
 func (t *AwsConnection) Codebuild(region string) *codebuild.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_codebuild_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached codebuild client")
-		return c.Data.(*codebuild.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := codebuild.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "codebuild", region, codebuild.NewFromConfig)
 }
 
 func (t *AwsConnection) CodeDeploy(region string) *codedeploy.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_codedeploy" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached codebuild client")
-		return c.Data.(*codedeploy.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := codedeploy.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "codedeploy", region, codedeploy.NewFromConfig)
 }
 
 func (t *AwsConnection) Codepipeline(region string) *codepipeline.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_codepipeline_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached codepipeline client")
-		return c.Data.(*codepipeline.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := codepipeline.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "codepipeline", region, codepipeline.NewFromConfig)
 }
 
 func (t *AwsConnection) Codeartifact(region string) *codeartifact.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_codeartifact_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached codeartifact client")
-		return c.Data.(*codeartifact.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := codeartifact.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "codeartifact", region, codeartifact.NewFromConfig)
 }
 
 func (t *AwsConnection) Emr(region string) *emr.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_emr_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached emr client")
-		return c.Data.(*emr.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := emr.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "emr", region, emr.NewFromConfig)
 }
 
 func (t *AwsConnection) Guardduty(region string) *guardduty.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_guardduty_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached guardduty client")
-		return c.Data.(*guardduty.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := guardduty.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "guardduty", region, guardduty.NewFromConfig)
 }
 
 func (t *AwsConnection) Detective(region string) *detective.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_detective_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached detective client")
-		return c.Data.(*detective.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := detective.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "detective", region, detective.NewFromConfig)
 }
 
 func (t *AwsConnection) Secretsmanager(region string) *secretsmanager.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_secretsmanager_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached secretsmanager client")
-		return c.Data.(*secretsmanager.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := secretsmanager.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "secretsmanager", region, secretsmanager.NewFromConfig)
 }
 
 func (t *AwsConnection) Securityhub(region string) *securityhub.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_securityhub_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached securityhub client")
-		return c.Data.(*securityhub.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := securityhub.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "securityhub", region, securityhub.NewFromConfig)
 }
 
 func (t *AwsConnection) Shield(region string) *shield.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_shield_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached shield client")
-		return c.Data.(*shield.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := shield.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "shield", region, shield.NewFromConfig)
 }
 
 func (t *AwsConnection) Fms(region string) *fms.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_fms_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached fms client")
-		return c.Data.(*fms.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := fms.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "fms", region, fms.NewFromConfig)
 }
 
 func (t *AwsConnection) NetworkFirewall(region string) *networkfirewall.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_networkfirewall_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached networkfirewall client")
-		return c.Data.(*networkfirewall.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := networkfirewall.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "networkfirewall", region, networkfirewall.NewFromConfig)
 }
 
 func (t *AwsConnection) Eks(region string) *eks.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_eks_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached eks client")
-		return c.Data.(*eks.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := eks.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "eks", region, eks.NewFromConfig)
 }
 
 func (t *AwsConnection) Account(region string) *account.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_account_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached account client")
-		return c.Data.(*account.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := account.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "account", region, account.NewFromConfig)
 }
 
 func (t *AwsConnection) WorkDocs(region string) *workdocs.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_workdocs_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached workdocs client")
-		return c.Data.(*workdocs.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := workdocs.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "workdocs", region, workdocs.NewFromConfig)
 }
 
 func (t *AwsConnection) Workspaces(region string) *workspaces.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_workspaces_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached workspaces client")
-		return c.Data.(*workspaces.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := workspaces.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "workspaces", region, workspaces.NewFromConfig)
 }
 
 func (t *AwsConnection) WorkspacesWeb(region string) *workspacesweb.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_workspacesweb_" + region
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached workspacesweb client")
-		return c.Data.(*workspacesweb.Client)
-	}
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := workspacesweb.NewFromConfig(cfg)
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "workspacesweb", region, workspacesweb.NewFromConfig)
 }
 
 func (t *AwsConnection) STS(region string) *sts.Client {
-	// if no region value is sent in, use the configured region
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_sts_" + region
-
-	// check for cached client and return it if it exists
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached sts client")
-		return c.Data.(*sts.Client)
-	}
-
-	// create the client
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := sts.NewFromConfig(cfg)
-
-	// cache it
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "sts", region, sts.NewFromConfig)
 }
 
 func (t *AwsConnection) Glue(region string) *glue.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_glue_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached glue client")
-		return c.Data.(*glue.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := glue.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "glue", region, glue.NewFromConfig)
 }
 
 func (t *AwsConnection) Route53Domains(region string) *route53domains.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_route53domains_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached route53domains client")
-		return c.Data.(*route53domains.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := route53domains.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "route53domains", region, route53domains.NewFromConfig)
 }
 
 func (t *AwsConnection) Route53Resolver(region string) *route53resolver.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_route53resolver_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached route53resolver client")
-		return c.Data.(*route53resolver.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := route53resolver.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "route53resolver", region, route53resolver.NewFromConfig)
 }
 
 func (t *AwsConnection) CognitoIdentity(region string) *cognitoidentity.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_cognitoidentity_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached cognitoidentity client")
-		return c.Data.(*cognitoidentity.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := cognitoidentity.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "cognitoidentity", region, cognitoidentity.NewFromConfig)
 }
 
 func (t *AwsConnection) CognitoIdentityProvider(region string) *cognitoidentityprovider.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_cognitoidentityprovider_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached cognitoidentityprovider client")
-		return c.Data.(*cognitoidentityprovider.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := cognitoidentityprovider.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "cognitoidentityprovider", region, cognitoidentityprovider.NewFromConfig)
 }
 
 func (t *AwsConnection) DocumentDB(region string) *docdb.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_docdb_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached docdb client")
-		return c.Data.(*docdb.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := docdb.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "docdb", region, docdb.NewFromConfig)
 }
 
 func (t *AwsConnection) DocumentDBElastic(region string) *docdbelastic.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_docdbelastic_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached docdbelastic client")
-		return c.Data.(*docdbelastic.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := docdbelastic.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "docdbelastic", region, docdbelastic.NewFromConfig)
 }
 
 func (t *AwsConnection) ElasticBeanstalk(region string) *elasticbeanstalk.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_elasticbeanstalk_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached elasticbeanstalk client")
-		return c.Data.(*elasticbeanstalk.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := elasticbeanstalk.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "elasticbeanstalk", region, elasticbeanstalk.NewFromConfig)
 }
 
 func (t *AwsConnection) Batch(region string) *batch.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_batch_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached batch client")
-		return c.Data.(*batch.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := batch.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "batch", region, batch.NewFromConfig)
 }
 
 func (t *AwsConnection) CloudFormation(region string) *cloudformation.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_cloudformation_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached cloudformation client")
-		return c.Data.(*cloudformation.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := cloudformation.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "cloudformation", region, cloudformation.NewFromConfig)
 }
 
 func (t *AwsConnection) Lightsail(region string) *lightsail.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_lightsail_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached lightsail client")
-		return c.Data.(*lightsail.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := lightsail.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "lightsail", region, lightsail.NewFromConfig)
 }
 
 func (t *AwsConnection) Pipes(region string) *pipes.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_pipes_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached pipes client")
-		return c.Data.(*pipes.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := pipes.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "pipes", region, pipes.NewFromConfig)
 }
 
 func (t *AwsConnection) Scheduler(region string) *scheduler.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_scheduler_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached scheduler client")
-		return c.Data.(*scheduler.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := scheduler.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "scheduler", region, scheduler.NewFromConfig)
 }
 
 func (t *AwsConnection) Keyspaces(region string) *keyspaces.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_keyspaces_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached keyspaces client")
-		return c.Data.(*keyspaces.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := keyspaces.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "keyspaces", region, keyspaces.NewFromConfig)
 }
 
 func (t *AwsConnection) Sfn(region string) *sfn.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_sfn_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached sfn client")
-		return c.Data.(*sfn.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := sfn.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "sfn", region, sfn.NewFromConfig)
 }
 
 func (t *AwsConnection) Ram(region string) *ram.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_ram_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached ram client")
-		return c.Data.(*ram.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := ram.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "ram", region, ram.NewFromConfig)
 }
 
 func (t *AwsConnection) Transfer(region string) *transfer.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_transfer_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached transfer client")
-		return c.Data.(*transfer.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := transfer.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "transfer", region, transfer.NewFromConfig)
 }
 
 func (t *AwsConnection) DataSync(region string) *datasync.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_datasync_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached datasync client")
-		return c.Data.(*datasync.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := datasync.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "datasync", region, datasync.NewFromConfig)
 }
 
 func (t *AwsConnection) AppFlow(region string) *appflow.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_appflow_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached appflow client")
-		return c.Data.(*appflow.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := appflow.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "appflow", region, appflow.NewFromConfig)
 }
 
 func (t *AwsConnection) AppMesh(region string) *appmesh.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_appmesh_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached appmesh client")
-		return c.Data.(*appmesh.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := appmesh.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "appmesh", region, appmesh.NewFromConfig)
 }
 
 func (t *AwsConnection) SsoAdmin(region string) *ssoadmin.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_ssoadmin_" + region
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached ssoadmin client")
-		return c.Data.(*ssoadmin.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := ssoadmin.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "ssoadmin", region, ssoadmin.NewFromConfig)
 }
 
 func (t *AwsConnection) IdentityStore(region string) *identitystore.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_identitystore_" + region
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached identitystore client")
-		return c.Data.(*identitystore.Client)
-	}
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := identitystore.NewFromConfig(cfg)
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "identitystore", region, identitystore.NewFromConfig)
 }
 
 func (t *AwsConnection) Acmpca(region string) *acmpca.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_acmpca_" + region
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached acmpca client")
-		return c.Data.(*acmpca.Client)
-	}
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := acmpca.NewFromConfig(cfg)
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "acmpca", region, acmpca.NewFromConfig)
 }
 
 func (t *AwsConnection) Bedrock(region string) *bedrock.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_bedrock_" + region
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached bedrock client")
-		return c.Data.(*bedrock.Client)
-	}
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := bedrock.NewFromConfig(cfg)
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "bedrock", region, bedrock.NewFromConfig)
 }
 
 func (t *AwsConnection) BedrockAgent(region string) *bedrockagent.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_bedrockagent_" + region
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached bedrockagent client")
-		return c.Data.(*bedrockagent.Client)
-	}
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := bedrockagent.NewFromConfig(cfg)
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "bedrockagent", region, bedrockagent.NewFromConfig)
 }
 
 func (t *AwsConnection) QBusiness(region string) *qbusiness.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_qbusiness_" + region
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached qbusiness client")
-		return c.Data.(*qbusiness.Client)
-	}
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := qbusiness.NewFromConfig(cfg)
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "qbusiness", region, qbusiness.NewFromConfig)
 }
 
 func (t *AwsConnection) BedrockAgentCoreControl(region string) *bedrockagentcorecontrol.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_bedrockagentcorecontrol_" + region
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached bedrockagentcorecontrol client")
-		return c.Data.(*bedrockagentcorecontrol.Client)
-	}
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := bedrockagentcorecontrol.NewFromConfig(cfg)
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "bedrockagentcorecontrol", region, bedrockagentcorecontrol.NewFromConfig)
 }
 
 func (t *AwsConnection) Controltower(region string) *controltower.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_controltower_" + region
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached controltower client")
-		return c.Data.(*controltower.Client)
-	}
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := controltower.NewFromConfig(cfg)
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "controltower", region, controltower.NewFromConfig)
 }
 
 func (t *AwsConnection) Securitylake(region string) *securitylake.Client {
-	if len(region) == 0 {
-		region = t.cfg.Region
-	}
-	cacheVal := "_securitylake_" + region
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached securitylake client")
-		return c.Data.(*securitylake.Client)
-	}
-	cfg := t.cfg.Copy()
-	cfg.Region = region
-	client := securitylake.NewFromConfig(cfg)
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return regionalClient(t, "securitylake", region, securitylake.NewFromConfig)
 }
 
-// CostExplorer returns a Cost Explorer client. Cost Explorer is a global
-// service whose endpoint lives only in us-east-1, so the region is pinned.
 func (t *AwsConnection) CostExplorer() *costexplorer.Client {
-	cacheVal := "_costexplorer_"
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached costexplorer client")
-		return c.Data.(*costexplorer.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = "us-east-1"
-	client := costexplorer.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return globalClient(t, "costexplorer", "us-east-1", costexplorer.NewFromConfig)
 }
 
-// Budgets returns an AWS Budgets client. Budgets is a global service whose
-// endpoint lives only in us-east-1, so the region is pinned.
 func (t *AwsConnection) Budgets() *budgets.Client {
-	cacheVal := "_budgets_"
-
-	c, ok := t.clientcache.Load(cacheVal)
-	if ok {
-		log.Debug().Msg("use cached budgets client")
-		return c.Data.(*budgets.Client)
-	}
-
-	cfg := t.cfg.Copy()
-	cfg.Region = "us-east-1"
-	client := budgets.NewFromConfig(cfg)
-
-	t.clientcache.Store(cacheVal, &CacheEntry{Data: client})
-	return client
+	return globalClient(t, "budgets", "us-east-1", budgets.NewFromConfig)
 }

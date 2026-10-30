@@ -1,0 +1,18 @@
+name: Update pinned versions
+
+on:
+  schedule:
+    - cron: "22 8 * * 1" # every monday
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  update-versions:
+    uses: mondoohq/actions/.github/workflows/update-pinned-versions.yml@c38cfdf99da709760f58ff35aa5608688657f2f7 # main
+    permissions:
+      contents: write
+      pull-requests: write
+    secrets:
+      ssh-key: ${{ secrets.CNQUERY_DEPLOY_KEY_PRIV }}

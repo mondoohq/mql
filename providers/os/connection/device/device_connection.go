@@ -11,18 +11,18 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/device/linux"
-	"go.mondoo.com/mql/v13/providers/os/connection/device/windows"
-	"go.mondoo.com/mql/v13/providers/os/connection/snapshot"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/device/linux"
+	"go.mondoo.com/mql/providers/os/connection/device/windows"
+	"go.mondoo.com/mql/providers/os/connection/snapshot"
+	"go.mondoo.com/mql/utils/stringx"
 
-	"go.mondoo.com/mql/v13/providers/os/connection/fs"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/detector"
-	"go.mondoo.com/mql/v13/providers/os/id"
-	"go.mondoo.com/mql/v13/providers/os/id/ids"
+	"go.mondoo.com/mql/providers/os/connection/fs"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/detector"
+	"go.mondoo.com/mql/providers/os/id"
+	"go.mondoo.com/mql/providers/os/id/ids"
 )
 
 const (
@@ -62,8 +62,8 @@ func NewDeviceConnection(connId uint32, conf *inventory.Config, asset *inventory
 	// allow injecting platform ids into the device connection. we cannot always know the asset that's being scanned, e.g.
 	// if we can scan an azure VM's disk we should be able to inject the platform ids of the VM
 	if platformIDs, ok := conf.Options[PlatformIdInject]; ok {
-		platformIds := strings.Split(platformIDs, ",")
-		for _, id := range platformIds {
+		platformIds := strings.SplitSeq(platformIDs, ",")
+		for id := range platformIds {
 			if !stringx.Contains(asset.PlatformIds, id) {
 				log.Debug().Str("platform-id", id).Msg("device connection> injecting platform id")
 				asset.PlatformIds = append(asset.PlatformIds, id)
@@ -97,9 +97,7 @@ func NewDeviceConnection(connId uint32, conf *inventory.Config, asset *inventory
 	}
 	deviceConnection.keepMounted = conf.Options[KeepMounted] == "true"
 
-	if len(asset.IdDetector) == 0 {
-		asset.IdDetector = []string{ids.IdDetector_Hostname}
-	}
+	asset.IdDetector = ids.ExpandDefault(asset.IdDetector, []string{ids.IdDetector_Hostname})
 	if !stringx.Contains(asset.IdDetector, ids.IdDetector_MachineID) {
 		asset.IdDetector = append(asset.IdDetector, ids.IdDetector_MachineID)
 	}

@@ -4,12 +4,15 @@
 package generator
 
 import (
+	"strings"
 	"testing"
 
-	"go.mondoo.com/mql/v13/sbom"
+	"go.mondoo.com/mql/cli/reporter"
+	"go.mondoo.com/mql/sbom"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestSbomGeneration(t *testing.T) {
@@ -61,7 +64,7 @@ func TestSbomGeneration(t *testing.T) {
 		sboms := GenerateBom(report)
 
 		selectedBom := sboms[0]
-		assert.Equal(t, sbom.Status_STATUS_FAILED, selectedBom.Status)
+		assert.Equal(t, sbom.Status_STATUS_PARTIALLY_SUCCEEDED, selectedBom.Status)
 		assert.Contains(t, selectedBom.ErrorMessage, "failed to parse bom fields json data")
 		assert.Len(t, selectedBom.Packages, 2)
 
@@ -79,6 +82,7 @@ func TestSbomGeneration(t *testing.T) {
 				},
 			},
 			Purl:    "pkg:npm/npm@10.2.4",
+			BomRef:  "pkg:npm/npm@10.2.4",
 			Version: "10.2.4",
 		}, pkg)
 
@@ -96,6 +100,7 @@ func TestSbomGeneration(t *testing.T) {
 				},
 			},
 			Purl:    "pkg:pypi/pip@21.2.4",
+			BomRef:  "pkg:pypi/pip@21.2.4",
 			Version: "21.2.4",
 		}, pkg)
 	})
@@ -107,7 +112,7 @@ func TestSbomGeneration(t *testing.T) {
 		sboms := GenerateBom(report)
 
 		selectedBom := sboms[0]
-		assert.Equal(t, sbom.Status_STATUS_FAILED, selectedBom.Status)
+		assert.Equal(t, sbom.Status_STATUS_PARTIALLY_SUCCEEDED, selectedBom.Status)
 		assert.Contains(t, selectedBom.ErrorMessage, "failed to parse bom fields json data")
 		assert.Len(t, selectedBom.Packages, 2)
 
@@ -129,6 +134,7 @@ func TestSbomGeneration(t *testing.T) {
 				},
 			},
 			Purl:    "pkg:apk/alpine/apk-tools@1684120357%3A2.14.0-r5?arch=aarch64\u0026distro=alpine-3.19.0\u0026epoch=1684120357",
+			BomRef:  "pkg:apk/alpine/apk-tools@1684120357%3A2.14.0-r5?arch=aarch64\u0026distro=alpine-3.19.0\u0026epoch=1684120357",
 			Version: "1684120357:2.14.0-r5",
 		}, pkg)
 
@@ -146,6 +152,7 @@ func TestSbomGeneration(t *testing.T) {
 				},
 			},
 			Purl:    "pkg:pypi/pip@21.2.4",
+			BomRef:  "pkg:pypi/pip@21.2.4",
 			Version: "21.2.4",
 		}, pkg)
 	})
@@ -157,7 +164,7 @@ func TestSbomGeneration(t *testing.T) {
 		sboms := GenerateBom(report)
 
 		selectedBom := sboms[0]
-		assert.Equal(t, sbom.Status_STATUS_FAILED, selectedBom.Status)
+		assert.Equal(t, sbom.Status_STATUS_PARTIALLY_SUCCEEDED, selectedBom.Status)
 		assert.Contains(t, selectedBom.ErrorMessage, "failed to parse bom fields json data")
 		assert.Len(t, selectedBom.Packages, 2)
 
@@ -179,6 +186,7 @@ func TestSbomGeneration(t *testing.T) {
 				},
 			},
 			Purl:    "pkg:apk/alpine/apk-tools@1684120357%3A2.14.0-r5?arch=aarch64\u0026distro=alpine-3.19.0\u0026epoch=1684120357",
+			BomRef:  "pkg:apk/alpine/apk-tools@1684120357%3A2.14.0-r5?arch=aarch64\u0026distro=alpine-3.19.0\u0026epoch=1684120357",
 			Version: "1684120357:2.14.0-r5",
 		}, pkg)
 
@@ -196,8 +204,112 @@ func TestSbomGeneration(t *testing.T) {
 				},
 			},
 			Purl:    "pkg:npm/npm@10.2.4",
+			BomRef:  "pkg:npm/npm@10.2.4",
 			Version: "10.2.4",
 		}, pkg)
+	})
+
+	// STATUS_FAILED semantics are unchanged by the PARTIALLY_SUCCEEDED work
+	// above: an asset with no data points at all produced nothing to build a
+	// BOM from, which is still a failure, not a partial result.
+	t.Run("no data points at all is still STATUS_FAILED", func(t *testing.T) {
+		report := &reporter.Report{
+			Assets: map[string]*reporter.Asset{
+				"asset-1": {Mrn: "asset-1", Name: "no-data-asset"},
+			},
+			Data: map[string]*reporter.DataValues{},
+		}
+
+		sboms := GenerateBom(report)
+		require.Len(t, sboms, 1)
+		assert.Equal(t, sbom.Status_STATUS_FAILED, sboms[0].Status)
+		assert.Equal(t, "no data points found", sboms[0].ErrorMessage)
+		assert.Empty(t, sboms[0].Packages)
+	})
+
+	// Two data points that each fail to decode must both show up in
+	// ErrorMessage, not just whichever one happened to be handled last -- the
+	// previous implementation overwrote ErrorMessage per failing data point
+	// instead of accumulating. And since every data point that exists failed
+	// to decode, nothing usable was produced for this asset: STATUS_FAILED,
+	// not STATUS_PARTIALLY_SUCCEEDED with zero packages.
+	t.Run("all data points failing to decode is STATUS_FAILED and ErrorMessage accumulates", func(t *testing.T) {
+		report := &reporter.Report{
+			Assets: map[string]*reporter.Asset{
+				"asset-1": {Mrn: "asset-1", Name: "multi-error-asset"},
+			},
+			Data: map[string]*reporter.DataValues{
+				"asset-1": {
+					Values: map[string]*reporter.DataValue{
+						"query-a": {Content: structpb.NewStringValue("the 'os' provider crashed: connection refused")},
+						"query-b": {Content: structpb.NewStringValue("the 'os' provider crashed: connection refused")},
+					},
+				},
+			},
+		}
+
+		sboms := GenerateBom(report)
+		require.Len(t, sboms, 1)
+		selectedBom := sboms[0]
+		assert.Equal(t, sbom.Status_STATUS_FAILED, selectedBom.Status)
+		assert.Empty(t, selectedBom.Packages)
+		assert.Contains(t, selectedBom.ErrorMessage, "query-a: ")
+		assert.Contains(t, selectedBom.ErrorMessage, "query-b: ")
+		// Two independent messages, not one overwriting the other.
+		assert.Equal(t, 2, strings.Count(selectedBom.ErrorMessage, "failed to parse bom fields json data"))
+	})
+
+	// A data point that decodes cleanly but legitimately yields zero
+	// packages (e.g. it only carries asset info) sits alongside one that
+	// fails to decode. "Nothing usable" must be judged by decode success,
+	// not by the resulting package count -- so this is a partial success,
+	// not a failure, even though bom.Packages ends up empty.
+	t.Run("one decoded data point with no packages plus one failure is PARTIALLY_SUCCEEDED", func(t *testing.T) {
+		// A real successful data point arrives as a structured value (what
+		// protojson renders as a JSON object), not a JSON-encoded string --
+		// the failure fixtures above use NewStringValue specifically because
+		// unmarshaling a JSON string into the BomFields struct is how they
+		// induce a decode failure. Building this one from a Go map instead
+		// makes it decode successfully, the way real query data does.
+		assetOnly, err := structpb.NewValue(map[string]any{
+			"asset": map[string]any{"name": "asset-only-asset"},
+		})
+		require.NoError(t, err)
+
+		report := &reporter.Report{
+			Assets: map[string]*reporter.Asset{
+				"asset-1": {Mrn: "asset-1", Name: "asset-only-asset"},
+			},
+			Data: map[string]*reporter.DataValues{
+				"asset-1": {
+					Values: map[string]*reporter.DataValue{
+						"query-asset": {Content: assetOnly},
+						"query-bad":   {Content: structpb.NewStringValue("the 'os' provider crashed: connection refused")},
+					},
+				},
+			},
+		}
+
+		sboms := GenerateBom(report)
+		require.Len(t, sboms, 1)
+		selectedBom := sboms[0]
+		assert.Equal(t, sbom.Status_STATUS_PARTIALLY_SUCCEEDED, selectedBom.Status)
+		assert.Empty(t, selectedBom.Packages)
+		assert.Contains(t, selectedBom.ErrorMessage, "query-bad: ")
+	})
+
+	// Baseline: when nothing fails to decode, status stays SUCCEEDED and
+	// carries no ErrorMessage -- the FAILED/PARTIALLY_SUCCEEDED work above
+	// doesn't touch this path.
+	t.Run("no decode failures leaves status SUCCEEDED", func(t *testing.T) {
+		report, err := LoadReport("../testdata/alpine.json")
+		require.NoError(t, err)
+
+		sboms := GenerateBom(report)
+		require.NotEmpty(t, sboms)
+		assert.Equal(t, sbom.Status_STATUS_SUCCEEDED, sboms[0].Status)
+		assert.Empty(t, sboms[0].ErrorMessage)
+		assert.NotEmpty(t, sboms[0].Packages)
 	})
 }
 

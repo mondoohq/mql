@@ -6,10 +6,10 @@ package resources
 import (
 	"strconv"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/portainer/connection"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/portainer/connection"
+	"go.mondoo.com/mql/utils/stringx"
 )
 
 // Discover expands a Portainer instance connection into one child asset per
@@ -33,7 +33,7 @@ func Discover(runtime *plugin.Runtime) (*inventory.Inventory, error) {
 		return nil, err
 	}
 
-	instanceID := conn.InstanceID()
+	instanceID := conn.InstanceKey()
 	assets := []*inventory.Asset{}
 	for _, e := range endpoints {
 		if !matchesEnvironmentTargets(targets, e.Type) {
@@ -41,6 +41,12 @@ func Discover(runtime *plugin.Runtime) (*inventory.Inventory, error) {
 		}
 
 		cfg := conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(conn.ID()))
+		// Clone preserves a nil options map, which an asset defined in an
+		// inventory file without an options block carries; writing into it
+		// would panic.
+		if cfg.Options == nil {
+			cfg.Options = map[string]string{}
+		}
 		cfg.Options[connection.OptionEnvironmentID] = strconv.FormatInt(e.ID, 10)
 		cfg.Options[connection.OptionEnvironmentType] = strconv.FormatInt(e.Type, 10)
 

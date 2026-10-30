@@ -9,10 +9,10 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/types"
 	"gopkg.in/yaml.v3"
 )
 
@@ -31,6 +31,15 @@ func splitYAMLDocuments(content string) []string {
 
 type mqlHelmResourceInternal struct {
 	cacheTemplateKey string
+	// ownerChart/ownerTemplate wire the resource back to the helm.template it
+	// was rendered from. Exactly one is set by the caller of parseK8sResources:
+	// ownerTemplate when the resource comes from helm.template.resources (the
+	// template is already in hand), ownerChart when it comes from the chart-wide
+	// helm.chart.resources/hooks path (the template is resolved lazily through
+	// the chart so template() returns the fully-populated resource rather than a
+	// bare-__id husk). Both stay nil for crds/, which have no backing template.
+	ownerChart    *mqlHelmChart
+	ownerTemplate *mqlHelmTemplate
 }
 
 // parseK8sResources parses rendered YAML content into Kubernetes resource
@@ -79,18 +88,8 @@ func parseK8sResources(runtime *plugin.Runtime, templateKey string, content stri
 			}
 		}
 
-		labelsStr := make(map[string]any, len(labels))
-		for k, v := range labels {
-			if s, ok := v.(string); ok {
-				labelsStr[k] = s
-			}
-		}
-		annotationsStr := make(map[string]any, len(annotations))
-		for k, v := range annotations {
-			if s, ok := v.(string); ok {
-				annotationsStr[k] = s
-			}
-		}
+		labelsStr := scalarStringMap(labels)
+		annotationsStr := scalarStringMap(annotations)
 
 		manifest, err := convert.JsonToDict(obj)
 		if err != nil {
@@ -157,6 +156,45 @@ func parseHookAnnotations(annotations map[string]any) (isHook bool, hookTypes []
 	return isHook, hookTypes, hookWeight, hookDeletePolicies
 }
 
+// scalarStringMap renders a rendered-manifest labels/annotations block as a
+// string->string map. Kubernetes label and annotation values are always
+// strings, but a rendered template can emit an unquoted scalar (e.g.
+// `version: 1.0` unmarshals to a float, `enabled: true` to a bool). Formatting
+// those to their string form — rather than dropping them, as the previous
+// string-only type assertion did — keeps helm.resource.labels/annotations
+// consistent with the same keys visible under helm.resource.manifest.
+// Non-scalar values (nested maps/slices) can't be valid label values and are
+// skipped.
+func scalarStringMap(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		if s, ok := scalarToString(v); ok {
+			out[k] = s
+		}
+	}
+	return out
+}
+
+// scalarToString formats a YAML scalar (as produced by yaml.v3 into any) to
+// the string Kubernetes would store. It reports false for non-scalar or nil
+// values so the caller can skip them.
+func scalarToString(v any) (string, bool) {
+	switch t := v.(type) {
+	case string:
+		return t, true
+	case bool:
+		return strconv.FormatBool(t), true
+	case int:
+		return strconv.Itoa(t), true
+	case int64:
+		return strconv.FormatInt(t, 10), true
+	case float64:
+		return strconv.FormatFloat(t, 'f', -1, 64), true
+	default:
+		return "", false
+	}
+}
+
 // splitCSV splits a comma-separated annotation value into trimmed,
 // non-empty entries.
 func splitCSV(s string) []any {
@@ -170,15 +208,37 @@ func splitCSV(s string) []any {
 	return out
 }
 
+// template links a rendered resource back to the helm.template it came from.
+//
+// It deliberately does NOT reconstruct the template from its __id via
+// NewResource: helm.template has no init, so NewResource with only "__id"
+// would fabricate a husk whose name/raw/requiresCluster are unset — and since
+// that husk's __id is byte-identical to the real template's, it would poison
+// the shared resource cache and make helm.chart.templates return husks too.
+// Instead we return the already-materialized template: directly when the
+// resource was parsed from a template, or by resolving it through the owning
+// chart's templates() (which builds the real, fully-populated instances).
 func (r *mqlHelmResource) template() (*mqlHelmTemplate, error) {
-	// cacheTemplateKey already uses ":" separator matching the template __id format
-	res, err := NewResource(r.MqlRuntime, "helm.template", map[string]*llx.RawData{
-		"__id": llx.StringData("helm.template:" + r.cacheTemplateKey),
-	})
-	if err != nil {
-		log.Warn().Err(err).Str("templateKey", r.cacheTemplateKey).Msg("failed to resolve helm template for resource")
-		r.Template.State = plugin.StateIsNull | plugin.StateIsSet
-		return nil, nil
+	if r.ownerTemplate != nil {
+		return r.ownerTemplate, nil
 	}
-	return res.(*mqlHelmTemplate), nil
+	if r.ownerChart != nil {
+		templates, err := r.ownerChart.templates()
+		if err != nil {
+			log.Warn().Err(err).Str("templateKey", r.cacheTemplateKey).Msg("failed to resolve helm template for resource")
+			r.Template.State = plugin.StateIsNull | plugin.StateIsSet
+			return nil, nil
+		}
+		// cacheTemplateKey already uses the ":" separator of the template __id.
+		want := "helm.template:" + r.cacheTemplateKey
+		for _, t := range templates {
+			if mqlT, ok := t.(*mqlHelmTemplate); ok && mqlT.__id == want {
+				return mqlT, nil
+			}
+		}
+	}
+	// No backing template (e.g. a resource from crds/, or a resource created
+	// without an owner). Report null rather than a husk.
+	r.Template.State = plugin.StateIsNull | plugin.StateIsSet
+	return nil, nil
 }

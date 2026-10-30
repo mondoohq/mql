@@ -28,7 +28,7 @@ type SecurityNotificationEmails struct {
 }
 
 // GetSecurityNotificationEmails retrieves the security configuration
-func (m *ApiExtension) GetSecurityNotificationEmails(ctx context.Context, orgId string, token string, client *http.Client) (*SecurityNotificationEmails, error) {
+func (m *ApiExtension) GetSecurityNotificationEmails(ctx context.Context, orgId string, client *http.Client) (*SecurityNotificationEmails, error) {
 
 	// we need to split the orgId into orgName and domain because this API uses a different domain
 	orgName, domain, found := strings.Cut(orgId, ".")
@@ -36,12 +36,17 @@ func (m *ApiExtension) GetSecurityNotificationEmails(ctx context.Context, orgId 
 		return nil, errors.New("cound not determine orgName and domain from orgId " + orgId)
 	}
 	url := fmt.Sprintf("https://%s-admin.%s/api/internal/org/settings/security-notification-settings", orgName, domain)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	// use okta SSWS authentication
-	req.Header.Add("Authorization", "SSWS "+token)
+	// Authorize through the connection rather than assuming an API token, so
+	// this carries whichever credential the org authenticated with.
+	if m.Authorize != nil {
+		if err := m.Authorize(req); err != nil {
+			return nil, err
+		}
+	}
 	req.Header.Add("Content-Type", "application/json")
 	res, err := client.Do(req)
 	if err != nil {

@@ -7,14 +7,21 @@ import (
 	"bufio"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
-
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
+)
+
+// Compiled once: these are matched against every line of `ip addr` output.
+var (
+	interfaceRegex = regexp.MustCompile(`^\d+: ([^:]+): <([^>]+)> mtu (\d+)`)
+	macRegex       = regexp.MustCompile(`link/ether ([0-9a-fA-F:]+) `)
+	ipRegex        = regexp.MustCompile(`inet ([0-9\.]+)/([0-9]+)`)
+	ip6Regex       = regexp.MustCompile(`inet6 ([0-9a-fA-F:]+)/([0-9]+) scope (global|link|host)`)
 )
 
 // detectLinuxInterfaces detects network interfaces on Linux.
@@ -28,10 +35,12 @@ func (n *neti) detectLinuxInterfaces() ([]Interface, error) {
 		n.getLinuxCmdInterfaces,
 		n.getLinuxSysfsInterfaces,
 	}
-	for _, detectFn := range detectors {
+	cmdDetected := false
+	for i, detectFn := range detectors {
 		detectedInterfaces, err := detectFn()
 		if err == nil && len(detectedInterfaces) != 0 {
 			interfaces = AddOrUpdateInterfaces(interfaces, detectedInterfaces)
+			cmdDetected = i == 0
 			break
 		}
 		log.Debug().Err(err).
@@ -41,9 +50,55 @@ func (n *neti) detectLinuxInterfaces() ([]Interface, error) {
 
 	// List of enrichment functions that collect additional information that we
 	// couldn't gather in the detectors.
-	enrichments := []func() ([]Interface, error){
+	enrichments := []func() ([]Interface, error){}
+
+	// Addresses are the one thing the sysfs detector cannot answer, because the
+	// kernel does not publish them under /sys/class/net. Where iproute2 is not
+	// installed that left every interface with none, and network.ipv4,
+	// network.ipv6, network.primaryIPv4 and ipAddress empty with it. procfs has
+	// them on every Linux kernel.
+	//
+	// The test is whether anything was found rather than which detector ran:
+	// `ip addr` reports at least the loopback address on any running host, so
+	// no addresses at all means the walk that cannot see them is what answered.
+	// It runs before the gateway enrichments so those have addresses to attach
+	// a gateway to.
+	if interfacesHaveNoIPs(interfaces) {
+		known := interfaceNames(interfaces)
+		enrichments = append(enrichments, func() ([]Interface, error) {
+			return n.getLinuxProcfsIPs(known)
+		})
+	}
+
+	enrichments = append(enrichments,
 		n.getLinuxIPv4GatewayDetails,
 		n.getLinuxIPv6GatewayDetails,
+	)
+
+	// `ip addr` prints PROMISC and ALLMULTI only when they were requested
+	// with `ip link set`. A packet sniffer (tcpdump) or an Open vSwitch port
+	// raises the kernel's counter without that, and the interface receives
+	// every frame all the same; the sysfs walk reads the kernel's flags and
+	// reports it. Add them to what the command detector found, so a PROMISC
+	// check doesn't depend on which detector ran.
+	if cmdDetected {
+		known := interfaceNames(interfaces)
+		enrichments = append(enrichments, func() ([]Interface, error) {
+			return n.getLinuxSysfsReceiveFlags(known)
+		})
+	}
+
+	// The sysfs detector already answers Virtual for every interface it walks,
+	// so the enrichment has something to add only when the command detector
+	// won. Asking anyway costs a second walk of /sys/class/net plus a few
+	// probes per interface, and over a remote connection each of those is a
+	// round trip.
+	//
+	// The test is whether any interface still lacks a verdict rather than
+	// which detector ran: linuxInterfaceVirtual can decline to answer for a
+	// single interface, and that one should still get its chance here.
+	if slices.ContainsFunc(interfaces, func(i Interface) bool { return i.Virtual == nil }) {
+		enrichments = append(enrichments, n.getLinuxSysfsVirtual)
 	}
 
 	for _, detectFn := range enrichments {
@@ -137,14 +192,33 @@ func (n *neti) getLinuxSysfsInterfaces() (interfaces []Interface, err error) {
 
 	for _, entry := range dirEntries {
 		ifaceName := entry.Name()
+
+		// /sys/class/net holds more than interfaces. The bonding driver keeps
+		// its control file bonding_masters there, and reporting it as an
+		// interface invents one with no mac, no mtu and no flags -- which it
+		// did on every distribution scanned without `ip` installed, and in the
+		// host namespace of a machine with the bonding module loaded.
+		//
+		// Filtering on IsDir cannot do this: these entries are symlinks, and
+		// over SFTP IsDir is false for all of them, which is what
+		// linux_sys_class_net_symlinks.toml exists to pin. So require a marker
+		// every real interface carries instead.
+		if !isLinuxNetworkInterface(n.connection.FileSystem(), ifaceName) {
+			log.Debug().Str("entry", ifaceName).
+				Msg("os.network.interface> skipping /sys/class/net entry that is not an interface")
+			continue
+		}
+
 		iinterface := Interface{Name: ifaceName}
 
-		// Read MAC Address
+		// Read MAC Address. `ip addr` reports one for Ethernet links only
+		// (link/ether); loopback, tunnels and the like have an address file
+		// too, all zeros or an IPv4 address, which is no MAC.
 		macAddress, err := afero.ReadFile(
 			n.connection.FileSystem(),
 			filepath.Join("/sys/class/net/", ifaceName, "address"),
 		)
-		if err == nil {
+		if err == nil && linuxInterfaceIsEther(n.connection.FileSystem(), ifaceName) {
 			iinterface.SetMAC(strings.TrimSpace(string(macAddress)))
 		}
 
@@ -157,22 +231,27 @@ func (n *neti) getLinuxSysfsInterfaces() (interfaces []Interface, err error) {
 			iinterface.MTU = parseInt(strings.TrimSpace(string(mtu)))
 		}
 
-		// Read device type
-		deviceType, err := afero.ReadFile(
-			n.connection.FileSystem(),
-			filepath.Join("/sys/class/net/", ifaceName, "device/devtype"),
-		)
-		if err == nil {
-			iinterface.Virtual = isVirtualDevice(string(deviceType))
-		}
+		iinterface.Virtual = linuxInterfaceVirtual(n.connection.FileSystem(), ifaceName)
 
 		// Read Flags
 		flags, err := afero.ReadFile(
 			n.connection.FileSystem(),
 			filepath.Join("/sys/class/net/", ifaceName, "flags"),
 		)
+		flagBits, flagsOK := int64(0), false
 		if err == nil {
-			iinterface.Flags = parseHexFlags(strings.TrimPrefix(string(flags), "0x"))
+			// sysfs values end in a newline, "0x1003\n"
+			flagBits, flagsOK = parseHexFlagBits(strings.TrimPrefix(strings.TrimSpace(string(flags)), "0x"))
+			iinterface.Flags = hexFlagNames(flagBits)
+		}
+
+		// The kernel reports carrier only on an interface that is up, and
+		// `ip` prints that as LOWER_UP; flags never carries it.
+		if carrier, err := afero.ReadFile(
+			n.connection.FileSystem(),
+			filepath.Join("/sys/class/net/", ifaceName, "carrier"),
+		); err == nil && strings.TrimSpace(string(carrier)) == "1" {
+			iinterface.Flags = insertLinuxFlag(iinterface.Flags, "LOWER_UP")
 		}
 
 		// Read Status
@@ -183,9 +262,16 @@ func (n *neti) getLinuxSysfsInterfaces() (interfaces []Interface, err error) {
 		if err == nil {
 			switch strings.TrimSpace(strings.ToLower(string(operstate))) {
 			case "up":
-				iinterface.Active = convert.ToPtr(true)
+				iinterface.Active = new(true)
 			case "down":
-				iinterface.Active = convert.ToPtr(false)
+				iinterface.Active = new(false)
+			case "unknown":
+				// Drivers that don't track carrier (loopback, tun/tap, vxlan,
+				// OVS internal ports) always read "unknown". `ip` reports them
+				// by the UP flag, and so does the command detector.
+				if flagsOK {
+					iinterface.Active = new(flagBits&linuxIffUp != 0)
+				}
 			}
 		}
 
@@ -203,33 +289,129 @@ func (n *neti) getLinuxSysfsInterfaces() (interfaces []Interface, err error) {
 	return
 }
 
-func parseHexFlags(hexStr string) []string {
-	flagsMap := map[int]string{
-		0x1:    "UP",
-		0x2:    "BROADCAST",
-		0x4:    "DEBUG",
-		0x8:    "LOOPBACK",
-		0x10:   "POINTOPOINT",
-		0x20:   "NOTRAILERS",
-		0x40:   "RUNNING",
-		0x80:   "NOARP",
-		0x100:  "PROMISC",
-		0x200:  "ALLMULTI",
-		0x400:  "MASTER",
-		0x800:  "SLAVE",
-		0x1000: "MULTICAST",
-		0x2000: "PORTSEL",
-		0x4000: "AUTOMEDIA",
-		0x8000: "DYNAMIC",
-	}
-	flagsInt, err := strconv.ParseInt(hexStr, 16, 32)
+// IFF_* bits in the interface flags.
+const (
+	linuxIffUp       = 0x1
+	linuxIffPromisc  = 0x100
+	linuxIffAllmulti = 0x200
+)
+
+// linuxArphrdEther is ARPHRD_ETHER, the /sys/class/net/<iface>/type of an
+// Ethernet link.
+const linuxArphrdEther = "1"
+
+// linuxInterfaceIsEther reports whether an interface is an Ethernet link, and
+// true when its type can't be read.
+func linuxInterfaceIsEther(fs afero.Fs, name string) bool {
+	typ, err := afero.ReadFile(fs, filepath.Join("/sys/class/net", name, "type"))
 	if err != nil {
-		return []string{}
+		return true
 	}
-	var flags []string
-	for bit, name := range flagsMap {
-		if int(flagsInt)&bit != 0 {
-			flags = append(flags, name)
+	return strings.TrimSpace(string(typ)) == linuxArphrdEther
+}
+
+// getLinuxSysfsReceiveFlags returns the PROMISC and ALLMULTI flags the
+// kernel has set on each named interface, from /sys/class/net/<iface>/flags,
+// as enrichments that add them to an interface's flags.
+func (n *neti) getLinuxSysfsReceiveFlags(names []string) ([]Interface, error) {
+	interfaces := []Interface{}
+	for _, name := range names {
+		// `ip addr` names a veth inside a container eth0@if104
+		base, _, _ := strings.Cut(name, "@")
+		raw, err := afero.ReadFile(n.connection.FileSystem(), filepath.Join("/sys/class/net", base, "flags"))
+		if err != nil {
+			continue
+		}
+		bits, ok := parseHexFlagBits(strings.TrimPrefix(strings.TrimSpace(string(raw)), "0x"))
+		if !ok {
+			continue
+		}
+		var add []string
+		if bits&linuxIffAllmulti != 0 {
+			add = append(add, "ALLMULTI")
+		}
+		if bits&linuxIffPromisc != 0 {
+			add = append(add, "PROMISC")
+		}
+		if len(add) == 0 {
+			continue
+		}
+		interfaces = append(interfaces, Interface{
+			Name: name,
+			enrichments: func(in *Interface) {
+				for _, flag := range add {
+					in.Flags = insertLinuxFlag(in.Flags, flag)
+				}
+			},
+		})
+	}
+	return interfaces, nil
+}
+
+// linuxFlagOrder is the order iproute2 prints interface flags in
+// (print_link_flags).
+var linuxFlagOrder = []string{
+	"NO-CARRIER", "LOOPBACK", "BROADCAST", "POINTOPOINT", "MULTICAST", "NOARP",
+	"ALLMULTI", "PROMISC", "NOTRAILERS", "DEBUG", "DYNAMIC", "AUTOMEDIA",
+	"PORTSEL", "MASTER", "SLAVE", "UP", "RUNNING", "LOWER_UP", "DORMANT", "ECHO",
+}
+
+// insertLinuxFlag adds flag to flags in the order `ip` prints them, unless
+// it is there already.
+func insertLinuxFlag(flags []string, flag string) []string {
+	if slices.Contains(flags, flag) {
+		return flags
+	}
+	rank := slices.Index(linuxFlagOrder, flag)
+	for i, f := range flags {
+		if slices.Index(linuxFlagOrder, f) > rank {
+			return slices.Insert(flags, i, flag)
+		}
+	}
+	return append(flags, flag)
+}
+
+// linuxIfFlags are the IFF_* bits /sys/class/net/<iface>/flags carries, in
+// the order `ip link` prints them (print_link_flags in iproute2), so the list
+// comes out the same on every scan.
+var linuxIfFlags = []struct {
+	bit  int64
+	name string
+}{
+	{0x8, "LOOPBACK"},
+	{0x2, "BROADCAST"},
+	{0x10, "POINTOPOINT"},
+	{0x1000, "MULTICAST"},
+	{0x80, "NOARP"},
+	{0x200, "ALLMULTI"},
+	{0x100, "PROMISC"},
+	{0x20, "NOTRAILERS"},
+	{0x4, "DEBUG"},
+	{0x8000, "DYNAMIC"},
+	{0x4000, "AUTOMEDIA"},
+	{0x2000, "PORTSEL"},
+	{0x400, "MASTER"},
+	{0x800, "SLAVE"},
+	{linuxIffUp, "UP"},
+	{0x40, "RUNNING"},
+}
+
+// parseHexFlagBits parses the hex value of /sys/class/net/<iface>/flags
+// without its 0x prefix.
+func parseHexFlagBits(hexStr string) (int64, bool) {
+	bits, err := strconv.ParseInt(hexStr, 16, 32)
+	if err != nil {
+		return 0, false
+	}
+	return bits, true
+}
+
+// hexFlagNames names the IFF_* bits set in bits.
+func hexFlagNames(bits int64) []string {
+	flags := []string{}
+	for _, f := range linuxIfFlags {
+		if bits&f.bit != 0 {
+			flags = append(flags, f.name)
 		}
 	}
 	return flags
@@ -246,12 +428,8 @@ func (n *neti) getLinuxCmdInterfaces() ([]Interface, error) {
 	}
 
 	var (
-		interfaces     = []Interface{}
-		scanner        = bufio.NewScanner(strings.NewReader(string(output)))
-		interfaceRegex = regexp.MustCompile(`^\d+: ([^:]+): <([^>]+)> mtu (\d+)`)
-		macRegex       = regexp.MustCompile(`link/ether ([0-9a-fA-F:]+) `)
-		ipRegex        = regexp.MustCompile(`inet ([0-9\.]+)/([0-9]+)`)
-		ip6Regex       = regexp.MustCompile(`inet6 ([0-9a-fA-F:]+)/([0-9]+) scope (global|link|host)`)
+		interfaces = []Interface{}
+		scanner    = bufio.NewScanner(strings.NewReader(string(output)))
 		// TODO @afiune we could add additional information to the interface struct like
 		//  * `altname` (alternative name)
 		//  * `metric` (priority or cost of a network interface)
@@ -271,13 +449,18 @@ func (n *neti) getLinuxCmdInterfaces() ([]Interface, error) {
 			mtu := parseInt(matches[3])
 			flags := strings.Split(matches[2], ",")
 			active := strings.Contains(matches[2], "UP")
-			virtual := strings.HasPrefix(matches[1], "veth") || strings.HasPrefix(matches[1], "virbr")
+			// Virtual is deliberately left unset. `ip addr` does not report
+			// it, and the name it prints does not imply it, so it is filled
+			// from sysfs by getLinuxSysfsVirtual below -- one source of truth
+			// for the field however the interfaces were discovered.
 			currentInterface = &Interface{
-				Name:        matches[1],
+				// iproute2 appends the link's parent or peer after "@"
+				// (eth0@if29 for a veth, eth0.100@eth0 for a VLAN,
+				// gre0@NONE), which is not part of the name
+				Name:        baseInterfaceName(matches[1]),
 				MTU:         mtu,
 				Flags:       flags,
 				Active:      &active,
-				Virtual:     &virtual,
 				IPAddresses: []IPAddress{},
 			}
 		} else if currentInterface != nil {
@@ -309,79 +492,158 @@ func (n *neti) getLinuxCmdInterfaces() ([]Interface, error) {
 	return interfaces, nil
 }
 
+// getLinuxSysfsVirtual reports which interfaces are virtual, for the
+// interfaces sysfs knows about.
+//
+// It runs as an enrichment rather than inside a detector because only one
+// detector runs -- `ip addr` wins where iproute2 is installed, the sysfs walk
+// answers otherwise -- and the field has to mean the same thing either way.
+// Before this, whether an interface was virtual depended on whether iproute2
+// happened to be installed on the host being scanned.
+func (n *neti) getLinuxSysfsVirtual() ([]Interface, error) {
+	dirEntries, err := afero.ReadDir(n.connection.FileSystem(), "/sys/class/net")
+	if err != nil {
+		return nil, err
+	}
+
+	interfaces := []Interface{}
+	for _, entry := range dirEntries {
+		name := entry.Name()
+		if !isLinuxNetworkInterface(n.connection.FileSystem(), name) {
+			continue
+		}
+		virtual := linuxInterfaceVirtual(n.connection.FileSystem(), name)
+		if virtual == nil {
+			continue
+		}
+		interfaces = append(interfaces, Interface{Name: name, Virtual: virtual})
+	}
+
+	log.Debug().Int("interfaces", len(interfaces)).
+		Msg("os.network.interface> read virtual from sysfs")
+	return interfaces, nil
+}
+
+// isLinuxNetworkInterface reports whether an entry of /sys/class/net is an
+// interface. Every interface carries an ifindex and an address; nothing else
+// the directory holds carries either, because nothing else is a directory.
+func isLinuxNetworkInterface(fs afero.Fs, name string) bool {
+	for _, marker := range []string{"ifindex", "address"} {
+		if ok, err := afero.Exists(fs, filepath.Join("/sys/class/net", name, marker)); err == nil && ok {
+			return true
+		}
+	}
+	return false
+}
+
+// linuxInterfaceVirtual reports whether an interface is synthesized by the
+// kernel rather than backed by hardware, reading the only source that knows.
+//
+// `ip addr` cannot answer it. The command detector used to guess from the name,
+// treating a veth or virbr prefix as virtual and everything else as physical,
+// which missed loopback, bridges, bonds, dummies, every tunnel, and a veth
+// renamed to eth0 -- which is what a veth is called inside a container, so the
+// guess was wrong for both interfaces of every container scanned.
+//
+// Two facts, in order. A devtype names a virtual kind outright, and some of
+// those still sit on a bus and so have a device link of their own (a Xen vif).
+// Where there is no devtype, the device link is the test: an interface backed
+// by hardware has one, and everything the kernel synthesizes does not. That
+// was checked both ways against sysfs on real systems -- lo, a container veth,
+// docker0, bond0 and dummy0 have no device link and resolve under
+// /sys/devices/virtual, while a virtio NIC has one and resolves under
+// /sys/devices/platform.
+func linuxInterfaceVirtual(fs afero.Fs, name string) *bool {
+	base := filepath.Join("/sys/class/net", name)
+
+	// TrimSpace matters: sysfs ends the value with a newline, so an untrimmed
+	// read matched no case at all and every devtype fell through to nil.
+	if devtype, err := afero.ReadFile(fs, filepath.Join(base, "device/devtype")); err == nil {
+		if virtual := isVirtualDevice(strings.TrimSpace(string(devtype))); virtual != nil {
+			return virtual
+		}
+	}
+
+	hasDevice, err := afero.Exists(fs, filepath.Join(base, "device"))
+	if err != nil {
+		return nil
+	}
+	return new(!hasDevice)
+}
+
 func isVirtualDevice(deviceType string) *bool {
 	switch deviceType {
 	// The device is a VIF (Xen virtual interface).
 	case "vif":
-		return convert.ToPtr(true)
+		return new(true)
 
 	// The device is a TUN (network layer) virtual network interface.
 	case "tun":
-		return convert.ToPtr(true)
+		return new(true)
 
 	// The device is a TAP (data link layer) virtual network interface.
 	case "tap":
-		return convert.ToPtr(true)
+		return new(true)
 
 	// The device is a MACVLAN virtual network interface.
 	case "macvlan":
-		return convert.ToPtr(true)
+		return new(true)
 
 	// The device is an IPVLan virtual network interface.
 	case "ipvlan":
-		return convert.ToPtr(true)
+		return new(true)
 
 	// The device is a Virtual Ethernet (veth) interface.
 	case "veth":
-		return convert.ToPtr(true)
+		return new(true)
 
 	// The device is a network bridge.
 	case "bridge":
-		return convert.ToPtr(true)
+		return new(true)
 
 	// The device is a bonded network interface (multiple NICs bonded together).
 	case "bond":
-		return convert.ToPtr(true)
+		return new(true)
 
 	// The device is a VXLAN virtual network tunnel interface.
 	case "vxlan":
-		return convert.ToPtr(true)
+		return new(true)
 
 	// The device is a GRE (Generic Routing Encapsulation) tunnel interface.
 	case "gre":
-		return convert.ToPtr(false)
+		return new(true)
 
 	// The device is a GRE TAP (Layer 2 GRE) tunnel interface.
 	case "gretap":
-		return convert.ToPtr(true)
+		return new(true)
 
 	// The device is an IPv6 GRE tunnel interface.
 	case "ip6gre":
-		return convert.ToPtr(false)
+		return new(true)
 
 	// The device is an IPv6 GRE TAP tunnel interface.
 	case "ip6gretap":
-		return convert.ToPtr(true)
+		return new(true)
 
 	// The device is an IPv6-in-IPv4 tunnel.
 	case "sit":
-		return convert.ToPtr(false)
+		return new(true)
 
 	// The device is an IPv4-in-IPv4 tunnel.
 	case "ipip":
-		return convert.ToPtr(false)
+		return new(true)
 
 	// The device is a WireGuard VPN interface.
 	case "wireguard":
-		return convert.ToPtr(true)
+		return new(true)
 
 	// The device is a Point-to-Point Protocol (PPP) interface.
 	case "ppp":
-		return convert.ToPtr(false)
+		return new(true)
 
 	// The device is an XFRM (IPsec transform) interface.
 	case "xfrm":
-		return convert.ToPtr(false)
+		return new(true)
 
 	}
 	return nil

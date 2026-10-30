@@ -1,19 +1,40 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/mikrotik"
-option go_package = "go.mondoo.com/mql/v13/providers/mikrotik/resources"
+option go_package = "go.mondoo.com/mql/providers/mikrotik/resources"
+option root = "mikrotik"
 
 // MikroTik RouterOS device
 //
-// Examine a MikroTik RouterOS device through the RouterOS API. The mikrotik
-// resource is the entry point: read the device identity, RouterOS version, and
-// RouterBOARD hardware through `system`, and enumerate the network interfaces,
-// bridges, VLANs, IP addresses, routes, address pools, DNS settings, firewall
-// and NAT rules, management services, DHCP servers and leases, discovered
-// neighbors, user accounts, and installed packages through the respective
-// collections.
-mikrotik {
+// Root of the MikroTik RouterOS device model, read through the RouterOS API.
+// The device identity, RouterOS version, and RouterBOARD hardware are
+// available through `system`, alongside collections for the network
+// interfaces, bridges, VLANs, IP addresses, routes, address pools, DNS
+// settings, DHCP servers and leases, discovered neighbors, user accounts, and
+// installed packages.
+//
+// The filtering posture covers both address families: the IPv4 filter, NAT,
+// mangle, and raw tables and their address lists, the IPv6 filter, NAT, and
+// address lists, connection tracking, and the service port helpers. The
+// management surface covers the services exposed over IP, the SSH server's
+// crypto settings, the certificate store behind every TLS service, the SNMP
+// communities, and the layer 2 and out-of-band paths that bypass IP filtering
+// entirely: neighbor discovery, the MAC server, RoMON, and IP Cloud. Beyond
+// that are the VPN servers the device terminates, the IPsec proposals,
+// profiles, peers, and identities behind every tunnel, the RADIUS clients and
+// AAA settings that decide where logins are actually authenticated, the
+// scheduled tasks and scripts that make configuration changes persist, the
+// logging rules and actions that decide whether there is an audit trail, the
+// RouterBOOT settings that decide whether physical access is enough to take
+// the device over, and the containers running third-party code on the router.
+//
+// No secret material is exposed anywhere in the model. Community strings,
+// pre-shared keys, shared secrets, and private keys are reported as presence
+// or as derived booleans only.
+mikrotik @root {
   // System identity, RouterOS version, and RouterBOARD hardware
   system() mikrotik.system
   // Installed software packages
@@ -57,17 +78,83 @@ mikrotik {
   // Local user accounts
   users() []mikrotik.user
   // User permission groups
-  userGroups() []mikrotik.user.group
+  userGroups() []mikrotik.userGroup
+  // IPv4 firewall mangle rules
+  mangleRules() []mikrotik.ip.firewall.mangle
+  // IPv4 firewall raw rules, evaluated before connection tracking
+  rawRules() []mikrotik.ip.firewall.raw
+  // IPv4 firewall address list entries
+  firewallAddressLists() []mikrotik.ip.firewall.addressList
+  // Connection tracking configuration and timeouts
+  connectionTracking() mikrotik.ip.firewall.connectionTracking
+  // Firewall connection helpers for protocols that need them
+  servicePorts() []mikrotik.ip.firewall.servicePort
+  // IPv6 firewall filter rules
+  ipv6FirewallRules() []mikrotik.ipv6.firewall.filter
+  // IPv6 firewall NAT rules
+  ipv6NatRules() []mikrotik.ipv6.firewall.nat
+  // IPv6 firewall address list entries
+  ipv6AddressLists() []mikrotik.ipv6.firewall.addressList
+  // SSH server crypto and login configuration
+  ssh() mikrotik.ssh
+  // Certificates held in the device certificate store
+  certificates() []mikrotik.certificate
+  // Scheduled tasks that run on a timer or at boot
+  schedulers() []mikrotik.system.scheduler
+  // Scripts stored on the device
+  scripts() []mikrotik.system.script
+  // RouterBOOT bootloader protection settings
+  routerboot() mikrotik.system.routerboot
+  // RouterOS update channel and the version available on it
+  packageUpdate() mikrotik.system.update
+  // L2TP server configuration
+  l2tpServer() mikrotik.interface.l2tpServer
+  // PPTP server configuration
+  pptpServer() mikrotik.interface.pptpServer
+  // SSTP server configuration
+  sstpServer() mikrotik.interface.sstpServer
+  // OpenVPN server configuration
+  ovpnServer() mikrotik.interface.ovpnServer
+  // IPsec proposals offered for phase 2 negotiation
+  ipsecProposals() []mikrotik.ip.ipsec.proposal
+  // IPsec profiles used for key exchange negotiation
+  ipsecProfiles() []mikrotik.ip.ipsec.profile
+  // IPsec peers the device negotiates with
+  ipsecPeers() []mikrotik.ip.ipsec.peer
+  // IPsec identities that authenticate peers
+  ipsecIdentities() []mikrotik.ip.ipsec.identity
+  // SNMP communities the device answers
+  snmpCommunities() []mikrotik.snmp.community
+  // Logging rules that route topics to actions
+  loggingRules() []mikrotik.system.logging.rule
+  // Logging actions that receive log entries
+  loggingActions() []mikrotik.system.logging.action
+  // Neighbor discovery protocol settings
+  discoverySettings() mikrotik.ip.neighbor.settings
+  // MAC-based management server settings
+  macServer() mikrotik.tool.macServer
+  // IP Cloud dynamic DNS configuration
+  cloud() mikrotik.ip.cloud
+  // RoMON layer 2 management configuration
+  romon() mikrotik.tool.romon
+  // Containers configured on the device
+  containers() []mikrotik.container
+  // Container subsystem configuration
+  containerConfig() mikrotik.container.config
+  // RADIUS clients the device authenticates against
+  radiusClients() []mikrotik.radius.client
+  // AAA settings that govern RADIUS use for device logins
+  userAaa() mikrotik.user.aaa
 }
 
 // MikroTik system information
 //
-// Examine the device identity, the running RouterOS version and its build
-// time, the RouterBOARD hardware model and serial number, firmware versions,
-// and runtime resources such as CPU, memory, storage, and uptime. The values
+// Device identity, the running RouterOS version and its build time, the
+// RouterBOARD hardware model and serial number, firmware versions, and
+// runtime resources such as CPU, memory, storage, and uptime. The values
 // are read from `/system/identity`, `/system/resource`, and
 // `/system/routerboard`.
-mikrotik.system @defaults("identity version boardName") {
+private mikrotik.system @defaults("identity version boardName") {
   // System identity name
   identity string
   // Running RouterOS version
@@ -128,9 +215,9 @@ mikrotik.system @defaults("identity version boardName") {
 
 // MikroTik software package
 //
-// Examine an installed RouterOS software package, as listed by
-// `/system/package/print`. The `name` field selects the package — for example
-// `mikrotik.packages.where(name == "security")` — and exposes its version,
+// Installed RouterOS software package, as listed by `/system/package/print`.
+// The `name` field selects the package, for example
+// `mikrotik.packages.where(name == "security")`, and exposes its version,
 // build time, and whether it is enabled.
 mikrotik.system.package @defaults("name version disabled") {
   // Package name
@@ -139,7 +226,10 @@ mikrotik.system.package @defaults("name version disabled") {
   version string
   // Build time of the package
   buildTime string
-  // Whether the package is scheduled for enable/disable on next reboot
+  // Operation scheduled to apply on next reboot
+  //
+  // Empty when no change is pending, otherwise the pending action such as
+  // enable, disable, or downgrade.
   scheduled string
   // Whether the package is disabled
   disabled bool
@@ -147,8 +237,8 @@ mikrotik.system.package @defaults("name version disabled") {
 
 // MikroTik system clock
 //
-// Examine the device clock, current date and time, and time zone
-// configuration, as read from `/system/clock`.
+// Device clock, current date and time, and time zone configuration, as read
+// from `/system/clock`.
 mikrotik.system.clock @defaults("time date timeZoneName") {
   // Current time of day on the device
   time string
@@ -166,9 +256,9 @@ mikrotik.system.clock @defaults("time date timeZoneName") {
 
 // MikroTik NTP client configuration
 //
-// Examine the Network Time Protocol client settings, as read from
-// `/system/ntp/client`: whether NTP synchronization is enabled, the configured
-// servers, and the current synchronization status.
+// Network Time Protocol client settings, as read from `/system/ntp/client`:
+// whether NTP synchronization is enabled, the configured servers, and the
+// current synchronization status.
 mikrotik.system.ntp.client @defaults("enabled status") {
   // Whether the NTP client is enabled
   enabled bool
@@ -186,10 +276,12 @@ mikrotik.system.ntp.client @defaults("enabled status") {
 
 // MikroTik SNMP configuration
 //
-// Examine the SNMP service settings, as read from `/snmp`: whether SNMP is
-// enabled, the configured contact and location strings, and the SNMP trap
-// configuration.
-mikrotik.snmp @defaults("enabled contact location") {
+// SNMP service settings read from `/snmp`, covering whether SNMP is enabled,
+// the configured contact and location strings, the engine ID, and the SNMP
+// trap configuration (community, protocol version, generators, and source
+// address). Useful for confirming that SNMP is disabled where it isn't needed
+// and that any enabled SNMP exposure is scoped and attributed.
+private mikrotik.snmp @defaults("enabled contact location") {
   // Whether the SNMP service is enabled
   enabled bool
   // Configured SNMP contact string
@@ -210,12 +302,12 @@ mikrotik.snmp @defaults("enabled contact location") {
 
 // MikroTik network interface
 //
-// Examine a single network interface configured on the device. The `name`
-// field selects the interface as it appears in `/interface/print` — for
-// example `mikrotik.interfaces.where(name == "ether1")` — and exposes the
-// interface type, MTU values, MAC address, traffic and error counters, and
-// running state. Use `addresses` and `ipv6Addresses` to reach the IP
-// assignments bound to this interface.
+// Single network interface configured on the device. The `name` field
+// selects the interface as it appears in `/interface/print`, for example
+// `mikrotik.interfaces.where(name == "ether1")`, and exposes the interface
+// type, MTU values, MAC address, traffic and error counters, and running
+// state. The `addresses` and `ipv6Addresses` fields hold the IP assignments
+// bound to this interface.
 mikrotik.interface @defaults("name type running") {
   // Interface name
   name string
@@ -275,9 +367,9 @@ mikrotik.interface @defaults("name type running") {
 
 // MikroTik bridge interface
 //
-// Examine a bridge interface, as listed by `/interface/bridge/print`. The
-// `name` field selects the bridge and exposes its spanning-tree protocol mode,
-// VLAN filtering and snooping settings, MTU values, and running state.
+// Bridge interface, as listed by `/interface/bridge/print`. The `name` field
+// selects the bridge and exposes its spanning-tree protocol mode, VLAN
+// filtering and snooping settings, MTU values, and running state.
 mikrotik.interface.bridge @defaults("name protocolMode vlanFiltering") {
   // Bridge name
   name string
@@ -317,10 +409,9 @@ mikrotik.interface.bridge @defaults("name protocolMode vlanFiltering") {
 
 // MikroTik VLAN interface
 //
-// Examine a VLAN interface, as listed by `/interface/vlan/print`. The `name`
-// field selects the VLAN and exposes its VLAN ID, the parent interface it runs
-// on, MTU values, and running state. Use `interface` to reach the parent
-// interface resource.
+// VLAN interface, as listed by `/interface/vlan/print`. The `name` field
+// selects the VLAN and exposes its VLAN ID (802.1Q tag), the parent interface
+// it runs on via `interface`, MTU values, and running state.
 mikrotik.interface.vlan @defaults("name vlanId running") {
   // VLAN interface name
   name string
@@ -346,12 +437,13 @@ mikrotik.interface.vlan @defaults("name vlanId running") {
 
 // MikroTik WiFi interface
 //
-// Examine a WiFi interface managed by the RouterOS 7 `wifi` subsystem (formerly
+// WiFi interface managed by the RouterOS 7 `wifi` subsystem (formerly
 // wifiwave2), as listed by `/interface/wifi/print`. The `name` field selects
 // the interface and exposes the effective SSID, mode, channel band, frequency,
-// and width, plus the accepted authentication types. Use `masterInterface` for
-// virtual interfaces. This collection is empty on older devices that still use
-// the legacy wireless package.
+// and width, plus the accepted authentication types. The `masterInterface`
+// field resolves the physical interface a virtual interface rides on. This
+// collection is empty on older devices that still use the legacy wireless
+// package.
 mikrotik.interface.wifi @defaults("name ssid channelBand disabled") {
   // WiFi interface name
   name string
@@ -385,10 +477,10 @@ mikrotik.interface.wifi @defaults("name ssid channelBand disabled") {
 
 // MikroTik IPv4 address assignment
 //
-// Examine an IPv4 address assigned to an interface, as listed by
+// IPv4 address assigned to an interface, as listed by
 // `/ip/address/print`. Exposes the address with its CIDR netmask, the network
 // address, and whether the assignment is disabled or was created dynamically.
-// Use `interface` to reach the interface the address is bound to.
+// The `interface` field resolves the interface the address is bound to.
 mikrotik.ip.address @defaults("address actualInterface disabled") {
   // IP address with CIDR netmask
   //
@@ -412,10 +504,11 @@ mikrotik.ip.address @defaults("address actualInterface disabled") {
 
 // MikroTik IPv6 address assignment
 //
-// Examine an IPv6 address assigned to an interface, as listed by
-// `/ipv6/address/print`. Exposes the address, the pool it was allocated from,
-// advertisement and EUI-64 settings, and whether the assignment is disabled,
-// dynamic, or link-local. Use `interface` to reach the bound interface.
+// IPv6 address bound to an interface, as listed by `/ipv6/address/print`.
+// Covers the address and prefix length, the pool it was allocated from, router
+// advertisement and EUI-64 generation settings, and whether the assignment is
+// disabled, dynamic, invalid, or link-local. The `interface` field resolves
+// the bound interface for auditing which links carry which addresses.
 mikrotik.ipv6.address @defaults("address actualInterface disabled") {
   // IPv6 address with prefix length
   address string
@@ -445,7 +538,7 @@ mikrotik.ipv6.address @defaults("address actualInterface disabled") {
 
 // MikroTik IPv4 route
 //
-// Examine an entry in the IPv4 routing table, as listed by `/ip/route/print`.
+// Entry in the IPv4 routing table, as listed by `/ip/route/print`.
 // Exposes the destination network, the gateway, the administrative distance
 // and scope, the routing table the route belongs to, and whether the route is
 // active, dynamic, static, connected, or disabled.
@@ -488,7 +581,7 @@ mikrotik.ip.route @defaults("dstAddress gateway active") {
 
 // MikroTik IP address pool
 //
-// Examine an IP address pool, as listed by `/ip/pool/print`. The `name` field
+// IP address pool, as listed by `/ip/pool/print`. The `name` field
 // selects the pool and exposes the address ranges it hands out and the pool to
 // continue from when exhausted.
 mikrotik.ip.pool @defaults("name ranges") {
@@ -502,7 +595,7 @@ mikrotik.ip.pool @defaults("name ranges") {
 
 // MikroTik DNS resolver configuration
 //
-// Examine the DNS resolver settings, as read from `/ip/dns`: the configured
+// DNS resolver settings, as read from `/ip/dns`: the configured
 // upstream servers, whether the device acts as a remote DNS resolver, DNS over
 // HTTPS settings, and cache configuration.
 mikrotik.ip.dns @defaults("servers allowRemoteRequests") {
@@ -532,9 +625,9 @@ mikrotik.ip.dns @defaults("servers allowRemoteRequests") {
 
 // MikroTik management service
 //
-// Examine a management service exposed by the device, as listed by
-// `/ip/service/print`. The `name` field selects the service — for example
-// `mikrotik.services.where(name == "telnet")` — and exposes the listening
+// Management service exposed by the device, as listed by
+// `/ip/service/print`. The `name` field selects the service (for example
+// `mikrotik.services.where(name == "telnet")`) and exposes the listening
 // port, the address range allowed to connect, any bound TLS certificate, and
 // whether the service is disabled. This is the primary view for auditing which
 // management protocols (ssh, www, telnet, ftp, winbox, api, ...) are reachable.
@@ -548,7 +641,11 @@ mikrotik.ip.service @defaults("name port disabled") {
   // Address range allowed to connect to the service
   address string
   // Name of the TLS certificate bound to the service
-  certificate string
+  //
+  // Deprecated in favor of certificateRef, which resolves the certificate in
+  // the device store so its validity window, key size, and issuer can be
+  // checked rather than just its name.
+  certificate @maturity("deprecated") string
   // Minimum accepted TLS version
   tlsVersion string
   // VRF the service is bound to
@@ -559,11 +656,19 @@ mikrotik.ip.service @defaults("name port disabled") {
   disabled bool
   // Whether the service configuration is invalid
   invalid bool
+  // Certificate bound to the service, resolved in the device certificate store
+  //
+  // Null when the service has no certificate bound, which for www-ssl and
+  // api-ssl means the service cannot serve TLS at all. The name carries the
+  // Ref suffix because the deprecated raw `certificate` field still holds the
+  // plain name; sibling resources that never shipped a raw name spell the
+  // equivalent field `certificate`.
+  certificateRef() mikrotik.certificate
 }
 
 // MikroTik firewall filter rule
 //
-// Examine an IPv4 firewall filter rule, as listed by `/ip/firewall/filter`.
+// IPv4 firewall filter rule, as listed by `/ip/firewall/filter`.
 // Exposes the chain, action, match conditions (protocol, source and
 // destination address and port, in/out interface, connection state), logging
 // configuration, byte and packet counters, and whether the rule is disabled.
@@ -609,11 +714,15 @@ mikrotik.ip.firewall.filter @defaults("chain action disabled") {
   invalid bool
   // Optional comment attached to the rule
   comment string
+  // Name of the address list the source address is matched against
+  srcAddressList string
+  // Name of the address list the destination address is matched against
+  dstAddressList string
 }
 
 // MikroTik firewall NAT rule
 //
-// Examine an IPv4 firewall NAT rule, as listed by `/ip/firewall/nat`. Exposes
+// IPv4 firewall NAT rule, as listed by `/ip/firewall/nat`. Exposes
 // the chain (srcnat/dstnat), the action, the match conditions, the address and
 // port translation targets, byte and packet counters, and whether the rule is
 // disabled. Rules are returned in their configured order.
@@ -660,14 +769,18 @@ mikrotik.ip.firewall.nat @defaults("chain action disabled") {
   invalid bool
   // Optional comment attached to the rule
   comment string
+  // Name of the address list the source address is matched against
+  srcAddressList string
+  // Name of the address list the destination address is matched against
+  dstAddressList string
 }
 
 // MikroTik DHCP server
 //
-// Examine a DHCP server instance, as listed by `/ip/dhcp-server/print`. The
+// DHCP server instance, as listed by `/ip/dhcp-server/print`. The
 // `name` field selects the server and exposes the lease time and authoritative
-// mode. Use `interface` to reach the interface it serves, `addressPool` to
-// reach the pool it allocates from, and `leases` to enumerate its leases.
+// mode. The `interface` field resolves the interface it serves, `addressPool`
+// the pool it allocates from, and `leases` enumerates its leases.
 mikrotik.ip.dhcp.server @defaults("name leaseTime disabled") {
   // DHCP server name
   name string
@@ -695,10 +808,10 @@ mikrotik.ip.dhcp.server @defaults("name leaseTime disabled") {
 
 // MikroTik DHCP lease
 //
-// Examine a DHCP lease, as listed by `/ip/dhcp-server/lease/print`. Exposes the
+// DHCP lease, as listed by `/ip/dhcp-server/lease/print`. Exposes the
 // leased address, the client MAC address and identifier, the host name, the
-// lease status and expiry, and whether the lease is dynamic or blocked. Use
-// `server` to reach the DHCP server that issued the lease.
+// lease status and expiry, and whether the lease is dynamic or blocked. The
+// `server` field resolves the DHCP server that issued the lease.
 mikrotik.ip.dhcp.lease @defaults("address macAddress status") {
   // Leased IP address
   address string
@@ -734,7 +847,7 @@ mikrotik.ip.dhcp.lease @defaults("address macAddress status") {
 
 // MikroTik discovered neighbor
 //
-// Examine a neighboring device discovered on a connected link via MNDP, CDP, or
+// Neighboring device discovered on a connected link via MNDP, CDP, or
 // LLDP, as listed by `/ip/neighbor/print`. Exposes the neighbor's addresses,
 // MAC address, advertised identity, platform, software version, and board, plus
 // the local interface it was discovered on through `interface`.
@@ -761,11 +874,13 @@ mikrotik.ip.neighbor @defaults("identity address macAddress") {
 
 // MikroTik local user account
 //
-// Examine a local user account defined on the device, as listed by
-// `/user/print`. The `name` field selects the user and exposes the address
-// range the user may log in from, the last login time, and whether the account
-// is disabled. Use `userGroup` to reach the permission group the user belongs
-// to.
+// Local user account defined on the device, as listed by `/user/print`.
+// User accounts are a primary access-control surface, so auditing which
+// accounts exist, which are disabled, and where each may log in from is
+// central to hardening the device. The `name` field selects the user and
+// exposes the address range the user may log in from, the last login time,
+// and whether the account is disabled. The `userGroup` field points to the
+// permission group whose policies govern what the user may do.
 mikrotik.user @defaults("name group disabled") {
   // User name
   name string
@@ -780,15 +895,18 @@ mikrotik.user @defaults("name group disabled") {
   // Optional comment attached to the user
   comment string
   // Permission group the user belongs to
-  userGroup() mikrotik.user.group
+  userGroup() mikrotik.userGroup
 }
 
 // MikroTik user permission group
 //
-// Examine a user permission group, as listed by `/user/group/print`. The
+// User permission group, as listed by `/user/group/print`. Permission
+// groups define what device functions their members may use, so reviewing
+// the granted policies reveals which accounts hold sensitive capabilities
+// such as configuration write, API access, or full policy control. The
 // `name` field selects the group and exposes the policy set that determines
 // which actions members may perform.
-mikrotik.user.group @defaults("name policy") {
+mikrotik.userGroup @defaults("name policy") {
   // Group name
   name string
   // Set of policies granted to the group
@@ -800,4 +918,1429 @@ mikrotik.user.group @defaults("name policy") {
   skin string
   // Optional comment attached to the group
   comment string
+}
+
+// MikroTik firewall mangle rule
+//
+// IPv4 firewall mangle rule, as listed by `/ip/firewall/mangle`. Mangle marks
+// packets, connections, and routes, so it determines which traffic is steered
+// into which routing table, queue, or policy path. Exposes the chain, the
+// action and the mark it applies, the match conditions including address list
+// references, byte and packet counters, and whether the rule is disabled.
+// Rules are returned in their configured order. The RouterOS `.id` handle
+// behind each rule is stable only while the device keeps its current
+// configuration, so match rules on their chain, action, and comment rather
+// than on identity across scans.
+mikrotik.ip.firewall.mangle @defaults("chain action newPacketMark disabled") {
+  // Chain the rule belongs to
+  //
+  // For example prerouting, input, forward, output, or postrouting, or a
+  // custom chain name.
+  chain string
+  // Action taken when the rule matches
+  //
+  // For example mark-packet, mark-connection, mark-routing, change-mss,
+  // change-ttl, jump, return, log, or passthrough.
+  action string
+  // Packet mark applied by a mark-packet action
+  newPacketMark string
+  // Connection mark applied by a mark-connection action
+  newConnectionMark string
+  // Routing mark applied by a mark-routing action
+  newRoutingMark string
+  // Whether matching continues after the rule applies its mark
+  passthrough bool
+  // Protocol the rule matches
+  protocol string
+  // Source address or range the rule matches
+  srcAddress string
+  // Destination address or range the rule matches
+  dstAddress string
+  // Name of the address list the source address is matched against
+  srcAddressList string
+  // Name of the address list the destination address is matched against
+  dstAddressList string
+  // Source port(s) the rule matches
+  srcPort string
+  // Destination port(s) the rule matches
+  dstPort string
+  // Inbound interface the rule matches
+  inInterface string
+  // Outbound interface the rule matches
+  outInterface string
+  // Connection states the rule matches
+  connectionState string
+  // Connection mark the rule matches
+  connectionMark string
+  // Packet mark the rule matches
+  packetMark string
+  // Routing mark the rule matches
+  routingMark string
+  // Whether matching packets are logged
+  log bool
+  // Prefix added to log entries for this rule
+  logPrefix string
+  // Number of bytes matched by the rule
+  bytes int
+  // Number of packets matched by the rule
+  packets int
+  // Whether the rule is disabled
+  disabled bool
+  // Whether the rule was created dynamically
+  dynamic bool
+  // Whether the rule is invalid
+  invalid bool
+  // Optional comment attached to the rule
+  comment string
+}
+
+// MikroTik firewall raw rule
+//
+// IPv4 firewall raw rule, as listed by `/ip/firewall/raw`. The raw table is
+// evaluated before connection tracking, so a raw accept short-circuits every
+// filter rule that follows and a raw drop discards traffic before any state is
+// created. Reading the filter chain alone therefore does not give the device's
+// effective policy. Exposes the chain, action, match conditions including
+// address list references, counters, and whether the rule is disabled. Rules
+// are returned in their configured order.
+mikrotik.ip.firewall.raw @defaults("chain action disabled") {
+  // Chain the rule belongs to
+  //
+  // For example prerouting or output, or a custom chain name.
+  chain string
+  // Action taken when the rule matches
+  //
+  // For example accept, drop, notrack, jump, return, or log.
+  action string
+  // Protocol the rule matches
+  protocol string
+  // Source address or range the rule matches
+  srcAddress string
+  // Destination address or range the rule matches
+  dstAddress string
+  // Name of the address list the source address is matched against
+  srcAddressList string
+  // Name of the address list the destination address is matched against
+  dstAddressList string
+  // Source port(s) the rule matches
+  srcPort string
+  // Destination port(s) the rule matches
+  dstPort string
+  // Inbound interface the rule matches
+  inInterface string
+  // Outbound interface the rule matches
+  outInterface string
+  // Whether matching packets are logged
+  log bool
+  // Prefix added to log entries for this rule
+  logPrefix string
+  // Number of bytes matched by the rule
+  bytes int
+  // Number of packets matched by the rule
+  packets int
+  // Whether the rule is disabled
+  disabled bool
+  // Whether the rule was created dynamically
+  dynamic bool
+  // Whether the rule is invalid
+  invalid bool
+  // Optional comment attached to the rule
+  comment string
+}
+
+// MikroTik IPv4 firewall address list entry
+//
+// Single address or range held in a named IPv4 firewall address list, as
+// listed by `/ip/firewall/address-list`. Filter, mangle, raw, and NAT rules
+// reference these lists by name through their srcAddressList and
+// dstAddressList fields, so the effective scope of such a rule is only
+// resolvable once the list membership is known. The `list` field carries the
+// list name and `address` the member, alongside the timeout and creation time
+// for entries added dynamically by a rule.
+mikrotik.ip.firewall.addressList @defaults("list address dynamic") {
+  // Name of the address list the entry belongs to
+  list string
+  // Address, range, or CIDR held by the entry
+  address string
+  // Time the entry was added to the list
+  creationTime string
+  // Remaining time before a dynamic entry is removed
+  //
+  // Formatted as a RouterOS duration, for example 1d2h3m. Empty for static
+  // entries, which never time out.
+  timeout string
+  // Whether the entry was added dynamically by a firewall rule
+  dynamic bool
+  // Whether the entry is disabled
+  disabled bool
+  // Optional comment attached to the entry
+  comment string
+}
+
+// MikroTik IPv6 firewall address list entry
+//
+// Single address or prefix held in a named IPv6 firewall address list, as
+// listed by `/ipv6/firewall/address-list`. IPv6 filter, mangle, raw, and NAT
+// rules reference these lists by name, so the effective scope of such a rule
+// is only resolvable once the list membership is known. The `list` field
+// carries the list name and `address` the member, alongside the timeout and
+// creation time for entries added dynamically by a rule.
+mikrotik.ipv6.firewall.addressList @defaults("list address dynamic") {
+  // Name of the address list the entry belongs to
+  list string
+  // Address or prefix held by the entry
+  address string
+  // Time the entry was added to the list
+  creationTime string
+  // Remaining time before a dynamic entry is removed
+  //
+  // Formatted as a RouterOS duration, for example 1d2h3m. Empty for static
+  // entries, which never time out.
+  timeout string
+  // Whether the entry was added dynamically by a firewall rule
+  dynamic bool
+  // Whether the entry is disabled
+  disabled bool
+  // Optional comment attached to the entry
+  comment string
+}
+
+// MikroTik connection tracking configuration
+//
+// Connection tracking settings read from `/ip/firewall/connection-tracking`.
+// Stateful filtering depends on connection tracking being active, so a device
+// with tracking turned off silently reduces every connection-state match in
+// the filter chain to a no-op. Exposes whether tracking is on, the per
+// protocol and per state timeouts that decide how long a connection stays
+// tracked, whether loose TCP tracking accepts out-of-window packets, and the
+// current and maximum entry counts.
+mikrotik.ip.firewall.connectionTracking @defaults("enabled totalEntries maxEntries") {
+  // Whether connection tracking is active
+  //
+  // One of auto, yes, or no. Under auto RouterOS enables tracking only while
+  // at least one firewall or NAT rule needs it.
+  enabled string
+  // Whether out-of-window TCP packets are accepted into an existing connection
+  looseTcpTracking bool
+  // Number of connections currently tracked
+  totalEntries int
+  // Maximum number of connections that can be tracked
+  maxEntries int
+  // Timeout for a TCP connection in the SYN-SENT state
+  tcpSynSentTimeout string
+  // Timeout for a TCP connection in the SYN-RECEIVED state
+  tcpSynReceivedTimeout string
+  // Timeout for an established TCP connection
+  tcpEstablishedTimeout string
+  // Timeout for a TCP connection in the FIN-WAIT state
+  tcpFinWaitTimeout string
+  // Timeout for a TCP connection in the CLOSE-WAIT state
+  tcpCloseWaitTimeout string
+  // Timeout for a TCP connection in the LAST-ACK state
+  tcpLastAckTimeout string
+  // Timeout for a TCP connection in the TIME-WAIT state
+  tcpTimeWaitTimeout string
+  // Timeout for a closed TCP connection
+  tcpCloseTimeout string
+  // Timeout applied while TCP data stays unacknowledged
+  tcpMaxRetransTimeout string
+  // Timeout applied to unacknowledged TCP data
+  tcpUnackedTimeout string
+  // Timeout for a UDP connection that has seen traffic in one direction
+  udpTimeout string
+  // Timeout for a UDP connection that has seen traffic in both directions
+  udpStreamTimeout string
+  // Timeout for a tracked ICMP exchange
+  icmpTimeout string
+  // Timeout applied to protocols without a specific tracker
+  genericTimeout string
+}
+
+// MikroTik firewall service port helper
+//
+// Connection helper that inspects a protocol's control channel so the firewall
+// can accept the data connections it negotiates, as listed by
+// `/ip/firewall/service-port`. Helpers open ports on demand and several of
+// them parse untrusted payloads, so an enabled helper for a protocol the
+// device does not carry is unnecessary exposure. The `name` field selects the
+// helper, for example `mikrotik.servicePorts.where(name == "sip")`.
+mikrotik.ip.firewall.servicePort @defaults("name ports disabled") {
+  // Helper name
+  //
+  // For example ftp, tftp, irc, h323, sip, pptp, udplite, dccp, or sctp.
+  name string
+  // Control ports the helper watches
+  ports string
+  // Whether the helper is disabled
+  disabled bool
+  // Whether the helper configuration is invalid
+  invalid bool
+}
+
+// MikroTik IPv6 firewall filter rule
+//
+// IPv6 firewall filter rule, as listed by `/ipv6/firewall/filter`. IPv6
+// traffic is filtered by its own table, so a device whose IPv4 input chain is
+// locked down can still leave the IPv6 input chain at the default accept
+// policy and be reachable over IPv6 on every management port. Exposes the
+// chain, action, match conditions (protocol, source and destination address
+// and port, address list references, in and out interface, connection state),
+// logging configuration, byte and packet counters, and whether the rule is
+// disabled. Rules are returned in their configured order.
+mikrotik.ipv6.firewall.filter @defaults("chain action disabled") {
+  // Chain the rule belongs to
+  //
+  // For example input, forward, or output, or a custom chain name.
+  chain string
+  // Action taken when the rule matches
+  //
+  // For example accept, drop, reject, jump, return, or log.
+  action string
+  // Protocol the rule matches
+  protocol string
+  // Source address or prefix the rule matches
+  srcAddress string
+  // Destination address or prefix the rule matches
+  dstAddress string
+  // Name of the address list the source address is matched against
+  srcAddressList string
+  // Name of the address list the destination address is matched against
+  dstAddressList string
+  // Source port(s) the rule matches
+  srcPort string
+  // Destination port(s) the rule matches
+  dstPort string
+  // Inbound interface the rule matches
+  inInterface string
+  // Outbound interface the rule matches
+  outInterface string
+  // Connection states the rule matches
+  connectionState string
+  // ICMPv6 message types the rule matches
+  icmpOptions string
+  // Whether matching packets are logged
+  log bool
+  // Prefix added to log entries for this rule
+  logPrefix string
+  // Number of bytes matched by the rule
+  bytes int
+  // Number of packets matched by the rule
+  packets int
+  // Whether the rule is disabled
+  disabled bool
+  // Whether the rule was created dynamically
+  dynamic bool
+  // Whether the rule is invalid
+  invalid bool
+  // Optional comment attached to the rule
+  comment string
+}
+
+// MikroTik IPv6 firewall NAT rule
+//
+// IPv6 firewall NAT rule, as listed by `/ipv6/firewall/nat`. IPv6 deployments
+// usually route globally routable addresses rather than translating them, so
+// any rule here changes how internal hosts are presented or reached and is
+// worth reviewing on its own. Exposes the chain, the action, the match
+// conditions, the address and port translation targets, byte and packet
+// counters, and whether the rule is disabled. Rules are returned in their
+// configured order.
+mikrotik.ipv6.firewall.nat @defaults("chain action disabled") {
+  // Chain the rule belongs to
+  //
+  // For example srcnat or dstnat.
+  chain string
+  // Action taken when the rule matches
+  //
+  // For example masquerade, src-nat, dst-nat, redirect, or netmap.
+  action string
+  // Protocol the rule matches
+  protocol string
+  // Source address or prefix the rule matches
+  srcAddress string
+  // Destination address or prefix the rule matches
+  dstAddress string
+  // Name of the address list the source address is matched against
+  srcAddressList string
+  // Name of the address list the destination address is matched against
+  dstAddressList string
+  // Source port(s) the rule matches
+  srcPort string
+  // Destination port(s) the rule matches
+  dstPort string
+  // Inbound interface the rule matches
+  inInterface string
+  // Outbound interface the rule matches
+  outInterface string
+  // Addresses traffic is translated to
+  toAddresses string
+  // Ports traffic is translated to
+  toPorts string
+  // Whether matching packets are logged
+  log bool
+  // Prefix added to log entries for this rule
+  logPrefix string
+  // Number of bytes matched by the rule
+  bytes int
+  // Number of packets matched by the rule
+  packets int
+  // Whether the rule is disabled
+  disabled bool
+  // Whether the rule was created dynamically
+  dynamic bool
+  // Whether the rule is invalid
+  invalid bool
+  // Optional comment attached to the rule
+  comment string
+}
+
+// MikroTik SSH server configuration
+//
+// SSH server crypto and login settings read from `/ip/ssh`. `mikrotik.services`
+// reports that the ssh service is enabled and on which port, but the crypto
+// posture lives in this separate menu. `strongCrypto` is off in the shipped
+// RouterOS default, which leaves SHA1, CBC mode ciphers, and 1024-bit
+// Diffie-Hellman acceptable; `allowNoneCrypto` permits an entirely unencrypted
+// session; `hostKeySize` and `hostKeyType` describe the key the server presents;
+// and `forwardingEnabled` controls whether the server will tunnel other traffic
+// for a logged-in client.
+mikrotik.ssh @defaults("strongCrypto allowNoneCrypto hostKeyType hostKeySize") {
+  // Whether only strong ciphers, MACs, and key exchange groups are accepted
+  //
+  // RouterOS ships this disabled, which leaves SHA1, CBC mode ciphers, and
+  // 1024-bit Diffie-Hellman groups acceptable to the server.
+  strongCrypto bool
+  // Whether a session with no encryption is accepted
+  //
+  // When enabled the server will negotiate the "none" cipher, carrying the
+  // login and the session in the clear.
+  allowNoneCrypto bool
+  // Size of the server host key in bits
+  hostKeySize int
+  // Algorithm of the server host key
+  //
+  // For example rsa, ed25519, or ecdsa.
+  hostKeyType string
+  // Whether the server tunnels other connections for a logged-in client
+  //
+  // Reported as an enum rather than a flag: one of no, local, remote, or both.
+  forwardingEnabled string
+  // Whether password login is offered even when a public key is configured
+  alwaysAllowPasswordLogin bool
+  // Ciphers the server offers
+  //
+  // Null on RouterOS versions that do not expose cipher selection through this
+  // menu, in which case the offered set follows from strongCrypto.
+  ciphers []string
+}
+
+// MikroTik certificate
+//
+// Certificate held in the device certificate store, as listed by
+// `/certificate`. The `name` field selects the certificate, for example
+// `mikrotik.certificates.where(name == "webfig")`, and exposes the subject
+// common name, issuer, key algorithm and size, digest algorithm, validity
+// window, and key usage. `expired` compares the validity window against the
+// current time, `selfSigned` compares the issuer against the subject, and
+// `hasPrivateKey` reports whether the device holds the matching private key
+// without the key material ever being read. Certificates bound to a management
+// service are reachable from `mikrotik.ip.service.certificateRef`.
+mikrotik.certificate @defaults("name commonName invalidAfter expired") {
+  // Certificate name in the device store
+  name string
+  // Subject common name
+  commonName string
+  // Subject alternative names
+  subjectAltName string
+  // Issuer distinguished name
+  issuer string
+  // Certificate serial number
+  serialNumber string
+  // Certificate fingerprint
+  fingerprint string
+  // Public key algorithm
+  //
+  // For example rsa, ec, or dsa.
+  keyType string
+  // Public key size in bits
+  //
+  // A size of 1024 or below is too weak for TLS use.
+  keySize int
+  // Signature digest algorithm
+  //
+  // For example sha256, sha1, or md5.
+  digestAlgorithm string
+  // Key usage extensions carried by the certificate
+  keyUsage []string
+  // Start of the certificate validity window
+  invalidBefore time
+  // End of the certificate validity window
+  invalidAfter time
+  // Time remaining before the certificate expires
+  //
+  // Formatted as a RouterOS duration, for example 51w2d3h.
+  expiresAfter string
+  // Whether the certificate validity window has already closed
+  //
+  // Compares invalidAfter against the current time. Null when the device did
+  // not report a validity window that could be read.
+  expired bool
+  // Whether the certificate was issued by its own subject
+  //
+  // Compares the common name carried in issuer against commonName. Null when
+  // either value is missing.
+  selfSigned bool
+  // Whether the device holds the matching private key
+  //
+  // The key material itself is never read or exposed.
+  hasPrivateKey bool
+  // Whether the certificate is trusted when verifying peers
+  trusted bool
+  // Whether a certificate revocation list is maintained for the certificate
+  crl bool
+  // Whether the private key is held on a smart card
+  smartCardKey bool
+  // Authority key identifier
+  akid string
+  // Subject key identifier
+  skid string
+}
+
+// MikroTik scheduled task
+//
+// Task in `/system/scheduler` that RouterOS runs on a timer, at a start time,
+// or at startup. Together with `/system/script` this is the RouterOS
+// persistence mechanism: a scheduler whose `onEvent` fires a script holding
+// `write`, `policy`, and `ftp` permissions is a self-reinstalling backdoor
+// that survives a password change. The `name` field selects the task and
+// exposes the start date and time, the repeat interval, the command or script
+// name in `onEvent`, the owner, the policies the task runs with, and how many
+// times it has fired. The `script` field resolves `onEvent` against the script
+// store when it names a stored script rather than carrying inline commands.
+mikrotik.system.scheduler @defaults("name interval onEvent disabled") {
+  // Task name
+  name string
+  // Date the task first runs
+  startDate string
+  // Time of day the task runs
+  //
+  // The literal startup means the task runs when RouterOS finishes booting.
+  startTime string
+  // Interval between runs
+  //
+  // Formatted as a RouterOS duration, for example 1d or 00:05:00. An interval
+  // of 0s means the task runs once at its start time.
+  interval string
+  // Command or script name the task runs
+  onEvent string
+  // User account the task runs as
+  owner string
+  // Policies the task runs with
+  //
+  // For example read, write, policy, ftp, test, reboot, password, sniff, or
+  // sensitive. A task holding write, policy, and ftp can rewrite the
+  // configuration and reinstate itself.
+  policy []string
+  // Number of times the task has run
+  runCount int
+  // Time the task is next due to run
+  nextRun string
+  // Whether the task is disabled
+  disabled bool
+  // Optional comment attached to the task
+  comment string
+  // Stored script the task runs, when onEvent names one
+  //
+  // Null when onEvent carries inline commands rather than a script name.
+  script() mikrotik.system.script
+}
+
+// MikroTik stored script
+//
+// Script stored in `/system/script`. Scripts are the payload half of the
+// RouterOS persistence mechanism: the policies a script holds decide what it
+// may do, and `dontRequirePermissions` lets it run beyond the rights of
+// whoever calls it. The `name` field selects the script and exposes its owner,
+// its policy set, its run count and last start time, and its source, which is
+// what shows whether a scheduled task rewrites accounts, opens a service, or
+// fetches and runs remote content.
+mikrotik.system.script @defaults("name owner policy runCount") {
+  // Script name
+  name string
+  // User account that owns the script
+  owner string
+  // Policies the script runs with
+  //
+  // For example read, write, policy, ftp, test, reboot, password, sniff, or
+  // sensitive.
+  policy []string
+  // Whether the script runs beyond the rights of whoever calls it
+  //
+  // When enabled the script's own policy set applies rather than the caller's,
+  // so a lower-privileged account can trigger privileged actions.
+  dontRequirePermissions bool
+  // Number of times the script has run
+  runCount int
+  // Time the script last started
+  lastStarted string
+  // Script source
+  source string
+  // Whether the script is invalid
+  invalid bool
+  // Optional comment attached to the script
+  comment string
+}
+
+// MikroTik RouterBOOT settings
+//
+// Bootloader settings read from `/system/routerboard/settings`.
+// `protectedRouterboot` is the control that decides whether physical access is
+// enough to take the device over: with it disabled, anyone who can reach the
+// reset button or the serial console can netinstall the device or clear its
+// configuration, and the RouterOS-level account and firewall configuration
+// stops being the boundary. The boot device and boot protocol settings decide
+// whether the device will boot an image handed to it over the network, and the
+// reset button behaviour decides what a button press does. This menu is absent
+// on CHR and other non-RouterBOARD builds, where the resource is null.
+mikrotik.system.routerboot @defaults("protectedRouterboot protected bootDevice") {
+  // RouterBOOT protection mode
+  //
+  // One of disabled, enabled, or on RouterOS 7 a mode that also requires the
+  // protection to be lifted from RouterOS before the bootloader accepts
+  // changes. Check the derived `protected` field for the yes-or-no reading.
+  protectedRouterboot string
+  // Whether RouterBOOT is protected against bootloader-level takeover
+  //
+  // Derived from protectedRouterboot. Null when the device did not report the
+  // setting, which is the case on builds with no RouterBOARD bootloader.
+  protected bool
+  // Whether RouterBOOT upgrades itself when RouterOS is upgraded
+  autoUpgrade bool
+  // Device RouterBOOT boots from
+  //
+  // For example nand-if-fail-then-ethernet, ethernet, or nand-only. Any value
+  // that includes ethernet lets the device boot an image served on the wire.
+  bootDevice string
+  // Protocol used when booting over the network
+  //
+  // For example bootp or dhcp.
+  bootProtocol string
+  // Operating system RouterBOOT boots
+  bootOs string
+  // Action taken when the reset button is held
+  //
+  // For example run-script or, with enableJumperReset, a configuration reset.
+  reformatHoldButton string
+  // Longest reset button hold that still triggers reformatHoldButton
+  reformatHoldButtonMax string
+  // Whether the hardware jumper or button may reset the configuration
+  enableJumperReset bool
+  // Interface RouterBOOT opens its setup on
+  //
+  // For example any-key, delete-key, or the serial console.
+  enterSetupOn string
+  // Whether RouterBOOT suppresses console output while booting
+  silentBoot bool
+  // Whether the backup bootloader is used
+  forceBackupBooter bool
+  // Configured CPU frequency
+  cpuFrequency string
+  // Serial console baud rate
+  baudRate int
+}
+
+// MikroTik RouterOS update status
+//
+// Update channel and available version read from `/system/package/update`.
+// `mikrotik.system.version` says what the device runs; this says what the
+// device could run, which turns the version into an actionable "is this device
+// behind" check. The channel is a finding of its own: `development` or
+// `testing` on a production router means it takes builds that have not been
+// through a stable release.
+mikrotik.system.update @defaults("channel installedVersion latestVersion updateAvailable") {
+  // Release channel the device takes updates from
+  //
+  // For example stable, long-term, testing, or development.
+  channel string
+  // RouterOS version currently installed
+  installedVersion string
+  // Latest RouterOS version offered on the channel
+  //
+  // Empty until the device has checked the channel, which it does not do on
+  // its own.
+  latestVersion string
+  // Whether a newer version is available on the channel
+  //
+  // Compares latestVersion against installedVersion. Null when the device has
+  // not checked the channel, since not having looked is not the same as being
+  // up to date.
+  updateAvailable bool
+  // Status of the last update check
+  status string
+}
+
+// MikroTik L2TP server configuration
+//
+// L2TP server settings read from `/interface/l2tp-server/server`. L2TP carries
+// no encryption of its own, so `useIpsec` is what decides whether tunnels to
+// this server are encrypted at all: with it off, the tunnel and everything
+// inside it crosses the network in the clear. `authentication` lists the PPP
+// authentication methods the server still accepts, which is where mschap1,
+// chap, and pap show up.
+mikrotik.interface.l2tpServer @defaults("enabled useIpsec authentication") {
+  // Whether the L2TP server accepts connections
+  enabled bool
+  // Whether tunnels are wrapped in IPsec
+  //
+  // One of no, yes, or required. Anything other than required lets a client
+  // negotiate an unencrypted tunnel.
+  useIpsec string
+  // Whether an IPsec pre-shared key is configured for the server
+  //
+  // The key itself is never read or exposed.
+  hasIpsecSecret bool
+  // PPP authentication methods the server accepts
+  //
+  // For example mschap2, mschap1, chap, or pap. mschap1, chap, and pap are all
+  // broken against an attacker who can capture the handshake.
+  authentication []string
+  // Maximum transmission unit in bytes
+  maxMtu int
+  // Maximum receive unit in bytes
+  maxMru int
+  // Maximum received reconstructed unit
+  mrru string
+  // Idle time before an unresponsive session is dropped
+  keepaliveTimeout string
+  // PPP profile applied to sessions that do not select one
+  defaultProfile string
+  // Whether fast path forwarding is allowed for tunnel traffic
+  allowFastPath bool
+  // Whether a single host may hold only one session
+  oneSessionPerHost bool
+  // Format the caller ID is reported in
+  callerIdType string
+  // Maximum number of concurrent sessions
+  maxSessions int
+  // L2TP protocol version the server accepts
+  acceptProtoVersion string
+}
+
+// MikroTik PPTP server configuration
+//
+// PPTP server settings read from `/interface/pptp-server/server`. PPTP's
+// MS-CHAPv2 and MPPE construction is broken end to end and a captured
+// handshake can be reduced to a single DES key, so an enabled PPTP server is a
+// finding regardless of which authentication methods it lists. RouterOS still
+// ships the menu and still lets it be turned on, which is exactly why
+// `enabled` is worth reading.
+mikrotik.interface.pptpServer @defaults("enabled authentication") {
+  // Whether the PPTP server accepts connections
+  //
+  // PPTP offers no defensible configuration, so an enabled server is a finding
+  // on its own.
+  enabled bool
+  // PPP authentication methods the server accepts
+  //
+  // For example mschap2, mschap1, chap, or pap.
+  authentication []string
+  // Maximum transmission unit in bytes
+  maxMtu int
+  // Maximum receive unit in bytes
+  maxMru int
+  // Maximum received reconstructed unit
+  mrru string
+  // Idle time before an unresponsive session is dropped
+  keepaliveTimeout string
+  // PPP profile applied to sessions that do not select one
+  defaultProfile string
+}
+
+// MikroTik SSTP server configuration
+//
+// SSTP server settings read from `/interface/sstp-server/server`. SSTP runs
+// over TLS, so the server's posture is the certificate it presents and whether
+// it checks the client's: with `verifyClientCertificate` off, anyone who can
+// reach the port and pass PPP authentication gets a tunnel. `certificate`
+// resolves the presented certificate in the device certificate store so its
+// expiry, key size, and issuer can be checked.
+mikrotik.interface.sstpServer @defaults("enabled port verifyClientCertificate") {
+  // Whether the SSTP server accepts connections
+  enabled bool
+  // TCP port the server listens on
+  port int
+  // Whether the server requires and verifies a client certificate
+  //
+  // One of no, yes, or quiet. With no, client authentication rests entirely on
+  // the PPP credentials.
+  verifyClientCertificate string
+  // Certificate the server presents, resolved in the device certificate store
+  //
+  // Null when no certificate is bound, in which case the server cannot serve
+  // TLS at all.
+  certificate() mikrotik.certificate
+  // PPP authentication methods the server accepts
+  authentication []string
+  // Minimum accepted TLS version
+  tlsVersion string
+  // Whether only AES cipher suites are offered
+  forceAes bool
+  // Whether perfect forward secrecy is required
+  pfs bool
+  // Maximum transmission unit in bytes
+  maxMtu int
+  // Maximum receive unit in bytes
+  maxMru int
+  // Maximum received reconstructed unit
+  mrru string
+  // Idle time before an unresponsive session is dropped
+  keepaliveTimeout string
+  // PPP profile applied to sessions that do not select one
+  defaultProfile string
+  // VRF the server is bound to
+  vrf string
+}
+
+// MikroTik OpenVPN server configuration
+//
+// OpenVPN server settings read from `/interface/ovpn-server/server`. The
+// server's posture is the cipher and digest sets it offers, whether it
+// requires a client certificate, and which certificate it presents.
+// `requireClientCertificate` off leaves PPP credentials as the only client
+// authentication, and a cipher list that still carries a 64-bit block cipher
+// leaves the tunnel open to a birthday-bound collision attack.
+mikrotik.interface.ovpnServer @defaults("enabled port requireClientCertificate") {
+  // Whether the OpenVPN server accepts connections
+  enabled bool
+  // Port the server listens on
+  port int
+  // Transport protocol the server uses
+  //
+  // One of tcp or udp.
+  protocol string
+  // Tunnel mode
+  //
+  // One of ip for a routed tunnel or ethernet for a bridged one.
+  mode string
+  // Whether the server requires a client certificate
+  //
+  // With this off, PPP credentials are the only client authentication.
+  requireClientCertificate bool
+  // Certificate the server presents, resolved in the device certificate store
+  //
+  // Null when no certificate is bound, in which case the server cannot serve
+  // TLS at all.
+  certificate() mikrotik.certificate
+  // Ciphers the server offers
+  //
+  // For example aes256-gcm, aes256-cbc, aes128-cbc, or blowfish128. blowfish128
+  // is a 64-bit block cipher and is not safe for a long-lived tunnel.
+  ciphers []string
+  // Digests the server offers for packet authentication
+  //
+  // For example sha512, sha256, sha1, md5, or null.
+  auth []string
+  // Minimum accepted TLS version
+  tlsVersion string
+  // Method used to authenticate the tunnel user
+  userAuthMethod string
+  // Whether clients are pushed a default route through the tunnel
+  redirectGateway string
+  // Netmask handed to clients
+  netmask int
+  // MAC address used in ethernet mode
+  macAddress string
+  // Maximum transmission unit in bytes
+  maxMtu int
+  // Idle time before an unresponsive session is dropped
+  keepaliveTimeout string
+  // PPP profile applied to sessions that do not select one
+  defaultProfile string
+  // VRF the server is bound to
+  vrf string
+}
+
+// MikroTik IPsec proposal
+//
+// Phase 2 proposal offered when an IPsec security association is set up, as
+// listed by `/ip/ipsec/proposal`. This is the crypto strength every tunnel
+// that uses it inherits: a proposal still offering 3des or md5 lets a peer
+// negotiate down to them, and a pfsGroup of modp1024 or none means a recovered
+// key exposes traffic captured earlier. The `name` field selects the proposal,
+// for example `mikrotik.ipsecProposals.where(name == "default")`.
+mikrotik.ip.ipsec.proposal @defaults("name encAlgorithms authAlgorithms pfsGroup") {
+  // Proposal name
+  name string
+  // Encryption algorithms offered
+  //
+  // For example aes-256-gcm, aes-256-cbc, aes-128-cbc, 3des, des, or blowfish.
+  // 3des and des are not safe for new tunnels.
+  encAlgorithms []string
+  // Authentication algorithms offered
+  //
+  // For example sha512, sha256, sha1, md5, or null.
+  authAlgorithms []string
+  // Diffie-Hellman group used for perfect forward secrecy
+  //
+  // For example modp2048, ecp256, modp1024, or none. modp1024 is below the
+  // strength expected of a modern exchange, and none disables forward secrecy.
+  pfsGroup string
+  // Lifetime of a security association built from the proposal
+  lifetime string
+  // Whether the proposal is one RouterOS ships rather than one that was added
+  default bool
+  // Whether the proposal is disabled
+  disabled bool
+  // Optional comment attached to the proposal
+  comment string
+}
+
+// MikroTik IPsec profile
+//
+// Key exchange profile used when negotiating with a peer, as listed by
+// `/ip/ipsec/profile`. Where a proposal covers the data channel, a profile
+// covers the exchange that establishes it: the hash, the encryption, and the
+// Diffie-Hellman group, plus whether dead peer detection is on and how long
+// the negotiated keys live. The `name` field selects the profile.
+mikrotik.ip.ipsec.profile @defaults("name encAlgorithms dhGroups hashAlgorithm") {
+  // Profile name
+  name string
+  // Hash algorithm used during key exchange
+  //
+  // For example sha512, sha256, sha1, or md5.
+  hashAlgorithm string
+  // Encryption algorithms offered during key exchange
+  //
+  // For example aes-256, aes-192, aes-128, 3des, des, or blowfish.
+  encAlgorithms []string
+  // Diffie-Hellman groups offered during key exchange
+  //
+  // For example modp2048, ecp256, or modp1024. modp1024 is below the strength
+  // expected of a modern exchange.
+  dhGroups []string
+  // Pseudo-random function used for key derivation
+  prfAlgorithm string
+  // How the peer's proposal is checked against this profile
+  //
+  // For example claim, exact, obey, or strict.
+  proposalCheck string
+  // Lifetime of the negotiated keys
+  lifetime string
+  // Whether NAT traversal is offered
+  natTraversal bool
+  // Interval between dead peer detection probes
+  dpdInterval string
+  // Number of failed probes before the peer is declared dead
+  dpdMaximumFailures int
+}
+
+// MikroTik IPsec peer
+//
+// Remote endpoint the device negotiates IPsec with, as listed by
+// `/ip/ipsec/peer`. The `name` field selects the peer and exposes the remote
+// address, the local address the device negotiates from, the exchange mode,
+// and whether the peer is passive, meaning the device waits to be contacted
+// rather than initiating. The `profile` field resolves the key exchange
+// profile, which is where the peer's crypto strength actually lives.
+mikrotik.ip.ipsec.peer @defaults("name address exchangeMode disabled") {
+  // Peer name
+  name string
+  // Address or prefix the peer is reached at
+  address string
+  // Local address the device negotiates from
+  localAddress string
+  // Port used for the key exchange
+  port int
+  // Key exchange mode
+  //
+  // For example ike2, main, aggressive, or main-l2tp. aggressive mode exposes
+  // the identity and, with pre-shared key authentication, a hash an attacker
+  // can grind offline.
+  exchangeMode string
+  // Key exchange profile the peer uses, resolved in the profile list
+  //
+  // RouterOS always binds a peer to a profile and ships an undeletable
+  // `default` one, so a null here means the peer names a profile that is no
+  // longer in the profile list.
+  profile() mikrotik.ip.ipsec.profile
+  // Whether the device waits to be contacted rather than initiating
+  passive bool
+  // Whether an initial contact notification is sent
+  sendInitialContact bool
+  // Whether the peer is disabled
+  disabled bool
+  // Optional comment attached to the peer
+  comment string
+}
+
+// MikroTik IPsec identity
+//
+// Authentication settings that decide how a peer proves who it is, as listed
+// by `/ip/ipsec/identity`. Two things here decide whether a tunnel can be
+// stood up by someone who should not be able to: `authMethod` of
+// pre-shared-key rests the whole tunnel on a shared string, and
+// `generatePolicy` lets the peer dictate the traffic selectors rather than
+// matching a policy configured in advance, so the pair of them together means
+// a peer that knows the key can choose what it reaches. `hasSecret` reports
+// that a pre-shared key is configured; the key itself, the EAP password, and
+// the raw key material are never read. `peer` resolves the peer the
+// identity authenticates, and `certificate` and `remoteCertificate`
+// resolve the certificates in the device certificate store so their expiry,
+// key size, and issuer can be checked in the same query.
+mikrotik.ip.ipsec.identity @defaults("authMethod generatePolicy hasSecret disabled") {
+  // Peer the identity authenticates, resolved in the peer list
+  //
+  // RouterOS requires every identity to name a peer, so a null here means the
+  // identity names a peer that is no longer in the peer list.
+  peer() mikrotik.ip.ipsec.peer
+  // Authentication method
+  //
+  // For example pre-shared-key, pre-shared-key-xauth, rsa-signature,
+  // digital-signature, or eap. pre-shared-key rests the tunnel on a shared
+  // string rather than on a key pair.
+  authMethod string
+  // Whether a pre-shared key is configured
+  //
+  // The key itself is never read or exposed.
+  hasSecret bool
+  // Whether the peer may dictate the traffic selectors
+  //
+  // For example no, port-override, or port-strict. Anything other than no lets
+  // the peer install policies rather than matching one configured in advance.
+  generatePolicy string
+  // Policy template group a generated policy must match
+  policyTemplateGroup string
+  // How an incoming exchange is matched to this identity
+  //
+  // For example remote-id, certificate, or none.
+  matchBy string
+  // Mode config applied to the peer
+  modeConfig string
+  // Type of the identity the device presents
+  //
+  // For example auto, address, fqdn, user-fqdn, or key-id.
+  myIdType string
+  // Identity the device presents
+  myId string
+  // Type of the identity expected from the peer
+  remoteIdType string
+  // Identity expected from the peer
+  remoteId string
+  // Certificate the device presents, resolved in the device certificate store
+  //
+  // Null when the identity presents no certificate, which is the case for
+  // pre-shared-key authentication.
+  certificate() mikrotik.certificate
+  // Certificate expected from the peer, resolved in the device certificate store
+  //
+  // Null when the identity expects no certificate from the peer.
+  remoteCertificate() mikrotik.certificate
+  // Firewall chain traffic for this identity bypasses connection tracking in
+  notrackChain string
+  // Whether the identity is disabled
+  disabled bool
+  // Optional comment attached to the identity
+  comment string
+}
+
+// MikroTik SNMP community
+//
+// SNMP community configured on the device, as listed by `/snmp/community`.
+// `mikrotik.snmp` reports only the global on/off switch plus the contact and
+// trap settings; whether the device answers a default community name from
+// anywhere on the internet, and with what access, lives entirely here. The
+// community string itself is never read or exposed: `usesDefaultCommunityName`
+// reports whether it is one of the names every scanner tries first, and
+// `addresses` reports which sources may use it at all. For SNMPv3, the
+// authentication and encryption protocols are exposed alongside booleans
+// reporting that passwords are configured, never the passwords.
+mikrotik.snmp.community @defaults("usesDefaultCommunityName addresses readAccess writeAccess") {
+  // Whether the community name is one of the well-known defaults
+  //
+  // True for the names every scanner tries first, public and private. Null
+  // when the device did not report a name for the entry.
+  usesDefaultCommunityName bool
+  // Source addresses allowed to use the community
+  //
+  // An unrestricted value such as 0.0.0.0/0 or ::/0 lets any source that can
+  // reach the SNMP port use the community.
+  addresses string
+  // Whether the community grants read access
+  readAccess bool
+  // Whether the community grants write access
+  //
+  // Write access over SNMP can change the device configuration.
+  writeAccess bool
+  // SNMPv3 security level
+  //
+  // One of none, authorized, or private. Under none the request is neither
+  // authenticated nor encrypted, which is SNMPv1 and v2c behaviour.
+  security string
+  // SNMPv3 authentication protocol
+  //
+  // For example MD5 or SHA1.
+  authenticationProtocol string
+  // SNMPv3 encryption protocol
+  //
+  // For example DES or AES.
+  encryptionProtocol string
+  // Whether an SNMPv3 authentication password is configured
+  //
+  // The password itself is never read or exposed.
+  hasAuthenticationPassword bool
+  // Whether an SNMPv3 encryption password is configured
+  //
+  // The password itself is never read or exposed.
+  hasEncryptionPassword bool
+  // Whether the entry is the one RouterOS ships rather than one that was added
+  default bool
+  // Whether the community is disabled
+  disabled bool
+}
+
+// MikroTik logging rule
+//
+// Rule in `/system/logging` that routes a set of log topics to a logging
+// action. RouterOS ships with everything going to a memory-only action that a
+// reboot erases, so whether a rule routes `system`, `error`, `critical`, and
+// `account` to an action with a remote target is the difference between a
+// device that keeps an audit trail and one that does not. `action` resolves
+// the action the rule routes to, so its target can be read in the same query.
+mikrotik.system.logging.rule @defaults("topics disabled invalid") {
+  // Log topics the rule routes
+  //
+  // For example system, error, critical, account, info, warning, firewall, or
+  // a negated topic such as !debug.
+  topics []string
+  // Logging action entries are routed to, resolved in the action list
+  //
+  // RouterOS always binds a rule to an action, so a null here means the rule
+  // names an action that is no longer in the action list, which RouterOS also
+  // reports through `invalid`.
+  action() mikrotik.system.logging.action
+  // Prefix added to entries routed by the rule
+  prefix string
+  // Whether the rule is disabled
+  disabled bool
+  // Whether the rule is invalid
+  invalid bool
+}
+
+// MikroTik logging action
+//
+// Destination log entries are written to, as listed by
+// `/system/logging/action`. The `name` field selects the action, for example
+// `mikrotik.loggingActions.where(name == "remote")`, and `target` says where
+// the entries actually go: `memory` is a ring buffer a reboot erases, `disk`
+// survives a reboot but not a reformat, and `remote` sends the entries to a
+// syslog collector, which is the only target that survives the device itself.
+// For a remote action, `remote` and `remotePort` name the collector.
+mikrotik.system.logging.action @defaults("name target remote") {
+  // Action name
+  name string
+  // Where entries are written
+  //
+  // One of memory, disk, echo, or remote.
+  target string
+  // Address of the syslog collector, for a remote target
+  remote string
+  // Port of the syslog collector, for a remote target
+  remotePort int
+  // Source address used when sending to a collector
+  srcAddress string
+  // Whether entries are sent in BSD syslog format
+  bsdSyslog bool
+  // Syslog facility applied to entries
+  syslogFacility string
+  // Syslog severity applied to entries
+  syslogSeverity string
+  // Time format used in syslog entries
+  syslogTimeFormat string
+  // Number of entries the memory buffer holds
+  memoryLines int
+  // Whether the memory buffer stops accepting entries when full
+  //
+  // When enabled the oldest entries are kept and new ones are dropped, so a
+  // full buffer stops recording.
+  memoryStopOnFull bool
+  // Name of the file entries are written to, for a disk target
+  diskFileName string
+  // Number of entries per file, for a disk target
+  diskLinesPerFile int
+  // Number of files kept, for a disk target
+  diskFileCount int
+  // Whether writing stops when the disk target is full
+  diskStopOnFull bool
+}
+
+// MikroTik neighbor discovery settings
+//
+// Settings in `/ip/neighbor/discovery-settings` that control which interfaces
+// the device advertises itself on and which discovery protocols it speaks.
+// Discovery announces the device's identity, RouterOS version, board, and
+// addresses to anything on the same segment, so a discovery interface list of
+// `all` hands that inventory to every connected network including untrusted
+// ones. The protocols are the other half: LLDP and CDP reach beyond MikroTik
+// equipment, so leaving them on extends the announcement to any switch or
+// endpoint that listens.
+mikrotik.ip.neighbor.settings @defaults("discoverInterfaceList protocols") {
+  // Interface list the device runs discovery on
+  //
+  // A named interface list, or the literal all or none. With all, the device
+  // announces itself on every interface including untrusted segments.
+  discoverInterfaceList string
+  // Discovery protocols the device speaks
+  //
+  // For example mndp, cdp, or lldp. cdp and lldp reach equipment that is not
+  // MikroTik.
+  protocols []string
+  // VLAN advertised in the LLDP-MED network policy
+  lldpMedNetPolicyVlan string
+  // Whether LLDP advertises the MAC and PHY configuration
+  lldpMacPhyConfig bool
+  // Whether LLDP advertises VLAN information
+  lldpVlanInfo bool
+  // Whether LLDP advertises the maximum frame size
+  lldpMaxFrameSize bool
+}
+
+// MikroTik MAC server settings
+//
+// Layer 2 management settings read from `/tool/mac-server`, its `mac-winbox`
+// submenu, and its `ping` submenu. These paths bypass `/ip/service` entirely,
+// so everything `mikrotik.services` audits about which management protocols
+// are reachable says nothing about them: MAC-Telnet and MAC-Winbox answer on
+// the MAC layer, need no IP address on either end, and are unreachable by IP
+// firewall rules. An interface list of `all` therefore means management is
+// reachable from any connected segment.
+mikrotik.tool.macServer @defaults("allowedInterfaceList winboxAllowedInterfaceList pingEnabled") {
+  // Interface list MAC-Telnet answers on
+  //
+  // A named interface list, or the literal all or none.
+  allowedInterfaceList string
+  // Whether MAC-Telnet answers on every interface
+  //
+  // Null when the device did not report an interface list, which is the shape
+  // older RouterOS versions use for this menu.
+  macTelnetOnAllInterfaces bool
+  // Interface list MAC-Winbox answers on
+  //
+  // A named interface list, or the literal all or none.
+  winboxAllowedInterfaceList string
+  // Whether MAC-Winbox answers on every interface
+  //
+  // MAC-Winbox on every interface is unauthenticated-reachable management from
+  // any connected segment. Null when the device did not report an interface
+  // list.
+  macWinboxOnAllInterfaces bool
+  // Whether the device answers MAC-layer pings
+  pingEnabled bool
+}
+
+// MikroTik IP Cloud configuration
+//
+// MikroTik IP Cloud settings read from `/ip/cloud`. With DDNS enabled the
+// device reports its public address to MikroTik's servers and is published
+// under a stable `dnsName`, which turns a device behind a changing address
+// into one that is continuously locatable, and makes every management service
+// still reachable from the internet continuously reachable too. `updateTime`
+// additionally sources the device clock from the cloud service, which decides
+// whether certificate validity and log timestamps depend on it.
+mikrotik.ip.cloud @defaults("ddnsEnabled dnsName status") {
+  // Whether the device publishes its address through MikroTik DDNS
+  ddnsEnabled bool
+  // Interval between DDNS updates
+  ddnsUpdateInterval string
+  // Whether the device sets its clock from the cloud service
+  updateTime bool
+  // Public IPv4 address the device reported
+  publicAddress string
+  // Public IPv6 address the device reported
+  publicAddress6 string
+  // DNS name the device is published under
+  dnsName string
+  // Status of the last cloud update
+  status string
+  // Back To Home VPN state
+  backToHomeVpn string
+}
+
+// MikroTik RoMON configuration
+//
+// RoMON settings read from `/tool/romon`. RoMON tunnels management traffic
+// over layer 2 and forwards it between RoMON-speaking devices, so it reaches
+// past the segment the client is actually on and is not filtered by any IP
+// firewall rule. Access rests on the shared secret rather than on the device's
+// account and address restrictions, so `hasSecrets` is the difference between
+// a mesh anyone on the wire can join and one they cannot. The secret itself is
+// never read or exposed.
+mikrotik.tool.romon @defaults("enabled id hasSecrets") {
+  // Whether RoMON is enabled
+  enabled bool
+  // RoMON identifier of the device
+  id string
+  // Whether a RoMON secret is configured
+  //
+  // Without one, any RoMON-speaking device on the wire can join the mesh. The
+  // secret itself is never read or exposed.
+  hasSecrets bool
+}
+
+// MikroTik container
+//
+// Container configured on the device, as listed by `/container` on RouterOS
+// 7.4 and later. A container is arbitrary third-party code running on the
+// router itself, with its own network interface attached to the device's
+// bridges and VLANs, so it is both a workload the device now depends on and a
+// foothold inside the network's trust boundary. The `tag` field says which
+// image it runs and where that image came from, `status` whether it is
+// running, `startOnBoot` whether it comes back after a reboot, and `mounts`
+// which of the device's own storage it can reach. The `interface` field
+// resolves the veth interface the container is attached to. This collection is
+// empty on devices without the container package.
+mikrotik.container @defaults("tag status startOnBoot") {
+  // Container name
+  name string
+  // Image tag the container runs
+  //
+  // Includes the registry the image was pulled from, for example
+  // registry.example.com/tools/agent:1.4.
+  tag string
+  // Operating system reported by the image
+  os string
+  // Architecture reported by the image
+  arch string
+  // Root directory the container filesystem is unpacked into
+  rootDir string
+  // Host directories mounted into the container
+  mounts []string
+  // DNS servers handed to the container
+  dns string
+  // Command the container runs
+  cmd string
+  // Entry point the container starts through
+  entrypoint string
+  // Host name inside the container
+  hostname string
+  // Working directory the command runs in
+  workdir string
+  // Container state
+  //
+  // For example running, stopped, extracting, or error.
+  status string
+  // Whether container output is written to the device log
+  logging bool
+  // Whether the container starts when the device boots
+  startOnBoot bool
+  // Optional comment attached to the container
+  comment string
+  // Interface the container is attached to
+  interface() mikrotik.interface
+}
+
+// MikroTik container subsystem configuration
+//
+// Settings read from `/container/config` that govern how containers are pulled
+// and stored. `registryUrl` is where images come from, so it decides whose
+// code the device is willing to run, and `layerDir` and `tmpdir` decide where
+// that code is unpacked. Registry credentials are reported only as
+// `hasRegistryCredentials`; the user name and password are never read. This
+// resource is null on devices without the container package.
+mikrotik.container.config @defaults("registryUrl hasRegistryCredentials") {
+  // Registry images are pulled from
+  registryUrl string
+  // Whether credentials are configured for the registry
+  //
+  // The user name and password are never read or exposed.
+  hasRegistryCredentials bool
+  // Directory container layers are stored in
+  layerDir string
+  // Directory used while extracting an image
+  tmpdir string
+  // Memory limit applied to containers
+  ramHigh string
+}
+
+// MikroTik RADIUS client
+//
+// RADIUS server the device authenticates against, as listed by `/radius`. This
+// is the other half of `mikrotik.users`: once RADIUS is in use for the login
+// service, the local account list is no longer the real access-control
+// surface. `requireMessageAuth` is the Blast-RADIUS control, and with it off
+// the device accepts responses an attacker in the path can forge.
+// `protocol` decides whether the exchange is UDP RADIUS or RADIUS over TLS,
+// and for RADIUS over TLS `certificate` resolves the certificate the device
+// presents so its expiry, key size, and issuer can be checked in the same
+// query. The shared secret is reported only as `hasSecret`; the secret itself
+// is never read or exposed.
+mikrotik.radius.client @defaults("services address requireMessageAuth disabled") {
+  // Services the RADIUS server is consulted for
+  //
+  // For example login, ppp, hotspot, wireless, dhcp, or ipsec. With login
+  // present, device administration itself authenticates against this server.
+  services []string
+  // Address of the RADIUS server
+  address string
+  // Protocol used to reach the server
+  //
+  // For example udp or radsec. Under udp the exchange is protected only by the
+  // shared secret.
+  protocol string
+  // Whether responses must carry a Message-Authenticator attribute
+  //
+  // For example yes, no, or yes-for-all-eap. With this off the device accepts
+  // responses that an attacker in the path can forge.
+  requireMessageAuth string
+  // Whether a shared secret is configured
+  //
+  // The secret itself is never read or exposed.
+  hasSecret bool
+  // Port used for authentication requests
+  authenticationPort int
+  // Port used for accounting requests
+  accountingPort int
+  // Time the device waits for a response
+  timeout string
+  // Whether the server is used only when the primary one fails
+  accountingBackup bool
+  // Windows domain the device authenticates against
+  domain string
+  // Realm sent with the request
+  realm string
+  // Source address requests are sent from
+  srcAddress string
+  // Called-Station-Id sent with the request
+  calledId string
+  // Certificate used for RADIUS over TLS, resolved in the device certificate store
+  //
+  // Null when no certificate is bound, which is the case for a client that
+  // reaches the server over plain UDP RADIUS rather than RADIUS over TLS.
+  certificate() mikrotik.certificate
+  // Whether the client is disabled
+  disabled bool
+  // Optional comment attached to the client
+  comment string
+}
+
+// MikroTik user AAA settings
+//
+// Settings in `/user/aaa` that decide whether device logins authenticate
+// against RADIUS rather than against the local account list. With `useRadius`
+// on, `mikrotik.users` no longer describes who can log in, and the permission
+// group a remote user lands in comes from `defaultGroup` unless the RADIUS
+// server names one. `accounting` decides whether login and configuration
+// activity is reported to the RADIUS server at all.
+mikrotik.user.aaa @defaults("useRadius defaultGroup accounting") {
+  // Whether device logins authenticate against RADIUS
+  useRadius bool
+  // Permission group a RADIUS-authenticated user lands in
+  //
+  // Applies when the RADIUS server does not name a group itself.
+  defaultGroup string
+  // Whether login and configuration activity is reported to RADIUS
+  accounting bool
+  // Interval between accounting updates for an open session
+  interimUpdate string
+  // Permission groups excluded from RADIUS authentication
+  excludeGroups []string
 }

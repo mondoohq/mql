@@ -1,0 +1,90 @@
+[
+  {
+    "Status": null,
+    "Description": "Update",
+    "HotFixId": "KB5120703",
+    "Caption": "http://support.microsoft.com/?kbid=5120703",
+    "InstalledOn": {
+      "value": "/Date(1786492800000)/",
+      "DateTime": "Wednesday, August 12, 2026 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Security Update",
+    "HotFixId": "KB4470788",
+    "Caption": "http://support.microsoft.com/?kbid=4470788",
+    "InstalledOn": {
+      "value": "/Date(1544572800000)/",
+      "DateTime": "Wednesday, December 12, 2018 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Update",
+    "HotFixId": "KB4470502",
+    "Caption": "http://support.microsoft.com/?kbid=4470502",
+    "InstalledOn": {
+      "value": "/Date(1544572800000)/",
+      "DateTime": "Wednesday, December 12, 2018 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Update",
+    "HotFixId": "KB4480056",
+    "Caption": "http://support.microsoft.com/?kbid=4480056",
+    "InstalledOn": {
+      "value": "/Date(1546992000000)/",
+      "DateTime": "Wednesday, January 9, 2019 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Update",
+    "HotFixId": "KB4486153",
+    "Caption": "http://support.microsoft.com/?kbid=4486153",
+    "InstalledOn": {
+      "value": "/Date(1615420800000)/",
+      "DateTime": "Thursday, March 11, 2021 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Security Update",
+    "HotFixId": "KB4493510",
+    "Caption": "http://support.microsoft.com/?kbid=4493510",
+    "InstalledOn": {
+      "value": "/Date(1555804800000)/",
+      "DateTime": "Sunday, April 21, 2019 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Security Update",
+    "HotFixId": "KB4499728",
+    "Caption": "http://support.microsoft.com/?kbid=4499728",
+    "InstalledOn": {
+      "value": "/Date(1557878400000)/",
+      "DateTime": "Wednesday, May 15, 2019 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  },
+  {
+    "Status": null,
+    "Description": "Security Update",
+    "HotFixId": "KB4504369",
+    "Caption": "http://support.microsoft.com/?kbid=4504369",
+    "InstalledOn": {
+      "value": "/Date(1560297600000)/",
+      "DateTime": "Wednesday, June 12, 2019 12:00:00 AM"
+    },
+    "InstalledBy": "NT AUTHORITY\\SYSTEM"
+  }
+]

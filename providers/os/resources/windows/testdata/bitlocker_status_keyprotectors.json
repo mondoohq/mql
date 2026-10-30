@@ -1,0 +1,208 @@
+[
+  {
+    "volume": {
+      "Scope": {
+        "IsConnected": true,
+        "Options": "System.Management.ConnectionOptions",
+        "Path": "\\\\localhost\\Root\\cimv2\\security\\MicrosoftVolumeEncryption"
+      },
+      "Path": {
+        "Path": "\\\\DESKTOP-UNQ536A\\Root\\cimv2\\security\\MicrosoftVolumeEncryption:Win32_EncryptableVolume.DeviceID=\"\\\\\\\\?\\\\Volume{1b7897f7-3916-496c-91de-704fde33dde9}\\\\\"",
+        "RelativePath": "Win32_EncryptableVolume.DeviceID=\"\\\\\\\\?\\\\Volume{1b7897f7-3916-496c-91de-704fde33dde9}\\\\\"",
+        "Server": "DESKTOP-UNQ536A",
+        "NamespacePath": "Root\\cimv2\\security\\MicrosoftVolumeEncryption",
+        "ClassName": "Win32_EncryptableVolume",
+        "IsClass": false,
+        "IsInstance": true,
+        "IsSingleton": false
+      },
+      "Options": {
+        "UseAmendedQualifiers": false,
+        "Context": "",
+        "Timeout": "10675199.02:48:05.4775807"
+      },
+      "ClassPath": {
+        "Path": "\\\\DESKTOP-UNQ536A\\Root\\cimv2\\security\\MicrosoftVolumeEncryption:Win32_EncryptableVolume",
+        "RelativePath": "Win32_EncryptableVolume",
+        "Server": "DESKTOP-UNQ536A",
+        "NamespacePath": "Root\\cimv2\\security\\MicrosoftVolumeEncryption",
+        "ClassName": "Win32_EncryptableVolume",
+        "IsClass": true,
+        "IsInstance": false,
+        "IsSingleton": false
+      },
+      "Properties": [
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData"
+      ],
+      "SystemProperties": [
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData"
+      ],
+      "Qualifiers": [
+        "System.Management.QualifierData",
+        "System.Management.QualifierData",
+        "System.Management.QualifierData"
+      ],
+      "Site": null,
+      "Container": null,
+      "PSComputerName": "DESKTOP-UNQ536A",
+      "__GENUS": 2,
+      "__CLASS": "Win32_EncryptableVolume",
+      "__SUPERCLASS": null,
+      "__DYNASTY": "Win32_EncryptableVolume",
+      "__RELPATH": "Win32_EncryptableVolume.DeviceID=\"\\\\\\\\?\\\\Volume{1b7897f7-3916-496c-91de-704fde33dde9}\\\\\"",
+      "__PROPERTY_COUNT": 8,
+      "__DERIVATION": [],
+      "__SERVER": "DESKTOP-UNQ536A",
+      "__NAMESPACE": "Root\\cimv2\\security\\MicrosoftVolumeEncryption",
+      "__PATH": "\\\\DESKTOP-UNQ536A\\Root\\cimv2\\security\\MicrosoftVolumeEncryption:Win32_EncryptableVolume.DeviceID=\"\\\\\\\\?\\\\Volume{1b7897f7-3916-496c-91de-704fde33dde9}\\\\\"",
+      "ConversionStatus": 1,
+      "DeviceID": "\\\\?\\Volume{1b7897f7-3916-496c-91de-704fde33dde9}\\",
+      "DriveLetter": "C:",
+      "EncryptionMethod": 6,
+      "IsVolumeInitializedForProtection": true,
+      "PersistentVolumeID": "{ACCDB443-A545-4139-A2DC-A07588D785D8}",
+      "ProtectionStatus": 1,
+      "VolumeType": 0
+    },
+    "version": {
+      "Version": 2
+    },
+    "conversionStatus": {
+      "ConversionStatus": 1,
+      "WipingStatus": 0,
+      "WipingPercentage": 0,
+      "EncryptionFlags": 1,
+      "EncryptionPercentage": 100
+    },
+    "lockStatus": {
+      "LockStatus": 0
+    },
+    "keyProtectors": {
+      "value": [
+        {
+          "KeyProtectorID": "{2E0C2B72-0D30-4B33-9C39-1E6A6E1B7A57}",
+          "KeyProtectorType": 1
+        },
+        {
+          "KeyProtectorID": "{9B1D0B60-1E6C-4A25-9F0E-3C1B7A2D5E48}",
+          "KeyProtectorType": 3
+        }
+      ],
+      "Count": 2
+    },
+    "keyProtectorReturnValue": 0
+  },
+  {
+    "volume": {
+      "Scope": {
+        "IsConnected": true,
+        "Options": "System.Management.ConnectionOptions",
+        "Path": "\\\\localhost\\Root\\cimv2\\security\\MicrosoftVolumeEncryption"
+      },
+      "Path": {
+        "Path": "\\\\DESKTOP-UNQ536A\\Root\\cimv2\\security\\MicrosoftVolumeEncryption:Win32_EncryptableVolume.DeviceID=\"\\\\\\\\?\\\\Volume{0e4c91e2-80c2-4433-bf7f-31fb65330364}\\\\\"",
+        "RelativePath": "Win32_EncryptableVolume.DeviceID=\"\\\\\\\\?\\\\Volume{0e4c91e2-80c2-4433-bf7f-31fb65330364}\\\\\"",
+        "Server": "DESKTOP-UNQ536A",
+        "NamespacePath": "Root\\cimv2\\security\\MicrosoftVolumeEncryption",
+        "ClassName": "Win32_EncryptableVolume",
+        "IsClass": false,
+        "IsInstance": true,
+        "IsSingleton": false
+      },
+      "Options": {
+        "UseAmendedQualifiers": false,
+        "Context": "",
+        "Timeout": "10675199.02:48:05.4775807"
+      },
+      "ClassPath": {
+        "Path": "\\\\DESKTOP-UNQ536A\\Root\\cimv2\\security\\MicrosoftVolumeEncryption:Win32_EncryptableVolume",
+        "RelativePath": "Win32_EncryptableVolume",
+        "Server": "DESKTOP-UNQ536A",
+        "NamespacePath": "Root\\cimv2\\security\\MicrosoftVolumeEncryption",
+        "ClassName": "Win32_EncryptableVolume",
+        "IsClass": true,
+        "IsInstance": false,
+        "IsSingleton": false
+      },
+      "Properties": [
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData"
+      ],
+      "SystemProperties": [
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData",
+        "System.Management.PropertyData"
+      ],
+      "Qualifiers": [
+        "System.Management.QualifierData",
+        "System.Management.QualifierData",
+        "System.Management.QualifierData"
+      ],
+      "Site": null,
+      "Container": null,
+      "PSComputerName": "DESKTOP-UNQ536A",
+      "__GENUS": 2,
+      "__CLASS": "Win32_EncryptableVolume",
+      "__SUPERCLASS": null,
+      "__DYNASTY": "Win32_EncryptableVolume",
+      "__RELPATH": "Win32_EncryptableVolume.DeviceID=\"\\\\\\\\?\\\\Volume{0e4c91e2-80c2-4433-bf7f-31fb65330364}\\\\\"",
+      "__PROPERTY_COUNT": 8,
+      "__DERIVATION": [],
+      "__SERVER": "DESKTOP-UNQ536A",
+      "__NAMESPACE": "Root\\cimv2\\security\\MicrosoftVolumeEncryption",
+      "__PATH": "\\\\DESKTOP-UNQ536A\\Root\\cimv2\\security\\MicrosoftVolumeEncryption:Win32_EncryptableVolume.DeviceID=\"\\\\\\\\?\\\\Volume{0e4c91e2-80c2-4433-bf7f-31fb65330364}\\\\\"",
+      "ConversionStatus": 0,
+      "DeviceID": "\\\\?\\Volume{0e4c91e2-80c2-4433-bf7f-31fb65330364}\\",
+      "DriveLetter": "E:",
+      "EncryptionMethod": 0,
+      "IsVolumeInitializedForProtection": false,
+      "PersistentVolumeID": "",
+      "ProtectionStatus": 0,
+      "VolumeType": 2
+    },
+    "version": {
+      "Version": 0
+    },
+    "conversionStatus": {
+      "ConversionStatus": 0,
+      "WipingStatus": 4294967295,
+      "WipingPercentage": 0,
+      "EncryptionFlags": 0,
+      "EncryptionPercentage": 0
+    },
+    "lockStatus": {
+      "LockStatus": 0
+    },
+    "keyProtectors": [],
+    "keyProtectorReturnValue": 2150694920
+  }
+]

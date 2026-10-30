@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"runtime"
 
-	"go.mondoo.com/mql/v13"
+	"go.mondoo.com/mql"
 	"go.mondoo.com/ranger-rpc"
 	"go.mondoo.com/ranger-rpc/plugins/scope"
 )

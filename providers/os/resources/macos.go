@@ -10,11 +10,11 @@ import (
 	"io"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/macos"
-	"go.mondoo.com/mql/v13/providers/os/resources/plist"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/macos"
+	"go.mondoo.com/mql/providers/os/resources/plist"
 )
 
 func (m *mqlMacos) computerName() (string, error) {

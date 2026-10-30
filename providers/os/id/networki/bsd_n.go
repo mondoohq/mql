@@ -8,8 +8,6 @@ import (
 	"regexp"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
 )
@@ -42,8 +40,9 @@ func (n *neti) detectBSDInterfaces() ([]Interface, error) {
 
 // bsdIfconfigHeader matches the first line of an ifconfig stanza. NetBSD
 // prefixes the flags value with "0x"; the others use a bare hex/decimal
-// number. Both forms are accepted.
-var bsdIfconfigHeader = regexp.MustCompile(`^([a-zA-Z0-9._]+):\s+flags=(?:0x)?[0-9a-fA-F]+<([^>]*)>`)
+// number. Both forms are accepted, as is the second flags word AIX prints:
+// en0: flags=1e084863,81cc0<UP,BROADCAST,...>
+var bsdIfconfigHeader = regexp.MustCompile(`^([a-zA-Z0-9._]+):\s+flags=(?:0x)?[0-9a-fA-F]+(?:,[0-9a-fA-F]+)?<([^>]*)>`)
 
 func (n *neti) getBSDIfconfigInterfaces() (interfaces []Interface, err error) {
 	output, err := n.RunCommand("ifconfig -a")
@@ -100,10 +99,10 @@ func (n *neti) getBSDIfconfigInterfaces() (interfaces []Interface, err error) {
 			//   FreeBSD/OpenBSD/DragonFly: inet 1.2.3.4 netmask 0xffffff00 broadcast 1.2.3.255
 			//   NetBSD:                    inet 1.2.3.4/24 broadcast 1.2.3.255 flags 0x0
 			ipField := fields[1]
-			if slash := strings.Index(ipField, "/"); slash != -1 {
+			if before, after, ok := strings.Cut(ipField, "/"); ok {
 				current.AddOrUpdateIP(NewIPv4WithPrefixLength(
-					ipField[:slash],
-					parseInt(ipField[slash+1:]),
+					before,
+					parseInt(after),
 				))
 			} else if len(fields) >= 4 && fields[2] == "netmask" {
 				current.AddOrUpdateIP(NewIPv4WithMask(ipField, fields[3]))
@@ -142,9 +141,9 @@ func (n *neti) getBSDIfconfigInterfaces() (interfaces []Interface, err error) {
 		case "status:":
 			switch fields[1] {
 			case "active":
-				current.Active = convert.ToPtr(true)
+				current.Active = new(true)
 			case "inactive", "no":
-				current.Active = convert.ToPtr(false)
+				current.Active = new(false)
 			}
 		}
 	}
@@ -250,7 +249,7 @@ func bsdVirtualByName(name string) *bool {
 	}
 	for _, p := range prefixes {
 		if strings.HasPrefix(name, p) {
-			return convert.ToPtr(true)
+			return new(true)
 		}
 	}
 	return nil

@@ -5,7 +5,6 @@ package services
 
 import (
 	"fmt"
-	"os"
 	"path"
 	"strings"
 
@@ -21,39 +20,45 @@ type SystemdFSTimerManager struct {
 }
 
 func (m *SystemdFSTimerManager) List() ([]*SystemdTimer, error) {
-	enabledSet := buildEnabledSet(m.Fs)
-	seen := map[string]bool{}
+	units, err := readSystemdUnitFiles(m.Fs, ".timer")
+	if err != nil {
+		return nil, err
+	}
+	byName := make(map[string]*systemdUnitFile, len(units))
+	for _, u := range units {
+		byName[u.Name] = u
+	}
 	var timers []*SystemdTimer
-
-	for _, searchPath := range systemdUnitSearchPath {
-		entries, err := afero.ReadDir(m.Fs, searchPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, err
+	for _, u := range units {
+		if isSystemdInstanceUnit(u.Name) {
+			continue
 		}
-
-		for _, entry := range entries {
-			if !strings.HasSuffix(entry.Name(), ".timer") {
+		name := normalizeSystemdTimerName(u.Name)
+		if u.State == "alias" {
+			// an alias reads as the unit it names, under its own name
+			target, ok := byName[u.Target]
+			if !ok {
 				continue
 			}
-			name := normalizeSystemdTimerName(entry.Name())
-			if seen[name] {
-				continue
-			}
-			seen[name] = true
-
-			unitPath := path.Join(searchPath, entry.Name())
-			timer, err := m.readTimerUnit(name, unitPath)
+			u = &systemdUnitFile{Name: u.Name, State: target.State, Path: target.Path, Description: target.Description}
+		}
+		timer := &SystemdTimer{Name: name, Installed: true, Description: u.Description}
+		if u.State != "masked" {
+			read, err := m.readTimerUnit(name, u.Path)
 			if err != nil {
 				continue
 			}
-			timer.Enabled = enabledSet[entry.Name()]
-			timers = append(timers, timer)
+			timer = read
+			if timer.Description == "" && !isSystemdTemplateUnit(u.Name) {
+				timer.Description = u.Description
+			}
 		}
+		// the unit-file state as systemctl reports it: a unit without an
+		// [Install] section is static even when something links it, and a
+		// link a package ships under /usr/lib does not enable it
+		applyUnitFileState(&timer.Enabled, &timer.Masked, &timer.Static, u.State)
+		timers = append(timers, timer)
 	}
-
 	return timers, nil
 }
 
@@ -77,7 +82,7 @@ func (m *SystemdFSTimerManager) ShowTimerProperties(name string) (map[string]str
 		if _, err := m.Fs.Stat(unitPath); err != nil {
 			continue
 		}
-		return m.readTimerProperties(unitPath)
+		return m.readTimerProperties(unitName, unitPath)
 	}
 	return nil, fmt.Errorf("%w: %s", ErrServiceNotFound, name)
 }
@@ -122,28 +127,51 @@ func (m *SystemdFSTimerManager) readTimerUnit(name, unitPath string) (*SystemdTi
 	return timer, nil
 }
 
-func (m *SystemdFSTimerManager) readTimerProperties(unitPath string) (map[string]string, error) {
-	f, err := m.Fs.Open(unitPath)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	opts, err := unit.Deserialize(f)
-	if err != nil {
-		return nil, err
-	}
-
+// readTimerProperties reads the timer settings from the unit file and its
+// drop-ins, in the order systemd applies them. OnCalendar is a list: every
+// assignment adds an expression and an empty one clears those before it.
+// Several expressions are joined with a newline.
+func (m *SystemdFSTimerManager) readTimerProperties(unitName, unitPath string) (map[string]string, error) {
 	props := map[string]string{}
-	for _, o := range opts {
-		switch {
-		case o.Section == "Timer" && o.Name == "OnCalendar":
-			props["OnCalendar"] = o.Value
-		case o.Section == "Timer" && o.Name == "Persistent":
-			props["Persistent"] = o.Value
-		case o.Section == "Timer" && o.Name == "Unit":
-			props["Unit"] = o.Value
+	var calendar []string
+
+	files := append([]string{unitPath}, (&SystemdFSUnitManager{Fs: m.Fs}).dropInFiles(unitName)...)
+	for i, file := range files {
+		f, err := m.Fs.Open(file)
+		if err != nil {
+			if i == 0 {
+				return nil, err
+			}
+			// a drop-in that cannot be read does not erase the unit file
+			continue
 		}
+		opts, err := unit.Deserialize(f)
+		f.Close()
+		if err != nil {
+			if i == 0 {
+				return nil, err
+			}
+			continue
+		}
+
+		for _, o := range opts {
+			if o.Section != "Timer" {
+				continue
+			}
+			switch o.Name {
+			case "OnCalendar":
+				if o.Value == "" {
+					calendar = nil
+					continue
+				}
+				calendar = append(calendar, o.Value)
+			case "Persistent", "Unit":
+				props[o.Name] = o.Value
+			}
+		}
+	}
+	if len(calendar) > 0 {
+		props["OnCalendar"] = strings.Join(calendar, "\n")
 	}
 
 	// If Unit is not explicitly set, systemd defaults to <name>.service

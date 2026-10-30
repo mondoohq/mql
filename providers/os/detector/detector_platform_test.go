@@ -8,8 +8,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
 func detectPlatformFromMock(filepath string) (*inventory.Platform, error) {
@@ -151,7 +152,7 @@ func TestCentos8StreamOSDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-centos-8-stream.toml")
 	assert.Nil(t, err, "was able to create the provider")
 
-	assert.Equal(t, "centos", di.Name, "os name should be identified")
+	assert.Equal(t, "centos-stream", di.Name, "os name should be identified")
 	assert.Equal(t, "CentOS Stream 8", di.Title, "os title should be identified")
 	assert.Equal(t, "8", di.Version, "os version should be identified")
 	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
@@ -162,8 +163,23 @@ func TestCentos9StreamOSDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-centos-9-stream.toml")
 	assert.Nil(t, err, "was able to create the provider")
 
-	assert.Equal(t, "centos", di.Name, "os name should be identified")
+	assert.Equal(t, "centos-stream", di.Name, "os name should be identified")
 	assert.Equal(t, "CentOS Stream 9", di.Title, "os title should be identified")
+	assert.Equal(t, "9", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+}
+
+// CentOS Stream is told apart from CentOS Linux by its title, and on a system
+// with no os-release the title is whatever the redhat family resolver parsed
+// out of /etc/redhat-release. That parse is the only thing standing between a
+// Stream host of this shape and the "centos" name, so it gets its own case.
+func TestCentos9StreamNoOsReleaseOSDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-centos-9-stream-no-osrelease.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "centos-stream", di.Name, "os name should be identified")
+	assert.Equal(t, "CentOS Stream", di.Title, "os title should be identified")
 	assert.Equal(t, "9", di.Version, "os version should be identified")
 	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
 	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
@@ -244,6 +260,71 @@ func TestEuroLinux9OSDetector(t *testing.T) {
 	assert.Equal(t, "9.1", di.Version, "os version should be identified")
 	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
 	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+}
+
+func TestRhcosDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-rhcos.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "rhcos", di.Name, "os name should be identified")
+	assert.Equal(t, "Red Hat Enterprise Linux CoreOS", di.Title, "os title should be identified")
+	assert.Equal(t, "9.6", di.Version, "os version should be the rhel release, not the image build")
+	assert.Equal(t, "9.6.20250523-0", di.Build, "image build should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+	assert.Equal(t, "4.19", di.Metadata["openshift/version"], "openshift version should be identified")
+	assert.Equal(t, "4.19", di.Labels["openshift-version"], "openshift version label should be identified")
+}
+
+// From OpenShift 4.19 on, RHCOS reports ID="rhel" and only VARIANT_ID=coreos
+// tells it apart from stock RHEL.
+func TestRhcos419Detector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-rhcos-4.19.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "rhcos", di.Name, "os name should be identified")
+	assert.Equal(t, "Red Hat Enterprise Linux CoreOS", di.Title, "os title should be identified")
+	assert.Equal(t, "9.6", di.Version, "os version should be the rhel release")
+	assert.Equal(t, "9.6.20250523-0", di.Build, "image build should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+	assert.Equal(t, "4.19", di.Labels["openshift-version"], "openshift version label should be identified")
+	assert.Equal(t, "4.19", di.Metadata["openshift/version"], "openshift version should be identified")
+}
+
+// rpm-ostree systems ship the real file at /usr/lib/os-release and symlink
+// /etc/os-release at it. Scanning the raw root partition can leave the symlink
+// unresolved, so detection has to work off the /usr/lib copy alone.
+func TestRhcosUsrLibOsReleaseDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-rhcos-usrlib.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "rhcos", di.Name, "os name should be identified")
+	assert.Equal(t, "Red Hat Enterprise Linux CoreOS", di.Title, "os title should be identified")
+	assert.Equal(t, "9.6", di.Version, "os version should be the rhel release, not the image build")
+	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+}
+
+func TestCloudLinux9OSDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-cloudlinux-9.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "cloudlinux", di.Name, "os name should be identified")
+	assert.Equal(t, "CloudLinux 9.6 (Vladimir Lyakhov)", di.Title, "os title should be identified")
+	assert.Equal(t, "9.6", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+}
+
+// A host with no /etc/os-release still reaches the resolver with the title the
+// redhat family parsed out of /etc/redhat-release ("CloudLinux release 9.6
+// (Vladimir Lyakhov)" yields the title "CloudLinux").
+func TestCloudLinuxDetectFromReleaseTitle(t *testing.T) {
+	pf := &inventory.Platform{Title: "CloudLinux"}
+	detected, err := cloudlinux.Detect(cloudlinux, pf, nil)
+	assert.NoError(t, err)
+	assert.True(t, detected, "cloudlinux should be detected from the release title")
+	assert.Equal(t, "cloudlinux", pf.Name, "os name should be set")
 }
 
 func TestUbuntu1204Detector(t *testing.T) {
@@ -465,6 +546,21 @@ func TestOpenSuseLeap15Detector(t *testing.T) {
 	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
 }
 
+// Leap 16 is a full rebase onto the SLE 16 codebase: it drops YaST, moves
+// packaged configuration to /usr/etc, and ships an /etc/os-release whose
+// ID_LIKE now also names SLE. It still has to resolve as opensuse-leap and
+// not fall through to the sles resolver or read as a Leap 15 point release.
+func TestOpenSuseLeap16Detector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-opensuse-leap-16.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "opensuse-leap", di.Name, "os name should be identified")
+	assert.Equal(t, "openSUSE Leap 16.0", di.Title, "os title should be identified")
+	assert.Equal(t, "16.0", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
+}
+
 func TestOpenSuseTumbleweedDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-opensuse-tumbleweed.toml")
 	assert.Nil(t, err, "was able to create the provider")
@@ -535,6 +631,97 @@ func TestSuse5MicroDetector(t *testing.T) {
 	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
 }
 
+// SUSE Linux Micro 6.0 and 6.1 set ID=sl-micro. They are the same product as
+// SUSE Linux Enterprise Micro 5 and report as suse-microos, keeping the
+// os-release ID as the distro id.
+func TestSlMicro6Detector(t *testing.T) {
+	for _, tc := range []struct {
+		fixture string
+		version string
+		title   string
+	}{
+		{"./testdata/detect-sl-micro-6.0.toml", "6.0", "SUSE Linux Micro 6.0"},
+		{"./testdata/detect-sl-micro-6.1.toml", "6.1", "SUSE Linux Micro 6.1"},
+	} {
+		t.Run(tc.version, func(t *testing.T) {
+			di, err := detectPlatformFromMock(tc.fixture)
+			require.NoError(t, err)
+
+			assert.Equal(t, "suse-microos", di.Name)
+			assert.Equal(t, "sl-micro", di.Metadata[LabelDistroID])
+			assert.Equal(t, tc.version, di.Version)
+			assert.Equal(t, tc.title, di.Title)
+			assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
+		})
+	}
+}
+
+// SUSE Linux Micro 6.2 sets ID=sles and VERSION_ID=16.0, and was reported as
+// SLES 16.0.
+func TestSlMicro62IsNotSles(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-sl-micro-6.2.toml")
+	require.NoError(t, err)
+
+	assert.Equal(t, "suse-microos", di.Name)
+	assert.Equal(t, "6.2", di.Version, "the SUSE Linux Micro version, not the SLES one")
+	assert.Equal(t, "SUSE Linux Micro 6.2", di.Title, "SUSE's SLES title is replaced")
+	assert.Equal(t, "sl-micro", di.Metadata[LabelDistroID], "the distro id 6.0 and 6.1 set, so package URLs do not read sles-6.2")
+	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
+}
+
+// A Harvester node is SUSE Linux Micro 6.2 with its own PRETTY_NAME, which
+// stays as the title.
+func TestHarvesterNodeDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-harvester-1.8.toml")
+	require.NoError(t, err)
+
+	assert.Equal(t, "suse-microos", di.Name)
+	assert.Equal(t, "6.2", di.Version)
+	assert.Equal(t, "Harvester v1.8.2", di.Title)
+	assert.Equal(t, "v1.8.2", di.Metadata[LabelHarvesterVersion])
+	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
+}
+
+// A plain SUSE Linux Micro system is not a Harvester node.
+func TestSlMicroWithoutHarvesterRelease(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-sl-micro-6.2.toml")
+	require.NoError(t, err)
+
+	assert.NotContains(t, di.Metadata, LabelHarvesterVersion)
+}
+
+// openSUSE MicroOS sets ID=opensuse-microos, which no resolver claimed: the
+// suse family's only micro leaf matched SLE Micro's ID=suse-microos. Detection
+// fell through to the generic resolver, so the platform carried no suse family
+// and a container image or running container was renamed to "scratch", which
+// routes to ScratchPkgManager and reports an empty package list with no error.
+func TestOpenSuseMicroOsIsClaimedByTheMicroOsResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-opensuse-microos.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.Equal(t, suseMicroOs, leaf, "openSUSE MicroOS must be claimed by the micro resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
+func TestOpenSuseMicroOsDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-opensuse-microos.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "opensuse-microos", di.Name, "os name should be identified")
+	assert.Equal(t, "openSUSE MicroOS", di.Title, "os title should be identified")
+	assert.Equal(t, "20260822", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	// the suse family is what routes it to zypper/rpm packages, the suse
+	// kernel filter and the suse update manager
+	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
+	assert.Equal(t, map[string]string{"distro-id": "opensuse-microos"}, di.Labels)
+}
+
 func TestAmazon1LinuxDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-amazonlinux-2017.09.toml")
 	assert.Nil(t, err, "was able to create the provider")
@@ -591,6 +778,35 @@ func TestBottlerocketEBSDetector(t *testing.T) {
 	assert.Equal(t, "1.50.0", di.Version, "os version should be identified")
 	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
 	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+// Newer Bottlerocket ships no /etc/bottlerocket-release, and a root-partition
+// scan sees no /etc/os-release either. Detection gated the claim on opening the
+// release file, so the generic resolver took those systems and a container
+// image was reported as "scratch". Name, title and version still looked right,
+// because the family detection had already read /usr/lib/os-release.
+func TestBottlerocketEBSIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-bottlerocket-ebs.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.Equal(t, bottlerocket, leaf, "bottlerocket must claim its own root partition")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
+// The release file still wins where it exists: it carries BUILD_ID, which
+// /usr/lib/os-release on that variant does not.
+func TestBottlerocketReleaseFileStillEnriches(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-bottlerocket.toml"))
+	require.NoError(t, err)
+
+	_, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	assert.Equal(t, bottlerocket, leaf)
 }
 
 func TestScientificLinuxDetector(t *testing.T) {
@@ -743,13 +959,317 @@ func TestWolfiLinuxDetector(t *testing.T) {
 	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
 }
 
+func TestWizOSLinuxDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-wizos.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "wizos", di.Name, "os name should be identified")
+	assert.Equal(t, "WizOS", di.Title, "os title should be identified")
+	assert.Equal(t, "1.0", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+// BellSoft Alpaquita and BellSoft Hardened Containers are Alpine-lineage
+// (ID_LIKE=alpine) but ship neither /etc/alpine-release nor an ID alpine's
+// resolver recognizes, so before they were added they fell through to the
+// generic resolver and carried no platform of their own.
+func TestAlpaquitaLinuxDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-alpaquita.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "alpaquita", di.Name, "os name should be identified")
+	assert.Equal(t, "BellSoft Alpaquita Linux Stream (glibc)", di.Title, "os title should be identified")
+	assert.Equal(t, "stream", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+func TestBellSoftHardenedContainersDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-bellsoft-hardened-containers.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	// The hardened images are built on Alpaquita but are a product of their own,
+	// with their own release line and advisory feed, so they must not be
+	// reported as alpaquita.
+	assert.Equal(t, "bellsoft-hardened-containers", di.Name, "os name should be identified")
+	assert.Equal(t, "BellSoft Hardened Containers Stream (musl)", di.Title, "os title should be identified")
+	assert.Equal(t, "stream", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+// ALT Linux (BaseALT) ships /etc/redhat-release, /etc/fedora-release and
+// /etc/system-release for compatibility, all carrying just "ALT Container" with
+// no version and no distro name. Nothing claimed it, so it fell through to the
+// generic resolver and container images were reported as "scratch".
+func TestAltLinuxDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-altlinux-p10.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "altlinux", di.Name, "os name should be identified")
+	assert.Equal(t, "ALT Container", di.Title, "os title should be identified")
+	assert.Equal(t, "10", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+// The name above is right even without a resolver of its own, because the
+// generic fallback leaves a name that os-release already supplied. What it does
+// not survive is a container image scan: an image whose platform was only
+// claimed by the generic resolver is reported as "scratch", which is how ALT
+// images were coming back.
+func TestAltLinuxIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-altlinux-p10.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.NotEqual(t, defaultLinux, leaf, "ALT must not be left to the generic linux resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
+// Chainguard OS is the distribution behind Chainguard's production images. The
+// free-tier images are Wolfi and resolve as wolfi; these are a platform of their
+// own, with their own release line and advisory feed.
+func TestChainguardDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-chainguard.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "chainguard", di.Name, "os name should be identified")
+	assert.Equal(t, "Chainguard", di.Title, "os title should be identified")
+	assert.Equal(t, "20230214", di.Version, "the release line is a date stamp, not a dotted version")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+// The name above was already right without a resolver, because os-release
+// supplies it and the generic fallback leaves it alone. What it does not
+// survive is a container image scan, which is how Chainguard images are
+// consumed: an image claimed only by the generic resolver is reported as
+// "scratch", and "scratch" selects ScratchPkgManager, whose List() returns an
+// empty slice and no error. A fully populated apk database then reports zero
+// packages, and the scan looks clean rather than broken.
+func TestChainguardIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-chainguard.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.NotEqual(t, defaultLinux, leaf, "Chainguard must not be left to the generic linux resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
+// MinimOS is the distribution behind the Minimus hardened container images.
+func TestMinimosDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-minimos.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "minimos", di.Name, "os name should be identified")
+	assert.Equal(t, "MinimOS", di.Title, "os title should be identified")
+	assert.Equal(t, "20241031", di.Version, "the release line is a date stamp, not a dotted version")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+// As with Chainguard OS, the name survives without a resolver but a container
+// image scan does not: an image claimed only by the generic resolver is
+// reported as "scratch", and "scratch" reports zero packages from a populated
+// apk database without erroring.
+func TestMinimosIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-minimos.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.NotEqual(t, defaultLinux, leaf, "MinimOS must not be left to the generic linux resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
+// CleanStart OS is the distribution behind the CleanStart hardened container
+// images.
+func TestCleanstartDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-cleanstart.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "cleanstart", di.Name, "os name should be identified")
+	assert.Equal(t, "CleanStart", di.Title, "os title should be identified")
+	assert.Equal(t, "20241216", di.Version, "the release line is a date stamp, not a dotted version")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+func TestCleanstartIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-cleanstart.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.Equal(t, cleanstart, leaf, "CleanStart OS must be claimed by its own resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
+// Arch Linux ARM sets ID=archarm and reports as arch.
+func TestArchArmDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-archarm.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "arch", di.Name, "Arch Linux ARM is arch, not a platform of its own")
+	assert.Equal(t, []string{"arch", "linux", "unix", "os"}, di.Family,
+		"Arch Linux ARM belongs to the arch family")
+}
+
+// A container image whose platform is only claimed by the generic resolver is
+// reported as "scratch", which is how Arch Linux ARM images were coming back -
+// and an undetected platform takes the package manager with it, so `packages`
+// errored on an image pacman happily lists.
+func TestArchArmIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-archarm.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.NotEqual(t, defaultLinux, leaf, "Arch Linux ARM must not be left to the generic linux resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf))
+}
+
+// Manjaro ARM sets ID=manjaro-arm and reports as manjaro.
+func TestManjaroArmDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-manjaro-arm.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "manjaro", di.Name, "Manjaro ARM is manjaro, not a platform of its own")
+	assert.Equal(t, "24.03", di.Version, "os version should come from lsb")
+	assert.Equal(t, []string{"arch", "linux", "unix", "os"}, di.Family,
+		"Manjaro ARM belongs to the arch family")
+}
+
+// A container image whose platform is only claimed by the generic resolver is
+// reported as "scratch", which is how Manjaro ARM images were coming back.
+func TestManjaroArmIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-manjaro-arm.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.NotEqual(t, defaultLinux, leaf, "Manjaro ARM must not be left to the generic linux resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf))
+}
+
+// Void Linux ships only /etc/os-release, with ID=void and no version of any
+// kind (it is a rolling release). Nothing claimed it, so the generic resolver
+// did, and container images were reported as "scratch" even though the image
+// says exactly what it is.
+func TestVoidLinuxDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-void.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "void", di.Name, "os name should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+func TestVoidLinuxIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-void.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.NotEqual(t, defaultLinux, leaf, "Void must not be left to the generic linux resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
+// Clear Linux OS ships only /etc/os-release (a symlink to /usr/lib/os-release),
+// carrying ID=clear-linux-os. Nothing claimed it, so the generic resolver did
+// and container images were reported as "scratch".
+func TestClearLinuxDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-clearlinux.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "clear-linux-os", di.Name, "os name should be identified")
+	assert.Equal(t, "43630", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+func TestClearLinuxIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-clearlinux.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.NotEqual(t, defaultLinux, leaf, "Clear Linux must not be left to the generic linux resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
+// A distribution with no resolver of its own is still claimed by the generic
+// linux resolver, which leaves the name os-release supplied. Container images
+// in that state were reported as "scratch", discarding an identity the image
+// states outright. Reserve "scratch" for images that genuinely say nothing.
+func TestOsReleaseNameSurvivesTheGenericResolver(t *testing.T) {
+	for _, tc := range []struct {
+		fixture string
+		name    string
+		version string
+	}{
+		{"detect-slackware.toml", "slackware", "15.0"},
+		{"detect-deepin.toml", "deepin", "25"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/"+tc.fixture))
+			require.NoError(t, err)
+
+			pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+			require.True(t, resolved)
+			assert.Equal(t, tc.name, pf.Name)
+			assert.Equal(t, tc.version, pf.Version)
+			assert.False(t, isUnidentifiedPlatform(pf, leaf),
+				"os-release named this distribution, so a container image must not report scratch")
+		})
+	}
+}
+
+// An image that names nothing is still unidentified, and "scratch" stays the
+// honest answer for it.
+func TestImageWithNoOsReleaseStaysUnidentified(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-generic-linux.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved)
+	assert.True(t, isUnidentifiedPlatform(pf, leaf),
+		"nothing named this system, so it stays scratch")
+}
+
 func TestBusyboxLinuxDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-busybox.toml")
 	assert.Nil(t, err, "was able to create the provider")
 
 	assert.Equal(t, "busybox", di.Name, "os name should be identified")
 	assert.Equal(t, "BusyBox", di.Title, "os title should be identified")
-	assert.Equal(t, "v1.34.1", di.Version, "os version should be identified")
+	assert.Equal(t, "1.34.1", di.Version, "os version should not carry busybox's v prefix")
 	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
 	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
 }
@@ -853,6 +1373,17 @@ func TestWindows11_24H2HotpatchDetector(t *testing.T) {
 	assert.Equal(t, "true", di.Labels["windows.mondoo.com/hotpatch"])
 }
 
+func TestWindows11_24H2ProHotpatchDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-windows11-24h2-pro-hotpatch.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "windows", di.Name, "os name should be identified")
+	assert.Equal(t, "Windows 11 Pro", di.Title, "os title should be identified")
+	assert.Equal(t, "26100", di.Version, "os version should be identified")
+	assert.Equal(t, "1", di.Labels["windows.mondoo.com/product-type"])
+	assert.Equal(t, "true", di.Labels["windows.mondoo.com/hotpatch"])
+}
+
 func TestPhoton1Detector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-photon1.toml")
 	assert.Nil(t, err, "was able to create the provider")
@@ -893,7 +1424,35 @@ func TestMacOSsDetector(t *testing.T) {
 	assert.Equal(t, "macos", di.Name, "os name should be identified")
 	assert.Equal(t, "Mac OS X", di.Title, "os title should be identified")
 	assert.Equal(t, "10.14.5", di.Version, "os version should be identified")
+	assert.Equal(t, "18F132", di.Build, "os build should be identified")
 	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"darwin", "bsd", "unix", "os"}, di.Family)
+}
+
+// A darwin system whose system version property list is unreadable is still
+// macOS: the details come from sw_vers instead of the property list.
+func TestMacOSWithoutSystemVersionPlistDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-macos-no-plist.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "macos", di.Name, "os name should be identified")
+	assert.Equal(t, "macOS", di.Title, "os title should be identified")
+	assert.Equal(t, "15.5", di.Version, "os version should be identified")
+	assert.Equal(t, "24F74", di.Build, "os build should be identified")
+	assert.Equal(t, "arm64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"darwin", "bsd", "unix", "os"}, di.Family)
+}
+
+// A darwin system that reports neither sw_vers nor a system version property
+// list is reported as macOS without a version, never as the kernel name.
+func TestMacOSWithoutSwVersDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-darwin-bare.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "macos", di.Name, "os name should be identified")
+	assert.Equal(t, "macOS", di.Title, "os title should be identified")
+	assert.Empty(t, di.Version, "os version is unknown")
+	assert.Equal(t, "arm64", di.Arch, "os arch should be identified")
 	assert.Equal(t, []string{"darwin", "bsd", "unix", "os"}, di.Family)
 }
 
@@ -917,6 +1476,76 @@ func TestSolaris11Detector(t *testing.T) {
 	assert.Equal(t, "11.1", di.Version, "os version should be identified")
 	assert.Equal(t, "i86pc", di.Arch, "os arch should be identified")
 	assert.Equal(t, []string{"unix", "os"}, di.Family)
+}
+
+// Solaris 11.4 ships an /etc/os-release, which used to make it a linux system:
+// every resource gated on the linux family then took a Linux code path.
+func TestSolaris114Detector(t *testing.T) {
+	for _, tc := range []struct {
+		name, fixture, arch string
+	}{
+		{"live host", "./testdata/detect-solaris114.toml", "i86pc"},
+		// No uname to confirm SunOS: os-release is the only evidence.
+		{"files only", "./testdata/detect-solaris114-files-only.toml", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			di, err := detectPlatformFromMock(tc.fixture)
+			require.NoError(t, err)
+
+			assert.Equal(t, "solaris", di.Name)
+			assert.Equal(t, []string{"unix", "os"}, di.Family)
+			assert.Equal(t, "Oracle Solaris 11.4", di.Title)
+			assert.Equal(t, "11.4", di.Version)
+			assert.Equal(t, "11.4.86.0.1.201.2", di.Build)
+			assert.Equal(t, tc.arch, di.Arch)
+			// The distro qualifier of package URLs reads these.
+			assert.Equal(t, "solaris", di.Labels[LabelDistroID])
+			assert.Equal(t, "sru", di.Labels["variant-id"])
+		})
+	}
+}
+
+// uname already proves the host is SunOS, so an unreadable /etc/release must
+// still detect solaris - just without a title and version.
+func TestSolarisDetectorWithoutReleaseFile(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-solaris11-no-release.toml")
+	require.NoError(t, err, "platform is still detected without /etc/release")
+
+	assert.Equal(t, "solaris", di.Name, "os name should be identified")
+	assert.Equal(t, "i86pc", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"unix", "os"}, di.Family)
+}
+
+func TestAix72Detector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-aix72.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "aix", di.Name, "os name should be identified")
+	assert.Equal(t, "AIX", di.Title, "os title should be identified")
+	assert.Equal(t, "7.2", di.Version, "os version should be identified")
+	assert.Equal(t, "powerpc", di.Arch, "os arch should be identified")
+	assert.Equal(t, "7200-05-02-2114", di.Build, "os build should be identified")
+	assert.Equal(t, []string{"unix", "os"}, di.Family)
+
+	// hardware facts required to scope POWER-gated security advisories
+	assert.Equal(t, "IBM,9009-42A", di.Labels[AixLabelSystemModel])
+	assert.Equal(t, "PowerPC_POWER9", di.Labels[AixLabelProcessorType])
+}
+
+func TestAixDetectorWithoutHardwareFacts(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-aix71-no-hardware.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "aix", di.Name, "os name should be identified")
+	assert.Equal(t, "7.1", di.Version, "os version should be identified")
+
+	// uname -M and lsattr are unavailable here. The labels must stay absent rather
+	// than be recorded as empty, so that consumers can tell "unknown" apart from a
+	// value that genuinely does not match.
+	_, hasModel := di.Labels[AixLabelSystemModel]
+	assert.False(t, hasModel, "system model label should be absent")
+	_, hasProcType := di.Labels[AixLabelProcessorType]
+	assert.False(t, hasProcType, "processor type label should be absent")
 }
 
 func TestNetbsd8Detector(t *testing.T) {
@@ -1019,6 +1648,26 @@ func TestGoogleCOSDetector(t *testing.T) {
 	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
 }
 
+// Asserting the name would pass either way: the generic fallback leaves
+// whatever os-release said. Container images are what break.
+func TestGoogleCOSIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-google-cos.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.NotEqual(t, defaultLinux, leaf, "cos must not be left to the generic linux resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
+func TestGoogleCOSIsInPlatformCatalog(t *testing.T) {
+	assert.Equal(t, []string{"os", "unix", "linux"}, osTree["cos"],
+		"cos must carry a family chain for policy filters to match on")
+}
+
 func TestElementaryOSDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-elementary.toml")
 	assert.Nil(t, err, "was able to create the provider")
@@ -1108,6 +1757,23 @@ func TestAzureLinuxDetector(t *testing.T) {
 	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
 }
 
+// CBL-Mariner is Azure Linux under its pre-3.0 name and ships ID=mariner. It
+// keeps reporting as "mariner" rather than being folded into "azurelinux",
+// which would break anyone filtering on the name. Before it was wired into the
+// azurelinux resolver it fell through to defaultLinux, which reads neither
+// NAME nor VERSION, so title was the generic PRETTY_NAME and build was empty.
+func TestMarinerDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-mariner.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "mariner", di.Name, "os name should be identified")
+	assert.Equal(t, "Common Base Linux Mariner", di.Title, "os title should be identified")
+	assert.Equal(t, "2.0", di.Version, "os version should be identified")
+	assert.Equal(t, "2.0.20260304", di.Build, "os build should be identified")
+	assert.Equal(t, "aarch64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
 func TestDetectorFlatcar(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-flatcar.toml")
 	assert.Nil(t, err, "was able to create the provider")
@@ -1118,6 +1784,114 @@ func TestDetectorFlatcar(t *testing.T) {
 	assert.Equal(t, "2025-09-12-2110", di.Build, "os build should be identified")
 	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
 	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+func TestDetectorTalos(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-talos.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "talos", di.Name, "os name should be identified")
+	assert.Equal(t, "Talos (v1.13.9)", di.Title, "os title should be identified")
+	// VERSION_ID is v1.13.9 on this target; the vendor's "v" prefix is stripped
+	// so version comparisons do not have to special-case Talos. The prefixed
+	// string survives in Title, which is PRETTY_NAME verbatim.
+	assert.Equal(t, "1.13.9", di.Version, "os version should have the v prefix stripped")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+	assert.Equal(t, map[string]string{"distro-id": "talos"}, di.Labels)
+}
+
+// Talos ships no shell, no package database and no sshd, so it is only ever
+// reached as an image, a disk or a mounted filesystem. Nothing claimed
+// ID=talos, so it fell to the generic resolver, and platform_resolver.go
+// renames any container claimed only by that resolver to "scratch", which
+// reports an empty package list with no error.
+func TestTalosIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-talos.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.Equal(t, talos, leaf, "Talos must be claimed by its own resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
+// Anolis OS, OpenCloudOS, deepin and openKylin all set an ID no resolver
+// claimed, so detection fell to the generic resolver and every one of their
+// container images was reported as "scratch": no family, and so no package
+// manager and no findings.
+//
+// Each lands in a different place, and the family is the point: it is what
+// selects rpm or dpkg further down.
+
+func TestAnolisDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-anolis-8.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "anolis", di.Name, "os name should be identified")
+	assert.Equal(t, "Anolis OS 8.8", di.Title, "os title should be identified")
+	assert.Equal(t, "8.8", di.Version, "os version should be identified")
+	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+}
+
+// Alibaba Cloud Linux links /etc/centos-release to its own release file, so the
+// centos resolver used to claim it and emit "alinux", a name not in the tree.
+func TestAlibabaCloudLinux3Detector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-alinux-3.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "alinux", di.Name, "os name should be identified")
+	assert.Equal(t, "Alibaba Cloud Linux 3.2104 U13.4 (OpenAnolis Edition)", di.Title, "os title should be identified")
+	assert.Equal(t, "3", di.Version, "os version should be identified")
+	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+}
+
+// A host with no /etc/os-release still reaches the resolver with the title the
+// redhat family parsed out of /etc/redhat-release.
+func TestAlibabaCloudLinuxDetectFromReleaseTitle(t *testing.T) {
+	name, _, err := ParseRhelVersion("Alibaba Cloud Linux release 3 (OpenAnolis Edition)")
+	require.NoError(t, err)
+
+	pf := &inventory.Platform{Title: name}
+	detected, err := alinux.Detect(alinux, pf, nil)
+	assert.NoError(t, err)
+	assert.True(t, detected, "alinux should be detected from the release title")
+	assert.Equal(t, "alinux", pf.Name, "os name should be set")
+}
+
+// OpenCloudOS ships no /etc/redhat-release, so the redhat family declines it
+// before its children are consulted. It resolves as a platform of its own and
+// packages.go names it to get the rpm package manager back.
+func TestOpenCloudOSDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-opencloudos-9.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "opencloudos", di.Name, "os name should be identified")
+	assert.Equal(t, "OpenCloudOS 9.0", di.Title, "os title should be identified")
+	assert.Equal(t, "9.0", di.Version, "os version should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+func TestDeepinDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-deepin-25.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "deepin", di.Name, "os name should be identified")
+	assert.Equal(t, "Deepin 25", di.Title, "os title should be identified")
+	assert.Equal(t, "25", di.Version, "os version should be identified")
+	assert.Equal(t, []string{"debian", "linux", "unix", "os"}, di.Family)
+}
+
+func TestOpenKylinDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-openkylin-3.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "openkylin", di.Name, "os name should be identified")
+	assert.Equal(t, "openKylin 3.0", di.Title, "os title should be identified")
+	assert.Equal(t, "3.0", di.Version, "os version should be identified")
+	assert.Equal(t, []string{"debian", "linux", "unix", "os"}, di.Family)
 }
 
 func TestEndeavourOSContainerDetector(t *testing.T) {
@@ -1207,6 +1981,17 @@ func TestGardenLinuxDetector_1877(t *testing.T) {
 	assert.Equal(t, "1877.9", di.Version, "os version should be identified")
 }
 
+func TestElxrDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-elxr-12.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "elxr", di.Name, "os name should be identified")
+	assert.Equal(t, "eLxr 12 (aria)", di.Title, "os title should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"debian", "linux", "unix", "os"}, di.Family)
+	assert.Equal(t, "12", di.Version, "os version should be identified")
+}
+
 func TestCachyOSDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-cachyos.toml")
 	assert.Nil(t, err, "was able to create the provider")
@@ -1258,5 +2043,219 @@ func TestQubesOSDetector(t *testing.T) {
 	assert.Equal(t, "Qubes OS 4.2 (R4.2)", di.Title, "os title should be identified")
 	assert.Equal(t, "4.2", di.Version, "os version should be identified")
 	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+}
+
+// os-release does not require an ID field, and vendor firmware such as FRITZ!OS
+// ships without one. The name is derived from NAME so the platform does not end
+// up reported as "unknown".
+func TestOSReleaseWithoutIDDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-fritzos.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "fritzos", di.Name, "os name should be derived from NAME")
+	assert.Equal(t, "FRITZ!OS 8.03", di.Title, "os title should be identified")
+	assert.Equal(t, "8.03", di.Version, "os version should be identified")
+	assert.Equal(t, "aarch64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+// a linux system that carries no lsb or os-release information at all falls back
+// to the generic-linux resolver name
+func TestGenericLinuxDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-generic-linux.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "generic-linux", di.Name, "os name should fall back to the generic name")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+// PRETTY_NAME is not used to derive a name, since it carries the version and
+// would mint a new platform name for every release. Without an ID or a NAME the
+// system falls back to generic-linux, keeping PRETTY_NAME as the title only.
+func TestOSReleaseWithPrettyNameOnlyDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-linux-prettyname-only.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "generic-linux", di.Name, "os name should not be derived from PRETTY_NAME")
+	assert.Equal(t, "Some Vendor Linux 1.2.3", di.Title, "os title should be identified")
+	assert.Equal(t, "1.2.3", di.Version, "os version should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+func TestSlugifyPlatformName(t *testing.T) {
+	test := []struct {
+		Val      string
+		Expected string
+	}{
+		{Val: "FRITZ!OS", Expected: "fritzos"},
+		{Val: "Buildroot", Expected: "buildroot"},
+		{Val: "Generic Vendor Linux", Expected: "generic-vendor-linux"},
+		{Val: "Debian GNU/Linux", Expected: "debian-gnulinux"},
+		{Val: "", Expected: ""},
+	}
+
+	for i := range test {
+		assert.Equal(t, test[i].Expected, slugifyPlatformName(test[i].Val), test[i].Val)
+	}
+}
+
+// container images we cannot identify are reported as "scratch". The check keys
+// off the resolver that matched, not the platform name, because a resolver does
+// not always emit the name it is registered under.
+func TestIsUnidentifiedPlatform(t *testing.T) {
+	test := []struct {
+		Name     string
+		Leaf     *PlatformResolver
+		Expected bool
+	}{
+		{Name: "", Leaf: nil, Expected: true},
+		{Name: "generic-linux", Leaf: defaultLinux, Expected: true},
+		// a name derived from os-release NAME still means we could not identify
+		// the distribution, so container images stay "scratch"
+		{Name: "fritzos", Leaf: defaultLinux, Expected: true},
+		{Name: "ubuntu", Leaf: ubuntu, Expected: false},
+		// the oracle resolver emits "oraclelinux", a name it is not registered
+		// under. It must not be mistaken for an unidentified platform.
+		{Name: "oraclelinux", Leaf: oracle, Expected: false},
+		{Name: "alpine", Leaf: alpine, Expected: false},
+	}
+
+	for i := range test {
+		pf := &inventory.Platform{Name: test[i].Name}
+		assert.Equal(t, test[i].Expected, isUnidentifiedPlatform(pf, test[i].Leaf), test[i].Name)
+	}
+}
+
+func TestRhel10Detector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-rhel-10.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "redhat", di.Name, "os name should be identified")
+	assert.Equal(t, "Red Hat Enterprise Linux 10.0 (Coughlan)", di.Title, "os title should be identified")
+	assert.Equal(t, "10.0", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+}
+
+func TestAmazon2023LinuxDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-amzn-2023.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "amazonlinux", di.Name, "os name should be identified")
+	assert.Equal(t, "Amazon Linux 2023.12.20260817", di.Title, "os title should be identified")
+	assert.Equal(t, "2023", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+func TestDebian11Detector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-debian11.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "debian", di.Name, "os name should be identified")
+	assert.Equal(t, "Debian GNU/Linux 11 (bullseye)", di.Title, "os title should be identified")
+	assert.Equal(t, "11.11", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"debian", "linux", "unix", "os"}, di.Family)
+}
+
+func TestDebian12Detector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-debian12.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "debian", di.Name, "os name should be identified")
+	assert.Equal(t, "Debian GNU/Linux 12 (bookworm)", di.Title, "os title should be identified")
+	assert.Equal(t, "12.15", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"debian", "linux", "unix", "os"}, di.Family)
+}
+
+func TestDebian13Detector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-debian13.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "debian", di.Name, "os name should be identified")
+	assert.Equal(t, "Debian GNU/Linux 13 (trixie)", di.Title, "os title should be identified")
+	assert.Equal(t, "13.6", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"debian", "linux", "unix", "os"}, di.Family)
+}
+
+// ID=c2distro ID_LIKE=debian resolved as generic-linux in the linux family:
+// packages, services, the CPE and every debian-family policy lost the lineage.
+func TestDebianDerivativeKeepsTheFamily(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-debian-derivative.toml")
+	require.NoError(t, err)
+	assert.Equal(t, "c2distro", di.Name)
+	assert.Equal(t, "7.1", di.Version)
+	assert.Equal(t, "C2 Distro 7.1", di.Title)
+	assert.Equal(t, []string{"debian", "linux", "unix", "os"}, di.Family)
+}
+
+func TestDebianWithoutOsRelease(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-debian-no-osrelease.toml")
+	require.NoError(t, err)
+	assert.Equal(t, "debian", di.Name)
+	assert.Equal(t, "6.0.10", di.Version)
+	assert.Equal(t, []string{"debian", "linux", "unix", "os"}, di.Family)
+}
+
+func TestDebianSidDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-debian-sid.toml")
+	require.NoError(t, err)
+	assert.Equal(t, "debian", di.Name)
+	assert.Equal(t, "forky/sid", di.Version)
+	assert.Equal(t, "forky", di.Build)
+	assert.Equal(t, []string{"debian", "linux", "unix", "os"}, di.Family)
+}
+
+func TestUbuntu2404Detector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-ubuntu2404.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "ubuntu", di.Name, "os name should be identified")
+	assert.Equal(t, "Ubuntu 24.04.4 LTS", di.Title, "os title should be identified")
+	assert.Equal(t, "24.04", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"debian", "linux", "unix", "os"}, di.Family)
+}
+
+func TestUbuntu2604Detector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-ubuntu2604.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "ubuntu", di.Name, "os name should be identified")
+	assert.Equal(t, "Ubuntu 26.04 LTS", di.Title, "os title should be identified")
+	assert.Equal(t, "26.04", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"debian", "linux", "unix", "os"}, di.Family)
+}
+
+func TestSles16Detector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-suse-sles-16.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "sles", di.Name, "os name should be identified")
+	assert.Equal(t, "SUSE Linux Enterprise Server 16.0", di.Title, "os title should be identified")
+	assert.Equal(t, "16.0", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
+}
+
+// Fedora ELN's /etc/redhat-release reads "Fedora ELN 11", with no "release"
+// keyword. The redhat family resolver treats an unparseable release file as
+// "not a redhat host", so before this was handled ELN skipped the whole redhat
+// subtree and landed in defaultLinux as name "eln" with no redhat family,
+// which killed every resource gated on IsFamily("redhat").
+func TestFedoraELNDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-fedora-eln.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "fedora", di.Name, "os name should be identified")
+	assert.Equal(t, "Fedora ELN 11", di.Title, "os title should be identified")
+	assert.Equal(t, "11", di.Version, "os version should be identified")
+	assert.Equal(t, "aarch64", di.Arch, "os arch should be identified")
 	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
 }

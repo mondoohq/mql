@@ -7,15 +7,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
+	"strings"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers/oci/connection"
-	"go.mondoo.com/mql/v13/providers/oci/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers/oci/connection"
+	"go.mondoo.com/mql/providers/oci/resources"
 )
 
 const ConnectionType = "oci"
@@ -82,6 +86,16 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 		configFile = string(x.Value)
 	}
 
+	authMethod := ""
+	if x, ok := flags["auth-method"]; ok && len(x.Value) != 0 {
+		authMethod = string(x.Value)
+		if !slices.Contains(connection.SupportedAuthMethods, authMethod) {
+			return nil, errors.New("unsupported --auth-method " + authMethod +
+				"; supported methods are " + strings.Join(connection.SupportedAuthMethods, ", "))
+		}
+		conf.Options["auth-method"] = authMethod
+	}
+
 	if tenancy != "" {
 		conf.Options["tenancy"] = tenancy
 	}
@@ -109,6 +123,8 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 		})
 	}
 
+	maps.Copy(conf.Options, parseFilters(flags))
+
 	conf.Discover = &inventory.Discovery{Targets: []string{}}
 	if x, ok := flags["discover"]; ok && len(x.Array) != 0 {
 		for i := range x.Array {
@@ -123,6 +139,48 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 	}
 
 	return &plugin.ParseCLIRes{Asset: &asset}, nil
+}
+
+// filterKeyPrefixes is the set of --filters keys the provider understands.
+//
+// It has to be kept in step with connection.DiscoveryFiltersFromOpts: a key
+// missing from this list never reaches the connection, so the flag parses
+// cleanly, the scan runs, and the filter is simply not applied. Anything
+// unrecognised is warned about rather than dropped in silence, because the
+// failure is otherwise indistinguishable from a filter that matched everything.
+var filterKeyPrefixes = []string{
+	"regions",
+	"exclude:regions",
+	"compartments",
+	"exclude:compartments",
+	"tag:",
+	"exclude:tag:",
+}
+
+// parseFilters pulls the recognised --filters entries out of the raw flags.
+func parseFilters(flags map[string]*llx.Primitive) map[string]string {
+	res := map[string]string{}
+
+	x, ok := flags["filters"]
+	if !ok || len(x.Map) == 0 {
+		return res
+	}
+
+	for k, v := range x.Map {
+		matched := false
+		for _, prefix := range filterKeyPrefixes {
+			if strings.HasPrefix(k, prefix) {
+				res[k] = string(v.Value)
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			log.Warn().Str("filter", k).Msg("oci: unknown --filters key; it will be ignored")
+		}
+	}
+
+	return res
 }
 
 func (s *Service) MockConnect(req *plugin.ConnectReq, callback plugin.ProviderCallback) (*plugin.ConnectRes, error) {
@@ -220,7 +278,10 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.OciConnection)
 	if err != nil {
 		return err
 	}
-	if info != nil {
+	// Tenant() returns a non-nil tenancy whenever err is nil, but Name is
+	// optional on the SDK model and is absent for a tenancy with no display
+	// name, so it needs its own guard.
+	if info != nil && info.Name != nil {
 		asset.Name = fmt.Sprintf("OCI Tenant %s", *info.Name)
 	}
 

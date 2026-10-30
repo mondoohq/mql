@@ -11,9 +11,14 @@ import (
 
 var DefaultOsIDs = []string{
 	"go.mondoo.com/mql/providers/os",
-	// FIXME: DEPRECATED, remove in v14.0 vv
-	// We specify providers without versions now. Also remove the providers
-	// GetFirstID function, since it only exists for this use-case
+	// DEPRECATED, remove in v15.0 vv
+	// We specify providers without versions now, so as of v14 the os provider
+	// built from this tree only ever reports the ID above. These two are kept
+	// for os provider binaries released before the ID change: providers are
+	// versioned independently of the engine, so a v14+ engine still meets them,
+	// and without these the CLI loses its default local connector.
+	// Remove them (and the providers GetFirstID function, which exists only for
+	// this use-case) once v13 providers are out of support.
 	"go.mondoo.com/cnquery/v9/providers/os",
 	"go.mondoo.com/mql/v13/providers/os",
 	// ^^

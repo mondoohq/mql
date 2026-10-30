@@ -8,14 +8,14 @@ import (
 	"errors"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v10"
-	trafficmanager "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager"
+	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12"
+	trafficmanager "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager/v2"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // -----------------------------------------------------------------------------
@@ -142,6 +142,16 @@ func trafficManagerEndpointEnabled(props *trafficmanager.EndpointProperties) boo
 	return props != nil && props.EndpointStatus != nil && *props.EndpointStatus == trafficmanager.EndpointStatusEnabled
 }
 
+// trafficManagerProfileRecordType returns the DNS record type the profile is
+// restricted to, or null when ARM returns none (the profile accepts every
+// endpoint type).
+func trafficManagerProfileRecordType(props *trafficmanager.ProfileProperties) *llx.RawData {
+	if props == nil || props.RecordType == nil {
+		return llx.NilData
+	}
+	return llx.StringData(string(*props.RecordType))
+}
+
 func azureTrafficManagerProfileToMql(runtime *plugin.Runtime, p *trafficmanager.Profile) (plugin.Resource, error) {
 	if p == nil {
 		return nil, nil
@@ -158,14 +168,16 @@ func azureTrafficManagerProfileToMql(runtime *plugin.Runtime, p *trafficmanager.
 		"tags":                        llx.MapData(convert.PtrMapStrToInterface(p.Tags), types.String),
 		"type":                        llx.StringDataPtr(p.Type),
 		"properties":                  llx.DictData(properties),
-		"profileStatus":               llx.StringDataPtr(nil),
 		"status":                      llx.BoolData(false),
 		"trafficRoutingMethod":        llx.StringDataPtr(nil),
 		"trafficViewEnrollmentStatus": llx.StringDataPtr(nil),
 		"maxReturn":                   llx.IntDataDefault[int64](nil, 0),
 		"allowedEndpointRecordTypes":  llx.ArrayData([]any{}, types.String),
+		"recordType":                  llx.NilData,
 		"dnsConfig":                   llx.DictData(nil),
+		"dnsSettings":                 llx.NilData,
 		"monitorConfig":               llx.DictData(nil),
+		"monitorSettings":             llx.NilData,
 		"endpoints":                   llx.ArrayData([]any{}, types.Resource("azure.subscription.networkService.trafficManagerProfile.endpoint")),
 	}
 
@@ -174,10 +186,6 @@ func azureTrafficManagerProfileToMql(runtime *plugin.Runtime, p *trafficmanager.
 		return CreateResource(runtime, "azure.subscription.networkService.trafficManagerProfile", args)
 	}
 
-	if props.ProfileStatus != nil {
-		s := string(*props.ProfileStatus)
-		args["profileStatus"] = llx.StringData(s)
-	}
 	args["status"] = llx.BoolData(trafficManagerProfileEnabled(props))
 	if props.TrafficRoutingMethod != nil {
 		s := string(*props.TrafficRoutingMethod)
@@ -196,6 +204,7 @@ func azureTrafficManagerProfileToMql(runtime *plugin.Runtime, p *trafficmanager.
 		}
 	}
 	args["allowedEndpointRecordTypes"] = llx.ArrayData(recordTypes, types.String)
+	args["recordType"] = trafficManagerProfileRecordType(props)
 
 	dnsDict, err := convert.JsonToDict(props.DNSConfig)
 	if err != nil {
@@ -203,11 +212,68 @@ func azureTrafficManagerProfileToMql(runtime *plugin.Runtime, p *trafficmanager.
 	}
 	args["dnsConfig"] = llx.DictData(dnsDict)
 
+	// A profile ARM returns without a DNS config reports null rather than a
+	// settings resource with a zero TTL, which would read as "never cache".
+	if dns := props.DNSConfig; dns != nil {
+		const dnsSettingsResource = "azure.subscription.networkService.trafficManagerProfile.dnsSettings"
+		mqlDNS, err := CreateResource(runtime, dnsSettingsResource, map[string]*llx.RawData{
+			"__id":         llx.StringData(convert.ToValue(p.ID) + "/dnsSettings"),
+			"relativeName": llx.StringDataPtr(dns.RelativeName),
+			"fqdn":         llx.StringDataPtr(dns.Fqdn),
+			"ttl":          llx.IntDataPtr(dns.TTL),
+		})
+		if err != nil {
+			return nil, err
+		}
+		args["dnsSettings"] = llx.ResourceData(mqlDNS, dnsSettingsResource)
+	}
+
 	monitorDict, err := convert.JsonToDict(props.MonitorConfig)
 	if err != nil {
 		return nil, err
 	}
 	args["monitorConfig"] = llx.DictData(monitorDict)
+
+	// A profile with no monitoring configuration reports null rather than a
+	// settings resource full of zeros, which would read as a probe on port 0.
+	if props.MonitorConfig != nil {
+		mc := props.MonitorConfig
+		customHeaders := map[string]any{}
+		for _, h := range mc.CustomHeaders {
+			if h == nil || h.Name == nil {
+				continue
+			}
+			customHeaders[*h.Name] = convert.ToValue(h.Value)
+		}
+		statusRanges := []any{}
+		for _, r := range mc.ExpectedStatusCodeRanges {
+			if r == nil {
+				continue
+			}
+			d, err := convert.JsonToDict(r)
+			if err != nil {
+				return nil, err
+			}
+			statusRanges = append(statusRanges, d)
+		}
+		mqlMonitor, err := CreateResource(runtime, "azure.subscription.networkService.trafficManagerProfile.monitorSettings",
+			map[string]*llx.RawData{
+				"__id":                      llx.StringData(convert.ToValue(p.ID) + "/monitorSettings"),
+				"protocol":                  llx.StringDataPtr(stringEnumPtr(mc.Protocol)),
+				"port":                      llx.IntDataPtr(mc.Port),
+				"path":                      llx.StringDataPtr(mc.Path),
+				"intervalInSeconds":         llx.IntDataPtr(mc.IntervalInSeconds),
+				"timeoutInSeconds":          llx.IntDataPtr(mc.TimeoutInSeconds),
+				"toleratedNumberOfFailures": llx.IntDataPtr(mc.ToleratedNumberOfFailures),
+				"profileMonitorStatus":      llx.StringDataPtr(stringEnumPtr(mc.ProfileMonitorStatus)),
+				"customHeaders":             llx.MapData(customHeaders, types.String),
+				"expectedStatusCodeRanges":  llx.ArrayData(statusRanges, types.Dict),
+			})
+		if err != nil {
+			return nil, err
+		}
+		args["monitorSettings"] = llx.ResourceData(mqlMonitor, "azure.subscription.networkService.trafficManagerProfile.monitorSettings")
+	}
 
 	endpoints := []any{}
 	for _, ep := range props.Endpoints {
@@ -239,7 +305,6 @@ func azureTrafficManagerEndpointToMql(runtime *plugin.Runtime, ep *trafficmanage
 		"type":                  llx.StringDataPtr(ep.Type),
 		"properties":            llx.DictData(properties),
 		"alwaysServe":           llx.StringDataPtr(nil),
-		"endpointStatus":        llx.StringDataPtr(nil),
 		"status":                llx.BoolData(false),
 		"endpointMonitorStatus": llx.StringDataPtr(nil),
 		"target":                llx.StringDataPtr(nil),
@@ -263,10 +328,6 @@ func azureTrafficManagerEndpointToMql(runtime *plugin.Runtime, ep *trafficmanage
 	if props.AlwaysServe != nil {
 		s := string(*props.AlwaysServe)
 		args["alwaysServe"] = llx.StringData(s)
-	}
-	if props.EndpointStatus != nil {
-		s := string(*props.EndpointStatus)
-		args["endpointStatus"] = llx.StringData(s)
 	}
 	args["status"] = llx.BoolData(trafficManagerEndpointEnabled(props))
 	if props.EndpointMonitorStatus != nil {
@@ -457,7 +518,10 @@ func initAzureSubscriptionNetworkServiceVirtualWan(runtime *plugin.Runtime, args
 	if !ok {
 		return nil, nil, errors.New("invalid connection provided, it is not an Azure connection")
 	}
-	id := args["id"].Value.(string)
+	id, ok := args["id"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("id must be a non-nil string value")
+	}
 	azureId, err := ParseResourceID(id)
 	if err != nil {
 		return nil, nil, err
@@ -466,6 +530,13 @@ func initAzureSubscriptionNetworkServiceVirtualWan(runtime *plugin.Runtime, args
 	if err != nil {
 		return nil, nil, err
 	}
+	// Already fetched by an earlier reference: NewResource consults the
+	// cache only after this init returns, so without this the same target is
+	// re-fetched once per reference and the result thrown away.
+	if cached := cachedResource(runtime, ResourceAzureSubscriptionNetworkServiceVirtualWan, id); cached != nil {
+		return args, cached, nil
+	}
+
 	client, err := network.NewVirtualWansClient(azureId.SubscriptionID, conn.Token(), &arm.ClientOptions{
 		ClientOptions: conn.ClientOptions(),
 	})
@@ -547,6 +618,8 @@ func azureVirtualHubToMql(runtime *plugin.Runtime, h *network.VirtualHub) (plugi
 		"provisioningState":          llx.StringDataPtr(nil),
 		"routingState":               llx.StringDataPtr(nil),
 		"securityProviderName":       llx.StringDataPtr(nil),
+		"addressPrefixV6":            llx.StringDataPtr(nil),
+		"virtualRouterIpsV6":         llx.ArrayData([]any{}, types.String),
 	}
 
 	var wanId, fwId *string
@@ -581,6 +654,15 @@ func azureVirtualHubToMql(runtime *plugin.Runtime, h *network.VirtualHub) (plugi
 			}
 		}
 		args["virtualRouterIps"] = llx.ArrayData(ips, types.String)
+
+		args["addressPrefixV6"] = llx.StringDataPtr(props.AddressPrefixV6)
+		ipsV6 := []any{}
+		for _, ip := range props.VirtualRouterIPsV6 {
+			if ip != nil {
+				ipsV6 = append(ipsV6, *ip)
+			}
+		}
+		args["virtualRouterIpsV6"] = llx.ArrayData(ipsV6, types.String)
 
 		if props.VirtualWan != nil {
 			wanId = props.VirtualWan.ID
@@ -734,8 +816,10 @@ func (a *mqlAzureSubscriptionNetworkServiceVirtualHub) vnetConnections() ([]any,
 			var routingDict any
 			var provState *string
 			var remoteId *string
+			var enableOnlyIPv6Peering *bool
 			if c.Properties != nil {
 				enableInternetSecurity = c.Properties.EnableInternetSecurity
+				enableOnlyIPv6Peering = c.Properties.EnableOnlyIPv6Peering
 				if c.Properties.RoutingConfiguration != nil {
 					d, err := convert.JsonToDict(c.Properties.RoutingConfiguration)
 					if err != nil {
@@ -757,6 +841,7 @@ func (a *mqlAzureSubscriptionNetworkServiceVirtualHub) vnetConnections() ([]any,
 					"name":                   llx.StringDataPtr(c.Name),
 					"etag":                   llx.StringDataPtr(c.Etag),
 					"enableInternetSecurity": llx.BoolDataPtr(enableInternetSecurity),
+					"enableOnlyIPv6Peering":  llx.BoolDataPtr(enableOnlyIPv6Peering),
 					"provisioningState":      llx.StringDataPtr(provState),
 					"routingConfiguration":   llx.DictData(routingDict),
 				})
@@ -788,13 +873,18 @@ func (a *mqlAzureSubscriptionNetworkServiceVirtualHubVnetConnection) remoteVirtu
 // init for firewall so virtualHub.azureFirewall() typed ref can resolve, and
 // so platform-discovered azure-firewall assets can be queried directly.
 func initAzureSubscriptionNetworkServiceFirewall(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	return initFromServiceList(runtime, args,
+		ResourceAzureSubscriptionNetworkService,
+		func(s *mqlAzureSubscriptionNetworkService) *plugin.TValue[[]any] { return s.GetFirewalls() },
+		ResourceAzureSubscriptionNetworkServiceFirewall)
+}
+
+// initAzureSubscriptionNetworkServiceFirewallPolicy resolves a firewall policy
+// by its ARM ID so typed references to it (e.g. from an IP group's
+// firewallPolicies backreference) populate fully rather than staying a husk.
+func initAzureSubscriptionNetworkServiceFirewallPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 1 {
 		return args, nil, nil
-	}
-	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["id"] = llx.StringData(ids.id)
-		}
 	}
 	if args["id"] == nil {
 		return args, nil, nil
@@ -811,11 +901,18 @@ func initAzureSubscriptionNetworkServiceFirewall(runtime *plugin.Runtime, args m
 	if err != nil {
 		return nil, nil, err
 	}
-	name, err := azureId.Component("azureFirewalls")
+	name, err := azureId.Component("firewallPolicies")
 	if err != nil {
 		return nil, nil, err
 	}
-	client, err := network.NewAzureFirewallsClient(azureId.SubscriptionID, conn.Token(), &arm.ClientOptions{
+	// Already fetched by an earlier reference: NewResource consults the
+	// cache only after this init returns, so without this the same target is
+	// re-fetched once per reference and the result thrown away.
+	if cached := cachedResource(runtime, ResourceAzureSubscriptionNetworkServiceFirewallPolicy, id); cached != nil {
+		return args, cached, nil
+	}
+
+	client, err := network.NewFirewallPoliciesClient(azureId.SubscriptionID, conn.Token(), &arm.ClientOptions{
 		ClientOptions: conn.ClientOptions(),
 	})
 	if err != nil {
@@ -825,7 +922,7 @@ func initAzureSubscriptionNetworkServiceFirewall(runtime *plugin.Runtime, args m
 	if err != nil {
 		return nil, nil, err
 	}
-	mql, err := azureFirewallToMql(runtime, resp.AzureFirewall)
+	mql, err := azureFirewallPolicyToMql(runtime, resp.FirewallPolicy)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -835,6 +932,65 @@ func initAzureSubscriptionNetworkServiceFirewall(runtime *plugin.Runtime, args m
 // -----------------------------------------------------------------------------
 // ExpressRoute
 // -----------------------------------------------------------------------------
+
+// initAzureSubscriptionNetworkServiceExpressRouteCircuit resolves an ExpressRoute
+// circuit by its ARM ID so typed references to it (e.g. from an ExpressRoute
+// port's circuits) populate fully rather than staying a husk.
+func initAzureSubscriptionNetworkServiceExpressRouteCircuit(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 1 {
+		return args, nil, nil
+	}
+	if args["id"] == nil {
+		return args, nil, nil
+	}
+	conn, ok := runtime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	id, ok := args["id"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("id must be a non-nil string value")
+	}
+	azureId, err := ParseResourceID(id)
+	if err != nil {
+		return nil, nil, err
+	}
+	name, err := azureId.Component("expressRouteCircuits")
+	if err != nil {
+		return nil, nil, err
+	}
+	// Already fetched by an earlier reference: NewResource consults the
+	// cache only after this init returns, so without this the same target is
+	// re-fetched once per reference and the result thrown away.
+	if cached := cachedResource(runtime, ResourceAzureSubscriptionNetworkServiceExpressRouteCircuit, id); cached != nil {
+		return args, cached, nil
+	}
+	// The subscription's circuit list answers every reference into it (from
+	// ports, LAGs, and LAG authorizations) with one call. Only pay for a Get
+	// when the list cannot answer: a circuit in another subscription, or one
+	// since deleted.
+	if circuit := lookupInServiceList(runtime, ResourceAzureSubscriptionNetworkService,
+		func(s *mqlAzureSubscriptionNetworkService) *plugin.TValue[[]any] { return s.GetExpressRouteCircuits() },
+		id); circuit != nil {
+		return args, circuit, nil
+	}
+
+	client, err := network.NewExpressRouteCircuitsClient(azureId.SubscriptionID, conn.Token(), &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	resp, err := client.Get(context.Background(), azureId.ResourceGroup, name, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	mql, err := azureExpressRouteCircuitToMql(runtime, &resp.ExpressRouteCircuit)
+	if err != nil {
+		return nil, nil, err
+	}
+	return args, mql, nil
+}
 
 func (a *mqlAzureSubscriptionNetworkService) expressRouteCircuits() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
@@ -902,6 +1058,7 @@ func azureExpressRouteCircuitToMql(runtime *plugin.Runtime, c *network.ExpressRo
 		"authorizationStatus":              llx.StringDataPtr(nil),
 		"provisioningState":                llx.StringDataPtr(nil),
 		"stag":                             llx.IntDataDefault[int32](nil, 0),
+		"resiliencyLevel":                  llx.StringDataPtr(nil),
 	}
 
 	if c.SKU != nil {
@@ -934,6 +1091,10 @@ func azureExpressRouteCircuitToMql(runtime *plugin.Runtime, c *network.ExpressRo
 		if props.ProvisioningState != nil {
 			s := string(*props.ProvisioningState)
 			args["provisioningState"] = llx.StringData(s)
+		}
+		if props.ResiliencyLevel != nil {
+			s := string(*props.ResiliencyLevel)
+			args["resiliencyLevel"] = llx.StringData(s)
 		}
 		if props.ExpressRoutePort != nil {
 			args["expressRoutePortId"] = llx.StringDataPtr(props.ExpressRoutePort.ID)
@@ -1451,7 +1612,10 @@ func initAzureSubscriptionNetworkServiceVirtualHub(runtime *plugin.Runtime, args
 	if !ok {
 		return nil, nil, errors.New("invalid connection provided, it is not an Azure connection")
 	}
-	id := args["id"].Value.(string)
+	id, ok := args["id"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("id must be a non-nil string value")
+	}
 	azureId, err := ParseResourceID(id)
 	if err != nil {
 		return nil, nil, err
@@ -1460,6 +1624,13 @@ func initAzureSubscriptionNetworkServiceVirtualHub(runtime *plugin.Runtime, args
 	if err != nil {
 		return nil, nil, err
 	}
+	// Already fetched by an earlier reference: NewResource consults the
+	// cache only after this init returns, so without this the same target is
+	// re-fetched once per reference and the result thrown away.
+	if cached := cachedResource(runtime, ResourceAzureSubscriptionNetworkServiceVirtualHub, id); cached != nil {
+		return args, cached, nil
+	}
+
 	client, err := network.NewVirtualHubsClient(azureId.SubscriptionID, conn.Token(), &arm.ClientOptions{
 		ClientOptions: conn.ClientOptions(),
 	})
@@ -1488,7 +1659,10 @@ func initAzureSubscriptionNetworkServiceVpnSite(runtime *plugin.Runtime, args ma
 	if !ok {
 		return nil, nil, errors.New("invalid connection provided, it is not an Azure connection")
 	}
-	id := args["id"].Value.(string)
+	id, ok := args["id"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("id must be a non-nil string value")
+	}
 	azureId, err := ParseResourceID(id)
 	if err != nil {
 		return nil, nil, err
@@ -1497,6 +1671,13 @@ func initAzureSubscriptionNetworkServiceVpnSite(runtime *plugin.Runtime, args ma
 	if err != nil {
 		return nil, nil, err
 	}
+	// Already fetched by an earlier reference: NewResource consults the
+	// cache only after this init returns, so without this the same target is
+	// re-fetched once per reference and the result thrown away.
+	if cached := cachedResource(runtime, ResourceAzureSubscriptionNetworkServiceVpnSite, id); cached != nil {
+		return args, cached, nil
+	}
+
 	client, err := network.NewVPNSitesClient(azureId.SubscriptionID, conn.Token(), &arm.ClientOptions{
 		ClientOptions: conn.ClientOptions(),
 	})

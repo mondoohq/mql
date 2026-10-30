@@ -6,15 +6,16 @@ package resources
 import (
 	"context"
 	"errors"
+	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	cosmosdb "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v3"
+	cosmosdb "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos/v4"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmosforpostgresql/armcosmosforpostgresql"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/mongocluster/armmongocluster"
 )
@@ -38,51 +39,10 @@ func initAzureSubscriptionCosmosDbService(runtime *plugin.Runtime, args map[stri
 }
 
 func initAzureSubscriptionCosmosDbServiceAccount(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	if len(args) > 1 {
-		return args, nil, nil
-	}
-
-	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["id"] = llx.StringData(ids.id)
-		}
-	}
-
-	if args["id"] == nil {
-		return nil, nil, errors.New("id required to fetch azure cosmosdb account")
-	}
-	conn, ok := runtime.Connection.(*connection.AzureConnection)
-	if !ok {
-		return nil, nil, errors.New("invalid connection provided, it is not an Azure connection")
-	}
-	id, ok := args["id"].Value.(string)
-	if !ok {
-		return nil, nil, errors.New("id must be a non-nil string value")
-	}
-	resourceID, err := ParseResourceID(id)
-	if err != nil {
-		return nil, nil, err
-	}
-	accountName, err := resourceID.Component("databaseAccounts")
-	if err != nil {
-		return nil, nil, err
-	}
-
-	client, err := cosmosdb.NewDatabaseAccountsClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
-		ClientOptions: conn.ClientOptions(),
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	resp, err := client.Get(context.Background(), resourceID.ResourceGroup, accountName, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	mqlAccount, err := cosmosAccountToMql(runtime, &resp.DatabaseAccountGetResults)
-	if err != nil {
-		return nil, nil, err
-	}
-	return args, mqlAccount, nil
+	return initFromServiceList(runtime, args,
+		ResourceAzureSubscriptionCosmosDbService,
+		func(s *mqlAzureSubscriptionCosmosDbService) *plugin.TValue[[]any] { return s.GetAccounts() },
+		ResourceAzureSubscriptionCosmosDbServiceAccount)
 }
 
 func (a *mqlAzureSubscriptionCosmosDbService) accounts() ([]any, error) {
@@ -90,7 +50,11 @@ func (a *mqlAzureSubscriptionCosmosDbService) accounts() ([]any, error) {
 	ctx := context.Background()
 	subId := a.SubscriptionId.Data
 
-	return fetchCosmosDBAccounts(ctx, a.MqlRuntime, conn, subId)
+	res, err := fetchCosmosDBAccounts(ctx, a.MqlRuntime, conn, subId)
+	if err != nil {
+		return nil, err
+	}
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func (a *mqlAzureSubscriptionCosmosDbService) mongoClusters() ([]any, error) {
@@ -214,6 +178,40 @@ func cosmosAccountToMql(runtime *plugin.Runtime, account *cosmosdb.DatabaseAccou
 
 	defaultConsistencyLevel, networkAclBypass, corsAllowedOrigins, locations := cosmosNetworkConsistency(account.Properties)
 
+	var customerManagedKeyStatus, encryptionKeyVersion, documentEndpoint *string
+	var analyticalStorageSchemaType *string
+	var enableAnalyticalStorage, enableFreeTier, enableBurstCapacity, enablePartitionMerge *bool
+	capabilities := []any{}
+	networkAclBypassResourceIds := []any{}
+	var keysMetadata any
+	if p := account.Properties; p != nil {
+		customerManagedKeyStatus = p.CustomerManagedKeyStatus
+		encryptionKeyVersion = p.KeyVaultKeyURIVersion
+		documentEndpoint = p.DocumentEndpoint
+		enableAnalyticalStorage = p.EnableAnalyticalStorage
+		enableFreeTier = p.EnableFreeTier
+		enableBurstCapacity = p.EnableBurstCapacity
+		enablePartitionMerge = p.EnablePartitionMerge
+		if asc := p.AnalyticalStorageConfiguration; asc != nil {
+			analyticalStorageSchemaType = stringEnumPtr(asc.SchemaType)
+		}
+		for _, c := range p.Capabilities {
+			if c != nil && c.Name != nil {
+				capabilities = append(capabilities, *c.Name)
+			}
+		}
+		networkAclBypassResourceIds = strPtrsToAny(p.NetworkACLBypassResourceIDs)
+		keysMetadata, err = convert.JsonToDict(p.KeysMetadata)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	masterKeyMetadata, err := cosmosKeysMetadataToMql(runtime, convert.ToValue(account.ID), orZero(account.Properties).KeysMetadata)
+	if err != nil {
+		return nil, err
+	}
+
 	virtualNetworkRules := []any{}
 	if account.Properties != nil && account.Properties.VirtualNetworkRules != nil {
 		for _, rule := range account.Properties.VirtualNetworkRules {
@@ -228,9 +226,13 @@ func cosmosAccountToMql(runtime *plugin.Runtime, account *cosmosdb.DatabaseAccou
 			if rule.IgnoreMissingVNetServiceEndpoint != nil {
 				ignoreMissing = *rule.IgnoreMissingVNetServiceEndpoint
 			}
-			ruleId := *account.ID + "/virtualNetworkRules/" + subnetId
+			// convert.ToValue rather than a bare deref: the list path guards
+			// account.ID, but the init path reaches this function straight from
+			// a Get response.
+			ruleId := convert.ToValue(account.ID) + "/virtualNetworkRules/" + subnetId
 			mqlRule, err := CreateResource(runtime, "azure.subscription.cosmosDbService.account.virtualNetworkRule",
 				map[string]*llx.RawData{
+					"__id":                             llx.StringData(ruleId),
 					"id":                               llx.StringData(ruleId),
 					"subnetId":                         llx.StringData(subnetId),
 					"ignoreMissingVNetServiceEndpoint": llx.BoolData(ignoreMissing),
@@ -267,6 +269,18 @@ func cosmosAccountToMql(runtime *plugin.Runtime, account *cosmosdb.DatabaseAccou
 			"backupStorageRedundancy":            llx.StringData(backupRedundancy),
 			"defaultConsistencyLevel":            llx.StringDataPtr(defaultConsistencyLevel),
 			"networkAclBypass":                   llx.StringDataPtr(networkAclBypass),
+			"customerManagedKeyStatus":           llx.StringDataPtr(customerManagedKeyStatus),
+			"encryptionKeyVersion":               llx.StringDataPtr(encryptionKeyVersion),
+			"keysMetadata":                       llx.DictData(keysMetadata),
+			"masterKeyMetadata":                  masterKeyMetadata,
+			"capabilities":                       llx.ArrayData(capabilities, types.String),
+			"enableAnalyticalStorage":            llx.BoolDataPtr(enableAnalyticalStorage),
+			"analyticalStorageSchemaType":        llx.StringDataPtr(analyticalStorageSchemaType),
+			"enableFreeTier":                     llx.BoolDataPtr(enableFreeTier),
+			"enableBurstCapacity":                llx.BoolDataPtr(enableBurstCapacity),
+			"enablePartitionMerge":               llx.BoolDataPtr(enablePartitionMerge),
+			"networkAclBypassResourceIds":        llx.ArrayData(networkAclBypassResourceIds, types.String),
+			"documentEndpoint":                   llx.StringDataPtr(documentEndpoint),
 			"corsAllowedOrigins":                 llx.ArrayData(corsAllowedOrigins, types.String),
 			"locations":                          llx.ArrayData(locations, types.String),
 			"virtualNetworkRules":                llx.ArrayData(virtualNetworkRules, types.Resource("azure.subscription.cosmosDbService.account.virtualNetworkRule")),
@@ -300,6 +314,33 @@ func cosmosEnumStrPtr[T ~string](v *T) *string {
 	return &s
 }
 
+// cosmosCorsOrigins flattens a Cosmos DB account's CORS policies into one origin
+// per element.
+//
+// ARM models allowedOrigins as a single string holding a comma-separated list
+// rather than an array, so reporting it whole produced one element such as
+// "https://app.example.com,*". An origin inside that element matches nothing a
+// query would compare against: corsAllowedOrigins.none(_ == "*") passed on an
+// account that allows every origin, and any(_ == "https://app.example.com")
+// failed on an account that allows it.
+//
+// Duplicates are kept. An account can carry several CORS policies, and repeating
+// an origin across them is what the account is actually configured with.
+func cosmosCorsOrigins(policies []*cosmosdb.CorsPolicy) []any {
+	origins := []any{}
+	for _, cors := range policies {
+		if cors == nil || cors.AllowedOrigins == nil {
+			continue
+		}
+		for origin := range strings.SplitSeq(*cors.AllowedOrigins, ",") {
+			if origin = strings.TrimSpace(origin); origin != "" {
+				origins = append(origins, origin)
+			}
+		}
+	}
+	return origins
+}
+
 // cosmosNetworkConsistency extracts the default consistency level, network ACL
 // bypass setting, CORS allowed origins, and deployed region names from a Cosmos
 // DB account's properties. Consistency level and ACL bypass stay nil (null in
@@ -315,11 +356,7 @@ func cosmosNetworkConsistency(props *cosmosdb.DatabaseAccountGetProperties) (def
 		defaultConsistencyLevel = cosmosEnumStrPtr(props.ConsistencyPolicy.DefaultConsistencyLevel)
 	}
 	networkAclBypass = cosmosEnumStrPtr(props.NetworkACLBypass)
-	for _, cors := range props.Cors {
-		if cors != nil && cors.AllowedOrigins != nil {
-			corsAllowedOrigins = append(corsAllowedOrigins, *cors.AllowedOrigins)
-		}
-	}
+	corsAllowedOrigins = cosmosCorsOrigins(props.Cors)
 	for _, loc := range props.Locations {
 		if loc != nil && loc.LocationName != nil {
 			locations = append(locations, *loc.LocationName)
@@ -512,6 +549,7 @@ func newPostgresClusterResource(runtime *plugin.Runtime, cluster *armcosmosforpo
 		"sourceResourceId":                llx.NilData,
 		"readReplicas":                    llx.NilData,
 		"maintenanceWindow":               llx.NilData,
+		"maintenanceSchedule":             llx.NilData,
 		"serverNames":                     llx.NilData,
 	}
 
@@ -552,6 +590,13 @@ func newPostgresClusterResource(runtime *plugin.Runtime, cluster *armcosmosforpo
 				return nil, err
 			}
 			args["maintenanceWindow"] = llx.DictData(mw)
+			schedule, err := maintenanceWindowRefData(runtime, convert.ToValue(cluster.ID),
+				p.MaintenanceWindow.CustomWindow, p.MaintenanceWindow.DayOfWeek,
+				p.MaintenanceWindow.StartHour, p.MaintenanceWindow.StartMinute)
+			if err != nil {
+				return nil, err
+			}
+			args["maintenanceSchedule"] = schedule
 		}
 		if p.ServerNames != nil {
 			names := []any{}
@@ -648,6 +693,7 @@ func (a *mqlAzureSubscriptionCosmosDbServiceAccount) privateEndpointConnections(
 			if pec == nil {
 				continue
 			}
+			var pecPrivateEndpointID string
 			args := map[string]*llx.RawData{
 				"__id": llx.StringDataPtr(pec.ID),
 				"id":   llx.StringDataPtr(pec.ID),
@@ -661,30 +707,23 @@ func (a *mqlAzureSubscriptionCosmosDbServiceAccount) privateEndpointConnections(
 				}
 				args["properties"] = llx.DictData(propsMap)
 				if pec.Properties.PrivateEndpoint != nil {
-					args["privateEndpointId"] = llx.StringDataPtr(pec.Properties.PrivateEndpoint.ID)
+					pecPrivateEndpointID = convert.ToValue(pec.Properties.PrivateEndpoint.ID)
 				}
 				if pec.Properties.ProvisioningState != nil {
 					args["provisioningState"] = llx.StringDataPtr(pec.Properties.ProvisioningState)
 				}
 				if pec.Properties.PrivateLinkServiceConnectionState != nil {
-					stateArgs := map[string]*llx.RawData{}
-					if pec.Properties.PrivateLinkServiceConnectionState.ActionsRequired != nil {
-						stateArgs["actionsRequired"] = llx.StringDataPtr(pec.Properties.PrivateLinkServiceConnectionState.ActionsRequired)
-					}
-					if pec.Properties.PrivateLinkServiceConnectionState.Description != nil {
-						stateArgs["description"] = llx.StringDataPtr(pec.Properties.PrivateLinkServiceConnectionState.Description)
-					}
-					if pec.Properties.PrivateLinkServiceConnectionState.Status != nil {
-						stateArgs["status"] = llx.StringDataPtr(pec.Properties.PrivateLinkServiceConnectionState.Status)
-					}
-					stateRes, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionPrivateEndpointConnectionConnectionState, stateArgs)
+					stateRes, err := newPrivateLinkServiceConnectionState(a.MqlRuntime, convert.ToValue(pec.ID),
+						stringEnumPtr(pec.Properties.PrivateLinkServiceConnectionState.ActionsRequired),
+						pec.Properties.PrivateLinkServiceConnectionState.Description,
+						stringEnumPtr(pec.Properties.PrivateLinkServiceConnectionState.Status))
 					if err != nil {
 						return nil, err
 					}
 					args["privateLinkServiceConnectionState"] = llx.ResourceData(stateRes, ResourceAzureSubscriptionPrivateEndpointConnectionConnectionState)
 				}
 			}
-			mqlConn, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionPrivateEndpointConnection, args)
+			mqlConn, err := newAzurePrivateEndpointConnection(a.MqlRuntime, args, pecPrivateEndpointID)
 			if err != nil {
 				return nil, err
 			}
@@ -761,10 +800,20 @@ func (a *mqlAzureSubscriptionCosmosDbServiceAccount) sqlRoleDefinitions() ([]any
 				}
 				args["permissions"] = llx.ArrayData(perms, types.Dict)
 			}
+			dataPermissions, err := cosmosRolePermissionsToMql(a.MqlRuntime, convert.ToValue(def.ID), orZero(def.Properties).Permissions)
+			if err != nil {
+				return nil, err
+			}
+			args["dataPermissions"] = llx.ArrayData(dataPermissions, types.Resource("azure.subscription.cosmosDbService.account.roleDefinitionPermission"))
 			mqlDef, err := CreateResource(a.MqlRuntime, "azure.subscription.cosmosDbService.account.sqlRoleDefinition", args)
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(def.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlDef.(*mqlAzureSubscriptionCosmosDbServiceAccountSqlRoleDefinition).cacheSystemData = sysData
 			res = append(res, mqlDef)
 		}
 	}
@@ -824,13 +873,92 @@ func (a *mqlAzureSubscriptionCosmosDbServiceAccount) sqlRoleAssignments() ([]any
 			if err != nil {
 				return nil, err
 			}
+			sysData, err := convert.JsonToDict(ra.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			mqlRA.(*mqlAzureSubscriptionCosmosDbServiceAccountSqlRoleAssignment).cacheSystemData = sysData
 			res = append(res, mqlRA)
 		}
 	}
 	return res, nil
 }
 
+type mqlAzureSubscriptionCosmosDbServiceAccountSqlRoleDefinitionInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionCosmosDbServiceAccountSqlRoleDefinition) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
+type mqlAzureSubscriptionCosmosDbServiceAccountSqlRoleAssignmentInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionCosmosDbServiceAccountSqlRoleAssignment) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
 func (a *mqlAzureSubscriptionCosmosDbServiceAccount) diagnosticSettings() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
 	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
+
+func (a *mqlAzureSubscriptionCosmosDbServiceAccount) diagnosticSettingsCategories() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettingsCategories(a.Id.Data, a.MqlRuntime, conn)
+}
+
+// cosmosKeysMetadataToMql maps the account's key metadata onto its own
+// resource, with one entry per master key.
+//
+// The generation time is the only member ARM records per key, and it is what a
+// key-rotation audit reads: a primary key that has not been regenerated in
+// months is the finding, and the read-only keys rotate independently of the
+// read-write ones. An account whose metadata ARM does not report reads null
+// rather than four keys with a zero timestamp.
+func cosmosKeysMetadataToMql(runtime *plugin.Runtime, accountID string, km *cosmosdb.DatabaseAccountKeysMetadata) (*llx.RawData, error) {
+	if km == nil {
+		return llx.NilData, nil
+	}
+	if accountID == "" {
+		return nil, errors.New("cannot key the Cosmos DB key metadata: the account has no id")
+	}
+	const resourceName = "azure.subscription.cosmosDbService.account.masterKeyMetadata"
+	const entryName = "azure.subscription.cosmosDbService.account.accountKeyMetadata"
+
+	entry := func(key string, meta *cosmosdb.AccountKeyMetadata) (*llx.RawData, error) {
+		if meta == nil {
+			return llx.NilData, nil
+		}
+		res, err := CreateResource(runtime, entryName, map[string]*llx.RawData{
+			"__id":           llx.StringData(accountID + "/keysMetadata/" + key),
+			"generationTime": llx.TimeDataPtr(meta.GenerationTime),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return llx.ResourceData(res, entryName), nil
+	}
+
+	args := map[string]*llx.RawData{"__id": llx.StringData(accountID + "/keysMetadata")}
+	for key, meta := range map[string]*cosmosdb.AccountKeyMetadata{
+		"primaryMasterKey":           km.PrimaryMasterKey,
+		"secondaryMasterKey":         km.SecondaryMasterKey,
+		"primaryReadonlyMasterKey":   km.PrimaryReadonlyMasterKey,
+		"secondaryReadonlyMasterKey": km.SecondaryReadonlyMasterKey,
+	} {
+		data, err := entry(key, meta)
+		if err != nil {
+			return nil, err
+		}
+		args[key] = data
+	}
+
+	res, err := CreateResource(runtime, resourceName, args)
+	if err != nil {
+		return nil, err
+	}
+	return llx.ResourceData(res, resourceName), nil
 }

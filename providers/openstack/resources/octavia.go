@@ -12,8 +12,8 @@ import (
 	"github.com/gophercloud/gophercloud/v2/openstack/loadbalancer/v2/monitors"
 	"github.com/gophercloud/gophercloud/v2/openstack/loadbalancer/v2/pools"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // barbicanRefIsContainer reports whether a Barbican ref URL points at a
@@ -44,6 +44,38 @@ func newKeymanagerContainerByRef(runtime *plugin.Runtime, ref string) (*mqlOpens
 		return nil, err
 	}
 	return res.(*mqlOpenstackKeymanagerContainer), nil
+}
+
+// barbicanRefIsSecret reports whether a Barbican ref URL points at a bare
+// secret (vs a container). Octavia accepts either for its TLS refs, and a
+// PKCS12 bundle stored as a single secret is the common form on modern
+// clouds. A ref that matches neither shape is left unresolved rather than
+// guessed at.
+func barbicanRefIsSecret(ref string) bool {
+	return strings.Contains(ref, "/secrets/")
+}
+
+// newKeymanagerSecretByRef resolves a Barbican secret ref URL to an
+// openstack.keymanager.secret resource. Returns (nil, nil) when ref is empty
+// or points at a container (not a bare secret) — callers MUST set
+// `<field>.State = StateIsSet | StateIsNull` before returning, otherwise the
+// runtime keeps the field unresolved.
+func newKeymanagerSecretByRef(runtime *plugin.Runtime, ref string) (*mqlOpenstackKeymanagerSecret, error) {
+	if !barbicanRefIsSecret(ref) {
+		return nil, nil
+	}
+	id := barbicanRefID(ref)
+	if id == "" {
+		return nil, nil
+	}
+	res, err := NewResource(runtime, "openstack.keymanager.secret", map[string]*llx.RawData{
+		"id":        llx.StringData(id),
+		"secretRef": llx.StringData(ref),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlOpenstackKeymanagerSecret), nil
 }
 
 // ---- openstack.octavia.loadBalancer ----
@@ -342,6 +374,8 @@ func (o *mqlOpenstack) listeners() ([]any, error) {
 			"timeoutMemberConnect":  llx.IntData(int64(l.TimeoutMemberConnect)),
 			"timeoutTcpInspect":     llx.IntData(int64(l.TimeoutTCPInspect)),
 			"hstsIncludeSubdomains": llx.BoolData(l.HSTSIncludeSubdomains),
+			"hstsMaxAge":            llx.IntData(int64(l.HSTSMaxAge)),
+			"hstsPreload":           llx.BoolData(l.HSTSPreload),
 			"tags":                  stringSliceData(l.Tags),
 		})
 		if err != nil {
@@ -408,6 +442,17 @@ func (r *mqlOpenstackOctaviaListener) defaultTlsContainer() (*mqlOpenstackKeyman
 	return res, nil
 }
 
+func (r *mqlOpenstackOctaviaListener) defaultTlsSecret() (*mqlOpenstackKeymanagerSecret, error) {
+	res, err := newKeymanagerSecretByRef(r.MqlRuntime, r.cacheDefaultTlsContainerRef)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		r.DefaultTlsSecret.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return res, nil
+}
+
 func (r *mqlOpenstackOctaviaListener) sniContainers() ([]any, error) {
 	out := make([]any, 0, len(r.cacheSniContainerRefs))
 	for _, ref := range r.cacheSniContainerRefs {
@@ -417,6 +462,20 @@ func (r *mqlOpenstackOctaviaListener) sniContainers() ([]any, error) {
 		}
 		if c != nil {
 			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+func (r *mqlOpenstackOctaviaListener) sniSecrets() ([]any, error) {
+	out := make([]any, 0, len(r.cacheSniContainerRefs))
+	for _, ref := range r.cacheSniContainerRefs {
+		s, err := newKeymanagerSecretByRef(r.MqlRuntime, ref)
+		if err != nil {
+			return nil, err
+		}
+		if s != nil {
+			out = append(out, s)
 		}
 	}
 	return out, nil
@@ -433,6 +492,17 @@ func (r *mqlOpenstackOctaviaListener) clientCATlsContainer() (*mqlOpenstackKeyma
 	return res, nil
 }
 
+func (r *mqlOpenstackOctaviaListener) clientCATlsSecret() (*mqlOpenstackKeymanagerSecret, error) {
+	res, err := newKeymanagerSecretByRef(r.MqlRuntime, r.cacheClientCATlsContainerRef)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		r.ClientCATlsSecret.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return res, nil
+}
+
 func (r *mqlOpenstackOctaviaListener) clientCRLContainer() (*mqlOpenstackKeymanagerContainer, error) {
 	res, err := newKeymanagerContainerByRef(r.MqlRuntime, r.cacheClientCRLContainerRef)
 	if err != nil {
@@ -440,6 +510,17 @@ func (r *mqlOpenstackOctaviaListener) clientCRLContainer() (*mqlOpenstackKeymana
 	}
 	if res == nil {
 		r.ClientCRLContainer.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return res, nil
+}
+
+func (r *mqlOpenstackOctaviaListener) clientCRLSecret() (*mqlOpenstackKeymanagerSecret, error) {
+	res, err := newKeymanagerSecretByRef(r.MqlRuntime, r.cacheClientCRLContainerRef)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		r.ClientCRLSecret.State = plugin.StateIsSet | plugin.StateIsNull
 	}
 	return res, nil
 }
@@ -648,6 +729,17 @@ func (r *mqlOpenstackOctaviaPool) caTlsContainer() (*mqlOpenstackKeymanagerConta
 	return res, nil
 }
 
+func (r *mqlOpenstackOctaviaPool) caTlsSecret() (*mqlOpenstackKeymanagerSecret, error) {
+	res, err := newKeymanagerSecretByRef(r.MqlRuntime, r.cacheCATlsContainerRef)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		r.CaTlsSecret.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return res, nil
+}
+
 func (r *mqlOpenstackOctaviaPool) crlContainer() (*mqlOpenstackKeymanagerContainer, error) {
 	res, err := newKeymanagerContainerByRef(r.MqlRuntime, r.cacheCRLContainerRef)
 	if err != nil {
@@ -659,6 +751,17 @@ func (r *mqlOpenstackOctaviaPool) crlContainer() (*mqlOpenstackKeymanagerContain
 	return res, nil
 }
 
+func (r *mqlOpenstackOctaviaPool) crlSecret() (*mqlOpenstackKeymanagerSecret, error) {
+	res, err := newKeymanagerSecretByRef(r.MqlRuntime, r.cacheCRLContainerRef)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		r.CrlSecret.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return res, nil
+}
+
 func (r *mqlOpenstackOctaviaPool) clientTlsContainer() (*mqlOpenstackKeymanagerContainer, error) {
 	res, err := newKeymanagerContainerByRef(r.MqlRuntime, r.cacheClientTlsContainerRef)
 	if err != nil {
@@ -666,6 +769,17 @@ func (r *mqlOpenstackOctaviaPool) clientTlsContainer() (*mqlOpenstackKeymanagerC
 	}
 	if res == nil {
 		r.ClientTlsContainer.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return res, nil
+}
+
+func (r *mqlOpenstackOctaviaPool) clientTlsSecret() (*mqlOpenstackKeymanagerSecret, error) {
+	res, err := newKeymanagerSecretByRef(r.MqlRuntime, r.cacheClientTlsContainerRef)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		r.ClientTlsSecret.State = plugin.StateIsSet | plugin.StateIsNull
 	}
 	return res, nil
 }
@@ -1060,6 +1174,22 @@ func (r *mqlOpenstackOctaviaL7Rule) l7Policy() (*mqlOpenstackOctaviaL7Policy, er
 // resolveProject is a shared helper for the many octavia accessors that
 // resolve a cached project ID into a typed openstack.project. Returns
 // (nil, nil) when the cache is empty after marking the field null.
+// hstsEnabledForMaxAge reports whether an HSTS max-age turns the header on.
+// Octavia emits Strict-Transport-Security only for a positive max-age; the
+// includeSubDomains and preload directives do nothing on their own, so reading
+// either of them as "HSTS is configured" is a false positive.
+func hstsEnabledForMaxAge(maxAge int64) bool {
+	return maxAge > 0
+}
+
+func (r *mqlOpenstackOctaviaListener) hstsEnabled() (bool, error) {
+	maxAge := r.GetHstsMaxAge()
+	if maxAge.Error != nil {
+		return false, maxAge.Error
+	}
+	return hstsEnabledForMaxAge(maxAge.Data), nil
+}
+
 func resolveProject(runtime *plugin.Runtime, id string, field *plugin.TValue[*mqlOpenstackProject]) (*mqlOpenstackProject, error) {
 	if id == "" {
 		field.State = plugin.StateIsSet | plugin.StateIsNull

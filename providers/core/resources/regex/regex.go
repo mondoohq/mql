@@ -4,7 +4,7 @@
 package regex
 
 // A ton of glory goes to:
-// - https://ihateregex.io/expr where many of these regexes come from
+// - https://ihateregex.io/ where many of these regexes come from
 
 // TODO: can't figure this one out yet, needs work before getting exposed
 // Adopted from:
@@ -84,7 +84,7 @@ const (
 //	Additionally: it's not in these RFCs, but the domain is further restricted
 //	by https://datatracker.ietf.org/doc/html/rfc3696. It is also not a domain
 //	name in the context of DNS, see these clarifications:
-//	- https://www.rfc-editor.org/rfc/rfc2181#section-11
+//	- https://www.rfc-editor.org/rfc/rfc2181.html#section-11
 //	- https://stackoverflow.com/questions/2180465/can-domain-name-subdomains-have-an-underscore-in-it
 //
 // Limitation: I suspect we may also need to support rfc5322, which includes

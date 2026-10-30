@@ -12,12 +12,12 @@ import (
 	catypes "github.com/aws/aws-sdk-go-v2/service/codeartifact/types"
 	"github.com/aws/smithy-go"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsCodeartifact) id() (string, error) {
@@ -157,7 +157,6 @@ func newMqlAwsCodeartifactDomain(runtime *plugin.Runtime, region, name, owner st
 		"encryptionKey":   llx.StringDataPtr(d.EncryptionKey),
 		"repositoryCount": llx.IntData(int64(d.RepositoryCount)),
 		"assetSizeBytes":  llx.IntData(d.AssetSizeBytes),
-		"s3BucketArn":     llx.StringDataPtr(d.S3BucketArn),
 		"tags":            llx.MapData(tags, types.String),
 	}
 
@@ -165,6 +164,7 @@ func newMqlAwsCodeartifactDomain(runtime *plugin.Runtime, region, name, owner st
 	if err != nil {
 		return nil, err
 	}
+	obj.(*mqlAwsCodeartifactDomain).cacheS3BucketArn = convert.ToValue(d.S3BucketArn)
 	mqlDomain := obj.(*mqlAwsCodeartifactDomain)
 	mqlDomain.cacheKmsKeyArn = d.EncryptionKey
 	mqlDomain.cacheDomainName = name
@@ -174,7 +174,7 @@ func newMqlAwsCodeartifactDomain(runtime *plugin.Runtime, region, name, owner st
 }
 
 func (a *mqlAwsCodeartifactDomain) s3Bucket() (*mqlAwsS3Bucket, error) {
-	arnVal := a.S3BucketArn.Data
+	arnVal := a.cacheS3BucketArn
 	if arnVal == "" {
 		a.S3Bucket.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -192,7 +192,11 @@ func (a *mqlAwsCodeartifactDomain) id() (string, error) {
 }
 
 func initAwsCodeartifactDomain(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	if len(args) > 2 {
+	// Only skip the lookup when the caller already supplied the identity we
+	// would resolve. repository.domain() passes name+owner+region (3 args), so a
+	// bare `len(args) > 2` fast path skipped the fetch and produced a husk whose
+	// id() (the unset arn) was empty, aliasing every repository's domain.
+	if args["arn"] != nil {
 		return args, nil, nil
 	}
 	name := rawStringArg(args["name"])
@@ -209,6 +213,7 @@ func initAwsCodeartifactDomain(runtime *plugin.Runtime, args map[string]*llx.Raw
 }
 
 type mqlAwsCodeartifactDomainInternal struct {
+	cacheS3BucketArn string
 	cacheKmsKeyArn   *string
 	cacheDomainName  string
 	cacheDomainOwner string
@@ -541,8 +546,7 @@ func (a *mqlAwsCodeartifactRepository) endpoints() (map[string]any, error) {
 // permissions-policy APIs return when no policy is attached to the domain or
 // repository. Treated as "no policy" rather than a real error.
 func isCodeArtifactNotFound(err error) bool {
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[smithy.APIError](err); ok {
 		code := apiErr.ErrorCode()
 		return code == "ResourceNotFoundException"
 	}
@@ -553,8 +557,7 @@ func isCodeArtifactNotFound(err error) bool {
 // GetRepositoryEndpoint returns when the repository has no configuration for
 // the requested package format. Treated as "no endpoint for that format".
 func isCodeArtifactValidation(err error) bool {
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[smithy.APIError](err); ok {
 		code := apiErr.ErrorCode()
 		return code == "ValidationException"
 	}

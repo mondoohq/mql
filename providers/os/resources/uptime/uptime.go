@@ -7,8 +7,8 @@ import (
 	"errors"
 	"time"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 type Uptime interface {
@@ -25,6 +25,6 @@ func New(conn shared.Connection) (Uptime, error) {
 	case pf.IsFamily(inventory.FAMILY_WINDOWS):
 		return &Windows{conn: conn}, nil
 	default:
-		return nil, errors.New("your platform is not supported by reboot resource")
+		return nil, errors.New("your platform is not supported by the uptime resource")
 	}
 }

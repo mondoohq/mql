@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -16,17 +15,21 @@ import (
 	pubsubadmin "cloud.google.com/go/pubsub/v2/apiv1"
 	"cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
+
+type mqlGcpProjectPubsubServiceTopicConfigInternal struct {
+	cacheKmsKeyName string
+}
 
 func (g *mqlGcpProjectPubsubService) id() (string, error) {
 	if g.ProjectId.Error != nil {
@@ -53,7 +56,7 @@ func initGcpProjectPubsubService(runtime *plugin.Runtime, args map[string]*llx.R
 }
 
 type mqlGcpProjectPubsubServiceInternal struct {
-	serviceEnabled bool
+	serviceGate
 }
 
 func (g *mqlGcpProject) pubsub() (*mqlGcpProjectPubsubService, error) {
@@ -75,7 +78,7 @@ func (g *mqlGcpProject) pubsub() (*mqlGcpProjectPubsubService, error) {
 	}
 
 	svc := res.(*mqlGcpProjectPubsubService)
-	svc.serviceEnabled = serviceEnabled
+	svc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_pubsub).Msg("gcp service is not enabled, skipping")
 	}
@@ -112,6 +115,12 @@ func initGcpProjectPubsubServiceTopic(runtime *plugin.Runtime, args map[string]*
 		}
 	}
 
+	// Guard before building the parent: CreateResource hands args["projectId"]
+	// to the generated setter, which dereferences it, so nil panics the provider.
+	if args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.pubsubService.topic requires a \"projectId\" argument")
+	}
+
 	obj, err := CreateResource(runtime, "gcp.project.pubsubService", map[string]*llx.RawData{
 		"projectId": args["projectId"],
 	})
@@ -124,7 +133,11 @@ func initGcpProjectPubsubServiceTopic(runtime *plugin.Runtime, args map[string]*
 		return nil, nil, topics.Error
 	}
 
-	nameVal := args["name"].Value.(string)
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New("gcp.project.pubsubService.topic requires a \"name\" argument")
+	}
+	nameVal, _ := nameRaw.Value.(string)
 	for _, t := range topics.Data {
 		topic := t.(*mqlGcpProjectPubsubServiceTopic)
 		if topic.Name.Data == nameVal {
@@ -184,6 +197,12 @@ func initGcpProjectPubsubServiceSubscription(runtime *plugin.Runtime, args map[s
 		}
 	}
 
+	// Guard before building the parent: CreateResource hands args["projectId"]
+	// to the generated setter, which dereferences it, so nil panics the provider.
+	if args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.pubsubService.subscription requires a \"projectId\" argument")
+	}
+
 	obj, err := CreateResource(runtime, "gcp.project.pubsubService", map[string]*llx.RawData{
 		"projectId": args["projectId"],
 	})
@@ -196,7 +215,11 @@ func initGcpProjectPubsubServiceSubscription(runtime *plugin.Runtime, args map[s
 		return nil, nil, subs.Error
 	}
 
-	nameVal := args["name"].Value.(string)
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New("gcp.project.pubsubService.subscription requires a \"name\" argument")
+	}
+	nameVal, _ := nameRaw.Value.(string)
 	for _, s := range subs.Data {
 		sub := s.(*mqlGcpProjectPubsubServiceSubscription)
 		if sub.Name.Data == nameVal {
@@ -257,6 +280,12 @@ func initGcpProjectPubsubServiceSnapshot(runtime *plugin.Runtime, args map[strin
 		}
 	}
 
+	// Guard before building the parent: CreateResource hands args["projectId"]
+	// to the generated setter, which dereferences it, so nil panics the provider.
+	if args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.pubsubService.snapshot requires a \"projectId\" argument")
+	}
+
 	obj, err := CreateResource(runtime, "gcp.project.pubsubService", map[string]*llx.RawData{
 		"projectId": args["projectId"],
 	})
@@ -269,7 +298,11 @@ func initGcpProjectPubsubServiceSnapshot(runtime *plugin.Runtime, args map[strin
 		return nil, nil, snapshots.Error
 	}
 
-	nameVal := args["name"].Value.(string)
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New("gcp.project.pubsubService.snapshot requires a \"name\" argument")
+	}
+	nameVal, _ := nameRaw.Value.(string)
 	for _, s := range snapshots.Data {
 		snap := s.(*mqlGcpProjectPubsubServiceSnapshot)
 		if snap.Name.Data == nameVal {
@@ -281,7 +314,11 @@ func initGcpProjectPubsubServiceSnapshot(runtime *plugin.Runtime, args map[strin
 }
 
 func (g *mqlGcpProjectPubsubService) topics() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -406,7 +443,6 @@ func (g *mqlGcpProjectPubsubServiceTopic) config() (*mqlGcpProjectPubsubServiceT
 		"projectId":                   llx.StringData(projectId),
 		"topicName":                   llx.StringData(name),
 		"labels":                      llx.MapData(convert.MapToInterfaceMap(cfg.Labels), types.String),
-		"kmsKeyName":                  llx.StringData(cfg.KmsKeyName),
 		"messageStoragePolicy":        llx.ResourceData(messageStoragePolicy, "gcp.project.pubsubService.topic.config.messagestoragepolicy"),
 		"state":                       llx.StringData(topicStateToString(cfg.State)),
 		"retentionDuration":           llx.TimeData(pbDurationToTime(cfg.MessageRetentionDuration)),
@@ -422,6 +458,7 @@ func (g *mqlGcpProjectPubsubServiceTopic) config() (*mqlGcpProjectPubsubServiceT
 		return nil, err
 	}
 	tc := res.(*mqlGcpProjectPubsubServiceTopicConfig)
+	tc.cacheKmsKeyName = cfg.KmsKeyName
 	if schemaSettings == nil {
 		tc.SchemaSettings.State = plugin.StateIsNull | plugin.StateIsSet
 	}
@@ -429,7 +466,11 @@ func (g *mqlGcpProjectPubsubServiceTopic) config() (*mqlGcpProjectPubsubServiceT
 }
 
 func (g *mqlGcpProjectPubsubService) subscriptions() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -512,8 +553,14 @@ func (g *mqlGcpProjectPubsubServiceSubscription) config() (*mqlGcpProjectPubsubS
 		return nil, err
 	}
 
+	// A subscription may reference a topic in a different project; key the topic
+	// ref on the topic's own project (from its resource path), not the local one.
+	topicProjectId := projectFromResourceName(cfg.Topic)
+	if topicProjectId == "" {
+		topicProjectId = projectId
+	}
 	topic, err := CreateResource(g.MqlRuntime, "gcp.project.pubsubService.topic", map[string]*llx.RawData{
-		"projectId": llx.StringData(projectId),
+		"projectId": llx.StringData(topicProjectId),
 		"name":      llx.StringData(lastPathSegment(cfg.Topic)),
 	})
 	if err != nil {
@@ -640,7 +687,11 @@ func (g *mqlGcpProjectPubsubServiceSubscription) config() (*mqlGcpProjectPubsubS
 }
 
 func (g *mqlGcpProjectPubsubService) snapshots() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -681,8 +732,14 @@ func (g *mqlGcpProjectPubsubService) snapshots() ([]any, error) {
 		snapshotName := lastPathSegment(s.Name)
 		topicName := lastPathSegment(s.Topic)
 
+		// A snapshot may reference a topic in a different project; key the topic
+		// ref on the topic's own project (from its resource path).
+		topicProjectId := projectFromResourceName(s.Topic)
+		if topicProjectId == "" {
+			topicProjectId = projectId
+		}
 		topic, err := CreateResource(g.MqlRuntime, "gcp.project.pubsubService.topic", map[string]*llx.RawData{
-			"projectId": llx.StringData(projectId),
+			"projectId": llx.StringData(topicProjectId),
 			"name":      llx.StringData(topicName),
 		})
 		if err != nil {
@@ -746,20 +803,12 @@ func (g *mqlGcpProjectPubsubServiceTopic) iamPolicy() ([]any, error) {
 		return nil, err
 	}
 
-	bindings := policy.Bindings
-	res := make([]any, 0, len(bindings))
-	for i, b := range bindings {
-		mqlBinding, err := CreateResource(g.MqlRuntime, ResourceGcpResourcemanagerBinding, map[string]*llx.RawData{
-			"id":      llx.StringData(resourcePath + "-" + strconv.Itoa(i)),
-			"role":    llx.StringData(b.Role),
-			"members": llx.ArrayData(convert.SliceAnyToInterface(b.Members), types.String),
-		})
-		if err != nil {
-			return nil, err
-		}
-		res = append(res, mqlBinding)
-	}
-	return res, nil
+	// Share the standard binding mapper. The inline copy this replaces omitted
+	// conditionTitle/conditionExpression/conditionDescription, which are plain
+	// (non-computed) fields, so they crossed the plugin boundary UNSET -- and a
+	// conditional allUsers grant read as an unconditional one even though the
+	// request already asks for policy schema v3.
+	return iampbBindingsToMql(g.MqlRuntime, resourcePath, policy.Bindings)
 }
 
 func (g *mqlGcpProjectPubsubServiceSubscription) iamPolicy() ([]any, error) {
@@ -798,20 +847,12 @@ func (g *mqlGcpProjectPubsubServiceSubscription) iamPolicy() ([]any, error) {
 		return nil, err
 	}
 
-	bindings := policy.Bindings
-	res := make([]any, 0, len(bindings))
-	for i, b := range bindings {
-		mqlBinding, err := CreateResource(g.MqlRuntime, ResourceGcpResourcemanagerBinding, map[string]*llx.RawData{
-			"id":      llx.StringData(resourcePath + "-" + strconv.Itoa(i)),
-			"role":    llx.StringData(b.Role),
-			"members": llx.ArrayData(convert.SliceAnyToInterface(b.Members), types.String),
-		})
-		if err != nil {
-			return nil, err
-		}
-		res = append(res, mqlBinding)
-	}
-	return res, nil
+	// Share the standard binding mapper. The inline copy this replaces omitted
+	// conditionTitle/conditionExpression/conditionDescription, which are plain
+	// (non-computed) fields, so they crossed the plugin boundary UNSET -- and a
+	// conditional allUsers grant read as an unconditional one even though the
+	// request already asks for policy schema v3.
+	return iampbBindingsToMql(g.MqlRuntime, resourcePath, policy.Bindings)
 }
 
 func topicStateToString(state pubsubpb.Topic_State) string {
@@ -860,13 +901,21 @@ func subscriptionPath(projectID, name string) string {
 }
 
 func lastPathSegment(s string) string {
-	if i := strings.LastIndex(s, "/"); i >= 0 {
-		return s[i+1:]
+	if _, after, ok := strings.CutLast(s, "/"); ok {
+		return after
 	}
 	return s
 }
 
 func (g *mqlGcpProjectPubsubService) schemas() ([]any, error) {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+
 	if g.ProjectId.Error != nil {
 		return nil, g.ProjectId.Error
 	}
@@ -964,7 +1013,10 @@ func initGcpProjectPubsubServiceSchema(runtime *plugin.Runtime, args map[string]
 	if !ok || nameArg == nil {
 		return nil, nil, errors.New("gcp.project.pubsubService.schema requires a name")
 	}
-	fullName := nameArg.Value.(string)
+	fullName, ok := nameArg.Value.(string)
+	if !ok || fullName == "" {
+		return nil, nil, errors.New("gcp.project.pubsubService.schema requires a name")
+	}
 
 	// Schema names are always projects/{project}/schemas/{schema}.
 	parts := strings.Split(fullName, "/")
@@ -977,6 +1029,14 @@ func initGcpProjectPubsubServiceSchema(runtime *plugin.Runtime, args map[string]
 	if !ok {
 		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
 	}
+	// Ask whether the API is on before paying for a Get that cannot succeed
+	// without it. Memoized per project, so this is free after the first caller.
+	if enabled, err := serviceEnabledForInit(runtime, projectId, service_pubsub); err != nil {
+		return nil, nil, err
+	} else if !enabled {
+		return nil, nil, errors.New("Pub/Sub API is not enabled on project " + projectId)
+	}
+
 	creds, err := conn.Credentials(pubsub.ScopePubSub)
 	if err != nil {
 		return nil, nil, err
@@ -1190,17 +1250,19 @@ func (g *mqlGcpProjectPubsubServiceSnapshot) managedBy() (string, error) {
 }
 
 func (g *mqlGcpProjectPubsubServiceTopicConfig) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
-	if g.KmsKeyName.Error != nil {
-		return nil, g.KmsKeyName.Error
-	}
-	if g.KmsKeyName.Data == "" {
+	if g.cacheKmsKeyName == "" {
 		g.KmsKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
 	res, err := NewResource(g.MqlRuntime, "gcp.project.kmsService.keyring.cryptokey",
-		map[string]*llx.RawData{"resourcePath": llx.StringData(g.KmsKeyName.Data)})
+		map[string]*llx.RawData{"resourcePath": llx.StringData(g.cacheKmsKeyName)})
 	if err != nil {
 		return nil, err
 	}
 	return res.(*mqlGcpProjectKmsServiceKeyringCryptokey), nil
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectPubsubService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_pubsub)
 }

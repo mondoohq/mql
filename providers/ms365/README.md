@@ -11,6 +11,8 @@ __NOTE__
 
 At the moment some of the resources within this provider require the use of PowerShell. Please ensure `pwsh` is in your PATH. For example, `pwsh -c 'Get-Date'` should return a timestamp.
 
+The resources that still need PowerShell are `ms365.exchangeonline`, `ms365.sharepointonline`, `ms365.teams` and `microsoft.security.exchange`. Everything else, including `microsoft.powerbi`, is served directly from the REST APIs and works without `pwsh`.
+
 Also it's recommended that you use certificate based authentication with this provider, especially with the resources that need to use powershell, this is due to the way those cmdlets authenticate.  Certificate auth is more reliable when testing.
 
 ### Mac
@@ -18,9 +20,9 @@ Also it's recommended that you use certificate based authentication with this pr
 brew install --cask powershell
 ```
 ### Linux
-Please refer to the [documentation](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-linux) based on your distribution.
+Please refer to the [documentation](https://learn.microsoft.com/en-us/powershell/scripting/install/linux-overview) based on your distribution.
 
-## Authenticating
+## Authentication
 You will need to provide your app's client and tenant id as well certificate.
 ```
 export MS365_CLIENT_ID='your-client-id'

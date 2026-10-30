@@ -124,8 +124,8 @@ func TestHasBlockKeyword(t *testing.T) {
 		{"$ModLoad imuxsock", false},            // legacy form
 		{"auth.* /var/log/auth.log", false},     // selector
 		{"if $msg contains \"x\" then ", false}, // conditional
-		{"ruleset(name=\"x\") {", false},        // ruleset is not in our keyword set (yet)
-		{"modular thing", false},                // false-positive guard
+		{"ruleset(name=\"x\") {", true},
+		{"modular thing", false}, // false-positive guard
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
@@ -434,6 +434,43 @@ auth,authpriv.none /var/log/quieted
 	assert.Equal(t, ":omusrmsg:*", rules[6].target)
 }
 
+func TestParseRsyslogFile_SeverityPrefixes(t *testing.T) {
+	// rsyslog severity selectors accept `=` (exactly), `!` (all except), and
+	// `!=` (negate-exact) prefixes. Each must still produce a rule entry with
+	// the prefix preserved on the severity token — previously the `!=` form
+	// was dropped entirely, yielding zero rules with no error.
+	content := `mail.info /var/log/mail.log
+mail.=info /var/log/mail.exact.log
+mail.!info /var/log/mail.notinfo.log
+mail.!=info /var/log/mail.notexact.log
+`
+	got := parseRsyslogFile("/etc/rsyslog.conf", content)
+
+	var rules []rsyslogEntry
+	for _, e := range got {
+		if e.kind == rsyslogKindRule {
+			rules = append(rules, e)
+		}
+	}
+	require.Len(t, rules, 4, "each severity prefix form must yield exactly one rule")
+
+	assert.Equal(t, []string{"mail"}, rules[0].facilities)
+	assert.Equal(t, []string{"info"}, rules[0].severities)
+	assert.Equal(t, "/var/log/mail.log", rules[0].target)
+
+	assert.Equal(t, []string{"=info"}, rules[1].severities)
+	assert.Equal(t, "/var/log/mail.exact.log", rules[1].target)
+	assert.False(t, rules[1].negate)
+
+	assert.Equal(t, []string{"!info"}, rules[2].severities)
+	assert.Equal(t, "/var/log/mail.notinfo.log", rules[2].target)
+	assert.False(t, rules[2].negate)
+
+	assert.Equal(t, []string{"!=info"}, rules[3].severities)
+	assert.Equal(t, "/var/log/mail.notexact.log", rules[3].target)
+	assert.False(t, rules[3].negate)
+}
+
 func TestParseRsyslogFile_SourceAttribution(t *testing.T) {
 	// Every emitted entry must carry the file path we passed in. That's
 	// how the typed accessors point findings at the originating fragment
@@ -474,4 +511,534 @@ ruleset(name="net") {
 			assert.NotContains(t, e.facilities, "call")
 		}
 	}
+}
+
+// entriesOfKind filters parsed entries down to one kind, keeping order.
+func entriesOfKind(entries []rsyslogEntry, kind rsyslogEntryKind) []rsyslogEntry {
+	var out []rsyslogEntry
+	for _, e := range entries {
+		if e.kind == kind {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func TestHasEmbeddedAction(t *testing.T) {
+	tests := []struct {
+		in   string
+		want bool
+	}{
+		{`*.* action(type="omfwd"`, true},
+		{`auth,authpriv.*	action (type="omfile"`, true},
+		{`if $programname == 'sshd' then action(type="omfile"`, true},
+		{`& action(type="omfile" file="/x")`, true},
+		{`if $x then { action(type="omfile" file="/x") }`, true},
+		{`template(name="t" type="string" string="action(%msg%)")`, false},
+		{`$Template t,"see action( here"`, false},
+		{`*.* /var/log/transaction(1).log`, false},
+		{`*.* myaction(x)`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			assert.Equal(t, tt.want, hasEmbeddedAction(tt.in))
+		})
+	}
+}
+
+func TestParseRsyslogFile_SelectorWithModernAction(t *testing.T) {
+	content := `*.* action(type="omfwd" target="logs.example.com" port="514" protocol="tcp"
+  action.resumeRetryCount="100"
+  queue.type="LinkedList" queue.size="1000")
+kern.*;mail.none action(type="omfile" file="/var/log/kern.log")
+`
+	got := parseRsyslogFile("/etc/rsyslog.conf", content)
+
+	actions := entriesOfKind(got, rsyslogKindAction)
+	require.Len(t, actions, 2)
+	fwd := actions[0]
+	assert.Equal(t, "omfwd", fwd.moduleType)
+	assert.Equal(t, "logs.example.com", fwd.target)
+	assert.Equal(t, "tcp", fwd.protocol)
+	assert.Equal(t, "100", fwd.parameters["action.resumeretrycount"])
+	assert.Equal(t, "LinkedList", fwd.queue["type"])
+	assert.Equal(t, "1000", fwd.queue["size"])
+	assert.Equal(t, 1, fwd.sourceLine)
+	assert.Equal(t, "omfile", actions[1].moduleType)
+	assert.Equal(t, "/var/log/kern.log", actions[1].target)
+
+	rules := entriesOfKind(got, rsyslogKindRule)
+	require.Len(t, rules, 3)
+	assert.Equal(t, []string{"*"}, rules[0].facilities)
+	assert.Equal(t, []string{"*"}, rules[0].severities)
+	assert.Equal(t, []string{"kern"}, rules[1].facilities)
+	assert.Equal(t, []string{"mail"}, rules[2].facilities)
+	assert.True(t, rules[2].negate)
+
+	// Every rule points at the action from its own line.
+	for i, e := range got {
+		if e.kind != rsyslogKindRule {
+			continue
+		}
+		require.Greater(t, e.actionOffset, 0, "rule at %d has no action", i)
+		backing := got[i+e.actionOffset]
+		assert.Equal(t, rsyslogKindAction, backing.kind)
+		assert.Equal(t, e.sourceLine, backing.sourceLine)
+	}
+}
+
+func TestParseRsyslogFile_LegacyActionState(t *testing.T) {
+	content := `$ActionQueueType LinkedList
+$ActionQueueFileName fwdRule1
+$ActionResumeRetryCount -1
+*.* @@logs.example.com:6514
+*.* @@second.example.com:514
+$ActionQueueType LinkedList
+action(type="omfile" file="/var/log/all.log")
+*.* @@third.example.com:514
+`
+	actions := entriesOfKind(parseRsyslogFile("/etc/rsyslog.conf", content), rsyslogKindAction)
+	require.Len(t, actions, 4)
+
+	first := actions[0]
+	assert.Equal(t, "LinkedList", first.queue["type"])
+	assert.Equal(t, "fwdRule1", first.queue["filename"])
+	assert.Equal(t, "-1", first.parameters["action.resumeretrycount"])
+
+	t.Run("queue settings apply to the next action only", func(t *testing.T) {
+		assert.Empty(t, actions[1].queue)
+		assert.NotContains(t, actions[1].parameters, "action.resumeretrycount")
+	})
+
+	t.Run("a modern action consumes the pending queue settings", func(t *testing.T) {
+		assert.Empty(t, actions[2].queue, "modern actions don't take legacy queue directives")
+		assert.Empty(t, actions[3].queue, "the settings were reset by the modern action")
+	})
+}
+
+func TestParseRsyslogFile_LegacySendStreamDriver(t *testing.T) {
+	content := `$DefaultNetstreamDriver gtls
+$ActionSendStreamDriverMode 1
+$ActionSendStreamDriverAuthMode x509/name
+$ActionSendStreamDriverPermittedPeer logs.example.com
+*.* @@logs.example.com:6514
+*.* @udp.example.com:514
+*.* @@second.example.com:6514
+$ResetConfigVariables
+*.* @@after-reset.example.com:6514
+`
+	actions := entriesOfKind(parseRsyslogFile("/etc/rsyslog.conf", content), rsyslogKindAction)
+	require.Len(t, actions, 4)
+
+	tls := actions[0]
+	assert.True(t, tls.tlsEnabled)
+	assert.Equal(t, "1", tls.parameters["streamdrivermode"])
+	assert.Equal(t, "x509/name", tls.parameters["streamdriverauthmode"])
+	assert.Equal(t, "logs.example.com", tls.parameters["streamdriverpermittedpeers"])
+
+	t.Run("UDP forwards don't use the stream driver", func(t *testing.T) {
+		assert.Equal(t, "udp", actions[1].protocol)
+		assert.False(t, actions[1].tlsEnabled)
+		assert.Empty(t, actions[1].parameters)
+	})
+
+	t.Run("the settings stay in effect for later TCP forwards", func(t *testing.T) {
+		assert.True(t, actions[2].tlsEnabled)
+	})
+
+	t.Run("$ResetConfigVariables clears them", func(t *testing.T) {
+		assert.False(t, actions[3].tlsEnabled)
+		assert.Empty(t, actions[3].parameters)
+	})
+}
+
+func TestParseRsyslogFile_FilterActions(t *testing.T) {
+	content := `if $programname == 'sshd' then /var/log/sshd.log
+& stop
+if $syslogfacility-text == 'local0' then action(type="omfwd"
+    target="logs.example.com" port="6514" protocol="tcp" StreamDriverMode="1")
+:msg, contains, "error" -/var/log/errors.log
+& @@logs.example.com:514
+:programname, !isequal, "cron" /var/log/not-cron.log
+if $msg contains "x" then { action(type="omfile" file="/var/log/x.log") }
+if $syslogfacility-text == 'auth' then {
+  action(type="omfile" file="/var/log/auth.log")
+}
+`
+	got := parseRsyslogFile("/etc/rsyslog.conf", content)
+	assert.Empty(t, entriesOfKind(got, rsyslogKindRule), "filters without a selector produce no rules")
+
+	actions := entriesOfKind(got, rsyslogKindAction)
+	want := []struct {
+		typ, target, protocol string
+		tls                   bool
+		line                  int
+	}{
+		{"omfile", "/var/log/sshd.log", "", false, 1},
+		{"discard", "stop", "", false, 2},
+		{"omfwd", "logs.example.com", "tcp", true, 3},
+		{"omfile", "/var/log/errors.log", "", false, 5},
+		{"omfwd", "logs.example.com:514", "tcp", false, 6},
+		{"omfile", "/var/log/not-cron.log", "", false, 7},
+		{"omfile", "/var/log/x.log", "", false, 8},
+		{"omfile", "/var/log/auth.log", "", false, 10},
+	}
+	require.Len(t, actions, len(want))
+	for i, w := range want {
+		assert.Equal(t, w.typ, actions[i].moduleType, "type @ %d", i)
+		assert.Equal(t, w.target, actions[i].target, "target @ %d", i)
+		assert.Equal(t, w.protocol, actions[i].protocol, "protocol @ %d", i)
+		assert.Equal(t, w.tls, actions[i].tlsEnabled, "tls @ %d", i)
+		assert.Equal(t, w.line, actions[i].sourceLine, "line @ %d", i)
+	}
+}
+
+func TestParseRsyslogFile_LegacyTargetSyntax(t *testing.T) {
+	content := `*.* @@(o,z9)logs.example.com:514;RSYSLOG_ForwardFormat
+*.* @[2001:db8::1]:514
+*.* :omrelp:relp.example.com:2514;RSYSLOG_ForwardFormat
+*.*;auth,authpriv.none -/var/log/syslog
+*.emerg :omusrmsg:*
+daemon.* |/dev/xconsole
+`
+	got := parseRsyslogFile("/etc/rsyslog.conf", content)
+	actions := entriesOfKind(got, rsyslogKindAction)
+	want := []struct{ typ, target, template string }{
+		{"omfwd", "logs.example.com:514", "RSYSLOG_ForwardFormat"},
+		{"omfwd", "[2001:db8::1]:514", ""},
+		{"omrelp", "relp.example.com:2514", "RSYSLOG_ForwardFormat"},
+		{"omfile", "/var/log/syslog", ""},
+		{"omusrmsg", "*", ""},
+		{"ompipe", "/dev/xconsole", ""},
+	}
+	require.Len(t, actions, len(want))
+	for i, w := range want {
+		assert.Equal(t, w.typ, actions[i].moduleType, "type @ %d", i)
+		assert.Equal(t, w.target, actions[i].target, "target @ %d", i)
+		assert.Equal(t, w.template, actions[i].template, "template @ %d", i)
+	}
+
+	// Rules keep the raw token as written.
+	rules := entriesOfKind(got, rsyslogKindRule)
+	require.NotEmpty(t, rules)
+	assert.Equal(t, "@@(o,z9)logs.example.com:514;RSYSLOG_ForwardFormat", rules[0].target)
+}
+
+func TestParseRsyslogFile_SelectorWithoutAction(t *testing.T) {
+	got := parseRsyslogFile("/etc/rsyslog.conf", "local7.* foo bar\nnot-a-selector /var/log/x\n")
+	assert.Empty(t, entriesOfKind(got, rsyslogKindAction), "a guessed omfile action is worse than none")
+
+	rules := entriesOfKind(got, rsyslogKindRule)
+	require.Len(t, rules, 1)
+	assert.Equal(t, "foo bar", rules[0].target)
+	assert.Zero(t, rules[0].actionOffset)
+}
+
+func TestResolveConfigDefaults_InputStreamDriver(t *testing.T) {
+	legacy := parseRsyslogFile("/etc/rsyslog.conf", `$ModLoad imtcp
+$InputTCPServerStreamDriverMode 1
+$InputTCPServerStreamDriverAuthMode x509/name
+$InputTCPServerRun 6514
+`)
+	modern := parseRsyslogFile("/etc/rsyslog.d/10-listen.conf", `input(type="imtcp" port="6515")
+input(type="imtcp" port="6516" StreamDriver.Mode="0")
+input(type="imudp" port="514")
+`)
+	all := append(legacy, modern...)
+	resolveConfigDefaults(all)
+
+	assert.Empty(t, entriesOfKind(all, rsyslogKindModule)[0].parameters,
+		"the legacy directive is not folded into the $ModLoad entry")
+
+	inputs := entriesOfKind(all, rsyslogKindInput)
+	require.Len(t, inputs, 4)
+	assert.Equal(t, "1", inputs[0].streamDriverMode, "legacy listener")
+	assert.Equal(t, "x509/name", inputs[0].parameters["streamdriver.authmode"])
+	assert.Equal(t, "1", inputs[1].streamDriverMode, "modern listener in another file")
+	assert.Equal(t, "0", inputs[2].streamDriverMode, "the input's own setting wins")
+	assert.Empty(t, inputs[3].streamDriverMode, "imudp is a different module")
+}
+
+func TestAssignRsyslogEntryIDs(t *testing.T) {
+	got := parseRsyslogFile("/etc/rsyslog.conf", `$InputTCPServerStreamDriverMode 1
+*.info;mail.none /var/log/messages
+auth.* /var/log/auth.log
+`)
+	assignRsyslogEntryIDs(got)
+
+	for i, e := range got {
+		if e.kind == rsyslogKindModuleDefaults {
+			assert.Empty(t, e.id)
+			continue
+		}
+		assert.NotEmpty(t, e.id, "entry %d", i)
+	}
+	actions := entriesOfKind(got, rsyslogKindAction)
+	require.Len(t, actions, 2)
+	assert.Equal(t, "action//etc/rsyslog.conf:2/0", actions[0].id)
+	assert.Equal(t, "action//etc/rsyslog.conf:3/1", actions[1].id)
+
+	rules := entriesOfKind(got, rsyslogKindRule)
+	require.Len(t, rules, 3)
+	assert.Equal(t, "rule//etc/rsyslog.conf:2/0", rules[0].id)
+	assert.Equal(t, "rule//etc/rsyslog.conf:2/1", rules[1].id)
+	assert.Equal(t, "rule//etc/rsyslog.conf:3/2", rules[2].id)
+}
+
+func TestParseRsyslogFile_BlockContext(t *testing.T) {
+	content := `if $programname == 'sshd' then {
+  action(type="omfile" file="/var/log/sshd.log")
+  if $msg contains 'Failed' then {
+    action(type="omfile" file="/var/log/sshd-failed.log")
+  }
+} else {
+  action(type="omfile" file="/var/log/other.log")
+}
+if $syslogfacility-text == 'mail' then {
+  action(type="omfile" file="/var/log/mail.log")
+} else if $syslogfacility-text == 'cron' then {
+  action(type="omfile" file="/var/log/cron.log")
+}
+if $fromhost-ip != '127.0.0.1' then
+{
+  action(type="omfile" file="/var/log/remote-hosts.log")
+}
+ruleset(name="remote") {
+  *.* action(type="omfile" file="/var/log/remote.log")
+}
+ruleset(
+  name="forward"
+  queue.type="LinkedList"
+)
+{
+  action(type="omfwd" target="logs.example.com")
+}
+$RuleSet legacy
+*.* /var/log/legacy-ruleset.log
+$RuleSet RSYSLOG_DefaultRuleset
+*.* /var/log/default.log
+`
+	got := parseRsyslogFile("/etc/rsyslog.conf", content)
+	actions := entriesOfKind(got, rsyslogKindAction)
+	want := []struct{ target, condition, ruleset string }{
+		{"/var/log/sshd.log", `$programname == 'sshd'`, rsyslogDefaultRuleset},
+		{"/var/log/sshd-failed.log", `($programname == 'sshd') and ($msg contains 'Failed')`, rsyslogDefaultRuleset},
+		{"/var/log/other.log", `not ($programname == 'sshd')`, rsyslogDefaultRuleset},
+		{"/var/log/mail.log", `$syslogfacility-text == 'mail'`, rsyslogDefaultRuleset},
+		{"/var/log/cron.log", `(not ($syslogfacility-text == 'mail')) and ($syslogfacility-text == 'cron')`, rsyslogDefaultRuleset},
+		{"/var/log/remote-hosts.log", `$fromhost-ip != '127.0.0.1'`, rsyslogDefaultRuleset},
+		{"/var/log/remote.log", "", "remote"},
+		{"logs.example.com", "", "forward"},
+		{"/var/log/legacy-ruleset.log", "", "legacy"},
+		{"/var/log/default.log", "", rsyslogDefaultRuleset},
+	}
+	require.Len(t, actions, len(want))
+	for i, w := range want {
+		assert.Equal(t, w.target, actions[i].target, "target @ %d", i)
+		assert.Equal(t, w.condition, actions[i].condition, "condition @ %d", i)
+		assert.Equal(t, w.ruleset, actions[i].ruleset, "ruleset @ %d", i)
+	}
+
+	rulesets := entriesOfKind(got, rsyslogKindRuleset)
+	require.Len(t, rulesets, 3)
+	assert.Equal(t, "remote", rulesets[0].ruleset)
+	assert.Equal(t, "forward", rulesets[1].ruleset)
+	assert.Equal(t, "LinkedList", rulesets[1].parameters["queue.type"])
+	assert.NotContains(t, rulesets[1].parameters, "name")
+	assert.Equal(t, "legacy", rulesets[2].ruleset)
+
+	rules := entriesOfKind(got, rsyslogKindRule)
+	require.Len(t, rules, 3)
+	assert.Equal(t, "remote", rules[0].ruleset)
+	assert.Equal(t, "legacy", rules[1].ruleset)
+	assert.Equal(t, rsyslogDefaultRuleset, rules[2].ruleset)
+}
+
+func TestParseRsyslogFile_ContinuationKeepsCondition(t *testing.T) {
+	got := parseRsyslogFile("/etc/rsyslog.conf", `:programname, isequal, "sshd" /var/log/sshd.log
+& @@logs.example.com:514
+& stop
+*.* /var/log/all.log
+`)
+	actions := entriesOfKind(got, rsyslogKindAction)
+	require.Len(t, actions, 4)
+	for i := range 3 {
+		assert.Equal(t, `:programname, isequal, "sshd"`, actions[i].condition, "action %d", i)
+	}
+	assert.Empty(t, actions[3].condition, "a selector line starts a new filter")
+}
+
+func TestParseRsyslogFile_LegacyInputBindRuleset(t *testing.T) {
+	got := parseRsyslogFile("/etc/rsyslog.conf", `$ModLoad imtcp
+$ModLoad imudp
+$RuleSet remote
+*.* /var/log/remote.log
+$RuleSet RSYSLOG_DefaultRuleset
+*.* /var/log/messages
+$InputTCPServerRun 514
+$InputTCPServerBindRuleset remote
+$InputTCPServerRun 10514
+$UDPServerRun 514
+`)
+	inputs := entriesOfKind(got, rsyslogKindInput)
+	require.Len(t, inputs, 3)
+	assert.Empty(t, inputs[0].ruleset, "bound before the directive")
+	assert.Equal(t, "remote", inputs[1].ruleset)
+	assert.Equal(t, "imudp", inputs[2].moduleType, "$UDPServerRun has no $Input prefix")
+	assert.Equal(t, int64(514), inputs[2].port)
+	assert.Empty(t, inputs[2].ruleset, "the binding is per module")
+}
+
+func TestParseRsyslogFile_ModernActionDefaults(t *testing.T) {
+	got := parseRsyslogFile("/etc/rsyslog.conf", `action(type="omfwd" target="logs.example.com")
+action(type="omfwd" target="logs.example.com" Protocol="TCP")
+*.emerg action(type="omusrmsg" users="*")
+`)
+	actions := entriesOfKind(got, rsyslogKindAction)
+	require.Len(t, actions, 3)
+	assert.Equal(t, "udp", actions[0].protocol, "omfwd defaults to UDP")
+	assert.Equal(t, "tcp", actions[1].protocol)
+	assert.Equal(t, "*", actions[2].target)
+	assert.Empty(t, actions[2].protocol)
+}
+
+func TestResolveConfigDefaults_FileSettings(t *testing.T) {
+	all := parseRsyslogFile("/etc/rsyslog.conf", `module(load="builtin:omfile" fileCreateMode="0600" fileGroup="adm")
+module(load="imjournal" FileCreateMode="0644")
+$FileCreateMode 0640
+$FileOwner syslog
+*.* /var/log/legacy.log
+*.* action(type="omfile" file="/var/log/modern.log")
+*.* action(type="omfile" file="/var/log/own.log" fileCreateMode="0664" fileOwner="root")
+$ResetConfigVariables
+*.* /var/log/after-reset.log
+*.* @@logs.example.com
+`)
+	resolveConfigDefaults(all)
+	actions := entriesOfKind(all, rsyslogKindAction)
+	require.Len(t, actions, 5)
+
+	want := []struct{ mode, owner, group string }{
+		// Legacy targets take the $File* directives, never the module settings.
+		{"0640", "syslog", ""},
+		// Modern actions take the omfile module settings, never $File*.
+		{"0600", "", "adm"},
+		{"0664", "root", "adm"},
+		// $ResetConfigVariables restores the default mode.
+		{"0644", "", ""},
+		// Other action types carry no file settings.
+		{"", "", ""},
+	}
+	for i, w := range want {
+		assert.Equal(t, w.mode, actions[i].fileCreateMode, "mode @ %d", i)
+		assert.Equal(t, w.owner, actions[i].fileOwner, "owner @ %d", i)
+		assert.Equal(t, w.group, actions[i].fileGroup, "group @ %d", i)
+	}
+}
+
+func TestResolveConfigDefaults_StreamDriver(t *testing.T) {
+	all := parseRsyslogFile("/etc/rsyslog.conf", `global(DefaultNetstreamDriver="gtls")
+*.* action(type="omfwd" target="a" protocol="tcp")
+*.* action(type="omfwd" target="b" protocol="tcp" StreamDriver="ossl" StreamDriverAuthMode="x509/fingerprint")
+$ActionSendStreamDriver ossl
+$ActionSendStreamDriverAuthMode x509/name
+*.* action(type="omfwd" target="c" protocol="tcp")
+*.* @@d.example.com
+*.* action(type="omfwd" target="e" protocol="udp")
+`)
+	resolveConfigDefaults(all)
+	actions := entriesOfKind(all, rsyslogKindAction)
+	require.Len(t, actions, 5)
+
+	want := []struct{ driver, authMode string }{
+		{"gtls", ""},                 // global default
+		{"ossl", "x509/fingerprint"}, // the action's own settings
+		{"ossl", "x509/name"},        // legacy name and auth mode carry to modern omfwd
+		{"ossl", "x509/name"},        // and to legacy forwards
+		{"", ""},                     // UDP has no stream driver
+	}
+	for i, w := range want {
+		assert.Equal(t, w.driver, actions[i].streamDriver, "driver @ %d", i)
+		assert.Equal(t, w.authMode, actions[i].streamDriverAuthMode, "auth mode @ %d", i)
+	}
+	assert.False(t, actions[2].tlsEnabled, "a modern action does not inherit the legacy driver mode")
+}
+
+func TestResolveConfigDefaults_LegacyGlobalDriver(t *testing.T) {
+	all := parseRsyslogFile("/etc/rsyslog.conf", "*.* @@logs.example.com\n$DefaultNetstreamDriver gtls\n")
+	resolveConfigDefaults(all)
+	actions := entriesOfKind(all, rsyslogKindAction)
+	require.Len(t, actions, 1)
+	assert.Equal(t, "gtls", actions[0].streamDriver, "global settings apply regardless of position")
+}
+
+func TestRsyslogActionPort(t *testing.T) {
+	tests := []struct {
+		name string
+		e    rsyslogEntry
+		want int64
+	}{
+		{"modern port", rsyslogEntry{moduleType: "omfwd", parameters: map[string]any{"port": "6514"}}, 6514},
+		{"modern omfwd default", rsyslogEntry{moduleType: "omfwd", parameters: map[string]any{}}, 514},
+		{"modern omrelp default", rsyslogEntry{moduleType: "omrelp", parameters: map[string]any{}}, 514},
+		{"legacy host:port", rsyslogEntry{moduleType: "omfwd", legacy: true, target: "logs:6514"}, 6514},
+		{"legacy bracketed v6", rsyslogEntry{moduleType: "omfwd", legacy: true, target: "[2001:db8::1]:10514"}, 10514},
+		{"legacy no port", rsyslogEntry{moduleType: "omfwd", legacy: true, target: "logs"}, 514},
+		{"legacy omrelp", rsyslogEntry{moduleType: "omrelp", legacy: true, target: "relp:2514"}, 2514},
+		{"non-network action", rsyslogEntry{moduleType: "omfile", legacy: true, target: "/var/log/x"}, 0},
+		{"modern omhttp port", rsyslogEntry{moduleType: "omhttp", parameters: map[string]any{"port": "443"}}, 443},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, rsyslogActionPort(tt.e))
+		})
+	}
+}
+
+func TestSplitRsyslogHostPort(t *testing.T) {
+	tests := []struct {
+		in, host, port string
+		ok             bool
+	}{
+		{"logs:514", "logs", "514", true},
+		{"logs", "logs", "", false},
+		{"[2001:db8::1]:514", "2001:db8::1", "514", true},
+		{"[2001:db8::1]", "[2001:db8::1]", "", false},
+		{"2001:db8::1", "2001:db8::1", "", false},
+		{"logs:", "logs", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			host, port, ok := splitRsyslogHostPort(tt.in)
+			assert.Equal(t, tt.host, host)
+			assert.Equal(t, tt.port, port)
+			assert.Equal(t, tt.ok, ok)
+		})
+	}
+}
+
+func TestRsyslogResumeRetryCount(t *testing.T) {
+	assert.Nil(t, rsyslogResumeRetryCount(rsyslogEntry{parameters: map[string]any{}}), "absent is null, not 0")
+	assert.Nil(t, rsyslogResumeRetryCount(rsyslogEntry{parameters: map[string]any{"action.resumeretrycount": "lots"}}))
+
+	got := rsyslogResumeRetryCount(rsyslogEntry{parameters: map[string]any{"action.resumeretrycount": "-1"}})
+	require.NotNil(t, got)
+	assert.Equal(t, int64(-1), *got)
+	got = rsyslogResumeRetryCount(rsyslogEntry{parameters: map[string]any{"action.resumeretrycount": " 100 "}})
+	require.NotNil(t, got)
+	assert.Equal(t, int64(100), *got)
+}
+
+func TestParseRsyslogFile_Globals(t *testing.T) {
+	got := parseRsyslogFile("/etc/rsyslog.conf", `$WorkDirectory /var/spool/rsyslog
+$PrivDropToUser syslog
+global(DefaultNetstreamDriver="gtls" workDirectory="/var/lib/rsyslog")
+$DefaultNetstreamDriverCAFile /etc/ssl/ca.pem
+`)
+	globals := entriesOfKind(got, rsyslogKindGlobal)
+	require.Len(t, globals, 4)
+	assert.Equal(t, map[string]any{"workdirectory": "/var/spool/rsyslog"}, globals[0].parameters)
+	assert.Equal(t, map[string]any{"privdrop.user.name": "syslog"}, globals[1].parameters)
+	assert.Equal(t, "gtls", globals[2].parameters["defaultnetstreamdriver"])
+	assert.Equal(t, map[string]any{"defaultnetstreamdrivercafile": "/etc/ssl/ca.pem"}, globals[3].parameters)
 }

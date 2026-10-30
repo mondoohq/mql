@@ -4,11 +4,11 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/tailscale/connection"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/tailscale/connection"
+	"go.mondoo.com/mql/utils/stringx"
 )
 
 func Discover(runtime *plugin.Runtime, opts map[string]string) (*inventory.Inventory, error) {
@@ -101,8 +101,12 @@ func discover(runtime *plugin.Runtime, targets []string) ([]*inventory.Asset, er
 	return assetList, nil
 }
 
+// getMqlTailscale returns the tailnet resource discovery lists devices and
+// users from. It goes through NewResource so the resource's init runs and its
+// tailnet, and therefore its cache key, is populated. Building it with the raw
+// constructor would leave both empty.
 func getMqlTailscale(runtime *plugin.Runtime) (*mqlTailscale, error) {
-	res, err := createTailscale(runtime, map[string]*llx.RawData{})
+	res, err := NewResource(runtime, "tailscale", map[string]*llx.RawData{})
 	if err != nil {
 		return nil, err
 	}

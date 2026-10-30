@@ -1,0 +1,11 @@
+[
+ {
+  ".id": "*A",
+  "auth-method": "pre-shared-key",
+  "disabled": "false",
+  "dynamic": "false",
+  "generate-policy": "no",
+  "peer": "lab-peer",
+  "secret": "REDACTED"
+ }
+]

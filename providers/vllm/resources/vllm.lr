@@ -1,16 +1,19 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/vllm"
-option go_package = "go.mondoo.com/mql/v13/providers/vllm/resources"
+option go_package = "go.mondoo.com/mql/providers/vllm/resources"
+option root = "vllm"
 
 // vLLM inference server
 //
-// Examine the security posture and model inventory of a remote vLLM
-// HTTP inference server: the server-level summary, the per-endpoint
+// Security posture and model inventory of a remote vLLM HTTP inference
+// server: the server-level exposure summary, the per-endpoint
 // anonymous-access probe results, the minimal metrics-exposure posture,
 // the reported vLLM version, and the models loaded for serving.
-vllm {
+vllm @root {
   // Server-level HTTP posture summary
   server() vllm.server
   // Observed HTTP endpoint posture
@@ -18,18 +21,26 @@ vllm {
   // Minimal exposed metrics posture
   metrics() vllm.metrics
   // vLLM server version, if the /version endpoint is observable
-  version() string
+  version() @maturity("deprecated") @replaced_by("asset.version") string
   // Models loaded for serving
   models() []vllm.model
+  // Engine configuration the server reports for itself
+  serverInfo() vllm.serverInfo
+  // Tokenizer and chat template the server assembles prompts with
+  tokenizerInfo() vllm.tokenizerInfo
 }
 
 // vLLM served model
 //
-// Examine a model loaded for serving on the vLLM instance. The `id`
-// field is the model identifier as configured at launch (typically a
-// Hugging Face model path such as `meta-llama/Llama-3.1-8B-Instruct`).
-// The `root` field is the underlying model path, and `maxModelLen` is
-// the context window length in tokens configured for this deployment.
+// Model loaded for serving on the vLLM instance, one entry per model
+// the server will answer inference requests for. The `id` field is the
+// model identifier as configured at launch (typically a Hugging Face
+// model path such as `meta-llama/Llama-3.1-8B-Instruct`) and selects
+// the model. The `root` field is the underlying model path, and
+// `maxModelLen` is the context window length in tokens configured for
+// this deployment. Auditing served models reveals which weights are
+// exposed, whether LoRA adapters are attached (via `parent`), and the
+// context window each deployment allows.
 vllm.model @defaults("id maxModelLen") {
   // Model identifier
   id string
@@ -49,16 +60,58 @@ vllm.model @defaults("id maxModelLen") {
   created time
   // Entity that owns or manages the model
   ownedBy string
+  // Permission entries the server advertises for this model
+  permissions() []vllm.model.permission
+}
+
+// Permission entry advertised for a vLLM served model
+//
+// One entry of the OpenAI-compatible permission array a vLLM server returns
+// alongside each model, and the only authorization statement the server makes
+// about that model over the API. It records whether callers may sample from
+// the model, request log probabilities, fine-tune it, or create an engine with
+// it, along with the organization and group the grant applies to and whether
+// the grant is blocking. vLLM emits a single default entry unless the
+// deployment overrides it, so an entry that departs from the default is worth
+// reading closely.
+private vllm.model.permission @defaults("id allowSampling allowFineTuning organization") {
+  // Permission identifier
+  id string
+  // Whether callers may sample completions from the model
+  allowSampling bool
+  // Whether callers may request token log probabilities
+  allowLogprobs bool
+  // Whether callers may submit fine-tuning jobs for the model
+  allowFineTuning bool
+  // Whether callers may create an inference engine from the model
+  allowCreateEngine bool
+  // Whether callers may use the model for search indices
+  allowSearchIndices bool
+  // Whether callers may read the model metadata
+  allowView bool
+  // Organization the grant applies to
+  //
+  // A single asterisk means the grant is not scoped to an organization.
+  organization string
+  // Group the grant applies to, if the grant is scoped to one
+  group string
+  // Whether the grant blocks use of the model
+  isBlocking bool
+  // Permission creation timestamp as reported by the server
+  created time
 }
 
 // vLLM server-level HTTP posture
 //
-// Examine the server-wide HTTP exposure findings: the base URL the
-// connection probed, whether the server is reachable, the reported
-// vLLM version, whether the connection is over TLS, and whether
-// FastAPI docs / OpenAPI / Prometheus metrics / /load / tokenizer-info
-// / dev / profiler endpoints are anonymously exposed. Also surfaces
-// CORS posture (configured at all, accepts any origin).
+// Server-wide HTTP exposure findings for a vLLM inference server: the
+// base URL that was probed, whether the server is reachable, the
+// reported vLLM version, and whether the connection runs over TLS.
+// Surfaces which sensitive routes answer anonymous requests (FastAPI
+// docs, OpenAPI, Prometheus metrics, /load, tokenizer-info, dev, and
+// profiler routes), along with CORS posture: whether CORS is
+// configured at all and whether any origin is accepted. Audit it to
+// catch an inference server that leaks its version, documentation, or
+// metrics to unauthenticated callers.
 vllm.server @defaults("baseUrl reachable version") {
   // Base URL used by this connection
   baseUrl() string
@@ -86,16 +139,219 @@ vllm.server @defaults("baseUrl reachable version") {
   corsAllowsAnyOrigin() bool
   // Whether the target URL uses HTTPS
   usesTls() bool
+  // Whether unauthenticated callers can run inference
+  //
+  // The headline question for an exposed inference server: true when an
+  // anonymous request reached the chat-completions or completions route
+  // instead of being turned away. False when both routes rejected the
+  // anonymous request, and null when neither probe settled the question.
+  // Note that vLLM's built-in API key only guards routes under the `/v1`,
+  // `/v2`, `/inference`, and `/cohere` prefixes, so a server can require a key
+  // here and still answer inference on an unprefixed route such as `/classify`
+  // or `/invocations`.
+  anonymousInferenceAllowed() bool
+  // Whether the completion routes reject unauthenticated callers
+  //
+  // True when an anonymous request to the chat-completions or completions
+  // route was answered with an authentication-like rejection. False when the
+  // routes answered anonymous callers, and null when neither probe settled the
+  // question.
+  apiKeyRequired() bool
+  // Whether runtime LoRA adapter loading is enabled
+  //
+  // True when the runtime LoRA management routes are registered, which vLLM
+  // does only when the runtime LoRA updating environment flag is set. Anyone
+  // who can reach the port can then attach an adapter and change how the
+  // served model behaves, including whether it refuses anything. False when
+  // the routes are absent, and null when an authentication layer answered
+  // before routing did and left presence undetermined.
+  runtimeLoraUpdatingEnabled() bool
+  // Whether stored responses can be retrieved without credentials
+  //
+  // vLLM keeps the responses created through the responses API on the server,
+  // so a retrieval route that answers unauthenticated callers hands one
+  // caller's prompts and completions to another. True when the retrieval
+  // handler answered an anonymous request for a synthetic identifier, false
+  // when the route is absent or demanded credentials, and null when the
+  // server left the question undetermined.
+  storedResponsesExposed() bool
+  // Whether the weight-replacement routes answer unauthenticated callers
+  //
+  // A vLLM server started in development mode registers routes that swap the
+  // weights it is serving from underneath the running engine, so a caller who
+  // reaches them chooses what the model is and what it will say. The built-in
+  // API key covers only the `/v1`, `/v2`, `/inference`, and `/cohere`
+  // prefixes, and none of these routes sits under one of them, so a key
+  // configured on the server does not guard them. True when an anonymous
+  // request reached one of the routes instead of being turned away, false when
+  // every one of them was absent or rejected the anonymous caller, and null
+  // when no probe settled the question. This is the narrow read of
+  // `devEndpointsExposed`, which also answers true for a read-only route such
+  // as the engine-configuration one.
+  weightUpdateRoutesExposed() bool
+}
+
+// vLLM engine configuration
+//
+// Engine configuration a vLLM server reports for itself, covering the weights
+// and tokenizer it loaded, the context window and quantization in force,
+// prefix caching, LoRA support, the parallelism layout, and the tracing
+// configuration that decides whether request detail leaves the box. The
+// highest-consequence value here is `trustRemoteCode`: when it is true the
+// server executes Python that ships inside the model repository, so the
+// trustworthiness of the weights becomes the trustworthiness of the host.
+//
+// The route backing this resource is registered only when the server runs in
+// development mode, so on a hardened deployment `exposed` is false and every
+// configuration field is null.
+vllm.serverInfo @defaults("exposed trustRemoteCode model tokenizerMode") {
+  // Whether the engine-configuration route answered an anonymous request
+  exposed() bool
+  // Whether the server returned machine-readable engine configuration
+  //
+  // False when the route answered with the human-readable rendering of the
+  // configuration instead of a structured document. That rendering is not
+  // parsed, so every configuration field below stays null rather than
+  // reporting a value scraped out of prose.
+  configReadable() bool
+  // Whether the server executes Python shipped inside the model repository
+  //
+  // The single highest-consequence setting a vLLM deployment has. When true,
+  // loading the model runs custom modeling code from the repository with the
+  // privileges of the server process, so a compromised or malicious model
+  // repository becomes remote code execution on the host.
+  trustRemoteCode() bool
+  // Model the server loaded
+  model() string
+  // Tokenizer the server loaded
+  tokenizer() string
+  // Tokenizer loading mode
+  //
+  // One of auto, slow, mistral, or custom. A custom mode loads a tokenizer
+  // implementation from the model repository.
+  tokenizerMode() string
+  // Names the model is served under
+  //
+  // The aliases callers pass in the `model` field of a request. Empty when the
+  // server serves the model under its own identifier.
+  servedModelNames() []string
+  // Context window length in tokens the engine was configured with
+  maxModelLen() int
+  // Quantization method in force, if the weights are quantized
+  quantization() string
+  // Whether the engine runs eagerly instead of capturing compiled graphs
+  enforceEager() bool
+  // Whether prefix caching is enabled
+  //
+  // Prefix caching keeps the key-value cache of shared prompt prefixes across
+  // requests, so on a multi-tenant deployment it changes the timing of a
+  // request depending on what another caller sent earlier.
+  enablePrefixCaching() bool
+  // Whether the engine was started with LoRA adapter support
+  loraEnabled() bool
+  // Number of LoRA adapters that can be active at once
+  maxLoras() int
+  // Largest LoRA rank the engine accepts
+  maxLoraRank() int
+  // Full LoRA configuration block as reported by the server
+  loraConfig() dict
+  // Number of ranks the model is split across within a node
+  tensorParallelSize() int
+  // Number of pipeline stages the model is split across
+  pipelineParallelSize() int
+  // Number of data-parallel engine replicas
+  dataParallelSize() int
+  // Full parallelism configuration block as reported by the server
+  parallelConfig() dict
+  // OpenTelemetry collector the server exports traces to
+  //
+  // Set when the deployment ships request traces off the box. Combined with
+  // `collectDetailedTraces`, this is the configured path by which request
+  // detail can leave the server.
+  otlpTracesEndpoint() string
+  // Trace modules the server collects detail for
+  //
+  // Values such as all, model, worker, or llm_request. Detailed request
+  // tracing attaches per-request detail to the exported spans.
+  collectDetailedTraces() []string
+  // Whether the server logs per-iteration request detail
+  loggingIterationDetailsEnabled() bool
+  // Whether the runtime LoRA updating environment flag is set on the server
+  //
+  // The server-reported counterpart to the route-presence verdict on
+  // `vllm.server.runtimeLoraUpdatingEnabled`.
+  allowRuntimeLoraUpdating() bool
+  // Whether the server runs in development mode
+  //
+  // Development mode registers the cache-reset, sleep, pause, weight-update,
+  // collective-RPC, and engine-configuration routes that a production
+  // deployment does not carry.
+  serverDevMode() bool
+}
+
+// vLLM tokenizer and chat template
+//
+// Tokenizer configuration a vLLM server reports, which is the contents of the
+// tokenizer configuration file plus the class of the loaded tokenizer and the
+// chat template in force. The template is the prompt-assembly logic: it
+// decides how role markers, system content, and tool output are stitched into
+// the string the model actually sees, so a template that departs from the one
+// shipped with the model is where role confusion and prompt injection get
+// introduced. Compare `chatTemplateSha256` across a fleet to find the
+// deployment whose template was customized.
+//
+// The route backing this resource is registered only when the server was
+// started with the tokenizer-info endpoint enabled, so on a default deployment
+// `exposed` is false and every field below is null.
+vllm.tokenizerInfo @defaults("exposed tokenizerClass chatTemplateConfigured") {
+  // Whether the tokenizer-information route answered an anonymous request
+  exposed() bool
+  // Class of the tokenizer the server loaded
+  tokenizerClass() string
+  // Whether a chat template is in force
+  chatTemplateConfigured() bool
+  // Chat template the server assembles prompts with
+  //
+  // The template source itself. It is deployment configuration rather than
+  // caller data, and reading it is how a customized template is told apart
+  // from the one that ships with the model.
+  chatTemplate() string
+  // SHA-256 digest of the chat template
+  //
+  // A stable fingerprint for comparing the template across a fleet without
+  // diffing the source of every deployment.
+  chatTemplateSha256() string
+  // Maximum sequence length the tokenizer reports
+  maxLength() int
+  // Whether a beginning-of-sequence token is prepended
+  addBosToken() bool
+  // Whether an end-of-sequence token is appended
+  addEosToken() bool
+  // Beginning-of-sequence token
+  bosToken() string
+  // End-of-sequence token
+  eosToken() string
+  // Padding token
+  padToken() string
+  // Unknown-token placeholder
+  unkToken() string
+  // Whether tokenization spaces are cleaned up on decode
+  cleanUpTokenizationSpaces() bool
 }
 
 // vLLM HTTP endpoint posture
 //
-// Examine the probe result for a single vLLM HTTP endpoint, identified
-// by `path` and `method` (e.g., `vllm.endpoint(path: "/v1/models",
-// method: "GET")`). Each probe records the endpoint category, whether
-// the route was observed at all, the anonymous and authenticated
-// status codes, whether anonymous traffic reached the route or got an
-// auth-like rejection, and human-readable notes from the probe.
+// Anonymous-access probe result for a single vLLM HTTP endpoint,
+// selected by `path` and `method`, for example
+// `vllm.endpoint(path: "/v1/models", method: "GET")`. The probe
+// compares how the route responds to unauthenticated and authenticated
+// requests to determine whether it is reachable without credentials,
+// the core signal when auditing an exposed inference server. Routes whose
+// documented method changes server state, such as adapter loading, request
+// aborting, or engine sleep, are probed with a method the route does not
+// accept, so their presence is read from the router's rejection and the
+// handler is never invoked. The `notes` field records that for every row it
+// applies to.
 vllm.endpoint @defaults("method path category present anonymousAccessible requiresAuth") {
   init(path string, method string)
   // HTTP method used by the probe
@@ -103,6 +359,11 @@ vllm.endpoint @defaults("method path category present anonymousAccessible requir
   // URL path of the probed endpoint
   path string
   // Endpoint category
+  //
+  // Functional grouping of the route: one of documentation, metadata,
+  // utility, metrics, openai, custom-inference, lora, responses,
+  // operational-control, development, profiler, or custom (a path not in the
+  // built-in probe list).
   category() string
   // Whether the route was observed by HTTP status behavior
   present() bool
@@ -120,10 +381,11 @@ vllm.endpoint @defaults("method path category present anonymousAccessible requir
 
 // Minimal vLLM metrics exposure posture
 //
-// Examine whether the metrics-related endpoints are anonymously
-// reachable: the Prometheus `/metrics` endpoint, the `/load` endpoint,
-// and whether `/load` returns enough state to leak load-tracking
-// information.
+// Anonymous-reachability posture for the metrics-related endpoints:
+// whether the Prometheus `/metrics` endpoint and the `/load` endpoint
+// respond to unauthenticated requests, and whether `/load` returns
+// enough state to leak load-tracking information. Use it to audit
+// whether operational telemetry is exposed to unauthenticated clients.
 vllm.metrics @defaults("prometheusExposed loadEndpointExposed") {
   // Whether /metrics is anonymously exposed
   prometheusExposed() bool
@@ -131,4 +393,38 @@ vllm.metrics @defaults("prometheusExposed loadEndpointExposed") {
   loadEndpointExposed() bool
   // Whether /load appears reachable enough to expose load-tracking state
   loadTrackingVisible() bool
+  // Model names an anonymous metrics scrape discloses
+  //
+  // vLLM labels its own metric series with the name of the model being served,
+  // so an unauthenticated scraper learns exactly which weights are loaded,
+  // including a proprietary or internal model path. Empty when the scrape
+  // succeeded and carried no model label, and null when the endpoint could not
+  // be scraped anonymously at all.
+  exposedModelNames() []string
+  // LoRA adapter names an anonymous metrics scrape discloses
+  //
+  // The running and waiting adapter names carried on the LoRA request-info
+  // series, which names every adapter the server is currently serving through.
+  // Empty when the scrape succeeded and carried no adapter names, and null
+  // when the endpoint could not be scraped anonymously at all.
+  exposedLoraAdapters() []string
+  // Whether the engine cache configuration is published on the metrics endpoint
+  //
+  // vLLM emits a configuration information series whose labels carry the cache
+  // settings the engine was started with. On a server that does not run in
+  // development mode the engine-configuration route is absent, so this series
+  // is the only place those settings are readable, and it is readable by
+  // anyone who can scrape the endpoint. False when the scrape succeeded and
+  // carried no such series, and null when the endpoint could not be scraped
+  // anonymously at all.
+  cacheConfigExposed() bool
+  // Engine cache settings an anonymous metrics scrape discloses
+  //
+  // The labels carried on the cache configuration series, keyed by label name:
+  // the block size, the cache data type, whether prefix caching is on, and the
+  // rest of the settings the engine was started with. Only the labels of that
+  // one series are read, and no sample value is ever carried across. Empty when
+  // the scrape succeeded and carried no such series, and null when the endpoint
+  // could not be scraped anonymously at all.
+  exposedCacheConfig() map[string]string
 }

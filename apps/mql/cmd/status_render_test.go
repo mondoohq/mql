@@ -13,7 +13,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/cli/config"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream/health"
 )
 
 // update regenerates the golden files: go test ./apps/mql/cmd -run Golden -update
@@ -51,6 +53,12 @@ func healthyRegisteredStatus() Status {
 	s.Upstream.API.Status = "SERVING"
 	s.Upstream.API.Timestamp = "2026-06-29T21:37:00Z"
 	s.Upstream.API.Version = "13"
+	s.Ingest = &health.IngestStatus{
+		Endpoint:   "https://ingest.us.mondoo.com",
+		Reachable:  true,
+		StatusCode: 404,
+		LatencyMs:  41,
+	}
 	return s
 }
 
@@ -181,6 +189,65 @@ func TestRenderCli_MqlSection_ConfigFileShown(t *testing.T) {
 
 	assert.Contains(t, out, "/home/user/.config/mondoo/mondoo.yml")
 	assert.NotContains(t, out, "defaults — no config file")
+}
+
+func TestRenderCli_PlatformSection_Proxy(t *testing.T) {
+	s := healthyRegisteredStatus()
+	s.Client.Proxy = "http://user:xxxxx@proxy.corp:3128"
+	s.Client.ProxySource = "system"
+
+	out := s.RenderCli(RenderOptions{Color: false})
+
+	assert.Contains(t, out, "http://user:xxxxx@proxy.corp:3128")
+	assert.Contains(t, out, "(system)")
+	assert.NotContains(t, out, "direct connection")
+
+	s.Client.Proxy, s.Client.ProxySource = "", ""
+	out = s.RenderCli(RenderOptions{Color: false})
+	assert.Contains(t, out, "direct connection")
+	assert.NotContains(t, out, "not usable")
+
+	s.Client.ProxyNote = "system proxy http://proxy.corp:3128 not usable: proxy answered CONNECT us.api.mondoo.com:443 with 407 Proxy Authentication Required"
+	out = s.RenderCli(RenderOptions{Color: false})
+	assert.Contains(t, out, "direct connection")
+	assert.Contains(t, out, "407 Proxy Authentication Required")
+}
+
+func TestRenderCli_MqlSection_ChannelAlwaysShown(t *testing.T) {
+	// The row exists whatever the channel. A support conversation needs to
+	// tell "this machine is on stable" apart from "this binary is too old to
+	// report a channel", and an absent row cannot distinguish them.
+	t.Run("stable is shown, marked as the default", func(t *testing.T) {
+		s := healthyRegisteredStatus()
+		s.Client.UpdateChannel = config.ChannelStable
+
+		out := s.RenderCli(RenderOptions{Color: false})
+
+		assert.Contains(t, out, "Channel")
+		assert.Contains(t, out, "stable — the default")
+	})
+
+	t.Run("an empty channel still renders as stable", func(t *testing.T) {
+		// GetUpdateChannel always resolves to one of the two, but the field is
+		// plumbed through a struct that something else could leave unset.
+		s := healthyRegisteredStatus()
+		s.Client.UpdateChannel = ""
+
+		out := s.RenderCli(RenderOptions{Color: false})
+
+		assert.Contains(t, out, "stable — the default")
+	})
+
+	t.Run("preview is called out, not dimmed away", func(t *testing.T) {
+		s := healthyRegisteredStatus()
+		s.Client.UpdateChannel = config.ChannelPreview
+
+		out := s.RenderCli(RenderOptions{Color: false})
+
+		assert.Contains(t, out, "preview")
+		assert.Contains(t, out, "pre-releases")
+		assert.NotContains(t, out, "stable — the default")
+	})
 }
 
 func TestRenderCli_MqlSection_UpdateAvailableShowsArrow(t *testing.T) {
@@ -339,7 +406,7 @@ func manyCurrentProviders() Status {
 	s.Client.Providers = nil
 	for _, name := range []string{
 		"ansible", "arista", "atlassian", "aws", "azure", "cloudflare",
-		"equinix", "gcp", "github", "gitlab", "google-workspace", "k8s",
+		"elasticsearch", "gcp", "github", "gitlab", "google-workspace", "k8s",
 		"ms365", "network", "oci", "okta", "opcua", "os", "slack",
 		"terraform", "vcd", "vsphere",
 	} {
@@ -434,6 +501,108 @@ func staleNotRegisteredStatus() Status {
 	return s
 }
 
+// ingestUnreachableStatus mirrors the case this check exists for: the API is
+// reachable and SERVING, the credentials are good, and the upload endpoint is
+// blackholed — so every scan will run to completion and then fail to report.
+func ingestUnreachableStatus() Status {
+	s := healthyRegisteredStatus()
+	// isolate the ingest failure: everything else current
+	for i := range s.Client.Providers {
+		s.Client.Providers[i].Outdated = false
+		s.Client.Providers[i].Latest = s.Client.Providers[i].Installed
+	}
+	s.Ingest = &health.IngestStatus{
+		Endpoint:  "https://ingest.us.mondoo.com",
+		Reachable: false,
+		LatencyMs: 10000,
+		Reason:    health.IngestFailureTimeout,
+		Error:     "Get \"https://ingest.us.mondoo.com\": context deadline exceeded",
+	}
+	return s
+}
+
+func TestRenderCli_PlatformSection_IngestReachable(t *testing.T) {
+	s := healthyRegisteredStatus()
+
+	out := s.RenderCli(RenderOptions{Color: false})
+
+	assert.Contains(t, out, "Ingest")
+	assert.Contains(t, out, "https://ingest.us.mondoo.com")
+	assert.Contains(t, out, "✓ reachable")
+	assert.Contains(t, out, "41ms")
+	// The endpoint answers an unauthenticated probe with 404 by design, so the
+	// status code must not be rendered next to the green check.
+	assert.NotContains(t, out, "404")
+}
+
+func TestRenderCli_PlatformSection_IngestOmittedWhenNotChecked(t *testing.T) {
+	// A self-hosted API endpoint derives no ingest host, so the check does not
+	// run and the row must not appear at all rather than render as a failure.
+	s := healthyRegisteredStatus()
+	s.Ingest = nil
+
+	out := s.RenderCli(RenderOptions{Color: false})
+
+	assert.NotContains(t, out, "Ingest")
+	assert.NotContains(t, out, "unreachable")
+}
+
+func TestRenderCli_IngestUnreachable_RowNamesTheReason(t *testing.T) {
+	s := ingestUnreachableStatus()
+
+	out := s.RenderCli(RenderOptions{Color: false})
+
+	assert.Contains(t, out, "https://ingest.us.mondoo.com")
+	assert.Contains(t, out, "✗ unreachable")
+	assert.Contains(t, out, "timeout")
+}
+
+func TestRenderCli_IngestUnreachable_SummaryFlagsPlatform(t *testing.T) {
+	s := ingestUnreachableStatus()
+
+	out := s.RenderCli(RenderOptions{Color: false})
+
+	// The API is SERVING, so the summary still reports it reachable — but it
+	// must not claim the platform is healthy when uploads cannot land.
+	assert.Contains(t, out, "SERVING")
+	assert.Contains(t, out, "⚠ ingest unreachable")
+	assert.NotContains(t, out, "✓ healthy")
+}
+
+func TestRenderCli_IngestUnreachable_FooterNamesTheEgressRule(t *testing.T) {
+	s := ingestUnreachableStatus()
+
+	out := s.RenderCli(RenderOptions{Color: false})
+
+	// Nothing about the client is broken, so the next step is the firewall rule
+	// to open — as a host:port pair, which is how the rule is written.
+	assert.Contains(t, out, "next steps")
+	assert.Contains(t, out, "allow egress to ingest.us.mondoo.com:443")
+	assert.NotContains(t, out, "all systems healthy")
+	// ...but it is not an error state for the exit code, so no exit banner.
+	assert.NotContains(t, out, "exit 1")
+}
+
+func TestIngestHostPort(t *testing.T) {
+	tests := []struct {
+		endpoint string
+		expected string
+	}{
+		{"https://ingest.us.mondoo.com", "ingest.us.mondoo.com:443"},
+		{"https://ingest.eu.mondoo.com/", "ingest.eu.mondoo.com:443"},
+		{"https://ingest.us.mondoo.com:8443", "ingest.us.mondoo.com:8443"},
+		{"http://localhost", "localhost:80"},
+		// Unparseable input falls back to the raw endpoint rather than to an
+		// empty hint.
+		{"://nope", "://nope"},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		assert.Equalf(t, tt.expected, ingestHostPort(tt.endpoint), "ingestHostPort(%q)", tt.endpoint)
+	}
+}
+
 func TestRenderCli_Golden(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -442,6 +611,7 @@ func TestRenderCli_Golden(t *testing.T) {
 		{"healthy_registered", healthyRegisteredStatus()},
 		{"stale_not_registered", staleNotRegisteredStatus()},
 		{"registered_auth_failed", registeredAuthFailedStatus()},
+		{"ingest_unreachable", ingestUnreachableStatus()},
 	}
 
 	for _, tc := range cases {

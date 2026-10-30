@@ -1,0 +1,1892 @@
+{
+ "assets": [
+  {
+   "asset": {
+    "id": "Arch Linux",
+    "platform_ids": [
+     "archlinux"
+    ],
+    "name": "arch",
+    "platform": {
+     "name": "arch",
+     "arch": "x86_64",
+     "title": "Arch Linux",
+     "family": [
+      "arch",
+      "linux",
+      "unix",
+      "os"
+     ],
+     "build": "rolling",
+     "version": "rolling",
+     "labels": {
+      "distro-id": "arch"
+     }
+    }
+   },
+   "connections": [
+    {
+     "url": "local://",
+     "provider": "go.mondoo.com/cnquery/v9/providers/os",
+     "connector": "local",
+     "version": ""
+    },
+    {
+     "url": "host://",
+     "provider": "network",
+     "connector": "",
+     "version": ""
+    },
+    {
+     "url": "mock://",
+     "provider": "mockprovider",
+     "connector": "",
+     "version": ""
+    }
+   ],
+   "resources": [
+    {
+     "Resource": "command",
+     "ID": "mount",
+     "Fields": {
+      "exitcode": {
+       "type": "\u0005",
+       "value": 0
+      },
+      "stderr": {
+       "type": "\u0007",
+       "value": ""
+      },
+      "stdout": {
+       "type": "\u0007",
+       "value": "overlay on / type overlay (rw,relatime)\nproc on /proc type proc (rw,nosuid,nodev,noexec,relatime)\ntmpfs on /dev type tmpfs (rw,nosuid,size=65536k,mode=755)"
+      }
+     }
+    },
+    {
+     "Resource": "command",
+     "ID": "uname -m",
+     "Fields": {
+      "stdout": {
+       "type": "\u0007",
+       "value": "x86_64\n"
+      }
+     }
+    },
+    {
+     "Resource": "command",
+     "ID": "uname -s",
+     "Fields": {
+      "stdout": {
+       "type": "\u0007",
+       "value": "Linux\n"
+      }
+     }
+    },
+    {
+     "Resource": "command",
+     "ID": "df -P -k",
+     "Fields": {
+      "exitcode": {
+       "type": "\u0005",
+       "value": 0
+      },
+      "stderr": {
+       "type": "\u0007",
+       "value": ""
+      },
+      "stdout": {
+       "type": "\u0007",
+       "value": "Filesystem     1024-blocks      Used Available Capacity Mounted on\noverlay         51340776  12165612  36537668      25% /\nproc                   0         0         0       0% /proc\ntmpfs              65536         0     65536       0% /dev"
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/dummy.array.json",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "[1,\"hi\",{\"ll\": 0},\"z\"]\n"
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/dummy.array.json"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 23
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/dummy.false.json",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "false\n"
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/dummy.false.json"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 6
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/dummy.json",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "{\n  \"_\": null,\n  \"true\": true,\n  \"1\": 1,\n  \"1.0\": 1.0,\n  \"e\": {\"1\": 1, \"hi\": \"hello\"},\n  \"eins\": \"1\",\n  \"int-array\": [1,2,3],\n  \"dict\": {\n    \"ee\": 3,\n    \"ej\": 4,\n    \"ek\": 5\n  },\n  \"f\": [{\"ff\": 3}],\n  \"string-array\": [\"a\", \"b\", \"c\"],\n  \"hello\": \"hello\",\n  \"date\": \"2016-01-28T23:02:24Z\",\n  \"aoa\": [[1, 2], 3],\n  \"users\": [\n    {\n      \"name\": \"yor\",\n      \"children\": [\n        {\"name\": \"anya\"}\n      ]\n    },\n    {\"name\": \"loid\"}\n  ],\n  \"zzzlast\": \"\ud83c\udf12\"}\n"
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/dummy.json"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 439
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/dummy.null.json",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "null\n"
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/dummy.null.json"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 5
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/dummy.number.json",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "1.23\n"
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/dummy.number.json"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 5
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/dummy.plist",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>allowdownloadsignedenabled</key>\n\t<integer>1</integer>\n\t<key>allowsignedenabled</key>\n\t<integer>1</integer>\n\t<key>applications</key>\n\t<array/>\n\t<key>exceptions</key>\n\t<array>\n\t\t<dict>\n\t\t\t<key>path</key>\n\t\t\t<string>/usr/libexec/configd</string>\n\t\t\t<key>state</key>\n\t\t\t<integer>3</integer>\n\t\t</dict>\n\t\t<dict>\n\t\t\t<key>bundleid</key>\n\t\t\t<string>com.apple.EmbeddedOSInstallService</string>\n\t\t\t<key>path</key>\n\t\t\t<string>/System/Library/PrivateFrameworks/EmbeddedOSInstall.framework/Versions/A/XPCServices/EmbeddedOSInstallService.xpc/</string>\n\t\t\t<key>state</key>\n\t\t\t<integer>3</integer>\n\t\t</dict>\n\t</array>\n\t<key>explicitauths</key>\n\t<array>\n\t\t<dict>\n\t\t\t<key>id</key>\n\t\t\t<string>org.python.python.app</string>\n\t\t</dict>\n\t\t<dict>\n\t\t\t<key>id</key>\n\t\t\t<string>com.apple.ksh</string>\n\t\t</dict>\n\t</array>\n\t<key>firewall</key>\n\t<dict>\n\t\t<key>Apple Remote Desktop</key>\n\t\t<dict>\n\t\t\t<key>proc</key>\n\t\t\t<string>AppleVNCServer</string>\n\t\t\t<key>state</key>\n\t\t\t<integer>0</integer>\n\t\t</dict>\n\t</dict>\n\t<key>loggingenabled</key>\n\t<integer>1</integer>\n\t<key>version</key>\n\t<string>1.6</string>\n</dict>\n</plist>\n"
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/dummy.plist"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 1270
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/dummy.string.json",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "\"hi\"\n"
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/dummy.string.json"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 5
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/dummy.true.json",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "true\n"
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/dummy.true.json"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 5
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/dummy.xml",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "<root>\n  <box>\n    <hello a=\"1\"/>\n  </box>\n  <box>\n    <world b=\"2\">\n      <c>3</c>\n      4\n    </world>\n  </box>\n  <box>\ud83c\udf0e</box>\n</root>\n\n"
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/dummy.xml"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 141
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc",
+     "Fields": {
+      "path": {
+       "type": "\u0007",
+       "value": "/etc"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "drwxr-xr-x"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 12288
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc/UPower",
+     "Fields": {
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/UPower"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "drwxr-xr-x"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 4096
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc/UPower/UPower.conf",
+     "Fields": {
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/UPower/UPower.conf"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 2847
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc/X11",
+     "Fields": {
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/X11"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "drwxr-xr-x"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 4096
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc/X11/xinit",
+     "Fields": {
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/X11/xinit"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "drwxr-xr-x"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 4096
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc/audit/auditd.conf",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "#\n# This file controls the configuration of the audit daemon\n#\n\nlocal_events = yes\nwrite_logs = yes\nLOG_FILE = /var/log/audit/AuDiT.log\nlog_group = root\nLOG_FORMAT = ENRICHED\nflush = INCREMENTAL_ASYNC\nfreq = 50\nmax_log_file = 8\nnum_logs = 5\npriority_boost = 4\nname_format = NONE\n##name = mydomain\nmax_log_file_action = ROTATE\nspace_left = 75\nspace_left_action = SYSLOG\nverify_email = yes\naction_mail_acct = root\nadmin_space_left = 50\nadmin_space_left_action = SUSPEND\ndisk_full_action = SUSPEND\ndisk_error_action = SUSPEND\nuse_libwrap = yes\n##tcp_listen_port = 60\ntcp_listen_queue = 5\ntcp_max_per_addr = 1\n##tcp_client_ports = 1024-65535\ntcp_client_max_idle = 0\ntransport = TCP\nkrb5_principal = auditd\n##krb5_key_file = /etc/audit/audit.key\ndistribute_network = no\nq_depth = 2000\noverflow_action = SYSLOG\nmax_restarts = 10\nplugin_dir = /etc/audit/plugins.d\nend_of_event_timeout = 2\n"
+      },
+      "exists": {
+       "type": "\u0004",
+       "value": true
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/audit/auditd.conf"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 882
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc/systemd/journald.conf",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "#\n# This file controls the configuration of the journald service\n#\n\n[Journal]\nStorage=persistent\nCompress=Yes\nSystemMaxUse=1G\nSystemKeepFree=100M\nSystemMaxFileSize=100M\nSystemMaxFiles=10\nMaxRetentionSec=1month\n\n[Service]\nExecStart=/usr/lib/systemd/systemd-journald\n"
+      },
+      "exists": {
+       "type": "\u0004",
+       "value": true
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/systemd/journald.conf"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 882
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc/login.defs",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "FAIL_DELAY\t\t3\nLOG_UNKFAIL_ENAB\tno\nLOG_OK_LOGINS\t\tno\nSYSLOG_SU_ENAB\t\tyes\nSYSLOG_SG_ENAB\t\tyes\nCONSOLE\t\t/etc/securetty\nSU_NAME\t\tsu\nMAIL_DIR\t/var/spool/mail\nHUSHLOGIN_FILE\t.hushlogin\nENV_SUPATH\tPATH=/usr/local/sbin:/usr/local/bin:/usr/bin\nENV_PATH\tPATH=/usr/local/sbin:/usr/local/bin:/usr/bin\nTTYGROUP\ttty\nTTYPERM\t\t0600\nERASECHAR\t0177\nKILLCHAR\t025\nUMASK\t\t077\nPASS_MAX_DAYS\t99999\nPASS_MIN_DAYS\t0\nPASS_WARN_AGE\t7\nUID_MIN\t\t\t 1000\nUID_MAX\t\t\t60000\nSYS_UID_MIN\t\t  500\nSYS_UID_MAX\t\t  999\nGID_MIN\t\t\t 1000\nGID_MAX\t\t\t60000\nSYS_GID_MIN\t\t  500\nSYS_GID_MAX\t\t  999\nLOGIN_RETRIES\t\t5\nLOGIN_TIMEOUT\t\t60\nCHFN_RESTRICT\t\trwh\nDEFAULT_HOME\tyes\nUSERGROUPS_ENAB yes\nMOTD_FILE\nENCRYPT_METHOD\tSHA512\n"
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/login.defs"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 670
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc/ntp.conf",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "# --- GENERAL CONFIGURATION ---\nrestrict default ignore\nrestrict 66.187.224.4 mask 255.255.255.255 nomodify notrap noquery\nrestrict 18.26.4.105 mask 255.255.255.255 nomodify notrap noquery\nrestrict 128.249.1.10 mask 255.255.255.255 nomodify notrap noquery\n# Server config\nserver 127.127.1.0 # local clock\nfudge 127.127.1.0 stratum 10\nserver 66.187.224.4\nserver 18.26.4.105\nserver 128.249.1.10\n"
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/ntp.conf"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 393
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc/passwd",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "root:x:0:0::/root:/bin/bash\nbin:x:1:1::/:/usr/bin/nologin\ndaemon:x:2:2::/:/usr/bin/nologin\nmail:x:8:12::/var/spool/mail:/usr/bin/nologin\n"
+      },
+      "exists": {
+       "type": "\u0004",
+       "value": true
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 137
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc/shadow",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "root:!:14871::::::\nchris:*:18421:0:99999:7:::\nbin:!!:18360::::::"
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/shadow"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 23
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc/ssh/sshd_config",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "# #\n# Ansible managed\n#\n\n# This is the ssh client system-wide configuration file.\n# See sshd_config(5) for more information on any settings used. Comments will be added only to clarify why a configuration was chosen.\n\n\n# Basic configuration\n# ===================\n\n# Either disable or only allow root login via certificates.\nPermitRootLogin no\n\n# Define which port sshd should listen to. Default to `22`.\nPort 22\n\n# Address family should always be limited to the active network configuration.\nAddressFamily inet\n\n# Define which addresses sshd should listen to. Default to `0.0.0.0`, ie make sure you put your desired address in here, since otherwise sshd will listen to everyone.\nListenAddress 0.0.0.0\n\n# List HostKeys here.\nHostKey /etc/ssh/ssh_host_rsa_key\nHostKey /etc/ssh/ssh_host_ecdsa_key\nHostKey /etc/ssh/ssh_host_ed25519_key\n\n# Specifies the host key algorithms that the server offers.\n#\nHostKeyAlgorithms ssh-ed25519,rsa-sha2-512,ecdsa-sha2-nistp521-cert-v01@openssh.com\n#\n\n# Security configuration\n# ======================\n\n# Set the protocol version to 2 for security reasons. Disables legacy support.\nProtocol 2\n\n# Make sure sshd checks file modes and ownership before accepting logins. This prevents accidental misconfiguration.\nStrictModes yes\n\n# Logging, obsoletes QuietMode and FascistLogging\nSyslogFacility AUTH\nLogLevel VERBOSE\n\n# Cryptography\n# ------------\n\n# **Ciphers** -- If your clients don't support CTR (eg older versions), cbc will be added\n# CBC: is true if you want to connect with OpenSSL-base libraries\n# eg ruby Net::SSH::Transport::CipherFactory requires cbc-versions of the given openssh ciphers to work\n# -- see: (http://net-ssh.github.com/net-ssh/classes/Net/SSH/Transport/CipherFactory.html)\n#\n\nCiphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr\n\n# **Hash algorithms** -- Make sure not to use SHA1 for hashing, unless it is really necessary.\n# Weak HMAC is sometimes required if older package versions are used\n# eg Ruby's Net::SSH at around 2.2.* doesn't support sha2 for hmac, so this will have to be set true in this case.\n#\n\nMACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256\n\n# Alternative setting, if OpenSSH version is below v5.9\n#MACs hmac-ripemd160\n\n# **Key Exchange Algorithms** -- Make sure not to use SHA1 for kex, unless it is really necessary\n# Weak kex is sometimes required if older package versions are used\n# eg ruby's Net::SSH at around 2.2.* doesn't support sha2 for kex, so this will have to be set true in this case.\n# based on: https://bettercrypto.org/static/applied-crypto-hardening.pdf\n\nKexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256\n\n# Authentication\n# --------------\n\n# Secure Login directives.\n\nLoginGraceTime 30s\nMaxAuthTries 2\nMaxSessions 10\nMaxStartups 10:30:60\n\n# Enable public key authentication\nPubkeyAuthentication yes\n\n# Never use host-based authentication. It can be exploited.\nIgnoreRhosts yes\nIgnoreUserKnownHosts yes\nHostbasedAuthentication no\n\n# Enable PAM to enforce system wide rules\nUsePAM yes\n\n# Set AuthenticationMethods per default to publickey\n# AuthenticationMethods was introduced in OpenSSH 6.2 - https://www.openssh.com/txt/release-6.2\nAuthenticationMethods publickey\n\n# Disable password-based authentication, it can allow for potentially easier brute-force attacks.\nPasswordAuthentication no\nPermitEmptyPasswords no\nChallengeResponseAuthentication no\n\n# Only enable Kerberos authentication if it is configured.\nKerberosAuthentication no\nKerberosOrLocalPasswd no\nKerberosTicketCleanup yes\n#KerberosGetAFSToken no\n\n# Only enable GSSAPI authentication if it is configured.\nGSSAPIAuthentication no\nGSSAPICleanupCredentials yes\n\n# In case you don't use PAM (`UsePAM no`), you can alternatively restrict users and groups here. For key-based authentication this is not necessary, since all keys must be explicitely enabled.\n\n\n\n\n\n\n# Network\n# -------\n\n# Disable TCP keep alive since it is spoofable. Use ClientAlive messages instead, they use the encrypted channel\nTCPKeepAlive no\n\n# Manage `ClientAlive..` signals via interval and maximum count. This will periodically check up to a `..CountMax` number of times within `..Interval` timeframe, and abort the connection once these fail.\nClientAliveInterval 300\nClientAliveCountMax 3\n\n# Disable tunneling\nPermitTunnel no\n\n# Disable forwarding tcp connections.\n# no real advantage without denied shell access\nAllowTcpForwarding no\n\n# Disable agent forwarding, since local agent could be accessed through forwarded connection.\n# no real advantage without denied shell access\nAllowAgentForwarding no\n\n# Do not allow remote port forwardings to bind to non-loopback addresses.\nGatewayPorts no\n\n# Disable X11 forwarding, since local X11 display could be accessed through forwarded connection.\nX11Forwarding no\nX11UseLocalhost yes\n\n# User environment configuration\n# ==============================\n\nPermitUserEnvironment no\n\n\n# Misc. configuration\n# ===================\n\nCompression no\n\nUseDNS no\n\nPrintMotd no\n\nPrintLastLog no\n\nBanner none\n\n\n# Reject keys that are explicitly blacklisted\nRevokedKeys /etc/ssh/revoked_keys\n\nMatch Group sftp-users\n       X11Forwarding no\n       PermitRootLogin no\n       AllowTCPForwarding yes\n\nMatch User myservice\n"
+      },
+      "exists": {
+       "type": "\u0004",
+       "value": true
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/ssh/sshd_config"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 5149
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc/sudoers",
+     "Fields": {
+      "basename": {
+       "type": "\u0007",
+       "value": "sudoers"
+      },
+      "content": {
+       "type": "\u0007",
+       "value": "# /etc/sudoers\n#\n# This file MUST be edited with the 'visudo' command as root.\n\n# Defaults specification\nDefaults env_reset\nDefaults mail_badpass\nDefaults secure_path=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"\nDefaults logfile=/var/log/sudo.log\nDefaults:FULLTIMERS !lecture\nDefaults@webservers log_year\n\n# User alias specification\nUser_Alias ADMINS = alice, bob, charlie\nUser_Alias DEVS = dev1, dev2\n\n# Runas alias specification\nRunas_Alias OPERATORS = root, operator\n\n# Host alias specification\nHost_Alias SERVERS = server1, server2, server3\nHost_Alias WORKSTATIONS = ws1, ws2\n\n# Cmnd alias specification\nCmnd_Alias SHUTDOWN = /sbin/shutdown, /sbin/reboot, /sbin/halt\nCmnd_Alias NETWORKING = /sbin/ifconfig, /sbin/route\n\n# User privilege specification\nroot ALL=(ALL:ALL) ALL\n\n# Members of the admin group may gain root privileges\n%admin ALL=(ALL) ALL\n\n# Members of the sudo group may execute any command\n%sudo ALL=(ALL:ALL) ALL\n\n# ADMINS may run anything without password\nADMINS ALL=(ALL) NOPASSWD: ALL\n\n# DEVS can run specific commands\nDEVS SERVERS=(OPERATORS) NETWORKING\n\n# A user can run shutdown commands on workstations\njohn WORKSTATIONS=(root) NOPASSWD: SHUTDOWN\n"
+      },
+      "exists": {
+       "type": "\u0004",
+       "value": true
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/sudoers"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-r--r-----"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 1200
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc/rsyslog.conf",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "# /etc/rsyslog.conf\n# rsyslog configuration file\n\n$ModLoad imuxsock\n$ModLoad imklog\n\n# Use traditional timestamp format\n$ActionFileDefaultTemplate RSYSLOG_TraditionalFileFormat\n\n# Set the default permissions for all log files.\n$FileOwner root\n$FileGroup adm\n$FileCreateMode 0640\n$DirCreateMode 0755\n$Umask 0022\n\n# Log anything (except mail) of level info or higher\n*.info;mail.none;authpriv.none;cron.none /var/log/messages\n\n# The authpriv file has restricted access.\nauthpriv.* /var/log/secure\n\n# Log all the mail messages in one place.\nmail.* -/var/log/maillog\n\n# Log cron stuff\ncron.* /var/log/cron\n\n# Everybody gets emergency messages\n*.emerg :omusrmsg:*\n\n# Include all config files in /etc/rsyslog.d/\n$IncludeConfig /etc/rsyslog.d/*.conf\n"
+      },
+      "exists": {
+       "type": "\u0004",
+       "value": true
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/rsyslog.conf"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 700
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc/rsyslog.d",
+     "Fields": {
+      "exists": {
+       "type": "\u0004",
+       "value": true
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/rsyslog.d"
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc/rsyslog.d/50-default.conf",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "# Default rules for rsyslog.\n\n# Log kernel messages to the console.\nkern.* /var/log/kern.log\n\n# Log authentication messages.\nauth,authpriv.* /var/log/auth.log\n\n# First some standard log files. Log by facility.\nuser.* -/var/log/user.log\ndaemon.* -/var/log/daemon.log\n"
+      },
+      "exists": {
+       "type": "\u0004",
+       "value": true
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/rsyslog.d/50-default.conf"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 300
+      }
+     }
+    },
+    {
+     "Resource": "files.find",
+     "ID": "/etc/rsyslog.d -xdev type=file permissions=0",
+     "Fields": {
+      "list": {
+       "type": "\u0019\u001bfile",
+       "value": [
+        {
+         "Name": "file",
+         "ID": "/etc/rsyslog.d/50-default.conf"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "Resource": "files.find",
+     "ID": "/etc/rsyslog.d -xdev type=file depth=1 permissions=0",
+     "Fields": {
+      "list": {
+       "type": "\u0019\u001bfile",
+       "value": [
+        {
+         "Name": "file",
+         "ID": "/etc/rsyslog.d/50-default.conf"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/etc/ssl/cert.pem",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "# Amazon Root CA 1\n-----BEGIN CERTIFICATE-----\nMIIDQTCCAimgAwIBAgITBmyfz5m/jAo54vB4ikPmljZbyjANBgkqhkiG9w0BAQsF\nADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6\nb24gUm9vdCBDQSAxMB4XDTE1MDUyNjAwMDAwMFoXDTM4MDExNzAwMDAwMFowOTEL\nMAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJv\nb3QgQ0EgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALJ4gHHKeNXj\nca9HgFB0fW7Y14h29Jlo91ghYPl0hAEvrAIthtOgQ3pOsqTQNroBvo3bSMgHFzZM\n9O6II8c+6zf1tRn4SWiw3te5djgdYZ6k/oI2peVKVuRF4fn9tBb6dNqcmzU5L/qw\nIFAGbHrQgLKm+a/sRxmPUDgH3KKHOVj4utWp+UhnMJbulHheb4mjUcAwhmahRWa6\nVOujw5H5SNz/0egwLX0tdHA114gk957EWW67c4cX8jJGKLhD+rcdqsq08p8kDi1L\n93FcXmn/6pUCyziKrlA4b9v7LWIbxcceVOF34GfID5yHI9Y/QCB/IIDEgEw+OyQm\njgSubJrIqg0CAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMC\nAYYwHQYDVR0OBBYEFIQYzIU07LwMlJQuCFmcx7IQTgoIMA0GCSqGSIb3DQEBCwUA\nA4IBAQCY8jdaQZChGsV2USggNiMOruYou6r4lK5IpDB/G/wkjUu0yKGX9rbxenDI\nU5PMCCjjmCXPI6T53iHTfIUJrU6adTrCC2qJeHZERxhlbI1Bjjt/msv0tadQ1wUs\nN+gDS63pYaACbvXy8MWy7Vu33PqUXHeeE6V/Uq2V8viTO96LXFvKWlJbYK8U90vv\no/ufQJVtMVT8QtPHRh8jrdkPSHCa2XV4cdFyQzR1bldZwgJcJmApzyMZFo6IQ6XU\n5MsI+yMRQ+hDKXJioaldXgjUkK642M4UwtBV8ob2xJNDd2ZhwLnoQdeXeGADbkpy\nrqXRfboQnoZsG4q5WTP468SQvvG5\n-----END CERTIFICATE-----\n"
+      },
+      "exists": {
+       "type": "\u0004",
+       "value": true
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/ssl/cert.pem"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 1207
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/expires.asc",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\n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\nxh6s/uUjdqWcuew=\n=E8MR\n-----END PGP PUBLIC KEY BLOCK-----\n"
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "expires.asc"
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 3151
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "/home/chris/.ssh/authorized_keys",
+     "Fields": {
+      "content": {
+       "type": "\u0007",
+       "value": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDYuKamN4JXNYmolm+A9hM+xYanupG1VgbM/k0NwPiIPUdiU82IPbP7bunsngnOatSDyCrKrhL9FV3wuHFFBX0QE9KpS8bcIcT3ySsi3wgYV95P7anb7YhliDDx2w/QB97kCnAKjGFS1yphS6px0i9B29tGVJa22ODs/hebIKUCYKC9/+fnZ+bIqte1HctDP2lDBzMa/7j8BUXSwnTDXtAuEz5eSMIpv1ZdUdaSuO8xFbB0xrBHQJKuqboLPo3NSOCg6uhopO6GucZuNLJnqVLkyEPTKH0nv/8smz/q3v1GOGz8ZS0DIpkretKZmRB1VDhNqsAiOAWUTmg56xO7VZnlEvQRtyG8qyQHjlj6SDGtvxPDY58lz5nhIV9K6L7gHrOIcbSif5ZCt0e4DrKGaYXgH+mwIh2TMC2OCU6Xr6FRVQ9fBhilqMXuFIIezShN0hZb6mUCLkLVOzBBRKuz17S2a8twsuxix7ixqJPsIF3sI88tbxrFkSGSM02dhrmyZbkMr586rktVBB4T+8A28HJr4l9jkU0uk3l3le5bMcXhEuDkJUBnwEXEXfZa8Lw4sg2VuFgw0Ah0kw0/mAorpsFahXstNgrHhy3HoPKDCw/a/sXL4+fE72I1L96Lb7HOxTrdhEGnd65W4mPlTnbGW9YDQqTfZgRlpuffqQuWWYXolw== chris@lollyrock.com\n"
+      },
+      "exists": {
+       "type": "\u0004",
+       "value": true
+      },
+      "permissions": {
+       "type": "\u001bfile.permissions",
+       "value": {
+        "Name": "file.permissions",
+        "ID": "-rw-r--r--"
+       }
+      },
+      "size": {
+       "type": "\u0005",
+       "value": 745
+      }
+     }
+    },
+    {
+     "Resource": "file",
+     "ID": "yo",
+     "Fields": {
+      "content": {
+       "error": "file 'yo' not found"
+      }
+     }
+    },
+    {
+     "Resource": "file.permissions",
+     "ID": "-rw-r--r--",
+     "Fields": {
+      "isDirectory": {
+       "type": "\u0004",
+       "value": false
+      },
+      "isFile": {
+       "type": "\u0004",
+       "value": true
+      },
+      "mode": {
+       "type": "\u0005",
+       "value": 420
+      },
+      "string": {
+       "type": "\u0007",
+       "value": "-rw-r--r--"
+      }
+     }
+    },
+    {
+     "Resource": "file.permissions",
+     "ID": "drwxr-xr-x",
+     "Fields": {
+      "isDirectory": {
+       "type": "\u0004",
+       "value": true
+      },
+      "isFile": {
+       "type": "\u0004",
+       "value": false
+      },
+      "string": {
+       "type": "\u0007",
+       "value": "drwxr-xr-x"
+      }
+     }
+    },
+    {
+     "Resource": "files.find",
+     "ID": "/etc -xdev",
+     "Fields": {
+      "list": {
+       "type": "\u0019\u001bfile",
+       "value": [
+        {
+         "Name": "file",
+         "ID": "/etc"
+        },
+        {
+         "Name": "file",
+         "ID": "/etc/UPower"
+        },
+        {
+         "Name": "file",
+         "ID": "/etc/UPower/UPower.conf"
+        },
+        {
+         "Name": "file",
+         "ID": "/etc/X11"
+        },
+        {
+         "Name": "file",
+         "ID": "/etc/X11/xinit"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "Resource": "group",
+     "ID": "group/0/root",
+     "Fields": {
+      "gid": {
+       "type": "\u0005",
+       "value": 0
+      },
+      "name": {
+       "type": "\u0007",
+       "value": "root"
+      }
+     }
+    },
+    {
+     "Resource": "group",
+     "ID": "group/1/bin",
+     "Fields": {
+      "gid": {
+       "type": "\u0005",
+       "value": 1
+      },
+      "name": {
+       "type": "\u0007",
+       "value": "bin"
+      }
+     }
+    },
+    {
+     "Resource": "group",
+     "ID": "group/1000/chris",
+     "Fields": {
+      "gid": {
+       "type": "\u0005",
+       "value": 1000
+      },
+      "name": {
+       "type": "\u0007",
+       "value": "chris"
+      }
+     }
+    },
+    {
+     "Resource": "group",
+     "ID": "group/998/wheel",
+     "Fields": {
+      "gid": {
+       "type": "\u0005",
+       "value": 998
+      },
+      "name": {
+       "type": "\u0007",
+       "value": "wheel"
+      }
+     }
+    },
+    {
+     "Resource": "groups",
+     "ID": "",
+     "Fields": {
+      "list": {
+       "type": "\u0019\u001bgroup",
+       "value": [
+        {
+         "Name": "group",
+         "ID": "group/0/root"
+        },
+        {
+         "Name": "group",
+         "ID": "group/1/bin"
+        },
+        {
+         "Name": "group",
+         "ID": "group/1000/chris"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "Resource": "kernel",
+     "ID": "",
+     "Fields": {
+      "modules": {
+       "type": "\u0019\u001bkernel.module",
+       "value": [
+        {
+         "Name": "kernel.module",
+         "ID": "xfrm_user"
+        }
+       ]
+      },
+      "parameters": {
+       "type": "\u001a\u0007\u0007",
+       "value": {
+        "net.ipv4.ip_forward": "1"
+       }
+      }
+     }
+    },
+    {
+     "Resource": "kernel.module",
+     "ID": "xfrm_user",
+     "Fields": {
+      "loaded": {
+       "type": "\u0004",
+       "value": true
+      },
+      "name": {
+       "type": "\u0007",
+       "value": "xfrm_user"
+      },
+      "size": {
+       "type": "\u0007",
+       "value": "36864"
+      }
+     }
+    },
+    {
+     "Resource": "mount",
+     "ID": "A/ugmt63k4w=2",
+     "Fields": {
+      "list": {
+       "type": "\u0019\u001bmount.point",
+       "value": [
+        {
+         "Name": "mount.point",
+         "ID": "/proc"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "Resource": "mount",
+     "ID": "ZZ0A6W8WSFA=2",
+     "Fields": {
+      "list": {
+       "type": "\u0019\u001bmount.point",
+       "value": []
+      }
+     }
+    },
+    {
+     "Resource": "mount",
+     "ID": "mount",
+     "Fields": {
+      "list": {
+       "type": "\u0019\u001bmount.point",
+       "value": [
+        {
+         "Name": "mount.point",
+         "ID": "/proc"
+        },
+        {
+         "Name": "mount.point",
+         "ID": "/"
+        },
+        {
+         "Name": "mount.point",
+         "ID": "/dev"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "Resource": "mount.point",
+     "ID": "/",
+     "Fields": {
+      "device": {
+       "type": "\u0007",
+       "value": "/dev/sda1"
+      },
+      "fstype": {
+       "type": "\u0007",
+       "value": "ext4"
+      },
+      "mounted": {
+       "type": "\u0004",
+       "value": true
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/"
+      }
+     }
+    },
+    {
+     "Resource": "mount.point",
+     "ID": "/dev",
+     "Fields": {
+      "device": {
+       "type": "\u0007",
+       "value": "dev"
+      },
+      "fstype": {
+       "type": "\u0007",
+       "value": "devtmpfs"
+      },
+      "mounted": {
+       "type": "\u0004",
+       "value": true
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/dev"
+      }
+     }
+    },
+    {
+     "Resource": "mount.point",
+     "ID": "/proc",
+     "Fields": {
+      "device": {
+       "type": "\u0007",
+       "value": "proc"
+      },
+      "fstype": {
+       "type": "\u0007",
+       "value": "proc"
+      },
+      "mounted": {
+       "type": "\u0004",
+       "value": true
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/proc"
+      }
+     }
+    },
+    {
+     "Resource": "package",
+     "ID": "",
+     "Fields": {
+      "installed": {
+       "type": "\u0004",
+       "value": false
+      }
+     }
+    },
+    {
+     "Resource": "package",
+     "ID": "package/acl",
+     "Fields": {
+      "installed": {
+       "type": "\u0004",
+       "value": true
+      },
+      "name": {
+       "type": "\u0007",
+       "value": "acl"
+      },
+      "version": {
+       "type": "\u0007",
+       "value": "1.2.3"
+      }
+     }
+    },
+    {
+     "Resource": "package",
+     "ID": "package/unknown",
+     "Fields": {
+      "installed": {
+       "type": "\u0004",
+       "value": null
+      }
+     }
+    },
+    {
+     "Resource": "packages",
+     "ID": "",
+     "Fields": {
+      "list": {
+       "type": "\u0019\u001bpackage",
+       "value": [
+        {
+         "Name": "package",
+         "ID": "package/acl"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "Resource": "process",
+     "ID": "1",
+     "Fields": {
+      "command": {
+       "type": "\u0007",
+       "value": "/sbin/init"
+      },
+      "executable": {
+       "type": "\u0007",
+       "value": "systemd"
+      },
+      "pid": {
+       "type": "\u0005",
+       "value": 1
+      },
+      "state": {
+       "type": "\u0007",
+       "value": "S (sleeping)"
+      }
+     }
+    },
+    {
+     "Resource": "processes",
+     "ID": "",
+     "Fields": {
+      "list": {
+       "type": "\u0019\u001bprocess",
+       "value": [
+        {
+         "Name": "process",
+         "ID": "1"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "Resource": "service",
+     "ID": "",
+     "Fields": {
+      "enabled": {
+       "type": "\u0004",
+       "value": false
+      }
+     }
+    },
+    {
+     "Resource": "service",
+     "ID": "acpid",
+     "Fields": {
+      "enabled": {
+       "type": "\u0004",
+       "value": false
+      },
+      "name": {
+       "type": "\u0007",
+       "value": "acpid"
+      },
+      "running": {
+       "type": "\u0004",
+       "value": false
+      },
+      "type": {
+       "type": "\u0007",
+       "value": "systemd"
+      }
+     }
+    },
+    {
+     "Resource": "service",
+     "ID": "dbus",
+     "Fields": {
+      "enabled": {
+       "type": "\u0004",
+       "value": true
+      },
+      "name": {
+       "type": "\u0007",
+       "value": "dbus"
+      },
+      "running": {
+       "type": "\u0004",
+       "value": true
+      },
+      "type": {
+       "type": "\u0007",
+       "value": "systemd"
+      }
+     }
+    },
+    {
+     "Resource": "services",
+     "ID": "",
+     "Fields": {
+      "list": {
+       "type": "\u0019\u001bservice",
+       "value": [
+        {
+         "Name": "service",
+         "ID": "acpid"
+        },
+        {
+         "Name": "service",
+         "ID": "containerd"
+        },
+        {
+         "Name": "service",
+         "ID": "dbus"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "Resource": "sshd.config",
+     "ID": "/etc/ssh/sshd_config",
+     "Fields": {
+      "files": {
+       "type": "\u0019\u001bfile",
+       "value": [
+        {
+         "Name": "file",
+         "ID": "/etc/ssh/sshd_config"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "Resource": "user",
+     "ID": "user/0/root",
+     "Fields": {
+      "enabled": {
+       "type": "\u0004",
+       "value": false
+      },
+      "gid": {
+       "type": "\u0005",
+       "value": 0
+      },
+      "group": {
+       "type": "\u001bgroup",
+       "value": {
+        "Name": "group",
+        "ID": "group/0/root"
+       }
+      },
+      "home": {
+       "type": "\u0007",
+       "value": "/root"
+      },
+      "name": {
+       "type": "\u0007",
+       "value": "root"
+      },
+      "uid": {
+       "type": "\u0005",
+       "value": 0
+      }
+     }
+    },
+    {
+     "Resource": "user",
+     "ID": "user/1/bin",
+     "Fields": {
+      "enabled": {
+       "type": "\u0004",
+       "value": false
+      },
+      "gid": {
+       "type": "\u0005",
+       "value": 1
+      },
+      "group": {
+       "type": "\u001bgroup",
+       "value": {
+        "Name": "group",
+        "ID": "group/1/bin"
+       }
+      },
+      "name": {
+       "type": "\u0007",
+       "value": "bin"
+      },
+      "uid": {
+       "type": "\u0005",
+       "value": 1
+      }
+     }
+    },
+    {
+     "Resource": "user",
+     "ID": "user/1000/chris",
+     "Fields": {
+      "enabled": {
+       "type": "\u0004",
+       "value": false
+      },
+      "gid": {
+       "type": "\u0005",
+       "value": 1000
+      },
+      "group": {
+       "type": "\u001bgroup",
+       "value": {
+        "Name": "group",
+        "ID": "group/1000/chris"
+       }
+      },
+      "home": {
+       "type": "\u0007",
+       "value": "/home/chris"
+      },
+      "name": {
+       "type": "\u0007",
+       "value": "chris"
+      },
+      "uid": {
+       "type": "\u0005",
+       "value": 1000
+      }
+     }
+    },
+    {
+     "Resource": "user",
+     "ID": "user/1001/christopher",
+     "Fields": {
+      "enabled": {
+       "type": "\u0004",
+       "value": false
+      },
+      "gid": {
+       "type": "\u0005",
+       "value": 1000
+      },
+      "group": {
+       "type": "\u001bgroup",
+       "value": {
+        "Name": "group",
+        "ID": "group/1000/chris"
+       }
+      },
+      "name": {
+       "type": "\u0007",
+       "value": "christopher"
+      },
+      "uid": {
+       "type": "\u0005",
+       "value": 1001
+      }
+     }
+    },
+    {
+     "Resource": "users",
+     "ID": "",
+     "Fields": {
+      "list": {
+       "type": "\u0019\u001buser",
+       "value": [
+        {
+         "Name": "user",
+         "ID": "user/0/root"
+        },
+        {
+         "Name": "user",
+         "ID": "user/1/bin"
+        },
+        {
+         "Name": "user",
+         "ID": "user/1000/chris"
+        },
+        {
+         "Name": "user",
+         "ID": "user/1001/christopher"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "Resource": "auditd.rule.syscall",
+     "ID": "6JNdSppd/FM=",
+     "Fields": {
+      "action": {
+       "type": "\u0007",
+       "value": "always"
+      },
+      "fields": {
+       "type": "\u0019\n",
+       "value": [
+        {
+         "key": "arch",
+         "op": "=",
+         "value": "b32"
+        },
+        {
+         "key": "path",
+         "op": "=",
+         "value": "/usr/bin/systemd-run"
+        },
+        {
+         "key": "perm",
+         "op": "=",
+         "value": "x"
+        },
+        {
+         "key": "auid",
+         "op": "!=",
+         "value": "unset"
+        },
+        {
+         "key": "key",
+         "op": "=",
+         "value": "maybe-escalation"
+        }
+       ]
+      },
+      "keyname": {
+       "type": "\u0007",
+       "value": ""
+      },
+      "list": {
+       "type": "\u0007",
+       "value": "exit"
+      },
+      "syscalls": {
+       "type": "\u0019\u0007",
+       "value": []
+      },
+      "comparisons": {
+       "type": "\u0019\n",
+       "value": []
+      }
+     }
+    },
+    {
+     "Resource": "auditd.rule.syscall",
+     "ID": "BxTvA29Akcg=",
+     "Fields": {
+      "action": {
+       "type": "\u0007",
+       "value": "always"
+      },
+      "fields": {
+       "type": "\u0019\n",
+       "value": [
+        {
+         "key": "arch",
+         "op": "=",
+         "value": "b64"
+        },
+        {
+         "key": "path",
+         "op": "=",
+         "value": "/usr/bin/systemd-run"
+        },
+        {
+         "key": "perm",
+         "op": "=",
+         "value": "x"
+        },
+        {
+         "key": "auid",
+         "op": "!=",
+         "value": "unset"
+        },
+        {
+         "key": "key",
+         "op": "=",
+         "value": "maybe-escalation"
+        }
+       ]
+      },
+      "keyname": {
+       "type": "\u0007",
+       "value": ""
+      },
+      "list": {
+       "type": "\u0007",
+       "value": "exit"
+      },
+      "syscalls": {
+       "type": "\u0019\u0007",
+       "value": []
+      },
+      "comparisons": {
+       "type": "\u0019\n",
+       "value": []
+      }
+     }
+    },
+    {
+     "Resource": "auditd.rule.syscall",
+     "ID": "CQdwgOphN0c=",
+     "Fields": {
+      "action": {
+       "type": "\u0007",
+       "value": "always"
+      },
+      "fields": {
+       "type": "\u0019\n",
+       "value": [
+        {
+         "key": "arch",
+         "op": "=",
+         "value": "b64"
+        },
+        {
+         "key": "a0",
+         "op": "=",
+         "value": "0"
+        },
+        {
+         "key": "exe",
+         "op": "=",
+         "value": "/usr/bin/sudo"
+        },
+        {
+         "key": "key",
+         "op": "=",
+         "value": "10.2.5.b-elevated-privs-session"
+        }
+       ]
+      },
+      "keyname": {
+       "type": "\u0007",
+       "value": ""
+      },
+      "list": {
+       "type": "\u0007",
+       "value": "exit"
+      },
+      "syscalls": {
+       "type": "\u0019\u0007",
+       "value": [
+        "setresuid"
+       ]
+      },
+      "comparisons": {
+       "type": "\u0019\n",
+       "value": []
+      }
+     }
+    },
+    {
+     "Resource": "auditd.rule.control",
+     "ID": "qXqBAACqmAA=",
+     "Fields": {
+      "flag": {
+       "type": "\u0007",
+       "value": "-D"
+      },
+      "value": {
+       "type": "\u0007",
+       "value": ""
+      }
+     }
+    },
+    {
+     "Resource": "auditd.rule.control",
+     "ID": "rDyk2wBvc4Q=",
+     "Fields": {
+      "flag": {
+       "type": "\u0007",
+       "value": "-e"
+      },
+      "value": {
+       "type": "\u0007",
+       "value": "2"
+      }
+     }
+    },
+    {
+     "Resource": "auditd.rule.file",
+     "ID": "7aB2oOdN/Xg=",
+     "Fields": {
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/sudoers.d"
+      },
+      "permissions": {
+       "type": "\u0007",
+       "value": "wa"
+      }
+     }
+    },
+    {
+     "Resource": "auditd.rule.file",
+     "ID": "V/gmH1AFY1s=",
+     "Fields": {
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/sudoers"
+      },
+      "permissions": {
+       "type": "\u0007",
+       "value": "wa"
+      }
+     }
+    },
+    {
+     "Resource": "auditd.rules",
+     "ID": "",
+     "Fields": {
+      "controls": {
+       "type": "\u0019\u001bauditd.rule.control",
+       "value": [
+        {
+         "Name": "auditd.rule.control",
+         "ID": "qXqBAACqmAA="
+        },
+        {
+         "Name": "auditd.rule.control",
+         "ID": "rDyk2wBvc4Q="
+        }
+       ]
+      },
+      "files": {
+       "type": "\u0019\u001bauditd.rule.file",
+       "value": [
+        {
+         "Name": "auditd.rule.file",
+         "ID": "V/gmH1AFY1s="
+        },
+        {
+         "Name": "auditd.rule.file",
+         "ID": "7aB2oOdN/Xg="
+        }
+       ]
+      },
+      "path": {
+       "type": "\u0007",
+       "value": "/etc/audit/rules.d"
+      },
+      "syscalls": {
+       "type": "\u0019\u001bauditd.rule.syscall",
+       "value": [
+        {
+         "Name": "auditd.rule.syscall",
+         "ID": "6JNdSppd/FM="
+        },
+        {
+         "Name": "auditd.rule.syscall",
+         "ID": "BxTvA29Akcg="
+        },
+        {
+         "Name": "auditd.rule.syscall",
+         "ID": "CQdwgOphN0c="
+        },
+        {
+         "Name": "auditd.rule.syscall",
+         "ID": "TestComparisonsRule="
+        }
+       ]
+      }
+     }
+    },
+    {
+     "Resource": "auditd.rule.syscall",
+     "ID": "TestComparisonsRule=",
+     "Fields": {
+      "action": {
+       "type": "\u0007",
+       "value": "always"
+      },
+      "comparisons": {
+       "type": "\u0019\n",
+       "value": [
+        {
+         "field1": "uid",
+         "op": "!=",
+         "field2": "euid"
+        },
+        {
+         "field1": "gid",
+         "op": "!=",
+         "field2": "egid"
+        }
+       ]
+      },
+      "fields": {
+       "type": "\u0019\n",
+       "value": [
+        {
+         "key": "arch",
+         "op": "=",
+         "value": "b64"
+        },
+        {
+         "key": "auid",
+         "op": "!=",
+         "value": "unset"
+        },
+        {
+         "key": "key",
+         "op": "=",
+         "value": "priv_escalation"
+        }
+       ]
+      },
+      "keyname": {
+       "type": "\u0007",
+       "value": "priv_escalation"
+      },
+      "list": {
+       "type": "\u0007",
+       "value": "exit"
+      },
+      "syscalls": {
+       "type": "\u0019\u0007",
+       "value": [
+        "execve"
+       ]
+      }
+     }
+    },
+    {
+     "Resource": "mthing",
+     "ID": "",
+     "Fields": {
+      "value": {
+       "type": "\u0007",
+       "value": "parent-thing"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "asset": {
+    "id": "resolved-target",
+    "platform_ids": [
+     "resolved-target"
+    ],
+    "name": "resolved-target",
+    "platform": {
+     "name": "arch",
+     "arch": "x86_64",
+     "title": "Arch Linux",
+     "family": [
+      "arch",
+      "linux",
+      "unix",
+      "os"
+     ],
+     "build": "rolling",
+     "version": "rolling",
+     "labels": {
+      "distro-id": "arch"
+     }
+    },
+    "connections": [
+     {
+      "type": "mock",
+      "id": 2
+     }
+    ]
+   },
+   "connections": [
+    {
+     "url": "mock://",
+     "provider": "go.mondoo.com/mql/providers-sdk/v1/testutils/mockprovider",
+     "connector": "",
+     "version": "",
+     "id": 2
+    }
+   ],
+   "resources": [
+    {
+     "Resource": "mgroup",
+     "ID": "",
+     "Fields": {
+      "name": {
+       "type": "\u0007",
+       "value": "resolved-group"
+      }
+     }
+    },
+    {
+     "Resource": "mthing",
+     "ID": "",
+     "Fields": {
+      "value": {
+       "type": "\u0007",
+       "value": "target-thing"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

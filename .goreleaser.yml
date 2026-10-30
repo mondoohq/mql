@@ -31,7 +31,7 @@ builds:
       - -tags="production netgo"
     ldflags:
       - "-extldflags=-static"
-      - -s -w -X go.mondoo.com/mql/v13.Version={{.Version}} -X go.mondoo.com/mql/v13.Build={{.ShortCommit}} -X go.mondoo.com/mql/v13.Date={{.Date}}
+      - -s -w -X go.mondoo.com/mql.Version={{.Version}} -X go.mondoo.com/mql.Build={{.ShortCommit}} -X go.mondoo.com/mql.Date={{.Date}}
   - id: macos
     main: ./apps/mql/mql.go
     binary: mql
@@ -43,7 +43,7 @@ builds:
     flags: -tags production
     ldflags:
       # clang + macos does not support static: - -extldflags "-static"
-      - -s -w -X go.mondoo.com/mql/v13.Version={{.Version}} -X go.mondoo.com/mql/v13.Build={{.ShortCommit}} -X go.mondoo.com/mql/v13.Date={{.Date}}
+      - -s -w -X go.mondoo.com/mql.Version={{.Version}} -X go.mondoo.com/mql.Build={{.ShortCommit}} -X go.mondoo.com/mql.Date={{.Date}}
     hooks:
       post:
         - cmd: /tmp/quill sign-and-notarize "{{ .Path }}" -vv || true
@@ -61,7 +61,7 @@ builds:
     flags: -tags production -buildmode exe
     ldflags:
       - "-extldflags -static"
-      - -s -w -X go.mondoo.com/mql/v13.Version={{.Version}} -X go.mondoo.com/mql/v13.Build={{.ShortCommit}} -X go.mondoo.com/mql/v13.Date={{.Date}}
+      - -s -w -X go.mondoo.com/mql.Version={{.Version}} -X go.mondoo.com/mql.Build={{.ShortCommit}} -X go.mondoo.com/mql.Date={{.Date}}
     hooks:
       post:
         - cmd: jsign --storetype TRUSTEDSIGNING --keystore {{ .Env.TSIGN_AZURE_ENDPOINT }} --storepass {{ .Env.TSIGN_ACCESS_TOKEN }} --alias {{ .Env.TSIGN_ACCOUNT_NAME }}/{{ .Env.TSIGN_CERT_PROFILE_NAME }} '{{ .Path }}'
@@ -90,6 +90,13 @@ nfpms:
         key_file: "{{ .Env.GPG_KEY_PATH }}"
 archives:
   - id: releases
+    # Without this the binary keeps the build machine's user (runner, UID 1001
+    # on GitHub Actions). Unpacked as root, it is then a file without an owner
+    # on the machine it is installed on.
+    builds_info:
+      owner: root
+      group: root
+      mode: 0755
     format_overrides:
       - goos: windows
         format: zip
@@ -102,7 +109,7 @@ snapshot:
   version_template: "{{ .Tag }}-snapshot"
 changelog:
   use: github-native
-dockers: # https://goreleaser.com/customization/docker/
+dockers: # https://goreleaser.com/customization/package/docker/
   # UBI containers
   - use: buildx
     goos: linux
@@ -114,6 +121,8 @@ dockers: # https://goreleaser.com/customization/docker/
       - "mondoo/{{ .ProjectName }}:latest-ubi-amd64"
     build_flag_templates:
       - "--platform=linux/amd64"
+      - "--provenance=false"
+      - "--sbom=false"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -129,6 +138,8 @@ dockers: # https://goreleaser.com/customization/docker/
       - "mondoo/{{ .ProjectName }}:latest-ubi-arm64"
     build_flag_templates:
       - "--platform=linux/arm64"
+      - "--provenance=false"
+      - "--sbom=false"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -144,6 +155,8 @@ dockers: # https://goreleaser.com/customization/docker/
       - "mondoo/{{ .ProjectName }}:latest-amd64"
     build_flag_templates:
       - "--platform=linux/amd64"
+      - "--provenance=false"
+      - "--sbom=false"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -158,6 +171,8 @@ dockers: # https://goreleaser.com/customization/docker/
       - "mondoo/{{ .ProjectName }}:latest-arm64v8"
     build_flag_templates:
       - "--platform=linux/arm64/v8"
+      - "--provenance=false"
+      - "--sbom=false"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -173,6 +188,8 @@ dockers: # https://goreleaser.com/customization/docker/
       - "mondoo/{{ .ProjectName }}:latest-armv6"
     build_flag_templates:
       - "--platform=linux/arm/v6"
+      - "--provenance=false"
+      - "--sbom=false"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -188,6 +205,8 @@ dockers: # https://goreleaser.com/customization/docker/
       - "mondoo/{{ .ProjectName }}:latest-armv7"
     build_flag_templates:
       - "--platform=linux/arm/v7"
+      - "--provenance=false"
+      - "--sbom=false"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -205,6 +224,8 @@ dockers: # https://goreleaser.com/customization/docker/
       - "mondoo/{{ .ProjectName }}:latest-ubi-amd64-rootless"
     build_flag_templates:
       - "--platform=linux/amd64"
+      - "--provenance=false"
+      - "--sbom=false"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -220,6 +241,8 @@ dockers: # https://goreleaser.com/customization/docker/
       - "mondoo/{{ .ProjectName }}:latest-ubi-arm64-rootless"
     build_flag_templates:
       - "--platform=linux/arm64/v8"
+      - "--provenance=false"
+      - "--sbom=false"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -235,6 +258,8 @@ dockers: # https://goreleaser.com/customization/docker/
       - "mondoo/{{ .ProjectName }}:latest-amd64-rootless"
     build_flag_templates:
       - "--platform=linux/amd64"
+      - "--provenance=false"
+      - "--sbom=false"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -249,6 +274,8 @@ dockers: # https://goreleaser.com/customization/docker/
       - "mondoo/{{ .ProjectName }}:latest-arm64v8-rootless"
     build_flag_templates:
       - "--platform=linux/arm64/v8"
+      - "--provenance=false"
+      - "--sbom=false"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -264,6 +291,8 @@ dockers: # https://goreleaser.com/customization/docker/
       - "mondoo/{{ .ProjectName }}:latest-armv6-rootless"
     build_flag_templates:
       - "--platform=linux/arm/v6"
+      - "--provenance=false"
+      - "--sbom=false"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
@@ -279,12 +308,14 @@ dockers: # https://goreleaser.com/customization/docker/
       - "mondoo/{{ .ProjectName }}:latest-armv7-rootless"
     build_flag_templates:
       - "--platform=linux/arm/v7"
+      - "--provenance=false"
+      - "--sbom=false"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--target=rootless"
-docker_manifests: # https://goreleaser.com/customization/docker_manifest/
+docker_manifests: # https://goreleaser.com/customization/package/docker_manifest/
   # UBI containers
   - name_template: mondoo/{{ .ProjectName }}:{{ .Version }}-ubi
     image_templates:

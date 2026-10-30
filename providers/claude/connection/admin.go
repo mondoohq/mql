@@ -40,14 +40,25 @@ type paginatedResponse[T any] struct {
 	LastID  string `json:"last_id"`
 }
 
+// withQuery appends one query parameter to a request path. Callers hand in
+// paths that already carry parameters, so the separator is chosen from what is
+// already there rather than assumed to be "?".
+func withQuery(path, key, value string) string {
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	return path + sep + key + "=" + url.QueryEscape(value)
+}
+
 func paginate[T any](ctx context.Context, c *AdminClient, path string) ([]T, error) {
 	const maxPages = 1000
 	var all []T
 	afterID := ""
-	for page := 0; page < maxPages; page++ {
-		reqURL := path + "?limit=100"
+	for range maxPages {
+		reqURL := withQuery(path, "limit", "100")
 		if afterID != "" {
-			reqURL += "&after_id=" + url.QueryEscape(afterID)
+			reqURL = withQuery(reqURL, "after_id", afterID)
 		}
 		body, err := c.get(ctx, reqURL)
 		if err != nil {
@@ -88,11 +99,19 @@ func (c *AdminClient) GetOrganization(ctx context.Context) (*AdminOrganization, 
 // Workspaces
 
 type AdminWorkspace struct {
-	ID            string              `json:"id"`
-	Name          string              `json:"name"`
-	DisplayColor  string              `json:"display_color"`
-	CreatedAt     string              `json:"created_at"`
-	ArchivedAt    *string             `json:"archived_at"`
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	DisplayColor string  `json:"display_color"`
+	CreatedAt    string  `json:"created_at"`
+	ArchivedAt   *string `json:"archived_at"`
+	// ExternalKeyID names the customer-managed encryption key protecting this
+	// workspace's data. Null when the workspace uses Anthropic-managed
+	// encryption.
+	ExternalKeyID *string `json:"external_key_id"`
+	// CompartmentID identifies the workspace's encryption compartment, which
+	// is the value a KMS key policy scopes a key to.
+	CompartmentID string              `json:"compartment_id"`
+	Tags          map[string]string   `json:"tags"`
 	DataResidency *AdminDataResidency `json:"data_residency"`
 }
 
@@ -105,6 +124,14 @@ type AdminDataResidency struct {
 type FlexibleStringSlice []string
 
 func (f *FlexibleStringSlice) UnmarshalJSON(data []byte) error {
+	// A JSON null (e.g. "allowed_inference_geos": null for an unrestricted
+	// workspace) must decode to an empty slice, not [""]. json.Unmarshal of
+	// null into a string is a no-op that returns no error, so without this
+	// guard the string branch below would win and yield a bogus [""].
+	if string(data) == "null" {
+		*f = nil
+		return nil
+	}
 	var s string
 	if err := json.Unmarshal(data, &s); err == nil {
 		*f = []string{s}
@@ -118,8 +145,13 @@ func (f *FlexibleStringSlice) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ListWorkspaces returns every workspace in the organization, archived ones
+// included. The endpoint defaults include_archived to false, and an archived
+// workspace still holds its member list and its encryption binding, so an
+// offboarding review that cannot see it is reviewing an incomplete estate.
 func (c *AdminClient) ListWorkspaces(ctx context.Context) ([]AdminWorkspace, error) {
-	return paginate[AdminWorkspace](ctx, c, "/v1/organizations/workspaces")
+	path := withQuery("/v1/organizations/workspaces", "include_archived", "true")
+	return paginate[AdminWorkspace](ctx, c, path)
 }
 
 // Users
@@ -149,28 +181,6 @@ type AdminInvite struct {
 
 func (c *AdminClient) ListInvites(ctx context.Context) ([]AdminInvite, error) {
 	return paginate[AdminInvite](ctx, c, "/v1/organizations/invites")
-}
-
-// API Keys
-
-type AdminAPIKey struct {
-	ID             string         `json:"id"`
-	Name           string         `json:"name"`
-	Status         string         `json:"status"`
-	CreatedAt      string         `json:"created_at"`
-	ExpiresAt      *string        `json:"expires_at"`
-	PartialKeyHint string         `json:"partial_key_hint"`
-	CreatedBy      AdminCreatedBy `json:"created_by"`
-	WorkspaceID    *string        `json:"workspace_id"`
-}
-
-type AdminCreatedBy struct {
-	ID   string `json:"id"`
-	Type string `json:"type"`
-}
-
-func (c *AdminClient) ListAPIKeys(ctx context.Context) ([]AdminAPIKey, error) {
-	return paginate[AdminAPIKey](ctx, c, "/v1/organizations/api_keys")
 }
 
 func (c *AdminClient) doRequest(ctx context.Context, method string, path string, body io.Reader) ([]byte, error) {
@@ -249,14 +259,10 @@ func paginatePageToken[T any](ctx context.Context, client *AdminClient, basePath
 	const maxPages = 1000
 	var all []T
 	pageToken := ""
-	for i := 0; i < maxPages; i++ {
+	for range maxPages {
 		reqURL := basePath
 		if pageToken != "" {
-			sep := "?"
-			if strings.Contains(reqURL, "?") {
-				sep = "&"
-			}
-			reqURL += sep + "page=" + url.QueryEscape(pageToken)
+			reqURL = withQuery(reqURL, "page", pageToken)
 		}
 		body, err := client.get(ctx, reqURL)
 		if err != nil {
@@ -298,11 +304,32 @@ type AdminUsageResult struct {
 	Model                string `json:"model"`
 	WorkspaceID          string `json:"workspace_id"`
 	ServiceTier          string `json:"service_tier"`
+	// APIKeyID is null for usage that did not go through an API key, such
+	// as requests made in the Claude Console.
+	APIKeyID string `json:"api_key_id"`
+	// AccountID names the user account behind an OAuth request and is null
+	// for every other request.
+	AccountID string `json:"account_id"`
+	// ServiceAccountID names the service account behind a workload identity
+	// federation request and is null for every other request.
+	ServiceAccountID string `json:"service_account_id"`
 }
 
+// usageReportGroupBy lists the dimensions the usage report is split by. The
+// API leaves a dimension null in every row unless the request groups by it.
+var usageReportGroupBy = []string{
+	"workspace_id", "model", "service_tier", "api_key_id", "account_id", "service_account_id",
+}
+
+// ListUsageReport returns the daily Messages API usage from midnight UTC
+// seven days ago up to now.
 func (c *AdminClient) ListUsageReport(ctx context.Context) ([]AdminUsageBucket, error) {
 	startingAt := time.Now().UTC().AddDate(0, 0, -7).Format("2006-01-02T00:00:00Z")
-	return paginatePageToken[AdminUsageBucket](ctx, c, "/v1/organizations/usage_report/messages?bucket_width=1d&starting_at="+startingAt+"&group_by[]=workspace_id&group_by[]=model")
+	path := "/v1/organizations/usage_report/messages?bucket_width=1d&starting_at=" + startingAt
+	for _, g := range usageReportGroupBy {
+		path += "&group_by[]=" + g
+	}
+	return paginatePageToken[AdminUsageBucket](ctx, c, path)
 }
 
 // Cost Report
@@ -319,11 +346,12 @@ type AdminCostResult struct {
 	CostType    string `json:"cost_type"`
 	Model       string `json:"model"`
 	WorkspaceID string `json:"workspace_id"`
+	Description string `json:"description"`
 }
 
 func (c *AdminClient) ListCostReport(ctx context.Context) ([]AdminCostBucket, error) {
 	startingAt := time.Now().UTC().AddDate(0, 0, -7).Format("2006-01-02T00:00:00Z")
-	return paginatePageToken[AdminCostBucket](ctx, c, "/v1/organizations/cost_report?bucket_width=1d&starting_at="+startingAt+"&group_by[]=workspace_id")
+	return paginatePageToken[AdminCostBucket](ctx, c, "/v1/organizations/cost_report?bucket_width=1d&starting_at="+startingAt+"&group_by[]=workspace_id&group_by[]=description")
 }
 
 // Compliance Activities
@@ -335,9 +363,85 @@ type AdminActivity struct {
 	CreatedAt string         `json:"created_at"`
 }
 
+// AdminActorInfo is the decoded form of the activity feed's actor union. The
+// union is discriminated by Type, and each variant carries a different subset
+// of these values, so a field left empty means the variant does not define it.
+// New variants are expected: an unrecognized Type still decodes, carrying
+// whatever of the shared values it happens to include.
 type AdminActorInfo struct {
-	Email string `json:"email"`
-	ID    string `json:"id"`
+	// Type is the union discriminator, one of user_actor, api_actor,
+	// admin_api_key_actor, unauthenticated_user_actor, anthropic_actor or
+	// scim_directory_sync_actor.
+	Type string
+	// Email is the address of a signed-in user. Only user_actor defines it,
+	// and anthropic_actor always reports it as null.
+	Email string
+	// ID is the organization member id behind a user_actor.
+	ID string
+	// UnauthenticatedEmail is the address supplied before sign-in completed.
+	// It is a claim, not a verified identity.
+	UnauthenticatedEmail string
+	// IPAddress and UserAgent are shared by the user, API, admin key and
+	// unauthenticated variants.
+	IPAddress string
+	UserAgent string
+	// APIKeyID identifies the customer-issued API key behind an api_actor,
+	// AdminAPIKeyID the admin key behind an admin_api_key_actor.
+	APIKeyID      string
+	AdminAPIKeyID string
+	// DirectoryID, IdpConnectionType and WorkosEventID describe a change
+	// pushed by an identity provider through SCIM directory sync.
+	DirectoryID       string
+	IdpConnectionType string
+	WorkosEventID     string
+}
+
+// adminActorPayload is the wire shape of the actor union. It is decoded
+// separately from AdminActorInfo so the union's per-variant key names stay in
+// one place, rather than every consumer having to know that a user's address
+// arrives as email_address while an unauthenticated one arrives under its own
+// key.
+type adminActorPayload struct {
+	Type                        string  `json:"type"`
+	EmailAddress                *string `json:"email_address"`
+	UnauthenticatedEmailAddress *string `json:"unauthenticated_email_address"`
+	UserID                      string  `json:"user_id"`
+	IPAddress                   string  `json:"ip_address"`
+	UserAgent                   string  `json:"user_agent"`
+	APIKeyID                    string  `json:"api_key_id"`
+	AdminAPIKeyID               string  `json:"admin_api_key_id"`
+	DirectoryID                 string  `json:"directory_id"`
+	IdpConnectionType           *string `json:"idp_connection_type"`
+	WorkosEventID               string  `json:"workos_event_id"`
+}
+
+func (a *AdminActorInfo) UnmarshalJSON(data []byte) error {
+	var p adminActorPayload
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+
+	*a = AdminActorInfo{
+		Type:              p.Type,
+		ID:                p.UserID,
+		IPAddress:         p.IPAddress,
+		UserAgent:         p.UserAgent,
+		APIKeyID:          p.APIKeyID,
+		AdminAPIKeyID:     p.AdminAPIKeyID,
+		DirectoryID:       p.DirectoryID,
+		WorkosEventID:     p.WorkosEventID,
+		IdpConnectionType: derefString(p.IdpConnectionType),
+	}
+	a.Email = derefString(p.EmailAddress)
+	a.UnauthenticatedEmail = derefString(p.UnauthenticatedEmailAddress)
+	return nil
+}
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func (c *AdminClient) ListActivities(ctx context.Context) ([]AdminActivity, error) {

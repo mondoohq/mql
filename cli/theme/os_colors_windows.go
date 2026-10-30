@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/muesli/termenv"
-	"go.mondoo.com/mql/v13/cli/printer"
-	"go.mondoo.com/mql/v13/cli/theme/colors"
+	"go.mondoo.com/mql/cli/printer"
+	"go.mondoo.com/mql/cli/theme/colors"
 )
 
 // OperatingSystemTheme for windows shell

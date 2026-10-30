@@ -8,6 +8,8 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,13 +22,13 @@ import (
 	cloudwatchlogstypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsCloudwatch) id() (string, error) {
@@ -91,6 +93,8 @@ func (a *mqlAwsCloudwatch) getMetrics(conn *connection.AwsConnection) []*jobpool
 
 					mqlMetric, err := CreateResource(a.MqlRuntime, "aws.cloudwatch.metric",
 						map[string]*llx.RawData{
+							"__id": llx.StringData(cloudwatchMetricID(
+								region, convert.ToValue(metric.Namespace), convert.ToValue(metric.MetricName), metric.Dimensions)),
 							"name":       llx.StringDataPtr(metric.MetricName),
 							"namespace":  llx.StringDataPtr(metric.Namespace),
 							"region":     llx.StringData(region),
@@ -116,12 +120,38 @@ func (a *mqlAwsCloudwatchMetricdimension) id() (string, error) {
 	return name + "/" + val, nil
 }
 
+// metricStatisticsCacheKey identifies one statistics series. A CloudWatch metric
+// is identified by its namespace, name AND dimensions: AWS/EC2 CPUUtilization
+// exists once per instance, distinguished only by the InstanceId dimension. A
+// key without them collapses every instance's series onto one cache entry, so
+// the first one fetched answers for all of them.
+//
+// Dimensions are sorted, because the key has to be the same for the same series
+// no matter what order the API returned them in.
+func metricStatisticsCacheKey(namespace, name, region, label string, dimensions []any) string {
+	key := namespace + "/" + name + "/" + region + "/" + label
+
+	pairs := make([]string, 0, len(dimensions))
+	for _, d := range dimensions {
+		dimension, ok := d.(*mqlAwsCloudwatchMetricdimension)
+		if !ok {
+			continue
+		}
+		pairs = append(pairs, dimension.Name.Data+"="+dimension.Value.Data)
+	}
+	if len(pairs) == 0 {
+		return key
+	}
+	sort.Strings(pairs)
+	return key + "/" + strings.Join(pairs, ",")
+}
+
+// id covers the init path only, which resolves the undimensioned aggregate for
+// a namespace and metric name. The dimensioned series built by
+// aws.cloudwatch.metric.statistics passes its own __id, since this resource has
+// no dimensions field to read them back from.
 func (a *mqlAwsCloudwatchMetricstatistics) id() (string, error) {
-	region := a.Region.Data
-	namespace := a.Namespace.Data
-	name := a.Name.Data
-	label := a.Label.Data
-	return namespace + "/" + name + "/" + region + "/" + label, nil
+	return metricStatisticsCacheKey(a.Namespace.Data, a.Name.Data, a.Region.Data, a.Label.Data, nil), nil
 }
 
 // allow the user to query for a specific namespace metric in a specific region
@@ -298,10 +328,16 @@ func initAwsCloudwatchMetricstatistics(runtime *plugin.Runtime, args map[string]
 	if err != nil {
 		return args, nil, err
 	}
+	// Every datapoint here used to be created with no id of any kind, so all 24
+	// hours of them shared one empty cache key and resolved to the first.
+	statsKey := metricStatisticsCacheKey(namespace, name, region, convert.ToValue(statsResp.Label), nil)
+
 	datapoints := []any{}
 	for _, datapoint := range statsResp.Datapoints {
 		mqlDatapoint, err := CreateResource(runtime, "aws.cloudwatch.metric.datapoint",
 			map[string]*llx.RawData{
+				"__id":      llx.StringData(datapointCacheKey(statsKey, datapoint)),
+				"id":        llx.StringData(formatDatapointId(datapoint)),
 				"timestamp": llx.TimeDataPtr(datapoint.Timestamp),
 				"maximum":   llx.FloatData(convert.ToValue(datapoint.Maximum)),
 				"minimum":   llx.FloatData(convert.ToValue(datapoint.Minimum)),
@@ -358,10 +394,13 @@ func (a *mqlAwsCloudwatchMetric) statistics() (*mqlAwsCloudwatchMetricstatistics
 	if err != nil {
 		return nil, errors.Wrap(err, "could not gather AWS CloudWatch stats")
 	}
+	statsKey := metricStatisticsCacheKey(namespace, metricName, regionVal, convert.ToValue(statsResp.Label), dimensions)
+
 	datapoints := []any{}
 	for _, datapoint := range statsResp.Datapoints {
 		mqlDatapoint, err := CreateResource(a.MqlRuntime, "aws.cloudwatch.metric.datapoint",
 			map[string]*llx.RawData{
+				"__id":      llx.StringData(datapointCacheKey(statsKey, datapoint)),
 				"id":        llx.StringData(formatDatapointId(datapoint)),
 				"timestamp": llx.TimeDataPtr(datapoint.Timestamp),
 				"maximum":   llx.FloatData(convert.ToValue(datapoint.Maximum)),
@@ -377,6 +416,7 @@ func (a *mqlAwsCloudwatchMetric) statistics() (*mqlAwsCloudwatchMetricstatistics
 	}
 	mqlStat, err := CreateResource(a.MqlRuntime, "aws.cloudwatch.metricstatistics",
 		map[string]*llx.RawData{
+			"__id":       llx.StringData(statsKey),
 			"label":      llx.StringDataPtr(statsResp.Label),
 			"datapoints": llx.ArrayData(datapoints, types.Resource("aws.cloudwatch.metric.datapoint")),
 			"name":       llx.StringData(metricName),
@@ -392,6 +432,18 @@ func (a *mqlAwsCloudwatchMetric) statistics() (*mqlAwsCloudwatchMetricstatistics
 
 func (a *mqlAwsCloudwatchMetricDatapoint) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+// datapointCacheKey identifies a datapoint within its series. formatDatapointId
+// hashes the datapoint's own values, which is not enough on its own: two
+// instances idling at the same value in the same hour hash identically, so the
+// series has to be part of the key. The public id field keeps the hash.
+func datapointCacheKey(statisticsKey string, d cloudwatchtypes.Datapoint) string {
+	ts := ""
+	if d.Timestamp != nil {
+		ts = strconv.FormatInt(d.Timestamp.UnixNano(), 10)
+	}
+	return statisticsKey + "/datapoint/" + ts + "/" + formatDatapointId(d)
 }
 
 func formatDatapointId(d cloudwatchtypes.Datapoint) string {
@@ -517,19 +569,52 @@ func (a *mqlAwsCloudwatch) getAlarms(conn *connection.AwsConnection) []*jobpool.
 						okActions = append(okActions, mqlokAction)
 					}
 
+					dimensions := []any{}
+					for _, d := range alarm.Dimensions {
+						mqlDimension, err := CreateResource(a.MqlRuntime, "aws.cloudwatch.metricdimension",
+							map[string]*llx.RawData{
+								"name":  llx.StringDataPtr(d.Name),
+								"value": llx.StringDataPtr(d.Value),
+							})
+						if err != nil {
+							return nil, err
+						}
+						dimensions = append(dimensions, mqlDimension)
+					}
+
+					threshold := llx.NilData
+					if alarm.Threshold != nil {
+						threshold = llx.FloatData(*alarm.Threshold)
+					}
+
 					mqlAlarm, err := CreateResource(a.MqlRuntime, "aws.cloudwatch.metricsalarm",
 						map[string]*llx.RawData{
-							"arn":                     llx.StringDataPtr(alarm.AlarmArn),
-							"metricName":              llx.StringDataPtr(alarm.MetricName),
-							"metricNamespace":         llx.StringDataPtr(alarm.Namespace),
-							"region":                  llx.StringData(region),
-							"state":                   llx.StringData(string(alarm.StateValue)),
-							"stateReason":             llx.StringDataPtr(alarm.StateReason),
-							"insufficientDataActions": llx.ArrayData(insuffActions, types.Resource("aws.sns.topic")),
-							"okActions":               llx.ArrayData(okActions, types.Resource("aws.sns.topic")),
-							"name":                    llx.StringDataPtr(alarm.AlarmName),
-							"actions":                 llx.ArrayData(actions, types.Resource("aws.sns.topic")),
-							"actionsEnabled":          llx.BoolDataPtr(alarm.ActionsEnabled),
+							"arn":                         llx.StringDataPtr(alarm.AlarmArn),
+							"metricName":                  llx.StringDataPtr(alarm.MetricName),
+							"metricNamespace":             llx.StringDataPtr(alarm.Namespace),
+							"region":                      llx.StringData(region),
+							"state":                       llx.StringData(string(alarm.StateValue)),
+							"stateReason":                 llx.StringDataPtr(alarm.StateReason),
+							"stateReasonData":             llx.StringDataPtr(alarm.StateReasonData),
+							"insufficientDataActions":     llx.ArrayData(insuffActions, types.Resource("aws.sns.topic")),
+							"okActions":                   llx.ArrayData(okActions, types.Resource("aws.sns.topic")),
+							"name":                        llx.StringDataPtr(alarm.AlarmName),
+							"actions":                     llx.ArrayData(actions, types.Resource("aws.sns.topic")),
+							"actionsEnabled":              llx.BoolDataPtr(alarm.ActionsEnabled),
+							"comparisonOperator":          llx.StringData(string(alarm.ComparisonOperator)),
+							"threshold":                   threshold,
+							"thresholdMetricId":           llx.StringDataPtr(alarm.ThresholdMetricId),
+							"evaluationPeriods":           llx.IntDataPtr(alarm.EvaluationPeriods),
+							"datapointsToAlarm":           llx.IntDataPtr(alarm.DatapointsToAlarm),
+							"period":                      llx.IntDataPtr(alarm.Period),
+							"statistic":                   llx.StringData(string(alarm.Statistic)),
+							"extendedStatistic":           llx.StringDataPtr(alarm.ExtendedStatistic),
+							"treatMissingData":            llx.StringDataPtr(alarm.TreatMissingData),
+							"unit":                        llx.StringData(string(alarm.Unit)),
+							"alarmDescription":            llx.StringDataPtr(alarm.AlarmDescription),
+							"dimensions":                  llx.ArrayData(dimensions, types.Resource("aws.cloudwatch.metricdimension")),
+							"alarmConfigurationUpdatedAt": llx.TimeDataPtr(alarm.AlarmConfigurationUpdatedTimestamp),
+							"stateUpdatedAt":              llx.TimeDataPtr(alarm.StateUpdatedTimestamp),
 						})
 					if err != nil {
 						return nil, err
@@ -628,7 +713,13 @@ func buildLogGroupResource(runtime *plugin.Runtime, region string, loggroup clou
 	args["arn"] = llx.StringDataPtr(loggroup.Arn)
 	args["name"] = llx.StringDataPtr(loggroup.LogGroupName)
 	args["region"] = llx.StringData(region)
-	args["retentionInDays"] = llx.IntDataDefault(loggroup.RetentionInDays, 0)
+	// CloudWatch signals "never expire" by returning no retention at all.
+	// Defaulting that to 0 made the strongest retention read as the weakest, so
+	// `retentionInDays >= 365` excluded exactly the groups that keep their logs
+	// forever. Null is the honest reading, and neverExpires is what a filter
+	// can assert on directly.
+	args["retentionInDays"] = llx.IntDataPtr(loggroup.RetentionInDays)
+	args["neverExpires"] = llx.BoolData(loggroup.RetentionInDays == nil)
 	args["createdAt"] = llx.TimeDataPtr(int64MillisToTime(loggroup.CreationTime))
 	args["dataProtectionStatus"] = llx.StringData(string(loggroup.DataProtectionStatus))
 	args["deletionProtectionEnabled"] = llx.BoolDataPtr(loggroup.DeletionProtectionEnabled)
@@ -670,17 +761,21 @@ func initAwsCloudwatchLoggroup(runtime *plugin.Runtime, args map[string]*llx.Raw
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformCloudwatchLoggroup); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 	if args["arn"] == nil {
 		return nil, nil, errors.New("arn required to fetch cloudwatch log group")
 	}
 
-	conn := runtime.Connection.(*connection.AwsConnection)
 	arnVal := args["arn"].Value.(string)
+
+	if cached := cachedByArn(runtime, ResourceAwsCloudwatchLoggroup, arnVal); cached != nil {
+		return args, cached, nil
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
 
 	// Targeted lookup: derive the region + group name from the ARN and fetch
 	// just this one log group (by name prefix) instead of describing every log
@@ -766,8 +861,12 @@ func initAwsCloudwatchLoggroup(runtime *plugin.Runtime, args map[string]*llx.Raw
 		}
 		args["name"] = llx.StringData(groupName)
 		args["region"] = llx.StringData(grpRegion)
-		args["retentionInDays"] = llx.IntData(-1)
-		args["storedBytes"] = llx.IntData(-1)
+		// Nothing about this group was read, so neither field has a value to
+		// report. -1 was a second sentinel for the same field, which arithmetic
+		// accepts as silently as 0 did.
+		args["retentionInDays"] = llx.NilData
+		args["neverExpires"] = llx.NilData
+		args["storedBytes"] = llx.NilData
 		args["dataProtectionStatus"] = llx.StringData("")
 		args["deletionProtectionEnabled"] = llx.BoolData(false)
 		args["logGroupClass"] = llx.StringData("")
@@ -815,6 +914,14 @@ func (a *mqlAwsCloudwatchLoggroup) tags() (map[string]any, error) {
 }
 
 func (a *mqlAwsCloudwatchLoggroup) kmsKey() (*mqlAwsKmsKey, error) {
+	// Return the key resolved at creation time when present; only mark the field
+	// null (with an explicit state) when no key was set — e.g. the cross-account
+	// placeholder path that never populates kmsKey. Unconditionally nulling here
+	// would drop the KMS key on log groups that actually have one.
+	if a.KmsKey.Data == nil {
+		a.KmsKey.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
 	return a.KmsKey.Data, nil
 }
 
@@ -908,11 +1015,59 @@ func (a *mqlAwsCloudwatchLoggroupMetricsfilter) id() (string, error) {
 	return a.Id.Data, nil
 }
 
+type mqlAwsCloudwatchMetricsalarmInternal struct {
+	lazyTags
+}
+
 func (a *mqlAwsCloudwatchMetricsalarm) id() (string, error) {
 	return a.Arn.Data, nil
 }
 
+func (a *mqlAwsCloudwatchMetricsalarm) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		alarmArn := a.Arn.Data
+
+		svc := conn.Cloudwatch(a.Region.Data)
+		resp, err := svc.ListTagsForResource(context.Background(), &cloudwatch.ListTagsForResourceInput{
+			ResourceARN: &alarmArn,
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.Tags,
+			func(t cloudwatchtypes.Tag) *string { return t.Key },
+			func(t cloudwatchtypes.Tag) *string { return t.Value }), nil
+	})
+}
+
+// cloudwatchMetricID builds the cache key for a CloudWatch metric. ListMetrics
+// returns one entry per (Namespace, MetricName, Dimensions) tuple, so the
+// dimensions are part of the metric's identity: without them every
+// AWS/EC2 CPUUtilization metric in a region collapses onto one resource and
+// each instance reports the first instance's dimensions and statistics.
+// Dimensions are sorted so the key is stable regardless of API ordering.
+func cloudwatchMetricID(region, namespace, name string, dimensions []cloudwatchtypes.Dimension) string {
+	pairs := make([]string, 0, len(dimensions))
+	for _, d := range dimensions {
+		pairs = append(pairs, convert.ToValue(d.Name)+"="+convert.ToValue(d.Value))
+	}
+	sort.Strings(pairs)
+
+	id := region + "/" + namespace + "/" + name
+	if len(pairs) > 0 {
+		id += "/" + strings.Join(pairs, ",")
+	}
+	return id
+}
+
 func (a *mqlAwsCloudwatchMetric) id() (string, error) {
+	// Dimensions are resources rather than raw values here, so the collection
+	// path passes an explicit "__id" built by cloudwatchMetricID (which wins
+	// over this method). This remains as the codegen-required fallback.
 	region := a.Region.Data
 	namespace := a.Namespace.Data
 	name := a.Name.Data
@@ -954,7 +1109,6 @@ func (a *mqlAwsCloudwatchLoggroup) subscriptionFilters() ([]any, error) {
 					"filterName":             llx.StringDataPtr(sf.FilterName),
 					"filterPattern":          llx.StringDataPtr(sf.FilterPattern),
 					"destinationArn":         llx.StringDataPtr(sf.DestinationArn),
-					"roleArn":                llx.StringDataPtr(sf.RoleArn),
 					"distribution":           llx.StringData(string(sf.Distribution)),
 					"applyOnTransformedLogs": llx.BoolData(sf.ApplyOnTransformedLogs),
 					"createdAt":              llx.TimeDataPtr(int64MillisToTime(sf.CreationTime)),
@@ -963,6 +1117,7 @@ func (a *mqlAwsCloudwatchLoggroup) subscriptionFilters() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
+			mqlSF.(*mqlAwsCloudwatchLoggroupSubscriptionfilter).cacheRoleArn = convert.ToValue(sf.RoleArn)
 			res = append(res, mqlSF)
 		}
 	}
@@ -974,7 +1129,7 @@ func (a *mqlAwsCloudwatchLoggroupSubscriptionfilter) id() (string, error) {
 }
 
 func (a *mqlAwsCloudwatchLoggroupSubscriptionfilter) iamRole() (*mqlAwsIamRole, error) {
-	arnVal := a.RoleArn.Data
+	arnVal := a.cacheRoleArn
 	if arnVal == "" {
 		a.IamRole.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -1062,6 +1217,7 @@ func (a *mqlAwsCloudwatchLoggroup) logStreams() ([]any, error) {
 		for _, ls := range page.LogStreams {
 			mqlLS, err := CreateResource(a.MqlRuntime, "aws.cloudwatch.loggroup.logstream",
 				map[string]*llx.RawData{
+					"__id":                llx.StringData(region + "/" + groupName + "/" + convert.ToValue(ls.LogStreamName)),
 					"arn":                 llx.StringDataPtr(ls.Arn),
 					"name":                llx.StringDataPtr(ls.LogStreamName),
 					"createdAt":           llx.TimeDataPtr(int64MillisToTime(ls.CreationTime)),
@@ -1079,8 +1235,17 @@ func (a *mqlAwsCloudwatchLoggroup) logStreams() ([]any, error) {
 	return res, nil
 }
 
+// id is the fallback identity for a log stream built without an explicit key.
+// It cannot qualify the stream by its log group, because a log stream resource
+// carries no reference to one and a cache field would be assigned only after
+// CreateResource has already computed the key. The lister therefore passes a
+// group-qualified __id directly, which is what actually keys these: Lambda
+// names every stream YYYY/MM/DD/[$LATEST]<hex>, so the same stream name in two
+// function log groups is routine, and region plus name alone merged them into
+// a single row.
 func (a *mqlAwsCloudwatchLoggroupLogstream) id() (string, error) {
-	// Use composite ID instead of ARN since ARN can be nil for some streams
+	// Use a composite ID instead of the ARN, since the ARN can be nil for some
+	// streams.
 	return a.Region.Data + "/" + a.Name.Data, nil
 }
 
@@ -1185,4 +1350,8 @@ func initAwsCloudwatchMetricsalarm(runtime *plugin.Runtime, args map[string]*llx
 		}
 	}
 	return nil, nil, errors.New("cloudwatch alarm does not exist")
+}
+
+type mqlAwsCloudwatchLoggroupSubscriptionfilterInternal struct {
+	cacheRoleArn string
 }

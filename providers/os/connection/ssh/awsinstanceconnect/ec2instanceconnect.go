@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2instanceconnect"
 	"github.com/cockroachdb/errors"
 	"github.com/sethvargo/go-password/password"
-	"go.mondoo.com/mql/v13/providers/os/connection/ssh/keypair"
+	"go.mondoo.com/mql/providers/os/connection/ssh/keypair"
 )
 
 type generator struct {
@@ -34,7 +34,10 @@ type InstanceCredentials struct {
 
 // Note: target can either be the IP (ipv4) address or the instance id of the machine
 func (c *generator) GenerateCredentials(target string, user string) (*InstanceCredentials, error) {
-	ctx := context.Background()
+	return c.GenerateCredentialsContext(context.Background(), target, user)
+}
+
+func (c *generator) GenerateCredentialsContext(ctx context.Context, target string, user string) (*InstanceCredentials, error) {
 	ec2srv := ec2.NewFromConfig(c.cfg)
 	input := &ec2.DescribeInstancesInput{}
 	ip := net.ParseIP(target)

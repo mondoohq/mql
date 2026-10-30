@@ -14,14 +14,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
 
+	"github.com/aws/smithy-go"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	mqlTypes "go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	mqlTypes "go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsCloudtrail) id() (string, error) {
@@ -51,9 +52,8 @@ func initAwsCloudtrailTrail(runtime *plugin.Runtime, args map[string]*llx.RawDat
 		return args, nil, nil
 	}
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformCloudtrailTrail); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 	if args["arn"] == nil && args["name"] == nil {
@@ -76,6 +76,10 @@ func initAwsCloudtrailTrail(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	}
 
 	log.Debug().Str("arn", arnVal).Str("name", nameVal).Msg("init cloudtrail trail")
+
+	if cached := cachedByArn(runtime, ResourceAwsCloudtrailTrail, arnVal); cached != nil {
+		return args, cached, nil
+	}
 
 	// Targeted lookup: when we have a real ARN, derive the home region from it
 	// (or use an explicit region arg) and fetch just this one trail instead of
@@ -102,7 +106,7 @@ func initAwsCloudtrailTrail(runtime *plugin.Runtime, args map[string]*llx.RawDat
 					}
 				}
 			} else if resp.Trail != nil {
-				trail, err := buildCloudtrailTrailResource(runtime, *resp.Trail)
+				trail, err := buildCloudtrailTrailResource(runtime, *resp.Trail, nil)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -137,7 +141,11 @@ func initAwsCloudtrailTrail(runtime *plugin.Runtime, args map[string]*llx.RawDat
 // resource and primes the trailCache so the status / event-selector lazy
 // accessors resolve against the same data. Shared by the list path and the
 // targeted init lookup.
-func buildCloudtrailTrailResource(runtime *plugin.Runtime, trail types.Trail) (*mqlAwsCloudtrailTrail, error) {
+//
+// tags, when non-nil, are the trail's tags already read for the discovery tag
+// filters; they are seeded so the field is not fetched again. A nil map leaves
+// the field lazy.
+func buildCloudtrailTrailResource(runtime *plugin.Runtime, trail types.Trail, tags map[string]string) (*mqlAwsCloudtrailTrail, error) {
 	args := map[string]*llx.RawData{
 		"arn":                        llx.StringDataPtr(trail.TrailARN),
 		"name":                       llx.StringDataPtr(trail.Name),
@@ -145,12 +153,13 @@ func buildCloudtrailTrailResource(runtime *plugin.Runtime, trail types.Trail) (*
 		"isOrganizationTrail":        llx.BoolDataPtr(trail.IsOrganizationTrail),
 		"logFileValidationEnabled":   llx.BoolDataPtr(trail.LogFileValidationEnabled),
 		"includeGlobalServiceEvents": llx.BoolDataPtr(trail.IncludeGlobalServiceEvents),
-		"snsTopicARN":                llx.StringDataPtr(trail.SnsTopicARN),
-		"cloudWatchLogsRoleArn":      llx.StringDataPtr(trail.CloudWatchLogsRoleArn),
-		"cloudWatchLogsLogGroupArn":  llx.StringDataPtr(trail.CloudWatchLogsLogGroupArn),
+		"recursiveLogging":           llx.BoolDataPtr(trail.RecursiveLogging),
 		"region":                     llx.StringDataPtr(trail.HomeRegion),
 		"hasInsightSelectors":        llx.BoolDataPtr(trail.HasInsightSelectors),
 		"hasCustomEventSelectors":    llx.BoolDataPtr(trail.HasCustomEventSelectors),
+	}
+	if tags != nil {
+		args["tags"] = llx.MapData(stringMapToAny(tags), mqlTypes.String)
 	}
 
 	mqlTrail, err := CreateResource(runtime, "aws.cloudtrail.trail", args)
@@ -193,13 +202,37 @@ func (a *mqlAwsCloudtrail) getTrails(conn *connection.AwsConnection) []*jobpool.
 				}
 				return nil, errors.Wrap(err, "could not gather aws cloudtrail trails")
 			}
+			// only include trail if this region is the home region for the trail
+			// we do this to avoid getting duped results from multiregion trails
+			trails := make([]types.Trail, 0, len(trailsResp.TrailList))
 			for _, trail := range trailsResp.TrailList {
-				// only include trail if this region is the home region for the trail
-				// we do this to avoid getting duped results from multiregion trails
-				if region != convert.ToValue(trail.HomeRegion) {
+				if region == convert.ToValue(trail.HomeRegion) {
+					trails = append(trails, trail)
+				}
+			}
+
+			// DescribeTrails returns no tags, so the discovery tag filters need
+			// ListTags per trail, and only when such a filter is set.
+			var tagsByArn map[string]map[string]string
+			if conn.Filters.General.HasTags() {
+				arns := make([]string, 0, len(trails))
+				for _, trail := range trails {
+					if trail.TrailARN != nil {
+						arns = append(arns, *trail.TrailARN)
+					}
+				}
+				tagsByArn = fetchTagsConcurrently(ctx, arns, func(ctx context.Context, trailArn string) (map[string]string, error) {
+					return getCloudtrailTags(ctx, svc, trailArn)
+				})
+			}
+
+			for _, trail := range trails {
+				tags, keep := trailTagsForFilters(conn.Filters.General, tagsByArn, convert.ToValue(trail.TrailARN))
+				if !keep {
+					log.Debug().Interface("trail", trail.TrailARN).Msg("excluding cloudtrail trail due to filters")
 					continue
 				}
-				mqlTrail, err := buildCloudtrailTrailResource(a.MqlRuntime, trail)
+				mqlTrail, err := buildCloudtrailTrailResource(a.MqlRuntime, trail, tags)
 				if err != nil {
 					return nil, err
 				}
@@ -213,6 +246,36 @@ func (a *mqlAwsCloudtrail) getTrails(conn *connection.AwsConnection) []*jobpool.
 	return tasks
 }
 
+// referencedResourceUnavailable reports an error that a retry will not change:
+// the referenced resource is gone, or this caller may not read it.
+//
+// A trail keeps naming a role, topic, bucket, log group or key after that target
+// is deleted, and a scan may legitimately lack permission to read it. Both are
+// permanent for this scan, so the reference is reported as null rather than
+// failing the field - which, because a field error renders as the value of the
+// enclosing collection, would cost the caller every trail.
+//
+// A throttle, a 5xx or a network failure is deliberately excluded. There the
+// target may well exist and simply could not be resolved right now, so reporting
+// null would assert an absence that was never established.
+func referencedResourceUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if Is400AccessDeniedError(err) {
+		return true
+	}
+	var apiErr smithy.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	switch apiErr.ErrorCode() {
+	case "NoSuchEntity", "NotFound", "NotFoundException", "ResourceNotFoundException":
+		return true
+	}
+	return false
+}
+
 func (a *mqlAwsCloudtrailTrail) snsTopic() (*mqlAwsSnsTopic, error) {
 	if a.trailCache.SnsTopicARN == nil || *a.trailCache.SnsTopicARN == "" {
 		a.SnsTopic.State = plugin.StateIsSet | plugin.StateIsNull
@@ -222,7 +285,13 @@ func (a *mqlAwsCloudtrailTrail) snsTopic() (*mqlAwsSnsTopic, error) {
 		map[string]*llx.RawData{"arn": llx.StringDataPtr(a.trailCache.SnsTopicARN)},
 	)
 	if err != nil {
-		return nil, err
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("topic", convert.ToValue(a.trailCache.SnsTopicARN)).
+			Msg("cannot resolve the trail's sns topic")
+		a.SnsTopic.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return mqlTopic.(*mqlAwsSnsTopic), nil
 }
@@ -236,7 +305,13 @@ func (a *mqlAwsCloudtrailTrail) cloudWatchLogsRole() (*mqlAwsIamRole, error) {
 		map[string]*llx.RawData{"arn": llx.StringDataPtr(a.trailCache.CloudWatchLogsRoleArn)},
 	)
 	if err != nil {
-		return nil, err
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("role", convert.ToValue(a.trailCache.CloudWatchLogsRoleArn)).
+			Msg("cannot resolve the trail's cloudwatch logs role")
+		a.CloudWatchLogsRole.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return mqlRole.(*mqlAwsIamRole), nil
 }
@@ -248,9 +323,12 @@ func (a *mqlAwsCloudtrailTrail) s3bucket() (*mqlAwsS3Bucket, error) {
 		)
 		if err == nil {
 			return mqlBucket.(*mqlAwsS3Bucket), nil
-		} else {
-			log.Error().Err(err).Msg("cannot get s3 bucket")
 		}
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("bucket", convert.ToValue(a.trailCache.S3BucketName)).
+			Msg("cannot resolve the trail's s3 bucket")
 	}
 	a.S3bucket.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
@@ -263,9 +341,12 @@ func (a *mqlAwsCloudtrailTrail) logGroup() (*mqlAwsCloudwatchLoggroup, error) {
 		)
 		if err == nil {
 			return mqlLoggroup.(*mqlAwsCloudwatchLoggroup), nil
-		} else {
-			log.Error().Err(err).Msg("cannot get log group")
 		}
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("logGroup", convert.ToValue(a.trailCache.CloudWatchLogsLogGroupArn)).
+			Msg("cannot resolve the trail's log group")
 	}
 	a.LogGroup.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
@@ -279,9 +360,12 @@ func (a *mqlAwsCloudtrailTrail) kmsKey() (*mqlAwsKmsKey, error) {
 		)
 		if err == nil {
 			return mqlKeyResource.(*mqlAwsKmsKey), nil
-		} else {
-			log.Error().Err(err).Msg("could not create KMS key resource")
 		}
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("key", convert.ToValue(a.trailCache.KmsKeyId)).
+			Msg("cannot resolve the trail's kms key")
 	}
 	a.KmsKey.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
@@ -316,14 +400,6 @@ func (a *mqlAwsCloudtrailTrail) getTrailStatus() (*cloudtrail.GetTrailStatusOutp
 	return trailstatus, nil
 }
 
-func (a *mqlAwsCloudtrailTrail) status() (any, error) {
-	trailstatus, err := a.getTrailStatus()
-	if err != nil {
-		return nil, err
-	}
-	return convert.JsonToDict(trailstatus)
-}
-
 func (a *mqlAwsCloudtrailTrail) isLogging() (bool, error) {
 	trailstatus, err := a.getTrailStatus()
 	if err != nil {
@@ -332,88 +408,48 @@ func (a *mqlAwsCloudtrailTrail) isLogging() (bool, error) {
 	return convert.ToValue(trailstatus.IsLogging), nil
 }
 
-func (a *mqlAwsCloudtrailTrail) eventSelectors() ([]any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.Cloudtrail(a.Region.Data)
-	ctx := context.Background()
-
-	arnValue := a.Arn.Data
-	// no pagination required
-	eventSelectorsOutput, err := svc.GetEventSelectors(ctx, &cloudtrail.GetEventSelectorsInput{
-		TrailName: &arnValue,
-	})
-	if err != nil {
-		// An organization trail's event selectors are only readable from the
-		// management account that owns it; a member-account scan gets access
-		// denied, so report no selectors instead of failing the query.
-		if Is400AccessDeniedError(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	// Basic event selectors
-	basicSelectors, err := convert.JsonToDictSlice(eventSelectorsOutput.EventSelectors)
-	if err != nil {
-		return nil, err
-	}
-
-	allSelectors := basicSelectors
-
-	// Advanced event selectors if they exist
-	if len(eventSelectorsOutput.AdvancedEventSelectors) > 0 {
-		advancedSelectors, err := convert.JsonToDictSlice(eventSelectorsOutput.AdvancedEventSelectors)
-		if err != nil {
-			return nil, err
-		}
-
-		// Basic plus advanced event selectors
-		allSelectors = append(basicSelectors, advancedSelectors...)
-	}
-
-	return allSelectors, nil
-}
-
-func (a *mqlAwsCloudtrailTrail) insightSelectors() ([]any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.Cloudtrail(a.Region.Data)
-	ctx := context.Background()
-
-	arnValue := a.Arn.Data
-	resp, err := svc.GetInsightSelectors(ctx, &cloudtrail.GetInsightSelectorsInput{
-		TrailName: &arnValue,
-	})
-	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return []any{}, nil
-		}
-		var insightErr *types.InsightNotEnabledException
-		if errors.As(err, &insightErr) {
-			return []any{}, nil
-		}
-		return nil, err
-	}
-
-	return convert.JsonToDictSlice(resp.InsightSelectors)
-}
-
 func (a *mqlAwsCloudtrailTrail) tags() (map[string]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	svc := conn.Cloudtrail(a.Region.Data)
-	ctx := context.Background()
-
-	arnValue := a.Arn.Data
-	resp, err := svc.ListTags(ctx, &cloudtrail.ListTagsInput{
-		ResourceIdList: []string{arnValue},
-	})
+	tags, err := getCloudtrailTags(context.Background(), svc, a.Arn.Data)
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return map[string]any{}, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
+	return stringMapToAny(tags), nil
+}
 
-	tags := map[string]any{}
+// trailTagsForFilters decides whether the discovery tag filters keep a trail,
+// from the tags read for it (tagsByArn, from ListTags). It also returns the
+// tags to seed on the resource: nil when there are no tag filters or its tags
+// could not be read, so that the field stays lazy. A trail whose tags could not
+// be read counts as untagged, as everywhere in the provider.
+func trailTagsForFilters(filters connection.GeneralDiscoveryFilters, tagsByArn map[string]map[string]string, trailArn string) (map[string]string, bool) {
+	if !filters.HasTags() {
+		return nil, true
+	}
+	tags, fetched := tagsByArn[trailArn]
+	if filters.IsFilteredOutByTags(tags) {
+		return nil, false
+	}
+	if !fetched {
+		return nil, true
+	}
+	return tags, true
+}
+
+// getCloudtrailTags reads a trail's tags. svc must be a client for the trail's
+// home region.
+func getCloudtrailTags(ctx context.Context, svc *cloudtrail.Client, trailArn string) (map[string]string, error) {
+	resp, err := svc.ListTags(ctx, &cloudtrail.ListTagsInput{
+		ResourceIdList: []string{trailArn},
+	})
+	if err != nil {
+		return nil, err
+	}
+	tags := map[string]string{}
 	for _, resourceTag := range resp.ResourceTagList {
 		for _, tag := range resourceTag.TagsList {
 			tags[convert.ToValue(tag.Key)] = convert.ToValue(tag.Value)
@@ -447,15 +483,124 @@ func (a *mqlAwsCloudtrailTrail) getEventSelectorsData() (*cloudtrail.GetEventSel
 	return resp, nil
 }
 
-// capturesAllManagementEvents reports whether any event selector logs
-// management events for both read and write events (readWriteType "All").
+// Advanced event selector field names, and the event category that carries
+// management events. CloudTrail documents these as case-sensitive, but they are
+// compared case-insensitively here so a hand-written trail definition that
+// differs in case is not read as selecting nothing.
+const (
+	advancedSelectorFieldEventCategory = "eventCategory"
+	advancedSelectorFieldReadOnly      = "readOnly"
+	eventCategoryManagement            = "Management"
+)
+
+// containsFold reports whether values holds s, ignoring case. The elements are
+// the runtime's []any form of a string list.
+func containsFold(values []any, s string) bool {
+	for _, v := range values {
+		if str, ok := v.(string); ok && strings.EqualFold(str, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// fieldSelectorConstrains reports whether a field selector places any condition
+// on its field. Every match kind counts: a NotEquals or a prefix match narrows
+// the selector just as an Equals does.
+func fieldSelectorConstrains(fs *mqlAwsCloudtrailTrailAdvancedEventSelectorFieldSelector) (bool, error) {
+	for _, get := range []func() *plugin.TValue[[]any]{
+		fs.GetEquals, fs.GetNotEquals,
+		fs.GetStartsWith, fs.GetNotStartsWith,
+		fs.GetEndsWith, fs.GetNotEndsWith,
+	} {
+		values := get()
+		if values.Error != nil {
+			return false, values.Error
+		}
+		if len(values.Data) > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// advancedSelectorsCaptureAllManagementEvents reports whether a set of advanced
+// event selectors logs management events for both reads and writes.
+//
+// An advanced selector says what it captures through its field selectors rather
+// than through a readWriteType enum: it selects management events with
+// `eventCategory Equals ["Management"]`, and it captures both directions unless
+// it also constrains `readOnly`, which narrows it to one of them.
+func advancedSelectorsCaptureAllManagementEvents(selectors []any) (bool, error) {
+	for _, raw := range selectors {
+		sel, ok := raw.(*mqlAwsCloudtrailTrailAdvancedEventSelector)
+		if !ok {
+			continue
+		}
+
+		fieldSelectors := sel.GetFieldSelectors()
+		if fieldSelectors.Error != nil {
+			return false, fieldSelectors.Error
+		}
+
+		selectsManagement := false
+		restrictsReadOnly := false
+
+		for _, rawFs := range fieldSelectors.Data {
+			fs, ok := rawFs.(*mqlAwsCloudtrailTrailAdvancedEventSelectorFieldSelector)
+			if !ok {
+				continue
+			}
+			field := fs.GetField()
+			if field.Error != nil {
+				return false, field.Error
+			}
+
+			switch {
+			case strings.EqualFold(field.Data, advancedSelectorFieldEventCategory):
+				equals := fs.GetEquals()
+				if equals.Error != nil {
+					return false, equals.Error
+				}
+				if containsFold(equals.Data, eventCategoryManagement) {
+					selectsManagement = true
+				}
+			case strings.EqualFold(field.Data, advancedSelectorFieldReadOnly):
+				constrains, err := fieldSelectorConstrains(fs)
+				if err != nil {
+					return false, err
+				}
+				restrictsReadOnly = restrictsReadOnly || constrains
+			}
+		}
+
+		if selectsManagement && !restrictsReadOnly {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// capturesAllManagementEvents reports whether the trail logs management events
+// for both reads and writes.
+//
+// A trail configures that through one of two mutually exclusive mechanisms, and
+// GetEventSelectors returns whichever one the trail uses. Classic event
+// selectors say it with includeManagementEvents plus readWriteType "All";
+// advanced event selectors say it with field selectors, and are what
+// CloudFormation and Terraform produce. Reading only the classic ones reported
+// false for every trail configured the modern way, which is a false positive on
+// a compliant trail.
 func (a *mqlAwsCloudtrailTrail) capturesAllManagementEvents() (bool, error) {
 	entries := a.GetEventSelectorEntries()
 	if entries.Error != nil {
 		return false, entries.Error
 	}
 	for _, e := range entries.Data {
-		sel := e.(*mqlAwsCloudtrailTrailEventSelector)
+		sel, ok := e.(*mqlAwsCloudtrailTrailEventSelector)
+		if !ok {
+			continue
+		}
 		mgmt := sel.GetIncludeManagementEvents()
 		if mgmt.Error != nil {
 			return false, mgmt.Error
@@ -468,7 +613,12 @@ func (a *mqlAwsCloudtrailTrail) capturesAllManagementEvents() (bool, error) {
 			return true, nil
 		}
 	}
-	return false, nil
+
+	advanced := a.GetAdvancedEventSelectors()
+	if advanced.Error != nil {
+		return false, advanced.Error
+	}
+	return advancedSelectorsCaptureAllManagementEvents(advanced.Data)
 }
 
 func (a *mqlAwsCloudtrailTrail) eventSelectorEntries() ([]any, error) {
@@ -602,28 +752,12 @@ func (a *mqlAwsCloudtrailTrail) insightSelectorEntries() ([]any, error) {
 	return res, nil
 }
 
-func (a *mqlAwsCloudtrailTrail) latestDeliveryTime() (*time.Time, error) {
-	return a.latestDeliveredAt()
-}
-
-func (a *mqlAwsCloudtrailTrail) latestNotificationTime() (*time.Time, error) {
-	return a.latestNotifiedAt()
-}
-
-func (a *mqlAwsCloudtrailTrail) latestCloudWatchLogsDeliveryTime() (*time.Time, error) {
-	return a.latestCloudWatchLogsDeliveredAt()
-}
-
 func (a *mqlAwsCloudtrailTrail) latestDeliveryError() (string, error) {
 	trailstatus, err := a.getTrailStatus()
 	if err != nil {
 		return "", err
 	}
 	return convert.ToValue(trailstatus.LatestDeliveryError), nil
-}
-
-func (a *mqlAwsCloudtrailTrail) latestDigestDeliveryTime() (*time.Time, error) {
-	return a.latestDigestDeliveredAt()
 }
 
 func (a *mqlAwsCloudtrailTrail) latestDigestDeliveredAt() (*time.Time, error) {
@@ -962,7 +1096,7 @@ func (a *mqlAwsCloudtrailEventDataStore) tags() (map[string]any, error) {
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return nil, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
@@ -998,7 +1132,13 @@ func (a *mqlAwsCloudtrailEventDataStore) federationRole() (*mqlAwsIamRole, error
 			"arn": llx.StringDataPtr(detail.FederationRoleArn),
 		})
 	if err != nil {
-		return nil, err
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("role", convert.ToValue(detail.FederationRoleArn)).
+			Msg("cannot resolve the event data store's federation role")
+		a.FederationRole.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return mqlRole.(*mqlAwsIamRole), nil
 }
@@ -1155,7 +1295,7 @@ func (a *mqlAwsCloudtrailChannel) tags() (map[string]any, error) {
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return nil, nil
+			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}

@@ -1,0 +1,6 @@
+BootCurrent: 0001
+Timeout: 0 seconds
+BootOrder: 0002,0000,0001
+Boot0000* UiApp	FvVol(7cb8bdc9-f8eb-4f34-aaea-3ee4af6516a1)/FvFile(462caa21-7614-4503-836e-8ab6f4662331)
+Boot0001* UEFI Amazon Elastic Block Store vol08940cda52f618b1f 1	PciRoot(0x0)/Pci(0x4,0x0)/NVMe(0x1,00-00-00-00-00-00-00-00)N.....YM....R,Y.
+Boot0002* ubuntu	HD(15,GPT,84ebd237-bc9b-448d-a451-5258bd6f6b99,0x2800,0x35000)/File(\EFI\ubuntu\shimx64.efi)

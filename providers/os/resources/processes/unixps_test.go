@@ -5,15 +5,18 @@ package processes_test
 
 import (
 	"bufio"
+	"errors"
+	"io"
 	"os"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
-	"go.mondoo.com/mql/v13/providers/os/resources/processes"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/resources/processes"
 )
 
 func TestLinuxPSProcessParser(t *testing.T) {
@@ -243,4 +246,92 @@ func TestParseLinuxFind(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), pid)
 	require.Equal(t, int64(18472), inode)
+}
+
+// testdata/aix73.toml is ps with the state column on AIX 7.3 TL4 SP2, cut to
+// its first 28 processes, plus a zombie, whose other columns AIX leaves blank.
+func TestAixProcessManagerState(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "aix", Family: []string{"unix", "os"}},
+	}, mock.WithPath("./testdata/aix73.toml"))
+	require.NoError(t, err)
+
+	pm, err := processes.ResolveManager(conn)
+	require.NoError(t, err)
+	procs, err := pm.List()
+	require.NoError(t, err)
+	assert.Len(t, procs, 28)
+
+	var init *processes.OSProcess
+	for _, p := range procs {
+		if p.Pid == 1 {
+			init = p
+		}
+	}
+	require.NotNil(t, init)
+	assert.Equal(t, "/etc/init", init.Command)
+	assert.Equal(t, "A (active)", init.State)
+}
+
+func TestAixPSProcessParserKeepsCommandsNamedDefunct(t *testing.T) {
+	input := "     PID  %CPU  %MEM   VSZ     TT        TIME   UID S COMMAND\n" +
+		" 1638710                             00:00:00       Z <defunct>\n" +
+		" 4242424   0.0   0.0   512      -    00:00:00     0 A /usr/local/bin/cleanup_defunct_users.sh\n"
+	procs, err := processes.ParseAixPsResult(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, procs, 1)
+	assert.Equal(t, "/usr/local/bin/cleanup_defunct_users.sh", procs[0].Command)
+}
+
+// ps prints the whole command line of every process. Any user can start a
+// process whose arguments are longer than 64 KiB; the processes listed
+// after it must still be reported.
+func TestParseLinuxPsResultKeepsProcessesAfterLongCommand(t *testing.T) {
+	out := "  PID %CPU %MEM    VSZ   RSS TT       STAT STIME     TIME   UID COMMAND\n" +
+		"    1 0.0  0.1  12124  3232  ?        Ss   07:48   00:00:00     0 /sbin/init\n" +
+		" 4100 0.0  0.0   5584  1024  ?        S    07:50   00:00:00  1000 sleep " + strings.Repeat("a", 70000) + "\n" +
+		" 4101 0.0  0.0   5584  1024  ?        S    07:50   00:00:00  1000 /tmp/miner --pool example\n"
+
+	m, err := processes.ParseLinuxPsResult(strings.NewReader(out))
+	require.NoError(t, err)
+	require.Len(t, m, 3)
+	assert.Equal(t, int64(4101), m[2].Pid)
+	assert.Equal(t, "/tmp/miner --pool example", m[2].Command)
+}
+
+func TestParseUnixPsResultKeepsProcessesAfterLongCommand(t *testing.T) {
+	out := "  PID  %CPU %MEM   VSZ  RSS TTY   STAT     TIME  UID COMMAND\n" +
+		"    1   0.0  0.2 10056 1052 -     ILs   0:00.01    0 /sbin/init --\n" +
+		"  900   0.0  0.2 10056 1052 -     S     0:00.01 1001 sleep " + strings.Repeat("a", 70000) + "\n" +
+		"  901   0.0  0.2 10056 1052 -     S     0:00.01 1001 /tmp/miner\n"
+
+	m, err := processes.ParseUnixPsResult(strings.NewReader(out))
+	require.NoError(t, err)
+	require.Len(t, m, 3)
+	assert.Equal(t, int64(901), m[2].Pid)
+}
+
+func TestParseAixPsResultKeepsProcessesAfterLongCommand(t *testing.T) {
+	out := "     PID  %CPU  %MEM   VSZ     TT        TIME UID COMMAND\n" +
+		"       1   0.0   0.0   792      -    00:00:00   0 /etc/init\n" +
+		"    9000   0.0   0.0   792      -    00:00:00 201 sleep " + strings.Repeat("a", 70000) + "\n" +
+		"    9001   0.0   0.0   792      -    00:00:00 201 /tmp/miner\n"
+
+	m, err := processes.ParseAixPsResult(strings.NewReader(out))
+	require.NoError(t, err)
+	require.Len(t, m, 3)
+	assert.Equal(t, int64(9001), m[2].Pid)
+}
+
+// A ps output that cannot be read to the end must fail the list rather than
+// report the processes read so far as all of them.
+func TestParsePsResultReturnsReadError(t *testing.T) {
+	head := "  PID %CPU %MEM    VSZ   RSS TT       STAT STIME     TIME   UID COMMAND\n" +
+		"    1 0.0  0.1  12124  3232  ?        Ss   07:48   00:00:00     0 /sbin/init\n"
+	_, err := processes.ParseLinuxPsResult(io.MultiReader(strings.NewReader(head), iotest.ErrReader(errors.New("boom"))))
+	assert.Error(t, err)
+	_, err = processes.ParseUnixPsResult(io.MultiReader(strings.NewReader(head), iotest.ErrReader(errors.New("boom"))))
+	assert.Error(t, err)
+	_, err = processes.ParseAixPsResult(io.MultiReader(strings.NewReader(head), iotest.ErrReader(errors.New("boom"))))
+	assert.Error(t, err)
 }

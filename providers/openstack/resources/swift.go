@@ -13,8 +13,8 @@ import (
 	"github.com/gophercloud/gophercloud/v2/openstack/objectstorage/v1/accounts"
 	"github.com/gophercloud/gophercloud/v2/openstack/objectstorage/v1/containers"
 	"github.com/gophercloud/gophercloud/v2/openstack/objectstorage/v1/objects"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // ---- openstack.objectstorage.account ----
@@ -250,12 +250,86 @@ func (r *mqlOpenstackObjectstorageContainer) historyLocation() (string, error) {
 	return h.HistoryLocation, nil
 }
 
+func (r *mqlOpenstackObjectstorageContainer) versioningEnabled() (bool, error) {
+	h, _, err := r.fetchHeader()
+	if err != nil || h == nil {
+		return false, err
+	}
+	return h.VersionsEnabled, nil
+}
+
+func (r *mqlOpenstackObjectstorageContainer) syncTo() (string, error) {
+	h, _, err := r.fetchHeader()
+	if err != nil || h == nil {
+		return "", err
+	}
+	return h.SyncTo, nil
+}
+
+// hasSyncKey reports whether a container-sync secret is set. The key itself is
+// the shared secret that authorizes the peer cluster to write into this
+// container, so only its presence is exposed, never its value.
+func (r *mqlOpenstackObjectstorageContainer) hasSyncKey() (bool, error) {
+	h, _, err := r.fetchHeader()
+	if err != nil || h == nil {
+		return false, err
+	}
+	return strings.TrimSpace(h.SyncKey) != "", nil
+}
+
+// hasTempUrlKey reports whether a temporary-URL signing key is set. Anyone
+// holding the key can mint URLs that read (or write) objects without
+// authenticating at all, so only its presence is exposed, never its value.
+func (r *mqlOpenstackObjectstorageContainer) hasTempUrlKey() (bool, error) {
+	h, _, err := r.fetchHeader()
+	if err != nil || h == nil {
+		return false, err
+	}
+	return strings.TrimSpace(h.TempURLKey) != "", nil
+}
+
+// hasTempUrlKey2 reports whether the second temporary-URL signing key slot is
+// set. Swift honours signatures from either slot, so a stale second key keeps
+// minting valid URLs after the first is rotated. Presence only.
+func (r *mqlOpenstackObjectstorageContainer) hasTempUrlKey2() (bool, error) {
+	h, _, err := r.fetchHeader()
+	if err != nil || h == nil {
+		return false, err
+	}
+	return strings.TrimSpace(h.TempURLKey2) != "", nil
+}
+
+// secretContainerMetaKeys are the container metadata keys whose value is
+// credential material. Swift stores the temporary-URL signing keys as ordinary
+// X-Container-Meta-* headers, so they arrive in the metadata map alongside
+// user-set labels. Anyone holding one can mint pre-signed URLs that read or
+// write objects with no authentication, so the values are dropped from the
+// metadata map; hasTempUrlKey and hasTempUrlKey2 report their presence instead.
+// Keys are compared lower-cased because net/http canonicalizes header casing.
+var secretContainerMetaKeys = map[string]struct{}{
+	"temp-url-key":   {},
+	"temp-url-key-2": {},
+}
+
+// redactContainerMetadata copies the metadata map without the entries whose
+// value is credential material.
+func redactContainerMetadata(meta map[string]string) map[string]string {
+	out := make(map[string]string, len(meta))
+	for k, v := range meta {
+		if _, secret := secretContainerMetaKeys[strings.ToLower(k)]; secret {
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
 func (r *mqlOpenstackObjectstorageContainer) metadata() (map[string]any, error) {
 	_, meta, err := r.fetchHeader()
 	if err != nil {
 		return map[string]any{}, err
 	}
-	return stringMap(meta), nil
+	return stringMap(redactContainerMetadata(meta)), nil
 }
 
 func (r *mqlOpenstackObjectstorageContainer) public() (bool, error) {

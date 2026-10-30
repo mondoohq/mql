@@ -13,6 +13,13 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// Compiled once: the header pattern is matched against every line of ipconfig
+// output, and the suffix pattern against every address it reports.
+var (
+	interfaceHeaderRegex = regexp.MustCompile(`^(Ethernet|Wireless|Bluetooth|VPN|Local Area Connection|Wi-Fi|Cellular|Tunnel) adapter (.+):$`)
+	ipSuffixRegex        = regexp.MustCompile(`\(.*?\)$`)
+)
+
 // detectWindowsInterfaces detects network interfaces on Windows.
 func (n *neti) detectWindowsInterfaces() ([]Interface, error) {
 	var errs []error
@@ -65,8 +72,7 @@ func (n *neti) getWindowsGetNetIPInterfaceCmdInterfaces() (interfaces []Interfac
 		return nil, err
 	}
 
-	var netInterfaces []map[string]any
-	err = json.Unmarshal([]byte(output), &netInterfaces)
+	netInterfaces, err := unmarshalPowershellObjects(output)
 	if err != nil {
 		return nil, err
 	}
@@ -74,8 +80,19 @@ func (n *neti) getWindowsGetNetIPInterfaceCmdInterfaces() (interfaces []Interfac
 	log.Trace().Interface("output", netInterfaces).Msg("os.network.interface> net interface cmd")
 
 	for _, adapter := range netInterfaces {
+		name, ok := adapter["InterfaceAlias"].(string)
+		if !ok {
+			// The alias is the only key we have for an adapter, so one without
+			// it cannot be represented. Log the skip so a shorter list is
+			// attributable instead of silent.
+			log.Warn().
+				Interface("interface_index", adapter["InterfaceIndex"]).
+				Str("detector", "cmd.Get-NetIPInterface").
+				Msg("os.network.interface> skipping adapter without an interface alias")
+			continue
+		}
 		iinterface := Interface{
-			Name: adapter["InterfaceAlias"].(string),
+			Name: name,
 		}
 
 		// Get MAC address
@@ -121,10 +138,11 @@ func (n *neti) getWindowsGetNetIPInterfaceCmdInterfaces() (interfaces []Interfac
 
 		// Get IP Addresses (v4 or v6) in JSON format
 		if data, ok := adapter["IPAddresses"].(string); ok {
-			var ipaddresses []map[string]any
-			err = json.Unmarshal([]byte(data), &ipaddresses)
-			if err != nil {
-				log.Debug().Err(err).
+			// This error stays local: one undecodable address list must not
+			// discard every adapter the detector already parsed.
+			ipaddresses, ipErr := unmarshalPowershellObjects(data)
+			if ipErr != nil {
+				log.Debug().Err(ipErr).
 					Str("data", data).
 					Str("detector", "cmd.Get-NetIPInterface").
 					Msg("os.network.interface> unable to detect IPAddresses")
@@ -136,6 +154,7 @@ func (n *neti) getWindowsGetNetIPInterfaceCmdInterfaces() (interfaces []Interfac
 			)
 			for _, ipMap := range ipaddresses {
 				if ip, ok := ipMap["IPAddress"].(string); ok {
+					ip = cleanIPString(ip)
 					// Get the prefix length
 					if prefixLength, ok := ipMap["PrefixLength"].(float64); ok {
 						ipaddress, valid = NewIPWithPrefixLength(ip, int(prefixLength))
@@ -164,10 +183,9 @@ func (n *neti) getWindowsIpconfigCmdInterfaces() (interfaces []Interface, err er
 	}
 
 	var (
-		ips                  []IPAddress
-		gateways             []string
-		currentInterface     *Interface
-		interfaceHeaderRegex = regexp.MustCompile(`^(Ethernet|Wireless|Bluetooth|VPN|Local Area Connection|Wi-Fi|Cellular|Tunnel) adapter (.+):$`)
+		ips              []IPAddress
+		gateways         []string
+		currentInterface *Interface
 	)
 
 	scanner := bufio.NewScanner(strings.NewReader(string(output)))
@@ -237,9 +255,38 @@ func lastField(fields []string) string {
 	return ""
 }
 
+// cleanIPString strips the annotations Windows appends to an address: the
+// `(Preferred)` suffix `ipconfig` prints, and the `%N` zone index
+// `Get-NetIPAddress` reports on link-local addresses. Neither belongs to the
+// address and `net.ParseIP` rejects both, which is why the BSD and Darwin
+// detectors strip the zone the same way.
 func cleanIPString(ip string) string {
-	re := regexp.MustCompile(`\(.*?\)$`)
-	return strings.TrimSpace(re.ReplaceAllString(ip, ""))
+	ip = strings.TrimSpace(ipSuffixRegex.ReplaceAllString(ip, ""))
+	if pct := strings.Index(ip, "%"); pct != -1 {
+		ip = ip[:pct]
+	}
+	return ip
+}
+
+// unmarshalPowershellObjects decodes a `ConvertTo-Json` payload into a list of
+// objects. PowerShell emits a bare object rather than a single-element array
+// whenever the pipeline produced exactly one item, so both shapes have to be
+// accepted: a host with one network interface, or an interface with one IP
+// address, otherwise decodes as nothing at all.
+func unmarshalPowershellObjects(data string) ([]map[string]any, error) {
+	var list []map[string]any
+	listErr := json.Unmarshal([]byte(data), &list)
+	if listErr == nil {
+		return list, nil
+	}
+
+	var single map[string]any
+	if err := json.Unmarshal([]byte(data), &single); err == nil {
+		return []map[string]any{single}, nil
+	}
+
+	// Report the list error, it describes the shape we expect.
+	return nil, listErr
 }
 
 func updateWindowsNetInterface(currentInterface *Interface, ips []IPAddress, gateways []string) {

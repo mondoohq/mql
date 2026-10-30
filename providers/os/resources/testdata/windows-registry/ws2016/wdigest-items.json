@@ -1,0 +1,1 @@
+[{"key":"Debuglevel","value":{"kind":4,"data":0}},{"key":"Negotiate","value":{"kind":4,"data":0}},{"key":"UTF8HTTP","value":{"kind":4,"data":1}},{"key":"UTF8SASL","value":{"kind":4,"data":1}},{"key":"DigestEncryptionAlgorithms","value":{"kind":1,"data":"3des,rc4"}}]

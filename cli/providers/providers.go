@@ -9,19 +9,20 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"go.mondoo.com/mql/v13/cli/components"
-	"go.mondoo.com/mql/v13/cli/config"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/recording"
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/piped"
+	"go.mondoo.com/mql/cli/components"
+	"go.mondoo.com/mql/cli/config"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/recording"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/piped"
 	"go.mondoo.com/ranger-rpc/status"
 )
 
@@ -40,9 +41,16 @@ func AttachCLIs(rootCmd *cobra.Command, commands ...*Command) error {
 		return err
 	}
 
-	connectorName, autoUpdate := detectConnectorName(os.Args, rootCmd, commands, existing)
-	if connectorName != "" {
-		if _, err := providers.EnsureProvider(providers.ProviderLookup{ConnName: connectorName}, autoUpdate, existing); err != nil {
+	pre := detectConnectorName(os.Args, rootCmd, commands, existing)
+	if pre.ConnectorName != "" {
+		if _, err := providers.EnsureProvider(providers.ProviderLookup{ConnName: pre.ConnectorName}, pre.AutoUpdate, existing); err != nil {
+			return err
+		}
+		// A meta-target directs its connections through --discover, so the
+		// providers it needs follow from that value and are fetched here:
+		// before cobra, before the tree is read, and before any child asset is
+		// connected (ADR 045).
+		if err := ensureTargetDiscoveries(pre, existing); err != nil {
 			return err
 		}
 	}
@@ -55,30 +63,70 @@ func AttachCLIs(rootCmd *cobra.Command, commands ...*Command) error {
 	return nil
 }
 
-func detectConnectorName(args []string, rootCmd *cobra.Command, commands []*Command, existing providers.Providers) (string, bool) {
-	autoUpdate := true
+// providersURLWarning keeps the deprecation notice to once per process. The
+// setting is rolled out by configuration management, so it is set on every
+// machine in a fleet and read on every invocation -- repeating it per call site
+// would put a line in the output of every scan, which is how a warning stops
+// being read. It is not silenced, because the whole reason this setting is
+// honoured again is that its removal was silent.
+var providersURLWarning sync.Once
 
+func warnProvidersURLDeprecated(providersURL string) {
+	providersURLWarning.Do(func() {
+		log.Warn().Msgf("providers_url is deprecated, please use updates_url: %s",
+			strings.TrimSuffix(providersURL, "/providers"))
+	})
+}
+
+// RegistryURL returns the base URL providers are downloaded from, or an empty
+// string when nothing is configured and the default registry applies. It is
+// exported so `mql status` reports the registry that is actually in effect
+// rather than recomputing the precedence and disagreeing with it.
+//
+// providers_url was removed in v14 in favour of updates_url, but a configuration
+// carrying it is not an error a user sees: viper does not report keys nothing
+// reads, so an operator who mirrors providers internally would have kept a
+// config that looks right while quietly downloading from Mondoo's bucket
+// instead -- which for an air-gapped or policy-restricted network is a reach for
+// the public internet, not merely a stale setting. It is honored again, with the
+// warning it had before it was removed.
+//
+// It is used verbatim, exactly as it was before removal. The suffix is stripped
+// only to word the advice: providers_url names the registry itself, while
+// updates_url names the host the registry hangs off, so the migration drops the
+// "/providers" the code appends back. Stripping it into updates_url here instead
+// would also move binary updates onto that host, which a provider mirror has no
+// reason to serve -- and a failed update check only warns, so that would be
+// silent too.
+func RegistryURL() string {
+	// Bound here rather than in each app's root command, so MONDOO_PROVIDERS_URL
+	// behaves the same for every binary reading this.
+	_ = viper.BindEnv("providers_url")
+
+	if providersURL := strings.TrimSpace(viper.GetString("providers_url")); providersURL != "" {
+		warnProvidersURLDeprecated(providersURL)
+		return providersURL
+	}
+
+	if updatesURL := strings.TrimSpace(viper.GetString("updates_url")); updatesURL != "" {
+		return strings.TrimSuffix(updatesURL, "/") + "/providers"
+	}
+
+	return ""
+}
+
+func detectConnectorName(args []string, rootCmd *cobra.Command, commands []*Command, existing providers.Providers) cliPreflight {
 	config.InitViperConfig()
 
 	// Determine the providers URL:
-	// 1. If providers_url is explicitly set, use it (deprecated)
-	// 2. Otherwise, if updates_url is set, use updates_url + "/providers"
-	// 3. Otherwise, use the default
-	if viper.IsSet("providers_url") {
-		if providersURL := viper.GetString("providers_url"); providersURL != "" {
-			updatesURL := strings.TrimSuffix(providersURL, "/providers")
-			log.Warn().Msgf("providers_url is deprecated, please use updates_url: %s", updatesURL)
-			providers.SetProviderRegistry(providers.NewMondooProviderRegistry(providers.WithBaseURL(providersURL)))
-		}
-	} else if viper.IsSet("updates_url") {
-		if updatesURL := viper.GetString("updates_url"); updatesURL != "" {
-			providers.SetProviderRegistry(providers.NewMondooProviderRegistry(providers.WithBaseURL(updatesURL + "/providers")))
-		}
+	// 1. providers_url, if set -- deprecated, and honored for compatibility
+	// 2. updates_url + "/providers"
+	// 3. the default registry
+	if registryURL := RegistryURL(); registryURL != "" {
+		providers.SetProviderRegistry(providers.NewMondooProviderRegistry(providers.WithBaseURL(registryURL)))
 	}
 
-	if viper.IsSet("auto_update") {
-		autoUpdate = viper.GetBool("auto_update")
-	}
+	autoUpdate := config.GetAutoUpdate()
 
 	flags := pflag.NewFlagSet("set", pflag.ContinueOnError)
 	flags.ParseErrorsAllowlist.UnknownFlags = true
@@ -123,9 +171,19 @@ func detectConnectorName(args []string, rootCmd *cobra.Command, commands []*Comm
 
 	autoUpdate, _ = flags.GetBool("auto-update")
 
+	// Read --discover here, where it is already parsed. Changed() is what
+	// separates an unset flag from `--discover ""`: GetStringSlice returns an
+	// empty slice for both, and they mean different things (ADR 045).
+	discover, _ := flags.GetStringSlice("discover")
+	pre := cliPreflight{
+		AutoUpdate:  autoUpdate,
+		Discover:    discover,
+		DiscoverSet: flags.Changed("discover"),
+	}
+
 	parsedArgs := flags.Args()
 	if len(parsedArgs) <= 1 {
-		return "", autoUpdate
+		return pre
 	}
 
 	commandFound := false
@@ -136,18 +194,19 @@ func detectConnectorName(args []string, rootCmd *cobra.Command, commands []*Comm
 		}
 	}
 	if !commandFound {
-		return "", autoUpdate
+		return pre
 	}
 
 	// since we have a known command, we can now expect the connector to be
 	// local by default if nothing else is set
 	if len(parsedArgs) == 2 {
-		return "local", autoUpdate
+		pre.ConnectorName = "local"
+		return pre
 	}
 
-	connector := parsedArgs[2]
+	pre.ConnectorName = parsedArgs[2]
 
-	return connector, autoUpdate
+	return pre
 }
 
 func attachProviders(existing providers.Providers, commands []*Command) {
@@ -164,16 +223,10 @@ func attachProvidersToCmd(existing providers.Providers, cmd *Command) {
 
 			attach := true
 			if len(cmd.SupportedConnectors) > 0 {
-				attach = false // only attach if the connector is in the list
-				for k := range cmd.SupportedConnectors {
-					if cmd.SupportedConnectors[k] == conn.Name {
-						attach = true
-						break
-					}
-				}
+				attach = slices.Contains(cmd.SupportedConnectors, conn.Name)
 			}
 			if attach {
-				attachConnectorCmd(provider.Provider, &conn, cmd)
+				attachConnectorCmd(provider.Provider, &conn, cmd, existing)
 			}
 		}
 	}
@@ -183,14 +236,14 @@ func attachProvidersToCmd(existing providers.Providers, cmd *Command) {
 		for i := range p.Connectors {
 			c := p.Connectors[i]
 			if c.Name == "local" {
-				setDefaultConnector(p.Provider, &c, cmd)
+				setDefaultConnector(p.Provider, &c, cmd, existing)
 				break
 			}
 		}
 	}
 }
 
-func setDefaultConnector(provider *plugin.Provider, connector *plugin.Connector, cmd *Command) {
+func setDefaultConnector(provider *plugin.Provider, connector *plugin.Connector, cmd *Command, existing providers.Providers) {
 	cmd.Command.Run = func(cmd *cobra.Command, args []string) {
 		if len(args) > 0 {
 			log.Error().Msg("provider " + args[0] + " does not exist")
@@ -201,10 +254,10 @@ func setDefaultConnector(provider *plugin.Provider, connector *plugin.Connector,
 		log.Info().Msg("Connecting to your local system. To learn how to scan other platforms, use the --help flag.")
 	}
 
-	setConnector(provider, connector, cmd.Run, cmd.Command)
+	setConnector(provider, connector, cmd.Run, cmd.Command, existing)
 }
 
-func attachConnectorCmd(provider *plugin.Provider, connector *plugin.Connector, cmd *Command) {
+func attachConnectorCmd(provider *plugin.Provider, connector *plugin.Connector, cmd *Command, existing providers.Providers) {
 	res := &cobra.Command{
 		Use:     connector.Use,
 		Short:   cmd.Action + connector.Short,
@@ -235,12 +288,15 @@ func attachConnectorCmd(provider *plugin.Provider, connector *plugin.Connector, 
 	})
 
 	cmd.Command.AddCommand(res)
-	setConnector(provider, connector, cmd.Run, res)
+	setConnector(provider, connector, cmd.Run, res, existing)
 }
 
 func genBuiltinFlags(discoveries ...string) []plugin.Flag {
 	supportedDiscoveries := append([]string{"all", "auto"}, discoveries...)
 	slices.Sort(supportedDiscoveries)
+	// Providers that declare all and auto themselves would otherwise list
+	// them twice ("all, all, auto, auto, ...").
+	supportedDiscoveries = slices.Compact(supportedDiscoveries)
 
 	return []plugin.Flag{
 		// flags for providers:
@@ -432,11 +488,11 @@ func getFlagValueFromCobra(flag plugin.Flag, cmd *cobra.Command) *llx.Primitive 
 	return nil
 }
 
-func setConnector(provider *plugin.Provider, connector *plugin.Connector, run func(*cobra.Command, *providers.Runtime, *plugin.ParseCLIRes), cmd *cobra.Command) {
+func setConnector(provider *plugin.Provider, connector *plugin.Connector, run func(*cobra.Command, *providers.Runtime, *plugin.ParseCLIRes), cmd *cobra.Command, existing providers.Providers) {
 	oldRun := cmd.Run
 	oldPreRun := cmd.PreRun
 
-	builtinFlags := genBuiltinFlags(connector.Discovery...)
+	builtinFlags := genBuiltinFlags(discoveriesForHelp(connector, existing)...)
 	allFlags := append(connector.Flags, builtinFlags...)
 
 	cmd.PreRun = func(cc *cobra.Command, args []string) {
@@ -516,12 +572,13 @@ func setConnector(provider *plugin.Provider, connector *plugin.Connector, run fu
 				continue
 			}
 
-			if flag.ConfigEntry == "-" {
+			switch flag.ConfigEntry {
+			case "-":
 				// Opted out of config entirely — read from cobra only.
 				if v := getFlagValueFromCobra(flag, cmd); v != nil {
 					flagVals[flag.Long] = v
 				}
-			} else if flag.ConfigEntry == "" {
+			case "":
 				// No explicit config mapping. Use cobra when the user
 				// passed the flag on the CLI; otherwise check for a
 				// MONDOO_<FLAG> env var directly (not through viper,
@@ -539,7 +596,7 @@ func setConnector(provider *plugin.Provider, connector *plugin.Connector, run fu
 						flagVals[flag.Long] = v
 					}
 				}
-			} else {
+			default:
 				if v := getFlagValueFromConfig(flag); v != nil {
 					flagVals[flag.Long] = v
 				}
@@ -552,10 +609,7 @@ func setConnector(provider *plugin.Provider, connector *plugin.Connector, run fu
 			log.Error().Msg(err.Error())
 		}
 
-		autoUpdate := true
-		if viper.IsSet("auto_update") {
-			autoUpdate = viper.GetBool("auto_update")
-		}
+		autoUpdate := config.GetAutoUpdate()
 
 		runtime.AutoUpdate = providers.UpdateProvidersConfig{
 			Enabled:         autoUpdate,

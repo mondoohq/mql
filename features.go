@@ -33,7 +33,7 @@ const (
 	// status: new
 	MQLAssetContext Feature = 5
 
-	// Errors are treated as failures, see https://www.notion.so/mondoo/Errors-and-Scoring-5dc554348aad4118a1dbf35123368329
+	// Errors are treated as failures, see https://app.notion.com/p/mondoo/Errors-and-Scoring-5dc554348aad4118a1dbf35123368329
 	// start:  v8.x
 	// end: v9.0
 	// status: sunset, we never really used this
@@ -79,7 +79,7 @@ const (
 
 	// Auto-update the execution engine
 	// start:  v13.x
-	// status: new
+	// status: default
 	AutoUpdateEngine Feature = 14
 
 	// Use BIOS UUID as the asset ID. Preferred over SerialNumber for VMs since some hypervisors (e.g., OpenStack) pass through the host's serial number to VMs, making it non-unique. On detected VMs, the BIOS UUID detector is added automatically; this flag enables it on non-VM (bare metal) machines.
@@ -94,32 +94,81 @@ const (
 
 	// Resolve var.* and local.* references in Terraform HCL block arguments to their effective values (variable defaults overridden by .tfvars, locals evaluated from those). Unresolvable references fall back to their reference string; the unresolved view stays available via terraform.block.argumentReferences.
 	// start:  v13.x
-	// status: new
+	// end: v13.x => this is the default now, no need to set it anymore
+	// status: builtin
 	TerraformResolveVars Feature = 17
+
+	// Compute a checksum for every row while writing the scan database, so an unchanged scan is detectable. Nothing else changes - every scan still uploads and is processed in full.
+	// start:  v13.x
+	// status: new
+	ScanContentModeShadow Feature = 18
+
+	// Row checksums as in shadow; the server also skips reprocessing uploads whose rows are identical to the previous scan. Client behavior is identical to shadow.
+	// start:  v13.x
+	// status: new
+	ScanContentModeServerCompare Feature = 19
+
+	// Row checksums as in shadow; the client may also fetch the previous upload's checksum summary, compare locally, and skip the upload entirely when nothing changed (completing with unchanged=true).
+	// start:  v13.x
+	// status: new
+	ScanContentModeClientCompare Feature = 20
+
+	// The kill switch: compute no checksums, always upload in full. Overrides every other ScanContentMode* feature and any client default, so the server can disable comparison per scope even after it ships as the default.
+	// start:  v13.x
+	// status: new
+	ScanContentModeNoCompare Feature = 21
+
+	// Record resource data (the recording-style rows behind the resource explorer and GetResourcesData/ListResources) while scanning, and deliver it inside the uploaded scan database. Only acts together with UploadResultsV2 - resources ride the uploaded file, never the legacy StoreResults RPC. Successor to StoreResourcesData, which is retired: it required a server-side resolved-policy stamp as a second key and sent resources through the legacy RPC.
+	// start:  v14.x
+	// status: new
+	UploadResourcesData Feature = 22
+
+	// Compile queries against the asset root instead of the global namespace (ADR 031). A bare identifier resolves as a member of the connected asset's root, the global namespace is reachable only through resources marked @global, and a compile without a root is an error. This is the v15 model, available early so content and providers can be moved onto it before it becomes the default.
+	// start:  v14.x
+	// status: new
+	RootedNamespace Feature = 23
+
+	// Providers return a refusal (access denied, service not enabled, ...) as a classified error instead of the null or empty value they returned in v13 (ADR 046). Checks that could not read what they assert about stop passing silently and error instead. Partial results and their coverage gaps are not behind this flag. This is the v15 behavior, available early so it can be tried against real accounts before it becomes the default.
+	// start:  v14.x
+	// status: new
+	StructuredErrors Feature = 24
+
+	// On a local scan of Windows (the agent, cnspec scan local), read Windows data through Windows APIs instead of starting PowerShell: users and groups, services, security and audit policy, optional features, computerInfo and the hypervisor. Remote scans (SSH, WinRM) keep PowerShell. Off by default until each native path has shown the same results as PowerShell; MONDOO_WINDOWS_NATIVE turns it on locally too.
+	// start:  v14.x
+	// status: new
+	WindowsNative Feature = 25
 
 	// Placeholder to indicate how many feature flags exist. This number
 	// is changing with every new feature and cannot be used as a featureflag itself.
-	MAX_FEATURES byte = 18
+	MAX_FEATURES byte = 26
 )
 
 var FeaturesValue = map[string]Feature{
-	"MassQueries":           MassQueries,
-	"PiperCode":             PiperCode,
-	"BoolAssertions":        BoolAssertions,
-	"K8sNodeDiscovery":      K8sNodeDiscovery,
-	"MQLAssetContext":       MQLAssetContext,
-	"ErrorsAsFailures":      ErrorsAsFailures,
-	"StoreResourcesData":    StoreResourcesData,
-	"FineGrainedAssets":     FineGrainedAssets,
-	"SerialNumberAsID":      SerialNumberAsID,
-	"ForceShellCompletion":  ForceShellCompletion,
-	"ResourceContext":       ResourceContext,
-	"FailIfNoEntryPoints":   FailIfNoEntryPoints,
-	"UploadResultsV2":       UploadResultsV2,
-	"AutoUpdateEngine":      AutoUpdateEngine,
-	"BiosUUIDAsID":          BiosUUIDAsID,
-	"ExchangeTokenForToken": ExchangeTokenForToken,
-	"TerraformResolveVars":  TerraformResolveVars,
+	"MassQueries":                  MassQueries,
+	"PiperCode":                    PiperCode,
+	"BoolAssertions":               BoolAssertions,
+	"K8sNodeDiscovery":             K8sNodeDiscovery,
+	"MQLAssetContext":              MQLAssetContext,
+	"ErrorsAsFailures":             ErrorsAsFailures,
+	"StoreResourcesData":           StoreResourcesData,
+	"FineGrainedAssets":            FineGrainedAssets,
+	"SerialNumberAsID":             SerialNumberAsID,
+	"ForceShellCompletion":         ForceShellCompletion,
+	"ResourceContext":              ResourceContext,
+	"FailIfNoEntryPoints":          FailIfNoEntryPoints,
+	"UploadResultsV2":              UploadResultsV2,
+	"AutoUpdateEngine":             AutoUpdateEngine,
+	"BiosUUIDAsID":                 BiosUUIDAsID,
+	"ExchangeTokenForToken":        ExchangeTokenForToken,
+	"TerraformResolveVars":         TerraformResolveVars,
+	"ScanContentModeShadow":        ScanContentModeShadow,
+	"ScanContentModeServerCompare": ScanContentModeServerCompare,
+	"ScanContentModeClientCompare": ScanContentModeClientCompare,
+	"ScanContentModeNoCompare":     ScanContentModeNoCompare,
+	"UploadResourcesData":          UploadResourcesData,
+	"RootedNamespace":              RootedNamespace,
+	"StructuredErrors":             StructuredErrors,
+	"WindowsNative":                WindowsNative,
 }
 
 // DefaultFeatures are a set of default flags that are active
@@ -128,14 +177,21 @@ var DefaultFeatures = Features{
 	byte(SerialNumberAsID),
 	byte(ForceShellCompletion),
 	byte(ResourceContext),
+	byte(AutoUpdateEngine),
 }
 
 // AvailableFeatures are a set of flags that can be activated
 var AvailableFeatures = Features{
 	byte(MQLAssetContext),
 	byte(UploadResultsV2),
-	byte(AutoUpdateEngine),
 	byte(BiosUUIDAsID),
 	byte(ExchangeTokenForToken),
-	byte(TerraformResolveVars),
+	byte(ScanContentModeShadow),
+	byte(ScanContentModeServerCompare),
+	byte(ScanContentModeClientCompare),
+	byte(ScanContentModeNoCompare),
+	byte(UploadResourcesData),
+	byte(RootedNamespace),
+	byte(StructuredErrors),
+	byte(WindowsNative),
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
-	inventoryv1 "go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+	inventoryv1 "go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -57,6 +57,11 @@ func TestAllResolvedResources(t *testing.T) {
 		DiscoverArtifactRegistryRepos,
 		DiscoverMemcacheInstances,
 		DiscoverVertexAIJobs,
+		DiscoverVertexAIEndpoints,
+		DiscoverVertexAIPipelineJobs,
+		DiscoverVertexAINotebookRuntimeTemplates,
+		DiscoverModelArmorTemplates,
+		DiscoverDatastreamProfiles,
 	}
 	require.ElementsMatch(t, expected, All)
 }
@@ -84,7 +89,6 @@ func TestAutoResolvedResources(t *testing.T) {
 		DiscoverSecretManager,
 		DiscoverPubSubTopics,
 		DiscoverPubSubSubscriptions,
-		DiscoverPubSubSnapshots,
 		DiscoverCloudRunServices,
 		DiscoverCloudRunJobs,
 		DiscoverCloudFunctions,
@@ -100,8 +104,32 @@ func TestAutoResolvedResources(t *testing.T) {
 		DiscoverArtifactRegistryRepos,
 		DiscoverMemcacheInstances,
 		DiscoverVertexAIJobs,
+		DiscoverVertexAIEndpoints,
+		DiscoverVertexAIPipelineJobs,
+		DiscoverVertexAINotebookRuntimeTemplates,
+		DiscoverModelArmorTemplates,
+		DiscoverDatastreamProfiles,
 	}
 	require.ElementsMatch(t, expected, Auto)
+}
+
+// Additional resources must stay out of the default set but remain reachable,
+// both through "all" and by naming them explicitly.
+func TestAdditionalResourcesAreNotDiscoveredByDefault(t *testing.T) {
+	for _, target := range AdditionalResources {
+		require.NotContains(t, Auto, target, "%s must not be in the auto set", target)
+		require.Contains(t, All, target, "%s must still be in the all set", target)
+
+		auto := getDiscoveryTargets(&inventoryv1.Config{
+			Discover: &inventoryv1.Discovery{Targets: []string{DiscoveryAuto}},
+		})
+		require.NotContains(t, auto, target)
+
+		explicit := getDiscoveryTargets(&inventoryv1.Config{
+			Discover: &inventoryv1.Discovery{Targets: []string{target}},
+		})
+		require.Contains(t, explicit, target)
+	}
 }
 
 func TestGetDiscoveryTargets(t *testing.T) {
@@ -156,34 +184,6 @@ func TestGetDiscoveryTargets(t *testing.T) {
 			}
 			got := getDiscoveryTargets(config)
 			require.ElementsMatch(t, tc.want, got)
-		})
-	}
-}
-
-func TestIsDiscoverySkippableErr(t *testing.T) {
-	cases := []struct {
-		name string
-		err  error
-		want bool
-	}{
-		{name: "nil error", err: nil, want: false},
-		{name: "googleapi 403", err: &googleapi.Error{Code: 403, Message: "permission denied"}, want: true},
-		{name: "googleapi 404", err: &googleapi.Error{Code: 404, Message: "not found"}, want: true},
-		{name: "googleapi 500", err: &googleapi.Error{Code: 500, Message: "server error"}, want: false},
-		{name: "googleapi service-disabled message", err: &googleapi.Error{Code: 400, Message: "API has not been used in project 123 before or it is disabled"}, want: true},
-		{name: "gRPC permission denied", err: status.Error(codes.PermissionDenied, "no access"), want: true},
-		{name: "gRPC not found", err: status.Error(codes.NotFound, "missing"), want: true},
-		{name: "gRPC unimplemented", err: status.Error(codes.Unimplemented, "not implemented"), want: true},
-		{name: "gRPC internal", err: status.Error(codes.Internal, "boom"), want: false},
-		{name: "rewrapped 403 string", err: errors.New("403: permission denied"), want: true},
-		{name: "googleapi error stringified", err: errors.New("googleapi: Error 403: permission denied"), want: true},
-		{name: "api-not-enabled phrasing", err: errors.New("Cloud KMS API has not been used in project foo"), want: true},
-		{name: "plain unrelated error", err: errors.New("connection reset by peer"), want: false},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, isDiscoverySkippableErr(tc.err))
 		})
 	}
 }
@@ -291,4 +291,28 @@ func TestGCPAPIServiceRe(t *testing.T) {
 			require.Equal(t, tc.want, m[1])
 		})
 	}
+}
+
+func TestPropagateProjectLabelsToAssets(t *testing.T) {
+	t.Run("fills missing keys and preserves asset labels on collision", func(t *testing.T) {
+		assets := []*inventoryv1.Asset{
+			{Labels: map[string]string{"env": "prod"}}, // "env" must win over project label
+			{Labels: map[string]string{}},              // empty map gets all project labels
+			nil,                                        // nil asset is skipped safely
+			{Labels: nil},                              // nil map gets initialized + filled
+		}
+		projectLabels := map[string]string{"env": "shared", "team": "platform"}
+
+		propagateProjectLabelsToAssets(assets, projectLabels)
+
+		require.Equal(t, map[string]string{"env": "prod", "team": "platform"}, assets[0].Labels)
+		require.Equal(t, map[string]string{"env": "shared", "team": "platform"}, assets[1].Labels)
+		require.Equal(t, map[string]string{"env": "shared", "team": "platform"}, assets[3].Labels)
+	})
+
+	t.Run("no project labels leaves assets untouched", func(t *testing.T) {
+		assets := []*inventoryv1.Asset{{Labels: map[string]string{"env": "prod"}}}
+		propagateProjectLabelsToAssets(assets, map[string]string{})
+		require.Equal(t, map[string]string{"env": "prod"}, assets[0].Labels)
+	})
 }

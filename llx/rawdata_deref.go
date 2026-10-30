@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/types"
 )
 
 func dereferenceDict(raw any) (*RawData, error) {

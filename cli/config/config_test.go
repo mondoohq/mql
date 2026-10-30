@@ -5,11 +5,13 @@ package config
 
 import (
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/afero"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,9 +22,15 @@ var (
 	homeConfigDir = filepath.Join(home, ".config", "mondoo")
 	homeConfig    = filepath.Join(homeConfigDir, DefaultConfigFile)
 
-	systemConfigDir = filepath.Join("/etc", "opt", "mondoo")
-	systemConfig    = filepath.Join(systemConfigDir, DefaultConfigFile)
-	systemInventory = filepath.Join(systemConfigDir, "inventory.yml")
+	// Derived from SystemConfigPath rather than hardcoded: the system config
+	// directory is platform-specific (/etc/opt/mondoo on Linux,
+	// /Library/Mondoo/etc on macOS, C:\ProgramData\Mondoo on Windows). Writing
+	// fixtures to a hardcoded Linux path made every test that expects the
+	// system config to be found fail anywhere but Linux, because
+	// autodetectConfig probed a path the test never wrote to.
+	systemConfigDir = SystemConfigPath()
+	systemConfig    = SystemConfigPath(DefaultConfigFile)
+	systemInventory = SystemConfigPath("inventory.yml")
 
 	oldConfig = filepath.Join(home, "."+DefaultConfigFile)
 
@@ -87,6 +95,14 @@ func Test_probeConfigMemFs(t *testing.T) {
 }
 
 func Test_probeConfigOsFs(t *testing.T) {
+	// Mode 0000 makes a file unreadable on Unix. On Windows the mode bits only
+	// toggle the read-only attribute, which does not stop the file being read, so
+	// ProbeFile correctly reports it as present and the expectation below is the
+	// thing that does not hold there.
+	if runtime.GOOS == "windows" {
+		t.Skip("file mode does not deny reads on Windows")
+	}
+
 	dir := t.TempDir()
 	tmpConfig := filepath.Join(dir, DefaultConfigFile)
 	require.NoError(t, afero.WriteFile(AppFs, tmpConfig, configBody, 0o000))
@@ -232,15 +248,13 @@ space_mrn: //captain.api.mondoo.app/spaces/musing-saha-952142
 		viper.SetOptions(viper.KeyDelimiter("\\"))
 
 		cfg := &Config{
-			CommonOpts: CommonOpts{
-				AgentMrn:          "//agents.api.mondoo.app/spaces/test/agents/abc",
-				ServiceAccountMrn: "//agents.api.mondoo.app/spaces/test/serviceaccounts/xyz",
-				APIEndpoint:       "https://custom.api.mondoo.com",
-				APIProxy:          "http://proxy:3128",
-				Features:          []string{"feature1", "feature2"},
-				Labels:            map[string]string{"env": "test"},
-				Annotations:       map[string]string{"team": "platform"},
-			},
+			AgentMrn:               "//agents.api.mondoo.app/spaces/test/agents/abc",
+			ServiceAccountMrn:      "//agents.api.mondoo.app/spaces/test/serviceaccounts/xyz",
+			APIEndpoint:            "https://custom.api.mondoo.com",
+			APIProxy:               "http://proxy:3128",
+			Features:               []string{"feature1", "feature2"},
+			Labels:                 map[string]string{"env": "test"},
+			Annotations:            map[string]string{"team": "platform"},
 			Category:               "cicd",
 			AutoDetectCICDCategory: true,
 		}
@@ -272,14 +286,10 @@ space_mrn: //captain.api.mondoo.app/spaces/musing-saha-952142
 
 	t.Run("test configToMap produces correct keys", func(t *testing.T) {
 		cfg := &Config{
-			CommonOpts: CommonOpts{
-				AgentMrn:    "agent-123",
-				APIEndpoint: "https://api.example.com",
-				WIF: WIF{
-					Audience: "//captain.api.mondoo.app/spaces/test",
-				},
-			},
-			Category: "server",
+			AgentMrn:    "agent-123",
+			APIEndpoint: "https://api.example.com",
+			Audience:    "//captain.api.mondoo.app/spaces/test",
+			Category:    "server",
 		}
 
 		m, err := configToMap(cfg)
@@ -324,5 +334,209 @@ space_mrn: //captain.api.mondoo.app/spaces/musing-saha-952142
 		require.NoError(t, err)
 
 		assert.Equal(t, "baz", cfg.Annotations["foo.bar"])
+	})
+}
+
+func TestGetProviderPortRange(t *testing.T) {
+	t.Cleanup(func() {
+		viper.Reset()
+		AppFs = afero.NewOsFs()
+	})
+
+	t.Run("unset reads as empty so the providers package applies its default", func(t *testing.T) {
+		viper.Reset()
+		assert.Equal(t, "", GetProviderPortRange())
+	})
+
+	t.Run("reads the config key", func(t *testing.T) {
+		viper.Reset()
+		viper.Set(KeyProviderPortRange, "50000-50100")
+		assert.Equal(t, "50000-50100", GetProviderPortRange())
+	})
+
+	t.Run("round-trips through the Config struct", func(t *testing.T) {
+		viper.Reset()
+		viper.SetConfigType("yaml")
+		viper.SetOptions(viper.KeyDelimiter("\\"))
+		require.NoError(t, ApplyConfig(&Config{ProviderPortRange: "50000-50100"}))
+		assert.Equal(t, "50000-50100", GetProviderPortRange())
+
+		cfg, err := Read()
+		require.NoError(t, err)
+		assert.Equal(t, "50000-50100", cfg.ProviderPortRange)
+	})
+
+	t.Run("MONDOO_PROVIDER_PORT_RANGE is picked up through the env binding InitViperConfig sets up", func(t *testing.T) {
+		viper.Reset()
+		resetAppFsToMemFs(t) // no config file anywhere, so only the environment can supply the value
+		t.Setenv("MONDOO_CONFIG_BASE64", "")
+		t.Setenv("MONDOO_CONFIG_PATH", "")
+		t.Setenv("MONDOO_PROVIDER_PORT_RANGE", "50000-50100")
+		UserProvidedPath = ""
+
+		InitViperConfig()
+		assert.Equal(t, "50000-50100", GetProviderPortRange())
+	})
+}
+
+// TestGetUpdateChannelFollowsTheBuild pins that a pre-release binary resolves
+// pre-release providers without being told to.
+//
+// Installing a 14.0.0-rc.2 binary and then pulling 13.x providers is the
+// v13/v14 mismatch in miniature: they are built against a different schema, and
+// the resulting nulls read as passing checks. The inverse is what keeps it
+// safe — a stable build never derives preview, so no released binary can be
+// moved onto pre-releases except by an explicit setting.
+func TestGetUpdateChannelFollowsTheBuild(t *testing.T) {
+	t.Cleanup(func() {
+		viper.Set(KeyUpdateChannel, "")
+		SetRunningVersion("")
+	})
+
+	for version, want := range map[string]string{
+		"14.0.0-rc.2":      ChannelPreview,
+		"14.0.0-pre.1":     ChannelPreview,
+		"v14.0.0-rc.2":     ChannelPreview,
+		"14.0.0-rc.2.3508": ChannelPreview,
+		"14.0.0-rolling":   ChannelPreview,
+		"13.38.1":          ChannelStable,
+		"14.0.0":           ChannelStable,
+		"8.4.0+41":         ChannelStable, // build metadata is not a pre-release
+		"unstable":         ChannelStable, // a build with no version ldflags
+		"":                 ChannelStable,
+	} {
+		viper.Set(KeyUpdateChannel, "")
+		SetRunningVersion(version)
+		assert.Equal(t, want, GetUpdateChannel(), "version: %q", version)
+	}
+
+	// An explicit setting wins over the build in both directions, so a
+	// pre-release can be pinned to stable and vice versa.
+	SetRunningVersion("14.0.0-rc.2")
+	viper.Set(KeyUpdateChannel, ChannelStable)
+	assert.Equal(t, ChannelStable, GetUpdateChannel(), "explicit stable must override a pre-release build")
+
+	SetRunningVersion("13.38.1")
+	viper.Set(KeyUpdateChannel, ChannelPreview)
+	assert.Equal(t, ChannelPreview, GetUpdateChannel(), "explicit preview must override a stable build")
+
+	// An unrecognized value is treated as unset, not forced to stable. Someone
+	// who typed `beta` meaning `preview` on a release candidate would otherwise
+	// get stable providers against a pre-release binary — the exact schema
+	// mismatch this is here to prevent.
+	SetRunningVersion("14.0.0-rc.2")
+	viper.Set(KeyUpdateChannel, "beta")
+	assert.Equal(t, ChannelPreview, GetUpdateChannel())
+
+	// And on a stable build the same typo is still stable, so a garbage value
+	// can never move a released binary onto pre-releases.
+	SetRunningVersion("13.38.1")
+	viper.Set(KeyUpdateChannel, "beta")
+	assert.Equal(t, ChannelStable, GetUpdateChannel())
+}
+
+// TestGetUpdateChannel pins that a typo cannot silently move a fleet onto
+// pre-releases, and cannot stop it updating either. With no running version
+// recorded — a stable build, or a caller that never set one — anything
+// unrecognized resolves stable.
+func TestGetUpdateChannel(t *testing.T) {
+	t.Cleanup(func() { viper.Set(KeyUpdateChannel, "") })
+	SetRunningVersion("")
+
+	for value, want := range map[string]string{
+		"":         ChannelStable,
+		"stable":   ChannelStable,
+		"preview":  ChannelPreview,
+		"PREVIEW":  ChannelPreview,
+		" preview": ChannelPreview,
+		"beta":     ChannelStable,
+		"edge":     ChannelStable,
+		"rubbish":  ChannelStable,
+	} {
+		viper.Set(KeyUpdateChannel, value)
+		assert.Equal(t, want, GetUpdateChannel(), "value: %q", value)
+	}
+}
+
+// autoUpdateViper sets viper up the way InitViperConfig and the root commands
+// do: no key delimiter, MONDOO_ env prefix with "-" mapped to "_", and the
+// given config file content.
+func autoUpdateViper(t *testing.T, configYAML string) {
+	t.Helper()
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.SetOptions(viper.KeyDelimiter("\\"))
+	viper.SetEnvPrefix("mondoo")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+	viper.AutomaticEnv()
+	viper.SetConfigType("yaml")
+	require.NoError(t, viper.ReadConfig(strings.NewReader(configYAML)))
+}
+
+func TestGetAutoUpdate(t *testing.T) {
+	tests := []struct {
+		name   string
+		config string
+		env    *string
+		want   bool
+	}{
+		{name: "default is on", config: "", want: true},
+		{name: "auto_update false in config", config: "auto_update: false\n", want: false},
+		{name: "auto_update true in config", config: "auto_update: true\n", want: true},
+		// The spelling the cnspec docs showed. It used to be ignored.
+		{name: "auto-update false in config", config: "auto-update: false\n", want: false},
+		{name: "auto-update true in config", config: "auto-update: true\n", want: true},
+		{name: "canonical spelling wins over the hyphenated one", config: "auto_update: true\nauto-update: false\n", want: true},
+		{name: "env false", config: "", env: new("false"), want: false},
+		{name: "env 0", config: "", env: new("0"), want: false},
+		{name: "env False", config: "", env: new("False"), want: false},
+		{name: "env not a boolean counts as off", config: "", env: new("no"), want: false},
+		{name: "env false beats config true", config: "auto_update: true\n", env: new("false"), want: false},
+		{name: "env false beats hyphenated config true", config: "auto-update: true\n", env: new("false"), want: false},
+		{name: "env true beats config false", config: "auto_update: false\n", env: new("true"), want: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.env != nil {
+				t.Setenv("MONDOO_AUTO_UPDATE", *tc.env)
+			}
+			autoUpdateViper(t, tc.config)
+			assert.Equal(t, tc.want, GetAutoUpdate())
+		})
+	}
+}
+
+func TestGetAutoUpdateFlagWins(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		config string
+		env    string
+		flag   string
+		want   bool
+	}{
+		{name: "flag false beats config true", config: "auto_update: true\n", flag: "false", want: false},
+		{name: "flag false beats env true", env: "true", flag: "false", want: false},
+		{name: "flag true beats hyphenated config false", config: "auto-update: false\n", flag: "true", want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.env != "" {
+				t.Setenv("MONDOO_AUTO_UPDATE", tc.env)
+			}
+			autoUpdateViper(t, tc.config)
+			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+			flags.Bool("auto-update", true, "")
+			require.NoError(t, viper.BindPFlag(KeyAutoUpdate, flags.Lookup("auto-update")))
+			require.NoError(t, flags.Parse([]string{"--auto-update=" + tc.flag}))
+			assert.Equal(t, tc.want, GetAutoUpdate())
+		})
+	}
+
+	t.Run("unchanged flag default does not override config", func(t *testing.T) {
+		autoUpdateViper(t, "auto-update: false\n")
+		flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+		flags.Bool("auto-update", true, "")
+		require.NoError(t, viper.BindPFlag(KeyAutoUpdate, flags.Lookup("auto-update")))
+		require.NoError(t, flags.Parse(nil))
+		assert.False(t, GetAutoUpdate())
 	})
 }

@@ -1,0 +1,17 @@
+block return all
+block drop in log (to pflog0) quick from <bruteforce> to any
+pass in inet6 proto ipv6-icmp all icmp6-type toobig
+pass in inet6 proto ipv6-icmp all icmp6-type neighbrsol
+pass in inet6 proto udp from any port = 547 to any port = 546
+pass in proto tcp from any to any port = 22 flags S/SA
+pass in inet proto udp from any port = 67 to any port = 68
+block return out quick inet proto tcp from any to 169.254.0.2 port = 3260 user > 0
+block return out quick inet proto tcp from any to 169.254.2.0/24 port = 3260 user > 0
+block return-rst in quick on ! net0 proto tcp from any to any port 6000:6010
+pass in quick on net0 inet proto tcp from 203.0.113.0/24 to any port = 80 flags S/SA modulate state label "web"
+pass in quick on net0 inet proto tcp from 203.0.113.0/24 to any port = 443 flags S/SA modulate state label "web"
+pass in proto udp from any to any port = 5353 no state
+pass in log (all, to pflog0) quick inet proto tcp from ! 192.0.2.0/24 to 203.0.113.5 port 8080:8090 flags S/SA label "web alt"
+match in on net0 inet proto tcp from 198.51.100.0/24 to any port = 25 scrub (max-mss 1440)
+pass out all flags S/SA
+anchor "test/*" all

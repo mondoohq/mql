@@ -56,7 +56,7 @@ func parseINI(data []byte) map[string]map[string]any {
 	current := "default"
 	sections[current] = map[string]any{}
 
-	for _, raw := range strings.Split(string(data), "\n") {
+	for raw := range strings.SplitSeq(string(data), "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
 			continue

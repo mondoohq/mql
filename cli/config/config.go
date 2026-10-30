@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"os"
 	"strings"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/go-viper/mapstructure/v2"
@@ -15,9 +16,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
 )
 
 /*
@@ -29,6 +30,10 @@ import (
 // or default if no config exits
 var (
 	Features mql.Features
+	// Strict is the config-file default for ADR 043 strict mode, used by
+	// surfaces that carry no content of their own (shell, `mql run`). Content
+	// that declares its own mode overrides this.
+	Strict bool
 )
 
 const (
@@ -47,6 +52,7 @@ func Init(rootCmd *cobra.Command) {
 		if err != nil {
 			log.Error().Msg(err.Error())
 		}
+		Strict = viper.GetBool("strict")
 		// by default we don't print the list of active features, at least not for now...
 	})
 	// persistent flags are global for the application
@@ -192,25 +198,168 @@ func DisplayUsedConfig() {
 	}
 }
 
-// GetAutoUpdate returns the auto_update setting from viper config.
-// Returns true (enabled) by default if not explicitly set.
+const (
+	// KeyAutoUpdate is the setting that turns automatic updates on or off: the
+	// engine's own binary and its providers alike. MONDOO_AUTO_UPDATE and the
+	// --auto-update flag bind to it.
+	KeyAutoUpdate = "auto_update"
+	// keyAutoUpdateHyphen is the same setting spelled the way the cnspec
+	// documentation showed it in mondoo.yml. Viper's key delimiter is disabled
+	// (see InitViperConfig) and nothing normalizes hyphens to underscores for
+	// keys read from a file, so this is a different key. Before it was read
+	// here, a config file following that documentation turned off neither the
+	// engine self-update nor provider updates.
+	keyAutoUpdateHyphen = "auto-update"
+)
+
+// GetAutoUpdate reports whether automatic updates are on. It governs both the
+// engine self-update and provider installation and updates; callers that need
+// to tell the two apart layer their own engine-only switches on top (see
+// selfupdate.EnvAutoUpdateEngine).
+//
+// Precedence, highest first:
+//  1. the --auto-update flag, when given
+//  2. the MONDOO_AUTO_UPDATE environment variable
+//  3. auto_update in the config file
+//  4. auto-update in the config file
+//  5. on
+//
+// Viper resolves 1 to 3 under one key. A value that does not parse as a
+// boolean counts as off.
 func GetAutoUpdate() bool {
-	if viper.IsSet("auto_update") {
-		return viper.GetBool("auto_update")
+	for _, key := range []string{KeyAutoUpdate, keyAutoUpdateHyphen} {
+		if viper.IsSet(key) {
+			return viper.GetBool(key)
+		}
 	}
 	return true
 }
 
-// GetUpdatesURL returns the updates_url setting from viper config.
+// GetUpdatesURL returns the updates_url setting from viper config, or an empty
+// string when it is unset -- which is what selects the default install service
+// rather than any value named here. See the UpdatesURL field for the layout a
+// host has to serve.
 // Returns empty string if not set (caller should use default).
 func GetUpdatesURL() string {
 	return viper.GetString("updates_url")
 }
 
-// GetProvidersURL returns the providers_url setting from viper config.
-// Returns empty string if not set (caller should use default).
-func GetProvidersURL() string {
-	return viper.GetString("providers_url")
+// KeyProviderPortRange is the config key for the loopback TCP port range that
+// provider subprocesses may listen on, written as "min-max" (for example
+// "50000-50100"). It comes from mondoo.yml or, through viper's env binding,
+// from MONDOO_PROVIDER_PORT_RANGE. Unset means an OS-assigned port. Only
+// Windows uses TCP for the provider transport; other platforms talk to
+// providers over Unix sockets and ignore it.
+const KeyProviderPortRange = "provider_port_range"
+
+// GetProviderPortRange returns the provider_port_range setting, or an empty
+// string when unset. Parsing and the default live with the providers package,
+// which is the one that hands the range to the plugin runtime.
+func GetProviderPortRange() string {
+	return viper.GetString(KeyProviderPortRange)
+}
+
+// KeyUpdateChannel is the config key selecting which release track binary
+// updates and providers resolve through. It comes from mondoo.yml or, through
+// viper's env binding, from MONDOO_UPDATE_CHANNEL.
+//
+// The key is flat rather than nested under `update` or `providers` because
+// InitViperConfig disables viper's key delimiter, so a dotted lookup of a
+// nested key silently returns nothing.
+const KeyUpdateChannel = "update_channel"
+
+// Release channels. The channel a version belongs to is decided by the release
+// service, from the version's semver pre-release segment; the client only picks
+// which track to ask for.
+const (
+	// ChannelStable is the default: the newest release with no pre-release
+	// segment.
+	ChannelStable = "stable"
+	// ChannelPreview is the pre-release track: the newest release overall,
+	// release candidates included. It is never older than stable, so a client
+	// tracking it moves forward when a candidate becomes a final release.
+	ChannelPreview = "preview"
+)
+
+// runningVersion is the version of the binary that is executing, set once at
+// startup by the app. Empty means unknown, which reads as stable.
+//
+// It is injected rather than read from a package variable because the binary
+// that matters is cnspec or mql, and this package is shared by both.
+//
+// atomic.Value rather than a plain string: the write happens once at startup
+// and the reads come later, so there is no race today, but nothing in the types
+// says so. Tests in particular are free to run in parallel.
+var runningVersion atomic.Value // string
+
+// SetRunningVersion records the executing binary's version, so an unset
+// update_channel can follow the build rather than defaulting to stable. Call it
+// before anything resolves a channel.
+func SetRunningVersion(version string) {
+	runningVersion.Store(version)
+}
+
+// getRunningVersion returns the recorded version, or "" if none was set.
+func getRunningVersion() string {
+	version, _ := runningVersion.Load().(string)
+	return version
+}
+
+// GetUpdateChannel returns the release channel this binary resolves through.
+//
+// An explicit update_channel wins. Anything else -- unset, or a value we do not
+// recognize -- follows the running build: a pre-release build resolves the
+// pre-release track, everything else resolves stable.
+//
+// Following the build matters because installing a pre-release and then
+// resolving *stable* providers is the v13/v14 mismatch in miniature. A
+// 14.0.0-rc.2 binary would pull 13.x providers, built against a different
+// schema, and report the resulting nulls as passing checks. Someone who
+// installed a release candidate has already chosen the pre-release track;
+// making them say so twice only creates a way to get it half-applied.
+//
+// An unrecognized value is treated as unset rather than forced to stable. It
+// means "we do not know what you asked for", and the honest answer to that is
+// the default behaviour, not a third one. Forcing stable would have produced
+// exactly the schema mismatch above for anyone who typed `beta` meaning
+// `preview` on a release candidate.
+//
+// A stable build still never derives preview, which is what keeps this safe: no
+// released binary can be moved onto pre-releases by a typo, only by asking for
+// it precisely.
+func GetUpdateChannel() string {
+	configured := strings.ToLower(strings.TrimSpace(viper.GetString(KeyUpdateChannel)))
+
+	switch configured {
+	case ChannelPreview:
+		return ChannelPreview
+	case ChannelStable:
+		return ChannelStable
+	case "":
+	default:
+		log.Warn().
+			Str("configured", configured).
+			Str(KeyUpdateChannel, strings.Join([]string{ChannelStable, ChannelPreview}, ", ")).
+			Msg("unknown update channel, falling back to the channel this build belongs to")
+	}
+
+	if IsPrereleaseVersion(getRunningVersion()) {
+		return ChannelPreview
+	}
+	return ChannelStable
+}
+
+// IsPrereleaseVersion reports whether a version carries a semver pre-release
+// segment. Build metadata is stripped first: it is not a pre-release under
+// SemVer 10, and it is where the edge builds put their commit counter.
+//
+// Deliberately not a full semver parse. This has to answer for "unstable" and
+// for the `-rolling` suffix as well as for real versions, and a parse error on
+// a development build must not decide a channel.
+func IsPrereleaseVersion(version string) bool {
+	core, _, _ := strings.Cut(version, "+")
+	_, prerelease, found := strings.Cut(strings.TrimPrefix(core, "v"), "-")
+	return found && prerelease != ""
 }
 
 // GetFeatures returns the features from viper config.
@@ -223,7 +372,7 @@ func GetFeatures() mql.Features {
 func Read() (*Config, error) {
 	// load viper config into a struct
 	var opts Config
-	err := viper.Unmarshal(&opts)
+	err := viper.Unmarshal(&opts, DecoderOption())
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to decode into config struct")
 	}
@@ -292,8 +441,27 @@ type CommonOpts struct {
 	// client features
 	Features []string `json:"features,omitempty" mapstructure:"features"`
 
-	// API Proxy for communicating with Mondoo Platform API
+	// Strict turns on ADR 043 strict mode for MQL compiled by this client: every
+	// link in an access chain must resolve, and `?` marks one optional.
+	//
+	// Deliberately a *bool and deliberately not a feature flag. Strictness is a
+	// property of the content, so a policy states its own mode and this is only
+	// the default for surfaces that carry no content of their own - the shell,
+	// `mql run`, embeddings. A tri-state is what lets "unset, fall back to the
+	// default" stay distinguishable from "explicitly non-strict", which a
+	// two-state feature flag cannot express.
+	Strict *bool `json:"strict,omitempty" mapstructure:"strict"`
+
+	// API Proxy for communicating with Mondoo Platform API. It overrides the
+	// HTTPS_PROXY environment and the operating system's proxy settings.
 	APIProxy string `json:"api_proxy,omitempty" mapstructure:"api_proxy"`
+
+	// SystemProxy controls whether the operating system's proxy settings are
+	// used when neither api_proxy nor the environment names a proxy (on
+	// Windows: Internet Settings and the WinHTTP default proxy). Unset means
+	// on. Set it to false to connect directly, or to honor only the
+	// HTTPS_PROXY environment. See KeySystemProxy.
+	SystemProxy *bool `json:"system_proxy,omitempty" mapstructure:"system_proxy"`
 
 	// labels that will be applied to all assets
 	Labels map[string]string `json:"labels,omitempty" mapstructure:"labels"`
@@ -301,17 +469,39 @@ type CommonOpts struct {
 	// annotations that will be applied to all assets
 	Annotations map[string]string `json:"annotations,omitempty" mapstructure:"annotations"`
 
-	// UpdatesURL is the base URL where updates are fetched from
-	// if not set, the default Mondoo releases URL is used (https://releases.mondoo.com)
-	// This can be a custom URL for an internal release registry
-	// If ProvidersURL is not set, providers will be fetched from UpdatesURL + "/providers"
+	// UpdatesURL is the base URL updates are fetched from, for an internal
+	// release registry or a mirror. Leave it unset to use Mondoo's.
+	//
+	// It is read by two consumers, and a host it is pointed at has to serve both:
+	//
+	//	binary updates   UpdatesURL + "/package/<binary>/latest.json", with the
+	//	                 release channel as a "?channel=" query parameter
+	//	providers        UpdatesURL + "/providers"
+	//
+	// That is the install service's layout, and it is the one to point this at.
+	// A mirror of the release bucket also works: it spells the manifest
+	// "/<binary>/latest.json" and a channel as a sibling document, and the client
+	// falls back to reading that (see selfupdate.ReleaseURLs). The fallback is
+	// there so an existing mirror keeps working, not as a second layout to
+	// publish -- it costs a failed request per check and cannot express a channel
+	// without another document, so it is the one that will be removed.
 	UpdatesURL string `json:"updates_url,omitempty" mapstructure:"updates_url"`
 
-	// ProvidersURL is the URL where providers are downloaded from
-	// if not set, the default Mondoo provider URL is used
-	// This can be a custom URL for an internal provider registry
-	// Deprecated: use UpdatesURL instead
-	ProvidersURL string `json:"providers_url,omitempty" mapstructure:"providers_url"`
+	// ProviderPortRange is the loopback TCP port range ("min-max") that provider
+	// subprocesses may listen on. Only Windows uses TCP for the provider
+	// transport, so the setting has no effect elsewhere. Unset means an
+	// OS-assigned port. See KeyProviderPortRange.
+	ProviderPortRange string `json:"provider_port_range,omitempty" mapstructure:"provider_port_range"`
+
+	// UpdateChannel selects which release track binary updates and providers
+	// resolve through. Unset means "stable". See KeyUpdateChannel.
+	UpdateChannel string `json:"update_channel,omitempty" mapstructure:"update_channel"`
+
+	// Exceptions are the user-scope exceptions (cnspec ADR-0006), in preview:
+	// the shape may still change. The same key in a context config, a
+	// mondoo.yml at a scanned root, is read separately by ParseContextConfig
+	// and never through this struct.
+	Exceptions []Exception `json:"exceptions,omitempty" mapstructure:"exceptions"`
 }
 
 // Workload Identity Federation
@@ -327,6 +517,13 @@ type WIF struct {
 
 type CliConfigAuthentication struct {
 	Method string `json:"method,omitempty" mapstructure:"method"`
+}
+
+// GetStrict reports the configured default for strict mode. Unset means
+// non-strict, which is the v14 default; content that wants strictness says so
+// itself rather than relying on this.
+func (c *CommonOpts) GetStrict() bool {
+	return c.Strict != nil && *c.Strict
 }
 
 func (c *CommonOpts) GetFeatures() mql.Features {
@@ -390,7 +587,7 @@ func (c *CommonOpts) GetServiceCredential() *upstream.ServiceAccountCredentials 
 
 	return &upstream.ServiceAccountCredentials{
 		Mrn:         c.ServiceAccountMrn,
-		ParentMrn:   c.GetScopeMrn(),
+		ParentMrn:   c.GetScopeMrn(), //nolint:staticcheck // sent alongside ScopeMrn for servers that predate it
 		ScopeMrn:    c.GetScopeMrn(),
 		PrivateKey:  c.PrivateKey,
 		Certificate: c.Certificate,

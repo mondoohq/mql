@@ -16,14 +16,14 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	awsec2ebstypes "go.mondoo.com/mql/v13/providers/aws/connection/awsec2ebsconn/types"
-	"go.mondoo.com/mql/v13/providers/os/connection/device"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/connection/snapshot"
-	"go.mondoo.com/mql/v13/providers/os/id/awsec2"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	awsec2ebstypes "go.mondoo.com/mql/providers/aws/connection/awsec2ebsconn/types"
+	"go.mondoo.com/mql/providers/os/connection/device"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/snapshot"
+	"go.mondoo.com/mql/providers/os/id/awsec2"
 )
 
 const (

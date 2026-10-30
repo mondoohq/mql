@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -167,6 +167,7 @@ func (k *mqlK8sHorizontalpodautoscaler) behavior() (map[string]any, error) {
 
 func (k *mqlK8sHorizontalpodautoscaler) observedGeneration() (int64, error) {
 	if k.obj.Status.ObservedGeneration == nil {
+		k.ObservedGeneration.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return *k.obj.Status.ObservedGeneration, nil

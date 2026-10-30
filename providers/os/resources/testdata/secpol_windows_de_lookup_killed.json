@@ -1,0 +1,70 @@
+{
+  "assets": [
+    {
+      "asset": {
+        "id": "windows-server-de",
+        "platform_ids": [
+          "windows"
+        ],
+        "name": "windows-de",
+        "platform": {
+          "name": "windows",
+          "arch": "x86_64",
+          "title": "Windows Server",
+          "family": [
+            "windows",
+            "os"
+          ],
+          "build": "rolling",
+          "version": "2022"
+        }
+      },
+      "connections": [
+        {
+          "url": "local://",
+          "provider": "os",
+          "connector": "local",
+          "version": ""
+        }
+      ],
+      "resources": [
+        {
+          "Resource": "command",
+          "ID": "powershell.exe -NoProfile -EncodedCommand JABQAHIAbwBnAHIAZQBzAHMAUAByAGUAZgBlAHIAZQBuAGMAZQA9ACcAUwBpAGwAZQBuAHQAbAB5AEMAbwBuAHQAaQBuAHUAZQAnADsACgBbAEMAbwBuAHMAbwBsAGUAXQA6ADoATwB1AHQAcAB1AHQARQBuAGMAbwBkAGkAbgBnACAAPQAgAFsAVABlAHgAdAAuAEUAbgBjAG8AZABpAG4AZwBdADoAOgBVAFQARgA4AAoAJABjAGYAZwAgAD0AIABKAG8AaQBuAC0AUABhAHQAaAAgACgAWwBTAHkAcwB0AGUAbQAuAEkATwAuAFAAYQB0AGgAXQA6ADoARwBlAHQAVABlAG0AcABQAGEAdABoACgAKQApACAAKABbAFMAeQBzAHQAZQBtAC4ASQBPAC4AUABhAHQAaABdADoAOgBHAGUAdABSAGEAbgBkAG8AbQBGAGkAbABlAE4AYQBtAGUAKAApACkACgBzAGUAYwBlAGQAaQB0ACAALwBlAHgAcABvAHIAdAAgAC8AYwBmAGcAIAAkAGMAZgBnACAAfAAgAE8AdQB0AC0ATgB1AGwAbAAKAEcAZQB0AC0AQwBvAG4AdABlAG4AdAAgACQAYwBmAGcACgBSAGUAbQBvAHYAZQAtAEkAdABlAG0AIAAkAGMAZgBnACAAfAAgAE8AdQB0AC0ATgB1AGwAbAAKAA==",
+          "Fields": {
+            "exitcode": {
+              "type": "\u0005",
+              "value": 0
+            },
+            "stdout": {
+              "type": "\u0007",
+              "value": "[Unicode]\nUnicode=yes\n[System Access]\nMinimumPasswordAge = 1\nMaximumPasswordAge = 365\nMinimumPasswordLength = 14\nPasswordComplexity = 1\nPasswordHistorySize = 24\nLockoutBadCount = 5\n[Event Audit]\nAuditSystemEvents = 0\nAuditLogonEvents = 0\n[Registry Values]\nMACHINE\\System\\CurrentControlSet\\Control\\Lsa\\FullPrivilegeAuditing=3,0\n[Privilege Rights]\nSeNetworkLogonRight = *S-1-1-0,*S-1-5-32-544\nSeDenyNetworkLogonRight = G\u00e4ste,VORDEFINIERT\\Administratoren\n[Version]\nsignature=\"$CHICAGO$\"\nRevision=1\n"
+            },
+            "stderr": {
+              "type": "\u0007",
+              "value": ""
+            }
+          }
+        },
+        {
+          "Resource": "command",
+          "ID": "powershell.exe -NoProfile -EncodedCommand JABQAHIAbwBnAHIAZQBzAHMAUAByAGUAZgBlAHIAZQBuAGMAZQA9ACcAUwBpAGwAZQBuAHQAbAB5AEMAbwBuAHQAaQBuAHUAZQAnADsACgBbAEMAbwBuAHMAbwBsAGUAXQA6ADoATwB1AHQAcAB1AHQARQBuAGMAbwBkAGkAbgBnACAAPQAgAFsAVABlAHgAdAAuAEUAbgBjAG8AZABpAG4AZwBdADoAOgBVAFQARgA4AAoAJABuAGEAbQBlAHMAIAA9ACAAQAAoACcARwDkAHMAdABlACcALAAnAFYATwBSAEQARQBGAEkATgBJAEUAUgBUAFwAQQBkAG0AaQBuAGkAcwB0AHIAYQB0AG8AcgBlAG4AJwApAAoAZgBvAHIAZQBhAGMAaAAgACgAJABuAGEAbQBlACAAaQBuACAAJABuAGEAbQBlAHMAKQAgAHsACgAgACAAIAAgACQAcwBpAGQAIAA9ACAAJABuAHUAbABsAAoAIAAgACAAIABpAGYAIAAoACQAbgBhAG0AZQAgAC0AZQBxACAAJwBHAHUAZQBzAHQAJwApACAAewAKACAAIAAgACAAIAAgACAAIAB0AHIAeQAgAHsAIAAkAHMAaQBkACAAPQAgACgARwBlAHQALQBMAG8AYwBhAGwAVQBzAGUAcgAgAC0ATgBhAG0AZQAgACcARwB1AGUAcwB0ACcAIAAtAEUAcgByAG8AcgBBAGMAdABpAG8AbgAgAFMAdABvAHAAKQAuAFMASQBEAC4AVgBhAGwAdQBlACAAfQAgAGMAYQB0AGMAaAAgAHsAfQAKACAAIAAgACAAfQAKACAAIAAgACAAaQBmACAAKAAkAG4AdQBsAGwAIAAtAGUAcQAgACQAcwBpAGQAKQAgAHsACgAgACAAIAAgACAAIAAgACAAdAByAHkAIAB7ACAAJABzAGkAZAAgAD0AIABbAFMAeQBzAHQAZQBtAC4AUwBlAGMAdQByAGkAdAB5AC4AUAByAGkAbgBjAGkAcABhAGwALgBOAFQAQQBjAGMAbwB1AG4AdABdADoAOgBuAGUAdwAoACQAbgBhAG0AZQApAC4AVAByAGEAbgBzAGwAYQB0AGUAKABbAFMAeQBzAHQAZQBtAC4AUwBlAGMAdQByAGkAdAB5AC4AUAByAGkAbgBjAGkAcABhAGwALgBTAGUAYwB1AHIAaQB0AHkASQBkAGUAbgB0AGkAZgBpAGUAcgBdACkALgBWAGEAbAB1AGUAIAB9ACAAYwBhAHQAYwBoACAAewB9AAoAIAAgACAAIAB9AAoAIAAgACAAIABpAGYAIAAoACQAbgB1AGwAbAAgAC0AbgBlACAAJABzAGkAZAApACAAewAgAFcAcgBpAHQAZQAtAE8AdQB0AHAAdQB0ACAAKAAkAG4AYQBtAGUAIAArACAAWwBjAGgAYQByAF0AOQAgACsAIAAkAHMAaQBkACkAIAB9AAoAfQAKAA==",
+          "Fields": {
+            "exitcode": {
+              "type": "\u0005",
+              "value": 1
+            },
+            "stdout": {
+              "type": "\u0007",
+              "value": ""
+            },
+            "stderr": {
+              "type": "\u0007",
+              "value": ""
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

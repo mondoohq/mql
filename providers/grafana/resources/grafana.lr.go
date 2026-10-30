@@ -9,9 +9,9 @@ import (
 	"errors"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // The MQL type names exposed as public consts for ease of reference.
@@ -23,7 +23,6 @@ const (
 	ResourceGrafanaServiceAccountToken string = "grafana.serviceAccountToken"
 	ResourceGrafanaDatasource          string = "grafana.datasource"
 	ResourceGrafanaContactPoint        string = "grafana.contactPoint"
-	ResourceGrafanaApiKey              string = "grafana.apiKey"
 	ResourceGrafanaRole                string = "grafana.role"
 	ResourceGrafanaSsoSettings         string = "grafana.ssoSettings"
 	ResourceGrafanaSamlSettings        string = "grafana.samlSettings"
@@ -61,10 +60,6 @@ func init() {
 		"grafana.contactPoint": {
 			// to override args, implement: initGrafanaContactPoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGrafanaContactPoint,
-		},
-		"grafana.apiKey": {
-			// to override args, implement: initGrafanaApiKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
-			Create: createGrafanaApiKey,
 		},
 		"grafana.role": {
 			// to override args, implement: initGrafanaRole(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -170,9 +165,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"grafana.notificationPolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGrafana).GetNotificationPolicy()).ToDataRes(types.Resource("grafana.notificationPolicy"))
-	},
-	"grafana.apiKeys": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGrafana).GetApiKeys()).ToDataRes(types.Array(types.Resource("grafana.apiKey")))
 	},
 	"grafana.roles": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGrafana).GetRoles()).ToDataRes(types.Array(types.Resource("grafana.role")))
@@ -282,6 +274,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"grafana.serviceAccountToken.isExpired": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGrafanaServiceAccountToken).GetIsExpired()).ToDataRes(types.Bool)
 	},
+	"grafana.serviceAccountToken.isRevoked": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGrafanaServiceAccountToken).GetIsRevoked()).ToDataRes(types.Bool)
+	},
+	"grafana.serviceAccountToken.lastUsedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGrafanaServiceAccountToken).GetLastUsedAt()).ToDataRes(types.Time)
+	},
+	"grafana.serviceAccountToken.serviceAccount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGrafanaServiceAccountToken).GetServiceAccount()).ToDataRes(types.Resource("grafana.serviceAccount"))
+	},
 	"grafana.datasource.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGrafanaDatasource).GetId()).ToDataRes(types.Int)
 	},
@@ -374,30 +375,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"grafana.contactPoint.hasHttpAuth": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGrafanaContactPoint).GetHasHttpAuth()).ToDataRes(types.Bool)
-	},
-	"grafana.apiKey.id": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGrafanaApiKey).GetId()).ToDataRes(types.Int)
-	},
-	"grafana.apiKey.orgId": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGrafanaApiKey).GetOrgId()).ToDataRes(types.Int)
-	},
-	"grafana.apiKey.name": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGrafanaApiKey).GetName()).ToDataRes(types.String)
-	},
-	"grafana.apiKey.role": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGrafanaApiKey).GetRole()).ToDataRes(types.String)
-	},
-	"grafana.apiKey.expiration": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGrafanaApiKey).GetExpiration()).ToDataRes(types.Time)
-	},
-	"grafana.apiKey.hasExpiration": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGrafanaApiKey).GetHasExpiration()).ToDataRes(types.Bool)
-	},
-	"grafana.apiKey.isExpired": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGrafanaApiKey).GetIsExpired()).ToDataRes(types.Bool)
-	},
-	"grafana.apiKey.serviceAccountId": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGrafanaApiKey).GetServiceAccountId()).ToDataRes(types.Int)
 	},
 	"grafana.role.uid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGrafanaRole).GetUid()).ToDataRes(types.String)
@@ -527,10 +504,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"grafana.notificationPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGrafana).NotificationPolicy, ok = plugin.RawToTValue[*mqlGrafanaNotificationPolicy](v.Value, v.Error)
-		return
-	},
-	"grafana.apiKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGrafana).ApiKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"grafana.roles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -693,6 +666,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGrafanaServiceAccountToken).IsExpired, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"grafana.serviceAccountToken.isRevoked": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGrafanaServiceAccountToken).IsRevoked, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"grafana.serviceAccountToken.lastUsedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGrafanaServiceAccountToken).LastUsedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"grafana.serviceAccountToken.serviceAccount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGrafanaServiceAccountToken).ServiceAccount, ok = plugin.RawToTValue[*mqlGrafanaServiceAccount](v.Value, v.Error)
+		return
+	},
 	"grafana.datasource.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGrafanaDatasource).__id, ok = v.Value.(string)
 		return
@@ -823,42 +808,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"grafana.contactPoint.hasHttpAuth": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGrafanaContactPoint).HasHttpAuth, ok = plugin.RawToTValue[bool](v.Value, v.Error)
-		return
-	},
-	"grafana.apiKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGrafanaApiKey).__id, ok = v.Value.(string)
-		return
-	},
-	"grafana.apiKey.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGrafanaApiKey).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
-		return
-	},
-	"grafana.apiKey.orgId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGrafanaApiKey).OrgId, ok = plugin.RawToTValue[int64](v.Value, v.Error)
-		return
-	},
-	"grafana.apiKey.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGrafanaApiKey).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
-	"grafana.apiKey.role": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGrafanaApiKey).Role, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
-	"grafana.apiKey.expiration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGrafanaApiKey).Expiration, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
-		return
-	},
-	"grafana.apiKey.hasExpiration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGrafanaApiKey).HasExpiration, ok = plugin.RawToTValue[bool](v.Value, v.Error)
-		return
-	},
-	"grafana.apiKey.isExpired": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGrafanaApiKey).IsExpired, ok = plugin.RawToTValue[bool](v.Value, v.Error)
-		return
-	},
-	"grafana.apiKey.serviceAccountId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGrafanaApiKey).ServiceAccountId, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"grafana.role.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1032,7 +981,6 @@ type mqlGrafana struct {
 	Datasources        plugin.TValue[[]any]
 	ContactPoints      plugin.TValue[[]any]
 	NotificationPolicy plugin.TValue[*mqlGrafanaNotificationPolicy]
-	ApiKeys            plugin.TValue[[]any]
 	Roles              plugin.TValue[[]any]
 	SsoSettings        plugin.TValue[[]any]
 	SamlSettings       plugin.TValue[*mqlGrafanaSamlSettings]
@@ -1168,22 +1116,6 @@ func (c *mqlGrafana) GetNotificationPolicy() *plugin.TValue[*mqlGrafanaNotificat
 		}
 
 		return c.notificationPolicy()
-	})
-}
-
-func (c *mqlGrafana) GetApiKeys() *plugin.TValue[[]any] {
-	return plugin.GetOrCompute[[]any](&c.ApiKeys, func() ([]any, error) {
-		if c.MqlRuntime.HasRecording {
-			d, err := c.MqlRuntime.FieldResourceFromRecording("grafana", c.__id, "apiKeys")
-			if err != nil {
-				return nil, err
-			}
-			if d != nil {
-				return d.Value.([]any), nil
-			}
-		}
-
-		return c.apiKeys()
 	})
 }
 
@@ -1531,6 +1463,9 @@ type mqlGrafanaServiceAccountToken struct {
 	HasExpiration          plugin.TValue[bool]
 	SecondsUntilExpiration plugin.TValue[float64]
 	IsExpired              plugin.TValue[bool]
+	IsRevoked              plugin.TValue[bool]
+	LastUsedAt             plugin.TValue[*time.Time]
+	ServiceAccount         plugin.TValue[*mqlGrafanaServiceAccount]
 }
 
 // createGrafanaServiceAccountToken creates a new instance of this resource
@@ -1600,6 +1535,30 @@ func (c *mqlGrafanaServiceAccountToken) GetSecondsUntilExpiration() *plugin.TVal
 
 func (c *mqlGrafanaServiceAccountToken) GetIsExpired() *plugin.TValue[bool] {
 	return &c.IsExpired
+}
+
+func (c *mqlGrafanaServiceAccountToken) GetIsRevoked() *plugin.TValue[bool] {
+	return &c.IsRevoked
+}
+
+func (c *mqlGrafanaServiceAccountToken) GetLastUsedAt() *plugin.TValue[*time.Time] {
+	return &c.LastUsedAt
+}
+
+func (c *mqlGrafanaServiceAccountToken) GetServiceAccount() *plugin.TValue[*mqlGrafanaServiceAccount] {
+	return plugin.GetOrCompute[*mqlGrafanaServiceAccount](&c.ServiceAccount, func() (*mqlGrafanaServiceAccount, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("grafana.serviceAccountToken", c.__id, "serviceAccount")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGrafanaServiceAccount), nil
+			}
+		}
+
+		return c.serviceAccount()
+	})
 }
 
 // mqlGrafanaDatasource for the grafana.datasource resource
@@ -1859,90 +1818,6 @@ func (c *mqlGrafanaContactPoint) GetHasHttpAuth() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.HasHttpAuth, func() (bool, error) {
 		return c.hasHttpAuth()
 	})
-}
-
-// mqlGrafanaApiKey for the grafana.apiKey resource
-type mqlGrafanaApiKey struct {
-	MqlRuntime *plugin.Runtime
-	__id       string
-	// optional: if you define mqlGrafanaApiKeyInternal it will be used here
-	Id               plugin.TValue[int64]
-	OrgId            plugin.TValue[int64]
-	Name             plugin.TValue[string]
-	Role             plugin.TValue[string]
-	Expiration       plugin.TValue[*time.Time]
-	HasExpiration    plugin.TValue[bool]
-	IsExpired        plugin.TValue[bool]
-	ServiceAccountId plugin.TValue[int64]
-}
-
-// createGrafanaApiKey creates a new instance of this resource
-func createGrafanaApiKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
-	res := &mqlGrafanaApiKey{
-		MqlRuntime: runtime,
-	}
-
-	err := SetAllData(res, args)
-	if err != nil {
-		return res, err
-	}
-
-	if res.__id == "" {
-		res.__id, err = res.id()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if runtime.HasRecording {
-		args, err = runtime.ResourceFromRecording("grafana.apiKey", res.__id)
-		if err != nil || args == nil {
-			return res, err
-		}
-		return res, SetAllData(res, args)
-	}
-
-	return res, nil
-}
-
-func (c *mqlGrafanaApiKey) MqlName() string {
-	return "grafana.apiKey"
-}
-
-func (c *mqlGrafanaApiKey) MqlID() string {
-	return c.__id
-}
-
-func (c *mqlGrafanaApiKey) GetId() *plugin.TValue[int64] {
-	return &c.Id
-}
-
-func (c *mqlGrafanaApiKey) GetOrgId() *plugin.TValue[int64] {
-	return &c.OrgId
-}
-
-func (c *mqlGrafanaApiKey) GetName() *plugin.TValue[string] {
-	return &c.Name
-}
-
-func (c *mqlGrafanaApiKey) GetRole() *plugin.TValue[string] {
-	return &c.Role
-}
-
-func (c *mqlGrafanaApiKey) GetExpiration() *plugin.TValue[*time.Time] {
-	return &c.Expiration
-}
-
-func (c *mqlGrafanaApiKey) GetHasExpiration() *plugin.TValue[bool] {
-	return &c.HasExpiration
-}
-
-func (c *mqlGrafanaApiKey) GetIsExpired() *plugin.TValue[bool] {
-	return &c.IsExpired
-}
-
-func (c *mqlGrafanaApiKey) GetServiceAccountId() *plugin.TValue[int64] {
-	return &c.ServiceAccountId
 }
 
 // mqlGrafanaRole for the grafana.role resource

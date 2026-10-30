@@ -1,0 +1,29 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "6.1.112"
+
+# Captured from bellsoft/alpaquita-linux-base:stream-glibc. /etc/os-release is a
+# symlink to /usr/lib/os-release on the real image. LIBC_TYPE is a BellSoft
+# extension naming the libc the variant was built against, and VERSION_ID is the
+# release line ("stream" here, "23" and "25" on the LTS lines) rather than a
+# dotted version.
+[files."/etc/os-release"]
+content = """
+NAME="BellSoft Alpaquita Linux"
+ID=alpaquita
+ID_LIKE=alpine
+VERSION="Stream"
+VERSION_ID=stream
+PRETTY_NAME="BellSoft Alpaquita Linux Stream (glibc)"
+HOME_URL="https://bell-sw.com/"
+BUG_REPORT_URL="https://bell-sw.com/support/"
+LIBC_TYPE=glibc
+"""
+
+[files."/etc/alpaquita-release"]
+content = "stream\n"

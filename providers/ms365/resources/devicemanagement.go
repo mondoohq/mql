@@ -6,14 +6,47 @@ package resources
 import (
 	"context"
 
+	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/devicemanagement"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
+
+type mqlMicrosoftDevicemanagementInternal struct {
+	// per-device properties the managedDevices list never returns, fetched
+	// for every listed device in one batched call on first access
+	managedDeviceDetails batchFieldCache
+}
+
+// managedDeviceDetailFields are the managedDevice properties Graph only
+// returns from a single-device GET that selects them; the list call leaves
+// them empty.
+var managedDeviceDetailFields = []string{"udid", "iccid", "notes", "ethernetMacAddress"}
+
+// managedDeviceDetail holds the detail properties of one managed device. A
+// nil pointer means Graph returned no value.
+type managedDeviceDetail struct {
+	udid               *string
+	iccid              *string
+	notes              *string
+	ethernetMacAddress *string
+}
+
+func newManagedDeviceDetail(d models.ManagedDeviceable) managedDeviceDetail {
+	if d == nil {
+		return managedDeviceDetail{}
+	}
+	return managedDeviceDetail{
+		udid:               d.GetUdid(),
+		iccid:              d.GetIccid(),
+		notes:              d.GetNotes(),
+		ethernetMacAddress: d.GetEthernetMacAddress(),
+	}
+}
 
 func (m *mqlMicrosoftDevicemanagementDeviceconfiguration) id() (string, error) {
 	return m.Id.Data, nil
@@ -93,7 +126,6 @@ func newMqlMicrosoftManagedDevice(runtime *plugin.Runtime, u models.ManagedDevic
 		map[string]*llx.RawData{
 			"__id":                         llx.StringDataPtr(u.GetId()),
 			"id":                           llx.StringDataPtr(u.GetId()),
-			"userId":                       llx.StringDataPtr(u.GetUserId()),
 			"name":                         llx.StringDataPtr(u.GetDeviceName()),
 			"operatingSystem":              llx.StringDataPtr(u.GetOperatingSystem()),
 			"jailBroken":                   llx.StringDataPtr(u.GetJailBroken()),
@@ -115,30 +147,30 @@ func newMqlMicrosoftManagedDevice(runtime *plugin.Runtime, u models.ManagedDevic
 			"userDisplayName":              llx.StringDataPtr(u.GetUserDisplayName()),
 			"wiFiMacAddress":               llx.StringDataPtr(u.GetWiFiMacAddress()),
 			"meid":                         llx.StringDataPtr(u.GetMeid()),
-			"iccid":                        llx.StringDataPtr(u.GetIccid()),
-			"udid":                         llx.StringDataPtr(u.GetUdid()),
-			"notes":                        llx.StringDataPtr(u.GetNotes()),
-			"ethernetMacAddress":           llx.StringDataPtr(u.GetEthernetMacAddress()),
 			"enrollmentProfileName":        llx.StringDataPtr(u.GetEnrollmentProfileName()),
 			"windowsProtectionState":       llx.DictData(protectionState),
 			"complianceState":              llx.StringDataPtr(complianceState),
 			"deviceRegistrationState":      llx.StringDataPtr(deviceRegistrationState),
 			"managementAgent":              llx.StringDataPtr(managementAgent),
-			"lastSyncDateTime":             llx.TimeDataPtr(u.GetLastSyncDateTime()),
+			"lastSyncDateTime":             graphTimeData(u.GetLastSyncDateTime()),
 			"freeStorageSpaceInBytes":      llx.IntDataPtr(u.GetFreeStorageSpaceInBytes()),
 			"totalStorageSpaceInBytes":     llx.IntDataPtr(u.GetTotalStorageSpaceInBytes()),
-			"enrolledDateTime":             llx.TimeDataPtr(u.GetEnrolledDateTime()),
+			"enrolledDateTime":             graphTimeData(u.GetEnrolledDateTime()),
 			"deviceEnrollmentType":         llx.StringDataPtr(deviceEnrollmentType),
 			"partnerReportedThreatState":   llx.StringDataPtr(partnerReportedThreatState),
 			"phoneNumber":                  llx.StringDataPtr(u.GetPhoneNumber()),
 			"subscriberCarrier":            llx.StringDataPtr(u.GetSubscriberCarrier()),
-			"complianceGracePeriodExpirationDateTime": llx.TimeDataPtr(u.GetComplianceGracePeriodExpirationDateTime()),
-			"managementCertificateExpirationDate":     llx.TimeDataPtr(u.GetManagementCertificateExpirationDate()),
+			"complianceGracePeriodExpirationDateTime": graphTimeData(u.GetComplianceGracePeriodExpirationDateTime()),
+			"managementCertificateExpirationDate":     graphTimeData(u.GetManagementCertificateExpirationDate()),
 		})
 	if err != nil {
 		return nil, err
 	}
-	return graphDevice.(*mqlMicrosoftDevicemanagementManageddevice), nil
+	mqlDevice := graphDevice.(*mqlMicrosoftDevicemanagementManageddevice)
+	if userID := u.GetUserId(); userID != nil {
+		mqlDevice.cacheUserID = *userID
+	}
+	return mqlDevice, nil
 }
 
 func (a *mqlMicrosoftDevicemanagement) deviceConfigurations() ([]any, error) {
@@ -165,7 +197,6 @@ func (a *mqlMicrosoftDevicemanagement) deviceConfigurations() ([]any, error) {
 
 	res := []any{}
 	for _, configuration := range configurations {
-		properties := getConfigurationProperties(configuration)
 		policyAssignments := []any{}
 		for _, assignment := range configuration.GetAssignments() {
 			id := ""
@@ -181,12 +212,11 @@ func (a *mqlMicrosoftDevicemanagement) deviceConfigurations() ([]any, error) {
 		mqlResource, err := CreateResource(a.MqlRuntime, "microsoft.devicemanagement.deviceconfiguration",
 			map[string]*llx.RawData{
 				"id":                   llx.StringDataPtr(configuration.GetId()),
-				"lastModifiedDateTime": llx.TimeDataPtr(configuration.GetLastModifiedDateTime()),
-				"createdDateTime":      llx.TimeDataPtr(configuration.GetCreatedDateTime()),
+				"lastModifiedDateTime": graphTimeData(configuration.GetLastModifiedDateTime()),
+				"createdDateTime":      graphTimeData(configuration.GetCreatedDateTime()),
 				"description":          llx.StringDataPtr(configuration.GetDescription()),
 				"displayName":          llx.StringDataPtr(configuration.GetDisplayName()),
 				"version":              llx.IntDataDefault(configuration.GetVersion(), 0),
-				"properties":           llx.DictData(properties),
 				"policyAssignments":    llx.ArrayData(policyAssignments, types.Resource("microsoft.devicemanagement.policyAssignment")),
 				"platformType":         llx.StringData(deviceConfigurationPlatform(configuration)),
 				"settings":             llx.DictData(deviceConfigurationSettings(configuration)),
@@ -240,8 +270,8 @@ func (a *mqlMicrosoftDevicemanagement) deviceEnrollmentConfigurations() ([]any, 
 				"id":                   llx.StringDataPtr(config.GetId()),
 				"displayName":          llx.StringDataPtr(config.GetDisplayName()),
 				"description":          llx.StringDataPtr(config.GetDescription()),
-				"createdDateTime":      llx.TimeDataPtr(config.GetCreatedDateTime()),
-				"lastModifiedDateTime": llx.TimeDataPtr(config.GetLastModifiedDateTime()),
+				"createdDateTime":      graphTimeData(config.GetCreatedDateTime()),
+				"lastModifiedDateTime": graphTimeData(config.GetLastModifiedDateTime()),
 				"priority":             llx.IntDataDefault(config.GetPriority(), 0),
 				"version":              llx.IntDataDefault(config.GetVersion(), 0),
 				"configurationType":    llx.StringData(enrollmentConfigurationKind(config)),
@@ -297,18 +327,16 @@ func (a *mqlMicrosoftDevicemanagement) deviceCompliancePolicies() ([]any, error)
 			}
 			policyAssignments = append(policyAssignments, assignmentResource)
 		}
-		properties := getComplianceProperties(compliancePolicy)
 		mqlResource, err := CreateResource(a.MqlRuntime, "microsoft.devicemanagement.devicecompliancepolicy",
 			map[string]*llx.RawData{
 				"id":                      llx.StringDataPtr(compliancePolicy.GetId()),
-				"createdDateTime":         llx.TimeDataPtr(compliancePolicy.GetCreatedDateTime()),
+				"createdDateTime":         graphTimeData(compliancePolicy.GetCreatedDateTime()),
 				"description":             llx.StringDataPtr(compliancePolicy.GetDescription()),
 				"displayName":             llx.StringDataPtr(compliancePolicy.GetDisplayName()),
-				"lastModifiedDateTime":    llx.TimeDataPtr(compliancePolicy.GetLastModifiedDateTime()),
+				"lastModifiedDateTime":    graphTimeData(compliancePolicy.GetLastModifiedDateTime()),
 				"version":                 llx.IntDataDefault(compliancePolicy.GetVersion(), 0),
 				"assignments":             llx.ArrayData(assignments, types.Any),
 				"policyAssignments":       llx.ArrayData(policyAssignments, types.Resource("microsoft.devicemanagement.policyAssignment")),
-				"properties":              llx.DictData(properties),
 				"platformType":            llx.StringData(compliancePolicyPlatform(compliancePolicy)),
 				"settings":                llx.DictData(complianceSettings(compliancePolicy)),
 				"scheduledActionsForRule": llx.ArrayData(scheduledActionsForRule(compliancePolicy), types.Any),
@@ -321,170 +349,108 @@ func (a *mqlMicrosoftDevicemanagement) deviceCompliancePolicies() ([]any, error)
 	return res, nil
 }
 
-// TODO: androidDeviceOwnerGeneralDeviceConfiguration missing
-func getConfigurationProperties(config models.DeviceConfigurationable) map[string]any {
-	props := map[string]any{}
-	if config.GetOdataType() != nil {
-		props["@odata.type"] = *config.GetOdataType()
+// detail returns the per-device detail properties, fetching them for every
+// listed managed device in one batched Graph call on first access.
+func (a *mqlMicrosoftDevicemanagementManageddevice) detail() (managedDeviceDetail, error) {
+	res, err := CreateResource(a.MqlRuntime, "microsoft.devicemanagement", nil)
+	if err != nil {
+		return managedDeviceDetail{}, err
 	}
-
-	agdc, ok := config.(*models.AndroidGeneralDeviceConfiguration)
-	if ok {
-		if agdc.GetPasswordRequired() != nil {
-			props["passwordRequired"] = *agdc.GetPasswordRequired()
-		}
-		if agdc.GetPasswordSignInFailureCountBeforeFactoryReset() != nil {
-			props["passwordSignInFailureCountBeforeFactoryReset"] = int64(*agdc.GetPasswordSignInFailureCountBeforeFactoryReset())
-		}
-		if agdc.GetPasswordMinimumLength() != nil {
-			props["passwordMinimumLength"] = int64(*agdc.GetPasswordMinimumLength())
-		}
-		if agdc.GetStorageRequireDeviceEncryption() != nil {
-			props["storageRequireDeviceEncryption"] = *agdc.GetStorageRequireDeviceEncryption()
-		}
-		if agdc.GetPasswordRequiredType() != nil {
-			props["passwordRequiredType"] = agdc.GetPasswordRequiredType().String()
-		}
-		if agdc.GetPasswordExpirationDays() != nil {
-			props["passwordExpirationDays"] = int64(*agdc.GetPasswordExpirationDays())
-		}
-		if agdc.GetPasswordMinutesOfInactivityBeforeScreenTimeout() != nil {
-			props["passwordMinutesOfInactivityBeforeScreenTimeout"] = int64(*agdc.GetPasswordMinutesOfInactivityBeforeScreenTimeout())
+	dm := res.(*mqlMicrosoftDevicemanagement)
+	var ids []string
+	if list := dm.GetManagedDevices(); list.Error == nil {
+		ids = make([]string, 0, len(list.Data))
+		for _, item := range list.Data {
+			ids = append(ids, item.(*mqlMicrosoftDevicemanagementManageddevice).Id.Data)
 		}
 	}
-	w10gc, ok := config.(*models.Windows10GeneralConfiguration)
-	if ok {
-		if w10gc.GetPasswordRequired() != nil {
-			props["passwordRequired"] = *w10gc.GetPasswordRequired()
-		}
-		if w10gc.GetPasswordBlockSimple() != nil {
-			props["passwordBlockSimple"] = *w10gc.GetPasswordBlockSimple()
-		}
-		if w10gc.GetPasswordMinutesOfInactivityBeforeScreenTimeout() != nil {
-			props["passwordMinutesOfInactivityBeforeScreenTimeout"] = int64(*w10gc.GetPasswordMinutesOfInactivityBeforeScreenTimeout())
-		}
-		if w10gc.GetPasswordSignInFailureCountBeforeFactoryReset() != nil {
-			props["passwordSignInFailureCountBeforeFactoryReset"] = int64(*w10gc.GetPasswordSignInFailureCountBeforeFactoryReset())
-		}
-		if w10gc.GetPasswordMinimumLength() != nil {
-			props["passwordMinimumLength"] = int64(*w10gc.GetPasswordMinimumLength())
-		}
-		if w10gc.GetPasswordRequiredType() != nil {
-			props["passwordRequiredType"] = w10gc.GetPasswordRequiredType().String()
-		}
-		if w10gc.GetPasswordExpirationDays() != nil {
-			props["passwordExpirationDays"] = int64(*w10gc.GetPasswordExpirationDays())
-		}
-		if w10gc.GetPasswordExpirationDays() != nil {
-			props["passwordExpirationDays"] = int64(*w10gc.GetPasswordExpirationDays())
-		}
+	v, err := dm.managedDeviceDetails.resolve(a.Id.Data, ids, dm.loadManagedDeviceDetails)
+	if err != nil {
+		return managedDeviceDetail{}, err
 	}
-	macdc, ok := config.(*models.MacOSGeneralDeviceConfiguration)
-	if ok {
-		if macdc.GetPasswordMinutesOfInactivityBeforeScreenTimeout() != nil {
-			props["passwordMinutesOfInactivityBeforeScreenTimeout"] = int64(*macdc.GetPasswordMinutesOfInactivityBeforeScreenTimeout())
-		}
-		if macdc.GetPasswordMinimumLength() != nil {
-			props["passwordMinimumLength"] = int64(*macdc.GetPasswordMinimumLength())
-		}
-		if macdc.GetPasswordMinutesOfInactivityBeforeLock() != nil {
-			props["passwordMinutesOfInactivityBeforeLock"] = int64(*macdc.GetPasswordMinutesOfInactivityBeforeLock())
-		}
-		if macdc.GetPasswordRequiredType() != nil {
-			props["passwordRequiredType"] = macdc.GetPasswordRequiredType().String()
-		}
-		if macdc.GetPasswordBlockSimple() != nil {
-			props["passwordBlockSimple"] = *macdc.GetPasswordBlockSimple()
-		}
-		if macdc.GetPasswordRequired() != nil {
-			props["passwordRequired"] = *macdc.GetPasswordRequired()
-		}
-		if macdc.GetPasswordExpirationDays() != nil {
-			props["passwordExpirationDays"] = int64(*macdc.GetPasswordExpirationDays())
-		}
+	if v == nil {
+		return managedDeviceDetail{}, nil
 	}
-
-	iosdc, ok := config.(*models.IosGeneralDeviceConfiguration)
-	if ok {
-		if iosdc.GetPasscodeSignInFailureCountBeforeWipe() != nil {
-			props["passcodeSignInFailureCountBeforeWipe"] = int64(*iosdc.GetPasscodeSignInFailureCountBeforeWipe())
-		}
-		if iosdc.GetPasscodeMinimumLength() != nil {
-			props["passcodeMinimumLength"] = int64(*iosdc.GetPasscodeMinimumLength())
-		}
-		if iosdc.GetPasscodeMinutesOfInactivityBeforeLock() != nil {
-			props["passcodeMinutesOfInactivityBeforeLock"] = int64(*iosdc.GetPasscodeMinutesOfInactivityBeforeLock())
-		}
-		if iosdc.GetPasscodeMinutesOfInactivityBeforeScreenTimeout() != nil {
-			props["passcodeMinutesOfInactivityBeforeScreenTimeout"] = int64(*iosdc.GetPasscodeMinutesOfInactivityBeforeScreenTimeout())
-		}
-		if iosdc.GetPasscodeRequiredType() != nil {
-			props["passcodeRequiredType"] = iosdc.GetPasscodeRequiredType().String()
-		}
-		if iosdc.GetPasscodeBlockSimple() != nil {
-			props["passcodeBlockSimple"] = *iosdc.GetPasscodeBlockSimple()
-		}
-		if iosdc.GetPasscodeRequired() != nil {
-			props["passcodeRequired"] = *iosdc.GetPasscodeRequired()
-		}
-		if iosdc.GetPasscodeExpirationDays() != nil {
-			props["passcodeExpirationDays"] = int64(*iosdc.GetPasscodeExpirationDays())
-		}
-	}
-	awpgdc, ok := config.(*models.AndroidWorkProfileGeneralDeviceConfiguration)
-	if ok {
-		if awpgdc.GetPasswordSignInFailureCountBeforeFactoryReset() != nil {
-			props["passwordSignInFailureCountBeforeFactoryReset"] = int64(*awpgdc.GetPasswordSignInFailureCountBeforeFactoryReset())
-		}
-		if awpgdc.GetPasswordMinimumLength() != nil {
-			props["passwordMinimumLength"] = int64(*awpgdc.GetPasswordMinimumLength())
-		}
-		if awpgdc.GetPasswordMinutesOfInactivityBeforeScreenTimeout() != nil {
-			props["passwordMinutesOfInactivityBeforeScreenTimeout"] = int64(*awpgdc.GetPasswordMinutesOfInactivityBeforeScreenTimeout())
-		}
-		if awpgdc.GetWorkProfilePasswordMinutesOfInactivityBeforeScreenTimeout() != nil {
-			props["workProfilePasswordMinutesOfInactivityBeforeScreenTimeout"] = int64(*awpgdc.GetWorkProfilePasswordMinutesOfInactivityBeforeScreenTimeout())
-		}
-		if awpgdc.GetPasswordRequiredType() != nil {
-			props["passwordRequiredType"] = awpgdc.GetPasswordRequiredType().String()
-		}
-		if awpgdc.GetWorkProfilePasswordRequiredType() != nil {
-			props["workProfilePasswordRequiredType"] = awpgdc.GetWorkProfilePasswordRequiredType().String()
-		}
-		if awpgdc.GetPasswordExpirationDays() != nil {
-			props["passwordExpirationDays"] = int64(*awpgdc.GetPasswordExpirationDays())
-		}
-	}
-	return props
+	return v.(managedDeviceDetail), nil
 }
 
-// TODO: windows 10 props missing.
-func getComplianceProperties(compliance models.DeviceCompliancePolicyable) map[string]any {
-	props := map[string]any{}
-	if compliance.GetOdataType() != nil {
-		props["@odata.type"] = *compliance.GetOdataType()
+// loadManagedDeviceDetails issues one GET per managed device, selecting only
+// the detail properties, through the Graph $batch endpoint.
+func (a *mqlMicrosoftDevicemanagement) loadManagedDeviceDetails(ids []string) (map[string]any, map[string]error, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, nil, err
 	}
+	return fetchManagedDeviceDetails(context.Background(), graphClient, ids)
+}
 
-	ioscp, ok := compliance.(*models.IosCompliancePolicy)
-	if ok {
-		if ioscp.GetSecurityBlockJailbrokenDevices() != nil {
-			props["securityBlockJailbrokenDevices"] = *ioscp.GetSecurityBlockJailbrokenDevices()
+// fetchManagedDeviceDetails reads the detail properties of each managed
+// device, keyed by device id. A per-device failure lands in the error map
+// without failing the others.
+func fetchManagedDeviceDetails(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, ids []string) (map[string]any, map[string]error, error) {
+	reqs := make([]batchItemRequest, 0, len(ids))
+	for _, id := range ids {
+		info, err := graphClient.DeviceManagement().ManagedDevices().ByManagedDeviceId(id).ToGetRequestInformation(ctx,
+			&devicemanagement.ManagedDevicesManagedDeviceItemRequestBuilderGetRequestConfiguration{
+				QueryParameters: &devicemanagement.ManagedDevicesManagedDeviceItemRequestBuilderGetQueryParameters{
+					Select: managedDeviceDetailFields,
+				},
+			})
+		if err != nil {
+			return nil, nil, transformError(err)
 		}
-		if ioscp.GetManagedEmailProfileRequired() != nil {
-			props["managedEmailProfileRequired"] = *ioscp.GetManagedEmailProfileRequired()
-		}
+		reqs = append(reqs, batchItemRequest{key: id, reqInfo: info})
 	}
-	androidcp, ok := compliance.(*models.AndroidCompliancePolicy)
-	if ok {
-		if androidcp.GetSecurityBlockJailbrokenDevices() != nil {
-			props["securityBlockJailbrokenDevices"] = *androidcp.GetSecurityBlockJailbrokenDevices()
-		}
+	batch, err := batchGet[models.ManagedDeviceable](ctx, graphClient.GetAdapter(), reqs, models.CreateManagedDeviceFromDiscriminatorValue)
+	if err != nil {
+		return nil, nil, err
 	}
-	androidworkcp, ok := compliance.(*models.AndroidWorkProfileCompliancePolicy)
-	if ok {
-		if androidworkcp.GetSecurityBlockJailbrokenDevices() != nil {
-			props["securityBlockJailbrokenDevices"] = *androidworkcp.GetSecurityBlockJailbrokenDevices()
-		}
+	data := make(map[string]any, len(ids))
+	for id, d := range batch.results {
+		data[id] = newManagedDeviceDetail(d)
 	}
-	return props
+	return data, batch.errs, nil
+}
+
+func (a *mqlMicrosoftDevicemanagementManageddevice) udid() (string, error) {
+	d, err := a.detail()
+	if err != nil {
+		return "", err
+	}
+	return detailString(&a.Udid, d.udid), nil
+}
+
+func (a *mqlMicrosoftDevicemanagementManageddevice) iccid() (string, error) {
+	d, err := a.detail()
+	if err != nil {
+		return "", err
+	}
+	return detailString(&a.Iccid, d.iccid), nil
+}
+
+func (a *mqlMicrosoftDevicemanagementManageddevice) notes() (string, error) {
+	d, err := a.detail()
+	if err != nil {
+		return "", err
+	}
+	return detailString(&a.Notes, d.notes), nil
+}
+
+func (a *mqlMicrosoftDevicemanagementManageddevice) ethernetMacAddress() (string, error) {
+	d, err := a.detail()
+	if err != nil {
+		return "", err
+	}
+	return detailString(&a.EthernetMacAddress, d.ethernetMacAddress), nil
+}
+
+// detailString returns the value of an optional detail property, marking the
+// field null when Graph returned none so it reads as null rather than "".
+func detailString(field *plugin.TValue[string], v *string) string {
+	if v == nil {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return ""
+	}
+	return *v
 }

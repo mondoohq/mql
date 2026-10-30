@@ -1,0 +1,10 @@
+{
+  "Name": "s3",
+  "Version": "v1.4",
+  "Actions": [{"Name": "GetBucketCORS"}, {"Name": "GetBucketPolicy"}, {"Name": "ListAllMyBuckets"}],
+  "Operations": [
+    {"Name": "GetBucketCors", "AuthorizedActions": [{"Service": "s3", "Name": "GetBucketCORS"}]},
+    {"Name": "ListBuckets", "AuthorizedActions": [{"Service": "s3", "Name": "ListAllMyBuckets"}]},
+    {"Name": "GetBucketPolicy"}
+  ]
+}

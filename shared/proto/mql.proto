@@ -6,7 +6,7 @@ package proto;
 
 import "providers-sdk/v1/inventory/inventory.proto";
 
-option go_package = "go.mondoo.com/mql/v13/shared/proto";
+option go_package = "go.mondoo.com/mql/shared/proto";
 
 message RunQueryConfig {
   string command = 1;
@@ -25,6 +25,10 @@ message RunQueryConfig {
   string output = 11;
   string input = 12;
   bool exit_1_on_failure = 14;
+
+  // Compile under ADR 043 strict mode: every link in an MQL chain must resolve,
+  // and `?` marks one optional.
+  bool strict = 15;
 }
 
 message Empty {

@@ -10,7 +10,7 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 func TestShouldExcludeInstance(t *testing.T) {
@@ -132,4 +132,28 @@ func TestImdsSupport(t *testing.T) {
 	t.Run("v2.0 value is preserved", func(t *testing.T) {
 		assert.Equal(t, "v2.0", imdsSupport(ec2types.ImdsSupportValuesV20))
 	})
+}
+
+func TestDescribeLaunchTemplatesInputTagFilters(t *testing.T) {
+	in := describeLaunchTemplatesInput(connection.GeneralDiscoveryFilters{
+		Tags: map[string]string{"env": "prod,staging"},
+	})
+	require.Len(t, in.Filters, 1)
+	assert.Equal(t, "tag:env", aws.ToString(in.Filters[0].Name))
+	assert.Equal(t, []string{"prod", "staging"}, in.Filters[0].Values)
+
+	in = describeLaunchTemplatesInput(connection.GeneralDiscoveryFilters{})
+	assert.Empty(t, in.Filters)
+}
+
+func TestNetworkAclRegionAndId(t *testing.T) {
+	region, id, ok := networkAclRegionAndId("arn:aws:ec2:us-east-1:123456789012:network-acl/acl-0abc")
+	require.True(t, ok)
+	assert.Equal(t, "us-east-1", region)
+	assert.Equal(t, "acl-0abc", id)
+
+	_, _, ok = networkAclRegionAndId("arn:aws:ec2:us-east-1:123456789012:security-group/sg-0abc")
+	assert.False(t, ok)
+	_, _, ok = networkAclRegionAndId("acl-0abc")
+	assert.False(t, ok)
 }

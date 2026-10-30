@@ -11,13 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kballard/go-shellquote"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/connection/ssh/cat"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/ssh/cat"
 )
 
 func TestCatFs(t *testing.T) {
@@ -43,7 +44,7 @@ func TestCatFs(t *testing.T) {
 	assert.Equal(t, int64(4317), fi.Size())
 	assert.Equal(t, false, fi.IsDir())
 	assert.Equal(t, os.FileMode(0x180), fi.Mode())
-	assert.Equal(t, time.Unix(1590420240, 0), fi.ModTime())
+	assert.Equal(t, time.Unix(1590418792, 0), fi.ModTime())
 
 	// fetch file content
 	f, err := catfs.Open("/etc/ssh/sshd_config")
@@ -100,6 +101,31 @@ func TestCatFsReusesStatHelper(t *testing.T) {
 	require.NoError(t, f.Close())
 
 	assert.Equal(t, 1, countCommands(cw.commands, "sudo uname -s"))
+}
+
+func TestCatFsReaddirnamesQuotesPath(t *testing.T) {
+	fixture, _ := filepath.Abs("./testdata/cat.toml")
+	p, err := mock.New(0, &inventory.Asset{}, mock.WithPath(fixture))
+	require.NoError(t, err)
+
+	cw := &CommandWrapper{
+		commandRunner: p,
+		sudo:          shared.ParseSudo(map[string]*llx.Primitive{"sudo": llx.BoolPrimitive(true)}),
+	}
+
+	// directory names are read off the target and fed back into the listing
+	// command, so they have to survive as a single argument no matter what
+	// characters they contain
+	dir := `/home/vagrant/.ssh/od'd dir$(x)`
+
+	f := cat.NewFile(cat.New(cw), dir, false)
+	// the mock has no entry for this directory, only the command matters
+	_, _ = f.Readdirnames(-1)
+
+	require.Len(t, cw.commands, 1)
+	args, err := shellquote.Split(cw.commands[0])
+	require.NoError(t, err)
+	assert.Equal(t, []string{"sudo", "ls", "-1A", dir}, args)
 }
 
 func countCommands(commands []string, target string) int {

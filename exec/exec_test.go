@@ -9,12 +9,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/exec"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/mqlc"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/testutils"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/exec"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/mqlc"
+	"go.mondoo.com/mql/providers-sdk/v1/testutils"
+	"go.mondoo.com/mql/types"
 	"go.uber.org/goleak"
 )
 
@@ -420,17 +420,17 @@ func TestDictContains(t *testing.T) {
 	x.TestSimple(t, []testutils.SimpleTest{
 		{
 			Code:        "muser.dict.nonexisting.contains('abc')",
-			ResultIndex: 3,
+			ResultIndex: 1,
 			Expectation: false,
 		},
 		{
 			Code:        "muser.dict.string.contains(muser.dict.string2)",
-			ResultIndex: 3,
+			ResultIndex: 1,
 			Expectation: false,
 		},
 		{
 			Code:        "muser.dict.string.contains(muser.dict.string)",
-			ResultIndex: 3,
+			ResultIndex: 1,
 			Expectation: true,
 		},
 		{
@@ -523,8 +523,14 @@ func TestAndShortCircuiting(t *testing.T) {
 	x := testutils.InitTester(testutils.LinuxMock())
 	x.TestSimple(t, []testutils.SimpleTest{
 		{
+			// The value asserted here is the statement's own. What the case
+			// proves is the absence next to it: `muser.error` errors whenever it
+			// runs, and TestSimple requires no error, so a right side that ran
+			// would fail this. It used to read the null that the executor seeds
+			// in place of the skipped operand's datapoint; the operands of a
+			// combinator are no longer collected at all (issue 10723).
 			Code:        "false && muser.error",
-			Expectation: nil,
+			Expectation: false,
 		},
 		{
 			Code:  "true && muser.error",

@@ -5,10 +5,10 @@ package llx
 
 import (
 	"bytes"
-	"sort"
+	"slices"
 
-	"go.mondoo.com/mql/v13/checksums"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/checksums"
+	"go.mondoo.com/mql/types"
 )
 
 func (b *Block) ChunkIndex() uint32 {
@@ -170,7 +170,7 @@ func (l *CodeV2) checksum() string {
 	for k := range l.Assertions {
 		assertionRefs = append(assertionRefs, k)
 	}
-	sort.Slice(assertionRefs, func(i, j int) bool { return assertionRefs[i] < assertionRefs[j] })
+	slices.Sort(assertionRefs)
 	for _, ref := range assertionRefs {
 		checksum = checksum.Add(l.Checksums[ref])
 	}
@@ -225,7 +225,19 @@ func (l *CodeV2) RefDatapoints(ref uint64) []uint64 {
 		return []uint64{ref - 1}
 	}
 
-	if _, ok := ComparableLabel(chunk.Id); !ok {
+	label, ok := ComparableLabel(chunk.Id)
+	if !ok {
+		return nil
+	}
+
+	// A short-circuiting operator does not inform anything: its right side only
+	// runs when the left side fails to decide the result, and a datapoint runs
+	// unconditionally. Collecting the operands would evaluate a right side the
+	// guard exists to skip, which is what `x == null || x.someCall()` is written
+	// to prevent. Neither operand is worth the guarantee: `a || b` has no
+	// expected/actual to report, and the operands of the operands are not
+	// collected either, so the expansion could not render them anyway.
+	if isShortCircuit(label) {
 		return nil
 	}
 
@@ -306,7 +318,7 @@ func (l *CodeV2) returnValues(bundle *CodeBundle, lookup func(s string) (*RawRes
 	return res
 }
 
-func (l *CodeV2) entrypoint2assessment(bundle *CodeBundle, ref uint64, lookup func(s string) (*RawResult, bool)) *AssessmentItem {
+func (l *CodeV2) Entrypoint2Assessment(bundle *CodeBundle, ref uint64, lookup func(s string) (*RawResult, bool)) *AssessmentItem {
 	code := bundle.CodeV2
 	checksum := code.Checksums[ref]
 
@@ -349,7 +361,7 @@ func (l *CodeV2) entrypoint2assessment(bundle *CodeBundle, ref uint64, lookup fu
 
 			cnt := len(assertion.Checksums) - 1
 			res.Data = make([]*Primitive, cnt)
-			for i := 0; i < cnt; i++ {
+			for i := range cnt {
 				sum = assertion.Checksums[i+1]
 				res.Data[i], ok = dataMap[sum]
 				if !ok {
@@ -423,25 +435,19 @@ func (l *CodeV2) entrypoint2assessment(bundle *CodeBundle, ref uint64, lookup fu
 			// We need to find this datapoint and use it as the listRef.
 		OUTER:
 			for i := range code.Blocks {
-				refIsEntrypoint := false
-				for j := range code.Blocks[i].Entrypoints {
-					if code.Blocks[i].Entrypoints[j] == ref {
-						refIsEntrypoint = true
-						break
-					}
-				}
+				refIsEntrypoint := slices.Contains(code.Blocks[i].Entrypoints, ref)
 				if !refIsEntrypoint {
 					continue
 				}
-				for j := len(code.Blocks[i].Datapoints) - 1; j >= 0; j-- {
+				for _, v := range slices.Backward(code.Blocks[i].Datapoints) {
 					// skip the resource ids datapoint
-					if code.Blocks[i].Datapoints[j] == listRef {
+					if v == listRef {
 						continue
 					}
-					cc := code.Chunk(code.Blocks[i].Datapoints[j])
+					cc := code.Chunk(v)
 					// this contains the default values
 					if cc.Function != nil && cc.Function.Binding == listRef {
-						listRef = code.Blocks[i].Datapoints[j]
+						listRef = v
 						break OUTER
 					}
 				}
@@ -465,6 +471,16 @@ func (l *CodeV2) entrypoint2assessment(bundle *CodeBundle, ref uint64, lookup fu
 
 	if label, found := ComparableLabel(chunk.Id); found {
 		res.Operation = label
+
+		// A boolean combinator has no pair of values to put on either side of the
+		// operator. Its operands are whole statements, and the right one may never
+		// have run, because that is what the short circuit is for. The statement's
+		// own value is the only thing that was measured; the label says the rest.
+		if isShortCircuit(label) {
+			res.IsAssertion = true
+			res.Actual = checksumRes.Result().Data
+			return &res
+		}
 	} else {
 		cRes := checksumRes.Result()
 
@@ -573,6 +589,12 @@ func ComparableLabel(label string) (string, bool) {
 	}
 
 	return "", false
+}
+
+// isShortCircuit reports whether a comparable label is one of the boolean
+// combinators, which evaluate their right side lazily.
+func isShortCircuit(label string) bool {
+	return label == "&&" || label == "||"
 }
 
 var comparableIndicators = []byte{'=', '!', '>', '<', '&', '|'}

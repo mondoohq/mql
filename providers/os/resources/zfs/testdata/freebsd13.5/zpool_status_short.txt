@@ -1,0 +1,11 @@
+  pool: mqltest
+ state: ONLINE
+config:
+
+	NAME                        STATE     READ WRITE CKSUM  SLOW
+	mqltest                     ONLINE       0     0     0     0
+	  mirror-0                  ONLINE       0     0     0     0
+	    /var/tmp/mqlzfs/f1.img  ONLINE       0     0     0     0
+	    /var/tmp/mqlzfs/f2.img  ONLINE       0     0     0     0
+
+errors: No known data errors

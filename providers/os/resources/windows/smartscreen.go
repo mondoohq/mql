@@ -5,10 +5,12 @@ package windows
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
+	"strings"
 
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 // Microsoft Defender SmartScreen is configured entirely through policy registry
@@ -20,13 +22,19 @@ import (
 // References:
 // https://learn.microsoft.com/en-us/windows/security/operating-system-security/virus-and-threat-protection/microsoft-defender-smartscreen/
 
+// Get-RegVal returns null only when the key or the value does not exist. Any
+// other failure (an access-denied key, a broken provider) stops the script
+// with a non-zero exit status, so a read that failed is never reported as
+// "not configured".
 const smartScreenScript = `
+$ErrorActionPreference = 'Stop'
 function Get-RegVal($path, $name) {
-  try { return (Get-ItemProperty -Path $path -Name $name -ErrorAction Stop).$name } catch { return $null }
+  try { $k = Get-Item -LiteralPath $path } catch [System.Management.Automation.ItemNotFoundException] { return $null }
+  return $k.GetValue($name, $null)
 }
 $o = [pscustomobject]@{
   EnableSmartScreen                   = Get-RegVal 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' 'EnableSmartScreen'
-  ShellSmartScreenLevel               = [string](Get-RegVal 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' 'ShellSmartScreenLevel')
+  ShellSmartScreenLevel               = Get-RegVal 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' 'ShellSmartScreenLevel'
   EdgeSmartScreenEnabled              = Get-RegVal 'HKLM:\SOFTWARE\Policies\Microsoft\Edge' 'SmartScreenEnabled'
   EdgeSmartScreenPuaEnabled           = Get-RegVal 'HKLM:\SOFTWARE\Policies\Microsoft\Edge' 'SmartScreenPuaEnabled'
   EdgePreventOverride                 = Get-RegVal 'HKLM:\SOFTWARE\Policies\Microsoft\Edge' 'PreventSmartScreenPromptOverride'
@@ -36,12 +44,12 @@ $o = [pscustomobject]@{
 $o | ConvertTo-Json -Compress
 `
 
-// SmartScreenSettings holds the raw policy values that drive SmartScreen. The
-// numeric toggles use pointers so a missing (null) value is distinguishable
-// from an explicit 0.
+// SmartScreenSettings holds the raw policy values that drive SmartScreen. Every
+// value is a pointer so a missing (null) value is distinguishable from an
+// explicit 0 or an empty string.
 type SmartScreenSettings struct {
 	EnableSmartScreen                   *int64
-	ShellSmartScreenLevel               string
+	ShellSmartScreenLevel               *string
 	EdgeSmartScreenEnabled              *int64
 	EdgeSmartScreenPuaEnabled           *int64
 	EdgePreventOverride                 *int64
@@ -49,33 +57,44 @@ type SmartScreenSettings struct {
 	StoreAppsEnableWebContentEvaluation *int64
 }
 
-// enabledFlag reports whether a pointer-backed DWORD toggle is present and set to 1.
-func enabledFlag(v *int64) bool { return v != nil && *v == 1 }
+// enabledFlag decodes a 0/1 policy DWORD: nil when the value is absent (not
+// configured, Windows applies its own default), true for 1, false for any
+// other value. Folding "absent" into false made a host without SmartScreen
+// policy indistinguishable from one where policy turns SmartScreen off.
+func enabledFlag(v *int64) *bool {
+	if v == nil {
+		return nil
+	}
+	res := *v == 1
+	return &res
+}
 
 // ExplorerEnabled reports whether SmartScreen is enabled for Windows/File Explorer.
-func (s *SmartScreenSettings) ExplorerEnabled() bool { return enabledFlag(s.EnableSmartScreen) }
+func (s *SmartScreenSettings) ExplorerEnabled() *bool { return enabledFlag(s.EnableSmartScreen) }
 
 // EdgeEnabled reports whether SmartScreen is enabled for Microsoft Edge.
-func (s *SmartScreenSettings) EdgeEnabled() bool { return enabledFlag(s.EdgeSmartScreenEnabled) }
+func (s *SmartScreenSettings) EdgeEnabled() *bool { return enabledFlag(s.EdgeSmartScreenEnabled) }
 
 // EdgePuaEnabled reports whether Edge SmartScreen blocks potentially unwanted apps.
-func (s *SmartScreenSettings) EdgePuaEnabled() bool { return enabledFlag(s.EdgeSmartScreenPuaEnabled) }
+func (s *SmartScreenSettings) EdgePuaEnabled() *bool {
+	return enabledFlag(s.EdgeSmartScreenPuaEnabled)
+}
 
 // EdgePreventOverrideEnabled reports whether users are prevented from bypassing
 // Edge SmartScreen warnings about sites.
-func (s *SmartScreenSettings) EdgePreventOverrideEnabled() bool {
+func (s *SmartScreenSettings) EdgePreventOverrideEnabled() *bool {
 	return enabledFlag(s.EdgePreventOverride)
 }
 
 // EdgePreventOverrideForFilesEnabled reports whether users are prevented from
 // bypassing Edge SmartScreen warnings about downloads.
-func (s *SmartScreenSettings) EdgePreventOverrideForFilesEnabled() bool {
+func (s *SmartScreenSettings) EdgePreventOverrideForFilesEnabled() *bool {
 	return enabledFlag(s.EdgePreventOverrideForFiles)
 }
 
 // StoreAppsEnabled reports whether SmartScreen web-content evaluation is enabled
 // for Microsoft Store apps.
-func (s *SmartScreenSettings) StoreAppsEnabled() bool {
+func (s *SmartScreenSettings) StoreAppsEnabled() *bool {
 	return enabledFlag(s.StoreAppsEnableWebContentEvaluation)
 }
 
@@ -85,11 +104,25 @@ func GetSmartScreenSettings(p shared.Connection) (*SmartScreenSettings, error) {
 	if err != nil {
 		return nil, err
 	}
-	data, err := io.ReadAll(c.Stdout)
+	stdout, err := io.ReadAll(c.Stdout)
 	if err != nil {
 		return nil, err
 	}
-	return ParseSmartScreenSettings(data)
+	stderr, _ := io.ReadAll(c.Stderr)
+	return smartScreenResult(stdout, c.ExitStatus, stderr)
+}
+
+// smartScreenResult turns a raw command result into settings. A non-zero exit
+// status is an error, never an empty reading that would turn every field null.
+func smartScreenResult(stdout []byte, exitStatus int, stderr []byte) (*SmartScreenSettings, error) {
+	if exitStatus != 0 {
+		msg := strings.TrimSpace(string(stderr))
+		if msg == "" {
+			msg = fmt.Sprintf("command exited with status %d", exitStatus)
+		}
+		return nil, fmt.Errorf("failed to read SmartScreen policy: %s", msg)
+	}
+	return ParseSmartScreenSettings(stdout)
 }
 
 func ParseSmartScreenSettings(data []byte) (*SmartScreenSettings, error) {

@@ -6,13 +6,14 @@ package health
 import (
 	"context"
 	"fmt"
+	"maps"
 	"runtime"
 	"runtime/debug"
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/cli/config"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/cli/config"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
 	"go.mondoo.com/ranger-rpc"
 )
 
@@ -32,9 +33,7 @@ func WithTags(tags map[string]string) ReportOption {
 		if o.tags == nil {
 			o.tags = make(map[string]string, len(tags))
 		}
-		for k, v := range tags {
-			o.tags[k] = v
-		}
+		maps.Copy(o.tags, tags)
 	}
 }
 
@@ -67,6 +66,24 @@ func ReportPanic(product, version, build string, reporters ...PanicReportFn) {
 const (
 	TagQueryCodeID = "queryCodeID"
 	TagQuerySource = "querySource"
+)
+
+// Tags for provider start failure reports (server#22011). The platform's
+// error report handler branches on TagReportKind =
+// ReportKindProviderStartFailure to emit a dedicated provider_start.failed
+// record instead of a generic error report; the other tags become that
+// record's attributes. TagOS/TagArch carry the client's GOOS/GOARCH — a
+// wrong-architecture binary is one of the failure causes — using the same
+// keys panic reports set (see panicEvent).
+const (
+	TagReportKind      = "reportKind"
+	TagProvider        = "provider"
+	TagProviderVersion = "providerVersion"
+	TagFailureKind     = "failureKind"
+	TagOS              = "os"
+	TagArch            = "arch"
+
+	ReportKindProviderStartFailure = "provider_start_failure"
 )
 
 // querySourceMax bounds the query source attached to a panic report,
@@ -124,8 +141,24 @@ func ReportPanicWithTags(product, version, build string, tagsFn PanicTagsFn, rep
 	}
 }
 
+// ReportRecoveredPanic reports an already-recovered panic without
+// re-panicking. Use it when the caller recovers a panic itself and converts
+// it into an error instead of crashing the process. The caller supplies the
+// stacktrace (it typically needs one for its own logging anyway) — capture
+// it via debug.Stack() inside the deferred function that recovered, so it
+// still points at the panic site.
+func ReportRecoveredPanic(product, version, build string, r any, stacktrace []byte, tags map[string]string, reporters ...PanicReportFn) {
+	if build == "" {
+		return // avoid reporting panics from environments that don't set this variable
+	}
+	handlePanicWithStack(product, version, build, r, stacktrace, tags, reporters)
+}
+
 func handlePanic(product, version, build string, r any, tags map[string]string, reporters []PanicReportFn) {
-	stack := debug.Stack()
+	handlePanicWithStack(product, version, build, r, debug.Stack(), tags, reporters)
+}
+
+func handlePanicWithStack(product, version, build string, r any, stack []byte, tags map[string]string, reporters []PanicReportFn) {
 	sendPanic(product, version, build, r, stack, tags)
 
 	// call additional reporters
@@ -167,9 +200,7 @@ func sendPanic(product, version, build string, r any, stacktrace []byte, tags ma
 // asset context is available (e.g. panics outside a scan).
 func panicEvent(product, version, build string, r any, stacktrace []byte, tags map[string]string) *SendErrorReq {
 	allTags := make(map[string]string, len(tags)+2)
-	for k, v := range tags {
-		allTags[k] = v
-	}
+	maps.Copy(allTags, tags)
 	// Platform tags are written last so caller-supplied tags cannot
 	// overwrite them.
 	allTags["os"] = runtime.GOOS
@@ -283,12 +314,11 @@ func sendSlowQuery(product, version, build string, q SlowQueryInfo, ro reportOpt
 
 func sendErrorToMondooPlatform(serviceAccount *upstream.ServiceAccountCredentials, event *SendErrorReq) {
 	// 3. send error to mondoo platform
-	proxy, err := config.GetAPIProxy()
+	httpClient, err := config.NewHttpClient()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to parse proxy setting")
 		return
 	}
-	httpClient := ranger.NewHttpClient(ranger.WithProxy(proxy))
 
 	plugins := []ranger.ClientPlugin{}
 	certAuth, err := upstream.NewServiceAccountRangerPlugin(serviceAccount)

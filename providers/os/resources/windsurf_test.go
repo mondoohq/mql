@@ -28,6 +28,9 @@ Always write tests for new code.
 				"command": "npx",
 				"args": ["-y", "@modelcontextprotocol/server-filesystem"],
 				"env": {}
+			},
+			"remote": {
+				"serverUrl": "https://mcp.example.com/sse"
 			}
 		}
 	}`)
@@ -58,11 +61,17 @@ func TestWindsurfMCPParsing(t *testing.T) {
 	var config windsurfMCPConfig
 	err = json.Unmarshal(data, &config)
 	require.NoError(t, err)
-	assert.Len(t, config.McpServers, 1)
+	assert.Len(t, config.McpServers, 2)
 
 	fs := config.McpServers["filesystem"]
 	assert.Equal(t, "npx", fs.Command)
 	assert.Empty(t, fs.Env)
+	assert.Equal(t, mcpTransportStdio, deriveMcpTransport(fs.Type, fs.Command, fs.URL))
+
+	// remote server uses serverUrl; the creator falls back to it for url
+	remote := config.McpServers["remote"]
+	assert.Equal(t, "https://mcp.example.com/sse", remote.ServerURL)
+	assert.Empty(t, remote.Command)
 }
 
 func TestWindsurfConfigMissing(t *testing.T) {

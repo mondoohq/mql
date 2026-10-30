@@ -1,0 +1,2 @@
+flathub	https://dl.flathub.org/repo/	system
+rhel	oci+https://flatpaks.redhat.io/rhel/	system,oci,no-gpg-verify

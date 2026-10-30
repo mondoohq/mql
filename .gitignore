@@ -18,16 +18,24 @@ data/
 # primarily used to ignore all dist files built for providers
 providers/*.resources.json
 providers/*/dist
+# generated Windows version resource (see scripts/provider_bundler.sh)
+providers/*/rsrc_windows_*.syso
 providers/*/resources/*.resources.json
 providers/mock_coordinator.go
 providers/mock_plugin_interface.go
 providers/mock_schema.go
 providers-sdk/*/testutils/mockprovider/resources/*.resources.json
 !providers/core/resources/*.resources.json
+!providers/iac/resources/*.resources.json
 providers/os/connection/snapshot/mock_volumemounter.go
+# the IEEE registry export the embedded OUI table is generated from
+providers/os/id/networki/oui/oui.csv
 !providers-sdk/v1/mqlr
 settings.local.json
 *.lr.manifest.json
 .claude/worktrees/
 .claude/scheduled_tasks.lock
 .worktrees/
+
+# Local findings of the xgrep scanner, which embed the checkout path.
+.xgrep/

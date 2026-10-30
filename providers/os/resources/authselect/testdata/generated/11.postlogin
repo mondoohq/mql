@@ -1,0 +1,4 @@
+session     optional      pam_umask.so silent
+session     optional      pam_lastlog.so showfailed
+session     optional      pam_echo.so before
+

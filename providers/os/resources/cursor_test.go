@@ -28,6 +28,10 @@ func createTestCursorConfig(t *testing.T) string {
 				"command": "gh",
 				"args": ["mcp"],
 				"env": {"GITHUB_TOKEN": "ghp_test123"}
+			},
+			"remote": {
+				"type": "sse",
+				"url": "https://mcp.example.com/sse"
 			}
 		}
 	}`)
@@ -58,17 +62,24 @@ func TestCursorMCPConfigParsing(t *testing.T) {
 	var config cursorMCPConfig
 	err = json.Unmarshal(data, &config)
 	require.NoError(t, err)
-	assert.Len(t, config.McpServers, 2)
+	assert.Len(t, config.McpServers, 3)
 
 	fs := config.McpServers["filesystem"]
 	assert.Equal(t, "npx", fs.Command)
 	assert.Equal(t, []string{"-y", "@modelcontextprotocol/server-filesystem", "/tmp"}, fs.Args)
 	assert.Empty(t, fs.Env)
+	assert.Equal(t, mcpTransportStdio, deriveMcpTransport(fs.Type, fs.Command, fs.URL))
 
 	gh := config.McpServers["github"]
 	assert.Equal(t, "gh", gh.Command)
 	assert.Equal(t, []string{"mcp"}, gh.Args)
 	assert.Equal(t, "ghp_test123", gh.Env["GITHUB_TOKEN"])
+
+	remote := config.McpServers["remote"]
+	assert.Equal(t, "sse", remote.Type)
+	assert.Equal(t, "https://mcp.example.com/sse", remote.URL)
+	assert.Empty(t, remote.Command)
+	assert.Equal(t, "sse", deriveMcpTransport(remote.Type, remote.Command, remote.URL))
 }
 
 func TestCursorMCPConfigEmpty(t *testing.T) {

@@ -6,11 +6,9 @@ package services
 import (
 	"bufio"
 	"io"
-	"path"
 	"strings"
 
-	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 // parseShowProperties parses key=value output from systemctl show.
@@ -85,37 +83,4 @@ func ResolveSystemdSocketManager(conn shared.Connection) SystemdSocketLister {
 		return &SystemdFSSocketManager{Fs: conn.FileSystem()}
 	}
 	return NewSystemdSocketManager(conn)
-}
-
-// buildEnabledSet scans all .wants and .requires directories across the systemd
-// unit search paths and returns the set of unit file names that are enabled.
-// This is O(dirs) regardless of how many units are queried, avoiding repeated
-// directory scans per unit.
-func buildEnabledSet(fs afero.Fs) map[string]bool {
-	enabled := map[string]bool{}
-	for _, searchPath := range systemdUnitSearchPath {
-		entries, err := afero.ReadDir(fs, searchPath)
-		if err != nil {
-			continue
-		}
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
-			dirName := entry.Name()
-			if !strings.HasSuffix(dirName, ".wants") && !strings.HasSuffix(dirName, ".requires") {
-				continue
-			}
-			links, err := afero.ReadDir(fs, path.Join(searchPath, dirName))
-			if err != nil {
-				continue
-			}
-			for _, link := range links {
-				if _, err := fs.Stat(path.Join(searchPath, dirName, link.Name())); err == nil {
-					enabled[link.Name()] = true
-				}
-			}
-		}
-	}
-	return enabled
 }

@@ -1,18 +1,21 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/claude"
-option go_package = "go.mondoo.com/mql/v13/providers/claude/resources"
+option go_package = "go.mondoo.com/mql/providers/claude/resources"
+option root = "claude"
 
 // Claude AI platform
 //
-// Use the `claude` resource to examine models available through the
-// Claude API, audit managed agents, environments, sessions, files,
-// skills, vaults, memory stores, message batches, and user profiles.
-// When an admin API key is configured, also audit organizational
+// Models available through the Claude API, along with managed agents,
+// execution environments, agent sessions, uploaded files, registered
+// skills, secret vaults, memory stores, message batches, and user
+// profiles. When an admin API key is configured, organizational
 // resources such as workspaces, members, invites, API keys, usage,
-// cost, and rate limits.
-claude @defaults("host") {
+// cost, and rate limits also become queryable.
+claude @defaults("host") @root {
   // API host address
   host() string
   // Available models
@@ -39,9 +42,9 @@ claude @defaults("host") {
 
 // Claude AI model
 //
-// Examine an AI model available through the Claude API including its
-// token limits and capability flags. The `id` field is the canonical
-// model identifier (e.g. `claude-opus-4-6`) and serves as the
+// AI model available through the Claude API, including its token
+// limits and capability flags. The `id` field is the canonical model
+// identifier (for example `claude-opus-4-6`) and serves as the
 // selection key for `claude.model(id: "claude-opus-4-6")`.
 claude.model @defaults("id displayName") {
   init(id string)
@@ -85,10 +88,14 @@ claude.model @defaults("id displayName") {
 
 // Claude managed agent
 //
-// Examine a managed agent definition including its model
-// configuration, system prompt, skills, and version history. Managed
-// agents are created via the Beta Agents API and execute within
-// sessions.
+// Managed agent definition created through the Beta Agents API and
+// executed within sessions. Auditing an agent surfaces the model it
+// runs on, its system prompt, and its version and archival state,
+// which together govern the instructions in effect for every session
+// that uses it. It also surfaces what the agent is permitted to do:
+// the toolsets it can call and the permission policy on each tool, the
+// MCP servers it reaches out to, the skills it loads, and the roster of
+// other agents it may spawn.
 claude.agent @defaults("id name") {
   // Agent identifier
   id string
@@ -100,6 +107,46 @@ claude.agent @defaults("id name") {
   system string
   // Model identifier used by this agent
   model string
+  // Reasoning effort applied on each turn
+  //
+  // One of low, medium, high, xhigh, or max. Empty when the agent does
+  // not pin an effort level.
+  modelEffort string
+  // Geographic region for model inference
+  //
+  // Empty when the agent inherits the default inference region of the
+  // workspace it runs in.
+  modelInferenceGeo string
+  // Inference speed mode
+  //
+  // One of standard or fast.
+  modelSpeed string
+  // User-provided metadata key-value pairs
+  metadata map[string]string
+  // MCP servers the agent can reach
+  //
+  // Maps each configured server name to its URL. Every entry is a network
+  // destination the agent may call during a session, so an unrecognized
+  // host, or a plaintext one, widens what the agent can talk to.
+  mcpServers map[string]string
+  // Skills attached to the agent
+  skills []claude.agent.skill
+  // Toolsets available to the agent
+  toolsets []claude.agent.toolset
+  // Custom tools defined on the agent
+  customTools []claude.agent.customTool
+  // Multiagent topology
+  //
+  // Set to coordinator when the agent may spawn other agents as session
+  // threads, and empty when the agent runs alone.
+  multiagentType string
+  // Agents this agent may spawn as session threads
+  //
+  // The roster the coordinator draws from, which is how far a single
+  // session can reach beyond the agent that started it.
+  subagents() []claude.agent
+  // Models backing the advisors in the multiagent roster
+  advisorModels []string
   // Agent version number
   version int
   // Agent creation timestamp
@@ -112,11 +159,94 @@ claude.agent @defaults("id name") {
   type string
 }
 
+// Skill attached to a Claude agent
+//
+// Version-pinned skill an agent loads at runtime, extending it with
+// reusable instructions. The source separates Anthropic-provided skills
+// from custom ones authored inside the organization, which is the line
+// between vendor-reviewed instructions and instructions anyone with
+// skill-write access can change under a running agent.
+private claude.agent.skill @defaults("source version") {
+  // Skill attached to the agent
+  skill() claude.skill
+  // Skill source
+  //
+  // One of anthropic or custom.
+  source string
+  // Pinned skill version
+  version string
+}
+
+// Toolset available to a Claude agent
+//
+// Group of tools an agent can call, together with the permission policy
+// governing them. A built-in toolset covers the agent's own capabilities
+// such as shell, file, and web access, while an MCP toolset exposes the
+// tools published by one connected MCP server. The default policy applies
+// to every tool in the group that carries no entry of its own, so a
+// default of always_allow means those tools run without a confirmation
+// step.
+private claude.agent.toolset @defaults("type defaultPermissionPolicy") {
+  // Toolset type
+  //
+  // One of agent_toolset_20260401 or mcp_toolset.
+  type string
+  // MCP server supplying the tools
+  //
+  // Empty for built-in toolsets.
+  mcpServerName string
+  // Whether tools without an entry of their own are enabled
+  defaultEnabled bool
+  // Permission policy for tools without an entry of their own
+  //
+  // One of always_allow, always_ask, or auto.
+  defaultPermissionPolicy string
+  // Tools configured individually within the toolset
+  tools []claude.agent.toolset.tool
+}
+
+// Tool configured on a Claude agent toolset
+//
+// Single tool carrying its own enablement and permission policy, which
+// override the toolset default. For a built-in toolset the name is one of
+// bash, edit, read, write, glob, grep, web_fetch, or web_search. For an
+// MCP toolset it is a tool name published by the connected server.
+private claude.agent.toolset.tool @defaults("name enabled permissionPolicy") {
+  // Tool name
+  name string
+  // Whether the tool is enabled
+  enabled bool
+  // Permission policy for tool execution
+  //
+  // One of always_allow, always_ask, or auto.
+  permissionPolicy string
+}
+
+// Custom tool defined on a Claude agent
+//
+// Tool declared inline on an agent rather than supplied by a built-in
+// toolset or an MCP server. The description is the text the model reads
+// when deciding whether to call it, and the input schema states the
+// parameters it accepts.
+private claude.agent.customTool @defaults("name") {
+  // Tool name
+  name string
+  // Tool description
+  description string
+  // JSON Schema for the tool's input parameters
+  inputSchema dict
+}
+
 // Claude execution environment
 //
-// Examine an execution environment for agent sessions. Environments
-// define the compute context and visibility scope in which agents
-// run. The `scope` field is one of organization or account.
+// Execution environment that defines the compute context and
+// visibility scope in which agent sessions run. Audit environments
+// to see where agents execute and how broadly they are exposed. The
+// `scope` field is one of organization or account, distinguishing an
+// environment shared across the whole organization from one confined
+// to a single account. The network policy states which hosts a session
+// can reach from inside the environment, and the package fields list
+// what is installed in the sandbox the agent runs in.
 claude.environment @defaults("id name") {
   // Environment identifier
   id string
@@ -128,6 +258,43 @@ claude.environment @defaults("id name") {
   //
   // One of organization or account.
   scope string
+  // Environment configuration type
+  //
+  // One of cloud or self_hosted.
+  configType string
+  // Network policy
+  //
+  // One of unrestricted or limited. An unrestricted environment can reach
+  // any host from an agent session, so nothing constrains where data goes
+  // once an agent is running in it.
+  networkingType string
+  // Hosts reachable from the environment
+  //
+  // The allowlist in force under a limited network policy. Empty when the
+  // policy is unrestricted, where no allowlist applies.
+  allowedHosts []string
+  // Whether MCP servers are reachable under a limited network policy
+  //
+  // Null when the network policy is unrestricted.
+  allowMcpServers bool
+  // Whether package registries are reachable under a limited network policy
+  //
+  // Null when the network policy is unrestricted.
+  allowPackageManagers bool
+  // Ubuntu and Debian packages installed in the environment
+  aptPackages []string
+  // Rust packages installed in the environment
+  cargoPackages []string
+  // Ruby packages installed in the environment
+  gemPackages []string
+  // Go packages installed in the environment
+  goPackages []string
+  // Node.js packages installed in the environment
+  npmPackages []string
+  // Python packages installed in the environment
+  pipPackages []string
+  // User-provided metadata key-value pairs
+  metadata map[string]string
   // Creation timestamp
   createdAt time
   // Last update timestamp
@@ -140,9 +307,11 @@ claude.environment @defaults("id name") {
 
 // Claude agent session
 //
-// Examine an agent session including its execution status, associated
-// environment, and lifecycle timestamps. The `status` field is one of
-// rescheduling, running, idle, or terminated.
+// Agent session in the Claude platform, including its execution status,
+// the environment it runs in, and its lifecycle timestamps. Auditing
+// sessions shows which agent work is active or idle and which environment
+// each session is bound to. The `status` field is one of rescheduling,
+// running, idle, or terminated.
 claude.session @defaults("id title status") {
   // Session identifier
   id string
@@ -152,8 +321,12 @@ claude.session @defaults("id title status") {
   //
   // One of rescheduling, running, idle, or terminated.
   status string
-  // Environment identifier for this session
-  environmentId string
+  // Execution environment this session runs in
+  //
+  // The environment supplies the compute context and visibility scope
+  // for the session, so reading it alongside the session shows where
+  // the agent work actually executes.
+  environment() claude.environment
   // Session creation timestamp
   createdAt time
   // Last update timestamp
@@ -166,9 +339,11 @@ claude.session @defaults("id title status") {
 
 // Claude uploaded file
 //
-// Examine an uploaded file including its name, MIME type, size, and
-// whether it can be downloaded. Files are managed through the Beta
-// Files API.
+// File uploaded to the Claude platform and managed through the Beta
+// Files API, exposing its original filename, MIME type, size in
+// bytes, and whether it can be downloaded, along with its upload
+// timestamp. Useful for inventorying which files are available to
+// agents and auditing their download exposure.
 claude.file @defaults("id filename") {
   // File identifier
   id string
@@ -188,9 +363,11 @@ claude.file @defaults("id filename") {
 
 // Claude registered skill
 //
-// Examine a skill registered in the Claude platform. Skills extend
-// agent capabilities and can be Anthropic-provided or custom. The
-// `source` field is one of custom or anthropic.
+// Skill registered in the Claude platform, packaging reusable
+// instructions that extend agent capabilities. Skills can be
+// Anthropic-provided or custom, letting you audit which extensions
+// are available to agents and where they originate. The `source`
+// field is one of custom, anthropic, anthropic_example, or plugin.
 claude.skill @defaults("id displayTitle") {
   // Skill identifier
   id string
@@ -198,7 +375,9 @@ claude.skill @defaults("id displayTitle") {
   displayTitle string
   // Skill source
   //
-  // One of custom or anthropic.
+  // One of custom (authored in the workspace), anthropic (published by
+  // Anthropic and read-only), anthropic_example (an Anthropic-published
+  // sample), or plugin (resolved from an installed plugin).
   source string
   // Latest version identifier
   latestVersion string
@@ -212,9 +391,9 @@ claude.skill @defaults("id displayTitle") {
 
 // Claude secret vault
 //
-// Examine a secret vault used to store credentials for agent
-// sessions. Vaults hold credentials that agents can access at
-// runtime without exposing secrets in prompts.
+// Secret vault used to store credentials for agent sessions.
+// Vaults hold credentials that agents can access at runtime
+// without exposing secrets in prompts.
 claude.vault @defaults("id displayName") {
   // Vault identifier
   id string
@@ -234,7 +413,7 @@ claude.vault @defaults("id displayName") {
 
 // Claude vault credential
 //
-// Examine a credential stored in a Claude vault. Credentials provide
+// Credential stored in a Claude vault. Credentials provide
 // authentication details that agents can use during sessions without
 // exposing secrets in prompts or tool calls.
 claude.vault.credential @defaults("id displayName") {
@@ -242,8 +421,8 @@ claude.vault.credential @defaults("id displayName") {
   id string
   // Credential display name
   displayName string
-  // Vault identifier this credential belongs to
-  vaultId string
+  // Vault that holds this credential
+  vault() claude.vault
   // Creation timestamp
   createdAt time
   // Last update timestamp
@@ -256,10 +435,11 @@ claude.vault.credential @defaults("id displayName") {
 
 // Claude memory store
 //
-// Examine a memory store used to persist context across agent
-// sessions. Memory stores are mounted under `/mnt/memory/` in the
-// agent environment and their description is included in the system
-// prompt.
+// Memory store used to persist context across agent sessions. Memory
+// stores are mounted under `/mnt/memory/` in the agent environment,
+// and their description is included in the system prompt, so their
+// name, description, and archival state are worth auditing to
+// understand what long-lived context agents can read and write.
 claude.memoryStore @defaults("id name") {
   // Memory store identifier
   id string
@@ -279,11 +459,12 @@ claude.memoryStore @defaults("id name") {
 
 // Claude message batch
 //
-// Examine a message batch job including its processing status and
-// lifecycle timestamps. Message batches allow submitting multiple
-// message requests for asynchronous processing. The
-// `processingStatus` field is one of in_progress, canceling, or
-// ended.
+// Message batch job that submits multiple message requests for
+// asynchronous processing, exposing its processing status and
+// lifecycle timestamps (creation, expiration, end, cancellation, and
+// archival). Useful for auditing in-flight and completed batch
+// workloads and their retention. The `processingStatus` field is one
+// of in_progress, canceling, or ended.
 claude.messageBatch @defaults("id processingStatus") {
   // Batch identifier
   id string
@@ -307,11 +488,13 @@ claude.messageBatch @defaults("id processingStatus") {
 
 // Claude user profile
 //
-// Examine a user profile representing an entity that interacts with
-// the Claude platform. The `relationship` field describes how the
-// entity relates to the platform: one of external, resold, or
-// internal.
-claude.userProfile @defaults("id name relationship") {
+// User profile representing an entity that interacts with the Claude
+// platform. The `accessType` field describes how the platform uses the
+// API on behalf of the entity, `externalUserOnboardedAt` records when
+// the platform onboarded the end user behind the profile, and
+// `enforcementStatus` and `enforcementActions` report the restrictions and
+// bans Anthropic holds open on it.
+claude.userProfile @defaults("id name accessType enforcementStatus") {
   // Profile identifier
   id string
   // Profile display name
@@ -320,21 +503,81 @@ claude.userProfile @defaults("id name relationship") {
   externalId string
   // Relationship to the platform
   //
-  // One of external, resold, or internal.
-  relationship string
+  // Deprecated in favor of accessType. The API no longer reports a
+  // relationship, so this field is always null.
+  relationship @maturity("deprecated") @replaced_by("claude.userProfile.accessType") string
+  // How the platform uses the API on behalf of this entity
+  //
+  // `application` means the platform sells a product that calls the API
+  // behind the scenes and the profile is an individual end user of that
+  // product. `passthrough` means the platform resells raw inference and the
+  // profile identifies the company it is resold to. Null when the profile
+  // does not report an access type.
+  accessType string
+  // Timestamp the platform onboarded the end user behind this profile
+  //
+  // Null when the platform has not reported an onboarding time.
+  externalUserOnboardedAt time
   // Profile creation timestamp
   createdAt time
   // Last update timestamp
   updatedAt time
   // Object type
   type string
+  // Anthropic's enforcement status of this profile
+  //
+  // One of unrestricted, pending, restricted, or banned, and Anthropic may
+  // add values. `banned` while any open action is a ban, `pending` while
+  // an identity check the end user submitted is under review, `restricted`
+  // while any other action is open, and `unrestricted` while none is.
+  enforcementStatus string
+  // Enforcement actions Anthropic holds open on this profile
+  //
+  // Empty when no action is open.
+  enforcementActions []claude.userProfile.enforcementAction
+}
+
+// Enforcement action on a Claude user profile
+//
+// A restriction or ban Anthropic holds open on a user profile, with the
+// reason it was placed, when it was opened, when it ends on its own, and
+// whether the end user can clear it by passing an identity check.
+private claude.userProfile.enforcementAction @defaults("id type reason") {
+  // Enforcement action identifier
+  id string
+  // Kind of action
+  //
+  // One of restriction or ban. A restriction limits how Anthropic serves
+  // the end user until it is resolved; a ban stops serving them.
+  type string
+  // Why Anthropic placed the action
+  //
+  // One of unsupported_region, fraud_or_abuse, high_harm,
+  // usage_policy_violation, account_compromise, or unspecified, and
+  // Anthropic may add values.
+  reason string
+  // Next step the end user can take to clear the action
+  //
+  // `verify` when the end user can clear it now by passing an identity
+  // check. Null when nothing the end user can do now clears it, which is
+  // always the case for a ban.
+  nextStep string
+  // Timestamp Anthropic opened the action
+  openedAt time
+  // Timestamp the action ends on its own
+  //
+  // Null when it has no end date, which is always the case for a ban.
+  expiresAt time
 }
 
 // Claude organization
 //
-// Examine organizational resources managed through the Claude Admin
-// API: identity, workspaces, members, pending invites, API keys, usage,
-// cost, and rate limits. Requires an admin API key configured via
+// Organizational resources managed through the Claude Admin API:
+// identity, workspaces, members, pending invites, API keys, usage,
+// cost, rate limits, customer-managed encryption keys, the Compliance
+// API state, webhook endpoints, and, for Claude Enterprise organizations,
+// RBAC groups and roles, effective spend limits, plugins, and plugin
+// marketplaces. Requires an admin API key configured via
 // `--admin-token` or the `ANTHROPIC_ADMIN_API_KEY` environment variable.
 claude.organization @defaults("id name") {
   // Organization identifier
@@ -352,18 +595,85 @@ claude.organization @defaults("id name") {
   // Organization-level rate limits
   rateLimits() []claude.organization.rateLimit
   // Token usage report entries
+  //
+  // One entry per day, workspace, model, service tier, API key, member, and
+  // service account with Messages API usage. Covers the seven UTC days
+  // before today and today so far.
   usageReport() []claude.organization.usageEntry
   // Cost report entries
   costReport() []claude.organization.costEntry
   // Compliance activity log entries
   activities() []claude.organization.activity
+  // Service accounts in the organization
+  serviceAccounts() []claude.organization.serviceAccount
+  // Workload identity federation issuers the organization trusts
+  federationIssuers() []claude.organization.federationIssuer
+  // Rules mapping federated identities onto organization access
+  federationRules() []claude.organization.federationRule
+  // Customer-managed encryption key configurations
+  externalKeys() []claude.organization.externalKey
+  // State of the organization's Compliance API
+  //
+  // One of enabled or disabled. When enabled, organization activity is
+  // captured and served through the compliance activity feed, which the
+  // `activities` field reads. An organization with a parent reads the
+  // state inherited from the parent's configuration.
+  complianceApiState() string
+  // RBAC groups in the Claude Enterprise tenant
+  rbacGroups() []claude.organization.rbacGroup
+  // RBAC roles in the Claude Enterprise tenant
+  rbacRoles() []claude.organization.rbacRole
+  // Each member's effective spend limit and spend so far, per period
+  effectiveSpendLimits() []claude.organization.effectiveSpendLimit
+  // Plugins created in the organization's and its members' plugin marketplaces
+  plugins() []claude.organization.plugin
+  // Plugin marketplaces the organization's plugins come from
+  pluginMarketplaces() []claude.organization.pluginMarketplace
+  // Webhook endpoints that belong to the organization
+  webhooks() []claude.organization.webhook
+}
+
+// Claude organization webhook endpoint
+//
+// Webhook endpoint that belongs to the organization rather than to one of
+// its workspaces: the HTTPS `url` deliveries go to, the `enabledEvents`
+// delivered there, whether deliveries are sent (`state`), and why Anthropic
+// disabled it automatically (`disabledReason`).
+claude.organization.webhook @defaults("id name url state") {
+  // Webhook endpoint identifier
+  id string
+  // Short label for the endpoint
+  name string
+  // Notes about the endpoint
+  description string
+  // HTTPS URL that deliveries are sent to
+  url string
+  // Event types delivered to the endpoint
+  //
+  // For example user_profile.enforcement_action_opened and
+  // user_profile.enforcement_action_resolved.
+  enabledEvents []string
+  // Whether deliveries are sent to the endpoint
+  //
+  // One of enabled or disabled. Events that happen while the endpoint is
+  // disabled are never delivered.
+  state string
+  // Why Anthropic disabled the endpoint automatically
+  //
+  // Null when the endpoint is enabled, or when it was disabled by hand.
+  disabledReason string
+  // Endpoint creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
 }
 
 // Claude organization workspace
 //
-// Examine a workspace within the Claude organization including its
-// name, display color, creation date, archive status, data residency
-// configuration, and workspace-level members and rate limits.
+// Workspace within the Claude organization, including its name, display
+// color, creation date, archive status, data residency configuration,
+// customer-managed encryption binding, tags, and workspace-level members
+// and rate limits.
 claude.organization.workspace @defaults("id name") {
   // Workspace identifier
   id string
@@ -381,6 +691,29 @@ claude.organization.workspace @defaults("id name") {
   defaultInferenceGeo string
   // Allowed inference geographic regions
   allowedInferenceGeos []string
+  // Customer-managed encryption key protecting this workspace
+  //
+  // Deprecated in favor of externalKey, which carries the same
+  // identifier as `externalKey.id` along with the key's provider and
+  // location.
+  externalKeyId @maturity("deprecated") @replaced_by("claude.organization.workspace.externalKey") string
+  // Customer-managed encryption key protecting this workspace
+  //
+  // Key configuration encrypting data stored for the workspace. Null
+  // when the workspace relies on Anthropic-managed encryption. The
+  // binding is write-once: a key cannot be detached or replaced once
+  // attached, and rotating the key material leaves it unchanged.
+  externalKey() claude.organization.externalKey
+  // Encryption compartment this workspace belongs to
+  //
+  // Value a KMS key policy condition names to scope a key to this
+  // workspace. On GCP and Azure the compartment binding is enforced
+  // without the key configuration referencing it.
+  compartmentId string
+  // User-defined tags on the workspace
+  //
+  // Keys may not begin with anthropic, which is reserved.
+  tags map[string]string
   // Members with access to this workspace
   members() []claude.organization.workspace.member
   // Workspace-level rate limit overrides
@@ -389,15 +722,19 @@ claude.organization.workspace @defaults("id name") {
 
 // Claude organization workspace member
 //
-// Examine a member's access to a specific workspace. The
-// `workspaceRole` field is one of workspace_user, workspace_developer,
+// Member's access to a specific workspace. The `workspaceRole` field is
+// one of workspace_user, workspace_developer,
 // workspace_restricted_developer, workspace_admin, or
 // workspace_billing.
-claude.organization.workspace.member @defaults("userId workspaceRole") {
-  // User identifier
-  userId string
-  // Workspace identifier
-  workspaceId string
+claude.organization.workspace.member @defaults("workspaceRole") {
+  // Organization member holding this workspace access
+  //
+  // Carries the member's name, email, and organization-level role, so
+  // workspace access can be reviewed against who the person is and what
+  // they can already do across the organization.
+  user() claude.organization.member
+  // Workspace this access grant applies to
+  workspace() claude.organization.workspace
   // Workspace-level role
   //
   // One of workspace_user, workspace_developer,
@@ -408,9 +745,10 @@ claude.organization.workspace.member @defaults("userId workspaceRole") {
 
 // Claude organization member
 //
-// Examine a member of the Claude organization including their role
-// assignment. The `role` field is one of user, developer, billing,
-// admin, or claude_code_user.
+// Member of the Claude organization, including their role assignment.
+// The `role` field is one of user, developer, billing, admin,
+// claude_code_user, owner, primary_owner, membership_admin, or managed.
+// The last four apply to Claude Enterprise organizations.
 claude.organization.member @defaults("id name email role") {
   // User identifier
   id string
@@ -420,16 +758,24 @@ claude.organization.member @defaults("id name email role") {
   email string
   // Organization role
   //
-  // One of user, developer, billing, admin, or claude_code_user.
+  // One of user, developer, billing, admin, claude_code_user, owner,
+  // primary_owner, membership_admin, or managed.
   role string
   // Timestamp when the user was added to the organization
   addedAt time
+  // Usage report entries for requests this member made with their own account
+  //
+  // Covers the same window as the organization's usageReport. Requests made
+  // with an API key are attributed to the key, not to this list, so read the
+  // usageReport of the keys whose principalUser or createdBy is this member
+  // as well.
+  usageReport() []claude.organization.usageEntry
 }
 
 // Claude organization invite
 //
-// Examine a pending invitation to the Claude organization. The
-// `status` field is one of pending, accepted, expired, or deleted.
+// Pending invitation to the Claude organization. The `status` field is
+// one of pending, accepted, expired, or deleted.
 claude.organization.invite @defaults("id email role status") {
   // Invite identifier
   id string
@@ -437,7 +783,8 @@ claude.organization.invite @defaults("id email role status") {
   email string
   // Assigned role
   //
-  // One of user, developer, billing, admin, or claude_code_user.
+  // One of user, developer, billing, admin, claude_code_user, owner,
+  // primary_owner, membership_admin, or managed.
   role string
   // Invite status
   //
@@ -451,9 +798,9 @@ claude.organization.invite @defaults("id email role status") {
 
 // Claude organization API key
 //
-// Examine an API key in the Claude organization including its
-// status, associated workspace, and creation metadata. The `status`
-// field is one of active, inactive, archived, or expired.
+// API key in the Claude organization, including its status, associated
+// workspace, and creation metadata. The `status` field is one of
+// active, inactive, archived, or expired.
 claude.organization.apiKey @defaults("id name status") {
   // API key identifier
   id string
@@ -473,14 +820,38 @@ claude.organization.apiKey @defaults("id name status") {
   createdBy() claude.organization.member
   // Workspace this key belongs to
   workspace() claude.organization.workspace
+  // Kind of principal the key acts as
+  //
+  // One of user_actor when the key acts as an organization member, or
+  // service_account_actor when it acts as a service account. Null when
+  // the key is bound to no principal at all, which covers legacy keys
+  // and keys minted through workload identity federation.
+  principalType string
+  // Organization member the key acts as, when it is bound to one
+  principalUser() claude.organization.member
+  // Service account the key acts as, when it is bound to one
+  principalServiceAccount() claude.organization.serviceAccount
+  // Extent of the key's access
+  //
+  // One of workspace when the key is confined to a single workspace, or
+  // organization when it is a principal-bound key with no workspace and
+  // so reaches the whole organization. An organization-scoped key is the
+  // broader credential of the two.
+  scopeType string
+  // Usage report entries for requests made with this key
+  //
+  // Covers the same window as the organization's usageReport: the seven UTC
+  // days before today and today so far. An empty list on an active key
+  // means the key made no Messages API requests in that window.
+  usageReport() []claude.organization.usageEntry
 }
 
 // Claude organization rate limit group
 //
-// Examine an organization-level or workspace-level rate limit group.
-// Each group covers a category of API usage such as model_group,
-// batch, web_search, or files, and lists the models it applies to
-// along with per-minute request and token limits.
+// Organization-level or workspace-level rate limit group. Each group
+// covers a category of API usage such as model_group, batch,
+// web_search, or files, and lists the models it applies to along with
+// per-minute request and token limits.
 claude.organization.rateLimit @defaults("groupType") {
   // Rate limit group type
   //
@@ -498,9 +869,11 @@ claude.organization.rateLimit @defaults("groupType") {
 
 // Claude organization usage report bucket
 //
-// Examine a daily usage bucket from the Admin API usage report. Each
-// bucket covers a time window and contains per-model, per-workspace
-// token consumption breakdowns for the last seven days.
+// Daily usage row from the Admin API usage report. Each row covers one UTC
+// day of Messages API token consumption for one combination of workspace,
+// model, service tier, API key, member, and service account. The report
+// covers the seven UTC days before today and today so far; days without
+// usage have no rows.
 claude.organization.usageEntry @defaults("startingAt") {
   // Bucket start timestamp
   startingAt time
@@ -508,12 +881,32 @@ claude.organization.usageEntry @defaults("startingAt") {
   endingAt time
   // Model identifier
   model string
-  // Workspace identifier
-  workspaceId string
+  // Workspace the consumption is attributed to
+  //
+  // Null for buckets that are not scoped to a single workspace.
+  workspace() claude.organization.workspace
   // API service tier
   //
-  // One of standard, batch, priority, flex, or priority_on_demand.
+  // One of standard, batch, priority, flex, priority_on_demand, or
+  // flex_discount.
   serviceTier string
+  // API key the requests were made with
+  //
+  // Null for usage that did not go through an API key, such as requests
+  // made in the Claude Console, and for a key since deleted from the
+  // organization.
+  apiKey() claude.organization.apiKey
+  // Organization member whose own account made the requests
+  //
+  // Set for requests authenticated as the member through OAuth. Null for
+  // requests made with an API key; the key's principalUser or createdBy
+  // names the person behind those.
+  user() claude.organization.member
+  // Service account that made the requests
+  //
+  // Set for requests a service account made through workload identity
+  // federation. Null otherwise.
+  serviceAccount() claude.organization.serviceAccount
   // Uncached input tokens consumed
   uncachedInputTokens int
   // Input tokens read from cache
@@ -524,15 +917,18 @@ claude.organization.usageEntry @defaults("startingAt") {
 
 // Claude organization cost report bucket
 //
-// Examine a daily cost bucket from the Admin API cost report. Each
-// bucket covers a time window with USD cost amounts broken down by
-// workspace and cost type.
+// Daily cost bucket from the Admin API cost report. Each bucket covers a
+// time window with cost amounts broken down by workspace and line item (model,
+// cost type, token type and service tier).
 claude.organization.costEntry @defaults("startingAt costType") {
   // Bucket start timestamp
   startingAt time
   // Bucket end timestamp
   endingAt time
-  // Cost amount as a decimal string in USD cents
+  // Cost amount
+  //
+  // Decimal string of the cost in the lowest unit of the `currency` field,
+  // for example cents for USD: "150" is $1.50.
   amount string
   // Currency code
   currency string
@@ -541,18 +937,211 @@ claude.organization.costEntry @defaults("startingAt costType") {
   // One of tokens, web_search, code_execution, or session_usage.
   costType string
   // Model identifier
+  //
+  // Empty for costs that are not token costs.
   model string
-  // Workspace identifier
-  workspaceId string
+  // Line-item description
+  //
+  // The label the cost report gives this row, for example "Claude Opus 5.5
+  // Usage - Input Tokens". It tells apart rows that share a model and cost
+  // type, such as input and output tokens of the same model.
+  description string
+  // Workspace the cost is attributed to
+  //
+  // Null for buckets that are not scoped to a single workspace.
+  workspace() claude.organization.workspace
+}
+
+// Claude organization service account
+//
+// Non-human principal in the Claude organization, holding its own API keys and
+// its own organization role. A service account is standing, unattended access:
+// it does not expire with a person leaving, so its role and its archive state
+// are worth auditing directly. Read `organizationRole` to see how much the
+// account can reach and `archivedAt` to tell a retired account from a live
+// one, and reach its keys through claude.organization.apiKey where
+// principalServiceAccount names this account.
+claude.organization.serviceAccount @defaults("id name organizationRole") {
+  // Service account identifier
+  id string
+  // Service account display name
+  name string
+  // Description recorded on the service account
+  description string
+  // Role the service account holds in the organization
+  //
+  // One of admin or developer. An admin service account can administer
+  // the organization without a person being involved.
+  organizationRole string
+  // Timestamp when the service account was created
+  createdAt time
+  // Timestamp when the service account was last updated
+  updatedAt time
+  // Timestamp when the service account was archived
+  //
+  // Null while the account is active. An archived account keeps its
+  // record but can no longer be used.
+  archivedAt time
+  // Tagged identifier of the actor that created the account
+  //
+  // Prefixed user_ for an organization member or svac_ for another
+  // service account, so an account created by another account is
+  // visible as such.
+  createdByActorId string
+  // Tagged identifier of the actor that last updated the account
+  //
+  // Prefixed user_ or svac_. Null when the account has not been updated
+  // since it was created.
+  updatedByActorId string
+  // Tagged identifier of the actor that archived the account
+  //
+  // Prefixed user_ or svac_. Null while the account is active.
+  archivedByActorId string
+  // Usage report entries for requests this service account made through workload identity federation
+  //
+  // Covers the same window as the organization's usageReport. Requests made
+  // with an API key bound to the account are attributed to that key.
+  usageReport() []claude.organization.usageEntry
+}
+
+// Claude workload identity federation issuer
+//
+// External token issuer the organization trusts to authenticate workloads, so
+// that code running outside Claude can obtain credentials without a
+// long-lived API key. The issuer is the trust anchor: `issuerUrl` names whose
+// tokens are accepted, `maxJwtLifetimeSeconds` caps how long one of those
+// tokens stays valid, and `checkJti` reports whether replayed tokens are
+// rejected. `archivedAt` separates a retired trust anchor from one still in
+// force. The rules deciding what an accepted token may reach are reached
+// through `rules`.
+claude.organization.federationIssuer @defaults("id name issuerUrl") {
+  // Issuer identifier
+  id string
+  // Issuer display name
+  name string
+  // URL of the external token issuer
+  //
+  // A token is accepted only when its iss claim matches this URL, so
+  // this names exactly whose identities the organization trusts.
+  issuerUrl string
+  // Whether the JWT ID is checked so replayed tokens are rejected
+  checkJti bool
+  // Longest lifetime, in seconds, accepted on a token from this issuer
+  //
+  // A token presented more than this many seconds after it was issued
+  // is rejected regardless of its own expiry claim.
+  maxJwtLifetimeSeconds int
+  // Timestamp when JWKS polling was switched off
+  //
+  // Null while polling is active. With polling off, the organization
+  // stops picking up the issuer's key rotations.
+  jwksPollingDisabledAt time
+  // Result of the most recent attempt to fetch the issuer's keys
+  //
+  // Keys include `status` and the timestamps of the last attempt, so a
+  // trust anchor whose key fetch has been failing is visible here.
+  pollStatus dict
+  // Key material configuration for the issuer
+  //
+  // Either a discovery URL the organization polls, or keys supplied
+  // inline.
+  jwks dict
+  // Timestamp when the issuer was registered
+  createdAt time
+  // Timestamp when the issuer was last updated
+  updatedAt time
+  // Timestamp when the issuer was archived
+  //
+  // Null while the issuer is trusted. An archived issuer no longer
+  // authenticates workloads.
+  archivedAt time
+  // Tagged identifier of the actor that registered the issuer
+  //
+  // Prefixed user_ or svac_.
+  createdByActorId string
+  // Rules that accept tokens from this issuer
+  rules() []claude.organization.federationRule
+}
+
+// Claude workload identity federation rule
+//
+// Rule deciding which federated identities from a trusted issuer receive
+// access, and what that access reaches. This is where an external workload
+// becomes a principal inside the organization, so a rule that matches too
+// broadly is a standing grant to anyone who can obtain a matching token. Read
+// `matchSubjectPrefix`, `matchAudience`, `matchClaims` and `matchCondition`
+// together to see how narrowly the rule matches, and `appliesToAllWorkspaces`
+// with `workspaces` to see how far the resulting access reaches.
+claude.organization.federationRule @defaults("id name") {
+  // Rule identifier
+  id string
+  // Rule display name
+  name string
+  // Description recorded on the rule
+  description string
+  // Issuer whose tokens this rule accepts
+  issuer() claude.organization.federationIssuer
+  // Whether the rule grants access to every workspace
+  //
+  // True makes the rule organization-wide, so `workspaces` does not
+  // bound it and a new workspace is covered as soon as it is created.
+  appliesToAllWorkspaces bool
+  // Workspaces the rule grants access to
+  //
+  // Empty when appliesToAllWorkspaces is true, in which case the rule
+  // is not confined to a workspace list.
+  workspaces() []claude.organization.workspace
+  // Service account a matching identity acts as
+  serviceAccount() claude.organization.serviceAccount
+  // Audience a token must carry to match
+  //
+  // Null when the rule does not constrain the aud claim, which widens
+  // the rule to tokens minted for any audience.
+  matchAudience string
+  // Prefix a token's subject must start with to match
+  //
+  // Null when the rule does not constrain the sub claim. A short or
+  // absent prefix matches many more identities than a full subject.
+  matchSubjectPrefix string
+  // Claims a token must carry, as claim name to required value
+  //
+  // Empty when the rule matches on no claims beyond the subject and
+  // the audience.
+  matchClaims map[string]string
+  // Additional expression a token must satisfy to match
+  //
+  // Null when the rule carries no extra condition.
+  matchCondition string
+  // Attributes recorded on the rule
+  attributes map[string]string
+  // OAuth scope granted to a matching identity
+  oauthScope string
+  // Lifetime, in seconds, of the credential issued to a matching identity
+  tokenLifetimeSeconds int
+  // Timestamp when the rule was created
+  createdAt time
+  // Timestamp when the rule was last updated
+  updatedAt time
+  // Timestamp when the rule was archived
+  //
+  // Null while the rule is in force. An archived rule no longer grants
+  // access.
+  archivedAt time
+  // Tagged identifier of the actor that created the rule
+  //
+  // Prefixed user_ or svac_.
+  createdByActorId string
 }
 
 // Claude organization compliance activity
 //
-// Examine an entry from the Claude compliance activity feed. The
-// activity feed captures security-relevant events such as logins,
-// permission changes, API key operations, and workspace modifications.
-// Requires either a Compliance Access Key or an Admin API key.
-claude.organization.activity @defaults("id type actorEmail") {
+// Entry from the Claude compliance activity feed. The activity feed
+// captures security-relevant events such as logins, permission changes,
+// API key operations, and workspace modifications, along with who or
+// what performed them, the address and user agent the action came from,
+// and the credential it was made with. Requires either a Compliance
+// Access Key or an Admin API key.
+claude.organization.activity @defaults("id type actorType actorEmail") {
   // Activity event identifier
   id string
   // Event type
@@ -560,10 +1149,463 @@ claude.organization.activity @defaults("id type actorEmail") {
   // For example claude_chat_created, claude_file_uploaded, or
   // organization.user.added.
   type string
+  // Kind of actor behind the activity
+  //
+  // One of user_actor for a signed-in console or claude.ai user,
+  // api_actor for a request made with a customer-issued API key,
+  // admin_api_key_actor for an administrative change made with an admin
+  // key, unauthenticated_user_actor for an action taken before sign-in
+  // completed, anthropic_actor for an action Anthropic took on the
+  // organization, or scim_directory_sync_actor for a change pushed by an
+  // identity provider. New kinds can appear, so treat an unrecognized
+  // value as a kind this schema does not name yet.
+  actorType string
   // Actor email address
+  //
+  // Set for a signed-in user. Empty for every other kind of actor,
+  // including anthropic_actor, which the API never attributes to an
+  // individual address. An empty address does not mean the activity is
+  // unattributed, so read actorType alongside it.
   actorEmail string
   // Actor identifier
+  //
+  // Organization member behind a signed-in user. Empty for every other
+  // kind of actor, which are identified by apiKeyId, adminApiKeyId or
+  // directoryId instead.
   actorId string
+  // Email address claimed before sign-in completed
+  //
+  // Carried by an activity such as an initiated SSO login, where the
+  // address is what the visitor supplied rather than a verified
+  // identity.
+  unauthenticatedEmail string
+  // Source IP address the activity came from
+  ipAddress string
+  // User agent string the activity came from
+  userAgent string
+  // Identifier of the API key behind the activity
+  //
+  // Set when the actor is an API key issued by the organization. The
+  // value stays readable after the key is deleted, when apiKey no longer
+  // resolves to anything.
+  apiKeyId string
+  // API key behind the activity
+  //
+  // Null when the actor is not an API key, and when the key has since
+  // been deleted from the organization.
+  apiKey() claude.organization.apiKey
+  // Identifier of the admin API key behind the activity
+  //
+  // Set when an organization admin made the change with an admin key.
+  // Admin keys are not part of the organization's API key list, so the
+  // identifier is all the attribution there is.
+  adminApiKeyId string
+  // Identifier of the directory that pushed the change
+  //
+  // Set when an identity provider synchronized the change through SCIM.
+  directoryId string
+  // Kind of identity provider connection behind a directory sync
+  //
+  // For example OktaSCIMV2 or AzureSCIMV2. Null when the provider does
+  // not report one.
+  idpConnectionType string
+  // Identifier of the upstream directory sync event
+  //
+  // Correlates the activity with the event the identity provider
+  // recorded for the same change.
+  workosEventId string
   // Timestamp when the activity was created
+  createdAt time
+}
+
+// Claude organization customer-managed encryption key
+//
+// Key configuration that encrypts data stored for the workspaces bound to
+// it, held in the customer's own AWS KMS, Google Cloud KMS, or Azure Key
+// Vault. The `provider` field names the key service, and the location
+// fields that apply to it are set: `kmsArn` and `region` for aws,
+// `keyName` for gcp, and `vaultUri`, `keyName`, `tenantId`, and
+// `clientId` for azure. The `attached` field tells whether any workspace
+// uses the key, and `workspaces` lists the ones that do.
+claude.organization.externalKey @defaults("id displayName provider attached") {
+  // Key configuration identifier
+  //
+  // Prefixed ekey_, or the AWS KMS key ARN for organizations on Claude
+  // Platform on AWS.
+  id string
+  // Display name
+  //
+  // Null when none was set.
+  displayName string
+  // Data residency geo whose validator handles this key's encrypt and decrypt round trips
+  geo string
+  // Key service holding the key
+  //
+  // One of aws, gcp, or azure.
+  provider string
+  // ARN of the AWS KMS key
+  //
+  // Set when provider is aws.
+  kmsArn string
+  // AWS region of the KMS key
+  //
+  // Set when provider is aws.
+  region string
+  // Name of the key
+  //
+  // For gcp, the full resource name of the Cloud KMS key. For azure,
+  // the name of the key within the vault.
+  keyName string
+  // Key Vault URI
+  //
+  // Set when provider is azure, for example
+  // `https://example.vault.azure.net`.
+  vaultUri string
+  // Microsoft Entra tenant the key vault belongs to
+  //
+  // Set when provider is azure.
+  tenantId string
+  // Microsoft Entra application used to reach the key vault
+  //
+  // Set when provider is azure and the organization registered its own
+  // single-tenant application. Null when Anthropic's multitenant
+  // application is used.
+  clientId string
+  // Whether any workspace uses this key to encrypt its data
+  //
+  // Counts live and archived workspaces, since an archived workspace's
+  // data stays encrypted under the key. An unattached key is not used
+  // for encryption.
+  attached bool
+  // Workspaces whose data this key encrypts
+  workspaces() []claude.organization.workspace
+  // Timestamp when the key configuration was created
+  createdAt time
+  // Timestamp when the key configuration was last updated
+  updatedAt time
+}
+
+// Claude Enterprise RBAC group
+//
+// Group of organization members that RBAC roles are attached to, either
+// created in the organization's admin settings or provisioned by the
+// identity provider. Includes the group's members and the roles granting
+// its permissions. The `sourceType` field is direct or scim.
+claude.organization.rbacGroup @defaults("id name sourceType") {
+  // Group identifier
+  id string
+  // Group name
+  //
+  // Names are not required to be unique.
+  name string
+  // How the group was created
+  //
+  // One of direct, for a group created in the admin settings or through
+  // the API, or scim, for a group provisioned by the identity provider.
+  sourceType string
+  // Roles attached to the group
+  roles() []claude.organization.rbacRole
+  // Members of the group
+  members() []claude.organization.rbacGroup.member
+  // Timestamp when the group was created
+  createdAt time
+  // Timestamp when the group was last updated
+  updatedAt time
+}
+
+// Membership of an organization member in an RBAC group
+claude.organization.rbacGroup.member @defaults("email") {
+  // Organization member in the group
+  user() claude.organization.member
+  // Email address of the member
+  email string
+  // Timestamp when the member was added to the group
+  addedAt time
+}
+
+// Claude Enterprise RBAC role
+//
+// Role granting a set of permissions to the RBAC groups it is attached
+// to. Includes the role's permissions, each an action on the
+// organization or on a connector, and the groups holding the role.
+claude.organization.rbacRole @defaults("id name") {
+  // Role identifier
+  id string
+  // Role name
+  name string
+  // Permissions the role grants
+  permissions() []claude.organization.rbacRole.permission
+  // Groups the role is attached to
+  groups() []claude.organization.rbacGroup
+  // Timestamp when the role was created
+  createdAt time
+  // Timestamp when the role was last updated
+  updatedAt time
+}
+
+// Permission granted by an RBAC role
+//
+// One action on one target. The `resourceType` field is organization,
+// connector_tool, connector_scope, connector, or all_connectors. An
+// organization grant carries a product feature such as chat, an admin
+// permission prefixed permission_, or capability_access_all or
+// capability_access_all_ga, which grant every product feature or every
+// generally available one. A connector_tool grant carries use or
+// always_allow, a connector_scope grant carries grant, and connector and
+// all_connectors grants carry a tool access action, grant, interactive,
+// or managed.
+claude.organization.rbacRole.permission @defaults("resourceType action") {
+  // Action the permission grants
+  action string
+  // Kind of target the permission applies to
+  //
+  // One of organization, connector_tool, connector_scope, connector, or
+  // all_connectors.
+  resourceType string
+  // Connector the permission applies to
+  //
+  // Set for connector_tool, connector_scope, and connector grants.
+  connectorId string
+  // Connector tool the permission applies to
+  //
+  // Set for connector_tool grants.
+  toolName string
+  // OAuth scope the role may receive when tokens are minted for the connector
+  //
+  // Set for connector_scope grants.
+  scope string
+}
+
+// Effective spend limit for one organization member and period
+//
+// Spend cap a member resolves for a daily, weekly, or monthly period,
+// with what the member has spent so far in the current period and the
+// scope the cap is inherited from. A member gets one entry per period
+// that resolves a limit. Amounts are in the minor unit of `currency`,
+// which is cents for USD.
+claude.organization.effectiveSpendLimit @defaults("actorEmail period amount periodToDateSpend currency") {
+  // Kind of actor the entry is for
+  //
+  // One of user_actor or scoped_api_key_actor.
+  actorType string
+  // Organization member the entry is for
+  //
+  // Null for a deleted member and for an entry that is not for a
+  // member.
+  user() claude.organization.member
+  // Email address of the member
+  //
+  // Null when the account is unavailable or has been deleted.
+  actorEmail string
+  // Identifier of the scoped admin API key the entry is for
+  //
+  // Set when actorType is scoped_api_key_actor.
+  scopedApiKeyId string
+  // Period the limit resets over
+  //
+  // One of daily, weekly, or monthly.
+  period string
+  // Effective limit, in the minor unit of currency
+  //
+  // Null when no limit applies for this period. Other periods resolve
+  // independently and may still cap the member.
+  amount int
+  // Spend so far in the current period, in the minor unit of currency
+  //
+  // May carry fractions of a minor unit. Reads 0 when the spend reading
+  // is temporarily unavailable.
+  periodToDateSpend float
+  // ISO 4217 code of the organization's billing currency
+  currency string
+  // Kind of scope the entry applies to
+  //
+  // One of user, seat_tier, rbac_group, organization_service,
+  // organization, or workspace.
+  scopeType string
+  // Kind of scope the limit is inherited from
+  //
+  // One of user, seat_tier, rbac_group, organization_service,
+  // organization, or workspace. A user source is a limit set on the
+  // member directly.
+  sourceType string
+  // Seat tier the limit is inherited from
+  //
+  // Set when sourceType is seat_tier.
+  sourceSeatTier string
+  // Service the organization-level limit is inherited from
+  //
+  // Set when sourceType is organization_service.
+  sourceService string
+  // RBAC group the limit is inherited from
+  //
+  // Null unless sourceType is rbac_group.
+  sourceRbacGroup() claude.organization.rbacGroup
+  // Workspace the limit is inherited from
+  //
+  // Null unless sourceType is workspace.
+  sourceWorkspace() claude.organization.workspace
+  // Identifier of the configured spend limit the entry resolves to
+  //
+  // Prefixed spl_.
+  spendLimitId string
+}
+
+// Claude Enterprise plugin
+//
+// Plugin in one of the organization's plugin marketplaces or in a
+// member's personal marketplace, with what its served version contains,
+// how far that version reaches, the result of its content scan, and how
+// it is offered to members. The `reach` field is remote when the plugin
+// declares an MCP server or a CLI, privileged when it declares a hook,
+// monitor, language server, or settings but nothing remote, and contained
+// otherwise. The `installationPreference` field is required,
+// auto_install, available, or not_available.
+claude.organization.plugin @defaults("name displayName reach installationPreference") {
+  // Plugin identifier
+  id string
+  // Lowercase name, unique within its marketplace
+  //
+  // Fixed for an organization-owned plugin. A member-owned plugin's
+  // name changes when its owner renames it.
+  name string
+  // Display name of the served version
+  displayName string
+  // Description of the served version
+  description string
+  // Version string the served version's manifest declares
+  manifestVersion string
+  // Marketplace the plugin lives in
+  marketplace() claude.organization.pluginMarketplace
+  // Kind of owner
+  //
+  // One of organization or user.
+  ownerType string
+  // Member whose personal marketplace holds the plugin
+  //
+  // Null for an organization-owned plugin.
+  owner() claude.organization.member
+  // How far the served version reaches
+  //
+  // One of contained, privileged, or remote. Null when the version
+  // cannot be classified.
+  reach string
+  // Organization-wide installation setting members get
+  //
+  // One of required, auto_install, available, or not_available, and
+  // members in an RBAC group holding its own setting get that instead.
+  // Null for a member-owned plugin, which is shared instead.
+  installationPreference string
+  // Whether installationPreference is the marketplace default rather than a setting of the plugin's own
+  //
+  // Null for a member-owned plugin.
+  installationPreferenceInherited bool
+  // Version served to members
+  servedVersionId string
+  // Whether the served version is pinned
+  //
+  // False while the served version follows each new version.
+  servedVersionPinned bool
+  // Newest version of the plugin
+  latestVersionId string
+  // State of the served version's content scan
+  //
+  // One of processing, completed, or errored. Null when the version has
+  // not been scanned.
+  contentScanStatus string
+  // Verdict of the served version's content scan
+  //
+  // One of pass, warn, fail, or unknown. Set only when
+  // contentScanStatus is completed.
+  contentScanAssessment string
+  // Main mechanism behind a warn or fail verdict
+  //
+  // For example credential-exposure or guardrail-tampering. Null on a
+  // pass and when no mechanism is reported.
+  contentScanReason string
+  // Components the served version contains
+  //
+  // Null when the version's components have not been enumerated.
+  components() []claude.organization.plugin.component
+  // Kind of actor that created the plugin
+  //
+  // One of user_actor or api_actor. Null when no creator is recorded.
+  createdByType string
+  // Member who created the plugin
+  createdBy() claude.organization.member
+  // API key the plugin was created with
+  createdByApiKey() claude.organization.apiKey
+  // Timestamp when the plugin was created
+  createdAt time
+  // Timestamp of the plugin's latest version or served version change
+  updatedAt time
+}
+
+// Component of a Claude Enterprise plugin
+//
+// One part of a plugin's served version. The `type` field is agent, cli,
+// command, hook, mcp_server, or skill.
+claude.organization.plugin.component @defaults("type name") {
+  // Component name
+  name string
+  // Kind of component
+  //
+  // One of agent, cli, command, hook, mcp_server, or skill.
+  type string
+  // Component description
+  description string
+}
+
+// Claude Enterprise plugin marketplace
+//
+// Source of plugins for the organization or for one member, either
+// uploaded by hand or synchronized from a Git repository, with the
+// outcome of its latest synchronization and the default installation
+// setting its plugins get. The `source` field is manual, github, gitlab,
+// or public_git.
+claude.organization.pluginMarketplace @defaults("name source ownerType syncStatus") {
+  // Marketplace identifier
+  //
+  // Prefixed marketplace_.
+  id string
+  // Marketplace name
+  name string
+  // Where the marketplace's plugins come from
+  //
+  // One of manual, for plugins that are uploaded, or github, gitlab, or
+  // public_git, for plugins synchronized from the connected Git
+  // repository.
+  source string
+  // Kind of owner
+  //
+  // One of organization or user.
+  ownerType string
+  // Member whose personal marketplace this is
+  //
+  // Null for an organization marketplace.
+  owner() claude.organization.member
+  // Default installation setting for the marketplace's plugins
+  //
+  // One of required, auto_install, available, or not_available, given
+  // to every plugin without a setting of its own. Null for a member's
+  // personal marketplace.
+  defaultInstallationPreference string
+  // Outcome of the latest synchronization
+  //
+  // One of success, in_progress, failed_content, failed_transient,
+  // failed_auth, or failed_limits. Null until a synchronization is
+  // first attempted, so always for a manual marketplace.
+  syncStatus string
+  // Timestamp when the latest synchronization attempt finished
+  //
+  // Null for a marketplace that is not synchronized from a repository.
+  lastSyncEndedAt time
+  // Commit the latest synchronization read from the repository
+  //
+  // Null until a synchronization has read the repository, and for a
+  // marketplace that is not synchronized from one.
+  lastSyncReadSha string
+  // Plugins in the marketplace
+  plugins() []claude.organization.plugin
+  // Timestamp when the marketplace was created
   createdAt time
 }

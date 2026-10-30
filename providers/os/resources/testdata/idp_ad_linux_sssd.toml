@@ -1,0 +1,49 @@
+# A RHEL host joined to Active Directory with `realm join ad.example.com`,
+# which writes sssd.conf through adcli with the ad identity provider. The
+# layout follows what realmd writes; the domain name is made up.
+
+[files."/etc/sssd/sssd.conf"]
+content = """
+[sssd]
+domains = ad.example.com
+config_file_version = 2
+services = nss, pam
+
+[domain/ad.example.com]
+default_shell = /bin/bash
+krb5_store_password_if_offline = True
+cache_credentials = True
+krb5_realm = AD.EXAMPLE.COM
+realmd_tags = manages-system joined-with-adcli
+id_provider = ad
+fallback_homedir = /home/%u@%d
+ad_domain = ad.example.com
+use_fully_qualified_names = True
+ldap_id_mapping = True
+access_provider = ad
+"""
+
+[files."/etc/krb5.conf"]
+content = """
+includedir /etc/krb5.conf.d/
+
+[libdefaults]
+    dns_lookup_realm = false
+    ticket_lifetime = 24h
+    renew_lifetime = 7d
+    forwardable = true
+    rdns = false
+    spake_preauth_groups = edwards25519
+    dns_canonicalize_hostname = fallback
+    qualify_shortname = ""
+    default_realm = AD.EXAMPLE.COM
+    default_ccache_name = KEYRING:persistent:%{uid}
+
+[realms]
+ AD.EXAMPLE.COM = {
+ }
+
+[domain_realm]
+ ad.example.com = AD.EXAMPLE.COM
+ .ad.example.com = AD.EXAMPLE.COM
+"""

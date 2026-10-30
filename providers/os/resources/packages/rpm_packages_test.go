@@ -7,14 +7,16 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	rpmdb "github.com/knqyf263/go-rpmdb/pkg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 func TestRedhat8Parser(t *testing.T) {
@@ -135,18 +137,19 @@ func TestRedhat8Parser(t *testing.T) {
 	}
 	assert.Equal(t, p, findPkg(m, p.Name), p.Name)
 
-	// Package with (none) vendor and arch
+	// Package with (none) vendor and arch. rpm prints "(none)" for a missing
+	// Vendor tag; that is no vendor, as go-rpmdb reports it on the rpmdb path.
 	p = Package{
 		Name:           "gpg-pubkey",
 		Version:        "d4082792-5b32db75",
-		Vendor:         "(none)",
+		Vendor:         "",
 		Description:    "gpg(Red Hat, Inc. (auxiliary key) <security@redhat.com>)",
 		Format:         RpmPkgFormat,
 		FilesAvailable: PkgFilesAsync,
 		PUrl:           "pkg:rpm/redhat/gpg-pubkey@d4082792-5b32db75?distro=rhel-8.4",
 		CPEs: []string{
-			"cpe:2.3:a:\\(none\\):gpg-pubkey:d4082792-5b32db75:*:*:*:*:*:*:*",
-			"cpe:2.3:a:\\(none\\):gpg-pubkey:d4082792-5b32db75:*:*:*:*:*:*:*",
+			"cpe:2.3:a:*:gpg-pubkey:d4082792-5b32db75:*:*:*:*:*:*:*",
+			"cpe:2.3:a:*:gpg-pubkey:d4082792-5b32db75:*:*:*:*:*:*:*",
 		},
 	}
 	assert.Equal(t, p, findPkg(m, p.Name), p.Name)
@@ -179,6 +182,61 @@ func TestRedhat8Parser(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(pkgFiles), "detected the right amount of package files")
 	assert.Contains(t, pkgFiles, FileRecord{Path: "/var/lib/rpm/rpmdb.sqlite"})
+}
+
+// countingConnection wraps a shared.Connection and counts how often each
+// command string is executed, so a test can assert that a command is issued
+// exactly once regardless of how many callers request it.
+type countingConnection struct {
+	shared.Connection
+	mu     sync.Mutex
+	counts map[string]int
+}
+
+func (c *countingConnection) RunCommand(command string) (*shared.Command, error) {
+	c.mu.Lock()
+	if c.counts == nil {
+		c.counts = map[string]int{}
+	}
+	c.counts[command]++
+	c.mu.Unlock()
+	return c.Connection.RunCommand(command)
+}
+
+func (c *countingConnection) count(command string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.counts[command]
+}
+
+// TestRpmFilesResolvesDBPathOnce guards the N+1 fix: `rpm -E '%{_dbpath}'`
+// returns the same system-wide constant for every package, so the manager must
+// resolve it once and reuse it, no matter how many packages ask for their files.
+func TestRpmFilesResolvesDBPathOnce(t *testing.T) {
+	base, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/packages_redhat8.toml"))
+	require.NoError(t, err)
+
+	conn := &countingConnection{Connection: base}
+
+	pf := &inventory.Platform{
+		Name:    "redhat",
+		Version: "8.4",
+		Arch:    "x86_64",
+		Family:  []string{"redhat", "linux", "unix", "os"},
+		Labels:  map[string]string{"distro-id": "rhel"},
+	}
+
+	mgr := &RpmPkgManager{conn: conn, platform: pf}
+
+	const pkgCount = 500
+	for range pkgCount {
+		files, err := mgr.Files("which", "2.21-12.el8", "x86_64")
+		require.NoError(t, err)
+		require.Equal(t, []FileRecord{{Path: "/var/lib/rpm/rpmdb.sqlite"}}, files)
+	}
+
+	assert.Equal(t, 1, conn.count("rpm -E '%{_dbpath}'"),
+		"rpm database path must be resolved once and reused for every package")
 }
 
 func TestPhoton4ImageParser(t *testing.T) {
@@ -492,68 +550,55 @@ func TestRedHatModularParser(t *testing.T) {
 	assert.Equal(t, p.PUrl, fPkg.PUrl)
 }
 
+// TestModularitySupportedByPlatform pins the version window in which the
+// %{MODULARITYLABEL} queryformat tag may be requested: modularity arrived in
+// RHEL 8 and was removed again in RHEL 10, so only 8.x and 9.x qualify.
+//
+// The version-7 rows guard a regression that silently emptied the package
+// inventory. The guard used to carry only the upper bound, so RHEL, CentOS and
+// Oracle Linux 7 were handed the tag. Their rpm is 4.11, which does not know
+// it: rpm printed "error: incorrect format: unknown tag" per package, wrote
+// nothing at all to stdout, and still exited 0 - so `packages` came back as an
+// empty list, with no error, on a host with a fully populated rpm database.
 func TestModularitySupportedByPlatform(t *testing.T) {
-	tests := []struct {
-		name     string
-		platform *inventory.Platform
-		want     bool
+	// the platform names the detector emits for these distros
+	modularDistros := []string{"oraclelinux", "almalinux", "redhat", "centos", "centos-stream", "rockylinux"}
+
+	versions := []struct {
+		version string
+		want    bool
 	}{
-		{
-			name:     "AlmaLinux",
-			platform: &inventory.Platform{Name: "almalinux", Version: "8.10", Arch: "x86_64"},
-			want:     true,
-		},
-		{
-			name:     "OracleLinux",
-			platform: &inventory.Platform{Name: "oraclelinux", Version: "9", Arch: "x86_64"},
-			want:     true,
-		},
-		{
-			name:     "AlmaLinux",
-			platform: &inventory.Platform{Name: "almalinux", Version: "10", Arch: "x86_64"},
-			want:     false,
-		},
-		{
-			name:     "OracleLinux",
-			platform: &inventory.Platform{Name: "oraclelinux", Version: "10.1", Arch: "x86_64"},
-			want:     false,
-		},
-		{
-			name:     "RHEL 8",
-			platform: &inventory.Platform{Name: "redhat", Version: "8.10", Arch: "x86_64"},
-			want:     true,
-		},
-		{
-			name:     "RHEL 9",
-			platform: &inventory.Platform{Name: "redhat", Version: "9.4", Arch: "x86_64"},
-			want:     true,
-		},
-		{
-			name:     "RHEL 10",
-			platform: &inventory.Platform{Name: "redhat", Version: "10", Arch: "x86_64"},
-			want:     false,
-		},
-		{
-			name:     "CentOS 8",
-			platform: &inventory.Platform{Name: "centos", Version: "8", Arch: "x86_64"},
-			want:     true,
-		},
-		{
-			name:     "Rocky 9",
-			platform: &inventory.Platform{Name: "rocky", Version: "9.3", Arch: "x86_64"},
-			want:     true,
-		},
-		{
-			name:     "AmazonLinux",
-			platform: &inventory.Platform{Name: "amazonlinux", Version: "2", Arch: "x86_64"},
-			want:     false,
-		},
+		{"7", false}, // rpm 4.11 has no %{MODULARITYLABEL}
+		{"7.9", false},
+		{"8", true},
+		{"8.10", true},
+		{"9", true},
+		{"9.4", true},
+		{"10", false}, // modularity removed in RHEL 10
+		{"10.1", false},
+		{"", false}, // unparseable version must not enable the tag
+		{"unknown", false},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, modularitySupportedByPlatform(tt.platform))
-		})
+	for _, distro := range modularDistros {
+		for _, v := range versions {
+			t.Run(fmt.Sprintf("%s/%q", distro, v.version), func(t *testing.T) {
+				pf := &inventory.Platform{Name: distro, Version: v.version, Arch: "x86_64"}
+				require.Equal(t, v.want, modularitySupportedByPlatform(pf))
+			})
+		}
+	}
+
+	// Names outside the switch never get the tag, at any version. Amazon Linux 2
+	// also ships rpm 4.11 and reported its packages correctly throughout,
+	// precisely because it is not listed here.
+	for _, distro := range []string{"amazonlinux", "fedora", "sles", "opensuse", "photon"} {
+		for _, version := range []string{"2", "7", "8", "9", "10", ""} {
+			t.Run(fmt.Sprintf("unlisted/%s/%q", distro, version), func(t *testing.T) {
+				pf := &inventory.Platform{Name: distro, Version: version, Arch: "x86_64"}
+				require.False(t, modularitySupportedByPlatform(pf))
+			})
+		}
 	}
 }
 
@@ -622,7 +667,7 @@ func TestRpmQueryFormatRoundTrip(t *testing.T) {
 		"RELEASE":         "100.el8",
 		"ARCH":            "x86_64",
 		"VENDOR":          "Red Hat, Inc.",
-		"SUMMARY":         "The GNU libc libraries",
+		"SUMMARY":         "The GNU libc __ libraries", // "__" was the old field separator
 		"LICENSE":         "LGPLv2+",
 		"INSTALLTIME":     "1700000000",
 		"MODULARITYLABEL": "(none)", // rpm emits "(none)" for non-modular packages
@@ -655,8 +700,136 @@ func TestRpmQueryFormatRoundTrip(t *testing.T) {
 			assert.Equal(t, "2.34-100.el8", p.Version)
 			assert.Equal(t, "x86_64", p.Arch)
 			assert.Equal(t, "Red Hat, Inc.", p.Vendor)
-			assert.Equal(t, "The GNU libc libraries", p.Description)
+			assert.Equal(t, "The GNU libc __ libraries", p.Description)
 			assert.Equal(t, "LGPLv2+", p.License)
+		})
+	}
+}
+
+// TestRpmQueryFormatCentosStream pins CentOS Stream to the same rpm query
+// format CentOS Linux gets. queryFormat() picks %{EPOCHNUM} over %{EPOCH} by
+// platform name, and Stream only ever existed at 8 and above, so a name the
+// guard does not list drops every Stream host to %{EPOCH} - which rpm renders
+// as "(none)" for the packages that carry no epoch, where %{EPOCHNUM} renders
+// "0". Splitting Stream out of the "centos" name is exactly what would do that.
+func TestRpmQueryFormatCentosStream(t *testing.T) {
+	for _, version := range []string{"8", "9", "10"} {
+		t.Run(version, func(t *testing.T) {
+			mgr := &RpmPkgManager{platform: &inventory.Platform{
+				Name: "centos-stream", Version: version, Arch: "x86_64",
+			}}
+			assert.Contains(t, mgr.queryFormat(), "%{EPOCHNUM}")
+		})
+	}
+}
+
+func TestNormalizeRpmEpoch(t *testing.T) {
+	tests := []struct {
+		epoch    string
+		expected string
+	}{
+		// rpm's three spellings of "no epoch"
+		{"0", ""},
+		{"(none)", ""},
+		{" (none) ", ""},
+		{"", ""},
+		// a real epoch survives
+		{"1", "1"},
+		{"2", "2"},
+		{"10", "10"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.epoch, func(t *testing.T) {
+			assert.Equal(t, test.expected, normalizeRpmEpoch(test.epoch))
+		})
+	}
+}
+
+// The rpmdb path (container images, filesystem scans) and the rpm command path
+// (live hosts) must render identical versions and purls for the same package.
+//
+// They did not: the rpmdb path prefixed the epoch unconditionally, so a package
+// with no epoch — the overwhelming majority — came out as "0:3.9.25-7.el9_8.2"
+// from an image and "3.9.25-7.el9_8.2" from a live host. The purl differed with
+// it, so the same package looked like two different packages depending on how
+// the asset was scanned. Consumers that match a version by prefix rather than
+// by rpm version comparison found nothing at all for rpm images.
+//
+// Verified against registry.access.redhat.com/ubi9/ubi:latest, scanned both as
+// `docker image` (rpmdb) and `docker container` (rpm command).
+func TestRpmEpochParityAcrossCollectionPaths(t *testing.T) {
+	pf := &inventory.Platform{
+		Name:    "redhat",
+		Version: "9",
+		Arch:    "aarch64",
+		Family:  []string{"linux", "unix", "os"},
+		Labels: map[string]string{
+			"distro-id": "rhel",
+		},
+	}
+
+	zero, one := 0, 1
+	tests := []struct {
+		name            string
+		pkg             *rpmdb.PackageInfo
+		expectedVersion string
+	}{
+		{
+			name: "no epoch",
+			pkg: &rpmdb.PackageInfo{
+				Name: "python3", Epoch: &zero, Version: "3.9.25", Release: "7.el9_8.2",
+				Arch: "aarch64", Vendor: "Red Hat, Inc.", License: "Python-2.0.1",
+				Summary: "Python 3 interpreter",
+			},
+			expectedVersion: "3.9.25-7.el9_8.2",
+		},
+		{
+			// Epoch is a nil pointer when rpm never recorded one at all;
+			// EpochNum() reports 0 for it, same as an explicit zero.
+			name: "epoch absent entirely",
+			pkg: &rpmdb.PackageInfo{
+				Name: "glibc", Epoch: nil, Version: "2.34", Release: "274.el9_8",
+				Arch: "aarch64", Vendor: "Red Hat, Inc.", License: "LGPLv2+",
+				Summary: "The GNU libc libraries",
+			},
+			expectedVersion: "2.34-274.el9_8",
+		},
+		{
+			// A real epoch belongs in the version, and both paths already agreed here.
+			name: "non-zero epoch",
+			pkg: &rpmdb.PackageInfo{
+				Name: "gmp", Epoch: &one, Version: "6.1.2", Release: "11.el8",
+				Arch: "aarch64", Vendor: "Red Hat, Inc.", License: "LGPLv3+",
+				Summary: "A GNU arbitrary precision library",
+			},
+			expectedVersion: "1:6.1.2-11.el8",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fromDB := newRpmPackageFromDB(pf, test.pkg, "/var/lib/rpm/rpmdb.sqlite")
+
+			// Render the same package the way `rpm -qa --queryformat` would,
+			// then read it back through the command path.
+			var out bytes.Buffer
+			fmt.Fprintf(&out, "%s %d:%s-%s %s__%s__%s__%s__%d\n",
+				test.pkg.Name, test.pkg.EpochNum(), test.pkg.Version, test.pkg.Release,
+				test.pkg.Arch, test.pkg.Vendor, test.pkg.Summary, test.pkg.License, 0)
+			fromCmd := ParseRpmPackages(pf, &out)
+			require.Len(t, fromCmd, 1)
+
+			assert.Equal(t, test.expectedVersion, fromDB.Version, "rpmdb path version")
+			assert.Equal(t, test.expectedVersion, fromCmd[0].Version, "command path version")
+			assert.Equal(t, fromCmd[0].Version, fromDB.Version, "versions must agree across paths")
+			assert.Equal(t, fromCmd[0].PUrl, fromDB.PUrl, "purls must agree across paths")
+			assert.Equal(t, fromCmd[0].Epoch, fromDB.Epoch, "epochs must agree across paths")
+			assert.Equal(t, fromCmd[0].CPEs, fromDB.CPEs, "cpes must agree across paths")
+
+			// The rpmdb path additionally carries the database as evidence.
+			assert.Equal(t, PkgFilesIncluded, fromDB.FilesAvailable)
+			assert.Equal(t, []FileRecord{{Path: "/var/lib/rpm/rpmdb.sqlite"}}, fromDB.Files)
 		})
 	}
 }

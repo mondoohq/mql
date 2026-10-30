@@ -1,14 +1,194 @@
 {
-  "nixpkgs.curl": {
+  "0": {
+    "name": "hello-2.12.3",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "hello",
+    "system": "aarch64-linux",
+    "version": "2.12.3"
+  },
+  "1": {
+    "name": "curl-8.20.0",
+    "outputName": "",
+    "outputs": {
+      "bin": null,
+      "man": null
+    },
     "pname": "curl",
-    "version": "8.7.1"
+    "system": "aarch64-linux",
+    "version": "8.20.0"
   },
-  "nixpkgs.git": {
-    "pname": "git",
-    "version": "2.44.0"
+  "10": {
+    "name": "which-2.23",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "which",
+    "system": "aarch64-linux",
+    "version": "2.23"
   },
-  "nixpkgs.openssl": {
+  "11": {
+    "name": "less-692",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "less",
+    "system": "aarch64-linux",
+    "version": "692"
+  },
+  "12": {
+    "name": "wget-1.25.0",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "wget",
+    "system": "aarch64-linux",
+    "version": "1.25.0"
+  },
+  "13": {
+    "name": "man-db-2.13.1",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "man-db",
+    "system": "aarch64-linux",
+    "version": "2.13.1"
+  },
+  "14": {
+    "name": "nss-cacert-3.123",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "nss-cacert",
+    "system": "aarch64-linux",
+    "version": "3.123"
+  },
+  "15": {
+    "name": "findutils-4.10.0",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "findutils",
+    "system": "aarch64-linux",
+    "version": "4.10.0"
+  },
+  "16": {
+    "name": "iana-etc-20251215",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "iana-etc",
+    "system": "aarch64-linux",
+    "version": "20251215"
+  },
+  "17": {
+    "name": "git-minimal-2.54.0",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "git-minimal",
+    "system": "aarch64-linux",
+    "version": "2.54.0"
+  },
+  "18": {
+    "name": "openssh-10.3p1",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "openssh",
+    "system": "aarch64-linux",
+    "version": "10.3p1"
+  },
+  "2": {
+    "name": "openssl-3.6.2",
+    "outputName": "",
+    "outputs": {
+      "bin": null,
+      "man": null
+    },
     "pname": "openssl",
-    "version": "3.3.0"
+    "system": "aarch64-linux",
+    "version": "3.6.2"
+  },
+  "3": {
+    "name": "python3-3.12.13",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "python3",
+    "system": "aarch64-linux",
+    "version": "3.12.13"
+  },
+  "4": {
+    "name": "nix-2.35.2",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "nix",
+    "system": "aarch64-linux",
+    "version": "2.35.2"
+  },
+  "5": {
+    "name": "bash-interactive-5.3p9",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "bash-interactive",
+    "system": "aarch64-linux",
+    "version": "5.3p9"
+  },
+  "6": {
+    "name": "coreutils-full-9.11",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "coreutils-full",
+    "system": "aarch64-linux",
+    "version": "9.11"
+  },
+  "7": {
+    "name": "gnutar-1.35",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "gnutar",
+    "system": "aarch64-linux",
+    "version": "1.35"
+  },
+  "8": {
+    "name": "gzip-1.14",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "gzip",
+    "system": "aarch64-linux",
+    "version": "1.14"
+  },
+  "9": {
+    "name": "gnugrep-3.12",
+    "outputName": "",
+    "outputs": {
+      "out": null
+    },
+    "pname": "gnugrep",
+    "system": "aarch64-linux",
+    "version": "3.12"
   }
 }

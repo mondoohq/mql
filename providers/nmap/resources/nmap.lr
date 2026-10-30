@@ -1,25 +1,31 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/mql/v13/providers/nmap"
-option go_package = "go.mondoo.com/mql/v13/providers/nmap/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/nmap"
+option go_package = "go.mondoo.com/mql/providers/nmap/resources"
+option root = "nmap"
 
 // Nmap network scanner
 //
-// Examine the local nmap installation that the provider invokes for
-// scans, including its version and build information (libraries it
-// was compiled with, supported nsock engines, target platform).
-nmap {
+// Local nmap installation that the provider invokes to run scans,
+// including its version and build information: the libraries nmap was
+// compiled with, the ones it was compiled without, the supported nsock
+// I/O engines, and the target platform. Query it to confirm which nmap
+// build backs your scans and which optional capabilities (OpenSSL,
+// libpcap, and similar) are available.
+nmap @root {
   // Nmap installation version and build info
   version() nmap.versionInformation
 }
 
 // Nmap network scan target
 //
-// Examine the result of running nmap against a `target` (IP address,
-// hostname, or CIDR range). Surfaces the discovered hosts and any
-// warnings or errors emitted during the scan. Initialize with the
-// target string, e.g., `nmap.network(target: "192.0.2.0/24")` or
+// Result of running nmap against a `target` (IP address, hostname, or
+// CIDR range), exposing the discovered hosts and any warnings or errors
+// emitted during the scan. The `target` field selects what to scan, for
+// example `nmap.network(target: "192.0.2.0/24")` or
 // `nmap.network(target: "example.com")`.
 nmap.network {
   init(target string)
@@ -33,28 +39,51 @@ nmap.network {
 
 // Nmap discovered host
 //
-// Examine a single host returned by an nmap scan, identified by its
-// hostname or IP address: state (up / down / unknown), all known IP
-// and MAC addresses, DNS hostnames, OS-detection result, network
-// distance and traceroute hops, scan-end timestamp, and the discovered
-// ports with their states (open / closed / filtered).
+// Single host returned by an nmap scan, selected by its hostname or IP
+// address, for example nmap.host(name: "scanme.nmap.org"). Reports
+// whether the host is up, its resolved DNS hostnames and IP/MAC
+// addresses, the operating-system fingerprint, network distance and
+// traceroute path, and the ports found open, closed, or filtered. Use
+// it to audit which services a host exposes to the network and to
+// confirm the reachability and identity of a scan target.
 nmap.host @defaults("name") {
  init(name string)
  // Hostname or IP address
  name string
- // Network distance (hop count)
+ // Network distance to the host
+ //
+ // Hop count between the scanner and the host, as a dict with a single
+ // `value` key holding the number of network hops.
  distance() dict
- // OS detection results
+ // Operating-system detection result
+ //
+ // Fingerprinted operating system for the host. Keys: `ports_used`
+ // (the ports used for fingerprinting, each with `state`, `proto`, and
+ // `port_id`), `os_matches` (candidate matches, each with `name`,
+ // `accuracy`, `line`, and `os_classes` carrying `vendor`, `os_family`,
+ // `os_generation`, `type`, `accuracy`, and `cpes`), and
+ // `os_fingerprints` (raw fingerprint strings).
  os() dict
  // Scan end timestamp
  endTime() time
  // User-defined host comments
  comment() string
- // Traceroute hops to this host
+ // Traceroute path to the host
+ //
+ // Network path discovered by traceroute. Keys: `proto` and `port`
+ // used for the trace, and `hops`, a list where each hop carries
+ // `ttl`, `rtt`, `ip_addr`, and `host`.
  trace() dict
  // IP and MAC addresses
+ //
+ // All addresses reported for the host. Each entry has `addr` (the
+ // address itself), `addr_type` (ipv4, ipv6, or mac), and `vendor`
+ // (hardware vendor for MAC addresses, otherwise empty).
  addresses() []dict
  // DNS hostnames
+ //
+ // Names resolved for the host. Each entry has `name` (the hostname)
+ // and `type` (the source of the name, such as user or PTR).
  hostnames() []dict
  // Open, filtered, and closed ports
  ports() []nmap.port
@@ -68,7 +97,7 @@ private nmap.port @defaults("port service"){
   port int
   // Detected service name (e.g., http, ssh)
   service string
-  // Scan method used (e.g., syn, connect)
+  // Service detection method: table or probed
   method string
   // Protocol: tcp or udp
   protocol string
@@ -76,7 +105,10 @@ private nmap.port @defaults("port service"){
   product string
   // Product version
   version string
-  // Port state: open, closed, filtered
+  // Port state
+  //
+  // One of open, closed, filtered, unfiltered, open|filtered, or
+  // closed|filtered.
   state string
 }
 

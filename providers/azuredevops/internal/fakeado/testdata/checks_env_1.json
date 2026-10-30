@@ -1,0 +1,41 @@
+{
+  "count": 2,
+  "value": [
+    {
+      "id": 11,
+      "version": 1,
+      "type": { "id": "8C6F20A7-A545-4486-9777-F762FAFE0D4D", "name": "Approval" },
+      "resource": { "type": "environment", "id": "1", "name": "production" },
+      "timeout": 43200,
+      "settings": {
+        "approvers": [
+          { "displayName": "[legacy-apps]\\Release Approvers", "id": "6c000000-0000-4000-8000-000000000021" }
+        ],
+        "executionOrder": "anyOrder",
+        "minRequiredApprovers": 1,
+        "instructions": "",
+        "blockedApprovers": [],
+        "requesterCannotBeApprover": false
+      }
+    },
+    {
+      "id": 12,
+      "version": 1,
+      "type": { "id": "fe1de3ee-a436-41b4-bb20-f6eb4cb879a7", "name": "Task Check" },
+      "resource": { "type": "environment", "id": "1", "name": "production" },
+      "timeout": 43200,
+      "settings": {
+        "displayName": "Business hours",
+        "definitionRef": { "id": "5e000000-0000-4000-8000-000000000002", "name": "evaluateBusinessHours", "version": "0.0.1" },
+        "requesterCannotBeApprover": true,
+        "minRequiredApprovers": 2,
+        "inputs": {
+          "timeZone": "UTC",
+          "function": "https://checks.example.invalid/api/gate?code=fabricated-function-key-0001",
+          "key": "fabricated-function-key-0001",
+          "headers": "{\"x-functions-key\": \"fabricated-function-key-0001\"}"
+        }
+      }
+    }
+  ]
+}

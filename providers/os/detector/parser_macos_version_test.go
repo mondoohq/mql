@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers/os/detector"
+	"go.mondoo.com/mql/providers/os/detector"
 )
 
 func TestDarwinRelease(t *testing.T) {

@@ -7,12 +7,13 @@ import (
 	"context"
 	"errors"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers/ollama/connection"
-	"go.mondoo.com/mql/v13/providers/ollama/resources"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers/ollama/connection"
+	"go.mondoo.com/mql/providers/ollama/resources"
 )
 
 const (
@@ -126,6 +127,16 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.OllamaConnecti
 		TechnologyUrlSegments: []string{"ai", "ollama", host},
 	}
 	PlatformByName("ollama").Apply(asset.Platform)
+
+	// The version drives advisory matching for the instance. An instance that
+	// will not report one is still worth scanning, so a failure here leaves the
+	// version empty rather than aborting the connection.
+	if version, err := conn.Version(context.Background()); err == nil {
+		asset.Platform.Version = version
+	} else {
+		log.Debug().Err(err).Str("host", host).Msg("ollama> could not detect server version")
+	}
+
 	asset.PlatformIds = []string{"//platformid.api.mondoo.app/runtime/ollama/host/" + host}
 
 	return nil

@@ -6,6 +6,7 @@ package resources
 import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/mldsa"
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -17,14 +18,14 @@ import (
 	"sync"
 	"time"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/checksums"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/network/resources/certificates"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/checksums"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/network/resources/certificates"
+	"go.mondoo.com/mql/types"
 )
 
 func pkixnameToMql(runtime *plugin.Runtime, name pkix.Name, id string) (*mqlPkixName, error) {
@@ -118,13 +119,58 @@ func (r *mqlCertificates) id() (string, error) {
 	return checksums.New.Add(r.Pem.Data).String(), nil
 }
 
+type mqlCertificatesInternal struct {
+	lock    sync.Mutex
+	parsed  bool
+	certs   []*x509.Certificate
+	skipped int
+	err     error
+}
+
+// parsePem decodes the bundle once and shares the result between list and
+// unparseable. Blocks that x509 rejects are skipped rather than failing the
+// whole bundle: trust stores in the wild carry roots Go will not parse, and
+// losing every root because of one of them leaves audits with nothing to read.
+func (r *mqlCertificates) parsePem() ([]*x509.Certificate, int, error) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	if !r.parsed {
+		r.parsed = true
+
+		pem := r.GetPem()
+		if pem.Error != nil {
+			r.err = errors.New("certificates are missing pem data: " + pem.Error.Error())
+		} else {
+			r.certs, r.skipped, r.err = certificates.ParseCertsFromPEMPartial(strings.NewReader(pem.Data))
+			if r.err != nil {
+				r.err = errors.New("certificate has invalid pem data: " + r.err.Error())
+			} else if r.skipped > 0 {
+				log.Warn().Int("skipped", r.skipped).Int("parsed", len(r.certs)).
+					Msg("skipped certificates that could not be parsed")
+			}
+		}
+	}
+
+	return r.certs, r.skipped, r.err
+}
+
 func (r *mqlCertificates) list() ([]any, error) {
-	certs, err := certificates.ParseCertsFromPEM(strings.NewReader(r.Pem.Data))
+	certs, _, err := r.parsePem()
 	if err != nil {
-		return nil, errors.New("certificate has invalid pem data: " + err.Error())
+		return nil, err
 	}
 
 	return CertificatesToMqlCertificates(r.MqlRuntime, certs)
+}
+
+func (r *mqlCertificates) unparseable() (int64, error) {
+	_, skipped, err := r.parsePem()
+	if err != nil {
+		return 0, err
+	}
+
+	return int64(skipped), nil
 }
 
 // CertificatesToMqlCertificates takes a collection of x509 certs
@@ -198,6 +244,9 @@ func publicKeyBitSize(cert *x509.Certificate) int64 {
 		return int64(key.Curve.Params().BitSize)
 	case ed25519.PublicKey:
 		return 256
+	case *mldsa.PublicKey:
+		// The encoded public key size, as for Ed25519 above.
+		return int64(key.Parameters().PublicKeySize() * 8)
 	default:
 		return 0
 	}
@@ -246,7 +295,7 @@ func (s *mqlCertificate) getGoCert() error {
 
 		cert := s.cert.Data
 		s.Fingerprints = plugin.TValue[map[string]any]{Data: certificates.Fingerprints(cert), State: plugin.StateIsSet}
-		s.Serial = plugin.TValue[string]{Data: certificates.HexEncodeToHumanString(cert.SerialNumber.Bytes()), State: plugin.StateIsSet}
+		s.Serial = plugin.TValue[string]{Data: certificates.SerialToHumanString(cert.SerialNumber), State: plugin.StateIsSet}
 		s.SubjectKeyID = plugin.TValue[string]{Data: certificates.HexEncodeToHumanString(cert.SubjectKeyId), State: plugin.StateIsSet}
 		s.AuthorityKeyID = plugin.TValue[string]{Data: certificates.HexEncodeToHumanString(cert.AuthorityKeyId), State: plugin.StateIsSet}
 		s.Version = plugin.TValue[int64]{Data: int64(cert.Version), State: plugin.StateIsSet}
@@ -457,8 +506,8 @@ func (s *mqlCertificate) sanExtension() (*mqlPkixSanExtension, error) {
 	r, err := CreateResource(s.MqlRuntime, "pkix.sanExtension", map[string]*llx.RawData{
 		"extension":      llx.ResourceData(ext, "pkix.extension"),
 		"dnsNames":       llx.ArrayData(convert.SliceAnyToInterface(dnsNames), types.String),
-		"ipAddresses":    llx.ArrayData(convert.SliceAnyToInterface(emailAddresses), types.String),
-		"emailAddresses": llx.ArrayData(ipAddressesValues, types.String),
+		"ipAddresses":    llx.ArrayData(ipAddressesValues, types.String),
+		"emailAddresses": llx.ArrayData(convert.SliceAnyToInterface(emailAddresses), types.String),
 		"uris":           llx.ArrayData(uriValues, types.String),
 	})
 	if err != nil {
@@ -501,12 +550,23 @@ func (s *mqlCertificate) issuingCertificateUrl() ([]any, error) {
 	return nil, s.getGoCert()
 }
 
+// A certificate parsed from PEM rather than served over a connection has no
+// revocation check behind it, so all three fields report that nothing was
+// determined. The tls resource populates them directly when it builds a
+// certificate from a chain it checked.
 func (s *mqlCertificate) isRevoked() (bool, error) {
-	return false, errors.New("unknown revocation status")
+	s.IsRevoked.State = plugin.StateIsSet | plugin.StateIsNull
+	return false, nil
 }
 
 func (s *mqlCertificate) revokedAt() (*time.Time, error) {
+	s.RevokedAt.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
+}
+
+func (s *mqlCertificate) revocationChecked() (bool, error) {
+	s.RevocationChecked.State = plugin.StateIsSet | plugin.StateIsNull
+	return false, nil
 }
 
 func (s *mqlCertificate) isVerified() (bool, error) {

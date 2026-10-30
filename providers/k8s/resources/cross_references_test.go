@@ -9,11 +9,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/manifest"
-	"go.mondoo.com/mql/v13/utils/syncx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/k8s/connection/manifest"
+	"go.mondoo.com/mql/utils/syncx"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -95,12 +95,12 @@ func TestPodReferencesSecret(t *testing.T) {
 	pod := &corev1.Pod{
 		Spec: corev1.PodSpec{
 			Volumes: []corev1.Volume{
-				{Name: "v-secret", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "target"}}},
-				{Name: "v-projected", VolumeSource: corev1.VolumeSource{Projected: &corev1.ProjectedVolumeSource{
+				{Name: "v-secret", Secret: &corev1.SecretVolumeSource{SecretName: "target"}},
+				{Name: "v-projected", Projected: &corev1.ProjectedVolumeSource{
 					Sources: []corev1.VolumeProjection{
-						{Secret: &corev1.SecretProjection{LocalObjectReference: corev1.LocalObjectReference{Name: "target"}}},
+						{Secret: &corev1.SecretProjection{Name: "target"}},
 					},
-				}}},
+				}},
 			},
 			ImagePullSecrets: []corev1.LocalObjectReference{{Name: "target"}},
 			Containers: []corev1.Container{
@@ -108,26 +108,25 @@ func TestPodReferencesSecret(t *testing.T) {
 					Name: "main",
 					Env: []corev1.EnvVar{
 						{Name: "X", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{Name: "target"}, Key: "k",
+							Name: "target", Key: "k",
 						}}},
 					},
 					EnvFrom: []corev1.EnvFromSource{
-						{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "target"}}},
+						{SecretRef: &corev1.SecretEnvSource{Name: "target"}},
 					},
 				},
 			},
 			InitContainers: []corev1.Container{
 				{Name: "init", Env: []corev1.EnvVar{{Name: "Y", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: "target"}, Key: "k",
+					Name: "target", Key: "k",
 				}}}}},
 			},
 			EphemeralContainers: []corev1.EphemeralContainer{
-				{EphemeralContainerCommon: corev1.EphemeralContainerCommon{
+				{
 					Name: "debug",
 					EnvFrom: []corev1.EnvFromSource{
-						{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "target"}}},
-					},
-				}},
+						{SecretRef: &corev1.SecretEnvSource{Name: "target"}},
+					}},
 			},
 		},
 	}
@@ -141,16 +140,16 @@ func TestPodReferencesSecret(t *testing.T) {
 	// Per-path coverage: each branch should be the sole signal that flips the result.
 	t.Run("volume.secret only", func(t *testing.T) {
 		p := &corev1.Pod{Spec: corev1.PodSpec{Volumes: []corev1.Volume{
-			{Name: "v", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "s"}}},
+			{Name: "v", Secret: &corev1.SecretVolumeSource{SecretName: "s"}},
 		}}}
 		assert.True(t, podReferencesSecret(p, "s"))
 		assert.False(t, podReferencesSecret(p, "other"))
 	})
 	t.Run("projected.secret only", func(t *testing.T) {
 		p := &corev1.Pod{Spec: corev1.PodSpec{Volumes: []corev1.Volume{
-			{Name: "v", VolumeSource: corev1.VolumeSource{Projected: &corev1.ProjectedVolumeSource{
-				Sources: []corev1.VolumeProjection{{Secret: &corev1.SecretProjection{LocalObjectReference: corev1.LocalObjectReference{Name: "s"}}}},
-			}}},
+			{Name: "v", Projected: &corev1.ProjectedVolumeSource{
+				Sources: []corev1.VolumeProjection{{Secret: &corev1.SecretProjection{Name: "s"}}},
+			}},
 		}}}
 		assert.True(t, podReferencesSecret(p, "s"))
 	})
@@ -161,22 +160,22 @@ func TestPodReferencesSecret(t *testing.T) {
 	t.Run("container env only", func(t *testing.T) {
 		p := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{
 			{Env: []corev1.EnvVar{{ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{Name: "s"}}}}}},
+				Name: "s"}}}}},
 		}}}
 		assert.True(t, podReferencesSecret(p, "s"))
 	})
 	t.Run("init container envFrom only", func(t *testing.T) {
 		p := &corev1.Pod{Spec: corev1.PodSpec{InitContainers: []corev1.Container{
-			{EnvFrom: []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "s"}}}}},
+			{EnvFrom: []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{Name: "s"}}}},
 		}}}
 		assert.True(t, podReferencesSecret(p, "s"))
 	})
 	t.Run("ephemeral container only", func(t *testing.T) {
 		p := &corev1.Pod{Spec: corev1.PodSpec{EphemeralContainers: []corev1.EphemeralContainer{
-			{EphemeralContainerCommon: corev1.EphemeralContainerCommon{Env: []corev1.EnvVar{
+			{Env: []corev1.EnvVar{
 				{ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{Name: "s"}}}},
-			}}},
+					Name: "s"}}},
+			}},
 		}}}
 		assert.True(t, podReferencesSecret(p, "s"))
 	})
@@ -186,21 +185,21 @@ func TestPodReferencesConfigMap(t *testing.T) {
 	pod := &corev1.Pod{
 		Spec: corev1.PodSpec{
 			Volumes: []corev1.Volume{
-				{Name: "v-cm", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{Name: "target"},
-				}}},
-				{Name: "v-projected", VolumeSource: corev1.VolumeSource{Projected: &corev1.ProjectedVolumeSource{
+				{Name: "v-cm", ConfigMap: &corev1.ConfigMapVolumeSource{
+					Name: "target",
+				}},
+				{Name: "v-projected", Projected: &corev1.ProjectedVolumeSource{
 					Sources: []corev1.VolumeProjection{
-						{ConfigMap: &corev1.ConfigMapProjection{LocalObjectReference: corev1.LocalObjectReference{Name: "target"}}},
+						{ConfigMap: &corev1.ConfigMapProjection{Name: "target"}},
 					},
-				}}},
+				}},
 			},
 			Containers: []corev1.Container{
 				{Env: []corev1.EnvVar{{ValueFrom: &corev1.EnvVarSource{
-					ConfigMapKeyRef: &corev1.ConfigMapKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "target"}},
+					ConfigMapKeyRef: &corev1.ConfigMapKeySelector{Name: "target"},
 				}}}},
 				{EnvFrom: []corev1.EnvFromSource{{ConfigMapRef: &corev1.ConfigMapEnvSource{
-					LocalObjectReference: corev1.LocalObjectReference{Name: "target"}}}}},
+					Name: "target"}}}},
 			},
 		},
 	}
@@ -208,7 +207,7 @@ func TestPodReferencesConfigMap(t *testing.T) {
 	assert.False(t, podReferencesConfigMap(pod, "no-such-cm"))
 	// Secret references must not be confused for ConfigMap references.
 	secretOnly := &corev1.Pod{Spec: corev1.PodSpec{Volumes: []corev1.Volume{
-		{Name: "v", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{SecretName: "target"}}},
+		{Name: "v", Secret: &corev1.SecretVolumeSource{SecretName: "target"}},
 	}}}
 	assert.False(t, podReferencesConfigMap(secretOnly, "target"),
 		"a secret named 'target' must not satisfy a configmap lookup")

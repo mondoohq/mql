@@ -1,0 +1,1 @@
+BOOT_IMAGE=/boot/vmlinuz-7.0.14-17-pve root=UUID=ff414a42-090b-4727-81fe-6f3ae30fca5b ro audit=1 apparmor=1 security=apparmor quiet

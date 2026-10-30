@@ -1,0 +1,23 @@
+[[mcp_servers]]
+name = "fs"
+transport = "stdio"
+command = "npx"
+args = [
+    "-y",
+    "@modelcontextprotocol/server-filesystem",
+    "/tmp",
+]
+
+[mcp_servers.env]
+FS_TOKEN = "<redacted>"
+
+[[mcp_servers]]
+url = "https://mcp.example.com/mcp"
+name = "remote"
+transport = "streamable-http"
+
+[mcp_servers.auth]
+type = "static"
+
+[mcp_servers.auth.headers]
+Authorization = "Bearer <redacted>"

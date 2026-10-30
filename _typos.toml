@@ -24,6 +24,20 @@ extend-exclude = [
 # baselined here and left for a separate, deliberate cleanup.
 [default.extend-words]
 # Technical terms, abbreviations, command names, and short identifier fragments.
+# GOST is the Russian cryptographic standard family, and the IANA mnemonic for
+# DNSSEC algorithms 12/23 and DS digest types 3/5. Not a misspelling of "ghost".
+gost = "gost"
+# AIDE attributes: ANF (allow new file) and ARF (allow removed file).
+anf = "anf"
+# nftables input/output interface match keywords (`iif lo`, `oif eth0`).
+iif = "iif"
+oif = "oif"
+# w32tm prints "syncd" in its stratum descriptions ("syncd by (S)NTP").
+syncd = "syncd"
+# Windows time zone ID "FLE Standard Time" (Finland, Lithuania, Estonia).
+fle = "fle"
+# German label in a localized w32tm test fixture.
+referenz = "referenz"
 # MikroTik RouterOS (and the go-routeros SDK package name).
 routeros = "routeros"
 aks = "aks"
@@ -36,6 +50,8 @@ unparented = "unparented"
 signins = "signins"
 copywrite = "copywrite"
 exportfs = "exportfs"
+# shadow-utils command that changes password aging.
+chage = "chage"
 xwindows = "xwindows"
 snet = "snet"
 aci = "aci"
@@ -68,8 +84,15 @@ sur = "sur"
 thr = "thr"
 tre = "tre"
 ue = "ue"
+# Tomcat's logging package, org.apache.juli (Java Util Logging Implementation).
+# It appears verbatim in every Tomcat logging.properties and in the jar name
+# bin/tomcat-juli.jar, so references to it cannot be respelled.
+juli = "juli"
 # Company name.
 automattic = "automattic"
+# Python package on PyPI providing Mozilla's CA bundle. The project spells it
+# without the trailing "y", so every reference to it must stay verbatim.
+certifi = "certifi"
 # Misspelled JSON serialization tag kept for wire/persisted-data compatibility
 # (the Go field itself is spelled correctly).
 reciever = "reciever"
@@ -84,6 +107,36 @@ als = "als"
 # (HKLM\...\PowerShell\Transcription\EnableTranscripting). Microsoft's own
 # spelling, so it must stay verbatim to match the real registry key.
 transcripting = "transcripting"
+# Alibaba Cloud Go SDK field spellings baked into exported identifiers
+# (RouteEntrys, MaxLoginAttemps, IzNo, LoadBalancerBussinessStatus,
+# ScalingConfiguration.PasswordSetted). These are the SDK's own spellings, so
+# references to them cannot be renamed.
+entrys = "entrys"
+attemps = "attemps"
+iz = "iz"
+bussiness = "bussiness"
+setted = "setted"
+# Alibaba Cloud OSS Go SDK fields RefererList.Referers and
+# RefererBlacklist.Referers. "Referer" is the HTTP header's own historical
+# misspelling, which the SDK then pluralizes; both are the SDK's spelling, so
+# reads of them cannot be renamed.
+referers = "referers"
+# Alibaba Cloud API enum value: SecurityEnhancementStrategy is either "Active"
+# or "Deactive". Documenting it any other way would not match what the API
+# returns.
+deactive = "deactive"
+# SCIM comparison operator meaning "not in", used by OCI identity domain
+# condition rules alongside eq, ne, co, sw, ew, gt, ge, lt, le and in.
+# Documenting the operator set any other way would not match what a rule
+# actually compares on.
+nin = "nin"
+# Databricks Go SDK type name GetPrivateAccesRequest (missing the second "s").
+# The SDK's own spelling, so references to it cannot be renamed.
+acces = "acces"
+# Azure Go SDK field armnetwork.MatchCondition.NegationConditon (missing the
+# "i"). Azure's own spelling in both the SDK and the REST contract, so reads of
+# it cannot be renamed.
+conditon = "conditon"
 # Pre-existing misspellings in MQL schema fields / exported Go identifiers.
 # Renaming these would break the schema or API, so they are baselined.
 appliable = "appliable"
@@ -100,3 +153,18 @@ childs = "childs"
 setings = "setings"
 softwares = "softwares"
 splitted = "splitted"
+
+# Whole identifiers that must stay verbatim. Narrower than extend-words: this
+# exempts the named identifier only, rather than every occurrence of the
+# fragment inside it.
+[default.extend-identifiers]
+# OCI Go SDK field identitydomains.KmsiSetting.TouPromptDisabled, where "Tou"
+# is Terms Of Use. The SDK's own spelling, so reads of it cannot be renamed.
+TouPromptDisabled = "TouPromptDisabled"
+# AMD ROCm environment variable HSA_OVERRIDE_GFX_VERSION, where HSA is
+# Heterogeneous System Architecture. Ollama reads it to pick a GPU target, so
+# the name must stay verbatim to match the variable the daemon actually looks
+# up.
+HSA_OVERRIDE_GFX_VERSION = "HSA_OVERRIDE_GFX_VERSION"
+# AWS Glue ConnectionType VERTICA, the Vertica analytics database connector.
+VERTICA = "VERTICA"

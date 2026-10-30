@@ -14,12 +14,12 @@ import (
 	es_types "github.com/aws/aws-sdk-go-v2/service/elasticsearchservice/types"
 	"github.com/aws/smithy-go/transport/http"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // esDescribeBatchSize is the maximum number of domain names accepted by a single
@@ -37,16 +37,15 @@ func chunkStrings(s []string, size int) [][]string {
 	}
 	out := make([][]string, 0, (len(s)+size-1)/size)
 	for i := 0; i < len(s); i += size {
-		end := i + size
-		if end > len(s) {
-			end = len(s)
-		}
+		end := min(i+size, len(s))
 		out = append(out, s[i:end])
 	}
 	return out
 }
 
 type mqlAwsEsDomainInternal struct {
+	cacheCustomEndpointCertificateArn string
+	cacheCognitoRoleArn               string
 	securityGroupIdHandler
 	region    string
 	accountID string
@@ -331,6 +330,8 @@ func newMqlAwsEsDomain(runtime *plugin.Runtime, region, accountID string, svc *e
 		"domainId":                           llx.StringDataPtr(status.DomainId),
 		"domainName":                         llx.StringDataPtr(status.DomainName),
 		"elasticsearchVersion":               llx.StringDataPtr(status.ElasticsearchVersion),
+		"engineMode":                         llx.StringData(string(status.EngineMode)),
+		"useCase":                            llx.StringData(string(status.UseCase)),
 		"endpoint":                           llx.StringDataPtr(status.Endpoint),
 		"endpoints":                          llx.MapData(endpointsMap, types.String),
 		"tags":                               llx.MapData(tags, types.String),
@@ -346,7 +347,6 @@ func newMqlAwsEsDomain(runtime *plugin.Runtime, region, accountID string, svc *e
 		"tlsSecurityPolicy":                  llx.StringData(tlsSecurityPolicy),
 		"customEndpointEnabled":              llx.BoolData(customEndpointEnabled),
 		"customEndpoint":                     llx.StringData(customEndpoint),
-		"customEndpointCertificateArn":       llx.StringData(customEndpointCertificateArn),
 		"availabilityZones":                  llx.ArrayData(toInterfaceArr(availabilityZones), types.String),
 		"instanceType":                       llx.StringData(instanceType),
 		"instanceCount":                      llx.IntData(instanceCount),
@@ -375,7 +375,6 @@ func newMqlAwsEsDomain(runtime *plugin.Runtime, region, accountID string, svc *e
 		"cognitoEnabled":                     llx.BoolData(cognitoEnabled),
 		"cognitoUserPoolId":                  llx.StringData(cognitoUserPoolId),
 		"cognitoIdentityPoolId":              llx.StringData(cognitoIdentityPoolId),
-		"cognitoRoleArn":                     llx.StringData(cognitoRoleArn),
 		"autoTuneState":                      llx.StringData(autoTuneState),
 		"serviceSoftwareCurrentVersion":      llx.StringData(serviceSoftwareCurrentVersion),
 		"serviceSoftwareNewVersion":          llx.StringData(serviceSoftwareNewVersion),
@@ -398,6 +397,8 @@ func newMqlAwsEsDomain(runtime *plugin.Runtime, region, accountID string, svc *e
 	if err != nil {
 		return nil, err
 	}
+	resource.(*mqlAwsEsDomain).cacheCustomEndpointCertificateArn = customEndpointCertificateArn
+	resource.(*mqlAwsEsDomain).cacheCognitoRoleArn = cognitoRoleArn
 	mqlDomain := resource.(*mqlAwsEsDomain)
 	mqlDomain.region = region
 	mqlDomain.accountID = accountID
@@ -427,14 +428,17 @@ func initAwsEsDomain(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformEsDomain); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
 	if args["arn"] == nil && args["name"] == nil {
 		return nil, nil, errors.New("arn or name required to fetch es domain")
+	}
+
+	if cached := cachedArgByArn(runtime, ResourceAwsEsDomain, args); cached != nil {
+		return args, cached, nil
 	}
 
 	// If we have an ARN but missing region or name, extract from ARN
@@ -511,7 +515,7 @@ func (a *mqlAwsEsDomain) vpc() (*mqlAwsVpc, error) {
 }
 
 func (a *mqlAwsEsDomain) customEndpointCertificate() (*mqlAwsAcmCertificate, error) {
-	arnVal := a.CustomEndpointCertificateArn.Data
+	arnVal := a.cacheCustomEndpointCertificateArn
 	if arnVal == "" {
 		a.CustomEndpointCertificate.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -525,7 +529,7 @@ func (a *mqlAwsEsDomain) customEndpointCertificate() (*mqlAwsAcmCertificate, err
 }
 
 func (a *mqlAwsEsDomain) cognitoRole() (*mqlAwsIamRole, error) {
-	arnVal := a.CognitoRoleArn.Data
+	arnVal := a.cacheCognitoRoleArn
 	if arnVal == "" {
 		a.CognitoRole.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -588,9 +592,8 @@ func esResolveLogGroup(runtime *plugin.Runtime, arnPtr *string, field *plugin.TV
 
 func getESTags(ctx context.Context, svc *elasticsearchservice.Client, arn *string) (map[string]any, error) {
 	resp, err := svc.ListTags(ctx, &elasticsearchservice.ListTagsInput{ARN: arn})
-	var respErr *http.ResponseError
 	if err != nil {
-		if errors.As(err, &respErr) {
+		if respErr, ok := errors.AsType[*http.ResponseError](err); ok {
 			if respErr.HTTPStatusCode() == 404 {
 				return nil, nil
 			}

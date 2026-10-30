@@ -5,17 +5,21 @@ package connection
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 )
 
-var _ plugin.Connection = (*HelmConnection)(nil)
+var (
+	_ plugin.Connection = (*HelmConnection)(nil)
+	_ plugin.Closer     = (*HelmConnection)(nil)
+)
 
 // LoadedChart pairs a parsed chart with the filesystem path it was
 // loaded from so the resource layer can distinguish two charts that
@@ -39,6 +43,7 @@ type HelmConnection struct {
 	path       string
 	charts     []LoadedChart
 	renderOpts RenderOptions
+	closer     func()
 }
 
 func NewHelmConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*HelmConnection, error) {
@@ -51,13 +56,39 @@ func NewHelmConnection(id uint32, asset *inventory.Asset, conf *inventory.Config
 	if len(asset.Connections) == 0 {
 		return nil, errors.New("no connection configuration provided")
 	}
+
+	// If a git clone is performed below, clean up the temporary directory on any
+	// error path. Close() is a no-op when nothing was cloned, and the guard is
+	// disarmed once the connection is returned and takes ownership of cleanup.
+	cleanupClone := true
+	defer func() {
+		if cleanupClone {
+			conn.Close()
+		}
+	}()
+
 	cc := asset.Connections[0]
 	conn.renderOpts = parseRenderOptions(cc.Options)
+
+	// When discovered from a git repository (e.g. by the GitHub provider) the
+	// asset carries the repo URL plus a repo-relative path to the chart
+	// directory. Clone the repo and resolve the chart within the checkout. The
+	// path option is kept relative so the detector can name the asset from the
+	// repo rather than the temporary clone directory.
+	helmPath := cc.Options[OptionPath]
+	if _, ok := cc.Options["http-url"]; ok {
+		clonePath, closer, err := plugin.NewGitClone(asset)
+		if err != nil {
+			return nil, err
+		}
+		conn.closer = closer
+		helmPath = filepath.Join(clonePath, helmPath)
+	}
 
 	// Resolve a possibly-remote chart reference (oci://, http(s) .tgz, or a
 	// chart name with --repo) to a local path. Remote refs download to a
 	// temp dir that's cleaned up once the charts are read into memory.
-	fetched, err := resolveChartRef(cc.Options[OptionPath], cc.Options)
+	fetched, err := resolveChartRef(helmPath, cc.Options)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +102,7 @@ func NewHelmConnection(id uint32, asset *inventory.Asset, conf *inventory.Config
 		return nil, err
 	}
 	if len(charts) == 0 {
-		return nil, errors.New("no Helm charts found at " + fetched.localPath)
+		return nil, fmt.Errorf("no Helm charts found at %s: %w", fetched.localPath, plugin.ErrNoMatch)
 	}
 
 	// A remote fetch resolves to exactly one chart archive, so its
@@ -83,7 +114,15 @@ func NewHelmConnection(id uint32, asset *inventory.Asset, conf *inventory.Config
 	}
 	conn.charts = charts
 
+	cleanupClone = false
 	return conn, nil
+}
+
+// Close cleans up any temporary directory created by a git clone.
+func (c *HelmConnection) Close() {
+	if c.closer != nil {
+		c.closer()
+	}
 }
 
 func (c *HelmConnection) Name() string {

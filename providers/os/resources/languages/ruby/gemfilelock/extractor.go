@@ -6,10 +6,12 @@ package gemfilelock
 import (
 	"bufio"
 	"io"
+	"slices"
+	"sort"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/ruby"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/ruby"
 )
 
 var (
@@ -55,30 +57,37 @@ func parseGemfileLock(r io.Reader) (*gemfileLock, error) {
 
 	currentSection := sectionNone
 	inSpecs := false
+	// A platform-specific lock lists one gem once per platform it was
+	// resolved for (nokogiri (1.15.4), (1.15.4-x86_64-linux), ...). With the
+	// platform stripped those are one gem, kept once; cur is the entry the
+	// dependency lines that follow belong to.
+	gemIndex := map[string]int{}
+	cur := -1
 
 	for scanner.Scan() {
 		line := scanner.Text()
-
-		// Detect section headers (no leading whitespace)
 		trimmed := strings.TrimSpace(line)
 
-		// Section transitions
-		switch trimmed {
-		case "GEM":
-			currentSection = sectionGemSpecs
+		// A section header is the only line Bundler writes without leading
+		// whitespace. Every one of them ends the previous section, including
+		// those this parser has no use for: RUBY VERSION and CHECKSUMS (Bundler
+		// 2.5 and later) follow DEPENDENCIES, and their lines would otherwise
+		// be read as more direct dependencies.
+		if trimmed != "" && line[0] != ' ' && line[0] != '\t' {
 			inSpecs = false
-			continue
-		case "PLATFORMS":
-			currentSection = sectionNone
-			continue
-		case "DEPENDENCIES":
-			currentSection = sectionDependencies
-			continue
-		case "BUNDLED WITH":
-			currentSection = sectionBundledWith
-			continue
-		case "GIT", "PATH", "PLUGIN SOURCE":
-			currentSection = sectionNone
+			switch trimmed {
+			// GIT and PATH sources list their gems in the same specs block as
+			// GEM. PLUGIN SOURCE lists Bundler plugins, which are not gems the
+			// project installs.
+			case "GEM", "GIT", "PATH":
+				currentSection = sectionGemSpecs
+			case "DEPENDENCIES":
+				currentSection = sectionDependencies
+			case "BUNDLED WITH":
+				currentSection = sectionBundledWith
+			default:
+				currentSection = sectionNone
+			}
 			continue
 		}
 
@@ -86,22 +95,43 @@ func parseGemfileLock(r io.Reader) (*gemfileLock, error) {
 		case sectionGemSpecs:
 			if trimmed == "specs:" {
 				inSpecs = true
+				cur = -1
 				continue
 			}
 			if !inSpecs {
 				continue
 			}
 
-			// Top-level gems are indented 4 spaces: "    name (version)"
-			// Sub-dependencies are indented 6+ spaces — skip them
-			if !strings.HasPrefix(line, "    ") || strings.HasPrefix(line, "      ") {
+			// Top-level gems are indented 4 spaces: "    name (version)".
+			// Sub-dependencies are indented 6+ and belong to the gem above them.
+			if !strings.HasPrefix(line, "    ") {
+				continue
+			}
+			if strings.HasPrefix(line, "      ") {
+				// A dependency line of the gem above it. Bundler always
+				// writes them directly beneath their gem; a stray one before
+				// any gem has no owner and is dropped rather than guessed at.
+				if cur >= 0 && trimmed != "" {
+					if name := gemDepName(trimmed); name != "" && !slices.Contains(lock.Gems[cur].Deps, name) {
+						lock.Gems[cur].Deps = append(lock.Gems[cur].Deps, name)
+					}
+				}
 				continue
 			}
 
 			entry := parseGemEntry(trimmed)
-			if entry.Name != "" {
-				lock.Gems = append(lock.Gems, entry)
+			if entry.Name == "" {
+				cur = -1
+				continue
 			}
+			key := entry.Name + "@" + entry.Version
+			if i, ok := gemIndex[key]; ok {
+				cur = i
+				continue
+			}
+			lock.Gems = append(lock.Gems, entry)
+			cur = len(lock.Gems) - 1
+			gemIndex[key] = cur
 
 		case sectionDependencies:
 			if trimmed == "" {
@@ -127,6 +157,59 @@ func parseGemfileLock(r io.Reader) (*gemfileLock, error) {
 	}
 
 	return lock, nil
+}
+
+// gemDepName takes the gem name from a dependency line beneath a spec entry,
+// which is written as `rack` or `rack (~> 2.2)`. Only the name is kept: the
+// parenthesised part is a REQUIREMENT, and the version Bundler actually resolved
+// is on that gem's own spec entry, which is where dependsOnRefs looks it up.
+func gemDepName(line string) string {
+	name, _, _ := strings.Cut(line, " ")
+	return strings.TrimSuffix(strings.TrimSpace(name), "!")
+}
+
+// dependsOnRefs turns one gem's dependency names into purls of the gems that
+// satisfy them.
+//
+// Resolved by name against the same gem set this file emits, so an edge's target
+// is always a package that exists. A name with no spec entry is dropped rather
+// than synthesised: it means the lock referenced a gem it did not resolve here
+// (one a platform-specific lock omits), and inventing the node would assert a
+// package the project does not install.
+func dependsOnRefs(deps []string, byName map[string]gemEntry) []string {
+	if len(deps) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	var refs []string
+	for _, name := range deps {
+		target, ok := byName[name]
+		if !ok || target.Version == "" {
+			continue
+		}
+		ref := ruby.NewPackageUrl(target.Name, target.Version)
+		if seen[ref] {
+			continue
+		}
+		seen[ref] = true
+		refs = append(refs, ref)
+	}
+	if len(refs) == 0 {
+		return nil
+	}
+	sort.Strings(refs)
+	return refs
+}
+
+// gemsByName indexes the resolved gems for edge resolution.
+func (l *gemfileLock) gemsByName() map[string]gemEntry {
+	out := make(map[string]gemEntry, len(l.Gems))
+	for _, g := range l.Gems {
+		if _, dup := out[g.Name]; !dup {
+			out[g.Name] = g
+		}
+	}
+	return out
 }
 
 // parseGemEntry parses "name (version)" or "name (version-platform)" from a GEM specs line.
@@ -179,10 +262,11 @@ func (l *gemfileLock) Root() *languages.Package {
 
 // Direct returns gems listed in the DEPENDENCIES section.
 func (l *gemfileLock) Direct() languages.Packages {
+	byName := l.gemsByName()
 	var direct languages.Packages
 	for _, gem := range l.Gems {
 		if l.DirectDeps[gem.Name] {
-			direct = append(direct, makePackage(gem, l.evidence))
+			direct = append(direct, makePackage(gem, byName, l.evidence))
 		}
 	}
 	return direct
@@ -190,19 +274,21 @@ func (l *gemfileLock) Direct() languages.Packages {
 
 // Transitive returns all resolved gems.
 func (l *gemfileLock) Transitive() languages.Packages {
+	byName := l.gemsByName()
 	var all languages.Packages
 	for _, gem := range l.Gems {
-		all = append(all, makePackage(gem, l.evidence))
+		all = append(all, makePackage(gem, byName, l.evidence))
 	}
 	return all
 }
 
-func makePackage(gem gemEntry, evidence []string) *languages.Package {
+func makePackage(gem gemEntry, byName map[string]gemEntry, evidence []string) *languages.Package {
 	return &languages.Package{
 		Name:         gem.Name,
 		Version:      gem.Version,
 		Purl:         ruby.NewPackageUrl(gem.Name, gem.Version),
 		Cpes:         ruby.NewCpes(gem.Name, gem.Version),
 		EvidenceList: ruby.NewEvidenceList(evidence),
+		DependsOn:    dependsOnRefs(gem.Deps, byName),
 	}
 }

@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+bases:
+  - ../base
+
+imageTags:
+  - name: nginx
+    newTag: "1.2.3"
+
+configMapGenerator:
+  - name: app-config
+    env: config.env

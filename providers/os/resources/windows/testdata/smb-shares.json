@@ -1,0 +1,23 @@
+[
+    {
+        "Name":  "ADMIN$",
+        "Path":  "C:\\Windows",
+        "Description":  "Remote Admin",
+        "ScopeName":  "*",
+        "ShareType":  "FileSystemDirectory"
+    },
+    {
+        "Name":  "C$",
+        "Path":  "C:\\",
+        "Description":  "Default share",
+        "ScopeName":  "*",
+        "ShareType":  "FileSystemDirectory"
+    },
+    {
+        "Name":  "IPC$",
+        "Path":  "",
+        "Description":  "Remote IPC",
+        "ScopeName":  "*",
+        "ShareType":  "InterprocessCommunication"
+    }
+]

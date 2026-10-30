@@ -9,11 +9,11 @@ import (
 
 	orgpolicy "cloud.google.com/go/orgpolicy/apiv2"
 	"cloud.google.com/go/orgpolicy/apiv2/orgpolicypb"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -35,41 +35,98 @@ func (g *mqlGcpOrgPolicy) dryRunOnly() (bool, error) {
 	return g.DryRunSpec.Data != nil && g.Spec.Data == nil, nil
 }
 
-// interpretPolicySpec decodes an org policy's live spec into the scalar
-// predicates exposed on gcp.orgPolicy. Only unconditional rules are
-// considered, since a rule gated by a condition does not represent the
-// policy's always-applied effect. The result reflects only this resource's
-// directly-set spec, not policy inherited from a parent.
-func interpretPolicySpec(spec *orgpolicypb.PolicySpec) (enforced, allowAll, denyAll, inheritFromParent bool, allowedValues, deniedValues []any) {
-	allowedValues = []any{}
-	deniedValues = []any{}
-	if spec == nil {
-		return
+// policySpecSummary is the decoded view of an org policy spec: the scalar
+// predicates derived from the spec's unconditional rules, plus the conditional
+// rules kept verbatim.
+type policySpecSummary struct {
+	enforced          bool
+	allowAll          bool
+	denyAll           bool
+	inheritFromParent bool
+	allowedValues     []any
+	deniedValues      []any
+	// hasConditionalRules reports whether the spec carries at least one rule
+	// gated by a CEL condition.
+	hasConditionalRules bool
+	// conditionalRules holds one dict per condition-gated rule.
+	conditionalRules []any
+}
+
+// conditionalRuleDict renders a condition-gated rule as a dict, keeping both the
+// condition and the effect it would have. Only JSON-native values are emitted,
+// since anything else is dropped on the way through llx.DictData.
+func conditionalRuleDict(rule *orgpolicypb.PolicySpec_PolicyRule) map[string]any {
+	allowedValues := []any{}
+	deniedValues := []any{}
+	if vals := rule.GetValues(); vals != nil {
+		for _, v := range vals.GetAllowedValues() {
+			allowedValues = append(allowedValues, v)
+		}
+		for _, v := range vals.GetDeniedValues() {
+			deniedValues = append(deniedValues, v)
+		}
 	}
-	inheritFromParent = spec.GetInheritFromParent()
+	cond := rule.GetCondition()
+	return map[string]any{
+		"condition":            cond.GetExpression(),
+		"conditionTitle":       cond.GetTitle(),
+		"conditionDescription": cond.GetDescription(),
+		"enforce":              rule.GetEnforce(),
+		"allowAll":             rule.GetAllowAll(),
+		"denyAll":              rule.GetDenyAll(),
+		"allowedValues":        allowedValues,
+		"deniedValues":         deniedValues,
+	}
+}
+
+// interpretPolicySpec decodes an org policy's live spec.
+//
+// The scalar predicates (enforced, allowAll, denyAll, allowedValues,
+// deniedValues) are derived from unconditional rules only, since a rule gated
+// by a CEL condition applies to a subset of resources and its effect cannot be
+// decided without evaluating the condition against a specific one. Those rules
+// are not discarded: they are reported through hasConditionalRules and
+// conditionalRules, so that a constraint enforced only by a tag-scoped rule is
+// distinguishable from a constraint with no policy at all. Both cases used to
+// render as an all-false summary, which made the false negative invisible.
+//
+// The result reflects only this resource's directly-set spec, not policy
+// inherited from a parent.
+func interpretPolicySpec(spec *orgpolicypb.PolicySpec) policySpecSummary {
+	summary := policySpecSummary{
+		allowedValues:    []any{},
+		deniedValues:     []any{},
+		conditionalRules: []any{},
+	}
+	if spec == nil {
+		return summary
+	}
+	summary.inheritFromParent = spec.GetInheritFromParent()
 	for _, rule := range spec.GetRules() {
 		if rule.GetCondition() != nil {
+			summary.hasConditionalRules = true
+			summary.conditionalRules = append(summary.conditionalRules, conditionalRuleDict(rule))
 			continue
 		}
 		if rule.GetEnforce() {
-			enforced = true
+			summary.enforced = true
 		}
 		if rule.GetAllowAll() {
-			allowAll = true
+			summary.allowAll = true
 		}
 		if rule.GetDenyAll() {
-			denyAll = true
+			summary.denyAll = true
 		}
 		if vals := rule.GetValues(); vals != nil {
 			for _, v := range vals.GetAllowedValues() {
-				allowedValues = append(allowedValues, v)
+				summary.allowedValues = append(summary.allowedValues, v)
 			}
 			for _, v := range vals.GetDeniedValues() {
-				deniedValues = append(deniedValues, v)
+				summary.deniedValues = append(summary.deniedValues, v)
 			}
 		}
 	}
-	return
+	return summary
 }
 
 // listOrgPolicies fetches org policies for a given parent resource.
@@ -119,22 +176,24 @@ func listOrgPolicies(runtime *plugin.Runtime, conn *connection.GcpConnection, pa
 			updatedAt = llx.NilData
 		}
 
-		enforced, allowAll, denyAll, inheritFromParent, allowedValues, deniedValues := interpretPolicySpec(policy.Spec)
+		summary := interpretPolicySpec(policy.Spec)
 
 		mqlPolicy, err := CreateResource(runtime, "gcp.orgPolicy", map[string]*llx.RawData{
-			"id":                llx.StringData(policy.Name),
-			"name":              llx.StringData(policy.Name),
-			"constraintName":    llx.StringData(constraintName),
-			"spec":              llx.DictData(spec),
-			"dryRunSpec":        llx.DictData(dryRunSpec),
-			"etag":              llx.StringData(policy.Etag),
-			"updatedAt":         updatedAt,
-			"enforced":          llx.BoolData(enforced),
-			"allowedValues":     llx.ArrayData(allowedValues, types.String),
-			"deniedValues":      llx.ArrayData(deniedValues, types.String),
-			"allowAll":          llx.BoolData(allowAll),
-			"denyAll":           llx.BoolData(denyAll),
-			"inheritFromParent": llx.BoolData(inheritFromParent),
+			"id":                  llx.StringData(policy.Name),
+			"name":                llx.StringData(policy.Name),
+			"constraintName":      llx.StringData(constraintName),
+			"spec":                llx.DictData(spec),
+			"dryRunSpec":          llx.DictData(dryRunSpec),
+			"etag":                llx.StringData(policy.Etag),
+			"updatedAt":           updatedAt,
+			"enforced":            llx.BoolData(summary.enforced),
+			"allowedValues":       llx.ArrayData(summary.allowedValues, types.String),
+			"deniedValues":        llx.ArrayData(summary.deniedValues, types.String),
+			"allowAll":            llx.BoolData(summary.allowAll),
+			"denyAll":             llx.BoolData(summary.denyAll),
+			"inheritFromParent":   llx.BoolData(summary.inheritFromParent),
+			"hasConditionalRules": llx.BoolData(summary.hasConditionalRules),
+			"conditionalRules":    llx.ArrayData(summary.conditionalRules, types.Dict),
 		})
 		if err != nil {
 			return nil, err
@@ -161,8 +220,8 @@ func (g *mqlGcpOrganization) orgPolicies() ([]any, error) {
 // Format: {parent}/policies/{constraintName}
 // Returns the full name unchanged if the "/policies/" segment is not found.
 func extractConstraintName(policyName string) string {
-	if idx := strings.LastIndex(policyName, "/policies/"); idx != -1 {
-		return policyName[idx+len("/policies/"):]
+	if _, after, ok := strings.CutLast(policyName, "/policies/"); ok {
+		return after
 	}
 	return policyName
 }

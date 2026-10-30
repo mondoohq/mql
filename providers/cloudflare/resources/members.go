@@ -5,9 +5,9 @@ package resources
 import (
 	"fmt"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/cloudflare/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/cloudflare/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // accountMember mirrors an account membership record, decoded via the client's
@@ -41,7 +41,7 @@ func (c *mqlCloudflareAccount) members() ([]any, error) {
 
 	members, err := cfGetPaged[accountMember](conn, fmt.Sprintf("accounts/%s/members", c.Id.Data))
 	if err != nil {
-		return nil, err
+		return degradedList(err)
 	}
 
 	results := []any{}

@@ -75,6 +75,31 @@ func TestParseHomebrewInfo(t *testing.T) {
 	assert.Equal(t, "Microsoft Visual Studio Code", vscode.AppName)
 }
 
+func TestParseHomebrewInfoFormulaRevision(t *testing.T) {
+	data := []byte(`{
+		"formulae": [
+			{
+				"name": "revised",
+				"versions": {"stable": "13.55"},
+				"revision": 1,
+				"installed": [{"version": "13.55_1"}]
+			},
+			{
+				"name": "unrevised",
+				"versions": {"stable": "3.3.0"},
+				"revision": 0,
+				"installed": [{"version": "3.3.0"}]
+			}
+		]
+	}`)
+
+	pkgs, err := ParseHomebrewInfo(data, "/opt/homebrew")
+	require.NoError(t, err)
+	require.Len(t, pkgs, 2)
+	assert.Equal(t, "13.55_1", pkgs[0].LatestVersion)
+	assert.Equal(t, "3.3.0", pkgs[1].LatestVersion)
+}
+
 func TestDeriveBrewPrefix(t *testing.T) {
 	assert.Equal(t, "/opt/homebrew", deriveBrewPrefix("/opt/homebrew/bin/brew"))
 	assert.Equal(t, "/usr/local", deriveBrewPrefix("/usr/local/bin/brew"))

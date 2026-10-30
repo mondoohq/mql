@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/proxmox/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/proxmox/connection"
 )
 
 // vmInfoToResources converts a slice of VMInfo to MQL resources.
@@ -22,7 +22,7 @@ func vmInfoToResources(runtime *plugin.Runtime, vms []connection.VMInfo) ([]any,
 			"node":      llx.StringData(vm.Node),
 			"status":    llx.StringData(vm.Status),
 			"cpu":       llx.FloatData(vm.CPU),
-			"maxcpu":    llx.IntData(int64(vm.MaxCPU)),
+			"maxcpu":    llx.IntData(vm.MaxCPU.Ceil()),
 			"mem":       llx.IntData(vm.Mem),
 			"maxmem":    llx.IntData(vm.MaxMem),
 			"disk":      llx.IntData(vm.Disk),
@@ -32,7 +32,7 @@ func vmInfoToResources(runtime *plugin.Runtime, vms []connection.VMInfo) ([]any,
 			"netin":     llx.IntData(vm.NetIn),
 			"netout":    llx.IntData(vm.NetOut),
 			"uptime":    llx.IntData(vm.Uptime),
-			"template":  llx.BoolData(vm.Template == 1),
+			"template":  llx.BoolData(vm.Template.Bool()),
 		})
 		if err != nil {
 			return nil, err
@@ -43,7 +43,15 @@ func vmInfoToResources(runtime *plugin.Runtime, vms []connection.VMInfo) ([]any,
 }
 
 // storageInfoToResources converts a slice of StorageInfo to MQL resources.
-func storageInfoToResources(runtime *plugin.Runtime, storages []connection.StorageInfo) ([]any, error) {
+//
+// node is empty for the cluster-wide /storage listing and names the node for
+// /nodes/<n>/storage. The two views of one storage are different records: the
+// node view carries that node's usage and activity, the cluster view carries
+// the configuration (path, node restriction, encryption key). A local storage
+// such as `local-lvm` also exists once per node with independent usage. Keying
+// every view on the storage name alone made them share one cache entry, so
+// whichever listing ran first answered for all of them.
+func storageInfoToResources(runtime *plugin.Runtime, storages []connection.StorageInfo, node string) ([]any, error) {
 	list := make([]any, len(storages))
 	for i, s := range storages {
 		var usagePct float64
@@ -53,11 +61,12 @@ func storageInfoToResources(runtime *plugin.Runtime, storages []connection.Stora
 		} else if s.Total > 0 {
 			usagePct = float64(s.Used) / float64(s.Total) * 100.0
 		}
-		res, err := CreateResource(runtime, "proxmox.storage", map[string]*llx.RawData{
+		args := map[string]*llx.RawData{
 			"id":            llx.StringData(s.Storage),
 			"type":          llx.StringData(s.Type),
 			"content":       llx.StringData(s.Content),
 			"path":          llx.StringData(s.Path),
+			"nodes":         llx.StringData(s.Nodes),
 			"enabled":       llx.BoolData(s.Enabled != 0),
 			"shared":        llx.BoolData(s.Shared != 0),
 			"total":         llx.IntData(s.Total),
@@ -66,13 +75,24 @@ func storageInfoToResources(runtime *plugin.Runtime, storages []connection.Stora
 			"usagePercent":  llx.FloatData(usagePct),
 			"encrypted":     llx.BoolData(s.EncryptionKey != ""),
 			"encryptionKey": llx.StringData(s.EncryptionKey),
-		})
+		}
+		if node != "" {
+			args["__id"] = llx.StringData(nodeStorageCacheKey(node, s.Storage))
+		}
+		res, err := CreateResource(runtime, "proxmox.storage", args)
 		if err != nil {
 			return nil, err
 		}
 		list[i] = res
 	}
 	return list, nil
+}
+
+// nodeStorageCacheKey is the cache key of a storage as one node reports it.
+// The cluster-wide view keeps the `proxmox.storage/<name>` key from id(), which
+// is also what references to a storage by name resolve to.
+func nodeStorageCacheKey(node, storage string) string {
+	return "proxmox.storage/node/" + node + "/" + storage
 }
 
 // firewallRulesToResources converts firewall rules to MQL resources.
@@ -82,6 +102,13 @@ func firewallRulesToResources(runtime *plugin.Runtime, rules []connection.Firewa
 	list := make([]any, len(rules))
 	for i, rule := range rules {
 		res, err := CreateResource(runtime, "proxmox.firewall.rule", map[string]*llx.RawData{
+			// Set __id explicitly: `scope` is an Internal-struct field assigned
+			// after CreateResource returns, but the cache key is computed inside
+			// CreateResource. Deriving it from id() there would bake an empty
+			// scope segment, so two identical rules in different scopes (e.g.
+			// vm/100 and vm/101) would collide and alias to the first.
+			"__id": llx.StringData(fmt.Sprintf("proxmox.firewall.rule/%s/%d/%s/%s/%s/%s",
+				scope, rule.Pos, rule.Type, rule.Action, rule.Source, rule.Dest)),
 			"pos":     llx.IntData(int64(rule.Pos)),
 			"type":    llx.StringData(rule.Type),
 			"action":  llx.StringData(rule.Action),
@@ -266,7 +293,10 @@ func parseContainerNetworkConfig(id, val string) map[string]*llx.RawData {
 func parseContainerMountPoint(id, val string) map[string]*llx.RawData {
 	storage, mountPath := "", ""
 	size := int64(0)
-	backup := true
+	// In PVE only rootfs is backed up by default; additional mount points
+	// (mp0..mp254) are EXCLUDED from vzdump unless backup=1 is set explicitly.
+	// (This differs from QEMU disks, where a drive is included unless backup=0.)
+	backup := id == "rootfs"
 	replicate := true
 	readonly := false
 	aclEnabled := false

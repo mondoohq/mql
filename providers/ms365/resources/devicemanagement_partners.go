@@ -7,8 +7,8 @@ import (
 	"context"
 
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/ms365/connection"
 )
 
 // mobileThreatDefenseConnectors lists the Mobile Threat Defense partner
@@ -37,7 +37,7 @@ func (a *mqlMicrosoftDevicemanagement) mobileThreatDefenseConnectors() ([]any, e
 				"__id":                                   llx.StringDataPtr(c.GetId()),
 				"id":                                     llx.StringDataPtr(c.GetId()),
 				"partnerState":                           llx.StringDataPtr(enumPtrString(c.GetPartnerState())),
-				"lastHeartbeatDateTime":                  llx.TimeDataPtr(c.GetLastHeartbeatDateTime()),
+				"lastHeartbeatDateTime":                  graphTimeData(c.GetLastHeartbeatDateTime()),
 				"partnerUnresponsivenessThresholdInDays": llx.IntDataPtr(c.GetPartnerUnresponsivenessThresholdInDays()),
 				"partnerUnsupportedOsVersionBlocked":     llx.BoolDataPtr(c.GetPartnerUnsupportedOsVersionBlocked()),
 				"androidEnabled":                         llx.BoolDataPtr(c.GetAndroidEnabled()),
@@ -87,7 +87,7 @@ func (a *mqlMicrosoftDevicemanagement) complianceManagementPartners() ([]any, er
 				"id":                    llx.StringDataPtr(p.GetId()),
 				"displayName":           llx.StringDataPtr(p.GetDisplayName()),
 				"partnerState":          llx.StringDataPtr(enumPtrString(p.GetPartnerState())),
-				"lastHeartbeatDateTime": llx.TimeDataPtr(p.GetLastHeartbeatDateTime()),
+				"lastHeartbeatDateTime": graphTimeData(p.GetLastHeartbeatDateTime()),
 				"androidOnboarded":      llx.BoolDataPtr(p.GetAndroidOnboarded()),
 				"iosOnboarded":          llx.BoolDataPtr(p.GetIosOnboarded()),
 				"macOsOnboarded":        llx.BoolDataPtr(p.GetMacOsOnboarded()),

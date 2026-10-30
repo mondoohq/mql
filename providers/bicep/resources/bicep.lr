@@ -1,17 +1,20 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/mql/v13/providers/bicep"
-option go_package = "go.mondoo.com/mql/v13/providers/bicep/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/bicep"
+option go_package = "go.mondoo.com/mql/providers/bicep/resources"
+option root = "bicep"
 
 // Bicep / ARM template
 //
 // Top-level entry point for analyzing Azure Bicep source or compiled ARM
 // JSON. Exposes the Bicep source files (parameters, variables, resources,
-// modules, outputs) and, when available, the compiled ARM template — the
+// modules, outputs) and, when available, the compiled ARM template, the
 // surface for IaC policy checks of Azure infrastructure-as-code without
 // deploying it.
-bicep {
+bicep @root {
   // All Bicep source files found
   files() []bicep.file
   // All top-level resources across every Bicep source file
@@ -25,16 +28,28 @@ bicep {
   resources() []bicep.resource
   // All Bicep parameter (.bicepparam) files found
   paramFiles() []bicep.paramFile
-  // Compiled ARM template (if available via JSON or bicep build)
+  // Compiled ARM template
+  //
+  // The first ARM template JSON the scan discovered, or the one named directly
+  // when the connection points at a single .json file. Null when the scan found
+  // no ARM template. Use templates to reach every template in a scanned tree.
   template() bicep.template
+  // All ARM templates found
+  //
+  // Every JSON file under the scanned path that parses as an ARM deployment
+  // template, in path-sorted order, so a repo holding several (for example
+  // `infra/azuredeploy.json` alongside `modules/network.json`) has all of them
+  // audited rather than only the first.
+  templates() []bicep.template
 }
 
 // Bicep source file
 //
-// Examine a single .bicep file: its target scope (resourceGroup,
-// subscription, managementGroup, tenant), declared parameters / variables /
-// resources / modules / outputs, and the raw file content for pattern
-// matching that the typed views can't express.
+// A single .bicep file: its target scope (resourceGroup, subscription,
+// managementGroup, tenant), declared parameters, variables, resources,
+// modules, and outputs, plus the raw file content for pattern matching that
+// the typed views can't express. Select a file by its `path`, for example
+// `bicep.files.where(path == "main.bicep")`.
 bicep.file @defaults("path") {
   // File path
   path string
@@ -70,19 +85,19 @@ bicep.file @defaults("path") {
 
 // Bicep parameter file
 //
-// Examine a `.bicepparam` parameter file — the file that carries the actual
-// parameter values used for a deployment. The `using` field names the
-// template the values target (`'./main.bicep'`, `'none'`, or a
-// registry/template-spec ref like `'br:...'`); `params` maps each
-// `param <name> = <value>` assignment to its right-hand-side value text.
-// Select a file by its `path` — for example
+// Parameter file in `.bicepparam` format, carrying the actual parameter
+// values used for a deployment. The `using` field names the template the
+// values target (`'./main.bicep'`, `'none'`, or a registry/template-spec
+// ref like `'br:...'`); `params` maps each `param <name> = <value>`
+// assignment to its right-hand-side value text. Select a file by its
+// `path`, for example
 // `bicep.paramFiles.where(path == "prod.bicepparam")`.
 bicep.paramFile @defaults("path") {
   // File path
   path string
   // Target template referenced by the `using` statement
   //
-  // The value of `using '<target>'` — `'./main.bicep'`, `'none'`, or a
+  // The value of `using '<target>'`: `'./main.bicep'`, `'none'`, or a
   // registry/template-spec ref like `'br:...'`. Empty when no `using`
   // statement is present.
   using string
@@ -102,10 +117,10 @@ bicep.paramFile @defaults("path") {
 
 // Bicep parameter declaration
 //
-// Examine the name, type, default value, @description, @secure flag,
-// @allowed values, and the full raw decorator list — used to flag
-// missing @secure on credential-shaped parameters or unbounded @allowed
-// sets.
+// Input parameter of a Bicep template, with its declared type, default
+// value, and validation decorators. Query it to flag credential-shaped
+// parameters that lack a @secure decorator, unbounded @allowed value
+// sets, or missing length and value constraints on sensitive inputs.
 bicep.parameter @defaults("name type") @context("bicep.context") {
   // Parameter name
   name string
@@ -154,9 +169,14 @@ bicep.parameter @defaults("name type") @context("bicep.context") {
 
 // Bicep variable declaration
 //
-// Examine the variable name, the raw value expression, and any
-// @description decorator — useful for tracking how derived values flow
-// into resource bodies.
+// Named intermediate value declared in a Bicep template. Variables
+// hold computed or derived expressions that feed resource bodies, so
+// querying them shows how values flow into deployments. The `name`
+// field is the declared variable name, `expression` is the raw value
+// expression, and `expressionTree` gives a structured view for asking
+// whether a value is a literal, a function call, or a reference. Loop
+// variables (declared with a `for` comprehension) are flagged by
+// `isLoop`.
 bicep.variable @defaults("name") @context("bicep.context") {
   // Variable name
   name string
@@ -184,11 +204,12 @@ bicep.variable @defaults("name") @context("bicep.context") {
 
 // Bicep resource declaration
 //
-// Examine the symbolic name, Azure resource type and apiVersion, the
-// resolved name and location expressions, the full properties body, the
-// existing-resource flag, conditional-deployment expression, parent /
-// dependsOn relationships, and decorators — the surface IaC policies
-// match against to enforce Azure resource-shape rules.
+// A `resource` declaration in a Bicep file: symbolic name, Azure
+// resource type and apiVersion, the resolved name and location
+// expressions, the full properties body, the existing-resource flag,
+// conditional-deployment expression, parent and dependsOn relationships,
+// and decorators. This is the surface IaC policies match against to
+// enforce Azure resource-shape rules.
 bicep.resource @defaults("type symbolicName") @context("bicep.context") {
   // Symbolic name in the Bicep file
   symbolicName string
@@ -236,13 +257,13 @@ bicep.resource @defaults("type symbolicName") @context("bicep.context") {
   properties dict
   // The full resource body as a dict
   //
-  // Every top-level field of the resource declaration — not just the
-  // `properties: { ... }` sub-block — parsed into a dict: `properties`,
+  // Every top-level field of the resource declaration, not just the
+  // `properties: { ... }` sub-block, parsed into a dict: `properties`,
   // `identity`, `sku`, `kind`, `zones`, and so on. Use it to reach controls
   // that live on the resource itself rather than inside `properties` (for
   // example a managed `identity` block), and to inspect Microsoft Graph
-  // resources (`Microsoft.Graph/...`), whose configuration — `displayName`,
-  // `state`, `conditions`, `grantControls` — is declared at the top level with
+  // resources (`Microsoft.Graph/...`), whose configuration (`displayName`,
+  // `state`, `conditions`, `grantControls`) is declared at the top level with
   // no `properties:` wrapper. Scalar values are stringified the same way as in
   // `properties` (`true` becomes `"true"`); nested `resource` declarations are
   // not included here (reach them through `resources`). Empty only when the
@@ -286,10 +307,11 @@ bicep.resource @defaults("type symbolicName") @context("bicep.context") {
 
 // Bicep module reference
 //
-// Examine a `module` declaration: symbolic name, source path or registry
-// reference (br: / ts: flags break the source out by kind), scope, the
+// A `module` declaration, the unit of cross-file Bicep composition:
+// symbolic name, source path or registry reference (the `isRegistry` and
+// `isTemplateSpec` flags break the source out by kind), scope, the
 // parameter values passed in, conditional-deployment expression,
-// description and decorators — the unit of cross-file Bicep composition.
+// description, and decorators.
 bicep.module @defaults("name source") @context("bicep.context") {
   // Symbolic name
   name string
@@ -316,7 +338,12 @@ bicep.module @defaults("name source") @context("bicep.context") {
   // referenced resource (`symbolicRef` / `propertyAccess`). See
   // `bicep.expression`.
   scopeTree() bicep.expression
-  // Parameter values as dict
+  // Parameter values keyed by parameter name
+  //
+  // Dict keyed by the module's parameter names, each value the raw argument
+  // passed in (literals, nested objects, and arrays preserved as they appear
+  // in the `params: { ... }` block). For a structured, per-leaf view with
+  // parsed expression trees and symbol resolution, see `paramExpressions`.
   params dict
   // Flattened expression trees of every scalar param leaf
   //
@@ -360,9 +387,12 @@ bicep.module @defaults("name source") @context("bicep.context") {
 
 // Bicep output declaration
 //
-// Examine an `output` statement: name, type, value expression, and
-// @description — useful for spotting outputs that leak secrets or
-// expose resource IDs unintentionally.
+// An `output` statement that a deployment returns to its caller,
+// exposing a computed value under a name. Auditing outputs surfaces
+// cases that leak secrets or expose resource IDs unintentionally:
+// `expression` holds the raw value expression, `expressionTree` breaks
+// it into a queryable node tree, and `description` carries any
+// @description decorator text.
 bicep.output @defaults("name type") @context("bicep.context") {
   // Output name
   name string
@@ -399,21 +429,20 @@ bicep.output @defaults("name type") @context("bicep.context") {
 
 // Parsed Bicep expression
 //
-// Examine the structure of a single Bicep value expression broken into a
-// queryable tree. The `kind` field classifies the node — `literal`,
-// `functionCall`, `propertyAccess`, `symbolicRef`, `interpolation`,
-// `ternary`, `array`, or `unknown` — and `raw` always holds the original
-// source text. For a `functionCall`, `functionName` names the called
-// function (`resourceId`, `concat`, `reference`, …) and `args` lists its
-// parsed arguments. For a `propertyAccess` or `symbolicRef`, `target` is
-// the root identifier and `path` is the accessor chain (for example
-// `vnet.properties.subnets[0].id` yields target `vnet` and path
-// `["properties","subnets","0","id"]`). For an `interpolation`, `segments`
-// holds the alternating literal and embedded-expression parts of a
-// `'...${expr}...'` string. This is structure only — values are never
-// evaluated — so policies can ask questions like "is this location a
-// hardcoded literal?" or "does this name interpolate a parameter?" without
-// resolving the deployment.
+// Structure of a single Bicep value expression broken into a queryable
+// tree. The `kind` field classifies the node (`literal`, `functionCall`,
+// `propertyAccess`, `symbolicRef`, `interpolation`, `ternary`, `array`, or
+// `unknown`) and `raw` always holds the original source text. For a
+// `functionCall`, `functionName` names the called function (`resourceId`,
+// `concat`, `reference`, …) and `args` lists its parsed arguments. For a
+// `propertyAccess` or `symbolicRef`, `target` is the root identifier and
+// `path` is the accessor chain (for example `vnet.properties.subnets[0].id`
+// yields target `vnet` and path `["properties","subnets","0","id"]`). For
+// an `interpolation`, `segments` holds the alternating literal and
+// embedded-expression parts of a `'...${expr}...'` string. This is
+// structure only, values are never evaluated, so policies can ask questions
+// like "is this location a hardcoded literal?" or "does this name
+// interpolate a parameter?" without resolving the deployment.
 bicep.expression @defaults("kind raw") {
   // Node kind
   //
@@ -437,8 +466,8 @@ bicep.expression @defaults("kind raw") {
   segments() []bicep.expression
   // Declaration category the root identifier resolves to
   //
-  // One of parameter, variable, resource, module, or type — the kind of
-  // same-file declaration that `target` names — or empty when `target` is
+  // One of parameter, variable, resource, module, or type (the kind of
+  // same-file declaration that `target` names), or empty when `target` is
   // empty or doesn't match a declaration in the owning file (a built-in like
   // `resourceGroup`, or a symbol brought in by `import`). Resolution is
   // file-scoped; cross-file import resolution is handled elsewhere.
@@ -476,12 +505,12 @@ bicep.expression @defaults("kind raw") {
 
 // Scalar leaf inside a resource's properties or a module's params
 //
-// Examine a single value buried inside a resource's `properties` object or a
-// module's `params` object, flattened out of the nested dict so it can be
-// queried directly. The `path` field is the dotted/indexed location of the
-// value within the object — for example `encryption.keyVaultProperties.keyName`
-// or `ipRules[0].action` — and `expression` is the parsed expression tree of
-// the value at that path, carrying full symbol resolution (`referenceKind`,
+// Single value buried inside a resource's `properties` object or a module's
+// `params` object, flattened out of the nested dict so it can be queried
+// directly. The `path` field is the dotted/indexed location of the value
+// within the object, for example `encryption.keyVaultProperties.keyName` or
+// `ipRules[0].action`, and `expression` is the parsed expression tree of the
+// value at that path, carrying full symbol resolution (`referenceKind`,
 // `referencedParameter`, …). Emitted by `bicep.resource.propertyExpressions`
 // and `bicep.module.paramExpressions`, one per scalar leaf, in a stable order
 // (map keys sorted, array indices preserved). See `bicep.expression`.
@@ -502,12 +531,12 @@ private bicep.propertyExpression @defaults("path") {
 
 // Bicep user-defined type declaration
 //
-// Examine a `type Name = <definition>` declaration: the type name, the raw
-// right-hand-side definition text (a union like `'Standard_LRS' |
-// 'Premium_LRS'`, an object type like `{ name: string, tier: sku }`, or a
-// reference to another type), the `@description` text, whether the type is
-// `@export()`ed for reuse from other files, and the full raw decorator list.
-// Select a type by its `name` — for example
+// User-defined type from a `type Name = <definition>` declaration, exposing
+// the type name, the raw right-hand-side definition text (a union like
+// `'Standard_LRS' | 'Premium_LRS'`, an object type like `{ name: string, tier:
+// sku }`, or a reference to another type), the `@description` text, whether the
+// type is `@export()`ed for reuse from other files, and the full raw decorator
+// list. Select a type by its `name`, for example
 // `bicep.file.types.where(name == "sku")`.
 bicep.type @defaults("name kind") {
   // Type name
@@ -549,9 +578,8 @@ bicep.type @defaults("name kind") {
 
 // Property of a Bicep object type
 //
-// Examine a single `name: type` member of an object-typed `bicep.type`
-// definition. The `type` may itself name a user-defined type. Emitted by
-// `bicep.type.properties`, one per declared property.
+// Single `name: type` member of an object-typed `bicep.type` definition. The
+// `type` may itself name a user-defined type, one entry per declared property.
 private bicep.type.property @defaults("name type") {
   // Property name
   name string
@@ -564,12 +592,12 @@ private bicep.type.property @defaults("name type") {
 
 // Bicep user-defined function declaration
 //
-// Examine a `func name(p1 t1, p2 t2) returnType => expression` declaration:
-// the function name, its parameters as a name-to-type map, the declared
-// return type, the raw body expression after `=>`, the `@description` text,
-// and the full raw decorator list. Select a function by its `name` — for
-// example `bicep.file.functions.where(name == "buildName")` — and read
-// `parameters["prefix"]` to get a parameter's type.
+// User-defined function of the form `func name(p1 t1, p2 t2) returnType => expression`,
+// exposing the function name, its parameters as a map from parameter name to declared
+// type, the return type, the raw body expression after `=>`, the `@description` text,
+// and the full raw decorator list. Select a function by its `name`, for example
+// `bicep.file.functions.where(name == "buildName")`, and read `parameters["prefix"]`
+// to get a parameter's declared type.
 bicep.function @defaults("name") {
   // Function name
   name string
@@ -587,13 +615,13 @@ bicep.function @defaults("name") {
 
 // Bicep import statement
 //
-// Examine an `import` statement in any of its forms: named imports
+// An `import` statement in any of its forms: named imports
 // (`import { typeA, funcB } from './shared.bicep'`), a wildcard namespace
 // import (`import * as shared from './shared.bicep'`), or a bare provider
 // import (`import 'az@2.0.0'`). The `source` field holds the `from` target
 // or the bare provider string; `symbols` lists the named imports inside
 // `{ }`; `namespace` holds the alias for a `* as <ns>` import and `wildcard`
-// flags that form. Select an import by its `source` — for example
+// flags that form. Select an import by its `source`, for example
 // `bicep.file.imports.where(source == "az@2.0.0")`.
 bicep.import @defaults("source") {
   // Import source: the `from` target or the bare provider string
@@ -640,11 +668,11 @@ bicep.import @defaults("source") {
 
 // Compiled ARM template (from ARM JSON input)
 //
-// Examine the resolved schema URL, content version, parameters, variables,
-// resources, and outputs of an ARM template — the post-`bicep build`
-// view, where expressions have been resolved and resources are listed
-// flat. Use this for policy checks that need final values rather than
-// Bicep-level expressions.
+// Resolved schema URL, content version, parameters, variables, resources,
+// and outputs of an ARM template, the post-`bicep build` view where
+// expressions have been resolved and resources are listed flat. Use this
+// for policy checks that need final values rather than Bicep-level
+// expressions.
 bicep.template @defaults("schema") {
   // ARM schema URL
   schema() string
@@ -662,11 +690,11 @@ bicep.template @defaults("schema") {
 
 // Parameter in the compiled ARM template
 //
-// Examine a single parameter declaration from the post-`bicep build` ARM
-// JSON: its `type`, the `defaultValue` when one is declared, the
-// `allowedValues` constraint set, whether it is a secure type, and the
-// `metadata` block. Select a parameter by its `name` — for example
-// `bicep.template.parameters.where(name == "adminPassword")` — to flag
+// Single parameter declaration from the post-`bicep build` ARM JSON: its
+// `type`, the `defaultValue` when one is declared, the `allowedValues`
+// constraint set, whether it is a secure type, and the `metadata` block.
+// Select a parameter by its `name`, for example
+// `bicep.template.parameters.where(name == "adminPassword")`, to flag
 // credential-shaped parameters that aren't declared `securestring`/
 // `secureObject` or that lack an `allowedValues` allow-list.
 bicep.template.parameter @defaults("name type") {
@@ -688,9 +716,9 @@ bicep.template.parameter @defaults("name type") {
 
 // Variable in the compiled ARM template
 //
-// Examine a single variable declaration from the post-`bicep build` ARM
-// JSON. Select a variable by its `name` — for example
-// `bicep.template.variables.where(name == "storageName")` — and read
+// Single variable declaration from the post-`bicep build` ARM JSON.
+// Select a variable by its `name`, for example
+// `bicep.template.variables.where(name == "storageName")`, and read
 // `value` for its resolved JSON shape.
 bicep.template.variable @defaults("name") {
   // Variable name
@@ -701,10 +729,10 @@ bicep.template.variable @defaults("name") {
 
 // Output in the compiled ARM template
 //
-// Examine a single output declaration from the post-`bicep build` ARM
-// JSON: its `type` and the `value` expression Azure Resource Manager
-// returns after deployment. Select an output by its `name` — for example
-// `bicep.template.outputs.where(name == "endpoint")` — to spot outputs
+// Single output declaration from the post-`bicep build` ARM JSON: its
+// `type` and the `value` expression Azure Resource Manager returns after
+// deployment. Select an output by its `name`, for example
+// `bicep.template.outputs.where(name == "endpoint")`, to spot outputs
 // that surface secrets or resource IDs.
 bicep.template.output @defaults("name type") {
   // Output name
@@ -717,9 +745,9 @@ bicep.template.output @defaults("name type") {
 
 // Resource in the compiled ARM template
 //
-// Examine the resolved Azure resource type, apiVersion, name, location,
-// properties, dependsOn list, and the full ARM manifest for a single
-// resource — the form Azure Resource Manager actually deploys.
+// Resolved Azure resource type, apiVersion, name, location, properties,
+// dependsOn list, and the full ARM manifest for a single resource, the
+// form Azure Resource Manager actually deploys.
 bicep.template.resource @defaults("type name") {
   // Azure resource type
   type string
@@ -731,9 +759,25 @@ bicep.template.resource @defaults("type name") {
   location string
   // Full resource properties as dict
   properties dict
+  // Resource tags
+  //
+  // The resource's `tags` object, empty when the resource declares none. The
+  // same shape `bicep.resource.tags` carries, so one tagging policy covers both
+  // Bicep source and compiled ARM JSON.
+  tags map[string]string
   // Dependencies
+  //
+  // The resource's `dependsOn` entries. ARM permits an object form alongside
+  // the usual resourceId expression string, and a symbolic-name template uses
+  // `[reference(...)]` objects; an object entry is rendered to its raw JSON
+  // text so no dependency edge is lost.
   dependsOn []string
-  // ARM deployment condition expression; empty when the resource is unconditional
+  // ARM deployment condition
+  //
+  // The resource's `condition`, empty only when the resource declares none and
+  // is therefore unconditional. ARM's condition is boolean-valued and usually
+  // written as an expression string, but a literal is legal and is reported as
+  // "true" or "false"; "false" means the resource is never deployed.
   condition string
   // Name of the ARM `copy` iteration block; empty when the resource is not copied
   copyName string
@@ -751,6 +795,15 @@ bicep.template.resource @defaults("type name") {
   // `templateLink` deployment (not resolvable offline) and for non-deployment
   // resources.
   linkedTemplate() bicep.template
+  // Nested child resources
+  //
+  // Child resources declared inside this resource's own `resources` array, the
+  // standard ARM encoding for `Microsoft.Web/sites` to `config/web`,
+  // `Microsoft.Sql/servers` to `auditingSettings` and `firewallRules`, and
+  // `Microsoft.Storage/storageAccounts` to `blobServices`. Empty when the
+  // resource declares no children. Children may declare children of their own,
+  // resolved the same way.
+  resources() []bicep.template.resource
   // Full manifest
   manifest dict
 }

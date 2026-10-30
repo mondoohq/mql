@@ -9,13 +9,11 @@ import (
 	"time"
 
 	"github.com/oracle/oci-go-sdk/v65/certificatesmanagement"
-	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/oci/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/oci/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (o *mqlOciCertificates) id() (string, error) {
@@ -27,59 +25,31 @@ func (o *mqlOciCertificates) id() (string, error) {
 func (o *mqlOciCertificates) certificates() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	// Certificates are issued into the compartment of the load balancer or
+	// gateway that terminates TLS, and ListCertificates cannot look below the
+	// compartment it is given. A root-only listing reported no certificates at
+	// all, so expiry and renewal checks silently had nothing to inspect.
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci certificates with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getCertificates(conn, list.Data), 5)
-	poolOfJobs.Run()
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-	return res, nil
-}
-
-func (o *mqlOciCertificates) getCertificates(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci certificates with region %s", regionResource.Id.Data)
-
-			svc, err := conn.CertificatesManagementClient(regionResource.Id.Data)
+			svc, err := conn.CertificatesManagementClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			var items []certificatesmanagement.CertificateSummary
-			var page *string
-			for {
+			items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]certificatesmanagement.CertificateSummary, *string, error) {
 				response, err := svc.ListCertificates(ctx, certificatesmanagement.ListCertificatesRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
-				items = append(items, response.Items...)
-				if response.OpcNextPage == nil {
-					break
-				}
-				page = response.OpcNextPage
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				return nil, err
 			}
 
 			res := make([]any, 0, len(items))
@@ -117,20 +87,10 @@ func (o *mqlOciCertificates) getCertificates(conn *connection.OciConnection, reg
 
 				autoRenewal, renewalInterval := extractCertificateRenewal(c.CertificateRules)
 
-				freeformTags := make(map[string]interface{}, len(c.FreeformTags))
-				for k, v := range c.FreeformTags {
-					freeformTags[k] = v
-				}
-				definedTags := make(map[string]interface{}, len(c.DefinedTags))
-				for k, v := range c.DefinedTags {
-					definedTags[k] = v
-				}
-
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.certificates.certificate", map[string]*llx.RawData{
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.certificates.certificate", stringValue(c.CompartmentId), map[string]*llx.RawData{
 					"id":                 llx.StringDataPtr(c.Id),
 					"name":               llx.StringDataPtr(c.Name),
 					"description":        llx.StringDataPtr(c.Description),
-					"compartmentID":      llx.StringDataPtr(c.CompartmentId),
 					"configType":         llx.StringData(string(c.ConfigType)),
 					"subject":            llx.StringData(subject),
 					"sans":               llx.ArrayData(sans, types.String),
@@ -144,25 +104,23 @@ func (o *mqlOciCertificates) getCertificates(conn *connection.OciConnection, reg
 					"renewalInterval":    llx.StringData(renewalInterval),
 					"state":              llx.StringData(string(c.LifecycleState)),
 					"created":            llx.TimeDataPtr(created),
-					"freeformTags":       llx.MapData(freeformTags, types.String),
-					"definedTags":        llx.MapData(definedTags, types.Any),
+					"freeformTags":       llx.MapData(strMapToAny(c.FreeformTags), types.String),
+					"definedTags":        llx.MapData(definedTagsToAny(c.DefinedTags), types.Any),
 				})
 				if err != nil {
 					return nil, err
 				}
 				mqlCert := mqlInstance.(*mqlOciCertificatesCertificate)
-				mqlCert.cacheIssuerCaId = stringValue(c.IssuerCertificateAuthorityId)
+				mqlCert.cacheIssuerCaID = stringValue(c.IssuerCertificateAuthorityId)
 				res = append(res, mqlCert)
 			}
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 type mqlOciCertificatesCertificateInternal struct {
-	cacheIssuerCaId string
+	ociCompartmentRef
+	cacheIssuerCaID string
 }
 
 func (o *mqlOciCertificatesCertificate) id() (string, error) {
@@ -201,12 +159,12 @@ func initOciCertificatesCertificate(runtime *plugin.Runtime, args map[string]*ll
 }
 
 func (o *mqlOciCertificatesCertificate) issuerCertificateAuthority() (*mqlOciCertificatesCertificateAuthority, error) {
-	if o.cacheIssuerCaId == "" || !isOcid(o.cacheIssuerCaId) {
+	if o.cacheIssuerCaID == "" || !isOcid(o.cacheIssuerCaID) {
 		o.IssuerCertificateAuthority.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	r, err := NewResource(o.MqlRuntime, "oci.certificates.certificateAuthority", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheIssuerCaId),
+		"id": llx.StringData(o.cacheIssuerCaID),
 	})
 	if err != nil {
 		return nil, err
@@ -218,10 +176,10 @@ func initOciCertificatesCertificateAuthority(runtime *plugin.Runtime, args map[s
 	if len(args) > 2 {
 		return args, nil, nil
 	}
-	if args["id"] == nil {
+	idVal := ociArgString(args, "id")
+	if idVal == "" {
 		return nil, nil, errors.New("id required to fetch oci.certificates.certificateAuthority")
 	}
-	idVal := args["id"].Value.(string)
 
 	obj, err := CreateResource(runtime, "oci.certificates", nil)
 	if err != nil {
@@ -246,59 +204,27 @@ func initOciCertificatesCertificateAuthority(runtime *plugin.Runtime, args map[s
 func (o *mqlOciCertificates) certificateAuthorities() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci certificate authorities with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getCertificateAuthorities(conn, list.Data), 5)
-	poolOfJobs.Run()
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-	return res, nil
-}
-
-func (o *mqlOciCertificates) getCertificateAuthorities(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci certificate authorities with region %s", regionResource.Id.Data)
-
-			svc, err := conn.CertificatesManagementClient(regionResource.Id.Data)
+			svc, err := conn.CertificatesManagementClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			var items []certificatesmanagement.CertificateAuthoritySummary
-			var page *string
-			for {
+			items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]certificatesmanagement.CertificateAuthoritySummary, *string, error) {
 				response, err := svc.ListCertificateAuthorities(ctx, certificatesmanagement.ListCertificateAuthoritiesRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
-				items = append(items, response.Items...)
-				if response.OpcNextPage == nil {
-					break
-				}
-				page = response.OpcNextPage
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				return nil, err
 			}
 
 			res := make([]any, 0, len(items))
@@ -327,20 +253,10 @@ func (o *mqlOciCertificates) getCertificateAuthorities(conn *connection.OciConne
 
 				kind := caKindFromConfigType(string(ca.ConfigType))
 
-				freeformTags := make(map[string]interface{}, len(ca.FreeformTags))
-				for k, v := range ca.FreeformTags {
-					freeformTags[k] = v
-				}
-				definedTags := make(map[string]interface{}, len(ca.DefinedTags))
-				for k, v := range ca.DefinedTags {
-					definedTags[k] = v
-				}
-
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.certificates.certificateAuthority", map[string]*llx.RawData{
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.certificates.certificateAuthority", stringValue(ca.CompartmentId), map[string]*llx.RawData{
 					"id":                llx.StringDataPtr(ca.Id),
 					"name":              llx.StringDataPtr(ca.Name),
 					"description":       llx.StringDataPtr(ca.Description),
-					"compartmentID":     llx.StringDataPtr(ca.CompartmentId),
 					"kind":              llx.StringData(kind),
 					"configType":        llx.StringData(string(ca.ConfigType)),
 					"subject":           llx.StringData(subject),
@@ -349,27 +265,25 @@ func (o *mqlOciCertificates) getCertificateAuthorities(conn *connection.OciConne
 					"signingAlgorithm":  llx.StringData(string(ca.SigningAlgorithm)),
 					"state":             llx.StringData(string(ca.LifecycleState)),
 					"created":           llx.TimeDataPtr(created),
-					"freeformTags":      llx.MapData(freeformTags, types.String),
-					"definedTags":       llx.MapData(definedTags, types.Any),
+					"freeformTags":      llx.MapData(strMapToAny(ca.FreeformTags), types.String),
+					"definedTags":       llx.MapData(definedTagsToAny(ca.DefinedTags), types.Any),
 				})
 				if err != nil {
 					return nil, err
 				}
 				mqlCa := mqlInstance.(*mqlOciCertificatesCertificateAuthority)
-				mqlCa.cacheIssuerCaId = stringValue(ca.IssuerCertificateAuthorityId)
-				mqlCa.cacheKmsKeyId = stringValue(ca.KmsKeyId)
+				mqlCa.cacheIssuerCaID = stringValue(ca.IssuerCertificateAuthorityId)
+				mqlCa.cacheKmsKeyID = stringValue(ca.KmsKeyId)
 				res = append(res, mqlCa)
 			}
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 type mqlOciCertificatesCertificateAuthorityInternal struct {
-	cacheIssuerCaId string
-	cacheKmsKeyId   string
+	ociCompartmentRef
+	cacheIssuerCaID string
+	cacheKmsKeyID   string
 }
 
 func (o *mqlOciCertificatesCertificateAuthority) id() (string, error) {
@@ -380,12 +294,12 @@ func (o *mqlOciCertificatesCertificateAuthority) issuerCertificateAuthority() (*
 	// Root CAs report themselves as their own issuer; treat that as
 	// "no separate issuer" to keep the typed traversal useful for
 	// subordinate-only queries.
-	if o.cacheIssuerCaId == "" || o.cacheIssuerCaId == o.Id.Data || !isOcid(o.cacheIssuerCaId) {
+	if o.cacheIssuerCaID == "" || o.cacheIssuerCaID == o.Id.Data || !isOcid(o.cacheIssuerCaID) {
 		o.IssuerCertificateAuthority.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	r, err := NewResource(o.MqlRuntime, "oci.certificates.certificateAuthority", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheIssuerCaId),
+		"id": llx.StringData(o.cacheIssuerCaID),
 	})
 	if err != nil {
 		return nil, err
@@ -394,12 +308,12 @@ func (o *mqlOciCertificatesCertificateAuthority) issuerCertificateAuthority() (*
 }
 
 func (o *mqlOciCertificatesCertificateAuthority) kmsKey() (*mqlOciKmsKey, error) {
-	if o.cacheKmsKeyId == "" || !isOcid(o.cacheKmsKeyId) {
+	if o.cacheKmsKeyID == "" || !isOcid(o.cacheKmsKeyID) {
 		o.KmsKey.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	r, err := NewResource(o.MqlRuntime, "oci.kms.key", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheKmsKeyId),
+		"id": llx.StringData(o.cacheKmsKeyID),
 	})
 	if err != nil {
 		return nil, err
@@ -443,59 +357,27 @@ func initOciCertificatesCaBundle(runtime *plugin.Runtime, args map[string]*llx.R
 func (o *mqlOciCertificates) caBundles() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci CA bundles with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getCaBundles(conn, list.Data), 5)
-	poolOfJobs.Run()
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-	return res, nil
-}
-
-func (o *mqlOciCertificates) getCaBundles(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci CA bundles with region %s", regionResource.Id.Data)
-
-			svc, err := conn.CertificatesManagementClient(regionResource.Id.Data)
+			svc, err := conn.CertificatesManagementClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			var items []certificatesmanagement.CaBundleSummary
-			var page *string
-			for {
+			items, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]certificatesmanagement.CaBundleSummary, *string, error) {
 				response, err := svc.ListCaBundles(ctx, certificatesmanagement.ListCaBundlesRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
-				items = append(items, response.Items...)
-				if response.OpcNextPage == nil {
-					break
-				}
-				page = response.OpcNextPage
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				return nil, err
 			}
 
 			res := make([]any, 0, len(items))
@@ -507,35 +389,22 @@ func (o *mqlOciCertificates) getCaBundles(conn *connection.OciConnection, region
 					created = &b.TimeCreated.Time
 				}
 
-				freeformTags := make(map[string]interface{}, len(b.FreeformTags))
-				for k, v := range b.FreeformTags {
-					freeformTags[k] = v
-				}
-				definedTags := make(map[string]interface{}, len(b.DefinedTags))
-				for k, v := range b.DefinedTags {
-					definedTags[k] = v
-				}
-
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.certificates.caBundle", map[string]*llx.RawData{
-					"id":            llx.StringDataPtr(b.Id),
-					"name":          llx.StringDataPtr(b.Name),
-					"description":   llx.StringDataPtr(b.Description),
-					"compartmentID": llx.StringDataPtr(b.CompartmentId),
-					"state":         llx.StringData(string(b.LifecycleState)),
-					"created":       llx.TimeDataPtr(created),
-					"freeformTags":  llx.MapData(freeformTags, types.String),
-					"definedTags":   llx.MapData(definedTags, types.Any),
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.certificates.caBundle", stringValue(b.CompartmentId), map[string]*llx.RawData{
+					"id":           llx.StringDataPtr(b.Id),
+					"name":         llx.StringDataPtr(b.Name),
+					"description":  llx.StringDataPtr(b.Description),
+					"state":        llx.StringData(string(b.LifecycleState)),
+					"created":      llx.TimeDataPtr(created),
+					"freeformTags": llx.MapData(strMapToAny(b.FreeformTags), types.String),
+					"definedTags":  llx.MapData(definedTagsToAny(b.DefinedTags), types.Any),
 				})
 				if err != nil {
 					return nil, err
 				}
 				res = append(res, mqlInstance)
 			}
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 func (o *mqlOciCertificatesCaBundle) id() (string, error) {
@@ -584,4 +453,8 @@ func sanSliceToAny(sans []certificatesmanagement.CertificateSubjectAlternativeNa
 		out = append(out, string(sans[i].Type)+":"+stringValue(sans[i].Value))
 	}
 	return out
+}
+
+type mqlOciCertificatesCaBundleInternal struct {
+	ociCompartmentRef
 }

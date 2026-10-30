@@ -1,0 +1,21 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "aarch64"
+
+[commands."uname -r"]
+stdout = "5.15.153.1-2.cm2"
+
+[files."/etc/os-release"]
+content = """
+NAME="Common Base Linux Mariner"
+VERSION="2.0.20260304"
+ID=mariner
+VERSION_ID="2.0"
+PRETTY_NAME="CBL-Mariner/Linux"
+ANSI_COLOR="1;34"
+HOME_URL="https://aka.ms/cbl-mariner"
+BUG_REPORT_URL="https://aka.ms/cbl-mariner"
+SUPPORT_URL="https://aka.ms/cbl-mariner"
+"""

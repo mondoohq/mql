@@ -4,11 +4,11 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/aimodel"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/aimodel"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAi) id() (string, error) {
@@ -16,17 +16,28 @@ func (a *mqlAi) id() (string, error) {
 }
 
 func (a *mqlAi) models() ([]any, error) {
-	home, err := targetHomeDir(a.MqlRuntime)
+	// Every user's home, not one picked by who is logged in: a server scanned
+	// over SSH with nobody at the console would otherwise be read as root's
+	// home only, and every other user's models would be missing.
+	users, err := targetUserHomes(a.MqlRuntime)
 	if err != nil {
 		return nil, err
+	}
+	homes := make([]string, 0, len(users))
+	for _, u := range users {
+		homes = append(homes, u.home)
 	}
 
 	conn := a.MqlRuntime.Connection.(shared.Connection)
 	afs := connectionAfs(a.MqlRuntime)
 	osFamily := targetOSFamily(conn)
 
+	stores, err := ollamaModelDirs(a.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
 	var all []any
-	for _, m := range aimodel.DetectAll(afs, home, osFamily) {
+	for _, m := range aimodel.DetectAll(afs, homes, osFamily, stores) {
 		res, err := newAiModelResource(a.MqlRuntime, m)
 		if err != nil {
 			return nil, err
@@ -55,16 +66,26 @@ func targetOSFamily(conn shared.Connection) string {
 }
 
 func newAiModelResource(rt *plugin.Runtime, m aimodel.ModelInfo) (*mqlAiModel, error) {
-	var tagsAny []interface{}
+	var tagsAny []any
 	if len(m.Tags) > 0 {
-		tagsAny = make([]interface{}, 0, len(m.Tags))
+		tagsAny = make([]any, 0, len(m.Tags))
 		for _, t := range m.Tags {
 			tagsAny = append(tagsAny, t)
 		}
 	}
 
+	// No recorded digest is null, not an empty list.
+	digests := llx.NilData
+	if len(m.WeightDigests) > 0 {
+		digestsAny := make([]any, 0, len(m.WeightDigests))
+		for _, d := range m.WeightDigests {
+			digestsAny = append(digestsAny, d)
+		}
+		digests = llx.ArrayData(digestsAny, types.String)
+	}
+
 	res, err := NewResource(rt, "ai.model", map[string]*llx.RawData{
-		"__id":          llx.StringData("ai.model/" + m.Source + "/" + m.Name),
+		"__id":          llx.StringData(aiModelID(m)),
 		"name":          llx.StringData(m.Name),
 		"source":        llx.StringData(m.Source),
 		"vendor":        llx.StringData(m.Vendor),
@@ -80,6 +101,9 @@ func newAiModelResource(rt *plugin.Runtime, m aimodel.ModelInfo) (*mqlAiModel, e
 		"license":       llx.StringData(m.License),
 		"tags":          llx.ArrayData(tagsAny, types.String),
 		"description":   llx.StringData(m.Description),
+
+		"unsafeSerialization": llx.BoolDataPtr(m.UnsafeSerialization),
+		"weightDigests":       digests,
 	})
 	if err != nil {
 		return nil, err
@@ -88,5 +112,13 @@ func newAiModelResource(rt *plugin.Runtime, m aimodel.ModelInfo) (*mqlAiModel, e
 }
 
 func (a *mqlAiModel) id() (string, error) {
-	return "ai.model/" + a.Source.Data + "/" + a.Name.Data, nil
+	return aiModelID(aimodel.ModelInfo{Source: a.Source.Data, Path: a.Path.Data}), nil
+}
+
+// aiModelID keys a model on where it is stored. The name is not unique: the
+// PyTorch and Keras detectors strip the hash suffix and the extension, so
+// resnet50-0676ba61.pth and resnet50-11ad3fa6.pth are both "resnet50", and a
+// name-keyed id would collapse them into whichever was read first.
+func aiModelID(m aimodel.ModelInfo) string {
+	return "ai.model/" + m.Source + "/" + m.Path
 }

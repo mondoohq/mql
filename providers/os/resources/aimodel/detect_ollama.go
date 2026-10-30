@@ -6,7 +6,6 @@ package aimodel
 import (
 	"encoding/json"
 	"io"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -122,14 +121,47 @@ func ollamaVendor(modelBase string) string {
 	return ""
 }
 
+// Detect walks every model store the context names. Ollama's store is not
+// reliably $HOME/.ollama/models: OLLAMA_MODELS relocates it, and the packaged
+// Linux service sets it, so on a stock distribution install the default path
+// does not exist and looking only there reports no models on a host that has
+// them. The caller resolves the real locations and passes them in; the default
+// is only the fallback for when nothing could be resolved.
 func (d *OllamaDetector) Detect(ctx DetectContext) []ModelInfo {
-	modelsDir := filepath.Join(ctx.Home, ".ollama", "models")
-	manifestsDir := filepath.Join(modelsDir, "manifests")
+	dirs := ctx.OllamaModelsDirs
+	if len(dirs) == 0 {
+		if ctx.Home == "" {
+			return nil
+		}
+		dirs = []string{joinPath(ctx.Home, ".ollama", "models")}
+	}
+
+	var results []ModelInfo
+	// A model reachable through two stores (a user's own and the daemon's) is
+	// one model, so the stores are merged on the full name `ollama list` shows.
+	seen := map[string]struct{}{}
+	for _, dir := range dirs {
+		for _, m := range DetectOllamaModels(ctx.Fs, dir) {
+			if _, ok := seen[m.Name]; ok {
+				continue
+			}
+			seen[m.Name] = struct{}{}
+			results = append(results, m)
+		}
+	}
+	return results
+}
+
+// DetectOllamaModels reads the models cached in one Ollama model store, the
+// directory OLLAMA_MODELS points at (or $HOME/.ollama/models by default), which
+// holds the manifests and blobs subdirectories.
+func DetectOllamaModels(afs *afero.Afero, modelsDir string) []ModelInfo {
+	manifestsDir := joinPath(modelsDir, "manifests")
 
 	// Ollama manifests follow a 4-level structure: registry/namespace/model/tag
 	// (e.g. registry.ollama.ai/library/llama3/latest).
 	// Walk each level explicitly to avoid unbounded traversal.
-	registries, err := ctx.Fs.ReadDir(manifestsDir)
+	registries, err := afs.ReadDir(manifestsDir)
 	if err != nil {
 		return nil
 	}
@@ -139,8 +171,8 @@ func (d *OllamaDetector) Detect(ctx DetectContext) []ModelInfo {
 		if !registry.IsDir() {
 			continue
 		}
-		registryDir := filepath.Join(manifestsDir, registry.Name())
-		namespaces, err := ctx.Fs.ReadDir(registryDir)
+		registryDir := joinPath(manifestsDir, registry.Name())
+		namespaces, err := afs.ReadDir(registryDir)
 		if err != nil {
 			continue
 		}
@@ -148,8 +180,8 @@ func (d *OllamaDetector) Detect(ctx DetectContext) []ModelInfo {
 			if !ns.IsDir() {
 				continue
 			}
-			nsDir := filepath.Join(registryDir, ns.Name())
-			models, err := ctx.Fs.ReadDir(nsDir)
+			nsDir := joinPath(registryDir, ns.Name())
+			models, err := afs.ReadDir(nsDir)
 			if err != nil {
 				continue
 			}
@@ -158,8 +190,8 @@ func (d *OllamaDetector) Detect(ctx DetectContext) []ModelInfo {
 					continue
 				}
 				modelBase := model.Name()
-				modelDir := filepath.Join(nsDir, modelBase)
-				tags, err := ctx.Fs.ReadDir(modelDir)
+				modelDir := joinPath(nsDir, modelBase)
+				tags, err := afs.ReadDir(modelDir)
 				if err != nil {
 					continue
 				}
@@ -167,8 +199,8 @@ func (d *OllamaDetector) Detect(ctx DetectContext) []ModelInfo {
 					if tag.IsDir() {
 						continue
 					}
-					tagPath := filepath.Join(modelDir, tag.Name())
-					data, err := ctx.Fs.ReadFile(tagPath)
+					tagPath := joinPath(modelDir, tag.Name())
+					data, err := afs.ReadFile(tagPath)
 					if err != nil {
 						continue
 					}
@@ -178,17 +210,17 @@ func (d *OllamaDetector) Detect(ctx DetectContext) []ModelInfo {
 						continue
 					}
 
-					name := modelBase + ":" + tag.Name()
+					name := ollamaDisplayName(registry.Name(), ns.Name(), modelBase, tag.Name())
 
 					var totalSize int64
 					for _, l := range manifest.Layers {
 						totalSize += l.Size
 					}
 
-					extracted := readOllamaConfig(ctx.Fs, modelsDir, manifest.Config.Digest)
+					extracted := readOllamaConfig(afs, modelsDir, manifest.Config.Digest)
 
 					if extracted.License == "" {
-						extracted.License = readOllamaLicenseLayer(ctx.Fs, modelsDir, manifest.Layers)
+						extracted.License = readOllamaLicenseLayer(afs, modelsDir, manifest.Layers)
 					}
 
 					version := tag.Name()
@@ -202,17 +234,21 @@ func (d *OllamaDetector) Detect(ctx DetectContext) []ModelInfo {
 
 					paramSize := extracted.ParameterSize
 					if paramSize == "" {
-						if m := reParamSize.FindStringSubmatch(name); len(m) > 1 {
-							paramSize = m[1] + "B"
-						}
+						paramSize = parameterSizeFromName(name)
 					}
 
 					// Build tags from tag name parts (split on -)
 					var modelTags []string
-					for _, part := range strings.Split(tag.Name(), "-") {
+					for part := range strings.SplitSeq(tag.Name(), "-") {
 						if part != "" && part != "latest" {
 							modelTags = append(modelTags, part)
 						}
+					}
+
+					// Ollama stores weights only as GGUF.
+					var unsafe *bool
+					if hasOllamaWeightLayer(manifest.Layers) {
+						unsafe = boolPtr(false)
 					}
 
 					results = append(results, ModelInfo{
@@ -230,6 +266,9 @@ func (d *OllamaDetector) Detect(ctx DetectContext) []ModelInfo {
 						Architecture:  extracted.Architecture,
 						License:       extracted.License,
 						Tags:          modelTags,
+
+						UnsafeSerialization: unsafe,
+						WeightDigests:       ollamaWeightDigests(manifest.Layers),
 					})
 				}
 			}
@@ -253,7 +292,7 @@ func readOllamaLicenseLayer(afs *afero.Afero, modelsDir string, layers []ollamaL
 			continue
 		}
 		blobName := strings.Replace(l.Digest, ":", "-", 1)
-		blobPath := filepath.Join(modelsDir, "blobs", blobName)
+		blobPath := joinPath(modelsDir, "blobs", blobName)
 		f, err := afs.Open(blobPath)
 		if err != nil {
 			continue
@@ -348,7 +387,7 @@ func readOllamaConfig(afs *afero.Afero, modelsDir string, digest string) ollamaE
 		return result
 	}
 	blobName := strings.Replace(digest, ":", "-", 1)
-	blobPath := filepath.Join(modelsDir, "blobs", blobName)
+	blobPath := joinPath(modelsDir, "blobs", blobName)
 	data, err := afs.ReadFile(blobPath)
 	if err != nil {
 		return result
@@ -366,7 +405,8 @@ func readOllamaConfig(afs *afero.Afero, modelsDir string, digest string) ollamaE
 	if v, ok := raw["file_type"].(string); ok {
 		result.Quantization = v
 	}
-	// model_type holds human-readable parameter size (e.g. "8.0B", "70B")
+	// model_type holds the human-readable parameter size (e.g. "134.52M",
+	// "8.0B"); it is what the Ollama API reports as details.parameter_size.
 	if v, ok := raw["model_type"].(string); ok && v != "" {
 		result.ParameterSize = v
 	}
@@ -384,4 +424,25 @@ func readOllamaConfig(afs *afero.Afero, modelsDir string, digest string) ollamaE
 	}
 
 	return result
+}
+
+const (
+	ollamaDefaultRegistry  = "registry.ollama.ai"
+	ollamaDefaultNamespace = "library"
+)
+
+// ollamaDisplayName builds the name `ollama list` prints for the manifest at
+// registry/namespace/model/tag (Ollama's Name.DisplayShortest): the registry
+// and namespace are only omitted when they are the defaults, so a user's
+// namespaced copy or a model pulled from Hugging Face never reads as the
+// library model of the same name.
+func ollamaDisplayName(registry, namespace, model, tag string) string {
+	switch {
+	case !strings.EqualFold(registry, ollamaDefaultRegistry):
+		return registry + "/" + namespace + "/" + model + ":" + tag
+	case !strings.EqualFold(namespace, ollamaDefaultNamespace):
+		return namespace + "/" + model + ":" + tag
+	default:
+		return model + ":" + tag
+	}
 }

@@ -522,14 +522,34 @@ func (p *exprParser) readIndex() (string, bool) {
 
 // normalizeIndex strips surrounding quotes from a string key so
 // foo['bar'] and foo.bar produce the same path segment "bar". Numeric and
-// expression indices are returned as-is.
+// expression indices are returned as-is — including a concatenation that
+// merely starts and ends with a quote (e.g. `'a' + suffix + 'b'`), which is
+// NOT a single literal and must not be unquoted.
 func normalizeIndex(s string) string {
-	if len(s) >= 2 {
-		if (s[0] == '\'' && s[len(s)-1] == '\'') || (s[0] == '"' && s[len(s)-1] == '"') {
-			return s[1 : len(s)-1]
-		}
+	if isSingleQuotedLiteral(s) {
+		return s[1 : len(s)-1]
 	}
 	return s
+}
+
+// isSingleQuotedLiteral reports whether s is exactly one quoted string literal
+// (e.g. "'key'"), as opposed to an expression that only happens to start and
+// end with a quote (e.g. "'a' + x + 'b'"). It walks s string-aware so a
+// concatenation whose first literal closes before the end is rejected.
+func isSingleQuotedLiteral(s string) bool {
+	if len(s) < 2 || (s[0] != '\'' && s[0] != '"') || s[len(s)-1] != s[0] {
+		return false
+	}
+	st := scanState{}
+	i := st.stepAt(s, 0) // consume the opening quote -> inStr set
+	for i < len(s) {
+		// The string closing before the final byte means s is not a lone literal.
+		if st.inStr == 0 && !st.inMulti && i < len(s)-1 {
+			return false
+		}
+		i = st.stepAt(s, i)
+	}
+	return st.inStr == 0 && !st.inMulti
 }
 
 func (p *exprParser) readIdentifier() string {

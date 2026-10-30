@@ -8,13 +8,15 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 
 	"google.golang.org/api/dns/v1"
 	"google.golang.org/api/option"
@@ -30,11 +32,20 @@ func initGcpProjectDnsServiceManagedzone(runtime *plugin.Runtime, args map[strin
 			args = make(map[string]*llx.RawData)
 		}
 		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
+			// Discovery ends a zone asset's platform id with the zone's numeric
+			// id, not its name, so that is what the asset is matched on.
+			args["id"] = llx.StringData(ids.name)
 			args["projectId"] = llx.StringData(ids.project)
 		} else {
 			return nil, nil, errors.New("no asset identifier found")
 		}
+	}
+
+	// The managed zone is matched by (id or name, projectId); without both we
+	// can't do the lookup. Return an error rather than dereferencing a nil arg
+	// (panic) or falling through to build a husk with unset fields.
+	if (args["id"] == nil && args["name"] == nil) || args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.dnsService.managedzone requires id or name, and projectId")
 	}
 
 	// Create the parent DNS service and find the specific managed zone
@@ -50,19 +61,27 @@ func initGcpProjectDnsServiceManagedzone(runtime *plugin.Runtime, args map[strin
 		return nil, nil, managedzones.Error
 	}
 
-	// Find the matching managed zone
+	// Match on the numeric id when there is one (a discovered zone asset),
+	// otherwise on the zone name.
+	byId, want := args["id"] != nil, args["name"]
+	if byId {
+		want = args["id"]
+	}
 	for _, mz := range managedzones.Data {
 		managedzone := mz.(*mqlGcpProjectDnsServiceManagedzone)
-		id := managedzone.GetId()
-		if id.Error != nil {
-			return nil, nil, id.Error
+		key := managedzone.GetName()
+		if byId {
+			key = managedzone.GetId()
+		}
+		if key.Error != nil {
+			return nil, nil, key.Error
 		}
 		projectId := managedzone.GetProjectId()
 		if projectId.Error != nil {
 			return nil, nil, projectId.Error
 		}
 
-		if id.Data == args["name"].Value && projectId.Data == args["projectId"].Value {
+		if key.Data == want.Value && projectId.Data == args["projectId"].Value {
 			return args, managedzone, nil
 		}
 	}
@@ -71,8 +90,12 @@ func initGcpProjectDnsServiceManagedzone(runtime *plugin.Runtime, args map[strin
 }
 
 type mqlGcpProjectDnsServiceInternal struct {
-	serviceEnabled bool
-	serviceChecked bool
+	serviceGate
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectDnsService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_dns)
 }
 
 // managedZoneDnssecNonExistence returns the DNSSEC proof-of-nonexistence mode
@@ -82,6 +105,41 @@ func managedZoneDnssecNonExistence(cfg *dns.ManagedZoneDnsSecConfig) string {
 		return ""
 	}
 	return cfg.NonExistence
+}
+
+// managedZoneServiceDirectoryNamespaceUrl returns the Service Directory
+// namespace a zone resolves names from, or "" when the zone serves its own
+// record sets.
+//
+// The config and its namespace are independently optional, so both are guarded:
+// a config present with no namespace still means "no Service Directory backing".
+func managedZoneServiceDirectoryNamespaceUrl(cfg *dns.ManagedZoneServiceDirectoryConfig) string {
+	if cfg == nil || cfg.Namespace == nil {
+		return ""
+	}
+	return cfg.Namespace.NamespaceUrl
+}
+
+// managedZoneReverseLookupEnabled reports whether a zone performs reverse
+// lookups.
+//
+// The API signals this by the presence of the config block rather than by a
+// flag inside it, so there is no field to read: an empty, non-nil block means
+// enabled.
+func managedZoneReverseLookupEnabled(cfg *dns.ManagedZoneReverseLookupConfig) bool {
+	return cfg != nil
+}
+
+// dnssecStateEnabled reports whether DNSSEC is enabled for a managed zone.
+//
+// The API documents three states: "off" (not signed), "on" (signed and fully
+// managed) and "transfer" (enabled, in transfer mode -- the zone IS signed,
+// which is what a zone mid-KSK-transfer reports). Matching only "on" reported a
+// signed zone as unsigned, and because dnsSecAlgorithmWeak() short-circuits on
+// this predicate it also reported a transfer-state zone signed with RSASHA1 as
+// not weak -- a missed finding, not just a false alarm.
+func dnssecStateEnabled(cfg *dns.ManagedZoneDnsSecConfig) bool {
+	return cfg != nil && cfg.State != "" && cfg.State != "off"
 }
 
 func (g *mqlGcpProjectDnsService) id() (string, error) {
@@ -111,8 +169,7 @@ func (g *mqlGcpProject) dns() (*mqlGcpProjectDnsService, error) {
 	}
 
 	dnsService := res.(*mqlGcpProjectDnsService)
-	dnsService.serviceEnabled = serviceEnabled
-	dnsService.serviceChecked = true
+	dnsService.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_dns).Msg("gcp service is not enabled, skipping")
 	}
@@ -130,14 +187,28 @@ func initGcpProjectDnsService(runtime *plugin.Runtime, args map[string]*llx.RawD
 		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
 	}
 
-	projectId := conn.ResourceID()
-	args["projectId"] = llx.StringData(projectId)
+	// Only default the project from the connection when the caller did not
+	// supply one; NewResource runs this init before the resource-cache lookup,
+	// so an unconditional overwrite would redirect a caller-scoped reference at
+	// the connection's own project.
+	if pid, ok := args["projectId"]; !ok || pid == nil {
+		args["projectId"] = llx.StringData(conn.ResourceID())
+	}
 
 	return args, nil, nil
 }
 
 type mqlGcpProjectDnsServiceManagedzoneInternal struct {
 	cacheAuthorizedNetworkUrls []string
+	cachePeeringNetwork        string
+
+	// The zone's live signing keys, fetched once and shared by dnsKeys() and
+	// dnsSecAlgorithmWeak(). See dns_dnskeys.go.
+	dnsKeysLoaded   atomic.Bool
+	dnsKeysLock     sync.Mutex
+	dnsKeysData     []*dns.DnsKey
+	dnsKeysReadable bool
+	dnsKeysErr      error
 }
 
 func (g *mqlGcpProjectDnsServiceManagedzone) authorizedNetworks() ([]any, error) {
@@ -159,10 +230,7 @@ func (g *mqlGcpProjectDnsServiceManagedzone) managedBy() (string, error) {
 }
 
 func (g *mqlGcpProjectDnsServiceManagedzone) peeringNetworkRef() (*mqlGcpProjectComputeServiceNetwork, error) {
-	if g.PeeringNetwork.Error != nil {
-		return nil, g.PeeringNetwork.Error
-	}
-	n, err := getNetworkByUrl(g.PeeringNetwork.Data, g.MqlRuntime)
+	n, err := getNetworkByUrl(g.cachePeeringNetwork, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -186,8 +254,11 @@ func (g *mqlGcpProjectDnsServiceManagedzone) id() (string, error) {
 }
 
 func (g *mqlGcpProjectDnsService) managedZones() ([]any, error) {
-	// when the service is known to be disabled, we return nil
-	if g.serviceChecked && !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -279,29 +350,36 @@ func (g *mqlGcpProjectDnsService) managedZones() ([]any, error) {
 				peeringNetwork = managedZone.PeeringConfig.TargetNetwork.NetworkUrl
 			}
 
+			serviceDirectoryNamespaceUrl := managedZoneServiceDirectoryNamespaceUrl(managedZone.ServiceDirectoryConfig)
+
 			mqlManagedZone, err := CreateResource(g.MqlRuntime, "gcp.project.dnsService.managedzone", map[string]*llx.RawData{
-				"id":                         llx.StringData(strconv.FormatInt(int64(managedZone.Id), 10)),
-				"projectId":                  llx.StringData(projectId),
-				"name":                       llx.StringData(managedZone.Name),
-				"description":                llx.StringData(managedZone.Description),
-				"dnssecConfig":               llx.DictData(mqlDnssecCfg),
-				"dnsName":                    llx.StringData(managedZone.DnsName),
-				"nameServerSet":              llx.StringData(managedZone.NameServerSet),
-				"nameServers":                llx.ArrayData(convert.SliceAnyToInterface(managedZone.NameServers), types.String),
-				"visibility":                 llx.StringData(managedZone.Visibility),
-				"created":                    llx.TimeDataPtr(parseTime(managedZone.CreationTime)),
-				"labels":                     llx.MapData(convert.MapToInterfaceMap(managedZone.Labels), types.String),
-				"cloudLoggingEnabled":        llx.BoolData(managedZone.CloudLoggingConfig != nil && managedZone.CloudLoggingConfig.EnableLogging),
-				"dnssecEnabled":              llx.BoolData(managedZone.DnssecConfig != nil && managedZone.DnssecConfig.State == "on"),
+				"id":                           llx.StringData(strconv.FormatInt(int64(managedZone.Id), 10)),
+				"projectId":                    llx.StringData(projectId),
+				"name":                         llx.StringData(managedZone.Name),
+				"description":                  llx.StringData(managedZone.Description),
+				"dnssecConfig":                 llx.DictData(mqlDnssecCfg),
+				"dnsName":                      llx.StringData(managedZone.DnsName),
+				"nameServerSet":                llx.StringData(managedZone.NameServerSet),
+				"nameServers":                  llx.ArrayData(convert.SliceAnyToInterface(managedZone.NameServers), types.String),
+				"visibility":                   llx.StringData(managedZone.Visibility),
+				"created":                      llx.TimeDataPtr(parseTime(managedZone.CreationTime)),
+				"labels":                       llx.MapData(convert.MapToInterfaceMap(managedZone.Labels), types.String),
+				"cloudLoggingEnabled":          llx.BoolData(managedZone.CloudLoggingConfig != nil && managedZone.CloudLoggingConfig.EnableLogging),
+				"serviceDirectoryNamespaceUrl": llx.StringData(serviceDirectoryNamespaceUrl),
+				// The API signals reverse lookup by the presence of the config
+				// block rather than by a flag inside it.
+				"reverseLookupEnabled":       llx.BoolData(managedZoneReverseLookupEnabled(managedZone.ReverseLookupConfig)),
+				"dnssecEnabled":              llx.BoolData(dnssecStateEnabled(managedZone.DnssecConfig)),
 				"dnssecNonExistence":         llx.StringData(dnssecNonExistence),
 				"dnssecDefaultKeyAlgorithms": llx.ArrayData(dnssecAlgorithms, types.String),
 				"privateVisibilityConfig":    llx.DictData(mqlPrivateVisibilityCfg),
 				"forwardingTargets":          llx.ArrayData(forwardingTargets, types.String),
-				"peeringNetwork":             llx.StringData(peeringNetwork),
 			})
 			if err != nil {
 				return err
 			}
+			mqlRef := mqlManagedZone.(*mqlGcpProjectDnsServiceManagedzone)
+			mqlRef.cachePeeringNetwork = peeringNetwork
 			mqlManagedZone.(*mqlGcpProjectDnsServiceManagedzone).cacheAuthorizedNetworkUrls = authorizedNetworkUrls
 			res = append(res, mqlManagedZone)
 		}
@@ -327,8 +405,11 @@ func (g *mqlGcpProjectDnsServicePolicy) id() (string, error) {
 }
 
 func (g *mqlGcpProjectDnsService) policies() ([]any, error) {
-	// when the service is known to be disabled, we return nil
-	if g.serviceChecked && !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -409,8 +490,11 @@ func (g *mqlGcpProjectDnsServiceResponsePolicy) id() (string, error) {
 }
 
 func (g *mqlGcpProjectDnsService) responsePolicies() ([]any, error) {
-	// when the service is known to be disabled, we return nil
-	if g.serviceChecked && !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -456,6 +540,7 @@ func (g *mqlGcpProjectDnsService) responsePolicies() ([]any, error) {
 				"description":        llx.StringData(responsePolicy.Description),
 				"networkUrls":        llx.ArrayData(networkUrls, types.String),
 				"gkeClusters":        llx.ArrayData(gkeClusters, types.String),
+				"labels":             llx.MapData(convert.MapToInterfaceMap(responsePolicy.Labels), types.String),
 			})
 			if err != nil {
 				return err
@@ -564,43 +649,6 @@ func (g *mqlGcpProjectDnsServiceRecordset) id() (string, error) {
 	// the type must be part of the key. The authoritative cache key set at
 	// creation also includes the managed zone for cross-zone uniqueness.
 	return "gcp.project.dnsService.recordset/" + projectId + "/" + g.Name.Data + "/" + g.Type.Data, nil
-}
-
-func (g *mqlGcpProjectDnsServiceManagedzone) dnsSecAlgorithmWeak() (bool, error) {
-	enabled := g.GetDnssecEnabled()
-	if enabled.Error != nil {
-		return false, enabled.Error
-	}
-	if !enabled.Data {
-		return false, nil
-	}
-	cfg := g.GetDnssecConfig()
-	if cfg.Error != nil {
-		return false, cfg.Error
-	}
-	if cfg.Data == nil {
-		return false, nil
-	}
-	cfgMap, ok := cfg.Data.(map[string]any)
-	if !ok {
-		return false, nil
-	}
-	specs, ok := cfgMap["defaultKeySpecs"].([]any)
-	if !ok {
-		return false, nil
-	}
-	for _, raw := range specs {
-		spec, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		alg, _ := spec["algorithm"].(string)
-		switch strings.ToUpper(alg) {
-		case "RSASHA1", "RSASHA1-NSEC3-SHA1":
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 func (g *mqlGcpProjectDnsServiceManagedzone) iamPolicy() ([]any, error) {

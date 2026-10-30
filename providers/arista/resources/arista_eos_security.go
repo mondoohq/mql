@@ -6,22 +6,47 @@ package resources
 import (
 	"strconv"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/arista/resources/eos"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/arista/resources/eos"
+	"go.mondoo.com/mql/types"
 )
 
-// fetchRunningConfig returns the EOS running-config, preferring the cached
-// content on the existing arista.eos.runningConfig resource (which already
-// handles double-checked locking) so we don't issue redundant
-// `show running-config` calls when multiple security resources are queried.
+// fetchRunningConfig returns the device's running-config with banner bodies
+// blanked out. Banner text is operator-authored prose that routinely quotes
+// configuration, and every parser here scans the same namespace it sits in, so
+// command parsers must not see it. Use fetchRawRunningConfig for the banners
+// themselves and for anything that reports the config verbatim.
+//
+// Both go through the cached arista.eos.runningConfig resource, so the device
+// is asked for its configuration once however many resources are queried.
 func fetchRunningConfig(runtime *plugin.Runtime) (string, error) {
-	rc, err := CreateResource(runtime, "arista.eos.runningConfig", map[string]*llx.RawData{})
+	rc, err := runningConfigResource(runtime)
 	if err != nil {
 		return "", err
 	}
-	return rc.(*mqlAristaEosRunningConfig).fetchContent(), nil
+	return rc.fetchStrippedContent()
+}
+
+// fetchRawRunningConfig returns the running-config exactly as the device
+// rendered it, banners included.
+func fetchRawRunningConfig(runtime *plugin.Runtime) (string, error) {
+	rc, err := runningConfigResource(runtime)
+	if err != nil {
+		return "", err
+	}
+	return rc.fetchContent()
+}
+
+// runningConfigResource returns the device's running-config resource, which the
+// runtime caches under a single id. Reach for this over fetchRunningConfig when
+// you want one of its memoized parses rather than the raw text.
+func runningConfigResource(runtime *plugin.Runtime) (*mqlAristaEosRunningConfig, error) {
+	rc, err := CreateResource(runtime, "arista.eos.runningConfig", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	return rc.(*mqlAristaEosRunningConfig), nil
 }
 
 // stringSliceToAny converts []string to []any for llx.ArrayData.
@@ -58,17 +83,24 @@ func (a *mqlAristaEos) aaa() (*mqlAristaEosAaa, error) {
 		return nil, err
 	}
 	cfg := eos.ParseAaaConfig(rc)
+	root := eos.ParseRootAccount(rc)
+	enable := eos.ParseEnableSecret(rc)
 
 	res, err := CreateResource(a.MqlRuntime, "arista.eos.aaa", map[string]*llx.RawData{
 		"authenticationLogin":          llx.MapData(methodMapToDict(cfg.AuthenticationLogin), types.Array(types.String)),
 		"authenticationEnable":         llx.MapData(methodMapToDict(cfg.AuthenticationEnable), types.Array(types.String)),
 		"authorizationCommands":        llx.MapData(methodMapToDict(cfg.AuthorizationCommands), types.Array(types.String)),
+		"authorizationConsoleCommands": llx.MapData(methodMapToDict(cfg.AuthorizationConsoleCommands), types.Array(types.String)),
+		"serialConsoleAuthorization":   llx.BoolData(cfg.SerialConsoleAuthorization),
 		"authorizationExec":            llx.MapData(methodMapToDict(cfg.AuthorizationExec), types.Array(types.String)),
 		"accountingCommands":           llx.MapData(methodMapToDict(cfg.AccountingCommands), types.Array(types.String)),
 		"accountingExec":               llx.MapData(methodMapToDict(cfg.AccountingExec), types.Array(types.String)),
-		"tacacsServers":                llx.ArrayData(stringSliceToAny(cfg.TacacsServers), types.String),
-		"radiusServers":                llx.ArrayData(stringSliceToAny(cfg.RadiusServers), types.String),
+		"rootAccountEnabled":           llx.BoolData(root.Enabled),
+		"rootAccountNoPassword":        llx.BoolData(root.NoPassword),
+		"rootSecretFormat":             llx.StringData(root.SecretFormat),
 		"defaultLoginPermitsLocalOnly": llx.BoolData(cfg.DefaultLoginPermitsLocalOnly),
+		"enableSecretConfigured":       llx.BoolData(enable.Configured),
+		"enableSecretFormat":           llx.StringData(enable.Format),
 	})
 	if err != nil {
 		return nil, err
@@ -84,6 +116,34 @@ func (a *mqlAristaEosSshSettings) id() (string, error) {
 	return "arista.eos.sshSettings", nil
 }
 
+// sshSettingsArgs maps a parsed `management ssh` block onto the resource's
+// fields. It is a named function so a test can assert it covers every field
+// the schema declares: codegen accepts a declared field with no population
+// path, and the eight containment fields were declared and parsed for a
+// release without ever being mapped here.
+func sshSettingsArgs(s *eos.SshSettings) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"enabled":                llx.BoolData(s.Enabled),
+		"protocolVersion":        llx.StringData(s.ProtocolVersion),
+		"idleTimeout":            llx.IntData(int64(s.IdleTimeout)),
+		"serverPort":             llx.IntData(int64(s.ServerPort)),
+		"authenticationMode":     llx.StringData(s.AuthenticationMode),
+		"ciphers":                llx.ArrayData(stringSliceToAny(s.Ciphers), types.String),
+		"keyExchange":            llx.ArrayData(stringSliceToAny(s.KeyExchange), types.String),
+		"macs":                   llx.ArrayData(stringSliceToAny(s.Macs), types.String),
+		"hostkeyAlgorithms":      llx.ArrayData(stringSliceToAny(s.HostkeyAlgorithms), types.String),
+		"fipsRestrictions":       llx.BoolData(s.FipsRestrictions),
+		"vrfs":                   llx.ArrayData(stringSliceToAny(s.Vrfs), types.String),
+		"loginTimeout":           llx.IntData(int64(s.LoginTimeout)),
+		"connectionLimit":        llx.IntData(int64(s.ConnectionLimit)),
+		"connectionPerHostLimit": llx.IntData(int64(s.ConnectionPerHostLimit)),
+		"emptyPasswords":         llx.StringData(s.EmptyPasswords),
+		"logLevel":               llx.StringData(s.LogLevel),
+		"clientAliveInterval":    llx.IntData(int64(s.ClientAliveInterval)),
+		"clientAliveCountMax":    llx.IntData(int64(s.ClientAliveCountMax)),
+	}
+}
+
 func (a *mqlAristaEos) sshSettings() (*mqlAristaEosSshSettings, error) {
 	rc, err := fetchRunningConfig(a.MqlRuntime)
 	if err != nil {
@@ -91,18 +151,7 @@ func (a *mqlAristaEos) sshSettings() (*mqlAristaEosSshSettings, error) {
 	}
 	s := eos.ParseSshSettings(rc)
 
-	res, err := CreateResource(a.MqlRuntime, "arista.eos.sshSettings", map[string]*llx.RawData{
-		"enabled":            llx.BoolData(s.Enabled),
-		"protocolVersion":    llx.StringData(s.ProtocolVersion),
-		"idleTimeout":        llx.IntData(int64(s.IdleTimeout)),
-		"serverPort":         llx.IntData(int64(s.ServerPort)),
-		"authenticationMode": llx.StringData(s.AuthenticationMode),
-		"ciphers":            llx.ArrayData(stringSliceToAny(s.Ciphers), types.String),
-		"keyExchange":        llx.ArrayData(stringSliceToAny(s.KeyExchange), types.String),
-		"macs":               llx.ArrayData(stringSliceToAny(s.Macs), types.String),
-		"hostkeyAlgorithms":  llx.ArrayData(stringSliceToAny(s.HostkeyAlgorithms), types.String),
-		"fipsRestrictions":   llx.BoolData(s.FipsRestrictions),
-	})
+	res, err := CreateResource(a.MqlRuntime, "arista.eos.sshSettings", sshSettingsArgs(s))
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +167,22 @@ type mqlAristaEosSnmpCommunityInternal struct {
 }
 
 func (a *mqlAristaEosSnmpCommunity) id() (string, error) {
-	return "arista.eos.snmpCommunity/" + a.Name.Data, a.Name.Error
+	if a.Name.Error != nil {
+		return "", a.Name.Error
+	}
+	if a.Ipv6.Error != nil {
+		return "", a.Ipv6.Error
+	}
+	// One community is commonly declared twice, once per address family, to
+	// bind an IPv4 access-list and an IPv6 one. Keying on the name alone
+	// collapses the pair onto whichever was parsed first, so the second
+	// line's access-list disappears and the surviving row resolves its
+	// typed ACL in the wrong namespace.
+	family := "ipv4"
+	if a.Ipv6.Data {
+		family = "ipv6"
+	}
+	return "arista.eos.snmpCommunity/" + family + "/" + a.Name.Data, nil
 }
 
 func (a *mqlAristaEos) snmpCommunities() ([]any, error) {
@@ -145,17 +209,23 @@ func (a *mqlAristaEos) snmpCommunities() ([]any, error) {
 }
 
 func (a *mqlAristaEosSnmpCommunity) aclResource() (*mqlAristaEosAcl, error) {
-	if a.cacheAcl == "" {
-		a.AclResource.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
+	if a.Ipv6.Error != nil {
+		return nil, a.Ipv6.Error
 	}
-	mqlAcl, err := NewResource(a.MqlRuntime, "arista.eos.acl", map[string]*llx.RawData{
-		"name": llx.StringData(a.cacheAcl),
-	})
+	// The community line's `ipv6` keyword says which namespace its ACL is in.
+	family := "ipv4"
+	if a.Ipv6.Data {
+		family = "ipv6"
+	}
+	mqlAcl, err := resolveAcl(a.MqlRuntime, a.cacheAcl, family)
 	if err != nil {
 		return nil, err
 	}
-	return mqlAcl.(*mqlAristaEosAcl), nil
+	if mqlAcl == nil {
+		a.AclResource.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return mqlAcl, nil
 }
 
 // =====================================================================
@@ -266,6 +336,126 @@ func (a *mqlAristaEosNtp) authenticationEnabled() (bool, error) {
 }
 
 // =====================================================================
+// arista.eos.ntp.server (list) + serve state
+// =====================================================================
+
+type mqlAristaEosNtpServerInternal struct {
+	cacheKeyID int
+}
+
+// id keys a server on VRF plus address, since the same time source can be
+// reached through more than one routing instance.
+func (a *mqlAristaEosNtpServer) id() (string, error) {
+	if a.Address.Error != nil {
+		return "", a.Address.Error
+	}
+	if a.Vrf.Error != nil {
+		return "", a.Vrf.Error
+	}
+	return "arista.eos.ntp.server/" + a.Vrf.Data + "/" + a.Address.Data, nil
+}
+
+func (a *mqlAristaEosNtp) servers() ([]any, error) {
+	rc, err := fetchRunningConfig(a.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	servers := eos.ParseNtpServers(rc)
+
+	res := make([]any, 0, len(servers))
+	for _, s := range servers {
+		mqlServer, err := CreateResource(a.MqlRuntime, "arista.eos.ntp.server", map[string]*llx.RawData{
+			"address":        llx.StringData(s.Address),
+			"vrf":            llx.StringData(s.VRF),
+			"prefer":         llx.BoolData(s.Prefer),
+			"iburst":         llx.BoolData(s.IBurst),
+			"version":        llx.IntData(int64(s.Version)),
+			"minPoll":        llx.IntData(int64(s.MinPoll)),
+			"maxPoll":        llx.IntData(int64(s.MaxPoll)),
+			"localInterface": llx.StringData(s.LocalInterface),
+			"keyId":          llx.IntData(int64(s.KeyID)),
+		})
+		if err != nil {
+			return nil, err
+		}
+		mqlServer.(*mqlAristaEosNtpServer).cacheKeyID = s.KeyID
+		res = append(res, mqlServer)
+	}
+	return res, nil
+}
+
+// authKey resolves the server's key ID against the keys defined on the device.
+// A server referencing a key ID with no matching `ntp authentication-key` line
+// is a real misconfiguration, so that case is reported as a null key rather
+// than an error, leaving keyId to show which key was asked for.
+func (a *mqlAristaEosNtpServer) authKey() (*mqlAristaEosNtpAuthKey, error) {
+	if a.cacheKeyID == 0 {
+		a.AuthKey.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	rc, err := fetchRunningConfig(a.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	state := eos.ParseNtpAuth(rc)
+
+	for _, k := range state.Keys {
+		if k.ID != a.cacheKeyID {
+			continue
+		}
+		// Same field set and therefore the same __id as the entries built by
+		// arista.eos.ntp.authKeys, so both paths share one cached resource.
+		mqlKey, err := CreateResource(a.MqlRuntime, "arista.eos.ntpAuthKey", map[string]*llx.RawData{
+			"id":       llx.IntData(int64(k.ID)),
+			"hashAlgo": llx.StringData(k.HashAlgo),
+			"trusted":  llx.BoolData(k.Trusted),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return mqlKey.(*mqlAristaEosNtpAuthKey), nil
+	}
+
+	a.AuthKey.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
+}
+
+func (a *mqlAristaEosNtp) serveEnabled() (bool, error) {
+	rc, err := fetchRunningConfig(a.MqlRuntime)
+	if err != nil {
+		return false, err
+	}
+	return eos.ParseNtpServeState(rc).Enabled, nil
+}
+
+func (a *mqlAristaEosNtp) serveAccessGroup() (string, error) {
+	rc, err := fetchRunningConfig(a.MqlRuntime)
+	if err != nil {
+		return "", err
+	}
+	return eos.ParseNtpServeState(rc).AccessGroup, nil
+}
+
+func (a *mqlAristaEosNtp) serveAccessGroupAcl() (*mqlAristaEosAcl, error) {
+	rc, err := fetchRunningConfig(a.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	// The serve access-group is reported without its address-family
+	// qualifier, so the reference matches a list of either family by name.
+	mqlAcl, err := resolveAcl(a.MqlRuntime, eos.ParseNtpServeState(rc).AccessGroup, "")
+	if err != nil {
+		return nil, err
+	}
+	if mqlAcl == nil {
+		a.ServeAccessGroupAcl.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return mqlAcl, nil
+}
+
+// =====================================================================
 // arista.eos.controlPlanePolicer
 // =====================================================================
 
@@ -301,31 +491,27 @@ func (a *mqlAristaEos) controlPlanePolicer() (*mqlAristaEosControlPlanePolicer, 
 }
 
 func (a *mqlAristaEosControlPlanePolicer) ipAccessGroupAcl() (*mqlAristaEosAcl, error) {
-	if a.cacheIpAccessGroup == "" {
+	mqlAcl, err := resolveAcl(a.MqlRuntime, a.cacheIpAccessGroup, "ipv4")
+	if err != nil {
+		return nil, err
+	}
+	if mqlAcl == nil {
 		a.IpAccessGroupAcl.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	mqlAcl, err := NewResource(a.MqlRuntime, "arista.eos.acl", map[string]*llx.RawData{
-		"name": llx.StringData(a.cacheIpAccessGroup),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return mqlAcl.(*mqlAristaEosAcl), nil
+	return mqlAcl, nil
 }
 
 func (a *mqlAristaEosControlPlanePolicer) ip6AccessGroupAcl() (*mqlAristaEosAcl, error) {
-	if a.cacheIp6AccessGroup == "" {
-		a.Ip6AccessGroupAcl.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
-	}
-	mqlAcl, err := NewResource(a.MqlRuntime, "arista.eos.acl", map[string]*llx.RawData{
-		"name": llx.StringData(a.cacheIp6AccessGroup),
-	})
+	mqlAcl, err := resolveAcl(a.MqlRuntime, a.cacheIp6AccessGroup, "ipv6")
 	if err != nil {
 		return nil, err
 	}
-	return mqlAcl.(*mqlAristaEosAcl), nil
+	if mqlAcl == nil {
+		a.Ip6AccessGroupAcl.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return mqlAcl, nil
 }
 
 // =====================================================================

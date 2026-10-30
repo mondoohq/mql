@@ -10,16 +10,21 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 // unixDateCmd gets the current UTC time. Used when RunCommand is available.
 const unixDateCmd = `date -u +%Y-%m-%dT%H:%M:%SZ`
+
+// unixOffsetCmd gets the current offset from UTC, DST included.
+const unixOffsetCmd = `date +%z`
 
 type Unix struct {
 	conn shared.Connection
@@ -36,6 +41,7 @@ func (u *Unix) Get() (*Result, error) {
 	// For static targets (EBS snapshots, Docker images) there is no
 	// meaningful current time, so we leave it nil.
 	var utcTime *time.Time
+	var offset *int64
 	if canRunCmd {
 		cmd, err := u.conn.RunCommand(unixDateCmd)
 		if err != nil {
@@ -46,6 +52,7 @@ func (u *Unix) Get() (*Result, error) {
 			return nil, err
 		}
 		utcTime = &t
+		offset = u.utcOffsetFromCmd()
 	}
 
 	// Get timezone: try filesystem first (works on EBS snapshots, Docker images),
@@ -55,37 +62,137 @@ func (u *Unix) Get() (*Result, error) {
 		tz, err = timezoneFromCmd(u.conn)
 	}
 	if err != nil {
-		// If all methods fail, default to UTC
+		// No zone name could be detected. The offset is only reported when
+		// the system itself said what it is.
+		t, _ := localize(utcTime, "", offset)
 		return &Result{
-			Time:     utcTime,
-			Timezone: "UTC",
+			Time:      t,
+			Timezone:  fallbackTimezone(offset),
+			UTCOffset: offset,
 		}, nil
 	}
 
-	loc, err := time.LoadLocation(tz)
-	if err != nil {
-		return &Result{
-			Time:     utcTime,
-			Timezone: tz,
-		}, nil
-	}
-
-	if utcTime != nil {
-		t := utcTime.In(loc)
-		utcTime = &t
-	}
-
+	t, offset := localize(utcTime, tz, offset)
 	return &Result{
-		Time:     utcTime,
-		Timezone: tz,
+		Time:      t,
+		Timezone:  tz,
+		UTCOffset: offset,
 	}, nil
+}
+
+// fallbackTimezone is the zone name reported when none could be detected:
+// "UTC" unless the system reported a different offset, in which case the
+// zone is unknown and left empty.
+func fallbackTimezone(offset *int64) string {
+	if offset != nil && *offset != 0 {
+		return ""
+	}
+	return "UTC"
+}
+
+// utcOffsetFromCmd asks the system for its current offset from UTC. Nil when
+// date does not support %z or prints something else.
+func (u *Unix) utcOffsetFromCmd() *int64 {
+	cmd, err := u.conn.RunCommand(unixOffsetCmd)
+	if err != nil || cmd.ExitStatus != 0 {
+		return nil
+	}
+	content, err := io.ReadAll(cmd.Stdout)
+	if err != nil {
+		return nil
+	}
+	off, ok := parseUTCOffset(string(content))
+	if !ok {
+		return nil
+	}
+	return &off
+}
+
+const (
+	minUTCOffsetMinutes = -12 * 60
+	maxUTCOffsetMinutes = 14 * 60
+)
+
+// parseUTCOffset reads a numeric zone offset as `date +%z` prints it
+// ("+0200", "-0330", also "+05:30") into seconds east of UTC.
+func parseUTCOffset(s string) (int64, bool) {
+	s = strings.ReplaceAll(strings.TrimSpace(s), ":", "")
+	if len(s) != 5 || (s[0] != '+' && s[0] != '-') {
+		return 0, false
+	}
+	for _, c := range s[1:] {
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+	}
+	hours, _ := strconv.Atoi(s[1:3])
+	minutes, _ := strconv.Atoi(s[3:5])
+	if minutes >= 60 {
+		return 0, false
+	}
+	total := hours*60 + minutes
+	if s[0] == '-' {
+		total = -total
+	}
+	// Zone offsets in use range from -12:00 (Etc/GMT+12) to +14:00
+	// (Pacific/Kiritimati).
+	if total < minUTCOffsetMinutes || total > maxUTCOffsetMinutes {
+		return 0, false
+	}
+	return int64(total) * 60, true
+}
+
+// localize returns t in the zone tz and the offset from UTC in effect at t
+// (or now, when there is no t). An offset the system already reported is
+// kept. When tz is empty or not in the local zone database, t is shown at the
+// reported offset, and no offset is made up.
+func localize(t *time.Time, tz string, offset *int64) (*time.Time, *int64) {
+	var loc *time.Location
+	if tz != "" {
+		loc, _ = time.LoadLocation(tz)
+	}
+	if loc == nil {
+		if t != nil && offset != nil {
+			name := tz
+			if name == "" {
+				name = formatUTCOffset(*offset)
+			}
+			lt := t.In(time.FixedZone(name, int(*offset)))
+			t = &lt
+		}
+		return t, offset
+	}
+
+	if offset == nil {
+		at := time.Now()
+		if t != nil {
+			at = *t
+		}
+		_, off := at.In(loc).Zone()
+		o := int64(off)
+		offset = &o
+	}
+	if t != nil {
+		lt := t.In(loc)
+		t = &lt
+	}
+	return t, offset
+}
+
+func formatUTCOffset(off int64) string {
+	sign := '+'
+	if off < 0 {
+		sign = '-'
+		off = -off
+	}
+	return fmt.Sprintf("%c%02d%02d", sign, off/3600, off%3600/60)
 }
 
 // timezoneFromFS detects the IANA timezone by reading filesystem artifacts.
 // It tries these approaches in order:
 //  1. readlink /etc/localtime → extract IANA name from symlink target
 //  2. Read /etc/timezone (Debian/Ubuntu)
-//  3. Parse TZ= from /etc/TIMEZONE (Solaris/AIX)
+//  3. Parse TZ= from /etc/TIMEZONE (Solaris) or /etc/environment (AIX)
 //  4. Match /etc/localtime contents against the system zoneinfo database
 func timezoneFromFS(fs afero.Fs) (string, error) {
 	// 1. Try readlink on /etc/localtime
@@ -97,26 +204,26 @@ func timezoneFromFS(fs afero.Fs) (string, error) {
 		}
 	}
 
-	// 2. Try /etc/timezone (Debian/Ubuntu)
-	if f, err := fs.Open("/etc/timezone"); err == nil {
-		defer f.Close()
-		content, err := io.ReadAll(f)
-		if err == nil {
-			if tz := strings.TrimSpace(string(content)); tz != "" {
-				return tz, nil
-			}
+	// 2. Try /etc/timezone (Debian/Ubuntu). libc reads /etc/localtime, not
+	// /etc/timezone, so when /etc/localtime is a TZif file (a copy rather
+	// than a symlink) the name is accepted only if that zone's file is
+	// byte-identical to it. A stale name falls through to step 4.
+	if tz := readEtcTimezone(fs); tz != "" {
+		localtime, err := afero.ReadFile(fs, "/etc/localtime")
+		if err != nil || !isTZif(localtime) {
+			return tz, nil
+		}
+		if zoneFileMatches(fs, tz, localtime) != zoneMismatch {
+			return tz, nil
 		}
 	}
 
-	// 3. Try /etc/TIMEZONE (Solaris/AIX) - look for TZ=<value>
-	if f, err := fs.Open("/etc/TIMEZONE"); err == nil {
-		defer f.Close()
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if tz, ok := strings.CutPrefix(line, "TZ="); ok && tz != "" {
-				return tz, nil
-			}
+	// 3. Try TZ=<value> in /etc/TIMEZONE (Solaris) and /etc/environment
+	// (AIX, which has neither /etc/localtime nor /etc/TIMEZONE; init reads
+	// the file into every login's environment).
+	for _, path := range []string{"/etc/TIMEZONE", "/etc/environment"} {
+		if tz := readTZAssignment(fs, path); tz != "" {
+			return tz, nil
 		}
 	}
 
@@ -128,12 +235,77 @@ func timezoneFromFS(fs afero.Fs) (string, error) {
 	return "", fmt.Errorf("could not detect timezone from filesystem")
 }
 
+// readTZAssignment returns the value of the TZ=<value> line in path, or ""
+// when the file is missing or sets no TZ.
+func readTZAssignment(fs afero.Fs, path string) string {
+	f, err := fs.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if tz, ok := strings.CutPrefix(line, "TZ="); ok {
+			if tz = strings.Trim(tz, `"'`); tz != "" {
+				return tz
+			}
+		}
+	}
+	return ""
+}
+
+// readEtcTimezone returns the zone name in /etc/timezone, or "" when the file
+// is missing, unreadable or empty.
+func readEtcTimezone(fs afero.Fs) string {
+	content, err := afero.ReadFile(fs, "/etc/timezone")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(content))
+}
+
+func isTZif(data []byte) bool {
+	return len(data) >= 4 && string(data[:4]) == "TZif"
+}
+
+type zoneFileMatch int
+
+const (
+	// zoneUnknown: no zone file for the name could be read, so nothing
+	// proves or disproves it.
+	zoneUnknown zoneFileMatch = iota
+	zoneMatch
+	// zoneMismatch: the zone file differs from /etc/localtime, or the name
+	// is not a path inside the zoneinfo tree.
+	zoneMismatch
+)
+
+// zoneFileMatches compares the zoneinfo file for the IANA name tz with the
+// contents of /etc/localtime.
+func zoneFileMatches(fs afero.Fs, tz string, localtime []byte) zoneFileMatch {
+	if path.IsAbs(tz) || path.Clean(tz) != tz || tz == ".." || strings.HasPrefix(tz, "../") {
+		return zoneMismatch
+	}
+	result := zoneUnknown
+	for _, base := range []string{"/usr/share/zoneinfo", "/usr/share/lib/zoneinfo"} {
+		candidate, err := afero.ReadFile(fs, base+"/"+tz)
+		if err != nil {
+			continue
+		}
+		if bytes.Equal(candidate, localtime) {
+			return zoneMatch
+		}
+		result = zoneMismatch
+	}
+	return result
+}
+
 // extractTZFromPath extracts the IANA timezone name from a symlink target path.
 // e.g., "/usr/share/zoneinfo/America/New_York" → "America/New_York"
 func extractTZFromPath(path string) string {
 	const marker = "zoneinfo/"
-	if idx := strings.LastIndex(path, marker); idx >= 0 {
-		tz := path[idx+len(marker):]
+	if _, tz, ok := strings.CutLast(path, marker); ok {
 		if tz == "" || tz == "localtime" {
 			return ""
 		}
@@ -157,7 +329,7 @@ func matchLocaltimeToZoneinfo(fs afero.Fs) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(localtime) < 4 || string(localtime[:4]) != "TZif" {
+	if !isTZif(localtime) {
 		return "", fmt.Errorf("/etc/localtime is not a valid TZif file")
 	}
 
@@ -396,4 +568,23 @@ func parseTimezone(r io.Reader) (string, error) {
 		return "UTC", nil
 	}
 	return s, nil
+}
+
+// LocationFromFS resolves the asset's own timezone from its filesystem, so a
+// timestamp a tool wrote without an offset can be read in the zone the asset
+// keeps rather than the scanner's. It is filesystem-only, which means it also
+// answers on a container image or a mounted snapshot.
+//
+// Returns nil when the filesystem carries no usable zone, leaving the caller to
+// decide what to fall back to.
+func LocationFromFS(fs afero.Fs) *time.Location {
+	tz, err := timezoneFromFS(fs)
+	if err != nil {
+		return nil
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return nil
+	}
+	return loc
 }

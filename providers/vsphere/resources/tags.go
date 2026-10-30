@@ -9,14 +9,15 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/rs/zerolog/log"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/vapi/tags"
 	vmwaretypes "github.com/vmware/govmomi/vim25/types"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/vsphere/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/vsphere/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // mqlVsphereTagInternal caches the category ID so vsphere.tag.category can
@@ -185,15 +186,15 @@ func resolveTagRefs(runtime *plugin.Runtime, tagIDs []string) ([]any, error) {
 // splits on ":"), so we parse the encoded form here: managed-object type names
 // never contain "-", so the first "-" separates type from value.
 func decodeMoRef(encoded string) (vmwaretypes.ManagedObjectReference, bool) {
-	i := strings.Index(encoded, "-")
-	if i < 0 {
+	before, after, ok := strings.Cut(encoded, "-")
+	if !ok {
 		return vmwaretypes.ManagedObjectReference{}, false
 	}
-	value, err := url.QueryUnescape(encoded[i+1:])
+	value, err := url.QueryUnescape(after)
 	if err != nil {
 		return vmwaretypes.ManagedObjectReference{}, false
 	}
-	return vmwaretypes.ManagedObjectReference{Type: encoded[:i], Value: value}, true
+	return vmwaretypes.ManagedObjectReference{Type: before, Value: value}, true
 }
 
 // attachedTagRefs resolves the vAPI tags attached to the inventory object
@@ -206,14 +207,21 @@ func attachedTagRefs(runtime *plugin.Runtime, moid string) ([]any, error) {
 
 	conn := runtime.Connection.(*connection.VsphereConnection)
 	ctx := context.Background()
+	// tagRefs is the typed sibling of the best-effort mo.ManagedEntity.Tag
+	// string field (see BatchGetTags in common.go): when the vAPI is
+	// unreachable (direct ESXi connection, or a token without vAPI scope) it
+	// degrades to an empty list rather than erroring the whole object, so the
+	// two tag views stay consistent.
 	rc, err := conn.RestClient(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to vAPI: %w", err)
+		log.Debug().Err(err).Msg("vsphere> vAPI rest client unavailable; returning no tag refs")
+		return []any{}, nil
 	}
 
 	tagIDs, err := tags.NewManager(rc).ListAttachedTags(ctx, ref)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list attached tags: %w", err)
+		log.Debug().Err(err).Msg("vsphere> ListAttachedTags failed; returning no tag refs")
+		return []any{}, nil
 	}
 	return resolveTagRefs(runtime, tagIDs)
 }

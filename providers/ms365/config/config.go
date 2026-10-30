@@ -4,16 +4,22 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/providers/ms365/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/providers/ms365/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "ms365",
-	ID:              "go.mondoo.com/cnquery/v9/providers/ms365",
-	Version:         "13.8.3",
+	Name: "ms365",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "microsoft",
+	ID:      "go.mondoo.com/mql/providers/ms365",
+	Version: "14.1.10",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.ConnectionType},
 	Platforms:       connection.Platforms,
 	Connectors: []plugin.Connector{
@@ -76,6 +82,12 @@ Notes:
 					Type:    plugin.FlagType_String,
 					Default: "",
 					Desc:    "Passphrase for the authentication certificate file",
+				},
+				{
+					Long:    "auth-method",
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Comma-separated sign-in methods to use when no client secret or certificate is given: cli, env, workload-identity, managed-identity (default: try all, in that order)",
 				},
 			},
 		},

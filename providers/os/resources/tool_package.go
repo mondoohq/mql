@@ -4,14 +4,19 @@
 package resources
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/core/resources/versions/semver"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/packages"
-	"go.mondoo.com/mql/v13/providers/os/resources/purl"
+	"github.com/spf13/afero"
+
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/core/resources/versions/semver"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/packages"
+	"go.mondoo.com/mql/providers/os/resources/purl"
 )
 
 // runtimeKind selects how the runtime() accessor resolves an agent's host — the
@@ -47,7 +52,7 @@ type toolPackageSpec struct {
 	// who-owns), and return that real, manager-tracked package. This works
 	// regardless of how the package is named, so it is preferred over
 	// managerCandidates. Leave empty for tools whose binary name collides with
-	// an unrelated package (e.g. bare "goose"/"gemini") to avoid mis-attributing
+	// an unrelated package (e.g. bare "goose"/"gemini"/"zed") to avoid mis-attributing
 	// the wrong install; those rely on managerCandidates instead.
 	binaryNames []string
 	// managerCandidates are names tried against the system package managers via
@@ -73,13 +78,41 @@ type toolPackageSpec struct {
 	// the real host editor/browser package. Only consulted for runtimeIDE /
 	// runtimeBrowser; falls back to an abstract host package named runtimeHostName.
 	runtimeHostCandidates []string
+
+	// vscodeExtensionIDs are the marketplace ids ("publisher.name") of the VS
+	// Code extension that is the tool, for agents that ship as an editor
+	// plugin. An installed extension is a stronger presence signal than the
+	// config directory, which many of these plugins never create (they keep
+	// their state in the editor's globalStorage), and it carries the version.
+	vscodeExtensionIDs []string
+	// configIsFile marks a tool whose configPath names a file rather than a
+	// directory (Aider's .aider.conf.yml), so presence is the file existing.
+	configIsFile bool
+	// configShared marks a tool whose configPath directory other software
+	// creates too (Devin Desktop shares ~/.config/devin with the Devin CLI;
+	// every anthropic-sdk-go client writes ~/.config/anthropic), so the
+	// directory existing is not an install signal. The abstract package then
+	// counts as installed only when inferVersion finds a version.
+	configShared bool
+	// versionedCandidates are names a Windows installer registers with the
+	// release appended ("Qualia 0.8.14"), which the exact managerCandidates
+	// lookup cannot reach. A package matches when its name is the candidate,
+	// a space, and the package's own version, so "ZCode Helper 3.15.1" does not.
+	versionedCandidates []string
+	// homeBinaries are paths, relative to a user's home, where the tool's own
+	// installer drops its executable outside any package manager (the
+	// Antigravity CLI's ~/.local/bin/agy). One present in any home marks the
+	// tool installed even when its configuration directory does not exist. It
+	// is never executed: any user can write a file there, and a scan running as
+	// root would run it with root's privileges.
+	homeBinaries []string
 }
 
 // toolPackageSpecs is keyed by MQL resource name.
 var toolPackageSpecs = map[string]toolPackageSpec{
-	"claude.code":    {packageName: "claude-code", binaryNames: []string{"claude"}, vendor: "Anthropic", inferVersion: inferClaudeVersion},
-	"openai.codex":   {packageName: "openai-codex", binaryNames: []string{"codex"}, vendor: "OpenAI", inferVersion: inferCodexVersion},
-	"cursor":         {packageName: "cursor", binaryNames: []string{"cursor"}, managerCandidates: []string{"cursor"}, vendor: "Anysphere"},
+	"claude.code":    {packageName: "claude-code", binaryNames: []string{"claude"}, managerCandidates: []string{"claude-code", "claude-code@latest", "Claude Code", "Claude CLI"}, vendor: "Anthropic", inferVersion: inferClaudeCodeVersion},
+	"openai.codex":   {packageName: "openai-codex", binaryNames: []string{"codex"}, managerCandidates: []string{"codex", "OpenAI.Codex"}, vendor: "OpenAI", inferVersion: inferCodexVersion},
+	"cursor":         {packageName: "cursor", binaryNames: []string{"cursor"}, managerCandidates: []string{"cursor", "Cursor", "Cursor (User)"}, vendor: "Anysphere"},
 	"github.copilot": {packageName: "github-copilot", vendor: "GitHub", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates},
 	// Bare "goose"/"gemini" are intentionally NOT used as binaryNames: "goose"
 	// collides with the widely-packaged pressly/goose DB-migration tool, and
@@ -87,28 +120,86 @@ var toolPackageSpecs = map[string]toolPackageSpec{
 	// at the wrong package. They fall back to distinctive candidate package
 	// names (the real Gemini CLI ships as npm `@google/gemini-cli`, which no OS
 	// manager owns, so it resolves to an abstract package).
-	"goose":            {packageName: "goose", managerCandidates: []string{"block-goose-cli"}, vendor: "Block"},
+	// Bare "zed" is not a binaryName either: /usr/sbin/zed is the OpenZFS event
+	// daemon, owned by Debian/Ubuntu's zfs-zed. The editor's candidates are its
+	// real package names: the Homebrew cask, and the macOS app and Windows
+	// app/appx names (package(name) matches case-sensitively).
+	// Warp's candidate is its macOS app "Warp", not "warp": Arch and Alpine
+	// package GNOME Warp (file transfer) under that name, and package(name)
+	// cannot tell it from the terminal's Homebrew cask.
+	"goose":            {packageName: "goose", managerCandidates: []string{"block-goose-cli", "block-goose"}, vendor: "Block"},
 	"gemini":           {packageName: "gemini", managerCandidates: []string{"gemini-cli"}, vendor: "Google"},
-	"windsurf":         {packageName: "windsurf", binaryNames: []string{"windsurf"}, managerCandidates: []string{"windsurf"}},
-	"zed":              {packageName: "zed", binaryNames: []string{"zed"}, managerCandidates: []string{"zed"}, vendor: "Zed Industries"},
-	"roo":              {packageName: "roo", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates},
-	"cline":            {packageName: "cline", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates},
-	"kiro":             {packageName: "kiro", binaryNames: []string{"kiro"}, managerCandidates: []string{"kiro"}},
-	"continuedev":      {packageName: "continuedev", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates},
+	"windsurf":         {packageName: "windsurf", binaryNames: []string{"windsurf"}, managerCandidates: []string{"windsurf", "Windsurf", "Windsurf (User)"}},
+	"breezell":         {packageName: "breezell", binaryNames: []string{"breezell"}, managerCandidates: []string{"breezell", "Breezell", "Breezell (User)"}},
+	"zed":              {packageName: "zed", managerCandidates: []string{"zed", "Zed", "ZedIndustries.Zed"}, vendor: "Zed Industries"},
+	"roo":              {packageName: "roo", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"RooVeterinaryInc.roo-cline"}},
+	"cline":            {packageName: "cline", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"saoudrizwan.claude-dev"}},
+	"kiro":             {packageName: "kiro", binaryNames: []string{"kiro"}, managerCandidates: []string{"kiro", "Kiro"}},
+	"continuedev":      {packageName: "continuedev", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"Continue.continue"}},
 	"trae":             {packageName: "trae", managerCandidates: []string{"trae"}},
-	"opencode":         {packageName: "opencode", binaryNames: []string{"opencode"}, managerCandidates: []string{"opencode"}},
+	"opencode":         {packageName: "opencode", binaryNames: []string{"opencode"}, managerCandidates: []string{"opencode", "opencode-desktop", "OpenCode"}},
 	"pi":               {packageName: "pi"},
 	"mistral.vibe":     {packageName: "mistral-vibe", vendor: "Mistral AI"},
-	"antigravity":      {packageName: "antigravity", managerCandidates: []string{"antigravity"}, vendor: "Google"},
+	"antigravity":      {packageName: "antigravity", managerCandidates: []string{"antigravity", "Antigravity", "Antigravity (User)", "Antigravity IDE", "Antigravity IDE (User)"}, vendor: "Google", homeBinaries: []string{".local/bin/agy", "AppData/Local/agy/bin/agy.exe"}},
 	"ibm.bob":          {packageName: "ibm-bob", vendor: "IBM"},
-	"openclaw":         {packageName: "openclaw"},
+	"openclaw":         {packageName: "openclaw", managerCandidates: []string{"OpenClaw"}},
 	"snowflake.cortex": {packageName: "snowflake-cortex", vendor: "Snowflake"},
 	"junie":            {packageName: "junie", managerCandidates: []string{"junie"}, vendor: "JetBrains", runtime: runtimeIDE, runtimeHostName: "JetBrains IDE"},
-	"augment":          {packageName: "augment", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates},
-	"warp":             {packageName: "warp", vendor: "Warp"},
-	"kilocode":         {packageName: "kilocode", managerCandidates: []string{"kilocode"}, runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates},
+	"augment":          {packageName: "augment", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"augment.vscode-augment"}},
+	"warp":             {packageName: "warp", managerCandidates: []string{"Warp"}, vendor: "Warp"},
+	"kilocode":         {packageName: "kilocode", managerCandidates: []string{"kilocode"}, runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"kilocode.Kilo-Code"}},
 	"openhands":        {packageName: "openhands", binaryNames: []string{"openhands"}, managerCandidates: []string{"openhands"}},
 	"qwen.code":        {packageName: "qwen-code", binaryNames: []string{"qwen"}, vendor: "Alibaba"},
+	// The desktop app installs per user (Windows, macOS), so no package manager
+	// owns it; its app name ("Claude", macOS and Windows) carries the version.
+	// The Homebrew cask "claude" is left out: a macOS Claude Code install also
+	// reports an app named "claude", and package(name) cannot tell them apart.
+	"claude.desktop": {packageName: "claude-desktop", managerCandidates: []string{"Claude"}, vendor: "Anthropic"},
+	// Aider installs with pip/pipx/uv, which OS package managers do not track;
+	// "aider-chat" (AUR) and "aider" (Homebrew) are its names where one does.
+	"aider": {packageName: "aider", binaryNames: []string{"aider"}, managerCandidates: []string{"aider-chat", "aider"}, configIsFile: true},
+	// Devin Desktop continues Windsurf's release line and shares its
+	// ~/.codeium/windsurf directory, so its configPath is ~/.config/devin, where
+	// its MCP servers and skills live. The Devin CLI uses that directory too,
+	// hence configShared: only a Devin Desktop package proves the install.
+	// "devin-desktop" is the deb, rpm and Homebrew cask name and the binary.
+	"devin.desktop": {packageName: "devin-desktop", binaryNames: []string{"devin-desktop"}, managerCandidates: []string{"devin-desktop", "Devin", "Devin (User)"}, vendor: "Cognition", configShared: true},
+	// "zcode" is the deb, rpm and Homebrew cask name, "ZCode" the macOS app; the
+	// Windows installer registers "ZCode <version>".
+	"zcode": {packageName: "zcode", binaryNames: []string{"zcode"}, managerCandidates: []string{"zcode", "ZCode"}, versionedCandidates: []string{"ZCode"}, vendor: "Zhipu AI"},
+	// "qualia" is the deb, "Qualia" the macOS app; the per-user Windows
+	// installer registers "Qualia <version>".
+	"qualia": {packageName: "qualia", binaryNames: []string{"qualia"}, managerCandidates: []string{"qualia", "Qualia"}, versionedCandidates: []string{"Qualia"}, vendor: "Quadrillion Labs"},
+	// The desktop app registers as "Builder.io" (Windows MSI, macOS app). The
+	// CLI ships on npm, which no OS package manager tracks.
+	"builderio": {packageName: "builderio", managerCandidates: []string{"Builder.io"}, vendor: "Builder.io"},
+	// Every package name the Claude Platform CLI ships under ("ant": Homebrew
+	// cask, deb, rpm, apk) is also Apache Ant's (Homebrew formula, Debian,
+	// Fedora), and so is the binary, so neither is used. Presence is the
+	// config directory plus `ant --version` answering in the CLI's own format.
+	"anthropic.cli": {packageName: "anthropic-cli", vendor: "Anthropic", inferVersion: inferAnthropicCLIVersion, configShared: true},
+	// The Devin CLI shares Devin Desktop's ~/.config/devin, so the directory
+	// is no install signal (configShared). It is installed by its Homebrew cask
+	// "devin-cli", the binary its install script links into ~/.local/bin (or
+	// copies to %LOCALAPPDATA%\devin\cli\bin), or a release under the install
+	// script's versions directory, which inferVersion reads.
+	"devin.cli": {packageName: "devin-cli", managerCandidates: []string{"devin-cli"}, vendor: "Cognition", configShared: true, homeBinaries: []string{".local/bin/devin", "AppData/Local/devin/cli/bin/devin.exe"}, inferVersion: inferDevinCLIVersion},
+	// The Cursor CLI's configPath is its own cli-config.json, which the editor
+	// never writes; the rest of ~/.cursor is the editor's too. "cursor-cli" is
+	// the Homebrew cask. Bare "agent", the script's second link name, is too
+	// generic to mark it.
+	"cursor.cli": {packageName: "cursor-cli", managerCandidates: []string{"cursor-cli"}, vendor: "Anysphere", configIsFile: true, homeBinaries: []string{".local/bin/cursor-agent", "AppData/Local/cursor-agent/cursor-agent.exe"}, inferVersion: inferCursorCLIVersion},
+	// "coderabbit" is the Homebrew cask. The install scripts write
+	// ~/.local/bin/coderabbit and %LOCALAPPDATA%\Programs\coderabbit, and
+	// neither leaves a version on disk.
+	"coderabbit.cli": {packageName: "coderabbit-cli", managerCandidates: []string{"coderabbit"}, vendor: "CodeRabbit", homeBinaries: []string{".local/bin/coderabbit", "AppData/Local/Programs/coderabbit/coderabbit.exe"}},
+	// "deepseek-harness" is the Homebrew cask; "DeepSeek Harness" the macOS
+	// app and the per-user Windows installer's DisplayName, which carries no
+	// version.
+	"deepseek.harness": {packageName: "deepseek-harness", managerCandidates: []string{"deepseek-harness", "DeepSeek Harness"}, vendor: "DeepSeek"},
+	// Ollama is a model server rather than a coding agent, but it is installed
+	// and versioned the same way, so it resolves through the same path.
+	"ollama": {packageName: "ollama", binaryNames: []string{"ollama"}, managerCandidates: []string{"ollama", "Ollama", "ollama-app"}, vendor: "Ollama", inferVersion: inferOllamaVersion},
 }
 
 // resolveToolPackage returns the real system-package-manager entry that
@@ -150,16 +241,60 @@ func resolveToolPackage(runtime *plugin.Runtime, configPath string, spec toolPac
 		}
 	}
 
+	for _, name := range spec.versionedCandidates {
+		pkg, err := lookupVersionedPackage(runtime, name)
+		if err != nil {
+			return nil, err
+		}
+		if pkg != nil {
+			return pkg, nil
+		}
+	}
+
 	// (c) Not attributable to any manager — detect presence and, where
-	// possible, a version, then synthesize an abstract package.
-	installed := configDirPresent(runtime, configPath)
+	// possible, a version, then synthesize an abstract package. An installed
+	// editor extension is both a presence signal and the version source.
+	configFound := configPresent(runtime, configPath, spec.configIsFile)
+	installed := configFound && !spec.configShared
 	version := ""
-	if installed && spec.inferVersion != nil {
+	if len(spec.vscodeExtensionIDs) > 0 {
+		homes, err := targetUserHomes(runtime)
+		if err != nil {
+			return nil, err
+		}
+		dirs := make([]string, 0, len(homes))
+		for _, u := range homes {
+			dirs = append(dirs, u.home)
+		}
+		v, ok, err := findVSCodeExtension(connectionAfs(runtime), dirs, spec.vscodeExtensionIDs)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			installed = true
+			version = v
+		}
+	}
+	if !installed && len(spec.homeBinaries) > 0 {
+		homes, err := targetUserHomes(runtime)
+		if err != nil {
+			return nil, err
+		}
+		dirs := make([]string, 0, len(homes))
+		for _, u := range homes {
+			dirs = append(dirs, u.home)
+		}
+		installed = findHomeBinary(connectionAfs(runtime), dirs, spec.homeBinaries) != ""
+	}
+	if (installed || configFound) && version == "" && spec.inferVersion != nil {
 		v, err := spec.inferVersion(runtime, configPath)
 		if err != nil {
 			return nil, err
 		}
 		version = v
+		if v != "" {
+			installed = true
+		}
 	}
 
 	// synthetic id; distinct from the real "format://name/version/arch" scheme
@@ -200,6 +335,7 @@ func newSyntheticPackage(runtime *plugin.Runtime, id, name, version, vendor, pur
 	pkg.Files.State = plugin.StateIsSet | plugin.StateIsNull
 	pkg.License.State = plugin.StateIsSet | plugin.StateIsNull
 	pkg.InstallDate.State = plugin.StateIsSet | plugin.StateIsNull
+	pkg.Macos.State = plugin.StateIsSet | plugin.StateIsNull
 
 	return pkg, nil
 }
@@ -208,7 +344,13 @@ func newSyntheticPackage(runtime *plugin.Runtime, id, name, version, vendor, pur
 // forks, tried when resolving the real host editor package for an IDE-plugin
 // agent (mirrors vsCodeEditors in vscode.go). Falls back to an abstract editor
 // package when none is manager-tracked (the common case for user-space installs).
-var vscodeHostCandidates = []string{"code", "code-insiders", "vscodium", "cursor", "windsurf"}
+var vscodeHostCandidates = []string{
+	"code", "code-insiders", "visual-studio-code", "Visual Studio Code", "Microsoft Visual Studio Code", "Microsoft Visual Studio Code (User)", "Microsoft Visual Studio Code (System)",
+	"vscodium", "VSCodium", "VSCodium (User)",
+	"cursor", "Cursor", "Cursor (User)",
+	"windsurf", "Windsurf", "Windsurf (User)",
+	"breezell", "Breezell", "Breezell (User)",
+}
 
 // resolveRuntimePackage returns the host the tool runs inside — the OS for a
 // standalone agent, the editor for an IDE plugin, the browser for a browser
@@ -312,15 +454,158 @@ func lookupInstalledPackage(runtime *plugin.Runtime, name string) (*mqlPackage, 
 	return nil, nil
 }
 
-// configDirPresent is the presence signal for the abstract-package fallback:
-// the tool's configPath directory exists on the target. Best-effort — used only
-// when binary ownership and name candidates both come up empty.
-func configDirPresent(runtime *plugin.Runtime, configPath string) bool {
+// lookupVersionedPackage resolves a package registered as "<name> <version>",
+// where version is the package's own version, from the `packages` collection.
+// Returns nil when none is installed.
+func lookupVersionedPackage(runtime *plugin.Runtime, name string) (*mqlPackage, error) {
+	raw, err := CreateResource(runtime, "packages", nil)
+	if err != nil {
+		return nil, err
+	}
+	pkgs := raw.(*mqlPackages)
+	if err := pkgs.refreshCache(nil); err != nil {
+		return nil, err
+	}
+	return versionedPackageMatch(pkgs.packagesByName, name), nil
+}
+
+// versionedPackageMatch picks the package named name + " " + its own version.
+func versionedPackageMatch(byName map[string]*mqlPackage, name string) *mqlPackage {
+	prefix := name + " "
+	for pkgName, pkg := range byName {
+		if pkg == nil || !pkg.Installed.Data || pkg.Version.Data == "" {
+			continue
+		}
+		if strings.HasPrefix(pkgName, prefix) && pkgName[len(prefix):] == pkg.Version.Data {
+			return pkg
+		}
+	}
+	return nil
+}
+
+// findHomeBinary returns the first of rels, joined onto each home in turn, that
+// is a regular file on the target. Empty when none is.
+func findHomeBinary(afs *afero.Afero, homes []string, rels []string) string {
+	for _, home := range homes {
+		for _, rel := range rels {
+			p := filepath.Join(home, filepath.FromSlash(rel))
+			if info, err := afs.Stat(p); err == nil && info.Mode().IsRegular() {
+				return p
+			}
+		}
+	}
+	return ""
+}
+
+// commandSemver runs cmdline through the command resource and returns the
+// first whitespace-separated token of its stdout that MQL's semver parser
+// recognizes. Empty when the command fails or prints no version.
+func commandSemver(runtime *plugin.Runtime, cmdline string) string {
+	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
+		"command": llx.StringData(cmdline),
+	})
+	if err != nil {
+		return ""
+	}
+	cmd := o.(*mqlCommand)
+	if cmd.GetExitcode().Data != 0 {
+		return ""
+	}
+	return firstSemverToken(cmd.GetStdout().Data)
+}
+
+// firstSemverToken returns the first whitespace-separated token of out that
+// MQL's semver parser recognizes, empty when none does.
+func firstSemverToken(out string) string {
+	for field := range strings.FieldsSeq(out) {
+		if isSemverVersion(field) {
+			return field
+		}
+	}
+	return ""
+}
+
+// configPresent reports whether configPath exists on the target as a directory,
+// or as a regular file when isFile is set.
+func configPresent(runtime *plugin.Runtime, configPath string, isFile bool) bool {
 	if configPath == "" {
 		return false
 	}
 	info, err := connectionAfs(runtime).Stat(configPath)
-	return err == nil && info.IsDir()
+	if err != nil {
+		return false
+	}
+	if isFile {
+		return info.Mode().IsRegular()
+	}
+	return info.IsDir()
+}
+
+// findVSCodeExtension looks for an installed VS Code-family extension with one
+// of the given marketplace ids ("publisher.name") in the extension directories
+// of each home (vsCodeEditors), and returns the highest installed version.
+// Matching reads each candidate's package.json, since the directory name is
+// only "<id>-<version>" by convention and its case differs between editors.
+// Ids compare case-insensitively, as the marketplace does. ok is true when an
+// extension is found, even if its package.json carries no version.
+func findVSCodeExtension(afs *afero.Afero, homes []string, ids []string) (version string, ok bool, err error) {
+	want := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		want[strings.ToLower(id)] = struct{}{}
+	}
+	for _, home := range homes {
+		for _, editor := range vsCodeEditors {
+			extensionsDir := filepath.Join(home, editor.dir)
+			entries, err := afs.ReadDir(extensionsDir)
+			if err != nil {
+				if os.IsNotExist(err) {
+					continue
+				}
+				return "", false, fmt.Errorf("cannot inspect VS Code extension directory %s: %w", extensionsDir, err)
+			}
+			for _, entry := range entries {
+				if !entry.IsDir() || !hasExtensionIDPrefix(entry.Name(), want) {
+					continue
+				}
+				pkg, err := readVSCodePackageJSON(afs, filepath.Join(extensionsDir, entry.Name(), "package.json"))
+				if err != nil {
+					if os.IsNotExist(err) {
+						continue
+					}
+					return "", false, fmt.Errorf("cannot inspect VS Code extension manifest in %s: %w", entry.Name(), err)
+				}
+				if _, match := want[strings.ToLower(pkg.Publisher+"."+pkg.Name)]; !match {
+					continue
+				}
+				ok = true
+				if pkg.Version != "" && (version == "" || semverLess(version, pkg.Version)) {
+					version = pkg.Version
+				}
+			}
+		}
+	}
+	return version, ok, nil
+}
+
+// hasExtensionIDPrefix is a cheap pre-filter on an extension directory name
+// ("<publisher>.<name>-<version>") before its package.json is read.
+func hasExtensionIDPrefix(dirName string, want map[string]struct{}) bool {
+	lower := strings.ToLower(dirName)
+	for id := range want {
+		if lower == id || strings.HasPrefix(lower, id+"-") {
+			return true
+		}
+	}
+	return false
+}
+
+// semverLess reports whether a sorts before b by MQL's semver parser, falling
+// back to a string comparison when either does not parse.
+func semverLess(a, b string) bool {
+	if cmp, err := (semver.Parser{}).Compare(a, b); err == nil {
+		return cmp < 0
+	}
+	return a < b
 }
 
 // setStrOrNull sets a string field to val, or to a resolved-null state when val
@@ -333,16 +618,34 @@ func setStrOrNull(t *plugin.TValue[string], val string) {
 	}
 }
 
-// inferCodexVersion reads the OpenAI Codex version.json (same source as
-// openai.codex.version()). Best-effort: unknown on any read/parse failure.
+// toolVersionCommand returns the command line that asks binaryName for its
+// version. On Unix targets the binary is called by its absolute path (see
+// packages.FindBinary), because the scan's PATH can miss it: sudo's secure_path
+// on RHEL-family hosts leaves out /usr/local/bin, where npm -g and the Ollama
+// installer put their binaries, so a root scan read no version where a user
+// scan read one. Windows targets, and binaries found nowhere, keep the bare name.
+func toolVersionCommand(runtime *plugin.Runtime, binaryName string) string {
+	if conn, ok := runtime.Connection.(shared.Connection); ok && !isWindowsAsset(conn) {
+		if path := packages.FindBinary(conn, binaryName); path != "" {
+			return versionCommand(path)
+		}
+	}
+	return versionCommand(binaryName)
+}
+
+// versionCommand is the `--version` command line for a binary name or path.
+func versionCommand(binary string) string {
+	return shellQuote(binary) + " --version"
+}
+
+// inferCodexVersion runs `codex --version` through the command resource. Codex
+// writes no authoritative version file (its version.json only records the latest
+// release seen during an update check, which goes stale and is not the installed
+// version), so we probe the binary. The output is e.g. "codex-cli 0.44.0"; we
+// keep the first token MQL's semver parser recognizes. Best-effort: unknown when
+// the binary is absent or the output carries no recognizable version.
 func inferCodexVersion(runtime *plugin.Runtime, configPath string) (string, error) {
-	var ver struct {
-		LatestVersion string `json:"latest_version"`
-	}
-	if err := readJSONFileAfero(connectionAfs(runtime), configPath, "version.json", &ver); err != nil {
-		return "", nil
-	}
-	return ver.LatestVersion, nil
+	return commandSemver(runtime, toolVersionCommand(runtime, "codex")), nil
 }
 
 // inferClaudeVersion runs `claude --version` through the command resource
@@ -352,7 +655,7 @@ func inferCodexVersion(runtime *plugin.Runtime, configPath string) (string, erro
 // absent or the output carries no recognizable version.
 func inferClaudeVersion(runtime *plugin.Runtime, configPath string) (string, error) {
 	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("claude --version"),
+		"command": llx.StringData(toolVersionCommand(runtime, "claude")),
 	})
 	if err != nil {
 		return "", nil
@@ -373,6 +676,36 @@ func inferClaudeVersion(runtime *plugin.Runtime, configPath string) (string, err
 		return "", nil
 	}
 	return version, nil
+}
+
+// inferAnthropicCLIVersion runs `ant --version`. The Claude Platform CLI answers
+// "ant version 2.1.0"; Apache Ant, which installs a binary of the same name,
+// rejects --version with a usage error, so only the CLI's own format counts.
+func inferAnthropicCLIVersion(runtime *plugin.Runtime, configPath string) (string, error) {
+	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
+		"command": llx.StringData(toolVersionCommand(runtime, "ant")),
+	})
+	if err != nil {
+		return "", nil
+	}
+	cmd := o.(*mqlCommand)
+	if cmd.GetExitcode().Data != 0 {
+		return "", nil
+	}
+	return parseAnthropicCLIVersion(cmd.GetStdout().Data), nil
+}
+
+// parseAnthropicCLIVersion returns the version from "ant version X.Y.Z", or ""
+// for any other output.
+func parseAnthropicCLIVersion(out string) string {
+	fields := strings.Fields(out)
+	if len(fields) < 3 || fields[0] != "ant" || fields[1] != "version" {
+		return ""
+	}
+	if _, err := (semver.Parser{}).Compare(fields[2], fields[2]); err != nil {
+		return ""
+	}
+	return fields[2]
 }
 
 // compute_package accessors — one per tool resource. Each delegates to the
@@ -406,6 +739,10 @@ func (r *mqlGemini) compute_package() (*mqlPackage, error) {
 
 func (r *mqlWindsurf) compute_package() (*mqlPackage, error) {
 	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["windsurf"])
+}
+
+func (r *mqlBreezell) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["breezell"])
 }
 
 func (r *mqlZed) compute_package() (*mqlPackage, error) {
@@ -484,6 +821,34 @@ func (r *mqlQwenCode) compute_package() (*mqlPackage, error) {
 	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["qwen.code"])
 }
 
+func (r *mqlDevinDesktop) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["devin.desktop"])
+}
+
+func (r *mqlZcode) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["zcode"])
+}
+
+func (r *mqlQualia) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["qualia"])
+}
+
+func (r *mqlBuilderio) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["builderio"])
+}
+
+func (r *mqlAnthropicCli) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["anthropic.cli"])
+}
+
+func (r *mqlClaudeDesktop) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["claude.desktop"])
+}
+
+func (r *mqlAider) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["aider"])
+}
+
 // runtime() accessors — one per tool resource — return the host the agent runs
 // inside (OS / IDE / browser) as an extensionRuntime, per each tool's spec.
 // `runtime` is not a Go keyword, so the generator emits a plain runtime()
@@ -515,6 +880,10 @@ func (r *mqlGemini) runtime() (*mqlExtensionRuntime, error) {
 
 func (r *mqlWindsurf) runtime() (*mqlExtensionRuntime, error) {
 	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["windsurf"])
+}
+
+func (r *mqlBreezell) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["breezell"])
 }
 
 func (r *mqlZed) runtime() (*mqlExtensionRuntime, error) {
@@ -591,4 +960,181 @@ func (r *mqlOpenhands) runtime() (*mqlExtensionRuntime, error) {
 
 func (r *mqlQwenCode) runtime() (*mqlExtensionRuntime, error) {
 	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["qwen.code"])
+}
+
+func (r *mqlDevinDesktop) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["devin.desktop"])
+}
+
+func (r *mqlZcode) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["zcode"])
+}
+
+func (r *mqlQualia) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["qualia"])
+}
+
+func (r *mqlBuilderio) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["builderio"])
+}
+
+func (r *mqlAnthropicCli) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["anthropic.cli"])
+}
+
+func (r *mqlClaudeDesktop) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["claude.desktop"])
+}
+
+func (r *mqlAider) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["aider"])
+}
+
+// inferOllamaVersion runs `ollama --version` through the command resource, for
+// an installation no package manager owns (the official install script drops a
+// binary into /usr/local/bin without registering it anywhere). Best-effort:
+// unknown when the binary is absent or the output carries no version.
+func inferOllamaVersion(runtime *plugin.Runtime, configPath string) (string, error) {
+	return probeOllamaVersion(runtime, toolVersionCommand(runtime, "ollama"))
+}
+
+// probeOllamaVersion runs an `ollama --version` command line and parses it.
+func probeOllamaVersion(runtime *plugin.Runtime, command string) (string, error) {
+	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
+		"command": llx.StringData(command),
+	})
+	if err != nil {
+		return "", nil
+	}
+	cmd := o.(*mqlCommand)
+	if exit := cmd.GetExitcode(); exit.Error != nil || exit.Data != 0 {
+		return "", nil
+	}
+	return parseOllamaVersion(cmd.GetStdout().Data), nil
+}
+
+// parseOllamaVersion pulls the version out of `ollama --version`. The command
+// reports two different lines depending on whether a server is reachable:
+// "ollama version is 0.32.14" when one is, and a "client version is 0.32.14"
+// warning when none is. The client line is preferred, because it is the version
+// of the binary installed here rather than of whatever server OLLAMA_HOST points
+// at, which may be another machine entirely.
+func parseOllamaVersion(stdout string) string {
+	var serverVersion string
+	for line := range strings.SplitSeq(stdout, "\n") {
+		_, rest, found := strings.Cut(line, "version is")
+		if !found {
+			continue
+		}
+		v := strings.TrimSpace(rest)
+		if v == "" {
+			continue
+		}
+		v = strings.Fields(v)[0]
+		if strings.Contains(line, "client version") {
+			return v
+		}
+		if serverVersion == "" {
+			serverVersion = v
+		}
+	}
+	return serverVersion
+}
+
+// inferClaudeCodeVersion reads the version of a native install in the home
+// that owns configPath, and otherwise asks the claude binary on the system.
+// The native installer puts claude in ~/.local/bin, which the binary lookup
+// leaves out on purpose (it is not a system path), so a root scan of a user's
+// native install read no version.
+func inferClaudeCodeVersion(runtime *plugin.Runtime, configPath string) (string, error) {
+	if v := claudeNativeVersion(connectionAfs(runtime), configPath); v != "" {
+		return v, nil
+	}
+	return inferClaudeVersion(runtime, configPath)
+}
+
+// claudeNativeVersion returns the version of Claude Code's native install for
+// the home that holds configPath (<home>/.claude), without running anything.
+// The installer keeps each release as ~/.local/share/claude/versions/<version>
+// and points the ~/.local/bin/claude launcher at the active one. When the
+// filesystem cannot read links, the highest version kept stands in while the
+// launcher exists. Empty when there is no native install.
+func claudeNativeVersion(afs *afero.Afero, configPath string) string {
+	if configPath == "" || filepath.Base(configPath) != ".claude" {
+		return ""
+	}
+	home := filepath.Dir(configPath)
+	launcher := filepath.Join(home, ".local", "bin", "claude")
+	versionsDir := filepath.Join(home, ".local", "share", "claude", "versions")
+
+	if lr, ok := afs.Fs.(afero.LinkReader); ok {
+		if target, err := lr.ReadlinkIfPossible(launcher); err == nil {
+			if !filepath.IsAbs(target) {
+				target = filepath.Join(filepath.Dir(launcher), target)
+			}
+			target = filepath.Clean(target)
+			if filepath.Dir(target) != versionsDir || !isSemverVersion(filepath.Base(target)) {
+				return ""
+			}
+			return filepath.Base(target)
+		}
+	}
+
+	if _, err := afs.Stat(launcher); err != nil {
+		return ""
+	}
+	entries, err := afs.ReadDir(versionsDir)
+	if err != nil {
+		return ""
+	}
+	version := ""
+	for _, e := range entries {
+		if e.IsDir() || !isSemverVersion(e.Name()) {
+			continue
+		}
+		if version == "" || semverLess(version, e.Name()) {
+			version = e.Name()
+		}
+	}
+	return version
+}
+
+// isSemverVersion reports whether MQL's semver parser recognizes v. The parser
+// exposes only Compare, so a valid version is one that compares against itself
+// without error.
+func isSemverVersion(v string) bool {
+	_, err := (semver.Parser{}).Compare(v, v)
+	return err == nil
+}
+
+func (r *mqlDevinCli) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["devin.cli"])
+}
+
+func (r *mqlDevinCli) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["devin.cli"])
+}
+
+func (r *mqlCursorCli) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["cursor.cli"])
+}
+
+func (r *mqlCursorCli) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["cursor.cli"])
+}
+
+func (r *mqlCoderabbitCli) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["coderabbit.cli"])
+}
+
+func (r *mqlCoderabbitCli) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["coderabbit.cli"])
+}
+
+func (r *mqlDeepseekHarness) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["deepseek.harness"])
+}
+
+func (r *mqlDeepseekHarness) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["deepseek.harness"])
 }

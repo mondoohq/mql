@@ -1,0 +1,111 @@
+{
+  "count": 7,
+  "value": [
+    {
+      "id": "7a000000-0000-4000-8000-000000000001",
+      "publisherId": "tfs",
+      "eventType": "git.push",
+      "consumerId": "webHooks",
+      "consumerActionId": "httpRequest",
+      "status": "enabled",
+      "publisherInputs": {
+        "projectId": "1a000000-0000-4000-8000-000000000001",
+        "repository": "2b000000-0000-4000-8000-000000000001",
+        "branch": ""
+      },
+      "consumerInputs": {
+        "url": "http://ci.example.invalid/hooks/push"
+      }
+    },
+    {
+      "id": "7a000000-0000-4000-8000-000000000002",
+      "publisherId": "tfs",
+      "eventType": "git.pullrequest.created",
+      "consumerId": "webHooks",
+      "consumerActionId": "httpRequest",
+      "status": "enabled",
+      "publisherInputs": {
+        "projectId": "1a000000-0000-4000-8000-000000000001",
+        "repository": "2B000000-0000-4000-8000-000000000002"
+      },
+      "consumerInputs": {
+        "url": "https://ci.example.invalid/hooks/pr?token=fabricated-hook-secret"
+      }
+    },
+    {
+      "id": "7a000000-0000-4000-8000-000000000003",
+      "publisherId": "tfs",
+      "eventType": "ms.vss-code.git-pullrequest-comment-event",
+      "consumerId": "webHooks",
+      "consumerActionId": "httpRequest",
+      "status": "onProbation",
+      "publisherInputs": {
+        "projectId": "1a000000-0000-4000-8000-000000000001",
+        "repository": ""
+      },
+      "consumerInputs": {
+        "url": "https://audit.example.invalid/ado"
+      }
+    },
+    {
+      "id": "7a000000-0000-4000-8000-000000000004",
+      "publisherId": "tfs",
+      "eventType": "workitem.created",
+      "consumerId": "webHooks",
+      "consumerActionId": "httpRequest",
+      "status": "enabled",
+      "publisherInputs": {
+        "projectId": "1a000000-0000-4000-8000-000000000001"
+      },
+      "consumerInputs": {
+        "url": "http://tracker.example.invalid/items"
+      }
+    },
+    {
+      "id": "7a000000-0000-4000-8000-000000000005",
+      "publisherId": "tfs",
+      "eventType": "git.push",
+      "consumerId": "webHooks",
+      "consumerActionId": "httpRequest",
+      "status": "enabled",
+      "publisherInputs": {
+        "projectId": "1a000000-0000-4000-8000-000000000004",
+        "repository": ""
+      },
+      "consumerInputs": {
+        "url": "http://legacy.example.invalid/push"
+      }
+    },
+    {
+      "id": "7a000000-0000-4000-8000-000000000006",
+      "publisherId": "tfs",
+      "eventType": "git.push",
+      "consumerId": "azureStorageQueue",
+      "consumerActionId": "enqueue",
+      "status": "enabled",
+      "publisherInputs": {
+        "projectId": "1a000000-0000-4000-8000-000000000001",
+        "repository": "2b000000-0000-4000-8000-000000000001"
+      },
+      "consumerInputs": {
+        "accountName": "fabricatedqueue",
+        "queueName": "pushes"
+      }
+    },
+    {
+      "id": "7a000000-0000-4000-8000-000000000007",
+      "publisherId": "tfs",
+      "eventType": "git.push",
+      "consumerId": "webHooks",
+      "consumerActionId": "httpRequest",
+      "status": "disabledByUser",
+      "publisherInputs": {
+        "projectId": "1a000000-0000-4000-8000-000000000001",
+        "repository": "2b000000-0000-4000-8000-000000000001"
+      },
+      "consumerInputs": {
+        "url": "https://hookuser:fabricated-password@old.example.invalid:8443/push"
+      }
+    }
+  ]
+}

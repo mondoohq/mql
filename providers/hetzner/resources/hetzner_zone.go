@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func (r *mqlHetznerZone) id() (string, error) {
@@ -34,17 +34,25 @@ func (h *mqlHetzner) zones() ([]any, error) {
 	return out, nil
 }
 
-func newMqlHetznerZone(runtime *plugin.Runtime, z *hcloud.Zone) (*mqlHetznerZone, error) {
-	primaryNS := make([]any, 0, len(z.PrimaryNameservers))
-	for _, ns := range z.PrimaryNameservers {
-		// Intentionally omit ns.TSIGKey — it is a shared secret used for
-		// zone transfers and must not be surfaced as queryable data.
-		primaryNS = append(primaryNS, map[string]any{
-			"address":       ns.Address,
-			"port":          int64(ns.Port),
-			"tsigAlgorithm": string(ns.TSIGAlgorithm),
+// zonePrimaryNameserverDicts renders the primaries a secondary zone transfers
+// from. The TSIG key is a shared secret and is never surfaced as queryable
+// data; only whether one is configured is reported, so an unauthenticated
+// transfer stays auditable.
+func zonePrimaryNameserverDicts(nameservers []hcloud.ZonePrimaryNameserver) []any {
+	out := make([]any, 0, len(nameservers))
+	for _, ns := range nameservers {
+		out = append(out, map[string]any{
+			"address":        ns.Address,
+			"port":           int64(ns.Port),
+			"tsigAlgorithm":  string(ns.TSIGAlgorithm),
+			"tsigConfigured": ns.TSIGKey != "",
 		})
 	}
+	return out
+}
+
+func newMqlHetznerZone(runtime *plugin.Runtime, z *hcloud.Zone) (*mqlHetznerZone, error) {
+	primaryNS := zonePrimaryNameserverDicts(z.PrimaryNameservers)
 
 	res, err := CreateResource(runtime, "hetzner.zone", map[string]*llx.RawData{
 		"__id":                 llx.StringData(fmt.Sprintf("hetzner.zone/%d", z.ID)),
@@ -71,9 +79,9 @@ func newMqlHetznerZone(runtime *plugin.Runtime, z *hcloud.Zone) (*mqlHetznerZone
 }
 
 func initHetznerZone(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "zone")
+	if err != nil {
+		return nil, nil, err
 	}
 	z, _, err := conn(runtime).Client().Zone.GetByID(ctx(), id)
 	if err != nil {
@@ -84,6 +92,21 @@ func initHetznerZone(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 	}
 	res, err := newMqlHetznerZone(runtime, z)
 	return args, res, err
+}
+
+// zonefile exports what Hetzner's nameservers actually serve for the zone.
+//
+// This is a separate request per zone, so it stays a computed field and is
+// never populated while listing zones. An export failure propagates rather
+// than reporting an empty zone file: an empty string would read as a zone that
+// publishes nothing, which is a claim we did not verify.
+func (m *mqlHetznerZone) zonefile() (string, error) {
+	c := conn(m.MqlRuntime)
+	res, _, err := c.Client().Zone.ExportZonefile(ctx(), &hcloud.Zone{ID: m.Id.Data})
+	if err != nil {
+		return "", err
+	}
+	return res.Zonefile, nil
 }
 
 func (m *mqlHetznerZone) rrsets() ([]any, error) {
@@ -106,38 +129,47 @@ func (m *mqlHetznerZone) rrsets() ([]any, error) {
 	return out, nil
 }
 
+// mqlHetznerZoneRrsetInternal keeps the raw record set so entries() can build
+// one resource per value without re-listing the zone.
+type mqlHetznerZoneRrsetInternal struct {
+	cacheRrset  *hcloud.ZoneRRSet
+	cacheZoneID int64
+}
+
+// mqlHetznerZoneRrsetRecordInternal carries the record set a value belongs to.
+// The record's own type lives there, and resolving a target starts by asking
+// whether that type carries an address at all.
+type mqlHetznerZoneRrsetRecordInternal struct {
+	cacheZoneID int64
+	cacheRrset  *hcloud.ZoneRRSet
+}
+
 func (r *mqlHetznerZoneRrset) id() (string, error) {
-	return fmt.Sprintf("hetzner.zone.rrset/%d/%s", r.ZoneId.Data, r.Id.Data), nil
+	return fmt.Sprintf("hetzner.zone.rrset/%d/%s", r.cacheZoneID, r.Id.Data), nil
 }
 
 func newMqlHetznerZoneRrset(runtime *plugin.Runtime, zoneID int64, rr *hcloud.ZoneRRSet) (*mqlHetznerZoneRrset, error) {
-	records := make([]any, 0, len(rr.Records))
-	for _, rec := range rr.Records {
-		records = append(records, map[string]any{
-			"value":   rec.Value,
-			"comment": rec.Comment,
-		})
-	}
 	res, err := CreateResource(runtime, "hetzner.zone.rrset", map[string]*llx.RawData{
 		"__id":       llx.StringData(fmt.Sprintf("hetzner.zone.rrset/%d/%s", zoneID, rr.ID)),
 		"id":         llx.StringData(rr.ID),
-		"zoneId":     llx.IntData(zoneID),
 		"name":       llx.StringData(rr.Name),
 		"type":       llx.StringData(string(rr.Type)),
 		"ttl":        llx.IntDataDefault(rr.TTL, 0),
-		"records":    dictArrayData(records),
 		"protection": llx.DictData(map[string]any{"change": rr.Protection.Change}),
 		"labels":     labelData(rr.Labels),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlHetznerZoneRrset), nil
+	m := res.(*mqlHetznerZoneRrset)
+	m.cacheRrset = rr
+	m.cacheZoneID = zoneID
+	return m, nil
 }
 
 func (m *mqlHetznerZoneRrset) zone() (*mqlHetznerZone, error) {
 	ref, err := NewResource(m.MqlRuntime, "hetzner.zone", map[string]*llx.RawData{
-		"id": llx.IntData(m.ZoneId.Data),
+		"id": llx.IntData(m.cacheZoneID),
 	})
 	if err != nil {
 		return nil, err

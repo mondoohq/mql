@@ -4,20 +4,22 @@
 package resources
 
 import (
+	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/google/go-github/v88/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/github/connection"
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/github/connection"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/stringx"
 	"go.mondoo.com/ranger-rpc"
 )
 
@@ -117,7 +119,7 @@ func (g *mqlGithubUser) repositories() ([]any, error) {
 	githubLogin := g.Login.Data
 
 	listOpts := &github.RepositoryListByUserOptions{
-		ListOptions: github.ListOptions{PerPage: paginationPerPage},
+		PerPage: paginationPerPage,
 	}
 
 	var allRepos []*github.Repository
@@ -171,7 +173,7 @@ func (g *mqlGithubUser) gists() ([]any, error) {
 	userLogin := g.Login.Data
 
 	listOpts := &github.GistListOptions{
-		ListOptions: github.ListOptions{PerPage: paginationPerPage},
+		PerPage: paginationPerPage,
 	}
 
 	var allGists []*github.Gist
@@ -280,6 +282,13 @@ func (g *mqlGithubGistfile) content() (string, error) {
 	resp, err := ranger.DefaultHttpClient().Get(rawUrl)
 	if err != nil {
 		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// Without this check an error page's body would be handed back as the
+		// file's content.
+		return "", fmt.Errorf("could not fetch gist file %s: %s", rawUrl, resp.Status)
 	}
 
 	data, err := io.ReadAll(resp.Body)

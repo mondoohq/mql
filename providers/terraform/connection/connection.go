@@ -8,8 +8,8 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclparse"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 type ConnectionType string
@@ -32,8 +32,18 @@ type Connection struct {
 	plan            *Plan
 	closer          func()
 
+	// cloneRoot is the directory a git connection cloned into. It is empty for
+	// connections that read a path the user gave.
+	cloneRoot string
+
+	// dialect records whether this configuration is Terraform's or OpenTofu's.
+	// For HCL it is detected from the files on disk; for state and plan files,
+	// whose JSON representations are identical, it comes from the connector the
+	// user invoked.
+	dialect Dialect
+
 	// features carries the active MQL feature flags (encoded bitset) for this
-	// connection. Used to gate behaviors like Terraform variable resolution.
+	// connection, as sent by the client at Connect time.
 	features []byte
 
 	// varCtx memoizes the resolved var.*/local.* evaluation context so it is
@@ -52,18 +62,37 @@ func (c *Connection) Features() []byte {
 	return c.features
 }
 
+// CloneRoot is the directory a git connection cloned into, or "" when the
+// connection reads a path the user gave.
+func (c *Connection) CloneRoot() string {
+	return c.cloneRoot
+}
+
 func (c *Connection) Close() {
 	if c.closer != nil {
 		c.closer()
 	}
 }
 
+// Dialect reports whether this configuration belongs to Terraform or OpenTofu.
+func (c *Connection) Dialect() Dialect {
+	if c.dialect == "" {
+		return DialectTerraform
+	}
+	return c.dialect
+}
+
 func (c *Connection) Kind() string {
 	return "code"
 }
 
+// Runtime tracks the dialect so it agrees with the platform catalog, whose
+// opentofu-* entries declare a runtime of "opentofu". Other providers build
+// their platform from conn.Runtime(); keeping the two in step here means this
+// one can be wired up the same way without silently reporting a runtime that
+// contradicts the platform.
 func (c *Connection) Runtime() string {
-	return "terraform"
+	return string(c.Dialect())
 }
 
 func (c *Connection) Asset() *inventory.Asset {

@@ -14,7 +14,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 const (
@@ -134,13 +134,13 @@ func (d *WindowsDeviceManager) IdentifyDiskDrives() ([]*diskDrive, error) {
 		return nil, err
 	}
 
-	var drives []*diskDrive
-	err = json.Unmarshal(stdout, &drives)
-	if err != nil {
-		return nil, err
-	}
+	return parseDiskDrives(stdout)
+}
 
-	return drives, nil
+// parseDiskDrives decodes Get-WmiObject Win32_DiskDrive output. A scanning host
+// with exactly one disk gets a bare object from ConvertTo-Json, not an array.
+func parseDiskDrives(stdout []byte) ([]*diskDrive, error) {
+	return powershell.UnmarshalList[*diskDrive](stdout)
 }
 
 func (d *WindowsDeviceManager) identifyPartitions(diskNumber int) ([]*diskPartition, error) {
@@ -163,19 +163,13 @@ func (d *WindowsDeviceManager) identifyPartitions(diskNumber int) ([]*diskPartit
 		return nil, err
 	}
 
-	var partitions []*diskPartition
-	err = json.Unmarshal(stdout, &partitions)
-	if err != nil {
-		// fallback, if only one partition is found, the output is not an array
-		var partition *diskPartition
-		err = json.Unmarshal(stdout, &partition)
-		if err != nil {
-			return nil, err
-		}
-		return []*diskPartition{partition}, nil
-	}
+	return parsePartitions(stdout)
+}
 
-	return partitions, nil
+// parsePartitions decodes Get-Partition output; a disk with one partition gets
+// a bare object from ConvertTo-Json.
+func parsePartitions(stdout []byte) ([]*diskPartition, error) {
+	return powershell.UnmarshalList[*diskPartition](stdout)
 }
 
 func getLunsFromOpts(opts map[string]string) ([]int, error) {
@@ -190,8 +184,8 @@ func getLunsFromOpts(opts map[string]string) ([]int, error) {
 		luns = append(luns, lun)
 	}
 	if lunsOpt != "" {
-		lunsVals := strings.Split(lunsOpt, ",")
-		for _, l := range lunsVals {
+		lunsVals := strings.SplitSeq(lunsOpt, ",")
+		for l := range lunsVals {
 			lun, err := strconv.Atoi(l)
 			if err != nil {
 				return nil, err
@@ -223,7 +217,8 @@ func filterDiskDrives(drives []*diskDrive, opts map[string]string) (*diskDrive, 
 
 func filterDiskDrivesBySerialNumber(drives []*diskDrive, serialNumber string) (*diskDrive, error) {
 	for _, d := range drives {
-		if serialNumber == d.SerialNumber {
+		// Nitro (NVMe) reports the volume ID followed by the namespace ID, e.g. vol0123_00000001.
+		if d.SerialNumber == serialNumber || strings.HasPrefix(d.SerialNumber, serialNumber+"_") {
 			log.Debug().Str("serialNumber", serialNumber).Str("name", d.Name).Int("index", d.Index).Msg("found disk drive with matching serial number")
 			return d, nil
 		}

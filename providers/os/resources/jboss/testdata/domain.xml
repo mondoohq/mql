@@ -1,0 +1,72 @@
+<?xml version='1.0' encoding='UTF-8'?>
+
+<!--
+  Trimmed domain.xml. The shipped file is 78k of subsystem configuration; what
+  matters to the parser is the shape it wraps that configuration in — several
+  named profiles instead of one unnamed one, socket binding groups inside a
+  <socket-binding-groups> element, server groups, and a <management> section
+  that carries access control and nothing else.
+-->
+<domain xmlns="urn:jboss:domain:1.7">
+    <extensions>
+        <extension module="org.jboss.as.deployment-scanner"/>
+        <extension module="org.jboss.as.logging"/>
+    </extensions>
+    <management>
+        <access-control provider="rbac">
+            <role-mapping>
+                <role name="SuperUser">
+                    <include>
+                        <user name="$local"/>
+                    </include>
+                </role>
+                <role name="Auditor">
+                    <include>
+                        <user name="auditor" realm="ManagementRealm"/>
+                        <group name="auditors"/>
+                    </include>
+                    <exclude>
+                        <user name="contractor"/>
+                    </exclude>
+                </role>
+            </role-mapping>
+        </access-control>
+    </management>
+    <profiles>
+        <profile name="default">
+            <subsystem xmlns="urn:jboss:domain:logging:1.5">
+                <root-logger>
+                    <level name="INFO"/>
+                </root-logger>
+            </subsystem>
+        </profile>
+        <profile name="ha">
+            <subsystem xmlns="urn:jboss:domain:logging:1.5">
+                <root-logger>
+                    <level name="DEBUG"/>
+                </root-logger>
+            </subsystem>
+        </profile>
+    </profiles>
+    <interfaces>
+        <interface name="management"/>
+        <interface name="public"/>
+    </interfaces>
+    <socket-binding-groups>
+        <socket-binding-group name="standard-sockets" default-interface="public">
+            <socket-binding name="http" port="8080"/>
+        </socket-binding-group>
+        <socket-binding-group name="ha-sockets" default-interface="public">
+            <socket-binding name="http" port="8080"/>
+            <socket-binding name="jgroups-udp" port="55200" multicast-address="${jboss.default.multicast.address:230.0.0.4}" multicast-port="45688"/>
+        </socket-binding-group>
+    </socket-binding-groups>
+    <server-groups>
+        <server-group name="main-server-group" profile="default">
+            <socket-binding-group ref="standard-sockets"/>
+        </server-group>
+        <server-group name="other-server-group" profile="ha">
+            <socket-binding-group ref="ha-sockets" port-offset="100"/>
+        </server-group>
+    </server-groups>
+</domain>

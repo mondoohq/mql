@@ -1,0 +1,30 @@
+{
+    "spdxVersion": "SPDX-2.3",
+    "dataLicense": "",
+    "SPDXID": "SPDXRef-DOCUMENT",
+    "name": "opensuse-leap-15.6",
+    "documentNamespace": "",
+    "creationInfo": {
+        "creators": [
+            "Tool: cnquery"
+        ],
+        "created": "2026-08-26T09:00:00Z"
+    },
+    "packages": [
+        {
+            "name": "bash",
+            "SPDXID": "SPDXRef-Package-rpm-bash",
+            "versionInfo": "4.4-150400.25.22",
+            "downloadLocation": "",
+            "filesAnalyzed": false,
+            "licenseDeclared": "GPL-3.0-or-later",
+            "externalRefs": [
+                {
+                    "referenceCategory": "SECURITY",
+                    "referenceType": "purl",
+                    "referenceLocator": "pkg:rpm/opensuse/bash@4.4-150400.25.22?arch=x86_64&distro=opensuse-leap-15.6"
+                }
+            ]
+        }
+    ]
+}

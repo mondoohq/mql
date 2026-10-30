@@ -4,16 +4,22 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/together/connection"
-	"go.mondoo.com/mql/v13/providers/together/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/together/connection"
+	"go.mondoo.com/mql/providers/together/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "together",
-	ID:              "go.mondoo.com/mql/providers/together",
-	Version:         "13.0.6",
+	Name: "together",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "together",
+	ID:      "go.mondoo.com/mql/providers/together",
+	Version: "14.0.7",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	Platforms:       provider.Platforms,
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Connectors: []plugin.Connector{
@@ -29,7 +35,7 @@ Examples:
   mql shell together   # uses TOGETHER_API_KEY env var
 
 Notes:
-  The provider queries the Together AI REST API at https://api.together.ai/v1.
+  The provider queries the Together AI REST API at https://api.together.ai.
   An API key is required; generate one at https://api.together.ai/settings/api-keys.
 `,
 			Discovery: []string{},
@@ -44,7 +50,7 @@ Notes:
 					Long:    connection.OptionBaseURL,
 					Type:    plugin.FlagType_String,
 					Default: "",
-					Desc:    "API base URL (default: https://api.together.ai/v1)",
+					Desc:    "API base URL (default: https://api.together.ai)",
 				},
 				{
 					Long:    connection.OptionProject,

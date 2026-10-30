@@ -7,17 +7,29 @@ import (
 	"strings"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/proxmox/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/proxmox/connection"
 )
 
 // mqlProxmoxUserInternal caches the inline token list from
 // /access/users?full=1 so `proxmox.users { tokens }` doesn't fan out
-// into a per-user /access/users/<id>/token fetch (N+1).
+// into a per-user /access/users/<id>/token fetch (N+1). It also holds the
+// raw group-membership names that groupRefs() resolves, since /access/users
+// returns them inline and GetUsers() is not cached.
 type mqlProxmoxUserInternal struct {
 	cachedTokens    []any
 	cachedTokensSet bool
+	cachedGroups    []string
+}
+
+// splitProxmoxGroups splits the comma-separated group list that
+// /access/users returns inline. Returns nil for an empty list.
+func splitProxmoxGroups(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	return strings.Split(raw, ",")
 }
 
 // ---------------------------------------------------------------------------
@@ -179,27 +191,12 @@ func (r *mqlProxmox) realms() ([]any, error) {
 	}
 	list := make([]any, len(realms))
 	for i, rm := range realms {
-		tfaType := ""
-		if rm.TFA != "" {
-			// /access/domains returns tfa as "type=oath,step=30,id=..."
-			// Pull the type=value pair.
-			for _, part := range strings.Split(rm.TFA, ",") {
-				kv := strings.SplitN(part, "=", 2)
-				if len(kv) == 2 && kv[0] == "type" {
-					tfaType = kv[1]
-					break
-				}
-			}
-			if tfaType == "" {
-				tfaType = rm.TFA
-			}
-		}
 		res, err := CreateResource(r.MqlRuntime, "proxmox.realm", map[string]*llx.RawData{
 			"realm":   llx.StringData(rm.Realm),
 			"type":    llx.StringData(rm.Type),
 			"comment": llx.StringData(rm.Comment),
 			"default": llx.BoolData(rm.Default == 1),
-			"tfaType": llx.StringData(tfaType),
+			"tfaType": llx.StringData(realmTFAType(rm.TFA)),
 		})
 		if err != nil {
 			return nil, err
@@ -244,4 +241,24 @@ func (r *mqlProxmoxUser) tfaFactors() ([]any, error) {
 		out = append(out, e.Type)
 	}
 	return out, nil
+}
+
+// realmTFAType pulls the challenge type out of a realm's `tfa` setting.
+//
+// /access/domains serializes it as a property string such as
+// `type=oath,step=30,digits=6`, and the type is the part that says which
+// second factor the realm demands. A value that carries no `type` is returned
+// as it stands rather than dropped, since an unparsed setting still means the
+// realm enforces something.
+//
+// Shared by the listing and the single-realm lookup so the two cannot report
+// different values for the same realm.
+func realmTFAType(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	if t := connection.ParsePropertyString(raw, "")["type"]; t != "" {
+		return t
+	}
+	return raw
 }

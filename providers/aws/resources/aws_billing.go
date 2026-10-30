@@ -15,9 +15,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/costexplorer"
 	cetypes "github.com/aws/aws-sdk-go-v2/service/costexplorer/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // --- aws.billing -------------------------------------------------------------
@@ -334,6 +335,13 @@ func (a *mqlAwsBilling) monthToDateCost() (float64, error) {
 	if err := a.fetchMonthToDate(); err != nil {
 		return 0, err
 	}
+	// Cost Explorer is denied by default for member accounts and any role
+	// without ce:*. Reporting 0.0 there is indistinguishable from a genuinely
+	// idle account and makes spend thresholds pass vacuously.
+	if a.mtdUnavailable {
+		a.MonthToDateCost.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
 	return a.mtdTotal, nil
 }
 
@@ -350,6 +358,10 @@ func (a *mqlAwsBilling) costsByService() (map[string]any, error) {
 func (a *mqlAwsBilling) lastMonthCost() (float64, error) {
 	if err := a.fetchLastMonth(); err != nil {
 		return 0, err
+	}
+	if a.lastMonthUnavailable {
+		a.LastMonthCost.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
 	}
 	return a.lastMonthTotal, nil
 }
@@ -368,12 +380,20 @@ func (a *mqlAwsBilling) last30DaysCost() (float64, error) {
 	if err := a.fetchLast30Days(); err != nil {
 		return 0, err
 	}
+	if a.last30Unavailable {
+		a.Last30DaysCost.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
 	return a.last30Total, nil
 }
 
 func (a *mqlAwsBilling) forecastedMonthCost() (float64, error) {
 	if err := a.fetchForecast(); err != nil {
 		return 0, err
+	}
+	if a.forecastUnavailable {
+		a.ForecastedMonthCost.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
 	}
 	return a.forecastAmount, nil
 }
@@ -553,4 +573,36 @@ func fetchBudgetSubscribers(svc *budgets.Client, accountId, budgetName string, n
 		}
 	}
 	return out, nil
+}
+
+// budgetArn builds the ARN that the Budgets tag API takes. The list response
+// carries no ARN, but the format is fixed: budgets are global, so the region
+// segment is empty.
+func budgetArn(partition, accountId, name string) string {
+	return "arn:" + partition + ":budgets::" + accountId + ":budget/" + name
+}
+
+type mqlAwsBillingBudgetInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsBillingBudget) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Budgets()
+		arn := budgetArn(kmsPartitionForRegion(conn.Region()), a.AccountId.Data, a.Name.Data)
+		resp, err := svc.ListTagsForResource(context.Background(), &budgets.ListTagsForResourceInput{ResourceARN: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("budgets:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.ResourceTags,
+			func(t budgetstypes.ResourceTag) *string { return t.Key },
+			func(t budgetstypes.ResourceTag) *string { return t.Value }), nil
+	})
 }

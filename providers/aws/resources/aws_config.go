@@ -6,22 +6,77 @@ package resources
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/configservice"
 	cstypes "github.com/aws/aws-sdk-go-v2/service/configservice/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsConfig) id() (string, error) {
 	return "aws.config", nil
+}
+
+func configTagsToMap(tags []cstypes.Tag) map[string]any {
+	return tagsToMap(tags,
+		func(t cstypes.Tag) *string { return t.Key },
+		func(t cstypes.Tag) *string { return t.Value })
+}
+
+// configTagsForArn reads the tags of a Config resource. ListTagsForResource
+// covers config rules, conformance packs, and aggregators, none of which carry
+// tags in their describe responses.
+func configTagsForArn(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.ConfigService(region)
+	ctx := context.Background()
+
+	tags := map[string]any{}
+	var nextToken *string
+	for {
+		resp, err := svc.ListTagsForResource(ctx, &configservice.ListTagsForResourceInput{
+			ResourceArn: &resourceArn,
+			NextToken:   nextToken,
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		maps.Copy(tags, configTagsToMap(resp.Tags))
+		if resp.NextToken == nil {
+			break
+		}
+		nextToken = resp.NextToken
+	}
+	return tags, nil
+}
+
+func (a *mqlAwsConfigRule) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return configTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsConfigConformancePack) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return configTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsConfigAggregator) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return configTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
 }
 
 func (a *mqlAwsConfig) recorders() ([]any, error) {
@@ -90,7 +145,6 @@ func (a *mqlAwsConfig) getRecorders(conn *connection.AwsConnection) []*jobpool.J
 				mqlRecorder, err := CreateResource(a.MqlRuntime, "aws.config.recorder",
 					map[string]*llx.RawData{
 						"name":                       llx.StringDataPtr(r.Name),
-						"roleArn":                    llx.StringDataPtr(r.RoleARN),
 						"allSupported":               llx.BoolData(allSupported),
 						"includeGlobalResourceTypes": llx.BoolData(includeGlobalResourceTypes),
 						"resourceTypes":              llx.ArrayData(resourceTypesInterface, types.String),
@@ -104,6 +158,7 @@ func (a *mqlAwsConfig) getRecorders(conn *connection.AwsConnection) []*jobpool.J
 				mqlRecorderRes := mqlRecorder.(*mqlAwsConfigRecorder)
 				mqlRecorderRes.cacheRoleArn = r.RoleARN
 				mqlRecorderRes.cacheRecordingGroup = r.RecordingGroup
+				mqlRecorderRes.cacheArn = convert.ToValue(r.Arn)
 				res = append(res, mqlRecorderRes)
 			}
 			return jobpool.JobResult(res), nil
@@ -114,8 +169,21 @@ func (a *mqlAwsConfig) getRecorders(conn *connection.AwsConnection) []*jobpool.J
 }
 
 type mqlAwsConfigRecorderInternal struct {
+	lazyTags
 	cacheRoleArn        *string
 	cacheRecordingGroup *cstypes.RecordingGroup
+	cacheArn            string
+}
+
+func (a *mqlAwsConfigRecorder) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		// The recorder ARN carries a service-generated id, so it cannot be
+		// rebuilt from the name when the describe response leaves it out.
+		if a.cacheArn == "" {
+			return nil, errTagsUnreadable
+		}
+		return configTagsForArn(a.MqlRuntime, a.Region.Data, a.cacheArn)
+	})
 }
 
 func (a *mqlAwsConfigRecorder) iamRole() (*mqlAwsIamRole, error) {
@@ -178,12 +246,12 @@ func (a *mqlAwsConfig) getDeliveryChannels(conn *connection.AwsConnection) []*jo
 						"name":         llx.StringDataPtr(channel.Name),
 						"s3BucketName": llx.StringDataPtr(channel.S3BucketName),
 						"s3KeyPrefix":  llx.StringDataPtr(channel.S3KeyPrefix),
-						"snsTopicARN":  llx.StringDataPtr(channel.SnsTopicARN),
 						"region":       llx.StringData(region),
 					})
 				if err != nil {
 					return nil, err
 				}
+				mqlDeliveryChannel.(*mqlAwsConfigDeliverychannel).cacheSnsTopicARN = convert.ToValue(channel.SnsTopicARN)
 				mqlChRes := mqlDeliveryChannel.(*mqlAwsConfigDeliverychannel)
 				if channel.ConfigSnapshotDeliveryProperties != nil {
 					mqlChRes.cacheDeliveryFrequency = string(channel.ConfigSnapshotDeliveryProperties.DeliveryFrequency)
@@ -431,9 +499,18 @@ func (a *mqlAwsConfig) getAggregators(conn *connection.AwsConnection) []*jobpool
 }
 
 type mqlAwsConfigAggregatorInternal struct {
+	lazyTags
 	cacheOrgRoleArn       *string
 	cacheOrgAllAwsRegions bool
 	cacheOrgAwsRegions    []string
+}
+
+type mqlAwsConfigRuleInternal struct {
+	lazyTags
+}
+
+type mqlAwsConfigConformancePackInternal struct {
+	lazyTags
 }
 
 func (a *mqlAwsConfigAggregator) id() (string, error) {
@@ -584,6 +661,7 @@ func (a *mqlAwsConfigDeliverychannel) lastDeliveryStatus() (string, error) {
 }
 
 type mqlAwsConfigDeliverychannelInternal struct {
+	cacheSnsTopicARN       string
 	cachedDeliveryStatus   *cstypes.DeliveryChannelStatus
 	cacheDeliveryFrequency string
 	deliveryStatusFetched  bool
@@ -591,7 +669,7 @@ type mqlAwsConfigDeliverychannelInternal struct {
 }
 
 func (a *mqlAwsConfigDeliverychannel) snsTopic() (*mqlAwsSnsTopic, error) {
-	arnVal := a.SnsTopicARN.Data
+	arnVal := a.cacheSnsTopicARN
 	if arnVal == "" {
 		a.SnsTopic.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -602,6 +680,17 @@ func (a *mqlAwsConfigDeliverychannel) snsTopic() (*mqlAwsSnsTopic, error) {
 		return nil, err
 	}
 	return res.(*mqlAwsSnsTopic), nil
+}
+
+// configComplianceDetailID builds the cache key for a compliance detail. Every
+// component of it is optional in the API response, including the recorded time,
+// which is why the time is read through a nil check rather than dereferenced.
+func configComplianceDetailID(ruleArn, resourceType, resourceID string, resultRecordedTime *time.Time) string {
+	var recordedNanos int64
+	if resultRecordedTime != nil {
+		recordedNanos = resultRecordedTime.UnixNano()
+	}
+	return fmt.Sprintf("%s/complianceDetail/%s/%s/%d", ruleArn, resourceType, resourceID, recordedNanos)
 }
 
 func (a *mqlAwsConfigRule) complianceDetails() ([]any, error) {
@@ -638,7 +727,7 @@ func (a *mqlAwsConfigRule) complianceDetails() ([]any, error) {
 
 			mqlDetail, err := CreateResource(a.MqlRuntime, "aws.config.rule.complianceDetail",
 				map[string]*llx.RawData{
-					"__id":               llx.StringData(fmt.Sprintf("%s/complianceDetail/%s/%s/%d", a.Arn.Data, resourceType, resourceId, eval.ResultRecordedTime.UnixNano())),
+					"__id":               llx.StringData(configComplianceDetailID(a.Arn.Data, resourceType, resourceId, eval.ResultRecordedTime)),
 					"resourceType":       llx.StringData(resourceType),
 					"resourceId":         llx.StringData(resourceId),
 					"complianceType":     llx.StringData(string(eval.ComplianceType)),
@@ -868,4 +957,44 @@ func (a *mqlAwsConfigConformancePack) ruleCompliance() ([]any, error) {
 
 func (a *mqlAwsConfigConformancePackRuleCompliance) id() (string, error) {
 	return a.__id, nil
+}
+
+// configDefaultRetentionDays is how long AWS Config keeps configuration items
+// in a region that has no retention configuration: 7 years.
+const configDefaultRetentionDays = 2557
+
+// configRetentionDays picks the retention period from a region's retention
+// configurations. Config allows at most one per region; none means the
+// default applies.
+func configRetentionDays(cfgs []cstypes.RetentionConfiguration) int64 {
+	for _, c := range cfgs {
+		if c.RetentionPeriodInDays != nil {
+			return int64(*c.RetentionPeriodInDays)
+		}
+	}
+	return configDefaultRetentionDays
+}
+
+func (a *mqlAwsConfigRecorder) retentionPeriodInDays() (int64, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.ConfigService(a.Region.Data)
+	ctx := context.Background()
+
+	cfgs := []cstypes.RetentionConfiguration{}
+	paginator := configservice.NewDescribeRetentionConfigurationsPaginator(svc, &configservice.DescribeRetentionConfigurationsInput{})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if !plugin.StructuredErrors() {
+					a.RetentionPeriodInDays.State = plugin.StateIsSet | plugin.StateIsNull
+					return 0, nil
+				}
+				return 0, llx.Forbidden(err, llx.WithPermissions("config:DescribeRetentionConfigurations"))
+			}
+			return 0, err
+		}
+		cfgs = append(cfgs, page.RetentionConfigurations...)
+	}
+	return configRetentionDays(cfgs), nil
 }

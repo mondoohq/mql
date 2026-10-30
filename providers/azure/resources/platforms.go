@@ -3,7 +3,7 @@
 
 package resources
 
-import "go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+import "go.mondoo.com/mql/providers-sdk/v1/plugin"
 
 // Platforms is the static catalog of platforms the Azure provider can emit
 // during discovery: the subscription root plus one entry per discoverable Azure
@@ -16,9 +16,7 @@ var Platforms = []*plugin.PlatformInfo{
 	{Name: "azure-compute-vm", Title: "Azure Compute VM", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 	{Name: "azure-compute-vm-api", Title: "Azure Compute VM", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 	{Name: "azure-sql-server", Title: "Azure SQL Database Server", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
-	{Name: "azure-postgresql-server", Title: "Azure PostgreSQL Server", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 	{Name: "azure-postgresql-flexible-server", Title: "Azure PostgreSQL Flexible Server", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
-	{Name: "azure-mysql-server", Title: "Azure MySQL Server", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 	{Name: "azure-mysql-flexible-server", Title: "Azure MySQL Flexible Server", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 	{Name: "azure-aks-cluster", Title: "Azure AKS Cluster", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 	{Name: "azure-app-service-webapp", Title: "Azure App Service App", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
@@ -33,11 +31,14 @@ var Platforms = []*plugin.PlatformInfo{
 	{Name: "azure-function-app", Title: "Azure Function App", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 	{Name: "azure-container-app", Title: "Azure Container App", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 	{Name: "azure-keyvault-vault", Title: "Azure Key Vault", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
+	{Name: "azure-keyvault-managedhsm", Title: "Azure Key Vault Managed HSM", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
+	{Name: "azure-iot-iothub", Title: "Azure IoT Hub", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 	{Name: "azure-cosmosdb", Title: "Azure Cosmos DB Account", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 	{Name: "azure-container-registry", Title: "Azure Container Registry", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 	{Name: "azure-recovery-services-vault", Title: "Azure Recovery Services Vault", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 	{Name: "azure-synapse-workspace", Title: "Azure Synapse Analytics Workspace", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 	{Name: "azure-datafactory", Title: "Azure Data Factory", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
+	{Name: "azure-cognitiveservices-account", Title: "Azure AI Services Account", Kind: []string{"azure-object"}, Runtime: []string{"azure"}},
 }
 
 var platformsByName = plugin.PlatformsByName(Platforms)

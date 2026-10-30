@@ -1,0 +1,33 @@
+{
+ "auxiliaryXcvrSlots": {},
+ "cardSlots": {},
+ "cpuPortCount": 0,
+ "dataLinkPortCount": 0,
+ "emmcFlashDevices": {},
+ "fabricPortCount": 0,
+ "fabricXcvrSlots": {},
+ "fanTraySlots": {},
+ "fpgas": {},
+ "frontPanelFabricPortCount": 0,
+ "internalPortCount": 0,
+ "managementPortCount": 0,
+ "mgmtXcvrSlots": {},
+ "portCount": 1,
+ "powerSupplySlots": {},
+ "storageDevices": {},
+ "subcompSerNums": {},
+ "switchManagementPortCount": 0,
+ "switchedBootstrapPortCount": 1,
+ "switchedFortyGOnlyPortCount": 0,
+ "switchedPortCount": 0,
+ "systemInformation": {
+  "description": "EOS in a virtual machine",
+  "hardwareRev": "",
+  "hwEpoch": "",
+  "mfgDate": "",
+  "name": "CloudEOS",
+  "serialNum": "B84265A8FF3F9D9B0B030E51732B45EE"
+ },
+ "unconnectedPortCount": 0,
+ "xcvrSlots": {}
+}

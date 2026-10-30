@@ -13,12 +13,13 @@ import (
 	"strconv"
 	"strings"
 	sync "sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
-	llx "go.mondoo.com/mql/v13/llx"
-	inventory "go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/memoize"
+	llx "go.mondoo.com/mql/llx"
+	inventory "go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/util/memoize"
 )
 
 const DISABLE_DELAYED_DISCOVERY_OPTION = "disable-delayed-discovery"
@@ -28,11 +29,55 @@ type Service struct {
 	lastConnectionID uint32
 	runtimesLock     sync.RWMutex
 
-	lastHeartbeat int64
-	heartbeatLock sync.Mutex
+	// clockBase anchors the watchdog's clock. lastHeartbeat is an offset from
+	// it, so every silence is measured on the monotonic clock: a wall-clock
+	// step (NTP, guest time sync after a VM resume) must not read as silence.
+	clockBase time.Time
+	// lastHeartbeat is when we last saw a heartbeat from the parent process,
+	// in nanoseconds since clockBase.
+	lastHeartbeat atomic.Int64
+	// heartbeatWindow is the tolerance (in nanos) the parent asked us to apply,
+	// i.e. how long it intends to let pass between two heartbeats at most.
+	heartbeatWindow atomic.Int64
+	// inflightRequests counts the requests we are currently serving. A provider
+	// that is working on a request has a live parent by definition, which is
+	// what the watchdog is looking for.
+	inflightRequests atomic.Int64
+	// watchdogOnce guards starting the watchdog, which only makes sense once we
+	// know the parent speaks the heartbeat protocol.
+	watchdogOnce sync.Once
+	// watchdogStop retires the watchdog on shutdown, so a teardown that outlives
+	// the last heartbeat cannot be reported as a crash.
+	watchdogStop     chan struct{}
+	watchdogStopOnce sync.Once
 
 	memoize.Memoizer
 }
+
+const (
+	// heartbeatMissesBeforeExit is how many heartbeat windows may pass without
+	// a heartbeat before we treat the parent as gone. A single missed window is
+	// not evidence of death: on a loaded host, scheduling jitter, GC and paging
+	// routinely delay either side by seconds.
+	heartbeatMissesBeforeExit = 3
+	// heartbeatBusyMissesBeforeExit is the same budget for a provider that is
+	// actively serving requests. Exiting then is the expensive case — it throws
+	// away the whole scan's in-flight work and reports every field being
+	// resolved as a crash — while the requests themselves prove the parent was
+	// alive when it sent them, so we hold out considerably longer.
+	heartbeatBusyMissesBeforeExit = 6
+	// minHeartbeatPollInterval keeps the watchdog from spinning if a parent
+	// requests a very small window.
+	minHeartbeatPollInterval = 250 * time.Millisecond
+)
+
+// watchdogExit terminates the process when the parent is gone. It is a variable
+// so tests can observe the decision without ending the test binary.
+var watchdogExit = os.Exit
+
+// watchdogNow is the watchdog's clock. It is a variable so tests can simulate
+// the whole process tree being frozen (sleep, standby, VM pause, SIGSTOP).
+var watchdogNow = time.Now
 
 var (
 	cacheExpirationTime = 3 * time.Hour
@@ -41,8 +86,10 @@ var (
 
 func NewService() *Service {
 	return &Service{
-		runtimes: make(map[uint32]*Runtime),
-		Memoizer: memoize.New(cacheExpirationTime, cacheCleanupTime),
+		clockBase:    watchdogNow(),
+		runtimes:     make(map[uint32]*Runtime),
+		watchdogStop: make(chan struct{}),
+		Memoizer:     memoize.New(cacheExpirationTime, cacheCleanupTime),
 	}
 }
 
@@ -79,10 +126,11 @@ func (s *Service) AddRuntime(conf *inventory.Config, createRuntime func(connId u
 		if parentId := runtime.Connection.ParentID(); parentId > 0 {
 			parentRuntime, err := s.GetRuntime(parentId)
 			if err != nil {
-				return nil, errors.New("parent connection " + strconv.FormatUint(uint64(parentId), 10) + " not found")
+				log.Warn().Uint32("parent", parentId).Uint32("child", conf.Id).
+					Msg("parent connection not found, proceeding without shared resource cache")
+			} else {
+				runtime.Resources = parentRuntime.Resources
 			}
-			runtime.Resources = parentRuntime.Resources
-
 		}
 	}
 
@@ -115,10 +163,11 @@ func (s *Service) deprecatedAddRuntime(createRuntime func(connId uint32) (*Runti
 		if parentId := runtime.Connection.ParentID(); parentId > 0 {
 			parentRuntime, err := s.doGetRuntime(parentId)
 			if err != nil {
-				return nil, errors.New("parent connection " + strconv.FormatUint(uint64(parentId), 10) + " not found")
+				log.Warn().Uint32("parent", parentId).Uint32("child", s.lastConnectionID).
+					Msg("parent connection not found, proceeding without shared resource cache")
+			} else {
+				runtime.Resources = parentRuntime.Resources
 			}
-			runtime.Resources = parentRuntime.Resources
-
 		}
 	}
 	s.runtimes[s.lastConnectionID] = runtime
@@ -314,33 +363,131 @@ func (s *Service) StoreData(req *StoreReq) (*StoreRes, error) {
 	return &StoreRes{}, nil
 }
 
+// Heartbeat records that the parent process is alive and arms the watchdog that
+// reaps this provider if the parent disappears without shutting us down.
 func (s *Service) Heartbeat(req *HeartbeatReq) (*HeartbeatRes, error) {
 	if req.Interval == 0 {
 		return nil, errors.New("heartbeat failed, requested interval is 0")
 	}
 
-	now := time.Now().UnixNano()
-	s.heartbeatLock.Lock()
-	s.lastHeartbeat = now
-	s.heartbeatLock.Unlock()
-
-	go func() {
-		time.Sleep(time.Duration(req.Interval))
-
-		s.heartbeatLock.Lock()
-		isDead := s.lastHeartbeat == now
-		s.heartbeatLock.Unlock()
-
-		if isDead {
-			// use 4 since we actually do not want to reach the point, see tetraphobia
-			os.Exit(4)
-		}
-	}()
+	s.heartbeatWindow.Store(int64(req.Interval))
+	s.lastHeartbeat.Store(int64(s.sinceClockBase(watchdogNow())))
+	s.watchdogOnce.Do(func() {
+		go s.heartbeatWatchdog()
+	})
 
 	return &heartbeatRes, nil
 }
 
+// sinceClockBase is t on the watchdog's monotonic clock.
+func (s *Service) sinceClockBase(t time.Time) time.Duration {
+	return t.Sub(s.clockBase)
+}
+
+// TrackRequest marks the beginning of a request served for the parent process
+// and returns the function that marks its end. Requests are liveness evidence
+// for the watchdog: whatever else is true of a provider that is answering a
+// request, it has not been abandoned.
+func (s *Service) TrackRequest() func() {
+	s.inflightRequests.Add(1)
+	return func() {
+		s.inflightRequests.Add(-1)
+	}
+}
+
+// heartbeatWatchdog is the dead-man's switch for an abandoned provider: when the
+// parent process dies without shutting us down, nothing else would ever stop
+// this process. It deliberately does *not* try to detect a slow or wedged
+// provider — the parent kills us for that, and it has the context to decide.
+func (s *Service) heartbeatWatchdog() {
+	late := false
+	lastPoll := watchdogNow()
+	for {
+		window := time.Duration(s.heartbeatWindow.Load())
+		poll := max(window/2, minHeartbeatPollInterval)
+		select {
+		case <-s.watchdogStop:
+			return
+		case <-time.After(poll):
+		}
+
+		// re-read: the parent may have changed the window in the meantime
+		window = time.Duration(s.heartbeatWindow.Load())
+		poll = max(window/2, minHeartbeatPollInterval)
+		now := watchdogNow()
+		if overslept := now.Sub(lastPoll); overslept > poll+window {
+			// We did not get to run for longer than a whole window, so neither
+			// did anything else on this host: the machine slept, the VM was
+			// paused, or we were stopped together with the parent. That silence
+			// says nothing about the parent. Give it a fresh window instead of
+			// exiting before it had a chance to send the next beat.
+			log.Warn().
+				Str("overslept", overslept.String()).
+				Str("window", window.String()).
+				Msg("heartbeat watchdog was suspended, re-arming")
+			s.lastHeartbeat.Store(int64(s.sinceClockBase(now)))
+		}
+		lastPoll = now
+		silence := s.sinceClockBase(now) - time.Duration(s.lastHeartbeat.Load())
+		inflight := s.inflightRequests.Load()
+
+		if silence <= window {
+			late = false
+			continue
+		}
+
+		if !late {
+			// This is the point at which we used to exit. Log it so a fleet
+			// that is merely slow is distinguishable from one that is dying.
+			late = true
+			log.Warn().
+				Str("silence", silence.String()).
+				Str("window", window.String()).
+				Int64("inflight", inflight).
+				Msg("no heartbeat from the parent process, still working")
+		}
+
+		if !watchdogShouldExit(silence, window, inflight) {
+			continue
+		}
+
+		// The parent is gone. Say so on stderr: it is the only channel that
+		// survives into the crash report the parent's supervisor writes, and
+		// without it this exit is indistinguishable from a hard kill.
+		fmt.Fprintf(os.Stderr,
+			"provider watchdog: no heartbeat from parent process for %s (window %s, %d requests in flight), exiting\n",
+			silence.Round(time.Millisecond), window, inflight)
+		// use 4 since we actually do not want to reach the point, see tetraphobia
+		watchdogExit(4)
+		return
+	}
+}
+
+// stopWatchdog retires the heartbeat watchdog. It is safe to call more than once
+// and on a Service that never started one.
+func (s *Service) stopWatchdog() {
+	s.watchdogStopOnce.Do(func() {
+		if s.watchdogStop != nil {
+			close(s.watchdogStop)
+		}
+	})
+}
+
+// watchdogShouldExit reports whether the silence has lasted long enough that the
+// parent has to be considered gone rather than late.
+func watchdogShouldExit(silence, window time.Duration, inflight int64) bool {
+	misses := int64(heartbeatMissesBeforeExit)
+	if inflight > 0 {
+		misses = heartbeatBusyMissesBeforeExit
+	}
+	return silence > time.Duration(misses)*window
+}
+
 func (s *Service) Shutdown(req *ShutdownReq) (*ShutdownRes, error) {
+	// The parent is done with us: stop watching for its heartbeat, or a
+	// teardown that takes longer than the window would exit as a crash.
+	s.stopWatchdog()
+
 	s.runtimesLock.Lock()
 	defer s.runtimesLock.Unlock()
 

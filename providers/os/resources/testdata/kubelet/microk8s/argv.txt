@@ -1,0 +1,8 @@
+/snap/microk8s/9072/kubelite
+--scheduler-args-file=/var/snap/microk8s/9072/args/kube-scheduler
+--controller-manager-args-file=/var/snap/microk8s/9072/args/kube-controller-manager
+--proxy-args-file=/var/snap/microk8s/9072/args/kube-proxy
+--kubelet-args-file=/var/snap/microk8s/9072/args/kubelet
+--apiserver-args-file=/var/snap/microk8s/9072/args/kube-apiserver
+--kubeconfig-file=/var/snap/microk8s/9072/credentials/client.config
+--start-control-plane=true

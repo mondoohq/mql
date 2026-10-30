@@ -147,3 +147,21 @@ func TestSecurityProductsPowershell(t *testing.T) {
 		Timestamp:          mustParse("Fri, 05 Apr 2019 16:26:27 GMT"),
 	}, findProduct(products, "{D68DDC3A-831F-4fae-9E44-DA132C1ACF46}", "antispyware"))
 }
+
+// A real SecurityCenter2 reading from Windows Server 2016 (10.0.14393), 2019
+// (10.0.17763) and 2022 (10.0.20348), all of which produced identical output.
+//
+// Windows Server has no Security Center: the root/SecurityCenter2 namespace
+// does not exist, so every class query fails and the script emits three empty
+// arrays. The parse has to produce an empty list without inventing a product,
+// and the caller has to understand that this list means "nothing was
+// enumerable here", not "no antivirus is installed".
+func TestParseWindowsSecurityProducts_None(t *testing.T) {
+	f, err := os.Open("./testdata/security_products_none.json")
+	require.NoError(t, err)
+	defer f.Close()
+
+	products, err := ParseWindowsSecurityProducts(f)
+	require.NoError(t, err)
+	assert.Empty(t, products)
+}

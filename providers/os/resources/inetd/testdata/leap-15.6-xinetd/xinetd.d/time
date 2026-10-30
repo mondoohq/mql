@@ -1,0 +1,14 @@
+# default: off
+# description: An RFC 868 time server. This is the tcp version,
+# which is used by rdate.
+
+service time
+{
+	type		= INTERNAL
+	id		= time-stream
+	socket_type	= stream
+	protocol	= tcp
+	user		= root
+	wait		= no
+	disable		= yes
+}                                                                               

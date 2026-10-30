@@ -73,3 +73,34 @@ func (c *PveConnection) GetSDNSubnets(vnet string) ([]SDNSubnet, error) {
 	}
 	return subnets, nil
 }
+
+// ---------------------------------------------------------------------------
+// SDN vnet firewall — scoped under a vnet
+// ---------------------------------------------------------------------------
+
+// GetSDNVNetFirewallRules lists the firewall rules attached to an SDN vnet.
+// The vnet firewall arrived in a later Proxmox release than the SDN itself and
+// needs SDN.Audit on the vnet, so the second return value reports whether the
+// scope could be read at all.
+func (c *PveConnection) GetSDNVNetFirewallRules(vnet string) ([]FirewallRule, bool, error) {
+	var rules []FirewallRule
+	path := fmt.Sprintf("/cluster/sdn/vnets/%s/firewall/rules", vnet)
+	readable, err := c.getIfAvailable(path, &rules)
+	if err != nil {
+		return nil, false, err
+	}
+	return rules, readable, nil
+}
+
+// GetSDNVNetFirewallOptions reads the firewall options of an SDN vnet. Unlike
+// the other scopes these carry `policy_forward` and `log_level_forward`, since
+// a vnet filters traffic crossing between guests rather than entering one.
+func (c *PveConnection) GetSDNVNetFirewallOptions(vnet string) (map[string]any, bool, error) {
+	var opts map[string]any
+	path := fmt.Sprintf("/cluster/sdn/vnets/%s/firewall/options", vnet)
+	readable, err := c.getIfAvailable(path, &opts)
+	if err != nil {
+		return nil, false, err
+	}
+	return opts, readable, nil
+}

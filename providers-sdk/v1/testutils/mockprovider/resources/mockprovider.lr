@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 option provider = "go.mondoo.com/mql/providers-sdk/v1/testutils/mockprovider"
-option go_package = "go.mondoo.com/mql/v13/providers-sdk/v1/testutils/mockprovider"
+option go_package = "go.mondoo.com/mql/providers-sdk/v1/testutils/mockprovider"
+
+alias mgroup.mthing = mthing
 
 muser {
   name string
@@ -12,10 +14,24 @@ muser {
   groups() []mgroup
   dict() dict
   error() string
+  // Asset typed to a root this schema defines, so chaining type-checks (ADR 031)
+  running() asset<mgroup>
+  // Asset typed to a root no loaded schema defines: the degrade path (ADR 031)
+  runningUnknown() asset<mcp>
 }
 
 mgroup {
   name string
+}
+
+// Resource reached from the root by an alias
+//
+// An alias compiles to a createResource chunk bound to the root rather than to
+// a field read. That is a separate execution path, and the one that used to
+// build the resource on the wrong runtime after a chain crossed into another
+// asset (ADR 031).
+mthing {
+  value string
 }
 
 mos {

@@ -4,16 +4,23 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/oci/provider"
-	"go.mondoo.com/mql/v13/providers/oci/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/oci/provider"
+	"go.mondoo.com/mql/providers/oci/resources"
 )
 
 var Config = plugin.Provider{
-	Name:            "oci",
-	ID:              "go.mondoo.com/cnquery/v9/providers/oci",
-	Version:         "13.13.0",
+	Name: "oci",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "oci",
+	ID:      "go.mondoo.com/mql/providers/oci",
+	Version: "14.4.0",
+	Requires: []plugin.ProviderDep{
+		// Every root carries `asset`, which core owns (ADR 042).
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.ConnectionType},
 	Platforms:       resources.Platforms,
 	Connectors: []plugin.Connector{
@@ -28,6 +35,8 @@ Examples:
   cnspec scan oci --tenancy <tenancy_ocid> --user <user_ocid> --region <region> --key-path <path_to_private_key> --fingerprint <key_fingerprint>
   cnspec shell oci --profile MYPROFILE
   cnspec shell oci --config-file /path/to/config --profile MYPROFILE
+  cnspec scan oci --auth-method instance-principal
+  cnspec scan oci --auth-method workload-identity
 `,
 			Discovery: []string{
 				resources.DiscoveryTenancy,
@@ -40,6 +49,7 @@ Examples:
 				resources.DiscoveryRedisClusters,
 				resources.DiscoveryVaultSecrets,
 				resources.DiscoveryOkeClusters,
+				resources.DiscoveryGenerativeAiEndpoints,
 			},
 			Flags: []plugin.Flag{
 				{
@@ -89,6 +99,18 @@ Examples:
 					Type:    plugin.FlagType_String,
 					Default: "",
 					Desc:    "Path to OCI config file (default: ~/.oci/config)",
+				},
+				{
+					Long:    "auth-method",
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Authentication method: api-key (default), instance-principal, resource-principal, workload-identity, or security-token",
+				},
+				{
+					Long:    "filters",
+					Type:    plugin.FlagType_KeyValue,
+					Default: "",
+					Desc:    "Filter options, e.g., --filters regions=us-ashburn-1,us-phoenix-1 --filters compartments=production --filters exclude:compartments=sandbox --filters tag:env=prod --filters tag:Operations.CostCenter=42 --filters exclude:tag:env=dev",
 				},
 			},
 		},

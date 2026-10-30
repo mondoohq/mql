@@ -41,7 +41,11 @@ var allowedSELinuxTypes = map[string]struct{}{
 }
 
 // safeSysctls is the kubelet's safe sysctl set; baseline forbids any sysctl
-// outside it.
+// outside it. It mirrors the Pod Security Standards "Sysctls" allowed values,
+// which gained the TCP keepalive and fin_timeout entries in Kubernetes 1.29 and
+// net.ipv4.tcp_rmem / net.ipv4.tcp_wmem in 1.32. Tuning TCP keepalives is
+// routine for long-lived connections, so a stale list here reports ordinary
+// workloads as baseline violations.
 var safeSysctls = map[string]struct{}{
 	"kernel.shm_rmid_forced":              {},
 	"net.ipv4.ip_local_port_range":        {},
@@ -49,6 +53,12 @@ var safeSysctls = map[string]struct{}{
 	"net.ipv4.tcp_syncookies":             {},
 	"net.ipv4.ping_group_range":           {},
 	"net.ipv4.ip_local_reserved_ports":    {},
+	"net.ipv4.tcp_keepalive_time":         {},
+	"net.ipv4.tcp_fin_timeout":            {},
+	"net.ipv4.tcp_keepalive_intvl":        {},
+	"net.ipv4.tcp_keepalive_probes":       {},
+	"net.ipv4.tcp_rmem":                   {},
+	"net.ipv4.tcp_wmem":                   {},
 }
 
 // ---- baseline controls ----
@@ -164,6 +174,10 @@ func specBaselineHostProcess(spec *corev1.PodSpec) bool {
 func specMeetsPodSecurityBaseline(spec *corev1.PodSpec) bool {
 	return !specRunsPrivileged(spec) &&
 		!specUsesHostNamespaces(spec) &&
+		// HostPath Volumes is a *baseline* control upstream, not restricted-only.
+		// Omitting it here reported a node-agent DaemonSet as baseline-compliant
+		// while PodSecurity enforcement refuses to admit it.
+		!specUsesHostPath(spec) &&
 		!specUsesUnconfinedSeccomp(spec) &&
 		specBaselineHostPorts(spec) &&
 		specBaselineCapabilities(spec) &&

@@ -12,6 +12,7 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestEc2TagsToMap(t *testing.T) {
@@ -26,15 +27,17 @@ func TestEc2TagsToMap(t *testing.T) {
 		assert.Len(t, result, 2)
 	})
 
-	t.Run("skips tags with nil key or value", func(t *testing.T) {
+	t.Run("skips nil keys and represents a nil value as empty string", func(t *testing.T) {
+		// Unified tag-conversion policy (see tagsToStringMap): a nil key is
+		// dropped (a tag key is never legitimately empty), but a present key
+		// with a nil value is kept as "" so the tag remains visible.
 		tags := []ec2types.Tag{
 			{Key: aws.String("good"), Value: aws.String("val")},
 			{Key: nil, Value: aws.String("orphan-val")},
 			{Key: aws.String("orphan-key"), Value: nil},
 		}
 		result := ec2TagsToMap(tags)
-		assert.Equal(t, "val", result["good"])
-		assert.Len(t, result, 1)
+		assert.Equal(t, map[string]string{"good": "val", "orphan-key": ""}, result)
 	})
 
 	t.Run("returns empty map for nil slice", func(t *testing.T) {
@@ -123,6 +126,30 @@ func TestArnPatterns(t *testing.T) {
 		{"route table", routeTableArnPattern, "us-east-1", "123456789012", "rtb-bbb", "arn:aws:ec2:us-east-1:123456789012:route-table/rtb-bbb"},
 		{"network ACL", networkAclArnPattern, "us-east-1", "123456789012", "acl-ccc", "arn:aws:ec2:us-east-1:123456789012:network-acl/acl-ccc"},
 		{"transit gateway", transitGatewayArnPattern, "us-east-1", "123456789012", "tgw-ddd", "arn:aws:ec2:us-east-1:123456789012:transit-gateway/tgw-ddd"},
+		// Synthesized ARNs for resources with no ARN in their describe response.
+		// Expected strings follow the AWS Service Authorization Reference; the
+		// segment/delimiter differences below are deliberate and load-bearing.
+		{"VPC endpoint", vpcEndpointArnPattern, "us-east-1", "123456789012", "vpce-0abc123", "arn:aws:ec2:us-east-1:123456789012:vpc-endpoint/vpce-0abc123"},
+		{"VPC flow log", vpcFlowLogArnPattern, "us-east-1", "123456789012", "fl-0abc123", "arn:aws:ec2:us-east-1:123456789012:vpc-flow-log/fl-0abc123"},
+		{"NAT gateway", natGatewayArnPattern, "us-east-1", "123456789012", "nat-0abc123", "arn:aws:ec2:us-east-1:123456789012:natgateway/nat-0abc123"},
+		{"network interface", networkInterfaceArnPattern, "us-east-1", "123456789012", "eni-0abc123", "arn:aws:ec2:us-east-1:123456789012:network-interface/eni-0abc123"},
+		{"DHCP options", dhcpOptionsArnPattern, "us-east-1", "123456789012", "dopt-0abc123", "arn:aws:ec2:us-east-1:123456789012:dhcp-options/dopt-0abc123"},
+		{"TGW attachment", tgwAttachmentArnPattern, "us-east-1", "123456789012", "tgw-attach-0abc123", "arn:aws:ec2:us-east-1:123456789012:transit-gateway-attachment/tgw-attach-0abc123"},
+		{"TGW route table", tgwRouteTableArnPattern, "us-east-1", "123456789012", "tgw-rtb-0abc123", "arn:aws:ec2:us-east-1:123456789012:transit-gateway-route-table/tgw-rtb-0abc123"},
+		{"CloudHSM cluster", cloudhsmClusterArnPattern, "us-east-1", "123456789012", "cluster-abc", "arn:aws:cloudhsm:us-east-1:123456789012:cluster/cluster-abc"},
+		{"GuardDuty detector", guarddutyDetectorArnPattern, "us-east-1", "123456789012", "det-abc", "arn:aws:guardduty:us-east-1:123456789012:detector/det-abc"},
+		{"Cognito identity pool", cognitoIdentityPoolArnPattern, "us-east-1", "123456789012", "us-east-1:guid", "arn:aws:cognito-identity:us-east-1:123456789012:identitypool/us-east-1:guid"},
+		{"Glue database", glueDatabaseArnPattern, "us-east-1", "123456789012", "mydb", "arn:aws:glue:us-east-1:123456789012:database/mydb"},
+		{"Glue connection", glueConnectionArnPattern, "us-east-1", "123456789012", "myconn", "arn:aws:glue:us-east-1:123456789012:connection/myconn"},
+		{"Glue workflow", glueWorkflowArnPattern, "us-east-1", "123456789012", "mywf", "arn:aws:glue:us-east-1:123456789012:workflow/mywf"},
+		{"Athena data catalog", athenaDataCatalogArnPattern, "us-east-1", "123456789012", "mycatalog", "arn:aws:athena:us-east-1:123456789012:datacatalog/mycatalog"},
+		{"WorkSpaces workspace", workspacesWorkspaceArnPattern, "us-east-1", "123456789012", "ws-abc", "arn:aws:workspaces:us-east-1:123456789012:workspace/ws-abc"},
+		{"WorkSpaces directory", workspacesDirectoryArnPattern, "us-east-1", "123456789012", "d-abc", "arn:aws:workspaces:us-east-1:123456789012:directory/d-abc"},
+		{"WorkSpaces IP group", workspacesIpGroupArnPattern, "us-east-1", "123456789012", "wsipg-abc", "arn:aws:workspaces:us-east-1:123456789012:workspaceipgroup/wsipg-abc"},
+		// colon delimiter before the identifier, not a slash
+		{"Redshift subnet group", redshiftSubnetGroupArnPattern, "us-east-1", "123456789012", "mygroup", "arn:aws:redshift:us-east-1:123456789012:subnetgroup:mygroup"},
+		{"Redshift event subscription", redshiftEventSubscriptionArnPattern, "us-east-1", "123456789012", "mysub", "arn:aws:redshift:us-east-1:123456789012:eventsubscription:mysub"},
+		{"Lambda event source mapping", lambdaEventSourceMappingArnPattern, "us-east-1", "123456789012", "uuid-abc", "arn:aws:lambda:us-east-1:123456789012:event-source-mapping:uuid-abc"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -214,6 +241,144 @@ func TestNewMqlVpnConnection(t *testing.T) {
 		assert.Nil(t, result.cacheVpnGatewayId)
 		assert.Nil(t, result.cacheTransitGatewayId)
 		assert.Nil(t, result.cacheCustomerGatewayId)
+	})
+
+	t.Run("populates tunnel IKE crypto options", func(t *testing.T) {
+		vpnConn := ec2types.VpnConnection{
+			VpnConnectionId: aws.String("vpn-tunnels"),
+			State:           ec2types.VpnStateAvailable,
+			Options: &ec2types.VpnConnectionOptions{
+				TunnelOptions: []ec2types.TunnelOption{
+					{
+						OutsideIpAddress: aws.String("203.0.113.10"),
+						TunnelInsideCidr: aws.String("169.254.10.0/30"),
+						IkeVersions: []ec2types.IKEVersionsListValue{
+							{Value: aws.String("ikev2")},
+						},
+						Phase1EncryptionAlgorithms: []ec2types.Phase1EncryptionAlgorithmsListValue{
+							{Value: aws.String("AES256")},
+							{Value: aws.String("AES256-GCM-16")},
+						},
+						Phase2EncryptionAlgorithms: []ec2types.Phase2EncryptionAlgorithmsListValue{
+							{Value: aws.String("AES256")},
+						},
+						Phase1IntegrityAlgorithms: []ec2types.Phase1IntegrityAlgorithmsListValue{
+							{Value: aws.String("SHA2-256")},
+						},
+						Phase2IntegrityAlgorithms: []ec2types.Phase2IntegrityAlgorithmsListValue{
+							{Value: aws.String("SHA2-512")},
+						},
+						Phase1DHGroupNumbers: []ec2types.Phase1DHGroupNumbersListValue{
+							{Value: aws.Int32(20)},
+							{Value: aws.Int32(21)},
+						},
+						Phase2DHGroupNumbers: []ec2types.Phase2DHGroupNumbersListValue{
+							{Value: aws.Int32(20)},
+						},
+					},
+					{
+						// second tunnel with mostly nil pointers to exercise nil-safety
+						OutsideIpAddress: aws.String("203.0.113.20"),
+					},
+				},
+			},
+		}
+
+		result, err := newMqlVpnConnection(runtime, "us-east-1", "123456789012", vpnConn)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		tunnels := result.TunnelOptions.Data
+		require.Len(t, tunnels, 2)
+
+		t0 := tunnels[0].(*mqlAwsEc2VpnconnectionTunnelOption)
+		assert.Equal(t, "203.0.113.10", t0.OutsideIpAddress.Data)
+		assert.Equal(t, "169.254.10.0/30", t0.TunnelInsideCidr.Data)
+		assert.Equal(t, []any{"ikev2"}, t0.IkeVersions.Data)
+		assert.Equal(t, []any{"AES256", "AES256-GCM-16"}, t0.Phase1EncryptionAlgorithms.Data)
+		assert.Equal(t, []any{"AES256"}, t0.Phase2EncryptionAlgorithms.Data)
+		assert.Equal(t, []any{"SHA2-256"}, t0.Phase1IntegrityAlgorithms.Data)
+		assert.Equal(t, []any{"SHA2-512"}, t0.Phase2IntegrityAlgorithms.Data)
+		assert.Equal(t, []any{int64(20), int64(21)}, t0.Phase1DHGroupNumbers.Data)
+		assert.Equal(t, []any{int64(20)}, t0.Phase2DHGroupNumbers.Data)
+
+		t1 := tunnels[1].(*mqlAwsEc2VpnconnectionTunnelOption)
+		assert.Equal(t, "203.0.113.20", t1.OutsideIpAddress.Data)
+		assert.Empty(t, t1.TunnelInsideCidr.Data)
+		assert.Empty(t, t1.IkeVersions.Data)
+		assert.Empty(t, t1.Phase1DHGroupNumbers.Data)
+	})
+
+	t.Run("tunnels with empty outside IPs get distinct ids", func(t *testing.T) {
+		// Both tunnels of a Site-to-Site VPN report an empty outside IP while
+		// still provisioning; the __id must stay unique so they don't collide
+		// in the resource cache.
+		vpnConn := ec2types.VpnConnection{
+			VpnConnectionId: aws.String("vpn-provisioning"),
+			Options: &ec2types.VpnConnectionOptions{
+				TunnelOptions: []ec2types.TunnelOption{
+					{},
+					{},
+				},
+			},
+		}
+
+		result, err := newMqlVpnConnection(runtime, "us-east-1", "123456789012", vpnConn)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		tunnels := result.TunnelOptions.Data
+		require.Len(t, tunnels, 2)
+
+		id0 := tunnels[0].(*mqlAwsEc2VpnconnectionTunnelOption).MqlID()
+		id1 := tunnels[1].(*mqlAwsEc2VpnconnectionTunnelOption).MqlID()
+		assert.NotEqual(t, id0, id1)
+		assert.Contains(t, id0, "vpn-provisioning")
+	})
+
+	t.Run("empty tunnel options list", func(t *testing.T) {
+		vpnConn := ec2types.VpnConnection{
+			VpnConnectionId: aws.String("vpn-no-tunnels"),
+			Options:         &ec2types.VpnConnectionOptions{},
+		}
+		result, err := newMqlVpnConnection(runtime, "us-east-1", "123456789012", vpnConn)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Empty(t, result.TunnelOptions.Data)
+	})
+}
+
+func TestTunnelOptionValueHelpers(t *testing.T) {
+	t.Run("listValuesToStrings extracts values and skips nil", func(t *testing.T) {
+		in := []ec2types.IKEVersionsListValue{
+			{Value: aws.String("ikev1")},
+			{Value: nil},
+			{Value: aws.String("ikev2")},
+		}
+		out := listValuesToStrings(in, func(v ec2types.IKEVersionsListValue) *string { return v.Value })
+		assert.Equal(t, []any{"ikev1", "ikev2"}, out)
+	})
+
+	t.Run("listValuesToStrings on nil slice returns empty (non-nil)", func(t *testing.T) {
+		out := listValuesToStrings(nil, func(v ec2types.IKEVersionsListValue) *string { return v.Value })
+		assert.NotNil(t, out)
+		assert.Empty(t, out)
+	})
+
+	t.Run("dhGroupNumbersToInts converts int32 to int64 and skips nil", func(t *testing.T) {
+		in := []ec2types.Phase1DHGroupNumbersListValue{
+			{Value: aws.Int32(14)},
+			{Value: nil},
+			{Value: aws.Int32(24)},
+		}
+		out := dhGroupNumbersToInts(in, func(v ec2types.Phase1DHGroupNumbersListValue) *int32 { return v.Value })
+		assert.Equal(t, []any{int64(14), int64(24)}, out)
+	})
+
+	t.Run("dhGroupNumbersToInts on nil slice returns empty (non-nil)", func(t *testing.T) {
+		out := dhGroupNumbersToInts(nil, func(v ec2types.Phase1DHGroupNumbersListValue) *int32 { return v.Value })
+		assert.NotNil(t, out)
+		assert.Empty(t, out)
 	})
 }
 
@@ -383,5 +548,188 @@ func TestVpnGatewayNullState(t *testing.T) {
 		require.Nil(t, result)
 		assert.True(t, vpn.CustomerGateway.IsNull())
 		assert.True(t, vpn.CustomerGateway.IsSet())
+	})
+}
+
+// TestRouteNextHopNullState covers how a route table route resolves its
+// polymorphic gatewayId into the correct typed next-hop. gatewayId can name an
+// internet gateway (igw-), a virtual private gateway (vgw-), a VPC endpoint, or
+// the local route, so internetGateway() and vpnGateway() must each resolve only
+// their own prefix and return a set-null value otherwise (never cross-resolve).
+func TestRouteNextHopNullState(t *testing.T) {
+	t.Run("internetGateway is null when gatewayId is empty", func(t *testing.T) {
+		route := &mqlAwsVpcRoutetableRoute{}
+		result, err := route.internetGateway()
+		require.NoError(t, err)
+		require.Nil(t, result)
+		assert.True(t, route.InternetGateway.IsNull())
+		assert.True(t, route.InternetGateway.IsSet())
+	})
+
+	t.Run("internetGateway is null when gatewayId is a virtual private gateway", func(t *testing.T) {
+		route := &mqlAwsVpcRoutetableRoute{}
+		route.GatewayId = plugin.TValue[string]{Data: "vgw-0123456789abcdef0", State: plugin.StateIsSet}
+		result, err := route.internetGateway()
+		require.NoError(t, err)
+		require.Nil(t, result)
+		assert.True(t, route.InternetGateway.IsNull())
+		assert.True(t, route.InternetGateway.IsSet())
+	})
+
+	t.Run("vpnGateway is null when gatewayId is empty", func(t *testing.T) {
+		route := &mqlAwsVpcRoutetableRoute{}
+		result, err := route.vpnGateway()
+		require.NoError(t, err)
+		require.Nil(t, result)
+		assert.True(t, route.VpnGateway.IsNull())
+		assert.True(t, route.VpnGateway.IsSet())
+	})
+
+	t.Run("vpnGateway is null when gatewayId is an internet gateway", func(t *testing.T) {
+		route := &mqlAwsVpcRoutetableRoute{}
+		route.GatewayId = plugin.TValue[string]{Data: "igw-0123456789abcdef0", State: plugin.StateIsSet}
+		result, err := route.vpnGateway()
+		require.NoError(t, err)
+		require.Nil(t, result)
+		assert.True(t, route.VpnGateway.IsNull())
+		assert.True(t, route.VpnGateway.IsSet())
+	})
+
+	t.Run("egressOnlyInternetGateway is null when id is empty", func(t *testing.T) {
+		route := &mqlAwsVpcRoutetableRoute{}
+		result, err := route.egressOnlyInternetGateway()
+		require.NoError(t, err)
+		require.Nil(t, result)
+		assert.True(t, route.EgressOnlyInternetGateway.IsNull())
+		assert.True(t, route.EgressOnlyInternetGateway.IsSet())
+	})
+
+	t.Run("transitGateway is null when transitGatewayId is empty", func(t *testing.T) {
+		route := &mqlAwsVpcRoutetableRoute{}
+		result, err := route.transitGateway()
+		require.NoError(t, err)
+		require.Nil(t, result)
+		assert.True(t, route.TransitGateway.IsNull())
+		assert.True(t, route.TransitGateway.IsSet())
+	})
+
+	t.Run("peeringConnection is null when vpcPeeringConnectionId is empty", func(t *testing.T) {
+		route := &mqlAwsVpcRoutetableRoute{}
+		result, err := route.peeringConnection()
+		require.NoError(t, err)
+		require.Nil(t, result)
+		assert.True(t, route.PeeringConnection.IsNull())
+		assert.True(t, route.PeeringConnection.IsSet())
+	})
+}
+
+func TestNatgatewayAddressCacheKey(t *testing.T) {
+	// two private NAT gateway addresses without an AllocationId must not collide
+	a := natgatewayAddressCacheKey("eni-0a1b2c3d", "10.0.0.5")
+	b := natgatewayAddressCacheKey("eni-4e5f6a7b", "10.0.0.6")
+	assert.Equal(t, "eni-0a1b2c3d/10.0.0.5", a)
+	assert.Equal(t, "eni-4e5f6a7b/10.0.0.6", b)
+	assert.NotEqual(t, a, b)
+}
+
+// TestVgwTelemetryKeyIsScopedToItsConnection pins that a VPN connection's
+// telemetry entries are told apart from each other and from other connections'.
+//
+// A telemetry entry carries nothing but its outside IP, and that IP is empty
+// while a tunnel is still provisioning. Keying on it alone meant both tunnels
+// of a new connection shared one row, and so did every connection in that state
+// across the whole account — so a query for tunnel status during a rollout, the
+// moment it matters most, read one entry repeated.
+func TestVgwTelemetryKeyIsScopedToItsConnection(t *testing.T) {
+	newConn := func(id string, outsideIPs ...string) *mqlAwsEc2Vpnconnection {
+		telemetry := make([]ec2types.VgwTelemetry, 0, len(outsideIPs))
+		for _, ip := range outsideIPs {
+			telemetry = append(telemetry, ec2types.VgwTelemetry{
+				OutsideIpAddress: aws.String(ip),
+				Status:           ec2types.TelemetryStatusDown,
+			})
+		}
+		conn, err := newMqlVpnConnection(testRuntime(), "us-east-1", "000000000000",
+			ec2types.VpnConnection{
+				VpnConnectionId: aws.String(id),
+				VgwTelemetry:    telemetry,
+			})
+		require.NoError(t, err)
+		return conn
+	}
+
+	keys := func(conn *mqlAwsEc2Vpnconnection) []string {
+		out := []string{}
+		for _, raw := range conn.VgwTelemetry.Data {
+			out = append(out, raw.(*mqlAwsEc2Vgwtelemetry).MqlID())
+		}
+		return out
+	}
+
+	t.Run("both tunnels of a provisioning connection are distinct", func(t *testing.T) {
+		// Neither tunnel has an outside IP yet, which is the case that collapsed
+		// them onto one row.
+		got := keys(newConn("vpn-0aaaaaaaaaaaaaaaa", "", ""))
+		require.Len(t, got, 2)
+		assert.NotEqual(t, got[0], got[1])
+	})
+
+	t.Run("two provisioning connections do not share entries", func(t *testing.T) {
+		first := keys(newConn("vpn-0aaaaaaaaaaaaaaaa", "", ""))
+		second := keys(newConn("vpn-0bbbbbbbbbbbbbbbb", "", ""))
+		for _, a := range first {
+			assert.NotContains(t, second, a)
+		}
+	})
+
+	t.Run("established tunnels stay distinct too", func(t *testing.T) {
+		got := keys(newConn("vpn-0aaaaaaaaaaaaaaaa", "203.0.113.1", "203.0.113.2"))
+		require.Len(t, got, 2)
+		assert.NotEqual(t, got[0], got[1])
+	})
+}
+
+// TestNatgatewayAddressKeyIsSetAtCreation pins that a NAT gateway address is
+// keyed by its ENI, not just its private IP.
+//
+// The key helper was always correct; what was broken is that id() reads it from
+// cacheNetworkInterfaceId, which the creator assigns *after* CreateResource has
+// already computed the key. So the ENI was always empty at the moment it
+// mattered, every address keyed on its private IP alone, and two VPCs built
+// from the same CIDR plan aliased onto one row — with the post-construction
+// writes then racing on the shared object.
+func TestNatgatewayAddressKeyIsSetAtCreation(t *testing.T) {
+	// A fresh runtime per gateway: these all describe different gateways, and a
+	// shared runtime would legitimately return the first one from cache.
+	newAddress := func(natGatewayId, eni, privateIp string) *mqlAwsVpcNatgatewayAddress {
+		runtime := testRuntime()
+		gw := ec2types.NatGateway{
+			NatGatewayId: aws.String(natGatewayId),
+			NatGatewayAddresses: []ec2types.NatGatewayAddress{{
+				NetworkInterfaceId: aws.String(eni),
+				PrivateIp:          aws.String(privateIp),
+			}},
+		}
+		nat, err := newMqlAwsVpcNatgateway(runtime, "us-east-1", gw)
+		require.NoError(t, err)
+		require.Len(t, nat.Addresses.Data, 1)
+		return nat.Addresses.Data[0].(*mqlAwsVpcNatgatewayAddress)
+	}
+
+	t.Run("the eni reaches the cache key", func(t *testing.T) {
+		addr := newAddress("nat-0aaaaaaaaaaaaaaaa", "eni-0aaaaaaaaaaaaaaaa", "10.0.1.10")
+		assert.Equal(t, "eni-0aaaaaaaaaaaaaaaa/10.0.1.10", addr.MqlID(),
+			"the key must carry the ENI, which id() could never see")
+	})
+
+	t.Run("two vpcs with the same private ip do not alias", func(t *testing.T) {
+		first := newAddress("nat-0aaaaaaaaaaaaaaaa", "eni-0aaaaaaaaaaaaaaaa", "10.0.1.10")
+		second := newAddress("nat-0bbbbbbbbbbbbbbbb", "eni-0bbbbbbbbbbbbbbbb", "10.0.1.10")
+		assert.NotEqual(t, first.MqlID(), second.MqlID())
+	})
+
+	t.Run("an address with no eni still keys on its private ip", func(t *testing.T) {
+		addr := newAddress("nat-0ccccccccccccccccc", "", "10.0.1.10")
+		assert.Equal(t, "/10.0.1.10", addr.MqlID())
 	})
 }

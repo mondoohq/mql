@@ -14,12 +14,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	mqlTypes "go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	mqlTypes "go.mondoo.com/mql/types"
 )
 
 func (e *mqlAwsSsm) id() (string, error) {
@@ -115,8 +115,34 @@ func (a *mqlAwsSsm) getParameters(conn *connection.AwsConnection) []*jobpool.Job
 }
 
 type mqlAwsSsmParameterInternal struct {
+	lazyTags
 	parameterCache types.ParameterMetadata
 	region         string
+}
+
+// tags reads the parameter's tags. SSM's ListTagsForResource is keyed on a
+// resource id and type rather than an ARN, and for a parameter the id is the
+// parameter name, including its leading path for a hierarchical parameter.
+func (a *mqlAwsSsmParameter) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		name := a.Name.Data
+
+		svc := conn.Ssm(a.region)
+		resp, err := svc.ListTagsForResource(context.Background(), &ssm.ListTagsForResourceInput{
+			ResourceId:   &name,
+			ResourceType: types.ResourceTypeForTaggingParameter,
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.TagList,
+			func(t types.Tag) *string { return t.Key },
+			func(t types.Tag) *string { return t.Value }), nil
+	})
 }
 
 func (a *mqlAwsSsmParameter) kmsKey() (*mqlAwsKmsKey, error) {
@@ -126,9 +152,7 @@ func (a *mqlAwsSsmParameter) kmsKey() (*mqlAwsKmsKey, error) {
 	}
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	mqlKey, err := NewResource(a.MqlRuntime, "aws.kms.key",
-		map[string]*llx.RawData{
-			"arn": llx.StringData(fmt.Sprintf(kmsKeyArnPattern, a.region, conn.AccountId(), convert.ToValue(a.parameterCache.KeyId))),
-		})
+		kmsKeyRefArgs(a.region, conn.AccountId(), convert.ToValue(a.parameterCache.KeyId)))
 	if err != nil {
 		return nil, err
 	}
@@ -190,23 +214,28 @@ func (a *mqlAwsSsm) getInstances(conn *connection.AwsConnection) []*jobpool.Job 
 			for _, instance := range ssminstances {
 				mqlInstance, err := CreateResource(a.MqlRuntime, "aws.ssm.instance",
 					map[string]*llx.RawData{
-						"instanceId":      llx.StringDataPtr(instance.InstanceId),
-						"pingStatus":      llx.StringData(string(instance.PingStatus)),
-						"ipAddress":       llx.StringDataPtr(instance.IPAddress),
-						"platformName":    llx.StringDataPtr(instance.PlatformName),
-						"platformType":    llx.StringData(string(instance.PlatformType)),
-						"platformVersion": llx.StringDataPtr(instance.PlatformVersion),
-						"region":          llx.StringData(region),
-						"arn":             llx.StringData(ssmInstanceArn(conn.AccountId(), region, convert.ToValue(instance.InstanceId))),
-						"agentVersion":    llx.StringDataPtr(instance.AgentVersion),
-						"lastPingedAt":    llx.TimeDataPtr(instance.LastPingDateTime),
-						"computerName":    llx.StringDataPtr(instance.ComputerName),
-						"sourceType":      llx.StringData(string(instance.SourceType)),
-						"sourceId":        llx.StringDataPtr(instance.SourceId),
-						"activationId":    llx.StringDataPtr(instance.ActivationId),
-						"resourceType":    llx.StringData(string(instance.ResourceType)),
-						"registeredAt":    llx.TimeDataPtr(instance.RegistrationDate),
-						"isLatestVersion": llx.BoolDataPtr(instance.IsLatestVersion),
+						"instanceId":                          llx.StringDataPtr(instance.InstanceId),
+						"pingStatus":                          llx.StringData(string(instance.PingStatus)),
+						"ipAddress":                           llx.StringDataPtr(instance.IPAddress),
+						"platformName":                        llx.StringDataPtr(instance.PlatformName),
+						"platformType":                        llx.StringData(string(instance.PlatformType)),
+						"platformVersion":                     llx.StringDataPtr(instance.PlatformVersion),
+						"region":                              llx.StringData(region),
+						"arn":                                 llx.StringData(ssmInstanceArn(conn.AccountId(), region, convert.ToValue(instance.InstanceId))),
+						"agentVersion":                        llx.StringDataPtr(instance.AgentVersion),
+						"lastPingedAt":                        llx.TimeDataPtr(instance.LastPingDateTime),
+						"computerName":                        llx.StringDataPtr(instance.ComputerName),
+						"sourceType":                          llx.StringData(string(instance.SourceType)),
+						"sourceId":                            llx.StringDataPtr(instance.SourceId),
+						"activationId":                        llx.StringDataPtr(instance.ActivationId),
+						"resourceType":                        llx.StringData(string(instance.ResourceType)),
+						"registeredAt":                        llx.TimeDataPtr(instance.RegistrationDate),
+						"isLatestVersion":                     llx.BoolDataPtr(instance.IsLatestVersion),
+						"associationStatus":                   llx.StringDataPtr(instance.AssociationStatus),
+						"lastAssociationExecutedAt":           llx.TimeDataPtr(instance.LastAssociationExecutionDate),
+						"lastSuccessfulAssociationExecutedAt": llx.TimeDataPtr(instance.LastSuccessfulAssociationExecutionDate),
+						"defaultInstanceName":                 llx.StringDataPtr(instance.Name),
+						"sourceLocation":                      llx.StringDataPtr(instance.SourceLocation),
 					})
 				if err != nil {
 					return nil, err
@@ -280,8 +309,8 @@ func initAwsSsmInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformSsmInstance); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -333,14 +362,5 @@ func (a *mqlAwsSsmInstance) tags() (map[string]any, error) {
 }
 
 func Ec2SSMTagsToMap(tags []ec2types.TagDescription) map[string]any {
-	tagsMap := make(map[string]any)
-
-	if len(tags) > 0 {
-		for i := range tags {
-			tag := tags[i]
-			tagsMap[convert.ToValue(tag.Key)] = convert.ToValue(tag.Value)
-		}
-	}
-
-	return tagsMap
+	return tagsToMap(tags, func(t ec2types.TagDescription) *string { return t.Key }, func(t ec2types.TagDescription) *string { return t.Value })
 }

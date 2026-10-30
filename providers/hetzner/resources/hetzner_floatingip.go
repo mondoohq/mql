@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 type mqlHetznerFloatingIpInternal struct {
@@ -21,10 +21,7 @@ func (r *mqlHetznerFloatingIp) id() (string, error) {
 }
 
 func (h *mqlHetzner) floatingIps() ([]any, error) {
-	c := conn(h.MqlRuntime)
-	items, err := paginate(func(opts hcloud.ListOpts) ([]*hcloud.FloatingIP, *hcloud.Response, error) {
-		return c.Client().FloatingIP.List(ctx(), hcloud.FloatingIPListOpts{ListOpts: opts})
-	})
+	items, err := h.allFloatingIPs()
 	if err != nil {
 		return nil, err
 	}
@@ -67,9 +64,9 @@ func newMqlHetznerFloatingIp(runtime *plugin.Runtime, f *hcloud.FloatingIP) (*mq
 }
 
 func initHetznerFloatingIp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "floatingIp")
+	if err != nil {
+		return nil, nil, err
 	}
 	f, _, err := conn(runtime).Client().FloatingIP.GetByID(ctx(), id)
 	if err != nil {

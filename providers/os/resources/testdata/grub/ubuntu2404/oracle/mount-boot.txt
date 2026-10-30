@@ -1,0 +1,1 @@
+/dev/nvme0n1p16 /boot  ext4   rw,relatime

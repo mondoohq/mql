@@ -3,6 +3,12 @@
 
 package mistralai
 
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+)
+
 type ModelList struct {
 	Object string  `json:"object"`
 	Data   []Model `json:"data"`
@@ -39,12 +45,6 @@ type ModelCapabilities struct {
 	Moderation         bool `json:"moderation"`
 	Audio              bool `json:"audio"`
 	AudioTranscription bool `json:"audio_transcription"`
-}
-
-type FineTuningJobList struct {
-	Data   []FineTuningJob `json:"data"`
-	Object string          `json:"object"`
-	Total  int             `json:"total"`
 }
 
 type FineTuningJob struct {
@@ -93,12 +93,6 @@ type WandbIntegration struct {
 	URL     *string `json:"url"`
 }
 
-type FileList struct {
-	Data   []File `json:"data"`
-	Object string `json:"object"`
-	Total  *int   `json:"total"`
-}
-
 type File struct {
 	ID         string  `json:"id"`
 	Object     string  `json:"object"`
@@ -110,12 +104,6 @@ type File struct {
 	Source     string  `json:"source"`
 	NumLines   *int64  `json:"num_lines"`
 	MimeType   *string `json:"mimetype"`
-}
-
-type BatchJobList struct {
-	Data   []BatchJob `json:"data"`
-	Object string     `json:"object"`
-	Total  int        `json:"total"`
 }
 
 type BatchJob struct {
@@ -143,11 +131,115 @@ type BatchError struct {
 	Count   int    `json:"count"`
 }
 
+// Connector is a remote server registered in the workspace that models are
+// allowed to call.
+//
+// The API's connector payload also carries connection_credentials and, on each
+// supported authentication method, header names and connector-wide header
+// values. Those are credential-shaped (a connector-wide header value is
+// plaintext that the API redacts only on serialization), so nothing beyond the
+// authentication method name is decoded here.
+type Connector struct {
+	ID                   string                `json:"id"`
+	Name                 string                `json:"name"`
+	Description          string                `json:"description"`
+	Server               *string               `json:"server"`
+	Protocol             string                `json:"protocol"`
+	Visibility           string                `json:"visibility"`
+	OwnerType            string                `json:"owner_type"`
+	PrivateToolExecution bool                  `json:"private_tool_execution"`
+	SupportedAuthMethods []ConnectorAuthMethod `json:"supported_auth_methods"`
+	CreatedAt            *time.Time            `json:"created_at"`
+	ModifiedAt           *time.Time            `json:"modified_at"`
+}
+
+// ConnectorAuthMethod decodes only the name of an authentication method a
+// connector accepts. The surrounding payload carries header names and values;
+// they are deliberately left undecoded.
+type ConnectorAuthMethod struct {
+	MethodType string `json:"method_type"`
+}
+
+// AuthMethodNames returns the authentication method names the connector
+// accepts, in the order the API reported them, skipping entries that name no
+// method.
+func (c Connector) AuthMethodNames() []string {
+	names := make([]string, 0, len(c.SupportedAuthMethods))
+	for _, m := range c.SupportedAuthMethods {
+		if m.MethodType == "" {
+			continue
+		}
+		names = append(names, m.MethodType)
+	}
+	return names
+}
+
+// connectorPage is the keyset-paginated envelope GET /v1/connectors returns.
+type connectorPage struct {
+	Items      []Connector         `json:"items"`
+	Pagination connectorPageCursor `json:"pagination"`
+}
+
+type connectorPageCursor struct {
+	NextCursor *string `json:"next_cursor"`
+	PageSize   int     `json:"page_size"`
+}
+
+// Library is a collection of documents uploaded to the workspace.
+type Library struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Description *string    `json:"description"`
+	CreatedAt   *time.Time `json:"created_at"`
+	UpdatedAt   *time.Time `json:"updated_at"`
+	OwnerID     *string    `json:"owner_id"`
+	OwnerType   string     `json:"owner_type"`
+	TotalSize   int64      `json:"total_size"`
+	NbDocuments int64      `json:"nb_documents"`
+}
+
+// libraryPage is the envelope GET /v1/libraries returns. The endpoint also
+// reports a deprecated offset "pagination" block, populated only for callers
+// using the deprecated page parameter, so it is left undecoded.
+type libraryPage struct {
+	Data          []Library `json:"data"`
+	NextPageToken *string   `json:"next_page_token"`
+}
+
+// LibraryAccess is one share entry on a library: an entity and the role it
+// holds. ShareWithUUID is absent when a library is shared with the whole
+// organization.
+type LibraryAccess struct {
+	LibraryID     string  `json:"library_id"`
+	Role          string  `json:"role"`
+	ShareWithType string  `json:"share_with_type"`
+	ShareWithUUID *string `json:"share_with_uuid"`
+}
+
+type libraryAccessList struct {
+	Data []LibraryAccess `json:"data"`
+}
+
 type APIError struct {
-	Message    string `json:"message"`
-	StatusCode int    `json:"-"`
+	Message string `json:"message"`
+	// Detail carries validation-style error payloads (HTTP 422), which Mistral
+	// returns under "detail" instead of "message" (either a string or an array
+	// of objects). Kept raw so Error() can surface something meaningful rather
+	// than an empty string.
+	Detail     json.RawMessage `json:"detail"`
+	StatusCode int             `json:"-"`
 }
 
 func (e *APIError) Error() string {
-	return e.Message
+	if e.Message != "" {
+		return e.Message
+	}
+	if len(e.Detail) > 0 {
+		var s string
+		if err := json.Unmarshal(e.Detail, &s); err == nil {
+			return s
+		}
+		return string(e.Detail)
+	}
+	return fmt.Sprintf("mistral API error (status %d)", e.StatusCode)
 }

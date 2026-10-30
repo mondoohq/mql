@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/multierr"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/multierr"
 )
 
 const UNKNOWN_VALUE = "?value?"
@@ -24,6 +24,37 @@ type RawData struct {
 	Type  types.Type `json:"type"`
 	Value any        `json:"value"`
 	Error error      `json:"-"`
+	// CoverageGaps are the parts of Value that could not be read (ADR 046 §8):
+	// a region that refused, a partition that timed out. Value is still the
+	// true answer for everything that was read. Unlike Error, a gap never
+	// means the result failed. Empty on every complete result.
+	CoverageGaps []*Error `json:"-"`
+	// ShortCircuited marks a null that an optional link (`?`) produced rather
+	// than a null that was genuinely read. Under ADR 043 strict mode a required
+	// link errors on a null binding, but passes a short-circuited one straight
+	// through - that is what makes `a?.b.c` yield null when `a` is null while
+	// still erroring when `a` is set and `b` is null, the same as optional
+	// chaining in JavaScript.
+	//
+	// It is execution state, not data: it never crosses the plugin boundary and
+	// is never recorded, because only the VM creates it and only within a single
+	// chain evaluation.
+	ShortCircuited bool `json:"-"`
+	// Translated marks a value that a downgrade patch produced rather than the
+	// call the bundle was compiled with (ADR 040 part 6). Patching deliberately
+	// decouples what executes from what is reported - the result still carries
+	// the checksum the producer shipped - so without this flag a wrong
+	// translation is indistinguishable from a wrong provider.
+	//
+	// Like ShortCircuited it is execution state, not data: only the VM sets it,
+	// and it never crosses the plugin boundary or reaches a recording.
+	Translated bool `json:"-"`
+	// dictPath carries an in-progress key-path walk across the links of a dict
+	// or map chain, so a key containing dots stays reachable through dot
+	// notation (see dictWalk). Execution state like the two above, and
+	// unexported besides: it holds the caller's container, which has no business
+	// being serialized.
+	dictPath *dictPathState
 }
 
 // a helper structure exclusively used for json unmarshalling of errors
@@ -554,6 +585,15 @@ func FloatData(v float64) *RawData {
 	}
 }
 
+// FloatDataPtr creates a rawdata struct from a go float pointer, preserving the
+// distinction between an absent value (null) and a reported zero.
+func FloatDataPtr[T float64 | float32](v *T) *RawData {
+	if v == nil {
+		return NilData
+	}
+	return FloatData(float64(*v))
+}
+
 // StringData creates a rawdata struct from a go string
 func StringData(s string) *RawData {
 	return &RawData{
@@ -653,6 +693,17 @@ func MapIntData(v map[int32]any, typ types.Type) *RawData {
 func ResourceData(v Resource, name string) *RawData {
 	return &RawData{
 		Type:  types.Resource(name),
+		Value: v,
+	}
+}
+
+// AssetData creates a rawdata struct from a native asset reference value. The
+// root is the resource type that roots the referenced asset's tree, i.e. what
+// fields may be chained off this value; empty for a reference that declares
+// none. See ADR 031.
+func AssetData(v *AssetValue, root string) *RawData {
+	return &RawData{
+		Type:  types.Asset(root),
 		Value: v,
 	}
 }

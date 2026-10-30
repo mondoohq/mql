@@ -7,10 +7,10 @@ import (
 	"context"
 
 	"github.com/microsoftgraph/msgraph-beta-sdk-go/models/security"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (r *mqlMicrosoftSecurity) informationProtection() (*mqlMicrosoftSecurityInformationProtection, error) {
@@ -97,4 +97,74 @@ func createSensitivityLabelResource(runtime *plugin.Runtime, label security.Sens
 
 func (r *mqlMicrosoftSecurityInformationProtectionSensitivityLabel) id() (string, error) {
 	return r.Id.Data, nil
+}
+
+// labelPolicies reports the sensitivity label policies that publish labels to
+// users.
+//
+// Unlike sensitivityLabels this does not come from Graph: Purview exposes no
+// read API for label policies, so the data is the Get-LabelPolicy output the
+// Security & Compliance report already collects. The report is memoized on
+// ms365.exchangeonline.securityAndCompliance, so querying this alongside the
+// DLP resources costs one collection rather than two.
+func (r *mqlMicrosoftSecurityInformationProtection) labelPolicies() ([]any, error) {
+	resource, err := CreateResource(r.MqlRuntime, "ms365.exchangeonline.securityAndCompliance", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	report, err := resource.(*mqlMs365ExchangeonlineSecurityAndCompliance).getSecurityAndComplianceReport()
+	if err != nil {
+		return nil, err
+	}
+	// a cmdlet that did not run leaves the section null, and reporting that as
+	// an empty list would answer "no label policy publishes anything" with data
+	// that was never collected. Returning (nil, nil) is not enough: without
+	// StateIsNull the field still renders as [].
+	if report == nil || report.LabelPolicy == nil {
+		r.LabelPolicies.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return convertLabelPolicies(r.MqlRuntime, report.LabelPolicy)
+}
+
+func convertLabelPolicies(runtime *plugin.Runtime, raw []any) ([]any, error) {
+	result := []any{}
+	for _, item := range raw {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		guid := dlpString(m, "Guid")
+		id := guid
+		if id == "" {
+			id = dlpString(m, "Name")
+		}
+
+		mql, err := CreateResource(runtime, ResourceMicrosoftSecurityInformationProtectionLabelPolicy,
+			labelPolicyFields(m, guid, id))
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, mql)
+	}
+	return result, nil
+}
+
+// labelPolicyFields maps one Get-LabelPolicy row onto the resource's fields.
+func labelPolicyFields(m map[string]any, guid string, id string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":               llx.StringData("labelPolicy-" + id),
+		"name":               llx.StringData(dlpString(m, "Name")),
+		"guid":               llx.StringData(guid),
+		"enabled":            llx.BoolDataPtr(dlpBoolPtr(m, "Enabled")),
+		"mode":               llx.StringData(dlpString(m, "Mode")),
+		"labels":             llx.ArrayData(dlpStringSlice(m, "Labels"), types.String),
+		"workload":           llx.StringData(dlpWorkload(m)),
+		"distributionStatus": llx.StringData(dlpString(m, "DistributionStatus")),
+		"comment":            llx.StringData(dlpString(m, "Comment")),
+		"whenCreated":        llx.TimeDataPtr(dlpTime(m, "WhenCreated")),
+		"whenChanged":        llx.TimeDataPtr(dlpTime(m, "WhenChanged")),
+	}
 }

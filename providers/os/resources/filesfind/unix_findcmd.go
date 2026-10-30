@@ -29,7 +29,33 @@ func shellSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, permission int64, search string, depth *int64, hasGNUFind bool) string {
+// globEscape escapes the characters find's -path treats as a pattern, so
+// the start path matches only itself.
+func globEscape(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch r {
+		case '\\', '*', '?', '[':
+			b.WriteRune('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// FindFlavor says what the target's find supports.
+type FindFlavor struct {
+	// GNU is GNU findutils, which has -xtype.
+	GNU bool
+	// NoMaxDepth is a find without -maxdepth (AIX, Solaris), which rejects the option
+	// and prints nothing; the depth is then kept by pruning every path below
+	// it, which POSIX find supports.
+	NoMaxDepth bool
+}
+
+// BuildFilesFindCmd builds the find command of a files.find search.
+func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, permission int64, search string, depth *int64, flavor FindFlavor) string {
+	hasGNUFind, noMaxDepth := flavor.GNU, flavor.NoMaxDepth
 	var call strings.Builder
 
 	isLinkSearch := false
@@ -39,13 +65,24 @@ func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, pe
 		}
 	}
 
-	// GNU find: -L -xtype l follows all symlinks AND finds symlinks.
-	// BSD find: -xtype is absent; fall back to -H -type l which
-	// follows only the start path but still detects symlinks.
-	// hasGNUFind is approximated via platform family ("linux"). This
-	// misses FreeBSD with GNU findutils and BusyBox find on Linux,
-	// but both are rare in mql's target environments; the -H fallback
-	// still finds symlinks, just without following symlink-dirs.
+	// Symlinks are matched by their target, like the native walk in fsutil and
+	// like `find -L`: a symlink to a regular file is a "file", and -type and
+	// -perm test the target, not the link (a symlink's own mode is always
+	// 0777). authselect's /etc/pam.d/system-auth is such a symlink; without -L,
+	// pam.conf never parsed it (mql#8467).
+	//
+	// Plain -L also walks into every symlinked directory, which is slow on
+	// hosts with many symlinks and can hang on a stale mount. Under -L,
+	// `-xtype l` is still true for a symlink, so GNU find prunes on it: the
+	// tests see the target, but the walk never descends through a link.
+	// -prune suppresses the implicit -print, so the command ends with one.
+	// The start path is exempt from the prune: on a usr-merged host /bin,
+	// /sbin and /lib are themselves symlinks, and pruning them found nothing.
+	//
+	// Link searches: GNU find uses -L -xtype l, which follows all symlinks and
+	// finds them. BSD and BusyBox find have no -xtype. They fall back to -H
+	// -type l for link searches, which follows only the start path but still
+	// detects symlinks, and to plain -L for everything else.
 	if isLinkSearch && !hasGNUFind {
 		call.WriteString("find -H ")
 	} else {
@@ -55,6 +92,21 @@ func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, pe
 
 	if !xdev {
 		call.WriteString(" -xdev")
+	}
+
+	pruneLinks := !isLinkSearch && hasGNUFind
+	if pruneLinks {
+		call.WriteString(" \\( -path ")
+		call.WriteString(shellSingleQuote(globEscape(from)))
+		call.WriteString(" -o -xtype l -prune -o -true \\)")
+	}
+
+	// -prune suppresses find's implicit -print, so the command ends with one.
+	pruneDepth := depth != nil && noMaxDepth
+	if pruneDepth {
+		call.WriteString(" -path ")
+		call.WriteString(shellSingleQuote(depthPrunePattern(from, *depth)))
+		call.WriteString(" -prune -o")
 	}
 
 	if fileType != "" {
@@ -85,10 +137,35 @@ func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, pe
 		call.WriteString(shellSingleQuote(search))
 	}
 
-	if depth != nil {
+	if depth != nil && !noMaxDepth {
 		call.WriteString(" -maxdepth ")
 		// -maxdepth takes a decimal level count, not an octal value.
 		call.WriteString(strconv.FormatInt(*depth, 10))
 	}
+
+	if pruneLinks || pruneDepth {
+		// -prune suppresses find's implicit -print.
+		call.WriteString(" -print")
+	}
 	return call.String()
+}
+
+// depthPrunePattern returns the -path pattern of the paths more than depth
+// levels below from: from/?*/?* for depth 1. Glob characters in from are
+// escaped, so they match themselves.
+func depthPrunePattern(from string, depth int64) string {
+	base := strings.TrimRight(from, "/")
+	var escaped strings.Builder
+	for _, r := range base {
+		if strings.ContainsRune(`*?[]\`, r) {
+			escaped.WriteRune('\\')
+		}
+		escaped.WriteRune(r)
+	}
+	if depth < 0 {
+		depth = 0
+	}
+	// ?* rather than *: a component is never empty, and /* would match the
+	// root itself
+	return escaped.String() + strings.Repeat("/?*", int(depth)+1)
 }

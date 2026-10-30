@@ -10,9 +10,9 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/ipinfo/go/v2/ipinfo"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/ipinfo/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/ipinfo/connection"
 )
 
 // queryIPWithSDK queries IP information using the ipinfo Go SDK
@@ -35,28 +35,36 @@ func queryIPWithSDK(token string, queryIP net.IP) (*ipinfo.Core, error) {
 	return info, nil
 }
 
+// requestedIP extracts the optional `ip` argument. It returns (nil, nil) when
+// no ip was supplied (meaning: query the caller's own public IP), and an error
+// when the argument is present but malformed. Kept separate from initIpinfo so
+// the arg handling is unit-testable without a live API call.
+func requestedIP(args map[string]*llx.RawData) (net.IP, error) {
+	ip, ok := args["ip"]
+	if !ok {
+		return nil, nil
+	}
+	ipVal, ok := ip.Value.(llx.RawIP)
+	if !ok {
+		return nil, errors.New("ip must be of type ip")
+	}
+	if ipVal.IP == nil {
+		return nil, errors.New("ip cannot be empty")
+	}
+	return ipVal.IP, nil
+}
+
 func initIpinfo(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	log.Debug().Str("args", fmt.Sprintf("%+v", args)).Msg("initIpinfo called")
 
 	conn := runtime.Connection.(*connection.IpinfoConnection)
 	token := conn.Token()
 
-	var queryIP net.IP
-	var requestedIP net.IP
-
-	// Check if an IP was provided as input
-	if ip, ok := args["ip"]; ok {
-		ipVal, ok := ip.Value.(llx.RawIP)
-		if !ok {
-			return nil, nil, errors.New("ip must be of type ip")
-		}
-		if ipVal.IP == nil {
-			return nil, nil, errors.New("ip cannot be empty")
-		}
-		queryIP = ipVal.IP
-		requestedIP = ipVal.IP
+	// queryIP is nil when no ip arg was given → query the caller's public IP.
+	queryIP, err := requestedIP(args)
+	if err != nil {
+		return nil, nil, err
 	}
-	// If no IP provided, queryIP remains nil (query for your public IP)
 	log.Debug().
 		Str("queryIP", func() string {
 			if queryIP == nil {
@@ -85,13 +93,15 @@ func initIpinfo(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[stri
 		Msg("ipinfo response")
 
 	res := make(map[string]*llx.RawData)
-	if requestedIP != nil {
-		res["requested_ip"] = llx.IPData(llx.RawIP{IP: requestedIP})
+	if queryIP != nil {
+		res["requested_ip"] = llx.IPData(llx.RawIP{IP: queryIP})
 	} else {
 		res["requested_ip"] = llx.NilData
 	}
 
-	res["returned_ip"] = llx.IPData(llx.ParseIP(info.IP.String()))
+	// Build the returned IP directly from the SDK's net.IP rather than
+	// round-tripping through String()+ParseIP (matches requested_ip above).
+	res["returned_ip"] = llx.IPData(llx.RawIP{IP: info.IP})
 	res["hostname"] = llx.StringData(info.Hostname)
 	res["bogon"] = llx.BoolData(info.Bogon)
 	res["city"] = llx.StringData(info.City)
@@ -108,8 +118,16 @@ func initIpinfo(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[stri
 }
 
 func (c *mqlIpinfo) id() (string, error) {
-	if c.Returned_ip.Error != nil {
-		return "", c.Returned_ip.Error
+	if c.Requested_ip.Error != nil {
+		return "", c.Requested_ip.Error
 	}
-	return "ipinfo\x00" + c.Returned_ip.Data.String(), nil
+	// Identity is the *requested* IP (the query), not the returned IP. A query
+	// for the caller's own public IP (requested = null) and an explicit query
+	// for that same address return the same IP but are different queries; keying
+	// on the returned IP collided them in the cache and crossed their
+	// requested_ip values. A null requested IP means "self".
+	if c.Requested_ip.IsNull() || c.Requested_ip.Data.IP == nil {
+		return "ipinfo\x00self", nil
+	}
+	return "ipinfo\x00" + c.Requested_ip.Data.String(), nil
 }

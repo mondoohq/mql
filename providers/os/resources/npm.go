@@ -4,11 +4,13 @@
 package resources
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -17,24 +19,35 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/fsutil"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/javascript/bunlock"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/javascript/packagejson"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/javascript/packagelockjson"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/javascript/pnpmlock"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/javascript/yarnlock"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/fsutil"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/javascript/bunlock"
+	"go.mondoo.com/mql/providers/os/resources/languages/javascript/denolock"
+	"go.mondoo.com/mql/providers/os/resources/languages/javascript/packagejson"
+	"go.mondoo.com/mql/providers/os/resources/languages/javascript/packagelockjson"
+	"go.mondoo.com/mql/providers/os/resources/languages/javascript/pnpmlock"
+	"go.mondoo.com/mql/providers/os/resources/languages/javascript/yarnlock"
+	"go.mondoo.com/mql/types"
 )
 
 var defaultNpmPaths = []string{
 	// Linux
 	"/usr/local/lib",
+	// Amazon Linux Node streams installed side by side, e.g. nodejs22
+	nodeStreamPrefixGlob,
 	"/opt/homebrew/lib",
 	"/usr/lib",
+	// SUSE: nodejs's bundled npm is installed as /usr/lib64/node_modules/npm<major>
+	"/usr/lib64",
+	// Fedora and RHEL 10 nodejs streams, e.g. nodejs24-npm
+	"/usr/lib/node_modules_*",
+	// Debian and Ubuntu packaged modules (node-*, npm)
+	"/usr/share/nodejs",
+	"/usr/lib/nodejs",
+	"/usr/lib/*/nodejs",
 	"/home/*/.npm-global/lib",
 	// Windows
 	"C:\\Users\\*\\AppData\\Roaming\\npm",
@@ -44,8 +57,11 @@ var defaultNpmPaths = []string{
 	"/Users/*/.npm-global/lib",
 	// Container app paths
 	"/app",
-	"/home/node/app",
+	"/home/*/app",
 	"/usr/src/app",
+	// Global packages of the Node versions nvm installs
+	"/root/.nvm/versions/node/*/lib",
+	"/home/*/.nvm/versions/node/*/lib",
 }
 
 func initNpmPackages(_ *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -113,13 +129,7 @@ func collectNpmPackagesInPaths(runtime *plugin.Runtime, fs afero.Fs, paths []str
 	var transitivePackageList []*languages.Package
 	evidenceFiles := []string{}
 
-	handler := func(nodeModulesPath string) {
-		// Not found is an expected error and we handle that properly
-		bom, err := collectNpmPackages(runtime, fs, nodeModulesPath)
-		if err != nil {
-			return
-		}
-
+	addBom := func(bom languages.Bom) {
 		root := bom.Root()
 		if root != nil {
 			directPackageList = append(directPackageList, root)
@@ -129,6 +139,39 @@ func collectNpmPackagesInPaths(runtime *plugin.Runtime, fs afero.Fs, paths []str
 			transitivePackageList = append(transitivePackageList, transitive...)
 		}
 	}
+	handler := func(nodeModulesPath string) {
+		bom, err := collectNpmPackages(runtime, fs, nodeModulesPath)
+		if err != nil {
+			// a directory without a lockfile or package.json is expected while
+			// searching; a lockfile that is there but cannot be read or parsed
+			// is not, and must not disappear without a trace. One bad project
+			// must not fail the whole search either, so it is logged and skipped.
+			if !errors.Is(err, errNoNpmManifest) && !errors.Is(err, os.ErrNotExist) {
+				log.Warn().Err(err).Str("path", nodeModulesPath).Msg("could not parse npm packages, skipping")
+			}
+			return
+		}
+		addBom(bom)
+	}
+
+	// a module root, such as /usr/lib/node_modules_24 or /usr/share/nodejs,
+	// holds the packages directly
+	walkPaths := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if !isNodeModuleRootPath(p) {
+			walkPaths = append(walkPaths, p)
+			continue
+		}
+		for _, pkg := range nodeModuleRootPackages(fs, p) {
+			bom, err := (&packagejson.Extractor{}).Parse(bytes.NewReader(pkg.manifest), pkg.manifestPath)
+			if err != nil {
+				log.Debug().Err(err).Str("path", pkg.manifestPath).Msg("could not parse package.json")
+				continue
+			}
+			addBom(bom)
+		}
+	}
+	paths = walkPaths
 
 	log.Debug().Msg("searching for npm packages in default locations")
 	err := fsutil.WalkGlob(fs, paths, func(fs afero.Fs, walkPath string) error {
@@ -211,11 +254,13 @@ func hasLockfile(runtime *plugin.Runtime, fs afero.Fs, path string) bool {
 			filepath.Join(path, "/pnpm-lock.yaml"),
 			filepath.Join(path, "/yarn.lock"),
 			filepath.Join(path, "/bun.lock"),
+			filepath.Join(path, "/deno.lock"),
 		)
 	} else if strings.HasSuffix(path, "package-lock.json") ||
 		strings.HasSuffix(path, "pnpm-lock.yaml") ||
 		strings.HasSuffix(path, "yarn.lock") ||
-		strings.HasSuffix(path, "bun.lock") {
+		strings.HasSuffix(path, "bun.lock") ||
+		strings.HasSuffix(path, "deno.lock") {
 		searchPaths = append(searchPaths, path)
 	}
 
@@ -229,6 +274,10 @@ func hasLockfile(runtime *plugin.Runtime, fs afero.Fs, path string) bool {
 	}
 	return len(filteredSearchPath) > 0
 }
+
+// errNoNpmManifest reports a path without a supported JavaScript lockfile or
+// package.json.
+var errNoNpmManifest = errors.New("not a supported JavaScript lockfile or package.json")
 
 func collectNpmPackages(runtime *plugin.Runtime, fs afero.Fs, path string) (languages.Bom, error) {
 	// specific path was provided
@@ -246,6 +295,7 @@ func collectNpmPackages(runtime *plugin.Runtime, fs afero.Fs, path string) (lang
 			filepath.Join(path, "/pnpm-lock.yaml"),
 			filepath.Join(path, "/yarn.lock"),
 			filepath.Join(path, "/bun.lock"),
+			filepath.Join(path, "/deno.lock"),
 			filepath.Join(path, "/package.json"),
 		)
 	} else if strings.HasSuffix(path, "package-lock.json") {
@@ -255,6 +305,8 @@ func collectNpmPackages(runtime *plugin.Runtime, fs afero.Fs, path string) (lang
 	} else if strings.HasSuffix(path, "yarn.lock") {
 		searchPaths = append(searchPaths, path)
 	} else if strings.HasSuffix(path, "bun.lock") {
+		searchPaths = append(searchPaths, path)
+	} else if strings.HasSuffix(path, "deno.lock") {
 		searchPaths = append(searchPaths, path)
 	} else if strings.HasSuffix(path, "package.json") {
 		searchPaths = append(searchPaths, path)
@@ -270,7 +322,7 @@ func collectNpmPackages(runtime *plugin.Runtime, fs afero.Fs, path string) (lang
 	}
 
 	if len(filteredSearchPath) == 0 {
-		return nil, fmt.Errorf("path %s is not a supported JavaScript lockfile or package.json", path)
+		return nil, fmt.Errorf("path %s: %w", path, errNoNpmManifest)
 	}
 
 	// technically we should only have one file, this logic will always pick the first one
@@ -295,6 +347,8 @@ func collectNpmPackages(runtime *plugin.Runtime, fs afero.Fs, path string) (lang
 			extractor = &yarnlock.Extractor{}
 		} else if strings.HasSuffix(searchPath, "bun.lock") {
 			extractor = &bunlock.Extractor{}
+		} else if strings.HasSuffix(searchPath, "deno.lock") {
+			extractor = &denolock.Extractor{}
 		} else if strings.HasSuffix(searchPath, "package.json") {
 			extractor = &packagejson.Extractor{}
 		}
@@ -332,7 +386,8 @@ func (r *mqlNpmPackages) getPaths() ([]string, error) {
 	paths = slices.Compact(paths)
 
 	if len(paths) == 0 {
-		paths = defaultNpmPaths
+		conn := r.MqlRuntime.Connection.(shared.Connection)
+		paths = expandNodeStreamPrefixes(conn.FileSystem(), defaultNpmPaths, resolveConnectionPath(conn))
 	}
 	return paths, nil
 }
@@ -364,6 +419,15 @@ func (r *mqlNpmPackages) gatherData() error {
 		directDependencies, transitiveDependencies, filePaths, err = collectNpmPackagesInPaths(r.MqlRuntime, fs, paths)
 		if err != nil {
 			return err
+		}
+	} else if isNodeModuleRootPath(paths[0]) {
+		// a directory of packages, such as /usr/share/nodejs, has no root package
+		if _, err := fs.Stat(paths[0]); err == nil {
+			directDependencies, transitiveDependencies, _, err = collectNpmPackagesInPaths(r.MqlRuntime, fs, paths)
+			if err != nil {
+				return err
+			}
+			filePaths = append(filePaths, paths[0])
 		}
 	} else {
 		// do not load anything if the path does not exist
@@ -442,13 +506,46 @@ func (r *mqlNpmPackages) files() ([]any, error) {
 	return nil, r.gatherData()
 }
 
-func (r *mqlNpmPackages) scripts() (map[string]any, error) {
-	if r.Path.Error != nil {
-		return nil, r.Path.Error
+// npmScriptsManifest returns the package.json that holds the scripts for a
+// single search path: the path itself when it names a package.json, the
+// package.json beside a lockfile, or the one inside a directory. It returns ""
+// when the path has no package.json.
+func npmScriptsManifest(fs afero.Fs, path string) string {
+	afs := &afero.Afero{Fs: fs}
+	candidate := path
+	if isDir, err := afs.IsDir(path); err == nil && isDir {
+		candidate = filepath.Join(path, "package.json")
+	} else if filepath.Base(path) != "package.json" {
+		candidate = filepath.Join(filepath.Dir(path), "package.json")
 	}
-	path := r.Path.Data
+	if fi, err := afs.Stat(candidate); err != nil || fi.IsDir() {
+		return ""
+	}
+	return candidate
+}
 
-	f, err := newFile(r.MqlRuntime, path)
+// scripts reads the scripts of the one project npm.packages was pointed at.
+// A search across several locations (the default) has no single package.json,
+// so the field is null there rather than an attempt to parse an empty path.
+func (r *mqlNpmPackages) scripts() (map[string]any, error) {
+	paths, err := r.getPaths()
+	if err != nil {
+		return nil, err
+	}
+	manifest := ""
+	if len(paths) == 1 {
+		conn, ok := r.MqlRuntime.Connection.(shared.Connection)
+		if !ok {
+			return nil, errors.New("npm.packages scripts require a filesystem connection")
+		}
+		manifest = npmScriptsManifest(conn.FileSystem(), paths[0])
+	}
+	if manifest == "" {
+		r.Scripts.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	f, err := newFile(r.MqlRuntime, manifest)
 	if err != nil {
 		return nil, err
 	}

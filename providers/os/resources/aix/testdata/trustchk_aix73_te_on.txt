@@ -1,0 +1,13 @@
+TE=ON
+SIG_VER=OFF
+CHKEXEC=OFF
+CHKSHLIB=OFF
+CHKSCRIPT=OFF
+CHKKERNEXT=OFF
+STOP_UNTRUSTD=OFF
+STOP_ON_CHKFAIL=OFF
+LOCK_KERN_POLICIES=OFF
+TEP=OFF
+TEP=/usr/bin:/usr/sbin:/etc:/bin:/sbin:/sbin/helpers/jfs2:/usr/lib/instl:/usr/ccs/bin:/usr/lib:/usr/lib/security:/etc/security:/sbin/helpers:/usr/lib/boot:/usr/lib/boot/bin:/usr/lib/ras:/usr/lpp/bosinst
+TLP=OFF
+TLP=/usr/lib:/usr/ccs/lib:/lib:/var/lib:/usr/lib/drivers:/usr/lib/security:/usr/lib/nls/loc

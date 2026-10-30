@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/databricks/armdatabricks"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/databricks/armdatabricks/v2"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func initAzureSubscriptionDatabricksService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -74,7 +74,7 @@ func (a *mqlAzureSubscriptionDatabricksService) workspaces() ([]any, error) {
 		}
 	}
 
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func databricksWorkspaceToMql(runtime *plugin.Runtime, workspace *armdatabricks.Workspace) (*mqlAzureSubscriptionDatabricksServiceWorkspace, error) {
@@ -98,7 +98,13 @@ func databricksWorkspaceToMql(runtime *plugin.Runtime, workspace *armdatabricks.
 
 	var publicNetworkAccess, requiredNsgRules, diskEncryptionSetId, managedResourceGroupId, provisioningState, workspaceId string
 	var enableNoPublicIp, requireInfraEnc bool
+	var isUnityCatalogEnabled *bool
+	var computeMode, workspaceUrl, accessConnectorId *string
+	var defaultCatalogInitialType, defaultCatalogInitialName *string
+	var createdBy, updatedBy any
 	var customVnetId string
+	var defaultStorageFirewall, complianceSecurityProfile, enhancedSecurityMonitoring, automaticClusterUpdate string
+	complianceStandards := []any{}
 	var managedDiskKeySource, managedDiskKeyVaultUri, managedDiskKeyName, managedDiskKeyVersion string
 	var managedServicesKeySource, managedServicesKeyVaultUri, managedServicesKeyName, managedServicesKeyVersion string
 	var creationTime *time.Time
@@ -122,6 +128,28 @@ func databricksWorkspaceToMql(runtime *plugin.Runtime, workspace *armdatabricks.
 		}
 		if props.WorkspaceID != nil {
 			workspaceId = *props.WorkspaceID
+		}
+		if props.DefaultStorageFirewall != nil {
+			defaultStorageFirewall = string(*props.DefaultStorageFirewall)
+		}
+
+		if esc := props.EnhancedSecurityCompliance; esc != nil {
+			if csp := esc.ComplianceSecurityProfile; csp != nil {
+				if csp.Value != nil {
+					complianceSecurityProfile = string(*csp.Value)
+				}
+				for _, std := range csp.ComplianceStandards {
+					if std != nil {
+						complianceStandards = append(complianceStandards, *std)
+					}
+				}
+			}
+			if esm := esc.EnhancedSecurityMonitoring; esm != nil && esm.Value != nil {
+				enhancedSecurityMonitoring = string(*esm.Value)
+			}
+			if acu := esc.AutomaticClusterUpdate; acu != nil && acu.Value != nil {
+				automaticClusterUpdate = string(*acu.Value)
+			}
 		}
 
 		if p := props.Parameters; p != nil {
@@ -186,9 +214,27 @@ func databricksWorkspaceToMql(runtime *plugin.Runtime, workspace *armdatabricks.
 				}
 			}
 		}
+
+		isUnityCatalogEnabled = props.IsUcEnabled
+		computeMode = stringEnumPtr(props.ComputeMode)
+		workspaceUrl = props.WorkspaceURL
+		if ac := props.AccessConnector; ac != nil {
+			accessConnectorId = ac.ID
+		}
+		if dc := props.DefaultCatalog; dc != nil {
+			defaultCatalogInitialType = stringEnumPtr(dc.InitialType)
+			defaultCatalogInitialName = dc.InitialName
+		}
+		var convErr error
+		if createdBy, convErr = convert.JsonToDict(props.CreatedBy); convErr != nil {
+			return nil, convErr
+		}
+		if updatedBy, convErr = convert.JsonToDict(props.UpdatedBy); convErr != nil {
+			return nil, convErr
+		}
 	}
 
-	res, err := CreateResource(runtime, ResourceAzureSubscriptionDatabricksServiceWorkspace, map[string]*llx.RawData{
+	args := map[string]*llx.RawData{
 		"id":                              llx.StringDataPtr(workspace.ID),
 		"name":                            llx.StringDataPtr(workspace.Name),
 		"location":                        llx.StringDataPtr(workspace.Location),
@@ -201,6 +247,19 @@ func databricksWorkspaceToMql(runtime *plugin.Runtime, workspace *armdatabricks.
 		"requireInfrastructureEncryption": llx.BoolData(requireInfraEnc),
 		"customVirtualNetworkId":          llx.StringData(customVnetId),
 		"requiredNsgRules":                llx.StringData(requiredNsgRules),
+		"defaultStorageFirewall":          llx.StringData(defaultStorageFirewall),
+		"complianceSecurityProfile":       llx.StringData(complianceSecurityProfile),
+		"complianceStandards":             llx.ArrayData(complianceStandards, types.String),
+		"enhancedSecurityMonitoring":      llx.StringData(enhancedSecurityMonitoring),
+		"automaticClusterUpdate":          llx.StringData(automaticClusterUpdate),
+		"isUnityCatalogEnabled":           llx.BoolDataPtr(isUnityCatalogEnabled),
+		"computeMode":                     llx.StringDataPtr(computeMode),
+		"workspaceUrl":                    llx.StringDataPtr(workspaceUrl),
+		"accessConnectorId":               llx.StringDataPtr(accessConnectorId),
+		"defaultCatalogInitialType":       llx.StringDataPtr(defaultCatalogInitialType),
+		"defaultCatalogInitialName":       llx.StringDataPtr(defaultCatalogInitialName),
+		"createdBy":                       llx.DictData(createdBy),
+		"updatedBy":                       llx.DictData(updatedBy),
 		"diskEncryptionSetId":             llx.StringData(diskEncryptionSetId),
 		"managedResourceGroupId":          llx.StringData(managedResourceGroupId),
 		"provisioningState":               llx.StringData(provisioningState),
@@ -214,7 +273,13 @@ func databricksWorkspaceToMql(runtime *plugin.Runtime, workspace *armdatabricks.
 		"managedServicesKeyName":          llx.StringData(managedServicesKeyName),
 		"managedServicesKeyVersion":       llx.StringData(managedServicesKeyVersion),
 		"creationTime":                    llx.TimeDataPtr(creationTime),
-	})
+	}
+	workspaceSku := orZero(workspace.SKU)
+	if err := setSkuData(runtime, args, skuName(workspaceSku.Name), skuTier(workspaceSku.Tier)); err != nil {
+		return nil, err
+	}
+
+	res, err := CreateResource(runtime, ResourceAzureSubscriptionDatabricksServiceWorkspace, args)
 	if err != nil {
 		return nil, err
 	}
@@ -225,12 +290,29 @@ func databricksWorkspaceToMql(runtime *plugin.Runtime, workspace *armdatabricks.
 		return nil, err
 	}
 	mqlWorkspace.cacheSystemData = sysData
+	if workspace.Properties != nil {
+		mqlWorkspace.cachePrivateEndpointConnections = workspace.Properties.PrivateEndpointConnections
+	}
 
 	return mqlWorkspace, nil
 }
 
 type mqlAzureSubscriptionDatabricksServiceWorkspaceInternal struct {
-	cacheSystemData any
+	cacheSystemData                 any
+	cachePrivateEndpointConnections []*armdatabricks.PrivateEndpointConnection
+}
+
+// privateEndpointConnections reports the connections created against the
+// workspace's private link resources.
+//
+// The list arrives with the workspace, so this reads what was already fetched
+// rather than issuing a request of its own. The values go through the shared
+// converter every other azure resource uses, which normalizes the SDK type
+// through a dict, so the workspace's connections are the same resource shape a
+// storage account's or a key vault's are and a fleet-wide query over
+// privateEndpointConnections stays comparable.
+func (a *mqlAzureSubscriptionDatabricksServiceWorkspace) privateEndpointConnections() ([]any, error) {
+	return azurePrivateEndpointConnectionsToMql(a.MqlRuntime, a.cachePrivateEndpointConnections)
 }
 
 func (a *mqlAzureSubscriptionDatabricksServiceWorkspace) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {

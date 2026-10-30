@@ -7,8 +7,8 @@ import (
 	"io"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/javascript"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/javascript"
 	"gopkg.in/yaml.v3"
 )
 
@@ -78,6 +78,9 @@ func (l *pnpmLock) Transitive() languages.Packages {
 			Purl:         javascript.NewPackageUrl(name, version),
 			Cpes:         javascript.NewCpes(name, version),
 			EvidenceList: javascript.NewEvidenceList(l.evidence),
+			DependsOn:    dependsOnRefs(entry.Dependencies),
+			Scope:        scopeOf(entry, ver),
+			Hashes:       javascript.NewHashes(entry.Resolution.Integrity),
 		})
 	}
 

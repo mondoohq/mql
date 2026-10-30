@@ -9,28 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	gitlab "gitlab.com/gitlab-org/api/client-go"
+	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
 )
-
-func TestMapAccessLevelToRole(t *testing.T) {
-	tests := []struct {
-		accessLevel int
-		want        string
-	}{
-		{10, "Guest"},
-		{20, "Reporter"},
-		{30, "Developer"},
-		{40, "Maintainer"},
-		{50, "Owner"},
-		{0, "Unknown"},
-		{15, "Unknown"},
-		{60, "Unknown"},
-		{-1, "Unknown"},
-	}
-	for _, tt := range tests {
-		assert.Equal(t, tt.want, mapAccessLevelToRole(tt.accessLevel), "accessLevel=%d", tt.accessLevel)
-	}
-}
 
 func TestGroupsToDicts(t *testing.T) {
 	t.Run("maps fields and skips nil entries", func(t *testing.T) {

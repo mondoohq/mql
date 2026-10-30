@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 type mqlHetznerPlacementGroupInternal struct {
@@ -56,9 +56,9 @@ func newMqlHetznerPlacementGroup(runtime *plugin.Runtime, pg *hcloud.PlacementGr
 }
 
 func initHetznerPlacementGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "placementGroup")
+	if err != nil {
+		return nil, nil, err
 	}
 	pg, _, err := conn(runtime).Client().PlacementGroup.GetByID(ctx(), id)
 	if err != nil {

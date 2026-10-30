@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	abstractions "github.com/microsoft/kiota-abstractions-go"
@@ -15,11 +16,11 @@ import (
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/users"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 var userSelectFields = []string{
@@ -115,32 +116,56 @@ func (a *mqlMicrosoftUsers) list() ([]any, error) {
 	if err != nil {
 		return nil, transformError(err)
 	}
-	users, err := iterate[*models.User](ctx,
+	// Build each user's resource as its page arrives. Collecting the whole
+	// list first held every kiota model (about 7 KB a user) alongside the
+	// resources built from them (about 5 KB), more than doubling the list's
+	// peak on a large tenant. The resource copies what it needs, so a page's
+	// models can go once it is converted.
+	res := []any{}
+	err = iterateEach(ctx,
 		resp,
 		graphClient.GetAdapter(),
 		users.CreateDeltaGetResponseFromDiscriminatorValue,
+		func(u *models.User) error {
+			graphUser, err := newMqlMicrosoftUser(a.MqlRuntime, u)
+			if err != nil {
+				return err
+			}
+			// index users by id and principal name
+			microsoft.indexUser(graphUser)
+			res = append(res, graphUser)
+			return nil
+		},
 	)
 	if err != nil {
 		return nil, transformError(err)
 	}
 
-	// prefetch the MFA map so per-user mfaEnabled() lookups hit cached data
-	// instead of triggering N+1 calls; lazy fallback lives on the loader.
-	microsoft.loadMfaResp()
+	return res, nil
+}
 
-	// construct the result
-	res := []any{}
-	for _, u := range users {
-		graphUser, err := newMqlMicrosoftUser(a.MqlRuntime, u)
-		if err != nil {
-			return nil, err
-		}
-		// index users by id and principal name
-		microsoft.indexUser(graphUser)
-		res = append(res, graphUser)
+// count returns the total number of users in the tenant via the Graph
+// $count endpoint, avoiding a full user-list fetch (which is prohibitively
+// slow on large tenants).
+func (a *mqlMicrosoftUsers) count() (int64, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return 0, err
 	}
 
-	return res, nil
+	opts := &users.CountRequestBuilderGetRequestConfiguration{Headers: abstractions.NewRequestHeaders()}
+	opts.Headers.Add("ConsistencyLevel", "eventual")
+	count, err := graphClient.Users().Count().Get(context.Background(), opts)
+	if err != nil {
+		return 0, transformError(err)
+	}
+	if count == nil {
+		// This should never happen, but we better check
+		return 0, errors.New("unable to count users, counter parameter API returned nil")
+	}
+
+	return int64(*count), nil
 }
 
 func initMicrosoftUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -186,9 +211,9 @@ func initMicrosoftUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 
 	var filter string
 	if okPrincipalName {
-		filter = fmt.Sprintf("userPrincipalName eq '%s'", rawPrincipalName.Value.(string))
+		filter = odataEqFilter("userPrincipalName", rawPrincipalName.Value.(string))
 	} else if okDisplayName {
-		filter = fmt.Sprintf("displayName eq '%s'", rawDisplayName.Value.(string))
+		filter = odataEqFilter("displayName", rawDisplayName.Value.(string))
 	}
 
 	resp, err := graphClient.Users().Get(ctx, &users.UsersRequestBuilderGetRequestConfiguration{
@@ -204,6 +229,11 @@ func initMicrosoftUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	val := resp.GetValue()
 	if len(val) == 0 {
 		return nil, nil, errors.New("user not found")
+	}
+	// displayName is not unique. Taking the first match would report one
+	// user's data for a query that named another.
+	if len(val) > 1 {
+		return nil, nil, fmt.Errorf("%d users match %s, look the user up by id or userPrincipalName instead", len(val), filter)
 	}
 
 	// Reuse the filter response directly — it already carries every
@@ -230,6 +260,24 @@ func (a *mqlMicrosoftUser) microsoftParent() (*mqlMicrosoft, error) {
 		return nil, err
 	}
 	return resource.(*mqlMicrosoft), nil
+}
+
+// odataEqFilter builds an OData `field eq 'value'` filter. A single quote
+// inside an OData string literal is escaped by doubling it, so a value like
+// O'Brien neither breaks the request nor changes the filter.
+func odataEqFilter(field, value string) string {
+	return fmt.Sprintf("%s eq '%s'", field, strings.ReplaceAll(value, "'", "''"))
+}
+
+// userAssignedLicenseID is the cache key for a microsoft.user.assignedLicense.
+//
+// The SKU id alone does not identify the assignment. A license assignment only
+// exists in the context of one user, and disabledPlans varies per user for the
+// same SKU, so keying on the SKU makes every user holding it share one cache
+// entry. CreateResource is first-wins, so the first user's disabledPlans would
+// then be reported for everyone else on that SKU. The key carries both.
+func userAssignedLicenseID(userID, skuID string) string {
+	return userID + "/" + skuID
 }
 
 func newMqlMicrosoftUser(runtime *plugin.Runtime, u models.Userable) (*mqlMicrosoftUser, error) {
@@ -267,7 +315,7 @@ func newMqlMicrosoftUser(runtime *plugin.Runtime, u models.Userable) (*mqlMicros
 
 			mqlAssignedLicenses, err := CreateResource(runtime, "microsoft.user.assignedLicense",
 				map[string]*llx.RawData{
-					"__id":          llx.StringData(skuId),
+					"__id":          llx.StringData(userAssignedLicenseID(uid, skuId)),
 					"disabledPlans": llx.ArrayData(convert.SliceAnyToInterface(disabledPlanStrings), types.String),
 					"skuId":         llx.StringData(skuId),
 				})
@@ -288,22 +336,10 @@ func newMqlMicrosoftUser(runtime *plugin.Runtime, u models.Userable) (*mqlMicros
 			"__id":                       llx.StringDataPtr(u.GetId()),
 			"id":                         llx.StringDataPtr(u.GetId()),
 			"accountEnabled":             llx.BoolDataPtr(u.GetAccountEnabled()),
-			"city":                       llx.StringDataPtr(u.GetCity()),        // deprecated
-			"companyName":                llx.StringDataPtr(u.GetCompanyName()), // deprecated
-			"country":                    llx.StringDataPtr(u.GetCountry()),     // deprecated
-			"createdDateTime":            llx.TimeDataPtr(u.GetCreatedDateTime()),
-			"department":                 llx.StringDataPtr(u.GetDepartment()),
+			"city":                       llx.StringDataPtr(u.GetCity()), // deprecated
+			"createdDateTime":            graphTimeData(u.GetCreatedDateTime()),
 			"displayName":                llx.StringDataPtr(u.GetDisplayName()),
-			"employeeId":                 llx.StringDataPtr(u.GetEmployeeId()), // deprecated
 			"givenName":                  llx.StringDataPtr(u.GetGivenName()),
-			"jobTitle":                   llx.StringDataPtr(u.GetJobTitle()), // deprecated
-			"mail":                       llx.StringDataPtr(u.GetMail()),
-			"mobilePhone":                llx.StringDataPtr(u.GetMobilePhone()),                        // deprecated
-			"otherMails":                 llx.ArrayData(llx.TArr2Raw(u.GetOtherMails()), types.String), // deprecated
-			"officeLocation":             llx.StringDataPtr(u.GetOfficeLocation()),                     // deprecated
-			"postalCode":                 llx.StringDataPtr(u.GetPostalCode()),                         // deprecated
-			"state":                      llx.StringDataPtr(u.GetState()),                              // deprecated
-			"streetAddress":              llx.StringDataPtr(u.GetStreetAddress()),                      // deprecated
 			"surname":                    llx.StringDataPtr(u.GetSurname()),
 			"userPrincipalName":          llx.StringDataPtr(u.GetUserPrincipalName()),
 			"userType":                   llx.StringDataPtr(u.GetUserType()),
@@ -311,12 +347,12 @@ func newMqlMicrosoftUser(runtime *plugin.Runtime, u models.Userable) (*mqlMicros
 			"identities":                 llx.ArrayData(identities, types.ResourceLike),
 			"assignedLicenses":           llx.ArrayData(mqlAssignedLicensesList, types.ResourceLike),
 			"employeeType":               llx.StringDataPtr(u.GetEmployeeType()),
-			"employeeHireDate":           llx.TimeDataPtr(u.GetEmployeeHireDate()),
+			"employeeHireDate":           graphTimeData(u.GetEmployeeHireDate()),
 			"job":                        llx.DictData(jobDict),
 			"contact":                    llx.DictData(contactDict),
-			"lastPasswordChangeDateTime": llx.TimeDataPtr(u.GetLastPasswordChangeDateTime()),
+			"lastPasswordChangeDateTime": graphTimeData(u.GetLastPasswordChangeDateTime()),
 			"onPremisesSyncEnabled":      llx.BoolDataPtr(u.GetOnPremisesSyncEnabled()),
-			"onPremisesLastSyncDateTime": llx.TimeDataPtr(u.GetOnPremisesLastSyncDateTime()),
+			"onPremisesLastSyncDateTime": graphTimeData(u.GetOnPremisesLastSyncDateTime()),
 			"onPremisesDomainName":       llx.StringDataPtr(u.GetOnPremisesDomainName()),
 			"onPremisesSamAccountName":   llx.StringDataPtr(u.GetOnPremisesSamAccountName()),
 			"preferredLanguage":          llx.StringDataPtr(u.GetPreferredLanguage()),
@@ -455,45 +491,34 @@ func (m *mqlMicrosoft) batchUserSignins(ids []string, top int32, filterFor func(
 	}
 	ctx := context.Background()
 	orderBy := "createdDateTime desc"
-	reqs := make([]batchItemRequest, 0, len(ids))
-	for _, id := range ids {
+	build := func(id string) (*abstractions.RequestInformation, error) {
 		filter := filterFor(id)
-		config := &auditlogs.SignInsRequestBuilderGetRequestConfiguration{
+		return betaClient.AuditLogs().SignIns().ToGetRequestInformation(ctx, &auditlogs.SignInsRequestBuilderGetRequestConfiguration{
 			QueryParameters: &auditlogs.SignInsRequestBuilderGetQueryParameters{
 				Top:     &top,
 				Filter:  &filter,
 				Orderby: []string{orderBy},
 			},
-		}
-		reqInfo, err := betaClient.AuditLogs().SignIns().ToGetRequestInformation(ctx, config)
-		if err != nil {
-			return nil, nil, transformError(err)
-		}
-		reqs = append(reqs, batchItemRequest{key: id, reqInfo: reqInfo})
+		})
 	}
-	res, err := batchGet[*betamodels.SignInCollectionResponse](ctx, betaClient.GetAdapter(), reqs, betamodels.CreateSignInCollectionResponseFromDiscriminatorValue)
+	data := make(map[string]any, len(ids))
+	errs, _, err := batchEach(ctx, betaClient.GetAdapter(), ids, build, betamodels.CreateSignInCollectionResponseFromDiscriminatorValue,
+		func(id string, coll *betamodels.SignInCollectionResponse) error {
+			signins := []any{}
+			for _, s := range coll.GetValue() {
+				signIn, err := newMqlMicrosoftSignIn(m.MqlRuntime, s)
+				if err != nil {
+					return err
+				}
+				signins = append(signins, signIn)
+			}
+			data[id] = signins
+			return nil
+		})
 	if err != nil {
 		return nil, nil, err
 	}
-	data := make(map[string]any, len(res.results))
-	for id, coll := range res.results {
-		signins := []any{}
-		var itemErr error
-		for _, s := range coll.GetValue() {
-			signIn, err := newMqlMicrosoftSignIn(m.MqlRuntime, s)
-			if err != nil {
-				itemErr = err
-				break
-			}
-			signins = append(signins, signIn)
-		}
-		if itemErr != nil {
-			res.errs[id] = itemErr
-			continue
-		}
-		data[id] = signins
-	}
-	return data, res.errs, nil
+	return data, errs, nil
 }
 
 // loadUserSignins fetches the recent interactive sign-ins of the given users.
@@ -613,7 +638,7 @@ func newMqlMicrosoftSignIn(runtime *plugin.Runtime, signIn betamodels.SignInable
 		map[string]*llx.RawData{
 			"__id":                    llx.StringDataPtr(signIn.GetId()),
 			"id":                      llx.StringDataPtr(signIn.GetId()),
-			"createdDateTime":         llx.TimeDataPtr(signIn.GetCreatedDateTime()),
+			"createdDateTime":         graphTimeData(signIn.GetCreatedDateTime()),
 			"userId":                  llx.StringDataPtr(signIn.GetUserId()),
 			"clientAppUsed":           llx.StringDataPtr(signIn.GetClientAppUsed()),
 			"resourceDisplayName":     llx.StringDataPtr(signIn.GetResourceDisplayName()),
@@ -693,28 +718,23 @@ func (m *mqlMicrosoft) loadUserSettings(ids []string) (map[string]any, map[strin
 		return nil, nil, err
 	}
 	ctx := context.Background()
-	reqs := make([]batchItemRequest, 0, len(ids))
-	for _, id := range ids {
-		reqInfo, err := graphClient.Users().ByUserId(id).Settings().ToGetRequestInformation(ctx, nil)
-		if err != nil {
-			return nil, nil, transformError(err)
-		}
-		reqs = append(reqs, batchItemRequest{key: id, reqInfo: reqInfo})
+	build := func(id string) (*abstractions.RequestInformation, error) {
+		return graphClient.Users().ByUserId(id).Settings().ToGetRequestInformation(ctx, nil)
 	}
-	res, err := batchGet[*models.UserSettings](ctx, graphClient.GetAdapter(), reqs, models.CreateUserSettingsFromDiscriminatorValue)
+	data := make(map[string]any, len(ids))
+	errs, _, err := batchEach(ctx, graphClient.GetAdapter(), ids, build, models.CreateUserSettingsFromDiscriminatorValue,
+		func(id string, s *models.UserSettings) error {
+			dict, err := convert.JsonToDict(newUserSettings(s))
+			if err != nil {
+				return err
+			}
+			data[id] = dict
+			return nil
+		})
 	if err != nil {
 		return nil, nil, err
 	}
-	data := make(map[string]any, len(res.results))
-	for id, s := range res.results {
-		dict, err := convert.JsonToDict(newUserSettings(s))
-		if err != nil {
-			res.errs[id] = err
-			continue
-		}
-		data[id] = dict
-	}
-	return data, res.errs, nil
+	return data, errs, nil
 }
 
 // signInActivity returns the user's last interactive and non-interactive sign-in
@@ -742,28 +762,23 @@ func (m *mqlMicrosoft) loadUserSignInActivity(ids []string) (map[string]any, map
 			Select: []string{"signInActivity"},
 		},
 	}
-	reqs := make([]batchItemRequest, 0, len(ids))
-	for _, id := range ids {
-		reqInfo, err := graphClient.Users().ByUserId(id).ToGetRequestInformation(ctx, config)
-		if err != nil {
-			return nil, nil, transformError(err)
-		}
-		reqs = append(reqs, batchItemRequest{key: id, reqInfo: reqInfo})
+	build := func(id string) (*abstractions.RequestInformation, error) {
+		return graphClient.Users().ByUserId(id).ToGetRequestInformation(ctx, config)
 	}
-	res, err := batchGet[*models.User](ctx, graphClient.GetAdapter(), reqs, models.CreateUserFromDiscriminatorValue)
+	data := make(map[string]any, len(ids))
+	errs, _, err := batchEach(ctx, graphClient.GetAdapter(), ids, build, models.CreateUserFromDiscriminatorValue,
+		func(id string, u *models.User) error {
+			dict, err := convert.JsonToDict(newSignInActivity(u.GetSignInActivity()))
+			if err != nil {
+				return err
+			}
+			data[id] = dict
+			return nil
+		})
 	if err != nil {
 		return nil, nil, err
 	}
-	data := make(map[string]any, len(res.results))
-	for id, u := range res.results {
-		dict, err := convert.JsonToDict(newSignInActivity(u.GetSignInActivity()))
-		if err != nil {
-			res.errs[id] = err
-			continue
-		}
-		data[id] = dict
-	}
-	return data, res.errs, nil
+	return data, errs, nil
 }
 
 type authMethod struct {
@@ -820,8 +835,8 @@ type temporaryAccessPassMethod struct {
 }
 
 type userAuthentication struct {
-	userID                     string                         `json:"userId"`
-	methodCount                int                            `json:"methodCount"`
+	userID                     string
+	methodCount                int
 	PhoneMethods               []phoneMethod                  `json:"phoneMethods"`
 	Fido2Methods               []fido2Method                  `json:"fido2Methods"`
 	SoftwareMethods            []softwareMethod               `json:"softwareMethods"`
@@ -832,21 +847,104 @@ type userAuthentication struct {
 	EmailMethods               []emailMethod                  `json:"emailMethods"`
 }
 
-// authMethods needs the permission UserAuthenticationMethod.Read.All
+// authMethods returns the user's authentication methods resource without
+// fetching anything. Its method fields read the per-user Graph listing on
+// first access; registrationDetails reads the tenant-wide report instead, so a
+// query that only needs registrationDetails (CIS isMfaCapable) does not list
+// the methods of every user.
 func (a *mqlMicrosoftUser) authMethods() (*mqlMicrosoftUserAuthenticationMethods, error) {
-	ms, err := a.microsoftParent()
+	res, err := CreateResource(a.MqlRuntime, "microsoft.user.authenticationMethods", map[string]*llx.RawData{
+		"__id": llx.StringData(a.Id.Data),
+	})
 	if err != nil {
 		return nil, err
 	}
-	v, err := ms.userBatches.authMethods.resolve(a.Id.Data, ms.indexedUserIDs(), ms.loadUserAuthMethods)
+	return res.(*mqlMicrosoftUserAuthenticationMethods), nil
+}
+
+// methods returns the user's authentication methods, grouped by type. They
+// are listed for every indexed user in one batched fetch, which needs the
+// UserAuthenticationMethod.Read.All permission.
+func (a *mqlMicrosoftUserAuthenticationMethods) methods() (userAuthentication, error) {
+	ms, err := CreateResource(a.MqlRuntime, "microsoft", map[string]*llx.RawData{})
+	if err != nil {
+		return userAuthentication{}, err
+	}
+	m := ms.(*mqlMicrosoft)
+	v, err := m.userBatches.authMethods.resolve(a.__id, m.indexedUserIDs(), m.loadUserAuthMethods)
+	if err != nil || v == nil {
+		return userAuthentication{userID: a.__id}, err
+	}
+	return v.(userAuthentication), nil
+}
+
+func (a *mqlMicrosoftUserAuthenticationMethods) count() (int64, error) {
+	u, err := a.methods()
+	return int64(u.methodCount), err
+}
+
+func (a *mqlMicrosoftUserAuthenticationMethods) phoneMethods() ([]any, error) {
+	u, err := a.methods()
 	if err != nil {
 		return nil, err
 	}
-	if v == nil {
-		a.AuthMethods.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
+	return convert.JsonToDictSlice(u.PhoneMethods)
+}
+
+func (a *mqlMicrosoftUserAuthenticationMethods) emailMethods() ([]any, error) {
+	u, err := a.methods()
+	if err != nil {
+		return nil, err
 	}
-	return v.(*mqlMicrosoftUserAuthenticationMethods), nil
+	return convert.JsonToDictSlice(u.EmailMethods)
+}
+
+func (a *mqlMicrosoftUserAuthenticationMethods) fido2Methods() ([]any, error) {
+	u, err := a.methods()
+	if err != nil {
+		return nil, err
+	}
+	return convert.JsonToDictSlice(u.Fido2Methods)
+}
+
+func (a *mqlMicrosoftUserAuthenticationMethods) softwareMethods() ([]any, error) {
+	u, err := a.methods()
+	if err != nil {
+		return nil, err
+	}
+	return convert.JsonToDictSlice(u.SoftwareMethods)
+}
+
+func (a *mqlMicrosoftUserAuthenticationMethods) microsoftAuthenticator() ([]any, error) {
+	u, err := a.methods()
+	if err != nil {
+		return nil, err
+	}
+	return convert.JsonToDictSlice(u.MicrosoftAuthenticator)
+}
+
+func (a *mqlMicrosoftUserAuthenticationMethods) passwordMethods() ([]any, error) {
+	u, err := a.methods()
+	if err != nil {
+		return nil, err
+	}
+	return convert.JsonToDictSlice(u.PasswordMethods)
+}
+
+func (a *mqlMicrosoftUserAuthenticationMethods) temporaryAccessPassMethods() ([]any, error) {
+	u, err := a.methods()
+	if err != nil {
+		return nil, err
+	}
+	return convert.JsonToDictSlice(u.TemporaryAccessPassMethods)
+}
+
+func (a *mqlMicrosoftUserAuthenticationMethods) windowsHelloMethods() ([]any, error) {
+	u, err := a.methods()
+	if err != nil {
+		return nil, err
+	}
+	return convert.JsonToDictSlice(u.WindowsHelloMethods)
 }
 
 // loadUserAuthMethods fetches the authentication methods of the given users in
@@ -859,36 +957,27 @@ func (m *mqlMicrosoft) loadUserAuthMethods(ids []string) (map[string]any, map[st
 		return nil, nil, err
 	}
 	ctx := context.Background()
-	reqs := make([]batchItemRequest, 0, len(ids))
-	for _, id := range ids {
-		reqInfo, err := graphClient.Users().ByUserId(id).Authentication().Methods().ToGetRequestInformation(ctx, nil)
-		if err != nil {
-			return nil, nil, transformError(err)
-		}
-		reqs = append(reqs, batchItemRequest{key: id, reqInfo: reqInfo})
+	build := func(id string) (*abstractions.RequestInformation, error) {
+		return graphClient.Users().ByUserId(id).Authentication().Methods().ToGetRequestInformation(ctx, nil)
 	}
-	res, err := batchGet[*models.AuthenticationMethodCollectionResponse](ctx, graphClient.GetAdapter(), reqs, models.CreateAuthenticationMethodCollectionResponseFromDiscriminatorValue)
+	data := make(map[string]any, len(ids))
+	errs, statuses, err := batchEach(ctx, graphClient.GetAdapter(), ids, build, models.CreateAuthenticationMethodCollectionResponseFromDiscriminatorValue,
+		func(id string, coll *models.AuthenticationMethodCollectionResponse) error {
+			data[id] = buildUserAuthentication(id, coll.GetValue())
+			return nil
+		})
 	if err != nil {
 		return nil, nil, err
 	}
-	data := make(map[string]any, len(res.results))
-	for id, coll := range res.results {
-		mqlAuth, err := newMqlMicrosoftUserAuthentication(m.MqlRuntime, buildUserAuthentication(id, coll.GetValue()))
-		if err != nil {
-			res.errs[id] = err
-			continue
-		}
-		data[id] = mqlAuth
-	}
-	for id, code := range res.statuses {
+	for id, code := range statuses {
 		if code == 403 {
-			res.errs[id] = errors.New("UserAuthenticationMethod.Read.All permission is required")
+			errs[id] = errors.New("UserAuthenticationMethod.Read.All permission is required")
 			// the error wins over any partially-deserialized result; keep the
 			// data and errs maps disjoint so lookups stay consistent
 			delete(data, id)
 		}
 	}
-	return data, res.errs, nil
+	return data, errs, nil
 }
 
 // buildUserAuthentication groups a user's authentication methods by type.
@@ -906,9 +995,7 @@ func buildUserAuthentication(userID string, methods []models.AuthenticationMetho
 			}
 
 			m := phoneMethod{
-				authMethod: authMethod{
-					Id: *x.GetId(),
-				},
+				Id:          *x.GetId(),
 				PhoneNumber: x.GetPhoneNumber(),
 			}
 
@@ -926,9 +1013,7 @@ func buildUserAuthentication(userID string, methods []models.AuthenticationMetho
 				continue
 			}
 			m := fido2Method{
-				authMethod: authMethod{
-					Id: *x.GetId(),
-				},
+				Id:                      *x.GetId(),
 				Name:                    x.GetDisplayName(),
 				Model:                   x.GetModel(),
 				AttestationCertificates: x.GetAttestationCertificates(),
@@ -942,9 +1027,7 @@ func buildUserAuthentication(userID string, methods []models.AuthenticationMetho
 				continue
 			}
 			m := softwareMethod{
-				authMethod: authMethod{
-					Id: *x.GetId(),
-				},
+				Id: *x.GetId(),
 			}
 
 			ua.SoftwareMethods = append(ua.SoftwareMethods, m)
@@ -953,9 +1036,7 @@ func buildUserAuthentication(userID string, methods []models.AuthenticationMetho
 				continue
 			}
 			m := microsoftAuthenticatorMethod{
-				authMethod: authMethod{
-					Id: *x.GetId(),
-				},
+				Id:              *x.GetId(),
 				Name:            x.GetDisplayName(),
 				PhoneAppVersion: x.GetPhoneAppVersion(),
 				DeviceTag:       x.GetDeviceTag(),
@@ -967,9 +1048,7 @@ func buildUserAuthentication(userID string, methods []models.AuthenticationMetho
 				continue
 			}
 			m := passwordMethod{
-				authMethod: authMethod{
-					Id: *x.GetId(),
-				},
+				Id: *x.GetId(),
 			}
 
 			ua.PasswordMethods = append(ua.PasswordMethods, m)
@@ -978,9 +1057,7 @@ func buildUserAuthentication(userID string, methods []models.AuthenticationMetho
 				continue
 			}
 			m := temporaryAccessPassMethod{
-				authMethod: authMethod{
-					Id: *x.GetId(),
-				},
+				Id:                *x.GetId(),
 				IsUsable:          x.GetIsUsable(),
 				IsUsableOnce:      x.GetIsUsableOnce(),
 				LifetimeInMinutes: x.GetLifetimeInMinutes(),
@@ -991,9 +1068,7 @@ func buildUserAuthentication(userID string, methods []models.AuthenticationMetho
 				continue
 			}
 			m := windowsHelloMethod{
-				authMethod: authMethod{
-					Id: *x.GetId(),
-				},
+				Id:   *x.GetId(),
 				Name: x.GetDisplayName(),
 			}
 			if x.GetDevice() != nil {
@@ -1011,9 +1086,7 @@ func buildUserAuthentication(userID string, methods []models.AuthenticationMetho
 			}
 
 			m := emailMethod{
-				authMethod: authMethod{
-					Id: *x.GetId(),
-				},
+				Id:           *x.GetId(),
 				EmailAddress: x.GetEmailAddress(),
 			}
 			ua.EmailMethods = append(ua.EmailMethods, m)
@@ -1023,38 +1096,6 @@ func buildUserAuthentication(userID string, methods []models.AuthenticationMetho
 	}
 
 	return ua
-}
-
-func newMqlMicrosoftUserAuthentication(runtime *plugin.Runtime, u userAuthentication) (*mqlMicrosoftUserAuthenticationMethods, error) {
-	if u.userID == "" {
-		return nil, errors.New("user id is required")
-	}
-	phoneMethods, _ := convert.JsonToDictSlice(u.PhoneMethods)
-	emailMethods, _ := convert.JsonToDictSlice(u.EmailMethods)
-	fido2Methods, _ := convert.JsonToDictSlice(u.Fido2Methods)
-	softwareMethods, _ := convert.JsonToDictSlice(u.SoftwareMethods)
-	microsoftAuthenticator, _ := convert.JsonToDictSlice(u.MicrosoftAuthenticator)
-	passwordMethods, _ := convert.JsonToDictSlice(u.PasswordMethods)
-	temporaryAccessPassMethods, _ := convert.JsonToDictSlice(u.TemporaryAccessPassMethods)
-	windowsHelloMethods, _ := convert.JsonToDictSlice(u.WindowsHelloMethods)
-
-	graphUser, err := CreateResource(runtime, "microsoft.user.authenticationMethods",
-		map[string]*llx.RawData{
-			"__id":                       llx.StringData(u.userID),
-			"count":                      llx.IntData(u.methodCount),
-			"phoneMethods":               llx.DictData(phoneMethods),
-			"emailMethods":               llx.DictData(emailMethods),
-			"fido2Methods":               llx.DictData(fido2Methods),
-			"softwareMethods":            llx.DictData(softwareMethods),
-			"microsoftAuthenticator":     llx.DictData(microsoftAuthenticator),
-			"passwordMethods":            llx.DictData(passwordMethods),
-			"temporaryAccessPassMethods": llx.DictData(temporaryAccessPassMethods),
-			"windowsHelloMethods":        llx.DictData(windowsHelloMethods),
-		})
-	if err != nil {
-		return nil, err
-	}
-	return graphUser.(*mqlMicrosoftUserAuthenticationMethods), nil
 }
 
 func (a *mqlMicrosoftUser) authenticationRequirements() (*mqlMicrosoftUserAuthenticationRequirements, error) {
@@ -1082,95 +1123,136 @@ func (m *mqlMicrosoft) loadUserAuthRequirements(ids []string) (map[string]any, m
 		return nil, nil, err
 	}
 	ctx := context.Background()
-	reqs := make([]batchItemRequest, 0, len(ids))
-	for _, id := range ids {
-		reqInfo, err := betaClient.Users().ByUserId(id).Authentication().Requirements().ToGetRequestInformation(ctx, nil)
-		if err != nil {
-			return nil, nil, transformError(err)
-		}
-		reqs = append(reqs, batchItemRequest{key: id, reqInfo: reqInfo})
+	build := func(id string) (*abstractions.RequestInformation, error) {
+		return betaClient.Users().ByUserId(id).Authentication().Requirements().ToGetRequestInformation(ctx, nil)
 	}
-	res, err := batchGet[*betamodels.StrongAuthenticationRequirements](ctx, betaClient.GetAdapter(), reqs, betamodels.CreateStrongAuthenticationRequirementsFromDiscriminatorValue)
+	data := make(map[string]any, len(ids))
+	errs, _, err := batchEach(ctx, betaClient.GetAdapter(), ids, build, betamodels.CreateStrongAuthenticationRequirementsFromDiscriminatorValue,
+		func(id string, r *betamodels.StrongAuthenticationRequirements) error {
+			var perUserMfaState string
+			if r.GetPerUserMfaState() != nil {
+				perUserMfaState = r.GetPerUserMfaState().String()
+			}
+			mqlAuthRequirements, err := CreateResource(m.MqlRuntime, ResourceMicrosoftUserAuthenticationRequirements,
+				map[string]*llx.RawData{
+					"__id":            llx.StringData(id),
+					"perUserMfaState": llx.StringData(perUserMfaState),
+				})
+			if err != nil {
+				return err
+			}
+			data[id] = mqlAuthRequirements
+			return nil
+		})
 	if err != nil {
 		return nil, nil, err
 	}
-	data := make(map[string]any, len(res.results))
-	for id, r := range res.results {
-		var perUserMfaState string
-		if r.GetPerUserMfaState() != nil {
-			perUserMfaState = r.GetPerUserMfaState().String()
-		}
-		mqlAuthRequirements, err := CreateResource(m.MqlRuntime, ResourceMicrosoftUserAuthenticationRequirements,
-			map[string]*llx.RawData{
-				"__id":            llx.StringData(id),
-				"perUserMfaState": llx.StringData(perUserMfaState),
-			})
-		if err != nil {
-			res.errs[id] = err
-			continue
-		}
-		data[id] = mqlAuthRequirements
-	}
-	return data, res.errs, nil
+	return data, errs, nil
 }
 
 // Needs the permission AuditLog.Read.All
 func (a *mqlMicrosoftUserAuthenticationMethods) registrationDetails() (*mqlMicrosoftUserAuthenticationMethodsUserRegistrationDetails, error) {
-	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
-	graphClient, err := conn.GraphClient()
-	if err != nil {
-		return nil, err
-	}
-
 	userID := a.__id
 	if userID == "" {
 		return nil, errors.New("cannot fetch user registration details without a user ID")
 	}
 
-	ctx := context.Background()
-	userRegistrationDetails, err := graphClient.Reports().
-		AuthenticationMethods().
-		UserRegistrationDetails().
-		ByUserRegistrationDetailsId(userID).
-		Get(ctx, nil)
+	// From the tenant-wide report, read once and indexed, rather than a Get per
+	// user: this record used to cost 50 calls on a tenant whose whole
+	// authMethods parent cost 4 batched ones.
+	ms, err := CreateResource(a.MqlRuntime, "microsoft", map[string]*llx.RawData{})
 	if err != nil {
-		return nil, transformError(err)
+		return nil, err
+	}
+	byUser, err := ms.(*mqlMicrosoft).loadRegistrationDetails()
+	if err != nil {
+		return nil, err
 	}
 
-	return newMqlUserRegistrationDetails(a.MqlRuntime, userRegistrationDetails)
+	details, ok := byUser[userID]
+	if !ok {
+		// A user with no registration record is a legitimate state -- the report
+		// omits users who have never registered a method -- so report null
+		// rather than the 404 the per-user Get returned.
+		a.RegistrationDetails.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+
+	return newMqlUserRegistrationDetails(a.MqlRuntime, details)
 }
 
-func newMqlUserRegistrationDetails(runtime *plugin.Runtime, details models.UserRegistrationDetailsable) (*mqlMicrosoftUserAuthenticationMethodsUserRegistrationDetails, error) {
-	if details.GetId() == nil {
+// userRegistrationDetail is the part of a registration report row that
+// microsoft.user.authenticationMethods.userRegistrationDetails exposes. The
+// report is held for the whole scan, so it keeps these values rather than the
+// kiota model, whose backing store costs several times as much per row.
+type userRegistrationDetail struct {
+	id                                            *string
+	isAdmin                                       *bool
+	isMfaCapable                                  *bool
+	isMfaRegistered                               *bool
+	isPasswordlessCapable                         *bool
+	isSsprCapable                                 *bool
+	isSsprEnabled                                 *bool
+	isSsprRegistered                              *bool
+	isSystemPreferredAuthenticationMethodEnabled  *bool
+	lastUpdatedDateTime                           *time.Time
+	methodsRegistered                             []string
+	systemPreferredAuthenticationMethods          []string
+	userDisplayName                               *string
+	userPreferredMethodForSecondaryAuthentication string
+	userPrincipalName                             *string
+	userType                                      string
+}
+
+func newUserRegistrationDetail(details models.UserRegistrationDetailsable) userRegistrationDetail {
+	d := userRegistrationDetail{
+		id:                    details.GetId(),
+		isAdmin:               details.GetIsAdmin(),
+		isMfaCapable:          details.GetIsMfaCapable(),
+		isMfaRegistered:       details.GetIsMfaRegistered(),
+		isPasswordlessCapable: details.GetIsPasswordlessCapable(),
+		isSsprCapable:         details.GetIsSsprCapable(),
+		isSsprEnabled:         details.GetIsSsprEnabled(),
+		isSsprRegistered:      details.GetIsSsprRegistered(),
+		isSystemPreferredAuthenticationMethodEnabled: details.GetIsSystemPreferredAuthenticationMethodEnabled(),
+		lastUpdatedDateTime:                          details.GetLastUpdatedDateTime(),
+		methodsRegistered:                            details.GetMethodsRegistered(),
+		systemPreferredAuthenticationMethods:         details.GetSystemPreferredAuthenticationMethods(),
+		userDisplayName:                              details.GetUserDisplayName(),
+		userPrincipalName:                            details.GetUserPrincipalName(),
+	}
+	if details.GetUserPreferredMethodForSecondaryAuthentication() != nil {
+		d.userPreferredMethodForSecondaryAuthentication = details.GetUserPreferredMethodForSecondaryAuthentication().String()
+	}
+	if details.GetUserType() != nil {
+		d.userType = details.GetUserType().String()
+	}
+	return d
+}
+
+func newMqlUserRegistrationDetails(runtime *plugin.Runtime, details userRegistrationDetail) (*mqlMicrosoftUserAuthenticationMethodsUserRegistrationDetails, error) {
+	if details.id == nil {
 		return nil, errors.New("user registration details response is missing an ID")
 	}
 
-	var userPrefMethodStr, userTypeStr string
-	if details.GetUserPreferredMethodForSecondaryAuthentication() != nil {
-		userPrefMethodStr = details.GetUserPreferredMethodForSecondaryAuthentication().String()
-	}
-	if details.GetUserType() != nil {
-		userTypeStr = details.GetUserType().String()
-	}
-
 	data := map[string]*llx.RawData{
-		"__id":                  llx.StringDataPtr(details.GetId()),
-		"id":                    llx.StringDataPtr(details.GetId()),
-		"isAdmin":               llx.BoolDataPtr(details.GetIsAdmin()),
-		"isMfaCapable":          llx.BoolDataPtr(details.GetIsMfaCapable()),
-		"isMfaRegistered":       llx.BoolDataPtr(details.GetIsMfaRegistered()),
-		"isPasswordlessCapable": llx.BoolDataPtr(details.GetIsPasswordlessCapable()),
-		"isSsprCapable":         llx.BoolDataPtr(details.GetIsSsprCapable()),
-		"isSsprEnabled":         llx.BoolDataPtr(details.GetIsSsprEnabled()),
-		"isSsprRegistered":      llx.BoolDataPtr(details.GetIsSsprRegistered()),
-		"isSystemPreferredAuthenticationMethodEnabled":  llx.BoolDataPtr(details.GetIsSystemPreferredAuthenticationMethodEnabled()),
-		"lastUpdatedDateTime":                           llx.TimeDataPtr(details.GetLastUpdatedDateTime()),
-		"methodsRegistered":                             llx.ArrayData(convert.SliceAnyToInterface(details.GetMethodsRegistered()), types.String),
-		"systemPreferredAuthenticationMethods":          llx.ArrayData(convert.SliceAnyToInterface(details.GetSystemPreferredAuthenticationMethods()), types.String),
-		"userDisplayName":                               llx.StringDataPtr(details.GetUserDisplayName()),
-		"userPreferredMethodForSecondaryAuthentication": llx.StringData(userPrefMethodStr),
-		"userPrincipalName":                             llx.StringDataPtr(details.GetUserPrincipalName()),
-		"userType":                                      llx.StringData(userTypeStr),
+		"__id":                  llx.StringDataPtr(details.id),
+		"id":                    llx.StringDataPtr(details.id),
+		"isAdmin":               llx.BoolDataPtr(details.isAdmin),
+		"isMfaCapable":          llx.BoolDataPtr(details.isMfaCapable),
+		"isMfaRegistered":       llx.BoolDataPtr(details.isMfaRegistered),
+		"isPasswordlessCapable": llx.BoolDataPtr(details.isPasswordlessCapable),
+		"isSsprCapable":         llx.BoolDataPtr(details.isSsprCapable),
+		"isSsprEnabled":         llx.BoolDataPtr(details.isSsprEnabled),
+		"isSsprRegistered":      llx.BoolDataPtr(details.isSsprRegistered),
+		"isSystemPreferredAuthenticationMethodEnabled":  llx.BoolDataPtr(details.isSystemPreferredAuthenticationMethodEnabled),
+		"lastUpdatedDateTime":                           graphTimeData(details.lastUpdatedDateTime),
+		"methodsRegistered":                             llx.ArrayData(convert.SliceAnyToInterface(details.methodsRegistered), types.String),
+		"systemPreferredAuthenticationMethods":          llx.ArrayData(convert.SliceAnyToInterface(details.systemPreferredAuthenticationMethods), types.String),
+		"userDisplayName":                               llx.StringDataPtr(details.userDisplayName),
+		"userPreferredMethodForSecondaryAuthentication": llx.StringData(details.userPreferredMethodForSecondaryAuthentication),
+		"userPrincipalName":                             llx.StringDataPtr(details.userPrincipalName),
+		"userType":                                      llx.StringData(details.userType),
 	}
 
 	resource, err := CreateResource(runtime, "microsoft.user.authenticationMethods.userRegistrationDetails", data)
@@ -1179,110 +1261,4 @@ func newMqlUserRegistrationDetails(runtime *plugin.Runtime, details models.UserR
 	}
 
 	return resource.(*mqlMicrosoftUserAuthenticationMethodsUserRegistrationDetails), nil
-}
-
-func (a *mqlMicrosoftUser) licenseDetails() ([]any, error) {
-	ms, err := a.microsoftParent()
-	if err != nil {
-		return nil, err
-	}
-	v, err := ms.userBatches.licenseDetails.resolve(a.Id.Data, ms.indexedUserIDs(), ms.loadUserLicenseDetails)
-	if err != nil {
-		return nil, err
-	}
-	if v == nil {
-		return []any{}, nil
-	}
-	return v.([]any), nil
-}
-
-// loadUserLicenseDetails fetches the license details of the given users in one
-// batched Graph request.
-//
-// Permissions: User.Read.All, Directory.Read.All
-func (m *mqlMicrosoft) loadUserLicenseDetails(ids []string) (map[string]any, map[string]error, error) {
-	conn := m.MqlRuntime.Connection.(*connection.Ms365Connection)
-	graphClient, err := conn.GraphClient()
-	if err != nil {
-		return nil, nil, err
-	}
-	ctx := context.Background()
-	reqs := make([]batchItemRequest, 0, len(ids))
-	for _, id := range ids {
-		reqInfo, err := graphClient.Users().ByUserId(id).LicenseDetails().ToGetRequestInformation(ctx, nil)
-		if err != nil {
-			return nil, nil, transformError(err)
-		}
-		reqs = append(reqs, batchItemRequest{key: id, reqInfo: reqInfo})
-	}
-	res, err := batchGet[*models.LicenseDetailsCollectionResponse](ctx, graphClient.GetAdapter(), reqs, models.CreateLicenseDetailsCollectionResponseFromDiscriminatorValue)
-	if err != nil {
-		return nil, nil, err
-	}
-	data := make(map[string]any, len(res.results))
-	for id, coll := range res.results {
-		details := []any{}
-		var itemErr error
-		for _, d := range coll.GetValue() {
-			mqlDetail, err := newMqlMicrosoftUserLicenseDetail(m.MqlRuntime, d)
-			if err != nil {
-				itemErr = err
-				break
-			}
-			details = append(details, mqlDetail)
-		}
-		if itemErr != nil {
-			res.errs[id] = itemErr
-			continue
-		}
-		data[id] = details
-	}
-	return data, res.errs, nil
-}
-
-func newMqlMicrosoftUserLicenseDetail(runtime *plugin.Runtime, d models.LicenseDetailsable) (*mqlMicrosoftUserLicenseDetail, error) {
-	if d.GetId() == nil {
-		return nil, errors.New("license detail response is missing an ID")
-	}
-
-	var skuId, skuPartNumber string
-	if d.GetSkuId() != nil {
-		skuId = d.GetSkuId().String()
-	}
-	if d.GetSkuPartNumber() != nil {
-		skuPartNumber = *d.GetSkuPartNumber()
-	}
-
-	servicePlans := []any{}
-	for i, sp := range d.GetServicePlans() {
-		planId := fmt.Sprintf("%s-service-plans-%d", *d.GetId(), +i)
-
-		servicePlan, err := CreateResource(runtime, "microsoft.user.licenseDetail.servicePlanInfo",
-			map[string]*llx.RawData{
-				"__id":               llx.StringData(planId),
-				"appliesTo":          llx.StringDataPtr(sp.GetAppliesTo()),
-				"provisioningStatus": llx.StringDataPtr(sp.GetProvisioningStatus()),
-				"servicePlanId":      llx.StringDataPtr(newUuidString(sp.GetServicePlanId())),
-				"servicePlanName":    llx.StringDataPtr(sp.GetServicePlanName()),
-			})
-		if err != nil {
-			return nil, err
-		}
-		servicePlans = append(servicePlans, servicePlan)
-	}
-
-	data := map[string]*llx.RawData{
-		"__id":          llx.StringDataPtr(d.GetId()),
-		"id":            llx.StringDataPtr(d.GetId()),
-		"skuId":         llx.StringData(skuId),
-		"skuPartNumber": llx.StringData(skuPartNumber),
-		"servicePlans":  llx.ArrayData(servicePlans, types.ResourceLike),
-	}
-
-	resource, err := CreateResource(runtime, "microsoft.user.licenseDetail", data)
-	if err != nil {
-		return nil, err
-	}
-
-	return resource.(*mqlMicrosoftUserLicenseDetail), nil
 }

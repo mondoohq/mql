@@ -1,0 +1,213 @@
+Repo ID              : fedora
+Name                 : Fedora 43 - x86_64
+Status               : enabled
+Priority             : 99
+Cost                 : 1000
+Type                 : available
+Metadata expire      : 604800 seconds (last: 2026-09-28 05:12:19)
+Skip if unavailable  : false
+Config file          : /etc/yum.repos.d/fedora.repo
+URLs                 : 
+  Base URL           : https://d2lzkl7pfhq30w.cloudfront.net/pub/fedora/linux/releases/43/Everything/x86_64/os/ (145 more)
+  Metalink           : https://mirrors.fedoraproject.org/metalink?repo=fedora-43&arch=x86_64
+OpenPGP              : 
+  Keys               : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-43-x86_64
+  Verify repodata    : false
+  Verify packages    : true
+Repodata info        : 
+  Available packages : 77664
+  Total packages     : 77664
+  Size               : 117.1 GiB
+  Revision           : 1761190640
+  Updated            : 2025-10-23 03:37:20
+
+Repo ID              : fedora-cisco-openh264
+Name                 : Fedora 43 openh264 (From Cisco) - x86_64
+Status               : enabled
+Priority             : 99
+Cost                 : 1000
+Type                 : available
+Metadata expire      : 1209600 seconds (last: 2026-09-28 05:12:19)
+Skip if unavailable  : true
+Config file          : /etc/yum.repos.d/fedora-cisco-openh264.repo
+URLs                 : 
+  Base URL           : https://codecs.fedoraproject.org/openh264/43/x86_64/ (1 more)
+  Metalink           : https://mirrors.fedoraproject.org/metalink?repo=fedora-cisco-openh264-43&arch=x86_64
+OpenPGP              : 
+  Keys               : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-43-x86_64
+  Verify repodata    : false
+  Verify packages    : true
+Repodata info        : 
+  Available packages : 6
+  Total packages     : 6
+  Size               : 3.5 MiB
+  Revision           : 1741171556
+  Updated            : 2025-03-05 10:45:56
+
+Repo ID             : fedora-cisco-openh264-debuginfo
+Name                : Fedora 43 openh264 (From Cisco) - x86_64 - Debug
+Status              : disabled
+Priority            : 99
+Cost                : 1000
+Type                : available
+Metadata expire     : 1209600 seconds (last: unknown)
+Skip if unavailable : true
+Config file         : /etc/yum.repos.d/fedora-cisco-openh264.repo
+URLs                : 
+  Metalink          : https://mirrors.fedoraproject.org/metalink?repo=fedora-cisco-openh264-debug-43&arch=x86_64
+OpenPGP             : 
+  Keys              : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-43-x86_64
+  Verify repodata   : false
+  Verify packages   : true
+
+Repo ID             : fedora-cisco-openh264-source
+Name                : Fedora 43 openh264 (From Cisco) - x86_64 - Source
+Status              : disabled
+Priority            : 99
+Cost                : 1000
+Type                : available
+Metadata expire     : 1209600 seconds (last: unknown)
+Skip if unavailable : true
+Config file         : /etc/yum.repos.d/fedora-cisco-openh264.repo
+URLs                : 
+  Metalink          : https://mirrors.fedoraproject.org/metalink?repo=fedora-cisco-openh264-source-43&arch=x86_64
+OpenPGP             : 
+  Keys              : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-43-x86_64
+  Verify repodata   : false
+  Verify packages   : true
+
+Repo ID             : fedora-debuginfo
+Name                : Fedora 43 - x86_64 - Debug
+Status              : disabled
+Priority            : 99
+Cost                : 1000
+Type                : available
+Metadata expire     : 604800 seconds (last: unknown)
+Skip if unavailable : false
+Config file         : /etc/yum.repos.d/fedora.repo
+URLs                : 
+  Metalink          : https://mirrors.fedoraproject.org/metalink?repo=fedora-debug-43&arch=x86_64
+OpenPGP             : 
+  Keys              : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-43-x86_64
+  Verify repodata   : false
+  Verify packages   : true
+
+Repo ID             : fedora-source
+Name                : Fedora 43 - Source
+Status              : disabled
+Priority            : 99
+Cost                : 1000
+Type                : available
+Metadata expire     : 604800 seconds (last: unknown)
+Skip if unavailable : false
+Config file         : /etc/yum.repos.d/fedora.repo
+URLs                : 
+  Metalink          : https://mirrors.fedoraproject.org/metalink?repo=fedora-source-43&arch=x86_64
+OpenPGP             : 
+  Keys              : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-43-x86_64
+  Verify repodata   : false
+  Verify packages   : true
+
+Repo ID              : updates
+Name                 : Fedora 43 - x86_64 - Updates
+Status               : enabled
+Priority             : 99
+Cost                 : 1000
+Type                 : available
+Metadata expire      : 21600 seconds (last: 2026-09-28 05:12:19)
+Skip if unavailable  : false
+Config file          : /etc/yum.repos.d/fedora-updates.repo
+URLs                 : 
+  Base URL           : https://d2lzkl7pfhq30w.cloudfront.net/pub/fedora/linux/updates/43/Everything/x86_64/ (108 more)
+  Metalink           : https://mirrors.fedoraproject.org/metalink?repo=updates-released-f43&arch=x86_64
+OpenPGP              : 
+  Keys               : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-43-x86_64
+  Verify repodata    : false
+  Verify packages    : true
+Repodata info        : 
+  Available packages : 28940
+  Total packages     : 28940
+  Size               : 60.2 GiB
+  Revision           : 1790555023
+  Updated            : 2026-09-28 01:06:30
+
+Repo ID             : updates-debuginfo
+Name                : Fedora 43 - x86_64 - Updates - Debug
+Status              : disabled
+Priority            : 99
+Cost                : 1000
+Type                : available
+Metadata expire     : 21600 seconds (last: unknown)
+Skip if unavailable : false
+Config file         : /etc/yum.repos.d/fedora-updates.repo
+URLs                : 
+  Metalink          : https://mirrors.fedoraproject.org/metalink?repo=updates-released-debug-f43&arch=x86_64
+OpenPGP             : 
+  Keys              : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-43-x86_64
+  Verify repodata   : false
+  Verify packages   : true
+
+Repo ID             : updates-source
+Name                : Fedora 43 - Updates Source
+Status              : disabled
+Priority            : 99
+Cost                : 1000
+Type                : available
+Metadata expire     : 21600 seconds (last: unknown)
+Skip if unavailable : false
+Config file         : /etc/yum.repos.d/fedora-updates.repo
+URLs                : 
+  Metalink          : https://mirrors.fedoraproject.org/metalink?repo=updates-released-source-f43&arch=x86_64
+OpenPGP             : 
+  Keys              : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-43-x86_64
+  Verify repodata   : false
+  Verify packages   : true
+
+Repo ID             : updates-testing
+Name                : Fedora 43 - x86_64 - Test Updates
+Status              : disabled
+Priority            : 99
+Cost                : 1000
+Type                : available
+Metadata expire     : 21600 seconds (last: unknown)
+Skip if unavailable : false
+Config file         : /etc/yum.repos.d/fedora-updates-testing.repo
+URLs                : 
+  Metalink          : https://mirrors.fedoraproject.org/metalink?repo=updates-testing-f43&arch=x86_64
+OpenPGP             : 
+  Keys              : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-43-x86_64
+  Verify repodata   : false
+  Verify packages   : true
+
+Repo ID             : updates-testing-debuginfo
+Name                : Fedora 43 - x86_64 - Test Updates Debug
+Status              : disabled
+Priority            : 99
+Cost                : 1000
+Type                : available
+Metadata expire     : 21600 seconds (last: unknown)
+Skip if unavailable : false
+Config file         : /etc/yum.repos.d/fedora-updates-testing.repo
+URLs                : 
+  Metalink          : https://mirrors.fedoraproject.org/metalink?repo=updates-testing-debug-f43&arch=x86_64
+OpenPGP             : 
+  Keys              : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-43-x86_64
+  Verify repodata   : false
+  Verify packages   : true
+
+Repo ID             : updates-testing-source
+Name                : Fedora 43 - Test Updates Source
+Status              : disabled
+Priority            : 99
+Cost                : 1000
+Type                : available
+Metadata expire     : 21600 seconds (last: unknown)
+Skip if unavailable : false
+Config file         : /etc/yum.repos.d/fedora-updates-testing.repo
+URLs                : 
+  Metalink          : https://mirrors.fedoraproject.org/metalink?repo=updates-testing-source-f43&arch=x86_64
+OpenPGP             : 
+  Keys              : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-43-x86_64
+  Verify repodata   : false
+  Verify packages   : true
+

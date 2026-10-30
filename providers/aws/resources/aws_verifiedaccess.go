@@ -9,13 +9,43 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
+
+// newMqlVerifiedAccessSse builds the server-side encryption specification
+// shared by Verified Access trust providers, groups and endpoints. A nil
+// specification means the resource reports no encryption settings at all,
+// which is reported as null rather than as a customer managed key being off.
+func newMqlVerifiedAccessSse(runtime *plugin.Runtime, ownerID, region string, sse *ec2types.VerifiedAccessSseSpecificationResponse) (*llx.RawData, error) {
+	if sse == nil {
+		return llx.NilData, nil
+	}
+	res, err := CreateResource(runtime, "aws.verifiedaccess.sseSpecification", map[string]*llx.RawData{
+		"__id":                      llx.StringData(ownerID + "/sseSpecification"),
+		"customerManagedKeyEnabled": llx.BoolData(convert.ToValue(sse.CustomerManagedKeyEnabled)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	mqlSse := res.(*mqlAwsVerifiedaccessSseSpecification)
+	mqlSse.cacheKmsKeyArn = sse.KmsKeyArn
+	mqlSse.region = region
+	return llx.ResourceData(mqlSse, "aws.verifiedaccess.sseSpecification"), nil
+}
+
+type mqlAwsVerifiedaccessSseSpecificationInternal struct {
+	cacheKmsKeyArn *string
+	region         string
+}
+
+func (a *mqlAwsVerifiedaccessSseSpecification) kmsKey() (*mqlAwsKmsKey, error) {
+	return resolveKmsKeyRef(a.MqlRuntime, a.cacheKmsKeyArn, a.region, &a.KmsKey.State)
+}
 
 func (a *mqlAwsVerifiedaccess) id() (string, error) {
 	return "aws.verifiedaccess", nil
@@ -217,6 +247,11 @@ func (a *mqlAwsVerifiedaccess) getTrustProviders(conn *connection.AwsConnection)
 				for _, tp := range page.VerifiedAccessTrustProviders {
 					oidcOpts, _ := convert.JsonToDict(tp.OidcOptions)
 					sseSpec, _ := convert.JsonToDict(tp.SseSpecification)
+					mqlSse, err := newMqlVerifiedAccessSse(a.MqlRuntime,
+						"aws.verifiedaccess.trustProvider/"+region+"/"+convert.ToValue(tp.VerifiedAccessTrustProviderId), region, tp.SseSpecification)
+					if err != nil {
+						return nil, err
+					}
 
 					mqlTP, err := CreateResource(a.MqlRuntime, "aws.verifiedaccess.trustProvider",
 						map[string]*llx.RawData{
@@ -229,6 +264,7 @@ func (a *mqlAwsVerifiedaccess) getTrustProviders(conn *connection.AwsConnection)
 							"policyReferenceName":           llx.StringDataPtr(tp.PolicyReferenceName),
 							"oidcOptions":                   llx.DictData(oidcOpts),
 							"sseSpecification":              llx.DictData(sseSpec),
+							"serverSideEncryption":          mqlSse,
 							"tags":                          llx.MapData(toInterfaceMap(ec2TagsToMap(tp.Tags)), types.String),
 						})
 					if err != nil {
@@ -297,6 +333,11 @@ func (a *mqlAwsVerifiedaccess) getGroups(conn *connection.AwsConnection) []*jobp
 
 				for _, grp := range page.VerifiedAccessGroups {
 					sseSpec, _ := convert.JsonToDict(grp.SseSpecification)
+					mqlSse, err := newMqlVerifiedAccessSse(a.MqlRuntime,
+						"aws.verifiedaccess.group/"+region+"/"+convert.ToValue(grp.VerifiedAccessGroupId), region, grp.SseSpecification)
+					if err != nil {
+						return nil, err
+					}
 
 					mqlGrp, err := CreateResource(a.MqlRuntime, "aws.verifiedaccess.group",
 						map[string]*llx.RawData{
@@ -306,6 +347,7 @@ func (a *mqlAwsVerifiedaccess) getGroups(conn *connection.AwsConnection) []*jobp
 							"region":                   llx.StringData(region),
 							"verifiedAccessInstanceId": llx.StringDataPtr(grp.VerifiedAccessInstanceId),
 							"sseSpecification":         llx.DictData(sseSpec),
+							"serverSideEncryption":     mqlSse,
 							"owner":                    llx.StringDataPtr(grp.Owner),
 							"tags":                     llx.MapData(toInterfaceMap(ec2TagsToMap(grp.Tags)), types.String),
 						})
@@ -391,6 +433,11 @@ func (a *mqlAwsVerifiedaccess) getEndpoints(conn *connection.AwsConnection) []*j
 func newMqlVerifiedAccessEndpoint(runtime *plugin.Runtime, ep ec2types.VerifiedAccessEndpoint, region string) (*mqlAwsVerifiedaccessEndpoint, error) {
 	conn := runtime.Connection.(*connection.AwsConnection)
 	sseSpec, _ := convert.JsonToDict(ep.SseSpecification)
+	mqlSse, err := newMqlVerifiedAccessSse(runtime,
+		"aws.verifiedaccess.endpoint/"+region+"/"+convert.ToValue(ep.VerifiedAccessEndpointId), region, ep.SseSpecification)
+	if err != nil {
+		return nil, err
+	}
 	statusDict, _ := convert.JsonToDict(ep.Status)
 
 	res, err := CreateResource(runtime, "aws.verifiedaccess.endpoint",
@@ -404,14 +451,15 @@ func newMqlVerifiedAccessEndpoint(runtime *plugin.Runtime, ep ec2types.VerifiedA
 			"endpointDomain":           llx.StringDataPtr(ep.EndpointDomain),
 			"endpointType":             llx.StringData(string(ep.EndpointType)),
 			"attachmentType":           llx.StringData(string(ep.AttachmentType)),
-			"domainCertificateArn":     llx.StringDataPtr(ep.DomainCertificateArn),
 			"status":                   llx.DictData(statusDict),
 			"sseSpecification":         llx.DictData(sseSpec),
+			"serverSideEncryption":     mqlSse,
 			"tags":                     llx.MapData(toInterfaceMap(ec2TagsToMap(ep.Tags)), types.String),
 		})
 	if err != nil {
 		return nil, err
 	}
+	res.(*mqlAwsVerifiedaccessEndpoint).cacheDomainCertificateArn = convert.ToValue(ep.DomainCertificateArn)
 	mqlEP := res.(*mqlAwsVerifiedaccessEndpoint)
 	sgArns := make([]string, len(ep.SecurityGroupIds))
 	for i, sgId := range ep.SecurityGroupIds {
@@ -422,7 +470,9 @@ func newMqlVerifiedAccessEndpoint(runtime *plugin.Runtime, ep ec2types.VerifiedA
 }
 
 type mqlAwsVerifiedaccessEndpointInternal struct {
+	cacheDomainCertificateArn string
 	securityGroupIdHandler
+	verifiedAccessPolicyCache
 }
 
 func (a *mqlAwsVerifiedaccessEndpoint) id() (string, error) {
@@ -430,7 +480,7 @@ func (a *mqlAwsVerifiedaccessEndpoint) id() (string, error) {
 }
 
 func (a *mqlAwsVerifiedaccessEndpoint) domainCertificate() (*mqlAwsAcmCertificate, error) {
-	arnVal := a.DomainCertificateArn.Data
+	arnVal := a.cacheDomainCertificateArn
 	if arnVal == "" {
 		a.DomainCertificate.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil

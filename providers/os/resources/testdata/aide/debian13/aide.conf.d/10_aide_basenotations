@@ -1,0 +1,8 @@
+@@define BASE32      ([A-Z2-7=*])
+@@define BASE36      ([0-9A-Z])
+@@define BASE58      ([1-9A-HJ-NP-Za-km-z])
+@@define BASE62      ([0-9A-Za-z])
+@@define BASE64      ([A-Za-z0-9+=/])
+@@define BASE64URL   ([A-Za-z0-9_=-])
+@@define BASE85      ([!-u])
+@@define BASE91      ([\x21-\x7E])

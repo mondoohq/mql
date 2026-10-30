@@ -14,7 +14,7 @@ import (
 
 	signerv4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"go.mondoo.com/mql/v13/utils/sortx"
+	"go.mondoo.com/mql/utils/sortx"
 )
 
 const (

@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/Snowflake-Labs/terraform-provider-snowflake/pkg/sdk"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/snowflake/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/snowflake/connection"
 )
 
 // SHOW DATABASE ROLES returns CreatedOn as a string with no format documented by
@@ -40,7 +40,7 @@ func (r *mqlSnowflakeDatabase) roles() ([]any, error) {
 
 	roles, err := conn.Client().DatabaseRoles.Show(
 		context.Background(),
-		sdk.NewShowDatabaseRoleRequest(dbID),
+		sdk.NewShowDatabaseRoleRequest().WithDatabase(dbID),
 	)
 	if err != nil {
 		return nil, err

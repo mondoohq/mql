@@ -1,0 +1,1 @@
+BOOT_IMAGE=(hd0,gpt2)/nix/store/dvab2dg1czm40gp5si151sj86rfjwnfm-linux-6.18.50/bzImage init=/nix/store/99bljb0jiac0rzkjv0hhclbzz2fn3jx5-nixos-system-unnamed-amazon-26.05.9592.21a67dc47014/init panic=1 boot.panic_on_fail vga=0x317 nomodeset console=ttyS0,115200n8 random.trust_cpu=on nvme_core.io_timeout=4294967295 root=fstab loglevel=4 lsm=landlock,yama,bpf

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	subject "go.mondoo.com/mql/v13/providers/os/id/metadata"
+	subject "go.mondoo.com/mql/providers/os/id/metadata"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

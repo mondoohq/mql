@@ -10,14 +10,71 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/cli/reporter"
-	"go.mondoo.com/mql/v13/mrn"
-	"go.mondoo.com/mql/v13/sbom"
-	"go.mondoo.com/mql/v13/utils/sortx"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/cli/reporter"
+	"go.mondoo.com/mql/mrn"
+	"go.mondoo.com/mql/sbom"
+	"go.mondoo.com/mql/utils/sortx"
 )
 
 var LABEL_KERNEL_RUNNING = "mondoo.com/os/kernel-running"
+
+// languagePackages maps the packages one language ecosystem reported into SBOM
+// packages.
+//
+// Most ecosystems' mappings are identical apart from the package type, so they
+// share one constructor rather than a copy each. That is not only tidiness: a
+// field added to the mapping has to reach every ecosystem, and a row of
+// hand-maintained copies is exactly the shape where it reaches all but one, and
+// the last is found later by a user whose SBOM is missing it.
+func languagePackages(pkgs []BomPackage, pkgType string) []*sbom.Package {
+	out := make([]*sbom.Package, 0, len(pkgs))
+	for _, pkg := range pkgs {
+		out = append(out, languagePackage(pkg, pkgType))
+	}
+	return out
+}
+
+// purlType reads the type out of a purl ("pkg:<type>/..."), falling back to
+// fallback when the purl is absent or malformed. It exists for ecosystems whose
+// one resource reports more than one kind of artifact.
+func purlType(purl, fallback string) string {
+	rest, ok := strings.CutPrefix(purl, "pkg:")
+	if !ok {
+		return fallback
+	}
+	t, _, ok := strings.Cut(rest, "/")
+	if !ok || t == "" {
+		return fallback
+	}
+	return t
+}
+
+// languagePackage maps one reported package, for the ecosystems whose loop
+// carries something of its own and cannot use languagePackages.
+func languagePackage(pkg BomPackage, pkgType string) *sbom.Package {
+	bomPkg := &sbom.Package{
+		Name:    pkg.Name,
+		Version: pkg.Version,
+		Purl:    pkg.Purl,
+		Cpes:    pkg.CPEs,
+		Type:    pkgType,
+		// The legacy scalar stays written alongside the list. Nothing populates
+		// it from the list, so a consumer that has not migrated would otherwise
+		// see nothing where a license was reported.
+		License:  pkg.License, //nolint:staticcheck // kept for consumers that have not moved to Licenses
+		Licenses: sbom.DeclaredLicenses(pkg.License),
+	}
+
+	for _, filepath := range pkg.FilePaths {
+		bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
+			Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
+			Value: filepath,
+		})
+	}
+
+	return bomPkg
+}
 
 // GenerateBom generates a BOM from a cnquery json report collection
 func GenerateBom(r *reporter.Report) []*sbom.Sbom {
@@ -63,21 +120,43 @@ func GenerateBom(r *reporter.Report) []*sbom.Sbom {
 		}
 		// ensure deterministic order of enumeration
 		keys := sortx.Keys(dataPoints.Values)
+		// fieldErrors collects one message per data point that could not be
+		// consumed (e.g. a provider crashed mid-scan and left that field's
+		// content an error rather than the expected shape). The BOM still
+		// builds from whatever other data points did decode, so this is a
+		// partial result, not a failed one -- matching cnspec's aibom
+		// generator (internal/aibom/generator/generator.go), which treats
+		// the same per-data-point decode failure as PARTIALLY_SUCCEEDED
+		// rather than FAILED.
+		//
+		// decodedCount tracks how many data points decoded successfully, so
+		// "everything failed" can be told apart from "everything decoded but
+		// legitimately produced zero packages" (e.g. an asset with no
+		// installed software). Using len(bom.Packages) == 0 for that instead
+		// would be wrong on both sides: it would call a BOM with zero
+		// packages "failed" even though every data point decoded fine, and
+		// it would call a BOM with some packages "partially succeeded" even
+		// if every data point failed to decode but happened to still leave
+		// packages from a still-standing field (see PrinterDrivers below,
+		// which can append before an error on a later key). Basing it on
+		// decode success -- not package count -- is correct either way.
+		var fieldErrors []string
+		var decodedCount int
+		var runningBinaries []BomPackage
 		for _, k := range keys {
 			dataValue := dataPoints.Values[k]
 			jsondata, err := reporter.JsonValue(dataValue.Content)
 			if err != nil {
-				bom.Status = sbom.Status_STATUS_FAILED
-				bom.ErrorMessage = errors.Wrap(err, "failed to parse json data").Error()
+				fieldErrors = append(fieldErrors, k+": "+errors.Wrap(err, "failed to parse json data").Error())
 				continue
 			}
 			rb := BomFields{}
 			err = json.Unmarshal(jsondata, &rb)
 			if err != nil {
-				bom.Status = sbom.Status_STATUS_FAILED
-				bom.ErrorMessage = errors.Wrap(err, "failed to parse bom fields json data").Error()
+				fieldErrors = append(fieldErrors, k+": "+errors.Wrap(err, "failed to parse bom fields json data").Error())
 				continue
 			}
+			decodedCount++
 			if rb.Asset != nil {
 				bom.Asset.Name = rb.Asset.Name
 				bom.Asset.Platform.Name = rb.Asset.Platform
@@ -105,6 +184,22 @@ func GenerateBom(r *reporter.Report) []*sbom.Sbom {
 				}
 			}
 
+			// Windows print drivers. Their purl is built by the resource
+			// (providers/os/resources/windows/printerdriver.go) and is empty
+			// when the spooler reports no manufacturer or no name -- a driver
+			// name alone does not identify a driver, since "PCL 6 Driver" names
+			// a page description language that every printer vendor ships one
+			// for. Such a driver is still listed, it just carries no purl.
+			for _, drv := range rb.PrinterDrivers {
+				bom.Packages = append(bom.Packages, &sbom.Package{
+					Name:    drv.Name,
+					Version: drv.Version,
+					Purl:    drv.Purl,
+					Cpes:    drv.CPEs,
+					Type:    "windows-driver",
+				})
+			}
+
 			if rb.Packages != nil {
 				for _, pkg := range rb.Packages {
 					bomPkg := &sbom.Package{
@@ -115,6 +210,8 @@ func GenerateBom(r *reporter.Report) []*sbom.Sbom {
 						Purl:         pkg.Purl,
 						Cpes:         pkg.CPEs,
 						Type:         pkg.Format,
+						License:      pkg.License, //nolint:staticcheck // kept for consumers that have not moved to Licenses
+						Licenses:     sbom.DeclaredLicenses(pkg.License),
 					}
 
 					for _, filepath := range pkg.FilePaths {
@@ -130,11 +227,13 @@ func GenerateBom(r *reporter.Report) []*sbom.Sbom {
 
 			for _, pkg := range rb.PythonPackages {
 				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "pypi",
+					Name:     pkg.Name,
+					Version:  pkg.Version,
+					Purl:     pkg.Purl,
+					Cpes:     pkg.CPEs,
+					Type:     "pypi",
+					License:  pkg.License, //nolint:staticcheck // kept for consumers that have not moved to Licenses
+					Licenses: sbom.DeclaredLicenses(pkg.License),
 				}
 
 				// deprecated path, all files are now in the FilePaths field
@@ -156,409 +255,174 @@ func GenerateBom(r *reporter.Report) []*sbom.Sbom {
 				bom.Packages = append(bom.Packages, bomPkg)
 			}
 
-			for _, pkg := range rb.NpmPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "npm",
-				}
+			bom.Packages = append(bom.Packages, languagePackages(rb.NpmPackages, "npm")...)
 
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
+			bom.Packages = append(bom.Packages, languagePackages(rb.GoPackages, "go-module")...)
 
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
+			bom.Packages = append(bom.Packages, languagePackages(rb.JavaPackages, "maven")...)
 
-			for _, pkg := range rb.GoPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "go-module",
-				}
+			bom.Packages = append(bom.Packages, languagePackages(rb.RustPackages, "cargo")...)
 
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
+			bom.Packages = append(bom.Packages, languagePackages(rb.DotnetPackages, "nuget")...)
 
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
+			bom.Packages = append(bom.Packages, languagePackages(rb.PhpPackages, "composer")...)
 
-			for _, pkg := range rb.JavaPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "maven",
-				}
-
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
-
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
-
-			for _, pkg := range rb.RustPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "cargo",
-				}
-
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
-
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
-
-			for _, pkg := range rb.DotnetPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "nuget",
-				}
-
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
-
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
-
-			for _, pkg := range rb.PhpPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "composer",
-				}
-
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
-
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
-
-			for _, pkg := range rb.GithubActionsPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Type:    "github-action",
-				}
-
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
-
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
+			bom.Packages = append(bom.Packages, languagePackages(rb.GithubActionsPackages, "github-action")...)
 
 			for _, pkg := range rb.SwiftPackages {
 				pkgType := "swift"
 				if strings.HasPrefix(pkg.Purl, "pkg:cocoapods/") {
 					pkgType = "cocoapods"
 				}
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    pkgType,
-				}
-
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
-
-				bom.Packages = append(bom.Packages, bomPkg)
+				bom.Packages = append(bom.Packages, languagePackage(pkg, pkgType))
 			}
 
+			// A Terraform workspace reports providers and modules together,
+			// and a module's coordinate depends on where it is fetched from.
+			// Hardcoding "terraform" here would label every module as a
+			// provider, so the type comes from the purl the extractor built.
 			for _, pkg := range rb.TerraformPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "terraform",
-				}
-
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
-
-				bom.Packages = append(bom.Packages, bomPkg)
+				bom.Packages = append(bom.Packages, languagePackage(pkg, purlType(pkg.Purl, "terraform")))
 			}
 
-			for _, pkg := range rb.JenkinsPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Type:    "jenkins-plugin",
-				}
+			bom.Packages = append(bom.Packages, languagePackages(rb.JenkinsPackages, "jenkins-plugin")...)
 
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
+			bom.Packages = append(bom.Packages, languagePackages(rb.WordpressPackages, "wordpress-plugin")...)
 
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
+			bom.Packages = append(bom.Packages, languagePackages(rb.RubyPackages, "gem")...)
 
-			for _, pkg := range rb.WordpressPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Type:    "wordpress-plugin",
-				}
+			bom.Packages = append(bom.Packages, languagePackages(rb.DartPackages, "pub")...)
 
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
+			bom.Packages = append(bom.Packages, languagePackages(rb.HaskellPackages, "hackage")...)
 
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
+			bom.Packages = append(bom.Packages, languagePackages(rb.ElixirPackages, "hex")...)
 
-			for _, pkg := range rb.RubyPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "gem",
-				}
+			bom.Packages = append(bom.Packages, languagePackages(rb.ErlangPackages, "hex")...)
 
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
+			bom.Packages = append(bom.Packages, languagePackages(rb.PrologPackages, "swi-prolog")...)
 
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
+			bom.Packages = append(bom.Packages, languagePackages(rb.JuliaPackages, "julia")...)
 
-			for _, pkg := range rb.DartPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "pub",
-				}
+			bom.Packages = append(bom.Packages, languagePackages(rb.CondaPackages, "conda")...)
 
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
+			bom.Packages = append(bom.Packages, languagePackages(rb.RPackages, "cran")...)
 
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
+			bom.Packages = append(bom.Packages, languagePackages(rb.LuaPackages, "luarocks")...)
 
-			for _, pkg := range rb.HaskellPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "hackage",
-				}
+			runningBinaries = append(runningBinaries, rb.RunningBinaries...)
+		}
 
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
+		bom.Packages = append(bom.Packages, runningBinaryPackages(runningBinaries)...)
 
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
-
-			for _, pkg := range rb.ElixirPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "hex",
-				}
-
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
-
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
-
-			for _, pkg := range rb.ErlangPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "hex",
-				}
-
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
-
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
-
-			for _, pkg := range rb.PrologPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "swi-prolog",
-				}
-
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
-
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
-
-			for _, pkg := range rb.JuliaPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "julia",
-				}
-
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
-
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
-
-			for _, pkg := range rb.CondaPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "conda",
-				}
-
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
-
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
-
-			for _, pkg := range rb.RPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "cran",
-				}
-
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
-
-				bom.Packages = append(bom.Packages, bomPkg)
-			}
-
-			for _, pkg := range rb.LuaPackages {
-				bomPkg := &sbom.Package{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Purl:    pkg.Purl,
-					Cpes:    pkg.CPEs,
-					Type:    "luarocks",
-				}
-
-				for _, filepath := range pkg.FilePaths {
-					bomPkg.EvidenceList = append(bomPkg.EvidenceList, &sbom.Evidence{
-						Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
-						Value: filepath,
-					})
-				}
-
-				bom.Packages = append(bom.Packages, bomPkg)
+		// Stamp a stable bom_ref on every component (purl-when-present, else a
+		// synthesized fallback) so renders are reproducible and dependency-graph
+		// edges have a stable endpoint to reference. Only fills empties, so a ref
+		// already carried from a lockfile is preserved.
+		for _, pkg := range bom.Packages {
+			if pkg.BomRef == "" {
+				pkg.BomRef = sbom.BomRefFor(pkg)
 			}
 		}
+
+		if len(fieldErrors) > 0 {
+			if decodedCount == 0 {
+				// Every data point failed to decode: nothing usable was
+				// produced for this asset, so a BOM with zero packages here
+				// is a genuine failure, not a partial success.
+				bom.Status = sbom.Status_STATUS_FAILED
+			} else {
+				bom.Status = sbom.Status_STATUS_PARTIALLY_SUCCEEDED
+			}
+			bom.ErrorMessage = strings.Join(fieldErrors, "; ")
+		}
+
 		boms = append(boms, bom)
 	}
 	return boms
+}
+
+// runningBinaryPackages maps the executables of running processes that no
+// installed package owns into SBOM packages.
+//
+// A binary is reported by what the file is: its name, the version read from
+// it, the vendor it names as its supplier, its path and its SHA-256 digest. It carries no purl or CPE: the purl is
+// derived from these downstream, where the digest identifies the exact file
+// even when no version was found.
+//
+// Two different files of one name, both without a version, are the same
+// component by name, so a binary's bom_ref is its path, which keeps both in
+// the rendered document; the renderers keep only the first package of a
+// bom_ref.
+func runningBinaryPackages(bins []BomPackage) []*sbom.Package {
+	out := make([]*sbom.Package, 0, len(bins))
+	for _, bin := range bins {
+		pkg := &sbom.Package{
+			Name:    bin.Name,
+			Version: bin.Version,
+			Vendor:  bin.Vendor,
+			// the vendor the file names supplied it; Supplier is what the
+			// CycloneDX and SPDX renderers write
+			Supplier: bin.Vendor,
+			Type:     "binary",
+		}
+		if bin.Path != "" {
+			pkg.BomRef = "binary:" + bin.Path
+			pkg.EvidenceList = []*sbom.Evidence{{
+				Type:  sbom.EvidenceType_EVIDENCE_TYPE_FILE,
+				Value: bin.Path,
+			}}
+		}
+		if bin.Sha256 != "" {
+			pkg.Hashes = []*sbom.Hash{{Alg: "SHA-256", Value: bin.Sha256}}
+		}
+		pkg.IdentityEvidence = binaryIdentityEvidence(bin)
+		if bin.SignatureStatus != "" {
+			pkg.Signature = &sbom.CodeSignature{
+				Status:             bin.SignatureStatus,
+				SignerOrganization: strings.Join(bin.SignerOrganization, ", "),
+				SignerCommonName:   bin.SignerCommonName,
+			}
+		}
+		out = append(out, pkg)
+	}
+	return out
+}
+
+// binaryVersionEvidence maps the evidence a binary's version was read from to
+// the CycloneDX identity technique that read it and how far the evidence is
+// to be trusted. Metadata the toolchain or the platform writes into the file
+// is the strongest; a version string found by pattern in the binary the
+// weakest.
+var binaryVersionEvidence = map[string]struct {
+	technique  string
+	confidence float64
+}{
+	// the build information the Go toolchain embeds
+	"goBuildInfo": {"binary-analysis", 1.0},
+	// the Windows version resource the vendor compiled into the file
+	"peVersionInfo": {"binary-analysis", 0.9},
+	// the Info.plist of the macOS application bundle
+	"bundleInfo": {"manifest-analysis", 0.9},
+	// a file shipped beside the binary, such as a JDK's release file
+	"installMetadata": {"manifest-analysis", 0.8},
+	// a version string matched inside the binary
+	"versionString": {"binary-analysis", 0.7},
+}
+
+// binaryIdentityEvidence says how a binary's version was concluded, or nil
+// when it has none, or none from known evidence.
+func binaryIdentityEvidence(bin BomPackage) []*sbom.IdentityEvidence {
+	ev, ok := binaryVersionEvidence[bin.VersionSource]
+	if bin.Version == "" || !ok {
+		return nil
+	}
+	return []*sbom.IdentityEvidence{{
+		Field:          "version",
+		ConcludedValue: bin.Version,
+		Technique:      ev.technique,
+		Confidence:     ev.confidence,
+		Value:          bin.VersionSource,
+	}}
 }
 
 // enrichPlatformIds adds the platform id based on cnquery ids

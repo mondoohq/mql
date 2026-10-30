@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 )
 
 func TestDetectDeviceType_NilPlatform(t *testing.T) {
@@ -410,6 +410,12 @@ func TestDetectDeviceType_ServerDistros(t *testing.T) {
 		{"photon os", "photon", "VMware Photon OS/Linux", []string{"linux", "unix", "os"}},
 		// detect-suse-micro-5.toml
 		{"suse microos", "suse-microos", "SUSE Linux Enterprise Micro 5.1", []string{"suse", "linux", "unix", "os"}},
+		// detect-opensuse-microos.toml. The title carries no "server" keyword
+		// and the desktop spins built on it ship their own ids (aeon,
+		// kalpa-desktop), so the name is what has to answer this.
+		{"opensuse microos", "opensuse-microos", "openSUSE MicroOS", []string{"suse", "linux", "unix", "os"}},
+		// detect-talos.toml. An API-managed Kubernetes host, never a desktop.
+		{"talos", "talos", "Talos (v1.13.9)", []string{"linux", "unix", "os"}},
 		// detect-gardenlinux.toml (no container variant-id on this one)
 		{"gardenlinux", "gardenlinux", "Garden Linux 934.0", []string{"debian", "linux", "unix", "os"}},
 	}
@@ -522,6 +528,12 @@ func TestDetectDeviceType_LinuxNoSignals_DefaultServer(t *testing.T) {
 		{"azure linux", "azurelinux", "Microsoft Azure Linux", []string{"linux", "unix", "os"}},
 		// detect-wolfi.toml
 		{"wolfi", "wolfi", "Wolfi", []string{"linux", "unix", "os"}},
+		// detect-wizos.toml
+		{"wizos", "wizos", "WizOS", []string{"linux", "unix", "os"}},
+		// detect-alpaquita.toml
+		{"alpaquita", "alpaquita", "BellSoft Alpaquita Linux Stream (glibc)", []string{"linux", "unix", "os"}},
+		// detect-bellsoft-hardened-containers.toml
+		{"bellsoft hardened containers", "bellsoft-hardened-containers", "BellSoft Hardened Containers Stream (musl)", []string{"linux", "unix", "os"}},
 		// detect-buildroot.toml
 		{"buildroot", "buildroot", "Buildroot 2019.02.9", []string{"linux", "unix", "os"}},
 	}
@@ -817,10 +829,14 @@ func TestDetectDeviceType_EnterpriseLinux(t *testing.T) {
 	}{
 		// detect-eurolinux-9.toml
 		{"eurolinux 9", "eurolinux", "EuroLinux 9.1 (Stockholm)", []string{"redhat", "linux", "unix", "os"}},
+		// detect-cloudlinux-9.toml
+		{"cloudlinux 9", "cloudlinux", "CloudLinux 9.6 (Vladimir Lyakhov)", []string{"redhat", "linux", "unix", "os"}},
+		// detect-alinux-3.toml
+		{"alibaba cloud linux 3", "alinux", "Alibaba Cloud Linux 3.2104 U13.4 (OpenAnolis Edition)", []string{"redhat", "linux", "unix", "os"}},
 		// detect-scientific.toml
 		{"scientific linux", "scientific", "Scientific Linux CERN SLC", []string{"redhat", "linux", "unix", "os"}},
 		// detect-centos-9-stream.toml
-		{"centos stream 9", "centos", "CentOS Stream 9", []string{"redhat", "linux", "unix", "os"}},
+		{"centos stream 9", "centos-stream", "CentOS Stream 9", []string{"redhat", "linux", "unix", "os"}},
 		// detect-hce-2.toml
 		{"huawei cloud euleros", "hce", "Huawei Cloud EulerOS 2.0 (x86_64)", []string{"euler", "linux", "unix", "os"}},
 		// detect-euleros-2.toml

@@ -6,8 +6,7 @@ package azureinstancesnapshot
 import (
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v8"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,9 +22,9 @@ func TestGetFirstAvailableLun(t *testing.T) {
 			},
 		}
 		// fill in all available LUNs for the scanner
-		for i := int32(0); i < 64; i++ {
+		for i := range int32(64) {
 			instanceInfo.vm.Properties.StorageProfile.DataDisks = append(instanceInfo.vm.Properties.StorageProfile.DataDisks, &armcompute.DataDisk{
-				Lun: to.Ptr(i),
+				Lun: new(i),
 			})
 		}
 
@@ -58,9 +57,9 @@ func TestGetFirstAvailableLun(t *testing.T) {
 			},
 		}
 		// fill in 15 luns
-		for i := int32(0); i < 16; i++ {
+		for i := range int32(16) {
 			instanceInfo.vm.Properties.StorageProfile.DataDisks = append(instanceInfo.vm.Properties.StorageProfile.DataDisks, &armcompute.DataDisk{
-				Lun: to.Ptr(i),
+				Lun: new(i),
 			})
 		}
 

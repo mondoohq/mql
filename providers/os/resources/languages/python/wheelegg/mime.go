@@ -10,7 +10,7 @@ import (
 	"net/textproto"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/python"
+	"go.mondoo.com/mql/providers/os/resources/languages/python"
 )
 
 // extractMimeDeps will go through each of the listed dependencies
@@ -58,7 +58,7 @@ func ParseMIME(r io.Reader, pythonMIMEFilepath string) (*python.PackageDetails, 
 		Summary:        mimeData.Get("Summary"),
 		Author:         mimeData.Get("Author"),
 		AuthorEmail:    mimeData.Get("Author-email"),
-		License:        mimeData.Get("License"),
+		License:        metadataLicense(mimeData),
 		Version:        mimeData.Get("Version"),
 		RequiresPython: mimeData.Get("Requires-Python"),
 		ProjectUrls:    projectUrls,

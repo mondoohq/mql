@@ -13,18 +13,19 @@ import (
 	"net/netip"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"unsafe"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/lsof"
-	"go.mondoo.com/mql/v13/providers/os/resources/ports"
-	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/lsof"
+	"go.mondoo.com/mql/providers/os/resources/ports"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 type mqlPortsInternal struct {
@@ -37,15 +38,27 @@ func (p *mqlPorts) list() ([]any, error) {
 	pf := conn.Asset().Platform
 
 	switch {
+	// Solaris has no /proc/net/tcp; it lists its sockets with netstat.
+	case pf.Name == "solaris":
+		return p.listSolaris()
 	case pf.IsFamily("linux"):
 		return p.listLinux()
 	case pf.IsFamily("windows"):
 		return p.listWindows()
 
-	case pf.IsFamily("darwin") || pf.Name == "freebsd":
-		// both macOS and FreeBSD support lsof
-		// FreeBSD may need an installation via `pkg install sysutils/lsof`
+	case pf.Name == "freebsd":
+		// sockstat ships in the FreeBSD base system. lsof does not, and when it
+		// is absent the lsof path returns an empty list rather than an error,
+		// so a host with listening sockets reported none at all.
+		return p.listFreebsd()
+
+	case pf.IsFamily("darwin"):
 		return p.listMacos()
+
+	case pf.Name == "aix":
+		// AIX has neither /proc/net/tcp nor a bundled lsof, so netstat is the
+		// only source that is always present.
+		return p.listAix()
 	default:
 		return nil, errors.New("could not detect suitable ports manager for platform: " + pf.Name)
 	}
@@ -243,8 +256,18 @@ func (p *mqlPorts) processesBySocket() (map[int64]*mqlProcess, error) {
 	return processes.BySocketID, err
 }
 
+// portUser is a port's user, or null when the socket's uid has no user entry,
+// for example a systemd DynamicUser service or a deleted user. That leaves
+// port.user null, as file.user does, instead of failing the whole port list.
+func portUser(user *mqlUser) *llx.RawData {
+	if user == nil {
+		return llx.ResourceData(nil, "user")
+	}
+	return llx.ResourceData(user, "user")
+}
+
 // parseProcNet parses the proc filesystem
-// See socket/address parsing: https://wiki.christophchamp.com/index.php?title=Unix_sockets
+// See socket/address parsing: http://wiki.christophchamp.com/index.php?title=Unix_sockets
 func (p *mqlPorts) parseProcNet(path string, protocol string, users map[int64]*mqlUser) ([]any, error) {
 	conn := p.MqlRuntime.Connection.(shared.Connection)
 	fs := conn.FileSystem()
@@ -278,16 +301,11 @@ func (p *mqlPorts) parseProcNet(path string, protocol string, users map[int64]*m
 			continue
 		}
 
-		user, ok := users[port.Uid]
-		if !ok {
-			return nil, errors.New("cannot find user for uid " + strconv.Itoa(int(port.Uid)))
-		}
-
 		obj, err := CreateResource(p.MqlRuntime, "port", map[string]*llx.RawData{
 			"protocol":      llx.StringData(protocol),
 			"port":          llx.IntData(port.Port),
 			"address":       llx.StringData(port.Address),
-			"user":          llx.ResourceData(user, "user"),
+			"user":          portUser(users[port.Uid]),
 			"state":         llx.StringData(port.State),
 			"remoteAddress": llx.StringData(port.RemoteAddress),
 			"remotePort":    llx.IntData(port.RemotePort),
@@ -445,8 +463,7 @@ func (p *mqlPorts) listWindows() ([]any, error) {
 	}
 
 	conn := p.MqlRuntime.Connection.(shared.Connection)
-	encodedCmd := powershell.Encode("Get-NetTCPConnection | ConvertTo-Json")
-	executedCmd, err := conn.RunCommand(encodedCmd)
+	executedCmd, err := conn.RunCommand(powershell.Encode(windowsPortsScript))
 	if err != nil {
 		return nil, err
 	}
@@ -467,11 +484,25 @@ func (p *mqlPorts) listWindows() ([]any, error) {
 	return list, nil
 }
 
+// windowsPortsScript reads TCP connections and UDP endpoints in one PowerShell
+// process. Only the fields parseWindowsPorts reads are projected: a bare
+// `Get-NetTCPConnection | ConvertTo-Json` emits the full CIM object per
+// connection (CimClass, CimInstanceProperties, and ~30 null fields), and on a
+// busy host that large a read and unmarshal can stall the provider past its
+// heartbeat (event_name="provider.crashed", resource=port). State is cast to
+// int to match ports.WinPort.State however the enum serializes. The lists sit
+// in a hashtable passed with -InputObject: piping into ConvertTo-Json would
+// unroll a one-element list into a bare object.
+const windowsPortsScript = `$tcp = @(Get-NetTCPConnection | Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, @{Name='State';Expression={[int]$_.State}}, OwningProcess)
+$udp = @(Get-NetUDPEndpoint | Select-Object LocalAddress, LocalPort, OwningProcess)
+ConvertTo-Json -Depth 3 -InputObject @{ tcp = $tcp; udp = $udp }`
+
 func (p *mqlPorts) parseWindowsPorts(r io.Reader, processes map[int64]*mqlProcess) ([]any, error) {
-	portList, err := ports.ParseWindowsNetTCPConnections(r)
+	conns, err := ports.ParseWindowsNetConnections(r)
 	if err != nil {
 		return nil, err
 	}
+	portList := conns.TCP
 
 	var res []any
 	for i := range portList {
@@ -536,10 +567,56 @@ func (p *mqlPorts) parseWindowsPorts(r io.Reader, processes map[int64]*mqlProces
 
 		res = append(res, obj)
 	}
+
+	// UDP endpoints have no state or peer. They read the way Linux reports an
+	// unconnected socket in /proc/net/udp, as the FreeBSD ports do: "close",
+	// with no remote address.
+	for _, ep := range conns.UDP {
+		protocol := "udp4"
+		if strings.Contains(ep.LocalAddress, ":") {
+			protocol = "udp6"
+		}
+		process := processes[ep.OwningProcess]
+		obj, err := CreateResource(p.MqlRuntime, "port", map[string]*llx.RawData{
+			"protocol":      llx.StringData(protocol),
+			"port":          llx.IntData(ep.LocalPort),
+			"address":       llx.StringData(ep.LocalAddress),
+			"user":          llx.ResourceData(nil, "user"),
+			"process":       llx.ResourceData(process, "process"),
+			"state":         llx.StringData(TCP_STATES[7]),
+			"remoteAddress": llx.StringData(""),
+			"remotePort":    llx.IntData(0),
+		})
+		if err != nil {
+			return nil, err
+		}
+		portObj := obj.(*mqlPort)
+		if process == nil {
+			portObj.Process.State = plugin.StateIsSet | plugin.StateIsNull
+		}
+		res = append(res, obj)
+	}
 	return res, nil
 }
 
 // macOS Implementation
+
+// expandWildcardAddress spells out the wildcard bind lsof and sockstat write
+// as "*".
+// A socket bound there listens on every address on every interface, so it maps
+// to the unspecified address -- 0.0.0.0 for IPv4, :: for IPv6 -- which is how
+// the same bind reads on Linux. It is emphatically not loopback: mapping it to
+// 127.0.0.1 reports a listener reachable from the network as a local-only one,
+// and silently passes any check looking for exposed ports.
+func expandWildcardAddress(address string, protocol string) string {
+	if !strings.HasPrefix(address, "*") {
+		return address
+	}
+	if strings.HasSuffix(protocol, "6") {
+		return strings.Replace(address, "*", "::", 1)
+	}
+	return strings.Replace(address, "*", "0.0.0.0", 1)
+}
 
 // listMacos reads the lsof information of all open files that are tcp sockets
 func (p *mqlPorts) listMacos() ([]any, error) {
@@ -578,10 +655,7 @@ func (p *mqlPorts) listMacos() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
-			user, ok := users[int64(uid)]
-			if !ok {
-				return nil, errors.New("cannot find user for uid " + process.UID)
-			}
+			user := users[int64(uid)]
 
 			pid, err := strconv.Atoi(process.PID)
 			if err != nil {
@@ -600,15 +674,7 @@ func (p *mqlPorts) listMacos() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
-			// lsof presents a process listening on any ipv6 address as listening on "*"
-			// change this to a more ipv6-friendly formatting
-			if strings.HasPrefix(localAddress, "*") {
-				if strings.HasSuffix(protocol, "6") {
-					localAddress = strings.Replace(localAddress, "*", "::1", 1)
-				} else {
-					localAddress = strings.Replace(localAddress, "*", "127.0.0.1", 1)
-				}
-			}
+			localAddress = expandWildcardAddress(localAddress, protocol)
 
 			state, ok := TCP_STATES[fd.TcpState()]
 			if !ok {
@@ -619,7 +685,7 @@ func (p *mqlPorts) listMacos() ([]any, error) {
 				"protocol":      llx.StringData(protocol),
 				"port":          llx.IntData(localPort),
 				"address":       llx.StringData(localAddress),
-				"user":          llx.ResourceData(user, "user"),
+				"user":          portUser(user),
 				"process":       llx.ResourceData(mqlProcess, "process"),
 				"state":         llx.StringData(state),
 				"remoteAddress": llx.StringData(remoteAddress),
@@ -636,6 +702,368 @@ func (p *mqlPorts) listMacos() ([]any, error) {
 
 			res = append(res, obj)
 		}
+	}
+
+	return res, nil
+}
+
+// freebsdPortStates maps sockstat's CONN STATE column onto the canonical
+// TCP_STATES vocabulary, so `state == "listen"` behaves the same on FreeBSD as
+// everywhere else.
+var freebsdPortStates = map[string]string{
+	"LISTEN":      TCP_STATES[10],
+	"ESTABLISHED": TCP_STATES[1],
+	"SYN_SENT":    TCP_STATES[2],
+	"SYN_RCVD":    TCP_STATES[3],
+	"FIN_WAIT_1":  TCP_STATES[4],
+	"FIN_WAIT_2":  TCP_STATES[5],
+	"TIME_WAIT":   TCP_STATES[6],
+	"CLOSED":      TCP_STATES[7],
+	"CLOSE_WAIT":  TCP_STATES[8],
+	"LAST_ACK":    TCP_STATES[9],
+	"CLOSING":     TCP_STATES[11],
+}
+
+// freebsdPortState translates one sockstat CONN STATE token onto the canonical
+// TCP_STATES vocabulary. An unrecognised token passes through unchanged rather
+// than becoming "", so a state FreeBSD adds later is still visible instead of
+// silently reading as no state at all.
+//
+// sockstat gives udp sockets no state. They read the way Linux reports the same
+// socket in /proc/net/udp: "close" while unconnected (bound, waiting for
+// datagrams from anyone) and "established" once connect() has fixed a peer.
+func freebsdPortState(raw string, protocol string, remoteAddress string) string {
+	if raw == "" {
+		if strings.HasPrefix(protocol, "udp") {
+			if remoteAddress == "" {
+				return TCP_STATES[7]
+			}
+			return TCP_STATES[1]
+		}
+		return ""
+	}
+	if state, ok := freebsdPortStates[raw]; ok {
+		return state
+	}
+	return raw
+}
+
+// listFreebsd reads sockets from sockstat, which is part of the base system.
+func (p *mqlPorts) listFreebsd() ([]any, error) {
+	// sockstat names the owning user, so look users up by name. The uid-keyed
+	// map cannot stand in: FreeBSD ships root and toor both with uid 0, and
+	// whichever came last in passwd took the slot, so every root-owned socket
+	// found no user named root.
+	usersObj, err := CreateResource(p.MqlRuntime, "users", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	allUsers := usersObj.(*mqlUsers)
+	if err := allUsers.refreshCache(nil); err != nil {
+		return nil, err
+	}
+	usersByName := allUsers.usersByName
+
+	processes, err := p.processesByPid()
+	if err != nil {
+		return nil, err
+	}
+
+	conn := p.MqlRuntime.Connection.(shared.Connection)
+	// -w keeps sockstat from cutting addresses to the column width, which
+	// otherwise truncates a scoped IPv6 address and loses its port. -s is not
+	// available on every release; the listing without it still carries every
+	// socket, only without the state column.
+	var executedCmd *shared.Command
+	for _, cmd := range []string{"sockstat -46 -s -w", "sockstat -46 -w", "sockstat -46"} {
+		executedCmd, err = conn.RunCommand(cmd)
+		if err != nil {
+			return nil, err
+		}
+		if executedCmd.ExitStatus == 0 {
+			break
+		}
+	}
+	if executedCmd.ExitStatus != 0 {
+		return nil, errors.New("could not list ports: sockstat failed")
+	}
+
+	entries, err := ports.ParseSockstat(executedCmd.Stdout)
+	if err != nil {
+		return nil, err
+	}
+	// Without the merge, the second row of a shared socket resolved to the
+	// cached resource of the first, listing one port twice under one process.
+	entries = ports.MergeSharedSockets(entries)
+
+	res := []any{}
+	for i := range entries {
+		entry := entries[i]
+
+		state := freebsdPortState(entry.State, entry.Protocol, entry.RemoteAddress)
+
+		args := map[string]*llx.RawData{
+			"protocol":      llx.StringData(entry.Protocol),
+			"port":          llx.IntData(entry.LocalPort),
+			"address":       llx.StringData(expandWildcardAddress(entry.LocalAddress, entry.Protocol)),
+			"state":         llx.StringData(state),
+			"remoteAddress": llx.StringData(entry.RemoteAddress),
+			"remotePort":    llx.IntData(entry.RemotePort),
+		}
+
+		mqlUser := usersByName[entry.User]
+		if mqlUser != nil {
+			args["user"] = llx.ResourceData(mqlUser, "user")
+		}
+
+		// A socket no process holds (TIME_WAIT) has no pid, which parses as 0,
+		// and FreeBSD's pid 0 is the kernel itself.
+		var mqlProcess *mqlProcess
+		if entry.Pid > 0 {
+			mqlProcess = processes[entry.Pid]
+		}
+		if mqlProcess != nil {
+			args["process"] = llx.ResourceData(mqlProcess, "process")
+		}
+
+		obj, err := CreateResource(p.MqlRuntime, "port", args)
+		if err != nil {
+			return nil, err
+		}
+
+		portObj := obj.(*mqlPort)
+		if mqlProcess == nil {
+			portObj.Process.State = plugin.StateIsSet | plugin.StateIsNull
+		}
+		if mqlUser == nil {
+			portObj.User.State = plugin.StateIsSet | plugin.StateIsNull
+		}
+
+		res = append(res, obj)
+	}
+
+	return res, nil
+}
+
+// AIX Implementation
+
+// AIX state tokens mapped onto the canonical TCP_STATES vocabulary, so a query
+// filtering on `state == "listen"` behaves the same on AIX as anywhere else.
+// AIX reports no state for UDP (it is stateless) and that empty value is kept
+// as-is rather than invented into a state.
+var aixTcpStates = map[string]string{
+	"LISTEN":       TCP_STATES[10],
+	"ESTABLISHED":  TCP_STATES[1],
+	"SYN_SENT":     TCP_STATES[2],
+	"SYN_RCVD":     TCP_STATES[3],
+	"SYN_RECEIVED": TCP_STATES[3],
+	"FIN_WAIT_1":   TCP_STATES[4],
+	"FIN_WAIT_2":   TCP_STATES[5],
+	"TIME_WAIT":    TCP_STATES[6],
+	"CLOSED":       TCP_STATES[7],
+	"CLOSE":        TCP_STATES[7],
+	"CLOSE_WAIT":   TCP_STATES[8],
+	"LAST_ACK":     TCP_STATES[9],
+	"CLOSING":      TCP_STATES[11],
+}
+
+// aixPortState translates one AIX netstat state token. An empty token stays
+// empty (UDP rows, which carry no state), and anything unrecognised becomes
+// "unknown" rather than a state string invented outside TCP_STATES.
+func aixPortState(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	if state, ok := aixTcpStates[raw]; ok {
+		return state
+	}
+	return "unknown"
+}
+
+// listAix reads AIX sockets from netstat.
+//
+// Unlike the other platforms this yields no owning process: netstat reports a
+// PCB address rather than a PID, and resolving one to a process needs `rmsock`,
+// which is root-only and costs an exec per socket. `process` and `user` are
+// therefore null on AIX, and `address`, `port`, `state` and the remote endpoint
+// carry the signal.
+func (p *mqlPorts) listAix() ([]any, error) {
+	conn := p.MqlRuntime.Connection.(shared.Connection)
+
+	// -a includes listening sockets (servers), -n keeps addresses numeric so no
+	// name resolution is attempted per row.
+	executedCmd, err := conn.RunCommand("netstat -an")
+	if err != nil {
+		return nil, err
+	}
+
+	if executedCmd.ExitStatus != 0 {
+		stderr, err := io.ReadAll(executedCmd.Stderr)
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.New("failed to retrieve network connections: " + string(stderr))
+	}
+
+	return p.parseAixPorts(executedCmd.Stdout)
+}
+
+func (p *mqlPorts) parseAixPorts(r io.Reader) ([]any, error) {
+	portList, err := ports.ParseAixNetstat(r)
+	if err != nil {
+		return nil, err
+	}
+
+	res := []any{}
+	for i := range portList {
+		port := portList[i]
+
+		obj, err := CreateResource(p.MqlRuntime, "port", map[string]*llx.RawData{
+			"protocol":      llx.StringData(port.Protocol),
+			"port":          llx.IntData(port.LocalPort),
+			"address":       llx.StringData(port.LocalAddress),
+			"user":          llx.ResourceData(nil, "user"),
+			"process":       llx.ResourceData(nil, "process"),
+			"state":         llx.StringData(aixPortState(port.State)),
+			"remoteAddress": llx.StringData(port.RemoteAddress),
+			"remotePort":    llx.IntData(port.RemotePort),
+		})
+		if err != nil {
+			log.Error().Err(err).Send()
+			return nil, err
+		}
+
+		// netstat cannot name the owner, so mark it resolved-and-null instead of
+		// leaving the lazy process() accessor to be called per row.
+		portObj := obj.(*mqlPort)
+		portObj.Process.State = plugin.StateIsSet | plugin.StateIsNull
+
+		res = append(res, obj)
+	}
+
+	return res, nil
+}
+
+// Solaris Implementation
+
+// Solaris netstat state tokens mapped onto the canonical TCP_STATES vocabulary.
+// A socket bound to a port but neither listening nor connected reads "close",
+// which is how Linux reports the same socket. UDP follows the FreeBSD mapping:
+// an unconnected socket is "close", a connected one "established".
+var solarisPortStates = map[string]string{
+	"LISTEN":       TCP_STATES[10],
+	"ESTABLISHED":  TCP_STATES[1],
+	"SYN_SENT":     TCP_STATES[2],
+	"SYN_RECEIVED": TCP_STATES[3],
+	"FIN_WAIT_1":   TCP_STATES[4],
+	"FIN_WAIT_2":   TCP_STATES[5],
+	"TIME_WAIT":    TCP_STATES[6],
+	"CLOSED":       TCP_STATES[7],
+	"BOUND":        TCP_STATES[7],
+	"CLOSE_WAIT":   TCP_STATES[8],
+	"LAST_ACK":     TCP_STATES[9],
+	"CLOSING":      TCP_STATES[11],
+	"Unbound":      TCP_STATES[7],
+	"Idle":         TCP_STATES[7],
+	"Connected":    TCP_STATES[1],
+}
+
+// solarisPortState translates one Solaris netstat state token. Anything
+// unrecognised passes through unchanged rather than reading as no state.
+func solarisPortState(raw string) string {
+	if state, ok := solarisPortStates[raw]; ok {
+		return state
+	}
+	return raw
+}
+
+// listSolaris reads sockets from netstat. Solaris 11.2 and later accept -u,
+// which adds the owning user and pid to every row; older releases reject it
+// and the plain listing still carries every socket, only without an owner.
+func (p *mqlPorts) listSolaris() ([]any, error) {
+	conn := p.MqlRuntime.Connection.(shared.Connection)
+
+	var executedCmd *shared.Command
+	var err error
+	for _, cmd := range []string{"netstat -anu", "netstat -an"} {
+		executedCmd, err = conn.RunCommand(cmd)
+		if err != nil {
+			return nil, err
+		}
+		if executedCmd.ExitStatus == 0 {
+			break
+		}
+	}
+	if executedCmd.ExitStatus != 0 {
+		stderr, _ := io.ReadAll(executedCmd.Stderr)
+		return nil, errors.New("failed to retrieve network connections: " + string(stderr))
+	}
+
+	entries, err := ports.ParseSolarisNetstat(executedCmd.Stdout)
+	if err != nil {
+		return nil, err
+	}
+
+	// Only the -u listing names owners; without it there is nothing to join
+	// against, so users and processes are not loaded.
+	var usersByName map[string]*mqlUser
+	var processes map[int64]*mqlProcess
+	if slices.ContainsFunc(entries, func(e ports.SolarisPort) bool { return e.Pid > 0 }) {
+		usersObj, err := CreateResource(p.MqlRuntime, "users", map[string]*llx.RawData{})
+		if err != nil {
+			return nil, err
+		}
+		allUsers := usersObj.(*mqlUsers)
+		if err := allUsers.refreshCache(nil); err != nil {
+			return nil, err
+		}
+		usersByName = allUsers.usersByName
+
+		processes, err = p.processesByPid()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	res := []any{}
+	for i := range entries {
+		entry := entries[i]
+
+		args := map[string]*llx.RawData{
+			"protocol":      llx.StringData(entry.Protocol),
+			"port":          llx.IntData(entry.LocalPort),
+			"address":       llx.StringData(entry.LocalAddress),
+			"state":         llx.StringData(solarisPortState(entry.State)),
+			"remoteAddress": llx.StringData(entry.RemoteAddress),
+			"remotePort":    llx.IntData(entry.RemotePort),
+		}
+
+		mqlUser := usersByName[entry.User]
+		if mqlUser != nil {
+			args["user"] = llx.ResourceData(mqlUser, "user")
+		}
+		var mqlProcess *mqlProcess
+		if entry.Pid > 0 {
+			mqlProcess = processes[entry.Pid]
+		}
+		if mqlProcess != nil {
+			args["process"] = llx.ResourceData(mqlProcess, "process")
+		}
+
+		obj, err := CreateResource(p.MqlRuntime, "port", args)
+		if err != nil {
+			return nil, err
+		}
+
+		portObj := obj.(*mqlPort)
+		if mqlProcess == nil {
+			portObj.Process.State = plugin.StateIsSet | plugin.StateIsNull
+		}
+		if mqlUser == nil {
+			portObj.User.State = plugin.StateIsSet | plugin.StateIsNull
+		}
+
+		res = append(res, obj)
 	}
 
 	return res, nil
@@ -693,7 +1121,11 @@ func (s *mqlPort) process() (*mqlProcess, error) {
 
 	// TODO: refresh on the fly, eg when loading this from a recording
 	if s.inode == 0 {
-		return nil, errors.New("no iNode found for this port and cannot yet refresh it")
+		// Sockets without an owning process (TIME_WAIT, kernel-held sockets)
+		// report inode 0 in /proc/net; that is a legitimate "no process",
+		// not an error.
+		s.Process.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 
 	procs, err := ports.processesBySocket()

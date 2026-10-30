@@ -3,7 +3,7 @@
 
 package reboot
 
-import "go.mondoo.com/mql/v13/providers/os/connection/shared"
+import "go.mondoo.com/mql/providers/os/connection/shared"
 
 const LinuxRebootFile = "/var/run/reboot-required"
 

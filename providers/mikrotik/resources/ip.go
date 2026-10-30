@@ -4,21 +4,10 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"fmt"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
-
-// firewallID returns a stable cache key for a firewall rule. RouterOS always
-// includes its internal ".id" handle (e.g. "*5") in print replies; it is
-// unique within a menu and stable across the query.
-func firewallID(prefix string, row map[string]string) string {
-	id := row[".id"]
-	if id == "" {
-		id = row["chain"] + "/" + row["action"] + "/" + row["comment"]
-	}
-	return prefix + id
-}
 
 // --- ip.address ---
 
@@ -36,9 +25,9 @@ func newMikrotikIpAddress(runtime *plugin.Runtime, row map[string]string) (plugi
 		"address":         llx.StringData(row["address"]),
 		"network":         llx.StringData(row["network"]),
 		"actualInterface": llx.StringData(row["actual-interface"]),
-		"disabled":        llx.BoolData(parseBool(row["disabled"])),
-		"dynamic":         llx.BoolData(parseBool(row["dynamic"])),
-		"invalid":         llx.BoolData(parseBool(row["invalid"])),
+		"disabled":        boolField(row, "disabled"),
+		"dynamic":         boolField(row, "dynamic"),
+		"invalid":         boolField(row, "invalid"),
 		"comment":         llx.StringData(row["comment"]),
 	})
 	if err != nil {
@@ -72,13 +61,13 @@ func newMikrotikIpv6Address(runtime *plugin.Runtime, row map[string]string) (plu
 		"address":         llx.StringData(row["address"]),
 		"fromPool":        llx.StringData(row["from-pool"]),
 		"actualInterface": llx.StringData(row["actual-interface"]),
-		"advertise":       llx.BoolData(parseBool(row["advertise"])),
-		"eui64":           llx.BoolData(parseBool(row["eui-64"])),
-		"noDad":           llx.BoolData(parseBool(row["no-dad"])),
-		"linkLocal":       llx.BoolData(parseBool(row["link-local"])),
-		"disabled":        llx.BoolData(parseBool(row["disabled"])),
-		"dynamic":         llx.BoolData(parseBool(row["dynamic"])),
-		"invalid":         llx.BoolData(parseBool(row["invalid"])),
+		"advertise":       boolField(row, "advertise"),
+		"eui64":           boolField(row, "eui-64"),
+		"noDad":           boolField(row, "no-dad"),
+		"linkLocal":       boolField(row, "link-local"),
+		"disabled":        boolField(row, "disabled"),
+		"dynamic":         boolField(row, "dynamic"),
+		"invalid":         boolField(row, "invalid"),
 		"comment":         llx.StringData(row["comment"]),
 	})
 	if err != nil {
@@ -108,19 +97,19 @@ func newMikrotikRoute(runtime *plugin.Runtime, row map[string]string) (plugin.Re
 		"dstAddress":   llx.StringData(row["dst-address"]),
 		"gateway":      llx.StringData(row["gateway"]),
 		"immediateGw":  llx.StringData(row["immediate-gw"]),
-		"distance":     llx.IntData(parseInt(row["distance"])),
-		"scope":        llx.IntData(parseInt(row["scope"])),
-		"targetScope":  llx.IntData(parseInt(row["target-scope"])),
+		"distance":     intField(row, "distance"),
+		"scope":        intField(row, "scope"),
+		"targetScope":  intField(row, "target-scope"),
 		"routingTable": llx.StringData(row["routing-table"]),
 		"prefSrc":      llx.StringData(row["pref-src"]),
 		"vrfInterface": llx.StringData(row["vrf-interface"]),
-		"blackhole":    llx.BoolData(parseBool(row["blackhole"])),
-		"active":       llx.BoolData(parseBool(row["active"])),
-		"dynamic":      llx.BoolData(parseBool(row["dynamic"])),
-		"static":       llx.BoolData(parseBool(row["static"])),
-		"connect":      llx.BoolData(parseBool(row["connect"])),
-		"ecmp":         llx.BoolData(parseBool(row["ecmp"])),
-		"disabled":     llx.BoolData(parseBool(row["disabled"])),
+		"blackhole":    boolField(row, "blackhole"),
+		"active":       boolField(row, "active"),
+		"dynamic":      boolField(row, "dynamic"),
+		"static":       boolField(row, "static"),
+		"connect":      boolField(row, "connect"),
+		"ecmp":         boolField(row, "ecmp"),
+		"disabled":     boolField(row, "disabled"),
 		"comment":      llx.StringData(row["comment"]),
 	})
 }
@@ -131,7 +120,7 @@ func poolArgs(row map[string]string) map[string]*llx.RawData {
 	return map[string]*llx.RawData{
 		"__id":     llx.StringData("mikrotik.ip.pool/" + row["name"]),
 		"name":     llx.StringData(row["name"]),
-		"ranges":   llx.ArrayData(splitList(row["ranges"]), types.String),
+		"ranges":   listField(row, "ranges"),
 		"nextPool": llx.StringData(row["next-pool"]),
 	}
 }
@@ -157,77 +146,49 @@ func initMikrotikIpPool(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 			return poolArgs(row), nil, nil
 		}
 	}
-	return args, nil, nil
+	// The listing completed and named no such pool. Falling through would build
+	// a resource carrying only the name, leaving every other field unset, so a
+	// query would read empty data rather than an error.
+	return nil, nil, fmt.Errorf("mikrotik.ip.pool %q not found", name)
 }
 
 // --- ip.service ---
 
 func newMikrotikService(runtime *plugin.Runtime, row map[string]string) (plugin.Resource, error) {
-	return CreateResource(runtime, "mikrotik.ip.service", map[string]*llx.RawData{
+	res, err := CreateResource(runtime, "mikrotik.ip.service", map[string]*llx.RawData{
 		"__id":        llx.StringData("mikrotik.ip.service/" + row["name"]),
 		"name":        llx.StringData(row["name"]),
-		"port":        llx.IntData(parseInt(row["port"])),
+		"port":        intField(row, "port"),
 		"address":     llx.StringData(row["address"]),
 		"certificate": llx.StringData(row["certificate"]),
 		"tlsVersion":  llx.StringData(row["tls-version"]),
 		"vrf":         llx.StringData(row["vrf"]),
-		"maxSessions": llx.IntData(parseInt(row["max-sessions"])),
-		"disabled":    llx.BoolData(parseBool(row["disabled"])),
-		"invalid":     llx.BoolData(parseBool(row["invalid"])),
+		"maxSessions": intField(row, "max-sessions"),
+		"disabled":    boolField(row, "disabled"),
+		"invalid":     boolField(row, "invalid"),
 	})
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlMikrotikIpService).cacheCertificate = certificateRefName(row["certificate"])
+	return res, nil
 }
 
 // --- ip.firewall.filter ---
 
 func newMikrotikFirewallFilter(runtime *plugin.Runtime, row map[string]string) (plugin.Resource, error) {
-	return CreateResource(runtime, "mikrotik.ip.firewall.filter", map[string]*llx.RawData{
-		"__id":            llx.StringData(firewallID("mikrotik.ip.firewall.filter/", row)),
-		"chain":           llx.StringData(row["chain"]),
-		"action":          llx.StringData(row["action"]),
-		"protocol":        llx.StringData(row["protocol"]),
-		"srcAddress":      llx.StringData(row["src-address"]),
-		"dstAddress":      llx.StringData(row["dst-address"]),
-		"srcPort":         llx.StringData(row["src-port"]),
-		"dstPort":         llx.StringData(row["dst-port"]),
-		"inInterface":     llx.StringData(row["in-interface"]),
-		"outInterface":    llx.StringData(row["out-interface"]),
-		"connectionState": llx.StringData(row["connection-state"]),
-		"log":             llx.BoolData(parseBool(row["log"])),
-		"logPrefix":       llx.StringData(row["log-prefix"]),
-		"bytes":           llx.IntData(parseInt(row["bytes"])),
-		"packets":         llx.IntData(parseInt(row["packets"])),
-		"disabled":        llx.BoolData(parseBool(row["disabled"])),
-		"dynamic":         llx.BoolData(parseBool(row["dynamic"])),
-		"invalid":         llx.BoolData(parseBool(row["invalid"])),
-		"comment":         llx.StringData(row["comment"]),
-	})
+	args := firewallRuleArgs("mikrotik.ip.firewall.filter/", row)
+	args["connectionState"] = llx.StringData(row["connection-state"])
+	return CreateResource(runtime, "mikrotik.ip.firewall.filter", args)
 }
 
 // --- ip.firewall.nat ---
 
 func newMikrotikFirewallNat(runtime *plugin.Runtime, row map[string]string) (plugin.Resource, error) {
-	return CreateResource(runtime, "mikrotik.ip.firewall.nat", map[string]*llx.RawData{
-		"__id":         llx.StringData(firewallID("mikrotik.ip.firewall.nat/", row)),
-		"chain":        llx.StringData(row["chain"]),
-		"action":       llx.StringData(row["action"]),
-		"protocol":     llx.StringData(row["protocol"]),
-		"srcAddress":   llx.StringData(row["src-address"]),
-		"dstAddress":   llx.StringData(row["dst-address"]),
-		"srcPort":      llx.StringData(row["src-port"]),
-		"dstPort":      llx.StringData(row["dst-port"]),
-		"inInterface":  llx.StringData(row["in-interface"]),
-		"outInterface": llx.StringData(row["out-interface"]),
-		"toAddresses":  llx.StringData(row["to-addresses"]),
-		"toPorts":      llx.StringData(row["to-ports"]),
-		"log":          llx.BoolData(parseBool(row["log"])),
-		"logPrefix":    llx.StringData(row["log-prefix"]),
-		"bytes":        llx.IntData(parseInt(row["bytes"])),
-		"packets":      llx.IntData(parseInt(row["packets"])),
-		"disabled":     llx.BoolData(parseBool(row["disabled"])),
-		"dynamic":      llx.BoolData(parseBool(row["dynamic"])),
-		"invalid":      llx.BoolData(parseBool(row["invalid"])),
-		"comment":      llx.StringData(row["comment"]),
-	})
+	args := firewallRuleArgs("mikrotik.ip.firewall.nat/", row)
+	args["toAddresses"] = llx.StringData(row["to-addresses"])
+	args["toPorts"] = llx.StringData(row["to-ports"])
+	return CreateResource(runtime, "mikrotik.ip.firewall.nat", args)
 }
 
 // --- ip.dhcp.server ---
@@ -243,10 +204,10 @@ func newMikrotikDhcpServer(runtime *plugin.Runtime, row map[string]string) (plug
 		"name":          llx.StringData(row["name"]),
 		"leaseTime":     llx.StringData(row["lease-time"]),
 		"authoritative": llx.StringData(row["authoritative"]),
-		"addArp":        llx.BoolData(parseBool(row["add-arp"])),
-		"dynamic":       llx.BoolData(parseBool(row["dynamic"])),
-		"disabled":      llx.BoolData(parseBool(row["disabled"])),
-		"invalid":       llx.BoolData(parseBool(row["invalid"])),
+		"addArp":        boolField(row, "add-arp"),
+		"dynamic":       boolField(row, "dynamic"),
+		"disabled":      boolField(row, "disabled"),
+		"invalid":       boolField(row, "invalid"),
 		"comment":       llx.StringData(row["comment"]),
 	})
 	if err != nil {
@@ -279,7 +240,7 @@ func initMikrotikIpDhcpServer(runtime *plugin.Runtime, args map[string]*llx.RawD
 			return nil, res, nil
 		}
 	}
-	return args, nil, nil
+	return nil, nil, fmt.Errorf("mikrotik.ip.dhcp.server %q not found", name)
 }
 
 func (r *mqlMikrotikIpDhcpServer) compute_interface() (*mqlMikrotikInterface, error) {
@@ -347,9 +308,9 @@ func newMikrotikDhcpLease(runtime *plugin.Runtime, row map[string]string) (plugi
 		"lastSeen":         llx.StringData(row["last-seen"]),
 		"activeAddress":    llx.StringData(row["active-address"]),
 		"activeMacAddress": llx.StringData(row["active-mac-address"]),
-		"dynamic":          llx.BoolData(parseBool(row["dynamic"])),
-		"blocked":          llx.BoolData(parseBool(row["blocked"])),
-		"disabled":         llx.BoolData(parseBool(row["disabled"])),
+		"dynamic":          boolField(row, "dynamic"),
+		"blocked":          boolField(row, "blocked"),
+		"disabled":         boolField(row, "disabled"),
 		"comment":          llx.StringData(row["comment"]),
 	})
 	if err != nil {
@@ -429,7 +390,7 @@ func newMikrotikUser(runtime *plugin.Runtime, row map[string]string) (plugin.Res
 		"group":        llx.StringData(row["group"]),
 		"address":      llx.StringData(row["address"]),
 		"lastLoggedIn": llx.StringData(row["last-logged-in"]),
-		"disabled":     llx.BoolData(parseBool(row["disabled"])),
+		"disabled":     boolField(row, "disabled"),
 		"comment":      llx.StringData(row["comment"]),
 	})
 	if err != nil {
@@ -444,7 +405,7 @@ func (r *mqlMikrotikUser) userGroup() (*mqlMikrotikUserGroup, error) {
 		r.UserGroup.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	res, err := NewResource(r.MqlRuntime, "mikrotik.user.group", map[string]*llx.RawData{
+	res, err := NewResource(r.MqlRuntime, "mikrotik.userGroup", map[string]*llx.RawData{
 		"name": llx.StringData(r.cacheGroup),
 	})
 	if err != nil {
@@ -457,16 +418,16 @@ func (r *mqlMikrotikUser) userGroup() (*mqlMikrotikUserGroup, error) {
 
 func userGroupArgs(row map[string]string) map[string]*llx.RawData {
 	return map[string]*llx.RawData{
-		"__id":    llx.StringData("mikrotik.user.group/" + row["name"]),
+		"__id":    llx.StringData("mikrotik.userGroup/" + row["name"]),
 		"name":    llx.StringData(row["name"]),
-		"policy":  llx.ArrayData(splitList(row["policy"]), types.String),
+		"policy":  listField(row, "policy"),
 		"skin":    llx.StringData(row["skin"]),
 		"comment": llx.StringData(row["comment"]),
 	}
 }
 
 func newMikrotikUserGroup(runtime *plugin.Runtime, row map[string]string) (plugin.Resource, error) {
-	return CreateResource(runtime, "mikrotik.user.group", userGroupArgs(row))
+	return CreateResource(runtime, "mikrotik.userGroup", userGroupArgs(row))
 }
 
 func initMikrotikUserGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -486,5 +447,5 @@ func initMikrotikUserGroup(runtime *plugin.Runtime, args map[string]*llx.RawData
 			return userGroupArgs(row), nil, nil
 		}
 	}
-	return args, nil, nil
+	return nil, nil, fmt.Errorf("mikrotik.userGroup %q not found", name)
 }

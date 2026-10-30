@@ -15,6 +15,8 @@ import (
 // resources/discovery_conversion.go). Every one must be in the static catalog.
 // If discovery learns a new object type, add it here AND to Platforms.
 var discoveryPlatformNames = []string{
+	"aws-apigatewayv2-api", "aws-appstream-fleet", "aws-athena-workgroup",
+	"aws-batch-jobdefinition", "aws-directoryservice-directory", "aws-documentdb-instance",
 	"aws-cloudfront-distribution", "aws-cloudtrail-trail", "aws-cloudwatch-loggroup",
 	"aws-documentdb-cluster", "aws-dynamodb-table", "aws-ebs-snapshot", "aws-ebs-volume",
 	"aws-ec2-instance", "aws-ecr-image", "aws-ecr-repository", "aws-ecs-container",
@@ -25,7 +27,7 @@ var discoveryPlatformNames = []string{
 	"aws-opensearch-domain", "aws-rds-dbcluster", "aws-rds-dbinstance", "aws-redshift-cluster",
 	"aws-route53-hostedzone", "aws-s3-bucket", "aws-sagemaker-notebookinstance",
 	"aws-sagemaker-processingjob", "aws-sagemaker-trainingjob", "aws-secretsmanager-secret",
-	"aws-security-group", "aws-ssm-instance", "aws-vpc",
+	"aws-security-group", "aws-sns-topic", "aws-sqs-queue", "aws-ssm-instance", "aws-vpc",
 }
 
 func TestPlatformCatalogComplete(t *testing.T) {
@@ -63,6 +65,10 @@ func TestGetPlatformForObjectParity(t *testing.T) {
 	assert.Equal(t, "aws-object", p.Kind)
 	assert.Equal(t, "aws", p.Runtime)
 	assert.Equal(t, []string{"aws", acc, "s3"}, p.TechnologyUrlSegments)
+
+	// messaging objects resolve to their own service segment, not the "other" fallback
+	assert.Equal(t, []string{"aws", acc, "sns"}, GetPlatformForObject("aws-sns-topic", acc).TechnologyUrlSegments)
+	assert.Equal(t, []string{"aws", acc, "sqs"}, GetPlatformForObject("aws-sqs-queue", acc).TechnologyUrlSegments)
 
 	// an unknown object name falls back to a generic AWS object
 	u := GetPlatformForObject("aws-brand-new-thing", acc)

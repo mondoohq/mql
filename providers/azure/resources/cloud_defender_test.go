@@ -11,7 +11,7 @@ import (
 	security "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/security/armsecurity"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestCommonPricingArgs(t *testing.T) {
@@ -19,14 +19,14 @@ func TestCommonPricingArgs(t *testing.T) {
 		enablementTime := time.Date(2025, 6, 15, 10, 0, 0, 0, time.UTC)
 		props := &security.PricingProperties{
 			PricingTier:             ptr(security.PricingTierStandard),
-			SubPlan:                 ptr("P2"),
+			SubPlan:                 new("P2"),
 			Enforce:                 ptr(security.EnforceTrue),
-			Deprecated:              ptr(false),
-			FreeTrialRemainingTime:  ptr("P30D"),
+			Deprecated:              new(false),
+			FreeTrialRemainingTime:  new("P30D"),
 			EnablementTime:          &enablementTime,
 			Inherited:               ptr(security.InheritedFalse),
-			InheritedFrom:           ptr("/subscriptions/parent-sub"),
-			ReplacedBy:              []*string{ptr("plan-a"), ptr("plan-b")},
+			InheritedFrom:           new("/subscriptions/parent-sub"),
+			ReplacedBy:              []*string{new("plan-a"), new("plan-b")},
 			ResourcesCoverageStatus: ptr(security.ResourcesCoverageStatusFullyCovered),
 		}
 
@@ -134,9 +134,9 @@ func TestCommonPricingArgs(t *testing.T) {
 func TestArgsFromContactProperties(t *testing.T) {
 	t.Run("FullProperties", func(t *testing.T) {
 		props := &security.ContactProperties{
-			Emails:    ptr("admin@example.com;security@example.com"),
-			IsEnabled: ptr(true),
-			Phone:     ptr("+1-555-0100"),
+			Emails:    new("admin@example.com;security@example.com"),
+			IsEnabled: new(true),
+			Phone:     new("+1-555-0100"),
 		}
 
 		args := argsFromContactProperties(props)
@@ -166,12 +166,39 @@ func TestArgsFromContactProperties(t *testing.T) {
 
 	t.Run("DisabledContact", func(t *testing.T) {
 		props := &security.ContactProperties{
-			IsEnabled: ptr(false),
+			IsEnabled: new(false),
 		}
 
 		args := argsFromContactProperties(props)
 		assert.Equal(t, false, args["isEnabled"].Value)
 	})
+}
+
+// TestSplitSecurityContactEmails pins the empty case.
+//
+// strings.Split("", ";") returns []string{""}, so a contact with a phone number
+// and no email used to report emails: [""] -- one element, not zero. A check
+// phrased `securityContacts.any(emails.length > 0)` passed on a subscription
+// with no email contact configured at all, which is the inverse of the finding
+// it exists to raise.
+func TestSplitSecurityContactEmails(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input *string
+		want  []any
+	}{
+		{"nil is no addresses", nil, []any{}},
+		{"empty string is no addresses, not one empty address", new(""), []any{}},
+		{"a separator with nothing around it yields nothing", new(";"), []any{}},
+		{"single address", new("soc@example.com"), []any{"soc@example.com"}},
+		{"multiple addresses", new("a@example.com;b@example.com"), []any{"a@example.com", "b@example.com"}},
+		{"surrounding spaces are trimmed", new(" a@example.com ; b@example.com "), []any{"a@example.com", "b@example.com"}},
+		{"empty entries are dropped", new("a@example.com;;b@example.com"), []any{"a@example.com", "b@example.com"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, splitSecurityContactEmails(tc.input))
+		})
+	}
 }
 
 func TestSimpleDefenderDict(t *testing.T) {

@@ -11,11 +11,12 @@ import (
 
 	memorystore "cloud.google.com/go/memorystore/apiv1"
 	"cloud.google.com/go/memorystore/apiv1/memorystorepb"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -292,9 +293,12 @@ func initGcpProjectMemorystoreServiceInstance(runtime *plugin.Runtime, args map[
 
 	nameRaw := args["name"]
 	if nameRaw == nil {
-		return args, nil, nil
+		return nil, nil, errors.New(`gcp.project.memorystoreService.instance requires a "name" argument`)
 	}
-	name := nameRaw.Value.(string)
+	name, ok := nameRaw.Value.(string)
+	if !ok || name == "" {
+		return nil, nil, errors.New(`gcp.project.memorystoreService.instance requires a non-empty "name" argument`)
+	}
 
 	conn, ok := runtime.Connection.(*connection.GcpConnection)
 	if !ok {
@@ -323,8 +327,18 @@ func initGcpProjectMemorystoreServiceInstance(runtime *plugin.Runtime, args map[
 		if locRaw == nil || projRaw == nil {
 			return nil, nil, errors.New("memorystore instance init: projectId and location required when name is not a full resource path")
 		}
-		projectId = projRaw.Value.(string)
-		fullName = fmt.Sprintf("projects/%s/locations/%s/instances/%s", projectId, locRaw.Value.(string), name)
+		projectId, _ = projRaw.Value.(string)
+		location, _ := locRaw.Value.(string)
+		fullName = fmt.Sprintf("projects/%s/locations/%s/instances/%s", projectId, location, name)
+	}
+
+	// Ask whether the API is on before paying for a Get that cannot succeed
+	// without it. Placed here rather than earlier because projectId is only
+	// known once the name has been resolved. Memoized per project.
+	if enabled, err := serviceEnabledForInit(runtime, projectId, service_memorystore); err != nil {
+		return nil, nil, err
+	} else if !enabled {
+		return nil, nil, errors.New("Memorystore API is not enabled on project " + projectId)
 	}
 
 	inst, err := client.GetInstance(ctx, &memorystorepb.GetInstanceRequest{Name: fullName})
@@ -371,6 +385,138 @@ func buildMemorystorePscAttachmentDetails(runtime *plugin.Runtime, projectId, in
 		}
 		res = append(res, mqlDetail)
 	}
+	return res, nil
+}
+
+// =====================
+// TokenAuthUser
+// =====================
+
+func (g *mqlGcpProjectMemorystoreServiceInstanceTokenAuthUser) id() (string, error) {
+	if g.Name.Error != nil {
+		return "", g.Name.Error
+	}
+	return g.Name.Data, nil
+}
+
+func (g *mqlGcpProjectMemorystoreServiceInstance) tokenAuthUsers() ([]any, error) {
+	if g.ProjectId.Error != nil {
+		return nil, g.ProjectId.Error
+	}
+	if g.Name.Error != nil {
+		return nil, g.Name.Error
+	}
+	projectId := g.ProjectId.Data
+	instanceName := g.Name.Data
+
+	conn, ok := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not a GCP connection")
+	}
+	creds, err := conn.Credentials(memorystore.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	client, err := memorystore.NewRESTClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption())
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	it := client.ListTokenAuthUsers(ctx, &memorystorepb.ListTokenAuthUsersRequest{Parent: instanceName})
+
+	res := []any{}
+	for {
+		user, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			if isInapplicable(err) {
+				log.Debug().Err(err).Str("instance", instanceName).Msg("gcp> skipping memorystore token auth users")
+				return res, nil
+			}
+			return nil, err
+		}
+		mqlUser, err := CreateResource(g.MqlRuntime, "gcp.project.memorystoreService.instance.tokenAuthUser", map[string]*llx.RawData{
+			"projectId": llx.StringData(projectId),
+			"name":      llx.StringData(user.Name),
+			"state":     llx.StringData(user.State.String()),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlUser)
+	}
+
+	return res, nil
+}
+
+// =====================
+// AuthToken
+// =====================
+
+func (g *mqlGcpProjectMemorystoreServiceInstanceTokenAuthUserAuthToken) id() (string, error) {
+	if g.Name.Error != nil {
+		return "", g.Name.Error
+	}
+	return g.Name.Data, nil
+}
+
+func (g *mqlGcpProjectMemorystoreServiceInstanceTokenAuthUser) authTokens() ([]any, error) {
+	if g.ProjectId.Error != nil {
+		return nil, g.ProjectId.Error
+	}
+	if g.Name.Error != nil {
+		return nil, g.Name.Error
+	}
+	projectId := g.ProjectId.Data
+	userName := g.Name.Data
+
+	conn, ok := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not a GCP connection")
+	}
+	creds, err := conn.Credentials(memorystore.DefaultAuthScopes()...)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	client, err := memorystore.NewRESTClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption())
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	it := client.ListAuthTokens(ctx, &memorystorepb.ListAuthTokensRequest{Parent: userName})
+
+	res := []any{}
+	for {
+		token, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			if isInapplicable(err) {
+				log.Debug().Err(err).Str("tokenAuthUser", userName).Msg("gcp> skipping memorystore auth tokens")
+				return res, nil
+			}
+			return nil, err
+		}
+		// The secret token value (token.Token) is deliberately not modeled.
+		mqlToken, err := CreateResource(g.MqlRuntime, "gcp.project.memorystoreService.instance.tokenAuthUser.authToken", map[string]*llx.RawData{
+			"projectId":  llx.StringData(projectId),
+			"name":       llx.StringData(token.Name),
+			"state":      llx.StringData(token.State.String()),
+			"createTime": llx.TimeDataPtr(timestampAsTimePtr(token.CreateTime)),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlToken)
+	}
+
 	return res, nil
 }
 
@@ -495,14 +641,25 @@ func initGcpProjectMemorystoreServiceBackupCollection(runtime *plugin.Runtime, a
 	}
 	nameRaw := args["name"]
 	if nameRaw == nil {
-		return args, nil, nil
+		return nil, nil, errors.New(`gcp.project.memorystoreService.backupCollection requires a "name" argument`)
 	}
-	name := nameRaw.Value.(string)
+	name, ok := nameRaw.Value.(string)
+	if !ok || name == "" {
+		return nil, nil, errors.New(`gcp.project.memorystoreService.backupCollection requires a non-empty "name" argument`)
+	}
 
 	conn, ok := runtime.Connection.(*connection.GcpConnection)
 	if !ok {
 		return nil, nil, errors.New("invalid connection provided, it is not a GCP connection")
 	}
+	// Ask whether the API is on before paying for a Get that cannot succeed
+	// without it. Memoized per project, so this is free after the first caller.
+	if enabled, err := serviceEnabledForInit(runtime, conn.ResourceID(), service_memorystore); err != nil {
+		return nil, nil, err
+	} else if !enabled {
+		return nil, nil, errors.New("Memorystore API is not enabled on project " + conn.ResourceID())
+	}
+
 	creds, err := conn.Credentials(memorystore.DefaultAuthScopes()...)
 	if err != nil {
 		return nil, nil, err

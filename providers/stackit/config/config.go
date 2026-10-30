@@ -6,17 +6,23 @@ package config
 import (
 	"fmt"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/stackit/connection"
-	"go.mondoo.com/mql/v13/providers/stackit/provider"
-	"go.mondoo.com/mql/v13/providers/stackit/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/stackit/connection"
+	"go.mondoo.com/mql/providers/stackit/provider"
+	"go.mondoo.com/mql/providers/stackit/resources"
 )
 
 var Config = plugin.Provider{
-	Name:            "stackit",
-	ID:              "go.mondoo.com/mql/providers/stackit",
-	Version:         "13.4.0",
+	Name: "stackit",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "stackit",
+	ID:      "go.mondoo.com/mql/providers/stackit",
+	Version: "14.2.8",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       connection.Platforms,
 	Connectors: []plugin.Connector{

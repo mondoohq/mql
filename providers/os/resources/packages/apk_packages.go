@@ -5,26 +5,56 @@ package packages
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	cpe2 "go.mondoo.com/mql/v13/providers/os/resources/cpe"
-	"go.mondoo.com/mql/v13/providers/os/resources/purl"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	cpe2 "go.mondoo.com/mql/providers/os/resources/cpe"
+	"go.mondoo.com/mql/providers/os/resources/purl"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 const (
-	AlpinePkgFormat   = "apk"
+	AlpinePkgFormat = "apk"
+
+	// Known locations of the apk database. Alpine keeps it under /lib, Wolfi
+	// under /usr/lib (usrmerge), and apk-tools 3, which BellSoft Alpaquita and
+	// Hardened Containers ship, moved it under /var.
 	ApkDbInstalled    = "/lib/apk/db/installed"
 	ApkDbInstalledUsr = "/usr/lib/apk/db/installed"
+	ApkDbInstalledVar = "/var/lib/apk/db/installed"
 )
 
-var APK_REGEX = regexp.MustCompile(`^([A-Za-z]):(.*)$`)
+// ApkDbPaths is every known location of the apk database, in the order they are
+// tried: most common first.
+var ApkDbPaths = []string{ApkDbInstalled, ApkDbInstalledUsr, ApkDbInstalledVar}
+
+// apkMaxLine caps how long a single line of the apk database may be. The
+// dependency and provides lines of a metapackage are the long ones, and they
+// grow with the number of packages a distribution ships.
+const apkMaxLine = 4 * 1024 * 1024
+
+// apkField splits a line of the apk database into its one letter field key and
+// its value. It returns the same key and value as the regexp
+// `^([A-Za-z]):(.*)$`, which the parser used before.
+//
+// The returned value aliases line, so the caller must copy what it keeps.
+func apkField(line []byte) (key byte, value []byte, ok bool) {
+	if len(line) < 2 || line[1] != ':' {
+		return 0, nil, false
+	}
+	c := line[0]
+	if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') {
+		return 0, nil, false
+	}
+	return c, line[2:], true
+}
 
 // ParseApkDbPackages parses the database of the apk package manager located in
 // `/lib/apk/db/installed`
@@ -33,24 +63,24 @@ func ParseApkDbPackages(pf *inventory.Platform, input io.Reader) []Package {
 	pkgs := []Package{}
 
 	var pkgVersion string
-	var pkgEpoch string
 
 	add := func(pkg Package) {
-		// merge version and epoch
-		if pkgEpoch == "0" || pkgEpoch == "" {
-			pkg.Version = pkgVersion
-		} else {
-			pkg.Version = pkgEpoch + ":" + pkgVersion
-			pkg.Epoch = pkgEpoch
-		}
+		// apk has no epoch, so the version is the `V:` field verbatim.
+		pkg.Version = pkgVersion
 
 		pkg.Format = AlpinePkgFormat
 		pkg.PUrl = purl.NewPackageURL(pf, purl.TypeApk, pkg.Name, pkg.Version,
 			purl.WithArch(pkg.Arch),
-			purl.WithEpoch(pkg.Epoch),
 		).String()
 
-		cpes, _ := cpe2.NewPackage2Cpe(pkg.Vendor, pkg.Name, pkg.Version, "", pf.Arch)
+		// The architecture apk recorded for the package, as in the purl. The
+		// platform's is named differently by transport (arm64 from an image
+		// config, aarch64 from uname), so the same image gave different CPEs.
+		cpeArch := pkg.Arch
+		if cpeArch == "" {
+			cpeArch = pf.Arch
+		}
+		cpes, _ := cpe2.NewPackage2Cpe(pkg.Vendor, pkg.Name, pkg.Version, "", cpeArch)
 		pkg.CPEs = cpes
 
 		pkg.FilesAvailable = PkgFilesIncluded
@@ -67,52 +97,61 @@ func ParseApkDbPackages(pf *inventory.Platform, input io.Reader) []Package {
 	}
 
 	scanner := bufio.NewScanner(input)
+	// A line longer than the 64KB default ends the scan, and the packages that
+	// follow it are lost without a word. Raise the cap so a long dependency
+	// line cannot shorten the package list.
+	scanner.Buffer(nil, apkMaxLine)
 	pkg := Package{}
-	var key string
 	for scanner.Scan() {
-		line := scanner.Text()
+		// Bytes avoids one string allocation per line. Most lines of the apk
+		// database list files, and the parser keeps none of them. Every field
+		// it does keep is copied below.
+		line := scanner.Bytes()
 
 		// reset package definition once we reach a newline
 		if len(line) == 0 {
 			add(pkg)
 			// reset values
-			pkgEpoch = ""
 			pkgVersion = ""
 			pkg = Package{}
 		}
 
-		m := APK_REGEX.FindStringSubmatch(line)
-		key = ""
-		if m != nil {
-			key = m[1]
-		}
-
-		// if we short line, we ignore it since this is not a valid line
-		if len(line) < 2 {
+		// a line we cannot split carries no field, so we ignore it
+		key, value, ok := apkField(line)
+		if !ok {
 			continue
 		}
 
-		// Parse the package name or version.
+		// Parse the package name or version. The lowercase `t:` field is the
+		// build timestamp of the package, not an epoch, and apk has no epoch
+		// concept at all, so we do not read it.
 		switch key {
-		case "P":
-			pkg.Name = m[2] // package name
-		case "V":
-			pkgVersion = m[2] // package version
-		case "A":
-			pkg.Arch = m[2] // architecture
-		case "t":
-			pkgEpoch = m[2] // epoch
-		case "o":
-			pkg.Origin = m[2] // origin
-		case "T":
-			pkg.Description = m[2] // description
-		case "L":
-			pkg.License = m[2] // license (SPDX expression)
+		case 'P':
+			pkg.Name = string(value) // package name
+		case 'V':
+			pkgVersion = string(value) // package version
+		case 'A':
+			pkg.Arch = string(value) // architecture
+		case 'o':
+			pkg.Origin = string(value) // origin
+		case 'T':
+			pkg.Description = string(value) // description
+		case 'L':
+			pkg.License = string(value) // license (SPDX expression)
 		}
 	}
 
+	// a read that stopped early leaves the package list short, so say so
+	if err := scanner.Err(); err != nil {
+		log.Error().Err(err).Msg("could not read the apk database to its end, the package list is incomplete")
+	}
+
 	// if the last line is not an empty line we have things in flight, lets check it
-	add(pkg)
+	// a database that ends with an empty line has nothing left, and reporting
+	// that empty package as ignored only reads like data loss
+	if pkg.Name != "" {
+		add(pkg)
+	}
 	return pkgs
 }
 
@@ -150,21 +189,76 @@ func (apm *AlpinePkgManager) Format() string {
 }
 
 func (apm *AlpinePkgManager) List() ([]Package, error) {
-	fr, err := apm.conn.FileSystem().Open(ApkDbInstalled)
-	if err != nil {
-		// Wolfi uses /usr/lib/apk/db/installed (usrmerge layout)
-		fr, err = apm.conn.FileSystem().Open(ApkDbInstalledUsr)
+	for _, path := range ApkDbPaths {
+		fr, err := apm.conn.FileSystem().Open(path)
 		if err != nil {
-			return nil, fmt.Errorf("could not read apk package list")
+			continue
+		}
+
+		pkgs := ParseApkDbPackages(apm.platform, fr)
+		fr.Close()
+		pins := apm.worldPins()
+		for i := range pkgs {
+			pkgs[i].Pinned = pins[pkgs[i].Name]
+		}
+		return pkgs, nil
+	}
+
+	return nil, fmt.Errorf("could not read apk package list")
+}
+
+// ApkWorld lists the packages the system was asked to have, with any version
+// constraint they were added with.
+const ApkWorld = "/etc/apk/world"
+
+// worldPins reads which packages /etc/apk/world holds at their version.
+func (apm *AlpinePkgManager) worldPins() map[string]bool {
+	f, err := apm.conn.FileSystem().Open(ApkWorld)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Warn().Err(err).Str("path", ApkWorld).Msg("mql[packages]> could not read apk world, package pins are not reported")
+		}
+		return nil
+	}
+	defer f.Close()
+	return parseApkWorldPins(f)
+}
+
+// parseApkWorldPins reads /etc/apk/world. A package added as "name=1.2-r0"
+// (exact), "name~1.2" (fuzzy) or "name<2" / "name<=2" (upper bound) is held
+// back: apk upgrade keeps it within the constraint. That is how Alpine
+// documents holding a package back. A lower bound, a repository tag
+// ("name@edge") and a conflict ("!name") do not hold the version.
+func parseApkWorldPins(r io.Reader) map[string]bool {
+	pins := map[string]bool{}
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		for dep := range strings.FieldsSeq(scanner.Text()) {
+			if strings.HasPrefix(dep, "!") {
+				continue
+			}
+			i := strings.IndexAny(dep, "=<>~")
+			if i <= 0 {
+				continue
+			}
+			name, op := dep[:i], dep[i:]
+			if j := strings.IndexByte(name, '@'); j >= 0 {
+				name = name[:j]
+			}
+			switch {
+			case strings.HasPrefix(op, "<"), strings.HasPrefix(op, "="), strings.HasPrefix(op, "~"):
+				pins[name] = true
+			}
 		}
 	}
-	defer fr.Close()
-
-	return ParseApkDbPackages(apm.platform, fr), nil
+	return pins
 }
 
 func (apm *AlpinePkgManager) Available() (map[string]PackageUpdate, error) {
-	// it only works if apk is updated
+	// Refresh the indexes first. Its exit status is not checked: as non-root
+	// it always fails (it cannot open the log), and it exits 2 when a
+	// repository is unreachable even though the cached index is still read.
+	// Whether apk could read an index is what apkUpdateCheck answers.
 	_, _ = apm.conn.RunCommand("apk update")
 
 	// determine package updates
@@ -173,7 +267,48 @@ func (apm *AlpinePkgManager) Available() (map[string]PackageUpdate, error) {
 		log.Debug().Err(err).Msg("mql[packages]> could not read package updates")
 		return nil, fmt.Errorf("could not read apk package update list")
 	}
-	return ParseApkUpdates(cmd.Stdout)
+	return apkUpdateCheck(cmd.Stdout, cmd.Stderr, cmd.ExitStatus)
+}
+
+// apkUnreadableIndexRegex matches the warning apk prints for a repository
+// whose index it could not read, from apk-tools 2 ("opening from cache
+// <repo>: No such file or directory") and 3 ("fetching <repo>/APKINDEX.tar.gz:
+// DNS: transient error"). apk still exits 0 and lists no update from that
+// repository.
+var apkUnreadableIndexRegex = regexp.MustCompile(`^WARNING: (?:opening from cache|opening|fetching|updating and opening) (\S+): (.+)$`)
+
+// apkUpdateCheck reads the result of `apk version -v -l '<'`. A repository
+// whose index apk could not read makes the check incomplete: apk then reports
+// no update for the packages that repository carries, which reads as "up to
+// date". The updates it did list are real and are kept.
+func apkUpdateCheck(stdout io.Reader, stderr io.Reader, exitStatus int) (map[string]PackageUpdate, error) {
+	errOut := ""
+	if stderr != nil {
+		errOut = readCommandOutput(stderr)
+	}
+	if exitStatus == 127 {
+		// no apk binary, as in an image that had it removed: no update check
+		return nil, errors.New("apk is not installed, cannot check for package updates")
+	}
+	if exitStatus != 0 {
+		return nil, fmt.Errorf("%w: apk version exited with status %d: %s", ErrUpdateCheckFailed, exitStatus, strings.TrimSpace(errOut))
+	}
+
+	updates, err := ParseApkUpdates(stdout)
+	if err != nil {
+		return nil, err
+	}
+
+	var unreadable []string
+	for line := range strings.SplitSeq(errOut, "\n") {
+		if m := apkUnreadableIndexRegex.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
+			unreadable = append(unreadable, m[1]+": "+m[2])
+		}
+	}
+	if len(unreadable) > 0 {
+		return updates, fmt.Errorf("%w: apk could not read the index of %s", ErrUpdateCheckFailed, strings.Join(unreadable, "; "))
+	}
+	return updates, nil
 }
 
 func (apm *AlpinePkgManager) Files(name string, version string, arch string) ([]FileRecord, error) {
@@ -223,8 +358,8 @@ func apkStripVersion(s string) string {
 	if loc := apkReleaseSuffix.FindStringIndex(s); loc != nil {
 		s = s[:loc[0]]
 	}
-	if i := strings.LastIndex(s, "-"); i >= 0 {
-		s = s[:i]
+	if before, _, ok := strings.CutLast(s, "-"); ok {
+		s = before
 	}
 	return s
 }

@@ -211,8 +211,14 @@ func TestDbaasInstanceReachable(t *testing.T) {
 		{"public + no acl", map[string]any{"enable_public_access": true}, true},
 		{"public + restricted acl", map[string]any{"enable_public_access": true, "sgw_acl": "10.0.0.0/8"}, false},
 		{"public string true", map[string]any{"enable_public_access": "true"}, true},
-		{"not public", map[string]any{"enable_public_access": false, "sgw_acl": "0.0.0.0/0"}, false},
-		{"missing public flag", map[string]any{"sgw_acl": "0.0.0.0/0"}, false},
+		{"explicit not public overrides an open acl", map[string]any{"enable_public_access": false, "sgw_acl": "0.0.0.0/0"}, false},
+		{"explicit string false overrides an open acl", map[string]any{"enable_public_access": "false", "sgw_acl": "0.0.0.0/0"}, false},
+		// The API does not send enable_public_access (no InstanceParameters
+		// model declares it), so the verdict has to come from sgw_acl alone.
+		// Reading the absent key as false made every instance unreachable.
+		{"absent public flag + open acl is reachable", map[string]any{"sgw_acl": "0.0.0.0/0"}, true},
+		{"absent public flag + restricted acl", map[string]any{"sgw_acl": "10.0.0.0/8"}, false},
+		{"absent public flag + no acl is reachable", map[string]any{}, true},
 		{"acl as list", map[string]any{"enable_public_access": true, "sgw_acl": []any{"::/0"}}, true},
 		{"nil params", nil, false},
 	}

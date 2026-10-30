@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/efs"
@@ -15,13 +16,12 @@ import (
 	"github.com/aws/smithy-go/transport/http"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/aws/connection"
 
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsEfsFilesystem) id() (string, error) {
@@ -31,72 +31,71 @@ func (a *mqlAwsEfsFilesystem) id() (string, error) {
 func (a *mqlAwsEfs) filesystems() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(a.getFilesystems(conn), 5)
-	poolOfJobs.Run()
+	return perRegion(conn, "elasticfilesystem", func(ctx context.Context, region string) ([]any, error) {
+		log.Debug().Msgf("efs>getFilesystems>calling aws with region %s", region)
 
-	// check for errors
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	// get all the results
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
+		svc := conn.Efs(region)
+		res := []any{}
 
-	return res, nil
-}
+		params := &efs.DescribeFileSystemsInput{}
+		paginator := efs.NewDescribeFileSystemsPaginator(svc, params)
+		for paginator.HasMorePages() {
+			describeFileSystemsRes, err := paginator.NextPage(ctx)
+			if err != nil {
+				return nil, err
+			}
 
-func (a *mqlAwsEfs) getFilesystems(conn *connection.AwsConnection) []*jobpool.Job {
-	tasks := make([]*jobpool.Job, 0)
-	regions, err := conn.Regions()
-	if err != nil {
-		return []*jobpool.Job{{Err: err}}
-	}
-	for _, region := range regions {
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("efs>getFilesystems>calling aws with region %s", region)
+			for _, fs := range describeFileSystemsRes.FileSystems {
+				if conn.Filters.General.IsFilteredOutByTags(mapStringInterfaceToStringString(efsTagsToMap(fs.Tags))) {
+					log.Debug().Interface("filesystem", fs.FileSystemArn).Msg("skipping efs filesystem due to filters")
+					continue
+				}
 
-			svc := conn.Efs(region)
-			ctx := context.Background()
-			res := []any{}
-
-			params := &efs.DescribeFileSystemsInput{}
-			paginator := efs.NewDescribeFileSystemsPaginator(svc, params)
-			for paginator.HasMorePages() {
-				describeFileSystemsRes, err := paginator.NextPage(ctx)
+				mqlFilesystem, err := buildEfsFilesystemResource(a.MqlRuntime, region, fs)
 				if err != nil {
-					if Is400AccessDeniedError(err) {
-						log.Warn().Str("region", region).Msg("error accessing region for AWS API")
-						return res, nil
-					}
 					return nil, err
 				}
 
-				for _, fs := range describeFileSystemsRes.FileSystems {
-					if conn.Filters.General.IsFilteredOutByTags(mapStringInterfaceToStringString(efsTagsToMap(fs.Tags))) {
-						log.Debug().Interface("filesystem", fs.FileSystemArn).Msg("skipping efs filesystem due to filters")
-						continue
-					}
-
-					mqlFilesystem, err := buildEfsFilesystemResource(a.MqlRuntime, region, fs)
-					if err != nil {
-						return nil, err
-					}
-
-					res = append(res, mqlFilesystem)
-				}
+				res = append(res, mqlFilesystem)
 			}
-			return jobpool.JobResult(res), nil
 		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+		return res, nil
+	})
 }
 
 type mqlAwsEfsFilesystemInternal struct {
 	cacheKmsKeyID             *string
 	cacheFileSystemProtection *efstypes.FileSystemProtectionDescription
+
+	backupPolicyOnce sync.Once
+	backupPolicyResp *efs.DescribeBackupPolicyOutput
+	backupPolicyErr  error
+}
+
+// fetchBackupPolicy reads the file system's backup policy once and hands it to
+// both fields derived from it. A 404 means the file system has no backup
+// policy, which reads the same way as DISABLED; any other error (403, 5xx,
+// ...) propagates, because a null status would let a backup check pass on a
+// file system nobody could read.
+func (a *mqlAwsEfsFilesystem) fetchBackupPolicy() (*efs.DescribeBackupPolicyOutput, error) {
+	a.backupPolicyOnce.Do(func() {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Efs(a.Region.Data)
+		id := a.Id.Data
+		resp, err := svc.DescribeBackupPolicy(context.Background(), &efs.DescribeBackupPolicyInput{
+			FileSystemId: &id,
+		})
+		if err != nil {
+			var respErr *http.ResponseError
+			if errors.As(err, &respErr) && respErr.HTTPStatusCode() == 404 {
+				return
+			}
+			a.backupPolicyErr = err
+			return
+		}
+		a.backupPolicyResp = resp
+	})
+	return a.backupPolicyResp, a.backupPolicyErr
 }
 
 func buildEfsFilesystemResource(runtime *plugin.Runtime, region string, fs efstypes.FileSystemDescription) (*mqlAwsEfsFilesystem, error) {
@@ -146,7 +145,13 @@ func (a *mqlAwsEfsFilesystem) kmsKey() (*mqlAwsKmsKey, error) {
 		mqlKeyResource, err := NewResource(a.MqlRuntime, "aws.kms.key", map[string]*llx.RawData{
 			"arn": llx.StringDataPtr(a.cacheKmsKeyID),
 		})
-		return mqlKeyResource.(*mqlAwsKmsKey), err
+		// initAwsKmsKey returns (nil, err) on an unparseable ARN or a denied
+		// DescribeKey; asserting on the nil interface would panic and, because
+		// blocks run in goroutines, take down the whole scan.
+		if err != nil {
+			return nil, err
+		}
+		return mqlKeyResource.(*mqlAwsKmsKey), nil
 	}
 	a.KmsKey.State = plugin.StateIsSet | plugin.StateIsNull
 
@@ -159,9 +164,8 @@ func initAwsEfsFilesystem(runtime *plugin.Runtime, args map[string]*llx.RawData)
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformEfsFilesystem); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -177,6 +181,10 @@ func initAwsEfsFilesystem(runtime *plugin.Runtime, args map[string]*llx.RawData)
 	if parsed, err := arn.Parse(arnVal); err == nil && strings.HasPrefix(parsed.Resource, "file-system/") {
 		region = parsed.Region
 		fsId = strings.TrimPrefix(parsed.Resource, "file-system/")
+	}
+
+	if cached := cachedByArn(runtime, ResourceAwsEfsFilesystem, arnVal); cached != nil {
+		return args, cached, nil
 	}
 
 	if region != "" && fsId != "" {
@@ -220,31 +228,39 @@ func initAwsEfsFilesystem(runtime *plugin.Runtime, args map[string]*llx.RawData)
 	return nil, nil, errors.New("efs filesystem does not exist")
 }
 
+// backupPolicy is the deprecated dict view of automaticBackup. It emits only
+// the documented shape, a `BackupPolicy` object carrying `Status`; serializing
+// the whole SDK output would also publish its ResultMetadata, which describes
+// the API call rather than the file system.
 func (a *mqlAwsEfsFilesystem) backupPolicy() (any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	id := a.Id.Data
-	region := a.Region.Data
+	resp, err := a.fetchBackupPolicy()
+	if err != nil || resp == nil || resp.BackupPolicy == nil {
+		return nil, err
+	}
+	return map[string]any{
+		"BackupPolicy": map[string]any{
+			"Status": string(resp.BackupPolicy.Status),
+		},
+	}, nil
+}
 
-	svc := conn.Efs(region)
-	ctx := context.Background()
-
-	backupPolicy, err := svc.DescribeBackupPolicy(ctx, &efs.DescribeBackupPolicyInput{
-		FileSystemId: &id,
+func (a *mqlAwsEfsFilesystem) automaticBackup() (*mqlAwsEfsBackupPolicy, error) {
+	resp, err := a.fetchBackupPolicy()
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.BackupPolicy == nil {
+		a.AutomaticBackup.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := CreateResource(a.MqlRuntime, "aws.efs.backupPolicy", map[string]*llx.RawData{
+		"__id":   llx.StringData(a.Arn.Data + "/backupPolicy"),
+		"status": llx.StringData(string(resp.BackupPolicy.Status)),
 	})
 	if err != nil {
-		// A 404 means the filesystem has no backup policy; treat as absent.
-		// Any other error (403, 5xx, …) must propagate, not be swallowed.
-		var respErr *http.ResponseError
-		if errors.As(err, &respErr) && respErr.HTTPStatusCode() == 404 {
-			return nil, nil
-		}
 		return nil, err
 	}
-	res, err := convert.JsonToDict(backupPolicy)
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
+	return res.(*mqlAwsEfsBackupPolicy), nil
 }
 
 func (a *mqlAwsEfsFilesystem) lifecycleConfiguration() (*mqlAwsEfsFilesystemLifecycleConfiguration, error) {
@@ -259,10 +275,10 @@ func (a *mqlAwsEfsFilesystem) lifecycleConfiguration() (*mqlAwsEfsFilesystemLife
 		FileSystemId: &id,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.LifecycleConfiguration.State = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
-		}
+		// A 404 establishes that the file system has no lifecycle
+		// configuration. A denial establishes nothing, and null would make a
+		// file system with no lifecycle policy and one nobody could check read
+		// identically, so it propagates.
 		var respErr *http.ResponseError
 		if errors.As(err, &respErr) && respErr.HTTPStatusCode() == 404 {
 			a.LifecycleConfiguration.State = plugin.StateIsNull | plugin.StateIsSet
@@ -319,10 +335,9 @@ func (a *mqlAwsEfsFilesystem) replicationConfiguration() (*mqlAwsEfsFilesystemRe
 		FileSystemId: &id,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.ReplicationConfiguration.State = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
-		}
+		// ReplicationConfigurationNotFound (404) establishes that the file
+		// system is not replicated. A denial does not, so an unreplicated file
+		// system and one nobody could check must not read the same way.
 		var respErr *http.ResponseError
 		if errors.As(err, &respErr) && respErr.HTTPStatusCode() == 404 {
 			a.ReplicationConfiguration.State = plugin.StateIsNull | plugin.StateIsSet
@@ -344,7 +359,6 @@ func (a *mqlAwsEfsFilesystem) replicationConfiguration() (*mqlAwsEfsFilesystemRe
 		mqlDest, err := CreateResource(a.MqlRuntime, "aws.efs.filesystem.replicationDestination",
 			map[string]*llx.RawData{
 				"__id":                    llx.StringData(destId),
-				"fileSystemId":            llx.StringDataPtr(dest.FileSystemId),
 				"region":                  llx.StringDataPtr(dest.Region),
 				"status":                  llx.StringData(string(dest.Status)),
 				"lastReplicatedTimestamp": llx.TimeDataPtr(dest.LastReplicatedTimestamp),
@@ -352,23 +366,24 @@ func (a *mqlAwsEfsFilesystem) replicationConfiguration() (*mqlAwsEfsFilesystemRe
 		if err != nil {
 			return nil, err
 		}
+		mqlDest.(*mqlAwsEfsFilesystemReplicationDestination).cacheFileSystemId = convert.ToValue(dest.FileSystemId)
 		destinations = append(destinations, mqlDest)
 	}
 
 	replId := convert.ToValue(repl.SourceFileSystemArn) + "/replication"
 	mqlRepl, err := CreateResource(a.MqlRuntime, "aws.efs.filesystem.replicationConfiguration",
 		map[string]*llx.RawData{
-			"__id":                        llx.StringData(replId),
-			"sourceFileSystemId":          llx.StringDataPtr(repl.SourceFileSystemId),
-			"sourceFileSystemRegion":      llx.StringDataPtr(repl.SourceFileSystemRegion),
-			"sourceFileSystemArn":         llx.StringDataPtr(repl.SourceFileSystemArn),
-			"originalSourceFileSystemArn": llx.StringDataPtr(repl.OriginalSourceFileSystemArn),
-			"creationTime":                llx.TimeDataPtr(repl.CreationTime),
-			"destinations":                llx.ArrayData(destinations, types.Resource("aws.efs.filesystem.replicationDestination")),
+			"__id":                   llx.StringData(replId),
+			"sourceFileSystemId":     llx.StringDataPtr(repl.SourceFileSystemId),
+			"sourceFileSystemRegion": llx.StringDataPtr(repl.SourceFileSystemRegion),
+			"creationTime":           llx.TimeDataPtr(repl.CreationTime),
+			"destinations":           llx.ArrayData(destinations, types.Resource("aws.efs.filesystem.replicationDestination")),
 		})
 	if err != nil {
 		return nil, err
 	}
+	mqlRepl.(*mqlAwsEfsFilesystemReplicationConfiguration).cacheSourceFileSystemArn = convert.ToValue(repl.SourceFileSystemArn)
+	mqlRepl.(*mqlAwsEfsFilesystemReplicationConfiguration).cacheOriginalSourceFileSystemArn = convert.ToValue(repl.OriginalSourceFileSystemArn)
 	return mqlRepl.(*mqlAwsEfsFilesystemReplicationConfiguration), nil
 }
 
@@ -377,7 +392,7 @@ func (a *mqlAwsEfsFilesystemReplicationConfiguration) id() (string, error) {
 }
 
 func (a *mqlAwsEfsFilesystemReplicationConfiguration) sourceFileSystem() (*mqlAwsEfsFilesystem, error) {
-	arnVal := a.SourceFileSystemArn.Data
+	arnVal := a.cacheSourceFileSystemArn
 	if arnVal == "" {
 		a.SourceFileSystem.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -391,7 +406,7 @@ func (a *mqlAwsEfsFilesystemReplicationConfiguration) sourceFileSystem() (*mqlAw
 }
 
 func (a *mqlAwsEfsFilesystemReplicationConfiguration) originalSourceFileSystem() (*mqlAwsEfsFilesystem, error) {
-	arnVal := a.OriginalSourceFileSystemArn.Data
+	arnVal := a.cacheOriginalSourceFileSystemArn
 	if arnVal == "" {
 		a.OriginalSourceFileSystem.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -409,7 +424,7 @@ func (a *mqlAwsEfsFilesystemReplicationDestination) id() (string, error) {
 }
 
 func (a *mqlAwsEfsFilesystemReplicationDestination) fileSystem() (*mqlAwsEfsFilesystem, error) {
-	fsId := a.FileSystemId.Data
+	fsId := a.cacheFileSystemId
 	if fsId == "" {
 		a.FileSystem.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -434,17 +449,23 @@ func (a *mqlAwsEfsFilesystem) fileSystemProtection() (any, error) {
 	return result, nil
 }
 
-func efsTagsToMap(tags []efstypes.Tag) map[string]any {
-	tagsMap := make(map[string]any)
-
-	if len(tags) > 0 {
-		for i := range tags {
-			tag := tags[i]
-			tagsMap[convert.ToValue(tag.Key)] = convert.ToValue(tag.Value)
-		}
+func (a *mqlAwsEfsFilesystem) protection() (*mqlAwsEfsFileSystemProtection, error) {
+	if a.cacheFileSystemProtection == nil {
+		a.Protection.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
+	res, err := CreateResource(a.MqlRuntime, "aws.efs.fileSystemProtection", map[string]*llx.RawData{
+		"__id":                           llx.StringData(a.Arn.Data + "/fileSystemProtection"),
+		"replicationOverwriteProtection": llx.StringData(string(a.cacheFileSystemProtection.ReplicationOverwriteProtection)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsEfsFileSystemProtection), nil
+}
 
-	return tagsMap
+func efsTagsToMap(tags []efstypes.Tag) map[string]any {
+	return tagsToMap(tags, func(t efstypes.Tag) *string { return t.Key }, func(t efstypes.Tag) *string { return t.Value })
 }
 
 func (a *mqlAwsEfsFilesystem) mountTargets() ([]any, error) {
@@ -463,42 +484,47 @@ func (a *mqlAwsEfsFilesystem) mountTargets() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("region", region).Str("fileSystemId", id).Msg("error accessing EFS mount targets")
-				return res, nil
-			}
+			// A denial truncates the list without saying so. Returning the
+			// partial slice would let mountTargets.all(...) pass vacuously on a
+			// file system whose mount targets nobody could enumerate, so the
+			// failure propagates instead.
 			return nil, err
 		}
 
 		for _, mt := range page.MountTargets {
-			// Fetch security groups for this mount target
-			sgRes, err := svc.DescribeMountTargetSecurityGroups(ctx, &efs.DescribeMountTargetSecurityGroupsInput{
+			// A failed group read is carried on the mount target rather than
+			// failing the whole list: one unreadable mount target must not
+			// erase the rest, but its securityGroups field must not read as an
+			// empty list either.
+			sgRes, sgErr := svc.DescribeMountTargetSecurityGroups(ctx, &efs.DescribeMountTargetSecurityGroupsInput{
 				MountTargetId: mt.MountTargetId,
 			})
-			if err != nil {
+			if sgErr != nil {
 				log.Warn().Str("mountTargetId", convert.ToValue(mt.MountTargetId)).Msg("error fetching security groups for mount target")
 			}
 
 			args := map[string]*llx.RawData{
-				"__id":               llx.StringDataPtr(mt.MountTargetId),
-				"mountTargetId":      llx.StringDataPtr(mt.MountTargetId),
-				"fileSystemId":       llx.StringDataPtr(mt.FileSystemId),
-				"subnetId":           llx.StringDataPtr(mt.SubnetId),
-				"availabilityZone":   llx.StringDataPtr(mt.AvailabilityZoneName),
-				"ipAddress":          llx.StringDataPtr(mt.IpAddress),
-				"lifecycleState":     llx.StringData(string(mt.LifeCycleState)),
-				"networkInterfaceId": llx.StringDataPtr(mt.NetworkInterfaceId),
-				"region":             llx.StringData(region),
+				"__id":             llx.StringDataPtr(mt.MountTargetId),
+				"mountTargetId":    llx.StringDataPtr(mt.MountTargetId),
+				"availabilityZone": llx.StringDataPtr(mt.AvailabilityZoneName),
+				"ipAddress":        llx.StringDataPtr(mt.IpAddress),
+				"lifecycleState":   llx.StringData(string(mt.LifeCycleState)),
+				"region":           llx.StringData(region),
 			}
 
 			mqlMountTarget, err := CreateResource(a.MqlRuntime, ResourceAwsEfsMountTarget, args)
 			if err != nil {
 				return nil, err
 			}
+			mqlMountTarget.(*mqlAwsEfsMountTarget).cacheFileSystemId = convert.ToValue(mt.FileSystemId)
+			mqlMountTarget.(*mqlAwsEfsMountTarget).cacheSubnetId = convert.ToValue(mt.SubnetId)
+			mqlMountTarget.(*mqlAwsEfsMountTarget).cacheNetworkInterfaceId = convert.ToValue(mt.NetworkInterfaceId)
 
-			// Cache the security group IDs for lazy loading
-			if sgRes != nil && len(sgRes.SecurityGroups) > 0 {
-				mqlMountTarget.(*mqlAwsEfsMountTarget).cacheSecurityGroupIDs = sgRes.SecurityGroups
+			// Cache the security group IDs, or the reason there are none.
+			mqlMt := mqlMountTarget.(*mqlAwsEfsMountTarget)
+			mqlMt.cacheSecurityGroupsErr = sgErr
+			if sgErr == nil && sgRes != nil {
+				mqlMt.cacheSecurityGroupIDs = sgRes.SecurityGroups
 			}
 
 			res = append(res, mqlMountTarget)
@@ -524,10 +550,9 @@ func (a *mqlAwsEfsFilesystem) accessPoints() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("region", region).Str("fileSystemId", id).Msg("error accessing EFS access points")
-				return res, nil
-			}
+			// As with mount targets, a truncated list presented as complete is
+			// what makes an accessPoints.all(...) check pass on evidence that
+			// was never read.
 			return nil, err
 		}
 
@@ -563,28 +588,41 @@ func (a *mqlAwsEfsFilesystem) accessPoints() ([]any, error) {
 				}
 			}
 
+			// A nil PosixUser or RootDirectory is not "empty", it means the
+			// access point enforces no identity or no root of its own, so the
+			// reference stays null rather than reporting uid 0 and path "".
+			mqlPosixUser, err := newMqlEfsPosixUser(a.MqlRuntime, convert.ToValue(ap.AccessPointArn), ap.PosixUser)
+			if err != nil {
+				return nil, err
+			}
+			mqlRootDirectory, err := newMqlEfsRootDirectory(a.MqlRuntime, convert.ToValue(ap.AccessPointArn), ap.RootDirectory)
+			if err != nil {
+				return nil, err
+			}
+
 			args := map[string]*llx.RawData{
 				"__id":           llx.StringDataPtr(ap.AccessPointArn),
 				"accessPointId":  llx.StringDataPtr(ap.AccessPointId),
 				"arn":            llx.StringDataPtr(ap.AccessPointArn),
-				"fileSystemId":   llx.StringDataPtr(ap.FileSystemId),
 				"name":           llx.StringDataPtr(ap.Name),
 				"lifecycleState": llx.StringData(string(ap.LifeCycleState)),
 				"region":         llx.StringData(region),
 				"tags":           llx.MapData(efsTagsToMap(ap.Tags), types.String),
+				"posixIdentity":  mqlPosixUser,
+				"root":           mqlRootDirectory,
 			}
 
-			if posixUser != nil {
-				args["posixUser"] = llx.DictData(posixUser)
-			}
-			if rootDirectory != nil {
-				args["rootDirectory"] = llx.DictData(rootDirectory)
-			}
+			// Set unconditionally: a key left out of the args map leaves the
+			// field unset rather than null, and reading an unset field crosses
+			// the plugin boundary with no type information.
+			args["posixUser"] = llx.DictData(posixUser)
+			args["rootDirectory"] = llx.DictData(rootDirectory)
 
 			mqlAccessPoint, err := CreateResource(a.MqlRuntime, ResourceAwsEfsAccessPoint, args)
 			if err != nil {
 				return nil, err
 			}
+			mqlAccessPoint.(*mqlAwsEfsAccessPoint).cacheFileSystemId = convert.ToValue(ap.FileSystemId)
 
 			res = append(res, mqlAccessPoint)
 		}
@@ -593,6 +631,30 @@ func (a *mqlAwsEfsFilesystem) accessPoints() ([]any, error) {
 	return res, nil
 }
 
+// efsPolicyNotFound reports the answer EFS gives for a file system that
+// carries no resource policy at all: PolicyNotFound, HTTP 404.
+//
+// It is a statement about the file system, not a failure to read one, which is
+// why it is deliberately narrow. A denial (403) and a transport error both
+// leave the policy unknown, and neither may be folded in here: the empty
+// document they would produce is byte-identical to the one a file system with
+// no policy produces, and isPublic, which is derived from it, would then report
+// a file system open to the world as private.
+func efsPolicyNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	if respErr, ok := errors.AsType[*http.ResponseError](err); ok {
+		return respErr.HTTPStatusCode() == 404
+	}
+	return false
+}
+
+// fileSystemPolicy returns the file system's resource policy document. The
+// empty string means one thing only: the file system carries no policy. Any
+// error other than the 404 that establishes that propagates, so that
+// policyStatements and isPublic, both derived from this field, report an
+// unreadable policy as unreadable rather than as absent.
 func (a *mqlAwsEfsFilesystem) fileSystemPolicy() (string, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	id := a.Id.Data
@@ -605,13 +667,7 @@ func (a *mqlAwsEfsFilesystem) fileSystemPolicy() (string, error) {
 		FileSystemId: &id,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Warn().Str("region", region).Str("fileSystemId", id).Msg("error accessing EFS file system policy")
-			return "", nil
-		}
-		var respErr *http.ResponseError
-		if errors.As(err, &respErr) && respErr.HTTPStatusCode() == 404 {
-			// No policy exists
+		if efsPolicyNotFound(err) {
 			return "", nil
 		}
 		return "", err
@@ -626,12 +682,29 @@ func (a *mqlAwsEfsFilesystem) fileSystemPolicy() (string, error) {
 
 // Mount Target implementation
 type mqlAwsEfsMountTargetInternal struct {
-	cacheSecurityGroupIDs []string
+	cacheFileSystemId       string
+	cacheSubnetId           string
+	cacheNetworkInterfaceId string
+	cacheSecurityGroupIDs   []string
+	// cacheSecurityGroupsErr records why the group list could not be read, so
+	// the accessor can report the refusal instead of an empty list.
+	cacheSecurityGroupsErr error
 }
 
+// securityGroups returns the security groups attached to the mount target.
+//
+// EFS attaches at least one security group to every mount target, so an empty
+// list is never a reading the API produced: it means the group list was not
+// read. Reporting it as a list would make a
+// mountTargets.all(securityGroups.none(...)) check pass on a mount target
+// nobody could inspect, so an unread list is an error.
 func (a *mqlAwsEfsMountTarget) securityGroups() ([]any, error) {
+	if a.cacheSecurityGroupsErr != nil {
+		return nil, fmt.Errorf("could not read security groups for EFS mount target %s: %w",
+			a.MountTargetId.Data, a.cacheSecurityGroupsErr)
+	}
 	if len(a.cacheSecurityGroupIDs) == 0 {
-		return []any{}, nil
+		return nil, fmt.Errorf("no security groups were read for EFS mount target %s", a.MountTargetId.Data)
 	}
 
 	region := a.Region.Data
@@ -652,7 +725,7 @@ func (a *mqlAwsEfsMountTarget) securityGroups() ([]any, error) {
 }
 
 func (a *mqlAwsEfsMountTarget) subnet() (*mqlAwsVpcSubnet, error) {
-	subnetId := a.SubnetId.Data
+	subnetId := a.cacheSubnetId
 	if subnetId == "" {
 		a.Subnet.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
@@ -667,7 +740,7 @@ func (a *mqlAwsEfsMountTarget) subnet() (*mqlAwsVpcSubnet, error) {
 }
 
 func (a *mqlAwsEfsMountTarget) networkInterface() (*mqlAwsEc2Networkinterface, error) {
-	eniId := a.NetworkInterfaceId.Data
+	eniId := a.cacheNetworkInterfaceId
 	if eniId == "" {
 		a.NetworkInterface.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -681,7 +754,7 @@ func (a *mqlAwsEfsMountTarget) networkInterface() (*mqlAwsEc2Networkinterface, e
 }
 
 func (a *mqlAwsEfsMountTarget) fileSystem() (*mqlAwsEfsFilesystem, error) {
-	fsId := a.FileSystemId.Data
+	fsId := a.cacheFileSystemId
 	if fsId == "" {
 		a.FileSystem.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -697,7 +770,7 @@ func (a *mqlAwsEfsMountTarget) fileSystem() (*mqlAwsEfsFilesystem, error) {
 }
 
 func (a *mqlAwsEfsAccessPoint) fileSystem() (*mqlAwsEfsFilesystem, error) {
-	fsId := a.FileSystemId.Data
+	fsId := a.cacheFileSystemId
 	if fsId == "" {
 		a.FileSystem.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -710,4 +783,64 @@ func (a *mqlAwsEfsAccessPoint) fileSystem() (*mqlAwsEfsFilesystem, error) {
 		return nil, err
 	}
 	return res.(*mqlAwsEfsFilesystem), nil
+}
+
+type mqlAwsEfsFilesystemReplicationConfigurationInternal struct {
+	cacheSourceFileSystemArn         string
+	cacheOriginalSourceFileSystemArn string
+}
+
+type mqlAwsEfsFilesystemReplicationDestinationInternal struct {
+	cacheFileSystemId string
+}
+
+type mqlAwsEfsAccessPointInternal struct {
+	cacheFileSystemId string
+}
+
+// newMqlEfsPosixUser builds the POSIX identity an access point enforces. A nil
+// PosixUser means the access point enforces no identity at all, which is
+// reported as null rather than as uid 0, the identity that would make every
+// client root.
+func newMqlEfsPosixUser(runtime *plugin.Runtime, accessPointArn string, pu *efstypes.PosixUser) (*llx.RawData, error) {
+	if pu == nil {
+		return llx.NilData, nil
+	}
+	res, err := CreateResource(runtime, "aws.efs.posixUser", map[string]*llx.RawData{
+		"__id":          llx.StringData(accessPointArn + "/posixUser"),
+		"uid":           llx.IntDataPtr(pu.Uid),
+		"gid":           llx.IntDataPtr(pu.Gid),
+		"secondaryGids": llx.ArrayData(convert.SliceAnyToInterface(pu.SecondaryGids), types.Int),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return llx.ResourceData(res, "aws.efs.posixUser"), nil
+}
+
+// newMqlEfsRootDirectory builds the root an access point exposes. A nil
+// RootDirectory means the access point does not restrict the root, which is
+// reported as null rather than as the empty path.
+func newMqlEfsRootDirectory(runtime *plugin.Runtime, accessPointArn string, rd *efstypes.RootDirectory) (*llx.RawData, error) {
+	if rd == nil {
+		return llx.NilData, nil
+	}
+	ownerUid, ownerGid := llx.NilData, llx.NilData
+	permissions := llx.NilData
+	if ci := rd.CreationInfo; ci != nil {
+		ownerUid = llx.IntDataPtr(ci.OwnerUid)
+		ownerGid = llx.IntDataPtr(ci.OwnerGid)
+		permissions = llx.StringDataPtr(ci.Permissions)
+	}
+	res, err := CreateResource(runtime, "aws.efs.rootDirectory", map[string]*llx.RawData{
+		"__id":        llx.StringData(accessPointArn + "/rootDirectory"),
+		"path":        llx.StringDataPtr(rd.Path),
+		"ownerUid":    ownerUid,
+		"ownerGid":    ownerGid,
+		"permissions": permissions,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return llx.ResourceData(res, "aws.efs.rootDirectory"), nil
 }

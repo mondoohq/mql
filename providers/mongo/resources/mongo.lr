@@ -1,0 +1,193 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/mongo"
+option go_package = "go.mondoo.com/mql/providers/mongo/resources"
+option root = "mongo"
+
+// MongoDB
+//
+// Root namespace for all self-hosted MongoDB resources. Query `mongo.instance`
+// for the connected server: its version, configuration, TLS and authentication
+// settings, users, roles, and databases. For MongoDB Atlas (the managed
+// service), use the mongodbatlas provider instead.
+mongo @root {}
+
+// MongoDB server
+//
+// A single self-hosted MongoDB server. Exposes version metadata and the
+// security-relevant configuration read from the command-line options and
+// server parameters: whether authentication and role-based access control are
+// enabled (`authenticationEnabled`, `authorizationEnabled`), the cluster
+// authentication mode, TLS posture (`tlsMode`, `tlsDisabledProtocols`,
+// `tlsFIPSMode`), whether server-side JavaScript is enabled, the bound
+// addresses and port, and auditing/logging settings. Principals and databases
+// are reachable through `users`, `roles`, and `databases`, and the full
+// parameter set through `parameters`.
+mongo.instance @defaults("version") {
+  // Full server version, for example 7.0.14
+  version @maturity("deprecated") @replaced_by("asset.version") string
+  // Git version the server was built from
+  gitVersion string
+  // TCP port the server listens on
+  port int
+  // Addresses the server binds to (net.bindIp)
+  bindIp string
+  // Whether client authorization (authentication) is enabled
+  //
+  // True when the server is started with authorization enabled
+  // (security.authorization == "enabled" or --auth). CIS requires this on.
+  authenticationEnabled bool
+  // Whether role-based access control is enforced
+  //
+  // Distinct value name from authenticationEnabled for clarity; both derive
+  // from the security.authorization setting.
+  authorizationEnabled bool
+  // Cluster member authentication mode: keyFile, sendKeyFile, sendX509, or x509
+  clusterAuthMode string
+  // TLS mode: disabled, allowTLS, preferTLS, or requireTLS
+  tlsMode string
+  // TLS protocol versions explicitly disabled (net.tls.disabledProtocols)
+  tlsDisabledProtocols string
+  // Whether FIPS mode is enabled for TLS
+  tlsFIPSMode bool
+  // Whether server-side JavaScript execution is enabled
+  //
+  // CIS recommends disabling this when not needed (security.javascriptEnabled).
+  javascriptEnabled bool
+  // Audit log destination, or empty when auditing is not configured
+  auditLogDestination string
+  // System log verbosity level
+  logVerbosity int
+  // Whether new log entries are appended to an existing log file
+  //
+  // False when unset, which is the server default: the log is replaced on
+  // restart, losing the previous run's entries (systemLog.logAppend).
+  logAppend bool
+  // Server parameters (getParameter '*')
+  parameters() []mongo.parameter
+  // Users defined on the server (across databases)
+  users() []mongo.user
+  // Roles defined on the server (across databases)
+  roles() []mongo.role
+  // Databases on the server
+  databases() []mongo.database
+}
+
+// MongoDB user
+//
+// A MongoDB user account, identified by `user` within its authentication
+// database `db`. `roles` lists the role grants written on the account (each
+// with the database it applies to) and `effectiveRoles` expands those grants
+// through role inheritance, so it also reports the roles reached through a
+// custom role. `isPrivileged` flags accounts that reach a high-privilege
+// built-in role (for example root, __system, or any of the *AnyDatabase
+// roles), directly or by inheritance, or a custom role granting the same
+// access through its privileges.
+mongo.user @defaults("user db") {
+  // User name
+  user string
+  // Authentication database the user is defined in
+  db string
+  // User id, as reported by MongoDB (usually "<db>.<user>")
+  userId string
+  // Authentication mechanisms available for the user, for example SCRAM-SHA-256
+  mechanisms []string
+  // Roles granted to the user
+  roles() []mongo.role
+  // Roles in effect for the user, including inherited ones
+  //
+  // The grants in `roles` expanded through MongoDB role inheritance: a role
+  // that includes another role confers that role too, transitively. This is
+  // the set `isPrivileged` is decided on.
+  effectiveRoles() []mongo.role
+  // Whether the user holds a high-privilege role
+  //
+  // Decided on `effectiveRoles`, so an account that reaches root, dbOwner,
+  // clusterAdmin or one of the *AnyDatabase roles through a custom role is
+  // flagged just like one granted the role directly. A custom role counts
+  // too when its privileges grant the same access: the anyAction action,
+  // any action on anyResource, user or role administration (createUser,
+  // grantRole, and similar), or reading or writing documents in every
+  // database.
+  isPrivileged bool
+}
+
+// MongoDB role
+//
+// A MongoDB role, identified by `role` within its database `db`. `privileges`
+// lists the resource/action grants, `inheritedRoles` the roles it includes, and
+// `isBuiltin` marks the server-provided roles (read, readWrite, root, etc.)
+// versus user-defined ones.
+mongo.role @defaults("role db") {
+  // Role name
+  role string
+  // Database the role is defined in
+  db string
+  // Whether the role is a built-in MongoDB role
+  isBuiltin bool
+  // Privileges granted directly by the role
+  privileges() []mongo.role.privilege
+  // Roles this role inherits
+  inheritedRoles() []mongo.role
+}
+
+// MongoDB role privilege
+//
+// A single privilege granted by a role: a set of `actions` on a resource. The
+// resource is a database/collection (`database`, `collection`), the
+// time-series bucket collections (`systemBuckets`), the whole deployment
+// (`cluster`), or every resource including system collections
+// (`anyResource`). A `database` of "" with `collection` "" means every
+// non-system collection in every database.
+mongo.role.privilege @defaults("actions") {
+  // Database the privilege applies to, or empty for every database
+  database string
+  // Collection the privilege applies to, or empty for all collections
+  collection string
+  // Whether the privilege targets the whole cluster
+  cluster bool
+  // Whether the privilege applies to every resource
+  //
+  // The anyResource grant, which also covers system collections such as
+  // admin.system.users that a `database` of "" and `collection` of "" does
+  // not.
+  anyResource bool
+  // Time-series bucket collections the privilege applies to
+  //
+  // Set for a system_buckets resource: the bucket collection name, or empty
+  // for every bucket collection in `database`. Null for every other resource.
+  systemBuckets string
+  // Actions permitted, for example find, insert, or dropDatabase
+  actions []string
+}
+
+// MongoDB database
+//
+// A database on the server (from listDatabases). Reports the on-disk size and
+// whether the database is empty.
+mongo.database @defaults("name") {
+  // Database name
+  name string
+  // Size of the database on disk, in bytes
+  sizeOnDisk int
+  // Whether the database has no data
+  empty bool
+}
+
+// MongoDB server parameter
+//
+// A single server parameter from getParameter, selected by `name`. The value
+// is rendered as a string for uniform querying regardless of its native type:
+// scalars in their plain form, arrays and documents as JSON, for example
+// `["SCRAM-SHA-1","SCRAM-SHA-256"]` for authenticationMechanisms.
+mongo.parameter @defaults("name value") {
+  // Parameter name
+  name string
+  // Parameter value, rendered as a string
+  //
+  // Arrays and documents are JSON, for example `{"version":"8.0"}`.
+  value string
+}

@@ -1,0 +1,10 @@
+# FreeBSD 15.1-RELEASE on EC2, where kern.hostuuid equals the SMBIOS system
+# UUID (replaced here). /etc/hostid holds a different UUID so the test shows
+# the running kernel's value wins.
+
+[commands."sysctl -n kern.hostuuid"]
+stdout = "ec2a1b2c-3d4e-5f60-7182-93a4b5c6d7e8\n"
+
+[files."/etc/hostid"]
+path = "/etc/hostid"
+content = "11111111-2222-3333-4444-555555555555\n"

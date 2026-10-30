@@ -6,9 +6,9 @@ package connection
 import (
 	"os"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	huggingface "go.mondoo.com/mql/v13/providers/huggingface/internal/huggingface-hub-go"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	huggingface "go.mondoo.com/mql/providers/huggingface/internal/huggingface-hub-go"
 )
 
 const (

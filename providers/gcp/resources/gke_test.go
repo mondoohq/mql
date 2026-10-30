@@ -80,3 +80,55 @@ func TestGkeRbacInsecureBindings(t *testing.T) {
 		assert.False(t, auth)
 	})
 }
+
+func TestNewGkeDatabaseEncryption(t *testing.T) {
+	t.Run("no configuration", func(t *testing.T) {
+		got := newGkeDatabaseEncryption(nil)
+		assert.Equal(t, gkeDatabaseEncryption{}, got)
+	})
+
+	t.Run("encrypted with a Cloud KMS key", func(t *testing.T) {
+		got := newGkeDatabaseEncryption(&containerpb.DatabaseEncryption{
+			State:        containerpb.DatabaseEncryption_ENCRYPTED,
+			KeyName:      "projects/p/locations/us-central1/keyRings/r/cryptoKeys/k",
+			CurrentState: containerpb.DatabaseEncryption_CURRENT_STATE_ENCRYPTED.Enum(),
+		})
+		assert.Equal(t, "ENCRYPTED", got.state)
+		assert.Equal(t, "CURRENT_STATE_ENCRYPTED", got.currentState)
+		assert.Equal(t, "projects/p/locations/us-central1/keyRings/r/cryptoKeys/k", got.keyName)
+		assert.Equal(t, map[string]any{
+			"state":        "ENCRYPTED",
+			"keyName":      "projects/p/locations/us-central1/keyRings/r/cryptoKeys/k",
+			"currentState": "CURRENT_STATE_ENCRYPTED",
+		}, got.dict)
+	})
+
+	t.Run("requested but failed", func(t *testing.T) {
+		got := newGkeDatabaseEncryption(&containerpb.DatabaseEncryption{
+			State:        containerpb.DatabaseEncryption_ENCRYPTED,
+			KeyName:      "projects/p/locations/us-central1/keyRings/r/cryptoKeys/k",
+			CurrentState: containerpb.DatabaseEncryption_CURRENT_STATE_ENCRYPTION_ERROR.Enum(),
+		})
+		assert.Equal(t, "ENCRYPTED", got.state)
+		assert.Equal(t, "CURRENT_STATE_ENCRYPTION_ERROR", got.currentState)
+	})
+
+	t.Run("not encrypted", func(t *testing.T) {
+		got := newGkeDatabaseEncryption(&containerpb.DatabaseEncryption{
+			State:        containerpb.DatabaseEncryption_DECRYPTED,
+			CurrentState: containerpb.DatabaseEncryption_CURRENT_STATE_DECRYPTED.Enum(),
+		})
+		assert.Equal(t, "DECRYPTED", got.state)
+		assert.Equal(t, "CURRENT_STATE_DECRYPTED", got.currentState)
+		assert.Empty(t, got.keyName)
+	})
+
+	t.Run("no current state reported", func(t *testing.T) {
+		got := newGkeDatabaseEncryption(&containerpb.DatabaseEncryption{
+			State: containerpb.DatabaseEncryption_DECRYPTED,
+		})
+		assert.Equal(t, "DECRYPTED", got.state)
+		assert.Empty(t, got.currentState)
+		require.Contains(t, got.dict, "currentState")
+	})
+}

@@ -1,0 +1,14 @@
+[
+ {
+  ".id": "*1",
+  "actual-interface": "ether1",
+  "address": "10.98.0.103/24",
+  "disabled": "false",
+  "dynamic": "true",
+  "interface": "ether1",
+  "invalid": "false",
+  "network": "10.98.0.0",
+  "slave": "false",
+  "vrf": "main"
+ }
+]

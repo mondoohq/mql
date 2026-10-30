@@ -4,17 +4,18 @@
 package resources
 
 import (
+	"errors"
 	"io"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	sudopkg "go.mondoo.com/mql/v13/providers/os/resources/sudo"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	sudopkg "go.mondoo.com/mql/providers/os/resources/sudo"
+	"go.mondoo.com/mql/types"
 )
 
 // sudoCommonPaths lists where sudo binaries are typically installed.
@@ -38,11 +39,22 @@ var visudoCommonPaths = []string{
 	"/opt/csw/sbin/visudo",      // Solaris CSW
 }
 
+// cLocale runs a command in the C locale. sudo and visudo translate their
+// output, which the parsers match in English: under a German locale
+// `sudo -V` prints `Sudo-Version 1.9.15p5`. The `env` form also works when
+// the command is elevated, where sudo may refuse a leading VAR=value.
+const cLocale = "env LC_ALL=C "
+
 // buildSudoVCommand returns a shell-safe `<path> -V` invocation. The path
 // may originate from `init(path: ...)`, so it must be quoted to prevent
 // shell-metacharacter injection (e.g., `init(path: "/tmp/evil; cat /etc/shadow")`).
 func buildSudoVCommand(path string) string {
-	return shared.ShellEscape(path) + " -V"
+	return cLocale + shared.ShellEscape(path) + " -V"
+}
+
+// buildVisudoCheckCommand returns the shell-safe `<visudo> -c` invocation.
+func buildVisudoCheckCommand(visudo string) string {
+	return cLocale + shared.ShellEscape(visudo) + " -c"
 }
 
 // mqlSudoInternal caches the parsed `sudo -V` result so the binary is
@@ -91,8 +103,10 @@ func lookupSudoViaCommand(conn shared.Connection) string {
 }
 
 // lookupViaCommand asks the remote shell to resolve a binary on $PATH.
+// `command` is a shell builtin, which sudo cannot run ("sudo: command:
+// command not found"), so the lookup runs in its own shell.
 func lookupViaCommand(conn shared.Connection, name string) string {
-	cmd, err := conn.RunCommand("command -v " + shared.ShellEscape(name))
+	cmd, err := conn.RunCommand(lookupViaCommandLine(name))
 	if err != nil || cmd.ExitStatus != 0 || cmd.Stdout == nil {
 		return ""
 	}
@@ -101,6 +115,10 @@ func lookupViaCommand(conn shared.Connection, name string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func lookupViaCommandLine(name string) string {
+	return "sh -c " + shared.ShellEscape("command -v "+shared.ShellEscape(name))
 }
 
 // resolveVisudoPath locates the visudo binary on the asset. Filesystem
@@ -215,10 +233,28 @@ func (s *mqlSudo) version() (string, error) {
 	return info.Version, nil
 }
 
+func (s *mqlSudo) implementation() (string, error) {
+	info, err := s.versionInfo()
+	if err != nil {
+		return "", err
+	}
+	if info.Implementation == "" {
+		s.Implementation = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+		return "", nil
+	}
+	return info.Implementation, nil
+}
+
 func (s *mqlSudo) plugins() ([]any, error) {
 	info, err := s.versionInfo()
 	if err != nil {
 		return nil, err
+	}
+	// The plugins are what `sudo -V` reports, which an image or a mounted
+	// disk cannot run. An empty list read as "no I/O or audit plugin", which
+	// a check for sudo session logging passed on.
+	if conn := s.MqlRuntime.Connection.(shared.Connection); !conn.Capabilities().Has(shared.Capability_RunCommand) && plugin.StructuredErrors() {
+		return nil, llx.NotApplicable(errors.New("sudo plugins need a running system, and this connection cannot run commands"))
 	}
 	out := make([]any, 0, len(info.Plugins))
 	for _, p := range info.Plugins {
@@ -275,6 +311,18 @@ func (s *mqlSudo) pythonSupport() (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// Like the plugins, Python support is what `sudo -V` reports. An image
+	// or a mounted disk cannot run it, and false read as a build without
+	// Python plugins.
+	if conn := s.MqlRuntime.Connection.(shared.Connection); !conn.Capabilities().Has(shared.Capability_RunCommand) && plugin.StructuredErrors() {
+		return false, llx.NotApplicable(errors.New("sudo's Python support needs a running system, and this connection cannot run commands"))
+	}
+	// no `sudo -V` output to read it from: sudo is not installed or did not
+	// run
+	if info.Version == "" {
+		s.PythonSupport = plugin.TValue[bool]{State: plugin.StateIsSet | plugin.StateIsNull}
+		return false, nil
+	}
 	return info.PythonSupport, nil
 }
 
@@ -305,7 +353,7 @@ func (s *mqlSudo) validate() (*mqlSudoValidation, error) {
 		return nil, nil
 	}
 
-	cmd, err := conn.RunCommand(shared.ShellEscape(visudo) + " -c")
+	cmd, err := conn.RunCommand(buildVisudoCheckCommand(visudo))
 	if err != nil {
 		s.Validate = plugin.TValue[*mqlSudoValidation]{State: plugin.StateIsSet | plugin.StateIsNull}
 		return nil, nil

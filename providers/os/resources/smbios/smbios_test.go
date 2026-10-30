@@ -9,9 +9,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
-	"go.mondoo.com/mql/v13/providers/os/detector"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/detector"
 )
 
 // resetManagerCache clears the entire manager cache. Intended for use in tests
@@ -242,13 +242,13 @@ func TestManagerWindows(t *testing.T) {
 		BIOS: BiosInfo{
 			Vendor:      "VMware, Inc.",
 			Version:     "VMW71.00V.16722896.B64.2008100651",
-			ReleaseDate: "20200810000000.000000+000",
+			ReleaseDate: "2020-08-10T00:00:00Z",
 		},
 		SysInfo: SysInfo{
 			Vendor:       "VMware, Inc.",
 			Model:        "VMware7,1",
 			Version:      "None",
-			SerialNumber: "",
+			SerialNumber: "VMware-56 4d bd 16 98 6b f9 23-49 3c f6 b1 4e 7c fc 0b",
 			UUID:         "16BD4D56-6B98-23F9-493C-F6B14E7CFC0B",
 			Family:       "",
 			SKU:          "",
@@ -265,7 +265,7 @@ func TestManagerWindows(t *testing.T) {
 			Model:        "",
 			Version:      "N/A",
 			SerialNumber: "None",
-			AssetTag:     "",
+			AssetTag:     "No Asset Tag",
 			Type:         "1",
 		},
 	}, biosInfo)

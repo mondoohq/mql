@@ -8,12 +8,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/vmware/govmomi/simulator/esx"
 
 	"github.com/stretchr/testify/assert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/vsphere/connection/vsimulator"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/vsphere/connection/vsimulator"
 )
 
 func newTestService() (*vsimulator.VsphereSimulator, *Service, *plugin.ConnectRes) {
@@ -116,6 +117,54 @@ func TestResource_Vsphere(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "DC0_H0", string(dataResp.Data.Value))
 	})
+}
+
+// TestVmAndDvsHardeningFields resolves the VM and distributed switch hardening
+// fields through the runtime, proving each value lands on the field of the
+// same name. Synthetic (vcsim): the expected values are the simulator's
+// defaults.
+func TestVmAndDvsHardeningFields(t *testing.T) {
+	vs, srv, connRes := newTestService()
+	defer vs.Close()
+
+	dcs := rootField(t, srv, connRes.Id, "datacenters")
+	require.NotEmpty(t, dcs.Data.Array)
+	dcID := string(dcs.Data.Array[0].Value)
+
+	vms := field(t, srv, connRes.Id, "vsphere.datacenter", dcID, "vms")
+	require.NotEmpty(t, vms.Data.Array)
+	vmID := string(vms.Data.Array[0].Value)
+	// vcsim creates every VM at its default hardware version.
+	assert.Equal(t, esx.HardwareVersion, string(field(t, srv, connRes.Id, "vsphere.vm", vmID, "hardwareVersion").Data.Value))
+	// vcsim VMs carry no serial ports, so the list resolves empty, not null.
+	serial := field(t, srv, connRes.Id, "vsphere.vm", vmID, "serialPorts")
+	require.NotNil(t, serial.Data)
+	assert.Empty(t, serial.Data.Array)
+
+	// vcsim creates an uplink port group per switch, bound early and trunking
+	// every VLAN.
+	pgs := field(t, srv, connRes.Id, "vsphere.datacenter", dcID, "distributedPortGroups")
+	var trunks [][]string
+	for _, pg := range pgs.Data.Array {
+		id := string(pg.Value)
+		if string(field(t, srv, connRes.Id, "vsphere.vswitch.portgroup", id, "portBinding").Data.Value) != "earlyBinding" {
+			continue
+		}
+		ranges := []string{}
+		for _, r := range field(t, srv, connRes.Id, "vsphere.vswitch.portgroup", id, "vlanTrunkRanges").Data.Array {
+			ranges = append(ranges, string(r.Value))
+		}
+		trunks = append(trunks, ranges)
+	}
+	assert.Contains(t, trunks, []string{"0-4094"})
+
+	switches := field(t, srv, connRes.Id, "vsphere.datacenter", dcID, "distributedSwitches")
+	require.NotEmpty(t, switches.Data.Array)
+	dvsID := string(switches.Data.Array[0].Value)
+	// vcsim keeps no health check configuration, so the switch reports false.
+	hc := field(t, srv, connRes.Id, "vsphere.vswitch.dvs", dvsID, "healthCheckEnabled")
+	require.NotNil(t, hc.Data)
+	assert.Equal(t, []byte{0}, hc.Data.Value)
 }
 
 func TestVsphereDiscovery(t *testing.T) {

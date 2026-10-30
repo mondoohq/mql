@@ -11,8 +11,8 @@ import (
 	"github.com/gophercloud/gophercloud/v2/openstack/keymanager/v1/orders"
 	"github.com/gophercloud/gophercloud/v2/openstack/keymanager/v1/secrets"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // barbicanRefID returns the trailing path segment of a Barbican ref URL
@@ -21,8 +21,8 @@ func barbicanRefID(ref string) string {
 	if ref == "" {
 		return ""
 	}
-	if i := strings.LastIndex(ref, "/"); i >= 0 {
-		return ref[i+1:]
+	if _, after, ok := strings.CutLast(ref, "/"); ok {
+		return after
 	}
 	return ref
 }

@@ -9,9 +9,9 @@ import (
 	"errors"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // The MQL type names exposed as public consts for ease of reference.
@@ -439,6 +439,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"activedirectory.user.memberOf": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlActivedirectoryUser).GetMemberOf()).ToDataRes(types.Array(types.String))
 	},
+	"activedirectory.user.primaryGroupId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlActivedirectoryUser).GetPrimaryGroupId()).ToDataRes(types.Int)
+	},
 	"activedirectory.user.isDomainAdmin": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlActivedirectoryUser).GetIsDomainAdmin()).ToDataRes(types.Bool)
 	},
@@ -576,6 +579,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"activedirectory.computer.rbcd": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlActivedirectoryComputer).GetRbcd()).ToDataRes(types.Bool)
+	},
+	"activedirectory.computer.rbcdPrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlActivedirectoryComputer).GetRbcdPrincipals()).ToDataRes(types.Array(types.String))
 	},
 	"activedirectory.computer.servicePrincipalNames": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlActivedirectoryComputer).GetServicePrincipalNames()).ToDataRes(types.Array(types.String))
@@ -1254,6 +1260,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlActivedirectoryUser).MemberOf, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"activedirectory.user.primaryGroupId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlActivedirectoryUser).PrimaryGroupId, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"activedirectory.user.isDomainAdmin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlActivedirectoryUser).IsDomainAdmin, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -1448,6 +1458,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"activedirectory.computer.rbcd": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlActivedirectoryComputer).Rbcd, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"activedirectory.computer.rbcdPrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlActivedirectoryComputer).RbcdPrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"activedirectory.computer.servicePrincipalNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2620,6 +2634,7 @@ type mqlActivedirectoryUser struct {
 	DaysSinceLastLogon            plugin.TValue[int64]
 	IsStale                       plugin.TValue[bool]
 	MemberOf                      plugin.TValue[[]any]
+	PrimaryGroupId                plugin.TValue[int64]
 	IsDomainAdmin                 plugin.TValue[bool]
 	IsEnterpriseAdmin             plugin.TValue[bool]
 	IsSchemaAdmin                 plugin.TValue[bool]
@@ -2765,6 +2780,10 @@ func (c *mqlActivedirectoryUser) GetIsStale() *plugin.TValue[bool] {
 
 func (c *mqlActivedirectoryUser) GetMemberOf() *plugin.TValue[[]any] {
 	return &c.MemberOf
+}
+
+func (c *mqlActivedirectoryUser) GetPrimaryGroupId() *plugin.TValue[int64] {
+	return &c.PrimaryGroupId
 }
 
 func (c *mqlActivedirectoryUser) GetIsDomainAdmin() *plugin.TValue[bool] {
@@ -3026,6 +3045,7 @@ type mqlActivedirectoryComputer struct {
 	ConstrainedDelegation        plugin.TValue[bool]
 	ConstrainedDelegationTargets plugin.TValue[[]any]
 	Rbcd                         plugin.TValue[bool]
+	RbcdPrincipals               plugin.TValue[[]any]
 	ServicePrincipalNames        plugin.TValue[[]any]
 	LapsEnabled                  plugin.TValue[bool]
 	LapsExpirationTime           plugin.TValue[*time.Time]
@@ -3146,6 +3166,10 @@ func (c *mqlActivedirectoryComputer) GetConstrainedDelegationTargets() *plugin.T
 
 func (c *mqlActivedirectoryComputer) GetRbcd() *plugin.TValue[bool] {
 	return &c.Rbcd
+}
+
+func (c *mqlActivedirectoryComputer) GetRbcdPrincipals() *plugin.TValue[[]any] {
+	return &c.RbcdPrincipals
 }
 
 func (c *mqlActivedirectoryComputer) GetServicePrincipalNames() *plugin.TValue[[]any] {

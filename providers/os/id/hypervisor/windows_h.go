@@ -3,31 +3,58 @@
 
 package hypervisor
 
-import "github.com/rs/zerolog/log"
+import (
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/smbios"
+)
 
-var windowsDetectionCommands = []string{
-	// System model is the preferred detection
-	"wmic computersystem get model",
-	// Fallback to check the computer manufacturer
-	"Get-CimInstance -ClassName Win32_ComputerSystem | Select-Object -ExpandProperty Manufacturer",
-	// Modern configurations like Windows Server 2022 running Hyper-V return generic data
-	// so we need a more reliable method, we are going to check the SMBIOSBIOSVersion as
-	// our last detection
-	"Get-CimInstance -ClassName Win32_BIOS | Select-Object -ExpandProperty SMBIOSBIOSVersion",
-}
+// Model + manufacturer from Win32_ComputerSystem, SMBIOS version from Win32_BIOS.
+const windowsDetectionCommand = `$cs = Get-CimInstance -ClassName Win32_ComputerSystem; ` +
+	`$bios = Get-CimInstance -ClassName Win32_BIOS; ` +
+	`"$($cs.Model)|$($cs.Manufacturer)|$($bios.SMBIOSBIOSVersion)"`
 
 // detectWindowsHypervisor detects the hypervisor on Windows.
 func (h *hyper) detectWindowsHypervisor() (string, bool) {
-	for _, command := range windowsDetectionCommands {
-		stdout, err := h.RunCommand(command)
-		if err == nil {
-			if hypervisor, ok := mapHypervisor(stdout); ok {
-				return hypervisor, ok
-			}
+	// With MONDOO_WINDOWS_NATIVE on a local connection, the three values come
+	// from the SMBIOS data the provider has already read natively and memoized
+	// for this connection, instead of a PowerShell process of their own.
+	if shared.WindowsNative(h.connection) {
+		if info, ok := h.windowsSmbiosDetectionInfo(); ok {
+			return mapHypervisor(info)
 		}
-
-		log.Debug().Err(err).Str("command", command).Msg("could not detect hypervisor")
 	}
 
-	return "", false
+	stdout, err := h.RunCommand(windowsDetectionCommand)
+	if err != nil {
+		log.Debug().Err(err).Msg("could not detect hypervisor")
+		return "", false
+	}
+	return mapHypervisor(stdout)
+}
+
+// windowsSmbiosDetectionInfo builds the same "model|manufacturer|bios version"
+// string as windowsDetectionCommand from the connection's SMBIOS data. Both read
+// SMBIOS: Win32_ComputerSystem's Model and Manufacturer are the system product
+// name and manufacturer of SMBIOS type 1, which the SMBIOS manager reads from
+// Win32_ComputerSystemProduct (Name, Vendor); the BIOS version is
+// Win32_BIOS.SMBIOSBIOSVersion in both.
+func (h *hyper) windowsSmbiosDetectionInfo() (string, bool) {
+	mgr, err := smbios.ResolveManager(h.connection, h.platform)
+	if err != nil {
+		log.Debug().Err(err).Msg("could not resolve the smbios manager for hypervisor detection")
+		return "", false
+	}
+	info, err := mgr.Info()
+	if err != nil || info == nil {
+		log.Debug().Err(err).Msg("could not read smbios for hypervisor detection")
+		return "", false
+	}
+	return windowsDetectionInfo(info), true
+}
+
+// windowsDetectionInfo is the input mapHypervisor gets from
+// windowsDetectionCommand, built from SMBIOS data.
+func windowsDetectionInfo(info *smbios.SmBiosInfo) string {
+	return info.SysInfo.Model + "|" + info.SysInfo.Vendor + "|" + info.BIOS.Version
 }

@@ -1,0 +1,162 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/opensearch"
+option go_package = "go.mondoo.com/mql/providers/opensearch/resources"
+option root = "opensearch"
+
+// OpenSearch cluster
+//
+// Root of the OpenSearch provider. The connected cluster and everything
+// queryable through it (security posture, internal users, roles, and role
+// mappings) is reached from opensearch.cluster.
+opensearch @root {
+}
+
+// OpenSearch cluster
+//
+// The connected cluster: its name, version, health, and node counts, plus the
+// security posture, internal users, roles, and role mappings reached from here.
+// Populated from the cluster info, health, and security-plugin APIs. Health
+// needs the cluster_monitor permission; the security posture, users, roles,
+// and role mappings need access to the security REST API.
+opensearch.cluster @defaults("name version healthStatus") {
+  // Cluster name
+  name string
+  // Cluster UUID
+  uuid string
+  // Server version, for example "2.17.1"
+  version string
+  // Product distribution serving the cluster, for example "opensearch"
+  distribution string
+  // Lucene version backing the cluster
+  luceneVersion string
+  // Cluster health status: "green", "yellow", or "red"
+  healthStatus string
+  // Total number of nodes in the cluster
+  nodeCount int
+  // Number of data nodes in the cluster
+  dataNodeCount int
+  // Security posture of the cluster
+  security() opensearch.security
+  // Internal-database users defined on the cluster
+  users() []opensearch.user
+  // Roles defined on the cluster
+  roles() []opensearch.role
+  // Role mappings that assign roles to users and backend roles
+  roleMappings() []opensearch.roleMapping
+}
+
+// OpenSearch security posture
+//
+// Cluster-wide settings of the security plugin: whether anonymous access is
+// allowed, whether audit logging is enabled, whether the cluster hides
+// authorization failures, and which authentication realms are enabled. Read
+// from the security-plugin configuration APIs.
+opensearch.security @defaults("anonymousAccessEnabled auditLoggingEnabled") {
+  // Whether anonymous access is enabled
+  //
+  // When true, unauthenticated requests are served as an anonymous user.
+  anonymousAccessEnabled bool
+  // Whether audit logging is enabled
+  //
+  // The enabled flag of the audit configuration. It does not show whether an
+  // audit sink is configured: plugins.security.audit.type in opensearch.yml
+  // is not readable over the API, and without it the cluster writes no audit
+  // events even when this is true.
+  auditLoggingEnabled bool
+  // Whether authorization failures are hidden
+  //
+  // When true (do_not_fail_on_forbidden), the cluster returns a filtered
+  // result instead of a 403 on a forbidden request, hiding authorization
+  // errors from clients.
+  doNotFailOnForbidden bool
+  // Names of the enabled authentication realms, for example "basic_internal_auth_domain"
+  enabledAuthRealms []string
+}
+
+// OpenSearch internal user
+//
+// A user in the internal database, its assigned roles, and whether it is
+// built-in. Backend roles come from an external identity source; security roles
+// are assigned directly. The name field selects the user, for example
+// opensearch.cluster.users.where(name == "admin").
+opensearch.user @defaults("name isReserved") {
+  // User name
+  name string
+  // Whether this is a built-in, reserved user
+  isReserved bool
+  // Whether the user is hidden from the security APIs
+  isHidden bool
+  // Whether the user is defined statically in the security plugin
+  isStatic bool
+  // Backend roles mapped from an external identity source
+  backendRoles []string
+  // Security roles assigned directly to the user
+  securityRoles []string
+  // Human-readable description, when set
+  description string
+}
+
+// OpenSearch role
+//
+// A role and the permissions it grants: cluster permissions and per-index
+// permissions. Built-in roles such as all_access are marked with isReserved.
+// The name field selects the role, for example
+// opensearch.cluster.roles.where(name == "all_access").
+opensearch.role @defaults("name isReserved") {
+  // Role name
+  name string
+  // Whether this is a built-in, reserved role
+  isReserved bool
+  // Whether the role is hidden from the security APIs
+  isHidden bool
+  // Whether the role is defined statically in the security plugin
+  isStatic bool
+  // Human-readable description, when set
+  description string
+  // Cluster-level permissions granted, for example "cluster_monitor" or "*"
+  clusterPermissions []string
+  // Per-index permission grants
+  indexPermissions() []opensearch.role.indexPermission
+}
+
+// OpenSearch index permission
+//
+// A single per-index permission grant of a role: the index patterns it applies
+// to, the actions granted, and whether field-level security or field masking
+// narrows access. For example the action "read" on the index pattern "logs-*".
+opensearch.role.indexPermission @defaults("indexPatterns allowedActions") {
+  // Index name patterns the grant applies to
+  indexPatterns []string
+  // Actions granted on the matching indices, for example "read" or "*"
+  allowedActions []string
+  // Whether field-level security restricts which fields are readable
+  hasFieldLevelSecurity bool
+  // Whether field masking anonymizes field values
+  hasFieldMasking bool
+}
+
+// OpenSearch role mapping
+//
+// A rule that assigns a role to users, backend roles, and hosts. The name field
+// selects the mapping by its role name, for example
+// opensearch.cluster.roleMappings.where(name == "all_access").
+opensearch.roleMapping @defaults("name") {
+  // Name of the mapped role
+  name string
+  // Whether this is a built-in, reserved mapping
+  isReserved bool
+  // Whether the mapping is hidden from the security APIs
+  isHidden bool
+  // Users the role is mapped to
+  users []string
+  // Backend roles the role is mapped to
+  backendRoles []string
+  // Hosts the role is mapped to
+  hosts []string
+  // Human-readable description, when set
+  description string
+}

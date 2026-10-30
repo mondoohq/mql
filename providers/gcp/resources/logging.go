@@ -10,14 +10,12 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 
-	"cloud.google.com/go/logging/logadmin"
-	"google.golang.org/api/iterator"
 	"google.golang.org/api/logging/v2"
 	"google.golang.org/api/option"
 )
@@ -31,7 +29,7 @@ func (g *mqlGcpProjectLoggingservice) id() (string, error) {
 }
 
 type mqlGcpProjectLoggingserviceInternal struct {
-	serviceEnabled bool
+	serviceGate
 }
 
 func (g *mqlGcpProject) logging() (*mqlGcpProjectLoggingservice, error) {
@@ -53,7 +51,7 @@ func (g *mqlGcpProject) logging() (*mqlGcpProjectLoggingservice, error) {
 	}
 
 	svc := res.(*mqlGcpProjectLoggingservice)
-	svc.serviceEnabled = serviceEnabled
+	svc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_logging).Msg("gcp service is not enabled, skipping")
 	}
@@ -87,7 +85,11 @@ func initGcpProjectLoggingservice(runtime *plugin.Runtime, args map[string]*llx.
 }
 
 func (g *mqlGcpProjectLoggingservice) buckets() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -113,28 +115,9 @@ func (g *mqlGcpProjectLoggingservice) buckets() ([]any, error) {
 	if err := req.Pages(ctx, func(page *logging.ListBucketsResponse) error {
 		for _, bucket := range page.Buckets {
 
-			var mqlCmekSettingsDict map[string]any
-			if bucket.CmekSettings != nil {
-				type mqlCmekSettings struct {
-					KmsKeyName        string `json:"kmsKeyName"`
-					KmsKeyVersionName string `json:"kmsKeyVersionName"`
-					Name              string `json:"name"`
-					ServiceAccountId  string `json:"serviceAccountId"`
-				}
-				mqlCmekSettingsDict, err = convert.JsonToDict(mqlCmekSettings{
-					KmsKeyName:        bucket.CmekSettings.KmsKeyName,
-					KmsKeyVersionName: bucket.CmekSettings.KmsKeyVersionName,
-					Name:              bucket.CmekSettings.Name,
-					ServiceAccountId:  bucket.CmekSettings.ServiceAccountId,
-				})
-				if err != nil {
-					return err
-				}
-			}
-
 			indexConfigs := make([]any, 0, len(bucket.IndexConfigs))
 			for _, cfg := range bucket.IndexConfigs {
-				mqlIndexConfig, err := CreateResource(g.MqlRuntime, "gcp.project.loggingservice.bucket.indexConfigs", map[string]*llx.RawData{
+				mqlIndexConfig, err := CreateResource(g.MqlRuntime, "gcp.project.loggingservice.bucket.indexConfig", map[string]*llx.RawData{
 					"id":        llx.StringData(fmt.Sprintf("%s/indexConfigs/%s", bucket.Name, cfg.FieldPath)),
 					"created":   llx.TimeDataPtr(parseTime(cfg.CreateTime)),
 					"fieldPath": llx.StringData(cfg.FieldPath),
@@ -155,7 +138,6 @@ func (g *mqlGcpProjectLoggingservice) buckets() ([]any, error) {
 			mqlBucket, err := CreateResource(g.MqlRuntime, "gcp.project.loggingservice.bucket", map[string]*llx.RawData{
 				"projectId":            llx.StringData(projectId),
 				"location":             llx.StringData(parseLocationFromPath(bucket.Name)),
-				"cmekSettings":         llx.DictData(mqlCmekSettingsDict),
 				"cmekServiceAccountId": llx.StringData(cmekServiceAccountId),
 				"created":              llx.TimeDataPtr(parseTime(bucket.CreateTime)),
 				"description":          llx.StringData(bucket.Description),
@@ -182,7 +164,11 @@ func (g *mqlGcpProjectLoggingservice) buckets() ([]any, error) {
 }
 
 func (g *mqlGcpProjectLoggingservice) metrics() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -193,37 +179,35 @@ func (g *mqlGcpProjectLoggingservice) metrics() ([]any, error) {
 	}
 	projectId := g.ProjectId.Data
 
-	creds, err := conn.Credentials(logging.CloudPlatformReadOnlyScope, logging.LoggingReadScope)
+	client, err := conn.Client(logging.CloudPlatformReadOnlyScope, logging.LoggingReadScope)
 	if err != nil {
 		return nil, err
 	}
-
 	ctx := context.Background()
-	logadminClient, err := logadmin.NewClient(ctx, projectId, option.WithCredentials(creds), connection.GRPCClientTraceOption())
+	loggingSvc, err := logging.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
 		return nil, err
 	}
 
 	var metrics []any
-	it := logadminClient.Metrics(ctx)
-	for {
-		m, err := it.Next()
-		if err == iterator.Done {
-			break
+	req := loggingSvc.Projects.Metrics.List(fmt.Sprintf("projects/%s", projectId))
+	if err := req.Pages(ctx, func(page *logging.ListLogMetricsResponse) error {
+		for _, m := range page.Metrics {
+			metric, err := CreateResource(g.MqlRuntime, "gcp.project.loggingservice.metric", map[string]*llx.RawData{
+				"id":          llx.StringData(m.Name),
+				"projectId":   llx.StringData(projectId),
+				"description": llx.StringData(m.Description),
+				"filter":      llx.StringData(m.Filter),
+				"disabled":    llx.BoolData(m.Disabled),
+			})
+			if err != nil {
+				return err
+			}
+			metrics = append(metrics, metric)
 		}
-		if err != nil {
-			return nil, err
-		}
-		metric, err := CreateResource(g.MqlRuntime, "gcp.project.loggingservice.metric", map[string]*llx.RawData{
-			"id":          llx.StringData(m.ID),
-			"projectId":   llx.StringData(projectId),
-			"description": llx.StringData(m.Description),
-			"filter":      llx.StringData(m.Filter),
-		})
-		if err != nil {
-			return nil, err
-		}
-		metrics = append(metrics, metric)
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	return metrics, nil
 }
@@ -290,20 +274,24 @@ func parseAlertPolicyConditionFilterMetricName(condition map[string]any) string 
 		return ""
 	}
 	// The filter is composed of multiple statements split by AND or OR and spaces in between
-	parts := strings.Split(filter, " ")
-	for _, p := range parts {
+	parts := strings.SplitSeq(filter, " ")
+	for p := range parts {
 		// If the statement starts with metric.type="logging.googleapis.com/user/ then we are interested in it
-		if strings.HasPrefix(p, "metric.type=\"logging.googleapis.com/user/") {
+		if after, ok0 := strings.CutPrefix(p, "metric.type=\"logging.googleapis.com/user/"); ok0 {
 			// The filter looks like this: metric.type=\"logging.googleapis.com/user/log-metric-filter-and-alerts-exist-for-project-ownership-assignments-changes\"
 			// We are interested in the user part of that string
-			return strings.TrimSuffix(strings.TrimPrefix(p, "metric.type=\"logging.googleapis.com/user/"), "\"")
+			return strings.TrimSuffix(after, "\"")
 		}
 	}
 	return ""
 }
 
 func (g *mqlGcpProjectLoggingservice) sinks() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -314,50 +302,69 @@ func (g *mqlGcpProjectLoggingservice) sinks() ([]any, error) {
 	}
 	projectId := g.ProjectId.Data
 
-	creds, err := conn.Credentials(logging.CloudPlatformReadOnlyScope, logging.LoggingReadScope)
+	client, err := conn.Client(logging.CloudPlatformReadOnlyScope, logging.LoggingReadScope)
 	if err != nil {
 		return nil, err
 	}
-
 	ctx := context.Background()
-	logadminClient, err := logadmin.NewClient(ctx, projectId, option.WithCredentials(creds), connection.GRPCClientTraceOption())
+	loggingSvc, err := logging.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
 		return nil, err
 	}
 
 	var sinks []any
-	it := logadminClient.Sinks(ctx)
-	for {
-		s, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		args := map[string]*llx.RawData{
-			"id":              llx.StringData(s.ID),
-			"projectId":       llx.StringData(projectId),
-			"destination":     llx.StringData(s.Destination),
-			"filter":          llx.StringData(s.Filter),
-			"writerIdentity":  llx.StringData(s.WriterIdentity),
-			"includeChildren": llx.BoolData(s.IncludeChildren),
-		}
-		if !strings.HasPrefix(s.Destination, "storage.googleapis.com/") {
-			args["storageBucket"] = llx.NilData
-		}
-		sink, err := CreateResource(g.MqlRuntime, "gcp.project.loggingservice.sink", args)
-		if err != nil {
-			return nil, err
-		}
+	req := loggingSvc.Projects.Sinks.List(fmt.Sprintf("projects/%s", projectId))
+	if err := req.Pages(ctx, func(page *logging.ListSinksResponse) error {
+		for _, s := range page.Sinks {
+			exclusions := []any{}
+			for _, e := range s.Exclusions {
+				exclusions = append(exclusions, map[string]any{
+					"name":        e.Name,
+					"description": e.Description,
+					"filter":      e.Filter,
+					"disabled":    e.Disabled,
+				})
+			}
 
-		sinks = append(sinks, sink)
+			exclusionRules, err := newMqlLogExclusions(g.MqlRuntime,
+				fmt.Sprintf("gcp.project.loggingservice.sink/%s/%s", projectId, s.Name), s.Exclusions)
+			if err != nil {
+				return err
+			}
+
+			args := map[string]*llx.RawData{
+				"id":              llx.StringData(s.Name),
+				"projectId":       llx.StringData(projectId),
+				"destination":     llx.StringData(s.Destination),
+				"filter":          llx.StringData(s.Filter),
+				"writerIdentity":  llx.StringData(s.WriterIdentity),
+				"includeChildren": llx.BoolData(s.IncludeChildren),
+				"disabled":        llx.BoolData(s.Disabled),
+				"exclusions":      llx.ArrayData(exclusions, types.Dict),
+				"exclusionRules":  llx.ArrayData(exclusionRules, types.Resource("gcp.project.loggingservice.sink.exclusion")),
+			}
+			if !strings.HasPrefix(s.Destination, "storage.googleapis.com/") {
+				args["storageBucket"] = llx.NilData
+			}
+			sink, err := CreateResource(g.MqlRuntime, "gcp.project.loggingservice.sink", args)
+			if err != nil {
+				return err
+			}
+			sinks = append(sinks, sink)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	return sinks, nil
 }
 
 func (g *mqlGcpProjectLoggingservice) cmekKmsKeyName() (string, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return "", err
+	}
+	if !enabled {
 		return "", nil
 	}
 
@@ -589,7 +596,16 @@ func initGcpProjectLoggingserviceBucket(runtime *plugin.Runtime, args map[string
 		}
 	}
 
-	obj, err := CreateResource(runtime, "gcp.project.loggingservice", map[string]*llx.RawData{
+	// Use NewResource so initGcpProjectLoggingservice runs and sets serviceEnabled;
+	// CreateResource would skip init and leave serviceEnabled=false, making
+	// GetBuckets() short-circuit to empty even when logging is enabled.
+	// Guard before building the parent: CreateResource hands args["projectId"]
+	// to the generated setter, which dereferences it, so nil panics the provider.
+	if args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.loggingservice.bucket requires a \"projectId\" argument")
+	}
+
+	obj, err := NewResource(runtime, "gcp.project.loggingservice", map[string]*llx.RawData{
 		"projectId": args["projectId"],
 	})
 	if err != nil {
@@ -601,10 +617,14 @@ func initGcpProjectLoggingserviceBucket(runtime *plugin.Runtime, args map[string
 		return nil, nil, buckets.Error
 	}
 
-	nameVal := args["name"].Value.(string)
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New("gcp.project.loggingservice.bucket requires a \"name\" argument")
+	}
+	nameVal, _ := nameRaw.Value.(string)
 	locationVal := ""
 	if args["location"] != nil {
-		locationVal = args["location"].Value.(string)
+		locationVal, _ = args["location"].Value.(string)
 	}
 	for _, b := range buckets.Data {
 		bucket := b.(*mqlGcpProjectLoggingserviceBucket)
@@ -621,7 +641,11 @@ func (g *mqlGcpProjectLoggingserviceBucketIndexConfig) id() (string, error) {
 }
 
 func (g *mqlGcpProjectLoggingservice) exclusions() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -648,6 +672,7 @@ func (g *mqlGcpProjectLoggingservice) exclusions() ([]any, error) {
 		for _, exclusion := range page.Exclusions {
 			mqlExclusion, err := CreateResource(g.MqlRuntime, "gcp.project.loggingservice.exclusion", map[string]*llx.RawData{
 				"name":        llx.StringData(parseResourceName(exclusion.Name)),
+				"projectId":   llx.StringData(projectId),
 				"description": llx.StringData(exclusion.Description),
 				"filter":      llx.StringData(exclusion.Filter),
 				"disabled":    llx.BoolData(exclusion.Disabled),
@@ -667,11 +692,15 @@ func (g *mqlGcpProjectLoggingservice) exclusions() ([]any, error) {
 }
 
 func (g *mqlGcpProjectLoggingserviceExclusion) id() (string, error) {
+	if g.ProjectId.Error != nil {
+		return "", g.ProjectId.Error
+	}
 	if g.Name.Error != nil {
 		return "", g.Name.Error
 	}
-	name := g.Name.Data
-	return fmt.Sprintf("gcp.project.loggingservice.exclusion/%s", name), nil
+	// Include projectId so identically-named exclusions in different projects
+	// don't collide on the cache key (mirrors sink.id() / metric.id()).
+	return fmt.Sprintf("gcp.project.loggingservice.exclusion/%s/%s", g.ProjectId.Data, g.Name.Data), nil
 }
 
 func (g *mqlGcpProjectLoggingserviceBucket) views() ([]any, error) {
@@ -859,4 +888,50 @@ func (g *mqlGcpFolderLoggingService) sinks() ([]any, error) {
 	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
 	return scopedSinks(g.MqlRuntime, conn, g.FolderName.Data,
 		"gcp.folder.loggingService.sink", "folderName")
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectLoggingservice) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_logging)
+}
+
+// newMqlLogExclusions maps a list of logging.LogExclusion onto the shared
+// sink-exclusion resource.
+//
+// The same message shape is attached to an export sink and to the _Default
+// sink override in the Log Router settings, so both paths share one resource.
+// The cache key is scoped to the parent, because an exclusion name is only
+// unique within the sink it hangs off: two sinks in a project are free to name
+// an exclusion "exclude-dataflow" and would otherwise resolve to whichever one
+// was read first.
+func newMqlLogExclusions(runtime *plugin.Runtime, parentID string, exclusions []*logging.LogExclusion) ([]any, error) {
+	res := make([]any, 0, len(exclusions))
+	for _, e := range exclusions {
+		if e == nil {
+			continue
+		}
+		mqlExclusion, err := CreateResource(runtime, "gcp.project.loggingservice.sink.exclusion", logExclusionArgs(parentID, e))
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlExclusion)
+	}
+	return res, nil
+}
+
+// logExclusionArgs maps one exclusion onto resource arguments.
+//
+// createTime and updateTime are output-only and absent on an exclusion that has
+// never been updated. They stay null rather than becoming the zero time, which
+// would report 1 January year 1 as the date an exclusion was last changed.
+func logExclusionArgs(parentID string, e *logging.LogExclusion) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":        llx.StringData(parentID + "/exclusion/" + e.Name),
+		"name":        llx.StringData(e.Name),
+		"description": llx.StringData(e.Description),
+		"filter":      llx.StringData(e.Filter),
+		"disabled":    llx.BoolData(e.Disabled),
+		"created":     llx.TimeDataPtr(parseTime(e.CreateTime)),
+		"updated":     llx.TimeDataPtr(parseTime(e.UpdateTime)),
+	}
 }

@@ -1,0 +1,80 @@
+{
+  "Path": "C:\\acltest",
+  "Owner": "BUILTIN\\Administrators",
+  "Group": "NT AUTHORITY\\SYSTEM",
+  "Sddl": "O:BAG:SYD:AI(D;OICI;FA;;;AN)(A;OICI;0x1301bf;;;BU)(A;ID;0x1301bf;;;AU)(A;OICIIOID;SDGXGWGR;;;AU)(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;OICIID;0x1200a9;;;BU)",
+  "Protected": false,
+  "OwnerSid": "S-1-5-32-544",
+  "Access": [
+    {
+      "Identity": "NT AUTHORITY\\ANONYMOUS LOGON",
+      "Sid": "S-1-5-7",
+      "Type": "Deny",
+      "Rights": "FullControl",
+      "Mask": 2032127,
+      "Inherited": false,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "None"
+    },
+    {
+      "Identity": "BUILTIN\\Users",
+      "Sid": "S-1-5-32-545",
+      "Type": "Allow",
+      "Rights": "Modify, Synchronize",
+      "Mask": 1245631,
+      "Inherited": false,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "None"
+    },
+    {
+      "Identity": "NT AUTHORITY\\Authenticated Users",
+      "Sid": "S-1-5-11",
+      "Type": "Allow",
+      "Rights": "Modify, Synchronize",
+      "Mask": 1245631,
+      "Inherited": true,
+      "InheritanceFlags": "None",
+      "PropagationFlags": "None"
+    },
+    {
+      "Identity": "NT AUTHORITY\\Authenticated Users",
+      "Sid": "S-1-5-11",
+      "Type": "Allow",
+      "Rights": "-536805376",
+      "Mask": 3758161920,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "InheritOnly"
+    },
+    {
+      "Identity": "NT AUTHORITY\\SYSTEM",
+      "Sid": "S-1-5-18",
+      "Type": "Allow",
+      "Rights": "FullControl",
+      "Mask": 2032127,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "None"
+    },
+    {
+      "Identity": "BUILTIN\\Administrators",
+      "Sid": "S-1-5-32-544",
+      "Type": "Allow",
+      "Rights": "FullControl",
+      "Mask": 2032127,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "None"
+    },
+    {
+      "Identity": "BUILTIN\\Users",
+      "Sid": "S-1-5-32-545",
+      "Type": "Allow",
+      "Rights": "ReadAndExecute, Synchronize",
+      "Mask": 1179817,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "None"
+    }
+  ]
+}

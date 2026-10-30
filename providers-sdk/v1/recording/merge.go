@@ -4,9 +4,11 @@
 package recording
 
 import (
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/utils/multierr"
-	"go.mondoo.com/mql/v13/utils/syncx"
+	"maps"
+
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/utils/multierr"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 // MergeOpts controls how recordings are merged.
@@ -114,9 +116,7 @@ func mergeAssets(existing, incoming *Asset) {
 	// Merge connections (keyed by their string ID).
 	ensureAssetCaches(existing)
 	ensureAssetCaches(incoming)
-	for k, conn := range incoming.connections {
-		existing.connections[k] = conn
-	}
+	maps.Copy(existing.connections, incoming.connections)
 
 	// Merge resources (keyed by "Resource\x1eID").
 	for key, res := range incoming.resources {
@@ -125,9 +125,7 @@ func mergeAssets(existing, incoming *Asset) {
 		} else {
 			clone := *res
 			clone.Fields = make(map[string]*llx.RawData, len(res.Fields))
-			for k, v := range res.Fields {
-				clone.Fields[k] = v
-			}
+			maps.Copy(clone.Fields, res.Fields)
 			existing.resources[key] = &clone
 		}
 	}
@@ -136,18 +134,14 @@ func mergeAssets(existing, incoming *Asset) {
 	if existing.IdsLookup == nil {
 		existing.IdsLookup = map[string]string{}
 	}
-	for k, v := range incoming.IdsLookup {
-		existing.IdsLookup[k] = v
-	}
+	maps.Copy(existing.IdsLookup, incoming.IdsLookup)
 }
 
 func mergeResourceFields(existing, incoming *Resource) {
 	if existing.Fields == nil {
 		existing.Fields = map[string]*llx.RawData{}
 	}
-	for k, v := range incoming.Fields {
-		existing.Fields[k] = v
-	}
+	maps.Copy(existing.Fields, incoming.Fields)
 }
 
 // cloneAsset creates a shallow copy of an Asset with its own cache maps so
@@ -160,12 +154,8 @@ func cloneAsset(a *Asset) *Asset {
 		connections: make(map[string]*connection, len(a.connections)),
 		resources:   make(map[string]*Resource, len(a.resources)),
 	}
-	for k, v := range a.connections {
-		clone.connections[k] = v
-	}
-	for k, v := range a.resources {
-		clone.resources[k] = v
-	}
+	maps.Copy(clone.connections, a.connections)
+	maps.Copy(clone.resources, a.resources)
 	return clone
 }
 
@@ -198,8 +188,6 @@ func copyMap(m map[string]string) map[string]string {
 		return map[string]string{}
 	}
 	out := make(map[string]string, len(m))
-	for k, v := range m {
-		out[k] = v
-	}
+	maps.Copy(out, m)
 	return out
 }

@@ -10,15 +10,15 @@ import (
 )
 
 func Indent(indent int, message string) string {
-	indentTxt := ""
-	for i := 0; i < indent; i++ {
-		indentTxt += " "
+	var indentTxt strings.Builder
+	for range indent {
+		indentTxt.WriteString(" ")
 	}
 
 	var sb strings.Builder
 	scanner := bufio.NewScanner(strings.NewReader(message))
 	for scanner.Scan() {
-		sb.WriteString(indentTxt)
+		sb.WriteString(indentTxt.String())
 		sb.WriteString(scanner.Text())
 		sb.WriteString("\n")
 	}

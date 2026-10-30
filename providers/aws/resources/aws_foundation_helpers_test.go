@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestExtractFilterPatternValues(t *testing.T) {
@@ -165,4 +165,64 @@ func TestHasSourceScopingCondition(t *testing.T) {
 			assert.Equal(t, tc.want, hasSourceScopingCondition(tc.conditions))
 		})
 	}
+}
+
+// TestIsRestrictingConditionOperator pins which IAM condition operators narrow
+// a grant. Negated forms and Null widen it: StringNotEquals on
+// aws:PrincipalOrgID means "allow everyone OUTSIDE my org" and Null means
+// "allow principals for which the key is absent", both strictly worse than an
+// unconditional public grant.
+func TestIsRestrictingConditionOperator(t *testing.T) {
+	restricting := []string{
+		"StringEquals", "stringequals", "StringLike", "StringEqualsIgnoreCase",
+		"ArnEquals", "ArnLike",
+		"StringEqualsIfExists", "ForAnyValue:StringEquals", "ForAllValues:StringLike",
+	}
+	for _, op := range restricting {
+		assert.True(t, isRestrictingConditionOperator(op), "expected %q to restrict", op)
+	}
+
+	widening := []string{
+		"StringNotEquals", "StringNotLike", "ArnNotEquals", "ArnNotLike",
+		"Null", "NotIpAddress", "DateLessThan", "Bool",
+	}
+	for _, op := range widening {
+		assert.False(t, isRestrictingConditionOperator(op), "expected %q not to restrict", op)
+	}
+}
+
+// TestHasSourceScopingConditionOperators covers the operator gate and the
+// widened scoping-key set. Before the gate, a negated operator on a scoping key
+// read as "scoped" and the resource reported not-public.
+func TestHasSourceScopingConditionOperators(t *testing.T) {
+	cond := func(op, key, val string) any {
+		return map[string]any{op: map[string]any{key: val}}
+	}
+
+	t.Run("restricting operators scope the grant", func(t *testing.T) {
+		assert.True(t, hasSourceScopingCondition(cond("StringEquals", "aws:PrincipalOrgID", "o-myorg")))
+		assert.True(t, hasSourceScopingCondition(cond("ArnLike", "aws:SourceArn", "arn:aws:sns:us-east-1:1:t")))
+		assert.True(t, hasSourceScopingCondition(cond("StringEquals", "aws:SourceAccount", "111111111111")))
+		assert.True(t, hasSourceScopingCondition(cond("StringEquals", "aws:SourceOwner", "111111111111")))
+	})
+
+	t.Run("newly recognized scoping keys", func(t *testing.T) {
+		// the shape AWS's own service-linked KMS grants carry
+		assert.True(t, hasSourceScopingCondition(cond("StringEquals", "kms:CallerAccount", "111111111111")))
+		assert.True(t, hasSourceScopingCondition(cond("StringEquals", "aws:SourceVpce", "vpce-123")))
+		assert.True(t, hasSourceScopingCondition(cond("StringEquals", "aws:PrincipalAccount", "111111111111")))
+	})
+
+	t.Run("negated and Null operators do not scope", func(t *testing.T) {
+		assert.False(t, hasSourceScopingCondition(cond("StringNotEquals", "aws:PrincipalOrgID", "o-myorg")))
+		assert.False(t, hasSourceScopingCondition(cond("ArnNotLike", "aws:SourceArn", "arn:aws:sns:us-east-1:1:t")))
+		assert.False(t, hasSourceScopingCondition(cond("Null", "aws:PrincipalOrgID", "true")))
+	})
+
+	t.Run("wildcard values and unrelated keys do not scope", func(t *testing.T) {
+		assert.False(t, hasSourceScopingCondition(cond("StringEquals", "aws:SourceArn", "*")))
+		assert.False(t, hasSourceScopingCondition(cond("StringEquals", "s3:x-amz-acl", "public-read")))
+		assert.False(t, hasSourceScopingCondition(nil))
+		assert.False(t, hasSourceScopingCondition("not-a-map"))
+	})
 }

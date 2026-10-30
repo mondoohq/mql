@@ -1,0 +1,45 @@
+# A Debian system reached without command execution and with no /etc/hostname,
+# leaving the traditional 127.0.1.1 entry as the only name on disk. The 10.x
+# entry must not be picked: /etc/hosts names other machines as readily as it
+# names this one.
+
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "6.1.0-28-amd64"
+
+[files."/etc/hostname"]
+enoent = true
+
+[files."/etc/debian_version"]
+content = "12.9"
+
+[files."/etc/os-release"]
+content = """
+PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"
+NAME="Debian GNU/Linux"
+VERSION_ID="12"
+VERSION="12 (bookworm)"
+VERSION_CODENAME=bookworm
+ID=debian
+HOME_URL="https://www.debian.org/"
+SUPPORT_URL="https://www.debian.org/support"
+BUG_REPORT_URL="https://bugs.debian.org/"
+"""
+
+[files."/etc/hosts"]
+content = """
+127.0.0.1	localhost
+127.0.1.1	debian-box.example.com	debian-box
+
+# The following lines are desirable for IPv6 capable hosts
+::1     localhost ip6-localhost ip6-loopback
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters
+
+10.0.0.9	buildserver.example.com	buildserver
+"""

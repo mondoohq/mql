@@ -7,13 +7,15 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/timestreaminfluxdb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 func (a *mqlAwsTimestreamInfluxdb) id() (string, error) {
@@ -437,4 +439,207 @@ func (a *mqlAwsTimestreamInfluxdbCluster) tags() (map[string]any, error) {
 		tags[k] = v
 	}
 	return tags, nil
+}
+
+func (a *mqlAwsTimestreamInfluxdb) backups() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	res := []any{}
+	poolOfJobs := jobpool.CreatePool(a.getBackups(conn), 5)
+	poolOfJobs.Run()
+
+	if poolOfJobs.HasErrors() {
+		return nil, poolOfJobs.GetErrors()
+	}
+	for i := range poolOfJobs.Jobs {
+		if poolOfJobs.Jobs[i].Result != nil {
+			res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
+		}
+	}
+
+	return res, nil
+}
+
+func (a *mqlAwsTimestreamInfluxdb) getBackups(conn *connection.AwsConnection) []*jobpool.Job {
+	tasks := make([]*jobpool.Job, 0)
+	regions, err := conn.Regions()
+	if err != nil {
+		return []*jobpool.Job{{Err: err}}
+	}
+
+	for _, region := range regions {
+		f := func() (jobpool.JobResult, error) {
+			log.Debug().Msgf("timestream.influxdb>getBackups>calling aws with region %s", region)
+
+			svc := conn.TimestreamInfluxDB(region)
+			ctx := context.Background()
+			res := []any{}
+
+			// Listing without a DbResourceId returns every backup in the region,
+			// so this stays one call per region rather than one per instance.
+			paginator := timestreaminfluxdb.NewListDbBackupsPaginator(svc, &timestreaminfluxdb.ListDbBackupsInput{})
+			for paginator.HasMorePages() {
+				page, err := paginator.NextPage(ctx)
+				if err != nil {
+					if Is400AccessDeniedError(err) {
+						log.Debug().Str("region", region).Msg("error accessing region for AWS API")
+						return jobpool.JobResult(res), nil
+					}
+					if IsServiceNotAvailableInRegionError(err) {
+						log.Debug().Str("region", region).Msg("timestream influxdb service not available in region")
+						return jobpool.JobResult(res), nil
+					}
+					return nil, err
+				}
+				for _, backup := range page.Items {
+					mqlBackup, err := CreateResource(a.MqlRuntime, "aws.timestream.influxdb.backup",
+						map[string]*llx.RawData{
+							"__id":           llx.StringDataPtr(backup.Arn),
+							"arn":            llx.StringDataPtr(backup.Arn),
+							"id":             llx.StringDataPtr(backup.Id),
+							"name":           llx.StringDataPtr(backup.Name),
+							"status":         llx.StringData(string(backup.Status)),
+							"type":           llx.StringData(string(backup.Type)),
+							"engineType":     llx.StringData(string(backup.EngineType)),
+							"deploymentType": llx.StringData(string(backup.DeploymentType)),
+							"createdAt":      llx.TimeDataPtr(backup.CreatedAt),
+							"expiresAfter":   llx.TimeDataPtr(parseInfluxdbExpiry(backup.ExpiresAfter)),
+							"region":         llx.StringData(region),
+						})
+					if err != nil {
+						return nil, err
+					}
+					mqlB := mqlBackup.(*mqlAwsTimestreamInfluxdbBackup)
+					mqlB.cacheDbResourceId = backup.DbResourceId
+					mqlB.cacheKmsKeyId = backup.KmsKeyId
+					res = append(res, mqlBackup)
+				}
+			}
+			return jobpool.JobResult(res), nil
+		}
+		tasks = append(tasks, jobpool.NewJob(f))
+	}
+	return tasks
+}
+
+// parseInfluxdbExpiry converts the backup expiry, which the API reports as an
+// RFC3339 string rather than a timestamp, into the time form MQL wants.
+func parseInfluxdbExpiry(s *string) *time.Time {
+	if s == nil || *s == "" {
+		return nil
+	}
+	t, err := time.Parse(time.RFC3339, *s)
+	if err != nil {
+		return nil
+	}
+	return &t
+}
+
+type mqlAwsTimestreamInfluxdbBackupInternal struct {
+	lazyTags
+	cacheDbResourceId *string
+	cacheKmsKeyId     *string
+}
+
+func (a *mqlAwsTimestreamInfluxdbBackup) dbInstance() (*mqlAwsTimestreamInfluxdbInstance, error) {
+	if a.cacheDbResourceId == nil || *a.cacheDbResourceId == "" {
+		a.DbInstance.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	mqlInstance, err := NewResource(a.MqlRuntime, "aws.timestream.influxdb.instance",
+		map[string]*llx.RawData{
+			"id":     llx.StringDataPtr(a.cacheDbResourceId),
+			"region": llx.StringData(a.Region.Data),
+		})
+	if err != nil {
+		return nil, err
+	}
+	return mqlInstance.(*mqlAwsTimestreamInfluxdbInstance), nil
+}
+
+func (a *mqlAwsTimestreamInfluxdbBackup) kmsKey() (*mqlAwsKmsKey, error) {
+	if a.cacheKmsKeyId == nil || *a.cacheKmsKeyId == "" {
+		a.KmsKey.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	mqlKey, err := NewResource(a.MqlRuntime, "aws.kms.key",
+		map[string]*llx.RawData{"arn": llx.StringDataPtr(a.cacheKmsKeyId)})
+	if err != nil {
+		return nil, err
+	}
+	return mqlKey.(*mqlAwsKmsKey), nil
+}
+
+// initAwsTimestreamInfluxdbInstance resolves a single instance by id so a
+// backup can point at the instance it was taken from without listing every
+// instance in the region.
+func initAwsTimestreamInfluxdbInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	// region selects the regional client for the lookup. It is also a field on
+	// the resource, so it can stay in args when the lookup falls through.
+	var region string
+	if r := args["region"]; r != nil {
+		region, _ = r.Value.(string)
+	}
+
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	if args["id"] == nil || region == "" {
+		return args, nil, nil
+	}
+	id, _ := args["id"].Value.(string)
+	if id == "" {
+		return args, nil, nil
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.TimestreamInfluxDB(region)
+	resp, err := svc.GetDbInstance(context.Background(), &timestreaminfluxdb.GetDbInstanceInput{
+		Identifier: &id,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if resp.Id == nil {
+		return nil, nil, fmt.Errorf("aws.timestream.influxdb.instance with id %q not found", id)
+	}
+
+	mqlInstance, err := CreateResource(runtime, "aws.timestream.influxdb.instance",
+		map[string]*llx.RawData{
+			"__id":             llx.StringDataPtr(resp.Arn),
+			"arn":              llx.StringDataPtr(resp.Arn),
+			"id":               llx.StringDataPtr(resp.Id),
+			"name":             llx.StringDataPtr(resp.Name),
+			"allocatedStorage": llx.IntDataDefault(resp.AllocatedStorage, 0),
+			"dbInstanceType":   llx.StringData(string(resp.DbInstanceType)),
+			"dbStorageType":    llx.StringData(string(resp.DbStorageType)),
+			"deploymentType":   llx.StringData(string(resp.DeploymentType)),
+			"endpoint":         llx.StringDataPtr(resp.Endpoint),
+			"networkType":      llx.StringData(string(resp.NetworkType)),
+			"port":             llx.IntDataDefault(resp.Port, 0),
+			"status":           llx.StringData(string(resp.Status)),
+			"region":           llx.StringData(region),
+		})
+	if err != nil {
+		return nil, nil, err
+	}
+	return args, mqlInstance, nil
+}
+
+func (a *mqlAwsTimestreamInfluxdbBackup) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.TimestreamInfluxDB(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &timestreaminfluxdb.ListTagsForResourceInput{ResourceArn: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("timestream-influxdb:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return toInterfaceMap(resp.Tags), nil
+	})
 }

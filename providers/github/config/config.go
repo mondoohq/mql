@@ -4,17 +4,28 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/github/connection"
-	"go.mondoo.com/mql/v13/providers/github/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/github/connection"
+	"go.mondoo.com/mql/providers/github/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "github",
-	ID:              "go.mondoo.com/cnquery/v9/providers/github",
-	Version:         "13.6.4",
+	Name: "github",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	// A connection reports the concrete kind through ConnectRes.Root.
+	Root:    "github",
+	ID:      "go.mondoo.com/mql/providers/github",
+	Version: "14.1.0",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.ConnectionType},
+	// GitHub's 5,000 requests/hour is already the binding constraint on a large
+	// organization, and there is a secondary limit on concurrent requests, so
+	// this stays deliberately low.
+	DefaultParallelism: 4,
 	Connectors: []plugin.Connector{
 		{
 			Name:  "github",
@@ -25,11 +36,15 @@ var Config = plugin.Provider{
 Available commands:
   org                       GitHub organization
   repo                      GitHub repo
+  user                      GitHub user
 
 Examples:
   cnspec scan github org <ORG_NAME> --discover organization
   cnspec scan github org <ORG_NAME> --repos "<REPO1>,<REPO2>"
+  cnspec scan github repo <ORG_NAME>/<REPO_NAME>
+  cnspec scan github user <USERNAME>
   cnspec shell github org <ORG_NAME>
+  cnspec shell github repo <ORG_NAME>/<REPO_NAME>
   cnspec shell github org <YOUR-GITHUB-ORG> --app-id <YOUR-GITHUB-APP-ID> --app-installation-id <YOUR-GITHUB-APP-INSTALL-ID> --app-private-key <PATH-TO-PEM-FILE>
 
 Notes:
@@ -47,6 +62,11 @@ Notes:
 				connection.DiscoveryOrganization,
 				connection.DiscoveryTerraform,
 				connection.DiscoveryK8sManifests,
+				connection.DiscoveryCloudformation,
+				connection.DiscoveryDockerfiles,
+				connection.DiscoveryBicep,
+				connection.DiscoveryHelm,
+				connection.DiscoveryKustomize,
 			},
 			Flags: []plugin.Flag{
 				{

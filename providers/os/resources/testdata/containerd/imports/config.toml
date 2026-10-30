@@ -1,0 +1,11 @@
+version = 2
+imports = ["conf.d/*.toml"]
+
+[plugins."io.containerd.grpc.v1.cri"]
+  enable_selinux = true
+  sandbox_image = "registry.example.com/pause:3.10"
+
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+  runtime_type = "io.containerd.runc.v2"
+  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+    SystemdCgroup = true

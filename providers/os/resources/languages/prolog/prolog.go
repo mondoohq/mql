@@ -5,7 +5,7 @@ package prolog
 
 import (
 	"github.com/package-url/packageurl-go"
-	"go.mondoo.com/mql/v13/sbom"
+	"go.mondoo.com/mql/sbom"
 )
 
 // NewPackageUrl creates a SWI-Prolog pack package URL.

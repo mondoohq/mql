@@ -4,8 +4,10 @@
 package convert
 
 // ToPtr returns a pointer to the given value.
+//
+//go:fix inline
 func ToPtr[T any](v T) *T {
-	return &v
+	return new(v)
 }
 
 // ToValue returns the value of the given pointer.

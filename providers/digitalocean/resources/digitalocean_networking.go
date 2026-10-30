@@ -7,10 +7,10 @@ import (
 	"context"
 
 	"github.com/digitalocean/godo"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/digitalocean/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/digitalocean/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // ----- VPC NAT gateways -----
@@ -19,12 +19,12 @@ type mqlDigitaloceanVpcNatGatewayInternal struct {
 	vpcUUIDs []string
 }
 
-func (r *mqlDigitalocean) vpcNatGateways() ([]interface{}, error) {
+func (r *mqlDigitalocean) vpcNatGateways() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var all []interface{}
-	opt := &godo.VPCNATGatewaysListOptions{ListOptions: godo.ListOptions{PerPage: 200}}
+	var all []any
+	opt := &godo.VPCNATGatewaysListOptions{PerPage: 200}
 	for {
 		gateways, resp, err := client.VPCNATGateways.List(context.Background(), opt)
 		if err != nil {
@@ -35,21 +35,21 @@ func (r *mqlDigitalocean) vpcNatGateways() ([]interface{}, error) {
 				continue
 			}
 
-			ingressVpcs := make([]interface{}, 0, len(g.VPCs))
+			ingressVpcs := make([]any, 0, len(g.VPCs))
 			vpcUUIDs := make([]string, 0, len(g.VPCs))
 			for _, v := range g.VPCs {
 				if v == nil {
 					continue
 				}
 				vpcUUIDs = append(vpcUUIDs, v.VpcUUID)
-				ingressVpcs = append(ingressVpcs, map[string]interface{}{
+				ingressVpcs = append(ingressVpcs, map[string]any{
 					"vpcUuid":        v.VpcUUID,
 					"gatewayIp":      v.GatewayIP,
 					"defaultGateway": v.DefaultGateway,
 				})
 			}
 
-			egressIPs := []interface{}{}
+			egressIPs := []any{}
 			if g.Egresses != nil {
 				for _, pg := range g.Egresses.PublicGateways {
 					if pg != nil {
@@ -92,7 +92,11 @@ func (r *mqlDigitalocean) vpcNatGateways() ([]interface{}, error) {
 	return all, nil
 }
 
-func (r *mqlDigitaloceanVpcNatGateway) vpcs() ([]interface{}, error) {
+func (r *mqlDigitaloceanVpcNatGateway) id() (string, error) {
+	return "digitalocean.vpcNatGateway/" + r.Id.Data, nil
+}
+
+func (r *mqlDigitaloceanVpcNatGateway) vpcs() ([]any, error) {
 	return vpcRefsByUUIDs(r.MqlRuntime, r.vpcUUIDs)
 }
 
@@ -114,57 +118,47 @@ func (r *mqlDigitaloceanReservedIpV6) droplet() (*mqlDigitaloceanDroplet, error)
 	return dropletRef(r.MqlRuntime, r.DropletId.Data, &r.Droplet)
 }
 
-func (r *mqlDigitalocean) reservedIPv6s() ([]interface{}, error) {
+func (r *mqlDigitalocean) reservedIPv6s() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	var all []interface{}
-	opt := &godo.ListOptions{PerPage: 200}
-	for {
-		ips, resp, err := client.ReservedIPV6s.List(context.Background(), opt)
+	ips, err := paginate(context.Background(), client.ReservedIPV6s.List)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(ips))
+	for i := range ips {
+		ip := ips[i]
+		dropletID := int64(0)
+		if ip.Droplet != nil {
+			dropletID = int64(ip.Droplet.ID)
+		}
+		res, err := CreateResource(r.MqlRuntime, "digitalocean.reservedIpV6", map[string]*llx.RawData{
+			"ip":         llx.StringData(ip.IP),
+			"region":     llx.StringData(ip.RegionSlug),
+			"reservedAt": llx.TimeData(ip.ReservedAt),
+			"dropletId":  llx.IntData(dropletID),
+		})
 		if err != nil {
 			return nil, err
 		}
-		for i := range ips {
-			ip := ips[i]
-			dropletID := int64(0)
-			if ip.Droplet != nil {
-				dropletID = int64(ip.Droplet.ID)
-			}
-			res, err := CreateResource(r.MqlRuntime, "digitalocean.reservedIpV6", map[string]*llx.RawData{
-				"ip":         llx.StringData(ip.IP),
-				"region":     llx.StringData(ip.RegionSlug),
-				"reservedAt": llx.TimeData(ip.ReservedAt),
-				"dropletId":  llx.IntData(dropletID),
-			})
-			if err != nil {
-				return nil, err
-			}
-			all = append(all, res)
-		}
-		if resp == nil || resp.Links == nil || resp.Links.IsLastPage() {
-			break
-		}
-		page, err := resp.Links.CurrentPage()
-		if err != nil {
-			return nil, err
-		}
-		opt.Page = page + 1
+		all = append(all, res)
 	}
 	return all, nil
 }
 
 // vpcRefsByUUIDs resolves a list of VPC UUIDs to typed digitalocean.vpc
 // resources, skipping any that cannot be found.
-func vpcRefsByUUIDs(runtime *plugin.Runtime, uuids []string) ([]interface{}, error) {
+func vpcRefsByUUIDs(runtime *plugin.Runtime, uuids []string) ([]any, error) {
 	if len(uuids) == 0 {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 	parent, err := parentDigitalocean(runtime)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]interface{}, 0, len(uuids))
+	out := make([]any, 0, len(uuids))
 	for _, uuid := range uuids {
 		if uuid == "" {
 			continue

@@ -21,37 +21,89 @@ import (
 	"github.com/aws/smithy-go/transport/http"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/providers/aws/resources/awspolicy"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/providers/aws/resources/awspolicy"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsS3control) id() (string, error) {
 	return ResourceAwsS3control, nil
 }
 
-func (a *mqlAwsS3control) accountPublicAccessBlock() (any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+type mqlAwsS3controlInternal struct {
+	publicAccessOnce   sync.Once
+	publicAccessConfig *s3controltypes.PublicAccessBlockConfiguration
+	publicAccessErr    error
+}
 
-	svc := conn.S3Control("")
-	ctx := context.Background()
+// fetchAccountPublicAccessBlock reads the account-level Block Public Access
+// configuration once and hands it to every field derived from it. An account
+// that has never configured one is not an error: the API reports
+// NoSuchPublicAccessBlockConfiguration, and the configuration is simply absent.
+func (a *mqlAwsS3control) fetchAccountPublicAccessBlock() (*s3controltypes.PublicAccessBlockConfiguration, error) {
+	a.publicAccessOnce.Do(func() {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.S3Control("")
+		resp, err := svc.GetPublicAccessBlock(context.Background(), &s3control.GetPublicAccessBlockInput{
+			AccountId: aws.String(conn.AccountId()),
+		})
+		if err != nil {
+			var notFoundErr *s3controltypes.NoSuchPublicAccessBlockConfiguration
+			if errors.As(err, &notFoundErr) {
+				return
+			}
+			a.publicAccessErr = err
+			return
+		}
+		a.publicAccessConfig = resp.PublicAccessBlockConfiguration
+	})
+	return a.publicAccessConfig, a.publicAccessErr
+}
 
-	publicAccessBlock, err := svc.GetPublicAccessBlock(ctx, &s3control.GetPublicAccessBlockInput{
-		AccountId: aws.String(conn.AccountId()),
+// newMqlS3PublicAccessBlock builds the four Block Public Access settings shared
+// by the account, a bucket, and an access point. They come back from three
+// different SDK structs carrying the same four members, which is why this
+// takes the pointers rather than a struct.
+func newMqlS3PublicAccessBlock(runtime *plugin.Runtime, ownerID string, blockPublicAcls, blockPublicPolicy, ignorePublicAcls, restrictPublicBuckets *bool) (*mqlAwsS3PublicAccessBlock, error) {
+	res, err := CreateResource(runtime, "aws.s3.publicAccessBlock", map[string]*llx.RawData{
+		"__id":                  llx.StringData(ownerID + "/publicAccessBlock"),
+		"blockPublicAcls":       llx.BoolData(convert.ToValue(blockPublicAcls)),
+		"blockPublicPolicy":     llx.BoolData(convert.ToValue(blockPublicPolicy)),
+		"ignorePublicAcls":      llx.BoolData(convert.ToValue(ignorePublicAcls)),
+		"restrictPublicBuckets": llx.BoolData(convert.ToValue(restrictPublicBuckets)),
 	})
 	if err != nil {
-		var notFoundErr *s3controltypes.NoSuchPublicAccessBlockConfiguration
-		if errors.As(err, &notFoundErr) {
-			return nil, nil
-		}
 		return nil, err
 	}
+	return res.(*mqlAwsS3PublicAccessBlock), nil
+}
 
-	return convert.JsonToDict(publicAccessBlock.PublicAccessBlockConfiguration)
+func (a *mqlAwsS3control) accountBlockPublicAccess() (*mqlAwsS3PublicAccessBlock, error) {
+	config, err := a.fetchAccountPublicAccessBlock()
+	if err != nil {
+		return nil, err
+	}
+	if config == nil {
+		a.AccountBlockPublicAccess.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return newMqlS3PublicAccessBlock(a.MqlRuntime, ResourceAwsS3control+"/"+conn.AccountId(),
+		config.BlockPublicAcls, config.BlockPublicPolicy, config.IgnorePublicAcls, config.RestrictPublicBuckets)
+}
+
+func (a *mqlAwsS3control) accountPublicAccessBlock() (any, error) {
+	config, err := a.fetchAccountPublicAccessBlock()
+	if err != nil {
+		return nil, err
+	}
+	if config == nil {
+		return nil, nil
+	}
+	return convert.JsonToDict(config)
 }
 
 func (a *mqlAwsS3) id() (string, error) {
@@ -61,77 +113,55 @@ func (a *mqlAwsS3) id() (string, error) {
 func (a *mqlAwsS3) buckets() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(a.getBuckets(conn), 5)
-	poolOfJobs.Run()
+	return perRegion(conn, "s3", func(ctx context.Context, region string) ([]any, error) {
+		svc := conn.S3(region)
+		log.Debug().Str("region", region).Msg("listing S3 buckets in region")
+		params := &s3.ListBucketsInput{BucketRegion: aws.String(region)}
+		paginator := s3.NewListBucketsPaginator(svc, params, func(o *s3.ListBucketsPaginatorOptions) {
+			o.Limit = 100
+		})
 
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-
-	return res, nil
-}
-
-func (a *mqlAwsS3) getBuckets(conn *connection.AwsConnection) []*jobpool.Job {
-	tasks := make([]*jobpool.Job, 0)
-	configuredRegions, err := conn.Regions()
-	if err != nil {
-		return []*jobpool.Job{{Err: err}}
-	}
-	for _, region := range configuredRegions {
-		f := func() (jobpool.JobResult, error) {
-			svc := conn.S3(region)
-			ctx := context.Background()
-			log.Debug().Str("region", region).Msg("listing S3 buckets in region")
-			params := &s3.ListBucketsInput{BucketRegion: aws.String(region)}
-			paginator := s3.NewListBucketsPaginator(svc, params, func(o *s3.ListBucketsPaginatorOptions) {
-				o.Limit = 100
-			})
-
-			res := []any{}
-			for paginator.HasMorePages() {
-				output, err := paginator.NextPage(ctx)
-				if err != nil {
-					log.Warn().Err(err).Str("region", region).Msg("could not list S3 buckets in region")
-					break
+		res := []any{}
+		for paginator.HasMorePages() {
+			output, err := paginator.NextPage(ctx)
+			if err != nil {
+				return nil, err
+			}
+			for _, bucket := range output.Buckets {
+				if conn.Filters.S3.IsFilteredOut(convert.ToValue(bucket.Name)) {
+					continue
 				}
-				for _, bucket := range output.Buckets {
-					mqlS3Bucket, err := CreateResource(a.MqlRuntime, ResourceAwsS3Bucket,
-						map[string]*llx.RawData{
-							"name":      llx.StringDataPtr(bucket.Name),
-							"arn":       llx.StringData(fmt.Sprintf(s3ArnPattern, convert.ToValue(bucket.Name))),
-							"exists":    llx.BoolData(true),
-							"location":  llx.StringData(region),
-							"createdAt": llx.TimeDataPtr(bucket.CreationDate),
-						})
+
+				mqlS3Bucket, err := CreateResource(a.MqlRuntime, ResourceAwsS3Bucket,
+					map[string]*llx.RawData{
+						"name":      llx.StringDataPtr(bucket.Name),
+						"arn":       llx.StringData(fmt.Sprintf(s3ArnPattern, convert.ToValue(bucket.Name))),
+						"exists":    llx.BoolData(true),
+						"location":  llx.StringData(region),
+						"createdAt": llx.TimeDataPtr(bucket.CreationDate),
+					})
+				if err != nil {
+					return nil, err
+				}
+
+				// keeps the tags lazy unless the filters need to be evaluated
+				if conn.Filters.General.HasTags() {
+					tags, err := mqlS3Bucket.(*mqlAwsS3Bucket).tags()
 					if err != nil {
 						return nil, err
 					}
 
-					// keeps the tags lazy unless the filters need to be evaluated
-					if conn.Filters.General.HasTags() {
-						tags, err := mqlS3Bucket.(*mqlAwsS3Bucket).tags()
-						if err != nil {
-							return nil, err
-						}
-
-						if conn.Filters.General.IsFilteredOutByTags(mapStringInterfaceToStringString(tags)) {
-							continue
-						}
+					if conn.Filters.General.IsFilteredOutByTags(mapStringInterfaceToStringString(tags)) {
+						continue
 					}
-
-					res = append(res, mqlS3Bucket)
 				}
-			}
 
-			return jobpool.JobResult(res), nil
+				res = append(res, mqlS3Bucket)
+			}
 		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+
+		return res, nil
+	})
 }
 
 func initAwsS3BucketPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -155,7 +185,6 @@ func initAwsS3BucketPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData
 	resource.Name.State = plugin.StateIsNull | plugin.StateIsSet
 	resource.Document.State = plugin.StateIsNull | plugin.StateIsSet
 	resource.Version.State = plugin.StateIsNull | plugin.StateIsSet
-	resource.Statements.State = plugin.StateIsNull | plugin.StateIsSet
 	resource.BucketName = plugin.TValue[string]{
 		Data: bucket.GetName().Data, State: plugin.StateIsSet,
 	}
@@ -168,9 +197,8 @@ func initAwsS3Bucket(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 		return args, nil, nil
 	}
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformS3Bucket); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 	if args["arn"] == nil && args["name"] == nil {
@@ -226,10 +254,15 @@ func (a *mqlAwsS3Bucket) id() (string, error) {
 }
 
 type mqlAwsS3BucketAccessPointInternal struct {
+	lazyTags
 	region          string
 	accountID       string
 	cacheBucketName string
 	cacheVpcId      string
+
+	publicAccessOnce   sync.Once
+	publicAccessConfig *s3controltypes.PublicAccessBlockConfiguration
+	publicAccessErr    error
 }
 
 func (a *mqlAwsS3BucketAccessPoint) id() (string, error) {
@@ -328,28 +361,56 @@ func (a *mqlAwsS3BucketAccessPoint) vpc() (*mqlAwsVpc, error) {
 	return res.(*mqlAwsVpc), nil
 }
 
-func (a *mqlAwsS3BucketAccessPoint) publicAccessBlock() (any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.S3Control(a.region)
-	ctx := context.Background()
-
-	name := a.Name.Data
-	resp, err := svc.GetAccessPoint(ctx, &s3control.GetAccessPointInput{
-		AccountId: aws.String(a.accountID),
-		Name:      aws.String(name),
-	})
-	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Debug().Str("accessPoint", a.Arn.Data).Err(err).Msg("access denied reading s3 access point public access block")
-			return nil, nil
+// fetchPublicAccessBlock reads the access point's Block Public Access
+// configuration once and hands it to every field derived from it.
+func (a *mqlAwsS3BucketAccessPoint) fetchPublicAccessBlock() (*s3controltypes.PublicAccessBlockConfiguration, error) {
+	a.publicAccessOnce.Do(func() {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.S3Control(a.region)
+		name := a.Name.Data
+		resp, err := svc.GetAccessPoint(context.Background(), &s3control.GetAccessPointInput{
+			AccountId: aws.String(a.accountID),
+			Name:      aws.String(name),
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				log.Debug().Str("accessPoint", a.Arn.Data).Err(err).Msg("access denied reading s3 access point public access block")
+				return
+			}
+			a.publicAccessErr = err
+			return
 		}
+		if resp.PublicAccessBlockConfiguration == nil {
+			log.Debug().Str("accessPoint", a.Arn.Data).Msg("s3 access point has no public access block configured")
+			return
+		}
+		a.publicAccessConfig = resp.PublicAccessBlockConfiguration
+	})
+	return a.publicAccessConfig, a.publicAccessErr
+}
+
+func (a *mqlAwsS3BucketAccessPoint) blockPublicAccess() (*mqlAwsS3PublicAccessBlock, error) {
+	config, err := a.fetchPublicAccessBlock()
+	if err != nil {
 		return nil, err
 	}
-	if resp.PublicAccessBlockConfiguration == nil {
-		log.Debug().Str("accessPoint", a.Arn.Data).Msg("s3 access point has no public access block configured")
+	if config == nil {
+		a.BlockPublicAccess.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	return convert.JsonToDict(resp.PublicAccessBlockConfiguration)
+	return newMqlS3PublicAccessBlock(a.MqlRuntime, a.Arn.Data,
+		config.BlockPublicAcls, config.BlockPublicPolicy, config.IgnorePublicAcls, config.RestrictPublicBuckets)
+}
+
+func (a *mqlAwsS3BucketAccessPoint) publicAccessBlock() (any, error) {
+	config, err := a.fetchPublicAccessBlock()
+	if err != nil {
+		return nil, err
+	}
+	if config == nil {
+		return nil, nil
+	}
+	return convert.JsonToDict(config)
 }
 
 func (a *mqlAwsS3BucketAccessPoint) policy() (string, error) {
@@ -488,10 +549,8 @@ func isFalseConditionValue(v any) bool {
 	case string:
 		return strings.EqualFold(val, "false")
 	case []any:
-		for _, item := range val {
-			if isFalseConditionValue(item) {
-				return true
-			}
+		if slices.ContainsFunc(val, isFalseConditionValue) {
+			return true
 		}
 	}
 	return false
@@ -763,6 +822,19 @@ func (a *mqlAwsS3Bucket) restrictPublicBuckets() (bool, error) {
 	return a.s3PublicAccessBlockFlag(func(c *s3types.PublicAccessBlockConfiguration) *bool { return c.RestrictPublicBuckets })
 }
 
+func (a *mqlAwsS3Bucket) blockPublicAccess() (*mqlAwsS3PublicAccessBlock, error) {
+	config, err := a.fetchPublicAccessBlock()
+	if err != nil {
+		return nil, err
+	}
+	if config == nil {
+		a.BlockPublicAccess.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return newMqlS3PublicAccessBlock(a.MqlRuntime, a.Arn.Data,
+		config.BlockPublicAcls, config.BlockPublicPolicy, config.IgnorePublicAcls, config.RestrictPublicBuckets)
+}
+
 func (a *mqlAwsS3Bucket) publicAccessBlock() (any, error) {
 	config, err := a.fetchPublicAccessBlock()
 	if err != nil {
@@ -794,99 +866,144 @@ func (a *mqlAwsS3Bucket) owner() (map[string]any, error) {
 	return res, nil
 }
 
-// see https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html
+// see https://docs.aws.amazon.com/AmazonS3/latest/userguide/acl-overview.html
 const (
 	s3AuthenticatedUsersGroup = "http://acs.amazonaws.com/groups/global/AuthenticatedUsers"
 	s3AllUsersGroup           = "http://acs.amazonaws.com/groups/global/AllUsers"
 )
 
+// s3BucketIsPublic applies AWS's actual Block Public Access semantics to a
+// policy signal and an ACL signal.
+//
+// BlockPublicAcls and BlockPublicPolicy only reject *new* public ACLs and
+// policies; AWS documents that enabling them does not affect grants that
+// already exist. Only IgnorePublicAcls neutralizes an existing public ACL, and
+// only RestrictPublicBuckets neutralizes an existing public policy. Treating
+// any of the four as "not public" reported a world-readable bucket as private
+// whenever, say, BlockPublicAcls was on and a `Principal: "*"` policy was
+// attached -- the standard static-site/CDN configuration.
+func s3BucketIsPublic(pab *s3types.PublicAccessBlockConfiguration, policyIsPublic, aclIsPublic bool) bool {
+	ignorePublicAcls := pab != nil && pab.IgnorePublicAcls != nil && *pab.IgnorePublicAcls
+	restrictPublicBuckets := pab != nil && pab.RestrictPublicBuckets != nil && *pab.RestrictPublicBuckets
+
+	if policyIsPublic && !restrictPublicBuckets {
+		return true
+	}
+	if aclIsPublic && !ignorePublicAcls {
+		return true
+	}
+	return false
+}
+
+// s3PolicyGrantsPublicAccess reports whether any Allow statement names the
+// wildcard principal.
+func s3PolicyGrantsPublicAccess(policy *awspolicy.S3BucketPolicy) bool {
+	if policy == nil {
+		return false
+	}
+	for _, statement := range policy.Statements {
+		if !strings.EqualFold(statement.Effect, "Allow") {
+			continue
+		}
+		if awsPrincipal, ok := statement.Principal["AWS"]; ok {
+			if slices.Contains(awsPrincipal, "*") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// s3GrantsArePublic reports whether any ACL grant targets the AllUsers or
+// AuthenticatedUsers group.
+func s3GrantsArePublic(grants []s3types.Grant) bool {
+	for i := range grants {
+		grant := grants[i]
+		if grant.Grantee == nil {
+			continue
+		}
+		if grant.Grantee.Type == s3types.TypeGroup &&
+			(convert.ToValue(grant.Grantee.URI) == s3AuthenticatedUsersGroup ||
+				convert.ToValue(grant.Grantee.URI) == s3AllUsersGroup) {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *mqlAwsS3Bucket) public() (bool, error) {
+	// markUnknown reports null rather than a confident `false` when neither the
+	// policy nor the ACL could be read. `false` here is indistinguishable from
+	// "verified not public", which is the dangerous direction for an exposure
+	// check on an under-scoped token.
+	markUnknown := func() (bool, error) {
+		a.Public.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+
 	region, ok, err := a.bucketRegion()
-	if err != nil || !ok {
+	if err != nil {
 		return false, err
+	}
+	if !ok {
+		return markUnknown()
 	}
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	bucketname := a.Name.Data
 	svc := conn.S3(region)
 	ctx := context.Background()
 
-	// Check Public Access Block settings first (reuses cached result)
 	accessBlock, err := a.fetchPublicAccessBlock()
 	if err != nil {
 		return false, err
 	}
 
-	notPublic := false
-	if accessBlock != nil {
-		if accessBlock.BlockPublicAcls != nil && *accessBlock.BlockPublicAcls {
-			notPublic = true
-		}
-		if accessBlock.BlockPublicPolicy != nil && *accessBlock.BlockPublicPolicy {
-			notPublic = true
-		}
-		if accessBlock.IgnorePublicAcls != nil && *accessBlock.IgnorePublicAcls {
-			notPublic = true
-		}
-		if accessBlock.RestrictPublicBuckets != nil && *accessBlock.RestrictPublicBuckets {
-			notPublic = true
-		}
-	}
-	if notPublic {
-		return false, nil // Public access is restricted
-	}
+	policyIsPublic := false
+	policyKnown := false
 
-	// Then, use GetBucketPolicyStatus to determine public access
+	// GetBucketPolicyStatus is AWS's own verdict on the policy. A `false` here
+	// is a real answer about the *policy*, but it says nothing about the ACL --
+	// so it must not short-circuit the ACL check below.
 	statusOutput, err := svc.GetBucketPolicyStatus(ctx, &s3.GetBucketPolicyStatusInput{
 		Bucket: &bucketname,
 	})
 	if err != nil && !isS3BucketInaccessible(err) {
 		return false, err
 	}
-	if statusOutput != nil &&
-		statusOutput.PolicyStatus != nil &&
-		statusOutput.PolicyStatus.IsPublic != nil {
-		return *statusOutput.PolicyStatus.IsPublic, nil
+	if statusOutput != nil && statusOutput.PolicyStatus != nil && statusOutput.PolicyStatus.IsPublic != nil {
+		policyIsPublic = *statusOutput.PolicyStatus.IsPublic
+		policyKnown = true
 	}
 
-	// If that didn't work, fetch the bucket policy manually and parse it
-	bucketPolicyResource := a.GetPolicy()
-	if bucketPolicyResource.State == plugin.StateIsSet && bucketPolicyResource.Data != nil {
-		bucketPolicy, err := bucketPolicyResource.Data.parsePolicyDocument()
-		if err != nil {
-			return false, err
-		}
-
-		for _, statement := range bucketPolicy.Statements {
-			if statement.Effect != "Allow" {
-				continue
+	// Fall back to parsing the policy ourselves when the status call was denied.
+	if !policyKnown {
+		bucketPolicyResource := a.GetPolicy()
+		if bucketPolicyResource.State == plugin.StateIsSet && bucketPolicyResource.Data != nil {
+			bucketPolicy, err := bucketPolicyResource.Data.parsePolicyDocument()
+			if err != nil {
+				return false, err
 			}
-			if awsPrincipal, ok := statement.Principal["AWS"]; ok {
-				if slices.Contains(awsPrincipal, "*") {
-					return true, nil
-				}
-			}
+			policyIsPublic = s3PolicyGrantsPublicAccess(bucketPolicy)
+			policyKnown = true
 		}
 	}
 
-	// Finally check for bucket ACLs
+	aclIsPublic := false
+	aclKnown := false
 	acl, err := a.gatherAcl()
 	if err != nil {
 		return false, err
 	}
-	if acl == nil {
-		return false, nil
+	if acl != nil {
+		aclIsPublic = s3GrantsArePublic(acl.Grants)
+		aclKnown = true
 	}
 
-	for i := range acl.Grants {
-		grant := acl.Grants[i]
-		if grant.Grantee == nil {
-			continue
-		}
-		if grant.Grantee.Type == s3types.TypeGroup && (convert.ToValue(grant.Grantee.URI) == s3AuthenticatedUsersGroup || convert.ToValue(grant.Grantee.URI) == s3AllUsersGroup) {
-			return true, nil
-		}
+	if !policyKnown && !aclKnown {
+		return markUnknown()
 	}
-	return false, nil
+
+	return s3BucketIsPublic(accessBlock, policyIsPublic, aclIsPublic), nil
 }
 
 func (a *mqlAwsS3Bucket) cors() ([]any, error) {
@@ -914,6 +1031,7 @@ func (a *mqlAwsS3Bucket) cors() ([]any, error) {
 		corsrule := cors.CORSRules[i]
 		mqlBucketCors, err := CreateResource(a.MqlRuntime, "aws.s3.bucket.corsrule",
 			map[string]*llx.RawData{
+				"__id":           llx.StringData(fmt.Sprintf("%s/cors/%d", a.Arn.Data, i)),
 				"name":           llx.StringData(bucketname),
 				"allowedHeaders": llx.ArrayData(toInterfaceArr(corsrule.AllowedHeaders), types.String),
 				"allowedMethods": llx.ArrayData(toInterfaceArr(corsrule.AllowedMethods), types.String),
@@ -972,15 +1090,18 @@ func (a *mqlAwsS3Bucket) logging() (map[string]any, error) {
 
 func (a *mqlAwsS3Bucket) versioning() (map[string]any, error) {
 	// Placeholder buckets (e.g., cross-account references) can't be queried
-	if !a.Exists.Data {
+	region, ok, err := a.bucketRegion()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		return nil, nil
 	}
 	bucketname := a.Name.Data
-	location := a.Location.Data
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
-	svc := conn.S3(location)
+	svc := conn.S3(region)
 	ctx := context.Background()
 
 	versioning, err := svc.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{
@@ -1027,8 +1148,15 @@ func (a *mqlAwsS3Bucket) fetchReplicationConfig() (*s3types.ReplicationConfigura
 		return nil, nil
 	}
 	a.replicationOnce.Do(func() {
+		region, ok, err := a.bucketRegion()
+		if err != nil {
+			a.replicationErr = err
+			return
+		}
+		if !ok {
+			return
+		}
 		bucketname := a.Name.Data
-		region := a.Location.Data
 		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 		svc := conn.S3(region)
 		ctx := context.Background()
@@ -1054,8 +1182,15 @@ func (a *mqlAwsS3Bucket) fetchEncryptionConfig() (*s3types.ServerSideEncryptionC
 		return nil, nil
 	}
 	a.encryptionOnce.Do(func() {
+		region, ok, err := a.bucketRegion()
+		if err != nil {
+			a.encryptionErr = err
+			return
+		}
+		if !ok {
+			return
+		}
 		bucketname := a.Name.Data
-		region := a.Location.Data
 		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 		svc := conn.S3(region)
 		ctx := context.Background()
@@ -1134,11 +1269,6 @@ func (a *mqlAwsS3Bucket) replicationRules() ([]any, error) {
 			deleteMarkerEnabled = rule.DeleteMarkerReplication.Status == s3types.DeleteMarkerReplicationStatusEnabled
 		}
 
-		prefix := ""
-		if rule.Prefix != nil {
-			prefix = *rule.Prefix
-		}
-
 		priority := int64(0)
 		if rule.Priority != nil {
 			priority = int64(*rule.Priority)
@@ -1153,7 +1283,6 @@ func (a *mqlAwsS3Bucket) replicationRules() ([]any, error) {
 			"destinationAccount":             llx.StringData(destAccount),
 			"destinationStorageClass":        llx.StringData(destStorageClass),
 			"deleteMarkerReplicationEnabled": llx.BoolData(deleteMarkerEnabled),
-			"prefix":                         llx.StringData(prefix),
 		}
 
 		mqlRule, err := CreateResource(a.MqlRuntime, "aws.s3.bucket.replicationRule", args)
@@ -1163,17 +1292,6 @@ func (a *mqlAwsS3Bucket) replicationRules() ([]any, error) {
 		res = append(res, mqlRule)
 	}
 	return res, nil
-}
-
-func (a *mqlAwsS3Bucket) encryption() (any, error) {
-	config, err := a.fetchEncryptionConfig()
-	if err != nil {
-		return nil, err
-	}
-	if config == nil {
-		return nil, nil
-	}
-	return convert.JsonToDict(config)
 }
 
 func (a *mqlAwsS3BucketEncryptionRule) id() (string, error) {
@@ -1215,15 +1333,37 @@ func (a *mqlAwsS3Bucket) kmsKey() (*mqlAwsKmsKey, error) {
 		a.KmsKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
+	region, ok, err := a.bucketRegion()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		a.KmsKey.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
 	mqlKey, err := NewResource(a.MqlRuntime, ResourceAwsKmsKey,
 		map[string]*llx.RawData{
 			"arn":    llx.StringData(keyRef),
-			"region": llx.StringData(a.Location.Data),
+			"region": llx.StringData(region),
 		})
 	if err != nil {
 		return nil, err
 	}
 	return mqlKey.(*mqlAwsKmsKey), nil
+}
+
+// s3BlockedEncryptionTypes lists the encryption types a rule blocks, or nil
+// when S3 reported no setting for the rule, so an unreported setting reads as
+// null rather than as nothing blocked.
+func s3BlockedEncryptionTypes(blocked *s3types.BlockedEncryptionTypes) []any {
+	if blocked == nil {
+		return nil
+	}
+	res := make([]any, 0, len(blocked.EncryptionType))
+	for _, t := range blocked.EncryptionType {
+		res = append(res, string(t))
+	}
+	return res
 }
 
 func (a *mqlAwsS3Bucket) encryptionRules() ([]any, error) {
@@ -1258,6 +1398,11 @@ func (a *mqlAwsS3Bucket) encryptionRules() ([]any, error) {
 			"kmsMasterKeyId":   llx.StringData(kmsMasterKeyId),
 			"bucketKeyEnabled": llx.BoolData(bucketKeyEnabled),
 		}
+		if blocked := s3BlockedEncryptionTypes(rule.BlockedEncryptionTypes); blocked != nil {
+			args["blockedEncryptionTypes"] = llx.ArrayData(blocked, types.String)
+		} else {
+			args["blockedEncryptionTypes"] = llx.NilData
+		}
 
 		mqlRule, err := CreateResource(a.MqlRuntime, "aws.s3.bucket.encryptionRule", args)
 		if err != nil {
@@ -1274,11 +1419,14 @@ func (a *mqlAwsS3BucketMetricsConfiguration) id() (string, error) {
 
 func (a *mqlAwsS3Bucket) metricsConfigurations() ([]any, error) {
 	// Placeholder buckets (e.g., cross-account references) can't be queried
-	if !a.Exists.Data {
+	region, ok, err := a.bucketRegion()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		return nil, nil
 	}
 	bucketName := a.Name.Data
-	region := a.Location.Data
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	svc := conn.S3(region)
 	ctx := context.Background()
@@ -1329,8 +1477,15 @@ func (a *mqlAwsS3Bucket) fetchObjectLockConfig() (*s3types.ObjectLockConfigurati
 		return nil, nil
 	}
 	a.objectLockOnce.Do(func() {
+		region, ok, err := a.bucketRegion()
+		if err != nil {
+			a.objectLockErr = err
+			return
+		}
+		if !ok {
+			return
+		}
 		bucketname := a.Name.Data
-		region := a.Location.Data
 		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 		svc := conn.S3(region)
 		ctx := context.Background()
@@ -1372,30 +1527,105 @@ func (a *mqlAwsS3Bucket) objectLockEnabled() (bool, error) {
 	return config.ObjectLockEnabled == "Enabled", nil
 }
 
-func (a *mqlAwsS3Bucket) staticWebsiteHosting() (map[string]any, error) {
-	website := a.GetWebsite()
-	if website.Error != nil {
-		return nil, website.Error
+// defaultObjectLockRetention returns the bucket's default Object Lock
+// retention rule, or nil when Object Lock is configured without one. A bucket
+// can have ObjectLockEnabled without a default rule, in which case objects are
+// only protected when the writer sets retention on each PUT.
+func (a *mqlAwsS3Bucket) defaultObjectLockRetention() (*s3types.DefaultRetention, error) {
+	config, err := a.fetchObjectLockConfig()
+	if err != nil {
+		return nil, err
 	}
-	if website.State != plugin.StateIsSet || website.Data == nil {
-		a.StaticWebsiteHosting.State = plugin.StateIsNull | plugin.StateIsSet
+	if config == nil || config.Rule == nil {
 		return nil, nil
 	}
+	return config.Rule.DefaultRetention, nil
+}
 
-	return map[string]any{
-		"ErrorDocument": website.Data.GetErrorDocument().Data,
-		"IndexDocument": website.Data.GetIndexDocument().Data,
-	}, nil
+func (a *mqlAwsS3Bucket) objectLockRetentionMode() (string, error) {
+	retention, err := a.defaultObjectLockRetention()
+	if err != nil {
+		return "", err
+	}
+	if retention == nil {
+		a.ObjectLockRetentionMode.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return string(retention.Mode), nil
+}
+
+func (a *mqlAwsS3Bucket) objectLockRetentionDays() (int64, error) {
+	retention, err := a.defaultObjectLockRetention()
+	if err != nil {
+		return 0, err
+	}
+	if retention == nil || retention.Days == nil {
+		a.ObjectLockRetentionDays.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return int64(*retention.Days), nil
+}
+
+func (a *mqlAwsS3Bucket) objectLockRetentionYears() (int64, error) {
+	retention, err := a.defaultObjectLockRetention()
+	if err != nil {
+		return 0, err
+	}
+	if retention == nil || retention.Years == nil {
+		a.ObjectLockRetentionYears.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return int64(*retention.Years), nil
+}
+
+// defaultObjectLockEventHold returns the bucket's default event hold
+// duration, or nil when the default retention rule does not configure one.
+func (a *mqlAwsS3Bucket) defaultObjectLockEventHold() (*s3types.EventHoldDuration, error) {
+	retention, err := a.defaultObjectLockRetention()
+	if err != nil {
+		return nil, err
+	}
+	if retention == nil {
+		return nil, nil
+	}
+	return retention.DefaultEventHold, nil
+}
+
+func (a *mqlAwsS3Bucket) objectLockEventHoldDays() (int64, error) {
+	hold, err := a.defaultObjectLockEventHold()
+	if err != nil {
+		return 0, err
+	}
+	if hold == nil || hold.Days == nil {
+		a.ObjectLockEventHoldDays.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return int64(*hold.Days), nil
+}
+
+func (a *mqlAwsS3Bucket) objectLockEventHoldYears() (int64, error) {
+	hold, err := a.defaultObjectLockEventHold()
+	if err != nil {
+		return 0, err
+	}
+	if hold == nil || hold.Years == nil {
+		a.ObjectLockEventHoldYears.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return int64(*hold.Years), nil
 }
 
 func (a *mqlAwsS3Bucket) website() (*mqlAwsS3BucketWebsiteConfiguration, error) {
 	// Placeholder buckets (e.g., cross-account references) can't be queried
-	if !a.Exists.Data {
+	region, ok, err := a.bucketRegion()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		a.Website.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
 	bucketname := a.Name.Data
-	region := a.Location.Data
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
@@ -1418,6 +1648,7 @@ func (a *mqlAwsS3Bucket) website() (*mqlAwsS3BucketWebsiteConfiguration, error) 
 	}
 
 	args := map[string]*llx.RawData{
+		"__id":                  llx.StringData(a.Arn.Data + "/website"),
 		"errorDocument":         llx.NilData,
 		"indexDocument":         llx.NilData,
 		"redirectAllRequestsTo": llx.NilData,
@@ -1430,6 +1661,7 @@ func (a *mqlAwsS3Bucket) website() (*mqlAwsS3BucketWebsiteConfiguration, error) 
 	}
 	if website.RedirectAllRequestsTo != nil {
 		res, err := CreateResource(a.MqlRuntime, ResourceAwsS3BucketWebsiteConfigurationRedirectAllRequestsToConf, map[string]*llx.RawData{
+			"__id":     llx.StringData(a.Arn.Data + "/website/redirectAllRequestsTo"),
 			"hostname": llx.StringData(convert.ToValue(website.RedirectAllRequestsTo.HostName)),
 			"protocol": llx.StringData(string(website.RedirectAllRequestsTo.Protocol)),
 		})
@@ -1440,10 +1672,12 @@ func (a *mqlAwsS3Bucket) website() (*mqlAwsS3BucketWebsiteConfiguration, error) 
 	}
 
 	routingRules := []any{}
-	for _, rule := range website.RoutingRules {
-		args := map[string]*llx.RawData{}
+	for i, rule := range website.RoutingRules {
+		ruleID := fmt.Sprintf("%s/website/routingRule/%d", a.Arn.Data, i)
+		args := map[string]*llx.RawData{"__id": llx.StringData(ruleID)}
 		if rule.Redirect != nil {
 			redirectRes, err := CreateResource(a.MqlRuntime, ResourceAwsS3BucketWebsiteConfigurationRoutingRuleRedirectConf, map[string]*llx.RawData{
+				"__id":                 llx.StringData(ruleID + "/redirect"),
 				"hostname":             llx.StringData(convert.ToValue(rule.Redirect.HostName)),
 				"httpRedirectCode":     llx.StringData(convert.ToValue(rule.Redirect.HttpRedirectCode)),
 				"protocol":             llx.StringData(string(rule.Redirect.Protocol)),
@@ -1458,6 +1692,7 @@ func (a *mqlAwsS3Bucket) website() (*mqlAwsS3BucketWebsiteConfiguration, error) 
 
 		if rule.Condition != nil {
 			condition, err := CreateResource(a.MqlRuntime, ResourceAwsS3BucketWebsiteConfigurationRoutingRuleConditionConf, map[string]*llx.RawData{
+				"__id":                        llx.StringData(ruleID + "/condition"),
 				"httpErrorCodeReturnedEquals": llx.StringData(convert.ToValue(rule.Condition.HttpErrorCodeReturnedEquals)),
 				"keyPrefixEquals":             llx.StringData(convert.ToValue(rule.Condition.KeyPrefixEquals)),
 			})
@@ -1488,8 +1723,11 @@ func (a *mqlAwsS3BucketGrant) id() (string, error) {
 	return a.Id.Data, nil
 }
 
+// id returns the bucket-and-index qualified cache key set at construction.
+// `name` is the bucket name, which every CORS rule on a bucket shares, so it
+// cannot be the key on its own.
 func (a *mqlAwsS3BucketCorsrule) id() (string, error) {
-	return "s3.bucket.corsrule " + a.Name.Data, nil
+	return a.__id, nil
 }
 
 func (a *mqlAwsS3BucketPolicy) id() (string, error) {
@@ -1517,18 +1755,17 @@ func (a *mqlAwsS3BucketPolicy) version() (string, error) {
 	return policy.Version, nil
 }
 
-func (a *mqlAwsS3BucketPolicy) statements() ([]any, error) {
-	policy, err := a.parsePolicyDocument()
-	if err != nil {
-		return nil, err
-	}
-	return convert.JsonToDictSlice(policy.Statements)
-}
-
 func (a *mqlAwsS3Bucket) fetchLifecycleConfig() ([]s3types.LifecycleRule, error) {
 	a.lifecycleOnce.Do(func() {
+		region, ok, err := a.bucketRegion()
+		if err != nil {
+			a.lifecycleErr = err
+			return
+		}
+		if !ok {
+			return
+		}
 		bucketname := a.Name.Data
-		region := a.Location.Data
 		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 		svc := conn.S3(region)
 		ctx := context.Background()
@@ -1575,11 +1812,6 @@ func (a *mqlAwsS3Bucket) lifecycleRules() ([]any, error) {
 			resourceId = fmt.Sprintf("%s/lifecycle/%s", bucketArn, ruleId)
 		}
 
-		prefix := ""
-		if rule.Prefix != nil {
-			prefix = *rule.Prefix
-		}
-
 		filterDict, err := convert.JsonToDict(rule.Filter)
 		if err != nil {
 			return nil, err
@@ -1621,7 +1853,6 @@ func (a *mqlAwsS3Bucket) lifecycleRules() ([]any, error) {
 				"resourceId":                         llx.StringData(resourceId),
 				"id":                                 llx.StringData(ruleId),
 				"status":                             llx.StringData(string(rule.Status)),
-				"prefix":                             llx.StringData(prefix),
 				"filter":                             llx.DictData(filterDict),
 				"transitions":                        llx.ArrayData(transitions, types.Dict),
 				"expiration":                         llx.DictData(expirationDict),
@@ -1643,11 +1874,14 @@ func (a *mqlAwsS3BucketLifecycleRule) id() (string, error) {
 
 func (a *mqlAwsS3Bucket) notificationConfiguration() (any, error) {
 	// Placeholder buckets (e.g., cross-account references) can't be queried
-	if !a.Exists.Data {
+	region, ok, err := a.bucketRegion()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		return nil, nil
 	}
 	bucketname := a.Name.Data
-	region := a.Location.Data
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	svc := conn.S3(region)
@@ -1697,11 +1931,14 @@ func (a *mqlAwsS3Bucket) notificationConfiguration() (any, error) {
 
 func (a *mqlAwsS3Bucket) eventNotifications() ([]any, error) {
 	// Placeholder buckets (e.g., cross-account references) can't be queried
-	if !a.Exists.Data {
+	region, ok, err := a.bucketRegion()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		return nil, nil
 	}
 	bucketname := a.Name.Data
-	region := a.Location.Data
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	svc := conn.S3(region)
@@ -1797,12 +2034,16 @@ func (a *mqlAwsS3BucketEventNotification) topic() (*mqlAwsSnsTopic, error) {
 }
 
 func (a *mqlAwsS3Bucket) intelligentTieringConfigurations() ([]any, error) {
-	if !a.Exists.Data {
+	region, ok, err := a.bucketRegion()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		return nil, nil
 	}
 	bucketName := a.Name.Data
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.S3(a.Location.Data)
+	svc := conn.S3(region)
 	ctx := context.Background()
 
 	res := []any{}
@@ -1834,12 +2075,16 @@ func (a *mqlAwsS3Bucket) intelligentTieringConfigurations() ([]any, error) {
 }
 
 func (a *mqlAwsS3Bucket) inventoryConfigurations() ([]any, error) {
-	if !a.Exists.Data {
+	region, ok, err := a.bucketRegion()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		return nil, nil
 	}
 	bucketName := a.Name.Data
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.S3(a.Location.Data)
+	svc := conn.S3(region)
 	ctx := context.Background()
 
 	res := []any{}
@@ -1871,12 +2116,16 @@ func (a *mqlAwsS3Bucket) inventoryConfigurations() ([]any, error) {
 }
 
 func (a *mqlAwsS3Bucket) analyticsConfigurations() ([]any, error) {
-	if !a.Exists.Data {
+	region, ok, err := a.bucketRegion()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		return nil, nil
 	}
 	bucketName := a.Name.Data
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.S3(a.Location.Data)
+	svc := conn.S3(region)
 	ctx := context.Background()
 
 	res := []any{}
@@ -1908,12 +2157,16 @@ func (a *mqlAwsS3Bucket) analyticsConfigurations() ([]any, error) {
 }
 
 func (a *mqlAwsS3Bucket) requestPayment() (string, error) {
-	if !a.Exists.Data {
+	region, ok, err := a.bucketRegion()
+	if err != nil {
+		return "", err
+	}
+	if !ok {
 		return "", nil
 	}
 	bucketName := a.Name.Data
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.S3(a.Location.Data)
+	svc := conn.S3(region)
 	ctx := context.Background()
 
 	resp, err := svc.GetBucketRequestPayment(ctx, &s3.GetBucketRequestPaymentInput{Bucket: &bucketName})
@@ -1927,12 +2180,16 @@ func (a *mqlAwsS3Bucket) requestPayment() (string, error) {
 }
 
 func (a *mqlAwsS3Bucket) transferAcceleration() (string, error) {
-	if !a.Exists.Data {
+	region, ok, err := a.bucketRegion()
+	if err != nil {
+		return "", err
+	}
+	if !ok {
 		return "", nil
 	}
 	bucketName := a.Name.Data
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.S3(a.Location.Data)
+	svc := conn.S3(region)
 	ctx := context.Background()
 
 	resp, err := svc.GetBucketAccelerateConfiguration(ctx, &s3.GetBucketAccelerateConfigurationInput{Bucket: &bucketName})
@@ -1947,11 +2204,14 @@ func (a *mqlAwsS3Bucket) transferAcceleration() (string, error) {
 
 func (a *mqlAwsS3Bucket) ownershipControls() (string, error) {
 	// Placeholder buckets (e.g., cross-account references) can't be queried
-	if !a.Exists.Data {
+	region, ok, err := a.bucketRegion()
+	if err != nil {
+		return "", err
+	}
+	if !ok {
 		return "", nil
 	}
 	bucketname := a.Name.Data
-	region := a.Location.Data
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	svc := conn.S3(region)
@@ -2012,4 +2272,28 @@ func isS3BucketInaccessible(err error) bool {
 		return true
 	}
 	return false
+}
+
+func (a *mqlAwsS3BucketAccessPoint) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.S3Control(a.region)
+		apArn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &s3control.ListTagsForResourceInput{
+			AccountId:   aws.String(a.accountID),
+			ResourceArn: &apArn,
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("s3:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.Tags,
+			func(t s3controltypes.Tag) *string { return t.Key },
+			func(t s3controltypes.Tag) *string { return t.Value }), nil
+	})
 }

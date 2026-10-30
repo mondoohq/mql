@@ -1,0 +1,35 @@
+[
+  {
+    "ifindex": 5,
+    "ifname": "cluster",
+    "flags": ["NOARP", "MASTER", "UP", "LOWER_UP"],
+    "mtu": 65575,
+    "operstate": "UP",
+    "linkmode": "DEFAULT",
+    "group": "default",
+    "txqlen": 1000,
+    "link_type": "ether",
+    "address": "aa:bb:cc:00:00:05",
+    "linkinfo": {"info_kind": "vrf", "info_data": {"table": 1005}}
+  },
+  {
+    "ifindex": 6,
+    "ifname": "vr.mgmt",
+    "flags": ["NOARP", "MASTER", "UP", "LOWER_UP"],
+    "mtu": 65575,
+    "operstate": "UP",
+    "link_type": "ether",
+    "address": "aa:bb:cc:00:00:06",
+    "linkinfo": {"info_kind": "vrf", "info_data": {"table": 1006}}
+  },
+  {
+    "ifindex": 7,
+    "ifname": "t-blue",
+    "flags": ["NOARP", "MASTER"],
+    "mtu": 65575,
+    "operstate": "DOWN",
+    "link_type": "ether",
+    "address": "aa:bb:cc:00:00:07",
+    "linkinfo": {"info_kind": "vrf", "info_data": {"table": 1007}}
+  }
+]

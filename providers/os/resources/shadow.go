@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/os/resources/shadow"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/os/resources/shadow"
 )
 
 const defaultShadowConfig = "/etc/shadow"
@@ -52,6 +52,11 @@ func (s *mqlShadow) list() ([]any, error) {
 		return nil, err
 	}
 
+	// entries is already materialized in memory, but bound the count explicitly
+	// before sizing the result slice from this file-derived length.
+	if len(entries) > math.MaxInt/2 {
+		return nil, errors.New("shadow file has too many entries")
+	}
 	shadowEntryResources := make([]any, len(entries))
 	for i := range entries {
 		entry := entries[i]

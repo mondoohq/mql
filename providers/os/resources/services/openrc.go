@@ -6,11 +6,11 @@ package services
 import (
 	"bufio"
 	"io"
-	"path/filepath"
+	"path"
 	"regexp"
 
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 type OpenrcServiceManager struct {
@@ -25,6 +25,18 @@ func (s *OpenrcServiceManager) List() ([]*Service, error) {
 	const iniddPath = "/etc/init.d"
 	// retrieve service list by retrieving all files
 	var services []*Service
+
+	// Without /etc/init.d there are no OpenRC services to list. That is the
+	// normal state of a minimal Alpine container, which ships no init system,
+	// and it matches what the systemd manager returns when systemd is absent:
+	// an empty list, not an error.
+	ok, err := afero.Exists(s.conn.FileSystem(), iniddPath)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return services, nil
+	}
 
 	f, err := s.conn.FileSystem().Open(iniddPath)
 	if err != nil {
@@ -77,7 +89,7 @@ func (s *OpenrcServiceManager) List() ([]*Service, error) {
 			Installed: true,
 			Running:   serviceStatusMap[name], // read from status from rc-status command
 			Type:      "openrc",
-			Path:      filepath.Join(iniddPath, name),
+			Path:      path.Join(iniddPath, name),
 		})
 	}
 
@@ -129,7 +141,7 @@ func determineOpenRcRunlevel(fs afero.Fs) (map[string]bool, error) {
 		for i := range levels {
 			level := levels[i]
 
-			levelF, err := fs.Open(filepath.Join(runlevelRoot, level))
+			levelF, err := fs.Open(path.Join(runlevelRoot, level))
 			if err != nil {
 				return nil, err
 			}

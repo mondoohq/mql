@@ -1,0 +1,14 @@
+passwd:     files sss
+group:      files sss
+automount:  files
+
+# Included from /etc/authselect/user-nsswitch.conf
+
+# User maps, merged below the profile's maps
+  hosts:    files dns myhostname
+netgroup:   nis
+
+services:   files
+#shadow:    files
+
+

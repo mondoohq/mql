@@ -1,0 +1,66 @@
+{
+ "defaultRole": "network-operator",
+ "roles": {
+  "network-admin": {
+   "rules": [
+    {
+     "cmdPermission": "permit",
+     "cmdRegex": ".*",
+     "sequenceNumber": 10
+    }
+   ]
+  },
+  "network-operator": {
+   "rules": [
+    {
+     "cmdPermission": "deny",
+     "cmdRegex": "configure|bash|python-shell|\\|",
+     "mode": "exec",
+     "sequenceNumber": 10
+    },
+    {
+     "cmdPermission": "permit",
+     "cmdRegex": ".*",
+     "mode": "exec",
+     "sequenceNumber": 20
+    }
+   ]
+  },
+  "network-operator-hardened": {
+   "rules": [
+    {
+     "cmdPermission": "permit",
+     "cmdRegex": "show running-config (all)? ?sanitized",
+     "sequenceNumber": 10
+    },
+    {
+     "cmdPermission": "deny",
+     "cmdRegex": ">|>>|extension|\\||session|do|delete|copy|rmdir|mkdir|dir|diff",
+     "sequenceNumber": 20
+    },
+    {
+     "cmdPermission": "deny",
+     "cmdRegex": "python-shell|bash|platform|scp|append|redirect|tee|more|less|who|show run.*",
+     "sequenceNumber": 30
+    },
+    {
+     "cmdPermission": "deny",
+     "cmdRegex": "(no |default )?(username|role|aaa|tcpdump|schedule|event.*)",
+     "mode": "config",
+     "sequenceNumber": 40
+    },
+    {
+     "cmdPermission": "deny",
+     "cmdRegex": "(pull |push ).*",
+     "mode": "router-general-control-functions",
+     "sequenceNumber": 50
+    },
+    {
+     "cmdPermission": "permit",
+     "cmdRegex": ".*",
+     "sequenceNumber": 60
+    }
+   ]
+  }
+ }
+}

@@ -9,7 +9,7 @@ import "google/protobuf/timestamp.proto";
 import "providers-sdk/v1/upstream/mvd/cvss/cvss.proto";
 
 option go_package = 
-  "go.mondoo.com/mql/v13/providers-sdk/v1/upstream/mvd";
+  "go.mondoo.com/mql/providers-sdk/v1/upstream/mvd";
 
 message Platform {
   string name = 1;

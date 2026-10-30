@@ -1,22 +1,31 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/mql/v13/providers/proxmox"
-option go_package = "go.mondoo.com/mql/v13/providers/proxmox/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/proxmox"
+option go_package = "go.mondoo.com/mql/providers/proxmox/resources"
+option root = "proxmox"
 
 // Proxmox VE
 //
-// Use this resource to access the top-level Proxmox Virtual Environment
-// cluster. Query version and system information via `about`, enumerate
-// all virtual machines with `vms`, all LXC `containers`, list cluster
-// nodes with `nodes`, inspect storage pools via `storages`, manage
-// resource pools with `pools`, and audit users, groups, roles, ACL
-// entries, and authentication realms through `users`, `groups`,
-// `roles`, `acl`, and `realms`. Cluster-level HA, quorum, and firewall
-// configuration is available through `cluster`. Scheduled vzdump
-// backup jobs are exposed via `backupJobs`.
-proxmox {
+// Root of a Proxmox Virtual Environment cluster and the entry point for
+// auditing everything it runs. Version and system information is
+// available via `about`, the QEMU virtual machines and LXC containers it
+// hosts through `vms` and `containers`, and the physical `nodes`,
+// `storages`, and `pools` backing them. The access-control model is
+// exposed through `users`, `groups`, `roles`, `acl`, and `realms`;
+// cluster-wide HA, quorum, and firewall configuration through `cluster`;
+// scheduled vzdump backups through `backupJobs`; guest replication
+// through `replicationJobs`; software-defined networking through
+// `sdnZones` and `sdnVnets`; and the Ceph storage cluster, when one is
+// configured, through `ceph`.
+proxmox @root {
   // Version and system information
+  //
+  // Raw `/version` API response. Keys include `version` (the PVE manager
+  // version, e.g. `8.2.2`), `release` (the point release), and `repoid`
+  // (the package repository commit the build was produced from).
   about() dict
   // Cluster-level information (HA, quorum, corosync)
   cluster() proxmox.cluster
@@ -48,15 +57,446 @@ proxmox {
   sdnZones() []proxmox.sdn.zone
   // SDN virtual networks defined on the cluster
   sdnVnets() []proxmox.sdn.vnet
+  // Ceph storage cluster managed by this Proxmox deployment
+  ceph() proxmox.ceph
+  // SDN controllers driving the routing protocols behind EVPN and BGP zones
+  sdnControllers() []proxmox.sdn.controller
+  // IP address management backends the SDN allocates guest addresses from
+  sdnIpams() []proxmox.sdn.ipam
+  // DNS backends the SDN registers guest records in
+  sdnDnsServers() []proxmox.sdn.dns
+  // Every configured notification target, of every type
+  notificationTargets() []proxmox.notification.target
+  // Rules deciding which notifications reach which targets
+  notificationMatchers() []proxmox.notification.matcher
+  // Notification targets that mail through an SMTP server
+  smtpEndpoints() []proxmox.notification.smtpEndpoint
+  // Notification targets that mail through the local sendmail binary
+  sendmailEndpoints() []proxmox.notification.sendmailEndpoint
+  // Notification targets that post to a Gotify server
+  gotifyEndpoints() []proxmox.notification.gotifyEndpoint
+  // Notification targets that post to an arbitrary URL
+  webhookEndpoints() []proxmox.notification.webhookEndpoint
+  // External servers the cluster ships metrics to
+  metricServers() []proxmox.metricServer
+  // ACME accounts registered for automatic certificate issuance
+  acmeAccounts() []proxmox.acme.account
+  // ACME DNS challenge plugins configured on the cluster
+  acmePlugins() []proxmox.acme.plugin
+  // Corosync cluster membership and transport configuration
+  corosync() proxmox.corosync
+  // Cluster-wide PCI device mappings guests can be granted by name
+  pciMappings() []proxmox.mapping.pci
+  // Cluster-wide USB device mappings guests can be granted by name
+  usbMappings() []proxmox.mapping.usb
+  // Scheduled imports of users and groups from directory realms
+  realmSyncJobs() []proxmox.realm.syncJob
+}
+
+// SDN controller
+//
+// Controller driving the routing protocol behind an SDN zone, selected
+// by `controller` (for example `proxmox.sdn.controller(controller:
+// "evpnctl")`). EVPN and BGP zones need one to exchange routes with the
+// physical network, so `type`, `asn`, and `peers` describe which
+// external routers the cluster peers with and under whose autonomous
+// system number. The `state` field reports whether the configuration
+// has been applied.
+proxmox.sdn.controller @defaults("controller type asn") {
+  // Controller name
+  controller string
+  // Controller type (`evpn`, `bgp`, `isis`, `faucet`)
+  type string
+  // Node the controller is active on; empty when it applies to all
+  node string
+  // Node restriction from the controller config, comma-separated
+  nodes string
+  // State of the configuration object (`new`, `changed`, `deleted`, or empty when applied)
+  state string
+  // Local autonomous system number, for BGP and EVPN
+  asn int
+  // Peer router addresses, comma-separated
+  peers string
+  // Whether external BGP is enabled, making peers remote-as external
+  ebgp bool
+  // Maximum hop count permitted to external BGP peers; 0 when unset
+  ebgpMultihop int
+  // Whether to use external or internal BGP, or choose automatically
+  bgpMode string
+  // Loopback interface providing the router IP, for BGP
+  loopback string
+  // IS-IS domain name
+  isisDomain string
+  // Network entity title for this node in the IS-IS network
+  isisNet string
+  // Interfaces IS-IS is active on, comma-separated
+  isisIfaces string
+}
+
+// SDN IP address management backend
+//
+// Address management backend the SDN allocates guest addresses from,
+// selected by `ipam`. The `type` field names the implementation:
+// `pve` for the built-in allocator, or `netbox` and `phpipam` for
+// external systems the cluster reaches over an API.
+proxmox.sdn.ipam @defaults("ipam type") {
+  // IPAM name
+  ipam string
+  // Backend type (`pve`, `netbox`, `phpipam`)
+  type string
+}
+
+// SDN DNS backend
+//
+// DNS backend the SDN registers guest records in, selected by `dns`.
+// The `type` field names the implementation, currently `powerdns`.
+proxmox.sdn.dns @defaults("dns type") {
+  // DNS backend name
+  dns string
+  // Backend type
+  type string
+}
+
+// Proxmox VE notification target
+//
+// Configured destination for cluster notifications, selected by `name`.
+// This is the type-independent view of every target: backup failures,
+// replication errors, fencing events, and package updates all reach an
+// operator only through one of these, so a cluster with none is running
+// unobserved. The `type` field says which transport carries it
+// (`smtp`, `sendmail`, `gotify`, `webhook`), and the matching endpoint
+// list holds the transport-specific settings. The `origin` field
+// distinguishes operator-created targets from the built-in default.
+//
+// Reading notification configuration requires Mapping.Audit on
+// `/mapping/notifications`, which the PVEAuditor role does not include.
+// A token without it sees an empty list.
+proxmox.notification.target @defaults("name type disabled") {
+  // Target name
+  name string
+  // Transport type (`smtp`, `sendmail`, `gotify`, `webhook`)
+  type string
+  // Whether the target is created by an operator or built in
+  //
+  // One of `user-created`, `builtin`, or `modified-builtin`.
+  origin string
+  // Whether the target is disabled and will not be notified
+  disabled bool
+  // Operator comment on the target
+  comment string
+}
+
+// Proxmox VE notification matcher
+//
+// Rule deciding which notifications reach which targets, selected by
+// `name`. A matcher that reaches no target, or one disabled matcher
+// where an operator expected coverage, silently drops the events it
+// governs. The `matchSeverity`, `matchField`, and `matchCalendar`
+// fields hold the conditions, `mode` says whether all or any of them
+// must hold, `invertMatch` flips the result, and `targets` names the
+// destinations notified on a match.
+proxmox.notification.matcher @defaults("name mode disabled") {
+  // Matcher name
+  name string
+  // Whether all or any of the configured conditions must hold (`all` or `any`)
+  mode string
+  // Notification severities matched
+  matchSeverity []string
+  // Metadata field conditions matched, as `(regex|exact):field=value`
+  matchField []string
+  // Timestamp conditions matched, as systemd calendar events
+  matchCalendar []string
+  // Whether the overall match result is inverted
+  invertMatch bool
+  // Names of the targets notified when the matcher fires
+  targets []string
+  // Whether the matcher is created by an operator or built in
+  origin string
+  // Whether the matcher is disabled
+  disabled bool
+  // Operator comment on the matcher
+  comment string
+}
+
+// SMTP notification endpoint
+//
+// Notification target that mails through an SMTP server, selected by
+// `name`. The `mode` field is the security-relevant one: it decides
+// whether the connection is encrypted (`tls`, `starttls`) or sent in
+// the clear (`insecure`), which matters because `username` authenticates
+// with a password on the same connection. That password is never
+// returned by the API and is not exposed here.
+proxmox.notification.smtpEndpoint @defaults("name server port mode") {
+  // Endpoint name
+  name string
+  // Address of the SMTP server
+  server string
+  // Port used for the connection; 0 when the default applies
+  //
+  // Proxmox defaults to 465 for TLS and 587 for STARTTLS.
+  port int
+  // Encryption method used for the connection
+  //
+  // One of `tls`, `starttls`, or `insecure`. An empty value takes the
+  // Proxmox default of `tls`.
+  mode string
+  // From address on the mail
+  fromAddress string
+  // Author name on the mail
+  author string
+  // Username authenticating to the SMTP server; empty when unauthenticated
+  username string
+  // Recipient email addresses
+  mailto []string
+  // Recipient Proxmox users, notified at their configured address
+  mailtoUser []string
+  // Whether the endpoint is created by an operator or built in
+  origin string
+  // Whether the endpoint is disabled
+  disabled bool
+  // Operator comment on the endpoint
+  comment string
+}
+
+// Sendmail notification endpoint
+//
+// Notification target that hands mail to the local sendmail binary,
+// selected by `name`. Delivery depends entirely on the host mail
+// transfer agent, so `mailto` and `mailtoUser` say who is meant to be
+// reached but not whether anything actually leaves the node.
+proxmox.notification.sendmailEndpoint @defaults("name disabled") {
+  // Endpoint name
+  name string
+  // From address on the mail
+  fromAddress string
+  // Author name on the mail
+  author string
+  // Recipient email addresses
+  mailto []string
+  // Recipient Proxmox users, notified at their configured address
+  mailtoUser []string
+  // Whether the endpoint is created by an operator or built in
+  origin string
+  // Whether the endpoint is disabled
+  disabled bool
+  // Operator comment on the endpoint
+  comment string
+}
+
+// Gotify notification endpoint
+//
+// Notification target that posts to a Gotify server, selected by
+// `name`. The `server` URL carries the scheme, so it shows whether
+// notifications, which are authenticated with a bearer token, travel
+// over HTTPS or plain HTTP. The token itself is never returned by the
+// API and is not exposed here.
+proxmox.notification.gotifyEndpoint @defaults("name server disabled") {
+  // Endpoint name
+  name string
+  // Gotify server URL
+  server string
+  // Whether the endpoint is created by an operator or built in
+  origin string
+  // Whether the endpoint is disabled
+  disabled bool
+  // Operator comment on the endpoint
+  comment string
+}
+
+// Webhook notification endpoint
+//
+// Notification target that posts to an arbitrary URL, selected by
+// `name`. The `url` scheme shows whether the payload, which can carry
+// cluster names and failure detail, travels encrypted. The
+// `headerNames` and `secretNames` fields list which headers and secrets
+// are configured without their values, since a header value can itself
+// carry an API token.
+proxmox.notification.webhookEndpoint @defaults("name url method") {
+  // Endpoint name
+  name string
+  // Destination URL
+  url string
+  // HTTP method used for the request
+  method string
+  // Names of the HTTP headers set on the request, without their values
+  headerNames []string
+  // Names of the configured secrets, without their values
+  secretNames []string
+  // Whether the endpoint is created by an operator or built in
+  origin string
+  // Whether the endpoint is disabled
+  disabled bool
+  // Operator comment on the endpoint
+  comment string
+}
+
+// External metric server
+//
+// External InfluxDB or Graphite server the cluster ships metrics to,
+// selected by `id`. Guest names, node names, and resource figures leave
+// the cluster continuously through these, so `server`, `port`, and
+// `type` describe where that stream goes. The Graphite and
+// InfluxDB-UDP transports carry no authentication or encryption at all.
+// The API token for the HTTP transports is not returned by the API.
+proxmox.metricServer @defaults("id type server port") {
+  // Metric server entry id
+  id string
+  // Plugin type (`influxdb` or `graphite`)
+  type string
+  // Server DNS name or IP address
+  server string
+  // Server network port
+  port int
+  // Whether the metric server is disabled and receives nothing
+  disabled bool
+}
+
+// ACME account
+//
+// ACME account registered for automatic certificate issuance, selected
+// by `name`. Nodes issue their API certificates through one of these,
+// so the presence of an account is what separates automatically renewed
+// certificates from manually managed ones.
+proxmox.acme.account @defaults("name") {
+  // Account name
+  name string
+}
+
+// ACME challenge plugin
+//
+// DNS-01 challenge plugin used to prove domain control during
+// certificate issuance, selected by `plugin`. Each plugin holds
+// credentials for a DNS provider that can create records on the
+// cluster's domain, so `api` names which provider that is and `nodes`
+// which nodes may use it. The credential data itself is not exposed
+// here.
+//
+// Reading plugin configuration requires Sys.Modify, which no audit role
+// carries. A read-only token sees an empty list.
+proxmox.acme.plugin @defaults("plugin type api") {
+  // Plugin instance identifier
+  plugin string
+  // ACME challenge type (`dns` or `standalone`)
+  type string
+  // DNS provider plugin name
+  api string
+  // Node restriction, comma-separated; empty when unrestricted
+  nodes string
+  // Whether the plugin is disabled
+  disabled bool
+  // Extra seconds to wait before requesting validation
+  validationDelay int
+}
+
+// Corosync cluster configuration
+//
+// Corosync membership and transport configuration underpinning the
+// cluster. Quorum is decided here: `nodes` lists every member with its
+// vote count and ring addresses, so a cluster whose members all reach
+// each other over a single link has no redundancy against that link
+// failing. The `qdevice` field reports an external tie-breaker when one
+// is configured, and `totem` holds the raw transport settings.
+//
+// A standalone node has no corosync configuration; `nodes` is empty
+// there.
+proxmox.corosync @defaults("preferredNode") {
+  // Cluster members and their corosync links
+  nodes() []proxmox.corosync.node
+  // Node the API suggests joining through
+  preferredNode() string
+  // Raw corosync totem transport settings
+  //
+  // Keys mirror the corosync totem section, including `cluster_name`,
+  // `config_version`, `transport`, `secauth`, `crypto_cipher`, and
+  // `crypto_hash`.
+  totem() dict
+  // Digest of the corosync configuration
+  configDigest() string
+  // External quorum device configuration
+  //
+  // A QDevice provides a tie-breaking vote so a two-node cluster can
+  // keep quorum when one node fails. Empty when none is configured.
+  qdevice() dict
+}
+
+// Corosync cluster member
+//
+// Single member of the corosync cluster, selected by `name`. The
+// `quorumVotes` field is what the member contributes toward quorum, and
+// `ring0Address` and `ring1Address` are the links it communicates over.
+// A member with only ring 0 configured loses cluster membership if that
+// network fails.
+proxmox.corosync.node @defaults("name nodeId ring0Address quorumVotes") {
+  // Cluster node name
+  name string
+  // Corosync node id
+  nodeId int
+  // Votes this member contributes toward quorum
+  quorumVotes int
+  // Address of the primary corosync link
+  ring0Address string
+  // Address of the redundant corosync link; empty when only one link is configured
+  ring1Address string
+  // Address the Proxmox API is reached on
+  apiAddress string
+  // SHA-256 fingerprint of the node's API certificate
+  certificateFingerprint string
+}
+
+// Cluster-wide PCI device mapping
+//
+// Named alias for a physical PCI device, selected by `id`. A mapping
+// grants a guest direct hardware access by name instead of by host
+// address, which lets the guest migrate between nodes and keep the
+// passthrough. Each mapping bypasses the virtualization boundary for
+// the mapped device on every node it covers, so `entries` lists the
+// per-node device addresses and IOMMU groups it resolves to.
+//
+// Reading mappings requires Mapping.Audit on `/mapping/pci`. A token
+// without it sees an empty list.
+proxmox.mapping.pci @defaults("id description") {
+  // Logical mapping id, used in guest configuration
+  id string
+  // Operator description of the mapping
+  description string
+  // Per-node device entries the mapping resolves to
+  //
+  // Each entry holds the `node` it applies to, the `path` of the PCI
+  // address, the `id` of the vendor and device, and optionally
+  // `iommugroup` and `subsystem-id`.
+  entries []dict
+}
+
+// Cluster-wide USB device mapping
+//
+// Named alias for a physical USB device, selected by `id`. A mapping
+// grants a guest direct access to host USB hardware by name rather than
+// by bus path, so the passthrough survives migration. Each mapping
+// exposes the device to whatever the guest runs, so `entries` lists the
+// per-node paths and vendor identifiers it resolves to.
+//
+// Reading mappings requires Mapping.Audit on `/mapping/usb`. A token
+// without it sees an empty list.
+proxmox.mapping.usb @defaults("id description") {
+  // Logical mapping id, used in guest configuration
+  id string
+  // Operator description of the mapping
+  description string
+  // Per-node device entries the mapping resolves to
+  //
+  // Each entry holds the `node` it applies to, the `id` of the vendor
+  // and product, and either a `path` naming a specific port or no path
+  // at all, which matches the device on any port.
+  entries []dict
 }
 
 // Proxmox VE cluster
 //
-// Examine cluster-level configuration and health. Includes the cluster
-// `name`, `version`, quorum status via `quorate`, and `nodeCount`.
-// High-availability resources are listed through `haResources`,
-// cluster-wide firewall rules through `firewallRules`, and global
-// cluster options through `options`.
+// Cluster-level configuration and health for a Proxmox VE deployment.
+// Reports the cluster `name`, config `version`, quorum status via
+// `quorate`, and `nodeCount`. High-availability resources are listed
+// through `haResources`, cluster-wide firewall rules through
+// `firewallRules`, and global cluster options through `options`.
 proxmox.cluster @defaults("name quorate") {
   // Cluster name
   name string
@@ -84,7 +524,14 @@ proxmox.cluster @defaults("name quorate") {
   // `type=group`. Auditing the group definitions lets policies verify
   // that the referenced rules match their stated intent.
   firewallGroups() []proxmox.firewall.group
-  // Cluster-level options
+  // Cluster-wide options from /cluster/options
+  //
+  // Raw key/value settings that apply across the whole cluster, mirroring
+  // the Proxmox /cluster/options API. Common keys include `keyboard`,
+  // `language`, `console`, `migration`, `bwlimit`, `mac_prefix`,
+  // `max_workers`, `email_from`, and `crs`. The most commonly audited
+  // values are also surfaced as dedicated fields: `migrationPolicy`,
+  // `migrationNetwork`, `consoleViewer`, and `bandwidthLimits`.
   options() dict
   // Migration network policy
   //
@@ -106,15 +553,73 @@ proxmox.cluster @defaults("name quorate") {
   // mirror /cluster/options (`default`, `restore`, `migration`, etc.).
   // Empty when no limits are set.
   bandwidthLimits() dict
+  // Fencing mode of the high-availability stack
+  //
+  // One of `watchdog`, `hardware`, or `both`. Watchdog fencing relies on
+  // the node resetting itself, so a node that hangs without triggering its
+  // watchdog can keep running guests the cluster has already recovered
+  // elsewhere. Empty when not configured; Proxmox defaults to `watchdog`.
+  fencingMode() string
+  // Policy for high-availability guests when a node shuts down
+  //
+  // One of `freeze`, `failover`, `conditional`, or `migrate`. `freeze`
+  // leaves guests down until the node returns, so a node taken out of
+  // service takes its guests with it. Empty when not configured; Proxmox
+  // defaults to `conditional`.
+  haShutdownPolicy() string
+  // WebAuthn relying party name
+  //
+  // The text identifier shown to users when they register or use a hardware
+  // security key. Empty when WebAuthn is not configured, in which case
+  // hardware second factors cannot be enrolled anywhere in the cluster.
+  webauthnRelyingParty() string
+  // WebAuthn relying party ID
+  //
+  // The bare domain name, with no protocol, port, or path, that existing
+  // credentials are bound to. Changing it invalidates every enrolled
+  // security key. Empty when WebAuthn is not configured.
+  webauthnId() string
+  // WebAuthn site origin
+  //
+  // The `https://` URL users reach the web interface at. A mismatch against
+  // the address users actually type stops their security keys from being
+  // offered at all. Empty when WebAuthn is not configured.
+  webauthnOrigin() string
+  // Whether WebAuthn accepts a subdomain of the origin
+  //
+  // Accepting subdomains widens which hostname may present the credential,
+  // so a hostile subdomain of the cluster's domain can solicit an
+  // authentication. True when the setting is absent, which is the Proxmox
+  // default. Null when WebAuthn is not configured.
+  webauthnAllowSubdomains() bool
+  // U2F application ID override
+  //
+  // Empty when not overridden, in which case U2F falls back to the origin.
+  // U2F is the predecessor of WebAuthn and is kept only for keys enrolled
+  // before WebAuthn existed.
+  u2fAppId() string
+  // U2F origin override
+  //
+  // Empty when not overridden.
+  u2fOrigin() string
+  // Guests no backup job covers
+  //
+  // Proxmox computes this by intersecting every backup job's selection,
+  // including pool membership and exclusion lists, against the live guest
+  // inventory, which the job definitions alone cannot answer. Empty when
+  // every guest is covered by at least one job. Null when the cluster does
+  // not serve the endpoint or the token cannot read it, so an unanswered
+  // question is not reported as full coverage.
+  guestsWithoutBackup() []proxmox.cluster.guestWithoutBackup
 }
 
 // Proxmox VE cluster HA resource
 //
-// Examine a high-availability resource managed by the cluster. Each
-// entry is identified by `id` (e.g. `vm:100`) and `type` (vm or ct),
-// and reports its current `status`, assigned `node`, desired `state`
-// (started, stopped, disabled), HA `group`, and the maximum number of
-// restart and relocate attempts via `maxRestart` and `maxRelocate`.
+// High-availability resource managed by the cluster, identified by `id`
+// (e.g. `vm:100`) and `type` (vm or ct). Reports its current `status`,
+// assigned `node`, desired `state` (started, stopped, disabled), HA
+// `group`, and the maximum number of restart and relocate attempts via
+// `maxRestart` and `maxRelocate`.
 proxmox.cluster.haResource @defaults("id type status") {
   // Resource ID (e.g. vm:100)
   id string
@@ -131,7 +636,10 @@ proxmox.cluster.haResource @defaults("id type status") {
   // Desired state (started, stopped, disabled)
   state string
   // HA group
-  group string
+  //
+  // Deprecated in favor of `groupRef`, which resolves the same group as
+  // an HA group resource.
+  group @maturity("deprecated") @replaced_by("proxmox.cluster.haResource.groupRef") string
   // VM this resource refers to when `type` is `vm`; null otherwise
   vm() proxmox.vm
   // Container this resource refers to when `type` is `ct`; null otherwise
@@ -142,7 +650,7 @@ proxmox.cluster.haResource @defaults("id type status") {
 
 // Proxmox VE node
 //
-// Examine a physical or virtual host in the Proxmox cluster, identified
+// Physical or virtual host in the Proxmox cluster, identified
 // by `name`. Reports hardware details including CPU model, socket and
 // core counts, memory and swap totals, as well as current utilization
 // via `cpuUsage`, `memUsed`, and `memFree`. System information covers
@@ -164,13 +672,13 @@ proxmox.node @defaults("name status") {
   // --- Hardware ---
 
   // CPU model name
-  cpuModel string
+  cpuModel() string
   // Number of CPU sockets
-  cpuSockets int
+  cpuSockets() int
   // Number of CPU cores
-  cpuCores int
+  cpuCores() int
   // Current CPU usage (fraction 0.0-1.0)
-  cpuUsage float
+  cpuUsage() float
   // CPU feature flags reported by /proc/cpuinfo
   //
   // Space-separated when set, empty on older PVE versions that don't
@@ -179,36 +687,34 @@ proxmox.node @defaults("name status") {
   // `md_clear`, `pti`, etc.
   cpuFlags() string
   // Total memory in bytes
-  memTotal int
+  memTotal() int
   // Used memory in bytes
-  memUsed int
+  memUsed() int
   // Free memory in bytes
-  memFree int
+  memFree() int
   // Total swap in bytes
-  swapTotal int
+  swapTotal() int
   // Used swap in bytes
-  swapUsed int
+  swapUsed() int
 
   // --- System ---
 
   // Running kernel version
-  kernelVersion string
+  kernelVersion() string
   // PVE manager version
-  pveVersion string
+  pveVersion() string
   // Uptime in seconds
-  uptime int
+  uptime() int
   // Kernel image that would boot on next reboot
   //
-  // When this differs from `kernelVersion` a kernel package has been
-  // installed but the host hasn't been rebooted to pick it up. Empty
-  // on older PVE versions that don't report `boot-info`.
+  // Always null: the Proxmox API reports the running kernel and the boot
+  // mode, but not which kernel the node boots next.
   bootKernel() string
   // Whether a kernel upgrade is pending a reboot
   //
-  // True when `kernelVersion` and `bootKernel` disagree. False when
-  // either value is empty so older PVE versions don't false-positive.
+  // Always null, since the kernel the node boots next is not reported.
   pendingReboot() bool
-  // UEFI Secure Boot status — true when enforcing, false when disabled or on BIOS-only platforms
+  // UEFI Secure Boot status: true when enforcing, false when disabled or on BIOS-only platforms
   secureBoot() bool
 
   // --- Network ---
@@ -226,7 +732,7 @@ proxmox.node @defaults("name status") {
   // --- Time ---
 
   // Configured timezone
-  timezone string
+  timezone() string
 
   // --- Storage ---
 
@@ -292,7 +798,7 @@ proxmox.node @defaults("name status") {
 
 // Proxmox VE node package update
 //
-// Examine an available package update on a Proxmox node. Reports the
+// Available package update on a Proxmox node. Reports the
 // `package` name, `installedVersion`, and available `newVersion`.
 // The `severity` field indicates urgency (important, recommended,
 // optional), enabling audits for outstanding security patches.
@@ -309,17 +815,17 @@ proxmox.node.update @defaults("package newVersion severity") {
 
 // Proxmox VE virtual machine
 //
-// Examine a QEMU virtual machine in the cluster, identified by numeric
-// `id` and display `name`. Reports current `status` (running, stopped,
-// paused), the `node` it runs on, and resource usage including `cpu`,
-// `mem`, `disk`, `netin`, and `netout`. Configuration details — OS
-// type, machine type, BIOS, boot order, guest agent state, protection,
-// description, and tags — are available as computed fields. Network
-// interfaces are listed through `networks`, storage devices through
-// `disks`, and point-in-time `snapshots` through the snapshots field.
-// VM-level firewall rules are accessible via `firewallRules`, and
-// installed packages with available updates via `updates` (requires
-// the QEMU guest agent).
+// QEMU virtual machine in the cluster, identified by numeric `id` and
+// display `name`. Current `status` (running, stopped, paused), the
+// `node` it runs on, and live resource usage (`cpu`, `mem`, `disk`,
+// `netin`, `netout`) come from the cluster resource list, while
+// configuration details (OS type, machine type, BIOS, boot order,
+// guest agent state, protection, hookscript, and passthrough devices)
+// are read from the per-VM config. Attached `networks`, `disks`, and
+// point-in-time `snapshots` model the VM's devices; `firewallRules`,
+// `firewallOptions`, `ipsets`, and `aliases` cover the VM-level
+// firewall; and `updates` lists installed packages with available
+// upgrades (requires the QEMU guest agent).
 proxmox.vm @defaults("id name status") {
   // VMID
   id int
@@ -327,6 +833,12 @@ proxmox.vm @defaults("id name status") {
   name string
   // Node this VM is running on
   node string
+  // Host the VM runs on
+  //
+  // Resolves `node` against the cluster, giving access to the host's
+  // status, address, kernel, subscription level, and firewall from the
+  // VM itself. Null when the named node is no longer in the cluster.
+  nodeRef() proxmox.node
   // Current status (running, stopped, paused)
   status string
 
@@ -359,7 +871,13 @@ proxmox.vm @defaults("id name status") {
 
   // --- Configuration (lazy-loaded via separate API call) ---
 
-  // Full VM configuration as dictionary
+  // Raw VM configuration
+  //
+  // The complete per-VM config as returned by the PVE API, keyed by the
+  // raw config keys (`cores`, `memory`, `ostype`, `boot`, `net0`,
+  // `scsi0`, and so on). The common keys are also exposed as their own
+  // fields on this resource (`osType`, `machine`, `bios`, `bootOrder`);
+  // this dict is the escape hatch for keys not modeled individually.
   config() dict
   // OS type (l26, win10, etc.)
   osType() string
@@ -417,6 +935,118 @@ proxmox.vm @defaults("id name status") {
   // device paths — all of which surface direct host-USB access.
   usbDevices() []proxmox.vm.usbDevice
 
+  // --- Boot integrity and memory encryption ---
+
+  // Size and type of the EFI vars disk
+  //
+  // Either `4m` or `2m`. Secure Boot requires `4m`; Proxmox falls back to
+  // `2m` when an EFI vars disk carries no explicit setting, for backwards
+  // compatibility with guests created before `4m` existed. Null when the
+  // VM has no EFI vars disk, which is the case for every SeaBIOS guest.
+  efiType() string
+  // Whether the EFI vars disk ships pre-enrolled Secure Boot keys
+  //
+  // True when the EFI vars disk was created from the template that already
+  // holds the distribution and Microsoft Standard keys, which turns Secure
+  // Boot on inside the guest by default. False when the disk exists without
+  // the setting, the state Proxmox documents as its default. Null when the
+  // VM has no EFI vars disk, since nothing is enrolled either way. Note
+  // that a guest can still switch Secure Boot off from inside its own
+  // firmware, so this reports what the hypervisor supplied rather than what
+  // the guest currently enforces.
+  preEnrolledKeys() bool
+  // Whether a virtual TPM is attached
+  //
+  // A vTPM state disk is what lets a guest measure its boot chain and seal
+  // secrets to it. Windows 11 will not install without one, and BitLocker
+  // falls back to a recovery password when it is missing.
+  vtpmPresent() bool
+  // Virtual TPM interface version
+  //
+  // Either `v2.0` or `v1.2`. Proxmox uses `v1.2` when an attached vTPM
+  // carries no explicit version, and the version cannot be changed once the
+  // state disk exists. Null when no virtual TPM is attached.
+  vtpmVersion() string
+  // AMD SEV memory encryption type
+  //
+  // One of `std` for Secure Encrypted Virtualization, `es` for SEV with
+  // Encrypted State, or `snp` for SEV Secure Nested Paging. Null when the
+  // VM runs without SEV, leaving guest memory readable from the host.
+  sevType() string
+  // Whether SEV debugging of the guest is blocked
+  //
+  // Debugging a running SEV guest from the host defeats the point of
+  // encrypting its memory. False when SEV is configured without the
+  // setting, which is the Proxmox default. Null when the VM does not use
+  // SEV.
+  sevNoDebug() bool
+  // Whether SEV key sharing with other guests is blocked
+  //
+  // Sharing a memory encryption key lets two guests read each other's
+  // encrypted pages. False when SEV is configured without the setting,
+  // which is the Proxmox default. Null when the VM does not use SEV.
+  sevNoKeySharing() bool
+  // Whether SEV measures the kernel, initrd, and command line
+  //
+  // Without kernel hashes a direct-kernel-boot SEV guest cannot attest what
+  // it actually booted. False when SEV is configured without the setting,
+  // which is the Proxmox default. Null when the VM does not use SEV.
+  sevKernelHashes() bool
+
+  // --- CPU exposure, hotplug, and entropy ---
+
+  // Emulated CPU model
+  //
+  // The `cputype` of the CPU presented to the guest, for example `host`,
+  // `x86-64-v2-AES`, or `kvm64`. A model older than the host hides newer
+  // instructions from the guest, including the ones that carry speculative
+  // execution mitigations. Empty when the VM uses the Proxmox default.
+  cpuType() string
+  // CPU feature flags forced on or off for the guest
+  //
+  // Each entry is one flag with its sign, for example `+spec-ctrl`,
+  // `+ssbd`, `+pdpe1gb`, or `-md-clear`. These decide whether the guest can
+  // see and use the Spectre and MDS mitigations the host CPU offers, which
+  // a guest cannot enable for itself. Empty when no flags are overridden.
+  cpuFlags() []string
+  // Whether the KVM hypervisor signature is hidden from the guest
+  //
+  // Hiding the signature is normally done so a guest driver or an
+  // anti-cheat check does not detect virtualization, and also hides it from
+  // in-guest security tooling. False when the setting is absent, which is
+  // the Proxmox default.
+  cpuHidden() bool
+  // Whether KVM hardware virtualization is enabled
+  //
+  // With KVM off the VM runs under pure software emulation, which loses the
+  // hardware-enforced boundary between guest and host and rules out nested
+  // virtualization features that depend on it. True when the setting is
+  // absent, which is the Proxmox default.
+  kvmEnabled() bool
+  // Device classes that can be attached to the running guest
+  //
+  // Each entry is one hotplug class, from `network`, `disk`, `cpu`,
+  // `memory`, `usb`, and `cloudinit`. A guest with `usb` or `disk` hotplug
+  // accepts new devices without a restart, so its device inventory can
+  // change between two scans. Reports `network`, `disk`, and `usb` when the
+  // setting is absent, which is the Proxmox default; empty only when
+  // hotplug is switched off outright.
+  hotplugFeatures() []string
+  // Host device the guest draws entropy from
+  //
+  // One of `/dev/urandom`, `/dev/random`, or `/dev/hwrng`. The blocking
+  // sources let a guest starve the host and its other guests of entropy.
+  // Null when the VM has no random number generator, in which case the
+  // guest relies on whatever entropy its own kernel can gather.
+  rngSource() string
+  // Bytes of host entropy the guest may draw per period
+  //
+  // A limiter on how fast the guest can consume the host source, where zero
+  // removes the limit entirely. Null when the VM has no random number
+  // generator, and null when the generator leaves the limiter unset, since
+  // Proxmox applies its own limit in that case rather than none.
+  rngMaxBytes() int
+
   // --- Cloud-init ---
 
   // Default username injected by cloud-init; empty when not configured
@@ -446,7 +1076,7 @@ proxmox.vm @defaults("id name status") {
   // Network interfaces attached to the VM
   networks() []proxmox.vm.network
   // Disk devices attached to the VM
-  disks() []proxmox.vm.disk
+  disks() []proxmox.vm.virtualDisk
 
   // --- Snapshots ---
 
@@ -464,6 +1094,21 @@ proxmox.vm @defaults("id name status") {
   // VM-level firewall aliases
   aliases() []proxmox.firewall.alias
 
+  // --- Backups ---
+
+  // Backup archives held for this virtual machine
+  //
+  // Every backup volume across all storages that owns this VMID, newest
+  // first. Reports what was actually captured, which scheduled backup
+  // jobs alone cannot confirm. Empty when the guest has never been
+  // backed up to a storage this token can read.
+  backups() []proxmox.storage.volume
+  // When this virtual machine was last backed up
+  //
+  // Creation time of the newest backup archive owned by this guest.
+  // Null when no backup exists.
+  lastBackupAt() time
+
   // --- Updates (via QEMU Guest Agent) ---
 
   // Installed packages and available updates
@@ -472,10 +1117,10 @@ proxmox.vm @defaults("id name status") {
 
 // Proxmox VE VM network interface
 //
-// Examine a network interface attached to a virtual machine. The `id`
-// field identifies the slot (e.g. `net0`, `net1`). Reports the NIC
-// `model` (virtio, e1000, etc.), `macAddress`, connected `bridge`,
-// VLAN `tag`, and whether the per-NIC `firewall` is enabled.
+// Network interface attached to a virtual machine, keyed by the slot
+// `id` (e.g. `net0`, `net1`). Covers the NIC `model` (virtio, e1000,
+// etc.), `macAddress`, connected `bridge`, VLAN `tag`, and whether the
+// per-NIC `firewall` is enabled.
 proxmox.vm.network @defaults("id model bridge") {
   // Interface ID (net0, net1, ...)
   id string
@@ -491,18 +1136,20 @@ proxmox.vm.network @defaults("id model bridge") {
   firewall bool
 }
 
-// Proxmox VE VM disk
+// Proxmox VE virtual disk
 //
-// Examine a disk device attached to a virtual machine. The `id` field
-// identifies the controller slot (e.g. `scsi0`, `virtio0`, `ide0`).
-// Reports the `storage` pool name, disk `size` in bytes, `format`
-// (qcow2, raw, vmdk), cache `cache` mode, and whether `iothread` and
-// `backup` are enabled for this disk.
-proxmox.vm.disk @defaults("id storage size") {
+// Virtual disk attached to a virtual machine, keyed by the controller
+// slot `id` (e.g. `scsi0`, `virtio0`, `ide0`). Covers the `storage`
+// pool name, disk `size` in bytes, `format` (qcow2, raw, vmdk), `cache`
+// mode, and whether `iothread` and `backup` are enabled for this disk.
+proxmox.vm.virtualDisk @defaults("id storage size") {
   // Disk ID (scsi0, virtio0, ide0, ...)
   id string
   // Storage pool name
-  storage string
+  //
+  // Deprecated in favor of `storageRef`, which resolves the same pool
+  // as a storage resource.
+  storage @maturity("deprecated") @replaced_by("proxmox.vm.virtualDisk.storageRef") string
   // Disk size in bytes
   size int
   // Disk format (qcow2, raw, vmdk)
@@ -519,10 +1166,10 @@ proxmox.vm.disk @defaults("id storage size") {
 
 // Proxmox VE VM snapshot
 //
-// Examine a point-in-time snapshot of a virtual machine. Reports the
-// snapshot `name`, `description`, `parent` snapshot name, creation
-// time via `snaptime` (Unix timestamp), and whether VM RAM state is
-// captured in `vmstate`.
+// Point-in-time snapshot of a virtual machine. Covers the snapshot
+// `name`, `description`, `parent` snapshot name, creation time via
+// `snaptime` (Unix timestamp), and whether VM RAM state is captured
+// in `vmstate`.
 proxmox.vm.snapshot @defaults("name snaptime") {
   // Snapshot name
   name string
@@ -538,11 +1185,10 @@ proxmox.vm.snapshot @defaults("name snaptime") {
 
 // Proxmox VE VM package update
 //
-// Examine an installed package and its update status on a virtual
-// machine, retrieved via the QEMU guest agent. Reports the package
-// `name`, `installedVersion`, available `newVersion`, whether an
-// update is available via `upgradable`, and `severity`
-// (security, enhancement).
+// Installed package and its update status on a virtual machine,
+// retrieved via the QEMU guest agent. Covers the package `name`,
+// `installedVersion`, available `newVersion`, whether an update is
+// available via `upgradable`, and `severity` (security, enhancement).
 proxmox.vm.update @defaults("name severity upgradable") {
   // Package name
   name string
@@ -558,12 +1204,13 @@ proxmox.vm.update @defaults("name severity upgradable") {
 
 // Proxmox VE storage pool
 //
-// Examine a storage pool configured in the cluster, identified by
-// `id`. Reports the storage `type` (dir, lvm, lvmthin, nfs, cifs,
-// zfspool, ceph, etc.), allowed `content` types, filesystem `path`
-// for local types, and whether the pool is `enabled` and `shared`
-// across nodes. Capacity data is available via `total`, `used`,
-// `available`, and `usagePercent`.
+// Storage pool configured in the cluster, identified by `id`
+// (for example `proxmox.storage(id: "local-lvm")`). Reports the
+// storage `type` (dir, lvm, lvmthin, nfs, cifs, zfspool, ceph, etc.),
+// allowed `content` types, filesystem `path` for local types, and
+// whether the pool is `enabled` and `shared` across nodes. Capacity
+// is reported through `total`, `used`, `available`, and
+// `usagePercent`, and `encrypted` flags PBS-encrypted datastores.
 proxmox.storage @defaults("id type enabled") {
   // Storage ID
   id string
@@ -589,18 +1236,118 @@ proxmox.storage @defaults("id type enabled") {
   //
   // True when the storage configuration carries an `encryption-key`
   // (PBS-encrypted datastore). The key value itself is exposed via
-  // `encryptionKey` — it is either an explicit fingerprint or the
+  // `encryptionKey`, which is either an explicit fingerprint or the
   // literal `autogen` when Proxmox manages the key.
   encrypted bool
   // The raw `encryption-key` value from the storage config; empty when not configured
   encryptionKey string
+  // Nodes the storage is restricted to, comma-separated
+  //
+  // Empty when the storage is available on every node.
+  nodes string
+  // Volumes stored on this storage
+  //
+  // Covers every content class the storage holds: backup archives, ISO
+  // images, container templates, guest disks, and snippets. A shared
+  // storage is listed once; a local storage is listed from each node
+  // that has it, since each node holds an independent copy.
+  volumes() []proxmox.storage.volume
+  // Backup archives stored on this storage
+  //
+  // The subset of `volumes` with a content class of `backup`. Each
+  // entry carries the guest it belongs to, when it was written, and
+  // whether it is encrypted, protected, and verified.
+  backups() []proxmox.storage.volume
+}
+
+// Volume stored on a Proxmox VE storage
+//
+// Single volume on a storage, selected by `volid` (for example
+// `proxmox.storage.volume(volid: "local:backup/vzdump-qemu-100-2024_01_01-00_00_00.vma.zst")`).
+// Backups are the reason this matters most: `createdAt` says when a
+// guest was last actually captured, which scheduled backup jobs alone
+// cannot answer, and `encrypted`, `protected`, and `verification`
+// report whether that capture is protected and known-good. The
+// `contentType` field separates backups from ISO images, container
+// templates, guest disks, and snippets, and `vm` and `container`
+// resolve the guest a volume belongs to.
+proxmox.storage.volume @defaults("volid contentType createdAt size") {
+  // Volume identifier, in `<storage>:<path>` form
+  volid string
+  // Storage holding the volume
+  storage string
+  // Storage pool the volume sits on
+  //
+  // Resolves `storage` against the cluster, so a volume can be audited
+  // against the pool's encryption setting, sharing, content classes,
+  // and capacity. Null when the named storage is no longer configured.
+  storageRef() proxmox.storage
+  // Node the volume was listed from
+  //
+  // A shared storage reports one copy from a single node. A local
+  // storage holds an independent copy on each node, so the same guest
+  // can have separate volumes here per node.
+  node string
+  // Host the volume was listed from
+  //
+  // Resolves `node` against the cluster. For a local storage this is
+  // the host that physically holds this copy. Null when the named node
+  // is no longer in the cluster.
+  nodeRef() proxmox.node
+  // Content class of the volume
+  //
+  // One of `backup`, `iso`, `vztmpl`, `images`, `rootdir`, or
+  // `snippets`. Derived from the volume identifier when the storage
+  // plugin does not report it.
+  contentType string
+  // Format identifier (`raw`, `qcow2`, `subvol`, `iso`, `tgz`, `pbs-vm`, and so on)
+  format string
+  // Volume size in bytes
+  size int
+  // Used space in bytes
+  //
+  // Most storage plugins do not report anything meaningful here; `size`
+  // is the reliable figure.
+  used int
+  // When the volume was created
+  createdAt time
+  // Guest that owns the volume; null for ISO images, templates, and snippets
+  vm() proxmox.vm
+  // Container that owns the volume; null when the volume belongs to a virtual machine
+  container() proxmox.container
+  // VMID the volume belongs to; 0 when the volume has no owning guest
+  vmid int
+  // Whether the volume is encrypted at rest
+  //
+  // Only Proxmox Backup Server storages report this. True when the
+  // backup was written with an encryption key.
+  encrypted bool
+  // Encryption key fingerprint, or `1` when the key is not identified; empty when unencrypted
+  encryptionFingerprint string
+  // Whether the volume is protected from automatic pruning
+  //
+  // A protected backup survives retention policies. Currently reported
+  // for backups only.
+  protected bool
+  // Result of the last Proxmox Backup Server verification
+  //
+  // Holds `state` (`ok` or `failed`) and the `upid` of the verification
+  // task. Empty on storages that do not verify, so an empty value means
+  // the backup was never verified rather than that it passed.
+  verification dict
+  // First line of the notes attached to the volume; empty when none
+  notes string
+  // Volume identifier of the parent, for linked clones; empty when standalone
+  parent string
 }
 
 // Proxmox VE resource pool
 //
-// Examine a resource pool in the cluster, identified by `id`. Pools
-// group VMs and storage for access-control purposes. The `comment`
-// field holds the pool description.
+// Resource pool in the cluster, selected by `id` (for example
+// `proxmox.pool(id: "prod")`). Pools group virtual machines and
+// storage into a single unit that permissions can be granted against,
+// so auditing them shows how access to those resources is delegated.
+// The `comment` field holds the pool description.
 proxmox.pool @defaults("id") {
   // Pool ID
   id string
@@ -610,13 +1357,13 @@ proxmox.pool @defaults("id") {
 
 // Proxmox VE node network interface
 //
-// Examine a network interface on a Proxmox node, identified by `iface`
-// (e.g. `vmbr0`, `eth0`). Reports the interface `type` (bridge, bond,
-// eth, vlan, OVSBridge, etc.), whether it is `active` and `autostart`
-// enabled, the address assignment `method` (static, dhcp, manual),
-// and addressing details including `address`, `netmask`, `gateway`,
-// and `cidr`. Bridge interfaces list their member ports in
-// `bridgePorts`.
+// Network interface configured on a Proxmox node, selected by `iface`
+// (e.g. `proxmox.network(iface: "vmbr0")`). Interfaces determine how a
+// node reaches management, cluster, and guest networks, so their
+// addressing and reachability are central to auditing host isolation
+// and exposure. The `type` field distinguishes bridges, bonds, physical
+// eth ports, VLANs, and Open vSwitch interfaces, and `bridgePorts` names
+// the member ports carried by a bridge.
 proxmox.network @defaults("iface type active") {
   // Interface name (e.g. vmbr0, eth0)
   iface string
@@ -644,9 +1391,10 @@ proxmox.network @defaults("iface type active") {
 
 // Proxmox VE node DNS configuration
 //
-// Examine the DNS resolver configuration on a Proxmox node. Reports
-// the `search` domain and up to three nameservers via `dns1`, `dns2`,
-// and `dns3`.
+// DNS resolver configuration on a Proxmox node: the `search` domain
+// and up to three nameservers (`dns1`, `dns2`, `dns3`). Useful for
+// confirming a node resolves names through the expected servers and
+// domain.
 proxmox.dns @defaults("search dns1") {
   // DNS search domain
   search string
@@ -660,11 +1408,12 @@ proxmox.dns @defaults("search dns1") {
 
 // Proxmox VE node systemd service
 //
-// Examine a systemd service on a Proxmox node, identified by `name`.
-// Reports the current runtime `state` (running, dead, etc.), service
-// `description`, and `unitFileState` (enabled, disabled, static,
-// masked). Useful for auditing whether critical Proxmox services such
-// as `pve-cluster`, `pveproxy`, or `corosync` are active.
+// Systemd service on a Proxmox node, selected by `name` (for example
+// `proxmox.service(name: "pveproxy")`). The `state` field reports the
+// current runtime status (running, dead, etc.) and `unitFileState`
+// reports the boot-time enablement (enabled, disabled, static, masked).
+// Use it to audit whether critical Proxmox services such as
+// `pve-cluster`, `pveproxy`, or `corosync` are active and enabled.
 proxmox.service @defaults("name state") {
   // Service unit name
   name string
@@ -678,12 +1427,12 @@ proxmox.service @defaults("name state") {
 
 // Proxmox VE node TLS certificate
 //
-// Examine a TLS/SSL certificate installed on a Proxmox node. Reports
-// the certificate `subject`, `issuer`, `fingerprint`, validity window
-// via `notBefore` and `notAfter`, Subject Alternative Names in `san`,
-// and the public key details `publicKeyType` and `publicKeyBits`.
-// The `filename` field identifies which certificate file this entry
-// represents.
+// TLS/SSL certificate installed on a Proxmox node, used to secure the
+// web interface and API. Auditing these certificates surfaces weak
+// keys, mismatched or missing Subject Alternative Names, untrusted
+// issuers, and certificates that are expired or nearing expiry. The
+// `filename` field identifies which certificate file on the node the
+// entry represents.
 proxmox.certificate @defaults("subject notAfter") {
   // Certificate filename
   filename string
@@ -714,11 +1463,12 @@ proxmox.certificate @defaults("subject notAfter") {
 
 // Proxmox VE subscription
 //
-// Examine the Proxmox support subscription for a node. Reports
-// `status` (active, notfound, invalid), subscription `level` (basic,
-// standard, premium), `productName`, `key`, `serverId`, registration
-// date via `regDate`, and the next renewal date via `nextDueDate`.
-// Useful for compliance checks that require an active subscription.
+// Support subscription attached to a Proxmox node, covering its
+// entitlement `status` (active, notfound, invalid), support `level`
+// (basic, standard, premium), registration and renewal dates, and the
+// server identifier the key is bound to. Use it in compliance checks
+// that require nodes to carry an active, appropriately tiered
+// subscription and to flag entitlements approaching their renewal.
 proxmox.subscription @defaults("status level") {
   // Subscription status (active, notfound, invalid)
   status string
@@ -738,12 +1488,13 @@ proxmox.subscription @defaults("status level") {
 
 // Proxmox VE node APT repository
 //
-// Examine an APT repository configured on a Proxmox node, identified
-// by `id`. Reports the repository `name`, whether it is `enabled`,
-// declared `types` (deb, deb-src), `uris`, `suites` (e.g. bookworm,
-// stable), `components` (main, contrib, etc.), and `fileType`
-// (sources.list or sources.list.d entry). Useful for verifying that
-// only official Proxmox repositories are active.
+// APT package repository configured on a Proxmox node, covering both
+// the legacy `sources.list` format and modern deb822 `.sources`
+// entries. The `enabled` flag reflects whether the entry is active,
+// and `signedBy` records the keyring that verifies package signatures.
+// Useful for confirming that only official, correctly signed Proxmox
+// repositories are configured and that no untrusted or disabled
+// entries remain.
 proxmox.repository @defaults("name enabled") {
   // Repository identifier
   id string
@@ -771,12 +1522,13 @@ proxmox.repository @defaults("name enabled") {
 
 // Proxmox VE firewall rule
 //
-// Examine a firewall rule applied at the cluster, node, or VM level.
-// Rules are ordered by `pos` and specify a `type` (in, out, group),
-// `action` (ACCEPT, DROP, REJECT), `proto`, source (`source`,
-// `sport`), and destination (`dest`, `dport`). Additional fields
-// include `iface`, security `macro`, `log` level, `comment`, and
-// whether the rule is `enable`d.
+// Firewall rule applied at the cluster, node, or VM level. Rules are
+// ordered by `pos` and specify a `type` (in, out, group), `action`
+// (ACCEPT, DROP, REJECT), `proto`, source (`source`, `sport`), and
+// destination (`dest`, `dport`). The `group` reference resolves the
+// named rule set that applies when `type` is group, and
+// `allowsPublicIngress` flags an enabled inbound ACCEPT rule whose
+// source is unrestricted.
 proxmox.firewall.rule @defaults("pos action") {
   // Rule position
   pos int
@@ -825,8 +1577,8 @@ proxmox.firewall.rule @defaults("pos action") {
 
 // Proxmox VE user
 //
-// Examine a user account in the Proxmox cluster, identified by `id`
-// in the form `user@realm`. Reports whether the account is `enable`d,
+// User account in the Proxmox cluster, identified by `id` in the form
+// `user@realm`. Auditing accounts surfaces whether each is `enable`d,
 // its `email`, `firstname`, `lastname`, `realm` (pam, pve, ldap, ad),
 // `groups` membership, and `expire` time (Unix timestamp, 0 = never).
 // Multi-factor enrollment is available through `tfaFactors` and
@@ -845,10 +1597,6 @@ proxmox.user @defaults("id enable realm") {
   firstname string
   // Last name
   lastname string
-  // Raw group membership names
-  //
-  // Deprecated in favor of `groupRefs`.
-  groups @maturity("deprecated") []string
   // Resolved group memberships
   groupRefs() []proxmox.group
   // Authentication realm (pam, pve, ldap, ad)
@@ -868,12 +1616,13 @@ proxmox.user @defaults("id enable realm") {
 
 // Proxmox VE API token
 //
-// Examine an API token belonging to a Proxmox user, identified by
-// `id` in the form `user@realm!tokenid`. Reports the token `comment`,
-// `expire` time (Unix timestamp, 0 = never), and whether privilege
-// separation is active via `privsep`. When `privsep` is true the
-// token's permissions are limited to a subset of the owner's
-// privileges.
+// API token belonging to a Proxmox user, identified by `id` in the
+// form `user@realm!tokenid`. Reports the token `comment`, `expire`
+// time (Unix timestamp, 0 = never), and whether privilege separation
+// is active via `privsep`. When `privsep` is true the token's
+// permissions are limited to a subset of the owner's privileges,
+// which makes tokens a useful audit surface for least-privilege
+// review of non-interactive access.
 proxmox.token @defaults("id privsep") {
   // Token ID (user@realm!tokenid)
   id string
@@ -889,11 +1638,11 @@ proxmox.token @defaults("id privsep") {
 
 // Proxmox VE access control role
 //
-// Examine a role defined in the Proxmox cluster, identified by `id`.
-// Reports the list of `privs` (privileges) assigned to the role and
-// whether it is a built-in role via `special`. Roles are assigned to
-// users and groups on paths to implement Proxmox's path-based
-// access-control model.
+// Role defined in the Proxmox cluster, identified by `id`. The `privs`
+// list holds the privileges granted by the role, and `special`
+// indicates whether it is a built-in role. Roles are assigned to users
+// and groups on paths to implement Proxmox's path-based access-control
+// model.
 proxmox.role @defaults("id") {
   // Role ID
   id string
@@ -905,41 +1654,50 @@ proxmox.role @defaults("id") {
 
 // Proxmox VE access control group
 //
-// Examine a group defined in the Proxmox cluster, identified by `id`.
-// Groups bundle users for path-based ACL assignment. The `comment`
-// holds the group description. `memberIds` lists the user IDs that
-// belong to the group; `members` resolves them to typed
-// `proxmox.user` references for traversal.
+// Group defined in the Proxmox cluster, identified by `id`, for
+// example `proxmox.group(id: "admins")`. Groups bundle users so a
+// single access-control entry can grant a role to many accounts at
+// once, which makes them the natural unit for auditing who holds
+// privileges at a given path. The `memberIds` field lists the user
+// IDs in the group; `members` resolves those IDs to `proxmox.user`
+// records for traversal into each account.
 proxmox.group @defaults("id comment") {
   // Group ID
   id string
   // Group comment/description
   comment string
   // User IDs that belong to this group
-  memberIds []string
+  //
+  // Deprecated in favor of `members`, which resolves the same accounts
+  // as user resources.
+  memberIds @maturity("deprecated") @replaced_by("proxmox.group.members") []string
   // Members of this group resolved as user resources
   members() []proxmox.user
 }
 
 // Proxmox VE access control list entry
 //
-// Examine an ACL assignment in the Proxmox cluster. An entry grants a
-// `role` to a user, group, or API token (identified by `ugid`) at a
+// Access control list assignment in the Proxmox cluster. An entry grants
+// a `role` to a user, group, or API token (identified by `ugid`) at a
 // specific `path` such as `/`, `/vms/100`, or `/storage/local`. The
-// `type` field discriminates between user, group, and token entries;
-// `propagate` indicates whether the grant applies to child paths.
-// Typed accessors `user`, `group`, `token`, and `role` resolve `ugid`
-// and `roleId` to their corresponding resources for traversal — only
-// the accessor matching `type` is non-null.
+// `type` field discriminates between user, group, and token entries and
+// selects which of `user`, `group`, and `token` resolves to a resource
+// (the other two are null); `role` always resolves the granted role.
+// `propagate` reports whether the grant extends to child paths. Auditing
+// these entries reveals who holds which privileges and where in the
+// cluster hierarchy those privileges apply.
 proxmox.acl @defaults("path type ugid roleId propagate") {
   // Path the entry applies to (e.g. /, /vms/100, /storage/local)
   path string
-  // Entry type — user, group, or token
+  // Entry type: user, group, or token
   type string
   // Identifier of the user, group, or token the grant applies to
   ugid string
   // Role ID granted at this path
-  roleId string
+  //
+  // Deprecated in favor of `role`, which resolves the same role as a
+  // role resource carrying its privilege list.
+  roleId @maturity("deprecated") @replaced_by("proxmox.acl.role") string
   // Whether the grant propagates to child paths
   propagate bool
   // Resolved role
@@ -954,12 +1712,12 @@ proxmox.acl @defaults("path type ugid roleId propagate") {
 
 // Proxmox VE authentication realm
 //
-// Examine an authentication realm configured in the Proxmox cluster,
-// identified by `realm`. Reports the realm `type` (pam, pve, ldap, ad,
-// openid), whether it is the `default` realm, the realm-enforced TFA
-// challenge in `tfaType` (empty when no realm-wide TFA is required),
-// and full configuration via `config` — including LDAP servers, sync
-// settings, OpenID issuer URLs, and `autocreate` flags.
+// Authentication realm configured in the Proxmox cluster, identified
+// by `realm`. Reports the realm `type` (pam, pve, ldap, ad, openid),
+// whether it is the `default` realm, the realm-enforced TFA challenge
+// in `tfaType` (empty when no realm-wide TFA is required), and full
+// configuration via `config`, including LDAP servers, sync settings,
+// OpenID issuer URLs, and `autocreate` flags.
 proxmox.realm @defaults("realm type default") {
   // Realm identifier
   realm string
@@ -973,19 +1731,26 @@ proxmox.realm @defaults("realm type default") {
   tfaType string
   // Full realm configuration as returned by /access/domains/<realm>
   config() dict
+  // Scheduled imports of users and groups from this realm
+  //
+  // Empty when nothing is scheduled against the realm, in which case its
+  // directory accounts only reach Proxmox when someone runs a sync by hand.
+  // Null when the cluster does not serve realm-sync jobs or the token
+  // cannot read them.
+  syncJobs() []proxmox.realm.syncJob
 }
 
 // Proxmox VE firewall options
 //
-// Examine the firewall options configured at the cluster, node, VM, or
-// container level. The available keys differ by scope — cluster-level
-// options include `policy_in`, `policy_out`, and `log_ratelimit`; node
-// options include `nf_conntrack_*` tuning; guest-level options include
-// `dhcp`, `ndp`, `macfilter`, `ipfilter`, and `radv`. The `config`
-// dict holds the raw response so audits can target keys that vary by
-// Proxmox version.
+// Firewall options configured at the cluster, node, VM, or container
+// level. The available keys differ by scope: cluster-level options
+// include `policy_in`, `policy_out`, and `log_ratelimit`; node options
+// include `nf_conntrack_*` tuning; guest-level options include `dhcp`,
+// `ndp`, `macfilter`, `ipfilter`, and `radv`. The `config` dict holds
+// the raw response so audits can target keys that vary by Proxmox
+// version.
 proxmox.firewall.options @defaults("scope enable") {
-  // Scope of these options (cluster, node/<name>, vm/<id>, ct/<id>)
+  // Scope of these options (cluster, node/<name>, vm/<id>, ct/<id>, vnet/<name>)
   scope string
   // Whether the firewall is enabled at this scope
   enable bool
@@ -1007,17 +1772,35 @@ proxmox.firewall.options @defaults("scope enable") {
   ipfilter bool
   // Whether router advertisements are permitted (guest scope)
   radv bool
-  // Raw options as returned by the API
+  // Default policy for traffic crossing the vnet (vnet scope)
+  //
+  // Either `ACCEPT` or `DROP`. An SDN vnet filters traffic forwarded
+  // between the guests attached to it, which is a direction the cluster,
+  // node, and guest scopes have no policy for. Empty outside the vnet
+  // scope, and empty on a vnet that leaves it unset.
+  policyForward string
+  // Log level for traffic crossing the vnet (vnet scope)
+  //
+  // One of `nolog`, `emerg`, `alert`, `crit`, `err`, `warning`, `notice`,
+  // `info`, or `debug`. Empty outside the vnet scope.
+  logLevelForward string
+  // Raw firewall options keyed as the API returns them
+  //
+  // Every option for this scope under its native API key. `enable`,
+  // `policy_in`, `policy_out`, `log_level_in`, `log_level_out`, `dhcp`,
+  // `ndp`, `macfilter`, `ipfilter`, `radv`, `policy_forward`, and
+  // `log_level_forward` are also surfaced as fields on this resource;
+  // scope-specific keys such as `log_ratelimit` (cluster) and
+  // `nf_conntrack_*` tuning (node) are available only here.
   config dict
 }
 
 // Proxmox VE firewall IPset
 //
-// Examine an IP set defined at the cluster or guest level, identified
-// by `name`. IPsets group CIDR ranges that firewall rules can
-// reference by name through the `+<name>` syntax. The `scope` field
-// identifies the owner (cluster, vm/<id>, ct/<id>) and `entries` lists
-// the contained CIDRs.
+// IP set defined at the cluster or guest level, identified by `name`.
+// IPsets group CIDR ranges that firewall rules can reference by name
+// through the `+<name>` syntax. The `scope` field identifies the owner
+// (cluster, vm/<id>, ct/<id>) and `entries` lists the contained CIDRs.
 proxmox.firewall.ipset @defaults("scope name") {
   // Scope of this ipset (cluster, vm/<id>, ct/<id>)
   scope string
@@ -1031,10 +1814,10 @@ proxmox.firewall.ipset @defaults("scope name") {
 
 // Proxmox VE firewall IPset entry
 //
-// Examine a single CIDR entry inside a Proxmox firewall IPset. The
-// `cidr` is the network or host (e.g. `10.0.0.0/24`), `comment` holds
-// any descriptive text, and `nomatch` inverts the membership semantics
-// so the entry excludes rather than includes its CIDR.
+// Single CIDR entry inside a Proxmox firewall IPset. The `cidr` is the
+// network or host (e.g. `10.0.0.0/24`), `comment` holds any
+// descriptive text, and `nomatch` inverts the membership semantics so
+// the entry excludes rather than includes its CIDR.
 proxmox.firewall.ipset.entry @defaults("cidr nomatch") {
   // CIDR entry (e.g. 10.0.0.0/24)
   cidr string
@@ -1046,10 +1829,10 @@ proxmox.firewall.ipset.entry @defaults("cidr nomatch") {
 
 // Proxmox VE firewall alias
 //
-// Examine a named alias for a CIDR at the cluster or guest level,
-// identified by `name`. Aliases let firewall rules reference networks
-// by symbolic name. The `scope` field identifies the owner (cluster,
-// vm/<id>, ct/<id>) and `ipVersion` is 4 or 6.
+// Named alias for a CIDR at the cluster or guest level, identified by
+// `name`. Aliases let firewall rules reference networks by symbolic
+// name. The `scope` field identifies the owner (cluster, vm/<id>,
+// ct/<id>) and `ipVersion` is 4 or 6.
 proxmox.firewall.alias @defaults("scope name cidr") {
   // Scope of this alias (cluster, vm/<id>, ct/<id>)
   scope string
@@ -1065,17 +1848,16 @@ proxmox.firewall.alias @defaults("scope name cidr") {
 
 // Proxmox VE LXC container
 //
-// Examine an LXC container in the cluster, identified by numeric `id`
-// and display `name`. Reports current `status` (running, stopped), the
-// `node` it runs on, and resource usage including `cpu`, `mem`,
-// `disk`, `netin`, and `netout`. Configuration details — whether the
-// container runs `unprivileged`, its `ostype`, `hostname`, enabled
-// `features` (nesting, fuse, mount, keyctl), boot options
-// (`onboot`, `startup`, `protection`), description, and tags — are
-// available as computed fields. Network interfaces are listed through
-// `networks`, mount points through `mountPoints`, point-in-time
-// `snapshots` through the snapshots field, firewall configuration via
-// `firewallRules`, `firewallOptions`, `ipsets`, and `aliases`.
+// LXC container in the cluster, identified by numeric `id` and display
+// `name`. Live `status` (running, stopped), the `node` it runs on, and
+// resource usage (`cpu`, `mem`, `disk`, `netin`, `netout`) come from
+// the cluster status API, while the per-container configuration exposes
+// whether the container runs `unprivileged`, its `ostype`, `hostname`,
+// enabled `features`, and boot options. Network interfaces, mount
+// points, snapshots, and the container-level firewall (rules, options,
+// ipsets, aliases) are reachable through their own fields, letting
+// audits check isolation, host-device exposure, and firewall posture in
+// a single query.
 proxmox.container @defaults("id name status unprivileged") {
   // VMID
   id int
@@ -1083,6 +1865,13 @@ proxmox.container @defaults("id name status unprivileged") {
   name string
   // Node this container is running on
   node string
+  // Host the container runs on
+  //
+  // Resolves `node` against the cluster, giving access to the host's
+  // status, address, kernel, subscription level, and firewall from the
+  // container itself. Null when the named node is no longer in the
+  // cluster.
+  nodeRef() proxmox.node
   // Current status (running, stopped)
   status string
 
@@ -1090,7 +1879,10 @@ proxmox.container @defaults("id name status unprivileged") {
 
   // Current CPU usage (fraction)
   cpu float
-  // Number of configured vCPUs
+  // Number of CPUs the container may use
+  //
+  // Taken from `cores`, or from `cpulimit` rounded up when only a
+  // fractional CPU limit is set.
   maxcpu int
   // Current memory usage in bytes
   mem int
@@ -1125,9 +1917,9 @@ proxmox.container @defaults("id name status unprivileged") {
   unprivileged() bool
   // Enabled features parsed from the `features` config line
   //
-  // Each entry is the name of an enabled extra capability — `nesting`,
-  // `fuse`, `mount=<types>`, or `keyctl`. An empty list means the
-  // container runs with the default capability set.
+  // Each entry is the name of an enabled extra capability, one of
+  // `nesting`, `fuse`, `mount=<types>`, or `keyctl`. An empty list means
+  // the container runs with the default capability set.
   features() []string
   // Whether the container is protected from removal
   protection() bool
@@ -1155,9 +1947,28 @@ proxmox.container @defaults("id name status unprivileged") {
   searchDomain() string
   // DNS nameservers configured for the container; empty inherits the host's resolver
   nameserver() string
+  // Path to a hook script run during container lifecycle events
+  //
+  // Stored as `<storage>:snippets/<file>`. The script runs as root on the
+  // hypervisor host at container start, stop, and pre-backup, so anyone who
+  // can edit the snippet can execute code outside the container. Empty when
+  // no hook script is configured.
+  hookscript() string
+  // Whether verbose start-up logging is enabled
+  //
+  // Raises the container start log to debug level, which puts the resolved
+  // configuration, including mount sources and device paths, into the host
+  // log. False when the setting is absent, which is the Proxmox default.
+  debug() bool
+  // Whether a console device is attached
+  //
+  // Controls whether `/dev/console` exists inside the container, which is
+  // what `pct console` connects to when `cmode` is set to `console`. True
+  // when the setting is absent, which is the Proxmox default.
+  consoleEnabled() bool
   // Raw `lxc.*` config lines applied verbatim to the container
   //
-  // Each entry is one `lxc.<key>: <value>` line — typically used for
+  // Each entry is one `lxc.<key>: <value>` line, typically used for
   // AppArmor profiles (`lxc.apparmor.profile`), capability adjustments
   // (`lxc.cap.drop` / `lxc.cap.keep`), or mount tweaks. Anything in
   // here is an explicit override of the PVE defaults and warrants an
@@ -1166,9 +1977,9 @@ proxmox.container @defaults("id name status unprivileged") {
   // Host devices passed through to the container
   //
   // Parsed from `dev0`..`dev255`. Each entry grants the container
-  // direct access to a host `/dev` node and is a host-pivot surface
-  // — a permissive `mode=` (e.g. `0666`) effectively shares the
-  // device with everyone inside the guest.
+  // direct access to a host `/dev` node and is a host-pivot surface. A
+  // permissive `mode=` (e.g. `0666`) effectively shares the device with
+  // everyone inside the guest.
   passthroughDevices() []proxmox.container.passthroughDevice
 
   // --- Devices ---
@@ -1193,15 +2004,30 @@ proxmox.container @defaults("id name status unprivileged") {
   ipsets() []proxmox.firewall.ipset
   // Container-level firewall aliases
   aliases() []proxmox.firewall.alias
+
+  // --- Backups ---
+
+  // Backup archives held for this container
+  //
+  // Every backup volume across all storages that owns this VMID, newest
+  // first. Reports what was actually captured, which scheduled backup
+  // jobs alone cannot confirm. Empty when the container has never been
+  // backed up to a storage this token can read.
+  backups() []proxmox.storage.volume
+  // When this container was last backed up
+  //
+  // Creation time of the newest backup archive owned by this container.
+  // Null when no backup exists.
+  lastBackupAt() time
 }
 
 // Proxmox VE container network interface
 //
-// Examine a network interface attached to an LXC container. The `id`
-// field identifies the slot (e.g. `net0`, `net1`). Reports the
-// interface `name` (as seen inside the guest), `macAddress`, connected
-// `bridge`, VLAN `tag`, whether the per-NIC `firewall` is enabled,
-// and IPv4/IPv6 addressing (`ip`, `gw`, `ip6`, `gw6`).
+// Network interface attached to an LXC container. The `id` field
+// selects the slot (e.g. `net0`, `net1`). Reports the guest-visible
+// interface `name`, `macAddress`, connected `bridge`, VLAN `tag`,
+// whether the per-NIC `firewall` is enabled, and IPv4/IPv6 addressing
+// (`ip`, `gw`, `ip6`, `gw6`).
 proxmox.container.network @defaults("id name bridge") {
   // Interface ID (net0, net1, ...)
   id string
@@ -1227,16 +2053,19 @@ proxmox.container.network @defaults("id name bridge") {
 
 // Proxmox VE container mount point
 //
-// Examine a mount point attached to an LXC container. The `id` field
-// identifies the slot (`rootfs`, `mp0`–`mp254`). Reports the backing
-// `storage`, `size` in bytes, in-container `mountPath`, whether the
-// mount is `backup`-included, `replicate`-included, and `readonly`,
-// and whether ID mapping is permitted via `aclEnabled`.
+// Mount point attached to an LXC container. The `id` field selects the
+// slot (`rootfs`, `mp0`–`mp254`). Reports the backing `storage`, `size`
+// in bytes, in-container `mountPath`, whether the mount is
+// `backup`-included, `replicate`-included, and `readonly`, and whether
+// POSIX ACLs are enabled via `aclEnabled`.
 proxmox.container.mountPoint @defaults("id storage mountPath size") {
   // Mount point ID (rootfs, mp0, mp1, ...)
   id string
   // Backing storage name
-  storage string
+  //
+  // Deprecated in favor of `storageRef`, which resolves the same pool
+  // as a storage resource.
+  storage @maturity("deprecated") @replaced_by("proxmox.container.mountPoint.storageRef") string
   // Size in bytes
   size int
   // Path inside the container
@@ -1255,13 +2084,13 @@ proxmox.container.mountPoint @defaults("id storage mountPath size") {
 
 // Proxmox VE scheduled backup job
 //
-// Examine a cluster-wide vzdump backup job, identified by `id`. The
+// Cluster-wide vzdump backup job, identified by `id`. The
 // job selects guests by explicit `vmids`, by `pool`, or by `all`, and
 // writes to `storage` on the optional `schedule`. Reports the dump
 // `mode` (snapshot, suspend, stop), `compress` algorithm,
 // notification configuration via `mailto` and `notificationMode`,
 // retention via `prune`, and the `fleecing` setting. `targetStorage`
-// resolves `storage` to a typed `proxmox.storage` reference so
+// resolves `storage` to a `proxmox.storage` reference so
 // audits can check the storage pool's encryption or sharing semantics
 // in the same query. The full raw job definition is available
 // through `config`.
@@ -1273,7 +2102,10 @@ proxmox.backup.job @defaults("id schedule storage enabled") {
   // Schedule (systemd-calendar expression, e.g. `mon..fri 03:00`)
   schedule string
   // Storage name backups are written to
-  storage string
+  //
+  // Deprecated in favor of `targetStorage`, which resolves the same
+  // pool as a storage resource.
+  storage @maturity("deprecated") @replaced_by("proxmox.backup.job.targetStorage") string
   // Dump mode (snapshot, suspend, stop)
   mode string
   // Job comment
@@ -1308,10 +2140,12 @@ proxmox.backup.job @defaults("id schedule storage enabled") {
   targetStorage() proxmox.storage
   // VMs this job targets
   //
-  // Resolved from `vmids` and `all` against the current cluster
-  // inventory. When `all` is true this returns every VM and `vmids`
-  // is ignored. Pool-scoped jobs (`pool` set, `vmids` empty) return
-  // an empty list — query `pool` for those instead.
+  // Resolved from `vmids`, `all`, `exclude`, and `node` against the
+  // current cluster inventory. When `all` is true this returns every VM
+  // not listed in `exclude`, and `vmids` is ignored. When `node` is set
+  // only guests placed on that node are returned, since the job runs
+  // nowhere else. Pool-scoped jobs (`pool` set, `vmids` empty) return
+  // an empty list. Query `pool` for those instead.
   targetVms() []proxmox.vm
   // Containers this job targets, resolved the same way as `targetVms`
   targetContainers() []proxmox.container
@@ -1321,13 +2155,13 @@ proxmox.backup.job @defaults("id schedule storage enabled") {
 
 // Proxmox VE HA group
 //
-// Examine a high-availability group defined on the cluster. A group
-// constrains where HA-managed guests are allowed to run. Reports the
-// group `id`, comma-separated `nodes` membership (entries may include
-// priorities like `pve1:2`), whether the group is `restricted` (HA
-// will refuse to fail over outside group members), and `noFailback`
-// (HA will not automatically move guests back to higher-priority
-// nodes once they recover).
+// High-availability group defined on the cluster that constrains where
+// HA-managed guests are allowed to run. Reports the group `id`,
+// comma-separated `nodes` membership (entries may include priorities
+// like `pve1:2`), whether the group is `restricted` (HA will refuse to
+// fail over outside group members), and `noFailback` (HA will not
+// automatically move guests back to higher-priority nodes once they
+// recover).
 proxmox.cluster.haGroup @defaults("id restricted noFailback") {
   // Group ID
   id string
@@ -1343,7 +2177,7 @@ proxmox.cluster.haGroup @defaults("id restricted noFailback") {
 
 // Proxmox VE physical disk
 //
-// Examine a physical disk attached to a Proxmox node, identified by
+// Physical disk attached to a Proxmox node, identified by
 // `devPath` (e.g. `/dev/sda`, `/dev/nvme0n1`). Reports the disk
 // `model`, `vendor`, `serial`, `wwn`, capacity (`size` in bytes),
 // rotational speed (`rpm`; 0 for SSDs/NVMe), `type` (hdd, ssd, nvme,
@@ -1382,31 +2216,41 @@ proxmox.node.disk @defaults("devPath model size health") {
 
 // Proxmox VE disk SMART report
 //
-// Examine the SMART self-assessment for a Proxmox-managed disk. The
+// SMART self-assessment for a Proxmox-managed disk. The
 // `health` field carries the device's overall PASSED/FAILED verdict.
 // `type` is the SMART report flavor (`ata`, `nvme`, `sas`, `text`);
 // when it is `text` the device only returns unstructured output via
 // the `text` field. Structured `attributes` are available for ATA and
 // SAS drives.
-proxmox.node.disk.smart @defaults("health type") {
+private proxmox.node.disk.smart @defaults("health type") {
   // Overall device health verdict
   health string
   // SMART report flavor (ata, nvme, sas, text)
   type string
   // Unstructured SMART output (populated when type=text)
   text string
-  // Per-attribute SMART entries (empty for text-only reports)
+  // Per-attribute SMART entries
+  //
+  // Empty for text-only reports. Each entry is a dict with `id` (numeric
+  // attribute number), `name` (attribute label), the normalized `value`,
+  // `worst`, and `threshold` ints, `raw` (raw attribute reading as a
+  // string), `flags` (SMART flag characters), and `fail` (populated when
+  // the attribute is failing, otherwise empty).
   attributes []dict
 }
 
 // Proxmox VE ZFS pool
 //
-// Examine a ZFS storage pool managed by a Proxmox node, identified by
-// `name`. Reports the pool `size`, `alloc`ated and `free` bytes,
-// average `fragmentation` percentage, `dedupRatio`, and current
-// `health` (ONLINE, DEGRADED, FAULTED, etc.). The pool topology — the
-// vdev tree and the latest scrub status — is available through
-// `state`, `scan`, `errors`, and the `children` vdev tree.
+// ZFS storage pool managed by a Proxmox node, selected by `name` (for
+// example `proxmox.zfs.pools.where(name == "rpool")`). Capacity and
+// consumption are reported through `size`, `alloc`, and `free`, along
+// with the average `fragmentation` percentage and the `dedupRatio`.
+// The `health` field carries the pool condition (ONLINE, DEGRADED,
+// FAULTED, UNAVAIL, REMOVED), the primary signal for detecting a
+// failing or degraded array. The vdev topology, latest scrub status,
+// and error counters from `zpool status` are exposed via `state`,
+// `scan`, `errors`, and the recursive `children` device tree, so
+// audits can recurse to individual leaf disks.
 proxmox.zfs.pool @defaults("name health size") {
   // Pool name
   name string
@@ -1430,17 +2274,24 @@ proxmox.zfs.pool @defaults("name health size") {
   errors() string
   // vdev / child-device tree
   //
-  // Each entry is a dict with `name`, `state`, `read`/`write`/`cksum`
-  // error counters, and a recursive `children` array. The shape mirrors
-  // the `zpool status` output so audits can recurse to leaf disks.
+  // Each entry is a dict describing one vdev or device: `name` (device
+  // or vdev label), `state` (ONLINE, DEGRADED, FAULTED, etc.),
+  // `read`/`write`/`cksum` error counters, `msg` (status note from
+  // `zpool status`), `type` (topology role such as mirror or raidz),
+  // `leaf` (true for a physical leaf disk), and a recursive `children`
+  // array. The shape mirrors the `zpool status` output so audits can
+  // recurse from the pool root down to leaf disks.
   children() []dict
 }
 
 // Proxmox VE LVM volume group
 //
-// Examine an LVM volume group on a Proxmox node, identified by
-// `name`. Reports the VG `size` and `free` bytes and the number of
-// logical volumes via `lvCount`.
+// LVM volume group on a Proxmox node, the pool of physical storage
+// from which logical volumes are carved. The `name` selects the group,
+// for example `proxmox.lvm.volumeGroup(name: "pve")`. The `size` and
+// `free` bytes together reveal how much headroom remains before the
+// group can no longer allocate new volumes, and `lvCount` reports how
+// many logical volumes it currently backs.
 proxmox.lvm.volumeGroup @defaults("name size free lvCount") {
   // Volume group name
   name string
@@ -1454,12 +2305,14 @@ proxmox.lvm.volumeGroup @defaults("name size free lvCount") {
 
 // Proxmox VE LVM-thin pool
 //
-// Examine an LVM-thin pool on a Proxmox node, identified by the pool
-// logical volume `name`. Reports the parent `volumeGroup`, total data
-// `size`, allocated data via `used`, and the metadata pool size and
-// usage via `metadataSize` and `metadataUsed`. Metadata exhaustion
-// renders the entire thin pool read-only, so these are the audit
-// signals that matter most.
+// LVM-thin pool on a Proxmox node, a thinly provisioned pool that
+// overcommits storage across many logical volumes. The pool logical
+// volume `name` selects it, for example
+// `proxmox.lvm.thinPool(name: "data")`, within its parent
+// `volumeGroup`. The data `size` and `used` bytes track allocation
+// against the pool, while `metadataSize` and `metadataUsed` track the
+// separate metadata pool: metadata exhaustion renders the entire thin
+// pool read-only, so it is the failure mode that matters most.
 proxmox.lvm.thinPool @defaults("name volumeGroup size used") {
   // Thin-pool LV name
   name string
@@ -1477,13 +2330,15 @@ proxmox.lvm.thinPool @defaults("name volumeGroup size used") {
 
 // Proxmox VE storage replication job
 //
-// Examine a guest replication job from /cluster/replication. Each job
-// continuously replicates a single guest from `source` to `target`
-// node on the cluster according to `schedule` (a systemd-calendar
-// expression). The `vmid` selects which guest, `rate` caps the
-// per-job bandwidth in MB/s (0 = unlimited), and `disabled` reflects
-// whether the job is paused. Typed `sourceNode`/`targetNode`/`guest`
-// references resolve the string identifiers for traversal.
+// Guest replication job from /cluster/replication, keyed by `id` in
+// the form <vmid>-<jobnum>. Each job continuously replicates a single
+// guest from the `source` node to the `target` node according to
+// `schedule` (a systemd-calendar expression). The `vmid` selects which
+// guest, `rate` caps the per-job bandwidth in MB/s (0 means
+// unlimited), and `disabled` reflects whether the job is paused. The
+// `sourceNode` and `targetNode` references resolve the node names for
+// traversal, while `vm` and `container` resolve the replicated guest
+// (exactly one is non-null depending on what `vmid` refers to).
 proxmox.replication.job @defaults("id schedule source target disabled") {
   // Job identifier (format: <vmid>-<jobnum>)
   id string
@@ -1492,14 +2347,22 @@ proxmox.replication.job @defaults("id schedule source target disabled") {
   // Schedule expression (systemd-calendar)
   schedule string
   // Source node name
-  source string
+  //
+  // Deprecated in favor of `sourceNode`, which resolves the same host
+  // as a node resource.
+  source @maturity("deprecated") @replaced_by("proxmox.replication.job.sourceNode") string
   // Target node name
-  target string
+  //
+  // Deprecated in favor of `targetNode`, which resolves the same host
+  // as a node resource.
+  target @maturity("deprecated") @replaced_by("proxmox.replication.job.targetNode") string
   // Job type (local for built-in storage replication)
   type string
   // Job comment
   comment string
   // Bandwidth cap in MB/s; 0 = unlimited
+  //
+  // A fractional cap is rounded up to the next whole MB/s.
   rate int
   // Whether the job is currently disabled
   disabled bool
@@ -1509,7 +2372,7 @@ proxmox.replication.job @defaults("id schedule source target disabled") {
   sourceNode() proxmox.node
   // Resolved target node
   targetNode() proxmox.node
-  // Resolved guest — a VM or container, depending on what `vmid` refers to
+  // Replicated guest when `vmid` refers to a VM; null for a container
   vm() proxmox.vm
   // Container counterpart of `vm`; only one of the two is non-null
   container() proxmox.container
@@ -1517,12 +2380,13 @@ proxmox.replication.job @defaults("id schedule source target disabled") {
 
 // Proxmox VE SDN zone
 //
-// Examine a software-defined networking zone, identified by `zone`.
-// A zone groups the layer-2 fabric a set of vnets share. Reports the
-// zone `type` (simple, vlan, qinq, vxlan, evpn), the IP-address
-// management backend via `ipam`, MTU, optional `nodes` restriction
-// (empty means all nodes), DNS settings, and whether the zone is
-// `pending` (has uncommitted changes).
+// Software-defined networking zone, identified by `zone`. A zone
+// groups the layer-2 fabric a set of vnets share. The `type`
+// (simple, vlan, qinq, vxlan, evpn) selects the fabric technology,
+// `ipam` names the IP-address management backend, and `nodes`
+// optionally restricts the zone to specific hosts (empty means all
+// nodes). A `pending` zone has uncommitted changes not yet applied
+// to the running network configuration.
 proxmox.sdn.zone @defaults("zone type") {
   // Zone identifier
   zone string
@@ -1548,16 +2412,19 @@ proxmox.sdn.zone @defaults("zone type") {
 
 // Proxmox VE SDN virtual network
 //
-// Examine a software-defined virtual network, identified by `vnet`.
-// A vnet is the bridge-equivalent guests attach to, scoped to its
-// parent `zone`. Reports the optional `alias`, VLAN/VXLAN `tag`, and
-// whether the network is `vlanAware` (Linux 802.1Q tagging is
-// preserved on the bridge).
+// Software-defined virtual network, identified by `vnet`. A vnet is
+// the bridge guests attach to, scoped to its parent `zone`. The
+// `tag` carries the VLAN or VXLAN identifier that isolates traffic,
+// and `vlanAware` reports whether 802.1Q tagging from guests is
+// preserved on the bridge rather than stripped.
 proxmox.sdn.vnet @defaults("vnet zone tag") {
   // VNet identifier
   vnet string
   // Parent zone identifier
-  zone string
+  //
+  // Deprecated in favor of `zoneRef`, which resolves the same zone as
+  // an SDN zone resource.
+  zone @maturity("deprecated") @replaced_by("proxmox.sdn.vnet.zoneRef") string
   // Friendly alias
   alias string
   // VLAN/VXLAN tag identifier
@@ -1570,14 +2437,30 @@ proxmox.sdn.vnet @defaults("vnet zone tag") {
   zoneRef() proxmox.sdn.zone
   // Subnets defined on this vnet
   subnets() []proxmox.sdn.subnet
+  // Firewall rules attached to this vnet
+  //
+  // The rules that filter traffic between the guests attached to the vnet,
+  // the one segmentation control point that sits below the cluster and
+  // above the individual guest. Empty when the vnet has no rules. Null when
+  // the cluster does not serve the vnet firewall or the token cannot read
+  // this vnet's scope, so an unread rule set is not reported as an open one.
+  firewallRules() []proxmox.firewall.rule
+  // Firewall options for this vnet
+  //
+  // Covers whether the vnet firewall is switched on at all and its
+  // `policyForward` default. Rules present but the firewall disabled means
+  // nothing is filtered. Null when the cluster does not serve the vnet
+  // firewall or the token cannot read this vnet's scope.
+  firewallOptions() proxmox.firewall.options
 }
 
 // Proxmox VE SDN subnet
 //
-// Examine an SDN subnet attached to a vnet. The `cidr` (e.g.
-// `10.0.0.0/24`) is the subnet's address range and `gateway` is the
-// default route presented to guests. `snat` controls whether outbound
-// traffic from the subnet is masqueraded behind the host.
+// SDN subnet attached to a vnet. The `cidr` (e.g. `10.0.0.0/24`) is
+// the subnet's address range and `gateway` is the default route
+// presented to guests. `snat` controls whether outbound traffic from
+// the subnet is masqueraded behind the host, which determines whether
+// guests reach external networks without a routable address.
 proxmox.sdn.subnet @defaults("id cidr gateway") {
   // Subnet identifier (typically `<zone>-<network>-<prefix>`)
   id string
@@ -1590,18 +2473,21 @@ proxmox.sdn.subnet @defaults("id cidr gateway") {
   // DNS prefix appended to records created for this subnet
   dnsZonePrefix string
   // Parent vnet identifier
-  vnet string
+  //
+  // Deprecated in favor of `vnetRef`, which resolves the same vnet as
+  // an SDN vnet resource.
+  vnet @maturity("deprecated") @replaced_by("proxmox.sdn.subnet.vnetRef") string
   // Resolved parent vnet
   vnetRef() proxmox.sdn.vnet
 }
 
 // Proxmox VE VM serial port
 //
-// Examine a serial port attached to a virtual machine, identified by
-// `id` (`serial0` through `serial3`). The `target` reports either the
-// literal `socket` (VM speaks over a Unix-domain socket on the host)
-// or a host device path like `/dev/ttyS0`. A host-device target is a
-// pivot opportunity that audits should review.
+// Serial port attached to a virtual machine, keyed by `id` (`serial0`
+// through `serial3`). The `target` reports either the literal `socket`
+// (VM speaks over a Unix-domain socket on the host) or a host device
+// path like `/dev/ttyS0`. A host-device target is a pivot opportunity
+// that audits should review.
 proxmox.vm.serialPort @defaults("id target") {
   // Serial port slot (serial0..serial3)
   id string
@@ -1611,12 +2497,12 @@ proxmox.vm.serialPort @defaults("id target") {
 
 // Proxmox VE firewall security group
 //
-// Examine a named rule set defined under `/cluster/firewall/groups`.
-// Other firewall rules reference the group through `type=group,
-// action=<groupName>`; the rules `inside` the group then apply in
-// place. Auditing both the references and the group's own `rules`
-// is how policies confirm a `type=group` rule is actually doing what
-// it claims to.
+// Named rule set defined under `/cluster/firewall/groups`. Other
+// firewall rules reference the group through `type=group,
+// action=<groupName>`; the rules inside the group then apply in place.
+// Auditing both the references and the group's own `rules` is how
+// policies confirm a `type=group` rule is actually doing what it
+// claims to.
 proxmox.firewall.group @defaults("name") {
   // Group name
   name string
@@ -1628,12 +2514,12 @@ proxmox.firewall.group @defaults("name") {
 
 // Proxmox VE node PCI device
 //
-// Examine a PCI device visible to a Proxmox node, identified by its
+// PCI device visible to a Proxmox node, identified by its
 // `id` (`<seg>:<bus>:<slot>.<func>`). Reports vendor and device IDs
 // alongside their human-readable names, the PCI `class` (eg `0x0300`
 // for VGA), the secondary vendor/device IDs (`subVendor`,
 // `subDevice`) used to distinguish OEM variants, `iommuGroup`
-// (passthrough granularity — devices in the same group must be passed
+// (passthrough granularity, devices in the same group must be passed
 // through together), and whether the device advertises mediated-device
 // support via `mdevSupported`.
 proxmox.node.pciDevice @defaults("id deviceName iommuGroup") {
@@ -1667,7 +2553,7 @@ proxmox.node.pciDevice @defaults("id deviceName iommuGroup") {
 
 // Proxmox VE node USB device
 //
-// Examine a USB device plugged into a Proxmox node. Reports the
+// USB device plugged into a Proxmox node. Reports the
 // `vendorId`/`productId` pair, manufacturer/product/serial strings
 // (when the device exposes them), the bus and device numbers
 // (`busNum`, `devNum`), the topology `port` / `level`, and the
@@ -1702,12 +2588,12 @@ proxmox.node.usbDevice @defaults("vendorId productId product") {
 
 // Proxmox VE VM PCI passthrough entry
 //
-// Examine a `hostpci<n>` configuration entry on a virtual machine.
-// PVE accepts two forms: a direct PCI address (`0000:01:00.0`, with
+// PCI passthrough entry (`hostpci<n>`) on a virtual machine. PVE
+// accepts two forms: a direct PCI address (`0000:01:00.0`, with an
 // optional `.func` suffix for multi-function devices) or a named
 // `mapping=<name>` reference to a cluster-defined PCI mapping. The
-// extra knobs PVE exposes — express vs legacy bus, ROM-BAR visibility,
-// VGA tag, mdev type for vGPU — are surfaced so audits can flag risky
+// extra knobs PVE exposes (express vs legacy bus, ROM-BAR visibility,
+// VGA tag, mdev type for vGPU) are surfaced so audits can flag risky
 // configurations (e.g. `xVga = true` with no IOMMU isolation).
 proxmox.vm.pciDevice @defaults("slot address mapping") {
   // Config slot (`hostpci0` through `hostpci15`)
@@ -1730,9 +2616,9 @@ proxmox.vm.pciDevice @defaults("slot address mapping") {
 
 // Proxmox VE VM USB passthrough entry
 //
-// Examine a `usb<n>` configuration entry on a virtual machine. PVE
-// supports four target forms: vendor:product IDs (`host=1234:5678`),
-// USB bus/port paths (`host=1-2.3`), host device paths (typically
+// USB passthrough entry (`usb<n>`) on a virtual machine. PVE supports
+// four target forms: vendor:product IDs (`host=1234:5678`), USB
+// bus/port paths (`host=1-2.3`), host device paths (typically
 // `/dev/...`), and the SPICE redirection sentinel. The `usb3` flag
 // requests USB-3 emulation regardless of the underlying device class.
 proxmox.vm.usbDevice @defaults("slot target") {
@@ -1752,11 +2638,11 @@ proxmox.vm.usbDevice @defaults("slot target") {
 
 // Proxmox VE container host-device passthrough entry
 //
-// Examine a `dev<n>` configuration entry on an LXC container. PVE
-// 7+ uses this format to expose a host `/dev` node into the guest;
-// the optional `uid=`, `gid=`, and `mode=` overrides control the
-// in-container permissions. A `mode=` of 0666 effectively grants the
-// device to every UID in the container.
+// Host-device passthrough entry from a `dev<n>` configuration line on
+// an LXC container. PVE 7+ uses this format to expose a host `/dev`
+// node into the guest; the optional `uid=`, `gid=`, and `mode=`
+// overrides control the in-container permissions. A `mode=` of 0666
+// effectively grants the device to every UID in the container.
 proxmox.container.passthroughDevice @defaults("slot path mode") {
   // Config slot (`dev0` through `dev255`)
   slot string
@@ -1768,4 +2654,412 @@ proxmox.container.passthroughDevice @defaults("slot path mode") {
   gid int
   // Mode (octal) applied to the in-container device node; empty when not set
   mode string
+}
+
+// Ceph cluster backing a Proxmox VE deployment
+//
+// Ceph storage cluster managed alongside Proxmox VE, covering the
+// daemons that keep it running and the data-placement settings that
+// decide how durable it is. Monitors, managers, metadata servers, and
+// OSDs are listed through `monitors`, `managers`, `metadataServers`,
+// and `osds`; the data layout through `pools`, `fileSystems`, and
+// `crushRules`; and the cluster-wide tunables Ceph itself stores
+// through `config`. Overall health is reported by `healthStatus`, with
+// the complete unparsed report in `status`.
+//
+// Many Proxmox clusters run no Ceph at all. On those, `available` is
+// false and every list is empty, which is a real answer rather than a
+// failed one. A token that cannot read Ceph reports an error instead,
+// so missing permissions are never reported as a cluster without Ceph.
+// Reading these fields requires Sys.Audit or Datastore.Audit on `/`.
+proxmox.ceph @defaults("available healthStatus") {
+  // Whether Ceph is configured on this cluster
+  //
+  // False when `pveceph` was never initialized. All other fields are
+  // empty in that case.
+  available() bool
+  // Overall Ceph health
+  //
+  // One of HEALTH_OK, HEALTH_WARN, or HEALTH_ERR. Empty when Ceph is
+  // not configured on the cluster.
+  healthStatus() string
+  // Health check summaries currently raised by Ceph
+  //
+  // Keyed by the Ceph check name (for example `POOL_NO_REDUNDANCY`,
+  // `MON_CLOCK_SKEW`, `OSD_NEARFULL`), with the severity and message
+  // Ceph reports for each. Empty when health is HEALTH_OK.
+  healthChecks() dict
+  // Complete Ceph status report
+  //
+  // Raw `/cluster/ceph/status` response, holding the full fsid, mon
+  // map, osd map, pg map, and service map. The escape hatch for values
+  // not surfaced as their own fields.
+  status() dict
+  // Ceph version installed on each node, keyed by node name
+  nodeVersions() dict
+  // Monitors that maintain the cluster map and quorum
+  monitors() []proxmox.ceph.monitor
+  // Managers that serve cluster metrics and hosted modules
+  managers() []proxmox.ceph.manager
+  // Metadata servers backing CephFS file systems
+  metadataServers() []proxmox.ceph.metadataServer
+  // Object storage daemons holding the cluster data
+  osds() []proxmox.ceph.osd
+  // Storage pools and their replication settings
+  pools() []proxmox.ceph.pool
+  // CephFS file systems defined on the cluster
+  fileSystems() []proxmox.ceph.filesystem
+  // Cluster-wide configuration entries from the Ceph config database
+  config() []proxmox.ceph.configEntry
+  // Names of the CRUSH rules defined on the cluster
+  //
+  // Rules decide which OSDs a pool places its replicas on. Pools
+  // reference them by name through `crushRuleName`.
+  crushRules() []string
+}
+
+// Ceph monitor daemon
+//
+// Monitor daemon holding the authoritative copy of the cluster map,
+// selected by `name`. Monitors must hold quorum for the cluster to
+// accept I/O, so `quorum` and `state` are the fields that say whether
+// the cluster is actually serving. The `host` field names the node the
+// daemon runs on and `addr` its advertised bind address.
+proxmox.ceph.monitor @defaults("name host quorum state") {
+  // Monitor id, typically the hostname
+  name string
+  // Node the monitor runs on
+  host string
+  // Host the monitor runs on
+  //
+  // Resolves `host` against the cluster, so a monitor out of quorum can
+  // be checked against the state of the node running it. Null when the
+  // named host is no longer in the cluster.
+  node() proxmox.node
+  // Address the monitor advertises, in Ceph format (usually `IP:PORT/NONCE`)
+  addr string
+  // Whether the monitor is part of the current quorum
+  quorum bool
+  // Rank of the monitor within the mon map; null when not reported
+  rank int
+  // Run state of the monitor
+  //
+  // `running` when in quorum, `stopped` when the systemd unit is
+  // configured but inactive, or `unknown`.
+  state string
+  // Whether a ceph-mon systemd unit is enabled on the hosting node
+  service bool
+  // Whether the monitor data directory exists on the hosting node
+  directoryExists bool
+  // Full Ceph version string of the daemon
+  cephVersion string
+  // Short numeric Ceph version of the daemon (e.g. `19.2.0`)
+  cephVersionShort string
+}
+
+// Ceph manager daemon
+//
+// Manager daemon serving cluster metrics and hosted modules such as
+// the dashboard and the placement-group autoscaler, selected by
+// `name`. A cluster with no active manager keeps serving I/O but stops
+// reporting usable statistics, so `state` is the field to check. The
+// `host` field names the node the daemon runs on.
+proxmox.ceph.manager @defaults("name host state") {
+  // Manager id
+  name string
+  // Node the manager runs on
+  host string
+  // Host the manager runs on
+  //
+  // Resolves `host` against the cluster, so a stopped manager can be
+  // checked against the state of the node running it. Null when the
+  // named host is no longer in the cluster.
+  node() proxmox.node
+  // Address the manager advertises, in Ceph format
+  addr string
+  // Manager state
+  //
+  // `active` or `standby` for daemons visible to the manager cluster,
+  // `stopped` when the systemd unit is configured but inactive, or
+  // `unknown`.
+  state string
+  // Whether a ceph-mgr systemd unit is enabled on the hosting node
+  service bool
+  // Whether the manager data directory exists on the hosting node
+  directoryExists bool
+  // Full Ceph version string of the daemon
+  cephVersion string
+  // Short numeric Ceph version of the daemon (e.g. `19.2.0`)
+  cephVersionShort string
+}
+
+// Ceph metadata server daemon
+//
+// Metadata server backing a CephFS file system, selected by `name`.
+// Each file system needs an active MDS to serve its namespace, so
+// `state` and `rank` show whether one is bound and standbys are
+// available. The `fileSystem` field resolves the CephFS this daemon
+// serves, and `standbyReplay` reports whether a standby is tracking
+// the active daemon for faster failover.
+proxmox.ceph.metadataServer @defaults("name host state fsName") {
+  // Metadata server id
+  name string
+  // Node the metadata server runs on
+  host string
+  // Host the metadata server runs on
+  //
+  // Resolves `host` against the cluster, so a file system left without
+  // an active daemon can be traced to the node running it. Null when
+  // the named host is no longer in the cluster.
+  node() proxmox.node
+  // Address the metadata server advertises, in Ceph format
+  addr string
+  // Ceph-reported run state (e.g. `up:active`, `up:standby`, `up:standby-replay`)
+  state string
+  // Rank within the file system; -1 for standby daemons not bound to a rank
+  rank int
+  // Name of the CephFS this daemon is bound to; empty for unbound standbys
+  //
+  // Deprecated in favor of `fileSystem`, which resolves the same file
+  // system as a CephFS resource.
+  fsName @maturity("deprecated") @replaced_by("proxmox.ceph.metadataServer.fileSystem") string
+  // CephFS this daemon serves; null for unbound standbys
+  fileSystem() proxmox.ceph.filesystem
+  // Whether the standby is polling the active daemon for faster recovery
+  standbyReplay bool
+  // Whether a ceph-mds systemd unit is enabled on the hosting node
+  service bool
+  // Whether the metadata server data directory exists on the hosting node
+  directoryExists bool
+  // Full Ceph version string of the daemon
+  cephVersion string
+  // Short numeric Ceph version of the daemon (e.g. `19.2.0`)
+  cephVersionShort string
+}
+
+// Ceph object storage daemon
+//
+// Object storage daemon holding one backing device worth of cluster
+// data, selected by its numeric `id`. An OSD contributes capacity only
+// while it is both `up` (running) and `inCluster` (accepting data), so
+// those two fields together say whether the cluster is degraded. The
+// `deviceClass` field (`hdd`, `ssd`, `nvme`) is what CRUSH rules
+// select on, `crushWeight` sets the share of data it receives, and
+// `devices` names the underlying block devices.
+proxmox.ceph.osd @defaults("id host up inCluster deviceClass") {
+  // Numeric OSD id
+  id int
+  // OSD name as it appears in the CRUSH map (e.g. `osd.3`)
+  name string
+  // Node the daemon runs on
+  host string
+  // Host the daemon runs on
+  //
+  // Resolves `host` against the cluster, so a down or out OSD can be
+  // checked against the state of the node holding its backing device.
+  // Null when the named host is no longer in the cluster.
+  node() proxmox.node
+  // Whether the daemon is running
+  //
+  // Null when the CRUSH tree reports no status for this OSD.
+  up bool
+  // Whether the OSD is accepting data placement
+  //
+  // An OSD that is up but marked out holds no data. Null when the
+  // CRUSH tree reports no membership state.
+  inCluster bool
+  // Ceph-reported status string (`up` or `down`)
+  status string
+  // Storage class CRUSH rules select on (`hdd`, `ssd`, `nvme`)
+  deviceClass string
+  // Share of data this OSD receives in the CRUSH map
+  crushWeight float
+  // Manual override applied on top of the CRUSH weight; 1 when untouched
+  reweight float
+  // Total capacity in bytes
+  totalSpace int
+  // Used capacity in bytes
+  bytesUsed int
+  // Percentage of capacity in use
+  percentUsed float
+  // Backing object store (`bluestore` or the legacy `filestore`)
+  objectStore string
+  // Underlying block device names, comma-joined (e.g. `sdb,sdc`)
+  devices string
+  // Underlying device serial identifiers, comma-joined
+  deviceIds string
+  // Underlying /dev/disk/by-path entries, comma-joined
+  devicePaths string
+  // Bind addresses for client-facing traffic
+  frontAddress string
+  // Bind addresses for inter-OSD replication traffic
+  backAddress string
+  // Path to the OSD data directory
+  dataPath string
+  // Full Ceph version string of the daemon
+  cephVersion string
+  // Short numeric Ceph version of the daemon (e.g. `19.2.0`)
+  cephVersionShort string
+  // Ceph release codename the daemon runs
+  cephRelease string
+}
+
+// Ceph storage pool
+//
+// Storage pool and the replication settings that decide how much
+// hardware loss its data survives, selected by `name`. The `size`
+// field is the number of replicas Ceph keeps and `minSize` the number
+// it needs before it will still accept writes; a replicated pool at
+// size 2 or minSize 1 can lose data to a single failure. The
+// `crushRuleName` field names the placement rule and
+// `pgAutoscaleMode` whether Ceph manages the placement-group count.
+proxmox.ceph.pool @defaults("name type size minSize percentUsed") {
+  // Operator-visible pool name
+  name string
+  // Numeric pool id assigned by Ceph
+  poolId int
+  // Pool type
+  //
+  // `replicated` for n-way replication or `erasure` for an
+  // erasure-coded pool.
+  type string
+  // Number of object replicas Ceph keeps
+  size int
+  // Replicas required before the pool accepts writes
+  minSize int
+  // Current placement-group count
+  pgNum int
+  // Optimal placement-group count computed by the autoscaler
+  pgNumFinal int
+  // Lowest placement-group count the autoscaler may choose
+  pgNumMin int
+  // Placement-group autoscaler mode (`on`, `warn`, or `off`)
+  pgAutoscaleMode string
+  // Numeric id of the CRUSH rule governing placement
+  crushRuleId int
+  // Name of the CRUSH rule governing placement
+  crushRuleName string
+  // Bytes currently stored in the pool
+  bytesUsed int
+  // Percentage of pool capacity in use
+  percentUsed float
+  // Applications tagged on the pool, keyed by application name
+  //
+  // Proxmox tags pools it creates with `rbd` for guest disks or
+  // `cephfs` for file-system pools.
+  applications dict
+}
+
+// CephFS file system
+//
+// CephFS file system and the pools that store it, selected by `name`.
+// The `metadataPool` holds the namespace and `dataPools` the file
+// contents, so the durability of a CephFS is the durability of those
+// pools. Proxmox mounts these through a `cephfs` storage entry.
+proxmox.ceph.filesystem @defaults("name metadataPool") {
+  // File system name
+  name string
+  // Name of the pool holding file-system metadata
+  metadataPool string
+  // Names of every data pool assigned to the file system
+  dataPools []string
+}
+
+// Ceph configuration database entry
+//
+// Setting stored in the Ceph configuration database rather than in
+// ceph.conf, selected by its `name` within a `section`. Entries here
+// are what Ceph actually runs with, so this is where authentication
+// and wire-protocol settings such as `auth_cluster_required`,
+// `auth_service_required`, and `ms_bind_msgr2` can be confirmed. The
+// `section` field scopes the entry to `global`, a daemon type, or a
+// single daemon, and `mask` narrows it further to a CRUSH location or
+// device class.
+proxmox.ceph.configEntry @defaults("section name value") {
+  // Configuration key name
+  name string
+  // Scope the entry applies to
+  //
+  // `global`, a daemon type (`mon`, `osd`, `mds`, `mgr`, `client`), or
+  // a single daemon such as `osd.3`.
+  section string
+  // Configured value, always serialized as a string by Ceph
+  value string
+  // Match expression narrowing the entry's scope; empty when unmasked
+  mask string
+  // Visibility level of the setting (`basic`, `advanced`, or `dev`)
+  level string
+  // Whether the value can change without restarting the affected daemons
+  canUpdateAtRuntime bool
+}
+
+// Guest no backup job covers
+//
+// A virtual machine or container that no configured backup job selects, as
+// computed by Proxmox from the live guest inventory rather than from the job
+// definitions. The `vm` and `container` fields resolve the guest itself, so a
+// policy can read its name, node, and protection state without a second
+// lookup. Exactly one of the two is set, chosen by `type`.
+private proxmox.cluster.guestWithoutBackup @defaults("vmid name type") {
+  // VMID of the uncovered guest
+  vmid int
+  // Guest display name; empty when the guest has no name set
+  name string
+  // Guest kind, either qemu for a virtual machine or lxc for a container
+  type string
+  // Virtual machine this entry refers to when `type` is qemu; null otherwise
+  vm() proxmox.vm
+  // Container this entry refers to when `type` is lxc; null otherwise
+  container() proxmox.container
+}
+
+// Directory realm sync job
+//
+// A scheduled import of users and groups from an LDAP, Active Directory, or
+// OpenID realm into the Proxmox user database, selected by the job `id` (for
+// example `proxmox.realm.syncJob(id: "ldap-nightly")`). What the job does on
+// each run decides who holds a cluster account: `enableNew` governs whether a
+// user appearing in the directory becomes an immediately usable Proxmox
+// login, and `removeVanished` governs whether a user deleted upstream loses
+// their account, their properties, and their access-control entries. The
+// `realmRef` field resolves the realm the accounts come from.
+proxmox.realm.syncJob @defaults("id schedule enabled scope") {
+  // Job identifier
+  id string
+  // Realm the users and groups are imported from
+  realmRef() proxmox.realm
+  // Calendar schedule the job runs on, in systemd timer syntax
+  schedule string
+  // Job comment; empty when none is set
+  comment string
+  // Whether the job is enabled
+  //
+  // A disabled job keeps its schedule but never runs, so the realm's
+  // accounts stop tracking the directory. True when the setting is absent,
+  // which is the Proxmox default.
+  enabled bool
+  // What the job imports
+  //
+  // One of `users`, `groups`, or `both`. Empty when the job leaves it
+  // unset, in which case Proxmox refuses the run rather than guessing.
+  scope string
+  // What the job deletes when an entry vanishes from the directory
+  //
+  // Each entry is one of `entry`, which removes the user or group itself,
+  // `properties`, which removes attributes the directory no longer sets,
+  // and `acl`, which removes the access-control entries granted to it.
+  // Empty means nothing is removed, so a user deleted upstream keeps their
+  // Proxmox account and its cluster permissions.
+  removeVanished []string
+  // Last time the job ran; null when it has never run
+  lastRun time
+  // Next scheduled run; null when the job is disabled or has no next run
+  nextRun time
+  // Whether users created by the sync are enabled immediately
+  //
+  // With this on, every account the directory returns becomes a usable
+  // cluster login on the next run, with no review step. True when the
+  // setting is absent, which is the Proxmox default. Null when the job
+  // definition cannot be read.
+  enableNew() bool
 }

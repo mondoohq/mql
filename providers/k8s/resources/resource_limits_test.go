@@ -79,7 +79,7 @@ func TestResourceLimitRollups_Helpers(t *testing.T) {
 		spec := &corev1.PodSpec{
 			Containers: []corev1.Container{{Name: "a", Resources: corev1.ResourceRequirements{Limits: bothLimits, Requests: bothRequests}}},
 			EphemeralContainers: []corev1.EphemeralContainer{
-				{EphemeralContainerCommon: corev1.EphemeralContainerCommon{Name: "debug"}},
+				{Name: "debug"},
 			},
 		}
 		assert.True(t, specHasResourceLimits(spec), "ephemeral debug container must not flip the result")

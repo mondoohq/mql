@@ -13,12 +13,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers/helm/connection"
-	"go.mondoo.com/mql/v13/providers/helm/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers/helm/connection"
+	"go.mondoo.com/mql/providers/helm/resources"
+	"go.mondoo.com/mql/utils/urlx"
 )
 
 const (
@@ -180,6 +181,28 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.HelmConnection
 	}
 	PlatformByName("helm").Apply(asset.Platform)
 
+	// When discovered from a git repository (e.g. by the GitHub provider) prefer
+	// the repo (org/repo) for the name and platform ID. The local path is a
+	// temporary clone directory whose hash would change on every scan.
+	if url, ok := asset.Connections[0].Options["ssh-url"]; ok {
+		domain, org, repo, err := urlx.ParseGitSshUrl(url)
+		if err == nil {
+			name := org + "/" + repo
+			platformID := "//platformid.api.mondoo.app/runtime/helm/domain/" + domain + "/org/" + org + "/repo/" + repo
+			// A repository can hold multiple charts; qualify by the repo-relative
+			// chart directory so each one is a distinct asset.
+			if relPath := asset.Connections[0].Options["path"]; relPath != "" {
+				platformID += "/path/" + relPath
+				name += "/" + relPath
+			}
+			asset.Id = platformID
+			asset.Connections[0].PlatformId = platformID
+			asset.PlatformIds = []string{platformID}
+			asset.Name = "Helm Chart " + name
+			return nil
+		}
+	}
+
 	projectPath, ok := asset.Connections[0].Options["path"]
 	if ok {
 		absPath, _ := filepath.Abs(projectPath)
@@ -189,7 +212,7 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.HelmConnection
 		platformID := "//platformid.api.mondoo.app/runtime/helm/hash/" + hash
 		asset.Connections[0].PlatformId = platformID
 		asset.PlatformIds = []string{platformID}
-		asset.Name = "Helm Chart Static Analysis " + parseNameFromPath(projectPath)
+		asset.Name = "Helm Chart " + parseNameFromPath(projectPath)
 		return nil
 	}
 

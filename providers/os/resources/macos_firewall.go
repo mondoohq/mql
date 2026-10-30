@@ -4,20 +4,23 @@
 package resources
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/plist"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/plist"
 )
 
 type mqlMacosFirewallInternal struct {
 	lock    sync.Mutex
 	fetched bool
 	config  plist.Data
+
+	managedLock    sync.Mutex
+	managedFetched bool
+	managed        plist.Data
 }
 
 func alfConfigFloat(config plist.Data, key string) (float64, error) {
@@ -69,7 +72,12 @@ func (m *mqlMacosFirewall) fetchConfig() (plist.Data, error) {
 	}
 
 	if plistLocation == "" {
-		return nil, errors.New("ALF configuration not found")
+		// No preferences file. Modern macOS stops writing one; the live state
+		// is read from socketfilterfw instead. Cache the empty result so the
+		// lookup is not repeated per field.
+		m.fetched = true
+		m.config = nil
+		return nil, nil
 	}
 
 	f, err := fs.Open(plistLocation)
@@ -93,11 +101,32 @@ func (m *mqlMacosFirewall) globalState() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	v, err := alfConfigFloat(config, "globalstate")
+	if v, err := alfConfigFloat(config, "globalstate"); err == nil {
+		return int64(v), nil
+	}
+
+	stdout, liveErr := m.runSocketfilterfw("--getglobalstate")
+	if liveErr == nil {
+		if v, ok := parseGlobalState(stdout); ok {
+			return v, nil
+		}
+	}
+
+	managed, err := m.fetchManaged()
 	if err != nil {
 		return 0, err
 	}
-	return int64(v), nil
+	if enabled, ok := managed["EnableFirewall"].(bool); ok {
+		switch {
+		case !enabled:
+			return 0, nil
+		case managed["BlockAllIncoming"] == true:
+			return 2, nil
+		default:
+			return 1, nil
+		}
+	}
+	return 0, firewallUnavailable(liveErr)
 }
 
 func (m *mqlMacosFirewall) enabled() (bool, error) {
@@ -121,11 +150,11 @@ func (m *mqlMacosFirewall) stealthEnabled() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	v, err := alfConfigFloat(config, "stealthenabled")
-	if err != nil {
-		return false, err
+	if v, err := alfConfigFloat(config, "stealthenabled"); err == nil {
+		return int64(v) != 0, nil
 	}
-	return int64(v) != 0, nil
+
+	return m.liveOrManagedToggle("--getstealthmode", "EnableStealthMode")
 }
 
 func (m *mqlMacosFirewall) loggingEnabled() (bool, error) {
@@ -133,11 +162,11 @@ func (m *mqlMacosFirewall) loggingEnabled() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	v, err := alfConfigFloat(config, "loggingenabled")
-	if err != nil {
-		return false, err
+	if v, err := alfConfigFloat(config, "loggingenabled"); err == nil {
+		return int64(v) != 0, nil
 	}
-	return int64(v) != 0, nil
+
+	return m.liveOrManagedToggle("--getloggingmode", "EnableLogging")
 }
 
 func (m *mqlMacosFirewall) loggingDetail() (string, error) {
@@ -147,7 +176,21 @@ func (m *mqlMacosFirewall) loggingDetail() (string, error) {
 	}
 	v, err := alfConfigFloat(config, "loggingoption")
 	if err != nil {
-		return "", err
+		// No preferences file. A configuration profile states the option by
+		// name, with the same three values the preferences file numbers.
+		managed, merr := m.fetchManaged()
+		if merr != nil {
+			return "", merr
+		}
+		opt, _ := managed["LoggingOption"].(string)
+		switch opt {
+		case "detail", "brief", "throttled":
+			return opt, nil
+		case "":
+			return "", errFirewallLoggingDetailUnavailable
+		}
+		return "", fmt.Errorf("%w: the configuration profile sets LoggingOption %q, which is not detail, brief, or throttled",
+			errFirewallLoggingDetailUnavailable, opt)
 	}
 	switch int64(v) {
 	case 0:
@@ -164,27 +207,37 @@ func (m *mqlMacosFirewall) loggingDetail() (string, error) {
 }
 
 func (m *mqlMacosFirewall) allowSignedApps() (bool, error) {
-	config, err := m.fetchConfig()
-	if err != nil {
-		return false, err
-	}
-	v, err := alfConfigFloat(config, "allowsignedenabled")
-	if err != nil {
-		return false, err
-	}
-	return int64(v) != 0, nil
+	return m.signedAppsFlag("allowsignedenabled", false)
 }
 
 func (m *mqlMacosFirewall) allowDownloadSignedApps() (bool, error) {
+	return m.signedAppsFlag("allowdownloadsignedenabled", true)
+}
+
+// signedAppsFlag reads one of the two auto-allow toggles. socketfilterfw
+// reports both in a single --getallowsigned reply, so `downloaded` picks the
+// line rather than the command.
+func (m *mqlMacosFirewall) signedAppsFlag(plistKey string, downloaded bool) (bool, error) {
 	config, err := m.fetchConfig()
 	if err != nil {
 		return false, err
 	}
-	v, err := alfConfigFloat(config, "allowdownloadsignedenabled")
+	if v, err := alfConfigFloat(config, plistKey); err == nil {
+		return int64(v) != 0, nil
+	}
+
+	stdout, err := m.runSocketfilterfw("--getallowsigned")
 	if err != nil {
 		return false, err
 	}
-	return int64(v) != 0, nil
+	builtin, download, ok := parseAllowSigned(stdout)
+	if !ok {
+		return false, errFirewallStateUnavailable
+	}
+	if downloaded {
+		return download, nil
+	}
+	return builtin, nil
 }
 
 func (m *mqlMacosFirewall) version() (string, error) {
@@ -229,11 +282,21 @@ func (m *mqlMacosFirewall) applications() ([]any, error) {
 		return nil, err
 	}
 
+	if config == nil {
+		// No preferences file: modern macOS keeps the per-app rules out of
+		// it. socketfilterfw lists them without root.
+		stdout, err := m.runSocketfilterfw("--listapps")
+		if err != nil {
+			return nil, err
+		}
+		return m.createApps(parseListApps(stdout))
+	}
+
 	appsRaw, err := alfConfigSlice(config, "applications")
 	if err != nil {
 		return nil, err
 	}
-	apps := make([]any, 0, len(appsRaw))
+	entries := make([]firewallAppEntry, 0, len(appsRaw))
 	for i, raw := range appsRaw {
 		entry, ok := raw.(map[string]any)
 		if !ok {
@@ -252,19 +315,33 @@ func (m *mqlMacosFirewall) applications() ([]any, error) {
 		if s, ok := entry["state"].(float64); ok {
 			state = int64(s)
 		}
+		entries = append(entries, firewallAppEntry{name: name, bundleId: bundleId, state: state})
+	}
 
+	return m.createApps(entries)
+}
+
+// firewallAppEntry is one per-application rule, from either source.
+type firewallAppEntry struct {
+	name     string
+	bundleId string
+	state    int64
+}
+
+func (m *mqlMacosFirewall) createApps(entries []firewallAppEntry) ([]any, error) {
+	apps := make([]any, 0, len(entries))
+	for _, e := range entries {
 		app, err := CreateResource(m.MqlRuntime, "macos.firewall.app", map[string]*llx.RawData{
-			"__id":     llx.StringData("macos.firewall.app/" + name),
-			"name":     llx.StringData(name),
-			"bundleId": llx.StringData(bundleId),
-			"state":    llx.IntData(state),
+			"__id":     llx.StringData("macos.firewall.app/" + e.name),
+			"name":     llx.StringData(e.name),
+			"bundleId": llx.StringData(e.bundleId),
+			"state":    llx.IntData(e.state),
 		})
 		if err != nil {
 			return nil, err
 		}
 		apps = append(apps, app)
 	}
-
 	return apps, nil
 }
 

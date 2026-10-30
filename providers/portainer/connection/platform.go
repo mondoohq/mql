@@ -6,8 +6,34 @@ package connection
 import (
 	"strconv"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
+
+// Platforms is the static catalog of platforms this provider can emit.
+var Platforms = []*plugin.PlatformInfo{
+	{
+		Name:    "portainer-server",
+		Title:   "Portainer Server",
+		Family:  []string{"portainer"},
+		Kind:    []string{"api"},
+		Runtime: []string{"portainer"},
+	},
+	{
+		Name:    "portainer-environment",
+		Title:   "Portainer Environment",
+		Family:  []string{"portainer"},
+		Kind:    []string{"api"},
+		Runtime: []string{"portainer"},
+	},
+}
+
+var platformsByName = plugin.PlatformsByName(Platforms)
+
+// PlatformByName returns the catalog entry for the given platform name.
+func PlatformByName(name string) *plugin.PlatformInfo {
+	return platformsByName[name]
+}
 
 // Discovery targets
 const (
@@ -70,12 +96,38 @@ func IsEdgeEnvironment(t int64) bool {
 }
 
 // EnvironmentStatus maps the Portainer endpoint status enum to a string.
+// Portainer declares the status as enums 1,2,3,4: the open-source edition only
+// names 1 (up) and 2 (down), while 3 (provisioning) and 4 (error) are reported
+// by cloud-provisioned environments and carry a StatusMessage.
 func EnvironmentStatus(s int64) string {
 	switch s {
 	case 1:
 		return "up"
 	case 2:
 		return "down"
+	case 3:
+		return "provisioning"
+	case 4:
+		return "error"
+	default:
+		return "unknown"
+	}
+}
+
+// AccessPolicyRole maps a Portainer environment role id, as it appears in the
+// team and user access policies, to the role name used by the API.
+func AccessPolicyRole(r int64) string {
+	switch r {
+	case 1:
+		return "environment_administrator"
+	case 2:
+		return "helpdesk_user"
+	case 3:
+		return "standard_user"
+	case 4:
+		return "readonly_user"
+	case 5:
+		return "operator_user"
 	default:
 		return "unknown"
 	}
@@ -131,26 +183,85 @@ func MembershipRole(r int64) string {
 	}
 }
 
-func InstancePlatform() *inventory.Platform {
-	return &inventory.Platform{
-		Name:                  "portainer-server",
-		Family:                []string{"portainer"},
-		Kind:                  "api",
-		Runtime:               "portainer",
-		Title:                 "Portainer Server",
-		TechnologyUrlSegments: []string{"virtualization", "portainer", "instance"},
+// RegistryType maps the Portainer registry type enum to a string. The API
+// documents seven values and rejects any other on create, so an unlisted value
+// is reported as unknown rather than guessed at.
+func RegistryType(t int64) string {
+	switch t {
+	case 1:
+		return "quay"
+	case 2:
+		return "azure"
+	case 3:
+		return "custom"
+	case 4:
+		return "gitlab"
+	case 5:
+		return "proget"
+	case 6:
+		return "dockerhub"
+	case 7:
+		return "ecr"
+	default:
+		return "unknown"
 	}
 }
 
+// StackType maps the Portainer stack type enum to a string.
+func StackType(t int64) string {
+	switch t {
+	case 1:
+		return "swarm"
+	case 2:
+		return "compose"
+	case 3:
+		return "kubernetes"
+	default:
+		return "unknown"
+	}
+}
+
+// StackStatus maps the Portainer stack status enum to a string.
+func StackStatus(s int64) string {
+	switch s {
+	case 1:
+		return "active"
+	case 2:
+		return "inactive"
+	default:
+		return "unknown"
+	}
+}
+
+// WebhookType maps the Portainer webhook type enum to a string.
+func WebhookType(t int64) string {
+	switch t {
+	case 1:
+		return "service"
+	case 2:
+		return "container"
+	default:
+		return "unknown"
+	}
+}
+
+func InstancePlatform() *inventory.Platform {
+	p := &inventory.Platform{
+		TechnologyUrlSegments: []string{"virtualization", "portainer", "instance"},
+	}
+	PlatformByName("portainer-server").Apply(p)
+	return p
+}
+
 func EnvironmentPlatform(envType int64) *inventory.Platform {
-	return &inventory.Platform{
-		Name:                  "portainer-environment",
-		Family:                []string{"portainer"},
-		Kind:                  "api",
-		Runtime:               "portainer",
+	p := &inventory.Platform{
+		// The specific endpoint type is only known at runtime, so set the
+		// concrete title here; Apply preserves an already-set title.
 		Title:                 "Portainer Environment (" + EnvironmentType(envType) + ")",
 		TechnologyUrlSegments: []string{"virtualization", "portainer", "environment"},
 	}
+	PlatformByName("portainer-environment").Apply(p)
+	return p
 }
 
 func NewInstancePlatformID(instanceID string) string {
@@ -176,5 +287,5 @@ func (c *PortainerConnection) SubAssetPlatform() (*inventory.Platform, string, s
 	// The environment type is stored as a connection option at discovery time;
 	// fall back to 0 ("unknown") only if it is missing or malformed.
 	envType, _ := strconv.ParseInt(c.Conf.Options[OptionEnvironmentType], 10, 64)
-	return EnvironmentPlatform(envType), NewEnvironmentPlatformID(c.instanceID, envID), "Portainer environment " + envIDStr
+	return EnvironmentPlatform(envType), NewEnvironmentPlatformID(c.InstanceKey(), envID), "Portainer environment " + envIDStr
 }

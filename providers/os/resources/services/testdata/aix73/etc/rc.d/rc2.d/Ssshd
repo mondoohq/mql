@@ -1,0 +1,4 @@
+#!/usr/bin/ksh
+# excerpt of /etc/rc.d/rc2.d/Ssshd on AIX 7.3 TL4 SP2
+	/usr/bin/startsrc -g ssh
+	/usr/bin/stopsrc -g ssh 

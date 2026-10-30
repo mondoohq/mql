@@ -10,10 +10,14 @@ import (
 
 	"github.com/go-ldap/ldap/v3"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/activedirectory/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/activedirectory/connection"
+	"go.mondoo.com/mql/types"
 )
+
+// userObjectFilter matches every object the activedirectory.user resource
+// represents: ordinary user accounts and Group Managed Service Accounts.
+const userObjectFilter = "(|(&(objectCategory=person)(objectClass=user))(objectClass=msDS-GroupManagedServiceAccount))"
 
 // extractOU returns the OU path from a DN by removing the object's own RDN.
 func extractOU(dn string) string {
@@ -28,11 +32,11 @@ func (a *mqlActivedirectoryUser) id() (string, error) {
 	return a.DistinguishedName.Data, nil
 }
 
-func (a *mqlActivedirectory) users() ([]interface{}, error) {
+func (a *mqlActivedirectory) users() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.ActiveDirectoryConnection)
 	baseDN := conn.BaseDN()
 
-	filter := "(|(&(objectCategory=person)(objectClass=user))(objectClass=msDS-GroupManagedServiceAccount))"
+	filter := userObjectFilter
 	attrs := []string{
 		"sAMAccountName",
 		"userPrincipalName",
@@ -48,6 +52,7 @@ func (a *mqlActivedirectory) users() ([]interface{}, error) {
 		"description",
 		"mail",
 		"memberOf",
+		"primaryGroupID",
 		"sIDHistory",
 		"msDS-AllowedToDelegateTo",
 		"objectClass",
@@ -66,7 +71,7 @@ func (a *mqlActivedirectory) users() ([]interface{}, error) {
 	}
 
 	now := time.Now().UTC()
-	res := make([]interface{}, 0, len(entries))
+	res := make([]any, 0, len(entries))
 	for _, entry := range entries {
 		samAccountName := connection.GetStringAttr(entry, "sAMAccountName")
 		dn := connection.GetStringAttr(entry, "distinguishedName")
@@ -117,10 +122,14 @@ func (a *mqlActivedirectory) users() ([]interface{}, error) {
 
 		// Group memberships as []interface{} for llx
 		memberOfSlice := connection.GetStringSliceAttr(entry, "memberOf")
-		memberOfIface := make([]interface{}, len(memberOfSlice))
+		memberOfIface := make([]any, len(memberOfSlice))
 		for i, m := range memberOfSlice {
 			memberOfIface[i] = m
 		}
+
+		// Primary group membership never appears in memberOf, so expose the
+		// RID directly for rules that assert on it.
+		primaryGroupID := parseInt64Attr(entry.GetAttributeValue("primaryGroupID"))
 
 		email := entry.GetAttributeValue("mail")
 		description := entry.GetAttributeValue("description")
@@ -143,15 +152,15 @@ func (a *mqlActivedirectory) users() ([]interface{}, error) {
 		}
 
 		// Convert string slices to []interface{} for llx array data
-		spnIface := make([]interface{}, len(spns))
+		spnIface := make([]any, len(spns))
 		for i, s := range spns {
 			spnIface[i] = s
 		}
-		sidHistIface := make([]interface{}, len(sidHistory))
+		sidHistIface := make([]any, len(sidHistory))
 		for i, s := range sidHistory {
 			sidHistIface[i] = s
 		}
-		constrainedIface := make([]interface{}, len(constrainedTargets))
+		constrainedIface := make([]any, len(constrainedTargets))
 		for i, s := range constrainedTargets {
 			constrainedIface[i] = s
 		}
@@ -181,6 +190,7 @@ func (a *mqlActivedirectory) users() ([]interface{}, error) {
 				"daysSinceLastLogon":            llx.IntData(daysSinceLastLogon),
 				"isStale":                       llx.BoolData(isStale),
 				"memberOf":                      llx.ArrayData(memberOfIface, types.String),
+				"primaryGroupId":                llx.IntData(primaryGroupID),
 				"description":                   llx.StringData(description),
 				"email":                         llx.StringData(email),
 				"ouPath":                        llx.StringData(ouPath),

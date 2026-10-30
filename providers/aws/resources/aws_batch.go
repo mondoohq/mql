@@ -15,12 +15,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/batch"
 	batch_types "github.com/aws/aws-sdk-go-v2/service/batch/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsBatch) id() (string, error) {
@@ -100,6 +100,7 @@ func (a *mqlAwsBatch) getComputeEnvironments(conn *connection.AwsConnection) []*
 					}
 					mqlCeRes := mqlCe.(*mqlAwsBatchComputeEnvironment)
 					mqlCeRes.cacheComputeResources = ce.ComputeResources
+					mqlCeRes.cacheEcsSettings = ce.EcsSettings
 					mqlCeRes.cacheServiceRoleArn = ce.ServiceRole
 					mqlCeRes.cacheEcsClusterArn = ce.EcsClusterArn
 					mqlCeRes.cacheEks = ce.EksConfiguration
@@ -123,6 +124,7 @@ func (a *mqlAwsBatch) getComputeEnvironments(conn *connection.AwsConnection) []*
 
 type mqlAwsBatchComputeEnvironmentInternal struct {
 	cacheComputeResources *batch_types.ComputeResource
+	cacheEcsSettings      *batch_types.EcsSettings
 	cacheServiceRoleArn   *string
 	cacheEcsClusterArn    *string
 	cacheEks              *batch_types.EksConfiguration
@@ -150,6 +152,29 @@ func (a *mqlAwsBatchComputeEnvironment) desiredVcpus() (int64, error) {
 		return 0, nil
 	}
 	return int64(*a.cacheComputeResources.DesiredvCpus), nil
+}
+
+// containerInsights reports the CloudWatch Container Insights mode for the
+// environment. A compute environment that is not ECS-backed reports no ECS
+// settings at all, which is null rather than DISABLED: the service has not
+// said Container Insights is off, it has said the setting does not apply.
+func (a *mqlAwsBatchComputeEnvironment) containerInsights() (string, error) {
+	if a.cacheEcsSettings == nil {
+		a.ContainerInsights.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return string(a.cacheEcsSettings.ContainerInsights), nil
+}
+
+func (a *mqlAwsBatchComputeEnvironment) capacityTags() (map[string]any, error) {
+	if a.cacheComputeResources == nil {
+		return map[string]any{}, nil
+	}
+	tags := make(map[string]any, len(a.cacheComputeResources.CapacityTags))
+	for k, v := range a.cacheComputeResources.CapacityTags {
+		tags[k] = v
+	}
+	return tags, nil
 }
 
 func (a *mqlAwsBatchComputeEnvironment) computeResourceType() (string, error) {
@@ -211,19 +236,6 @@ func (a *mqlAwsBatchComputeEnvironment) securityGroups() ([]any, error) {
 		res = append(res, mqlSg)
 	}
 	return res, nil
-}
-
-func (a *mqlAwsBatchComputeEnvironment) iamRole() (*mqlAwsIamRole, error) {
-	if a.cacheServiceRoleArn == nil || *a.cacheServiceRoleArn == "" {
-		a.IamRole.State = plugin.StateIsNull | plugin.StateIsSet
-		return nil, nil
-	}
-	res, err := NewResource(a.MqlRuntime, "aws.iam.role",
-		map[string]*llx.RawData{"arn": llx.StringDataPtr(a.cacheServiceRoleArn)})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlAwsIamRole), nil
 }
 
 func (a *mqlAwsBatchComputeEnvironment) serviceRole() (*mqlAwsIamRole, error) {
@@ -309,24 +321,17 @@ func (a *mqlAwsBatchComputeEnvironment) placementGroup() (string, error) {
 	return convert.ToValue(a.cacheComputeResources.PlacementGroup), nil
 }
 
-func (a *mqlAwsBatchComputeEnvironment) imageId() (string, error) {
-	if a.cacheComputeResources == nil {
-		return "", nil
-	}
-	return convert.ToValue(a.cacheComputeResources.ImageId), nil
-}
-
 func (a *mqlAwsBatchComputeEnvironment) image() (*mqlAwsEc2Image, error) {
 	cr := a.cacheComputeResources
 	if cr == nil || cr.ImageId == nil || *cr.ImageId == "" {
 		a.Image.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-	// initAwsEc2Image requires an ARN; AMI ARN format is
-	// arn:aws:ec2:<region>::image/<imageId> (no account field).
-	amiArn := fmt.Sprintf("arn:aws:ec2:%s::image/%s", a.cacheRegion, *cr.ImageId)
 	res, err := NewResource(a.MqlRuntime, "aws.ec2.image",
-		map[string]*llx.RawData{"arn": llx.StringData(amiArn)})
+		map[string]*llx.RawData{
+			"id":     llx.StringData(*cr.ImageId),
+			"region": llx.StringData(a.cacheRegion),
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -390,6 +395,34 @@ func (a *mqlAwsBatchComputeEnvironment) eksKubernetesNamespace() (string, error)
 		return "", nil
 	}
 	return convert.ToValue(a.cacheEks.KubernetesNamespace), nil
+}
+
+// batchEksAccessEntry returns the desired and observed state of the
+// Batch-managed EKS access entry, each nil when the compute environment is not
+// EKS-backed, reports no access entry, or leaves that half unset.
+func batchEksAccessEntry(eks *batch_types.EksConfiguration) (desiredState *string, status *string) {
+	if eks == nil || eks.AccessEntry == nil {
+		return nil, nil
+	}
+	return nonEmptyEnum(eks.AccessEntry.DesiredState), nonEmptyEnum(eks.AccessEntry.Status)
+}
+
+func (a *mqlAwsBatchComputeEnvironment) eksAccessEntryDesiredState() (string, error) {
+	desiredState, _ := batchEksAccessEntry(a.cacheEks)
+	if desiredState == nil {
+		a.EksAccessEntryDesiredState.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *desiredState, nil
+}
+
+func (a *mqlAwsBatchComputeEnvironment) eksAccessEntryStatus() (string, error) {
+	_, status := batchEksAccessEntry(a.cacheEks)
+	if status == nil {
+		a.EksAccessEntryStatus.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *status, nil
 }
 
 func (a *mqlAwsBatchComputeEnvironment) updateTerminateJobsOnUpdate() (bool, error) {
@@ -537,10 +570,6 @@ func (a *mqlAwsBatchJobQueue) jobStateTimeLimitActions() ([]any, error) {
 	return a.cacheJobStateTimeLimitActions, nil
 }
 
-func (a *mqlAwsBatchJobQueue) computeEnvironmentOrder() ([]any, error) {
-	return a.cacheComputeEnvironmentOrder, nil
-}
-
 func (a *mqlAwsBatchJobQueue) computeEnvironmentOrderTyped() ([]any, error) {
 	res := make([]any, 0, len(a.cacheCEOrder))
 	for _, entry := range a.cacheCEOrder {
@@ -602,6 +631,46 @@ func (a *mqlAwsBatch) jobDefinitions() ([]any, error) {
 		}
 	}
 	return res, nil
+}
+
+// initAwsBatchJobDefinition resolves a single Batch job definition. When
+// invoked for a discovered asset (aws-batch-jobdefinition platform), no args
+// are passed, so the job definition ARN is read from the connection's asset
+// identifier and used to select the matching definition from the parent
+// collection.
+func initAwsBatchJobDefinition(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	if len(args) == 0 {
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformBatchJobdefinition); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
+		}
+	}
+	if args["arn"] == nil {
+		return args, nil, fmt.Errorf("arn required to fetch batch job definition")
+	}
+
+	obj, err := CreateResource(runtime, "aws.batch", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, nil, err
+	}
+	jds := obj.(*mqlAwsBatch).GetJobDefinitions()
+	if jds.Error != nil {
+		return nil, nil, jds.Error
+	}
+
+	wantArn := args["arn"].Value.(string)
+	for _, r := range jds.Data {
+		jd := r.(*mqlAwsBatchJobDefinition)
+		if jd.Arn.Data == wantArn {
+			return args, jd, nil
+		}
+	}
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.batch.jobDefinition with arn %q not found", wantArn)
 }
 
 func (a *mqlAwsBatch) getJobDefinitions(conn *connection.AwsConnection) []*jobpool.Job {
@@ -906,20 +975,13 @@ func parseImageReference(ref string) (registry, repository, tag, digest string) 
 		registry = "docker.io"
 	}
 
-	if i := strings.LastIndexByte(name, ':'); i >= 0 {
-		tag = name[i+1:]
-		repository = name[:i]
+	if before, after, ok := strings.CutLast(name, ":"); ok {
+		tag = after
+		repository = before
 	} else {
 		repository = name
 	}
 	return registry, repository, tag, digest
-}
-
-func (a *mqlAwsBatchJobDefinition) containerProperties() (any, error) {
-	if a.cacheContainerProperties == nil {
-		return nil, nil
-	}
-	return convert.JsonToDict(a.cacheContainerProperties)
 }
 
 func (a *mqlAwsBatchJobDefinition) container() (*mqlAwsBatchJobDefinitionContainerProperties, error) {
@@ -946,27 +1008,6 @@ func buildBatchContainerProperties(runtime *plugin.Runtime, id string, cp *batch
 		command[i] = c
 	}
 
-	env, err := convert.JsonToDictSlice(cp.Environment)
-	if err != nil {
-		return nil, err
-	}
-	resReqs, err := convert.JsonToDictSlice(cp.ResourceRequirements)
-	if err != nil {
-		return nil, err
-	}
-	logConfig, err := convert.JsonToDict(cp.LogConfiguration)
-	if err != nil {
-		return nil, err
-	}
-	linuxParams, err := convert.JsonToDict(cp.LinuxParameters)
-	if err != nil {
-		return nil, err
-	}
-	fargateConfig, err := convert.JsonToDict(cp.FargatePlatformConfiguration)
-	if err != nil {
-		return nil, err
-	}
-
 	privileged := false
 	if cp.Privileged != nil {
 		privileged = *cp.Privileged
@@ -983,13 +1024,8 @@ func buildBatchContainerProperties(runtime *plugin.Runtime, id string, cp *batch
 			"vcpus":                  llx.IntData(vcpus),
 			"memory":                 llx.IntData(memory),
 			"command":                llx.ArrayData(command, types.String),
-			"environment":            llx.ArrayData(env, types.Dict),
 			"privileged":             llx.BoolData(privileged),
 			"readonlyRootFilesystem": llx.BoolData(readonlyRoot),
-			"resourceRequirements":   llx.ArrayData(resReqs, types.Dict),
-			"logConfiguration":       llx.DictData(logConfig),
-			"linuxParameters":        llx.DictData(linuxParams),
-			"fargateConfig":          llx.DictData(fargateConfig),
 		})
 	if err != nil {
 		return nil, err
@@ -1203,24 +1239,6 @@ func (a *mqlAwsBatchJobDefinitionContainerProperties) executionRole() (*mqlAwsIa
 	return res.(*mqlAwsIamRole), nil
 }
 
-func (a *mqlAwsBatchJobDefinition) nodeProperties() (any, error) {
-	if a.cacheNodeProperties == nil {
-		return nil, nil
-	}
-	dict, err := convert.JsonToDict(a.cacheNodeProperties)
-	if err != nil {
-		return nil, err
-	}
-	return dict, nil
-}
-
-func (a *mqlAwsBatchJobDefinition) retryStrategy() (any, error) {
-	if a.cacheRetryStrategy == nil {
-		return nil, nil
-	}
-	return convert.JsonToDict(a.cacheRetryStrategy)
-}
-
 func (a *mqlAwsBatchJobDefinition) retry() (*mqlAwsBatchJobDefinitionRetryStrategy, error) {
 	rs := a.cacheRetryStrategy
 	if rs == nil {
@@ -1252,13 +1270,6 @@ func (a *mqlAwsBatchJobDefinition) retry() (*mqlAwsBatchJobDefinitionRetryStrate
 func (a *mqlAwsBatchJobDefinitionRetryStrategy) id() (string, error) {
 	// __id is set via CreateResource args
 	return a.__id, nil
-}
-
-func (a *mqlAwsBatchJobDefinition) timeout() (any, error) {
-	if a.cacheTimeout == nil {
-		return nil, nil
-	}
-	return convert.JsonToDict(a.cacheTimeout)
 }
 
 func (a *mqlAwsBatchJobDefinition) jobTimeout() (*mqlAwsBatchJobDefinitionTimeout, error) {
@@ -1352,10 +1363,7 @@ func (a *mqlAwsBatch) getSchedulingPolicies(conn *connection.AwsConnection) []*j
 
 			// Describe in batches of 100 (SDK max).
 			for i := 0; i < len(arns); i += 100 {
-				end := i + 100
-				if end > len(arns) {
-					end = len(arns)
-				}
+				end := min(i+100, len(arns))
 				resp, err := svc.DescribeSchedulingPolicies(ctx, &batch.DescribeSchedulingPoliciesInput{
 					Arns: arns[i:end],
 				})
@@ -1622,8 +1630,11 @@ func initAwsBatchComputeEnvironment(runtime *plugin.Runtime, args map[string]*ll
 	if err != nil {
 		return nil, nil, err
 	}
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
 	if len(resp.ComputeEnvironments) == 0 {
-		return args, nil, nil
+		return nil, nil, fmt.Errorf("aws.batch.computeEnvironment with arn %q not found", arnStr)
 	}
 	ce := resp.ComputeEnvironments[0]
 
@@ -1650,6 +1661,7 @@ func initAwsBatchComputeEnvironment(runtime *plugin.Runtime, args map[string]*ll
 	}
 	mqlCeRes := res.(*mqlAwsBatchComputeEnvironment)
 	mqlCeRes.cacheComputeResources = ce.ComputeResources
+	mqlCeRes.cacheEcsSettings = ce.EcsSettings
 	mqlCeRes.cacheServiceRoleArn = ce.ServiceRole
 	mqlCeRes.cacheEcsClusterArn = ce.EcsClusterArn
 	mqlCeRes.cacheEks = ce.EksConfiguration
@@ -1690,8 +1702,11 @@ func initAwsBatchSchedulingPolicy(runtime *plugin.Runtime, args map[string]*llx.
 	if err != nil {
 		return nil, nil, err
 	}
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
 	if len(resp.SchedulingPolicies) == 0 {
-		return args, nil, nil
+		return nil, nil, fmt.Errorf("aws.batch.schedulingPolicy with arn %q not found", arnStr)
 	}
 	sp := resp.SchedulingPolicies[0]
 
@@ -1810,10 +1825,7 @@ func (a *mqlAwsBatchJobQueue) jobs() ([]any, error) {
 
 	// Describe in batches of 100 (SDK max).
 	for i := 0; i < len(jobIds); i += 100 {
-		end := i + 100
-		if end > len(jobIds) {
-			end = len(jobIds)
-		}
+		end := min(i+100, len(jobIds))
 		resp, err := svc.DescribeJobs(ctx, &batch.DescribeJobsInput{
 			Jobs: jobIds[i:end],
 		})
@@ -2011,8 +2023,16 @@ func (a *mqlAwsBatchJob) jobQueue() (*mqlAwsBatchJobQueue, error) {
 		a.JobQueue.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
+	// aws.batch.jobQueue has neither an id() method nor an init, so without an
+	// explicit "__id" every queue reached this way lands on the empty cache key
+	// and each job returns the first job's queue. The ARN matches the key the
+	// collection path (getJobQueues) stores under, so this also lets the lookup
+	// hit the fully-populated resource instead of building a bare one.
 	res, err := NewResource(a.MqlRuntime, "aws.batch.jobQueue",
-		map[string]*llx.RawData{"arn": llx.StringData(a.JobQueueArn.Data)})
+		map[string]*llx.RawData{
+			"__id": llx.StringData(a.JobQueueArn.Data),
+			"arn":  llx.StringData(a.JobQueueArn.Data),
+		})
 	if err != nil {
 		return nil, err
 	}

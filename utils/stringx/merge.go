@@ -15,13 +15,10 @@ func MergeSideBySide(layer1 string, layer2 string) string {
 
 	len1 := len(layer1Lines)
 	len2 := len(layer2Lines)
-	maxLen := len1
-	if len2 > maxLen {
-		maxLen = len2
-	}
+	maxLen := max(len2, len1)
 
 	b := bytes.Buffer{}
-	for i := 0; i < maxLen; i++ {
+	for i := range maxLen {
 		if i < len1 {
 			b.WriteString(layer1Lines[i])
 		}

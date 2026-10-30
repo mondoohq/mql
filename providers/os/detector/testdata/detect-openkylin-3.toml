@@ -1,0 +1,21 @@
+# openkylin/openkylin:latest. Ships dpkg but no /etc/debian_version at all,
+# so the debian resolver cannot reach it: it opens that file first.
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[files."/etc/os-release"]
+content = """
+NAME="openKylin"
+FULL_NAME="openKylin"
+VERSION="3.0 (huanghe)"
+VERSION_US="3.0 (huanghe)"
+ID=openkylin
+PRETTY_NAME="openKylin 3.0"
+VERSION_ID="3.0"
+HOME_URL="https://www.openkylin.top/"
+VERSION_CODENAME=huanghe
+PRODUCT_FEATURES=3
+"""

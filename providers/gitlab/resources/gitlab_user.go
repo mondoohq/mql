@@ -6,15 +6,16 @@ package resources
 import (
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog/log"
-	gitlab "gitlab.com/gitlab-org/api/client-go"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gitlab/connection"
-	"go.mondoo.com/mql/v13/types"
+	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gitlab/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // gitlabUserScopeWarn logs once per session when fetching /users/:id is
@@ -30,7 +31,11 @@ var gitlabUserScopeWarn sync.Once
 // from the *gitlab.User they already have, so externalIdentities() doesn't need
 // to call GetUser at all - eliminating an N+1 across N members.
 type mqlGitlabUserInternal struct {
-	fetched         bool
+	// fetched is atomic because the unlocked fast-path read below races the
+	// locked writes otherwise: llx resolves fields in separate goroutines, so
+	// the nineteen accessors that funnel through fetchUser can run
+	// concurrently on the same resource.
+	fetched         atomic.Bool
 	user            *gitlab.User
 	cacheIdentities []*gitlab.UserIdentity
 	lock            sync.Mutex
@@ -55,7 +60,7 @@ func initGitlabUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 	}
 
 	conn := runtime.Connection.(*connection.GitLabConnection)
-	user, resp, err := conn.Client().Users.GetUser(idArg.Value.(int64), gitlab.GetUsersOptions{})
+	user, resp, err := conn.Client().Users.GetUser(idArg.Value.(int64), &gitlab.GetUserOptions{})
 	if err != nil {
 		// Non-admin tokens get 403/404 from /users/:id. Let the resource exist
 		// with whatever id was passed in so typed back-refs (sshKey.user, etc.)
@@ -90,7 +95,7 @@ func initGitlabUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 	}
 	mqlUser := res.(*mqlGitlabUser)
 	mqlUser.user = user
-	mqlUser.fetched = true
+	mqlUser.fetched.Store(true)
 	return args, mqlUser, nil
 }
 
@@ -102,29 +107,29 @@ func initGitlabUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 // lastSignInAt, ...) are returning zero values rather than reflecting actual
 // state.
 func (u *mqlGitlabUser) fetchUser() (*gitlab.User, error) {
-	if u.fetched {
+	if u.fetched.Load() {
 		return u.user, nil
 	}
 	u.lock.Lock()
 	defer u.lock.Unlock()
-	if u.fetched {
+	if u.fetched.Load() {
 		return u.user, nil
 	}
 	conn := u.MqlRuntime.Connection.(*connection.GitLabConnection)
-	user, resp, err := conn.Client().Users.GetUser(u.Id.Data, gitlab.GetUsersOptions{})
+	user, resp, err := conn.Client().Users.GetUser(u.Id.Data, &gitlab.GetUserOptions{})
 	if err != nil {
 		if resp != nil && (resp.StatusCode == 403 || resp.StatusCode == 404) {
 			gitlabUserScopeWarn.Do(func() {
 				log.Warn().Int("status", resp.StatusCode).
 					Msg("gitlab token cannot read /users/:id; admin-scoped user fields (isAdmin, isAuditor, lastSignInAt, ...) will return zero values")
 			})
-			u.fetched = true
+			u.fetched.Store(true)
 			return nil, nil
 		}
 		return nil, err
 	}
 	u.user = user
-	u.fetched = true
+	u.fetched.Store(true)
 	return u.user, nil
 }
 
@@ -297,11 +302,6 @@ func (u *mqlGitlabUser) sharedRunnersMinutesLimit() (int64, error) {
 	return user.SharedRunnersMinutesLimit, nil
 }
 
-// id function for gitlab.user.externalIdentity
-func (i *mqlGitlabUserExternalIdentity) id() (string, error) {
-	return "gitlab.user.externalIdentity/" + i.Provider.Data + "/" + i.ExternUID.Data, nil
-}
-
 // mqlGitlabUserExternalIdentityInternal carries the parent user ID so the
 // `user()` accessor can resolve back to the typed gitlab.user resource.
 type mqlGitlabUserExternalIdentityInternal struct {
@@ -347,6 +347,11 @@ func (u *mqlGitlabUser) externalIdentities() ([]any, error) {
 			continue
 		}
 		identityInfo := map[string]*llx.RawData{
+			// The owning user belongs in the key: provider+externUID alone
+			// aliases whenever a provider reports an empty extern_uid, and the
+			// userID assigned just below would then repoint the first user's
+			// identity resource at this one.
+			"__id":      llx.StringData(userScopedID("gitlab.user.externalIdentity", u.Id.Data, identity.Provider, identity.ExternUID)),
 			"provider":  llx.StringData(identity.Provider),
 			"externUID": llx.StringData(identity.ExternUID),
 		}
@@ -406,10 +411,8 @@ func (u *mqlGitlabUser) sshKeys() ([]any, error) {
 
 	for {
 		keys, resp, err := conn.Client().Users.ListSSHKeysForUser(u.Id.Data, &gitlab.ListSSHKeysForUserOptions{
-			ListOptions: gitlab.ListOptions{
-				Page:    page,
-				PerPage: perPage,
-			},
+			Page:    page,
+			PerPage: perPage,
 		})
 		if err != nil {
 			if resp != nil && (resp.StatusCode == 403 || resp.StatusCode == 404) {
@@ -463,8 +466,8 @@ func (u *mqlGitlabUser) personalAccessTokens() ([]any, error) {
 	var all []*gitlab.PersonalAccessToken
 	for {
 		tokens, resp, err := conn.Client().PersonalAccessTokens.ListPersonalAccessTokens(&gitlab.ListPersonalAccessTokensOptions{
-			ListOptions: gitlab.ListOptions{Page: page, PerPage: perPage},
-			UserID:      &userID,
+			Page: page, PerPage: perPage,
+			UserID: &userID,
 		})
 		if err != nil {
 			if resp != nil && (resp.StatusCode == 403 || resp.StatusCode == 404) {
@@ -496,6 +499,51 @@ func (u *mqlGitlabUser) personalAccessTokens() ([]any, error) {
 			"createdAt":   llx.TimeDataPtr(t.CreatedAt),
 			"expiresAt":   llx.TimeDataPtr(expiresAt),
 			"lastUsedAt":  llx.TimeDataPtr(t.LastUsedAt),
+		})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+func (e *mqlGitlabUserEmailAddress) id() (string, error) {
+	return "gitlab.user.emailAddress/" + strconv.FormatInt(e.Id.Data, 10), nil
+}
+
+// emails lists the email addresses registered to the user. Requires an admin
+// token (to see other users' emails) or self-access; on 403/404 it returns an
+// empty list rather than failing the resource graph.
+func (u *mqlGitlabUser) emails() ([]any, error) {
+	conn := u.MqlRuntime.Connection.(*connection.GitLabConnection)
+
+	perPage := int64(50)
+	page := int64(1)
+	var all []*gitlab.Email
+	for {
+		emails, resp, err := conn.Client().Users.ListEmailsForUser(u.Id.Data, &gitlab.ListEmailsForUserOptions{
+			Page: page, PerPage: perPage,
+		})
+		if err != nil {
+			if resp != nil && (resp.StatusCode == 403 || resp.StatusCode == 404) {
+				return []any{}, nil
+			}
+			return nil, err
+		}
+		all = append(all, emails...)
+		if resp.NextPage == 0 {
+			break
+		}
+		page = resp.NextPage
+	}
+
+	out := make([]any, 0, len(all))
+	for _, e := range all {
+		res, err := CreateResource(u.MqlRuntime, "gitlab.user.emailAddress", map[string]*llx.RawData{
+			"id":          llx.IntData(e.ID),
+			"email":       llx.StringData(e.Email),
+			"confirmedAt": llx.TimeDataPtr(e.ConfirmedAt),
 		})
 		if err != nil {
 			return nil, err

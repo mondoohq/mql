@@ -1,0 +1,17 @@
+# A host with a command capability but no `mount` binary, which is how the
+# immutable and distroless images ship. /proc/mounts is still there and still
+# lists every mount, so the resource has a correct answer available to it.
+#
+# There is deliberately no [commands."mount"] entry: the mock answers an unknown
+# command the way a real host does, with a non-zero exit and empty stdout.
+
+[files."/proc/mounts"]
+content = """
+proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0
+sysfs /sys sysfs rw,nosuid,nodev,noexec,relatime 0 0
+devtmpfs /dev devtmpfs rw,nosuid,size=4096k,nr_inodes=498365,mode=755 0 0
+/dev/nvme0n1p1 / ext4 rw,relatime,discard 0 0
+tmpfs /run tmpfs rw,nosuid,nodev,size=799604k,mode=755 0 0
+tmpfs /dev/shm tmpfs rw,nosuid,nodev 0 0
+cgroup2 /sys/fs/cgroup cgroup2 rw,nosuid,nodev,noexec,relatime,nsdelegate 0 0
+"""

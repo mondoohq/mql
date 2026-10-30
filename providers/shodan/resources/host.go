@@ -14,11 +14,11 @@ import (
 
 	"github.com/shadowscatcher/shodan/models"
 	"github.com/shadowscatcher/shodan/search"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/shodan/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/shodan/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // mqlShodanHostInternal caches state derived from the Shodan host fetch so we
@@ -38,7 +38,7 @@ func initShodanHost(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 	}
 
 	if _, ok := args["ip"]; !ok {
-		return nil, nil, errors.New("missing required argument 'host'")
+		return nil, nil, errors.New("missing required argument 'ip'")
 	}
 
 	return args, nil, nil
@@ -227,6 +227,10 @@ func parseShodanTime(raw string) *time.Time {
 		time.RFC3339Nano,
 		"2006-01-02T15:04:05.999999",
 		"2006-01-02T15:04:05",
+		// Certificate validity dates arrive as X.509 ASN.1 GeneralizedTime
+		// rather than the ISO-8601 form used for host, banner and DNS
+		// timestamps, so they need their own layout.
+		"20060102150405Z",
 	} {
 		if t, err := time.Parse(layout, raw); err == nil {
 			return &t

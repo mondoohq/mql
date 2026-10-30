@@ -122,3 +122,13 @@ func TestParseSharingOutput_ExtraWhitespace(t *testing.T) {
 	_, ok := got["File Sharing"]
 	assert.False(t, ok, "missing colon-space separator means the line is not a key/value")
 }
+
+// macOS 26 removed the SPSharingDataType reporter: the command exits 0 and
+// prints nothing. That must not read as "every sharing service is off".
+func TestParseSharingOutputEmpty(t *testing.T) {
+	assert.Empty(t, parseSharingOutput(""))
+	assert.Empty(t, parseSharingOutput("\n\n"))
+	// A panel that did report keeps working, including entries it omits.
+	state := parseSharingOutput("Sharing:\n\n    Computer Name: My Mac\n    File Sharing: On\n    Screen Sharing: Off\n")
+	assert.Equal(t, map[string]bool{"File Sharing": true, "Screen Sharing": false}, state)
+}

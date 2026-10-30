@@ -1,0 +1,11 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[files."/etc/os-release"]
+content = """
+VERSION_ID=1.2.3
+PRETTY_NAME="Some Vendor Linux 1.2.3"
+"""

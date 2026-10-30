@@ -8,11 +8,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/manifest"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared"
-	"go.mondoo.com/mql/v13/utils/syncx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/k8s/connection/manifest"
+	"go.mondoo.com/mql/providers/k8s/connection/shared"
+	"go.mondoo.com/mql/utils/syncx"
+	corev1 "k8s.io/api/core/v1"
 )
 
 func workloadSecurityK8s(t *testing.T) *mqlK8s {
@@ -60,7 +61,9 @@ func TestWorkloadSecurityRollups_NilSpec(t *testing.T) {
 		assert.Empty(t, specAddedCapabilities(nil), "addedCapabilities")
 		assert.False(t, specUsesHostNamespaces(nil), "usesHostNamespaces")
 		assert.False(t, specUsesHostPath(nil), "usesHostPath")
-		assert.False(t, specAutomountServiceAccountToken(nil), "automountServiceAccountToken")
+		// The automount decision now also consults the ServiceAccount; the part
+		// that reads the spec must still tolerate a nil one.
+		assert.Equal(t, "default", podServiceAccountName(nil), "podServiceAccountName")
 		assert.False(t, specUsesUnconfinedSeccomp(nil), "usesUnconfinedSeccomp")
 		assert.False(t, specHasSeccompProfile(nil), "hasSeccompProfile")
 	})
@@ -127,6 +130,42 @@ func TestWorkloadSecurityRollups(t *testing.T) {
 		require.True(t, ok, "securityContext is a dict")
 		assert.Equal(t, true, scMap["runAsNonRoot"], "securityContext.runAsNonRoot")
 	})
+}
+
+// TestSpecDropsAllCapabilities_Case pins ALL to the runtimes' behavior:
+// containerd and CRI-O match it case-insensitively, so "all" drops every
+// capability even though Pod Security Admission's restricted profile only
+// accepts the uppercase spelling.
+func TestSpecDropsAllCapabilities_Case(t *testing.T) {
+	spec := func(drops ...[]corev1.Capability) *corev1.PodSpec {
+		s := &corev1.PodSpec{}
+		for _, d := range drops {
+			s.Containers = append(s.Containers, corev1.Container{
+				SecurityContext: &corev1.SecurityContext{
+					Capabilities: &corev1.Capabilities{Drop: d},
+				},
+			})
+		}
+		return s
+	}
+
+	tests := []struct {
+		name string
+		spec *corev1.PodSpec
+		want bool
+	}{
+		{"uppercase", spec([]corev1.Capability{"ALL"}), true},
+		{"lowercase", spec([]corev1.Capability{"all"}), true},
+		{"mixed case", spec([]corev1.Capability{"NET_RAW", "All"}), true},
+		{"one container drops only NET_RAW", spec([]corev1.Capability{"all"}, []corev1.Capability{"NET_RAW"}), false},
+		{"prefix is not ALL", spec([]corev1.Capability{"ALLOW"}), false},
+		{"empty drop list", spec([]corev1.Capability{}), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, specDropsAllCapabilities(tt.spec))
+		})
+	}
 }
 
 // TestWorkloadSecurityRollups_Pod exercises the pod accessor path, which uses

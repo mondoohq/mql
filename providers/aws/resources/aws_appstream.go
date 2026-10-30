@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -15,12 +16,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/appstream"
 	appstreamtypes "github.com/aws/aws-sdk-go-v2/service/appstream/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // isAppstreamRegionError checks if the error indicates the AppStream service
@@ -106,6 +107,7 @@ func (a *mqlAwsAppstream) getFleets(conn *connection.AwsConnection) []*jobpool.J
 }
 
 func newMqlAwsAppstreamFleet(runtime *plugin.Runtime, region string, fleet appstreamtypes.Fleet) (*mqlAwsAppstreamFleet, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
 	domainJoinInfo, err := convert.JsonToDict(fleet.DomainJoinInfo)
 	if err != nil {
 		return nil, err
@@ -114,11 +116,31 @@ func newMqlAwsAppstreamFleet(runtime *plugin.Runtime, region string, fleet appst
 	if err != nil {
 		return nil, err
 	}
+
+	rootVolumeSizeInGb := int64(0)
+	if fleet.RootVolumeConfig != nil {
+		rootVolumeSizeInGb = int64(convert.ToValue(fleet.RootVolumeConfig.VolumeSizeInGb))
+	}
+
+	sessionScriptKey := ""
+	if fleet.SessionScriptS3Location != nil {
+		sessionScriptKey = convert.ToValue(fleet.SessionScriptS3Location.S3Key)
+	}
+
+	fleetErrors := make([]any, 0, len(fleet.FleetErrors))
+	for _, e := range fleet.FleetErrors {
+		fleetErrors = append(fleetErrors, map[string]any{
+			"errorCode":    string(e.ErrorCode),
+			"errorMessage": convert.ToValue(e.ErrorMessage),
+		})
+	}
+
 	resource, err := CreateResource(runtime, "aws.appstream.fleet",
 		map[string]*llx.RawData{
 			"__id":                           llx.StringDataPtr(fleet.Arn),
 			"arn":                            llx.StringDataPtr(fleet.Arn),
 			"name":                           llx.StringDataPtr(fleet.Name),
+			"displayName":                    llx.StringDataPtr(fleet.DisplayName),
 			"state":                          llx.StringData(string(fleet.State)),
 			"fleetType":                      llx.StringData(string(fleet.FleetType)),
 			"instanceType":                   llx.StringDataPtr(fleet.InstanceType),
@@ -131,23 +153,47 @@ func newMqlAwsAppstreamFleet(runtime *plugin.Runtime, region string, fleet appst
 			"maxConcurrentSessions":          llx.IntDataDefault(fleet.MaxConcurrentSessions, 0),
 			"maxSessionsPerInstance":         llx.IntDataDefault(fleet.MaxSessionsPerInstance, 0),
 			"vpcConfig":                      llx.MapData(vpcConfig, types.Any),
-			"iamRoleArn":                     llx.StringDataPtr(fleet.IamRoleArn),
 			"imageName":                      llx.StringDataPtr(fleet.ImageName),
 			"imageArn":                       llx.StringDataPtr(fleet.ImageArn),
 			"platform":                       llx.StringData(string(fleet.Platform)),
+			"streamView":                     llx.StringData(string(fleet.StreamView)),
+			"rootVolumeSizeInGb":             llx.IntData(rootVolumeSizeInGb),
+			"usbDeviceFilterStrings":         llx.ArrayData(toInterfaceArr(fleet.UsbDeviceFilterStrings), types.String),
+			"fleetErrors":                    llx.ArrayData(fleetErrors, types.Dict),
+			"sessionScriptS3Key":             llx.StringData(sessionScriptKey),
 			"createdAt":                      llx.TimeDataPtr(fleet.CreatedTime),
 			"region":                         llx.StringData(region),
 		})
 	if err != nil {
 		return nil, err
 	}
+	resource.(*mqlAwsAppstreamFleet).cacheIamRoleArn = convert.ToValue(fleet.IamRoleArn)
 	mqlFleet := resource.(*mqlAwsAppstreamFleet)
 	mqlFleet.cacheComputeCapacityStatus = fleet.ComputeCapacityStatus
+	mqlFleet.region = region
+	mqlFleet.accountID = conn.AccountId()
+	if fleet.VpcConfig != nil {
+		mqlFleet.cacheSubnetIds = fleet.VpcConfig.SubnetIds
+		sgArns := make([]string, 0, len(fleet.VpcConfig.SecurityGroupIds))
+		for _, sgId := range fleet.VpcConfig.SecurityGroupIds {
+			sgArns = append(sgArns, NewSecurityGroupArn(region, conn.AccountId(), sgId))
+		}
+		mqlFleet.setSecurityGroupArns(sgArns)
+	}
+	if fleet.SessionScriptS3Location != nil {
+		mqlFleet.cacheSessionScriptBucket = convert.ToValue(fleet.SessionScriptS3Location.S3Bucket)
+	}
 	return mqlFleet, nil
 }
 
 type mqlAwsAppstreamFleetInternal struct {
+	cacheIamRoleArn string
+	securityGroupIdHandler
 	cacheComputeCapacityStatus *appstreamtypes.ComputeCapacityStatus
+	cacheSubnetIds             []string
+	cacheSessionScriptBucket   string
+	region                     string
+	accountID                  string
 
 	stackNamesLock    sync.Mutex
 	stackNamesFetched bool
@@ -162,6 +208,16 @@ func initAwsAppstreamFleet(runtime *plugin.Runtime, args map[string]*llx.RawData
 	if len(args) > 2 {
 		return args, nil, nil
 	}
+	// Resolve a discovered asset (aws-appstream-fleet platform) by its ARN.
+	if len(args) == 0 {
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformAppstreamFleet); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
+		}
+	}
+	if cached := cachedArgByArn(runtime, ResourceAwsAppstreamFleet, args); cached != nil {
+		return args, cached, nil
+	}
+
 	region, name, err := parseAppstreamRef(args, "fleet/")
 	if err != nil {
 		return nil, nil, err
@@ -192,7 +248,7 @@ func initAwsAppstreamFleet(runtime *plugin.Runtime, args map[string]*llx.RawData
 }
 
 func (a *mqlAwsAppstreamFleet) iamRole() (*mqlAwsIamRole, error) {
-	arnVal := a.IamRoleArn.Data
+	arnVal := a.cacheIamRoleArn
 	if arnVal == "" {
 		a.IamRole.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -203,6 +259,51 @@ func (a *mqlAwsAppstreamFleet) iamRole() (*mqlAwsIamRole, error) {
 		return nil, err
 	}
 	return res.(*mqlAwsIamRole), nil
+}
+
+func (a *mqlAwsAppstreamFleet) subnets() ([]any, error) {
+	res := []any{}
+	for _, subnetId := range a.cacheSubnetIds {
+		subnetArn := fmt.Sprintf(subnetArnPattern, a.region, a.accountID, subnetId)
+		mqlSubnet, err := NewResource(a.MqlRuntime, "aws.vpc.subnet",
+			map[string]*llx.RawData{"arn": llx.StringData(subnetArn)})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlSubnet)
+	}
+	return res, nil
+}
+
+func (a *mqlAwsAppstreamFleet) securityGroups() ([]any, error) {
+	return a.newSecurityGroupResources(a.MqlRuntime)
+}
+
+func (a *mqlAwsAppstreamFleet) image() (*mqlAwsAppstreamImage, error) {
+	arnVal := a.ImageArn.Data
+	if arnVal == "" {
+		a.Image.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.appstream.image",
+		map[string]*llx.RawData{"arn": llx.StringData(arnVal)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsAppstreamImage), nil
+}
+
+func (a *mqlAwsAppstreamFleet) sessionScriptBucket() (*mqlAwsS3Bucket, error) {
+	if a.cacheSessionScriptBucket == "" {
+		a.SessionScriptBucket.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.s3.bucket",
+		map[string]*llx.RawData{"name": llx.StringData(a.cacheSessionScriptBucket)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsS3Bucket), nil
 }
 
 func (a *mqlAwsAppstreamFleet) computeCapacityStatus() (*mqlAwsAppstreamFleetComputeCapacityStatus, error) {
@@ -573,7 +674,6 @@ func newMqlAwsAppstreamImageBuilder(runtime *plugin.Runtime, region string, ib a
 			"disableIMDSV1":               llx.BoolDataPtr(ib.DisableIMDSV1),
 			"domainJoinInfo":              llx.MapData(domainJoinInfo, types.Any),
 			"vpcConfig":                   llx.MapData(vpcConfig, types.Any),
-			"iamRoleArn":                  llx.StringDataPtr(ib.IamRoleArn),
 			"networkAccessConfiguration":  llx.MapData(networkAccessConfig, types.Any),
 			"createdAt":                   llx.TimeDataPtr(ib.CreatedTime),
 			"region":                      llx.StringData(region),
@@ -581,6 +681,7 @@ func newMqlAwsAppstreamImageBuilder(runtime *plugin.Runtime, region string, ib a
 	if err != nil {
 		return nil, err
 	}
+	resource.(*mqlAwsAppstreamImageBuilder).cacheIamRoleArn = convert.ToValue(ib.IamRoleArn)
 	return resource.(*mqlAwsAppstreamImageBuilder), nil
 }
 
@@ -589,7 +690,7 @@ func (a *mqlAwsAppstreamImageBuilder) id() (string, error) {
 }
 
 func (a *mqlAwsAppstreamImageBuilder) iamRole() (*mqlAwsIamRole, error) {
-	arnVal := a.IamRoleArn.Data
+	arnVal := a.cacheIamRoleArn
 	if arnVal == "" {
 		a.IamRole.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -707,6 +808,30 @@ func newMqlAwsAppstreamApplication(runtime *plugin.Runtime, region string, app a
 
 func (a *mqlAwsAppstreamApplication) id() (string, error) { return a.Arn.Data, nil }
 
+type mqlAwsAppstreamApplicationInternal struct {
+	lazyTags
+}
+
+func (a *mqlAwsAppstreamApplication) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Appstream(a.Region.Data)
+		resp, err := svc.ListTagsForResource(context.Background(), &appstream.ListTagsForResourceInput{
+			ResourceArn: aws.String(a.Arn.Data),
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("appstream:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return toInterfaceMap(resp.Tags), nil
+	})
+}
+
 // Images
 
 func (a *mqlAwsAppstream) images() ([]any, error) {
@@ -765,6 +890,50 @@ func (a *mqlAwsAppstream) getImages(conn *connection.AwsConnection) []*jobpool.J
 		tasks = append(tasks, jobpool.NewJob(f))
 	}
 	return tasks
+}
+
+// initAwsAppstreamImage resolves a single AppStream image by ARN (or name +
+// region), enabling typed references such as aws.appstream.fleet.image to
+// return a populated image rather than an empty husk.
+func initAwsAppstreamImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	if args["arn"] == nil && args["name"] == nil {
+		return args, nil, nil
+	}
+	region, name, err := parseAppstreamRef(args, "image/")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Appstream(region)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	input := &appstream.DescribeImagesInput{}
+	if a := args["arn"]; a != nil {
+		input.Arns = []string{a.Value.(string)}
+	} else {
+		input.Names = []string{name}
+	}
+	resp, err := svc.DescribeImages(ctx, input)
+	if err != nil {
+		if isAppstreamRegionError(err) {
+			return args, nil, nil
+		}
+		return nil, nil, err
+	}
+	if len(resp.Images) == 0 {
+		return args, nil, nil
+	}
+
+	mqlImg, err := newMqlAwsAppstreamImage(runtime, region, resp.Images[0])
+	if err != nil {
+		return nil, nil, err
+	}
+	return args, mqlImg, nil
 }
 
 func newMqlAwsAppstreamImage(runtime *plugin.Runtime, region string, img appstreamtypes.Image) (*mqlAwsAppstreamImage, error) {
@@ -1109,13 +1278,13 @@ func (a *mqlAwsAppstreamFleet) sessions() ([]any, error) {
 						"instanceId":          llx.StringDataPtr(s.InstanceId),
 						"startTime":           llx.TimeDataPtr(s.StartTime),
 						"maxExpirationTime":   llx.TimeDataPtr(s.MaxExpirationTime),
-						"eniId":               llx.StringData(eniId),
 						"eniPrivateIpAddress": llx.StringData(eniIp),
 						"region":              llx.StringData(a.Region.Data),
 					})
 				if err != nil {
 					return nil, err
 				}
+				resource.(*mqlAwsAppstreamSession).cacheEniId = eniId
 				res = append(res, resource)
 			}
 			if sresp.NextToken == nil {
@@ -1155,7 +1324,7 @@ func (a *mqlAwsAppstreamSession) stack() (*mqlAwsAppstreamStack, error) {
 }
 
 func (a *mqlAwsAppstreamSession) networkInterface() (*mqlAwsEc2Networkinterface, error) {
-	eniId := a.EniId.Data
+	eniId := a.cacheEniId
 	if eniId == "" {
 		a.NetworkInterface.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -1166,4 +1335,12 @@ func (a *mqlAwsAppstreamSession) networkInterface() (*mqlAwsEc2Networkinterface,
 		return nil, err
 	}
 	return res.(*mqlAwsEc2Networkinterface), nil
+}
+
+type mqlAwsAppstreamImageBuilderInternal struct {
+	cacheIamRoleArn string
+}
+
+type mqlAwsAppstreamSessionInternal struct {
+	cacheEniId string
 }

@@ -5,21 +5,26 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/iothub/armiothub"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlAzureSubscriptionIotServiceIotHubInternal struct {
 	cacheSystemData                 any
 	cacheUserAssignedIdentityIds    []string
 	cachePrivateEndpointConnections []*armiothub.PrivateEndpointConnection
+}
+
+func (a *mqlAzureSubscriptionIotService) id() (string, error) {
+	return "azure.subscription.iot/" + a.SubscriptionId.Data, nil
 }
 
 func (a *mqlAzureSubscriptionIotServiceIotHub) userAssignedIdentities() ([]any, error) {
@@ -43,6 +48,11 @@ func (a *mqlAzureSubscriptionIotServiceIotHub) diagnosticSettings() ([]any, erro
 	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
 }
 
+func (a *mqlAzureSubscriptionIotServiceIotHub) diagnosticSettingsCategories() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	return getDiagnosticSettingsCategories(a.Id.Data, a.MqlRuntime, conn)
+}
+
 func initAzureSubscriptionIotService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 0 {
 		return args, nil, nil
@@ -57,39 +67,57 @@ func initAzureSubscriptionIotService(runtime *plugin.Runtime, args map[string]*l
 	return args, nil, nil
 }
 
-func (a *mqlAzureSubscriptionIotService) hubs() ([]any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
-	ctx := context.Background()
-	token := conn.Token()
+// initAzureSubscriptionIotServiceIotHub resolves a single IoT hub. When called
+// without arguments it falls back to the discovered asset's platform id (see
+// getAssetIdentifier), so an azure-iot-iothub asset resolves to its backing
+// hub instead of an empty husk.
+func initAzureSubscriptionIotServiceIotHub(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 1 {
+		return args, nil, nil
+	}
 
-	subscriptionID := a.SubscriptionId.Data
+	if len(args) == 0 {
+		if ids := getAssetIdentifier(runtime); ids != nil && ids.id != "" {
+			args["id"] = llx.StringData(ids.id)
+		}
+	}
 
-	clientFactory, err := armiothub.NewClientFactory(subscriptionID, token, &arm.ClientOptions{
-		ClientOptions: conn.ClientOptions(),
+	if args["id"] == nil {
+		return nil, nil, fmt.Errorf("id required to fetch azure iot hub")
+	}
+
+	conn, ok := runtime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, nil, fmt.Errorf("invalid connection provided, it is not an Azure connection")
+	}
+
+	res, err := NewResource(runtime, "azure.subscription.iotService", map[string]*llx.RawData{
+		"subscriptionId": llx.StringData(conn.SubId()),
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-
-	client := clientFactory.NewResourceClient()
-	hubsPager := client.NewListBySubscriptionPager(nil)
-	var hubs []any
-
-	for hubsPager.More() {
-		page, err := hubsPager.NextPage(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for _, hub := range page.Value {
-			hubData, err := convert.JsonToDict(hub)
-			if err != nil {
-				return nil, err
-			}
-			hubs = append(hubs, hubData)
+	iotSvc := res.(*mqlAzureSubscriptionIotService)
+	hubs := iotSvc.GetIotHubs()
+	if hubs.Error != nil {
+		return nil, nil, hubs.Error
+	}
+	id, ok := args["id"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("id must be a non-nil string value")
+	}
+	for _, entry := range hubs.Data {
+		hub := entry.(*mqlAzureSubscriptionIotServiceIotHub)
+		if hub.Id.Data == id {
+			return args, hub, nil
 		}
 	}
 
-	return hubs, nil
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionIotServiceIotHub, id); filtered != nil {
+		return args, filtered, nil
+	}
+
+	return nil, nil, fmt.Errorf("azure iot hub does not exist")
 }
 
 // iotHubs returns typed IoT hub resources with security-relevant fields populated.
@@ -173,7 +201,7 @@ func (a *mqlAzureSubscriptionIotService) iotHubs() ([]any, error) {
 				userAssignedIdentityIds = sortedUserAssignedIdentityIDs(hub.Identity.UserAssignedIdentities)
 			}
 
-			mqlHub, err := CreateResource(a.MqlRuntime, "azure.subscription.iotService.iotHub", map[string]*llx.RawData{
+			args := map[string]*llx.RawData{
 				"id":                            llx.StringDataPtr(hub.ID),
 				"name":                          llx.StringDataPtr(hub.Name),
 				"type":                          llx.StringDataPtr(hub.Type),
@@ -195,7 +223,13 @@ func (a *mqlAzureSubscriptionIotService) iotHubs() ([]any, error) {
 				"identityType":                  llx.StringDataPtr(identityType),
 				"principalId":                   llx.StringDataPtr(identityPrincipalId),
 				"tenantId":                      llx.StringDataPtr(identityTenantId),
-			})
+			}
+			hubSku := orZero(hub.SKU)
+			if err := setSkuData(a.MqlRuntime, args, skuName(hubSku.Name), skuTier(hubSku.Tier), skuCapacity(hubSku.Capacity)); err != nil {
+				return nil, err
+			}
+
+			mqlHub, err := CreateResource(a.MqlRuntime, "azure.subscription.iotService.iotHub", args)
 			if err != nil {
 				return nil, err
 			}
@@ -212,5 +246,5 @@ func (a *mqlAzureSubscriptionIotService) iotHubs() ([]any, error) {
 			res = append(res, mqlHub)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }

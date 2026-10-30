@@ -5,11 +5,12 @@ package connection
 
 import (
 	"errors"
+	"sync"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	impi_client "go.mondoo.com/mql/v13/providers/ipmi/connection/client"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	impi_client "go.mondoo.com/mql/providers/ipmi/connection/client"
 )
 
 type IpmiConnection struct {
@@ -17,8 +18,9 @@ type IpmiConnection struct {
 	Conf  *inventory.Config
 	asset *inventory.Asset
 	//  custom connection fields
-	client *impi_client.IpmiClient
-	guid   string
+	client   *impi_client.IpmiClient
+	guidLock sync.Mutex
+	guid     string
 }
 
 func NewIpmiConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*IpmiConnection, error) {
@@ -85,6 +87,9 @@ func (c *IpmiConnection) Identifier() (string, error) {
 }
 
 func (c *IpmiConnection) Guid() (string, error) {
+	c.guidLock.Lock()
+	defer c.guidLock.Unlock()
+
 	if c.guid != "" {
 		return c.guid, nil
 	}

@@ -566,6 +566,35 @@
         },
         {
           "Resource": "file",
+          "ID": "/empty",
+          "Fields": {
+            "content": {
+              "type": "\u0007",
+              "value": ""
+            },
+            "exists": {
+              "type": "\u0004",
+              "value": true
+            },
+            "path": {
+              "type": "\u0007",
+              "value": "/empty"
+            },
+            "permissions": {
+              "type": "\u001bfile.permissions",
+              "value": {
+                "Name": "file.permissions",
+                "ID": "-rw-r--r--"
+              }
+            },
+            "size": {
+              "type": "\u0005",
+              "value": 0
+            }
+          }
+        },
+        {
+          "Resource": "file",
           "ID": "/etc/shadow",
           "Fields": {
             "content": {
@@ -740,7 +769,7 @@
         },
         {
           "Resource": "files.find",
-          "ID": "/etc/rsyslog.d -xdev type=file name=^[^/]*\\.conf$ depth=1 permissions=0",
+          "ID": "/etc/rsyslog.d -xdev type=file depth=1 permissions=0",
           "Fields": {
             "list": {
               "type": "\u0019\u001bfile",

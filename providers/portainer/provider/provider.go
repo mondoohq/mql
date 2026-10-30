@@ -7,13 +7,13 @@ import (
 	"context"
 	"errors"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/portainer/connection"
-	"go.mondoo.com/mql/v13/providers/portainer/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/portainer/connection"
+	"go.mondoo.com/mql/providers/portainer/resources"
 )
 
 const (
@@ -155,8 +155,13 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.PortainerConne
 			asset.Name = "Portainer Server " + h
 		}
 	}
-	asset.Platform = connection.InstancePlatform()
-	asset.PlatformIds = []string{connection.NewInstancePlatformID(conn.InstanceID())}
+	platform := connection.InstancePlatform()
+	// `asset.version` is the canonical, cross-provider way to ask what version
+	// something is, and every root carries `asset` (ADR 031). The connection
+	// already knows it.
+	platform.Version = conn.Version()
+	asset.Platform = platform
+	asset.PlatformIds = []string{connection.NewInstancePlatformID(conn.InstanceKey())}
 	return nil
 }
 

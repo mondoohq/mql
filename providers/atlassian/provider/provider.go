@@ -10,14 +10,14 @@ import (
 	"go.mondoo.com/ranger-rpc/codes"
 	"go.mondoo.com/ranger-rpc/status"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers/atlassian/connection"
-	"go.mondoo.com/mql/v13/providers/atlassian/connection/confluence"
-	"go.mondoo.com/mql/v13/providers/atlassian/connection/shared"
-	"go.mondoo.com/mql/v13/providers/atlassian/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers/atlassian/connection"
+	"go.mondoo.com/mql/providers/atlassian/connection/confluence"
+	"go.mondoo.com/mql/providers/atlassian/connection/shared"
+	"go.mondoo.com/mql/providers/atlassian/resources"
 )
 
 const (
@@ -126,6 +126,9 @@ func (s *Service) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 		Name:      conn.Name(),
 		Asset:     req.Asset,
 		Inventory: nil,
+		// Which kind this asset actually is; the static Root can only name one
+		// for a provider serving several (ADR 031).
+		Root: assetRoot(req.Asset.GetPlatform()),
 	}, nil
 }
 

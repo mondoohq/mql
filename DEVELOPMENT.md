@@ -66,6 +66,34 @@ make providers/mqlr
 ```
 To quickly install the changed provider plugin run `make providers/build/aws && make providers/install/aws`.
 
+## Run the tests
+
+Some tests use mocks that `mockgen` writes. The generated files are not committed. A fresh clone therefore cannot build
+the tests of `providers` and of `providers/os/connection/device/linux`. `go test ./...` stops with
+`undefined: NewMockProviderPlugin` and `undefined: snapshot.MockVolumeMounter`.
+
+Generate the mocks once after you clone:
+
+```bash
+make test/generate
+```
+
+The target installs `mockgen` and then runs `go generate ./providers/...`. It writes four files:
+
+- `providers/mock_coordinator.go`
+- `providers/mock_plugin_interface.go`
+- `providers/mock_schema.go`
+- `providers/os/connection/snapshot/mock_volumemounter.go`
+
+Run the target again after you change one of the interfaces that these files mock. Every CI test job runs it before the
+tests.
+
+After that step `go test ./...` builds. To run the core suite the way CI does, use:
+
+```bash
+make test/go
+```
+
 ## Debug providers
 
 `mql` uses a plugin mechanism. Each provider has its own go modules. This ensures that dependencies are only used on
@@ -198,43 +226,71 @@ go 1.25
 use (
    ./mql
    ./mql/providers/activedirectory
+   ./mql/providers/alicloud
    ./mql/providers/ansible
    ./mql/providers/arista
+   ./mql/providers/artifactory
    ./mql/providers/atlassian
+   ./mql/providers/auth0
    ./mql/providers/aws
    ./mql/providers/azure
+   ./mql/providers/azuredevops
+   ./mql/providers/bitwarden
+   ./mql/providers/cassandra
    ./mql/providers/claude
+   ./mql/providers/clickhousecloud
+   ./mql/providers/clickhousedb
    ./mql/providers/cloudflare
    ./mql/providers/cloudformation
+   ./mql/providers/cockroachdb
+   ./mql/providers/databricks
    ./mql/providers/datadog
    ./mql/providers/depsdev
    ./mql/providers/digitalocean
-   ./mql/providers/equinix
+   ./mql/providers/dropbox
+   ./mql/providers/elasticsearch
+   ./mql/providers/exoscale
    ./mql/providers/gcp
    ./mql/providers/github
    ./mql/providers/gitlab
    ./mql/providers/google-workspace
    ./mql/providers/grafana
+   ./mql/providers/hcp
    ./mql/providers/hetzner
    ./mql/providers/huggingface
+   ./mql/providers/ibm
    ./mql/providers/ipinfo
    ./mql/providers/ipmi
+   ./mql/providers/iru
+   ./mql/providers/jumpcloud
    ./mql/providers/k8s
+   ./mql/providers/keycloak
    ./mql/providers/mikrotik
    ./mql/providers/mistral
    ./mql/providers/mondoo
+   ./mql/providers/mongo
    ./mql/providers/ms365
+   ./mql/providers/mssql
+   ./mql/providers/mysqldb
+   ./mql/providers/n8n
+   ./mql/providers/neon
+   ./mql/providers/netlify
    ./mql/providers/nextdns
    ./mql/providers/nmap
+   ./mql/providers/notion
    ./mql/providers/nutanix
    ./mql/providers/oci
    ./mql/providers/okta
    ./mql/providers/ollama
    ./mql/providers/opcua
    ./mql/providers/openai
+   ./mql/providers/opensearch
    ./mql/providers/openstack
    ./mql/providers/portainer
+   ./mql/providers/postgresdb
    ./mql/providers/proxmox
+   ./mql/providers/redfish
+   ./mql/providers/redisdb
    ./mql/providers/shodan
    ./mql/providers/slack
    ./mql/providers/snowflake
@@ -242,9 +298,12 @@ use (
    ./mql/providers/tailscale
    ./mql/providers/terraform
    ./mql/providers/vcd
+   ./mql/providers/vercel
    ./mql/providers/vllm
    ./mql/providers/vsphere
+   ./mql/providers/weaviate
    ./cnspec
+   ./mql/providers/zoom
 )
 ```
 
@@ -260,7 +319,7 @@ go run apps/provider-scaffold/provider-scaffold.go \
 cd providers/your-provider && go mod tidy
 ```
 
-The Go package path is derived automatically as `go.mondoo.com/mql/v13/providers/{provider-id}`. New providers use the ID scheme `go.mondoo.com/mql/providers/{provider-id}` (no version in the ID).
+The Go package path and the provider ID are both derived automatically as `go.mondoo.com/mql/providers/{provider-id}` (no version in either).
 
 After scaffolding, register the provider in these files:
 
@@ -268,6 +327,8 @@ After scaffolding, register the provider in these files:
 - **`README.md`** — add a row to the provider table (alphabetically)
 - **`DEVELOPMENT.md`** — add the provider path to the `go.work` provider list (alphabetically)
 - **`Makefile`** — add the provider name to the `PROVIDERS` list (alphabetically)
+
+The scaffold also emits a `providers/<provider-id>/README.md` from a shared template with the canonical structure (Prerequisites, Authentication, Usage, Discovery, Examples, Resources, Verification, Troubleshooting). Fill in its `TODO` sections — at minimum **Authentication** and **Examples** — with real flags and runnable `mql shell <provider-id>` queries and their output. Keep it developer-focused; do not hand-list every resource and field (the resource reference is generated from the `.lr` schema comments). Use the `snowflake` and `shodan` provider READMEs as models.
 
 ### Asset URL tree
 
@@ -290,6 +351,44 @@ AssetUrlTrees: []*inventory.AssetUrlBranch{
 
 The build emits the tree into `providers/<your-provider>/dist/<your-provider>.json`; check it with `make providers/build/<your-provider>` and grep for `AssetUrlTrees` in the dist json. Mention the resulting URL shape in the provider's `README.md` so reviewers know what asset paths to expect.
 
+## Architecture overview
+
+```
+mql/
+├── cli/                    # CLI commands and execution runtime
+├── mql/                    # MQL executor (high-level query interface)
+├── mqlc/                   # MQL compiler (parses MQL to bytecode)
+├── llx/                    # Low-level execution engine (bytecode VM)
+├── providers/              # Provider coordinator and built-in providers
+├── providers-sdk/v1/       # SDK for building provider plugins
+├── explorer/               # Query bundles, packs, and execution orchestration
+├── content/                # Built-in query packs and policies
+├── apps/mql/               # Main mql CLI application
+└── apps/mql/cmd/           # CLI command implementations (shell in cli/shell/, output formats in cli/reporter/)
+```
+
+**Query execution.** MQL string → `mqlc.Compile()` → `llx.CodeBundle` (protobuf bytecode + metadata) → wrapped in
+`explorer.ExecutionQuery` → run by `executor.Executor` against the runtime → `llx.RawResult`. The layers are **MQL**
+(`mql/`, high-level executor), **MQLC** (`mqlc/`, compiles text to bytecode) and **LLX** (`llx/`, the bytecode VM).
+
+**Providers** are gRPC plugins (hashicorp/go-plugin), each its own Go module so dependency trees stay separate and
+binaries small. The **core provider** (`asset`, `time`, `regex`) is always compiled in; the others are external
+binaries loaded at runtime, and can be made builtin for debugging via `providers.yaml` (see [Debug providers](#debug-providers)).
+`providers.Coordinator` spawns each as a subprocess; each implements `ParseCLI()`/`Connect()`/`GetData()`/
+`StoreData()`/`Disconnect()`; `providers.Runtime` manages them per asset, and they can discover child assets (K8s → pods).
+
+**Field resolution.** The compiler requests a field → `provider.GetData(connection, resource, field, args)` → backend
+fetch (cloud API, SSH, …) → `llx.Primitive` → `llx.RawData`, cached in the executor. Field access is lazy: only the
+fields a query touches are fetched.
+
+**Code generation.** Three steps feed the build: protobuf (`.proto` → `.pb.go`), resources (`.lr` → `.lr.go`,
+`.lr.versions`, `.resources.json`, `.permissions.json`), and provider config (`providers.yaml` → `builtin_dev.go`).
+`make mql/generate` runs all three; `make providers/mqlr` builds the resource generator for a single-provider run.
+
+**Provider layout.** Each provider under `providers/<name>/` has `config/` (provider configuration), `connection/`
+(connection management and auth), `provider/` (ParseCLI, Connect, GetData), `resources/` (implementations and `.lr`
+files), `main.go` (binary entry point) and `gen/main.go` (generates the CLI configuration JSON).
+
 ## Providers development best practices
 
 The more time we spend building providers, the more we learn how to do better in the future. Here we describe learnings
@@ -302,6 +401,10 @@ are not just for code readers — the code generator emits them as the `title`/`
 generated `*.resources.json`, which is what powers our user-facing docs and IDE autocomplete. A field with no comment
 ends up as an empty entry in the docs.
 
+The parser enforces the comment's shape: either a single title line, or a title, one blank `//` line, and a multi-line
+description. Titles are capped at 150 characters, may not start with "deprecated", and descriptions may not start with
+`Deprecated.` or `Deprecated:`. The full set of enforced and stylistic rules is in `AGENTS.md` §2 Step 1.
+
 Write the comment for someone who has never seen the provider's Go code:
 
 - **Describe what it represents, not how it's implemented.** "Static IP address reserved for a project" is useful;
@@ -312,12 +415,16 @@ Write the comment for someone who has never seen the provider's Go code:
   settings" beats a bare "GitHub resource".
 - **Match the SDK/API vocabulary** that someone reading docs would search for (e.g., "Amazon S3 bucket lifecycle rule",
   not "lifecycle entry on the bucket").
-- **For deprecated fields**, prefix the comment with `DEPRECATED:` and name the replacement (see the `@maturity`
-  section in `CLAUDE.md`).
+- **For deprecated fields**, mark them `@maturity("deprecated")` and open the description with
+  `Deprecated in favor of ...` or `Deprecated, please use ...`. The title stays a plain noun phrase; a title or
+  description that starts with "deprecated" is rejected at parse time (see `AGENTS.md` §5).
+- **No em dashes** in `.lr` files. Use a period, comma, parentheses, or colon.
 
 ```lr
-// Snowflake Data Cloud — entry point for inspecting accounts, users, roles, grants, databases,
-// warehouses, shares, and network/password/session policies
+// Snowflake Data Cloud
+//
+// Entry point for inspecting accounts, users, roles, grants, databases,
+// warehouses, shares, and network/password/session policies.
 snowflake {
   // Role currently in use for this Snowflake session
   currentRole() string
@@ -473,6 +580,25 @@ func (g *mqlGcpProjectComputeServiceAddress) network() (*mqlGcpProjectComputeSer
 
 ```
 
+## Query deadlines
+
+The graph builder's query timeout (five minutes by default) covers synchronous
+resource creation, provider field reads, and waiting for the query's datapoints.
+Stopping the execution manager also cancels the active query. Results arriving
+after cancellation are discarded.
+
+`llx.ContextRuntime` binds one query's context without changing shared runtime
+state. The host runtime carries it through provider reads and writes; the gRPC
+client sends the deadline to the provider. Providers can implement the optional
+`plugin.ContextDataReader` and `plugin.ContextDataWriter` interfaces to receive it.
+The existing provider interface and wire format remain compatible.
+
+A deadline bounds the host's wait even for a legacy provider, but cannot forcibly
+stop arbitrary Go code. A legacy in-process call can keep its worker until it
+returns, and an older provider may continue its backend operation after the RPC
+is cancelled. Transport and I/O implementations therefore also need their own
+finite budgets and cancellation cleanup.
+
 ## Metrics (Prometheus + Grafana)
 
 When debugging `mql`, you can monitor and profile memory and CPU usage using [Prometheus](https://prometheus.io/) and [Grafana](https://grafana.com/). The setup provides visibility into application performance metrics and allows us to diagnose bottlenecks, memory leaks, and high CPU usage.
@@ -488,7 +614,7 @@ When debugging `mql`, you can monitor and profile memory and CPU usage using [Pr
 1. Install `prometheus` from https://prometheus.io/download/ (macOS: `brew install prometheus`)
 1. Start both, Prometheus and Grafana with `make metrics/start`
 1. **(one time only)** Create a Grafana Dashboard
-    1. Open Grafana at <!-- markdown-link-check-disable --> http://localhost:3000 <!-- markdown-link-check-enable -->
+    1. Open Grafana at http://localhost:3000
     1. Add Prometheus as a data source (URL: `http://host.docker.internal:9009`)
     1. Use an existing Go profiling dashboard from [Grafana](https://grafana.com/grafana/dashboards/) dashboards e.g. [10826](https://grafana.com/grafana/dashboards/10826-go-metrics/)
 1. Run `mql` with `DEBUG=1` e.g. `DEBUG=1 mql run local -c "asset { name }"`

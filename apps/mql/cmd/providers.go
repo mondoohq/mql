@@ -15,16 +15,19 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/muesli/termenv"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"go.mondoo.com/mql/v13/cli/theme"
-	"go.mondoo.com/mql/v13/cli/theme/colors"
-	"go.mondoo.com/mql/v13/providers"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/sortx"
+	"github.com/spf13/viper"
+	"go.mondoo.com/mql/cli/config"
+	"go.mondoo.com/mql/cli/theme"
+	"go.mondoo.com/mql/cli/theme/colors"
+	"go.mondoo.com/mql/providers"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/sortx"
 )
 
 func init() {
@@ -42,7 +45,46 @@ func init() {
 	resourcesProviderCmd.Flags().Bool("json", false, "Output in JSON format")
 	installProviderCmd.Flags().StringP("file", "f", "", "Install a provider via a file")
 	installProviderCmd.Flags().String("url", "", "Install a provider via a URL")
+	installProviderCmd.Flags().Bool("schema-only", false, "Install only the provider's config and resource schema, without its binary")
 	deleteProviderCmd.Flags().Bool("yes", false, "Confirm removal of all providers when using the 'all' target")
+
+	for _, cmd := range []*cobra.Command{installProviderCmd, updateProviderCmd} {
+		cmd.Flags().String("channel", "", "Release channel to resolve from: stable or preview (default: the configured update_channel, or the channel this build belongs to)")
+	}
+}
+
+// applyChannelFlag lets a single command resolve from a different release
+// channel without editing mondoo.yml.
+//
+// A stable install is the case this exists for: trying one pre-release provider
+// should not mean reconfiguring the machine and remembering to put it back. The
+// override lasts for this process only.
+//
+// It is applied by setting the config key rather than by threading a parameter
+// down to the registry, because the registry reads the channel at fetch time --
+// so everything that resolves during this command agrees, including the version
+// this command prints back.
+func applyChannelFlag(cmd *cobra.Command) error {
+	channel, _ := cmd.Flags().GetString("channel")
+	if channel == "" {
+		return nil
+	}
+
+	normalized := strings.ToLower(strings.TrimSpace(channel))
+	switch normalized {
+	case config.ChannelStable, config.ChannelPreview:
+	default:
+		// An unknown channel elsewhere falls back to the build, because it came
+		// from a config file someone may not be looking at. Here it was just
+		// typed on the command line, so say so rather than quietly doing
+		// something else.
+		return errors.Newf("unknown channel %q, expected %s or %s",
+			channel, config.ChannelStable, config.ChannelPreview)
+	}
+
+	viper.Set(config.KeyUpdateChannel, normalized)
+	log.Info().Str("channel", normalized).Msg("resolving providers from an overridden release channel")
+	return nil
 }
 
 var ProvidersCmd = &cobra.Command{
@@ -66,21 +108,48 @@ var listProvidersCmd = &cobra.Command{
 }
 
 var installProviderCmd = &cobra.Command{
-	Use:    "install <NAME[@VERSION]>",
-	Short:  "Install or update a provider",
-	Long:   "",
+	Use:   "install <NAME[@VERSION]>",
+	Short: "Install or update a provider",
+	Long: `Install or update a provider.
+
+With --schema-only, only the provider's config and resource schema are
+installed, skipping the (much larger) binary download. That is enough to
+compile queries against the provider's resources, but not to connect to
+assets; for that, install the provider fully.
+
+--channel resolves this one command from a different release channel, without
+changing any configuration. It has no effect when a version is pinned
+(NAME@VERSION) or when installing from --file or --url, since none of those
+consult a channel.
+
+Examples:
+  mql providers install aws                     # the configured channel
+  mql providers install aws --channel preview   # one-off, from the pre-release track
+  mql providers install aws@13.53.4             # exact version, channel ignored`,
 	PreRun: func(cmd *cobra.Command, args []string) {},
 	Run: func(cmd *cobra.Command, args []string) {
+		if err := applyChannelFlag(cmd); err != nil {
+			log.Fatal().Err(err).Msg("invalid channel")
+		}
+
+		schemaOnly, _ := cmd.Flags().GetBool("schema-only")
+
 		// Explicit installs of files will ignore version recommendations.
 		// So we just take them and roll with it.
 		path, _ := cmd.Flags().GetString("file")
 		if path != "" {
+			if schemaOnly {
+				log.Fatal().Msg("--schema-only is not supported together with --file")
+			}
 			installProviderFile(path)
 			return
 		}
 
 		url, _ := cmd.Flags().GetString("url")
 		if url != "" {
+			if schemaOnly {
+				log.Fatal().Msg("--schema-only is not supported together with --url")
+			}
 			installProviderUrl(url)
 			return
 		}
@@ -90,7 +159,7 @@ var installProviderCmd = &cobra.Command{
 		}
 
 		// if no url or file is specified, we default to installing by name from the default upstream
-		installProviderByName(args[0])
+		installProviderByName(args[0], schemaOnly)
 	},
 }
 
@@ -104,13 +173,22 @@ provider names to update just those. Providers already on the latest version
 are skipped, and naming a provider that isn't installed is reported and skipped
 rather than treated as an error.
 
+--channel resolves this one command from a different release channel, without
+changing any configuration. On a stable install that is how you try a
+pre-release provider: the override lasts for this command only, so the next
+update goes back to whatever is configured.
+
 Examples:
   mql providers update              # update every installed provider
   mql providers update aws          # update just the aws provider
-  mql providers update aws gcp      # update the aws and gcp providers`,
+  mql providers update aws gcp      # update the aws and gcp providers
+  mql providers update aws --channel preview   # one-off, from the pre-release track`,
 	Args:   cobra.ArbitraryArgs,
 	PreRun: func(cmd *cobra.Command, args []string) {},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := applyChannelFlag(cmd); err != nil {
+			return err
+		}
 		return updateProviders(cmd.Root().Name(), args)
 	},
 }
@@ -194,6 +272,29 @@ func writeJSON(v any) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)
+}
+
+// maturityTag renders a colored "[deprecated]" style suffix for a resource or
+// field maturity level. It returns "" for stable or empty maturity so normal
+// output is unchanged. This mirrors the provider-level rendering in
+// printProvider.
+func maturityTag(maturity string) string {
+	label := resources.MaturityLabel(maturity)
+	if label == "" {
+		return ""
+	}
+	color := colors.DefaultColorTheme.High
+	switch maturity {
+	case resources.MaturityExperimental, resources.MaturityPreview:
+		color = colors.DefaultColorTheme.Medium
+	case resources.MaturityEOL:
+		color = colors.DefaultColorTheme.Critical
+	case resources.MaturityDeprecated:
+		// High (not Critical) is intentional: deprecated is the most common
+		// non-stable maturity and reads as a warning, matching printProvider.
+		color = colors.DefaultColorTheme.High
+	}
+	return " " + termenv.String("["+strings.ToLower(label)+"]").Foreground(color).String()
 }
 
 func flagTypeString(ft plugin.FlagType) string {
@@ -434,6 +535,7 @@ type resourceSummary struct {
 	Title      string   `json:"title,omitempty"`
 	Desc       string   `json:"desc,omitempty"`
 	Private    bool     `json:"private"`
+	Maturity   string   `json:"maturity,omitempty"`
 	Defaults   []string `json:"defaults,omitempty"`
 	FieldCount int      `json:"field_count"`
 }
@@ -465,6 +567,7 @@ func listResources(cmd *cobra.Command, providerName string) error {
 			Title:      ri.Title,
 			Desc:       ri.Desc,
 			Private:    ri.Private,
+			Maturity:   ri.Maturity,
 			Defaults:   defaults,
 			FieldCount: len(ri.Fields),
 		})
@@ -487,7 +590,7 @@ func listResources(cmd *cobra.Command, providerName string) error {
 		if r.Title != "" {
 			title = " - " + r.Title
 		}
-		fmt.Printf("  %s%s\n", theme.DefaultTheme.Secondary(r.Name), title)
+		fmt.Printf("  %s%s%s\n", theme.DefaultTheme.Secondary(r.Name), maturityTag(r.Maturity), title)
 	}
 	fmt.Println()
 	return nil
@@ -500,6 +603,7 @@ type resourceDetail struct {
 	Title      string        `json:"title,omitempty"`
 	Desc       string        `json:"desc,omitempty"`
 	Private    bool          `json:"private"`
+	Maturity   string        `json:"maturity,omitempty"`
 	Defaults   []string      `json:"defaults,omitempty"`
 	FieldCount int           `json:"field_count"`
 	Fields     []fieldDetail `json:"fields"`
@@ -510,6 +614,7 @@ type fieldDetail struct {
 	Type        string `json:"type"`
 	Title       string `json:"title,omitempty"`
 	Desc        string `json:"desc,omitempty"`
+	Maturity    string `json:"maturity,omitempty"`
 	IsMandatory bool   `json:"is_mandatory,omitempty"`
 }
 
@@ -534,6 +639,7 @@ func showResource(cmd *cobra.Command, providerName string, resourceName string) 
 			Type:        types.Type(f.Type).Label(),
 			Title:       f.Title,
 			Desc:        f.Desc,
+			Maturity:    f.Maturity,
 			IsMandatory: f.IsMandatory,
 		})
 	}
@@ -551,6 +657,7 @@ func showResource(cmd *cobra.Command, providerName string, resourceName string) 
 		Title:      ri.Title,
 		Desc:       ri.Desc,
 		Private:    ri.Private,
+		Maturity:   ri.Maturity,
 		Defaults:   defaults,
 		FieldCount: len(fields),
 		Fields:     fields,
@@ -560,7 +667,7 @@ func showResource(cmd *cobra.Command, providerName string, resourceName string) 
 		return writeJSON(detail)
 	}
 
-	fmt.Printf("%s\n", theme.DefaultTheme.Primary(ri.Name))
+	fmt.Printf("%s%s\n", theme.DefaultTheme.Primary(ri.Name), maturityTag(ri.Maturity))
 	if ri.Title != "" {
 		fmt.Printf("  %s\n", ri.Title)
 	}
@@ -578,9 +685,9 @@ func showResource(cmd *cobra.Command, providerName string, resourceName string) 
 		if f.Title != "" {
 			title = " - " + f.Title
 		}
-		fmt.Printf("    %-30s %s%s%s\n",
+		fmt.Printf("    %-30s %s%s%s%s\n",
 			theme.DefaultTheme.Secondary(f.Name),
-			f.Type, mandatory, title)
+			f.Type, mandatory, maturityTag(f.Maturity), title)
 	}
 	fmt.Println()
 	return nil
@@ -679,7 +786,7 @@ func updateProviders(binary string, names []string) error {
 
 // --- existing functions ---
 
-func installProviderByName(name string) {
+func installProviderByName(name string, schemaOnly bool) {
 	parts := strings.Split(name, "@")
 	if len(parts) > 2 {
 		log.Fatal().Msg("invalid provider name")
@@ -690,7 +797,11 @@ func installProviderByName(name string) {
 		// trim the v prefix, allowing users to specify both 9.0.0 and v9.0.0
 		version = strings.TrimPrefix(parts[1], "v")
 	}
-	installed, err := providers.Install(name, version)
+	install := providers.Install
+	if schemaOnly {
+		install = providers.InstallSchemaOnly
+	}
+	installed, err := install(name, version)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to install")
 	}
@@ -816,6 +927,10 @@ func printProvider(p *providers.Provider) {
 		}
 		maturity = " " + termenv.String("["+strings.ToLower(label)+"]").Foreground(color).String()
 	}
+	schemaOnly := ""
+	if p.Path != "" && !p.HasBinary {
+		schemaOnly = " " + theme.DefaultTheme.Disabled("(schema-only)")
+	}
 
-	fmt.Println("  " + name + " " + p.Version + supports + maturity)
+	fmt.Println("  " + name + " " + p.Version + supports + maturity + schemaOnly)
 }

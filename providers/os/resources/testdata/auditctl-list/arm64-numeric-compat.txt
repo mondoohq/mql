@@ -1,0 +1,21 @@
+-a never,task
+-w /etc/localtime -p wa -k time-change
+-a always,exit -F arch=b64 -S settimeofday,adjtimex -F key=time-change
+-a always,exit -F arch=b64 -S clock_settime -F a0=0x0 -F key=time-change
+-a always,exit -F arch=b64 -S sethostname,setdomainname -F key=system-locale
+-w /etc/issue -p wa -k system-locale
+-w /etc/hosts -p wa -k system-locale
+-w /etc/sysconfig/network -p wa -k system-locale
+-w /etc/NetworkManager/ -p wa -k system-locale
+-w /etc/sudoers.d -p wa -k scope
+-w /etc/sudoers -p wa -k scope
+-a always,exit -F arch=b64 -S execve -C uid!=euid -F auid!=-1 -F key=user_emulation
+-a always,exit -F arch=b64 -S fchmod,fchmodat -F auid>=1000 -F auid!=-1 -F key=perm_mod
+-a always,exit -F arch=b64 -S truncate,ftruncate,openat -F exit=-EACCES -F auid>=1000 -F auid!=-1 -F key=access
+-a always,exit -F arch=b64 -S truncate,ftruncate,openat -F exit=-EPERM -F auid>=1000 -F auid!=-1 -F key=access
+-a always,exit -S all -F path=/usr/bin/sudo -F perm=x -F auid>=1000 -F auid!=-1 -F key=privileged
+-a always,exit -F arch=b64 -S init_module,delete_module,finit_module -F auid>=1000 -F auid!=-1 -F key=kernel_modules
+-a always,exit -F arch=b64 -S mount -F auid>999 -F auid!=-1 -F key=mounts
+-w /var/log/lastlog -p wa -k logins
+-w /var/run/faillock -p wa
+-a always,exit -F arch=0x40000028 -S 74,121 -F key=system-locale

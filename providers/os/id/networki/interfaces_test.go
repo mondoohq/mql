@@ -5,15 +5,16 @@ package networki_test
 
 import (
 	"net"
+	"slices"
 	"testing"
 
-	subject "go.mondoo.com/mql/v13/providers/os/id/networki"
+	subject "go.mondoo.com/mql/providers/os/id/networki"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
-	"go.mondoo.com/mql/v13/providers/os/detector"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/detector"
 )
 
 func TestInterfacesDarwin(t *testing.T) {
@@ -24,9 +25,30 @@ func TestInterfacesDarwin(t *testing.T) {
 
 	interfaces, err := subject.Interfaces(conn, platform)
 	require.NoError(t, err)
-	assert.Len(t, interfaces, 26)
 
-	index := subject.FindInterface(interfaces, subject.Interface{Name: "en0"})
+	// 25, the number of interfaces this fixture's ifconfig output declares at
+	// column 0. It read 26 before: bridge0's three `member: enN flags=3<...>`
+	// lines carry flags= too, so the parser took them for an interface and
+	// added one named `member`.
+	assert.Len(t, interfaces, 25)
+	for _, iface := range interfaces {
+		assert.NotEqual(t, "member", iface.Name,
+			"a bridge's membership line is not an interface")
+	}
+	assert.Equal(t, -1, subject.FindInterface(interfaces, subject.Interface{Name: "member"}))
+
+	// The membership lines must not overwrite the bridge's own flags with the
+	// LEARNING,DISCOVER they carry either.
+	index := subject.FindInterface(interfaces, subject.Interface{Name: "bridge0"})
+	if assert.NotEqual(t, -1, index) {
+		bridge0 := interfaces[index]
+		assert.ElementsMatch(t,
+			[]string{"UP", "BROADCAST", "SMART", "RUNNING", "SIMPLEX", "MULTICAST"},
+			bridge0.Flags)
+		assert.Equal(t, 1500, bridge0.MTU)
+	}
+
+	index = subject.FindInterface(interfaces, subject.Interface{Name: "en0"})
 	if assert.NotEqual(t, -1, index) {
 		en0 := interfaces[index]
 		assert.Equal(t, "en0", en0.Name)
@@ -289,12 +311,13 @@ func TestInterfacesLinuxPeerInterface(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, interfaces, 2)
 
-	// The interface is named eth0@if104 (peer interface) but the routing table
-	// uses the base name eth0. Verify that the gateway is correctly assigned.
-	index := subject.FindInterface(interfaces, subject.Interface{Name: "eth0@if104"})
+	// `ip addr` prints a veth as eth0@if104: the interface is eth0, @if104
+	// names its peer's index in the other namespace. The routing table, sysfs
+	// and every other tool call it eth0, and so does the interface name.
+	index := subject.FindInterface(interfaces, subject.Interface{Name: "eth0"})
 	if assert.NotEqual(t, -1, index) {
 		eth0 := interfaces[index]
-		assert.Equal(t, "eth0@if104", eth0.Name)
+		assert.Equal(t, "eth0", eth0.Name)
 		assert.Equal(t, "02:42:ac:11:00:04", eth0.MACAddress)
 		assert.Equal(t, 1500, eth0.MTU)
 		if assert.NotNil(t, eth0.Active) {
@@ -313,9 +336,9 @@ func TestInterfacesLinuxPeerInterface(t *testing.T) {
 		}
 	}
 
-	// Also verify that FindInterface can locate the peer interface by its base name
-	index = subject.FindInterface(interfaces, subject.Interface{Name: "eth0"})
-	assert.NotEqual(t, -1, index)
+	for _, i := range interfaces {
+		assert.NotContains(t, i.Name, "@")
+	}
 }
 
 func TestInterfacesLinuxFallbackSysNetFilesystem(t *testing.T) {
@@ -342,10 +365,37 @@ func TestInterfacesLinuxFallbackSysNetFilesystem(t *testing.T) {
 			assert.True(t, *enX0.Virtual)
 		}
 		assert.ElementsMatch(t, []string{"MULTICAST", "BROADCAST", "UP"}, enX0.Flags)
-		// Note that this method lacks implementation for gathering ip addresses
-		// configured in the network interfaces, maybe we can look at two files to
-		// get them `/proc/net/fib_trie` and `/proc/net/if_inet6`
-		assert.Empty(t, enX0.IPAddresses)
+
+		// The sysfs walk cannot see addresses -- the kernel does not publish
+		// them under /sys/class/net -- so they are read from procfs. Without
+		// that, every interface on a host with no iproute2 came back with none.
+		cidrs := make([]string, 0, len(enX0.IPAddresses))
+		for _, ip := range enX0.IPAddresses {
+			cidrs = append(cidrs, ip.CIDR)
+		}
+		assert.ElementsMatch(t,
+			[]string{"172.31.24.71/20", "fe80::aff:de6b:fe3a:e319/64"}, cidrs)
+
+		index := slices.IndexFunc(enX0.IPAddresses, func(ip subject.IPAddress) bool {
+			return ip.CIDR == "172.31.24.71/20"
+		})
+		if assert.NotEqual(t, -1, index) {
+			ipv4 := enX0.IPAddresses[index]
+			assert.Equal(t, "172.31.16.0/20", ipv4.Subnet)
+			assert.Equal(t, "172.31.31.255", ipv4.Broadcast)
+			assert.Equal(t, "172.31.16.1", ipv4.Gateway)
+		}
+	}
+
+	index = subject.FindInterface(interfaces, subject.Interface{Name: "lo"})
+	if assert.NotEqual(t, -1, index) {
+		cidrs := make([]string, 0)
+		for _, ip := range interfaces[index].IPAddresses {
+			cidrs = append(cidrs, ip.CIDR)
+		}
+		// 127.0.0.0 has a "/8 host LOCAL" route of its own, and reporting it
+		// would give loopback an address it does not answer on.
+		assert.ElementsMatch(t, []string{"127.0.0.1/8", "::1/128"}, cidrs)
 	}
 }
 
@@ -383,6 +433,7 @@ func TestInterfacesWindows(t *testing.T) {
 
 	interfaces, err := subject.Interfaces(conn, platform)
 	require.NoError(t, err)
+	// The fixture includes an adapter with a null InterfaceAlias, which is skipped.
 	assert.Len(t, interfaces, 4)
 
 	index := subject.FindInterface(interfaces, subject.Interface{Name: "Ethernet0"})
@@ -427,6 +478,45 @@ func TestInterfacesWindows(t *testing.T) {
 				assert.Equal(t, "::", ipv6.Gateway)
 			}
 		}
+
+		// The link-local address carries a `%N` zone index that has to be
+		// stripped before it parses.
+		assert.NotEqual(t, -1, teredoTunneling.FindIP(net.ParseIP("fe80::869:1f7d:a331:f3e1")))
+	}
+
+	// This adapter has a single IP address, so `ConvertTo-Json` reports a bare
+	// object rather than a one-element array.
+	index = subject.FindInterface(interfaces, subject.Interface{Name: "isatap.localdomain"})
+	if assert.NotEqual(t, -1, index) {
+		isatap := interfaces[index]
+		if assert.Len(t, isatap.IPAddresses, 1) {
+			assert.True(t, net.ParseIP("fe80::5efe:192.168.5.38").Equal(isatap.IPAddresses[0].IP))
+		}
+	}
+}
+
+func TestInterfacesWindowsSingleInterface(t *testing.T) {
+	// A host with one network interface makes `ConvertTo-Json` report a bare
+	// object rather than a one-element array.
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/windows_get_net_ip_cmd_single.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+
+	interfaces, err := subject.Interfaces(conn, platform)
+	require.NoError(t, err)
+	require.Len(t, interfaces, 1)
+
+	ethernet0 := interfaces[0]
+	assert.Equal(t, "Ethernet0", ethernet0.Name)
+	assert.Equal(t, "00:50:56:B0:9A:A5", ethernet0.MACAddress)
+	assert.Equal(t, 1500, ethernet0.MTU)
+	if assert.Len(t, ethernet0.IPAddresses, 1) {
+		ipv4 := ethernet0.IPAddresses[0]
+		assert.Equal(t, "192.168.5.38", ipv4.IP.String())
+		assert.Equal(t, "192.168.5.38/24", ipv4.CIDR)
+		assert.Equal(t, "192.168.5.0/24", ipv4.Subnet)
+		assert.Equal(t, "192.168.5.1", ipv4.Gateway)
 	}
 }
 
@@ -481,5 +571,273 @@ func TestInterfacesWindowsFallbackIpconfigCmd(t *testing.T) {
 				assert.Equal(t, "", ipv6.Broadcast)
 			}
 		}
+	}
+}
+
+// Whether an interface is virtual must not depend on whether iproute2 happens
+// to be installed on the host being scanned. `ip addr` does not report it, so
+// it is read from sysfs either way -- enX0 has a device link and is backed by
+// hardware, lo has none and is synthesized by the kernel.
+//
+// Before this, the command detector guessed from the name: a veth or virbr
+// prefix was virtual and everything else was not, so lo read false, and so did
+// the veth that every container calls eth0.
+func TestInterfacesLinuxVirtualIsReadFromSysfs(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/linux_ip_addr_show_cmd.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+
+	interfaces, err := subject.Interfaces(conn, platform)
+	require.NoError(t, err)
+
+	index := subject.FindInterface(interfaces, subject.Interface{Name: "lo"})
+	if assert.NotEqual(t, -1, index) {
+		lo := interfaces[index]
+		if assert.NotNil(t, lo.Virtual, "loopback has no verdict") {
+			assert.True(t, *lo.Virtual, "the loopback is synthesized by the kernel")
+		}
+	}
+
+	index = subject.FindInterface(interfaces, subject.Interface{Name: "enX0"})
+	if assert.NotEqual(t, -1, index) {
+		enX0 := interfaces[index]
+		if assert.NotNil(t, enX0.Virtual) {
+			assert.False(t, *enX0.Virtual, "a NIC with a device link is backed by hardware")
+		}
+	}
+
+	// The bonding control file is in this fixture's sysfs too, and is not an
+	// interface however the interfaces were discovered.
+	for _, iface := range interfaces {
+		assert.NotEqual(t, "bonding_masters", iface.Name)
+	}
+}
+
+// /sys/class/net holds the bonding driver's control file beside the
+// interfaces. It is a plain file, so it has no mac, no mtu and no flags, and
+// reporting it put exactly that empty row in the interface list on every
+// distribution scanned without iproute2 installed.
+func TestInterfacesLinuxSysfsSkipsBondingMasters(t *testing.T) {
+	for _, fixture := range []string{
+		"./testdata/linux_sys_class_net_fs.toml",
+		"./testdata/linux_sys_class_net_symlinks.toml",
+	} {
+		conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath(fixture))
+		require.NoError(t, err, fixture)
+		platform, ok := detector.DetectOS(conn)
+		require.True(t, ok, fixture)
+
+		interfaces, err := subject.Interfaces(conn, platform)
+		require.NoError(t, err, fixture)
+
+		for _, iface := range interfaces {
+			assert.NotEqual(t, "bonding_masters", iface.Name,
+				"%s reported the bonding control file as an interface", fixture)
+		}
+		assert.Equal(t, -1,
+			subject.FindInterface(interfaces, subject.Interface{Name: "bonding_masters"}),
+			"%s", fixture)
+	}
+}
+
+// NetworkInterfaces.plist is macOS's record of every interface the machine has
+// ever seen, not the ones attached now, so it must not add to a live
+// enumeration. en7 in this fixture is an adapter that is not plugged in: the
+// plist remembers it, ifconfig does not mention it, and it was reported as an
+// interface with no mac, no mtu and no address.
+func TestInterfacesDarwinPlistDoesNotAddAbsentHardware(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{},
+		mock.WithPath("./testdata/macos_plist_absent_hardware.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+
+	interfaces, err := subject.Interfaces(conn, platform)
+	require.NoError(t, err)
+
+	require.Len(t, interfaces, 2, "only lo0 and en0 are attached")
+	assert.Equal(t, -1,
+		subject.FindInterface(interfaces, subject.Interface{Name: "en7"}),
+		"en7 is in the plist and not on the host")
+
+	// The interface that is attached still resolves fully, including the
+	// gateway the routing table names for it.
+	index := subject.FindInterface(interfaces, subject.Interface{Name: "en0"})
+	if assert.NotEqual(t, -1, index) {
+		en0 := interfaces[index]
+		assert.Equal(t, "80:a9:97:40:12:53", en0.MACAddress)
+		assert.Equal(t, 1500, en0.MTU)
+		if assert.NotNil(t, en0.Active) {
+			assert.True(t, *en0.Active)
+		}
+		i4 := en0.FindIP(net.ParseIP("172.16.1.119"))
+		if assert.NotEqual(t, -1, i4) {
+			ipv4 := en0.IPAddresses[i4]
+			assert.Equal(t, "172.16.1.119/24", ipv4.CIDR, "0xffffff00 is a /24")
+			assert.Equal(t, "172.16.1.0/24", ipv4.Subnet)
+			assert.Equal(t, "172.16.1.255", ipv4.Broadcast)
+			assert.Equal(t, "172.16.1.1", ipv4.Gateway)
+		}
+	}
+}
+
+// The plist is still the fallback for a scan that cannot run ifconfig -- a
+// mounted image or disk -- which is the reason it is consulted at all.
+func TestInterfacesDarwinPlistIsTheFallbackWithoutIfconfig(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{},
+		mock.WithPath("./testdata/macos_plist_only.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+
+	interfaces, err := subject.Interfaces(conn, platform)
+	require.NoError(t, err)
+
+	// With no ifconfig to describe what is attached, the plist is all there
+	// is, so both of its interfaces are reported rather than none.
+	require.Len(t, interfaces, 2)
+	for _, name := range []string{"en0", "en7"} {
+		assert.NotEqual(t, -1,
+			subject.FindInterface(interfaces, subject.Interface{Name: name}),
+			"%s should come from the plist when ifconfig cannot run", name)
+	}
+}
+
+// Non-root on RHEL 7 the sysfs walk answers. The trailing newline of the flags
+// value made every interface report no flags, so a PROMISC check passed on
+// an interface in promiscuous mode; operstate "unknown" left active null; and
+// loopback's all-zero address was attributed to XEROX.
+func TestInterfacesLinuxSysfsRhel7NonRoot(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/linux_sys_class_net_rhel7.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+
+	interfaces, err := subject.Interfaces(conn, platform)
+	require.NoError(t, err)
+	require.Len(t, interfaces, 4)
+
+	byName := map[string]subject.Interface{}
+	for _, i := range interfaces {
+		byName[i.Name] = i
+	}
+
+	eth0 := byName["eth0"]
+	assert.Equal(t, []string{"BROADCAST", "MULTICAST", "PROMISC", "UP"}, eth0.Flags)
+	if assert.NotNil(t, eth0.Active) {
+		assert.True(t, *eth0.Active)
+	}
+
+	lo := byName["lo"]
+	assert.Equal(t, []string{"LOOPBACK", "UP"}, lo.Flags)
+	if assert.NotNil(t, lo.Active) {
+		assert.True(t, *lo.Active)
+	}
+	assert.Equal(t, "00:00:00:00:00:00", lo.MACAddress)
+	assert.Equal(t, "", lo.Vendor)
+
+	port := byName["g01-int0"]
+	if assert.NotNil(t, port.Active) {
+		assert.True(t, *port.Active)
+	}
+
+	ovs := byName["ovs-system"]
+	assert.Equal(t, []string{"BROADCAST", "MULTICAST", "PROMISC"}, ovs.Flags)
+	if assert.NotNil(t, ovs.Active) {
+		assert.False(t, *ovs.Active)
+	}
+}
+
+// tcpdump on eth0 and Open vSwitch on its ports raise the kernel's
+// promiscuity without the PROMISC flag `ip addr` prints, so the command
+// detector missed a sniffer while the sysfs walk, which reads the kernel's
+// flags, reported it. The sysfs walk never reported LOWER_UP, and gave
+// loopback the all-zero address `ip` doesn't print. Both detectors now agree
+// on every interface.
+func TestInterfacesLinuxFlagsAgreeAcrossDetectors(t *testing.T) {
+	detect := func(fixture string) map[string]subject.Interface {
+		conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath(fixture))
+		require.NoError(t, err)
+		platform, ok := detector.DetectOS(conn)
+		require.True(t, ok)
+		interfaces, err := subject.Interfaces(conn, platform)
+		require.NoError(t, err)
+		byName := map[string]subject.Interface{}
+		for _, i := range interfaces {
+			byName[i.Name] = i
+		}
+		return byName
+	}
+	cmd := detect("./testdata/linux_ip_addr_show_sniffer.toml")
+	sysfs := detect("./testdata/linux_sys_class_net_sniffer.toml")
+
+	want := map[string][]string{
+		"lo":             {"LOOPBACK", "UP", "LOWER_UP"},
+		"eth0":           {"BROADCAST", "MULTICAST", "PROMISC", "UP", "LOWER_UP"},
+		"ovs-system":     {"BROADCAST", "MULTICAST", "PROMISC"},
+		"br-g01":         {"BROADCAST", "MULTICAST", "PROMISC"},
+		"g01-int0":       {"BROADCAST", "MULTICAST", "PROMISC", "UP", "LOWER_UP"},
+		"g01-trunk":      {"BROADCAST", "MULTICAST", "PROMISC"},
+		"vxlan_sys_4789": {"BROADCAST", "MULTICAST", "PROMISC", "UP", "LOWER_UP"},
+		"ovs-netdev":     {"BROADCAST", "MULTICAST", "PROMISC"},
+		"br-g01b":        {"BROADCAST", "MULTICAST", "PROMISC"},
+	}
+	require.Len(t, cmd, len(want))
+	require.Len(t, sysfs, len(want))
+	for name, flags := range want {
+		assert.Equal(t, flags, cmd[name].Flags, "ip addr: %s", name)
+		assert.Equal(t, flags, sysfs[name].Flags, "sysfs: %s", name)
+		assert.Equal(t, cmd[name].MACAddress, sysfs[name].MACAddress, name)
+		assert.Equal(t, cmd[name].Active, sysfs[name].Active, name)
+	}
+	assert.Equal(t, "", sysfs["lo"].MACAddress)
+	assert.Equal(t, "06:ff:c3:69:b3:57", sysfs["eth0"].MACAddress)
+}
+
+// testdata/aix73.toml is ifconfig -a, netstat -in and netstat -rn on AIX 7.3
+// TL4 SP2 (PowerVS) with the alias address 192.0.2.10 on en0.
+func TestInterfacesAix(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/aix73.toml"))
+	require.NoError(t, err)
+	platform := &inventory.Platform{Name: "aix", Family: []string{"unix", "os"}}
+
+	interfaces, err := subject.Interfaces(conn, platform)
+	require.NoError(t, err)
+	assert.Len(t, interfaces, 3)
+
+	index := subject.FindInterface(interfaces, subject.Interface{Name: "en0"})
+	if assert.NotEqual(t, -1, index) {
+		en0 := interfaces[index]
+		assert.Equal(t, "fa:16:3e:5b:8a:c5", en0.MACAddress)
+		assert.Equal(t, 1450, en0.MTU)
+		if assert.NotNil(t, en0.Active) {
+			assert.True(t, *en0.Active)
+		}
+		assert.Contains(t, en0.Flags, "UP")
+
+		i4 := en0.FindIP(net.ParseIP("192.168.234.35"))
+		if assert.NotEqual(t, -1, i4) {
+			ipv4 := en0.IPAddresses[i4]
+			assert.Equal(t, "192.168.234.35/29", ipv4.CIDR)
+			assert.Equal(t, "192.168.234.39", ipv4.Broadcast)
+			assert.Equal(t, "192.168.234.33", ipv4.Gateway)
+		}
+		assert.NotEqual(t, -1, en0.FindIP(net.ParseIP("192.0.2.10")))
+	}
+
+	// octets without their leading zero: 82.de.e.65.c.1a
+	index = subject.FindInterface(interfaces, subject.Interface{Name: "en1"})
+	if assert.NotEqual(t, -1, index) {
+		en1 := interfaces[index]
+		assert.Equal(t, "82:de:0e:65:0c:1a", en1.MACAddress)
+		assert.NotEqual(t, -1, en1.FindIP(net.ParseIP("fe80::80de:eff:fe65:c1a")))
+	}
+
+	index = subject.FindInterface(interfaces, subject.Interface{Name: "lo0"})
+	if assert.NotEqual(t, -1, index) {
+		lo0 := interfaces[index]
+		assert.Equal(t, 16896, lo0.MTU)
+		assert.Equal(t, "", lo0.MACAddress)
 	}
 }

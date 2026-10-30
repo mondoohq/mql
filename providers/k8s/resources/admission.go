@@ -9,10 +9,10 @@ import (
 	"fmt"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/resources"
 	admissionv1 "k8s.io/api/admission/v1"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -73,19 +73,19 @@ func (k *mqlK8sAdmissionreview) request() (*mqlK8sAdmissionrequest, error) {
 		args["object"] = llx.NilData
 	}
 
-	oldObj, err := resources.ResourcesFromManifest(bytes.NewReader(aRequest.OldObject.Raw))
-	if err != nil {
-		return nil, err
-	}
-
-	if len(oldObj) == 1 {
-		oldObjDict, err := convert.JsonToDict(oldObj[0])
+	args["oldObject"] = llx.NilData
+	if len(aRequest.OldObject.Raw) > 0 {
+		oldObj, err := resources.ResourcesFromManifest(bytes.NewReader(aRequest.OldObject.Raw))
 		if err != nil {
 			return nil, err
 		}
-		args["oldObject"] = llx.DictData(oldObjDict)
-	} else {
-		args["oldObject"] = llx.NilData
+		if len(oldObj) == 1 {
+			oldObjDict, err := convert.JsonToDict(oldObj[0])
+			if err != nil {
+				return nil, err
+			}
+			args["oldObject"] = llx.DictData(oldObjDict)
+		}
 	}
 
 	r, err := CreateResource(k.MqlRuntime, "k8s.admissionrequest", args)

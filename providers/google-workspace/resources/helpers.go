@@ -5,13 +5,16 @@ package resources
 
 // filterUsers returns the subset of the customer's users for which keep
 // reports true. It reuses the cached `users` field so every aggregate
-// accessor shares a single Users.List instead of re-fetching.
+// accessor shares a single Users.List instead of re-fetching. It resolves
+// that field via GetUsers() so the aggregate works even when the caller
+// never touched googleworkspace.users directly.
 func filterUsers(g *mqlGoogleworkspace, keep func(*mqlGoogleworkspaceUser) (bool, error)) ([]any, error) {
-	if g.Users.Error != nil {
-		return nil, g.Users.Error
+	users := g.GetUsers()
+	if users.Error != nil {
+		return nil, users.Error
 	}
 	res := []any{}
-	for _, u := range g.Users.Data {
+	for _, u := range users.Data {
 		user := u.(*mqlGoogleworkspaceUser)
 		ok, err := keep(user)
 		if err != nil {

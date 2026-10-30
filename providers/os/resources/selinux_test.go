@@ -3,10 +3,16 @@
 package resources
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 func TestParseSelinuxConfig(t *testing.T) {
@@ -103,8 +109,8 @@ apache
 		modules := ParseSemodule(output)
 		require.Len(t, modules, 3)
 
-		require.Equal(t, SELinuxModule{Name: "abrt", Priority: 100, Status: "enabled"}, modules[0])
-		require.Equal(t, SELinuxModule{Name: "custom_policy", Priority: 200, Status: "enabled"}, modules[2])
+		require.Equal(t, SELinuxModule{Name: "abrt", Priority: new(100), Status: "enabled"}, modules[0])
+		require.Equal(t, SELinuxModule{Name: "custom_policy", Priority: new(200), Status: "enabled"}, modules[2])
 	})
 
 	t.Run("full format with status", func(t *testing.T) {
@@ -115,8 +121,8 @@ apache
 		modules := ParseSemodule(output)
 		require.Len(t, modules, 3)
 
-		require.Equal(t, SELinuxModule{Name: "abrt", Priority: 100, Status: "enabled"}, modules[0])
-		require.Equal(t, SELinuxModule{Name: "custom_policy", Priority: 200, Status: "disabled"}, modules[2])
+		require.Equal(t, SELinuxModule{Name: "abrt", Priority: new(100), Status: "enabled"}, modules[0])
+		require.Equal(t, SELinuxModule{Name: "custom_policy", Priority: new(200), Status: "disabled"}, modules[2])
 	})
 
 	t.Run("empty output", func(t *testing.T) {
@@ -157,4 +163,182 @@ func TestReadSelinuxBooleansFromFS(t *testing.T) {
 		bools := readSelinuxBooleansFromFS(fs)
 		require.Nil(t, bools)
 	})
+}
+
+// Output captured from `semodule --list-modules=full` and `semodule -l` on
+// RHEL 9 (policycoreutils 3.6) and RHEL 7 (2.5), with a module installed at
+// priority 400 and zosremote disabled.
+func TestParseSemoduleListings(t *testing.T) {
+	t.Run("full listing on RHEL 9", func(t *testing.T) {
+		output := "400 permissive_rhcd_t cil         \n" +
+			"400 sweeppol          pp          \n" +
+			"200 container         pp          \n" +
+			"100 abrt              pp          \n" +
+			"100 zosremote         pp  disabled\n"
+		modules := ParseSemodule(output)
+		require.Len(t, modules, 5)
+		assert.Equal(t, SELinuxModule{Name: "sweeppol", Priority: new(400), Status: "enabled"}, modules[1])
+		assert.Equal(t, SELinuxModule{Name: "abrt", Priority: new(100), Status: "enabled"}, modules[3])
+		assert.Equal(t, SELinuxModule{Name: "zosremote", Priority: new(100), Status: "disabled"}, modules[4])
+	})
+
+	t.Run("full listing on RHEL 7", func(t *testing.T) {
+		output := "400 sweeppol          pp         \n" +
+			"100 abrt              pp         \n" +
+			"100 zosremote         pp disabled\n"
+		modules := ParseSemodule(output)
+		require.Len(t, modules, 3)
+		assert.Equal(t, SELinuxModule{Name: "sweeppol", Priority: new(400), Status: "enabled"}, modules[0])
+		assert.Equal(t, SELinuxModule{Name: "zosremote", Priority: new(100), Status: "disabled"}, modules[2])
+	})
+
+	t.Run("RHEL 7 semodule -l prints versions, not a status", func(t *testing.T) {
+		modules := ParseSemodule("abrt\t1.4.1\nsweeppol\t1.0\n")
+		require.Len(t, modules, 2)
+		assert.Equal(t, SELinuxModule{Name: "abrt", Status: "enabled"}, modules[0])
+		assert.Nil(t, modules[1].Priority)
+	})
+
+	t.Run("old semodule -l marks disabled modules", func(t *testing.T) {
+		modules := ParseSemodule("zosremote\t1.2.0\tDisabled\n")
+		require.Len(t, modules, 1)
+		assert.Equal(t, "disabled", modules[0].Status)
+	})
+}
+
+// /sys/fs/selinux/booleans/<name> holds the current and the pending value, as
+// read on RHEL 7, RHEL 9 and Fedora 44.
+func TestSelinuxBooleanFileValue(t *testing.T) {
+	assert.True(t, selinuxBooleanFileValue([]byte("1 1")))
+	assert.False(t, selinuxBooleanFileValue([]byte("0 0")))
+	// a pending change is not in effect yet
+	assert.False(t, selinuxBooleanFileValue([]byte("0 1")))
+	assert.True(t, selinuxBooleanFileValue([]byte("1 0")))
+	assert.True(t, selinuxBooleanFileValue([]byte("1\n")))
+}
+
+// Without /sys/fs/selinux the kernel enforces nothing, which getenforce
+// reports as "Disabled". Two hosts reach this: Debian 9 to 13 with the SELinux
+// packages installed and SELINUX=permissive configured but booted without
+// SELinux (non-root PATH has no getenforce), and SLES 15 SP7, which ships no
+// SELinux at all (no getenforce, no /etc/selinux/config, no selinux in
+// /sys/kernel/security/lsm).
+func TestSelinuxRuntimeMode(t *testing.T) {
+	mode, err := selinuxRuntimeMode(false, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "disabled", mode)
+
+	// RHEL with SELinux enabled: the enforce file is the running mode,
+	// whatever /etc/selinux/config says
+	mode, err = selinuxRuntimeMode(true, []byte("1"))
+	require.NoError(t, err)
+	assert.Equal(t, "enforcing", mode)
+
+	mode, err = selinuxRuntimeMode(true, []byte("0\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "permissive", mode)
+
+	_, err = selinuxRuntimeMode(true, []byte(""))
+	assert.Error(t, err)
+}
+
+// SLES 15 SP7 as captured live: getenforce is not installed, and neither
+// /etc/selinux/config nor /sys/fs/selinux exists. Leap 15.6 with selinux-tools
+// installed (but SELinux not enabled at boot) has getenforce, which prints
+// "Disabled". Both kernels enforce nothing and must read the same.
+func TestSelinuxModeWithoutSelinux(t *testing.T) {
+	sles15 := &inventory.Asset{
+		Platform: &inventory.Platform{Name: "sles", Version: "15.7", Family: []string{"suse", "linux", "unix"}},
+	}
+	notFound := &mock.Command{Stderr: "sh: getenforce: command not found\n", ExitStatus: 127}
+
+	conn, err := mock.New(0, sles15, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{getenforceCmd: notFound},
+	}))
+	require.NoError(t, err)
+	rt := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+	res, err := CreateResource(rt, "selinux", nil)
+	require.NoError(t, err)
+	s := res.(*mqlSelinux)
+
+	mode := s.GetMode()
+	require.NoError(t, mode.Error)
+	assert.Equal(t, "disabled", mode.Data)
+	installed := s.GetInstalled()
+	require.NoError(t, installed.Error)
+	assert.False(t, installed.Data)
+
+	conn, err = mock.New(0, sles15, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{getenforceCmd: {Stdout: "Disabled\n"}},
+	}))
+	require.NoError(t, err)
+	rt = &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+	res, err = CreateResource(rt, "selinux", nil)
+	require.NoError(t, err)
+	mode = res.(*mqlSelinux).GetMode()
+	require.NoError(t, mode.Error)
+	assert.Equal(t, "disabled", mode.Data)
+}
+
+// semodule --list-modules=full on Rocky 8 lists cockpit at 200 and 100 and a
+// module installed at 400 and 300; each copy is its own selinux.module.
+func TestSelinuxModulesKeepEveryPriority(t *testing.T) {
+	rocky8 := &inventory.Asset{
+		Platform: &inventory.Platform{Name: "rocky", Version: "8.10", Family: []string{"redhat", "linux", "unix"}},
+	}
+	listing := "400 sweeppol          pp          \n" +
+		"300 sweeppol          pp          \n" +
+		"200 cockpit           pp          \n" +
+		"100 cockpit           pp          \n" +
+		"100 zosremote         pp  disabled\n"
+	conn, err := mock.New(0, rocky8, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{semoduleListCmd: {Stdout: listing}},
+	}))
+	require.NoError(t, err)
+	rt := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+	res, err := CreateResource(rt, "selinux", nil)
+	require.NoError(t, err)
+
+	modules := res.(*mqlSelinux).GetModules()
+	require.NoError(t, modules.Error)
+	type module struct {
+		priority     int64
+		name, status string
+	}
+	var got []module
+	for _, m := range modules.Data {
+		mod := m.(*mqlSelinuxModule)
+		got = append(got, module{mod.Priority.Data, mod.Name.Data, mod.Status.Data})
+	}
+	assert.Equal(t, []module{
+		{400, "sweeppol", "enabled"}, {300, "sweeppol", "enabled"},
+		{200, "cockpit", "enabled"}, {100, "cockpit", "enabled"},
+		{100, "zosremote", "disabled"},
+	}, got)
+}
+
+func TestSelinuxModuleIDNullPriority(t *testing.T) {
+	// semodule -l prints no priority; that module must not share an id with
+	// one listed at a priority, 0 included
+	unset := &mqlSelinuxModule{
+		Name:     plugin.TValue[string]{Data: "cockpit", State: plugin.StateIsSet},
+		Priority: plugin.TValue[int64]{State: plugin.StateIsSet | plugin.StateIsNull},
+	}
+	zero := &mqlSelinuxModule{
+		Name:     plugin.TValue[string]{Data: "cockpit", State: plugin.StateIsSet},
+		Priority: plugin.TValue[int64]{Data: 0, State: plugin.StateIsSet},
+	}
+	unsetID, err := unset.id()
+	require.NoError(t, err)
+	zeroID, err := zero.id()
+	require.NoError(t, err)
+	assert.NotEqual(t, unsetID, zeroID)
+}
+
+// The parser reads a whole file already held in memory. A line over 64 KiB
+// must not end the parse and drop the settings after it.
+func TestParseSelinuxConfigAfterLongLine(t *testing.T) {
+	mode, policyType := ParseSelinuxConfig("# " + strings.Repeat("x", 70000) + "\nSELINUX=permissive\nSELINUXTYPE=targeted\n")
+	assert.Equal(t, "permissive", mode)
+	assert.Equal(t, "targeted", policyType)
 }

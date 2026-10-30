@@ -35,16 +35,21 @@ type AaaConfig struct {
 	// AuthorizationCommands holds method lists for "aaa authorization commands"
 	// keyed by privilege level (or "all"+listName).
 	AuthorizationCommands map[string][]string
+	// AuthorizationConsoleCommands holds method lists for
+	// "aaa authorization console commands", keyed the same way. The console is
+	// authorized separately from remote sessions, so a device can require
+	// TACACS+ command authorization over SSH while leaving the console
+	// unauthorized.
+	AuthorizationConsoleCommands map[string][]string
+	// SerialConsoleAuthorization reflects `aaa authorization serial-console`,
+	// which extends exec authorization to the serial console.
+	SerialConsoleAuthorization bool
 	// AuthorizationExec holds method lists for "aaa authorization exec".
 	AuthorizationExec map[string][]string
 	// AccountingCommands holds method lists for "aaa accounting commands".
 	AccountingCommands map[string][]string
 	// AccountingExec holds method lists for "aaa accounting exec".
 	AccountingExec map[string][]string
-	// TacacsServers lists configured TACACS+ server hostnames/IPs.
-	TacacsServers []string
-	// RadiusServers lists configured RADIUS server hostnames/IPs.
-	RadiusServers []string
 	// DefaultLoginPermitsLocalOnly is true when the default authentication
 	// list contains "local" with no `group` token preceding it — i.e. the
 	// local user database is the only authentication source for the default
@@ -60,6 +65,8 @@ var (
 		`^aaa authentication enable\s+(\S+)\s+(.+)$`)
 	aaaAuthzCommandsRe = regexp.MustCompile(
 		`^aaa authorization commands\s+(\S+)\s+(\S+)\s+(.+)$`)
+	aaaAuthzConsoleCommandsRe = regexp.MustCompile(
+		`^aaa authorization console commands\s+(\S+)\s+(\S+)\s+(.+)$`)
 	aaaAuthzExecRe = regexp.MustCompile(
 		`^aaa authorization exec\s+(\S+)\s+(.+)$`)
 	// Accounting lines have an action token (start-stop, stop-only, wait-start,
@@ -69,22 +76,19 @@ var (
 		`^aaa accounting commands\s+(\S+)\s+(\S+)\s+(\S+)(?:\s+(.+))?$`)
 	aaaAcctExecRe = regexp.MustCompile(
 		`^aaa accounting exec\s+(\S+)\s+(\S+)(?:\s+(.+))?$`)
-	tacacsHostRe = regexp.MustCompile(
-		`^tacacs-server host\s+(\S+)`)
-	radiusHostRe = regexp.MustCompile(
-		`^radius-server host\s+(\S+)`)
 )
 
 // ParseAaaConfig extracts AAA configuration from running-config.
 // Comments (lines starting with "!") are ignored.
 func ParseAaaConfig(runningConfig string) *AaaConfig {
 	cfg := &AaaConfig{
-		AuthenticationLogin:   map[string][]string{},
-		AuthenticationEnable:  map[string][]string{},
-		AuthorizationCommands: map[string][]string{},
-		AuthorizationExec:     map[string][]string{},
-		AccountingCommands:    map[string][]string{},
-		AccountingExec:        map[string][]string{},
+		AuthenticationLogin:          map[string][]string{},
+		AuthenticationEnable:         map[string][]string{},
+		AuthorizationCommands:        map[string][]string{},
+		AuthorizationConsoleCommands: map[string][]string{},
+		AuthorizationExec:            map[string][]string{},
+		AccountingCommands:           map[string][]string{},
+		AccountingExec:               map[string][]string{},
 	}
 
 	scanner := bufio.NewScanner(strings.NewReader(runningConfig))
@@ -102,8 +106,16 @@ func ParseAaaConfig(runningConfig string) *AaaConfig {
 			cfg.AuthenticationEnable[m[1]] = strings.Fields(m[2])
 			continue
 		}
+		if m := aaaAuthzConsoleCommandsRe.FindStringSubmatch(line); m != nil {
+			cfg.AuthorizationConsoleCommands[m[1]+"/"+m[2]] = strings.Fields(m[3])
+			continue
+		}
 		if m := aaaAuthzCommandsRe.FindStringSubmatch(line); m != nil {
 			cfg.AuthorizationCommands[m[1]+"/"+m[2]] = strings.Fields(m[3])
+			continue
+		}
+		if line == "aaa authorization serial-console" {
+			cfg.SerialConsoleAuthorization = true
 			continue
 		}
 		if m := aaaAuthzExecRe.FindStringSubmatch(line); m != nil {
@@ -118,34 +130,22 @@ func ParseAaaConfig(runningConfig string) *AaaConfig {
 			cfg.AccountingExec[m[1]] = strings.Fields(m[3])
 			continue
 		}
-		if m := tacacsHostRe.FindStringSubmatch(line); m != nil {
-			cfg.TacacsServers = append(cfg.TacacsServers, m[1])
-			continue
-		}
-		if m := radiusHostRe.FindStringSubmatch(line); m != nil {
-			cfg.RadiusServers = append(cfg.RadiusServers, m[1])
-			continue
-		}
 	}
 
-	// DefaultLoginPermitsLocalOnly: the "default" login list contains "local"
-	// with no `group` token preceding it — i.e. local is reachable without
-	// going through remote AAA.
+	// DefaultLoginPermitsLocalOnly: methods in the "default" login list are
+	// tried in order, so local authentication is reachable without a working
+	// remote source whenever "local" appears before the first "group" (remote
+	// AAA) method, or when there is no remote group at all. A "group" that
+	// precedes "local" makes local a fallback, not the primary source, so it
+	// does not count.
 	if methods, ok := cfg.AuthenticationLogin["default"]; ok {
-		hasGroup := false
 		for _, m := range methods {
 			if m == "group" {
-				hasGroup = true
 				break
 			}
-		}
-		// If there's no remote group at all, local is the only source.
-		if !hasGroup {
-			for _, m := range methods {
-				if m == "local" {
-					cfg.DefaultLoginPermitsLocalOnly = true
-					break
-				}
+			if m == "local" {
+				cfg.DefaultLoginPermitsLocalOnly = true
+				break
 			}
 		}
 	}
@@ -181,23 +181,84 @@ type SshSettings struct {
 	Macs               []string
 	HostkeyAlgorithms  []string
 	FipsRestrictions   bool
+
+	// The fields below are the containment controls: who may reach the
+	// service, from which routing instances, and how hard it may be
+	// hammered. The crypto suite above says nothing about any of them.
+
+	// Vrfs are the routing instances the block explicitly enables SSH in,
+	// via a nested `vrf <name>` sub-block that is not shut down. Empty when
+	// the block names none, in which case SSH is reachable in the default
+	// instance only.
+	Vrfs []string
+	// LoginTimeout is the `login timeout` value, the window a connection has
+	// to complete authentication before it is dropped. 0 when unset; EOS
+	// ships 120.
+	LoginTimeout int
+	// ConnectionLimit is the ceiling on concurrent SSH sessions
+	// (`connection limit`). 0 means no configured ceiling.
+	ConnectionLimit int
+	// ConnectionPerHostLimit is the per-source-host session ceiling
+	// (`connection per-host`), the bound that stops one host consuming the
+	// whole allowance. 0 means no configured ceiling.
+	ConnectionPerHostLimit int
+	// EmptyPasswords reflects `authentication empty-passwords`, one of
+	// "auto", "permit", or "deny". EOS defaults to "auto", which is what
+	// this reports when the block does not set it.
+	EmptyPasswords string
+	// LogLevel is the SSH daemon log level (`log-level`). Empty when unset;
+	// EOS ships "info".
+	LogLevel string
+	// ClientAliveInterval is the `client-alive interval` in seconds, and
+	// ClientAliveCountMax the `client-alive count-max`. Together they end a
+	// session whose peer has gone away. 0 when unset.
+	ClientAliveInterval int
+	ClientAliveCountMax int
 }
 
 func ParseSshSettings(runningConfig string) *SshSettings {
-	block := GetSection(strings.NewReader(runningConfig), "management ssh")
 	s := &SshSettings{
 		// EOS default: SSH enabled unless an explicit "shutdown" is present
 		Enabled: true,
+		// EOS default for `authentication empty-passwords`.
+		EmptyPasswords: "auto",
+		Vrfs:           []string{},
 	}
-	if block == "" {
+
+	// SectionBody keeps the block's indentation so a nested `vrf` sub-block
+	// stays distinguishable. A `no shutdown` inside one governs that routing
+	// instance, not the service as a whole, and flattening the two together
+	// would report a shut-down service as running.
+	body := SectionBody(runningConfig, "management ssh")
+	if body == "" {
 		// No explicit `management ssh` section in the diffed running-config; can
 		// still be on by default — leave Enabled=true and other fields empty.
 		return s
 	}
 
-	scanner := bufio.NewScanner(strings.NewReader(block))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	eachSubBlock(body, func(line, block string) {
+		if name, ok := strings.CutPrefix(line, "vrf "); ok {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				return
+			}
+			// A sub-block exists to enable the service in that instance, so
+			// it counts unless it explicitly shuts it down.
+			enabled := true
+			for sub := range strings.SplitSeq(block, "\n") {
+				switch strings.TrimSpace(sub) {
+				case "shutdown":
+					enabled = false
+				case "no shutdown":
+					enabled = true
+				}
+			}
+			if enabled {
+				s.Vrfs = append(s.Vrfs, name)
+			}
+			return
+		}
+
 		switch {
 		case line == "shutdown":
 			s.Enabled = false
@@ -215,6 +276,35 @@ func ParseSshSettings(runningConfig string) *SshSettings {
 			if err == nil {
 				s.ServerPort = n
 			}
+		case strings.HasPrefix(line, "login timeout "):
+			n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, "login timeout ")))
+			if err == nil {
+				s.LoginTimeout = n
+			}
+		case strings.HasPrefix(line, "connection limit "):
+			n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, "connection limit ")))
+			if err == nil {
+				s.ConnectionLimit = n
+			}
+		case strings.HasPrefix(line, "connection per-host "):
+			n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, "connection per-host ")))
+			if err == nil {
+				s.ConnectionPerHostLimit = n
+			}
+		case strings.HasPrefix(line, "client-alive interval "):
+			n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, "client-alive interval ")))
+			if err == nil {
+				s.ClientAliveInterval = n
+			}
+		case strings.HasPrefix(line, "client-alive count-max "):
+			n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(line, "client-alive count-max ")))
+			if err == nil {
+				s.ClientAliveCountMax = n
+			}
+		case strings.HasPrefix(line, "authentication empty-passwords "):
+			s.EmptyPasswords = strings.TrimSpace(strings.TrimPrefix(line, "authentication empty-passwords "))
+		case strings.HasPrefix(line, "log-level "):
+			s.LogLevel = strings.TrimSpace(strings.TrimPrefix(line, "log-level "))
 		case strings.HasPrefix(line, "authentication mode "):
 			s.AuthenticationMode = strings.TrimSpace(strings.TrimPrefix(line, "authentication mode "))
 		case strings.HasPrefix(line, "cipher "):
@@ -228,7 +318,7 @@ func ParseSshSettings(runningConfig string) *SshSettings {
 		case line == "fips restrictions":
 			s.FipsRestrictions = true
 		}
-	}
+	})
 	return s
 }
 
@@ -585,7 +675,7 @@ func ParseNtpAuth(runningConfig string) *NtpAuthState {
 			}
 		case strings.HasPrefix(line, "ntp trusted-key"):
 			if m := ntpTrustedKeyRe.FindStringSubmatch(line); m != nil {
-				for _, tok := range strings.Fields(m[1]) {
+				for tok := range strings.FieldsSeq(m[1]) {
 					id, err := strconv.Atoi(tok)
 					if err == nil {
 						state.TrustedKeyIDs = append(state.TrustedKeyIDs, id)
@@ -708,17 +798,7 @@ var ifaceHeaderRe = regexp.MustCompile(`(?m)^interface (\S+)\s*$`)
 func ParsePortSecurity(runningConfig string) []PortSecurityConfig {
 	res := []PortSecurityConfig{}
 
-	matches := ifaceHeaderRe.FindAllStringSubmatchIndex(runningConfig, -1)
-
-	for i, match := range matches {
-		ifaceName := runningConfig[match[2]:match[3]]
-		blockStart := match[1]
-		blockEnd := len(runningConfig)
-		if i+1 < len(matches) {
-			blockEnd = matches[i+1][0]
-		}
-		block := runningConfig[blockStart:blockEnd]
-
+	eachInterfaceBlock(runningConfig, func(ifaceName, block string) {
 		ps := PortSecurityConfig{Interface: ifaceName}
 		hasAny := false
 		scanner := bufio.NewScanner(strings.NewReader(block))
@@ -758,6 +838,6 @@ func ParsePortSecurity(runningConfig string) []PortSecurityConfig {
 		if hasAny {
 			res = append(res, ps)
 		}
-	}
+	})
 	return res
 }

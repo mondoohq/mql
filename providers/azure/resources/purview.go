@@ -12,11 +12,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/purview/armpurview"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func initAzureSubscriptionPurviewService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -109,6 +109,7 @@ func purviewAccountToMql(runtime *plugin.Runtime, account *armpurview.Account) (
 	}
 
 	skuDict, _ := convert.JsonToDict(account.SKU)
+	accountSku := orZero(account.SKU)
 	identityDict, _ := convert.JsonToDict(account.Identity)
 	propertiesDict, _ := convert.JsonToDict(account.Properties)
 
@@ -190,6 +191,14 @@ func purviewAccountToMql(runtime *plugin.Runtime, account *armpurview.Account) (
 		"createdByObjectId":          llx.StringData(createdByObjectId),
 		"createdBy":                  llx.StringData(createdBy),
 		"properties":                 llx.DictData(propertiesDict),
+	}
+	if err := setSkuData(runtime, args, skuName(accountSku.Name), skuCapacity(accountSku.Capacity)); err != nil {
+		return nil, err
+	}
+	accountIdentity := orZero(account.Identity)
+	if err := setResourceIdentity(runtime, args, sortedUserAssignedIdentityIDs(accountIdentity.UserAssignedIdentities),
+		identityType(accountIdentity.Type), identityPrincipalId(accountIdentity.PrincipalID), identityTenantId(accountIdentity.TenantID)); err != nil {
+		return nil, err
 	}
 
 	res, err := CreateResource(runtime, "azure.subscription.purviewService.account", args)

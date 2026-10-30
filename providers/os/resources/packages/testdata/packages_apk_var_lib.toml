@@ -1,0 +1,53 @@
+# The first two records of the apk database of bellsoft/hardened-base:glibc,
+# kept at the path apk-tools 3 uses. The record shape is unchanged from
+# apk-tools 2, only its location moved.
+[files."/var/lib/apk/db/installed"]
+content = """
+C:Q1abzSTCBVo/2qISrO3wcxAm/7aME=
+P:busybox
+V:1.38.0-r2
+A:x86_64
+S:493795
+I:802436
+T:Modular toolbox of common UNIX utilities
+U:https://busybox.net/
+L:GPL-2.0-only
+o:busybox
+m:BellSoft <info@bell-sw.com>
+t:1786451948
+c:21e83cb44cc9e4b9aad7046c3ffd5fcba6311099
+D:glibc-utils so:libc.so.6 so:libcrypt.so.2 so:libm.so.6 so:libresolv.so.2
+p:cmd:busybox=1.38.0-r2
+r:busybox-initscripts
+F:etc
+R:securetty
+Z:Q1DinOf6JRpCRgM6vNqjOexd3oSnU=
+F:usr
+F:usr/bin
+R:busybox
+a:0:0:755
+Z:Q1Mk/8u70YdPHmB4MDrFJ9HeUAIWo=
+
+C:Q1so9mRj5hMpjlcGCn6SOwvYqfBcg=
+P:busybox-binsh
+V:1.38.0-r2
+A:x86_64
+S:1558
+I:1
+T:busybox ash /bin/sh
+U:https://busybox.net/
+L:GPL-2.0-only
+o:busybox
+m:BellSoft <info@bell-sw.com>
+t:1786451948
+c:21e83cb44cc9e4b9aad7046c3ffd5fcba6311099
+k:100
+D:glibc-utils busybox=1.38.0-r2
+p:/bin/sh cmd:sh=1.38.0-r2
+r:busybox-initscripts
+F:usr
+F:usr/bin
+R:sh
+a:0:0:777
+Z:Q1p4LJC5MJ2jzCCbPLr14XcxtvE+Q=
+"""

@@ -8,14 +8,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
-	"go.mondoo.com/mql/v13/checksums"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/resources/parsers"
-	"go.mondoo.com/mql/v13/providers/os/resources/plist"
-	"go.mondoo.com/mql/v13/utils/xml"
+	"go.mondoo.com/mql/checksums"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/resources/parsers"
+	"go.mondoo.com/mql/providers/os/resources/plist"
+	"go.mondoo.com/mql/utils/xml"
 	"sigs.k8s.io/yaml"
 )
 
@@ -82,9 +83,7 @@ func (s *mqlParseIni) sections(content string, delimiter string) (map[string]any
 	ini := parsers.ParseIni(content, delimiter)
 
 	res := make(map[string]any, len(ini.Fields))
-	for k, v := range ini.Fields {
-		res[k] = v
-	}
+	maps.Copy(res, ini.Fields)
 
 	return res, nil
 }
@@ -290,7 +289,7 @@ func initParseXml(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[st
 
 func (s *mqlParseXml) id() (string, error) {
 	if s.File.Data == nil {
-		return "", errors.New("no file provided for parse.json")
+		return "", errors.New("no file provided for parse.xml")
 	}
 
 	file := s.File.Data
@@ -351,9 +350,9 @@ func (s *mqlParseYaml) documents(content string) ([]any, error) {
 	var documents []any
 
 	// Split content by YAML document separator
-	yamlDocs := strings.Split(content, "---")
+	yamlDocs := strings.SplitSeq(content, "---")
 
-	for _, doc := range yamlDocs {
+	for doc := range yamlDocs {
 		doc = strings.TrimSpace(doc)
 		if doc == "" {
 			continue
@@ -428,7 +427,7 @@ func initParseCertificates(runtime *plugin.Runtime, args map[string]*llx.RawData
 		args["file"] = llx.ResourceData(f, "file")
 		args["path"] = llx.StringData(virtualPath)
 	} else {
-		return nil, nil, errors.New("missing 'path' or 'content' for parse.json initialization")
+		return nil, nil, errors.New("missing 'path' or 'content' for parse.certificates initialization")
 	}
 
 	return args, nil, nil
@@ -478,32 +477,40 @@ func (p *mqlParseCertificates) list(content string, path string) ([]any, error) 
 	return list.Value.([]any), nil
 }
 
+// unparseable reports how many certificate blocks in the file the shared
+// certificates resource had to skip, so a policy can tell an incomplete list
+// from the full contents of the file.
+func (p *mqlParseCertificates) unparseable(content string) (int64, error) {
+	certificates, err := p.MqlRuntime.CreateSharedResource("certificates", map[string]*llx.RawData{
+		"pem": llx.StringData(content),
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	data, err := p.MqlRuntime.GetSharedData("certificates", certificates.MqlID(), "unparseable")
+	if err != nil {
+		return 0, err
+	}
+	if data.Error != nil {
+		return 0, data.Error
+	}
+
+	skipped, ok := data.Value.(int64)
+	if !ok {
+		return 0, fmt.Errorf("unexpected type %T for certificates.unparseable", data.Value)
+	}
+	return skipped, nil
+}
+
 func initParseOpenpgp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	// resolve path to file
-	if x, ok := args["path"]; ok {
-		f, err := CreateResource(runtime, "file", map[string]*llx.RawData{
-			"path": x,
-		})
-		if err != nil {
-			return nil, nil, err
+	if _, ok := args["path"]; !ok {
+		if _, ok := args["content"]; !ok {
+			return nil, nil, errors.New("missing 'path' or 'content' for parse.openpgp initialization")
 		}
-		args["file"] = llx.ResourceData(f, "file")
-
-	} else if x, ok := args["content"]; ok {
-		content := x.Value.(string)
-		virtualPath := "in-memory://" + checksums.New.Add(content).String()
-		f, err := CreateResource(runtime, "file", map[string]*llx.RawData{
-			"path":    llx.StringData(virtualPath),
-			"content": llx.StringData(content),
-			"exists":  llx.BoolTrue,
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-		args["file"] = llx.ResourceData(f, "file")
-
-	} else {
-		return nil, nil, errors.New("missing 'path' or 'content' for parse.json initialization")
+	}
+	if err := fileFromPathOrContent(runtime, args); err != nil {
+		return nil, nil, err
 	}
 
 	return args, nil, nil
@@ -513,13 +520,24 @@ func (a *mqlParseOpenpgp) id() (string, error) {
 	if a.File.Error != nil {
 		return "", a.File.Error
 	}
+	if a.File.Data == nil {
+		return "", errors.New("no file provided for parse.openpgp")
+	}
 
 	return a.File.Data.Path.Data, nil
 }
 
 func (a *mqlParseOpenpgp) content(file plugin.Resource) (string, error) {
-	res := file.(*mqlFile).GetContent()
-	return res.Data, res.Error
+	f := file.(*mqlFile)
+	res := f.GetContent()
+	if res.Error != nil {
+		return "", res.Error
+	}
+	// file.content is null only for a file that does not exist
+	if res.IsNull() {
+		return "", llx.NotFound(fmt.Errorf("parse.openpgp: %s does not exist", f.Path.Data))
+	}
+	return res.Data, nil
 }
 
 func (p *mqlParseOpenpgp) list(content string) ([]any, error) {

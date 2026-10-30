@@ -9,20 +9,23 @@ import (
 	"errors"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceTailscale          string = "tailscale"
-	ResourceTailscaleDevice    string = "tailscale.device"
-	ResourceTailscaleUser      string = "tailscale.user"
-	ResourceTailscaleAclPolicy string = "tailscale.aclPolicy"
-	ResourceTailscaleAuthKey   string = "tailscale.authKey"
-	ResourceTailscaleWebhook   string = "tailscale.webhook"
-	ResourceTailscaleLogstream string = "tailscale.logstream"
+	ResourceTailscale                         string = "tailscale"
+	ResourceTailscaleDevice                   string = "tailscale.device"
+	ResourceTailscaleUser                     string = "tailscale.user"
+	ResourceTailscaleAclPolicy                string = "tailscale.aclPolicy"
+	ResourceTailscaleAclPolicyExternalTailnet string = "tailscale.aclPolicy.externalTailnet"
+	ResourceTailscaleAuthKey                  string = "tailscale.authKey"
+	ResourceTailscaleWebhook                  string = "tailscale.webhook"
+	ResourceTailscaleService                  string = "tailscale.service"
+	ResourceTailscaleOrganizationTailnet      string = "tailscale.organizationTailnet"
+	ResourceTailscaleLogstream                string = "tailscale.logstream"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -45,6 +48,10 @@ func init() {
 			// to override args, implement: initTailscaleAclPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createTailscaleAclPolicy,
 		},
+		"tailscale.aclPolicy.externalTailnet": {
+			// to override args, implement: initTailscaleAclPolicyExternalTailnet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createTailscaleAclPolicyExternalTailnet,
+		},
 		"tailscale.authKey": {
 			Init:   initTailscaleAuthKey,
 			Create: createTailscaleAuthKey,
@@ -52,6 +59,14 @@ func init() {
 		"tailscale.webhook": {
 			Init:   initTailscaleWebhook,
 			Create: createTailscaleWebhook,
+		},
+		"tailscale.service": {
+			Init:   initTailscaleService,
+			Create: createTailscaleService,
+		},
+		"tailscale.organizationTailnet": {
+			// to override args, implement: initTailscaleOrganizationTailnet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createTailscaleOrganizationTailnet,
 		},
 		"tailscale.logstream": {
 			// to override args, implement: initTailscaleLogstream(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -158,6 +173,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"tailscale.postureIdentityCollectionEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscale).GetPostureIdentityCollectionEnabled()).ToDataRes(types.Bool)
 	},
+	"tailscale.regionalRoutingEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscale).GetRegionalRoutingEnabled()).ToDataRes(types.Bool)
+	},
+	"tailscale.routeSelection": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscale).GetRouteSelection()).ToDataRes(types.String)
+	},
+	"tailscale.httpsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscale).GetHttpsEnabled()).ToDataRes(types.Bool)
+	},
+	"tailscale.aclsExternallyManaged": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscale).GetAclsExternallyManaged()).ToDataRes(types.Bool)
+	},
+	"tailscale.aclsExternalLink": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscale).GetAclsExternalLink()).ToDataRes(types.String)
+	},
 	"tailscale.usersRoleAllowedToJoinExternalTailnets": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscale).GetUsersRoleAllowedToJoinExternalTailnets()).ToDataRes(types.String)
 	},
@@ -170,11 +200,20 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"tailscale.webhooks": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscale).GetWebhooks()).ToDataRes(types.Array(types.Resource("tailscale.webhook")))
 	},
+	"tailscale.services": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscale).GetServices()).ToDataRes(types.Array(types.Resource("tailscale.service")))
+	},
 	"tailscale.logstreams": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscale).GetLogstreams()).ToDataRes(types.Array(types.Resource("tailscale.logstream")))
 	},
+	"tailscale.organizationTailnets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscale).GetOrganizationTailnets()).ToDataRes(types.Array(types.Resource("tailscale.organizationTailnet")))
+	},
 	"tailscale.device.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleDevice).GetId()).ToDataRes(types.String)
+	},
+	"tailscale.device.nodeId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleDevice).GetNodeId()).ToDataRes(types.String)
 	},
 	"tailscale.device.hostname": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleDevice).GetHostname()).ToDataRes(types.String)
@@ -187,6 +226,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"tailscale.device.user": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleDevice).GetUser()).ToDataRes(types.String)
+	},
+	"tailscale.device.owner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleDevice).GetOwner()).ToDataRes(types.Resource("tailscale.user"))
 	},
 	"tailscale.device.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleDevice).GetTags()).ToDataRes(types.Array(types.String))
@@ -218,6 +260,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"tailscale.device.isExternal": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleDevice).GetIsExternal()).ToDataRes(types.Bool)
 	},
+	"tailscale.device.isEphemeral": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleDevice).GetIsEphemeral()).ToDataRes(types.Bool)
+	},
+	"tailscale.device.connectedToControl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleDevice).GetConnectedToControl()).ToDataRes(types.Bool)
+	},
+	"tailscale.device.sshEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleDevice).GetSshEnabled()).ToDataRes(types.Bool)
+	},
 	"tailscale.device.keyExpiryDisabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleDevice).GetKeyExpiryDisabled()).ToDataRes(types.Bool)
 	},
@@ -238,6 +289,33 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"tailscale.device.enabledRoutes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleDevice).GetEnabledRoutes()).ToDataRes(types.Array(types.String))
+	},
+	"tailscale.device.distroName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleDevice).GetDistroName()).ToDataRes(types.String)
+	},
+	"tailscale.device.distroVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleDevice).GetDistroVersion()).ToDataRes(types.String)
+	},
+	"tailscale.device.distroCodeName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleDevice).GetDistroCodeName()).ToDataRes(types.String)
+	},
+	"tailscale.device.postureSerialNumbers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleDevice).GetPostureSerialNumbers()).ToDataRes(types.Array(types.String))
+	},
+	"tailscale.device.postureHardwareAddresses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleDevice).GetPostureHardwareAddresses()).ToDataRes(types.Array(types.String))
+	},
+	"tailscale.device.postureIdentityDisabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleDevice).GetPostureIdentityDisabled()).ToDataRes(types.Bool)
+	},
+	"tailscale.device.endpoints": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleDevice).GetEndpoints()).ToDataRes(types.Array(types.String))
+	},
+	"tailscale.device.derpRelay": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleDevice).GetDerpRelay()).ToDataRes(types.String)
+	},
+	"tailscale.device.mappingVariesByDestIp": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleDevice).GetMappingVariesByDestIp()).ToDataRes(types.Bool)
 	},
 	"tailscale.user.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleUser).GetId()).ToDataRes(types.String)
@@ -275,11 +353,32 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"tailscale.user.currentlyConnected": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleUser).GetCurrentlyConnected()).ToDataRes(types.Bool)
 	},
+	"tailscale.user.devices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleUser).GetDevices()).ToDataRes(types.Array(types.Resource("tailscale.device")))
+	},
+	"tailscale.user.authKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleUser).GetAuthKeys()).ToDataRes(types.Array(types.Resource("tailscale.authKey")))
+	},
 	"tailscale.aclPolicy.tailnet": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleAclPolicy).GetTailnet()).ToDataRes(types.String)
 	},
 	"tailscale.aclPolicy.acls": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleAclPolicy).GetAcls()).ToDataRes(types.Array(types.Dict))
+	},
+	"tailscale.aclPolicy.grants": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAclPolicy).GetGrants()).ToDataRes(types.Array(types.Dict))
+	},
+	"tailscale.aclPolicy.ipsets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAclPolicy).GetIpsets()).ToDataRes(types.Map(types.String, types.Array(types.String)))
+	},
+	"tailscale.aclPolicy.attrConfig": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAclPolicy).GetAttrConfig()).ToDataRes(types.Map(types.String, types.Dict))
+	},
+	"tailscale.aclPolicy.derpRegions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAclPolicy).GetDerpRegions()).ToDataRes(types.Array(types.Dict))
+	},
+	"tailscale.aclPolicy.omitDefaultDerpRegions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAclPolicy).GetOmitDefaultDerpRegions()).ToDataRes(types.Bool)
 	},
 	"tailscale.aclPolicy.groups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleAclPolicy).GetGroups()).ToDataRes(types.Map(types.String, types.Array(types.String)))
@@ -305,6 +404,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"tailscale.aclPolicy.autoApproverRoutes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleAclPolicy).GetAutoApproverRoutes()).ToDataRes(types.Map(types.String, types.Array(types.String)))
 	},
+	"tailscale.aclPolicy.autoApproverServices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAclPolicy).GetAutoApproverServices()).ToDataRes(types.Map(types.String, types.Array(types.String)))
+	},
 	"tailscale.aclPolicy.defaultSourcePosture": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleAclPolicy).GetDefaultSourcePosture()).ToDataRes(types.Array(types.String))
 	},
@@ -326,8 +428,26 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"tailscale.aclPolicy.raw": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleAclPolicy).GetRaw()).ToDataRes(types.String)
 	},
+	"tailscale.aclPolicy.externalTailnets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAclPolicy).GetExternalTailnets()).ToDataRes(types.Array(types.Resource("tailscale.aclPolicy.externalTailnet")))
+	},
+	"tailscale.aclPolicy.externalTailnet.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAclPolicyExternalTailnet).GetName()).ToDataRes(types.String)
+	},
+	"tailscale.aclPolicy.externalTailnet.externalId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAclPolicyExternalTailnet).GetExternalId()).ToDataRes(types.String)
+	},
+	"tailscale.aclPolicy.externalTailnet.allowIncomingConnections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAclPolicyExternalTailnet).GetAllowIncomingConnections()).ToDataRes(types.Bool)
+	},
+	"tailscale.aclPolicy.externalTailnet.allowExternalReferencesTo": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAclPolicyExternalTailnet).GetAllowExternalReferencesTo()).ToDataRes(types.Array(types.String))
+	},
 	"tailscale.authKey.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleAuthKey).GetId()).ToDataRes(types.String)
+	},
+	"tailscale.authKey.keyType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAuthKey).GetKeyType()).ToDataRes(types.String)
 	},
 	"tailscale.authKey.description": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleAuthKey).GetDescription()).ToDataRes(types.String)
@@ -335,14 +455,38 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"tailscale.authKey.userId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleAuthKey).GetUserId()).ToDataRes(types.String)
 	},
+	"tailscale.authKey.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAuthKey).GetUser()).ToDataRes(types.Resource("tailscale.user"))
+	},
+	"tailscale.authKey.scopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAuthKey).GetScopes()).ToDataRes(types.Array(types.String))
+	},
+	"tailscale.authKey.audience": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAuthKey).GetAudience()).ToDataRes(types.String)
+	},
+	"tailscale.authKey.issuer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAuthKey).GetIssuer()).ToDataRes(types.String)
+	},
+	"tailscale.authKey.subject": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAuthKey).GetSubject()).ToDataRes(types.String)
+	},
+	"tailscale.authKey.customClaimRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAuthKey).GetCustomClaimRules()).ToDataRes(types.Map(types.String, types.String))
+	},
 	"tailscale.authKey.created": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleAuthKey).GetCreated()).ToDataRes(types.Time)
+	},
+	"tailscale.authKey.updated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAuthKey).GetUpdated()).ToDataRes(types.Time)
 	},
 	"tailscale.authKey.expires": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleAuthKey).GetExpires()).ToDataRes(types.Time)
 	},
 	"tailscale.authKey.hasExpiration": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleAuthKey).GetHasExpiration()).ToDataRes(types.Bool)
+	},
+	"tailscale.authKey.isExpired": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAuthKey).GetIsExpired()).ToDataRes(types.Bool)
 	},
 	"tailscale.authKey.revoked": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleAuthKey).GetRevoked()).ToDataRes(types.Time)
@@ -377,6 +521,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"tailscale.webhook.creatorLoginName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleWebhook).GetCreatorLoginName()).ToDataRes(types.String)
 	},
+	"tailscale.webhook.creator": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleWebhook).GetCreator()).ToDataRes(types.Resource("tailscale.user"))
+	},
 	"tailscale.webhook.created": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleWebhook).GetCreated()).ToDataRes(types.Time)
 	},
@@ -385,6 +532,42 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"tailscale.webhook.subscriptions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleWebhook).GetSubscriptions()).ToDataRes(types.Array(types.String))
+	},
+	"tailscale.service.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleService).GetName()).ToDataRes(types.String)
+	},
+	"tailscale.service.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleService).GetDisplayName()).ToDataRes(types.String)
+	},
+	"tailscale.service.addresses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleService).GetAddresses()).ToDataRes(types.Array(types.String))
+	},
+	"tailscale.service.ports": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleService).GetPorts()).ToDataRes(types.Array(types.String))
+	},
+	"tailscale.service.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleService).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"tailscale.service.comment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleService).GetComment()).ToDataRes(types.String)
+	},
+	"tailscale.service.annotations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleService).GetAnnotations()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"tailscale.organizationTailnet.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleOrganizationTailnet).GetId()).ToDataRes(types.String)
+	},
+	"tailscale.organizationTailnet.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleOrganizationTailnet).GetDisplayName()).ToDataRes(types.String)
+	},
+	"tailscale.organizationTailnet.orgId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleOrganizationTailnet).GetOrgId()).ToDataRes(types.String)
+	},
+	"tailscale.organizationTailnet.dnsName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleOrganizationTailnet).GetDnsName()).ToDataRes(types.String)
+	},
+	"tailscale.organizationTailnet.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleOrganizationTailnet).GetCreatedAt()).ToDataRes(types.Time)
 	},
 	"tailscale.logstream.logType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleLogstream).GetLogType()).ToDataRes(types.String)
@@ -475,6 +658,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlTailscale).PostureIdentityCollectionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"tailscale.regionalRoutingEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscale).RegionalRoutingEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"tailscale.routeSelection": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscale).RouteSelection, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.httpsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscale).HttpsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"tailscale.aclsExternallyManaged": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscale).AclsExternallyManaged, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"tailscale.aclsExternalLink": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscale).AclsExternalLink, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"tailscale.usersRoleAllowedToJoinExternalTailnets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscale).UsersRoleAllowedToJoinExternalTailnets, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -491,8 +694,16 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlTailscale).Webhooks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"tailscale.services": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscale).Services, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"tailscale.logstreams": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscale).Logstreams, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.organizationTailnets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscale).OrganizationTailnets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"tailscale.device.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -501,6 +712,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"tailscale.device.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscaleDevice).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.device.nodeId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleDevice).NodeId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"tailscale.device.hostname": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -517,6 +732,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"tailscale.device.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscaleDevice).User, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.device.owner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleDevice).Owner, ok = plugin.RawToTValue[*mqlTailscaleUser](v.Value, v.Error)
 		return
 	},
 	"tailscale.device.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -559,6 +778,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlTailscaleDevice).IsExternal, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"tailscale.device.isEphemeral": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleDevice).IsEphemeral, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"tailscale.device.connectedToControl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleDevice).ConnectedToControl, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"tailscale.device.sshEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleDevice).SshEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"tailscale.device.keyExpiryDisabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscaleDevice).KeyExpiryDisabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -585,6 +816,42 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"tailscale.device.enabledRoutes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscaleDevice).EnabledRoutes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.device.distroName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleDevice).DistroName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.device.distroVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleDevice).DistroVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.device.distroCodeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleDevice).DistroCodeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.device.postureSerialNumbers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleDevice).PostureSerialNumbers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.device.postureHardwareAddresses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleDevice).PostureHardwareAddresses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.device.postureIdentityDisabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleDevice).PostureIdentityDisabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"tailscale.device.endpoints": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleDevice).Endpoints, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.device.derpRelay": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleDevice).DerpRelay, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.device.mappingVariesByDestIp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleDevice).MappingVariesByDestIp, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"tailscale.user.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -639,6 +906,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlTailscaleUser).CurrentlyConnected, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"tailscale.user.devices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleUser).Devices, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.user.authKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleUser).AuthKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"tailscale.aclPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscaleAclPolicy).__id, ok = v.Value.(string)
 		return
@@ -649,6 +924,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"tailscale.aclPolicy.acls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscaleAclPolicy).Acls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.aclPolicy.grants": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicy).Grants, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.aclPolicy.ipsets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicy).Ipsets, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.aclPolicy.attrConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicy).AttrConfig, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.aclPolicy.derpRegions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicy).DerpRegions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.aclPolicy.omitDefaultDerpRegions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicy).OmitDefaultDerpRegions, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"tailscale.aclPolicy.groups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -683,6 +978,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlTailscaleAclPolicy).AutoApproverRoutes, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"tailscale.aclPolicy.autoApproverServices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicy).AutoApproverServices, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 	"tailscale.aclPolicy.defaultSourcePosture": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscaleAclPolicy).DefaultSourcePosture, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -711,12 +1010,40 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlTailscaleAclPolicy).Raw, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"tailscale.aclPolicy.externalTailnets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicy).ExternalTailnets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.aclPolicy.externalTailnet.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicyExternalTailnet).__id, ok = v.Value.(string)
+		return
+	},
+	"tailscale.aclPolicy.externalTailnet.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicyExternalTailnet).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.aclPolicy.externalTailnet.externalId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicyExternalTailnet).ExternalId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.aclPolicy.externalTailnet.allowIncomingConnections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicyExternalTailnet).AllowIncomingConnections, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"tailscale.aclPolicy.externalTailnet.allowExternalReferencesTo": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicyExternalTailnet).AllowExternalReferencesTo, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"tailscale.authKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscaleAuthKey).__id, ok = v.Value.(string)
 		return
 	},
 	"tailscale.authKey.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscaleAuthKey).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.authKey.keyType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAuthKey).KeyType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"tailscale.authKey.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -727,8 +1054,36 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlTailscaleAuthKey).UserId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"tailscale.authKey.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAuthKey).User, ok = plugin.RawToTValue[*mqlTailscaleUser](v.Value, v.Error)
+		return
+	},
+	"tailscale.authKey.scopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAuthKey).Scopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.authKey.audience": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAuthKey).Audience, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.authKey.issuer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAuthKey).Issuer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.authKey.subject": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAuthKey).Subject, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.authKey.customClaimRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAuthKey).CustomClaimRules, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 	"tailscale.authKey.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscaleAuthKey).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"tailscale.authKey.updated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAuthKey).Updated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"tailscale.authKey.expires": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -737,6 +1092,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"tailscale.authKey.hasExpiration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscaleAuthKey).HasExpiration, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"tailscale.authKey.isExpired": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAuthKey).IsExpired, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"tailscale.authKey.revoked": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -787,6 +1146,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlTailscaleWebhook).CreatorLoginName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"tailscale.webhook.creator": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleWebhook).Creator, ok = plugin.RawToTValue[*mqlTailscaleUser](v.Value, v.Error)
+		return
+	},
 	"tailscale.webhook.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscaleWebhook).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
@@ -797,6 +1160,62 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"tailscale.webhook.subscriptions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscaleWebhook).Subscriptions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.service.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleService).__id, ok = v.Value.(string)
+		return
+	},
+	"tailscale.service.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleService).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.service.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleService).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.service.addresses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleService).Addresses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.service.ports": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleService).Ports, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.service.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleService).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.service.comment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleService).Comment, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.service.annotations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleService).Annotations, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.organizationTailnet.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleOrganizationTailnet).__id, ok = v.Value.(string)
+		return
+	},
+	"tailscale.organizationTailnet.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleOrganizationTailnet).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.organizationTailnet.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleOrganizationTailnet).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.organizationTailnet.orgId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleOrganizationTailnet).OrgId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.organizationTailnet.dnsName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleOrganizationTailnet).DnsName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.organizationTailnet.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleOrganizationTailnet).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"tailscale.logstream.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -886,11 +1305,18 @@ type mqlTailscale struct {
 	DevicesKeyDurationDays                 plugin.TValue[int64]
 	NetworkFlowLoggingEnabled              plugin.TValue[bool]
 	PostureIdentityCollectionEnabled       plugin.TValue[bool]
+	RegionalRoutingEnabled                 plugin.TValue[bool]
+	RouteSelection                         plugin.TValue[string]
+	HttpsEnabled                           plugin.TValue[bool]
+	AclsExternallyManaged                  plugin.TValue[bool]
+	AclsExternalLink                       plugin.TValue[string]
 	UsersRoleAllowedToJoinExternalTailnets plugin.TValue[string]
 	AclPolicy                              plugin.TValue[*mqlTailscaleAclPolicy]
 	AuthKeys                               plugin.TValue[[]any]
 	Webhooks                               plugin.TValue[[]any]
+	Services                               plugin.TValue[[]any]
 	Logstreams                             plugin.TValue[[]any]
+	OrganizationTailnets                   plugin.TValue[[]any]
 }
 
 // createTailscale creates a new instance of this resource
@@ -1008,6 +1434,36 @@ func (c *mqlTailscale) GetPostureIdentityCollectionEnabled() *plugin.TValue[bool
 	})
 }
 
+func (c *mqlTailscale) GetRegionalRoutingEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RegionalRoutingEnabled, func() (bool, error) {
+		return c.regionalRoutingEnabled()
+	})
+}
+
+func (c *mqlTailscale) GetRouteSelection() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.RouteSelection, func() (string, error) {
+		return c.routeSelection()
+	})
+}
+
+func (c *mqlTailscale) GetHttpsEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HttpsEnabled, func() (bool, error) {
+		return c.httpsEnabled()
+	})
+}
+
+func (c *mqlTailscale) GetAclsExternallyManaged() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AclsExternallyManaged, func() (bool, error) {
+		return c.aclsExternallyManaged()
+	})
+}
+
+func (c *mqlTailscale) GetAclsExternalLink() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AclsExternalLink, func() (string, error) {
+		return c.aclsExternalLink()
+	})
+}
+
 func (c *mqlTailscale) GetUsersRoleAllowedToJoinExternalTailnets() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.UsersRoleAllowedToJoinExternalTailnets, func() (string, error) {
 		return c.usersRoleAllowedToJoinExternalTailnets()
@@ -1062,6 +1518,22 @@ func (c *mqlTailscale) GetWebhooks() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlTailscale) GetServices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Services, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("tailscale", c.__id, "services")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.services()
+	})
+}
+
 func (c *mqlTailscale) GetLogstreams() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Logstreams, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -1078,16 +1550,34 @@ func (c *mqlTailscale) GetLogstreams() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlTailscale) GetOrganizationTailnets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.OrganizationTailnets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("tailscale", c.__id, "organizationTailnets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.organizationTailnets()
+	})
+}
+
 // mqlTailscaleDevice for the tailscale.device resource
 type mqlTailscaleDevice struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	mqlTailscaleDeviceInternal
+	// optional: if you define mqlTailscaleDeviceInternal it will be used here
 	Id                        plugin.TValue[string]
+	NodeId                    plugin.TValue[string]
 	Hostname                  plugin.TValue[string]
 	Os                        plugin.TValue[string]
 	Name                      plugin.TValue[string]
 	User                      plugin.TValue[string]
+	Owner                     plugin.TValue[*mqlTailscaleUser]
 	Tags                      plugin.TValue[[]any]
 	Addresses                 plugin.TValue[[]any]
 	ClientVersion             plugin.TValue[string]
@@ -1098,6 +1588,9 @@ type mqlTailscaleDevice struct {
 	BlocksIncomingConnections plugin.TValue[bool]
 	Authorized                plugin.TValue[bool]
 	IsExternal                plugin.TValue[bool]
+	IsEphemeral               plugin.TValue[bool]
+	ConnectedToControl        plugin.TValue[bool]
+	SshEnabled                plugin.TValue[bool]
 	KeyExpiryDisabled         plugin.TValue[bool]
 	UpdateAvailable           plugin.TValue[bool]
 	CreatedAt                 plugin.TValue[*time.Time]
@@ -1105,6 +1598,15 @@ type mqlTailscaleDevice struct {
 	LastSeenAt                plugin.TValue[*time.Time]
 	AdvertisedRoutes          plugin.TValue[[]any]
 	EnabledRoutes             plugin.TValue[[]any]
+	DistroName                plugin.TValue[string]
+	DistroVersion             plugin.TValue[string]
+	DistroCodeName            plugin.TValue[string]
+	PostureSerialNumbers      plugin.TValue[[]any]
+	PostureHardwareAddresses  plugin.TValue[[]any]
+	PostureIdentityDisabled   plugin.TValue[bool]
+	Endpoints                 plugin.TValue[[]any]
+	DerpRelay                 plugin.TValue[string]
+	MappingVariesByDestIp     plugin.TValue[bool]
 }
 
 // createTailscaleDevice creates a new instance of this resource
@@ -1148,6 +1650,10 @@ func (c *mqlTailscaleDevice) GetId() *plugin.TValue[string] {
 	return &c.Id
 }
 
+func (c *mqlTailscaleDevice) GetNodeId() *plugin.TValue[string] {
+	return &c.NodeId
+}
+
 func (c *mqlTailscaleDevice) GetHostname() *plugin.TValue[string] {
 	return &c.Hostname
 }
@@ -1162,6 +1668,22 @@ func (c *mqlTailscaleDevice) GetName() *plugin.TValue[string] {
 
 func (c *mqlTailscaleDevice) GetUser() *plugin.TValue[string] {
 	return &c.User
+}
+
+func (c *mqlTailscaleDevice) GetOwner() *plugin.TValue[*mqlTailscaleUser] {
+	return plugin.GetOrCompute[*mqlTailscaleUser](&c.Owner, func() (*mqlTailscaleUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("tailscale.device", c.__id, "owner")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlTailscaleUser), nil
+			}
+		}
+
+		return c.owner()
+	})
 }
 
 func (c *mqlTailscaleDevice) GetTags() *plugin.TValue[[]any] {
@@ -1204,6 +1726,18 @@ func (c *mqlTailscaleDevice) GetIsExternal() *plugin.TValue[bool] {
 	return &c.IsExternal
 }
 
+func (c *mqlTailscaleDevice) GetIsEphemeral() *plugin.TValue[bool] {
+	return &c.IsEphemeral
+}
+
+func (c *mqlTailscaleDevice) GetConnectedToControl() *plugin.TValue[bool] {
+	return &c.ConnectedToControl
+}
+
+func (c *mqlTailscaleDevice) GetSshEnabled() *plugin.TValue[bool] {
+	return &c.SshEnabled
+}
+
 func (c *mqlTailscaleDevice) GetKeyExpiryDisabled() *plugin.TValue[bool] {
 	return &c.KeyExpiryDisabled
 }
@@ -1225,15 +1759,47 @@ func (c *mqlTailscaleDevice) GetLastSeenAt() *plugin.TValue[*time.Time] {
 }
 
 func (c *mqlTailscaleDevice) GetAdvertisedRoutes() *plugin.TValue[[]any] {
-	return plugin.GetOrCompute[[]any](&c.AdvertisedRoutes, func() ([]any, error) {
-		return c.advertisedRoutes()
-	})
+	return &c.AdvertisedRoutes
 }
 
 func (c *mqlTailscaleDevice) GetEnabledRoutes() *plugin.TValue[[]any] {
-	return plugin.GetOrCompute[[]any](&c.EnabledRoutes, func() ([]any, error) {
-		return c.enabledRoutes()
-	})
+	return &c.EnabledRoutes
+}
+
+func (c *mqlTailscaleDevice) GetDistroName() *plugin.TValue[string] {
+	return &c.DistroName
+}
+
+func (c *mqlTailscaleDevice) GetDistroVersion() *plugin.TValue[string] {
+	return &c.DistroVersion
+}
+
+func (c *mqlTailscaleDevice) GetDistroCodeName() *plugin.TValue[string] {
+	return &c.DistroCodeName
+}
+
+func (c *mqlTailscaleDevice) GetPostureSerialNumbers() *plugin.TValue[[]any] {
+	return &c.PostureSerialNumbers
+}
+
+func (c *mqlTailscaleDevice) GetPostureHardwareAddresses() *plugin.TValue[[]any] {
+	return &c.PostureHardwareAddresses
+}
+
+func (c *mqlTailscaleDevice) GetPostureIdentityDisabled() *plugin.TValue[bool] {
+	return &c.PostureIdentityDisabled
+}
+
+func (c *mqlTailscaleDevice) GetEndpoints() *plugin.TValue[[]any] {
+	return &c.Endpoints
+}
+
+func (c *mqlTailscaleDevice) GetDerpRelay() *plugin.TValue[string] {
+	return &c.DerpRelay
+}
+
+func (c *mqlTailscaleDevice) GetMappingVariesByDestIp() *plugin.TValue[bool] {
+	return &c.MappingVariesByDestIp
 }
 
 // mqlTailscaleUser for the tailscale.user resource
@@ -1253,6 +1819,8 @@ type mqlTailscaleUser struct {
 	CreatedAt          plugin.TValue[*time.Time]
 	LastSeenAt         plugin.TValue[*time.Time]
 	CurrentlyConnected plugin.TValue[bool]
+	Devices            plugin.TValue[[]any]
+	AuthKeys           plugin.TValue[[]any]
 }
 
 // createTailscaleUser creates a new instance of this resource
@@ -1340,28 +1908,67 @@ func (c *mqlTailscaleUser) GetCurrentlyConnected() *plugin.TValue[bool] {
 	return &c.CurrentlyConnected
 }
 
+func (c *mqlTailscaleUser) GetDevices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Devices, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("tailscale.user", c.__id, "devices")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.devices()
+	})
+}
+
+func (c *mqlTailscaleUser) GetAuthKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AuthKeys, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("tailscale.user", c.__id, "authKeys")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.authKeys()
+	})
+}
+
 // mqlTailscaleAclPolicy for the tailscale.aclPolicy resource
 type mqlTailscaleAclPolicy struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlTailscaleAclPolicyInternal
-	Tailnet               plugin.TValue[string]
-	Acls                  plugin.TValue[[]any]
-	Groups                plugin.TValue[map[string]any]
-	Hosts                 plugin.TValue[map[string]any]
-	TagOwners             plugin.TValue[map[string]any]
-	Ssh                   plugin.TValue[[]any]
-	Tests                 plugin.TValue[[]any]
-	NodeAttrs             plugin.TValue[[]any]
-	AutoApproverExitNodes plugin.TValue[[]any]
-	AutoApproverRoutes    plugin.TValue[map[string]any]
-	DefaultSourcePosture  plugin.TValue[[]any]
-	Postures              plugin.TValue[map[string]any]
-	DisableIPv4           plugin.TValue[bool]
-	OneCGNATRoute         plugin.TValue[string]
-	RandomizeClientPort   plugin.TValue[bool]
-	Etag                  plugin.TValue[string]
-	Raw                   plugin.TValue[string]
+	Tailnet                plugin.TValue[string]
+	Acls                   plugin.TValue[[]any]
+	Grants                 plugin.TValue[[]any]
+	Ipsets                 plugin.TValue[map[string]any]
+	AttrConfig             plugin.TValue[map[string]any]
+	DerpRegions            plugin.TValue[[]any]
+	OmitDefaultDerpRegions plugin.TValue[bool]
+	Groups                 plugin.TValue[map[string]any]
+	Hosts                  plugin.TValue[map[string]any]
+	TagOwners              plugin.TValue[map[string]any]
+	Ssh                    plugin.TValue[[]any]
+	Tests                  plugin.TValue[[]any]
+	NodeAttrs              plugin.TValue[[]any]
+	AutoApproverExitNodes  plugin.TValue[[]any]
+	AutoApproverRoutes     plugin.TValue[map[string]any]
+	AutoApproverServices   plugin.TValue[map[string]any]
+	DefaultSourcePosture   plugin.TValue[[]any]
+	Postures               plugin.TValue[map[string]any]
+	DisableIPv4            plugin.TValue[bool]
+	OneCGNATRoute          plugin.TValue[string]
+	RandomizeClientPort    plugin.TValue[bool]
+	Etag                   plugin.TValue[string]
+	Raw                    plugin.TValue[string]
+	ExternalTailnets       plugin.TValue[[]any]
 }
 
 // createTailscaleAclPolicy creates a new instance of this resource
@@ -1409,6 +2016,26 @@ func (c *mqlTailscaleAclPolicy) GetAcls() *plugin.TValue[[]any] {
 	return &c.Acls
 }
 
+func (c *mqlTailscaleAclPolicy) GetGrants() *plugin.TValue[[]any] {
+	return &c.Grants
+}
+
+func (c *mqlTailscaleAclPolicy) GetIpsets() *plugin.TValue[map[string]any] {
+	return &c.Ipsets
+}
+
+func (c *mqlTailscaleAclPolicy) GetAttrConfig() *plugin.TValue[map[string]any] {
+	return &c.AttrConfig
+}
+
+func (c *mqlTailscaleAclPolicy) GetDerpRegions() *plugin.TValue[[]any] {
+	return &c.DerpRegions
+}
+
+func (c *mqlTailscaleAclPolicy) GetOmitDefaultDerpRegions() *plugin.TValue[bool] {
+	return &c.OmitDefaultDerpRegions
+}
+
 func (c *mqlTailscaleAclPolicy) GetGroups() *plugin.TValue[map[string]any] {
 	return &c.Groups
 }
@@ -1441,6 +2068,10 @@ func (c *mqlTailscaleAclPolicy) GetAutoApproverRoutes() *plugin.TValue[map[strin
 	return &c.AutoApproverRoutes
 }
 
+func (c *mqlTailscaleAclPolicy) GetAutoApproverServices() *plugin.TValue[map[string]any] {
+	return &c.AutoApproverServices
+}
+
 func (c *mqlTailscaleAclPolicy) GetDefaultSourcePosture() *plugin.TValue[[]any] {
 	return &c.DefaultSourcePosture
 }
@@ -1471,24 +2102,108 @@ func (c *mqlTailscaleAclPolicy) GetRaw() *plugin.TValue[string] {
 	})
 }
 
+func (c *mqlTailscaleAclPolicy) GetExternalTailnets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExternalTailnets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("tailscale.aclPolicy", c.__id, "externalTailnets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.externalTailnets()
+	})
+}
+
+// mqlTailscaleAclPolicyExternalTailnet for the tailscale.aclPolicy.externalTailnet resource
+type mqlTailscaleAclPolicyExternalTailnet struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlTailscaleAclPolicyExternalTailnetInternal it will be used here
+	Name                      plugin.TValue[string]
+	ExternalId                plugin.TValue[string]
+	AllowIncomingConnections  plugin.TValue[bool]
+	AllowExternalReferencesTo plugin.TValue[[]any]
+}
+
+// createTailscaleAclPolicyExternalTailnet creates a new instance of this resource
+func createTailscaleAclPolicyExternalTailnet(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlTailscaleAclPolicyExternalTailnet{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("tailscale.aclPolicy.externalTailnet", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlTailscaleAclPolicyExternalTailnet) MqlName() string {
+	return "tailscale.aclPolicy.externalTailnet"
+}
+
+func (c *mqlTailscaleAclPolicyExternalTailnet) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlTailscaleAclPolicyExternalTailnet) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlTailscaleAclPolicyExternalTailnet) GetExternalId() *plugin.TValue[string] {
+	return &c.ExternalId
+}
+
+func (c *mqlTailscaleAclPolicyExternalTailnet) GetAllowIncomingConnections() *plugin.TValue[bool] {
+	return &c.AllowIncomingConnections
+}
+
+func (c *mqlTailscaleAclPolicyExternalTailnet) GetAllowExternalReferencesTo() *plugin.TValue[[]any] {
+	return &c.AllowExternalReferencesTo
+}
+
 // mqlTailscaleAuthKey for the tailscale.authKey resource
 type mqlTailscaleAuthKey struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlTailscaleAuthKeyInternal it will be used here
-	Id            plugin.TValue[string]
-	Description   plugin.TValue[string]
-	UserId        plugin.TValue[string]
-	Created       plugin.TValue[*time.Time]
-	Expires       plugin.TValue[*time.Time]
-	HasExpiration plugin.TValue[bool]
-	Revoked       plugin.TValue[*time.Time]
-	IsRevoked     plugin.TValue[bool]
-	Invalid       plugin.TValue[bool]
-	Reusable      plugin.TValue[bool]
-	Ephemeral     plugin.TValue[bool]
-	Preauthorized plugin.TValue[bool]
-	Tags          plugin.TValue[[]any]
+	Id               plugin.TValue[string]
+	KeyType          plugin.TValue[string]
+	Description      plugin.TValue[string]
+	UserId           plugin.TValue[string]
+	User             plugin.TValue[*mqlTailscaleUser]
+	Scopes           plugin.TValue[[]any]
+	Audience         plugin.TValue[string]
+	Issuer           plugin.TValue[string]
+	Subject          plugin.TValue[string]
+	CustomClaimRules plugin.TValue[map[string]any]
+	Created          plugin.TValue[*time.Time]
+	Updated          plugin.TValue[*time.Time]
+	Expires          plugin.TValue[*time.Time]
+	HasExpiration    plugin.TValue[bool]
+	IsExpired        plugin.TValue[bool]
+	Revoked          plugin.TValue[*time.Time]
+	IsRevoked        plugin.TValue[bool]
+	Invalid          plugin.TValue[bool]
+	Reusable         plugin.TValue[bool]
+	Ephemeral        plugin.TValue[bool]
+	Preauthorized    plugin.TValue[bool]
+	Tags             plugin.TValue[[]any]
 }
 
 // createTailscaleAuthKey creates a new instance of this resource
@@ -1532,6 +2247,10 @@ func (c *mqlTailscaleAuthKey) GetId() *plugin.TValue[string] {
 	return &c.Id
 }
 
+func (c *mqlTailscaleAuthKey) GetKeyType() *plugin.TValue[string] {
+	return &c.KeyType
+}
+
 func (c *mqlTailscaleAuthKey) GetDescription() *plugin.TValue[string] {
 	return &c.Description
 }
@@ -1540,8 +2259,48 @@ func (c *mqlTailscaleAuthKey) GetUserId() *plugin.TValue[string] {
 	return &c.UserId
 }
 
+func (c *mqlTailscaleAuthKey) GetUser() *plugin.TValue[*mqlTailscaleUser] {
+	return plugin.GetOrCompute[*mqlTailscaleUser](&c.User, func() (*mqlTailscaleUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("tailscale.authKey", c.__id, "user")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlTailscaleUser), nil
+			}
+		}
+
+		return c.user()
+	})
+}
+
+func (c *mqlTailscaleAuthKey) GetScopes() *plugin.TValue[[]any] {
+	return &c.Scopes
+}
+
+func (c *mqlTailscaleAuthKey) GetAudience() *plugin.TValue[string] {
+	return &c.Audience
+}
+
+func (c *mqlTailscaleAuthKey) GetIssuer() *plugin.TValue[string] {
+	return &c.Issuer
+}
+
+func (c *mqlTailscaleAuthKey) GetSubject() *plugin.TValue[string] {
+	return &c.Subject
+}
+
+func (c *mqlTailscaleAuthKey) GetCustomClaimRules() *plugin.TValue[map[string]any] {
+	return &c.CustomClaimRules
+}
+
 func (c *mqlTailscaleAuthKey) GetCreated() *plugin.TValue[*time.Time] {
 	return &c.Created
+}
+
+func (c *mqlTailscaleAuthKey) GetUpdated() *plugin.TValue[*time.Time] {
+	return &c.Updated
 }
 
 func (c *mqlTailscaleAuthKey) GetExpires() *plugin.TValue[*time.Time] {
@@ -1551,6 +2310,12 @@ func (c *mqlTailscaleAuthKey) GetExpires() *plugin.TValue[*time.Time] {
 func (c *mqlTailscaleAuthKey) GetHasExpiration() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.HasExpiration, func() (bool, error) {
 		return c.hasExpiration()
+	})
+}
+
+func (c *mqlTailscaleAuthKey) GetIsExpired() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IsExpired, func() (bool, error) {
+		return c.isExpired()
 	})
 }
 
@@ -1593,6 +2358,7 @@ type mqlTailscaleWebhook struct {
 	EndpointUrl      plugin.TValue[string]
 	ProviderType     plugin.TValue[string]
 	CreatorLoginName plugin.TValue[string]
+	Creator          plugin.TValue[*mqlTailscaleUser]
 	Created          plugin.TValue[*time.Time]
 	LastModified     plugin.TValue[*time.Time]
 	Subscriptions    plugin.TValue[[]any]
@@ -1651,6 +2417,22 @@ func (c *mqlTailscaleWebhook) GetCreatorLoginName() *plugin.TValue[string] {
 	return &c.CreatorLoginName
 }
 
+func (c *mqlTailscaleWebhook) GetCreator() *plugin.TValue[*mqlTailscaleUser] {
+	return plugin.GetOrCompute[*mqlTailscaleUser](&c.Creator, func() (*mqlTailscaleUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("tailscale.webhook", c.__id, "creator")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlTailscaleUser), nil
+			}
+		}
+
+		return c.creator()
+	})
+}
+
 func (c *mqlTailscaleWebhook) GetCreated() *plugin.TValue[*time.Time] {
 	return &c.Created
 }
@@ -1661,6 +2443,149 @@ func (c *mqlTailscaleWebhook) GetLastModified() *plugin.TValue[*time.Time] {
 
 func (c *mqlTailscaleWebhook) GetSubscriptions() *plugin.TValue[[]any] {
 	return &c.Subscriptions
+}
+
+// mqlTailscaleService for the tailscale.service resource
+type mqlTailscaleService struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlTailscaleServiceInternal it will be used here
+	Name        plugin.TValue[string]
+	DisplayName plugin.TValue[string]
+	Addresses   plugin.TValue[[]any]
+	Ports       plugin.TValue[[]any]
+	Tags        plugin.TValue[[]any]
+	Comment     plugin.TValue[string]
+	Annotations plugin.TValue[map[string]any]
+}
+
+// createTailscaleService creates a new instance of this resource
+func createTailscaleService(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlTailscaleService{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("tailscale.service", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlTailscaleService) MqlName() string {
+	return "tailscale.service"
+}
+
+func (c *mqlTailscaleService) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlTailscaleService) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlTailscaleService) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlTailscaleService) GetAddresses() *plugin.TValue[[]any] {
+	return &c.Addresses
+}
+
+func (c *mqlTailscaleService) GetPorts() *plugin.TValue[[]any] {
+	return &c.Ports
+}
+
+func (c *mqlTailscaleService) GetTags() *plugin.TValue[[]any] {
+	return &c.Tags
+}
+
+func (c *mqlTailscaleService) GetComment() *plugin.TValue[string] {
+	return &c.Comment
+}
+
+func (c *mqlTailscaleService) GetAnnotations() *plugin.TValue[map[string]any] {
+	return &c.Annotations
+}
+
+// mqlTailscaleOrganizationTailnet for the tailscale.organizationTailnet resource
+type mqlTailscaleOrganizationTailnet struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlTailscaleOrganizationTailnetInternal it will be used here
+	Id          plugin.TValue[string]
+	DisplayName plugin.TValue[string]
+	OrgId       plugin.TValue[string]
+	DnsName     plugin.TValue[string]
+	CreatedAt   plugin.TValue[*time.Time]
+}
+
+// createTailscaleOrganizationTailnet creates a new instance of this resource
+func createTailscaleOrganizationTailnet(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlTailscaleOrganizationTailnet{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("tailscale.organizationTailnet", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlTailscaleOrganizationTailnet) MqlName() string {
+	return "tailscale.organizationTailnet"
+}
+
+func (c *mqlTailscaleOrganizationTailnet) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlTailscaleOrganizationTailnet) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlTailscaleOrganizationTailnet) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlTailscaleOrganizationTailnet) GetOrgId() *plugin.TValue[string] {
+	return &c.OrgId
+}
+
+func (c *mqlTailscaleOrganizationTailnet) GetDnsName() *plugin.TValue[string] {
+	return &c.DnsName
+}
+
+func (c *mqlTailscaleOrganizationTailnet) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
 }
 
 // mqlTailscaleLogstream for the tailscale.logstream resource

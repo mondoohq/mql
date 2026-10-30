@@ -1,0 +1,198 @@
+{
+  "assets": [
+    {
+      "asset": {
+        "id": "freebsd-dupes",
+        "name": "freebsd-dupes",
+        "platform_ids": [
+          "freebsd-dupes"
+        ],
+        "platform": {
+          "name": "freebsd",
+          "title": "FreeBSD",
+          "family": [
+            "bsd",
+            "unix",
+            "os"
+          ],
+          "version": "14.3"
+        }
+      },
+      "connections": [
+        {
+          "url": "local://",
+          "provider": "go.mondoo.com/cnquery/v9/providers/os",
+          "connector": "local",
+          "version": ""
+        }
+      ],
+      "resources": [
+        {
+          "Resource": "user",
+          "ID": "user/0/root",
+          "Fields": {
+            "name": {
+              "type": "\u0007",
+              "value": "root"
+            },
+            "uid": {
+              "type": "\u0005",
+              "value": 0
+            },
+            "gid": {
+              "type": "\u0005",
+              "value": 0
+            }
+          }
+        },
+        {
+          "Resource": "user",
+          "ID": "user/0/toor",
+          "Fields": {
+            "name": {
+              "type": "\u0007",
+              "value": "toor"
+            },
+            "uid": {
+              "type": "\u0005",
+              "value": 0
+            },
+            "gid": {
+              "type": "\u0005",
+              "value": 0
+            }
+          }
+        },
+        {
+          "Resource": "user",
+          "ID": "user/1/daemon",
+          "Fields": {
+            "name": {
+              "type": "\u0007",
+              "value": "daemon"
+            },
+            "uid": {
+              "type": "\u0005",
+              "value": 1
+            },
+            "gid": {
+              "type": "\u0005",
+              "value": 1
+            }
+          }
+        },
+        {
+          "Resource": "user",
+          "ID": "user/4251/alice",
+          "Fields": {
+            "name": {
+              "type": "\u0007",
+              "value": "alice"
+            },
+            "uid": {
+              "type": "\u0005",
+              "value": 4251
+            },
+            "gid": {
+              "type": "\u0005",
+              "value": 4251
+            }
+          }
+        },
+        {
+          "Resource": "user",
+          "ID": "user/4251/bob",
+          "Fields": {
+            "name": {
+              "type": "\u0007",
+              "value": "bob"
+            },
+            "uid": {
+              "type": "\u0005",
+              "value": 4251
+            },
+            "gid": {
+              "type": "\u0005",
+              "value": 4252
+            }
+          }
+        },
+        {
+          "Resource": "user",
+          "ID": "user/1001/carol",
+          "Fields": {
+            "name": {
+              "type": "\u0007",
+              "value": "carol"
+            },
+            "uid": {
+              "type": "\u0005",
+              "value": 1001
+            },
+            "gid": {
+              "type": "\u0005",
+              "value": 1001
+            }
+          }
+        },
+        {
+          "Resource": "user",
+          "ID": "user/1002/dave",
+          "Fields": {
+            "name": {
+              "type": "\u0007",
+              "value": "dave"
+            },
+            "uid": {
+              "type": "\u0005",
+              "value": 1002
+            },
+            "gid": {
+              "type": "\u0005",
+              "value": 1001
+            }
+          }
+        },
+        {
+          "Resource": "users",
+          "ID": "",
+          "Fields": {
+            "list": {
+              "type": "\u0019\u001buser",
+              "value": [
+                {
+                  "Name": "user",
+                  "ID": "user/0/root"
+                },
+                {
+                  "Name": "user",
+                  "ID": "user/0/toor"
+                },
+                {
+                  "Name": "user",
+                  "ID": "user/1/daemon"
+                },
+                {
+                  "Name": "user",
+                  "ID": "user/4251/alice"
+                },
+                {
+                  "Name": "user",
+                  "ID": "user/4251/bob"
+                },
+                {
+                  "Name": "user",
+                  "ID": "user/1001/carol"
+                },
+                {
+                  "Name": "user",
+                  "ID": "user/1002/dave"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

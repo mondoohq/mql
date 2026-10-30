@@ -4,32 +4,28 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/network/connection"
-	"go.mondoo.com/mql/v13/providers/network/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/network/connection"
+	"go.mondoo.com/mql/providers/network/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "network",
-	ID:              "go.mondoo.com/cnquery/v9/providers/network",
-	Version:         "13.2.4",
+	Name: "network",
+	// The host this provider connects to (ADR 031).
+	Root:    "network.host",
+	ID:      "go.mondoo.com/mql/providers/network",
+	Version: "14.0.8",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.HostConnectionType},
 	Platforms:       provider.Platforms,
-	CrossProviderTypes: []string{
-		"go.mondoo.com/mql/providers/os",
-		"go.mondoo.com/mql/providers/k8s",
-		"go.mondoo.com/mql/providers/aws",
-		"go.mondoo.com/mql/providers/networkdiscovery",
-		// FIXME: DEPRECATED, remove in v12.0 vv
-		// Until v10 providers had a version indication in their ID. With v10
-		// this is no longer the case. Once we get far enough away from legacy
-		// version support, we can safely remove this.
-		"go.mondoo.com/mql/providers/os",
-		"go.mondoo.com/mql/providers/k8s",
-		"go.mondoo.com/mql/providers/aws",
-		// ^^
-	},
+	// Host scans are almost entirely spent waiting on DNS, TLS and HTTP against
+	// unrelated targets, with no shared rate limit to trip, so this is the
+	// highest default we hand out.
+	DefaultParallelism: 10,
 	Connectors: []plugin.Connector{
 		{
 			Name:  "host",

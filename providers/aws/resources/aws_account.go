@@ -16,9 +16,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
 	orgtypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 type mqlAwsAccountInternal struct {
@@ -47,7 +47,10 @@ func (a *mqlAwsAccount) fetchOrgAccountDescription() (*orgtypes.Account, error) 
 		AccountId: &accountId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
+		// A denial leaves the description unknown; a standalone account has no
+		// description to read. Both mean there is nothing to report, and
+		// neither is a reason to fail the field.
+		if Is400AccessDeniedError(err) || isOrganizationsNotInUseError(err) {
 			a.descFetched.Store(true)
 			return nil, nil
 		}
@@ -79,15 +82,33 @@ func (a *mqlAwsAccount) aliases() ([]any, error) {
 	return result, nil
 }
 
-func (a *mqlAwsAccount) organization() (*mqlAwsOrganization, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+// fetchOrganization describes the caller's AWS organization and maps it onto a
+// new aws.organization resource. Both aws.account.organization and the
+// aws.organization init go through here so the two paths cannot drift apart.
+func fetchOrganization(runtime *plugin.Runtime) (*mqlAwsOrganization, error) {
+	conn, ok := runtime.Connection.(*connection.AwsConnection)
+	if !ok {
+		return nil, errors.New("aws.organization requires an AWS connection")
+	}
 	client := conn.Organizations("") // no region for orgs, use configured region
 
 	org, err := client.DescribeOrganization(context.TODO(), &organizations.DescribeOrganizationInput{})
 	if err != nil {
+		// A standalone account has no organization to describe. Report that as
+		// absence, so callers can tell it apart from a read that failed.
+		if isOrganizationsNotInUseError(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
-	res, err := CreateResource(a.MqlRuntime, ResourceAwsOrganization,
+	if org == nil {
+		return nil, nil
+	}
+	if org.Organization == nil {
+		return nil, errors.New("aws.organization: no organization returned for this account")
+	}
+
+	res, err := CreateResource(runtime, ResourceAwsOrganization,
 		map[string]*llx.RawData{
 			"arn":                llx.StringDataPtr(org.Organization.Arn),
 			"id":                 llx.StringDataPtr(org.Organization.Id),
@@ -96,7 +117,63 @@ func (a *mqlAwsAccount) organization() (*mqlAwsOrganization, error) {
 			"masterAccountArn":   llx.StringDataPtr(org.Organization.MasterAccountArn),
 			"masterAccountEmail": llx.StringDataPtr(org.Organization.MasterAccountEmail),
 		})
-	return res.(*mqlAwsOrganization), err
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsOrganization), nil
+}
+
+func (a *mqlAwsAccount) organization() (*mqlAwsOrganization, error) {
+	org, err := fetchOrganization(a.MqlRuntime)
+	if err != nil {
+		return nil, err
+	}
+	if org == nil {
+		// Null rather than an error, so `organization == null` is a usable
+		// signal for scoping a check to multi-account environments instead of
+		// something that fails on the accounts it means to exclude.
+		a.Organization.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return org, nil
+}
+
+// isOrganizationMember reports whether the account belongs to an AWS
+// organization.
+//
+// The same fact as `organization != null`, as a plain bool. A filter is where
+// this gets used, and MQL's three-valued logic makes a null awkward to test
+// safely, so the boolean keeps the scoping predicate unambiguous.
+func (a *mqlAwsAccount) isOrganizationMember() (bool, error) {
+	org, err := fetchOrganization(a.MqlRuntime)
+	if err != nil {
+		return false, err
+	}
+	return org != nil, nil
+}
+
+// initAwsOrganization populates the organization from the API when it is
+// reached directly rather than through aws.account.organization. Without this,
+// a bare `aws.organization` query creates the resource with every field unset,
+// which surfaces client-side as null values with no attribution.
+func initAwsOrganization(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) >= 2 {
+		return args, nil, nil
+	}
+
+	res, err := fetchOrganization(runtime)
+	if err != nil {
+		return nil, nil, err
+	}
+	if res == nil {
+		// An init has to produce a resource or an error, so unlike the accessor
+		// it cannot report absence as null. Name the condition and point at the
+		// form that can, rather than surfacing a bare SDK exception.
+		return nil, nil, errors.New("this account is not part of an AWS organization; " +
+			"use aws.account.organization, which is null for a standalone account, " +
+			"or aws.account.isOrganizationMember")
+	}
+	return args, res, nil
 }
 
 func (a *mqlAwsOrganization) accounts() ([]any, error) {
@@ -234,8 +311,7 @@ func (a *mqlAwsAccount) alternateContacts() ([]any, error) {
 		// "contact not configured" — the only signal MQL needs is exists=false.
 		notConfigured := false
 		if err != nil {
-			var notFoundErr *types.ResourceNotFoundException
-			if !errors.As(err, &notFoundErr) {
+			if _, ok := errors.AsType[*types.ResourceNotFoundException](err); !ok {
 				return nil, err
 			}
 			notConfigured = true
@@ -445,8 +521,18 @@ func (a *mqlAwsOrganizationDelegatedAdministrator) delegatedServices() ([]any, e
 	return res, nil
 }
 
+// delegatedServiceCacheKey builds a stable cache key for a delegated service.
+// DelegationEnabledDate is optional, so guard against a nil time pointer to avoid
+// dereferencing nil (which would panic in a field-resolver goroutine).
+func delegatedServiceCacheKey(servicePrincipal string, date *time.Time) string {
+	if date == nil {
+		return servicePrincipal
+	}
+	return servicePrincipal + "/" + date.String()
+}
+
 func (a *mqlAwsOrganizationDelegatedService) id() (string, error) {
-	return a.ServicePrincipal.Data + "/" + a.DelegationEnabledDate.Data.String(), nil
+	return delegatedServiceCacheKey(a.ServicePrincipal.Data, a.DelegationEnabledDate.Data), nil
 }
 
 func (a *mqlAwsAccount) paths() ([]any, error) {
@@ -608,21 +694,7 @@ func (a *mqlAwsOrganizationOrganizationalUnit) serviceControlPolicies() ([]any, 
 
 func (a *mqlAwsOrganizationServiceControlPolicy) content() (string, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	client := conn.Organizations("")
-	ctx := context.Background()
-
-	id := a.Id.Data
-	resp, err := client.DescribePolicy(ctx, &organizations.DescribePolicyInput{PolicyId: &id})
-	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return "", nil
-		}
-		return "", err
-	}
-	if resp.Policy == nil || resp.Policy.Content == nil {
-		return "", nil
-	}
-	return *resp.Policy.Content, nil
+	return describePolicyContent(context.Background(), conn.Organizations(""), a.Id.Data)
 }
 
 func (a *mqlAwsOrganizationServiceControlPolicy) statements() ([]any, error) {
@@ -667,32 +739,53 @@ func (a *mqlAwsAccount) regionOptInStatus() (map[string]any, error) {
 
 func (a *mqlAwsAccount) name() (string, error) {
 	acc, err := a.fetchOrgAccountDescription()
-	if err != nil || acc == nil {
+	if err != nil {
 		return "", err
+	}
+	if acc == nil {
+		// No description to read. Empty would be a name the account has, and
+		// an account with a blank name is a different finding from one whose
+		// name could not be read.
+		a.Name.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
 	}
 	return aws.ToString(acc.Name), nil
 }
 
 func (a *mqlAwsAccount) email() (string, error) {
 	acc, err := a.fetchOrgAccountDescription()
-	if err != nil || acc == nil {
+	if err != nil {
 		return "", err
+	}
+	if acc == nil {
+		a.Email.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
 	}
 	return aws.ToString(acc.Email), nil
 }
 
 func (a *mqlAwsAccount) state() (string, error) {
 	acc, err := a.fetchOrgAccountDescription()
-	if err != nil || acc == nil {
+	if err != nil {
 		return "", err
+	}
+	if acc == nil {
+		// No description to read, which is not the same as a lifecycle state of
+		// "". Empty would be a value the account does not have.
+		a.State.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
 	}
 	return string(acc.State), nil
 }
 
 func (a *mqlAwsAccount) joinedMethod() (string, error) {
 	acc, err := a.fetchOrgAccountDescription()
-	if err != nil || acc == nil {
+	if err != nil {
 		return "", err
+	}
+	if acc == nil {
+		a.JoinedMethod.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
 	}
 	return string(acc.JoinedMethod), nil
 }

@@ -7,10 +7,10 @@ import (
 	"context"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 
 	azureres "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources/v4"
 )
@@ -37,6 +37,13 @@ func (a *mqlAzureSubscription) resourceGroups() ([]any, error) {
 			return nil, err
 		}
 		for _, rg := range page.Value {
+			if rg == nil {
+				continue
+			}
+			var provisioningState *string
+			if rg.Properties != nil {
+				provisioningState = rg.Properties.ProvisioningState
+			}
 			mqlAzure, err := CreateResource(a.MqlRuntime, "azure.subscription.resourcegroup",
 				map[string]*llx.RawData{
 					"id":                llx.StringDataPtr(rg.ID),
@@ -44,7 +51,7 @@ func (a *mqlAzureSubscription) resourceGroups() ([]any, error) {
 					"location":          llx.StringDataPtr(rg.Location),
 					"tags":              llx.MapData(convert.PtrMapStrToInterface(rg.Tags), types.String),
 					"type":              llx.StringDataPtr(rg.Type),
-					"provisioningState": llx.StringDataPtr(rg.Properties.ProvisioningState),
+					"provisioningState": llx.StringDataPtr(provisioningState),
 					"managedBy":         llx.StringDataPtr(rg.ManagedBy),
 				},
 			)

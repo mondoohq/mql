@@ -5,13 +5,12 @@ package resources
 
 import (
 	"context"
-	"strings"
 	"sync"
 
 	"github.com/Snowflake-Labs/terraform-provider-snowflake/pkg/sdk"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/snowflake/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/snowflake/connection"
 )
 
 type mqlSnowflakeMaskingPolicyInternal struct {
@@ -28,20 +27,25 @@ type mqlSnowflakeMaskingPolicyInternal struct {
 }
 
 func (r *mqlSnowflakeAccount) maskingPolicies() ([]any, error) {
-	conn := r.MqlRuntime.Connection.(*connection.SnowflakeConnection)
-	client := conn.Client()
-	ctx := context.Background()
+	return listSnowflakeMaskingPolicies(r.MqlRuntime, sdk.ExtendedIn{Account: new(true)})
+}
 
-	policies, err := client.MaskingPolicies.Show(ctx, &sdk.ShowMaskingPolicyOptions{
-		In: &sdk.ExtendedIn{In: sdk.In{Account: sdk.Bool(true)}},
-	})
+func (r *mqlSnowflakeDatabase) maskingPolicies() ([]any, error) {
+	return listSnowflakeMaskingPolicies(r.MqlRuntime, sdk.ExtendedIn{Database: sdk.NewAccountObjectIdentifier(r.Name.Data)})
+}
+
+// listSnowflakeMaskingPolicies fetches masking policies within the given scope
+// (account-wide or a single database) and maps them to resources.
+func listSnowflakeMaskingPolicies(runtime *plugin.Runtime, in sdk.ExtendedIn) ([]any, error) {
+	conn := runtime.Connection.(*connection.SnowflakeConnection)
+	policies, err := conn.Client().MaskingPolicies.Show(context.Background(), &sdk.ShowMaskingPolicyRequest{In: &in})
 	if err != nil {
 		return nil, err
 	}
 
 	list := make([]any, 0, len(policies))
 	for i := range policies {
-		mqlPolicy, err := newMqlSnowflakeMaskingPolicy(r.MqlRuntime, policies[i])
+		mqlPolicy, err := newMqlSnowflakeMaskingPolicy(runtime, policies[i])
 		if err != nil {
 			return nil, err
 		}
@@ -95,10 +99,10 @@ func (r *mqlSnowflakeMaskingPolicy) gatherDescribe() error {
 
 	sig := make([]any, 0, len(details.Signature))
 	for _, s := range details.Signature {
-		sig = append(sig, s.Name+":"+string(s.Type))
+		sig = append(sig, s.Name+":"+legacyDataTypeName(s.Type))
 	}
 	r.descSignature = sig
-	r.descReturnType = string(details.ReturnType)
+	r.descReturnType = legacyDataTypeName(details.ReturnType)
 	r.descBody = details.Body
 	r.descLoaded = true
 	return nil
@@ -135,52 +139,8 @@ func (r *mqlSnowflakeMaskingPolicy) references() ([]any, error) {
 		return r.refs, r.refsLoadErr
 	}
 
-	conn := r.MqlRuntime.Connection.(*connection.SnowflakeConnection)
-	client := conn.Client()
-	ctx := context.Background()
-
-	db := client.GetConn()
-	// INFORMATION_SCHEMA.POLICY_REFERENCES is database-scoped, so we must address
-	// the function through the policy's own database. The database name is a SQL
-	// identifier and cannot be bound as a parameter — Snowflake's parser resolves
-	// it at compile time — so we escape it (`"` -> `""`) and quote it inline. The
-	// POLICY_NAME argument IS bindable: gosnowflake supports `?` inside table
-	// functions (see github.com/snowflakedb/gosnowflake doc.go), and it works for
-	// named arguments too. We pass the policy's fully qualified name there.
-	fqName := sdk.NewSchemaObjectIdentifier(r.DatabaseName.Data, r.SchemaName.Data, r.Name.Data).FullyQualifiedName()
-	quotedDB := `"` + strings.ReplaceAll(r.DatabaseName.Data, `"`, `""`) + `"`
-	q := `SELECT POLICY_DB, POLICY_SCHEMA, POLICY_NAME, POLICY_KIND,
-                  REF_DATABASE_NAME, REF_SCHEMA_NAME, REF_ENTITY_NAME, REF_ENTITY_DOMAIN,
-                  REF_COLUMN_NAME, REF_ARG_COLUMN_NAMES,
-                  TAG_DATABASE, TAG_SCHEMA, TAG_NAME,
-                  POLICY_STATUS
-           FROM TABLE(` + quotedDB + `.INFORMATION_SCHEMA.POLICY_REFERENCES(POLICY_NAME => ?))`
-
-	rows, err := db.QueryxContext(ctx, q, fqName)
+	out, err := queryPolicyReferences(r.MqlRuntime, r.DatabaseName.Data, r.SchemaName.Data, r.Name.Data)
 	if err != nil {
-		r.refsLoaded = true
-		r.refsLoadErr = err
-		return nil, err
-	}
-	defer rows.Close()
-
-	out := []any{}
-	for rows.Next() {
-		var pdb, pschema, pname, pkind, refdb, refschema, refname, refdomain, refcol, refargs, tagdb, tagschema, tagname, status *string
-		if err := rows.Scan(&pdb, &pschema, &pname, &pkind, &refdb, &refschema, &refname, &refdomain, &refcol, &refargs, &tagdb, &tagschema, &tagname, &status); err != nil {
-			r.refsLoaded = true
-			r.refsLoadErr = err
-			return nil, err
-		}
-		ref, err := newMqlSnowflakePolicyReference(r.MqlRuntime, fqName, pdb, pschema, pname, pkind, refdb, refschema, refname, refdomain, refcol, refargs, tagdb, tagschema, tagname, status)
-		if err != nil {
-			r.refsLoaded = true
-			r.refsLoadErr = err
-			return nil, err
-		}
-		out = append(out, ref)
-	}
-	if err := rows.Err(); err != nil {
 		r.refsLoaded = true
 		r.refsLoadErr = err
 		return nil, err

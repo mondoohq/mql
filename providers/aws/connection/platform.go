@@ -3,7 +3,7 @@
 
 package connection
 
-import "go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+import "go.mondoo.com/mql/providers-sdk/v1/inventory"
 
 func (a *AwsConnection) PlatformInfo() *inventory.Platform {
 	return GetPlatformForObject(a.PlatformOverride, a.accountId)
@@ -51,7 +51,9 @@ func getServiceName(platformName string) string {
 		return "rds"
 	case "aws-rds-dbcluster":
 		return "rds"
-	case "aws-dynamodb-table":
+	case "aws-rds-snapshot":
+		return "rds"
+	case "aws-dynamodb-table", "aws-dynamodb-globaltable":
 		return "dynamodb"
 	case "aws-redshift-cluster":
 		return "redshift"
@@ -91,6 +93,10 @@ func getServiceName(platformName string) string {
 		return "sagemaker"
 	case "aws-sagemaker-trainingjob":
 		return "sagemaker"
+	case "aws-sagemaker-domain":
+		return "sagemaker"
+	case "aws-sagemaker-model":
+		return "sagemaker"
 	case "aws-ec2-instance":
 		return "ec2"
 	case "aws-ssm-instance":
@@ -125,6 +131,22 @@ func getServiceName(platformName string) string {
 		return "cognito"
 	case "aws-transfer-server":
 		return "transfer"
+	case "aws-apigatewayv2-api":
+		return "apigateway"
+	case "aws-athena-workgroup":
+		return "athena"
+	case "aws-appstream-fleet":
+		return "appstream"
+	case "aws-batch-jobdefinition":
+		return "batch"
+	case "aws-directoryservice-directory":
+		return "ds"
+	case "aws-documentdb-instance":
+		return "documentdb"
+	case "aws-sns-topic":
+		return "sns"
+	case "aws-sqs-queue":
+		return "sqs"
 	}
 	return "other"
 }

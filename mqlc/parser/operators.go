@@ -29,8 +29,15 @@ type Operator int
 // matchers (`=~` for regex match, `!~` for no-match) share the
 // equality tier with `==` and `!=`.
 //
-// Parentheses always override precedence: `(a + b) * c` forces the
-// addition first.
+// Parentheses override precedence: `(a + b) * c` forces the addition
+// first. A group that agrees with precedence costs nothing - it is
+// folded away in parseGroup before the compiler ever sees it, so
+// `1*(((2+3)))`, `1 * (2 + 3)` and `(1*(2+3))` are one query with one
+// checksum.
+//
+// A `-` or `+` in front of an operand is a sign, and binds tighter than
+// any operator: `-2 * 3` is `(-2) * 3`. On a literal it stays part of
+// the literal; on anything else it compiles as `0 - x`.
 //
 // Examples:
 //
@@ -178,7 +185,15 @@ func (e *Expression) processOperators() error {
 	}
 
 	e.Operand = nuOps[0].Operand
-	e.Operations = nuOps[1:]
+	// nil rather than an empty slice, so a fully folded expression is
+	// structurally identical however it got there. A group folds its contents
+	// on the way out (parseGroup), so `(1+2)` and a top-level `1+2` reach this
+	// point by different routes and have to land on the same tree.
+	if len(nuOps) == 1 {
+		e.Operations = nil
+	} else {
+		e.Operations = nuOps[1:]
+	}
 	return e.processOperators()
 }
 

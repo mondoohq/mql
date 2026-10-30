@@ -34,6 +34,46 @@ func TestDecodeManufacturerID(t *testing.T) {
 	}
 }
 
+func TestDecodeFirmwareRevision(t *testing.T) {
+	// Regression test for the bug where the BCD-encoded minor revision was
+	// printed with %d, so firmware "1.10" rendered as "1.16".
+	tests := []struct {
+		name string
+		rev1 uint8
+		rev2 uint8
+		want string
+	}{
+		{"single-digit minor", 9, 0x08, "9.08"},
+		{"BCD minor 10", 1, 0x10, "1.10"},
+		{"BCD minor 23", 2, 0x23, "2.23"},
+		{"BCD minor 99", 3, 0x99, "3.99"},
+		// The device-available bit (byte 1 bit 7) must not leak into the major.
+		{"major masks bit 7", 0x89, 0x01, "9.01"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, decodeFirmwareRevision(tt.rev1, tt.rev2))
+		})
+	}
+}
+
+func TestDecodeIPMIVersion(t *testing.T) {
+	// Regression test for the bug where the raw BCD byte was cast to an int,
+	// so IPMI 1.5 (0x51) reported as 81.
+	tests := []struct {
+		b    uint8
+		want string
+	}{
+		{0x02, "2.0"},
+		{0x51, "1.5"},
+		{0x20, "0.2"},
+		{0x00, "0.0"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, decodeIPMIVersion(tt.b), "b=0x%02X", tt.b)
+	}
+}
+
 func TestDecodePowerRestorePolicy(t *testing.T) {
 	tests := []struct {
 		powerState uint8

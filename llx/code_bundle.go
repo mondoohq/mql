@@ -29,14 +29,6 @@ func ReturnValuesV2(bundle *CodeBundle, f func(s string) (*RawResult, bool)) []*
 	return bundle.CodeV2.returnValues(bundle, f)
 }
 
-// Results2Assessment converts a list of raw results into an assessment for the query
-func Results2AssessmentV2(bundle *CodeBundle, results map[string]*RawResult) *Assessment {
-	return Results2AssessmentLookupV2(bundle, func(s string) (*RawResult, bool) {
-		r := results[s]
-		return r, r != nil
-	})
-}
-
 // Results2AssessmentLookup creates an assessment for a bundle using a lookup hook to get all results
 func Results2AssessmentLookupV2(bundle *CodeBundle, f func(s string) (*RawResult, bool)) *Assessment {
 	code := bundle.CodeV2
@@ -54,7 +46,7 @@ func Results2AssessmentLookupV2(bundle *CodeBundle, f func(s string) (*RawResult
 	entrypoints := code.Entrypoints()
 	for i := range entrypoints {
 		ep := entrypoints[i]
-		cur := code.entrypoint2assessment(bundle, ep, f)
+		cur := code.Entrypoint2Assessment(bundle, ep, f)
 		if cur == nil {
 			continue
 		}

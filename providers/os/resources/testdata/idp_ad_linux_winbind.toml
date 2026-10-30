@@ -1,0 +1,25 @@
+# A Debian host joined to Active Directory with Samba winbind
+# (`realm join --client-software=winbind`, or `net ads join`). The domain name
+# is made up.
+
+[files."/etc/samba/smb.conf"]
+content = """
+[global]
+   workgroup = AD
+   security = ADS
+   realm = AD.EXAMPLE.COM
+   winbind refresh tickets = Yes
+   vfs objects = acl_xattr
+   map acl inherit = Yes
+   store dos attributes = Yes
+   dedicated keytab file = /etc/krb5.keytab
+   kerberos method = secrets and keytab
+   winbind use default domain = yes
+   ; idmap config for the default domain
+   idmap config * : backend = tdb
+   idmap config * : range = 3000-7999
+   idmap config AD : backend = rid
+   idmap config AD : range = 10000-999999
+   template shell = /bin/bash
+   template homedir = /home/%U
+"""

@@ -20,11 +20,11 @@ import (
 	kinesisvideo_types "github.com/aws/aws-sdk-go-v2/service/kinesisvideo/types"
 	kmsSDK "github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 // firehoseDescribeConcurrency caps the per-region fan-out of
@@ -138,6 +138,7 @@ func initAwsKinesisStream(runtime *plugin.Runtime, args map[string]*llx.RawData)
 	args["name"] = llx.StringDataPtr(desc.StreamName)
 	args["status"] = llx.StringData(string(desc.StreamStatus))
 	args["streamModeDetails"] = llx.NilData
+	args["capacityMode"] = llx.NilData
 	args["createdAt"] = llx.TimeDataPtr(desc.StreamCreationTimestamp)
 	args["region"] = llx.StringData(parsed.Region)
 	return args, nil, nil
@@ -149,6 +150,17 @@ func newMqlAwsKinesisStream(runtime *plugin.Runtime, region string, summary *kin
 	if err != nil {
 		return nil, err
 	}
+	mqlStreamMode := llx.NilData
+	if summary.StreamModeDetails != nil {
+		modeRes, err := CreateResource(runtime, "aws.kinesis.streamModeDetails", map[string]*llx.RawData{
+			"__id":       llx.StringData(convert.ToValue(summary.StreamARN) + "/streamModeDetails"),
+			"streamMode": llx.StringData(string(summary.StreamModeDetails.StreamMode)),
+		})
+		if err != nil {
+			return nil, err
+		}
+		mqlStreamMode = llx.ResourceData(modeRes, "aws.kinesis.streamModeDetails")
+	}
 
 	resource, err := CreateResource(runtime, "aws.kinesis.stream",
 		map[string]*llx.RawData{
@@ -157,6 +169,7 @@ func newMqlAwsKinesisStream(runtime *plugin.Runtime, region string, summary *kin
 			"name":              llx.StringDataPtr(summary.StreamName),
 			"status":            llx.StringData(string(summary.StreamStatus)),
 			"streamModeDetails": llx.DictData(streamModeDetails),
+			"capacityMode":      mqlStreamMode,
 			"createdAt":         llx.TimeDataPtr(summary.StreamCreationTimestamp),
 			"region":            llx.StringData(region),
 		})
@@ -174,6 +187,9 @@ type mqlAwsKinesisStreamInternal struct {
 	cachedOpenShards int64
 	cachedConsumers  int64
 	cachedEnhMonitor []any
+	// cachedRecordDist is nil when the stream reports no record distribution
+	// strategy, which is the case for provisioned streams.
+	cachedRecordDist *string
 	lock             sync.Mutex
 }
 
@@ -218,6 +234,7 @@ func (a *mqlAwsKinesisStream) fetchStreamDetails() error {
 		if desc.ConsumerCount != nil {
 			a.cachedConsumers = int64(*desc.ConsumerCount)
 		}
+		a.cachedRecordDist = nonEmptyEnum(desc.RecordDistributionStrategy)
 		var err2 error
 		a.cachedEnhMonitor, err2 = convert.JsonToDictSlice(desc.EnhancedMonitoring)
 		if err2 != nil {
@@ -233,13 +250,6 @@ func (a *mqlAwsKinesisStream) encryptionType() (string, error) {
 		return "", err
 	}
 	return a.cachedEncType, nil
-}
-
-func (a *mqlAwsKinesisStream) keyId() (string, error) {
-	if err := a.fetchStreamDetails(); err != nil {
-		return "", err
-	}
-	return a.cachedKeyId, nil
 }
 
 func (a *mqlAwsKinesisStream) kmsKey() (*mqlAwsKmsKey, error) {
@@ -309,6 +319,17 @@ func (a *mqlAwsKinesisStream) enhancedMonitoring() ([]any, error) {
 	return a.cachedEnhMonitor, nil
 }
 
+func (a *mqlAwsKinesisStream) recordDistributionStrategy() (string, error) {
+	if err := a.fetchStreamDetails(); err != nil {
+		return "", err
+	}
+	if a.cachedRecordDist == nil {
+		a.RecordDistributionStrategy.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *a.cachedRecordDist, nil
+}
+
 func (a *mqlAwsKinesisStream) consumers() ([]any, error) {
 	arn := a.Arn.Data
 	region := a.Region.Data
@@ -356,6 +377,7 @@ func newMqlAwsKinesisStreamConsumer(runtime *plugin.Runtime, region string, cons
 }
 
 type mqlAwsKinesisStreamConsumerInternal struct {
+	lazyTags
 	cacheStreamArn string
 }
 
@@ -708,16 +730,6 @@ type mqlAwsKinesisFirehoseDeliveryStreamInternal struct {
 }
 
 func newMqlAwsKinesisFirehoseDeliveryStream(runtime *plugin.Runtime, region string, stream *firehose_types.DeliveryStreamDescription) (*mqlAwsKinesisFirehoseDeliveryStream, error) {
-	encryption, err := convert.JsonToDict(stream.DeliveryStreamEncryptionConfiguration)
-	if err != nil {
-		return nil, err
-	}
-
-	source, err := convert.JsonToDict(stream.Source)
-	if err != nil {
-		return nil, err
-	}
-
 	kinesisStreamArn := ""
 	if stream.Source != nil && stream.Source.KinesisStreamSourceDescription != nil &&
 		stream.Source.KinesisStreamSourceDescription.KinesisStreamARN != nil {
@@ -725,18 +737,7 @@ func newMqlAwsKinesisFirehoseDeliveryStream(runtime *plugin.Runtime, region stri
 	}
 
 	resource, err := CreateResource(runtime, "aws.kinesis.firehoseDeliveryStream",
-		map[string]*llx.RawData{
-			"__id":               llx.StringDataPtr(stream.DeliveryStreamARN),
-			"arn":                llx.StringDataPtr(stream.DeliveryStreamARN),
-			"name":               llx.StringDataPtr(stream.DeliveryStreamName),
-			"status":             llx.StringData(string(stream.DeliveryStreamStatus)),
-			"deliveryStreamType": llx.StringData(string(stream.DeliveryStreamType)),
-			"encryption":         llx.DictData(encryption),
-			"source":             llx.DictData(source),
-			"createdAt":          llx.TimeDataPtr(stream.CreateTimestamp),
-			"lastUpdatedAt":      llx.TimeDataPtr(stream.LastUpdateTimestamp),
-			"region":             llx.StringData(region),
-		})
+		firehoseDeliveryStreamArgs(stream, region))
 	if err != nil {
 		return nil, err
 	}
@@ -746,6 +747,25 @@ func newMqlAwsKinesisFirehoseDeliveryStream(runtime *plugin.Runtime, region stri
 	mqlStream.cacheEncryption = stream.DeliveryStreamEncryptionConfiguration
 	mqlStream.cacheKinesisStreamArn = kinesisStreamArn
 	return mqlStream, nil
+}
+
+// firehoseDeliveryStreamArgs maps a delivery stream onto the fields
+// aws.kinesis.firehoseDeliveryStream declares. Every key has to be a settable
+// field: SetAllData fails the whole resource on an unknown one, so the
+// encryption configuration, which the schema exposes through the typed
+// serverSideEncryption accessor, is seeded on the internal cache instead of
+// passed here.
+func firehoseDeliveryStreamArgs(stream *firehose_types.DeliveryStreamDescription, region string) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":               llx.StringDataPtr(stream.DeliveryStreamARN),
+		"arn":                llx.StringDataPtr(stream.DeliveryStreamARN),
+		"name":               llx.StringDataPtr(stream.DeliveryStreamName),
+		"status":             llx.StringData(string(stream.DeliveryStreamStatus)),
+		"deliveryStreamType": llx.StringData(string(stream.DeliveryStreamType)),
+		"createdAt":          llx.TimeDataPtr(stream.CreateTimestamp),
+		"lastUpdatedAt":      llx.TimeDataPtr(stream.LastUpdateTimestamp),
+		"region":             llx.StringData(region),
+	}
 }
 
 func (a *mqlAwsKinesisFirehoseDeliveryStream) serverSideEncryption() (*mqlAwsKinesisFirehoseDeliveryStreamEncryption, error) {
@@ -937,7 +957,6 @@ func (a *mqlAwsKinesisFirehoseDeliveryStreamDestination) s3() (*mqlAwsKinesisFir
 	mqlS3, err := CreateResource(a.MqlRuntime, "aws.kinesis.firehoseDeliveryStream.destination.s3",
 		map[string]*llx.RawData{
 			"__id":                       llx.StringData(s3Id),
-			"bucketArn":                  llx.StringDataPtr(s.BucketARN),
 			"compressionFormat":          llx.StringData(string(s.CompressionFormat)),
 			"prefix":                     llx.StringDataPtr(s.Prefix),
 			"errorOutputPrefix":          llx.StringDataPtr(s.ErrorOutputPrefix),
@@ -954,13 +973,15 @@ func (a *mqlAwsKinesisFirehoseDeliveryStreamDestination) s3() (*mqlAwsKinesisFir
 	if err != nil {
 		return nil, err
 	}
+	mqlS3.(*mqlAwsKinesisFirehoseDeliveryStreamDestinationS3).cacheBucketArn = convert.ToValue(s.BucketARN)
 	mqlS3Res := mqlS3.(*mqlAwsKinesisFirehoseDeliveryStreamDestinationS3)
 	mqlS3Res.cacheRoleArn = s.RoleARN
 	return mqlS3Res, nil
 }
 
 type mqlAwsKinesisFirehoseDeliveryStreamDestinationS3Internal struct {
-	cacheRoleArn *string
+	cacheBucketArn string
+	cacheRoleArn   *string
 }
 
 func (a *mqlAwsKinesisFirehoseDeliveryStreamDestinationS3) iamRole() (*mqlAwsIamRole, error) {
@@ -977,11 +998,11 @@ func (a *mqlAwsKinesisFirehoseDeliveryStreamDestinationS3) iamRole() (*mqlAwsIam
 }
 
 func (a *mqlAwsKinesisFirehoseDeliveryStreamDestinationS3) id() (string, error) {
-	return a.BucketArn.Data + "/" + a.Region.Data, nil
+	return a.cacheBucketArn + "/" + a.Region.Data, nil
 }
 
 func (a *mqlAwsKinesisFirehoseDeliveryStreamDestinationS3) bucket() (*mqlAwsS3Bucket, error) {
-	arnVal := a.BucketArn.Data
+	arnVal := a.cacheBucketArn
 	if arnVal == "" {
 		a.Bucket.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -1420,4 +1441,23 @@ func (a *mqlAwsKinesisFirehoseDeliveryStream) tags() (map[string]any, error) {
 		}
 	}
 	return tags, nil
+}
+
+func (a *mqlAwsKinesisStreamConsumer) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+		svc := conn.Kinesis(a.Region.Data)
+		arn := a.Arn.Data
+		resp, err := svc.ListTagsForResource(context.Background(), &kinesis.ListTagsForResourceInput{ResourceARN: &arn})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				if plugin.StructuredErrors() {
+					return nil, llx.Forbidden(err, llx.WithPermissions("kinesis:ListTagsForResource"))
+				}
+				return nil, errTagsUnreadable
+			}
+			return nil, err
+		}
+		return tagsToMap(resp.Tags, func(t kinesis_types.Tag) *string { return t.Key }, func(t kinesis_types.Tag) *string { return t.Value }), nil
+	})
 }

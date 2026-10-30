@@ -7,14 +7,28 @@ import (
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/qos/policies"
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/subnetpools"
 	"github.com/gophercloud/gophercloud/v2/openstack/networking/v2/extensions/trunks"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // ---- openstack.subnetPool ----
 
 type mqlOpenstackSubnetPoolInternal struct {
 	cacheProjectID string
+}
+
+func (r *mqlOpenstackSubnetPool) addressScope() (*mqlOpenstackNetworkAddressScope, error) {
+	if r.AddressScopeId.Data == "" {
+		r.AddressScope.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(r.MqlRuntime, "openstack.network.addressScope", map[string]*llx.RawData{
+		"id": llx.StringData(r.AddressScopeId.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlOpenstackNetworkAddressScope), nil
 }
 
 func (r *mqlOpenstackSubnetPool) id() (string, error) {

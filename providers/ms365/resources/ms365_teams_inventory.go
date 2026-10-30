@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/ms365/connection"
 )
 
 type mqlMs365TeamsTeamInternal struct {
@@ -341,7 +341,7 @@ func (t *mqlMs365TeamsTeam) channels() ([]any, error) {
 				"membershipType":  llx.StringDataPtr(membershipType),
 				"email":           llx.StringDataPtr(ch.GetEmail()),
 				"webUrl":          llx.StringDataPtr(ch.GetWebUrl()),
-				"createdDateTime": llx.TimeDataPtr(ch.GetCreatedDateTime()),
+				"createdDateTime": graphTimeData(ch.GetCreatedDateTime()),
 				"isArchived":      llx.BoolDataPtr(ch.GetIsArchived()),
 			})
 		if err != nil {

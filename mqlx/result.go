@@ -7,7 +7,7 @@ import (
 	"errors"
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
 )
 
 // Result holds the output of one query evaluation. Value returns the data as

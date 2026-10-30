@@ -1,0 +1,8 @@
+[commands."uname -s"]
+stdout = "AIX"
+
+[commands."uname -rvp"]
+stdout = "1 7 powerpc"
+
+[commands."oslevel -s"]
+stdout = "7100-05-08-2016"

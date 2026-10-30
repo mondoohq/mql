@@ -11,10 +11,10 @@ import (
 	abstractions "github.com/microsoft/kiota-abstractions-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/groups"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlMicrosoftGroup) id() (string, error) {
@@ -34,7 +34,7 @@ func (a *mqlMicrosoftGroup) members() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	top := int32(200)
+	top := int32(999)
 
 	// Pull the same fields the rest of the user resource consumes so
 	// accessing member.displayName/mail/userPrincipalName is served from
@@ -127,7 +127,7 @@ func (a *mqlMicrosoftGroups) list() ([]any, error) {
 		return nil, err
 	}
 
-	top := int32(200)
+	top := int32(999)
 	queryParams := &groups.GroupsRequestBuilderGetQueryParameters{
 		Top: &top,
 	}
@@ -168,15 +168,15 @@ func newMqlMicrosoftGroup(runtime *plugin.Runtime, grp models.Groupable) (*mqlMi
 			"groupTypes":                    llx.ArrayData(llx.TArr2Raw(grp.GetGroupTypes()), types.String),
 			"membershipRule":                llx.StringDataPtr(grp.GetMembershipRule()),
 			"membershipRuleProcessingState": llx.StringDataPtr(grp.GetMembershipRuleProcessingState()),
-			"createdDateTime":               llx.TimeDataPtr(grp.GetCreatedDateTime()),
+			"createdDateTime":               graphTimeData(grp.GetCreatedDateTime()),
 			"description":                   llx.StringDataPtr(grp.GetDescription()),
-			"expirationDateTime":            llx.TimeDataPtr(grp.GetExpirationDateTime()),
+			"expirationDateTime":            graphTimeData(grp.GetExpirationDateTime()),
 			"isAssignableToRole":            llx.BoolDataPtr(grp.GetIsAssignableToRole()),
-			"renewedDateTime":               llx.TimeDataPtr(grp.GetRenewedDateTime()),
+			"renewedDateTime":               graphTimeData(grp.GetRenewedDateTime()),
 			"onPremisesSyncEnabled":         llx.BoolDataPtr(grp.GetOnPremisesSyncEnabled()),
-			"onPremisesLastSyncDateTime":    llx.TimeDataPtr(grp.GetOnPremisesLastSyncDateTime()),
+			"onPremisesLastSyncDateTime":    graphTimeData(grp.GetOnPremisesLastSyncDateTime()),
 			"classification":                llx.StringDataPtr(grp.GetClassification()),
-			"deletedDateTime":               llx.TimeDataPtr(grp.GetDeletedDateTime()),
+			"deletedDateTime":               graphTimeData(grp.GetDeletedDateTime()),
 			"proxyAddresses":                llx.ArrayData(llx.TArr2Raw(grp.GetProxyAddresses()), types.String),
 			"theme":                         llx.StringDataPtr(grp.GetTheme()),
 			"preferredLanguage":             llx.StringDataPtr(grp.GetPreferredLanguage()),

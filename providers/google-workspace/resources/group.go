@@ -6,13 +6,13 @@ package resources
 import (
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers/google-workspace/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/providers/google-workspace/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/groupssettings/v1"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	directory "google.golang.org/api/admin/directory/v1"
 	"google.golang.org/api/cloudidentity/v1"
 )
@@ -155,26 +155,6 @@ func (g *mqlGoogleworkspaceMember) user() (*mqlGoogleworkspaceUser, error) {
 		return nil, nil
 	}
 	return user, nil
-}
-
-func (g *mqlGoogleworkspaceGroup) settings() (any, error) {
-	conn := g.MqlRuntime.Connection.(*connection.GoogleWorkspaceConnection)
-	service, err := groupSettingsService(conn, groupssettings.AppsGroupsSettingsScope)
-	if err != nil {
-		return nil, err
-	}
-
-	if g.Email.Error != nil {
-		return nil, g.Email.Error
-	}
-	email := g.Email.Data
-
-	settings, err := service.Groups.Get(email).Do()
-	if err != nil {
-		return nil, err
-	}
-
-	return convert.JsonToDict(settings)
 }
 
 // parseGroupSettingBool converts a Groups Settings API boolean, which the API

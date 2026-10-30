@@ -8,6 +8,36 @@ import (
 	"fmt"
 )
 
+// ModelListExpand names the fields the model list endpoint must return.
+//
+// The Hub's expand[] parameter is restrictive rather than additive: a response
+// built with expand[] carries only the listed fields (plus id), so every field
+// read off a listed model has to appear here or it silently arrives empty.
+// Every name is in the allowlist the model endpoint enforces; an unlisted name
+// fails the whole request with HTTP 400 rather than being ignored.
+//
+// Without expand[] the endpoint omits gated, disabled, sha, author and
+// lastModified altogether, which is why they are requested explicitly.
+// "modelId" is not in the allowlist at all; ModelList.normalize restores it.
+var ModelListExpand = []string{
+	"author",
+	"createdAt",
+	"disabled",
+	"downloads",
+	"gated",
+	"lastModified",
+	"library_name",
+	"likes",
+	"pipeline_tag",
+	"private",
+	"sha",
+	"tags",
+}
+
+// GatedValue decodes the Hub's "gated" field, which is either the boolean
+// false or one of the strings "auto" and "manual". Mode keeps the distinction
+// the boolean throws away: "auto" admits anyone who accepts the terms, while
+// "manual" waits for a repository owner to approve each request.
 type GatedValue struct {
 	IsGated bool
 	Mode    string
@@ -93,6 +123,7 @@ type Model struct {
 	Likes            int              `json:"likes"`
 	Author           string           `json:"author"`
 	Sha              string           `json:"sha"`
+	CreatedAt        string           `json:"createdAt"`
 	LastModified     string           `json:"lastModified"`
 	Gated            GatedValue       `json:"gated"`
 	Disabled         bool             `json:"disabled"`
@@ -108,10 +139,9 @@ type Model struct {
 // returns richer untyped JSON that we need to pass through as-is.
 type ModelDetail struct {
 	Model
-	CreatedAt string         `json:"createdAt"`
-	CardData  map[string]any `json:"cardData"`
-	Config    map[string]any `json:"config"`
-	Siblings  []Sibling      `json:"siblings"`
+	CardData map[string]any `json:"cardData"`
+	Config   map[string]any `json:"config"`
+	Siblings []Sibling      `json:"siblings"`
 }
 
 type ModelList struct {
@@ -120,9 +150,14 @@ type ModelList struct {
 
 func (ml *ModelList) UnmarshalJSON(data []byte) error {
 	var models []Model
-	if err := json.Unmarshal(data, &models); err == nil {
+	err := json.Unmarshal(data, &models)
+	if err == nil {
 		ml.Models = models
+		ml.normalize()
 		return nil
+	}
+	if isJSONArray(data) {
+		return err
 	}
 
 	type Alias ModelList
@@ -131,5 +166,21 @@ func (ml *ModelList) UnmarshalJSON(data []byte) error {
 	}{
 		Alias: (*Alias)(ml),
 	}
-	return json.Unmarshal(data, aux)
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	ml.normalize()
+	return nil
+}
+
+// normalize restores modelId, the Hub's legacy alias of id. Responses built
+// with expand[] drop modelId entirely (it is not in the endpoint's allowlist),
+// so without this the shipped modelId field would come back empty for every
+// listed model.
+func (ml *ModelList) normalize() {
+	for i := range ml.Models {
+		if ml.Models[i].ModelID == "" {
+			ml.Models[i].ModelID = ml.Models[i].ID
+		}
+	}
 }

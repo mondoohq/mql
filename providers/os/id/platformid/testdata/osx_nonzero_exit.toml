@@ -1,0 +1,3 @@
+[commands."ioreg -rd1 -c IOPlatformExpertDevice"]
+stdout = ""
+exit_status = 1

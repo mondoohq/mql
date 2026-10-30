@@ -4,10 +4,15 @@
 package resources
 
 import (
+	"context"
+	"sync"
+
+	betamodels "github.com/microsoftgraph/msgraph-beta-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlMicrosoftAuthenticationMethodsPolicyInternal struct {
@@ -234,4 +239,146 @@ func (a *mqlMicrosoftAuthenticationMethodsPolicy) registrationCampaign() (*mqlMi
 		return nil, err
 	}
 	return res.(*mqlMicrosoftAuthenticationMethodsPolicyRegistrationCampaign), nil
+}
+
+// --- Microsoft Authenticator feature settings ---
+//
+// companionAppAllowedState and numberMatchingRequiredState exist only on the
+// beta authenticationMethodsPolicy; the v1.0 featureSettings object carries
+// just the two display-state fields the parent resource already reports. The
+// beta policy is therefore fetched on demand, and only once per resource,
+// rather than making every scan pay for a second policy read.
+
+type mqlMicrosoftAuthenticationMethodsPolicyMicrosoftAuthenticatorInternal struct {
+	betaLock sync.Mutex
+	fetched  bool
+	betaCfg  betamodels.MicrosoftAuthenticatorAuthenticationMethodConfigurationable
+	fetchErr error
+}
+
+func (a *mqlMicrosoftAuthenticationMethodsPolicyMicrosoftAuthenticator) betaConfig() (betamodels.MicrosoftAuthenticatorAuthenticationMethodConfigurationable, error) {
+	a.betaLock.Lock()
+	defer a.betaLock.Unlock()
+	if a.fetched {
+		return a.betaCfg, a.fetchErr
+	}
+	a.fetched = true
+
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	betaClient, err := conn.BetaGraphClient()
+	if err != nil {
+		a.fetchErr = err
+		return nil, err
+	}
+
+	policy, err := betaClient.Policies().AuthenticationMethodsPolicy().Get(context.Background(), nil)
+	if err != nil {
+		a.fetchErr = transformError(err)
+		return nil, a.fetchErr
+	}
+	if policy == nil {
+		return nil, nil
+	}
+
+	for _, cfg := range policy.GetAuthenticationMethodConfigurations() {
+		if c, ok := cfg.(betamodels.MicrosoftAuthenticatorAuthenticationMethodConfigurationable); ok {
+			a.betaCfg = c
+			break
+		}
+	}
+	return a.betaCfg, nil
+}
+
+// authMethodFeatureConfiguration renders one feature toggle of an
+// authentication method.
+func authMethodFeatureConfiguration(runtime *plugin.Runtime, id string, cfg betamodels.AuthenticationMethodFeatureConfigurationable) (*mqlMicrosoftAuthenticationMethodsPolicyFeatureConfiguration, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+
+	featureTarget := func(t betamodels.FeatureTargetable) any {
+		if t == nil {
+			return nil
+		}
+		d := map[string]any{}
+		if id := t.GetId(); id != nil {
+			d["id"] = *id
+		}
+		if tt := t.GetTargetType(); tt != nil {
+			d["targetType"] = tt.String()
+		}
+		return d
+	}
+
+	res, err := CreateResource(runtime, ResourceMicrosoftAuthenticationMethodsPolicyFeatureConfiguration,
+		map[string]*llx.RawData{
+			"__id":          llx.StringData(id),
+			"state":         llx.StringDataPtr(enumPtrString(cfg.GetState())),
+			"includeTarget": llx.DictData(featureTarget(cfg.GetIncludeTarget())),
+			"excludeTarget": llx.DictData(featureTarget(cfg.GetExcludeTarget())),
+		})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlMicrosoftAuthenticationMethodsPolicyFeatureConfiguration), nil
+}
+
+func (a *mqlMicrosoftAuthenticationMethodsPolicyMicrosoftAuthenticator) featureSettings() (*mqlMicrosoftAuthenticationMethodsPolicyAuthenticatorFeatureSettings, error) {
+	nullResult := func() (*mqlMicrosoftAuthenticationMethodsPolicyAuthenticatorFeatureSettings, error) {
+		a.FeatureSettings.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	cfg, err := a.betaConfig()
+	if err != nil {
+		return nil, err
+	}
+	if cfg == nil {
+		return nullResult()
+	}
+	fs := cfg.GetFeatureSettings()
+	if fs == nil {
+		return nullResult()
+	}
+
+	base := a.__id + "/featureSettings"
+	args := map[string]*llx.RawData{"__id": llx.StringData(base)}
+	missing := map[string]bool{}
+	for name, c := range map[string]betamodels.AuthenticationMethodFeatureConfigurationable{
+		"companionAppAllowedState":                fs.GetCompanionAppAllowedState(),
+		"displayAppInformationRequiredState":      fs.GetDisplayAppInformationRequiredState(),
+		"displayLocationInformationRequiredState": fs.GetDisplayLocationInformationRequiredState(),
+		"numberMatchingRequiredState":             fs.GetNumberMatchingRequiredState(),
+	} {
+		mql, err := authMethodFeatureConfiguration(a.MqlRuntime, base+"/"+name, c)
+		if err != nil {
+			return nil, err
+		}
+		args[name] = llx.ResourceData(mql, ResourceMicrosoftAuthenticationMethodsPolicyFeatureConfiguration)
+		if mql == nil {
+			missing[name] = true
+		}
+	}
+
+	res, err := CreateResource(a.MqlRuntime, ResourceMicrosoftAuthenticationMethodsPolicyAuthenticatorFeatureSettings, args)
+	if err != nil {
+		return nil, err
+	}
+
+	// a feature the tenant has never configured is absent from the response
+	// rather than reported as "default", so it is null and not a state
+	mql := res.(*mqlMicrosoftAuthenticationMethodsPolicyAuthenticatorFeatureSettings)
+	if missing["companionAppAllowedState"] {
+		mql.CompanionAppAllowedState.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	if missing["displayAppInformationRequiredState"] {
+		mql.DisplayAppInformationRequiredState.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	if missing["displayLocationInformationRequiredState"] {
+		mql.DisplayLocationInformationRequiredState.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	if missing["numberMatchingRequiredState"] {
+		mql.NumberMatchingRequiredState.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return mql, nil
 }

@@ -1,0 +1,28 @@
+UNIT FILE                 STATE    PRESET
+apt-daily-upgrade.service static   -
+apt-daily.service         static   -
+cron.service              enabled  enabled
+dpkg-db-backup.service    static   -
+e2scrub@.service          static   -
+e2scrub_all.service       static   -
+e2scrub_fail@.service     static   -
+e2scrub_reap.service      enabled  enabled
+fstrim.service            static   -
+logrotate.service         static   -
+nginx.service             enabled  enabled
+pam_namespace.service     static   -
+rsyslog.service           enabled  enabled
+ssh.service               enabled  enabled
+sshd.service              alias    -
+sudo.service              masked   enabled
+syslog.service            alias    -
+ssh.socket                disabled enabled
+rescue-ssh.target         static   -
+apt-daily-upgrade.timer   enabled  enabled
+apt-daily.timer           enabled  enabled
+dpkg-db-backup.timer      enabled  enabled
+e2scrub_all.timer         enabled  enabled
+fstrim.timer              enabled  enabled
+logrotate.timer           enabled  enabled
+
+25 unit files listed.

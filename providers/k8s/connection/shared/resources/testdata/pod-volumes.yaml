@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: first
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: busybox:1.36
+  volumes:
+  # The same volume name appears on both pods, so the cache key has to carry
+  # the owning object as well as the name.
+  - name: shared-name
+    hostPath:
+      path: /var/log
+      type: Directory
+  - name: tokens
+    projected:
+      sources:
+      - serviceAccountToken:
+          audience: first-audience
+          expirationSeconds: 600
+          path: token
+      - serviceAccountToken:
+          path: legacy-token
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: second
+  namespace: default
+spec:
+  containers:
+  - name: app
+    image: busybox:1.36
+  volumes:
+  - name: shared-name
+    emptyDir:
+      medium: Memory
+      sizeLimit: 32Mi

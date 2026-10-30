@@ -6,6 +6,7 @@ package resources
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"maps"
 	"net"
 	"regexp"
 	"sort"
@@ -15,14 +16,13 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/core/resources/regex"
-	"go.mondoo.com/mql/v13/providers/network/connection"
-	"go.mondoo.com/mql/v13/providers/network/resources/certificates"
-	"go.mondoo.com/mql/v13/providers/network/resources/tlsshake"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/core/resources/regex"
+	"go.mondoo.com/mql/providers/network/connection"
+	"go.mondoo.com/mql/providers/network/resources/certificates"
+	"go.mondoo.com/mql/providers/network/resources/tlsshake"
+	"go.mondoo.com/mql/types"
 )
 
 var reTarget = regexp.MustCompile(`([^/:]+?)(:\d+)?$`)
@@ -132,45 +132,75 @@ func (s *mqlTls) id() (string, error) {
 	return "tls+" + s.Socket.Data.__id, nil
 }
 
-func parseCertificates(runtime *plugin.Runtime, domainName string, certificateList []*x509.Certificate, revocations map[string]*tlsshake.Revocation) ([]any, []string, error) {
+// withChainRevocations returns known plus a determination for every certificate
+// in chain that it does not already cover.
+//
+// The result is a copy: known belongs to the handshake tester and is read by
+// other fields, so it must not be written through.
+//
+// Only certificates with an issuer below them in the chain are checked. The last
+// one is a trust anchor, and its revocation is not a question its own chain can
+// answer.
+func withChainRevocations(known map[string]*tlsshake.Revocation, chain []*x509.Certificate) map[string]*tlsshake.Revocation {
+	res := make(map[string]*tlsshake.Revocation, len(known)+len(chain))
+	maps.Copy(res, known)
+
+	for i := 0; i+1 < len(chain); i++ {
+		key := string(chain[i].Signature)
+		if _, ok := res[key]; ok {
+			continue
+		}
+
+		determined, revocation, err := tlsshake.CheckRevocation(chain[i], chain[i+1])
+		if !determined {
+			log.Debug().
+				Str("subject", chain[i].Subject.CommonName).
+				Err(err).
+				Msg("network.tls> revocation status could not be determined")
+			continue
+		}
+		res[key] = revocation
+	}
+
+	return res
+}
+
+// revocationFields maps a revocation lookup onto the three fields that report
+// it.
+//
+// There are three states, not two. An entry in the map means the check ran: nil
+// says the certificate is good, non-nil says it is revoked. No entry means
+// nothing was determined - the certificate names no OCSP responder and no CRL,
+// or none of them could be reached - and that must not be reported as "not
+// revoked". Leaving isRevoked at its zero value is what made an unchecked
+// certificate, and a genuinely revoked one whose issuer has retired OCSP, both
+// read as good.
+func revocationFields(revocations map[string]*tlsshake.Revocation, cert *x509.Certificate) (
+	isRevoked *llx.RawData, revokedAt *llx.RawData, revocationChecked *llx.RawData,
+) {
+	revocation, ok := revocations[string(cert.Signature)]
+	if !ok {
+		return llx.NilData, llx.NilData, llx.BoolFalse
+	}
+	if revocation == nil {
+		return llx.BoolFalse, llx.NilData, llx.BoolTrue
+	}
+	return llx.BoolTrue, llx.TimeData(revocation.At), llx.BoolTrue
+}
+
+func parseCertificates(runtime *plugin.Runtime, certificateList []*x509.Certificate, revocations map[string]*tlsshake.Revocation) ([]any, []string, error) {
 	res := make([]any, len(certificateList))
 	errors := []string{}
 
-	verified := false
-	if len(certificateList) != 0 {
-		intermediates := x509.NewCertPool()
-		for i := 1; i < len(certificateList); i++ {
-			intermediates.AddCert(certificateList[i])
-		}
-
-		verifyCerts, err := certificateList[0].Verify(x509.VerifyOptions{
-			DNSName:       domainName,
-			Intermediates: intermediates,
-		})
-		if err != nil {
-			errors = append(errors, "Failed to verify certificate chain for "+certificateList[0].Subject.String())
-		}
-
-		if len(verifyCerts) != 0 {
-			verified = verifyCerts[0][0].Equal(certificateList[0])
-		}
+	verified := chainVerified(certificateList, nil)
+	if len(certificateList) != 0 && !verified {
+		errors = append(errors, "Failed to verify certificate chain for "+certificateList[0].Subject.String())
 	}
 
 	for i := range certificateList {
 		cert := certificateList[i]
 
-		var isRevoked bool
-		var revokedAt time.Time
-		revocation, ok := revocations[string(cert.Signature)]
-		if ok {
-			if revocation == nil {
-				isRevoked = false
-				revokedAt = llx.NeverFutureTime
-			} else {
-				isRevoked = true
-				revokedAt = revocation.At
-			}
-		}
+		isRevoked, revokedAt, revocationChecked := revocationFields(revocations, cert)
 
 		pem, err := certificates.EncodeCertAsPEM(cert)
 
@@ -182,10 +212,11 @@ func parseCertificates(runtime *plugin.Runtime, domainName string, certificateLi
 			"pem": llx.StringData(string(pem)),
 			// NOTE: if we do not set the hash here, it will generate the cache content before we can store it
 			// we are using the hashes for the id, therefore it is required during creation
-			"fingerprints": llx.MapData(certificates.Fingerprints(cert), types.String),
-			"isRevoked":    llx.BoolData(isRevoked),
-			"revokedAt":    llx.TimeData(revokedAt),
-			"isVerified":   llx.BoolData(verified),
+			"fingerprints":      llx.MapData(certificates.Fingerprints(cert), types.String),
+			"isRevoked":         isRevoked,
+			"revokedAt":         revokedAt,
+			"revocationChecked": revocationChecked,
+			"isVerified":        llx.BoolData(verified),
 		})
 		if err != nil {
 			return nil, nil, err
@@ -367,7 +398,13 @@ func (s *mqlTls) extensions(params any) ([]any, error) {
 	return res, nil
 }
 
-func gatherTlsCertificates(proto, host, port, domainName string) ([]*x509.Certificate, []*x509.Certificate, error) {
+// gatherTlsCertificates returns the certificates the server presents with SNI
+// and, separately, those it presents without SNI that differ from them. A
+// failed handshake without SNI does not affect the SNI certificates: it is
+// returned as nonSniErr, and a server that refuses such clients with a TLS
+// alert, as Cloudflare does, presents no certificate to them at all, so that
+// case yields no non-SNI certificates and no error.
+func gatherTlsCertificates(proto, host, port, domainName string) (sniCerts, nonSniCerts []*x509.Certificate, nonSniErr, err error) {
 	isSNIcert := map[string]struct{}{}
 	dialer := &net.Dialer{Timeout: DefaultDialerTimeout}
 	addr := net.JoinHostPort(host, port)
@@ -381,32 +418,56 @@ func gatherTlsCertificates(proto, host, port, domainName string) ([]*x509.Certif
 		ServerName:         domainName,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	defer conn.Close()
 
 	// Get the ConnectionState where we can find x509.Certificate(s)
-	sniCerts := conn.ConnectionState().PeerCertificates
-	for _, sniCerts := range sniCerts {
-		isSNIcert[sniCerts.SerialNumber.String()] = struct{}{}
+	sniCerts = conn.ConnectionState().PeerCertificates
+	for _, sniCert := range sniCerts {
+		isSNIcert[sniCert.SerialNumber.String()] = struct{}{}
 	}
 
-	nonSniCerts := []*x509.Certificate{}
-	nonSniConn, err := tls.DialWithDialer(dialer, proto, addr, &tls.Config{
-		InsecureSkipVerify: true,
-	})
+	nonSniCerts = []*x509.Certificate{}
+	potentialNonSniCerts, err := nonSniPeerCertificates(dialer, proto, addr)
 	if err != nil {
-		return nil, nil, err
+		// crypto/tls reports an alert the server sent as a "remote error".
+		var opErr *net.OpError
+		if errors.As(err, &opErr) && opErr.Op == "remote error" {
+			return sniCerts, nonSniCerts, nil, nil
+		}
+		return sniCerts, nil, err, nil
 	}
-	defer nonSniConn.Close()
-	potentialNonSniCerts := nonSniConn.ConnectionState()
-	for _, nonSniCert := range potentialNonSniCerts.PeerCertificates {
+	for _, nonSniCert := range potentialNonSniCerts {
 		if _, ok := isSNIcert[nonSniCert.SerialNumber.String()]; !ok {
 			nonSniCerts = append(nonSniCerts, nonSniCert)
 		}
 	}
 
-	return sniCerts, nonSniCerts, nil
+	return sniCerts, nonSniCerts, nil, nil
+}
+
+// nonSniPeerCertificates returns the certificates the server presents to a
+// client that sends no SNI. It cannot use tls.DialWithDialer, which sets
+// ServerName from the address and so sends the host name as SNI; tls.Client
+// over a plain connection leaves it empty. The dialer's timeout covers the
+// handshake too, as it does in tls.DialWithDialer.
+func nonSniPeerCertificates(dialer *net.Dialer, proto, addr string) ([]*x509.Certificate, error) {
+	raw, err := dialer.Dial(proto, addr)
+	if err != nil {
+		return nil, err
+	}
+	defer raw.Close()
+	if dialer.Timeout > 0 {
+		if err := raw.SetDeadline(time.Now().Add(dialer.Timeout)); err != nil {
+			return nil, err
+		}
+	}
+	conn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+	if err := conn.Handshake(); err != nil {
+		return nil, err
+	}
+	return conn.ConnectionState().PeerCertificates, nil
 }
 
 // we should only detect once if the socket is running on TLS or not, if we have already detected it and, it
@@ -432,7 +493,7 @@ func (s *mqlTls) unsafeTLSTest(socket *mqlSocket, domainName string) error {
 			Interface("findings", s.tester.Findings).
 			Bool("tls_enabled", false).
 			Msg("network.tls> detection")
-		s.tlsEnabled = convert.ToPtr(false)
+		s.tlsEnabled = new(false)
 
 		if errors.Is(err, tlsshake.ErrFailedToConnect) ||
 			errors.Is(err, tlsshake.ErrFailedToWrite) ||
@@ -452,7 +513,7 @@ func (s *mqlTls) unsafeTLSTest(socket *mqlSocket, domainName string) error {
 		return s.Error
 	}
 
-	s.tlsEnabled = convert.ToPtr(len(s.tester.Findings.Versions) != 0)
+	s.tlsEnabled = new(len(s.tester.Findings.Versions) != 0)
 
 	log.Debug().
 		Str("host", host).
@@ -498,21 +559,42 @@ func (s *mqlTls) populateCertificates(socket *mqlSocket, domainName string) erro
 	port := socket.Port.Data
 	proto := socket.Protocol.Data
 
-	certs, nonSniCerts, err := gatherTlsCertificates(proto, host, strconv.FormatInt(port, 10), domainName)
+	certs, nonSniCerts, nonSniErr, err := gatherTlsCertificates(proto, host, strconv.FormatInt(port, 10), domainName)
 	if err != nil {
 		s.Certificates = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet}
 		s.NonSniCertificates = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet}
 		return err
 	}
 
-	mqlCerts, _, err := parseCertificates(s.MqlRuntime, domainName, certs, map[string]*tlsshake.Revocation{})
+	// The handshake tester checks revocation and records the outcome keyed by
+	// string(cert.Signature); reuse that so certificate.isRevoked/revokedAt
+	// reflect a real check instead of a hardcoded "not revoked".
+	//
+	// Its findings describe the chain its own probes negotiated, which is not
+	// always this one. A host that serves both an RSA and an ECDSA certificate
+	// hands the tester's TLS 1.2 probe one leaf and this TLS 1.3 connection
+	// another, and the tester's answer is then about a certificate nobody is
+	// reporting on. Fill in whatever is missing against the chain actually being
+	// reported. Default to an empty (non-nil) map so parseCertificates never
+	// receives nil.
+	revocations := map[string]*tlsshake.Revocation{}
+	if s.tester != nil && s.tester.Findings.Revocations != nil {
+		revocations = s.tester.Findings.Revocations
+	}
+	revocations = withChainRevocations(revocations, certs)
+
+	mqlCerts, _, err := parseCertificates(s.MqlRuntime, certs, revocations)
 	if err != nil {
 		s.Certificates = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet}
 	} else {
 		s.Certificates = plugin.TValue[[]any]{Data: mqlCerts, State: plugin.StateIsSet}
 	}
 
-	mqlNonSniCerts, _, err := parseCertificates(s.MqlRuntime, domainName, nonSniCerts, map[string]*tlsshake.Revocation{})
+	if nonSniErr != nil {
+		s.NonSniCertificates = plugin.TValue[[]any]{Error: nonSniErr, State: plugin.StateIsSet}
+		return nil
+	}
+	mqlNonSniCerts, _, err := parseCertificates(s.MqlRuntime, nonSniCerts, revocations)
 	if err != nil {
 		s.NonSniCertificates = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet}
 	} else {
@@ -560,6 +642,26 @@ func (s *mqlTls) certificateMatchesDomain() (bool, error) {
 	}
 
 	return certMatchesDomain(leaf.cert.Data, domainName.Data), nil
+}
+
+// chainVerified reports whether the served chain leads from the leaf to a
+// trusted root (roots, or the system pool when nil). It is chain trust only:
+// whether the leaf covers the host is tls.certificateMatchesDomain. Verifying
+// with the host name as well made a certificate served for another name read
+// as an untrusted chain, so one problem failed both checks.
+func chainVerified(certificateList []*x509.Certificate, roots *x509.CertPool) bool {
+	if len(certificateList) == 0 {
+		return false
+	}
+	intermediates := x509.NewCertPool()
+	for i := 1; i < len(certificateList); i++ {
+		intermediates.AddCert(certificateList[i])
+	}
+	chains, err := certificateList[0].Verify(x509.VerifyOptions{
+		Intermediates: intermediates,
+		Roots:         roots,
+	})
+	return err == nil && len(chains) != 0 && chains[0][0].Equal(certificateList[0])
 }
 
 // certMatchesDomain reports whether the certificate is valid for the given

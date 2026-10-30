@@ -2,23 +2,30 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 option provider = "go.mondoo.com/mql/providers/core"
-option go_package = "go.mondoo.com/mql/v13/providers/core/resources"
+option go_package = "go.mondoo.com/mql/providers/core/resources"
 
 // MQL runtime and execution environment
 //
-// Examine the client running the current MQL evaluation: the client
-// version and build identifier, the architecture string, the
+// Identity of the client running the current MQL evaluation: the
+// client version and build identifier, the architecture string, the
 // connection capabilities reported for the active connection, and the
-// `jobEnvironment` dict describing the context the agent is running
-// in (scheduled, interactive, CI, etc.).
-mondoo @defaults("version") {
+// `jobEnvironment` dict describing the execution context the agent
+// detected (a local Mondoo Client shell, or a CI/CD system such as
+// GitHub Actions, GitLab CI, AWS CodeBuild, or Azure Pipelines).
+mondoo @defaults("version") @global {
   // Version of the client running on the asset
   version() string
   // Build identifier of the client (e.g., production, development, or commit hash)
   build() string
   // Architecture of this client (e.g., linux-amd64)
   arch() string
-  // Environment context the agent is running in (e.g., scheduled, interactive, CI)
+  // Execution environment the agent detected
+  //
+  // Dict describing the context this evaluation runs in. Keys: `id` is
+  // the environment namespace (e.g., client.mondoo.com for a local run,
+  // codebuild.aws.amazon.com, or devops.azure.com), and `name` is the
+  // human-readable label (e.g., Mondoo Client, AWS CodeBuild, or Azure
+  // Pipelines).
   jobEnvironment() dict
   // Connection capabilities
   capabilities() []string
@@ -26,16 +33,15 @@ mondoo @defaults("version") {
 
 // Asset identity and platform metadata
 //
-// Examine the basic identity of the asset under evaluation. Surfaces the
-// human-readable name, the full set of asset identifiers, the platform
-// (e.g., redhat, windows, k8s-pod), the platform `kind` (api,
-// baremetal, virtualmachine, container, container-image, network), the
-// specific `runtime` (docker-container, podman-container,
-// aws-ec2-instance, …), the platform version, build, architecture, and
-// pretty `title`, the platform `family` list, the optional FQDN, the
-// per-platform metadata map, and any user-supplied `labels` or
-// `annotations`.
-asset @defaults("name platform version") {
+// Identity and platform context for the asset under evaluation: its
+// human-readable name, its identifiers, and the detected platform,
+// version, and architecture. The `kind` field classifies the asset
+// (api, baremetal, virtualmachine, container, container-image, or
+// network) and `runtime` records where it runs (docker-container,
+// podman-container, aws-ec2-instance, and so on). This is the root
+// context most audits branch from, so you can scope checks by
+// platform, kind, or runtime before querying deeper resources.
+asset @defaults("name platform version") @global {
   // Human readable name of the asset
   name string
   // All identifiers for this asset
@@ -60,18 +66,18 @@ asset @defaults("name platform version") {
   build string
   // Platform metadata such as distribution and release details
   platformMetadata map[string]string
-  // Optional platform information
+  // Labels attached to the asset by its platform or cloud provider (for example cloud resource tags or Kubernetes labels)
   labels map[string]string
-  // Custom annotations (tags) on the asset
+  // User-supplied annotations (tags) on the asset
   annotations map[string]string
 }
 
 // Asset platform end-of-life status
 //
-// Examine the End-of-Life metadata for the asset's detected platform:
-// the EoL date itself, a vendor product-page URL, and a documentation
-// URL. Used by audits to flag hosts running platforms whose vendor
-// has stopped issuing security patches.
+// End-of-life metadata for the asset's detected platform: the EoL
+// `date`, a vendor product-page URL, and a documentation URL. Audits
+// use this to flag hosts running platforms whose vendor has stopped
+// issuing security patches.
 asset.eol @defaults("date") {
   // Documentation URL
   docsUrl string
@@ -83,11 +89,11 @@ asset.eol @defaults("date") {
 
 // Date and time helpers
 //
-// Examine helpers for time-aware MQL expressions. `now` returns the
+// Helpers for time-aware MQL expressions. `now` returns the
 // current local time; `today` and `tomorrow` return midnight on those
 // days; `second`, `minute`, `hour`, and `day` are unit constants used
 // when computing durations.
-time {
+time @global {
   // The current time on the local system
   now() time
   // One second, used for durations
@@ -106,11 +112,12 @@ time {
 
 // Built-in regular expressions
 //
-// Examine a library of pre-defined regex patterns for common formats:
-// IPv4 / IPv6 addresses, HTTP/HTTPS URLs, email addresses, MAC
+// Library of pre-defined regex patterns for common formats, ready to
+// use in matching and validation without writing your own expression.
+// Covers IPv4 / IPv6 addresses, HTTP/HTTPS URLs, email addresses, MAC
 // addresses, hyphen-delimited UUIDs, emoji code points, semantic
 // version numbers, and credit card numbers.
-regex {
+regex @global {
   // Matches IPv4 addresses
   ipv4() regex
   // Matches IPv6 addresses
@@ -121,7 +128,7 @@ regex {
   email() regex
   // Matches MAC addresses
   mac() regex
-  // Matches hyphen-deliminated UUIDs
+  // Matches hyphen-delimited UUIDs
   uuid() regex
   // Matches emojis
   emoji() regex
@@ -134,10 +141,12 @@ regex {
 // Common parsers
 //
 // Namespace for cross-cutting parsing helpers that apply to any
-// connection: `parse.date(value, format)` returns a typed `time`
-// from a string and an optional format, and `parse.duration(value)`
-// converts a duration string into a typed `time` interval.
-parse {
+// connection. `parse.date(value, format)` reads a `time` from a
+// string and an optional layout (for example `parse.date('2023/12/23',
+// '2006/01/02')`, or a named layout like `rfc3339` or `ansic`), and
+// `parse.duration(value)` converts a duration string into a `time`
+// interval.
+parse @global {
   // Built-in functions:
   // date(value, format) time
   // duration(value) time
@@ -145,11 +154,11 @@ parse {
 
 // UUID (RFC 4122 / DCE 1.1)
 //
-// Examine a parsed UUID. Initialize with
-// `uuid(value: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")` and inspect
-// the canonical string representation, the URN form
-// (`urn:uuid:...`), the version (1, 4, 5, …), and the variant.
-uuid @defaults("value") {
+// Universally unique identifier parsed from its canonical string.
+// Initialize with `uuid(value: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")`
+// to read the canonical string representation, the URN form
+// (`urn:uuid:...`), the version (1, 4, 5, and so on), and the variant.
+uuid @defaults("value") @global {
   init(value string)
   // Canonical string representation xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
   value string
@@ -157,18 +166,22 @@ uuid @defaults("value") {
   urn() string
   // Version of UUID
   version() int
-  // Variant encoded in UUID
+  // Variant encoded in the UUID
+  //
+  // One of RFC4122, Reserved (NCS backward compatibility), Microsoft
+  // (backward compatibility), Future, or Invalid.
   variant() string
 }
 
 // Common Platform Enumeration (CPE)
 //
-// Examine a parsed CPE identifier (NIST NVD's structured product
-// identifier). Initialize with `cpe(uri: "cpe:2.3:a:vendor:product:1.0:...")`
+// Parsed CPE identifier, NIST NVD's structured naming scheme for
+// products. Select one with `cpe(uri: "cpe:2.3:a:vendor:product:1.0:...")`
 // to break the CPE down into its part designation (a / h / o), vendor,
 // product, version, update, edition, language, software edition,
-// target software, target hardware, and miscellaneous fields.
-cpe @defaults("uri") {
+// target software, target hardware, and miscellaneous fields, so you
+// can correlate an asset against vulnerability advisories keyed by CPE.
+cpe @defaults("uri") @global {
   init(uri string)
   // URI binding of the CPE
   uri string
@@ -198,11 +211,14 @@ cpe @defaults("uri") {
 
 // Product end-of-life lookup
 //
-// Examine the End-of-Life metadata for an arbitrary named product.
-// Each instance carries a product name and version and exposes a
-// typed `releaseCycle` resource with the matching release-cycle
-// information from Mondoo's product catalog.
-product {
+// End-of-life and support metadata for a named software product,
+// resolved against Mondoo's product catalog. Select a product by its
+// `name` and `version`, then read `releaseCycle` for the matching
+// release cycle, including the latest version, first and last release
+// dates, end of active support, end of life, and end of extended
+// support. Useful for flagging assets that run unsupported or
+// soon-to-be-unsupported software.
+product @global {
   // Product name
   name string
   // Product version
@@ -235,12 +251,14 @@ private product.releaseCycleInformation {
 
 // Unicode text classification
 //
-// Examine a Unicode-classified view of an input string. Initialize
-// with `unicode(input: "...")` and inspect the per-character
-// classification (each character's code point, category, and
-// description) and the per-category histogram showing how many
-// characters fall into each Unicode general category.
-unicode @maturity("preview") {
+// Unicode-classified view of an input string, selected with
+// `unicode(input: "...")`. The `classification` field gives a
+// per-character breakdown (each character's code point, category, and
+// description); `categories` gives a per-category histogram of how
+// many characters fall into each Unicode general category. Useful for
+// detecting homoglyph or hidden-character attacks in identifiers,
+// filenames, and configuration values.
+unicode @maturity("preview") @global {
   init(input string)
   // Input text
   input string
@@ -258,9 +276,18 @@ private unicode.charInfo @defaults("position category char") {
   char string
   // CodePoint is the Unicode code point in U+XXXX format
   codePoint string
-  // Major Category is the major Unicode category (single letter)
+  // Major Unicode category
+  //
+  // Single-letter major Unicode category: L (letter), M (mark),
+  // N (number), P (punctuation), S (symbol), Z (separator), or
+  // C (other).
   majorCategory string
-  // Category is the Unicode general category code (two-letter code)
+  // Unicode general category code
+  //
+  // Two-letter Unicode general category code. One of Lu, Ll, Lt, Lm,
+  // Lo (letters), Mn, Mc, Me (marks), Nd, Nl, No (numbers), Pc, Pd,
+  // Ps, Pe, Pi, Pf, Po (punctuation), Sm, Sc, Sk, So (symbols), Zs,
+  // Zl, Zp (separators), or Cc, Cf, Cs, Co, Cn (other).
   category string
   // Description is the human-readable description of the category
   description string
@@ -268,22 +295,33 @@ private unicode.charInfo @defaults("position category char") {
 
 // Unicode Category Information
 private unicode.category @defaults("category count") {
-  // Category value
+  // Unicode general category code
+  //
+  // Two-letter Unicode general category code. One of Lu, Ll, Lt, Lm,
+  // Lo (letters), Mn, Mc, Me (marks), Nd, Nl, No (numbers), Pc, Pd,
+  // Ps, Pe, Pi, Pf, Po (punctuation), Sm, Sc, Sk, So (symbols), Zs,
+  // Zl, Zp (separators), or Cc, Cf, Cs, Co, Cn (other).
   category string
-  // Major Category
+  // Major Unicode category
+  //
+  // Single-letter major Unicode category: L (letter), M (mark),
+  // N (number), P (punctuation), S (symbol), Z (separator), or
+  // C (other).
   majorCategory string
-  // Description
+  // Human-readable description of the category
   description string
-  // Category count
+  // Number of characters in the input that fall into this category
   count int
 }
 
 // Vulnerability Exchange information (experimental)
 //
-// Examine a single vulnerability identifier as published by an
-// upstream feed: the vulnerability `id` (e.g., CVE-2025-12345) and
-// the `source` registry that published it (NVD, GHSA, …).
-vulnerability.exchange @defaults("id source") @maturity("experimental") {
+// Single vulnerability record as published by an upstream feed. The
+// `id` field selects the vulnerability identifier (e.g.,
+// CVE-2025-12345) and `source` names the registry that published the
+// record (such as NVD or GHSA). Use it to reference a specific
+// advisory when correlating security findings across feeds.
+vulnerability.exchange @defaults("id source") @maturity("experimental") @global {
   // Vulnerability ID, eg. CVE-2025-12345
   id string
   // Source/registry that published the vulnerability record (e.g., NVD, GHSA)

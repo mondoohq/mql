@@ -11,20 +11,32 @@ import (
 	"sync"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/cli/execruntime"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers"
-	inventory "go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory/manager"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/utils/slicesx"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/cli/execruntime"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers"
+	inventory "go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory/manager"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/utils/slicesx"
 )
 
 // ErrDuplicateAsset is returned by Connect when the asset is a duplicate
 // of an already-connected asset (detected via platform ID dedup or by the
 // coordinator's connection tracking).
 var ErrDuplicateAsset = errors.New("duplicate asset")
+
+// ErrNoMatch is returned by Connect when the provider reported that the target
+// is not its own (plugin.ErrNoMatch, ADR 045). Like ErrDuplicateAsset it is not
+// a failure to report when it happens to a *child*: whatever emitted the child
+// already decided, and recording it would attribute that judgement to the user.
+//
+// A distinct sentinel rather than reusing ErrDuplicateAsset, because "the
+// folder holds no Terraform" and "we already connected this asset" are
+// different things to say. A no-match on a *root* asset stays a reported error:
+// there the user named that connector for that path, and swallowing it would
+// produce a scan that succeeded having connected to nothing.
+var ErrNoMatch = errors.New("target does not match the connector")
 
 // AssetState represents the lifecycle state of a tracked asset.
 type AssetState int
@@ -71,6 +83,11 @@ type AssetExplorer struct {
 
 	allAssets []*TrackedAsset
 
+	// seenPlatformIDs records every platform ID encountered during discovery
+	// and connection. Enables O(1) child-dedup checks without scanning allAssets,
+	// and remains valid after closed assets have their data released.
+	seenPlatformIDs map[string]struct{}
+
 	upstream      *upstream.UpstreamConfig
 	recording     llx.Recording
 	features      []byte
@@ -105,11 +122,12 @@ func NewAssetExplorer(ctx context.Context, cfg AssetExplorerConfig) (*AssetExplo
 		upstream:  cfg.Upstream,
 		recording: cfg.Recording,
 		// Carry the context's mql features (which include platform/server-activated
-		// ones like TerraformResolveVars) into every asset connection, unioned with
-		// the local cli/config.Features global. Without this, connection-level
-		// features present only on the context never reach the provider.
-		features:      []byte(mql.GetFeatures(ctx)),
-		runtimeLabels: runtimeLabels,
+		// ones) into every asset connection, unioned with the local
+		// cli/config.Features global. Without this, connection-level features
+		// present only on the context never reach the provider.
+		features:        []byte(mql.GetFeatures(ctx)),
+		runtimeLabels:   runtimeLabels,
+		seenPlatformIDs: make(map[string]struct{}),
 	}
 
 	for _, rootAsset := range invAssets {
@@ -139,6 +157,9 @@ func NewAssetExplorer(ctx context.Context, cfg AssetExplorerConfig) (*AssetExplo
 
 		e.allAssets = append(e.allAssets, tracked)
 		e.rootAssets = append(e.rootAssets, resolvedRootAsset)
+		for _, id := range resolvedRootAsset.PlatformIds {
+			e.seenPlatformIDs[id] = struct{}{}
+		}
 
 		// Discover immediate children from the root's connection inventory
 		e.discoverChildren(tracked)
@@ -203,7 +224,11 @@ func (e *AssetExplorer) Connect(asset *TrackedAsset) (*TrackedAsset, error) {
 
 	awr, err := createRuntimeForAsset(asset.Asset, e.upstream, e.recording, e.features)
 	if err != nil {
-		e.errors = append(e.errors, &AssetWithError{Asset: asset.Asset, Err: err})
+		// A child a peer provider does not want is not an error the user needs
+		// to see; every other failure is.
+		if !errors.Is(err, ErrNoMatch) {
+			e.errors = append(e.errors, &AssetWithError{Asset: asset.Asset, Err: err})
+		}
 		return nil, err
 	}
 
@@ -224,6 +249,9 @@ func (e *AssetExplorer) Connect(asset *TrackedAsset) (*TrackedAsset, error) {
 		if e.dedup(asset) {
 			return nil, fmt.Errorf("asset %q: %w", asset.Asset.GetName(), ErrDuplicateAsset)
 		}
+		for _, id := range asset.Asset.PlatformIds {
+			e.seenPlatformIDs[id] = struct{}{}
+		}
 	}
 
 	e.discoverChildren(asset)
@@ -231,9 +259,10 @@ func (e *AssetExplorer) Connect(asset *TrackedAsset) (*TrackedAsset, error) {
 	return asset, nil
 }
 
-// CloseAsset disposes the connection for a specific asset. The caller is
-// responsible for closing all connections, including gateway assets that
-// were connected just to discover children.
+// CloseAsset disposes the connection for a specific asset and breaks
+// inter-asset reference chains so the GC can reclaim memory from completed
+// subtrees. The caller is responsible for closing all connections, including
+// gateway assets that were connected just to discover children.
 func (e *AssetExplorer) CloseAsset(asset *TrackedAsset) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -251,6 +280,13 @@ func (e *AssetExplorer) CloseAsset(asset *TrackedAsset) error {
 	}
 	asset.Runtime = nil
 	asset.State = AssetClosed
+
+	// Break bidirectional reference chains between TrackedAsset nodes so
+	// completed subtrees become GC-eligible without waiting for the entire
+	// scan to finish. seenPlatformIDs preserves dedup state independently.
+	asset.Children = nil
+	asset.Parent = nil
+
 	return nil
 }
 
@@ -294,8 +330,15 @@ func (e *AssetExplorer) discoverChildren(parent *TrackedAsset) {
 
 	for _, childAsset := range inv.Spec.Assets {
 		// Skip children whose platform IDs are already tracked (simple dedup)
-		if len(childAsset.PlatformIds) > 0 && e.findByPlatformIDs(childAsset.PlatformIds) != nil {
+		if len(childAsset.PlatformIds) > 0 && e.hasPlatformID(childAsset.PlatformIds) {
 			continue
+		}
+
+		// What an asset discovers lies within the root the asset was scanned
+		// from, so a child the provider gave no context config of its own is
+		// governed by its parent's, at the parent's path (cnspec ADR-0006).
+		if childAsset.ContextConfig == nil && parent.Asset.GetContextConfig() != nil {
+			childAsset.ContextConfig = parent.Asset.ContextConfig.CloneVT()
 		}
 
 		child := &TrackedAsset{
@@ -305,6 +348,9 @@ func (e *AssetExplorer) discoverChildren(parent *TrackedAsset) {
 		}
 		e.allAssets = append(e.allAssets, child)
 		parent.Children = append(parent.Children, child)
+		for _, id := range childAsset.PlatformIds {
+			e.seenPlatformIDs[id] = struct{}{}
+		}
 	}
 }
 
@@ -342,7 +388,7 @@ func (e *AssetExplorer) dedup(asset *TrackedAsset) bool {
 		if existing == asset || existing.State != AssetConnected {
 			continue
 		}
-		if len(existing.Asset.PlatformIds) == 0 {
+		if existing.Asset == nil || len(existing.Asset.PlatformIds) == 0 {
 			continue
 		}
 		if slicesx.IsSubsetOf(existing.Asset.PlatformIds, asset.Asset.PlatformIds) {
@@ -353,6 +399,8 @@ func (e *AssetExplorer) dedup(asset *TrackedAsset) bool {
 			}
 			existing.Runtime = nil
 			existing.State = AssetClosed
+			existing.Children = nil
+			existing.Parent = nil
 		}
 	}
 	return false
@@ -364,17 +412,16 @@ func (e *AssetExplorer) isKnown(asset *TrackedAsset) bool {
 	return slices.Contains(e.allAssets, asset)
 }
 
-// findByPlatformIDs returns the first tracked asset that has any of the given
-// platform IDs. Must be called with e.mu held.
-func (e *AssetExplorer) findByPlatformIDs(ids []string) *TrackedAsset {
-	for _, a := range e.allAssets {
-		for _, id := range ids {
-			if slices.Contains(a.Asset.PlatformIds, id) {
-				return a
-			}
+// hasPlatformID returns true if any of the given platform IDs have already
+// been seen (discovered or connected). Uses the seenPlatformIDs index for
+// O(1) lookups instead of scanning allAssets. Must be called with e.mu held.
+func (e *AssetExplorer) hasPlatformID(ids []string) bool {
+	for _, id := range ids {
+		if _, ok := e.seenPlatformIDs[id]; ok {
+			return true
 		}
 	}
-	return nil
+	return false
 }
 
 // findRootAsset walks up the parent chain to find the root asset for

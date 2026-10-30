@@ -5,17 +5,18 @@ package resources
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	mqltypes "go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	mqltypes "go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsEc2Ipam) id() (string, error) {
@@ -169,12 +170,12 @@ func initAwsEc2Ipam(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 	resp, err := svc.DescribeIpams(ctx, &ec2.DescribeIpamsInput{IpamIds: []string{id}})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
-			return args, nil, nil
+			return nil, nil, fmt.Errorf("access denied fetching aws.ec2.ipam with id %q in region %s", id, region)
 		}
 		return nil, nil, err
 	}
 	if len(resp.Ipams) == 0 {
-		return args, nil, nil
+		return nil, nil, fmt.Errorf("aws.ec2.ipam with id %q not found", id)
 	}
 
 	mqlIpam, err := newMqlAwsEc2Ipam(runtime, region, &resp.Ipams[0])
@@ -196,7 +197,7 @@ func (a *mqlAwsEc2Ipam) scopes() ([]any, error) {
 
 	res := []any{}
 	paginator := ec2.NewDescribeIpamScopesPaginator(svc, &ec2.DescribeIpamScopesInput{
-		Filters: []types.Filter{{Name: stringPtr("ipam-id"), Values: []string{ipamId}}},
+		Filters: []types.Filter{{Name: new("ipam-id"), Values: []string{ipamId}}},
 	})
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
@@ -242,7 +243,7 @@ func (a *mqlAwsEc2Ipam) pools() ([]any, error) {
 
 	res := []any{}
 	paginator := ec2.NewDescribeIpamPoolsPaginator(svc, &ec2.DescribeIpamPoolsInput{
-		Filters: []types.Filter{{Name: stringPtr("owner-id"), Values: []string{a.OwnerId.Data}}, {Name: stringPtr("ipam-id"), Values: []string{ipamId}}},
+		Filters: []types.Filter{{Name: new("owner-id"), Values: []string{a.OwnerId.Data}}, {Name: new("ipam-id"), Values: []string{ipamId}}},
 	})
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)

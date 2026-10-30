@@ -4,17 +4,42 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/ansible/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/ansible/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "ansible",
-	ID:              "go.mondoo.com/mql/v13/providers/ansible",
-	Version:         "13.2.5",
+	Name: "ansible",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "ansible",
+	ID:      "go.mondoo.com/mql/providers/ansible",
+	Version: "14.0.7",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       provider.Platforms,
+	// One opt-in, and not PerFile: every candidate is a folder, which is what
+	// project.Load reads. A playbook file is never offered on its own, so a
+	// playbook inside a project cannot also become an asset of its own.
+	// continue_exploration is set because loadPlaybooks reads only the folder
+	// itself and its playbooks/ subfolder, so a bare playbook further down is
+	// genuinely not part of the project above it.
+	Targets: []plugin.TargetOptIn{
+		{
+			Target: "iac", Discovery: "ansible", ConnType: provider.DefaultConnectionType, Auto: true,
+			Match: []plugin.Matcher{
+				{Glob: "ansible.cfg"},
+				{Glob: "roles/*/tasks/main.yml"},
+				{Glob: "roles/*/tasks/main.yaml"},
+				{Glob: "inventory"},
+				{Glob: "*.yml"},
+				{Glob: "*.yaml"},
+			},
+		},
+	},
 	Connectors: []plugin.Connector{
 		{
 			Name:  "ansible",

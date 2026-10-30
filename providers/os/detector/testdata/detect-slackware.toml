@@ -1,0 +1,19 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[files."/etc/slackware-version"]
+content = "Slackware 15.0"
+
+[files."/etc/os-release"]
+content = """
+NAME=Slackware
+VERSION="15.0"
+ID=slackware
+VERSION_ID=15.0
+PRETTY_NAME="Slackware 15.0 x86_64"
+ANSI_COLOR="0;34"
+CPE_NAME="cpe:/o:slackware:slackware_linux:15.0"
+"""

@@ -1,0 +1,15 @@
+// User settings belong in settings.json.
+// This file is managed automatically.
+{
+  "installedPlugins": [
+    {
+      "name": "azure",
+      "marketplace": "awesome-copilot",
+      "installed_at": "2026-10-23T01:16:07.856089627Z",
+      "enabled": false,
+      "version": "1.2.97",
+      "cache_path": "/root/.copilot/installed-plugins/awesome-copilot/azure",
+      "source_sha": "22292f2802cd519833457aa080d50c26301e97a8ddcfa4af7ad5001dbc4912cc"
+    }
+  ]
+}

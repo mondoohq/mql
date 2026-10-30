@@ -23,6 +23,7 @@ import (
 	discoveryv1 "k8s.io/api/discovery/v1"
 	v1beta1 "k8s.io/api/extensions/v1beta1"
 	networkingv1 "k8s.io/api/networking/v1"
+	nodev1 "k8s.io/api/node/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -76,6 +77,7 @@ func ClientSchema() *runtime.Scheme {
 	networkingv1.AddToScheme(scheme)
 	rbacv1.AddToScheme(scheme)
 	schedulingv1.AddToScheme(scheme)
+	nodev1.AddToScheme(scheme)
 	storagev1.AddToScheme(scheme)
 	admissionregistrationv1.AddToScheme(scheme)
 	certificatesv1.AddToScheme(scheme)

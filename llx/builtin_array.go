@@ -6,11 +6,12 @@ package llx
 import (
 	"errors"
 	"math/rand"
+	"reflect"
 	"strconv"
 	"strings"
 
-	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/multierr"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/multierr"
 )
 
 var arrayBlockType = types.Array(types.Block)
@@ -145,7 +146,7 @@ func arrayBlockListV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64)
 		}
 	}
 
-	err = e.runFunctionBlocks(argList, fref, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argList, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		// This is quite heavy handed. If any of the block calls have an error, the whole
 		// thing becomes errored. If we don't do this, then we can have more fine grained
 		// errors. For example, if only one item in the list has errors, the block for that
@@ -267,7 +268,7 @@ func _arrayWhereV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64, in
 			},
 		}
 	}
-	err = e.runFunctionBlocks(argsList, fref, func(results []arrayBlockCallResult, errors []error) {
+	err = e.runFunctionBlocks(argsList, fref, ref, func(results []arrayBlockCallResult, errors []error) {
 		resList := []any{}
 		for i, res := range results {
 			isTruthy := res.isTruthy()
@@ -446,7 +447,7 @@ func arrayMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*Raw
 		}
 	}
 
-	err = e.runFunctionBlocks(argsList, fref, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argsList, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		var anyError multierr.Errors
 		anyError.Add(errs...)
 
@@ -606,7 +607,7 @@ func detectDupes(array any, typ types.Type) ([]any, []any, error) {
 	existing := []any{}
 	duplicates := []any{}
 	var found bool
-	for i := 0; i < len(arr); i++ {
+	for i := range arr {
 		left := arr[i]
 
 		for j := range existing {
@@ -686,7 +687,7 @@ func arrayFieldDuplicatesV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref u
 		}
 	}
 
-	err = e.runFunctionBlocks(argsList, fref, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argsList, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		f := e.ctx.code.Block(fref)
 		epChecksum := e.ctx.code.Checksums[f.Entrypoints[0]]
 		filteredList := map[int]*RawData{}
@@ -703,9 +704,45 @@ func arrayFieldDuplicatesV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref u
 			}
 		}
 
-		resList := []any{}
+		arr := make([]*RawData, len(list))
+		for k, v := range filteredList {
+			arr[k] = v
+		}
 
-		equalFunc, ok := types.Equal[filteredList[0].Type]
+		// The field's type comes from the first entry that has a typed value:
+		// an entry whose field failed or is a bare null carries no type.
+		var fieldType types.Type
+		var firstErr error
+		for i := range arr {
+			if arr[i].Error != nil {
+				if firstErr == nil {
+					firstErr = arr[i].Error
+				}
+				continue
+			}
+			if arr[i].Type == types.Nil || arr[i].Type == "" {
+				continue
+			}
+			fieldType = arr[i].Type
+			break
+		}
+		if fieldType == "" {
+			// no entry has a typed value: report the first failure, or no
+			// duplicates when every field is null
+			data := &RawData{Type: items.Type, Error: firstErr}
+			if firstErr == nil {
+				data.Type = bind.Type
+				data.Value = []any{}
+			}
+			e.cache.Store(ref, &stepCache{
+				Result:   data,
+				IsStatic: false,
+			})
+			e.triggerChain(ref, data)
+			return
+		}
+
+		equalFunc, ok := types.Equal[fieldType]
 		if !ok {
 			data := &RawData{
 				Type:  items.Type,
@@ -719,47 +756,8 @@ func arrayFieldDuplicatesV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref u
 			return
 		}
 
-		arr := make([]*RawData, len(list))
-		for k, v := range filteredList {
-			arr[k] = v
-		}
-
-		// to track values of fields
-		existing := make(map[int]any)
-		// to track index of duplicate resources
-		duplicateIndices := []int{}
-		var found bool
-		var added bool
-		for i := 0; i < len(arr); i++ {
-			left := arr[i].Value
-
-			for j, v := range existing {
-				if equalFunc(left, v) {
-					found = true
-					// Track the index so that we can get the whole resource
-					duplicateIndices = append(duplicateIndices, i)
-					// check if j was already added to our list of indices
-					for di := range duplicateIndices {
-						if j == duplicateIndices[di] {
-							added = true
-						}
-					}
-					if !added {
-						duplicateIndices = append(duplicateIndices, j)
-					}
-					break
-				}
-			}
-
-			// value not found so we add it to list of things to check for dupes
-			if !found {
-				existing[i] = left
-			}
-		}
-
-		// Once we collect duplicate indices, make a list of resources
-		for i := range duplicateIndices {
-			idx := duplicateIndices[i]
+		resList := []any{}
+		for _, idx := range duplicateFieldIndices(arr, equalFunc) {
 			resList = append(resList, list[idx])
 		}
 
@@ -778,6 +776,38 @@ func arrayFieldDuplicatesV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref u
 	}
 
 	return nil, 0, nil
+}
+
+// duplicateFieldIndices returns, in list order, the index of every entry whose
+// field value equals the field value of at least one other entry. Every group
+// of duplicates is reported, not only the first one. Entries whose field
+// failed to resolve have no value to compare and are left out.
+func duplicateFieldIndices(arr []*RawData, equalFunc func(any, any) bool) []int {
+	isDup := make([]bool, len(arr))
+	for i := range arr {
+		// an entry already matched an earlier one, so every entry equal to
+		// it is marked already (equality is transitive)
+		if isDup[i] || arr[i] == nil || arr[i].Error != nil {
+			continue
+		}
+		for j := i + 1; j < len(arr); j++ {
+			if isDup[j] || arr[j] == nil || arr[j].Error != nil {
+				continue
+			}
+			if equalFunc(arr[i].Value, arr[j].Value) {
+				isDup[i] = true
+				isDup[j] = true
+			}
+		}
+	}
+
+	res := []int{}
+	for i := range isDup {
+		if isDup[i] {
+			res = append(res, i)
+		}
+	}
+	return res
 }
 
 func arrayDuplicatesV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
@@ -954,7 +984,7 @@ func arrayContainsAll(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64)
 	}
 
 	ct := bind.Type.Child()
-	equalFunc, ok := types.Equal[ct]
+	equalFunc, ok := arrayElemEqualFunc(ct)
 	if !ok {
 		return nil, 0, errors.New("cannot compare array entries")
 	}
@@ -1015,7 +1045,7 @@ func arrayContainsNone(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64
 	}
 
 	ct := bind.Type.Child()
-	equalFunc, ok := types.Equal[ct]
+	equalFunc, ok := arrayElemEqualFunc(ct)
 	if !ok {
 		return nil, 0, errors.New("cannot compare array entries")
 	}
@@ -1092,8 +1122,11 @@ func cmpArrays(left *RawData, right *RawData, f func(any, any) bool) bool {
 }
 
 func cmpArrayOne(leftArray *RawData, right *RawData, f func(any, any) bool) bool {
-	l := leftArray.Value.([]any)
-	if len(l) != 1 {
+	if leftArray == nil || leftArray.Value == nil {
+		return false
+	}
+	l, ok := leftArray.Value.([]any)
+	if !ok || len(l) != 1 {
 		return false
 	}
 	return f(l[0], right.Value)
@@ -1106,8 +1139,41 @@ func tArrayCmp(left *RawData, right *RawData) func(any, any) bool {
 		if left.Type.Child() != right.Type.Child() {
 			return false
 		}
+		return rawValuesEqual(a, b)
+	}
+}
+
+// rawValuesEqual compares two array elements without panicking. The == operator
+// panics on values that hold a slice or map (an ip, a dict, a nested array),
+// which crashes the whole scan, so those take a type-aware path instead.
+func rawValuesEqual(a any, b any) bool {
+	if ipA, ok := a.(RawIP); ok {
+		ipB, ok := b.(RawIP)
+		return ok && ipA.equal(ipB)
+	}
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	va := reflect.ValueOf(a)
+	vb := reflect.ValueOf(b)
+	if va.Type() == vb.Type() && va.Comparable() && vb.Comparable() {
 		return a == b
 	}
+	return reflect.DeepEqual(a, b)
+}
+
+// arrayElemEqualFunc returns the equality used by array helpers such as
+// containsAll and containsNone for the given element type. Element types that
+// types.Equal does not cover, but whose values compare by content (ip, dict,
+// nested arrays and maps), use rawValuesEqual. Resources stay unsupported.
+func arrayElemEqualFunc(ct types.Type) (func(any, any) bool, bool) {
+	if f, ok := types.Equal[ct]; ok {
+		return f, true
+	}
+	if ct == types.IP || ct == types.Dict || ct.IsArray() || ct.IsMap() {
+		return rawValuesEqual, true
+	}
+	return nil, false
 }
 
 func tarrayCmpTarrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
@@ -1129,36 +1195,23 @@ func tarrayConcatTarrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uin
 		return nil, rref, err
 	}
 
-	if items.Value == nil {
-		return &RawData{Type: items.Type}, 0, nil
-	}
+	// Either side may be empty or null, and either side may be the one carrying
+	// the element type, since `[]` resolves to []unset. Resolving the type from
+	// both operands keeps the result usable regardless of operand order.
+	resType := types.CoalesceArrays(bind.Type, items.Type)
 
-	v, _ := bind.Value.([]any)
-	if v == nil {
-		if items.Value == nil {
-			return &RawData{Type: bind.Type}, 0, nil
-		}
-		return nil, 0, errors.New("cannot add arrays to null")
-	}
+	// A null operand contributes no items, the same as an empty one. Treating it
+	// as empty keeps the other operand's items instead of discarding them or
+	// failing the whole query.
+	left, _ := bind.Value.([]any)
+	right, _ := items.Value.([]any)
 
-	list := items.Value.([]any)
-	if len(list) == 0 {
-		return bind, 0, nil
-	}
-
-	res := make([]any, len(v)+len(list))
-	var idx int
-	for i := range v {
-		res[idx] = v[i]
-		idx++
-	}
-	for i := range list {
-		res[idx] = list[i]
-		idx++
-	}
+	res := make([]any, 0, len(left)+len(right))
+	res = append(res, left...)
+	res = append(res, right...)
 
 	return &RawData{
-		Type:  bind.Type,
+		Type:  resType,
 		Value: res,
 	}, 0, nil
 }
@@ -1182,9 +1235,11 @@ func tarrayDeleteTarrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uin
 		return nil, 0, errors.New("cannot add arrays to null")
 	}
 
+	// Removing no items leaves the left operand unchanged. Returning the empty
+	// right operand here turned `list - []` into `[]`.
 	list := items.Value.([]any)
 	if len(list) == 0 {
-		return items, 0, nil
+		return bind, 0, nil
 	}
 
 	// TODO: We can optimize the way the deletion works, but need to map to
@@ -1194,7 +1249,7 @@ func tarrayDeleteTarrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uin
 	for i := range v {
 		found := false
 		for j := range list {
-			if v[i] == list[j] {
+			if rawValuesEqual(v[i], list[j]) {
 				found = true
 				break
 			}

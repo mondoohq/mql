@@ -9,18 +9,49 @@ import (
 	"sync"
 
 	"github.com/Snowflake-Labs/terraform-provider-snowflake/pkg/sdk"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/snowflake/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/snowflake/connection"
 )
 
-// mqlSnowflakeAccountInternal caches the account-level SHOW PARAMETERS response
-// so the fields backed by it (parameters and networkPolicy) share a single API
-// call instead of each issuing their own.
+// mqlSnowflakeAccountInternal caches the account-wide responses that several
+// fields share, so touching more than one of them does not reissue the same
+// statement. The account resource is a singleton, which makes it the one place
+// every other resource can reach a per-scan cache from.
+//
+// SHOW PARAMETERS backs parameters and networkPolicy. The grant cache and the
+// role and user name indexes back the role hierarchy walks; see role_graph.go.
+// The database, schema, and warehouse indexes back the references other
+// resources hold to those objects; see object_index.go.
 type mqlSnowflakeAccountInternal struct {
 	parametersOnce      sync.Once
 	cachedParameters    []*sdk.Parameter
 	cachedParametersErr error
+
+	grantCacheOnce sync.Once
+	cachedGrants   *snowflakeGrantCache
+
+	roleIndexOnce      sync.Once
+	cachedRoleIndex    map[string]sdk.Role
+	cachedRoleIndexErr error
+
+	userIndexOnce      sync.Once
+	cachedUserIndex    map[string]sdk.User
+	cachedUserIndexErr error
+
+	keySetIndex keySetIndex
+
+	cachedDatabaseIndex  memoIndex[sdk.Database]
+	cachedSchemaIndex    memoIndex[sdk.Schema]
+	cachedWarehouseIndex memoIndex[sdk.Warehouse]
+
+	cachedNetworkPolicyIndex memoIndex[*mqlSnowflakeNetworkPolicy]
+	cachedNetworkRuleIndex   memoIndex[*mqlSnowflakeNetworkRule]
+	cachedSecretIndex        memoIndex[*mqlSnowflakeSecret]
+
+	policyAttachmentsOnce      sync.Once
+	cachedPolicyAttachments    *policyAttachments
+	cachedPolicyAttachmentsErr error
 }
 
 // showAccountParameters fetches the account-level parameters from Snowflake,
@@ -35,7 +66,7 @@ func (r *mqlSnowflakeAccount) showAccountParameters() ([]*sdk.Parameter, error) 
 
 		r.cachedParameters, r.cachedParametersErr = client.Parameters.ShowParameters(ctx, &sdk.ShowParametersOptions{
 			In: &sdk.ParametersIn{
-				Account: sdk.Bool(true),
+				Account: new(true),
 			},
 		})
 	})
@@ -65,7 +96,7 @@ func (r *mqlSnowflakeAccount) parameters() ([]any, error) {
 
 	list := []any{}
 	for i := range parameters {
-		mqlResource, err := newMqlSnowflakeParameter(r.MqlRuntime, parameters[i])
+		mqlResource, err := newMqlSnowflakeParameter(r.MqlRuntime, "account", parameters[i])
 		if err != nil {
 			return nil, err
 		}
@@ -83,9 +114,22 @@ func (r *mqlSnowflakeAccount) networkPolicy() (string, error) {
 	return findParameterValue(parameters, "NETWORK_POLICY"), nil
 }
 
-func newMqlSnowflakeParameter(runtime *plugin.Runtime, parameter *sdk.Parameter) (*mqlSnowflakeParameter, error) {
+func (r *mqlSnowflakeAccount) cortexEnabledCrossRegion() (string, error) {
+	parameters, err := r.showAccountParameters()
+	if err != nil {
+		return "", err
+	}
+	return findParameterValue(parameters, "CORTEX_ENABLED_CROSS_REGION"), nil
+}
+
+// newMqlSnowflakeParameter builds a parameter resource. scope qualifies the
+// cache key so identically-named parameters at different scopes (account vs a
+// given user) do not collide: the same key (e.g. TIMEZONE) exists at the
+// account level and on every user, and a bare-key __id would make every user's
+// parameters resolve to the first-seen instance.
+func newMqlSnowflakeParameter(runtime *plugin.Runtime, scope string, parameter *sdk.Parameter) (*mqlSnowflakeParameter, error) {
 	r, err := CreateResource(runtime, "snowflake.parameter", map[string]*llx.RawData{
-		"__id":         llx.StringData(parameter.Key), // TODO: update key
+		"__id":         llx.StringData(scope + "/" + parameter.Key),
 		"key":          llx.StringData(parameter.Key),
 		"value":        llx.StringData(parameter.Value),
 		"description":  llx.StringData(parameter.Description),

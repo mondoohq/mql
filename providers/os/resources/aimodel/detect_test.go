@@ -608,7 +608,7 @@ func TestDetectAll(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, filepath.Join(snapshotDir, "model.safetensors"), make([]byte, 200), 0644))
 	require.NoError(t, afero.WriteFile(fs, filepath.Join(modelDir, "blobs/b1"), make([]byte, 200), 0644))
 
-	results := DetectAll(afs, home, "linux")
+	results := DetectAll(afs, []string{home}, "linux", nil)
 	assert.GreaterOrEqual(t, len(results), 2)
 
 	sources := map[string]bool{}
@@ -617,6 +617,63 @@ func TestDetectAll(t *testing.T) {
 	}
 	assert.True(t, sources["ollama"])
 	assert.True(t, sources["huggingface"])
+}
+
+// A server scanned over SSH with nobody logged in has root's home first; the
+// models of every other user must still be found.
+func TestDetectAll_EveryHome(t *testing.T) {
+	afs, fs := newTestAfs()
+	for _, p := range []string{
+		"/home/ubuntu/.cache/huggingface/hub/models--dslim--bert-base-NER/blobs/b1",
+		"/home/alice/.keras/models/mymodel.h5",
+	} {
+		require.NoError(t, afero.WriteFile(fs, p, make([]byte, 10), 0o644))
+	}
+
+	results := DetectAll(afs, []string{"/root", "/home/ubuntu", "/home/alice"}, "linux", nil)
+
+	paths := map[string]string{}
+	for _, m := range results {
+		paths[m.Source] = m.Path
+	}
+	assert.Equal(t, map[string]string{
+		"huggingface": "/home/ubuntu/.cache/huggingface/hub/models--dslim--bert-base-NER",
+		"keras":       "/home/alice/.keras/models/mymodel.h5",
+	}, paths)
+}
+
+// Resolved Ollama stores already cover every home, so a model in them is
+// reported once, not once per home.
+func TestDetectAll_ResolvedOllamaStoresReadOnce(t *testing.T) {
+	afs, fs := newTestAfs()
+	writeOllamaManifest(t, fs, "/var/lib/ollama", "registry.ollama.ai", "library", "llama3", "latest")
+
+	results := DetectAll(afs, []string{"/root", "/home/ubuntu"}, "linux", []string{"/var/lib/ollama"})
+	require.Len(t, results, 1)
+	assert.Equal(t, "llama3:latest", results[0].Name)
+}
+
+// Without resolved stores each home's default store is read, and a copy in
+// each home is its own model.
+func TestDetectAll_OllamaDefaultStorePerHome(t *testing.T) {
+	afs, fs := newTestAfs()
+	for _, home := range []string{"/home/ubuntu", "/home/alice"} {
+		writeOllamaManifest(t, fs, filepath.Join(home, ".ollama/models"), "registry.ollama.ai", "library", "llama3", "latest")
+	}
+
+	results := DetectAll(afs, []string{"/home/ubuntu", "/home/alice"}, "linux", nil)
+	require.Len(t, results, 2)
+	assert.NotEqual(t, results[0].Path, results[1].Path)
+}
+
+// One home listed twice yields each model once: ai.model keys on source and
+// path, and a repeat would be a second list entry with the first one's values.
+func TestDetectAll_SameHomeTwice(t *testing.T) {
+	afs, fs := newTestAfs()
+	require.NoError(t, afero.WriteFile(fs, "/home/ubuntu/.keras/models/mymodel.h5", make([]byte, 10), 0o644))
+
+	results := DetectAll(afs, []string{"/home/ubuntu", "/home/ubuntu"}, "linux", nil)
+	assert.Len(t, results, 1)
 }
 
 func TestDetectFormatInDir(t *testing.T) {
@@ -659,6 +716,11 @@ func TestQuantizationRegex(t *testing.T) {
 		{"model-F32.safetensors", "F32"},
 		{"model-Q5_K_S.gguf", "Q5_K_S"},
 		{"model-q4_0.gguf", "q4_0"},
+		// Importance-matrix quants and bfloat16, as published in GGUF repos
+		// such as bartowski's: the leading I and B belong to the type.
+		{"SmolLM2-135M-Instruct-IQ4_XS.gguf", "IQ4_XS"},
+		{"SmolLM2-135M-Instruct-bf16.gguf", "bf16"},
+		{"model-IQ2_XXS.gguf", "IQ2_XXS"},
 		{"no-quant-model.gguf", ""},
 		{"readme.txt", ""},
 	}
@@ -694,4 +756,150 @@ func TestParamSizeRegex(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The packaged Linux service sets OLLAMA_MODELS, so the store is not under
+// $HOME/.ollama/models and looking only there reports no models on a host that
+// has them. This is the shape of a real Arch install: the daemon runs as the
+// "ollama" account with its store at /var/lib/ollama.
+func TestOllamaDetector_RelocatedStore(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	afs := &afero.Afero{Fs: fs}
+
+	const store = "/var/lib/ollama"
+	manifest := ollamaManifest{
+		Config: ollamaDescriptor{Digest: "sha256:cfg1"},
+		Layers: []ollamaLayer{{Size: 4096}},
+	}
+	writeJSON(t, fs, filepath.Join(store, "manifests/registry.ollama.ai/library/qwen3-coder/30b"), manifest)
+	writeJSON(t, fs, filepath.Join(store, "blobs/sha256-cfg1"), map[string]any{"model_family": "qwen3moe"})
+
+	// Looking in the default location finds nothing, which is the bug.
+	assert.Empty(t, DetectAll(afs, []string{"/home/zero"}, "linux", nil))
+
+	results := DetectAll(afs, []string{"/home/zero"}, "linux", []string{store})
+	require.Len(t, results, 1)
+	assert.Equal(t, "qwen3-coder:30b", results[0].Name)
+	assert.Equal(t, "ollama", results[0].Source)
+	assert.Equal(t, "Alibaba", results[0].Vendor)
+	assert.Equal(t, "qwen3moe", results[0].Family)
+	assert.Equal(t, int64(4096), results[0].Size)
+}
+
+// A model reachable through two stores is one model, not two: ai.model keys on
+// source and name, so a duplicate would collide in the resource cache and the
+// second entry would silently report the first one's values.
+func TestOllamaDetector_DeduplicatesAcrossStores(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	afs := &afero.Afero{Fs: fs}
+
+	manifest := ollamaManifest{
+		Config: ollamaDescriptor{Digest: "sha256:cfg1"},
+		Layers: []ollamaLayer{{Size: 10}},
+	}
+	for _, store := range []string{"/var/lib/ollama", "/home/zero/.ollama/models"} {
+		writeJSON(t, fs, filepath.Join(store, "manifests/registry.ollama.ai/library/llama3/latest"), manifest)
+		writeJSON(t, fs, filepath.Join(store, "blobs/sha256-cfg1"), map[string]any{"model_family": "llama"})
+	}
+
+	results := DetectAll(afs, []string{"/home/zero"}, "linux",
+		[]string{"/var/lib/ollama", "/home/zero/.ollama/models"})
+	require.Len(t, results, 1)
+	assert.Equal(t, "llama3:latest", results[0].Name)
+}
+
+func TestOllamaDetector_NoStore(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	assert.Empty(t, DetectAll(afs, []string{"/home/zero"}, "linux", []string{"/var/lib/ollama"}))
+	assert.Empty(t, DetectAll(afs, nil, "linux", nil))
+}
+
+// writeOllamaManifest stores a manifest at the registry/namespace/model/tag
+// path Ollama itself uses, sharing one config blob.
+func writeOllamaManifest(t *testing.T, fs afero.Fs, modelsDir, registry, namespace, model, tag string) {
+	t.Helper()
+	writeJSON(t, fs, filepath.Join(modelsDir, "manifests", registry, namespace, model, tag), ollamaManifest{
+		Config: ollamaDescriptor{Digest: "sha256:cfg"},
+		Layers: []ollamaLayer{{MediaType: "application/vnd.ollama.image.model", Digest: "sha256:m", Size: 100}},
+	})
+	writeJSON(t, fs, filepath.Join(modelsDir, "blobs", "sha256-cfg"), map[string]any{"model_family": "llama"})
+}
+
+// The names are the ones `ollama list` prints for these manifest paths: the
+// registry and namespace are only dropped when they are Ollama's defaults.
+func TestDetectOllama_NamespacedAndThirdPartyRegistryNames(t *testing.T) {
+	afs, fs := newTestAfs()
+	home := "/home/testuser"
+	dir := filepath.Join(home, ".ollama/models")
+	writeOllamaManifest(t, fs, dir, "registry.ollama.ai", "library", "smollm", "135m")
+	writeOllamaManifest(t, fs, dir, "registry.ollama.ai", "someuser", "smollm", "135m")
+	writeOllamaManifest(t, fs, dir, "hf.co", "bartowski", "smollm2-135m-instruct-gguf", "Q4_K_M")
+
+	results := detectWith(&OllamaDetector{}, afs, home)
+	names := make([]string, 0, len(results))
+	for _, m := range results {
+		names = append(names, m.Name)
+	}
+	assert.ElementsMatch(t, []string{
+		"smollm:135m",
+		"someuser/smollm:135m",
+		"hf.co/bartowski/smollm2-135m-instruct-gguf:Q4_K_M",
+	}, names)
+}
+
+// The same model reachable through two stores is still one model.
+func TestDetectOllama_SameModelInTwoStoresIsOne(t *testing.T) {
+	afs, fs := newTestAfs()
+	writeOllamaManifest(t, fs, "/var/lib/ollama/models", "registry.ollama.ai", "library", "smollm", "135m")
+	writeOllamaManifest(t, fs, "/home/u/.ollama/models", "registry.ollama.ai", "library", "smollm", "135m")
+
+	results := (&OllamaDetector{}).Detect(DetectContext{Fs: afs, OllamaModelsDirs: []string{"/var/lib/ollama/models", "/home/u/.ollama/models"}})
+	require.Len(t, results, 1)
+	assert.Equal(t, "smollm:135m", results[0].Name)
+}
+
+func TestOllamaDisplayName(t *testing.T) {
+	for _, tc := range []struct{ registry, namespace, model, tag, want string }{
+		{"registry.ollama.ai", "library", "llama3", "latest", "llama3:latest"},
+		{"Registry.Ollama.AI", "Library", "llama3", "8b", "llama3:8b"},
+		{"registry.ollama.ai", "someuser", "smollm", "135m", "someuser/smollm:135m"},
+		{"hf.co", "bartowski", "m", "Q4_K_M", "hf.co/bartowski/m:Q4_K_M"},
+		// A third-party registry keeps its namespace even when it is "library".
+		{"example.com", "library", "m", "latest", "example.com/library/m:latest"},
+	} {
+		assert.Equal(t, tc.want, ollamaDisplayName(tc.registry, tc.namespace, tc.model, tc.tag))
+	}
+}
+
+func TestJoinPath(t *testing.T) {
+	tests := []struct {
+		name string
+		base string
+		elem []string
+		want string
+	}{
+		{"windows home", `C:\Users\me`, []string{".cache", "huggingface", "hub"}, `C:\Users\me\.cache\huggingface\hub`},
+		{"windows home with trailing separator", `C:\Users\me\`, []string{"jan"}, `C:\Users\me\jan`},
+		{"windows drive root", `C:\`, []string{"ollama"}, `C:\ollama`},
+		{"lowercase drive letter", `d:\models`, []string{"x.gguf"}, `d:\models\x.gguf`},
+		// ollamaModelDirs builds the per-user store with path.Join
+		{"mixed separators in base are normalized", `C:\Users\me/.ollama/models`, []string{"manifests"}, `C:\Users\me\.ollama\models\manifests`},
+		{"slash in an element", `C:\Users\me`, []string{"Library/Application Support"}, `C:\Users\me\Library\Application Support`},
+		{"unc share", `\\server\share\home`, []string{".keras"}, `\\server\share\home\.keras`},
+		{"posix home", "/home/me", []string{".cache", "huggingface"}, "/home/me/.cache/huggingface"},
+		{"posix keeps a backslash in a name", "/home/me", []string{`odd\name`}, `/home/me/odd\name`},
+		{"posix trailing slash", "/Users/me/", []string{"jan"}, "/Users/me/jan"},
+		{"relative", "models", []string{"x"}, "models/x"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, joinPath(test.base, test.elem...))
+		})
+	}
+}
+
+func TestBaseName(t *testing.T) {
+	assert.Equal(t, "model-Q4_K_M.gguf", baseName(`C:\Users\me\.lmstudio\models\pub\repo\model-Q4_K_M.gguf`))
+	assert.Equal(t, "model-Q4_K_M.gguf", baseName("/home/me/.lmstudio/models/pub/repo/model-Q4_K_M.gguf"))
+	assert.Equal(t, "plain", baseName("plain"))
 }

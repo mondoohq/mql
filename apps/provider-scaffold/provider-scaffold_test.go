@@ -36,7 +36,7 @@ func TestGenerator(t *testing.T) {
 		Path:                dir,
 		ProviderID:          "test-provider",
 		ProviderName:        "Test Provider",
-		GoPackage:           "go.mondoo.com/mql/v13/providers/test-provider",
+		GoPackage:           "go.mondoo.com/mql/providers/test-provider",
 		CamelcaseProviderID: toCamelCase("test-provider"),
 	}
 
@@ -104,8 +104,8 @@ func TestGenerator(t *testing.T) {
 	if !strings.Contains(string(lrContent), `option provider = "go.mondoo.com/mql/providers/test-provider"`) {
 		t.Error(".lr should use provider ID scheme")
 	}
-	if !strings.Contains(string(lrContent), `option go_package = "go.mondoo.com/mql/v13/providers/test-provider/resources"`) {
-		t.Error(".lr should use v13 go_package")
+	if !strings.Contains(string(lrContent), `option go_package = "go.mondoo.com/mql/providers/test-provider/resources"`) {
+		t.Error(".lr should use the versionless go_package")
 	}
 
 	// Verify platform ID is not hardcoded to OCI.

@@ -7,7 +7,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"go.mondoo.com/mql/v13/providers/activedirectory/connection"
+	"go.mondoo.com/mql/providers/activedirectory/connection"
 )
 
 // buildBasicACE constructs a minimal ACCESS_ALLOWED_ACE (type 0) binary blob.

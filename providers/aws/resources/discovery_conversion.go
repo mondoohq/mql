@@ -13,14 +13,14 @@ import (
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/providers/aws/connection/awsec2ebsconn"
-	awsec2ebstypes "go.mondoo.com/mql/v13/providers/aws/connection/awsec2ebsconn/types"
-	"go.mondoo.com/mql/v13/providers/os/id/awsec2"
-	"go.mondoo.com/mql/v13/providers/os/id/containerid"
-	"go.mondoo.com/mql/v13/providers/os/id/ids"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/providers/aws/connection/awsec2ebsconn"
+	awsec2ebstypes "go.mondoo.com/mql/providers/aws/connection/awsec2ebsconn/types"
+	"go.mondoo.com/mql/providers/os/id/awsec2"
+	"go.mondoo.com/mql/providers/os/id/containerid"
+	"go.mondoo.com/mql/providers/os/id/ids"
 )
 
 const (
@@ -126,9 +126,19 @@ func getPlatformName(awsObject awsObject) string {
 		if awsObject.objectType == "dbcluster" {
 			return "aws-rds-dbcluster"
 		}
+		if awsObject.objectType == "snapshot" {
+			return "aws-rds-snapshot"
+		}
 	case "dynamodb":
-		if awsObject.objectType == "table" {
+		switch awsObject.objectType {
+		case "table":
 			return "aws-dynamodb-table"
+		case "globaltable":
+			// Split out from "table" so a global table and its us-east-1 replica
+			// stop sharing a platform id. Without a case here getPlatformName
+			// returns "" and MqlObjectToAsset drops the asset entirely, so every
+			// global table silently disappeared from discovery.
+			return "aws-dynamodb-globaltable"
 		}
 	case "redshift":
 		if awsObject.objectType == "cluster" {
@@ -202,6 +212,10 @@ func getPlatformName(awsObject awsObject) string {
 			return "aws-sagemaker-processingjob"
 		case "trainingjob":
 			return "aws-sagemaker-trainingjob"
+		case "domain":
+			return "aws-sagemaker-domain"
+		case "model":
+			return "aws-sagemaker-model"
 		}
 	case "secretsmanager":
 		if awsObject.objectType == "secret" {
@@ -243,8 +257,11 @@ func getPlatformName(awsObject awsObject) string {
 			return "aws-emr-cluster"
 		}
 	case "documentdb":
-		if awsObject.objectType == "cluster" {
+		switch awsObject.objectType {
+		case "cluster":
 			return "aws-documentdb-cluster"
+		case "instance":
+			return "aws-documentdb-instance"
 		}
 	case "msk":
 		if awsObject.objectType == "cluster" {
@@ -273,6 +290,34 @@ func getPlatformName(awsObject awsObject) string {
 	case "transfer":
 		if awsObject.objectType == "server" {
 			return "aws-transfer-server"
+		}
+	case "apigatewayv2":
+		if awsObject.objectType == "api" {
+			return "aws-apigatewayv2-api"
+		}
+	case "athena":
+		if awsObject.objectType == "workgroup" {
+			return "aws-athena-workgroup"
+		}
+	case "appstream":
+		if awsObject.objectType == "fleet" {
+			return "aws-appstream-fleet"
+		}
+	case "batch":
+		if awsObject.objectType == "jobdefinition" {
+			return "aws-batch-jobdefinition"
+		}
+	case "ds":
+		if awsObject.objectType == "directory" {
+			return "aws-directoryservice-directory"
+		}
+	case "sns":
+		if awsObject.objectType == "topic" {
+			return "aws-sns-topic"
+		}
+	case "sqs":
+		if awsObject.objectType == "queue" {
+			return "aws-sqs-queue"
 		}
 	}
 	return ""
@@ -453,7 +498,7 @@ func addConnectionInfoToEc2Asset(instance *mqlAwsEc2Instance, accountId string, 
 		instanceType:    instance.InstanceType.Data,
 		accountId:       accountId,
 		instanceId:      instance.InstanceId.Data,
-		launchTime:      instance.LaunchTime.Data,
+		launchTime:      instance.cacheLaunchTime,
 	}
 	if instance.GetImage().Data != nil {
 		info.image = &instance.GetImage().Data.Id.Data
@@ -523,6 +568,27 @@ func addConnectionInfoToEc2Asset(instance *mqlAwsEc2Instance, accountId string, 
 		}
 	}
 	return asset
+}
+
+// ec2InstanceIsDiscoverable reports whether an EC2 instance in this state can
+// still be reached by any connection this provider knows how to build.
+//
+// EC2 keeps a terminated instance visible to DescribeInstances for roughly an
+// hour after it goes away. Such an instance has no network interfaces, no
+// volumes and no SSM agent, so addConnectionInfoToEc2Asset attaches no
+// connections to it and every scan reports it as an asset that could not be
+// connected to. It can never transition back, so there is nothing to wait for.
+// An instance shutting down is on its way to the same place.
+//
+// Stopped instances deliberately stay discoverable: they keep their volumes,
+// can be started again, and are still reachable through EBS scanning.
+func ec2InstanceIsDiscoverable(state string) bool {
+	switch state {
+	case string(types.InstanceStateNameTerminated), string(types.InstanceStateNameShuttingDown):
+		return false
+	default:
+		return true
+	}
 }
 
 func mapEc2InstanceStateCode(state string) inventory.State {
@@ -706,7 +772,7 @@ func addConnectionInfoToECSContainerAsset(container *mqlAwsEcsContainer, account
 	}
 	state := container.Status.Data
 	containerArn := container.Arn.Data
-	taskArn := container.TaskArn.Data
+	taskArn := container.cacheTaskArn
 	publicIp := container.GetPublicIp().Data
 	region := container.Region.Data
 

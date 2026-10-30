@@ -4,16 +4,18 @@
 package config_test
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
-	subject "go.mondoo.com/mql/v13/cli/config"
-	"gopkg.in/yaml.v2"
+	subject "go.mondoo.com/mql/cli/config"
+	sigsyaml "sigs.k8s.io/yaml"
 
 	"github.com/spf13/afero"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v2"
 )
 
 func TestStoreConfig(t *testing.T) {
@@ -83,5 +85,70 @@ func TestStoreConfig(t *testing.T) {
 
 		err := subject.StoreConfig()
 		assert.Error(t, err)
+	})
+}
+
+func TestMarshalConfig(t *testing.T) {
+	newConfig := func() *subject.Config {
+		cfg := &subject.Config{}
+		cfg.AgentMrn = "//agents.api.mondoo.app/spaces/space-1/agents/agent-1"
+		cfg.ServiceAccountMrn = "//agents.api.mondoo.app/spaces/space-1/serviceaccounts/sa-1"
+		cfg.PrivateKey = "private-key"
+		cfg.APIEndpoint = "https://api.example.com"
+		return cfg
+	}
+
+	t.Run("a .json path is written as JSON", func(t *testing.T) {
+		data, err := subject.MarshalConfig("/etc/opt/mondoo/credentials.json", newConfig())
+		require.NoError(t, err)
+
+		// The output must parse as JSON. YAML output (e.g. `mrn: ...`) would not.
+		var parsed map[string]any
+		require.NoError(t, json.Unmarshal(data, &parsed), "output should be valid JSON")
+
+		assert.Equal(t, "//agents.api.mondoo.app/spaces/space-1/serviceaccounts/sa-1", parsed["mrn"])
+		assert.Equal(t, "https://api.example.com", parsed["api_endpoint"])
+	})
+
+	t.Run("a .yaml path is written as YAML", func(t *testing.T) {
+		data, err := subject.MarshalConfig("/etc/opt/mondoo/mondoo.yaml", newConfig())
+		require.NoError(t, err)
+
+		// sigs.k8s.io/yaml honors json tags, so keys stay snake_case in YAML too.
+		var parsed map[string]any
+		require.NoError(t, sigsyaml.Unmarshal(data, &parsed), "output should be valid YAML")
+
+		assert.Equal(t, "//agents.api.mondoo.app/spaces/space-1/serviceaccounts/sa-1", parsed["mrn"])
+		assert.Equal(t, "https://api.example.com", parsed["api_endpoint"])
+	})
+
+	t.Run("an extensionless path defaults to YAML", func(t *testing.T) {
+		data, err := subject.MarshalConfig("/etc/opt/mondoo/mondoo", newConfig())
+		require.NoError(t, err)
+
+		// JSON would begin with '{'; the YAML default must not.
+		assert.NotEqual(t, byte('{'), data[0], "extensionless path should default to YAML, not JSON")
+
+		var parsed map[string]any
+		require.NoError(t, sigsyaml.Unmarshal(data, &parsed))
+		assert.Equal(t, "https://api.example.com", parsed["api_endpoint"])
+	})
+
+	t.Run("cleared agent_mrn is omitted, unrelated keys retained", func(t *testing.T) {
+		cfg := newConfig()
+		cfg.AgentMrn = "" // logout clears this before writing
+
+		for _, path := range []string{"credentials.json", "mondoo.yaml"} {
+			data, err := subject.MarshalConfig(path, cfg)
+			require.NoError(t, err)
+
+			var parsed map[string]any
+			require.NoError(t, sigsyaml.Unmarshal(data, &parsed))
+
+			_, hasAgentMrn := parsed["agent_mrn"]
+			assert.False(t, hasAgentMrn, "%s: cleared agent_mrn should be omitted", path)
+			assert.Equal(t, "private-key", parsed["private_key"], "%s: unrelated keys should be retained", path)
+			assert.Equal(t, "//agents.api.mondoo.app/spaces/space-1/serviceaccounts/sa-1", parsed["mrn"], "%s: unrelated keys should be retained", path)
+		}
 	})
 }

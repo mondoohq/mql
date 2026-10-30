@@ -8,19 +8,20 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/mqlc"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/mqlc"
+	"go.mondoo.com/mql/types"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/testutils"
+	"go.mondoo.com/mql/providers-sdk/v1/testutils"
 )
 
 var (
@@ -268,7 +269,6 @@ func TestCompiler_FailIfNoEntrypoints(t *testing.T) {
 	data := []string{
 		"",
 		"// some comment",
-		"(asset.eol.date - time.now() > 90*time.day) && (asset.eol.date - time.now() < 180*time.day)",
 	}
 	for _, code := range data {
 		t.Run(code, func(t *testing.T) {
@@ -338,14 +338,14 @@ func TestCompiler_Semicolon(t *testing.T) {
 func TestCompiler_DeterministicChecksum(t *testing.T) {
 	// this is a query that in the past used to produce different checksum every now and then
 	// this test ensures that the checksum is always deterministic now
-	mql := `azure.subscription.sql.servers.all(databases.one (transparentDataEncryption["state"] == "Enabled") && encryptionProtector["serverKeyType"] == "AzureKeyVault" )`
+	mql := `azure.subscription.sql.servers.all(databases.one (transparentDataEncryptionEnabled) && encryptionProtectorServerKeyType == "AzureKeyVault" )`
 	azure_schema := testutils.MustLoadSchema(testutils.SchemaProvider{Provider: "azure"})
 
 	for range 10000 {
 		azureConf := mqlc.NewConfig(azure_schema, features)
 		res, err := mqlc.Compile(mql, mqlc.EmptyPropsHandler, azureConf)
 		require.Nil(t, err)
-		require.Equal(t, res.CodeV2.Id, "kQFJ+8v6Z98=")
+		require.Equal(t, res.CodeV2.Id, "TJlKTvhw1pU=")
 	}
 }
 
@@ -515,6 +515,37 @@ func TestCompiler_Arithmetics(t *testing.T) {
 			assert.Equal(t, 1, len(chunks[1].Function.Args))
 		})
 	})
+
+	// An empty array literal compiles to []unset. The concat result must still
+	// report a concrete element type, otherwise any downstream call that needs
+	// one fails to compile, and the value renders with no type information.
+	t.Run("concat with an empty array keeps the element type", func(t *testing.T) {
+		list := []struct {
+			code     string
+			expected types.Type
+		}{
+			{`["a"] + ["b"]`, types.Array(types.String)},
+			{`["a"] + []`, types.Array(types.String)},
+			{`[] + ["a"]`, types.Array(types.String)},
+			{`[] + ["a"] + ["b"]`, types.Array(types.String)},
+			{`[] + [1]`, types.Array(types.Int)},
+			{`[] + []`, types.Array(types.Unset)},
+			// A known element type is never rewritten by the other operand.
+			{`["a"] + [1]`, types.Array(types.String)},
+		}
+
+		for i := range list {
+			cur := list[i]
+			t.Run(cur.code, func(t *testing.T) {
+				compileT(t, cur.code, func(res *llx.CodeBundle) {
+					chunks := res.CodeV2.Blocks[0].Chunks
+					last := chunks[len(chunks)-1]
+					require.Equal(t, "+", last.Id)
+					assert.Equal(t, cur.expected, types.Type(last.Function.Type))
+				})
+			})
+		}
+	})
 }
 
 func TestCompiler_OperatorPrecedence(t *testing.T) {
@@ -551,6 +582,84 @@ func TestCompiler_Assignment(t *testing.T) {
 	compileT(t, "a = 123\na", func(res *llx.CodeBundle) {
 		assertPrimitive(t, llx.RefPrimitiveV2((1<<32)|1), res.CodeV2.Blocks[0].Chunks[1])
 		assert.Equal(t, []uint64{(1 << 32) | 2}, res.CodeV2.Entrypoints())
+	})
+}
+
+// A variable that holds a resource, or a list of resources, is not a result of
+// its own: it is neither expanded into its default fields nor an entrypoint.
+func TestCompiler_ResourceAssignment(t *testing.T) {
+	t.Run("resource", func(t *testing.T) {
+		compileT(t, "x = mondoo\nx.version != empty", func(res *llx.CodeBundle) {
+			assert.Empty(t, res.AutoExpand)
+			assert.Len(t, res.CodeV2.Blocks, 1)
+			require.Len(t, res.CodeV2.Blocks[0].Entrypoints, 1)
+			ep := res.CodeV2.Chunk(res.CodeV2.Blocks[0].Entrypoints[0])
+			assert.True(t, strings.HasPrefix(ep.Id, "!="), ep.Id)
+		})
+	})
+
+	t.Run("list of resources", func(t *testing.T) {
+		compileT(t, "x = users.list\nx.length > 0", func(res *llx.CodeBundle) {
+			assert.Empty(t, res.AutoExpand)
+			assert.Len(t, res.CodeV2.Blocks, 1)
+			require.Len(t, res.CodeV2.Blocks[0].Entrypoints, 1)
+			ep := res.CodeV2.Chunk(res.CodeV2.Blocks[0].Entrypoints[0])
+			assert.True(t, strings.HasPrefix(ep.Id, ">"), ep.Id)
+		})
+	})
+
+	t.Run("an assessment keeps the failing items' default fields", func(t *testing.T) {
+		compileT(t, "x = users.all(name != \"\")\nx", func(res *llx.CodeBundle) {
+			assert.Len(t, res.AutoExpand, 1)
+			block := res.CodeV2.Blocks[0]
+			assert.Equal(t, []uint64{(1 << 32) | 6}, block.Entrypoints)
+			require.Len(t, block.Datapoints, 1)
+			dp := res.CodeV2.Chunk(block.Datapoints[0])
+			assert.Equal(t, "{}", dp.Id)
+			assert.Equal(t, "list", res.CodeV2.Chunk(dp.Function.Binding).Id)
+		})
+	})
+
+	t.Run("a reassigned variable", func(t *testing.T) {
+		compileT(t, "x = mondoo\nx = users.list\nx.length > 0", func(res *llx.CodeBundle) {
+			assert.Empty(t, res.AutoExpand)
+			assert.Len(t, res.CodeV2.Blocks, 1)
+			require.Len(t, res.CodeV2.Blocks[0].Entrypoints, 1)
+			ep := res.CodeV2.Chunk(res.CodeV2.Blocks[0].Entrypoints[0])
+			assert.True(t, strings.HasPrefix(ep.Id, ">"), ep.Id)
+		})
+	})
+
+	t.Run("a reassigned variable in a block", func(t *testing.T) {
+		compileT(t, "users.list { x = name\nx = uid\nx > 0 }", func(res *llx.CodeBundle) {
+			require.Len(t, res.CodeV2.Blocks, 2)
+			require.Len(t, res.CodeV2.Blocks[1].Entrypoints, 1)
+			ep := res.CodeV2.Chunk(res.CodeV2.Blocks[1].Entrypoints[0])
+			assert.True(t, strings.HasPrefix(ep.Id, ">"), ep.Id)
+		})
+	})
+
+	t.Run("a variable in an if block", func(t *testing.T) {
+		compileT(t, "if (true) { x = file(\"/a\")\nx.exists }", func(res *llx.CodeBundle) {
+			assert.Empty(t, res.AutoExpand)
+			require.Len(t, res.CodeV2.Blocks, 2)
+			require.Len(t, res.CodeV2.Blocks[1].Entrypoints, 1)
+			assert.Equal(t, "exists", res.CodeV2.Chunk(res.CodeV2.Blocks[1].Entrypoints[0]).Id)
+		})
+	})
+
+	t.Run("an assignment to _", func(t *testing.T) {
+		compileT(t, "_ = mondoo\nmondoo.version", func(res *llx.CodeBundle) {
+			assert.Empty(t, res.AutoExpand)
+			require.Len(t, res.CodeV2.Blocks[0].Entrypoints, 1)
+			assert.Equal(t, "version", res.CodeV2.Chunk(res.CodeV2.Blocks[0].Entrypoints[0]).Id)
+		})
+	})
+
+	t.Run("a variable that is the result", func(t *testing.T) {
+		compileT(t, "x = mondoo\nx", func(res *llx.CodeBundle) {
+			assert.Equal(t, []uint64{(1 << 32) | 2}, res.CodeV2.Blocks[0].Entrypoints)
+		})
 	})
 }
 
@@ -622,7 +731,7 @@ func TestCompiler_Dict(t *testing.T) {
 		assert.Equal(t, map[string]string{"d": string(types.Dict)}, res.Props)
 	})
 
-	compileProps(t, "props.d.A-1", mqlc.SimpleProps{
+	compileProps(t, "props.d.A; -1", mqlc.SimpleProps{
 		"d": {Type: string(types.Dict)},
 	}, func(res *llx.CodeBundle) {
 		assertProperty(t, "d", types.Dict, res.CodeV2.Blocks[0].Chunks[0])
@@ -1429,6 +1538,28 @@ func TestCompiler_ResourceMap(t *testing.T) {
 	})
 }
 
+// A bare word inside a dict block is the head of a chain, and the rest of that
+// chain has to survive the resource lookup that misses on the head. It did not:
+// compileResource reports a miss as `false, nil, ...`, that nil landed in the
+// shared restCalls, and `params { a.b.c }` compiled down to `params["a"]` -
+// answering with the whole subtree under "a" instead of the value at c.
+func TestCompiler_DictBlockKeepsTheChain(t *testing.T) {
+	compileT(t, "parse.json('/x.json').params { a.b.c }", func(res *llx.CodeBundle) {
+		require.Len(t, res.CodeV2.Blocks, 2)
+
+		chunks := res.CodeV2.Blocks[1].Chunks
+		require.Len(t, chunks, 4, "the block should hold the binding plus one lookup per segment")
+
+		for i, key := range []string{"a", "b", "c"} {
+			assertFunction(t, "[]", &llx.Function{
+				Type:    string(types.Dict),
+				Binding: (2 << 32) | uint64(i+1),
+				Args:    []*llx.Primitive{llx.StringPrimitive(key)},
+			}, chunks[i+1])
+		}
+	})
+}
+
 func TestCompiler_ResourceMapLength(t *testing.T) {
 	compileT(t, "sshd.config.params.length", func(res *llx.CodeBundle) {
 		assertFunction(t, "length", &llx.Function{
@@ -1802,91 +1933,100 @@ func TestCompiler_LongResourceWithUnnamedArgs(t *testing.T) {
 	})
 }
 
+// Reading an embedded resource by its own name compiles to a field access on
+// the embedder.
+//
+// This used to be exercised through `docker.containers[0].os`. That embed was
+// removed: a container is a separate asset, and embedding the host's os.linux
+// into it made every member of that tree answer about the host (ADR 031). The
+// root chain is the deepest embed left, and it is the one the compiler has to
+// keep getting right.
 func TestCompiler_EmbeddedResource(t *testing.T) {
-	compileCtx(t, "docker.containers[0].os", func(res *llx.CodeBundle) {
-		assertFunction(t, "os", &llx.Function{
-			Type:    string(types.Resource("os.linux")),
-			Binding: 1<<32 | 3,
-		}, res.CodeV2.Blocks[0].Chunks[3])
+	compileCtx(t, "os.linux.unix", func(res *llx.CodeBundle) {
+		assertFunction(t, "unix", &llx.Function{
+			Type:    string(types.Resource("os.unix")),
+			Binding: 1<<32 | 1,
+		}, res.CodeV2.Blocks[0].Chunks[1])
 	})
 }
 
+// A member of an embedded resource is reached without naming the embed, and the
+// compiler inserts the whole chain to get there - two hops here, os.linux ->
+// os.unix -> os.base, before the field itself.
 func TestCompiler_EmbeddedResource_Lookup(t *testing.T) {
-	compileCtx(t, "docker.containers[0].hostname", func(res *llx.CodeBundle) {
-		assertFunction(t, "os", &llx.Function{
-			Type:    string(types.Resource("os.linux")),
-			Binding: 1<<32 | 3,
-		}, res.CodeV2.Blocks[0].Chunks[3])
-
+	compileCtx(t, "os.linux.hostname", func(res *llx.CodeBundle) {
 		assertFunction(t, "unix", &llx.Function{
 			Type:    string(types.Resource("os.unix")),
-			Binding: 1<<32 | 4,
-		}, res.CodeV2.Blocks[0].Chunks[4])
+			Binding: 1<<32 | 1,
+		}, res.CodeV2.Blocks[0].Chunks[1])
 
 		assertFunction(t, "base", &llx.Function{
 			Type:    string(types.Resource("os.base")),
-			Binding: 1<<32 | 5,
-		}, res.CodeV2.Blocks[0].Chunks[5])
+			Binding: 1<<32 | 2,
+		}, res.CodeV2.Blocks[0].Chunks[2])
 
 		assertFunction(t, "hostname", &llx.Function{
 			Type:    string(types.String),
-			Binding: 1<<32 | 6,
-		}, res.CodeV2.Blocks[0].Chunks[6])
+			Binding: 1<<32 | 3,
+		}, res.CodeV2.Blocks[0].Chunks[3])
 	})
 }
 
+// A resource reached through an embed compiles to createResource *bound to the
+// embedder*, not to a field read - which is why crossing into another asset had
+// to learn to route this path too (ADR 031, llx.createResource).
 func TestCompiler_EmbeddedResource_ImplicitResource(t *testing.T) {
-	compileCtx(t, "docker.containers[0].user(uid: 999).name", func(res *llx.CodeBundle) {
+	compileCtx(t, "os.linux.user(uid: 999).name", func(res *llx.CodeBundle) {
 		assertFunction(t, "createResource", &llx.Function{
 			Type: string(types.Resource("os.base.user")),
 			Args: []*llx.Primitive{
-				llx.RefPrimitiveV2(1<<32 | 3),
+				llx.RefPrimitiveV2(1<<32 | 1),
 				llx.StringPrimitive("uid"),
 				llx.IntPrimitive(999),
 			},
 			Binding: 0,
-		}, res.CodeV2.Blocks[0].Chunks[3])
+		}, res.CodeV2.Blocks[0].Chunks[1])
 
-		assert.Equal(t, "user", res.Labels.Labels[res.CodeV2.Checksums[1<<32|4]])
+		assert.Equal(t, "user", res.Labels.Labels[res.CodeV2.Checksums[1<<32|2]])
 
 		assertFunction(t, "name", &llx.Function{
 			Type:    string(types.String),
-			Binding: 1<<32 | 4,
-		}, res.CodeV2.Blocks[0].Chunks[4])
+			Binding: 1<<32 | 2,
+		}, res.CodeV2.Blocks[0].Chunks[2])
 	})
 }
 
 func TestCompiler_EmbeddedResource_ImplicitResource_Block(t *testing.T) {
-	compileCtx(t, "docker.containers[0].user(uid: 999) { name }", func(res *llx.CodeBundle) {
+	compileCtx(t, "os.linux.user(uid: 999) { name }", func(res *llx.CodeBundle) {
 		assertFunction(t, "createResource", &llx.Function{
 			Type:    string(types.Resource("os.base.user")),
 			Binding: 0,
 			Args: []*llx.Primitive{
-				llx.RefPrimitiveV2(1<<32 | 3),
+				llx.RefPrimitiveV2(1<<32 | 1),
 				llx.StringPrimitive("uid"),
 				llx.IntPrimitive(999),
 			},
-		}, res.CodeV2.Blocks[0].Chunks[3])
+		}, res.CodeV2.Blocks[0].Chunks[1])
 
 		assertFunction(t, "{}", &llx.Function{
 			Type:    string(types.Block),
-			Binding: 1<<32 | 4,
+			Binding: 1<<32 | 2,
 			Args: []*llx.Primitive{
 				llx.FunctionPrimitive(2 << 32),
 			},
-		}, res.CodeV2.Blocks[0].Chunks[4])
+		}, res.CodeV2.Blocks[0].Chunks[2])
 	})
 }
 
 func TestCompiler_EmbeddedResource_ImplicitResource_List(t *testing.T) {
-	compileCtx(t, "docker.containers[0].packages", func(res *llx.CodeBundle) {
+	compileCtx(t, "os.linux.packages", func(res *llx.CodeBundle) {
 		assertFunction(t, "createResource", &llx.Function{
 			Type:    string(types.Resource("os.base.packages")),
 			Binding: 0,
 			Args: []*llx.Primitive{
-				llx.RefPrimitiveV2(1<<32 | 3),
+				llx.RefPrimitiveV2(1<<32 | 1),
 			},
-		}, res.CodeV2.Blocks[0].Chunks[3])
+		}, res.CodeV2.Blocks[0].Chunks[1])
 	})
 }
 
@@ -2286,9 +2426,15 @@ func TestSuggestions(t *testing.T) {
 			nil,
 		},
 		{
-			// resource suggestions
+			// Resource suggestions. Aliases are left out: an alias is a second
+			// name for a resource that is already suggested under its own name,
+			// so offering both is redundant. `os.unix.sshd` used to appear here
+			// and `sshd` covers it. Without that filter, attaching the os
+			// surface to its asset roots (ADR 031) put one rooted alias per
+			// resource in the pool and `ssh` started suggesting
+			// `os.base.apache2`.
 			"ssh",
-			[]string{"macos.sharing", "os.unix.sshd", "sshd", "sshd.config", "windows.powershell", "windows.security.health"},
+			[]string{"macos.sharing", "postgresql.hba", "sshd", "sshd.config", "windows.powershell", "windows.schannel", "windows.security.health"},
 			errors.New("cannot find resource for identifier 'ssh'"),
 			nil,
 		},
@@ -2335,17 +2481,20 @@ func TestSuggestions(t *testing.T) {
 			nil,
 		},
 		{
-			// embedded with asset context on
-			"docker.containers[0].hostnam",
-			[]string{"hostname"},
-			errors.New("cannot find field 'hostnam' in docker.container"),
+			// embedded with asset context on. docker.file embeds `file`, so its
+			// members are suggested through the embed. (This used to use
+			// docker.container's embedded os.linux; that embed was removed
+			// because it answered about the host - see ADR 031.)
+			"docker.file(\"Dockerfile\").pat",
+			[]string{"path"},
+			errors.New("cannot find field 'pat' in docker.file"),
 			mql.Features{byte(mql.MQLAssetContext)},
 		},
 		{
 			// embedded with asset context off
-			"docker.containers[0].hostnam",
+			"docker.file(\"Dockerfile\").pat",
 			[]string{},
-			errors.New("cannot find field 'hostnam' in docker.container"),
+			errors.New("cannot find field 'pat' in docker.file"),
 			nil,
 		},
 	}
@@ -2462,7 +2611,7 @@ func TestCompiler_NestedEntrypoints(t *testing.T) {
 					a == b
 				}
 			`,
-			[]uint64{},
+			[]uint64{(2 << 32) | 3, (2 << 32) | 4},
 			[]uint64{(1 << 32) | 1, (2 << 32) | 5},
 		},
 		{
@@ -2477,7 +2626,7 @@ func TestCompiler_NestedEntrypoints(t *testing.T) {
 					x == y
 				}
 			`,
-			[]uint64{},
+			[]uint64{(2 << 32) | 3, (2 << 32) | 4, (3 << 32) | 3, (3 << 32) | 4},
 			[]uint64{(1 << 32) | 1, (2 << 32) | 5, (3 << 32) | 5},
 		},
 		{
@@ -2497,7 +2646,12 @@ func TestCompiler_NestedEntrypoints(t *testing.T) {
 					j == k
 				}
 			`,
-			[]uint64{(1 << 32) | 2},
+			[]uint64{
+				(1 << 32) | 2,
+				(2 << 32) | 3, (2 << 32) | 4,
+				(3 << 32) | 3, (3 << 32) | 4,
+				(4 << 32) | 3, (4 << 32) | 4,
+			},
 			[]uint64{(1 << 32) | 6, (2 << 32) | 5, (3 << 32) | 5, (4 << 32) | 5},
 		},
 		{
@@ -2513,7 +2667,7 @@ func TestCompiler_NestedEntrypoints(t *testing.T) {
 					x == y
 				}
 			`,
-			[]uint64{},
+			[]uint64{(2 << 32) | 3, (2 << 32) | 4, (3 << 32) | 3, (3 << 32) | 4},
 			[]uint64{(1 << 32) | 5, (2 << 32) | 5, (3 << 32) | 5},
 		},
 		{
@@ -2524,7 +2678,7 @@ func TestCompiler_NestedEntrypoints(t *testing.T) {
 					a == b
 				}
 			`,
-			[]uint64{},
+			[]uint64{(2 << 32) | 4, (2 << 32) | 5},
 			[]uint64{(1 << 32) | 2, (2 << 32) | 6},
 		},
 		{
@@ -2535,7 +2689,7 @@ func TestCompiler_NestedEntrypoints(t *testing.T) {
 					x == y
 				}
 			`,
-			[]uint64{},
+			[]uint64{(2 << 32) | 4, (2 << 32) | 5},
 			[]uint64{(1 << 32) | 2, (2 << 32) | 6},
 		},
 		{
@@ -2546,7 +2700,7 @@ func TestCompiler_NestedEntrypoints(t *testing.T) {
 					x == y
 				}
 			`,
-			[]uint64{},
+			[]uint64{(2 << 32) | 4, (2 << 32) | 5},
 			[]uint64{(1 << 32) | 2, (2 << 32) | 6},
 		},
 		{
@@ -2601,4 +2755,104 @@ func allCodepoints(code *llx.CodeV2) ([]uint64, []uint64) {
 		datapoints = append(datapoints, b.Datapoints...)
 	}
 	return entrypoints, datapoints
+}
+
+// A comparison has its operands collected as datapoints, so a failing assertion
+// can report the value it actually saw. A short-circuiting operator must not:
+// datapoints run unconditionally, so collecting them evaluates a right side that
+// the guard exists to skip, and `x == null || x.someCall()` calls someCall on a
+// null. Blocks used to be exempt from datapoint collection entirely, which hid
+// this until v14 made them collect (issue 10723).
+func TestCompiler_ShortCircuitOperandsAreNotDatapoints(t *testing.T) {
+	tests := []struct {
+		code        string
+		datapoints  []uint64
+		entrypoints []uint64
+	}{
+		{
+			`
+				mondoo {
+					version == "1"
+				}
+			`,
+			[]uint64{(2 << 32) | 2},
+			[]uint64{(1 << 32) | 2, (2 << 32) | 3},
+		},
+		{
+			`
+				mondoo {
+					version == "1" || build == "2"
+				}
+			`,
+			[]uint64{},
+			[]uint64{(1 << 32) | 2, (2 << 32) | 6},
+		},
+		{
+			`
+				mondoo {
+					version == "1" && build == "2"
+				}
+			`,
+			[]uint64{},
+			[]uint64{(1 << 32) | 2, (2 << 32) | 6},
+		},
+		{
+			`mondoo.version == "1" || mondoo.build == "2"`,
+			[]uint64{},
+			[]uint64{(1 << 32) | 7},
+		},
+		{
+			`mondoo.version == "1" && mondoo.build == "2"`,
+			[]uint64{},
+			[]uint64{(1 << 32) | 7},
+		},
+	}
+
+	for i := range tests {
+		test := tests[i]
+		t.Run(test.code, func(t *testing.T) {
+			compileT(t, test.code, func(res *llx.CodeBundle) {
+				entrypoints, datapoints := allCodepoints(res.CodeV2)
+				assert.ElementsMatch(t, test.entrypoints, entrypoints)
+				assert.ElementsMatch(t, test.datapoints, datapoints)
+			})
+		})
+	}
+}
+
+func TestCompiler_PrivateResourcePathPrefersField(t *testing.T) {
+	// A dotted path whose full name is also a resource used to always compile to
+	// that resource, skipping the owner's accessor. For private resources with
+	// data-only fields that left every field null. Private resources must instead
+	// be reached through the owner's accessor, while everything else keeps
+	// resolving to the longest matching resource name.
+	data := []struct {
+		code   string
+		chunks []string
+	}{
+		// private sub-resources: routed through the owner's accessor
+		{"windows.deviceGuard.credentialGuardConfig", []string{"windows", "deviceGuard", "credentialGuardConfig"}},
+		{"windows.lsa.ntlm.useLogonCredential", []string{"windows.lsa", "ntlm", "useLogonCredential"}},
+		{"windows.smb.serverConfiguration.requireSecuritySignature", []string{"windows.smb", "serverConfiguration", "requireSecuritySignature"}},
+		{"windows.winrm.service.allowBasic", []string{"windows.winrm", "service", "allowBasic"}},
+		{"windows.defender.status.amEngineVersion", []string{"windows.defender", "status", "amEngineVersion"}},
+		// public resources are untouched, even when they shadow a field
+		{"windows.lsa.forceGuest", []string{"windows.lsa", "forceGuest"}},
+		{"sshd.config.params", []string{"sshd.config", "params"}},
+		// the singular accessors lr generates for list resources are implicit and
+		// not backed by the owner, so those paths keep resolving to the resource
+		{"windows.printerDriver.name", []string{"windows.printerDriver", "name"}},
+	}
+
+	for _, v := range data {
+		t.Run(v.code, func(t *testing.T) {
+			compileT(t, v.code, func(res *llx.CodeBundle) {
+				ids := []string{}
+				for _, c := range res.CodeV2.Blocks[0].Chunks {
+					ids = append(ids, c.Id)
+				}
+				assert.Equal(t, v.chunks, ids)
+			})
+		})
+	}
 }

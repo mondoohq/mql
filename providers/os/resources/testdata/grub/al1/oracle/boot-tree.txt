@@ -1,0 +1,8 @@
+/boot
+/boot/efi
+/boot/efi/EFI
+/boot/efi/EFI/redhat
+/boot/efi/EFI/redhat/grub.efi
+/boot/grub
+/boot/grub/grub.conf
+/boot/grub/menu.lst

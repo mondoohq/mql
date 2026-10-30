@@ -5,7 +5,9 @@ package connection
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
+	"sync"
 )
 
 // ---------------------------------------------------------------------------
@@ -178,4 +180,99 @@ func (c *PveConnection) GetUserTFA(userid string) ([]TFAEntry, error) {
 		return nil, fmt.Errorf("failed to get TFA entries for user %s: %w", userid, err)
 	}
 	return entries, nil
+}
+
+// ---------------------------------------------------------------------------
+// Directory realm sync jobs
+// ---------------------------------------------------------------------------
+
+// RealmSyncJob is a scheduled import of users and groups from a directory
+// realm into the Proxmox user database.
+//
+// Enabled is a pointer so that a payload which omits the key reports null
+// rather than the Go zero value; Proxmox declares it a boolean but serializes
+// it as the integer 1 or 0, which PveBool absorbs.
+type RealmSyncJob struct {
+	ID             string   `json:"id"`
+	Realm          string   `json:"realm"`
+	Schedule       string   `json:"schedule"`
+	Comment        string   `json:"comment"`
+	Enabled        *PveBool `json:"enabled"`
+	RemoveVanished string   `json:"remove-vanished"`
+	Scope          string   `json:"scope"`
+	LastRun        int64    `json:"last-run"`
+	NextRun        int64    `json:"next-run"`
+}
+
+// realmSyncIndex memoizes the job listing. Both the cluster-wide accessor and
+// the per-realm reverse edge read from it, so without this a fleet of realms
+// would re-list the jobs once each.
+type realmSyncIndex struct {
+	once     sync.Once
+	jobs     []RealmSyncJob
+	readable bool
+	err      error
+}
+
+// GetRealmSyncJobs lists the configured realm-sync jobs. The second return
+// value is false when the cluster does not serve the endpoint, so a Proxmox
+// release without realm-sync jobs is not reported as a cluster that has none.
+func (c *PveConnection) GetRealmSyncJobs() ([]RealmSyncJob, bool, error) {
+	c.realmSync.once.Do(func() {
+		var jobs []RealmSyncJob
+		readable, err := c.getIfAvailable("/cluster/jobs/realm-sync", &jobs)
+		c.realmSync.jobs, c.realmSync.readable, c.realmSync.err = jobs, readable, err
+	})
+	return c.realmSync.jobs, c.realmSync.readable, c.realmSync.err
+}
+
+// GetRealmSyncJob reads one job's full definition.
+//
+// The listing endpoint leaves out `enable-new`, which decides whether a user
+// appearing in the directory becomes an enabled Proxmox account on the next
+// sync, so that one setting needs the per-job route. Returns a nil map when
+// the job is not readable.
+func (c *PveConnection) GetRealmSyncJob(id string) (map[string]any, error) {
+	var cfg map[string]any
+	// the id comes back from the listing endpoint rather than from a user, but
+	// it is escaped anyway so that a value carrying a separator cannot reshape
+	// the request path
+	path := "/cluster/jobs/realm-sync/" + url.PathEscape(id)
+	readable, err := c.getIfAvailable(path, &cfg)
+	if err != nil {
+		return nil, err
+	}
+	if !readable {
+		return nil, nil
+	}
+	return cfg, nil
+}
+
+// realmIndex memoizes the realm listing. Resolving the realm behind a sync job
+// would otherwise re-list every realm once per job.
+type realmIndex struct {
+	once   sync.Once
+	byName map[string]RealmInfo
+	err    error
+}
+
+// LookupRealm resolves one realm by name against a single cached listing.
+func (c *PveConnection) LookupRealm(realm string) (RealmInfo, bool, error) {
+	c.realms.once.Do(func() {
+		realms, err := c.GetRealms()
+		if err != nil {
+			c.realms.err = fmt.Errorf("failed to index realms: %w", err)
+			return
+		}
+		index := make(map[string]RealmInfo, len(realms))
+		for _, r := range realms {
+			index[r.Realm] = r
+		}
+		c.realms.byName = index
+	})
+	if c.realms.err != nil {
+		return RealmInfo{}, false, c.realms.err
+	}
+	r, ok := c.realms.byName[realm]
+	return r, ok, nil
 }

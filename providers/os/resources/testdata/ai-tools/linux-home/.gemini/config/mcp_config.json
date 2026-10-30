@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "fs": {
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/tmp"
+      ],
+      "command": "npx",
+      "disabled": false,
+      "env": {
+        "API_KEY": "<redacted>"
+      }
+    },
+    "remote": {
+      "disabled": false,
+      "headers": {
+        "Authorization": "<redacted>"
+      },
+      "serverUrl": "https://mcp.example.com/mcp"
+    }
+  }
+}

@@ -5,18 +5,23 @@ package connection
 
 import (
 	"github.com/cockroachdb/errors"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 const (
-	DiscoveryAll          = "all"
-	DiscoveryAuto         = "auto"
-	DiscoveryRepos        = "repos"
-	DiscoveryUsers        = "users"
-	DiscoveryOrganization = "organization"
-	DiscoveryTerraform    = "terraform"
-	DiscoveryK8sManifests = "k8s-manifests"
+	DiscoveryAll            = "all"
+	DiscoveryAuto           = "auto"
+	DiscoveryRepos          = "repos"
+	DiscoveryUsers          = "users"
+	DiscoveryOrganization   = "organization"
+	DiscoveryTerraform      = "terraform"
+	DiscoveryK8sManifests   = "k8s-manifests"
+	DiscoveryCloudformation = "cloudformation"
+	DiscoveryDockerfiles    = "dockerfiles"
+	DiscoveryBicep          = "bicep"
+	DiscoveryHelm           = "helm"
+	DiscoveryKustomize      = "kustomize"
 )
 
 // Platforms is the static catalog of platforms the GitHub provider can emit.

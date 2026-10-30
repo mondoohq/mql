@@ -7,17 +7,18 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/desktopvirtualization/armdesktopvirtualization/v2"
 	"github.com/rs/zerolog/log"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func initAzureSubscriptionDesktopVirtualizationService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -89,6 +90,13 @@ func hostPoolToMql(runtime *plugin.Runtime, hp *armdesktopvirtualization.HostPoo
 	var personalDesktopAssignmentType, ssoadfsAuthority, publicNetworkAccess, ssoSecretType string
 	var startVMOnConnect, validationEnvironment bool
 	var maxSessionLimit, ring *int64
+	var description, friendlyName, vmTemplate *string
+	var registrationTokenExpirationTime *time.Time
+	var registrationTokenOperation *string
+	var registrationTokenActive *bool
+	var agentUpdateType, agentUpdateMaintenanceWindowTimeZone *string
+	var agentUpdateUseSessionHostLocalTime *bool
+	agentUpdateMaintenanceWindows := []any{}
 	privateEndpointConnectionCount := int64(0)
 	if p := hp.Properties; p != nil {
 		hostPoolType = string(convert.ToValue(p.HostPoolType))
@@ -110,29 +118,75 @@ func hostPoolToMql(runtime *plugin.Runtime, hp *armdesktopvirtualization.HostPoo
 			v := int64(*p.Ring)
 			ring = &v
 		}
+		description = p.Description
+		friendlyName = p.FriendlyName
+		vmTemplate = p.VMTemplate
+		// The token value itself is deliberately not surfaced. What an audit
+		// needs is whether one is outstanding and when it lapses.
+		if ri := p.RegistrationInfo; ri != nil {
+			registrationTokenExpirationTime = ri.ExpirationTime
+			registrationTokenOperation = stringEnumPtr(ri.RegistrationTokenOperation)
+			active := ri.Token != nil && *ri.Token != ""
+			registrationTokenActive = &active
+		}
+		if au := p.AgentUpdate; au != nil {
+			agentUpdateType = stringEnumPtr(au.Type)
+			agentUpdateUseSessionHostLocalTime = au.UseSessionHostLocalTime
+			agentUpdateMaintenanceWindowTimeZone = au.MaintenanceWindowTimeZone
+			for _, w := range au.MaintenanceWindows {
+				if w == nil {
+					continue
+				}
+				d, err := convert.JsonToDict(w)
+				if err != nil {
+					return nil, err
+				}
+				agentUpdateMaintenanceWindows = append(agentUpdateMaintenanceWindows, d)
+			}
+		}
 	}
 
-	res, err := CreateResource(runtime, "azure.subscription.desktopVirtualizationService.hostPool",
-		map[string]*llx.RawData{
-			"id":                             llx.StringDataPtr(hp.ID),
-			"name":                           llx.StringDataPtr(hp.Name),
-			"location":                       llx.StringDataPtr(hp.Location),
-			"tags":                           llx.MapData(convert.PtrMapStrToInterface(hp.Tags), types.String),
-			"identity":                       llx.DictData(identity),
-			"hostPoolType":                   llx.StringData(hostPoolType),
-			"loadBalancerType":               llx.StringData(loadBalancerType),
-			"preferredAppGroupType":          llx.StringData(preferredAppGroupType),
-			"customRdpProperty":              llx.StringData(customRdpProperty),
-			"maxSessionLimit":                llx.IntDataPtr(maxSessionLimit),
-			"personalDesktopAssignmentType":  llx.StringData(personalDesktopAssignmentType),
-			"startVMOnConnect":               llx.BoolData(startVMOnConnect),
-			"validationEnvironment":          llx.BoolData(validationEnvironment),
-			"ssoadfsAuthority":               llx.StringData(ssoadfsAuthority),
-			"ring":                           llx.IntDataPtr(ring),
-			"publicNetworkAccess":            llx.StringData(publicNetworkAccess),
-			"ssoSecretType":                  llx.StringData(ssoSecretType),
-			"privateEndpointConnectionCount": llx.IntData(privateEndpointConnectionCount),
-		})
+	hpArgs := map[string]*llx.RawData{
+		"id":                             llx.StringDataPtr(hp.ID),
+		"name":                           llx.StringDataPtr(hp.Name),
+		"location":                       llx.StringDataPtr(hp.Location),
+		"tags":                           llx.MapData(convert.PtrMapStrToInterface(hp.Tags), types.String),
+		"identity":                       llx.DictData(identity),
+		"hostPoolType":                   llx.StringData(hostPoolType),
+		"loadBalancerType":               llx.StringData(loadBalancerType),
+		"preferredAppGroupType":          llx.StringData(preferredAppGroupType),
+		"customRdpProperty":              llx.StringData(customRdpProperty),
+		"maxSessionLimit":                llx.IntDataPtr(maxSessionLimit),
+		"personalDesktopAssignmentType":  llx.StringData(personalDesktopAssignmentType),
+		"startVMOnConnect":               llx.BoolData(startVMOnConnect),
+		"validationEnvironment":          llx.BoolData(validationEnvironment),
+		"ssoadfsAuthority":               llx.StringData(ssoadfsAuthority),
+		"ring":                           llx.IntDataPtr(ring),
+		"publicNetworkAccess":            llx.StringData(publicNetworkAccess),
+		"ssoSecretType":                  llx.StringData(ssoSecretType),
+		"privateEndpointConnectionCount": llx.IntData(privateEndpointConnectionCount),
+
+		"registrationTokenActive":              llx.BoolDataPtr(registrationTokenActive),
+		"registrationTokenExpirationTime":      llx.TimeDataPtr(registrationTokenExpirationTime),
+		"registrationTokenOperation":           llx.StringDataPtr(registrationTokenOperation),
+		"agentUpdateType":                      llx.StringDataPtr(agentUpdateType),
+		"agentUpdateUseSessionHostLocalTime":   llx.BoolDataPtr(agentUpdateUseSessionHostLocalTime),
+		"agentUpdateMaintenanceWindowTimeZone": llx.StringDataPtr(agentUpdateMaintenanceWindowTimeZone),
+		"agentUpdateMaintenanceWindows":        llx.ArrayData(agentUpdateMaintenanceWindows, types.Dict),
+		"description":                          llx.StringDataPtr(description),
+		"friendlyName":                         llx.StringDataPtr(friendlyName),
+		"vmTemplate":                           llx.StringDataPtr(vmTemplate),
+	}
+	// armdesktopvirtualization models a host pool identity without
+	// UserAssignedIdentities, so the host pool publishes only the three
+	// members the SDK reports.
+	hpIdentity := orZero(hp.Identity)
+	if err := setResourceIdentity(runtime, hpArgs, nil,
+		identityType(hpIdentity.Type), identityPrincipalId(hpIdentity.PrincipalID), identityTenantId(hpIdentity.TenantID)); err != nil {
+		return nil, err
+	}
+
+	res, err := CreateResource(runtime, "azure.subscription.desktopVirtualizationService.hostPool", hpArgs)
 	if err != nil {
 		return nil, err
 	}

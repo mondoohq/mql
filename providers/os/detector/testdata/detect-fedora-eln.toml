@@ -1,0 +1,50 @@
+# Fedora ELN (Enterprise Linux Next), Fedora's rolling RHEL-next branch.
+#
+# Captured from a live aarch64 EC2 instance built from
+# Fedora-Cloud-Base-AmazonEC2.aarch64-ELN-20260512.2.
+#
+# The interesting part is /etc/redhat-release: it reads "Fedora ELN 11", with no
+# "release" keyword. Every other redhat-family release file has one
+# ("Fedora release 29", "CentOS Stream release 9"), and the family resolver used
+# to require it, so ELN failed the redhat gate entirely and fell through to
+# defaultLinux.
+
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "aarch64"
+
+[commands."uname -r"]
+stdout = "7.1.0-0.rc3.260512g50897c955902.24.eln156.aarch64"
+
+[files."/etc/os-release"]
+content = """
+NAME="Fedora ELN"
+VERSION="11"
+RELEASE_TYPE=development
+ID=eln
+ID_LIKE="rhel centos fedora"
+VERSION_ID=11
+PLATFORM_ID="platform:eln"
+PRETTY_NAME="Fedora ELN 11"
+ANSI_COLOR="0;38;2;60;110;180"
+LOGO=fedora-logo-icon
+CPE_NAME="cpe:/o:fedoraproject:fedora-eln:11"
+DEFAULT_HOSTNAME="localhost"
+HOME_URL="https://docs.fedoraproject.org/en-US/eln/"
+DOCUMENTATION_URL="https://docs.fedoraproject.org/en-US/eln/"
+SUPPORT_URL="https://fedoraproject.org/wiki/Eln"
+BUG_REPORT_URL="https://bugzilla.redhat.com/"
+VARIANT="ELN"
+VARIANT_ID=eln
+"""
+
+[files."/etc/redhat-release"]
+content = "Fedora ELN 11"
+
+[files."/etc/fedora-release"]
+content = "Fedora ELN 11"
+
+[files."/etc/system-release"]
+content = "Fedora ELN 11"

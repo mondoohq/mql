@@ -9,9 +9,9 @@ import (
 	"errors"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // The MQL type names exposed as public consts for ease of reference.
@@ -54,6 +54,10 @@ const (
 	ResourceEsxiIscsiAdapter                  string = "esxi.iscsiAdapter"
 	ResourceEsxiCertificate                   string = "esxi.certificate"
 	ResourceVsphereVm                         string = "vsphere.vm"
+	ResourceVsphereVmSerialPort               string = "vsphere.vm.serialPort"
+	ResourceVsphereVmParallelPort             string = "vsphere.vm.parallelPort"
+	ResourceVsphereVmUsbController            string = "vsphere.vm.usbController"
+	ResourceVsphereVmFloppy                   string = "vsphere.vm.floppy"
 	ResourceVsphereVmCdrom                    string = "vsphere.vm.cdrom"
 	ResourceVsphereVmNetworkAdapter           string = "vsphere.vm.networkAdapter"
 	ResourceVsphereVmCpuAllocation            string = "vsphere.vm.cpuAllocation"
@@ -253,6 +257,22 @@ func init() {
 		"vsphere.vm": {
 			// to override args, implement: initVsphereVm(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createVsphereVm,
+		},
+		"vsphere.vm.serialPort": {
+			// to override args, implement: initVsphereVmSerialPort(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createVsphereVmSerialPort,
+		},
+		"vsphere.vm.parallelPort": {
+			// to override args, implement: initVsphereVmParallelPort(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createVsphereVmParallelPort,
+		},
+		"vsphere.vm.usbController": {
+			// to override args, implement: initVsphereVmUsbController(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createVsphereVmUsbController,
+		},
+		"vsphere.vm.floppy": {
+			// to override args, implement: initVsphereVmFloppy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createVsphereVmFloppy,
 		},
 		"vsphere.vm.cdrom": {
 			// to override args, implement: initVsphereVmCdrom(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -1537,6 +1557,114 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"vsphere.vm.template": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVsphereVm).GetTemplate()).ToDataRes(types.Bool)
 	},
+	"vsphere.vm.hardwareVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVm).GetHardwareVersion()).ToDataRes(types.String)
+	},
+	"vsphere.vm.guestId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVm).GetGuestId()).ToDataRes(types.String)
+	},
+	"vsphere.vm.migrateEncryption": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVm).GetMigrateEncryption()).ToDataRes(types.String)
+	},
+	"vsphere.vm.ftEncryptionMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVm).GetFtEncryptionMode()).ToDataRes(types.String)
+	},
+	"vsphere.vm.loggingEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVm).GetLoggingEnabled()).ToDataRes(types.Bool)
+	},
+	"vsphere.vm.toolsUpgradePolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVm).GetToolsUpgradePolicy()).ToDataRes(types.String)
+	},
+	"vsphere.vm.serialPorts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVm).GetSerialPorts()).ToDataRes(types.Array(types.Resource("vsphere.vm.serialPort")))
+	},
+	"vsphere.vm.parallelPorts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVm).GetParallelPorts()).ToDataRes(types.Array(types.Resource("vsphere.vm.parallelPort")))
+	},
+	"vsphere.vm.usbControllers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVm).GetUsbControllers()).ToDataRes(types.Array(types.Resource("vsphere.vm.usbController")))
+	},
+	"vsphere.vm.floppies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVm).GetFloppies()).ToDataRes(types.Array(types.Resource("vsphere.vm.floppy")))
+	},
+	"vsphere.vm.serialPort.key": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmSerialPort).GetKey()).ToDataRes(types.Int)
+	},
+	"vsphere.vm.serialPort.label": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmSerialPort).GetLabel()).ToDataRes(types.String)
+	},
+	"vsphere.vm.serialPort.connected": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmSerialPort).GetConnected()).ToDataRes(types.Bool)
+	},
+	"vsphere.vm.serialPort.connectedAtPowerOn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmSerialPort).GetConnectedAtPowerOn()).ToDataRes(types.Bool)
+	},
+	"vsphere.vm.serialPort.allowGuestControl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmSerialPort).GetAllowGuestControl()).ToDataRes(types.Bool)
+	},
+	"vsphere.vm.serialPort.backingType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmSerialPort).GetBackingType()).ToDataRes(types.String)
+	},
+	"vsphere.vm.parallelPort.key": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmParallelPort).GetKey()).ToDataRes(types.Int)
+	},
+	"vsphere.vm.parallelPort.label": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmParallelPort).GetLabel()).ToDataRes(types.String)
+	},
+	"vsphere.vm.parallelPort.connected": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmParallelPort).GetConnected()).ToDataRes(types.Bool)
+	},
+	"vsphere.vm.parallelPort.connectedAtPowerOn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmParallelPort).GetConnectedAtPowerOn()).ToDataRes(types.Bool)
+	},
+	"vsphere.vm.parallelPort.allowGuestControl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmParallelPort).GetAllowGuestControl()).ToDataRes(types.Bool)
+	},
+	"vsphere.vm.parallelPort.backingType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmParallelPort).GetBackingType()).ToDataRes(types.String)
+	},
+	"vsphere.vm.usbController.key": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmUsbController).GetKey()).ToDataRes(types.Int)
+	},
+	"vsphere.vm.usbController.label": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmUsbController).GetLabel()).ToDataRes(types.String)
+	},
+	"vsphere.vm.usbController.controllerType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmUsbController).GetControllerType()).ToDataRes(types.String)
+	},
+	"vsphere.vm.usbController.autoConnectDevices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmUsbController).GetAutoConnectDevices()).ToDataRes(types.Bool)
+	},
+	"vsphere.vm.usbController.connected": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmUsbController).GetConnected()).ToDataRes(types.Bool)
+	},
+	"vsphere.vm.usbController.connectedAtPowerOn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmUsbController).GetConnectedAtPowerOn()).ToDataRes(types.Bool)
+	},
+	"vsphere.vm.usbController.allowGuestControl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmUsbController).GetAllowGuestControl()).ToDataRes(types.Bool)
+	},
+	"vsphere.vm.usbController.backingType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmUsbController).GetBackingType()).ToDataRes(types.String)
+	},
+	"vsphere.vm.floppy.key": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmFloppy).GetKey()).ToDataRes(types.Int)
+	},
+	"vsphere.vm.floppy.label": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmFloppy).GetLabel()).ToDataRes(types.String)
+	},
+	"vsphere.vm.floppy.connected": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmFloppy).GetConnected()).ToDataRes(types.Bool)
+	},
+	"vsphere.vm.floppy.connectedAtPowerOn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmFloppy).GetConnectedAtPowerOn()).ToDataRes(types.Bool)
+	},
+	"vsphere.vm.floppy.allowGuestControl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmFloppy).GetAllowGuestControl()).ToDataRes(types.Bool)
+	},
+	"vsphere.vm.floppy.backingType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVmFloppy).GetBackingType()).ToDataRes(types.String)
+	},
 	"vsphere.vm.cdrom.key": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVsphereVmCdrom).GetKey()).ToDataRes(types.Int)
 	},
@@ -1789,6 +1917,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"vsphere.vswitch.dvs.vspanSessions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVsphereVswitchDvs).GetVspanSessions()).ToDataRes(types.Array(types.Resource("vsphere.vswitch.dvs.vspanSession")))
 	},
+	"vsphere.vswitch.dvs.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVswitchDvs).GetVersion()).ToDataRes(types.String)
+	},
+	"vsphere.vswitch.dvs.maxMtu": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVswitchDvs).GetMaxMtu()).ToDataRes(types.Int)
+	},
+	"vsphere.vswitch.dvs.linkDiscoveryProtocol": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVswitchDvs).GetLinkDiscoveryProtocol()).ToDataRes(types.String)
+	},
+	"vsphere.vswitch.dvs.linkDiscoveryOperation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVswitchDvs).GetLinkDiscoveryOperation()).ToDataRes(types.String)
+	},
+	"vsphere.vswitch.dvs.netflowEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVswitchDvs).GetNetflowEnabled()).ToDataRes(types.Bool)
+	},
+	"vsphere.vswitch.dvs.netflowCollectorIp": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVswitchDvs).GetNetflowCollectorIp()).ToDataRes(types.String)
+	},
+	"vsphere.vswitch.dvs.healthCheckEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVswitchDvs).GetHealthCheckEnabled()).ToDataRes(types.Bool)
+	},
+	"vsphere.vswitch.dvs.defaultPortSecurityPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVswitchDvs).GetDefaultPortSecurityPolicy()).ToDataRes(types.Resource("vsphere.vswitch.securityPolicy"))
+	},
 	"vsphere.vswitch.dvs.vspanSession.key": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVsphereVswitchDvsVspanSession).GetKey()).ToDataRes(types.String)
 	},
@@ -1848,6 +2000,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"vsphere.vswitch.portgroup.portConfigResetAtDisconnect": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVsphereVswitchPortgroup).GetPortConfigResetAtDisconnect()).ToDataRes(types.Bool)
+	},
+	"vsphere.vswitch.portgroup.portBinding": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVswitchPortgroup).GetPortBinding()).ToDataRes(types.String)
+	},
+	"vsphere.vswitch.portgroup.blocked": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVswitchPortgroup).GetBlocked()).ToDataRes(types.Bool)
+	},
+	"vsphere.vswitch.portgroup.vlanTrunkRanges": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVswitchPortgroup).GetVlanTrunkRanges()).ToDataRes(types.Array(types.String))
+	},
+	"vsphere.vswitch.portgroup.securityPolicyOverrideAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVswitchPortgroup).GetSecurityPolicyOverrideAllowed()).ToDataRes(types.Bool)
+	},
+	"vsphere.vswitch.portgroup.vlanOverrideAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVswitchPortgroup).GetVlanOverrideAllowed()).ToDataRes(types.Bool)
+	},
+	"vsphere.vswitch.portgroup.macManagementOverrideAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVswitchPortgroup).GetMacManagementOverrideAllowed()).ToDataRes(types.Bool)
+	},
+	"vsphere.vswitch.portgroup.uplinkTeamingOverrideAllowed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVsphereVswitchPortgroup).GetUplinkTeamingOverrideAllowed()).ToDataRes(types.Bool)
 	},
 	"vsphere.vswitch.macManagementPolicy.allowPromiscuous": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVsphereVswitchMacManagementPolicy).GetAllowPromiscuous()).ToDataRes(types.Bool)
@@ -4062,6 +4235,166 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlVsphereVm).Template, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"vsphere.vm.hardwareVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVm).HardwareVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.guestId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVm).GuestId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.migrateEncryption": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVm).MigrateEncryption, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.ftEncryptionMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVm).FtEncryptionMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.loggingEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVm).LoggingEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.toolsUpgradePolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVm).ToolsUpgradePolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.serialPorts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVm).SerialPorts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.parallelPorts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVm).ParallelPorts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.usbControllers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVm).UsbControllers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.floppies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVm).Floppies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.serialPort.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmSerialPort).__id, ok = v.Value.(string)
+		return
+	},
+	"vsphere.vm.serialPort.key": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmSerialPort).Key, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.serialPort.label": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmSerialPort).Label, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.serialPort.connected": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmSerialPort).Connected, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.serialPort.connectedAtPowerOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmSerialPort).ConnectedAtPowerOn, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.serialPort.allowGuestControl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmSerialPort).AllowGuestControl, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.serialPort.backingType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmSerialPort).BackingType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.parallelPort.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmParallelPort).__id, ok = v.Value.(string)
+		return
+	},
+	"vsphere.vm.parallelPort.key": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmParallelPort).Key, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.parallelPort.label": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmParallelPort).Label, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.parallelPort.connected": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmParallelPort).Connected, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.parallelPort.connectedAtPowerOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmParallelPort).ConnectedAtPowerOn, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.parallelPort.allowGuestControl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmParallelPort).AllowGuestControl, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.parallelPort.backingType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmParallelPort).BackingType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.usbController.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmUsbController).__id, ok = v.Value.(string)
+		return
+	},
+	"vsphere.vm.usbController.key": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmUsbController).Key, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.usbController.label": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmUsbController).Label, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.usbController.controllerType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmUsbController).ControllerType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.usbController.autoConnectDevices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmUsbController).AutoConnectDevices, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.usbController.connected": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmUsbController).Connected, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.usbController.connectedAtPowerOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmUsbController).ConnectedAtPowerOn, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.usbController.allowGuestControl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmUsbController).AllowGuestControl, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.usbController.backingType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmUsbController).BackingType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.floppy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmFloppy).__id, ok = v.Value.(string)
+		return
+	},
+	"vsphere.vm.floppy.key": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmFloppy).Key, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.floppy.label": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmFloppy).Label, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.floppy.connected": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmFloppy).Connected, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.floppy.connectedAtPowerOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmFloppy).ConnectedAtPowerOn, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.floppy.allowGuestControl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmFloppy).AllowGuestControl, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vm.floppy.backingType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVmFloppy).BackingType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"vsphere.vm.cdrom.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlVsphereVmCdrom).__id, ok = v.Value.(string)
 		return
@@ -4438,6 +4771,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlVsphereVswitchDvs).VspanSessions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"vsphere.vswitch.dvs.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVswitchDvs).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vswitch.dvs.maxMtu": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVswitchDvs).MaxMtu, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"vsphere.vswitch.dvs.linkDiscoveryProtocol": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVswitchDvs).LinkDiscoveryProtocol, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vswitch.dvs.linkDiscoveryOperation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVswitchDvs).LinkDiscoveryOperation, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vswitch.dvs.netflowEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVswitchDvs).NetflowEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vswitch.dvs.netflowCollectorIp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVswitchDvs).NetflowCollectorIp, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vswitch.dvs.healthCheckEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVswitchDvs).HealthCheckEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vswitch.dvs.defaultPortSecurityPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVswitchDvs).DefaultPortSecurityPolicy, ok = plugin.RawToTValue[*mqlVsphereVswitchSecurityPolicy](v.Value, v.Error)
+		return
+	},
 	"vsphere.vswitch.dvs.vspanSession.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlVsphereVswitchDvsVspanSession).__id, ok = v.Value.(string)
 		return
@@ -4524,6 +4889,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"vsphere.vswitch.portgroup.portConfigResetAtDisconnect": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlVsphereVswitchPortgroup).PortConfigResetAtDisconnect, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vswitch.portgroup.portBinding": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVswitchPortgroup).PortBinding, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"vsphere.vswitch.portgroup.blocked": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVswitchPortgroup).Blocked, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vswitch.portgroup.vlanTrunkRanges": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVswitchPortgroup).VlanTrunkRanges, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"vsphere.vswitch.portgroup.securityPolicyOverrideAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVswitchPortgroup).SecurityPolicyOverrideAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vswitch.portgroup.vlanOverrideAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVswitchPortgroup).VlanOverrideAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vswitch.portgroup.macManagementOverrideAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVswitchPortgroup).MacManagementOverrideAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vsphere.vswitch.portgroup.uplinkTeamingOverrideAllowed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVsphereVswitchPortgroup).UplinkTeamingOverrideAllowed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"vsphere.vswitch.macManagementPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5891,7 +6284,12 @@ func createVulnPackage(runtime *plugin.Runtime, args map[string]*llx.RawData) (p
 		return res, err
 	}
 
-	// to override __id implement: id() (string, error)
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	if runtime.HasRecording {
 		args, err = runtime.ResourceFromRecording("vuln.package", res.__id)
@@ -9532,6 +9930,16 @@ type mqlVsphereVm struct {
 	InstanceUuid        plugin.TValue[string]
 	BiosUuid            plugin.TValue[string]
 	Template            plugin.TValue[bool]
+	HardwareVersion     plugin.TValue[string]
+	GuestId             plugin.TValue[string]
+	MigrateEncryption   plugin.TValue[string]
+	FtEncryptionMode    plugin.TValue[string]
+	LoggingEnabled      plugin.TValue[bool]
+	ToolsUpgradePolicy  plugin.TValue[string]
+	SerialPorts         plugin.TValue[[]any]
+	ParallelPorts       plugin.TValue[[]any]
+	UsbControllers      plugin.TValue[[]any]
+	Floppies            plugin.TValue[[]any]
 }
 
 // createVsphereVm creates a new instance of this resource
@@ -9839,6 +10247,380 @@ func (c *mqlVsphereVm) GetBiosUuid() *plugin.TValue[string] {
 
 func (c *mqlVsphereVm) GetTemplate() *plugin.TValue[bool] {
 	return &c.Template
+}
+
+func (c *mqlVsphereVm) GetHardwareVersion() *plugin.TValue[string] {
+	return &c.HardwareVersion
+}
+
+func (c *mqlVsphereVm) GetGuestId() *plugin.TValue[string] {
+	return &c.GuestId
+}
+
+func (c *mqlVsphereVm) GetMigrateEncryption() *plugin.TValue[string] {
+	return &c.MigrateEncryption
+}
+
+func (c *mqlVsphereVm) GetFtEncryptionMode() *plugin.TValue[string] {
+	return &c.FtEncryptionMode
+}
+
+func (c *mqlVsphereVm) GetLoggingEnabled() *plugin.TValue[bool] {
+	return &c.LoggingEnabled
+}
+
+func (c *mqlVsphereVm) GetToolsUpgradePolicy() *plugin.TValue[string] {
+	return &c.ToolsUpgradePolicy
+}
+
+func (c *mqlVsphereVm) GetSerialPorts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SerialPorts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("vsphere.vm", c.__id, "serialPorts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.serialPorts()
+	})
+}
+
+func (c *mqlVsphereVm) GetParallelPorts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ParallelPorts, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("vsphere.vm", c.__id, "parallelPorts")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.parallelPorts()
+	})
+}
+
+func (c *mqlVsphereVm) GetUsbControllers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.UsbControllers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("vsphere.vm", c.__id, "usbControllers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.usbControllers()
+	})
+}
+
+func (c *mqlVsphereVm) GetFloppies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Floppies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("vsphere.vm", c.__id, "floppies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.floppies()
+	})
+}
+
+// mqlVsphereVmSerialPort for the vsphere.vm.serialPort resource
+type mqlVsphereVmSerialPort struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlVsphereVmSerialPortInternal it will be used here
+	Key                plugin.TValue[int64]
+	Label              plugin.TValue[string]
+	Connected          plugin.TValue[bool]
+	ConnectedAtPowerOn plugin.TValue[bool]
+	AllowGuestControl  plugin.TValue[bool]
+	BackingType        plugin.TValue[string]
+}
+
+// createVsphereVmSerialPort creates a new instance of this resource
+func createVsphereVmSerialPort(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlVsphereVmSerialPort{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("vsphere.vm.serialPort", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlVsphereVmSerialPort) MqlName() string {
+	return "vsphere.vm.serialPort"
+}
+
+func (c *mqlVsphereVmSerialPort) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlVsphereVmSerialPort) GetKey() *plugin.TValue[int64] {
+	return &c.Key
+}
+
+func (c *mqlVsphereVmSerialPort) GetLabel() *plugin.TValue[string] {
+	return &c.Label
+}
+
+func (c *mqlVsphereVmSerialPort) GetConnected() *plugin.TValue[bool] {
+	return &c.Connected
+}
+
+func (c *mqlVsphereVmSerialPort) GetConnectedAtPowerOn() *plugin.TValue[bool] {
+	return &c.ConnectedAtPowerOn
+}
+
+func (c *mqlVsphereVmSerialPort) GetAllowGuestControl() *plugin.TValue[bool] {
+	return &c.AllowGuestControl
+}
+
+func (c *mqlVsphereVmSerialPort) GetBackingType() *plugin.TValue[string] {
+	return &c.BackingType
+}
+
+// mqlVsphereVmParallelPort for the vsphere.vm.parallelPort resource
+type mqlVsphereVmParallelPort struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlVsphereVmParallelPortInternal it will be used here
+	Key                plugin.TValue[int64]
+	Label              plugin.TValue[string]
+	Connected          plugin.TValue[bool]
+	ConnectedAtPowerOn plugin.TValue[bool]
+	AllowGuestControl  plugin.TValue[bool]
+	BackingType        plugin.TValue[string]
+}
+
+// createVsphereVmParallelPort creates a new instance of this resource
+func createVsphereVmParallelPort(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlVsphereVmParallelPort{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("vsphere.vm.parallelPort", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlVsphereVmParallelPort) MqlName() string {
+	return "vsphere.vm.parallelPort"
+}
+
+func (c *mqlVsphereVmParallelPort) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlVsphereVmParallelPort) GetKey() *plugin.TValue[int64] {
+	return &c.Key
+}
+
+func (c *mqlVsphereVmParallelPort) GetLabel() *plugin.TValue[string] {
+	return &c.Label
+}
+
+func (c *mqlVsphereVmParallelPort) GetConnected() *plugin.TValue[bool] {
+	return &c.Connected
+}
+
+func (c *mqlVsphereVmParallelPort) GetConnectedAtPowerOn() *plugin.TValue[bool] {
+	return &c.ConnectedAtPowerOn
+}
+
+func (c *mqlVsphereVmParallelPort) GetAllowGuestControl() *plugin.TValue[bool] {
+	return &c.AllowGuestControl
+}
+
+func (c *mqlVsphereVmParallelPort) GetBackingType() *plugin.TValue[string] {
+	return &c.BackingType
+}
+
+// mqlVsphereVmUsbController for the vsphere.vm.usbController resource
+type mqlVsphereVmUsbController struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlVsphereVmUsbControllerInternal it will be used here
+	Key                plugin.TValue[int64]
+	Label              plugin.TValue[string]
+	ControllerType     plugin.TValue[string]
+	AutoConnectDevices plugin.TValue[bool]
+	Connected          plugin.TValue[bool]
+	ConnectedAtPowerOn plugin.TValue[bool]
+	AllowGuestControl  plugin.TValue[bool]
+	BackingType        plugin.TValue[string]
+}
+
+// createVsphereVmUsbController creates a new instance of this resource
+func createVsphereVmUsbController(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlVsphereVmUsbController{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("vsphere.vm.usbController", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlVsphereVmUsbController) MqlName() string {
+	return "vsphere.vm.usbController"
+}
+
+func (c *mqlVsphereVmUsbController) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlVsphereVmUsbController) GetKey() *plugin.TValue[int64] {
+	return &c.Key
+}
+
+func (c *mqlVsphereVmUsbController) GetLabel() *plugin.TValue[string] {
+	return &c.Label
+}
+
+func (c *mqlVsphereVmUsbController) GetControllerType() *plugin.TValue[string] {
+	return &c.ControllerType
+}
+
+func (c *mqlVsphereVmUsbController) GetAutoConnectDevices() *plugin.TValue[bool] {
+	return &c.AutoConnectDevices
+}
+
+func (c *mqlVsphereVmUsbController) GetConnected() *plugin.TValue[bool] {
+	return &c.Connected
+}
+
+func (c *mqlVsphereVmUsbController) GetConnectedAtPowerOn() *plugin.TValue[bool] {
+	return &c.ConnectedAtPowerOn
+}
+
+func (c *mqlVsphereVmUsbController) GetAllowGuestControl() *plugin.TValue[bool] {
+	return &c.AllowGuestControl
+}
+
+func (c *mqlVsphereVmUsbController) GetBackingType() *plugin.TValue[string] {
+	return &c.BackingType
+}
+
+// mqlVsphereVmFloppy for the vsphere.vm.floppy resource
+type mqlVsphereVmFloppy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlVsphereVmFloppyInternal it will be used here
+	Key                plugin.TValue[int64]
+	Label              plugin.TValue[string]
+	Connected          plugin.TValue[bool]
+	ConnectedAtPowerOn plugin.TValue[bool]
+	AllowGuestControl  plugin.TValue[bool]
+	BackingType        plugin.TValue[string]
+}
+
+// createVsphereVmFloppy creates a new instance of this resource
+func createVsphereVmFloppy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlVsphereVmFloppy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("vsphere.vm.floppy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlVsphereVmFloppy) MqlName() string {
+	return "vsphere.vm.floppy"
+}
+
+func (c *mqlVsphereVmFloppy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlVsphereVmFloppy) GetKey() *plugin.TValue[int64] {
+	return &c.Key
+}
+
+func (c *mqlVsphereVmFloppy) GetLabel() *plugin.TValue[string] {
+	return &c.Label
+}
+
+func (c *mqlVsphereVmFloppy) GetConnected() *plugin.TValue[bool] {
+	return &c.Connected
+}
+
+func (c *mqlVsphereVmFloppy) GetConnectedAtPowerOn() *plugin.TValue[bool] {
+	return &c.ConnectedAtPowerOn
+}
+
+func (c *mqlVsphereVmFloppy) GetAllowGuestControl() *plugin.TValue[bool] {
+	return &c.AllowGuestControl
+}
+
+func (c *mqlVsphereVmFloppy) GetBackingType() *plugin.TValue[string] {
+	return &c.BackingType
 }
 
 // mqlVsphereVmCdrom for the vsphere.vm.cdrom resource
@@ -10754,13 +11536,21 @@ type mqlVsphereVswitchDvs struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlVsphereVswitchDvsInternal
-	Moid          plugin.TValue[string]
-	Name          plugin.TValue[string]
-	TagRefs       plugin.TValue[[]any]
-	Properties    plugin.TValue[any]
-	CreateDate    plugin.TValue[*time.Time]
-	Uplinks       plugin.TValue[[]any]
-	VspanSessions plugin.TValue[[]any]
+	Moid                      plugin.TValue[string]
+	Name                      plugin.TValue[string]
+	TagRefs                   plugin.TValue[[]any]
+	Properties                plugin.TValue[any]
+	CreateDate                plugin.TValue[*time.Time]
+	Uplinks                   plugin.TValue[[]any]
+	VspanSessions             plugin.TValue[[]any]
+	Version                   plugin.TValue[string]
+	MaxMtu                    plugin.TValue[int64]
+	LinkDiscoveryProtocol     plugin.TValue[string]
+	LinkDiscoveryOperation    plugin.TValue[string]
+	NetflowEnabled            plugin.TValue[bool]
+	NetflowCollectorIp        plugin.TValue[string]
+	HealthCheckEnabled        plugin.TValue[bool]
+	DefaultPortSecurityPolicy plugin.TValue[*mqlVsphereVswitchSecurityPolicy]
 }
 
 // createVsphereVswitchDvs creates a new instance of this resource
@@ -10864,6 +11654,50 @@ func (c *mqlVsphereVswitchDvs) GetVspanSessions() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlVsphereVswitchDvs) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlVsphereVswitchDvs) GetMaxMtu() *plugin.TValue[int64] {
+	return &c.MaxMtu
+}
+
+func (c *mqlVsphereVswitchDvs) GetLinkDiscoveryProtocol() *plugin.TValue[string] {
+	return &c.LinkDiscoveryProtocol
+}
+
+func (c *mqlVsphereVswitchDvs) GetLinkDiscoveryOperation() *plugin.TValue[string] {
+	return &c.LinkDiscoveryOperation
+}
+
+func (c *mqlVsphereVswitchDvs) GetNetflowEnabled() *plugin.TValue[bool] {
+	return &c.NetflowEnabled
+}
+
+func (c *mqlVsphereVswitchDvs) GetNetflowCollectorIp() *plugin.TValue[string] {
+	return &c.NetflowCollectorIp
+}
+
+func (c *mqlVsphereVswitchDvs) GetHealthCheckEnabled() *plugin.TValue[bool] {
+	return &c.HealthCheckEnabled
+}
+
+func (c *mqlVsphereVswitchDvs) GetDefaultPortSecurityPolicy() *plugin.TValue[*mqlVsphereVswitchSecurityPolicy] {
+	return plugin.GetOrCompute[*mqlVsphereVswitchSecurityPolicy](&c.DefaultPortSecurityPolicy, func() (*mqlVsphereVswitchSecurityPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("vsphere.vswitch.dvs", c.__id, "defaultPortSecurityPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlVsphereVswitchSecurityPolicy), nil
+			}
+		}
+
+		return c.defaultPortSecurityPolicy()
+	})
+}
+
 // mqlVsphereVswitchDvsVspanSession for the vsphere.vswitch.dvs.vspanSession resource
 type mqlVsphereVswitchDvsVspanSession struct {
 	MqlRuntime *plugin.Runtime
@@ -10958,16 +11792,23 @@ type mqlVsphereVswitchPortgroup struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlVsphereVswitchPortgroupInternal
-	Moid                        plugin.TValue[string]
-	Name                        plugin.TValue[string]
-	TagRefs                     plugin.TValue[[]any]
-	Properties                  plugin.TValue[any]
-	VlanId                      plugin.TValue[int64]
-	SecurityPolicySettings      plugin.TValue[*mqlVsphereVswitchSecurityPolicy]
-	FailoverPolicySettings      plugin.TValue[*mqlVsphereVswitchFailoverPolicy]
-	ShapingPolicySettings       plugin.TValue[*mqlVsphereVswitchShapingPolicy]
-	MacManagementPolicySettings plugin.TValue[*mqlVsphereVswitchMacManagementPolicy]
-	PortConfigResetAtDisconnect plugin.TValue[bool]
+	Moid                          plugin.TValue[string]
+	Name                          plugin.TValue[string]
+	TagRefs                       plugin.TValue[[]any]
+	Properties                    plugin.TValue[any]
+	VlanId                        plugin.TValue[int64]
+	SecurityPolicySettings        plugin.TValue[*mqlVsphereVswitchSecurityPolicy]
+	FailoverPolicySettings        plugin.TValue[*mqlVsphereVswitchFailoverPolicy]
+	ShapingPolicySettings         plugin.TValue[*mqlVsphereVswitchShapingPolicy]
+	MacManagementPolicySettings   plugin.TValue[*mqlVsphereVswitchMacManagementPolicy]
+	PortConfigResetAtDisconnect   plugin.TValue[bool]
+	PortBinding                   plugin.TValue[string]
+	Blocked                       plugin.TValue[bool]
+	VlanTrunkRanges               plugin.TValue[[]any]
+	SecurityPolicyOverrideAllowed plugin.TValue[bool]
+	VlanOverrideAllowed           plugin.TValue[bool]
+	MacManagementOverrideAllowed  plugin.TValue[bool]
+	UplinkTeamingOverrideAllowed  plugin.TValue[bool]
 }
 
 // createVsphereVswitchPortgroup creates a new instance of this resource
@@ -11105,6 +11946,34 @@ func (c *mqlVsphereVswitchPortgroup) GetMacManagementPolicySettings() *plugin.TV
 
 func (c *mqlVsphereVswitchPortgroup) GetPortConfigResetAtDisconnect() *plugin.TValue[bool] {
 	return &c.PortConfigResetAtDisconnect
+}
+
+func (c *mqlVsphereVswitchPortgroup) GetPortBinding() *plugin.TValue[string] {
+	return &c.PortBinding
+}
+
+func (c *mqlVsphereVswitchPortgroup) GetBlocked() *plugin.TValue[bool] {
+	return &c.Blocked
+}
+
+func (c *mqlVsphereVswitchPortgroup) GetVlanTrunkRanges() *plugin.TValue[[]any] {
+	return &c.VlanTrunkRanges
+}
+
+func (c *mqlVsphereVswitchPortgroup) GetSecurityPolicyOverrideAllowed() *plugin.TValue[bool] {
+	return &c.SecurityPolicyOverrideAllowed
+}
+
+func (c *mqlVsphereVswitchPortgroup) GetVlanOverrideAllowed() *plugin.TValue[bool] {
+	return &c.VlanOverrideAllowed
+}
+
+func (c *mqlVsphereVswitchPortgroup) GetMacManagementOverrideAllowed() *plugin.TValue[bool] {
+	return &c.MacManagementOverrideAllowed
+}
+
+func (c *mqlVsphereVswitchPortgroup) GetUplinkTeamingOverrideAllowed() *plugin.TValue[bool] {
+	return &c.UplinkTeamingOverrideAllowed
 }
 
 // mqlVsphereVswitchMacManagementPolicy for the vsphere.vswitch.macManagementPolicy resource

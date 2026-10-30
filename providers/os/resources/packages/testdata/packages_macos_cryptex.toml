@@ -1,0 +1,140 @@
+# system_profiler omits every bundle on a cryptex. Tips is not really a
+# cryptex app; it stands in for a bundle system_profiler does report through
+# its /Applications symlink, which must not be listed twice.
+[commands."system_profiler SPApplicationsDataType -xml"]
+stdout = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>_items</key>
+		<array>
+			<dict>
+				<key>_name</key>
+				<string>Finder</string>
+				<key>obtained_from</key>
+				<string>apple</string>
+				<key>path</key>
+				<string>/System/Library/CoreServices/Finder.app</string>
+				<key>version</key>
+				<string>27.0</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>Tips</string>
+				<key>obtained_from</key>
+				<string>apple</string>
+				<key>path</key>
+				<string>/Applications/Tips.app</string>
+				<key>version</key>
+				<string>27.0</string>
+			</dict>
+		</array>
+		<key>_dataType</key>
+		<string>SPApplicationsDataType</string>
+	</dict>
+</array>
+</plist>
+"""
+
+[files."/System/Cryptexes"]
+content = ""
+
+[files."/System/Cryptexes/App"]
+content = ""
+
+[files."/System/Cryptexes/OS"]
+content = ""
+
+[files."/System/Cryptexes/App/System/Applications"]
+content = ""
+
+[files."/System/Cryptexes/App/System/Applications/Safari.app"]
+content = ""
+
+[files."/System/Cryptexes/App/System/Applications/Safari.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Safari</string>
+	<key>CFBundleName</key>
+	<string>Safari</string>
+	<key>CFBundleShortVersionString</key>
+	<string>27.0</string>
+	<key>CFBundleVersion</key>
+	<string>22624.1.16.11.1</string>
+</dict>
+</plist>
+"""
+
+[files."/System/Cryptexes/App/System/Applications/Tips.app"]
+content = ""
+
+[files."/System/Cryptexes/App/System/Applications/Tips.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Tips</string>
+	<key>CFBundleShortVersionString</key>
+	<string>27.0</string>
+</dict>
+</plist>
+"""
+
+[files."/System/Cryptexes/App/System/Library/CoreServices"]
+content = ""
+
+[files."/System/Cryptexes/App/System/Library/CoreServices/PasswordManagerBrowserExtensionHelper.app"]
+content = ""
+
+[files."/System/Cryptexes/App/System/Library/CoreServices/PasswordManagerBrowserExtensionHelper.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Passwords Extension Helper</string>
+	<key>CFBundleName</key>
+	<string>PasswordManagerBrowserExtensionHelper</string>
+	<key>CFBundleShortVersionString</key>
+	<string>27.0</string>
+</dict>
+</plist>
+"""
+
+[files."/System/Cryptexes/App/System/Library/CoreServices/Web App.app"]
+content = ""
+
+[files."/System/Cryptexes/App/System/Library/CoreServices/Web App.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleVersion</key>
+	<string>22624.1.16</string>
+</dict>
+</plist>
+"""
+
+[files."/System/Cryptexes/App/System/Library/CoreServices/PasswordsSettingsExtension.appex"]
+content = ""
+
+[files."/System/Cryptexes/App/System/Library/CoreServices/PasswordsSettingsExtension.appex/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>PasswordsSettingsExtension</string>
+	<key>CFBundleShortVersionString</key>
+	<string>27.0</string>
+</dict>
+</plist>
+"""
+
+[files."/System/Cryptexes/App/System/Library/CoreServices/Broken.app"]
+content = ""

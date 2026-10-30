@@ -1,0 +1,70 @@
+{
+  "Path": "C:\\mql-sysmgmt-acl",
+  "Owner": "BUILTIN\\Administrators",
+  "Group": "WIN-FIXTURE05\\None",
+  "Sddl": "O:BAG:S-1-5-21-1111111111-2222222222-3333333330-513D:AI(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;OICIID;0x1200a9;;;BU)(A;CIID;LC;;;BU)(A;CIID;DC;;;BU)(A;OICIIOID;GA;;;CO)",
+  "Protected": false,
+  "OwnerSid": "S-1-5-32-544",
+  "Access": [
+    {
+      "Identity": "NT AUTHORITY\\SYSTEM",
+      "Sid": "S-1-5-18",
+      "Type": "Allow",
+      "Rights": "FullControl",
+      "Mask": 2032127,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "None"
+    },
+    {
+      "Identity": "BUILTIN\\Administrators",
+      "Sid": "S-1-5-32-544",
+      "Type": "Allow",
+      "Rights": "FullControl",
+      "Mask": 2032127,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "None"
+    },
+    {
+      "Identity": "BUILTIN\\Users",
+      "Sid": "S-1-5-32-545",
+      "Type": "Allow",
+      "Rights": "ReadAndExecute, Synchronize",
+      "Mask": 1179817,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "None"
+    },
+    {
+      "Identity": "BUILTIN\\Users",
+      "Sid": "S-1-5-32-545",
+      "Type": "Allow",
+      "Rights": "AppendData",
+      "Mask": 4,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit",
+      "PropagationFlags": "None"
+    },
+    {
+      "Identity": "BUILTIN\\Users",
+      "Sid": "S-1-5-32-545",
+      "Type": "Allow",
+      "Rights": "CreateFiles",
+      "Mask": 2,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit",
+      "PropagationFlags": "None"
+    },
+    {
+      "Identity": "CREATOR OWNER",
+      "Sid": "S-1-3-0",
+      "Type": "Allow",
+      "Rights": "268435456",
+      "Mask": 268435456,
+      "Inherited": true,
+      "InheritanceFlags": "ContainerInherit, ObjectInherit",
+      "PropagationFlags": "InheritOnly"
+    }
+  ]
+}

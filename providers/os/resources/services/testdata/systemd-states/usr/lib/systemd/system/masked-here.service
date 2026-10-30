@@ -1,0 +1,6 @@
+[Unit]
+Description=Masked in /etc
+[Service]
+ExecStart=/bin/true
+[Install]
+WantedBy=multi-user.target

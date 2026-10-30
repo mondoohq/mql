@@ -15,9 +15,9 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/id/metadata"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/id/metadata"
 )
 
 const (
@@ -103,6 +103,11 @@ func (m *CommandInstanceMetadata) curlDocument(metadataPath string) (string, err
 
 	var commandString string
 	switch {
+	case usesNetcat(m.platform):
+		commandString, err = ncMetadataCmdString(token, metadataPath)
+		if err != nil {
+			return "", err
+		}
 	case m.platform.IsFamily(inventory.FAMILY_UNIX):
 		commandString = unixMetadataCmdString(token, metadataPath)
 	case m.platform.IsFamily(inventory.FAMILY_WINDOWS):
@@ -116,6 +121,9 @@ func (m *CommandInstanceMetadata) curlDocument(metadataPath string) (string, err
 	if err != nil {
 		return "", err
 	}
+	if usesNetcat(m.platform) {
+		return parseRawHTTPResponse(cmd.Stdout)
+	}
 	data, err := io.ReadAll(cmd.Stdout)
 	return strings.TrimSpace(string(data)), err
 }
@@ -127,6 +135,8 @@ func (m *CommandInstanceMetadata) getToken() (string, error) {
 
 	var commandString string
 	switch {
+	case usesNetcat(m.platform):
+		commandString = ncTokenCmdString()
 	case m.platform.IsFamily(inventory.FAMILY_UNIX):
 		commandString = unixTokenCmdString()
 	case m.platform.IsFamily(inventory.FAMILY_WINDOWS):
@@ -139,8 +149,22 @@ func (m *CommandInstanceMetadata) getToken() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if usesNetcat(m.platform) {
+		token, err := parseRawHTTPResponse(cmd.Stdout)
+		if err != nil {
+			return "", err
+		}
+		m.token = token
+		return token, nil
+	}
 	data, err := io.ReadAll(cmd.Stdout)
-	return strings.TrimSpace(string(data)), err
+	if err != nil {
+		return "", err
+	}
+	token := strings.TrimSpace(string(data))
+	// An empty token is passed on as before: IMDSv1 answers without one.
+	m.token = token
+	return token, nil
 }
 
 func (m *CommandInstanceMetadata) instanceNameTag() (string, error) {

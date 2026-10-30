@@ -13,6 +13,7 @@ func TestWindowsPowershellCmdGeneration(t *testing.T) {
 	depth1 := int64(1)
 	depth5 := int64(5)
 	depth0 := int64(0)
+	depth2 := int64(2)
 
 	tests := []struct {
 		TestTitle   string
@@ -33,7 +34,10 @@ func TestWindowsPowershellCmdGeneration(t *testing.T) {
 C:\Users\john\.aws
 '@
 
-$items = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse)
+}
 $items = $items | Where-Object { !$_.PSIsContainer }
 $items | Select-Object -ExpandProperty FullName
 `,
@@ -47,7 +51,10 @@ $items | Select-Object -ExpandProperty FullName
 C:\Program Files
 '@
 
-$items = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse -Depth 1
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+}
 $items = $items | Where-Object { $_.PSIsContainer }
 $items | Select-Object -ExpandProperty FullName
 `,
@@ -64,7 +71,10 @@ $SearchName = @'
 *.log
 '@
 
-$items = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse)
+}
 $items = $items | Where-Object { $_.Name -like $SearchName }
 $items | Select-Object -ExpandProperty FullName
 `,
@@ -81,7 +91,10 @@ $RegexPattern = @'
 .*\.log$
 '@
 
-$items = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse)
+}
 $items = $items | Where-Object { $_.FullName -match $RegexPattern }
 $items | Select-Object -ExpandProperty FullName
 `,
@@ -94,7 +107,10 @@ $items | Select-Object -ExpandProperty FullName
 C:\Data
 '@
 
-$items = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse)
+}
 $items = $items | Where-Object { $_.IsReadOnly -eq $true }
 $items | Select-Object -ExpandProperty FullName
 `,
@@ -107,7 +123,10 @@ $items | Select-Object -ExpandProperty FullName
 C:\Data
 '@
 
-$items = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse)
+}
 $items = $items | Where-Object { $_.IsReadOnly -eq $false }
 $items | Select-Object -ExpandProperty FullName
 `,
@@ -120,20 +139,38 @@ $items | Select-Object -ExpandProperty FullName
 C:\Links
 '@
 
-$items = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse)
+}
 $items = $items | Where-Object { $_.LinkType -ne $null }
 $items | Select-Object -ExpandProperty FullName
 `,
 		},
 		{
-			TestTitle: "depth 0 (no recursion)",
+			TestTitle: "depth 0 is the path alone",
 			From:      "C:\\Temp",
 			Depth:     &depth0,
 			ExpectedCmd: `$Path = @'
 C:\Temp
 '@
 
-$items = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+$items | Select-Object -ExpandProperty FullName
+`,
+		},
+		{
+			TestTitle: "depth 2 walks the entries and theirs",
+			From:      "C:\\mqltest",
+			Depth:     &depth2,
+			ExpectedCmd: `$Path = @'
+C:\mqltest
+'@
+
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse -Depth 1)
+}
 $items | Select-Object -ExpandProperty FullName
 `,
 		},
@@ -151,7 +188,10 @@ $SearchName = @'
 *.go
 '@
 
-$items = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse -Depth 5
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse -Depth 4)
+}
 $items = $items | Where-Object { !$_.PSIsContainer -and $_.Name -like $SearchName }
 $items | Select-Object -ExpandProperty FullName
 `,
@@ -176,7 +216,10 @@ $RegexPattern = @'
 .*test.*
 '@
 
-$items = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse -Depth 1
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+}
 $items = $items | Where-Object { !$_.PSIsContainer -and $_.Name -like $SearchName -and $_.FullName -match $RegexPattern -and $_.IsReadOnly -eq $false }
 $items | Select-Object -ExpandProperty FullName
 `,
@@ -188,7 +231,10 @@ $items | Select-Object -ExpandProperty FullName
 C:\Users\john's folder\data
 '@
 
-$items = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse)
+}
 $items | Select-Object -ExpandProperty FullName
 `,
 		},
@@ -204,7 +250,10 @@ $RegexPattern = @'
 .*[0-9]{4}-[0-9]{2}-[0-9]{2}.*
 '@
 
-$items = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse)
+}
 $items = $items | Where-Object { $_.FullName -match $RegexPattern }
 $items | Select-Object -ExpandProperty FullName
 `,
@@ -217,7 +266,10 @@ $items | Select-Object -ExpandProperty FullName
 C:\Data
 '@
 
-$items = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse)
+}
 $items | Select-Object -ExpandProperty FullName
 `,
 		},
@@ -238,7 +290,10 @@ $RegexPattern = @'
 ^(?!.*node_modules).*$
 '@
 
-$items = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse
+$items = @(Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue)
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+  $items += @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue -Recurse)
+}
 $items = $items | Where-Object { $_.Name -like $SearchName -and $_.FullName -match $RegexPattern }
 $items | Select-Object -ExpandProperty FullName
 `,

@@ -1,0 +1,10 @@
+# /etc/tunables/nextboot on AIX 7.3 TL4 SP2, without its prolog
+
+vmo:
+
+no:
+	ipforwarding = "1"
+	tcp_keepidle = "7201"
+
+ioo:
+	j2_maxPageReadAhead = "256"

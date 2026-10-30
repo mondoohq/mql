@@ -7,7 +7,7 @@ package mondoo.report.mql.v1;
 
 import "google/protobuf/struct.proto";
 
-option go_package = "go.mondoo.com/mql/v13/cli/reporter";
+option go_package = "go.mondoo.com/mql/cli/reporter";
 
 message Report {
   map <string, Asset> assets = 1;

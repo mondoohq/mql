@@ -1,0 +1,42 @@
+# The RHEL 9 rsyslog.conf, which includes its fragments explicitly, on a host
+# where an admin edited 30-site.conf and kept the old copy beside it, and a
+# package update left an .rpmsave. rsyslog reads only the *.conf files
+# (`rsyslogd -N1` confirms), so the backups must not appear in
+# rsyslog.conf.files, nor their settings in params.
+
+[files."/etc/rsyslog.conf"]
+path = "/etc/rsyslog.conf"
+content = """module(load="imuxsock")
+*.info;mail.none;authpriv.none;cron.none /var/log/messages
+# Include all config files in /etc/rsyslog.d/
+include(file="/etc/rsyslog.d/*.conf" mode="optional")
+"""
+
+[files."/etc/rsyslog.d/30-site.conf"]
+path = "/etc/rsyslog.d/30-site.conf"
+content = """$FileCreateMode 0644
+"""
+
+[files."/etc/rsyslog.d/30-site.conf.bak"]
+path = "/etc/rsyslog.d/30-site.conf.bak"
+content = """$FileCreateMode 0640
+"""
+
+[files."/etc/rsyslog.d/30-site.conf.rpmsave"]
+path = "/etc/rsyslog.d/30-site.conf.rpmsave"
+content = """$FileCreateMode 0600
+"""
+
+# include expansion
+[commands."find -L \"/etc/rsyslog.d\" -xdev -type f -perm -0 -maxdepth 1"]
+stdout = """/etc/rsyslog.d/30-site.conf
+/etc/rsyslog.d/30-site.conf.bak
+/etc/rsyslog.d/30-site.conf.rpmsave
+"""
+
+# `<conf>.d` auto-discovery, which must not run for this config
+[commands."find -L \"/etc/rsyslog.d\" -xdev -type f -perm -0"]
+stdout = """/etc/rsyslog.d/30-site.conf
+/etc/rsyslog.d/30-site.conf.bak
+/etc/rsyslog.d/30-site.conf.rpmsave
+"""

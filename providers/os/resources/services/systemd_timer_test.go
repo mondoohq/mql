@@ -7,10 +7,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
 func TestParseSystemdTimerUnitFiles(t *testing.T) {
@@ -117,6 +118,18 @@ func TestSystemdTimerManagerList(t *testing.T) {
 					"",
 				}, "\n"),
 			},
+			// fstrim.timer is disabled and not loaded, so list-units leaves it
+			// out and only systemctl show knows its description
+			"systemctl show --property=Id,LoadState,ActiveState,UnitFileState,Description fstrim.timer": {
+				Stdout: strings.Join([]string{
+					"Id=fstrim.timer",
+					"Description=Discard unused blocks once a week",
+					"LoadState=loaded",
+					"ActiveState=inactive",
+					"UnitFileState=disabled",
+					"",
+				}, "\n"),
+			},
 		},
 	}))
 	require.NoError(t, err)
@@ -139,6 +152,7 @@ func TestSystemdTimerManagerList(t *testing.T) {
 	// fstrim: only in unit-files, not running
 	assert.False(t, timerMap["fstrim"].Enabled)
 	assert.False(t, timerMap["fstrim"].Running)
+	assert.Equal(t, "Discard unused blocks once a week", timerMap["fstrim"].Description)
 }
 
 func TestSystemdTimerManagerGet(t *testing.T) {
@@ -209,7 +223,9 @@ func TestSystemdTimerManagerGetNotFound(t *testing.T) {
 }
 
 func TestShowTimerProperties(t *testing.T) {
-	const showCmd = "systemctl show --property=Unit,OnCalendar,Persistent apt-daily.timer"
+	// Output of a live Ubuntu 20.04 host (systemd 245). systemd has no
+	// OnCalendar property; the calendar is inside TimersCalendar.
+	const showCmd = "systemctl show --property=Unit,TimersCalendar,Persistent apt-daily.timer"
 
 	mockConn, err := mock.New(0, &inventory.Asset{
 		Platform: &inventory.Platform{
@@ -221,7 +237,7 @@ func TestShowTimerProperties(t *testing.T) {
 			showCmd: {
 				Stdout: strings.Join([]string{
 					"Unit=apt-daily.service",
-					"OnCalendar=*-*-* 6,18:00",
+					"TimersCalendar={ OnCalendar=*-*-* 06,18:00:00 ; next_elapse=n/a }",
 					"Persistent=yes",
 					"",
 				}, "\n"),
@@ -235,6 +251,235 @@ func TestShowTimerProperties(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "apt-daily.service", props["Unit"])
-	assert.Equal(t, "*-*-* 6,18:00", props["OnCalendar"])
+	assert.Equal(t, "*-*-* 06,18:00:00", props["OnCalendar"])
 	assert.Equal(t, "yes", props["Persistent"])
+	assert.NotContains(t, props, "TimersCalendar")
+}
+
+func TestParseTimersCalendar(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		raw  string
+		want string
+		ok   bool
+	}{
+		// live Ubuntu 26.04 (systemd 259)
+		{"one expression", "{ OnCalendar=*-*-* 03:00:00 ; next_elapse=Sat 2026-10-03 03:00:00 UTC }", "*-*-* 03:00:00", true},
+		{"null next elapse", "{ OnCalendar=*-*-* 06,18:00:00 ; next_elapse=(null) }", "*-*-* 06,18:00:00", true},
+		{"several expressions", "{ OnCalendar=Mon *-*-* 00:00:00 ; next_elapse=n/a }\n{ OnCalendar=*-*-01 12:00:00 ; next_elapse=n/a }", "Mon *-*-* 00:00:00\n*-*-01 12:00:00", true},
+		{"no calendar trigger", "", "", true},
+		// live Ubuntu 16.04 (systemd 229) and 18.04 (systemd 237)
+		{"unprintable", "[unprintable]", "", false},
+		{"unknown shape", "{ OnCalendar=daily }", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := parseTimersCalendar(tc.raw)
+			assert.Equal(t, tc.ok, ok)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// systemd 229 and 237 print TimersCalendar as "[unprintable]", so the
+// calendar comes from the unit file and its drop-ins. Output and unit file
+// from a live Ubuntu 16.04 host.
+func TestShowTimerPropertiesReadsUnitFileOnOldSystemd(t *testing.T) {
+	const showCmd = "systemctl show --property=Unit,TimersCalendar,Persistent apt-daily.timer"
+
+	mockConn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "ubuntu", Family: []string{"ubuntu", "linux"}},
+	}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			showCmd: {Stdout: strings.Join([]string{
+				"Unit=apt-daily.service",
+				"TimersCalendar=[unprintable]",
+				"Persistent=yes",
+				"",
+			}, "\n")},
+		},
+	}))
+	require.NoError(t, err)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/lib/systemd/system/apt-daily.timer", []byte(`[Unit]
+Description=Daily apt download activities
+
+[Timer]
+OnCalendar=*-*-* 6,18:00
+RandomizedDelaySec=12h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+`), 0o644))
+	conn := &fsConn{Connection: mockConn, fs: fs}
+
+	t.Run("unit file", func(t *testing.T) {
+		props, err := NewSystemdTimerManager(conn).ShowTimerProperties("apt-daily")
+		require.NoError(t, err)
+		assert.Equal(t, "*-*-* 6,18:00", props["OnCalendar"])
+		// systemctl still answers the rest
+		assert.Equal(t, "yes", props["Persistent"])
+		assert.Equal(t, "apt-daily.service", props["Unit"])
+		assert.NotContains(t, props, "TimersCalendar")
+	})
+
+	t.Run("drop-in replaces the schedule", func(t *testing.T) {
+		require.NoError(t, afero.WriteFile(fs, "/etc/systemd/system/apt-daily.timer.d/override.conf", []byte(`[Timer]
+OnCalendar=
+OnCalendar=*-*-* 04:00
+OnCalendar=Sun 05:00
+`), 0o644))
+		props, err := NewSystemdTimerManager(conn).ShowTimerProperties("apt-daily")
+		require.NoError(t, err)
+		assert.Equal(t, "*-*-* 04:00\nSun 05:00", props["OnCalendar"])
+	})
+}
+
+// A monotonic timer prints "[unprintable]" on systemd 229 as well; its unit
+// file has no OnCalendar, so the calendar stays absent.
+func TestShowTimerPropertiesMonotonicOnOldSystemd(t *testing.T) {
+	conn := systemdFallbackConn(t, map[string]*mock.Command{
+		buildShowPropertyCommand("Unit,TimersCalendar,Persistent", "dnf-makecache.timer"): {Stdout: strings.Join([]string{
+			"Unit=dnf-makecache.service",
+			"TimersMonotonic=[unprintable]",
+			"TimersCalendar=[unprintable]",
+			"Persistent=no",
+			"",
+		}, "\n")},
+	})
+
+	props, err := NewSystemdTimerManager(conn).ShowTimerProperties("dnf-makecache")
+	require.NoError(t, err)
+	assert.NotContains(t, props, "OnCalendar")
+	assert.Equal(t, "dnf-makecache.service", props["Unit"])
+}
+
+func TestParseSystemdTimerAndSocketListUnitsJobColumn(t *testing.T) {
+	timers, err := ParseSystemdTimerListUnits(strings.NewReader(strings.Join([]string{
+		"  UNIT             LOAD   ACTIVE   SUB     JOB  DESCRIPTION",
+		"  g04-cal.timer    loaded active   waiting      g04 calendar timer",
+		"  g04-mono.timer   loaded inactive dead    stop g04 monotonic timer",
+		"",
+	}, "\n")))
+	require.NoError(t, err)
+	assert.Equal(t, "g04 calendar timer", timers["g04-cal"].Description)
+	assert.Equal(t, "g04 monotonic timer", timers["g04-mono"].Description)
+
+	sockets, err := ParseSystemdSocketListUnits(strings.NewReader(strings.Join([]string{
+		"  UNIT             LOAD   ACTIVE     SUB       JOB   DESCRIPTION",
+		"  g04.socket       loaded activating listening start g04 socket",
+		"● g04-svc.socket   loaded failed     failed          g04 socket activating other service",
+		"",
+	}, "\n")))
+	require.NoError(t, err)
+	assert.Equal(t, "g04 socket", sockets["g04"].Description)
+	assert.Equal(t, "g04 socket activating other service", sockets["g04-svc"].Description)
+}
+
+// Amazon Linux 2023 (systemd 252): list-unit-files names the templates
+// g04-ttpl@.timer and refresh-policy-routes@.timer; only list-units names
+// their running instances.
+func TestSystemdTimerManagerListAddsTemplateInstances(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "amazonlinux", Family: []string{"linux"}},
+	}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"systemctl list-unit-files --type timer --all": {
+				Stdout: strings.Join([]string{
+					"UNIT FILE                      STATE    PRESET",
+					"fstrim.timer                   enabled  enabled",
+					"g04-ttpl@.timer                indirect disabled",
+					"refresh-policy-routes@.timer   static   -",
+					"",
+					"3 unit files listed.",
+					"",
+				}, "\n"),
+			},
+			"systemctl list-units --type timer --all": {
+				Stdout: strings.Join([]string{
+					"  UNIT                             LOAD   ACTIVE   SUB     DESCRIPTION",
+					"  fstrim.timer                     loaded active   waiting Discard unused blocks once a week",
+					"  g04-ttpl@x.timer                 loaded active   waiting g04 templated timer x",
+					"  refresh-policy-routes@ens5.timer loaded active   waiting refresh-policy-routes@ens5.timer",
+					"",
+					"LOAD   = Reflects whether the unit definition was properly loaded.",
+					"3 loaded units listed.",
+					"",
+				}, "\n"),
+			},
+			"systemctl show --property=Id,LoadState,ActiveState,UnitFileState,Description g04-ttpl@x.timer refresh-policy-routes@ens5.timer": {
+				Stdout: strings.Join([]string{
+					"Id=g04-ttpl@x.timer",
+					"Description=g04 templated timer x",
+					"LoadState=loaded",
+					"ActiveState=active",
+					"UnitFileState=enabled",
+					"",
+					"Id=refresh-policy-routes@ens5.timer",
+					"Description=refresh-policy-routes@ens5.timer",
+					"LoadState=loaded",
+					"ActiveState=active",
+					"UnitFileState=static",
+					"",
+				}, "\n"),
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	timers, err := (&SystemdTimerManager{conn: mockConn}).List()
+	require.NoError(t, err)
+	byName := map[string]*SystemdTimer{}
+	for _, timer := range timers {
+		byName[timer.Name] = timer
+	}
+	require.Len(t, byName, 5)
+
+	x := byName["g04-ttpl@x"]
+	require.NotNil(t, x)
+	assert.True(t, x.Installed)
+	assert.True(t, x.Enabled)
+	assert.True(t, x.Running)
+	assert.False(t, x.Static)
+	assert.Equal(t, "g04 templated timer x", x.Description)
+
+	ens5 := byName["refresh-policy-routes@ens5"]
+	require.NotNil(t, ens5)
+	assert.True(t, ens5.Static)
+	assert.False(t, ens5.Enabled)
+	assert.True(t, ens5.Running)
+
+	// the templates stay as list-unit-files reports them
+	require.NotNil(t, byName["g04-ttpl@"])
+	assert.False(t, byName["g04-ttpl@"].Running)
+}
+
+// A show that fails keeps the instance with what list-units reported.
+func TestSystemdTimerManagerListKeepsInstanceWhenShowFails(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "amazonlinux", Family: []string{"linux"}},
+	}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"systemctl list-unit-files --type timer --all": {
+				Stdout: "UNIT FILE                      STATE    PRESET\nrefresh-policy-routes@.timer   static   -\n\n1 unit files listed.\n",
+			},
+			"systemctl list-units --type timer --all": {
+				Stdout: "  UNIT                             LOAD   ACTIVE   SUB     DESCRIPTION\n" +
+					"  refresh-policy-routes@ens5.timer loaded active   waiting refresh-policy-routes@ens5.timer\n\n1 loaded units listed.\n",
+			},
+			"systemctl show --property=Id,LoadState,ActiveState,UnitFileState,Description refresh-policy-routes@ens5.timer": {
+				ExitStatus: 1,
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	timers, err := (&SystemdTimerManager{conn: mockConn}).List()
+	require.NoError(t, err)
+	require.Len(t, timers, 2)
+	ens5 := timers[1]
+	assert.Equal(t, "refresh-policy-routes@ens5", ens5.Name)
+	assert.True(t, ens5.Installed)
+	assert.True(t, ens5.Running)
 }

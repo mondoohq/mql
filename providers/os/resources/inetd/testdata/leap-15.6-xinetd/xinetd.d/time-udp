@@ -1,0 +1,14 @@
+# default: off
+# description: An RFC 868 time server. This is the udp version.
+
+service time
+{
+	type		= INTERNAL UNLISTED
+	id		= time-dgram
+	socket_type	= dgram
+	protocol	= udp
+	user		= root
+	wait		= yes
+	disable		= yes
+	port		= 37
+}                                                                               

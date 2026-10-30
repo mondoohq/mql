@@ -1,0 +1,953 @@
+{
+	"ociVersion": "1.3.0",
+	"process": {
+		"user": {
+			"uid": 0,
+			"gid": 0
+		},
+		"args": [
+			"/pause"
+		],
+		"env": [
+			"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+			"TERM=xterm"
+		],
+		"cwd": "/",
+		"capabilities": {
+			"bounding": [
+				"CAP_CHOWN",
+				"CAP_DAC_OVERRIDE",
+				"CAP_FSETID",
+				"CAP_FOWNER",
+				"CAP_SETGID",
+				"CAP_SETUID",
+				"CAP_SETPCAP",
+				"CAP_NET_BIND_SERVICE",
+				"CAP_KILL"
+			],
+			"effective": [
+				"CAP_CHOWN",
+				"CAP_DAC_OVERRIDE",
+				"CAP_FSETID",
+				"CAP_FOWNER",
+				"CAP_SETGID",
+				"CAP_SETUID",
+				"CAP_SETPCAP",
+				"CAP_NET_BIND_SERVICE",
+				"CAP_KILL"
+			],
+			"permitted": [
+				"CAP_CHOWN",
+				"CAP_DAC_OVERRIDE",
+				"CAP_FSETID",
+				"CAP_FOWNER",
+				"CAP_SETGID",
+				"CAP_SETUID",
+				"CAP_SETPCAP",
+				"CAP_NET_BIND_SERVICE",
+				"CAP_KILL"
+			]
+		},
+		"oomScoreAdj": -998
+	},
+	"root": {
+		"path": "/var/lib/containers/storage/overlay/fed5d9d1ebde48689cdd86ce32d8679c4a1cf1e635ba2dc1f5c95cee899d1bce/merged",
+		"readonly": true
+	},
+	"hostname": "plain",
+	"mounts": [
+		{
+			"destination": "/proc",
+			"type": "proc",
+			"source": "proc",
+			"options": [
+				"nosuid",
+				"noexec",
+				"nodev"
+			]
+		},
+		{
+			"destination": "/dev",
+			"type": "tmpfs",
+			"source": "tmpfs",
+			"options": [
+				"nosuid",
+				"strictatime",
+				"mode=755",
+				"size=65536k"
+			]
+		},
+		{
+			"destination": "/dev/pts",
+			"type": "devpts",
+			"source": "devpts",
+			"options": [
+				"nosuid",
+				"noexec",
+				"newinstance",
+				"ptmxmode=0666",
+				"mode=0620",
+				"gid=5"
+			]
+		},
+		{
+			"destination": "/dev/mqueue",
+			"type": "mqueue",
+			"source": "mqueue",
+			"options": [
+				"nosuid",
+				"noexec",
+				"nodev"
+			]
+		},
+		{
+			"destination": "/sys",
+			"type": "sysfs",
+			"source": "sysfs",
+			"options": [
+				"nosuid",
+				"noexec",
+				"nodev",
+				"ro"
+			]
+		},
+		{
+			"destination": "/etc/resolv.conf",
+			"type": "bind",
+			"source": "/run/containers/storage/overlay-containers/ab6baaa75b5f09d672c05fb57aa3871bae1014e7ab1db864ed956cb1e2cc5ecb/userdata/resolv.conf",
+			"options": [
+				"ro",
+				"bind",
+				"nodev",
+				"nosuid",
+				"noexec"
+			]
+		},
+		{
+			"destination": "/dev/shm",
+			"type": "bind",
+			"source": "/run/containers/storage/overlay-containers/ab6baaa75b5f09d672c05fb57aa3871bae1014e7ab1db864ed956cb1e2cc5ecb/userdata/shm",
+			"options": [
+				"rw",
+				"bind"
+			]
+		},
+		{
+			"destination": "/etc/hostname",
+			"type": "bind",
+			"source": "/run/containers/storage/overlay-containers/ab6baaa75b5f09d672c05fb57aa3871bae1014e7ab1db864ed956cb1e2cc5ecb/userdata/hostname",
+			"options": [
+				"ro",
+				"bind",
+				"nodev",
+				"nosuid",
+				"noexec"
+			]
+		}
+	],
+	"annotations": {
+		"io.container.manager": "cri-o",
+		"io.kubernetes.container.name": "POD",
+		"io.kubernetes.cri-o.Annotations": "{\"kubernetes.io/config.source\":\"api\",\"kubernetes.io/config.seen\":\"2026-10-08T01:05:59.751196091Z\",\"kubectl.kubernetes.io/last-applied-configuration\":\"{\\\"apiVersion\\\":\\\"v1\\\",\\\"kind\\\":\\\"Pod\\\",\\\"metadata\\\":{\\\"annotations\\\":{},\\\"name\\\":\\\"plain\\\",\\\"namespace\\\":\\\"default\\\"},\\\"spec\\\":{\\\"containers\\\":[{\\\"command\\\":[\\\"sleep\\\",\\\"infinity\\\"],\\\"image\\\":\\\"busybox:1.37\\\",\\\"name\\\":\\\"plain\\\"}]}}\\n\"}",
+		"io.kubernetes.cri-o.CNIResult": "{\"cniVersion\":\"1.1.0\",\"interfaces\":[{\"mac\":\"1a:3a:15:3b:13:1e\",\"name\":\"veth7af2060e\"},{\"mac\":\"ba:5b:aa:dd:c9:20\",\"name\":\"eth0\",\"sandbox\":\"/var/run/netns/fcfd5f89-9ca5-41d9-8e7a-032c19b2c1e8\"}],\"ips\":[{\"address\":\"10.244.0.5/24\",\"gateway\":\"10.244.0.1\",\"interface\":1}],\"routes\":[{\"dst\":\"0.0.0.0/0\"}]}",
+		"io.kubernetes.cri-o.CgroupParent": "",
+		"io.kubernetes.cri-o.ContainerID": "ab6baaa75b5f09d672c05fb57aa3871bae1014e7ab1db864ed956cb1e2cc5ecb",
+		"io.kubernetes.cri-o.ContainerName": "k8s_POD_plain_default_53b00e62-35d9-4553-a044-82ebeb711b81_0",
+		"io.kubernetes.cri-o.ContainerType": "sandbox",
+		"io.kubernetes.cri-o.Created": "2026-10-08T01:06:00.105337049Z",
+		"io.kubernetes.cri-o.HostName": "plain",
+		"io.kubernetes.cri-o.HostNetwork": "false",
+		"io.kubernetes.cri-o.HostnamePath": "/run/containers/storage/overlay-containers/ab6baaa75b5f09d672c05fb57aa3871bae1014e7ab1db864ed956cb1e2cc5ecb/userdata/hostname",
+		"io.kubernetes.cri-o.Image": "registry.k8s.io/pause:3.10.2",
+		"io.kubernetes.cri-o.ImageName": "registry.k8s.io/pause:3.10.2",
+		"io.kubernetes.cri-o.KubeName": "plain",
+		"io.kubernetes.cri-o.Labels": "{\"io.kubernetes.pod.name\":\"plain\",\"io.kubernetes.pod.namespace\":\"default\",\"io.kubernetes.pod.uid\":\"53b00e62-35d9-4553-a044-82ebeb711b81\",\"io.kubernetes.container.name\":\"POD\"}",
+		"io.kubernetes.cri-o.LogPath": "/var/log/pods/default_plain_53b00e62-35d9-4553-a044-82ebeb711b81/ab6baaa75b5f09d672c05fb57aa3871bae1014e7ab1db864ed956cb1e2cc5ecb.log",
+		"io.kubernetes.cri-o.Metadata": "{\"name\":\"plain\",\"uid\":\"53b00e62-35d9-4553-a044-82ebeb711b81\",\"namespace\":\"default\"}",
+		"io.kubernetes.cri-o.MountPoint": "/var/lib/containers/storage/overlay/fed5d9d1ebde48689cdd86ce32d8679c4a1cf1e635ba2dc1f5c95cee899d1bce/merged",
+		"io.kubernetes.cri-o.Name": "k8s_plain_default_53b00e62-35d9-4553-a044-82ebeb711b81_0",
+		"io.kubernetes.cri-o.Namespace": "default",
+		"io.kubernetes.cri-o.NamespaceOptions": "{\"pid\":1,\"userns_options\":{\"mode\":2}}",
+		"io.kubernetes.cri-o.PortMappings": "[]",
+		"io.kubernetes.cri-o.PrivilegedRuntime": "false",
+		"io.kubernetes.cri-o.ResolvPath": "/run/containers/storage/overlay-containers/ab6baaa75b5f09d672c05fb57aa3871bae1014e7ab1db864ed956cb1e2cc5ecb/userdata/resolv.conf",
+		"io.kubernetes.cri-o.RuntimeHandler": "",
+		"io.kubernetes.cri-o.SandboxID": "ab6baaa75b5f09d672c05fb57aa3871bae1014e7ab1db864ed956cb1e2cc5ecb",
+		"io.kubernetes.cri-o.SandboxName": "k8s_plain_default_53b00e62-35d9-4553-a044-82ebeb711b81_0",
+		"io.kubernetes.cri-o.SeccompProfilePath": "RuntimeDefault",
+		"io.kubernetes.cri-o.ShmPath": "/run/containers/storage/overlay-containers/ab6baaa75b5f09d672c05fb57aa3871bae1014e7ab1db864ed956cb1e2cc5ecb/userdata/shm",
+		"io.kubernetes.pod.name": "plain",
+		"io.kubernetes.pod.namespace": "default",
+		"io.kubernetes.pod.uid": "53b00e62-35d9-4553-a044-82ebeb711b81",
+		"kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"Pod\",\"metadata\":{\"annotations\":{},\"name\":\"plain\",\"namespace\":\"default\"},\"spec\":{\"containers\":[{\"command\":[\"sleep\",\"infinity\"],\"image\":\"busybox:1.37\",\"name\":\"plain\"}]}}\n",
+		"kubernetes.io/config.seen": "2026-10-08T01:05:59.751196091Z",
+		"kubernetes.io/config.source": "api",
+		"pod-linux-overhead.crio.io": "{}",
+		"pod-linux-resources.crio.io": "{\"cpu_period\":100000,\"cpu_shares\":2,\"unified\":{\"memory.oom.group\":\"1\"}}",
+		"spoofed.crio.io": "true"
+	},
+	"linux": {
+		"sysctl": {
+			"net.ipv4.ip_unprivileged_port_start": "0"
+		},
+		"resources": {
+			"devices": [
+				{
+					"allow": false,
+					"access": "rwm"
+				}
+			],
+			"cpu": {
+				"shares": 2
+			}
+		},
+		"cgroupsPath": "crio-ab6baaa75b5f09d672c05fb57aa3871bae1014e7ab1db864ed956cb1e2cc5ecb",
+		"namespaces": [
+			{
+				"type": "pid"
+			},
+			{
+				"type": "network",
+				"path": "/var/run/netns/fcfd5f89-9ca5-41d9-8e7a-032c19b2c1e8"
+			},
+			{
+				"type": "ipc",
+				"path": "/var/run/ipcns/fcfd5f89-9ca5-41d9-8e7a-032c19b2c1e8"
+			},
+			{
+				"type": "uts",
+				"path": "/var/run/utsns/fcfd5f89-9ca5-41d9-8e7a-032c19b2c1e8"
+			},
+			{
+				"type": "mount"
+			}
+		],
+		"seccomp": {
+			"defaultAction": "SCMP_ACT_ERRNO",
+			"defaultErrnoRet": 38,
+			"architectures": [
+				"SCMP_ARCH_AARCH64",
+				"SCMP_ARCH_ARM"
+			],
+			"syscalls": [
+				{
+					"names": [
+						"bdflush",
+						"cachestat",
+						"futex_requeue",
+						"futex_wait",
+						"futex_waitv",
+						"futex_wake",
+						"io_pgetevents",
+						"io_pgetevents_time64",
+						"kexec_file_load",
+						"kexec_load",
+						"map_shadow_stack",
+						"migrate_pages",
+						"move_pages",
+						"nfsservctl",
+						"nice",
+						"oldfstat",
+						"oldlstat",
+						"oldolduname",
+						"oldstat",
+						"olduname",
+						"pciconfig_iobase",
+						"pciconfig_read",
+						"pciconfig_write",
+						"sgetmask",
+						"ssetmask",
+						"swapoff",
+						"swapon",
+						"syscall",
+						"sysfs",
+						"uselib",
+						"userfaultfd",
+						"ustat",
+						"vm86",
+						"vm86old",
+						"vmsplice"
+					],
+					"action": "SCMP_ACT_ERRNO",
+					"errnoRet": 1
+				},
+				{
+					"names": [
+						"_llseek",
+						"_newselect",
+						"accept",
+						"accept4",
+						"access",
+						"adjtimex",
+						"alarm",
+						"bind",
+						"brk",
+						"capget",
+						"capset",
+						"chdir",
+						"chmod",
+						"chown",
+						"chown32",
+						"clock_adjtime",
+						"clock_adjtime64",
+						"clock_getres",
+						"clock_getres_time64",
+						"clock_gettime",
+						"clock_gettime64",
+						"clock_nanosleep",
+						"clock_nanosleep_time64",
+						"writev",
+						"writev",
+						"close",
+						"close_range",
+						"connect",
+						"copy_file_range",
+						"creat",
+						"dup",
+						"dup2",
+						"dup3",
+						"epoll_create",
+						"epoll_create1",
+						"epoll_ctl",
+						"epoll_ctl_old",
+						"epoll_pwait",
+						"epoll_pwait2",
+						"epoll_wait",
+						"epoll_wait_old",
+						"eventfd",
+						"eventfd2",
+						"execve",
+						"execveat",
+						"exit",
+						"exit_group",
+						"faccessat",
+						"faccessat2",
+						"fadvise64",
+						"fadvise64_64",
+						"fallocate",
+						"fanotify_init",
+						"fanotify_mark",
+						"fchdir",
+						"fchmod",
+						"fchmodat",
+						"fchmodat2",
+						"fchown",
+						"fchown32",
+						"fchownat",
+						"fcntl",
+						"fcntl64",
+						"fdatasync",
+						"fgetxattr",
+						"flistxattr",
+						"flock",
+						"fork",
+						"fremovexattr",
+						"fsconfig",
+						"fsetxattr",
+						"fsmount",
+						"fsopen",
+						"fspick",
+						"fstat",
+						"fstat64",
+						"fstatat64",
+						"fstatfs",
+						"fstatfs64",
+						"fsync",
+						"ftruncate",
+						"ftruncate64",
+						"futex",
+						"futex_time64",
+						"futimesat",
+						"get_mempolicy",
+						"get_robust_list",
+						"get_thread_area",
+						"getcpu",
+						"getcwd",
+						"getdents",
+						"getdents64",
+						"getegid",
+						"getegid32",
+						"geteuid",
+						"geteuid32",
+						"getgid",
+						"getgid32",
+						"getgroups",
+						"getgroups32",
+						"getitimer",
+						"getpeername",
+						"getpgid",
+						"getpgrp",
+						"getpid",
+						"getppid",
+						"getpriority",
+						"getrandom",
+						"getresgid",
+						"getresgid32",
+						"getresuid",
+						"getresuid32",
+						"getrlimit",
+						"getrusage",
+						"getsid",
+						"getsockname",
+						"getsockopt",
+						"gettid",
+						"gettimeofday",
+						"getuid",
+						"getuid32",
+						"getxattr",
+						"inotify_add_watch",
+						"inotify_init",
+						"inotify_init1",
+						"inotify_rm_watch",
+						"io_cancel",
+						"io_destroy",
+						"io_getevents",
+						"io_setup",
+						"io_submit",
+						"ioctl",
+						"ioprio_get",
+						"ioprio_set",
+						"ipc",
+						"keyctl",
+						"kill",
+						"landlock_add_rule",
+						"landlock_create_ruleset",
+						"landlock_restrict_self",
+						"lchown",
+						"lchown32",
+						"lgetxattr",
+						"link",
+						"linkat",
+						"listen",
+						"listxattr",
+						"llistxattr",
+						"lremovexattr",
+						"lseek",
+						"lsetxattr",
+						"lstat",
+						"lstat64",
+						"madvise",
+						"mbind",
+						"membarrier",
+						"memfd_create",
+						"memfd_secret",
+						"mincore",
+						"mkdir",
+						"mkdirat",
+						"mknod",
+						"mknodat",
+						"mlock",
+						"mlock2",
+						"mlockall",
+						"mmap",
+						"mmap2",
+						"mount",
+						"mount_setattr",
+						"move_mount",
+						"mprotect",
+						"mq_getsetattr",
+						"mq_notify",
+						"mq_open",
+						"mq_timedreceive",
+						"mq_timedreceive_time64",
+						"mq_timedsend",
+						"mq_timedsend_time64",
+						"mq_unlink",
+						"mremap",
+						"msgctl",
+						"msgget",
+						"msgrcv",
+						"msgsnd",
+						"msync",
+						"munlock",
+						"munlockall",
+						"munmap",
+						"name_to_handle_at",
+						"nanosleep",
+						"newfstatat",
+						"open",
+						"open_tree",
+						"openat",
+						"openat2",
+						"pause",
+						"pidfd_getfd",
+						"pidfd_open",
+						"pidfd_send_signal",
+						"pipe",
+						"pipe2",
+						"pivot_root",
+						"pkey_alloc",
+						"pkey_free",
+						"pkey_mprotect",
+						"poll",
+						"ppoll",
+						"ppoll_time64",
+						"prctl",
+						"pread64",
+						"preadv",
+						"preadv2",
+						"prlimit64",
+						"process_mrelease",
+						"process_vm_readv",
+						"process_vm_writev",
+						"pselect6",
+						"pselect6_time64",
+						"ptrace",
+						"pwrite64",
+						"pwritev",
+						"pwritev2",
+						"read",
+						"readahead",
+						"readlink",
+						"readlinkat",
+						"readv",
+						"reboot",
+						"recv",
+						"recvfrom",
+						"recvmmsg",
+						"recvmmsg_time64",
+						"recvmsg",
+						"remap_file_pages",
+						"removexattr",
+						"rename",
+						"renameat",
+						"renameat2",
+						"restart_syscall",
+						"rmdir",
+						"rseq",
+						"rt_sigaction",
+						"rt_sigpending",
+						"rt_sigprocmask",
+						"rt_sigqueueinfo",
+						"rt_sigreturn",
+						"rt_sigsuspend",
+						"rt_sigtimedwait",
+						"rt_sigtimedwait_time64",
+						"rt_tgsigqueueinfo",
+						"sched_get_priority_max",
+						"sched_get_priority_min",
+						"sched_getaffinity",
+						"sched_getattr",
+						"sched_getparam",
+						"sched_getscheduler",
+						"sched_rr_get_interval",
+						"sched_rr_get_interval_time64",
+						"sched_setaffinity",
+						"sched_setattr",
+						"sched_setparam",
+						"sched_setscheduler",
+						"sched_yield",
+						"seccomp",
+						"select",
+						"semctl",
+						"semget",
+						"semop",
+						"semtimedop",
+						"semtimedop_time64",
+						"send",
+						"sendfile",
+						"sendfile64",
+						"sendmmsg",
+						"sendmsg",
+						"sendto",
+						"set_mempolicy",
+						"set_robust_list",
+						"set_thread_area",
+						"set_tid_address",
+						"setfsgid",
+						"setfsgid32",
+						"setfsuid",
+						"setfsuid32",
+						"setgid",
+						"setgid32",
+						"setgroups",
+						"setgroups32",
+						"setitimer",
+						"setns",
+						"setpgid",
+						"setpriority",
+						"setregid",
+						"setregid32",
+						"setresgid",
+						"setresgid32",
+						"setresuid",
+						"setresuid32",
+						"setreuid",
+						"setreuid32",
+						"setrlimit",
+						"setsid",
+						"setsockopt",
+						"setuid",
+						"setuid32",
+						"setxattr",
+						"shmat",
+						"shmctl",
+						"shmdt",
+						"shmget",
+						"shutdown",
+						"sigaltstack",
+						"signal",
+						"signalfd",
+						"signalfd4",
+						"sigprocmask",
+						"sigreturn",
+						"socketcall",
+						"socketpair",
+						"splice",
+						"stat",
+						"stat64",
+						"statfs",
+						"statfs64",
+						"statx",
+						"symlink",
+						"symlinkat",
+						"sync",
+						"sync_file_range",
+						"syncfs",
+						"sysinfo",
+						"syslog",
+						"tee",
+						"tgkill",
+						"time",
+						"timer_create",
+						"timer_delete",
+						"timer_getoverrun",
+						"timer_gettime",
+						"timer_gettime64",
+						"timer_settime",
+						"timer_settime64",
+						"timerfd_create",
+						"timerfd_gettime",
+						"timerfd_gettime64",
+						"timerfd_settime",
+						"timerfd_settime64",
+						"times",
+						"tkill",
+						"truncate",
+						"truncate64",
+						"ugetrlimit",
+						"umask",
+						"umount",
+						"umount2",
+						"uname",
+						"unlink",
+						"unlinkat",
+						"writev",
+						"utime",
+						"utimensat",
+						"utimensat_time64",
+						"utimes",
+						"vfork",
+						"wait4",
+						"waitid",
+						"waitpid",
+						"write",
+						"writev"
+					],
+					"action": "SCMP_ACT_ALLOW"
+				},
+				{
+					"names": [
+						"personality"
+					],
+					"action": "SCMP_ACT_ALLOW",
+					"args": [
+						{
+							"index": 0,
+							"value": 0,
+							"op": "SCMP_CMP_EQ"
+						}
+					]
+				},
+				{
+					"names": [
+						"personality"
+					],
+					"action": "SCMP_ACT_ALLOW",
+					"args": [
+						{
+							"index": 0,
+							"value": 8,
+							"op": "SCMP_CMP_EQ"
+						}
+					]
+				},
+				{
+					"names": [
+						"personality"
+					],
+					"action": "SCMP_ACT_ALLOW",
+					"args": [
+						{
+							"index": 0,
+							"value": 131072,
+							"op": "SCMP_CMP_EQ"
+						}
+					]
+				},
+				{
+					"names": [
+						"personality"
+					],
+					"action": "SCMP_ACT_ALLOW",
+					"args": [
+						{
+							"index": 0,
+							"value": 131080,
+							"op": "SCMP_CMP_EQ"
+						}
+					]
+				},
+				{
+					"names": [
+						"personality"
+					],
+					"action": "SCMP_ACT_ALLOW",
+					"args": [
+						{
+							"index": 0,
+							"value": 4294967295,
+							"op": "SCMP_CMP_EQ"
+						}
+					]
+				},
+				{
+					"names": [
+						"arm_fadvise64_64",
+						"arm_sync_file_range",
+						"breakpoint",
+						"cacheflush",
+						"set_tls",
+						"sync_file_range2"
+					],
+					"action": "SCMP_ACT_ALLOW"
+				},
+				{
+					"names": [
+						"open_by_handle_at"
+					],
+					"action": "SCMP_ACT_ERRNO",
+					"errnoRet": 1
+				},
+				{
+					"names": [
+						"lookup_dcookie",
+						"quotactl",
+						"quotactl_fd",
+						"setdomainname",
+						"sethostname",
+						"setns"
+					],
+					"action": "SCMP_ACT_ERRNO",
+					"errnoRet": 1
+				},
+				{
+					"names": [
+						"chroot"
+					],
+					"action": "SCMP_ACT_ERRNO",
+					"errnoRet": 1
+				},
+				{
+					"names": [
+						"delete_module",
+						"finit_module",
+						"init_module",
+						"query_module"
+					],
+					"action": "SCMP_ACT_ERRNO",
+					"errnoRet": 1
+				},
+				{
+					"names": [
+						"acct"
+					],
+					"action": "SCMP_ACT_ERRNO",
+					"errnoRet": 1
+				},
+				{
+					"names": [
+						"kcmp",
+						"process_madvise"
+					],
+					"action": "SCMP_ACT_ERRNO",
+					"errnoRet": 1
+				},
+				{
+					"names": [
+						"ioperm",
+						"iopl"
+					],
+					"action": "SCMP_ACT_ERRNO",
+					"errnoRet": 1
+				},
+				{
+					"names": [
+						"clock_settime",
+						"clock_settime64",
+						"settimeofday",
+						"stime"
+					],
+					"action": "SCMP_ACT_ERRNO",
+					"errnoRet": 1
+				},
+				{
+					"names": [
+						"vhangup"
+					],
+					"action": "SCMP_ACT_ERRNO",
+					"errnoRet": 1
+				},
+				{
+					"names": [
+						"socket"
+					],
+					"action": "SCMP_ACT_ERRNO",
+					"errnoRet": 1,
+					"args": [
+						{
+							"index": 0,
+							"value": 40,
+							"op": "SCMP_CMP_EQ"
+						}
+					]
+				},
+				{
+					"names": [
+						"socket"
+					],
+					"action": "SCMP_ACT_ERRNO",
+					"errnoRet": 22,
+					"args": [
+						{
+							"index": 0,
+							"value": 16,
+							"op": "SCMP_CMP_EQ"
+						},
+						{
+							"index": 2,
+							"value": 9,
+							"op": "SCMP_CMP_EQ"
+						}
+					]
+				},
+				{
+					"names": [
+						"socket"
+					],
+					"action": "SCMP_ACT_ALLOW",
+					"args": [
+						{
+							"index": 0,
+							"value": 16,
+							"op": "SCMP_CMP_EQ"
+						},
+						{
+							"index": 2,
+							"value": 9,
+							"op": "SCMP_CMP_NE"
+						}
+					]
+				},
+				{
+					"names": [
+						"socket"
+					],
+					"action": "SCMP_ACT_ALLOW",
+					"args": [
+						{
+							"index": 0,
+							"value": 16,
+							"op": "SCMP_CMP_NE"
+						}
+					]
+				},
+				{
+					"names": [
+						"bpf"
+					],
+					"action": "SCMP_ACT_ERRNO",
+					"errnoRet": 1
+				},
+				{
+					"names": [
+						"perf_event_open"
+					],
+					"action": "SCMP_ACT_ERRNO",
+					"errnoRet": 1
+				},
+				{
+					"names": [
+						"clone"
+					],
+					"action": "SCMP_ACT_ALLOW",
+					"args": [
+						{
+							"index": 0,
+							"value": 2114060288,
+							"op": "SCMP_CMP_MASKED_EQ"
+						}
+					]
+				},
+				{
+					"names": [
+						"clone"
+					],
+					"action": "SCMP_ACT_ERRNO",
+					"errnoRet": 1,
+					"args": [
+						{
+							"index": 0,
+							"value": 131072,
+							"valueTwo": 131072,
+							"op": "SCMP_CMP_MASKED_EQ"
+						},
+						{
+							"index": 0,
+							"value": 67108864,
+							"valueTwo": 67108864,
+							"op": "SCMP_CMP_MASKED_EQ"
+						},
+						{
+							"index": 0,
+							"value": 134217728,
+							"valueTwo": 134217728,
+							"op": "SCMP_CMP_MASKED_EQ"
+						},
+						{
+							"index": 0,
+							"value": 268435456,
+							"valueTwo": 268435456,
+							"op": "SCMP_CMP_MASKED_EQ"
+						},
+						{
+							"index": 0,
+							"value": 536870912,
+							"valueTwo": 536870912,
+							"op": "SCMP_CMP_MASKED_EQ"
+						},
+						{
+							"index": 0,
+							"value": 1073741824,
+							"valueTwo": 1073741824,
+							"op": "SCMP_CMP_MASKED_EQ"
+						},
+						{
+							"index": 0,
+							"value": 33554432,
+							"valueTwo": 33554432,
+							"op": "SCMP_CMP_MASKED_EQ"
+						}
+					]
+				},
+				{
+					"names": [
+						"clone3"
+					],
+					"action": "SCMP_ACT_ERRNO",
+					"errnoRet": 38
+				}
+			]
+		}
+	}
+}

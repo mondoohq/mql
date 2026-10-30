@@ -4,7 +4,7 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/providers/jamf/connection"
+	"go.mondoo.com/mql/providers/jamf/connection"
 )
 
 func (r *mqlJamf) version() (string, error) {

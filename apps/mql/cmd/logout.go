@@ -11,12 +11,11 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"go.mondoo.com/mql/v13/cli/config"
-	cli_errors "go.mondoo.com/mql/v13/cli/errors"
-	"go.mondoo.com/mql/v13/providers"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	rangerUtils "go.mondoo.com/mql/v13/utils/ranger"
-	"sigs.k8s.io/yaml"
+	"go.mondoo.com/mql/cli/config"
+	cli_errors "go.mondoo.com/mql/cli/errors"
+	"go.mondoo.com/mql/providers"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	rangerUtils "go.mondoo.com/mql/utils/ranger"
 )
 
 func init() {
@@ -102,19 +101,23 @@ ensure the credentials cannot be used in the future.
 
 		// delete config if it exists
 		path := viper.ConfigFileUsed()
-		fi, err := os.Stat(path)
+		_, err = os.Stat(path)
 		if err == nil {
 			log.Debug().Str("path", path).Msg("remove client information from config")
 
 			opts.AgentMrn = ""
 
-			data, err := yaml.Marshal(opts)
-			if err != nil {
-				log.Error().Err(err).Msg("could not update Mondoo config")
-			}
-			err = os.WriteFile(path, data, fi.Mode())
-			if err != nil {
-				log.Error().Err(err).Msg("could not update Mondoo config")
+			// Preserve the on-disk serialization format: a config loaded from
+			// JSON must be written back as JSON, not silently converted to YAML.
+			// The file holds credentials, so it is written with group and other
+			// permissions removed and is never widened.
+			data, marshalErr := config.MarshalConfig(path, opts)
+			if marshalErr != nil {
+				// Don't write on a marshal failure; a nil payload would truncate
+				// the existing config file.
+				log.Error().Err(marshalErr).Msg("could not update Mondoo config")
+			} else if writeErr := config.WritePrivateFile(path, data); writeErr != nil {
+				log.Error().Err(writeErr).Msg("could not update Mondoo config")
 			}
 		}
 

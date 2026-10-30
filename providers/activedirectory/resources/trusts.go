@@ -7,11 +7,11 @@ import (
 	"fmt"
 
 	"github.com/go-ldap/ldap/v3"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/activedirectory/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/activedirectory/connection"
 )
 
-func (a *mqlActivedirectory) trusts() ([]interface{}, error) {
+func (a *mqlActivedirectory) trusts() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.ActiveDirectoryConnection)
 	baseDN := conn.BaseDN()
 	searchBase := "CN=System," + baseDN
@@ -39,7 +39,7 @@ func (a *mqlActivedirectory) trusts() ([]interface{}, error) {
 	}
 
 	sourceDomain := dnToDomain(baseDN)
-	res := make([]interface{}, 0, len(entries))
+	res := make([]any, 0, len(entries))
 
 	for _, entry := range entries {
 		targetDomain := connection.GetStringAttr(entry, "trustPartner")

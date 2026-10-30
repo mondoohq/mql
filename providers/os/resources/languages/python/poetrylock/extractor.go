@@ -7,8 +7,8 @@ import (
 	"io"
 
 	"github.com/BurntSushi/toml"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/python"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/python"
 )
 
 var (

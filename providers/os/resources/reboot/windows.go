@@ -7,8 +7,8 @@ import (
 	"io"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 const (
@@ -18,8 +18,8 @@ const (
 
 // WinReboot checks if the windows instance requires a reboot
 // Excellent resources:
-// https://blogs.technet.microsoft.com/heyscriptingguy/2013/06/10/determine-pending-reboot-statuspowershell-style-part-1/
-// https://blogs.technet.microsoft.com/heyscriptingguy/2013/06/11/determine-pending-reboot-statuspowershell-style-part-2/
+// https://devblogs.microsoft.com/scripting/determine-pending-reboot-statuspowershell-style-part-1/
+// https://devblogs.microsoft.com/scripting/determine-pending-reboot-statuspowershell-style-part-2/
 // Brian Wilhite powershell implementation:
 // https://github.com/bcwilhite/PendingReboot
 type WinReboot struct {

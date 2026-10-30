@@ -8,13 +8,13 @@ import (
 	"errors"
 	"os"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
-	"go.mondoo.com/mql/v13/providers/datadog/connection"
-	"go.mondoo.com/mql/v13/providers/datadog/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/datadog/connection"
+	"go.mondoo.com/mql/providers/datadog/resources"
 )
 
 const (
@@ -132,18 +132,18 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 }
 
 func (s *Service) detect(asset *inventory.Asset, conn *connection.DatadogConnection) error {
-	asset.Id = conn.Conf.Type
-	asset.Name = "Datadog Account"
+	orgId := conn.OrgPublicId()
+	if orgId == "" {
+		return errors.New("could not determine the Datadog organization public ID")
+	}
+
+	asset.Id = conn.Conf.Type + "/" + orgId
+	asset.Name = "Datadog Account " + orgId
 
 	asset.Platform = &inventory.Platform{}
 	connection.PlatformByName("datadog").Apply(asset.Platform)
 
-	platformId := "//platformid.api.mondoo.app/runtime/datadog"
-	if orgId := conn.OrgPublicId(); orgId != "" {
-		platformId = "//platformid.api.mondoo.app/runtime/datadog/org/" + orgId
-		asset.Name = "Datadog Account " + orgId
-	}
-	asset.PlatformIds = []string{platformId}
+	asset.PlatformIds = []string{"//platformid.api.mondoo.app/runtime/datadog/org/" + orgId}
 	return nil
 }
 

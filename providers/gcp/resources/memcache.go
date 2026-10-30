@@ -11,11 +11,11 @@ import (
 
 	memcache "cloud.google.com/go/memcache/apiv1"
 	"cloud.google.com/go/memcache/apiv1/memcachepb"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -80,9 +80,12 @@ func initGcpProjectMemcacheServiceInstance(runtime *plugin.Runtime, args map[str
 
 	nameRaw := args["name"]
 	if nameRaw == nil {
-		return args, nil, nil
+		return nil, nil, errors.New(`gcp.project.memcacheService.instance requires a "name" argument`)
 	}
-	name := nameRaw.Value.(string)
+	name, ok := nameRaw.Value.(string)
+	if !ok || name == "" {
+		return nil, nil, errors.New(`gcp.project.memcacheService.instance requires a non-empty "name" argument`)
+	}
 
 	conn, ok := runtime.Connection.(*connection.GcpConnection)
 	if !ok {
@@ -101,8 +104,18 @@ func initGcpProjectMemcacheServiceInstance(runtime *plugin.Runtime, args map[str
 		if locRaw == nil || projRaw == nil {
 			return nil, nil, errors.New("memcache instance init: projectId and location required when name is not a full resource path")
 		}
-		projectId = projRaw.Value.(string)
-		fullName = fmt.Sprintf("projects/%s/locations/%s/instances/%s", projectId, locRaw.Value.(string), name)
+		projectId, _ = projRaw.Value.(string)
+		location, _ := locRaw.Value.(string)
+		fullName = fmt.Sprintf("projects/%s/locations/%s/instances/%s", projectId, location, name)
+	}
+
+	// Ask whether the API is on before paying for a Get that cannot succeed
+	// without it. The answer is memoized per project, so this is free after the
+	// first caller.
+	if enabled, err := serviceEnabledForInit(runtime, projectId, service_memcache); err != nil {
+		return nil, nil, err
+	} else if !enabled {
+		return nil, nil, errors.New("Cloud Memorystore for Memcached API is not enabled on project " + projectId)
 	}
 
 	creds, err := conn.Credentials(memcache.DefaultAuthScopes()...)

@@ -28,7 +28,7 @@ func TestIpmiDockerSimulator(t *testing.T) {
 		ProvidesDeviceSDRs: false,
 		DeviceAvailable:    true,
 		FirmwareRevision:   "9.08",
-		IpmiVersion:        int64(2),
+		IpmiVersion:        "2.0",
 		ManufacturerID:     int64(4753),
 		ManufacturerName:   "Unknown",
 		ProductID:          int64(3842),

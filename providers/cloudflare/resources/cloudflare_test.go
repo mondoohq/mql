@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
 )
 
 func newTestRoot(t *testing.T, env *testEnv) *mqlCloudflare {
@@ -28,7 +28,7 @@ func TestZones(t *testing.T) {
 
 	env.Mux.HandleFunc("/zones", func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodGet, r.Method)
-		// cloudflare-go v6 keeps fetching pages until result is empty (it
+		// cloudflare-go keeps fetching pages until result is empty (it
 		// ignores total_pages). Return empty for any page beyond 1.
 		if page := r.URL.Query().Get("page"); page != "" && page != "1" {
 			jsonResponse(w, `{"result":[],"success":true,"errors":[],"messages":[]}`)
@@ -56,16 +56,8 @@ func TestZones(t *testing.T) {
 	assert.Equal(t, "Test Account", z1.Account.Data.Name.Data)
 
 	require.NotNil(t, z1.Owner.Data)
-	// cloudflare-go v6 ZoneOwner has no Email field (Cloudflare's OpenAPI
-	// spec doesn't expose it at the zone level), so the migrated provider
-	// always surfaces "". Field is preserved in the MQL schema to keep the
-	// existing query surface, just always empty post-v6.
-	assert.Equal(t, "", z1.Owner.Data.Email.Data)
-
-	require.NotNil(t, z1.Plan.Data)
-	assert.Equal(t, "Free Website", z1.Plan.Data.Name.Data)
-	assert.Equal(t, int64(0), z1.Plan.Data.Price.Data)
-	assert.True(t, z1.Plan.Data.IsSubscribed.Data)
+	assert.Equal(t, "owner-001", z1.Owner.Data.Id.Data)
+	assert.Equal(t, "user", z1.Owner.Data.OwnerType.Data)
 
 	z2 := result[1].(*mqlCloudflareZone)
 	assert.Equal(t, "abcdef1234567890abcdef1234567890", z2.Id.Data)
@@ -114,10 +106,10 @@ func TestAccountsPagination(t *testing.T) {
 	root := newTestRoot(t, env)
 
 	const totalPages = 3
-	var calls int32
+	var calls atomic.Int32
 
 	env.Mux.HandleFunc("/accounts", func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&calls, 1)
+		calls.Add(1)
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		if page == 0 {
 			page = 1
@@ -138,7 +130,7 @@ func TestAccountsPagination(t *testing.T) {
 	result, err := root.accounts()
 	require.NoError(t, err)
 	require.Len(t, result, totalPages)
-	require.Equal(t, int32(totalPages), atomic.LoadInt32(&calls), "handler should be called once per page, no repeats")
+	require.Equal(t, int32(totalPages), calls.Load(), "handler should be called once per page, no repeats")
 
 	ids := make([]string, len(result))
 	for i, r := range result {

@@ -10,11 +10,11 @@ import (
 
 	"github.com/rs/zerolog/log"
 	mondoogql "go.mondoo.com/mondoo-go"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream/gql"
-	"go.mondoo.com/mql/v13/providers/vsphere/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream/gql"
+	"go.mondoo.com/mql/providers/vsphere/connection"
 )
 
 type mqlVulnmgmtInternal struct {
@@ -34,7 +34,7 @@ func (v *mqlVulnmgmt) lastAssessment() (*time.Time, error) {
 		mondooClient = v.gqlClient
 	} else {
 		// get new gql client
-		mondooClient, err = gql.NewClient(&mcc.UpstreamConfig, mcc.HttpClient)
+		mondooClient, err = gql.NewClient(&mcc.UpstreamConfig, mcc.HttpClient, gql.WithProvider("vsphere"))
 		if err != nil {
 			return nil, err
 		}
@@ -218,7 +218,7 @@ func (v *mqlVulnmgmt) getReport() (*gql.VulnReport, error) {
 		mondooClient = v.gqlClient
 	} else {
 		// get new gql client
-		mondooClient, err = gql.NewClient(&mcc.UpstreamConfig, mcc.HttpClient)
+		mondooClient, err = gql.NewClient(&mcc.UpstreamConfig, mcc.HttpClient, gql.WithProvider("vsphere"))
 		if err != nil {
 			return nil, err
 		}
@@ -247,8 +247,8 @@ func (v *mqlVulnmgmt) getIncognitoReport(mondooClient *gql.MondooClient) (*gql.V
 	platform := conn.Asset().Platform
 
 	gqlVulnReport, err := mondooClient.GetIncognitoVulnReport(mondoogql.PlatformInput{
-		Name:    mondoogql.NewStringPtr(mondoogql.String(platform.Name)),
-		Release: mondoogql.NewStringPtr(mondoogql.String(platform.Version)),
+		Name:    new(mondoogql.String(platform.Name)),
+		Release: new(mondoogql.String(platform.Version)),
 	}, []mondoogql.PackageInput{})
 	if err != nil {
 		return nil, err
@@ -268,4 +268,18 @@ func (a *mqlVulnAdvisory) id() (string, error) {
 
 func (c *mqlVulnCve) id() (string, error) {
 	return c.Id.Data, c.Id.Error
+}
+
+// id keys each package by name+version. Without it every vuln.package would
+// share the empty cache key "vuln.package\x00" and collapse onto the first
+// package created (see mql CreateResource caching), so vulnmgmt.packages would
+// report that one package once per row.
+func (p *mqlVulnPackage) id() (string, error) {
+	if err := p.Name.Error; err != nil {
+		return "", err
+	}
+	if err := p.Version.Error; err != nil {
+		return "", err
+	}
+	return p.Name.Data + "-" + p.Version.Data, nil
 }

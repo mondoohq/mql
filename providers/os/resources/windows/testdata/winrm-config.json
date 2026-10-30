@@ -1,0 +1,9 @@
+{
+    "Client":  {
+                   "TrustedHosts":  ""
+               },
+    "Service":  {
+                    "IPv4Filter":  "*",
+                    "IPv6Filter":  "*"
+                }
+}

@@ -14,11 +14,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 func (a *mqlAwsEks) id() (string, error) {
@@ -185,11 +185,12 @@ func (a *mqlAwsEksCluster) populateFromDescribe(cluster *ekstypes.Cluster) error
 	a.PlatformVersion = plugin.TValue[string]{Data: convert.ToValue(cluster.PlatformVersion), State: plugin.StateIsSet}
 	a.Status = plugin.TValue[string]{Data: string(cluster.Status), State: plugin.StateIsSet}
 
-	encryptionConfig, _ := convert.JsonToDictSlice(cluster.EncryptionConfig)
-	a.EncryptionConfig = plugin.TValue[[]any]{Data: encryptionConfig, State: plugin.StateIsSet}
-
 	logging, _ := convert.JsonToDict(cluster.Logging)
 	a.Logging = plugin.TValue[any]{Data: logging, State: plugin.StateIsSet}
+
+	a.ControlPlaneLogging = plugin.TValue[map[string]any]{
+		Data: eksControlPlaneLogging(cluster.Logging), State: plugin.StateIsSet,
+	}
 
 	kubernetesNetworkConfig, _ := convert.JsonToDict(cluster.KubernetesNetworkConfig)
 	a.NetworkConfig = plugin.TValue[any]{Data: kubernetesNetworkConfig, State: plugin.StateIsSet}
@@ -199,9 +200,6 @@ func (a *mqlAwsEksCluster) populateFromDescribe(cluster *ekstypes.Cluster) error
 		controlPlaneEgressMode = string(cluster.ResourcesVpcConfig.ControlPlaneEgressMode)
 	}
 	a.ControlPlaneEgressMode = plugin.TValue[string]{Data: controlPlaneEgressMode, State: plugin.StateIsSet}
-
-	vpcConfig, _ := convert.JsonToDict(cluster.ResourcesVpcConfig)
-	a.ResourcesVpcConfig = plugin.TValue[any]{Data: vpcConfig, State: plugin.StateIsSet}
 
 	if cluster.ResourcesVpcConfig != nil {
 		a.cacheVpcId = cluster.ResourcesVpcConfig.VpcId
@@ -223,10 +221,13 @@ func (a *mqlAwsEksCluster) populateFromDescribe(cluster *ekstypes.Cluster) error
 	a.SupportType = plugin.TValue[string]{Data: supportType, State: plugin.StateIsSet}
 
 	authMode := ""
+	var bootstrapClusterCreatorAdmin bool
 	if cluster.AccessConfig != nil {
 		authMode = string(cluster.AccessConfig.AuthenticationMode)
+		bootstrapClusterCreatorAdmin = convert.ToValue(cluster.AccessConfig.BootstrapClusterCreatorAdminPermissions)
 	}
 	a.AuthenticationMode = plugin.TValue[string]{Data: authMode, State: plugin.StateIsSet}
+	a.BootstrapClusterCreatorAdminPermissions = plugin.TValue[bool]{Data: bootstrapClusterCreatorAdmin, State: plugin.StateIsSet}
 
 	var deletionProtection bool
 	if cluster.DeletionProtection != nil {
@@ -268,6 +269,25 @@ func (a *mqlAwsEksCluster) populateFromDescribe(cluster *ekstypes.Cluster) error
 	}
 	a.CertificateAuthority = plugin.TValue[string]{Data: certAuth, State: plugin.StateIsSet}
 
+	// EKS reports a distinct active certificate authority only once a cluster
+	// has been through a rotation. Leaving these null rather than empty keeps
+	// "never rotated" distinguishable from "rotated to an authority with a
+	// blank id".
+	if cluster.CertificateAuthority != nil && cluster.CertificateAuthority.Active != nil {
+		active := cluster.CertificateAuthority.Active
+		activeID := ""
+		if active.Id != nil {
+			activeID = *active.Id
+		}
+		a.ActiveCertificateAuthorityId = plugin.TValue[string]{Data: activeID, State: plugin.StateIsSet}
+		a.ActiveCertificateAuthorityActivatedBy = plugin.TValue[string]{
+			Data: string(active.ActivatedBy), State: plugin.StateIsSet,
+		}
+	} else {
+		a.ActiveCertificateAuthorityId = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+		a.ActiveCertificateAuthorityActivatedBy = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+	}
+
 	// Typed encryption config fields
 	var encryptionResources []any
 	if len(cluster.EncryptionConfig) > 0 && cluster.EncryptionConfig[0].Provider != nil && cluster.EncryptionConfig[0].Provider.KeyArn != nil {
@@ -291,6 +311,21 @@ func (a *mqlAwsEksCluster) populateFromDescribe(cluster *ekstypes.Cluster) error
 
 	zonalShiftConfig, _ := convert.JsonToDict(cluster.ZonalShiftConfig)
 	a.ZonalShiftConfig = plugin.TValue[any]{Data: zonalShiftConfig, State: plugin.StateIsSet}
+
+	if cluster.ZonalShiftConfig == nil {
+		a.ZonalShift = plugin.TValue[*mqlAwsEksZonalShiftConfig]{State: plugin.StateIsSet | plugin.StateIsNull}
+	} else {
+		mqlZonalShift, err := CreateResource(a.MqlRuntime, "aws.eks.zonalShiftConfig", map[string]*llx.RawData{
+			"__id":    llx.StringData(a.Arn.Data + "/zonalShiftConfig"),
+			"enabled": llx.BoolData(convert.ToValue(cluster.ZonalShiftConfig.Enabled)),
+		})
+		if err != nil {
+			return err
+		}
+		a.ZonalShift = plugin.TValue[*mqlAwsEksZonalShiftConfig]{
+			Data: mqlZonalShift.(*mqlAwsEksZonalShiftConfig), State: plugin.StateIsSet,
+		}
+	}
 
 	computeConfig, _ := convert.JsonToDict(cluster.ComputeConfig)
 	a.ComputeConfig = plugin.TValue[any]{Data: computeConfig, State: plugin.StateIsSet}
@@ -323,10 +358,6 @@ func (a *mqlAwsEksCluster) platformVersion() (string, error) {
 
 func (a *mqlAwsEksCluster) status() (string, error) {
 	return "", a.fetchDetail()
-}
-
-func (a *mqlAwsEksCluster) encryptionConfig() ([]any, error) {
-	return nil, a.fetchDetail()
 }
 
 func (a *mqlAwsEksCluster) encryptionKmsKey() (*mqlAwsKmsKey, error) {
@@ -364,16 +395,45 @@ func (a *mqlAwsEksCluster) logging() (map[string]any, error) {
 	return nil, a.fetchDetail()
 }
 
+func (a *mqlAwsEksCluster) controlPlaneLogging() (map[string]any, error) {
+	return nil, a.fetchDetail()
+}
+
+func (a *mqlAwsEksCluster) zonalShift() (*mqlAwsEksZonalShiftConfig, error) {
+	return nil, a.fetchDetail()
+}
+
+// eksControlPlaneLogging re-keys the LogSetup pair list EKS returns into a map
+// of log type to whether that type is exported to CloudWatch Logs. EKS reports
+// one LogSetup per enablement state, each listing the types that share it, so
+// a caller reading the raw list has to walk both levels to answer "is audit
+// logging on".
+func eksControlPlaneLogging(logging *ekstypes.Logging) map[string]any {
+	res := map[string]any{}
+	if logging == nil {
+		return res
+	}
+	for _, setup := range logging.ClusterLogging {
+		enabled := convert.ToValue(setup.Enabled)
+		for _, t := range setup.Types {
+			// A type listed twice with conflicting states is not something EKS
+			// returns, but if it ever did, an enabled entry is the safer read:
+			// it says the logs exist, which a check can then verify.
+			if prev, ok := res[string(t)]; ok && prev == true {
+				continue
+			}
+			res[string(t)] = enabled
+		}
+	}
+	return res
+}
+
 func (a *mqlAwsEksCluster) networkConfig() (map[string]any, error) {
 	return nil, a.fetchDetail()
 }
 
 func (a *mqlAwsEksCluster) controlPlaneEgressMode() (string, error) {
 	return "", a.fetchDetail()
-}
-
-func (a *mqlAwsEksCluster) resourcesVpcConfig() (map[string]any, error) {
-	return nil, a.fetchDetail()
 }
 
 func (a *mqlAwsEksCluster) createdAt() (*time.Time, error) {
@@ -393,6 +453,10 @@ func (a *mqlAwsEksCluster) supportType() (string, error) {
 
 func (a *mqlAwsEksCluster) authenticationMode() (string, error) {
 	return "", a.fetchDetail()
+}
+
+func (a *mqlAwsEksCluster) bootstrapClusterCreatorAdminPermissions() (bool, error) {
+	return false, a.fetchDetail()
 }
 
 func (a *mqlAwsEksCluster) deletionProtection() (bool, error) {
@@ -479,15 +543,22 @@ func (a *mqlAwsEksCluster) certificateAuthority() (string, error) {
 	return "", a.fetchDetail()
 }
 
+func (a *mqlAwsEksCluster) activeCertificateAuthorityId() (string, error) {
+	return "", a.fetchDetail()
+}
+
+func (a *mqlAwsEksCluster) activeCertificateAuthorityActivatedBy() (string, error) {
+	return "", a.fetchDetail()
+}
+
 func initAwsEksCluster(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 2 {
 		return args, nil, nil
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
-			args["name"] = llx.StringData(ids.name)
-			args["arn"] = llx.StringData(ids.arn)
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformEksCluster); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
 		}
 	}
 
@@ -614,6 +685,11 @@ func (a *mqlAwsEksNodegroup) fetchDetails() (*ekstypes.Nodegroup, error) {
 		a.fetched = true
 		return nil, err
 	}
+	if desc.Nodegroup == nil {
+		a.fetchErr = errors.New("DescribeNodegroup returned no nodegroup for " + a.Name.Data)
+		a.fetched = true
+		return nil, a.fetchErr
+	}
 	a.details = desc.Nodegroup
 	a.fetched = true
 	return desc.Nodegroup, nil
@@ -720,6 +796,94 @@ func (a *mqlAwsEksNodegroup) scalingConfig() (map[string]any, error) {
 		return nil, err
 	}
 	return convert.JsonToDict(ng.ScalingConfig)
+}
+
+func (a *mqlAwsEksNodegroup) scaling() (*mqlAwsEksScalingConfig, error) {
+	ng, err := a.fetchDetails()
+	if err != nil {
+		return nil, err
+	}
+	if ng.ScalingConfig == nil {
+		a.Scaling.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := CreateResource(a.MqlRuntime, "aws.eks.scalingConfig", map[string]*llx.RawData{
+		"__id":        llx.StringData(a.Arn.Data + "/scalingConfig"),
+		"minSize":     eksNodeCount(ng.ScalingConfig.MinSize),
+		"maxSize":     eksNodeCount(ng.ScalingConfig.MaxSize),
+		"desiredSize": eksNodeCount(ng.ScalingConfig.DesiredSize),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsEksScalingConfig), nil
+}
+
+// eksNodeCount keeps an unreported node count null. Reading it as 0 would say
+// the node group runs no nodes, which is a real and very different state.
+func eksNodeCount(v *int32) *llx.RawData {
+	if v == nil {
+		return llx.NilData
+	}
+	return llx.IntData(int64(*v))
+}
+
+func (a *mqlAwsEksNodegroup) sshAccess() (*mqlAwsEksRemoteAccess, error) {
+	ng, err := a.fetchDetails()
+	if err != nil {
+		return nil, err
+	}
+	if ng.RemoteAccess == nil {
+		a.SshAccess.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := CreateResource(a.MqlRuntime, "aws.eks.remoteAccess", map[string]*llx.RawData{
+		"__id": llx.StringData(a.Arn.Data + "/remoteAccess"),
+	})
+	if err != nil {
+		return nil, err
+	}
+	mqlRemoteAccess := res.(*mqlAwsEksRemoteAccess)
+	mqlRemoteAccess.cacheEc2SshKey = convert.ToValue(ng.RemoteAccess.Ec2SshKey)
+	mqlRemoteAccess.cacheSourceSecurityGroups = ng.RemoteAccess.SourceSecurityGroups
+	mqlRemoteAccess.region = a.region
+	return mqlRemoteAccess, nil
+}
+
+type mqlAwsEksRemoteAccessInternal struct {
+	cacheEc2SshKey            string
+	cacheSourceSecurityGroups []string
+	region                    string
+}
+
+func (a *mqlAwsEksRemoteAccess) keyPair() (*mqlAwsEc2Keypair, error) {
+	if a.cacheEc2SshKey == "" {
+		a.KeyPair.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	mqlKp, err := NewResource(a.MqlRuntime, "aws.ec2.keypair", map[string]*llx.RawData{
+		"name":   llx.StringData(a.cacheEc2SshKey),
+		"region": llx.StringData(a.region),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mqlKp.(*mqlAwsEc2Keypair), nil
+}
+
+func (a *mqlAwsEksRemoteAccess) sourceSecurityGroups() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	res := []any{}
+	for _, sgId := range a.cacheSourceSecurityGroups {
+		mqlSg, err := NewResource(a.MqlRuntime, "aws.ec2.securitygroup", map[string]*llx.RawData{
+			"arn": llx.StringData(NewSecurityGroupArn(a.region, conn.AccountId(), sgId)),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlSg)
+	}
+	return res, nil
 }
 
 func (a *mqlAwsEksNodegroup) warmPoolConfig() (map[string]any, error) {
@@ -900,7 +1064,11 @@ func (a *mqlAwsEksCluster) addons() ([]any, error) {
 		for i := range page.Addons {
 			addon := page.Addons[i]
 			args := map[string]*llx.RawData{
-				"__id":   llx.StringData(fmt.Sprintf("%s/%s/%s", ResourceAwsEksAddon, a.Name.Data, addon)),
+				// region-qualified: cluster names are unique per region, so two
+				// same-named clusters in different regions would otherwise share a
+				// key and cross-contaminate. Every sibling collection in this file
+				// (nodeGroups, accessEntries, fargateProfiles, ...) includes it.
+				"__id":   llx.StringData(fmt.Sprintf("%s/%s/%s/%s", ResourceAwsEksAddon, regionVal, a.Name.Data, addon)),
 				"name":   llx.StringData(addon),
 				"region": llx.StringData(regionVal),
 			}
@@ -943,6 +1111,11 @@ func (a *mqlAwsEksAddon) fetchDetails() (*ekstypes.Addon, error) {
 		a.fetchErr = err
 		a.fetched = true
 		return nil, err
+	}
+	if desc.Addon == nil {
+		a.fetchErr = errors.New("DescribeAddon returned no addon for " + a.Name.Data)
+		a.fetched = true
+		return nil, a.fetchErr
 	}
 	a.details = desc.Addon
 	a.fetched = true
@@ -1050,12 +1223,23 @@ func (a *mqlAwsEksAddon) health() (map[string]any, error) {
 
 // Access Entries
 
+// accessEntriesSupported reports whether a cluster with this authentication
+// mode has access entries. EKS refuses to list them for a cluster that
+// authenticates through the aws-auth ConfigMap only.
+func accessEntriesSupported(authMode string) bool {
+	return authMode != string(ekstypes.AuthenticationModeConfigMap)
+}
+
 func (a *mqlAwsEksCluster) accessEntries() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	regionVal := a.Region.Data
 	svc := conn.Eks(regionVal)
 	ctx := context.Background()
 	res := []any{}
+
+	if mode := a.GetAuthenticationMode(); mode.Error == nil && !accessEntriesSupported(mode.Data) {
+		return res, nil
+	}
 
 	paginator := eks.NewListAccessEntriesPaginator(svc, &eks.ListAccessEntriesInput{ClusterName: aws.String(a.Name.Data)})
 	for paginator.HasMorePages() {
@@ -1136,6 +1320,11 @@ func (a *mqlAwsEksAccessEntry) fetchDetails() (*ekstypes.AccessEntry, error) {
 		a.fetchErr = err
 		a.fetched = true
 		return nil, err
+	}
+	if desc.AccessEntry == nil {
+		a.fetchErr = errors.New("DescribeAccessEntry returned no access entry for " + principalArn)
+		a.fetched = true
+		return nil, a.fetchErr
 	}
 	a.details = desc.AccessEntry
 	a.fetched = true
@@ -1309,17 +1498,14 @@ func (a *mqlAwsEksFargateProfile) fetchDetails() (*ekstypes.FargateProfile, erro
 		a.fetched = true
 		return nil, err
 	}
+	if desc.FargateProfile == nil {
+		a.fetchErr = errors.New("DescribeFargateProfile returned no profile for " + name)
+		a.fetched = true
+		return nil, a.fetchErr
+	}
 	a.details = desc.FargateProfile
 	a.fetched = true
 	return desc.FargateProfile, nil
-}
-
-func (a *mqlAwsEksFargateProfile) podExecutionRoleArn() (string, error) {
-	fp, err := a.fetchDetails()
-	if err != nil {
-		return "", err
-	}
-	return convert.ToValue(fp.PodExecutionRoleArn), nil
 }
 
 func (a *mqlAwsEksFargateProfile) selectors() ([]any, error) {
@@ -1334,18 +1520,6 @@ func (a *mqlAwsEksFargateProfile) selectors() ([]any, error) {
 			return nil, err
 		}
 		res = append(res, d)
-	}
-	return res, nil
-}
-
-func (a *mqlAwsEksFargateProfile) subnets() ([]any, error) {
-	fp, err := a.fetchDetails()
-	if err != nil {
-		return nil, err
-	}
-	res := make([]any, 0, len(fp.Subnets))
-	for _, s := range fp.Subnets {
-		res = append(res, s)
 	}
 	return res, nil
 }
@@ -1490,6 +1664,11 @@ func (a *mqlAwsEksPodIdentityAssociation) fetchDetails() (*ekstypes.PodIdentityA
 		a.fetched = true
 		return nil, err
 	}
+	if desc.Association == nil {
+		a.fetchErr = errors.New("DescribePodIdentityAssociation returned no association for " + assocId)
+		a.fetched = true
+		return nil, a.fetchErr
+	}
 	a.details = desc.Association
 	a.fetched = true
 	return desc.Association, nil
@@ -1509,14 +1688,6 @@ func (a *mqlAwsEksPodIdentityAssociation) serviceAccount() (string, error) {
 		return "", err
 	}
 	return convert.ToValue(assoc.ServiceAccount), nil
-}
-
-func (a *mqlAwsEksPodIdentityAssociation) roleArn() (string, error) {
-	assoc, err := a.fetchDetails()
-	if err != nil {
-		return "", err
-	}
-	return convert.ToValue(assoc.RoleArn), nil
 }
 
 func (a *mqlAwsEksPodIdentityAssociation) createdAt() (*time.Time, error) {

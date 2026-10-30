@@ -51,6 +51,29 @@ type PveConnection struct {
 	Host   string
 	Token  string
 	client *http.Client
+
+	// ceph memoizes the one-time "does this cluster run Ceph" probe.
+	ceph cephProbe
+	// backups memoizes the cluster-wide backup sweep so that per-guest
+	// lookups don't each re-list every storage.
+	backups backupIndex
+	// corosync memoizes the join configuration, which several fields read.
+	corosync corosyncCache
+	// nodes memoizes the node listing so that resolving the node behind a
+	// guest, a Ceph daemon, or a volume costs one sweep for the whole
+	// cluster rather than one per item.
+	nodes nodeIndex
+	// realmSync memoizes the realm-sync job listing, which both the
+	// cluster-wide accessor and the per-realm reverse edge read from.
+	realmSync realmSyncIndex
+	// guestPools memoizes which pool each guest belongs to.
+	guestPools guestPoolIndex
+	// realms memoizes the realm listing so a fleet of sync jobs resolving
+	// their realm costs one listing rather than one per job.
+	realms realmIndex
+	// storages memoizes the storage listing for the same reason, on behalf
+	// of the disks, mount points, and volumes that name their pool.
+	storages storageIndex
 }
 
 // ID and ParentID implement the plugin.Connection interface.
@@ -76,8 +99,8 @@ func (c *PveConnection) Verify() error {
 }
 
 // GetVersion returns the Proxmox version information as a map.
-func (c *PveConnection) GetVersion() (map[string]interface{}, error) {
-	var result map[string]interface{}
+func (c *PveConnection) GetVersion() (map[string]any, error) {
+	var result map[string]any
 	if err := c.apiGet("/version", &result); err != nil {
 		return nil, fmt.Errorf("failed to get version: %w", err)
 	}

@@ -1,0 +1,1568 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/vercel"
+option go_package = "go.mondoo.com/mql/providers/vercel/resources"
+option root = "vercel"
+
+// Vercel
+//
+// Vercel account posture across teams and projects. The `teams` field
+// enumerates every team the token can access, `projects` flattens all projects
+// across those teams, `user` identifies the authenticated principal, and
+// `accessTokens` lists the API tokens owned by that user for token inventory
+// and rotation audits.
+vercel @root {
+  // Teams and personal accounts the token can access
+  teams() []vercel.team
+  // Projects across every accessible team
+  projects() []vercel.project
+  // Authenticated Vercel account behind the token
+  currentUser() vercel.user
+  // API tokens owned by the authenticated user
+  accessTokens() []vercel.accessToken
+}
+
+// Vercel User
+//
+// The authenticated Vercel account behind the API token, including its
+// identifier, email, username, and display name. Use it to attribute a scan to
+// a principal and to confirm which account the token belongs to.
+private vercel.user @defaults("username email") {
+  // Unique user identifier
+  id string
+  // Primary email address
+  email string
+  // Account username
+  username string
+  // Display name
+  name string
+  // Time the account was created
+  createdAt time
+}
+
+// Vercel Access Token
+//
+// An API token owned by the authenticated user, including its name, scopes,
+// creation time, and last-used time. The `expiresAt` field is null for
+// non-expiring tokens. Use it to audit long-lived or unused credentials. Select
+// a token with `vercel.accessTokens.where(name == "ci")`.
+private vercel.accessToken @defaults("name expiresAt") {
+  // Unique token identifier
+  id string
+  // Human-readable token name
+  name string
+  // Token type
+  tokenType string
+  // Origin that created the token, for example github, cli, or manual
+  origin string
+  // Scopes granted to the token
+  //
+  // Each entry describes a granted scope with its type, origin, and the team or
+  // resource it applies to.
+  scopes []dict
+  // Time the token expires, or null when it never expires
+  expiresAt time
+  // Time the token was created
+  createdAt time
+  // Time the token was last used, or null when never used
+  lastUsedAt time
+}
+
+// Vercel Team
+//
+// A Vercel team or personal account and its account-wide security posture.
+// Query `samlEnforced`, `samlConnectionState`, and `emailDomain` for identity
+// and joining controls, `billingPlan` for the plan that gates enterprise
+// features, `requireVerifiedCommits` and `deploymentPolicy` for source and
+// deployment guardrails, `strictDeploymentProtectionSettings` and its siblings
+// for who may weaken protection, `sharedEnvironmentVariables` for secrets
+// injected across projects, `members` for the roster and roles,
+// `pendingInvites` for invitations that have been sent and not accepted,
+// `projects` for the team's projects, and `domains`, `edgeConfigs`,
+// `logDrains`, `webhooks`,
+// `integrationConfigurations`, and `accessGroups` for the surrounding
+// configuration. Select a team with `vercel.teams.where(slug == "acme")`.
+private vercel.team @defaults("slug name") @root {
+  // Unique team identifier
+  id string
+  // URL-safe team slug
+  slug string
+  // Display name
+  name string
+  // Avatar image hash, or null when unset
+  avatar string
+  // Time the team was created
+  createdAt time
+  // Time the team was last updated
+  updatedAt time
+  // Identifier of the user who created the team
+  creatorId string
+  // Billing plan the team is subscribed to
+  //
+  // One of hobby, pro, or enterprise. Several controls on this resource are
+  // only configurable on enterprise, so a null value on a governance field is
+  // expected when the plan does not include it.
+  billingPlan string
+  // Identifier of the organization the team belongs to
+  //
+  // Set on both an organization's root team and its child teams. Null for teams
+  // that are not part of an organization.
+  organizationId string
+  // Root billing team of the organization this team belongs to
+  //
+  // Null when the team is not part of an organization. When it resolves to this
+  // same team, this team is the organization root.
+  orgRootTeam() vercel.team
+  // Whether SAML single sign-on is enforced for all members
+  samlEnforced bool
+  // Directory-group to team-role mappings for SAML SSO
+  //
+  // Maps each identity-provider group to the Vercel role its members receive.
+  // Empty when SAML role mapping is not configured.
+  samlRoles map[string]string
+  // Identity provider backing the SAML connection
+  //
+  // The provider name reported by Vercel, for example Okta. Null when SAML
+  // single sign-on has not been connected.
+  samlConnectionType string
+  // Current state of the SAML connection
+  samlConnectionState string
+  // Status of the SAML connection
+  samlConnectionStatus string
+  // Time the SAML connection was established
+  samlConnectedAt time
+  // Identity provider backing the directory sync connection
+  //
+  // The provider name reported by Vercel, for example Okta. Null when directory
+  // sync has not been connected.
+  directorySyncType string
+  // Processing state of directory sync events
+  //
+  // One of ACTIVE, SETUP, or null. SETUP means the directory is connected but
+  // role mappings are not configured yet, so events are acknowledged without
+  // being applied. Null covers directories predating the setting, which behave
+  // as ACTIVE.
+  directorySyncState string
+  // Time the directory sync connection was established
+  directorySyncConnectedAt time
+  // Time the last directory sync ran
+  directoryLastSyncedAt time
+  // Hostname whose email addresses join the team automatically on sign-up
+  //
+  // Anyone signing up with an address at this domain joins without an
+  // invitation. Null when automatic joining is not configured.
+  emailDomain string
+  // Whether a reusable team invite code exists
+  //
+  // The code itself grants team membership to anyone holding it, so only its
+  // presence is reported.
+  inviteCodeConfigured bool
+  // Who may request access to protected deployments
+  //
+  // One of all, email-domain, or none.
+  dpAccessRequestsMode string
+  // Whether commits must be signed and verified before deployments are created
+  //
+  // Applies to every project on the team. A project may override it through its
+  // own requireVerifiedCommits setting.
+  requireVerifiedCommits bool
+  // Whether projects are blocked from emitting Git repository-dispatch events
+  disableRepositoryDispatchEvents bool
+  // Whether changing deployment protection requires the owner role
+  strictDeploymentProtectionSettings bool
+  // Whether changing project password protection requires the owner role
+  strictPasswordProtectionSettings bool
+  // Whether creating shareable deployment links requires the owner role
+  strictShareableLinks bool
+  // Default password protection scope applied to new projects
+  //
+  // Which deployments require a shared password to view. Null when new projects
+  // start without password protection.
+  defaultPasswordProtectionDeploymentType string
+  // Default Vercel Authentication scope applied to new projects
+  //
+  // Which deployments require a Vercel login to view. Null when new projects
+  // start without login protection.
+  defaultSsoProtectionDeploymentType string
+  // Roles granted to new members by default
+  //
+  // Values are drawn from OWNER, MEMBER, DEVELOPER, BILLING, VIEWER,
+  // VIEWER_FOR_PLUS, SECURITY, and CONTRIBUTOR. Empty when no default is set.
+  defaultTeamRoles []string
+  // Permissions granted to new members by default
+  //
+  // Fine-grained grants layered on top of the role, for example OrgAdmin,
+  // CreateProject, EnvVariableManager, IntegrationManager, or
+  // AiGatewaySettings. Empty when no default is set.
+  defaultTeamPermissions []string
+  // Deployment-time policy applied across the team
+  //
+  // Carries `gitSources` and `deploymentSources` arrays, each entry holding
+  // `enabled`, `environments`, and `sources`. An entry that is enabled with an
+  // empty `sources` list denies every source. Projects may override this
+  // through their own deploymentPolicy.
+  deploymentPolicy dict
+  // Default number of days non-production deployments are kept
+  defaultExpirationDays int
+  // Default number of days production deployments are kept
+  defaultExpirationDaysProduction int
+  // Default number of days canceled deployments are kept
+  defaultExpirationDaysCanceled int
+  // Default number of days errored deployments are kept
+  defaultExpirationDaysErrored int
+  // Default minimum number of production deployments retained regardless of age
+  defaultDeploymentsToKeep int
+  // Policy governing sensitive environment variables
+  //
+  // One of on, off, or null. When on, environment variables marked sensitive
+  // have their values hidden after creation and cannot be decrypted through the
+  // API.
+  sensitiveEnvironmentVariablePolicy string
+  // Whether client IP addresses are hidden from observability tooling
+  hideIpAddresses bool
+  // Whether client IP addresses are hidden from log drains
+  hideIpAddressesInLogDrains bool
+  // Whether remote build caching is enabled for the team
+  remoteCachingEnabled bool
+  // Whether Secure Compute private networking is enabled for the team
+  secureComputeEnabled bool
+  // Whether the deployment toolbar is enabled on preview deployments
+  //
+  // One of on, off, default, their -force variants, or null. A -force value
+  // prevents projects from overriding the team setting.
+  enablePreviewFeedback string
+  // Whether the deployment toolbar is enabled on production deployments
+  //
+  // One of on, off, default, their -force variants, or null. A -force value
+  // prevents projects from overriding the team setting.
+  enableProductionFeedback string
+  // Hostname appended to preview deployment URLs, or null when unset
+  previewDeploymentSuffix string
+  // Prefix prepended to automatically generated staging aliases
+  stagingPrefix string
+  // Cutoff after which personal access tokens created earlier are rejected
+  //
+  // Null when personal access tokens have never been bulk-invalidated.
+  personalAccessTokensInvalidatedAt time
+  // Cutoff after which Vercel app tokens created earlier are rejected
+  appTokensInvalidatedAt time
+  // Cutoff after which API keys created earlier are rejected
+  apiKeysInvalidatedAt time
+  // Cutoff after which integration tokens created earlier are rejected
+  integrationTokensInvalidatedAt time
+  // Environment variables shared across the team's projects
+  sharedEnvironmentVariables() []vercel.team.sharedEnvironmentVariable
+  // Members of the team
+  members() []vercel.team.member
+  // Outstanding email invitations to the team
+  //
+  // An invitation that has not been accepted still grants the role it carries
+  // to whoever controls the address, so an unexpired invitation to an address
+  // outside the organization is a standing path into the team. Empty when the
+  // team has no outstanding invitations.
+  pendingInvites() []vercel.team.pendingInvite
+  // Projects owned by the team
+  projects() []vercel.project
+  // Domains registered to the team
+  domains() []vercel.domain
+  // Edge Config stores owned by the team
+  edgeConfigs() []vercel.edgeConfig
+  // Log drains configured for the team
+  logDrains() []vercel.logDrain
+  // Webhooks configured for the team
+  webhooks() []vercel.webhook
+  // Installed marketplace integration configurations
+  integrationConfigurations() []vercel.integrationConfiguration
+  // Access groups defined for the team
+  accessGroups() []vercel.accessGroup
+  // Storage stores owned by the team
+  stores() []vercel.store
+  // TLS certificates issued for the team's domains
+  certificates() []vercel.certificate
+}
+
+// Vercel Team Member
+//
+// A single member of a Vercel team, including the account identity, assigned
+// role, and whether the membership is confirmed. Use it to audit privileged
+// roles and pending invitations.
+private vercel.team.member @defaults("email role") {
+  // Unique user identifier
+  uid string
+  // Email address
+  email string
+  // Username
+  username string
+  // Display name
+  name string
+  // Team role
+  //
+  // One of OWNER, MEMBER, DEVELOPER, BILLING, VIEWER, VIEWER_FOR_PLUS,
+  // SECURITY, or CONTRIBUTOR.
+  role string
+  // Every role held by the member
+  //
+  // A member may hold more than one role. Values are drawn from the same set as
+  // `role`, which reports the primary one.
+  teamRoles []string
+  // Fine-grained permissions granted to the member
+  //
+  // Grants layered on top of the roles, for example OrgAdmin, CreateProject,
+  // EnvVariableManager, IntegrationManager, or AiGatewaySettings. Empty when
+  // the member holds no grants beyond their roles.
+  teamPermissions []string
+  // How the member came to join the team
+  //
+  // One of saml, dsync, github, gitlab, bitbucket, mail, link, import, teams,
+  // organization-teams, feedback, account-update, or one of the nsnb- prefixed
+  // values. Null for members predating this record.
+  joinedFromOrigin string
+  // Whether the membership has been confirmed
+  confirmed bool
+  // Time the member requested access, or null when they did not request it
+  accessRequestedAt time
+  // Time the member joined the team
+  createdAt time
+}
+
+// Vercel Team Invitation
+//
+// An email invitation to a Vercel team that has been sent but not accepted,
+// which grants the role it carries to whoever controls the address as soon as
+// it is redeemed. The `email` field gives the address the invitation was sent
+// to, `role` and `teamRoles` give what redeeming it grants, `expired` reports
+// whether it can still be redeemed, and `isDSyncUser` distinguishes an identity
+// governed by the connected directory from one invited by hand. Select an
+// invitation with `vercel.team.pendingInvites.where(role == "OWNER")`.
+private vercel.team.pendingInvite @defaults("email role expired") {
+  // Unique invitation identifier
+  id string
+  // Address the invitation was sent to, or null when the invitation carries no address
+  email string
+  // Team role granted when the invitation is redeemed
+  //
+  // One of OWNER, MEMBER, DEVELOPER, BILLING, VIEWER, VIEWER_FOR_PLUS,
+  // SECURITY, or CONTRIBUTOR.
+  role string
+  // Every role granted when the invitation is redeemed
+  //
+  // Values are drawn from the same set as `role`, which reports the primary
+  // one. Empty when the invitation grants no roles beyond `role`.
+  teamRoles []string
+  // Fine-grained permissions granted when the invitation is redeemed
+  //
+  // Grants layered on top of the roles, for example OrgAdmin, CreateProject,
+  // EnvVariableManager, IntegrationManager, or AiGatewaySettings. Empty when
+  // the invitation carries no grants beyond its roles.
+  teamPermissions []string
+  // Whether the invited identity comes from the connected directory
+  //
+  // A directory-governed identity is created and removed by the identity
+  // provider, so it is revoked centrally. An invitation without this flag was
+  // addressed by hand and outlives any directory deprovisioning.
+  isDSyncUser bool
+  // Whether the invitation can no longer be redeemed
+  //
+  // Vercel reports this only once the invitation has expired, so a null value
+  // means the invitation is still redeemable.
+  expired bool
+  // Time the invitation was created
+  createdAt time
+  // Projects the invitation grants access to
+  //
+  // Empty when the invitation grants no project-scoped access beyond what its
+  // team roles carry.
+  projects() []vercel.project
+}
+
+// Vercel Shared Environment Variable
+//
+// An environment variable defined once on a team and injected into any project
+// linked to it, so a single secret can reach many projects without appearing in
+// their own variable lists. The `key` field names the variable, `type`
+// distinguishes plain values from encrypted and sensitive ones, `target` and
+// `customEnvironmentIds` give the environments it reaches, and `projects`
+// resolves the projects it is linked to. Values are never retrieved.
+private vercel.team.sharedEnvironmentVariable @defaults("key type") {
+  // Unique variable identifier
+  id string
+  // Variable name
+  key string
+  // Storage class of the value
+  //
+  // One of plain, encrypted, sensitive, or system. A sensitive value cannot be
+  // read back through the API after creation.
+  type string
+  // Environments the variable is injected into
+  //
+  // Values are drawn from production, preview, and development. Empty when the
+  // variable reaches only custom environments.
+  target []string
+  // Whether the variable applies to every custom environment on its projects
+  applyToAllCustomEnvironments bool
+  // Identifiers of the custom environments the variable is scoped to
+  //
+  // Empty when the variable is not scoped to any custom environment.
+  customEnvironmentIds []string
+  // Whether the stored value is readable through the API
+  decrypted bool
+  // Note describing what the variable is for, or null when unset
+  comment string
+  // Projects the variable is injected into
+  //
+  // Empty when the variable is defined but not linked to any project.
+  projects() []vercel.project
+  // Identifier of the user who created the variable
+  createdBy string
+  // Identifier of the user who last updated the variable
+  updatedBy string
+  // Display name of the user who last edited the variable
+  lastEditedByDisplayName string
+  // Time the variable was created
+  createdAt time
+  // Time the variable was last updated
+  updatedAt time
+}
+
+// Vercel Project
+//
+// A Vercel project and its deployment-protection and build posture. Query
+// `ssoProtectionDeploymentType`, `passwordProtectionDeploymentType`, and
+// `trustedIpsProtectionMode` for preview and production access controls;
+// `optionsAllowlistPaths` and `protectionBypassCount` for the routes and secrets
+// that let traffic past those controls; `aliases` for the hostnames actually
+// serving each deployment;
+// `gitForkProtection`, `requireVerifiedCommits`, and `productionBranch` for
+// source controls; `oidcTokenConfig` for the workload identity backends trust;
+// `directoryListing` and `publicSource` for what a deployment exposes;
+// `expirationDays` and its siblings for how long deployments are retained;
+// `connectConfigurations` and `staticIpsEnabled` for egress placement;
+// `environmentVariables` for environment variables; `deployments` for
+// deployment history; `domains` for domain bindings; `checks` for the gates
+// that hold a deployment back; and `firewall` for the Web Application Firewall.
+// Select a project with
+// `vercel.projects.where(name == "web")`.
+private vercel.project @defaults("name framework") @root {
+  // Unique project identifier
+  id string
+  // Project name
+  name string
+  // Framework preset, or null when unset
+  framework string
+  // Node.js version used for builds
+  nodeVersion string
+  // Root directory for the project source, or null for the repository root
+  rootDirectory string
+  // Custom build command, or null to use the framework default
+  buildCommand string
+  // Custom development command, or null to use the framework default
+  devCommand string
+  // Custom install command, or null to use the framework default
+  installCommand string
+  // Custom output directory, or null to use the framework default
+  outputDirectory string
+  // Whether the source code is publicly viewable through the deployment inspector
+  publicSource bool
+  // Whether system environment variables are automatically exposed to builds
+  autoExposeSystemEnvs bool
+  // Whether pull requests from forks require authorization before deploying
+  gitForkProtection bool
+  // Whether Git LFS is enabled for the project
+  gitLFS bool
+  // Whether the project has at least one deployment serving production traffic
+  live bool
+  // Time the project was created
+  createdAt time
+  // Time the project was last updated
+  updatedAt time
+  // Vercel Authentication scope
+  //
+  // Which deployments require a Vercel login to view, for example
+  // standard_protection, all_deployments, all_except_custom_domains, or
+  // only_preview_deployments. Null when disabled.
+  ssoProtectionDeploymentType string
+  // Password protection scope
+  //
+  // Which deployments require a shared password to view, for example
+  // standard_protection, all_deployments, all_except_custom_domains, or
+  // only_preview_deployments. Null when disabled.
+  passwordProtectionDeploymentType string
+  // Trusted IPs protection mode
+  //
+  // One of trusted_ip_required or trusted_ip_optional, or null when trusted-IP
+  // restriction is disabled.
+  trustedIpsProtectionMode string
+  // Trusted IPs protection scope
+  //
+  // Which deployments enforce the trusted-IP allowlist. One of
+  // standard_protection, all_deployments, only_preview_deployments, or null when
+  // disabled.
+  trustedIpsDeploymentType string
+  // Allowlisted CIDR ranges for trusted-IP protection
+  //
+  // Each entry carries the allowed value and an optional note. Empty when
+  // trusted-IP protection is disabled.
+  trustedIpsAddresses []dict
+  // Paths exempt from deployment protection for OPTIONS requests
+  //
+  // Requests using the OPTIONS method to these paths skip Vercel
+  // Authentication, password protection, and trusted-IP checks. A non-empty
+  // list means the protection reported by ssoProtectionDeploymentType,
+  // passwordProtectionDeploymentType, and trustedIpsProtectionMode does not
+  // cover every route. Empty when no paths are exempt.
+  optionsAllowlistPaths []string
+  // Number of automation bypass secrets registered for the project
+  //
+  // Each entry is a secret that skips deployment protection for any request
+  // carrying it. Any value above zero means the controls reported by
+  // ssoProtectionDeploymentType, passwordProtectionDeploymentType, and
+  // trustedIpsProtectionMode can be bypassed regardless of how they are set.
+  // The secrets themselves are never exposed.
+  protectionBypassCount int
+  // Scopes of the automation bypass secrets registered for the project
+  //
+  // Distinct scopes across the project's bypass entries, for example
+  // automation-bypass. Empty when the project has no bypass entries.
+  protectionBypassScopes []string
+  // Git provider hosting the connected repository
+  //
+  // One of github, gitlab, or bitbucket, or null when no repository is connected.
+  repositoryType string
+  // Owner or organization of the connected repository
+  repositoryOwner string
+  // Name of the connected repository
+  repositoryName string
+  // Production branch that deploys to production, or null when no repository is connected
+  productionBranch string
+  // Trusted sources restriction
+  //
+  // Restricts which sources may reach deployments beyond the trusted-IP
+  // allowlist, carrying the `deploymentType` the restriction applies to. Null
+  // when no trusted-sources restriction is configured.
+  trustedSources dict
+  // Passport protection scope
+  //
+  // Which deployments require a Passport identity to view. Null when Passport
+  // protection is disabled.
+  passportDeploymentType string
+  // Identifier of the connector backing Passport protection
+  passportConnectorId string
+  // Workload identity token settings
+  //
+  // Carries `enabled` and `issuerMode`, which selects whether tokens are issued
+  // under a team-scoped or a global issuer URL. Backends that federate trust to
+  // Vercel validate against that issuer, so a global issuer widens which
+  // Vercel accounts a relying party accepts. Null when the project has no
+  // workload identity configuration.
+  oidcTokenConfig dict
+  // Whether commits must be signed and verified before deployments are created
+  //
+  // Overrides the team-wide requireVerifiedCommits setting when set.
+  requireVerifiedCommits bool
+  // When the Git provider creates deployments
+  //
+  // Controls whether pushes and pull requests trigger deployments, for example
+  // enabled, disabled, or disabled_for_pull_requests.
+  gitCreateDeployments string
+  // Whether the project is blocked from emitting Git repository-dispatch events
+  disableRepositoryDispatchEvents bool
+  // Whether Vercel comments on commits in the connected repository
+  gitCommentsOnCommit bool
+  // Whether Vercel comments on pull requests in the connected repository
+  gitCommentsOnPullRequest bool
+  // Deployment-time policy applied to the project
+  //
+  // Carries `gitSources` and `deploymentSources` arrays, each entry holding
+  // `enabled`, `environments`, and `sources`. An entry that is enabled with an
+  // empty `sources` list denies every source. Null when the project inherits
+  // the team policy.
+  deploymentPolicy dict
+  // Whether deployments serve a browsable listing for directories without an index
+  directoryListing bool
+  // Whether builds may read source files outside the root directory
+  sourceFilesOutsideRootDirectory bool
+  // Whether Vercel support may view the project's source code
+  customerSupportCodeVisibility bool
+  // Whether the project is paused and no longer serving deployments
+  paused bool
+  // Whether functions fail over to another region when their primary is unavailable
+  serverlessFunctionZeroConfigFailover bool
+  // Whether newly added custom domains are assigned to production automatically
+  autoAssignCustomDomains bool
+  // Command whose exit status decides if a build is skipped, or null when unset
+  commandForIgnoringBuildStep string
+  // Primary region functions are deployed to
+  serverlessFunctionRegion string
+  // Regions functions are deployed to by default
+  //
+  // Empty when the project has no regional override and uses the account
+  // default.
+  functionDefaultRegions []string
+  // Default maximum function duration in seconds
+  functionDefaultTimeout int
+  // Default memory and CPU class for functions
+  //
+  // One of standard, standard_legacy, performance, or performance_xl.
+  functionDefaultMemoryType string
+  // Machine class used for builds
+  //
+  // One of basic, standard, enhanced, or turbo.
+  buildMachineType string
+  // How the build machine class is chosen
+  //
+  // One of elastic, which scales the class to the build, or fixed.
+  buildMachineSelection string
+  // Whether builds and functions egress from dedicated static IP addresses
+  staticIpsEnabled bool
+  // Whether builds use the dedicated static IP addresses
+  staticIpsForBuilds bool
+  // Regions the dedicated static IP addresses are allocated in
+  staticIpsRegions []string
+  // Number of days non-production deployments are kept before soft deletion
+  expirationDays int
+  // Number of days production deployments are kept before soft deletion
+  expirationDaysProduction int
+  // Number of days canceled deployments are kept before soft deletion
+  expirationDaysCanceled int
+  // Number of days errored deployments are kept before soft deletion
+  expirationDaysErrored int
+  // Minimum number of production deployments retained regardless of age
+  deploymentsToKeep int
+  // Cutoff before which client requests are rejected as stale
+  //
+  // Requests carrying a deployment id older than this boundary are refused, so
+  // clients running superseded code stop reaching current functions. Null when
+  // skew protection is disabled.
+  skewProtectionBoundaryAt time
+  // Window in seconds during which superseded deployments still serve requests
+  skewProtectionMaxAge int
+  // Domains exempt from skew protection
+  skewProtectionAllowedDomains []string
+  // Gradual rollout configuration for production deployments
+  //
+  // Carries the rollout `target` and the stages traffic advances through. Null
+  // when deployments are promoted to production all at once.
+  rollingRelease dict
+  // Product tier the project runs on
+  tier string
+  // Time an ownership transfer of the project began, or null when none started
+  transferStartedAt time
+  // Time an ownership transfer of the project finished
+  transferCompletedAt time
+  // Identifier of the account the project is being transferred to
+  transferToAccountId string
+  // Identifier of the account the project was transferred from
+  transferredFromAccountId string
+  // Scheduled cron jobs defined for the project
+  //
+  // Each entry carries the invocation path and schedule expression. Empty when
+  // no cron jobs are defined.
+  cronJobs []dict
+  // Secure Compute networks the project's functions and builds run in
+  //
+  // Empty when the project egresses from the shared public pool rather than a
+  // private network.
+  connectConfigurations() []vercel.project.connectConfiguration
+  // Environment variables configured for the project
+  environmentVariables() []vercel.project.environmentVariable
+  // Deployments created for the project
+  deployments() []vercel.deployment
+  // Aliases pointing at the project's deployments
+  //
+  // Each alias is a hostname serving traffic and the deployment behind it, so
+  // this is what a domain actually resolves to rather than what the project is
+  // configured to serve. Empty when the project has no aliases.
+  aliases() []vercel.alias
+  // Domains bound to the project
+  domains() []vercel.project.domain
+  // Firewall configuration for the project
+  firewall() vercel.firewall
+  // Checks that gate the project's deployments
+  //
+  // Each check reports a result against a deployment, and `blocks` gives the
+  // point at which a failing result stops the deployment. A check whose
+  // `blocks` is none reports its result and stops nothing. Empty when the
+  // project has no checks configured.
+  checks() []vercel.project.check
+  // Storage stores connected to the project
+  stores() []vercel.store
+  // Members with direct access to the project
+  members() []vercel.project.member
+}
+
+// Vercel Project Secure Compute Attachment
+//
+// The binding between a project and a Secure Compute network, which places the
+// project's functions and builds on private networking with a dedicated egress
+// range instead of the shared public pool. The `envId` field gives the
+// environment the binding covers, `buildsEnabled` reports whether builds also
+// run in the network, and `awsSubnetIds` gives the subnets reachable from it.
+private vercel.project.connectConfiguration @defaults("envId dc") {
+  // Identifier of the Secure Compute network
+  connectConfigurationId string
+  // Environment the binding applies to
+  //
+  // One of production, preview, or a custom environment identifier.
+  envId string
+  // Data center the network is provisioned in
+  dc string
+  // Whether the binding serves passive failover functions rather than active traffic
+  passive bool
+  // Whether builds also run inside the network
+  buildsEnabled bool
+  // Identifiers of the AWS subnets reachable from the network
+  //
+  // Empty when the network has no peered AWS subnets.
+  awsSubnetIds []string
+}
+
+// Vercel Project Member
+//
+// A member with direct access to a specific project, including their identity
+// and project role. Use it to audit per-project access separately from team-wide
+// membership. Select a member with `vercel.project.members.where(role == "ADMIN")`.
+private vercel.project.member @defaults("email role") {
+  // Unique user identifier
+  uid string
+  // Email address
+  email string
+  // Username
+  username string
+  // Display name
+  name string
+  // Project role
+  //
+  // For example ADMIN, PROJECT_DEVELOPER, PROJECT_VIEWER, or PROJECT_GUEST.
+  role string
+  // Time the member was added to the project
+  createdAt time
+}
+
+// Vercel Environment Variable
+//
+// A single environment variable configured for a project, including its key,
+// targets, and storage type. Values are never returned and are never requested.
+// Query `type`, `visibility`, and `decrypted` to separate a plaintext
+// configuration value from a secret Vercel hides after creation, `system` to
+// tell a platform-supplied variable from one the project set, and `target` and
+// `customEnvironmentIds` to find variables reaching preview or development
+// environments. Select a variable with
+// `vercel.project.environmentVariables.where(key == "DATABASE_URL")`.
+private vercel.project.environmentVariable @defaults("key type") {
+  // Unique variable identifier
+  id string
+  // Variable key
+  key string
+  // Storage type
+  //
+  // One of plain, encrypted, secret, sensitive, or system. Plain values are
+  // stored and returned in clear text; sensitive and secret values are hidden
+  // after creation.
+  type string
+  // Environments the variable applies to
+  //
+  // Any of production, preview, or development.
+  target []string
+  // Git branch the variable is scoped to, or null when it applies to all branches
+  gitBranch string
+  // Whether the stored value is readable through the API
+  //
+  // A readable value can be retrieved by anyone holding a token with access to
+  // the project, so a credential stored this way is only as protected as every
+  // token that reaches it. False for a value Vercel hides after creation.
+  decrypted bool
+  // Whether the variable is declared as configuration or as a secret
+  //
+  // One of config or secret. Null on variables created before Vercel recorded
+  // the distinction, where `type` is the only signal.
+  visibility string
+  // Whether Vercel supplies the variable rather than the project
+  //
+  // A system variable is populated by the platform, for example the deployment
+  // URL, and carries no value the project configured.
+  system bool
+  // Note describing what the variable is for, or null when unset
+  comment string
+  // Identifiers of the custom environments the variable is scoped to
+  //
+  // Empty when the variable is not scoped to any custom environment, in which
+  // case `target` gives the environments it reaches.
+  customEnvironmentIds []string
+  // Storage resource the value was populated from
+  //
+  // Carries the `type` of the linked resource, for example redis-url,
+  // postgres-url, blob-read-write-token, or integration-store-secret, together
+  // with the identifiers naming it. Null when the value was entered directly
+  // rather than linked from a store.
+  contentHint dict
+  // Time the variable was created
+  createdAt time
+  // Time the variable was last updated
+  updatedAt time
+}
+
+// Vercel Deployment Check
+//
+// A check registered against a project's deployments, which reports a pass or
+// fail result and may hold the deployment back until it passes. The `blocks`
+// field gives the point a failing result stops at, and is what separates an
+// enforced gate from one that only records a result. The `requires` field gives
+// what the check waits for before it runs, `sourceKind` gives what registered
+// it, and `timeout` gives how long a pending result is waited for. Select a
+// check with `vercel.project.checks.where(name == "lighthouse")`.
+private vercel.project.check @defaults("name blocks") {
+  // Unique check identifier
+  id string
+  // Check name
+  name string
+  // Point at which a failing result stops the deployment
+  //
+  // One of build-start, deployment-start, deployment-alias,
+  // deployment-promotion, or none. A value of none means the check records its
+  // result without holding anything back, so it enforces nothing.
+  blocks string
+  // What the check waits for before it runs
+  //
+  // One of build-ready, deployment-url, or none.
+  requires string
+  // Environments the check applies to
+  //
+  // Values are drawn from production and preview. Empty when the check applies
+  // to every environment.
+  targets []string
+  // Seconds a pending result is waited for before the check is abandoned
+  timeout int
+  // What registered the check
+  //
+  // One of integration, git-provider, webhook, or vercel.
+  sourceKind string
+  // Git provider reporting the check
+  //
+  // One of github, gitlab, or bitbucket. Null when the check does not come from
+  // a Git provider.
+  sourceProvider string
+  // Name the Git provider reports the check under
+  //
+  // Null when the check does not come from a Git provider.
+  externalCheckName string
+  // Marketplace integration that registered the check
+  //
+  // Null when the check was not registered by an integration. The scopes on the
+  // installation are what the check can reach beyond reporting its result.
+  integrationConfiguration() vercel.integrationConfiguration
+  // Whether a completed result can be requested again
+  isRerequestable bool
+  // Time the check was created
+  createdAt time
+  // Time the check was last updated
+  updatedAt time
+  // Time the check was removed, or null while it is still registered
+  deletedAt time
+}
+
+// Vercel Deployment
+//
+// A single deployment of a project, including its URL, state, target
+// environment, and creator. Query `state` for the build outcome, `target` to
+// distinguish production from preview, and `creatorUsername` for attribution.
+// Select a deployment with `vercel.project.deployments.where(state == "ERROR")`.
+private vercel.deployment @defaults("name state target") {
+  // Unique deployment identifier
+  id string
+  // Deployment name
+  name string
+  // Primary deployment URL
+  url string
+  // Lifecycle state
+  //
+  // One of QUEUED, BUILDING, READY, ERROR, CANCELED, or DELETED.
+  state string
+  // Target environment
+  //
+  // One of production or preview, or null for a plain deployment.
+  target string
+  // How the deployment was triggered, for example git, cli, or import
+  source string
+  // Deployment type
+  deploymentType string
+  // Identifier of the account that created the deployment
+  creatorUid string
+  // Username of the account that created the deployment
+  creatorUsername string
+  // Email of the account that created the deployment
+  creatorEmail string
+  // Inspector URL for build logs and details
+  inspectorUrl string
+  // Progress of the checks registered against the deployment
+  //
+  // One of registered, running, or completed. Null on deployments created
+  // before Vercel recorded the state, and on deployments no check applies to.
+  checksState string
+  // Combined outcome of the checks registered against the deployment
+  //
+  // One of succeeded, failed, skipped, or canceled. A deployment serving
+  // traffic with a failed conclusion was promoted past a check that reported a
+  // failure. Null while the checks have not completed.
+  checksConclusion string
+  // Time the deployment was created
+  createdAt time
+  // Project the deployment belongs to
+  project() vercel.project
+}
+
+// Vercel Alias
+//
+// A hostname bound to a deployment, which is what traffic to that hostname
+// actually reaches. An alias can outlive the release that configured it, so
+// comparing `deployment` against the project's current production deployment
+// surfaces hostnames still serving superseded builds. Automation bypass
+// secrets are reported by `protectionBypassCount` and
+// `protectionBypassScopes` on vercel.project. Select an alias with
+// `vercel.projects.first.aliases.where(alias == "example.com")`.
+private vercel.alias @defaults("alias") {
+  // Unique alias identifier
+  id string
+  // Hostname serving the deployment
+  //
+  // Either a generated `.vercel.app` subdomain or a custom domain.
+  alias string
+  // Destination domain when the alias redirects instead of serving a deployment
+  //
+  // Null when the alias serves a deployment directly.
+  redirect string
+  // Status code returned for a redirecting alias
+  //
+  // One of 301, 302, 307, or 308, or null when the alias does not redirect.
+  redirectStatusCode int
+  // Identifier of the account that created the alias
+  creatorUid string
+  // Username of the account that created the alias
+  creatorUsername string
+  // Email of the account that created the alias
+  creatorEmail string
+  // Time the alias was created
+  createdAt time
+  // Time the alias was last updated
+  updatedAt time
+  // Time the alias was deleted, or null while the alias is active
+  deletedAt time
+  // Deployment the alias points at
+  //
+  // Null when the alias redirects instead of serving a deployment.
+  deployment() vercel.deployment
+  // Project the alias belongs to
+  project() vercel.project
+}
+
+// Vercel Domain
+//
+// A domain registered to or managed by a team, including its verification
+// status and nameserver configuration. Query `verified` for pending domains and
+// `renewAutomatically` for expiry risk. Select a domain with
+// `vercel.team.domains.where(name == "example.com")`.
+private vercel.domain @defaults("name verified") {
+  // Unique domain identifier
+  id string
+  // Domain name
+  name string
+  // How the domain is served
+  //
+  // One of zeit.world, external, or na.
+  serviceType string
+  // Whether the domain has been verified
+  verified bool
+  // Nameservers currently observed for the domain
+  nameservers []string
+  // Nameservers Vercel expects the domain to use
+  intendedNameservers []string
+  // Whether Vercel serves the domain through its CDN
+  cdnEnabled bool
+  // Whether the domain renews automatically before expiry
+  renewAutomatically bool
+  // Time the domain was created in Vercel
+  createdAt time
+  // Time the domain registration expires, or null when not applicable
+  expiresAt time
+  // Time the domain was purchased through Vercel, or null when not applicable
+  boughtAt time
+  // DNS records configured for the domain
+  records() []vercel.dnsRecord
+}
+
+// Vercel DNS Record
+//
+// A single DNS record on a domain, including its subdomain name, type, value,
+// and TTL. Query `recordType` for the kind of record and `value` for its target.
+// Useful for auditing dangling records and verifying SPF, DKIM, and DMARC
+// entries. Select a record with `vercel.domain.records.where(recordType == "TXT")`.
+private vercel.dnsRecord @defaults("name recordType value") {
+  // Unique record identifier
+  id string
+  // Record name (subdomain), or empty for the apex domain
+  name string
+  // Record type
+  //
+  // For example A, AAAA, ALIAS, CNAME, MX, TXT, NS, CAA, or SRV.
+  recordType string
+  // Record value or target
+  value string
+  // Time to live in seconds, or null when the provider default applies
+  ttl int
+  // MX record priority, or null for non-MX records
+  mxPriority int
+  // Time the record was created
+  createdAt time
+  // Time the record was last updated
+  updatedAt time
+}
+
+// Vercel TLS Certificate
+//
+// A TLS certificate issued for one or more of the team's domains, including its
+// common names, auto-renewal state, and expiry. Query `expiresAt` for expiration
+// monitoring and `autoRenew` for renewal coverage. Select a certificate with
+// `vercel.team.certificates.where(autoRenew == false)`.
+private vercel.certificate @defaults("commonNames expiresAt") {
+  // Unique certificate identifier
+  id string
+  // Domains the certificate covers
+  commonNames []string
+  // Whether the certificate renews automatically before expiry
+  autoRenew bool
+  // Time the certificate was issued
+  createdAt time
+  // Time the certificate expires
+  expiresAt time
+}
+
+// Vercel Project Domain
+//
+// A domain bound to a specific project, including redirect behavior and the git
+// branch it serves. Query `verified` for pending bindings and `redirect` for
+// domains configured as redirects. Select a binding with
+// `vercel.project.domains.where(name == "www.example.com")`.
+private vercel.project.domain @defaults("name") {
+  // Domain name
+  name string
+  // Apex domain the name belongs to
+  apexName string
+  // Team domain the apex belongs to
+  //
+  // Null when the apex is not a Vercel-managed team domain.
+  apexDomain() vercel.domain
+  // Redirect target, or null when the domain serves the project directly
+  redirect string
+  // HTTP status code used for the redirect, or null when not a redirect
+  redirectStatusCode int
+  // Git branch the domain serves, or null for the production branch
+  gitBranch string
+  // Whether the domain binding has been verified
+  verified bool
+  // Time the binding was created
+  createdAt time
+  // Time the binding was last updated
+  updatedAt time
+}
+
+// Vercel Edge Config
+//
+// An Edge Config store owned by a team, including item count, size, and the
+// read tokens issued for it. The `tokens` field lists the standing credentials
+// that read the store's contents. Select a store with
+// `vercel.team.edgeConfigs.where(slug == "flags")`.
+private vercel.edgeConfig @defaults("slug") {
+  // Unique store identifier
+  id string
+  // URL-safe store slug
+  slug string
+  // Number of items stored
+  itemCount int
+  // Total size of the store in bytes
+  sizeInBytes int
+  // Time the store was created
+  createdAt time
+  // Time the store was last updated
+  updatedAt time
+  // Read tokens issued for the store
+  //
+  // Each token reads the store's contents from anywhere it is presented, so the
+  // number of live tokens and how long they have existed is the exposure of the
+  // configuration they read. Empty when no read token has been issued.
+  tokens() []vercel.edgeConfig.token
+}
+
+// Vercel Edge Config Read Token
+//
+// A read token issued for an Edge Config store, which returns the store's
+// contents to any caller presenting it. Tokens do not expire, so `createdAt`
+// is what a rotation audit reads and `label` is what attributes a token to
+// whoever asked for it. The token itself is never returned by the API after it
+// is created and is never reported here. Select a token with
+// `vercel.team.edgeConfigs.first.tokens.where(label == "ci")`.
+private vercel.edgeConfig.token @defaults("label createdAt") {
+  // Unique token identifier
+  //
+  // Identifies the token for revocation. This is not the token value.
+  id string
+  // Label given to the token when it was issued
+  label string
+  // Time the token was issued
+  createdAt time
+}
+
+// Vercel Storage Store
+//
+// A storage store owned by a team, covering both native Vercel Blob stores and
+// marketplace-provisioned database stores such as Neon Postgres or Upstash
+// Redis. Query `storeType` to distinguish them, `access` and `size` for blob
+// footprint, `productName` and `secretNames` for marketplace resources, and
+// `connectedProjects` for the projects wired to the store. Select a store with
+// `vercel.team.stores.where(name == "images")`.
+private vercel.store @defaults("name storeType status") {
+  // Unique store identifier
+  id string
+  // Store name
+  name string
+  // Store type
+  //
+  // One of blob, integration, postgres, redis, or kv. An integration store is a
+  // marketplace-provisioned resource such as Neon Postgres or Upstash Redis.
+  storeType string
+  // Provisioning status, for example available or suspended
+  status string
+  // Billing state of the store
+  billingState string
+  // Whether the store has exceeded its usage quota
+  usageQuotaExceeded bool
+  // Region the store is provisioned in, or null when not applicable
+  region string
+  // Number of projects connected to the store
+  connectedProjectsCount int
+  // Time the store was created
+  createdAt time
+  // Time the store was last updated
+  updatedAt time
+  // Stored data size in bytes for a blob store, or null for other store types
+  size int
+  // Number of objects in a blob store, or null for other store types
+  objectCount int
+  // Blob store access level
+  //
+  // One of public or private for a blob store, or null for other store types.
+  access string
+  // Marketplace product name for an integration store, for example Neon, or null otherwise
+  productName string
+  // Marketplace product slug for an integration store, for example neon, or null otherwise
+  productSlug string
+  // Identifier of the backing resource on the marketplace provider, or null otherwise
+  externalResourceId string
+  // Status of the backing resource on the marketplace provider, or null otherwise
+  externalResourceStatus string
+  // Billing plan name for an integration store, or null otherwise
+  billingPlan string
+  // Names of the secrets an integration store exposes
+  //
+  // Secret values are never returned. Empty for stores that expose no secrets.
+  secretNames []string
+  // Projects connected to the store
+  connectedProjects() []vercel.project
+}
+
+// Vercel Log Drain
+//
+// A log drain that exports team logs to an external endpoint, including its
+// delivery URL, format, and sources. Query `url` for cleartext destinations and
+// `sources` for the log categories exported. Select a drain with
+// `vercel.team.logDrains.where(name == "datadog")`.
+private vercel.logDrain @defaults("name url") {
+  // Unique log drain identifier
+  id string
+  // Log drain name
+  name string
+  // Destination URL logs are delivered to
+  url string
+  // Delivery format
+  //
+  // One of json, ndjson, or syslog.
+  deliveryFormat string
+  // Log sources exported
+  //
+  // Any of static, edge, external, build, or lambda.
+  sources []string
+  // Environments the drain collects from
+  //
+  // Any of production or preview.
+  environments []string
+  // Time the drain was created
+  createdAt time
+}
+
+// Vercel Webhook
+//
+// A webhook that delivers team events to an external endpoint, including the
+// subscribed events and destination URL. Query `url` for cleartext endpoints and
+// `events` for the event types delivered. Select a webhook with
+// `vercel.team.webhooks.where(url == "https://example.com/hook")`.
+private vercel.webhook @defaults("url") {
+  // Unique webhook identifier
+  id string
+  // Destination URL events are delivered to
+  url string
+  // Event types the webhook subscribes to
+  events []string
+  // Projects the webhook fires on
+  //
+  // Empty when the webhook applies to the entire team.
+  projects() []vercel.project
+  // Time the webhook was created
+  createdAt time
+  // Time the webhook was last updated
+  updatedAt time
+}
+
+// Vercel Integration Configuration
+//
+// An installed marketplace integration and its granted access, including the
+// integration slug, scopes, and project selection. Query `scopes` for the
+// permissions granted and `projectSelection` to see whether it reaches every
+// project. Select an installation with
+// `vercel.team.integrationConfigurations.where(slug == "sentry")`.
+private vercel.integrationConfiguration @defaults("slug") {
+  // Unique installation identifier
+  id string
+  // Integration slug
+  slug string
+  // Scopes granted to the integration
+  scopes []string
+  // How the integration was installed
+  //
+  // One of marketplace or external.
+  installationType string
+  // Which projects the integration can access
+  //
+  // One of all or selected.
+  projectSelection string
+  // Projects the integration can access
+  //
+  // Empty when the integration can access every project.
+  projects() []vercel.project
+  // Time the integration was installed
+  createdAt time
+  // Time the integration was last updated
+  updatedAt time
+}
+
+// Vercel Access Group
+//
+// An access group that grants a set of members a role across selected projects,
+// including member and project counts. Use it to audit team-wide role
+// assignments. Select a group with
+// `vercel.team.accessGroups.where(name == "engineers")`.
+private vercel.accessGroup @defaults("name") {
+  // Unique access group identifier
+  id string
+  // Access group name
+  name string
+  // Number of members in the group
+  membersCount int
+  // Number of projects the group grants access to
+  projectsCount int
+  // Time the group was created
+  createdAt time
+  // Time the group was last updated
+  updatedAt time
+  // Members belonging to the access group
+  members() []vercel.accessGroup.member
+  // Projects the access group grants a role on
+  projects() []vercel.accessGroup.project
+}
+
+// Vercel Access Group Member
+//
+// A member of an access group, including their identity and the team role the
+// group grants. Use it to audit which accounts an access group reaches.
+private vercel.accessGroup.member @defaults("email teamRole") {
+  // Unique user identifier
+  uid string
+  // Email address
+  email string
+  // Username
+  username string
+  // Display name
+  name string
+  // Team role granted through the group
+  //
+  // For example OWNER, MEMBER, DEVELOPER, BILLING, VIEWER, CONTRIBUTOR, or SECURITY.
+  teamRole string
+  // Time the member was added to the group
+  createdAt time
+}
+
+// Vercel Access Group Project Grant
+//
+// A project that an access group grants a role on, pairing the project role with
+// a reference to the project. Query `role` for the access level and `project` to
+// traverse into the project. Select a grant with
+// `vercel.accessGroup.projects.where(role == "ADMIN")`.
+private vercel.accessGroup.project @defaults("role") {
+  // Project role granted through the group
+  //
+  // One of ADMIN, PROJECT_DEVELOPER, PROJECT_VIEWER, or PROJECT_GUEST.
+  role string
+  // Time the grant was created
+  createdAt time
+  // Time the grant was last updated
+  updatedAt time
+  // Project the role is granted on
+  project() vercel.project
+}
+
+// Vercel Project Firewall
+//
+// Web Application Firewall configuration for a project, including whether the
+// firewall is enabled, the managed rulesets in effect, and the custom rules and
+// IP rules applied. Query `enabled` for the on/off state, `managedRules` and
+// `coreRules` for the rulesets Vercel evaluates and what each one does on a
+// match, `botIdEnabled` for bot verification, `rules` for custom rules,
+// `ipRules` for IP allow and deny entries, and `bypassRules` for the entries
+// that skip firewall evaluation entirely.
+private vercel.firewall @defaults("enabled") {
+  // Whether the firewall is enabled for the project
+  enabled bool
+  // Managed ruleset configuration keyed by ruleset identifier
+  //
+  // Deprecated in favor of managedRules, which reports the same rulesets with
+  // the action and the account that last changed each one as fields.
+  managedRulesets @maturity("deprecated") @replaced_by("vercel.firewall.managedRules") dict
+  // Core rule set configuration keyed by attack class
+  //
+  // Deprecated in favor of coreRules, which reports the same categories with
+  // the active state and action as fields.
+  coreRuleSet @maturity("deprecated") @replaced_by("vercel.firewall.coreRules") dict
+  // Managed rulesets Vercel evaluates for the project
+  //
+  // Each entry is a ruleset Vercel maintains, with whether it is active, what
+  // it does on a match, and who last changed it. Empty when the firewall
+  // evaluates no managed ruleset.
+  managedRules() []vercel.firewall.managedRuleset
+  // Core rule set categories evaluated for the project
+  //
+  // Each entry is one attack class within the OWASP Core Rule Set, with whether
+  // it is active and whether a match is denied or only recorded. Empty when the
+  // core rule set is not configured.
+  coreRules() []vercel.firewall.coreRule
+  // Whether bot verification is enabled for the project
+  botIdEnabled bool
+  // Request headers recorded in firewall logs
+  //
+  // A single entry of `*` records every header. Empty when no headers are
+  // recorded.
+  logHeaders []string
+  // Version number of the active firewall configuration
+  configVersion int
+  // Time the active firewall configuration was last changed
+  updatedAt time
+  // Custom firewall rules evaluated for the project
+  rules() []vercel.firewall.rule
+  // IP allow and deny rules applied to the project
+  ipRules() []vercel.firewall.ipRule
+  // Entries that skip firewall evaluation for a source address and hostname
+  //
+  // A bypass entry short-circuits every rule above for the traffic it matches,
+  // so it widens exposure regardless of how the rest of the firewall is
+  // configured. Empty when no bypass entries exist.
+  bypassRules() []vercel.firewall.bypassRule
+  // Traffic anomalies Vercel flagged as an attack in the last day
+  //
+  // Each entry carries the window the anomaly spans and the hosts it affected.
+  // Empty when no attack was detected. This reports observed traffic rather
+  // than configuration, so it changes between scans.
+  attackAnomalies() []dict
+}
+
+// Vercel Firewall Managed Ruleset
+//
+// One of the rulesets Vercel maintains and evaluates on the project's behalf,
+// covering the OWASP Core Rule Set, bot and AI-crawler identification, traffic
+// source reputation, and Vercel's own ruleset. The `active` field reports
+// whether it is evaluated at all and `action` reports what a match does, so a
+// ruleset that is active with an action of log records matches without stopping
+// them. The `updatedByUsername` and `updatedAt` fields attribute the last
+// change. Select a ruleset with
+// `vercel.project.firewall.managedRules.where(name == "owasp")`.
+private vercel.firewall.managedRuleset @defaults("name active action") {
+  // Ruleset identifier
+  //
+  // One of owasp for the OWASP Core Rule Set, bot_protection for verified bot
+  // identification, ai_bots for AI crawler identification, traffic_sources for
+  // source reputation, or vercel_ruleset for Vercel's own ruleset.
+  name string
+  // Whether the ruleset is evaluated
+  active bool
+  // What happens to a request the ruleset matches
+  //
+  // One of deny, challenge, or log. A value of log records the match and lets
+  // the request through, so the ruleset detects without blocking. Null when
+  // Vercel reports no action for the ruleset.
+  action string
+  // Time the ruleset configuration was last changed
+  updatedAt time
+  // Identifier of the account that last changed the ruleset configuration
+  updatedByUserId string
+  // Username of the account that last changed the ruleset configuration
+  updatedByUsername string
+}
+
+// Vercel Firewall Core Rule Set Category
+//
+// One attack class within the OWASP Core Rule Set, evaluated when the owasp
+// managed ruleset is active. The `active` field reports whether the category is
+// evaluated and `action` reports whether a match is denied or only recorded, so
+// a category set to log detects the attack class without stopping it. Select a
+// category with `vercel.project.firewall.coreRules.where(name == "sqli")`.
+private vercel.firewall.coreRule @defaults("name active action") {
+  // Attack class identifier
+  //
+  // One of sqli for SQL injection, xss for cross-site scripting, rce for remote
+  // code execution, lfi and rfi for local and remote file inclusion, php and
+  // java for language-specific attacks, ma for multipart attacks, sd for
+  // scanner detection, sf for session fixation, or gen for the generic
+  // category.
+  name string
+  // Whether the category is evaluated
+  active bool
+  // What happens to a request the category matches
+  //
+  // One of deny or log. A value of log records the match and lets the request
+  // through. Null when Vercel reports no action for the category.
+  action string
+}
+
+// Vercel Firewall System Bypass Rule
+//
+// An entry that exempts a source address and hostname from firewall
+// evaluation, letting matching traffic reach the deployment without passing the
+// managed rulesets, custom rules, or IP rules. The `ip` and `domain` fields give
+// the traffic it matches, `projectScoped` distinguishes a project entry from an
+// account-wide one, and `expiresAt` reports whether the exemption is temporary.
+// Select a rule with
+// `vercel.project.firewall.bypassRules.where(action == "bypass")`.
+private vercel.firewall.bypassRule @defaults("ip domain action") {
+  // Unique rule identifier
+  id string
+  // Source IP address the exemption matches
+  ip string
+  // Hostname the exemption applies to
+  domain string
+  // Action taken for matching requests
+  //
+  // One of bypass, which skips firewall evaluation, or block.
+  action string
+  // Whether the entry is scoped to one project rather than the whole account
+  projectScoped bool
+  // Note describing the entry, or null when unset
+  note string
+  // Identifier of the user who created the entry
+  actorId string
+  // Time the exemption stops applying, or null when it does not expire
+  expiresAt time
+  // Time the entry was created
+  createdAt time
+  // Time the entry was last updated
+  updatedAt time
+}
+
+// Vercel Firewall Custom Rule
+//
+// A single custom firewall rule, including its name, action, and whether it is
+// active. The `conditionGroup` field carries the raw match conditions. Select a
+// rule with `vercel.project.firewall.rules.where(name == "block-bots")`.
+private vercel.firewall.rule @defaults("name action active") {
+  // Unique rule identifier
+  id string
+  // Rule name
+  name string
+  // Rule description, or null when unset
+  description string
+  // Whether the rule is active
+  active bool
+  // Action taken when the rule matches
+  //
+  // One of allow, deny, challenge, log, or rate_limit.
+  action string
+  // Match conditions grouped by logical operator
+  //
+  // Each group carries the conditions that must all match for the rule to apply.
+  conditionGroup []dict
+  // Whether matching traffic skips every Vercel system mitigation
+  //
+  // A rule with this set exempts the traffic it matches from the platform's own
+  // attack mitigations, so that traffic reaches the deployment however the rest
+  // of the firewall is configured. Null when Vercel reports no value, which is
+  // how a rule that does not set the exemption is returned.
+  bypassSystem bool
+  // How long the action stays applied to a matching client
+  //
+  // A duration such as 1h or 24h. Null when the action applies only to the
+  // request that matched.
+  actionDuration string
+  // Destination a matching request is sent to
+  //
+  // Only set when `action` is redirect. An off-site destination here sends
+  // matching traffic to a host outside the project.
+  redirectLocation string
+  // Whether a redirect is issued as permanent rather than temporary
+  //
+  // Null when the rule does not redirect.
+  redirectPermanent bool
+  // Counting algorithm used for the rate limit
+  //
+  // One of fixed_window or token_bucket. Null when `action` is not rate_limit.
+  rateLimitAlgo string
+  // Length of the rate-limit window in seconds
+  //
+  // Null when `action` is not rate_limit.
+  rateLimitWindow int
+  // Requests allowed per window before the rate limit applies
+  //
+  // A limit set far above real traffic is a rate limit that never engages. Null
+  // when `action` is not rate_limit.
+  rateLimitLimit int
+  // Request attributes the rate limit counts separately
+  //
+  // For example ip or a header name. Empty when `action` is not rate_limit.
+  rateLimitKeys []string
+  // What happens to a request once the rate limit is exceeded
+  //
+  // One of deny, challenge, log, or rate_limit. Null when `action` is not
+  // rate_limit, and when the rule leaves the exceeded action unset.
+  rateLimitAction string
+  // Request headers recorded in firewall logs for this rule
+  //
+  // A single entry of `*` records every header. Empty when the rule records no
+  // headers beyond the firewall-wide setting.
+  logHeaders []string
+}
+
+// Vercel Firewall IP Rule
+//
+// A single IP allow or deny rule, including the address or range and the action
+// applied. Select a rule with
+// `vercel.project.firewall.ipRules.where(action == "deny")`.
+private vercel.firewall.ipRule @defaults("ip action") {
+  // Unique rule identifier
+  id string
+  // IP address or CIDR range the rule matches
+  ip string
+  // Hostname the rule is scoped to, or null for all hostnames
+  hostname string
+  // Action taken for matching requests
+  //
+  // One of allow, deny, or challenge.
+  action string
+  // Note describing the rule, or null when unset
+  notes string
+}

@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 const (
@@ -33,15 +33,55 @@ const (
 //
 // IMPORTANT: criteria is concatenated into the script verbatim, so it must be
 // a trusted constant (e.g. WindowsUpdateCriteria*), never user input.
-func windowsUpdateSearchQuery(criteria string) string {
+//
+// online sets IUpdateSearcher.Online on the searcher object BEFORE Search()
+// runs (the property has no effect set afterwards: WUA reads it when the
+// search starts, not when it returns). os.update always searches online —
+// it is what reports current patch state, and answering it from a stale
+// cache would under- or over-report what is actually outstanding.
+// windows.update.available may search offline instead, answering from the
+// cache of the agent's last detection rather than running a new one against
+// Windows Update or WSUS, which can take minutes; an offline result is only
+// as fresh as that last detection, exposed as
+// windows.update.config.lastDetectionSuccess, and callers must use it to
+// judge whether the answer is current.
+func windowsUpdateSearchQuery(criteria string, online bool) string {
+	onlineValue := "$true"
+	if !online {
+		onlineValue = "$false"
+	}
+	// $ErrorActionPreference is Stop so a failed search is a terminating error
+	// and powershell.exe exits non-zero. Without it the COM failure is a
+	// non-terminating error: the exit status stays 0, $result stays null, and
+	// $result.Updates iterated still runs once with a null input, so the
+	// caller is handed one empty update and reads it as a host with nothing
+	// outstanding. A host whose update agent could not be reached must fail
+	// the check, not report itself fully patched.
+	//
+	// The per-update loop is a `foreach` building `[pscustomobject]` records
+	// rather than `ForEach-Object` / `New-Object psobject`: the pipeline
+	// cmdlets are markedly slower in PowerShell, and both the "installed"
+	// and "available" criteria can return large result sets.
+	//
+	// Categories mixes the update's classification ("Security Updates",
+	// "Update Rollups") with the products it applies to ("Windows 11"), in no
+	// fixed order. Classification is the one category whose Type is
+	// UpdateClassification, so it never reads a product name.
 	return `
+$ErrorActionPreference='Stop';
 $ProgressPreference='SilentlyContinue';
 $updateSession = new-object -com "Microsoft.Update.Session"
-$searcher = $updateSession.CreateupdateSearcher().Search("` + criteria + `")
-$updates = $searcher.Updates | ForEach-Object {
-	$update = $_
-	New-Object psobject -Property @{
-		"UpdateID" = $update.Identity.UpdateID;
+$searcher = $updateSession.CreateupdateSearcher()
+$searcher.Online = ` + onlineValue + `
+$result = $searcher.Search("` + criteria + `")
+$updates = foreach ($update in $result.Updates) {
+	$classification = $null
+	foreach ($category in $update.Categories) {
+		if ($category.Type -eq 'UpdateClassification') { $classification = $category.Name; break }
+	}
+	[pscustomobject]@{
+		"UpdateID" = $update.Identity.UpdateID
+		"RevisionNumber" = [int]$update.Identity.RevisionNumber
 		"Title" = $update.Title
 		"MsrcSeverity" = $update.MsrcSeverity
 		"SupportUrl" = $update.SupportUrl
@@ -49,6 +89,7 @@ $updates = $searcher.Updates | ForEach-Object {
 		"KBArticleIDs" = @($update.KBArticleIDs)
 		"CveIDs" = @($update.CveIDs)
 		"Categories" = @($update.Categories | ForEach-Object { $_.Name })
+		"Classification" = $classification
 	}
 }
 @($updates) | ConvertTo-Json -Depth 3`
@@ -59,6 +100,7 @@ $updates = $searcher.Updates | ForEach-Object {
 // to its own output type.
 type WindowsUpdate struct {
 	UpdateID       string   `json:"UpdateID"`
+	RevisionNumber int      `json:"RevisionNumber"`
 	Title          string   `json:"Title"`
 	MsrcSeverity   string   `json:"MsrcSeverity"`
 	SupportUrl     string   `json:"SupportUrl"`
@@ -66,6 +108,9 @@ type WindowsUpdate struct {
 	KBArticleIDs   []string `json:"KBArticleIDs"`
 	CveIDs         []string `json:"CveIDs"`
 	Categories     []string `json:"Categories"`
+	// Classification is the name of the category typed UpdateClassification,
+	// or "" when the agent reports none.
+	Classification string `json:"Classification"`
 }
 
 type WindowsUpdateManager struct {
@@ -81,7 +126,10 @@ func (um *WindowsUpdateManager) Format() string {
 }
 
 func (um *WindowsUpdateManager) List() ([]OperatingSystemUpdate, error) {
-	updates, err := SearchWindowsUpdates(um.conn, WindowsUpdateCriteriaSoftware)
+	// os.update must stay online: it is what reports current patch state, and
+	// this is the only WindowsUpdateManager caller, so there is no offline
+	// variant to keep in sync with.
+	updates, err := SearchWindowsUpdates(um.conn, WindowsUpdateCriteriaSoftware, true)
 	if err != nil {
 		return nil, err
 	}
@@ -110,15 +158,17 @@ func (u WindowsUpdate) toOperatingSystemUpdate() (OperatingSystemUpdate, bool) {
 		Name:        u.KBArticleIDs[0],
 		Description: u.Title,
 		Severity:    u.MsrcSeverity,
+		Category:    u.Classification,
 		Format:      "windows/updates",
 		Restart:     u.RebootRequired,
 	}, true
 }
 
 // SearchWindowsUpdates runs a Windows Update Agent search with the given
-// criteria and returns the parsed updates.
-func SearchWindowsUpdates(conn shared.Connection, criteria string) ([]WindowsUpdate, error) {
-	cmd := powershell.Encode(windowsUpdateSearchQuery(criteria))
+// criteria and returns the parsed updates. See windowsUpdateSearchQuery for
+// what online controls and the trade-off of setting it to false.
+func SearchWindowsUpdates(conn shared.Connection, criteria string, online bool) ([]WindowsUpdate, error) {
+	cmd := powershell.Encode(windowsUpdateSearchQuery(criteria, online))
 	c, err := conn.RunCommand(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("could not search for windows updates: %w", err)
@@ -149,12 +199,44 @@ func ParseWindowsUpdates(input io.Reader) ([]WindowsUpdate, error) {
 	var updates []WindowsUpdate
 	arrErr := json.Unmarshal(data, &updates)
 	if arrErr == nil {
-		return updates, nil
+		return dropEmptyWindowsUpdates(updates), nil
 	}
 
 	var single WindowsUpdate
 	if err := json.Unmarshal(data, &single); err != nil {
 		return nil, arrErr
 	}
-	return []WindowsUpdate{single}, nil
+	return dropEmptyWindowsUpdates([]WindowsUpdate{single}), nil
+}
+
+// dropEmptyWindowsUpdates removes records that carry no identity at all.
+//
+// A record with neither an update ID nor a title is not an update; it is what
+// a null decodes to. The script's ErrorActionPreference keeps a failed search
+// from producing one, and this keeps any other source of a blank record from
+// being counted as an outstanding update.
+//
+// The common case is that there is nothing to drop, so the input is returned
+// as it stands and nothing is allocated until a blank record is actually seen.
+func dropEmptyWindowsUpdates(updates []WindowsUpdate) []WindowsUpdate {
+	first := -1
+	for i := range updates {
+		if updates[i].UpdateID == "" && updates[i].Title == "" {
+			first = i
+			break
+		}
+	}
+	if first < 0 {
+		return updates
+	}
+
+	res := make([]WindowsUpdate, first, len(updates)-1)
+	copy(res, updates[:first])
+	for i := first + 1; i < len(updates); i++ {
+		if updates[i].UpdateID == "" && updates[i].Title == "" {
+			continue
+		}
+		res = append(res, updates[i])
+	}
+	return res
 }

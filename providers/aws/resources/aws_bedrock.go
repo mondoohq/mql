@@ -5,20 +5,24 @@ package resources
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/bedrock"
 	bedrocktypes "github.com/aws/aws-sdk-go-v2/service/bedrock/types"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockagent"
 	bedrockagenttypes "github.com/aws/aws-sdk-go-v2/service/bedrockagent/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAwsBedrock) id() (string, error) {
@@ -74,6 +78,75 @@ func (a *mqlAwsBedrock) foundationModels() ([]any, error) {
 		res = append(res, mqlFM)
 	}
 	return res, nil
+}
+
+// initAwsBedrockFoundationModel resolves a foundation model from its ARN, or
+// from a model id plus region. Without it the typed baseModel and
+// foundationModel references across the Bedrock resources resolve to a resource
+// carrying only the identifier, leaving every other field unset.
+func initAwsBedrockFoundationModel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+
+	var identifier, region string
+	if args["modelArn"] != nil {
+		arnVal, _ := args["modelArn"].Value.(string)
+		parsed, err := arn.Parse(arnVal)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid bedrock foundation model arn %q: %w", arnVal, err)
+		}
+		identifier = arnVal
+		region = parsed.Region
+	} else if args["modelId"] != nil {
+		identifier, _ = args["modelId"].Value.(string)
+		if args["region"] == nil {
+			return nil, nil, errors.New("region required to fetch bedrock foundation model by modelId")
+		}
+		region, _ = args["region"].Value.(string)
+	} else {
+		return nil, nil, errors.New("modelArn or modelId required to fetch bedrock foundation model")
+	}
+	if identifier == "" || region == "" {
+		return nil, nil, errors.New("modelArn, or modelId and region, required to fetch bedrock foundation model")
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Bedrock(region)
+	resp, err := svc.GetFoundationModel(context.Background(), &bedrock.GetFoundationModelInput{
+		ModelIdentifier: &identifier,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if resp == nil || resp.ModelDetails == nil {
+		return nil, nil, fmt.Errorf("aws.bedrock.foundationModel %q not found", identifier)
+	}
+	m := resp.ModelDetails
+
+	lifecycleStatus := ""
+	if m.ModelLifecycle != nil {
+		lifecycleStatus = string(m.ModelLifecycle.Status)
+	}
+
+	res, err := CreateResource(runtime, "aws.bedrock.foundationModel",
+		map[string]*llx.RawData{
+			"__id":                       llx.StringDataPtr(m.ModelArn),
+			"modelArn":                   llx.StringDataPtr(m.ModelArn),
+			"modelId":                    llx.StringDataPtr(m.ModelId),
+			"modelName":                  llx.StringDataPtr(m.ModelName),
+			"providerName":               llx.StringDataPtr(m.ProviderName),
+			"inputModalities":            llx.ArrayData(enumSliceToAny(m.InputModalities), types.String),
+			"outputModalities":           llx.ArrayData(enumSliceToAny(m.OutputModalities), types.String),
+			"customizationsSupported":    llx.ArrayData(enumSliceToAny(m.CustomizationsSupported), types.String),
+			"inferenceTypesSupported":    llx.ArrayData(enumSliceToAny(m.InferenceTypesSupported), types.String),
+			"responseStreamingSupported": llx.BoolDataPtr(m.ResponseStreamingSupported),
+			"modelLifecycleStatus":       llx.StringData(lifecycleStatus),
+		})
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, res, nil
 }
 
 func (a *mqlAwsBedrockFoundationModel) id() (string, error) {
@@ -138,19 +211,13 @@ func (a *mqlAwsBedrock) getCustomModels(conn *connection.AwsConnection) []*jobpo
 
 				for _, cm := range page.ModelSummaries {
 					mqlCM, err := CreateResource(a.MqlRuntime, "aws.bedrock.customModel",
-						map[string]*llx.RawData{
-							"__id":              llx.StringDataPtr(cm.ModelArn),
-							"modelArn":          llx.StringDataPtr(cm.ModelArn),
-							"modelName":         llx.StringDataPtr(cm.ModelName),
-							"region":            llx.StringData(region),
-							"baseModelArn":      llx.StringDataPtr(cm.BaseModelArn),
-							"customizationType": llx.StringData(string(cm.CustomizationType)),
-						})
+						bedrockCustomModelArgs(cm.ModelArn, cm.ModelName, region, cm.CustomizationType))
 					if err != nil {
 						return nil, err
 					}
 					mqlCMRes := mqlCM.(*mqlAwsBedrockCustomModel)
 					mqlCMRes.cacheRegion = region
+					mqlCMRes.cacheBaseModelArn = convert.ToValue(cm.BaseModelArn)
 					res = append(res, mqlCM)
 				}
 			}
@@ -162,11 +229,83 @@ func (a *mqlAwsBedrock) getCustomModels(conn *connection.AwsConnection) []*jobpo
 }
 
 type mqlAwsBedrockCustomModelInternal struct {
-	cacheRegion   string
-	cacheKmsKeyId *string
-	fetched       bool
-	lock          sync.Mutex
-	detail        *bedrock.GetCustomModelOutput
+	cacheBaseModelArn string
+	cacheRegion       string
+	cacheKmsKeyId     *string
+	fetched           bool
+	lock              sync.Mutex
+	detail            *bedrock.GetCustomModelOutput
+}
+
+// initAwsBedrockCustomModel resolves a custom model from its ARN so the typed
+// references to it (from a customization job, and from anything else naming a
+// custom model) resolve to a populated resource.
+func initAwsBedrockCustomModel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+
+	if args["modelArn"] == nil {
+		return nil, nil, errors.New("modelArn required to fetch bedrock custom model")
+	}
+	modelArn, _ := args["modelArn"].Value.(string)
+	parsed, err := arn.Parse(modelArn)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid bedrock custom model arn %q: %w", modelArn, err)
+	}
+	region := parsed.Region
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Bedrock(region)
+	resp, err := svc.GetCustomModel(context.Background(), &bedrock.GetCustomModelInput{
+		ModelIdentifier: &modelArn,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if resp == nil {
+		return nil, nil, fmt.Errorf("aws.bedrock.customModel %q not found", modelArn)
+	}
+
+	res, err := CreateResource(runtime, "aws.bedrock.customModel",
+		bedrockCustomModelArgs(resp.ModelArn, resp.ModelName, region, resp.CustomizationType))
+	if err != nil {
+		return nil, nil, err
+	}
+	mqlCM := res.(*mqlAwsBedrockCustomModel)
+	mqlCM.cacheRegion = region
+	// The base model is not an argument: the schema exposes it as the typed
+	// baseModel accessor, which reads the ARN back off the internal cache.
+	// Seeding it here is what makes that accessor resolve on this path as well
+	// as on the listing path.
+	mqlCM.cacheBaseModelArn = convert.ToValue(resp.BaseModelArn)
+	// Seed the detail this init already fetched so the computed fields do not
+	// repeat the GetCustomModel call. CreateResource may have returned an instance
+	// already cached (and already in use) from the custom-models lister, so take
+	// the lock rather than writing over live state.
+	mqlCM.lock.Lock()
+	if !mqlCM.fetched {
+		mqlCM.cacheKmsKeyId = resp.ModelKmsKeyArn
+		mqlCM.detail = resp
+		mqlCM.fetched = true
+	}
+	mqlCM.lock.Unlock()
+	return nil, mqlCM, nil
+}
+
+// bedrockCustomModelArgs maps a custom model onto the fields
+// aws.bedrock.customModel declares. Every key has to be a settable field:
+// SetAllData fails the whole resource on an unknown one, so the base model,
+// which the schema exposes through the typed baseModel accessor, is seeded on
+// the internal cache instead of passed here.
+func bedrockCustomModelArgs(modelArn, modelName *string, region string, customizationType bedrocktypes.CustomizationType) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":              llx.StringDataPtr(modelArn),
+		"modelArn":          llx.StringDataPtr(modelArn),
+		"modelName":         llx.StringDataPtr(modelName),
+		"region":            llx.StringData(region),
+		"customizationType": llx.StringData(string(customizationType)),
+	}
 }
 
 func (a *mqlAwsBedrockCustomModel) id() (string, error) {
@@ -201,7 +340,7 @@ func (a *mqlAwsBedrockCustomModel) fetchDetail() (*bedrock.GetCustomModelOutput,
 }
 
 func (a *mqlAwsBedrockCustomModel) baseModel() (*mqlAwsBedrockFoundationModel, error) {
-	arnVal := a.BaseModelArn.Data
+	arnVal := a.cacheBaseModelArn
 	if arnVal == "" {
 		a.BaseModel.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -247,6 +386,30 @@ func (a *mqlAwsBedrockCustomModel) outputDataConfig() (any, error) {
 	}
 	result, _ := convert.JsonToDict(resp.OutputDataConfig)
 	return result, nil
+}
+
+func (a *mqlAwsBedrockCustomModel) trainingDataBucket() (*mqlAwsS3Bucket, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	uri := ""
+	if resp != nil && resp.TrainingDataConfig != nil {
+		uri = convert.ToValue(resp.TrainingDataConfig.S3Uri)
+	}
+	return s3BucketRefFromUri(a.MqlRuntime, uri, &a.TrainingDataBucket)
+}
+
+func (a *mqlAwsBedrockCustomModel) outputDataBucket() (*mqlAwsS3Bucket, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	uri := ""
+	if resp != nil && resp.OutputDataConfig != nil {
+		uri = convert.ToValue(resp.OutputDataConfig.S3Uri)
+	}
+	return s3BucketRefFromUri(a.MqlRuntime, uri, &a.OutputDataBucket)
 }
 
 // --- Guardrails ---
@@ -331,10 +494,82 @@ func newMqlBedrockGuardrail(runtime *plugin.Runtime, g bedrocktypes.GuardrailSum
 }
 
 type mqlAwsBedrockGuardrailInternal struct {
+	lazyTags
 	cacheRegion string
 	fetched     bool
 	lock        sync.Mutex
 	detail      *bedrock.GetGuardrailOutput
+}
+
+// initAwsBedrockGuardrail resolves a guardrail from its ARN, or from an id plus
+// region, so the typed guardrail references on agents and on the account's
+// enforced-guardrail configuration resolve to a populated resource rather than
+// a husk carrying only the identifier.
+func initAwsBedrockGuardrail(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+
+	var identifier, region string
+	if args["arn"] != nil {
+		arnVal, _ := args["arn"].Value.(string)
+		parsed, err := arn.Parse(arnVal)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid bedrock guardrail arn %q: %w", arnVal, err)
+		}
+		identifier = arnVal
+		region = parsed.Region
+	} else if args["id"] != nil {
+		identifier, _ = args["id"].Value.(string)
+		if args["region"] == nil {
+			return nil, nil, errors.New("region required to fetch bedrock guardrail by id")
+		}
+		region, _ = args["region"].Value.(string)
+	} else {
+		return nil, nil, errors.New("arn or id required to fetch bedrock guardrail")
+	}
+	if identifier == "" || region == "" {
+		return nil, nil, errors.New("arn or id and region required to fetch bedrock guardrail")
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Bedrock(region)
+	resp, err := svc.GetGuardrail(context.Background(), &bedrock.GetGuardrailInput{
+		GuardrailIdentifier: &identifier,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if resp == nil {
+		return nil, nil, fmt.Errorf("aws.bedrock.guardrail %q not found", identifier)
+	}
+
+	res, err := CreateResource(runtime, "aws.bedrock.guardrail",
+		map[string]*llx.RawData{
+			"__id":    llx.StringDataPtr(resp.GuardrailArn),
+			"arn":     llx.StringDataPtr(resp.GuardrailArn),
+			"id":      llx.StringDataPtr(resp.GuardrailId),
+			"name":    llx.StringDataPtr(resp.Name),
+			"region":  llx.StringData(region),
+			"status":  llx.StringData(string(resp.Status)),
+			"version": llx.StringDataPtr(resp.Version),
+		})
+	if err != nil {
+		return nil, nil, err
+	}
+	mqlG := res.(*mqlAwsBedrockGuardrail)
+	mqlG.cacheRegion = region
+	// The detail call this init already made covers every computed field, so seed
+	// it rather than letting the first field read repeat the request. CreateResource
+	// may have returned an instance already cached (and already in use) from the
+	// guardrails lister, so take the lock rather than writing over live state.
+	mqlG.lock.Lock()
+	if !mqlG.fetched {
+		mqlG.detail = resp
+		mqlG.fetched = true
+	}
+	mqlG.lock.Unlock()
+	return nil, mqlG, nil
 }
 
 func (a *mqlAwsBedrockGuardrail) id() (string, error) {
@@ -420,6 +655,35 @@ func (a *mqlAwsBedrockGuardrail) wordPolicy() (any, error) {
 	return result, nil
 }
 
+func (a *mqlAwsBedrockGuardrail) contextualGroundingPolicy() (any, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	result, _ := convert.JsonToDict(resp.ContextualGroundingPolicy)
+	return result, nil
+}
+
+func (a *mqlAwsBedrockGuardrail) automatedReasoningPolicy() (any, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	result, _ := convert.JsonToDict(resp.AutomatedReasoningPolicy)
+	return result, nil
+}
+
+func (a *mqlAwsBedrockGuardrail) crossRegionProfileArn() (string, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return "", err
+	}
+	if resp.CrossRegionDetails == nil {
+		return "", nil
+	}
+	return convert.ToValue(resp.CrossRegionDetails.GuardrailProfileArn), nil
+}
+
 // --- Model Invocation Logging Configurations ---
 
 func (a *mqlAwsBedrock) modelInvocationLoggingConfigurations() ([]any, error) {
@@ -480,10 +744,12 @@ func (a *mqlAwsBedrock) getModelInvocationLoggingConfigurations(conn *connection
 						"imageDataDeliveryEnabled":     llx.BoolDataPtr(lc.ImageDataDeliveryEnabled),
 						"embeddingDataDeliveryEnabled": llx.BoolDataPtr(lc.EmbeddingDataDeliveryEnabled),
 						"videoDataDeliveryEnabled":     llx.BoolDataPtr(lc.VideoDataDeliveryEnabled),
+						"audioDataDeliveryEnabled":     llx.BoolDataPtr(lc.AudioDataDeliveryEnabled),
 					})
 				if err != nil {
 					return nil, err
 				}
+				mqlLC.(*mqlAwsBedrockModelInvocationLoggingConfiguration).cacheDestinations = bedrockLoggingDestinationsFrom(lc)
 				res = append(res, mqlLC)
 			}
 			return jobpool.JobResult(res), nil
@@ -495,6 +761,89 @@ func (a *mqlAwsBedrock) getModelInvocationLoggingConfigurations(conn *connection
 
 func (a *mqlAwsBedrockModelInvocationLoggingConfiguration) id() (string, error) {
 	return "aws.bedrock.modelInvocationLoggingConfiguration/" + a.Region.Data, nil
+}
+
+type mqlAwsBedrockModelInvocationLoggingConfigurationInternal struct {
+	cacheDestinations bedrockLoggingDestinations
+}
+
+// bedrockLoggingDestinations holds the places a region's model invocation
+// logs are delivered to. Each value is empty when that destination is not
+// configured.
+type bedrockLoggingDestinations struct {
+	logGroupName      string
+	roleArn           string
+	s3BucketName      string
+	largeDataS3Bucket string
+}
+
+func bedrockLoggingDestinationsFrom(lc *bedrocktypes.LoggingConfig) bedrockLoggingDestinations {
+	d := bedrockLoggingDestinations{}
+	if lc == nil {
+		return d
+	}
+	if cw := lc.CloudWatchConfig; cw != nil {
+		d.logGroupName = convert.ToValue(cw.LogGroupName)
+		d.roleArn = convert.ToValue(cw.RoleArn)
+		if cw.LargeDataDeliveryS3Config != nil {
+			d.largeDataS3Bucket = convert.ToValue(cw.LargeDataDeliveryS3Config.BucketName)
+		}
+	}
+	if lc.S3Config != nil {
+		d.s3BucketName = convert.ToValue(lc.S3Config.BucketName)
+	}
+	return d
+}
+
+func (a *mqlAwsBedrockModelInvocationLoggingConfiguration) logGroup() (*mqlAwsCloudwatchLoggroup, error) {
+	name := a.cacheDestinations.logGroupName
+	if name == "" {
+		a.LogGroup.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	// Bedrock writes only to a log group in the configuration's own region and
+	// account, so the ARN is built from those rather than searched for.
+	res, err := NewResource(a.MqlRuntime, "aws.cloudwatch.loggroup", map[string]*llx.RawData{
+		"arn": llx.StringData(fmt.Sprintf(logGroupArnPattern, a.Region.Data, conn.AccountId(), name)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsCloudwatchLoggroup), nil
+}
+
+func (a *mqlAwsBedrockModelInvocationLoggingConfiguration) iamRole() (*mqlAwsIamRole, error) {
+	roleArn := a.cacheDestinations.roleArn
+	if roleArn == "" {
+		a.IamRole.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.iam.role", map[string]*llx.RawData{"arn": llx.StringData(roleArn)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsIamRole), nil
+}
+
+func (a *mqlAwsBedrockModelInvocationLoggingConfiguration) s3Bucket() (*mqlAwsS3Bucket, error) {
+	return bedrockS3BucketByName(a.MqlRuntime, a.cacheDestinations.s3BucketName, &a.S3Bucket)
+}
+
+func (a *mqlAwsBedrockModelInvocationLoggingConfiguration) largeDataS3Bucket() (*mqlAwsS3Bucket, error) {
+	return bedrockS3BucketByName(a.MqlRuntime, a.cacheDestinations.largeDataS3Bucket, &a.LargeDataS3Bucket)
+}
+
+func bedrockS3BucketByName(runtime *plugin.Runtime, name string, field *plugin.TValue[*mqlAwsS3Bucket]) (*mqlAwsS3Bucket, error) {
+	if name == "" {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(runtime, "aws.s3.bucket", map[string]*llx.RawData{"name": llx.StringData(name)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsS3Bucket), nil
 }
 
 // --- Provisioned Model Throughputs ---
@@ -552,7 +901,6 @@ func (a *mqlAwsBedrock) getProvisionedModelThroughputs(conn *connection.AwsConne
 							"provisionedModelName": llx.StringDataPtr(pt.ProvisionedModelName),
 							"region":               llx.StringData(region),
 							"modelArn":             llx.StringDataPtr(pt.ModelArn),
-							"foundationModelArn":   llx.StringDataPtr(pt.FoundationModelArn),
 							"modelUnits":           llx.IntData(int64(convert.ToValue(pt.DesiredModelUnits))),
 							"status":               llx.StringData(string(pt.Status)),
 							"commitmentDuration":   llx.StringData(string(pt.CommitmentDuration)),
@@ -560,6 +908,7 @@ func (a *mqlAwsBedrock) getProvisionedModelThroughputs(conn *connection.AwsConne
 					if err != nil {
 						return nil, err
 					}
+					mqlPT.(*mqlAwsBedrockProvisionedModelThroughput).cacheFoundationModelArn = convert.ToValue(pt.FoundationModelArn)
 					res = append(res, mqlPT)
 				}
 			}
@@ -575,7 +924,7 @@ func (a *mqlAwsBedrockProvisionedModelThroughput) id() (string, error) {
 }
 
 func (a *mqlAwsBedrockProvisionedModelThroughput) foundationModel() (*mqlAwsBedrockFoundationModel, error) {
-	arnVal := a.FoundationModelArn.Data
+	arnVal := a.cacheFoundationModelArn
 	if arnVal == "" {
 		a.FoundationModel.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -586,6 +935,31 @@ func (a *mqlAwsBedrockProvisionedModelThroughput) foundationModel() (*mqlAwsBedr
 		return nil, err
 	}
 	return res.(*mqlAwsBedrockFoundationModel), nil
+}
+
+func (a *mqlAwsBedrockProvisionedModelThroughput) customModel() (*mqlAwsBedrockCustomModel, error) {
+	if !isBedrockCustomModelArn(a.ModelArn.Data) {
+		a.CustomModel.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.bedrock.customModel",
+		map[string]*llx.RawData{"modelArn": llx.StringData(a.ModelArn.Data)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsBedrockCustomModel), nil
+}
+
+// isBedrockCustomModelArn reports whether a model ARN names a custom model
+// (arn:aws:bedrock:<region>:<account>:custom-model/...), as opposed to a
+// foundation model, an imported model, or anything else a provisioned
+// throughput can serve.
+func isBedrockCustomModelArn(modelArn string) bool {
+	parsed, err := arn.Parse(modelArn)
+	if err != nil {
+		return false
+	}
+	return parsed.Service == "bedrock" && strings.HasPrefix(parsed.Resource, "custom-model/")
 }
 
 func (a *mqlAwsBedrock) advancedPromptOptimizationJobs() ([]any, error) {
@@ -662,6 +1036,7 @@ func (a *mqlAwsBedrockAdvancedPromptOptimizationJob) id() (string, error) {
 }
 
 type mqlAwsBedrockAdvancedPromptOptimizationJobInternal struct {
+	lazyTags
 	detailOnce sync.Once
 	detailErr  error
 	detail     *bedrock.GetAdvancedPromptOptimizationJobOutput
@@ -816,6 +1191,7 @@ func (a *mqlAwsBedrock) getAgents(conn *connection.AwsConnection) []*jobpool.Job
 }
 
 type mqlAwsBedrockAgentInternal struct {
+	lazyTags
 	cacheRegion string
 	detailOnce  sync.Once
 	detailErr   error
@@ -1088,10 +1464,71 @@ func (a *mqlAwsBedrock) getKnowledgeBases(conn *connection.AwsConnection) []*job
 }
 
 type mqlAwsBedrockKnowledgeBaseInternal struct {
+	lazyTags
 	cacheRegion string
 	detailOnce  sync.Once
 	detailErr   error
 	detail      *bedrockagent.GetKnowledgeBaseOutput
+}
+
+// initAwsBedrockKnowledgeBase resolves a knowledge base from an id plus region,
+// or from its ARN, so an agent's attached knowledge bases resolve to populated
+// resources. Agent associations carry only the knowledge-base id, which is why
+// the id and region pair is the primary lookup.
+func initAwsBedrockKnowledgeBase(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+
+	var kbId, region string
+	if args["id"] != nil && args["region"] != nil {
+		kbId, _ = args["id"].Value.(string)
+		region, _ = args["region"].Value.(string)
+	} else if args["arn"] != nil {
+		arnVal, _ := args["arn"].Value.(string)
+		parsed, err := arn.Parse(arnVal)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid bedrock knowledge base arn %q: %w", arnVal, err)
+		}
+		region = parsed.Region
+		// resource is "knowledge-base/<id>"
+		_, kbId, _ = strings.Cut(parsed.Resource, "/")
+	} else {
+		return nil, nil, errors.New("arn, or id and region, required to fetch bedrock knowledge base")
+	}
+	if kbId == "" || region == "" {
+		return nil, nil, errors.New("arn, or id and region, required to fetch bedrock knowledge base")
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgent(region)
+	resp, err := svc.GetKnowledgeBase(context.Background(), &bedrockagent.GetKnowledgeBaseInput{
+		KnowledgeBaseId: &kbId,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if resp == nil || resp.KnowledgeBase == nil {
+		return nil, nil, fmt.Errorf("aws.bedrock.knowledgeBase %q not found in %s", kbId, region)
+	}
+
+	res, err := CreateResource(runtime, "aws.bedrock.knowledgeBase",
+		map[string]*llx.RawData{
+			"__id":   llx.StringData("aws.bedrock.knowledgeBase/" + region + "/" + kbId),
+			"id":     llx.StringDataPtr(resp.KnowledgeBase.KnowledgeBaseId),
+			"name":   llx.StringDataPtr(resp.KnowledgeBase.Name),
+			"region": llx.StringData(region),
+			"status": llx.StringData(string(resp.KnowledgeBase.Status)),
+		})
+	if err != nil {
+		return nil, nil, err
+	}
+	mqlKB := res.(*mqlAwsBedrockKnowledgeBase)
+	mqlKB.cacheRegion = region
+	// Seed the detail the init already fetched so the computed fields do not
+	// repeat the GetKnowledgeBase call.
+	mqlKB.detailOnce.Do(func() { mqlKB.detail = resp })
+	return nil, mqlKB, nil
 }
 
 func (a *mqlAwsBedrockKnowledgeBase) id() (string, error) {
@@ -1314,6 +1751,7 @@ func newMqlBedrockFlow(runtime *plugin.Runtime, fl bedrockagenttypes.FlowSummary
 }
 
 type mqlAwsBedrockFlowInternal struct {
+	lazyTags
 	cacheRegion string
 	detailOnce  sync.Once
 	detailErr   error
@@ -1797,7 +2235,6 @@ func (a *mqlAwsBedrock) getBatchInferenceJobs(conn *connection.AwsConnection) []
 							"status":                 llx.StringData(string(j.Status)),
 							"inputDataConfig":        llx.DictData(inputCfg),
 							"outputDataConfig":       llx.DictData(outputCfg),
-							"roleArn":                llx.StringDataPtr(j.RoleArn),
 							"submitTime":             llx.TimeDataPtr(j.SubmitTime),
 							"lastModifiedTime":       llx.TimeDataPtr(j.LastModifiedTime),
 							"endTime":                llx.TimeDataPtr(j.EndTime),
@@ -1806,6 +2243,13 @@ func (a *mqlAwsBedrock) getBatchInferenceJobs(conn *connection.AwsConnection) []
 						})
 					if err != nil {
 						return nil, err
+					}
+					mqlBatchJob := mqlJob.(*mqlAwsBedrockBatchInferenceJob)
+					mqlBatchJob.cacheRoleArn = convert.ToValue(j.RoleArn)
+					mqlBatchJob.cacheLocations = batchInferenceJobLocationsFrom(j.InputDataConfig, j.OutputDataConfig)
+					if j.VpcConfig != nil {
+						mqlBatchJob.cacheSubnetIds = j.VpcConfig.SubnetIds
+						mqlBatchJob.cacheSecurityGroupIds = j.VpcConfig.SecurityGroupIds
 					}
 					res = append(res, mqlJob)
 				}
@@ -1822,7 +2266,7 @@ func (a *mqlAwsBedrockBatchInferenceJob) id() (string, error) {
 }
 
 func (a *mqlAwsBedrockBatchInferenceJob) iamRole() (*mqlAwsIamRole, error) {
-	roleArn := a.RoleArn.Data
+	roleArn := a.cacheRoleArn
 	if roleArn == "" {
 		a.IamRole.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -1833,4 +2277,249 @@ func (a *mqlAwsBedrockBatchInferenceJob) iamRole() (*mqlAwsIamRole, error) {
 		return nil, err
 	}
 	return res.(*mqlAwsIamRole), nil
+}
+
+// bedrockResourcePolicyJSON fetches the resource-based policy document for a
+// Bedrock resource identified by its ARN. Bedrock returns an empty policy for
+// resources with no policy attached; access-denied is treated as "no policy"
+// so a scan without bedrock:GetResourcePolicy degrades gracefully. Shared by
+// the resourcePolicy() accessors on the cross-account-shareable resources.
+func bedrockResourcePolicyJSON(runtime *plugin.Runtime, region, arn string) (string, error) {
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Bedrock(region)
+	resp, err := svc.GetResourcePolicy(context.Background(), &bedrock.GetResourcePolicyInput{ResourceArn: &arn})
+	if err != nil {
+		// A resource with no attached policy, or a resource type that does not
+		// support resource-based policies at all (system-defined inference
+		// profiles return ValidationException "operation is not recognized"),
+		// simply has no policy to report - degrade to empty rather than failing
+		// the whole collection.
+		if Is400AccessDeniedError(err) || isResourceNotFoundError(err) || isOperationNotSupportedError(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return convert.ToValue(resp.ResourcePolicy), nil
+}
+
+func (a *mqlAwsBedrockCustomModel) resourcePolicy() (string, error) {
+	return bedrockResourcePolicyJSON(a.MqlRuntime, a.Region.Data, a.ModelArn.Data)
+}
+
+func (a *mqlAwsBedrockCustomModel) policyStatements() ([]any, error) {
+	policy := a.GetResourcePolicy()
+	if policy.Error != nil {
+		return nil, policy.Error
+	}
+	return newPolicyStatementResources(a.MqlRuntime, a.ModelArn.Data, policy.Data)
+}
+
+func (a *mqlAwsBedrockCustomModel) isPublic() (bool, error) {
+	return resourceIsPublic(a.GetPolicyStatements())
+}
+
+func (a *mqlAwsBedrockImportedModel) resourcePolicy() (string, error) {
+	return bedrockResourcePolicyJSON(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+}
+
+func (a *mqlAwsBedrockImportedModel) policyStatements() ([]any, error) {
+	policy := a.GetResourcePolicy()
+	if policy.Error != nil {
+		return nil, policy.Error
+	}
+	return newPolicyStatementResources(a.MqlRuntime, a.Arn.Data, policy.Data)
+}
+
+func (a *mqlAwsBedrockImportedModel) isPublic() (bool, error) {
+	return resourceIsPublic(a.GetPolicyStatements())
+}
+
+func (a *mqlAwsBedrockEvaluationJob) resourcePolicy() (string, error) {
+	return bedrockResourcePolicyJSON(a.MqlRuntime, a.Region.Data, a.JobArn.Data)
+}
+
+func (a *mqlAwsBedrockEvaluationJob) policyStatements() ([]any, error) {
+	policy := a.GetResourcePolicy()
+	if policy.Error != nil {
+		return nil, policy.Error
+	}
+	return newPolicyStatementResources(a.MqlRuntime, a.JobArn.Data, policy.Data)
+}
+
+func (a *mqlAwsBedrockEvaluationJob) isPublic() (bool, error) {
+	return resourceIsPublic(a.GetPolicyStatements())
+}
+
+func (a *mqlAwsBedrockInferenceProfile) resourcePolicy() (string, error) {
+	return bedrockResourcePolicyJSON(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+}
+
+func (a *mqlAwsBedrockInferenceProfile) policyStatements() ([]any, error) {
+	policy := a.GetResourcePolicy()
+	if policy.Error != nil {
+		return nil, policy.Error
+	}
+	return newPolicyStatementResources(a.MqlRuntime, a.Arn.Data, policy.Data)
+}
+
+func (a *mqlAwsBedrockInferenceProfile) isPublic() (bool, error) {
+	return resourceIsPublic(a.GetPolicyStatements())
+}
+
+type mqlAwsBedrockProvisionedModelThroughputInternal struct {
+	cacheFoundationModelArn string
+}
+
+type mqlAwsBedrockBatchInferenceJobInternal struct {
+	cacheRoleArn          string
+	cacheLocations        batchInferenceJobLocations
+	cacheSubnetIds        []string
+	cacheSecurityGroupIds []string
+}
+
+// batchInferenceJobLocations holds the S3 locations and output encryption key
+// of a batch inference job. Each value is empty when the job's configuration
+// does not set it.
+type batchInferenceJobLocations struct {
+	inputS3Uri     string
+	outputS3Uri    string
+	outputKmsKeyId string
+}
+
+func batchInferenceJobLocationsFrom(in bedrocktypes.ModelInvocationJobInputDataConfig, out bedrocktypes.ModelInvocationJobOutputDataConfig) batchInferenceJobLocations {
+	loc := batchInferenceJobLocations{}
+	if s3In, ok := in.(*bedrocktypes.ModelInvocationJobInputDataConfigMemberS3InputDataConfig); ok {
+		loc.inputS3Uri = convert.ToValue(s3In.Value.S3Uri)
+	}
+	if s3Out, ok := out.(*bedrocktypes.ModelInvocationJobOutputDataConfigMemberS3OutputDataConfig); ok {
+		loc.outputS3Uri = convert.ToValue(s3Out.Value.S3Uri)
+		loc.outputKmsKeyId = convert.ToValue(s3Out.Value.S3EncryptionKeyId)
+	}
+	return loc
+}
+
+func (a *mqlAwsBedrockBatchInferenceJob) vpc() (*mqlAwsVpc, error) {
+	return awsResolveVpcFromSubnets(a.MqlRuntime, a.Region.Data, a.cacheSubnetIds, &a.Vpc)
+}
+
+func (a *mqlAwsBedrockBatchInferenceJob) subnets() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return resolveSubnetRefs(a.MqlRuntime, a.Region.Data, conn.AccountId(), a.cacheSubnetIds), nil
+}
+
+func (a *mqlAwsBedrockBatchInferenceJob) securityGroups() ([]any, error) {
+	sgs, err := awsSecurityGroupRefs(a.MqlRuntime, a.Region.Data, a.cacheSecurityGroupIds)
+	if err != nil {
+		return nil, err
+	}
+	if sgs == nil {
+		return []any{}, nil
+	}
+	return sgs, nil
+}
+
+func (a *mqlAwsBedrockBatchInferenceJob) kmsKey() (*mqlAwsKmsKey, error) {
+	keyId := a.cacheLocations.outputKmsKeyId
+	if keyId == "" {
+		a.KmsKey.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	// The key may be given as a key ID, alias, or ARN; the region resolves the
+	// first two.
+	res, err := NewResource(a.MqlRuntime, "aws.kms.key", map[string]*llx.RawData{
+		"arn":    llx.StringData(keyId),
+		"region": llx.StringData(a.Region.Data),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsKmsKey), nil
+}
+
+func (a *mqlAwsBedrockBatchInferenceJob) inputDataBucket() (*mqlAwsS3Bucket, error) {
+	return s3BucketRefFromUri(a.MqlRuntime, a.cacheLocations.inputS3Uri, &a.InputDataBucket)
+}
+
+func (a *mqlAwsBedrockBatchInferenceJob) outputDataBucket() (*mqlAwsS3Bucket, error) {
+	return s3BucketRefFromUri(a.MqlRuntime, a.cacheLocations.outputS3Uri, &a.OutputDataBucket)
+}
+
+func (a *mqlAwsBedrockGuardrail) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return bedrockTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAdvancedPromptOptimizationJob) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return bedrockTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockAgent) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		arn := a.GetArn()
+		if arn.Error != nil {
+			return nil, arn.Error
+		}
+		return bedrockAgentTags(a.MqlRuntime, a.Region.Data, arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockKnowledgeBase) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		arn := a.GetArn()
+		if arn.Error != nil {
+			return nil, arn.Error
+		}
+		return bedrockAgentTags(a.MqlRuntime, a.Region.Data, arn.Data)
+	})
+}
+
+func (a *mqlAwsBedrockFlow) tags() (map[string]any, error) {
+	return a.resolveTags(&a.Tags, func() (map[string]any, error) {
+		return bedrockAgentTags(a.MqlRuntime, a.Region.Data, a.Arn.Data)
+	})
+}
+
+// bedrockTags reads the tags of a resource owned by the Bedrock control plane
+// (guardrails, inference profiles, imported models, prompt optimization jobs).
+func bedrockTags(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
+	if resourceArn == "" {
+		return nil, errTagsUnreadable
+	}
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Bedrock(region)
+	resp, err := svc.ListTagsForResource(context.Background(), &bedrock.ListTagsForResourceInput{ResourceARN: &resourceArn})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("bedrock:ListTagsForResource"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return tagsToMap(resp.Tags, func(t bedrocktypes.Tag) *string { return t.Key }, func(t bedrocktypes.Tag) *string { return t.Value }), nil
+}
+
+// bedrockAgentTags reads the tags of a resource owned by the Bedrock Agents API
+// (agents, agent aliases, knowledge bases, flows, prompts).
+func bedrockAgentTags(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
+	if resourceArn == "" {
+		return nil, errTagsUnreadable
+	}
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgent(region)
+	resp, err := svc.ListTagsForResource(context.Background(), &bedrockagent.ListTagsForResourceInput{ResourceArn: &resourceArn})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return nil, llx.Forbidden(err, llx.WithPermissions("bedrock:ListTagsForResource"))
+			}
+			return nil, errTagsUnreadable
+		}
+		return nil, err
+	}
+	return toInterfaceMap(resp.Tags), nil
 }

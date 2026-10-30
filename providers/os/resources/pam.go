@@ -5,24 +5,56 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"io/fs"
+	"maps"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
-	"go.mondoo.com/mql/v13/checksums"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/pam"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/checksums"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/pam"
+	"go.mondoo.com/mql/types"
 )
 
 const (
 	defaultPamConf = "/etc/pam.conf"
 	defaultPamDir  = "/etc/pam.d"
 )
+
+// pamServiceDirs lists the directories Linux-PAM reads a service's
+// configuration from, in lookup order: the admin's /etc/pam.d, then the
+// distribution defaults in /usr/lib/pam.d, then the vendor directory
+// (/usr/etc/pam.d on distributions built with --enable-vendordir=/usr/etc).
+// The first file named after the service wins, so a file in /etc/pam.d
+// shadows the vendor copy. see libpam/pam_handlers.c: _pam_open_config_file
+var pamServiceDirs = []string{defaultPamDir, "/usr/lib/pam.d", "/usr/etc/pam.d"}
+
+// isPamServiceDir reports whether the file lives directly in one of the
+// per-service PAM directories, where the file name is the service name.
+func isPamServiceDir(filePath string) bool {
+	dir := filepath.Dir(filePath)
+	return slices.Contains(pamServiceDirs, dir)
+}
+
+// pamPathExists reports whether path exists on the target.
+func pamPathExists(runtime *plugin.Runtime, path string) (bool, error) {
+	raw, err := CreateResource(runtime, "file", map[string]*llx.RawData{
+		"path": llx.StringData(path),
+	})
+	if err != nil {
+		return false, err
+	}
+	exist := raw.(*mqlFile).GetExists()
+	return exist.Data, exist.Error
+}
 
 func initPamConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if x, ok := args["path"]; ok {
@@ -37,7 +69,7 @@ func initPamConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 		if err != nil {
 			return nil, nil, err
 		}
-		args["file"] = llx.ResourceData(f, "file")
+		args["files"] = llx.ArrayData([]any{f}, types.Resource("file"))
 		delete(args, "path")
 	}
 
@@ -72,22 +104,16 @@ func (se *mqlPamConfServiceEntry) id() (string, error) {
 }
 
 // exists reports whether any PAM configuration is present, checking the
-// pam.d directory and the single-file pam.conf the same way files() selects
+// pam.d directories and the single-file pam.conf the same way files() selects
 // between them. Unlike files() it never errors when nothing is found, so
 // audits can guard PAM checks on hosts that ship no PAM configuration.
 func (s *mqlPamConf) exists() (bool, error) {
-	for _, path := range []string{defaultPamDir, defaultPamConf} {
-		raw, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
-			"path": llx.StringData(path),
-		})
+	for _, path := range append(append([]string{}, pamServiceDirs...), defaultPamConf) {
+		exist, err := pamPathExists(s.MqlRuntime, path)
 		if err != nil {
 			return false, err
 		}
-		exist := raw.(*mqlFile).GetExists()
-		if exist.Error != nil {
-			return false, exist.Error
-		}
-		if exist.Data {
+		if exist {
 			return true, nil
 		}
 	}
@@ -97,28 +123,44 @@ func (s *mqlPamConf) exists() (bool, error) {
 // GetFiles is called when the user has not provided a custom path. Otherwise files are set in the init
 // method and this function is never called then since the data is already cached.
 func (s *mqlPamConf) files() ([]any, error) {
-	// Linux-PAM uses the /etc/pam.d directory when it exists and ignores the
-	// legacy single-file /etc/pam.conf entirely; only when /etc/pam.d is absent
-	// does it fall back to /etc/pam.conf. We parse the same source PAM itself
-	// uses so audits reflect the effective configuration rather than dead files.
-	// see http://www.linux-pam.org/Linux-PAM-html/sag-configuration.html
-	raw, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(defaultPamDir),
-	})
-	if err != nil {
-		return nil, err
-	}
-	f := raw.(*mqlFile)
-	exist := f.GetExists()
-	if exist.Error != nil {
-		return nil, exist.Error
+	// Linux-PAM uses the per-service directories when any of them exists and
+	// ignores the legacy single-file /etc/pam.conf entirely; only when none
+	// exists does it fall back to /etc/pam.conf. Within the directories it
+	// loads the first file named after the service, in pamServiceDirs order.
+	// We parse the same files PAM itself loads so audits reflect the
+	// effective configuration rather than shadowed or dead files.
+	// see https://web.archive.org/web/20191231062425/http://www.linux-pam.org/Linux-PAM-html/sag-configuration.html
+	var res []any
+	seen := map[string]struct{}{}
+	anyDir := false
+	for _, dir := range pamServiceDirs {
+		exist, err := pamPathExists(s.MqlRuntime, dir)
+		if err != nil {
+			return nil, err
+		}
+		if !exist {
+			continue
+		}
+		anyDir = true
+
+		files, err := getSortedPathFiles(s.MqlRuntime, dir)
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range files {
+			service := strings.TrimPrefix(f.(*mqlFile).Path.Data, dir+"/")
+			if _, ok := seen[service]; ok {
+				continue
+			}
+			seen[service] = struct{}{}
+			res = append(res, f)
+		}
 	}
 
-	if exist.Data {
-		return getSortedPathFiles(s.MqlRuntime, defaultPamDir)
-	} else {
+	if !anyDir {
 		return getSortedPathFiles(s.MqlRuntime, defaultPamConf)
 	}
+	return res, nil
 }
 
 func (s *mqlPamConf) content(files []any) (string, error) {
@@ -207,8 +249,8 @@ func (s *mqlPamConf) services(files []any) (map[string]any, error) {
 // preserved — PAM module names are conventionally lowercase, but we don't
 // fold them.
 func canonicalizePamModuleName(name string) string {
-	if idx := strings.LastIndex(name, "/"); idx >= 0 {
-		name = name[idx+1:]
+	if _, after, ok := strings.CutLast(name, "/"); ok {
+		name = after
 	}
 	name = strings.TrimSuffix(name, ".so")
 	return name
@@ -230,9 +272,9 @@ func aggregatePamParams(optionLists ...[]any) map[string]any {
 			if token == "" {
 				continue
 			}
-			if idx := strings.Index(token, "="); idx >= 0 {
-				key := strings.ToLower(token[:idx])
-				value := token[idx+1:]
+			if before, after, ok := strings.Cut(token, "="); ok {
+				key := strings.ToLower(before)
+				value := after
 				params[key] = value
 			} else {
 				params[strings.ToLower(token)] = ""
@@ -248,28 +290,40 @@ func (se *mqlPamConfServiceEntry) params(options []any) (map[string]any, error) 
 	return aggregatePamParams(options), nil
 }
 
-// isPamControlEnabled reports whether a PAM control directive counts as
-// "the module is loaded". Bracketed controls that explicitly route the
-// module to ignore/skip don't count.
+// isPamControlEnabled reports whether a PAM control acts on the module's
+// result. A bracketed control does not only when every return value is
+// ignored: `[default=ignore]` or `[success=ignore default=ignore]`. One
+// value that jumps (`success=2`), returns (`ok`, `done`, `bad`, `die`) or
+// resets is enough, so pam-auth-update's `[success=2 default=ignore]
+// pam_unix.so` runs pam_unix on every authentication. A value the control
+// does not name, with no `default=`, counts as `bad` in Linux-PAM.
+// see libpam/pam_handlers.c: _pam_parse_control
 func isPamControlEnabled(control string) bool {
 	c := strings.TrimSpace(control)
 	if c == "" {
 		return false
 	}
-	// Bracketed controls: `[default=ignore]` / `[default=skip]` mean the
-	// module is referenced but its result is discarded — treat as not
-	// enabled. Any other bracketed form (e.g. `[success=1 default=bad]`,
-	// `[default=die]`) is a real load.
-	if strings.HasPrefix(c, "[") {
-		lower := strings.ToLower(c)
-		if strings.Contains(lower, "default=ignore") || strings.Contains(lower, "default=skip") {
-			return false
-		}
+	if !strings.HasPrefix(c, "[") {
+		// Bare controls: required, requisite, sufficient, optional,
+		// substack, include all count as loaded.
 		return true
 	}
-	// Bare controls: required, requisite, sufficient, optional,
-	// substack, include — all count as loaded.
-	return true
+	hasDefault := false
+	for tok := range strings.FieldsSeq(strings.Trim(c, "[]")) {
+		value, action, ok := strings.Cut(strings.ToLower(tok), "=")
+		if !ok {
+			continue
+		}
+		if value == "default" {
+			hasDefault = true
+		}
+		// `skip` is not a Linux-PAM action; it is kept as "ignore" as it
+		// always was here.
+		if action != "ignore" && action != "skip" {
+			return true
+		}
+	}
+	return !hasDefault
 }
 
 func initPamModule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -364,9 +418,9 @@ func buildPamModules(runtime *plugin.Runtime, entries map[string]any, idScope st
 				continue
 			}
 			rawModule := entry.Module.Data
-			if rawModule == "" {
-				// Skip @include lines and anything that doesn't reference
-				// a real module.
+			if rawModule == "" || isPamIncludeEntry(entry) {
+				// An include line names a file, not a module: skip it like
+				// anything else that doesn't reference a real module.
 				continue
 			}
 			name := canonicalizePamModuleName(rawModule)
@@ -406,13 +460,22 @@ func buildPamModules(runtime *plugin.Runtime, entries map[string]any, idScope st
 	return out, nil
 }
 
+// isPamIncludeEntry reports whether the entry is an `@include`, `include` or
+// `substack` line, whose module column names a PAM file.
+func isPamIncludeEntry(e *mqlPamConfServiceEntry) bool {
+	return e.PamType.Data == "@include" ||
+		strings.EqualFold(e.Control.Data, "include") ||
+		strings.EqualFold(e.Control.Data, "substack")
+}
+
 func (s *mqlPamConf) modules(entries map[string]any) ([]any, error) {
 	return buildPamModules(s.MqlRuntime, entries, "")
 }
 
 // initPamConfService selects a single PAM service by name and caches its
-// parsed entries. The name matches the file under /etc/pam.d (e.g. "su" ->
-// /etc/pam.d/su) or the service column in the single-file /etc/pam.conf. When
+// parsed entries. The name matches the file PAM loads for the service (e.g.
+// "su" -> /etc/pam.d/su, or /usr/lib/pam.d/su when only the distribution
+// default exists) or the service column in the single-file /etc/pam.conf. When
 // no such service is configured the resource is returned with an empty path
 // and no entries rather than an error, so audits can branch on it cleanly.
 func initPamConfService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -449,7 +512,7 @@ func initPamConfService(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 		return nil, nil, entries.Error
 	}
 
-	// entries is keyed by the /etc/pam.d/<name> file path, or by the bare
+	// entries is keyed by the <pam.d dir>/<name> file path, or by the bare
 	// service name for single-file /etc/pam.conf. filepath.Base matches both.
 	path := ""
 	serviceEntries := []any{}
@@ -479,7 +542,7 @@ func (s *mqlPamConfService) id() (string, error) {
 }
 
 func (s *mqlPamConfService) modules() (map[string]any, error) {
-	entries := s.GetEntries()
+	entries := s.GetStack()
 	if entries.Error != nil {
 		return nil, entries.Error
 	}
@@ -529,62 +592,258 @@ func (s *mqlPamConf) entries(files []any) (map[string]any, error) {
 
 	services := map[string]any{}
 	for filePath, content := range contents {
-		// Files directly under /etc/pam.d carry one service each (the file
-		// name is the service). The legacy single-file /etc/pam.conf instead
-		// prefixes every line with the service name, so its lines have one
-		// extra leading column. Detect the layout by whether the file lives
-		// in the pam.d directory and group single-file lines by that column.
-		singleFile := filepath.Dir(filePath) != defaultPamDir
-		if !singleFile {
-			// Preserve the empty-service key so e.g.
-			// pam.conf.entries["/etc/pam.d/su"] stays an empty list rather
-			// than null when the file has no parsable entries.
-			if _, ok := services[filePath]; !ok {
-				services[filePath] = []any{}
-			}
-		}
-
-		lines := strings.Split(content, "\n")
-		for i := range lines {
-			line := lines[i]
-			service := filePath
-
-			if singleFile {
-				fields := strings.Fields(pam.StripComments(line))
-				if len(fields) < 2 {
-					// Blank/comment line or one with no module reference.
-					continue
-				}
-				service = fields[0]
-				line = strings.Join(fields[1:], " ")
-			}
-
-			entry, err := pam.ParseLine(line)
-			if err != nil {
-				return nil, err
-			}
-
-			// empty lines parse as empty object
-			if entry == nil {
-				continue
-			}
-
-			pamEntry, err := CreateResource(s.MqlRuntime, "pam.conf.serviceEntry", map[string]*llx.RawData{
-				"service":    llx.StringData(service),
-				"lineNumber": llx.IntData(int64(i)), // Used for ID
-				"pamType":    llx.StringData(entry.PamType),
-				"control":    llx.StringData(entry.Control),
-				"module":     llx.StringData(entry.Module),
-				"options":    llx.ArrayData(entry.Options, types.String),
-			})
-			if err != nil {
-				return nil, err
-			}
-
-			list, _ := services[service].([]any)
-			services[service] = append(list, pamEntry.(*mqlPamConfServiceEntry))
+		if err := parsePamFile(s.MqlRuntime, filePath, content, isPamSingleFileFormat(filePath, content), services); err != nil {
+			return nil, err
 		}
 	}
 
 	return services, nil
+}
+
+// isPamSingleFileFormat reports whether a PAM file uses the legacy
+// /etc/pam.conf layout, where every line starts with the service name, rather
+// than the pam.d layout, where it starts with the type. A file in a pam.d
+// directory is always pam.d format. Any other file, such as one passed to
+// pam.conf("<path>") or an authselect profile template, is judged by where
+// its lines put the type: first means pam.d format, second the single file.
+// Lines with neither, such as authselect's `{imply ...}` directives, do not
+// count.
+func isPamSingleFileFormat(filePath, content string) bool {
+	if isPamServiceDir(filePath) {
+		return false
+	}
+	typeFirst, typeSecond := 0, 0
+	for line := range strings.SplitSeq(content, "\n") {
+		fields := strings.Fields(pam.StripComments(line))
+		switch {
+		case len(fields) == 0:
+		case fields[0] == "@include" || pam.IsType(fields[0]):
+			typeFirst++
+		case len(fields) > 1 && pam.IsType(fields[1]):
+			typeSecond++
+		}
+	}
+	return typeFirst <= typeSecond
+}
+
+// parsePamFile parses one PAM file into service entries, appended to
+// services. A pam.d-format file is one service keyed by its path; a
+// single-file /etc/pam.conf groups lines by the service in its first column.
+func parsePamFile(runtime *plugin.Runtime, filePath, content string, singleFile bool, services map[string]any) error {
+	if !singleFile {
+		// Preserve the empty-service key so e.g.
+		// pam.conf.entries["/etc/pam.d/su"] stays an empty list rather
+		// than null when the file has no parsable entries.
+		if _, ok := services[filePath]; !ok {
+			services[filePath] = []any{}
+		}
+	}
+
+	lines := strings.Split(content, "\n")
+	for i := range lines {
+		line := lines[i]
+		service := filePath
+
+		if singleFile {
+			fields := strings.Fields(pam.StripComments(line))
+			if len(fields) < 2 {
+				// Blank/comment line or one with no module reference.
+				continue
+			}
+			service = fields[0]
+			line = strings.Join(fields[1:], " ")
+		}
+
+		entry, err := pam.ParseLine(line)
+		if err != nil {
+			// A single malformed line must not abort parsing of the whole
+			// PAM configuration. Log it and continue with the rest, like
+			// the other config parsers in this package do.
+			log.Warn().Err(err).Str("path", filePath).Int("line", i+1).Msg("skipping malformed PAM line")
+			continue
+		}
+
+		// empty lines parse as empty object
+		if entry == nil {
+			continue
+		}
+
+		pamEntry, err := CreateResource(runtime, "pam.conf.serviceEntry", pamServiceEntryArgs(service, i, entry))
+		if err != nil {
+			return err
+		}
+
+		list, _ := services[service].([]any)
+		services[service] = append(list, pamEntry.(*mqlPamConfServiceEntry))
+	}
+	return nil
+}
+
+// pamServiceEntryArgs are the fields of the pam.conf.serviceEntry for one
+// parsed line. lineNumber is zero-based.
+func pamServiceEntryArgs(service string, lineNumber int, entry *pam.PamLine) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"service":       llx.StringData(service),
+		"lineNumber":    llx.IntData(int64(lineNumber)), // Used for ID
+		"pamType":       llx.StringData(entry.PamType),
+		"ignoreMissing": llx.BoolData(entry.IgnoreMissing),
+		"control":       llx.StringData(entry.Control),
+		"module":        llx.StringData(entry.Module),
+		"options":       llx.ArrayData(entry.Options, types.String),
+	}
+}
+
+const (
+	// pamMaxIncludeLevel is Linux-PAM's PAM_SUBSTACK_MAX_LEVEL: a service
+	// whose includes nest this deep fails to load.
+	pamMaxIncludeLevel = 16
+	// pamMaxIncludes caps the include lines one stack expands. Nesting is
+	// capped, fan-out is not: a file including another twice per level would
+	// expand 2^16 times. Stock configurations expand around ten.
+	pamMaxIncludes = 1000
+	// pamMaxIncludedFileSize caps an included file read outside the files
+	// pam.conf lists.
+	pamMaxIncludedFileSize = 1 << 20
+)
+
+// pamStack expands the include lines of one service into the entries PAM
+// runs. see libpam/pam_handlers.c: _pam_parse_conf_file, _pam_load_conf_file
+type pamStack struct {
+	runtime *plugin.Runtime
+	// entries is pam.conf.entries keyed by file path, plus the files load
+	// read itself; nil until the first include needs it
+	entries map[string]any
+	// includes counts the include lines expanded so far
+	includes int
+}
+
+// files returns the parsed files known so far, reading pam.conf.entries on
+// first use.
+func (p *pamStack) files() (map[string]any, error) {
+	if p.entries != nil {
+		return p.entries, nil
+	}
+	conf, err := CreateResource(p.runtime, "pam.conf", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	all := conf.(*mqlPamConf).GetEntries()
+	if all.Error != nil {
+		return nil, all.Error
+	}
+	// a copy, so the files load reads do not show up in pam.conf.entries
+	p.entries = make(map[string]any, len(all.Data))
+	maps.Copy(p.entries, all.Data)
+	return p.entries, nil
+}
+
+// expand returns the entries PAM runs for list, read from file path. filter
+// is the type an `include` or `substack` line restricts the included file to
+// ("" for every type). An `@include` line keeps the filter it is read under,
+// so an `@include` inside an `auth include` still brings in only auth lines.
+func (p *pamStack) expand(path string, list []any, filter string, level int) ([]any, error) {
+	out := []any{}
+	for _, raw := range list {
+		e, ok := raw.(*mqlPamConfServiceEntry)
+		if !ok {
+			continue
+		}
+		var target, subFilter string
+		switch {
+		case e.PamType.Data == "@include":
+			target, subFilter = e.Control.Data, filter
+		case filter != "" && !strings.EqualFold(e.PamType.Data, filter):
+			continue
+		case strings.EqualFold(e.Control.Data, "include") || strings.EqualFold(e.Control.Data, "substack"):
+			target, subFilter = e.Module.Data, strings.ToLower(e.PamType.Data)
+		default:
+			out = append(out, e)
+			continue
+		}
+
+		if level+1 >= pamMaxIncludeLevel {
+			return nil, fmt.Errorf("%s: PAM includes nest more than %d levels deep", path, pamMaxIncludeLevel)
+		}
+		p.includes++
+		if p.includes > pamMaxIncludes {
+			return nil, fmt.Errorf("%s: more than %d PAM include lines to expand", path, pamMaxIncludes)
+		}
+		includedPath, included, err := p.load(target)
+		if err != nil {
+			return nil, fmt.Errorf("%s:%d: %w", path, e.LineNumber.Data+1, err)
+		}
+		expanded, err := p.expand(includedPath, included, subFilter, level+1)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, expanded...)
+	}
+	return out, nil
+}
+
+// load returns the path and parsed entries of an included file. An absolute
+// name is that file; a relative one is looked up in the pam.d directories in
+// the order PAM uses (see _pam_open_config_file). Files pam.conf already
+// parsed are reused; any other, such as one outside the pam.d directories, is
+// read here.
+func (p *pamStack) load(name string) (string, []any, error) {
+	candidates := []string{name}
+	if !strings.HasPrefix(name, "/") {
+		candidates = candidates[:0]
+		for _, dir := range pamServiceDirs {
+			candidates = append(candidates, dir+"/"+name)
+		}
+	}
+
+	known, err := p.files()
+	if err != nil {
+		return "", nil, err
+	}
+	conn := p.runtime.Connection.(shared.Connection)
+	for _, path := range candidates {
+		if list, ok := known[path].([]any); ok {
+			return path, list, nil
+		}
+		// Only a regular file is read, and only up to a size: an include
+		// naming /dev/zero or a FIFO would otherwise never finish reading.
+		st, err := conn.FileSystem().Stat(path)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return "", nil, err
+		}
+		if !st.Mode().IsRegular() {
+			return "", nil, fmt.Errorf("included PAM file %s is not a regular file", path)
+		}
+		f, err := conn.FileSystem().Open(path)
+		if err != nil {
+			return "", nil, err
+		}
+		raw, err := io.ReadAll(io.LimitReader(f, pamMaxIncludedFileSize+1))
+		f.Close()
+		if err != nil {
+			return "", nil, err
+		}
+		if len(raw) > pamMaxIncludedFileSize {
+			return "", nil, fmt.Errorf("included PAM file %s is larger than %d bytes", path, pamMaxIncludedFileSize)
+		}
+		parsed := map[string]any{}
+		if err := parsePamFile(p.runtime, path, string(raw), false, parsed); err != nil {
+			return "", nil, err
+		}
+		list, _ := parsed[path].([]any)
+		known[path] = list
+		return path, list, nil
+	}
+	return "", nil, llx.NotFound(fmt.Errorf("included PAM file %s not found", name))
+}
+
+func (s *mqlPamConfService) stack() ([]any, error) {
+	entries := s.GetEntries()
+	if entries.Error != nil {
+		return nil, entries.Error
+	}
+	p := &pamStack{runtime: s.MqlRuntime}
+	return p.expand(s.Path.Data, entries.Data, "", 0)
 }

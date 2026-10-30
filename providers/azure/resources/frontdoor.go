@@ -8,13 +8,14 @@ import (
 	"errors"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v2"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cdn/armcdn/v3"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (a *mqlAzureSubscriptionFrontDoorService) id() (string, error) {
@@ -81,6 +82,10 @@ func (a *mqlAzureSubscriptionFrontDoorServiceProfile) securityPolicies() ([]any,
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
+			if isAzureNotConfigured(err) {
+				log.Warn().Err(err).Msg("could not list azure securityPolicies, returning partial results")
+				return res, nil
+			}
 			return nil, err
 		}
 		for _, sp := range page.Value {
@@ -185,7 +190,7 @@ func (a *mqlAzureSubscriptionFrontDoorService) profiles() ([]any, error) {
 				}
 			}
 
-			mqlProfile, err := CreateResource(a.MqlRuntime, "azure.subscription.frontDoorService.profile", map[string]*llx.RawData{
+			profileArgs := map[string]*llx.RawData{
 				"id":                llx.StringDataPtr(profile.ID),
 				"name":              llx.StringDataPtr(profile.Name),
 				"location":          llx.StringDataPtr(profile.Location),
@@ -195,7 +200,12 @@ func (a *mqlAzureSubscriptionFrontDoorService) profiles() ([]any, error) {
 				"provisioningState": llx.StringData(provisioningState),
 				"frontDoorId":       llx.StringData(frontDoorId),
 				"resourceState":     llx.StringData(resourceState),
-			})
+			}
+			if err := setSkuData(a.MqlRuntime, profileArgs, skuName(orZero(profile.SKU).Name)); err != nil {
+				return nil, err
+			}
+
+			mqlProfile, err := CreateResource(a.MqlRuntime, "azure.subscription.frontDoorService.profile", profileArgs)
 			if err != nil {
 				return nil, err
 			}
@@ -261,6 +271,7 @@ func (a *mqlAzureSubscriptionFrontDoorServiceProfile) endpoints() ([]any, error)
 				"id":                llx.StringDataPtr(ep.ID),
 				"name":              llx.StringDataPtr(ep.Name),
 				"location":          llx.StringDataPtr(ep.Location),
+				"tags":              llx.MapData(convert.PtrMapStrToInterface(ep.Tags), types.String),
 				"hostName":          llx.StringData(hostName),
 				"enabledState":      llx.StringData(enabledState),
 				"provisioningState": llx.StringData(provisioningState),

@@ -9,23 +9,32 @@ import (
 	"errors"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourcePortainer                 string = "portainer"
-	ResourcePortainerSettings         string = "portainer.settings"
-	ResourcePortainerUser             string = "portainer.user"
-	ResourcePortainerTeam             string = "portainer.team"
-	ResourcePortainerEnvironment      string = "portainer.environment"
-	ResourcePortainerTag              string = "portainer.tag"
-	ResourcePortainerEnvironmentGroup string = "portainer.environmentGroup"
-	ResourcePortainerEdgeGroup        string = "portainer.edgeGroup"
-	ResourcePortainerEdgeStack        string = "portainer.edgeStack"
-	ResourcePortainerLicense          string = "portainer.license"
+	ResourcePortainer                             string = "portainer"
+	ResourcePortainerSettings                     string = "portainer.settings"
+	ResourcePortainerUser                         string = "portainer.user"
+	ResourcePortainerApiKey                       string = "portainer.apiKey"
+	ResourcePortainerUserEnvironmentAuthorization string = "portainer.user.environmentAuthorization"
+	ResourcePortainerTeam                         string = "portainer.team"
+	ResourcePortainerTeamMembership               string = "portainer.teamMembership"
+	ResourcePortainerRole                         string = "portainer.role"
+	ResourcePortainerEnvironment                  string = "portainer.environment"
+	ResourcePortainerTag                          string = "portainer.tag"
+	ResourcePortainerEnvironmentGroup             string = "portainer.environmentGroup"
+	ResourcePortainerEdgeGroup                    string = "portainer.edgeGroup"
+	ResourcePortainerEdgeStack                    string = "portainer.edgeStack"
+	ResourcePortainerRegistry                     string = "portainer.registry"
+	ResourcePortainerRegistryAccess               string = "portainer.registry.access"
+	ResourcePortainerStack                        string = "portainer.stack"
+	ResourcePortainerWebhook                      string = "portainer.webhook"
+	ResourcePortainerEdgeJob                      string = "portainer.edgeJob"
+	ResourcePortainerLicense                      string = "portainer.license"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -44,9 +53,25 @@ func init() {
 			// to override args, implement: initPortainerUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createPortainerUser,
 		},
+		"portainer.apiKey": {
+			// to override args, implement: initPortainerApiKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPortainerApiKey,
+		},
+		"portainer.user.environmentAuthorization": {
+			// to override args, implement: initPortainerUserEnvironmentAuthorization(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPortainerUserEnvironmentAuthorization,
+		},
 		"portainer.team": {
 			// to override args, implement: initPortainerTeam(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createPortainerTeam,
+		},
+		"portainer.teamMembership": {
+			// to override args, implement: initPortainerTeamMembership(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPortainerTeamMembership,
+		},
+		"portainer.role": {
+			// to override args, implement: initPortainerRole(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPortainerRole,
 		},
 		"portainer.environment": {
 			// to override args, implement: initPortainerEnvironment(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -67,6 +92,26 @@ func init() {
 		"portainer.edgeStack": {
 			// to override args, implement: initPortainerEdgeStack(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createPortainerEdgeStack,
+		},
+		"portainer.registry": {
+			// to override args, implement: initPortainerRegistry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPortainerRegistry,
+		},
+		"portainer.registry.access": {
+			// to override args, implement: initPortainerRegistryAccess(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPortainerRegistryAccess,
+		},
+		"portainer.stack": {
+			// to override args, implement: initPortainerStack(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPortainerStack,
+		},
+		"portainer.webhook": {
+			// to override args, implement: initPortainerWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPortainerWebhook,
+		},
+		"portainer.edgeJob": {
+			// to override args, implement: initPortainerEdgeJob(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPortainerEdgeJob,
 		},
 		"portainer.license": {
 			// to override args, implement: initPortainerLicense(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -173,6 +218,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"portainer.edgeStacks": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainer).GetEdgeStacks()).ToDataRes(types.Array(types.Resource("portainer.edgeStack")))
 	},
+	"portainer.edgeJobs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainer).GetEdgeJobs()).ToDataRes(types.Array(types.Resource("portainer.edgeJob")))
+	},
+	"portainer.registries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainer).GetRegistries()).ToDataRes(types.Array(types.Resource("portainer.registry")))
+	},
+	"portainer.stacks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainer).GetStacks()).ToDataRes(types.Array(types.Resource("portainer.stack")))
+	},
+	"portainer.webhooks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainer).GetWebhooks()).ToDataRes(types.Array(types.Resource("portainer.webhook")))
+	},
+	"portainer.roles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainer).GetRoles()).ToDataRes(types.Array(types.Resource("portainer.role")))
+	},
+	"portainer.teamMemberships": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainer).GetTeamMemberships()).ToDataRes(types.Array(types.Resource("portainer.teamMembership")))
+	},
 	"portainer.licenses": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainer).GetLicenses()).ToDataRes(types.Array(types.Resource("portainer.license")))
 	},
@@ -220,9 +283,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"portainer.settings.disableKubeconfigDownload": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainerSettings).GetDisableKubeconfigDownload()).ToDataRes(types.Bool)
-	},
-	"portainer.settings.enableHostManagementFeatures": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlPortainerSettings).GetEnableHostManagementFeatures()).ToDataRes(types.Bool)
 	},
 	"portainer.settings.disableKubeRolesSync": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainerSettings).GetDisableKubeRolesSync()).ToDataRes(types.Bool)
@@ -281,6 +341,42 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"portainer.user.teams": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainerUser).GetTeams()).ToDataRes(types.Array(types.Resource("portainer.team")))
 	},
+	"portainer.user.memberships": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerUser).GetMemberships()).ToDataRes(types.Array(types.Resource("portainer.teamMembership")))
+	},
+	"portainer.user.apiKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerUser).GetApiKeys()).ToDataRes(types.Array(types.Resource("portainer.apiKey")))
+	},
+	"portainer.user.authorizations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerUser).GetAuthorizations()).ToDataRes(types.Array(types.String))
+	},
+	"portainer.user.environmentAuthorizations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerUser).GetEnvironmentAuthorizations()).ToDataRes(types.Array(types.Resource("portainer.user.environmentAuthorization")))
+	},
+	"portainer.apiKey.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerApiKey).GetId()).ToDataRes(types.Int)
+	},
+	"portainer.apiKey.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerApiKey).GetDescription()).ToDataRes(types.String)
+	},
+	"portainer.apiKey.prefix": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerApiKey).GetPrefix()).ToDataRes(types.String)
+	},
+	"portainer.apiKey.dateCreated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerApiKey).GetDateCreated()).ToDataRes(types.Time)
+	},
+	"portainer.apiKey.lastUsed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerApiKey).GetLastUsed()).ToDataRes(types.Time)
+	},
+	"portainer.apiKey.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerApiKey).GetUser()).ToDataRes(types.Resource("portainer.user"))
+	},
+	"portainer.user.environmentAuthorization.environment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerUserEnvironmentAuthorization).GetEnvironment()).ToDataRes(types.Resource("portainer.environment"))
+	},
+	"portainer.user.environmentAuthorization.authorizations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerUserEnvironmentAuthorization).GetAuthorizations()).ToDataRes(types.Array(types.String))
+	},
 	"portainer.team.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainerTeam).GetId()).ToDataRes(types.Int)
 	},
@@ -289,6 +385,39 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"portainer.team.members": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainerTeam).GetMembers()).ToDataRes(types.Array(types.Resource("portainer.user")))
+	},
+	"portainer.team.memberRoles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerTeam).GetMemberRoles()).ToDataRes(types.Dict)
+	},
+	"portainer.team.memberships": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerTeam).GetMemberships()).ToDataRes(types.Array(types.Resource("portainer.teamMembership")))
+	},
+	"portainer.teamMembership.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerTeamMembership).GetId()).ToDataRes(types.Int)
+	},
+	"portainer.teamMembership.role": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerTeamMembership).GetRole()).ToDataRes(types.String)
+	},
+	"portainer.teamMembership.team": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerTeamMembership).GetTeam()).ToDataRes(types.Resource("portainer.team"))
+	},
+	"portainer.teamMembership.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerTeamMembership).GetUser()).ToDataRes(types.Resource("portainer.user"))
+	},
+	"portainer.role.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRole).GetId()).ToDataRes(types.Int)
+	},
+	"portainer.role.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRole).GetName()).ToDataRes(types.String)
+	},
+	"portainer.role.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRole).GetDescription()).ToDataRes(types.String)
+	},
+	"portainer.role.priority": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRole).GetPriority()).ToDataRes(types.Int)
+	},
+	"portainer.role.authorizations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRole).GetAuthorizations()).ToDataRes(types.Array(types.String))
 	},
 	"portainer.environment.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainerEnvironment).GetId()).ToDataRes(types.Int)
@@ -311,6 +440,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"portainer.environment.tlsEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainerEnvironment).GetTlsEnabled()).ToDataRes(types.Bool)
 	},
+	"portainer.environment.tlsSkipVerify": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerEnvironment).GetTlsSkipVerify()).ToDataRes(types.Bool)
+	},
 	"portainer.environment.containerEngine": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainerEnvironment).GetContainerEngine()).ToDataRes(types.String)
 	},
@@ -322,6 +454,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"portainer.environment.userAccessPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainerEnvironment).GetUserAccessPolicies()).ToDataRes(types.Dict)
+	},
+	"portainer.environment.teamAccessRoles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerEnvironment).GetTeamAccessRoles()).ToDataRes(types.Dict)
+	},
+	"portainer.environment.userAccessRoles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerEnvironment).GetUserAccessRoles()).ToDataRes(types.Dict)
 	},
 	"portainer.environment.group": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainerEnvironment).GetGroup()).ToDataRes(types.Resource("portainer.environmentGroup"))
@@ -340,6 +478,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"portainer.environment.securitySettings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainerEnvironment).GetSecuritySettings()).ToDataRes(types.Dict)
+	},
+	"portainer.environment.mtlsEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerEnvironment).GetMtlsEnabled()).ToDataRes(types.Bool)
+	},
+	"portainer.environment.mtlsOk": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerEnvironment).GetMtlsOk()).ToDataRes(types.Bool)
 	},
 	"portainer.tag.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainerTag).GetId()).ToDataRes(types.Int)
@@ -364,6 +508,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"portainer.environmentGroup.userAccessPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainerEnvironmentGroup).GetUserAccessPolicies()).ToDataRes(types.Dict)
+	},
+	"portainer.environmentGroup.teamAccessRoles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerEnvironmentGroup).GetTeamAccessRoles()).ToDataRes(types.Dict)
+	},
+	"portainer.environmentGroup.userAccessRoles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerEnvironmentGroup).GetUserAccessRoles()).ToDataRes(types.Dict)
 	},
 	"portainer.edgeGroup.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainerEdgeGroup).GetId()).ToDataRes(types.Int)
@@ -400,6 +550,165 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"portainer.edgeStack.creationDate": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainerEdgeStack).GetCreationDate()).ToDataRes(types.Time)
+	},
+	"portainer.registry.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRegistry).GetId()).ToDataRes(types.Int)
+	},
+	"portainer.registry.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRegistry).GetName()).ToDataRes(types.String)
+	},
+	"portainer.registry.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRegistry).GetType()).ToDataRes(types.String)
+	},
+	"portainer.registry.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRegistry).GetUrl()).ToDataRes(types.String)
+	},
+	"portainer.registry.baseUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRegistry).GetBaseUrl()).ToDataRes(types.String)
+	},
+	"portainer.registry.authenticationEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRegistry).GetAuthenticationEnabled()).ToDataRes(types.Bool)
+	},
+	"portainer.registry.username": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRegistry).GetUsername()).ToDataRes(types.String)
+	},
+	"portainer.registry.accesses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRegistry).GetAccesses()).ToDataRes(types.Array(types.Resource("portainer.registry.access")))
+	},
+	"portainer.registry.access.environment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRegistryAccess).GetEnvironment()).ToDataRes(types.Resource("portainer.environment"))
+	},
+	"portainer.registry.access.namespaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRegistryAccess).GetNamespaces()).ToDataRes(types.Array(types.String))
+	},
+	"portainer.registry.access.teamAccessPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRegistryAccess).GetTeamAccessPolicies()).ToDataRes(types.Dict)
+	},
+	"portainer.registry.access.userAccessPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRegistryAccess).GetUserAccessPolicies()).ToDataRes(types.Dict)
+	},
+	"portainer.registry.access.teamAccessRoles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRegistryAccess).GetTeamAccessRoles()).ToDataRes(types.Dict)
+	},
+	"portainer.registry.access.userAccessRoles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerRegistryAccess).GetUserAccessRoles()).ToDataRes(types.Dict)
+	},
+	"portainer.stack.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetId()).ToDataRes(types.Int)
+	},
+	"portainer.stack.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetName()).ToDataRes(types.String)
+	},
+	"portainer.stack.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetType()).ToDataRes(types.String)
+	},
+	"portainer.stack.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetStatus()).ToDataRes(types.String)
+	},
+	"portainer.stack.environment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetEnvironment()).ToDataRes(types.Resource("portainer.environment"))
+	},
+	"portainer.stack.entryPoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetEntryPoint()).ToDataRes(types.String)
+	},
+	"portainer.stack.namespace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetNamespace()).ToDataRes(types.String)
+	},
+	"portainer.stack.fromAppTemplate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetFromAppTemplate()).ToDataRes(types.Bool)
+	},
+	"portainer.stack.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetCreatedBy()).ToDataRes(types.String)
+	},
+	"portainer.stack.createdByUser": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetCreatedByUser()).ToDataRes(types.Resource("portainer.user"))
+	},
+	"portainer.stack.creationDate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetCreationDate()).ToDataRes(types.Time)
+	},
+	"portainer.stack.updatedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetUpdatedBy()).ToDataRes(types.String)
+	},
+	"portainer.stack.updateDate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetUpdateDate()).ToDataRes(types.Time)
+	},
+	"portainer.stack.webhookEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetWebhookEnabled()).ToDataRes(types.Bool)
+	},
+	"portainer.stack.autoUpdateEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetAutoUpdateEnabled()).ToDataRes(types.Bool)
+	},
+	"portainer.stack.autoUpdateInterval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetAutoUpdateInterval()).ToDataRes(types.String)
+	},
+	"portainer.stack.autoUpdateWebhook": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetAutoUpdateWebhook()).ToDataRes(types.Bool)
+	},
+	"portainer.stack.autoUpdateForcePullImage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetAutoUpdateForcePullImage()).ToDataRes(types.Bool)
+	},
+	"portainer.stack.autoUpdateForceUpdate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetAutoUpdateForceUpdate()).ToDataRes(types.Bool)
+	},
+	"portainer.stack.gitUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetGitUrl()).ToDataRes(types.String)
+	},
+	"portainer.stack.gitReferenceName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetGitReferenceName()).ToDataRes(types.String)
+	},
+	"portainer.stack.gitConfigFilePath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetGitConfigFilePath()).ToDataRes(types.String)
+	},
+	"portainer.stack.gitTlsSkipVerify": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetGitTlsSkipVerify()).ToDataRes(types.Bool)
+	},
+	"portainer.stack.gitAuthenticationConfigured": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetGitAuthenticationConfigured()).ToDataRes(types.Bool)
+	},
+	"portainer.stack.isDetachedFromGit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerStack).GetIsDetachedFromGit()).ToDataRes(types.Bool)
+	},
+	"portainer.webhook.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerWebhook).GetId()).ToDataRes(types.Int)
+	},
+	"portainer.webhook.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerWebhook).GetType()).ToDataRes(types.String)
+	},
+	"portainer.webhook.resourceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerWebhook).GetResourceId()).ToDataRes(types.String)
+	},
+	"portainer.webhook.environment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerWebhook).GetEnvironment()).ToDataRes(types.Resource("portainer.environment"))
+	},
+	"portainer.webhook.registry": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerWebhook).GetRegistry()).ToDataRes(types.Resource("portainer.registry"))
+	},
+	"portainer.edgeJob.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerEdgeJob).GetId()).ToDataRes(types.Int)
+	},
+	"portainer.edgeJob.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerEdgeJob).GetName()).ToDataRes(types.String)
+	},
+	"portainer.edgeJob.cronExpression": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerEdgeJob).GetCronExpression()).ToDataRes(types.String)
+	},
+	"portainer.edgeJob.recurring": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerEdgeJob).GetRecurring()).ToDataRes(types.Bool)
+	},
+	"portainer.edgeJob.scriptPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerEdgeJob).GetScriptPath()).ToDataRes(types.String)
+	},
+	"portainer.edgeJob.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerEdgeJob).GetVersion()).ToDataRes(types.Int)
+	},
+	"portainer.edgeJob.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerEdgeJob).GetCreated()).ToDataRes(types.Time)
+	},
+	"portainer.edgeJob.edgeGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerEdgeJob).GetEdgeGroups()).ToDataRes(types.Array(types.Resource("portainer.edgeGroup")))
+	},
+	"portainer.edgeJob.environments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPortainerEdgeJob).GetEnvironments()).ToDataRes(types.Array(types.Resource("portainer.environment")))
 	},
 	"portainer.license.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPortainerLicense).GetId()).ToDataRes(types.String)
@@ -475,6 +784,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlPortainer).EdgeStacks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"portainer.edgeJobs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainer).EdgeJobs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"portainer.registries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainer).Registries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"portainer.stacks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainer).Stacks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"portainer.webhooks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainer).Webhooks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"portainer.roles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainer).Roles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"portainer.teamMemberships": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainer).TeamMemberships, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"portainer.licenses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPortainer).Licenses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -541,10 +874,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"portainer.settings.disableKubeconfigDownload": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPortainerSettings).DisableKubeconfigDownload, ok = plugin.RawToTValue[bool](v.Value, v.Error)
-		return
-	},
-	"portainer.settings.enableHostManagementFeatures": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlPortainerSettings).EnableHostManagementFeatures, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"portainer.settings.disableKubeRolesSync": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -627,6 +956,62 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlPortainerUser).Teams, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"portainer.user.memberships": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerUser).Memberships, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"portainer.user.apiKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerUser).ApiKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"portainer.user.authorizations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerUser).Authorizations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"portainer.user.environmentAuthorizations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerUser).EnvironmentAuthorizations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"portainer.apiKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerApiKey).__id, ok = v.Value.(string)
+		return
+	},
+	"portainer.apiKey.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerApiKey).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"portainer.apiKey.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerApiKey).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.apiKey.prefix": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerApiKey).Prefix, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.apiKey.dateCreated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerApiKey).DateCreated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"portainer.apiKey.lastUsed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerApiKey).LastUsed, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"portainer.apiKey.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerApiKey).User, ok = plugin.RawToTValue[*mqlPortainerUser](v.Value, v.Error)
+		return
+	},
+	"portainer.user.environmentAuthorization.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerUserEnvironmentAuthorization).__id, ok = v.Value.(string)
+		return
+	},
+	"portainer.user.environmentAuthorization.environment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerUserEnvironmentAuthorization).Environment, ok = plugin.RawToTValue[*mqlPortainerEnvironment](v.Value, v.Error)
+		return
+	},
+	"portainer.user.environmentAuthorization.authorizations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerUserEnvironmentAuthorization).Authorizations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"portainer.team.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPortainerTeam).__id, ok = v.Value.(string)
 		return
@@ -641,6 +1026,58 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"portainer.team.members": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPortainerTeam).Members, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"portainer.team.memberRoles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerTeam).MemberRoles, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"portainer.team.memberships": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerTeam).Memberships, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"portainer.teamMembership.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerTeamMembership).__id, ok = v.Value.(string)
+		return
+	},
+	"portainer.teamMembership.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerTeamMembership).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"portainer.teamMembership.role": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerTeamMembership).Role, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.teamMembership.team": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerTeamMembership).Team, ok = plugin.RawToTValue[*mqlPortainerTeam](v.Value, v.Error)
+		return
+	},
+	"portainer.teamMembership.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerTeamMembership).User, ok = plugin.RawToTValue[*mqlPortainerUser](v.Value, v.Error)
+		return
+	},
+	"portainer.role.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRole).__id, ok = v.Value.(string)
+		return
+	},
+	"portainer.role.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRole).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"portainer.role.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRole).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.role.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRole).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.role.priority": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRole).Priority, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"portainer.role.authorizations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRole).Authorizations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"portainer.environment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -675,6 +1112,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlPortainerEnvironment).TlsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"portainer.environment.tlsSkipVerify": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEnvironment).TlsSkipVerify, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"portainer.environment.containerEngine": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPortainerEnvironment).ContainerEngine, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -689,6 +1130,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"portainer.environment.userAccessPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPortainerEnvironment).UserAccessPolicies, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"portainer.environment.teamAccessRoles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEnvironment).TeamAccessRoles, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"portainer.environment.userAccessRoles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEnvironment).UserAccessRoles, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
 	"portainer.environment.group": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -713,6 +1162,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"portainer.environment.securitySettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPortainerEnvironment).SecuritySettings, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"portainer.environment.mtlsEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEnvironment).MtlsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"portainer.environment.mtlsOk": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEnvironment).MtlsOk, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"portainer.tag.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -753,6 +1210,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"portainer.environmentGroup.userAccessPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPortainerEnvironmentGroup).UserAccessPolicies, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"portainer.environmentGroup.teamAccessRoles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEnvironmentGroup).TeamAccessRoles, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"portainer.environmentGroup.userAccessRoles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEnvironmentGroup).UserAccessRoles, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
 	"portainer.edgeGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -809,6 +1274,238 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"portainer.edgeStack.creationDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPortainerEdgeStack).CreationDate, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"portainer.registry.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRegistry).__id, ok = v.Value.(string)
+		return
+	},
+	"portainer.registry.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRegistry).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"portainer.registry.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRegistry).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.registry.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRegistry).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.registry.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRegistry).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.registry.baseUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRegistry).BaseUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.registry.authenticationEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRegistry).AuthenticationEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"portainer.registry.username": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRegistry).Username, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.registry.accesses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRegistry).Accesses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"portainer.registry.access.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRegistryAccess).__id, ok = v.Value.(string)
+		return
+	},
+	"portainer.registry.access.environment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRegistryAccess).Environment, ok = plugin.RawToTValue[*mqlPortainerEnvironment](v.Value, v.Error)
+		return
+	},
+	"portainer.registry.access.namespaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRegistryAccess).Namespaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"portainer.registry.access.teamAccessPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRegistryAccess).TeamAccessPolicies, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"portainer.registry.access.userAccessPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRegistryAccess).UserAccessPolicies, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"portainer.registry.access.teamAccessRoles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRegistryAccess).TeamAccessRoles, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"portainer.registry.access.userAccessRoles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerRegistryAccess).UserAccessRoles, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).__id, ok = v.Value.(string)
+		return
+	},
+	"portainer.stack.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.environment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).Environment, ok = plugin.RawToTValue[*mqlPortainerEnvironment](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.entryPoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).EntryPoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.namespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).Namespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.fromAppTemplate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).FromAppTemplate, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).CreatedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.createdByUser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).CreatedByUser, ok = plugin.RawToTValue[*mqlPortainerUser](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.creationDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).CreationDate, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.updatedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).UpdatedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.updateDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).UpdateDate, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.webhookEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).WebhookEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.autoUpdateEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).AutoUpdateEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.autoUpdateInterval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).AutoUpdateInterval, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.autoUpdateWebhook": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).AutoUpdateWebhook, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.autoUpdateForcePullImage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).AutoUpdateForcePullImage, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.autoUpdateForceUpdate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).AutoUpdateForceUpdate, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.gitUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).GitUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.gitReferenceName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).GitReferenceName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.gitConfigFilePath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).GitConfigFilePath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.gitTlsSkipVerify": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).GitTlsSkipVerify, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.gitAuthenticationConfigured": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).GitAuthenticationConfigured, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"portainer.stack.isDetachedFromGit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerStack).IsDetachedFromGit, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"portainer.webhook.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerWebhook).__id, ok = v.Value.(string)
+		return
+	},
+	"portainer.webhook.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerWebhook).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"portainer.webhook.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerWebhook).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.webhook.resourceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerWebhook).ResourceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.webhook.environment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerWebhook).Environment, ok = plugin.RawToTValue[*mqlPortainerEnvironment](v.Value, v.Error)
+		return
+	},
+	"portainer.webhook.registry": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerWebhook).Registry, ok = plugin.RawToTValue[*mqlPortainerRegistry](v.Value, v.Error)
+		return
+	},
+	"portainer.edgeJob.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEdgeJob).__id, ok = v.Value.(string)
+		return
+	},
+	"portainer.edgeJob.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEdgeJob).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"portainer.edgeJob.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEdgeJob).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.edgeJob.cronExpression": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEdgeJob).CronExpression, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.edgeJob.recurring": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEdgeJob).Recurring, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"portainer.edgeJob.scriptPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEdgeJob).ScriptPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"portainer.edgeJob.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEdgeJob).Version, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"portainer.edgeJob.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEdgeJob).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"portainer.edgeJob.edgeGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEdgeJob).EdgeGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"portainer.edgeJob.environments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPortainerEdgeJob).Environments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"portainer.license.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -878,6 +1575,12 @@ type mqlPortainer struct {
 	EnvironmentGroups plugin.TValue[[]any]
 	EdgeGroups        plugin.TValue[[]any]
 	EdgeStacks        plugin.TValue[[]any]
+	EdgeJobs          plugin.TValue[[]any]
+	Registries        plugin.TValue[[]any]
+	Stacks            plugin.TValue[[]any]
+	Webhooks          plugin.TValue[[]any]
+	Roles             plugin.TValue[[]any]
+	TeamMemberships   plugin.TValue[[]any]
 	Licenses          plugin.TValue[[]any]
 }
 
@@ -1058,6 +1761,102 @@ func (c *mqlPortainer) GetEdgeStacks() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlPortainer) GetEdgeJobs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EdgeJobs, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer", c.__id, "edgeJobs")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.edgeJobs()
+	})
+}
+
+func (c *mqlPortainer) GetRegistries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Registries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer", c.__id, "registries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.registries()
+	})
+}
+
+func (c *mqlPortainer) GetStacks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Stacks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer", c.__id, "stacks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.stacks()
+	})
+}
+
+func (c *mqlPortainer) GetWebhooks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Webhooks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer", c.__id, "webhooks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.webhooks()
+	})
+}
+
+func (c *mqlPortainer) GetRoles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Roles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer", c.__id, "roles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roles()
+	})
+}
+
+func (c *mqlPortainer) GetTeamMemberships() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TeamMemberships, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer", c.__id, "teamMemberships")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.teamMemberships()
+	})
+}
+
 func (c *mqlPortainer) GetLicenses() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Licenses, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -1094,7 +1893,6 @@ type mqlPortainerSettings struct {
 	AllowVolumeBrowserForRegularUsers         plugin.TValue[bool]
 	DisableKubeShell                          plugin.TValue[bool]
 	DisableKubeconfigDownload                 plugin.TValue[bool]
-	EnableHostManagementFeatures              plugin.TValue[bool]
 	DisableKubeRolesSync                      plugin.TValue[bool]
 	KubectlShellImage                         plugin.TValue[string]
 	KubeconfigExpiry                          plugin.TValue[string]
@@ -1201,10 +1999,6 @@ func (c *mqlPortainerSettings) GetDisableKubeconfigDownload() *plugin.TValue[boo
 	return &c.DisableKubeconfigDownload
 }
 
-func (c *mqlPortainerSettings) GetEnableHostManagementFeatures() *plugin.TValue[bool] {
-	return &c.EnableHostManagementFeatures
-}
-
 func (c *mqlPortainerSettings) GetDisableKubeRolesSync() *plugin.TValue[bool] {
 	return &c.DisableKubeRolesSync
 }
@@ -1258,13 +2052,17 @@ type mqlPortainerUser struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlPortainerUserInternal it will be used here
-	Id           plugin.TValue[int64]
-	Username     plugin.TValue[string]
-	Role         plugin.TValue[string]
-	UseCache     plugin.TValue[bool]
-	Theme        plugin.TValue[string]
-	TokenIssueAt plugin.TValue[*time.Time]
-	Teams        plugin.TValue[[]any]
+	Id                        plugin.TValue[int64]
+	Username                  plugin.TValue[string]
+	Role                      plugin.TValue[string]
+	UseCache                  plugin.TValue[bool]
+	Theme                     plugin.TValue[string]
+	TokenIssueAt              plugin.TValue[*time.Time]
+	Teams                     plugin.TValue[[]any]
+	Memberships               plugin.TValue[[]any]
+	ApiKeys                   plugin.TValue[[]any]
+	Authorizations            plugin.TValue[[]any]
+	EnvironmentAuthorizations plugin.TValue[[]any]
 }
 
 // createPortainerUser creates a new instance of this resource
@@ -1339,14 +2137,210 @@ func (c *mqlPortainerUser) GetTeams() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlPortainerUser) GetMemberships() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Memberships, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer.user", c.__id, "memberships")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.memberships()
+	})
+}
+
+func (c *mqlPortainerUser) GetApiKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ApiKeys, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer.user", c.__id, "apiKeys")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.apiKeys()
+	})
+}
+
+func (c *mqlPortainerUser) GetAuthorizations() *plugin.TValue[[]any] {
+	return &c.Authorizations
+}
+
+func (c *mqlPortainerUser) GetEnvironmentAuthorizations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EnvironmentAuthorizations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer.user", c.__id, "environmentAuthorizations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.environmentAuthorizations()
+	})
+}
+
+// mqlPortainerApiKey for the portainer.apiKey resource
+type mqlPortainerApiKey struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlPortainerApiKeyInternal
+	Id          plugin.TValue[int64]
+	Description plugin.TValue[string]
+	Prefix      plugin.TValue[string]
+	DateCreated plugin.TValue[*time.Time]
+	LastUsed    plugin.TValue[*time.Time]
+	User        plugin.TValue[*mqlPortainerUser]
+}
+
+// createPortainerApiKey creates a new instance of this resource
+func createPortainerApiKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPortainerApiKey{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("portainer.apiKey", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPortainerApiKey) MqlName() string {
+	return "portainer.apiKey"
+}
+
+func (c *mqlPortainerApiKey) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPortainerApiKey) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlPortainerApiKey) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlPortainerApiKey) GetPrefix() *plugin.TValue[string] {
+	return &c.Prefix
+}
+
+func (c *mqlPortainerApiKey) GetDateCreated() *plugin.TValue[*time.Time] {
+	return &c.DateCreated
+}
+
+func (c *mqlPortainerApiKey) GetLastUsed() *plugin.TValue[*time.Time] {
+	return &c.LastUsed
+}
+
+func (c *mqlPortainerApiKey) GetUser() *plugin.TValue[*mqlPortainerUser] {
+	return plugin.GetOrCompute[*mqlPortainerUser](&c.User, func() (*mqlPortainerUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer.apiKey", c.__id, "user")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPortainerUser), nil
+			}
+		}
+
+		return c.user()
+	})
+}
+
+// mqlPortainerUserEnvironmentAuthorization for the portainer.user.environmentAuthorization resource
+type mqlPortainerUserEnvironmentAuthorization struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlPortainerUserEnvironmentAuthorizationInternal
+	Environment    plugin.TValue[*mqlPortainerEnvironment]
+	Authorizations plugin.TValue[[]any]
+}
+
+// createPortainerUserEnvironmentAuthorization creates a new instance of this resource
+func createPortainerUserEnvironmentAuthorization(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPortainerUserEnvironmentAuthorization{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("portainer.user.environmentAuthorization", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPortainerUserEnvironmentAuthorization) MqlName() string {
+	return "portainer.user.environmentAuthorization"
+}
+
+func (c *mqlPortainerUserEnvironmentAuthorization) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPortainerUserEnvironmentAuthorization) GetEnvironment() *plugin.TValue[*mqlPortainerEnvironment] {
+	return plugin.GetOrCompute[*mqlPortainerEnvironment](&c.Environment, func() (*mqlPortainerEnvironment, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer.user.environmentAuthorization", c.__id, "environment")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPortainerEnvironment), nil
+			}
+		}
+
+		return c.environment()
+	})
+}
+
+func (c *mqlPortainerUserEnvironmentAuthorization) GetAuthorizations() *plugin.TValue[[]any] {
+	return &c.Authorizations
+}
+
 // mqlPortainerTeam for the portainer.team resource
 type mqlPortainerTeam struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlPortainerTeamInternal it will be used here
-	Id      plugin.TValue[int64]
-	Name    plugin.TValue[string]
-	Members plugin.TValue[[]any]
+	Id          plugin.TValue[int64]
+	Name        plugin.TValue[string]
+	Members     plugin.TValue[[]any]
+	MemberRoles plugin.TValue[any]
+	Memberships plugin.TValue[[]any]
 }
 
 // createPortainerTeam creates a new instance of this resource
@@ -1405,6 +2399,175 @@ func (c *mqlPortainerTeam) GetMembers() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlPortainerTeam) GetMemberRoles() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.MemberRoles, func() (any, error) {
+		return c.memberRoles()
+	})
+}
+
+func (c *mqlPortainerTeam) GetMemberships() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Memberships, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer.team", c.__id, "memberships")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.memberships()
+	})
+}
+
+// mqlPortainerTeamMembership for the portainer.teamMembership resource
+type mqlPortainerTeamMembership struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlPortainerTeamMembershipInternal
+	Id   plugin.TValue[int64]
+	Role plugin.TValue[string]
+	Team plugin.TValue[*mqlPortainerTeam]
+	User plugin.TValue[*mqlPortainerUser]
+}
+
+// createPortainerTeamMembership creates a new instance of this resource
+func createPortainerTeamMembership(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPortainerTeamMembership{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("portainer.teamMembership", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPortainerTeamMembership) MqlName() string {
+	return "portainer.teamMembership"
+}
+
+func (c *mqlPortainerTeamMembership) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPortainerTeamMembership) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlPortainerTeamMembership) GetRole() *plugin.TValue[string] {
+	return &c.Role
+}
+
+func (c *mqlPortainerTeamMembership) GetTeam() *plugin.TValue[*mqlPortainerTeam] {
+	return plugin.GetOrCompute[*mqlPortainerTeam](&c.Team, func() (*mqlPortainerTeam, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer.teamMembership", c.__id, "team")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPortainerTeam), nil
+			}
+		}
+
+		return c.team()
+	})
+}
+
+func (c *mqlPortainerTeamMembership) GetUser() *plugin.TValue[*mqlPortainerUser] {
+	return plugin.GetOrCompute[*mqlPortainerUser](&c.User, func() (*mqlPortainerUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer.teamMembership", c.__id, "user")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPortainerUser), nil
+			}
+		}
+
+		return c.user()
+	})
+}
+
+// mqlPortainerRole for the portainer.role resource
+type mqlPortainerRole struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlPortainerRoleInternal it will be used here
+	Id             plugin.TValue[int64]
+	Name           plugin.TValue[string]
+	Description    plugin.TValue[string]
+	Priority       plugin.TValue[int64]
+	Authorizations plugin.TValue[[]any]
+}
+
+// createPortainerRole creates a new instance of this resource
+func createPortainerRole(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPortainerRole{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("portainer.role", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPortainerRole) MqlName() string {
+	return "portainer.role"
+}
+
+func (c *mqlPortainerRole) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPortainerRole) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlPortainerRole) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlPortainerRole) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlPortainerRole) GetPriority() *plugin.TValue[int64] {
+	return &c.Priority
+}
+
+func (c *mqlPortainerRole) GetAuthorizations() *plugin.TValue[[]any] {
+	return &c.Authorizations
+}
+
 // mqlPortainerEnvironment for the portainer.environment resource
 type mqlPortainerEnvironment struct {
 	MqlRuntime *plugin.Runtime
@@ -1417,16 +2580,21 @@ type mqlPortainerEnvironment struct {
 	Url                  plugin.TValue[string]
 	PublicUrl            plugin.TValue[string]
 	TlsEnabled           plugin.TValue[bool]
+	TlsSkipVerify        plugin.TValue[bool]
 	ContainerEngine      plugin.TValue[string]
 	Tags                 plugin.TValue[[]any]
 	TeamAccessPolicies   plugin.TValue[any]
 	UserAccessPolicies   plugin.TValue[any]
+	TeamAccessRoles      plugin.TValue[any]
+	UserAccessRoles      plugin.TValue[any]
 	Group                plugin.TValue[*mqlPortainerEnvironmentGroup]
 	EdgeId               plugin.TValue[string]
 	Heartbeat            plugin.TValue[bool]
 	UserTrusted          plugin.TValue[bool]
 	GpuManagementEnabled plugin.TValue[bool]
 	SecuritySettings     plugin.TValue[any]
+	MtlsEnabled          plugin.TValue[bool]
+	MtlsOk               plugin.TValue[bool]
 }
 
 // createPortainerEnvironment creates a new instance of this resource
@@ -1489,6 +2657,10 @@ func (c *mqlPortainerEnvironment) GetTlsEnabled() *plugin.TValue[bool] {
 	return &c.TlsEnabled
 }
 
+func (c *mqlPortainerEnvironment) GetTlsSkipVerify() *plugin.TValue[bool] {
+	return &c.TlsSkipVerify
+}
+
 func (c *mqlPortainerEnvironment) GetContainerEngine() *plugin.TValue[string] {
 	return &c.ContainerEngine
 }
@@ -1515,6 +2687,14 @@ func (c *mqlPortainerEnvironment) GetTeamAccessPolicies() *plugin.TValue[any] {
 
 func (c *mqlPortainerEnvironment) GetUserAccessPolicies() *plugin.TValue[any] {
 	return &c.UserAccessPolicies
+}
+
+func (c *mqlPortainerEnvironment) GetTeamAccessRoles() *plugin.TValue[any] {
+	return &c.TeamAccessRoles
+}
+
+func (c *mqlPortainerEnvironment) GetUserAccessRoles() *plugin.TValue[any] {
+	return &c.UserAccessRoles
 }
 
 func (c *mqlPortainerEnvironment) GetGroup() *plugin.TValue[*mqlPortainerEnvironmentGroup] {
@@ -1551,6 +2731,14 @@ func (c *mqlPortainerEnvironment) GetGpuManagementEnabled() *plugin.TValue[bool]
 
 func (c *mqlPortainerEnvironment) GetSecuritySettings() *plugin.TValue[any] {
 	return &c.SecuritySettings
+}
+
+func (c *mqlPortainerEnvironment) GetMtlsEnabled() *plugin.TValue[bool] {
+	return &c.MtlsEnabled
+}
+
+func (c *mqlPortainerEnvironment) GetMtlsOk() *plugin.TValue[bool] {
+	return &c.MtlsOk
 }
 
 // mqlPortainerTag for the portainer.tag resource
@@ -1613,6 +2801,8 @@ type mqlPortainerEnvironmentGroup struct {
 	Tags               plugin.TValue[[]any]
 	TeamAccessPolicies plugin.TValue[any]
 	UserAccessPolicies plugin.TValue[any]
+	TeamAccessRoles    plugin.TValue[any]
+	UserAccessRoles    plugin.TValue[any]
 }
 
 // createPortainerEnvironmentGroup creates a new instance of this resource
@@ -1681,6 +2871,14 @@ func (c *mqlPortainerEnvironmentGroup) GetTeamAccessPolicies() *plugin.TValue[an
 
 func (c *mqlPortainerEnvironmentGroup) GetUserAccessPolicies() *plugin.TValue[any] {
 	return &c.UserAccessPolicies
+}
+
+func (c *mqlPortainerEnvironmentGroup) GetTeamAccessRoles() *plugin.TValue[any] {
+	return &c.TeamAccessRoles
+}
+
+func (c *mqlPortainerEnvironmentGroup) GetUserAccessRoles() *plugin.TValue[any] {
+	return &c.UserAccessRoles
 }
 
 // mqlPortainerEdgeGroup for the portainer.edgeGroup resource
@@ -1843,6 +3041,562 @@ func (c *mqlPortainerEdgeStack) GetVersion() *plugin.TValue[int64] {
 
 func (c *mqlPortainerEdgeStack) GetCreationDate() *plugin.TValue[*time.Time] {
 	return &c.CreationDate
+}
+
+// mqlPortainerRegistry for the portainer.registry resource
+type mqlPortainerRegistry struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlPortainerRegistryInternal
+	Id                    plugin.TValue[int64]
+	Name                  plugin.TValue[string]
+	Type                  plugin.TValue[string]
+	Url                   plugin.TValue[string]
+	BaseUrl               plugin.TValue[string]
+	AuthenticationEnabled plugin.TValue[bool]
+	Username              plugin.TValue[string]
+	Accesses              plugin.TValue[[]any]
+}
+
+// createPortainerRegistry creates a new instance of this resource
+func createPortainerRegistry(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPortainerRegistry{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("portainer.registry", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPortainerRegistry) MqlName() string {
+	return "portainer.registry"
+}
+
+func (c *mqlPortainerRegistry) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPortainerRegistry) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlPortainerRegistry) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlPortainerRegistry) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlPortainerRegistry) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlPortainerRegistry) GetBaseUrl() *plugin.TValue[string] {
+	return &c.BaseUrl
+}
+
+func (c *mqlPortainerRegistry) GetAuthenticationEnabled() *plugin.TValue[bool] {
+	return &c.AuthenticationEnabled
+}
+
+func (c *mqlPortainerRegistry) GetUsername() *plugin.TValue[string] {
+	return &c.Username
+}
+
+func (c *mqlPortainerRegistry) GetAccesses() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Accesses, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer.registry", c.__id, "accesses")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.accesses()
+	})
+}
+
+// mqlPortainerRegistryAccess for the portainer.registry.access resource
+type mqlPortainerRegistryAccess struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlPortainerRegistryAccessInternal
+	Environment        plugin.TValue[*mqlPortainerEnvironment]
+	Namespaces         plugin.TValue[[]any]
+	TeamAccessPolicies plugin.TValue[any]
+	UserAccessPolicies plugin.TValue[any]
+	TeamAccessRoles    plugin.TValue[any]
+	UserAccessRoles    plugin.TValue[any]
+}
+
+// createPortainerRegistryAccess creates a new instance of this resource
+func createPortainerRegistryAccess(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPortainerRegistryAccess{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("portainer.registry.access", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPortainerRegistryAccess) MqlName() string {
+	return "portainer.registry.access"
+}
+
+func (c *mqlPortainerRegistryAccess) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPortainerRegistryAccess) GetEnvironment() *plugin.TValue[*mqlPortainerEnvironment] {
+	return plugin.GetOrCompute[*mqlPortainerEnvironment](&c.Environment, func() (*mqlPortainerEnvironment, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer.registry.access", c.__id, "environment")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPortainerEnvironment), nil
+			}
+		}
+
+		return c.environment()
+	})
+}
+
+func (c *mqlPortainerRegistryAccess) GetNamespaces() *plugin.TValue[[]any] {
+	return &c.Namespaces
+}
+
+func (c *mqlPortainerRegistryAccess) GetTeamAccessPolicies() *plugin.TValue[any] {
+	return &c.TeamAccessPolicies
+}
+
+func (c *mqlPortainerRegistryAccess) GetUserAccessPolicies() *plugin.TValue[any] {
+	return &c.UserAccessPolicies
+}
+
+func (c *mqlPortainerRegistryAccess) GetTeamAccessRoles() *plugin.TValue[any] {
+	return &c.TeamAccessRoles
+}
+
+func (c *mqlPortainerRegistryAccess) GetUserAccessRoles() *plugin.TValue[any] {
+	return &c.UserAccessRoles
+}
+
+// mqlPortainerStack for the portainer.stack resource
+type mqlPortainerStack struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlPortainerStackInternal
+	Id                          plugin.TValue[int64]
+	Name                        plugin.TValue[string]
+	Type                        plugin.TValue[string]
+	Status                      plugin.TValue[string]
+	Environment                 plugin.TValue[*mqlPortainerEnvironment]
+	EntryPoint                  plugin.TValue[string]
+	Namespace                   plugin.TValue[string]
+	FromAppTemplate             plugin.TValue[bool]
+	CreatedBy                   plugin.TValue[string]
+	CreatedByUser               plugin.TValue[*mqlPortainerUser]
+	CreationDate                plugin.TValue[*time.Time]
+	UpdatedBy                   plugin.TValue[string]
+	UpdateDate                  plugin.TValue[*time.Time]
+	WebhookEnabled              plugin.TValue[bool]
+	AutoUpdateEnabled           plugin.TValue[bool]
+	AutoUpdateInterval          plugin.TValue[string]
+	AutoUpdateWebhook           plugin.TValue[bool]
+	AutoUpdateForcePullImage    plugin.TValue[bool]
+	AutoUpdateForceUpdate       plugin.TValue[bool]
+	GitUrl                      plugin.TValue[string]
+	GitReferenceName            plugin.TValue[string]
+	GitConfigFilePath           plugin.TValue[string]
+	GitTlsSkipVerify            plugin.TValue[bool]
+	GitAuthenticationConfigured plugin.TValue[bool]
+	IsDetachedFromGit           plugin.TValue[bool]
+}
+
+// createPortainerStack creates a new instance of this resource
+func createPortainerStack(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPortainerStack{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("portainer.stack", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPortainerStack) MqlName() string {
+	return "portainer.stack"
+}
+
+func (c *mqlPortainerStack) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPortainerStack) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlPortainerStack) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlPortainerStack) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlPortainerStack) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlPortainerStack) GetEnvironment() *plugin.TValue[*mqlPortainerEnvironment] {
+	return plugin.GetOrCompute[*mqlPortainerEnvironment](&c.Environment, func() (*mqlPortainerEnvironment, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer.stack", c.__id, "environment")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPortainerEnvironment), nil
+			}
+		}
+
+		return c.environment()
+	})
+}
+
+func (c *mqlPortainerStack) GetEntryPoint() *plugin.TValue[string] {
+	return &c.EntryPoint
+}
+
+func (c *mqlPortainerStack) GetNamespace() *plugin.TValue[string] {
+	return &c.Namespace
+}
+
+func (c *mqlPortainerStack) GetFromAppTemplate() *plugin.TValue[bool] {
+	return &c.FromAppTemplate
+}
+
+func (c *mqlPortainerStack) GetCreatedBy() *plugin.TValue[string] {
+	return &c.CreatedBy
+}
+
+func (c *mqlPortainerStack) GetCreatedByUser() *plugin.TValue[*mqlPortainerUser] {
+	return plugin.GetOrCompute[*mqlPortainerUser](&c.CreatedByUser, func() (*mqlPortainerUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer.stack", c.__id, "createdByUser")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPortainerUser), nil
+			}
+		}
+
+		return c.createdByUser()
+	})
+}
+
+func (c *mqlPortainerStack) GetCreationDate() *plugin.TValue[*time.Time] {
+	return &c.CreationDate
+}
+
+func (c *mqlPortainerStack) GetUpdatedBy() *plugin.TValue[string] {
+	return &c.UpdatedBy
+}
+
+func (c *mqlPortainerStack) GetUpdateDate() *plugin.TValue[*time.Time] {
+	return &c.UpdateDate
+}
+
+func (c *mqlPortainerStack) GetWebhookEnabled() *plugin.TValue[bool] {
+	return &c.WebhookEnabled
+}
+
+func (c *mqlPortainerStack) GetAutoUpdateEnabled() *plugin.TValue[bool] {
+	return &c.AutoUpdateEnabled
+}
+
+func (c *mqlPortainerStack) GetAutoUpdateInterval() *plugin.TValue[string] {
+	return &c.AutoUpdateInterval
+}
+
+func (c *mqlPortainerStack) GetAutoUpdateWebhook() *plugin.TValue[bool] {
+	return &c.AutoUpdateWebhook
+}
+
+func (c *mqlPortainerStack) GetAutoUpdateForcePullImage() *plugin.TValue[bool] {
+	return &c.AutoUpdateForcePullImage
+}
+
+func (c *mqlPortainerStack) GetAutoUpdateForceUpdate() *plugin.TValue[bool] {
+	return &c.AutoUpdateForceUpdate
+}
+
+func (c *mqlPortainerStack) GetGitUrl() *plugin.TValue[string] {
+	return &c.GitUrl
+}
+
+func (c *mqlPortainerStack) GetGitReferenceName() *plugin.TValue[string] {
+	return &c.GitReferenceName
+}
+
+func (c *mqlPortainerStack) GetGitConfigFilePath() *plugin.TValue[string] {
+	return &c.GitConfigFilePath
+}
+
+func (c *mqlPortainerStack) GetGitTlsSkipVerify() *plugin.TValue[bool] {
+	return &c.GitTlsSkipVerify
+}
+
+func (c *mqlPortainerStack) GetGitAuthenticationConfigured() *plugin.TValue[bool] {
+	return &c.GitAuthenticationConfigured
+}
+
+func (c *mqlPortainerStack) GetIsDetachedFromGit() *plugin.TValue[bool] {
+	return &c.IsDetachedFromGit
+}
+
+// mqlPortainerWebhook for the portainer.webhook resource
+type mqlPortainerWebhook struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlPortainerWebhookInternal
+	Id          plugin.TValue[int64]
+	Type        plugin.TValue[string]
+	ResourceId  plugin.TValue[string]
+	Environment plugin.TValue[*mqlPortainerEnvironment]
+	Registry    plugin.TValue[*mqlPortainerRegistry]
+}
+
+// createPortainerWebhook creates a new instance of this resource
+func createPortainerWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPortainerWebhook{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("portainer.webhook", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPortainerWebhook) MqlName() string {
+	return "portainer.webhook"
+}
+
+func (c *mqlPortainerWebhook) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPortainerWebhook) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlPortainerWebhook) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlPortainerWebhook) GetResourceId() *plugin.TValue[string] {
+	return &c.ResourceId
+}
+
+func (c *mqlPortainerWebhook) GetEnvironment() *plugin.TValue[*mqlPortainerEnvironment] {
+	return plugin.GetOrCompute[*mqlPortainerEnvironment](&c.Environment, func() (*mqlPortainerEnvironment, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer.webhook", c.__id, "environment")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPortainerEnvironment), nil
+			}
+		}
+
+		return c.environment()
+	})
+}
+
+func (c *mqlPortainerWebhook) GetRegistry() *plugin.TValue[*mqlPortainerRegistry] {
+	return plugin.GetOrCompute[*mqlPortainerRegistry](&c.Registry, func() (*mqlPortainerRegistry, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer.webhook", c.__id, "registry")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPortainerRegistry), nil
+			}
+		}
+
+		return c.registry()
+	})
+}
+
+// mqlPortainerEdgeJob for the portainer.edgeJob resource
+type mqlPortainerEdgeJob struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlPortainerEdgeJobInternal
+	Id             plugin.TValue[int64]
+	Name           plugin.TValue[string]
+	CronExpression plugin.TValue[string]
+	Recurring      plugin.TValue[bool]
+	ScriptPath     plugin.TValue[string]
+	Version        plugin.TValue[int64]
+	Created        plugin.TValue[*time.Time]
+	EdgeGroups     plugin.TValue[[]any]
+	Environments   plugin.TValue[[]any]
+}
+
+// createPortainerEdgeJob creates a new instance of this resource
+func createPortainerEdgeJob(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPortainerEdgeJob{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("portainer.edgeJob", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPortainerEdgeJob) MqlName() string {
+	return "portainer.edgeJob"
+}
+
+func (c *mqlPortainerEdgeJob) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPortainerEdgeJob) GetId() *plugin.TValue[int64] {
+	return &c.Id
+}
+
+func (c *mqlPortainerEdgeJob) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlPortainerEdgeJob) GetCronExpression() *plugin.TValue[string] {
+	return &c.CronExpression
+}
+
+func (c *mqlPortainerEdgeJob) GetRecurring() *plugin.TValue[bool] {
+	return &c.Recurring
+}
+
+func (c *mqlPortainerEdgeJob) GetScriptPath() *plugin.TValue[string] {
+	return &c.ScriptPath
+}
+
+func (c *mqlPortainerEdgeJob) GetVersion() *plugin.TValue[int64] {
+	return &c.Version
+}
+
+func (c *mqlPortainerEdgeJob) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlPortainerEdgeJob) GetEdgeGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EdgeGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer.edgeJob", c.__id, "edgeGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.edgeGroups()
+	})
+}
+
+func (c *mqlPortainerEdgeJob) GetEnvironments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Environments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("portainer.edgeJob", c.__id, "environments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.environments()
+	})
 }
 
 // mqlPortainerLicense for the portainer.license resource

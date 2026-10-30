@@ -12,7 +12,6 @@
         {
           "id": "conn-1234",
           "colo_name": "DFW",
-          "is_pending_reconnect": false,
           "client_id": "dc6472cc-f1ae-44a0-b795-6b8a0ce29f90",
           "client_version": "2024.1.0",
           "opened_at": "2024-01-15T10:05:00Z",

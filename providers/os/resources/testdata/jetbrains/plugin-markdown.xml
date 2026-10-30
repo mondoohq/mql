@@ -1,0 +1,9 @@
+<idea-plugin allow-bundled-update="true">
+  <id>org.intellij.plugins.markdown</id>
+  <version>262.9437.287</version>
+  <idea-version since-build="262.9437.287" until-build="262.9437.287" />
+  <name>Markdown</name>
+  <vendor>JetBrains</vendor>
+  <category>Languages</category>
+  <description>&lt;p&gt;Provides editing assistance for Markdown files within the IDE.&lt;/p&gt; &lt;/br&gt; &lt;ul&gt; &lt;li&gt;Full support for vanilla Markdown syntax: highlighting, completion, navigat</description>
+</idea-plugin>

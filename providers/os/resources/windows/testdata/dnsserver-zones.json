@@ -1,0 +1,406 @@
+{
+  "Zones": [
+    {
+      "ZoneName": "0.0.10.in-addr.arpa",
+      "ZoneType": "Primary",
+      "DynamicUpdate": "None",
+      "SecureSecondaries": "TransferToZoneNameServer",
+      "Notify": "Notify",
+      "IsSigned": false,
+      "IsDsIntegrated": false,
+      "IsAutoCreated": false,
+      "IsReverseLookupZone": true,
+      "IsPaused": false,
+      "IsShutdown": false,
+      "IsReadOnly": false,
+      "IsWinsEnabled": false,
+      "ZoneFile": "0.0.10.in-addr.arpa.dns",
+      "ReplicationScope": "None",
+      "DirectoryPartitionName": null,
+      "SecondaryServers": {
+        "value": [],
+        "Count": 0
+      },
+      "NotifyServers": {
+        "value": [],
+        "Count": 0
+      }
+    },
+    {
+      "ZoneName": "0.in-addr.arpa",
+      "ZoneType": "Primary",
+      "DynamicUpdate": "None",
+      "SecureSecondaries": "TransferToZoneNameServer",
+      "Notify": "Notify",
+      "IsSigned": false,
+      "IsDsIntegrated": false,
+      "IsAutoCreated": true,
+      "IsReverseLookupZone": true,
+      "IsPaused": false,
+      "IsShutdown": false,
+      "IsReadOnly": false,
+      "IsWinsEnabled": false,
+      "ZoneFile": null,
+      "ReplicationScope": "None",
+      "DirectoryPartitionName": null,
+      "SecondaryServers": {
+        "value": [],
+        "Count": 0
+      },
+      "NotifyServers": {
+        "value": [],
+        "Count": 0
+      }
+    },
+    {
+      "ZoneName": "127.in-addr.arpa",
+      "ZoneType": "Primary",
+      "DynamicUpdate": "None",
+      "SecureSecondaries": "TransferToZoneNameServer",
+      "Notify": "Notify",
+      "IsSigned": false,
+      "IsDsIntegrated": false,
+      "IsAutoCreated": true,
+      "IsReverseLookupZone": true,
+      "IsPaused": false,
+      "IsShutdown": false,
+      "IsReadOnly": false,
+      "IsWinsEnabled": false,
+      "ZoneFile": null,
+      "ReplicationScope": "None",
+      "DirectoryPartitionName": null,
+      "SecondaryServers": {
+        "value": [],
+        "Count": 0
+      },
+      "NotifyServers": {
+        "value": [],
+        "Count": 0
+      }
+    },
+    {
+      "ZoneName": "255.in-addr.arpa",
+      "ZoneType": "Primary",
+      "DynamicUpdate": "None",
+      "SecureSecondaries": "TransferToZoneNameServer",
+      "Notify": "Notify",
+      "IsSigned": false,
+      "IsDsIntegrated": false,
+      "IsAutoCreated": true,
+      "IsReverseLookupZone": true,
+      "IsPaused": false,
+      "IsShutdown": false,
+      "IsReadOnly": false,
+      "IsWinsEnabled": false,
+      "ZoneFile": null,
+      "ReplicationScope": "None",
+      "DirectoryPartitionName": null,
+      "SecondaryServers": {
+        "value": [],
+        "Count": 0
+      },
+      "NotifyServers": {
+        "value": [],
+        "Count": 0
+      }
+    },
+    {
+      "ZoneName": "lab.local",
+      "ZoneType": "Primary",
+      "DynamicUpdate": "NonsecureAndSecure",
+      "SecureSecondaries": "TransferAnyServer",
+      "Notify": "NoNotify",
+      "IsSigned": false,
+      "IsDsIntegrated": false,
+      "IsAutoCreated": false,
+      "IsReverseLookupZone": false,
+      "IsPaused": false,
+      "IsShutdown": false,
+      "IsReadOnly": false,
+      "IsWinsEnabled": false,
+      "ZoneFile": "lab.local.dns",
+      "ReplicationScope": "None",
+      "DirectoryPartitionName": null,
+      "SecondaryServers": {
+        "value": [],
+        "Count": 0
+      },
+      "NotifyServers": {
+        "value": [],
+        "Count": 0
+      }
+    },
+    {
+      "ZoneName": "signed.local",
+      "ZoneType": "Primary",
+      "DynamicUpdate": "None",
+      "SecureSecondaries": "TransferToZoneNameServer",
+      "Notify": "Notify",
+      "IsSigned": true,
+      "IsDsIntegrated": false,
+      "IsAutoCreated": false,
+      "IsReverseLookupZone": false,
+      "IsPaused": false,
+      "IsShutdown": false,
+      "IsReadOnly": false,
+      "IsWinsEnabled": false,
+      "ZoneFile": "signed.local.dns",
+      "ReplicationScope": "None",
+      "DirectoryPartitionName": null,
+      "SecondaryServers": {
+        "value": [],
+        "Count": 0
+      },
+      "NotifyServers": {
+        "value": [],
+        "Count": 0
+      }
+    },
+    {
+      "ZoneName": "TrustAnchors",
+      "ZoneType": "Primary",
+      "DynamicUpdate": "None",
+      "SecureSecondaries": "TransferToZoneNameServer",
+      "Notify": "Notify",
+      "IsSigned": false,
+      "IsDsIntegrated": false,
+      "IsAutoCreated": false,
+      "IsReverseLookupZone": false,
+      "IsPaused": false,
+      "IsShutdown": false,
+      "IsReadOnly": false,
+      "IsWinsEnabled": false,
+      "ZoneFile": "TrustAnchors.dns",
+      "ReplicationScope": "None",
+      "DirectoryPartitionName": null,
+      "SecondaryServers": {
+        "value": [],
+        "Count": 0
+      },
+      "NotifyServers": {
+        "value": [],
+        "Count": 0
+      }
+    }
+  ],
+  "DnsSec": [
+    {
+      "ZoneName": "signed.local",
+      "DenialOfExistence": "NSec3",
+      "NSec3HashAlgorithm": "RsaSha1",
+      "NSec3Iterations": 50,
+      "NSec3OptOut": false,
+      "NSec3RandomSaltLength": 8,
+      "EnableRfc5011KeyRollover": true,
+      "DSRecordSetTtl": {
+        "Ticks": 36000000000,
+        "Days": 0,
+        "Hours": 1,
+        "Milliseconds": 0,
+        "Minutes": 0,
+        "Seconds": 0,
+        "TotalDays": 0.041666666666666664,
+        "TotalHours": 1,
+        "TotalMilliseconds": 3600000,
+        "TotalMinutes": 60,
+        "TotalSeconds": 3600
+      },
+      "DnsKeyRecordSetTtl": {
+        "Ticks": 36000000000,
+        "Days": 0,
+        "Hours": 1,
+        "Milliseconds": 0,
+        "Minutes": 0,
+        "Seconds": 0,
+        "TotalDays": 0.041666666666666664,
+        "TotalHours": 1,
+        "TotalMilliseconds": 3600000,
+        "TotalMinutes": 60,
+        "TotalSeconds": 3600
+      },
+      "SignatureInceptionOffset": {
+        "Ticks": 36000000000,
+        "Days": 0,
+        "Hours": 1,
+        "Milliseconds": 0,
+        "Minutes": 0,
+        "Seconds": 0,
+        "TotalDays": 0.041666666666666664,
+        "TotalHours": 1,
+        "TotalMilliseconds": 3600000,
+        "TotalMinutes": 60,
+        "TotalSeconds": 3600
+      },
+      "SecureDelegationPollingPeriod": {
+        "Ticks": 432000000000,
+        "Days": 0,
+        "Hours": 12,
+        "Milliseconds": 0,
+        "Minutes": 0,
+        "Seconds": 0,
+        "TotalDays": 0.5,
+        "TotalHours": 12,
+        "TotalMilliseconds": 43200000,
+        "TotalMinutes": 720,
+        "TotalSeconds": 43200
+      },
+      "ParentHasSecureDelegation": false,
+      "PropagationTime": {
+        "Ticks": 0,
+        "Days": 0,
+        "Hours": 0,
+        "Milliseconds": 0,
+        "Minutes": 0,
+        "Seconds": 0,
+        "TotalDays": 0,
+        "TotalHours": 0,
+        "TotalMilliseconds": 0,
+        "TotalMinutes": 0,
+        "TotalSeconds": 0
+      },
+      "IsKeyMasterServer": true,
+      "KeyMasterServer": "dnslab",
+      "DistributeTrustAnchor": {
+        "value": [
+          "None"
+        ],
+        "Count": 1
+      },
+      "DSRecordGenerationAlgorithm": {
+        "value": [
+          "Sha1",
+          "Sha256"
+        ],
+        "Count": 2
+      }
+    }
+  ],
+  "SigningKeys": [
+    {
+      "ZoneName": "signed.local",
+      "KeyType": "KeySigningKey",
+      "CryptoAlgorithm": "RsaSha256",
+      "KeyLength": 2048,
+      "CurrentState": "Active",
+      "KeyStorageProvider": "Microsoft Software Key Storage Provider",
+      "StoreKeysInAD": false,
+      "IsRolloverEnabled": true,
+      "RolloverPeriod": {
+        "Ticks": 652320000000000,
+        "Days": 755,
+        "Hours": 0,
+        "Milliseconds": 0,
+        "Minutes": 0,
+        "Seconds": 0,
+        "TotalDays": 755,
+        "TotalHours": 18120,
+        "TotalMilliseconds": 65232000000,
+        "TotalMinutes": 1087200,
+        "TotalSeconds": 65232000
+      },
+      "DnsKeySignatureValidityPeriod": {
+        "Ticks": 6048000000000,
+        "Days": 7,
+        "Hours": 0,
+        "Milliseconds": 0,
+        "Minutes": 0,
+        "Seconds": 0,
+        "TotalDays": 7,
+        "TotalHours": 168,
+        "TotalMilliseconds": 604800000,
+        "TotalMinutes": 10080,
+        "TotalSeconds": 604800
+      },
+      "DSSignatureValidityPeriod": {
+        "Ticks": 6048000000000,
+        "Days": 7,
+        "Hours": 0,
+        "Milliseconds": 0,
+        "Minutes": 0,
+        "Seconds": 0,
+        "TotalDays": 7,
+        "TotalHours": 168,
+        "TotalMilliseconds": 604800000,
+        "TotalMinutes": 10080,
+        "TotalSeconds": 604800
+      },
+      "ZoneSignatureValidityPeriod": {
+        "Ticks": 8640000000000,
+        "Days": 10,
+        "Hours": 0,
+        "Milliseconds": 0,
+        "Minutes": 0,
+        "Seconds": 0,
+        "TotalDays": 10,
+        "TotalHours": 240,
+        "TotalMilliseconds": 864000000,
+        "TotalMinutes": 14400,
+        "TotalSeconds": 864000
+      },
+      "KeyId": "997a9272-fb82-4f40-9675-c4e9012d5b7b"
+    },
+    {
+      "ZoneName": "signed.local",
+      "KeyType": "ZoneSigningKey",
+      "CryptoAlgorithm": "RsaSha256",
+      "KeyLength": 1024,
+      "CurrentState": "Active",
+      "KeyStorageProvider": "Microsoft Software Key Storage Provider",
+      "StoreKeysInAD": false,
+      "IsRolloverEnabled": true,
+      "RolloverPeriod": {
+        "Ticks": 77760000000000,
+        "Days": 90,
+        "Hours": 0,
+        "Milliseconds": 0,
+        "Minutes": 0,
+        "Seconds": 0,
+        "TotalDays": 90,
+        "TotalHours": 2160,
+        "TotalMilliseconds": 7776000000,
+        "TotalMinutes": 129600,
+        "TotalSeconds": 7776000
+      },
+      "DnsKeySignatureValidityPeriod": {
+        "Ticks": 6048000000000,
+        "Days": 7,
+        "Hours": 0,
+        "Milliseconds": 0,
+        "Minutes": 0,
+        "Seconds": 0,
+        "TotalDays": 7,
+        "TotalHours": 168,
+        "TotalMilliseconds": 604800000,
+        "TotalMinutes": 10080,
+        "TotalSeconds": 604800
+      },
+      "DSSignatureValidityPeriod": {
+        "Ticks": 6048000000000,
+        "Days": 7,
+        "Hours": 0,
+        "Milliseconds": 0,
+        "Minutes": 0,
+        "Seconds": 0,
+        "TotalDays": 7,
+        "TotalHours": 168,
+        "TotalMilliseconds": 604800000,
+        "TotalMinutes": 10080,
+        "TotalSeconds": 604800
+      },
+      "ZoneSignatureValidityPeriod": {
+        "Ticks": 8640000000000,
+        "Days": 10,
+        "Hours": 0,
+        "Milliseconds": 0,
+        "Minutes": 0,
+        "Seconds": 0,
+        "TotalDays": 10,
+        "TotalHours": 240,
+        "TotalMilliseconds": 864000000,
+        "TotalMinutes": 14400,
+        "TotalSeconds": 864000
+      },
+      "KeyId": "3c1550ba-7963-48fe-b2a6-e891b00d2a38"
+    }
+  ]
+}

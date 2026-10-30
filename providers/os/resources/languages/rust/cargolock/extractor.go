@@ -7,8 +7,8 @@ import (
 	"io"
 
 	"github.com/BurntSushi/toml"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/rust"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/rust"
 )
 
 var (
@@ -60,6 +60,7 @@ func (l *cargoLock) Direct() languages.Packages {
 
 // Transitive returns all packages (excluding the root project).
 func (l *cargoLock) Transitive() languages.Packages {
+	byName := l.versionsByName()
 	var packages languages.Packages
 	for _, pkg := range l.Packages {
 		if pkg.isRoot() {
@@ -71,7 +72,18 @@ func (l *cargoLock) Transitive() languages.Packages {
 			Purl:         rust.NewPackageUrl(pkg.Name, pkg.Version),
 			Cpes:         rust.NewCpes(pkg.Name, pkg.Version),
 			EvidenceList: rust.NewEvidenceList(l.evidence),
+			DependsOn:    dependsOnRefs(byName, pkg.Dependencies),
 		})
 	}
 	return packages
+}
+
+// versionsByName indexes the locked crates by name to the versions present, so a
+// version-less dependency reference can be resolved when it is unambiguous.
+func (l *cargoLock) versionsByName() map[string][]string {
+	byName := map[string][]string{}
+	for _, pkg := range l.Packages {
+		byName[pkg.Name] = append(byName[pkg.Name], pkg.Version)
+	}
+	return byName
 }

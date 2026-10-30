@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared/resources"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/resources"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -116,42 +116,54 @@ func (k *mqlK8sPod) containerStatuses() ([]any, error) {
 	}
 
 	resp := []any{}
-	for _, c := range pod.Status.ContainerStatuses {
-		state, err := convert.JsonToDict(c.State)
-		if err != nil {
-			return nil, err
-		}
-		lastState, err := convert.JsonToDict(c.LastTerminationState)
-		if err != nil {
-			return nil, err
-		}
-		statusResources, err := convert.JsonToDict(c.Resources)
-		if err != nil {
-			return nil, err
-		}
-		started := false
-		if c.Started != nil {
-			started = *c.Started
-		}
+	// A pod's runtime state lives in three separate status slices. Reading only
+	// the first one hid every sidecar (init containers with restartPolicy
+	// Always, GA since 1.29) and every attached ephemeral debug container, so
+	// "no container has restarted" passed without ever looking at them.
+	statusGroups := []struct {
+		kind     string
+		statuses []corev1.ContainerStatus
+	}{
+		{"containerstatus", pod.Status.ContainerStatuses},
+		{"initcontainerstatus", pod.Status.InitContainerStatuses},
+		{"ephemeralcontainerstatus", pod.Status.EphemeralContainerStatuses},
+	}
+	for _, group := range statusGroups {
+		for _, c := range group.statuses {
+			state, err := convert.JsonToDict(c.State)
+			if err != nil {
+				return nil, err
+			}
+			lastState, err := convert.JsonToDict(c.LastTerminationState)
+			if err != nil {
+				return nil, err
+			}
+			statusResources, err := convert.JsonToDict(c.Resources)
+			if err != nil {
+				return nil, err
+			}
 
-		args := map[string]*llx.RawData{
-			"__id":         llx.StringData(string(pod.GetUID()) + "-containerstatus-" + c.Name),
-			"name":         llx.StringData(c.Name),
-			"ready":        llx.BoolData(c.Ready),
-			"started":      llx.BoolData(started),
-			"restartCount": llx.IntData(int64(c.RestartCount)),
-			"image":        llx.StringData(c.Image),
-			"imageId":      llx.StringData(c.ImageID),
-			"containerId":  llx.StringData(c.ContainerID),
-			"state":        llx.DictData(state),
-			"lastState":    llx.DictData(lastState),
-			"resources":    llx.DictData(statusResources),
+			args := map[string]*llx.RawData{
+				// The status kind is part of the key: a sidecar and a regular
+				// container may share a name across the two slices.
+				"__id":         llx.StringData(string(pod.GetUID()) + "-" + group.kind + "-" + c.Name),
+				"name":         llx.StringData(c.Name),
+				"ready":        llx.BoolData(c.Ready),
+				"started":      llx.BoolDataPtr(c.Started),
+				"restartCount": llx.IntData(int64(c.RestartCount)),
+				"image":        llx.StringData(c.Image),
+				"imageId":      llx.StringData(c.ImageID),
+				"containerId":  llx.StringData(c.ContainerID),
+				"state":        llx.DictData(state),
+				"lastState":    llx.DictData(lastState),
+				"resources":    llx.DictData(statusResources),
+			}
+			mqlContainer, err := CreateResource(k.MqlRuntime, ResourceK8sContainerStatus, args)
+			if err != nil {
+				return nil, err
+			}
+			resp = append(resp, mqlContainer)
 		}
-		mqlContainer, err := CreateResource(k.MqlRuntime, ResourceK8sContainerStatus, args)
-		if err != nil {
-			return nil, err
-		}
-		resp = append(resp, mqlContainer)
 	}
 	return resp, nil
 }
@@ -292,6 +304,7 @@ func (k *mqlK8sPod) preemptionPolicy() (string, error) {
 		return "", err
 	}
 	if spec.PreemptionPolicy == nil {
+		k.PreemptionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 	return string(*spec.PreemptionPolicy), nil
@@ -314,6 +327,45 @@ func (k *mqlK8sPod) runtimeClassName() (string, error) {
 		return "", nil
 	}
 	return *spec.RuntimeClassName, nil
+}
+
+// runtimeClass resolves the pod's runtimeClassName to the RuntimeClass
+// object. It scans the already-fetched class list rather than calling
+// NewResource per pod, which would run the target's init before the runtime
+// cache is consulted and turn one list call into one per pod.
+func (k *mqlK8sPod) runtimeClass() (*mqlK8sRuntimeclass, error) {
+	name := k.GetRuntimeClassName()
+	if name.Error != nil {
+		return nil, name.Error
+	}
+	if name.Data == "" {
+		k.RuntimeClass.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	o, err := CreateResource(k.MqlRuntime, "k8s", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	classes := o.(*mqlK8s).GetRuntimeClasses()
+	if classes.Error != nil {
+		return nil, classes.Error
+	}
+
+	for i := range classes.Data {
+		rc, ok := classes.Data[i].(*mqlK8sRuntimeclass)
+		if !ok {
+			continue
+		}
+		if rc.Name.Data == name.Data {
+			return rc, nil
+		}
+	}
+
+	// The pod names a class the cluster does not have (it was deleted, or the
+	// scan cannot read the kind). That is a real state, not an error.
+	k.RuntimeClass.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
 }
 
 func (k *mqlK8sPod) serviceAccountName() (string, error) {
@@ -354,11 +406,7 @@ func (k *mqlK8sPod) automountServiceAccountToken() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if spec.AutomountServiceAccountToken == nil {
-		// Defaults to true when unset.
-		return true, nil
-	}
-	return *spec.AutomountServiceAccountToken, nil
+	return effectiveAutomountServiceAccountToken(k.MqlRuntime, spec, k.Namespace.Data), nil
 }
 
 func (k *mqlK8sPod) hostNetwork() (bool, error) {
@@ -458,6 +506,7 @@ func (k *mqlK8sPod) terminationGracePeriodSeconds() (int64, error) {
 		return 0, err
 	}
 	if spec.TerminationGracePeriodSeconds == nil {
+		k.TerminationGracePeriodSeconds.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return *spec.TerminationGracePeriodSeconds, nil
@@ -469,6 +518,7 @@ func (k *mqlK8sPod) activeDeadlineSeconds() (int64, error) {
 		return 0, err
 	}
 	if spec.ActiveDeadlineSeconds == nil {
+		k.ActiveDeadlineSeconds.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return *spec.ActiveDeadlineSeconds, nil

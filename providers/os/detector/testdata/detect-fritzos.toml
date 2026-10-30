@@ -1,0 +1,14 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "aarch64"
+
+[files."/etc/os-release"]
+content = """
+NAME="FRITZ!OS"
+VERSION="8.03"
+VERSION_ID=8.03
+PRETTY_NAME="FRITZ!OS 8.03"
+HOME_URL="https://avm.de/"
+"""

@@ -1,0 +1,56 @@
+# /sys/bus/usb/devices captured from an Oracle Linux 9 (UEK 6.12, aarch64) Lima VM.
+# One line per attribute file: <entry>/<attribute><TAB><contents>.
+1-0:1.0/bInterfaceClass	09
+1-1/idVendor	05ac
+1-1/idProduct	8105
+1-1/manufacturer	Apple Inc.
+1-1/product	Virtual USB Keyboard
+1-1/speed	12
+1-1/bcdDevice	0000
+1-1/bDeviceClass	00
+1-1/bDeviceSubClass	00
+1-1/bDeviceProtocol	00
+1-1/busnum	1
+1-1/devnum	2
+1-1/removable	unknown
+1-1:1.0/bInterfaceClass	03
+1-2/idVendor	05ac
+1-2/idProduct	8106
+1-2/manufacturer	Apple Inc.
+1-2/product	Virtual USB Digitizer
+1-2/speed	12
+1-2/bcdDevice	0000
+1-2/bDeviceClass	00
+1-2/bDeviceSubClass	00
+1-2/bDeviceProtocol	00
+1-2/busnum	1
+1-2/devnum	3
+1-2/removable	unknown
+1-2:1.0/bInterfaceClass	03
+2-0:1.0/bInterfaceClass	09
+usb1/idVendor	1d6b
+usb1/idProduct	0002
+usb1/manufacturer	Linux 6.12.0-204.92.4.2.el9uek.aarch64 xhci-hcd
+usb1/product	xHCI Host Controller
+usb1/serial	0000:00:0b.0
+usb1/speed	480
+usb1/bcdDevice	0612
+usb1/bDeviceClass	09
+usb1/bDeviceSubClass	00
+usb1/bDeviceProtocol	01
+usb1/busnum	1
+usb1/devnum	1
+usb1/removable	unknown
+usb2/idVendor	1d6b
+usb2/idProduct	0003
+usb2/manufacturer	Linux 6.12.0-204.92.4.2.el9uek.aarch64 xhci-hcd
+usb2/product	xHCI Host Controller
+usb2/serial	0000:00:0b.0
+usb2/speed	10000
+usb2/bcdDevice	0612
+usb2/bDeviceClass	09
+usb2/bDeviceSubClass	00
+usb2/bDeviceProtocol	03
+usb2/busnum	2
+usb2/devnum	1
+usb2/removable	unknown

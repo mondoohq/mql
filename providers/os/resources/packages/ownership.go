@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 // safeBinaryName matches a plain executable name — letters, digits, and the
@@ -78,12 +78,12 @@ func findFileOwner(pms []OperatingSystemPkgManager, absPath string) string {
 	return ""
 }
 
-// FindPackageOwningBinary resolves binaryName on the target's PATH (via
-// `command -v`) and returns the installed package that owns the resolved
+// FindPackageOwningBinary resolves binaryName on the target (see FindBinary)
+// and returns the installed package that owns the resolved
 // binary. It queries both the PATH entry and its symlink target, since native
 // installers often symlink a launcher into ~/.local/bin while the package
-// database records the canonical file. Returns "" when the binary is not on
-// PATH or no package owns it.
+// database records the canonical file. Returns "" when the binary is not
+// found or no package owns it.
 func FindPackageOwningBinary(conn shared.Connection, binaryName string) (string, error) {
 	if binaryName == "" || !safeBinaryName.MatchString(binaryName) {
 		return "", nil
@@ -111,18 +111,12 @@ func FindPackageOwningBinary(conn shared.Connection, binaryName string) (string,
 	return "", nil
 }
 
-// binaryCandidatePaths returns the PATH location of binaryName and its resolved
-// symlink target (deduplicated, in that order). Empty when the binary is not on
-// PATH.
+// binaryCandidatePaths returns the location of binaryName (see FindBinary) and
+// its resolved symlink target (deduplicated, in that order). Empty when the
+// binary is not found.
 func binaryCandidatePaths(conn shared.Connection, binaryName string) []string {
-	cmd, err := conn.RunCommand("command -v " + shellQuote(binaryName))
-	if err != nil || cmd.ExitStatus != 0 {
-		return nil
-	}
-	path := strings.TrimSpace(readCommandOutput(cmd.Stdout))
-	if path == "" || !strings.HasPrefix(path, "/") {
-		// command -v prints shell builtins/aliases without a leading slash;
-		// only real filesystem paths can be owned by a package.
+	path := FindBinary(conn, binaryName)
+	if path == "" {
 		return nil
 	}
 
@@ -133,6 +127,73 @@ func binaryCandidatePaths(conn shared.Connection, binaryName string) []string {
 		}
 	}
 	return paths
+}
+
+// systemBinaryDirs are the system-wide directories that installers drop tool
+// binaries into, searched when the scan's PATH does not resolve a binary. The
+// scan's PATH is not the users' PATH: sudo replaces it with secure_path, which
+// on RHEL, Fedora and their rebuilds is /sbin:/bin:/usr/sbin:/usr/bin and so
+// leaves out /usr/local/bin, where `npm install -g` and the Ollama install
+// script put their binaries. Only root-owned system directories are listed;
+// a user's own bin directory is never searched, so a root scan does not run a
+// binary the user can replace.
+var systemBinaryDirs = []string{
+	"/usr/local/bin",
+	"/usr/bin",
+	"/bin",
+	"/usr/local/sbin",
+	"/usr/sbin",
+	"/sbin",
+	"/opt/homebrew/bin",
+	"/snap/bin",
+}
+
+// FindBinary returns the absolute path of binaryName on the target: where
+// `command -v` resolves it on the scan's PATH, otherwise the first of
+// systemBinaryDirs that holds it. Empty when it is found in neither.
+func FindBinary(conn shared.Connection, binaryName string) string {
+	// This lookup only understands POSIX paths and command -v. Windows
+	// package attribution falls back to its installed-package inventory.
+	if asset := conn.Asset(); asset != nil && asset.Platform != nil && asset.Platform.IsFamily("windows") {
+		return ""
+	}
+	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return ""
+	}
+	lookPath := func(name string) string {
+		cmd, err := conn.RunCommand("command -v " + shellQuote(name))
+		if err != nil || cmd.ExitStatus != 0 {
+			return ""
+		}
+		return strings.TrimSpace(readCommandOutput(cmd.Stdout))
+	}
+	fs := conn.FileSystem()
+	exists := func(path string) bool {
+		fi, err := fs.Stat(path)
+		return err == nil && !fi.IsDir()
+	}
+	return locateBinary(binaryName, lookPath, exists)
+}
+
+// locateBinary is FindBinary with the target lookups passed in. lookPath
+// returns what `command -v` prints, exists reports whether a regular file sits
+// at a path.
+func locateBinary(binaryName string, lookPath func(string) string, exists func(string) bool) string {
+	if binaryName == "" || !safeBinaryName.MatchString(binaryName) {
+		return ""
+	}
+	// command -v prints shell builtins and aliases without a leading slash;
+	// only a filesystem path is a binary.
+	if p := lookPath(binaryName); strings.HasPrefix(p, "/") {
+		return p
+	}
+	for _, dir := range systemBinaryDirs {
+		p := dir + "/" + binaryName
+		if exists(p) {
+			return p
+		}
+	}
+	return ""
 }
 
 // shellQuote single-quotes s for safe interpolation into a shell command,
@@ -155,8 +216,8 @@ func readCommandOutput(r io.Reader) string {
 
 // firstLine returns the first line of s (without the trailing newline).
 func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
+	if before, _, ok := strings.Cut(s, "\n"); ok {
+		return before
 	}
 	return s
 }

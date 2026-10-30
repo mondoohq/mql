@@ -4,22 +4,27 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gitlab/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gitlab/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // initGitlabSettings fetches instance-level application settings.
 // Requires an admin-scoped token; returns a permission error otherwise.
 func initGitlabSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	if len(args) > 0 {
+	// gitlab.settings is a singleton with no lookup key, so the only reason to
+	// skip the fetch is that a caller already handed us the full field set.
+	// The threshold has to allow for the implicit __id arg — every other init
+	// in this provider uses > 2 for the same reason. At > 0 a single incidental
+	// arg skipped the fetch entirely and left all 33 fields unset.
+	if len(args) > 2 {
 		return args, nil, nil
 	}
 
 	conn := runtime.Connection.(*connection.GitLabConnection)
-	settings, _, err := conn.Client().Settings.GetSettings()
+	settings, policy, err := getInstanceSettings(conn.Client())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -55,6 +60,13 @@ func initGitlabSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	args["importSources"] = llx.ArrayData(convert.SliceAnyToInterface(settings.ImportSources), types.String)
 	args["sessionExpireDelay"] = llx.IntData(settings.SessionExpireDelay)
 	args["terminalMaxSessionTime"] = llx.IntData(settings.TerminalMaxSessionTime)
+	args["duoFeaturesEnabled"] = llx.BoolData(settings.DuoFeaturesEnabled)
+	args["lockDuoFeaturesEnabled"] = llx.BoolData(settings.LockDuoFeaturesEnabled)
+
+	// The credential-lifecycle, sign-in hardening and CI job-token settings are
+	// read from the same response through a pointer-typed view, so a release
+	// that predates one of them reports null rather than claiming it is off.
+	setInstanceSettingsPolicyArgs(args, policy)
 
 	return args, nil, nil
 }

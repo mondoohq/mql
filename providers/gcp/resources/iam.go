@@ -8,22 +8,24 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 
 	admin "cloud.google.com/go/iam/admin/apiv1"
 	iampbv1 "cloud.google.com/go/iam/apiv1/iampb"
 	iamv2 "cloud.google.com/go/iam/apiv2"
 	iamv2pb "cloud.google.com/go/iam/apiv2/iampb"
 	"google.golang.org/api/googleapi"
+	iamrest "google.golang.org/api/iam/v1"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	policyanalyzer "google.golang.org/api/policyanalyzer/v1"
@@ -41,7 +43,7 @@ func (g *mqlGcpProjectIamService) id() (string, error) {
 }
 
 type mqlGcpProjectIamServiceInternal struct {
-	serviceEnabled bool
+	serviceGate
 }
 
 type mqlGcpProjectIamServiceServiceAccountInternal struct {
@@ -77,7 +79,7 @@ func (g *mqlGcpProject) iam() (*mqlGcpProjectIamService, error) {
 	}
 
 	svc := res.(*mqlGcpProjectIamService)
-	svc.serviceEnabled = serviceEnabled
+	svc.recordEnabled(serviceEnabled)
 	if !serviceEnabled {
 		log.Debug().Str("service", service_iam).Msg("gcp service is not enabled, skipping")
 	}
@@ -175,8 +177,14 @@ func initGcpProjectIamServiceServiceAccount(runtime *plugin.Runtime, args map[st
 	// flag — constructing the iamService directly leaves the flag at its
 	// zero value, which short-circuits serviceAccounts() to nil and makes the
 	// SA lookup miss every typed-ref query.
-	projObj, err := CreateResource(runtime, "gcp.project", map[string]*llx.RawData{
-		"id": llx.StringData(args["projectId"].Value.(string)),
+	// NewResource, not CreateResource: CreateResource would cache a gcp.project
+	// carrying nothing but an id, and initGcpProject returns whatever is already
+	// cached -- so that husk would win for every later caller, and its name,
+	// state, parentId, labels, createTime and number are computed fields
+	// implemented as placeholders that only ever return "not implemented".
+	// servicegate.go spells out the same reasoning for the enablement lookup.
+	projObj, err := NewResource(runtime, "gcp.project", map[string]*llx.RawData{
+		"id": args["projectId"],
 	})
 	if err != nil {
 		return nil, nil, err
@@ -257,7 +265,11 @@ func initGcpProjectIamServiceServiceAccount(runtime *plugin.Runtime, args map[st
 }
 
 func (g *mqlGcpProjectIamService) serviceAccounts() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -329,36 +341,40 @@ func (g *mqlGcpProjectIamServiceServiceAccount) keys() ([]any, error) {
 
 	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
 
-	creds, err := conn.Credentials(admin.DefaultAuthScopes()...)
+	client, err := conn.Client(iamrest.CloudPlatformScope)
 	if err != nil {
 		return nil, err
 	}
 
 	ctx := context.Background()
 
-	adminSvc, err := admin.NewIamClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption())
+	iamSvc, err := iamrest.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
 		return nil, err
 	}
-	defer adminSvc.Close()
 
-	resp, err := adminSvc.ListServiceAccountKeys(ctx, &adminpb.ListServiceAccountKeysRequest{Name: fmt.Sprintf("projects/%s/serviceAccounts/%s", projectId, email)})
+	// The keys are read over REST rather than through the admin gRPC client
+	// because disableReason and extendedStatus exist only on the REST
+	// ServiceAccountKey. The admin protobuf message carries neither, so on the
+	// gRPC path a key Google disabled because it found the private key
+	// published is indistinguishable from one an operator disabled on purpose.
+	//
+	// Both transports are governed by iam.serviceAccountKeys.list and return
+	// the same key set with the same enum spellings. This endpoint reports every
+	// key in one response: ListServiceAccountKeysResponse has no page token, and
+	// a service account is capped well below any page limit.
+	resp, err := iamSvc.Projects.ServiceAccounts.Keys.
+		List(fmt.Sprintf("projects/%s/serviceAccounts/%s", projectId, email)).
+		Context(ctx).Do()
 	if err != nil {
 		return nil, err
 	}
 	mqlKeys := make([]any, 0, len(resp.Keys))
 	for _, k := range resp.Keys {
-		keyType := k.KeyType.String()
-		mqlKey, err := CreateResource(g.MqlRuntime, "gcp.project.iamService.serviceAccount.key", map[string]*llx.RawData{
-			"name":            llx.StringData(k.Name),
-			"keyAlgorithm":    llx.StringData(k.KeyAlgorithm.String()),
-			"validAfterTime":  llx.TimeDataPtr(timestampAsTimePtr(k.ValidAfterTime)),
-			"validBeforeTime": llx.TimeDataPtr(timestampAsTimePtr(k.ValidBeforeTime)),
-			"keyOrigin":       llx.StringData(k.KeyOrigin.String()),
-			"keyType":         llx.StringData(keyType),
-			"userManaged":     llx.BoolData(keyType == "USER_MANAGED"),
-			"disabled":        llx.BoolData(k.Disabled),
-		})
+		if k == nil {
+			continue
+		}
+		mqlKey, err := CreateResource(g.MqlRuntime, "gcp.project.iamService.serviceAccount.key", serviceAccountKeyArgs(k))
 		if err != nil {
 			return nil, err
 		}
@@ -369,6 +385,38 @@ func (g *mqlGcpProjectIamServiceServiceAccount) keys() ([]any, error) {
 		mqlKeys = append(mqlKeys, mqlKey)
 	}
 	return mqlKeys, nil
+}
+
+// serviceAccountKeyArgs maps a service account key onto its MQL resource
+// arguments.
+//
+// extendedStatus is keyed by the detection kind (EXPOSED, COMPROMISE_DETECTED)
+// so a query can ask for one directly. An entry with an empty key is dropped
+// rather than collapsing into a "" bucket, and the first value wins for a
+// repeated key, so the map size is the number of distinct detections reported.
+func serviceAccountKeyArgs(k *iamrest.ServiceAccountKey) map[string]*llx.RawData {
+	extendedStatus := map[string]any{}
+	for _, st := range k.ExtendedStatus {
+		if st == nil || st.Key == "" {
+			continue
+		}
+		if _, seen := extendedStatus[st.Key]; seen {
+			continue
+		}
+		extendedStatus[st.Key] = st.Value
+	}
+	return map[string]*llx.RawData{
+		"name":            llx.StringData(k.Name),
+		"keyAlgorithm":    llx.StringData(k.KeyAlgorithm),
+		"validAfterTime":  llx.TimeDataPtr(parseTime(k.ValidAfterTime)),
+		"validBeforeTime": llx.TimeDataPtr(parseTime(k.ValidBeforeTime)),
+		"keyOrigin":       llx.StringData(k.KeyOrigin),
+		"keyType":         llx.StringData(k.KeyType),
+		"userManaged":     llx.BoolData(k.KeyType == "USER_MANAGED"),
+		"disabled":        llx.BoolData(k.Disabled),
+		"disableReason":   llx.StringData(k.DisableReason),
+		"extendedStatus":  llx.MapData(extendedStatus, types.String),
+	}
 }
 
 // lastAuthActivity matches the JSON shape returned by the Policy Analyzer
@@ -731,7 +779,11 @@ func (g *mqlGcpProjectIamServiceDenyPolicy) id() (string, error) {
 }
 
 func (g *mqlGcpProjectIamService) denyPolicies() ([]any, error) {
-	if !g.serviceEnabled {
+	enabled, err := g.isEnabled()
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
 		return nil, nil
 	}
 
@@ -740,7 +792,27 @@ func (g *mqlGcpProjectIamService) denyPolicies() ([]any, error) {
 	}
 	projectId := g.ProjectId.Data
 
-	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	return listDenyPolicies(g.MqlRuntime, "projects/"+projectId)
+}
+
+// denyPolicyParent returns the IAM v2 ListPolicies parent for the deny
+// policies attached to a Cloud Resource Manager node.
+//
+// IAM v2 wants the URL-encoded resource path of the policy's attachment point,
+// with its path separators percent-encoded as %2F. For "projects/my-project"
+// this yields
+// "policies/cloudresourcemanager.googleapis.com%2Fprojects%2Fmy-project/denypolicies".
+func denyPolicyParent(attachmentPoint string) string {
+	encoded := strings.ReplaceAll("cloudresourcemanager.googleapis.com/"+attachmentPoint, "/", "%2F")
+	return "policies/" + encoded + "/denypolicies"
+}
+
+// listDenyPolicies lists the deny policies attached to a Cloud Resource
+// Manager node: "projects/{id}", "folders/{id}", or "organizations/{id}".
+// The policy names embed the attachment point, so policies attached to two
+// nodes never share a cache id.
+func listDenyPolicies(runtime *plugin.Runtime, attachmentPoint string) ([]any, error) {
+	conn := runtime.Connection.(*connection.GcpConnection)
 	creds, err := conn.Credentials(iamv2.DefaultAuthScopes()...)
 	if err != nil {
 		return nil, err
@@ -753,12 +825,7 @@ func (g *mqlGcpProjectIamService) denyPolicies() ([]any, error) {
 	}
 	defer client.Close()
 
-	// IAM v2 ListPolicies wants the URL-encoded resource path of the policy's
-	// attachment point. For a project that point is the Cloud Resource Manager
-	// project resource, whose path separators must be percent-encoded as %2F.
-	// The %% in the format string emits a literal %, so for project "my-project"
-	// this yields: "policies/cloudresourcemanager.googleapis.com%2Fprojects%2Fmy-project/denypolicies".
-	parent := fmt.Sprintf("policies/cloudresourcemanager.googleapis.com%%2Fprojects%%2F%s/denypolicies", projectId)
+	parent := denyPolicyParent(attachmentPoint)
 
 	var policies []any
 	it := client.ListPolicies(ctx, &iamv2pb.ListPoliciesRequest{Parent: parent})
@@ -770,7 +837,6 @@ func (g *mqlGcpProjectIamService) denyPolicies() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-
 		rules := make([]any, 0, len(p.Rules))
 		for _, r := range p.Rules {
 			rule := map[string]any{"description": r.Description}
@@ -795,12 +861,18 @@ func (g *mqlGcpProjectIamService) denyPolicies() ([]any, error) {
 			rules = append(rules, ruleDict)
 		}
 
-		mqlPolicy, err := CreateResource(g.MqlRuntime, "gcp.project.iamService.denyPolicy", map[string]*llx.RawData{
+		denyRules, err := newMqlIamDenyRules(runtime, p.Name, p.Rules)
+		if err != nil {
+			return nil, err
+		}
+
+		mqlPolicy, err := CreateResource(runtime, "gcp.project.iamService.denyPolicy", map[string]*llx.RawData{
 			"name":        llx.StringData(p.Name),
 			"uid":         llx.StringData(p.Uid),
 			"displayName": llx.StringData(p.DisplayName),
 			"annotations": llx.MapData(convert.MapToInterfaceMap(p.Annotations), types.String),
 			"rules":       llx.ArrayData(rules, types.Dict),
+			"denyRules":   llx.ArrayData(denyRules, types.Resource("gcp.project.iamService.denyPolicy.denyRule")),
 			"etag":        llx.StringData(p.Etag),
 			"created":     llx.TimeDataPtr(timestampAsTimePtr(p.CreateTime)),
 			"updated":     llx.TimeDataPtr(timestampAsTimePtr(p.UpdateTime)),
@@ -811,6 +883,42 @@ func (g *mqlGcpProjectIamService) denyPolicies() ([]any, error) {
 		policies = append(policies, mqlPolicy)
 	}
 	return policies, nil
+}
+
+// denyPolicies on an organization or folder reads the same deny policy type
+// as a project. A refusal there is classified rather than failing the query
+// with an unattributed error.
+func (g *mqlGcpOrganization) denyPolicies() ([]any, error) {
+	if g.Id.Error != nil {
+		return nil, g.Id.Error
+	}
+	attachment := organizationResourceName(g.Id.Data)
+	res, err := listDenyPolicies(g.MqlRuntime, attachment)
+	if err != nil {
+		return listRefusal(err, "could not list organization deny policies", "iam.denypolicies.list")
+	}
+	return res, nil
+}
+
+func (g *mqlGcpFolder) denyPolicies() ([]any, error) {
+	if g.Id.Error != nil {
+		return nil, g.Id.Error
+	}
+	res, err := listDenyPolicies(g.MqlRuntime, folderResourceName(g.Id.Data))
+	if err != nil {
+		return listRefusal(err, "could not list folder deny policies", "iam.denypolicies.list")
+	}
+	return res, nil
+}
+
+// organizationResourceName returns "organizations/{id}" for an organization
+// id given with or without the prefix. gcp.organization carries the prefixed
+// form, but a bare number must not be double-prefixed or left bare.
+func organizationResourceName(id string) string {
+	if strings.HasPrefix(id, "organizations/") {
+		return id
+	}
+	return "organizations/" + id
 }
 
 func (g *mqlGcpProjectIamServiceServiceAccount) iamPolicy() ([]any, error) {
@@ -883,4 +991,155 @@ func (g *mqlGcpProjectIamServiceServiceAccount) canBeImpersonated() (bool, error
 		}
 	}
 	return false, nil
+}
+
+// projectBindings filters the enclosing project's IAM policy, which
+// gcp.project caches, down to the bindings that name this service account.
+func (g *mqlGcpProjectIamServiceServiceAccount) projectBindings() ([]any, error) {
+	if g.Email.Error != nil {
+		return nil, g.Email.Error
+	}
+	res := []any{}
+	if g.Email.Data == "" {
+		return res, nil
+	}
+	proj := g.GetProject()
+	if proj.Error != nil {
+		return nil, proj.Error
+	}
+	if proj.Data == nil {
+		return res, nil
+	}
+	bindings := proj.Data.GetIamPolicy()
+	if bindings.Error != nil {
+		return nil, bindings.Error
+	}
+	member := "serviceAccount:" + g.Email.Data
+	for _, raw := range bindings.Data {
+		b, ok := raw.(*mqlGcpResourcemanagerBinding)
+		if !ok || b == nil {
+			continue
+		}
+		members := b.GetMembers()
+		if members.Error != nil {
+			return nil, members.Error
+		}
+		if bindingMembersInclude(members.Data, member) {
+			res = append(res, b)
+		}
+	}
+	return res, nil
+}
+
+func (g *mqlGcpProjectIamServiceServiceAccount) projectRoles() ([]any, error) {
+	bindings := g.GetProjectBindings()
+	if bindings.Error != nil {
+		return nil, bindings.Error
+	}
+	res := []any{}
+	seen := map[string]bool{}
+	for _, raw := range bindings.Data {
+		b, ok := raw.(*mqlGcpResourcemanagerBinding)
+		if !ok || b == nil {
+			continue
+		}
+		role := b.GetRole()
+		if role.Error != nil {
+			return nil, role.Error
+		}
+		if role.Data == "" || seen[role.Data] {
+			continue
+		}
+		seen[role.Data] = true
+		res = append(res, role.Data)
+	}
+	return res, nil
+}
+
+func (g *mqlGcpProjectIamServiceServiceAccount) hasAdminRole() (bool, error) {
+	roles := g.GetProjectRoles()
+	if roles.Error != nil {
+		return false, roles.Error
+	}
+	for _, r := range roles.Data {
+		if s, ok := r.(string); ok && isAdminRole(s) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// bindingMembersInclude reports whether an IAM binding's members contain the
+// given principal. Emails in IAM members are case-insensitive. A deleted
+// principal (deleted:serviceAccount:...?uid=...) never matches.
+func bindingMembersInclude(members []any, member string) bool {
+	for _, m := range members {
+		if s, ok := m.(string); ok && strings.EqualFold(s, member) {
+			return true
+		}
+	}
+	return false
+}
+
+// isAdminRole reports whether a role grants administrative access by name:
+// the owner and editor primitive roles, or any role whose name contains
+// "admin" (roles/compute.admin, roles/iam.serviceAccountAdmin, custom roles
+// that follow the naming).
+func isAdminRole(role string) bool {
+	switch role {
+	case "roles/owner", "roles/editor":
+		return true
+	}
+	return strings.Contains(strings.ToLower(role), "admin")
+}
+
+// isEnabled reports whether the API is enabled on this project.
+func (g *mqlGcpProjectIamService) isEnabled() (bool, error) {
+	return g.resolveEnabled(g.MqlRuntime, g.ProjectId, service_iam)
+}
+
+// newMqlIamDenyRules promotes the rules of a deny policy.
+//
+// A deny rule overrides every allow policy that would otherwise grant the
+// permission, so what a principal can actually do is only knowable by reading
+// them. PolicyRule carries its rule kind as a oneof and DenyRule is the only
+// arm the API populates today; a rule of any other kind is skipped rather than
+// published as a deny rule that denies nothing.
+func newMqlIamDenyRules(runtime *plugin.Runtime, policyName string, rules []*iamv2pb.PolicyRule) ([]any, error) {
+	res := make([]any, 0, len(rules))
+	for i, r := range rules {
+		if r == nil {
+			continue
+		}
+		denyRule := r.GetDenyRule()
+		if denyRule == nil {
+			continue
+		}
+
+		var expression, title, description, location string
+		if cond := denyRule.DenialCondition; cond != nil {
+			expression = cond.Expression
+			title = cond.Title
+			description = cond.Description
+			location = cond.Location
+		}
+
+		mqlRule, err := CreateResource(runtime, "gcp.project.iamService.denyPolicy.denyRule", map[string]*llx.RawData{
+			"__id":                       llx.StringData(policyName + "/rule/" + strconv.Itoa(i)),
+			"description":                llx.StringData(r.Description),
+			"deniedPrincipals":           llx.ArrayData(convert.SliceAnyToInterface(denyRule.DeniedPrincipals), types.String),
+			"exceptionPrincipals":        llx.ArrayData(convert.SliceAnyToInterface(denyRule.ExceptionPrincipals), types.String),
+			"deniedPermissions":          llx.ArrayData(convert.SliceAnyToInterface(denyRule.DeniedPermissions), types.String),
+			"exceptionPermissions":       llx.ArrayData(convert.SliceAnyToInterface(denyRule.ExceptionPermissions), types.String),
+			"denialConditionExpression":  llx.StringData(expression),
+			"denialConditionTitle":       llx.StringData(title),
+			"denialConditionDescription": llx.StringData(description),
+			"denialConditionLocation":    llx.StringData(location),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlRule)
+	}
+	return res, nil
 }

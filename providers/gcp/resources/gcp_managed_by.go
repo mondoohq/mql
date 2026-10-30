@@ -6,7 +6,7 @@ package resources
 import (
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // managedByFromLabels infers the infrastructure-management system that owns a

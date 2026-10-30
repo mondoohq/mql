@@ -4,13 +4,14 @@
 package resources
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/mikrotik/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/mikrotik/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func mikrotikConn(runtime *plugin.Runtime) *connection.MikrotikConnection {
@@ -57,6 +58,73 @@ func splitList(s string) []any {
 		}
 	}
 	return out
+}
+
+// boolField returns the RouterOS boolean at key as a resource field value, or
+// null when the device did not report the attribute at all. RouterOS omits
+// attributes it has no value for, and a menu that was never configured returns
+// no rows rather than defaults, so a fabricated false would read as a security
+// flag that was checked when nothing was.
+func boolField(row map[string]string, key string) *llx.RawData {
+	v, ok := row[key]
+	if !ok {
+		return llx.NilData
+	}
+	return llx.BoolData(parseBool(v))
+}
+
+// intField returns the RouterOS numeric attribute at key, or null when the
+// device did not report it, so an unreported counter or size does not read as
+// a genuine zero.
+func intField(row map[string]string, key string) *llx.RawData {
+	v, ok := row[key]
+	if !ok {
+		return llx.NilData
+	}
+	return llx.IntData(parseInt(v))
+}
+
+// listField splits a RouterOS comma-separated attribute into a list, or
+// returns null when the device did not report the attribute, keeping "the
+// device does not offer this setting" distinct from "the setting is empty".
+func listField(row map[string]string, key string) *llx.RawData {
+	v, ok := row[key]
+	if !ok {
+		return llx.NilData
+	}
+	return llx.ArrayData(splitList(v), types.String)
+}
+
+// presenceField reports whether the device holds a value for a secret
+// attribute (an IPsec pre-shared key, a RADIUS shared secret, a private key)
+// without reading the secret itself into the result. It is null when the menu
+// does not carry the attribute at all.
+func presenceField(row map[string]string, key string) *llx.RawData {
+	v, ok := row[key]
+	if !ok {
+		return llx.NilData
+	}
+	return llx.BoolData(strings.TrimSpace(v) != "")
+}
+
+// rowID builds a resource cache key from the RouterOS row handle. RouterOS
+// includes its internal ".id" handle (e.g. "*1A") in every print reply; it is
+// unique within a menu and stable while the device keeps its current
+// configuration, but it is not an identifier that survives a config reload, so
+// the fallback composes a key from the row's own attributes.
+func rowID(prefix string, row map[string]string, fallback ...string) string {
+	id := row[".id"]
+	if id == "" {
+		id = strings.Join(fallback, "/")
+	}
+	return prefix + id
+}
+
+// errNoMenu reports a menu that returned no records, which on RouterOS means
+// the subsystem is absent or was never configured rather than that it is set
+// to its defaults.
+func errNoMenu(menu string) error {
+	return fmt.Errorf("mikrotik device reported no records for %s", menu)
 }
 
 // buildList maps each RouterOS reply row to a resource using build.
@@ -113,18 +181,18 @@ func (r *mqlMikrotik) system() (*mqlMikrotikSystem, error) {
 		"platform":             llx.StringData(res["platform"]),
 		"architecture":         llx.StringData(res["architecture-name"]),
 		"cpu":                  llx.StringData(res["cpu"]),
-		"cpuCount":             llx.IntData(parseInt(res["cpu-count"])),
-		"cpuFrequency":         llx.IntData(parseInt(res["cpu-frequency"])),
-		"cpuLoad":              llx.IntData(parseInt(res["cpu-load"])),
-		"totalMemory":          llx.IntData(parseInt(res["total-memory"])),
-		"freeMemory":           llx.IntData(parseInt(res["free-memory"])),
-		"totalHddSpace":        llx.IntData(parseInt(res["total-hdd-space"])),
-		"freeHddSpace":         llx.IntData(parseInt(res["free-hdd-space"])),
+		"cpuCount":             intField(res, "cpu-count"),
+		"cpuFrequency":         intField(res, "cpu-frequency"),
+		"cpuLoad":              intField(res, "cpu-load"),
+		"totalMemory":          intField(res, "total-memory"),
+		"freeMemory":           intField(res, "free-memory"),
+		"totalHddSpace":        intField(res, "total-hdd-space"),
+		"freeHddSpace":         intField(res, "free-hdd-space"),
 		"badBlocks":            llx.StringData(res["bad-blocks"]),
-		"writeSectSinceReboot": llx.IntData(parseInt(res["write-sect-since-reboot"])),
-		"writeSectTotal":       llx.IntData(parseInt(res["write-sect-total"])),
+		"writeSectSinceReboot": intField(res, "write-sect-since-reboot"),
+		"writeSectTotal":       intField(res, "write-sect-total"),
 		"uptime":               llx.StringData(res["uptime"]),
-		"routerboard":          llx.BoolData(parseBool(rb["routerboard"])),
+		"routerboard":          boolField(rb, "routerboard"),
 		"model":                llx.StringData(rb["model"]),
 		"serialNumber":         llx.StringData(rb["serial-number"]),
 		"firmwareType":         llx.StringData(rb["firmware-type"]),
@@ -145,7 +213,7 @@ func newMikrotikPackage(runtime *plugin.Runtime, row map[string]string) (plugin.
 		"version":   llx.StringData(row["version"]),
 		"buildTime": llx.StringData(row["build-time"]),
 		"scheduled": llx.StringData(row["scheduled"]),
-		"disabled":  llx.BoolData(parseBool(row["disabled"])),
+		"disabled":  boolField(row, "disabled"),
 	})
 }
 
@@ -168,8 +236,8 @@ func (r *mqlMikrotik) clock() (*mqlMikrotikSystemClock, error) {
 		"date":               llx.StringData(row["date"]),
 		"timeZoneName":       llx.StringData(row["time-zone-name"]),
 		"gmtOffset":          llx.StringData(row["gmt-offset"]),
-		"dstActive":          llx.BoolData(parseBool(row["dst-active"])),
-		"timeZoneAutodetect": llx.BoolData(parseBool(row["time-zone-autodetect"])),
+		"dstActive":          boolField(row, "dst-active"),
+		"timeZoneAutodetect": boolField(row, "time-zone-autodetect"),
 	})
 	if err != nil {
 		return nil, err
@@ -184,12 +252,12 @@ func (r *mqlMikrotik) ntpClient() (*mqlMikrotikSystemNtpClient, error) {
 	}
 	res, err := CreateResource(r.MqlRuntime, "mikrotik.system.ntp.client", map[string]*llx.RawData{
 		"__id":          llx.StringData("mikrotik.system.ntp.client"),
-		"enabled":       llx.BoolData(parseBool(row["enabled"])),
+		"enabled":       boolField(row, "enabled"),
 		"mode":          llx.StringData(row["mode"]),
-		"servers":       llx.ArrayData(splitList(row["servers"]), types.String),
+		"servers":       listField(row, "servers"),
 		"status":        llx.StringData(row["status"]),
 		"syncedServer":  llx.StringData(row["synced-server"]),
-		"syncedStratum": llx.IntData(parseInt(row["synced-stratum"])),
+		"syncedStratum": intField(row, "synced-stratum"),
 	})
 	if err != nil {
 		return nil, err
@@ -204,12 +272,12 @@ func (r *mqlMikrotik) snmp() (*mqlMikrotikSnmp, error) {
 	}
 	res, err := CreateResource(r.MqlRuntime, "mikrotik.snmp", map[string]*llx.RawData{
 		"__id":           llx.StringData("mikrotik.snmp"),
-		"enabled":        llx.BoolData(parseBool(row["enabled"])),
+		"enabled":        boolField(row, "enabled"),
 		"contact":        llx.StringData(row["contact"]),
 		"location":       llx.StringData(row["location"]),
 		"engineId":       llx.StringData(row["engine-id"]),
 		"trapCommunity":  llx.StringData(row["trap-community"]),
-		"trapVersion":    llx.IntData(parseInt(row["trap-version"])),
+		"trapVersion":    intField(row, "trap-version"),
 		"trapGenerators": llx.StringData(row["trap-generators"]),
 		"srcAddress":     llx.StringData(row["src-address"]),
 	})
@@ -254,7 +322,9 @@ func (r *mqlMikrotik) ipAddresses() ([]any, error) {
 }
 
 func (r *mqlMikrotik) ipv6Addresses() ([]any, error) {
-	rows, err := mikrotikConn(r.MqlRuntime).Print("/ipv6/address")
+	// /ipv6 only exists when the ipv6 package is enabled; PrintOptional turns
+	// its absence into an empty list instead of failing the whole query
+	rows, err := mikrotikConn(r.MqlRuntime).PrintOptional("/ipv6/address")
 	if err != nil {
 		return nil, err
 	}
@@ -286,15 +356,15 @@ func (r *mqlMikrotik) dns() (*mqlMikrotikIpDns, error) {
 		"__id":                llx.StringData("mikrotik.ip.dns"),
 		"servers":             llx.StringData(row["servers"]),
 		"dynamicServers":      llx.StringData(row["dynamic-servers"]),
-		"allowRemoteRequests": llx.BoolData(parseBool(row["allow-remote-requests"])),
+		"allowRemoteRequests": boolField(row, "allow-remote-requests"),
 		"useDohServer":        llx.StringData(row["use-doh-server"]),
-		"verifyDohCert":       llx.BoolData(parseBool(row["verify-doh-cert"])),
-		"maxUdpPacketSize":    llx.IntData(parseInt(row["max-udp-packet-size"])),
+		"verifyDohCert":       boolField(row, "verify-doh-cert"),
+		"maxUdpPacketSize":    intField(row, "max-udp-packet-size"),
 		"queryServerTimeout":  llx.StringData(row["query-server-timeout"]),
 		"queryTotalTimeout":   llx.StringData(row["query-total-timeout"]),
-		"cacheSize":           llx.IntData(parseInt(row["cache-size"])),
+		"cacheSize":           intField(row, "cache-size"),
 		"cacheMaxTtl":         llx.StringData(row["cache-max-ttl"]),
-		"cacheUsed":           llx.IntData(parseInt(row["cache-used"])),
+		"cacheUsed":           intField(row, "cache-used"),
 	})
 	if err != nil {
 		return nil, err

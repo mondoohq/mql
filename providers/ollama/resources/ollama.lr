@@ -1,35 +1,134 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/ollama"
-option go_package = "go.mondoo.com/mql/v13/providers/ollama/resources"
+option go_package = "go.mondoo.com/mql/providers/ollama/resources"
+option root = "ollama"
 
 // Ollama instance
 //
-// Use the `ollama` resource to examine an Ollama instance, including
-// installed models and currently running models. Supports both local
-// Ollama servers and Ollama Cloud via configurable host and optional
-// API token authentication.
-ollama @defaults("host") {
+// Ollama server hosting large language models, exposing the models
+// installed on the instance and the models currently loaded in memory
+// for inference. Works against both a local Ollama server and Ollama
+// Cloud, selected by the configured host and optional API token
+// authentication.
+//
+// The server version, transport encryption, whether the address is
+// reachable beyond the local machine, whether unauthenticated callers may
+// read and whether they may write, and whether inference may be offloaded to
+// Ollama Cloud are all queryable, so an instance can be audited for exposure
+// and for the advisories that apply to the version it runs.
+ollama @defaults("host version") @root {
   // Host address of the Ollama instance
   host() string
+  // Ollama server version
+  //
+  // Version reported by the instance, for example "0.12.6". Matches the
+  // instance against published Ollama advisories.
+  version() string
+  // Whether the connection to the instance is encrypted
+  //
+  // False when the API is served over plain HTTP, in which case prompts,
+  // completions, and any API token sent to the instance travel in the clear.
+  tls() bool
+  // Whether the instance is served from a loopback address
+  //
+  // True when the configured host is a loopback address, so the API is only
+  // reachable from the machine running the server. False means the API accepts
+  // connections from other hosts, and authenticationRequired and tls decide
+  // who can reach it and on what terms.
+  isLocal() bool
+  // Whether the API rejects unauthenticated read requests
+  //
+  // Determined by re-issuing a read-only request with the authorization header
+  // removed. False means any client that can reach the host can list models and
+  // read their metadata without credentials. It says nothing about writes, which
+  // writeAuthenticationRequired reports separately. Ollama does not require
+  // authentication by default.
+  authenticationRequired() bool
+  // Whether the API rejects unauthenticated write requests
+  //
+  // Determined by sending a deliberately unparseable body to the model creation
+  // endpoint with no authorization header. The body cannot be decoded, so
+  // nothing is created, pulled, or deleted whatever the answer. A refusal for
+  // lack of credentials reports true. A rejection of the body alone reports
+  // false, meaning any client that can reach the host can create, pull, and
+  // delete models without credentials, and so can replace the weights this
+  // instance serves. An instance can gate reads and still leave writes open, so
+  // this is checked apart from authenticationRequired.
+  writeAuthenticationRequired() bool
+  // Whether the API accepts cross-origin requests from any web origin
+  //
+  // Determined by asking the instance, on behalf of a web origin unrelated to
+  // it, which origin it permits. True when the answer permits every origin, or
+  // permits that unrelated one, so any page the user visits can read from and
+  // write to this instance through their browser, whatever isLocal reports.
+  // Ollama permits a fixed set of origins by default, among them file, app and
+  // vscode-webview pages, and widens to every origin when OLLAMA_ORIGINS is set
+  // to `*`. Null when nothing on the instance answers cross-origin requests at
+  // all, which settles the question in neither direction.
+  corsAllowsAnyOrigin() bool
+  // Whether the API rejects requests carrying an unrelated host name
+  //
+  // Determined by asking for the model listing under a host name the instance
+  // does not answer to. True when the instance refuses it, which is what keeps
+  // a web page from reaching a loopback instance by pointing a domain it
+  // controls at 127.0.0.1 and driving the API from the user's own browser.
+  // False means the instance serves whatever host name is claimed, so that path
+  // is open. Null when isLocal is false, because the check applies only to an
+  // instance bound to loopback and says nothing about one reachable over the
+  // network.
+  dnsRebindingProtected() bool
+  // Whether the instance may offload inference to Ollama Cloud
+  //
+  // When enabled, prompts and completions for cloud-hosted models leave the
+  // instance and are processed by Ollama Cloud. Null on instances that do not
+  // report a cloud status.
+  cloudEnabled() bool
+  // Ollama Cloud account the instance is signed in to
+  //
+  // Null when the instance is not signed in, in which case it cannot reach
+  // cloud-hosted models or the account behind them.
+  cloudAccount() ollama.account
   // Installed models
   models() []ollama.model
   // Currently running models loaded in memory
   runningModels() []ollama.runningModel
 }
 
+// Ollama Cloud account
+//
+// Account an Ollama instance is signed in to, identifying who owns the
+// cloud-side usage the instance can drive and which subscription plan
+// backs it.
+private ollama.account @defaults("email name plan") {
+  // Account identifier
+  id string
+  // Account email address
+  email string
+  // Account display name
+  name string
+  // Subscription plan backing the account
+  plan string
+}
+
 // Ollama model
 //
-// Examine an installed Ollama model including its family, parameter
-// size, quantization level, and license. Use `info` for structured
-// GGUF metadata from the model's configuration and `modelfile` for
+// Installed Ollama model, including its family, parameter size,
+// quantization level, and license. The `info` field exposes structured
+// GGUF metadata from the model's configuration and `modelfile` returns
 // the Modelfile used to create or pull this model.
 ollama.model @defaults("name family parameterSize") {
   // Model name (e.g., "llama3.1:latest")
   name string
   // Canonical model identifier
-  model string
+  //
+  // Deprecated in favor of name, which always carries the same value. The
+  // Ollama server assigns both from the model's shortest display name, so
+  // the two fields never differ.
+  model @maturity("deprecated") string
   // Last modification time
   modifiedAt time
   // Total size in bytes
@@ -56,6 +155,45 @@ ollama.model @defaults("name family parameterSize") {
   quantizationLevel string
   // Parent model this was derived from
   parentModel string
+  // Registry the model name resolves to
+  //
+  // For example registry.ollama.ai for the default Ollama registry. A model
+  // pulled from any other registry carries the trust assumptions of whoever
+  // operates that registry, including the contents of the model weights.
+  registry string
+  // Namespace within the registry
+  //
+  // For example library for the curated Ollama catalog, or a user or
+  // organization name for community-published models.
+  namespace string
+  // Repository name within the namespace
+  //
+  // For example llama3.1, the model name without its registry, namespace,
+  // or tag.
+  repository string
+  // Tag identifying which build of the repository is installed
+  //
+  // For example latest or 8b. Tags are mutable, so the same tag can resolve
+  // to different content over time. The digest field identifies the exact
+  // content that is installed.
+  tag string
+  // Model on a remote instance that inference is forwarded to
+  //
+  // Set when the model does not execute on this instance. Empty for models
+  // that execute locally.
+  remoteModel string
+  // Host that inference for this model is forwarded to
+  //
+  // Set when the model does not execute on this instance, in which case
+  // prompts and completions for it leave the instance and are processed by
+  // the named host. Empty for models that execute locally.
+  remoteHost string
+  // Adapters applied on top of the base model
+  //
+  // Targets of the ADAPTER instructions in the Modelfile, each a path or
+  // model reference. An adapter changes how the base model behaves,
+  // including the alignment and refusal behavior it shipped with.
+  adapters() []string
   // License text
   license() string
   // Raw Modelfile content
@@ -68,17 +206,36 @@ ollama.model @defaults("name family parameterSize") {
   //
   // For example completion, tools, vision, or thinking.
   capabilities() []string
+  // Runtime parameters baked into the model
+  //
+  // The PARAMETER block of the model's Modelfile verbatim, the defaults the
+  // server applies to every request for this model. Covers settings such as
+  // num_ctx, temperature, and the stop sequences that terminate generation.
+  // Empty for a model whose Modelfile sets no parameters.
+  parameters() string
+  // Built-in renderer that formats messages for the model
+  //
+  // Names the server-side renderer that turns a request into the model's
+  // prompt format, for example qwen3-coder. Empty for a model that is rendered
+  // by its chat template instead.
+  renderer() string
+  // Built-in parser that reads the model's output
+  //
+  // Names the server-side parser that interprets what the model emits,
+  // including tool calls and thinking segments, for example harmony. Empty for
+  // a model whose output needs no parsing beyond plain text.
+  parser() string
   // Structured GGUF metadata extracted from the model's configuration
   info() ollama.model.info
 }
 
 // Ollama model GGUF metadata
 //
-// Examine structured metadata from the GGUF model file, including
-// architecture details, training datasets, context window size, and
-// layer configuration. Fields are extracted from standardized GGUF
-// keys and normalized across architectures so that `contextLength`
-// works regardless of whether the underlying key is `llama.context_length`
+// Structured metadata from the GGUF model file, including architecture
+// details, training datasets, context window size, and layer
+// configuration. Fields are extracted from standardized GGUF keys and
+// normalized across architectures so that `contextLength` works
+// regardless of whether the underlying key is `llama.context_length`
 // or `qwen2.context_length`.
 private ollama.model.info @defaults("architecture parameterCount sizeLabel") {
   // Model architecture
@@ -133,17 +290,25 @@ private ollama.model.info @defaults("architecture parameterCount sizeLabel") {
   tokenizerModel string
 }
 
-// Ollama running model
+// Ollama model loaded in memory
 //
-// Examine a model currently loaded in memory on the Ollama instance.
-// The `model` field provides a typed reference to the installed
-// `ollama.model` resource for full metadata access including license,
+// Model currently resident on the Ollama instance, along with its
+// VRAM footprint, active context window, and the time it will be
+// unloaded from memory. Useful for auditing which models are live
+// and how much GPU memory they consume. The `model` field resolves
+// to the installed `ollama.model` for full metadata such as license,
 // capabilities, and GGUF info.
 ollama.runningModel @defaults("name") {
   // Model name (e.g., "llama3.1:latest")
   name string
   // Installed model with full metadata
   model() ollama.model
+  // Content digest (SHA-256) of the model loaded in memory
+  //
+  // Comparing this against the digest of the installed model of the same
+  // name detects content that was replaced under the same tag after the
+  // model was loaded.
+  digest string
   // Time when the model will be unloaded from memory
   expiresAt time
   // VRAM usage in bytes

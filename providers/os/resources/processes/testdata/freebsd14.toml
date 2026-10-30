@@ -1,0 +1,123 @@
+# ps output captured on a FreeBSD 14.5 EC2 instance; both commands ran in one session.
+# "/bin/sh - /dev/stdin daily" mimics how periodic(8) runs (a "#!/bin/sh -" script).
+[commands."ps axo pid,pcpu,pmem,vsz,rss,tty,stat,time,uid,command"]
+stdout = '''
+  PID  %CPU %MEM    VSZ    RSS TTY   STAT      TIME  UID COMMAND
+    0   0.0  0.0      0   1248 -      DLs   0:25.48    0 [kernel]
+    1   0.0  0.0  12652    144 -      SLs   0:00.03    0 /sbin/init
+    2   0.0  0.0      0     32 -       WL   0:00.78    0 [clock]
+    3   0.0  0.0      0     48 -       DL   0:00.00    0 [crypto]
+    4   0.0  0.0      0     48 -       DL   0:00.00    0 [cam]
+    5   0.0  0.0      0     16 -       DL   0:00.00    0 [busdma]
+    6   0.0  0.0      0    688 -       DL   0:04.98    0 [zfskern]
+    7   0.0  0.0      0     16 -       DL   0:00.39    0 [rand_harvestq]
+    8   0.0  0.0      0     48 -       DL   0:02.56    0 [pagedaemon]
+    9   0.0  0.0      0     16 -       DL   0:00.06    0 [vmdaemon]
+   10   0.0  0.0      0     16 -       DL   0:00.19    0 [audit]
+   11 197.8  0.0      0     32 -      RNL 174:05.45    0 [idle]
+   12   0.0  0.0      0    144 -       WL   0:01.98    0 [intr]
+   13   0.0  0.0      0     48 -       DL   0:00.01    0 [geom]
+   14   0.0  0.0      0     16 -       DL   0:00.00    0 [sequencer 00]
+   15   0.0  0.0      0     48 -       DL   0:00.05    0 [bufdaemon]
+   16   0.0  0.0      0     16 -       DL   0:00.02    0 [vnlru]
+   17   0.0  0.0      0     16 -       DL   0:00.03    0 [syncer]
+  355   0.0  0.0  14176   1048 -       Is   0:00.00    0 dhclient: system.syslog (dhclient)
+  358   0.0  0.0  14176    976 -       Is   0:00.01    0 dhclient: ena0 [priv] (dhclient)
+  448   0.0  0.0  14180   1216 -      ICs   0:00.00   65 dhclient: ena0 (dhclient)
+  483   0.0  0.0  14028      8 -     IWCs   0:00.00    0 /usr/sbin/rtsold -M /usr/local/libexec/rtsold-M -a
+  487   0.0  0.0  14024    536 -       Is   0:00.00    0 rtsold: rtsold.llflags (rtsold)
+  489   0.0  0.0  14024    536 -       Is   0:00.00    0 rtsold: rtsold.script (rtsold)
+  490   0.0  0.0  14024    536 -       Is   0:00.00    0 rtsold: rtsold.sendmsg (rtsold)
+  491   0.0  0.0  14024    536 -       Is   0:00.00    0 rtsold: system.syslog (rtsold)
+  661   0.0  0.0  15500    728 -       Ss   0:00.00    0 /sbin/devd
+ 1137   0.0  0.0  13892    920 -       Ss   0:00.74    0 /usr/sbin/syslogd -s
+ 1771   0.0  0.0  20340   1284 -       Ss   0:00.31  123 /usr/sbin/ntpd -p /var/db/ntp/ntpd.pid -c /etc/ntp.conf -f /var/db/ntp/ntpd.drift
+ 1794   0.0  0.0  13936    608 -       Ss   0:00.20    0 /usr/sbin/cron -s
+ 1830   0.0  0.1  23508   2468 -       Ss   0:02.94    0 sshd: /usr/sbin/sshd [listener] 0 of 10-100 startups (sshd)
+ 7894   0.0  0.0  22656      8 -      IWs   0:00.00    0 nginx: master process /usr/local/sbin/nginx
+ 7895   0.0  0.0  22656      8 -       IW   0:00.00   80 nginx: worker process (nginx)
+ 7946   0.0  0.0  13896   1076 -       Is   0:00.00    0 /usr/sbin/auditd
+29002   0.0  0.0  14400      8 -      IWs   0:00.00   88 /bin/sh /usr/local/bin/mysqld_safe --basedir=/usr/local --datadir=/var/db/mysql --pid-file=/var/db/mysql/freebsd.pid --user=mysql
+29115   0.0  8.3 958696 338424 -        I   0:07.35   88 /usr/local/libexec/mysqld --basedir=/usr/local --datadir=/var/db/mysql --plugin-dir=/usr/local/lib/mysql/plugin --log-error=freebsd.err --pid-file=/var/db/mysql/freebsd.pid
+38853   0.0  0.0 185856   1868 -       Ss   0:00.04  770 /usr/local/bin/postgres -D /var/db/postgres/data17
+38854   0.0  0.0 185856      8 -      IWs   0:00.00  770 (postgres)
+38855   0.0  0.0 185856    788 -       Ss   0:00.02  770 postgres: background writer  (postgres)
+38857   0.0  0.5 185856  21732 -       Ss   0:00.01  770 postgres: walwriter  (postgres)
+38858   0.0  0.0 186880   2012 -       Ss   0:00.00  770 postgres: autovacuum launcher  (postgres)
+38859   0.0  0.0 186880   1780 -       Ss   0:00.00  770 postgres: logical replication launcher  (postgres)
+43271   0.0  0.2  24040   8652 -       Ss   0:00.02    0 sshd-session: ec2-user [priv] (sshd-session)
+43273   0.1  0.2  24040   8920 -        S   0:00.00 1002 sshd-session: ec2-user@notty (sshd-session)
+43274   0.1  0.1  14400   2212 -       Ss   0:00.00 1002 sh -c (echo "sleep 5" | /bin/sh - /dev/stdin daily >/dev/null 2>&1 &) ; sleep 1; ps axo pid,pcpu,pmem,vsz,rss,tty,stat,time,uid,command; echo =====MARK=====; ps ax -o pid= -o comm=
+43277   0.2  0.1  14400   2212 -        S   0:00.00 1002 /bin/sh - /dev/stdin daily
+43279   0.2  0.0  13732   1700 -       SC   0:00.00 1002 sleep 5
+43280   0.0  0.1  14484   2516 -        R   0:00.00 1002 ps axo pid,pcpu,pmem,vsz,rss,tty,stat,time,uid,command
+ 1859   0.0  0.0  13864    536 ttyu0  Is+   0:00.00    0 /usr/libexec/getty 3wire ttyu0
+ 1851   0.0  0.0  13864    536 ttyv0  Is+   0:00.00    0 /usr/libexec/getty Pc ttyv0
+ 1852   0.0  0.0  13864    536 ttyv1  Is+   0:00.00    0 /usr/libexec/getty Pc ttyv1
+ 1853   0.0  0.0  13864    532 ttyv2  Is+   0:00.00    0 /usr/libexec/getty Pc ttyv2
+ 1854   0.0  0.0  13864    536 ttyv3  Is+   0:00.00    0 /usr/libexec/getty Pc ttyv3
+ 1855   0.0  0.0  13864    532 ttyv4  Is+   0:00.00    0 /usr/libexec/getty Pc ttyv4
+ 1856   0.0  0.0  13864    532 ttyv5  Is+   0:00.00    0 /usr/libexec/getty Pc ttyv5
+ 1857   0.0  0.0  13864    536 ttyv6  Is+   0:00.00    0 /usr/libexec/getty Pc ttyv6
+ 1858   0.0  0.0  13864    536 ttyv7  Is+   0:00.00    0 /usr/libexec/getty Pc ttyv7
+'''
+
+[commands."ps ax -o pid= -o comm="]
+stdout = '''
+    0 kernel
+    1 init
+    2 clock
+    3 crypto
+    4 cam
+    5 busdma
+    6 zfskern
+    7 rand_harvestq
+    8 pagedaemon
+    9 vmdaemon
+   10 audit
+   11 idle
+   12 intr
+   13 geom
+   14 sequencer 00
+   15 bufdaemon
+   16 vnlru
+   17 syncer
+  355 dhclient
+  358 dhclient
+  448 dhclient
+  483 rtsold
+  487 rtsold
+  489 rtsold
+  490 rtsold
+  491 rtsold
+  661 devd
+ 1137 syslogd
+ 1771 ntpd
+ 1794 cron
+ 1830 sshd
+ 7894 nginx
+ 7895 nginx
+ 7946 auditd
+29002 sh
+29115 mysqld
+38853 postgres
+38854 postgres
+38855 postgres
+38857 postgres
+38858 postgres
+38859 postgres
+43271 sshd-session
+43273 sshd-session
+43274 ps
+43277 sh
+43279 sleep
+ 1859 getty
+ 1851 getty
+ 1852 getty
+ 1853 getty
+ 1854 getty
+ 1855 getty
+ 1856 getty
+ 1857 getty
+ 1858 getty
+'''

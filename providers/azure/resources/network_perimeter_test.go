@@ -6,7 +6,7 @@ package resources
 import (
 	"testing"
 
-	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v10"
+	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -28,13 +28,13 @@ func TestNspAccessRuleFields(t *testing.T) {
 		props := &network.NspAccessRuleProperties{
 			Direction:         &dir,
 			ProvisioningState: &state,
-			AddressPrefixes:   []*string{strPtr("10.0.0.0/8"), strPtr("192.168.0.0/16")},
-			ServiceTags:       []*string{strPtr("AzureCloud")},
+			AddressPrefixes:   []*string{new("10.0.0.0/8"), new("192.168.0.0/16")},
+			ServiceTags:       []*string{new("AzureCloud")},
 			Subscriptions: []*network.SubscriptionID{
-				{ID: strPtr("/subscriptions/sub-a")},
+				{ID: new("/subscriptions/sub-a")},
 				nil,       // must be skipped, not panic
 				{ID: nil}, // nil inner ID must be skipped
-				{ID: strPtr("/subscriptions/sub-b")},
+				{ID: new("/subscriptions/sub-b")},
 			},
 		}
 		gotDir, gotState, prefixes, fqdns, subs, tags, emails := nspAccessRuleFields(props)
@@ -52,8 +52,8 @@ func TestNspAccessRuleFields(t *testing.T) {
 		dir := network.AccessRuleDirectionOutbound
 		props := &network.NspAccessRuleProperties{
 			Direction:                 &dir,
-			FullyQualifiedDomainNames: []*string{strPtr("api.example.com")},
-			EmailAddresses:            []*string{strPtr("ops@example.com")},
+			FullyQualifiedDomainNames: []*string{new("api.example.com")},
+			EmailAddresses:            []*string{new("ops@example.com")},
 		}
 		gotDir, _, _, fqdns, _, _, emails := nspAccessRuleFields(props)
 		assert.Equal(t, "Outbound", gotDir)

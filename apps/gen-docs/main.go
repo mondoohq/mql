@@ -8,7 +8,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/pflag"
-	"go.mondoo.com/mql/v13/apps/mql/cmd"
+	"go.mondoo.com/mql/apps/mql/cmd"
 )
 
 func main() {

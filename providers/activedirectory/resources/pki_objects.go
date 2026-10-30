@@ -5,13 +5,14 @@ package resources
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/go-ldap/ldap/v3"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/activedirectory/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/activedirectory/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // pkiObjectClass picks the most specific objectClass value from a multi-valued
@@ -28,15 +29,15 @@ func pkiObjectClass(classes []string) string {
 		"msPKI-Enterprise-Oid":   true,
 		"cRLDistributionPoint":   true,
 	}
-	for i := len(classes) - 1; i >= 0; i-- {
-		if known[classes[i]] {
-			return classes[i]
+	for _, class := range slices.Backward(classes) {
+		if known[class] {
+			return class
 		}
 	}
 	return classes[len(classes)-1]
 }
 
-func (a *mqlActivedirectory) pkiObjects() ([]interface{}, error) {
+func (a *mqlActivedirectory) pkiObjects() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.ActiveDirectoryConnection)
 
 	baseDN := fmt.Sprintf("CN=Public Key Services,CN=Services,%s", conn.ConfigDN())
@@ -64,12 +65,12 @@ func (a *mqlActivedirectory) pkiObjects() ([]interface{}, error) {
 	if err != nil {
 		if ldap.IsErrorWithCode(err, ldap.LDAPResultNoSuchObject) {
 			log.Warn().Str("baseDN", baseDN).Msg("CN=Public Key Services not found, skipping PKI objects")
-			return []interface{}{}, nil
+			return []any{}, nil
 		}
 		return nil, fmt.Errorf("failed to query PKI objects: %w", err)
 	}
 
-	res := make([]interface{}, 0, len(entries))
+	res := make([]any, 0, len(entries))
 	for _, entry := range entries {
 		dn := connection.GetStringAttr(entry, "distinguishedName")
 
@@ -105,7 +106,7 @@ func (a *mqlActivedirectory) pkiObjects() ([]interface{}, error) {
 			isVulnESC5 = len(dangerousPrincipals) > 0
 		}
 
-		principalItems := make([]interface{}, len(dangerousPrincipals))
+		principalItems := make([]any, len(dangerousPrincipals))
 		for i, p := range dangerousPrincipals {
 			principalItems[i] = p
 		}

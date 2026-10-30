@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/providers/os/resources/smbios"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/smbios"
 )
 
 // knownSentinels are SMBIOS serial number values that indicate the serial is not

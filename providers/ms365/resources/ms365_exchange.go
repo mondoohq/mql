@@ -9,23 +9,37 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"strings"
 	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
 )
 
 const (
 	outlookScope    = "https://outlook.office.com/.default"
 	complianceScope = "https://ps.compliance.protection.outlook.com/.default"
 )
+
+// Both report scripts follow the same two rules, so a failure reads as null or
+// as an error and never as "this tenant has none":
+//
+//   - a failed Connect-* ends the script with a non-zero exit code. Without a
+//     session every cmdlet after it fails, and each would otherwise be reported
+//     as an empty result.
+//   - every section runs its cmdlet with -ErrorAction Stop inside try/catch and
+//     falls back to $null. A cmdlet that fails non-terminating (a missing role,
+//     a cmdlet the tenant's plan lacks) still yields @(), which serializes to []
+//     and reports "none found" as fact; $null serializes to null and the field
+//     reads null instead. List sections keep @(...) INSIDE the try, because
+//     @($null) is a one-element array holding null, not null.
 
 var securityAndComplianceReport = `
 $appId = '%s'
@@ -35,10 +49,19 @@ $complianceToken = '%s'
 
 Install-Module -Name ExchangeOnlineManagement -Scope CurrentUser -Force
 Import-Module ExchangeOnlineManagement
-Connect-IPPSSession -AccessToken $complianceToken -AppID $appId -Organization $organization -ShowBanner:$false
-$DlpCompliancePolicy = @(Get-DlpCompliancePolicy)
-$DlpComplianceRule = @(Get-DlpComplianceRule)
-$securityAndCompliance = @{ DlpCompliancePolicy = $DlpCompliancePolicy; DlpComplianceRule = $DlpComplianceRule }
+try {
+  Connect-IPPSSession -AccessToken $complianceToken -AppID $appId -Organization $organization -ShowBanner:$false -ErrorAction Stop
+} catch {
+  [Console]::Error.WriteLine("unable to connect to security and compliance powershell: $_")
+  exit 1
+}
+$DlpCompliancePolicy = $null
+try { $DlpCompliancePolicy = @(Get-DlpCompliancePolicy -ErrorAction Stop) } catch { $DlpCompliancePolicy = $null }
+$DlpComplianceRule = $null
+try { $DlpComplianceRule = @(Get-DlpComplianceRule -ErrorAction Stop) } catch { $DlpComplianceRule = $null }
+$LabelPolicy = $null
+try { $LabelPolicy = @(Get-LabelPolicy -ErrorAction Stop) } catch { $LabelPolicy = $null }
+$securityAndCompliance = @{ DlpCompliancePolicy = $DlpCompliancePolicy; DlpComplianceRule = $DlpComplianceRule; LabelPolicy = $LabelPolicy }
 
 ConvertTo-Json -Depth 6 $securityAndCompliance
 `
@@ -51,66 +74,108 @@ $outlookToken= '%s'
 
 Install-Module -Name ExchangeOnlineManagement -Scope CurrentUser -Force
 Import-Module ExchangeOnlineManagement
-Connect-ExchangeOnline -AccessToken $outlookToken -AppID $appId -Organization $organization -ShowBanner:$false -ShowProgress:$false
-$MailboxAuditBypassAssociation = (Get-MailboxAuditBypassAssociation -ResultSize Unlimited)
+try {
+  Connect-ExchangeOnline -AccessToken $outlookToken -AppID $appId -Organization $organization -ShowBanner:$false -ShowProgress:$false -ErrorAction Stop
+} catch {
+  [Console]::Error.WriteLine("unable to connect to exchange online powershell: $_")
+  exit 1
+}
 
-$MalwareFilterPolicy = (Get-MalwareFilterPolicy)
-$HostedOutboundSpamFilterPolicy = (Get-HostedOutboundSpamFilterPolicy)
-$HostedContentFilterPolicy = (Get-HostedContentFilterPolicy)
-$TransportRule = (Get-TransportRule)
-$RemoteDomain = (Get-RemoteDomain Default)
-$SafeLinksPolicy = (Get-SafeLinksPolicy)
-$SafeAttachmentPolicy = (Get-SafeAttachmentPolicy)
-$OrganizationConfig = (Get-OrganizationConfig)
-$AuthenticationPolicy = (Get-AuthenticationPolicy)
-$AntiPhishPolicy = (Get-AntiPhishPolicy)
-$DkimSigningConfig = (Get-DkimSigningConfig)
-$OwaMailboxPolicy = (Get-OwaMailboxPolicy)
-$AdminAuditLogConfig = (Get-AdminAuditLogConfig)
-$PhishFilterPolicy = (Get-PhishFilterPolicy)
-$QuarantinePolicy = (Get-QuarantinePolicy)
-$JournalRule = (Get-JournalRule)
-$MailboxPlan = (Get-MailboxPlan)
-$RetentionPolicy = (Get-RetentionPolicy)
-$Mailbox = (Get-Mailbox -ResultSize Unlimited | Select-Object Identity, DisplayName, PrimarySmtpAddress, RecipientTypeDetails, AuditEnabled, AuditAdmin, AuditDelegate, AuditOwner, AuditLogAgeLimit)
-$AtpPolicyForO365 = (Get-AtpPolicyForO365)
-$SharingPolicy = (Get-SharingPolicy)
-$RoleAssignmentPolicy = (Get-RoleAssignmentPolicy)
-$ExternalInOutlook = (Get-ExternalInOutlook)
-$ExoMailbox = (Get-EXOMailbox -ResultSize Unlimited -RecipientTypeDetails SharedMailbox | Select-Object Identity, ExternalDirectoryObjectId)
-$TeamsProtectionPolicy = (Get-TeamsProtectionPolicy)
-$ReportSubmissionPolicy = (Get-ReportSubmissionPolicy)
-$TransportConfig = (Get-TransportConfig)
+$MailboxAuditBypassAssociation = $null
+try { $MailboxAuditBypassAssociation = @(Get-MailboxAuditBypassAssociation -ResultSize Unlimited -ErrorAction Stop) } catch { $MailboxAuditBypassAssociation = $null }
+$MalwareFilterPolicy = $null
+try { $MalwareFilterPolicy = @(Get-MalwareFilterPolicy -ErrorAction Stop) } catch { $MalwareFilterPolicy = $null }
+$HostedOutboundSpamFilterPolicy = $null
+try { $HostedOutboundSpamFilterPolicy = @(Get-HostedOutboundSpamFilterPolicy -ErrorAction Stop) } catch { $HostedOutboundSpamFilterPolicy = $null }
+$HostedContentFilterPolicy = $null
+try { $HostedContentFilterPolicy = @(Get-HostedContentFilterPolicy -ErrorAction Stop) } catch { $HostedContentFilterPolicy = $null }
+$TransportRule = $null
+try { $TransportRule = @(Get-TransportRule -ErrorAction Stop) } catch { $TransportRule = $null }
+$RemoteDomain = $null
+try { $RemoteDomain = @(Get-RemoteDomain Default -ErrorAction Stop) } catch { $RemoteDomain = $null }
+$SafeLinksPolicy = $null
+try { $SafeLinksPolicy = @(Get-SafeLinksPolicy -ErrorAction Stop) } catch { $SafeLinksPolicy = $null }
+$SafeAttachmentPolicy = $null
+try { $SafeAttachmentPolicy = @(Get-SafeAttachmentPolicy -ErrorAction Stop) } catch { $SafeAttachmentPolicy = $null }
+$OrganizationConfig = $null
+try { $OrganizationConfig = (Get-OrganizationConfig -ErrorAction Stop) } catch { $OrganizationConfig = $null }
+$AuthenticationPolicy = $null
+try { $AuthenticationPolicy = @(Get-AuthenticationPolicy -ErrorAction Stop) } catch { $AuthenticationPolicy = $null }
+$AntiPhishPolicy = $null
+try { $AntiPhishPolicy = @(Get-AntiPhishPolicy -ErrorAction Stop) } catch { $AntiPhishPolicy = $null }
+$DkimSigningConfig = $null
+try { $DkimSigningConfig = @(Get-DkimSigningConfig -ErrorAction Stop) } catch { $DkimSigningConfig = $null }
+$OwaMailboxPolicy = $null
+try { $OwaMailboxPolicy = @(Get-OwaMailboxPolicy -ErrorAction Stop) } catch { $OwaMailboxPolicy = $null }
+$AdminAuditLogConfig = $null
+try { $AdminAuditLogConfig = (Get-AdminAuditLogConfig -ErrorAction Stop) } catch { $AdminAuditLogConfig = $null }
+$PhishFilterPolicy = $null
+try { $PhishFilterPolicy = @(Get-PhishFilterPolicy -ErrorAction Stop) } catch { $PhishFilterPolicy = $null }
+$QuarantinePolicy = $null
+try { $QuarantinePolicy = @(Get-QuarantinePolicy -ErrorAction Stop) } catch { $QuarantinePolicy = $null }
+$JournalRule = $null
+try { $JournalRule = @(Get-JournalRule -ErrorAction Stop) } catch { $JournalRule = $null }
+$MailboxPlan = $null
+try { $MailboxPlan = @(Get-MailboxPlan -ErrorAction Stop) } catch { $MailboxPlan = $null }
+$RetentionPolicy = $null
+try { $RetentionPolicy = @(Get-RetentionPolicy -ErrorAction Stop) } catch { $RetentionPolicy = $null }
+$Mailbox = $null
+try { $Mailbox = @(Get-Mailbox -ResultSize Unlimited -ErrorAction Stop | Select-Object Identity, DisplayName, PrimarySmtpAddress, RecipientTypeDetails, AuditEnabled, AuditAdmin, AuditDelegate, AuditOwner, AuditLogAgeLimit) } catch { $Mailbox = $null }
+$AtpPolicyForO365 = $null
+try { $AtpPolicyForO365 = @(Get-AtpPolicyForO365 -ErrorAction Stop) } catch { $AtpPolicyForO365 = $null }
+$SharingPolicy = $null
+try { $SharingPolicy = @(Get-SharingPolicy -ErrorAction Stop) } catch { $SharingPolicy = $null }
+$RoleAssignmentPolicy = $null
+try { $RoleAssignmentPolicy = @(Get-RoleAssignmentPolicy -ErrorAction Stop) } catch { $RoleAssignmentPolicy = $null }
+$ExternalInOutlook = $null
+try { $ExternalInOutlook = @(Get-ExternalInOutlook -ErrorAction Stop) } catch { $ExternalInOutlook = $null }
+$ExoMailbox = $null
+try { $ExoMailbox = @(Get-EXOMailbox -ResultSize Unlimited -RecipientTypeDetails SharedMailbox -ErrorAction Stop | Select-Object Identity, ExternalDirectoryObjectId) } catch { $ExoMailbox = $null }
+$TeamsProtectionPolicy = $null
+try { $TeamsProtectionPolicy = @(Get-TeamsProtectionPolicy -ErrorAction Stop) } catch { $TeamsProtectionPolicy = $null }
+$ReportSubmissionPolicy = $null
+try { $ReportSubmissionPolicy = @(Get-ReportSubmissionPolicy -ErrorAction Stop) } catch { $ReportSubmissionPolicy = $null }
+$TransportConfig = $null
+try { $TransportConfig = (Get-TransportConfig -ErrorAction Stop) } catch { $TransportConfig = $null }
+$EmailTenantSettings = $null
+try { $EmailTenantSettings = (Get-EmailTenantSettings -ErrorAction Stop) } catch { $EmailTenantSettings = $null }
+$EOPProtectionPolicyRule = $null
+try { $EOPProtectionPolicyRule = @(Get-EOPProtectionPolicyRule -ErrorAction Stop) } catch { $EOPProtectionPolicyRule = $null }
+$ATPProtectionPolicyRule = $null
+try { $ATPProtectionPolicyRule = @(Get-ATPProtectionPolicyRule -ErrorAction Stop) } catch { $ATPProtectionPolicyRule = $null }
 
 $exchangeOnline = New-Object PSObject
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name MalwareFilterPolicy -Value @($MalwareFilterPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name HostedOutboundSpamFilterPolicy -Value @($HostedOutboundSpamFilterPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name HostedContentFilterPolicy -Value @($HostedContentFilterPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name TransportRule -Value @($TransportRule)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name RemoteDomain -Value  @($RemoteDomain)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name SafeLinksPolicy -Value @($SafeLinksPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name SafeAttachmentPolicy -Value @($SafeAttachmentPolicy)
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name MalwareFilterPolicy -Value $MalwareFilterPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name HostedOutboundSpamFilterPolicy -Value $HostedOutboundSpamFilterPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name HostedContentFilterPolicy -Value $HostedContentFilterPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name TransportRule -Value $TransportRule
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name RemoteDomain -Value $RemoteDomain
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name SafeLinksPolicy -Value $SafeLinksPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name SafeAttachmentPolicy -Value $SafeAttachmentPolicy
 Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name OrganizationConfig -Value $OrganizationConfig
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name AuthenticationPolicy -Value @($AuthenticationPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name AntiPhishPolicy -Value @($AntiPhishPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name DkimSigningConfig -Value @($DkimSigningConfig)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name OwaMailboxPolicy -Value @($OwaMailboxPolicy)
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name AuthenticationPolicy -Value $AuthenticationPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name AntiPhishPolicy -Value $AntiPhishPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name DkimSigningConfig -Value $DkimSigningConfig
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name OwaMailboxPolicy -Value $OwaMailboxPolicy
 Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name AdminAuditLogConfig -Value $AdminAuditLogConfig
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name PhishFilterPolicy -Value @($PhishFilterPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name QuarantinePolicy -Value @($QuarantinePolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name JournalRule -Value @($JournalRule)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name MailboxPlan -Value @($MailboxPlan)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name RetentionPolicy -Value @($RetentionPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name Mailbox -Value @($Mailbox)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name AtpPolicyForO365 -Value @($AtpPolicyForO365)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name SharingPolicy -Value @($SharingPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name RoleAssignmentPolicy -Value @($RoleAssignmentPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name ExternalInOutlook -Value @($ExternalInOutlook)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name ExoMailbox -Value @($ExoMailbox)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name TeamsProtectionPolicy -Value @($TeamsProtectionPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name ReportSubmissionPolicy -Value @($ReportSubmissionPolicy)
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name PhishFilterPolicy -Value $PhishFilterPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name QuarantinePolicy -Value $QuarantinePolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name JournalRule -Value $JournalRule
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name MailboxPlan -Value $MailboxPlan
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name RetentionPolicy -Value $RetentionPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name Mailbox -Value $Mailbox
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name AtpPolicyForO365 -Value $AtpPolicyForO365
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name SharingPolicy -Value $SharingPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name RoleAssignmentPolicy -Value $RoleAssignmentPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name ExternalInOutlook -Value $ExternalInOutlook
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name ExoMailbox -Value $ExoMailbox
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name TeamsProtectionPolicy -Value $TeamsProtectionPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name ReportSubmissionPolicy -Value $ReportSubmissionPolicy
 Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name TransportConfig -Value $TransportConfig
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name MailboxAuditBypassAssociation -Value @($MailboxAuditBypassAssociation)
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name MailboxAuditBypassAssociation -Value $MailboxAuditBypassAssociation
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name EmailTenantSettings -Value $EmailTenantSettings
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name EOPProtectionPolicyRule -Value $EOPProtectionPolicyRule
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name ATPProtectionPolicyRule -Value $ATPProtectionPolicyRule
 
 Disconnect-ExchangeOnline -Confirm:$false
 
@@ -148,6 +213,10 @@ type ExchangeOnlineReport struct {
 	Mailbox                []MailboxWithAudit        `json:"Mailbox"`
 
 	MailboxAuditBypassAssociation []MailboxAuditBypassAssociation `json:"MailboxAuditBypassAssociation"`
+
+	EmailTenantSettings     any   `json:"EmailTenantSettings"`
+	EOPProtectionPolicyRule []any `json:"EOPProtectionPolicyRule"`
+	ATPProtectionPolicyRule []any `json:"ATPProtectionPolicyRule"`
 }
 
 type MailboxAuditBypassAssociation struct {
@@ -158,6 +227,7 @@ type MailboxAuditBypassAssociation struct {
 type SecurityAndComplianceReport struct {
 	DlpCompliancePolicy []any `json:"DlpCompliancePolicy"`
 	DlpComplianceRule   []any `json:"DlpComplianceRule"`
+	LabelPolicy         []any `json:"LabelPolicy"`
 }
 
 type MailboxWithAudit struct {
@@ -197,11 +267,13 @@ type ExoMailbox struct {
 }
 
 type TeamsProtectionPolicy struct {
-	ZapEnabled bool `json:"ZapEnabled"`
-	IsValid    bool `json:"IsValid"`
+	Identity   string `json:"Identity"`
+	ZapEnabled bool   `json:"ZapEnabled"`
+	IsValid    bool   `json:"IsValid"`
 }
 
 type ReportSubmissionPolicy struct {
+	Identity                                    string   `json:"Identity"`
 	ReportJunkToCustomizedAddress               bool     `json:"ReportJunkToCustomizedAddress"`
 	ReportNotJunkToCustomizedAddress            bool     `json:"ReportNotJunkToCustomizedAddress"`
 	ReportPhishToCustomizedAddress              bool     `json:"ReportPhishToCustomizedAddress"`
@@ -278,15 +350,31 @@ func (r *mqlMs365Exchangeonline) getOrg() (string, error) {
 	return org, nil
 }
 
+// exchangeEntryID builds the cache key for one row of an Exchange cmdlet
+// result. Exchange objects carry an Identity, which is what every other policy
+// resource in this package keys on, but a cmdlet shape that omits it must still
+// produce a distinct key per row: CreateResource is first-wins on
+// resourceName+"\x00"+__id, so rows sharing a key collapse into the first one
+// and the rest of the collection is silently discarded. Fall back to the row's
+// position so that can never happen. Both forms are synthetic and stay hidden --
+// none of these resources declares a public `id` field.
+func exchangeEntryID(prefix, identity string, index int) string {
+	if identity != "" {
+		return prefix + "-" + identity
+	}
+	return fmt.Sprintf("%s-#%d", prefix, index)
+}
+
 // Related to TeamsProtectionPolicy as a separate function
 func convertTeamsProtectionPolicy(r *mqlMs365Exchangeonline, data []*TeamsProtectionPolicy) ([]any, error) {
 	var result []any
-	for _, t := range data {
+	for i, t := range data {
 		if t == nil {
 			continue
 		}
 		policy, err := CreateResource(r.MqlRuntime, "ms365.exchangeonline.teamsProtectionPolicy",
 			map[string]*llx.RawData{
+				"__id":       llx.StringData(exchangeEntryID("teamsProtectionPolicy", t.Identity, i)),
 				"zapEnabled": llx.BoolData(t.ZapEnabled),
 				"isValid":    llx.BoolData(t.IsValid),
 			})
@@ -301,12 +389,13 @@ func convertTeamsProtectionPolicy(r *mqlMs365Exchangeonline, data []*TeamsProtec
 // Related to ReportSubmissionPolicy as a separate function
 func convertReportSubmissionPolicy(r *mqlMs365Exchangeonline, data []*ReportSubmissionPolicy) ([]any, error) {
 	var result []any
-	for _, t := range data {
+	for i, t := range data {
 		if t == nil {
 			continue
 		}
 		policy, err := CreateResource(r.MqlRuntime, "ms365.exchangeonline.reportSubmissionPolicy",
 			map[string]*llx.RawData{
+				"__id":                                        llx.StringData(exchangeEntryID("reportSubmissionPolicy", t.Identity, i)),
 				"reportJunkToCustomizedAddress":               llx.BoolData(t.ReportJunkToCustomizedAddress),
 				"reportNotJunkToCustomizedAddress":            llx.BoolData(t.ReportNotJunkToCustomizedAddress),
 				"reportPhishToCustomizedAddress":              llx.BoolData(t.ReportPhishToCustomizedAddress),
@@ -393,6 +482,128 @@ func convertRetentionPolicies(r *mqlMs365Exchangeonline, data []RetentionPolicy)
 	return result, nil
 }
 
+// fetchExchangeReport prefers the Exchange admin endpoint and falls back to the
+// PowerShell module when that endpoint cannot serve the tenant, so a scan that
+// works today keeps working. Both paths produce the same report: the module is
+// a client for the same endpoint, so the cmdlet objects and their property
+// names are identical either way.
+func (r *mqlMs365Exchangeonline) fetchExchangeReport(ctx context.Context, conn *connection.Ms365Connection, organization string, token string) (*ExchangeOnlineReport, error) {
+	client := newExchangeRestClient(exchangeAdminApiHost, conn.TenantId(), organization, token)
+
+	report, failures, err := fetchExchangeReportViaRest(ctx, client)
+	if err == nil {
+		// a cmdlet that failed leaves its field null, which is what the
+		// PowerShell report did with a cmdlet that errored mid-script
+		for name, failure := range failures {
+			log.Warn().Err(failure).Str("section", name).
+				Msg("unable to collect exchange online section, the matching field will be null")
+		}
+		return report, nil
+	}
+
+	// PowerShell is a client for this same endpoint, so a throttle or an outage
+	// would only repeat itself over a slower transport and be reported as a
+	// PowerShell failure. Surface the real cause instead.
+	if exchangeErrorIsTransient(err) {
+		return nil, err
+	}
+
+	log.Warn().Err(err).Msg("exchange online admin endpoint unavailable, falling back to powershell")
+	return r.fetchExchangeReportViaPowershell(conn, organization, token)
+}
+
+func (r *mqlMs365Exchangeonline) fetchExchangeReportViaPowershell(conn *connection.Ms365Connection, organization string, token string) (*ExchangeOnlineReport, error) {
+	fmtScript := fmt.Sprintf(exchangeReport, conn.ClientId(), organization, conn.TenantId(), token)
+	res, err := conn.CheckAndRunPowershellScript(fmtScript)
+	if err != nil {
+		return nil, err
+	}
+
+	if res.ExitStatus != 0 {
+		data, err := io.ReadAll(res.Stderr)
+		if err != nil {
+			return nil, err
+		}
+
+		if strings.Contains(strings.ToLower(string(data)), "unauthorized") {
+			return nil, errors.New("access denied, please ensure the credentials have the right permissions in Azure AD")
+		}
+
+		logger.DebugDumpJSON("exchange-online-report", data)
+		return nil, fmt.Errorf("failed to generate exchange online report (exit code %d): %s", res.ExitStatus, string(data))
+	}
+
+	data, err := io.ReadAll(res.Stdout)
+	if err != nil {
+		return nil, err
+	}
+	logger.DebugDumpJSON("exchange-online-report", data)
+
+	report := &ExchangeOnlineReport{}
+	if err := json.Unmarshal(data, report); err != nil {
+		return nil, err
+	}
+	return report, nil
+}
+
+// isAbsentSection reports whether an Exchange report section was never
+// populated, i.e. its cmdlet did not run or failed.
+//
+// fetchExchangeReport only errors when EVERY section fails, so a report with
+// one denied cmdlet is returned successfully with that one field left nil. The
+// distinction matters because a section that ran and matched nothing decodes to
+// a non-nil empty slice: absent means "not collected", empty means "collected,
+// none found".
+//
+// Sections declared as `any` are assigned from a []any, so a failed one can
+// hold a TYPED nil, which does not compare equal to nil. Check reflectively so
+// both shapes read as absent.
+func isAbsentSection(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Map, reflect.Pointer, reflect.Interface, reflect.Func:
+		return rv.IsNil()
+	}
+	return false
+}
+
+// exchangeNullableList builds the value for a list field sourced from one
+// report section. An absent section reads null rather than as an empty list.
+//
+// convert.JsonToDictSlice(nil) returns (nil, nil) -- no error -- and assigning
+// that with StateIsSet but no StateIsNull makes ToDataRes take the non-null
+// path, so the field renders as [] rather than null. That reports "this tenant
+// has none of these" as fact for data that was never collected.
+func exchangeNullableList(isAbsent bool, data []any, err error) plugin.TValue[[]any] {
+	if isAbsent {
+		return plugin.TValue[[]any]{State: plugin.StateIsSet | plugin.StateIsNull}
+	}
+	return plugin.TValue[[]any]{Data: data, State: plugin.StateIsSet, Error: err}
+}
+
+// exchangeNullableDict is exchangeNullableList for a scalar dict field.
+// convert.JsonToDict(nil) behaves the same way, rendering as {} rather than
+// null.
+func exchangeNullableDict(isAbsent bool, data any, err error) plugin.TValue[any] {
+	if isAbsent {
+		return plugin.TValue[any]{State: plugin.StateIsSet | plugin.StateIsNull}
+	}
+	return plugin.TValue[any]{Data: data, State: plugin.StateIsSet, Error: err}
+}
+
+// exchangeNullableBool is exchangeNullableList for a bool derived from a
+// section. A derived false is indistinguishable from a real one, so an absent
+// section must read null instead.
+func exchangeNullableBool(isAbsent bool, data bool, err error) plugin.TValue[bool] {
+	if isAbsent {
+		return plugin.TValue[bool]{State: plugin.StateIsSet | plugin.StateIsNull}
+	}
+	return plugin.TValue[bool]{Data: data, State: plugin.StateIsSet, Error: err}
+}
+
 func (r *mqlMs365Exchangeonline) getExchangeReport() error {
 	conn := r.MqlRuntime.Connection.(*connection.Ms365Connection)
 
@@ -424,36 +635,8 @@ func (r *mqlMs365Exchangeonline) getExchangeReport() error {
 		return errHandler(err)
 	}
 
-	fmtScript := fmt.Sprintf(exchangeReport, conn.ClientId(), organization, conn.TenantId(), outlookToken.Token)
-	res, err := conn.CheckAndRunPowershellScript(fmtScript)
+	report, err := r.fetchExchangeReport(ctx, conn, organization, outlookToken.Token)
 	if err != nil {
-		return errHandler(err)
-	}
-	report := &ExchangeOnlineReport{}
-	if res.ExitStatus == 0 {
-		data, err := io.ReadAll(res.Stdout)
-		if err != nil {
-			return errHandler(err)
-		}
-		logger.DebugDumpJSON("exchange-online-report", data)
-
-		err = json.Unmarshal(data, report)
-		if err != nil {
-			return errHandler(err)
-		}
-	} else {
-		data, err := io.ReadAll(res.Stderr)
-		if err != nil {
-			return errHandler(err)
-		}
-
-		str := string(data)
-		if strings.Contains(strings.ToLower(str), "unauthorized") {
-			return errHandler(errors.New("access denied, please ensure the credentials have the right permissions in Azure AD"))
-		}
-
-		logger.DebugDumpJSON("exchange-online-report", data)
-		err = fmt.Errorf("failed to generate exchange online report (exit code %d): %s", res.ExitStatus, string(data))
 		return errHandler(err)
 	}
 
@@ -461,7 +644,7 @@ func (r *mqlMs365Exchangeonline) getExchangeReport() error {
 	mailboxesWithAudit := []any{}
 	var mailboxesWithAuditErr error
 	for _, m := range report.Mailbox {
-		mql, err := CreateResource(r.MqlRuntime, "ms365.exchangeonline.mailbox",
+		mql, err := CreateResource(r.MqlRuntime, "ms365.exchangeonline.mailboxWithAudit",
 			map[string]*llx.RawData{
 				"__id":                 llx.StringData(m.Identity),
 				"identity":             llx.StringData(m.Identity),
@@ -480,74 +663,63 @@ func (r *mqlMs365Exchangeonline) getExchangeReport() error {
 		}
 		mailboxesWithAudit = append(mailboxesWithAudit, mql)
 	}
-	r.MailboxesWithAudit = plugin.TValue[[]any]{Data: mailboxesWithAudit, State: plugin.StateIsSet, Error: mailboxesWithAuditErr}
+	r.MailboxesWithAudit = exchangeNullableList(isAbsentSection(report.Mailbox), mailboxesWithAudit, mailboxesWithAuditErr)
 
 	malwareFilterPolicy, malwareFilterPolicyErr := convert.JsonToDictSlice(report.MalwareFilterPolicy)
-	r.MalwareFilterPolicy = plugin.TValue[[]any]{Data: malwareFilterPolicy, State: plugin.StateIsSet, Error: malwareFilterPolicyErr}
+	r.MalwareFilterPolicy = exchangeNullableList(isAbsentSection(report.MalwareFilterPolicy), malwareFilterPolicy, malwareFilterPolicyErr)
 
 	hostedOutboundSpamFilterPolicy, hostedOutboundSpamFilterPolicyErr := convert.JsonToDictSlice(report.HostedOutboundSpamFilterPolicy)
-	r.HostedOutboundSpamFilterPolicy = plugin.TValue[[]any]{Data: hostedOutboundSpamFilterPolicy, State: plugin.StateIsSet, Error: hostedOutboundSpamFilterPolicyErr}
-
-	hostedContentFilterPolicy, hostedContentFilterPolicyErr := convert.JsonToDictSlice(report.HostedContentFilterPolicy)
-	r.HostedContentFilterPolicy = plugin.TValue[[]any]{Data: hostedContentFilterPolicy, State: plugin.StateIsSet, Error: hostedContentFilterPolicyErr}
+	r.HostedOutboundSpamFilterPolicy = exchangeNullableList(isAbsentSection(report.HostedOutboundSpamFilterPolicy), hostedOutboundSpamFilterPolicy, hostedOutboundSpamFilterPolicyErr)
 
 	transportRule, transportRuleErr := convert.JsonToDictSlice(report.TransportRule)
-	r.TransportRule = plugin.TValue[[]any]{Data: transportRule, State: plugin.StateIsSet, Error: transportRuleErr}
-
-	remoteDomain, remoteDomainErr := convert.JsonToDictSlice(report.RemoteDomain)
-	r.RemoteDomain = plugin.TValue[[]any]{Data: remoteDomain, State: plugin.StateIsSet, Error: remoteDomainErr}
+	r.TransportRule = exchangeNullableList(isAbsentSection(report.TransportRule), transportRule, transportRuleErr)
 
 	safeLinksPolicy, safeLinksPolicyErr := convert.JsonToDictSlice(report.SafeLinksPolicy)
-	r.SafeLinksPolicy = plugin.TValue[[]any]{Data: safeLinksPolicy, State: plugin.StateIsSet, Error: safeLinksPolicyErr}
+	r.SafeLinksPolicy = exchangeNullableList(isAbsentSection(report.SafeLinksPolicy), safeLinksPolicy, safeLinksPolicyErr)
 
 	safeAttachmentPolicy, safeAttachmentPolicyErr := convert.JsonToDictSlice(report.SafeAttachmentPolicy)
-	r.SafeAttachmentPolicy = plugin.TValue[[]any]{Data: safeAttachmentPolicy, State: plugin.StateIsSet, Error: safeAttachmentPolicyErr}
+	r.SafeAttachmentPolicy = exchangeNullableList(isAbsentSection(report.SafeAttachmentPolicy), safeAttachmentPolicy, safeAttachmentPolicyErr)
 
 	organizationConfig, organizationConfigErr := convert.JsonToDict(report.OrganizationConfig)
-	r.OrganizationConfig = plugin.TValue[any]{Data: organizationConfig, State: plugin.StateIsSet, Error: organizationConfigErr}
-
-	authenticationPolicy, authenticationPolicyErr := convert.JsonToDictSlice(report.AuthenticationPolicy)
-	r.AuthenticationPolicy = plugin.TValue[[]any]{Data: authenticationPolicy, State: plugin.StateIsSet, Error: authenticationPolicyErr}
+	r.OrganizationConfig = exchangeNullableDict(isAbsentSection(report.OrganizationConfig), organizationConfig, organizationConfigErr)
 
 	antiPhishPolicy, antiPhishPolicyErr := convert.JsonToDictSlice(report.AntiPhishPolicy)
-	r.AntiPhishPolicy = plugin.TValue[[]any]{Data: antiPhishPolicy, State: plugin.StateIsSet, Error: antiPhishPolicyErr}
+	r.AntiPhishPolicy = exchangeNullableList(isAbsentSection(report.AntiPhishPolicy), antiPhishPolicy, antiPhishPolicyErr)
 
 	dkimSigningConfig, dkimSigningConfigErr := convert.JsonToDictSlice(report.DkimSigningConfig)
-	r.DkimSigningConfig = plugin.TValue[[]any]{Data: dkimSigningConfig, State: plugin.StateIsSet, Error: dkimSigningConfigErr}
+	r.DkimSigningConfig = exchangeNullableList(isAbsentSection(report.DkimSigningConfig), dkimSigningConfig, dkimSigningConfigErr)
 
 	owaMailboxPolicy, owaMailboxPolicyErr := convert.JsonToDictSlice(report.OwaMailboxPolicy)
-	r.OwaMailboxPolicy = plugin.TValue[[]any]{Data: owaMailboxPolicy, State: plugin.StateIsSet, Error: owaMailboxPolicyErr}
+	r.OwaMailboxPolicy = exchangeNullableList(isAbsentSection(report.OwaMailboxPolicy), owaMailboxPolicy, owaMailboxPolicyErr)
 
 	adminAuditLogConfig, adminAuditLogConfigErr := convert.JsonToDict(report.AdminAuditLogConfig)
-	r.AdminAuditLogConfig = plugin.TValue[any]{Data: adminAuditLogConfig, State: plugin.StateIsSet, Error: adminAuditLogConfigErr}
-	r.UnifiedAuditLogIngestionEnabled = plugin.TValue[bool]{Data: dictBoolValue(adminAuditLogConfig, "unifiedAuditLogIngestionEnabled"), State: plugin.StateIsSet, Error: adminAuditLogConfigErr}
+	r.AdminAuditLogConfig = exchangeNullableDict(isAbsentSection(report.AdminAuditLogConfig), adminAuditLogConfig, adminAuditLogConfigErr)
+	r.UnifiedAuditLogIngestionEnabled = exchangeNullableBool(isAbsentSection(report.AdminAuditLogConfig), dictBoolValue(adminAuditLogConfig, "unifiedAuditLogIngestionEnabled"), adminAuditLogConfigErr)
 
 	phishFilterPolicy, phishFilterPolicyErr := convert.JsonToDictSlice(report.PhishFilterPolicy)
-	r.PhishFilterPolicy = plugin.TValue[[]any]{Data: phishFilterPolicy, State: plugin.StateIsSet, Error: phishFilterPolicyErr}
-
-	quarantinePolicy, quarantinePolicyErr := convert.JsonToDictSlice(report.QuarantinePolicy)
-	r.QuarantinePolicy = plugin.TValue[[]any]{Data: quarantinePolicy, State: plugin.StateIsSet, Error: quarantinePolicyErr}
+	r.PhishFilterPolicy = exchangeNullableList(isAbsentSection(report.PhishFilterPolicy), phishFilterPolicy, phishFilterPolicyErr)
 
 	mailbox, mailboxErr := convert.JsonToDictSlice(report.Mailbox)
-	r.Mailbox = plugin.TValue[[]any]{Data: mailbox, State: plugin.StateIsSet, Error: mailboxErr}
+	r.Mailbox = exchangeNullableList(isAbsentSection(report.Mailbox), mailbox, mailboxErr)
 
 	atpPolicyForO365, atpPolicyForO365Err := convert.JsonToDictSlice(report.AtpPolicyForO365)
-	r.AtpPolicyForO365 = plugin.TValue[[]any]{Data: atpPolicyForO365, State: plugin.StateIsSet, Error: atpPolicyForO365Err}
+	r.AtpPolicyForO365 = exchangeNullableList(isAbsentSection(report.AtpPolicyForO365), atpPolicyForO365, atpPolicyForO365Err)
 
 	sharingPolicy, sharingPolicyErr := convert.JsonToDictSlice(report.SharingPolicy)
-	r.SharingPolicy = plugin.TValue[[]any]{Data: sharingPolicy, State: plugin.StateIsSet, Error: sharingPolicyErr}
+	r.SharingPolicy = exchangeNullableList(isAbsentSection(report.SharingPolicy), sharingPolicy, sharingPolicyErr)
 
 	roleAssignmentPolicy, roleAssignmentPolicyErr := convert.JsonToDictSlice(report.RoleAssignmentPolicy)
-	r.RoleAssignmentPolicy = plugin.TValue[[]any]{Data: roleAssignmentPolicy, State: plugin.StateIsSet, Error: roleAssignmentPolicyErr}
+	r.RoleAssignmentPolicy = exchangeNullableList(isAbsentSection(report.RoleAssignmentPolicy), roleAssignmentPolicy, roleAssignmentPolicyErr)
 
 	externalInOutlook := []any{}
 	var externalInOutlookErr error
-	for _, e := range report.ExternalInOutlook {
+	for i, e := range report.ExternalInOutlook {
 		if e == nil {
 			continue
 		}
 		mql, err := CreateResource(r.MqlRuntime, "ms365.exchangeonline.externalSender",
 			map[string]*llx.RawData{
+				"__id":      llx.StringData(exchangeEntryID("externalSender", e.Identity, i)),
 				"identity":  llx.StringData(e.Identity),
 				"enabled":   llx.BoolData(e.Enabled),
 				"allowList": llx.ArrayData(llx.TArr2Raw(e.AllowList), types.Any),
@@ -559,16 +731,17 @@ func (r *mqlMs365Exchangeonline) getExchangeReport() error {
 
 		externalInOutlook = append(externalInOutlook, mql)
 	}
-	r.ExternalInOutlook = plugin.TValue[[]any]{Data: externalInOutlook, State: plugin.StateIsSet, Error: externalInOutlookErr}
+	r.ExternalInOutlook = exchangeNullableList(isAbsentSection(report.ExternalInOutlook), externalInOutlook, externalInOutlookErr)
 
 	sharedMailboxes := []any{}
 	var sharedMailboxesErr error
-	for _, m := range report.ExoMailbox {
+	for i, m := range report.ExoMailbox {
 		if m == nil {
 			continue
 		}
 		mql, err := CreateResource(r.MqlRuntime, "ms365.exchangeonline.exoMailbox",
 			map[string]*llx.RawData{
+				"__id":                      llx.StringData(exchangeEntryID("exoMailbox", m.Identity, i)),
 				"identity":                  llx.StringData(m.Identity),
 				"externalDirectoryObjectId": llx.StringData(m.ExternalDirectoryObjectId),
 			})
@@ -579,7 +752,7 @@ func (r *mqlMs365Exchangeonline) getExchangeReport() error {
 
 		sharedMailboxes = append(sharedMailboxes, mql)
 	}
-	r.SharedMailboxes = plugin.TValue[[]any]{Data: sharedMailboxes, State: plugin.StateIsSet, Error: sharedMailboxesErr}
+	r.SharedMailboxes = exchangeNullableList(isAbsentSection(report.ExoMailbox), sharedMailboxes, sharedMailboxesErr)
 
 	// Related to TeamsProtectionPolicy
 	if report.TeamsProtectionPolicy != nil {
@@ -622,13 +795,14 @@ func (r *mqlMs365Exchangeonline) getExchangeReport() error {
 	}
 
 	transportConfig, transportConfigErr := convert.JsonToDict(report.TransportConfig)
-	r.TransportConfig = plugin.TValue[any]{Data: transportConfig, State: plugin.StateIsSet, Error: transportConfigErr}
+	r.TransportConfig = exchangeNullableDict(isAbsentSection(report.TransportConfig), transportConfig, transportConfigErr)
 
 	mailboxAuditBypassAssociations := []any{}
 	var mailboxAuditBypassAssociationErr error
-	for _, assoc := range report.MailboxAuditBypassAssociation {
+	for i, assoc := range report.MailboxAuditBypassAssociation {
 		mql, err := CreateResource(r.MqlRuntime, "ms365.exchangeonlineMailboxAuditBypassAssociation",
 			map[string]*llx.RawData{
+				"__id":               llx.StringData(exchangeEntryID("mailboxAuditBypassAssociation", assoc.Name, i)),
 				"name":               llx.StringData(assoc.Name),
 				"auditBypassEnabled": llx.BoolData(assoc.AuditBypassEnabled),
 			})
@@ -638,68 +812,70 @@ func (r *mqlMs365Exchangeonline) getExchangeReport() error {
 		}
 		mailboxAuditBypassAssociations = append(mailboxAuditBypassAssociations, mql)
 	}
-	r.MailboxAuditBypassAssociation = plugin.TValue[[]any]{Data: mailboxAuditBypassAssociations, State: plugin.StateIsSet, Error: mailboxAuditBypassAssociationErr}
+	r.MailboxAuditBypassAssociation = exchangeNullableList(isAbsentSection(report.MailboxAuditBypassAssociation), mailboxAuditBypassAssociations, mailboxAuditBypassAssociationErr)
 
 	// resource views of the policies above, decoded from the same payload (see
 	// ms365_exchange_policies.go). The deprecated []dict accessors keep
 	// returning every property; these expose the security-relevant subset.
-	//
-	// assignPolicies mirrors the null/empty distinction used by the other typed
-	// resources above: a field absent from the report (isNull) becomes a null
-	// value rather than an empty list. The isNull check must be made by the
-	// caller on the concrete report field, since a nil []any boxed into an
-	// `any` parameter would no longer compare equal to nil.
-	assignPolicies := func(isNull bool, data []any, err error) plugin.TValue[[]any] {
-		if isNull {
-			return plugin.TValue[[]any]{State: plugin.StateIsSet | plugin.StateIsNull}
-		}
-		return plugin.TValue[[]any]{Data: data, State: plugin.StateIsSet, Error: err}
-	}
+	// They go through exchangeNullableList for the same absent-vs-empty
+	// distinction as the raw dict fields above.
 
 	transportRules, transportRulesErr := convertTransportRules(r, report.TransportRule)
-	r.TransportRules = assignPolicies(report.TransportRule == nil, transportRules, transportRulesErr)
+	r.TransportRules = exchangeNullableList(isAbsentSection(report.TransportRule), transportRules, transportRulesErr)
 
 	antiPhishPolicies, antiPhishPoliciesErr := convertAntiPhishPolicies(r, report.AntiPhishPolicy)
-	r.AntiPhishPolicies = assignPolicies(report.AntiPhishPolicy == nil, antiPhishPolicies, antiPhishPoliciesErr)
+	r.AntiPhishPolicies = exchangeNullableList(isAbsentSection(report.AntiPhishPolicy), antiPhishPolicies, antiPhishPoliciesErr)
 
 	safeLinksPolicies, safeLinksPoliciesErr := convertSafeLinksPolicies(r, report.SafeLinksPolicy)
-	r.SafeLinksPolicies = assignPolicies(report.SafeLinksPolicy == nil, safeLinksPolicies, safeLinksPoliciesErr)
+	r.SafeLinksPolicies = exchangeNullableList(isAbsentSection(report.SafeLinksPolicy), safeLinksPolicies, safeLinksPoliciesErr)
 
 	safeAttachmentPolicies, safeAttachmentPoliciesErr := convertSafeAttachmentPolicies(r, report.SafeAttachmentPolicy)
-	r.SafeAttachmentPolicies = assignPolicies(report.SafeAttachmentPolicy == nil, safeAttachmentPolicies, safeAttachmentPoliciesErr)
+	r.SafeAttachmentPolicies = exchangeNullableList(isAbsentSection(report.SafeAttachmentPolicy), safeAttachmentPolicies, safeAttachmentPoliciesErr)
 
 	malwareFilterPolicies, malwareFilterPoliciesErr := convertMalwareFilterPolicies(r, report.MalwareFilterPolicy)
-	r.MalwareFilterPolicies = assignPolicies(report.MalwareFilterPolicy == nil, malwareFilterPolicies, malwareFilterPoliciesErr)
+	r.MalwareFilterPolicies = exchangeNullableList(isAbsentSection(report.MalwareFilterPolicy), malwareFilterPolicies, malwareFilterPoliciesErr)
 
 	hostedContentFilterPolicies, hostedContentFilterPoliciesErr := convertHostedContentFilterPolicies(r, report.HostedContentFilterPolicy)
-	r.HostedContentFilterPolicies = assignPolicies(report.HostedContentFilterPolicy == nil, hostedContentFilterPolicies, hostedContentFilterPoliciesErr)
+	r.HostedContentFilterPolicies = exchangeNullableList(isAbsentSection(report.HostedContentFilterPolicy), hostedContentFilterPolicies, hostedContentFilterPoliciesErr)
 
 	hostedOutboundSpamFilterPolicies, hostedOutboundSpamFilterPoliciesErr := convertHostedOutboundSpamFilterPolicies(r, report.HostedOutboundSpamFilterPolicy)
-	r.HostedOutboundSpamFilterPolicies = assignPolicies(report.HostedOutboundSpamFilterPolicy == nil, hostedOutboundSpamFilterPolicies, hostedOutboundSpamFilterPoliciesErr)
+	r.HostedOutboundSpamFilterPolicies = exchangeNullableList(isAbsentSection(report.HostedOutboundSpamFilterPolicy), hostedOutboundSpamFilterPolicies, hostedOutboundSpamFilterPoliciesErr)
 
 	dkimSigningConfigs, dkimSigningConfigsErr := convertDkimSigningConfigs(r, report.DkimSigningConfig)
-	r.DkimSigningConfigs = assignPolicies(report.DkimSigningConfig == nil, dkimSigningConfigs, dkimSigningConfigsErr)
+	r.DkimSigningConfigs = exchangeNullableList(isAbsentSection(report.DkimSigningConfig), dkimSigningConfigs, dkimSigningConfigsErr)
 
 	authenticationPolicies, authenticationPoliciesErr := convertAuthenticationPolicies(r, report.AuthenticationPolicy)
-	r.AuthenticationPolicies = assignPolicies(report.AuthenticationPolicy == nil, authenticationPolicies, authenticationPoliciesErr)
+	r.AuthenticationPolicies = exchangeNullableList(isAbsentSection(report.AuthenticationPolicy), authenticationPolicies, authenticationPoliciesErr)
 
 	owaMailboxPolicies, owaMailboxPoliciesErr := convertOwaMailboxPolicies(r, report.OwaMailboxPolicy)
-	r.OwaMailboxPolicies = assignPolicies(report.OwaMailboxPolicy == nil, owaMailboxPolicies, owaMailboxPoliciesErr)
+	r.OwaMailboxPolicies = exchangeNullableList(isAbsentSection(report.OwaMailboxPolicy), owaMailboxPolicies, owaMailboxPoliciesErr)
 
 	remoteDomains, remoteDomainsErr := convertRemoteDomains(r, report.RemoteDomain)
-	r.RemoteDomains = assignPolicies(report.RemoteDomain == nil, remoteDomains, remoteDomainsErr)
+	r.RemoteDomains = exchangeNullableList(isAbsentSection(report.RemoteDomain), remoteDomains, remoteDomainsErr)
 
 	quarantinePolicies, quarantinePoliciesErr := convertQuarantinePolicies(r, report.QuarantinePolicy)
-	r.QuarantinePolicies = assignPolicies(report.QuarantinePolicy == nil, quarantinePolicies, quarantinePoliciesErr)
+	r.QuarantinePolicies = exchangeNullableList(isAbsentSection(report.QuarantinePolicy), quarantinePolicies, quarantinePoliciesErr)
 
 	atpPoliciesForO365, atpPoliciesForO365Err := convertAtpPoliciesForO365(r, report.AtpPolicyForO365)
-	r.AtpPoliciesForO365 = assignPolicies(report.AtpPolicyForO365 == nil, atpPoliciesForO365, atpPoliciesForO365Err)
+	r.AtpPoliciesForO365 = exchangeNullableList(isAbsentSection(report.AtpPolicyForO365), atpPoliciesForO365, atpPoliciesForO365Err)
 
 	sharingPolicies, sharingPoliciesErr := convertSharingPolicies(r, report.SharingPolicy)
-	r.SharingPolicies = assignPolicies(report.SharingPolicy == nil, sharingPolicies, sharingPoliciesErr)
+	r.SharingPolicies = exchangeNullableList(isAbsentSection(report.SharingPolicy), sharingPolicies, sharingPoliciesErr)
 
 	roleAssignmentPolicies, roleAssignmentPoliciesErr := convertRoleAssignmentPolicies(r, report.RoleAssignmentPolicy)
-	r.RoleAssignmentPolicies = assignPolicies(report.RoleAssignmentPolicy == nil, roleAssignmentPolicies, roleAssignmentPoliciesErr)
+	r.RoleAssignmentPolicies = exchangeNullableList(isAbsentSection(report.RoleAssignmentPolicy), roleAssignmentPolicies, roleAssignmentPoliciesErr)
+
+	emailTenantSettings, emailTenantSettingsErr := convert.JsonToDict(report.EmailTenantSettings)
+	r.PriorityAccountProtectionEnabled = exchangeNullableBool(isAbsentSection(report.EmailTenantSettings),
+		dictBoolValue(emailTenantSettings, "enablePriorityAccountProtection"), emailTenantSettingsErr)
+
+	// a preset is turned on by one rule of each kind, so a partial answer cannot
+	// support "the preset is not in use" -- if either cmdlet did not run, the
+	// whole list reads null rather than a list missing half its rows
+	protectionPolicyRules, protectionPolicyRulesErr := convertProtectionPolicyRules(r, report.EOPProtectionPolicyRule, report.ATPProtectionPolicyRule)
+	r.ProtectionPolicyRules = exchangeNullableList(
+		isAbsentSection(report.EOPProtectionPolicyRule) || isAbsentSection(report.ATPProtectionPolicyRule),
+		protectionPolicyRules, protectionPolicyRulesErr)
 
 	r.fetched = true
 	return nil
@@ -840,24 +1016,22 @@ func (r *mqlMs365Exchangeonline) reportSubmissionPolicies() ([]any, error) {
 func (m *mqlMs365ExchangeonlineExoMailbox) user() (*mqlMicrosoftUser, error) {
 	externalId := m.ExternalDirectoryObjectId.Data
 	if externalId == "" {
-		return nil, errors.New("no externalDirectoryObjectId provided, cannot find user for mailbox")
+		m.User.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	microsoft, err := m.MqlRuntime.CreateResource(m.MqlRuntime, "microsoft", map[string]*llx.RawData{})
 	if err != nil {
 		return nil, err
 	}
-	mqlMicrosoft := microsoft.(*mqlMicrosoft)
-	users := mqlMicrosoft.GetUsers()
-	if users.Error != nil {
-		return nil, users.Error
+	user, err := microsoft.(*mqlMicrosoft).listedUser(externalId)
+	if err != nil {
+		return nil, err
 	}
-	for _, u := range users.Data.List.Data {
-		mqlUser := u.(*mqlMicrosoftUser)
-		if mqlUser.Id.Data == externalId {
-			return mqlUser, nil
-		}
+	if user == nil {
+		m.User.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
-	return nil, errors.New("cannot find user for exchange mailbox")
+	return user, nil
 }
 
 func (r *mqlMs365Exchangeonline) mailboxesWithAudit() ([]any, error) {
@@ -945,14 +1119,14 @@ func (r *mqlMs365Exchangeonline) securityAndCompliance() (*mqlMs365Exchangeonlin
 	return resource.(*mqlMs365ExchangeonlineSecurityAndCompliance), nil
 }
 
-func (r *mqlMs365ExchangeonlineSecurityAndCompliance) dlpCompliancePolicies() ([]any, error) {
-	report, err := r.getSecurityAndComplianceReport()
-	if err != nil {
-		return nil, err
-	}
-	return convert.JsonToDictSlice(report.DlpCompliancePolicy)
+func (r *mqlMs365Exchangeonline) mailboxAuditBypassAssociation() ([]any, error) {
+	return nil, r.getExchangeReport()
 }
 
-func (r *mqlMs365Exchangeonline) mailboxAuditBypassAssociation() ([]any, error) {
+func (r *mqlMs365Exchangeonline) priorityAccountProtectionEnabled() (bool, error) {
+	return false, r.getExchangeReport()
+}
+
+func (r *mqlMs365Exchangeonline) protectionPolicyRules() ([]any, error) {
 	return nil, r.getExchangeReport()
 }

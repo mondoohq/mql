@@ -148,13 +148,34 @@ func TestTimezoneFromFS_EtcTimezone(t *testing.T) {
 }
 
 func TestTimezoneFromFS_EtcTIMEZONE(t *testing.T) {
-	// Simulate a Solaris/AIX system with /etc/TIMEZONE
+	// Simulate a Solaris system with /etc/TIMEZONE
 	fs := afero.NewMemMapFs()
 	require.NoError(t, afero.WriteFile(fs, "/etc/TIMEZONE", []byte("# timezone config\nTZ=US/Eastern\n"), 0o644))
 
 	tz, err := timezoneFromFS(fs)
 	require.NoError(t, err)
 	assert.Equal(t, "US/Eastern", tz)
+}
+
+// /etc/environment on AIX 7.3 TL4 SP2 after `chtz Europe/Berlin`, without its
+// comment header. AIX has neither /etc/localtime nor /etc/TIMEZONE.
+const aixEtcEnvironment = `PATH=/usr/bin:/etc:/usr/sbin:/usr/ucb:/usr/bin/X11:/sbin:/usr/java8_64/jre/bin:/usr/java8_64/bin
+TZ=Europe/Berlin
+LANG=en_US
+LOCPATH=/usr/lib/nls/loc
+NLSPATH=/usr/lib/nls/msg/%L/%N:/usr/lib/nls/msg/%L/%N.cat:/usr/lib/nls/msg/%l.%c/%N:/usr/lib/nls/msg/%l.%c/%N.cat
+LC__FASTMSG=true
+ODMDIR=/etc/objrepos
+CLCMD_PASSTHRU=1
+`
+
+func TestTimezoneFromFS_AixEtcEnvironment(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/etc/environment", []byte(aixEtcEnvironment), 0o644))
+
+	tz, err := timezoneFromFS(fs)
+	require.NoError(t, err)
+	assert.Equal(t, "Europe/Berlin", tz)
 }
 
 func TestTimezoneFromFS_LocaltimeBinaryMatch(t *testing.T) {
@@ -351,4 +372,172 @@ func TestTimezoneFromFS_NonUTCDockerImage(t *testing.T) {
 	tz, err := timezoneFromFS(fs)
 	require.NoError(t, err)
 	assert.Equal(t, "Asia/Tokyo", tz)
+}
+
+// LocationFromFS is what lets a timestamp written without an offset be read in
+// the asset's own zone rather than the scanner's. A nil return is the signal to
+// fall back, so it must not be confused with UTC.
+func TestLocationFromFS(t *testing.T) {
+	t.Run("zone from /etc/timezone", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		require.NoError(t, afero.WriteFile(fs, "/etc/timezone", []byte("Europe/Berlin\n"), 0o644))
+
+		loc := LocationFromFS(fs)
+		require.NotNil(t, loc)
+		assert.Equal(t, "Europe/Berlin", loc.String())
+	})
+
+	t.Run("UTC container image", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		require.NoError(t, afero.WriteFile(fs, "/etc/timezone", []byte("Etc/UTC\n"), 0o644))
+
+		loc := LocationFromFS(fs)
+		require.NotNil(t, loc)
+
+		// The point of resolving the asset's zone: the same naive timestamp must
+		// name a different instant here than it would in the scanner's zone.
+		parsed, err := time.ParseInLocation("2006-01-02 15:04:05", "2026-05-09 14:23:32", loc)
+		require.NoError(t, err)
+		assert.Equal(t, "2026-05-09T14:23:32Z", parsed.UTC().Format(time.RFC3339))
+	})
+
+	t.Run("no zone information", func(t *testing.T) {
+		assert.Nil(t, LocationFromFS(afero.NewMemMapFs()),
+			"an asset with no zone must report nil so the caller can fall back")
+	})
+
+	t.Run("unknown zone name", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		require.NoError(t, afero.WriteFile(fs, "/etc/timezone", []byte("Mars/Olympus_Mons\n"), 0o644))
+
+		assert.Nil(t, LocationFromFS(fs), "a zone the scanner cannot load must report nil, not UTC")
+	})
+}
+
+// A Debian host whose /etc/localtime was replaced by a copy of another zone
+// (cp, not timedatectl) keeps the old name in /etc/timezone. The copied
+// TZif file is what libc reads, so it wins over the stale name.
+func TestTimezoneFromFS_CopiedLocaltimeBeatsStaleEtcTimezone(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	kathmandu := buildTZifV2("<+0545>-5:45")
+	require.NoError(t, afero.WriteFile(fs, "/etc/localtime", kathmandu, 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/timezone", []byte("Etc/UTC\n"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/usr/share/zoneinfo/Etc/UTC", buildTZifV2("UTC0"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/usr/share/zoneinfo/Asia/Kathmandu", kathmandu, 0o644))
+
+	tz, err := timezoneFromFS(fs)
+	require.NoError(t, err)
+	assert.Equal(t, "Asia/Kathmandu", tz)
+}
+
+// When /etc/timezone names the zone the copied /etc/localtime really is, its
+// name is kept, even where the TZif footer alone would map to another zone
+// sharing the same rules (CST-8 maps to Asia/Shanghai).
+func TestTimezoneFromFS_CopiedLocaltimeConfirmsEtcTimezone(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	taipei := buildTZifV2("CST-8")
+	require.NoError(t, afero.WriteFile(fs, "/etc/localtime", taipei, 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/timezone", []byte("Asia/Taipei\n"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/usr/share/zoneinfo/Asia/Taipei", taipei, 0o644))
+
+	tz, err := timezoneFromFS(fs)
+	require.NoError(t, err)
+	assert.Equal(t, "Asia/Taipei", tz)
+}
+
+// Without the zone file there is nothing to prove /etc/timezone stale, so it
+// is still trusted (minimal images that copy localtime but ship no tzdata).
+func TestTimezoneFromFS_CopiedLocaltimeWithoutZoneinfoKeepsEtcTimezone(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/etc/localtime", buildTZifV2("CST-8"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/timezone", []byte("Asia/Taipei\n"), 0o644))
+
+	tz, err := timezoneFromFS(fs)
+	require.NoError(t, err)
+	assert.Equal(t, "Asia/Taipei", tz)
+}
+
+// A name in /etc/timezone that climbs out of the zoneinfo tree must not be
+// confirmed by comparing /etc/localtime with itself.
+func TestTimezoneFromFS_EtcTimezoneOutsideZoneinfoIsNotConfirmed(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	tokyo := buildTZifV2("JST-9")
+	require.NoError(t, afero.WriteFile(fs, "/etc/localtime", tokyo, 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/timezone", []byte("../../../etc/localtime\n"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/usr/share/zoneinfo/Asia/Tokyo", tokyo, 0o644))
+
+	tz, err := timezoneFromFS(fs)
+	require.NoError(t, err)
+	assert.Equal(t, "Asia/Tokyo", tz)
+}
+
+func TestParseUTCOffset(t *testing.T) {
+	valid := map[string]int64{
+		"+0000\n": 0,
+		"+0200":   7200,
+		"-0500":   -18000,
+		"+0530":   19800,
+		"+0545":   20700,
+		"-0330":   -12600,
+		"+1345":   49500,
+		"+05:30":  19800,
+		"+1400":   50400,  // Pacific/Kiritimati
+		"-1200":   -43200, // Etc/GMT+12
+	}
+	for in, want := range valid {
+		got, ok := parseUTCOffset(in)
+		assert.True(t, ok, in)
+		assert.Equal(t, want, got, in)
+	}
+	// "%z" is what a date without %z support prints back
+	for _, in := range []string{"", "%z", "z", "CEST", "0200", "+02", "+2500", "+0260", "+-100", "+02000", "+1401", "+1459", "+1500", "-1201", "-1300"} {
+		_, ok := parseUTCOffset(in)
+		assert.False(t, ok, in)
+	}
+}
+
+func TestLocalize(t *testing.T) {
+	utc := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+
+	t.Run("offset from the zone when the system reported none", func(t *testing.T) {
+		lt, off := localize(&utc, "Europe/Berlin", nil)
+		require.NotNil(t, off)
+		assert.Equal(t, int64(7200), *off)
+		assert.Equal(t, "2026-07-01T14:00:00+02:00", lt.Format(time.RFC3339))
+	})
+
+	t.Run("reported offset is kept", func(t *testing.T) {
+		reported := int64(3600)
+		_, off := localize(&utc, "Europe/Berlin", &reported)
+		require.NotNil(t, off)
+		assert.Equal(t, int64(3600), *off)
+	})
+
+	t.Run("no zone and no reported offset is null, not zero", func(t *testing.T) {
+		lt, off := localize(&utc, "", nil)
+		assert.Nil(t, off)
+		assert.Equal(t, utc, *lt)
+	})
+
+	t.Run("unknown zone is shown at the reported offset", func(t *testing.T) {
+		reported := int64(-18000)
+		lt, off := localize(&utc, "XYZ", &reported)
+		require.NotNil(t, off)
+		assert.Equal(t, "2026-07-01T07:00:00-05:00", lt.Format(time.RFC3339))
+	})
+
+	t.Run("no time still gives the zone's offset", func(t *testing.T) {
+		lt, off := localize(nil, "Asia/Kolkata", nil)
+		assert.Nil(t, lt)
+		require.NotNil(t, off)
+		assert.Equal(t, int64(19800), *off)
+	})
+}
+
+func TestFallbackTimezone(t *testing.T) {
+	zero, east, west := int64(0), int64(3600), int64(-18000)
+	assert.Equal(t, "UTC", fallbackTimezone(nil), "no offset reported")
+	assert.Equal(t, "UTC", fallbackTimezone(&zero))
+	assert.Equal(t, "", fallbackTimezone(&east), "a non-zero offset is not UTC")
+	assert.Equal(t, "", fallbackTimezone(&west), "a non-zero offset is not UTC")
 }

@@ -8,12 +8,14 @@ package keypair
 
 import (
 	"crypto/ed25519"
-	"math/rand"
+	"crypto/rand"
+	"encoding/binary"
+	"errors"
 
 	"golang.org/x/crypto/ssh"
 )
 
-func MarshalED25519PrivateKey(key ed25519.PrivateKey) []byte {
+func MarshalED25519PrivateKey(key ed25519.PrivateKey) ([]byte, error) {
 	// Add our key header (followed by a null byte)
 	magic := append([]byte("openssh-key-v1"), 0)
 
@@ -37,8 +39,13 @@ func MarshalED25519PrivateKey(key ed25519.PrivateKey) []byte {
 		Pad     []byte `ssh:"rest"`
 	}{}
 
-	// Set our check ints
-	ci := rand.Uint32()
+	// Set our check ints. These live inside a private key file, so source them
+	// from crypto/rand rather than math/rand.
+	var ciBytes [4]byte
+	if _, err := rand.Read(ciBytes[:]); err != nil {
+		return nil, err
+	}
+	ci := binary.BigEndian.Uint32(ciBytes[:])
 	pk1.Check1 = ci
 	pk1.Check2 = ci
 
@@ -48,8 +55,7 @@ func MarshalED25519PrivateKey(key ed25519.PrivateKey) []byte {
 	// Add the pubkey to the optionally-encrypted block
 	pk, ok := key.Public().(ed25519.PublicKey)
 	if !ok {
-		// fmt.Fprintln(os.Stderr, "ed25519.PublicKey type assertion failed on an ed25519 public key. This should never ever happen.")
-		return nil
+		return nil, errors.New("ed25519.PublicKey type assertion failed on an ed25519 public key")
 	}
 	pubKey := []byte(pk)
 	pk1.Pub = pubKey
@@ -68,7 +74,7 @@ func MarshalED25519PrivateKey(key ed25519.PrivateKey) []byte {
 	pk1.Pad = make([]byte, padLen)
 
 	// Padding is a sequence of bytes like: 1, 2, 3...
-	for i := 0; i < padLen; i++ {
+	for i := range padLen {
 		pk1.Pad[i] = byte(i + 1)
 	}
 
@@ -87,5 +93,5 @@ func MarshalED25519PrivateKey(key ed25519.PrivateKey) []byte {
 
 	magic = append(magic, ssh.Marshal(w)...)
 
-	return magic
+	return magic, nil
 }

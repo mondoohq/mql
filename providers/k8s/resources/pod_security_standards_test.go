@@ -8,12 +8,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	corev1 "k8s.io/api/core/v1"
 )
 
 // boolPtr is defined in provenance_test.go.
-func int64Ptr(v int64) *int64 { return &v }
+//
+//go:fix inline
+func int64Ptr(v int64) *int64 { return new(v) }
 
 // restrictedSpec returns a pod spec that satisfies the restricted profile. Each
 // control test mutates a copy of it to drop exactly one requirement.
@@ -25,8 +27,8 @@ func restrictedSpec() *corev1.PodSpec {
 		Containers: []corev1.Container{{
 			Name: "app",
 			SecurityContext: &corev1.SecurityContext{
-				AllowPrivilegeEscalation: boolPtr(false),
-				RunAsNonRoot:             boolPtr(true),
+				AllowPrivilegeEscalation: new(false),
+				RunAsNonRoot:             new(true),
 				RunAsUser:                int64Ptr(1000),
 				Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
 			},
@@ -50,7 +52,7 @@ func TestPodSecurityStandard_Levels(t *testing.T) {
 
 	t.Run("privileged container is privileged level", func(t *testing.T) {
 		spec := restrictedSpec()
-		container(spec).Privileged = boolPtr(true)
+		container(spec).Privileged = new(true)
 		assert.False(t, specMeetsPodSecurityBaseline(spec), "baseline")
 		assert.Equal(t, "privileged", specPodSecurityStandard(spec))
 	})
@@ -78,7 +80,7 @@ func TestPodSecurityBaseline_Controls(t *testing.T) {
 		name   string
 		mutate func(*corev1.PodSpec)
 	}{
-		{"privileged", func(s *corev1.PodSpec) { container(s).Privileged = boolPtr(true) }},
+		{"privileged", func(s *corev1.PodSpec) { container(s).Privileged = new(true) }},
 		{"hostNetwork", func(s *corev1.PodSpec) { s.HostNetwork = true }},
 		{"hostPort", func(s *corev1.PodSpec) {
 			s.Containers[0].Ports = []corev1.ContainerPort{{HostPort: 8080}}
@@ -105,8 +107,14 @@ func TestPodSecurityBaseline_Controls(t *testing.T) {
 		{"unsafe sysctl", func(s *corev1.PodSpec) {
 			s.SecurityContext.Sysctls = []corev1.Sysctl{{Name: "kernel.msgmax", Value: "65536"}}
 		}},
+		{"hostPath volume", func(s *corev1.PodSpec) {
+			s.Volumes = []corev1.Volume{{
+				Name:     "host",
+				HostPath: &corev1.HostPathVolumeSource{Path: "/"},
+			}}
+		}},
 		{"windows hostProcess", func(s *corev1.PodSpec) {
-			container(s).WindowsOptions = &corev1.WindowsSecurityContextOptions{HostProcess: boolPtr(true)}
+			container(s).WindowsOptions = &corev1.WindowsSecurityContextOptions{HostProcess: new(true)}
 		}},
 	}
 	for _, tc := range cases {
@@ -127,17 +135,11 @@ func TestPodSecurityRestricted_Controls(t *testing.T) {
 		name   string
 		mutate func(*corev1.PodSpec)
 	}{
-		{"hostPath volume", func(s *corev1.PodSpec) {
-			s.Volumes = []corev1.Volume{{
-				Name:         "host",
-				VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/"}},
-			}}
-		}},
 		{"allowPrivilegeEscalation unset", func(s *corev1.PodSpec) {
 			container(s).AllowPrivilegeEscalation = nil
 		}},
 		{"allowPrivilegeEscalation true", func(s *corev1.PodSpec) {
-			container(s).AllowPrivilegeEscalation = boolPtr(true)
+			container(s).AllowPrivilegeEscalation = new(true)
 		}},
 		{"runAsNonRoot unset", func(s *corev1.PodSpec) {
 			s.SecurityContext.RunAsNonRoot = nil
@@ -231,4 +233,37 @@ func findPSSReader(t *testing.T, list []any, name string) pssReader {
 	}
 	require.FailNowf(t, "workload not found", "%q not found", name)
 	return nil
+}
+
+// The Pod Security Standards "Sysctls" allowed-values list grows between
+// Kubernetes releases, and a stale copy reports ordinary workloads as baseline
+// violations. Each name below was accepted at baseline by a live 1.34
+// apiserver, and pods setting them were admitted by the kubelet, which only
+// allows its own safe set.
+func TestPodSecurityBaselineAllowsCurrentSafeSysctls(t *testing.T) {
+	for _, name := range []string{
+		"net.ipv4.tcp_keepalive_time",  // added in 1.29
+		"net.ipv4.tcp_fin_timeout",     // added in 1.29
+		"net.ipv4.tcp_keepalive_intvl", // added in 1.29
+		"net.ipv4.tcp_keepalive_probes",
+		"net.ipv4.tcp_rmem", // added in 1.32
+		"net.ipv4.tcp_wmem",
+	} {
+		t.Run(name, func(t *testing.T) {
+			spec := restrictedSpec()
+			spec.SecurityContext.Sysctls = []corev1.Sysctl{{Name: name, Value: "600"}}
+			assert.True(t, specBaselineSysctls(spec), "%s is a safe sysctl", name)
+			assert.True(t, specMeetsPodSecurityBaseline(spec),
+				"%s must not drop the spec out of baseline", name)
+		})
+	}
+}
+
+// A sysctl outside the safe set must still fail, or the test above would pass
+// on an implementation that simply allowed everything.
+func TestPodSecurityBaselineRejectsUnsafeSysctl(t *testing.T) {
+	spec := restrictedSpec()
+	spec.SecurityContext.Sysctls = []corev1.Sysctl{{Name: "kernel.shmall", Value: "1"}}
+	assert.False(t, specBaselineSysctls(spec))
+	assert.Equal(t, "privileged", specPodSecurityStandard(spec))
 }

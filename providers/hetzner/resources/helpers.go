@@ -11,32 +11,54 @@ import (
 	"time"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
-	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/hetzner/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/hetzner/connection"
+	"go.mondoo.com/mql/types"
 )
 
-// translateHcloudError handles common hcloud error codes. It returns nil for
-// permission/not-found errors so callers can treat them as "no data" instead
-// of failing the whole query, mirroring the AWS provider's Is400AccessDenied
-// pattern.
+// translateHcloudError decides which hcloud failures are a real answer and
+// which are an error.
+//
+// Only a missing collection is an answer. A denial is not: a token that was
+// refused the read has established nothing about what exists, so reporting an
+// empty list would assert the project has no firewalls, no volumes, no
+// servers, which is a different and unverified claim. Every list in this
+// provider runs through paginate and therefore through here, so the choice
+// applies to all of them at once.
 func translateHcloudError(err error) error {
 	if err == nil {
 		return nil
 	}
-	var hErr hcloud.Error
-	if errors.As(err, &hErr) {
+	if hErr, ok := errors.AsType[hcloud.Error](err); ok {
 		switch hErr.Code {
-		case hcloud.ErrorCodeUnauthorized, hcloud.ErrorCodeForbidden:
-			log.Warn().Err(err).Msg("hetzner> permission denied; returning empty result")
-			return nil
 		case hcloud.ErrorCodeNotFound:
+			// A collection endpoint answering 404 means the product is not
+			// provisioned for this project at all, which genuinely is none.
+			// Storage Boxes answer this way on a plain cloud project.
 			return nil
 		}
 	}
 	return err
+}
+
+// isRemovedAPIEndpoint reports the answer Hetzner gives once an endpoint has
+// been withdrawn: HTTP 410 with the deprecated_api_endpoint code.
+//
+// This is deliberately not folded into translateHcloudError, which answers a
+// different question. A collection that 404s is genuinely empty, because the
+// product is not provisioned for the project. A withdrawn endpoint establishes
+// nothing at all: there may well be resources, there is simply no longer any
+// way to ask. Reporting those as an empty list would be the same false claim
+// as reporting a denial that way.
+func isRemovedAPIEndpoint(err error) bool {
+	if err == nil {
+		return false
+	}
+	if hErr, ok := errors.AsType[hcloud.Error](err); ok {
+		return hErr.Code == hcloud.ErrorDeprecatedAPIEndpoint
+	}
+	return false
 }
 
 func conn(runtime *plugin.Runtime) *connection.HetznerConnection {
@@ -45,6 +67,25 @@ func conn(runtime *plugin.Runtime) *connection.HetznerConnection {
 
 func ctx() context.Context {
 	return context.Background()
+}
+
+// requireIDArg reads the numeric id an init looks its resource up by.
+//
+// Without one there is nothing to look up. Handing the args back unchanged
+// would have the runtime build the resource from them anyway: a blank
+// resource whose fields are all unset, which every query then reads as null
+// with no word of why. That covers a bare `hetzner.server`, a lookup keyed on
+// a field the init does not search by, like `hetzner.server(name: "web")`,
+// and an id of the wrong type.
+func requireIDArg(args map[string]*llx.RawData, resource string) (int64, error) {
+	if id, ok := idArg(args, "id"); ok {
+		return id, nil
+	}
+	return 0, missingIDErr(resource)
+}
+
+func missingIDErr(resource string) error {
+	return fmt.Errorf("hetzner.%s requires a numeric id, for example hetzner.%s(id: 12345)", resource, resource)
 }
 
 // paginate accumulates all pages of an hcloud list endpoint. It retries from
@@ -56,14 +97,21 @@ func paginate[T any](
 ) ([]T, error) {
 	var out []T
 	opts := hcloud.ListOpts{Page: 1, PerPage: 50}
+	read := false
 	for {
 		page, resp, err := list(opts)
 		if err != nil {
-			if translateHcloudError(err) == nil {
+			// A collection that is absent from the start is genuinely empty:
+			// the product is not provisioned for this project. One that
+			// disappears part way through is not. Returning the pages read so
+			// far would present a truncated list as the whole of it, which is
+			// the same silent-undercount this helper exists to prevent.
+			if translateHcloudError(err) == nil && !read {
 				return out, nil
 			}
 			return nil, err
 		}
+		read = true
 		out = append(out, page...)
 		if resp == nil || resp.Meta.Pagination == nil || resp.Meta.Pagination.NextPage == 0 {
 			break
@@ -154,6 +202,25 @@ func timePtrUnix0(t time.Time) *time.Time {
 	return &t
 }
 
+// deprecationDict renders an hcloud DeprecationInfo as a dict with RFC3339
+// timestamp strings. Times are formatted to strings because the dict-to-
+// primitive converter only accepts bool/int64/float64/string/[]any/map values;
+// a raw time.Time would fail serialization when the field is queried. Returns an
+// empty dict when the resource is not deprecated.
+func deprecationDict(d *hcloud.DeprecationInfo) map[string]any {
+	out := map[string]any{}
+	if d == nil {
+		return out
+	}
+	if !d.Announced.IsZero() {
+		out["announced"] = d.Announced.Format(time.RFC3339)
+	}
+	if !d.UnavailableAfter.IsZero() {
+		out["unavailableAfter"] = d.UnavailableAfter.Format(time.RFC3339)
+	}
+	return out
+}
+
 func dnsPtrSliceFromMap(m map[string]string) []any {
 	if len(m) == 0 {
 		return []any{}
@@ -205,6 +272,11 @@ func idArg(args map[string]*llx.RawData, key string) (int64, bool) {
 	return n, true
 }
 
+// errResourceNotFound marks an init that was given an id Hetzner does not
+// know. It lets a caller holding a reference that may outlive its target tell
+// "that resource is gone" apart from a failed lookup.
+var errResourceNotFound = errors.New("not found")
+
 func notFoundErr(resource string, id int64) error {
-	return fmt.Errorf("hetzner %s not found: %d", resource, id)
+	return fmt.Errorf("hetzner %s %w: %d", resource, errResourceNotFound, id)
 }

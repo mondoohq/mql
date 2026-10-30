@@ -4,11 +4,12 @@
 package resources
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 type mqlHetznerImageInternal struct {
@@ -56,6 +57,7 @@ func newMqlHetznerImage(runtime *plugin.Runtime, img *hcloud.Image) (*mqlHetzner
 		"rapidDeploy":  llx.BoolData(img.RapidDeploy),
 		"protection":   llx.DictData(protectionDict(img.Protection.Delete)),
 		"deprecated":   llx.TimeDataPtr(timePtr(img.Deprecated)),
+		"deprecation":  llx.DictData(deprecationDict(img.Deprecation)),
 		"deleted":      llx.TimeDataPtr(timePtr(img.Deleted)),
 		"labels":       labelData(img.Labels),
 	})
@@ -73,9 +75,9 @@ func newMqlHetznerImage(runtime *plugin.Runtime, img *hcloud.Image) (*mqlHetzner
 }
 
 func initHetznerImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "image")
+	if err != nil {
+		return nil, nil, err
 	}
 	img, _, err := conn(runtime).Client().Image.GetByID(ctx(), id)
 	if err != nil {
@@ -92,8 +94,20 @@ func (m *mqlHetznerImage) boundServer() (*mqlHetznerServer, error) {
 	return serverRefByID(m.MqlRuntime, &m.BoundServer, m.cacheBoundServerID)
 }
 
+// createdFrom resolves the server a snapshot or backup was taken from.
+//
+// Unlike the other server references, this one is history: the image keeps
+// naming its origin after that server is deleted, and snapshots routinely
+// outlive the servers they were taken from. A server that no longer exists is
+// a genuine absence, so it reads null. Any other lookup failure still
+// propagates.
 func (m *mqlHetznerImage) createdFrom() (*mqlHetznerServer, error) {
-	return serverRefByID(m.MqlRuntime, &m.CreatedFrom, m.cacheCreatedFromID)
+	s, err := serverRefByID(m.MqlRuntime, &m.CreatedFrom, m.cacheCreatedFromID)
+	if errors.Is(err, errResourceNotFound) {
+		m.CreatedFrom.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return s, err
 }
 
 // serverRefByID resolves a single typed server reference via NewResource so

@@ -3,7 +3,7 @@
 
 package resources
 
-import "go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+import "go.mondoo.com/mql/providers-sdk/v1/plugin"
 
 // objectRuntimes lists every connection runtime that can drive object
 // discovery. createPlatformData is called with conn.Runtime(), and the

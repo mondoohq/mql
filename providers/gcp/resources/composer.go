@@ -6,32 +6,16 @@ package resources
 import (
 	"context"
 	"fmt"
-	"strings"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/composer/v1"
 	"google.golang.org/api/compute/v1"
-	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 )
-
-// composerServiceDisabled reports whether the error indicates the Cloud
-// Composer API is not enabled for the project. A genuine permission denial
-// (HTTP 403 without a "not enabled" message) is deliberately not treated as
-// disabled so it surfaces to the caller instead of being swallowed.
-func composerServiceDisabled(err error) bool {
-	gerr, ok := err.(*googleapi.Error)
-	if !ok {
-		return false
-	}
-	if strings.Contains(gerr.Message, "not enabled") || strings.Contains(gerr.Message, "has not been used") {
-		return true
-	}
-	return gerr.Code == 404
-}
 
 func (g *mqlGcpProject) composer() (*mqlGcpProjectComposerService, error) {
 	if g.Id.Error != nil {
@@ -137,10 +121,16 @@ func (g *mqlGcpProjectComposerService) environments() ([]any, error) {
 			}
 			return nil
 		}); err != nil {
-			if composerServiceDisabled(err) {
-				// The Cloud Composer API is not enabled for the project; it
-				// is disabled project-wide, so no other region would succeed.
-				return []any{}, nil
+			if isServiceDisabled(err) {
+				// Cloud Composer is not offered in every Compute region, and
+				// this classifier treats any 404 as "not available here". It is
+				// therefore a PER-REGION signal, not a project-wide one:
+				// returning an empty slice here discarded every environment
+				// already collected from the regions that did answer, so a
+				// project with a dozen environments reported none.
+				log.Debug().Str("project", projectId).Str("region", region.Name).
+					Msg("cloud composer not available in region, skipping")
+				continue
 			}
 			// Surface transient or server-side errors instead of silently
 			// dropping this region's environments from the result set.

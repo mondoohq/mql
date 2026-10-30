@@ -11,9 +11,9 @@ import (
 	"strings"
 
 	v2 "github.com/ctreminiom/go-atlassian/v2/jira/v2"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/atlassian/connection/shared"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/atlassian/connection/shared"
 )
 
 const (
@@ -76,10 +76,9 @@ func NewConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*
 		return nil, errors.New("you must provide an Atlassian user e.g. via ATLASSIAN_USER env or via the --user flag")
 	}
 
-	token := conf.Options["user-token"]
-	if token == "" {
-		token = os.Getenv("ATLASSIAN_USER_TOKEN")
-	}
+	// A hosted scan delivers the token as an inventory vault credential; the host
+	// and user stay plain options either way — they are identifiers, not secrets.
+	token := shared.Secret(conf, "user-token", "ATLASSIAN_USER_TOKEN")
 	if token == "" {
 		return nil, errors.New("you must provide an Atlassian user token e.g. via ATLASSIAN_USER_TOKEN env or via the --user-token flag")
 	}

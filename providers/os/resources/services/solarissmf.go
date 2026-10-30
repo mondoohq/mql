@@ -5,10 +5,11 @@ package services
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 // SolarisSmfServiceManager handles Solaris Service Management Facility (SMF)
@@ -25,6 +26,13 @@ func (s *SolarisSmfServiceManager) List() ([]*Service, error) {
 	cmd, err := s.conn.RunCommand("svcs -a")
 	if err != nil {
 		return nil, err
+	}
+	// without this an unavailable or failing svcs reports an empty service list
+	// as if the system genuinely ran no services
+	if cmd.ExitStatus != 0 {
+		stderr, _ := io.ReadAll(cmd.Stderr)
+		return nil, fmt.Errorf("svcs -a failed with exit code %d: %s",
+			cmd.ExitStatus, strings.TrimSpace(string(stderr)))
 	}
 
 	return ParseSolarisSmfServices(cmd.Stdout), nil
@@ -51,11 +59,20 @@ func ParseSolarisSmfServices(r io.Reader) []*Service {
 	var services []*Service
 	scanner := bufio.NewScanner(r)
 
-	// Skip header line: "STATE          STIME           FMRI"
-	_ = scanner.Scan()
-
+	first := true
 	for scanner.Scan() {
 		line := scanner.Text()
+
+		// Drop the header line ("STATE STIME FMRI") when it is present, but only
+		// then. Skipping unconditionally loses the first service on headerless
+		// output such as `svcs -aH`.
+		if first {
+			first = false
+			if fields := strings.Fields(line); len(fields) > 0 && fields[0] == "STATE" {
+				continue
+			}
+		}
+
 		entry := parseSmfLine(line)
 		if entry == nil {
 			continue
@@ -63,8 +80,11 @@ func ParseSolarisSmfServices(r io.Reader) []*Service {
 
 		running, enabled := smfStateToRunningEnabled(entry.State)
 		services = append(services, &Service{
-			Name:      entry.FMRI,
-			Installed: true,
+			Name: entry.FMRI,
+			// An incomplete instance has no manifest of its own; it exists only
+			// because a profile or another manifest names it, so no package
+			// delivers it.
+			Installed: normalizeSmfState(entry.State) != "incomplete",
 			Running:   running,
 			Enabled:   enabled,
 			State:     smfStateToServiceState(entry.State),
@@ -114,10 +134,10 @@ func smfStateToRunningEnabled(state string) (running, enabled bool) {
 	case "maintenance":
 		// Enabled but in error state
 		return false, true
-	case "incomplete":
-		// Service is in progress or waiting
-		return false, true
-	case "disabled", "uninitialized":
+	case "disabled", "uninitialized", "incomplete":
+		// incomplete: the instance is defined only by a profile or another
+		// manifest's dependency, has no general/enabled, and svcadm refuses to
+		// enable or disable it until the package that delivers it is installed
 		return false, false
 	default:
 		// Unknown state, assume not running

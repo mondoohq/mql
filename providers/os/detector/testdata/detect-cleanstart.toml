@@ -1,0 +1,44 @@
+# Captured from docker.io/cleanstart/busybox:latest, cross-checked against the
+# rclone, glibc, nginx, python, bash, curl, git and node images. All carry
+# identical os-release content.
+#
+# CleanStart OS sets no ID_LIKE, so nothing infers a lineage for it, and
+# VERSION_ID is a date stamp rather than a dotted version.
+#
+# The images are glibc-based and ship an apk database but no apk binary, so
+# /etc/os-release is the only evidence detection has and there is no
+# /etc/alpine-release for alpine's fallback to find.
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[files."/etc/os-release"]
+content = """
+NAME="CleanStart"
+ID=cleanstart
+VERSION_ID=20241216
+PRETTY_NAME="CleanStart"
+HOME_URL="https://cleanstart.com"
+BUG_REPORT_URL="https://cleanstart.com"
+"""
+
+[files."/lib/apk/db/installed"]
+content = """
+C:Q1EiGb2vxp50Qqv93hwVNvuLH57vA=
+P:busybox
+V:1.38.0-r1
+A:x86_64
+S:518560
+I:942080
+T:Size optimized toolbox of many common UNIX utilities
+U:https://busybox.net/
+L:GPL-2.0-only
+o:busybox
+m:CleanStart <packages-admin@cleanstart.com>
+t:1788946121
+D:so:libc.so.6 so:libcrypt.so.2 so:libm.so.6 so:libresolv.so.2
+p:cmd:busybox=1.38.0-r1
+
+"""

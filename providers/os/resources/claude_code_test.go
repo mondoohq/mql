@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // testAfero returns an afero.Afero backed by the real OS filesystem,
@@ -71,6 +73,18 @@ func createTestClaudeConfig(t *testing.T) string {
 		"projects": {
 			"/home/test/project-one": {},
 			"/home/test/go/src/github.com/user/repo": {}
+		},
+		"mcpServers": {
+			"filesystem": {
+				"command": "npx",
+				"args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+				"env": {}
+			},
+			"claude.ai HubSpot": {
+				"type": "http",
+				"url": "https://mcp.hubspot.com/mcp",
+				"env": {"HUBSPOT_TOKEN": "secret"}
+			}
 		}
 	}`)
 
@@ -213,6 +227,19 @@ func TestFindLatestBackupAferoEmpty(t *testing.T) {
 	_, err := findLatestBackupAfero(afs, dir)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no backup files found")
+	// An empty backups dir is the benign "no history" case: callers suppress it
+	// via errors.Is(err, os.ErrNotExist) while still surfacing real failures.
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestFindLatestBackupAferoMissingDir(t *testing.T) {
+	afs := testAfero()
+	dir := t.TempDir()
+
+	// No backups dir at all: also the benign not-exist case.
+	_, err := findLatestBackupAfero(afs, dir)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestIsSystemHomeDir(t *testing.T) {
@@ -247,6 +274,9 @@ func TestIsSystemHomeDir(t *testing.T) {
 	assert.False(t, isSystemHomeDir("/root/.config"))
 	assert.False(t, isSystemHomeDir("/usr/home/freebsd"))
 	assert.False(t, isSystemHomeDir(`C:\Users\chris`))
+	// Windows homes match regardless of drive case or slash direction
+	assert.False(t, isSystemHomeDir(`c:\users\chris`))
+	assert.False(t, isSystemHomeDir("C:/Users/chris"))
 }
 
 func TestClaudeConfigIntegration(t *testing.T) {
@@ -277,6 +307,20 @@ func TestClaudeConfigIntegration(t *testing.T) {
 	assert.Equal(t, "test-uuid-1234", state.OAuthAccount.AccountUuid)
 	assert.Equal(t, "org-uuid-5678", state.OAuthAccount.OrganizationUuid)
 
+	// MCP servers come from .claude.json (backup state), independent of the
+	// needs-auth cache: the stdio "filesystem" server does not need auth yet
+	// must still be visible.
+	require.Len(t, state.McpServers, 2)
+	fsSrv := state.McpServers["filesystem"]
+	assert.Equal(t, "npx", fsSrv.Command)
+	assert.Equal(t, []string{"-y", "@modelcontextprotocol/server-filesystem", "/tmp"}, fsSrv.Args)
+	assert.Empty(t, fsSrv.URL)
+	assert.Equal(t, mcpTransportStdio, deriveMcpTransport(fsSrv.Type, fsSrv.Command, fsSrv.URL))
+	hubSrv := state.McpServers["claude.ai HubSpot"]
+	assert.Equal(t, "http", hubSrv.Type)
+	assert.Equal(t, "https://mcp.hubspot.com/mcp", hubSrv.URL)
+	assert.NotEmpty(t, hubSrv.Env)
+
 	// Test project dir mapping
 	dirMap := state.projectDirMap()
 	assert.Equal(t, "-home-test-project-one", dirMap["/home/test/project-one"])
@@ -305,4 +349,308 @@ func TestClaudeConfigIntegration(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, cache, 2)
 	assert.Equal(t, int64(1700000000000), cache["claude.ai HubSpot"].Timestamp)
+}
+
+func TestParseGitRemoteURL(t *testing.T) {
+	cases := []struct {
+		remote   string
+		wantHost string
+		wantName string
+	}{
+		{"git@github.com:mondoohq/mql.git", "github.com", "mondoohq/mql"},
+		{"https://github.com/mondoohq/mql.git", "github.com", "mondoohq/mql"},
+		{"https://github.com/mondoohq/mql", "github.com", "mondoohq/mql"},
+		{"ssh://git@gitlab.com:2222/group/sub/proj.git", "gitlab.com", "group/sub/proj"},
+		{"https://user:token@github.com/owner/repo.git", "github.com", "owner/repo"},
+		{"", "", ""},
+		{"not-a-url", "", ""},
+	}
+	for _, c := range cases {
+		host, name := parseGitRemoteURL(c.remote)
+		assert.Equal(t, c.wantHost, host, "host for %q", c.remote)
+		assert.Equal(t, c.wantName, name, "name for %q", c.remote)
+	}
+}
+
+func TestGitRepoInfo(t *testing.T) {
+	afs := testAfero()
+	dir := t.TempDir()
+
+	// a project directory that is a git working tree with origin + upstream
+	mkdirAllTest(t, dir, "repo/.git")
+	mkdirAllTest(t, dir, "repo/subdir")
+	writeTestFile(t, dir, "repo/.git/config", `[core]
+	bare = false
+[remote "origin"]
+	url = git@github.com:mondoohq/mql.git
+	fetch = +refs/heads/*:refs/remotes/origin/*
+[remote "upstream"]
+	url = https://github.com/other/mql.git
+`)
+	writeTestFile(t, dir, "repo/.git/HEAD", "ref: refs/heads/dom/feature\n")
+
+	repoRoot := filepath.Join(dir, "repo")
+
+	info, ok := gitRepoInfo(afs, repoRoot)
+	require.True(t, ok)
+	assert.Equal(t, repoRoot, info.root)
+	assert.Equal(t, "git@github.com:mondoohq/mql.git", info.url)
+	assert.Equal(t, "github.com", info.host)
+	assert.Equal(t, "mondoohq/mql", info.name)
+	assert.Equal(t, "dom/feature", info.branch)
+	assert.Equal(t, map[string]string{
+		"origin":   "git@github.com:mondoohq/mql.git",
+		"upstream": "https://github.com/other/mql.git",
+	}, info.remotes)
+
+	// a subdirectory of the repo resolves to the same working-tree root
+	sub, ok := gitRepoInfo(afs, filepath.Join(repoRoot, "subdir"))
+	require.True(t, ok)
+	assert.Equal(t, repoRoot, sub.root)
+
+	// a non-git directory yields ok=false
+	mkdirAllTest(t, dir, "plain")
+	_, ok = gitRepoInfo(afs, filepath.Join(dir, "plain"))
+	assert.False(t, ok)
+}
+
+func TestParseGitHeadBranch(t *testing.T) {
+	afs := testAfero()
+	dir := t.TempDir()
+
+	writeTestFile(t, dir, "HEAD", "ref: refs/heads/main\n")
+	assert.Equal(t, "main", parseGitHeadBranch(afs, filepath.Join(dir, "HEAD")))
+
+	writeTestFile(t, dir, "DETACHED", "9fceb02d0ae598e95dc970b74767f19372d61af8\n")
+	assert.Equal(t, "", parseGitHeadBranch(afs, filepath.Join(dir, "DETACHED")))
+
+	assert.Equal(t, "", parseGitHeadBranch(afs, filepath.Join(dir, "missing")))
+}
+
+func TestParseGitRemotesNoOriginFallback(t *testing.T) {
+	afs := testAfero()
+	dir := t.TempDir()
+	mkdirAllTest(t, dir, "repo/.git")
+	writeTestFile(t, dir, "repo/.git/config", `[remote "upstream"]
+	url = git@gitlab.com:group/proj.git
+`)
+	writeTestFile(t, dir, "repo/.git/HEAD", "ref: refs/heads/main\n")
+
+	info, ok := gitRepoInfo(afs, filepath.Join(dir, "repo"))
+	require.True(t, ok)
+	// no origin: falls back to the only remote present
+	assert.Equal(t, "git@gitlab.com:group/proj.git", info.url)
+	assert.Equal(t, "gitlab.com", info.host)
+}
+
+func TestGitRepoInfoWorktree(t *testing.T) {
+	afs := testAfero()
+	dir := t.TempDir()
+
+	// main checkout: .git directory holds the shared config
+	mkdirAllTest(t, dir, "main/.git")
+	writeTestFile(t, dir, "main/.git/config", `[remote "origin"]
+	url = git@github.com:mondoohq/mql.git
+`)
+	writeTestFile(t, dir, "main/.git/HEAD", "ref: refs/heads/main\n")
+
+	// per-worktree git dir under .git/worktrees/<name>
+	mkdirAllTest(t, dir, "main/.git/worktrees/feature")
+	writeTestFile(t, dir, "main/.git/worktrees/feature/HEAD", "ref: refs/heads/dom/feature\n")
+	writeTestFile(t, dir, "main/.git/worktrees/feature/commondir", "../..\n")
+
+	// linked worktree checkout: .git is a pointer file
+	mkdirAllTest(t, dir, "wt")
+	worktreeGitDir := filepath.Join(dir, "main/.git/worktrees/feature")
+	writeTestFile(t, dir, "wt/.git", "gitdir: "+worktreeGitDir+"\n")
+
+	info, ok := gitRepoInfo(afs, filepath.Join(dir, "wt"))
+	require.True(t, ok)
+	assert.Equal(t, filepath.Join(dir, "wt"), info.root)
+	// config comes from the shared common dir
+	assert.Equal(t, "git@github.com:mondoohq/mql.git", info.url)
+	assert.Equal(t, "mondoohq/mql", info.name)
+	// HEAD is read per-worktree
+	assert.Equal(t, "dom/feature", info.branch)
+}
+
+// Claude Code has three MCP scopes: user (top-level mcpServers in .claude.json),
+// local (projects[<path>].mcpServers in .claude.json), and project (the
+// project's own .mcp.json). All three must be reported, each scoped server
+// carrying its project path.
+func TestClaudeMcpServersScopes(t *testing.T) {
+	afs := testAfero()
+	project := t.TempDir()
+	writeTestFile(t, project, ".mcp.json", `{"mcpServers":{
+		"filesystem": {"command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]},
+		"memory": {"command":"npx","args":["-y","@modelcontextprotocol/server-memory@0.5.0"]}
+	}}`)
+	other := t.TempDir() // a project without an .mcp.json
+
+	var state claudeBackupState
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"mcpServers": {
+			"filesystem": {"type":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/home/alice"]}
+		},
+		"projects": {
+			`+jsonString(project)+`: {
+				"hasTrustDialogAccepted": true,
+				"mcpServers": {
+					"memory": {"command":"npx","args":["-y","@modelcontextprotocol/server-memory"]}
+				}
+			},
+			`+jsonString(other)+`: {"hasTrustDialogAccepted": true}
+		}
+	}`), &state))
+
+	state.path = "/home/alice/.claude.json"
+
+	servers := claudeMcpServers(afs, &state)
+
+	type row struct{ project, name, lastArg, source string }
+	var got []row
+	for _, s := range servers {
+		got = append(got, row{s.project, s.name, s.entry.Args[len(s.entry.Args)-1], s.source})
+	}
+	assert.Equal(t, []row{
+		{"", "filesystem", "/home/alice", "/home/alice/.claude.json"},
+		{project, "filesystem", ".", filepath.Join(project, ".mcp.json")},
+		// local (.claude.json) takes precedence over the project's .mcp.json,
+		// and so does its source
+		{project, "memory", "@modelcontextprotocol/server-memory", "/home/alice/.claude.json"},
+	}, got)
+}
+
+// A name in the needs-auth cache that a project scope already defines is that
+// project's server: it must not come back a second time as a user-scope server.
+// Only a name no scope defines is added, once, without connection details.
+func TestWithAuthCacheOnlyServers(t *testing.T) {
+	servers := []claudeScopedMcpServer{
+		{name: "filesystem"},
+		{project: "/home/alice/src/api", name: "memory"},
+	}
+	got := withAuthCacheOnlyServers(servers, []string{"memory", "zeta", "filesystem", "alpha", "zeta"})
+
+	type row struct{ project, name string }
+	var rows []row
+	for _, s := range got {
+		rows = append(rows, row{s.project, s.name})
+	}
+	assert.Equal(t, []row{
+		{"", "filesystem"},
+		{"/home/alice/src/api", "memory"},
+		{"", "alpha"},
+		{"", "zeta"},
+	}, rows)
+}
+
+func TestClaudeMcpServerID(t *testing.T) {
+	assert.Equal(t, "claude.code.mcpServer/memory", claudeMcpServerID("", "memory"),
+		"user-scope ids must not change")
+	assert.Equal(t, "claude.code.mcpServer//home/alice/src/api/memory", claudeMcpServerID("/home/alice/src/api", "memory"))
+	assert.NotEqual(t, claudeMcpServerID("/a", "memory"), claudeMcpServerID("/b", "memory"))
+}
+
+func TestClaudeMcpServersMalformedProjectFile(t *testing.T) {
+	project := t.TempDir()
+	writeTestFile(t, project, ".mcp.json", `{"mcpServers": {`)
+	state := claudeBackupState{Projects: map[string]claudeProjectEntry{project: {}}}
+	assert.Empty(t, claudeMcpServers(testAfero(), &state), "an unparsable .mcp.json contributes nothing")
+}
+
+func jsonString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
+// The live state and backup contents below mirror an Ubuntu host where
+// `claude mcp add --scope user real-added-ubuntu -- echo hi` ran after a
+// `claude mcp remove`: Claude Code snapshots the old file into backups/ before
+// writing, so the newest backup is one change behind the live ~/.claude.json.
+const (
+	testClaudeLiveState = `{"oauthAccount":{"accountUuid":"uuid-u-primary","emailAddress":"ubuntu@example.com"},
+"mcpServers":{"user-fs":{"command":"npx"},"real-added-ubuntu":{"type":"stdio","command":"echo","args":["hi"],"env":{}}}}`
+	testClaudeNewestBackup = `{"oauthAccount":{"accountUuid":"uuid-u-backup","emailAddress":"ubuntu@example.com"},
+"mcpServers":{"user-fs":{"command":"npx"}}}`
+	testClaudeOlderBackup = `{"oauthAccount":{"accountUuid":"uuid-u-old"},"mcpServers":{}}`
+)
+
+func writeClaudeBackups(t *testing.T, afs *afero.Afero, configDir string) {
+	t.Helper()
+	require.NoError(t, afs.WriteFile(configDir+"/backups/.claude.json.backup.1790911549739", []byte(testClaudeOlderBackup), 0o644))
+	require.NoError(t, afs.WriteFile(configDir+"/backups/.claude.json.backup.1790913703572", []byte(testClaudeNewestBackup), 0o644))
+	require.NoError(t, afs.WriteFile(configDir+"/backups/.claude.json.backup.notanumber", []byte(`{"stale":true}`), 0o644))
+}
+
+func TestReadClaudeStatePrefersLiveFileInHome(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	writeClaudeBackups(t, afs, "/home/ubuntu/.claude")
+	require.NoError(t, afs.WriteFile("/home/ubuntu/.claude.json", []byte(testClaudeLiveState), 0o644))
+
+	state, err := readClaudeState(afs, "/home/ubuntu/.claude")
+	require.NoError(t, err)
+	assert.Equal(t, "uuid-u-primary", state.OAuthAccount.AccountUuid)
+	assert.Contains(t, state.McpServers, "real-added-ubuntu")
+}
+
+func TestReadClaudeStateCustomConfigDir(t *testing.T) {
+	// CLAUDE_CONFIG_DIR=/srv/claude keeps .claude.json inside that directory.
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	writeClaudeBackups(t, afs, "/srv/claude")
+	require.NoError(t, afs.WriteFile("/srv/claude/.claude.json", []byte(testClaudeLiveState), 0o644))
+	// A ~/.claude.json-style sibling must not be picked up for a custom dir.
+	require.NoError(t, afs.WriteFile("/srv/.claude.json", []byte(testClaudeOlderBackup), 0o644))
+
+	state, err := readClaudeState(afs, "/srv/claude")
+	require.NoError(t, err)
+	assert.Equal(t, "uuid-u-primary", state.OAuthAccount.AccountUuid)
+}
+
+func TestReadClaudeStateFallsBackToNewestBackup(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	writeClaudeBackups(t, afs, "/home/ubuntu/.claude")
+
+	state, err := readClaudeState(afs, "/home/ubuntu/.claude")
+	require.NoError(t, err)
+	assert.Equal(t, "uuid-u-backup", state.OAuthAccount.AccountUuid)
+	assert.NotContains(t, state.McpServers, "real-added-ubuntu")
+}
+
+func TestReadClaudeStateNothingIsNotExist(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	_, err := readClaudeState(afs, "/home/ubuntu/.claude")
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestReadClaudeStateMalformedLiveFileIsAnError(t *testing.T) {
+	// A live file that doesn't parse must not be papered over with an older
+	// backup: that would report state the user has since changed.
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	writeClaudeBackups(t, afs, "/home/ubuntu/.claude")
+	require.NoError(t, afs.WriteFile("/home/ubuntu/.claude.json", []byte(`{"mcpServers":`), 0o644))
+
+	_, err := readClaudeState(afs, "/home/ubuntu/.claude")
+	assert.Error(t, err)
+}
+
+func TestClaudeCodeSettingsRedactsSecrets(t *testing.T) {
+	// Synthetic: a settings.json env block holding an API key, the way the
+	// Claude Code docs show configuring ANTHROPIC_API_KEY through settings.
+	mockFS := afero.NewMemMapFs()
+	writeMemFSFile(t, mockFS, "/home/alice/.claude/settings.json", []byte(`{
+		"model": "opus",
+		"env": {"ANTHROPIC_API_KEY": "`+fakeAnthropicKey+`", "DISABLE_TELEMETRY": "1"}
+	}`))
+	r := &mqlClaudeCode{
+		MqlRuntime: memFSRuntime(t, mockFS),
+		ConfigPath: plugin.TValue[string]{Data: "/home/alice/.claude", State: plugin.StateIsSet},
+	}
+
+	got, err := r.settings()
+	require.NoError(t, err)
+	settings := got.(map[string]any)
+	assert.Equal(t, "opus", settings["model"])
+	env := settings["env"].(map[string]any)
+	assert.Equal(t, redactedValue, env["ANTHROPIC_API_KEY"])
+	assert.Equal(t, "1", env["DISABLE_TELEMETRY"])
 }

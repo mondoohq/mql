@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"sort"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/types"
 )
 
 // FieldError is an error attached to an individual value inside a query

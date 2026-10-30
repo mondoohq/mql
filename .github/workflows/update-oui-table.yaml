@@ -1,0 +1,126 @@
+name: Update the IEEE OUI table
+
+# The os provider embeds the IEEE MA-L registry to name the vendor that owns a
+# MAC address on network.interfaces. Vendors register new prefixes constantly,
+# so the checked-in table goes stale on its own. This regenerates it from the
+# published registry once a week and opens a pull request when it moved.
+
+on:
+  schedule:
+    - cron: "33 8 * * 1" # every monday
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  OUI_DIR: providers/os/id/networki/oui
+  OUI_CSV_URL: https://standards-oui.ieee.org/oui/oui.csv
+
+jobs:
+  update-oui-table:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # https://github.com/peter-evans/create-pull-request/issues/48
+      # https://github.com/peter-evans/create-pull-request/blob/main/docs/concepts-guidelines.md#push-using-ssh-deploy-keys
+      # tl;dr:
+      # The GITHUB_TOKEN is limited when creating PRs from a workflow
+      # because of that we use a ssh key for which the limitations do not apply
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ssh-key: ${{ secrets.CNQUERY_DEPLOY_KEY_PRIV }}
+
+      - name: Import environment variables from file
+        run: cat ".github/env" >> $GITHUB_ENV
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "${{ env.golang-version }}"
+          check-latest: true
+          cache: false
+
+      - name: Download the IEEE registry
+        run: |
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-all-errors --retry-delay 30 --max-time 300 \
+            --output "${OUI_DIR}/oui.csv" "${OUI_CSV_URL}"
+
+          # The registry host answers cloud IPs with error pages and
+          # interstitials often enough that an unchecked download would
+          # regenerate a near-empty table and open a pull request deleting
+          # every vendor the provider knows. A stale table beats a wrong one,
+          # so anything that does not look like the registry fails the run.
+          size=$(wc -c < "${OUI_DIR}/oui.csv")
+          if [ "${size}" -lt 1000000 ]; then
+            echo "::error::${OUI_CSV_URL} returned ${size} bytes, the registry is several MB"
+            exit 1
+          fi
+          if ! head -n 1 "${OUI_DIR}/oui.csv" | grep -q '^Registry,Assignment'; then
+            echo "::error::${OUI_CSV_URL} did not return the registry CSV, it starts with: $(head -c 120 "${OUI_DIR}/oui.csv")"
+            exit 1
+          fi
+
+      - name: Regenerate the table
+        working-directory: providers/os/id/networki/oui
+        run: |
+          go run ./gen -csv oui.csv -out oui.bin -summary "${RUNNER_TEMP}/oui-summary.md"
+
+          # The pull request action stages everything in the tree, and the
+          # registry export is not something this repository tracks.
+          rm oui.csv
+
+      # oui.bin is embedded rather than parsed, so a table that encoded wrong
+      # would surface as silently missing vendors during a scan. The committed
+      # suite walks every assignment and has to pass before this is proposed.
+      - name: Test the regenerated table
+        working-directory: providers/os
+        run: go test ./id/networki/oui/...
+
+      # The table is a binary blob, so review would otherwise see nothing but
+      # "Binary file changed".
+      - name: Compose the pull request body
+        run: |
+          {
+            echo "\`${OUI_DIR}/oui.bin\` regenerated from the IEEE MA-L registry."
+            echo
+            cat "${RUNNER_TEMP}/oui-summary.md"
+            echo
+            echo "Source: <${OUI_CSV_URL}>, fetched $(date -u +%Y-%m-%d)."
+            echo "Built by \`${OUI_DIR}/gen\`, no hand edits."
+            echo "Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > "${RUNNER_TEMP}/pr-body.md"
+
+      - name: Prepare title and branch name
+        id: branch
+        run: |
+          BRANCH_NAME="version/oui_update_$(date +%Y%m%d)"
+          COMMIT_MSG="🧹 os: refresh the IEEE OUI table $(date +%Y%m%d)"
+          echo "COMMIT_TITLE=${COMMIT_MSG}" >> $GITHUB_OUTPUT
+          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+
+      # We have to use this extensions, because `gh pr create` does not support the ssh key case.
+      # It is also a no-op when the regenerated table is byte-identical to the
+      # committed one, which is what keeps a quiet week from opening a PR.
+      - name: Create pull request
+        id: cpr
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          base: main
+          labels: dependencies
+          committer: "Mondoo Tools <tools@mondoo.com>"
+          commit-message: ${{ steps.branch.outputs.COMMIT_TITLE }}
+          author: "Mondoo Tools <tools@mondoo.com>"
+          title: ${{ steps.branch.outputs.COMMIT_TITLE }}
+          branch: ${{ steps.branch.outputs.BRANCH_NAME }}
+          body-path: ${{ runner.temp }}/pr-body.md
+
+      - name: PR infos
+        if: ${{ steps.cpr.outputs.pull-request-number }}
+        run: |
+          echo "Pull Request Number - ${{ steps.cpr.outputs.pull-request-number }}"
+          echo "Pull Request URL - ${{ steps.cpr.outputs.pull-request-url }}"

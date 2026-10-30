@@ -8,6 +8,7 @@ package tlsshake
 import (
 	"bufio"
 	"bytes"
+	crand "crypto/rand"
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/hex"
@@ -22,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"go.mondoo.com/mql/v13/utils/multierr"
+	"go.mondoo.com/mql/utils/multierr"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -41,9 +42,21 @@ type ScanConfig struct {
 	// internal scan fields that users don't configure
 	version       string
 	ciphersFilter func(string) bool
+	// excludedIDs holds the 2-byte IDs of cipher suites this probe already
+	// negotiated; they are left out of the next ClientHello.
+	excludedIDs map[string]struct{}
+	// negotiatedID is the 2-byte ID of the suite the last ServerHello chose.
+	negotiatedID string
 }
 
 const DefaultTimeout = 2 * time.Second
+
+// probeDialTimeout bounds the connect of every probe handshake. Test has
+// already reached the target within ConnectTimeout, so this only has to
+// outlast a few lost SYNs (Linux retransmits after 1s, 3s and 7s). Without it
+// a peer that silently drops one probe's SYN, e.g. a rate limiter, held the
+// scan until the job deadline. A var so tests can shorten it.
+var probeDialTimeout = 10 * time.Second
 
 var ErrFailedToConnect = errors.New("failed to connect")
 
@@ -156,9 +169,7 @@ func (s *Tester) Test(conf ScanConfig) error {
 	for i := range conf.Versions {
 		version := conf.Versions[i]
 
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
+		workers.Go(func() {
 
 			// we don't activate any of the additional tests in the beginning
 			// let's find out if we work on this version of TLS/SSL
@@ -167,18 +178,11 @@ func (s *Tester) Test(conf ScanConfig) error {
 				ciphersFilter: remainingCiphers,
 			}
 
-			for {
-				remaining, err := s.testTLS(s.proto, s.target, curConf)
-				if err != nil {
-					s.sync.Lock()
-					errs.Add(err)
-					s.sync.Unlock()
-					return
-				}
-
-				if remaining <= 0 {
-					break
-				}
+			if err := s.probeCiphers(curConf); err != nil {
+				s.sync.Lock()
+				errs.Add(err)
+				s.sync.Unlock()
+				return
 			}
 
 			if version == "tls1.2" || version == "tls1.3" {
@@ -203,7 +207,7 @@ func (s *Tester) Test(conf ScanConfig) error {
 					_, _ = s.testTLS(s.proto, s.target, curConf)
 				}
 			}
-		}()
+		})
 	}
 
 	workers.Wait()
@@ -228,19 +232,62 @@ func (s *Tester) Test(conf ScanConfig) error {
 	return resErr
 }
 
+// probeCiphers connects repeatedly with one TLS/SSL version, each time offering
+// the cipher suites not yet negotiated, until the server rejects the offer.
+//
+// Every round must shrink the offer: the suite the server picked is excluded
+// by its 2-byte ID. If the server picks a suite that was not offered, the next
+// offer is the same as the last one and another round can only repeat it, so
+// the probe stops. The number of rounds is also capped at the size of the
+// first offer, which is the most rounds a server can legitimately need.
+func (s *Tester) probeCiphers(conf *ScanConfig) error {
+	conf.excludedIDs = map[string]struct{}{}
+	prevRemaining := -1
+	maxRounds := -1
+
+	for round := 0; ; round++ {
+		conf.negotiatedID = ""
+		remaining, err := s.testTLS(s.proto, s.target, conf)
+		if err != nil {
+			return err
+		}
+		if remaining <= 0 {
+			return nil
+		}
+
+		if maxRounds < 0 {
+			// remaining is the offer size minus one
+			maxRounds = remaining + 1
+		}
+		if prevRemaining >= 0 && remaining >= prevRemaining {
+			s.addError("stopped probing " + conf.version + " ciphers: the server negotiated a cipher suite that was not offered")
+			return nil
+		}
+		if round+1 >= maxRounds {
+			s.addError("stopped probing " + conf.version + " ciphers after " + strconv.Itoa(maxRounds) + " handshakes")
+			return nil
+		}
+		prevRemaining = remaining
+
+		if conf.negotiatedID != "" {
+			conf.excludedIDs[conf.negotiatedID] = struct{}{}
+		}
+	}
+}
+
 // Attempts to connect to an endpoint with a given version and records
 // results in the Tester.
 // Returns the number of remaining ciphers to test (if so desired)
 // and any potential error
 func (s *Tester) testTLS(proto string, target string, conf *ScanConfig) (int, error) {
-	conn, err := net.Dial(proto, target)
+	conn, err := net.DialTimeout(proto, target, probeDialTimeout)
 	if err != nil {
 		return 0, multierr.Wrap(err, "failed to connect to target")
 	}
-	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		return 0, err
 	}
-	defer conn.Close()
 
 	return s.testTLSWithConn(conn, conf)
 }
@@ -271,6 +318,11 @@ func (s *Tester) addError(msg string) {
 }
 
 func (s *Tester) parseAlert(data []byte, conf *ScanConfig) error {
+	// An Alert record body is 2 bytes (level + description). A hostile or broken
+	// server can send a shorter body; guard before indexing so we don't panic.
+	if len(data) < 2 {
+		return errors.New("malformed TLS/SSL alert (body too short)")
+	}
 	var severity string
 	switch data[0] {
 	case '\x01':
@@ -338,7 +390,7 @@ var helloRetryRequestRandom = []byte{
 
 func hexdump(data []byte) string {
 	var res bytes.Buffer
-	for i := 0; i < len(data); i++ {
+	for i := range data {
 		if i > 0 {
 			res.WriteString(" ")
 		}
@@ -350,6 +402,12 @@ func hexdump(data []byte) string {
 func (s *Tester) parseServerHello(data []byte, version string, conf *ScanConfig) error {
 	idx := 0
 
+	// version(2) + random(32) + session-ID-length(1) are mandatory fixed fields.
+	// The whole body length is attacker-controlled, so bounds-check before every
+	// read; an unchecked index here panics and takes down the entire scan.
+	if len(data) < idx+35 {
+		return errors.New("malformed ServerHello (too short for random + session-ID length)")
+	}
 	idx += 2
 	random := data[idx : idx+32]
 	isHelloRetryRequest := bytes.Equal(random, helloRetryRequestRandom)
@@ -361,7 +419,13 @@ func (s *Tester) parseServerHello(data []byte, version string, conf *ScanConfig)
 	idx += 1
 	idx += sessionIDlen
 
-	cipher, cipherOK := ALL_CIPHERS[string(data[idx:idx+2])]
+	// cipher(2) + compression(1) follow the (variable-length) session ID.
+	if idx+3 > len(data) {
+		return errors.New("malformed ServerHello (truncated before cipher suite)")
+	}
+	cipherID := string(data[idx : idx+2])
+	cipher, cipherOK := negotiatedCipherName(conf.version, cipherID)
+	conf.negotiatedID = cipherID
 	idx += 2
 
 	// TLS 1.3 pretends to be TLS 1.2 in the preceding headers for
@@ -379,9 +443,18 @@ func (s *Tester) parseServerHello(data []byte, version string, conf *ScanConfig)
 	}
 
 	var serverKeyShareGroup []byte
-	for allExtLen > 0 && idx < len(data) {
+	for allExtLen > 0 && idx+4 <= len(data) {
 		extType := string(data[idx : idx+2])
 		extLen := bytes2int(data[idx+2 : idx+4])
+		if idx+4+extLen > len(data) {
+			// extension length runs past the record; stop rather than panic,
+			// but surface the truncation so a malformed/misconfigured
+			// ServerHello isn't silently treated as fully parsed.
+			s.sync.Lock()
+			s.Findings.Errors = append(s.Findings.Errors, "malformed ServerHello: extension length runs past the record")
+			s.sync.Unlock()
+			break
+		}
 		extData := data[idx+4 : idx+4+extLen]
 
 		allExtLen -= 4 + extLen
@@ -441,6 +514,9 @@ func (s *Tester) parseServerHello(data []byte, version string, conf *ScanConfig)
 }
 
 func (s *Tester) parseCertificate(data []byte, conf *ScanConfig) error {
+	if len(data) < 3 {
+		return errors.New("malformed certificate response, too little data read from stream to parse certificate")
+	}
 	certsLen := bytes3int(data[0:3])
 	if len(data) < certsLen+3 {
 		return errors.New("malformed certificate response, too little data read from stream to parse certificate")
@@ -449,9 +525,17 @@ func (s *Tester) parseCertificate(data []byte, conf *ScanConfig) error {
 	certs := []*x509.Certificate{}
 	i := 3
 	for i < 3+certsLen {
+		// each cert is prefixed by a 3-byte length; both the prefix and the cert
+		// body it describes are attacker-controlled and must stay within data.
+		if i+3 > len(data) {
+			return errors.New("malformed certificate response, truncated certificate length prefix")
+		}
 		certLen := bytes3int(data[i : i+3])
 		i += 3
 
+		if i+certLen > len(data) {
+			return errors.New("malformed certificate response, certificate length exceeds record")
+		}
 		rawCert := data[i : i+certLen]
 		i += certLen
 
@@ -494,7 +578,7 @@ func (s *Tester) parseCertificate(data []byte, conf *ScanConfig) error {
 	s.sync.Unlock()
 
 	for i := 0; i+1 < len(certs); i++ {
-		err := s.ocspRequest(certs[i], certs[i+1])
+		err := s.checkRevocation(certs[i], certs[i+1])
 		if err != nil {
 			s.addError(err.Error())
 		}
@@ -510,15 +594,28 @@ func (s *Tester) parseCertificate(data []byte, conf *ScanConfig) error {
 //   - There are a few other responses that also signal that we are done
 //     processing handshake responses, like ServerHelloDone or Finished
 func (s *Tester) parseHandshake(data []byte, version string, conf *ScanConfig) (bool, int, error) {
+	// The 4-byte handshake header (type + 3-byte length) and the body it
+	// describes are attacker-controlled; a short record or an oversized length
+	// field must not panic the slice operations below.
+	if len(data) < 4 {
+		return true, 0, errors.New("malformed TLS/SSL handshake (header too short)")
+	}
 	handshakeType := data[0]
 	handshakeLen := bytes3int(data[1:4])
+	bodyEnd := 4 + handshakeLen
 
 	switch handshakeType {
 	case HANDSHAKE_TYPE_ServerHello:
-		err := s.parseServerHello(data[4:4+handshakeLen], version, conf)
+		if bodyEnd > len(data) {
+			return true, 0, errors.New("malformed TLS/SSL handshake (ServerHello body exceeds record)")
+		}
+		err := s.parseServerHello(data[4:bodyEnd], version, conf)
 		return false, handshakeLen, err
 	case HANDSHAKE_TYPE_Certificate:
-		return true, handshakeLen, s.parseCertificate(data[4:4+handshakeLen], conf)
+		if bodyEnd > len(data) {
+			return true, 0, errors.New("malformed TLS/SSL handshake (Certificate body exceeds record)")
+		}
+		return true, handshakeLen, s.parseCertificate(data[4:bodyEnd], conf)
 	case HANDSHAKE_TYPE_ServerKeyExchange:
 		return false, handshakeLen, nil
 	case HANDSHAKE_TYPE_ServerHelloDone:
@@ -641,10 +738,31 @@ func (s *Tester) parseHello(conn net.Conn, conf *ScanConfig) (bool, error) {
 	return success, nil
 }
 
-func filterCipherMsg(org map[string]string, f func(cipher string) bool) ([]byte, int) {
+// negotiatedCipherName names the cipher suite a server picked, preferring the
+// table the offer for this version was built from. SSLv3 suites share their IDs
+// with TLS suites of a different name (0x000a is SSL_RSA_WITH_3DES_EDE_CBC_SHA
+// in SSLv3 and TLS_RSA_WITH_3DES_EDE_CBC_SHA in TLS), and the SSLv3 offer is
+// filtered by the SSLv3 names.
+func negotiatedCipherName(version string, id string) (string, bool) {
+	if version == "ssl3" {
+		if name, ok := SSL3_CIPHERS[id]; ok {
+			return name, true
+		}
+		if name, ok := SSL_FIPS_CIPHERS[id]; ok {
+			return name, true
+		}
+	}
+	name, ok := ALL_CIPHERS[id]
+	return name, ok
+}
+
+func filterCipherMsg(org map[string]string, f func(cipher string) bool, excludedIDs map[string]struct{}) ([]byte, int) {
 	var res bytes.Buffer
 	var n int
 	for k, v := range org {
+		if _, excluded := excludedIDs[k]; excluded {
+			continue
+		}
 		if f(v) {
 			res.WriteString(k)
 			n++
@@ -732,14 +850,14 @@ func (s *Tester) helloTLSMsg(conf *ScanConfig) ([]byte, int, error) {
 
 	switch conf.version {
 	case "ssl3":
-		regular, n1 := filterCipherMsg(SSL3_CIPHERS, conf.ciphersFilter)
-		fips, n2 := filterCipherMsg(SSL_FIPS_CIPHERS, conf.ciphersFilter)
+		regular, n1 := filterCipherMsg(SSL3_CIPHERS, conf.ciphersFilter, conf.excludedIDs)
+		fips, n2 := filterCipherMsg(SSL_FIPS_CIPHERS, conf.ciphersFilter, conf.excludedIDs)
 		ciphers = append(regular, fips...)
 		cipherCount = n1 + n2
 
 	case "tls1.0", "tls1.1", "tls1.2":
-		org, n1 := filterCipherMsg(TLS10_CIPHERS, conf.ciphersFilter)
-		tls, n2 := filterCipherMsg(TLS_CIPHERS, conf.ciphersFilter)
+		org, n1 := filterCipherMsg(TLS10_CIPHERS, conf.ciphersFilter, conf.excludedIDs)
+		tls, n2 := filterCipherMsg(TLS_CIPHERS, conf.ciphersFilter, conf.excludedIDs)
 		ciphers = append(org, tls...)
 		cipherCount = n1 + n2
 
@@ -751,9 +869,9 @@ func (s *Tester) helloTLSMsg(conf *ScanConfig) ([]byte, int, error) {
 		extensions.WriteString("\x00\x0a\x00\x0a\x00\x08\xfa\xfa\x00\x1d\x00\x17\x00\x18")
 
 	case "tls1.3":
-		org, n1 := filterCipherMsg(TLS10_CIPHERS, conf.ciphersFilter)
-		tls, n2 := filterCipherMsg(TLS_CIPHERS, conf.ciphersFilter)
-		tls13, n3 := filterCipherMsg(TLS13_CIPHERS, conf.ciphersFilter)
+		org, n1 := filterCipherMsg(TLS10_CIPHERS, conf.ciphersFilter, conf.excludedIDs)
+		tls, n2 := filterCipherMsg(TLS_CIPHERS, conf.ciphersFilter, conf.excludedIDs)
+		tls13, n3 := filterCipherMsg(TLS13_CIPHERS, conf.ciphersFilter, conf.excludedIDs)
 		ciphers = append(org, tls...)
 		ciphers = append(ciphers, tls13...)
 		cipherCount = n1 + n2 + n3
@@ -804,57 +922,122 @@ func (s *Tester) helloTLSMsg(conf *ScanConfig) ([]byte, int, error) {
 		return nil, 0, errors.New("unsupported TLS/SSL version: " + conf.version)
 	}
 
-	return constructTLSHello(conf.version, ciphers, extensions.Bytes()), cipherCount, nil
+	hello, err := constructTLSHello(conf.version, ciphers, extensions.Bytes())
+	if err != nil {
+		return nil, 0, err
+	}
+	return hello, cipherCount, nil
 }
 
 // OCSP:
 // https://datatracker.ietf.org/doc/html/rfc6960
 // https://datatracker.ietf.org/doc/html/rfc2560
 
-func (s *Tester) ocspRequest(cert *x509.Certificate, issuer *x509.Certificate) error {
+// checkRevocation determines whether a certificate has been revoked and records
+// the outcome in Findings.Revocations.
+//
+// OCSP is asked first. When the certificate names no responder, or the
+// responder cannot be reached, the CRL it points at answers instead - which is
+// now the common case, since the CA/Browser Forum made OCSP optional and
+// several large issuers have retired their responders entirely.
+//
+// The map only gains an entry when a determination was actually reached:
+// absent means unknown, a nil value means not revoked, and a non-nil value
+// means revoked. Callers must keep that three-way distinction, because
+// reporting an unchecked certificate as "not revoked" is indistinguishable
+// from having checked.
+func (s *Tester) checkRevocation(cert *x509.Certificate, issuer *x509.Certificate) error {
+	determined, revocation, err := CheckRevocation(cert, issuer)
+	if !determined {
+		return err
+	}
+
+	s.recordRevocation(cert, revocation)
+	return nil
+}
+
+// CheckRevocation determines whether a certificate has been revoked.
+//
+// The first return says whether a determination was reached at all. When it is
+// false the certificate's status is unknown and the caller must report it as
+// such: a certificate that could not be checked is not a certificate that is
+// good. A nil Revocation with a true first return means the certificate was
+// checked and is not revoked.
+//
+// Callers outside the handshake tester need this because the tester's findings
+// describe the chain its own probes negotiated, which is not always the chain
+// the caller is reporting on.
+func CheckRevocation(cert *x509.Certificate, issuer *x509.Certificate) (bool, *Revocation, error) {
+	var errs multierr.Errors
+
+	determined, revocation, err := ocspRevocation(cert, issuer)
+	if determined {
+		return true, revocation, nil
+	}
+	errs.Add(err)
+
+	determined, revocation, err = crlRevocation(cert, issuer)
+	if determined {
+		return true, revocation, nil
+	}
+	errs.Add(err)
+
+	return false, nil, errs.Deduplicate()
+}
+
+// recordRevocation stores a reached determination. A nil revocation means the
+// certificate was checked and is not revoked.
+func (s *Tester) recordRevocation(cert *x509.Certificate, revocation *Revocation) {
+	s.sync.Lock()
+	s.Findings.Revocations[string(cert.Signature)] = revocation
+	s.sync.Unlock()
+}
+
+// ocspRevocation asks the certificate's OCSP responder for its status.
+//
+// The first return says whether the responder answered at all. Everything that
+// stops it from answering - no responder named, an unreachable one, a response
+// that will not parse - leaves the status unknown rather than good.
+func ocspRevocation(cert *x509.Certificate, issuer *x509.Certificate) (bool, *Revocation, error) {
 	if len(cert.OCSPServer) == 0 {
-		return errors.New("no OCSP server specified for revocation check, skipping it")
+		return false, nil, errors.New("no OCSP server specified for revocation check, skipping it")
 	}
 
 	server := cert.OCSPServer[0]
 
 	req, err := ocsp.CreateRequest(cert, issuer, &ocsp.RequestOptions{})
 	if err != nil {
-		return multierr.Wrap(err, "failed to create OCSP request")
+		return false, nil, multierr.Wrap(err, "failed to create OCSP request")
 	}
 
 	reqBody := bytes.NewBuffer(req)
 	client := &http.Client{Timeout: 10 * time.Second}
 	res, err := client.Post(server, "application/ocsp-request", reqBody)
 	if err != nil {
-		return multierr.Wrap(err, "failed to post OCSP request")
+		return false, nil, multierr.Wrap(err, "failed to post OCSP request")
 	}
+	defer res.Body.Close()
 
 	if res.StatusCode != 200 {
-		return errors.New("OCSP request returned " + res.Status)
+		return false, nil, errors.New("OCSP request returned " + res.Status)
 	}
 	resp, err := io.ReadAll(res.Body)
 	if err != nil {
-		return multierr.Wrap(err, "failed to read OCSP response")
+		return false, nil, multierr.Wrap(err, "failed to read OCSP response")
 	}
 	ocspRes, err := ocsp.ParseResponseForCert(resp, cert, issuer)
 	if err != nil {
-		return multierr.Wrap(err, "failed to parse OCSP response")
+		return false, nil, multierr.Wrap(err, "failed to parse OCSP response")
 	}
 
-	s.sync.Lock()
 	if ocspRes.RevokedAt.IsZero() {
-		s.Findings.Revocations[string(cert.Signature)] = nil
-	} else {
-		s.Findings.Revocations[string(cert.Signature)] = &Revocation{
-			At:     ocspRes.RevokedAt,
-			Via:    server,
-			Reason: ocspRes.RevocationReason,
-		}
+		return true, nil, nil
 	}
-	s.sync.Unlock()
-
-	return nil
+	return true, &Revocation{
+		At:     ocspRes.RevokedAt,
+		Via:    server,
+		Reason: ocspRes.RevocationReason,
+	}, nil
 }
 
 func int1byte(i int) []byte {
@@ -887,21 +1070,19 @@ func bytes3int(b []byte) int {
 	return int(binary.BigEndian.Uint32(append([]byte{0x00}, b...)))
 }
 
-func constructTLSHello(version string, ciphers []byte, extensions []byte) []byte {
+func constructTLSHello(version string, ciphers []byte, extensions []byte) ([]byte, error) {
 	sessionID := ""
 	compressions := "\x00"
 
 	var content bytes.Buffer
 	content.WriteString(VERSIONS[version])
 
-	rnd := make([]byte, 8)
-	binary.BigEndian.PutUint64(rnd, rand.Uint64())
-	content.Write(rnd)
-	binary.BigEndian.PutUint64(rnd, rand.Uint64())
-	content.Write(rnd)
-	binary.BigEndian.PutUint64(rnd, rand.Uint64())
-	content.Write(rnd)
-	binary.BigEndian.PutUint64(rnd, rand.Uint64())
+	// The 32-byte ClientHello random must come from a cryptographically secure
+	// source per the TLS spec.
+	rnd := make([]byte, 32)
+	if _, err := crand.Read(rnd); err != nil {
+		return nil, err
+	}
 	content.Write(rnd)
 
 	content.Write(int1byte(len(sessionID)))
@@ -922,7 +1103,7 @@ func constructTLSHello(version string, ciphers []byte, extensions []byte) []byte
 	core = append(core, int3bytes(len(c))...)
 	core = append(core, c...)
 
-	return constructTLSMsg(CONTENT_TYPE_Handshake, core, []byte(VERSIONS[version]))
+	return constructTLSMsg(CONTENT_TYPE_Handshake, core, []byte(VERSIONS[version])), nil
 }
 
 func constructTLSMsg(contentType byte, content []byte, version []byte) []byte {
@@ -1002,7 +1183,7 @@ const (
 )
 
 // NAMED_GROUPS maps TLS named group IDs to their human-readable names.
-// https://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml#tls-parameters-8
+// https://www.iana.org/assignments/tls-parameters#tls-parameters-8
 var NAMED_GROUPS = map[string]string{
 	"\x00\x17": "secp256r1",
 	"\x00\x18": "secp384r1",

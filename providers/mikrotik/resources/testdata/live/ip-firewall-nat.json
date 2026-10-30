@@ -1,0 +1,13 @@
+[
+ {
+  ".id": "*1",
+  "action": "masquerade",
+  "bytes": "1646",
+  "chain": "srcnat",
+  "comment": "lab-nat",
+  "dynamic": "false",
+  "invalid": "false",
+  "out-interface": "ether1",
+  "packets": "14"
+ }
+]

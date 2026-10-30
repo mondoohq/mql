@@ -4,9 +4,9 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/proxmox/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/proxmox/connection"
 )
 
 // ---------------------------------------------------------------------------
@@ -137,4 +137,41 @@ func (r *mqlProxmoxSdnSubnet) vnetRef() (*mqlProxmoxSdnVnet, error) {
 		return nil, err
 	}
 	return res.(*mqlProxmoxSdnVnet), nil
+}
+
+// ---------------------------------------------------------------------------
+// VNet firewall
+// ---------------------------------------------------------------------------
+
+func (r *mqlProxmoxSdnVnet) firewallRules() ([]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.PveConnection)
+	rules, readable, err := conn.GetSDNVNetFirewallRules(r.Vnet.Data)
+	if err != nil {
+		return nil, err
+	}
+	if !readable {
+		// An empty rule list on a vnet whose firewall could not be read would
+		// pass an audit looking for a segmentation rule set, so report that
+		// nothing was read instead.
+		r.FirewallRules.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return firewallRulesToResources(r.MqlRuntime, rules, "vnet/"+r.Vnet.Data)
+}
+
+func (r *mqlProxmoxSdnVnet) firewallOptions() (*mqlProxmoxFirewallOptions, error) {
+	conn := r.MqlRuntime.Connection.(*connection.PveConnection)
+	opts, readable, err := conn.GetSDNVNetFirewallOptions(r.Vnet.Data)
+	if err != nil {
+		return nil, err
+	}
+	if !readable {
+		r.FirewallOptions.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := firewallOptionsToResource(r.MqlRuntime, opts, "vnet/"+r.Vnet.Data)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlProxmoxFirewallOptions), nil
 }

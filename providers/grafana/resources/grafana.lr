@@ -1,20 +1,23 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
-option provider = "go.mondoo.com/mql/v13/providers/grafana"
-option go_package = "go.mondoo.com/mql/v13/providers/grafana/resources"
+import core
+
+option provider = "go.mondoo.com/mql/providers/grafana"
+option go_package = "go.mondoo.com/mql/providers/grafana/resources"
+option root = "grafana"
 
 // Grafana
 //
-// Examine a Grafana instance via its HTTP API: organization details,
+// Grafana instance queried through its HTTP API: organization details,
 // human users with their roles and MFA / external-auth status, service
 // accounts and their tokens, configured datasources, alerting contact
-// points, the notification-policy routing tree, legacy API keys, RBAC
-// roles, and SSO settings (with a focused view of SAML configuration).
-// The surface auditors use to find weak datasource credentials, missing
-// MFA, expired or broad-scope tokens, deprecated API keys, and
-// permissive SSO configuration.
-grafana {
+// points, the notification-policy routing tree, RBAC roles, and SSO
+// settings (with a focused view of SAML configuration). This is the
+// surface auditors use to find weak datasource credentials, missing
+// MFA, expired, revoked, or broad-scope tokens, and permissive SSO
+// configuration.
+grafana @root {
   // Organization details
   organization() grafana.organization
   // Users in the organization
@@ -27,8 +30,6 @@ grafana {
   contactPoints() []grafana.contactPoint
   // Notification policy tree
   notificationPolicy() grafana.notificationPolicy
-  // Legacy API keys (distinct from service account tokens)
-  apiKeys() []grafana.apiKey
   // RBAC roles (Grafana Enterprise/Cloud)
   roles() []grafana.role
   // SSO settings for all configured identity providers
@@ -39,9 +40,11 @@ grafana {
 
 // Grafana organization
 //
-// Examine the connected Grafana organization's identity: its numeric
-// ID and display name. Grafana organizations scope users, datasources,
-// and most other resources.
+// Identity of the connected Grafana organization: its numeric ID and
+// display name. An organization is the top-level tenant boundary in
+// Grafana, scoping users, datasources, dashboards, and most other
+// resources, so it establishes which tenant the rest of a scan applies
+// to.
 grafana.organization @defaults("id name") {
   // Organization ID
   id int
@@ -51,14 +54,15 @@ grafana.organization @defaults("id name") {
 
 // Grafana organization user
 //
-// Examine a single human user: identity (user ID, org ID, email,
-// display name, login handle), the org-level role (Admin / Editor /
-// Viewer), `lastSeenAt` and a human-readable age, the auth-module
-// the user authenticates against (e.g., `oauth_google`, `ldap`,
-// `saml`, empty for password), the auth labels Grafana attaches,
-// and the convenience predicates `isExternal`, `isGrafanaAdmin`,
-// `isDisabled`, and `mfaEnabled`. RBAC permissions granted to this
-// user are surfaced as an action → scope list map.
+// Single member of a Grafana organization, selected by userId, covering
+// the org-level role (Admin, Editor, or Viewer), the authentication
+// module the account signs in through (for example oauth_google, ldap,
+// saml, or empty for a local password), and last-seen activity. The
+// isExternal, isGrafanaAdmin, isDisabled, and mfaEnabled predicates back
+// audits for local versus federated accounts, server-level admin reach,
+// disabled logins, and missing multi-factor authentication. The
+// permissions map exposes the RBAC actions granted to the user, keyed by
+// action string, on Grafana Enterprise and Cloud deployments.
 grafana.user @defaults("login role") {
   // User ID
   userId int
@@ -94,10 +98,12 @@ grafana.user @defaults("login role") {
 
 // Grafana service account
 //
-// Examine a service account: numeric ID, parent org ID, name and
-// login, the assigned role (Admin / Editor / Viewer), the `disabled`
-// and `external` flags, and the typed list of tokens issued for this
-// service account.
+// Service account used for machine-to-machine access to a Grafana
+// organization, carrying an assigned role (Admin, Editor, or Viewer)
+// that governs its API privileges. The `isDisabled` and `isExternal`
+// flags surface stale or externally managed identities, and each
+// account exposes the tokens issued to it for credential-hygiene and
+// rotation audits.
 grafana.serviceAccount @defaults("id name role") {
   // Service account ID
   id int
@@ -119,12 +125,18 @@ grafana.serviceAccount @defaults("id name role") {
 
 // Grafana service account token
 //
-// Examine a single token issued for a Grafana service account: token
-// ID, the parent service-account ID, the token name, creation
-// timestamp, expiration timestamp (zero when none is configured), a
-// `hasExpiration` predicate, the seconds remaining until expiration
-// (negative when expired), and an `isExpired` flag — used for token
-// hygiene audits and rotation policies.
+// Credential issued for a Grafana service account, used for programmatic
+// API access. Reviewing tokens surfaces token hygiene and rotation risks:
+// the `expiration` timestamp records when a token lapses (zero when none
+// is configured), while the derived `hasExpiration` and `isExpired`
+// predicates and the `secondsUntilExpiration` countdown let audits flag
+// non-expiring or already-expired credentials that should be rotated or
+// revoked. The `isRevoked` predicate separates credentials that no
+// longer authenticate from live ones, so a revocation can be confirmed
+// rather than assumed, and `lastUsedAt` records the most recent time the
+// token authenticated (null when it has never been used), which
+// identifies dormant credentials worth removing. The `serviceAccount`
+// field resolves to the account a token authenticates as.
 grafana.serviceAccountToken @defaults("id name") {
   // Token ID
   id int
@@ -142,20 +154,27 @@ grafana.serviceAccountToken @defaults("id name") {
   secondsUntilExpiration float
   // Whether the token is expired
   isExpired bool
+  // Whether the token has been revoked and no longer authenticates
+  isRevoked bool
+  // Timestamp when the token was last used to authenticate (null if never used)
+  lastUsedAt time
+  // Service account this token authenticates as
+  serviceAccount() grafana.serviceAccount
 }
 
 // Grafana datasource
 //
-// Examine a configured datasource: identity (numeric ID, UID, org
-// ID, name, type — prometheus, loki, mysql, …), access mode and URL,
-// the default-datasource and read-only flags, basic-auth status with
-// the inline username, the database name and DB user, predicates for
-// inline plaintext passwords (`hasPassword`, `hasBasicAuthPassword`)
-// — both legacy / insecure indicators — the
-// `withCredentials` cookie-forwarding flag, the names of secret
-// fields stored encrypted, the non-secret JSON config dict, and the
-// derived TLS posture (`isHttps`, `tlsSkipVerify`, `tlsClientAuth`,
-// `oauthPassThru`).
+// Datasource configured in Grafana, identified by its UID or numeric
+// ID (name and type, such as prometheus, loki, or mysql). Covers the
+// connection endpoint (access mode and URL) and the credential
+// posture: basic-auth status with the inline username, whether an
+// inline plaintext password is stored (`hasPassword`,
+// `hasBasicAuthPassword`, both legacy and insecure), cookie forwarding
+// via `withCredentials`, and the names of the encrypted secret fields.
+// The derived predicates `isHttps`, `tlsSkipVerify`, `tlsClientAuth`,
+// and `oauthPassThru` summarize the TLS and OAuth posture for flagging
+// datasources that connect over plaintext or with unverified
+// certificates.
 grafana.datasource @defaults("id name type") {
   // Datasource ID
   id int
@@ -191,13 +210,21 @@ grafana.datasource @defaults("id name type") {
   withCredentials bool
   // Names of secret fields stored encrypted (e.g., basicAuthPassword, tlsClientCert)
   secureJsonFields []string
-  // JSON data configuration (non-secret fields)
+  // Non-secret datasource configuration
+  //
+  // Free-form settings whose keys vary by datasource type. The
+  // security-relevant keys `tlsSkipVerify`, `tlsAuth`, and
+  // `oauthPassThru` are surfaced as the `tlsSkipVerify`,
+  // `tlsClientAuth`, and `oauthPassThru` predicates.
   jsonData dict
   // Whether the datasource URL uses HTTPS
   isHttps() bool
   // Whether TLS server-certificate verification is skipped (jsonData.tlsSkipVerify)
   tlsSkipVerify() bool
   // Whether mutual TLS (client cert) is configured
+  //
+  // True when `jsonData` sets `tlsAuth`, or when a `tlsClientCert` or
+  // `tlsClientKey` secret is present in `secureJsonFields`.
   tlsClientAuth() bool
   // Whether OAuth pass-through (oauthPassThru) is enabled
   oauthPassThru() bool
@@ -205,12 +232,13 @@ grafana.datasource @defaults("id name type") {
 
 // Grafana alerting contact point
 //
-// Examine a single alerting contact point: UID, name, type (email,
-// slack, webhook, pagerduty, …), the `disableResolveMessage` flag,
-// the (non-secret) settings dict, the URL configured on the contact
-// point (when applicable), and derived posture predicates —
-// `isHttps`, `tlsSkipVerify`, `hasHttpAuth` — used to flag contact
-// points that route alerts over plaintext or with unverified TLS.
+// Single alerting contact point defined in Grafana, identified by its
+// `uid`. A contact point tells Grafana where to deliver a firing or
+// resolved alert (email, Slack, webhook, PagerDuty, and others). The
+// non-secret delivery configuration lives in `settings`, while the
+// derived `isHttps`, `tlsSkipVerify`, and `hasHttpAuth` predicates flag
+// contact points that route alerts over plaintext HTTP, skip TLS
+// verification, or reach a receiver without authentication.
 grafana.contactPoint @defaults("uid name type") {
   // Contact point UID
   uid string
@@ -220,7 +248,16 @@ grafana.contactPoint @defaults("uid name type") {
   type string
   // Whether resolve messages are disabled
   disableResolveMessage bool
-  // Contact point settings (non-secret fields)
+  // Non-secret configuration for the contact point
+  //
+  // Delivery settings returned by Grafana's provisioning API, with secret
+  // values (tokens, passwords) omitted. The keys vary by contact-point
+  // `type`: HTTP-based receivers expose a URL under `url`, `endpointUrl`,
+  // `apiUrl`, `webhook`, or `webhookUrl`, optional authentication under
+  // `username`, `authorizationCredentials`, or a nested `httpConfig`
+  // (`basicAuth`, `bearerToken`), and TLS options under `tlsConfig` or
+  // `httpConfig.tlsConfig` (`insecureSkipVerify`). The url, isHttps,
+  // tlsSkipVerify, and hasHttpAuth fields are derived from these keys.
   settings dict
   // URL configured on the contact point (webhook/slack URL when applicable)
   url() string
@@ -232,41 +269,15 @@ grafana.contactPoint @defaults("uid name type") {
   hasHttpAuth() bool
 }
 
-// Legacy Grafana API key
-//
-// Deprecated in favor of service accounts and tokens, which should be
-// used for new integrations. Examine a single legacy API key: numeric ID
-// and parent org ID, key name, granted role (Admin / Editor / Viewer),
-// expiration timestamp (zero when none is set) plus `hasExpiration` and
-// `isExpired` predicates, and the service-account ID this key was
-// migrated to (zero when not migrated).
-grafana.apiKey @defaults("name role") @maturity("deprecated") {
-  // API key ID
-  id int
-  // Organization ID
-  orgId int
-  // Key name
-  name string
-  // Role granted by the key (Admin, Editor, Viewer)
-  role string
-  // Timestamp when the key expires (zero if no expiration)
-  expiration time
-  // Whether an expiration is set on the key
-  hasExpiration bool
-  // Whether the key has expired
-  isExpired bool
-  // Service account ID this key was migrated to (zero if not migrated)
-  serviceAccountId int
-}
-
 // Grafana RBAC role (Enterprise / Cloud)
 //
-// Examine a single RBAC role: UID, name (e.g.,
-// `fixed:datasources:writer`), display name, description, group,
-// version number, the `global` (built-in) and `hidden` flags, the
-// permissions map (action → scope list), and `created` / `updated`
-// timestamps. Iterate `grafana.roles` to audit which roles grant
-// which actions across the organization.
+// Role-based access control role that grants a set of actions across
+// the organization. The `permissions` map ties each action to the
+// scopes it applies to, so you can audit which roles confer sensitive
+// capabilities and to what resources. The `global` flag marks built-in
+// roles that cannot be modified, and `hidden` marks roles kept out of
+// the UI by default. Fixed roles carry a `fixed:` prefix in their
+// name, for example `fixed:datasources:writer`.
 grafana.role @defaults("name displayName") {
   // Role UID
   uid string
@@ -294,13 +305,14 @@ grafana.role @defaults("name displayName") {
 
 // Grafana SSO settings for a single identity provider
 //
-// Examine the SSO configuration for one identity provider (saml,
-// github, google, generic_oauth, azuread, gitlab, okta, …): the
-// provider name, configuration source (`system` vs `database`),
-// enabled flag, the (non-secret) settings dict (Grafana redacts
-// secrets), the `allowSignUp` flag, and a `hasDomainRestriction`
-// predicate indicating whether the provider restricts sign-in to a
-// configured allowed-domains / orgs list.
+// Single-sign-on configuration for one identity provider, keyed by
+// `provider` (saml, github, google, generic_oauth, azuread, gitlab,
+// okta, and others). Auditing these entries confirms whether an
+// enabled provider signs new users up automatically and whether it
+// restricts sign-in to an allowed set of domains, organizations, or
+// groups, so an over-permissive federation is easy to catch. The
+// `source` field distinguishes configuration set in Grafana's config
+// file (`system`) from settings stored in the database (`database`).
 grafana.ssoSettings @defaults("provider source") {
   // Provider name (e.g., saml, github, google, generic_oauth, azuread, gitlab, okta)
   provider string
@@ -308,28 +320,45 @@ grafana.ssoSettings @defaults("provider source") {
   source string
   // Whether SSO for this provider is enabled
   enabled bool
-  // Provider settings (non-secret fields; secrets are redacted by Grafana)
+  // Provider settings
+  //
+  // Raw provider configuration as returned by Grafana, with secret
+  // fields (client secrets, private keys) redacted server-side. Keys
+  // are provider-specific; common ones include `enabled`,
+  // `allow_sign_up`, `allowed_domains`, `allowed_organizations`, and
+  // `allowed_groups`. The `enabled`, `allowSignUp`, and
+  // `hasDomainRestriction` fields summarize the most security-relevant
+  // of these.
   settings dict
   // Whether new users are auto-registered on first login
   allowSignUp bool
-  // Whether sign-in is restricted to the configured allowed_domains/orgs
+  // Whether sign-in is restricted to an allowed set
+  //
+  // True when any of the `allowed_domains`, `allowed_organizations`,
+  // or `allowed_groups` provider settings is non-empty, meaning
+  // sign-in through this provider is limited rather than open to any
+  // authenticated user.
   hasDomainRestriction bool
 }
 
 // Grafana SAML SSO settings (Enterprise / Cloud)
 //
-// Examine the security-relevant fields of the SAML SSO configuration
-// (a focused view of the `saml` entry from `grafana.ssoSettings`):
-// enabled flag, configuration source (`system` vs `database`), the
-// signature algorithm (e.g., rsa-sha256), whether SP-initiated
-// requests are signed, single-logout enabled flag, whether
-// IdP-initiated SSO is allowed, the auto-signup flag, the
-// allowed-organizations list, the `skipOrgRoleSync` flag, and the
-// raw provider settings dict (with secrets redacted by Grafana).
+// Security-relevant view of the Grafana SAML single sign-on
+// configuration, alongside the broader `grafana.ssoSettings` list.
+// Use it to audit whether SAML is enabled, whether it is configured
+// through the config file or the database (the `source` field),
+// how requests are signed, and whether risky conveniences such as
+// IdP-initiated SSO or automatic user sign-up are allowed. The
+// complete raw provider configuration is available in `settings`,
+// with secrets redacted by Grafana.
 grafana.samlSettings @defaults("enabled") {
   // Whether SAML SSO is enabled
   enabled bool
-  // Source of the configuration (system or database)
+  // Source of the configuration
+  //
+  // Where the SAML settings originate: `system` for the config file
+  // or environment, or `database` for values set through the API or
+  // UI.
   source string
   // SAML signature algorithm (e.g., rsa-sha256)
   signatureAlgorithm string
@@ -345,20 +374,42 @@ grafana.samlSettings @defaults("enabled") {
   allowedOrganizations string
   // Whether email-based skip-org-role-sync is enabled
   skipOrgRoleSync bool
-  // Raw provider settings (secrets redacted by Grafana)
+  // Raw Grafana SAML provider configuration
+  //
+  // Complete SAML settings map as returned by Grafana, keyed by the
+  // snake_case option names (for example `signature_algorithm`,
+  // `signed_requests`, `single_logout`, `allow_idp_initiated`,
+  // `allow_sign_up`, `allowed_organizations`, `allowed_domains`,
+  // `allowed_groups`, `skip_org_role_sync`, and the IdP metadata and
+  // certificate options). The other fields on this resource surface
+  // the security-relevant keys individually. Secret values are
+  // redacted by Grafana.
   settings dict
 }
 
 // Grafana notification policy tree
 //
-// Examine the alerting notification-policy tree: the default receiver,
-// the labels alerts are grouped by, and the nested routing rules
-// dispatching alerts to specific contact points.
+// Alerting notification-policy tree that decides which contact point
+// receives each alert. The `receiver` names the default contact point,
+// `groupBy` lists the labels alerts are grouped by before dispatch, and
+// `routes` holds the nested matching rules that override the default for
+// alerts carrying specific labels. Audit it to confirm alerts reach the
+// intended on-call contacts and that no critical alert falls through to a
+// silent or misconfigured receiver.
 grafana.notificationPolicy {
   // Default receiver name
   receiver string
   // Labels to group alerts by
   groupBy []string
   // Nested routing rules
+  //
+  // Child routes of the policy tree, each a dict from the Grafana
+  // provisioning API. Keys include `receiver` (contact point for matching
+  // alerts), `object_matchers` and `matchers` (label conditions that select
+  // which alerts the route handles), `group_by`, `continue` (whether
+  // evaluation keeps going to sibling routes after a match),
+  // `mute_time_intervals`, `active_time_intervals`, `group_wait`,
+  // `group_interval`, `repeat_interval`, and a further `routes` array for
+  // deeper nesting.
   routes []dict
 }

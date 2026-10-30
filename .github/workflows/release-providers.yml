@@ -10,38 +10,97 @@ on:
         required: false
         default: "providers/*/"
 
-concurrency:
-  group: release-providers
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
+env:
+  # C07QZDJFF89 == #release-coordination
+  SLACK_BOT_CHANNEL_ID: "C07QZDJFF89"
+
 jobs:
   release-providers:
+    # Stable releases only, until pre-release providers are designed.
+    #
+    # Providers publish into one `providers/<name>/<version>/` namespace behind
+    # a single `providers/latest.json`, and nothing there distinguishes a
+    # channel yet. A v14 pre-release bumping providers to 14.x would therefore
+    # be served to every v13 client in the field, which resolves providers from
+    # that same document.
+    #
+    # The binaries already derive a channel from the semver tag and publish to
+    # `preview`; providers have not been given the equivalent. Until they are,
+    # a pre-release must not start a provider release. Tracked in #10782.
+    #
+    # workflow_dispatch stays open so a provider release can still be run by
+    # hand when that is what is wanted.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false }}
     runs-on: ubuntu-latest
+    # Serialize release runs. This lives on the job, not the workflow, so the
+    # merge-release-pr job waiting for approval does not block the next run.
+    concurrency:
+      group: release-providers
+      cancel-in-progress: false
     permissions:
       contents: write
       pull-requests: write
+    outputs:
+      pr-number: ${{ steps.cpr.outputs.pull-request-number }}
+      pr-url: ${{ steps.cpr.outputs.pull-request-url }}
+      title: ${{ steps.branch.outputs.COMMIT_TITLE }}
     steps:
+      # Sparse-checkout the scripts dir from main first, so we can run
+      # determine-provider-release-base.sh to pick the target branch
+      # before doing the full checkout. Pinned to main because on the
+      # release event github.ref is the release tag (e.g. v13.35.1),
+      # and the v13 branch's tag predates this script's existence.
+      - name: Sparse-checkout scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          sparse-checkout: '.github/scripts'
+          sparse-checkout-cone-mode: false
+      # Route the provider-bump PR by asking GitHub whether a v{major}
+      # support branch exists for the release's major. If yes ->
+      # base=v{major}; if no -> base=main. So today (v13 branch exists,
+      # main tracks v14) a v13.x release routes to v13 and a v14.x
+      # release routes to main, and no config change is needed when a
+      # future v14 support branch is cut. For workflow_dispatch (no
+      # release event) fall back to main.
+      # Logic lives in .github/scripts/determine-provider-release-base.sh
+      # and is unit-tested in .github/scripts/tests/.
+      - name: Determine base branch
+        id: base
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$TAG_NAME" ]; then
+            BASE=main
+          else
+            BASE=$(.github/scripts/determine-provider-release-base.sh "$TAG_NAME")
+          fi
+          echo "tag=${TAG_NAME:-<empty>} -> base=$BASE"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
       # https://github.com/peter-evans/create-pull-request/issues/48
       # https://github.com/peter-evans/create-pull-request/blob/main/docs/concepts-guidelines.md#push-using-ssh-deploy-keys
       # tl;dr:
       # The GITHUB_TOKEN is limited when creating PRs from a workflow
       # because of that we use a ssh key for which the limitations do not apply
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ssh-key: ${{ secrets.CNQUERY_DEPLOY_KEY_PRIV }}
           fetch-depth: 0
+          ref: ${{ steps.base.outputs.base }}
 
       - name: Import environment variables from file
         run: cat ".github/env" >> $GITHUB_ENV
 
       - name: Install Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ">=${{ env.golang-version }}"
+          go-version: "${{ env.golang-version }}"
           check-latest: true
           cache: false
 
@@ -116,13 +175,27 @@ jobs:
         if: ${{ steps.branch.outputs.SKIP != 'true' }}
         run: rm -rf .version-output
 
+      # Open the PR with the mergebot app token, not GITHUB_TOKEN. A PR opened
+      # with GITHUB_TOKEN is authored by github-actions[bot], and GitHub holds
+      # every pull_request run it triggers for manual approval: CI does not start
+      # until someone approves it, and merge-release-pr waits on that CI. Minted
+      # here, right before use, because the token expires after an hour.
+      - name: Generate mergebot token
+        if: ${{ steps.branch.outputs.SKIP != 'true' }}
+        id: generate-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.MONDOO_MERGEBOT_APP_ID }}
+          private-key: ${{ secrets.MONDOO_MERGEBOT_APP_PRIVATE_KEY }}
+
       # We have to use this extension, because `gh pr create` does not support the ssh key case
       - name: Create pull request
         if: ${{ steps.branch.outputs.SKIP != 'true' }}
         id: cpr
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
-          base: main
+          token: ${{ steps.generate-token.outputs.token }}
+          base: ${{ steps.base.outputs.base }}
           labels: providers
           committer: "Mondoo Tools <tools@mondoo.com>"
           author: "Mondoo Tools <tools@mondoo.com>"
@@ -137,23 +210,182 @@ jobs:
           echo "Pull Request Number - ${{ steps.cpr.outputs.pull-request-number }}"
           echo "Pull Request URL - ${{ steps.cpr.outputs.pull-request-url }}"
 
+      # The review bot skips PRs opened by a bot, but it reviews a PR when a
+      # comment starts with /review. The merge-release-pr job merges the PR
+      # once the bot approved the head commit and CI is green.
+      - name: Request review
+        if: ${{ steps.branch.outputs.SKIP != 'true' && steps.cpr.outputs.pull-request-number }}
+        env:
+          PR: ${{ steps.cpr.outputs.pull-request-number }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment "$PR" --body "/review"
+
       - name: Send Slack notification
         if: ${{ steps.branch.outputs.SKIP != 'true' && steps.cpr.outputs.pull-request-number }}
-        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           method: chat.postMessage
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             {
-              "channel": "C07QZDJFF89",
+              "channel": "${{ env.SLACK_BOT_CHANNEL_ID }}",
               "text": "✨ Provider release PR created",
               "blocks": [
                 {
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": ":rocket: *Provider release PR created*: <${{ steps.cpr.outputs.pull-request-url }}|${{ steps.branch.outputs.COMMIT_TITLE }}>\nThis PR is ready for review."
+                    "text": ":rocket: *Provider release PR created*: <${{ steps.cpr.outputs.pull-request-url }}|${{ steps.branch.outputs.COMMIT_TITLE }}>\nThe review bot was asked to review it. The PR merges automatically once the bot approves and CI is green."
                   }
                 }
               ]
             }
+
+  merge-release-pr:
+    needs: release-providers
+    if: ${{ needs.release-providers.outputs.pr-number != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: read
+      statuses: read
+    env:
+      PR: ${{ needs.release-providers.outputs.pr-number }}
+      PR_URL: ${{ needs.release-providers.outputs.pr-url }}
+      PR_TITLE: ${{ needs.release-providers.outputs.title }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Sparse-checkout scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          sparse-checkout: '.github/scripts'
+          sparse-checkout-cone-mode: false
+
+      # Polls until the PR can be merged or will not merge without a human.
+      # The decision logic lives in .github/scripts/provider-release-pr-state.sh
+      # and is unit-tested in .github/scripts/tests/. Outcomes are reported
+      # through step outputs (result = merge | merged | fail), never through a
+      # failing exit code, so the notification steps below always run.
+      - name: Wait for approval and CI
+        id: wait
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          deadline=$(( $(date +%s) + 180 * 60 ))
+          # release-providers already commented /review for the head at that time.
+          requested_sha=$(gh pr view "$PR" --json headRefOid --jq .headRefOid)
+          last_reason="no poll completed"
+          result=""
+          reason=""
+          sha="$requested_sha"
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            # Read the head before the state: if a push lands in between,
+            # --match-head-commit in the merge step refuses a stale sha.
+            if ! sha=$(gh pr view "$PR" --json headRefOid --jq .headRefOid); then
+              echo "could not read the PR head, retrying"
+              sleep 60
+              continue
+            fi
+            # The review bot does not re-review bot PRs on push, so ask again.
+            if [ "$sha" != "$requested_sha" ]; then
+              echo "head moved to $sha, requesting a new review"
+              if gh pr comment "$PR" --body "/review"; then
+                requested_sha="$sha"
+              fi
+            fi
+            if ! line=$(.github/scripts/provider-release-pr-state.sh "$PR"); then
+              line="wait could not read the PR state"
+            fi
+            echo "$(date -u +%H:%M:%S) $sha: $line"
+            word="${line%% *}"
+            reason=""
+            if [ "$line" != "$word" ]; then reason="${line#* }"; fi
+            case "$word" in
+              merge|merged|fail)
+                result="$word"
+                break
+                ;;
+              *)
+                last_reason="$reason"
+                ;;
+            esac
+            sleep 60
+          done
+          if [ -z "$result" ]; then
+            result=fail
+            reason="timed out after 180 minutes: $last_reason"
+          fi
+          {
+            echo "result=$result"
+            echo "reason=$reason"
+            echo "sha=$sha"
+          } >> "$GITHUB_OUTPUT"
+
+      # Merge with the mergebot app token, not GITHUB_TOKEN: a merge made with
+      # GITHUB_TOKEN does not start other workflows, so providers.yaml (push
+      # to main), which builds and publishes the providers, would not run.
+      - name: Generate token
+        if: ${{ steps.wait.outputs.result == 'merge' }}
+        id: generate-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.MONDOO_MERGEBOT_APP_ID }}
+          private-key: ${{ secrets.MONDOO_MERGEBOT_APP_PRIVATE_KEY }}
+
+      # --match-head-commit refuses the merge if a push landed after the check.
+      - name: Merge
+        if: ${{ steps.wait.outputs.result == 'merge' }}
+        id: merge
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+          SHA: ${{ steps.wait.outputs.sha }}
+        run: gh pr merge "$PR" --squash --match-head-commit "$SHA"
+
+      - name: Send Slack notification, merged
+        if: ${{ steps.wait.outputs.result == 'merge' && steps.merge.outcome == 'success' }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            {
+              "channel": "${{ env.SLACK_BOT_CHANNEL_ID }}",
+              "text": "Provider release PR merged",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":white_check_mark: *Provider release PR merged*: <${{ env.PR_URL }}|${{ env.PR_TITLE }}>"
+                  }
+                }
+              ]
+            }
+
+      # The reason can contain any character, so the payload is built with jq
+      # (which escapes it) and handed to the Slack action as one string.
+      - name: Build needs-attention payload
+        if: ${{ always() && (steps.wait.outputs.result == 'fail' || steps.merge.outcome == 'failure' || failure()) }}
+        id: attention
+        env:
+          CHANNEL: ${{ env.SLACK_BOT_CHANNEL_ID }}
+          REASON: ${{ steps.wait.outputs.reason }}
+        run: |
+          reason="${REASON:-merge failed, see run}"
+          text=":warning: *Provider release PR needs a human*: <$PR_URL|$PR_TITLE>"$'\n'"Reason: $reason"$'\n'"<$RUN_URL|workflow run>"
+          payload=$(jq -nc --arg channel "$CHANNEL" --arg text "$text" \
+            '{channel: $channel, text: "Provider release PR needs a human", blocks: [{type: "section", text: {type: "mrkdwn", text: $text}}]}')
+          echo "payload=$payload" >> "$GITHUB_OUTPUT"
+
+      - name: Send Slack notification, needs attention
+        if: ${{ always() && steps.attention.outputs.payload != '' }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: ${{ steps.attention.outputs.payload }}

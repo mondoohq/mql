@@ -7,19 +7,20 @@ import (
 	"context"
 
 	"github.com/Snowflake-Labs/terraform-provider-snowflake/pkg/sdk"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/snowflake/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/snowflake/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlSnowflakeFailoverGroupInternal struct {
-	id sdk.AccountObjectIdentifier
+	id         sdk.AccountObjectIdentifier
+	cacheOwner string
 }
 
 func (r *mqlSnowflakeAccount) failoverGroups() ([]any, error) {
 	conn := r.MqlRuntime.Connection.(*connection.SnowflakeConnection)
-	groups, err := conn.Client().FailoverGroups.Show(context.Background(), &sdk.ShowFailoverGroupOptions{})
+	groups, err := conn.Client().FailoverGroups.Show(context.Background(), &sdk.ShowFailoverGroupRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +73,6 @@ func newMqlSnowflakeFailoverGroup(runtime *plugin.Runtime, g sdk.FailoverGroup) 
 		"nextScheduledRefresh":    llx.StringData(g.NextScheduledRefresh),
 		"regionGroup":             llx.StringData(g.RegionGroup),
 		"snowflakeRegion":         llx.StringData(g.SnowflakeRegion),
-		"owner":                   llx.StringData(g.Owner),
 		"comment":                 llx.StringData(g.Comment),
 		"createdAt":               llx.TimeData(g.CreatedOn),
 	})
@@ -81,6 +81,7 @@ func newMqlSnowflakeFailoverGroup(runtime *plugin.Runtime, g sdk.FailoverGroup) 
 	}
 	mqlGroup := r.(*mqlSnowflakeFailoverGroup)
 	mqlGroup.id = g.ID()
+	mqlGroup.cacheOwner = g.Owner
 	return mqlGroup, nil
 }
 
@@ -108,4 +109,8 @@ func (r *mqlSnowflakeFailoverGroup) shares() ([]any, error) {
 		out = append(out, id.FullyQualifiedName())
 	}
 	return out, nil
+}
+
+func (r *mqlSnowflakeFailoverGroup) ownerRole() (*mqlSnowflakeRole, error) {
+	return resolveOwnerRole(r.MqlRuntime, r.cacheOwner, &r.OwnerRole)
 }

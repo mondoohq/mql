@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/types"
 )
 
 // ref builds an absolute ref from a 1-based block and chunk index.

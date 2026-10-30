@@ -11,17 +11,26 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/datafactory/armdatafactory/v10"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/datafactory/armdatafactory/v11"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlAzureSubscriptionDataFactoryServiceFactoryInternal struct {
 	cacheUserAssignedIdentityIds []string
+	cacheCmkKeyName              string
+	cacheCmkKeyVaultUri          string
+	cacheCmkKeyVersion           string
+	cacheCmkUserAssignedIdentity string
+	cacheSystemData              any
+}
+
+func (a *mqlAzureSubscriptionDataFactoryServiceFactory) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 func (a *mqlAzureSubscriptionDataFactoryService) id() (string, error) {
@@ -62,7 +71,7 @@ func (a *mqlAzureSubscriptionDataFactoryService) factories() ([]any, error) {
 			var respErr *azcore.ResponseError
 			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
 				log.Warn().Err(err).Msg("could not list data factories due to access denied")
-				return res, nil
+				return keepTagMatches(a.MqlRuntime, res), nil
 			}
 			return nil, err
 		}
@@ -80,16 +89,13 @@ func (a *mqlAzureSubscriptionDataFactoryService) factories() ([]any, error) {
 				return nil, err
 			}
 
-			var userAssignedIdentityIds []string
-			if factory.Identity != nil {
-				userAssignedIdentityIds = sortedUserAssignedIdentityIDs(factory.Identity.UserAssignedIdentities)
-			}
+			factoryIdentity := orZero(factory.Identity)
+			userAssignedIdentityIds := sortedUserAssignedIdentityIDs(factoryIdentity.UserAssignedIdentities)
 
 			var publicNetworkAccess string
 			var provisioningState string
 			var version string
 			var repoConfig any
-			var encryption any
 			var cmkKeyName, cmkKeyVaultUri, cmkKeyVersion, cmkUserAssignedIdentity string
 			var created *llx.RawData
 
@@ -110,10 +116,6 @@ func (a *mqlAzureSubscriptionDataFactoryService) factories() ([]any, error) {
 					}
 				}
 				if factory.Properties.Encryption != nil {
-					encryption, err = convert.JsonToDict(factory.Properties.Encryption)
-					if err != nil {
-						return nil, err
-					}
 					if factory.Properties.Encryption.KeyName != nil {
 						cmkKeyName = *factory.Properties.Encryption.KeyName
 					}
@@ -133,36 +135,47 @@ func (a *mqlAzureSubscriptionDataFactoryService) factories() ([]any, error) {
 				created = llx.TimeData(llx.NeverFutureTime)
 			}
 
+			resourceIdentity, err := resourceIdentityData(a.MqlRuntime, convert.ToValue(factory.ID), userAssignedIdentityIds,
+				identityType(factoryIdentity.Type), identityPrincipalId(factoryIdentity.PrincipalID), identityTenantId(factoryIdentity.TenantID))
+			if err != nil {
+				return nil, err
+			}
+
 			mqlFactory, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionDataFactoryServiceFactory,
 				map[string]*llx.RawData{
-					"__id":                    llx.StringDataPtr(factory.ID),
-					"id":                      llx.StringDataPtr(factory.ID),
-					"name":                    llx.StringDataPtr(factory.Name),
-					"location":                llx.StringDataPtr(factory.Location),
-					"tags":                    llx.MapData(convert.PtrMapStrToInterface(factory.Tags), types.String),
-					"type":                    llx.StringDataPtr(factory.Type),
-					"properties":              llx.DictData(properties),
-					"publicNetworkAccess":     llx.StringData(publicNetworkAccess),
-					"identity":                llx.DictData(identity),
-					"provisioningState":       llx.StringData(provisioningState),
-					"version":                 llx.StringData(version),
-					"repoConfiguration":       llx.DictData(repoConfig),
-					"encryption":              llx.DictData(encryption),
-					"cmkKeyName":              llx.StringData(cmkKeyName),
-					"cmkKeyVaultUri":          llx.StringData(cmkKeyVaultUri),
-					"cmkKeyVersion":           llx.StringData(cmkKeyVersion),
-					"cmkUserAssignedIdentity": llx.StringData(cmkUserAssignedIdentity),
-					"created":                 created,
+					"__id":                llx.StringDataPtr(factory.ID),
+					"id":                  llx.StringDataPtr(factory.ID),
+					"name":                llx.StringDataPtr(factory.Name),
+					"location":            llx.StringDataPtr(factory.Location),
+					"tags":                llx.MapData(convert.PtrMapStrToInterface(factory.Tags), types.String),
+					"type":                llx.StringDataPtr(factory.Type),
+					"properties":          llx.DictData(properties),
+					"publicNetworkAccess": llx.StringData(publicNetworkAccess),
+					"identity":            llx.DictData(identity),
+					"resourceIdentity":    resourceIdentity,
+					"provisioningState":   llx.StringData(provisioningState),
+					"version":             llx.StringData(version),
+					"repoConfiguration":   llx.DictData(repoConfig),
+					"created":             created,
 				})
 			if err != nil {
 				return nil, err
 			}
 			factoryRes := mqlFactory.(*mqlAzureSubscriptionDataFactoryServiceFactory)
 			factoryRes.cacheUserAssignedIdentityIds = userAssignedIdentityIds
+			factoryRes.cacheCmkKeyName = cmkKeyName
+			factoryRes.cacheCmkKeyVaultUri = cmkKeyVaultUri
+			factoryRes.cacheCmkKeyVersion = cmkKeyVersion
+			factoryRes.cacheCmkUserAssignedIdentity = cmkUserAssignedIdentity
+			sysData, err := convert.JsonToDict(factory.SystemData)
+			if err != nil {
+				return nil, err
+			}
+			factoryRes.cacheSystemData = sysData
 			res = append(res, factoryRes)
 		}
 	}
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func (a *mqlAzureSubscriptionDataFactoryServiceFactory) id() (string, error) {
@@ -171,14 +184,14 @@ func (a *mqlAzureSubscriptionDataFactoryServiceFactory) id() (string, error) {
 
 // cmkKey returns a typed reference to the Key Vault key used for customer-managed encryption.
 func (a *mqlAzureSubscriptionDataFactoryServiceFactory) cmkKey() (*mqlAzureSubscriptionKeyVaultServiceKey, error) {
-	vaultURI := strings.TrimSuffix(a.CmkKeyVaultUri.Data, "/")
-	keyName := a.CmkKeyName.Data
+	vaultURI := strings.TrimSuffix(a.cacheCmkKeyVaultUri, "/")
+	keyName := a.cacheCmkKeyName
 	if vaultURI == "" || keyName == "" {
 		a.CmkKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
 	keyURI := vaultURI + "/keys/" + keyName
-	if version := a.CmkKeyVersion.Data; version != "" {
+	if version := a.cacheCmkKeyVersion; version != "" {
 		keyURI += "/" + version
 	}
 	return newKeyVaultKeyResource(a.MqlRuntime, keyURI)
@@ -186,7 +199,7 @@ func (a *mqlAzureSubscriptionDataFactoryServiceFactory) cmkKey() (*mqlAzureSubsc
 
 // cmkIdentity returns the user-assigned managed identity used to access the CMK.
 func (a *mqlAzureSubscriptionDataFactoryServiceFactory) cmkIdentity() (*mqlAzureSubscriptionManagedIdentity, error) {
-	id := a.CmkUserAssignedIdentity.Data
+	id := a.cacheCmkUserAssignedIdentity
 	if id == "" {
 		a.CmkIdentity.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -210,7 +223,7 @@ func initAzureSubscriptionDataFactoryServiceFactory(runtime *plugin.Runtime, arg
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
+		if ids := getAssetIdentifier(runtime); ids != nil && ids.id != "" {
 			args["id"] = llx.StringData(ids.id)
 		}
 	}
@@ -242,6 +255,10 @@ func initAzureSubscriptionDataFactoryServiceFactory(runtime *plugin.Runtime, arg
 		if factory.Id.Data == id {
 			return args, factory, nil
 		}
+	}
+
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionDataFactoryServiceFactory, id); filtered != nil {
+		return args, filtered, nil
 	}
 
 	return nil, nil, errors.New("azure data factory does not exist")

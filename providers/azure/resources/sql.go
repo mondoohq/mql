@@ -7,31 +7,61 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 
 	sql "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/sql/armsql"
 )
+
+// elasticPoolNameFromID extracts the elastic pool name (the last path segment)
+// from a full ARM elastic pool resource ID, e.g.
+// "/subscriptions/.../elasticPools/mypool" -> "mypool". It is nil-safe: a nil
+// input yields a nil result so the field stays null rather than carrying the
+// raw ARM ID, which would break equality filters on the pool name.
+func elasticPoolNameFromID(id *string) *string {
+	if id == nil {
+		return nil
+	}
+	name := *id
+	if _, after, ok := strings.CutLast(name, "/"); ok {
+		name = after
+	}
+	return &name
+}
 
 type mqlAzureSubscriptionSqlServiceServerInternal struct {
 	encryptionProtectorOnce sync.Once
 	encryptionProtectorResp *sql.EncryptionProtectorsClientGetResponse
 	encryptionProtectorErr  error
 
-	connectionPolicyOnce sync.Once
-	connectionPolicyResp *sql.ServerConnectionPoliciesClientGetResponse
-	connectionPolicyErr  error
-
 	cachePrimaryUserAssignedIdentityId string
+}
+
+func (a *mqlAzureSubscriptionSqlServiceServer) diagnosticSettings() ([]any, error) {
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
+
+func (a *mqlAzureSubscriptionSqlServiceServer) diagnosticSettingsCategories() ([]any, error) {
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	return getDiagnosticSettingsCategories(a.Id.Data, a.MqlRuntime, conn)
 }
 
 func (a *mqlAzureSubscriptionSqlServiceServer) primaryUserAssignedIdentity() (*mqlAzureSubscriptionManagedIdentity, error) {
@@ -45,40 +75,6 @@ func (a *mqlAzureSubscriptionSqlServiceServer) primaryUserAssignedIdentity() (*m
 		return nil, err
 	}
 	return res.(*mqlAzureSubscriptionManagedIdentity), nil
-}
-
-// fetchConnectionPolicy retrieves the server-scoped ConnectionPolicy. Cached
-// with sync.Once so the server's connectionPolicy() accessor and per-database
-// connectionPolicy() accessors share a single API call (the policy is keyed
-// on the server, not the database — see Azure docs).
-func (a *mqlAzureSubscriptionSqlServiceServer) fetchConnectionPolicy() (*sql.ServerConnectionPoliciesClientGetResponse, error) {
-	a.connectionPolicyOnce.Do(func() {
-		conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
-		resourceID, err := ParseResourceID(a.Id.Data)
-		if err != nil {
-			a.connectionPolicyErr = err
-			return
-		}
-		server, err := resourceID.Component("servers")
-		if err != nil {
-			a.connectionPolicyErr = err
-			return
-		}
-		client, err := sql.NewServerConnectionPoliciesClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
-			ClientOptions: conn.ClientOptions(),
-		})
-		if err != nil {
-			a.connectionPolicyErr = err
-			return
-		}
-		resp, err := client.Get(context.Background(), resourceID.ResourceGroup, server, sql.ConnectionPolicyNameDefault, &sql.ServerConnectionPoliciesClientGetOptions{})
-		if err != nil {
-			a.connectionPolicyErr = err
-			return
-		}
-		a.connectionPolicyResp = &resp
-	})
-	return a.connectionPolicyResp, a.connectionPolicyErr
 }
 
 type mqlAzureSubscriptionSqlServiceServerFailoverGroupInternal struct {
@@ -182,6 +178,9 @@ func (a *mqlAzureSubscriptionSqlService) servers() ([]any, error) {
 			return nil, err
 		}
 		for _, dbServer := range page.Value {
+			if dbServer == nil {
+				continue
+			}
 			properties, err := convert.JsonToDict(dbServer.Properties)
 			if err != nil {
 				return nil, err
@@ -243,7 +242,7 @@ func (a *mqlAzureSubscriptionSqlService) servers() ([]any, error) {
 		}
 	}
 
-	return res, nil
+	return keepTagMatches(a.MqlRuntime, res), nil
 }
 
 func (a *mqlAzureSubscriptionSqlServiceServer) databases() ([]any, error) {
@@ -274,6 +273,9 @@ func (a *mqlAzureSubscriptionSqlServiceServer) databases() ([]any, error) {
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			// Properties is a nullable pointer; the args map below dereferences
 			// it throughout, so normalize to an empty struct to avoid a panic.
 			if entry.Properties == nil {
@@ -286,6 +288,8 @@ func (a *mqlAzureSubscriptionSqlServiceServer) databases() ([]any, error) {
 			args := map[string]*llx.RawData{
 				"id":               llx.StringDataPtr(entry.ID),
 				"name":             llx.StringDataPtr(entry.Name),
+				"location":         llx.StringDataPtr(entry.Location),
+				"tags":             llx.MapData(convert.PtrMapStrToInterface(entry.Tags), types.String),
 				"type":             llx.StringDataPtr(entry.Type),
 				"collation":        llx.StringDataPtr(entry.Properties.Collation),
 				"creationDate":     llx.TimeDataPtr(entry.Properties.CreationDate),
@@ -298,15 +302,28 @@ func (a *mqlAzureSubscriptionSqlServiceServer) databases() ([]any, error) {
 				"requestedServiceObjectiveName": llx.StringDataPtr(entry.Properties.RequestedServiceObjectiveName),
 				"serviceLevelObjective":         llx.StringDataPtr(entry.Properties.CurrentServiceObjectiveName),
 				"status":                        llx.StringDataPtr((*string)(entry.Properties.Status)),
-				"elasticPoolName":               llx.StringDataPtr(entry.Properties.ElasticPoolID),
+				"elasticPoolName":               llx.StringDataPtr(elasticPoolNameFromID(entry.Properties.ElasticPoolID)),
 				"defaultSecondaryLocation":      llx.StringDataPtr(entry.Properties.DefaultSecondaryLocation),
 				"failoverGroupId":               llx.StringDataPtr(entry.Properties.FailoverGroupID),
 				"readScale":                     llx.StringDataPtr((*string)(entry.Properties.ReadScale)),
 				"sampleName":                    llx.StringDataPtr((*string)(entry.Properties.SampleName)),
 				"zoneRedundant":                 llx.BoolDataPtr(entry.Properties.ZoneRedundant),
-				"earliestRestoreDate":           llx.TimeDataPtr(entry.Properties.EarliestRestoreDate),
-				"sourceDatabaseDeletionDate":    llx.TimeDataPtr(entry.Properties.SourceDatabaseDeletionDate),
-				"restorePointInTime":            llx.TimeDataPtr(entry.Properties.RestorePointInTime),
+				"isLedgerOn":                    llx.BoolDataPtr(entry.Properties.IsLedgerOn),
+				"isInfraEncryptionEnabled":      llx.BoolDataPtr(entry.Properties.IsInfraEncryptionEnabled),
+				"currentBackupStorageRedundancy": llx.StringDataPtr(
+					stringEnumPtr(entry.Properties.CurrentBackupStorageRedundancy)),
+				"requestedBackupStorageRedundancy": llx.StringDataPtr(
+					stringEnumPtr(entry.Properties.RequestedBackupStorageRedundancy)),
+				"licenseType":                  llx.StringDataPtr(stringEnumPtr(entry.Properties.LicenseType)),
+				"federatedClientId":            llx.StringDataPtr(entry.Properties.FederatedClientID),
+				"secondaryType":                llx.StringDataPtr(stringEnumPtr(entry.Properties.SecondaryType)),
+				"highAvailabilityReplicaCount": llx.IntDataPtr(entry.Properties.HighAvailabilityReplicaCount),
+				"maintenanceConfigurationId":   llx.StringDataPtr(entry.Properties.MaintenanceConfigurationID),
+				"autoPauseDelay":               llx.IntDataPtr(entry.Properties.AutoPauseDelay),
+				"minCapacity":                  llx.FloatDataPtr(entry.Properties.MinCapacity),
+				"earliestRestoreDate":          llx.TimeDataPtr(entry.Properties.EarliestRestoreDate),
+				"sourceDatabaseDeletionDate":   llx.TimeDataPtr(entry.Properties.SourceDatabaseDeletionDate),
+				"restorePointInTime":           llx.TimeDataPtr(entry.Properties.RestorePointInTime),
 			}
 
 			mqlAzureDatabase, err := CreateResource(a.MqlRuntime, "azure.subscription.sqlService.database", args)
@@ -349,18 +366,93 @@ func (a *mqlAzureSubscriptionSqlServiceServer) firewallRules() ([]any, error) {
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			mqlFireWallRule, err := CreateResource(a.MqlRuntime, "azure.subscription.sqlService.firewallrule",
 				map[string]*llx.RawData{
 					"id":             llx.StringDataPtr(entry.ID),
 					"name":           llx.StringDataPtr(entry.Name),
 					"type":           llx.StringDataPtr(entry.Type),
-					"startIpAddress": llx.StringDataPtr(entry.Properties.StartIPAddress),
-					"endIpAddress":   llx.StringDataPtr(entry.Properties.EndIPAddress),
+					"startIpAddress": llx.StringDataPtr(orZero(entry.Properties).StartIPAddress),
+					"endIpAddress":   llx.StringDataPtr(orZero(entry.Properties).EndIPAddress),
 				})
 			if err != nil {
 				return nil, err
 			}
 			res = append(res, mqlFireWallRule)
+		}
+	}
+	return res, nil
+}
+
+// ipv6FirewallRuleArgs maps one SDK IPv6 firewall rule onto the MQL resource
+// arguments. The endpoints live on a nullable Properties pointer under names
+// that differ from the IPv4 rule's (StartIPv6Address, not StartIPAddress), and
+// reading either one wrong yields an empty string that parses to no address at
+// all -- which scores the rule as admitting nothing rather than as unread.
+func ipv6FirewallRuleArgs(entry *sql.IPv6FirewallRule) map[string]*llx.RawData {
+	return map[string]*llx.RawData{
+		"__id":           llx.StringDataPtr(entry.ID),
+		"id":             llx.StringDataPtr(entry.ID),
+		"name":           llx.StringDataPtr(entry.Name),
+		"type":           llx.StringDataPtr(entry.Type),
+		"startIpAddress": llx.StringDataPtr(orZero(entry.Properties).StartIPv6Address),
+		"endIpAddress":   llx.StringDataPtr(orZero(entry.Properties).EndIPv6Address),
+	}
+}
+
+// ipv6FirewallRules lists the server-level IPv6 firewall rules. Azure keeps
+// these in a rule list of their own, separate from firewallRules, so a
+// dual-stack server that is tightly scoped on IPv4 can still be wide open on
+// IPv6.
+//
+// A credential that can read the server but not this list (403), or a server
+// whose resource provider does not expose it (404), degrades to a null list
+// rather than failing the query: null reads as "not determined", which is what
+// happened, and is distinct from an empty list meaning "no IPv6 rules".
+func (a *mqlAzureSubscriptionSqlServiceServer) ipv6FirewallRules() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	ctx := context.Background()
+
+	resourceID, err := ParseResourceID(a.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	server, err := resourceID.Component("servers")
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := sql.NewIPv6FirewallRulesClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	pager := client.NewListByServerPager(resourceID.ResourceGroup, server, &sql.IPv6FirewallRulesClientListByServerOptions{})
+	res := []any{}
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			var respErr *azcore.ResponseError
+			if errors.As(err, &respErr) && (respErr.StatusCode == http.StatusForbidden || respErr.StatusCode == http.StatusNotFound) {
+				log.Warn().Err(err).Str("server", a.Id.Data).Msg("could not list sql server ipv6 firewall rules")
+				a.Ipv6FirewallRules.State = plugin.StateIsSet | plugin.StateIsNull
+				return nil, nil
+			}
+			return nil, err
+		}
+		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
+			mqlRule, err := CreateResource(a.MqlRuntime, "azure.subscription.sqlService.server.ipv6FirewallRule", ipv6FirewallRuleArgs(entry))
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlRule)
 		}
 	}
 	return res, nil
@@ -396,6 +488,9 @@ func (a *mqlAzureSubscriptionSqlServiceServer) virtualNetworkRules() ([]any, err
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			properties, err := convert.JsonToDict(entry)
 			if err != nil {
 				return nil, err
@@ -403,11 +498,14 @@ func (a *mqlAzureSubscriptionSqlServiceServer) virtualNetworkRules() ([]any, err
 
 			mqlAzure, err := CreateResource(a.MqlRuntime, "azure.subscription.sqlService.virtualNetworkRule",
 				map[string]*llx.RawData{
-					"id":                     llx.StringDataPtr(entry.ID),
-					"name":                   llx.StringDataPtr(entry.Name),
-					"type":                   llx.StringDataPtr(entry.Type),
-					"properties":             llx.DictData(properties),
-					"virtualNetworkSubnetId": llx.StringDataPtr(entry.Properties.VirtualNetworkSubnetID),
+					"__id":                             llx.StringData(subResourceCacheID(entry.ID, a.Id.Data, "virtualNetworkRules", convert.ToValue(entry.Name))),
+					"id":                               llx.StringDataPtr(entry.ID),
+					"name":                             llx.StringDataPtr(entry.Name),
+					"type":                             llx.StringDataPtr(entry.Type),
+					"properties":                       llx.DictData(properties),
+					"virtualNetworkSubnetId":           llx.StringDataPtr(orZero(entry.Properties).VirtualNetworkSubnetID),
+					"state":                            llx.StringDataPtr(stringEnumPtr(orZero(entry.Properties).State)),
+					"ignoreMissingVnetServiceEndpoint": llx.BoolDataPtr(orZero(entry.Properties).IgnoreMissingVnetServiceEndpoint),
 				})
 			if err != nil {
 				return nil, err
@@ -416,6 +514,25 @@ func (a *mqlAzureSubscriptionSqlServiceServer) virtualNetworkRules() ([]any, err
 		}
 	}
 	return res, nil
+}
+
+// subnet resolves the virtual network subnet the rule admits. Null when the
+// rule names none, which ARM should not produce but a partially created rule
+// can.
+func (a *mqlAzureSubscriptionSqlServiceVirtualNetworkRule) subnet() (*mqlAzureSubscriptionNetworkServiceSubnet, error) {
+	if a.VirtualNetworkSubnetId.Error != nil {
+		return nil, a.VirtualNetworkSubnetId.Error
+	}
+	if a.VirtualNetworkSubnetId.IsNull() || a.VirtualNetworkSubnetId.Data == "" {
+		a.Subnet.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "azure.subscription.networkService.subnet",
+		map[string]*llx.RawData{"id": llx.StringData(a.VirtualNetworkSubnetId.Data)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAzureSubscriptionNetworkServiceSubnet), nil
 }
 
 func (a *mqlAzureSubscriptionSqlServiceServer) azureAdAdministrators() ([]any, error) {
@@ -446,15 +563,18 @@ func (a *mqlAzureSubscriptionSqlServiceServer) azureAdAdministrators() ([]any, e
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			mqlAzureSqlAdministrator, err := CreateResource(a.MqlRuntime, "azure.subscription.sqlService.server.administrator",
 				map[string]*llx.RawData{
 					"id":                llx.StringDataPtr(entry.ID),
 					"name":              llx.StringDataPtr(entry.Name),
 					"type":              llx.StringDataPtr(entry.Type),
-					"administratorType": llx.StringDataPtr((*string)(entry.Properties.AdministratorType)),
-					"login":             llx.StringDataPtr(entry.Properties.Login),
-					"sid":               llx.StringDataPtr(entry.Properties.Sid),
-					"tenantId":          llx.StringDataPtr(entry.Properties.TenantID),
+					"administratorType": llx.StringDataPtr((*string)(orZero(entry.Properties).AdministratorType)),
+					"login":             llx.StringDataPtr(orZero(entry.Properties).Login),
+					"sid":               llx.StringDataPtr(orZero(entry.Properties).Sid),
+					"tenantId":          llx.StringDataPtr(orZero(entry.Properties).TenantID),
 				})
 			if err != nil {
 				return nil, err
@@ -464,108 +584,6 @@ func (a *mqlAzureSubscriptionSqlServiceServer) azureAdAdministrators() ([]any, e
 	}
 
 	return res, nil
-}
-
-func (a *mqlAzureSubscriptionSqlServiceServer) connectionPolicy() (any, error) {
-	policy, err := a.fetchConnectionPolicy()
-	if err != nil {
-		return nil, err
-	}
-	return convert.JsonToDict(policy)
-}
-
-func (a *mqlAzureSubscriptionSqlServiceServer) securityAlertPolicy() (any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
-	ctx := context.Background()
-	token := conn.Token()
-	id := a.Id.Data
-	resourceID, err := ParseResourceID(id)
-	if err != nil {
-		return nil, err
-	}
-
-	server, err := resourceID.Component("servers")
-	if err != nil {
-		return nil, err
-	}
-
-	secAlertClient, err := sql.NewServerSecurityAlertPoliciesClient(resourceID.SubscriptionID, token, &arm.ClientOptions{
-		ClientOptions: conn.ClientOptions(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	policy, err := secAlertClient.Get(ctx, resourceID.ResourceGroup, server, sql.SecurityAlertPolicyNameDefault, &sql.ServerSecurityAlertPoliciesClientGetOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	return convert.JsonToDict(policy.ServerSecurityAlertPolicy.Properties)
-}
-
-func (a *mqlAzureSubscriptionSqlServiceServer) auditingPolicy() (any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
-	ctx := context.Background()
-	token := conn.Token()
-	id := a.Id.Data
-	resourceID, err := ParseResourceID(id)
-	if err != nil {
-		return nil, err
-	}
-
-	server, err := resourceID.Component("servers")
-	if err != nil {
-		return nil, err
-	}
-	auditClient, err := sql.NewServerBlobAuditingPoliciesClient(resourceID.SubscriptionID, token, &arm.ClientOptions{
-		ClientOptions: conn.ClientOptions(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	policy, err := auditClient.Get(ctx, resourceID.ResourceGroup, server, &sql.ServerBlobAuditingPoliciesClientGetOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	return convert.JsonToDict(policy.ServerBlobAuditingPolicy.Properties)
-}
-
-func (a *mqlAzureSubscriptionSqlServiceServer) threatDetectionPolicy() (any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
-	ctx := context.Background()
-	token := conn.Token()
-	id := a.Id.Data
-	resourceID, err := ParseResourceID(id)
-	if err != nil {
-		return nil, err
-	}
-
-	server, err := resourceID.Component("servers")
-	if err != nil {
-		return nil, err
-	}
-
-	serverClient, err := sql.NewServerAdvancedThreatProtectionSettingsClient(resourceID.SubscriptionID, token, &arm.ClientOptions{
-		ClientOptions: conn.ClientOptions(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	threatPolicy, err := serverClient.Get(ctx, resourceID.ResourceGroup, server, sql.AdvancedThreatProtectionNameDefault, &sql.ServerAdvancedThreatProtectionSettingsClientGetOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	return convert.JsonToDict(threatPolicy.Properties)
-}
-
-func (a *mqlAzureSubscriptionSqlServiceServer) encryptionProtector() (any, error) {
-	resp, err := a.fetchEncryptionProtector()
-	if err != nil {
-		return nil, err
-	}
-	return convert.JsonToDict(resp.EncryptionProtector.Properties)
 }
 
 func (a *mqlAzureSubscriptionSqlServiceServer) encryptionProtectorServerKeyType() (string, error) {
@@ -657,6 +675,10 @@ func (a *mqlAzureSubscriptionSqlServiceServer) vulnerabilityAssessmentSettings()
 	}
 	vaSettings, err := serverClient.Get(ctx, resourceID.ResourceGroup, server, sql.VulnerabilityAssessmentNameDefault, &sql.ServerVulnerabilityAssessmentsClientGetOptions{})
 	if err != nil {
+		if isAzureNotConfigured(err) {
+			a.VulnerabilityAssessmentSettings.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
 		return nil, err
 	}
 	// Properties and the nested RecurringScans are nullable; a server with VA
@@ -684,41 +706,6 @@ func (a *mqlAzureSubscriptionSqlServiceServer) vulnerabilityAssessmentSettings()
 		return nil, err
 	}
 	return res.(*mqlAzureSubscriptionSqlServiceServerVulnerabilityassessmentsettings), err
-}
-
-func (a *mqlAzureSubscriptionSqlServiceDatabase) transparentDataEncryption() (any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
-	ctx := context.Background()
-	token := conn.Token()
-	id := a.Id.Data
-	resourceID, err := ParseResourceID(id)
-	if err != nil {
-		return nil, err
-	}
-
-	server, err := resourceID.Component("servers")
-	if err != nil {
-		return nil, err
-	}
-
-	database, err := resourceID.Component("databases")
-	if err != nil {
-		return nil, err
-	}
-
-	client, err := sql.NewTransparentDataEncryptionsClient(resourceID.SubscriptionID, token, &arm.ClientOptions{
-		ClientOptions: conn.ClientOptions(),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	policy, err := client.Get(ctx, resourceID.ResourceGroup, server, database, sql.TransparentDataEncryptionNameCurrent, &sql.TransparentDataEncryptionsClientGetOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	return convert.JsonToDict(policy.LogicalDatabaseTransparentDataEncryption.Properties)
 }
 
 func (a *mqlAzureSubscriptionSqlServiceDatabase) advisor() ([]any, error) {
@@ -767,98 +754,12 @@ func (a *mqlAzureSubscriptionSqlServiceDatabase) advisor() ([]any, error) {
 	return res, nil
 }
 
-func (a *mqlAzureSubscriptionSqlServiceDatabase) threatDetectionPolicy() (any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
-	ctx := context.Background()
-	token := conn.Token()
-	id := a.Id.Data
-	resourceID, err := ParseResourceID(id)
-	if err != nil {
-		return nil, err
-	}
-
-	server, err := resourceID.Component("servers")
-	if err != nil {
-		return nil, err
-	}
-
-	database, err := resourceID.Component("databases")
-	if err != nil {
-		return nil, err
-	}
-	client, err := sql.NewDatabaseSecurityAlertPoliciesClient(resourceID.SubscriptionID, token, &arm.ClientOptions{
-		ClientOptions: conn.ClientOptions(),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	policy, err := client.Get(ctx, resourceID.ResourceGroup, server, database, sql.SecurityAlertPolicyNameDefault, &sql.DatabaseSecurityAlertPoliciesClientGetOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	return convert.JsonToDict(policy.DatabaseSecurityAlertPolicy.Properties)
+type mqlAzureSubscriptionSqlServiceDatabaseAdvancedthreatprotectionInternal struct {
+	cacheSystemData any
 }
 
-func (a *mqlAzureSubscriptionSqlServiceDatabase) connectionPolicy() (any, error) {
-	resourceID, err := ParseResourceID(a.Id.Data)
-	if err != nil {
-		return nil, err
-	}
-	serverName, err := resourceID.Component("servers")
-	if err != nil {
-		return nil, err
-	}
-	serverId := "/subscriptions/" + resourceID.SubscriptionID +
-		"/resourceGroups/" + resourceID.ResourceGroup +
-		"/providers/Microsoft.Sql/servers/" + serverName
-
-	serverRes, err := NewResource(a.MqlRuntime, "azure.subscription.sqlService.server",
-		map[string]*llx.RawData{"id": llx.StringData(serverId)})
-	if err != nil {
-		return nil, err
-	}
-	policy, err := serverRes.(*mqlAzureSubscriptionSqlServiceServer).fetchConnectionPolicy()
-	if err != nil {
-		return nil, err
-	}
-	return convert.JsonToDict(policy.ServerConnectionPolicy.Properties)
-}
-
-func (a *mqlAzureSubscriptionSqlServiceDatabase) auditingPolicy() (any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
-	ctx := context.Background()
-	token := conn.Token()
-	id := a.Id.Data
-	resourceID, err := ParseResourceID(id)
-	if err != nil {
-		return nil, err
-	}
-
-	server, err := resourceID.Component("servers")
-	if err != nil {
-		return nil, err
-	}
-
-	database, err := resourceID.Component("databases")
-	if err != nil {
-		return nil, err
-	}
-
-	auditClient, err := sql.NewDatabaseBlobAuditingPoliciesClient(resourceID.SubscriptionID, token, &arm.ClientOptions{
-		ClientOptions: conn.ClientOptions(),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	policy, err := auditClient.Get(ctx, resourceID.ResourceGroup, server, database, &sql.DatabaseBlobAuditingPoliciesClientGetOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	return convert.JsonToDict(policy.DatabaseBlobAuditingPolicy.Properties)
+func (a *mqlAzureSubscriptionSqlServiceDatabaseAdvancedthreatprotection) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 func (a *mqlAzureSubscriptionSqlServiceDatabase) advancedThreatProtection() (*mqlAzureSubscriptionSqlServiceDatabaseAdvancedthreatprotection, error) {
@@ -890,6 +791,10 @@ func (a *mqlAzureSubscriptionSqlServiceDatabase) advancedThreatProtection() (*mq
 
 	policy, err := client.Get(ctx, resourceID.ResourceGroup, server, database, sql.AdvancedThreatProtectionNameDefault, &sql.DatabaseAdvancedThreatProtectionSettingsClientGetOptions{})
 	if err != nil {
+		if isAzureNotConfigured(err) {
+			a.AdvancedThreatProtection.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -904,6 +809,7 @@ func (a *mqlAzureSubscriptionSqlServiceDatabase) advancedThreatProtection() (*mq
 
 	res, err := CreateResource(a.MqlRuntime, "azure.subscription.sqlService.database.advancedthreatprotection",
 		map[string]*llx.RawData{
+			"__id":         llx.StringData(subResourceCacheID(policy.ID, a.Id.Data, "advancedThreatProtectionSettings", "default")),
 			"id":           llx.StringDataPtr(policy.ID),
 			"state":        llx.StringData(state),
 			"creationTime": llx.TimeDataPtr(creationTime),
@@ -911,6 +817,11 @@ func (a *mqlAzureSubscriptionSqlServiceDatabase) advancedThreatProtection() (*mq
 	if err != nil {
 		return nil, err
 	}
+	sysData, err := convert.JsonToDict(policy.SystemData)
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlAzureSubscriptionSqlServiceDatabaseAdvancedthreatprotection).cacheSystemData = sysData
 	return res.(*mqlAzureSubscriptionSqlServiceDatabaseAdvancedthreatprotection), nil
 }
 
@@ -943,6 +854,10 @@ func (a *mqlAzureSubscriptionSqlServiceDatabase) backupShortTermRetentionPolicy(
 
 	policy, err := client.Get(ctx, resourceID.ResourceGroup, server, database, sql.ShortTermRetentionPolicyNameDefault, &sql.BackupShortTermRetentionPoliciesClientGetOptions{})
 	if err != nil {
+		if isAzureNotConfigured(err) {
+			a.BackupShortTermRetentionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -958,6 +873,7 @@ func (a *mqlAzureSubscriptionSqlServiceDatabase) backupShortTermRetentionPolicy(
 
 	res, err := CreateResource(a.MqlRuntime, "azure.subscription.sqlService.database.backupshorttermretentionpolicy",
 		map[string]*llx.RawData{
+			"__id":                      llx.StringData(subResourceCacheID(policy.ID, a.Id.Data, "backupShortTermRetentionPolicies", "default")),
 			"id":                        llx.StringDataPtr(policy.ID),
 			"retentionDays":             llx.IntData(retentionDays),
 			"diffBackupIntervalInHours": llx.IntData(diffBackupInterval),
@@ -997,6 +913,10 @@ func (a *mqlAzureSubscriptionSqlServiceDatabase) longTermRetentionPolicy() (*mql
 
 	policy, err := client.Get(ctx, resourceID.ResourceGroup, server, database, sql.LongTermRetentionPolicyNameDefault, &sql.LongTermRetentionPoliciesClientGetOptions{})
 	if err != nil {
+		if isAzureNotConfigured(err) {
+			a.LongTermRetentionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -1013,6 +933,7 @@ func (a *mqlAzureSubscriptionSqlServiceDatabase) longTermRetentionPolicy() (*mql
 
 	res, err := CreateResource(a.MqlRuntime, "azure.subscription.sqlService.database.longtermretentionpolicy",
 		map[string]*llx.RawData{
+			"__id":             llx.StringData(subResourceCacheID(policy.ID, a.Id.Data, "backupLongTermRetentionPolicies", "default")),
 			"id":               llx.StringDataPtr(policy.ID),
 			"weeklyRetention":  llx.StringDataPtr(weeklyRetention),
 			"monthlyRetention": llx.StringDataPtr(monthlyRetention),
@@ -1059,15 +980,18 @@ func (a *mqlAzureSubscriptionSqlServiceDatabase) usage() ([]any, error) {
 			return nil, err
 		}
 		for _, entry := range page.Value {
+			if entry == nil {
+				continue
+			}
 			mqlAzureSqlUsage, err := CreateResource(a.MqlRuntime, "azure.subscription.sqlService.databaseusage",
 				map[string]*llx.RawData{
 					"id":           llx.StringDataPtr(entry.ID),
 					"name":         llx.StringDataPtr(entry.Name),
 					"resourceName": llx.StringDataPtr(entry.Name),
-					"displayName":  llx.StringDataPtr(entry.Properties.DisplayName),
-					"currentValue": llx.FloatData(convert.ToValue(entry.Properties.CurrentValue)),
-					"limit":        llx.FloatData(convert.ToValue(entry.Properties.Limit)),
-					"unit":         llx.StringDataPtr(entry.Properties.Unit),
+					"displayName":  llx.StringDataPtr(orZero(entry.Properties).DisplayName),
+					"currentValue": llx.FloatData(convert.ToValue(orZero(entry.Properties).CurrentValue)),
+					"limit":        llx.FloatData(convert.ToValue(orZero(entry.Properties).Limit)),
+					"unit":         llx.StringDataPtr(orZero(entry.Properties).Unit),
 				})
 			if err != nil {
 				return nil, err
@@ -1085,7 +1009,7 @@ func initAzureSubscriptionSqlServiceServer(runtime *plugin.Runtime, args map[str
 	}
 
 	if len(args) == 0 {
-		if ids := getAssetIdentifier(runtime); ids != nil {
+		if ids := getAssetIdentifier(runtime); ids != nil && ids.id != "" {
 			args["id"] = llx.StringData(ids.id)
 		}
 	}
@@ -1108,12 +1032,19 @@ func initAzureSubscriptionSqlServiceServer(runtime *plugin.Runtime, args map[str
 	if servers.Error != nil {
 		return nil, nil, servers.Error
 	}
-	id := args["id"].Value.(string)
+	id, ok := args["id"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("id must be a non-nil string value")
+	}
 	for _, entry := range servers.Data {
 		vm := entry.(*mqlAzureSubscriptionSqlServiceServer)
 		if vm.Id.Data == id {
 			return args, vm, nil
 		}
+	}
+
+	if filtered := tagFilteredOut(runtime, ResourceAzureSubscriptionSqlServiceServer, id); filtered != nil {
+		return args, filtered, nil
 	}
 
 	return nil, nil, errors.New("azure sql database server does not exist")
@@ -1126,7 +1057,10 @@ func initAzureSubscriptionSqlServiceDatabase(runtime *plugin.Runtime, args map[s
 	if args["id"] == nil {
 		return args, nil, nil
 	}
-	dbId := args["id"].Value.(string)
+	dbId, ok := args["id"].Value.(string)
+	if !ok {
+		return nil, nil, errors.New("id must be a non-nil string value")
+	}
 	rid, err := ParseResourceID(dbId)
 	if err != nil {
 		return args, nil, nil
@@ -1171,12 +1105,36 @@ func (a *mqlAzureSubscriptionSqlServiceServerSecurityAlertPolicyConfig) id() (st
 	return a.Id.Data, nil
 }
 
+type mqlAzureSubscriptionSqlServiceServerSecurityAlertPolicyConfigInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionSqlServiceServerSecurityAlertPolicyConfig) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
 func (a *mqlAzureSubscriptionSqlServiceServerAdvancedThreatProtectionSetting) id() (string, error) {
 	return a.Id.Data, nil
 }
 
+type mqlAzureSubscriptionSqlServiceServerAdvancedThreatProtectionSettingInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionSqlServiceServerAdvancedThreatProtectionSetting) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
 func (a *mqlAzureSubscriptionSqlServiceServerDevOpsAuditingSetting) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+type mqlAzureSubscriptionSqlServiceServerDevOpsAuditingSettingInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionSqlServiceServerDevOpsAuditingSetting) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 func (a *mqlAzureSubscriptionSqlServiceServerKey) id() (string, error) {
@@ -1205,6 +1163,14 @@ func (a *mqlAzureSubscriptionSqlServiceDatabaseBlobAuditingPolicy) id() (string,
 
 func (a *mqlAzureSubscriptionSqlServiceDatabaseSecurityAlertPolicy) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+type mqlAzureSubscriptionSqlServiceDatabaseSecurityAlertPolicyInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionSqlServiceDatabaseSecurityAlertPolicy) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
 }
 
 func (a *mqlAzureSubscriptionSqlServiceDatabaseVulnerabilityAssessment) id() (string, error) {
@@ -1281,6 +1247,10 @@ func (a *mqlAzureSubscriptionSqlServiceServer) blobAuditingPolicy() (*mqlAzureSu
 	}
 	resp, err := client.Get(ctx, rid.ResourceGroup, server, nil)
 	if err != nil {
+		if isAzureNotConfigured(err) {
+			a.BlobAuditingPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -1412,6 +1382,10 @@ func (a *mqlAzureSubscriptionSqlServiceServer) securityAlertPolicyConfig() (*mql
 	}
 	resp, err := client.Get(ctx, rid.ResourceGroup, server, sql.SecurityAlertPolicyNameDefault, nil)
 	if err != nil {
+		if isAzureNotConfigured(err) {
+			a.SecurityAlertPolicyConfig.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -1454,6 +1428,11 @@ func (a *mqlAzureSubscriptionSqlServiceServer) securityAlertPolicyConfig() (*mql
 	if err != nil {
 		return nil, err
 	}
+	sysData, err := convert.JsonToDict(resp.SystemData)
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlAzureSubscriptionSqlServiceServerSecurityAlertPolicyConfig).cacheSystemData = sysData
 	return res.(*mqlAzureSubscriptionSqlServiceServerSecurityAlertPolicyConfig), nil
 }
 
@@ -1476,6 +1455,10 @@ func (a *mqlAzureSubscriptionSqlServiceServer) advancedThreatProtectionSetting()
 	}
 	resp, err := client.Get(ctx, rid.ResourceGroup, server, sql.AdvancedThreatProtectionNameDefault, nil)
 	if err != nil {
+		if isAzureNotConfigured(err) {
+			a.AdvancedThreatProtectionSetting.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -1499,6 +1482,11 @@ func (a *mqlAzureSubscriptionSqlServiceServer) advancedThreatProtectionSetting()
 	if err != nil {
 		return nil, err
 	}
+	sysData, err := convert.JsonToDict(resp.SystemData)
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlAzureSubscriptionSqlServiceServerAdvancedThreatProtectionSetting).cacheSystemData = sysData
 	return res.(*mqlAzureSubscriptionSqlServiceServerAdvancedThreatProtectionSetting), nil
 }
 
@@ -1525,6 +1513,10 @@ func (a *mqlAzureSubscriptionSqlServiceServer) devOpsAuditingSetting() (*mqlAzur
 	}
 	resp, err := client.Get(ctx, rid.ResourceGroup, server, "default", nil)
 	if err != nil {
+		if isAzureNotConfigured(err) {
+			a.DevOpsAuditingSetting.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -1558,6 +1550,11 @@ func (a *mqlAzureSubscriptionSqlServiceServer) devOpsAuditingSetting() (*mqlAzur
 	if err != nil {
 		return nil, err
 	}
+	sysData, err := convert.JsonToDict(resp.SystemData)
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlAzureSubscriptionSqlServiceServerDevOpsAuditingSetting).cacheSystemData = sysData
 	return res.(*mqlAzureSubscriptionSqlServiceServerDevOpsAuditingSetting), nil
 }
 
@@ -1591,6 +1588,9 @@ func (a *mqlAzureSubscriptionSqlServiceServer) keys() ([]any, error) {
 			return nil, err
 		}
 		for _, k := range page.Value {
+			if k == nil {
+				continue
+			}
 			var (
 				kind, serverKeyType, uri, thumbprint, subregion string
 				creation                                        *time.Time
@@ -1668,6 +1668,9 @@ func (a *mqlAzureSubscriptionSqlServiceServer) outboundFirewallRules() ([]any, e
 			return nil, err
 		}
 		for _, r := range page.Value {
+			if r == nil {
+				continue
+			}
 			provisioningState := ""
 			if r.Properties != nil && r.Properties.ProvisioningState != nil {
 				provisioningState = string(*r.Properties.ProvisioningState)
@@ -1717,50 +1720,14 @@ func (a *mqlAzureSubscriptionSqlServiceServer) privateEndpointConnections() ([]a
 		if err != nil {
 			return nil, err
 		}
-		for _, pec := range page.Value {
-			args := map[string]*llx.RawData{
-				"__id": llx.StringDataPtr(pec.ID),
-				"id":   llx.StringDataPtr(pec.ID),
-				"name": llx.StringDataPtr(pec.Name),
-				"type": llx.StringDataPtr(pec.Type),
-			}
-			if pec.Properties != nil {
-				propsMap, err := convert.JsonToDict(pec.Properties)
-				if err != nil {
-					return nil, err
-				}
-				args["properties"] = llx.DictData(propsMap)
-				if pec.Properties.PrivateEndpoint != nil {
-					args["privateEndpointId"] = llx.StringDataPtr(pec.Properties.PrivateEndpoint.ID)
-				}
-				if pec.Properties.ProvisioningState != nil {
-					args["provisioningState"] = llx.StringData(string(*pec.Properties.ProvisioningState))
-				}
-				if pec.Properties.PrivateLinkServiceConnectionState != nil {
-					stateArgs := map[string]*llx.RawData{}
-					if pec.Properties.PrivateLinkServiceConnectionState.ActionsRequired != nil {
-						stateArgs["actionsRequired"] = llx.StringData(string(*pec.Properties.PrivateLinkServiceConnectionState.ActionsRequired))
-					}
-					if pec.Properties.PrivateLinkServiceConnectionState.Description != nil {
-						stateArgs["description"] = llx.StringDataPtr(pec.Properties.PrivateLinkServiceConnectionState.Description)
-					}
-					if pec.Properties.PrivateLinkServiceConnectionState.Status != nil {
-						stateArgs["status"] = llx.StringData(string(*pec.Properties.PrivateLinkServiceConnectionState.Status))
-					}
-					stateRes, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionPrivateEndpointConnectionConnectionState, stateArgs)
-					if err != nil {
-						return nil, err
-					}
-					args["privateLinkServiceConnectionState"] = llx.ResourceData(stateRes, ResourceAzureSubscriptionPrivateEndpointConnectionConnectionState)
-				}
-			}
-
-			mqlConn, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionPrivateEndpointConnection, args)
-			if err != nil {
-				return nil, err
-			}
-			res = append(res, mqlConn)
+		// The shared helper seeds every declared field, including ipAddresses.
+		// Hand-rolling the args map here left ipAddresses out entirely, so it
+		// was unset rather than empty on every connection.
+		conns, err := azurePrivateEndpointConnectionsToMql(a.MqlRuntime, page.Value)
+		if err != nil {
+			return nil, err
 		}
+		res = append(res, conns...)
 	}
 	return res, nil
 }
@@ -1795,6 +1762,9 @@ func (a *mqlAzureSubscriptionSqlServiceServer) failoverGroups() ([]any, error) {
 			return nil, err
 		}
 		for _, fg := range page.Value {
+			if fg == nil {
+				continue
+			}
 			var (
 				replicationRole, replicationState string
 				partnerServers                    []any
@@ -1825,6 +1795,57 @@ func (a *mqlAzureSubscriptionSqlServiceServer) failoverGroups() ([]any, error) {
 				databaseIds = convert.ToListFromPtrs(fg.Properties.Databases)
 			}
 
+			partners := []any{}
+			for i, partner := range orZero(fg.Properties).PartnerServers {
+				if partner == nil {
+					continue
+				}
+				// A partner entry carries no id of its own beyond the server
+				// it names, which is what distinguishes it within the group.
+				key := convert.ToValue(partner.ID)
+				if key == "" {
+					key = strconv.Itoa(i)
+				}
+				mqlPartner, err := CreateResource(a.MqlRuntime, "azure.subscription.sqlService.server.failoverGroup.partner",
+					map[string]*llx.RawData{
+						"__id":            llx.StringData(subResourceCacheID(nil, convert.ToValue(fg.ID), "partners", key)),
+						"location":        llx.StringDataPtr(partner.Location),
+						"replicationRole": llx.StringDataPtr(stringEnumPtr(partner.ReplicationRole)),
+					})
+				if err != nil {
+					return nil, err
+				}
+				mqlPartner.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupPartner).cacheServerId = convert.ToValue(partner.ID)
+				partners = append(partners, mqlPartner)
+			}
+
+			readWriteListener := llx.NilData
+			if rw := orZero(fg.Properties).ReadWriteEndpoint; rw != nil {
+				const rwResource = "azure.subscription.sqlService.server.failoverGroup.readWriteListener"
+				mqlRW, err := CreateResource(a.MqlRuntime, rwResource, map[string]*llx.RawData{
+					"__id":                                   llx.StringData(convert.ToValue(fg.ID) + "/readWriteEndpoint"),
+					"failoverPolicy":                         llx.StringDataPtr(stringEnumPtr(rw.FailoverPolicy)),
+					"failoverWithDataLossGracePeriodMinutes": llx.IntDataPtr(rw.FailoverWithDataLossGracePeriodMinutes),
+				})
+				if err != nil {
+					return nil, err
+				}
+				readWriteListener = llx.ResourceData(mqlRW, rwResource)
+			}
+
+			readOnlyListener := llx.NilData
+			if ro := orZero(fg.Properties).ReadOnlyEndpoint; ro != nil {
+				const roResource = "azure.subscription.sqlService.server.failoverGroup.readOnlyListener"
+				mqlRO, err := CreateResource(a.MqlRuntime, roResource, map[string]*llx.RawData{
+					"__id":           llx.StringData(convert.ToValue(fg.ID) + "/readOnlyEndpoint"),
+					"failoverPolicy": llx.StringDataPtr(stringEnumPtr(ro.FailoverPolicy)),
+				})
+				if err != nil {
+					return nil, err
+				}
+				readOnlyListener = llx.ResourceData(mqlRO, roResource)
+			}
+
 			mqlFG, err := CreateResource(a.MqlRuntime, "azure.subscription.sqlService.server.failoverGroup",
 				map[string]*llx.RawData{
 					"id":                llx.StringDataPtr(fg.ID),
@@ -1834,8 +1855,11 @@ func (a *mqlAzureSubscriptionSqlServiceServer) failoverGroups() ([]any, error) {
 					"replicationRole":   llx.StringData(replicationRole),
 					"replicationState":  llx.StringData(replicationState),
 					"partnerServers":    llx.ArrayData(partnerServers, types.Dict),
+					"partners":          llx.ArrayData(partners, types.Resource("azure.subscription.sqlService.server.failoverGroup.partner")),
 					"readWriteEndpoint": llx.DictData(readWriteEndpoint),
+					"readWriteListener": readWriteListener,
 					"readOnlyEndpoint":  llx.DictData(readOnlyEndpoint),
+					"readOnlyListener":  readOnlyListener,
 				})
 			if err != nil {
 				return nil, err
@@ -1845,6 +1869,26 @@ func (a *mqlAzureSubscriptionSqlServiceServer) failoverGroups() ([]any, error) {
 		}
 	}
 	return res, nil
+}
+
+type mqlAzureSubscriptionSqlServiceServerFailoverGroupPartnerInternal struct {
+	cacheServerId string
+}
+
+// server resolves the partner server. Null when the group reports a partner
+// without a resource id, which ARM should not produce but a group mid-creation
+// can.
+func (a *mqlAzureSubscriptionSqlServiceServerFailoverGroupPartner) server() (*mqlAzureSubscriptionSqlServiceServer, error) {
+	if a.cacheServerId == "" {
+		a.Server.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "azure.subscription.sqlService.server",
+		map[string]*llx.RawData{"id": llx.StringData(a.cacheServerId)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAzureSubscriptionSqlServiceServer), nil
 }
 
 func (a *mqlAzureSubscriptionSqlServiceServerFailoverGroup) databases() ([]any, error) {
@@ -1890,6 +1934,9 @@ func (a *mqlAzureSubscriptionSqlServiceServer) replicationLinks() ([]any, error)
 			return nil, err
 		}
 		for _, link := range page.Value {
+			if link == nil {
+				continue
+			}
 			var (
 				partnerLocation, partnerServer, partnerDatabase, partnerRole string
 				replicationMode, replicationState, role, linkType            string
@@ -2016,6 +2063,10 @@ func (a *mqlAzureSubscriptionSqlServiceDatabase) blobAuditingPolicy() (*mqlAzure
 	}
 	resp, err := client.Get(ctx, rid.ResourceGroup, server, database, nil)
 	if err != nil {
+		if isAzureNotConfigured(err) {
+			a.BlobAuditingPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -2101,6 +2152,10 @@ func (a *mqlAzureSubscriptionSqlServiceDatabase) securityAlertPolicy() (*mqlAzur
 	}
 	resp, err := client.Get(ctx, rid.ResourceGroup, server, database, sql.SecurityAlertPolicyNameDefault, nil)
 	if err != nil {
+		if isAzureNotConfigured(err) {
+			a.SecurityAlertPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -2143,6 +2198,11 @@ func (a *mqlAzureSubscriptionSqlServiceDatabase) securityAlertPolicy() (*mqlAzur
 	if err != nil {
 		return nil, err
 	}
+	sysData, err := convert.JsonToDict(resp.SystemData)
+	if err != nil {
+		return nil, err
+	}
+	res.(*mqlAzureSubscriptionSqlServiceDatabaseSecurityAlertPolicy).cacheSystemData = sysData
 	return res.(*mqlAzureSubscriptionSqlServiceDatabaseSecurityAlertPolicy), nil
 }
 
@@ -2173,6 +2233,10 @@ func (a *mqlAzureSubscriptionSqlServiceDatabase) vulnerabilityAssessment() (*mql
 	}
 	resp, err := client.Get(ctx, rid.ResourceGroup, server, database, sql.VulnerabilityAssessmentNameDefault, nil)
 	if err != nil {
+		if isAzureNotConfigured(err) {
+			a.VulnerabilityAssessment.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -2239,6 +2303,9 @@ func (a *mqlAzureSubscriptionSqlServiceDatabaseVulnerabilityAssessment) scans() 
 			return nil, err
 		}
 		for _, scan := range page.Value {
+			if scan == nil {
+				continue
+			}
 			args, err := vulnerabilityAssessmentScanArgs(scan)
 			if err != nil {
 				return nil, err
@@ -2402,6 +2469,9 @@ func (a *mqlAzureSubscriptionSqlServiceDatabaseDataMaskingPolicy) rules() ([]any
 			return nil, err
 		}
 		for _, rule := range page.Value {
+			if rule == nil {
+				continue
+			}
 			var (
 				ruleID, aliasName, ruleState, schemaName, tableName, columnName string
 				maskingFunction                                                 string

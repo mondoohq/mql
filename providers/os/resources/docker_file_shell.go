@@ -17,7 +17,7 @@ type shellToken struct {
 
 // lexShell tokenizes a shell command line into words and operators. It honors
 // single quotes (literal), double quotes (with backslash escapes for " \ $ `),
-// backslash escapes, and line continuations. It is intentionally
+// backslash escapes, line continuations, and `#` comments. It is intentionally
 // lightweight: it does not interpret subshells, command substitutions, or
 // redirections, treating their characters as ordinary word content.
 func lexShell(s string) []shellToken {
@@ -61,6 +61,17 @@ func lexShell(s string) []shellToken {
 				i += 2
 			} else {
 				toks = append(toks, shellToken{text: "|", op: true})
+				i++
+			}
+		case '#':
+			if wordInProgress {
+				buf.WriteRune(c)
+				i++
+				continue
+			}
+			// a comment runs to the end of the line; the newline itself is
+			// left for the next iteration to emit as a command separator
+			for i < n && runes[i] != '\n' {
 				i++
 			}
 		case '\'':

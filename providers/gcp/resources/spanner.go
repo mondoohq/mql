@@ -15,11 +15,11 @@ import (
 	spannerinstance "cloud.google.com/go/spanner/admin/instance/apiv1"
 	"cloud.google.com/go/spanner/admin/instance/apiv1/instancepb"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	iampb "google.golang.org/genproto/googleapis/iam/v1"
@@ -71,6 +71,12 @@ func initGcpProjectSpannerServiceInstance(runtime *plugin.Runtime, args map[stri
 		}
 	}
 
+	// Guard before building the parent: CreateResource hands args["projectId"]
+	// to the generated setter, which dereferences it, so nil panics the provider.
+	if args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.spannerService.instance requires a \"projectId\" argument")
+	}
+
 	obj, err := CreateResource(runtime, "gcp.project.spannerService", map[string]*llx.RawData{
 		"projectId": args["projectId"],
 	})
@@ -83,7 +89,11 @@ func initGcpProjectSpannerServiceInstance(runtime *plugin.Runtime, args map[stri
 		return nil, nil, instances.Error
 	}
 
-	nameVal := args["name"].Value.(string)
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New("gcp.project.spannerService.instance requires a \"name\" argument")
+	}
+	nameVal, _ := nameRaw.Value.(string)
 	for _, i := range instances.Data {
 		instance := i.(*mqlGcpProjectSpannerServiceInstance)
 		// Spanner instance name is a full resource path:
@@ -135,9 +145,9 @@ func (g *mqlGcpProjectSpannerService) instances() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list Spanner instances")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -247,9 +257,9 @@ func (g *mqlGcpProjectSpannerServiceInstance) databases() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list Spanner databases")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -505,7 +515,7 @@ func (g *mqlGcpProjectSpannerServiceInstanceDatabase) ddl() ([]any, error) {
 		Database: dbName,
 	})
 	if err != nil {
-		if isGRPCSkippable(err) {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not read Spanner database DDL")
 			return nil, nil
 		}
@@ -549,9 +559,9 @@ func (g *mqlGcpProjectSpannerServiceInstance) backups() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list Spanner backups")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -669,9 +679,9 @@ func (g *mqlGcpProjectSpannerService) instanceConfigs() ([]any, error) {
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list Spanner instance configs")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -735,16 +745,22 @@ func initGcpProjectSpannerServiceInstanceConfig(runtime *plugin.Runtime, args ma
 	}
 
 	nameRaw, ok := args["name"]
-	if !ok {
-		return args, nil, nil
+	if !ok || nameRaw == nil {
+		return nil, nil, errors.New(`gcp.project.spannerService.instanceConfig requires a "name" argument`)
 	}
-	name := nameRaw.Value.(string)
+	name, ok := nameRaw.Value.(string)
+	if !ok || name == "" {
+		return nil, nil, errors.New(`gcp.project.spannerService.instanceConfig requires a non-empty "name" argument`)
+	}
 
 	projectIdRaw, ok := args["projectId"]
-	if !ok {
-		return args, nil, nil
+	if !ok || projectIdRaw == nil {
+		return nil, nil, errors.New(`gcp.project.spannerService.instanceConfig requires a "projectId" argument`)
 	}
-	projectId := projectIdRaw.Value.(string)
+	projectId, ok := projectIdRaw.Value.(string)
+	if !ok || projectId == "" {
+		return nil, nil, errors.New(`gcp.project.spannerService.instanceConfig requires a non-empty "projectId" argument`)
+	}
 
 	obj, err := CreateResource(runtime, "gcp.project.spannerService", map[string]*llx.RawData{
 		"projectId": llx.StringData(projectId),
@@ -833,7 +849,7 @@ func (g *mqlGcpProjectSpannerServiceInstance) iamPolicy() ([]any, error) {
 
 	policy, err := client.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{Resource: instanceName, Options: &iampb.GetPolicyOptions{RequestedPolicyVersion: 3}})
 	if err != nil {
-		if isGRPCSkippable(err) {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not read Spanner instance IAM policy")
 			return nil, nil
 		}
@@ -863,7 +879,7 @@ func (g *mqlGcpProjectSpannerServiceInstanceDatabase) iamPolicy() ([]any, error)
 
 	policy, err := client.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{Resource: dbName, Options: &iampb.GetPolicyOptions{RequestedPolicyVersion: 3}})
 	if err != nil {
-		if isGRPCSkippable(err) {
+		if isSkippable(err) {
 			log.Warn().Err(err).Msg("could not read Spanner database IAM policy")
 			return nil, nil
 		}
@@ -910,9 +926,9 @@ func (g *mqlGcpProjectSpannerServiceInstanceDatabase) databaseRoles() ([]any, er
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list Spanner database roles")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}
@@ -983,7 +999,7 @@ func (g *mqlGcpProjectSpannerServiceInstance) backupSchedules() ([]any, error) {
 				break
 			}
 			if err != nil {
-				if isGRPCSkippable(err) {
+				if isSkippable(err) {
 					log.Warn().Err(err).Str("database", dbName).Msg("could not list Spanner backup schedules")
 					break
 				}
@@ -1080,9 +1096,9 @@ func (g *mqlGcpProjectSpannerServiceInstance) instancePartitions() ([]any, error
 			break
 		}
 		if err != nil {
-			if isGRPCSkippable(err) {
+			if isSkippable(err) {
 				log.Warn().Err(err).Msg("could not list Spanner instance partitions")
-				return nil, nil
+				break
 			}
 			return nil, err
 		}

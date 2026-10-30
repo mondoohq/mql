@@ -9,8 +9,8 @@ import (
 
 	"github.com/go-ldap/ldap/v3"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/activedirectory/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/activedirectory/connection"
 )
 
 // classifyZoneType provides a naming-based fallback when a zone is missing the
@@ -26,7 +26,7 @@ func classifyZoneType(zoneName string) string {
 	return "Primary"
 }
 
-func (a *mqlActivedirectory) dnsZones() ([]interface{}, error) {
+func (a *mqlActivedirectory) dnsZones() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.ActiveDirectoryConnection)
 
 	domainDN := conn.DomainDnsZonesDN()
@@ -77,7 +77,7 @@ func (a *mqlActivedirectory) dnsZones() ([]interface{}, error) {
 		}
 	}
 
-	res := make([]interface{}, 0, len(allEntries))
+	res := make([]any, 0, len(allEntries))
 	for _, entry := range allEntries {
 		name := connection.GetStringAttr(entry, "name")
 		dn := connection.GetStringAttr(entry, "distinguishedName")

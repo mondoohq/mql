@@ -9,11 +9,11 @@ import (
 	"fmt"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 
 	"google.golang.org/api/apikeys/v2"
 	"google.golang.org/api/option"
@@ -58,9 +58,27 @@ func (g *mqlGcpProject) apiKeys() ([]any, error) {
 
 	mqlKeys := make([]any, 0, len(apiKeyItems))
 	for _, k := range apiKeyItems {
-		var mqlRestrictions plugin.Resource
+		// The API omits the entire restrictions block for a key that has no
+		// restrictions, so the resource must be built either way: that absence
+		// IS the fully-unrestricted case the `unrestricted` predicate exists to
+		// report. Building it only when k.Restrictions != nil left
+		// `restrictions` null for precisely the keys a posture check is looking
+		// for, so `unrestricted` could never evaluate to true.
+		var (
+			mqlAndroidRestr   any
+			mqlBrowserRest    any
+			mqlIosRestr       any
+			mqlServerKeyRestr any
+			mqlApiTargets     = []any{}
+		)
+		// Null, not empty: a key with no browser restriction has no referrer
+		// allowlist at all, which is a different claim from an allowlist that
+		// permits nothing.
+		browserRestriction := llx.NilData
+		iosRestriction := llx.NilData
+		serverRestriction := llx.NilData
+		allowedApiTargets := []any{}
 		if k.Restrictions != nil {
-			var mqlAndroidRestr any
 			if k.Restrictions.AndroidKeyRestrictions != nil {
 
 				type mqlAllowedApp struct {
@@ -85,7 +103,7 @@ func (g *mqlGcpProject) apiKeys() ([]any, error) {
 				}
 			}
 
-			mqlApiTargets := make([]any, 0, len(k.Restrictions.ApiTargets))
+			mqlApiTargets = make([]any, 0, len(k.Restrictions.ApiTargets))
 			if k.Restrictions.ApiTargets != nil {
 				type mqlApiTarget struct {
 					Service string   `json:"service"`
@@ -101,10 +119,19 @@ func (g *mqlGcpProject) apiKeys() ([]any, error) {
 						return nil, err
 					}
 					mqlApiTargets = append(mqlApiTargets, target)
+
+					mqlTarget, err := CreateResource(g.MqlRuntime, "gcp.project.apiKey.restrictions.apiTarget", map[string]*llx.RawData{
+						"__id":    llx.StringData(k.Name + "/apiTarget/" + a.Service),
+						"service": llx.StringData(a.Service),
+						"methods": llx.ArrayData(convert.SliceAnyToInterface(a.Methods), types.String),
+					})
+					if err != nil {
+						return nil, err
+					}
+					allowedApiTargets = append(allowedApiTargets, mqlTarget)
 				}
 			}
 
-			var mqlBrowserRest any
 			if k.Restrictions.BrowserKeyRestrictions != nil {
 				type mqlBrowserKeyRestrictions struct {
 					AllowedReferrers []string `json:"allowedReferrers"`
@@ -116,9 +143,14 @@ func (g *mqlGcpProject) apiKeys() ([]any, error) {
 				if err != nil {
 					return nil, err
 				}
+				browserRestriction, err = newMqlApiKeyRestriction(g.MqlRuntime,
+					"gcp.project.apiKey.restrictions.browserRestriction", k.Name+"/browserRestriction",
+					"allowedReferrers", k.Restrictions.BrowserKeyRestrictions.AllowedReferrers)
+				if err != nil {
+					return nil, err
+				}
 			}
 
-			var mqlIosRestr any
 			if k.Restrictions.IosKeyRestrictions != nil {
 				type mqlIosKeyRestrictions struct {
 					AllowedBundleIds []string `json:"allowedBundleIds"`
@@ -130,9 +162,14 @@ func (g *mqlGcpProject) apiKeys() ([]any, error) {
 				if err != nil {
 					return nil, err
 				}
+				iosRestriction, err = newMqlApiKeyRestriction(g.MqlRuntime,
+					"gcp.project.apiKey.restrictions.iosRestriction", k.Name+"/iosRestriction",
+					"allowedBundleIds", k.Restrictions.IosKeyRestrictions.AllowedBundleIds)
+				if err != nil {
+					return nil, err
+				}
 			}
 
-			var mqlServerKeyRestr any
 			if k.Restrictions.ServerKeyRestrictions != nil {
 				type mqlServerKeyRestrictions struct {
 					AllowedIps []string `json:"allowedIps"`
@@ -144,19 +181,30 @@ func (g *mqlGcpProject) apiKeys() ([]any, error) {
 				if err != nil {
 					return nil, err
 				}
+				serverRestriction, err = newMqlApiKeyRestriction(g.MqlRuntime,
+					"gcp.project.apiKey.restrictions.serverRestriction", k.Name+"/serverRestriction",
+					"allowedIps", k.Restrictions.ServerKeyRestrictions.AllowedIps)
+				if err != nil {
+					return nil, err
+				}
 			}
 
-			mqlRestrictions, err = CreateResource(g.MqlRuntime, "gcp.project.apiKey.restrictions", map[string]*llx.RawData{
-				"parentResourcePath":     llx.StringData(k.Name),
-				"androidKeyRestrictions": llx.DictData(mqlAndroidRestr),
-				"browserKeyRestrictions": llx.DictData(mqlBrowserRest),
-				"iosKeyRestrictions":     llx.DictData(mqlIosRestr),
-				"serverKeyRestrictions":  llx.DictData(mqlServerKeyRestr),
-				"apiTargets":             llx.ArrayData(mqlApiTargets, types.Dict),
-			})
-			if err != nil {
-				return nil, err
-			}
+		}
+
+		mqlRestrictions, err := CreateResource(g.MqlRuntime, "gcp.project.apiKey.restrictions", map[string]*llx.RawData{
+			"parentResourcePath":     llx.StringData(k.Name),
+			"androidKeyRestrictions": llx.DictData(mqlAndroidRestr),
+			"browserKeyRestrictions": llx.DictData(mqlBrowserRest),
+			"iosKeyRestrictions":     llx.DictData(mqlIosRestr),
+			"serverKeyRestrictions":  llx.DictData(mqlServerKeyRestr),
+			"apiTargets":             llx.ArrayData(mqlApiTargets, types.Dict),
+			"browser":                browserRestriction,
+			"ios":                    iosRestriction,
+			"server":                 serverRestriction,
+			"allowedApiTargets":      llx.ArrayData(allowedApiTargets, types.Resource("gcp.project.apiKey.restrictions.apiTarget")),
+		})
+		if err != nil {
+			return nil, err
 		}
 
 		mqlKey, err := CreateResource(g.MqlRuntime, "gcp.project.apiKey", map[string]*llx.RawData{
@@ -236,7 +284,19 @@ func initGcpProjectApiKey(runtime *plugin.Runtime, args map[string]*llx.RawData)
 		}
 	}
 
-	obj, err := CreateResource(runtime, "gcp.project", map[string]*llx.RawData{
+	// Guard before building the parent: CreateResource hands args["projectId"]
+	// to the generated setter, which dereferences it, so nil panics the provider.
+	if args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.apiKey requires a \"projectId\" argument")
+	}
+
+	// NewResource, not CreateResource: CreateResource would cache a gcp.project
+	// carrying nothing but an id, and initGcpProject returns whatever is already
+	// cached -- so that husk would win for every later caller, and its name,
+	// state, parentId, labels, createTime and number are computed fields
+	// implemented as placeholders that only ever return "not implemented".
+	// servicegate.go spells out the same reasoning for the enablement lookup.
+	obj, err := NewResource(runtime, "gcp.project", map[string]*llx.RawData{
 		"id": args["projectId"],
 	})
 	if err != nil {
@@ -248,7 +308,11 @@ func initGcpProjectApiKey(runtime *plugin.Runtime, args map[string]*llx.RawData)
 		return nil, nil, keys.Error
 	}
 
-	idVal := args["id"].Value.(string)
+	idRaw := args["id"]
+	if idRaw == nil {
+		return nil, nil, errors.New("gcp.project.apiKey requires an \"id\" argument")
+	}
+	idVal, _ := idRaw.Value.(string)
 	for _, k := range keys.Data {
 		key := k.(*mqlGcpProjectApiKey)
 		if key.Id.Data == idVal {
@@ -361,7 +425,30 @@ func initGcpProjectApiKeyRestrictions(runtime *plugin.Runtime, args map[string]*
 		args["browserKeyRestrictions"] = llx.NilData
 		args["iosKeyRestrictions"] = llx.NilData
 		args["serverKeyRestrictions"] = llx.NilData
+		args["browser"] = llx.NilData
+		args["ios"] = llx.NilData
+		args["server"] = llx.NilData
+		args["allowedApiTargets"] = llx.NilData
 		return args, nil, nil
 	}
 	return args, restrictions.Data, nil
+}
+
+// newMqlApiKeyRestriction builds one of the three single-list restrictions an
+// API key can carry.
+//
+// Restrictions, IosKeyRestrictions and ServerKeyRestrictions each wrap exactly
+// one allowlist, so they share a builder rather than three near-identical
+// copies. The allowlist is reported as empty rather than null when the
+// restriction exists but names nothing, which is a real state: it locks the key
+// out of every caller.
+func newMqlApiKeyRestriction(runtime *plugin.Runtime, resource, id, field string, allowed []string) (*llx.RawData, error) {
+	res, err := CreateResource(runtime, resource, map[string]*llx.RawData{
+		"__id": llx.StringData(id),
+		field:  llx.ArrayData(convert.SliceAnyToInterface(allowed), types.String),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return llx.ResourceData(res, resource), nil
 }

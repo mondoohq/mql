@@ -18,7 +18,7 @@ import (
 // metadata, so all three shapes are realistic.
 func TestStreamLiveInputsNilMeta(t *testing.T) {
 	env := setupTestEnv(t)
-	zone := createTestZone(t, env)
+	acc := createTestAccount(t, env)
 
 	env.Mux.HandleFunc(fmt.Sprintf("/accounts/%s/stream/live_inputs", testAccountID), func(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, `{
@@ -32,7 +32,7 @@ func TestStreamLiveInputsNilMeta(t *testing.T) {
 		}`)
 	})
 
-	result, err := zone.liveInputs()
+	result, err := acc.liveInputs()
 	require.NoError(t, err)
 	require.Len(t, result, 4)
 

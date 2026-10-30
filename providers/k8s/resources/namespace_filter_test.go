@@ -37,8 +37,8 @@ func TestSkipNamespace(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := &NamespaceFilterOpts{include: tt.include, exclude: tt.exclude}
-			assert.Equal(t, tt.wantSkip, f.skipNamespace(tt.namespace))
+			f := &FilterOpts{include: tt.include, exclude: tt.exclude}
+			assert.Equal(t, tt.wantSkip, f.skip(tt.namespace))
 		})
 	}
 }

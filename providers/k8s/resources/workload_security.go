@@ -16,10 +16,13 @@ package resources
 // maintainers should not duplicate them on the pod.
 
 import (
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/k8s/connection/shared/resources"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/k8s/connection/shared/resources"
 )
 
 // allWorkloadContainers returns every container that contributes to a pod's
@@ -120,7 +123,9 @@ func specDropsAllCapabilities(spec *corev1.PodSpec) bool {
 		}
 		dropsAll := false
 		for _, d := range sc.Capabilities.Drop {
-			if d == "ALL" {
+			// containerd and CRI-O both match ALL case-insensitively, so a
+			// lowercase "all" drops every capability at runtime.
+			if strings.EqualFold(string(d), "ALL") {
 				dropsAll = true
 				break
 			}
@@ -165,14 +170,6 @@ func specUsesHostPath(spec *corev1.PodSpec) bool {
 		}
 	}
 	return false
-}
-
-func specAutomountServiceAccountToken(spec *corev1.PodSpec) bool {
-	if spec == nil {
-		return false
-	}
-	// Defaults to true when unset.
-	return spec.AutomountServiceAccountToken == nil || *spec.AutomountServiceAccountToken
 }
 
 // effectiveSeccompType resolves the seccomp profile type that applies to a
@@ -246,6 +243,28 @@ func dictFromSpec(spec *corev1.PodSpec, err error) (map[string]any, error) {
 	return convert.JsonToDict(spec.SecurityContext)
 }
 
+// specHostUsers reports whether the pod shares the host user namespace.
+// Kubernetes leaves hostUsers unset by default and treats unset as true, so an
+// absent field reports true: the workload never asked for a user namespace, so
+// root inside its containers is root on the node. A spec we could not read
+// reports the same, which is the direction that fails safe.
+func specHostUsers(spec *corev1.PodSpec) bool {
+	if spec == nil || spec.HostUsers == nil {
+		return true
+	}
+	return *spec.HostUsers
+}
+
+// volumesFromSpec builds the k8s.volume list for a workload. id scopes the
+// volume cache keys to the owning object, since volume names are only unique
+// within one pod spec.
+func volumesFromSpec(runtime *plugin.Runtime, id, namespace string, spec *corev1.PodSpec, err error) ([]any, error) {
+	if err != nil {
+		return nil, err
+	}
+	return newVolumes(runtime, id, namespace, spec)
+}
+
 // ---- k8s.pod ----
 
 func (k *mqlK8sPod) runsPrivileged() (bool, error) {
@@ -288,6 +307,16 @@ func (k *mqlK8sPod) usesHostPath() (bool, error) {
 	return boolFromSpec(spec, err, specUsesHostPath)
 }
 
+func (k *mqlK8sPod) hostUsers() (bool, error) {
+	spec, err := k.podSpecTyped()
+	return boolFromSpec(spec, err, specHostUsers)
+}
+
+func (k *mqlK8sPod) volumes() ([]any, error) {
+	spec, err := k.podSpecTyped()
+	return volumesFromSpec(k.MqlRuntime, k.Id.Data, k.Namespace.Data, spec, err)
+}
+
 func (k *mqlK8sPod) usesUnconfinedSeccomp() (bool, error) {
 	spec, err := k.podSpecTyped()
 	return boolFromSpec(spec, err, specUsesUnconfinedSeccomp)
@@ -310,7 +339,10 @@ func (k *mqlK8sDeployment) securitySpec() (*corev1.PodSpec, error) {
 
 func (k *mqlK8sDeployment) automountServiceAccountToken() (bool, error) {
 	spec, err := k.securitySpec()
-	return boolFromSpec(spec, err, specAutomountServiceAccountToken)
+	if err != nil {
+		return false, err
+	}
+	return effectiveAutomountServiceAccountToken(k.MqlRuntime, spec, k.Namespace.Data), nil
 }
 
 func (k *mqlK8sDeployment) hostNetwork() (bool, error) {
@@ -372,6 +404,16 @@ func (k *mqlK8sDeployment) usesHostPath() (bool, error) {
 	return boolFromSpec(spec, err, specUsesHostPath)
 }
 
+func (k *mqlK8sDeployment) hostUsers() (bool, error) {
+	spec, err := k.securitySpec()
+	return boolFromSpec(spec, err, specHostUsers)
+}
+
+func (k *mqlK8sDeployment) volumes() ([]any, error) {
+	spec, err := k.securitySpec()
+	return volumesFromSpec(k.MqlRuntime, k.Id.Data, k.Namespace.Data, spec, err)
+}
+
 func (k *mqlK8sDeployment) usesUnconfinedSeccomp() (bool, error) {
 	spec, err := k.securitySpec()
 	return boolFromSpec(spec, err, specUsesUnconfinedSeccomp)
@@ -394,7 +436,10 @@ func (k *mqlK8sDaemonset) securitySpec() (*corev1.PodSpec, error) {
 
 func (k *mqlK8sDaemonset) automountServiceAccountToken() (bool, error) {
 	spec, err := k.securitySpec()
-	return boolFromSpec(spec, err, specAutomountServiceAccountToken)
+	if err != nil {
+		return false, err
+	}
+	return effectiveAutomountServiceAccountToken(k.MqlRuntime, spec, k.Namespace.Data), nil
 }
 
 func (k *mqlK8sDaemonset) hostNetwork() (bool, error) {
@@ -456,6 +501,16 @@ func (k *mqlK8sDaemonset) usesHostPath() (bool, error) {
 	return boolFromSpec(spec, err, specUsesHostPath)
 }
 
+func (k *mqlK8sDaemonset) hostUsers() (bool, error) {
+	spec, err := k.securitySpec()
+	return boolFromSpec(spec, err, specHostUsers)
+}
+
+func (k *mqlK8sDaemonset) volumes() ([]any, error) {
+	spec, err := k.securitySpec()
+	return volumesFromSpec(k.MqlRuntime, k.Id.Data, k.Namespace.Data, spec, err)
+}
+
 func (k *mqlK8sDaemonset) usesUnconfinedSeccomp() (bool, error) {
 	spec, err := k.securitySpec()
 	return boolFromSpec(spec, err, specUsesUnconfinedSeccomp)
@@ -478,7 +533,10 @@ func (k *mqlK8sStatefulset) securitySpec() (*corev1.PodSpec, error) {
 
 func (k *mqlK8sStatefulset) automountServiceAccountToken() (bool, error) {
 	spec, err := k.securitySpec()
-	return boolFromSpec(spec, err, specAutomountServiceAccountToken)
+	if err != nil {
+		return false, err
+	}
+	return effectiveAutomountServiceAccountToken(k.MqlRuntime, spec, k.Namespace.Data), nil
 }
 
 func (k *mqlK8sStatefulset) hostNetwork() (bool, error) {
@@ -540,6 +598,16 @@ func (k *mqlK8sStatefulset) usesHostPath() (bool, error) {
 	return boolFromSpec(spec, err, specUsesHostPath)
 }
 
+func (k *mqlK8sStatefulset) hostUsers() (bool, error) {
+	spec, err := k.securitySpec()
+	return boolFromSpec(spec, err, specHostUsers)
+}
+
+func (k *mqlK8sStatefulset) volumes() ([]any, error) {
+	spec, err := k.securitySpec()
+	return volumesFromSpec(k.MqlRuntime, k.Id.Data, k.Namespace.Data, spec, err)
+}
+
 func (k *mqlK8sStatefulset) usesUnconfinedSeccomp() (bool, error) {
 	spec, err := k.securitySpec()
 	return boolFromSpec(spec, err, specUsesUnconfinedSeccomp)
@@ -562,7 +630,10 @@ func (k *mqlK8sReplicaset) securitySpec() (*corev1.PodSpec, error) {
 
 func (k *mqlK8sReplicaset) automountServiceAccountToken() (bool, error) {
 	spec, err := k.securitySpec()
-	return boolFromSpec(spec, err, specAutomountServiceAccountToken)
+	if err != nil {
+		return false, err
+	}
+	return effectiveAutomountServiceAccountToken(k.MqlRuntime, spec, k.Namespace.Data), nil
 }
 
 func (k *mqlK8sReplicaset) hostNetwork() (bool, error) {
@@ -624,6 +695,16 @@ func (k *mqlK8sReplicaset) usesHostPath() (bool, error) {
 	return boolFromSpec(spec, err, specUsesHostPath)
 }
 
+func (k *mqlK8sReplicaset) hostUsers() (bool, error) {
+	spec, err := k.securitySpec()
+	return boolFromSpec(spec, err, specHostUsers)
+}
+
+func (k *mqlK8sReplicaset) volumes() ([]any, error) {
+	spec, err := k.securitySpec()
+	return volumesFromSpec(k.MqlRuntime, k.Id.Data, k.Namespace.Data, spec, err)
+}
+
 func (k *mqlK8sReplicaset) usesUnconfinedSeccomp() (bool, error) {
 	spec, err := k.securitySpec()
 	return boolFromSpec(spec, err, specUsesUnconfinedSeccomp)
@@ -646,7 +727,10 @@ func (k *mqlK8sJob) securitySpec() (*corev1.PodSpec, error) {
 
 func (k *mqlK8sJob) automountServiceAccountToken() (bool, error) {
 	spec, err := k.securitySpec()
-	return boolFromSpec(spec, err, specAutomountServiceAccountToken)
+	if err != nil {
+		return false, err
+	}
+	return effectiveAutomountServiceAccountToken(k.MqlRuntime, spec, k.Namespace.Data), nil
 }
 
 func (k *mqlK8sJob) hostNetwork() (bool, error) {
@@ -708,6 +792,16 @@ func (k *mqlK8sJob) usesHostPath() (bool, error) {
 	return boolFromSpec(spec, err, specUsesHostPath)
 }
 
+func (k *mqlK8sJob) hostUsers() (bool, error) {
+	spec, err := k.securitySpec()
+	return boolFromSpec(spec, err, specHostUsers)
+}
+
+func (k *mqlK8sJob) volumes() ([]any, error) {
+	spec, err := k.securitySpec()
+	return volumesFromSpec(k.MqlRuntime, k.Id.Data, k.Namespace.Data, spec, err)
+}
+
 func (k *mqlK8sJob) usesUnconfinedSeccomp() (bool, error) {
 	spec, err := k.securitySpec()
 	return boolFromSpec(spec, err, specUsesUnconfinedSeccomp)
@@ -730,7 +824,10 @@ func (k *mqlK8sCronjob) securitySpec() (*corev1.PodSpec, error) {
 
 func (k *mqlK8sCronjob) automountServiceAccountToken() (bool, error) {
 	spec, err := k.securitySpec()
-	return boolFromSpec(spec, err, specAutomountServiceAccountToken)
+	if err != nil {
+		return false, err
+	}
+	return effectiveAutomountServiceAccountToken(k.MqlRuntime, spec, k.Namespace.Data), nil
 }
 
 func (k *mqlK8sCronjob) hostNetwork() (bool, error) {
@@ -790,6 +887,16 @@ func (k *mqlK8sCronjob) usesHostNamespaces() (bool, error) {
 func (k *mqlK8sCronjob) usesHostPath() (bool, error) {
 	spec, err := k.securitySpec()
 	return boolFromSpec(spec, err, specUsesHostPath)
+}
+
+func (k *mqlK8sCronjob) hostUsers() (bool, error) {
+	spec, err := k.securitySpec()
+	return boolFromSpec(spec, err, specHostUsers)
+}
+
+func (k *mqlK8sCronjob) volumes() ([]any, error) {
+	spec, err := k.securitySpec()
+	return volumesFromSpec(k.MqlRuntime, k.Id.Data, k.Namespace.Data, spec, err)
 }
 
 func (k *mqlK8sCronjob) usesUnconfinedSeccomp() (bool, error) {

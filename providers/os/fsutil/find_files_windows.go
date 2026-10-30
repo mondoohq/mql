@@ -8,6 +8,7 @@ package fsutil
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 )
 
@@ -22,4 +23,10 @@ func handleFsError(err error) (bool, error) {
 		return true, err
 	}
 	return false, nil
+}
+
+func fileDeviceID(info fs.FileInfo) (uint64, bool) {
+	// FileInfo's Sys data does not carry a volume serial number. A strict
+	// xdev search reports unsupported rather than silently crossing volumes.
+	return 0, false
 }

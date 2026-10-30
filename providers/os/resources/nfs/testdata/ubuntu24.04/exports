@@ -1,0 +1,7 @@
+# g05 sweep exports
+/srv/nfs/rw   127.0.0.1(rw,sync,no_subtree_check,no_root_squash) 10.0.0.0/8(rw,sync,no_subtree_check)
+/srv/nfs/ro   127.0.0.1(ro,sync,no_subtree_check) *(ro,sync,no_subtree_check,all_squash)   # trailing comment
+   /srv/nfs/def  192.0.2.10(sync,no_subtree_check)
+/srv/nfs/sq   -rw,sync,no_subtree_check  192.0.2.11 192.0.2.12(ro)
+/srv/nfs/sq2 \
+   192.0.2.13(rw,no_root_squash,root_squash,sync,no_subtree_check)

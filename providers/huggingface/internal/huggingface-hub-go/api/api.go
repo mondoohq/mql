@@ -14,7 +14,7 @@ import (
 	"path"
 	"strings"
 
-	"go.mondoo.com/mql/v13/providers/huggingface/internal/huggingface-hub-go/models"
+	"go.mondoo.com/mql/providers/huggingface/internal/huggingface-hub-go/models"
 )
 
 const (
@@ -50,23 +50,123 @@ func escapeRepoID(id string) string {
 	return url.PathEscape(id)
 }
 
-func (a *API) request(ctx context.Context, method, endpoint string, body interface{}, result interface{}) error {
+// buildURL turns a relative API endpoint (optionally carrying a query string)
+// into the absolute URL under the "/api" base path.
+func (a *API) buildURL(endpoint string) (string, error) {
 	u, err := url.Parse(a.baseURL)
 	if err != nil {
-		return fmt.Errorf("invalid base URL: %w", err)
+		return "", fmt.Errorf("invalid base URL: %w", err)
 	}
 
 	pathPart := endpoint
 	queryPart := ""
-	if idx := strings.Index(endpoint, "?"); idx != -1 {
-		pathPart = endpoint[:idx]
-		queryPart = endpoint[idx+1:]
+	if before, after, ok := strings.Cut(endpoint, "?"); ok {
+		pathPart = before
+		queryPart = after
 	}
 
 	u.Path = path.Join(u.Path, "api", pathPart)
 
 	if queryPart != "" {
 		u.RawQuery = queryPart
+	}
+
+	return u.String(), nil
+}
+
+// parseNextLink extracts the URL marked rel="next" from an RFC 8288 Link
+// header. The HuggingFace list endpoints paginate by returning a cursor in
+// this header; an empty string means there is no further page.
+func parseNextLink(header string) string {
+	if header == "" {
+		return ""
+	}
+	for part := range strings.SplitSeq(header, ",") {
+		segments := strings.Split(part, ";")
+		if len(segments) < 2 {
+			continue
+		}
+		rawURL := strings.TrimSpace(segments[0])
+		if !strings.HasPrefix(rawURL, "<") || !strings.HasSuffix(rawURL, ">") {
+			continue
+		}
+		for _, param := range segments[1:] {
+			param = strings.TrimSpace(param)
+			if param == `rel="next"` || param == "rel=next" {
+				return rawURL[1 : len(rawURL)-1]
+			}
+		}
+	}
+	return ""
+}
+
+// setExpand writes the expand[] selector onto a list request.
+//
+// expand[] is restrictive rather than additive: the Hub returns only the named
+// fields, so the caller has to name every field it intends to read. When it is
+// set the server ignores full=true, so full is only sent on its own to keep the
+// request saying what it means.
+func setExpand(params url.Values, expand []string, full bool) {
+	if len(expand) == 0 {
+		if full {
+			params.Set("full", "true")
+		}
+		return
+	}
+	for _, field := range expand {
+		params.Add("expand[]", field)
+	}
+}
+
+// getPaged performs a GET against a relative endpoint or an absolute URL (as
+// returned by parseNextLink), decodes the body into result, and returns the
+// URL of the next page (empty when the response has no rel="next" link).
+func (a *API) getPaged(ctx context.Context, endpointOrURL string, result any) (string, error) {
+	rawURL := endpointOrURL
+	if !strings.HasPrefix(endpointOrURL, "http://") && !strings.HasPrefix(endpointOrURL, "https://") {
+		var err error
+		rawURL, err = a.buildURL(endpointOrURL)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	if a.token != "" {
+		req.Header.Set("Authorization", "Bearer "+a.token)
+	}
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodySize))
+		var apiErr models.Error
+		if err := json.Unmarshal(bodyBytes, &apiErr); err != nil {
+			return "", fmt.Errorf("request failed (status: %d)", resp.StatusCode)
+		}
+		return "", fmt.Errorf("API error: %s (status: %d)", apiErr.Error, resp.StatusCode)
+	}
+
+	if result != nil {
+		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
+			return "", fmt.Errorf("failed to decode response: %w", err)
+		}
+	}
+
+	return parseNextLink(resp.Header.Get("Link")), nil
+}
+
+func (a *API) request(ctx context.Context, method, endpoint string, body any, result any) error {
+	rawURL, err := a.buildURL(endpoint)
+	if err != nil {
+		return err
 	}
 
 	var bodyReader io.Reader
@@ -78,7 +178,7 @@ func (a *API) request(ctx context.Context, method, endpoint string, body interfa
 		bodyReader = bytes.NewReader(jsonBody)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, u.String(), bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, rawURL, bodyReader)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -141,6 +241,18 @@ func (a *API) GetSpace(ctx context.Context, spaceID string) (*models.Space, erro
 	return &space, nil
 }
 
+// GetRepoScan reads the Hub's malware and unsafe-serialization verdict for one
+// repository. Models, datasets, and Spaces all serve it at the same path under
+// their own type segment.
+func (a *API) GetRepoScan(ctx context.Context, repoType models.RepoType, repoID string) (*models.RepoScan, error) {
+	var scan models.RepoScan
+	err := a.request(ctx, http.MethodGet, fmt.Sprintf("%s/%s/scan", repoType, escapeRepoID(repoID)), nil, &scan)
+	if err != nil {
+		return nil, err
+	}
+	return &scan, nil
+}
+
 func (a *API) ListModels(ctx context.Context, opts *models.ModelListOptions) (*models.ModelList, error) {
 	if opts == nil {
 		opts = models.NewModelListOptions()
@@ -167,9 +279,7 @@ func (a *API) ListModels(ctx context.Context, opts *models.ModelListOptions) (*m
 	if opts.Limit > 0 {
 		params.Set("limit", fmt.Sprintf("%d", opts.Limit))
 	}
-	if opts.Full {
-		params.Set("full", "true")
-	}
+	setExpand(params, opts.Expand, opts.Full)
 
 	endpoint := "models"
 	if len(params) > 0 {
@@ -177,9 +287,17 @@ func (a *API) ListModels(ctx context.Context, opts *models.ModelListOptions) (*m
 	}
 
 	var modelList models.ModelList
-	err := a.request(ctx, http.MethodGet, endpoint, nil, &modelList)
-	if err != nil {
-		return nil, err
+	next := endpoint
+	seen := map[string]bool{}
+	for next != "" && !seen[next] {
+		seen[next] = true
+		var page models.ModelList
+		nextURL, err := a.getPaged(ctx, next, &page)
+		if err != nil {
+			return nil, err
+		}
+		modelList.Models = append(modelList.Models, page.Models...)
+		next = nextURL
 	}
 	return &modelList, nil
 }
@@ -210,9 +328,7 @@ func (a *API) ListDatasets(ctx context.Context, opts *models.DatasetListOptions)
 	if opts.Limit > 0 {
 		params.Set("limit", fmt.Sprintf("%d", opts.Limit))
 	}
-	if opts.Full {
-		params.Set("full", "true")
-	}
+	setExpand(params, opts.Expand, opts.Full)
 
 	endpoint := "datasets"
 	if len(params) > 0 {
@@ -220,9 +336,17 @@ func (a *API) ListDatasets(ctx context.Context, opts *models.DatasetListOptions)
 	}
 
 	var datasetList models.DatasetList
-	err := a.request(ctx, http.MethodGet, endpoint, nil, &datasetList)
-	if err != nil {
-		return nil, err
+	next := endpoint
+	seen := map[string]bool{}
+	for next != "" && !seen[next] {
+		seen[next] = true
+		var page models.DatasetList
+		nextURL, err := a.getPaged(ctx, next, &page)
+		if err != nil {
+			return nil, err
+		}
+		datasetList.Datasets = append(datasetList.Datasets, page.Datasets...)
+		next = nextURL
 	}
 	return &datasetList, nil
 }
@@ -253,9 +377,7 @@ func (a *API) ListSpaces(ctx context.Context, opts *models.SpaceListOptions) (*m
 	if opts.Limit > 0 {
 		params.Set("limit", fmt.Sprintf("%d", opts.Limit))
 	}
-	if opts.Full {
-		params.Set("full", "true")
-	}
+	setExpand(params, opts.Expand, opts.Full)
 
 	endpoint := "spaces"
 	if len(params) > 0 {
@@ -263,9 +385,17 @@ func (a *API) ListSpaces(ctx context.Context, opts *models.SpaceListOptions) (*m
 	}
 
 	var spaceList models.SpaceList
-	err := a.request(ctx, http.MethodGet, endpoint, nil, &spaceList)
-	if err != nil {
-		return nil, err
+	next := endpoint
+	seen := map[string]bool{}
+	for next != "" && !seen[next] {
+		seen[next] = true
+		var page models.SpaceList
+		nextURL, err := a.getPaged(ctx, next, &page)
+		if err != nil {
+			return nil, err
+		}
+		spaceList.Spaces = append(spaceList.Spaces, page.Spaces...)
+		next = nextURL
 	}
 	return &spaceList, nil
 }
@@ -328,10 +458,21 @@ func (a *API) ListWebhooks(ctx context.Context, opts *models.WebhookListOptions)
 		endpoint = fmt.Sprintf("%s?%s", endpoint, params.Encode())
 	}
 
+	// Follow cursor pagination like the other list endpoints. The settings
+	// endpoint may not paginate today, in which case the loop simply runs once
+	// (no Link header, so next is empty).
 	var webhookList models.WebhookList
-	err := a.request(ctx, http.MethodGet, endpoint, nil, &webhookList)
-	if err != nil {
-		return nil, err
+	next := endpoint
+	seen := map[string]bool{}
+	for next != "" && !seen[next] {
+		seen[next] = true
+		var page models.WebhookList
+		nextURL, err := a.getPaged(ctx, next, &page)
+		if err != nil {
+			return nil, err
+		}
+		webhookList = append(webhookList, page...)
+		next = nextURL
 	}
 	return []models.Webhook(webhookList), nil
 }

@@ -1,0 +1,22 @@
+UNIT FILE             STATE    PRESET
+admin-enabled.service enabled  enabled
+also-only.service     indirect enabled
+app.service           linked   enabled
+disabled.service      disabled enabled
+getty@.service        enabled  enabled
+masked-here.service   masked   enabled
+nickname.service      alias    -
+no-install.service    enabled  enabled
+nodesc.service        static   -
+other-name.service    alias    -
+real.service          enabled  enabled
+serial@.service       disabled enabled
+undeclared.service    indirect enabled
+vendor-linked.service disabled enabled
+vendor-static.service static   -
+worker@.service       indirect enabled
+vendor.socket         disabled enabled
+admin-alias.timer     alias    -
+admin.timer           enabled  enabled
+
+19 unit files listed.

@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,9 +20,9 @@ import (
 	"github.com/gobwas/glob"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 // Data holds the mocked data entries
@@ -142,13 +143,9 @@ func New(id uint32, asset *inventory.Asset, opts ...Option) (*Connection, error)
 
 	if cfg.tomlData != nil {
 		// merge commands
-		for cmd, cmdData := range cfg.tomlData.Commands {
-			res.data.Commands[cmd] = cmdData
-		}
+		maps.Copy(res.data.Commands, cfg.tomlData.Commands)
 		// merge files
-		for path, fileData := range cfg.tomlData.Files {
-			res.data.Files[path] = fileData
-		}
+		maps.Copy(res.data.Files, cfg.tomlData.Files)
 	}
 
 	return res, nil
@@ -434,9 +431,9 @@ func (f *MockFile) Readdir(n int) ([]os.FileInfo, error) {
 	path := f.data.Path
 	// searches for direct childs of this file
 	for k := range f.fs.data.Files {
-		if strings.HasPrefix(k, path) {
+		if after, ok := strings.CutPrefix(k, path); ok {
 			// check if it is only one layer down
-			filename := strings.TrimPrefix(k, path)
+			filename := after
 
 			// path-separator is still included, remove it
 			filename = strings.TrimPrefix(filename, "/")
@@ -466,9 +463,9 @@ func (f *MockFile) Readdirnames(n int) ([]string, error) {
 	path := f.data.Path
 	// searches for direct childs of this file
 	for k := range f.fs.data.Files {
-		if strings.HasPrefix(k, path) {
+		if after, ok := strings.CutPrefix(k, path); ok {
 			// check if it is only one layer down
-			filename := strings.TrimPrefix(k, path)
+			filename := after
 
 			// path-separator is still included, remove it
 			filename = strings.TrimPrefix(filename, "/")

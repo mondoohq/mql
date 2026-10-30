@@ -8,17 +8,16 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/okta/okta-sdk-golang/v5/okta"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/okta/connection"
-	"go.mondoo.com/mql/v13/providers/okta/resources/sdk"
-	"go.mondoo.com/mql/v13/types"
+	"github.com/okta/okta-sdk-golang/v6/okta"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/okta/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // authzServerPolicyRaw captures the authorization-server policy fields we
-// expose. v5 keeps these scalars in the model's AdditionalProperties map, so we
+// expose. The SDK keeps these scalars in the model's AdditionalProperties map, so we
 // decode the canonical JSON into this shared shape instead.
 type authzServerPolicyRaw struct {
 	Id          string          `json:"id,omitempty"`
@@ -73,8 +72,8 @@ func (o *mqlOkta) authorizationServers() ([]any, error) {
 }
 
 func newMqlOktaAuthorizationServer(runtime *plugin.Runtime, entry *okta.AuthorizationServer) (any, error) {
-	// v5 no longer types the `default` flag on the authorization server; it is
-	// returned as an additional property, so read it from there.
+	// The SDK does not type the `default` flag on the authorization server; it
+	// is returned as an additional property, so read it from there.
 	defaultValue := false
 	if v, ok := entry.AdditionalProperties["default"].(bool); ok {
 		defaultValue = v
@@ -91,22 +90,32 @@ func newMqlOktaAuthorizationServer(runtime *plugin.Runtime, entry *okta.Authoriz
 		signingNextRotation = s.NextRotation
 	}
 
+	// Jwks is the key set tokens are encrypted against, which is a different
+	// set from the signing keys the server publishes.
+	jwks, err := convert.JsonToDict(entry.Jwks)
+	if err != nil {
+		return nil, err
+	}
+
 	return CreateResource(runtime, "okta.authorizationServer", map[string]*llx.RawData{
-		"id":                  llx.StringData(oktaStr(entry.Id)),
-		"name":                llx.StringData(oktaStr(entry.Name)),
-		"description":         llx.StringData(oktaStr(entry.Description)),
-		"status":              llx.StringData(oktaStr(entry.Status)),
-		"default":             llx.BoolData(defaultValue),
-		"issuer":              llx.StringData(oktaStr(entry.Issuer)),
-		"issuerMode":          llx.StringData(oktaStr(entry.IssuerMode)),
-		"audiences":           llx.ArrayData(convert.SliceAnyToInterface(entry.Audiences), types.String),
-		"signingKid":          llx.StringData(signingKid),
-		"signingRotationMode": llx.StringData(signingRotationMode),
-		"signingLastRotated":  llx.TimeDataPtr(signingLastRotated),
-		"signingNextRotation": llx.TimeDataPtr(signingNextRotation),
-		"signingUse":          llx.StringData(signingUse),
-		"created":             llx.TimeDataPtr(entry.Created),
-		"lastUpdated":         llx.TimeDataPtr(entry.LastUpdated),
+		"id":                                    llx.StringData(oktaStr(entry.Id)),
+		"name":                                  llx.StringData(oktaStr(entry.Name)),
+		"description":                           llx.StringData(oktaStr(entry.Description)),
+		"status":                                llx.StringData(oktaStr(entry.Status)),
+		"default":                               llx.BoolData(defaultValue),
+		"issuer":                                llx.StringData(oktaStr(entry.Issuer)),
+		"issuerMode":                            llx.StringData(oktaStr(entry.IssuerMode)),
+		"accessTokenEncryptedResponseAlgorithm": llx.StringData(oktaStr(entry.AccessTokenEncryptedResponseAlgorithm)),
+		"jwksUri":                               llx.StringData(oktaStr(entry.JwksUri)),
+		"jwks":                                  llx.DictData(jwks),
+		"audiences":                             llx.ArrayData(convert.SliceAnyToInterface(entry.Audiences), types.String),
+		"signingKid":                            llx.StringData(signingKid),
+		"signingRotationMode":                   llx.StringData(signingRotationMode),
+		"signingLastRotated":                    llx.TimeDataPtr(signingLastRotated),
+		"signingNextRotation":                   llx.TimeDataPtr(signingNextRotation),
+		"signingUse":                            llx.StringData(signingUse),
+		"created":                               llx.TimeDataPtr(entry.Created),
+		"lastUpdated":                           llx.TimeDataPtr(entry.LastUpdated),
 	})
 }
 
@@ -271,13 +280,10 @@ func (o *mqlOktaAuthorizationServer) keys() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OktaConnection)
 	ctx := context.Background()
 
-	// v5's typed AuthorizationServerJsonWebKey drops created/lastUpdated/
+	// The typed AuthorizationServerJsonWebKey drops created/lastUpdated/
 	// expiresAt/keyOps/x5c/x5t/x5tS256, so fetch the keys directly to retain the
-	// full JWK shape the v2 SDK exposed.
-	apiSupplement := &sdk.ApiExtension{
-		Host:  conn.OrganizationID(),
-		Token: conn.Token(),
-	}
+	// full JWK shape.
+	apiSupplement := conn.ApiExtension()
 	keys, err := apiSupplement.ListAuthorizationServerKeys(ctx, o.Id.Data)
 	if err != nil {
 		return nil, err
@@ -429,7 +435,7 @@ func newMqlOktaAuthorizationServerScope(runtime *plugin.Runtime, authServerId st
 	return CreateResource(runtime, "okta.authorizationServer.scope", map[string]*llx.RawData{
 		"authorizationServerId": llx.StringData(authServerId),
 		"id":                    llx.StringData(oktaStr(entry.Id)),
-		"name":                  llx.StringData(oktaStr(entry.Name)),
+		"name":                  llx.StringData(entry.Name),
 		"displayName":           llx.StringData(oktaStr(entry.DisplayName)),
 		"description":           llx.StringData(oktaStr(entry.Description)),
 		"consent":               llx.StringData(oktaStr(entry.Consent)),

@@ -5,17 +5,20 @@ package connection
 
 import (
 	"errors"
+	"fmt"
+	nethttp "net/http"
 	"net/url"
 	"os"
 	"path"
 	"strconv"
-	"strings"
+	"sync"
+	"time"
 
 	"github.com/rs/zerolog/log"
-	gitlab "gitlab.com/gitlab-org/api/client-go"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 )
 
 type GitLabConnection struct {
@@ -30,6 +33,33 @@ type GitLabConnection struct {
 	projectName string
 	client      *gitlab.Client
 	url         string
+
+	memberRolesMu sync.Mutex
+	memberRoles   map[string]memberRolesResult
+}
+
+type memberRolesResult struct {
+	roles []*gitlab.MemberRole
+	err   error
+}
+
+// MemberRoles returns the custom member roles stored under key, calling fetch
+// only the first time this connection is asked for that key. Protected-branch
+// access levels resolve their custom role through it, so every grant on every
+// branch shares one listing per scope instead of paying one per grant. A failed
+// fetch is remembered as well, so a refused listing is not retried per grant.
+func (c *GitLabConnection) MemberRoles(key string, fetch func() ([]*gitlab.MemberRole, error)) ([]*gitlab.MemberRole, error) {
+	c.memberRolesMu.Lock()
+	defer c.memberRolesMu.Unlock()
+	if res, ok := c.memberRoles[key]; ok {
+		return res.roles, res.err
+	}
+	roles, err := fetch()
+	if c.memberRoles == nil {
+		c.memberRoles = map[string]memberRolesResult{}
+	}
+	c.memberRoles[key] = memberRolesResult{roles: roles, err: err}
+	return roles, err
 }
 
 func NewGitLabConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*GitLabConnection, error) {
@@ -41,15 +71,21 @@ func NewGitLabConnection(id uint32, asset *inventory.Asset, conf *inventory.Conf
 		token = os.Getenv("GITLAB_TOKEN")
 	}
 
-	// if a secret was provided, it always overrides the env variable since it has precedence
+	// If credentials were supplied they are authoritative — falling back to the
+	// option/env token when the only credential is one we can't use would
+	// silently scan as a different account than the inventory asked for.
 	if len(conf.Credentials) > 0 {
+		token = ""
 		for i := range conf.Credentials {
 			cred := conf.Credentials[i]
 			if cred.Type == vault.CredentialType_password {
 				token = string(cred.Secret)
-			} else {
-				log.Warn().Str("credential-type", cred.Type.String()).Msg("unsupported credential type for GitLab provider")
+				break
 			}
+			log.Warn().Str("credential-type", cred.Type.String()).Msg("unsupported credential type for GitLab provider")
+		}
+		if token == "" {
+			return nil, errors.New("gitlab provider requires a password/token credential, but none of the supplied credentials are usable")
 		}
 	}
 
@@ -63,7 +99,17 @@ func NewGitLabConnection(id uint32, asset *inventory.Asset, conf *inventory.Conf
 		opts = gitlab.WithBaseURL(url)
 	}
 
-	client, err := gitlab.NewClient(token, opts)
+	// Log every call at debug, the way the azure and gcp providers do. Without
+	// it a slow GitLab scan cannot be attributed to anything: GitLab paginates
+	// heavily and fans out per project, so "which call, how many times" is the
+	// only question worth asking and there was previously no way to ask it.
+	traced := &nethttp.Client{Transport: &apiTraceTransport{}}
+	clientOpts := []gitlab.ClientOptionFunc{gitlab.WithHTTPClient(traced)}
+	if opts != nil {
+		clientOpts = append(clientOpts, opts)
+	}
+
+	client, err := gitlab.NewClient(token, clientOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -118,30 +164,21 @@ func (c *GitLabConnection) Group() (*gitlab.Group, error) {
 	}
 	log.Debug().Str("id", gid).Msgf("finding group")
 
-	if c.groupID == "" {
-		// if group name has a slash, we know its a subgroup
-		if names := strings.Split(c.groupName, "/"); len(names) > 1 {
-			return c.findSubgroup(names[0], names[1])
-		}
-	}
-
+	// A full path ("acme/platform/api") is a valid group id for this endpoint:
+	// the SDK URL-escapes it for us, so nested groups resolve in one call. The
+	// previous subgroup traversal matched on the group's *display* name rather
+	// than its path (so a group renamed away from its slug was unreachable)
+	// and kept only the first two path segments, silently resolving "a/b" when
+	// the caller asked for "a/b/c".
 	var err error
 	c.group, _, err = c.Client().Groups.GetGroup(gid, nil)
-	return c.group, err
-}
-
-func (c *GitLabConnection) findSubgroup(parentId string, name string) (*gitlab.Group, error) {
-	log.Debug().Msgf("find subgroup for %s %s", parentId, name)
-	groups, err := DiscoverSubAndDescendantGroupsForGroup(c, parentId)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot find gitlab group %q: %w", gid, err)
 	}
-	for i := range groups {
-		if name == groups[i].Name {
-			return groups[i], nil
-		}
+	if c.group == nil {
+		return nil, fmt.Errorf("gitlab group %q not found", gid)
 	}
-	return nil, errors.New("not found")
+	return c.group, nil
 }
 
 func (c *GitLabConnection) IsGroup() bool {
@@ -183,27 +220,74 @@ func (c *GitLabConnection) Project() (*gitlab.Project, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Discovery listed this project already, and that listing returns the full
+	// object. Reuse it rather than spending a GetProject per asset. Falls
+	// through when the project was not discovered -- scanned directly, or
+	// addressed by path rather than id -- so nothing depends on the cache.
+	if idStr, ok := pid.(string); ok {
+		if id, cerr := strconv.Atoi(idStr); cerr == nil {
+			if p := cachedDiscoveredProject(c.url, id); p != nil {
+				log.Debug().Int("id", id).Msg("using project from discovery")
+				c.project = p
+				return c.project, nil
+			}
+		}
+	}
+
 	log.Debug().Interface("id", pid).Msgf("finding project")
 
 	c.project, _, err = c.Client().Projects.GetProject(pid, nil)
 	return c.project, err
 }
 
+// DiscoverSubAndDescendantGroupsForGroup returns every group beneath rootGroup.
+//
+// GitLab's descendant_groups endpoint already returns direct children as well
+// as deeper ones, so the two result sets overlap; entries are deduplicated by
+// id. Without that, every direct subgroup was discovered twice, which in turn
+// made discoverGroupProjects walk each of their project lists twice.
+//
+// A failure is surfaced rather than swallowed at debug level: a token that
+// cannot read subgroups previously produced an empty tree that was
+// indistinguishable from a group that genuinely has none, and the caller's
+// error handling was unreachable because this always returned a nil error.
 func DiscoverSubAndDescendantGroupsForGroup(conn *GitLabConnection, rootGroup string) ([]*gitlab.Group, error) {
 	var list []*gitlab.Group
+	var errs []error
+	seen := map[int64]bool{}
+
+	appendUnique := func(groups []*gitlab.Group) {
+		for _, g := range groups {
+			if g == nil || seen[g.ID] {
+				continue
+			}
+			seen[g.ID] = true
+			list = append(list, g)
+		}
+	}
+
 	// discover subgroups
 	subgroups, err := groupSubgroups(conn, rootGroup)
 	if err != nil {
-		log.Debug().Err(err).Msgf("cannot discover subgroups for %v", rootGroup)
+		log.Warn().Err(err).Msgf("cannot discover subgroups for %v; results may be incomplete", rootGroup)
+		errs = append(errs, err)
 	} else {
-		list = append(list, subgroups...)
+		appendUnique(subgroups)
 	}
 	// discover descendant groups
 	descgroups, err := groupDescendantGroups(conn, rootGroup)
 	if err != nil {
-		log.Debug().Err(err).Msgf("cannot discover descendant groups for %v", rootGroup)
+		log.Warn().Err(err).Msgf("cannot discover descendant groups for %v; results may be incomplete", rootGroup)
+		errs = append(errs, err)
 	} else {
-		list = append(list, descgroups...)
+		appendUnique(descgroups)
+	}
+
+	// Only a total failure is fatal: if either endpoint answered we still have
+	// a usable (if partial) tree, and the warnings above say so.
+	if len(list) == 0 && len(errs) > 0 {
+		return nil, errors.Join(errs...)
 	}
 	return list, nil
 }
@@ -214,7 +298,7 @@ func groupDescendantGroups(conn *GitLabConnection, gid any) ([]*gitlab.Group, er
 	page := int64(1)
 	groups := []*gitlab.Group{}
 	for {
-		grps, resp, err := conn.Client().Groups.ListDescendantGroups(gid, &gitlab.ListDescendantGroupsOptions{ListOptions: gitlab.ListOptions{Page: page, PerPage: perPage}})
+		grps, resp, err := conn.Client().Groups.ListDescendantGroups(gid, &gitlab.ListDescendantGroupsOptions{Page: page, PerPage: perPage})
 		if err != nil {
 			return nil, err
 		}
@@ -234,7 +318,7 @@ func groupSubgroups(conn *GitLabConnection, gid any) ([]*gitlab.Group, error) {
 	page := int64(1)
 	groups := []*gitlab.Group{}
 	for {
-		grps, resp, err := conn.Client().Groups.ListSubGroups(gid, &gitlab.ListSubGroupsOptions{ListOptions: gitlab.ListOptions{Page: page, PerPage: perPage}})
+		grps, resp, err := conn.Client().Groups.ListSubGroups(gid, &gitlab.ListSubGroupsOptions{Page: page, PerPage: perPage})
 		if err != nil {
 			return nil, err
 		}
@@ -246,4 +330,30 @@ func groupSubgroups(conn *GitLabConnection, gid any) ([]*gitlab.Group, error) {
 	}
 
 	return groups, nil
+}
+
+// apiTraceTransport logs every GitLab API request with its method, path, status
+// and duration at debug level. The query string is dropped deliberately: it
+// carries pagination cursors and, on some endpoints, tokens.
+type apiTraceTransport struct{ base nethttp.RoundTripper }
+
+func (t *apiTraceTransport) RoundTrip(r *nethttp.Request) (*nethttp.Response, error) {
+	b := t.base
+	if b == nil {
+		b = nethttp.DefaultTransport
+	}
+	start := time.Now()
+	resp, err := b.RoundTrip(r)
+	status := 0
+	if resp != nil {
+		status = resp.StatusCode
+	}
+	log.Debug().
+		Str("method", r.Method).
+		Str("url", r.URL.Host+r.URL.Path).
+		Int("status", status).
+		Dur("duration", time.Since(start)).
+		Err(err).
+		Msg("gitlab api call")
+	return resp, err
 }

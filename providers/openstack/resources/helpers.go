@@ -10,10 +10,10 @@ import (
 
 	"github.com/gophercloud/gophercloud/v2"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/openstack/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/openstack/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func conn(runtime *plugin.Runtime) *connection.OpenstackConnection {
@@ -44,8 +44,7 @@ func translateOpenstackError(err error) error {
 	if err == nil {
 		return nil
 	}
-	var resp gophercloud.ErrUnexpectedResponseCode
-	if errors.As(err, &resp) {
+	if resp, ok := errors.AsType[gophercloud.ErrUnexpectedResponseCode](err); ok {
 		switch resp.Actual {
 		case 401, 403, 404:
 			log.Warn().Err(err).Int("status", resp.Actual).Msg("openstack> permission denied or not found; returning empty result")
@@ -63,8 +62,7 @@ func translateGetError(err error) error {
 	if err == nil {
 		return nil
 	}
-	var resp gophercloud.ErrUnexpectedResponseCode
-	if errors.As(err, &resp) {
+	if resp, ok := errors.AsType[gophercloud.ErrUnexpectedResponseCode](err); ok {
 		switch resp.Actual {
 		case 401, 403:
 			log.Warn().Err(err).Int("status", resp.Actual).Msg("openstack> permission denied; returning empty result")
@@ -82,8 +80,7 @@ func serviceMissing(err error) bool {
 	if err == nil {
 		return false
 	}
-	var svc gophercloud.ErrServiceNotFound
-	if errors.As(err, &svc) {
+	if _, ok := errors.AsType[gophercloud.ErrServiceNotFound](err); ok {
 		return true
 	}
 	var ep gophercloud.ErrEndpointNotFound

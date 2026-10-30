@@ -1,0 +1,198 @@
+# Copyright Mondoo, Inc. 2024, 2026
+# SPDX-License-Identifier: BUSL-1.1
+
+name: Weekly release
+
+# Cuts the weekly mql release (v14.2.0 -> v14.3.0) the way it was cut by hand:
+# it publishes a GitHub release with generated notes, which creates the tag.
+# The tag starts goreleaser.yml, which builds and attaches the artifacts; the
+# published release starts release-providers.yml. A tag alone is not enough:
+# goreleaser would create the release with GITHUB_TOKEN, and events from
+# GITHUB_TOKEN never start release-providers.yml.
+#
+# The release is created with the mondoo-mergebot app token for the same
+# reason: a tag or release made with GITHUB_TOKEN starts no workflow at all.
+#
+# What gets tagged, and why, is decided in .github/scripts/next-minor-release.sh
+# (unit-tested in .github/scripts/tests/).
+
+on:
+  schedule:
+    # Tuesday 08:00 UTC
+    - cron: "0 8 * * 2"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Compute and report the release, but do not tag"
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: weekly-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # C07QZDJFF89 == #release-coordination
+  SLACK_BOT_CHANNEL_ID: "C07QZDJFF89"
+  # Every run that can tag reports to Slack, scheduled or started by hand.
+  # Dry runs stay quiet.
+  TRIGGER: ${{ github.event_name == 'schedule' && 'scheduled run' || format('started by {0}', github.triggering_actor) }}
+
+jobs:
+  weekly-release:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      # ref: main so the scripts always come from main, whatever branch the
+      # release is cut from.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: main
+
+      - name: Fetch all tags and branches
+        run: git fetch origin --tags --force
+
+      - name: Compute next release
+        id: next
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        # An explicit `shell: bash` adds pipefail; the default shell would let
+        # tee swallow the script's exit status.
+        shell: bash
+        run: .github/scripts/next-minor-release.sh | tee -a "$GITHUB_OUTPUT"
+
+      - name: Summarize
+        env:
+          PREV: ${{ steps.next.outputs.prev }}
+          NEXT: ${{ steps.next.outputs.next }}
+          BASE: ${{ steps.next.outputs.base }}
+          SHA: ${{ steps.next.outputs.sha }}
+          COMMITS: ${{ steps.next.outputs.commits }}
+          SKIP: ${{ steps.next.outputs.skip }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          {
+            echo "## Weekly release"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Previous release | \`${PREV}\` |"
+            echo "| Next release | \`${NEXT}\` |"
+            echo "| Branch | \`${BASE}\` |"
+            echo "| Commit | \`${SHA}\` |"
+            echo "| Commits since previous | ${COMMITS} |"
+            echo
+            if [ "$SKIP" = "true" ]; then
+              echo "Nothing new since \`${PREV}\`, no release."
+            elif [ "$DRY_RUN" = "true" ]; then
+              echo "Dry run, no tag pushed."
+            else
+              echo "Tagging \`${NEXT}\`."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Never push a tag that goreleaser's own verify-tested job would reject.
+      - name: Verify the commit is tested
+        if: ${{ steps.next.outputs.skip != 'true' && inputs.dry-run != true }}
+        env:
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.next.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/verify-tested.sh
+
+      - name: Generate app token
+        id: app-token
+        if: ${{ steps.next.outputs.skip != 'true' && inputs.dry-run != true }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.MONDOO_MERGEBOT_APP_ID }}
+          private-key: ${{ secrets.MONDOO_MERGEBOT_APP_PRIVATE_KEY }}
+
+      - name: Publish the release
+        id: tag
+        if: ${{ steps.next.outputs.skip != 'true' && inputs.dry-run != true }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PREV: ${{ steps.next.outputs.prev }}
+          NEXT: ${{ steps.next.outputs.next }}
+          SHA: ${{ steps.next.outputs.sha }}
+        run: |
+          gh release create "$NEXT" \
+            --target "$SHA" \
+            --title "$NEXT" \
+            --generate-notes \
+            --notes-start-tag "$PREV"
+
+      - name: Notify Slack, released
+        if: ${{ steps.tag.outcome == 'success' }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            {
+              "channel": "${{ env.SLACK_BOT_CHANNEL_ID }}",
+              "text": "Weekly release: tagged ${{ steps.next.outputs.next }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":rocket: Weekly release: tagged <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ steps.next.outputs.next }}|${{ steps.next.outputs.next }}> on `${{ steps.next.outputs.base }}` (<${{ github.server_url }}/${{ github.repository }}/commit/${{ steps.next.outputs.sha }}|${{ steps.next.outputs.commits }} commits> since ${{ steps.next.outputs.prev }})\n(${{ env.TRIGGER }})\nFollow the <${{ github.server_url }}/${{ github.repository }}/actions/workflows/goreleaser.yml|goreleaser runs>."
+                  }
+                }
+              ]
+            }
+
+      - name: Notify Slack, nothing to release
+        if: ${{ steps.next.outputs.skip == 'true' && inputs.dry-run != true }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            {
+              "channel": "${{ env.SLACK_BOT_CHANNEL_ID }}",
+              "text": "Weekly release: nothing new since ${{ steps.next.outputs.prev }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":zzz: Weekly release skipped: nothing new on `${{ steps.next.outputs.base }}` since ${{ steps.next.outputs.prev }} (${{ env.TRIGGER }})."
+                  }
+                }
+              ]
+            }
+
+      - name: Notify Slack, failed
+        if: ${{ failure() && inputs.dry-run != true }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            {
+              "channel": "${{ env.SLACK_BOT_CHANNEL_ID }}",
+              "text": "Weekly release failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":x: Weekly release failed. See the <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|workflow run> (${{ env.TRIGGER }})."
+                  }
+                }
+              ]
+            }

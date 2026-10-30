@@ -11,20 +11,18 @@ import (
 
 	discoveryengine "cloud.google.com/go/discoveryengine/apiv1"
 	"cloud.google.com/go/discoveryengine/apiv1/discoveryenginepb"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	googleoauth "golang.org/x/oauth2/google"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // discoveryEngineLocations lists the Discovery Engine multi-region locations.
 // Unlike Vertex AI, Discovery Engine resources live in these three locations
-// only. See https://cloud.google.com/generative-ai-app-builder/docs/locations
+// only. See https://docs.cloud.google.com/generative-ai-app-builder/docs/locations
 var discoveryEngineLocations = []string{"global", "us", "eu"}
 
 // defaultDiscoveryEngineCollection is the built-in collection that hosts data
@@ -50,18 +48,6 @@ func discoveryEngineLocationFromName(name string) string {
 		}
 	}
 	return ""
-}
-
-// isDiscoveryEngineSkippable returns true for errors indicating the Discovery
-// Engine API is not enabled or the location is not available for this project.
-func isDiscoveryEngineSkippable(err error) bool {
-	if s, ok := status.FromError(err); ok {
-		switch s.Code() {
-		case codes.PermissionDenied, codes.Unimplemented, codes.InvalidArgument, codes.NotFound:
-			return true
-		}
-	}
-	return false
 }
 
 func (g *mqlGcpProject) discoveryEngine() (*mqlGcpProjectDiscoveryEngineService, error) {
@@ -104,22 +90,39 @@ func newMqlDiscoveryEngineDataStore(runtime *plugin.Runtime, ds *discoveryengine
 		solutionTypes = append(solutionTypes, st.String())
 	}
 
+	// Enum fields are reported only when their message is present: a data
+	// store without a CMEK config or a Workspace config reads as empty, not
+	// as the enum's zero value.
+	var cmekState string
+	if cfg := ds.GetCmekConfig(); cfg != nil {
+		cmekState = cfg.GetState().String()
+	}
+	var workspaceType string
+	if ws := ds.GetWorkspaceConfig(); ws != nil {
+		workspaceType = ws.GetType().String()
+	}
+
 	res, err := CreateResource(runtime, "gcp.project.discoveryEngineService.dataStore", map[string]*llx.RawData{
-		"name":             llx.StringData(ds.Name),
-		"displayName":      llx.StringData(ds.DisplayName),
-		"industryVertical": llx.StringData(ds.IndustryVertical.String()),
-		"solutionTypes":    llx.ArrayData(solutionTypes, types.String),
-		"contentConfig":    llx.StringData(ds.ContentConfig.String()),
-		"defaultSchemaId":  llx.StringData(ds.DefaultSchemaId),
-		"aclEnabled":       llx.BoolData(ds.AclEnabled),
-		"kmsKeyName":       llx.StringData(ds.KmsKeyName),
-		"createdAt":        llx.TimeDataPtr(timestampAsTimePtr(ds.CreateTime)),
+		"name":                     llx.StringData(ds.Name),
+		"displayName":              llx.StringData(ds.DisplayName),
+		"industryVertical":         llx.StringData(ds.IndustryVertical.String()),
+		"solutionTypes":            llx.ArrayData(solutionTypes, types.String),
+		"contentConfig":            llx.StringData(ds.ContentConfig.String()),
+		"defaultSchemaId":          llx.StringData(ds.DefaultSchemaId),
+		"aclEnabled":               llx.BoolData(ds.AclEnabled),
+		"kmsKeyName":               llx.StringData(ds.KmsKeyName),
+		"cmekState":                llx.StringData(cmekState),
+		"workspaceType":            llx.StringData(workspaceType),
+		"workspaceSuperAdminEmail": llx.StringData(ds.GetWorkspaceConfig().GetSuperAdminEmailAddress()),
+		"createdAt":                llx.TimeDataPtr(timestampAsTimePtr(ds.CreateTime)),
 	})
 	if err != nil {
 		return nil, err
 	}
 	mqlDs := res.(*mqlGcpProjectDiscoveryEngineServiceDataStore)
 	mqlDs.cacheKmsKeyName = ds.KmsKeyName
+	mqlDs.cacheSuperAdminServiceAccount = ds.GetWorkspaceConfig().GetSuperAdminServiceAccount()
+	mqlDs.cacheProjectId = projectFromResourceName(ds.Name)
 	return mqlDs, nil
 }
 
@@ -143,7 +146,7 @@ func (g *mqlGcpProjectDiscoveryEngineService) listDataStoresInLocation(ctx conte
 			break
 		}
 		if err != nil {
-			if isDiscoveryEngineSkippable(err) {
+			if isInapplicable(err) {
 				break
 			}
 			return nil, err
@@ -186,11 +189,40 @@ func (g *mqlGcpProjectDiscoveryEngineServiceDataStore) id() (string, error) {
 }
 
 type mqlGcpProjectDiscoveryEngineServiceDataStoreInternal struct {
-	cacheKmsKeyName string
+	cacheKmsKeyName               string
+	cacheSuperAdminServiceAccount string
+	cacheProjectId                string
 }
 
 func (a *mqlGcpProjectDiscoveryEngineServiceDataStore) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
 	return newKmsCryptoKeyRef(a.MqlRuntime, &a.KmsKey, a.cacheKmsKeyName)
+}
+
+func (a *mqlGcpProjectDiscoveryEngineServiceDataStore) workspaceSuperAdminServiceAccount() (*mqlGcpProjectIamServiceServiceAccount, error) {
+	email := a.cacheSuperAdminServiceAccount
+	projectId := serviceAccountProjectFromEmail(email)
+	if projectId == "" {
+		projectId = a.cacheProjectId
+	}
+	return vertexaiServiceAccountRef(a.MqlRuntime, &a.WorkspaceSuperAdminServiceAccount, projectId, email)
+}
+
+// serviceAccountProjectFromEmail returns the project that owns a user-managed
+// service account, read from its "{name}@{project}.iam.gserviceaccount.com"
+// address. Any other address, including a Google-managed service agent's,
+// yields "", leaving the caller to fall back to a project it already knows.
+func serviceAccountProjectFromEmail(email string) string {
+	_, domain, ok := strings.Cut(email, "@")
+	if !ok {
+		return ""
+	}
+	project, ok := strings.CutSuffix(domain, ".iam.gserviceaccount.com")
+	// Google-managed service agents live in gcp-sa-* projects that the
+	// customer cannot list.
+	if !ok || project == "" || strings.Contains(project, ".") || strings.HasPrefix(project, "gcp-sa-") {
+		return ""
+	}
+	return project
 }
 
 func (g *mqlGcpProjectDiscoveryEngineService) listEnginesInLocation(ctx context.Context, creds *googleoauth.Credentials, projectId, location string) ([]any, error) {
@@ -213,7 +245,7 @@ func (g *mqlGcpProjectDiscoveryEngineService) listEnginesInLocation(ctx context.
 			break
 		}
 		if err != nil {
-			if isDiscoveryEngineSkippable(err) {
+			if isInapplicable(err) {
 				break
 			}
 			return nil, err
@@ -281,8 +313,8 @@ func (g *mqlGcpProjectDiscoveryEngineServiceEngine) dataStores() ([]any, error) 
 	location := discoveryEngineLocationFromName(engineName)
 	// The collection parent is the engine name up to and excluding "/engines/...".
 	collectionParent := engineName
-	if idx := strings.Index(engineName, "/engines/"); idx >= 0 {
-		collectionParent = engineName[:idx]
+	if before, _, ok := strings.Cut(engineName, "/engines/"); ok {
+		collectionParent = before
 	}
 	if location == "" || collectionParent == engineName {
 		return []any{}, nil
@@ -310,7 +342,7 @@ func (g *mqlGcpProjectDiscoveryEngineServiceEngine) dataStores() ([]any, error) 
 			Name: fmt.Sprintf("%s/dataStores/%s", collectionParent, id),
 		})
 		if err != nil {
-			if isDiscoveryEngineSkippable(err) {
+			if isInapplicable(err) {
 				continue
 			}
 			return nil, err

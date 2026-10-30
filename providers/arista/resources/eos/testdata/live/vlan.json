@@ -1,0 +1,47 @@
+{
+ "sourceDetail": "",
+ "vlans": {
+  "1": {
+   "dynamic": false,
+   "interfaces": {},
+   "name": "default",
+   "status": "active"
+  },
+  "101": {
+   "dynamic": false,
+   "interfaces": {},
+   "name": "TEST-BASIC",
+   "status": "active"
+  },
+  "102": {
+   "dynamic": false,
+   "interfaces": {},
+   "name": "TEST-SUSPENDED",
+   "status": "suspended"
+  },
+  "103": {
+   "dynamic": false,
+   "interfaces": {},
+   "name": "TEST-TRUNK-GROUP",
+   "status": "active"
+  },
+  "104": {
+   "dynamic": false,
+   "interfaces": {},
+   "name": "TEST-MULTI-TRUNK",
+   "status": "active"
+  },
+  "108": {
+   "dynamic": false,
+   "interfaces": {},
+   "name": "VLAN0108",
+   "status": "active"
+  },
+  "109": {
+   "dynamic": false,
+   "interfaces": {},
+   "name": "TEST_UNDERSCORE-AND-HYPHEN_99",
+   "status": "active"
+  }
+ }
+}

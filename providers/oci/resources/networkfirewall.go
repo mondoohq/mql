@@ -6,17 +6,14 @@ package resources
 import (
 	"context"
 	"errors"
-	"sync"
 	"time"
 
-	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/networkfirewall"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/oci/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/oci/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func (o *mqlOciNetworkFirewall) id() (string, error) {
@@ -26,63 +23,27 @@ func (o *mqlOciNetworkFirewall) id() (string, error) {
 func (o *mqlOciNetworkFirewall) firewalls() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci network firewall with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getFirewalls(conn, list.Data), 5)
-	poolOfJobs.Run()
-
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-
-	return res, nil
-}
-
-func (o *mqlOciNetworkFirewall) getFirewalls(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci network firewall with region %s", regionResource.Id.Data)
-
-			svc, err := conn.NetworkFirewallClient(regionResource.Id.Data)
+			svc, err := conn.NetworkFirewallClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			firewalls := []networkfirewall.NetworkFirewallSummary{}
-			var page *string
-			for {
+			firewalls, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]networkfirewall.NetworkFirewallSummary, *string, error) {
 				response, err := svc.ListNetworkFirewalls(ctx, networkfirewall.ListNetworkFirewallsRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
-
-				firewalls = append(firewalls, response.Items...)
-
-				if response.OpcNextPage == nil {
-					break
-				}
-				page = response.OpcNextPage
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				return nil, err
 			}
 
 			var res []any
@@ -98,10 +59,9 @@ func (o *mqlOciNetworkFirewall) getFirewalls(conn *connection.OciConnection, reg
 					timeUpdated = &fw.TimeUpdated.Time
 				}
 
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.networkFirewall.firewall", map[string]*llx.RawData{
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.networkFirewall.firewall", stringValue(fw.CompartmentId), map[string]*llx.RawData{
 					"id":                 llx.StringDataPtr(fw.Id),
 					"name":               llx.StringDataPtr(fw.DisplayName),
-					"compartmentID":      llx.StringDataPtr(fw.CompartmentId),
 					"ipv4Address":        llx.StringDataPtr(fw.Ipv4Address),
 					"ipv6Address":        llx.StringDataPtr(fw.Ipv6Address),
 					"shape":              llx.StringDataPtr(fw.Shape),
@@ -109,29 +69,29 @@ func (o *mqlOciNetworkFirewall) getFirewalls(conn *connection.OciConnection, reg
 					"created":            llx.TimeDataPtr(created),
 					"timeUpdated":        llx.TimeDataPtr(timeUpdated),
 					"securityAttributes": llx.MapData(definedTagsToAny(fw.SecurityAttributes), types.Dict),
+					"freeformTags":       llx.MapData(strMapToAny(fw.FreeformTags), types.String),
+					"definedTags":        llx.MapData(definedTagsToAny(fw.DefinedTags), types.Any),
 					"systemTags":         llx.MapData(definedTagsToAny(fw.SystemTags), types.Dict),
 				})
 				if err != nil {
 					return nil, err
 				}
 				mqlFw := mqlInstance.(*mqlOciNetworkFirewallFirewall)
-				mqlFw.cacheSubnetId = stringValue(fw.SubnetId)
-				mqlFw.cachePolicyId = stringValue(fw.NetworkFirewallPolicyId)
-				mqlFw.region = regionResource.Id.Data
+				mqlFw.cacheSubnetID = stringValue(fw.SubnetId)
+				mqlFw.cachePolicyID = stringValue(fw.NetworkFirewallPolicyId)
+				mqlFw.cacheRegion = region
 				res = append(res, mqlFw)
 			}
 
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 type mqlOciNetworkFirewallFirewallInternal struct {
-	cacheSubnetId string
-	cachePolicyId string
-	region        string
+	ociCompartmentRef
+	cacheSubnetID string
+	cachePolicyID string
+	cacheRegion   string
 }
 
 func (o *mqlOciNetworkFirewallFirewall) id() (string, error) {
@@ -140,12 +100,12 @@ func (o *mqlOciNetworkFirewallFirewall) id() (string, error) {
 
 func (o *mqlOciNetworkFirewallFirewall) healthStatus() (string, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	svc, err := conn.NetworkFirewallClient(o.region)
+	svc, err := conn.NetworkFirewallClient(o.cacheRegion)
 	if err != nil {
 		return "", err
 	}
 	resp, err := svc.GetNetworkFirewallHealthStatus(context.Background(), networkfirewall.GetNetworkFirewallHealthStatusRequest{
-		NetworkFirewallId: common.String(o.Id.Data),
+		NetworkFirewallId: new(o.Id.Data),
 	})
 	if err != nil {
 		return "", err
@@ -154,12 +114,12 @@ func (o *mqlOciNetworkFirewallFirewall) healthStatus() (string, error) {
 }
 
 func (o *mqlOciNetworkFirewallFirewall) subnet() (*mqlOciNetworkSubnet, error) {
-	if o.cacheSubnetId == "" {
+	if o.cacheSubnetID == "" {
 		o.Subnet.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	mqlSubnet, err := NewResource(o.MqlRuntime, "oci.network.subnet", map[string]*llx.RawData{
-		"id": llx.StringData(o.cacheSubnetId),
+		"id": llx.StringData(o.cacheSubnetID),
 	})
 	if err != nil {
 		return nil, err
@@ -168,12 +128,12 @@ func (o *mqlOciNetworkFirewallFirewall) subnet() (*mqlOciNetworkSubnet, error) {
 }
 
 func (o *mqlOciNetworkFirewallFirewall) policy() (*mqlOciNetworkFirewallPolicy, error) {
-	if o.cachePolicyId == "" {
+	if o.cachePolicyID == "" {
 		o.Policy.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	mqlPolicy, err := NewResource(o.MqlRuntime, "oci.networkFirewall.policy", map[string]*llx.RawData{
-		"id": llx.StringData(o.cachePolicyId),
+		"id": llx.StringData(o.cachePolicyID),
 	})
 	if err != nil {
 		return nil, err
@@ -184,63 +144,27 @@ func (o *mqlOciNetworkFirewallFirewall) policy() (*mqlOciNetworkFirewallPolicy, 
 func (o *mqlOciNetworkFirewall) policies() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
 
-	ociResource, err := CreateResource(o.MqlRuntime, "oci", nil)
-	if err != nil {
-		return nil, err
-	}
-	oci := ociResource.(*mqlOci)
-	list := oci.GetRegions()
-	if list.Error != nil {
-		return nil, list.Error
-	}
+	return ociCollect(o.MqlRuntime, ociScopeAllCompartments,
+		func(ctx context.Context, region string, compartmentID string) ([]any, error) {
+			log.Debug().Msgf("calling oci network firewall policies with region %s", region)
 
-	res := []any{}
-	poolOfJobs := jobpool.CreatePool(o.getPolicies(conn, list.Data), 5)
-	poolOfJobs.Run()
-
-	if poolOfJobs.HasErrors() {
-		return nil, poolOfJobs.GetErrors()
-	}
-	for i := range poolOfJobs.Jobs {
-		res = append(res, poolOfJobs.Jobs[i].Result.([]any)...)
-	}
-
-	return res, nil
-}
-
-func (o *mqlOciNetworkFirewall) getPolicies(conn *connection.OciConnection, regions []any) []*jobpool.Job {
-	ctx := context.Background()
-	tasks := make([]*jobpool.Job, 0)
-	for _, region := range regions {
-		regionResource, ok := region.(*mqlOciRegion)
-		if !ok {
-			return jobErr(errors.New("invalid region type"))
-		}
-		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("calling oci network firewall policies with region %s", regionResource.Id.Data)
-
-			svc, err := conn.NetworkFirewallClient(regionResource.Id.Data)
+			svc, err := conn.NetworkFirewallClient(region)
 			if err != nil {
 				return nil, err
 			}
 
-			policies := []networkfirewall.NetworkFirewallPolicySummary{}
-			var page *string
-			for {
+			policies, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]networkfirewall.NetworkFirewallPolicySummary, *string, error) {
 				response, err := svc.ListNetworkFirewallPolicies(ctx, networkfirewall.ListNetworkFirewallPoliciesRequest{
-					CompartmentId: common.String(conn.TenantID()),
+					CompartmentId: new(compartmentID),
 					Page:          page,
 				})
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
-
-				policies = append(policies, response.Items...)
-
-				if response.OpcNextPage == nil {
-					break
-				}
-				page = response.OpcNextPage
+				return response.Items, response.OpcNextPage, nil
+			})
+			if err != nil {
+				return nil, err
 			}
 
 			var res []any
@@ -252,58 +176,47 @@ func (o *mqlOciNetworkFirewall) getPolicies(conn *connection.OciConnection, regi
 					created = &p.TimeCreated.Time
 				}
 
-				mqlInstance, err := CreateResource(o.MqlRuntime, "oci.networkFirewall.policy", map[string]*llx.RawData{
-					"id":            llx.StringDataPtr(p.Id),
-					"name":          llx.StringDataPtr(p.DisplayName),
-					"compartmentID": llx.StringDataPtr(p.CompartmentId),
-					"state":         llx.StringData(string(p.LifecycleState)),
-					"created":       llx.TimeDataPtr(created),
-					"systemTags":    llx.MapData(definedTagsToAny(p.SystemTags), types.Dict),
+				mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.networkFirewall.policy", stringValue(p.CompartmentId), map[string]*llx.RawData{
+					"id":           llx.StringDataPtr(p.Id),
+					"name":         llx.StringDataPtr(p.DisplayName),
+					"state":        llx.StringData(string(p.LifecycleState)),
+					"created":      llx.TimeDataPtr(created),
+					"freeformTags": llx.MapData(strMapToAny(p.FreeformTags), types.String),
+					"definedTags":  llx.MapData(definedTagsToAny(p.DefinedTags), types.Any),
+					"systemTags":   llx.MapData(definedTagsToAny(p.SystemTags), types.Dict),
 				})
 				if err != nil {
 					return nil, err
 				}
-				mqlInstance.(*mqlOciNetworkFirewallPolicy).region = regionResource.Id.Data
+				mqlInstance.(*mqlOciNetworkFirewallPolicy).cacheRegion = region
 				res = append(res, mqlInstance)
 			}
 
-			return jobpool.JobResult(res), nil
-		}
-		tasks = append(tasks, jobpool.NewJob(f))
-	}
-	return tasks
+			return res, nil
+		})
 }
 
 type mqlOciNetworkFirewallPolicyInternal struct {
-	region    string
-	fetched   bool
-	detail    *networkfirewall.NetworkFirewallPolicy
-	fetchLock sync.Mutex
+	ociCompartmentRef
+	cacheRegion string
+	detail      ociRetryLazy[*networkfirewall.NetworkFirewallPolicy]
 }
 
 func (o *mqlOciNetworkFirewallPolicy) fetchDetail() (*networkfirewall.NetworkFirewallPolicy, error) {
-	if o.fetched {
-		return o.detail, nil
-	}
-	o.fetchLock.Lock()
-	defer o.fetchLock.Unlock()
-	if o.fetched {
-		return o.detail, nil
-	}
-	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
-	svc, err := conn.NetworkFirewallClient(o.region)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := svc.GetNetworkFirewallPolicy(context.Background(), networkfirewall.GetNetworkFirewallPolicyRequest{
-		NetworkFirewallPolicyId: common.String(o.Id.Data),
+	return o.detail.get(func() (*networkfirewall.NetworkFirewallPolicy, error) {
+		conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+		svc, err := conn.NetworkFirewallClient(o.cacheRegion)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := svc.GetNetworkFirewallPolicy(context.Background(), networkfirewall.GetNetworkFirewallPolicyRequest{
+			NetworkFirewallPolicyId: new(o.Id.Data),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &resp.NetworkFirewallPolicy, nil
 	})
-	if err != nil {
-		return nil, err
-	}
-	o.detail = &resp.NetworkFirewallPolicy
-	o.fetched = true
-	return o.detail, nil
 }
 
 func (o *mqlOciNetworkFirewallPolicy) description() (string, error) {
@@ -330,10 +243,10 @@ func initOciNetworkFirewallPolicy(runtime *plugin.Runtime, args map[string]*llx.
 		return args, nil, nil
 	}
 
-	if args["id"] == nil {
+	idVal := ociArgString(args, "id")
+	if idVal == "" {
 		return nil, nil, errors.New("id required to fetch oci.networkFirewall.policy")
 	}
-	idVal := args["id"].Value.(string)
 
 	obj, err := CreateResource(runtime, "oci.networkFirewall", nil)
 	if err != nil {
@@ -358,4 +271,209 @@ func initOciNetworkFirewallPolicy(runtime *plugin.Runtime, args map[string]*llx.
 
 func (o *mqlOciNetworkFirewallPolicy) id() (string, error) {
 	return "oci.networkFirewall.policy/" + o.Id.Data, nil
+}
+
+func (o *mqlOciNetworkFirewallPolicy) decryptionProfiles() ([]any, error) {
+	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+	svc, err := conn.NetworkFirewallClient(o.cacheRegion)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+
+	// The list returns summaries only (name/type); the blocking booleans
+	// require a per-profile Get.
+	summaries, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]networkfirewall.DecryptionProfileSummary, *string, error) {
+		resp, err := svc.ListDecryptionProfiles(ctx, networkfirewall.ListDecryptionProfilesRequest{
+			NetworkFirewallPolicyId: new(o.Id.Data),
+			Page:                    page,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]any, 0, len(summaries))
+	for i := range summaries {
+		name := stringValue(summaries[i].Name)
+
+		getResp, err := svc.GetDecryptionProfile(ctx, networkfirewall.GetDecryptionProfileRequest{
+			NetworkFirewallPolicyId: new(o.Id.Data),
+			DecryptionProfileName:   new(name),
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		fields := decryptionProfileFields(getResp.DecryptionProfile, summaries[i])
+		fields["__id"] = llx.StringData(o.Id.Data + "/decryptionProfile/" + name)
+
+		mqlProfile, err := CreateResource(o.MqlRuntime, "oci.networkFirewall.policy.decryptionProfile", fields)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlProfile)
+	}
+	return res, nil
+}
+
+// securityRules lists the policy's security rules, which decide what traffic
+// the attached firewalls allow, drop, reject or inspect. Without them a policy
+// with no rules at all was indistinguishable from a restrictive one.
+func (o *mqlOciNetworkFirewallPolicy) securityRules() ([]any, error) {
+	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+	svc, err := conn.NetworkFirewallClient(o.cacheRegion)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	rules, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]networkfirewall.SecurityRuleSummary, *string, error) {
+		resp, err := svc.ListSecurityRules(ctx, networkfirewall.ListSecurityRulesRequest{
+			NetworkFirewallPolicyId: new(o.Id.Data),
+			Page:                    page,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	res := []any{}
+	for i := range rules {
+		r := rules[i]
+		name := stringValue(r.Name)
+		mqlRule, err := CreateResource(o.MqlRuntime, "oci.networkFirewall.policy.securityRule", map[string]*llx.RawData{
+			"__id":          llx.StringData(o.Id.Data + "/securityRule/" + name),
+			"name":          llx.StringData(name),
+			"action":        llx.StringData(string(r.Action)),
+			"inspection":    llx.StringData(string(r.Inspection)),
+			"priorityOrder": llx.IntDataPtr(r.PriorityOrder),
+			"description":   llx.StringDataPtr(r.Description),
+		})
+		if err != nil {
+			return nil, err
+		}
+		// The rule's match criteria are not in the listing, and resolving the
+		// names they hold needs the policy's own collections; both reach them
+		// through this pointer.
+		typed := mqlRule.(*mqlOciNetworkFirewallPolicySecurityRule)
+		typed.cachePolicy = o
+		res = append(res, typed)
+	}
+	return res, nil
+}
+
+// decryptionRules lists the policy's decryption rules, which decide which TLS
+// sessions are decrypted for inspection and under which profile.
+func (o *mqlOciNetworkFirewallPolicy) decryptionRules() ([]any, error) {
+	conn := o.MqlRuntime.Connection.(*connection.OciConnection)
+	svc, err := conn.NetworkFirewallClient(o.cacheRegion)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	rules, err := ociPaginate(ctx, func(ctx context.Context, page *string) ([]networkfirewall.DecryptionRuleSummary, *string, error) {
+		resp, err := svc.ListDecryptionRules(ctx, networkfirewall.ListDecryptionRulesRequest{
+			NetworkFirewallPolicyId: new(o.Id.Data),
+			Page:                    page,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		return resp.Items, resp.OpcNextPage, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	res := []any{}
+	for i := range rules {
+		r := rules[i]
+		name := stringValue(r.Name)
+		mqlRule, err := CreateResource(o.MqlRuntime, "oci.networkFirewall.policy.decryptionRule", map[string]*llx.RawData{
+			"__id":              llx.StringData(o.Id.Data + "/decryptionRule/" + name),
+			"name":              llx.StringData(name),
+			"action":            llx.StringData(string(r.Action)),
+			"decryptionProfile": llx.StringDataPtr(r.DecryptionProfile),
+			"secret":            llx.StringDataPtr(r.Secret),
+			"priorityOrder":     llx.IntDataPtr(r.PriorityOrder),
+			"description":       llx.StringDataPtr(r.Description),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlRule)
+	}
+	return res, nil
+}
+
+// decryptionProfileFields maps an OCI decryption profile to its MQL fields.
+// Forward-proxy profiles carry all ten blocking controls; inbound-inspection
+// profiles carry only the three shared ones, so the certificate-validation
+// controls stay null (llx.BoolDataPtr(nil)) for them. The caller adds the
+// synthetic __id.
+func decryptionProfileFields(dp networkfirewall.DecryptionProfile, summary networkfirewall.DecryptionProfileSummary) map[string]*llx.RawData {
+	fields := map[string]*llx.RawData{
+		"name": llx.StringData(stringValue(summary.Name)),
+		// Forward-proxy-only fields are null on inbound profiles; the
+		// forward-proxy case below overwrites them.
+		"isExpiredCertificateBlocked":        llx.BoolDataPtr(nil),
+		"isUntrustedIssuerBlocked":           llx.BoolDataPtr(nil),
+		"isRevocationStatusTimeoutBlocked":   llx.BoolDataPtr(nil),
+		"isUnknownRevocationStatusBlocked":   llx.BoolDataPtr(nil),
+		"areCertificateExtensionsRestricted": llx.BoolDataPtr(nil),
+		"isAutoIncludeAltName":               llx.BoolDataPtr(nil),
+	}
+
+	switch p := dp.(type) {
+	case networkfirewall.SslForwardProxyProfile:
+		fields["type"] = llx.StringData(string(networkfirewall.InspectionTypeSslForwardProxy))
+		fields["description"] = llx.StringDataPtr(p.Description)
+		fields["isUnsupportedVersionBlocked"] = llx.BoolDataPtr(p.IsUnsupportedVersionBlocked)
+		fields["isUnsupportedCipherBlocked"] = llx.BoolDataPtr(p.IsUnsupportedCipherBlocked)
+		fields["isOutOfCapacityBlocked"] = llx.BoolDataPtr(p.IsOutOfCapacityBlocked)
+		fields["isExpiredCertificateBlocked"] = llx.BoolDataPtr(p.IsExpiredCertificateBlocked)
+		fields["isUntrustedIssuerBlocked"] = llx.BoolDataPtr(p.IsUntrustedIssuerBlocked)
+		fields["isRevocationStatusTimeoutBlocked"] = llx.BoolDataPtr(p.IsRevocationStatusTimeoutBlocked)
+		fields["isUnknownRevocationStatusBlocked"] = llx.BoolDataPtr(p.IsUnknownRevocationStatusBlocked)
+		fields["areCertificateExtensionsRestricted"] = llx.BoolDataPtr(p.AreCertificateExtensionsRestricted)
+		fields["isAutoIncludeAltName"] = llx.BoolDataPtr(p.IsAutoIncludeAltName)
+	case networkfirewall.SslInboundInspectionProfile:
+		fields["type"] = llx.StringData(string(networkfirewall.InspectionTypeSslInboundInspection))
+		fields["description"] = llx.StringDataPtr(p.Description)
+		fields["isUnsupportedVersionBlocked"] = llx.BoolDataPtr(p.IsUnsupportedVersionBlocked)
+		fields["isUnsupportedCipherBlocked"] = llx.BoolDataPtr(p.IsUnsupportedCipherBlocked)
+		fields["isOutOfCapacityBlocked"] = llx.BoolDataPtr(p.IsOutOfCapacityBlocked)
+	default:
+		// Unknown profile type (an inspection type newer than the pinned SDK):
+		// surface the summary type and report the controls as not blocking.
+		// Null would make `isUnsupportedVersionBlocked &&
+		// isUnsupportedCipherBlocked` evaluate to true, so a profile we could
+		// not decode would pass a TLS-hygiene check it was never measured for.
+		// That reasoning applies to every control, so the forward-proxy-only
+		// fields seeded null above are overwritten here too - leaving them null
+		// let `isExpiredCertificateBlocked && isUntrustedIssuerBlocked` pass for
+		// exactly the profile we failed to decode.
+		fields["type"] = llx.StringData(string(summary.Type))
+		fields["description"] = llx.StringDataPtr(summary.Description)
+		fields["isUnsupportedVersionBlocked"] = llx.BoolData(false)
+		fields["isUnsupportedCipherBlocked"] = llx.BoolData(false)
+		fields["isOutOfCapacityBlocked"] = llx.BoolData(false)
+		fields["isExpiredCertificateBlocked"] = llx.BoolData(false)
+		fields["isUntrustedIssuerBlocked"] = llx.BoolData(false)
+		fields["isRevocationStatusTimeoutBlocked"] = llx.BoolData(false)
+		fields["isUnknownRevocationStatusBlocked"] = llx.BoolData(false)
+		fields["areCertificateExtensionsRestricted"] = llx.BoolData(false)
+		fields["isAutoIncludeAltName"] = llx.BoolData(false)
+	}
+	return fields
 }

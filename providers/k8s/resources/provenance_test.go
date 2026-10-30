@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/utils/syncx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/utils/syncx"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -19,7 +19,8 @@ func provenanceTestRuntime() *plugin.Runtime {
 	return &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
 }
 
-func boolPtr(b bool) *bool { return &b }
+//go:fix inline
+func boolPtr(b bool) *bool { return new(b) }
 
 // objectWithProvenance returns a Pod carrying two owner references (one with
 // the controller/blockOwnerDeletion bools set, one with both nil) and two
@@ -27,45 +28,43 @@ func boolPtr(b bool) *bool { return &b }
 func objectWithProvenance() *corev1.Pod {
 	managedTime := metav1.NewTime(time.Date(2026, 6, 12, 8, 0, 0, 0, time.UTC))
 	return &corev1.Pod{
-		TypeMeta: metav1.TypeMeta{Kind: "Pod", APIVersion: "v1"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "app-pod",
-			Namespace: "prod",
-			UID:       "pod-uid-1",
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion:         "apps/v1",
-					Kind:               "ReplicaSet",
-					Name:               "app-rs",
-					UID:                "rs-uid-1",
-					Controller:         boolPtr(true),
-					BlockOwnerDeletion: boolPtr(true),
-				},
-				{
-					// no Controller / BlockOwnerDeletion: must surface as MQL null
-					APIVersion: "v1",
-					Kind:       "Node",
-					Name:       "node-1",
-					UID:        "node-uid-1",
-				},
+		Kind: "Pod", APIVersion: "v1",
+		Name:      "app-pod",
+		Namespace: "prod",
+		UID:       "pod-uid-1",
+		OwnerReferences: []metav1.OwnerReference{
+			{
+				APIVersion:         "apps/v1",
+				Kind:               "ReplicaSet",
+				Name:               "app-rs",
+				UID:                "rs-uid-1",
+				Controller:         new(true),
+				BlockOwnerDeletion: new(true),
 			},
-			ManagedFields: []metav1.ManagedFieldsEntry{
-				{
-					Manager:    "kubectl",
-					Operation:  metav1.ManagedFieldsOperationApply,
-					APIVersion: "v1",
-					FieldsType: "FieldsV1",
-					// no Time, no FieldsV1: both must surface as null
-				},
-				{
-					Manager:     "kube-controller-manager",
-					Operation:   metav1.ManagedFieldsOperationUpdate,
-					APIVersion:  "v1",
-					Subresource: "status",
-					FieldsType:  "FieldsV1",
-					Time:        &managedTime,
-					FieldsV1:    &metav1.FieldsV1{Raw: []byte(`{"f:status":{"f:phase":{}}}`)},
-				},
+			{
+				// no Controller / BlockOwnerDeletion: must surface as MQL null
+				APIVersion: "v1",
+				Kind:       "Node",
+				Name:       "node-1",
+				UID:        "node-uid-1",
+			},
+		},
+		ManagedFields: []metav1.ManagedFieldsEntry{
+			{
+				Manager:    "kubectl",
+				Operation:  metav1.ManagedFieldsOperationApply,
+				APIVersion: "v1",
+				FieldsType: "FieldsV1",
+				// no Time, no FieldsV1: both must surface as null
+			},
+			{
+				Manager:     "kube-controller-manager",
+				Operation:   metav1.ManagedFieldsOperationUpdate,
+				APIVersion:  "v1",
+				Subresource: "status",
+				FieldsType:  "FieldsV1",
+				Time:        &managedTime,
+				FieldsV1:    &metav1.FieldsV1{Raw: []byte(`{"f:status":{"f:phase":{}}}`)},
 			},
 		},
 	}
@@ -127,14 +126,12 @@ func TestK8sManagedFields(t *testing.T) {
 // rather than the second silently returning the first's cached resource.
 func TestK8sManagedFieldsApiVersionNotDeduped(t *testing.T) {
 	pod := &corev1.Pod{
-		TypeMeta: metav1.TypeMeta{Kind: "Pod", APIVersion: "v1"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "app-pod",
-			UID:  "pod-uid-1",
-			ManagedFields: []metav1.ManagedFieldsEntry{
-				{Manager: "ctrl", Operation: metav1.ManagedFieldsOperationUpdate, APIVersion: "v1", FieldsType: "FieldsV1"},
-				{Manager: "ctrl", Operation: metav1.ManagedFieldsOperationUpdate, APIVersion: "v1beta1", FieldsType: "FieldsV1"},
-			},
+		Kind: "Pod", APIVersion: "v1",
+		Name: "app-pod",
+		UID:  "pod-uid-1",
+		ManagedFields: []metav1.ManagedFieldsEntry{
+			{Manager: "ctrl", Operation: metav1.ManagedFieldsOperationUpdate, APIVersion: "v1", FieldsType: "FieldsV1"},
+			{Manager: "ctrl", Operation: metav1.ManagedFieldsOperationUpdate, APIVersion: "v1beta1", FieldsType: "FieldsV1"},
 		},
 	}
 

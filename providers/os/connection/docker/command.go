@@ -4,16 +4,14 @@
 package docker
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"github.com/moby/moby/client"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 type Command struct {
@@ -23,14 +21,25 @@ type Command struct {
 }
 
 func (c *Command) Exec(command string) (*shared.Command, error) {
+	return c.ExecContext(context.Background(), command)
+}
+
+func (c *Command) ExecContext(parent context.Context, command string) (*shared.Command, error) {
+	ctx, cancel, err := shared.CommandContext(parent)
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	output, err := shared.NewCommandOutput(cancel)
+	if err != nil {
+		return nil, err
+	}
 	c.Command.Command = command
 	c.Stats.Start = time.Now()
 
-	ctx := context.Background()
-	res, err := c.Client.ContainerExecCreate(ctx, c.Container, container.ExecOptions{
+	res, err := c.Client.ExecCreate(ctx, c.Container, client.ExecCreateOptions{
 		Cmd:          []string{"/bin/sh", "-c", c.Command.Command},
-		Detach:       true,
-		Tty:          false,
+		TTY:          false,
 		AttachStdin:  false,
 		AttachStderr: true,
 		AttachStdout: true,
@@ -39,39 +48,41 @@ func (c *Command) Exec(command string) (*shared.Command, error) {
 		return nil, err
 	}
 
-	resp, err := c.Client.ContainerExecAttach(ctx, res.ID, container.ExecStartOptions{
-		Detach: false,
-		Tty:    false,
+	resp, err := c.Client.ExecAttach(ctx, res.ID, client.ExecAttachOptions{
+		TTY: false,
 	})
 	if err != nil {
 		return nil, err
 	}
+	// The moby SDK requires the caller to close the hijacked response, which
+	// closes the underlying net.Conn to the docker daemon. Without this every
+	// command run against a running container leaks a socket/goroutine.
+	defer resp.Close()
+	// The SDK deliberately detaches a hijacked connection from the request
+	// context after its handshake. Close it ourselves to interrupt a read.
+	stop := context.AfterFunc(ctx, resp.Close)
+	defer stop()
 
-	// TODO: transformHijack breaks for long stdout, but not if we read stdout/stderr in upfront
-	content, err := io.ReadAll(resp.Reader)
-	if err != nil {
+	c.Stdout, c.Stderr = output.Stdout, output.Stderr
+	if err := c.transformHijack(resp.Reader, c.Stdout, c.Stderr); err != nil {
+		if output.Error() != nil {
+			return nil, output.Error()
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, err
 	}
-
-	var stdoutBuffer bytes.Buffer
-	var stderrBuffer bytes.Buffer
-
-	// create buffered stream
-	c.Stdout = &stdoutBuffer
-	c.Stderr = &stderrBuffer
-
-	stdOutWriter := bufio.NewWriter(&stdoutBuffer)
-	stdErrWriter := bufio.NewWriter(&stderrBuffer)
-
-	// extract stdout, stderr
-	c.transformHijack(bytes.NewReader(content), stdOutWriter, stdErrWriter)
-
-	defer stdOutWriter.Flush()
-	defer stdErrWriter.Flush()
+	if output.Error() != nil {
+		return nil, output.Error()
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 
 	c.Stats.Duration = time.Since(c.Stats.Start)
 
-	info, err := c.Client.ContainerExecInspect(ctx, res.ID)
+	info, err := c.Client.ExecInspect(ctx, res.ID, client.ExecInspectOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -86,32 +97,30 @@ const (
 	STDERR byte = 2
 )
 
-// Format is defined in https://docs.docker.com/engine/api/v1.33/#operation/ContainerAttach
-func (c *Command) transformHijack(docker io.Reader, stdout io.Writer, stderr io.Writer) {
-	header := make([]byte, 8)
+// Format is defined in https://docs.docker.com/reference/api/engine/latest/#tag/Container/operation/ContainerAttach
+func (c *Command) transformHijack(docker io.Reader, stdout io.Writer, stderr io.Writer) error {
+	var header [8]byte
 	for {
-		// read header
-		_, err := docker.Read(header)
-
-		// end reached
-		if err == io.EOF {
-			break
+		n, err := io.ReadFull(docker, header[:])
+		if err == io.EOF && n == 0 {
+			return nil
 		}
-
-		size := binary.BigEndian.Uint32(header[4:8])
-		content := make([]byte, size)
-		_, err = docker.Read(content)
-
+		if err != nil {
+			return err
+		}
+		var stream io.Writer
 		switch header[0] {
 		case STDIN, STDOUT:
-			stdout.Write(content)
+			stream = stdout
 		case STDERR:
-			stderr.Write(content)
+			stream = stderr
+		default:
+			return fmt.Errorf("invalid Docker output stream %d", header[0])
 		}
-
-		// end reached
-		if err == io.EOF {
-			break
+		// Copy in bounded chunks instead of allocating the advertised frame
+		// length, which is controlled by the daemon.
+		if _, err := io.CopyN(stream, docker, int64(binary.BigEndian.Uint32(header[4:]))); err != nil {
+			return err
 		}
 	}
 }

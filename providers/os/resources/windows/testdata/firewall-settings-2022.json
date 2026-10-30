@@ -1,0 +1,204 @@
+{
+    "CimClass":  {
+                     "CimSuperClassName":  "MSFT_NetSettingData",
+                     "CimSuperClass":  {
+                                           "CimSuperClassName":  "CIM_SettingData",
+                                           "CimSuperClass":  "ROOT/standardcimv2:CIM_SettingData",
+                                           "CimClassProperties":  "Caption Description ElementName InstanceID",
+                                           "CimClassQualifiers":  "UMLPackagePath = \"CIM::Core::Settings\" locale = 1033",
+                                           "CimClassMethods":  "",
+                                           "CimSystemProperties":  "Microsoft.Management.Infrastructure.CimSystemProperties"
+                                       },
+                     "CimClassProperties":  [
+                                                "Caption",
+                                                "Description",
+                                                "ElementName",
+                                                "InstanceID",
+                                                "AllowIPsecThroughNAT",
+                                                "CertValidationLevel",
+                                                "EnablePacketQueuing",
+                                                "EnableStatefulFtp",
+                                                "EnableStatefulPptp",
+                                                "Exemptions",
+                                                "KeyEncoding",
+                                                "MaxSAIdleTimeSeconds",
+                                                "Profile",
+                                                "RemoteMachineTransportAuthorizationList",
+                                                "RemoteMachineTunnelAuthorizationList",
+                                                "RemoteUserTransportAuthorizationList",
+                                                "RemoteUserTunnelAuthorizationList",
+                                                "RequireFullAuthSupport"
+                                            ],
+                     "CimClassQualifiers":  [
+                                                "UMLPackagePath = \"CIM::Core::Settings\"",
+                                                "ClassVersion = \"1.0.0\"",
+                                                "dynamic = True",
+                                                "locale = 1033",
+                                                "provider = \"wfascim\""
+                                            ],
+                     "CimClassMethods":  [
+
+                                         ],
+                     "CimSystemProperties":  {
+                                                 "Namespace":  "root/standardcimv2",
+                                                 "ServerName":  "WIN-SRV2022",
+                                                 "ClassName":  "MSFT_NetSecuritySettingData",
+                                                 "Path":  null
+                                             }
+                 },
+    "CimInstanceProperties":  [
+                                  {
+                                      "Name":  "Caption",
+                                      "Value":  null,
+                                      "CimType":  14,
+                                      "Flags":  "Property, ReadOnly, NotModified, NullValue",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "Description",
+                                      "Value":  null,
+                                      "CimType":  14,
+                                      "Flags":  "Property, ReadOnly, NotModified, NullValue",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "ElementName",
+                                      "Value":  "Global IPsec SettingData",
+                                      "CimType":  14,
+                                      "Flags":  "Property, ReadOnly, NotModified",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "InstanceID",
+                                      "Value":  "MSFT|GlobalIPSecSettingData",
+                                      "CimType":  14,
+                                      "Flags":  "Property, Key, ReadOnly, NotModified",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "AllowIPsecThroughNAT",
+                                      "Value":  65535,
+                                      "CimType":  4,
+                                      "Flags":  "Property, NotModified",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "CertValidationLevel",
+                                      "Value":  65535,
+                                      "CimType":  4,
+                                      "Flags":  "Property, NotModified",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "EnablePacketQueuing",
+                                      "Value":  65535,
+                                      "CimType":  4,
+                                      "Flags":  "Property, NotModified",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "EnableStatefulFtp",
+                                      "Value":  0,
+                                      "CimType":  4,
+                                      "Flags":  "Property, NotModified",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "EnableStatefulPptp",
+                                      "Value":  0,
+                                      "CimType":  4,
+                                      "Flags":  "Property, NotModified",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "Exemptions",
+                                      "Value":  9,
+                                      "CimType":  6,
+                                      "Flags":  "Property, NotModified",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "KeyEncoding",
+                                      "Value":  65535,
+                                      "CimType":  4,
+                                      "Flags":  "Property, NotModified",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "MaxSAIdleTimeSeconds",
+                                      "Value":  0,
+                                      "CimType":  6,
+                                      "Flags":  "Property, NotModified",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "Profile",
+                                      "Value":  65535,
+                                      "CimType":  4,
+                                      "Flags":  "Property, NotModified",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "RemoteMachineTransportAuthorizationList",
+                                      "Value":  "NotConfigured",
+                                      "CimType":  14,
+                                      "Flags":  "Property, NotModified",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "RemoteMachineTunnelAuthorizationList",
+                                      "Value":  "NotConfigured",
+                                      "CimType":  14,
+                                      "Flags":  "Property, NotModified",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "RemoteUserTransportAuthorizationList",
+                                      "Value":  "NotConfigured",
+                                      "CimType":  14,
+                                      "Flags":  "Property, NotModified",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "RemoteUserTunnelAuthorizationList",
+                                      "Value":  "NotConfigured",
+                                      "CimType":  14,
+                                      "Flags":  "Property, NotModified",
+                                      "IsValueModified":  false
+                                  },
+                                  {
+                                      "Name":  "RequireFullAuthSupport",
+                                      "Value":  2,
+                                      "CimType":  4,
+                                      "Flags":  "Property, NotModified",
+                                      "IsValueModified":  false
+                                  }
+                              ],
+    "CimSystemProperties":  {
+                                "Namespace":  "root/standardcimv2",
+                                "ServerName":  "WIN-SRV2022",
+                                "ClassName":  "MSFT_NetSecuritySettingData",
+                                "Path":  null
+                            },
+    "Name":  "Global IPsec SettingData",
+    "Exemptions":  9,
+    "EnableStatefulFtp":  0,
+    "EnableStatefulPptp":  0,
+    "ActiveProfile":  65535,
+    "RequireFullAuthSupport":  2,
+    "CertValidationLevel":  65535,
+    "AllowIPsecThroughNAT":  65535,
+    "MaxSAIdleTimeSeconds":  "NotConfigured",
+    "KeyEncoding":  65535,
+    "EnablePacketQueuing":  65535,
+    "Caption":  null,
+    "Description":  null,
+    "ElementName":  "Global IPsec SettingData",
+    "InstanceID":  "MSFT|GlobalIPSecSettingData",
+    "Profile":  65535,
+    "RemoteMachineTransportAuthorizationList":  "NotConfigured",
+    "RemoteMachineTunnelAuthorizationList":  "NotConfigured",
+    "RemoteUserTransportAuthorizationList":  "NotConfigured",
+    "RemoteUserTunnelAuthorizationList":  "NotConfigured",
+    "PSComputerName":  null
+}

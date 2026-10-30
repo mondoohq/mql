@@ -1,0 +1,82 @@
+{
+ "assets": {
+  "//explorer.api.mondoo.com/assets/2cLinuxRunningBinariesFixture": {
+   "mrn": "//explorer.api.mondoo.com/assets/2cLinuxRunningBinariesFixture",
+   "name": "ubuntu-host",
+   "trace_id": "trace-running-binaries"
+  }
+ },
+ "data": {
+  "//explorer.api.mondoo.com/assets/2cLinuxRunningBinariesFixture": {
+   "values": {
+    "//local.cnquery.io/run/local-execution/queries/mondoo-sbom-asset": {
+     "content": {
+      "asset": {
+       "name": "ubuntu-host",
+       "platform": "ubuntu",
+       "version": "24.04",
+       "family": [
+        "debian",
+        "linux",
+        "unix",
+        "os"
+       ],
+       "arch": "x86_64",
+       "ids": [
+        "//platformid.api.mondoo.app/machineid/33333333-3333-3333-3333-333333333333"
+       ],
+       "labels": {},
+       "cpes.map": [],
+       "platformTitle": "Ubuntu 24.04.3 LTS"
+      }
+     }
+    },
+    "//local.cnquery.io/run/local-execution/queries/mondoo-sbom-packages": {
+     "content": {
+      "packages.list": [
+       {
+        "name": "php8.3-cli",
+        "version": "8.3.6-0ubuntu0.24.04.12",
+        "arch": "amd64",
+        "origin": "php8.3",
+        "format": "deb",
+        "purl": "pkg:deb/ubuntu/php8.3-cli@8.3.6-0ubuntu0.24.04.12?arch=amd64&distro=ubuntu-24.04",
+        "cpes.map": [],
+        "files.map": [
+         "/var/lib/dpkg/info/php8.3-cli.list"
+        ]
+       }
+      ]
+     }
+    },
+    "//local.cnquery.io/run/local-execution/queries/mondoo-sbom-running-binaries": {
+     "content": {
+      "runningBinaries.where.list": [
+       {
+        "name": "node",
+        "version": "22.22.0",
+        "vendor": "",
+        "path": "/opt/node22/bin/node",
+        "sha256": "1f3d442a8d6faa2a9e11fd39f7c1344a590f61d2394dec1f4034a7930592f933"
+       },
+       {
+        "name": "environment-manager",
+        "version": "",
+        "vendor": "",
+        "path": "/opt/env-runner/environment-manager",
+        "sha256": "dac1cfd088ae9c97b58b87e8a09d3f60432c9fa294581f1bc32ad0589db89241"
+       },
+       {
+        "name": "environment-manager",
+        "version": "",
+        "vendor": "",
+        "path": "/srv/other/environment-manager",
+        "sha256": "0f5c5b0e9a3d4c7b8e2f1a6d9c3b7e4a1f8d2c6b9e3a7d4c1b8f2e6a9d3c7b4e"
+       }
+      ]
+     }
+    }
+   }
+  }
+ }
+}

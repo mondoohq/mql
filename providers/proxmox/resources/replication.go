@@ -6,9 +6,9 @@ package resources
 import (
 	"sync"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/proxmox/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/proxmox/connection"
 )
 
 // mqlProxmoxReplicationJobInternal caches the guest kind so that vm() and
@@ -36,7 +36,7 @@ func (r *mqlProxmox) replicationJobs() ([]any, error) {
 			"target":    llx.StringData(j.Target),
 			"type":      llx.StringData(j.Type),
 			"comment":   llx.StringData(j.Comment),
-			"rate":      llx.IntData(int64(j.Rate)),
+			"rate":      llx.IntData(j.Rate.Ceil()),
 			"disabled":  llx.BoolData(j.Disable == 1),
 			"removeJob": llx.StringData(j.RemoveJob),
 		})
@@ -49,25 +49,11 @@ func (r *mqlProxmox) replicationJobs() ([]any, error) {
 }
 
 func (r *mqlProxmoxReplicationJob) sourceNode() (*mqlProxmoxNode, error) {
-	return replicationNodeRef(r.MqlRuntime, r.Source.Data, &r.SourceNode)
+	return resolveNodeRef(r.MqlRuntime, r.Source.Data, &r.SourceNode)
 }
 
 func (r *mqlProxmoxReplicationJob) targetNode() (*mqlProxmoxNode, error) {
-	return replicationNodeRef(r.MqlRuntime, r.Target.Data, &r.TargetNode)
-}
-
-func replicationNodeRef(runtime *plugin.Runtime, name string, slot *plugin.TValue[*mqlProxmoxNode]) (*mqlProxmoxNode, error) {
-	if name == "" {
-		slot.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
-	}
-	res, err := NewResource(runtime, "proxmox.node", map[string]*llx.RawData{
-		"name": llx.StringData(name),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlProxmoxNode), nil
+	return resolveNodeRef(r.MqlRuntime, r.Target.Data, &r.TargetNode)
 }
 
 // ensureGuestKind reads /cluster/resources once to determine whether this

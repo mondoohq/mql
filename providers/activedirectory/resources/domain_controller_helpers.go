@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/go-ldap/ldap/v3"
-	"go.mondoo.com/mql/v13/providers/activedirectory/connection"
+	"go.mondoo.com/mql/providers/activedirectory/connection"
 )
 
 const ntdsSettingsGCBit = 0x1
@@ -52,7 +52,7 @@ func queryNTDSSettingsGC(conn *connection.ActiveDirectoryConnection, serverRef s
 }
 
 func currentConnectionGCState(conn *connection.ActiveDirectoryConnection) (*currentGCState, error) {
-	raw, err := conn.CachedFetch("currentConnectionGCState", func() (interface{}, error) {
+	raw, err := conn.CachedFetch("currentConnectionGCState", func() (any, error) {
 		resp, err := conn.LDAPConn().Search(ldap.NewSearchRequest(
 			"",
 			ldap.ScopeBaseObject,

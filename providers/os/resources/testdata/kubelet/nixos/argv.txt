@@ -1,0 +1,5 @@
+/nix/store/b5gip1vkhws3gnhr0hmn1z83xzb1hjjv-kubernetes-1.36.3/bin/kubelet
+--config=/nix/store/rk10csmr8084il7s7yyafm3jib3kw11s-kubelet-config
+--hostname-override=nixk8s
+--kubeconfig=/nix/store/723bi394s65c1hzihnb0dccqamzmqsp9-kubelet-kubeconfig
+--root-dir=/var/lib/kubernetes

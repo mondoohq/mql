@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/v13/mqlx"
+	"go.mondoo.com/mql/mqlx"
 )
 
 // exprEnv is shared across expression-mode tests: expression mode needs no

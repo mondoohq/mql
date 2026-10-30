@@ -10,7 +10,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/mqlr/lrcore"
+	"go.mondoo.com/mql/providers-sdk/v1/mqlr/lrcore"
 )
 
 var parseCmd = &cobra.Command{

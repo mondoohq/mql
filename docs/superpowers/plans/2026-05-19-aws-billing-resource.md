@@ -315,9 +315,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/costexplorer"
 	cetypes "github.com/aws/aws-sdk-go-v2/service/costexplorer/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // --- aws.billing -------------------------------------------------------------
@@ -1066,7 +1066,7 @@ Design: `docs/superpowers/specs/2026-05-19-aws-billing-resource-design.md`
 - [ ] `mql run aws -c "aws.billing.budgets { name budgetType budgetLimit actualSpend forecastedSpend notifications }"` returns configured budgets
 - [ ] Same queries against a CE-disabled account return zero / empty without aborting the scan
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [Claude Code](https://claude.com/product/claude-code)
 EOF
 )"
 ```

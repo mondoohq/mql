@@ -13,16 +13,21 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/gcp/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/compute/v1"
 	dataproc "google.golang.org/api/dataproc/v1"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 )
+
+type mqlGcpProjectDataprocServiceClusterConfigGceClusterInternal struct {
+	cacheNetworkUri    string
+	cacheSubnetworkUri string
+}
 
 type mqlGkeNodePoolAccelerator struct {
 	AcceleratorCount int64  `json:"acceleratorCount"`
@@ -182,6 +187,11 @@ func (g *mqlGcpProjectDataprocService) clusters() ([]any, error) {
 		go func(projectId, regionName string) {
 			defer wg.Done()
 			err := dataprocSvc.Projects.Regions.Clusters.List(projectId, regionName).Pages(ctx, func(clusters *dataproc.ListClustersResponse) error {
+				// A `:=` variable is not in scope inside its own initializer, so
+				// without this declaration every `err = ...` in the closure below
+				// would write the function-scope `err` that all region goroutines
+				// share -- a data race, and misattributed error logs.
+				var err error
 				for _, c := range clusters.Clusters {
 					var mqlConfig plugin.Resource
 					if c.Config != nil {
@@ -310,20 +320,21 @@ func (g *mqlGcpProjectDataprocService) clusters() ([]any, error) {
 								"confidentialInstance":    llx.DictData(mqlConfidentialInstanceCfg),
 								"internalIpOnly":          llx.BoolData(c.Config.GceClusterConfig.InternalIpOnly),
 								"metadata":                llx.MapData(convert.MapToInterfaceMap(c.Config.GceClusterConfig.Metadata), types.String),
-								"networkUri":              llx.StringData(c.Config.GceClusterConfig.NetworkUri),
 								"nodeGroupAffinity":       llx.DictData(mqlNodeGroupAffinityCfg),
 								"privateIpv6GoogleAccess": llx.StringData(c.Config.GceClusterConfig.PrivateIpv6GoogleAccess),
 								"reservationAffinity":     llx.ResourceData(mqlReservationAffinity, "gcp.project.dataprocService.cluster.config.gceCluster.reservationAffinity"),
 								"serviceAccountEmail":     llx.StringData(c.Config.GceClusterConfig.ServiceAccount),
 								"serviceAccountScopes":    llx.ArrayData(convert.SliceAnyToInterface(c.Config.GceClusterConfig.ServiceAccountScopes), types.String),
 								"shieldedInstanceConfig":  llx.ResourceData(mqlShieldedCfg, "gcp.project.dataprocService.cluster.config.gceCluster.shieldedInstanceConfig"),
-								"subnetworkUri":           llx.StringData(c.Config.GceClusterConfig.SubnetworkUri),
 								"tags":                    llx.ArrayData(convert.SliceAnyToInterface(c.Config.GceClusterConfig.Tags), types.String),
 								"zoneUri":                 llx.StringData(c.Config.GceClusterConfig.ZoneUri),
 							})
 							if err != nil {
 								log.Error().Err(err).Send()
 							}
+							mqlRef := mqlGceClusterCfg.(*mqlGcpProjectDataprocServiceClusterConfigGceCluster)
+							mqlRef.cacheNetworkUri = c.Config.GceClusterConfig.NetworkUri
+							mqlRef.cacheSubnetworkUri = c.Config.GceClusterConfig.SubnetworkUri
 						}
 
 						var mqlGkeClusterCfg plugin.Resource
@@ -423,8 +434,8 @@ func (g *mqlGcpProjectDataprocService) clusters() ([]any, error) {
 							TruststoreUri                    string `json:"truststoreUri"`
 						}
 						type mqlSecurityConfig struct {
-							IdentityConfig mqlSecurityIdentity `json:"identityConfig,omitempty"`
-							KerberosConfig mqlSecurityKerberos `json:"kerberosConfig,omitempty"`
+							IdentityConfig mqlSecurityIdentity `json:"identityConfig"`
+							KerberosConfig mqlSecurityKerberos `json:"kerberosConfig"`
 						}
 						var mqlSecurityCfg map[string]any
 						if c.Config.SecurityConfig != nil {
@@ -452,10 +463,14 @@ func (g *mqlGcpProjectDataprocService) clusters() ([]any, error) {
 									TruststorePasswordUri:            c.Config.SecurityConfig.KerberosConfig.TruststorePasswordUri,
 									TruststoreUri:                    c.Config.SecurityConfig.KerberosConfig.TruststoreUri,
 								}
-								mqlSecurityCfg, err = convert.JsonToDict(cfg)
-								if err != nil {
-									log.Error().Err(err).Send()
-								}
+							}
+							// Serialize the whole security config, not just the Kerberos
+							// branch: a cluster with only IdentityConfig set (workforce
+							// identity federation without Kerberos) must still surface its
+							// security config instead of a null.
+							mqlSecurityCfg, err = convert.JsonToDict(cfg)
+							if err != nil {
+								log.Error().Err(err).Send()
 							}
 						}
 
@@ -482,10 +497,12 @@ func (g *mqlGcpProjectDataprocService) clusters() ([]any, error) {
 
 						componentGatewayEnabled := c.Config.EndpointConfig != nil && c.Config.EndpointConfig.EnableHttpPortAccess
 						kerberosEnabled := c.Config.SecurityConfig != nil && c.Config.SecurityConfig.KerberosConfig != nil && c.Config.SecurityConfig.KerberosConfig.EnableKerberos
+						sshEnabled := c.Config.SecurityConfig != nil && c.Config.SecurityConfig.IdentityConfig != nil && c.Config.SecurityConfig.IdentityConfig.EnableSsh
 						mqlConfig, err = CreateResource(g.MqlRuntime, "gcp.project.dataprocService.cluster.config", map[string]*llx.RawData{
 							"parentResourcePath":      llx.StringData(fmt.Sprintf("%s/dataproc/%s", projectId, c.ClusterName)),
 							"componentGatewayEnabled": llx.BoolData(componentGatewayEnabled),
 							"kerberosEnabled":         llx.BoolData(kerberosEnabled),
+							"sshEnabled":              llx.BoolData(sshEnabled),
 							"autoscaling":             llx.DictData(mqlAutoscalingCfg),
 							"configBucket":            llx.StringData(c.Config.ConfigBucket),
 							"metrics":                 llx.DictData(mqlMetricsCfg),
@@ -677,10 +694,7 @@ func (g *mqlGcpProjectDataprocService) clusters() ([]any, error) {
 }
 
 func (g *mqlGcpProjectDataprocServiceClusterConfigGceCluster) network() (*mqlGcpProjectComputeServiceNetwork, error) {
-	if g.NetworkUri.Error != nil {
-		return nil, g.NetworkUri.Error
-	}
-	n, err := getNetworkByUrl(g.NetworkUri.Data, g.MqlRuntime)
+	n, err := getNetworkByUrl(g.cacheNetworkUri, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -691,10 +705,7 @@ func (g *mqlGcpProjectDataprocServiceClusterConfigGceCluster) network() (*mqlGcp
 }
 
 func (g *mqlGcpProjectDataprocServiceClusterConfigGceCluster) subnetwork() (*mqlGcpProjectComputeServiceSubnetwork, error) {
-	if g.SubnetworkUri.Error != nil {
-		return nil, g.SubnetworkUri.Error
-	}
-	s, err := getSubnetworkByUrl(g.SubnetworkUri.Data, g.MqlRuntime)
+	s, err := getSubnetworkByUrl(g.cacheSubnetworkUri, g.MqlRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -719,7 +730,11 @@ func (g *mqlGcpProjectDataprocServiceClusterConfigGceCluster) serviceAccount() (
 		return nil, nil
 	}
 
-	res, err := CreateResource(g.MqlRuntime, "gcp.project.iamService.serviceAccount", map[string]*llx.RawData{
+	// NewResource, not CreateResource: the service account has an init that
+	// resolves the real account. CreateResource skips it, leaving a husk whose
+	// id() keys on the email while a listed account keys on uniqueId, so the
+	// two never share a cache entry.
+	res, err := NewResource(g.MqlRuntime, "gcp.project.iamService.serviceAccount", map[string]*llx.RawData{
 		"projectId": llx.StringData(projectId),
 		"email":     llx.StringData(email),
 	})
@@ -839,6 +854,12 @@ func initGcpProjectDataprocServiceCluster(runtime *plugin.Runtime, args map[stri
 		}
 	}
 
+	// Guard before building the parent: CreateResource hands args["projectId"]
+	// to the generated setter, which dereferences it, so nil panics the provider.
+	if args["projectId"] == nil {
+		return nil, nil, errors.New("gcp.project.dataprocService.cluster requires a \"projectId\" argument")
+	}
+
 	obj, err := CreateResource(runtime, "gcp.project.dataprocService", map[string]*llx.RawData{
 		"projectId": args["projectId"],
 		"enabled":   llx.BoolData(true),
@@ -852,10 +873,14 @@ func initGcpProjectDataprocServiceCluster(runtime *plugin.Runtime, args map[stri
 		return nil, nil, clusters.Error
 	}
 
-	nameVal := args["name"].Value.(string)
+	nameRaw := args["name"]
+	if nameRaw == nil {
+		return nil, nil, errors.New("gcp.project.dataprocService.cluster requires a \"name\" argument")
+	}
+	nameVal, _ := nameRaw.Value.(string)
 	locationVal := ""
 	if args["location"] != nil {
-		locationVal = args["location"].Value.(string)
+		locationVal, _ = args["location"].Value.(string)
 	}
 	for _, c := range clusters.Data {
 		cluster := c.(*mqlGcpProjectDataprocServiceCluster)
@@ -901,14 +926,29 @@ func (a *mqlGcpProjectDataprocServiceClusterConfig) autoscalingPolicyRef() (*mql
 		a.AutoscalingPolicyRef.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-	res, err := NewResource(a.MqlRuntime, "gcp.project.dataprocService.autoscalingPolicy", map[string]*llx.RawData{
+	// The autoscalingPolicy resource has no init, so a NewResource by-name would
+	// leave a husk (workerConfig/secondaryWorkerConfig/basicAlgorithm unset).
+	// Scan the parent service's autoscalingPolicies() list and return the real,
+	// fully-populated resource.
+	obj, err := CreateResource(a.MqlRuntime, "gcp.project.dataprocService", map[string]*llx.RawData{
 		"projectId": llx.StringData(a.cacheProjectId),
-		"name":      llx.StringData(name),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlGcpProjectDataprocServiceAutoscalingPolicy), nil
+	svc := obj.(*mqlGcpProjectDataprocService)
+	policies := svc.GetAutoscalingPolicies()
+	if policies.Error != nil {
+		return nil, policies.Error
+	}
+	for _, p := range policies.Data {
+		policy, ok := p.(*mqlGcpProjectDataprocServiceAutoscalingPolicy)
+		if ok && policy.Name.Data == name {
+			return policy, nil
+		}
+	}
+	a.AutoscalingPolicyRef.State = plugin.StateIsNull | plugin.StateIsSet
+	return nil, nil
 }
 
 func dataprocBucketRef(runtime *plugin.Runtime, field *plugin.TValue[*mqlGcpProjectStorageServiceBucket], nameField plugin.TValue[string]) (*mqlGcpProjectStorageServiceBucket, error) {
@@ -1346,6 +1386,7 @@ func (g *mqlGcpProjectDataprocService) autoscalingPolicies() ([]any, error) {
 						"workerConfig":          llx.DictData(workerConfig),
 						"secondaryWorkerConfig": llx.DictData(secondaryWorkerConfig),
 						"basicAlgorithm":        llx.DictData(basicAlgorithm),
+						"labels":                llx.MapData(convert.MapToInterfaceMap(policy.Labels), types.String),
 					})
 					if err != nil {
 						log.Error().Err(err).Send()

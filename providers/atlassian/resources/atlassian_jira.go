@@ -7,13 +7,14 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/ctreminiom/go-atlassian/v2/pkg/infra/models"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/atlassian/connection/jira"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/atlassian/connection/jira"
+	"go.mondoo.com/mql/types"
 )
 
 const (
@@ -23,6 +24,22 @@ const (
 
 func (a *mqlAtlassianJira) id() (string, error) {
 	return "jira", nil
+}
+
+// parseJiraTime parses a Jira API timestamp, trying RFC 3339 first and then the
+// Jira-specific layout. It returns nil for empty or unparseable input so the
+// corresponding MQL field resolves to null rather than the zero time.
+func parseJiraTime(s string) *time.Time {
+	if s == "" {
+		return nil
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return &t
+	}
+	if t, err := time.Parse(JIRA_TIME_FORMAT, s); err == nil {
+		return &t
+	}
+	return nil
 }
 
 func (a *mqlAtlassianJira) users() ([]any, error) {
@@ -77,6 +94,12 @@ func (a *mqlAtlassianJiraUser) applicationRoles() ([]any, error) {
 	user, _, err := jira.User.Get(context.Background(), a.Id.Data, expands)
 	if err != nil {
 		return nil, err
+	}
+	// ApplicationRoles is an omitempty pointer; accounts with no application-role
+	// assignment (app/customer account types) return it nil, so guard before
+	// dereferencing Items.
+	if user == nil || user.ApplicationRoles == nil {
+		return []any{}, nil
 	}
 	roles := user.ApplicationRoles
 
@@ -184,6 +207,9 @@ func (a *mqlAtlassianJira) serverInfos() (*mqlAtlassianJiraServerInfo, error) {
 			"baseUrl":        llx.StringData(info.BaseURL),
 			"serverTitle":    llx.StringData(info.ServerTitle),
 			"buildNumber":    llx.IntData(int64(info.BuildNumber)),
+			"version":        llx.StringData(info.Version),
+			"buildDate":      llx.TimeDataPtr(parseJiraTime(info.BuildDate)),
+			"serverTime":     llx.TimeDataPtr(parseJiraTime(info.ServerTime)),
 			"deploymentType": llx.StringData(info.DeploymentType),
 		})
 	return res.(*mqlAtlassianJiraServerInfo), err
@@ -222,6 +248,7 @@ func (a *mqlAtlassianJira) projects() ([]any, error) {
 				map[string]*llx.RawData{
 					"id":             llx.StringData(project.ID),
 					"name":           llx.StringData(project.Name),
+					"description":    llx.StringData(project.Description),
 					"uuid":           llx.StringData(project.UUID),
 					"key":            llx.StringData(project.Key),
 					"url":            llx.StringData(project.URL),
@@ -273,15 +300,23 @@ func (a *mqlAtlassianJira) issues() ([]any, error) {
 			break
 		}
 		for _, issue := range issues.Issues {
-			creator, err := mqlJiraUser(a.MqlRuntime, issue.Fields.Creator)
+			// Fields is an omitempty pointer. A malformed/permission-restricted
+			// search hit can carry no fields block at all; skip it rather than
+			// panic (and crash the whole scan) on the derefs below.
+			if issue == nil || issue.Fields == nil {
+				continue
+			}
+			f := issue.Fields
+
+			creator, err := mqlJiraUser(a.MqlRuntime, f.Creator)
 			if err != nil {
 				return nil, err
 			}
-			assignee, err := mqlJiraUser(a.MqlRuntime, issue.Fields.Assignee)
+			assignee, err := mqlJiraUser(a.MqlRuntime, f.Assignee)
 			if err != nil {
 				return nil, err
 			}
-			reporter, err := mqlJiraUser(a.MqlRuntime, issue.Fields.Reporter)
+			reporter, err := mqlJiraUser(a.MqlRuntime, f.Reporter)
 			if err != nil {
 				return nil, err
 			}
@@ -290,28 +325,28 @@ func (a *mqlAtlassianJira) issues() ([]any, error) {
 				map[string]*llx.RawData{
 					"id":            llx.StringData(issue.ID),
 					"key":           llx.StringData(issue.Key),
-					"summary":       llx.StringData(issue.Fields.Summary),
-					"project":       llx.StringData(issue.Fields.Project.Name),
-					"projectKey":    llx.StringData(issue.Fields.Project.Key),
-					"status":        llx.StringData(issue.Fields.Status.Name),
-					"description":   llx.StringData(issue.Fields.Description),
-					"priority":      llx.StringData(jiraPriorityName(issue.Fields.Priority)),
-					"resolution":    llx.StringData(jiraResolutionName(issue.Fields.Resolution)),
-					"labels":        llx.ArrayData(stringsToAny(issue.Fields.Labels), types.String),
-					"createdAt":     llx.TimeDataPtr(jiraDateTime(issue.Fields.Created)),
-					"updatedAt":     llx.TimeDataPtr(jiraDateTime(issue.Fields.Updated)),
-					"resolvedAt":    llx.TimeDataPtr(jiraDateTime(issue.Fields.ResolutionDate)),
-					"dueDate":       llx.TimeDataPtr(jiraDate(issue.Fields.DueDate)),
+					"summary":       llx.StringData(f.Summary),
+					"project":       llx.StringData(jiraProjectName(f.Project)),
+					"projectKey":    llx.StringData(jiraProjectKey(f.Project)),
+					"status":        llx.StringData(jiraStatusName(f.Status)),
+					"description":   llx.StringData(f.Description),
+					"priority":      llx.StringData(jiraPriorityName(f.Priority)),
+					"resolution":    llx.StringData(jiraResolutionName(f.Resolution)),
+					"labels":        llx.ArrayData(stringsToAny(f.Labels), types.String),
+					"createdAt":     llx.TimeDataPtr(jiraDateTime(f.Created)),
+					"updatedAt":     llx.TimeDataPtr(jiraDateTime(f.Updated)),
+					"resolvedAt":    llx.TimeDataPtr(jiraDateTime(f.ResolutionDate)),
+					"dueDate":       llx.TimeDataPtr(jiraDate(f.DueDate)),
 					"creator":       creator,
 					"assignee":      assignee,
 					"reporter":      reporter,
-					"typeName":      llx.StringData(issue.Fields.IssueType.Name),
-					"components":    llx.ArrayData(jiraIssueComponents(issue.Fields.Components), types.Dict),
-					"fixVersions":   llx.ArrayData(jiraIssueVersions(issue.Fields.FixVersions), types.Dict),
-					"securityLevel": llx.DictData(jiraIssueSecurity(issue.Fields.Security)),
-					"watcherCount":  llx.IntData(int64(jiraWatcherCount(issue.Fields.Watcher))),
-					"voteCount":     llx.IntData(int64(jiraVoteCount(issue.Fields.Votes))),
-					"comments":      llx.ArrayData(jiraIssueComments(issue.Fields.Comment), types.Dict),
+					"typeName":      llx.StringData(jiraIssueTypeName(f.IssueType)),
+					"components":    llx.ArrayData(jiraIssueComponents(f.Components), types.Dict),
+					"fixVersions":   llx.ArrayData(jiraIssueVersions(f.FixVersions), types.Dict),
+					"securityLevel": llx.DictData(jiraIssueSecurity(f.Security)),
+					"watcherCount":  llx.IntData(int64(jiraWatcherCount(f.Watcher))),
+					"voteCount":     llx.IntData(int64(jiraVoteCount(f.Votes))),
+					"comments":      llx.ArrayData(jiraIssueComments(f.Comment), types.Dict),
 				})
 			if err != nil {
 				return nil, err
@@ -366,6 +401,34 @@ func jiraResolutionName(r *models.ResolutionScheme) string {
 		return ""
 	}
 	return r.Name
+}
+
+func jiraProjectName(p *models.ProjectScheme) string {
+	if p == nil {
+		return ""
+	}
+	return p.Name
+}
+
+func jiraProjectKey(p *models.ProjectScheme) string {
+	if p == nil {
+		return ""
+	}
+	return p.Key
+}
+
+func jiraStatusName(s *models.StatusScheme) string {
+	if s == nil {
+		return ""
+	}
+	return s.Name
+}
+
+func jiraIssueTypeName(it *models.IssueTypeScheme) string {
+	if it == nil {
+		return ""
+	}
+	return it.Name
 }
 
 func jiraDate(d *models.DateScheme) *time.Time {
@@ -885,4 +948,246 @@ func (a *mqlAtlassianJiraProject) versions() ([]any, error) {
 
 func (a *mqlAtlassianJiraProjectVersion) id() (string, error) {
 	return "atlassian.jira.project.version/" + a.Id.Data, nil
+}
+
+const (
+	// jiraGroupMemberPageSize matches the server-side cap on the group-member
+	// endpoint. Requesting more does not raise it, and a page shorter than the
+	// requested size would then look like the end of the list on every call.
+	jiraGroupMemberPageSize = 50
+	// jiraGroupMemberMaxPages bounds the membership walk so a server that never
+	// sets isLast cannot page forever.
+	jiraGroupMemberMaxPages = 2000
+)
+
+// mqlAtlassianJiraApplicationRoleInternal caches the full application-role
+// record. The role list seeds it; a role reached through a user's assignments
+// starts empty and fetches on first access to one of the seat or group fields.
+type mqlAtlassianJiraApplicationRoleInternal struct {
+	cacheRole  *models.ApplicationRoleScheme
+	cachedRole bool
+	lock       sync.Mutex
+}
+
+// seedRole stores an already-fetched role record so the accessors do not
+// re-request it.
+func (a *mqlAtlassianJiraApplicationRole) seedRole(role *models.ApplicationRoleScheme) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	a.cacheRole = role
+	a.cachedRole = true
+}
+
+// ensureRole returns the full application-role record, fetching it on a cache
+// miss. A permission failure is returned as an error: reporting "no default
+// groups" for a role the caller was not allowed to read would look identical to
+// a role that genuinely has none.
+func (a *mqlAtlassianJiraApplicationRole) ensureRole() (*models.ApplicationRoleScheme, error) {
+	if a.cachedRole {
+		return a.cacheRole, nil
+	}
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	if a.cachedRole {
+		return a.cacheRole, nil
+	}
+	conn, ok := a.MqlRuntime.Connection.(*jira.JiraConnection)
+	if !ok {
+		return nil, errors.New("Current connection does not allow jira access")
+	}
+	if a.Id.Data == "" {
+		return nil, errors.New("atlassian.jira.applicationRole: id must be a non-empty role key")
+	}
+	role, _, err := conn.Client().Role.Get(context.Background(), a.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	if role == nil {
+		return nil, errors.New("atlassian.jira.applicationRole with key " + a.Id.Data + " not found")
+	}
+	a.cacheRole = role
+	a.cachedRole = true
+	return role, nil
+}
+
+// applicationRoles returns every application role defined on the instance,
+// seeding each one's cache so the seat and group fields cost no extra call.
+func (a *mqlAtlassianJira) applicationRoles() ([]any, error) {
+	conn, ok := a.MqlRuntime.Connection.(*jira.JiraConnection)
+	if !ok {
+		return nil, errors.New("Current connection does not allow jira access")
+	}
+	roles, _, err := conn.Client().Role.Gets(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	res := make([]any, 0, len(roles))
+	for _, role := range roles {
+		if role == nil || role.Key == "" {
+			continue
+		}
+		mqlRole, err := CreateResource(a.MqlRuntime, "atlassian.jira.applicationRole",
+			map[string]*llx.RawData{
+				"id":   llx.StringData(role.Key),
+				"name": llx.StringData(role.Name),
+			})
+		if err != nil {
+			return nil, err
+		}
+		mqlRole.(*mqlAtlassianJiraApplicationRole).seedRole(role)
+		res = append(res, mqlRole)
+	}
+	return res, nil
+}
+
+func (a *mqlAtlassianJiraApplicationRole) groups() ([]any, error) {
+	role, err := a.ensureRole()
+	if err != nil {
+		return nil, err
+	}
+	return stringsToAny(role.Groups), nil
+}
+
+func (a *mqlAtlassianJiraApplicationRole) defaultGroups() ([]any, error) {
+	role, err := a.ensureRole()
+	if err != nil {
+		return nil, err
+	}
+	return stringsToAny(role.DefaultGroups), nil
+}
+
+func (a *mqlAtlassianJiraApplicationRole) selectedByDefault() (bool, error) {
+	role, err := a.ensureRole()
+	if err != nil {
+		return false, err
+	}
+	return role.SelectedByDefault, nil
+}
+
+func (a *mqlAtlassianJiraApplicationRole) defined() (bool, error) {
+	role, err := a.ensureRole()
+	if err != nil {
+		return false, err
+	}
+	return role.Defined, nil
+}
+
+func (a *mqlAtlassianJiraApplicationRole) numberOfSeats() (int64, error) {
+	role, err := a.ensureRole()
+	if err != nil {
+		return 0, err
+	}
+	return int64(role.NumberOfSeats), nil
+}
+
+func (a *mqlAtlassianJiraApplicationRole) remainingSeats() (int64, error) {
+	role, err := a.ensureRole()
+	if err != nil {
+		return 0, err
+	}
+	return int64(role.RemainingSeats), nil
+}
+
+func (a *mqlAtlassianJiraApplicationRole) userCount() (int64, error) {
+	role, err := a.ensureRole()
+	if err != nil {
+		return 0, err
+	}
+	return int64(role.UserCount), nil
+}
+
+func (a *mqlAtlassianJiraApplicationRole) hasUnlimitedSeats() (bool, error) {
+	role, err := a.ensureRole()
+	if err != nil {
+		return false, err
+	}
+	return role.HasUnlimitedSeats, nil
+}
+
+func (a *mqlAtlassianJiraApplicationRole) platform() (bool, error) {
+	role, err := a.ensureRole()
+	if err != nil {
+		return false, err
+	}
+	return role.Platform, nil
+}
+
+// members returns the accounts in this group, including deactivated ones so a
+// group named in a permission grant can be enumerated in full. The membership
+// endpoint does not report avatars or locales, so those two fields are set to
+// null rather than to an invented empty string.
+func (a *mqlAtlassianJiraGroup) members() ([]any, error) {
+	conn, ok := a.MqlRuntime.Connection.(*jira.JiraConnection)
+	if !ok {
+		return nil, errors.New("Current connection does not allow jira access")
+	}
+	groupName := a.Name.Data
+	if groupName == "" {
+		return nil, errors.New("atlassian.jira.group: name is required to list members")
+	}
+	client := conn.Client()
+
+	res := []any{}
+	err := walkJiraGroupMembers(
+		func(startAt int) (*models.GroupMemberPageScheme, error) {
+			page, _, err := client.Group.Members(context.Background(), groupName, true, startAt, jiraGroupMemberPageSize)
+			return page, err
+		},
+		func(member *models.GroupUserDetailScheme) error {
+			mqlUser, err := CreateResource(a.MqlRuntime, "atlassian.jira.user",
+				map[string]*llx.RawData{
+					"id":       llx.StringData(member.AccountID),
+					"name":     llx.StringData(member.DisplayName),
+					"type":     llx.StringData(member.AccountType),
+					"picture":  llx.StringDataPtr(nil),
+					"email":    llx.StringData(member.EmailAddress),
+					"active":   llx.BoolData(member.Active),
+					"timezone": llx.StringData(member.TimeZone),
+					"locale":   llx.StringDataPtr(nil),
+				})
+			if err != nil {
+				return err
+			}
+			res = append(res, mqlUser)
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// walkJiraGroupMembers pages a group's membership, handing each member to
+// visit. The endpoint caps its page size server-side, so a page shorter than
+// the one requested does not mean the end of the list: isLast is the signal,
+// and treating a short page as the end would truncate every group larger than
+// one page. An empty page and jiraGroupMemberMaxPages bound a server that never
+// sets isLast.
+func walkJiraGroupMembers(
+	fetch func(startAt int) (*models.GroupMemberPageScheme, error),
+	visit func(member *models.GroupUserDetailScheme) error,
+) error {
+	startAt := 0
+	for range jiraGroupMemberMaxPages {
+		members, err := fetch(startAt)
+		if err != nil {
+			return err
+		}
+		if members == nil || len(members.Values) == 0 {
+			return nil
+		}
+		for _, member := range members.Values {
+			if member == nil || member.AccountID == "" {
+				continue
+			}
+			if err := visit(member); err != nil {
+				return err
+			}
+		}
+		if members.IsLast {
+			return nil
+		}
+		startAt += len(members.Values)
+	}
+	return nil
 }

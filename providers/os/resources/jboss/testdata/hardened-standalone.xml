@@ -1,0 +1,182 @@
+<?xml version='1.0' encoding='UTF-8'?>
+
+<!--
+  A standalone profile with every setting a hardening review looks at turned
+  to its non-default value, so that a parser that quietly returns the shipped
+  default instead of the configured one fails a test.
+
+  Two security realms, so that the parser is exercised on the repeating case as
+  well as on the single one; two management interfaces; two audit handlers of
+  different kinds; two connectors, one with a nested <ssl>.
+
+  No credential appears in this file. Where a password would be written, the
+  value is either a vault expression or the literal placeholder below.
+-->
+<server xmlns="urn:jboss:domain:1.7">
+    <extensions>
+        <extension module="org.jboss.as.deployment-scanner"/>
+        <extension module="org.jboss.as.jmx"/>
+        <extension module="org.jboss.as.logging"/>
+        <extension module="org.jboss.as.web"/>
+    </extensions>
+    <system-properties>
+        <property name="jboss.bind.address" value="10.0.0.10"/>
+    </system-properties>
+    <vault>
+        <vault-option name="KEYSTORE_URL" value="/opt/jboss/vault/vault.keystore"/>
+        <vault-option name="KEYSTORE_ALIAS" value="vault"/>
+        <vault-option name="ENC_FILE_DIR" value="/opt/jboss/vault/"/>
+        <vault-option name="ITERATION_COUNT" value="44"/>
+    </vault>
+    <management>
+        <security-realms>
+            <security-realm name="ManagementRealm">
+                <server-identities>
+                    <ssl>
+                        <keystore path="management.jks" relative-to="jboss.server.config.dir" keystore-password="${VAULT::management::keystore::1}" alias="management"/>
+                    </ssl>
+                </server-identities>
+                <authentication>
+                    <truststore path="clients.jks" relative-to="jboss.server.config.dir" keystore-password="${VAULT::management::truststore::1}"/>
+                    <ldap connection="ldap-connection" base-dn="ou=People,dc=example,dc=test" recursive="true" allow-empty-passwords="false">
+                        <username-filter attribute="uid"/>
+                    </ldap>
+                </authentication>
+                <authorization map-groups-to-roles="true">
+                    <properties path="mgmt-groups.properties" relative-to="jboss.server.config.dir"/>
+                </authorization>
+            </security-realm>
+            <security-realm name="ApplicationRealm">
+                <authentication>
+                    <properties path="application-users.properties" relative-to="jboss.server.config.dir"/>
+                </authentication>
+            </security-realm>
+        </security-realms>
+        <audit-log>
+            <formatters>
+                <json-formatter name="json-formatter" compact="false" include-date="true" date-format="yyyy-MM-dd HH:mm:ss" escape-control-characters="true"/>
+            </formatters>
+            <handlers>
+                <file-handler name="file" formatter="json-formatter" relative-to="jboss.server.data.dir" path="audit-log.log" rotate-at-startup="false" max-failure-count="5"/>
+                <syslog-handler name="syslog" formatter="json-formatter" syslog-format="RFC5424" app-name="jboss">
+                    <tcp host="10.0.0.20" port="514"/>
+                </syslog-handler>
+            </handlers>
+            <logger log-boot="true" log-read-only="true" enabled="true">
+                <handlers>
+                    <handler name="file"/>
+                    <handler name="syslog"/>
+                </handlers>
+            </logger>
+        </audit-log>
+        <management-interfaces>
+            <native-interface security-realm="ManagementRealm">
+                <socket-binding native="management-native"/>
+            </native-interface>
+            <http-interface security-realm="ManagementRealm" console-enabled="false">
+                <socket-binding http="management-http" https="management-https"/>
+            </http-interface>
+        </management-interfaces>
+        <access-control provider="rbac">
+            <role-mapping>
+                <role name="Auditor">
+                    <include>
+                        <user name="auditor"/>
+                    </include>
+                </role>
+            </role-mapping>
+        </access-control>
+        <outbound-connections>
+            <ldap name="ldap-connection" url="ldaps://directory.example.test:636" search-dn="cn=search,dc=example,dc=test" search-credential="${VAULT::ldap::search::1}"/>
+        </outbound-connections>
+    </management>
+    <profile>
+        <subsystem xmlns="urn:jboss:domain:logging:1.5">
+            <periodic-rotating-file-handler name="FILE" autoflush="true">
+                <level name="INFO"/>
+                <formatter>
+                    <named-formatter name="PATTERN"/>
+                </formatter>
+                <file relative-to="jboss.server.log.dir" path="server.log"/>
+                <suffix value=".yyyy-MM-dd"/>
+                <append value="true"/>
+            </periodic-rotating-file-handler>
+            <size-rotating-file-handler name="SIZE">
+                <file relative-to="jboss.server.log.dir" path="size.log"/>
+                <rotate-size value="10m"/>
+                <max-backup-index value="7"/>
+                <append value="false"/>
+            </size-rotating-file-handler>
+            <syslog-handler name="SYSLOG">
+                <level name="WARN"/>
+                <server-address value="10.0.0.20"/>
+                <port value="514"/>
+                <app-name value="jboss"/>
+            </syslog-handler>
+            <logger category="org.example.app" use-parent-handlers="false">
+                <level name="DEBUG"/>
+                <handlers>
+                    <handler name="FILE"/>
+                </handlers>
+            </logger>
+            <root-logger>
+                <level name="INFO"/>
+                <handlers>
+                    <handler name="FILE"/>
+                    <handler name="SYSLOG"/>
+                </handlers>
+            </root-logger>
+        </subsystem>
+        <subsystem xmlns="urn:jboss:domain:deployment-scanner:1.1">
+            <deployment-scanner path="deployments" relative-to="jboss.server.base.dir" scan-enabled="false" scan-interval="0" auto-deploy-zipped="false" auto-deploy-xml="false"/>
+        </subsystem>
+        <subsystem xmlns="urn:jboss:domain:jmx:1.3">
+            <expose-resolved-model/>
+            <sensitivity non-core-mbeans="true"/>
+        </subsystem>
+        <subsystem xmlns="urn:jboss:domain:web:2.2" default-virtual-server="default-host" native="false">
+            <connector name="http" protocol="HTTP/1.1" scheme="http" socket-binding="http" enabled="false"/>
+            <connector name="https" protocol="HTTP/1.1" scheme="https" socket-binding="https" secure="true">
+                <ssl name="https" key-alias="server" protocol="TLSv1.2" cipher-suite="TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384" verify-client="true" certificate-key-file="/opt/jboss/vault/server.jks" password="${VAULT::web::keystore::1}"/>
+            </connector>
+            <virtual-server name="default-host" enable-welcome-root="false">
+                <alias name="localhost"/>
+                <alias name="example.test"/>
+                <access-log pattern="combined">
+                    <directory path="/var/log/jboss-access"/>
+                </access-log>
+            </virtual-server>
+        </subsystem>
+    </profile>
+    <interfaces>
+        <interface name="management">
+            <inet-address value="10.0.0.10"/>
+        </interface>
+        <interface name="public">
+            <any-address/>
+        </interface>
+        <interface name="internal">
+            <nic name="eth1"/>
+            <loopback/>
+        </interface>
+    </interfaces>
+    <socket-binding-group name="standard-sockets" default-interface="public" port-offset="${jboss.socket.binding.port-offset:0}">
+        <socket-binding name="management-native" interface="management" port="9999"/>
+        <socket-binding name="management-http" interface="management" port="9990"/>
+        <socket-binding name="management-https" interface="management" port="9443"/>
+        <socket-binding name="https" port="8443" fixed-port="true"/>
+        <outbound-socket-binding name="mail-smtp">
+            <remote-destination host="smtp.example.test" port="25"/>
+        </outbound-socket-binding>
+        <remote-destination-outbound-socket-binding name="ldap-connection">
+            <remote-destination host="directory.example.test" port="636"/>
+        </remote-destination-outbound-socket-binding>
+        <local-destination-outbound-socket-binding name="local-http">
+            <local-destination socket-binding-ref="management-http"/>
+        </local-destination-outbound-socket-binding>
+    </socket-binding-group>
+    <deployments>
+        <deployment name="app.war" runtime-name="app.war"/>
+        <deployment name="legacy.war" runtime-name="legacy.war" enabled="false"/>
+    </deployments>
+</server>

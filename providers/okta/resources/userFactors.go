@@ -6,15 +6,11 @@ package resources
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"time"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/okta/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/okta/connection"
 )
 
 // mqlOktaUserFactorInternal caches the owning user's id so the typed user()
@@ -47,42 +43,20 @@ func (o *mqlOktaUser) factors() ([]any, error) {
 	conn := o.MqlRuntime.Connection.(*connection.OktaConnection)
 
 	ctx := context.Background()
+	apiSupplement := conn.ApiExtension()
 
-	// The factors endpoint returns all enrolled factors in a single response;
-	// we issue the request directly (rather than client.UserFactorAPI.ListFactors)
-	// to capture the per-factorType `profile` object that the SDK's typed
-	// UserFactor union discards.
-	endpoint := fmt.Sprintf("https://%s/api/v1/users/%s/factors", conn.OrganizationID(), url.PathEscape(o.Id.Data))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	raw, err := apiSupplement.ListUserFactors(ctx, o.Id.Data)
 	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "SSWS "+conn.Token())
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch user factors: %s: %s", resp.Status, string(body))
-	}
-
-	var page []userFactorRaw
-	if err := json.Unmarshal(body, &page); err != nil {
 		return nil, err
 	}
 
 	list := []any{}
-	for i := range page {
-		r, err := newMqlOktaUserFactor(o.MqlRuntime, o.Id.Data, &page[i])
+	for i := range raw {
+		var entry userFactorRaw
+		if err := json.Unmarshal(raw[i], &entry); err != nil {
+			return nil, err
+		}
+		r, err := newMqlOktaUserFactor(o.MqlRuntime, o.Id.Data, &entry)
 		if err != nil {
 			return nil, err
 		}

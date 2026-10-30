@@ -8,8 +8,11 @@ import (
 	"testing"
 
 	"github.com/miekg/dns"
+	"go.mondoo.com/mql/providers/network/resources/dnsshake"
 )
 
+// TestAddressesFromParams covers the params-derived path still used by the
+// deprecated reverse field.
 func TestAddressesFromParams(t *testing.T) {
 	testCases := []struct {
 		name    string
@@ -64,6 +67,71 @@ func TestAddressesFromParams(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("addressesFromParams() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAddressesFromRecords(t *testing.T) {
+	ok := dns.RcodeToString[dns.RcodeSuccess]
+
+	testCases := []struct {
+		name    string
+		records map[string]dnsshake.DnsRecord
+		want    []string
+	}{
+		{
+			name: "single A record",
+			records: map[string]dnsshake.DnsRecord{
+				"A": {RCode: ok, RData: []string{"1.2.3.4"}},
+			},
+			want: []string{"1.2.3.4"},
+		},
+		{
+			name: "multiple A records and AAAA",
+			records: map[string]dnsshake.DnsRecord{
+				"A":    {RCode: ok, RData: []string{"1.2.3.4", "5.6.7.8"}},
+				"AAAA": {RCode: ok, RData: []string{"2001:db8::1"}},
+			},
+			want: []string{"1.2.3.4", "5.6.7.8", "2001:db8::1"},
+		},
+		{
+			name: "no address records",
+			records: map[string]dnsshake.DnsRecord{
+				"MX": {RCode: ok, RData: []string{"mail.example.com"}},
+			},
+			want: []string{},
+		},
+		{
+			name: "empty rdata skipped",
+			records: map[string]dnsshake.DnsRecord{
+				"A": {RCode: ok, RData: []string{"1.2.3.4", ""}},
+			},
+			want: []string{"1.2.3.4"},
+		},
+		{
+			// An NXDOMAIN or SERVFAIL answer must not contribute addresses:
+			// treating a failed lookup as "no addresses" is what let a
+			// transient resolver failure look like a missing PTR record.
+			name: "unsuccessful rcode ignored",
+			records: map[string]dnsshake.DnsRecord{
+				"A":    {RCode: dns.RcodeToString[dns.RcodeNameError], RData: []string{"1.2.3.4"}},
+				"AAAA": {RCode: ok, RData: []string{"2001:db8::1"}},
+			},
+			want: []string{"2001:db8::1"},
+		},
+		{
+			name:    "no records at all",
+			records: map[string]dnsshake.DnsRecord{},
+			want:    []string{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := addressesFromRecords(tc.records)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("addressesFromRecords() = %v, want %v", got, tc.want)
 			}
 		})
 	}

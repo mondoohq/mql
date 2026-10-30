@@ -1,0 +1,8 @@
+Get-Item : Requested registry access is not allowed.
+At line:3 char:8
++ $reg = Get-Item ('Registry::' + $path) -ErrorAction Stop
++        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : PermissionDenied: (HKEY_LOCAL_MACHINE\SECURITY:String) [Get-Item],  
+   SecurityException
+    + FullyQualifiedErrorId : System.Security.SecurityException,Microsoft.PowerShell.Commands.Get 
+   ItemCommand

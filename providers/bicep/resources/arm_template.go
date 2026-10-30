@@ -9,16 +9,24 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/bicep/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/bicep/connection"
+	"go.mondoo.com/mql/types"
 )
 
+// stampOnce guards the Internal fields: CreateResource returns the CACHED
+// instance for an id already in the runtime cache, and the same template id is
+// reached concurrently from bicep.template, bicep.templates, and a nested
+// resource's linkedTemplate. It also serves as the lazy-populate gate for a
+// resource reconstructed across the gRPC boundary, where the Internal fields
+// come back zeroed.
 type mqlBicepTemplateInternal struct {
+	stampOnce   sync.Once
 	armTemplate *connection.ARMTemplate
 	cachePath   string
 }
@@ -31,8 +39,10 @@ func newMqlBicepTemplate(runtime *plugin.Runtime, filePath string, tmpl *connect
 		return nil, err
 	}
 	mqlT := res.(*mqlBicepTemplate)
-	mqlT.armTemplate = tmpl
-	mqlT.cachePath = filePath
+	mqlT.stampOnce.Do(func() {
+		mqlT.armTemplate = tmpl
+		mqlT.cachePath = filePath
+	})
 	return mqlT, nil
 }
 
@@ -43,6 +53,7 @@ func newMqlBicepTemplate(runtime *plugin.Runtime, filePath string, tmpl *connect
 // a non-unique id would cause every such reconstruction to collide on
 // the same cache entry.
 func (t *mqlBicepTemplate) id() (string, error) {
+	t.ensureStamped()
 	path := t.cachePath
 	if path == "" {
 		if conn, ok := t.MqlRuntime.Connection.(*connection.BicepConnection); ok {
@@ -55,25 +66,30 @@ func (t *mqlBicepTemplate) id() (string, error) {
 	return "bicep.template:" + path, nil
 }
 
+// ensureStamped populates the Internal fields exactly once, either from the
+// creator's arguments or, when the resource was reconstructed via StoreData
+// across gRPC with its Internal fields zeroed, by re-fetching from the
+// connection. Running both through the same sync.Once keeps concurrent
+// accessors on a cached instance from racing each other.
+func (t *mqlBicepTemplate) ensureStamped() {
+	t.stampOnce.Do(func() {
+		// Guard the assertion: on a non-Bicep runtime (e.g. recording/replay)
+		// there's nothing to re-fetch — leave the fields empty rather than
+		// panicking, matching the comma-ok cast in id().
+		conn, ok := t.MqlRuntime.Connection.(*connection.BicepConnection)
+		if !ok {
+			return
+		}
+		if tmpl := conn.ARMTemplate(); tmpl != nil {
+			t.armTemplate = tmpl
+			t.cachePath = conn.ARMTemplatePath()
+		}
+	})
+}
+
 func (t *mqlBicepTemplate) getARMTemplate() *connection.ARMTemplate {
-	if t.armTemplate != nil {
-		return t.armTemplate
-	}
-	// Re-fetch from connection when Internal struct wasn't populated
-	// (happens when resource is reconstructed via StoreData across gRPC).
-	// Guard the assertion: on a non-Bicep runtime (e.g. recording/replay)
-	// there's nothing to re-fetch — return nil rather than panicking, matching
-	// the comma-ok cast in id().
-	conn, ok := t.MqlRuntime.Connection.(*connection.BicepConnection)
-	if !ok {
-		return nil
-	}
-	tmpl := conn.ARMTemplate()
-	if tmpl != nil {
-		t.armTemplate = tmpl
-		t.cachePath = conn.Path()
-	}
-	return tmpl
+	t.ensureStamped()
+	return t.armTemplate
 }
 
 func (t *mqlBicepTemplate) schema() (string, error) {
@@ -236,19 +252,29 @@ func (t *mqlBicepTemplate) newMqlBicepTemplateOutput(name string, raw json.RawMe
 	return res.(*mqlBicepTemplateOutput), nil
 }
 
+// resources materializes the template's top-level resources. Like its
+// parameters/variables/outputs siblings it returns an empty slice (not nil)
+// when the template is unavailable or declares none.
 func (t *mqlBicepTemplate) resources() ([]any, error) {
 	tmpl := t.getARMTemplate()
 	if tmpl == nil {
-		return nil, nil
+		return []any{}, nil
 	}
-	var mqlResources []any
-	for i, raw := range tmpl.Resources {
+	list := tmpl.ResourceList()
+	mqlResources := make([]any, 0, len(list))
+	for i, entry := range list {
 		var obj map[string]any
-		if err := json.Unmarshal(raw, &obj); err != nil {
+		if err := json.Unmarshal(entry.Raw, &obj); err != nil {
 			log.Warn().Err(err).Int("index", i).Msg("failed to unmarshal ARM template resource")
 			continue
 		}
-		mqlR, err := newMqlBicepTemplateResource(t.MqlRuntime, t.cachePath, i, obj)
+		// A symbolic-name (languageVersion 2.0) template names each resource,
+		// so the key is its identity; the classic array form has only position.
+		key := entry.SymbolicName
+		if key == "" {
+			key = strconv.Itoa(i)
+		}
+		mqlR, err := newMqlBicepTemplateResource(t.MqlRuntime, t.cachePath, key, obj)
 		if err != nil {
 			log.Warn().Err(err).Int("index", i).Msg("failed to create ARM template resource")
 			continue
@@ -264,24 +290,48 @@ func (t *mqlBicepTemplate) resources() ([]any, error) {
 // synthetic id used to build a non-colliding `bicep.template` for it. Both are
 // nil/empty for resources that carry no inline nested template (ordinary
 // resources, or deployments that use an external `templateLink`).
+// It also caches the resource's own `resources` array so the nested-children
+// accessor can materialize them, and the owning template's path so each child
+// keeps the same id shape as its parent. stampOnce guards every field:
+// CreateResource returns the CACHED instance for an id already in the runtime
+// cache, so an unguarded stamp races with a concurrent reader of the same
+// instance.
 type mqlBicepTemplateResourceInternal struct {
+	stampOnce    sync.Once
 	linkedTmpl   *connection.ARMTemplate
 	linkedTmplID string
+	nestedRaw    []any
+	templatePath string
 }
 
-func newMqlBicepTemplateResource(runtime *plugin.Runtime, templatePath string, index int, obj map[string]any) (*mqlBicepTemplateResource, error) {
+// newMqlBicepTemplateResource builds one bicep.template.resource. `key`
+// identifies the resource within its parent collection: the symbolic name for
+// a languageVersion 2.0 template, the positional index for the classic array
+// form, and `<parentKey>/<index>` for a nested child.
+func newMqlBicepTemplateResource(runtime *plugin.Runtime, templatePath string, key string, obj map[string]any) (*mqlBicepTemplateResource, error) {
 	typ, _ := obj["type"].(string)
 	apiVersion, _ := obj["apiVersion"].(string)
 	name, _ := obj["name"].(string)
 	location, _ := obj["location"].(string)
-	condition, _ := obj["condition"].(string)
+	condition := armCondition(obj["condition"])
 
 	var dependsOn []any
 	if deps, ok := obj["dependsOn"].([]any); ok {
 		for _, d := range deps {
-			if s, ok := d.(string); ok {
-				dependsOn = append(dependsOn, s)
+			dependsOn = append(dependsOn, armDependency(d))
+		}
+	}
+
+	tags := map[string]any{}
+	if raw, ok := obj["tags"].(map[string]any); ok {
+		for k, v := range raw {
+			if sv, ok := v.(string); ok {
+				tags[k] = sv
+				continue
 			}
+			// ARM tag values are strings, but a template may put an expression
+			// object or number there; render it rather than dropping the tag.
+			tags[k] = armDependency(v)
 		}
 	}
 
@@ -314,7 +364,7 @@ func newMqlBicepTemplateResource(runtime *plugin.Runtime, templatePath string, i
 		properties = manifest["properties"]
 	}
 
-	id := "bicep.template.resource:" + templatePath + ":" + typ + ":" + name + ":" + strconv.Itoa(index)
+	id := "bicep.template.resource:" + templatePath + ":" + typ + ":" + name + ":" + key
 
 	// Extract an inline nested deployment template, if any. Only a
 	// `Microsoft.Resources/deployments` resource whose `properties.template`
@@ -334,16 +384,94 @@ func newMqlBicepTemplateResource(runtime *plugin.Runtime, templatePath string, i
 		"copyMode":      llx.StringData(copyMode),
 		"copyBatchSize": llx.IntDataPtr(copyBatchSize),
 		"properties":    llx.DictData(properties),
+		"tags":          llx.MapData(tags, types.String),
 		"dependsOn":     llx.ArrayData(dependsOn, types.String),
 		"manifest":      llx.DictData(manifest),
 	})
 	if err != nil {
 		return nil, err
 	}
+	// A classic ARM resource may carry its own `resources` array of children:
+	// Microsoft.Web/sites to config/web, Microsoft.Sql/servers to
+	// auditingSettings and firewallRules, Microsoft.Storage/storageAccounts to
+	// blobServices. Cache it for the nested accessor to materialize.
+	nestedRaw, _ := obj["resources"].([]any)
+
 	mqlRes := res.(*mqlBicepTemplateResource)
-	mqlRes.linkedTmpl = linkedTmpl
-	mqlRes.linkedTmplID = id + "/linkedTemplate"
+	mqlRes.stampOnce.Do(func() {
+		mqlRes.linkedTmpl = linkedTmpl
+		mqlRes.linkedTmplID = id + "/linkedTemplate"
+		mqlRes.nestedRaw = nestedRaw
+		mqlRes.templatePath = templatePath
+	})
 	return mqlRes, nil
+}
+
+// armCondition renders an ARM `condition`. The field is boolean-valued and is
+// usually written as an expression string, but a literal true/false is legal
+// and appears in generated templates. Reporting a present-but-non-string
+// condition as "" would read as "unconditional" — the exact opposite of what
+// `"condition": false` means.
+func armCondition(v any) string {
+	switch c := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return c
+	case bool:
+		return strconv.FormatBool(c)
+	default:
+		return renderARMValue(v)
+	}
+}
+
+// armDependency renders one `dependsOn` entry. ARM permits an object form
+// alongside the usual resourceId expression string, and symbolic-name
+// templates use `[reference(...)]` objects; rendering the object to its raw
+// JSON text keeps the dependency edge instead of dropping it.
+func armDependency(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return renderARMValue(v)
+}
+
+// renderARMValue turns a decoded JSON value back into compact JSON text.
+func renderARMValue(v any) string {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		log.Warn().Err(err).Msg("failed to render ARM value as JSON text")
+		return ""
+	}
+	return string(raw)
+}
+
+// resources materializes this resource's nested child resources. Each child
+// gets a parent-qualified id so children under different parents never collide
+// in the cache, and children may declare children of their own.
+func (a *mqlBicepTemplateResource) resources() ([]any, error) {
+	out := make([]any, 0, len(a.nestedRaw))
+	for i, child := range a.nestedRaw {
+		obj, ok := child.(map[string]any)
+		if !ok {
+			log.Warn().Int("index", i).Str("parent", a.Name.Data).Msg("nested ARM resource is not an object")
+			continue
+		}
+		mqlChild, err := newMqlBicepTemplateResource(a.MqlRuntime, a.templatePath, a.childKey(i), obj)
+		if err != nil {
+			log.Warn().Err(err).Int("index", i).Str("parent", a.Name.Data).Msg("failed to create nested ARM template resource")
+			continue
+		}
+		out = append(out, mqlChild)
+	}
+	return out, nil
+}
+
+// childKey builds the parent-qualified key for the i-th nested child. The
+// parent's own id already encodes its type, name, and key, so appending the
+// index is enough to stay unique across the whole template.
+func (a *mqlBicepTemplateResource) childKey(i int) string {
+	return a.__id + "/" + strconv.Itoa(i)
 }
 
 // extractInlineTemplate returns the inline nested ARM template carried by a

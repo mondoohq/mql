@@ -69,6 +69,9 @@ run_query "server CORS" "vllm.server { corsConfigured corsAllowsAnyOrigin }"
 run_query "server docs exposure" "vllm.server { docsExposed openapiExposed }"
 run_query "server metrics exposure" "vllm.server { metricsExposed loadEndpointExposed }"
 run_query "server dev endpoints" "vllm.server { devEndpointsExposed profilerEndpointsExposed tokenizerInfoExposed }"
+run_query "server anonymous inference" "vllm.server { anonymousInferenceAllowed apiKeyRequired }"
+run_query "server runtime lora" "vllm.server { runtimeLoraUpdatingEnabled }"
+run_query "server stored responses" "vllm.server { storedResponsesExposed }"
 
 # Endpoints
 run_query "endpoint list" "vllm.endpoints { method path category present }"
@@ -77,6 +80,19 @@ run_query "endpoint status codes" "vllm.endpoints { anonymousStatusCode }"
 
 # Metrics
 run_query "metrics posture" "vllm.metrics { prometheusExposed loadEndpointExposed loadTrackingVisible }"
+run_query "metrics disclosure" "vllm.metrics { exposedModelNames exposedLoraAdapters }"
+
+# Engine configuration
+run_query "engine configuration" "vllm.serverInfo { exposed configReadable trustRemoteCode tokenizerMode model tokenizer }"
+run_query "engine limits" "vllm.serverInfo { maxModelLen quantization enforceEager enablePrefixCaching servedModelNames }"
+run_query "engine lora" "vllm.serverInfo { loraEnabled maxLoras maxLoraRank loraConfig }"
+run_query "engine parallelism" "vllm.serverInfo { tensorParallelSize pipelineParallelSize dataParallelSize parallelConfig }"
+run_query "engine tracing" "vllm.serverInfo { otlpTracesEndpoint collectDetailedTraces loggingIterationDetailsEnabled }"
+run_query "engine mode" "vllm.serverInfo { serverDevMode allowRuntimeLoraUpdating }"
+
+# Tokenizer and chat template
+run_query "tokenizer posture" "vllm.tokenizerInfo { exposed tokenizerClass chatTemplateConfigured chatTemplateSha256 }"
+run_query "tokenizer tokens" "vllm.tokenizerInfo { maxLength addBosToken addEosToken bosToken eosToken padToken unkToken }"
 
 # Version
 run_query "vllm version" "vllm.version"
@@ -85,6 +101,7 @@ run_query "vllm version" "vllm.version"
 run_query "model list" "vllm.models { id root maxModelLen }"
 run_query "model details" "vllm.models { id ownedBy created parent }"
 run_query "model count" "vllm.models.length"
+run_query "model permissions" "vllm.models { id permissions { id allowSampling allowFineTuning allowCreateEngine organization group isBlocking } }"
 
 echo ""
 echo "=== Results: ${pass} passed, ${fail} failed ==="

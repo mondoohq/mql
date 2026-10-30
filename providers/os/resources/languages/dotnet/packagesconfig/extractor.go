@@ -7,8 +7,8 @@ import (
 	"encoding/xml"
 	"io"
 
-	"go.mondoo.com/mql/v13/providers/os/resources/languages"
-	"go.mondoo.com/mql/v13/providers/os/resources/languages/dotnet"
+	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/dotnet"
 )
 
 var (

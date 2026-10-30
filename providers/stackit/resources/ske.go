@@ -6,10 +6,10 @@ package resources
 import (
 	"time"
 
-	"github.com/stackitcloud/stackit-sdk-go/services/ske"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/types"
+	ske "github.com/stackitcloud/stackit-sdk-go/services/ske/v2api"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/types"
 )
 
 func (r *mqlStackitSke) clusters() ([]any, error) {
@@ -18,10 +18,10 @@ func (r *mqlStackitSke) clusters() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.ListClustersExecute(bgctx(), c.ProjectID(), c.Region())
+	resp, err := client.DefaultAPI.ListClusters(bgctx(), c.ProjectID(), c.Region()).Execute()
 	if err != nil {
 		if isAccessDenied(err) {
-			return []any{}, nil
+			return deniedList(err)
 		}
 		return nil, err
 	}
@@ -41,11 +41,32 @@ func (r *mqlStackitSke) clusters() ([]any, error) {
 // computed nodePools() field can build typed sub-resources on access
 // without a second API round-trip. It also caches the network and
 // observability instance ids so the typed-reference fields can resolve
-// them lazily.
+// them lazily, plus the per-pool end-of-support dates, which the API
+// reports on the cluster status rather than on the pool itself.
 type mqlStackitSkeClusterInternal struct {
 	rawNodepools                 []ske.Nodepool
 	cacheNetworkId               string
 	cacheObservabilityInstanceId string
+	nodepoolExpiration           map[string]ske.ExpirationStatusNodepool
+}
+
+// skeAutoUpdate reads the two automatic-patching flags out of the cluster's
+// maintenance window, returning nil for either one the API does not report.
+//
+// A cluster can carry no maintenance window at all, and a window can name one
+// flag without the other. Neither case means the update is switched off, so
+// both yield nil: a false here would report automatic patching as disabled on
+// a cluster whose setting was never read, and an assertion that the flag is
+// true would then fail on clusters that may well be patching.
+func skeAutoUpdate(cluster *ske.Cluster) (kubernetes *bool, machineImage *bool) {
+	if cluster == nil {
+		return nil, nil
+	}
+	maintenance, ok := cluster.GetMaintenanceOk()
+	if !ok || maintenance == nil {
+		return nil, nil
+	}
+	return maintenance.AutoUpdate.KubernetesVersion, maintenance.AutoUpdate.MachineImageVersion
 }
 
 func buildSkeCluster(runtime *plugin.Runtime, cluster *ske.Cluster) (plugin.Resource, error) {
@@ -53,21 +74,31 @@ func buildSkeCluster(runtime *plugin.Runtime, cluster *ske.Cluster) (plugin.Reso
 	var creationTime *time.Time
 	var credRotPhase, saIssuer string
 	var credRotInitiated, credRotCompleted *time.Time
+	var k8sExpiration *time.Time
+	npExpiration := map[string]ske.ExpirationStatusNodepool{}
 	egressRanges := []string{}
 	podRanges := []string{}
 	statusDict := toDict(cluster.GetStatus())
 	if status, ok := cluster.GetStatusOk(); ok {
+		if exp, ok := status.GetExpirationOk(); ok && exp != nil {
+			if k, ok := exp.GetKubernetesOk(); ok && k != nil {
+				k8sExpiration = timeOrNil(k.GetExpirationDateOk())
+			}
+			for _, np := range exp.GetNodepools() {
+				npExpiration[np.GetName()] = np
+			}
+		}
 		aggregated = string(status.GetAggregated())
 		if ct, ok := status.GetCreationTimeOk(); ok && !ct.IsZero() {
-			creationTime = &ct
+			creationTime = ct
 		}
 		if cr, ok := status.GetCredentialsRotationOk(); ok {
 			credRotPhase = string(cr.GetPhase())
 			if t, ok := cr.GetLastInitiationTimeOk(); ok && !t.IsZero() {
-				credRotInitiated = &t
+				credRotInitiated = t
 			}
 			if t, ok := cr.GetLastCompletionTimeOk(); ok && !t.IsZero() {
-				credRotCompleted = &t
+				credRotCompleted = t
 			}
 		}
 		if r, ok := status.GetEgressAddressRangesOk(); ok {
@@ -89,7 +120,7 @@ func buildSkeCluster(runtime *plugin.Runtime, cluster *ske.Cluster) (plugin.Reso
 		hibernations = anySliceToDict(h.GetSchedules())
 	}
 
-	var aclEnabled, obsEnabled, dnsEnabled, dnsGatewayApi bool
+	var aclEnabled, obsEnabled, dnsEnabled, dnsGatewayApi, albEnabled bool
 	var obsInstanceId string
 	allowedCidrs := []string{}
 	dnsZones := []string{}
@@ -111,6 +142,14 @@ func buildSkeCluster(runtime *plugin.Runtime, cluster *ske.Cluster) (plugin.Reso
 				dnsZones = z
 			}
 		}
+		if alb, ok := ext.GetApplicationLoadBalancerOk(); ok {
+			albEnabled = alb.GetEnabled()
+		}
+	}
+
+	var auditEnabled bool
+	if audit, ok := cluster.GetAuditOk(); ok {
+		auditEnabled = audit.GetEnabled()
 	}
 
 	var idpEnabled bool
@@ -122,10 +161,15 @@ func buildSkeCluster(runtime *plugin.Runtime, cluster *ske.Cluster) (plugin.Reso
 		}
 	}
 
-	var networkId string
+	var networkId, controlPlaneScope string
 	if n, ok := cluster.GetNetworkOk(); ok {
 		networkId = n.GetId()
+		if cp, ok := n.GetControlPlaneOk(); ok && cp != nil {
+			controlPlaneScope = string(cp.GetAccessScope())
+		}
 	}
+
+	autoUpdateKubernetes, autoUpdateMachineImage := skeAutoUpdate(cluster)
 
 	args := map[string]*llx.RawData{
 		"name":                             llx.StringData(cluster.GetName()),
@@ -134,6 +178,8 @@ func buildSkeCluster(runtime *plugin.Runtime, cluster *ske.Cluster) (plugin.Reso
 		"kubernetesVersion":                llx.StringData(kVersion),
 		"hibernations":                     llx.ArrayData(hibernations, types.Dict),
 		"maintenance":                      llx.DictData(toDict(cluster.GetMaintenance())),
+		"autoUpdateKubernetes":             llx.BoolDataPtr(autoUpdateKubernetes),
+		"autoUpdateMachineImage":           llx.BoolDataPtr(autoUpdateMachineImage),
 		"extensions":                       llx.DictData(toDict(cluster.GetExtensions())),
 		"network":                          llx.DictData(toDict(cluster.GetNetwork())),
 		"creationTime":                     llx.TimeDataPtr(creationTime),
@@ -145,12 +191,17 @@ func buildSkeCluster(runtime *plugin.Runtime, cluster *ske.Cluster) (plugin.Reso
 		"egressAddressRanges":              strSliceData(egressRanges),
 		"podAddressRanges":                 strSliceData(podRanges),
 		"serviceAccountIssuer":             llx.StringData(saIssuer),
+		"auditEnabled":                     llx.BoolData(auditEnabled),
 		"idpEnabled":                       llx.BoolData(idpEnabled),
 		"idpType":                          llx.StringData(idpType),
 		"observabilityEnabled":             llx.BoolData(obsEnabled),
 		"dnsEnabled":                       llx.BoolData(dnsEnabled),
 		"dnsGatewayApi":                    llx.BoolData(dnsGatewayApi),
 		"dnsZones":                         strSliceData(dnsZones),
+		"applicationLoadBalancerEnabled":   llx.BoolData(albEnabled),
+		"labels":                           stringMapData(cluster.GetLabels()),
+		"controlPlaneAccessScope":          llx.StringData(controlPlaneScope),
+		"kubernetesExpirationDate":         llx.TimeDataPtr(k8sExpiration),
 	}
 	res, err := CreateResource(runtime, "stackit.ske.cluster", args)
 	if err != nil {
@@ -160,6 +211,7 @@ func buildSkeCluster(runtime *plugin.Runtime, cluster *ske.Cluster) (plugin.Reso
 		mc.rawNodepools = cluster.GetNodepools()
 		mc.cacheNetworkId = networkId
 		mc.cacheObservabilityInstanceId = obsInstanceId
+		mc.nodepoolExpiration = npExpiration
 	}
 	return res, nil
 }
@@ -213,7 +265,7 @@ func (r *mqlStackitSkeCluster) nodePools() ([]any, error) {
 		var volSize int64
 		var volType string
 		if v, ok := np.GetVolumeOk(); ok {
-			volSize = v.GetSize()
+			volSize = int64(v.GetSize())
 			volType = v.GetType()
 		}
 
@@ -232,24 +284,34 @@ func (r *mqlStackitSkeCluster) nodePools() ([]any, error) {
 			npVersion = k.GetVersion()
 		}
 
+		// End-of-support dates are reported once per pool on the cluster
+		// status, not on the pool object, so look them up by pool name.
+		var osExpiration, npK8sExpiration *time.Time
+		if exp, ok := r.nodepoolExpiration[np.GetName()]; ok {
+			osExpiration = timeOrNil(exp.GetOsExpirationDateOk())
+			npK8sExpiration = timeOrNil(exp.GetKubernetesExpirationDateOk())
+		}
+
 		args := map[string]*llx.RawData{
-			"name":                  llx.StringData(np.GetName()),
-			"clusterName":           llx.StringData(r.Name.Data),
-			"machineType":           llx.StringData(machineType),
-			"machineImage":          llx.StringData(imageName),
-			"machineImageVersion":   llx.StringData(imageVersion),
-			"volumeSize":            llx.IntData(volSize),
-			"volumeType":            llx.StringData(volType),
-			"minimum":               llx.IntData(np.GetMinimum()),
-			"maximum":               llx.IntData(np.GetMaximum()),
-			"maxSurge":              llx.IntData(np.GetMaxSurge()),
-			"maxUnavailable":        llx.IntData(np.GetMaxUnavailable()),
-			"availabilityZones":     strSliceData(np.GetAvailabilityZones()),
-			"cri":                   llx.StringData(cri),
-			"taints":                llx.ArrayData(taints, types.Dict),
-			"labels":                stringMapData(np.GetLabels()),
-			"allowSystemComponents": llx.BoolData(np.GetAllowSystemComponents()),
-			"kubernetesVersion":     llx.StringData(npVersion),
+			"name":                     llx.StringData(np.GetName()),
+			"clusterName":              llx.StringData(r.Name.Data),
+			"machineType":              llx.StringData(machineType),
+			"machineImage":             llx.StringData(imageName),
+			"machineImageVersion":      llx.StringData(imageVersion),
+			"volumeSize":               llx.IntData(volSize),
+			"volumeType":               llx.StringData(volType),
+			"minimum":                  llx.IntData(np.GetMinimum()),
+			"maximum":                  llx.IntData(np.GetMaximum()),
+			"maxSurge":                 llx.IntData(np.GetMaxSurge()),
+			"maxUnavailable":           llx.IntData(np.GetMaxUnavailable()),
+			"availabilityZones":        strSliceData(np.GetAvailabilityZones()),
+			"cri":                      llx.StringData(cri),
+			"taints":                   llx.ArrayData(taints, types.Dict),
+			"labels":                   stringMapData(np.GetLabels()),
+			"allowSystemComponents":    llx.BoolData(np.GetAllowSystemComponents()),
+			"kubernetesVersion":        llx.StringData(npVersion),
+			"osExpirationDate":         llx.TimeDataPtr(osExpiration),
+			"kubernetesExpirationDate": llx.TimeDataPtr(npK8sExpiration),
 		}
 		res, err := CreateResource(r.MqlRuntime, "stackit.ske.cluster.nodePool", args)
 		if err != nil {
@@ -294,7 +356,7 @@ func initStackitSkeCluster(runtime *plugin.Runtime, args map[string]*llx.RawData
 	if err != nil {
 		return nil, nil, err
 	}
-	cluster, err := client.GetClusterExecute(bgctx(), c.ProjectID(), c.Region(), name)
+	cluster, err := client.DefaultAPI.GetCluster(bgctx(), c.ProjectID(), c.Region(), name).Execute()
 	if err != nil {
 		return nil, nil, err
 	}

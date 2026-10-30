@@ -5,7 +5,7 @@ syntax = "proto3";
 
 package mondoo.sbom.v1;
 
-option go_package = "go.mondoo.com/mql/v13/sbom";
+option go_package = "go.mondoo.com/mql/sbom";
 
 // Status represents the possible states of processing or generation for a
 // Bill of Materials (BOM). Each status indicates a different stage or outcome
@@ -79,6 +79,24 @@ message Sbom {
   // 'error_message' is and optional field that describes the error from a
   // failed scan
   string error_message = 6;
+
+  // 'dependencies' is the package→package dependency graph: for each
+  // component, the components it directly depends on, both referenced by
+  // Package.bom_ref. Populated for ecosystems whose manifest resolves the
+  // dependency tree (npm, Cargo, …); empty for those that do not (e.g. Go
+  // go.mod's flat require list). This is the CycloneDX `dependencies` / SPDX
+  // `DEPENDS_ON` graph, which lets a consumer reason about which components a
+  // given component pulls in rather than just a flat inventory.
+  repeated Dependency dependencies = 7;
+}
+
+// Dependency is one node of the dependency graph: a component and the
+// components it directly depends on, all referenced by Package.bom_ref.
+message Dependency {
+  // 'ref' is the bom_ref of the dependent component.
+  string ref = 1;
+  // 'dependency_refs' are the bom_refs of the directly depended-on components.
+  repeated string dependency_refs = 2;
 }
 
 // Source describes the provider of the BOM data, which in this case is the
@@ -246,12 +264,169 @@ message Package {
   // SPDX license expression (or upstream-reported license string).
   // Empty when the backend has no source for it (e.g. Windows registry
   // — DisplayName carries no license field).
-  string license = 26;
+  //
+  // Deprecated: use 'licenses' (field 31) instead. One string cannot say
+  // whether a license was declared by the package or concluded from the files
+  // it ships, and those two disagreeing is the case a compliance document
+  // exists to surface. It cannot carry more than one license, a confidence, or
+  // the file a conclusion was read from either.
+  //
+  // Still read, and still the only source for most producers. Every renderer
+  // falls back to this field when 'licenses' is empty, so a producer that has
+  // not adopted the list renders exactly as it did before and nothing breaks on
+  // the version that introduces this marker.
+  //
+  // Note what is NOT enforced: nothing populates this field from 'licenses'. A
+  // producer that adopts the list is responsible for continuing to set this
+  // scalar to its first declared entry, or consumers still reading the scalar
+  // will silently see an empty license where one was determined. That is a
+  // convention, not a guarantee the model makes.
+  //
+  // The deprecation says which field new code should read, not that this one
+  // has stopped working. It will not be removed while unmigrated producers
+  // remain.
+  string license = 26 [deprecated = true];
   // Time the package was installed on this asset, RFC3339 format
   // (e.g. "2024-03-15T00:00:00Z"). Empty when the backend doesn't
   // surface install time (dpkg without log parsing, apk, pacman,
   // macOS).
   string install_date = 27;
+  // 'bom_ref' is a stable, document-internal identifier for this component
+  // (a CycloneDX bom-ref). Deterministic: the purl when present, else a
+  // synthesized id. It is the endpoint the dependency graph
+  // (Sbom.dependencies) references, and the value the CycloneDX/SPDX renderers
+  // use — so the rendered BOM is reproducible (previously a random UUID was
+  // minted per render).
+  string bom_ref = 28;
+  // 'scope' is the dependency scope: "prod" (production/runtime), "dev"
+  // (development/test-only, e.g. an npm devDependency or its closure), or empty
+  // when the source does not distinguish. Lets a consumer rank/handle a
+  // dev-only component differently from a production one.
+  string scope = 29;
+  // 'hashes' are the package's declared integrity digests (e.g. an npm
+  // dependency's Subresource-Integrity value). Populated for ecosystems whose
+  // manifest records them (npm today), empty otherwise. Rendered as CycloneDX
+  // `component.hashes` / SPDX package checksums — tamper-evidence.
+  repeated Hash hashes = 30;
+  // 'licenses' is what is known about this package's licensing, one entry per
+  // license, each carrying how it was learned. It supersedes the 'license'
+  // scalar above, which cannot express the distinction that matters most: what
+  // a package's own manifest *declares* is not always what its shipped files
+  // say. A package declaring MIT while shipping an AGPL-3.0-only license file
+  // is the case a compliance document must not flatten, and the scalar has no
+  // room for both values.
+  //
+  // The scalar is deprecated in favour of this field. A producer adopting this
+  // list should keep the scalar set to its first declared entry so consumers
+  // can migrate without a flag day — the renderers fall back to the scalar, but
+  // nothing populates it from here.
+  repeated License licenses = 31;
+  // 'copyright' holds the copyright statements found in the package's license
+  // and notice files. Attribution output needs these: no amount of license
+  // identification substitutes for knowing who to credit.
+  repeated string copyright = 32;
+  // 'supplier' is the entity that supplied the package, as SPDX and CycloneDX
+  // both model it (a name, optionally with an email in angle brackets).
+  string supplier = 33;
+  // 'identity_evidence' says how the package's identity was established when
+  // it was found by examining a file rather than read from a package
+  // database: which field was concluded, by what technique, and from what.
+  // Rendered as CycloneDX component.evidence.identity.
+  repeated IdentityEvidence identity_evidence = 34;
+  // 'signature' is the code signature of the package's file, for a binary on
+  // a platform that signs executables (macOS, Windows). Unset when the file
+  // was not checked, as on Linux.
+  CodeSignature signature = 35;
+}
+
+// IdentityEvidence is how one field of a package's identity was concluded,
+// in the terms of CycloneDX's evidence.identity.
+message IdentityEvidence {
+  // 'field' is the identity field concluded: "name", "version", "hash", ...
+  string field = 1;
+  // 'concluded_value' is the value the evidence supports.
+  string concluded_value = 2;
+  // 'technique' is the CycloneDX identity technique, such as
+  // "binary-analysis", "manifest-analysis" or "hash-comparison".
+  string technique = 3;
+  // 'confidence' is how sure the producer is, in (0,1].
+  double confidence = 4;
+  // 'value' is the evidence the technique read, such as the name of the
+  // metadata the version came from.
+  string value = 5;
+}
+
+// CodeSignature is a file's code signature as the platform verified it.
+message CodeSignature {
+  // 'status' is the verification result: "valid", "notSigned", "invalid",
+  // "untrusted", "adhoc" or "unknown".
+  string status = 1;
+  // 'signer_organization' is the organization in the subject of the signing
+  // certificate, empty when it names none.
+  string signer_organization = 2;
+  // 'signer_common_name' is the common name in the subject of the signing
+  // certificate.
+  string signer_common_name = 3;
+}
+
+// License is one license attributed to a package, and how that attribution was
+// arrived at.
+message License {
+  // Exactly one of 'spdx_id', 'expression' and 'name' is set, and which one it
+  // is says what kind of value this is. The distinction is not cosmetic:
+  // CycloneDX models the three mutually exclusively and rejects a document that
+  // puts an expression where an id belongs.
+  //
+  // 'spdx_id' is a bare SPDX identifier, e.g. "MIT".
+  string spdx_id = 1;
+  // 'expression' is a full SPDX expression, e.g. "MIT OR Apache-2.0".
+  string expression = 2;
+  // 'name' is a string that is neither — "BSD-like", "see LICENSE". Carrying it
+  // as a name is honest; forcing it into an id would be a claim the source does
+  // not support.
+  string name = 3;
+  // 'acquisition' says whether the package declared this license or it was
+  // concluded from the files it ships.
+  LicenseAcquisition acquisition = 4;
+  // 'confidence' is how sure the producer is, in (0,1], or 0 when no score was
+  // attached. A declared license is 1.0 — it is a statement, not a measurement.
+  // A license concluded by matching text carries the match's own score, so a
+  // consumer can tell a certainty from an inference rather than reading both as
+  // the same fact.
+  //
+  // 0 is the third reading, and it is not the same as 1.0: it means nobody
+  // measured this. An importer reading a format that carries no score leaves it
+  // there rather than promoting it, so a conclusion that was never scored is
+  // never mistaken for one that scored perfectly. Consumers should treat 0 as
+  // "unknown" and say nothing about it.
+  double confidence = 5;
+  // 'location' is the file this license was read from, relative to the scan
+  // root — the evidence behind a concluded license. Empty for a declared one,
+  // whose source is the manifest already identified by the package, and empty
+  // for a concluded one whose source did not record a file. It is a path, not
+  // prose: a producer holding a comment about how a conclusion was reached
+  // leaves this empty rather than putting the sentence here.
+  string location = 6;
+}
+
+// LicenseAcquisition is how a license came to be attributed to a package.
+enum LicenseAcquisition {
+  // The producer did not say.
+  LICENSE_ACQUISITION_UNSPECIFIED = 0;
+  // The package's own manifest or lockfile states this license.
+  LICENSE_ACQUISITION_DECLARED = 1;
+  // Read from the license files the package ships, which is the stronger
+  // evidence where the two disagree: the shipped text is the grant.
+  LICENSE_ACQUISITION_CONCLUDED = 2;
+}
+
+// Hash is one integrity digest of a package: an algorithm label and its
+// hex-encoded value.
+message Hash {
+  // 'alg' is the hash algorithm, CycloneDX spelling (e.g. "SHA-512", "SHA-1").
+  string alg = 1;
+  // 'value' is the lower-case hex-encoded digest.
+  string value = 2;
 }
 
 enum EvidenceType {

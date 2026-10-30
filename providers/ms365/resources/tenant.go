@@ -7,26 +7,31 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
+	betamodels "github.com/microsoftgraph/msgraph-beta-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/directory"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/organization"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/ms365/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/ms365/connection"
+	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/iox"
 )
 
 type mqlMicrosoftTenantInternal struct {
-	lock             sync.Mutex
-	realmDataFetched bool
+	lock              sync.Mutex
+	realmDataFetched  bool
+	subscriptionsOnce sync.Once
+	subscriptionsData []companySubscription
+	subscriptionsErr  error
 }
 
 type userRealmResponse struct {
@@ -147,11 +152,10 @@ func newMicrosoftTenant(runtime *plugin.Runtime, org models.Organizationable) (*
 		map[string]*llx.RawData{
 			"id":                                   llx.StringDataPtr(org.GetId()),
 			"assignedPlans":                        llx.DictData(assignedPlans),
-			"createdDateTime":                      llx.TimeDataPtr(org.GetCreatedDateTime()), // deprecated
 			"name":                                 llx.StringDataPtr(org.GetDisplayName()),
 			"verifiedDomains":                      llx.DictData(verifiedDomains),
 			"onPremisesSyncEnabled":                llx.BoolDataPtr(org.GetOnPremisesSyncEnabled()),
-			"createdAt":                            llx.TimeDataPtr(org.GetCreatedDateTime()),
+			"createdAt":                            graphTimeData(org.GetCreatedDateTime()),
 			"type":                                 llx.StringDataPtr(org.GetTenantType()),
 			"provisionedPlans":                     llx.DictData(provisionedPlans),
 			"technicalNotificationMails":           llx.ArrayData(convert.SliceAnyToInterface(org.GetTechnicalNotificationMails()), types.String),
@@ -210,28 +214,105 @@ func (a *mqlMicrosoftTenant) enabledServicePlans() ([]any, error) {
 }
 
 // https://learn.microsoft.com/en-us/entra/identity/users/licensing-service-plan-reference
+// getCompanySubscriptions fetches the tenant's commercial subscriptions once
+// and caches the result so subscriptions() and paidLicenses() share one call.
+func (a *mqlMicrosoftTenant) getCompanySubscriptions() ([]companySubscription, error) {
+	a.subscriptionsOnce.Do(func() {
+		conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+		graphClient, err := conn.GraphClient()
+		if err != nil {
+			a.subscriptionsErr = err
+			return
+		}
+		ctx := context.Background()
+		resp, err := graphClient.Directory().Subscriptions().Get(ctx, &directory.SubscriptionsRequestBuilderGetRequestConfiguration{})
+		if err != nil {
+			a.subscriptionsErr = transformError(err)
+			return
+		}
+		subs, err := iterate[models.CompanySubscriptionable](ctx, resp, graphClient.GetAdapter(), models.CreateCompanySubscriptionCollectionResponseFromDiscriminatorValue)
+		if err != nil {
+			a.subscriptionsErr = err
+			return
+		}
+
+		res := make([]companySubscription, 0, len(subs))
+		for _, sub := range subs {
+			res = append(res, newCompanySubscription(sub))
+		}
+		a.subscriptionsData = res
+	})
+	return a.subscriptionsData, a.subscriptionsErr
+}
+
 func (a *mqlMicrosoftTenant) subscriptions() ([]any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
-	graphClient, err := conn.GraphClient()
-	if err != nil {
-		return nil, err
-	}
-	ctx := context.Background()
-	resp, err := graphClient.Directory().Subscriptions().Get(ctx, &directory.SubscriptionsRequestBuilderGetRequestConfiguration{})
-	if err != nil {
-		return nil, transformError(err)
-	}
-	subs, err := iterate[models.CompanySubscriptionable](ctx, resp, graphClient.GetAdapter(), models.CreateCompanySubscriptionCollectionResponseFromDiscriminatorValue)
+	subs, err := a.getCompanySubscriptions()
 	if err != nil {
 		return nil, err
 	}
 
-	res := []any{}
+	res := make([]any, 0, len(subs))
 	for _, sub := range subs {
-		res = append(res, newCompanySubscription(sub))
+		res = append(res, sub)
 	}
 
 	return convert.JsonToDictSlice(res)
+}
+
+func (a *mqlMicrosoftTenant) paidLicenses() (int64, error) {
+	subs, err := a.getCompanySubscriptions()
+	if err != nil {
+		return 0, err
+	}
+	return sumPaidLicenses(subs), nil
+}
+
+// sumPaidLicenses totals the seats a tenant actually pays for, excluding
+// trials, subscriptions past their billing grace period, and free/self-service
+// plans.
+func sumPaidLicenses(subs []companySubscription) int64 {
+	var total int64
+	for _, sub := range subs {
+		if sub.IsTrial != nil && *sub.IsTrial {
+			continue
+		}
+		// Only active subscriptions are still billed. "Warning" is the
+		// post-expiry grace period (still live); Suspended/LockedOut/Deleted
+		// are past grace with the service off.
+		if sub.Status != nil && *sub.Status != "Enabled" && *sub.Status != "Warning" {
+			continue
+		}
+		// Free and self-service plans are not paid seats and report sentinel
+		// license counts (e.g. RIGHTSMANAGEMENT_ADHOC reports 1,000,000).
+		if sub.SkuPartNumber != nil {
+			if _, free := selfServiceSkuPartNumbers[*sub.SkuPartNumber]; free {
+				continue
+			}
+		}
+		if sub.TotalLicenses != nil {
+			total += int64(*sub.TotalLicenses)
+		}
+	}
+	return total
+}
+
+// selfServiceSkuPartNumbers are free/self-service/viral Microsoft plans that a
+// tenant does not pay per-seat for. They surface in the subscription list with
+// status Enabled and isTrial false, and report sentinel license counts (10,000
+// or 1,000,000), so they must be excluded from paidLicenses. This list is
+// best-effort; Microsoft adds freemium products over time, so it may need
+// extending as new ones surface.
+var selfServiceSkuPartNumbers = map[string]struct{}{
+	"RIGHTSMANAGEMENT_ADHOC":         {}, // Rights Management Adhoc
+	"WINDOWS_STORE":                  {}, // Windows Store for Business
+	"FLOW_FREE":                      {}, // Power Automate Free
+	"POWERAPPS_VIRAL":                {}, // Power Apps Plan 2 Trial (viral)
+	"POWER_BI_STANDARD":              {}, // Power BI (free)
+	"CCIBOTS_PRIVPREV_VIRAL":         {}, // Power Virtual Agents Viral Trial
+	"TEAMS_EXPLORATORY":              {}, // Microsoft Teams Exploratory
+	"STREAM":                         {}, // Microsoft Stream Trial
+	"SPZA_IW":                        {}, // App Connect IW
+	"PROJECT_MADEIRA_PREVIEW_IW_SKU": {}, // Dynamics 365 Business Central preview
 }
 
 func (a *mqlMicrosoft) tenantDomainName() (string, error) {
@@ -273,22 +354,19 @@ func (a *mqlMicrosoftTenant) settings() (*mqlMicrosoftTenantSettings, error) {
 	if err != nil {
 		return nil, transformError(err)
 	}
+	return a.settingsFrom(appsAndServicesConfig)
+}
 
-	settingsId := fmt.Sprintf("%s-settings", a.Id.Data)
-
+// settingsFrom builds the tenant settings from the admin appsAndServices
+// answer. An answer without settings reads null rather than as both switches
+// off: nothing was read, so nothing can be claimed about either.
+func (a *mqlMicrosoftTenant) settingsFrom(appsAndServicesConfig betamodels.AdminAppsAndServicesable) (*mqlMicrosoftTenantSettings, error) {
 	if appsAndServicesConfig == nil || appsAndServicesConfig.GetSettings() == nil {
-		mqlSettings, err := CreateResource(a.MqlRuntime, "microsoft.tenantSettings",
-			map[string]*llx.RawData{
-				"__id":                         llx.StringData(settingsId),
-				"isAppAndServicesTrialEnabled": llx.BoolData(false),
-				"isOfficeStoreEnabled":         llx.BoolData(false),
-			})
-		if err != nil {
-			return nil, err
-		}
-		return mqlSettings.(*mqlMicrosoftTenantSettings), nil
+		a.Settings.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 
+	settingsId := fmt.Sprintf("%s-settings", a.Id.Data)
 	mqlSettings, err := CreateResource(a.MqlRuntime, "microsoft.tenantSettings",
 		map[string]*llx.RawData{
 			"__id":                         llx.StringData(settingsId),
@@ -315,14 +393,17 @@ func (a *mqlMicrosoftTenant) formsSettings() (*mqlMicrosoftTenantFormsSettings, 
 		return nil, transformError(err)
 	}
 
-	if formsSetting == nil {
-		return nil, nil
-	}
+	return a.formsSettingsFrom(formsSetting)
+}
 
-	settings := formsSetting.GetSettings()
-	if settings == nil {
+// formsSettingsFrom builds the Forms settings from the admin forms answer. An
+// answer without settings reads null.
+func (a *mqlMicrosoftTenant) formsSettingsFrom(formsSetting betamodels.AdminFormsable) (*mqlMicrosoftTenantFormsSettings, error) {
+	if formsSetting == nil || formsSetting.GetSettings() == nil {
+		a.FormsSettings.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
+	settings := formsSetting.GetSettings()
 
 	formsSettingId := fmt.Sprintf("%s-forms-settings", a.Id.Data)
 
@@ -437,13 +518,23 @@ func (a *mqlMicrosoftTenant) fetchRealmData() error {
 func (a *mqlMicrosoftTenant) getUserRealmInfoForDomain(domainName string) (*userRealmResponse, error) {
 	url := fmt.Sprintf("https://login.microsoftonline.com/common/userrealm/%s?api-version=2.0", domainName)
 
-	resp, err := http.Get(url)
+	return queryUserRealmInfo(context.Background(), tenantRealmHTTPClient, url)
+}
+
+var tenantRealmHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
+func queryUserRealmInfo(ctx context.Context, client *http.Client, endpoint string) (*userRealmResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query userrealm endpoint: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := iox.ReadAllLimit(resp.Body, 1<<20)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}

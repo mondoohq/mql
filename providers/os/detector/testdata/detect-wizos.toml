@@ -1,0 +1,18 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "6.6.0"
+
+[files."/etc/os-release"]
+content = """
+ID=wizos
+ID_LIKE=alpine
+NAME="WizOS"
+PRETTY_NAME="WizOS"
+VERSION_ID="1.0"
+HOME_URL="https://www.wiz.io/wizos"
+"""

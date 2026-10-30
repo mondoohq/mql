@@ -1,0 +1,9 @@
+{
+  "Name": "bedrock",
+  "Version": "v1.4",
+  "Actions": [{"Name": "GetKnowledgeBase"}],
+  "Operations": [
+    {"Name": "GetKnowledgeBase", "AuthorizedActions": [{"Service": "bedrock", "Name": "GetKnowledgeBase"}]},
+    {"Name": "GetVpcConfiguration"}
+  ]
+}

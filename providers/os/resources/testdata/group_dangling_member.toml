@@ -1,0 +1,11 @@
+[commands."getent passwd"]
+stdout = """root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+alice:x:1001:1001::/home/alice:/bin/bash
+"""
+
+[files."/etc/group"]
+path = "/etc/group"
+content = """root:x:0:ldapadmin,alice
+daemon:x:1:
+"""

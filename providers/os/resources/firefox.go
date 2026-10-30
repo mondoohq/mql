@@ -5,14 +5,16 @@ package resources
 
 import (
 	"encoding/json"
+	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/os/connection/shared"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/types"
 )
 
 // firefoxBrowserConfig defines a Firefox-based browser's profile path configuration
@@ -28,8 +30,19 @@ var firefoxBrowserConfigs = map[string][]firefoxBrowserConfig{
 	"linux": {
 		// Standard Firefox variants (use Profiles subdirectory, depth 3)
 		{name: "Firefox", relPath: ".mozilla/firefox"},
+		// Firefox 147 and later create new profiles under $XDG_CONFIG_HOME
+		// (default ~/.config) instead of ~/.mozilla. Existing ~/.mozilla
+		// profiles and ESR releases stay where they are, so both are read.
+		{name: "Firefox", relPath: ".config/mozilla/firefox"},
 		{name: "Firefox Developer Edition", relPath: ".mozilla/firefox-dev"},
 		{name: "Firefox Nightly", relPath: ".mozilla/firefox-nightly"},
+		// Firefox packaged as a snap (the default on Ubuntu 22.04 and later) or
+		// a flatpak keeps its profiles inside the package's private home.
+		{name: "Firefox", relPath: "snap/firefox/common/.mozilla/firefox"},
+		// Flathub org.mozilla.firefox: current releases use the sandbox's
+		// XDG config dir, older ones the persisted ~/.mozilla.
+		{name: "Firefox", relPath: ".var/app/org.mozilla.firefox/config/mozilla/firefox"},
+		{name: "Firefox", relPath: ".var/app/org.mozilla.firefox/.mozilla/firefox"},
 		// Firefox-based browsers
 		{name: "LibreWolf", relPath: ".librewolf"},
 		{name: "Waterfox", relPath: ".waterfox"},
@@ -73,9 +86,51 @@ var firefoxBrowserConfigs = map[string][]firefoxBrowserConfig{
 	},
 }
 
-// firefoxExtensionsJSON represents the structure of Firefox's extensions.json file
+// firefoxExtensionsJSON holds the addons read out of one extensions.json,
+// together with the number of entries that could not be decoded. The count is
+// carried rather than folded into an error because one unreadable addon says
+// nothing about its neighbours, and a silently shorter list satisfies every
+// assertion made about it.
 type firefoxExtensionsJSON struct {
 	Addons []firefoxAddonEntry `json:"addons"`
+	// Set by readFirefoxExtensionsJSON as it decodes, never read from the file.
+	Unreadable int `json:"-"`
+}
+
+// firefoxFlexInt is an int that also decodes from a quoted number.
+//
+// Firefox stores applyBackgroundUpdates as whatever the addon manager last
+// wrote: current entries use a JSON number, while older and migrated ones use a
+// quoted digit. Declaring the field a plain int made a single quoted value fail
+// the decode of the entire file, so one addon cost a profile every addon it had
+// (#10906).
+type firefoxFlexInt int
+
+func (f *firefoxFlexInt) UnmarshalJSON(b []byte) error {
+	// The common case, and also null, which decodes into an int as a no-op and
+	// so leaves the zero value that an absent setting should read as.
+	var n int
+	if err := json.Unmarshal(b, &n); err == nil {
+		*f = firefoxFlexInt(n)
+		return nil
+	}
+
+	// Older and migrated entries quote the number. Unmarshal the quoted
+	// contents as a number in turn, so the range check and the overflow error
+	// are the same ones a bare number gets.
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	if strings.TrimSpace(s) == "" {
+		*f = 0
+		return nil
+	}
+	if err := json.Unmarshal([]byte(s), &n); err != nil {
+		return err
+	}
+	*f = firefoxFlexInt(n)
+	return nil
 }
 
 // firefoxAddonEntry represents a single addon entry in extensions.json
@@ -96,8 +151,8 @@ type firefoxAddonEntry struct {
 	DefaultLocale          *firefoxLocale      `json:"defaultLocale"`
 	Location               string              `json:"location"`
 	Loader                 *string             `json:"loader"`
-	ApplyBackgroundUpdates int                 `json:"applyBackgroundUpdates"`
-	Permissions            *firefoxPermissions `json:"permissions"`
+	ApplyBackgroundUpdates firefoxFlexInt      `json:"applyBackgroundUpdates"`
+	UserPermissions        *firefoxPermissions `json:"userPermissions"`
 }
 
 // firefoxLocale represents localized addon information
@@ -107,7 +162,11 @@ type firefoxLocale struct {
 	Creator     string `json:"creator"`
 }
 
-// firefoxPermissions represents the permissions object in Firefox extensions.json
+// firefoxPermissions represents the userPermissions object in Firefox
+// extensions.json: the API permissions and host origins the addon was actually
+// granted. Firefox has never spelled this key "permissions" on an addon entry,
+// and the neighbouring optionalPermissions/requestedPermissions are a different
+// question (what the addon may ask for later, not what it holds).
 type firefoxPermissions struct {
 	Permissions []string `json:"permissions"`
 	Origins     []string `json:"origins"`
@@ -124,6 +183,28 @@ func (f *mqlFirefox) id() (string, error) {
 	return "firefox", nil
 }
 
+// mqlFirefoxInternal carries the count of addon entries the decoder skipped
+// and of profiles the scan was refused, which is known only once addons() has
+// walked every profile. unreadableAddons
+// forces that walk and then reads it.
+type mqlFirefoxInternal struct {
+	unreadableAddons int
+}
+
+func (f *mqlFirefox) unreadableAddons() (int64, error) {
+	// The count is a by-product of the scan, so make sure the scan has run.
+	// GetAddons memoizes, so this costs nothing when addons was already read.
+	addons := f.GetAddons()
+	if addons.Error != nil {
+		return 0, addons.Error
+	}
+	return int64(f.unreadableAddonsCount()), nil
+}
+
+func (f *mqlFirefox) unreadableAddonsCount() int {
+	return f.mqlFirefoxInternal.unreadableAddons
+}
+
 func (f *mqlFirefox) addons() ([]any, error) {
 	conn := f.MqlRuntime.Connection.(shared.Connection)
 	pf := conn.Asset().Platform
@@ -131,7 +212,7 @@ func (f *mqlFirefox) addons() ([]any, error) {
 		return nil, nil
 	}
 
-	platformKey := getFirefoxPlatformKey(pf)
+	platformKey := getPlatformKey(pf)
 	if platformKey == "" {
 		log.Debug().Str("platform", pf.Name).Msg("unsupported platform for Firefox addon detection")
 		return []any{}, nil
@@ -141,51 +222,48 @@ func (f *mqlFirefox) addons() ([]any, error) {
 	if !ok {
 		return []any{}, nil
 	}
+	windows := platformKey == "windows"
 
-	// Get list of users to find their home directories
-	usersResource, err := CreateResource(f.MqlRuntime, "users", map[string]*llx.RawData{})
+	// Enumerate all users so addons are discovered for every account.
+	users, err := targetUserHomes(f.MqlRuntime)
 	if err != nil {
-		log.Debug().Err(err).Msg("could not get users list")
-		return []any{}, nil
-	}
-	users := usersResource.(*mqlUsers)
-	userList := users.GetList()
-	if userList.Error != nil {
-		log.Debug().Err(userList.Error).Msg("could not retrieve users list")
-		return []any{}, nil
+		return nil, err
 	}
 
 	addons := make([]any, 0, 32) // Pre-allocate with reasonable capacity
 	seen := make(map[string]bool)
+	unreadable := 0
 
 	fs := conn.FileSystem()
 	afs := &afero.Afero{Fs: fs}
 
-	log.Debug().Str("platform", platformKey).Int("userCount", len(userList.Data)).Msg("searching for Firefox addons")
+	log.Debug().Str("platform", platformKey).Int("userCount", len(users)).Msg("searching for Firefox addons")
 
 	// Iterate through each user's home directory
-	for _, u := range userList.Data {
-		user := u.(*mqlUser)
-		home := user.GetHome()
-		if home.Error != nil || home.Data == "" {
-			continue
-		}
-
-		// Skip system users (no valid home or special paths)
-		homeDir := home.Data
-		if !isValidFirefoxUserHome(homeDir, platformKey) {
-			continue
-		}
-
-		// Default to -1 to avoid false association with root (uid 0)
-		uid := int64(-1)
-		if uidVal := user.GetUid(); uidVal.Error == nil {
-			uid = uidVal.Data
-		}
+	for _, u := range users {
+		homeDir := u.home
+		uid := u.uid
+		// A home the scan may not enter refuses every browser directory in
+		// it; it counts once, as one user whose profiles could not be read.
+		homeDenied := false
 
 		// Check each browser for this user
 		for _, browserCfg := range configs {
 			browserDir := filepath.Join(homeDir, browserCfg.relPath)
+
+			// Skip browsers this user doesn't have installed. A recursive search
+			// is expensive on Windows, where files.find has no native backend and
+			// each call spawns a PowerShell process, so the vast majority of
+			// (user x browser) combinations would pay a process start-up just to
+			// learn the directory is absent.
+			// See https://github.com/mondoohq/mql/issues/9104
+			exists, denied := firefoxBrowserDir(afs, browserDir)
+			if denied {
+				homeDenied = true
+			}
+			if !exists {
+				continue
+			}
 
 			// Use files.find to efficiently search for extensions.json files
 			// Standard Firefox: BrowserDir/Profiles/profile_name/extensions.json (depth 3)
@@ -211,15 +289,18 @@ func (f *mqlFirefox) addons() ([]any, error) {
 				continue
 			}
 
-			for _, file := range fileList.Data {
+			// Profiles registered with an absolute path live outside browserDir.
+			profileFiles := append(append([]any{}, fileList.Data...), firefoxAbsoluteProfileFiles(f.MqlRuntime, afs, browserDir, fileList.Data)...)
+			for _, file := range profileFiles {
 				f := file.(*mqlFile)
 				extensionsPath := f.GetPath()
 				if extensionsPath.Error != nil {
 					continue
 				}
 
-				// Extract profile name from path
-				profileName := filepath.Base(filepath.Dir(extensionsPath.Data))
+				// The profile is the directory holding extensions.json.
+				profileDir := targetPathDir(extensionsPath.Data, windows)
+				profileName := targetPathBase(profileDir, windows)
 
 				log.Debug().
 					Str("browser", browserCfg.name).
@@ -231,8 +312,12 @@ func (f *mqlFirefox) addons() ([]any, error) {
 				extensionsData, err := readFirefoxExtensionsJSON(afs, extensionsPath.Data)
 				if err != nil {
 					log.Debug().Err(err).Str("path", extensionsPath.Data).Msg("could not read extensions.json")
+					if errors.Is(err, os.ErrPermission) {
+						unreadable++
+					}
 					continue
 				}
+				unreadable += extensionsData.Unreadable
 
 				for _, addon := range extensionsData.Addons {
 					// Skip built-in/system addons that users typically don't manage
@@ -241,12 +326,7 @@ func (f *mqlFirefox) addons() ([]any, error) {
 					}
 
 					// Create unique key including user and browser to avoid deduplication across users
-					userName := user.GetName()
-					userNameStr := ""
-					if userName.Error == nil {
-						userNameStr = userName.Data
-					}
-					uniqueKey := userNameStr + "|" + browserCfg.name + "|" + profileName + "|" + addon.ID
+					uniqueKey := firefoxAddonKey(u.name, browserCfg.name, profileDir, addon.ID)
 					if seen[uniqueKey] {
 						continue
 					}
@@ -277,8 +357,8 @@ func (f *mqlFirefox) addons() ([]any, error) {
 
 					// Merge permissions and origins
 					var perms []any
-					if addon.Permissions != nil {
-						merged := firefoxMergeStringSlices(addon.Permissions.Permissions, addon.Permissions.Origins)
+					if addon.UserPermissions != nil {
+						merged := firefoxMergeStringSlices(addon.UserPermissions.Permissions, addon.UserPermissions.Origins)
 						perms = make([]any, len(merged))
 						for i, v := range merged {
 							perms[i] = v
@@ -321,24 +401,79 @@ func (f *mqlFirefox) addons() ([]any, error) {
 				}
 			}
 		}
+		if homeDenied {
+			unreadable++
+		}
+	}
+
+	f.mqlFirefoxInternal.unreadableAddons = unreadable
+	if unreadable > 0 {
+		log.Warn().Int("count", unreadable).Msg("some Firefox addon records or profiles could not be read, addons is an incomplete inventory")
 	}
 
 	return addons, nil
 }
 
-// readFirefoxExtensionsJSON reads and parses a Firefox extensions.json file
+// firefoxBrowserDir reports whether a browser's profile directory is present.
+// A non-directory or an absent path is not a browser. A path the scan is not
+// allowed to look at is reported as denied: it may hold profiles, and their
+// addons are missing from the list. Other errors count as absent so one odd
+// path does not fail the whole resource.
+func firefoxBrowserDir(afs *afero.Afero, dir string) (exists bool, denied bool) {
+	exists, err := afs.DirExists(dir)
+	if err != nil {
+		log.Debug().Err(err).Str("path", dir).Msg("could not check browser directory")
+		return false, errors.Is(err, os.ErrPermission)
+	}
+	if !exists {
+		return false, false
+	}
+	// Firefox creates the directory 0700. Another user's can be found when
+	// its parent is traversable but not listed, and the profile search below
+	// it then finds nothing rather than failing.
+	if _, err := afs.ReadDir(dir); err != nil && errors.Is(err, os.ErrPermission) {
+		return false, true
+	}
+	return true, false
+}
+
+// readFirefoxExtensionsJSON reads one Firefox extensions.json.
+//
+// The addon array is decoded entry by entry so that an addon carrying a value
+// this struct cannot represent is skipped and counted instead of discarding the
+// file. Decoding the array in one call meant any single unexpected value
+// returned an error for the whole profile, and the caller's log-and-continue
+// then reported the profile as having no addons at all.
+//
+// A file that is not JSON, or whose addons key is not an array, is still an
+// error: that is a profile we could not read, not a profile with no addons.
 func readFirefoxExtensionsJSON(afs *afero.Afero, path string) (*firefoxExtensionsJSON, error) {
 	data, err := afs.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	var extensions firefoxExtensionsJSON
-	if err := json.Unmarshal(data, &extensions); err != nil {
+	var envelope struct {
+		Addons []json.RawMessage `json:"addons"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
 		return nil, err
 	}
 
-	return &extensions, nil
+	extensions := &firefoxExtensionsJSON{
+		Addons: make([]firefoxAddonEntry, 0, len(envelope.Addons)),
+	}
+	for _, raw := range envelope.Addons {
+		var addon firefoxAddonEntry
+		if err := json.Unmarshal(raw, &addon); err != nil {
+			extensions.Unreadable++
+			log.Debug().Err(err).Str("path", path).Msg("skipping an addon entry that could not be decoded")
+			continue
+		}
+		extensions.Addons = append(extensions.Addons, addon)
+	}
+
+	return extensions, nil
 }
 
 // isFirefoxSystemAddon checks if an addon is a built-in/system addon
@@ -357,52 +492,6 @@ func isFirefoxSystemAddon(addon firefoxAddonEntry) bool {
 	}
 
 	return false
-}
-
-// getFirefoxPlatformKey returns the platform key for Firefox browser configs lookup
-func getFirefoxPlatformKey(pf interface{ IsFamily(string) bool }) string {
-	switch {
-	case pf.IsFamily("linux"):
-		return "linux"
-	case pf.IsFamily("darwin"):
-		return "darwin"
-	case pf.IsFamily("windows"):
-		return "windows"
-	default:
-		return ""
-	}
-}
-
-// isValidFirefoxUserHome checks if a home directory is a valid user home (not a system account)
-func isValidFirefoxUserHome(homeDir string, platform string) bool {
-	if homeDir == "" {
-		return false
-	}
-
-	switch platform {
-	case "linux":
-		// Valid homes: /home/*, /root
-		return strings.HasPrefix(homeDir, "/home/") || homeDir == "/root"
-	case "darwin":
-		// Valid homes: /Users/* (excluding /Users/Shared)
-		return strings.HasPrefix(homeDir, "/Users/") && homeDir != "/Users/Shared"
-	case "windows":
-		// Valid homes: C:\Users\* (excluding system accounts)
-		lowerHome := strings.ToLower(homeDir)
-		if !strings.HasPrefix(lowerHome, "c:\\users\\") && !strings.HasPrefix(lowerHome, "c:/users/") {
-			return false
-		}
-		// Exclude known system accounts
-		excludedUsers := []string{"default", "public", "all users", "default user"}
-		for _, excluded := range excludedUsers {
-			if strings.Contains(lowerHome, "\\"+excluded) || strings.Contains(lowerHome, "/"+excluded) {
-				return false
-			}
-		}
-		return true
-	default:
-		return false
-	}
 }
 
 // firefoxMergeStringSlices merges two string slices, skipping empty ones

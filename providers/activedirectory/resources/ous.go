@@ -8,12 +8,12 @@ import (
 	"sort"
 
 	"github.com/go-ldap/ldap/v3"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/activedirectory/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/activedirectory/connection"
 )
 
-func (a *mqlActivedirectory) organizationalUnits() ([]interface{}, error) {
+func (a *mqlActivedirectory) organizationalUnits() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.ActiveDirectoryConnection)
 	baseDN := conn.BaseDN()
 
@@ -37,7 +37,7 @@ func (a *mqlActivedirectory) organizationalUnits() ([]interface{}, error) {
 		return nil, fmt.Errorf("failed to query organizational units: %w", err)
 	}
 
-	res := make([]interface{}, 0, len(entries))
+	res := make([]any, 0, len(entries))
 	for _, entry := range entries {
 		dn := connection.GetStringAttr(entry, "distinguishedName")
 		name := connection.GetStringAttr(entry, "name")
@@ -71,11 +71,11 @@ func (a *mqlActivedirectory) organizationalUnits() ([]interface{}, error) {
 
 // gpLinksToResources converts parsed gpLinkEntry values into
 // activedirectory.gpoLink MQL resources.
-func gpLinksToResources(runtime *plugin.Runtime, scopeDN string, entries []gpLinkEntry) ([]interface{}, error) {
+func gpLinksToResources(runtime *plugin.Runtime, scopeDN string, entries []gpLinkEntry) ([]any, error) {
 	if len(entries) == 0 {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
-	res := make([]interface{}, 0, len(entries))
+	res := make([]any, 0, len(entries))
 	for _, e := range entries {
 		id := fmt.Sprintf("%s|%s/%d", scopeDN, e.rawDN, e.order)
 		resource, err := CreateResource(runtime, "activedirectory.gpoLink",
@@ -94,7 +94,7 @@ func gpLinksToResources(runtime *plugin.Runtime, scopeDN string, entries []gpLin
 	return res, nil
 }
 
-func (a *mqlActivedirectoryOu) linkedGpos() ([]interface{}, error) {
+func (a *mqlActivedirectoryOu) linkedGpos() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.ActiveDirectoryConnection)
 	dn := a.DistinguishedName.Data
 
@@ -112,7 +112,7 @@ func (a *mqlActivedirectoryOu) linkedGpos() ([]interface{}, error) {
 	}
 
 	if len(entries) == 0 {
-		return []interface{}{}, nil
+		return []any{}, nil
 	}
 
 	raw := connection.GetStringAttr(entries[0], "gPLink")

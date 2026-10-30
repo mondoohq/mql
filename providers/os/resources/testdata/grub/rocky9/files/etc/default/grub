@@ -1,0 +1,8 @@
+GRUB_DEFAULT=saved
+GRUB_CMDLINE_LINUX_DEFAULT="console=ttyS0,115200n8 no_timer_check crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M net.ifnames=0 nvme_core.io_timeout=4294967295 nvme_core.max_retries=10"
+GRUB_ENABLE_BLSCFG=true
+GRUB_GFXMODE=auto
+GRUB_TERMINAL_INPUT="console"
+GRUB_TERMINAL_OUTPUT="gfxterm"
+GRUB_TIMEOUT=1
+GRUB_DISABLE_OS_PROBER=true

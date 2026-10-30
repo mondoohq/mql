@@ -14,6 +14,13 @@
       },
       "3": {
         "ref": "fmt/10.2.1@user/stable#ghi789"
+      },
+      "4": {
+        "ref": "ninja/1.11.1",
+        "context": "build"
+      },
+      "5": {
+        "ref": "mylib/2.0@acme/stable"
       }
     }
   }

@@ -9,10 +9,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/cockroachdb/errors"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
-	mqltypes "go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/aws/connection"
+	mqltypes "go.mondoo.com/mql/types"
 )
 
 // -- Origin access controls -------------------------------------------------
@@ -70,6 +70,34 @@ func (a *mqlAwsCloudfrontKeyValueStore) id() (string, error) {
 	return a.Id.Data, nil
 }
 
+// comment reads the store's comment. ListKeyValueStores leaves it out, so
+// unless the list carried one it takes a DescribeKeyValueStore call.
+func (a *mqlAwsCloudfrontKeyValueStore) comment() (string, error) {
+	if a.cacheComment != nil {
+		return *a.cacheComment, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	name := a.Name.Data
+	resp, err := conn.Cloudfront("").DescribeKeyValueStore(context.Background(), &cloudfront.DescribeKeyValueStoreInput{Name: &name})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			if plugin.StructuredErrors() {
+				return "", llx.Forbidden(err, llx.WithPermissions("cloudfront:DescribeKeyValueStore"))
+			}
+			// Before this field made its own call it never failed; keep a
+			// refusal null until structured errors are on.
+			a.Comment.State = plugin.StateIsSet | plugin.StateIsNull
+			return "", nil
+		}
+		return "", err
+	}
+	if resp.KeyValueStore == nil || resp.KeyValueStore.Comment == nil {
+		a.Comment.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *resp.KeyValueStore.Comment, nil
+}
+
 func (a *mqlAwsCloudfront) keyValueStores() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	svc := conn.Cloudfront("")
@@ -94,7 +122,6 @@ func (a *mqlAwsCloudfront) keyValueStores() ([]any, error) {
 			args := map[string]*llx.RawData{
 				"id":               llx.StringDataPtr(item.Id),
 				"name":             llx.StringDataPtr(item.Name),
-				"comment":          llx.StringDataPtr(item.Comment),
 				"status":           llx.StringDataPtr(item.Status),
 				"arn":              llx.StringDataPtr(item.ARN),
 				"lastModifiedTime": llx.TimeDataPtr(item.LastModifiedTime),
@@ -103,6 +130,7 @@ func (a *mqlAwsCloudfront) keyValueStores() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
+			mqlResource.(*mqlAwsCloudfrontKeyValueStore).cacheComment = item.Comment
 			res = append(res, mqlResource)
 		}
 		if resp.KeyValueStoreList.NextMarker == nil {
@@ -188,7 +216,10 @@ func initAwsCloudfrontPublicKey(runtime *plugin.Runtime, args map[string]*llx.Ra
 			return args, pk, nil
 		}
 	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, errors.Errorf("aws.cloudfront.publicKey with id %q not found", idVal)
 }
 
 // -- Key groups -------------------------------------------------------------

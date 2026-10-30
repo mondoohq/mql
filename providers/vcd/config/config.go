@@ -4,14 +4,20 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/vcd/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/vcd/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "vcd",
-	ID:              "go.mondoo.com/cnquery/v9/providers/vcd",
-	Version:         "13.0.19",
+	Name: "vcd",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	Root:    "vcd",
+	ID:      "go.mondoo.com/mql/providers/vcd",
+	Version: "14.0.7",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.ConnectionType},
 	Platforms:       provider.Platforms,
 	Connectors: []plugin.Connector{

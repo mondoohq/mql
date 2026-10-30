@@ -9,7 +9,7 @@ import (
 
 	"cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
 	"github.com/stretchr/testify/assert"
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
 
@@ -123,4 +123,20 @@ func TestSubscriptionStateToString(t *testing.T) {
 			assert.Equal(t, tc.want, subscriptionStateToString(tc.state))
 		})
 	}
+}
+
+// TestPubsubTopicRefPathParsing covers the project + short-name extraction that
+// resolvePubsubTopicRef relies on to resolve a typed pubsub topic from a full
+// "projects/{project}/topics/{topic}" reference. The cross-reference bug it
+// guards against passed the full path as the topic name and dropped the
+// project, so the topic init (which matches on the short name and needs the
+// project to build its parent service) never resolved the reference.
+func TestPubsubTopicRefPathParsing(t *testing.T) {
+	const ref = "projects/my-project/topics/my-topic"
+	assert.Equal(t, "my-project", parseProjectFromPath(ref))
+	assert.Equal(t, "my-topic", parseResourceName(ref))
+
+	// a bare topic name carries no project segment
+	assert.Equal(t, "", parseProjectFromPath("my-topic"))
+	assert.Equal(t, "my-topic", parseResourceName("my-topic"))
 }

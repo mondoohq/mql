@@ -4,14 +4,15 @@
 package discovery
 
 import (
+	"fmt"
 	"maps"
 
-	"go.mondoo.com/mql/v13/cli/config"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers"
-	inventory "go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
+	"go.mondoo.com/mql/cli/config"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers"
+	inventory "go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/upstream"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -28,9 +29,8 @@ type AssetWithError struct {
 // mergeConnectionFeatures unions the process-global CLI features
 // (cli/config.Features, populated from local config/MONDOO_FEATURES) with any
 // caller-supplied features (e.g. platform/server-activated ones). Both must
-// reach the provider connection: connection-level features like
-// TerraformResolveVars are read at Connect time, and the global alone never
-// carries server-activated features.
+// reach the provider connection: connection-level features are read at Connect
+// time, and the global alone never carries server-activated features.
 func mergeConnectionFeatures(extra []byte) []byte {
 	out := make([]byte, 0, len(config.Features)+len(extra))
 	seen := make(map[byte]bool, len(config.Features)+len(extra))
@@ -79,6 +79,13 @@ func createRuntimeForAsset(asset *inventory.Asset, upstream *upstream.UpstreamCo
 		Upstream: upstream,
 	})
 	if err != nil {
+		// Keep the provider's own message -- it says *why* this is not a match,
+		// which is the only useful half -- and add the sentinel callers branch
+		// on. Signalling it as a nil runtime is not available: callers read
+		// that as ErrDuplicateAsset.
+		if plugin.IsNoMatchError(err) {
+			err = fmt.Errorf("%s: %w", err.Error(), ErrNoMatch)
+		}
 		return nil, err
 	}
 

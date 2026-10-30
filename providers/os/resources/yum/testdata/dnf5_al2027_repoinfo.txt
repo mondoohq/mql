@@ -1,0 +1,55 @@
+Repo ID              : amazonlinux
+Name                 : Amazon Linux 2027 repository
+Status               : enabled
+Priority             : 10
+Cost                 : 1000
+Type                 : available
+Metadata expire      : 172800 seconds (last: 2026-09-28 05:10:51)
+Skip if unavailable  : true
+Config file          : /etc/yum.repos.d/amazonlinux.repo
+URLs                 : 
+  Base URL           : https://al2027-repos-us-west-2-7f9a3b4e.s3.dualstack.us-west-2.amazonaws.com/core/guids/7eee71ed659b0d0571aafb3d6843efa5ae236105cf9c7cdfaf72a4360869078e/x86_64/ (1 more)
+  Mirrorlist         : https://al2027-repos-us-west-2-7f9a3b4e.s3.dualstack.us-west-2.amazonaws.com/core/mirrors/2027.0.20260914/x86_64/mirror.list
+OpenPGP              : 
+  Keys               : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-amazon-linux-2027
+  Verify repodata    : false
+  Verify packages    : true
+Repodata info        : 
+  Available packages : 7667
+  Total packages     : 7667
+  Size               : 12.6 GiB
+  Revision           : 1789596040
+  Updated            : 2026-09-16 22:00:40
+
+Repo ID             : amazonlinux-debuginfo
+Name                : Amazon Linux 2027 repository - Debug
+Status              : disabled
+Priority            : 99
+Cost                : 1000
+Type                : available
+Metadata expire     : 21600 seconds (last: unknown)
+Skip if unavailable : true
+Config file         : /etc/yum.repos.d/amazonlinux.repo
+URLs                : 
+  Mirrorlist        : https://al2027-repos-us-west-2-7f9a3b4e.s3.dualstack.us-west-2.amazonaws.com/core/mirrors/2027.0.20260914/debuginfo/x86_64/mirror.list
+OpenPGP             : 
+  Keys              : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-amazon-linux-2027
+  Verify repodata   : false
+  Verify packages   : true
+
+Repo ID             : amazonlinux-source
+Name                : Amazon Linux 2027 repository - Source packages
+Status              : disabled
+Priority            : 99
+Cost                : 1000
+Type                : available
+Metadata expire     : 21600 seconds (last: unknown)
+Skip if unavailable : true
+Config file         : /etc/yum.repos.d/amazonlinux.repo
+URLs                : 
+  Mirrorlist        : https://al2027-repos-us-west-2-7f9a3b4e.s3.dualstack.us-west-2.amazonaws.com/core/mirrors/2027.0.20260914/SRPMS/mirror.list
+OpenPGP             : 
+  Keys              : file:///etc/pki/rpm-gpg/RPM-GPG-KEY-amazon-linux-2027
+  Verify repodata   : false
+  Verify packages   : true
+

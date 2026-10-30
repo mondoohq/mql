@@ -438,3 +438,68 @@ global
 	require.Len(t, cfg.Sections, 1)
 	require.GreaterOrEqual(t, len(cfg.Errors), 1)
 }
+
+func TestParsePeerLines_ClassicPeerAndServer(t *testing.T) {
+	// The classic `peer <name> <addr>:<port>` form is still accepted by
+	// HAProxy 1.6 through 3.x; `server` lines are the 2.0+ form.
+	src := `
+peers classicpeers
+	peer p1 127.0.0.1:10001
+	peer p2 192.0.2.11:10001
+
+peers modern
+	bind 127.0.0.1:10002
+	server local
+	server remote 192.0.2.12:10002
+`
+	cfg, err := Parse("test.cfg", strings.NewReader(src))
+	require.NoError(t, err)
+	require.Len(t, cfg.Sections, 2)
+
+	classic := ParsePeerLines(cfg.Sections[0].Directives)
+	require.Len(t, classic, 2)
+	assert.Equal(t, "p1", classic[0].Name)
+	assert.Equal(t, "127.0.0.1", classic[0].Address)
+	assert.Equal(t, int64(10001), classic[0].Port)
+	assert.Equal(t, "p2", classic[1].Name)
+	assert.Equal(t, "192.0.2.11", classic[1].Address)
+
+	modern := ParsePeerLines(cfg.Sections[1].Directives)
+	require.Len(t, modern, 2)
+	assert.Equal(t, "local", modern[0].Name)
+	assert.Equal(t, "", modern[0].Address)
+	assert.Equal(t, "remote", modern[1].Name)
+	assert.Equal(t, int64(10002), modern[1].Port)
+}
+
+// option httpchk defaults to OPTIONS / HTTP/1.0, and haproxy 2.2+'s
+// http-check send overrides the method, URI and version it names.
+func TestParseHTTPCheckDefaultsAndSend(t *testing.T) {
+	parse := func(body string) HTTPCheck {
+		cfg, err := Parse("test.cfg", strings.NewReader("backend app\n"+body))
+		require.NoError(t, err)
+		return ParseHTTPCheck(cfg.Sections[0].Directives)
+	}
+	for _, tt := range []struct {
+		body             string
+		method, uri, ver string
+	}{
+		{"    option httpchk\n", "OPTIONS", "/", "HTTP/1.0"},
+		{"    option httpchk /health\n", "OPTIONS", "/health", "HTTP/1.0"},
+		{"    option httpchk GET /health\n", "GET", "/health", "HTTP/1.0"},
+		{"    option httpchk\n    http-check send meth GET uri /ping\n    http-check expect status 204\n", "GET", "/ping", "HTTP/1.0"},
+		{"    option httpchk\n    http-check send meth HEAD uri /ready ver HTTP/1.1 hdr Host www.example.com\n", "HEAD", "/ready", "HTTP/1.1"},
+		{"    option httpchk\n    http-check send uri-lf /%[env(P)] body-lf x\n", "OPTIONS", "/%[env(P)]", "HTTP/1.0"},
+		{"    option httpchk POST /x HTTP/1.1\n    http-check send ver HTTP/2\n", "POST", "/x", "HTTP/2"},
+	} {
+		hc := parse(tt.body)
+		assert.Equal(t, tt.method, hc.Method, tt.body)
+		assert.Equal(t, tt.uri, hc.URI, tt.body)
+		assert.Equal(t, tt.ver, hc.Version, tt.body)
+	}
+
+	// no HTTP check configured
+	hc := parse("    server s1 10.0.0.1:80 check\n")
+	assert.Equal(t, "", hc.Method)
+	assert.Equal(t, "", hc.URI)
+}

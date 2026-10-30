@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"go.mondoo.com/mql/v13/logger"
+	"go.mondoo.com/mql/logger"
 )
 
 func clearEnvLevel(t *testing.T) {

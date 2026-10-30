@@ -1,0 +1,12 @@
+[
+ {
+  ".id": "*1",
+  "dont-require-permissions": "false",
+  "invalid": "false",
+  "name": "lab-backup",
+  "owner": "admin",
+  "policy": "read,write,policy,test",
+  "run-count": "0",
+  "source": "/system backup save name=auto"
+ }
+]

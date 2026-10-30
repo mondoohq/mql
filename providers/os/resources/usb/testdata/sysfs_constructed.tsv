@@ -1,0 +1,71 @@
+# Constructed fixture, not captured from a host: the layout of a physical
+# machine with a USB 3 root hub, an external hub on port 1, a mass-storage
+# stick behind it, a low-speed mouse, and a fixed internal camera. Entry
+# names and attribute formats follow the kernel's sysfs ABI
+# (Documentation/ABI/stable/sysfs-bus-usb, testing/sysfs-bus-usb).
+usb3/idVendor	1d6b
+usb3/idProduct	0003
+usb3/manufacturer	Linux 6.8.0-45-generic xhci-hcd
+usb3/product	xHCI Host Controller
+usb3/serial	0000:00:14.0
+usb3/speed	5000
+usb3/bcdDevice	0608
+usb3/bDeviceClass	09
+usb3/bDeviceSubClass	00
+usb3/bDeviceProtocol	03
+usb3/busnum	3
+usb3/devnum	1
+usb3/removable	unknown
+3-0:1.0/bInterfaceClass	09
+3-1/idVendor	05e3
+3-1/idProduct	0626
+3-1/manufacturer	GenesysLogic
+3-1/product	USB3.1 Hub
+3-1/speed	5000
+3-1/bcdDevice	0660
+3-1/bDeviceClass	09
+3-1/bDeviceSubClass	00
+3-1/bDeviceProtocol	03
+3-1/busnum	3
+3-1/devnum	2
+3-1/removable	removable
+3-1:1.0/bInterfaceClass	09
+3-1.2/idVendor	0781
+3-1.2/idProduct	5583
+3-1.2/manufacturer	SanDisk
+3-1.2/product	Ultra Fit
+3-1.2/serial	4C530001230512115385
+3-1.2/speed	5000
+3-1.2/bcdDevice	0100
+3-1.2/bDeviceClass	00
+3-1.2/bDeviceSubClass	00
+3-1.2/bDeviceProtocol	00
+3-1.2/busnum	3
+3-1.2/devnum	3
+3-1.2/removable	removable
+3-1.2:1.0/bInterfaceClass	08
+3-2/idVendor	046d
+3-2/idProduct	c077
+3-2/product	USB Optical Mouse
+3-2/speed	1.5
+3-2/bcdDevice	7200
+3-2/bDeviceClass	00
+3-2/bDeviceSubClass	00
+3-2/bDeviceProtocol	00
+3-2/busnum	3
+3-2/devnum	4
+3-2/removable	unknown
+3-2:1.0/bInterfaceClass	03
+3-5/idVendor	04f2
+3-5/idProduct	b6dd
+3-5/manufacturer	Chicony Electronics Co.,Ltd.
+3-5/product	Integrated Camera
+3-5/speed	480
+3-5/bcdDevice	0021
+3-5/bDeviceClass	ef
+3-5/bDeviceSubClass	02
+3-5/bDeviceProtocol	01
+3-5/busnum	3
+3-5/devnum	5
+3-5/removable	fixed
+3-5:1.0/bInterfaceClass	0e

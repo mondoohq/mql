@@ -1,0 +1,27 @@
+zonename: mqlzshared
+description: 
+zonepath: /system/zones/mqlzshared
+brand: solaris
+autoboot: false
+autoshutdown: shutdown
+bootargs: 
+file-mac-profile: 
+pool: 
+limitpriv: 
+scheduling-class: 
+ip-type: shared
+hostid: 
+tenant: 
+fs-allowed: 
+net:
+	address: 10.0.6.30/24
+	allowed-address: 
+	configure-allowed-address: true
+	physical: net0
+	defrouter: 
+net:
+	address: 10.0.6.31/24
+	allowed-address: 
+	configure-allowed-address: true
+	physical: net0
+	defrouter: 

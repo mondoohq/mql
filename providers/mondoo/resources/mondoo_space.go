@@ -9,10 +9,10 @@ import (
 	"time"
 
 	mondoogql "go.mondoo.com/mondoo-go"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/mondoo/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/mondoo/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func initMondooSpace(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -101,7 +101,7 @@ func (m *mqlMondooSpace) assets() ([]any, error) {
 		if !q.Assets.PageInfo.HasNextPage {
 			break
 		}
-		after = mondoogql.NewStringPtr(mondoogql.String(q.Assets.PageInfo.EndCursor))
+		after = new(mondoogql.String(q.Assets.PageInfo.EndCursor))
 	}
 
 	return res, nil

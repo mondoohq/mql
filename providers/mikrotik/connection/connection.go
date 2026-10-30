@@ -5,6 +5,7 @@ package connection
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"maps"
 	"net"
@@ -13,9 +14,9 @@ import (
 	"time"
 
 	"github.com/go-routeros/routeros/v3"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/vault"
 )
 
 const (
@@ -25,6 +26,14 @@ const (
 	DefaultAPISSLPort = "8729"
 )
 
+// rosClient is the subset of *routeros.Client the connection depends on.
+// Depending on the interface (rather than the concrete type) lets tests drive
+// Print/PrintOptional with a fake reply source; *routeros.Client satisfies it.
+type rosClient interface {
+	Run(sentences ...string) (*routeros.Reply, error)
+	Close() error
+}
+
 type MikrotikConnection struct {
 	plugin.Connection
 	Conf  *inventory.Config
@@ -33,7 +42,7 @@ type MikrotikConnection struct {
 	// client is the underlying RouterOS API client. The RouterOS API
 	// multiplexes a single TCP connection, so concurrent commands must be
 	// serialized; mu guards every Run call.
-	client *routeros.Client
+	client rosClient
 	mu     sync.Mutex
 
 	// printCache memoizes `<menu>/print` results for the lifetime of the
@@ -43,6 +52,24 @@ type MikrotikConnection struct {
 	// same menu. cacheMu guards the map independently of the Run mutex.
 	printCache map[string][]map[string]string
 	cacheMu    sync.Mutex
+}
+
+// parseTLSOption reads the tls connection option.
+//
+// It deliberately rejects anything it does not recognize rather than treating
+// it as false. The option selects between the TLS API port and the plaintext
+// one, and the RouterOS API sends the password in its very first sentence, so
+// silently reading an unrecognized value as "no TLS" would put the device
+// password on the wire in the clear and still report a successful scan.
+func parseTLSOption(v string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "false", "0", "no", "off":
+		return false, nil
+	case "true", "1", "yes", "on":
+		return true, nil
+	default:
+		return false, fmt.Errorf("invalid value %q for the mikrotik tls option, use true or false", v)
+	}
 }
 
 func NewMikrotikConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*MikrotikConnection, error) {
@@ -56,16 +83,29 @@ func NewMikrotikConnection(id uint32, asset *inventory.Asset, conf *inventory.Co
 
 	user := ""
 	password := ""
-	if cred, err := vault.GetPassword(conf.Credentials); err == nil && cred != nil {
-		user = cred.User
-		password = string(cred.Secret)
+	// A credential that was supplied but could not be resolved is an error, not
+	// a reason to fall back to the default account: retrying as admin turns a
+	// vault problem into "invalid user name or password" against a username the
+	// operator never configured.
+	if len(conf.Credentials) > 0 {
+		cred, err := vault.GetPassword(conf.Credentials)
+		if err != nil {
+			return nil, fmt.Errorf("could not resolve credentials for the mikrotik device at %s: %w", host, err)
+		}
+		if cred != nil {
+			user = cred.User
+			password = string(cred.Secret)
+		}
 	}
 	if user == "" {
 		// RouterOS ships with the "admin" account by default
 		user = "admin"
 	}
 
-	useTLS := conf.Options["tls"] == "true"
+	useTLS, err := parseTLSOption(conf.Options["tls"])
+	if err != nil {
+		return nil, err
+	}
 
 	port := conf.Options["port"]
 	if port == "" && conf.Port != 0 {
@@ -83,7 +123,6 @@ func NewMikrotikConnection(id uint32, asset *inventory.Asset, conf *inventory.Co
 	timeout := 10 * time.Second
 
 	var client *routeros.Client
-	var err error
 	if useTLS {
 		tlsConfig := &tls.Config{InsecureSkipVerify: conf.Insecure}
 		client, err = routeros.DialTLSTimeout(address, user, password, tlsConfig, timeout)
@@ -126,15 +165,19 @@ func (c *MikrotikConnection) Close() {
 func (c *MikrotikConnection) Run(sentences ...string) (*routeros.Reply, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.client == nil {
+		return nil, errors.New("the mikrotik connection is closed")
+	}
 	return c.client.Run(sentences...)
 }
 
 // Print runs a `<menu>/print` command and returns each reply sentence as a
 // map of attribute names to values. For example Print("/interface") issues
 // `/interface/print` and returns one map per interface. Results are memoized
-// per menu for the connection's lifetime (see printCache), and each map is
-// copied out of the routeros reply so callers can never mutate the library's
-// internal sentence state.
+// per menu for the connection's lifetime (see printCache). Each call returns
+// an independent copy of the cached rows, so a caller mutating a returned map
+// can corrupt neither the cache nor the routeros library's internal sentence
+// state, and repeated callers always observe the original device values.
 func (c *MikrotikConnection) Print(menu string) ([]map[string]string, error) {
 	// Hold cacheMu across the fetch (not just the read and the write): this
 	// makes concurrent callers for the same menu wait for the first fetch and
@@ -149,21 +192,31 @@ func (c *MikrotikConnection) Print(menu string) ([]map[string]string, error) {
 	if c.printCache == nil {
 		c.printCache = map[string][]map[string]string{}
 	}
-	if cached, ok := c.printCache[menu]; ok {
-		return cached, nil
+
+	cached, ok := c.printCache[menu]
+	if !ok {
+		reply, err := c.Run(menu + "/print")
+		if err != nil {
+			return nil, err
+		}
+		cached = make([]map[string]string, 0, len(reply.Re))
+		for _, re := range reply.Re {
+			cached = append(cached, maps.Clone(re.Map))
+		}
+		c.printCache[menu] = cached
 	}
 
-	reply, err := c.Run(menu + "/print")
-	if err != nil {
-		return nil, err
-	}
+	return cloneRows(cached), nil
+}
 
-	out := make([]map[string]string, 0, len(reply.Re))
-	for _, re := range reply.Re {
-		out = append(out, maps.Clone(re.Map))
+// cloneRows returns a deep copy of a slice of attribute maps so callers can
+// freely read or mutate the result without touching the shared print cache.
+func cloneRows(rows []map[string]string) []map[string]string {
+	out := make([]map[string]string, len(rows))
+	for i, row := range rows {
+		out[i] = maps.Clone(row)
 	}
-	c.printCache[menu] = out
-	return out, nil
+	return out
 }
 
 // PrintOptional behaves like Print but treats a menu the device does not
@@ -192,6 +245,22 @@ func isUnknownCommandErr(err error) bool {
 // returns no records, an empty map is returned.
 func (c *MikrotikConnection) PrintOne(menu string) (map[string]string, error) {
 	rows, err := c.Print(menu)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return map[string]string{}, nil
+	}
+	return rows[0], nil
+}
+
+// PrintOneOptional behaves like PrintOne but treats a menu the device does not
+// support -- for example /system/routerboard/settings on a CHR build, or
+// /container without the container package -- as an empty result rather than
+// an error, so the caller can report the subsystem as absent instead of
+// failing the query.
+func (c *MikrotikConnection) PrintOneOptional(menu string) (map[string]string, error) {
+	rows, err := c.PrintOptional(menu)
 	if err != nil {
 		return nil, err
 	}

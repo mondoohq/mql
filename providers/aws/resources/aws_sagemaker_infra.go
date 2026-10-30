@@ -15,11 +15,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sagemaker"
 	smtypes "github.com/aws/aws-sdk-go-v2/service/sagemaker/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/v13/providers/aws/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/providers/aws/connection"
 )
 
 // ---- Init functions for cross-referenced resources ----
@@ -49,15 +49,10 @@ func initAwsSagemakerImage(runtime *plugin.Runtime, args map[string]*llx.RawData
 		}
 	}
 
-	// Fallback: derive name/region from ARN so minimal fields resolve.
-	_, region, _, name := parseSagemakerArn(arnVal)
-	if args["name"] == nil && name != "" {
-		args["name"] = llx.StringData(name)
-	}
-	if args["region"] == nil && region != "" {
-		args["region"] = llx.StringData(region)
-	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.sagemaker.image with arn %q not found", arnVal)
 }
 
 func initAwsSagemakerImageVersion(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -132,21 +127,10 @@ func initAwsSagemakerUserProfile(runtime *plugin.Runtime, args map[string]*llx.R
 		}
 	}
 
-	// Fallback: parse region and <domain-id>/<user-profile-name> from ARN.
-	parts := strings.Split(arnVal, ":")
-	if len(parts) >= 6 {
-		region := parts[3]
-		segs := strings.SplitN(strings.TrimPrefix(parts[5], "user-profile/"), "/", 2)
-		if len(segs) == 2 {
-			if args["name"] == nil {
-				args["name"] = llx.StringData(segs[1])
-			}
-			if args["region"] == nil {
-				args["region"] = llx.StringData(region)
-			}
-		}
-	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.sagemaker.userProfile with arn %q not found", arnVal)
 }
 
 func initAwsSagemakerSpace(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -174,21 +158,10 @@ func initAwsSagemakerSpace(runtime *plugin.Runtime, args map[string]*llx.RawData
 		}
 	}
 
-	// Fallback: parse region and <domain-id>/<space-name> from ARN.
-	parts := strings.Split(arnVal, ":")
-	if len(parts) >= 6 {
-		region := parts[3]
-		segs := strings.SplitN(strings.TrimPrefix(parts[5], "space/"), "/", 2)
-		if len(segs) == 2 {
-			if args["name"] == nil {
-				args["name"] = llx.StringData(segs[1])
-			}
-			if args["region"] == nil {
-				args["region"] = llx.StringData(region)
-			}
-		}
-	}
-	return args, nil, nil
+	// Returning (args, nil, nil) here would let the runtime create a resource
+	// whose fields are all unset, which surfaces as malformed nil data when
+	// those fields are queried.
+	return nil, nil, fmt.Errorf("aws.sagemaker.space with arn %q not found", arnVal)
 }
 
 // ---- Apps ----
@@ -286,7 +259,7 @@ func (a *mqlAwsSagemaker) getApps(conn *connection.AwsConnection) []*jobpool.Job
 					}
 					if eagerTags != nil {
 						mqlA.cacheTags = eagerTags
-						mqlA.tagsFetched = true
+						mqlA.tagsFetched.Store(true)
 					}
 
 					res = append(res, mqlApp)
@@ -595,7 +568,7 @@ func (a *mqlAwsSagemaker) getAppImageConfigs(conn *connection.AwsConnection) []*
 					mqlC.configsLoaded = true
 					if eagerTags != nil {
 						mqlC.cacheTags = eagerTags
-						mqlC.tagsFetched = true
+						mqlC.tagsFetched.Store(true)
 					}
 
 					res = append(res, mqlCfg)
@@ -753,7 +726,7 @@ func (a *mqlAwsSagemaker) getStudioLifecycleConfigs(conn *connection.AwsConnecti
 					m := mqlCfg.(*mqlAwsSagemakerStudioLifecycleConfig)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlCfg)
 				}
@@ -881,7 +854,7 @@ func (a *mqlAwsSagemaker) getCodeRepositories(conn *connection.AwsConnection) []
 					}
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlRepo)
 				}
@@ -1032,6 +1005,7 @@ func (a *mqlAwsSagemaker) getNotebookInstanceLifecycleConfigs(conn *connection.A
 }
 
 type mqlAwsSagemakerNotebookInstanceLifecycleConfigInternal struct {
+	sagemakerTagsCache
 	hooksLock     sync.Mutex
 	hooksFetched  bool
 	cacheOnCreate []any
@@ -1040,6 +1014,11 @@ type mqlAwsSagemakerNotebookInstanceLifecycleConfigInternal struct {
 
 func (a *mqlAwsSagemakerNotebookInstanceLifecycleConfig) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+func (a *mqlAwsSagemakerNotebookInstanceLifecycleConfig) tags() (map[string]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	return a.fetchTags(conn, a.Region.Data, a.Arn.Data)
 }
 
 func (a *mqlAwsSagemakerNotebookInstanceLifecycleConfig) fetchHooks() error {
@@ -1161,7 +1140,7 @@ func (a *mqlAwsSagemaker) getImages(conn *connection.AwsConnection) []*jobpool.J
 					m := mqlImg.(*mqlAwsSagemakerImage)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlImg)
 				}
@@ -1407,7 +1386,7 @@ func (a *mqlAwsSagemaker) getAlgorithms(conn *connection.AwsConnection) []*jobpo
 					m := mqlAlg.(*mqlAwsSagemakerAlgorithm)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlAlg)
 				}
@@ -1589,7 +1568,7 @@ func (a *mqlAwsSagemaker) getCompilationJobs(conn *connection.AwsConnection) []*
 					m := mqlJob.(*mqlAwsSagemakerCompilationJob)
 					if eagerTags != nil {
 						m.cacheTags = eagerTags
-						m.tagsFetched = true
+						m.tagsFetched.Store(true)
 					}
 					res = append(res, mqlJob)
 				}

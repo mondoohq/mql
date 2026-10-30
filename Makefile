@@ -14,7 +14,6 @@ ifndef VERSION
 # echo "read VERSION from git"
 VERSION=${LATEST_VERSION_TAG}+$(shell git rev-list --count HEAD)
 endif
-MAJOR_VERSION=v13
 
 ifndef TARGETOS
 	TARGETOS = $(shell go env GOOS)
@@ -29,8 +28,8 @@ ifeq ($(TARGETOS),windows)
 	BIN_SUFFIX=".exe"
 endif
 
-LDFLAGS=-ldflags "-s -w -X go.mondoo.com/mql/${MAJOR_VERSION}.Version=${VERSION}" # -linkmode external -extldflags=-static
-LDFLAGSDIST=-tags production -ldflags "-s -w -X go.mondoo.com/mql/${MAJOR_VERSION}.Version=${LATEST_VERSION_TAG} -s -w"
+LDFLAGS=-ldflags "-s -w -X go.mondoo.com/mql.Version=${VERSION}" # -linkmode external -extldflags=-static
+LDFLAGSDIST=-tags production -ldflags "-s -w -X go.mondoo.com/mql.Version=${LATEST_VERSION_TAG} -s -w"
 
 .PHONY: info/ldflags
 info/ldflags:
@@ -72,7 +71,14 @@ prep/tools/mockgen:
 
 mql/generate: clean/proto llx/generate shared/generate sbom/generate reporter/generate providers
 
-mql/generate/core: clean/proto llx/generate shared/generate providers/proto providers/build/mock providers/build/core sbom/generate reporter/generate
+mql/generate/core: clean/proto llx/generate shared/generate providers/proto providers/build/mock providers/build/core providers/build/iac sbom/generate reporter/generate
+
+# ADR 042 step 4: fail the build when a provider's declared peer dependencies
+# disagree with what its code actually references -- an undeclared cross-provider
+# call, or a declared floor below what the references need. Every provider passes
+# today, so this is on by default; set LR_DEP_FLAGS= to disable it locally while
+# mid-change.
+LR_DEP_FLAGS ?= --fail-on-dep-drift
 
 define buildProvider
 	$(eval $@_HOME = $(1))
@@ -81,7 +87,7 @@ define buildProvider
 	$(eval $@_DIST_BIN = "./dist/${$@_NAME}")
 	$(eval $@_BIN = "${$@_DIST}"/"${$@_NAME}")
 	echo "--> [${$@_NAME}] process resources"
-	./lr go ${$@_HOME}/resources/${$@_NAME}.lr --dist ${$@_DIST}
+	./lr go ${$@_HOME}/resources/${$@_NAME}.lr --dist ${$@_DIST} $(LR_DEP_FLAGS)
 	./lr versions ${$@_HOME}/resources/${$@_NAME}.lr
 	echo "--> [${$@_NAME}] generate CLI json"
 	cd ${$@_HOME} && go run ./gen/main.go .
@@ -104,7 +110,7 @@ define buildProviderDist
 	$(eval $@_DIST_BIN = "./dist/${$@_NAME}")
 	$(eval $@_BIN = "${$@_DIST}"/"${$@_NAME}")
 	echo "--> [${$@_NAME}] process resources"
-	./lr go ${$@_HOME}/resources/${$@_NAME}.lr --dist ${$@_DIST}
+	./lr go ${$@_HOME}/resources/${$@_NAME}.lr --dist ${$@_DIST} $(LR_DEP_FLAGS)
 	./lr versions ${$@_HOME}/resources/${$@_NAME}.lr
 	echo "--> [${$@_NAME}] generate CLI json"
 	cd ${$@_HOME} && go run ./gen/main.go .
@@ -200,49 +206,78 @@ providers/mqlr/install: providers/mqlr
 # core is excluded: it has no install target and is always built as a dependency of providers/build.
 PROVIDERS := \
 	activedirectory \
+	alicloud \
 	ansible \
 	arista \
+	artifactory \
 	atlassian \
+	auth0 \
 	aws \
 	azure \
+	azuredevops \
 	bicep \
+	bitwarden \
+	cassandra \
 	claude \
+	clickhousecloud \
+	clickhousedb \
 	cloudflare \
 	cloudformation \
+	cockroachdb \
+	databricks \
 	datadog \
 	depsdev \
 	digitalocean \
-	equinix \
+	dropbox \
+	elasticsearch \
+	exoscale \
 	gcp \
 	github \
 	gitlab \
 	grafana \
 	google-workspace \
+	hcp \
 	helm \
 	hetzner \
 	huggingface \
+	ibm \
 	ipinfo \
 	ipmi \
+	iru \
 	jamf \
+	jumpcloud \
 	k8s \
+	keycloak \
 	kustomize \
 	mikrotik \
 	mistral \
 	mondoo \
+	mongo \
+	mongodbatlas \
 	ms365 \
+	mssql \
+	mysqldb \
+	n8n \
+	neon \
+	netlify \
 	network \
 	nextdns \
 	nmap \
+	notion \
 	nutanix \
 	oci \
 	okta \
 	ollama \
 	opcua \
 	openai \
+	opensearch \
 	openstack \
 	os \
 	portainer \
+	postgresdb \
 	proxmox \
+	redfish \
+	redisdb \
 	shodan \
 	slack \
 	snowflake \
@@ -251,13 +286,17 @@ PROVIDERS := \
 	terraform \
 	together \
 	vcd \
+	vercel \
 	vllm \
-	vsphere
+	vsphere \
+	weaviate \
+	zoom
 
 .PHONY: providers/build
 providers/build: \
 	providers/build/mock \
 	providers/build/core \
+	providers/build/iac \
 	$(addprefix providers/build/,$(PROVIDERS))
 
 .PHONY: providers/install
@@ -265,6 +304,16 @@ providers/install: $(addprefix providers/install/,$(PROVIDERS))
 
 providers/build/mock: providers/lr
 	./lr go providers-sdk/v1/testutils/mockprovider/resources/mockprovider.lr
+
+# iac is builtin, so it has no main.go to compile and the generic
+# providers/build/% rule would fail on it. --version is explicit because the
+# version detector regex-matches a quoted Version: in config.go and iac tracks
+# the binary's version through mql.GetVersion(), which it cannot read -- without
+# it every entry would silently be stamped with the 9.0.0 fallback.
+providers/build/iac: providers/lr
+	./lr go providers/iac/resources/iac.lr $(LR_DEP_FLAGS)
+	./lr versions providers/iac/resources/iac.lr --version 14.0.0
+	cd providers/iac && go run ./gen/main.go .
 
 providers/build/%: providers/lr
 	@$(call buildProvider, providers/$*)
@@ -285,6 +334,26 @@ providers/permissions:
 	@go run providers-sdk/v1/util/permissions/permissions.go providers/gcp
 	@go run providers-sdk/v1/util/permissions/permissions.go providers/azure
 
+# Check that the generated permission manifests can be used to build a role or
+# policy, in two halves. check/catalog asks each cloud's own permission list
+# about every entry: AWS's Service Reference (public), Google's
+# queryTestablePermissions (gcloud login, GCP_PROJECT, GCP_ORGANIZATION) and
+# Azure's provider operation registry (az login). check/live then has each
+# cloud accept the whole manifest itself: IAM Access Analyzer over the AWS
+# policies (aws login), a custom role created and deleted on GCP (iam.roles.create
+# on GCP_PROJECT; the org-level list is checked by check/catalog only) and on
+# Azure (roleDefinitions/write at AZURE_CHECK_SCOPE, e.g. /subscriptions/<id>).
+providers/permissions/check: providers/permissions/check/catalog providers/permissions/check/live
+
+providers/permissions/check/catalog:
+	@go run ./providers-sdk/v1/util/permissions/validate
+
+providers/permissions/check/live:
+	@scripts/test-iam-permissions.sh aws-check
+	@scripts/test-iam-permissions.sh gcp-check
+	@test -n "$(AZURE_CHECK_SCOPE)" || { echo "set AZURE_CHECK_SCOPE (e.g. /subscriptions/<id>)"; exit 1; }
+	@scripts/test-iam-permissions.sh azure-check "$(AZURE_CHECK_SCOPE)"
+
 providers/test:
 	@$(call testProvider, providers/core)
 	@$(call testProvider, providers/network)
@@ -292,14 +361,15 @@ providers/test:
 	@$(call testGoModProvider, providers/activedirectory)
 	@$(call testGoModProvider, providers/ansible)
 	@$(call testGoModProvider, providers/arista)
+	@$(call testGoModProvider, providers/artifactory)
 	@$(call testGoModProvider, providers/atlassian)
 	@$(call testGoModProvider, providers/aws)
 	@$(call testGoModProvider, providers/azure)
+	@$(call testGoModProvider, providers/azuredevops)
 	@$(call testGoModProvider, providers/bicep)
 	@$(call testGoModProvider, providers/cloudflare)
 	@$(call testGoModProvider, providers/cloudformation)
 	@$(call testGoModProvider, providers/depsdev)
-	@$(call testGoModProvider, providers/equinix)
 	@$(call testGoModProvider, providers/gcp)
 	@$(call testGoModProvider, providers/github)
 	@$(call testGoModProvider, providers/grafana)
@@ -325,6 +395,19 @@ providers/test:
 	@$(call testGoModProvider, providers/vcd)
 	@$(call testGoModProvider, providers/vllm)
 	@$(call testGoModProvider, providers/vsphere)
+
+# Test a single provider by name, e.g. `make providers/test/aws`. The provider
+# is (re)built first so its generated resources.json exists (some tests read it),
+# then tested. Auto-detects whether the provider ships its own go.mod, mirroring
+# the testProvider / testGoModProvider split that `providers/test` uses.
+providers/test/%: providers/build/%
+	@if [ -f "providers/$*/go.mod" ]; then \
+		echo "--> test $* (module) in providers/$*"; \
+		cd providers/$* && gotestsum --junitfile ../../report_$*.xml --format pkgname -- -vet=off -cover $$(go list ./...); \
+	else \
+		echo "--> test $* in providers/$*"; \
+		gotestsum --junitfile ./report_$*.xml --format pkgname -- -vet=off -cover $$(go list ./providers/$*/...); \
+	fi
 
 lr/test:
 	go test ./providers-sdk/v1/mqlr/...
@@ -396,6 +479,10 @@ shared/generate:
 	go generate ./providers-sdk/v1/upstream/mvd/cvss
 	go generate ./providers-sdk/v1/upstream/mvd
 	go generate ./providers-sdk/v1/upstream/etl
+	# Before sbomscan, whose vulnscan.proto imports fex.proto.
+	go generate ./providers-sdk/v1/upstream/fex
+	go generate ./providers-sdk/v1/upstream/sbomscan
+	go generate ./providers-sdk/v1/upstream/sbomupload
 
 #   ⛹🏽‍ Testing   #
 
@@ -404,7 +491,7 @@ test/lint: test/lint/golangci-lint/run
 test: test/go test/lint
 
 race/go:
-	go test -race go.mondoo.com/mql/${MAJOR_VERSION}/internal/workerpool
+	go test -race go.mondoo.com/mql/internal/workerpool
 
 test/generate: prep/tools/mockgen
 	go generate ./providers/...
@@ -414,11 +501,23 @@ test/go: mql/generate test/generate test/go/plain
 test/go/plain:
 	go test -cover $(shell go list ./... | grep -v '/providers/' | grep -v '/test/')
 
-test/go/plain-ci: prep/tools test/generate providers/build
+# Core (non-provider) tests. The core scope imports no individual provider;
+# testutils only needs mock/core/os/network built, so we no longer build every
+# provider here. Provider packages are tested separately via `providers/test`
+# (all) or `providers/test/<name>` (one), in the go-test-providers CI job.
+test/go/plain-ci: prep/tools test/generate providers/build/mock providers/build/core providers/build/os providers/build/network
 	gotestsum --junitfile report.xml --format pkgname -- -cover $(shell go list ./... | grep -v '/vendor/' | grep -v '/providers/' | grep -v '/test/')
 
 test/integration:
 	go test -cover -p 1 $(shell go list ./... | grep '/test/')
+
+# Docker-backed regression matrix for the package resource, one image per
+# package manager. Deliberately manual: it pulls several images and takes
+# minutes, so it carries the debugtest tag and stays out of `go test ./...`.
+# Run it when changing anything under providers/os/resources/packages.
+.PHONY: test/packages/matrix
+test/packages/matrix:
+	go test -tags debugtest -count=1 -timeout 30m -v ./test/providers/ -run TestPackagesMatrix
 
 test/go-cli/plain-ci: prep/tools test/generate providers/build
 	gotestsum --junitfile report.xml --format pkgname -- -cover -p 1 $(shell go list ./... | grep '/test/')

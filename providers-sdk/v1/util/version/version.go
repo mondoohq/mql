@@ -16,8 +16,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
-	"go.mondoo.com/mql/v13/utils/stringx"
+	"go.mondoo.com/mql/utils/stringx"
 
 	mastermind "github.com/Masterminds/semver"
 	tea "github.com/charmbracelet/bubbletea"
@@ -27,9 +28,9 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"go.mondoo.com/mql/v13/cli/components"
-	"go.mondoo.com/mql/v13/logger"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/cli/components"
+	"go.mondoo.com/mql/logger"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"golang.org/x/mod/modfile"
 	"golang.org/x/mod/semver"
 )
@@ -380,7 +381,8 @@ func logChanges(changes int, conf *providerConf) {
 }
 
 var (
-	reVersion = regexp.MustCompile(`Version:\s*"([^"]+)"`)
+	// \b keeps this from matching the dependencies' `MinVersion:` fields.
+	reVersion = regexp.MustCompile(`\bVersion:\s*"([^"]+)"`)
 	reName    = regexp.MustCompile(`Name:\s*"([^"]+)",`)
 )
 
@@ -414,8 +416,17 @@ func (confs updateConfs) titles() []string {
 	return titles
 }
 
+// maxTitleLen is GitHub's maximum length (in characters) for a PR/issue title.
+const maxTitleLen = 256
+
 func (confs updateConfs) commitTitle() string {
-	return "🎉 " + strings.Join(confs.titles(), ", ")
+	title := titlePrefix + strings.Join(confs.titles(), ", ")
+	if utf8.RuneCountInString(title) <= maxTitleLen {
+		return title
+	}
+	// Too many providers to enumerate within GitHub's title limit; fall back to
+	// a count summary. The full per-provider list is in the PR body.
+	return fmt.Sprintf("%sRelease %d providers", titlePrefix, len(confs))
 }
 
 func (confs updateConfs) commitBody() string {
@@ -545,11 +556,7 @@ func applyVersionBump(conf *providerConf) (*providerConf, error) {
 		return nil, err
 	}
 
-	res := reVersion.ReplaceAllStringFunc(conf.content, func(v string) string {
-		return "Version: \"" + version + "\""
-	})
-
-	raw, err := format.Source([]byte(res))
+	raw, err := format.Source([]byte(setVersion(conf.content, version)))
 	if err != nil {
 		return nil, err
 	}
@@ -568,6 +575,13 @@ func applyVersionBump(conf *providerConf) (*providerConf, error) {
 	}
 
 	return conf, nil
+}
+
+// setVersion replaces the provider's own Version in the config content.
+// Dependency MinVersions stay untouched: they name the lowest version of
+// another provider this one works with, not this provider's version.
+func setVersion(content string, version string) string {
+	return reVersion.ReplaceAllString(content, `Version: "`+version+`"`)
 }
 
 func bumpVersion(version string) (string, error) {

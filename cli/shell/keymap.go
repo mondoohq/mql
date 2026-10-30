@@ -3,6 +3,8 @@
 
 package shell
 
+import "strings"
+
 import "github.com/charmbracelet/bubbles/key"
 
 // KeyMap defines key bindings for the shell
@@ -105,13 +107,13 @@ func (k KeyMap) FormatFullHelp() string {
 		{"Suggestions", []key.Binding{k.NextCompletion, k.PrevCompletion, k.AcceptCompletion, k.DismissPopup}},
 	}
 
-	var result string
+	var result strings.Builder
 	for _, section := range sections {
-		result += "\n  " + section.title + ":\n"
+		result.WriteString("\n  " + section.title + ":\n")
 		for _, b := range section.bindings {
 			help := b.Help()
-			result += "    " + help.Key + " - " + help.Desc + "\n"
+			result.WriteString("    " + help.Key + " - " + help.Desc + "\n")
 		}
 	}
-	return result
+	return result.String()
 }

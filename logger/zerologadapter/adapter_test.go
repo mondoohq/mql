@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"testing"
 
-	subject "go.mondoo.com/mql/v13/logger/zerologadapter"
+	subject "go.mondoo.com/mql/logger/zerologadapter"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"

@@ -8,9 +8,9 @@ import (
 	"context"
 
 	"github.com/hashicorp/go-plugin"
-	"go.mondoo.com/mql/v13/providers"
-	"go.mondoo.com/mql/v13/shared/proto"
-	"go.mondoo.com/mql/v13/utils/iox"
+	"go.mondoo.com/mql/providers"
+	"go.mondoo.com/mql/shared/proto"
+	"go.mondoo.com/mql/utils/iox"
 	"google.golang.org/grpc"
 )
 

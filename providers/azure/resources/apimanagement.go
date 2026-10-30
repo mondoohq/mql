@@ -13,13 +13,12 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	apim "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/apimanagement/armapimanagement/v3"
-	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v10"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/azure/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/azure/connection"
+	"go.mondoo.com/mql/types"
 )
 
 type mqlAzureSubscriptionApiManagementServiceServiceInternal struct {
@@ -31,6 +30,10 @@ type mqlAzureSubscriptionApiManagementServiceServiceInternal struct {
 
 func (a *mqlAzureSubscriptionApiManagementServiceService) userAssignedIdentities() ([]any, error) {
 	return resolveUserAssignedIdentities(a.MqlRuntime, a.cacheUserAssignedIdentityIds)
+}
+
+func (a *mqlAzureSubscriptionApiManagementServiceService) systemAssignedIdentity() (*mqlAzureSubscriptionManagedIdentity, error) {
+	return newSystemAssignedManagedIdentity(a.MqlRuntime, a.Id.Data, a.PrincipalId.Data, a.TenantId.Data, &a.SystemAssignedIdentity)
 }
 
 func (a *mqlAzureSubscriptionApiManagementServiceService) privateEndpointConnections() ([]any, error) {
@@ -134,40 +137,39 @@ func (a *mqlAzureSubscriptionApiManagementService) services() ([]any, error) {
 			}
 
 			var (
-				provisioningState              string
-				targetProvisioningState        string
-				publisherEmail                 string
-				publisherName                  string
-				notificationSenderEmail        string
-				gatewayUrl                     string
-				gatewayRegionalUrl             string
-				managementApiUrl               string
-				portalUrl                      string
-				developerPortalUrl             string
-				scmUrl                         string
-				virtualNetworkType             string
-				publicNetworkAccess            string
-				natGatewayState                string
-				disableGateway                 *bool
-				enableClientCertificate        *bool
-				developerPortalStatus          string
-				legacyPortalStatus             string
-				platformVersion                string
-				customProperties               = map[string]any{}
-				tls10Enabled                   *bool
-				tls11Enabled                   *bool
-				ssl30Enabled                   *bool
-				backendTls10Enabled            *bool
-				backendTls11Enabled            *bool
-				backendSsl30Enabled            *bool
-				tripleDesEnabled               *bool
-				http2Enabled                   *bool
-				publicIpAddresses              = []any{}
-				privateIpAddresses             = []any{}
-				outboundPublicIpAddresses      = []any{}
-				privateEndpointConnectionCount int64
-				publicIpAddressId              string
-				createdAt                      *time.Time
+				provisioningState         string
+				targetProvisioningState   string
+				publisherEmail            string
+				publisherName             string
+				notificationSenderEmail   string
+				gatewayUrl                string
+				gatewayRegionalUrl        string
+				managementApiUrl          string
+				portalUrl                 string
+				developerPortalUrl        string
+				scmUrl                    string
+				virtualNetworkType        string
+				publicNetworkAccess       string
+				natGatewayState           string
+				disableGateway            *bool
+				enableClientCertificate   *bool
+				developerPortalStatus     string
+				legacyPortalStatus        string
+				platformVersion           string
+				customProperties          = map[string]any{}
+				tls10Enabled              *bool
+				tls11Enabled              *bool
+				ssl30Enabled              *bool
+				backendTls10Enabled       *bool
+				backendTls11Enabled       *bool
+				backendSsl30Enabled       *bool
+				tripleDesEnabled          *bool
+				http2Enabled              *bool
+				publicIpAddresses         = []any{}
+				privateIpAddresses        = []any{}
+				outboundPublicIpAddresses = []any{}
+				publicIpAddressId         string
+				createdAt                 *time.Time
 			)
 			if p := svc.Properties; p != nil {
 				if p.ProvisioningState != nil {
@@ -251,7 +253,6 @@ func (a *mqlAzureSubscriptionApiManagementService) services() ([]any, error) {
 						outboundPublicIpAddresses = append(outboundPublicIpAddresses, *ip)
 					}
 				}
-				privateEndpointConnectionCount = int64(len(p.PrivateEndpointConnections))
 				if p.PublicIPAddressID != nil {
 					publicIpAddressId = *p.PublicIPAddressID
 				}
@@ -267,49 +268,48 @@ func (a *mqlAzureSubscriptionApiManagementService) services() ([]any, error) {
 
 			mqlSvc, err := CreateResource(a.MqlRuntime, "azure.subscription.apiManagementService.service",
 				map[string]*llx.RawData{
-					"id":                             llx.StringDataPtr(svc.ID),
-					"name":                           llx.StringDataPtr(svc.Name),
-					"location":                       llx.StringDataPtr(svc.Location),
-					"tags":                           llx.MapData(convert.PtrMapStrToInterface(svc.Tags), types.String),
-					"skuName":                        llx.StringData(skuName),
-					"skuCapacity":                    llx.IntDataPtr(skuCapacity),
-					"provisioningState":              llx.StringData(provisioningState),
-					"targetProvisioningState":        llx.StringData(targetProvisioningState),
-					"publisherEmail":                 llx.StringData(publisherEmail),
-					"publisherName":                  llx.StringData(publisherName),
-					"notificationSenderEmail":        llx.StringData(notificationSenderEmail),
-					"gatewayUrl":                     llx.StringData(gatewayUrl),
-					"gatewayRegionalUrl":             llx.StringData(gatewayRegionalUrl),
-					"managementApiUrl":               llx.StringData(managementApiUrl),
-					"portalUrl":                      llx.StringData(portalUrl),
-					"developerPortalUrl":             llx.StringData(developerPortalUrl),
-					"scmUrl":                         llx.StringData(scmUrl),
-					"virtualNetworkType":             llx.StringData(virtualNetworkType),
-					"publicNetworkAccess":            llx.StringData(publicNetworkAccess),
-					"natGatewayState":                llx.StringData(natGatewayState),
-					"disableGateway":                 llx.BoolDataPtr(disableGateway),
-					"enableClientCertificate":        llx.BoolDataPtr(enableClientCertificate),
-					"developerPortalStatus":          llx.StringData(developerPortalStatus),
-					"legacyPortalStatus":             llx.StringData(legacyPortalStatus),
-					"platformVersion":                llx.StringData(platformVersion),
-					"customProperties":               llx.MapData(customProperties, types.String),
-					"tls10Enabled":                   llx.BoolDataPtr(tls10Enabled),
-					"tls11Enabled":                   llx.BoolDataPtr(tls11Enabled),
-					"ssl30Enabled":                   llx.BoolDataPtr(ssl30Enabled),
-					"backendTls10Enabled":            llx.BoolDataPtr(backendTls10Enabled),
-					"backendTls11Enabled":            llx.BoolDataPtr(backendTls11Enabled),
-					"backendSsl30Enabled":            llx.BoolDataPtr(backendSsl30Enabled),
-					"tripleDesEnabled":               llx.BoolDataPtr(tripleDesEnabled),
-					"http2Enabled":                   llx.BoolDataPtr(http2Enabled),
-					"identityType":                   llx.StringData(identityType),
-					"principalId":                    llx.StringDataPtr(identityPrincipalId),
-					"tenantId":                       llx.StringDataPtr(identityTenantId),
-					"publicIpAddresses":              llx.ArrayData(publicIpAddresses, types.String),
-					"privateIpAddresses":             llx.ArrayData(privateIpAddresses, types.String),
-					"outboundPublicIpAddresses":      llx.ArrayData(outboundPublicIpAddresses, types.String),
-					"privateEndpointConnectionCount": llx.IntData(privateEndpointConnectionCount),
-					"zones":                          llx.ArrayData(zones, types.String),
-					"createdAt":                      llx.TimeDataPtr(createdAt),
+					"id":                        llx.StringDataPtr(svc.ID),
+					"name":                      llx.StringDataPtr(svc.Name),
+					"location":                  llx.StringDataPtr(svc.Location),
+					"tags":                      llx.MapData(convert.PtrMapStrToInterface(svc.Tags), types.String),
+					"skuName":                   llx.StringData(skuName),
+					"skuCapacity":               llx.IntDataPtr(skuCapacity),
+					"provisioningState":         llx.StringData(provisioningState),
+					"targetProvisioningState":   llx.StringData(targetProvisioningState),
+					"publisherEmail":            llx.StringData(publisherEmail),
+					"publisherName":             llx.StringData(publisherName),
+					"notificationSenderEmail":   llx.StringData(notificationSenderEmail),
+					"gatewayUrl":                llx.StringData(gatewayUrl),
+					"gatewayRegionalUrl":        llx.StringData(gatewayRegionalUrl),
+					"managementApiUrl":          llx.StringData(managementApiUrl),
+					"portalUrl":                 llx.StringData(portalUrl),
+					"developerPortalUrl":        llx.StringData(developerPortalUrl),
+					"scmUrl":                    llx.StringData(scmUrl),
+					"virtualNetworkType":        llx.StringData(virtualNetworkType),
+					"publicNetworkAccess":       llx.StringData(publicNetworkAccess),
+					"natGatewayState":           llx.StringData(natGatewayState),
+					"disableGateway":            llx.BoolDataPtr(disableGateway),
+					"enableClientCertificate":   llx.BoolDataPtr(enableClientCertificate),
+					"developerPortalStatus":     llx.StringData(developerPortalStatus),
+					"legacyPortalStatus":        llx.StringData(legacyPortalStatus),
+					"platformVersion":           llx.StringData(platformVersion),
+					"customProperties":          llx.MapData(customProperties, types.String),
+					"tls10Enabled":              llx.BoolDataPtr(tls10Enabled),
+					"tls11Enabled":              llx.BoolDataPtr(tls11Enabled),
+					"ssl30Enabled":              llx.BoolDataPtr(ssl30Enabled),
+					"backendTls10Enabled":       llx.BoolDataPtr(backendTls10Enabled),
+					"backendTls11Enabled":       llx.BoolDataPtr(backendTls11Enabled),
+					"backendSsl30Enabled":       llx.BoolDataPtr(backendSsl30Enabled),
+					"tripleDesEnabled":          llx.BoolDataPtr(tripleDesEnabled),
+					"http2Enabled":              llx.BoolDataPtr(http2Enabled),
+					"identityType":              llx.StringData(identityType),
+					"principalId":               llx.StringDataPtr(identityPrincipalId),
+					"tenantId":                  llx.StringDataPtr(identityTenantId),
+					"publicIpAddresses":         llx.ArrayData(publicIpAddresses, types.String),
+					"privateIpAddresses":        llx.ArrayData(privateIpAddresses, types.String),
+					"outboundPublicIpAddresses": llx.ArrayData(outboundPublicIpAddresses, types.String),
+					"zones":                     llx.ArrayData(zones, types.String),
+					"createdAt":                 llx.TimeDataPtr(createdAt),
 				})
 			if err != nil {
 				return nil, err
@@ -336,25 +336,14 @@ func (a *mqlAzureSubscriptionApiManagementServiceService) publicIpAddress() (*mq
 		a.PublicIpAddress.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
-	ctx := context.Background()
-	azureId, err := ParseResourceID(a.cachePublicIpAddressId)
+
+	// Resolved through the target's own init rather than fetched here, so a
+	// resource several things point at is fetched once for the scan instead
+	// of once per reference to it.
+	res, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionNetworkServiceIpAddress,
+		map[string]*llx.RawData{"id": llx.StringData(a.cachePublicIpAddressId)})
 	if err != nil {
 		return nil, err
 	}
-	ipName, err := azureId.Component("publicIPAddresses")
-	if err != nil {
-		return nil, err
-	}
-	client, err := network.NewPublicIPAddressesClient(azureId.SubscriptionID, conn.Token(), &arm.ClientOptions{
-		ClientOptions: conn.ClientOptions(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	resp, err := client.Get(ctx, azureId.ResourceGroup, ipName, nil)
-	if err != nil {
-		return nil, err
-	}
-	return azureIpToMql(a.MqlRuntime, resp.PublicIPAddress)
+	return res.(*mqlAzureSubscriptionNetworkServiceIpAddress), nil
 }

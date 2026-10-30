@@ -4,15 +4,22 @@
 package config
 
 import (
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/snowflake/connection"
-	"go.mondoo.com/mql/v13/providers/snowflake/provider"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/snowflake/connection"
+	"go.mondoo.com/mql/providers/snowflake/provider"
 )
 
 var Config = plugin.Provider{
-	Name:            "snowflake",
-	ID:              "go.mondoo.com/mql/v13/providers/snowflake",
-	Version:         "13.3.5",
+	Name: "snowflake",
+	// Every kind this provider hands out as its own asset is a root (ADR 031).
+	// A connection reports the concrete kind through ConnectRes.Root.
+	Root:    "snowflake",
+	ID:      "go.mondoo.com/mql/providers/snowflake",
+	Version: "14.0.10",
+	// Every root carries `asset`, which core owns (ADR 042).
+	Requires: []plugin.ProviderDep{
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       connection.Platforms,
 	Connectors: []plugin.Connector{
@@ -22,15 +29,20 @@ var Config = plugin.Provider{
 			Short: "a Snowflake account",
 			Long: `Use the snowflake provider to query a Snowflake account.
 
-To access a Snowflake account, you must first authenticate with Snowflake. To do so, create an RSA key pair and assign the public key to your user account using Snowsight. To learn how, read https://docs.snowflake.com/en/user-guide/key-pair-auth.
+To access a Snowflake account, you must first authenticate with Snowflake. The recommended method is a programmatic access token (PAT), which replaces password sign-ins that Snowflake is phasing out. Generate a PAT for your user in Snowsight and pass it with --token. Key-pair authentication (--identity-file) is also supported; to learn how, read https://docs.snowflake.com/en/user-guide/key-pair-auth.
 
 Once you successfully authenticate, you can scan or query the Snowflake account.
 
 Example:
-  cnspec shell snowflake --account <account id> --region <region> --user <your id> --role <the role you use> --identity-file <path to your private RSA key>
-  cnspec scan snowflake --account <account id> --region <region> --user <your id> --role <the role you use> --identity-file <path to your private RSA key>
+  cnspec shell snowflake --account <account id> --region <region> --user <your id> --role <the role you use> --token <your PAT>
+  cnspec scan snowflake --account <account id> --region <region> --user <your id> --role <the role you use> --token <your PAT>
 `,
-			Discovery: []string{},
+			Discovery: []string{
+				connection.DiscoveryAuto,
+				connection.DiscoveryAll,
+				connection.DiscoveryDatabases,
+				connection.DiscoveryNone,
+			},
 			Flags: []plugin.Flag{
 				{
 					Long:    "user",
@@ -43,6 +55,14 @@ Example:
 					Type:        plugin.FlagType_Bool,
 					Default:     "false",
 					Desc:        "Prompt for the connection password",
+					ConfigEntry: "-",
+				},
+				{
+					Long:        "token",
+					Type:        plugin.FlagType_String,
+					Default:     "",
+					Desc:        "Set the programmatic access token (PAT)",
+					Option:      plugin.FlagOption_Password,
 					ConfigEntry: "-",
 				},
 				{

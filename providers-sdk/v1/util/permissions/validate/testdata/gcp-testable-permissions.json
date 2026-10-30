@@ -1,0 +1,25 @@
+{
+  "project": [
+    {"name": "compute.instances.get", "stage": "GA", "customRolesSupportLevel": "SUPPORTED"},
+    {"name": "compute.instances.list", "stage": "GA", "customRolesSupportLevel": "SUPPORTED"},
+    {"name": "container.bindings.list", "stage": "DEPRECATED", "customRolesSupportLevel": "SUPPORTED"},
+    {"name": "datastore.indexes.list", "stage": "GA", "customRolesSupportLevel": "SUPPORTED", "primaryPermission": "datastore.schemas.list"},
+    {"name": "datastore.schemas.list", "stage": "GA", "customRolesSupportLevel": "SUPPORTED"},
+    {"name": "domains.registrations.list", "stage": "GA", "customRolesSupportLevel": "NOT_SUPPORTED"},
+    {"name": "iam.workloadIdentityPools.list", "stage": "BETA", "customRolesSupportLevel": "SUPPORTED", "primaryPermission": "iam.googleapis.com/workloadIdentityPools.list"},
+    {"name": "resourcemanager.projects.get", "stage": "GA", "customRolesSupportLevel": "SUPPORTED"}
+  ],
+  "organization": [
+    {"name": "compute.instances.get", "stage": "GA", "customRolesSupportLevel": "SUPPORTED"},
+    {"name": "compute.instances.list", "stage": "GA", "customRolesSupportLevel": "SUPPORTED"},
+    {"name": "container.bindings.list", "stage": "DEPRECATED", "customRolesSupportLevel": "SUPPORTED"},
+    {"name": "datastore.indexes.list", "stage": "GA", "customRolesSupportLevel": "SUPPORTED", "primaryPermission": "datastore.schemas.list"},
+    {"name": "datastore.schemas.list", "stage": "GA", "customRolesSupportLevel": "SUPPORTED"},
+    {"name": "domains.registrations.list", "stage": "GA", "customRolesSupportLevel": "NOT_SUPPORTED"},
+    {"name": "iam.googleapis.com/workforcePools.list", "stage": "GA", "customRolesSupportLevel": "SUPPORTED"},
+    {"name": "iam.workforcePools.list", "stage": "GA", "customRolesSupportLevel": "SUPPORTED", "primaryPermission": "iam.googleapis.com/workforcePools.list"},
+    {"name": "iam.workloadIdentityPools.list", "stage": "BETA", "customRolesSupportLevel": "SUPPORTED", "primaryPermission": "iam.googleapis.com/workloadIdentityPools.list"},
+    {"name": "resourcemanager.projects.get", "stage": "GA", "customRolesSupportLevel": "SUPPORTED"},
+    {"name": "resourcemanager.projects.list", "stage": "GA", "customRolesSupportLevel": "SUPPORTED"}
+  ]
+}

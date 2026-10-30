@@ -1,0 +1,200 @@
+# RHEL 9 with tcpdump capturing on eth0 and two Open vSwitch bridges, one of
+# them on the netdev datapath. tcpdump raises eth0's promiscuity to 1 without
+# setting the PROMISC flag `ip addr` prints (it only shows a promiscuous mode
+# requested with `ip link set ... promisc on`), and so does Open vSwitch on
+# every port it attaches. /sys/class/net/<iface>/flags has the kernel's flags,
+# 0x1103 on eth0. A carrier file that can't be read (EINVAL on an interface
+# that is down) is left out.
+
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "5.14.0-687.54.1.el9_8.x86_64"
+
+[commands."ip addr show"]
+stdout = """
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host 
+       valid_lft forever preferred_lft forever
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9001 qdisc mq state UP group default qlen 1000
+    link/ether 06:ff:c3:69:b3:57 brd ff:ff:ff:ff:ff:ff
+    altname enp0s5
+    altname ens5
+    inet 172.17.2.84/24 brd 172.17.2.255 scope global dynamic noprefixroute eth0
+       valid_lft 3351sec preferred_lft 3351sec
+    inet6 fe80::4ff:c3ff:fe69:b357/64 scope link proto kernel_ll 
+       valid_lft forever preferred_lft forever
+3: ovs-system: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default qlen 1000
+    link/ether da:93:1c:8e:c7:94 brd ff:ff:ff:ff:ff:ff
+4: br-g01: <BROADCAST,MULTICAST> mtu 1400 qdisc noop state DOWN group default qlen 1000
+    link/ether 3a:06:48:72:da:4a brd ff:ff:ff:ff:ff:ff
+5: g01-int0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1400 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/ether 5e:02:25:e6:bd:73 brd ff:ff:ff:ff:ff:ff
+    inet6 fe80::5c02:25ff:fee6:bd73/64 scope link proto kernel_ll 
+       valid_lft forever preferred_lft forever
+6: g01-trunk: <BROADCAST,MULTICAST> mtu 1400 qdisc noop state DOWN group default qlen 1000
+    link/ether 9e:21:0e:7f:55:0f brd ff:ff:ff:ff:ff:ff
+7: vxlan_sys_4789: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 65000 qdisc noqueue master ovs-system state UNKNOWN group default qlen 1000
+    link/ether 32:a9:9a:66:18:93 brd ff:ff:ff:ff:ff:ff
+    inet6 fe80::30a9:9aff:fe66:1893/64 scope link proto kernel_ll 
+       valid_lft forever preferred_lft forever
+8: ovs-netdev: <BROADCAST,MULTICAST,PROMISC> mtu 1500 qdisc noop state DOWN group default qlen 1000
+    link/ether 16:19:7a:ca:29:d8 brd ff:ff:ff:ff:ff:ff
+9: br-g01b: <BROADCAST,MULTICAST,PROMISC> mtu 1500 qdisc noop state DOWN group default qlen 1000
+    link/ether 1a:11:68:93:44:41 brd ff:ff:ff:ff:ff:ff
+"""
+
+[files."/sys/class/net"]
+stat.isdir = true
+
+[files."/sys/class/net/br-g01"]
+stat.isdir = true
+[files."/sys/class/net/br-g01/ifindex"]
+content = "1\n"
+[files."/sys/class/net/br-g01/address"]
+content = "3a:06:48:72:da:4a\n"
+[files."/sys/class/net/br-g01/mtu"]
+content = "1400\n"
+[files."/sys/class/net/br-g01/flags"]
+content = "0x1102\n"
+[files."/sys/class/net/br-g01/operstate"]
+content = "down\n"
+[files."/sys/class/net/br-g01/type"]
+content = "1\n"
+
+[files."/sys/class/net/br-g01b"]
+stat.isdir = true
+[files."/sys/class/net/br-g01b/ifindex"]
+content = "1\n"
+[files."/sys/class/net/br-g01b/address"]
+content = "1a:11:68:93:44:41\n"
+[files."/sys/class/net/br-g01b/mtu"]
+content = "1500\n"
+[files."/sys/class/net/br-g01b/flags"]
+content = "0x1102\n"
+[files."/sys/class/net/br-g01b/operstate"]
+content = "down\n"
+[files."/sys/class/net/br-g01b/type"]
+content = "1\n"
+
+[files."/sys/class/net/eth0"]
+stat.isdir = true
+[files."/sys/class/net/eth0/ifindex"]
+content = "1\n"
+[files."/sys/class/net/eth0/address"]
+content = "06:ff:c3:69:b3:57\n"
+[files."/sys/class/net/eth0/mtu"]
+content = "9001\n"
+[files."/sys/class/net/eth0/flags"]
+content = "0x1103\n"
+[files."/sys/class/net/eth0/operstate"]
+content = "up\n"
+[files."/sys/class/net/eth0/type"]
+content = "1\n"
+[files."/sys/class/net/eth0/carrier"]
+content = "1\n"
+[files."/sys/class/net/eth0/device"]
+stat.isdir = true
+
+[files."/sys/class/net/g01-int0"]
+stat.isdir = true
+[files."/sys/class/net/g01-int0/ifindex"]
+content = "1\n"
+[files."/sys/class/net/g01-int0/address"]
+content = "5e:02:25:e6:bd:73\n"
+[files."/sys/class/net/g01-int0/mtu"]
+content = "1400\n"
+[files."/sys/class/net/g01-int0/flags"]
+content = "0x1103\n"
+[files."/sys/class/net/g01-int0/operstate"]
+content = "unknown\n"
+[files."/sys/class/net/g01-int0/type"]
+content = "1\n"
+[files."/sys/class/net/g01-int0/carrier"]
+content = "1\n"
+
+[files."/sys/class/net/g01-trunk"]
+stat.isdir = true
+[files."/sys/class/net/g01-trunk/ifindex"]
+content = "1\n"
+[files."/sys/class/net/g01-trunk/address"]
+content = "9e:21:0e:7f:55:0f\n"
+[files."/sys/class/net/g01-trunk/mtu"]
+content = "1400\n"
+[files."/sys/class/net/g01-trunk/flags"]
+content = "0x1102\n"
+[files."/sys/class/net/g01-trunk/operstate"]
+content = "down\n"
+[files."/sys/class/net/g01-trunk/type"]
+content = "1\n"
+
+[files."/sys/class/net/lo"]
+stat.isdir = true
+[files."/sys/class/net/lo/ifindex"]
+content = "1\n"
+[files."/sys/class/net/lo/address"]
+content = "00:00:00:00:00:00\n"
+[files."/sys/class/net/lo/mtu"]
+content = "65536\n"
+[files."/sys/class/net/lo/flags"]
+content = "0x9\n"
+[files."/sys/class/net/lo/operstate"]
+content = "unknown\n"
+[files."/sys/class/net/lo/type"]
+content = "772\n"
+[files."/sys/class/net/lo/carrier"]
+content = "1\n"
+
+[files."/sys/class/net/ovs-netdev"]
+stat.isdir = true
+[files."/sys/class/net/ovs-netdev/ifindex"]
+content = "1\n"
+[files."/sys/class/net/ovs-netdev/address"]
+content = "16:19:7a:ca:29:d8\n"
+[files."/sys/class/net/ovs-netdev/mtu"]
+content = "1500\n"
+[files."/sys/class/net/ovs-netdev/flags"]
+content = "0x1102\n"
+[files."/sys/class/net/ovs-netdev/operstate"]
+content = "down\n"
+[files."/sys/class/net/ovs-netdev/type"]
+content = "1\n"
+
+[files."/sys/class/net/ovs-system"]
+stat.isdir = true
+[files."/sys/class/net/ovs-system/ifindex"]
+content = "1\n"
+[files."/sys/class/net/ovs-system/address"]
+content = "da:93:1c:8e:c7:94\n"
+[files."/sys/class/net/ovs-system/mtu"]
+content = "1500\n"
+[files."/sys/class/net/ovs-system/flags"]
+content = "0x1102\n"
+[files."/sys/class/net/ovs-system/operstate"]
+content = "down\n"
+[files."/sys/class/net/ovs-system/type"]
+content = "1\n"
+
+[files."/sys/class/net/vxlan_sys_4789"]
+stat.isdir = true
+[files."/sys/class/net/vxlan_sys_4789/ifindex"]
+content = "1\n"
+[files."/sys/class/net/vxlan_sys_4789/address"]
+content = "32:a9:9a:66:18:93\n"
+[files."/sys/class/net/vxlan_sys_4789/mtu"]
+content = "65000\n"
+[files."/sys/class/net/vxlan_sys_4789/flags"]
+content = "0x1103\n"
+[files."/sys/class/net/vxlan_sys_4789/operstate"]
+content = "unknown\n"
+[files."/sys/class/net/vxlan_sys_4789/type"]
+content = "1\n"
+[files."/sys/class/net/vxlan_sys_4789/carrier"]
+content = "1\n"

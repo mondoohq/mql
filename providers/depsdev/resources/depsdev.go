@@ -4,8 +4,8 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/depsdev/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/depsdev/connection"
 )
 
 func (r *mqlDepsdev) id() (string, error) {

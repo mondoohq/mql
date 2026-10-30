@@ -12,7 +12,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func int32Ptr(v int32) *int32 { return &v }
+//go:fix inline
+func int32Ptr(v int32) *int32 { return new(v) }
 
 func TestCleanupPolicyType(t *testing.T) {
 	t.Run("condition policy", func(t *testing.T) {

@@ -5,38 +5,40 @@ package resources
 
 import (
 	"context"
-	"errors"
-	"sync"
+	"time"
 
-	tsclient "github.com/tailscale/tailscale-client-go/v2"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/v13/providers/tailscale/connection"
-	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/providers/tailscale/connection"
+	"go.mondoo.com/mql/types"
+	tsclient "tailscale.com/client/tailscale/v2"
 )
 
-// mqlTailscaleDeviceInternal caches subnet route lookups so the advertised
-// and enabled route accessors share a single SubnetRoutes API call.
-type mqlTailscaleDeviceInternal struct {
-	routesLock    sync.Mutex
-	routesFetched bool
-	routes        *tsclient.DeviceRoutes
-}
-
+// The resource keys devices by the legacy numeric id rather than nodeId. It is
+// the value carried in discovered device platform ids, so changing it would
+// re-identify every previously scanned device asset. Both address the same
+// device through the API, and nodeId is exposed as its own field.
 func (r *mqlTailscaleDevice) id() (string, error) {
 	return "tailscale/device/" + r.Id.Data, nil
 }
 
 func initTailscaleDevice(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := args["id"]
-	if !ok {
-		// TODO try to get the id from the connection
-		return nil, nil, errors.New("missing required argument 'id'")
+	conn := runtime.Connection.(*connection.TailscaleConnection)
+
+	// On a discovered device asset the device is implied by the asset itself, so
+	// a bare `tailscale.device` resolves without an explicit id argument.
+	args = withDefaultArg(args, "id", connection.DeviceIdFromAsset(conn.Asset()))
+
+	id, err := requiredStringArg(args, "id")
+	if err != nil {
+		return nil, nil, err
 	}
 
-	conn := runtime.Connection.(*connection.TailscaleConnection)
-	device, err := conn.Client().Devices().Get(context.Background(), id.Value.(string))
+	// GetWithAllFields rather than Get: the subnet routes, posture identity,
+	// SSH state and connectivity details are omitted from the default field
+	// set, and every one of them backs a resource field.
+	device, err := conn.Client().Devices().GetWithAllFields(context.Background(), id)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -49,9 +51,53 @@ func initTailscaleDevice(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 	return args, resource.(*mqlTailscaleDevice), nil
 }
 
+// optionalTime converts a device timestamp for MQL, reporting null when
+// Tailscale did not supply one.
+//
+// Tailscale spells an absent timestamp three ways: JSON null (`lastSeen` on a
+// device connected to the coordination server), an empty string (`created` on a
+// device that has none, such as the hello service), and the zero instant
+// (`expires` on a device whose key never expires). The SDK folds the latter two
+// into the Go zero time, which optionalTimeValue recognizes; only the nil
+// pointer is specific to the device field set.
+func optionalTime(t *tsclient.Time) *time.Time {
+	if t == nil {
+		return nil
+	}
+	return optionalTimeValue(t.Time)
+}
+
 func createTailscaleDeviceResource(runtime *plugin.Runtime, device *tsclient.Device) (plugin.Resource, error) {
+	// The fields below are only populated when the device was fetched with the
+	// full field set. A device fetched without them arrives with nil pointers,
+	// so each block degrades to a zero value rather than dereferencing.
+	var distroName, distroVersion, distroCodeName string
+	if device.Distro != nil {
+		distroName = device.Distro.Name
+		distroVersion = device.Distro.Version
+		distroCodeName = device.Distro.CodeName
+	}
+
+	var serialNumbers, hardwareAddresses []string
+	var postureIdentityDisabled bool
+	if device.PostureIdentity != nil {
+		serialNumbers = device.PostureIdentity.SerialNumbers
+		hardwareAddresses = device.PostureIdentity.HardwareAddresses
+		postureIdentityDisabled = device.PostureIdentity.Disabled
+	}
+
+	var endpoints []string
+	var derpRelay string
+	var mappingVariesByDestIP bool
+	if device.ClientConnectivity != nil {
+		endpoints = device.ClientConnectivity.Endpoints
+		derpRelay = device.ClientConnectivity.DERP
+		mappingVariesByDestIP = device.ClientConnectivity.MappingVariesByDestIP
+	}
+
 	return CreateResource(runtime, "tailscale.device", map[string]*llx.RawData{
 		"id":                        llx.StringData(device.ID),
+		"nodeId":                    llx.StringData(device.NodeID),
 		"hostname":                  llx.StringData(device.Hostname),
 		"os":                        llx.StringData(device.OS),
 		"name":                      llx.StringData(device.Name),
@@ -64,53 +110,26 @@ func createTailscaleDeviceResource(runtime *plugin.Runtime, device *tsclient.Dev
 		"blocksIncomingConnections": llx.BoolData(device.BlocksIncomingConnections),
 		"authorized":                llx.BoolData(device.Authorized),
 		"isExternal":                llx.BoolData(device.IsExternal),
+		"isEphemeral":               llx.BoolData(device.IsEphemeral),
+		"connectedToControl":        llx.BoolData(device.ConnectedToControl),
+		"sshEnabled":                llx.BoolData(device.SSHEnabled),
 		"keyExpiryDisabled":         llx.BoolData(device.KeyExpiryDisabled),
 		"updateAvailable":           llx.BoolData(device.UpdateAvailable),
-		"createdAt":                 llx.TimeData(device.Created.Time),
-		"expiresAt":                 llx.TimeData(device.Expires.Time),
-		"lastSeenAt":                llx.TimeData(device.LastSeen.Time),
+		"createdAt":                 llx.TimeDataPtr(optionalTime(&device.Created)),
+		"expiresAt":                 llx.TimeDataPtr(optionalTime(&device.Expires)),
+		"lastSeenAt":                llx.TimeDataPtr(optionalTime(device.LastSeen)),
 		"tags":                      llx.ArrayData(convert.SliceAnyToInterface(device.Tags), types.String),
 		"addresses":                 llx.ArrayData(convert.SliceAnyToInterface(device.Addresses), types.String),
+		"advertisedRoutes":          llx.ArrayData(convert.SliceAnyToInterface(device.AdvertisedRoutes), types.String),
+		"enabledRoutes":             llx.ArrayData(convert.SliceAnyToInterface(device.EnabledRoutes), types.String),
+		"distroName":                llx.StringData(distroName),
+		"distroVersion":             llx.StringData(distroVersion),
+		"distroCodeName":            llx.StringData(distroCodeName),
+		"postureSerialNumbers":      llx.ArrayData(convert.SliceAnyToInterface(serialNumbers), types.String),
+		"postureHardwareAddresses":  llx.ArrayData(convert.SliceAnyToInterface(hardwareAddresses), types.String),
+		"postureIdentityDisabled":   llx.BoolData(postureIdentityDisabled),
+		"endpoints":                 llx.ArrayData(convert.SliceAnyToInterface(endpoints), types.String),
+		"derpRelay":                 llx.StringData(derpRelay),
+		"mappingVariesByDestIp":     llx.BoolData(mappingVariesByDestIP),
 	})
-}
-
-func (d *mqlTailscaleDevice) fetchRoutes() (*tsclient.DeviceRoutes, error) {
-	if d.routesFetched {
-		return d.routes, nil
-	}
-	d.routesLock.Lock()
-	defer d.routesLock.Unlock()
-	if d.routesFetched {
-		return d.routes, nil
-	}
-	conn := d.MqlRuntime.Connection.(*connection.TailscaleConnection)
-	routes, err := conn.Client().Devices().SubnetRoutes(context.Background(), d.Id.Data)
-	if err != nil {
-		return nil, err
-	}
-	d.routes = routes
-	d.routesFetched = true
-	return d.routes, nil
-}
-
-func (d *mqlTailscaleDevice) advertisedRoutes() ([]any, error) {
-	r, err := d.fetchRoutes()
-	if err != nil {
-		return nil, err
-	}
-	if r == nil {
-		return []any{}, nil
-	}
-	return convert.SliceAnyToInterface(r.Advertised), nil
-}
-
-func (d *mqlTailscaleDevice) enabledRoutes() ([]any, error) {
-	r, err := d.fetchRoutes()
-	if err != nil {
-		return nil, err
-	}
-	if r == nil {
-		return []any{}, nil
-	}
-	return convert.SliceAnyToInterface(r.Enabled), nil
 }
